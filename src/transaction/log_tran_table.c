@@ -114,13 +114,7 @@ static const int LOG_MAX_NUM_CONTIGUOUS_TDES = INT_MAX / sizeof (LOG_TDES);
 static const float LOG_EXPAND_TRANTABLE_RATIO = 1.25;	/* Increase table by 25% */
 static const int LOG_TOPOPS_STACK_INCREMENT = 3;	/* No more than 3 nested top system operations */
 static const char *log_Client_id_unknown_string = "(unknown)";
-static BOOT_CLIENT_CREDENTIAL log_Client_credential = {
-  clientids (),
-  NULL,				/* db_name */
-  NULL,				/* db_password */
-  NULL,				/* preferred_hosts */
-  0,				/* connect_order */
-};
+static BOOT_CLIENT_CREDENTIAL log_Client_credential;
 
 static const unsigned int LOGTB_RETRY_SLAM_MAX_TIMES = 10;
 
@@ -888,7 +882,7 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CRED
     {
       client_credential = &log_Client_credential;
     }
-  tdes->client.set_ids (client_credential->m_clientids);
+  tdes->client.set_ids (*client_credential);
   tdes->is_user_active = false;
 #if defined(SERVER_MODE)
   if (thread_p == NULL)

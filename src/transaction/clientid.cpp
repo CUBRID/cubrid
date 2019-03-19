@@ -111,28 +111,59 @@ clientids::reset ()
 }
 
 //
-// packing:
+// packing of clientids
 //
 
-#define PACKER_ARGS(client_type_as_int) \
+#define CLIENTID_PACKER_ARGS(client_type_as_int) \
   client_type_as_int, client_info, db_user, program_name, login_name, host_name, process_id
 
 size_t
 clientids::get_packed_size (cubpacking::packer &serializator) const
 {
-  return serializator.get_all_packed_size (PACKER_ARGS (static_cast<int> (client_type)));
+  return serializator.get_all_packed_size (CLIENTID_PACKER_ARGS (static_cast<int> (client_type)));
 }
 
 void
 clientids::pack (cubpacking::packer &serializator) const
 {
-  serializator.pack_all (PACKER_ARGS (static_cast<int> (client_type)));
+  serializator.pack_all (CLIENTID_PACKER_ARGS (static_cast<int> (client_type)));
 }
 
 void
 clientids::unpack (cubpacking::unpacker &deserializator)
 {
   int read_int;
-  deserializator.unpack_all (PACKER_ARGS (read_int));
+  deserializator.unpack_all (CLIENTID_PACKER_ARGS (read_int));
   client_type = static_cast<boot_client_type> (read_int);
+}
+
+//
+// boot_client_credential
+//
+
+//
+// packing of boot_client_credential
+//
+
+#define BOOTCLCRED_PACKER_ARGS \
+  db_name, db_password
+
+size_t
+boot_client_credential::get_packed_size (cubpacking::packer &serializator) const
+{
+  return clientids::get_packed_size (serializator) + serializator.get_all_packed_size (BOOTCLCRED_PACKER_ARGS);
+}
+
+void
+boot_client_credential::pack (cubpacking::packer &serializator) const
+{
+  clientids::pack (serializator);
+  serializator.pack_all (BOOTCLCRED_PACKER_ARGS);
+}
+
+void
+boot_client_credential::unpack (cubpacking::unpacker &deserializator)
+{
+  clientids::unpack (deserializator);
+  deserializator.unpack_all (BOOTCLCRED_PACKER_ARGS);
 }

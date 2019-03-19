@@ -90,15 +90,19 @@ struct clientids : public cubpacking::packable_object
 };
 
 typedef struct boot_client_credential BOOT_CLIENT_CREDENTIAL;
-struct boot_client_credential
+struct boot_client_credential : public clientids
 {
-  clientids m_clientids;
-  char *db_name;		/* DB_MAX_IDENTIFIER_LENGTH */
-  char *db_password;		/* DB_MAX_PASSWORD_LENGTH */
+  std::string db_name;		/* DB_MAX_IDENTIFIER_LENGTH */
+  std::string db_password;		/* DB_MAX_PASSWORD_LENGTH */
   char *preferred_hosts;	/* LINE_MAX */
   int connect_order;
 
   boot_client_credential () = default;
+
+  // packable_object
+  virtual size_t get_packed_size (cubpacking::packer &serializator) const override;
+  virtual void pack (cubpacking::packer &serializator) const override;
+  virtual void unpack (cubpacking::unpacker &deserializator) override;
 };
 
 #endif // !_CLIENTID_HPP_

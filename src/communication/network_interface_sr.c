@@ -3171,13 +3171,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   memset (&server_credential, 0, sizeof (server_credential));
 
   unpacker.set_buffer (request, (size_t) reqlen);
-  client_credential.m_clientids.unpack (unpacker);
-
-  ptr = request + unpacker.get_current_size ();
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.db_name);
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.db_password);
-  ptr = or_unpack_int (ptr, &client_lock_wait);
-  ptr = or_unpack_int (ptr, &xint);
+  unpacker.unpack_all (client_credential, client_lock_wait, xint);
   client_isolation = (TRAN_ISOLATION) xint;
 
   tran_index = xboot_register_client (thread_p, &client_credential, client_lock_wait, client_isolation, &tran_state,

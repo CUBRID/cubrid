@@ -1555,9 +1555,9 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     }
 #endif /* CUBRID_DEBUG */
 
-  if (client_credential->db_name == NULL)
+  if (client_credential->db_name.empty ())
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, client_credential->db_name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, client_credential->db_name.c_str ());
       goto exit_on_error;
     }
 
@@ -1654,7 +1654,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
    * Compose the full name of the database
    */
   snprintf (boot_Db_full_name, sizeof (boot_Db_full_name), "%s%c%s", db_path, PATH_SEPARATOR,
-	    client_credential->db_name);
+	    client_credential->db_name.c_str ());
 
   /*
    * Initialize error structure, critical section, slotted page, heap, and
@@ -1677,7 +1677,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
       assert (thread_p == NULL);
     }
 
-  log_prefix = fileio_get_base_file_name (client_credential->db_name);
+  log_prefix = fileio_get_base_file_name (client_credential->db_name.c_str ());
 
   /*
    * Find logging information to create the log volume. If the page size is
@@ -1739,12 +1739,12 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 	}
     }
 
-  if (dir != NULL && ((db = cfg_find_db_list (dir, client_credential->db_name)) != NULL))
+  if (dir != NULL && ((db = cfg_find_db_list (dir, client_credential->db_name.c_str ())) != NULL))
     {
       if (db_overwrite == false)
 	{
 	  /* There is a database with the same name and we cannot overwrite it */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DATABASE_EXISTS, 1, client_credential->db_name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DATABASE_EXISTS, 1, client_credential->db_name.c_str ());
 	  goto exit_on_error;
 	}
       else
@@ -1818,7 +1818,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     {
       /* db_path + db_name is too long */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 4, db_path,
-	      client_credential->db_name, strlen (boot_Db_full_name), DB_MAX_PATH_LENGTH - 1);
+	      client_credential->db_name.c_str (), strlen (boot_Db_full_name), DB_MAX_PATH_LENGTH - 1);
       goto exit_on_error;
     }
 
@@ -1859,12 +1859,14 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 		}
 	    }
 
-	  db = cfg_find_db_list (dir, client_credential->db_name);
+	  db = cfg_find_db_list (dir, client_credential->db_name.c_str ());
 
 	  /* Now create the entry in the database table */
 	  if (db == NULL)
 	    {
-	      db = cfg_add_db (&dir, client_credential->db_name, db_path, log_path, lob_path, db_path_info->db_host);
+	      db =
+		cfg_add_db (&dir, client_credential->db_name.c_str (), db_path, log_path, lob_path,
+			    db_path_info->db_host);
 	    }
 	  else
 	    {
@@ -1921,8 +1923,8 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 	    {
 	      (void) unlink (boot_Db_full_name);
 	    }
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_CREATE_VOL, 3, "volumes", client_credential->db_name,
-		  er_get_msglog_filename ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_CREATE_VOL, 3, "volumes",
+		  client_credential->db_name.c_str (), er_get_msglog_filename ());
 	}
 
       goto exit_on_error;
@@ -3002,17 +3004,17 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 #endif /* SA_MODE */
 
 #if defined(SA_MODE)
-  if (client_credential != NULL && !client_credential->m_clientids.program_name.empty ()
-      && client_credential->m_clientids.client_type == BOOT_CLIENT_ADMIN_UTILITY)
+  if (client_credential != NULL && !client_credential->program_name.empty ()
+      && client_credential->client_type == BOOT_CLIENT_ADMIN_UTILITY)
     {
-      auto const sep_index = client_credential->m_clientids.program_name.find_last_of (PATH_SEPARATOR);
-      if (sep_index != client_credential->m_clientids.program_name.npos)
+      auto const sep_index = client_credential->program_name.find_last_of (PATH_SEPARATOR);
+      if (sep_index != client_credential->program_name.npos)
 	{
-	  adm_prg_file_name = client_credential->m_clientids.program_name.substr (sep_index + 1);
+	  adm_prg_file_name = client_credential->program_name.substr (sep_index + 1);
 	}
       else
 	{
-	  adm_prg_file_name = client_credential->m_clientids.program_name;
+	  adm_prg_file_name = client_credential->program_name;
 	}
     }
   if (!adm_prg_file_name.empty ())
@@ -3030,7 +3032,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 
   /* If the server is not restarted, restart the server at this moment */
   if (!BO_IS_SERVER_RESTARTED ()
-      && boot_restart_server (thread_p, false, client_credential->db_name, false, &check_coll_and_timezone,
+      && boot_restart_server (thread_p, false, client_credential->db_name.c_str (), false, &check_coll_and_timezone,
 			      NULL) != NO_ERROR)
     {
       *tran_state = TRAN_UNACTIVE_UNKNOWN;
@@ -3048,11 +3050,11 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
   /* Initialize scan function pointers of show statements */
   showstmt_scan_init ();
 
-  db_user_save = client_credential->m_clientids.db_user;
-  if (!client_credential->m_clientids.db_user.empty ())
+  db_user_save = client_credential->db_user;
+  if (!client_credential->db_user.empty ())
     {
-      intl_identifier_upper (client_credential->m_clientids.db_user.c_str (), db_user_upper);
-      client_credential->m_clientids.db_user = db_user_upper;
+      intl_identifier_upper (client_credential->db_user.c_str (), db_user_upper);
+      client_credential->db_user = db_user_upper;
     }
 
   /* Assign a transaction index to the client */
@@ -3099,33 +3101,33 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 
 #if defined(SERVER_MODE)
       /* Check the server's state for HA action for this client */
-      if (BOOT_NORMAL_CLIENT_TYPE (client_credential->m_clientids.client_type))
+      if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
 	{
 	  if (css_check_ha_server_state_for_client (thread_p, 1) != NO_ERROR)
 	    {
 	      logtb_release_tran_index (thread_p, tran_index);
 	      er_log_debug (ARG_FILE_LINE, "xboot_register_client: css_check_ha_server_state_for_client() error\n");
 	      *tran_state = TRAN_UNACTIVE_UNKNOWN;
-	      client_credential->m_clientids.db_user = db_user_save;
+	      client_credential->db_user = db_user_save;
 	      return NULL_TRAN_INDEX;
 	    }
 	}
-      if (client_credential->m_clientids.client_type == BOOT_CLIENT_LOG_APPLIER)
+      if (client_credential->client_type == BOOT_CLIENT_LOG_APPLIER)
 	{
 	  css_notify_ha_log_applier_state (thread_p, HA_LOG_APPLIER_STATE_UNREGISTERED);
 	}
 #endif /* SERVER_MODE */
 
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CLIENT_CONNECTED, 4,
-	      client_credential->m_clientids.program_name.c_str (),
-	      client_credential->m_clientids.process_id, client_credential->m_clientids.host_name.c_str (), tran_index);
+	      client_credential->program_name.c_str (),
+	      client_credential->process_id, client_credential->host_name.c_str (), tran_index);
     }
 
 #if defined(ENABLE_SYSTEMTAP) && defined(SERVER_MODE)
-  CUBRID_CONN_START (thread_p->conn_entry->client_id, client_credential->m_clientids.db_user.c_str ());
+  CUBRID_CONN_START (thread_p->conn_entry->client_id, client_credential->db_user.c_str ());
 #endif /* ENABLE_SYSTEMTAP */
 
-  client_credential->m_clientids.db_user = db_user_save;
+  client_credential->db_user = db_user_save;
   return tran_index;
 }
 

@@ -33,6 +33,7 @@
 #include "network.h"
 #include "network_interface_cl.h"
 #include "memory_alloc.h"
+#include "mem_block.hpp"
 #include "storage_common.h"
 #if defined(CS_MODE)
 #include "server_interface.h"
@@ -3493,34 +3494,11 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   packing_packer packer;
-  size_t clientid_size = client_credential->m_clientids.get_packed_size (packer);
+  cubmem::extensible_block ext_blk;
+  packer.set_buffer_and_pack_all (ext_blk, *client_credential, client_lock_wait, (int) client_isolation);
 
-  request_size = (clientid_size	/* m_clientids */
-		  + length_const_string (client_credential->db_name, NULL)	/* db_name */
-		  + length_const_string (client_credential->db_password, NULL)	/* db_password */
-		  + OR_INT_SIZE	/* process_id */
-		  + OR_INT_SIZE	/* client_lock_wait */
-		  + OR_INT_SIZE /* client_isolation */ );
-
-  request = (char *) malloc (request_size);
-  if (request == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-      return NULL_TRAN_INDEX;
-    }
-
-  packer.set_buffer (request, clientid_size);
-  client_credential->m_clientids.pack (packer);
-
-  ptr = request + clientid_size;
-  ptr = pack_const_string (ptr, client_credential->db_name);
-  ptr = pack_const_string (ptr, client_credential->db_password);
-  ptr = or_pack_int (ptr, client_credential->m_clientids.process_id);
-  ptr = or_pack_int (ptr, client_lock_wait);
-  ptr = or_pack_int (ptr, (int) client_isolation);
-
-  req_error = net_client_request2 (NET_SERVER_BO_REGISTER_CLIENT, request, request_size, reply,
-				   OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
+  req_error = net_client_request2 (NET_SERVER_BO_REGISTER_CLIENT, ext_blk.get_ptr (), (int) packer.get_current_size (),
+				   reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
   if (!req_error)
     {
       or_unpack_int (reply, &area_size);
