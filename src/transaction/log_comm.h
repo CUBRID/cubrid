@@ -28,8 +28,6 @@
 
 #include <stdio.h>
 
-#define LOG_USERNAME_MAX        (DB_MAX_USER_LENGTH + 1)
-
 #define TRAN_LOCK_INFINITE_WAIT (-1)
 
 #define TIME_SIZE_OF_DUMP_LOG_INFO 30

@@ -115,6 +115,7 @@ static const float LOG_EXPAND_TRANTABLE_RATIO = 1.25;	/* Increase table by 25% *
 static const int LOG_TOPOPS_STACK_INCREMENT = 3;	/* No more than 3 nested top system operations */
 static const char *log_Client_id_unknown_string = "(unknown)";
 static BOOT_CLIENT_CREDENTIAL log_Client_credential = {
+  clientids (),
   BOOT_CLIENT_SYSTEM_INTERNAL,	/* client_type */
   NULL,				/* client_info */
   NULL,				/* db_name */
@@ -600,7 +601,7 @@ logtb_initialize_system_tdes (THREAD_ENTRY * thread_p)
   tdes->wait_msecs = TRAN_LOCK_INFINITE_WAIT;
   tdes->isolation = TRAN_DEFAULT_ISOLATION_LEVEL ();
   tdes->client_id = -1;
-  logtb_set_client_ids_all (&tdes->client, -1, NULL, NULL, NULL, NULL, NULL, -1);
+  tdes->client.set_system_internal ();
   tdes->query_timeout = 0;
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->block_global_oldest_active_until_commit = false;
@@ -894,9 +895,7 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CRED
     {
       client_credential = &log_Client_credential;
     }
-  logtb_set_client_ids_all (&tdes->client, client_credential->client_type, client_credential->client_info,
-			    client_credential->db_user, client_credential->program_name, client_credential->login_name,
-			    client_credential->host_name, client_credential->process_id);
+  tdes->client.set_ids (client_credential->m_clientids);
   tdes->is_user_active = false;
 #if defined(SERVER_MODE)
   if (thread_p == NULL)
@@ -1439,7 +1438,7 @@ logtb_release_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 	  else
 	    {
 	      logtb_free_tran_index (thread_p, tran_index);
-	      logtb_set_client_ids_all (&tdes->client, BOOT_CLIENT_UNKNOWN, NULL, NULL, NULL, NULL, NULL, -1);
+	      tdes->client.reset ();
 	      tdes->is_user_active = false;
 	    }
 	}
@@ -2003,7 +2002,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
     mht_create ("Tran_unique_stats", 101, logtb_tran_btid_hash_func, logtb_tran_btid_hash_cmp_func);
   tdes->log_upd_stats.classes_cos_hash = mht_create ("Tran_classes_cos", 101, oid_hash, oid_compare_equals);
 
-  logtb_set_client_ids_all (&tdes->client, BOOT_CLIENT_UNKNOWN, NULL, NULL, NULL, NULL, NULL, -1);
+  tdes->client.reset ();
   tdes->block_global_oldest_active_until_commit = false;
   tdes->is_user_active = false;
   tdes->modified_class_list = NULL;
@@ -2243,21 +2242,8 @@ void
 logtb_set_client_ids_all (CLIENTIDS * client, int client_type, const char *client_info, const char *db_user,
 			  const char *program_name, const char *login_name, const char *host_name, int process_id)
 {
-  client->client_type = (boot_client_type) client_type;
-  strncpy (client->client_info, (client_info) ? client_info : "", DB_MAX_IDENTIFIER_LENGTH);
-  client->client_info[DB_MAX_IDENTIFIER_LENGTH] = '\0';
-  strncpy (client->db_user, (db_user) ? db_user : log_Client_id_unknown_string, LOG_USERNAME_MAX - 1);
-  client->db_user[LOG_USERNAME_MAX - 1] = '\0';
-  if (program_name == NULL || basename_r (program_name, client->program_name, PATH_MAX) < 0)
-    {
-      strncpy (client->program_name, log_Client_id_unknown_string, PATH_MAX);
-    }
-  client->program_name[PATH_MAX] = '\0';
-  strncpy (client->login_name, (login_name) ? login_name : log_Client_id_unknown_string, L_cuserid);
-  client->login_name[L_cuserid] = '\0';
-  strncpy (client->host_name, (host_name) ? host_name : log_Client_id_unknown_string, MAXHOSTNAMELEN);
-  client->host_name[MAXHOSTNAMELEN] = '\0';
-  client->process_id = process_id;
+  client->set_ids ((boot_client_type) client_type, client_info, db_user, program_name, login_name, host_name,
+		   process_id);
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)

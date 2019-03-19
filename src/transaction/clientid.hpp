@@ -24,6 +24,11 @@
 #ifndef _CLIENTID_HPP_
 #define _CLIENTID_HPP_
 
+#include "dbtype_def.h"
+#include "porting.h"
+
+#include <array>
+
 /* this enumeration should be matched with DB_CLIENT_TYPE_XXX in db.h */
 enum boot_client_type
 {
@@ -46,16 +51,67 @@ enum boot_client_type
 };
 typedef enum boot_client_type BOOT_CLIENT_TYPE;
 
+const size_t LOG_USERNAME_MAX = DB_MAX_USER_LENGTH + 1;
+
 typedef struct clientids CLIENTIDS;
 struct clientids		/* see BOOT_CLIENT_CREDENTIAL */
 {
-  boot_client_type client_type;
-  char *client_info;// [DB_MAX_IDENTIFIER_LENGTH + 1];
-  char *db_user;// [LOG_USERNAME_MAX];
-  char *program_name;// [PATH_MAX + 1];
-  char *login_name;// [L_cuserid + 1];
-  char *host_name;// [MAXHOSTNAMELEN + 1];
+  public:
+    boot_client_type client_type;
+    char *client_info;// [DB_MAX_IDENTIFIER_LENGTH + 1];
+    char *db_user;// [LOG_USERNAME_MAX];
+    char *program_name;// [PATH_MAX + 1];
+    char *login_name;// [L_cuserid + 1];
+    char *host_name;// [MAXHOSTNAMELEN + 1];
+    int process_id;
+
+    clientids () = default;
+    ~clientids ();
+
+    void set_ids (boot_client_type type, const char *client_info, const char *db_user, const char *program_name,
+		  const char *login_name, const char *host_name, int process_id);
+    void set_ids (const clientids &other);
+
+    void set_system_internal ();
+    void set_system_internal_with_user (const char *db_user);
+    void reset ();
+
+  private:
+    void clear ();
+    void init_buffers ();
+
+    struct membuf
+    {
+      std::array<char, DB_MAX_IDENTIFIER_LENGTH + 1> m_client_info_buffer;
+      std::array<char, LOG_USERNAME_MAX + 1> m_db_user_buffer;
+      std::array<char, PATH_MAX + 1> m_program_name_buffer;
+      std::array<char, L_cuserid + 1> m_login_name_buffer;
+      std::array<char, MAXHOSTNAMELEN + 1> m_host_name_buffer;
+
+      membuf ();
+      void clear ();
+    };
+
+    membuf *m_own_buffer;
+};
+
+typedef struct boot_client_credential BOOT_CLIENT_CREDENTIAL;
+struct boot_client_credential
+{
+  clientids m_clientids;
+  BOOT_CLIENT_TYPE client_type;
+  char *client_info;		/* DB_MAX_IDENTIFIER_LENGTH */
+  char *db_name;		/* DB_MAX_IDENTIFIER_LENGTH */
+  char *db_user;		/* DB_MAX_USER_LENGTH */
+  char *db_password;		/* DB_MAX_PASSWORD_LENGTH */
+  char *program_name;		/* PATH_MAX */
+  char *login_name;		/* L_cuserid */
+  char *host_name;		/* MAXHOSTNAMELEN */
+  char *preferred_hosts;	/* LINE_MAX */
+  int connect_order;
   int process_id;
+
+  boot_client_credential () = default;
 };
 
 #endif // !_CLIENTID_HPP_

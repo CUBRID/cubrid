@@ -453,7 +453,7 @@ struct logwr_info
     PTHREAD_MUTEX_INITIALIZER,                                 \
     false, false, false, false,                                \
     /* last_writer_client_info */                              \
-    { BOOT_CLIENT_UNKNOWN, NULL, NULL, NULL, NULL, NULL, 0 },       \
+    clientids (),                                              \
     0                                                          \
    }
 
@@ -1570,9 +1570,6 @@ extern int logtb_find_tran_index_host_pid (THREAD_ENTRY * thread_p, const char *
 #endif
 extern TRANID logtb_find_tranid (int tran_index);
 extern TRANID logtb_find_current_tranid (THREAD_ENTRY * thread_p);
-extern void logtb_set_client_ids_all (CLIENTIDS * client, int client_type, const char *client_info,
-				      const char *db_user, const char *program_name, const char *login_name,
-				      const char *host_name, int process_id);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int logtb_count_clients_with_type (THREAD_ENTRY * thread_p, int client_type);
 #endif

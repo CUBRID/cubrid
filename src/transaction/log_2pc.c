@@ -1527,7 +1527,7 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, LOG_TDES * tde
 
   prepared = (LOG_REC_2PC_PREPCOMMIT *) ((char *) log_page_p->area + log_lsa->offset);
 
-  logtb_set_client_ids_all (&tdes->client, 0, NULL, prepared->user_name, NULL, NULL, NULL, -1);
+  tdes->client.set_system_internal_with_user (prepared->user_name);
 
   tdes->gtrid = prepared->gtrid;
   tdes->gtrinfo.info_length = prepared->gtrinfo_length;
@@ -2080,7 +2080,7 @@ log_2pc_recovery_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * log_
   /*
    * Obtain the participant information for this coordinator
    */
-  logtb_set_client_ids_all (&tdes->client, 0, NULL, start_2pc->user_name, NULL, NULL, NULL, -1);
+  tdes->client.set_system_internal_with_user (start_2pc->user_name);
   tdes->gtrid = start_2pc->gtrid;
 
   num_particps = start_2pc->num_particps;
