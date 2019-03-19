@@ -253,10 +253,8 @@ db_init (const char *program, int print_version, const char *dbname, const char 
   client_credential.m_clientids.client_type = BOOT_CLIENT_ADMIN_UTILITY;
   client_credential.db_name = (char *) dbname;
   client_credential.db_password = NULL;
-  client_credential.program_name = (char *) program;
-  client_credential.login_name = NULL;
-  client_credential.host_name = NULL;
-  client_credential.process_id = -1;
+  client_credential.m_clientids.program_name = program;
+  client_credential.m_clientids.process_id = -1;
 
   db_path_info.db_path = (char *) db_path;
   db_path_info.vol_path = (char *) vol_path;
@@ -887,10 +885,8 @@ db_restart (const char *program, int print_version, const char *volume)
       client_credential.m_clientids.client_type = (BOOT_CLIENT_TYPE) db_Client_type;
       client_credential.db_name = (char *) volume;
       client_credential.db_password = NULL;
-      client_credential.program_name = (char *) program;
-      client_credential.login_name = NULL;
-      client_credential.host_name = NULL;
-      client_credential.process_id = -1;
+      client_credential.m_clientids.program_name = program;
+      client_credential.m_clientids.process_id = -1;
       client_credential.preferred_hosts = db_Preferred_hosts;
       client_credential.connect_order = db_Connect_order;
 

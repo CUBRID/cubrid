@@ -503,21 +503,21 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 	}
     }
   /* Get the login name, host, and process identifier */
-  if (client_credential->login_name == NULL)
+  if (client_credential->m_clientids.login_name.empty ())
     {
       if (getuserid (boot_Client_id_buffer, L_cuserid) != (char *) NULL)
 	{
-	  client_credential->login_name = boot_Client_id_buffer;
+	  client_credential->m_clientids.login_name = boot_Client_id_buffer;
 	}
       else
 	{
-	  client_credential->login_name = (char *) boot_Client_id_unknown_string;
+	  client_credential->m_clientids.login_name = boot_Client_id_unknown_string;
 	}
     }
 
-  if (client_credential->host_name == NULL)
+  if (client_credential->m_clientids.host_name.empty ())
     {
-      client_credential->host_name = boot_get_host_name ();
+      client_credential->m_clientids.host_name = boot_get_host_name ();
     }
 
   /*
@@ -526,7 +526,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
    */
 #if !defined(WINDOWS)
 #if !defined (SOLARIS) && !defined(LINUX) && !defined(AIX)
-  (void) dl_initiate_module (client_credential->program_name);
+  (void) dl_initiate_module (client_credential->m_clientids.program_name.c_str ());
 #else /* !SOLARIS && !LINUX && !AIX */
   (void) dl_initiate_module ();
 #endif /* !SOLARIS && !LINUX && !AIX */
@@ -588,7 +588,8 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
     }
 
   // create session
-  (void) db_find_or_create_session (client_credential->m_clientids.db_user.c_str (), client_credential->program_name);
+  (void) db_find_or_create_session (client_credential->m_clientids.db_user.c_str (),
+				    client_credential->m_clientids.program_name.c_str ());
 
   oid_set_root (&rootclass_oid);
   OID_INIT_TEMPID ();
@@ -932,22 +933,22 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	}
     }
   /* Get the login name, host, and process identifier */
-  if (client_credential->login_name == NULL)
+  if (client_credential->m_clientids.login_name.empty ())
     {
       if (getuserid (boot_Client_id_buffer, L_cuserid) != (char *) NULL)
 	{
-	  client_credential->login_name = boot_Client_id_buffer;
+	  client_credential->m_clientids.login_name = boot_Client_id_buffer;
 	}
       else
 	{
-	  client_credential->login_name = (char *) boot_Client_id_unknown_string;
+	  client_credential->m_clientids.login_name = boot_Client_id_unknown_string;
 	}
     }
-  if (client_credential->host_name == NULL)
+  if (client_credential->m_clientids.host_name.empty ())
     {
-      client_credential->host_name = boot_get_host_name ();
+      client_credential->m_clientids.host_name = boot_get_host_name ();
     }
-  client_credential->process_id = getpid ();
+  client_credential->m_clientids.process_id = getpid ();
 
   /*
    * Initialize the dynamic loader. Don't care about failures. If dynamic
@@ -955,7 +956,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
    */
 #if !defined(WINDOWS)
 #if !defined (SOLARIS) && !defined(LINUX) && !defined(AIX)
-  (void) dl_initiate_module (client_credential->program_name);
+  (void) dl_initiate_module (client_credential->m_clientids.program_name.c_str ());
 #else /* !SOLARIS && !LINUX && !AIX */
   (void) dl_initiate_module ();
 #endif /* !SOLARIS && !LINUX && !AIX */
@@ -1134,9 +1135,9 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto error;
     }
 
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CONNECTED_TO, 5, client_credential->program_name,
-	  client_credential->process_id, client_credential->db_name, boot_Host_connected,
-	  prm_get_integer_value (PRM_ID_TCP_PORT_ID));
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CONNECTED_TO, 5,
+	  client_credential->m_clientids.program_name.c_str (), client_credential->m_clientids.process_id,
+	  client_credential->db_name, boot_Host_connected, prm_get_integer_value (PRM_ID_TCP_PORT_ID));
 
   /* tune some client parameters with the value from the server */
   sysprm_tune_client_parameters ();
@@ -1182,8 +1183,9 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 		"program %s login %s host %s pid %d }\n", client_credential->m_clientids.client_type,
 		client_credential->db_name, client_credential->m_clientids.db_user.c_str (),
 		client_credential->db_password == NULL ? "(null)" : client_credential->db_password,
-		client_credential->program_name, client_credential->login_name, client_credential->host_name,
-		client_credential->process_id);
+		client_credential->m_clientids.program_name.c_str (),
+		client_credential->m_clientids.login_name.c_str (), client_credential->m_clientids.host_name.c_str (),
+		client_credential->m_clientids.process_id);
 
   tran_index =
     boot_register_client (client_credential, tran_lock_wait_msecs, tran_isolation, &transtate, &boot_Server_credential);
@@ -1250,7 +1252,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto error;
     }
 
-  (void) db_find_or_create_session (client_credential->m_clientids.db_user.c_str (), client_credential->program_name);
+  (void) db_find_or_create_session (client_credential->m_clientids.db_user.c_str (),
+				    client_credential->m_clientids.program_name.c_str ());
 
 #if defined(CS_MODE)
   error_code = boot_check_locales (client_credential);
@@ -5670,7 +5673,7 @@ boot_check_locales (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto exit;
     }
 
-  (void) basename_r (client_credential->program_name, cli_text, sizeof (cli_text));
+  (void) basename_r (client_credential->m_clientids.program_name.c_str (), cli_text, sizeof (cli_text));
   snprintf (srv_text, sizeof (srv_text) - 1, "server '%s'", client_credential->db_name);
 
   error_code = lang_check_coll_compat (server_collations, server_coll_cnt, cli_text, srv_text);
@@ -5737,7 +5740,7 @@ boot_check_timezone_checksum (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto exit;
     }
 
-  (void) basename_r (client_credential->program_name, cli_text, sizeof (cli_text));
+  (void) basename_r (client_credential->m_clientids.program_name.c_str (), cli_text, sizeof (cli_text));
   snprintf (srv_text, sizeof (srv_text) - 1, "server '%s'", client_credential->db_name);
 
   tzd = tz_get_data ();

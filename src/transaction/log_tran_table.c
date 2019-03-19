@@ -116,16 +116,10 @@ static const int LOG_TOPOPS_STACK_INCREMENT = 3;	/* No more than 3 nested top sy
 static const char *log_Client_id_unknown_string = "(unknown)";
 static BOOT_CLIENT_CREDENTIAL log_Client_credential = {
   clientids (),
-  NULL,				/* client_info */
   NULL,				/* db_name */
-  NULL,				/* db_user */
   NULL,				/* db_password */
-  (char *) "(system)",		/* program_name */
-  NULL,				/* login_name */
-  NULL,				/* host_name */
   NULL,				/* preferred_hosts */
   0,				/* connect_order */
-  -1				/* process_id */
 };
 
 static const unsigned int LOGTB_RETRY_SLAM_MAX_TIMES = 10;

@@ -95,12 +95,8 @@ struct boot_client_credential
   clientids m_clientids;
   char *db_name;		/* DB_MAX_IDENTIFIER_LENGTH */
   char *db_password;		/* DB_MAX_PASSWORD_LENGTH */
-  char *program_name;		/* PATH_MAX */
-  char *login_name;		/* L_cuserid */
-  char *host_name;		/* MAXHOSTNAMELEN */
   char *preferred_hosts;	/* LINE_MAX */
   int connect_order;
-  int process_id;
 
   boot_client_credential () = default;
 };

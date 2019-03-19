@@ -2997,33 +2997,32 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
   // *INDENT-ON*
   char db_user_upper[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 #if defined(SA_MODE)
-  char *adm_prg_file_name = NULL;
+  std::string adm_prg_file_name;
   CHECK_ARGS check_coll_and_timezone = { true, true };
 #endif /* SA_MODE */
 
 #if defined(SA_MODE)
-  if (client_credential != NULL && client_credential->program_name != NULL
+  if (client_credential != NULL && !client_credential->m_clientids.program_name.empty ()
       && client_credential->m_clientids.client_type == BOOT_CLIENT_ADMIN_UTILITY)
     {
-      adm_prg_file_name = client_credential->program_name + strlen (client_credential->program_name) - 1;
-      while (adm_prg_file_name > client_credential->program_name && *adm_prg_file_name != PATH_SEPARATOR)
+      auto const sep_index = client_credential->m_clientids.program_name.find_last_of (PATH_SEPARATOR);
+      if (sep_index != client_credential->m_clientids.program_name.npos)
 	{
-	  adm_prg_file_name--;
+	  adm_prg_file_name = client_credential->m_clientids.program_name.substr (sep_index + 1);
 	}
-
-      if (*adm_prg_file_name == PATH_SEPARATOR)
+      else
 	{
-	  adm_prg_file_name++;
+	  adm_prg_file_name = client_credential->m_clientids.program_name;
 	}
     }
-  if (adm_prg_file_name != NULL)
+  if (!adm_prg_file_name.empty ())
     {
-      if (strncasecmp (adm_prg_file_name, "synccolldb", strlen ("synccolldb")) == 0
-	  || strncasecmp (adm_prg_file_name, "migrate_", strlen ("migrate_")) == 0)
+      if (strncasecmp (adm_prg_file_name.c_str (), "synccolldb", strlen ("synccolldb")) == 0
+	  || strncasecmp (adm_prg_file_name.c_str (), "migrate_", strlen ("migrate_")) == 0)
 	{
 	  check_coll_and_timezone.check_db_coll = false;
 	}
-      if (strncasecmp (adm_prg_file_name, "gen_tz", strlen ("gen_tz")) == 0)
+      if (strncasecmp (adm_prg_file_name.c_str (), "gen_tz", strlen ("gen_tz")) == 0)
 	{
 	  check_coll_and_timezone.check_timezone = false;
 	}
@@ -3117,8 +3116,9 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 	}
 #endif /* SERVER_MODE */
 
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CLIENT_CONNECTED, 4, client_credential->program_name,
-	      client_credential->process_id, client_credential->host_name, tran_index);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CLIENT_CONNECTED, 4,
+	      client_credential->m_clientids.program_name.c_str (),
+	      client_credential->m_clientids.process_id, client_credential->m_clientids.host_name.c_str (), tran_index);
     }
 
 #if defined(ENABLE_SYSTEMTAP) && defined(SERVER_MODE)
