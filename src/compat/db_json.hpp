@@ -62,8 +62,6 @@ class JSON_DOC_WRAPPER
   public:
 
     JSON_DOC_WRAPPER ();
-    JSON_DOC_WRAPPER (JSON_DOC_WRAPPER &&other);
-    JSON_DOC_WRAPPER &&operator= (JSON_DOC_WRAPPER &&other);
 
     const JSON_DOC *get_borrowed () const;
     JSON_DOC *get_owned ();
@@ -72,11 +70,12 @@ class JSON_DOC_WRAPPER
     void borrow_doc (JSON_DOC *jd);
     void own_doc (JSON_DOC *jd);
 
-    void release_owning ();
     ~JSON_DOC_WRAPPER ();
   private:
     const JSON_DOC *m_borrowed_doc;
     JSON_DOC *m_owning_doc;
+
+    void release_owning ();
 };
 
 bool db_json_is_valid (const char *json_str);

@@ -103,14 +103,6 @@ JSON_DOC_WRAPPER::JSON_DOC_WRAPPER ()
 
 }
 
-JSON_DOC_WRAPPER::JSON_DOC_WRAPPER (JSON_DOC_WRAPPER &&other)
-  : m_owning_doc (other.m_owning_doc)
-  , m_borrowed_doc (other.m_borrowed_doc)
-{
-  other.m_borrowed_doc = nullptr;
-  other.m_owning_doc = nullptr;
-}
-
 const JSON_DOC *
 JSON_DOC_WRAPPER::get_borrowed () const
 {
@@ -126,31 +118,10 @@ JSON_DOC_WRAPPER::get_owned ()
 JSON_DOC *
 JSON_DOC_WRAPPER::transfer_ownership ()
 {
+  // assume we are owner
   assert (m_owning_doc != nullptr && m_owning_doc == m_borrowed_doc);
   m_owning_doc = nullptr;
   return const_cast<JSON_DOC *> (m_borrowed_doc);
-}
-
-JSON_DOC_WRAPPER &&
-JSON_DOC_WRAPPER::operator= (JSON_DOC_WRAPPER &&other)
-{
-  if (&other == this)
-    {
-      return std::move (*this);
-    }
-
-  if (m_owning_doc != other.m_owning_doc)
-    {
-      release_owning ();
-    }
-
-  m_owning_doc = other.m_owning_doc;
-  m_borrowed_doc = other.m_borrowed_doc;
-
-  other.m_borrowed_doc = nullptr;
-  other.m_owning_doc = nullptr;
-
-  return std::move (*this);
 }
 
 void
