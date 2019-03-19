@@ -505,6 +505,12 @@ namespace cubreplication
     std::vector <cubreplication::replication_object *> repl_objects_after_lsa;
     stream_entry->move_replication_objects_after_lsa (filter_replication_lsa, repl_objects_after_lsa);
 
+    if (repl_objects_after_lsa.size() == 0)
+      {
+        log_sysop_attach_to_outer (thread_p);
+        return NO_ERROR;
+      }
+
     /* First abort the operation. */
     log_sysop_abort (thread_p);          
 
