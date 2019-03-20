@@ -3487,8 +3487,8 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 {
 #if defined(CS_MODE)
   int tran_index = NULL_TRAN_INDEX;
-  int request_size, area_size, req_error, temp_int;
-  char *request, *reply, *area, *ptr;
+  int area_size, req_error, temp_int;
+  char *reply, *area, *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -3535,8 +3535,6 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 	}
       free_and_init (area);
     }
-
-  free_and_init (request);
 
   return tran_index;
 #else /* CS_MODE */
