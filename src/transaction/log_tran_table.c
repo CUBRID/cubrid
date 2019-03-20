@@ -1920,7 +1920,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->isloose_end = false;
   tdes->coord = NULL;
   tdes->client_id = -1;
-  tdes->client.client_type = BOOT_CLIENT_UNKNOWN;
+  tdes->client = clientids ();
   tdes->gtrid = LOG_2PC_NULL_GTRID;
   tdes->gtrinfo.info_length = 0;
   tdes->gtrinfo.info_data = NULL;
@@ -1989,7 +1989,6 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
     mht_create ("Tran_unique_stats", 101, logtb_tran_btid_hash_func, logtb_tran_btid_hash_cmp_func);
   tdes->log_upd_stats.classes_cos_hash = mht_create ("Tran_classes_cos", 101, oid_hash, oid_compare_equals);
 
-  tdes->client.reset ();
   tdes->block_global_oldest_active_until_commit = false;
   tdes->is_user_active = false;
   tdes->modified_class_list = NULL;
