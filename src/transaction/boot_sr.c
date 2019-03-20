@@ -3050,10 +3050,10 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
   /* Initialize scan function pointers of show statements */
   showstmt_scan_init ();
 
-  db_user_save = client_credential->db_user;
+  db_user_save = client_credential->get_db_user ();
   if (!client_credential->db_user.empty ())
     {
-      intl_identifier_upper (client_credential->db_user.c_str (), db_user_upper);
+      intl_identifier_upper (client_credential->get_db_user (), db_user_upper);
       client_credential->db_user = db_user_upper;
     }
 
@@ -3119,12 +3119,12 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 #endif /* SERVER_MODE */
 
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CLIENT_CONNECTED, 4,
-	      client_credential->program_name.c_str (),
-	      client_credential->process_id, client_credential->host_name.c_str (), tran_index);
+	      client_credential->get_program_name (),
+	      client_credential->process_id, client_credential->get_host_name (), tran_index);
     }
 
 #if defined(ENABLE_SYSTEMTAP) && defined(SERVER_MODE)
-  CUBRID_CONN_START (thread_p->conn_entry->client_id, client_credential->db_user.c_str ());
+  CUBRID_CONN_START (thread_p->conn_entry->client_id, client_credential->get_db_user ());
 #endif /* ENABLE_SYSTEMTAP */
 
   client_credential->db_user = db_user_save;
@@ -3208,7 +3208,7 @@ xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index)
       perfmon_stop_watch (thread_p);
 
 #if defined(ENABLE_SYSTEMTAP) && defined(SERVER_MODE)
-      CUBRID_CONN_END (client_id, tdes->client.db_user);
+      CUBRID_CONN_END (client_id, tdes->client.get_db_user ());
 #endif /* ENABLE_SYSTEMTAP */
 
       /* Release the transaction index */

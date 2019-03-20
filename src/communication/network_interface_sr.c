@@ -327,7 +327,7 @@ need_to_abort_tran (THREAD_ENTRY * thread_p, int *errid)
       flag_abort = true;
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_UNILATERALLY_ABORTED, 4, thread_p->tran_index,
-	      tdes->client.db_user, tdes->client.host_name, tdes->client.process_id);
+	      tdes->client.get_db_user (), tdes->client.get_host_name (), tdes->client.process_id);
     }
 
   return flag_abort;

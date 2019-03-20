@@ -1576,8 +1576,8 @@ logtb_dump_tdes (FILE * out_fp, LOG_TDES * tdes)
 	   (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset, (long long int) tdes->posp_nxlsa.pageid,
 	   (int) tdes->posp_nxlsa.offset, (long long int) tdes->savept_lsa.pageid, (int) tdes->savept_lsa.offset,
 	   (long long int) tdes->undo_nxlsa.pageid, (int) tdes->undo_nxlsa.offset, tdes->client.client_type,
-	   tdes->client.db_user.c_str (), tdes->client.program_name.c_str (), tdes->client.login_name.c_str (),
-	   tdes->client.host_name.c_str (), tdes->client.process_id);
+	   tdes->client.get_db_user (), tdes->client.get_program_name (), tdes->client.get_login_name (),
+	   tdes->client.get_host_name (), tdes->client.process_id);
 
   if (tdes->topops.max != 0 && tdes->topops.last >= 0)
     {
@@ -2165,7 +2165,7 @@ logtb_find_tran_index_host_pid (THREAD_ENTRY * thread_p, const char *host_name, 
     {
       tdes = log_Gl.trantable.all_tdes[i];
       if (tdes != NULL && tdes->trid != NULL_TRANID && tdes->client.process_id == process_id
-	  && strcmp (tdes->client.host_name, host_name) == 0)
+	  && strcmp (tdes->client.get_host_name (), host_name) == 0)
 	{
 	  tran_index = i;
 	  break;
@@ -2312,7 +2312,7 @@ logtb_count_not_allowed_clients_in_maintenance_mode (THREAD_ENTRY * thread_p)
       tdes = log_Gl.trantable.all_tdes[i];
       if (tdes != NULL && tdes->trid != NULL_TRANID)
 	{
-	  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (tdes->client.host_name.c_str (), boot_Host_name,
+	  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (tdes->client.get_host_name (), boot_Host_name,
 						       tdes->client.client_type))
 	    {
 	      count++;
@@ -2358,7 +2358,7 @@ logtb_find_client_name (int tran_index)
   tdes = LOG_FIND_TDES (tran_index);
   if (tdes != NULL && tdes->trid != NULL_TRANID)
     {
-      return tdes->client.db_user.c_str ();
+      return tdes->client.get_db_user ();
     }
   return NULL;
 }
@@ -2429,7 +2429,7 @@ logtb_find_client_hostname (int tran_index)
   tdes = LOG_FIND_TDES (tran_index);
   if (tdes != NULL && tdes->trid != NULL_TRANID)
     {
-      return tdes->client.host_name.c_str ();
+      return tdes->client.get_host_name ();
     }
   return NULL;
 }
@@ -2469,9 +2469,9 @@ logtb_find_client_name_host_pid (int tran_index, const char **client_prog_name, 
       return ER_FAILED;
     }
 
-  *client_prog_name = tdes->client.program_name.c_str ();
-  *client_user_name = tdes->client.db_user.c_str ();
-  *client_host_name = tdes->client.host_name.c_str ();
+  *client_prog_name = tdes->client.get_program_name ();
+  *client_user_name = tdes->client.get_db_user ();
+  *client_host_name = tdes->client.get_host_name ();
   *client_pid = tdes->client.process_id;
 
   return NO_ERROR;
@@ -2580,10 +2580,10 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 	}
 
       size += (3 * OR_INT_SIZE	/* tran index + tran state + process id */
-	       + OR_INT_SIZE + DB_ALIGN (sizeof (tdes->client.db_user), INT_ALIGNMENT)
-	       + OR_INT_SIZE + DB_ALIGN (sizeof (tdes->client.program_name), INT_ALIGNMENT)
-	       + OR_INT_SIZE + DB_ALIGN (sizeof (tdes->client.login_name), INT_ALIGNMENT)
-	       + OR_INT_SIZE + DB_ALIGN (sizeof (tdes->client.host_name), INT_ALIGNMENT));
+	       + OR_INT_SIZE + DB_ALIGN (tdes->client.db_user.length (), INT_ALIGNMENT)
+	       + OR_INT_SIZE + DB_ALIGN (tdes->client.program_name.length (), INT_ALIGNMENT)
+	       + OR_INT_SIZE + DB_ALIGN (tdes->client.login_name.length (), INT_ALIGNMENT)
+	       + OR_INT_SIZE + DB_ALIGN (tdes->client.host_name.length (), INT_ALIGNMENT));
 
 #if defined(SERVER_MODE)
       if (include_query_exec_info)
@@ -2682,10 +2682,10 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
       ptr = or_pack_int (ptr, tdes->tran_index);
       ptr = or_pack_int (ptr, tdes->state);
       ptr = or_pack_int (ptr, tdes->client.process_id);
-      ptr = or_pack_string (ptr, tdes->client.db_user.c_str ());
-      ptr = or_pack_string (ptr, tdes->client.program_name.c_str ());
-      ptr = or_pack_string (ptr, tdes->client.login_name.c_str ());
-      ptr = or_pack_string (ptr, tdes->client.host_name.c_str ());
+      ptr = or_pack_string (ptr, tdes->client.get_db_user ());
+      ptr = or_pack_string (ptr, tdes->client.get_program_name ());
+      ptr = or_pack_string (ptr, tdes->client.get_login_name ());
+      ptr = or_pack_string (ptr, tdes->client.get_host_name ());
 
 #if defined(SERVER_MODE)
       if (include_query_exec_info)
@@ -5169,7 +5169,7 @@ logtb_set_loose_end_tdes (LOG_TDES * tdes)
 		   "\n*** Transaction = %d (index = %d) is prepared to commit as gobal tran = %d\n"
 		   "    The coordinator site (maybe the client user = %s) needs to attach\n"
 		   "    to this transaction and either commit or abort it. ***\n", tdes->trid, tdes->tran_index,
-		   tdes->gtrid, tdes->client.db_user.c_str ());
+		   tdes->gtrid, tdes->client.get_db_user ());
 	  fflush (stdout);
 	}
 #endif
@@ -5186,8 +5186,7 @@ logtb_set_loose_end_tdes (LOG_TDES * tdes)
 		   "    about its fate = %s and collect participant acknowledgements.\n"
 		   "    This transaction has been disassociated from the client user = %s.\n"
 		   "    The transaction will be completely finished by the system ***\n", tdes->trid,
-		   tdes->tran_index, ((LOG_ISTRAN_COMMITTED (tdes)) ? "COMMIT" : "ABORT"),
-		   tdes->client.db_user.c_str ());
+		   tdes->tran_index, ((LOG_ISTRAN_COMMITTED (tdes)) ? "COMMIT" : "ABORT"), tdes->client.get_db_user ());
 	  fflush (stdout);
 	}
 #endif
@@ -6745,7 +6744,7 @@ xlogtb_does_active_user_exist (THREAD_ENTRY * thread_p, const char *user_name)
   for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
     {
       tdes = log_Gl.trantable.all_tdes[i];
-      if (tdes != NULL && tdes->is_user_active && strcmp (tdes->client.db_user.c_str (), user_name) == 0)
+      if (tdes != NULL && tdes->is_user_active && strcmp (tdes->client.get_db_user (), user_name) == 0)
 	{
 	  existed = true;
 	  break;
@@ -6777,9 +6776,9 @@ logtb_collect_local_clients (int **local_clients_pids)
   for (i = 0, num_client = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
     {
       tdes = log_Gl.trantable.all_tdes[i];
-      if (tdes != NULL && tdes->client.process_id > 0 && tdes->client.host_name != NULL
-	  && (strcmp (tdes->client.host_name, boot_Host_name) == 0
-	      || strcmp (tdes->client.host_name, "localhost") == 0))
+      if (tdes != NULL && tdes->client.process_id > 0 && !tdes->client.host_name.empty ()
+	  && (strcmp (tdes->client.get_host_name (), boot_Host_name) == 0
+	      || strcmp (tdes->client.get_host_name (), "localhost") == 0))
 	{
 	  table[num_client++] = tdes->client.process_id;
 	}
@@ -6945,7 +6944,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 	}
 
       /* Client_info */
-      error = db_make_string_copy (&vals[idx], tdes->client.client_info.c_str ());
+      error = db_make_string_copy (&vals[idx], tdes->client.get_client_info ());
       idx++;
       if (error != NO_ERROR)
 	{
@@ -6953,7 +6952,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 	}
 
       /* Client_db_user */
-      error = db_make_string_copy (&vals[idx], tdes->client.db_user.c_str ());
+      error = db_make_string_copy (&vals[idx], tdes->client.get_db_user ());
       idx++;
       if (error != NO_ERROR)
 	{
@@ -6961,7 +6960,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 	}
 
       /* Client_program */
-      error = db_make_string_copy (&vals[idx], tdes->client.program_name.c_str ());
+      error = db_make_string_copy (&vals[idx], tdes->client.get_program_name ());
       idx++;
       if (error != NO_ERROR)
 	{
@@ -6969,7 +6968,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 	}
 
       /* Client_login_user */
-      error = db_make_string_copy (&vals[idx], tdes->client.login_name.c_str ());
+      error = db_make_string_copy (&vals[idx], tdes->client.get_login_name ());
       idx++;
       if (error != NO_ERROR)
 	{
@@ -6977,7 +6976,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 	}
 
       /* Client_host */
-      error = db_make_string_copy (&vals[idx], tdes->client.host_name.c_str ());
+      error = db_make_string_copy (&vals[idx], tdes->client.get_host_name ());
       idx++;
       if (error != NO_ERROR)
 	{

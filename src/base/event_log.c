@@ -322,8 +322,8 @@ event_log_print_client_ids_info (CLIENTIDS * client_info, int indent)
     {
       fprintf (event_Fp, "%*c", indent, ' ');
     }
-  fprintf (event_Fp, "client: %s@%s|%s(%d)\n", client_info->db_user.c_str (), client_info->host_name.c_str (),
-	   client_info->program_name.c_str (), client_info->process_id);
+  fprintf (event_Fp, "client: %s@%s|%s(%d)\n", client_info->get_db_user (), client_info->get_host_name (),
+	   client_info->get_program_name (), client_info->process_id);
 }
 
 /*

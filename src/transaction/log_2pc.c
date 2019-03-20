@@ -1468,7 +1468,7 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 
   prepared = (LOG_REC_2PC_PREPCOMMIT *) node->data_header;
 
-  memcpy (prepared->user_name, tdes->client.db_user.c_str (), DB_MAX_USER_LENGTH);
+  memcpy (prepared->user_name, tdes->client.get_db_user (), DB_MAX_USER_LENGTH);
   prepared->gtrid = gtrid;
   prepared->gtrinfo_length = tdes->gtrinfo.info_length;
   prepared->num_object_locks = acq_locks.nobj_locks;
@@ -1678,7 +1678,7 @@ log_2pc_append_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   start_2pc = (LOG_REC_2PC_START *) node->data_header;
 
-  memcpy (start_2pc->user_name, tdes->client.db_user.c_str (), DB_MAX_USER_LENGTH);
+  memcpy (start_2pc->user_name, tdes->client.get_db_user (), DB_MAX_USER_LENGTH);
   start_2pc->gtrid = tdes->gtrid;
   start_2pc->num_particps = tdes->coord->num_particps;
   start_2pc->particp_id_length = tdes->coord->particp_id_length;

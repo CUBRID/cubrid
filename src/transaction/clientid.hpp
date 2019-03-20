@@ -68,6 +68,12 @@ struct clientids : public cubpacking::packable_object
     clientids () = default;
     ~clientids () override;
 
+    const char *get_client_info () const;
+    const char *get_db_user () const;
+    const char *get_program_name () const;
+    const char *get_login_name () const;
+    const char *get_host_name () const;
+
     void set_ids (boot_client_type type, const char *client_info, const char *db_user, const char *program_name,
 		  const char *login_name, const char *host_name, int process_id);
     void set_ids (const clientids &other);
@@ -98,6 +104,9 @@ struct boot_client_credential : public clientids
   int connect_order;
 
   boot_client_credential () = default;
+
+  const char *get_db_name () const;
+  const char *get_db_password () const;
 
   // packable_object
   virtual size_t get_packed_size (cubpacking::packer &serializator) const override;

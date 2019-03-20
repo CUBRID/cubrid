@@ -34,6 +34,36 @@ clientids::~clientids ()
 {
 }
 
+const char *
+clientids::get_client_info () const
+{
+  return client_info.c_str ();
+}
+
+const char *
+clientids::get_db_user () const
+{
+  return get_db_user ();
+}
+
+const char *
+clientids::get_program_name () const
+{
+  return get_program_name ();
+}
+
+const char *
+clientids::get_login_name () const
+{
+  return get_login_name ();
+}
+
+const char *
+clientids::get_host_name () const
+{
+  return get_host_name ();
+}
+
 void
 clientids::set_ids (boot_client_type type_arg, const char *client_info_arg, const char *db_user_arg,
 		    const char *program_name_arg, const char *login_name_arg, const char *host_name_arg,
@@ -52,8 +82,8 @@ clientids::set_ids (boot_client_type type_arg, const char *client_info_arg, cons
 void
 clientids::set_ids (const clientids &other)
 {
-  set_ids (other.client_type, other.client_info.c_str (), other.db_user.c_str (), other.program_name.c_str (),
-	   other.login_name.c_str (), other.host_name.c_str (), other.process_id);
+  set_ids (other.client_type, other.client_info.c_str (), other.get_db_user (), other.get_program_name (),
+	   other.get_login_name (), other.get_host_name (), other.process_id);
 }
 
 void
@@ -142,6 +172,18 @@ clientids::unpack (cubpacking::unpacker &deserializator)
 //
 // boot_client_credential
 //
+
+const char *
+boot_client_credential::get_db_name () const
+{
+  return db_name.c_str ();
+}
+
+const char *
+boot_client_credential::get_db_password () const
+{
+  return db_password.c_str ();
+}
 
 //
 // packing of boot_client_credential
