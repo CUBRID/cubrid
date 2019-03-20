@@ -139,12 +139,10 @@ JSON_DOC_WRAPPER::borrow_doc (JSON_DOC *jd)
 void
 JSON_DOC_WRAPPER::own_doc (JSON_DOC *jd)
 {
-  if (jd == m_owning_doc)
+  if (jd != m_owning_doc)
     {
-      return;
+      release_owning ();
     }
-
-  release_owning ();
 
   m_borrowed_doc = m_owning_doc = jd;
 }
