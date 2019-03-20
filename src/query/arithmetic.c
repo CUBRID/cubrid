@@ -5105,7 +5105,7 @@ db_evaluate_json_contains (DB_VALUE * result, DB_VALUE * const *arg, int const n
     {
       const char *raw_path = db_get_string (path);
 
-      JSON_DOC *extracted_doc = NULL;
+      JSON_DOC *extracted_doc = nullptr;
       /* *INDENT-OFF* */
       error_code = db_json_extract_document_from_path (source.get_borrowed (), {raw_path}, extracted_doc);
       /* *INDENT-ON* */
@@ -5239,7 +5239,7 @@ db_evaluate_json_length (DB_VALUE * result, DB_VALUE * const *arg, int const num
   if (path != NULL)
     {
       const char *raw_path = db_get_string (path);
-      JSON_DOC *extracted_doc = NULL;
+      JSON_DOC *extracted_doc = nullptr;
 
       /* *INDENT-OFF* */
       error_code = db_json_extract_document_from_path (source_doc.get_borrowed (), {raw_path}, extracted_doc, false);
@@ -5540,7 +5540,7 @@ db_evaluate_json_extract (DB_VALUE * result, DB_VALUE * const *args, int num_arg
     }
 
   JSON_DOC_WRAPPER res_doc;
-  JSON_DOC *result_doc = NULL;
+  JSON_DOC *result_doc = nullptr;
   error_code = db_json_extract_document_from_path (source_doc.get_borrowed (), paths, result_doc);
   res_doc.own_doc (result_doc);
   if (error_code != NO_ERROR)
@@ -6104,7 +6104,7 @@ int
 db_evaluate_json_merge_preserve (DB_VALUE * result, DB_VALUE * const *arg, const int num_args)
 {
   int error_code;
-  JSON_DOC *accumulator;
+  JSON_DOC *accumulator = nullptr;
   JSON_DOC_WRAPPER accumulator_owner;
   JSON_DOC_WRAPPER doc;
 
@@ -6159,7 +6159,7 @@ int
 db_evaluate_json_merge_patch (DB_VALUE * result, DB_VALUE * const *arg, const int num_args)
 {
   int error_code;
-  JSON_DOC *accumulator = NULL;
+  JSON_DOC *accumulator = nullptr;
   JSON_DOC_WRAPPER accumulator_owner;
   JSON_DOC_WRAPPER doc;
 

@@ -60,7 +60,6 @@ enum DB_JSON_TYPE
 class JSON_DOC_WRAPPER
 {
   public:
-
     JSON_DOC_WRAPPER ();
 
     const JSON_DOC *get_borrowed () const;
