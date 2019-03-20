@@ -65,7 +65,7 @@ struct clientids : public cubpacking::packable_object
     std::string host_name;
     int process_id;
 
-    clientids () = default;
+    clientids ();
     ~clientids () override;
 
     const char *get_client_info () const;
@@ -104,7 +104,7 @@ struct boot_client_credential : public clientids
   int connect_order;
 
   boot_client_credential ();
-  ~boot_client_credential ();
+  ~boot_client_credential () override;
 
   const char *get_db_name () const;
   const char *get_db_password () const;
