@@ -1557,7 +1557,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 
   if (client_credential->db_name.empty ())
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, client_credential->db_name.c_str ());
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, client_credential->get_db_name ());
       goto exit_on_error;
     }
 
@@ -1654,7 +1654,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
    * Compose the full name of the database
    */
   snprintf (boot_Db_full_name, sizeof (boot_Db_full_name), "%s%c%s", db_path, PATH_SEPARATOR,
-	    client_credential->db_name.c_str ());
+	    client_credential->get_db_name ());
 
   /*
    * Initialize error structure, critical section, slotted page, heap, and
@@ -1677,7 +1677,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
       assert (thread_p == NULL);
     }
 
-  log_prefix = fileio_get_base_file_name (client_credential->db_name.c_str ());
+  log_prefix = fileio_get_base_file_name (client_credential->get_db_name ());
 
   /*
    * Find logging information to create the log volume. If the page size is
@@ -1739,12 +1739,12 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 	}
     }
 
-  if (dir != NULL && ((db = cfg_find_db_list (dir, client_credential->db_name.c_str ())) != NULL))
+  if (dir != NULL && ((db = cfg_find_db_list (dir, client_credential->get_db_name ())) != NULL))
     {
       if (db_overwrite == false)
 	{
 	  /* There is a database with the same name and we cannot overwrite it */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DATABASE_EXISTS, 1, client_credential->db_name.c_str ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DATABASE_EXISTS, 1, client_credential->get_db_name ());
 	  goto exit_on_error;
 	}
       else
@@ -1818,7 +1818,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     {
       /* db_path + db_name is too long */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 4, db_path,
-	      client_credential->db_name.c_str (), strlen (boot_Db_full_name), DB_MAX_PATH_LENGTH - 1);
+	      client_credential->get_db_name (), strlen (boot_Db_full_name), DB_MAX_PATH_LENGTH - 1);
       goto exit_on_error;
     }
 
@@ -1859,13 +1859,13 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 		}
 	    }
 
-	  db = cfg_find_db_list (dir, client_credential->db_name.c_str ());
+	  db = cfg_find_db_list (dir, client_credential->get_db_name ());
 
 	  /* Now create the entry in the database table */
 	  if (db == NULL)
 	    {
 	      db =
-		cfg_add_db (&dir, client_credential->db_name.c_str (), db_path, log_path, lob_path,
+		cfg_add_db (&dir, client_credential->get_db_name (), db_path, log_path, lob_path,
 			    db_path_info->db_host);
 	    }
 	  else
@@ -1924,7 +1924,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 	      (void) unlink (boot_Db_full_name);
 	    }
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_CREATE_VOL, 3, "volumes",
-		  client_credential->db_name.c_str (), er_get_msglog_filename ());
+		  client_credential->get_db_name (), er_get_msglog_filename ());
 	}
 
       goto exit_on_error;
@@ -3032,7 +3032,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 
   /* If the server is not restarted, restart the server at this moment */
   if (!BO_IS_SERVER_RESTARTED ()
-      && boot_restart_server (thread_p, false, client_credential->db_name.c_str (), false, &check_coll_and_timezone,
+      && boot_restart_server (thread_p, false, client_credential->get_db_name (), false, &check_coll_and_timezone,
 			      NULL) != NO_ERROR)
     {
       *tran_state = TRAN_UNACTIVE_UNKNOWN;
