@@ -43,25 +43,25 @@ clientids::get_client_info () const
 const char *
 clientids::get_db_user () const
 {
-  return get_db_user ();
+  return db_user.c_str ();
 }
 
 const char *
 clientids::get_program_name () const
 {
-  return get_program_name ();
+  return program_name.c_str ();
 }
 
 const char *
 clientids::get_login_name () const
 {
-  return get_login_name ();
+  return login_name.c_str ();
 }
 
 const char *
 clientids::get_host_name () const
 {
-  return get_host_name ();
+  return host_name.c_str ();
 }
 
 void
