@@ -30,6 +30,17 @@ string_ncopy (std::string &dest, const char *src, size_t max_size)
   dest.assign (src, copyupto);
 }
 
+clientids::clientids ()
+  : client_type (BOOT_CLIENT_UNKNOWN)
+  , client_info {}
+  , db_user {}
+  , program_name {}
+  , login_name {}
+  , host_name {}
+  , process_id (0)
+{
+}
+
 clientids::~clientids ()
 {
 }
@@ -172,6 +183,19 @@ clientids::unpack (cubpacking::unpacker &deserializator)
 //
 // boot_client_credential
 //
+
+boot_client_credential::boot_client_credential ()
+  : clientids ()
+  , db_name {}
+  , db_password {}
+  , preferred_hosts (NULL)
+  , connect_order (0)
+{
+}
+
+boot_client_credential::~boot_client_credential ()
+{
+}
 
 const char *
 boot_client_credential::get_db_name () const

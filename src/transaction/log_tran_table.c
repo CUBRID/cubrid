@@ -2011,6 +2011,8 @@ logtb_finalize_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   int r;
 
+  tdes->client. ~ clientids ();
+
   logtb_clear_tdes (thread_p, tdes);
   logtb_free_tran_mvcc_info (tdes);
   logtb_tran_free_update_stats (&tdes->log_upd_stats);

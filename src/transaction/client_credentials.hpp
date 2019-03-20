@@ -103,7 +103,8 @@ struct boot_client_credential : public clientids
   char *preferred_hosts;	/* LINE_MAX */
   int connect_order;
 
-  boot_client_credential () = default;
+  boot_client_credential ();
+  ~boot_client_credential ();
 
   const char *get_db_name () const;
   const char *get_db_password () const;
