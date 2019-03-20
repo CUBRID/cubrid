@@ -102,13 +102,13 @@ namespace cubreplication
       ~log_generator ();
 
       // act when trasaction is committed; replication entries are logged
-      void on_transaction_commit (void);      
+      void on_transaction_commit (void);
       // act when sysop with HA info is committed; replication entries are logged
       void on_sysop_commit (LOG_LSA &start_lsa);
       // act when transaction is aborted; replication entries are logged
       void on_transaction_abort (void);
       // act when sysop is aborted
-      void on_sysop_abort (LOG_LSA &start_lsa);      
+      void on_sysop_abort (LOG_LSA &start_lsa);
       // clear transaction data (e.g. logtb_clear_tdes)
       void clear_transaction (void);
 
@@ -150,9 +150,10 @@ namespace cubreplication
       static void set_global_stream (cubstream::multi_thread_stream *stream);
 
       void set_row_replication_disabled (bool disable_if_true);
-      bool is_row_replication_disabled (void);      
+      bool is_row_replication_disabled (void);
 #if !defined(NDEBUG) && defined (SERVER_MODE)
-      int abort_sysop_and_simulate_apply_repl_on_master (LOG_LSA &filter_replication_lsa);      
+      int abort_sysop_and_simulate_apply_repl_rbr_on_master (LOG_LSA &filter_replication_lsa);
+      int abort_partial_and_simulate_apply_sbr_repl_on_master (const char *savepoint_name);
 #endif
 
     private:
@@ -163,7 +164,7 @@ namespace cubreplication
 	m_has_stream = true;
       }
 
-      void set_tran_repl_info (MVCCID mvccid, stream_entry_header::TRAN_STATE state);      
+      void set_tran_repl_info (MVCCID mvccid, stream_entry_header::TRAN_STATE state);
 
       char *get_classname (const OID &class_oid);     // todo - optimize this step
 

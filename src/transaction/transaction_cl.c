@@ -99,6 +99,11 @@ static bool tm_Is_libcas = false;
  */
 static DB_NAMELIST *user_savepoint_list = NULL;
 
+#if !defined(NDEBUG) && defined (CS_MODE)
+static DB_NAMELIST *system_savepoint = NULL;
+static int tran_set_oldest_system_savepoint (const char *savept_name);
+#endif
+
 static int tran_add_savepoint (const char *savept_name);
 static void tran_free_list_upto_savepoint (const char *savept_name);
 
@@ -306,6 +311,9 @@ tran_commit (bool retain_lock)
 
   /* if the commit fails or not, we should clear the clients savepoint list */
   tran_free_savepoint_list ();
+#if !defined(NDEBUG) && defined (CS_MODE)
+  tran_free_oldest_system_savepoint ();
+#endif
 
   if (!tran_was_latest_query_committed ())
     {
@@ -430,6 +438,9 @@ tran_abort (void)
 
   /* free the local list of savepoint names */
   tran_free_savepoint_list ();
+#if !defined(NDEBUG) && defined (CS_MODE)
+  tran_free_oldest_system_savepoint ();
+#endif
 
   /* Clear any query cursor */
   assert (!tran_was_latest_query_committed ());
@@ -1008,6 +1019,54 @@ tran_free_savepoint_list (void)
   user_savepoint_list = NULL;
 }
 
+#if !defined(NDEBUG) && defined (CS_MODE)
+static int
+tran_set_oldest_system_savepoint (const char *savept_name)
+{
+  DB_NAMELIST *sp;
+
+  if (system_savepoint != NULL)
+    {
+      return NO_ERROR;
+    }
+
+  sp = (DB_NAMELIST *) db_ws_alloc (sizeof (DB_NAMELIST));
+  if (sp == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  sp->name = ws_copy_string (savept_name);
+  if (sp->name == NULL)
+    {
+      db_ws_free (sp);
+
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  sp->next = system_savepoint;
+  system_savepoint = sp;
+
+  return NO_ERROR;
+}
+
+void
+tran_get_oldest_system_savepoint (char **savepoint_name)
+{
+  assert (savepoint_name != NULL);
+  *savepoint_name = ws_copy_string (system_savepoint->name);
+}
+
+void
+tran_free_oldest_system_savepoint (void)
+{
+  nlist_free (system_savepoint);
+  system_savepoint = NULL;
+}
+#endif
+
 /*
  * tran_free_list_upto_savepoint -
  *
@@ -1130,6 +1189,13 @@ tran_savepoint_internal (const char *savept_name, SAVEPOINT_TYPE savepoint_type)
 	  return error_code;
 	}
     }
+
+#if !defined(NDEBUG) && defined (CS_MODE)
+  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
+    {
+      tran_set_oldest_system_savepoint (savept_name);
+    }
+#endif
 
   return error_code;
 }

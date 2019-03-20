@@ -5739,7 +5739,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_REPL_LOG_LOCAL_DEBUG,
    PRM_NAME_REPL_LOG_LOCAL_DEBUG,
-   (PRM_FOR_SERVER | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
    &prm_repl_log_local_debug_flag,
    (void *) &prm_repl_log_local_debug_default,

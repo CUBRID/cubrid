@@ -63,7 +63,7 @@ namespace cubreplication
     assert (p_lsa != NULL);
 
     sbr_repl_entry *repl_obj =
-      new sbr_repl_entry (stmt_info.stmt_text, stmt_info.db_user, stmt_info.sys_prm_context, *p_lsa);
+	    new sbr_repl_entry (stmt_info.stmt_text, stmt_info.db_user, stmt_info.sys_prm_context, *p_lsa);
     append_repl_object (*repl_obj);
   }
 
@@ -252,7 +252,7 @@ namespace cubreplication
 	return;
       }
 
-    replication_object *repl_obj;    
+    replication_object *repl_obj;
     cubthread::entry *thread_p = &cubthread::get_entry();
     bool found = false;
     int count_entries = (int) m_stream_entry.count_entries ();
@@ -262,10 +262,10 @@ namespace cubreplication
     for (int i = count_entries - 1; i >= 0; i--)
       {
 	repl_obj = m_stream_entry.get_object_at (i);
-        if (!repl_obj->is_instance_changing_attr (inst_oid))
+	if (!repl_obj->is_instance_changing_attr (inst_oid))
 	  {
-            repl_obj->set_lsa_stamp(*p_lsa);
-            break;
+	    repl_obj->set_lsa_stamp (*p_lsa);
+	    break;
 	  }
       }
   }
@@ -482,7 +482,7 @@ namespace cubreplication
   }
 
 #if !defined(NDEBUG) && defined (SERVER_MODE)
-  int log_generator::abort_sysop_and_simulate_apply_repl_on_master (LOG_LSA &filter_replication_lsa)
+  int log_generator::abort_sysop_and_simulate_apply_repl_rbr_on_master (LOG_LSA &filter_replication_lsa)
   {
     /* This function is used for debug purpose only. */
     int err_code = NO_ERROR;
@@ -526,6 +526,52 @@ namespace cubreplication
       }
 
     logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+
+    return err_code;
+  }
+#endif
+
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+  int log_generator::abort_partial_and_simulate_apply_sbr_repl_on_master (const char *savepoint_name)
+  {
+    /* This function is used for debug purpose only. */
+    int err_code = NO_ERROR;
+    replication_object *repl_obj;
+    cubthread::entry *thread_p = &cubthread::get_entry();
+    LOG_TDES *tdes = logtb_get_tdes (&cubthread::get_entry());
+    cubreplication::stream_entry *stream_entry = tdes->replication_log_generator.get_stream_entry();
+    LOG_LSA filter_replication_lsa, savept_lsa;
+
+    assert (stream_entry->count_entries() > 0);
+
+    /* Called when is only one entry. */
+    if (m_stream_entry.count_entries() != 1)
+      {
+	return NO_ERROR;
+      }
+
+    /* Save the replication objects, before abort. */
+    cubstream::multi_thread_stream *p_multi_thread_stream = get_stream();
+    cubreplication::stream_entry local_stream_entry (p_multi_thread_stream);
+
+    LSA_SET_NULL (&filter_replication_lsa);
+    m_stream_entry.move_replication_objects_after_lsa_to_stream (filter_replication_lsa, local_stream_entry);
+
+    log_abort_partial (thread_p, savepoint_name, &savept_lsa);
+
+    /* Disable replication, while we apply SBR. */
+    prm_set_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG, false);
+
+    /* Simulate it again with apply. */
+    assert (local_stream_entry.count_entries() == 1);
+
+    repl_obj = local_stream_entry.get_object_at (0);
+    if (repl_obj != NULL)
+      {
+	err_code = repl_obj->apply();
+      }
+
+    prm_set_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG, true);
 
     return err_code;
   }

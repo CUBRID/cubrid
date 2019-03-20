@@ -7606,7 +7606,7 @@ end:
 	      /* Abort and simulate apply on master node. */
 	      error_code =
 		logtb_get_tdes (thread_p)->replication_log_generator.
-		abort_sysop_and_simulate_apply_repl_on_master (filter_replication_lsa);
+		abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
 	    }
 	  else
 	    {
@@ -11763,13 +11763,29 @@ int
 xrepl_statement (THREAD_ENTRY * thread_p, REPL_INFO * repl_info)
 {
   int error_code = NO_ERROR;
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
     {
       switch (repl_info->repl_info_type)
 	{
 	case REPL_INFO_TYPE_SBR:
-	  logtb_get_tdes (thread_p)->replication_log_generator.add_statement (*(REPL_INFO_SBR *) repl_info->info);
+
+	  tdes->replication_log_generator.add_statement (*(REPL_INFO_SBR *) repl_info->info);
+
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
+	    {
+	      char *savepoint_name = ((REPL_INFO_SBR *) repl_info->info)->savepoint_name;
+	      if (savepoint_name != NULL)
+		{
+		  error_code =
+		    tdes->replication_log_generator.
+		    abort_partial_and_simulate_apply_sbr_repl_on_master (savepoint_name);
+		}
+
+	    }
+#endif
 	  break;
 	default:
 	  error_code = ER_REPL_ERROR;

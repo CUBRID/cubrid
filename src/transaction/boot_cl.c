@@ -694,6 +694,9 @@ error_exit:
 
       showstmt_metadata_final ();
       tran_free_savepoint_list ();
+#if !defined(NDEBUG) && defined (CS_MODE)
+      tran_free_oldest_system_savepoint ();
+#endif
       set_final ();
       tr_final ();
       au_final ();
@@ -1389,6 +1392,9 @@ error:
 
       showstmt_metadata_final ();
       tran_free_savepoint_list ();
+#if !defined(NDEBUG) && defined (CS_MODE)
+      tran_free_oldest_system_savepoint ();
+#endif
       set_final ();
       tr_final ();
       au_final ();
@@ -1603,6 +1609,9 @@ boot_client_all_finalize (bool is_er_final)
 
       showstmt_metadata_final ();
       tran_free_savepoint_list ();
+#if !defined(NDEBUG) && defined (CS_MODE)
+      tran_free_oldest_system_savepoint ();
+#endif
       sm_flush_static_methods ();
       set_final ();
       parser_final ();

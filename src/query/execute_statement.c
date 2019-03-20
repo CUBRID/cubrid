@@ -2988,10 +2988,20 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
        * error. */
 
       /* disable data replication log for schema replication log types in HA mode */
+#if !defined(NDEBUG) && defined (CS_MODE)
+      if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG) && is_stmt_based_repl_type (statement))
+	{
+	  need_stmt_replication = true;
+	}
+#else
       if (!HA_DISABLED () && is_stmt_based_repl_type (statement))
 	{
 	  need_stmt_replication = true;
+	}
+#endif
 
+      if (need_stmt_replication)
+	{
 	  /* since we are going to suppress writing replication logs, we need to flush all dirty objects to server not
 	   * to lose them. */
 	  error = locator_all_flush ();
@@ -3472,6 +3482,19 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* for the subset of nodes which represent top level statements, process them; for any other node, return an error */
+
+#if !defined(NDEBUG) && defined (CS_MODE)
+  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG) && is_stmt_based_repl_type (statement))
+    {
+      need_stmt_based_repl = true;
+    }
+#else
+  if (!HA_DISABLED () && is_stmt_based_repl_type (statement))
+    {
+      need_stmt_based_repl = true;
+    }
+#endif
+
 
   /* disable data replication log for schema replication log types in HA mode */
   if (!HA_DISABLED () && is_stmt_based_repl_type (statement))
@@ -14784,6 +14807,14 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       repl_stmt.sys_prm_context = NULL;
     }
 
+  repl_stmt.savepoint_name = NULL;
+#if !defined(NDEBUG) && defined (CS_MODE)
+  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
+    {
+      tran_get_oldest_system_savepoint (&repl_stmt.savepoint_name);
+    }
+#endif
+
   assert_release (repl_stmt.db_user != NULL);
 
   repl_info.info = (char *) &repl_stmt;
@@ -14800,6 +14831,14 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       free (repl_stmt.sys_prm_context);
     }
+
+#if !defined(NDEBUG) && defined (CS_MODE)
+  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
+    {
+      db_string_free (repl_stmt.savepoint_name);
+      tran_free_oldest_system_savepoint ();
+    }
+#endif
 
   return error;
 }
