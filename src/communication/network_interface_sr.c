@@ -3167,7 +3167,6 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  memset (&client_credential, 0, sizeof (client_credential));
   memset (&server_credential, 0, sizeof (server_credential));
 
   unpacker.set_buffer (request, (size_t) reqlen);
