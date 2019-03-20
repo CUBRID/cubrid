@@ -69,6 +69,7 @@
 
 #include "dbtype.h"
 #include "thread_manager.hpp"
+#include "log_volids.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

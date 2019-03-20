@@ -290,10 +290,14 @@ set(TRANSACTION_SOURCES
   )
 set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/clientid.hpp
+  ${TRANSACTION_DIR}/log_archives.hpp
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
   ${TRANSACTION_DIR}/log_record.hpp
+  ${TRANSACTION_DIR}/log_storage.hpp
   ${TRANSACTION_DIR}/log_system_tran.hpp
+  ${TRANSACTION_DIR}/log_volids.hpp
+  ${TRANSACTION_DIR}/transaction_global.hpp
   )
 
 set(STORAGE_SOURCES

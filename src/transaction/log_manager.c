@@ -60,9 +60,11 @@
 #if defined(SERVER_MODE)
 #include "server_support.h"
 #endif /* SERVER_MODE */
+#include "log_archives.hpp"
 #include "log_compress.h"
 #include "partition_sr.h"
 #include "log_system_tran.hpp"
+#include "log_volids.hpp"
 #include "log_writer.h"
 #include "filter_pred_cache.h"
 #include "heap_file.h"

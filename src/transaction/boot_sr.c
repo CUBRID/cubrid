@@ -76,6 +76,7 @@
 #include "thread_manager.hpp"
 #include "double_write_buffer.h"
 #include "xasl_cache.h"
+#include "log_volids.hpp"
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
