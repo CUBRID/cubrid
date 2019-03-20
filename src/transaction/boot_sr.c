@@ -2994,15 +2994,15 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 		       TRAN_ISOLATION client_isolation, TRAN_STATE * tran_state,
 		       BOOT_SERVER_CREDENTIAL * server_credential)
 {
-  int tran_index;
   // *INDENT-OFF*
+  int tran_index;
   std::string db_user_save;
-  // *INDENT-ON*
   char db_user_upper[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 #if defined(SA_MODE)
   std::string adm_prg_file_name;
   CHECK_ARGS check_coll_and_timezone = { true, true };
 #endif /* SA_MODE */
+  // *INDENT-ON*
 
 #if defined(SA_MODE)
   if (client_credential != NULL && !client_credential->program_name.empty ()

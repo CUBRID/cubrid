@@ -1920,7 +1920,9 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->isloose_end = false;
   tdes->coord = NULL;
   tdes->client_id = -1;
+  // *INDENT-OFF*
   new (&tdes->client) clientids ();
+  // *INDENT-ON*
   tdes->gtrid = LOG_2PC_NULL_GTRID;
   tdes->gtrinfo.info_length = 0;
   tdes->gtrinfo.info_data = NULL;
@@ -2011,7 +2013,9 @@ logtb_finalize_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   int r;
 
-  tdes->client. ~ clientids ();
+  // *INDENT-OFF*
+  tdes->client.~clientids ();
+  // *INDENT-ON*
 
   logtb_clear_tdes (thread_p, tdes);
   logtb_free_tran_mvcc_info (tdes);
@@ -2208,30 +2212,6 @@ TRANID
 logtb_find_current_tranid (THREAD_ENTRY * thread_p)
 {
   return logtb_find_tranid (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-}
-
-/*
- * logtb_set_client_ids_all - Set client identifications
- *
- * return: nothing..
- *
- *   client(in/out): The client block
- *   client_type(in):
- *   client_info(in):
- *   db_user(in):
- *   program_name(in):
- *   login_name(in):
- *   host_name(in):
- *   process_id(in):
- *
- * NOTE: Set client identifications.
- */
-void
-logtb_set_client_ids_all (CLIENTIDS * client, int client_type, const char *client_info, const char *db_user,
-			  const char *program_name, const char *login_name, const char *host_name, int process_id)
-{
-  client->set_ids ((boot_client_type) client_type, client_info, db_user, program_name, login_name, host_name,
-		   process_id);
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
