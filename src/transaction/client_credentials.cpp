@@ -17,7 +17,7 @@
  *
  */
 
-#include "clientid.hpp"
+#include "client_credentials.hpp"
 
 #include "porting.h"
 

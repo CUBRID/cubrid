@@ -24,7 +24,7 @@
 #ifndef _BOOT_H_
 #define _BOOT_H_
 
-#include "clientid.hpp"
+#include "client_credentials.hpp"
 #include "es_common.h"
 #include "porting.h"
 #include "storage_common.h"

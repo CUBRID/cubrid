@@ -21,8 +21,8 @@
 // clientid.hpp -
 //
 
-#ifndef _CLIENTID_HPP_
-#define _CLIENTID_HPP_
+#ifndef _CLIENT_CREDENTIALS_HPP_
+#define _CLIENT_CREDENTIALS_HPP_
 
 #include "dbtype_def.h"
 #include "packable_object.hpp"
@@ -114,4 +114,4 @@ struct boot_client_credential : public clientids
   virtual void unpack (cubpacking::unpacker &deserializator) override;
 };
 
-#endif // !_CLIENTID_HPP_
+#endif // !_CLIENT_CREDENTIALS_HPP_

@@ -259,7 +259,7 @@ set(JSP_SOURCES
 
 set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/boot_cl.c
-  ${TRANSACTION_DIR}/clientid.cpp
+  ${TRANSACTION_DIR}/client_credentials.cpp
   ${TRANSACTION_DIR}/locator.c
   ${TRANSACTION_DIR}/locator_cl.c
   ${TRANSACTION_DIR}/lock_table.c
@@ -270,7 +270,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/transaction_cl.c
   )
 set(TRANSACTION_HEADERS
-  ${TRANSACTION_DIR}/clientid.hpp
+  ${TRANSACTION_DIR}/client_credentials.hpp
   ${TRANSACTION_DIR}/log_archives.hpp
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp

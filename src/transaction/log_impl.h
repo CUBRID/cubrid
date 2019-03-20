@@ -33,7 +33,7 @@
 #endif // not SERVER/SA modes
 
 #include "boot.h"
-#include "clientid.hpp"
+#include "client_credentials.hpp"
 #include "config.h"
 #include "connection_globals.h"
 #include "critical_section.h"
