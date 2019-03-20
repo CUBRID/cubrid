@@ -62,6 +62,7 @@ struct background_archiving_info
     : start_page_id (NULL_PAGEID)
     , current_page_id (NULL_PAGEID)
     , last_sync_pageid (NULL_PAGEID)
+    , vdes (NULL_VOLDES)
   {
   }
 };
