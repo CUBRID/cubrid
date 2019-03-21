@@ -212,7 +212,7 @@ namespace cubreplication
     : replication_object (lsa_stamp),
       m_statement (statement),
       m_db_user (user),
-      m_sys_prm_context (sys_prm_ctx)
+      m_sys_prm_context (sys_prm_ctx ? sys_prm_ctx : "")
   {    
   }
 

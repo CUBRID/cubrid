@@ -1056,7 +1056,15 @@ void
 tran_get_oldest_system_savepoint (char **savepoint_name)
 {
   assert (savepoint_name != NULL);
-  *savepoint_name = ws_copy_string (system_savepoint->name);
+  if (system_savepoint)
+    {
+      assert (system_savepoint->name != NULL);
+      *savepoint_name = ws_copy_string (system_savepoint->name);
+    }
+  else
+    {
+      *savepoint_name = NULL;
+    }
 }
 
 void
