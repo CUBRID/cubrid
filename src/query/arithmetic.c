@@ -5077,7 +5077,7 @@ int
 db_evaluate_json_contains (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int error_code = NO_ERROR;
-  JSON_DOC_WRAPPER source;
+  JSON_DOC_STORE source;
 
   db_make_null (result);
   if (num_args < 2)
@@ -5105,11 +5105,11 @@ db_evaluate_json_contains (DB_VALUE * result, DB_VALUE * const *arg, int const n
     {
       const char *raw_path = db_get_string (path);
 
-      JSON_DOC *extracted_doc = nullptr;
+      JSON_DOC_STORE extracted_doc;
       /* *INDENT-OFF* */
-      error_code = db_json_extract_document_from_path (source.get_borrowed (), {raw_path}, extracted_doc);
+      error_code = db_json_extract_document_from_path (source.get_immutable_reference (), {raw_path}, extracted_doc);
       /* *INDENT-ON* */
-      source.own_doc (extracted_doc);
+      source = std::move (extracted_doc);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -5121,10 +5121,10 @@ db_evaluate_json_contains (DB_VALUE * result, DB_VALUE * const *arg, int const n
       //
     }
 
-  if (source.get_borrowed () != NULL)
+  if (source.get_immutable_reference () != NULL)
     {
       bool has_member = false;
-      JSON_DOC_WRAPPER value_doc;
+      JSON_DOC_STORE value_doc;
 
       int error_code = db_value_to_json_doc (*value, value_doc, false);
       if (error_code != NO_ERROR)
@@ -5133,7 +5133,9 @@ db_evaluate_json_contains (DB_VALUE * result, DB_VALUE * const *arg, int const n
 	  return error_code;
 	}
 
-      error_code = db_json_value_is_contained_in_doc (source.get_borrowed (), value_doc.get_borrowed (), has_member);
+      error_code =
+	db_json_value_is_contained_in_doc (source.get_immutable_reference (), value_doc.get_immutable_reference (),
+					   has_member);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -5162,7 +5164,7 @@ db_evaluate_json_type_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const
     {
       const char *type;
       unsigned int length;
-      JSON_DOC_WRAPPER doc;
+      JSON_DOC_STORE doc;
 
       int error_code = db_value_to_json_doc (*json, doc, false);
       if (error_code != NO_ERROR)
@@ -5170,7 +5172,7 @@ db_evaluate_json_type_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const
 	  return error_code;
 	}
 
-      type = db_json_get_type_as_str (doc.get_borrowed ());
+      type = db_json_get_type_as_str (doc.get_immutable_reference ());
       length = strlen (type);
 
       return db_make_varchar (result, length, (DB_C_CHAR) type, length, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
@@ -5212,7 +5214,7 @@ db_evaluate_json_valid (DB_VALUE * result, DB_VALUE * const *arg, int const num_
 int
 db_evaluate_json_length (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
-  JSON_DOC_WRAPPER source_doc;
+  JSON_DOC_STORE source_doc;
   int error_code = NO_ERROR;
 
   db_make_null (result);
@@ -5239,12 +5241,12 @@ db_evaluate_json_length (DB_VALUE * result, DB_VALUE * const *arg, int const num
   if (path != NULL)
     {
       const char *raw_path = db_get_string (path);
-      JSON_DOC *extracted_doc = nullptr;
+      JSON_DOC_STORE extracted_doc;
 
       /* *INDENT-OFF* */
-      error_code = db_json_extract_document_from_path (source_doc.get_borrowed (), {raw_path}, extracted_doc, false);
+      error_code = db_json_extract_document_from_path (source_doc.get_immutable_reference (), {raw_path}, extracted_doc, false);
       /* *INDENT-ON* */
-      source_doc.own_doc (extracted_doc);
+      source_doc = std::move (extracted_doc);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -5252,9 +5254,9 @@ db_evaluate_json_length (DB_VALUE * result, DB_VALUE * const *arg, int const num
 	}
     }
 
-  if (source_doc.get_borrowed () != NULL)
+  if (source_doc.get_immutable_reference () != NULL)
     {
-      length = db_json_get_length (source_doc.get_borrowed ());
+      length = db_json_get_length (source_doc.get_immutable_reference ());
       db_make_int (result, length);
     }
   return NO_ERROR;
@@ -5274,13 +5276,13 @@ db_evaluate_json_depth (DB_VALUE * result, DB_VALUE * const *arg, int const num_
     {
       return NO_ERROR;
     }
-  JSON_DOC_WRAPPER source_doc;
+  JSON_DOC_STORE source_doc;
   int error_code = db_value_to_json_doc (*json, source_doc, false);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
-  unsigned int depth = db_json_get_depth (source_doc.get_borrowed ());
+  unsigned int depth = db_json_get_depth (source_doc.get_immutable_reference ());
 
   return db_make_int (result, depth);
 }
@@ -5312,14 +5314,14 @@ db_evaluate_json_unquote (DB_VALUE * result, DB_VALUE * const *arg, int const nu
       return NO_ERROR;
     }
   char *str = NULL;
-  JSON_DOC_WRAPPER source_doc;
+  JSON_DOC_STORE source_doc;
   error_code = db_value_to_json_doc (*json, source_doc, false);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       return error_code;
     }
-  error_code = db_json_unquote (*source_doc.get_borrowed (), str);
+  error_code = db_json_unquote (*source_doc.get_immutable_reference (), str);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -5353,14 +5355,14 @@ db_evaluate_json_pretty (DB_VALUE * result, DB_VALUE * const *arg, int const num
       return NO_ERROR;
     }
   char *str = NULL;
-  JSON_DOC_WRAPPER source_doc;
+  JSON_DOC_STORE source_doc;
   error_code = db_value_to_json_doc (*json, source_doc, false);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       return error_code;
     }
-  db_json_pretty_func (*source_doc.get_borrowed (), str);
+  db_json_pretty_func (*source_doc.get_immutable_reference (), str);
 
   error_code = db_make_string (result, str);
   if (error_code != NO_ERROR)
@@ -5378,8 +5380,8 @@ int
 db_accumulate_json_arrayagg (const DB_VALUE * json_db_val, DB_VALUE * json_res)
 {
   int error_code = NO_ERROR;
-  JSON_DOC_WRAPPER val_doc;
-  JSON_DOC_WRAPPER result_doc;
+  JSON_DOC_STORE val_doc;
+  JSON_DOC_STORE result_doc;
 
   if (DB_IS_NULL (json_db_val))
     {
@@ -5401,22 +5403,22 @@ db_accumulate_json_arrayagg (const DB_VALUE * json_db_val, DB_VALUE * json_res)
   // allocate only first time
   if (DB_IS_NULL (json_res))
     {
-      result_doc.own_doc (db_json_allocate_doc ());
+      result_doc.set_as_mutable_reference (db_json_allocate_doc ());
     }
   else
     {
-      result_doc.own_doc (db_get_json_document (json_res));
+      result_doc.set_as_mutable_reference (db_get_json_document (json_res));
     }
 
-  if (result_doc.get_borrowed () == NULL)
+  if (result_doc.get_immutable_reference () == NULL)
     {
       db_make_null (json_res);
       return ER_FAILED;
     }
 
-  db_json_add_element_to_array (result_doc.get_owned (), val_doc.get_borrowed ());
+  db_json_add_element_to_array (result_doc.get_mutable_reference (), val_doc.get_immutable_reference ());
 
-  db_make_json (json_res, result_doc.transfer_ownership (), true);
+  db_make_json (json_res, result_doc.release_mutable_reference (), true);
   return error_code;
 }
 
@@ -5433,8 +5435,8 @@ db_accumulate_json_objectagg (const DB_VALUE * json_key, const DB_VALUE * json_d
 {
   int error_code = NO_ERROR;
   const char *key_str = NULL;
-  JSON_DOC_WRAPPER val_doc;
-  JSON_DOC_WRAPPER result_doc;
+  JSON_DOC_STORE val_doc;
+  JSON_DOC_STORE result_doc;
 
   // this case should not be possible because we checked before if the key is NULL
   // and wrapped the value with a JSON with DB_JSON_NULL type
@@ -5460,21 +5462,22 @@ db_accumulate_json_objectagg (const DB_VALUE * json_key, const DB_VALUE * json_d
   // allocate only first time
   if (DB_IS_NULL (json_res))
     {
-      result_doc.own_doc (db_json_allocate_doc ());
+      result_doc.set_as_mutable_reference (db_json_allocate_doc ());
     }
   else
     {
-      result_doc.own_doc (db_get_json_document (json_res));
+      result_doc.set_as_mutable_reference (db_get_json_document (json_res));
     }
 
-  if (result_doc.get_borrowed () == NULL)
+  if (result_doc.get_immutable_reference () == NULL)
     {
       db_make_null (json_res);
       return ER_FAILED;
     }
 
-  error_code = db_json_add_member_to_object (result_doc.get_owned (), key_str, val_doc.get_borrowed ());
-  db_make_json (json_res, result_doc.transfer_ownership (), true);
+  error_code =
+    db_json_add_member_to_object (result_doc.get_mutable_reference (), key_str, val_doc.get_immutable_reference ());
+  db_make_json (json_res, result_doc.release_mutable_reference (), true);
   if (error_code == ER_JSON_DUPLICATE_KEY)
     {
       // ignore
@@ -5509,7 +5512,7 @@ db_evaluate_json_extract (DB_VALUE * result, DB_VALUE * const *args, int num_arg
 
   // there are multiple paths; the result of extract is a JSON_ARRAY with all extracted values
   int error_code = NO_ERROR;
-  JSON_DOC_WRAPPER source_doc;
+  JSON_DOC_STORE source_doc;
 
   if (db_value_is_null (args[0]))
     {
@@ -5539,19 +5542,17 @@ db_evaluate_json_extract (DB_VALUE * result, DB_VALUE * const *args, int num_arg
       paths.push_back (path_str);
     }
 
-  JSON_DOC_WRAPPER res_doc;
-  JSON_DOC *result_doc = nullptr;
-  error_code = db_json_extract_document_from_path (source_doc.get_borrowed (), paths, result_doc);
-  res_doc.own_doc (result_doc);
+  JSON_DOC_STORE res_doc;
+  error_code = db_json_extract_document_from_path (source_doc.get_immutable_reference (), paths, res_doc);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       return error_code;
     }
 
-  if (db_json_get_type (result_doc) != DB_JSON_NULL)
+  if (db_json_get_type (res_doc.get_immutable_reference ()) != DB_JSON_NULL)
     {
-      db_make_json (result, res_doc.transfer_ownership (), true);
+      db_make_json (result, res_doc.release_mutable_reference (), true);
     }
 
   return NO_ERROR;
@@ -5562,7 +5563,7 @@ db_evaluate_json_object (DB_VALUE * result, DB_VALUE * const *arg, int const num
 {
   int i;
   int error_code = NO_ERROR;
-  JSON_DOC_WRAPPER value_doc;
+  JSON_DOC_STORE value_doc;
   const char *value_key = NULL;
 
   db_make_null (result);
@@ -5574,8 +5575,8 @@ db_evaluate_json_object (DB_VALUE * result, DB_VALUE * const *arg, int const num
       return ER_FAILED;
     }
 
-  JSON_DOC_WRAPPER new_doc;
-  new_doc.own_doc (db_json_make_json_object ());
+  JSON_DOC_STORE new_doc;
+  new_doc.set_as_mutable_reference (db_json_make_json_object ());
 
   for (i = 0; i < num_args; i += 2)
     {
@@ -5593,7 +5594,9 @@ db_evaluate_json_object (DB_VALUE * result, DB_VALUE * const *arg, int const num
 	  return error_code;
 	}
 
-      error_code = db_json_add_member_to_object (new_doc.get_owned (), value_key, value_doc.get_borrowed ());
+      error_code =
+	db_json_add_member_to_object (new_doc.get_mutable_reference (), value_key,
+				      value_doc.get_immutable_reference ());
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -5601,7 +5604,7 @@ db_evaluate_json_object (DB_VALUE * result, DB_VALUE * const *arg, int const num
 	}
     }
 
-  db_make_json (result, new_doc.transfer_ownership (), true);
+  db_make_json (result, new_doc.release_mutable_reference (), true);
 
   return NO_ERROR;
 }
@@ -5610,9 +5613,9 @@ int
 db_evaluate_json_array (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int error_code;
-  JSON_DOC_WRAPPER new_doc;
-  new_doc.own_doc (db_json_make_json_array ());
-  JSON_DOC_WRAPPER value_doc;
+  JSON_DOC_STORE new_doc;
+  new_doc.set_as_mutable_reference (db_json_make_json_array ());
+  JSON_DOC_STORE value_doc;
 
   db_make_null (result);
 
@@ -5625,10 +5628,10 @@ db_evaluate_json_array (DB_VALUE * result, DB_VALUE * const *arg, int const num_
 	  return error_code;
 	}
 
-      db_json_add_element_to_array (new_doc.get_owned (), value_doc.get_borrowed ());
+      db_json_add_element_to_array (new_doc.get_mutable_reference (), value_doc.get_immutable_reference ());
     }
 
-  db_make_json (result, new_doc.transfer_ownership (), true);
+  db_make_json (result, new_doc.release_mutable_reference (), true);
 
   return NO_ERROR;
 }
@@ -5637,8 +5640,8 @@ int
 db_evaluate_json_insert (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int i, error_code = NO_ERROR;
-  JSON_DOC_WRAPPER new_doc;
-  JSON_DOC_WRAPPER value_doc;
+  JSON_DOC_STORE new_doc;
+  JSON_DOC_STORE value_doc;
   const char *value_path = NULL;
 
   db_make_null (result);
@@ -5681,7 +5684,8 @@ db_evaluate_json_insert (DB_VALUE * result, DB_VALUE * const *arg, int const num
 	}
 
       // insert into result the value at required path
-      error_code = db_json_insert_func (value_doc.get_borrowed (), *new_doc.get_owned (), value_path);
+      error_code =
+	db_json_insert_func (value_doc.get_immutable_reference (), *new_doc.get_mutable_reference (), value_path);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -5689,7 +5693,7 @@ db_evaluate_json_insert (DB_VALUE * result, DB_VALUE * const *arg, int const num
 	}
     }
 
-  db_make_json (result, new_doc.transfer_ownership (), true);
+  db_make_json (result, new_doc.release_mutable_reference (), true);
 
   return NO_ERROR;
 }
@@ -5698,8 +5702,8 @@ int
 db_evaluate_json_replace (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int i, error_code = NO_ERROR;
-  JSON_DOC_WRAPPER new_doc;
-  JSON_DOC_WRAPPER value_doc;
+  JSON_DOC_STORE new_doc;
+  JSON_DOC_STORE value_doc;
   const char *value_path = NULL;
 
   db_make_null (result);
@@ -5742,14 +5746,15 @@ db_evaluate_json_replace (DB_VALUE * result, DB_VALUE * const *arg, int const nu
 	}
 
       // insert into result the value at requred path
-      error_code = db_json_replace_func (value_doc.get_borrowed (), *new_doc.get_owned (), value_path);
+      error_code =
+	db_json_replace_func (value_doc.get_immutable_reference (), *new_doc.get_mutable_reference (), value_path);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
 	}
     }
 
-  db_make_json (result, new_doc.transfer_ownership (), true);
+  db_make_json (result, new_doc.release_mutable_reference (), true);
 
   return NO_ERROR;
 }
@@ -5758,8 +5763,8 @@ int
 db_evaluate_json_set (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int i, error_code = NO_ERROR;
-  JSON_DOC_WRAPPER new_doc;
-  JSON_DOC_WRAPPER value_doc;
+  JSON_DOC_STORE new_doc;
+  JSON_DOC_STORE value_doc;
   const char *value_path = NULL;
 
   db_make_null (result);
@@ -5802,14 +5807,15 @@ db_evaluate_json_set (DB_VALUE * result, DB_VALUE * const *arg, int const num_ar
 	}
 
       // insert into result the value at requred path
-      error_code = db_json_set_func (value_doc.get_borrowed (), *new_doc.get_owned (), value_path);
+      error_code =
+	db_json_set_func (value_doc.get_immutable_reference (), *new_doc.get_mutable_reference (), value_path);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
 	}
     }
 
-  db_make_json (result, new_doc.transfer_ownership (), true);
+  db_make_json (result, new_doc.release_mutable_reference (), true);
 
   return NO_ERROR;
 }
@@ -5818,7 +5824,7 @@ int
 db_evaluate_json_keys (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int error_code = NO_ERROR;
-  JSON_DOC_WRAPPER new_doc;
+  JSON_DOC_STORE new_doc;
   std::string path;
   char *str = NULL;
 
@@ -5852,16 +5858,17 @@ db_evaluate_json_keys (DB_VALUE * result, DB_VALUE * const *arg, int const num_a
       return error_code;
     }
 
-  JSON_DOC_WRAPPER result_json;
-  result_json.own_doc (db_json_allocate_doc ());
-  error_code = db_json_keys_func (*new_doc.get_borrowed (), *result_json.get_owned (), path.c_str ());
+  JSON_DOC_STORE result_json;
+  result_json.set_as_mutable_reference (db_json_allocate_doc ());
+  error_code =
+    db_json_keys_func (*new_doc.get_immutable_reference (), *result_json.get_mutable_reference (), path.c_str ());
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       return error_code;
     }
 
-  db_make_json (result, result_json.transfer_ownership (), true);
+  db_make_json (result, result_json.release_mutable_reference (), true);
   return NO_ERROR;
 }
 
@@ -5869,7 +5876,7 @@ int
 db_evaluate_json_remove (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int i, error_code;
-  JSON_DOC_WRAPPER new_doc;
+  JSON_DOC_STORE new_doc;
 
   db_make_null (result);
 
@@ -5899,7 +5906,7 @@ db_evaluate_json_remove (DB_VALUE * result, DB_VALUE * const *arg, int const num
 	  return db_make_null (result);
 	}
 
-      error_code = db_json_remove_func (*new_doc.get_owned (), db_get_string (arg[i]));
+      error_code = db_json_remove_func (*new_doc.get_mutable_reference (), db_get_string (arg[i]));
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -5907,7 +5914,7 @@ db_evaluate_json_remove (DB_VALUE * result, DB_VALUE * const *arg, int const num
 	}
     }
 
-  db_make_json (result, new_doc.transfer_ownership (), true);
+  db_make_json (result, new_doc.release_mutable_reference (), true);
 
   return NO_ERROR;
 }
@@ -5916,8 +5923,8 @@ int
 db_evaluate_json_array_append (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int i, error_code = NO_ERROR;
-  JSON_DOC_WRAPPER new_doc;
-  JSON_DOC_WRAPPER value_doc;
+  JSON_DOC_STORE new_doc;
+  JSON_DOC_STORE value_doc;
   const char *value_path = NULL;
 
   db_make_null (result);
@@ -5960,7 +5967,8 @@ db_evaluate_json_array_append (DB_VALUE * result, DB_VALUE * const *arg, int con
 	}
 
       // insert into result the value at required path
-      error_code = db_json_array_append_func (value_doc.get_borrowed (), *new_doc.get_owned (), value_path);
+      error_code =
+	db_json_array_append_func (value_doc.get_immutable_reference (), *new_doc.get_mutable_reference (), value_path);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -5968,7 +5976,7 @@ db_evaluate_json_array_append (DB_VALUE * result, DB_VALUE * const *arg, int con
 	}
     }
 
-  db_make_json (result, new_doc.transfer_ownership (), true);
+  db_make_json (result, new_doc.release_mutable_reference (), true);
 
   return NO_ERROR;
 }
@@ -5977,8 +5985,8 @@ int
 db_evaluate_json_array_insert (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int i, error_code = NO_ERROR;
-  JSON_DOC_WRAPPER new_doc;
-  JSON_DOC_WRAPPER value_doc;
+  JSON_DOC_STORE new_doc;
+  JSON_DOC_STORE value_doc;
   const char *value_path = NULL;
 
   db_make_null (result);
@@ -6021,7 +6029,8 @@ db_evaluate_json_array_insert (DB_VALUE * result, DB_VALUE * const *arg, int con
 	}
 
       // insert into result the value at required path
-      error_code = db_json_array_insert_func (value_doc.get_borrowed (), *new_doc.get_owned (), value_path);
+      error_code =
+	db_json_array_insert_func (value_doc.get_immutable_reference (), *new_doc.get_mutable_reference (), value_path);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -6029,7 +6038,7 @@ db_evaluate_json_array_insert (DB_VALUE * result, DB_VALUE * const *arg, int con
 	}
     }
 
-  db_make_json (result, new_doc.transfer_ownership (), true);
+  db_make_json (result, new_doc.release_mutable_reference (), true);
 
   return NO_ERROR;
 }
@@ -6039,7 +6048,7 @@ db_evaluate_json_contains_path (DB_VALUE * result, DB_VALUE * const *arg, const 
 {
   bool exists = false;
   int error_code = NO_ERROR;
-  JSON_DOC_WRAPPER doc;
+  JSON_DOC_STORE doc;
   /* *INDENT-OFF* */
   std::vector<std::string> paths;
   /* *INDENT-ON* */
@@ -6080,7 +6089,7 @@ db_evaluate_json_contains_path (DB_VALUE * result, DB_VALUE * const *arg, const 
       paths.push_back (path);
     }
 
-  error_code = db_json_contains_path (doc.get_borrowed (), paths, find_all, exists);
+  error_code = db_json_contains_path (doc.get_immutable_reference (), paths, find_all, exists);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -6105,8 +6114,8 @@ db_evaluate_json_merge_preserve (DB_VALUE * result, DB_VALUE * const *arg, const
 {
   int error_code;
   JSON_DOC *accumulator = nullptr;
-  JSON_DOC_WRAPPER accumulator_owner;
-  JSON_DOC_WRAPPER doc;
+  JSON_DOC_STORE accumulator_owner;
+  JSON_DOC_STORE doc;
 
   if (num_args < 2)
     {
@@ -6132,15 +6141,15 @@ db_evaluate_json_merge_preserve (DB_VALUE * result, DB_VALUE * const *arg, const
 	  return error_code;
 	}
 
-      error_code = db_json_merge_preserve_func (doc.get_borrowed (), accumulator);
-      accumulator_owner.own_doc (accumulator);
+      error_code = db_json_merge_preserve_func (doc.get_immutable_reference (), accumulator);
+      accumulator_owner.set_as_mutable_reference (accumulator);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
 	}
     }
 
-  db_make_json (result, accumulator_owner.transfer_ownership (), true);
+  db_make_json (result, accumulator_owner.release_mutable_reference (), true);
 
   return NO_ERROR;
 }
@@ -6160,8 +6169,8 @@ db_evaluate_json_merge_patch (DB_VALUE * result, DB_VALUE * const *arg, const in
 {
   int error_code;
   JSON_DOC *accumulator = nullptr;
-  JSON_DOC_WRAPPER accumulator_owner;
-  JSON_DOC_WRAPPER doc;
+  JSON_DOC_STORE accumulator_owner;
+  JSON_DOC_STORE doc;
 
   if (num_args < 2)
     {
@@ -6186,15 +6195,15 @@ db_evaluate_json_merge_patch (DB_VALUE * result, DB_VALUE * const *arg, const in
 	  return error_code;
 	}
 
-      error_code = db_json_merge_patch_func (doc.get_borrowed (), accumulator);
-      accumulator_owner.own_doc (accumulator);
+      error_code = db_json_merge_patch_func (doc.get_immutable_reference (), accumulator);
+      accumulator_owner.set_as_mutable_reference (accumulator);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
 	}
     }
 
-  db_make_json (result, accumulator_owner.transfer_ownership (), true);
+  db_make_json (result, accumulator_owner.release_mutable_reference (), true);
 
   return NO_ERROR;
 }
@@ -6215,7 +6224,7 @@ int
 db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int num_args)
 {
   int error_code = NO_ERROR;
-  JSON_DOC_WRAPPER doc;
+  JSON_DOC_STORE doc;
 
   if (num_args < 3)
     {
@@ -6267,7 +6276,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
 
   std::vector<std::string> paths;
   // todo: add overload for JSON_WALKER::WalkDocument(const JSON_DOC&)
-  error_code = db_json_search_func (const_cast<JSON_DOC &>(*doc.get_borrowed ()), pattern, esc_char, paths, starting_paths, find_all);
+  error_code = db_json_search_func (const_cast<JSON_DOC &>(*doc.get_immutable_reference ()), pattern, esc_char, paths, starting_paths, find_all);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -6300,9 +6309,9 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
       return db_make_json (result, result_json, true);
     }
 
-  JSON_DOC_WRAPPER result_json_owner;
-  JSON_DOC_WRAPPER json_array_elem_owner;
-  result_json_owner.own_doc (db_json_allocate_doc ());
+  JSON_DOC_STORE result_json_owner;
+  JSON_DOC_STORE json_array_elem_owner;
+  result_json_owner.set_as_mutable_reference (db_json_allocate_doc ());
   for (std::size_t i = 0; i < paths.size (); ++i)
     {
       JSON_DOC *json_array_elem = nullptr;
@@ -6317,17 +6326,17 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
 	  return error_code;
 	}
       error_code = db_json_get_json_from_str (escaped, json_array_elem, escaped_size);
-      json_array_elem_owner.own_doc (json_array_elem);
+      json_array_elem_owner.set_as_mutable_reference (json_array_elem);
       if (error_code != NO_ERROR)
 	{
           ASSERT_ERROR ();
 	  return error_code;
 	}
 
-      db_json_add_element_to_array (result_json_owner.get_owned (), json_array_elem_owner.get_borrowed ());
+      db_json_add_element_to_array (result_json_owner.get_mutable_reference (), json_array_elem_owner.get_immutable_reference ());
     }
 
-  return db_make_json (result, result_json_owner.transfer_ownership (), true);
+  return db_make_json (result, result_json_owner.release_mutable_reference (), true);
 }
 /* *INDENT-ON* */
 
@@ -6335,7 +6344,7 @@ int
 db_evaluate_json_get_all_paths (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int error_code = NO_ERROR;
-  JSON_DOC_WRAPPER new_doc;
+  JSON_DOC_STORE new_doc;
 
   db_make_null (result);
 
@@ -6359,7 +6368,7 @@ db_evaluate_json_get_all_paths (DB_VALUE * result, DB_VALUE * const *arg, int co
     }
 
   JSON_DOC *result_json = db_json_allocate_doc ();
-  error_code = db_json_get_all_paths_func (*new_doc.get_borrowed (), result_json);
+  error_code = db_json_get_all_paths_func (*new_doc.get_immutable_reference (), result_json);
 
   db_make_json (result, result_json, true);
 

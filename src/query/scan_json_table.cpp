@@ -215,7 +215,7 @@ namespace cubscan
       m_specp->m_root_node->clear_xasl (is_final_clear);
       reset_ordinality (*m_specp->m_root_node);
 
-      // all json documents should be release depending on is_final
+      // all json documents should be released depending on is_final
       if (is_final)
 	{
 	  for (size_t i = 0; i < m_tree_height; ++i)
@@ -381,14 +381,12 @@ namespace cubscan
     {
       int error_code = NO_ERROR;
 
-      if (cursor_arg.m_input_doc != nullptr)
-	{
-	  // do not gather previous result
-	  db_json_delete_doc (cursor_arg.m_input_doc);
-	}
+      JSON_DOC_STORE input_doc;
+      input_doc.set_as_mutable_reference (cursor_arg.m_input_doc);
+      input_doc.clear ();
 
       // extract input document
-      error_code = db_json_extract_document_from_path (&document, {node.m_path}, cursor_arg.m_input_doc);
+      error_code = db_json_extract_document_from_path (&document, {node.m_path}, input_doc);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -406,6 +404,8 @@ namespace cubscan
 	  cursor_arg.start_json_iterator ();
 	}
 
+      // transfer ownership to cursor_arg
+      input_doc.release_mutable_reference ();
       return NO_ERROR;
     }
 

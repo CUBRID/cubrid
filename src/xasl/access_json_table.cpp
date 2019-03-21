@@ -127,7 +127,7 @@ namespace cubxasl
     column::evaluate_extract (const JSON_DOC &input)
     {
       int error_code = NO_ERROR;
-      JSON_DOC *docp = NULL;
+      JSON_DOC_STORE docp;
       TP_DOMAIN_STATUS status_cast = TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE;
 
       error_code = db_json_extract_document_from_path (&input, {m_path}, docp);
@@ -138,7 +138,7 @@ namespace cubxasl
 	  return ER_FAILED;
 	}
 
-      if (docp == NULL)
+      if (docp.get_mutable_reference () == nullptr)
 	{
 	  error_code = trigger_on_empty (*m_output_value_pointer);
 	  if (error_code != NO_ERROR)
@@ -151,7 +151,7 @@ namespace cubxasl
       // clear previous output_value
       pr_clear_value (m_output_value_pointer);
 
-      if (db_make_json (m_output_value_pointer, docp, true) != NO_ERROR)
+      if (db_make_json (m_output_value_pointer, docp.release_mutable_reference (), true) != NO_ERROR)
 	{
 	  assert (false);
 	  return ER_FAILED;

@@ -96,71 +96,93 @@ typedef rapidjson::GenericArray<true, JSON_VALUE>::ConstValueIterator JSON_VALUE
 
 typedef std::function<int (const JSON_VALUE &, const JSON_PATH &, bool &)> map_func_type;
 
-JSON_DOC_WRAPPER::JSON_DOC_WRAPPER ()
-  : m_borrowed_doc (nullptr)
-  , m_owning_doc (nullptr)
+JSON_DOC_STORE::JSON_DOC_STORE ()
+  : m_immutable_reference (nullptr)
+  , m_mutable_reference (nullptr)
 {
 
+}
+
+JSON_DOC_STORE &&JSON_DOC_STORE::operator= (JSON_DOC_STORE &&other)
+{
+  if (m_mutable_reference == other.m_mutable_reference || m_mutable_reference == m_immutable_reference)
+    {
+      // we should not clear the doc we assign to ourselves
+      return std::move (*this);
+    }
+
+  clear ();
+
+  m_mutable_reference = other.m_mutable_reference;
+  m_immutable_reference = other.m_immutable_reference;
+
+  other.m_mutable_reference = nullptr;
+  other.m_immutable_reference = nullptr;
+
+  return std::move (*this);
 }
 
 const JSON_DOC *
-JSON_DOC_WRAPPER::get_borrowed () const
+JSON_DOC_STORE::get_immutable_reference () const
 {
-  return m_borrowed_doc;
+  assert (m_immutable_reference != nullptr);
+  return m_immutable_reference;
 }
 
 JSON_DOC *
-JSON_DOC_WRAPPER::get_owned ()
+JSON_DOC_STORE::get_mutable_reference ()
 {
-  return m_owning_doc;
+  assert (m_mutable_reference != nullptr);
+  return m_mutable_reference;
 }
 
 JSON_DOC *
-JSON_DOC_WRAPPER::transfer_ownership ()
+JSON_DOC_STORE::release_mutable_reference ()
 {
   // assume we are owner
-  assert (m_owning_doc != nullptr && m_owning_doc == m_borrowed_doc);
-  m_owning_doc = nullptr;
-  return const_cast<JSON_DOC *> (m_borrowed_doc);
+  assert (m_mutable_reference != nullptr && m_mutable_reference == m_immutable_reference);
+  m_mutable_reference = nullptr;
+  return const_cast<JSON_DOC *> (m_immutable_reference);
 }
 
 void
-JSON_DOC_WRAPPER::borrow_doc (JSON_DOC *jd)
+JSON_DOC_STORE::set_as_immutable_reference (JSON_DOC *jd)
 {
-  if (jd != m_owning_doc)
+  if (jd != m_mutable_reference)
     {
-      release_owning ();
+      // we should not clear the doc we assign to ourselves
+      clear ();
     }
 
-  m_owning_doc = nullptr;
-  m_borrowed_doc = jd;
+  m_mutable_reference = nullptr;
+  m_immutable_reference = jd;
 }
 
 void
-JSON_DOC_WRAPPER::own_doc (JSON_DOC *jd)
+JSON_DOC_STORE::set_as_mutable_reference (JSON_DOC *jd)
 {
-  if (jd != m_owning_doc)
+  if (jd != m_mutable_reference)
     {
-      release_owning ();
+      clear ();
     }
 
-  m_borrowed_doc = m_owning_doc = jd;
+  m_immutable_reference = m_mutable_reference = jd;
 }
 
 void
-JSON_DOC_WRAPPER::release_owning ()
+JSON_DOC_STORE::clear ()
 {
-  if (m_owning_doc != nullptr)
+  if (m_mutable_reference != nullptr)
     {
-      delete m_owning_doc;
-      m_owning_doc = nullptr;
+      delete m_mutable_reference;
+      m_mutable_reference = nullptr;
     }
-  m_borrowed_doc = nullptr;
+  m_immutable_reference = nullptr;
 }
 
-JSON_DOC_WRAPPER::~JSON_DOC_WRAPPER ()
+JSON_DOC_STORE::~JSON_DOC_STORE ()
 {
-  release_owning ();
+  clear ();
 }
 
 // class JSON_ITERATOR - virtual interface to wrap array and object iterators
@@ -1218,16 +1240,17 @@ db_json_value_get_depth (const JSON_VALUE *doc)
  * example                 : json_extract('{"a":["b", 123]}', '/a/1') yields 123
  */
 int
-db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<const char *> &paths, JSON_DOC *&result,
+db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<const char *> &paths,
+				    JSON_DOC_STORE &result,
 				    bool allow_wildcards)
 {
   int error_code = NO_ERROR;
 
   if (document == NULL)
     {
-      if (result != NULL)
+      if (result.get_mutable_reference () != nullptr)
 	{
-	  result->SetNull ();
+	  result.get_mutable_reference ()->SetNull ();
 	}
       return NO_ERROR;
     }
@@ -1286,13 +1309,13 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
 	{
 	  for (const JSON_VALUE *p : produced)
 	    {
-	      if (result == NULL)
+	      if (result.get_mutable_reference () == nullptr)
 		{
-		  result = db_json_allocate_doc ();
-		  result->SetArray ();
+		  result.set_as_mutable_reference (db_json_allocate_doc ());
+		  result.get_mutable_reference ()->SetArray ();
 		}
 
-	      db_json_add_element_to_array (result, p);
+	      db_json_add_element_to_array (result.get_mutable_reference (), p);
 	    }
 	}
     }
@@ -1302,12 +1325,12 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
 
       if (!produced_array[0].empty ())
 	{
-	  if (result == NULL)
+	  if (result.get_mutable_reference () == nullptr)
 	    {
-	      result = db_json_allocate_doc ();
+	      result.set_as_mutable_reference (db_json_allocate_doc ());
 	    }
 
-	  result->CopyFrom (*produced_array[0][0], result->GetAllocator ());
+	  result.get_mutable_reference ()->CopyFrom (*produced_array[0][0], result.get_mutable_reference ()->GetAllocator ());
 	}
     }
 
@@ -3154,18 +3177,17 @@ db_value_to_json_path (const DB_VALUE *path_value, FUNC_TYPE fcode, const char *
  * return         : error code
  * db_val(in)     : input db_value
  * json_doc(out)  : output JSON_DOC pointer
- * force_copy(in) : whether jdw needs to own the json_doc
- *
+ * force_copy(in) : whether json_doc needs to own the json_doc
  */
 int
-db_value_to_json_doc (const DB_VALUE &db_val, JSON_DOC_WRAPPER &jdw, bool force_copy)
+db_value_to_json_doc (const DB_VALUE &db_val, JSON_DOC_STORE &json_doc, bool force_copy)
 {
   int error_code = NO_ERROR;
 
   if (db_value_is_null (&db_val))
     {
-      jdw.own_doc (db_json_allocate_doc ());
-      db_json_make_document_null (jdw.get_owned ());
+      json_doc.set_as_mutable_reference (db_json_allocate_doc ());
+      db_json_make_document_null (json_doc.get_mutable_reference ());
       return NO_ERROR;
     }
 
@@ -3176,9 +3198,9 @@ db_value_to_json_doc (const DB_VALUE &db_val, JSON_DOC_WRAPPER &jdw, bool force_
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
     {
-      JSON_DOC *json_doc = NULL;
-      error_code = db_json_get_json_from_str (db_get_string (&db_val), json_doc, db_get_string_size (&db_val));
-      jdw.own_doc (json_doc);
+      JSON_DOC *json_doc_ptr = NULL;
+      error_code = db_json_get_json_from_str (db_get_string (&db_val), json_doc_ptr, db_get_string_size (&db_val));
+      json_doc.set_as_mutable_reference (json_doc_ptr);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -3189,16 +3211,16 @@ db_value_to_json_doc (const DB_VALUE &db_val, JSON_DOC_WRAPPER &jdw, bool force_
     case DB_TYPE_JSON:
       if (force_copy)
 	{
-	  jdw.own_doc (db_json_get_copy_of_doc (db_val.data.json.document));
+	  json_doc.set_as_mutable_reference (db_json_get_copy_of_doc (db_val.data.json.document));
 	}
       else
 	{
-	  jdw.borrow_doc (db_val.data.json.document);
+	  json_doc.set_as_immutable_reference (db_val.data.json.document);
 	}
       return NO_ERROR;
 
     case DB_TYPE_NULL:
-      jdw.own_doc (db_json_allocate_doc ());
+      json_doc.set_as_mutable_reference (db_json_allocate_doc ());
       return NO_ERROR;
 
     default:
@@ -3219,12 +3241,12 @@ db_value_to_json_doc (const DB_VALUE &db_val, JSON_DOC_WRAPPER &jdw, bool force_
  *       necessary. adapt function for those cases.
  */
 int
-db_value_to_json_value (const DB_VALUE &db_val, JSON_DOC_WRAPPER &jdw)
+db_value_to_json_value (const DB_VALUE &db_val, JSON_DOC_STORE &json_doc)
 {
   if (db_value_is_null (&db_val))
     {
-      jdw.own_doc (db_json_allocate_doc ());
-      db_json_make_document_null (jdw.get_owned ());
+      json_doc.set_as_mutable_reference (db_json_allocate_doc ());
+      db_json_make_document_null (json_doc.get_mutable_reference ());
       return NO_ERROR;
     }
 
@@ -3234,12 +3256,13 @@ db_value_to_json_value (const DB_VALUE &db_val, JSON_DOC_WRAPPER &jdw)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      jdw.own_doc (db_json_allocate_doc ());
-      db_json_set_string_to_doc (jdw.get_owned (), db_get_string (&db_val), (unsigned) db_get_string_size (&db_val));
+      json_doc.set_as_mutable_reference (db_json_allocate_doc ());
+      db_json_set_string_to_doc (json_doc.get_mutable_reference (), db_get_string (&db_val),
+				 (unsigned) db_get_string_size (&db_val));
       break;
     case DB_TYPE_ENUMERATION:
-      jdw.own_doc (db_json_allocate_doc ());
-      db_json_set_string_to_doc (jdw.get_owned (), db_get_enum_string (&db_val),
+      json_doc.set_as_mutable_reference (db_json_allocate_doc ());
+      db_json_set_string_to_doc (json_doc.get_mutable_reference (), db_get_enum_string (&db_val),
 				 (unsigned) db_get_enum_string_size (&db_val));
       break;
 
@@ -3253,7 +3276,7 @@ db_value_to_json_value (const DB_VALUE &db_val, JSON_DOC_WRAPPER &jdw)
 	}
 
       // if db_val is json a copy to dest is made so we can own it
-      jdw.own_doc (db_get_json_document (&dest));
+      json_doc.set_as_mutable_reference (db_get_json_document (&dest));
     }
 
   return NO_ERROR;

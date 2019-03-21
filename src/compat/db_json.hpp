@@ -57,32 +57,36 @@ enum DB_JSON_TYPE
   DB_JSON_BOOL,
 };
 
-class JSON_DOC_WRAPPER
+class JSON_DOC_STORE
 {
   public:
-    JSON_DOC_WRAPPER ();
+    JSON_DOC_STORE ();
+    JSON_DOC_STORE &&operator= (JSON_DOC_STORE &&);
 
-    const JSON_DOC *get_borrowed () const;
-    JSON_DOC *get_owned ();
-    JSON_DOC *transfer_ownership ();
+    JSON_DOC_STORE (JSON_DOC_STORE &) = delete;
+    JSON_DOC_STORE &operator= (JSON_DOC_STORE &) = delete;
 
-    void borrow_doc (JSON_DOC *jd);
-    void own_doc (JSON_DOC *jd);
+    const JSON_DOC *get_immutable_reference () const;
+    JSON_DOC *get_mutable_reference ();
+    JSON_DOC *release_mutable_reference ();
 
-    ~JSON_DOC_WRAPPER ();
+    void set_as_immutable_reference (JSON_DOC *jd);
+    void set_as_mutable_reference (JSON_DOC *jd);
+
+    void clear ();
+    ~JSON_DOC_STORE ();
   private:
-    const JSON_DOC *m_borrowed_doc;
-    JSON_DOC *m_owning_doc;
+    const JSON_DOC *m_immutable_reference;
+    JSON_DOC *m_mutable_reference;
 
-    void release_owning ();
 };
 
 bool db_json_is_valid (const char *json_str);
 const char *db_json_get_type_as_str (const JSON_DOC *document);
 unsigned int db_json_get_length (const JSON_DOC *document);
 unsigned int db_json_get_depth (const JSON_DOC *doc);
-int db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<const char *> &raw_path,
-					JSON_DOC *&result, bool allow_wildcards = true);
+int db_json_extract_document_from_path (const JSON_DOC *document,
+					const std::vector<const char *> &raw_path, JSON_DOC_STORE &result, bool allow_wildcards = true);
 int db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> &paths, bool find_all,
 			   bool &result);
 char *db_json_get_raw_json_body_from_document (const JSON_DOC *doc);
@@ -169,8 +173,8 @@ bool db_json_doc_has_numeric_type (const JSON_DOC *doc);
 bool db_json_doc_is_uncomparable (const JSON_DOC *doc);
 
 // DB_VALUE manipulation functions
-int db_value_to_json_doc (const DB_VALUE &db_val, JSON_DOC_WRAPPER &jdw, bool copy_json);
-int db_value_to_json_value (const DB_VALUE &db_val, JSON_DOC_WRAPPER &jdw);
+int db_value_to_json_doc (const DB_VALUE &db_val, JSON_DOC_STORE &json_doc, bool copy_json);
+int db_value_to_json_value (const DB_VALUE &db_val, JSON_DOC_STORE &json_doc);
 int db_value_to_json_path (const DB_VALUE *path_value, FUNC_TYPE fcode, const char **path_str);
 
 int db_json_normalize_path_string (const char *pointer_path, std::string &normalized_path);
