@@ -59,10 +59,9 @@ namespace cubreplication
     log_generator::set_global_stream (g_instance->m_stream);
 
     /* create stream file */
-    g_instance->m_stream_file = new cubstream::stream_file (*g_instance->m_stream);
     std::string replication_path;
     replication_node::get_replication_file_path (replication_path);
-    g_instance->m_stream_file->set_path (replication_path);
+    g_instance->m_stream_file = new cubstream::stream_file (*g_instance->m_stream, replication_path);
 
     master_senders_manager::init (g_instance->m_stream);
 

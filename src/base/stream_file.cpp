@@ -127,7 +127,8 @@ namespace cubstream
   };
 
 
-  void stream_file::init (const stream_position &start_append_pos, const size_t file_size, const int print_digits)
+  void stream_file::init (const std::string &path, const stream_position &start_append_pos, const size_t file_size,
+                          const int print_digits)
   {
     m_stream.set_stream_file (this);
 
@@ -150,6 +151,8 @@ namespace cubstream
     m_stream.set_filled_stream_handler (m_start_flush_handler);
 
     m_is_stopped = false;
+
+    m_base_path = path;
 
 #if defined (SERVER_MODE)
     m_write_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
