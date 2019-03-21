@@ -2561,10 +2561,10 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 	}
 
       size += (3 * OR_INT_SIZE	/* tran index + tran state + process id */
-	       + OR_INT_SIZE + DB_ALIGN (tdes->client.db_user.length (), INT_ALIGNMENT)
-	       + OR_INT_SIZE + DB_ALIGN (tdes->client.program_name.length (), INT_ALIGNMENT)
-	       + OR_INT_SIZE + DB_ALIGN (tdes->client.login_name.length (), INT_ALIGNMENT)
-	       + OR_INT_SIZE + DB_ALIGN (tdes->client.host_name.length (), INT_ALIGNMENT));
+	       + or_packed_string_length (tdes->client.get_db_user (), NULL)
+	       + or_packed_string_length (tdes->client.get_program_name (), NULL)
+	       + or_packed_string_length (tdes->client.get_login_name (), NULL)
+	       + or_packed_string_length (tdes->client.get_host_name (), NULL));
 
 #if defined(SERVER_MODE)
       if (include_query_exec_info)
