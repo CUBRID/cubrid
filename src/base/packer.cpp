@@ -871,6 +871,8 @@ namespace cubpacking
    * unpack_buffer_with_length : unpacks a stream into a preallocated buffer
    * stream (in/out) : output stream
    * max_length (in) : maximum length to unpack
+   *
+   * Note : the unpacker pointer is incremented with the actual length of buffer (found in unpacker)
    */
   void
   unpacker::unpack_buffer_with_length (char *stream, const std::size_t max_length)
@@ -885,14 +887,15 @@ namespace cubpacking
     assert (actual_len <= max_length);
     copy_length = std::min (actual_len, max_length);
 
-    check_range (m_ptr, m_end_ptr, copy_length);
+    check_range (m_ptr, m_end_ptr, actual_len);
 
     if (copy_length > 0)
       {
 	memcpy (stream, m_ptr, copy_length);
-	m_ptr += actual_len;
-	align (INT_ALIGNMENT);
       }
+    
+    m_ptr += actual_len;
+    align (INT_ALIGNMENT);
   }
 
   void
