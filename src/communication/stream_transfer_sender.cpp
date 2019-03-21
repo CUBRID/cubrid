@@ -32,7 +32,6 @@
 
 #include "stream_transfer_sender.hpp"
 
-#include "string_buffer.hpp"  /* for dumping data */
 #include "system_parameter.h" /* for er_log_debug */
 #include "thread_manager.hpp"
 #include "thread_daemon.hpp"
@@ -145,16 +144,8 @@ namespace cubstream
   {
     if (m_channel.send (ptr, byte_count) == NO_ERRORS)
       {
-	if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
-	  {
-	    string_buffer in;
-	    string_buffer out;
-	    size_t dump_size = std::min (cubcomm::MTU, byte_count);
+        cubcomm::er_log_debug_buffer ("transfer_sender::read_action", ptr, byte_count);
 
-	    in.add_bytes (dump_size, ptr);
-	    out.hex_dump (in, dump_size);
-	    _er_log_debug (ARG_FILE_LINE, "%s\n", out.get_buffer ());
-	  }
 	m_last_sent_position += byte_count;
 	return NO_ERROR;
       }

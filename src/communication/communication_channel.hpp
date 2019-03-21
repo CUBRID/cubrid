@@ -90,6 +90,7 @@ namespace cubcomm
       SOCKET m_socket;
   };
 
+  void er_log_debug_buffer (const char *msg, const char *buf, const size_t buf_size);
 } /* cubcomm namespace */
 
 #endif /* _COMMUNICATION_CHANNEL_HPP_ */

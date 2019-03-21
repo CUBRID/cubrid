@@ -28,6 +28,7 @@
 #include "connection_globals.h"
 #include "connection_sr.h"
 
+#include "string_buffer.hpp"
 #include "system_parameter.h"
 #include "thread_manager.hpp"
 #if defined(WINDOWS)
@@ -36,6 +37,7 @@
 #include "tcp.h"
 #endif /* WINDOWS */
 
+#include <algorithm>  /* std::min */
 #include <string>
 
 namespace cubcomm
@@ -171,6 +173,20 @@ namespace cubcomm
   SOCKET channel::get_socket ()
   {
     return m_socket;
+  }
+
+  void er_log_debug_buffer (const char *msg, const char *buf, const size_t buf_size)
+  {
+    if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
+      {
+        string_buffer in;
+	string_buffer out;
+	size_t dump_size = std::min (cubcomm::MTU, buf_size);
+
+	in.add_bytes (dump_size, buf);
+	out.hex_dump (in, dump_size);
+	_er_log_debug (ARG_FILE_LINE, "%s buf_size=%d\n%s\n", msg, buf_size, out.get_buffer ());
+      }
   }
 
 } /* namespace cubcomm */

@@ -25,13 +25,11 @@
 #include "stream_transfer_receiver.hpp"
 
 #include "byte_order.h"
-#include "string_buffer.hpp"  /* for data dump */
 #include "system_parameter.h" /* for er_log_debug */
 #include "thread_manager.hpp"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 
-#include <algorithm>    /* for std::min */
 #include <cstring>
 
 namespace cubstream
@@ -83,18 +81,7 @@ namespace cubstream
 	    return;
 	  }
 
-	er_log_debug (ARG_FILE_LINE, "transfer_receiver_task receiving : %d bytes\n", max_len);
-
-	if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
-	  {
-	    string_buffer in;
-	    string_buffer out;
-	    size_t dump_size = std::min (cubcomm::MTU, max_len);
-
-	    in.add_bytes (dump_size, this_consumer_channel.m_buffer);
-	    out.hex_dump (in, dump_size);
-	    _er_log_debug (ARG_FILE_LINE, "%s\n", out.get_buffer ());
-	  }
+        cubcomm::er_log_debug_buffer ("transfer_receiver_task receiving", this_consumer_channel.m_buffer, max_len);
 
 	if (this_consumer_channel.m_stream.write (max_len, this_consumer_channel.m_write_action_function))
 	  {

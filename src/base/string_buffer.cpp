@@ -25,7 +25,7 @@
 #include <algorithm>  // for std::min
 #include <memory.h>
 
-void string_buffer::add_bytes (size_t len, char *bytes)
+void string_buffer::add_bytes (size_t len, const char *bytes)
 {
   assert (bytes != NULL);
   m_ext_block.extend_to (m_len + len + 2);

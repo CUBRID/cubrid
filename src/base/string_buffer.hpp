@@ -97,7 +97,7 @@ class string_buffer
 
     inline void operator+= (const char ch);                       //add a single char
 
-    void add_bytes (size_t len, char *bytes);                     //add "len" bytes (can have '\0' in the middle)
+    void add_bytes (size_t len, const char *bytes);                     //add "len" bytes (can have '\0' in the middle)
 
     template<typename... Args> inline int operator() (Args &&... args); //add with printf format
 
