@@ -1744,10 +1744,10 @@ db_json_replace_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path
     {
       if (p.is_last_token_array_index_zero ())
 	{
-	  if (db_json_get_type_of_value (parent_val) != DB_JSON_ARRAY)
+	  if (!parent_val->IsArray ())
 	    {
 	      // we ignore a trailing 0 array index token and we replace what we found
-	      p.get_parent ().set (doc, *value);
+	      parent_val->CopyFrom (*value, doc.GetAllocator ());
 	    }
 	  else if (parent_val->GetArray ().Size () > 0 /* check array is not empty */)
 	    {
@@ -1755,26 +1755,26 @@ db_json_replace_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path
 	    }
 	  else
 	    {
-	      // no_op if arrey is empty
+	      // no_op if array is empty
 	      return NO_ERROR;
 	    }
 	}
       else
 	{
-	  if (db_json_get_type_of_value (parent_val) != DB_JSON_ARRAY)
+	  if (parent_val->IsArray () && p.is_last_array_index_less_than (parent_val->GetArray ().Size ()))
+	    {
+	      p.set (doc, *value);
+	    }
+	  else
 	    {
 	      // no_op
 	      return NO_ERROR;
-	    }
-	  else if (p.is_last_array_index_less_than (parent_val->GetArray ().Size ()))
-	    {
-	      p.set (doc, *value);
 	    }
 	}
     }
   else
     {
-      if (db_json_get_type_of_value (parent_val) != DB_JSON_OBJECT)
+      if (!parent_val->IsObject ())
 	{
 	  return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p, &doc);
 	}
