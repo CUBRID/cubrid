@@ -25,6 +25,7 @@
 #define _DB_JSON_HPP_
 
 #include "error_manager.h"
+#include "memory_private_allocator.hpp"
 #include "object_representation.h"
 
 #if defined (__cplusplus)
@@ -57,36 +58,14 @@ enum DB_JSON_TYPE
   DB_JSON_BOOL,
 };
 
-class JSON_DOC_STORE
-{
-  public:
-    JSON_DOC_STORE ();
-    JSON_DOC_STORE &&operator= (JSON_DOC_STORE &&);
-
-    JSON_DOC_STORE (JSON_DOC_STORE &) = delete;
-    JSON_DOC_STORE &operator= (JSON_DOC_STORE &) = delete;
-
-    const JSON_DOC *get_immutable_reference () const;
-    JSON_DOC *get_mutable_reference ();
-    JSON_DOC *release_mutable_reference ();
-
-    void set_as_immutable_reference (JSON_DOC *jd);
-    void set_as_mutable_reference (JSON_DOC *jd);
-
-    void clear ();
-    ~JSON_DOC_STORE ();
-  private:
-    const JSON_DOC *m_immutable_reference;
-    JSON_DOC *m_mutable_reference;
-
-};
+using JSON_DOC_STORE = cubmem::reference_store<JSON_DOC>;
 
 bool db_json_is_valid (const char *json_str);
 const char *db_json_get_type_as_str (const JSON_DOC *document);
 unsigned int db_json_get_length (const JSON_DOC *document);
 unsigned int db_json_get_depth (const JSON_DOC *doc);
-int db_json_extract_document_from_path (const JSON_DOC *document,
-					const std::vector<const char *> &raw_path, JSON_DOC_STORE &result, bool allow_wildcards = true);
+int db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<const char *> &raw_path,
+					JSON_DOC_STORE &result, bool allow_wildcards = true);
 int db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> &paths, bool find_all,
 			   bool &result);
 char *db_json_get_raw_json_body_from_document (const JSON_DOC *doc);
@@ -119,7 +98,7 @@ int db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *r
 int db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
 int db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
 int db_json_remove_func (JSON_DOC &doc, const char *raw_path);
-int db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char,
+int db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char,
 			 std::vector<std::string> &paths, const std::vector<std::string> &patterns, bool find_all);
 int db_json_merge_patch_func (const JSON_DOC *source, JSON_DOC *&dest);
 int db_json_merge_preserve_func (const JSON_DOC *source, JSON_DOC *&dest);
@@ -173,7 +152,7 @@ bool db_json_doc_has_numeric_type (const JSON_DOC *doc);
 bool db_json_doc_is_uncomparable (const JSON_DOC *doc);
 
 // DB_VALUE manipulation functions
-int db_value_to_json_doc (const DB_VALUE &db_val, JSON_DOC_STORE &json_doc, bool copy_json);
+int db_value_to_json_doc (const DB_VALUE &db_val, bool copy_json, JSON_DOC_STORE &json_doc);
 int db_value_to_json_value (const DB_VALUE &db_val, JSON_DOC_STORE &json_doc);
 int db_value_to_json_path (const DB_VALUE *path_value, FUNC_TYPE fcode, const char **path_str);
 

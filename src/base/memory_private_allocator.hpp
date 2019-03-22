@@ -171,6 +171,34 @@ namespace cubmem
       std::unique_ptr<T, private_pointer_deleter<T>> m_smart_ptr;
   };
 
+  template <typename T>
+  class reference_store
+  {
+    public:
+      reference_store ();
+      reference_store &operator= (reference_store &&);
+
+      reference_store (reference_store &) = delete;
+      reference_store &operator= (reference_store &) = delete;
+
+      const T *get_immutable_reference () const;
+      bool is_mutable () const;
+      T *get_mutable_reference () const;
+      T *release_mutable_reference ();
+
+      void create_mutable_reference ();
+      void set_immutable_reference (T *ptr);
+      void set_mutable_reference (T *ptr);
+
+      void delete_mutable ();
+      void clear ();
+      ~reference_store ();
+    private:
+
+      const T *m_immutable_reference;
+      T *m_mutable_reference;
+  };
+
   extern const block_allocator PRIVATE_BLOCK_ALLOCATOR;
 
   // Calls func with the global heap set for allocating memory
@@ -345,6 +373,103 @@ namespace cubmem
   private_unique_ptr<T>::operator* () const
   {
     return *m_smart_ptr.get ();
+  }
+
+  template <class T>
+  reference_store<T>::reference_store ()
+    : m_immutable_reference (nullptr)
+    , m_mutable_reference (nullptr)
+  {
+
+  }
+
+  template <class T>
+  reference_store<T> &
+  reference_store<T>::operator= (reference_store<T> &&other)
+  {
+    if (this != &other)
+      {
+	std::swap (m_mutable_reference, other.m_mutable_reference);
+	std::swap (m_immutable_reference, other.m_immutable_reference);
+      }
+    return *this;
+  }
+
+  template <class T>
+  const T *
+  reference_store<T>::get_immutable_reference () const
+  {
+    assert (m_immutable_reference != nullptr);
+    return m_immutable_reference;
+  }
+
+  template <class T>
+  bool
+  reference_store<T>::is_mutable () const
+  {
+    return m_mutable_reference != nullptr;
+  }
+
+  template <class T>
+  T *
+  reference_store<T>::get_mutable_reference () const
+  {
+    assert (is_mutable ());
+    return m_mutable_reference;
+  }
+
+  template <class T>
+  T *
+  reference_store<T>::release_mutable_reference ()
+  {
+    assert (is_mutable ());
+    T *ret_ref = m_mutable_reference;
+    m_immutable_reference = m_mutable_reference = nullptr;
+    return ret_ref;
+  }
+
+  template <class T>
+  void
+  reference_store<T>::set_immutable_reference (T *ptr)
+  {
+    if (ptr != m_mutable_reference)
+      {
+	// we should not clear the doc we assign to ourselves
+	clear ();
+      }
+
+    m_mutable_reference = nullptr;
+    m_immutable_reference = ptr;
+  }
+
+  template <class T>
+  void
+  reference_store<T>::set_mutable_reference (T *ptr)
+  {
+    if (ptr != m_mutable_reference)
+      {
+	clear ();
+	m_immutable_reference = m_mutable_reference = ptr;
+      }
+
+  }
+
+  template <class T>
+  void
+  reference_store<T>::clear ()
+  {
+    if (is_mutable ())
+      {
+	delete_mutable ();
+	m_mutable_reference = nullptr;
+      }
+    m_immutable_reference = nullptr;
+  }
+
+  template <class T>
+  reference_store<T>::~reference_store ()
+  {
+    clear ();
   }
 
   template < typename Func, typename...Args >

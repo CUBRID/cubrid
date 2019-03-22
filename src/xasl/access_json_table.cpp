@@ -138,7 +138,7 @@ namespace cubxasl
 	  return ER_FAILED;
 	}
 
-      if (docp.get_mutable_reference () == nullptr)
+      if (!docp.is_mutable ())
 	{
 	  error_code = trigger_on_empty (*m_output_value_pointer);
 	  if (error_code != NO_ERROR)
