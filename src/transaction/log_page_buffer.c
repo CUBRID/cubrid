@@ -608,7 +608,7 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   int error_code = NO_ERROR;
   int i;
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
-  LOGWR_INFO *writer_info = &log_Gl.writer_info;
+  LOGWR_INFO *writer_info = log_Gl.writer_info;
   size_t size;
 
   if (lzo_init () == LZO_E_OK)
@@ -4353,7 +4353,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   INT64 flush_completed_time = 0;
   INT64 all_writer_thr_end_time = 0;
 
-  LOGWR_INFO *writer_info = &log_Gl.writer_info;
+  LOGWR_INFO *writer_info = log_Gl.writer_info;
   LOGWR_ENTRY *entry;
   THREAD_ENTRY *wait_thread_p;
 #endif /* SERVER_MODE */
@@ -11782,7 +11782,7 @@ logpb_finalize_writer_info (void)
   int rv;
 #endif
   LOGWR_ENTRY *entry, *next_entry;
-  LOGWR_INFO *writer_info = &log_Gl.writer_info;
+  LOGWR_INFO *writer_info = log_Gl.writer_info;
 
   if (writer_info->is_init == true)
     {

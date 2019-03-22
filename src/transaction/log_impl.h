@@ -63,6 +63,7 @@
 
 // forward declarations
 struct bo_restart_arg;
+struct logwr_info;
 
 /* TRANS_STATUS_HISTORY_MAX_SIZE must be a power of 2*/
 #define TRANS_STATUS_HISTORY_MAX_SIZE 2048
@@ -400,64 +401,6 @@ struct log_group_commit_info
 
 #define LOG_GROUP_COMMIT_INFO_INITIALIZER \
   { PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER }
-
-enum logwr_status
-{
-  LOGWR_STATUS_WAIT,
-  LOGWR_STATUS_FETCH,
-  LOGWR_STATUS_DONE,
-  LOGWR_STATUS_DELAY,
-  LOGWR_STATUS_ERROR
-};
-typedef enum logwr_status LOGWR_STATUS;
-
-typedef struct logwr_entry LOGWR_ENTRY;
-struct logwr_entry
-{
-  THREAD_ENTRY *thread_p;
-  LOG_PAGEID fpageid;
-  LOGWR_MODE mode;
-  LOGWR_STATUS status;
-  LOG_LSA eof_lsa;
-  LOG_LSA last_sent_eof_lsa;
-  LOG_LSA tmp_last_sent_eof_lsa;
-  INT64 start_copy_time;
-  bool copy_from_first_phy_page;
-  LOGWR_ENTRY *next;
-};
-
-typedef struct logwr_info LOGWR_INFO;
-struct logwr_info
-{
-  LOGWR_ENTRY *writer_list;
-  pthread_mutex_t wr_list_mutex;
-  pthread_cond_t flush_start_cond;
-  pthread_mutex_t flush_start_mutex;
-  pthread_cond_t flush_wait_cond;
-  pthread_mutex_t flush_wait_mutex;
-  pthread_cond_t flush_end_cond;
-  pthread_mutex_t flush_end_mutex;
-  bool skip_flush;
-  bool flush_completed;
-  bool is_init;
-
-  /* to measure the time spent by the last LWT delaying LFT */
-  bool trace_last_writer;
-  CLIENTIDS last_writer_client_info;
-  INT64 last_writer_elapsed_time;
-};
-
-#define LOGWR_INFO_INITIALIZER                                 \
-  {NULL,                                                       \
-    PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER,       \
-    PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER,       \
-    PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER,       \
-    PTHREAD_MUTEX_INITIALIZER,                                 \
-    false, false, false, false,                                \
-    /* last_writer_client_info */                              \
-    clientids (),                                              \
-    0                                                          \
-   }
 
 typedef struct log_append_info LOG_APPEND_INFO;
 struct log_append_info
@@ -1230,12 +1173,16 @@ struct log_global
   /* group commit information */
   LOG_GROUP_COMMIT_INFO group_commit_info;
   /* remote log writer information */
-  LOGWR_INFO writer_info;
+  logwr_info *writer_info;
   /* background log archiving info */
   BACKGROUND_ARCHIVING_INFO bg_archive_info;
 
   MVCCTABLE mvcc_table;		/* MVCC table */
   GLOBAL_UNIQUE_STATS_TABLE unique_stats_table;	/* global unique statistics */
+
+  // *INDENT-OFF
+   ~log_global ();
+  // *INDENT-ON
 };
 
 /* logging statistics */

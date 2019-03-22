@@ -61,6 +61,19 @@
 static int prev_ha_server_state = HA_SERVER_STATE_NA;
 static bool logwr_need_shutdown = false;
 
+typedef struct log_bgarv_header LOG_BGARV_HEADER;
+struct log_bgarv_header
+{				/* Background log archive header information */
+  char magic[CUBRID_MAGIC_MAX_LENGTH];
+
+  INT32 dummy;
+  INT64 db_creation;
+
+  LOG_PAGEID start_page_id;
+  LOG_PAGEID current_page_id;
+  LOG_PAGEID last_sync_pageid;
+};
+
 #define logwr_er_log(...) if (prm_get_bool_value (PRM_ID_DEBUG_LOGWR)) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
 
 static int logwr_check_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
@@ -1815,7 +1828,7 @@ logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p, THREAD_ENTRY * thread_p,
 {
   LOGWR_ENTRY *entry;
   int rv;
-  LOGWR_INFO *writer_info = &log_Gl.writer_info;
+  LOGWR_INFO *writer_info = log_Gl.writer_info;
 
   *wr_entry_p = NULL;
   rv = pthread_mutex_lock (&writer_info->wr_list_mutex);
@@ -1888,7 +1901,7 @@ logwr_unregister_writer_entry (LOGWR_ENTRY * wr_entry, int status)
   LOGWR_ENTRY *entry;
   bool is_all_done;
   int rv;
-  LOGWR_INFO *writer_info = &log_Gl.writer_info;
+  LOGWR_INFO *writer_info = log_Gl.writer_info;
 
   rv = pthread_mutex_lock (&writer_info->wr_list_mutex);
 
@@ -2274,7 +2287,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
   bool copy_from_file = false;
   bool need_cs_exit_after_send = true;
   struct timespec to;
-  LOGWR_INFO *writer_info = &log_Gl.writer_info;
+  LOGWR_INFO *writer_info = log_Gl.writer_info;
   bool copy_from_first_phy_page = false;
 
   logpg_used_size = 0;
@@ -2525,7 +2538,7 @@ error:
 LOG_PAGEID
 logwr_get_min_copied_fpageid (void)
 {
-  LOGWR_INFO *writer_info = &log_Gl.writer_info;
+  LOGWR_INFO *writer_info = log_Gl.writer_info;
   LOGWR_ENTRY *entry;
   int num_entries = 0;
   LOG_PAGEID min_fpageid = LOGPAGEID_MAX;
