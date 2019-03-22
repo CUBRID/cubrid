@@ -14485,7 +14485,7 @@ sm_add_secondary_index_on_partition (MOP classop, DB_CONSTRAINT_TYPE constraint_
 
       error = sm_add_constraint (sub_partitions[i], constraint_type, constraint_name, att_names, asc_desc,
 				 attrs_prefix_length, class_attributes, new_filter_index_info, new_func_index_info,
-				 comment, index_status);
+				 comment, index_status, set_savept);
     }
 
 end:
@@ -14523,6 +14523,7 @@ end:
  *     		refer to instance attributes.
  *   comment(in): constraint comment
  *   is_online_index(in):
+ *   skip_savepoint(in): true, if skip savepoint
  *
  *  Note: When adding NOT NULL constraint, this function doesn't check the
  *	  existing values of the attribute. To make sure NOT NULL constraint
@@ -14532,7 +14533,7 @@ int
 sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name, const char **att_names,
 		   const int *asc_desc, const int *attrs_prefix_length, int class_attributes,
 		   SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index, const char *comment,
-		   SM_INDEX_STATUS index_status)
+		   SM_INDEX_STATUS index_status, bool skip_savepoint)
 {
   int error = NO_ERROR;
   SM_TEMPLATE *def = NULL;
@@ -14558,12 +14559,15 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
       DB_AUTH auth;
       bool is_secondary_index;
 
-      error = tran_system_savepoint (SM_ADD_CONSTRAINT_SAVEPOINT_NAME);
-      if (error != NO_ERROR)
+      if (!skip_savepoint)
 	{
-	  return error;
+	  error = tran_system_savepoint (SM_ADD_CONSTRAINT_SAVEPOINT_NAME);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  set_savepoint = true;
 	}
-      set_savepoint = true;
 
       is_secondary_index = (constraint_type == DB_CONSTRAINT_INDEX || constraint_type == DB_CONSTRAINT_REVERSE_INDEX);
 
@@ -15708,7 +15712,7 @@ sm_truncate_class (MOP class_mop)
     {
       error = sm_add_constraint (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
 				 saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
-				 saved->func_index_info, saved->comment, saved->index_status);
+				 saved->func_index_info, saved->comment, saved->index_status, false);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -15720,7 +15724,7 @@ sm_truncate_class (MOP class_mop)
     {
       error = sm_add_constraint (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
 				 saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
-				 saved->func_index_info, saved->comment, saved->index_status);
+				 saved->func_index_info, saved->comment, saved->index_status, false);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
