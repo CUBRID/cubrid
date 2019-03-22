@@ -83,7 +83,7 @@ namespace cubreplication
 	      {
 		string_buffer sb;
 		curr_stream_entry->stringify (sb, stream_entry::detailed_dump);
-		er_log_debug_replication (ARG_FILE_LINE, "applier_worker_task execute:\n%s", sb.get_buffer ());
+		_er_log_debug (ARG_FILE_LINE, "applier_worker_task execute:\n%s", sb.get_buffer ());
 	      }
 
 	    for (int i = 0; i < curr_stream_entry->get_packable_entry_count_from_header (); i++)
@@ -171,8 +171,7 @@ namespace cubreplication
 	      {
 		string_buffer sb;
 		se->stringify (sb, stream_entry::short_dump);
-		er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task execute pop_entry:\n%s",
-					  sb.get_buffer ());
+		_er_log_debug (ARG_FILE_LINE, "dispatch_daemon_task execute pop_entry:\n%s", sb.get_buffer ());
 	      }
 
 	    /* TODO[replication] : on-the-fly applier & multi-threaded applier */
@@ -269,7 +268,7 @@ namespace cubreplication
       {
 	string_buffer sb;
 	entry->stringify (sb, stream_entry::short_dump);
-	er_log_debug_replication (ARG_FILE_LINE, "log_consumer push_entry:\n%s", sb.get_buffer ());
+	_er_log_debug (ARG_FILE_LINE, "log_consumer push_entry:\n%s", sb.get_buffer ());
       }
 
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
@@ -344,7 +343,7 @@ namespace cubreplication
       {
 	string_buffer sb;
 	task->stringify (sb);
-	er_log_debug_replication (ARG_FILE_LINE, "log_consumer::execute_task:\n%s", sb.get_buffer ());
+	_er_log_debug (ARG_FILE_LINE, "log_consumer::execute_task:\n%s", sb.get_buffer ());
       }
 
     cubthread::get_manager ()->push_task (m_applier_workers_pool, task);

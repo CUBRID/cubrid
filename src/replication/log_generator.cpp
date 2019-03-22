@@ -240,7 +240,7 @@ namespace cubreplication
       {
 	string_buffer sb;
 	m_stream_entry.stringify (sb, stream_entry::detailed_dump);
-	er_log_debug_replication (ARG_FILE_LINE, "log_generator::pack_stream_entry\n%s\n", sb.get_buffer ());
+	_er_log_debug (ARG_FILE_LINE, "log_generator::pack_stream_entry\n%s\n", sb.get_buffer ());
       }
 
     m_stream_entry.pack ();
