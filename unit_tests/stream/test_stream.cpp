@@ -1314,7 +1314,7 @@ namespace test_stream
     system ("mkdir test_stream_folder");
 
     cubstream::stream_file *my_stream_file =
-      new cubstream::stream_file (*my_stream, "test_stream_folder", file_size, 2);
+	    new cubstream::stream_file (*my_stream, "test_stream_folder", file_size, 2);
     my_stream_file->stop_daemon ();
 
     cubstream::stream::write_func_t writer_func;
@@ -1497,7 +1497,7 @@ namespace test_stream
     /* path is current folder */
     system ("mkdir test_stream_folder");
     cubstream::stream_file *my_stream_file =
-      new cubstream::stream_file (test_stream_for_pack, "test_stream_folder", file_size);
+	    new cubstream::stream_file (test_stream_for_pack, "test_stream_folder", file_size);
 
     //test_stream_for_pack.set_ready_pos_handler (stream_ready_notify_handler.m_notify_func);
 
@@ -1741,7 +1741,7 @@ namespace test_stream
     /* path is current folder */
     system ("mkdir test_stream_folder");
     cubstream::stream_file *my_stream_file =
-      new cubstream::stream_file (test_stream_for_read, "test_stream_folder", file_size);
+	    new cubstream::stream_file (test_stream_for_read, "test_stream_folder", file_size);
     my_stream_file->init ("test_stream_folder", stream_max_pos);
     my_stream_file->drop_volumes_to_pos (0, true);
 

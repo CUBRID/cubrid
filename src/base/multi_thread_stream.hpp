@@ -107,7 +107,7 @@ namespace cubstream
 	}
 
 	char *file_buffer;
-        size_t buffer_size;
+	size_t buffer_size;
 	cubmem::buffer_latch_read_id read_latch_page_idx;
       };
 
@@ -215,16 +215,16 @@ namespace cubstream
 
       bool need_block_reserve (const size_t reserve_amount)
       {
-        /* we need to protect:
-         * - append will run out of buffer space (would overwrite old unflushed/unrecycled data)
-         * - after reserve success, the reserve margin invalidates old data of buffer: we need to adjust
-         *   oldest buffered position ==> we need to prevent increasing oldest buffered position
-         *   beyond the recyclable position
-         */
-        return (m_append_position > m_last_recyclable_pos + m_threshold_block_reserve
-                || (m_last_committed_pos > m_oldest_buffered_position + m_trigger_flush_to_disk_size
-                    && m_oldest_buffered_position + reserve_amount
-                       + m_bip_buffer.get_reserve_margin () > m_last_recyclable_pos)) ? true : false;
+	/* we need to protect:
+	 * - append will run out of buffer space (would overwrite old unflushed/unrecycled data)
+	 * - after reserve success, the reserve margin invalidates old data of buffer: we need to adjust
+	 *   oldest buffered position ==> we need to prevent increasing oldest buffered position
+	 *   beyond the recyclable position
+	 */
+	return (m_append_position > m_last_recyclable_pos + m_threshold_block_reserve
+		|| (m_last_committed_pos > m_oldest_buffered_position + m_trigger_flush_to_disk_size
+		    && (m_oldest_buffered_position + reserve_amount + m_bip_buffer.get_reserve_margin ()
+			> m_last_recyclable_pos))) ? true : false;
       }
 
       /* fill factor : if < 1 : no need to flush or throttle the appenders ; if > 1 : need to flush and/or throttle */

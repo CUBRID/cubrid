@@ -17,8 +17,8 @@
  *
  */
 
-/* disable log generator tests 
- * since interface of log_generator changed to high-level objects, it is not possible to simulate master node state 
+/* disable log generator tests
+ * since interface of log_generator changed to high-level objects, it is not possible to simulate master node state
  */
 #if 0
 

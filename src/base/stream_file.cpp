@@ -128,7 +128,7 @@ namespace cubstream
 
 
   void stream_file::init (const std::string &path, const stream_position &start_append_pos, const size_t file_size,
-                          const int print_digits)
+			  const int print_digits)
   {
     m_stream.set_stream_file (this);
 

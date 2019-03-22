@@ -69,7 +69,7 @@ namespace cubstream
 	    this_producer_channel.m_last_sent_position = last_sent_position;
 
 	    er_log_debug (ARG_FILE_LINE, "transfer_sender_task starting : last_sent_position:%lld, rc:%d\n",
-              last_sent_position, rc);
+			  last_sent_position, rc);
 
 	    assert (max_len == sizeof (UINT64));
 
@@ -89,7 +89,7 @@ namespace cubstream
 	    int error_code = NO_ERROR;
 
 	    er_log_debug (ARG_FILE_LINE, "transfer_sender_task sending : pos: %lld, bytes: %d\n",
-              this_producer_channel.m_last_sent_position, byte_count);
+			  this_producer_channel.m_last_sent_position, byte_count);
 
 	    error_code = this_producer_channel.m_stream.read (this_producer_channel.m_last_sent_position, byte_count,
 			 this_producer_channel.m_read_action_function);
@@ -144,7 +144,7 @@ namespace cubstream
   {
     if (m_channel.send (ptr, byte_count) == NO_ERRORS)
       {
-        cubcomm::er_log_debug_buffer ("transfer_sender::read_action", ptr, byte_count);
+	cubcomm::er_log_debug_buffer ("transfer_sender::read_action", ptr, byte_count);
 
 	m_last_sent_position += byte_count;
 	return NO_ERROR;

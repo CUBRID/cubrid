@@ -145,7 +145,7 @@ namespace cubstream
       stream_file () = delete;
 
       stream_file (multi_thread_stream &stream_arg, const std::string &path,
-                   const size_t file_size = DEFAULT_VOLUME_SIZE, const int print_digits = DEFAULT_FILENAME_DIGITS)
+		   const size_t file_size = DEFAULT_VOLUME_SIZE, const int print_digits = DEFAULT_FILENAME_DIGITS)
 	: m_stream (stream_arg)
       {
 	init (path, 0, file_size, print_digits);
@@ -157,7 +157,7 @@ namespace cubstream
       };
 
       void init (const std::string &path,
-                 const stream_position &start_append_pos = 0,
+		 const stream_position &start_append_pos = 0,
 		 const size_t file_size = DEFAULT_VOLUME_SIZE,
 		 const int print_digits = DEFAULT_FILENAME_DIGITS);
 

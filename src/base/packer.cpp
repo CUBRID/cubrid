@@ -893,7 +893,7 @@ namespace cubpacking
       {
 	memcpy (stream, m_ptr, copy_length);
       }
-    
+
     m_ptr += actual_len;
     align (INT_ALIGNMENT);
   }

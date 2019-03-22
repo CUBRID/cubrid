@@ -5445,7 +5445,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
   log_clear_lob_locator_list (thread_p, tdes, true, NULL);
 
   /* TODO[replication] : this is called here to save MVCCID into log_generator/stream_entry before 
-   * clear_tdes; refactor this in context in packging */
+   * clear_tdes; refactor this in context in packaging */
   tdes->replication_log_generator.on_transaction_pre_commit ();
 
   /* clear mvccid before releasing the locks. This operation must be done before do_postpone because it stores unique
@@ -5564,7 +5564,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
   file_tempcache_drop_tran_temp_files (thread_p);
 
   /* TODO[replication] : this is called here to save MVCCID into log_generator/stream_entry before 
-   * clear_tdes; refactor this in context in packging */
+   * clear_tdes; refactor this in context in packaging */
   tdes->replication_log_generator.on_transaction_pre_abort ();
 
   if (!LSA_ISNULL (&tdes->tail_lsa))

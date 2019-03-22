@@ -33,6 +33,7 @@ void string_buffer::add_bytes (size_t len, const char *bytes)
   m_len += len;
   m_ext_block.get_ptr ()[m_len] = '\0';
 }
+
 /*
  * hex_dump : appends a buffer containing hex dump of input and optionally the ASCII content
  *

@@ -50,6 +50,7 @@ namespace cubreplication
   {
     char buf_temp_path[PATH_MAX];
     char *temp_path;
+
     temp_path = fileio_get_directory_path (buf_temp_path, boot_db_full_name ());
     path.assign (temp_path);
   }

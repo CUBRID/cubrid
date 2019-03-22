@@ -62,7 +62,7 @@ namespace cubstream
 
 	    er_log_debug (ARG_FILE_LINE, "transfer_receiver_task starting : "
 			  "m_last_received_position: %lld, rc: %d\n",
-                          this_consumer_channel.m_last_received_position, rc);
+			  this_consumer_channel.m_last_received_position, rc);
 
 	    if (rc != NO_ERRORS)
 	      {
@@ -81,7 +81,7 @@ namespace cubstream
 	    return;
 	  }
 
-        cubcomm::er_log_debug_buffer ("transfer_receiver_task receiving", this_consumer_channel.m_buffer, max_len);
+	cubcomm::er_log_debug_buffer ("transfer_receiver_task receiving", this_consumer_channel.m_buffer, max_len);
 
 	if (this_consumer_channel.m_stream.write (max_len, this_consumer_channel.m_write_action_function))
 	  {

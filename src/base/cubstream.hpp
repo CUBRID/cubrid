@@ -153,7 +153,7 @@ namespace cubstream
 
       void force_serial_data_read (const stream_position &pos)
       {
-        m_read_position = pos;
+	m_read_position = pos;
       }
   };
 

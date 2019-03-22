@@ -179,7 +179,7 @@ namespace cubcomm
   {
     if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
       {
-        string_buffer in;
+	string_buffer in;
 	string_buffer out;
 	size_t dump_size = std::min (cubcomm::MTU, buf_size);
 
