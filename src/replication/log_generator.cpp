@@ -517,6 +517,12 @@ namespace cubreplication
 	repl_obj = local_stream_entry.get_object_at (i);
 	if (repl_obj != NULL)
 	  {
+            if ((dynamic_cast<sbr_repl_entry *> (repl_obj)) != NULL)
+              {
+                /* Skip SBR, quick fix. */
+                continue;
+              }
+
 	    err_code = repl_obj->apply ();
 	    if (err_code != NO_ERROR)
 	      {

@@ -14809,8 +14809,9 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   repl_stmt.savepoint_name = NULL;
 #if !defined(NDEBUG) && defined (CS_MODE)
-  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
+  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG) && strlen (repl_stmt.stmt_text) < 2000)
     {
+      /* Debug replication statement for relatively short length. TODO - fix long length. */
       tran_get_oldest_system_savepoint (&repl_stmt.savepoint_name);
     }
 #endif
@@ -14835,7 +14836,13 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 #if !defined(NDEBUG) && defined (CS_MODE)
   if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
     {
-      db_string_free (repl_stmt.savepoint_name);
+      if (repl_stmt.savepoint_name != NULL)
+	{
+	  ws_abort_mops (false);
+	  ws_filter_dirty ();
+	  db_string_free (repl_stmt.savepoint_name);
+	}
+
       tran_free_oldest_system_savepoint ();
     }
 #endif
