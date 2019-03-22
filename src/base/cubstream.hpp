@@ -109,12 +109,12 @@ namespace cubstream
 	return m_read_position;
       }
 
-      const stream_position &get_last_committed_pos (void)
+      const stream_position &get_last_committed_pos (void) const
       {
 	return m_last_committed_pos;
       }
 
-      const stream_position get_last_recyclable_pos (void)
+      stream_position get_last_recyclable_pos (void) const
       {
 	return m_last_recyclable_pos;
       }

@@ -58,7 +58,7 @@ string_buffer::hex_dump (const char *ptr, const size_t length, const size_t line
   const char *ptr_line = ptr;
 
   this->operator() ("  0000: ");
-  for (int i = 0; i < length; i++)
+  for (size_t i = 0; i < length; i++)
     {
       this->operator() ("%02X ", (unsigned char) (*ptr++));
       if (print_ascii == true
@@ -74,7 +74,7 @@ string_buffer::hex_dump (const char *ptr, const size_t length, const size_t line
 
 	  for (ptr_print = ptr_line; ptr_print < ptr; ptr_print++)
 	    {
-	      if (*ptr_print >= 32 && *ptr_print < 128)
+	      if (*ptr_print >= 32 && (unsigned char) *ptr_print < 128)
 		{
 		  this->operator() ("%c", *ptr_print);
 		}

@@ -180,7 +180,7 @@ namespace cubreplication
       int unpack_stream_entry_header ();
       int get_packable_entry_count_from_header (void);
 
-      void stringify (string_buffer &sb, string_dump_mode mode = short_dump);
+      void stringify (string_buffer &sb, const string_dump_mode mode = short_dump);
 
       bool is_equal (const cubstream::entry<replication_object> *other);
       static size_t compute_header_size (void);
