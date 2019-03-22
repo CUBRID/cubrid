@@ -25,7 +25,7 @@
 #define _DB_JSON_HPP_
 
 #include "error_manager.h"
-#include "memory_private_allocator.hpp"
+#include "memory_reference_store.hpp"
 #include "object_representation.h"
 
 #if defined (__cplusplus)

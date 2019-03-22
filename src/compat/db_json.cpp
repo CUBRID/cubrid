@@ -96,14 +96,19 @@ typedef rapidjson::GenericArray<true, JSON_VALUE>::ConstValueIterator JSON_VALUE
 
 typedef std::function<int (const JSON_VALUE &, const JSON_PATH &, bool &)> map_func_type;
 
-void JSON_DOC_STORE::create_mutable_reference ()
+namespace cubmem
 {
-  set_mutable_reference (db_json_allocate_doc ());
-}
+  template <>
+  void JSON_DOC_STORE::create_mutable_reference ()
+  {
+    set_mutable_reference (db_json_allocate_doc ());
+  }
 
-void JSON_DOC_STORE::delete_mutable ()
-{
-  delete m_mutable_reference;
+  template <>
+  void JSON_DOC_STORE::delete_mutable ()
+  {
+    delete m_mutable_reference;
+  }
 }
 
 // class JSON_ITERATOR - virtual interface to wrap array and object iterators
@@ -1170,7 +1175,7 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
     {
       if (result.is_mutable ())
 	{
-	  result.get_mutable_reference ()->SetNull ();
+	  result.get_mutable ()->SetNull ();
 	}
       return NO_ERROR;
     }
@@ -1232,10 +1237,10 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
 	      if (!result.is_mutable ())
 		{
 		  result.create_mutable_reference ();
-		  result.get_mutable_reference ()->SetArray ();
+		  result.get_mutable ()->SetArray ();
 		}
 
-	      db_json_add_element_to_array (result.get_mutable_reference (), p);
+	      db_json_add_element_to_array (result.get_mutable (), p);
 	    }
 	}
     }
@@ -1250,7 +1255,7 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
 	      result.create_mutable_reference ();
 	    }
 
-	  result.get_mutable_reference ()->CopyFrom (*produced_array[0][0], result.get_mutable_reference ()->GetAllocator ());
+	  result.get_mutable ()->CopyFrom (*produced_array[0][0], result.get_mutable ()->GetAllocator ());
 	}
     }
 
@@ -3107,7 +3112,7 @@ db_value_to_json_doc (const DB_VALUE &db_val, bool force_copy, JSON_DOC_STORE &j
   if (db_value_is_null (&db_val))
     {
       json_doc.create_mutable_reference ();
-      db_json_make_document_null (json_doc.get_mutable_reference ());
+      db_json_make_document_null (json_doc.get_mutable ());
       return NO_ERROR;
     }
 
@@ -3166,7 +3171,7 @@ db_value_to_json_value (const DB_VALUE &db_val, JSON_DOC_STORE &json_doc)
   if (db_value_is_null (&db_val))
     {
       json_doc.create_mutable_reference ();
-      db_json_make_document_null (json_doc.get_mutable_reference ());
+      db_json_make_document_null (json_doc.get_mutable ());
       return NO_ERROR;
     }
 
@@ -3177,12 +3182,12 @@ db_value_to_json_value (const DB_VALUE &db_val, JSON_DOC_STORE &json_doc)
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
       json_doc.create_mutable_reference ();
-      db_json_set_string_to_doc (json_doc.get_mutable_reference (), db_get_string (&db_val),
+      db_json_set_string_to_doc (json_doc.get_mutable (), db_get_string (&db_val),
 				 (unsigned) db_get_string_size (&db_val));
       break;
     case DB_TYPE_ENUMERATION:
       json_doc.create_mutable_reference ();
-      db_json_set_string_to_doc (json_doc.get_mutable_reference (), db_get_enum_string (&db_val),
+      db_json_set_string_to_doc (json_doc.get_mutable (), db_get_enum_string (&db_val),
 				 (unsigned) db_get_enum_string_size (&db_val));
       break;
 

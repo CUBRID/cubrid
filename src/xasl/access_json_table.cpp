@@ -28,6 +28,7 @@
 #include "error_code.h"
 #include "error_manager.h"
 #include "memory_private_allocator.hpp"
+#include "memory_reference_store.hpp"
 #include "object_primitive.h"
 
 #include <cassert>

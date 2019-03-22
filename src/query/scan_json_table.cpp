@@ -100,8 +100,8 @@ namespace cubscan
       m_is_node_consumed = false;
       if (m_node->m_is_iterable_node)
 	{
-	  assert (db_json_get_type (m_input_doc.get_mutable_reference ()) == DB_JSON_ARRAY);
-	  db_json_set_iterator (m_node->m_iterator, *m_input_doc.get_mutable_reference ());
+	  assert (db_json_get_type (m_input_doc.get_mutable ()) == DB_JSON_ARRAY);
+	  db_json_set_iterator (m_node->m_iterator, *m_input_doc.get_mutable ());
 	}
     }
 
@@ -123,7 +123,7 @@ namespace cubscan
 	{
 	  assert (!m_node->m_is_iterable_node);
 	  // todo: is it guaranteed we do not use m_process_doc after we delete input_doc?
-	  m_process_doc = m_input_doc.get_mutable_reference ();
+	  m_process_doc = m_input_doc.get_mutable ();
 	}
 
       if (m_process_doc == NULL)
