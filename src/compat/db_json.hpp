@@ -89,7 +89,7 @@ std::size_t db_json_serialize_length (const JSON_DOC &doc);
 int db_json_deserialize (OR_BUF *buf, JSON_DOC *&doc);
 
 int db_json_insert_func (const JSON_DOC *doc_to_be_inserted, JSON_DOC &doc_destination, const char *raw_path);
-int db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_path);
+int db_json_replace_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
 int db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
 int db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *raw_path);
 int db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);

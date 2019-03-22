@@ -1705,14 +1705,14 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
  *                           (if the full path does not exist) in a JSON document with a new value.
  *
  * return                  : error code
- * new_value (in)          : the value to be set at the specified path
+ * value (in)          : the value to be set at the specified path
  * doc (in)                : json document
  * raw_path (in)           : specified path
  */
 int
-db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_path)
+db_json_replace_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
 {
-  if (new_value == NULL)
+  if (value == NULL)
     {
       // unexpected
       assert (false);
@@ -1729,7 +1729,7 @@ db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_
 
   if (p.is_root_path ())
     {
-      p.set (doc, *new_value);
+      p.set (doc, *value);
       return NO_ERROR;
     }
 
@@ -1738,28 +1738,59 @@ db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_
       return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p, &doc);
     }
 
-  if (p.get (doc) == NULL)
+  JSON_VALUE *parent_val = p.get_parent ().get (doc);
+
+  if (p.points_to_array_cell ())
     {
       if (p.is_last_token_array_index_zero ())
 	{
-	  p.get_parent ().set (doc, *new_value);
-	  return NO_ERROR;
-	}
-
-      const JSON_VALUE *parent_val = p.get_parent ().get (doc);
-      if (db_json_get_type_of_value (parent_val) == DB_JSON_OBJECT || db_json_get_type_of_value (parent_val) == DB_JSON_ARRAY)
-	{
-	  // if we have an inexistent object_key in an object or an array_index outside of the array we do a no_op
-	  return NO_ERROR;
+	  if (!parent_val->IsArray ())
+	    {
+	      // we ignore a trailing 0 array index token and we replace what we found
+	      parent_val->CopyFrom (*value, doc.GetAllocator ());
+	    }
+	  else if (parent_val->GetArray ().Size () > 0 /* check array is not empty */)
+	    {
+	      p.set (doc, *value);
+	    }
+	  else
+	    {
+	      // no_op if array is empty
+	      return NO_ERROR;
+	    }
 	}
       else
 	{
+	  if (parent_val->IsArray () && p.is_last_array_index_less_than (parent_val->GetArray ().Size ()))
+	    {
+	      p.set (doc, *value);
+	    }
+	  else
+	    {
+	      // no_op
+	      return NO_ERROR;
+	    }
+	}
+    }
+  else
+    {
+      if (!parent_val->IsObject ())
+	{
 	  return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p, &doc);
 	}
-
-      return NO_ERROR;
+      else
+	{
+	  if (p.get (doc) != NULL)
+	    {
+	      p.set (doc, *value);
+	    }
+	  else
+	    {
+	      // no_op if name does not exist in the object
+	      return NO_ERROR;
+	    }
+	}
     }
-  p.set (doc, *new_value);
 
   return NO_ERROR;
 }
