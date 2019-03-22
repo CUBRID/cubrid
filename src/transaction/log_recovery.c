@@ -1779,7 +1779,7 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
       LSA_COPY (&tdes->savept_lsa, &chkpt_one->savept_lsa);
       LSA_COPY (&tdes->tail_topresult_lsa, &chkpt_one->tail_topresult_lsa);
       LSA_COPY (&tdes->rcv.tran_start_postpone_lsa, &chkpt_one->start_postpone_lsa);
-      logtb_set_client_ids_all (&tdes->client, 0, NULL, chkpt_one->user_name, NULL, NULL, NULL, -1);
+      tdes->client.set_system_internal_with_user (chkpt_one->user_name);
       if (LOG_ISTRAN_2PC (tdes))
 	{
 	  *may_need_synch_checkpoint_2pc = true;
@@ -3646,7 +3646,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		      /*
 		       * Obtain the participant information
 		       */
-		      logtb_set_client_ids_all (&tdes->client, 0, NULL, start_2pc->user_name, NULL, NULL, NULL, -1);
+		      tdes->client.set_system_internal_with_user (start_2pc->user_name);
 		      tdes->gtrid = start_2pc->gtrid;
 
 		      num_particps = start_2pc->num_particps;
@@ -3667,7 +3667,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		      logpb_copy_from_log (thread_p, (char *) block_particps_ids, particp_id_length * num_particps,
 					   &log_lsa, log_pgptr);
 
-		      /* Initilize the coordinator information */
+		      /* Initialize the coordinator information */
 		      if (log_2pc_alloc_coord_info (tdes, num_particps, particp_id_length, block_particps_ids) == NULL)
 			{
 			  LSA_SET_NULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
@@ -3675,7 +3675,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			  break;
 			}
 
-		      /* Initilize the Acknowledgement vector to 0 since we do not know what acknowledgments have
+		      /* Initialize the acknowledgment vector to 0 since we do not know what acknowledgments have
 		       * already been received. we need to continue reading the log */
 
 		      i = sizeof (int) * tdes->coord->num_particps;

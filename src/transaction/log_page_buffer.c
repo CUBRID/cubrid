@@ -4575,11 +4575,13 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	{
 	  flush_start_time = log_get_clock_msec ();
 
-	  memset (&writer_info->last_writer_client_info, 0, sizeof (LOG_CLIENTIDS));
+          // *INDENT-OFF*
+          new (&writer_info->last_writer_client_info) clientids ();
+          // *INDENT-ON*
 
 	  writer_info->trace_last_writer = true;
 	  writer_info->last_writer_elapsed_time = 0;
-	  writer_info->last_writer_client_info.client_type = -1;
+	  writer_info->last_writer_client_info.client_type = BOOT_CLIENT_UNKNOWN;
 	}
 
       entry = writer_info->writer_list;
@@ -8125,7 +8127,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	  LSA_COPY (&chkpt_one->savept_lsa, &act_tdes->savept_lsa);
 	  LSA_COPY (&chkpt_one->tail_topresult_lsa, &act_tdes->tail_topresult_lsa);
 	  LSA_COPY (&chkpt_one->start_postpone_lsa, &act_tdes->rcv.tran_start_postpone_lsa);
-	  strncpy (chkpt_one->user_name, act_tdes->client.db_user, LOG_USERNAME_MAX);
+	  strncpy (chkpt_one->user_name, act_tdes->client.get_db_user (), LOG_USERNAME_MAX);
 	  ntrans++;
 	  if (act_tdes->topops.last >= 0 && (act_tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE))
 	    {

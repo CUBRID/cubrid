@@ -33,6 +33,7 @@
 #endif // not SERVER/SA modes
 
 #include "boot.h"
+#include "client_credentials.hpp"
 #include "config.h"
 #include "connection_globals.h"
 #include "critical_section.h"
@@ -367,19 +368,6 @@ enum LOG_PRIOR_LSA_LOCK
   LOG_PRIOR_LSA_WITH_LOCK = 1
 };
 
-typedef struct log_clientids LOG_CLIENTIDS;
-struct log_clientids		/* see BOOT_CLIENT_CREDENTIAL */
-{
-  int client_type;
-  char client_info[DB_MAX_IDENTIFIER_LENGTH + 1];
-  char db_user[LOG_USERNAME_MAX];
-  char program_name[PATH_MAX + 1];
-  char login_name[L_cuserid + 1];
-  char host_name[MAXHOSTNAMELEN + 1];
-  int process_id;
-  bool is_user_active;
-};
-
 /*
  * Flush information shared by LFT and normal transaction.
  * Transaction in commit phase has to flush all toflush array's pages.
@@ -455,7 +443,7 @@ struct logwr_info
 
   /* to measure the time spent by the last LWT delaying LFT */
   bool trace_last_writer;
-  LOG_CLIENTIDS last_writer_client_info;
+  CLIENTIDS last_writer_client_info;
   INT64 last_writer_elapsed_time;
 };
 
@@ -467,7 +455,7 @@ struct logwr_info
     PTHREAD_MUTEX_INITIALIZER,                                 \
     false, false, false, false,                                \
     /* last_writer_client_info */                              \
-    { -1, {'0'}, {'0'}, {'0'}, {'0'}, {'0'}, 0, false },       \
+    clientids (),                                              \
     0                                                          \
    }
 
@@ -980,7 +968,7 @@ struct log_tdes
   int client_id;		/* unique client id */
   int gtrid;			/* Global transaction identifier; used only if this transaction is a participant to a
 				 * global transaction and it is prepared to commit. */
-  LOG_CLIENTIDS client;		/* Client identification */
+  CLIENTIDS client;		/* Client identification */
   SYNC_RMUTEX rmutex_topop;	/* reentrant mutex to serialize system top operations */
   LOG_TOPOPS_STACK topops;	/* Active top system operations. Used for system permanent nested operations which are
 				 * independent from current transaction outcome. */
@@ -1036,6 +1024,7 @@ struct log_tdes
   bool has_deadlock_priority;
 
   bool block_global_oldest_active_until_commit;
+  bool is_user_active;
 
   LOG_RCV_TDES rcv;
 
@@ -1570,36 +1559,33 @@ extern int logtb_find_tran_index_host_pid (THREAD_ENTRY * thread_p, const char *
 #endif
 extern TRANID logtb_find_tranid (int tran_index);
 extern TRANID logtb_find_current_tranid (THREAD_ENTRY * thread_p);
-extern void logtb_set_client_ids_all (LOG_CLIENTIDS * client, int client_type, const char *client_info,
-				      const char *db_user, const char *program_name, const char *login_name,
-				      const char *host_name, int process_id);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int logtb_count_clients_with_type (THREAD_ENTRY * thread_p, int client_type);
 #endif
 extern int logtb_count_clients (THREAD_ENTRY * thread_p);
 extern int logtb_count_not_allowed_clients_in_maintenance_mode (THREAD_ENTRY * thread_p);
 extern int logtb_find_client_type (int tran_index);
-extern char *logtb_find_client_name (int tran_index);
+extern const char *logtb_find_client_name (int tran_index);
 extern void logtb_set_user_name (int tran_index, const char *client_name);
 extern void logtb_set_current_user_name (THREAD_ENTRY * thread_p, const char *client_name);
-extern char *logtb_find_client_hostname (int tran_index);
+extern const char *logtb_find_client_hostname (int tran_index);
 extern void logtb_set_current_user_active (THREAD_ENTRY * thread_p, bool is_user_active);
-extern int logtb_find_client_name_host_pid (int tran_index, char **client_prog_name, char **client_user_name,
-					    char **client_host_name, int *client_pid);
+extern int logtb_find_client_name_host_pid (int tran_index, const char **client_prog_name,
+					    const char **client_user_name, const char **client_host_name,
+					    int *client_pid);
 #if !defined(NDEBUG)
 extern void logpb_debug_check_log_page (THREAD_ENTRY * thread_p, void *log_pgptr_ptr);
 #endif
 #if defined (SERVER_MODE)
-extern int logtb_find_client_tran_name_host_pid (int &tran_index, char **client_prog_name, char **client_user_name,
-						 char **client_host_name, int *client_pid);
+extern int logtb_find_client_tran_name_host_pid (int &tran_index, const char **client_prog_name,
+						 const char **client_user_name, const char **client_host_name,
+						 int *client_pid);
 #endif // SERVER_MODE
-extern int logtb_find_current_client_name_host_pid (char **client_prog_name, char **client_user_name,
-						    char **client_host_name, int *client_pid);
-extern int logtb_get_client_ids (int tran_index, LOG_CLIENTIDS * client_info);
+extern int logtb_get_client_ids (int tran_index, CLIENTIDS * client_info);
 
 extern int logtb_find_current_client_type (THREAD_ENTRY * thread_p);
-extern char *logtb_find_current_client_name (THREAD_ENTRY * thread_p);
-extern char *logtb_find_current_client_hostname (THREAD_ENTRY * thread_p);
+extern const char *logtb_find_current_client_name (THREAD_ENTRY * thread_p);
+extern const char *logtb_find_current_client_hostname (THREAD_ENTRY * thread_p);
 extern LOG_LSA *logtb_find_current_tran_lsa (THREAD_ENTRY * thread_p);
 extern TRAN_STATE logtb_find_state (int tran_index);
 extern int logtb_find_wait_msecs (int tran_index);

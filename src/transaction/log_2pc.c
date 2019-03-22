@@ -1468,7 +1468,7 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 
   prepared = (LOG_REC_2PC_PREPCOMMIT *) node->data_header;
 
-  memcpy (prepared->user_name, tdes->client.db_user, DB_MAX_USER_LENGTH);
+  memcpy (prepared->user_name, tdes->client.get_db_user (), DB_MAX_USER_LENGTH);
   prepared->gtrid = gtrid;
   prepared->gtrinfo_length = tdes->gtrinfo.info_length;
   prepared->num_object_locks = acq_locks.nobj_locks;
@@ -1527,7 +1527,7 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, LOG_TDES * tde
 
   prepared = (LOG_REC_2PC_PREPCOMMIT *) ((char *) log_page_p->area + log_lsa->offset);
 
-  logtb_set_client_ids_all (&tdes->client, 0, NULL, prepared->user_name, NULL, NULL, NULL, -1);
+  tdes->client.set_system_internal_with_user (prepared->user_name);
 
   tdes->gtrid = prepared->gtrid;
   tdes->gtrinfo.info_length = prepared->gtrinfo_length;
@@ -1678,7 +1678,7 @@ log_2pc_append_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   start_2pc = (LOG_REC_2PC_START *) node->data_header;
 
-  memcpy (start_2pc->user_name, tdes->client.db_user, DB_MAX_USER_LENGTH);
+  memcpy (start_2pc->user_name, tdes->client.get_db_user (), DB_MAX_USER_LENGTH);
   start_2pc->gtrid = tdes->gtrid;
   start_2pc->num_particps = tdes->coord->num_particps;
   start_2pc->particp_id_length = tdes->coord->particp_id_length;
@@ -1691,7 +1691,7 @@ log_2pc_append_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
    * 2PC in the event of a crash. This is needed since the participants do
    * not know about the coordinator or other participants. Participants will
    * always wait for the coordinators. We do not have a full 2PC in which
-   * particpants know about each other and the coordiantor.
+   * participants know about each other and the coordinator.
    */
   tdes->state = TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES;
   logpb_flush_pages (thread_p, &start_lsa);
@@ -1839,9 +1839,9 @@ void
 log_2pc_crash_participant (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
-  char *client_prog_name;	/* Client program name for transaction */
-  char *client_user_name;	/* Client user name for transaction */
-  char *client_host_name;	/* Client host for transaction */
+  const char *client_prog_name;	/* Client program name for transaction */
+  const char *client_user_name;	/* Client user name for transaction */
+  const char *client_host_name;	/* Client host for transaction */
   int client_pid;		/* Client process identifier for transaction */
   int tran_index;
 
@@ -2080,7 +2080,7 @@ log_2pc_recovery_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * log_
   /*
    * Obtain the participant information for this coordinator
    */
-  logtb_set_client_ids_all (&tdes->client, 0, NULL, start_2pc->user_name, NULL, NULL, NULL, -1);
+  tdes->client.set_system_internal_with_user (start_2pc->user_name);
   tdes->gtrid = start_2pc->gtrid;
 
   num_particps = start_2pc->num_particps;

@@ -1957,7 +1957,7 @@ login_user (THREAD_ENTRY * thread_p, const char *username)
   tdes = LOG_FIND_TDES (tran_index);
   if (tdes != NULL)
     {
-      strncpy (tdes->client.db_user, username, DB_MAX_USER_LENGTH);
+      tdes->client.set_user (username);
     }
 
   return NO_ERROR;

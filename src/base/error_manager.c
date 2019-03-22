@@ -1697,9 +1697,9 @@ er_log (int err_id)
 
 #if defined (SERVER_MODE)
   {
-    char *prog_name = NULL;
-    char *user_name = NULL;
-    char *host_name = NULL;
+    const char *prog_name = NULL;
+    const char *user_name = NULL;
+    const char *host_name = NULL;
     int pid = 0;
 
     if (logtb_find_client_tran_name_host_pid (tran_index, &prog_name, &user_name, &host_name, &pid) == NO_ERROR)

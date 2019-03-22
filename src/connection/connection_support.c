@@ -225,7 +225,7 @@ css_default_server_timeout_fn (void)
 static int
 css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name, const char **client_host_name, int *client_pid)
 {
-  char client_prog_name[PATH_MAX];
+  const char *client_prog_name;
   CSS_CONN_ENTRY *conn;
   int error, tran_index = -1;
 
@@ -233,9 +233,8 @@ css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name, const char *
 
   if (conn != NULL && conn->get_tran_index () != -1)
     {
-      error = logtb_find_client_name_host_pid (conn->get_tran_index (), (char **) &client_prog_name,
-					       (char **) client_user_name, (char **) client_host_name,
-					       (int *) client_pid);
+      error = logtb_find_client_name_host_pid (conn->get_tran_index (), &client_prog_name, client_user_name,
+					       client_host_name, client_pid);
       if (error == NO_ERROR)
 	{
 	  tran_index = conn->get_tran_index ();

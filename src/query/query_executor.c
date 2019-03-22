@@ -11092,7 +11092,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	    tdes = LOG_FIND_TDES (tran_index);
 	    if (tdes)
 	      {
-		size_t len = strlen (tdes->client.db_user) + strlen (tdes->client.host_name) + 2;
+		size_t len = tdes->client.db_user.length () + tdes->client.host_name.length () + 2;
 		temp = (char *) db_private_alloc (thread_p, len);
 		if (temp == NULL)
 		  {
@@ -11101,9 +11101,9 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  }
 		else
 		  {
-		    strcpy (temp, tdes->client.db_user);
+		    strcpy (temp, tdes->client.get_db_user ());
 		    strcat (temp, "@");
-		    strcat (temp, tdes->client.host_name);
+		    strcat (temp, tdes->client.get_host_name ());
 		  }
 	      }
 
@@ -11121,7 +11121,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	    tdes = LOG_FIND_TDES (tran_index);
 	    if (tdes != NULL)
 	      {
-		temp = tdes->client.db_user;
+		temp = CONST_CAST (char *, tdes->client.get_db_user ());	// will not be modified
 	      }
 	    db_make_string (&insert_val, temp);
 	  }
@@ -14608,7 +14608,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
   if (tdes != NULL)
     {
       client_id = tdes->client_id;
-      db_user = tdes->client.db_user;
+      db_user = tdes->client.get_db_user ();
     }
 #endif /* ENABLE_SYSTEMTAP */
 

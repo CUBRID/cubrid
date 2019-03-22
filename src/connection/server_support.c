@@ -2420,7 +2420,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	      tdes = log_Gl.trantable.all_tdes[i];
 	      if (tdes != NULL && tdes->trid != NULL_TRANID)
 		{
-		  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (tdes->client.host_name, boot_Host_name,
+		  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (tdes->client.get_host_name (), boot_Host_name,
 							       tdes->client.client_type))
 		    {
 		      logtb_slam_transaction (thread_p, tdes->tran_index);

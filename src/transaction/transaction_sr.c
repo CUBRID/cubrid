@@ -143,9 +143,9 @@ tran_server_unilaterally_abort (THREAD_ENTRY * thread_p, int tran_index)
 {
   TRAN_STATE state;
   int save_tran_index;
-  char *client_prog_name;	/* Client user name for transaction */
-  char *client_user_name;	/* Client user name for transaction */
-  char *client_host_name;	/* Client host for transaction */
+  const char *client_prog_name;	/* Client user name for transaction */
+  const char *client_user_name;	/* Client user name for transaction */
+  const char *client_host_name;	/* Client host for transaction */
   int client_pid;		/* Client process identifier for transaction */
 
   if (thread_p == NULL)
@@ -706,7 +706,7 @@ bool
 xtran_should_connection_reset (THREAD_ENTRY * thread_p, bool has_updated)
 {
   int client_type;
-  char *hostname;
+  const char *hostname;
   HA_SERVER_STATE ha_state;
   bool should_conn_reset = false;
 

@@ -24,6 +24,8 @@
 #ifndef _ES_COMMON_H_
 #define _ES_COMMON_H_
 
+#include "system.h"
+
 typedef enum
 {
   ES_NONE = -1,
