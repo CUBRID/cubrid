@@ -184,7 +184,7 @@ create_child_process (const char *const argv[], int wait_flag, check_funct_t che
 		      return 1;
 		    }
 		  continue;
-		}o
+		}
 	      else
 		{
 		  break;
