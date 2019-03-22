@@ -1393,6 +1393,8 @@ css_return_entry_of_server (char *name_p, const size_t name_len, SOCKET_QUEUE_EN
 {
   SOCKET_QUEUE_ENTRY *p;
 
+  assert (name_len >= 0);
+
   if (name_p == NULL)
     {
       return NULL;
