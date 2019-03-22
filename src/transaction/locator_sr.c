@@ -60,6 +60,7 @@
 #include "log_generator.hpp"
 #include "process_util.h"
 #include "environment_variable.h"
+#include "utility.h"
 
 /* TODO : remove */
 extern bool catcls_Enable;
@@ -14247,7 +14248,7 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
     NULL
   };
 
-  envvar_bindir_file (path, PATH_MAX, "ddl_proxy_client");
+  envvar_bindir_file (path, PATH_MAX, UTIL_DDL_PROXY_CLIENT);
 
   error = create_child_process (ddl_argv, 1, check_interrupt_callback, thread_p, NULL, NULL, NULL, &exit_status);
   if (error != NO_ERROR)
