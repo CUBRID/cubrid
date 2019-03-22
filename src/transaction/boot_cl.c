@@ -330,7 +330,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   pc_init ();
 #endif /* WINDOWS */
 
-  /* 
+  /*
    * initialize language parameters  */
   if (lang_init () != NO_ERROR)
     {
@@ -521,7 +521,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
       client_credential->host_name = boot_get_host_name ();
     }
 
-  /* 
+  /*
    * Initialize the dynamic loader. Don't care about failures. If dynamic
    * loader fails, methods will fail when they are invoked
    */
@@ -629,7 +629,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 		}
 	      if (error_code == NO_ERROR)
 		{
-		  /* 
+		  /*
 		   * mark all classes created during the initialization as "system"
 		   * classes,
 		   */
@@ -969,7 +969,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
   client_credential->process_id = getpid ();
 
-  /* 
+  /*
    * Initialize the dynamic loader. Don't care about failures. If dynamic
    * loader fails, methods will fail when they are invoked
    */
@@ -1185,7 +1185,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto error;
     }
 
-  /* 
+  /*
    * At this moment, we should use the default isolation level and wait
    * timeout, since the client fetches objects during the restart process.
    * This values are reset at a later point, once the client has been fully
@@ -1313,7 +1313,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   /* Does not care if was committed/aborted .. */
   (void) tran_commit (false);
 
-  /* 
+  /*
    * If there is a need to change the isolation level and the lock wait,
    * do it at this moment
    */
@@ -1476,7 +1476,7 @@ boot_shutdown_client (bool is_er_final, BOOT_CLIENT_TERMINATION_MODE termination
 		}
 	    }
 	}
-      /* 
+      /*
        * Make sure that we are still up. For example, if the server died, we do
        * not need to call the following stuff any longer.
        */
@@ -1558,7 +1558,7 @@ boot_donot_shutdown_client_at_exit (void)
 void
 boot_server_die_or_changed (void)
 {
-  /* 
+  /*
    * If the client is restarted, abort the active transaction in the client and
    * terminate the client modules
    */
@@ -1832,7 +1832,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
 
   if (check_capabilities == true && cap_error == true)
     {
-      /* 
+      /*
        * There'a a live host which has cause handshake error,
        * so adjust the return value
        */
@@ -5760,7 +5760,7 @@ boot_set_server_session_key (const char *key)
 
 #if defined(CS_MODE)
 /*
- * boot_check_timezone_checksum () - checks that client timezone library is 
+ * boot_check_timezone_checksum () - checks that client timezone library is
  *	                             compatible with server timezone library
  *
  *  return : error code

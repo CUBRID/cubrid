@@ -15343,8 +15343,8 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
 		  cycle = 0;
 		  /* we found a qualified tuple; now check for cycle */
-		  if (qexec_check_for_cycle
-		      (thread_p, xasl->outptr_list, tuple_rec.tpl, &type_list, listfile0, &cycle) != NO_ERROR)
+		  if (qexec_check_for_cycle (thread_p, xasl->outptr_list, tuple_rec.tpl, &type_list, listfile0, &cycle)
+		      != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
@@ -15496,8 +15496,8 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		}
 
 	      tuple_rec = temp_tuple_rec;
-	      if (qdata_copy_valptr_list_to_tuple
-		  (thread_p, connect_by->prior_outptr_list, &xasl_state->vd, &tuple_rec) != NO_ERROR)
+	      if (qdata_copy_valptr_list_to_tuple (thread_p, connect_by->prior_outptr_list, &xasl_state->vd, &tuple_rec)
+		  != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -17139,8 +17139,8 @@ qexec_update_connect_by_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
   else
     {
       /* create tuple only in input_list_id */
-      if (qexec_insert_tuple_into_list
-	  (thread_p, connect_by->input_list_id, xasl->outptr_list, &xasl_state->vd, tplrec) != NO_ERROR)
+      if (qexec_insert_tuple_into_list (thread_p, connect_by->input_list_id, xasl->outptr_list, &xasl_state->vd, tplrec)
+	  != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -18771,9 +18771,8 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	  if (agg_p->accumulator.value != NULL && agg_p->accumulator_domain.value_dom != NULL
 	      && DB_VALUE_TYPE (agg_p->accumulator.value) == DB_TYPE_NULL)
 	    {
-	      if (db_value_domain_init
-		  (agg_p->accumulator.value, TP_DOMAIN_TYPE (agg_p->accumulator_domain.value_dom),
-		   DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
+	      if (db_value_domain_init (agg_p->accumulator.value, TP_DOMAIN_TYPE (agg_p->accumulator_domain.value_dom),
+					DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
 		{
 		  return ER_FAILED;
 		}
@@ -21959,8 +21958,8 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  db_make_int (out_values[3], function_index_pos + 1);
 
 	  /* Cardinality */
-	  if (catalog_get_cardinality
-	      (thread_p, class_oid, disk_repr_p, &index->btid, function_index_pos, &cardinality) != NO_ERROR)
+	  if (catalog_get_cardinality (thread_p, class_oid, disk_repr_p, &index->btid, function_index_pos, &cardinality)
+	      != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }

@@ -157,8 +157,8 @@ namespace cubreplication
     int start_index = 0;
     int i, cnt_entries;
 
-    assert (count_entries() < INT_MAX);
-    cnt_entries = (int)count_entries();
+    assert (count_entries () < INT_MAX);
+    cnt_entries = (int) count_entries ();
     for (i = cnt_entries - 1; i >= 0; i--)
       {
 	repl_obj = get_object_at (i);
@@ -179,7 +179,7 @@ namespace cubreplication
     /* Remove it from repl_objects_after_lsa. */
     for (i = 0; i < cnt_entries - start_index; i++)
       {
-	m_packable_entries.pop_back();
+	m_packable_entries.pop_back ();
       }
   }
 
@@ -187,14 +187,14 @@ namespace cubreplication
   {
     if (LSA_ISNULL (&start_lsa))
       {
-	for (unsigned int i = 0; i < m_packable_entries.size(); i++)
+	for (unsigned int i = 0; i < m_packable_entries.size (); i++)
 	  {
 	    if (m_packable_entries[i] != NULL)
 	      {
 		delete (m_packable_entries[i]);
 	      }
 	  }
-	m_packable_entries.clear();
+	m_packable_entries.clear ();
       }
     else
       {
@@ -202,7 +202,7 @@ namespace cubreplication
 	LOG_LSA repl_lsa_stamp;
 	int start_index = 0;
 
-	for (int i = (int) (count_entries() - 1); i >= 0; i--)
+	for (int i = (int) (count_entries () - 1); i >= 0; i--)
 	  {
 	    repl_obj = m_packable_entries[i];
 	    repl_obj->get_lsa_stamp (repl_lsa_stamp);
@@ -214,7 +214,7 @@ namespace cubreplication
 	      }
 	  }
 
-	for (unsigned int i = start_index; i < m_packable_entries.size(); i++)
+	for (unsigned int i = start_index; i < m_packable_entries.size (); i++)
 	  {
 	    if (m_packable_entries[i] != NULL)
 	      {
@@ -222,7 +222,7 @@ namespace cubreplication
 	      }
 	  }
 
-	m_packable_entries.erase (m_packable_entries.begin() + start_index, m_packable_entries.end());
+	m_packable_entries.erase (m_packable_entries.begin () + start_index, m_packable_entries.end ());
       }
   }
 
