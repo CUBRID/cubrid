@@ -50,8 +50,8 @@ int main (int argc, char **argv)
 
   (void) create_child_process (ddl_argv,
 			       1,
-    NULL,
-    NULL,
+			       NULL,
+			       NULL,
 			       NULL,
 			       NULL,
 			       NULL,
@@ -67,8 +67,8 @@ int main (int argc, char **argv)
   ddl_argv[4] = "insert into t1 values (1); insert into t1 values (2)";
   (void) create_child_process (ddl_argv,
 			       1,
-    NULL,
-    NULL,
+			       NULL,
+			       NULL,
 			       NULL,
 			       NULL,
 			       NULL,

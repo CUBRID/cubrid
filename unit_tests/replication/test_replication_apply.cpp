@@ -31,61 +31,61 @@ namespace test_replication_apply
   const char *test_db_name = "test_basic";
 
   void start_server_func (void)
-    {
-      net_server_start (test_db_name);
-    }
-
-class test_sbr_task : public cubthread::entry_task
-{
-public:
-  test_sbr_task (const char *statement)
-  : m_statement (statement)
   {
+    net_server_start (test_db_name);
   }
 
-  void
-  execute (context_type &thread_ref)
+  class test_sbr_task : public cubthread::entry_task
   {
-    int error = NO_ERROR;
-    error = locator_repl_start_tran (&thread_ref);
-    if (error != NO_ERROR)
+    public:
+      test_sbr_task (const char *statement)
+	: m_statement (statement)
       {
-        return;
       }
-    error = locator_repl_apply_sbr (&thread_ref, NULL, NULL, m_statement.c_str ());
 
-    locator_repl_end_tran (&thread_ref, (error == NO_ERROR) ? true : false);
-  }
-
-private:
-  std::string m_statement;
-};
-
-class test_sbr_task_abort : public cubthread::entry_task
-{
-public:
-  test_sbr_task_abort (const char *statement)
-  : m_statement (statement)
-  {
-  }
-
-  void
-  execute (context_type &thread_ref)
-  {
-    int error = NO_ERROR;
-    error = locator_repl_start_tran (&thread_ref);
-    if (error != NO_ERROR)
+      void
+      execute (context_type &thread_ref)
       {
-        return;
+	int error = NO_ERROR;
+	error = locator_repl_start_tran (&thread_ref);
+	if (error != NO_ERROR)
+	  {
+	    return;
+	  }
+	error = locator_repl_apply_sbr (&thread_ref, NULL, NULL, m_statement.c_str ());
+
+	locator_repl_end_tran (&thread_ref, (error == NO_ERROR) ? true : false);
       }
-    error = locator_repl_apply_sbr (&thread_ref, NULL, NULL, m_statement.c_str ());
 
-    locator_repl_end_tran (&thread_ref, false);
-  }
+    private:
+      std::string m_statement;
+  };
 
-private:
-  std::string m_statement;
-};
+  class test_sbr_task_abort : public cubthread::entry_task
+  {
+    public:
+      test_sbr_task_abort (const char *statement)
+	: m_statement (statement)
+      {
+      }
+
+      void
+      execute (context_type &thread_ref)
+      {
+	int error = NO_ERROR;
+	error = locator_repl_start_tran (&thread_ref);
+	if (error != NO_ERROR)
+	  {
+	    return;
+	  }
+	error = locator_repl_apply_sbr (&thread_ref, NULL, NULL, m_statement.c_str ());
+
+	locator_repl_end_tran (&thread_ref, false);
+      }
+
+    private:
+      std::string m_statement;
+  };
 
   int test_apply_sbr_internal (double wait_msec_before_shutdown)
   {
@@ -133,7 +133,7 @@ private:
 
     thread_sleep (wait_msec_before_shutdown);
 
-    /* to stop cub_master, which stops the cub_server loop */    
+    /* to stop cub_master, which stops the cub_server loop */
     strcpy (command, "cubrid service stop");
     res = system (command);
     assert (res != -1);
@@ -143,15 +143,15 @@ private:
     return res != -1;
   }
 
- 
+
   int test_apply_sbr (void)
-    {
-      int res = test_apply_sbr_internal (1);
+  {
+    int res = test_apply_sbr_internal (1);
 
-      return res;
-     
-    }
+    return res;
 
- 
+  }
+
+
 
 }

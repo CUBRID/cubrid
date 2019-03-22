@@ -35,24 +35,24 @@
 namespace cubreplication
 {
   static const char *repl_entry_type_str[] = { "update", "insert", "delete" };
- 
+
   static LC_COPYAREA_OPERATION
   op_type_from_repl_type_and_prunning (repl_entry_type repl_type)
   {
-    assert(repl_type == REPL_UPDATE || repl_type == LC_FLUSH_INSERT || LC_FLUSH_DELETE);
+    assert (repl_type == REPL_UPDATE || repl_type == LC_FLUSH_INSERT || LC_FLUSH_DELETE);
     switch (repl_type)
       {
-        case REPL_UPDATE:
-          return LC_FLUSH_UPDATE;         
+      case REPL_UPDATE:
+	return LC_FLUSH_UPDATE;
 
-        case REPL_INSERT:
-          return LC_FLUSH_INSERT;          
+      case REPL_INSERT:
+	return LC_FLUSH_INSERT;
 
-        case REPL_DELETE:
-          return LC_FLUSH_DELETE;
+      case REPL_DELETE:
+	return LC_FLUSH_DELETE;
 
-        default:
-          assert (false);
+      default:
+	assert (false);
       }
 
     return LC_FETCH;
@@ -84,7 +84,7 @@ namespace cubreplication
   }
 
   single_row_repl_entry::single_row_repl_entry (const repl_entry_type type, const char *class_name, LOG_LSA &lsa_stamp)
-    : replication_object(lsa_stamp),
+    : replication_object (lsa_stamp),
       m_type (type),
       m_class_name (class_name)
   {
@@ -97,7 +97,7 @@ namespace cubreplication
 
     if (DB_IS_NULL (&m_key_value))
       {
-        return;
+	return;
       }
 
     cubthread::entry *my_thread = thread_get_thread_entry_info ();
@@ -123,7 +123,7 @@ namespace cubreplication
     std::vector <DB_VALUE> dummy_val_vector;
 
     err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
-                                  dummy_int_vector, dummy_val_vector, NULL);
+				  dummy_int_vector, dummy_val_vector, NULL);
 #endif
     return err;
   }
@@ -151,7 +151,7 @@ namespace cubreplication
     save_heapid = db_change_private_heap (NULL, 0);
     pr_clone_value (&db_val, &m_key_value);
     (void) db_change_private_heap (NULL, save_heapid);
-  }  
+  }
 
   std::size_t
   single_row_repl_entry::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
@@ -206,14 +206,14 @@ namespace cubreplication
 
     db_private_free (NULL, key_to_string);
   }
-  
+
   /////////////////////////////////
   sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user, const char *sys_prm_ctx, LOG_LSA &lsa_stamp)
     : replication_object (lsa_stamp),
       m_statement (statement),
       m_db_user (user),
       m_sys_prm_context (sys_prm_ctx ? sys_prm_ctx : "")
-  {    
+  {
   }
 
   int
@@ -223,8 +223,8 @@ namespace cubreplication
 #if defined (SERVER_MODE)
     cubthread::entry &my_thread = cubthread::get_entry ();
     err = locator_repl_apply_sbr (&my_thread, m_db_user.c_str (),
-                                  m_sys_prm_context.empty () ? NULL : m_sys_prm_context.c_str (),
-                                  m_statement.c_str ());
+				  m_sys_prm_context.empty () ? NULL : m_sys_prm_context.c_str (),
+				  m_statement.c_str ());
 #endif
     return err;
   }
@@ -235,9 +235,9 @@ namespace cubreplication
     const sbr_repl_entry *other_t = dynamic_cast<const sbr_repl_entry *> (other);
 
     if (other_t == NULL
-        || m_statement != other_t->m_statement
-        || m_db_user != other_t->m_db_user
-        || m_sys_prm_context != other_t->m_sys_prm_context)
+	|| m_statement != other_t->m_statement
+	|| m_db_user != other_t->m_db_user
+	|| m_sys_prm_context != other_t->m_sys_prm_context)
       {
 	return false;
       }
@@ -333,14 +333,14 @@ namespace cubreplication
     cubthread::entry &my_thread = cubthread::get_entry ();
 
     err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
-                                  m_changed_attributes, m_new_values, NULL);
+				  m_changed_attributes, m_new_values, NULL);
 #endif
     return err;
   }
 
   void
   changed_attrs_row_repl_entry::pack (cubpacking::packer &serializator) const
-  {    
+  {
     serializator.pack_int (changed_attrs_row_repl_entry::PACKING_ID);
     single_row_repl_entry::pack (serializator);
     serializator.pack_int_vector (m_changed_attributes);
@@ -471,7 +471,7 @@ namespace cubreplication
   {
     if (compare_inst_oid (inst_oid))
       {
-        return true;
+	return true;
       }
 
     return false;
@@ -490,15 +490,15 @@ namespace cubreplication
     int err = NO_ERROR;
 #if defined (SERVER_MODE)
     assert (m_type != REPL_DELETE);
-    
+
     LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type);
     cubthread::entry &my_thread = cubthread::get_entry ();
 
-    std::vector <int> dummy_int_vector;
-    std::vector <DB_VALUE> dummy_val_vector;
+    std::vector<int> dummy_int_vector;
+    std::vector<DB_VALUE> dummy_val_vector;
 
     err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
-                                  dummy_int_vector, dummy_val_vector, &m_rec_des);
+				  dummy_int_vector, dummy_val_vector, &m_rec_des);
 #endif
     return err;
   }
@@ -522,7 +522,7 @@ namespace cubreplication
     (void) single_row_repl_entry::unpack (deserializator);
 
     m_rec_des.unpack (deserializator);
-      }
+  }
 
   std::size_t
   rec_des_row_repl_entry::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
@@ -574,7 +574,8 @@ namespace cubreplication
     return true;
   }
 
-  rec_des_row_repl_entry::rec_des_row_repl_entry (repl_entry_type type, const char *class_name, const RECDES &rec_des, LOG_LSA &lsa_stamp)
+  rec_des_row_repl_entry::rec_des_row_repl_entry (repl_entry_type type, const char *class_name, const RECDES &rec_des,
+      LOG_LSA &lsa_stamp)
     : single_row_repl_entry (type, class_name, lsa_stamp)
   {
     m_rec_des.length = rec_des.length;
