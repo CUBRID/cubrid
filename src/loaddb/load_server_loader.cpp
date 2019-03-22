@@ -306,12 +306,13 @@ namespace cubload
         if (!is_syntax_check_only)
           {
 	    m_error_handler.on_failure ();
-	    return;
           }
         else
           {
-            m_error_handler.on_error_with_line (LOADDB_MSG_SYNTAX_ERR);
+            /*m_error_handler.on_error (LOADDB_MSG_SYNTAX_ERR, m_driver->get_scanner().lineno(),
+              m_driver->get_scanner().YYText());*/
           }
+        return;
       }
 
     for (constant_type *c = cons; c != NULL; c = c->next, attr_index++)
@@ -322,12 +323,13 @@ namespace cubload
 	    if (!is_syntax_check_only)
               {
 	        m_error_handler.on_failure ();
-	        return;
               }
             else
               {
-                m_error_handler.on_error_with_line (LOADDB_MSG_SYNTAX_ERR);
+                /*m_error_handler.on_error (LOADDB_MSG_SYNTAX_ERR, m_driver->get_scanner().lineno(),
+                  m_driver->get_scanner().YYText());*/
               }
+            return;
 	  }
 
 	const attribute &attr = m_class_entry->get_attribute (attr_index);
@@ -337,12 +339,14 @@ namespace cubload
 	    if (!is_syntax_check_only)
               {
 	        m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
-	        return;
               }
             else
               {
-                m_error_handler.on_error_with_line (LOADDB_MSG_SYNTAX_ERR);
+                m_error_handler.on_error (LOADDB_MSG_SYNTAX_ERR, m_driver->get_scanner().lineno(),
+                  m_driver->get_scanner().YYText());
               }
+
+            return;
 	  }
 
 	db_value &db_val = get_attribute_db_value (attr_index);
@@ -356,12 +360,13 @@ namespace cubload
 	if (!is_syntax_check_only)
           {
 	    m_error_handler.on_failure (LOADDB_MSG_LOAD_FAIL);
-	    return;
           }
         else
           {
-            m_error_handler.on_error_with_line (LOADDB_MSG_SYNTAX_ERR);
+            /*m_error_handler.on_error (LOADDB_MSG_SYNTAX_ERR, m_driver->get_scanner().lineno(),
+              m_driver->get_scanner().YYText());*/
           }
+        return;
       }
   }
 

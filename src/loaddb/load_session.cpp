@@ -80,6 +80,8 @@ namespace cubload
     std::istringstream iss (batch_.get_content ());
     int parser_result = driver->parse (iss, batch_.get_line_offset ());
 
+    driver->get_object_loader().destroy();
+
     return parser_result == 0;
   }
 
@@ -188,9 +190,9 @@ namespace cubload
 	driver *driver = thread_ref.m_loaddb_driver;
 	bool parser_result = invoke_parser (driver, m_batch);
 
-	if (m_session.is_failed () || !parser_result || er_has_error ())
+	if (m_session.is_failed () || ((!m_session.get_args().syntax_check) && (!parser_result || er_has_error () )))
 	  {
-	    // if a batch transaction was aborted then abort entire loaddb session
+	    // if a batch transaction was aborted and syntax only is not enabled then abort entire loaddb session
 	    m_session.fail ();
 
 	    xtran_server_abort (&thread_ref);
@@ -515,6 +517,10 @@ namespace cubload
     stats_ = m_stats;
 
     // since client periodically fetches the stats, clear error_message in order not to send twice same message
-    m_stats.error_message.clear ();
+    // However, for syntax checking we do not clear the messages since we throw the errors at the end
+    if (!m_args.syntax_check)
+      {
+        m_stats.error_message.clear ();
+      }
   }
 } // namespace cubload
