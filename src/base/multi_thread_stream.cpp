@@ -462,7 +462,6 @@ namespace cubstream
 
 	assert (m_oldest_buffered_position <= local_last_recyclable);
 	assert (local_last_recyclable <= m_last_recyclable_pos);
-	assert (m_stream_file == NULL || m_stream_file->get_max_available_from_pos (m_oldest_buffered_position) >= 0);
       }
 
     /* set pointer under mutex lock, a "commit" call may collapse up to position of this slot */
@@ -614,7 +613,6 @@ namespace cubstream
 
     m_oldest_buffered_position = m_last_committed_pos - total_in_buffer;
     assert (m_oldest_buffered_position <= m_last_recyclable_pos);
-    assert (m_stream_file == NULL || m_stream_file->get_max_available_from_pos (m_oldest_buffered_position) >= 0);
 
     if (req_start_pos < m_oldest_buffered_position)
       {

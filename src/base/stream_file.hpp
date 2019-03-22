@@ -180,6 +180,7 @@ namespace cubstream
 
       size_t get_max_available_from_pos (const stream_position &pos)
       {
+        assert (m_append_position >= pos);
 	if (m_append_position > pos)
 	  {
 	    return m_append_position - pos;
