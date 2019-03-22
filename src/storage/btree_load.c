@@ -35,6 +35,7 @@
 #include "dbtype.h"
 #include "external_sort.h"
 #include "heap_file.h"
+#include "log_manager.h"
 #include "memory_private_allocator.hpp"
 #include "mvcc.h"
 #include "object_primitive.h"
@@ -1096,9 +1097,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       /* index was not loaded and xbtree_add_index was called instead. we have nothing to log here. */
     }
 
-  LOG_CS_ENTER (thread_p);
-  logpb_flush_pages_direct (thread_p);
-  LOG_CS_EXIT (thread_p);
+  logpb_force_flush_pages (thread_p);
 
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
@@ -4731,9 +4730,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
       list_btid = NULL;
     }
 
-  LOG_CS_ENTER (thread_p);
-  logpb_flush_pages_direct (thread_p);
-  LOG_CS_EXIT (thread_p);
+  logpb_force_flush_pages (thread_p);
 
   /* TODO: Is this all right? */
   /* Invalidate snapshot. */

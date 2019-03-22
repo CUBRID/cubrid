@@ -84,6 +84,7 @@
 #include "thread_entry.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
+#include "vacuum.h"
 #include "xasl_cache.h"
 
 #include "dbtype.h"
@@ -10762,4 +10763,88 @@ logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, vo
 					       false);
 
   return error_code;
+}
+
+//
+// log critical section
+//
+
+void
+LOG_CS_ENTER (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  if (csect_enter (thread_p, CSECT_LOG, INF_WAIT) != NO_ERROR)
+    {
+      assert (false);
+    }
+#endif
+}
+
+void
+LOG_CS_ENTER_READ_MODE (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  if (csect_enter_as_reader (thread_p, CSECT_LOG, INF_WAIT) != NO_ERROR)
+    {
+      assert (false);
+    }
+#endif
+}
+
+void
+LOG_CS_EXIT (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  if (csect_exit (thread_p, CSECT_LOG) != NO_ERROR)
+    {
+      assert (false);
+    }
+#endif
+}
+
+void
+LOG_CS_DEMOTE (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  if (csect_demote (thread_p, CSECT_LOG, INF_WAIT) != NO_ERROR)
+    {
+      assert (false);
+    }
+#endif
+}
+
+void
+LOG_CS_PROMOTE (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  if (csect_promote (thread_p, CSECT_LOG, INF_WAIT) != NO_ERROR)
+    {
+      assert (false);
+    }
+#endif
+}
+
+bool
+LOG_CS_OWN (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  /* TODO: Vacuum workers never hold CSECT_LOG lock. Investigate any possible
+   *     unwanted consequences.
+   * NOTE: It is considered that a vacuum worker holds a "shared" lock.
+   * TODO: remove vacuum code from LOG_CS_OWN
+   */
+  return vacuum_is_process_log_for_vacuum (thread_p) || (csect_check_own (thread_p, CSECT_LOG) >= 1);
+#else // not server mode
+  return true;
+#endif // not server mode
+}
+
+bool
+LOG_CS_OWN_WRITE_MODE (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  return csect_check_own (thread_p, CSECT_LOG) == 1;
+#else // not server mode
+  return true;
+#endif // not server mode
 }

@@ -1447,10 +1447,10 @@ shutdown:
   vacuum_stop (thread_p);
 
   /* we should flush all append pages before stop log writer */
-  LOG_CS_ENTER (thread_p);
-  logpb_flush_pages_direct (thread_p);
+  logpb_force_flush_pages (thread_p);
 
 #if !defined(NDEBUG)
+  LOG_CS_ENTER (thread_p);
   pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
   if (!LSA_EQ (&log_Gl.append.nxio_lsa, &log_Gl.prior_info.prior_lsa))
     {
@@ -1467,9 +1467,10 @@ shutdown:
 	}
     }
   pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
+  LOG_CS_EXIT (thread_p);
 #endif
 
-  LOG_CS_EXIT (thread_p);
+
 
   // stop log writers
   css_stop_all_workers (*thread_p, THREAD_STOP_LOGWR);
