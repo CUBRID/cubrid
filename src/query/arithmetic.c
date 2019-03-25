@@ -6325,7 +6325,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
       db_json_add_element_to_array (result_json_owner.get_mutable (), json_array_elem_owner.get_immutable ());
     }
 
-  db_make_json_from_doc_store_and_release (*result, result_json_owner)
+  db_make_json_from_doc_store_and_release (*result, result_json_owner);
   return NO_ERROR;
 }
 /* *INDENT-ON* */
