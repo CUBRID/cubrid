@@ -24,7 +24,9 @@
 #ifndef _LOG_STORAGE_HPP_
 #define _LOG_STORAGE_HPP_
 
+#include "file_io.h"
 #include "log_lsa.hpp"
+#include "release_string.h"
 #include "storage_common.h"
 #include "system.h"
 #include "transaction_global.hpp"

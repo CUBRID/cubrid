@@ -5617,7 +5617,7 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
       tdes->max_unique_btrees = 0;
     }
 
-  if (log_clear_and_is_tran_distributed (tdes))
+  if (log_2pc_clear_and_is_tran_distributed (tdes))
     {
       /* This is the coordinator of a distributed transaction If we are in prepare to commit mode. I cannot be the
        * root coordinator, so the decision has been taken at this moment by the root coordinator */
@@ -5748,7 +5748,7 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
    * has been taken without using the 2PC.
    */
 
-  if (log_clear_and_is_tran_distributed (tdes))
+  if (log_2pc_clear_and_is_tran_distributed (tdes))
     {
       /* This is the coordinator of a distributed transaction */
       state = log_2pc_commit (thread_p, tdes, LOG_2PC_EXECUTE_ABORT_DECISION, &decision);

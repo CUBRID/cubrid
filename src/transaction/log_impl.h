@@ -41,6 +41,7 @@
 #include "file_io.h"
 #include "lock_free.h"
 #include "lock_manager.h"
+#include "log_2pc.h"
 #include "log_archives.hpp"
 #include "log_comm.h"
 #include "log_common_impl.h"
@@ -180,10 +181,6 @@ struct logwr_info;
         } \
     } \
   while (0)
-
-#define LOG_2PC_NULL_GTRID        (-1)
-#define LOG_2PC_OBTAIN_LOCKS      true
-#define LOG_2PC_DONT_OBTAIN_LOCKS false
 
 #if defined(SERVER_MODE)
 // todo - separate the client & server/sa_mode transaction index
@@ -411,33 +408,7 @@ struct log_append_info
     PTHREAD_MUTEX_INITIALIZER}
 #endif
 
-enum log_2pc_execute
-{
-  LOG_2PC_EXECUTE_FULL,		/* For the root coordinator */
-  LOG_2PC_EXECUTE_PREPARE,	/* For a participant that is also a non root coordinator execute the first phase of 2PC */
-  LOG_2PC_EXECUTE_COMMIT_DECISION,	/* For a participant that is also a non root coordinator execute the second
-					 * phase of 2PC. The root coordinator has decided a commit decision */
-  LOG_2PC_EXECUTE_ABORT_DECISION	/* For a participant that is also a non root coordinator execute the second
-					 * phase of 2PC. The root coordinator has decided an abort decision with or
-					 * without going to the first phase (i.e., prepare) of the 2PC */
-};
-typedef enum log_2pc_execute LOG_2PC_EXECUTE;
 
-typedef struct log_2pc_gtrinfo LOG_2PC_GTRINFO;
-struct log_2pc_gtrinfo
-{				/* Global transaction user information */
-  int info_length;
-  void *info_data;
-};
-
-typedef struct log_2pc_coordinator LOG_2PC_COORDINATOR;
-struct log_2pc_coordinator
-{				/* Coordinator maintains this info */
-  int num_particps;		/* Number of participating sites */
-  int particp_id_length;	/* Length of a participant identifier */
-  void *block_particps_ids;	/* A block of participants identifiers */
-  int *ack_received;		/* Acknowledgment received vector */
-};
 
 typedef struct log_topops_addresses LOG_TOPOPS_ADDRESSES;
 struct log_topops_addresses
@@ -1394,60 +1365,6 @@ extern int logpb_remove_all_in_log_path (THREAD_ENTRY * thread_p, const char *db
 
 extern void log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat);
 extern LOG_LSA *log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr);
-
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern void log_2pc_define_funs (int (*get_participants) (int *particp_id_length, void **block_particps_ids),
-				 int (*lookup_participant) (void *particp_id, int num_particps,
-							    void *block_particps_ids),
-				 char *(*fmt_participant) (void *particp_id),
-				 void (*dump_participants) (FILE * fp, int block_length, void *block_particps_id),
-				 int (*send_prepare) (int gtrid, int num_particps, void *block_particps_ids),
-				 bool (*send_commit) (int gtrid, int num_particps, int *particp_indices,
-						      void *block_particps_ids),
-				 bool (*send_abort) (int gtrid, int num_particps, int *particp_indices,
-						     void *block_particps_ids, int collect));
-#endif
-extern char *log_2pc_sprintf_particp (void *particp_id);
-extern void log_2pc_dump_participants (FILE * fp, int block_length, void *block_particps_ids);
-extern bool log_2pc_send_prepare (int gtrid, int num_particps, void *block_particps_ids);
-extern bool log_2pc_send_commit_decision (int gtrid, int num_particps, int *particps_indices, void *block_particps_ids);
-extern bool log_2pc_send_abort_decision (int gtrid, int num_particps, int *particps_indices, void *block_particps_ids,
-					 bool collect);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern int log_get_global_tran_id (THREAD_ENTRY * thread_p);
-#endif
-extern TRAN_STATE log_2pc_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EXECUTE execute_2pc_type,
-				  bool * decision);
-extern int log_set_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *info, int size);
-extern int log_get_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *buffer, int size);
-extern int log_2pc_start (THREAD_ENTRY * thread_p);
-extern TRAN_STATE log_2pc_prepare (THREAD_ENTRY * thread_p);
-extern int log_2pc_recovery_prepared (THREAD_ENTRY * thread_p, int gtrids[], int size);
-extern int log_2pc_attach_global_tran (THREAD_ENTRY * thread_p, int gtrid);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern int log_2pc_append_recv_ack (THREAD_ENTRY * thread_p, int particp_index);
-#endif
-extern TRAN_STATE log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid);
-extern void log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, LOG_TDES * tdes, LOG_LSA * lsa,
-				  LOG_PAGE * log_pgptr);
-extern void log_2pc_dump_gtrinfo (FILE * fp, int length, void *data);
-extern void log_2pc_dump_acqobj_locks (FILE * fp, int length, void *data);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern void log_2pc_dump_acqpage_locks (FILE * fp, int length, void *data);
-#endif
-extern LOG_TDES *log_2pc_alloc_coord_info (LOG_TDES * tdes, int num_particps, int particp_id_length,
-					   void *block_particps_ids);
-extern void log_2pc_free_coord_info (LOG_TDES * tdes);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern void log_2pc_crash_participant (THREAD_ENTRY * thread_p);
-extern void log_2pc_send_decision_participant (THREAD_ENTRY * thread_p, void *particp_id);
-extern bool log_is_tran_in_2pc (THREAD_ENTRY * thread_p);
-#endif
-extern void log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * upto_chain_lsa);
-extern void log_2pc_recovery (THREAD_ENTRY * thread_p);
-extern bool log_is_tran_distributed (LOG_TDES * tdes);
-extern bool log_clear_and_is_tran_distributed (LOG_TDES * tdes);
 
 extern void *logtb_realloc_topops_stack (LOG_TDES * tdes, int num_elms);
 extern void logtb_define_trantable (THREAD_ENTRY * thread_p, int num_expected_tran_indices, int num_expected_locks);

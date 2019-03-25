@@ -30,6 +30,7 @@
 #include "transaction_sr.h"
 
 #include "locator_sr.h"
+#include "log_2pc.h"
 #include "log_lsa.hpp"
 #include "log_manager.h"
 #if defined(SERVER_MODE)
@@ -403,7 +404,7 @@ xtran_server_partial_abort (THREAD_ENTRY * thread_p, const char *savept_name, LO
 int
 xtran_server_set_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *info, int size)
 {
-  return log_set_global_tran_info (thread_p, gtrid, info, size);
+  return log_2pc_set_global_tran_info (thread_p, gtrid, info, size);
 }
 
 /*
@@ -425,7 +426,7 @@ xtran_server_set_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *inf
 int
 xtran_server_get_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *buffer, int size)
 {
-  return log_get_global_tran_info (thread_p, gtrid, buffer, size);
+  return log_2pc_get_global_tran_info (thread_p, gtrid, buffer, size);
 }
 
 /*
