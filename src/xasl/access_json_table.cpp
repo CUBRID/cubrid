@@ -139,7 +139,7 @@ namespace cubxasl
 	  return ER_FAILED;
 	}
 
-      if (!docp.is_mutable ())
+      if (docp.is_null ())
 	{
 	  error_code = trigger_on_empty (*m_output_value_pointer);
 	  if (error_code != NO_ERROR)
@@ -151,12 +151,7 @@ namespace cubxasl
 
       // clear previous output_value
       pr_clear_value (m_output_value_pointer);
-
-      if (db_make_json (m_output_value_pointer, docp.release_mutable_reference (), true) != NO_ERROR)
-	{
-	  assert (false);
-	  return ER_FAILED;
-	}
+      db_make_json_from_doc_store_and_release (*m_output_value_pointer, docp);
 
       status_cast = tp_value_cast (m_output_value_pointer, m_output_value_pointer, m_domain, false);
       if (status_cast != TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE)

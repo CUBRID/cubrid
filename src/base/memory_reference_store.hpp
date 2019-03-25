@@ -18,7 +18,7 @@
  */
 
 //
-// memory_reference_store.hpp - extension to handle permanent & temporary ownership of db_vals
+// memory_reference_store.hpp - extension to handle permanent & temporary ownership
 //
 
 #ifndef _MEMORY_REFERENCE_STORE_HPP_
@@ -39,6 +39,7 @@ namespace cubmem
       reference_store &operator= (reference_store &) = delete;
 
       const T *get_immutable () const;
+      bool is_null () const;
       bool is_mutable () const;
       T *get_mutable () const;
       T *release_mutable_reference ();
@@ -84,6 +85,13 @@ namespace cubmem
   reference_store<T>::get_immutable () const
   {
     return m_immutable_reference;
+  }
+
+  template <class T>
+  bool
+  reference_store<T>::is_null () const
+  {
+    return m_immutable_reference == nullptr;
   }
 
   template <class T>

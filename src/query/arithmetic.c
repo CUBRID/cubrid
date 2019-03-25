@@ -5417,7 +5417,7 @@ db_accumulate_json_arrayagg (const DB_VALUE * json_db_val, DB_VALUE * json_res)
 
   db_json_add_element_to_array (result_doc.get_mutable (), val_doc.get_immutable ());
 
-  db_make_json (json_res, result_doc.release_mutable_reference (), true);
+  db_make_json_from_doc_store_and_release (*json_res, result_doc);
   return error_code;
 }
 
@@ -5475,7 +5475,7 @@ db_accumulate_json_objectagg (const DB_VALUE * json_key, const DB_VALUE * json_d
     }
 
   error_code = db_json_add_member_to_object (result_doc.get_mutable (), key_str, val_doc.get_immutable ());
-  db_make_json (json_res, result_doc.release_mutable_reference (), true);
+  db_make_json_from_doc_store_and_release (*json_res, result_doc);
   if (error_code == ER_JSON_DUPLICATE_KEY)
     {
       // ignore
@@ -5550,7 +5550,7 @@ db_evaluate_json_extract (DB_VALUE * result, DB_VALUE * const *args, int num_arg
 
   if (db_json_get_type (res_doc.get_immutable ()) != DB_JSON_NULL)
     {
-      db_make_json (result, res_doc.release_mutable_reference (), true);
+      db_make_json_from_doc_store_and_release (*result, res_doc);
     }
 
   return NO_ERROR;
@@ -5600,7 +5600,7 @@ db_evaluate_json_object (DB_VALUE * result, DB_VALUE * const *arg, int const num
 	}
     }
 
-  db_make_json (result, new_doc.release_mutable_reference (), true);
+  db_make_json_from_doc_store_and_release (*result, new_doc);
 
   return NO_ERROR;
 }
@@ -5627,7 +5627,7 @@ db_evaluate_json_array (DB_VALUE * result, DB_VALUE * const *arg, int const num_
       db_json_add_element_to_array (new_doc.get_mutable (), value_doc.get_immutable ());
     }
 
-  db_make_json (result, new_doc.release_mutable_reference (), true);
+  db_make_json_from_doc_store_and_release (*result, new_doc);
 
   return NO_ERROR;
 }
@@ -5688,7 +5688,7 @@ db_evaluate_json_insert (DB_VALUE * result, DB_VALUE * const *arg, int const num
 	}
     }
 
-  db_make_json (result, new_doc.release_mutable_reference (), true);
+  db_make_json_from_doc_store_and_release (*result, new_doc);
 
   return NO_ERROR;
 }
@@ -5748,7 +5748,7 @@ db_evaluate_json_replace (DB_VALUE * result, DB_VALUE * const *arg, int const nu
 	}
     }
 
-  db_make_json (result, new_doc.release_mutable_reference (), true);
+  db_make_json_from_doc_store_and_release (*result, new_doc);
 
   return NO_ERROR;
 }
@@ -5808,7 +5808,7 @@ db_evaluate_json_set (DB_VALUE * result, DB_VALUE * const *arg, int const num_ar
 	}
     }
 
-  db_make_json (result, new_doc.release_mutable_reference (), true);
+  db_make_json_from_doc_store_and_release (*result, new_doc);
 
   return NO_ERROR;
 }
@@ -5860,7 +5860,7 @@ db_evaluate_json_keys (DB_VALUE * result, DB_VALUE * const *arg, int const num_a
       return error_code;
     }
 
-  db_make_json (result, result_json.release_mutable_reference (), true);
+  db_make_json_from_doc_store_and_release (*result, result_json);
   return NO_ERROR;
 }
 
@@ -5906,7 +5906,7 @@ db_evaluate_json_remove (DB_VALUE * result, DB_VALUE * const *arg, int const num
 	}
     }
 
-  db_make_json (result, new_doc.release_mutable_reference (), true);
+  db_make_json_from_doc_store_and_release (*result, new_doc);
 
   return NO_ERROR;
 }
@@ -5967,7 +5967,7 @@ db_evaluate_json_array_append (DB_VALUE * result, DB_VALUE * const *arg, int con
 	}
     }
 
-  db_make_json (result, new_doc.release_mutable_reference (), true);
+  db_make_json_from_doc_store_and_release (*result, new_doc);
 
   return NO_ERROR;
 }
@@ -6028,7 +6028,7 @@ db_evaluate_json_array_insert (DB_VALUE * result, DB_VALUE * const *arg, int con
 	}
     }
 
-  db_make_json (result, new_doc.release_mutable_reference (), true);
+  db_make_json_from_doc_store_and_release (*result, new_doc);
 
   return NO_ERROR;
 }
@@ -6139,7 +6139,7 @@ db_evaluate_json_merge_preserve (DB_VALUE * result, DB_VALUE * const *arg, const
 	}
     }
 
-  db_make_json (result, accumulator_owner.release_mutable_reference (), true);
+  db_make_json_from_doc_store_and_release (*result, accumulator_owner);
 
   return NO_ERROR;
 }
@@ -6193,7 +6193,7 @@ db_evaluate_json_merge_patch (DB_VALUE * result, DB_VALUE * const *arg, const in
 	}
     }
 
-  db_make_json (result, accumulator_owner.release_mutable_reference (), true);
+  db_make_json_from_doc_store_and_release (*result, accumulator_owner);
 
   return NO_ERROR;
 }
@@ -6325,7 +6325,8 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
       db_json_add_element_to_array (result_json_owner.get_mutable (), json_array_elem_owner.get_immutable ());
     }
 
-  return db_make_json (result, result_json_owner.release_mutable_reference (), true);
+  db_make_json_from_doc_store_and_release (*result, result_json_owner)
+  return NO_ERROR;
 }
 /* *INDENT-ON* */
 

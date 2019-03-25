@@ -68,7 +68,6 @@ namespace cubscan
     }
 
     void
-
     scanner::cursor::advance_row_cursor ()
     {
       // don't advance again in row
@@ -100,7 +99,7 @@ namespace cubscan
       m_is_node_consumed = false;
       if (m_node->m_is_iterable_node)
 	{
-	  assert (db_json_get_type (m_input_doc.get_mutable ()) == DB_JSON_ARRAY);
+	  assert (db_json_get_type (m_input_doc.get_immutable ()) == DB_JSON_ARRAY);
 	  db_json_set_iterator (m_node->m_iterator, *m_input_doc.get_mutable ());
 	}
     }
@@ -123,7 +122,7 @@ namespace cubscan
 	{
 	  assert (!m_node->m_is_iterable_node);
 	  // todo: is it guaranteed we do not use m_process_doc after we delete input_doc?
-	  m_process_doc = m_input_doc.get_mutable ();
+	  m_process_doc = m_input_doc.get_immutable ();
 	}
 
       if (m_process_doc == NULL)
@@ -376,7 +375,7 @@ namespace cubscan
 	  return error_code;
 	}
 
-      if (!cursor_arg.m_input_doc.is_mutable ())
+      if (cursor_arg.m_input_doc.is_null ())
 	{
 	  // cannot retrieve input_doc from path
 	  cursor_arg.m_is_node_consumed = true;

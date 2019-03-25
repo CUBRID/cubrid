@@ -3207,6 +3207,12 @@ db_value_to_json_value (const DB_VALUE &db_val, JSON_DOC_STORE &json_doc)
   return NO_ERROR;
 }
 
+void
+db_make_json_from_doc_store_and_release (DB_VALUE &value, JSON_DOC_STORE &doc_store)
+{
+  db_make_json (&value, doc_store.release_mutable_reference (), true);
+}
+
 static void
 db_json_value_wrap_as_array (JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &allocator)
 {
