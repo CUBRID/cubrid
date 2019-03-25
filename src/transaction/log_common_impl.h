@@ -54,28 +54,6 @@
 
 #define VACUUM_NULL_LOG_BLOCKID -1
 
-enum logwr_mode
-{
-  LOGWR_MODE_ASYNC = 1,
-  LOGWR_MODE_SEMISYNC,
-  LOGWR_MODE_SYNC
-};
-typedef enum logwr_mode LOGWR_MODE;
-#define LOGWR_COPY_FROM_FIRST_PHY_PAGE_MASK	(0x80000000)
-
-typedef struct log_bgarv_header LOG_BGARV_HEADER;
-struct log_bgarv_header
-{				/* Background log archive header information */
-  char magic[CUBRID_MAGIC_MAX_LENGTH];
-
-  INT32 dummy;
-  INT64 db_creation;
-
-  LOG_PAGEID start_page_id;
-  LOG_PAGEID current_page_id;
-  LOG_PAGEID last_sync_pageid;
-};
-
 enum LOG_HA_FILESTAT
 {
   LOG_HA_FILESTAT_CLEAR = 0,

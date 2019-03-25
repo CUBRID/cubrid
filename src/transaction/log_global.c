@@ -28,6 +28,7 @@
 #include "log_archives.hpp"
 #include "log_impl.h"
 #include "log_storage.hpp"
+#include "log_writer.h"
 #include "porting.h"
 #include "storage_common.h"
 
@@ -95,7 +96,7 @@ LOG_GLOBAL log_Gl = {
   LOG_GROUP_COMMIT_INFO_INITIALIZER,
 
   /* log writer info */
-  LOGWR_INFO_INITIALIZER,
+  new logwr_info (),
 
   /* background archiving info */
   background_archiving_info (),
@@ -119,3 +120,10 @@ char log_Name_bkupinfo[PATH_MAX];
 char log_Name_volinfo[PATH_MAX];
 char log_Name_bg_archive[PATH_MAX];
 char log_Name_removed_archive[PATH_MAX];
+
+// *INDENT-OFF*
+log_global::~log_global ()
+{
+  delete writer_info;
+}
+// *INDENT-ON*
