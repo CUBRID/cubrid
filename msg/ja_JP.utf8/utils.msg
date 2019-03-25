@@ -443,6 +443,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 116 Total %1$8d object(s) inserted, %2$d object(s) failed.\n
 117 Load failed.\n
 118 Maximum length of class name is %1$d bytes.\n
+119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
 120 \
 loaddb: データベースにオブジェクトやスキーマロード\n\
 使い方: %1$s loaddb [オプション] データベース名[@ホスト]\n\

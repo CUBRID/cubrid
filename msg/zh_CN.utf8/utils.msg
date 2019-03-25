@@ -443,6 +443,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 116 共插入了 %1$8d 个对象, 其中 %2$d 个对象插入失败.\n
 117 装载失败.\n
 118 类名的最大长度是 %1$d 字节.\n
+119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
 120 \
 loaddb: 将对象和结构导入到数据库.\n\
 用法: %1$s loaddb [选项] 数据库名[@主机名]\n\

@@ -443,6 +443,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 116 Total %8d object(s) inserted, %d object(s) failed.\n
 117 Load failed.\n
 118 Maximum length of class name is %1$d bytes.\n
+119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
 120 \
 loaddb: Importare oggetti e gli schemi al database.\n\
 uso: %1$s loaddb [OPZIONE] nome-database[@host]\n\

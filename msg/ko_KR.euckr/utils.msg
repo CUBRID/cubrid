@@ -443,6 +443,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 116 총 %1$8d 개의 객체가 삽입되었으며, %2$d 개의 객체가 실패하였습니다.\n
 117 로드 실패.\n
 118 클래스 이름의 최대 길이는 %1$d 바이트 입니다.\n
+119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
 120 \
 loaddb: 데이터베이스에 객체 및 스키마 적재\n\
 사용법: %1$s loaddb [옵션] 데이터베이스 이름[@호스트]\n\
