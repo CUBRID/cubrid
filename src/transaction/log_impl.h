@@ -69,17 +69,6 @@ struct logwr_info;
 #define TRANS_STATUS_HISTORY_MAX_SIZE 2048
 
 #if defined(SERVER_MODE)
-#define LOG_CS_ENTER(thread_p) \
-        csect_enter((thread_p), CSECT_LOG, INF_WAIT)
-#define LOG_CS_ENTER_READ_MODE(thread_p) \
-        csect_enter_as_reader((thread_p), CSECT_LOG, INF_WAIT)
-#define LOG_CS_DEMOTE(thread_p) \
-        csect_demote((thread_p), CSECT_LOG, INF_WAIT)
-#define LOG_CS_PROMOTE(thread_p) \
-        csect_promote((thread_p), CSECT_LOG, INF_WAIT)
-#define LOG_CS_EXIT(thread_p) \
-        csect_exit((thread_p), CSECT_LOG)
-
 #define TR_TABLE_CS_ENTER(thread_p) \
         csect_enter((thread_p), CSECT_TRAN_TABLE, INF_WAIT)
 #define TR_TABLE_CS_ENTER_READ_MODE(thread_p) \
@@ -95,12 +84,6 @@ struct logwr_info;
         csect_exit (thread_p, CSECT_LOG_ARCHIVE)
 
 #else /* SERVER_MODE */
-#define LOG_CS_ENTER(thread_p)
-#define LOG_CS_ENTER_READ_MODE(thread_p)
-#define LOG_CS_DEMOTE(thread_p)
-#define LOG_CS_PROMOTE(thread_p)
-#define LOG_CS_EXIT(thread_p)
-
 #define TR_TABLE_CS_ENTER(thread_p)
 #define TR_TABLE_CS_ENTER_READ_MODE(thread_p)
 #define TR_TABLE_CS_EXIT(thread_p)
@@ -111,16 +94,6 @@ struct logwr_info;
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
-/* TODO: Vacuum workers never hold CSECT_LOG lock. Investigate any possible
- *	 unwanted consequences.
- * NOTE: It is considered that a vacuum worker holds a "shared" lock.
- * TODO: remove vacuum code from LOG_CS_OWN
- */
-#define LOG_CS_OWN(thread_p) \
-  (vacuum_is_process_log_for_vacuum (thread_p) \
-   || csect_check_own (thread_p, CSECT_LOG) >= 1)
-#define LOG_CS_OWN_WRITE_MODE(thread_p) \
-  (csect_check_own (thread_p, CSECT_LOG) == 1)
 
 #define LOG_ARCHIVE_CS_OWN(thread_p) \
   (csect_check (thread_p, CSECT_LOG_ARCHIVE) >= 1)
@@ -130,9 +103,6 @@ struct logwr_info;
   (csect_check_own (thread_p, CSECT_LOG_ARCHIVE) == 2)
 
 #else /* SERVER_MODE */
-#define LOG_CS_OWN(thread_p) (true)
-#define LOG_CS_OWN_WRITE_MODE(thread_p) (true)
-
 #define LOG_ARCHIVE_CS_OWN(thread_p) (true)
 #define LOG_ARCHIVE_CS_OWN_WRITE_MODE(thread_p) (true)
 #define LOG_ARCHIVE_CS_OWN_READ_MODE(thread_p) (true)
@@ -1347,6 +1317,8 @@ extern int logpb_fetch_start_append_page (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_fetch_start_append_page_new (THREAD_ENTRY * thread_p);
 extern void logpb_flush_pages_direct (THREAD_ENTRY * thread_p);
 extern void logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa);
+extern void logpb_force_flush_pages (THREAD_ENTRY * thread_p);
+extern void logpb_force_flush_header_and_pages (THREAD_ENTRY * thread_p);
 extern void logpb_invalid_all_append_pages (THREAD_ENTRY * thread_p);
 extern void logpb_flush_log_for_wal (THREAD_ENTRY * thread_p, const LOG_LSA * lsa_ptr);
 extern LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type,

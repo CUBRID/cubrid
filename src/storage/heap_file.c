@@ -5307,9 +5307,7 @@ end:
   log_sysop_attach_to_outer (thread_p);
   vacuum_log_add_dropped_file (thread_p, &hfid->vfid, class_oid, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
-  LOG_CS_ENTER (thread_p);
-  logpb_flush_pages_direct (thread_p);
-  LOG_CS_EXIT (thread_p);
+  logpb_force_flush_pages (thread_p);
 
   return NO_ERROR;
 

@@ -4941,7 +4941,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       goto error;
     }
 
-  logpb_flush_pages_direct (thread_p);
+  logpb_force_flush_pages (thread_p);
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
   (void) fileio_synchronize_all (thread_p, false);
 
@@ -5971,10 +5971,7 @@ boot_after_copydb (THREAD_ENTRY * thread_p)
   log_Gl.hdr.was_copied = false;
 
   // flush log and header to disk to make sure everything is saved
-  LOG_CS_ENTER (thread_p);
-  logpb_flush_pages_direct (thread_p);
-  logpb_flush_header (thread_p);
-  LOG_CS_EXIT (thread_p);
+  logpb_force_flush_header_and_pages (thread_p);
 
   er_log_debug (ARG_FILE_LINE, "Complete boot_after_copydb \n");
 
