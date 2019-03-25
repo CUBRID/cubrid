@@ -173,14 +173,25 @@ struct logwr_info
   CLIENTIDS last_writer_client_info;
   INT64 last_writer_elapsed_time;
 
-    logwr_info ():writer_list (NULL), wr_list_mutex PTHREAD_MUTEX_INITIALIZER,
-    flush_start_cond PTHREAD_COND_INITIALIZER, flush_start_mutex PTHREAD_MUTEX_INITIALIZER,
-    flush_wait_cond PTHREAD_COND_INITIALIZER, flush_wait_mutex PTHREAD_MUTEX_INITIALIZER,
-    flush_end_cond PTHREAD_COND_INITIALIZER, flush_end_mutex PTHREAD_MUTEX_INITIALIZER, skip_flush (false),
-    flush_completed (false), is_init (false), trace_last_writer (false), last_writer_client_info (),
-    last_writer_elapsed_time (0)
+  // *INDENT-OFF*
+  logwr_info ()
+    : writer_list (NULL)
+    , wr_list_mutex PTHREAD_MUTEX_INITIALIZER
+    , flush_start_cond PTHREAD_COND_INITIALIZER
+    , flush_start_mutex PTHREAD_MUTEX_INITIALIZER
+    , flush_wait_cond PTHREAD_COND_INITIALIZER
+    , flush_wait_mutex PTHREAD_MUTEX_INITIALIZER
+    , flush_end_cond PTHREAD_COND_INITIALIZER
+    , flush_end_mutex PTHREAD_MUTEX_INITIALIZER
+    , skip_flush (false)
+    , flush_completed (false)
+    , is_init (false)
+    , trace_last_writer (false)
+    , last_writer_client_info ()
+    , last_writer_elapsed_time (0)
   {
   }
+  // *INDENT-ON*
 };
 #endif /* !CS_MODE = SERVER_MODE || SA_MODE */
 

@@ -126,4 +126,4 @@ log_global::~log_global ()
 {
   delete writer_info;
 }
-// *INDENT-OFF*
+// *INDENT-ON*

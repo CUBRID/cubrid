@@ -1180,9 +1180,9 @@ struct log_global
   MVCCTABLE mvcc_table;		/* MVCC table */
   GLOBAL_UNIQUE_STATS_TABLE unique_stats_table;	/* global unique statistics */
 
-  // *INDENT-OFF
+  // *INDENT-OFF*
    ~log_global ();
-  // *INDENT-ON
+  // *INDENT-ON*
 };
 
 /* logging statistics */
