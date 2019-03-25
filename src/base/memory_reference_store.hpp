@@ -21,6 +21,11 @@
 // memory_reference_store.hpp - extension to handle permanent & temporary ownership of db_vals
 //
 
+#ifndef _MEMORY_REFERENCE_STORE_HPP_
+#define _MEMORY_REFERENCE_STORE_HPP_
+
+#include <algorithm>
+
 namespace cubmem
 {
   template <typename T>
@@ -149,3 +154,5 @@ namespace cubmem
     clear ();
   }
 }
+
+#endif // _MEMORY_REFERENCE_STORE_HPP_
