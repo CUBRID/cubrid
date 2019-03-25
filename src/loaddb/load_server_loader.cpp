@@ -35,6 +35,7 @@
 #include "string_opfunc.h"
 #include "thread_manager.hpp"
 #include "xserver_interface.h"
+#include "db_date.h"
 
 namespace cubload
 {
@@ -307,11 +308,7 @@ namespace cubload
           {
 	    m_error_handler.on_failure ();
           }
-        else
-          {
-            /*m_error_handler.on_error (LOADDB_MSG_SYNTAX_ERR, m_driver->get_scanner().lineno(),
-              m_driver->get_scanner().YYText());*/
-          }
+
         return;
       }
 
@@ -324,11 +321,7 @@ namespace cubload
               {
 	        m_error_handler.on_failure ();
               }
-            else
-              {
-                /*m_error_handler.on_error (LOADDB_MSG_SYNTAX_ERR, m_driver->get_scanner().lineno(),
-                  m_driver->get_scanner().YYText());*/
-              }
+
             return;
 	  }
 
@@ -339,11 +332,6 @@ namespace cubload
 	    if (!is_syntax_check_only)
               {
 	        m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
-              }
-            else
-              {
-                m_error_handler.on_error (LOADDB_MSG_SYNTAX_ERR, m_driver->get_scanner().lineno(),
-                  m_driver->get_scanner().YYText());
               }
 
             return;
@@ -361,11 +349,7 @@ namespace cubload
           {
 	    m_error_handler.on_failure (LOADDB_MSG_LOAD_FAIL);
           }
-        else
-          {
-            /*m_error_handler.on_error (LOADDB_MSG_SYNTAX_ERR, m_driver->get_scanner().lineno(),
-              m_driver->get_scanner().YYText());*/
-          }
+
         return;
       }
   }
@@ -406,14 +390,10 @@ namespace cubload
   {
     string_type *str = NULL;
     int error_code = NO_ERROR;
+    bool is_syntax_check_only = m_session.get_args ().syntax_check;
 
     switch (cons->type)
       {
-      case LDR_NULL:
-      case LDR_INT:
-      case LDR_FLOAT:
-      case LDR_DOUBLE:
-      case LDR_NUMERIC:
       case LDR_DATE:
       case LDR_TIME:
       case LDR_TIMESTAMP:
@@ -422,6 +402,17 @@ namespace cubload
       case LDR_DATETIME:
       case LDR_DATETIMELTZ:
       case LDR_DATETIMETZ:
+        /* For these cases we need a prerequisite check. */
+        error_code = process_date_time_conversion (cons);
+        if (error_code != NO_ERROR)
+          {
+            break;
+          }
+      case LDR_NULL:
+      case LDR_INT:
+      case LDR_FLOAT:
+      case LDR_DOUBLE:
+      case LDR_NUMERIC:
       case LDR_STR:
       case LDR_NSTR:
       case LDR_BSTR:
@@ -579,6 +570,21 @@ namespace cubload
 	    m_error_handler.on_failure_with_line (LOADDB_MSG_OID_NOT_SUPPORTED);
 	    break;
 
+          case LDR_DATE:
+          case LDR_TIME:
+          case LDR_TIMESTAMP:
+          case LDR_TIMESTAMPLTZ:
+          case LDR_TIMESTAMPTZ:
+          case LDR_DATETIME:
+          case LDR_DATETIMELTZ:
+          case LDR_DATETIMETZ:
+            /* For these cases we need a prerequisite check. */
+            error_code = process_date_time_conversion (cons);
+            if (error_code != NO_ERROR)
+              {
+                break;
+              }
+
 	  default:
 	    error_code = process_generic_constant (c, attr);
 	    break;
@@ -602,6 +608,74 @@ namespace cubload
     db_make_collection (&db_val, set);
 
     return error_code;
+  }
+
+  int
+  server_object_loader::process_date_time_conversion (constant_type *cons)
+  {
+    int err = NO_ERROR;
+    DB_TIME dummy_time;
+    DB_DATE dummy_date;
+    DB_TIMESTAMP dummy_timestamp;
+    DB_TIMESTAMPTZ dummy_timestamptz;
+    DB_DATETIME dummy_datetime;
+    DB_DATETIMETZ dummy_datetimetz;
+    DB_TYPE current_type = DB_TYPE_NULL;
+    bool has_zone;
+    char *str = reinterpret_cast<char *> (cons->val);
+    driver *m_driver = m_session.get_driver ();
+
+    /*
+     * Flag invalid date/time/timestamp strings as errors.
+     * e.g., DATE '01///' should be an error, this is not detected by the lexical
+     * analysis phase since DATE 'str' is valid.
+     * Attempt to do the string to type conversion here.
+     */
+    switch (cons->type)
+      {
+      case LDR_TIME:
+        current_type = DB_TYPE_TIME;
+        err = db_string_to_time (str, &dummy_time);
+        break;
+      case LDR_DATE:
+        current_type = DB_TYPE_DATE;
+        err = db_string_to_date (str, &dummy_date);
+        break;
+      case LDR_TIMESTAMP:
+        current_type = DB_TYPE_TIMESTAMP;
+        err = db_string_to_timestamp (str, &dummy_timestamp);
+        break;
+      case LDR_TIMESTAMPLTZ:
+        current_type = DB_TYPE_TIMESTAMPLTZ;
+        err = db_string_to_timestampltz (str, &dummy_timestamp);
+        break;
+      case LDR_TIMESTAMPTZ:
+        current_type = DB_TYPE_TIMESTAMPTZ;
+        err = db_string_to_timestamptz (str, &dummy_timestamptz, &has_zone);
+        break;
+      case LDR_DATETIME:
+        current_type = DB_TYPE_DATETIME;
+        err = db_string_to_datetime (str, &dummy_datetime);
+        break;
+      case LDR_DATETIMELTZ:
+        current_type = DB_TYPE_DATETIMELTZ;
+        err = db_string_to_datetimeltz (str, &dummy_datetime);
+        break;
+      case LDR_DATETIMETZ:
+        current_type = DB_TYPE_DATETIMETZ;
+        err = db_string_to_datetimetz (str, &dummy_datetimetz, &has_zone);
+        break;
+      default:
+        break;
+      }
+
+    if (err != NO_ERROR)
+      {
+        m_error_handler.on_error (LOADDB_MSG_SYNTAX_ERR, m_driver->get_scanner().lineno(),
+                                  m_driver->get_scanner().YYText());
+      }
+
+    return err;
   }
 
   void

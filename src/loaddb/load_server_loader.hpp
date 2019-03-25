@@ -78,6 +78,8 @@ namespace cubload
       void start_line (int object_id) override;
       void process_line (constant_type *cons) override;
       void finish_line () override;
+      
+      int process_date_time_conversion (constant_type *cons);
 
     private:
       int process_constant (constant_type *cons, const attribute &attr);

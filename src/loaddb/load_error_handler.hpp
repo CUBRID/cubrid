@@ -61,11 +61,12 @@ namespace cubload
       template<typename... Args>
       void on_failure_with_line (MSGCAT_LOADDB_MSG msg_id, Args &&... args);
 
+      void log_error_message(std::string &err_msg, bool fail);
+
     private:
       int get_lineno ();
       char *get_message_from_catalog (MSGCAT_LOADDB_MSG msg_id);
 
-      void log_error_message (std::string &err_msg, bool fail);
 
       // Format string based on format string passed as input parameter. Check snprintf function for more details
       template<typename... Args>
