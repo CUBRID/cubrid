@@ -1734,8 +1734,8 @@ log_2pc_recovery_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * log_
   if (*ack_count > 0 && ack_list != NULL)
     {
       /*
-       * Some participant acknowledgemnts have already been
-       * received. Copy this acknowledgment into the transaction
+       * Some participant acknowledgements have already been
+       * received. Copy this acknowledgement into the transaction
        * descriptor.
        */
       for (i = 0; i < *ack_count; i++)
@@ -2011,7 +2011,7 @@ log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_LS
     }
 
   /* If this is a coordinator transaction performing 2PC and voting record has not been read from the log in the
-   * recovery redo phase, read the voting record and any acknowledgment records logged for this transaction */
+   * recovery redo phase, read the voting record and any acknowledgement records logged for this transaction */
 
   if (tdes->coord == NULL)
     {
