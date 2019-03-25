@@ -30,6 +30,7 @@
 #include "dbtype.h"
 #include "heap_file.h"
 #include "lockfree_circular_queue.hpp"
+#include "log_append.hpp"
 #include "log_compress.h"
 #include "log_lsa.hpp"
 #include "log_impl.h"

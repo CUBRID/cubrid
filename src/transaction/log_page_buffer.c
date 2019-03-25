@@ -54,6 +54,7 @@
 #include "porting.h"
 #include "porting_inline.hpp"
 #include "connection_defs.h"
+#include "log_append.hpp"
 #include "log_impl.h"
 #include "log_lsa.hpp"
 #include "log_manager.h"
@@ -1298,7 +1299,7 @@ logpb_dump_information (FILE * out_fp)
 
   fprintf (out_fp, " Next IO_LSA = %lld|%d, Current append LSA = %lld|%d, Prev append LSA = %lld|%d\n"
 	   " Prior LSA = %lld|%d, Prev prior LSA = %lld|%d\n\n",
-	   (long long int) log_Gl.append.nxio_lsa.pageid, (int) log_Gl.append.nxio_lsa.offset,
+	   (long long int) log_Gl.append.get_nxio_lsa ().pageid, (int) log_Gl.append.get_nxio_lsa ().offset,
 	   (long long int) log_Gl.hdr.append_lsa.pageid, (int) log_Gl.hdr.append_lsa.offset,
 	   (long long int) log_Gl.append.prev_lsa.pageid, (int) log_Gl.append.prev_lsa.offset,
 	   (long long int) log_Gl.prior_info.prior_lsa.pageid, (int) log_Gl.prior_info.prior_lsa.offset,
@@ -4436,11 +4437,11 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 #endif /* SERVER_MODE */
 
 #if defined(CUBRID_DEBUG)
-  if (log_Gl.append.nxio_lsa.pageid != logpb_get_page_id (flush_info->toflush[0]))
+  if (log_Gl.append.get_nxio_lsa ().pageid != logpb_get_page_id (flush_info->toflush[0]))
     {
       er_log_debug (ARG_FILE_LINE,
 		    "logpb_flush_all_append_pages: SYSTEM ERROR\n  NXIO_PAGE %d does not seem the same as next free"
-		    " append page %d to flush\n", log_Gl.append.nxio_lsa.pageid,
+		    " append page %d to flush\n", log_Gl.append.get_nxio_lsa ().pageid,
 		    logpb_get_page_id (flush_info->toflush[0]));
       goto error;
     }
@@ -4648,7 +4649,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	{
 	  bufptr = logpb_get_log_buffer (flush_info->toflush[i]);
 	  assert (bufptr->pageid == flush_info->toflush[i]->hdr.logical_pageid);
-	  if (bufptr->dirty && bufptr->pageid != log_Gl.append.nxio_lsa.pageid)
+	  if (bufptr->dirty && bufptr->pageid != log_Gl.append.get_nxio_lsa ().pageid)
 	    {
 	      /* found dirty */
 	      break;
@@ -4681,7 +4682,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	      /* not dirty */
 	      break;
 	    }
-	  if (bufptr->pageid == log_Gl.append.nxio_lsa.pageid)
+	  if (bufptr->pageid == log_Gl.append.get_nxio_lsa ().pageid)
 	    {
 	      /* this must be flushed last! */
 	      break;
@@ -4736,22 +4737,22 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
     }
 
   /* now flush the nxio_lsa page... unless it is the page of header for incomplete log record */
-  if (log_Pb.partial_append.status == LOGPB_APPENDREC_SUCCESS
-      || (log_Gl.append.nxio_lsa.pageid != log_Gl.append.prev_lsa.pageid))
+  LOG_PAGEID nxio_pageid = log_Gl.append.get_nxio_lsa ().pageid;
+  if (log_Pb.partial_append.status == LOGPB_APPENDREC_SUCCESS || (nxio_pageid != log_Gl.append.prev_lsa.pageid))
     {
       assert (log_Pb.partial_append.status == LOGPB_APPENDREC_SUCCESS
 	      || log_Pb.partial_append.status == LOGPB_APPENDREC_PARTIAL_FLUSHED_END_OF_LOG);
 
-      bufptr = &log_Pb.buffers[logpb_get_log_buffer_index (log_Gl.append.nxio_lsa.pageid)];
+      bufptr = &log_Pb.buffers[logpb_get_log_buffer_index (log_Gl.append.get_nxio_lsa ().pageid)];
 
-      if (bufptr->pageid != log_Gl.append.nxio_lsa.pageid)
+      if (bufptr->pageid != nxio_pageid)
 	{
 	  /* not expected. */
 	  assert_release (false);
 
 	  logpb_log ("logpb_flush_all_append_pages: fatal error, nxio_lsa %lld|%d page not found in buffer. "
 		     "bufptr->pageid is %lld instead.\n",
-		     (long long int) log_Gl.append.nxio_lsa.pageid, (int) log_Gl.append.nxio_lsa.offset,
+		     (long long int) log_Gl.append.get_nxio_lsa ().pageid, (int) log_Gl.append.get_nxio_lsa ().offset,
 		     (long long int) bufptr->pageid);
 
 	  error_code = ER_FAILED;
@@ -4764,7 +4765,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  assert_release (false);
 
 	  logpb_log ("logpb_flush_all_append_pages: fatal error, nxio_lsa %lld|%d page is not dirty.\n",
-		     (long long int) log_Gl.append.nxio_lsa.pageid, (int) log_Gl.append.nxio_lsa.offset);
+		     (long long int) log_Gl.append.get_nxio_lsa ().pageid, (int) log_Gl.append.get_nxio_lsa ().offset);
 
 	  error_code = ER_FAILED;
 	  goto error;
@@ -4776,12 +4777,12 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       flush_page_count += 1;
 
       logpb_log ("logpb_flush_all_append_pages: flushed nxio_lsa = %lld|%d page to disk.\n",
-		 (long long int) log_Gl.append.nxio_lsa.pageid, (int) log_Gl.append.nxio_lsa.offset);
+		 (long long int) log_Gl.append.get_nxio_lsa ().pageid, (int) log_Gl.append.get_nxio_lsa ().offset);
 
       if (logpb_Logging)
 	{
 	  /* Dump latest portion of page, for debugging purpose. */
-	  logpb_dump_log_page_area (thread_p, bufptr->logpage, (int) (log_Gl.append.nxio_lsa.offset),
+	  logpb_dump_log_page_area (thread_p, bufptr->logpage, (int) (log_Gl.append.get_nxio_lsa ().offset),
 				    (int) sizeof (LOG_RECORD_HEADER));
 	  logpb_dump_log_page_area (thread_p, bufptr->logpage, (int) (log_Gl.hdr.eof_lsa.offset),
 				    (int) sizeof (LOG_RECORD_HEADER));
@@ -4791,7 +4792,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
     {
       logpb_log ("logpb_flush_all_append_pages: skipped flushing nxio_lsa = %lld|%d page to disk because it matches "
 		 "the header page for incomplete record (prev_lsa = %lld|%d).\n",
-		 (long long int) log_Gl.append.nxio_lsa.pageid, (int) log_Gl.append.nxio_lsa.offset,
+		 (long long int) log_Gl.append.get_nxio_lsa ().pageid, (int) log_Gl.append.get_nxio_lsa ().offset,
 		 (long long int) log_Gl.append.prev_lsa.pageid, (int) log_Gl.append.prev_lsa.offset);
     }
 
@@ -4874,14 +4875,14 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	}
 
       /* now we can set the nxio_lsa to append_lsa */
-      logpb_set_nxio_lsa (&log_Gl.hdr.append_lsa);
+      log_Gl.append.set_nxio_lsa (log_Gl.hdr.append_lsa);
 
       log_Pb.partial_append.status = LOGPB_APPENDREC_PARTIAL_FLUSHED_ORIGINAL;
 
       logpb_log ("logpb_flush_all_append_pages: completed partial record and flush again its first page %lld. "
 		 "nxio_lsa = %lld|%d.\n",
 		 (long long int) log_Pb.partial_append.log_page_record_header->hdr.logical_pageid,
-		 (long long int) log_Gl.append.nxio_lsa.pageid, (int) log_Gl.append.nxio_lsa.offset);
+		 (long long int) log_Gl.append.get_nxio_lsa ().pageid, (int) log_Gl.append.get_nxio_lsa ().offset);
     }
   else if (log_Pb.partial_append.status == LOGPB_APPENDREC_PARTIAL_FLUSHED_END_OF_LOG)
     {
@@ -4889,14 +4890,14 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       logpb_set_nxio_lsa (&log_Gl.append.prev_lsa);
 
       logpb_log ("logpb_flush_all_append_pages: partial record flushed... set nxio_lsa = %lld|%d.\n",
-		 (long long int) log_Gl.append.nxio_lsa.pageid, (int) log_Gl.append.nxio_lsa.offset);
+		 (long long int) log_Gl.append.get_nxio_lsa ().pageid, (int) log_Gl.append.get_nxio_lsa ().offset);
     }
   else if (log_Pb.partial_append.status == LOGPB_APPENDREC_SUCCESS)
     {
       logpb_set_nxio_lsa (&log_Gl.hdr.append_lsa);
 
       logpb_log ("logpb_flush_all_append_pages: set nxio_lsa = %lld|%d.\n",
-		 (long long int) log_Gl.append.nxio_lsa.pageid, (int) log_Gl.append.nxio_lsa.offset);
+		 (long long int) log_Gl.append.get_nxio_lsa ().pageid, (int) log_Gl.append.get_nxio_lsa ().offset);
     }
   else
     {
@@ -11509,7 +11510,7 @@ logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, bool need_fl
 	{
 	  in_fatal = true;
 
-	  if (log_Gl.append.prev_lsa.pageid < log_Gl.append.nxio_lsa.pageid)
+	  if (log_Gl.append.prev_lsa.pageid < log_Gl.append.get_nxio_lsa ().pageid)
 	    {
 	      LSA_COPY (&tmp_lsa1, &log_Gl.append.prev_lsa);
 	    }
@@ -11958,7 +11959,7 @@ logpb_dump_log_header (FILE * outfp)
   fprintf (outfp, "\tlast log append lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.append.prev_lsa));
 
   fprintf (outfp, "\tlowest lsa which hasn't been written to disk : (%lld|%d)\n",
-	   LSA_AS_ARGS (&log_Gl.append.nxio_lsa));
+	   LSA_AS_ARGS (&log_Gl.append.get_nxio_lsa ()));
 
   fprintf (outfp, "\tcheckpoint lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.hdr.chkpt_lsa));
 
@@ -12246,16 +12247,7 @@ logpb_get_data_ptr (THREAD_ENTRY * thread_p)
 void
 logpb_get_nxio_lsa (LOG_LSA * nxio_lsa_p)
 {
-#if defined(HAVE_ATOMIC_BUILTINS)
-  volatile INT64 tmp_int64;
-
-  tmp_int64 = ATOMIC_INC_64 ((INT64 *) (&log_Gl.append.nxio_lsa), 0);
-  memcpy (nxio_lsa_p, (LOG_LSA *) (&tmp_int64), sizeof (LOG_LSA));
-#else
-  (void) pthread_mutex_lock (&log_Gl.append.nxio_lsa_mutex);
-  LSA_COPY (nxio_lsa_p, &log_Gl.append.nxio_lsa);
-  pthread_mutex_unlock (&log_Gl.append.nxio_lsa_mutex);
-#endif /* HAVE_ATOMIC_BUILTINS */
+  *nxio_lsa_p = log_Gl.append.nxio_lsa.load ();
 }
 
 /*
@@ -12264,16 +12256,7 @@ logpb_get_nxio_lsa (LOG_LSA * nxio_lsa_p)
 static void
 logpb_set_nxio_lsa (const LOG_LSA * lsa)
 {
-#if defined(HAVE_ATOMIC_BUILTINS)
-  UINT64 tmp_int64;
-
-  tmp_int64 = *((INT64 *) (lsa));
-  ATOMIC_TAS_64 ((INT64 *) (&log_Gl.append.nxio_lsa), tmp_int64);
-#else
-  (void) pthread_mutex_lock (&log_Gl.append.nxio_lsa_mutex);
-  LSA_COPY (&log_Gl.append.nxio_lsa, lsa);
-  pthread_mutex_unlock (&log_Gl.append.nxio_lsa_mutex);
-#endif /* HAVE_ATOMIC_BUILTINS */
+  log_Gl.append.nxio_lsa.store (*lsa);
 }
 
 /*

@@ -38,6 +38,7 @@
 #include "error_manager.h"
 #include "file_io.h"
 #include "lockfree_circular_queue.hpp"
+#include "log_append.hpp"
 #include "log_manager.h"
 #include "log_impl.h"
 #include "log_volids.hpp"

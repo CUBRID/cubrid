@@ -42,6 +42,7 @@
 #include "lock_free.h"
 #include "lock_manager.h"
 #include "log_2pc.h"
+#include "log_append.hpp"
 #include "log_archives.hpp"
 #include "log_comm.h"
 #include "log_common_impl.h"
@@ -118,25 +119,6 @@ struct logwr_info;
 /* check if group commit is active */
 #define LOG_IS_GROUP_COMMIT_ACTIVE() \
   (prm_get_integer_value (PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS) > 0)
-
-#define LOG_RESET_APPEND_LSA(lsa) \
-  do \
-    { \
-      LSA_COPY (&log_Gl.hdr.append_lsa, (lsa)); \
-      LSA_COPY (&log_Gl.prior_info.prior_lsa, (lsa)); \
-    } \
-  while (0)
-
-#define LOG_RESET_PREV_LSA(lsa) \
-  do \
-    { \
-      LSA_COPY (&log_Gl.append.prev_lsa, (lsa)); \
-      LSA_COPY (&log_Gl.prior_info.prev_lsa, (lsa)); \
-    } \
-  while (0)
-
-#define LOG_APPEND_PTR() ((char *)log_Gl.append.log_pgptr->area \
-                          + log_Gl.hdr.append_lsa.offset)
 
 #define LOG_READ_ALIGN(thread_p, lsa, log_pgptr) \
   do \
@@ -255,15 +237,6 @@ struct logwr_info;
 const TRANID LOG_SYSTEM_WORKER_FIRST_TRANID = NULL_TRANID - 1;
 const int LOG_SYSTEM_WORKER_INCR_TRANID = -1;
 
-#define LOG_SET_DATA_ADDR(data_addr, page, vol_file_id, off) \
-  do \
-    { \
-      (data_addr)->pgptr = (page); \
-      (data_addr)->vfid = (vol_file_id); \
-      (data_addr)->offset = (off); \
-    } \
-  while (0)
-
 #define LOG_READ_NEXT_TRANID (log_Gl.hdr.next_trid)
 #define LOG_READ_NEXT_MVCCID (log_Gl.hdr.mvcc_next_id)
 #define LOG_HAS_LOGGING_BEEN_IGNORED() \
@@ -330,12 +303,6 @@ enum log_wrote_eot_log
 { LOG_NEED_TO_WRITE_EOT_LOG, LOG_ALREADY_WROTE_EOT_LOG };
 typedef enum log_wrote_eot_log LOG_WRITE_EOT_LOG;
 
-enum LOG_PRIOR_LSA_LOCK
-{
-  LOG_PRIOR_LSA_WITHOUT_LOCK = 0,
-  LOG_PRIOR_LSA_WITH_LOCK = 1
-};
-
 /*
  * Flush information shared by LFT and normal transaction.
  * Transaction in commit phase has to flush all toflush array's pages.
@@ -368,45 +335,6 @@ struct log_group_commit_info
 
 #define LOG_GROUP_COMMIT_INFO_INITIALIZER \
   { PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER }
-
-typedef struct log_append_info LOG_APPEND_INFO;
-struct log_append_info
-{
-  int vdes;			/* Volume descriptor of active log */
-  LOG_LSA nxio_lsa;		/* Lowest log sequence number which has not been written to disk (for WAL). */
-  LOG_LSA prev_lsa;		/* Address of last append log record */
-  LOG_PAGE *log_pgptr;		/* The log page which is fixed */
-
-#if !defined(HAVE_ATOMIC_BUILTINS)
-  pthread_mutex_t nxio_lsa_mutex;
-#endif
-};
-
-#if defined(HAVE_ATOMIC_BUILTINS)
-#define LOG_APPEND_INFO_INITIALIZER                           \
-  {                                                           \
-    /* vdes */                                                \
-    NULL_VOLDES,                                              \
-    /* nxio_lsa */                                            \
-    {NULL_PAGEID, NULL_OFFSET},                               \
-    /* prev_lsa */                                            \
-    {NULL_PAGEID, NULL_OFFSET},                               \
-    /* log_pgptr */                                           \
-    NULL}
-#else
-#define LOG_APPEND_INFO_INITIALIZER                           \
-  {                                                           \
-    /* vdes */                                                \
-    NULL_VOLDES,                                              \
-    /* nxio_lsa */                                            \
-    {NULL_PAGEID, NULL_OFFSET},                               \
-    /* prev_lsa */                                            \
-    {NULL_PAGEID, NULL_OFFSET},                               \
-    /* log_pgptr */                                           \
-    NULL,                                                     \
-    /* nxio_lsa_mutex */                                      \
-    PTHREAD_MUTEX_INITIALIZER}
-#endif
 
 
 
@@ -964,13 +892,6 @@ struct trantable
 #define TRANTABLE_INITIALIZER \
   { 0, 0, 0, 0, 0, 0, NULL, NULL }
 
-typedef struct log_crumb LOG_CRUMB;
-struct log_crumb
-{
-  int length;
-  const void *data;
-};
-
 /* state of recovery process */
 enum log_recvphase
 {
@@ -982,16 +903,6 @@ enum log_recvphase
 };
 typedef enum log_recvphase LOG_RECVPHASE;
 
-typedef struct log_data_addr LOG_DATA_ADDR;
-struct log_data_addr
-{
-  const VFID *vfid;		/* File where the page belong or NULL when the page is not associated with a file */
-  PAGE_PTR pgptr;
-  PGLENGTH offset;		/* Offset or slot */
-};
-
-#define LOG_DATA_ADDR_INITIALIZER \
-  { NULL, NULL, 0 }
 
 typedef struct log_prior_node LOG_PRIOR_NODE;
 struct log_prior_node

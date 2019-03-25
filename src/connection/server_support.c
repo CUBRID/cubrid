@@ -1452,11 +1452,12 @@ shutdown:
 #if !defined(NDEBUG)
   LOG_CS_ENTER (thread_p);
   pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
-  if (!LSA_EQ (&log_Gl.append.nxio_lsa, &log_Gl.prior_info.prior_lsa))
+  LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
+  if (!LSA_EQ (&nxio_lsa, &log_Gl.prior_info.prior_lsa))
     {
       LOG_PRIOR_NODE *node;
 
-      assert (LSA_LT (&log_Gl.append.nxio_lsa, &log_Gl.prior_info.prior_lsa));
+      assert (LSA_LT (&nxio_lsa, &log_Gl.prior_info.prior_lsa));
       node = log_Gl.prior_info.prior_list_header;
       while (node != NULL)
 	{

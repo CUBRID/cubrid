@@ -29,6 +29,7 @@
 #include "error_manager.h"
 #include "file_manager.h"
 #include "heap_file.h"
+#include "log_append.hpp"
 #include "log_manager.h"
 #include "memory_alloc.h"
 #include "mvcc.h"

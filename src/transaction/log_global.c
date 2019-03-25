@@ -25,6 +25,7 @@
 
 #include "config.h"
 #include "file_io.h"
+#include "log_append.hpp"
 #include "log_archives.hpp"
 #include "log_impl.h"
 #include "log_storage.hpp"
@@ -47,7 +48,7 @@ LOG_GLOBAL log_Gl = {
   TRANTABLE_INITIALIZER,
 
   /* append */
-  LOG_APPEND_INFO_INITIALIZER,
+  log_append_info (),
 
   /* prior info */
   LOG_PRIOR_LSA_INFO_INITIALIZER,

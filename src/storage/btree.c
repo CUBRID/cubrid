@@ -30,6 +30,7 @@
 #include "db_value_printer.hpp"
 #include "file_manager.h"
 #include "slotted_page.h"
+#include "log_append.hpp"
 #include "log_manager.h"
 #include "overflow_file.h"
 #include "xserver_interface.h"

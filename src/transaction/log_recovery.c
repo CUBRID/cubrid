@@ -33,6 +33,7 @@
 #include <assert.h>
 
 #include "log_2pc.h"
+#include "log_append.hpp"
 #include "log_impl.h"
 #include "log_lsa.hpp"
 #include "log_manager.h"
