@@ -28,6 +28,7 @@
 
 #include "error_code.h"
 #include "error_manager.h"
+#include "system_parameter.h"
 
 #include <algorithm>  /* for std::min */
 
@@ -64,6 +65,8 @@ namespace cubstream
     m_is_stopped = false;
 
     m_stream_file = NULL;
+
+    m_flush_on_commit = false;
   }
 
   multi_thread_stream::~multi_thread_stream ()
@@ -75,6 +78,7 @@ namespace cubstream
   {
     stream::init (start_position);
     m_oldest_buffered_position = start_position;
+    m_flush_on_commit = prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA);
     return NO_ERROR;
   }
 
@@ -362,6 +366,11 @@ namespace cubstream
 	m_ready_pos_handler (save_last_notified_commited_pos, committed_bytes);
 	m_last_notified_committed_pos = new_completed_position;
       }
+
+    if (m_flush_on_commit && collapsed_reserve)
+      {
+	wake_up_flusher (2.0f, m_last_recyclable_pos, new_completed_position - m_last_recyclable_pos);
+      }
   }
 
   /*
@@ -453,7 +462,6 @@ namespace cubstream
 
 	assert (m_oldest_buffered_position <= local_last_recyclable);
 	assert (local_last_recyclable <= m_last_recyclable_pos);
-	assert (m_stream_file == NULL || m_stream_file->get_max_available_from_pos (m_oldest_buffered_position) >= 0);
       }
 
     /* set pointer under mutex lock, a "commit" call may collapse up to position of this slot */
@@ -487,6 +495,7 @@ namespace cubstream
 	  {
 	    m_read_position += amount;
 	  }
+
 	return NO_ERROR;
       }
 
@@ -502,7 +511,8 @@ namespace cubstream
     if (m_is_stopped)
       {
 	err = ER_STREAM_NO_MORE_DATA;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (), m_read_position, amount);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (),
+		m_read_position, amount);
 	return err;
       }
 
@@ -603,7 +613,6 @@ namespace cubstream
 
     m_oldest_buffered_position = m_last_committed_pos - total_in_buffer;
     assert (m_oldest_buffered_position <= m_last_recyclable_pos);
-    assert (m_stream_file == NULL || m_stream_file->get_max_available_from_pos (m_oldest_buffered_position) >= 0);
 
     if (req_start_pos < m_oldest_buffered_position)
       {
@@ -730,14 +739,15 @@ namespace cubstream
 
   void multi_thread_stream::set_last_recyclable_pos (const stream_position &pos)
   {
+    stream_position new_pos = std::min (pos, m_last_committed_pos);
+
     std::unique_lock<std::mutex> local_lock (m_recyclable_pos_mutex);
-    if (pos > m_last_recyclable_pos)
+    if (new_pos > m_last_recyclable_pos)
       {
-	m_last_recyclable_pos = pos;
+	m_last_recyclable_pos = new_pos;
 	local_lock.unlock ();
 
 	m_recyclable_pos_cv.notify_one ();
       }
   }
-
 } /* namespace cubstream */

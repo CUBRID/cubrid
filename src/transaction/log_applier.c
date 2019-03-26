@@ -2215,10 +2215,12 @@ la_ignore_on_error (int errid)
 
   errid = abs (errid);
 
+#if defined (ENABLE_OLD_REPLICATION)
   if (sysprm_find_err_in_integer_list (PRM_ID_HA_APPLYLOGDB_IGNORE_ERROR_LIST, errid))
     {
       return true;
     }
+#endif
 
   return false;
 }
@@ -2252,12 +2254,13 @@ la_retry_on_error (int errid)
     {
       return true;
     }
-
+#if defined (ENABLE_OLD_REPLICATION)
   errid = abs (errid);
   if (sysprm_find_err_in_integer_list (PRM_ID_HA_APPLYLOGDB_RETRY_ERROR_LIST, errid))
     {
       return true;
     }
+#endif /* ENABLE_OLD_REPLICATION */
 
   return false;
 }
@@ -2602,8 +2605,8 @@ la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbn
 	  snprintf (err_msg, sizeof (err_msg) - 1,
 		    "Active log file(%s) charset is not valid (%s), expecting %s.",
 		    act_log->path,
-		    lang_charset_cubrid_name ((INTL_CODESET) act_log->
-					      log_hdr->db_charset), lang_charset_cubrid_name (lang_charset ()));
+		    lang_charset_cubrid_name ((INTL_CODESET) act_log->log_hdr->db_charset),
+		    lang_charset_cubrid_name (lang_charset ()));
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, err_msg);
 	  return ER_LOC_INIT;
 	}
@@ -4866,7 +4869,7 @@ la_apply_delete_log (LA_ITEM * item)
 	  if (sl_write_delete_sql (item->class_name, mclass, la_get_item_pk_value (item)) != NO_ERROR)
 	    {
 	      sb.clear ();
-	      help_sprint_value (&item->key, sb);
+	      db_sprint_value (&item->key, sb);
 	      snprintf (sql_log_err, sizeof (sql_log_err),
 			"failed to write SQL log. class: %s, key: %s", item->class_name, sb.get_buffer ());
 	      db_sprint_value (&item->key, sb);
@@ -6275,8 +6278,7 @@ la_change_state (void)
       sprintf (buffer,
 	       "change the state of HA server (%s@%s) from '%s' to '%s'",
 	       la_slave_db_name, la_peer_host,
-	       css_ha_server_state_string ((HA_SERVER_STATE) la_Info.
-					   last_server_state),
+	       css_ha_server_state_string ((HA_SERVER_STATE) la_Info.last_server_state),
 	       css_ha_server_state_string ((HA_SERVER_STATE) la_Info.act_log.log_hdr->ha_server_state));
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
     }
@@ -6384,8 +6386,7 @@ la_change_state (void)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_HA_LA_FAILED_TO_CHANGE_STATE, 2,
-		  css_ha_applier_state_string ((HA_LOG_APPLIER_STATE) la_Info.
-					       apply_state),
+		  css_ha_applier_state_string ((HA_LOG_APPLIER_STATE) la_Info.apply_state),
 		  css_ha_applier_state_string ((HA_LOG_APPLIER_STATE) new_state));
 	}
     }
@@ -7392,7 +7393,7 @@ static void
 la_get_adaptive_time_commit_interval (int *time_commit_interval, int *delay_hist)
 {
   int delay;
-  int max_commit_interval;
+  int max_commit_interval = 0;
   float avg_delay;
   static int delay_hist_idx = 0;
 
@@ -7404,8 +7405,9 @@ la_get_adaptive_time_commit_interval (int *time_commit_interval, int *delay_hist
     {
       return;
     }
-
+#if defined (ENABLE_OLD_REPLICATION)
   max_commit_interval = prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS);
+#endif
 
   if (delay > LA_MAX_TOLERABLE_DELAY)
     {
@@ -7788,7 +7790,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   bool clear_owner;
   int now = 0, last_eof_time = 0;
   LOG_LSA last_eof_lsa;
-  int time_commit_interval;
+  int time_commit_interval = 0;
   int delay_hist[LA_NUM_DELAY_HISTORY];
   int i;
   int remove_arv_interval_in_secs;
@@ -7917,7 +7919,9 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
     {
       delay_hist[i] = -1;
     }
+#if defined (ENABLE_OLD_REPLICATION)
   time_commit_interval = prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS);
+#endif
 
   if (prm_get_integer_value (PRM_ID_HA_REPL_FILTER_TYPE) != REPL_FILTER_NONE)
     {
@@ -8008,8 +8012,11 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	    }
 
 	  memcpy (&final_log_hdr, la_Info.act_log.log_hdr, sizeof (LOG_HEADER));
-
-	  if (prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS) >= 0)
+	  int dummy_wait = 0;
+#if defined (ENABLE_OLD_REPLICATION)
+	  dummy_wait = prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS)
+#endif
+	    if (dummy_wait >= 0)
 	    {
 	      if (final_log_hdr.ha_server_state == HA_SERVER_STATE_DEAD
 		  && LSA_EQ (&last_eof_lsa, &final_log_hdr.eof_lsa))
@@ -8017,7 +8024,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		  now = time (NULL);
 		  assert_release (now >= last_eof_time);
 
-		  if ((now - last_eof_time) >= prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS))
+		  if ((now - last_eof_time) >= dummy_wait)
 		    {
 		      clear_owner = true;
 		      error = la_unlock_dbname (&la_Info.db_lockf_vdes, la_slave_db_name, clear_owner);
@@ -8155,10 +8162,9 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 			{
 			  er_log_debug (ARG_FILE_LINE,
 					"skip this page (pageid=%lld/%lld/%lld)",
-					(long long int) la_Info.final_lsa.
-					pageid,
-					(long long int) final_log_hdr.eof_lsa.
-					pageid, (long long int) final_log_hdr.append_lsa.pageid);
+					(long long int) la_Info.final_lsa.pageid,
+					(long long int) final_log_hdr.eof_lsa.pageid,
+					(long long int) final_log_hdr.append_lsa.pageid);
 			  /* skip it */
 			  la_Info.final_lsa.pageid++;
 			  la_Info.final_lsa.offset = 0;

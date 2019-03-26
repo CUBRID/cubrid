@@ -157,8 +157,9 @@ namespace cubreplication
   {
 #if defined (SERVER_MODE)
     static unsigned int check_conn_delay_counter = 0;
-    bool promoted_to_write = false;
-    cubstream::stream_position min_position_send = 0;
+    bool have_write_lock = false;
+    int active_senders = 0;
+    cubstream::stream_position min_position_send = std::numeric_limits<cubstream::stream_position>::max ();
 
     if (check_conn_delay_counter >
 	SUPERVISOR_DAEMON_CHECK_CONN_MS / SUPERVISOR_DAEMON_DELAY_MS)
@@ -170,14 +171,14 @@ namespace cubreplication
 	  {
 	    if (! (*it)->get_channel ().is_connection_alive ())
 	      {
-		if (!promoted_to_write)
+		if (!have_write_lock)
 		  {
 		    rwlock_read_unlock (&master_senders_lock);
 
 		    rwlock_write_lock (&master_senders_lock);
 		    it = master_server_stream_senders.begin ();
 
-		    promoted_to_write = true;
+		    have_write_lock = true;
 		  }
 		else
 		  {
@@ -186,12 +187,13 @@ namespace cubreplication
 	      }
 	    else
 	      {
-                cubstream::stream_position this_sender_pos = (*it)->get_last_sent_position ();
-                min_position_send = std::min (this_sender_pos, min_position_send);
+		cubstream::stream_position this_sender_pos = (*it)->get_last_sent_position ();
+		min_position_send = std::min (this_sender_pos, min_position_send);
+		active_senders++;
 		++it;
 	      }
 	  }
-	if (!promoted_to_write)
+	if (!have_write_lock)
 	  {
 	    rwlock_read_unlock (&master_senders_lock);
 	  }
@@ -201,7 +203,10 @@ namespace cubreplication
 	  }
 	check_conn_delay_counter = 0;
 
-        cubreplication::master_node::update_senders_min_position (min_position_send);
+	if (active_senders > 0)
+	  {
+	    cubreplication::master_node::update_senders_min_position (min_position_send);
+	  }
       }
 
     check_conn_delay_counter++;

@@ -23,14 +23,49 @@
 
 #ident "$Id$"
 
-#include "replication_object.hpp"
 #include "replication_stream_entry.hpp"
+#include "replication_object.hpp"
+#include "replication_common.hpp"
 #include "stream_entry.hpp"
 #include "error_code.h"
+#include "string_buffer.hpp"
 #include <algorithm>
 
 namespace cubreplication
 {
+
+  const char *stream_entry_header::tran_state_string (stream_entry_header::TRAN_STATE state)
+  {
+    switch (state)
+      {
+      case ACTIVE:
+	return "ACTIVE";
+      case COMMITTED:
+	return "COMMITTED";
+      case ABORTED:
+	return "ABORTED";
+      case GROUP_COMMIT:
+	return "GROUP_COMMIT";
+      default:
+	break;
+      }
+    return "UNDEFINED";
+  }
+
+  void stream_entry::stringify (string_buffer &sb, const string_dump_mode mode)
+  {
+    sb ("HEADER : MVCCID:%lld | tran_state:%s | repl_entries_cnt:%d | data_size:%d | data_start_pos:%lld | %p\n",
+	m_header.mvccid, stream_entry_header::tran_state_string (m_header.tran_state),
+	m_header.count_replication_entries, m_header.data_size, m_data_start_position, this);
+
+    if (mode == detailed_dump)
+      {
+	for (auto it = m_packable_entries.begin (); it != m_packable_entries.end (); it++)
+	  {
+	    (*it)->stringify (sb);
+	  }
+      }
+  }
 
   size_t stream_entry::get_data_packed_size (void)
   {
@@ -89,6 +124,15 @@ namespace cubreplication
     cubpacking::unpacker *serializator = get_unpacker ();
     unsigned int count_and_flags;
     unsigned int state_flags;
+
+    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+      {
+	string_buffer sb, sb_hex;
+	size_t buf_size = serializator->get_buffer_end () - serializator->get_buffer_start ();
+	sb.add_bytes (buf_size, serializator->get_buffer_start ());
+	sb_hex.hex_dump (sb, buf_size);
+	_er_log_debug (ARG_FILE_LINE, "unpack_stream_entry_header: size:%d \n%s", buf_size, sb_hex.get_buffer ());
+      }
 
     serializator->unpack_bigint (m_header.prev_record);
     serializator->unpack_bigint (m_header.mvccid);

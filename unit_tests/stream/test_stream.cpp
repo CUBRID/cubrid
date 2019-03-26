@@ -1310,13 +1310,12 @@ namespace test_stream
 
     my_stream->set_name ("my_test_stream");
 
-    cubstream::stream_file *my_stream_file = new cubstream::stream_file (*my_stream, file_size, 2);
-    my_stream_file->stop_daemon ();
-
     /* path is current folder */
     system ("mkdir test_stream_folder");
-    my_stream_file->set_path ("test_stream_folder");
 
+    cubstream::stream_file *my_stream_file =
+	    new cubstream::stream_file (*my_stream, "test_stream_folder", file_size, 2);
+    my_stream_file->stop_daemon ();
 
     cubstream::stream::write_func_t writer_func;
     writer_func = std::bind (&write_action, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
@@ -1413,11 +1412,9 @@ namespace test_stream
 
     my_stream->set_name ("my_test_stream");
 
-    cubstream::stream_file *my_stream_file = new cubstream::stream_file (*my_stream, file_size);
-
     /* path is current folder */
     system ("mkdir test_stream_folder");
-    my_stream_file->set_path ("test_stream_folder");
+    cubstream::stream_file *my_stream_file = new cubstream::stream_file (*my_stream, "test_stream_folder", file_size);
 
     cubstream::stream::write_func_t writer_func;
     cubstream::stream::read_func_t reader_func;
@@ -1497,11 +1494,10 @@ namespace test_stream
     test_stream_for_pack.set_name ("stream_for_pack_mt");
     test_stream_for_pack.set_buffer_reserve_margin (100 * 1024);
 
-    cubstream::stream_file *my_stream_file = new cubstream::stream_file (test_stream_for_pack, file_size);
-
     /* path is current folder */
     system ("mkdir test_stream_folder");
-    my_stream_file->set_path ("test_stream_folder");
+    cubstream::stream_file *my_stream_file =
+	    new cubstream::stream_file (test_stream_for_pack, "test_stream_folder", file_size);
 
     //test_stream_for_pack.set_ready_pos_handler (stream_ready_notify_handler.m_notify_func);
 
@@ -1740,15 +1736,15 @@ namespace test_stream
     test_stream_for_read.set_name ("stream_for_pack_mt");
     test_stream_for_read.set_buffer_reserve_margin (100 * 1024);
     test_stream_for_read.init (stream_max_pos);
-    test_stream_for_read.force_set_read_position (stream_read_start);
-
-    cubstream::stream_file *my_stream_file = new cubstream::stream_file (test_stream_for_read, file_size);
-    my_stream_file->init (stream_max_pos);
-    my_stream_file->drop_volumes_to_pos (0, true);
+    test_stream_for_read.force_serial_data_read (stream_read_start);
 
     /* path is current folder */
     system ("mkdir test_stream_folder");
-    my_stream_file->set_path ("test_stream_folder");
+    cubstream::stream_file *my_stream_file =
+	    new cubstream::stream_file (test_stream_for_read, "test_stream_folder", file_size);
+    my_stream_file->init ("test_stream_folder", stream_max_pos);
+    my_stream_file->drop_volumes_to_pos (0, true);
+
     stream_context_manager::g_stream = &test_stream_for_read;
 
     cubthread::entry_workpool *unpacking_worker_pool  = NULL;

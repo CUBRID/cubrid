@@ -28,6 +28,7 @@
 #include "log_impl.h"
 #include "multi_thread_stream.hpp"
 #include "replication.h"
+#include "replication_common.hpp"
 #include "replication_stream_entry.hpp"
 #include "string_buffer.hpp"
 #include "system_parameter.h"
@@ -43,10 +44,10 @@ namespace cubreplication
   }
 
   void
-  log_generator::set_tran_repl_info (MVCCID mvccid, stream_entry_header::TRAN_STATE state)
+  log_generator::set_tran_repl_info (stream_entry_header::TRAN_STATE state)
   {
     assert (m_has_stream);
-    m_stream_entry.set_mvccid (mvccid);
+    assert (MVCCID_IS_VALID (m_stream_entry.get_mvccid ()));
     m_stream_entry.set_state (state);
   }
 
@@ -232,17 +233,25 @@ namespace cubreplication
   log_generator::pack_stream_entry (void)
   {
     assert (m_has_stream);
+    assert (!m_stream_entry.is_tran_state_undefined ());
+    assert (MVCCID_IS_VALID (m_stream_entry.get_mvccid ()));
+
+    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+      {
+	string_buffer sb;
+	m_stream_entry.stringify (sb, stream_entry::detailed_dump);
+	_er_log_debug (ARG_FILE_LINE, "log_generator::pack_stream_entry\n%s\n", sb.get_buffer ());
+      }
 
     m_stream_entry.pack ();
     m_stream_entry.reset ();
-    // reset state
-    m_stream_entry.set_state (stream_entry_header::ACTIVE);
   }
 
   void
   log_generator::pack_group_commit_entry (void)
   {
-    static stream_entry gc_stream_entry (s_stream, MVCCID_NULL, stream_entry_header::GROUP_COMMIT);
+    /* use non-NULL MVCCID to prevent assertion fail on stream packer */
+    static stream_entry gc_stream_entry (s_stream, MVCCID_FIRST, stream_entry_header::GROUP_COMMIT);
     gc_stream_entry.pack ();
   }
 
@@ -285,6 +294,37 @@ namespace cubreplication
   void
   log_generator::on_transaction_finish (stream_entry_header::TRAN_STATE state)
   {
+    if (is_replication_disabled () || !MVCCID_IS_VALID (m_stream_entry.get_mvccid ()))
+      {
+	return;
+      }
+
+    set_tran_repl_info (state);
+    pack_stream_entry ();
+    /* TODO[replication] : force a group commit :
+     * move this to log_manager group commit when multi-threaded apply is enabled */
+    pack_group_commit_entry ();
+    m_stream_entry.set_mvccid (MVCCID_NULL);
+    // reset state
+    m_stream_entry.set_state (stream_entry_header::ACTIVE);
+  }
+
+  void
+  log_generator::on_transaction_pre_commit (void)
+  {
+    check_commit_end_tran ();
+    on_transaction_pre_finish ();
+  }
+
+  void
+  log_generator::on_transaction_pre_abort (void)
+  {
+    on_transaction_pre_finish ();
+  }
+
+  void
+  log_generator::on_transaction_pre_finish (void)
+  {
     if (is_replication_disabled ())
       {
 	return;
@@ -294,8 +334,11 @@ namespace cubreplication
     int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
     LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
 
-    set_tran_repl_info (tdes->mvccinfo.id, state);
-    pack_stream_entry ();
+    /* save MVCCID in pre-commit phase, after commit, the MVCCID is cleanup */
+    if (MVCCID_IS_VALID (tdes->mvccinfo.id))
+      {
+	m_stream_entry.set_mvccid (tdes->mvccinfo.id);
+      }
   }
 
   void
