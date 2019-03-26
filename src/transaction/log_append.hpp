@@ -31,10 +31,16 @@
 #include "log_lsa.hpp"
 #include "log_record.hpp"
 #include "log_storage.hpp"
+#include "memory_alloc.h"
+#include "object_representation.h"
+#include "recovery.h"
 #include "storage_common.h"
 
 #include <atomic>
 #include <mutex>
+
+// forward declarations
+struct log_tdes;
 
 typedef struct log_crumb LOG_CRUMB;
 struct log_crumb
@@ -68,6 +74,7 @@ struct log_append_info
 {
   int vdes;			/* Volume descriptor of active log */
   std::atomic<LOG_LSA> nxio_lsa;  /* Lowest log sequence number which has not been written to disk (for WAL). */
+  /* todo - not really belonging here. should be part of page buffer. */
   LOG_LSA prev_lsa;		/* Address of last append log record */
   LOG_PAGE *log_pgptr;		/* The log page which is fixed */
 
@@ -131,18 +138,27 @@ inline bool LOG_RV_RECORD_IS_INSERT (log_rv_record_flag_type flags);
 inline bool LOG_RV_RECORD_IS_DELETE (log_rv_record_flag_type flags);
 inline bool LOG_RV_RECORD_IS_UPDATE_ALL (log_rv_record_flag_type flags);
 inline bool LOG_RV_RECORD_IS_UPDATE_PARTIAL (log_rv_record_flag_type flags);
-
-#define LOG_RV_RECORD_SET_MODIFY_MODE(addr, mode) \
-  ((addr)->offset = ((addr)->offset & (~LOG_RV_RECORD_MODIFY_MASK)) | (mode))
-
-#define LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE(new_data_size) \
-  (DB_ALIGN (new_data_size + OR_SHORT_SIZE + 2 * OR_BYTE_SIZE, INT_ALIGNMENT))
-
-bool log_prior_has_worker_log_records (THREAD_ENTRY *thread_p);
+inline void LOG_RV_RECORD_SET_MODIFY_MODE (log_data_addr *addr, log_rv_record_flag_type mode);
+constexpr size_t LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE (size_t new_data_size);
 
 void LOG_RESET_APPEND_LSA (const LOG_LSA *lsa);
 void LOG_RESET_PREV_LSA (const LOG_LSA *lsa);
 char *LOG_APPEND_PTR ();
+
+bool log_prior_has_worker_log_records (THREAD_ENTRY *thread_p);
+LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG_RCVINDEX rcvindex,
+    LOG_DATA_ADDR *addr, int ulength, const char *udata, int rlength,
+    const char *rdata);
+LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG_RCVINDEX rcvindex,
+    LOG_DATA_ADDR *addr, const int num_ucrumbs, const LOG_CRUMB *ucrumbs,
+    const int num_rcrumbs, const LOG_CRUMB *rcrumbs);
+LOG_LSA prior_lsa_next_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, log_tdes *tdes);
+LOG_LSA prior_lsa_next_record_with_lock (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, log_tdes *tdes);
+void log_append_init_zip ();
+void log_append_final_zip ();
+
+// todo - move to header of log page buffer
+size_t logpb_get_memsize ();
 
 //////////////////////////////////////////////////////////////////////////
 //
@@ -172,6 +188,18 @@ bool
 LOG_RV_RECORD_IS_UPDATE_PARTIAL (log_rv_record_flag_type flags)
 {
   return (flags & LOG_RV_RECORD_MODIFY_MASK) == LOG_RV_RECORD_UPDATE_PARTIAL;
+}
+
+void
+LOG_RV_RECORD_SET_MODIFY_MODE (log_data_addr *addr, log_rv_record_flag_type mode)
+{
+  addr->offset = (addr->offset & (~LOG_RV_RECORD_MODIFY_MASK)) | (mode);
+}
+
+constexpr size_t
+LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE (size_t new_data_size)
+{
+  return DB_ALIGN (new_data_size + OR_SHORT_SIZE + 2 * OR_BYTE_SIZE, INT_ALIGNMENT);
 }
 
 #endif // !_LOG_APPEND_HPP_

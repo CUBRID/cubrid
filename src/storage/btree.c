@@ -1103,13 +1103,11 @@ btree_perf_unique_lock_time (THREAD_ENTRY * thread_p, PERF_UTIME_TRACKER * track
 
 /* Default buffer size of redo recovery changes. Should cover all cases. */
 /* Just a rough estimation */
+const size_t BTREE_RV_BUFFER_SIZE =
 #if defined (NDEBUG)
-#define BTREE_RV_BUFFER_SIZE \
-  ((int) (3 * LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE (BTREE_OBJECT_MAX_SIZE)))
+  3 * LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE (BTREE_OBJECT_MAX_SIZE);
 #else /* !NDEBUG */
-#define BTREE_RV_BUFFER_SIZE \
-  ((int) (4 * LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE (BTREE_OBJECT_MAX_SIZE) \
-   + BTREE_RV_DEBUG_INFO_MAX_SIZE))
+  4 * LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE (BTREE_OBJECT_MAX_SIZE);
 #endif /* !NDEBUG */
 
 #define BTREE_RV_GET_DATA_LENGTH(rv_ptr, rv_start, rv_length) \

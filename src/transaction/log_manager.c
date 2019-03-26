@@ -3176,8 +3176,6 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
 void
 log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 {
-  int rv;
-
   assert (addr && addr->pgptr != NULL);
 
 #if defined(CUBRID_DEBUG)
@@ -4512,8 +4510,6 @@ log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool i
 static void
 log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa)
 {
-  int rv;
-
   log_Gl.prior_info.prior_lsa_mutex.lock ();
 
   log_append_repl_info_with_lock (thread_p, tdes, true);

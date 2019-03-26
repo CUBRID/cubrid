@@ -1128,15 +1128,7 @@ extern void logpb_force_flush_pages (THREAD_ENTRY * thread_p);
 extern void logpb_force_flush_header_and_pages (THREAD_ENTRY * thread_p);
 extern void logpb_invalid_all_append_pages (THREAD_ENTRY * thread_p);
 extern void logpb_flush_log_for_wal (THREAD_ENTRY * thread_p, const LOG_LSA * lsa_ptr);
-extern LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type,
-						      LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int ulength,
-						      const char *udata, int rlength, const char *rdata);
-extern LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type,
-							LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
-							const int num_ucrumbs, const LOG_CRUMB * ucrumbs,
-							const int num_rcrumbs, const LOG_CRUMB * rcrumbs);
-extern LOG_LSA prior_lsa_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_TDES * tdes);
-extern LOG_LSA prior_lsa_next_record_with_lock (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_TDES * tdes);
+
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void logpb_remove_append (LOG_TDES * tdes);
@@ -1291,7 +1283,6 @@ extern void xlogtb_dump_trantable (THREAD_ENTRY * thread_p, FILE * out_fp);
 
 extern bool logpb_need_wal (const LOG_LSA * lsa);
 extern char *logpb_backup_level_info_to_string (char *buf, int buf_size, const LOG_HDR_BKUP_LEVEL_INFO * info);
-extern void logpb_get_nxio_lsa (LOG_LSA * lsa_p);
 extern const char *tran_abort_reason_to_string (TRAN_ABORT_REASON val);
 extern int logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt,
 					 void **ctx);

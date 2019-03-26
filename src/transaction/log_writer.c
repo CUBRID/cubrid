@@ -44,6 +44,7 @@
 #include "log_volids.hpp"
 #include "crypt_opfunc.h"
 #if defined(SERVER_MODE)
+#include "log_append.hpp"
 #include "log_manager.h"
 #include "server_support.h"
 #include "network_interface_sr.h"
@@ -2049,7 +2050,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
 	}
       else
 	{
-	  logpb_get_nxio_lsa (&nxio_lsa);
+	  nxio_lsa = log_Gl.append.get_nxio_lsa ();
 	  if (fpageid > nxio_lsa.pageid)
 	    {
 	      fpageid = nxio_lsa.pageid;
