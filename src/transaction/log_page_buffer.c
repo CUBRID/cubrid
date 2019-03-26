@@ -329,11 +329,8 @@ static int logpb_add_archive_page_info (THREAD_ENTRY * thread_p, int arv_num, LO
 					LOG_PAGEID end_page);
 static int logpb_get_archive_num_from_info_table (THREAD_ENTRY * thread_p, LOG_PAGEID page_id);
 
-
 static int logpb_flush_all_append_pages (THREAD_ENTRY * thread_p);
 static int logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * ndoe);
-
-
 
 static void logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header);
 static void logpb_end_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header);
@@ -547,9 +544,9 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   LOGWR_INFO *writer_info = log_Gl.writer_info;
   size_t size;
 
-
-
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+
+  log_append_init_zip ();
 
   if (logpb_Initialized == true)
     {
@@ -699,7 +696,7 @@ logpb_finalize_pool (THREAD_ENTRY * thread_p)
 
   logpb_finalize_writer_info ();
 
-
+  log_append_final_zip ();
 }
 
 /*
@@ -3945,8 +3942,6 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
     }
 }
 
-
-
 /*
  * logpb_append_data - Append data
  *
@@ -4022,8 +4017,6 @@ logpb_append_data (THREAD_ENTRY * thread_p, int length, const char *data)
    */
   LOG_APPEND_ALIGN (thread_p, LOG_SET_DIRTY);
 }
-
-
 
 /*
  * logpb_append_crumbs - Append crumbs of data
@@ -4165,9 +4158,6 @@ logpb_end_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
     }
   log_Pb.partial_append.status = LOGPB_APPENDREC_SUCCESS;
 }
-
-
-
 
 /*
  *
@@ -10467,10 +10457,6 @@ xlogpb_dump_stat (FILE * outfp)
   logpb_dump_log_header (outfp);
   logpb_dump_runtime (outfp);
 }
-
-
-
-
 
 /*
  * logpb_need_wal -
