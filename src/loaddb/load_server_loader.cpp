@@ -297,21 +297,11 @@ namespace cubload
 
     std::size_t attr_index = 0;
     std::size_t attr_size = m_class_entry->get_attributes_size ();
-    bool is_syntax_check_only = m_session.get_args ().syntax_check;
-    driver *m_driver = m_session.get_driver ();
 
     if (cons != NULL && attr_size == 0)
       {
         er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_NO_CLASS_OR_NO_ATTRIBUTE, 0);
-        if (!is_syntax_check_only)
-          {
-	    m_error_handler.on_failure ();
-          }
-        else
-          {
-            /*m_error_handler.on_error (LOADDB_MSG_SYNTAX_ERR, m_driver->get_scanner().lineno(),
-              m_driver->get_scanner().YYText());*/
-          }
+	m_error_handler.on_failure ();
         return;
       }
 
@@ -320,15 +310,7 @@ namespace cubload
 	if (attr_index == attr_size)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, attr_index);
-	    if (!is_syntax_check_only)
-              {
-	        m_error_handler.on_failure ();
-              }
-            else
-              {
-                /*m_error_handler.on_error (LOADDB_MSG_SYNTAX_ERR, m_driver->get_scanner().lineno(),
-                  m_driver->get_scanner().YYText());*/
-              }
+            m_error_handler.on_failure ();
             return;
 	  }
 
@@ -336,16 +318,7 @@ namespace cubload
 	int error_code = process_constant (c, attr);
 	if (error_code != NO_ERROR)
 	  {
-	    if (!is_syntax_check_only)
-              {
-	        m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
-              }
-            else
-              {
-                m_error_handler.on_error (LOADDB_MSG_SYNTAX_ERR, m_driver->get_scanner().lineno(),
-                  m_driver->get_scanner().YYText());
-              }
-
+            m_error_handler.on_failure ();
             return;
 	  }
 
@@ -356,16 +329,7 @@ namespace cubload
     if (attr_index < attr_size)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MISSING_ATTRIBUTES, 2, attr_size, attr_index);
-
-	if (!is_syntax_check_only)
-          {
-	    m_error_handler.on_failure (LOADDB_MSG_LOAD_FAIL);
-          }
-        else
-          {
-            /*m_error_handler.on_error (LOADDB_MSG_SYNTAX_ERR, m_driver->get_scanner().lineno(),
-              m_driver->get_scanner().YYText());*/
-          }
+	m_error_handler.on_failure ();
         return;
       }
   }
@@ -486,6 +450,10 @@ namespace cubload
     int error_code = func (token, &attr, &db_val);
     if (error_code != NO_ERROR)
       {
+        if (error_code == ER_DATE_CONVERSION)
+          {
+            m_error_handler.log_date_time_conversion_error (token, pr_type_name (attr.get_domain().type->get_id()));
+          }
 	return error_code;
       }
 

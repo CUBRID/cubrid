@@ -38,7 +38,7 @@ namespace cubload
   error_handler::error_handler (session &session)
     : m_session (session)
   {
-    //
+    m_syntax_check = m_session.get_args ().syntax_check;
   }
 #endif
 
@@ -61,6 +61,14 @@ namespace cubload
   error_handler::on_failure ()
   {
     std::string empty;
+#if defined (SERVER_MODE)
+    if (m_syntax_check)
+      {
+        // Do not do anything here
+        return;
+      }
+#endif
+
     log_error_message (empty, true);
   }
 

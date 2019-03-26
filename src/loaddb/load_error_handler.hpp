@@ -61,6 +61,9 @@ namespace cubload
       template<typename... Args>
       void on_failure_with_line (MSGCAT_LOADDB_MSG msg_id, Args &&... args);
 
+      template<typename... Args>
+      void log_date_time_conversion_error (Args &&... args);
+
     private:
       int get_lineno ();
       char *get_message_from_catalog (MSGCAT_LOADDB_MSG msg_id);
@@ -73,6 +76,7 @@ namespace cubload
 
 #if defined (SERVER_MODE)
       session &m_session;
+      bool m_syntax_check;
 #endif
   };
 }
@@ -123,7 +127,7 @@ namespace cubload
 
     log_error_message (err_msg, true);
   }
-
+  
   template<typename... Args>
   std::string
   error_handler::format (const char *fmt, Args &&... args)
@@ -135,6 +139,18 @@ namespace cubload
     snprintf (msg.get (), (size_t) size, fmt, std::forward<Args> (args)...);
 
     return std::string (msg.get (), msg.get () + size - 1);
+  }
+
+  template<typename... Args>
+  void
+  error_handler::log_date_time_conversion_error (Args &&... args)
+  {
+    std::string err_msg;
+
+    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ()));
+    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_CONVERSION_ERROR), std::forward<Args>(args)...));
+    
+    log_error_message (err_msg, false);
   }
 
 } // namespace cubload
