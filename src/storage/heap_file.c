@@ -51,6 +51,7 @@
 #include "chartype.h"
 #include "query_executor.h"
 #include "fetch.h"
+#include "filter_pred_cache.h"
 #include "server_interface.h"
 #include "elo.h"
 #include "db_elo.h"
@@ -17369,9 +17370,8 @@ end:
   if (unpack_info)
     {
       (void) qexec_clear_func_pred (thread_p, func_pred);
-      stx_free_additional_buff (thread_p, unpack_info);
-      stx_free_xasl_unpack_info (unpack_info);
-      db_private_free_and_init (thread_p, unpack_info);
+      fpcache_free_unpack_info (thread_p, unpack_info);
+      unpack_info = NULL;
     }
 
   return error;
@@ -17541,9 +17541,8 @@ heap_free_func_pred_unpack_info (THREAD_ENTRY * thread_p, int n_indexes, FUNC_PR
 
       if (func_indx_preds[i].unpack_info)
 	{
-	  stx_free_additional_buff (thread_p, func_indx_preds[i].unpack_info);
-	  stx_free_xasl_unpack_info (func_indx_preds[i].unpack_info);
-	  db_private_free_and_init (thread_p, func_indx_preds[i].unpack_info);
+	  fpcache_free_unpack_info (thread_p, func_indx_preds[i].unpack_info);
+	  func_indx_preds[i].unpack_info = NULL;
 	}
     }
   db_private_free_and_init (thread_p, func_indx_preds);

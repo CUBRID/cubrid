@@ -26,6 +26,7 @@
 
 #include "heap_file.h"
 #include "fetch.h"
+#include "filter_pred_cache.h"
 #include "dbtype.h"
 #include "stream_to_xasl.h"
 #include "query_aggregate.hpp"
@@ -2474,9 +2475,7 @@ partition_free_partition_predicate (PRUNING_CONTEXT * pinfo)
 
   if (pinfo->fp_cache_context != NULL)
     {
-      stx_free_additional_buff (pinfo->thread_p, pinfo->fp_cache_context);
-      stx_free_xasl_unpack_info (pinfo->fp_cache_context);
-      db_private_free_and_init (pinfo->thread_p, pinfo->fp_cache_context);
+      fpcache_free_unpack_info (pinfo->thread_p, pinfo->fp_cache_context);
     }
 }
 

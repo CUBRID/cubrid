@@ -36,6 +36,7 @@
 
 #include "dbtype.h"
 #include "error_manager.h"
+#include "filter_pred_cache.h"
 #include "query_aggregate.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
@@ -225,9 +226,8 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   xasl = stx_restore_xasl_node (thread_p, xasl_stream + offset);
   if (xasl == NULL)
     {
-      stx_free_additional_buff (thread_p, unpack_info_p);
-      stx_free_xasl_unpack_info (unpack_info_p);
-      db_private_free_and_init (thread_p, unpack_info_p);
+      fpcache_free_unpack_info (thread_p, unpack_info_p);
+      unpack_info_p = NULL;
 
       goto end;
     }
@@ -301,9 +301,8 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context *
   pwc = stx_restore_filter_pred_node (thread_p, pred_stream + offset);
   if (pwc == NULL)
     {
-      stx_free_additional_buff (thread_p, unpack_info_p);
-      stx_free_xasl_unpack_info (unpack_info_p);
-      db_private_free_and_init (thread_p, unpack_info_p);
+      fpcache_free_unpack_info (thread_p, unpack_info_p);
+      unpack_info_p = NULL;
 
       goto end;
     }
@@ -361,9 +360,8 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *x
   p_xasl = stx_restore_func_pred (thread_p, xasl_stream + offset);
   if (p_xasl == NULL)
     {
-      stx_free_additional_buff (thread_p, unpack_info_p);
-      stx_free_xasl_unpack_info (unpack_info_p);
-      db_private_free_and_init (thread_p, unpack_info_p);
+      fpcache_free_unpack_info (thread_p, unpack_info_p);
+      unpack_info_p = NULL;
 
       goto end;
     }

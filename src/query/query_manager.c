@@ -1184,9 +1184,7 @@ end:
   if (xasl_buf_info)
     {
       /* free the XASL tree */
-      stx_free_additional_buff (thread_p, xasl_buf_info);
-      stx_free_xasl_unpack_info (xasl_buf_info);
-      db_private_free_and_init (thread_p, xasl_buf_info);
+      fpcache_free_unpack_info (thread_p, xasl_buf_info);
     }
 
   return list_id;

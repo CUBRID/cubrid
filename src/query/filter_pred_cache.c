@@ -267,7 +267,7 @@ fpcache_entry_init (void *entry)
   /* Add here if anything should be initialized. */
   /* Allocate clone stack. */
   fpcache_entry->clone_stack =
-    (PRED_EXPR_WITH_CONTEXT **) malloc (fpcache_Clone_stack_size * sizeof (PRED_EXPR_WITH_CONTEXT));
+    (PRED_EXPR_WITH_CONTEXT **) malloc (fpcache_Clone_stack_size * sizeof (PRED_EXPR_WITH_CONTEXT *));
   if (fpcache_entry->clone_stack == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
@@ -276,6 +276,16 @@ fpcache_entry_init (void *entry)
     }
   fpcache_entry->clone_stack_head = -1;
   return NO_ERROR;
+}
+
+void
+fpcache_free_unpack_info (THREAD_ENTRY * thread_p, void *xasl_unpack_info)
+{
+  stx_free_additional_buff (thread_p, xasl_unpack_info);
+  stx_free_xasl_unpack_info (xasl_unpack_info);
+  // Note that free_and_init on caller's ptr is dangerouse since xasl_unpack_info might be alloced & freed 
+  // together with the ptr. 
+  db_private_free (thread_p, xasl_unpack_info);
 }
 
 /*
@@ -301,9 +311,7 @@ fpcache_entry_uninit (void *entry)
       assert (pred_expr != NULL);
 
       qexec_clear_pred_context (thread_p, pred_expr, true);
-      stx_free_additional_buff (thread_p, pred_expr->unpack_info);
-      stx_free_xasl_unpack_info (pred_expr->unpack_info);
-      db_private_free (thread_p, pred_expr->unpack_info);
+      fpcache_free_unpack_info (thread_p, pred_expr->unpack_info);
     }
 
   (void) db_change_private_heap (thread_p, old_private_heap);
@@ -483,9 +491,7 @@ fpcache_retire (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, pred_expr
     {
       /* Filter predicate expression could not be cached. Free it. */
       HL_HEAPID old_private_heap = db_change_private_heap (thread_p, 0);
-      stx_free_additional_buff (thread_p, filter_pred->unpack_info);
-      stx_free_xasl_unpack_info (filter_pred->unpack_info);
-      db_private_free_and_init (thread_p, filter_pred->unpack_info);
+      fpcache_free_unpack_info (thread_p, filter_pred->unpack_info);
       (void) db_change_private_heap (thread_p, old_private_heap);
     }
   return error_code;
