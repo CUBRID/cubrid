@@ -2936,6 +2936,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 #endif /* CUBRID_DEBUG */
   bool hold_flush_mutex = false;
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
+  LOG_PAGEID nxio_pageid;
 
   int rv;
 #if defined(SERVER_MODE)
@@ -3326,7 +3327,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
     }
 
   /* now flush the nxio_lsa page... unless it is the page of header for incomplete log record */
-  LOG_PAGEID nxio_pageid = log_Gl.append.get_nxio_lsa ().pageid;
+  nxio_pageid = log_Gl.append.get_nxio_lsa ().pageid;
   if (log_Pb.partial_append.status == LOGPB_APPENDREC_SUCCESS || (nxio_pageid != log_Gl.append.prev_lsa.pageid))
     {
       assert (log_Pb.partial_append.status == LOGPB_APPENDREC_SUCCESS
