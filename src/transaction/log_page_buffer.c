@@ -10351,7 +10351,7 @@ logpb_dump_log_header (FILE * outfp)
   fprintf (outfp, "\tlast log append lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.append.prev_lsa));
 
   fprintf (outfp, "\tlowest lsa which hasn't been written to disk : (%lld|%d)\n",
-	   LSA_AS_ARGS (&log_Gl.append.get_nxio_lsa ()));
+	   log_Gl.append.get_nxio_lsa ().pageid, log_Gl.append.get_nxio_lsa ().offset);
 
   fprintf (outfp, "\tcheckpoint lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.hdr.chkpt_lsa));
 
