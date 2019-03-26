@@ -117,8 +117,8 @@ extern SCAN_CODE locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, O
 				     int ispeeking, int chn);
 extern SCAN_OPERATION_TYPE locator_decide_operation_type (LOCK lock_mode, LC_FETCH_VERSION_TYPE fetch_version_type);
 extern LOCK locator_get_lock_mode_from_op_type (SCAN_OPERATION_TYPE op_type);
-extern int locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char *ha_sys_prm_context,
-				   const char *statement);
+extern int locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char *db_password,
+				   const char *ha_sys_prm_context, const char *statement);
 extern int locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION rbr_operation,
 				   const char *class_name, DB_VALUE * key_value,
 				   const std::vector < int >&changed_att_ids,

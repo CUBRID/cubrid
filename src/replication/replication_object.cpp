@@ -208,10 +208,11 @@ namespace cubreplication
   }
 
   /////////////////////////////////
-  sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user, const char *sys_prm_ctx, LOG_LSA &lsa_stamp)
+  sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user, const char * password, const char *sys_prm_ctx, LOG_LSA &lsa_stamp)
     : replication_object (lsa_stamp),
       m_statement (statement),
       m_db_user (user),
+      m_db_password (password ? password : ""),
       m_sys_prm_context (sys_prm_ctx ? sys_prm_ctx : "")
   {
   }
@@ -222,7 +223,7 @@ namespace cubreplication
     int err = NO_ERROR;
 #if defined (SERVER_MODE)
     cubthread::entry &my_thread = cubthread::get_entry ();
-    err = locator_repl_apply_sbr (&my_thread, m_db_user.c_str (),
+    err = locator_repl_apply_sbr (&my_thread, m_db_user.c_str (), m_db_password.c_str(),
 				  m_sys_prm_context.empty () ? NULL : m_sys_prm_context.c_str (),
 				  m_statement.c_str ());
 #endif
@@ -236,11 +237,13 @@ namespace cubreplication
 
     if (other_t == NULL
 	|| m_statement != other_t->m_statement
-	|| m_db_user != other_t->m_db_user
+	|| m_db_user != other_t->m_db_user      
 	|| m_sys_prm_context != other_t->m_sys_prm_context)
       {
 	return false;
       }
+
+    assert(m_db_password == other_t->m_db_password);
     return true;
   }
 
@@ -256,6 +259,7 @@ namespace cubreplication
 
     entry_size += serializator.get_packed_string_size (m_statement, entry_size);
     entry_size += serializator.get_packed_string_size (m_db_user, entry_size);
+    entry_size += serializator.get_packed_string_size (m_db_password, entry_size);
     entry_size += serializator.get_packed_string_size (m_sys_prm_context, entry_size);
 
     return entry_size;
@@ -266,7 +270,7 @@ namespace cubreplication
   {
     serializator.pack_int (sbr_repl_entry::PACKING_ID);
     serializator.pack_string (m_statement);
-    serializator.pack_string (m_db_user);
+    serializator.pack_string (m_db_password);
     serializator.pack_string (m_sys_prm_context);
   }
 
@@ -278,6 +282,7 @@ namespace cubreplication
     deserializator.unpack_int (entry_type_not_used);
     deserializator.unpack_string (m_statement);
     deserializator.unpack_string (m_db_user);
+    deserializator.unpack_string (m_db_password);
     deserializator.unpack_string (m_sys_prm_context);
   }
 

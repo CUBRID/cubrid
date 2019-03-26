@@ -70,12 +70,14 @@ namespace cubreplication
     private:
       std::string m_statement;
       std::string m_db_user;
+      std::string m_db_password;
       std::string m_sys_prm_context;
 
     public:
       static const int PACKING_ID = 1;
 
-      sbr_repl_entry (const char *statement, const char *user, const char *sys_prm_ctx, LOG_LSA &lsa_stamp);
+      sbr_repl_entry (const char *statement, const char *user, const char * password, const char *sys_prm_ctx,
+                      LOG_LSA &lsa_stamp);
 
       sbr_repl_entry () = default;
       ~sbr_repl_entry () = default;

@@ -8538,7 +8538,7 @@ repl_set_info (REPL_INFO * repl_info)
 {
 #if defined(CS_MODE)
   int req_error, success = ER_FAILED;
-  int request_size = 0, strlen1, strlen2, strlen3, strlen4, strlen5;
+  int request_size = 0, strlen1, strlen2, strlen3, strlen4, strlen5, strlen6;
   char *request = NULL, *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
@@ -8555,13 +8555,14 @@ repl_set_info (REPL_INFO * repl_info)
 		      + length_const_string (repl_schema->name, &strlen1)
 		      + length_const_string (repl_schema->stmt_text, &strlen2)
 		      + length_const_string (repl_schema->db_user, &strlen3)
-		      + length_const_string (repl_schema->sys_prm_context, &strlen4));
+		      + length_const_string (repl_schema->db_password, &strlen4)
+		      + length_const_string (repl_schema->sys_prm_context, &strlen5));
 
-      strlen5 = 0;
+      strlen6 = 0;
 #if !defined(NDEBUG) && defined (CS_MODE)
       if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
 	{
-	  request_size += length_const_string (repl_schema->savepoint_name, &strlen5);
+	  request_size += length_const_string (repl_schema->savepoint_name, &strlen6);
 	}
 #endif
 
@@ -8577,8 +8578,9 @@ repl_set_info (REPL_INFO * repl_info)
       ptr = pack_const_string_with_length (ptr, repl_schema->name, strlen1);
       ptr = pack_const_string_with_length (ptr, repl_schema->stmt_text, strlen2);
       ptr = pack_const_string_with_length (ptr, repl_schema->db_user, strlen3);
-      ptr = pack_const_string_with_length (ptr, repl_schema->sys_prm_context, strlen4);
-      ptr = pack_const_string_with_length (ptr, repl_schema->savepoint_name, strlen5);
+      ptr = pack_const_string_with_length (ptr, repl_schema->db_password, strlen4);
+      ptr = pack_const_string_with_length (ptr, repl_schema->sys_prm_context, strlen5);
+      ptr = pack_const_string_with_length (ptr, repl_schema->savepoint_name, strlen6);
 
       req_error =
 	net_client_request (NET_SERVER_REPL_INFO, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,

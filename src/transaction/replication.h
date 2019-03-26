@@ -63,6 +63,7 @@ struct repl_info_sbr
   char *name;
   char *stmt_text;
   char *db_user;
+  char *db_password;
   char *sys_prm_context;
   char *savepoint_name;
 };

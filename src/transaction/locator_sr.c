@@ -14221,23 +14221,24 @@ check_interrupt_callback (void *data)
 }
 
 int
-locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char *ha_sys_prm_context,
-			const char *statement)
+locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char *db_password,
+			const char *ha_sys_prm_context, const char *statement)
 {
   char path[PATH_MAX];
   static const char *db_name = boot_db_name ();
   int error = NO_ERROR;
   int exit_status;
   char tran_index_str[DB_BIGINT_PRECISION + 1] = { 0 };
-  char db_user_str[DB_MAX_USER_LENGTH + 4] = { 0 };
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   sprintf (tran_index_str, "%d", tran_index);
-  snprintf (db_user_str, sizeof (db_user_str) - 1, "-u%s", db_user);
 
-  const char *ddl_argv[10] = {
+  const char *ddl_argv[13] = {
     path,
-    db_user_str,
+    "-u",
+    db_user,
+    "-p",
+    db_password,
     db_name,
     "-c",
     statement,

@@ -123,6 +123,12 @@
 #define PT_NODE_SR_NO_CACHE(node)		\
 	((node)->info.serial.no_cache)
 
+ /* Macro to determine if a dbvalue is a character strign type. */
+#define IS_STRING(n)    (db_value_type(n) == DB_TYPE_VARCHAR  || \
+                         db_value_type(n) == DB_TYPE_CHAR     || \
+                         db_value_type(n) == DB_TYPE_VARNCHAR || \
+                         db_value_type(n) == DB_TYPE_NCHAR)
+
 static void do_set_trace_to_query_flag (QUERY_FLAG * query_flag);
 static void do_send_plan_trace_to_session (PARSER_CONTEXT * parser);
 static int do_vacuum (PARSER_CONTEXT * parser, PT_NODE * statement);
@@ -14625,11 +14631,13 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   REPL_INFO repl_info;
-  REPL_INFO_SBR repl_stmt;
+  REPL_INFO_SBR repl_stmt = { 0, NULL, NULL, NULL, NULL, NULL, NULL };
   PARSER_VARCHAR *name = NULL;
   static const char *unknown_name = "-";
   char stmt_separator;
   char *stmt_end = NULL;
+  MOP user;
+  DB_VALUE value;
 
   if (log_does_allow_replication () == false)
     {
@@ -14797,6 +14805,44 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   repl_stmt.stmt_text = statement->sql_user_text;
 
   repl_stmt.db_user = db_get_user_name ();
+  assert_release (repl_stmt.db_user != NULL);
+
+  repl_stmt.db_password = NULL;
+  if (strcasecmp (repl_stmt.db_user, "DBA") != 0)
+    {
+      /* Need to set the password. */
+      user = au_find_user (repl_stmt.db_user);
+      if (user == NULL)
+	{
+	  error = ER_AU_INVALID_USER;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, repl_stmt.db_user);
+	  goto end;
+	}
+
+      if (obj_get (user, "password", &value) != NO_ERROR)
+	{
+	  error = ER_AU_CORRUPTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  goto end;
+	}
+
+      if (!DB_IS_NULL (&value) && db_get_object (&value) != NULL)
+	{
+	  if (obj_get (db_get_object (&value), "password", &value))
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	      goto end;
+	    }
+
+	  if (!DB_IS_NULL (&value) && IS_STRING (&value))
+	    {
+	      const char *name = db_get_string (&value);
+	      repl_stmt.db_password = ws_copy_string (name);
+	      pr_clear_value (&value);
+	    }
+	}
+    }
 
   if (pt_is_ddl_statement (statement) != 0)
     {
@@ -14816,9 +14862,6 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       tran_get_oldest_system_savepoint (&repl_stmt.savepoint_name);
     }
 #endif
-
-  assert_release (repl_stmt.db_user != NULL);
-
   repl_info.info = (char *) &repl_stmt;
 
   error = locator_flush_replication_info (&repl_info);
@@ -14828,7 +14871,17 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       *stmt_end = stmt_separator;
     }
 
-  db_string_free (repl_stmt.db_user);
+end:
+  if (repl_stmt.db_user != NULL)
+    {
+      db_string_free (repl_stmt.db_user);
+    }
+
+  if (repl_stmt.db_password != NULL)
+    {
+      db_string_free (repl_stmt.db_password);
+    }
+
   if (repl_stmt.sys_prm_context)
     {
       free (repl_stmt.sys_prm_context);
