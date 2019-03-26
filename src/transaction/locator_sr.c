@@ -14231,8 +14231,6 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
   char tran_index_str[DB_BIGINT_PRECISION + 1] = { 0 };
   char db_user_str[DB_MAX_USER_LENGTH + 4] = { 0 };
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  const char *prev = NULL, *curr = NULL;
-  char *local_str = NULL;
 
   sprintf (tran_index_str, "%d", tran_index);
   snprintf (db_user_str, sizeof (db_user_str) - 1, "-u%s", db_user);
@@ -14252,48 +14250,10 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
 
   envvar_bindir_file (path, PATH_MAX, UTIL_DDL_PROXY_CLIENT);
 
-  /* Replace " with \". To do - other characters. */
-  prev = statement;
-  curr = strstr (statement, "\"");
-  if (curr != NULL)
-    {
-      do
-	{
-	  if ((curr == statement) || (*(curr - 1) != '\\'))
-	    {
-	      if (local_str == NULL)
-		{
-		  local_str = (char *) malloc (2 * strlen (statement));
-		  if (local_str == NULL)
-		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (local_str));
-		      return ER_OUT_OF_VIRTUAL_MEMORY;
-		    }
-		  *local_str = 0;
-		}
-
-	      strncat (local_str, prev, (size_t) (curr - prev));
-	      strcat (local_str, "\\\"");
-	    }
-
-	  prev = curr + 1;
-	  curr = strstr (curr + 1, "\"");
-	}
-      while (curr != NULL);
-
-      if (local_str != NULL)
-	{
-	  /* Remaining chars. */
-	  strcat (local_str, prev);
-	  ddl_argv[4] = local_str;
-	}
-    }
-
-
   error = create_child_process (ddl_argv, 1, check_interrupt_callback, thread_p, NULL, NULL, NULL, &exit_status);
   if (error != NO_ERROR)
     {
-      goto end;
+      return error;
     }
 
   _er_log_debug (ARG_FILE_LINE, "apply SBR: tran_index:%d, exit_status:%d, stmt:\n%s", tran_index, exit_status,
@@ -14303,13 +14263,6 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
     {
       /* TODO : get error from ddl_proxy & set error */
       error = ER_FAILED;
-      goto end;
-    }
-
-end:
-  if (local_str != NULL)
-    {
-      free_and_init (local_str);
     }
 
   return error;

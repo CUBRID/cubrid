@@ -14809,9 +14809,10 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   repl_stmt.savepoint_name = NULL;
 #if !defined(NDEBUG) && defined (CS_MODE)
-  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG) && strlen (repl_stmt.stmt_text) < 2000)
+  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG) && strlen (repl_stmt.stmt_text) < 2000
+      && (strstr (repl_stmt.stmt_text, "\"") == NULL))
     {
-      /* Debug replication statement for relatively short length. TODO - fix long length. */
+      /* Debug replication statement for relatively short length. TODO - fix long length and quote. */
       tran_get_oldest_system_savepoint (&repl_stmt.savepoint_name);
     }
 #endif
