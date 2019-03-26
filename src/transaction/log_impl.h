@@ -1053,11 +1053,10 @@ typedef struct log_logging_stat
   unsigned long async_commit_request_count;
 } LOG_LOGGING_STAT;
 
-
+// todo - move to manager
 enum log_cs_access_mode
 { LOG_CS_FORCE_USE, LOG_CS_SAFE_READER };
 typedef enum log_cs_access_mode LOG_CS_ACCESS_MODE;
-
 
 #if !defined(SERVER_MODE)
 #if !defined(LOG_TRAN_INDEX)
@@ -1082,27 +1081,6 @@ extern char log_Name_bkupinfo[];
 extern char log_Name_volinfo[];
 extern char log_Name_bg_archive[];
 extern char log_Name_removed_archive[];
-
-#define LOG_RV_RECORD_INSERT		  0x8000
-#define LOG_RV_RECORD_DELETE		  0x4000
-#define LOG_RV_RECORD_UPDATE_ALL	  0xC000
-#define LOG_RV_RECORD_UPDATE_PARTIAL	  0x0000
-#define LOG_RV_RECORD_MODIFY_MASK	  0xC000
-
-#define LOG_RV_RECORD_IS_INSERT(flags) \
-  (((flags) & LOG_RV_RECORD_MODIFY_MASK) == LOG_RV_RECORD_INSERT)
-#define LOG_RV_RECORD_IS_DELETE(flags) \
-  (((flags) & LOG_RV_RECORD_MODIFY_MASK) == LOG_RV_RECORD_DELETE)
-#define LOG_RV_RECORD_IS_UPDATE_ALL(flags) \
-  (((flags) & LOG_RV_RECORD_MODIFY_MASK) == LOG_RV_RECORD_UPDATE_ALL)
-#define LOG_RV_RECORD_IS_UPDATE_PARTIAL(flags) \
-  (((flags) & LOG_RV_RECORD_MODIFY_MASK) == LOG_RV_RECORD_UPDATE_PARTIAL)
-
-#define LOG_RV_RECORD_SET_MODIFY_MODE(addr, mode) \
-  ((addr)->offset = ((addr)->offset & (~LOG_RV_RECORD_MODIFY_MASK)) | (mode))
-
-#define LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE(new_data_size) \
-  (DB_ALIGN (new_data_size + OR_SHORT_SIZE + 2 * OR_BYTE_SIZE, INT_ALIGNMENT))
 
 /* logging */
 #if defined (SA_MODE)

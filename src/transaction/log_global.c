@@ -43,60 +43,56 @@
 int log_Tran_index = -1;
 #endif /* !SERVER_MODE */
 
-// *IDENT-OFF*
-log_global::log_global ():trantable TRANTABLE_INITIALIZER, append (), prior_info (), hdr (), archive (),
-run_nxchkpt_atpageid (NULL_PAGEID)
+// *INDENT-OFF*
+log_global::log_global ()
+  : trantable TRANTABLE_INITIALIZER
+  , append ()
+  , prior_info ()
+  , hdr ()
+  , archive ()
+  , run_nxchkpt_atpageid (NULL_PAGEID)
 #if defined (SERVER_MODE)
-  , flushed_lsa_lower_bound (NULL_LSA), chkpt_lsa_lock PTHREAD_MUTEX_INITIALIZER
+  , flushed_lsa_lower_bound (NULL_LSA)
+  , chkpt_lsa_lock PTHREAD_MUTEX_INITIALIZER
 #endif // SERVER_MODE
-  , chkpt_redo_lsa (NULL_LSA), chkpt_every_npages (INT_MAX), rcv_phase (LOG_RECOVERY_ANALYSIS_PHASE),
-rcv_phase_lsa (NULL_LSA)
+  , chkpt_redo_lsa (NULL_LSA)
+  , chkpt_every_npages (INT_MAX)
+  , rcv_phase (LOG_RECOVERY_ANALYSIS_PHASE)
+  , rcv_phase_lsa (NULL_LSA)
 #if defined(SERVER_MODE)
   , backup_in_progress (false)
 #else // not SERVER_MODE = SA_MODE
   , final_restored_lsa (NULL_LSA)
 #endif // not SERVER_MODE = SA_MODE
-  , loghdr_pgptr (NULL), flush_info
-{
-  0, 0, NULL
+  , loghdr_pgptr (NULL)
+  , flush_info { 0, 0, NULL
 #if defined(SERVER_MODE)
-    , PTHREAD_MUTEX_INITIALIZER
+                , PTHREAD_MUTEX_INITIALIZER
 #endif /* SERVER_MODE */
-}
-
-, group_commit_info LOG_GROUP_COMMIT_INFO_INITIALIZER, writer_info (new logwr_info ()), bg_archive_info (),
-  mvcc_table MVCCTABLE_INITIALIZER, unique_stats_table GLOBAL_UNIQUE_STATS_TABLE_INITIALIZER
+     }
+  , group_commit_info LOG_GROUP_COMMIT_INFO_INITIALIZER
+  , writer_info (new logwr_info ())
+  , bg_archive_info ()
+  , mvcc_table MVCCTABLE_INITIALIZER
+  , unique_stats_table GLOBAL_UNIQUE_STATS_TABLE_INITIALIZER
 {
-
 }
-
 // *INDENT-ON*
 
-LOG_GLOBAL
-  log_Gl;
+LOG_GLOBAL log_Gl;
 
 /* Name of the database and logs */
-char
-  log_Path[PATH_MAX];
-char
-  log_Archive_path[PATH_MAX];
-char
-  log_Prefix[PATH_MAX];
+char log_Path[PATH_MAX];
+char log_Archive_path[PATH_MAX];
+char log_Prefix[PATH_MAX];
 
-const char *
-  log_Db_fullname = NULL;
-char
-  log_Name_active[PATH_MAX];
-char
-  log_Name_info[PATH_MAX];
-char
-  log_Name_bkupinfo[PATH_MAX];
-char
-  log_Name_volinfo[PATH_MAX];
-char
-  log_Name_bg_archive[PATH_MAX];
-char
-  log_Name_removed_archive[PATH_MAX];
+const char *log_Db_fullname = NULL;
+char log_Name_active[PATH_MAX];
+char log_Name_info[PATH_MAX];
+char log_Name_bkupinfo[PATH_MAX];
+char log_Name_volinfo[PATH_MAX];
+char log_Name_bg_archive[PATH_MAX];
+char log_Name_removed_archive[PATH_MAX];
 
 // *INDENT-OFF*
 log_global::~log_global ()

@@ -46,9 +46,11 @@ struct log_crumb
 typedef struct log_data_addr LOG_DATA_ADDR;
 struct log_data_addr
 {
+  using offset_type = PGLENGTH;
+
   const VFID *vfid;		/* File where the page belong or NULL when the page is not associated with a file */
   PAGE_PTR pgptr;
-  PGLENGTH offset;		/* Offset or slot */
+  offset_type offset;		/* Offset or slot */
 
   log_data_addr () = default;
   log_data_addr (const VFID *vfid, PAGE_PTR pgptr, PGLENGTH offset);
@@ -115,10 +117,61 @@ struct log_prior_lsa_info
   log_prior_lsa_info ();
 };
 
+//
+// log record partial updates logging
+//
+using log_rv_record_flag_type = log_data_addr::offset_type;
+const log_rv_record_flag_type LOG_RV_RECORD_INSERT = (log_rv_record_flag_type) 0x8000;
+const log_rv_record_flag_type LOG_RV_RECORD_DELETE = 0x4000;
+const log_rv_record_flag_type LOG_RV_RECORD_UPDATE_ALL = (log_rv_record_flag_type) 0xC000;
+const log_rv_record_flag_type LOG_RV_RECORD_UPDATE_PARTIAL = 0x0000;
+const log_rv_record_flag_type LOG_RV_RECORD_MODIFY_MASK = (log_rv_record_flag_type) 0xC000;
+
+inline bool LOG_RV_RECORD_IS_INSERT (log_rv_record_flag_type flags);
+inline bool LOG_RV_RECORD_IS_DELETE (log_rv_record_flag_type flags);
+inline bool LOG_RV_RECORD_IS_UPDATE_ALL (log_rv_record_flag_type flags);
+inline bool LOG_RV_RECORD_IS_UPDATE_PARTIAL (log_rv_record_flag_type flags);
+
+#define LOG_RV_RECORD_SET_MODIFY_MODE(addr, mode) \
+  ((addr)->offset = ((addr)->offset & (~LOG_RV_RECORD_MODIFY_MASK)) | (mode))
+
+#define LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE(new_data_size) \
+  (DB_ALIGN (new_data_size + OR_SHORT_SIZE + 2 * OR_BYTE_SIZE, INT_ALIGNMENT))
+
 bool log_prior_has_worker_log_records (THREAD_ENTRY *thread_p);
 
 void LOG_RESET_APPEND_LSA (const LOG_LSA *lsa);
 void LOG_RESET_PREV_LSA (const LOG_LSA *lsa);
 char *LOG_APPEND_PTR ();
+
+//////////////////////////////////////////////////////////////////////////
+//
+// Inline/templates
+//
+//////////////////////////////////////////////////////////////////////////
+
+bool
+LOG_RV_RECORD_IS_INSERT (log_rv_record_flag_type flags)
+{
+  return (flags & LOG_RV_RECORD_MODIFY_MASK) == LOG_RV_RECORD_INSERT;
+}
+
+bool
+LOG_RV_RECORD_IS_DELETE (log_rv_record_flag_type flags)
+{
+  return (flags & LOG_RV_RECORD_MODIFY_MASK) == LOG_RV_RECORD_INSERT;
+}
+
+bool
+LOG_RV_RECORD_IS_UPDATE_ALL (log_rv_record_flag_type flags)
+{
+  return (flags & LOG_RV_RECORD_MODIFY_MASK) == LOG_RV_RECORD_UPDATE_ALL;
+}
+
+bool
+LOG_RV_RECORD_IS_UPDATE_PARTIAL (log_rv_record_flag_type flags)
+{
+  return (flags & LOG_RV_RECORD_MODIFY_MASK) == LOG_RV_RECORD_UPDATE_PARTIAL;
+}
 
 #endif // !_LOG_APPEND_HPP_
