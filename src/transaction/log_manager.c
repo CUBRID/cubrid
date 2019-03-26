@@ -3192,11 +3192,11 @@ log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 
   /* Don't need to log */
 
-  rv = pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
+  log_Gl.prior_info.prior_lsa_mutex.lock ();
 
   (void) pgbuf_set_lsa (thread_p, addr->pgptr, &log_Gl.prior_info.prior_lsa);
 
-  pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
+  log_Gl.prior_info.prior_lsa_mutex.unlock ();
 
   return;
 }
@@ -4514,12 +4514,12 @@ log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
 {
   int rv;
 
-  rv = pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
+  log_Gl.prior_info.prior_lsa_mutex.lock ();
 
   log_append_repl_info_with_lock (thread_p, tdes, true);
   log_append_commit_log_with_lock (thread_p, tdes, commit_lsa);
 
-  pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
+  log_Gl.prior_info.prior_lsa_mutex.unlock ();
 }
 
 /*

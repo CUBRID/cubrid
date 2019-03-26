@@ -29,10 +29,12 @@
 #endif
 
 #include "log_lsa.hpp"
+#include "log_record.hpp"
 #include "log_storage.hpp"
 #include "storage_common.h"
 
 #include <atomic>
+#include <mutex>
 
 typedef struct log_crumb LOG_CRUMB;
 struct log_crumb
@@ -73,6 +75,47 @@ struct log_append_info
   LOG_LSA get_nxio_lsa () const;
   void set_nxio_lsa (const LOG_LSA &next_io_lsa);
 };
+
+typedef struct log_prior_node LOG_PRIOR_NODE;
+struct log_prior_node
+{
+  LOG_RECORD_HEADER log_header;
+  LOG_LSA start_lsa;		/* for assertion */
+
+  /* data header info */
+  int data_header_length;
+  char *data_header;
+
+  /* data info */
+  int ulength;
+  char *udata;
+  int rlength;
+  char *rdata;
+
+  LOG_PRIOR_NODE *next;
+};
+
+typedef struct log_prior_lsa_info LOG_PRIOR_LSA_INFO;
+struct log_prior_lsa_info
+{
+  LOG_LSA prior_lsa;
+  LOG_LSA prev_lsa;
+
+  /* list */
+  LOG_PRIOR_NODE *prior_list_header;
+  LOG_PRIOR_NODE *prior_list_tail;
+
+  INT64 list_size;		/* bytes */
+
+  /* flush list */
+  LOG_PRIOR_NODE *prior_flush_list_header;
+
+  std::mutex prior_lsa_mutex;
+
+  log_prior_lsa_info ();
+};
+
+bool log_prior_has_worker_log_records (THREAD_ENTRY *thread_p);
 
 void LOG_RESET_APPEND_LSA (const LOG_LSA *lsa);
 void LOG_RESET_PREV_LSA (const LOG_LSA *lsa);

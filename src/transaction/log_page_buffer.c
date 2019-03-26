@@ -3872,7 +3872,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 
   if (with_lock == LOG_PRIOR_LSA_WITHOUT_LOCK)
     {
-      rv = pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
+      log_Gl.prior_info.prior_lsa_mutex.lock ();
     }
 
   prior_lsa_start_append (thread_p, node, tdes);
@@ -4035,7 +4035,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 
   if (with_lock == LOG_PRIOR_LSA_WITHOUT_LOCK)
     {
-      pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
+      log_Gl.prior_info.prior_lsa_mutex.unlock ();
 
       if (log_Gl.prior_info.list_size >= LOG_PRIOR_LSA_LIST_MAX_SIZE ())
 	{
@@ -4206,10 +4206,10 @@ logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p)
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  rv = pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
+  log_Gl.prior_info.prior_lsa_mutex.lock ();
   current_size = log_Gl.prior_info.list_size;
   prior_list = prior_lsa_remove_prior_list (thread_p);
-  pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
+  log_Gl.prior_info.prior_lsa_mutex.unlock ();
 
   if (prior_list != NULL)
     {
@@ -8099,7 +8099,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
       goto error_cannot_chkpt;
     }
 
-  (void) pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
+  log_Gl.prior_info.prior_lsa_mutex.lock ();
 
   /* CHECKPOINT THE TRANSACTION TABLE */
 
@@ -8184,7 +8184,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
       if (chkpt_topops == NULL)
 	{
 	  free_and_init (chkpt_trans);
-	  pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
+	  log_Gl.prior_info.prior_lsa_mutex.unlock ();
 	  TR_TABLE_CS_EXIT (thread_p);
 	  goto error_cannot_chkpt;
 	}
@@ -8219,7 +8219,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 		  if (ptr == NULL)
 		    {
 		      free_and_init (chkpt_trans);
-		      pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
+		      log_Gl.prior_info.prior_lsa_mutex.unlock ();
 		      TR_TABLE_CS_EXIT (thread_p);
 		      goto error_cannot_chkpt;
 		    }
@@ -8250,7 +8250,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	{
 	  free_and_init (chkpt_topops);
 	}
-      pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
+      log_Gl.prior_info.prior_lsa_mutex.unlock ();
       TR_TABLE_CS_EXIT (thread_p);
       goto error_cannot_chkpt;
     }
@@ -8260,7 +8260,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   prior_lsa_next_record_with_lock (thread_p, node, tdes);
 
-  pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
+  log_Gl.prior_info.prior_lsa_mutex.unlock ();
 
   TR_TABLE_CS_EXIT (thread_p);
 

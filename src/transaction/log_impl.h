@@ -903,60 +903,6 @@ enum log_recvphase
 };
 typedef enum log_recvphase LOG_RECVPHASE;
 
-
-typedef struct log_prior_node LOG_PRIOR_NODE;
-struct log_prior_node
-{
-  LOG_RECORD_HEADER log_header;
-  LOG_LSA start_lsa;		/* for assertion */
-
-  /* data header info */
-  int data_header_length;
-  char *data_header;
-
-  /* data info */
-  int ulength;
-  char *udata;
-  int rlength;
-  char *rdata;
-
-  LOG_PRIOR_NODE *next;
-};
-
-typedef struct log_prior_lsa_info LOG_PRIOR_LSA_INFO;
-struct log_prior_lsa_info
-{
-  LOG_LSA prior_lsa;
-  LOG_LSA prev_lsa;
-
-  /* list */
-  LOG_PRIOR_NODE *prior_list_header;
-  LOG_PRIOR_NODE *prior_list_tail;
-
-  INT64 list_size;		/* bytes */
-
-  /* flush list */
-  LOG_PRIOR_NODE *prior_flush_list_header;
-
-  pthread_mutex_t prior_lsa_mutex;
-};
-
-#define LOG_PRIOR_LSA_INFO_INITIALIZER                     \
-  {                                                        \
-    /* prior_lsa */                                        \
-    {NULL_PAGEID, NULL_OFFSET},                            \
-    /* prev_lsa */                                         \
-    {NULL_PAGEID, NULL_OFFSET},                            \
-    /* list */                                             \
-    NULL, NULL,                                            \
-    /* list_size */                                        \
-    0,                                                     \
-    /* prior_flush_list_header */                          \
-    NULL,                                                  \
-    /* prior_lsa_mutex */                                  \
-    PTHREAD_MUTEX_INITIALIZER                              \
-  }
-
 /* stores global statistics for a unique btree */
 typedef struct global_unique_stats GLOBAL_UNIQUE_STATS;
 struct global_unique_stats
@@ -1033,6 +979,7 @@ struct log_global
   GLOBAL_UNIQUE_STATS_TABLE unique_stats_table;	/* global unique statistics */
 
   // *INDENT-OFF*
+  log_global ();
    ~log_global ();
   // *INDENT-ON*
 };
