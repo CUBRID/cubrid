@@ -10787,5 +10787,5 @@ logpb_debug_check_log_page (THREAD_ENTRY * thread_p, void *log_pgptr_ptr)
 size_t
 logpb_get_memsize ()
 {
-  return (size_t) log_Pb.num_buffers * sizeof (LOG_PAGESIZE);
+  return (size_t) log_Pb.num_buffers * (size_t) LOG_PAGESIZE;
 }

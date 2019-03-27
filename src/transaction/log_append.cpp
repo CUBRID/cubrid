@@ -1831,6 +1831,7 @@ log_append_get_data_ptr (THREAD_ENTRY *thread_p)
 static void
 log_prior_lsa_append_align ()
 {
+  assert (log_Gl.prior_info.prior_lsa.offset >= 0);
   log_Gl.prior_info.prior_lsa.offset = DB_ALIGN (log_Gl.prior_info.prior_lsa.offset, DOUBLE_ALIGNMENT);
   if ((size_t) log_Gl.prior_info.prior_lsa.offset >= (size_t) LOGAREA_SIZE)
     {
@@ -1842,6 +1843,7 @@ log_prior_lsa_append_align ()
 static void
 log_prior_lsa_append_advance_when_doesnot_fit (size_t length)
 {
+  assert (log_Gl.prior_info.prior_lsa.offset >= 0);
   if ((size_t) log_Gl.prior_info.prior_lsa.offset + length >= (size_t) LOGAREA_SIZE)
     {
       log_Gl.prior_info.prior_lsa.pageid++;
@@ -1852,6 +1854,7 @@ log_prior_lsa_append_advance_when_doesnot_fit (size_t length)
 static void
 log_prior_lsa_append_add_align (size_t add)
 {
+  assert (log_Gl.prior_info.prior_lsa.offset >= 0);
   log_Gl.prior_info.prior_lsa.offset += (add);
   log_prior_lsa_append_align ();
 }
