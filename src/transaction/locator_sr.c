@@ -1251,7 +1251,6 @@ error:
 int
 locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA * savep_lsa)
 {
-  MODIFIED_CLASS_ENTRY *t;
   int tran_index;
   LOG_TDES *tdes;		/* Transaction descriptor */
   int error_code = NO_ERROR;
@@ -1282,14 +1281,17 @@ locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA * sa
       return ER_FAILED;
     }
 
-  const auto lambda_func =[&error_code, &thread_p, &savep_lsa] (const modified_class_entry & t, bool & stop) {
-    error_code = locator_drop_class_name_entry (thread_p, t.get_classname (), savep_lsa);
-    if (error_code != NO_ERROR)
-      {
-	assert (false);
-	stop = true;
-      }
-  };
+  // *INDENT-OFF*
+  const auto lambda_func =[&error_code, &thread_p, &savep_lsa] (const tx_transient_class_entry & t, bool & stop)
+    {
+      error_code = locator_drop_class_name_entry (thread_p, t.get_classname (), savep_lsa);
+      if (error_code != NO_ERROR)
+        {
+	  assert (false);
+	  stop = true;
+        }
+    };
+  // *INDENT-ON*
   tdes->m_modified_classes.map (lambda_func);
   assert (locator_get_num_transient_classnames (tran_index) >= 0);
 
@@ -1595,7 +1597,6 @@ locator_force_drop_class_name_entry (const void *name, void *ent, void *args)
 int
 locator_savepoint_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA * savep_lsa)
 {
-  MODIFIED_CLASS_ENTRY *t;
   int tran_index;
   LOG_TDES *tdes;		/* Transaction descriptor */
   int error_code = NO_ERROR;
@@ -1626,14 +1627,17 @@ locator_savepoint_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA
       return ER_FAILED;
     }
 
-  const auto lambda_func =[&error_code, &savep_lsa] (const modified_class_entry & t, bool & stop) {
-    error_code = locator_savepoint_class_name_entry (t.get_classname (), savep_lsa);
-    if (error_code != NO_ERROR)
-      {
-	assert (false);
-	stop = true;
-      }
-  };
+  // *INDENT-OFF*
+  const auto lambda_func = [&error_code, &savep_lsa] (const tx_transient_class_entry & t, bool & stop)
+    {
+      error_code = locator_savepoint_class_name_entry (t.get_classname (), savep_lsa);
+      if (error_code != NO_ERROR)
+        {
+	  assert (false);
+	  stop = true;
+        }
+    };
+  // *INDENT-ON*
   tdes->m_modified_classes.map (lambda_func);
 
   csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);

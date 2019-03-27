@@ -1995,7 +1995,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->block_global_oldest_active_until_commit = false;
   tdes->is_user_active = false;
   // *INDENT-OFF*
-  new (&tdes->m_modified_classes) tx_transient_classes ();
+  new (&tdes->m_modified_classes) tx_transient_class_registry ();
   // *INDENT-ON*
 
   LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
