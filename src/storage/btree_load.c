@@ -5055,10 +5055,6 @@ index_builder_loader_task::add_key (const DB_VALUE * key, const OID & oid)
   db_value & last_key = m_keys_oids.back ().m_key;
   db_make_null (&last_key);
   int disk_size = 0;
-  /*
-  cubmem::switch_to_global_allocator_and_call (qdata_copy_db_value, &last_key, key);
-
-  m_memsize += m_load_context.m_key_type->type->get_disk_size_of_value (&last_key);*/
 
   cubmem::switch_to_global_allocator_and_call (copy_db_value_and_get_size, &last_key, key, m_load_context.m_key_type, &disk_size);
   m_memsize += disk_size;
