@@ -71,8 +71,8 @@ namespace cubload
 #if defined (SERVER_MODE)
     if (m_syntax_check)
       {
-        // Do not do anything here
-        return;
+	// Do not do anything here
+	return;
       }
 #endif
     log_error_message (empty, true);

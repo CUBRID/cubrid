@@ -124,7 +124,6 @@ namespace cubload
       load_args get_args ();
 
       class_registry &get_class_registry ();
-      driver* get_driver ();
 
     private:
       void notify_waiting_threads ();

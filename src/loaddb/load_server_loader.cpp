@@ -300,9 +300,9 @@ namespace cubload
 
     if (cons != NULL && attr_size == 0)
       {
-        er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_NO_CLASS_OR_NO_ATTRIBUTE, 0);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_NO_CLASS_OR_NO_ATTRIBUTE, 0);
 	m_error_handler.on_syntax_failure ();
-        return;
+	return;
       }
 
     for (constant_type *c = cons; c != NULL; c = c->next, attr_index++)
@@ -310,16 +310,16 @@ namespace cubload
 	if (attr_index == attr_size)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, attr_index);
-            m_error_handler.on_syntax_failure ();
-            return;
+	    m_error_handler.on_syntax_failure ();
+	    return;
 	  }
 
 	const attribute &attr = m_class_entry->get_attribute (attr_index);
 	int error_code = process_constant (c, attr);
 	if (error_code != NO_ERROR)
 	  {
-            m_error_handler.on_syntax_failure ();
-            return;
+	    m_error_handler.on_syntax_failure ();
+	    return;
 	  }
 
 	db_value &db_val = get_attribute_db_value (attr_index);
@@ -330,7 +330,7 @@ namespace cubload
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MISSING_ATTRIBUTES, 2, attr_size, attr_index);
 	m_error_handler.on_syntax_failure ();
-        return;
+	return;
       }
   }
 
@@ -349,16 +349,17 @@ namespace cubload
     bool is_syntax_check_only = m_session.get_args ().syntax_check;
 
     if (!is_syntax_check_only)
-      { // Skip loading if syntax check only is enabled.
-        int error_code = locator_attribute_info_force (m_thread_ref, &m_scancache.node.hfid, &oid, &m_attrinfo, NULL, 0,
-		         LC_FLUSH_INSERT, op_type, &m_scancache, &force_count, false,
-		         REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, NULL,
-		         UPDATE_INPLACE_NONE, NULL, false);
-        if (error_code != NO_ERROR)
-          {
+      {
+	// Skip loading if syntax check only is enabled.
+	int error_code = locator_attribute_info_force (m_thread_ref, &m_scancache.node.hfid, &oid, &m_attrinfo, NULL, 0,
+			 LC_FLUSH_INSERT, op_type, &m_scancache, &force_count, false,
+			 REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, NULL,
+			 UPDATE_INPLACE_NONE, NULL, false);
+	if (error_code != NO_ERROR)
+	  {
 	    m_error_handler.on_failure ();
 	    return;
-          }
+	  }
       }
 
     m_session.stats_update_current_line (m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1);
@@ -450,10 +451,10 @@ namespace cubload
     int error_code = func (token, &attr, &db_val);
     if (error_code != NO_ERROR)
       {
-        if (error_code == ER_DATE_CONVERSION)
-          {
-            m_error_handler.log_date_time_conversion_error (token, pr_type_name (attr.get_domain().type->get_id()));
-          }
+	if (error_code == ER_DATE_CONVERSION)
+	  {
+	    m_error_handler.log_date_time_conversion_error (token, pr_type_name (attr.get_domain ().type->get_id ()));
+	  }
 	return error_code;
       }
 
