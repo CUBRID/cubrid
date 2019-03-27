@@ -5055,20 +5055,14 @@ index_builder_loader_task::add_key (const DB_VALUE * key, const OID & oid)
   db_make_null (&last_key);
   
   THREAD_ENTRY * thread_p = thread_get_thread_entry_info ();
-  HL_HEAPID prev_id = thread_p->private_heap_id;
 
   /* Switch to global heapID. */
-#if defined (SERVER_MODE)
-  db_private_set_heapid_to_thread (thread_p, 0);
-#endif // SERVER_MODE
+  HL_HEAPID prev_id = db_change_private_heap (thread_p, 0);
 
   qdata_copy_db_value (&last_key, key);
   m_memsize += m_load_context.m_key_type->type->get_disk_size_of_value (&last_key);
 
-  /* Switch back the heapID. */
-#if defined (SERVER_MODE)
-  db_private_set_heapid_to_thread (thread_p, prev_id);
-#endif // SERVER_MODE
+  db_change_private_heap (thread_p, prev_id);
 
   m_memsize += OR_OID_SIZE;
   m_memsize = DB_ALIGN (m_memsize, BTREE_MAX_ALIGN);
