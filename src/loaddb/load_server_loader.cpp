@@ -301,7 +301,7 @@ namespace cubload
     if (cons != NULL && attr_size == 0)
       {
         er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_NO_CLASS_OR_NO_ATTRIBUTE, 0);
-	m_error_handler.on_failure ();
+	m_error_handler.on_syntax_failure ();
         return;
       }
 
@@ -310,7 +310,7 @@ namespace cubload
 	if (attr_index == attr_size)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, attr_index);
-            m_error_handler.on_failure ();
+            m_error_handler.on_syntax_failure ();
             return;
 	  }
 
@@ -318,7 +318,7 @@ namespace cubload
 	int error_code = process_constant (c, attr);
 	if (error_code != NO_ERROR)
 	  {
-            m_error_handler.on_failure ();
+            m_error_handler.on_syntax_failure ();
             return;
 	  }
 
@@ -329,7 +329,7 @@ namespace cubload
     if (attr_index < attr_size)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MISSING_ATTRIBUTES, 2, attr_size, attr_index);
-	m_error_handler.on_failure ();
+	m_error_handler.on_syntax_failure ();
         return;
       }
   }

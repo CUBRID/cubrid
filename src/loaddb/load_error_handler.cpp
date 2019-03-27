@@ -61,6 +61,13 @@ namespace cubload
   error_handler::on_failure ()
   {
     std::string empty;
+    log_error_message (empty, true);
+  }
+
+  void
+  error_handler::on_syntax_failure ()
+  {
+    std::string empty;
 #if defined (SERVER_MODE)
     if (m_syntax_check)
       {
@@ -68,7 +75,6 @@ namespace cubload
         return;
       }
 #endif
-
     log_error_message (empty, true);
   }
 

@@ -52,6 +52,9 @@ namespace cubload
       // just log er_msg from error_manager and fail the session
       void on_failure ();
 
+      // In case of syntax check argument do nothing, else keep the behavior as on_failure
+      void on_syntax_failure ();
+
       template<typename... Args>
       void on_error_with_line (MSGCAT_LOADDB_MSG msg_id, Args &&... args);
 
@@ -63,6 +66,8 @@ namespace cubload
 
       template<typename... Args>
       void log_date_time_conversion_error (Args &&... args);
+
+      
 
     private:
       int get_lineno ();
@@ -147,7 +152,7 @@ namespace cubload
   {
     std::string err_msg;
 
-    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ()));
+    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ());
     err_msg.append (format (get_message_from_catalog (LOADDB_MSG_CONVERSION_ERROR), std::forward<Args>(args)...));
     
     log_error_message (err_msg, false);
