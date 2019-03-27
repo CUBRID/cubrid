@@ -2018,6 +2018,7 @@ logtb_finalize_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   // *INDENT-OFF*
   tdes->client.~clientids ();
+  tdes->m_modified_classes.~tx_transient_class_registry ();
   // *INDENT-ON*
 
   logtb_clear_tdes (thread_p, tdes);
