@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
 
-#./docker_build.sh --git-fork=valerinistor --git-revision=docker_k8s build_docker_image
-#./docker_build.sh --image=cubrid/cubrid:valerinistor-docker_k8s kubernetes_apply
-#./docker_build.sh kubernetes_delete
-
 DOCKER_REPOSITORY="cubrid/cubrid"
-GIT_FORK="valerinistor"
-GIT_REVISION="docker_k8s"
+GIT_FORK=""
+GIT_REVISION=""
 DOCKER_BUILD_ARGS=""
 DOCKER_IMAGE=""
 
@@ -51,7 +47,7 @@ function show_usage ()
   echo "usage: $0 [options] [target]"
   echo ""
   echo "target"
-  echo "  build_docker_image"
+  echo "  build-docker-image"
   echo "options"
   echo "  -t=[STRING], --build-type=[STRING]    build type, possible values: Debug, RelWithDebInfo and Release [default: Debug]"
   echo "  -j=[NUMBER], --build-jobs=[NUMBER]    number of parallel jobs for make [default: 4]"
@@ -60,15 +56,15 @@ function show_usage ()
   echo "                                                                ~~~~~~"
   echo "  -r=[STRING], --git-revision=[STRING]  git revision to checkout [default: develop]"
   echo "                                        value can be a <branch name> or <commit>"
-  echo "  -s, --install-sources                 install sources on make install [default is enabled]"
+  echo "  -s, --install-sources                 install sources on make install [default is disabled]"
   echo ""
   echo "target"
-  echo "  kubernetes_apply"
+  echo "  kubernetes-apply"
   echo "options"
   echo "  -i, --image                           docker image id or name"
   echo ""
   echo "target"
-  echo "  kubernetes_delete"
+  echo "  kubernetes-delete"
   echo ""
   echo "global options"
   echo "  -h, --help                            print this message"
@@ -103,15 +99,15 @@ for ARG in "$@"; do
             DOCKER_IMAGE=${ARG#*=}
             shift
             ;;
-        build_docker_image)
+        build-docker-image)
             build_docker_image
             shift
             ;;
-        kubernetes_apply)
+        kubernetes-apply)
             kubernetes_apply
             shift
             ;;
-        kubernetes_delete)
+        kubernetes-delete)
             kubernetes_delete
             shift
             ;;

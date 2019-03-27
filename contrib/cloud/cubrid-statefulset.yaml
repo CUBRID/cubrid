@@ -1,4 +1,4 @@
-# cubrid service
+# Headless service for stable DNS entries of StatefulSet members
 apiVersion: v1
 kind: Service
 metadata:
@@ -13,7 +13,8 @@ spec:
   selector:
     app: cubrid
 ---
-# cubrid read service
+# Client service for connecting to any CUBRID instance for reads.
+# For writes, connect to the master machine: cubrid-0.cubrid
 apiVersion: v1
 kind: Service
 metadata:
@@ -24,6 +25,9 @@ spec:
   ports:
   - name: cubrid
     port: 33000
+    targetPort: 33000
+    protocol: TCP
+  type: LoadBalancer
   selector:
     app: cubrid
 ---
@@ -43,16 +47,17 @@ spec:
       labels:
         app: cubrid
     spec:
+      # TODO remove this init container if there is no need for generating core files
       initContainers:
       - name: cubrid-init
-        image: cubrid/cubrid:valerinistor-docker_k8s
+        image: cubrid/cubrid:latest
         command:
           - "bash"
           - "-c"
           - "sysctl -w kernel.core_pattern=/var/lib/cubrid/core.%e.%p.%h.%t || true"
       containers:
       - name: cubrid
-        image: cubrid/cubrid:valerinistor-docker_k8s
+        image: cubrid/cubrid:latest
         env:
         - name: DB_NAME
           value: "test_db"

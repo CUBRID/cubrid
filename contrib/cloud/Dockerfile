@@ -29,7 +29,7 @@ ARG BUILD_TYPE=Debug
 ARG MAKEFLAGS=-j4
 ARG GIT_FORK=CUBRID
 ARG GIT_REVISION=develop
-ARG INSTALL_SOURCES=ON
+ARG INSTALL_SOURCES=OFF
 
 RUN set -x && git clone https://github.com/$GIT_FORK/cubrid.git &> /dev/null
 
