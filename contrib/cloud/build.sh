@@ -18,7 +18,7 @@ build_docker_image ()
         echo "        with default arguments"
     fi
 
-    docker build ${DOCKER_BUILD_ARGS} --tag ${DOCKER_IMAGE} . &> /dev/null
+    docker build --no-cache ${DOCKER_BUILD_ARGS} --tag ${DOCKER_IMAGE} . &> /dev/null
 }
 
 kubernetes_apply ()
