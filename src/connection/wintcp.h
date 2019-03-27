@@ -49,7 +49,7 @@ extern int css_get_wsa_error (void);
 
 extern int css_windows_startup (void);
 extern void css_windows_shutdown (void);
-extern int css_gethostname (char *passed_name, int length);
+extern int css_gethostname (char *name, size_t namelen);
 
 extern SOCKET css_tcp_client_open (const char *hostname, int port);
 extern SOCKET css_tcp_client_open_with_retry (const char *hostname, int port, bool willretry);
