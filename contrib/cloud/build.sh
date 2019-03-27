@@ -5,6 +5,7 @@ GIT_FORK=""
 GIT_REVISION=""
 DOCKER_BUILD_ARGS=""
 DOCKER_IMAGE=""
+INSTALL_SOURCES="OFF"
 
 build_docker_image ()
 {
@@ -92,7 +93,8 @@ for ARG in "$@"; do
             shift
             ;;
         -s|--install-sources)
-            DOCKER_BUILD_ARGS="--build-arg INSTALL_SOURCES=ON $DOCKER_BUILD_ARGS"
+            INSTALL_SOURCES="ON"
+            DOCKER_BUILD_ARGS="--build-arg INSTALL_SOURCES=$INSTALL_SOURCES $DOCKER_BUILD_ARGS"
             shift
             ;;
         -i=*|--image=*)
