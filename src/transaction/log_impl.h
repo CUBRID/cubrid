@@ -864,6 +864,7 @@ struct log_tdes
   /* Set to one when the current execution must be stopped somehow. We stop it by sending an error message during
    * fetching of a page. */
   MODIFIED_CLASS_ENTRY *modified_class_list;	/* List of classes made dirty. */
+  tx_transient_classes m_modified_classes;	// list of classes made dirty
 
   int num_transient_classnames;	/* # of transient classnames by this transaction */
   int num_repl_records;		/* # of replication records */
