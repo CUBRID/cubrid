@@ -910,21 +910,14 @@ stx_restore_filter_pred_node (THREAD_ENTRY * thread_p, char *ptr)
       return NULL;
     }
 
-  pred = (PRED_EXPR_WITH_CONTEXT *) stx_get_struct_visited_ptr (thread_p, ptr);
-  if (pred != NULL)
-    {
-      return pred;
-    }
-
-  pred = (PRED_EXPR_WITH_CONTEXT *) stx_alloc_struct (thread_p, sizeof (*pred));
+  pred = (PRED_EXPR_WITH_CONTEXT *) db_private_alloc (thread_p, sizeof (*pred));
   if (pred == NULL)
     {
       stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
       return NULL;
     }
 
-  if (stx_mark_struct_visited (thread_p, ptr, pred) == ER_FAILED
-      || stx_build_filter_pred_node (thread_p, ptr, pred) == NULL)
+  if (stx_build_filter_pred_node (thread_p, ptr, pred) == NULL)
     {
       return NULL;
     }

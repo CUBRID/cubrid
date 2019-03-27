@@ -1065,9 +1065,13 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       /* to clear db values from dbvalue regu variable */
       qexec_clear_pred_context (thread_p, sort_args->filter, true);
     }
-  if (filter_pred != NULL && filter_pred->unpack_info != NULL)
+  if (filter_pred != NULL)
     {
-      stx_free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
+      if (filter_pred->unpack_info != NULL)
+	{
+	  stx_free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
+	}
+      db_private_free_and_init (thread_p, filter_pred);
     }
   if (sort_args->func_index_info && sort_args->func_index_info->expr)
     {
@@ -1174,9 +1178,13 @@ error:
       /* to clear db values from dbvalue regu variable */
       qexec_clear_pred_context (thread_p, sort_args->filter, true);
     }
-  if (filter_pred != NULL && filter_pred->unpack_info != NULL)
+  if (filter_pred != NULL)
     {
-      stx_free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
+      if (filter_pred->unpack_info != NULL)
+	{
+	  stx_free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
+	}
+      db_private_free_and_init (thread_p, filter_pred);
     }
   if (sort_args->func_index_info && sort_args->func_index_info->expr)
     {
@@ -4701,6 +4709,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	{
 	  stx_free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
 	}
+      db_private_free_and_init (thread_p, filter_pred);
     }
 
   if (func_index_info.expr != NULL)
@@ -4763,6 +4772,7 @@ error:
 	{
 	  stx_free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
 	}
+      db_private_free_and_init (thread_p, filter_pred);
     }
 
   if (func_index_info.expr != NULL)
