@@ -44,6 +44,7 @@
 #include "xasl_analytic.hpp"
 #include "xasl_predicate.hpp"
 #include "xasl_stream.hpp"
+#include "xasl_unpack_info.hpp"
 
 #define    BYTE_SIZE        OR_INT_SIZE
 #define    LONG_SIZE        OR_INT_SIZE

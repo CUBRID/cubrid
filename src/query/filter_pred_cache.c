@@ -31,6 +31,7 @@
 #include "system_parameter.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #include "xasl.h"
+#include "xasl_unpack_info.hpp"
 
 typedef struct fpcache_ent FPCACHE_ENTRY;
 struct fpcache_ent
@@ -278,16 +279,6 @@ fpcache_entry_init (void *entry)
   return NO_ERROR;
 }
 
-void
-fpcache_free_unpack_info (THREAD_ENTRY * thread_p, void *xasl_unpack_info)
-{
-  stx_free_additional_buff (thread_p, xasl_unpack_info);
-  stx_free_xasl_unpack_info (xasl_unpack_info);
-  // Note that free_and_init on caller's ptr is dangerouse since xasl_unpack_info might be alloced & freed 
-  // together with the ptr. 
-  db_private_free (thread_p, xasl_unpack_info);
-}
-
 /*
  * fpcache_entry_uninit () - Retire filter predicate cache entry.
  *
@@ -311,7 +302,7 @@ fpcache_entry_uninit (void *entry)
       assert (pred_expr != NULL);
 
       qexec_clear_pred_context (thread_p, pred_expr, true);
-      fpcache_free_unpack_info (thread_p, pred_expr->unpack_info);
+      stx_free_xasl_unpack_info (thread_p, pred_expr->unpack_info);
     }
 
   (void) db_change_private_heap (thread_p, old_private_heap);
@@ -491,7 +482,7 @@ fpcache_retire (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, pred_expr
     {
       /* Filter predicate expression could not be cached. Free it. */
       HL_HEAPID old_private_heap = db_change_private_heap (thread_p, 0);
-      fpcache_free_unpack_info (thread_p, filter_pred->unpack_info);
+      stx_free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
       (void) db_change_private_heap (thread_p, old_private_heap);
     }
   return error_code;

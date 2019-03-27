@@ -44,6 +44,7 @@
 #endif /* ENABLE_SYSTEMTAP */
 #include "thread_entry.hpp"
 #include "xasl_cache.h"
+#include "xasl_unpack_info.hpp"
 
 #if !defined (SERVER_MODE)
 
@@ -1108,7 +1109,7 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
 		    QMGR_TRAN_ENTRY * tran_entry_p)
 {
   XASL_NODE *xasl_p;
-  void *xasl_buf_info;
+  XASL_UNPACK_INFO *xasl_buf_info;
   QFILE_LIST_ID *list_id;
 
   assert (query_p != NULL);
@@ -1184,7 +1185,7 @@ end:
   if (xasl_buf_info)
     {
       /* free the XASL tree */
-      fpcache_free_unpack_info (thread_p, xasl_buf_info);
+      stx_free_xasl_unpack_info (thread_p, xasl_buf_info);
     }
 
   return list_id;

@@ -31,16 +31,16 @@ struct func_pred;
 struct pred_expr_with_context;
 struct xasl_node;
 struct xasl_node_header;
+struct xasl_unpack_info;
 
 extern int stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool use_xasl_clone,
-				   char *xasl_stream, int xasl_stream_size, void **xasl_unpack_info_ptr);
+				   char *xasl_stream, int xasl_stream_size,
+				   struct xasl_unpack_info **xasl_unpack_info_ptr);
 extern int stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context ** pred_expr_tree,
 					  char *pred_stream, int pred_stream_size);
 extern int stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *xasl_stream,
-					int xasl_stream_size, void **xasl_unpack_info_ptr);
+					int xasl_stream_size, struct xasl_unpack_info **xasl_unpack_info_ptr);
 extern int stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, xasl_node_header * xasl_header_p,
 					       char *xasl_stream);
-extern void stx_free_xasl_unpack_info (void *unpack_info_ptr);
-extern void stx_free_additional_buff (THREAD_ENTRY * thread_p, void *unpack_info_ptr);
 
 #endif /* _STREAM_TO_XASL_H_ */

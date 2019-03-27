@@ -50,6 +50,7 @@
 #include "thread_entry_task.hpp"
 #include "xserver_interface.h"
 #include "xasl.h"
+#include "xasl_unpack_info.hpp"
 
 typedef struct sort_args SORT_ARGS;
 struct sort_args
@@ -723,7 +724,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   PRED_EXPR_WITH_CONTEXT *filter_pred = NULL;
   FUNCTION_INDEX_INFO func_index_info;
   DB_TYPE single_node_type = DB_TYPE_NULL;
-  void *func_unpack_info = NULL;
+  XASL_UNPACK_INFO *func_unpack_info = NULL;
   bool has_fk;
   BTID btid_global_stats = BTID_INITIALIZER;
   OID *notification_class_oid;
@@ -1066,9 +1067,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     }
   if (filter_pred != NULL && filter_pred->unpack_info != NULL)
     {
-      fpcache_free_unpack_info (thread_p, filter_pred->unpack_info);
-      // todo: filter_pred->unpack_info can not be set to NULL.. a future goto error after this point
-      // could break things
+      stx_free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
     }
   if (sort_args->func_index_info && sort_args->func_index_info->expr)
     {
@@ -1076,8 +1075,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     }
   if (func_unpack_info)
     {
-      fpcache_free_unpack_info (thread_p, func_unpack_info);
-      func_unpack_info = NULL;
+      stx_free_xasl_unpack_info (thread_p, func_unpack_info);
     }
 
   thread_p->pop_resource_tracks ();
@@ -1178,7 +1176,7 @@ error:
     }
   if (filter_pred != NULL && filter_pred->unpack_info != NULL)
     {
-      fpcache_free_unpack_info (thread_p, filter_pred->unpack_info);
+      stx_free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
     }
   if (sort_args->func_index_info && sort_args->func_index_info->expr)
     {
@@ -1186,7 +1184,7 @@ error:
     }
   if (func_unpack_info)
     {
-      fpcache_free_unpack_info (thread_p, func_unpack_info);
+      stx_free_xasl_unpack_info (thread_p, func_unpack_info);
     }
 
   thread_p->pop_resource_tracks ();
@@ -4413,7 +4411,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   PRED_EXPR_WITH_CONTEXT *filter_pred = NULL;
   FUNCTION_INDEX_INFO func_index_info;
   DB_TYPE single_node_type = DB_TYPE_NULL;
-  void *func_unpack_info = NULL;
+  XASL_UNPACK_INFO *func_unpack_info = NULL;
   bool is_sysop_started = false;
   MVCC_SNAPSHOT *builder_snapshot = NULL;
   HEAP_SCANCACHE scan_cache;
@@ -4701,7 +4699,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 
       if (filter_pred->unpack_info != NULL)
 	{
-	  fpcache_free_unpack_info (thread_p, filter_pred->unpack_info);
+	  stx_free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
 	}
     }
 
@@ -4713,8 +4711,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 
   if (func_unpack_info != NULL)
     {
-      fpcache_free_unpack_info (thread_p, func_unpack_info);
-      func_unpack_info = NULL;
+      stx_free_xasl_unpack_info (thread_p, func_unpack_info);
     }
 
   if (list_btid != NULL)
@@ -4764,7 +4761,7 @@ error:
 
       if (filter_pred->unpack_info != NULL)
 	{
-	  fpcache_free_unpack_info (thread_p, filter_pred->unpack_info);
+	  stx_free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
 	}
     }
 
@@ -4775,7 +4772,7 @@ error:
 
   if (func_unpack_info != NULL)
     {
-      fpcache_free_unpack_info (thread_p, func_unpack_info);
+      stx_free_xasl_unpack_info (thread_p, func_unpack_info);
     }
 
   if (list_btid != NULL)

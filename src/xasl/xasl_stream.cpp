@@ -26,40 +26,11 @@
 #include "memory_alloc.h"
 #include "object_representation.h"
 #include "xasl.h"
+#include "xasl_unpack_info.hpp"
 
 #if !defined(SERVER_MODE)
-static XASL_UNPACK_INFO *xasl_Unpack_info = NULL;
 static int stx_Xasl_errcode = NO_ERROR;
 #endif /* !SERVER_MODE */
-
-/*
- * stx_get_xasl_unpack_info_ptr () -
- *   return:
- */
-XASL_UNPACK_INFO *
-stx_get_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p)
-{
-#if defined(SERVER_MODE)
-  return (XASL_UNPACK_INFO *) thread_p->xasl_unpack_info_ptr;
-#else /* SERVER_MODE */
-  return (XASL_UNPACK_INFO *) xasl_Unpack_info;
-#endif /* SERVER_MODE */
-}
-
-/*
- * stx_set_xasl_unpack_info_ptr () -
- *   return:
- *   ptr(in)    :
- */
-void
-stx_set_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p, XASL_UNPACK_INFO *ptr)
-{
-#if defined (SERVER_MODE)
-  thread_p->xasl_unpack_info_ptr = ptr;
-#else
-  xasl_Unpack_info = ptr;
-#endif
-}
 
 /*
  * stx_get_xasl_errcode () -

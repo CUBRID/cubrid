@@ -57,6 +57,7 @@
 #include "db_elo.h"
 #include "string_opfunc.h"
 #include "xasl.h"
+#include "xasl_unpack_info.hpp"
 #include "stream_to_xasl.h"
 #include "query_opfunc.h"
 #include "set_object.h"
@@ -17262,7 +17263,7 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
   char *expr_stream = NULL;
   int expr_stream_size = 0;
   FUNC_PRED *func_pred = NULL;
-  void *unpack_info = NULL;
+  XASL_UNPACK_INFO *unpack_info = NULL;
   DB_VALUE *res = NULL;
   int i, nr_atts;
   ATTR_ID *atts = NULL;
@@ -17370,8 +17371,7 @@ end:
   if (unpack_info)
     {
       (void) qexec_clear_func_pred (thread_p, func_pred);
-      fpcache_free_unpack_info (thread_p, unpack_info);
-      unpack_info = NULL;
+      stx_free_xasl_unpack_info (thread_p, unpack_info);
     }
 
   return error;
@@ -17541,8 +17541,7 @@ heap_free_func_pred_unpack_info (THREAD_ENTRY * thread_p, int n_indexes, FUNC_PR
 
       if (func_indx_preds[i].unpack_info)
 	{
-	  fpcache_free_unpack_info (thread_p, func_indx_preds[i].unpack_info);
-	  func_indx_preds[i].unpack_info = NULL;
+	  stx_free_xasl_unpack_info (thread_p, func_indx_preds[i].unpack_info);
 	}
     }
   db_private_free_and_init (thread_p, func_indx_preds);

@@ -43,6 +43,7 @@
 #include "xasl_analytic.hpp"
 #include "xasl_predicate.hpp"
 #include "xasl_stream.hpp"
+#include "xasl_unpack_info.hpp"
 
 static ACCESS_SPEC_TYPE *stx_restore_access_spec_type (THREAD_ENTRY * thread_p, char **ptr, void *arg);
 static AGGREGATE_TYPE *stx_restore_aggregate_type (THREAD_ENTRY * thread_p, char *ptr);
@@ -196,7 +197,7 @@ stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, xasl_node_header * 
  */
 int
 stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool use_xasl_clone, char *xasl_stream,
-			int xasl_stream_size, void **xasl_unpack_info_ptr)
+			int xasl_stream_size, XASL_UNPACK_INFO ** xasl_unpack_info_ptr)
 {
   XASL_NODE *xasl;
   char *p;
@@ -226,9 +227,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   xasl = stx_restore_xasl_node (thread_p, xasl_stream + offset);
   if (xasl == NULL)
     {
-      fpcache_free_unpack_info (thread_p, unpack_info_p);
-      unpack_info_p = NULL;
-
+      stx_free_xasl_unpack_info (thread_p, unpack_info_p);
       goto end;
     }
 
@@ -301,9 +300,7 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context *
   pwc = stx_restore_filter_pred_node (thread_p, pred_stream + offset);
   if (pwc == NULL)
     {
-      fpcache_free_unpack_info (thread_p, unpack_info_p);
-      unpack_info_p = NULL;
-
+      stx_free_xasl_unpack_info (thread_p, unpack_info_p);
       goto end;
     }
 
@@ -330,7 +327,7 @@ end:
  */
 int
 stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *xasl_stream, int xasl_stream_size,
-			     void **xasl_unpack_info_ptr)
+			     XASL_UNPACK_INFO ** xasl_unpack_info_ptr)
 {
   FUNC_PRED *p_xasl = NULL;
   char *p = NULL;
@@ -360,9 +357,7 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *x
   p_xasl = stx_restore_func_pred (thread_p, xasl_stream + offset);
   if (p_xasl == NULL)
     {
-      fpcache_free_unpack_info (thread_p, unpack_info_p);
-      unpack_info_p = NULL;
-
+      stx_free_xasl_unpack_info (thread_p, unpack_info_p);
       goto end;
     }
 
@@ -377,47 +372,6 @@ end:
 #endif /* SERVER_MODE */
 
   return stx_get_xasl_errcode (thread_p);
-}
-
-/*
- * stx_free_xasl_unpack_info () -
- *   return:
- *   xasl_unpack_info(in): unpack info returned by stx_map_stream_to_xasl ()
- *
- * Note: free the memory used for unpacking the xasl tree.
- */
-void
-stx_free_xasl_unpack_info (void *xasl_unpack_info)
-{
-#if defined (SERVER_MODE)
-  if (xasl_unpack_info)
-    {
-      ((XASL_UNPACK_INFO *) xasl_unpack_info)->thrd = NULL;
-    }
-#endif /* SERVER_MODE */
-}
-
-/*
- * stx_free_additional_buff () - free additional buffers allocated during
- *				 XASL unpacking
- * return : void
- * xasl_unpack_info (in) : XASL unpack info
- */
-void
-stx_free_additional_buff (THREAD_ENTRY * thread_p, void *xasl_unpack_info)
-{
-  if (xasl_unpack_info)
-    {
-      UNPACK_EXTRA_BUF *add_buff = ((XASL_UNPACK_INFO *) xasl_unpack_info)->additional_buffers;
-      UNPACK_EXTRA_BUF *temp = NULL;
-      while (add_buff != NULL)
-	{
-	  temp = add_buff->next;
-	  db_private_free_and_init (thread_p, add_buff->buff);
-	  db_private_free_and_init (thread_p, add_buff);
-	  add_buff = temp;
-	}
-    }
 }
 
 /*
