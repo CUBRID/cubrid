@@ -417,9 +417,9 @@ utility_localtime (const time_t * ts, struct tm *result)
 bool
 util_is_localhost (char *host)
 {
-  char localhost[PATH_MAX];
+  char localhost[MAXHOSTNAMELEN];
 
-  GETHOSTNAME (localhost, PATH_MAX);
+  GETHOSTNAME (localhost, MAXHOSTNAMELEN);
   if (strcmp (host, localhost) == 0)
     {
       return true;
