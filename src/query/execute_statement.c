@@ -14855,8 +14855,7 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   repl_stmt.savepoint_name = NULL;
 #if !defined(NDEBUG) && defined (CS_MODE)
-  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG) && strlen (repl_stmt.stmt_text) < 2000
-      && (strstr (repl_stmt.stmt_text, "\"") == NULL) && (!strcmp (repl_stmt.db_user, "DBA"))
+  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG) && (!strcmp (repl_stmt.db_user, "DBA"))
       && (statement->node_type != PT_RENAME || statement->next == NULL))
     {
       /* Debug replication statement for relatively short length. TODO - fix long length and quote. */

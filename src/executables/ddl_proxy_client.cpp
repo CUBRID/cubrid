@@ -84,6 +84,7 @@ static int start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT
   int rc = NO_ERROR;
   int override_tran_index = NULL_TRAN_INDEX;
   char sql_log_err[LINE_MAX];
+  const char * command;
 
   if (args->tran_index != NULL)
     {
@@ -111,12 +112,22 @@ static int start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT
       er_stack_pop (); 
     }
 
-  if (args->command != NULL)
+  command = args->command;
+  if (command == NULL || strlen (command) == 0)
+    {
+      if (db_get_proxy_command (&command) != NO_ERROR)
+        {
+          ASSERT_ERROR_AND_SET (rc);
+          goto error;
+        }       
+    }
+    
+  if (command != NULL)
     {
       int total_stmts, stmt_id, i, num_of_rows;
       DB_QUERY_RESULT *result = NULL;
 
-      session = db_open_buffer ((const char *) args->command);
+      session = db_open_buffer (command);
       if (session == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (rc);

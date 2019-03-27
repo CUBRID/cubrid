@@ -9798,3 +9798,55 @@ slocator_demote_class_lock (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   ptr = or_pack_lock (ptr, ex_lock);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
+
+/*
+* slocator_get_proxy_command -
+*
+* return:
+*
+*   rid(in):
+*   request(in):
+*   reqlen(in):
+*
+* NOTE:
+*/
+void
+slocator_get_proxy_command (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int area_size, strlen1;
+  char *area = NULL, *p = NULL;
+  const char *proxy_command = NULL;
+  int error_code;
+
+  error_code = xlocator_get_proxy_command (thread_p, &proxy_command);
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+      area_size = 0;
+      area = NULL;
+    }
+  else
+    {
+      area_size = or_packed_string_length (proxy_command, &strlen1);
+      area = (char *) db_private_alloc (thread_p, area_size);
+      if (area == NULL)
+	{
+	  (void) return_error_to_client (thread_p, rid);
+	  area_size = 0;
+	}
+      else
+	{
+	  (void) or_pack_string_with_length (area, proxy_command, strlen1);
+	}
+    }
+
+  p = or_pack_int (reply, area_size);
+  p = or_pack_int (p, error_code);
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
+  if (area)
+    {
+      db_private_free_and_init (thread_p, area);
+    }
+}

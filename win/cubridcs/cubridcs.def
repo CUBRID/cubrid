@@ -141,6 +141,7 @@ EXPORTS
     db_execute_statement
     db_set_statement_auto_commit
     db_set_system_parameters_for_ha_repl
+    db_get_proxy_command
     db_find_all_triggers
     db_find_class
     db_find_user

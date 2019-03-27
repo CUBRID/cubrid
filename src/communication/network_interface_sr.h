@@ -61,6 +61,7 @@ extern void slocator_delete_class_name (THREAD_ENTRY * thread_p, unsigned int ri
 extern void slocator_rename_class_name (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_assign_oid (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_demote_class_lock (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void slocator_get_proxy_command (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqst_server_get_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slog_checkpoint (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 #if defined(ENABLE_UNUSED_FUNCTION)

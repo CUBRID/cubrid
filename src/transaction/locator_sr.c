@@ -13868,6 +13868,18 @@ xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK
   return lock_demote_class_lock (thread_p, class_oid, lock, ex_lock);
 }
 
+int
+xlocator_get_proxy_command (THREAD_ENTRY * thread_p, const char **proxy_command)
+{
+  LOG_TDES *tdes;
+  assert (proxy_command != NULL);
+
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  *proxy_command = tdes->ha_sbr_statement;
+
+  return NO_ERROR;
+}
+
 
 #if defined(SERVER_MODE)
 static int
@@ -14230,9 +14242,20 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
   int exit_status;
   char tran_index_str[DB_BIGINT_PRECISION + 1] = { 0 };
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  LOG_TDES *tdes;
 
   sprintf (tran_index_str, "%d", tran_index);
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  if (tdes != NULL)
+    {
+      if (strlen (statement) > 2000 || (strpbrk (statement, "\"\'\t") != NULL))
+	{
+	  tdes->ha_sbr_statement = statement;
+	  statement = "";
+	}
+    }
 
+  /* TODO - socket option */
   const char *ddl_argv[13] = {
     path,
     "-u",
@@ -14252,6 +14275,7 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
   envvar_bindir_file (path, PATH_MAX, UTIL_DDL_PROXY_CLIENT);
 
   error = create_child_process (ddl_argv, 1, check_interrupt_callback, thread_p, NULL, NULL, NULL, &exit_status);
+  tdes->ha_sbr_statement = NULL;
   if (error != NO_ERROR)
     {
       return error;

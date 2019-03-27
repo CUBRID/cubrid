@@ -10110,3 +10110,62 @@ locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * ex_lock)
   return NO_ERROR;
 #endif /* !CS_MODE */
 }
+
+/*
+* locator_fetch_proxy_command - fetch proxy command
+*
+* proxy_command(out): proxy command
+* return:
+*
+*/
+int
+locator_get_proxy_command (const char **proxy_command)
+{
+#if defined(CS_MODE)
+  int error_code = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error;
+  char *area = NULL, *ptr;
+  int area_size;
+
+  assert (proxy_command != NULL);
+  /*OR_ALIGNED_BUF(OR_INT_SIZE) a_request;
+     char *request; */
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply;
+  char *local_proxy_command = NULL;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  req_error =
+    net_client_request2 (NET_FETCH_PROXY_COMMAND, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area,
+			 &area_size);
+  if (!req_error && area != NULL)
+    {
+      ptr = or_unpack_int (reply, &area_size);
+      ptr = or_unpack_int (ptr, &error_code);
+      or_unpack_string_nocopy (area, &local_proxy_command);
+      if (local_proxy_command != NULL)
+	{
+	  *proxy_command = strdup (local_proxy_command);
+	  if (*proxy_command == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      (size_t) (strlen (local_proxy_command) + 1));
+	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	}
+      free_and_init (area);
+    }
+
+  return error_code;
+
+#else /* CS_MODE */
+  int error_code;
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  error_code = xlocator_get_proxy_command (thread_p, proxy_command);
+
+  exit_server (*thread_p);
+
+  return error_code;
+#endif /* !CS_MODE */
+}

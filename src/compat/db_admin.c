@@ -2772,6 +2772,19 @@ db_set_system_parameters_for_ha_repl (const char *data)
 }
 
 /*
+ * db_get_proxy_command () - get proxy command
+ *
+ * return    : error code
+ * proxy_command (out) : proxy command
+ *
+ */
+int
+db_get_proxy_command (const char **proxy_command)
+{
+  return locator_get_proxy_command (proxy_command);
+}
+
+/*
  * db_reset_system_parameters_from_assignments () - reset system parameter
  *	values from a string containing list of assignments
  *

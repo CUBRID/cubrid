@@ -718,6 +718,7 @@ extern "C"
   extern int db_set_system_parameters_for_ha_repl (const char *data);
   extern int db_reset_system_parameters_from_assignments (const char *data);
   extern int db_get_system_parameters (char *data, int len);
+  extern int db_get_proxy_command (const char **proxy_command);
 
   extern char *db_get_host_connected (void);
   extern int db_get_ha_server_state (char *buffer, int maxlen);
