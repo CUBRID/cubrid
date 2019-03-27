@@ -84,6 +84,7 @@
 #include "thread_entry.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
+#include "transaction_transient.hpp"
 #include "vacuum.h"
 #include "xasl_cache.h"
 

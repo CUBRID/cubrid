@@ -58,6 +58,7 @@
 #include "xasl_cache.h"
 #include "xasl_predicate.hpp"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#include "transaction_transient.hpp"
 #include "xserver_interface.h"
 
 /* TODO : remove */

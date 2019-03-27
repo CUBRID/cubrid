@@ -54,6 +54,7 @@
 #include "release_string.h"
 #include "storage_common.h"
 #include "thread_entry.hpp"
+#include "transaction_transient.hpp"
 #include "log_generator.hpp"
 
 #include <assert.h>
@@ -434,15 +435,6 @@ struct log_topops_stack
   int max;			/* Size of stack */
   int last;			/* Last entry in stack */
   LOG_TOPOPS_ADDRESSES *stack;	/* Stack for push and pop of top system actions */
-};
-
-typedef struct modified_class_entry MODIFIED_CLASS_ENTRY;
-struct modified_class_entry
-{
-  MODIFIED_CLASS_ENTRY *m_next;
-  const char *m_classname;	/* Name of the modified class */
-  OID m_class_oid;
-  LOG_LSA m_last_modified_lsa;
 };
 
 /* lob entry */
