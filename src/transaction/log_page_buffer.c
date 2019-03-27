@@ -5184,6 +5184,23 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 #endif /* SERVER_MODE */
 }
 
+void
+logpb_force_flush_pages (THREAD_ENTRY * thread_p)
+{
+  LOG_CS_ENTER (thread_p);
+  logpb_flush_pages_direct (thread_p);
+  LOG_CS_EXIT (thread_p);
+}
+
+void
+logpb_force_flush_header_and_pages (THREAD_ENTRY * thread_p)
+{
+  LOG_CS_ENTER (thread_p);
+  logpb_flush_pages_direct (thread_p);
+  logpb_flush_header (thread_p);
+  LOG_CS_EXIT (thread_p);
+}
+
 /*
  * logpb_invalid_all_append_pages - Invalidate all append pages
  *

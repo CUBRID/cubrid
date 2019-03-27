@@ -96,6 +96,21 @@ typedef rapidjson::GenericArray<true, JSON_VALUE>::ConstValueIterator JSON_VALUE
 
 typedef std::function<int (const JSON_VALUE &, const JSON_PATH &, bool &)> map_func_type;
 
+namespace cubmem
+{
+  template <>
+  void JSON_DOC_STORE::create_mutable_reference ()
+  {
+    set_mutable_reference (db_json_allocate_doc ());
+  }
+
+  template <>
+  void JSON_DOC_STORE::delete_mutable ()
+  {
+    delete m_mutable_reference;
+  }
+}
+
 // class JSON_ITERATOR - virtual interface to wrap array and object iterators
 //
 class JSON_ITERATOR
@@ -1151,26 +1166,26 @@ db_json_value_get_depth (const JSON_VALUE *doc)
  * example                 : json_extract('{"a":["b", 123]}', '/a/1') yields 123
  */
 int
-db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<std::string> &paths, JSON_DOC *&result,
-				    bool allow_wildcards)
+db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<const char *> &paths,
+				    JSON_DOC_STORE &result, bool allow_wildcards)
 {
   int error_code = NO_ERROR;
 
   if (document == NULL)
     {
-      if (result != NULL)
+      if (result.is_mutable ())
 	{
-	  result->SetNull ();
+	  result.get_mutable ()->SetNull ();
 	}
       return NO_ERROR;
     }
 
   std::vector<JSON_PATH> json_paths;
 
-  for (const auto &path : paths)
+  for (const char *path : paths)
     {
       json_paths.emplace_back ();
-      error_code = json_paths.back ().parse (path.c_str ());
+      error_code = json_paths.back ().parse (path);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -1219,13 +1234,13 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
 	{
 	  for (const JSON_VALUE *p : produced)
 	    {
-	      if (result == NULL)
+	      if (!result.is_mutable ())
 		{
-		  result = db_json_allocate_doc ();
-		  result->SetArray ();
+		  result.create_mutable_reference ();
+		  result.get_mutable ()->SetArray ();
 		}
 
-	      db_json_add_element_to_array (result, p);
+	      db_json_add_element_to_array (result.get_mutable (), p);
 	    }
 	}
     }
@@ -1235,12 +1250,12 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
 
       if (!produced_array[0].empty ())
 	{
-	  if (result == NULL)
+	  if (!result.is_mutable ())
 	    {
-	      result = db_json_allocate_doc ();
+	      result.create_mutable_reference ();
 	    }
 
-	  result->CopyFrom (*produced_array[0][0], result->GetAllocator ());
+	  result.get_mutable ()->CopyFrom (*produced_array[0][0], result.get_mutable ()->GetAllocator ());
 	}
     }
 
@@ -1928,8 +1943,8 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
  * find_all (in)           : whether we need to gather all matches
  */
 int
-db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char, std::vector<std::string> &paths,
-		     const std::vector<std::string> &patterns, bool find_all)
+db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char,
+		     std::vector<std::string> &paths, const std::vector<std::string> &patterns, bool find_all)
 {
   std::vector<JSON_PATH> json_paths;
   for (const auto &path : patterns)
@@ -1986,7 +2001,7 @@ db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc
   };
 
   JSON_PATH_MAPPER json_search_walker (f_search);
-  return json_search_walker.WalkDocument (doc);
+  return json_search_walker.WalkDocument (const_cast <JSON_DOC &> (doc));
 }
 
 /*
@@ -3115,45 +3130,53 @@ db_value_to_json_path (const DB_VALUE *path_value, FUNC_TYPE fcode, const char *
 
 /* db_value_to_json_doc - create a JSON_DOC from db_value.
  *
- * return     : error code
- * db_val(in) : input db_value
- * json_doc(out) : output JSON_DOC pointer
- *
- * TODO: sometimes copying a JSON document might not be necessary.
+ * return         : error code
+ * db_val(in)     : input db_value
+ * force_copy(in) : whether json_doc needs to own the json_doc
+ * json_doc(out)  : output JSON_DOC pointer
  */
 int
-db_value_to_json_doc (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_doc))
+db_value_to_json_doc (const DB_VALUE &db_val, bool force_copy, JSON_DOC_STORE &json_doc)
 {
   int error_code = NO_ERROR;
 
   if (db_value_is_null (&db_val))
     {
-      json_doc = db_json_allocate_doc ();
-      db_json_make_document_null (json_doc);
+      json_doc.create_mutable_reference ();
+      db_json_make_document_null (json_doc.get_mutable ());
       return NO_ERROR;
     }
 
-  json_doc = NULL;
   switch (db_value_domain_type (&db_val))
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      error_code = db_json_get_json_from_str (db_get_string (&db_val), json_doc, db_get_string_size (&db_val));
+    {
+      JSON_DOC *json_doc_ptr = NULL;
+      error_code = db_json_get_json_from_str (db_get_string (&db_val), json_doc_ptr, db_get_string_size (&db_val));
+      json_doc.set_mutable_reference (json_doc_ptr);
       if (error_code != NO_ERROR)
 	{
-	  assert (json_doc == NULL);
 	  ASSERT_ERROR ();
 	}
       return error_code;
+    }
 
     case DB_TYPE_JSON:
-      json_doc = db_json_get_copy_of_doc (db_val.data.json.document);
+      if (force_copy)
+	{
+	  json_doc.set_mutable_reference (db_json_get_copy_of_doc (db_val.data.json.document));
+	}
+      else
+	{
+	  json_doc.set_immutable_reference (db_val.data.json.document);
+	}
       return NO_ERROR;
 
     case DB_TYPE_NULL:
-      json_doc = db_json_allocate_doc ();
+      json_doc.create_mutable_reference ();
       return NO_ERROR;
 
     default:
@@ -3174,14 +3197,12 @@ db_value_to_json_doc (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_doc))
  *       necessary. adapt function for those cases.
  */
 int
-db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val))
+db_value_to_json_value (const DB_VALUE &db_val, JSON_DOC_STORE &json_doc)
 {
-  json_val = NULL;
-
   if (db_value_is_null (&db_val))
     {
-      json_val = db_json_allocate_doc ();
-      db_json_make_document_null (json_val);
+      json_doc.create_mutable_reference ();
+      db_json_make_document_null (json_doc.get_mutable ());
       return NO_ERROR;
     }
 
@@ -3191,12 +3212,14 @@ db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val))
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      json_val = db_json_allocate_doc ();
-      db_json_set_string_to_doc (json_val, db_get_string (&db_val), (unsigned) db_get_string_size (&db_val));
+      json_doc.create_mutable_reference ();
+      db_json_set_string_to_doc (json_doc.get_mutable (), db_get_string (&db_val),
+				 (unsigned) db_get_string_size (&db_val));
       break;
     case DB_TYPE_ENUMERATION:
-      json_val = db_json_allocate_doc ();
-      db_json_set_string_to_doc (json_val, db_get_enum_string (&db_val), (unsigned) db_get_enum_string_size (&db_val));
+      json_doc.create_mutable_reference ();
+      db_json_set_string_to_doc (json_doc.get_mutable (), db_get_enum_string (&db_val),
+				 (unsigned) db_get_enum_string_size (&db_val));
       break;
 
     default:
@@ -3208,10 +3231,17 @@ db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val))
 	  return ER_QSTR_INVALID_DATA_TYPE;
 	}
 
-      json_val = db_get_json_document (&dest);
+      // if db_val is json a copy to dest is made so we can own it
+      json_doc.set_mutable_reference (db_get_json_document (&dest));
     }
 
   return NO_ERROR;
+}
+
+void
+db_make_json_from_doc_store_and_release (DB_VALUE &value, JSON_DOC_STORE &doc_store)
+{
+  db_make_json (&value, doc_store.release_mutable_reference (), true);
 }
 
 static void
@@ -3232,6 +3262,7 @@ db_json_value_wrap_as_array (JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &allocator)
 int
 JSON_WALKER::WalkDocument (JSON_DOC &document)
 {
+  // todo: add a const overload
   m_stop = false;
   return WalkValue (db_json_doc_to_value (document));
 }
@@ -4045,6 +4076,8 @@ db_json_unpack_array_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMP
       return rc;
     }
 
+  // preallocate
+  value.Reserve (size, doc_allocator);
   // for each member we need to deserialize it
   for (int i = 0; i < size; i++)
     {

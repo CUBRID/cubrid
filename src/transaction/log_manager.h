@@ -218,4 +218,17 @@ extern void log_flush_daemon_get_stats (UINT64 * statsp);
 
 extern void log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p);
 
+//
+// log critical section
+//
+
+void LOG_CS_ENTER (THREAD_ENTRY * thread_p);
+void LOG_CS_ENTER_READ_MODE (THREAD_ENTRY * thread_p);
+void LOG_CS_EXIT (THREAD_ENTRY * thread_p);
+void LOG_CS_DEMOTE (THREAD_ENTRY * thread_p);
+void LOG_CS_PROMOTE (THREAD_ENTRY * thread_p);
+
+bool LOG_CS_OWN (THREAD_ENTRY * thread_p);
+bool LOG_CS_OWN_WRITE_MODE (THREAD_ENTRY * thread_p);
+
 #endif /* _LOG_MANAGER_H_ */

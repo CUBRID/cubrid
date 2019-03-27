@@ -36,7 +36,7 @@ namespace cubscan
     {
       std::size_t m_child;                // current child
       cubxasl::json_table::node *m_node;  // pointer to access node
-      JSON_DOC *m_input_doc;              // input JSON document value
+      JSON_DOC_STORE m_input_doc;         // input JSON document value
       const JSON_DOC *m_process_doc;      // for no expand, it matched input document. when node is expanded, it will
       // point iterator value
       bool m_is_row_fetched;              // set to true when current row is fetched
@@ -50,16 +50,14 @@ namespace cubscan
       void start_json_iterator (void);    // start json iteration of changing input document
       int fetch_row (void);               // fetch current row (if not fetched)
       void end (void);                    // finish current node scan
-      void delete_input_doc ();
 
       cursor (void);
-      ~cursor (void);
     };
 
     scanner::cursor::cursor (void)
       : m_child (0)
       , m_node (NULL)
-      , m_input_doc (NULL)
+      , m_input_doc ()
       , m_process_doc (NULL)
       , m_is_row_fetched (false)
       , m_need_advance_row (false)
@@ -67,20 +65,6 @@ namespace cubscan
       , m_iteration_started (false)
     {
       //
-    }
-
-    scanner::cursor::~cursor (void)
-    {
-      delete_input_doc ();
-    }
-
-    void
-    scanner::cursor::delete_input_doc ()
-    {
-      if (m_input_doc != NULL)
-	{
-	  db_json_delete_doc (m_input_doc);
-	}
     }
 
     void
@@ -115,8 +99,8 @@ namespace cubscan
       m_is_node_consumed = false;
       if (m_node->m_is_iterable_node)
 	{
-	  assert (db_json_get_type (m_input_doc) == DB_JSON_ARRAY);
-	  db_json_set_iterator (m_node->m_iterator, *m_input_doc);
+	  assert (db_json_get_type (m_input_doc.get_immutable ()) == DB_JSON_ARRAY);
+	  db_json_set_iterator (m_node->m_iterator, *m_input_doc.get_mutable ());
 	}
     }
 
@@ -137,7 +121,8 @@ namespace cubscan
       else
 	{
 	  assert (!m_node->m_is_iterable_node);
-	  m_process_doc = m_input_doc;
+	  // todo: is it guaranteed we do not use m_process_doc after we delete input_doc?
+	  m_process_doc = m_input_doc.get_immutable ();
 	}
 
       if (m_process_doc == NULL)
@@ -215,13 +200,13 @@ namespace cubscan
       m_specp->m_root_node->clear_xasl (is_final_clear);
       reset_ordinality (*m_specp->m_root_node);
 
-      // all json documents should be release depending on is_final
+      // all json documents should be released depending on is_final
       if (is_final)
 	{
 	  for (size_t i = 0; i < m_tree_height; ++i)
 	    {
 	      cursor &cursor = m_scan_cursor[i];
-	      cursor.delete_input_doc ();
+	      cursor.m_input_doc.clear ();
 
 	      cursor.m_child = 0;
 	      cursor.m_is_row_fetched = false;
@@ -380,23 +365,17 @@ namespace cubscan
     scanner::set_input_document (cursor &cursor_arg, const cubxasl::json_table::node &node, const JSON_DOC &document)
     {
       int error_code = NO_ERROR;
-
-      if (cursor_arg.m_input_doc != nullptr)
-	{
-	  // do not gather previous result
-	  db_json_delete_doc (cursor_arg.m_input_doc);
-	}
+      cursor_arg.m_input_doc.clear ();
 
       // extract input document
-      error_code = db_json_extract_document_from_path (&document, std::vector<std::string> (1, node.m_path),
-		   cursor_arg.m_input_doc);
+      error_code = db_json_extract_document_from_path (&document, {node.m_path}, cursor_arg.m_input_doc);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return error_code;
 	}
 
-      if (cursor_arg.m_input_doc == nullptr)
+      if (cursor_arg.m_input_doc.is_null ())
 	{
 	  // cannot retrieve input_doc from path
 	  cursor_arg.m_is_node_consumed = true;
