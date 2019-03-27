@@ -914,8 +914,11 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   /* Get the user name */
   if (client_credential->db_user.empty ())
     {
-      client_credential->db_user = au_user_name ();
-      if (client_credential->db_user.empty ())
+      if (au_has_user_name ())
+	{
+	  client_credential->db_user = au_user_name ();
+	}
+      else
 	{
 	  // default is PUBLIC
 	  client_credential->db_user = AU_PUBLIC_USER_NAME;
