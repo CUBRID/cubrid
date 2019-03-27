@@ -152,7 +152,7 @@ namespace cubload
   {
     std::string err_msg;
 
-    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ());
+    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ()));
     err_msg.append (format (get_message_from_catalog (LOADDB_MSG_CONVERSION_ERROR), std::forward<Args>(args)...));
     
     log_error_message (err_msg, false);
