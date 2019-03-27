@@ -70,7 +70,7 @@ RUN set -x \
 
 RUN set -x \
     && groupadd --system --gid $UID cubrid \
-    && useradd --system --no-log-init --home-dir $CUBRID_DATABASES --create-home --uid $UID --gid $UID cubrid
+    && useradd --system --no-log-init --home-dir $CUBRID --create-home --uid $UID --gid $UID cubrid
 
 # copy install directory from builder stage to the new one
 COPY --from=builder --chown=cubrid:cubrid $CUBRID $CUBRID
