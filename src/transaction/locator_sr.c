@@ -1282,16 +1282,15 @@ locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA * sa
       return ER_FAILED;
     }
 
-  for (t = tdes->modified_class_list; t != NULL; t = t->m_next)
-    {
-      assert (t->m_classname != NULL);
-      error_code = locator_drop_class_name_entry (thread_p, t->m_classname, savep_lsa);
-      if (error_code != NO_ERROR)
-	{
-	  assert (false);	/* is impossible */
-	  break;
-	}
-    }
+  const auto lambda_func =[&error_code, &thread_p, &savep_lsa] (const modified_class_entry & t, bool & stop) {
+    error_code = locator_drop_class_name_entry (thread_p, t.get_classname (), savep_lsa);
+    if (error_code != NO_ERROR)
+      {
+	assert (false);
+	stop = true;
+      }
+  };
+  tdes->m_modified_classes.map (lambda_func);
   assert (locator_get_num_transient_classnames (tran_index) >= 0);
 
   /* defence for commit or rollback; include partial rollback */
@@ -1613,7 +1612,7 @@ locator_savepoint_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA
 
   tdes = LOG_FIND_TDES (tran_index);
 
-  if (tdes->modified_class_list == NULL)
+  if (tdes->m_modified_classes.empty ())
     {
       /* We may have new transient classnames or dropping classnames whose heap files have not yet been updated; Then,
        * Those classnames have not been added to the modifed list Refer locator_defence_drop_class_name_entry () */
@@ -1627,16 +1626,15 @@ locator_savepoint_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA
       return ER_FAILED;
     }
 
-  for (t = tdes->modified_class_list; t != NULL; t = t->m_next)
-    {
-      assert (t->m_classname != NULL);
-      error_code = locator_savepoint_class_name_entry (t->m_classname, savep_lsa);
-      if (error_code != NO_ERROR)
-	{
-	  assert (false);	/* is impossible */
-	  break;
-	}
-    }
+  const auto lambda_func =[&error_code, &savep_lsa] (const modified_class_entry & t, bool & stop) {
+    error_code = locator_savepoint_class_name_entry (t.get_classname (), savep_lsa);
+    if (error_code != NO_ERROR)
+      {
+	assert (false);
+	stop = true;
+      }
+  };
+  tdes->m_modified_classes.map (lambda_func);
 
   csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
