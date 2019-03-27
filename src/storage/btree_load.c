@@ -256,6 +256,8 @@ static int online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, H
 				 HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scancache, int unique_pk,
 				 int ib_thread_count, const TP_DOMAIN * key_type);
 static bool btree_is_worker_pool_logging_true ();
+static void copy_db_value_and_get_size (DB_VALUE * key, const DB_VALUE * key_to_be_copied,
+					const TP_DOMAIN * key_type, int *disk_size);
 
 /*
  * btree_get_node_header () -
@@ -5055,9 +5057,14 @@ index_builder_loader_task::add_key (const DB_VALUE * key, const OID & oid)
 
   db_value & last_key = m_keys_oids.back ().m_key;
   db_make_null (&last_key);
+  int disk_size = 0;
+  /*
   cubmem::switch_to_global_allocator_and_call (qdata_copy_db_value, &last_key, key);
 
-  m_memsize += m_load_context.m_key_type->type->get_disk_size_of_value (&last_key);
+  m_memsize += m_load_context.m_key_type->type->get_disk_size_of_value (&last_key);*/
+
+  cubmem::switch_to_global_allocator_and_call (copy_db_value_and_get_size, &last_key, key, m_load_context.m_key_type, &disk_size);
+  m_memsize += disk_size;
   m_memsize += OR_OID_SIZE;
   m_memsize = DB_ALIGN (m_memsize, BTREE_MAX_ALIGN);
   return (m_memsize > (size_t) prm_get_bigint_value (PRM_ID_IB_TASK_MEMSIZE)) ? BATCH_FULL : BATCH_CONTINUE;
@@ -5117,3 +5124,11 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
   m_load_context.m_tasks_executed++;
 }
 // *INDENT-ON*
+
+static void
+copy_db_value_and_get_size (DB_VALUE * key, const DB_VALUE * key_to_be_copied, const TP_DOMAIN * key_type,
+			    int *disk_size)
+{
+  qdata_copy_db_value (key, key_to_be_copied);
+  *disk_size = key_type->type->get_disk_size_of_value (key);
+}
