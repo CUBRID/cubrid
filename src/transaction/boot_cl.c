@@ -914,22 +914,13 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   /* Get the user name */
   if (client_credential->db_user.empty ())
     {
-      char *user_name = au_user_name_dup ();
-
-      if (user_name != NULL)
+      if (au_has_user_name ())
 	{
-	  /* user name is upper-cased in server using server's charset */
-	  client_credential->db_user = user_name;
+	  client_credential->db_user = au_user_name ();
 	}
-
-      if (client_credential->db_user.empty ())
+      else
 	{
-	  // no user string
-	  client_credential->db_user = boot_Client_no_user_string;
-	}
-      else if (client_credential->db_user == "\0")
-	{
-	  // empty user string
+	  // default is PUBLIC
 	  client_credential->db_user = AU_PUBLIC_USER_NAME;
 	}
     }
