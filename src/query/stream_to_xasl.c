@@ -36,7 +36,6 @@
 
 #include "dbtype.h"
 #include "error_manager.h"
-#include "filter_pred_cache.h"
 #include "query_aggregate.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"

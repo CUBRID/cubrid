@@ -26,7 +26,6 @@
 
 #include "heap_file.h"
 #include "fetch.h"
-#include "filter_pred_cache.h"
 #include "dbtype.h"
 #include "stream_to_xasl.h"
 #include "query_aggregate.hpp"

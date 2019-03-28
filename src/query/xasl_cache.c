@@ -28,7 +28,6 @@
 #include "binaryheap.h"
 #include "compile_context.h"
 #include "config.h"
-#include "filter_pred_cache.h"
 #include "list_file.h"
 #include "perf_monitor.h"
 #include "query_executor.h"
