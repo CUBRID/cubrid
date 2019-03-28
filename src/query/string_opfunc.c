@@ -4282,9 +4282,6 @@ regex_matches (const char *pattern, const char *str, int reg_flags, bool * match
 {
   int error_status = NO_ERROR;
 
-#ifndef _USE_LIBREGEX_
-  /* *INDENT-OFF* */  
-
   // transform flags from cub_regex_t => std::regex_constants
   std::regex_constants::syntax_option_type std_reg_flags = std::regex::extended;
   while (reg_flags)
@@ -4325,43 +4322,7 @@ regex_matches (const char *pattern, const char *str, int reg_flags, bool * match
       *match = false;
       return error_status;
     }
-  /* *INDENT-ON* */
   return NO_ERROR;
-
-#else
-  cub_regex_t *reg = NULL;
-  error_status = regex_compile (reg, pattern, reg_flags);
-  if (error_status != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_status;
-    }
-
-  int rx_code = cub_regexec (reg, str, strlen (str), 0, NULL, 0);
-
-  char reg_err_buf[REGEX_MAX_ERROR_MSG_SIZE] = { '\0' };
-  switch (rx_code)
-    {
-    case CUB_REG_OKAY:
-      *match = true;
-      break;
-
-    case CUB_REG_NOMATCH:
-      *match = false;
-      break;
-
-    default:
-      int rx_err_len = (int) cub_regerror (rx_code, reg, reg_err_buf, REGEX_MAX_ERROR_MSG_SIZE);
-      error_status = ER_REGEX_EXEC_ERROR;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, reg_err_buf);
-      *match = false;
-      break;
-    }
-
-  cub_regfree (reg);
-  db_private_free_and_init (NULL, reg);
-  return error_status;
-#endif
 }
 
 static int
