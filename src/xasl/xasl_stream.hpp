@@ -26,6 +26,7 @@
 
 #include "json_table_def.h"
 #include "thread_compat.hpp"
+#include "xasl_unpack_info.hpp"
 
 #include <cstddef>
 
@@ -131,7 +132,7 @@ stx_restore (THREAD_ENTRY *thread_p, char *&ptr, T *&target)
     }
   else
     {
-      char *bufptr = &stx_get_xasl_unpack_info_ptr (thread_p)->packed_xasl[offset];
+      char *bufptr = &get_xasl_unpack_info_ptr (thread_p)->packed_xasl[offset];
       target = (T *) stx_get_struct_visited_ptr (thread_p, bufptr);
       if (target != NULL)
 	{

@@ -83,7 +83,7 @@ stx_init_xasl_unpack_info (THREAD_ENTRY *thread_p, char *xasl_stream, int xasl_s
   body_offset = xasl_stream_size * UNPACK_SCALE;
   body_offset = xasl_stream_make_align (body_offset);
   unpack_info = (XASL_UNPACK_INFO *) db_private_alloc (thread_p, head_offset + body_offset);
-  stx_set_xasl_unpack_info_ptr (thread_p, unpack_info);
+  set_xasl_unpack_info_ptr (thread_p, unpack_info);
   if (unpack_info == NULL)
     {
       return ER_FAILED;
@@ -122,7 +122,7 @@ stx_mark_struct_visited (THREAD_ENTRY *thread_p, const void *ptr, void *str)
 {
   int new_lwm;
   int block_no;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   block_no = xasl_stream_get_ptr_block (ptr);
   new_lwm = xasl_unpack_info->ptr_lwm[block_no];
@@ -170,7 +170,7 @@ stx_get_struct_visited_ptr (THREAD_ENTRY *thread_p, const void *ptr)
 {
   int block_no;
   int element_no;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   block_no = xasl_stream_get_ptr_block (ptr);
 
@@ -200,7 +200,7 @@ void
 stx_free_visited_ptrs (THREAD_ENTRY *thread_p)
 {
   int i;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   for (i = 0; i < MAX_PTR_BLOCKS; i++)
     {
@@ -225,7 +225,7 @@ char *
 stx_alloc_struct (THREAD_ENTRY *thread_p, int size)
 {
   char *ptr;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   if (!size)
     {
@@ -315,7 +315,7 @@ stx_restore_string (THREAD_ENTRY *thread_p, char *&ptr)
       return NULL;
     }
 
-  char *bufptr = &stx_get_xasl_unpack_info_ptr (thread_p)->packed_xasl[offset];
+  char *bufptr = &get_xasl_unpack_info_ptr (thread_p)->packed_xasl[offset];
   if (ptr == NULL)
     {
       return NULL;
@@ -364,7 +364,7 @@ char *
 stx_build (THREAD_ENTRY *thread_p, char *ptr, cubxasl::json_table::column &jtc)
 {
   int temp_int;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &temp_int);
   jtc.m_function = (json_table_column_function) temp_int;

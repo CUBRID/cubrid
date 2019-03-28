@@ -18,16 +18,15 @@
  */
 
 /*
- *
+ * xasl_unpack_info - interface to information used during packing
  */
 
-#ifndef _XASL_BUFF_HPP_
-#define _XASL_BUFF_HPP_
+#ifndef _XASL_UNPACK_INFO_HPP_
+#define _XASL_UNPACK_INFO_HPP_
 
 #include "porting.h"
 #include "system.h"
 #include "thread_compat.hpp"
-
 
 const size_t MAX_PTR_BLOCKS = 256;
 
@@ -79,10 +78,11 @@ struct xasl_unpack_info
   bool use_xasl_clone;		/* true, if uses xasl clone */
 };
 
-XASL_UNPACK_INFO *stx_get_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p);
-void stx_set_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p, XASL_UNPACK_INFO *ptr);
-void stx_free_xasl_unpack_info (THREAD_ENTRY *thread_p, REFPTR (XASL_UNPACK_INFO, xasl_unpack_info));
-void stx_free_additional_buff (THREAD_ENTRY *thread_p, XASL_UNPACK_INFO *unpack_info_ptr);
+XASL_UNPACK_INFO *get_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p);
+void set_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p, XASL_UNPACK_INFO *ptr);
+
+void free_xasl_unpack_info (THREAD_ENTRY *thread_p, REFPTR (XASL_UNPACK_INFO, xasl_unpack_info));
+void free_unpack_extra_buff (THREAD_ENTRY *thread_p, XASL_UNPACK_INFO *unpack_info_ptr);
 
 inline int xasl_stream_get_ptr_block (const void *ptr);
 
@@ -92,4 +92,4 @@ xasl_stream_get_ptr_block (const void *ptr)
   return static_cast<int> ((((UINTPTR) ptr) / sizeof (UINTPTR)) % MAX_PTR_BLOCKS);
 }
 
-#endif // !_XASL_BUFF_HPP_
+#endif // !_XASL_UNPACK_INFO_HPP_

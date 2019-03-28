@@ -80,7 +80,7 @@ struct pruning_context
   SCANCACHE_LIST *scan_cache_list;	/* caches for partitions affected by the query using this context */
   int count;			/* number of partitions */
 
-  struct xasl_unpack_info *fp_cache_context;	/* unpacking info */
+  xasl_unpack_info *fp_cache_context;	/* unpacking info */
   func_pred *partition_pred;	/* partition predicate */
   int attr_position;		/* attribute position in index key */
   ATTR_ID attr_id;		/* id of the attribute which defines the partitions */

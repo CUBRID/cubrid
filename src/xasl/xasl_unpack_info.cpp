@@ -29,11 +29,11 @@ static XASL_UNPACK_INFO *xasl_Unpack_info = NULL;
 #endif /* !SERVER_MODE */
 
 /*
- * stx_get_xasl_unpack_info_ptr () -
+ * get_xasl_unpack_info_ptr () -
  *   return:
  */
 XASL_UNPACK_INFO *
-stx_get_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p)
+get_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p)
 {
 #if defined(SERVER_MODE)
   return thread_p->xasl_unpack_info_ptr;
@@ -43,12 +43,12 @@ stx_get_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p)
 }
 
 /*
- * stx_set_xasl_unpack_info_ptr () -
+ * set_xasl_unpack_info_ptr () -
  *   return:
  *   ptr(in)    :
  */
 void
-stx_set_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p, XASL_UNPACK_INFO *ptr)
+set_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p, XASL_UNPACK_INFO *ptr)
 {
 #if defined (SERVER_MODE)
   thread_p->xasl_unpack_info_ptr = ptr;
@@ -58,16 +58,16 @@ stx_set_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p, XASL_UNPACK_INFO *ptr)
 }
 
 /*
- * stx_free_xasl_unpack_info () -
+ * free_xasl_unpack_info () -
  *   return:
  *   xasl_unpack_info(in): unpack info returned by stx_map_stream_to_xasl ()
  *
  * Note: free the memory used for unpacking the xasl tree.
  */
 void
-stx_free_xasl_unpack_info (THREAD_ENTRY *thread_p, REFPTR (XASL_UNPACK_INFO, xasl_unpack_info))
+free_xasl_unpack_info (THREAD_ENTRY *thread_p, REFPTR (XASL_UNPACK_INFO, xasl_unpack_info))
 {
-  stx_free_additional_buff (thread_p, xasl_unpack_info);
+  free_unpack_extra_buff (thread_p, xasl_unpack_info);
 #if defined (SERVER_MODE)
   if (xasl_unpack_info)
     {
@@ -78,13 +78,13 @@ stx_free_xasl_unpack_info (THREAD_ENTRY *thread_p, REFPTR (XASL_UNPACK_INFO, xas
 }
 
 /*
- * stx_free_additional_buff () - free additional buffers allocated during
+ * free_unpack_extra_buff () - free additional buffers allocated during
  *				 XASL unpacking
  * return : void
  * xasl_unpack_info (in) : XASL unpack info
  */
 void
-stx_free_additional_buff (THREAD_ENTRY *thread_p, XASL_UNPACK_INFO *xasl_unpack_info)
+free_unpack_extra_buff (THREAD_ENTRY *thread_p, XASL_UNPACK_INFO *xasl_unpack_info)
 {
   if (xasl_unpack_info)
     {

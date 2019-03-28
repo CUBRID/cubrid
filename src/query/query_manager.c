@@ -1185,7 +1185,7 @@ end:
   if (xasl_buf_info)
     {
       /* free the XASL tree */
-      stx_free_xasl_unpack_info (thread_p, xasl_buf_info);
+      free_xasl_unpack_info (thread_p, xasl_buf_info);
     }
 
   return list_id;

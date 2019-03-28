@@ -302,7 +302,7 @@ fpcache_entry_uninit (void *entry)
       assert (pred_expr != NULL);
 
       qexec_clear_pred_context (thread_p, pred_expr, true);
-      stx_free_xasl_unpack_info (thread_p, pred_expr->unpack_info);
+      free_xasl_unpack_info (thread_p, pred_expr->unpack_info);
       db_private_free_and_init (thread_p, pred_expr);
     }
 
@@ -483,7 +483,7 @@ fpcache_retire (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, pred_expr
     {
       /* Filter predicate expression could not be cached. Free it. */
       HL_HEAPID old_private_heap = db_change_private_heap (thread_p, 0);
-      stx_free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
+      free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
       db_private_free_and_init (thread_p, filter_pred);
       (void) db_change_private_heap (thread_p, old_private_heap);
     }

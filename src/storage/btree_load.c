@@ -1069,7 +1069,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     {
       if (filter_pred->unpack_info != NULL)
 	{
-	  stx_free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
+	  free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
 	}
       db_private_free_and_init (thread_p, filter_pred);
     }
@@ -1079,7 +1079,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     }
   if (func_unpack_info)
     {
-      stx_free_xasl_unpack_info (thread_p, func_unpack_info);
+      free_xasl_unpack_info (thread_p, func_unpack_info);
     }
 
   thread_p->pop_resource_tracks ();
@@ -1182,7 +1182,7 @@ error:
     {
       if (filter_pred->unpack_info != NULL)
 	{
-	  stx_free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
+	  free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
 	}
       db_private_free_and_init (thread_p, filter_pred);
     }
@@ -1192,7 +1192,7 @@ error:
     }
   if (func_unpack_info)
     {
-      stx_free_xasl_unpack_info (thread_p, func_unpack_info);
+      free_xasl_unpack_info (thread_p, func_unpack_info);
     }
 
   thread_p->pop_resource_tracks ();
@@ -4707,7 +4707,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 
       if (filter_pred->unpack_info != NULL)
 	{
-	  stx_free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
+	  free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
 	}
       db_private_free_and_init (thread_p, filter_pred);
     }
@@ -4720,7 +4720,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 
   if (func_unpack_info != NULL)
     {
-      stx_free_xasl_unpack_info (thread_p, func_unpack_info);
+      free_xasl_unpack_info (thread_p, func_unpack_info);
     }
 
   if (list_btid != NULL)
@@ -4770,7 +4770,7 @@ error:
 
       if (filter_pred->unpack_info != NULL)
 	{
-	  stx_free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
+	  free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
 	}
       db_private_free_and_init (thread_p, filter_pred);
     }
@@ -4782,7 +4782,7 @@ error:
 
   if (func_unpack_info != NULL)
     {
-      stx_free_xasl_unpack_info (thread_p, func_unpack_info);
+      free_xasl_unpack_info (thread_p, func_unpack_info);
     }
 
   if (list_btid != NULL)

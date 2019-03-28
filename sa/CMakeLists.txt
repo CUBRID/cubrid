@@ -394,7 +394,7 @@ set(XASL_SOURCES
   ${XASL_DIR}/access_json_table.cpp
   ${XASL_DIR}/xasl_analytic.cpp
   ${XASL_DIR}/xasl_predicate.cpp
-  ${XASL_DIR}/xasl_stream.cpp  
+  ${XASL_DIR}/xasl_stream.cpp
   ${XASL_DIR}/xasl_unpack_info.cpp
   )
 set(XASL_HEADERS

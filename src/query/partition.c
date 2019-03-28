@@ -2476,7 +2476,7 @@ partition_free_partition_predicate (PRUNING_CONTEXT * pinfo)
 
   if (pinfo->fp_cache_context != NULL)
     {
-      stx_free_xasl_unpack_info (pinfo->thread_p, pinfo->fp_cache_context);
+      free_xasl_unpack_info (pinfo->thread_p, pinfo->fp_cache_context);
     }
 }
 

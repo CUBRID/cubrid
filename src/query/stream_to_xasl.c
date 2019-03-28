@@ -193,7 +193,7 @@ stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, xasl_node_header * 
  * Note: map the linear byte stream in disk representation to an XASL tree.
  *
  * Note: the caller is responsible for freeing the memory of
- * xasl_unpack_info_ptr. The free function is stx_free_xasl_unpack_info().
+ * xasl_unpack_info_ptr. The free function is free_xasl_unpack_info().
  */
 int
 stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool use_xasl_clone, char *xasl_stream,
@@ -212,7 +212,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
 
   stx_set_xasl_errcode (thread_p, NO_ERROR);
   stx_init_xasl_unpack_info (thread_p, xasl_stream, xasl_stream_size);
-  unpack_info_p = stx_get_xasl_unpack_info_ptr (thread_p);
+  unpack_info_p = get_xasl_unpack_info_ptr (thread_p);
   unpack_info_p->use_xasl_clone = use_xasl_clone;
   unpack_info_p->track_allocated_bufers = 1;
 
@@ -227,13 +227,13 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   xasl = stx_restore_xasl_node (thread_p, xasl_stream + offset);
   if (xasl == NULL)
     {
-      stx_free_xasl_unpack_info (thread_p, unpack_info_p);
+      free_xasl_unpack_info (thread_p, unpack_info_p);
       goto end;
     }
 
   /* set result */
   *xasl_tree = xasl;
-  *xasl_unpack_info_ptr = stx_get_xasl_unpack_info_ptr (thread_p);
+  *xasl_unpack_info_ptr = get_xasl_unpack_info_ptr (thread_p);
 
   /* restore header data of new XASL format */
   p = or_unpack_int (p, &xasl->dbval_cnt);
@@ -249,7 +249,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
 end:
   stx_free_visited_ptrs (thread_p);
 #if defined(SERVER_MODE)
-  stx_set_xasl_unpack_info_ptr (thread_p, NULL);
+  set_xasl_unpack_info_ptr (thread_p, NULL);
 #endif /* SERVER_MODE */
 
   return stx_get_xasl_errcode (thread_p);
@@ -266,7 +266,9 @@ end:
  *
  * Note: map the linear byte stream in disk representation to an predicate
  *       with context. The caller is responsible for freeing the memory of
- *       (*pred)->unpack_info by calling stx_free_xasl_unpack_info().
+ *       (*pred)->unpack_info by calling free_xasl_unpack_info().
+ *       *pred is private_alloced separatedly of (*pred)->unpack_info and
+ *       needs to be freed after it
  */
 int
 stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context ** pred, char *pred_stream,
@@ -285,7 +287,7 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context *
 
   stx_set_xasl_errcode (thread_p, NO_ERROR);
   stx_init_xasl_unpack_info (thread_p, pred_stream, pred_stream_size);
-  unpack_info_p = stx_get_xasl_unpack_info_ptr (thread_p);
+  unpack_info_p = get_xasl_unpack_info_ptr (thread_p);
   unpack_info_p->use_xasl_clone = true;
   unpack_info_p->track_allocated_bufers = 1;
 
@@ -300,7 +302,7 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context *
   pwc = stx_restore_filter_pred_node (thread_p, pred_stream + offset);
   if (pwc == NULL)
     {
-      stx_free_xasl_unpack_info (thread_p, unpack_info_p);
+      free_xasl_unpack_info (thread_p, unpack_info_p);
       goto end;
     }
 
@@ -311,7 +313,7 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context *
 end:
   stx_free_visited_ptrs (thread_p);
 #if defined(SERVER_MODE)
-  stx_set_xasl_unpack_info_ptr (thread_p, NULL);
+  set_xasl_unpack_info_ptr (thread_p, NULL);
 #endif /* SERVER_MODE */
 
   return stx_get_xasl_errcode (thread_p);
@@ -342,7 +344,7 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *x
 
   stx_set_xasl_errcode (thread_p, NO_ERROR);
   stx_init_xasl_unpack_info (thread_p, xasl_stream, xasl_stream_size);
-  unpack_info_p = stx_get_xasl_unpack_info_ptr (thread_p);
+  unpack_info_p = get_xasl_unpack_info_ptr (thread_p);
   unpack_info_p->use_xasl_clone = false;
   unpack_info_p->track_allocated_bufers = 1;
 
@@ -357,7 +359,7 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *x
   p_xasl = stx_restore_func_pred (thread_p, xasl_stream + offset);
   if (p_xasl == NULL)
     {
-      stx_free_xasl_unpack_info (thread_p, unpack_info_p);
+      free_xasl_unpack_info (thread_p, unpack_info_p);
       goto end;
     }
 
@@ -368,7 +370,7 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *x
 end:
   stx_free_visited_ptrs (thread_p);
 #if defined(SERVER_MODE)
-  stx_set_xasl_unpack_info_ptr (thread_p, NULL);
+  set_xasl_unpack_info_ptr (thread_p, NULL);
 #endif /* SERVER_MODE */
 
   return stx_get_xasl_errcode (thread_p);
@@ -900,6 +902,15 @@ stx_restore_xasl_node (THREAD_ENTRY * thread_p, char *ptr)
   return xasl;
 }
 
+/*
+ * stx_restore_filter_pred_node () -
+ *   return: unpacked pred_expr_with_context
+ *   thread_entry(in): 
+ *   ptr(in): pointer to stream
+ *  
+ * Note: returned pred is private_alloced and should be freed separately after 
+ *       pred->unpack_info.
+ */
 static PRED_EXPR_WITH_CONTEXT *
 stx_restore_filter_pred_node (THREAD_ENTRY * thread_p, char *ptr)
 {
@@ -1260,7 +1271,7 @@ stx_restore_db_value_array_extra (THREAD_ENTRY * thread_p, char *ptr, int neleme
   int *ints;
   int i;
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   value_array = (DB_VALUE **) stx_alloc_struct (thread_p, sizeof (DB_VALUE *) * total_nelements);
   if (value_array == NULL)
@@ -1405,7 +1416,7 @@ stx_restore_regu_variable_list (THREAD_ENTRY * thread_p, char *ptr)
   int total;
   int i;
   char *ptr2;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   regu_var_list = (REGU_VARIABLE_LIST) stx_get_struct_visited_ptr (thread_p, ptr);
   if (regu_var_list != NULL)
@@ -1455,7 +1466,7 @@ stx_restore_regu_varlist_list (THREAD_ENTRY * thread_p, char *ptr)
   int total;
   int i;
   char *ptr2;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   regu_var_list_list = (REGU_VARLIST_LIST) stx_get_struct_visited_ptr (thread_p, ptr);
   if (regu_var_list_list != NULL)
@@ -1499,7 +1510,7 @@ stx_restore_key_range_array (THREAD_ENTRY * thread_p, char *ptr, int nelements)
   KEY_RANGE *key_range_array;
   int *ints;
   int i, j, offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   key_range_array = (KEY_RANGE *) stx_alloc_struct (thread_p, sizeof (KEY_RANGE) * nelements);
   if (key_range_array == NULL)
@@ -1621,7 +1632,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 {
   int offset;
   int tmp;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   /* initialize query_in_progress flag */
   xasl->query_in_progress = false;
@@ -2212,7 +2223,7 @@ static char *
 stx_build_filter_pred_node (THREAD_ENTRY * thread_p, char *ptr, PRED_EXPR_WITH_CONTEXT * pred)
 {
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -2268,7 +2279,7 @@ static char *
 stx_build_func_pred (THREAD_ENTRY * thread_p, char *ptr, FUNC_PRED * func_pred)
 {
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -2360,7 +2371,7 @@ static char *
 stx_build_method_sig_list (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG_LIST * method_sig_list)
 {
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, (int *) &method_sig_list->num_methods);
 
@@ -2404,7 +2415,7 @@ stx_build_method_sig (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG * method_si
 {
   int offset;
   int num_args, n;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   method_sig->method_name = stx_restore_string (thread_p, ptr);
   if (method_sig->method_name == NULL)
@@ -2457,7 +2468,7 @@ static char *
 stx_build_union_proc (THREAD_ENTRY * thread_p, char *ptr, UNION_PROC_NODE * union_proc)
 {
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -2496,7 +2507,7 @@ static char *
 stx_build_fetch_proc (THREAD_ENTRY * thread_p, char *ptr, FETCH_PROC_NODE * obj_set_fetch_proc)
 {
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
   int i;
 
   ptr = or_unpack_int (ptr, &offset);
@@ -2543,7 +2554,7 @@ static char *
 stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NODE * stx_build_list_proc)
 {
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   stx_build_list_proc->output_columns = (DB_VALUE **) 0;
   stx_build_list_proc->upddel_oid_locator_ehids = NULL;
@@ -2892,7 +2903,7 @@ static char *
 stx_build_buildvalue_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDVALUE_PROC_NODE * stx_build_value_proc)
 {
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -2964,7 +2975,7 @@ static char *
 stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *ptr, MERGELIST_PROC_NODE * merge_list_info)
 {
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -3045,7 +3056,7 @@ stx_build_ls_merge_info (THREAD_ENTRY * thread_p, char *ptr, QFILE_LIST_MERGE_IN
 {
   int tmp, offset;
   int single_fetch;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &tmp);
   list_merge_info->join_type = (JOIN_TYPE) tmp;
@@ -3161,7 +3172,7 @@ stx_build_update_class_info (THREAD_ENTRY * thread_p, char *ptr, UPDDEL_CLASS_IN
   int i;
   char *p;
 
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   /* num_subclasses */
   ptr = or_unpack_int (ptr, &upd_cls->num_subclasses);
@@ -3321,7 +3332,7 @@ static char *
 stx_build_update_assignment (THREAD_ENTRY * thread_p, char *ptr, UPDATE_ASSIGNMENT * assign)
 {
   int offset = 0;
-  XASL_UNPACK_INFO *xasl_unpack_info_p = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info_p = get_xasl_unpack_info_ptr (thread_p);
 
   /* cls_idx */
   ptr = or_unpack_int (ptr, &assign->cls_idx);
@@ -3398,7 +3409,7 @@ stx_restore_odku_info (THREAD_ENTRY * thread_p, char *ptr)
   ODKU_INFO *odku_info = NULL;
   int offset;
 
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   odku_info = (ODKU_INFO *) stx_alloc_struct (thread_p, sizeof (ODKU_INFO));
   if (odku_info == NULL)
@@ -3479,7 +3490,7 @@ static char *
 stx_build_update_proc (THREAD_ENTRY * thread_p, char *ptr, UPDATE_PROC_NODE * update_info)
 {
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   /* classes */
   ptr = or_unpack_int (ptr, &update_info->num_classes);
@@ -3566,7 +3577,7 @@ static char *
 stx_build_delete_proc (THREAD_ENTRY * thread_p, char *ptr, DELETE_PROC_NODE * delete_info)
 {
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &delete_info->num_classes);
 
@@ -3618,7 +3629,7 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
 {
   int offset;
   int i;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_oid (ptr, &insert_info->class_oid);
 
@@ -3752,7 +3763,7 @@ static char *
 stx_build_merge_proc (THREAD_ENTRY * thread_p, char *ptr, MERGE_PROC_NODE * merge_info)
 {
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
   int tmp;
 
   ptr = or_unpack_int (ptr, &offset);
@@ -3797,7 +3808,7 @@ static char *
 stx_build_cte_proc (THREAD_ENTRY * thread_p, char *ptr, CTE_PROC_NODE * cte_info)
 {
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -3839,7 +3850,7 @@ static char *
 stx_build_outptr_list (THREAD_ENTRY * thread_p, char *ptr, OUTPTR_LIST * outptr_list)
 {
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &outptr_list->valptr_cnt);
 
@@ -3865,7 +3876,7 @@ static char *
 stx_build_selupd_list (THREAD_ENTRY * thread_p, char *ptr, SELUPD_LIST * selupd_list)
 {
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_oid (ptr, &selupd_list->class_oid);
   ptr = or_unpack_hfid (ptr, &selupd_list->class_hfid);
@@ -3897,7 +3908,7 @@ static char *
 stx_build_pred_expr (THREAD_ENTRY * thread_p, char *ptr, PRED_EXPR * pred_expr)
 {
   int tmp, offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &tmp);
   pred_expr->type = (TYPE_PRED_EXPR) tmp;
@@ -3943,7 +3954,7 @@ stx_build_pred (THREAD_ENTRY * thread_p, char *ptr, PRED * pred)
   int tmp, offset;
   int rhs_type;
   PRED_EXPR *rhs;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   /* lhs */
   ptr = or_unpack_int (ptr, &offset);
@@ -4061,7 +4072,7 @@ static char *
 stx_build_comp_eval_term (THREAD_ENTRY * thread_p, char *ptr, COMP_EVAL_TERM * comp_eval_term)
 {
   int tmp, offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -4106,7 +4117,7 @@ static char *
 stx_build_alsm_eval_term (THREAD_ENTRY * thread_p, char *ptr, ALSM_EVAL_TERM * alsm_eval_term)
 {
   int tmp, offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -4154,7 +4165,7 @@ static char *
 stx_build_like_eval_term (THREAD_ENTRY * thread_p, char *ptr, LIKE_EVAL_TERM * like_eval_term)
 {
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -4209,7 +4220,7 @@ static char *
 stx_build_rlike_eval_term (THREAD_ENTRY * thread_p, char *ptr, RLIKE_EVAL_TERM * rlike_eval_term)
 {
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -4272,7 +4283,7 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
   int val;
   OUTPTR_LIST *outptr_list = NULL;
 
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &tmp);
   access_spec->type = (TARGET_TYPE) tmp;
@@ -4437,7 +4448,7 @@ static char *
 stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr, INDX_INFO * indx_info)
 {
   int tmp, offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_btid (ptr, &indx_info->btid);
 
@@ -4500,7 +4511,7 @@ stx_build_key_info (THREAD_ENTRY * thread_p, char *ptr, KEY_INFO * key_info)
 {
   int offset;
   int i;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &key_info->key_cnt);
 
@@ -4566,7 +4577,7 @@ static char *
 stx_build_cls_spec_type (THREAD_ENTRY * thread_p, char *ptr, CLS_SPEC_TYPE * cls_spec)
 {
   int tmp, offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_hfid (ptr, &cls_spec->hfid);
   ptr = or_unpack_oid (ptr, &cls_spec->cls_oid);
@@ -4822,7 +4833,7 @@ static char *
 stx_build_list_spec_type (THREAD_ENTRY * thread_p, char *ptr, LIST_SPEC_TYPE * list_spec_type)
 {
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -4880,7 +4891,7 @@ stx_build_showstmt_spec_type (THREAD_ENTRY * thread_p, char *ptr, SHOWSTMT_SPEC_
 {
   int offset;
   int val;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &val);
   showstmt_spec_type->show_type = (SHOWSTMT_TYPE) val;
@@ -4925,7 +4936,7 @@ static char *
 stx_build_set_spec_type (THREAD_ENTRY * thread_p, char *ptr, SET_SPEC_TYPE * set_spec)
 {
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -4964,7 +4975,7 @@ static char *
 stx_build_method_spec_type (THREAD_ENTRY * thread_p, char *ptr, METHOD_SPEC_TYPE * method_spec)
 {
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -5019,7 +5030,7 @@ stx_build_val_list (THREAD_ENTRY * thread_p, char *ptr, VAL_LIST * val_list)
 {
   int offset, i;
   QPROC_DB_VALUE_LIST value_list = NULL;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &val_list->val_cnt);
 
@@ -5113,7 +5124,7 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
 {
   int tmp, offset;
 
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_domain (ptr, &regu_var->domain, NULL);
   /* save the original domain */
@@ -5169,7 +5180,7 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABL
   REGU_VALUE_LIST *regu_list;
   REGU_VARIABLE_LIST regu_var_list = NULL;
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info_p = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info_p = get_xasl_unpack_info_ptr (thread_p);
 
   assert (ptr != NULL && regu_var != NULL);
 
@@ -5313,7 +5324,7 @@ static char *
 stx_build_attr_descr (THREAD_ENTRY * thread_p, char *ptr, ATTR_DESCR * attr_descr)
 {
   int tmp, offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &tmp);
   attr_descr->id = (CL_ATTR_ID) tmp;
@@ -5355,7 +5366,7 @@ static char *
 stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_type)
 {
   int tmp, offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_domain (ptr, &arith_type->domain, NULL);
   /* save the original domain */
@@ -5461,7 +5472,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 {
   int offset;
   int tmp;
-  XASL_UNPACK_INFO *xasl_unpack_info_p = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info_p = get_xasl_unpack_info_ptr (thread_p);
 
   assert (ptr != NULL && aggregate != NULL);
 
@@ -5626,7 +5637,7 @@ static char *
 stx_build_function_type (THREAD_ENTRY * thread_p, char *ptr, FUNCTION_TYPE * function)
 {
   int tmp, offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -5670,7 +5681,7 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
 {
   int offset;
   int tmp_i;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   assert (ptr != NULL && analytic != NULL);
 
@@ -5838,7 +5849,7 @@ static char *
 stx_build_analytic_eval_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_EVAL_TYPE * analytic_eval)
 {
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
 
@@ -5889,7 +5900,7 @@ static char *
 stx_build_srlist_id (THREAD_ENTRY * thread_p, char *ptr, QFILE_SORTED_LIST_ID * sort_list_id)
 {
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &sort_list_id->sorted);
 
@@ -5915,7 +5926,7 @@ static char *
 stx_build_sort_list (THREAD_ENTRY * thread_p, char *ptr, SORT_LIST * sort_list)
 {
   int tmp, offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -5953,7 +5964,7 @@ stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *ptr, CONNECTBY_PROC_NOD
   int offset;
   int tmp;
 
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -6289,7 +6300,7 @@ static char *
 stx_build_regu_variable_list (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE_LIST * regu_var_list)
 {
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   assert (ptr != NULL && regu_var_list != NULL);
 

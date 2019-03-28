@@ -1955,7 +1955,7 @@ xcache_clone_decache (THREAD_ENTRY * thread_p, XASL_CLONE * xclone)
   HL_HEAPID save_heapid = db_change_private_heap (thread_p, 0);
   XASL_SET_FLAG (xclone->xasl, XASL_DECACHE_CLONE);
   qexec_clear_xasl (thread_p, xclone->xasl, true);
-  stx_free_xasl_unpack_info (thread_p, xclone->xasl_buf);
+  free_xasl_unpack_info (thread_p, xclone->xasl_buf);
   xclone->xasl = NULL;
   (void) db_change_private_heap (thread_p, save_heapid);
 }
@@ -2029,7 +2029,7 @@ xcache_retire_clone (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, X
       return;
     }
 
-  stx_free_xasl_unpack_info (thread_p, xclone->xasl_buf);
+  free_xasl_unpack_info (thread_p, xclone->xasl_buf);
   xclone->xasl = NULL;
 }
 

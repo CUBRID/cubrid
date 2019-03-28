@@ -17371,7 +17371,7 @@ end:
   if (unpack_info)
     {
       (void) qexec_clear_func_pred (thread_p, func_pred);
-      stx_free_xasl_unpack_info (thread_p, unpack_info);
+      free_xasl_unpack_info (thread_p, unpack_info);
     }
 
   return error;
@@ -17541,7 +17541,7 @@ heap_free_func_pred_unpack_info (THREAD_ENTRY * thread_p, int n_indexes, FUNC_PR
 
       if (func_indx_preds[i].unpack_info)
 	{
-	  stx_free_xasl_unpack_info (thread_p, func_indx_preds[i].unpack_info);
+	  free_xasl_unpack_info (thread_p, func_indx_preds[i].unpack_info);
 	}
     }
   db_private_free_and_init (thread_p, func_indx_preds);
