@@ -4277,7 +4277,7 @@ db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_
 }
 
 extern int
-regex_matches (const char *pattern, const char *str, int reg_flags, bool * match)
+regex_searches (const char *pattern, const char *str, int reg_flags, bool * match)
 {
   int error_status = NO_ERROR;
 
@@ -4286,7 +4286,7 @@ regex_matches (const char *pattern, const char *str, int reg_flags, bool * match
   try
     {
       std::regex reg (pattern, std_reg_flags);
-      *match = std::regex_match (str, reg);
+      *match = std::regex_search (str, reg);
     }
   catch (std::regex_error &e)
     {
@@ -4412,9 +4412,9 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
   is_case_sensitive = (case_sensitive->data.i != 0);
 
   /* check for recompile */
-  if (rx_compiled_pattern == NULL || rx_compiled_regex == NULL || pattern_length != strlen (rx_compiled_pattern)
-      || strncmp (rx_compiled_pattern, pattern_char_string_p, pattern_length) != 0)
-    {
+  //if (rx_compiled_pattern == NULL || rx_compiled_regex == NULL || pattern_length != strlen (rx_compiled_pattern)
+  //    || strncmp (rx_compiled_pattern, pattern_char_string_p, pattern_length) != 0)
+  //  {
       /* regex must be recompiled if regex object is not specified, pattern is not specified or compiled pattern does
        * not match current pattern */
 
@@ -4440,35 +4440,25 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
       memcpy (rx_compiled_pattern, pattern_char_string_p, pattern_length);
       rx_compiled_pattern[pattern_length] = '\0';
 
-      error_status = regex_compile (rx_compiled_regex, rx_compiled_pattern,
-				    std::regex_constants::extended | std::regex_constants::nosubs | (is_case_sensitive ? 0 : std::regex_constants::icase));
+      bool match = false;
+      error_status = regex_searches (rx_compiled_pattern, rx_compiled_regex,
+				    std::regex_constants::extended | std::regex_constants::nosubs | (is_case_sensitive ? 0 : std::regex_constants::icase),
+					&match);
       if (error_status != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  *result = V_ERROR;
-	  goto cleanup;
-	}
-    }
+	  {
+	    ASSERT_ERROR ();
+	    *result = V_ERROR;
+	    goto cleanup;
+	  }
 
-  /* match against pattern; regexec returns zero on match */
-  rx_err = cub_regexec (rx_compiled_regex, src_char_string_p, src_length, 0, NULL, 0);
-  switch (rx_err)
-    {
-    case CUB_REG_OKAY:
-      *result = V_TRUE;
-      break;
-
-    case CUB_REG_NOMATCH:
-      *result = V_FALSE;
-      break;
-
-    default:
-      rx_err_len = (int) cub_regerror (rx_err, rx_compiled_regex, rx_err_buf, REGEX_MAX_ERROR_MSG_SIZE);
-      error_status = ER_REGEX_EXEC_ERROR;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, rx_err_buf);
-      *result = V_ERROR;
-      break;
-    }
+      if (match) {
+        *result = V_TRUE;
+      }
+      else
+      {
+    	*result = V_FALSE;
+      }
+  //  }
 
 cleanup:
 
