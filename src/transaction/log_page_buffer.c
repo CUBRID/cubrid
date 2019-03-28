@@ -2933,7 +2933,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 #endif /* CUBRID_DEBUG */
   bool hold_flush_mutex = false;
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
-  LOG_PAGEID nxio_pageid;
+  LOG_LSA nxio_lsa;
 
   int rv;
 #if defined(SERVER_MODE)
@@ -3324,23 +3324,22 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
     }
 
   /* now flush the nxio_lsa page... unless it is the page of header for incomplete log record */
-  nxio_pageid = log_Gl.append.get_nxio_lsa ().pageid;
-  if (log_Pb.partial_append.status == LOGPB_APPENDREC_SUCCESS || (nxio_pageid != log_Gl.append.prev_lsa.pageid))
+  nxio_lsa = log_Gl.append.get_nxio_lsa ();
+  if (log_Pb.partial_append.status == LOGPB_APPENDREC_SUCCESS || (nxio_lsa.pageid != log_Gl.append.prev_lsa.pageid))
     {
       assert (log_Pb.partial_append.status == LOGPB_APPENDREC_SUCCESS
 	      || log_Pb.partial_append.status == LOGPB_APPENDREC_PARTIAL_FLUSHED_END_OF_LOG);
 
-      bufptr = &log_Pb.buffers[logpb_get_log_buffer_index (log_Gl.append.get_nxio_lsa ().pageid)];
+      bufptr = &log_Pb.buffers[logpb_get_log_buffer_index (nxio_lsa.pageid)];
 
-      if (bufptr->pageid != nxio_pageid)
+      if (bufptr->pageid != nxio_lsa.pageid)
 	{
 	  /* not expected. */
 	  assert_release (false);
 
 	  logpb_log ("logpb_flush_all_append_pages: fatal error, nxio_lsa %lld|%d page not found in buffer. "
 		     "bufptr->pageid is %lld instead.\n",
-		     (long long int) log_Gl.append.get_nxio_lsa ().pageid, (int) log_Gl.append.get_nxio_lsa ().offset,
-		     (long long int) bufptr->pageid);
+		     (long long int) nxio_lsa.pageid, (int) nxio_lsa.offset, (long long int) bufptr->pageid);
 
 	  error_code = ER_FAILED;
 	  goto error;
@@ -3352,7 +3351,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  assert_release (false);
 
 	  logpb_log ("logpb_flush_all_append_pages: fatal error, nxio_lsa %lld|%d page is not dirty.\n",
-		     (long long int) log_Gl.append.get_nxio_lsa ().pageid, (int) log_Gl.append.get_nxio_lsa ().offset);
+		     (long long int) nxio_lsa.pageid, (int) nxio_lsa.offset);
 
 	  error_code = ER_FAILED;
 	  goto error;
@@ -10341,7 +10340,7 @@ logpb_dump_log_header (FILE * outfp)
   fprintf (outfp, "\tlast log append lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.append.prev_lsa));
 
   fprintf (outfp, "\tlowest lsa which hasn't been written to disk : (%lld|%d)\n",
-	   log_Gl.append.get_nxio_lsa ().pageid, log_Gl.append.get_nxio_lsa ().offset);
+	   (long long int) log_Gl.append.get_nxio_lsa ().pageid, (int) log_Gl.append.get_nxio_lsa ().offset);
 
   fprintf (outfp, "\tcheckpoint lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.hdr.chkpt_lsa));
 
