@@ -3569,3 +3569,133 @@ error_exit:
 
   return EXIT_FAILURE;
 }
+
+int
+start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
+{
+  DB_SESSION *session = NULL;
+  int rc = NO_ERROR;
+  int override_tran_index = NULL_TRAN_INDEX;
+  char sql_log_err[LINE_MAX];
+  const char *command;
+  bool save;
+
+  if (args->tran_index != NULL)
+    {
+      override_tran_index = atoi (args->tran_index);
+      db_set_override_tran_index (override_tran_index);
+    }
+
+  rc = db_restart_ex (program_name, args->db_name, args->user_name, args->passwd, NULL, DB_CLIENT_TYPE_DDL_PROXY);
+
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return rc;
+    }
+
+  if (args->sys_param != NULL)
+    {
+      er_stack_push ();
+      int error = db_set_system_parameters_for_ha_repl (args->sys_param);
+      if (error != NO_ERROR)
+	{
+	  snprintf (sql_log_err, sizeof (sql_log_err), "failed to change sys prm: %s", args->sys_param);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, sql_log_err);
+	}
+      er_stack_pop ();
+    }
+
+  command = args->command;
+  if (command == NULL || strlen (command) == 0)
+    {
+      if (db_get_proxy_command (&command) != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (rc);
+	  goto error;
+	}
+    }
+
+  if (command != NULL)
+    {
+      int total_stmts, stmt_id, i, num_of_rows;
+      DB_QUERY_RESULT *result = NULL;
+
+      session = db_open_buffer (command);
+      if (session == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (rc);
+	  goto error;
+	}
+
+      if (db_get_errors (session) || er_errid () != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (rc);
+	  goto error;
+	}
+
+      save = au_disable ();
+
+      total_stmts = db_statement_count (session);
+      for (i = 0; i < total_stmts; i++)
+	{
+	  stmt_id = db_compile_statement (session);
+	  if (stmt_id < 0)
+	    {
+	      ASSERT_ERROR_AND_SET (rc);
+	      db_abort_transaction ();
+	      au_enable (save);
+	      goto error;
+	    }
+
+	  if (stmt_id == 0)
+	    {
+	      /* this means that we processed all statements */
+	      break;
+	    }
+
+	  /* For now, disable authorization. */
+
+	  num_of_rows = db_execute_statement (session, stmt_id, &result);
+	  if (num_of_rows < 0)
+	    {
+	      ASSERT_ERROR_AND_SET (rc);
+	      db_abort_transaction ();
+	      au_enable (save);
+	      goto error;
+	    }
+
+	  if (result != NULL)
+	    {
+	      db_query_end (result);
+	      result = NULL;
+	    }
+	  else
+	    {
+	      db_free_query (session);
+	    }
+
+	  db_drop_statement (session, stmt_id);
+	}
+
+      au_enable (save);
+    }
+
+error:
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+
+  if (override_tran_index != NULL_TRAN_INDEX)
+    {
+      db_shutdown_keep_transaction ();
+    }
+  else
+    {
+      db_commit_transaction ();
+      db_shutdown ();
+    }
+
+  return rc;
+}

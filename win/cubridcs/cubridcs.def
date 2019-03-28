@@ -497,6 +497,7 @@ EXPORTS
     compactdb
     acldb
     vacuumdb
+    start_ddl_proxy_client
 ;
 ; libesql reference's functions
 ;
