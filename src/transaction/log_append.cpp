@@ -23,6 +23,7 @@
 #include "log_compress.h"
 #include "log_impl.h"
 #include "log_manager.h"
+#include "log_record.hpp"
 #include "lzo/lzoconf.h"
 #include "page_buffer.h"
 #include "perf_monitor.h"
