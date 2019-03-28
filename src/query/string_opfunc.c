@@ -4276,12 +4276,13 @@ db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_
   return ((*result == V_ERROR) ? ER_QSTR_INVALID_ESCAPE_SEQUENCE : error_status);
 }
 
-extern int
-regex_search (const char *pattern, const char *str, std::regex_constants::syntax_option_type reg_flags, bool * match)
+static int
+regex_search (const char *pattern, const char *str, int reg_flags, bool * match)
 {
   int error_status = NO_ERROR;
 
-  std::regex_constants::syntax_option_type std_reg_flags = reg_flags;
+  std::regex_constants::syntax_option_type std_reg_flags = std::regex_constants::extended;
+  std_reg_flags |= reg_flags;
 
   try
     {
