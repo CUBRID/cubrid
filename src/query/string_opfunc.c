@@ -4342,8 +4342,6 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
   int src_length = 0, pattern_length = 0;
 
   char rx_err_buf[REGEX_MAX_ERROR_MSG_SIZE] = { '\0' };
-  int rx_err = CUB_REG_OKAY;
-  int rx_err_len = 0;
   char *rx_compiled_pattern = NULL;
   std::regex *rx_compiled_regex = NULL;
 
@@ -4414,7 +4412,7 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
   /* check for recompile */
   //if (rx_compiled_pattern == NULL || rx_compiled_regex == NULL || pattern_length != strlen (rx_compiled_pattern)
   //    || strncmp (rx_compiled_pattern, pattern_char_string_p, pattern_length) != 0)
-  //  {
+    {
       /* regex must be recompiled if regex object is not specified, pattern is not specified or compiled pattern does
        * not match current pattern */
 
@@ -4458,7 +4456,7 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
       {
     	*result = V_FALSE;
       }
-  //  }
+    }
 
 cleanup:
 
