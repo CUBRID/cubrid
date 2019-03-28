@@ -147,11 +147,10 @@ char *LOG_APPEND_PTR ();
 
 bool log_prior_has_worker_log_records (THREAD_ENTRY *thread_p);
 LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG_RCVINDEX rcvindex,
-    LOG_DATA_ADDR *addr, int ulength, const char *udata, int rlength,
-    const char *rdata);
+    LOG_DATA_ADDR *addr, int ulength, const char *udata, int rlength, const char *rdata);
 LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG_RCVINDEX rcvindex,
-    LOG_DATA_ADDR *addr, const int num_ucrumbs, const LOG_CRUMB *ucrumbs,
-    const int num_rcrumbs, const LOG_CRUMB *rcrumbs);
+    LOG_DATA_ADDR *addr, const int num_ucrumbs, const LOG_CRUMB *ucrumbs, const int num_rcrumbs,
+    const LOG_CRUMB *rcrumbs);
 LOG_LSA prior_lsa_next_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, log_tdes *tdes);
 LOG_LSA prior_lsa_next_record_with_lock (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, log_tdes *tdes);
 void log_append_init_zip ();
@@ -175,7 +174,7 @@ LOG_RV_RECORD_IS_INSERT (log_rv_record_flag_type flags)
 bool
 LOG_RV_RECORD_IS_DELETE (log_rv_record_flag_type flags)
 {
-  return (flags & LOG_RV_RECORD_MODIFY_MASK) == LOG_RV_RECORD_INSERT;
+  return (flags & LOG_RV_RECORD_MODIFY_MASK) == LOG_RV_RECORD_DELETE;
 }
 
 bool
