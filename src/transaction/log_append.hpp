@@ -174,7 +174,7 @@ LOG_RV_RECORD_IS_INSERT (log_rv_record_flag_type flags)
 bool
 LOG_RV_RECORD_IS_DELETE (log_rv_record_flag_type flags)
 {
-  return (flags & LOG_RV_RECORD_MODIFY_MASK) == LOG_RV_RECORD_INSERT;
+  return (flags & LOG_RV_RECORD_MODIFY_MASK) == LOG_RV_RECORD_DELETE;
 }
 
 bool
