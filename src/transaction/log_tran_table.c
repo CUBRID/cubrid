@@ -114,7 +114,6 @@
 static const int LOG_MAX_NUM_CONTIGUOUS_TDES = INT_MAX / sizeof (LOG_TDES);
 static const float LOG_EXPAND_TRANTABLE_RATIO = 1.25;	/* Increase table by 25% */
 static const int LOG_TOPOPS_STACK_INCREMENT = 3;	/* No more than 3 nested top system operations */
-static const char *log_Client_id_unknown_string = "(unknown)";
 static BOOT_CLIENT_CREDENTIAL log_Client_credential;
 
 static const unsigned int LOGTB_RETRY_SLAM_MAX_TIMES = 10;
@@ -2361,7 +2360,9 @@ logtb_set_user_name (int tran_index, const char *user_name)
   tdes = LOG_FIND_TDES (tran_index);
   if (tdes != NULL && tdes->trid != NULL_TRANID)
     {
-      tdes->client.set_user ((user_name) ? user_name : log_Client_id_unknown_string);
+      // *INDENT-OFF*
+      tdes->client.set_user ((user_name) ? user_name : clientids::UNKNOWN_ID);
+      // *INDENT-ON*
     }
   return;
 }
@@ -2444,9 +2445,11 @@ logtb_find_client_name_host_pid (int tran_index, const char **client_prog_name, 
 
   if (tdes == NULL || tdes->trid == NULL_TRANID)
     {
-      *client_prog_name = log_Client_id_unknown_string;
-      *client_user_name = log_Client_id_unknown_string;
-      *client_host_name = log_Client_id_unknown_string;
+      // *INDENT-OFF*
+      *client_prog_name = clientids::UNKNOWN_ID;
+      *client_user_name = clientids::UNKNOWN_ID;
+      *client_host_name = clientids::UNKNOWN_ID;
+      // *INDENT-ON*
       *client_pid = -1;
       return ER_FAILED;
     }
