@@ -16750,7 +16750,7 @@ qexec_get_index_pseudocolumn_value_from_tuple (THREAD_ENTRY * thread_p, XASL_NOD
   if (!db_value_is_null (*index_valp))
     {
       /* increase the size if more space needed */
-      while (strlen ((*index_valp)->data.ch.medium.buf) + 1 > *index_len)
+      while ((int) strlen ((*index_valp)->data.ch.medium.buf) + 1 > *index_len)
 	{
 	  (*index_len) += CONNECTBY_TUPLE_INDEX_STRING_MEM;
 	  db_private_free_and_init (thread_p, *index_value);

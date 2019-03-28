@@ -1111,7 +1111,7 @@ const size_t BTREE_RV_BUFFER_SIZE =
 #endif /* !NDEBUG */
 
 static void
-BTREE_RV_GET_DATA_LENGTH (const char *rv_ptr, const char *rv_start, int rv_length)
+BTREE_RV_GET_DATA_LENGTH (const char *rv_ptr, const char *rv_start, int &rv_length)
 {
   assert (rv_ptr != NULL);
   assert (rv_start != NULL);
