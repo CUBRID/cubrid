@@ -50,6 +50,7 @@
 #include "btree.h"
 #include "elo.h"
 #include "recovery.h"
+#include "replication.h"
 #include "xserver_interface.h"
 #include "page_buffer.h"
 #include "porting_inline.hpp"

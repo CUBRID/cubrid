@@ -534,13 +534,7 @@ struct mvcctable
   { MVCC_STATUS_INITIALIZER, NULL, NULL, 0, PTHREAD_MUTEX_INITIALIZER }
 #endif
 
-enum log_repl_flush
-{
-  LOG_REPL_DONT_NEED_FLUSH = -1,	/* no flush */
-  LOG_REPL_COMMIT_NEED_FLUSH = 0,	/* log must be flushed at commit */
-  LOG_REPL_NEED_FLUSH = 1	/* log must be flushed at commit and rollback */
-};
-typedef enum log_repl_flush LOG_REPL_FLUSH;
+
 
 /* Definitions used to identify MVCC log records. Used by log manager and
  * vacuum.
@@ -571,18 +565,6 @@ typedef enum log_repl_flush LOG_REPL_FLUSH;
 #define LOG_IS_VACUUM_DATA_BUFFER_RECOVERY(rcvindex) \
   (((rcvindex) == RVVAC_LOG_BLOCK_APPEND || (rcvindex) == RVVAC_LOG_BLOCK_SAVE) \
    && log_Gl.rcv_phase == LOG_RECOVERY_REDO_PHASE)
-
-typedef struct log_repl LOG_REPL_RECORD;
-struct log_repl
-{
-  LOG_RECTYPE repl_type;	/* LOG_REPLICATION_DATA or LOG_REPLICATION_SCHEMA */
-  LOG_RCVINDEX rcvindex;
-  OID inst_oid;
-  LOG_LSA lsa;
-  char *repl_data;		/* the content of the replication log record */
-  int length;
-  LOG_REPL_FLUSH must_flush;
-};
 
 /* Information of database external redo log records */
 typedef struct log_rec_dbout_redo LOG_REC_DBOUT_REDO;
