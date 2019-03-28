@@ -27,7 +27,6 @@
 #include "heap_attrinfo.h"
 #include "object_domain.h"
 #include "query_list.h"
-#include "libregex38a/regex38a.h"
 #include "string_opfunc.h"
 
 #include <functional>

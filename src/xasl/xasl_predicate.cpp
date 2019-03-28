@@ -63,7 +63,6 @@ namespace cubxasl
 	    free_regu_not_null (pe.m_eval_term.et.et_rlike.case_sensitive);
 	    if (pe.m_eval_term.et.et_rlike.compiled_regex != NULL)
 	      {
-		cub_regfree (pe.m_eval_term.et.et_rlike.compiled_regex);
 		db_private_free_and_init (NULL, pe.m_eval_term.et.et_rlike.compiled_regex);
 	      }
 	    if (pe.m_eval_term.et.et_rlike.compiled_pattern != NULL)

@@ -286,7 +286,6 @@ static int print_string_date_token (const STRING_DATE_TOKEN token_type, const IN
 				    int *token_size);
 static void convert_locale_number (char *sz, const int size, const INTL_LANG src_locale, const INTL_LANG dst_locale);
 static int parse_tzd (const char *str, const int max_expect_len);
-static int regex_compile (cub_regex_t * &reg, const char *pattern, int reg_flags);
 
 #define TRIM_FORMAT_STRING(sz, n) {if (strlen(sz) > n) sz[n] = 0;}
 #define WHITESPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
@@ -4282,32 +4281,7 @@ regex_matches (const char *pattern, const char *str, int reg_flags, bool * match
 {
   int error_status = NO_ERROR;
 
-  // transform flags from cub_regex_t => std::regex_constants
-  std::regex_constants::syntax_option_type std_reg_flags = std::regex::extended;
-  while (reg_flags)
-  {
-    int before_pop = reg_flags;
-    // pop lsb
-    reg_flags &= (reg_flags - 1);
-    int lsb = before_pop ^ reg_flags;
-
-    switch (lsb)
-    {
-    case CUB_REG_NOSUB:
-      std_reg_flags |= std::regex::nosubs;
-      break;
-    case CUB_REG_ICASE:
-      std_reg_flags |= std::regex::icase;
-      break;
-    case CUB_REG_EXTENDED:
-      std_reg_flags |= std::regex::extended;
-      break;
-    default:
-      // unknown flag
-      assert (false);
-      break;
-    }
-  }
+  std::regex_constants::syntax_option_type std_reg_flags = reg_flags;
 
   try
     {
@@ -4322,47 +4296,6 @@ regex_matches (const char *pattern, const char *str, int reg_flags, bool * match
       *match = false;
       return error_status;
     }
-  return NO_ERROR;
-}
-
-static int
-regex_compile (cub_regex_t * &rx_compiled_regex, const char *rx_compiled_pattern, int reg_flags)
-{
-  /* initialize regex library memory allocator */
-  cub_regset_malloc ((CUB_REG_MALLOC) db_private_alloc_external);
-  cub_regset_realloc ((CUB_REG_REALLOC) db_private_realloc_external);
-  cub_regset_free ((CUB_REG_FREE) db_private_free_external);
-
-  if (rx_compiled_regex != NULL)
-    {
-      /* free previously allocated memory */
-      cub_regfree (rx_compiled_regex);
-      db_private_free_and_init (NULL, rx_compiled_regex);
-    }
-
-  /* allocate memory for new regex object */
-  rx_compiled_regex = (cub_regex_t *) db_private_alloc (NULL, sizeof (cub_regex_t));
-
-  if (rx_compiled_regex == NULL)
-    {
-      /* out of memory */
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  /* compile regex */
-  int rx_err = cub_regcomp (rx_compiled_regex, rx_compiled_pattern, reg_flags);
-
-  if (rx_err != CUB_REG_OKAY)
-    {
-      /* regex compilation error */
-      char rx_err_buf[REGEX_MAX_ERROR_MSG_SIZE] = { '\0' };
-      int rx_err_len = (int) cub_regerror (rx_err, rx_compiled_regex, rx_err_buf, REGEX_MAX_ERROR_MSG_SIZE);
-      int error_status = ER_REGEX_COMPILE_ERROR;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, rx_err_buf);
-      db_private_free_and_init (NULL, rx_compiled_regex);
-      return error_status;
-    }
-
   return NO_ERROR;
 }
 
@@ -4395,7 +4328,7 @@ regex_compile (cub_regex_t * &rx_compiled_regex, const char *rx_compiled_pattern
 
 int
 db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_VALUE * case_sensitive,
-		 cub_regex_t ** comp_regex, char **comp_pattern, int *result)
+		 std::regex ** comp_regex, char **comp_pattern, int *result)
 {
   QSTR_CATEGORY src_category = QSTR_UNKNOWN;
   QSTR_CATEGORY pattern_category = QSTR_UNKNOWN;
@@ -4412,7 +4345,7 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
   int rx_err = CUB_REG_OKAY;
   int rx_err_len = 0;
   char *rx_compiled_pattern = NULL;
-  cub_regex_t *rx_compiled_regex = NULL;
+  std::regex *rx_compiled_regex = NULL;
 
   /* check for allocated DB values */
   assert (src_string != NULL);
@@ -4508,7 +4441,7 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
       rx_compiled_pattern[pattern_length] = '\0';
 
       error_status = regex_compile (rx_compiled_regex, rx_compiled_pattern,
-				    CUB_REG_EXTENDED | CUB_REG_NOSUB | (is_case_sensitive ? 0 : CUB_REG_ICASE));
+				    std::regex_constants::extended | std::regex_constants::nosubs | (is_case_sensitive ? 0 : std::regex_constants::icase));
       if (error_status != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -4542,7 +4475,6 @@ cleanup:
   if ((comp_regex == NULL || error_status != NO_ERROR) && rx_compiled_regex != NULL)
     {
       /* free memory if (using local regex) or (error occurred) */
-      cub_regfree (rx_compiled_regex);
       db_private_free_and_init (NULL, rx_compiled_regex);
     }
 
