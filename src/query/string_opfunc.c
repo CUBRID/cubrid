@@ -4438,7 +4438,8 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
 
       bool match = false;
       std::regex_constants::syntax_option_type reg_flags = std::regex_constants::extended;
-      reg_flags |= (std::regex_constants::nosubs | (is_case_sensitive ? 0 : std::regex_constants::icase));
+      reg_flags |= std::regex_constants::nosubs;
+      reg_flags |= (is_case_sensitive ? 0 : std::regex_constants::icase);
       error_status = regex_search (rx_compiled_pattern, rx_compiled_regex, reg_flags, &match);
       if (error_status != NO_ERROR)
 	  {
