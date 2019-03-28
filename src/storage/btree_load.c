@@ -36,6 +36,7 @@
 #include "external_sort.h"
 #include "heap_file.h"
 #include "log_manager.h"
+#include "memory_alloc.h"
 #include "memory_private_allocator.hpp"
 #include "mvcc.h"
 #include "object_primitive.h"
@@ -5010,25 +5011,25 @@ btree_is_worker_pool_logging_true ()
 }
 
 void
-index_builder_loader_context::on_create (context_type & context)
+index_builder_loader_context::on_create (context_type &context)
 {
   context.claim_system_worker ();
 }
 
 void
-index_builder_loader_context::on_retire (context_type & context)
+index_builder_loader_context::on_retire (context_type &context)
 {
   context.retire_system_worker ();
 }
 
 void
-index_builder_loader_context::on_recycle (context_type & context)
+index_builder_loader_context::on_recycle (context_type &context)
 {
   context.tran_index = LOG_SYSTEM_TRAN_INDEX;
 }
 
-index_builder_loader_task::index_builder_loader_task (const BTID * btid, const OID * class_oid, int unique_pk,
-						      index_builder_loader_context & load_context)
+index_builder_loader_task::index_builder_loader_task (const BTID *btid, const OID *class_oid, int unique_pk,
+						      index_builder_loader_context &load_context)
   : m_load_context (load_context)
 {
   BTID_COPY (&m_btid, btid);
@@ -5044,19 +5045,29 @@ index_builder_loader_task::~index_builder_loader_task ()
 }
 
 index_builder_loader_task::batch_key_status
-index_builder_loader_task::add_key (const DB_VALUE * key, const OID & oid)
+index_builder_loader_task::add_key (const DB_VALUE *key, const OID &oid)
 {
   m_keys_oids.emplace_back ();
 
   m_keys_oids.back ().m_oid = oid;
 
-  db_value & last_key = m_keys_oids.back ().m_key;
+  db_value &last_key = m_keys_oids.back ().m_key;
   db_make_null (&last_key);
-  cubmem::switch_to_global_allocator_and_call (qdata_copy_db_value, &last_key, key);
+  
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
 
+  /* Switch to global heapID. */
+  HL_HEAPID prev_id = db_change_private_heap (thread_p, 0);
+
+  qdata_copy_db_value (&last_key, key);
   m_memsize += m_load_context.m_key_type->type->get_disk_size_of_value (&last_key);
+
+  /* reset back to previous heapID. */
+  db_change_private_heap (thread_p, prev_id);
+
   m_memsize += OR_OID_SIZE;
   m_memsize = DB_ALIGN (m_memsize, BTREE_MAX_ALIGN);
+
   return (m_memsize > (size_t) prm_get_bigint_value (PRM_ID_IB_TASK_MEMSIZE)) ? BATCH_FULL : BATCH_CONTINUE;
 }
 
@@ -5069,14 +5080,14 @@ index_builder_loader_task::has_keys () const
 void
 index_builder_loader_task::clear_keys ()
 {
-  for (auto & key_oid:m_keys_oids)
+  for (auto &key_oid : m_keys_oids)
     {
       pr_clear_value (&key_oid.m_key);
     }
 }
 
 void
-index_builder_loader_task::execute (cubthread::entry & thread_ref)
+index_builder_loader_task::execute (cubthread::entry &thread_ref)
 {
   int ret = NO_ERROR;
   size_t key_count = 0;
@@ -5087,7 +5098,7 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
       return;
     }
 
-  for (auto & key_oid : m_keys_oids)
+  for (auto &key_oid : m_keys_oids)
     {
       ret = btree_online_index_dispatcher (&thread_ref, &m_btid, &key_oid.m_key, &m_class_oid, &key_oid.m_oid,
 					   m_unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
@@ -5111,6 +5122,7 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
     {
       _er_log_debug (ARG_FILE_LINE, "Finished task; loaded %zu keys\n", key_count);
     }
+
   m_load_context.m_tasks_executed++;
 }
 // *INDENT-ON*
