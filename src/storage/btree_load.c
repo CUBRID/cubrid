@@ -34,7 +34,6 @@
 #include "btree.h"
 #include "dbtype.h"
 #include "external_sort.h"
-#include "filter_pred_cache.h"
 #include "heap_file.h"
 #include "log_manager.h"
 #include "memory_private_allocator.hpp"

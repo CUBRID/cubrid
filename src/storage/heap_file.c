@@ -51,7 +51,6 @@
 #include "chartype.h"
 #include "query_executor.h"
 #include "fetch.h"
-#include "filter_pred_cache.h"
 #include "server_interface.h"
 #include "elo.h"
 #include "db_elo.h"

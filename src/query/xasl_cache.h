@@ -62,7 +62,7 @@ typedef enum xcache_cleanup_reason XCACHE_CLEANUP_REASON;
 typedef struct xasl_clone XASL_CLONE;
 struct xasl_clone
 {
-  struct xasl_unpack_info *xasl_buf;
+  xasl_unpack_info *xasl_buf;
   XASL_NODE *xasl;
 };
 #define XASL_CLONE_INITIALIZER { NULL, NULL }

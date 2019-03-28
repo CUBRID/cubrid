@@ -200,7 +200,7 @@ typedef struct func_pred_unpack_info FUNC_PRED_UNPACK_INFO;
 struct func_pred_unpack_info
 {
   struct func_pred *func_pred;
-  struct xasl_unpack_info *unpack_info;
+  xasl_unpack_info *unpack_info;
 };
 
 #if 0				/* TODO: check not use - ksseo */

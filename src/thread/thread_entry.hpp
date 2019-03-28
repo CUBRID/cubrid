@@ -221,7 +221,7 @@ namespace cubthread
 
       css_conn_entry *conn_entry;	/* conn entry ptr */
 
-      xasl_unpack_info *xasl_unpack_info_ptr;	  /* XASL_UNPACK_INFO * */
+      xasl_unpack_info *xasl_unpack_info_ptr;     /* XASL_UNPACK_INFO * */
       int xasl_errcode;		/* xasl errorcode */
       int xasl_recursion_depth;
 

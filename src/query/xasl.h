@@ -1054,7 +1054,7 @@ struct pred_expr_with_context
   int num_attrs_pred;		/* number of atts from the predicate */
   ATTR_ID *attrids_pred;	/* array of attr ids from the pred */
   HEAP_CACHE_ATTRINFO *cache_pred;	/* cache for the pred attrs */
-  struct xasl_unpack_info *unpack_info;	/* Buffer information. */
+  XASL_UNPACK_INFO *unpack_info;	/* Buffer information. */
 };
 typedef struct pred_expr_with_context PRED_EXPR_WITH_CONTEXT;
 
