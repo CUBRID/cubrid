@@ -147,11 +147,10 @@ char *LOG_APPEND_PTR ();
 
 bool log_prior_has_worker_log_records (THREAD_ENTRY *thread_p);
 LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG_RCVINDEX rcvindex,
-    LOG_DATA_ADDR *addr, int ulength, const char *udata, int rlength,
-    const char *rdata);
+    LOG_DATA_ADDR *addr, int ulength, const char *udata, int rlength, const char *rdata);
 LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG_RCVINDEX rcvindex,
-    LOG_DATA_ADDR *addr, const int num_ucrumbs, const LOG_CRUMB *ucrumbs,
-    const int num_rcrumbs, const LOG_CRUMB *rcrumbs);
+    LOG_DATA_ADDR *addr, const int num_ucrumbs, const LOG_CRUMB *ucrumbs, const int num_rcrumbs,
+    const LOG_CRUMB *rcrumbs);
 LOG_LSA prior_lsa_next_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, log_tdes *tdes);
 LOG_LSA prior_lsa_next_record_with_lock (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, log_tdes *tdes);
 void log_append_init_zip ();
