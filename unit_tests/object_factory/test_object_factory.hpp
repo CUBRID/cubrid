@@ -32,6 +32,9 @@ namespace test_object_factory
   {
     public:
       virtual int get_height () = 0;
+      virtual ~animal ()
+      {
+      }
   };
 
   class lion : public animal

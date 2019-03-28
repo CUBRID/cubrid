@@ -7405,7 +7405,7 @@ xts_get_offset_visited_ptr (const void *ptr)
 static void
 xts_free_visited_ptrs (void)
 {
-  int i;
+  size_t i;
 
   for (i = 0; i < MAX_PTR_BLOCKS; i++)
     {
