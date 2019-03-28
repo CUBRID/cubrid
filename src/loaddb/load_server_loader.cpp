@@ -90,7 +90,7 @@ namespace cubload
     LC_FIND_CLASSNAME found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, IX_LOCK);
     if (found != LC_CLASSNAME_EXIST)
       {
-	m_error_handler.on_failure_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
+	m_error_handler.on_error_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
       }
   }
 
@@ -110,6 +110,11 @@ namespace cubload
       {
 	// return in case when class does not exists
 	return;
+      }
+
+    if (m_session.get_class_registry().get_class_entry (m_clsid) == NULL)
+      {
+        return;
       }
 
     int error_code = heap_attrinfo_start (&thread_ref, &class_oid, -1, NULL, &attrinfo);

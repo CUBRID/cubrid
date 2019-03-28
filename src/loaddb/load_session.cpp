@@ -184,6 +184,12 @@ namespace cubload
 	    return;
 	  }
 
+        if (m_session.get_class_registry ().get_class_entry (m_batch.get_class_id ()) == NULL)
+          {
+            m_session.notify_batch_done (m_batch.get_id ());
+            return;
+          }
+
 	logtb_assign_tran_index (&thread_ref, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
 				 TRAN_DEFAULT_ISOLATION_LEVEL ());
 
@@ -430,7 +436,7 @@ namespace cubload
     return m_class_registry;
   }
 
-  load_args
+  const load_args &
   session::get_args ()
   {
     return m_args;
