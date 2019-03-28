@@ -51,8 +51,7 @@ static int prior_lsa_gen_dbout_redo_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NO
 static int prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE rec_type, int length,
 				 const char *data);
 static int prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node,
-    LOG_RCVINDEX rcvindex, LOG_DATA_ADDR *addr, int num_ucrumbs,
-    const LOG_CRUMB *ucrumbs, int num_rcrumbs,
+    LOG_RCVINDEX rcvindex, LOG_DATA_ADDR *addr, int num_ucrumbs, const LOG_CRUMB *ucrumbs, int num_rcrumbs,
     const LOG_CRUMB *rcrumbs);
 static int prior_lsa_gen_2pc_prepare_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, int gtran_length,
     const char *gtran_data, int lock_length, const char *lock_data);
@@ -147,8 +146,10 @@ bool
 log_prior_has_worker_log_records (THREAD_ENTRY *thread_p)
 {
   LOG_CS_ENTER (thread_p);
+
   std::unique_lock<std::mutex> ulock (log_Gl.prior_info.prior_lsa_mutex);
   LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
+
   if (!LSA_EQ (&nxio_lsa, &log_Gl.prior_info.prior_lsa))
     {
       LOG_PRIOR_NODE *node;
@@ -166,7 +167,9 @@ log_prior_has_worker_log_records (THREAD_ENTRY *thread_p)
 	  node = node->next;
 	}
     }
+
   ulock.unlock ();
+
   LOG_CS_EXIT (thread_p);
 
   return false;
@@ -175,66 +178,33 @@ log_prior_has_worker_log_records (THREAD_ENTRY *thread_p)
 void
 log_append_init_zip ()
 {
-  if (lzo_init () == LZO_E_OK)
-    {
-      /* lzo library init */
-      if (!prm_get_bool_value (PRM_ID_LOG_COMPRESS))
-	{
-	  log_Zip_support = false;
-	}
-      else
-	{
-#if defined(SERVER_MODE)
-	  log_Zip_support = true;
-#else
-	  log_zip_undo = log_zip_alloc (IO_PAGESIZE, true);
-	  log_zip_redo = log_zip_alloc (IO_PAGESIZE, true);
-	  log_data_length = IO_PAGESIZE * 2;
-	  log_data_ptr = (char *) malloc (log_data_length);
-	  if (log_data_ptr == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) log_data_length);
-	    }
-
-	  if (log_zip_undo == NULL || log_zip_redo == NULL || log_data_ptr == NULL)
-	    {
-	      log_Zip_support = false;
-	      if (log_zip_undo)
-		{
-		  log_zip_free (log_zip_undo);
-		  log_zip_undo = NULL;
-		}
-	      if (log_zip_redo)
-		{
-		  log_zip_free (log_zip_redo);
-		  log_zip_redo = NULL;
-		}
-	      if (log_data_ptr)
-		{
-		  free_and_init (log_data_ptr);
-		  log_data_length = 0;
-		}
-	    }
-	  else
-	    {
-	      log_Zip_support = true;
-	    }
-#endif
-	}
-    }
-  else
+  if (lzo_init () != LZO_E_OK)
     {
       log_Zip_support = false;
+      return;
     }
-}
 
-void
-log_append_final_zip()
-{
-  if (log_Zip_support)
+  if (!prm_get_bool_value (PRM_ID_LOG_COMPRESS))
     {
-#if defined (SERVER_MODE)
+      log_Zip_support = false;
+      return;
+    }
+
+#if defined(SERVER_MODE)
+  log_Zip_support = true;
 #else
+  log_zip_undo = log_zip_alloc (IO_PAGESIZE, true);
+  log_zip_redo = log_zip_alloc (IO_PAGESIZE, true);
+  log_data_length = IO_PAGESIZE * 2;
+  log_data_ptr = (char *) malloc (log_data_length);
+  if (log_data_ptr == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) log_data_length);
+    }
+
+  if (log_zip_undo == NULL || log_zip_redo == NULL || log_data_ptr == NULL)
+    {
+      log_Zip_support = false;
       if (log_zip_undo)
 	{
 	  log_zip_free (log_zip_undo);
@@ -250,8 +220,40 @@ log_append_final_zip()
 	  free_and_init (log_data_ptr);
 	  log_data_length = 0;
 	}
-#endif
     }
+  else
+    {
+      log_Zip_support = true;
+    }
+#endif
+}
+
+void
+log_append_final_zip ()
+{
+  if (!log_Zip_support)
+    {
+      return;
+    }
+
+#if defined (SERVER_MODE)
+#else
+  if (log_zip_undo)
+    {
+      log_zip_free (log_zip_undo);
+      log_zip_undo = NULL;
+    }
+  if (log_zip_redo)
+    {
+      log_zip_free (log_zip_redo);
+      log_zip_redo = NULL;
+    }
+  if (log_data_ptr)
+    {
+      free_and_init (log_data_ptr);
+      log_data_length = 0;
+    }
+#endif
 }
 
 /*
@@ -1792,6 +1794,9 @@ log_append_realloc_data_ptr (THREAD_ENTRY *thread_p, int length)
 }
 
 /*
+ * log_append_get_data_ptr  -
+ *
+ * return:
  *
  */
 static char *
@@ -1832,6 +1837,7 @@ static void
 log_prior_lsa_append_align ()
 {
   assert (log_Gl.prior_info.prior_lsa.offset >= 0);
+
   log_Gl.prior_info.prior_lsa.offset = DB_ALIGN (log_Gl.prior_info.prior_lsa.offset, DOUBLE_ALIGNMENT);
   if ((size_t) log_Gl.prior_info.prior_lsa.offset >= (size_t) LOGAREA_SIZE)
     {
@@ -1844,6 +1850,7 @@ static void
 log_prior_lsa_append_advance_when_doesnot_fit (size_t length)
 {
   assert (log_Gl.prior_info.prior_lsa.offset >= 0);
+
   if ((size_t) log_Gl.prior_info.prior_lsa.offset + length >= (size_t) LOGAREA_SIZE)
     {
       log_Gl.prior_info.prior_lsa.pageid++;
@@ -1855,6 +1862,7 @@ static void
 log_prior_lsa_append_add_align (size_t add)
 {
   assert (log_Gl.prior_info.prior_lsa.offset >= 0);
+
   log_Gl.prior_info.prior_lsa.offset += (add);
   log_prior_lsa_append_align ();
 }
