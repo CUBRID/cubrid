@@ -32,6 +32,7 @@
 #include "memory_hash.h"
 #include "storage_common.h"
 #include "heap_file.h"
+#include "log_append.hpp"
 #include "numeric_opfunc.h"
 #include "object_primitive.h"
 #include "server_interface.h"

@@ -34,10 +34,11 @@
 
 #include "list_file.h"
 
+#include "db_value_printer.hpp"
 #include "dbtype.h"
 #include "error_manager.h"
+#include "log_append.hpp"
 #include "object_primitive.h"
-#include "db_value_printer.hpp"
 #include "query_manager.h"
 #include "query_opfunc.h"
 #include "stream_to_xasl.h"

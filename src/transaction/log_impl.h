@@ -42,6 +42,7 @@
 #include "lock_free.h"
 #include "lock_manager.h"
 #include "log_2pc.h"
+#include "log_append.hpp"
 #include "log_archives.hpp"
 #include "log_comm.h"
 #include "log_common_impl.h"
@@ -118,25 +119,6 @@ struct logwr_info;
 /* check if group commit is active */
 #define LOG_IS_GROUP_COMMIT_ACTIVE() \
   (prm_get_integer_value (PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS) > 0)
-
-#define LOG_RESET_APPEND_LSA(lsa) \
-  do \
-    { \
-      LSA_COPY (&log_Gl.hdr.append_lsa, (lsa)); \
-      LSA_COPY (&log_Gl.prior_info.prior_lsa, (lsa)); \
-    } \
-  while (0)
-
-#define LOG_RESET_PREV_LSA(lsa) \
-  do \
-    { \
-      LSA_COPY (&log_Gl.append.prev_lsa, (lsa)); \
-      LSA_COPY (&log_Gl.prior_info.prev_lsa, (lsa)); \
-    } \
-  while (0)
-
-#define LOG_APPEND_PTR() ((char *)log_Gl.append.log_pgptr->area \
-                          + log_Gl.hdr.append_lsa.offset)
 
 #define LOG_READ_ALIGN(thread_p, lsa, log_pgptr) \
   do \
@@ -255,15 +237,6 @@ struct logwr_info;
 const TRANID LOG_SYSTEM_WORKER_FIRST_TRANID = NULL_TRANID - 1;
 const int LOG_SYSTEM_WORKER_INCR_TRANID = -1;
 
-#define LOG_SET_DATA_ADDR(data_addr, page, vol_file_id, off) \
-  do \
-    { \
-      (data_addr)->pgptr = (page); \
-      (data_addr)->vfid = (vol_file_id); \
-      (data_addr)->offset = (off); \
-    } \
-  while (0)
-
 #define LOG_READ_NEXT_TRANID (log_Gl.hdr.next_trid)
 #define LOG_READ_NEXT_MVCCID (log_Gl.hdr.mvcc_next_id)
 #define LOG_HAS_LOGGING_BEEN_IGNORED() \
@@ -330,12 +303,6 @@ enum log_wrote_eot_log
 { LOG_NEED_TO_WRITE_EOT_LOG, LOG_ALREADY_WROTE_EOT_LOG };
 typedef enum log_wrote_eot_log LOG_WRITE_EOT_LOG;
 
-enum LOG_PRIOR_LSA_LOCK
-{
-  LOG_PRIOR_LSA_WITHOUT_LOCK = 0,
-  LOG_PRIOR_LSA_WITH_LOCK = 1
-};
-
 /*
  * Flush information shared by LFT and normal transaction.
  * Transaction in commit phase has to flush all toflush array's pages.
@@ -368,45 +335,6 @@ struct log_group_commit_info
 
 #define LOG_GROUP_COMMIT_INFO_INITIALIZER \
   { PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER }
-
-typedef struct log_append_info LOG_APPEND_INFO;
-struct log_append_info
-{
-  int vdes;			/* Volume descriptor of active log */
-  LOG_LSA nxio_lsa;		/* Lowest log sequence number which has not been written to disk (for WAL). */
-  LOG_LSA prev_lsa;		/* Address of last append log record */
-  LOG_PAGE *log_pgptr;		/* The log page which is fixed */
-
-#if !defined(HAVE_ATOMIC_BUILTINS)
-  pthread_mutex_t nxio_lsa_mutex;
-#endif
-};
-
-#if defined(HAVE_ATOMIC_BUILTINS)
-#define LOG_APPEND_INFO_INITIALIZER                           \
-  {                                                           \
-    /* vdes */                                                \
-    NULL_VOLDES,                                              \
-    /* nxio_lsa */                                            \
-    {NULL_PAGEID, NULL_OFFSET},                               \
-    /* prev_lsa */                                            \
-    {NULL_PAGEID, NULL_OFFSET},                               \
-    /* log_pgptr */                                           \
-    NULL}
-#else
-#define LOG_APPEND_INFO_INITIALIZER                           \
-  {                                                           \
-    /* vdes */                                                \
-    NULL_VOLDES,                                              \
-    /* nxio_lsa */                                            \
-    {NULL_PAGEID, NULL_OFFSET},                               \
-    /* prev_lsa */                                            \
-    {NULL_PAGEID, NULL_OFFSET},                               \
-    /* log_pgptr */                                           \
-    NULL,                                                     \
-    /* nxio_lsa_mutex */                                      \
-    PTHREAD_MUTEX_INITIALIZER}
-#endif
 
 
 
@@ -964,13 +892,6 @@ struct trantable
 #define TRANTABLE_INITIALIZER \
   { 0, 0, 0, 0, 0, 0, NULL, NULL }
 
-typedef struct log_crumb LOG_CRUMB;
-struct log_crumb
-{
-  int length;
-  const void *data;
-};
-
 /* state of recovery process */
 enum log_recvphase
 {
@@ -981,70 +902,6 @@ enum log_recvphase
   LOG_RECOVERY_FINISH_2PC_PHASE	/* Finishing up transactions that were in 2PC protocol at the time of the crash */
 };
 typedef enum log_recvphase LOG_RECVPHASE;
-
-typedef struct log_data_addr LOG_DATA_ADDR;
-struct log_data_addr
-{
-  const VFID *vfid;		/* File where the page belong or NULL when the page is not associated with a file */
-  PAGE_PTR pgptr;
-  PGLENGTH offset;		/* Offset or slot */
-};
-
-#define LOG_DATA_ADDR_INITIALIZER \
-  { NULL, NULL, 0 }
-
-typedef struct log_prior_node LOG_PRIOR_NODE;
-struct log_prior_node
-{
-  LOG_RECORD_HEADER log_header;
-  LOG_LSA start_lsa;		/* for assertion */
-
-  /* data header info */
-  int data_header_length;
-  char *data_header;
-
-  /* data info */
-  int ulength;
-  char *udata;
-  int rlength;
-  char *rdata;
-
-  LOG_PRIOR_NODE *next;
-};
-
-typedef struct log_prior_lsa_info LOG_PRIOR_LSA_INFO;
-struct log_prior_lsa_info
-{
-  LOG_LSA prior_lsa;
-  LOG_LSA prev_lsa;
-
-  /* list */
-  LOG_PRIOR_NODE *prior_list_header;
-  LOG_PRIOR_NODE *prior_list_tail;
-
-  INT64 list_size;		/* bytes */
-
-  /* flush list */
-  LOG_PRIOR_NODE *prior_flush_list_header;
-
-  pthread_mutex_t prior_lsa_mutex;
-};
-
-#define LOG_PRIOR_LSA_INFO_INITIALIZER                     \
-  {                                                        \
-    /* prior_lsa */                                        \
-    {NULL_PAGEID, NULL_OFFSET},                            \
-    /* prev_lsa */                                         \
-    {NULL_PAGEID, NULL_OFFSET},                            \
-    /* list */                                             \
-    NULL, NULL,                                            \
-    /* list_size */                                        \
-    0,                                                     \
-    /* prior_flush_list_header */                          \
-    NULL,                                                  \
-    /* prior_lsa_mutex */                                  \
-    PTHREAD_MUTEX_INITIALIZER                              \
-  }
 
 /* stores global statistics for a unique btree */
 typedef struct global_unique_stats GLOBAL_UNIQUE_STATS;
@@ -1122,6 +979,7 @@ struct log_global
   GLOBAL_UNIQUE_STATS_TABLE unique_stats_table;	/* global unique statistics */
 
   // *INDENT-OFF*
+  log_global ();
    ~log_global ();
   // *INDENT-ON*
 };
@@ -1195,11 +1053,10 @@ typedef struct log_logging_stat
   unsigned long async_commit_request_count;
 } LOG_LOGGING_STAT;
 
-
+// todo - move to manager
 enum log_cs_access_mode
 { LOG_CS_FORCE_USE, LOG_CS_SAFE_READER };
 typedef enum log_cs_access_mode LOG_CS_ACCESS_MODE;
-
 
 #if !defined(SERVER_MODE)
 #if !defined(LOG_TRAN_INDEX)
@@ -1224,27 +1081,6 @@ extern char log_Name_bkupinfo[];
 extern char log_Name_volinfo[];
 extern char log_Name_bg_archive[];
 extern char log_Name_removed_archive[];
-
-#define LOG_RV_RECORD_INSERT		  0x8000
-#define LOG_RV_RECORD_DELETE		  0x4000
-#define LOG_RV_RECORD_UPDATE_ALL	  0xC000
-#define LOG_RV_RECORD_UPDATE_PARTIAL	  0x0000
-#define LOG_RV_RECORD_MODIFY_MASK	  0xC000
-
-#define LOG_RV_RECORD_IS_INSERT(flags) \
-  (((flags) & LOG_RV_RECORD_MODIFY_MASK) == LOG_RV_RECORD_INSERT)
-#define LOG_RV_RECORD_IS_DELETE(flags) \
-  (((flags) & LOG_RV_RECORD_MODIFY_MASK) == LOG_RV_RECORD_DELETE)
-#define LOG_RV_RECORD_IS_UPDATE_ALL(flags) \
-  (((flags) & LOG_RV_RECORD_MODIFY_MASK) == LOG_RV_RECORD_UPDATE_ALL)
-#define LOG_RV_RECORD_IS_UPDATE_PARTIAL(flags) \
-  (((flags) & LOG_RV_RECORD_MODIFY_MASK) == LOG_RV_RECORD_UPDATE_PARTIAL)
-
-#define LOG_RV_RECORD_SET_MODIFY_MODE(addr, mode) \
-  ((addr)->offset = ((addr)->offset & (~LOG_RV_RECORD_MODIFY_MASK)) | (mode))
-
-#define LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE(new_data_size) \
-  (DB_ALIGN (new_data_size + OR_SHORT_SIZE + 2 * OR_BYTE_SIZE, INT_ALIGNMENT))
 
 /* logging */
 #if defined (SA_MODE)
@@ -1292,15 +1128,7 @@ extern void logpb_force_flush_pages (THREAD_ENTRY * thread_p);
 extern void logpb_force_flush_header_and_pages (THREAD_ENTRY * thread_p);
 extern void logpb_invalid_all_append_pages (THREAD_ENTRY * thread_p);
 extern void logpb_flush_log_for_wal (THREAD_ENTRY * thread_p, const LOG_LSA * lsa_ptr);
-extern LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type,
-						      LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int ulength,
-						      const char *udata, int rlength, const char *rdata);
-extern LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type,
-							LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
-							const int num_ucrumbs, const LOG_CRUMB * ucrumbs,
-							const int num_rcrumbs, const LOG_CRUMB * rcrumbs);
-extern LOG_LSA prior_lsa_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_TDES * tdes);
-extern LOG_LSA prior_lsa_next_record_with_lock (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_TDES * tdes);
+
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void logpb_remove_append (LOG_TDES * tdes);
@@ -1455,7 +1283,6 @@ extern void xlogtb_dump_trantable (THREAD_ENTRY * thread_p, FILE * out_fp);
 
 extern bool logpb_need_wal (const LOG_LSA * lsa);
 extern char *logpb_backup_level_info_to_string (char *buf, int buf_size, const LOG_HDR_BKUP_LEVEL_INFO * info);
-extern void logpb_get_nxio_lsa (LOG_LSA * lsa_p);
 extern const char *tran_abort_reason_to_string (TRAN_ABORT_REASON val);
 extern int logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt,
 					 void **ctx);

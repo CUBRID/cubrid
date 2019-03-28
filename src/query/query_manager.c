@@ -32,6 +32,7 @@
 #include "query_manager.h"
 
 #include "compile_context.h"
+#include "log_append.hpp"
 #include "object_primitive.h"
 #include "xserver_interface.h"
 #include "query_executor.h"
