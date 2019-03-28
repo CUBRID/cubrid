@@ -4277,7 +4277,7 @@ db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_
 }
 
 extern int
-regex_search (const char *pattern, const char *str, int reg_flags, bool * match)
+regex_search (const char *pattern, const char *str, std::regex_constants::syntax_option_type reg_flags, bool * match)
 {
   int error_status = NO_ERROR;
 
