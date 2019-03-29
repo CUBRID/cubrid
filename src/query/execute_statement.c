@@ -14795,14 +14795,24 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       repl_stmt.name = (char *) pt_get_varchar_bytes (name);
     }
 
-  /* it may contain multiple statements */
-  if (strlen (statement->sql_user_text) > statement->sql_user_text_len)
+  if (parser->host_var_count == 0 && parser->auto_param_count == 0)
     {
-      stmt_end = &statement->sql_user_text[statement->sql_user_text_len];
-      stmt_separator = *stmt_end;
-      *stmt_end = '\0';
+      /* it may contain multiple statements */
+      if (strlen (statement->sql_user_text) > statement->sql_user_text_len)
+	{
+	  stmt_end = &statement->sql_user_text[statement->sql_user_text_len];
+	  stmt_separator = *stmt_end;
+	  *stmt_end = '\0';
+	}
+      repl_stmt.stmt_text = statement->sql_user_text;
     }
-  repl_stmt.stmt_text = statement->sql_user_text;
+  else
+    {
+      PT_PRINT_VALUE_FUNC saved_func = parser->print_db_value;
+      parser->print_db_value = pt_print_node_value;
+      repl_stmt.stmt_text = parser_print_tree (parser, statement);
+      parser->print_db_value = saved_func;
+    }
 
   repl_stmt.db_user = db_get_user_name ();
   assert_release (repl_stmt.db_user != NULL);
