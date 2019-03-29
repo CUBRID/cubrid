@@ -2863,7 +2863,7 @@ perfmon_stat_dump_in_buffer_flushed_block_volumes_array_stat (const UINT64 * sta
 static void
 perfmon_stat_dump_in_file_flushed_block_volumes_array_stat (FILE * stream, const UINT64 * stats_ptr)
 {
-  int flushed_block_volumes;
+  unsigned int flushed_block_volumes;
   UINT64 counter = 0;
   char buffer[15];
 

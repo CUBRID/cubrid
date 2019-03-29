@@ -529,11 +529,11 @@ hb_pack_server_name (const char *server_name, int *name_length, const char *log_
        * for the purpose of matching the name of the CUBRID driver. */
 
       snprintf (pid_string, sizeof (pid_string), "%d", getpid ());
-      n_len = strlen (server_name) + 1;
-      l_len = (log_path) ? strlen (log_path) + 1 : 0;
-      r_len = strlen (rel_major_release_string ()) + 1;
-      e_len = strlen (env_name) + 1;
-      p_len = strlen (pid_string) + 1;
+      n_len = (int) strlen (server_name) + 1;
+      l_len = (log_path) ? (int) strlen (log_path) + 1 : 0;
+      r_len = (int) strlen (rel_major_release_string ()) + 1;
+      e_len = (int) strlen (env_name) + 1;
+      p_len = (int) strlen (pid_string) + 1;
       *name_length = n_len + l_len + r_len + e_len + p_len + 5;
 
       packed_name = (char *) malloc (*name_length);
