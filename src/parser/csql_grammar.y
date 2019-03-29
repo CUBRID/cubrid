@@ -695,6 +695,8 @@ int g_original_buffer_len;
 %type <number> show_type_id_dot_id
 %type <number> kill_type
 %type <number> procedure_or_function
+%type <boolean> opt_analytic_from_last
+%type <boolean> opt_analytic_ignore_nulls
 /*}}}*/
 
 /* define rule type (node) */
@@ -985,8 +987,6 @@ int g_original_buffer_len;
 %type <node> session_variable_definition
 %type <node> session_variable_expression
 %type <node> session_variable_list
-%type <node> opt_analytic_from_last
-%type <node> opt_analytic_ignore_nulls
 %type <node> opt_analytic_partition_by
 %type <node> opt_over_analytic_partition_by
 %type <node> opt_analytic_order_by
@@ -15805,10 +15805,7 @@ reserved_func
 			    node->info.function.all_or_distinct = PT_ALL;
 			    node->info.function.arg_list = $3;
 
-			    if ($5 == (PT_NODE *) PT_IGNORE_NULLS)
-			      {
-			        node->info.function.analytic.ignore_nulls = true;
-			      }
+			    node->info.function.analytic.ignore_nulls = $5;
 
 			    node->info.function.analytic.is_analytic = true;
 			    node->info.function.analytic.partition_by = $8;
@@ -15838,15 +15835,8 @@ reserved_func
 				    node->info.function.analytic.default_value->type_enum = PT_TYPE_NULL;
 			      }
 
-			    if ($7 == (PT_NODE *) PT_FROM_LAST)
-			      {
-			        node->info.function.analytic.from_last = true;
-			      }
-
-			    if ($8 == (PT_NODE *) PT_IGNORE_NULLS)
-			      {
-			        node->info.function.analytic.ignore_nulls = true;
-			      }
+			    node->info.function.analytic.from_last = $7;
+			    node->info.function.analytic.ignore_nulls = $8;
 
 			    node->info.function.analytic.is_analytic = true;
 			    node->info.function.analytic.partition_by = $11;
@@ -17484,19 +17474,19 @@ opt_analytic_from_last
 	: /* empty */
 		{{
 
-			$$ = NULL;
+			$$ = false;
 
 		DBG_PRINT}}
 	| FROM FIRST
 		{{
 
-			$$ = NULL;
+			$$ = false;
 
 		DBG_PRINT}}
 	| FROM LAST
 		{{
 
-			$$ = (PT_NODE *) PT_FROM_LAST;
+			$$ = true;
 
 		DBG_PRINT}}
 	;
@@ -17505,19 +17495,19 @@ opt_analytic_ignore_nulls
 	: /* empty */
 		{{
 
-			$$ = NULL;
+			$$ = false;
 
 		DBG_PRINT}}
 	| RESPECT NULLS
 		{{
 
-			$$ = NULL;
+			$$ = false;
 
 		DBG_PRINT}}
 	| IGNORE_ NULLS
 		{{
 
-			$$ = (PT_NODE *) PT_IGNORE_NULLS;
+			$$ = true;
 
 		DBG_PRINT}}
 	;
@@ -27537,3 +27527,4 @@ pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_neste
         parser_append_node (jt_col_or_nested, jt_node->info.json_table_node_info.nested_paths);
     }
 }
+
