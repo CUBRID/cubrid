@@ -499,7 +499,7 @@ fpcache_retire (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, pred_expr
  * class_oid (in) : Class OID.
  */
 void
-fpcache_remove_by_class (THREAD_ENTRY * thread_p, OID * class_oid)
+fpcache_remove_by_class (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
 #define FPCACHE_DELETE_BTIDS_SIZE 1024
 

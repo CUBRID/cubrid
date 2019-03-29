@@ -55,6 +55,7 @@
 #include "release_string.h"
 #include "storage_common.h"
 #include "thread_entry.hpp"
+#include "transaction_transient.hpp"
 #include "log_generator.hpp"
 
 #include <assert.h>
@@ -364,15 +365,6 @@ struct log_topops_stack
   LOG_TOPOPS_ADDRESSES *stack;	/* Stack for push and pop of top system actions */
 };
 
-typedef struct modified_class_entry MODIFIED_CLASS_ENTRY;
-struct modified_class_entry
-{
-  MODIFIED_CLASS_ENTRY *m_next;
-  const char *m_classname;	/* Name of the modified class */
-  OID m_class_oid;
-  LOG_LSA m_last_modified_lsa;
-};
-
 /* lob entry */
 typedef struct lob_locator_entry LOB_LOCATOR_ENTRY;
 
@@ -534,26 +526,6 @@ struct mvcctable
   { MVCC_STATUS_INITIALIZER, NULL, NULL, 0, PTHREAD_MUTEX_INITIALIZER }
 #endif
 
-enum log_repl_flush
-{
-  LOG_REPL_DONT_NEED_FLUSH = -1,	/* no flush */
-  LOG_REPL_COMMIT_NEED_FLUSH = 0,	/* log must be flushed at commit */
-  LOG_REPL_NEED_FLUSH = 1	/* log must be flushed at commit and rollback */
-};
-typedef enum log_repl_flush LOG_REPL_FLUSH;
-
-typedef struct log_repl LOG_REPL_RECORD;
-struct log_repl
-{
-  LOG_RECTYPE repl_type;	/* LOG_REPLICATION_DATA or LOG_REPLICATION_SCHEMA */
-  LOG_RCVINDEX rcvindex;
-  OID inst_oid;
-  LOG_LSA lsa;
-  char *repl_data;		/* the content of the replication log record */
-  int length;
-  LOG_REPL_FLUSH must_flush;
-};
-
 typedef struct log_rcv_tdes LOG_RCV_TDES;
 struct log_rcv_tdes
 {
@@ -613,7 +585,7 @@ struct log_tdes
 #endif				/* _AIX */
   /* Set to one when the current execution must be stopped somehow. We stop it by sending an error message during
    * fetching of a page. */
-  MODIFIED_CLASS_ENTRY *modified_class_list;	/* List of classes made dirty. */
+  tx_transient_class_registry m_modified_classes;	// list of classes made dirty
 
   int num_transient_classnames;	/* # of transient classnames by this transaction */
   int num_repl_records;		/* # of replication records */

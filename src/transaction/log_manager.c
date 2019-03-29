@@ -50,6 +50,7 @@
 #include "btree.h"
 #include "elo.h"
 #include "recovery.h"
+#include "replication.h"
 #include "xserver_interface.h"
 #include "page_buffer.h"
 #include "porting_inline.hpp"
@@ -86,6 +87,7 @@
 #include "thread_entry.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
+#include "transaction_transient.hpp"
 #include "vacuum.h"
 #include "xasl_cache.h"
 
@@ -276,7 +278,6 @@ static void log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * td
 static void log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_commit_log_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_lsa);
-static void log_rollback_classrepr_cache (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * upto_lsa);
 static void log_free_lob_locator (LOB_LOCATOR_ENTRY * entry);
 static int lob_locator_cmp (const LOB_LOCATOR_ENTRY * e1, const LOB_LOCATOR_ENTRY * e2);
 /* RB_PROTOTYPE_STATIC declares red-black tree functions. see base/rb_tree.h */
@@ -344,10 +345,7 @@ static void log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa);
 
 static int log_is_valid_locator (const char *locator);
 
-static void log_cleanup_modified_class (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * t, void *arg);
-static void log_map_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa, bool release,
-					 void (*map_func) (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * clazz,
-							   void *arg), void *arg);
+static void log_cleanup_modified_class (const tx_transient_class_entry & t, bool & stop);
 static void log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa,
 					     bool release, bool decache_classrepr);
 
@@ -4011,7 +4009,7 @@ log_sysop_abort (THREAD_ENTRY * thread_p)
 
       /* Rollback changes. */
       log_rollback (thread_p, tdes, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
-      log_rollback_classrepr_cache (thread_p, tdes, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
+      tdes->m_modified_classes.decache_heap_repr (*LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
 
       /* Log abort system operation. */
       sysop_end.type = LOG_SYSOP_END_ABORT;
@@ -4664,10 +4662,6 @@ int
 log_add_to_modified_class_list (THREAD_ENTRY * thread_p, const char *classname, const OID * class_oid)
 {
   LOG_TDES *tdes;
-  MODIFIED_CLASS_ENTRY *t = NULL;
-#if !defined(NDEBUG)
-  MODIFIED_CLASS_ENTRY *n = NULL;
-#endif
   int tran_index;
 
   assert (classname != NULL);
@@ -4682,55 +4676,7 @@ log_add_to_modified_class_list (THREAD_ENTRY * thread_p, const char *classname, 
       return ER_FAILED;
     }
 
-#if !defined(NDEBUG)
-  /* check iff duplicated {classname, class_oid} pair */
-  for (t = tdes->modified_class_list; t != NULL; t = t->m_next)
-    {
-      assert (t->m_classname != NULL);
-      assert (!OID_ISNULL (&t->m_class_oid));
-      assert (t->m_class_oid.volid >= 0);	/* is not temp_oid */
-
-      for (n = t->m_next; n != NULL; n = n->m_next)
-	{
-	  assert (!(strcmp (t->m_classname, n->m_classname) == 0 && OID_EQ (&t->m_class_oid, &n->m_class_oid)));
-	}
-    }
-#endif
-
-  for (t = tdes->modified_class_list; t != NULL; t = t->m_next)
-    {
-      if (strcmp (t->m_classname, classname) == 0 && OID_EQ (&t->m_class_oid, class_oid))
-	{
-	  break;
-	}
-    }
-
-  if (t == NULL)
-    {				/* class is not in modified_class_list */
-      t = (MODIFIED_CLASS_ENTRY *) malloc (sizeof (MODIFIED_CLASS_ENTRY));
-      if (t == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (MODIFIED_CLASS_ENTRY));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-
-      t->m_classname = strdup (classname);
-      if (t->m_classname == NULL)
-	{
-	  free_and_init (t);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (classname));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-
-      COPY_OID (&t->m_class_oid, class_oid);
-      LSA_SET_NULL (&t->m_last_modified_lsa);
-
-      t->m_next = tdes->modified_class_list;
-      tdes->modified_class_list = t;
-    }
-
-  LSA_COPY (&t->m_last_modified_lsa, &tdes->tail_lsa);
-
+  tdes->m_modified_classes.add (classname, *class_oid, tdes->tail_lsa);
   return NO_ERROR;
 }
 
@@ -4746,7 +4692,6 @@ log_is_class_being_modified (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
   LOG_TDES *tdes;
   int tran_index;
-  MODIFIED_CLASS_ENTRY *t = NULL;
 
   assert (class_oid != NULL);
   assert (!OID_ISNULL (class_oid));
@@ -4761,15 +4706,7 @@ log_is_class_being_modified (THREAD_ENTRY * thread_p, const OID * class_oid)
       return false;
     }
 
-  for (t = tdes->modified_class_list; t != NULL; t = t->m_next)
-    {
-      if (OID_EQ (&t->m_class_oid, class_oid))
-	{
-	  return true;
-	}
-    }
-
-  return false;
+  return tdes->m_modified_classes.has_class (*class_oid);
 }
 
 /*
@@ -4784,71 +4721,20 @@ log_is_class_being_modified (THREAD_ENTRY * thread_p, const OID * class_oid)
  *       This will be used to decache the class representations and XASLs when a transaction is finished.
  */
 static void
-log_cleanup_modified_class (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * t, void *arg)
+log_cleanup_modified_class (const tx_transient_class_entry & t, bool & stop)
 {
-  bool decache_classrepr = (bool) * ((bool *) arg);
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
 
-  if (decache_classrepr && !LSA_ISNULL (&t->m_last_modified_lsa))
-    {
-      (void) heap_classrepr_decache (thread_p, &t->m_class_oid);
-    }
   /* decache this class from the partitions cache also */
-  (void) partition_decache_class (thread_p, &t->m_class_oid);
+  (void) partition_decache_class (thread_p, &t.m_class_oid);
 
   /* remove XASL cache entries which are relevant with this class */
-  xcache_remove_by_oid (thread_p, &t->m_class_oid);
+  xcache_remove_by_oid (thread_p, &t.m_class_oid);
   /* remove filter predicate cache entries which are relevant with this class */
-  fpcache_remove_by_class (thread_p, &t->m_class_oid);
+  fpcache_remove_by_class (thread_p, &t.m_class_oid);
 }
 
 extern int locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA * savep_lsa);
-
-/*
- * log_map_modified_class_list -
- *
- * return:
- *
- *   tdes(in):
- *   savept_lsa(in): savepoint lsa to rollback
- *   release(in): release the memory or not
- *   map_func(in): optinal
- *   arg(in): optional
- *
- * NOTE: Function for LOG_TDES.modified_class_list
- *       This will be used to traverse a modified class list and to do something on each entry.
- */
-static void
-log_map_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa, bool release,
-			     void (*map_func) (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * clazz, void *arg),
-			     void *arg)
-{
-  MODIFIED_CLASS_ENTRY *t = NULL;
-
-  if (map_func)
-    {
-      t = tdes->modified_class_list;
-      while (t != NULL)
-	{
-	  (void) (*map_func) (thread_p, t, arg);
-	  t = t->m_next;
-	}
-    }
-
-  /* always execute for defense */
-  (void) locator_drop_transient_class_name_entries (thread_p, savept_lsa);
-
-  if (release)
-    {
-      t = tdes->modified_class_list;
-      while (t != NULL)
-	{
-	  tdes->modified_class_list = t->m_next;
-	  free ((char *) t->m_classname);
-	  free (t);
-	  t = tdes->modified_class_list;
-	}
-    }
-}
 
 /*
  * log_cleanup_modified_class_list -
@@ -4866,32 +4752,19 @@ static void
 log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa, bool release,
 				 bool decache_classrepr)
 {
-  (void) log_map_modified_class_list (thread_p, tdes, savept_lsa, release, log_cleanup_modified_class,
-				      &decache_classrepr);
-}
-
-/*
- * log_rollback_classrepr_cache - Decache class repr to rollback
- *
- * return:
- *
- *   thread_p(in):
- *   tdes(in): transaction description
- *   upto_lsa(in): LSA to rollback
- *
- */
-static void
-log_rollback_classrepr_cache (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * upto_lsa)
-{
-  MODIFIED_CLASS_ENTRY *t = NULL;
-
-  for (t = tdes->modified_class_list; t != NULL; t = t->m_next)
+  if (decache_classrepr)
     {
-      if (LSA_GT (&t->m_last_modified_lsa, upto_lsa))
-	{
-	  (void) heap_classrepr_decache (thread_p, &t->m_class_oid);
-	  LSA_SET_NULL (&t->m_last_modified_lsa);
-	}
+      // decache heap representations
+      tdes->m_modified_classes.decache_heap_repr (savept_lsa != NULL ? *savept_lsa : NULL_LSA);
+    }
+  tdes->m_modified_classes.map (log_cleanup_modified_class);
+
+  /* always execute for defense */
+  (void) locator_drop_transient_class_name_entries (thread_p, savept_lsa);
+
+  if (release)
+    {
+      tdes->m_modified_classes.clear ();
     }
 }
 

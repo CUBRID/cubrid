@@ -288,6 +288,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/recovery.c
   ${TRANSACTION_DIR}/replication.c
   ${TRANSACTION_DIR}/transaction_sr.c
+  ${TRANSACTION_DIR}/transaction_transient.cpp
   ${TRANSACTION_DIR}/wait_for_graph.c
   )
 set(TRANSACTION_HEADERS
@@ -302,6 +303,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_system_tran.hpp
   ${TRANSACTION_DIR}/log_volids.hpp
   ${TRANSACTION_DIR}/transaction_global.hpp
+  ${TRANSACTION_DIR}/transaction_transient.hpp
   )
 
 set(STORAGE_SOURCES
