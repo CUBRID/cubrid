@@ -16472,19 +16472,21 @@ bf2df_str_son_index (THREAD_ENTRY * thread_p, char **son_index, char *father_ind
   size = strlen (counter) + n + 2;
 
   /* more space needed? */
-  if ((*len_son_index > 0) && (size > ((size_t) * len_son_index)))
+  if ((*len_son_index > 0) && (size > ((size_t) (*len_son_index))))
     {
       do
 	{
 	  *len_son_index += CONNECTBY_TUPLE_INDEX_STRING_MEM;
 	}
-      while (size > ((size_t) * len_son_index));
+      while (size > ((size_t) (*len_son_index)));
+
       db_private_free_and_init (thread_p, *son_index);
       *son_index = (char *) db_private_alloc (thread_p, *len_son_index);
       if ((*son_index) == NULL)
 	{
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
+
       memset (*son_index, 0, *len_son_index);
     }
 
