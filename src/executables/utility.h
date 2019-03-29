@@ -1386,6 +1386,8 @@ typedef struct _ha_config
 #define DDL_PROXY_OUTPUT_FILE_S 'o'
 #define DDL_PROXY_COMMAND_L "command"
 #define DDL_PROXY_COMMAND_S 'c'
+#define DDL_PROXY_REQUEST_L "request"
+#define DDL_PROXY_REQUEST_S 'r'
 #define DDL_PROXY_TRAN_INDEX_L "tran-index"
 #define DDL_PROXY_TRAN_INDEX_S 't'
 #define DDL_PROXY_SYS_PARAM_L "sys-param"
@@ -1642,6 +1644,7 @@ extern "C"
     const char *user_name;
     const char *passwd;
     const char *command;
+    const char *request;
     const char *out_file_name;
     const char *tran_index;
     const char *sys_param;

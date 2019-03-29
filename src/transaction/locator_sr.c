@@ -14238,24 +14238,27 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
 {
   char path[PATH_MAX];
   static const char *db_name = boot_db_name ();
-  int error = NO_ERROR;
-  int exit_status;
+  int error = NO_ERROR, exit_status;
   char tran_index_str[DB_BIGINT_PRECISION + 1] = { 0 };
+  const char *command_option = NULL, *command = NULL;
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  LOG_TDES *tdes;
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
+  assert (db_user != NULL && db_password != NULL && statement != NULL && tdes != NULL);
   sprintf (tran_index_str, "%d", tran_index);
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  if (tdes != NULL)
+
+  if (strlen (statement) <= 2000 && (strpbrk (statement, "\"\'\t") == NULL))
     {
-      if (strlen (statement) > 2000 || (strpbrk (statement, "\"\'\t") != NULL))
-	{
-	  tdes->ha_sbr_statement = statement;
-	  statement = "";
-	}
+      command_option = "-c";
+      command = statement;
+    }
+  else
+    {
+      tdes->ha_sbr_statement = statement;
+      command_option = "-r";
+      command = "true";
     }
 
-  /* TODO - socket option */
   const char *ddl_argv[13] = {
     path,
     "-u",
@@ -14263,8 +14266,8 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
     "-p",
     db_password,
     db_name,
-    "-c",
-    statement,
+    command_option,
+    command,
     "-t",
     tran_index_str,
     (ha_sys_prm_context != NULL) ? "-s" : NULL,

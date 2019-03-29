@@ -3606,8 +3606,11 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
       er_stack_pop ();
     }
 
-  command = args->command;
-  if (command == NULL || strlen (command) == 0)
+  if (args->command != NULL && strlen (args->command) > 0)
+    {
+      command = args->command;
+    }
+  else if (args->request != NULL && !strcmp (args->request, "true"))
     {
       if (db_get_proxy_command (&command) != NO_ERROR)
 	{
