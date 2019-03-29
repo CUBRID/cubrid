@@ -1062,9 +1062,14 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
 	  // log committed instances msg only there was a commit since last check
 	  if (curr_rows_committed > prev_rows_committed)
 	    {
-	      char *committed_instances_msg = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
-							      LOADDB_MSG_COMMITTED_INSTANCES);
-	      print_log_msg (args->verbose_commit, committed_instances_msg, curr_rows_committed);
+	      /* Don't print this during syntax checking */
+	      if (!args->syntax_check)
+		{
+		  char *committed_instances_msg = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
+								  LOADDB_MSG_COMMITTED_INSTANCES);
+		  print_log_msg (args->verbose_commit, committed_instances_msg, curr_rows_committed);
+		}
+
 	      prev_rows_committed = curr_rows_committed;
 	    }
 	}

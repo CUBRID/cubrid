@@ -178,15 +178,22 @@ namespace cubload
       }
 
       void execute (cubthread::entry &thread_ref) final
-      {
-	if (m_session.is_failed ())
+      {        
+        if (m_session.is_failed ())
 	  {
 	    return;
 	  }
+        
+	bool is_syntax_check_only = m_session.get_args ().syntax_check;
+        bool is_class_registered = m_session.get_class_registry ().get_class_entry (m_batch.get_class_id ()) != NULL;
 
-        if (m_session.get_class_registry ().get_class_entry (m_batch.get_class_id ()) == NULL)
+        if (!is_class_registered)
           {
             m_session.notify_batch_done (m_batch.get_id ());
+            if (!is_syntax_check_only)
+              {
+                assert (false);
+              }
             return;
           }
 

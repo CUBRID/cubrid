@@ -90,7 +90,7 @@ namespace cubload
     LC_FIND_CLASSNAME found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, IX_LOCK);
     if (found != LC_CLASSNAME_EXIST)
       {
-	m_error_handler.on_error_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
+	m_error_handler.on_syntax_failure ();
       }
   }
 
@@ -102,8 +102,10 @@ namespace cubload
     heap_scancache scancache;
     heap_cache_attrinfo attrinfo;
     cubthread::entry &thread_ref = cubthread::get_entry ();
+    bool is_syntax_check_only = m_session.get_args ().syntax_check;
 
     assert (m_clsid != NULL_CLASS_ID);
+    OID_SET_NULL (&class_oid);
 
     locate_class (class_name, class_oid);
     if (m_session.is_failed ())
@@ -112,9 +114,15 @@ namespace cubload
 	return;
       }
 
-    if (m_session.get_class_registry().get_class_entry (m_clsid) == NULL)
+    if (is_syntax_check_only)
       {
-        return;
+        // We must have the class installed already.
+        if (OID_ISNULL (&class_oid))
+          {
+            // This translates into a syntax error.
+            m_error_handler.on_error_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
+            return;
+          }
       }
 
     int error_code = heap_attrinfo_start (&thread_ref, &class_oid, -1, NULL, &attrinfo);
