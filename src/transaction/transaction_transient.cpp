@@ -48,7 +48,6 @@ tx_transient_class_registry::add (const char *classname, const OID &class_oid, c
     {
       if (it.m_class_name == classname && OID_EQ (&it.m_class_oid, &class_oid))
 	{
-	  assert (false);   // not really expected
 	  it.m_last_modified_lsa = lsa;
 	  return;
 	}
