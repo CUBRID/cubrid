@@ -2231,6 +2231,7 @@ log_set_suppress_repl_on_transaction (int set)
 #endif /* !CS_MODE */
 }
 
+#if defined(CS_MODE)
 /*
  * log_find_lob_locator -
  *
@@ -2244,7 +2245,6 @@ log_set_suppress_repl_on_transaction (int set)
 LOB_LOCATOR_STATE
 log_find_lob_locator (const char *locator, char *real_locator)
 {
-#if defined(CS_MODE)
   LOB_LOCATOR_STATE state = LOB_UNKNOWN;
   int req_error, state_int, request_size, strlen;
   char *request, *reply, *ptr;
@@ -2273,16 +2273,6 @@ log_find_lob_locator (const char *locator, char *real_locator)
   free_and_init (request);
 
   return state;
-#else /* CS_MODE */
-  LOB_LOCATOR_STATE state;
-
-  THREAD_ENTRY *thread_p = enter_server ();
-
-  state = xtx_find_lob_locator (thread_p, locator, real_locator);
-
-  exit_server (*thread_p);
-  return state;
-#endif /* !CS_MODE */
 }
 
 /*
@@ -2298,7 +2288,6 @@ log_find_lob_locator (const char *locator, char *real_locator)
 int
 log_add_lob_locator (const char *locator, LOB_LOCATOR_STATE state)
 {
-#if defined(CS_MODE)
   int req_error, error_code = ER_FAILED, request_size, strlen;
   char *request, *reply;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
@@ -2325,17 +2314,6 @@ log_add_lob_locator (const char *locator, LOB_LOCATOR_STATE state)
   free_and_init (request);
 
   return error_code;
-#else /* CS_MODE */
-  int error_code;
-
-  THREAD_ENTRY *thread_p = enter_server ();
-
-  error_code = xtx_add_lob_locator (thread_p, locator, state);
-
-  exit_server (*thread_p);
-
-  return error_code;
-#endif /* !CS_MODE */
 }
 
 /*
@@ -2351,7 +2329,6 @@ log_add_lob_locator (const char *locator, LOB_LOCATOR_STATE state)
 int
 log_change_state_of_locator (const char *locator, const char *new_locator, LOB_LOCATOR_STATE state)
 {
-#if defined(CS_MODE)
   int req_error, error_code = ER_NET_CLIENT_DATA_RECEIVE;
   int request_size, strlen, strlen2;
   char *request, *reply;
@@ -2380,17 +2357,6 @@ log_change_state_of_locator (const char *locator, const char *new_locator, LOB_L
   free_and_init (request);
 
   return error_code;
-#else /* CS_MODE */
-  int error_code;
-
-  THREAD_ENTRY *thread_p = enter_server ();
-
-  error_code = xtx_change_state_of_locator (thread_p, locator, new_locator, state);
-
-  exit_server (*thread_p);
-
-  return error_code;
-#endif /* !CS_MODE */
 }
 
 /*
@@ -2405,7 +2371,6 @@ log_change_state_of_locator (const char *locator, const char *new_locator, LOB_L
 int
 log_drop_lob_locator (const char *locator)
 {
-#if defined(CS_MODE)
   int req_error, error_code = ER_NET_CLIENT_DATA_RECEIVE;
   int request_size, strlen;
   char *request, *reply;
@@ -2432,18 +2397,8 @@ log_drop_lob_locator (const char *locator)
   free_and_init (request);
 
   return error_code;
-#else /* CS_MODE */
-  int error_code;
-
-  THREAD_ENTRY *thread_p = enter_server ();
-
-  error_code = xtx_drop_lob_locator (thread_p, locator);
-
-  exit_server (*thread_p);
-
-  return error_code;
-#endif /* !CS_MODE */
 }
+#endif // CS_MODE
 
 /*
  * tran_server_commit -
