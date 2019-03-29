@@ -4277,7 +4277,7 @@ db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_
 }
 
 static int
-regex_search (const char *pattern, const char *str, std::regex_constants::syntax_option_type reg_flags, bool * match)
+regex_like (const char *pattern, const char *str, std::regex_constants::syntax_option_type &reg_flags, bool * match)
 {
   int error_status = NO_ERROR;
 
@@ -4439,8 +4439,13 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
       bool match = false;
       std::regex_constants::syntax_option_type reg_flags = std::regex_constants::extended;
       reg_flags |= std::regex_constants::nosubs;
-      reg_flags |= (is_case_sensitive ? 0 : std::regex_constants::icase);
-      error_status = regex_search (rx_compiled_pattern, rx_compiled_regex, reg_flags, &match);
+      if (is_case_sensitive)
+      {
+        reg_flags |= std::regex_constants::icase;
+      }
+
+      std::string src_string (src_char_string_p, src_length);
+      error_status = regex_like (rx_compiled_pattern, src_string.c_str (), reg_flags, &match);
       if (error_status != NO_ERROR)
 	  {
 	    ASSERT_ERROR ();
