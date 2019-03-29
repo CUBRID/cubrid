@@ -37,7 +37,6 @@
 
 #include "boot.h"
 #include "config.h"
-#include "elo.h"
 #include "error_manager.h"
 #include "file_io.h"
 #include "locator.h"

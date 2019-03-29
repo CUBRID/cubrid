@@ -4728,10 +4728,6 @@ log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_L
     }
 }
 
-
-
-
-
 /*
  * log_commit_local - Perform the local commit operations of a transaction
  *
