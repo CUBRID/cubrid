@@ -1110,15 +1110,14 @@ const size_t BTREE_RV_BUFFER_SIZE =
   (4 * LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE (BTREE_OBJECT_MAX_SIZE) + BTREE_RV_DEBUG_INFO_MAX_SIZE);
 #endif /* !NDEBUG */
 
-#define BTREE_RV_GET_DATA_LENGTH(rv_ptr, rv_start, rv_length) \
-  do \
-    { \
-      assert ((rv_ptr) != NULL); \
-      assert ((rv_start) != NULL); \
-      (rv_length) = CAST_BUFLEN ((rv_ptr) - (rv_start)); \
-      assert (0 <= (rv_length) && (rv_length) <= BTREE_RV_BUFFER_SIZE); \
-    } \
-  while (false)
+static void
+BTREE_RV_GET_DATA_LENGTH (const char *rv_ptr, const char *rv_start, int &rv_length)
+{
+  assert (rv_ptr != NULL);
+  assert (rv_start != NULL);
+  rv_length = CAST_BUFLEN (rv_ptr - rv_start);
+  assert (0 <= rv_length && (size_t) rv_length <= BTREE_RV_BUFFER_SIZE);
+}
 
 /* Debug identifiers to help with detecting recovery issues. */
 enum btree_rv_debug_id

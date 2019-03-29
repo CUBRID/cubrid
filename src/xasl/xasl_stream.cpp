@@ -101,7 +101,7 @@ stx_set_xasl_errcode (THREAD_ENTRY *thread_p, int errcode)
 int
 stx_init_xasl_unpack_info (THREAD_ENTRY *thread_p, char *xasl_stream, int xasl_stream_size)
 {
-  int n;
+  size_t n;
   XASL_UNPACK_INFO *unpack_info;
   int head_offset, body_offset;
 
@@ -228,7 +228,7 @@ stx_get_struct_visited_ptr (THREAD_ENTRY *thread_p, const void *ptr)
 void
 stx_free_visited_ptrs (THREAD_ENTRY *thread_p)
 {
-  int i;
+  size_t i;
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
   for (i = 0; i < MAX_PTR_BLOCKS; i++)

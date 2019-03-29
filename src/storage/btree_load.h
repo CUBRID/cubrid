@@ -170,22 +170,21 @@ extern int btree_get_next_overflow_vpid (THREAD_ENTRY * thread_p, PAGE_PTR page_
 		  ER_BTREE_DELETED_OVERFLOW_PAGE, __FILE__, __LINE__)
 
 /* set fixed size for MVCC record header */
-#define BTREE_MVCC_SET_HEADER_FIXED_SIZE(p_mvcc_rec_header) \
-  do \
-    { \
-      assert (p_mvcc_rec_header != NULL); \
-      if (!((p_mvcc_rec_header)->mvcc_flag & OR_MVCC_FLAG_VALID_INSID)) \
-        { \
-          (p_mvcc_rec_header)->mvcc_flag |= OR_MVCC_FLAG_VALID_INSID; \
-          (p_mvcc_rec_header)->mvcc_ins_id = MVCCID_ALL_VISIBLE; \
-        } \
-      if (!((p_mvcc_rec_header)->mvcc_flag & OR_MVCC_FLAG_VALID_DELID)) \
-        { \
-          (p_mvcc_rec_header)->mvcc_flag |= OR_MVCC_FLAG_VALID_DELID; \
-          (p_mvcc_rec_header)->mvcc_del_id = MVCCID_NULL; \
-        } \
-    } \
-  while (0)
+inline void
+BTREE_MVCC_SET_HEADER_FIXED_SIZE (MVCC_REC_HEADER * p_mvcc_rec_header)
+{
+  assert (p_mvcc_rec_header != NULL);
+  if (!(p_mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_INSID))
+    {
+      p_mvcc_rec_header->mvcc_flag |= OR_MVCC_FLAG_VALID_INSID;
+      p_mvcc_rec_header->mvcc_ins_id = MVCCID_ALL_VISIBLE;
+    }
+  if (!(p_mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_DELID))
+    {
+      p_mvcc_rec_header->mvcc_flag |= OR_MVCC_FLAG_VALID_DELID;
+      p_mvcc_rec_header->mvcc_del_id = MVCCID_NULL;
+    }
+}
 
 /*
  * Type definitions related to b+tree structure and operations
