@@ -288,7 +288,7 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
 	}
       if (result == LOG_RESULT_TOPOP_ABORT)
 	{
-	  log_clear_lob_locator_list (thread_p, tdes, false, topop_lsa);
+	  tx_lob_locator_clear (thread_p, tdes, false, topop_lsa);
 	}
       break;
 

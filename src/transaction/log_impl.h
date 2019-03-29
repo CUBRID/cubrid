@@ -50,7 +50,6 @@
 #include "log_storage.hpp"
 #include "mvcc.h"
 #include "porting.h"
-#include "rb_tree.h"
 #include "recovery.h"
 #include "release_string.h"
 #include "storage_common.h"
@@ -364,18 +363,6 @@ struct log_topops_stack
   int last;			/* Last entry in stack */
   LOG_TOPOPS_ADDRESSES *stack;	/* Stack for push and pop of top system actions */
 };
-
-/* lob entry */
-typedef struct lob_locator_entry LOB_LOCATOR_ENTRY;
-
-/*  lob rb tree head
-  The macro RB_HEAD is defined in rb_tree.h. It will be expanede like this;
-
-  struct lob_rb_root {
-    struct lob_locator_entry* rbh_root;
-  };
- */
-RB_HEAD (lob_rb_root, lob_locator_entry);
 
 enum tran_abort_reason
 {

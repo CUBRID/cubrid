@@ -70,6 +70,7 @@
 #include "thread_manager.hpp"
 #endif // SA_MODE
 #include "xasl.h"
+#include "lob_locator.hpp"
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
@@ -2277,7 +2278,7 @@ log_find_lob_locator (const char *locator, char *real_locator)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  state = xlog_find_lob_locator (thread_p, locator, real_locator);
+  state = xtx_find_lob_locator (thread_p, locator, real_locator);
 
   exit_server (*thread_p);
   return state;
@@ -2329,7 +2330,7 @@ log_add_lob_locator (const char *locator, LOB_LOCATOR_STATE state)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  error_code = xlog_add_lob_locator (thread_p, locator, state);
+  error_code = xtx_add_lob_locator (thread_p, locator, state);
 
   exit_server (*thread_p);
 
@@ -2384,7 +2385,7 @@ log_change_state_of_locator (const char *locator, const char *new_locator, LOB_L
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  error_code = xlog_change_state_of_locator (thread_p, locator, new_locator, state);
+  error_code = xtx_change_state_of_locator (thread_p, locator, new_locator, state);
 
   exit_server (*thread_p);
 
@@ -2436,7 +2437,7 @@ log_drop_lob_locator (const char *locator)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  error_code = xlog_drop_lob_locator (thread_p, locator);
+  error_code = xtx_drop_lob_locator (thread_p, locator);
 
   exit_server (*thread_p);
 

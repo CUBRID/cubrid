@@ -81,6 +81,7 @@
 #include "xasl.h"
 #include "xasl_cache.h"
 #include "elo.h"
+#include "transaction_transient.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -2068,7 +2069,7 @@ slog_find_lob_locator (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   (void) or_unpack_string_nocopy (request, &locator);
 
-  state = xlog_find_lob_locator (thread_p, locator, real_locator);
+  state = xtx_find_lob_locator (thread_p, locator, real_locator);
   real_loc_size = strlen (real_locator) + 1;
 
   ptr = or_pack_int (reply, real_loc_size);
@@ -2102,7 +2103,7 @@ slog_add_lob_locator (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
   ptr = or_unpack_int (ptr, &tmp_int);
   state = (LOB_LOCATOR_STATE) tmp_int;
 
-  error = xlog_add_lob_locator (thread_p, locator, state);
+  error = xtx_add_lob_locator (thread_p, locator, state);
   if (error != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -2138,7 +2139,7 @@ slog_change_state_of_locator (THREAD_ENTRY * thread_p, unsigned int rid, char *r
   ptr = or_unpack_int (ptr, &tmp_int);
   state = (LOB_LOCATOR_STATE) tmp_int;
 
-  error = xlog_change_state_of_locator (thread_p, locator, new_locator, state);
+  error = xtx_change_state_of_locator (thread_p, locator, new_locator, state);
   if (error != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -2170,7 +2171,7 @@ slog_drop_lob_locator (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   ptr = or_unpack_string_nocopy (request, &locator);
 
-  error = xlog_drop_lob_locator (thread_p, locator);
+  error = xtx_drop_lob_locator (thread_p, locator);
   if (error != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
