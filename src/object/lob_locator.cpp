@@ -42,7 +42,7 @@ lob_locator_is_valid (const char *locator)
       return false;
     }
   const char *key = lob_locator_key (locator);
-  const char *meta = lob_locator_key (locator);
+  const char *meta = lob_locator_meta (locator);
   if (key == NULL || meta == NULL || key - 1 <= meta)
     {
       return false;
