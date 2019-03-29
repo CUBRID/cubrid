@@ -14865,7 +14865,7 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   repl_stmt.savepoint_name = NULL;
 #if !defined(NDEBUG) && defined (CS_MODE)
-  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG) && (!strcmp (repl_stmt.db_user, "DBA"))
+  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
       && (statement->node_type != PT_RENAME || statement->next == NULL) && parser->is_auto_commit)
     {
       /* Currently test for auto commit only, to avoid wrong cache. */
