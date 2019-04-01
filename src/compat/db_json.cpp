@@ -1201,32 +1201,52 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
 
   // wrap result in json array in case we have multiple paths or we have a json_path containing wildcards
   bool array_result = false;
+  bool contains_wildcard = false;
   if (json_paths.size () > 1)
     {
       array_result = true;
+      for (const JSON_PATH &json_path : json_paths)
+	{
+	  // maybe split json_paths in a set that will go through f_extract and a set on which a get is called
+	  contains_wildcard = contains_wildcard || json_path.contains_wildcard ();
+	}
     }
   else
     {
-      array_result = json_paths[0].contains_wildcard ();
+      array_result = contains_wildcard = json_paths[0].contains_wildcard ();
     }
 
-  // we gather extracted values in an array to match with the order of the given path arguments
   std::vector<std::vector<const JSON_VALUE *>> produced_array (json_paths.size ());
-  const map_func_type &f_extract = [&json_paths, &produced_array] (const JSON_VALUE &jv, const JSON_PATH &crt_path,
-				   bool &stop) -> int
-  {
-    for (std::size_t i = 0; i < json_paths.size (); ++i)
+  if (!contains_wildcard)
+    {
+      // JSON_PATH::get is much faster than f_extract since it avoids to matching the already matched prefix tokens
+      // However, it does not work with wildcards.
+      for (size_t i = 0; i < json_paths.size (); ++i)
+	{
+	  produced_array[i].push_back (json_paths[i].get (*document));
+	}
+    }
+  else
+    {
+      // we gather extracted values in an array to match with the order of the given path arguments
+      const map_func_type &f_extract = [&json_paths, &produced_array] (const JSON_VALUE &jv, const JSON_PATH &crt_path,
+				       bool &stop) -> int
       {
-	if (JSON_PATH::match_pattern (json_paths[i], crt_path) == JSON_PATH::MATCH_RESULT::FULL_MATCH)
+	// todo: avoid doing matches of already matched tokens of the prefix. For simple wildcards it is doable by
+	// saving matched positions. Find a way to solve for double wildcards
+	for (std::size_t i = 0; i < json_paths.size (); ++i)
 	  {
-	    produced_array[i].push_back (&jv);
+	    if (JSON_PATH::match_pattern (json_paths[i], crt_path) == JSON_PATH::MATCH_RESULT::FULL_MATCH)
+	      {
+		produced_array[i].push_back (&jv);
+	      }
 	  }
-      }
-    return NO_ERROR;
-  };
+	return NO_ERROR;
+      };
 
-  JSON_PATH_MAPPER json_extract_walker (f_extract);
-  json_extract_walker.WalkDocument (const_cast<JSON_DOC &> (*document));
+      JSON_PATH_MAPPER json_extract_walker (f_extract);
+      json_extract_walker.WalkDocument (const_cast<JSON_DOC &> (*document));
+    }
 
   if (array_result)
     {
