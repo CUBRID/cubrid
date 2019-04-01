@@ -2979,7 +2979,7 @@ perfmon_initialize (int num_trans)
   pstat_Global.initialized = false;
   pstat_Global.activation_flag = prm_get_integer_value (PRM_ID_EXTENDED_STATISTICS_ACTIVATION);
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
+#if defined (SERVER_MODE)
   if (prm_get_bool_value (PRM_ID_STATS_ON))
     {
       // always watching
