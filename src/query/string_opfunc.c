@@ -4291,6 +4291,8 @@ regex_compile (const char *pattern, std::regex * &rx_compiled_regex,
     // regex compilation exception
     error_status = ER_REGEX_COMPILE_ERROR;
     er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, e.what ());
+    delete rx_compiled_regex;
+    rx_compiled_regex = NULL;
     return error_status;
   }
   return NO_ERROR;
@@ -4435,7 +4437,7 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
       memcpy (rx_compiled_pattern, pattern_char_string_p, pattern_length);
       rx_compiled_pattern[pattern_length] = '\0';
 
-      std::regex_constants::syntax_option_type reg_flags = std::regex_constants::extended;
+      std::regex_constants::syntax_option_type reg_flags = std::regex_constants::ECMAScript;
       reg_flags |= std::regex_constants::nosubs;
       if (!is_case_sensitive)
 	{
@@ -4465,6 +4467,7 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
       error_status = ER_REGEX_EXEC_ERROR;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, rx_err_buf);
       *result = V_ERROR;
+      goto cleanup;
     }
 
     *result = match ? V_TRUE : V_FALSE;
