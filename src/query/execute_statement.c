@@ -3501,7 +3501,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 #endif
 
-
   /* disable data replication log for schema replication log types in HA mode */
   if (need_stmt_based_repl)
     {
@@ -14864,9 +14863,13 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   repl_stmt.savepoint_name = NULL;
 #if !defined(NDEBUG) && defined (CS_MODE)
   if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
-      && (statement->node_type != PT_RENAME || statement->next == NULL) && parser->is_auto_commit)
+      && parser->is_auto_commit
+      && (statement->node_type != PT_RENAME || statement->next == NULL)
+      && (parser->host_var_count == 0 && parser->auto_param_count == 0))
     {
-      /* Currently test for auto commit only, to avoid wrong cache. */
+      /* Currently test for auto commit only, to avoid wrong cache.
+       * Also, disabled for host variable since the query like cte is incorrectly printed.
+       */
       tran_get_oldest_system_savepoint (&repl_stmt.savepoint_name);
     }
 #endif
