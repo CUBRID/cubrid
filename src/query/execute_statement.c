@@ -3503,10 +3503,8 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 
   /* disable data replication log for schema replication log types in HA mode */
-  if (!HA_DISABLED () && is_stmt_based_repl_type (statement))
+  if (need_stmt_based_repl)
     {
-      need_stmt_based_repl = true;
-
       /* since we are going to suppress writing replication logs, we need to flush all dirty objects to server not to
        * lose them */
       err = locator_all_flush ();
