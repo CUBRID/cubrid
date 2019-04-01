@@ -396,21 +396,21 @@ class JSON_BASE_HANDLER
 class JSON_WALKER
 {
   public:
-    int WalkDocument (JSON_DOC &document);
+    int WalkDocument (const JSON_DOC &document);
 
   protected:
     // we should not instantiate this class, but extend it
     virtual ~JSON_WALKER () = default;
 
     virtual int
-    CallBefore (JSON_VALUE &value)
+    CallBefore (const JSON_VALUE &value)
     {
       // do nothing
       return NO_ERROR;
     }
 
     virtual int
-    CallAfter (JSON_VALUE &value)
+    CallAfter (const JSON_VALUE &value)
     {
       // do nothing
       return NO_ERROR;
@@ -424,14 +424,14 @@ class JSON_WALKER
     }
 
     virtual int
-    CallOnKeyIterate (JSON_VALUE &key)
+    CallOnKeyIterate (const JSON_VALUE &key)
     {
       // do nothing
       return NO_ERROR;
     }
 
   private:
-    int WalkValue (JSON_VALUE &value);
+    int WalkValue (const JSON_VALUE &value);
 
   protected:
     bool m_stop;
@@ -451,7 +451,7 @@ class JSON_DUPLICATE_KEYS_CHECKER : public JSON_WALKER
     ~JSON_DUPLICATE_KEYS_CHECKER () override = default;
 
   private:
-    int CallBefore (JSON_VALUE &value) override;
+    int CallBefore (const JSON_VALUE &value) override;
 };
 
 class JSON_PATH_MAPPER : public JSON_WALKER
@@ -462,10 +462,10 @@ class JSON_PATH_MAPPER : public JSON_WALKER
     ~JSON_PATH_MAPPER () override = default;
 
   private:
-    int CallBefore (JSON_VALUE &value) override;
-    int CallAfter (JSON_VALUE &value) override;
+    int CallBefore (const JSON_VALUE &value) override;
+    int CallAfter (const JSON_VALUE &value) override;
     int CallOnArrayIterate () override;
-    int CallOnKeyIterate (JSON_VALUE &key) override;
+    int CallOnKeyIterate (const JSON_VALUE &key) override;
 
     map_func_type m_producer;
     std::stack<unsigned int> m_index;
@@ -672,7 +672,7 @@ static int db_json_er_set_path_does_not_exist (const char *file_name, const int 
 static int db_json_er_set_expected_other_type (const char *file_name, const int line_no, const JSON_PATH &path,
     const DB_JSON_TYPE &found_type, const DB_JSON_TYPE &expected_type,
     const DB_JSON_TYPE &expected_type_optional = DB_JSON_NULL);
-static int db_json_contains_duplicate_keys (JSON_DOC &doc);
+static int db_json_contains_duplicate_keys (const JSON_DOC &doc);
 
 static int db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc, size_t json_raw_length);
 static int db_json_add_json_value_to_object (JSON_DOC &doc, const char *name, JSON_VALUE &value);
@@ -690,7 +690,7 @@ static int db_json_unpack_array_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_P
 static void db_json_add_element_to_array (JSON_DOC *doc, const JSON_VALUE *value);
 
 int
-JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value)
+JSON_DUPLICATE_KEYS_CHECKER::CallBefore (const JSON_VALUE &value)
 {
   std::vector<const char *> inserted_keys;
 
@@ -724,7 +724,7 @@ JSON_PATH_MAPPER::JSON_PATH_MAPPER (map_func_type func)
 }
 
 int
-JSON_PATH_MAPPER::CallBefore (JSON_VALUE &value)
+JSON_PATH_MAPPER::CallBefore (const JSON_VALUE &value)
 {
   if (value.IsArray ())
     {
@@ -742,7 +742,7 @@ JSON_PATH_MAPPER::CallBefore (JSON_VALUE &value)
 }
 
 int
-JSON_PATH_MAPPER::CallAfter (JSON_VALUE &value)
+JSON_PATH_MAPPER::CallAfter (const JSON_VALUE &value)
 {
   if (value.IsArray ())
     {
@@ -768,7 +768,7 @@ JSON_PATH_MAPPER::CallOnArrayIterate ()
 }
 
 int
-JSON_PATH_MAPPER::CallOnKeyIterate (JSON_VALUE &key)
+JSON_PATH_MAPPER::CallOnKeyIterate (const JSON_VALUE &key)
 {
   m_current_path.pop ();
   std::string path_item = "\"";
@@ -1245,7 +1245,7 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
       };
 
       JSON_PATH_MAPPER json_extract_walker (f_extract);
-      json_extract_walker.WalkDocument (const_cast<JSON_DOC &> (*document));
+      json_extract_walker.WalkDocument (*document);
     }
 
   if (array_result)
@@ -1363,8 +1363,7 @@ db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> 
   };
 
   JSON_PATH_MAPPER json_contains_path_walker (f_find);
-  // todo: remove const_cast
-  json_contains_path_walker.WalkDocument (const_cast<JSON_DOC &> (*document));
+  json_contains_path_walker.WalkDocument (*document);
 
   for (std::size_t i = 0; i < paths.size (); ++i)
     {
@@ -1593,7 +1592,7 @@ db_json_add_element_to_array (JSON_DOC *doc, const JSON_VALUE *value)
 * doc (in)                : json document
 */
 static int
-db_json_contains_duplicate_keys (JSON_DOC &doc)
+db_json_contains_duplicate_keys (const JSON_DOC &doc)
 {
   JSON_DUPLICATE_KEYS_CHECKER dup_keys_checker;
   int error_code = NO_ERROR;
@@ -2047,7 +2046,7 @@ db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALU
   };
 
   JSON_PATH_MAPPER json_search_walker (f_search);
-  return json_search_walker.WalkDocument (const_cast <JSON_DOC &> (doc));
+  return json_search_walker.WalkDocument (doc);
 }
 
 /*
@@ -3306,15 +3305,14 @@ db_json_value_wrap_as_array (JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &allocator)
 }
 
 int
-JSON_WALKER::WalkDocument (JSON_DOC &document)
+JSON_WALKER::WalkDocument (const JSON_DOC &document)
 {
-  // todo: add a const overload
   m_stop = false;
   return WalkValue (db_json_doc_to_value (document));
 }
 
 int
-JSON_WALKER::WalkValue (JSON_VALUE &value)
+JSON_WALKER::WalkValue (const JSON_VALUE &value)
 {
   int error_code = NO_ERROR;
 
@@ -3356,7 +3354,7 @@ JSON_WALKER::WalkValue (JSON_VALUE &value)
     }
   else if (value.IsArray ())
     {
-      for (JSON_VALUE *it = value.Begin (); it != value.End (); ++it)
+      for (const JSON_VALUE *it = value.Begin (); it != value.End (); ++it)
 	{
 	  CallOnArrayIterate ();
 	  if (m_stop)
