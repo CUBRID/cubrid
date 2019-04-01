@@ -3671,6 +3671,11 @@ void
 boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
 			  BOOT_SERVER_SHUTDOWN_MODE shutdown_common_modules)
 {
+  if (prm_get_bool_value (PRM_ID_STATS_ON))
+    {
+      perfmon_er_log_current_stats (thread_p);
+    }
+
   logtb_finalize_global_unique_stats_table (thread_p);
   locator_finalize (thread_p);
   spage_finalize (thread_p);

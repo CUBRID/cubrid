@@ -666,6 +666,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_LOG_PGBUF_VICTIM_FLUSH "log_pgbuf_victim_flush"
 #define PRM_NAME_LOG_CHKPT_DETAILED "detailed_checkpoint_logging"
 #define PRM_NAME_IB_TASK_MEMSIZE "index_load_task_memsize"
+#define PRM_NAME_STATS_ON "stats_on"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2238,6 +2239,10 @@ static UINT64 prm_ib_task_memsize_default = 16 * ONE_M;
 static UINT64 prm_ib_task_memsize_lower = ONE_K;
 static UINT64 prm_ib_task_memsize_upper = 128 * ONE_M;
 static unsigned int prm_ib_task_memsize_flag = 0;
+
+bool PRM_STATS_ON = true;	// todo - change to false
+static bool prm_stats_on_default = true;	// todo - change to false
+static unsigned int prm_stats_on_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5747,6 +5752,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_ib_task_memsize_default,
    (void *) &PRM_IB_TASK_MEMSIZE,
    (void *) &prm_ib_task_memsize_upper, (void *) &prm_ib_task_memsize_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STATS_ON,
+   PRM_NAME_STATS_ON,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_stats_on_flag,
+   (void *) &prm_stats_on_default,
+   (void *) &PRM_STATS_ON,
+   (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
