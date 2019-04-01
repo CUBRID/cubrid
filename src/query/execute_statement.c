@@ -2999,12 +2999,12 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  need_stmt_replication = true;
 	}
-#else
-      if (!HA_DISABLED () && is_stmt_based_repl_type (statement))
+#endif
+
+      if (!need_stmt_replication && !HA_DISABLED () && is_stmt_based_repl_type (statement))
 	{
 	  need_stmt_replication = true;
 	}
-#endif
 
       if (need_stmt_replication)
 	{
@@ -3494,12 +3494,12 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       need_stmt_based_repl = true;
     }
-#else
-  if (!HA_DISABLED () && is_stmt_based_repl_type (statement))
+#endif
+
+  if (!need_stmt_based_repl && !HA_DISABLED () && is_stmt_based_repl_type (statement))
     {
       need_stmt_based_repl = true;
     }
-#endif
 
   /* disable data replication log for schema replication log types in HA mode */
   if (need_stmt_based_repl)
