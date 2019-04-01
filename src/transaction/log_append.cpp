@@ -1494,7 +1494,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
     {
       log_Gl.prior_info.prior_lsa_mutex.unlock ();
 
-      if (log_Gl.prior_info.list_size >= (int) logpb_get_memsize ())
+      if (log_Gl.prior_info.list_size >= (INT64) logpb_get_memsize ())
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_PRIOR_LSA_LIST_MAXED);
 
