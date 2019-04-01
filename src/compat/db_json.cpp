@@ -1312,6 +1312,32 @@ db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> 
 	}
     }
 
+  bool contains_wildcard = false;
+  for (const JSON_PATH &json_path : json_paths)
+    {
+      contains_wildcard = contains_wildcard || json_path.contains_wildcard ();
+    }
+
+  if (!contains_wildcard)
+    {
+      for (const JSON_PATH &json_path : json_paths)
+	{
+	  const JSON_VALUE *found = json_path.get (*document);
+	  if (find_all && found == NULL)
+	    {
+	      result = false;
+	      return NO_ERROR;
+	    }
+	  if (!find_all && found != NULL)
+	    {
+	      result = true;
+	      return NO_ERROR;
+	    }
+	}
+      result = find_all;
+      return NO_ERROR;
+    }
+
   std::unique_ptr<bool[]> found_set (new bool[paths.size ()]);
   for (std::size_t i = 0; i < paths.size (); ++i)
     {
@@ -1340,7 +1366,6 @@ db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> 
   // todo: remove const_cast
   json_contains_path_walker.WalkDocument (const_cast<JSON_DOC &> (*document));
 
-  result = find_all;
   for (std::size_t i = 0; i < paths.size (); ++i)
     {
       if (find_all && !found_set[i])
@@ -1355,6 +1380,7 @@ db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> 
 	}
     }
 
+  result = find_all;
   return NO_ERROR;
 }
 
