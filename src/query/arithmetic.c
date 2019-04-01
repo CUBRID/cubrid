@@ -6278,11 +6278,15 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
 
   JSON_DOC *result_json = nullptr;
   if (paths.size () == 1)
-    {      
-      size_t escaped_size;
+    {
+      error_code = db_json_path_unquote_object_keys_external (paths[0]);
+      if (error_code != NO_ERROR)
+      {
+        return error_code;
+      }
 
-      db_json_path_unquote_object_keys_external (paths[0]);
       char *escaped;
+      size_t escaped_size;
       error_code = db_string_escape (paths[0].c_str (), paths[0].size (), &escaped, &escaped_size);
       cubmem::private_unique_ptr<char> escaped_unqique_ptr (escaped, NULL);
       if (error_code)
@@ -6303,17 +6307,22 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
   result_json_owner.create_mutable_reference ();
   for (std::size_t i = 0; i < paths.size (); ++i)
     {
-      JSON_DOC *json_array_elem = nullptr;
+      error_code = db_json_path_unquote_object_keys_external (paths[i]);
+      if (error_code != NO_ERROR)
+      {
+        return error_code;
+      }
+
       char *escaped;
       size_t escaped_size;
-
-      db_json_path_unquote_object_keys_external (paths[i]);
       error_code = db_string_escape (paths[i].c_str (), paths[i].size (), &escaped, &escaped_size);
       cubmem::private_unique_ptr<char> escaped_unqique_ptr (escaped, NULL);
       if (error_code)
 	{
 	  return error_code;
 	}
+
+      JSON_DOC *json_array_elem = nullptr;
       error_code = db_json_get_json_from_str (escaped, json_array_elem, escaped_size);
       json_array_elem_owner.set_mutable_reference (json_array_elem);
       if (error_code != NO_ERROR)

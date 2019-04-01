@@ -1266,7 +1266,7 @@ $ LOADDB
 1197 Invalid json: %1$s (%2$d)
 1198 A json object must be provided
 1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
-1200 Invalid JSON path
+1200 Invalid JSON path. %1$s
 1201 Json object name cannot be NULL.
 1202 Json PATH "%1$s" does not exist in %2$s
 1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.

@@ -1266,7 +1266,7 @@ $ LOADDB
 1197 Json invalid: %1$s (%2$d)
 1198 Trebuie furnizat un obiect de tipul json.
 1199 Json-ul furnizat a fost invalidat de catre schema json (Calea catre schema invalidă: %1$s, Cuvantul cheie: %2$s, Calea catre json-ul invalid furnizat: %3$s)
-1200 Cale de JSON invalida
+1200 Cale de JSON invalida. %1$s
 1201 Numele unei valori dintr-un JSON Object nu poate fi NULL.
 1202 Calea "%1$s" nu exista in %2$s
 1203 Tipul JSON-ului de la calea %1$s este invalid. Expected %2$s, dar am gasit %3$s.

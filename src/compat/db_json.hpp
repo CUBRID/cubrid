@@ -158,7 +158,7 @@ void db_make_json_from_doc_store_and_release (DB_VALUE &value, JSON_DOC_STORE &d
 int db_value_to_json_path (const DB_VALUE *path_value, FUNC_TYPE fcode, const char **path_str);
 
 int db_json_normalize_path_string (const char *pointer_path, std::string &normalized_path);
-void db_json_path_unquote_object_keys_external (std::string &sql_path);
+int db_json_path_unquote_object_keys_external (std::string &sql_path);
 
 template <typename Fn, typename... Args>
 inline int

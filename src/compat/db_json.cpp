@@ -2735,10 +2735,10 @@ db_json_normalize_path_string (const char *pointer_path, std::string &output)
   return NO_ERROR;
 }
 
-void
+int
 db_json_path_unquote_object_keys_external (std::string &sql_path)
 {
-  db_json_path_unquote_object_keys (sql_path);
+  return db_json_path_unquote_object_keys (sql_path);
 }
 
 /*
