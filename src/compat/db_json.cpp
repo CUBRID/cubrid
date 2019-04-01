@@ -1223,7 +1223,11 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
       // However, it does not work with wildcards.
       for (size_t i = 0; i < json_paths.size (); ++i)
 	{
-	  produced_array[i].push_back (json_paths[i].get (*document));
+	  const JSON_VALUE *found = json_paths[i].get (*document);
+	  if (found != NULL)
+	    {
+	      produced_array[i].push_back (found);
+	    }
 	}
     }
   else

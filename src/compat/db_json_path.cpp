@@ -115,6 +115,26 @@ db_json_path_quote_and_validate_unquoted_object_key (std::string &path, std::siz
   return validation_result;
 }
 
+std::string
+db_string_unquote (const std::string &path)
+{
+  std::string res;
+  assert (path.length () >= 2 && path[0] == '"' && path[path.length () - 1] == '"');
+  for (size_t i = 1; i < path.length () - 1; ++i)
+    {
+      if (path[i] == '\\')
+	{
+	  res += path[i + 1];
+	  ++i;
+	}
+      else
+	{
+	  res += path[i];
+	}
+    }
+  return std::move (res);
+}
+
 /*
  * db_json_path_is_token_valid_unquoted_object_key () - Check if an unquoted object_key is valid
  *
@@ -826,7 +846,7 @@ JSON_PATH::get (const JSON_DOC &jd) const
 	    }
 
 	  assert (tkn.get_object_key ().length () >= 2);
-	  std::string unquoted_key = tkn.get_object_key ().substr (1, tkn.get_object_key ().length () - 2);
+	  std::string unquoted_key = db_string_unquote (tkn.get_object_key ());
 	  JSON_VALUE::ConstMemberIterator m = val->FindMember (unquoted_key.c_str ());
 	  if (m == val->MemberEnd ())
 	    {
