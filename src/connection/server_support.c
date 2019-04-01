@@ -1462,11 +1462,8 @@ shutdown:
     {
       perfmon_er_log_current_stats (thread_p);
     }
-  else
-    {
-      css_Server_request_worker_pool->er_log_stats ();
-      css_Connection_worker_pool->er_log_stats ();
-    }
+  css_Server_request_worker_pool->er_log_stats ();
+  css_Connection_worker_pool->er_log_stats ();
 
   // destroy thread worker pools
   thread_get_manager ()->destroy_worker_pool (css_Server_request_worker_pool);
