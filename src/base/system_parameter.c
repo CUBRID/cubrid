@@ -2240,8 +2240,8 @@ static UINT64 prm_ib_task_memsize_lower = ONE_K;
 static UINT64 prm_ib_task_memsize_upper = 128 * ONE_M;
 static unsigned int prm_ib_task_memsize_flag = 0;
 
-bool PRM_STATS_ON = true;	// todo - change to false
-static bool prm_stats_on_default = true;	// todo - change to false
+bool PRM_STATS_ON = false;
+static bool prm_stats_on_default = false;
 static unsigned int prm_stats_on_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
