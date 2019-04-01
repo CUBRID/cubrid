@@ -4224,7 +4224,14 @@ perfmon_peek_thread_daemon_stats (UINT64 * stats)
 void
 perfmon_er_log_current_stats (THREAD_ENTRY * thread_p)
 {
-  UINT64 *stats = perfmon_server_get_stats (thread_p);
+  UINT64 *stats = perfmon_allocate_values ();
+  if (stats == NULL)
+    {
+      assert (false);
+      return;
+    }
+
+  xperfmon_server_copy_global_stats (stats);
 
   const size_t STATS_DUMP_MAX_SIZE = ONE_M;     // a mega-byte
   char *strbuf = new char[STATS_DUMP_MAX_SIZE];
