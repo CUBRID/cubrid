@@ -58,7 +58,7 @@ db_json_iszero (const unsigned char &ch)
   return ch == '0';
 }
 
-const char *larger_than_max_array_idx_msg = "index is larger than allowed by system variable json_max_array_idx";
+const char *larger_than_max_array_idx_msg = "Index is larger than allowed by system variable json_max_array_idx.";
 
 /*
  * db_json_path_is_token_valid_quoted_object_key () - Check if a quoted object_key is valid
@@ -154,7 +154,8 @@ db_json_path_is_token_valid_unquoted_object_key (const std::string &path, std::s
  * db_json_path_is_token_valid_array_index () - verify if token is a valid array index. token can be a substring of
  *                                              first argument (by default the entire argument).
  *
- * return          : true if all token characters are digits followed by spaces (valid index)
+ * return          : no error if token can be converted successfully to an integer smaller than json_max_array_idx
+ *                   variable
  * str (in)        : token or the string that token belong to
  * allow_wildcards : whether json_path wildcards are allowed
  * index (out)     : created index token
@@ -267,7 +268,7 @@ db_json_get_path_type (std::string &path_string)
 /*
  * validate_and_create_from_json_path () - Check if a given path is a SQL valid path
  *
- * return                  : true/false
+ * return                  : ER_JSON_INVALID_PATH if path is invalid
  * sql_path (in/out)       : path to be checked
  */
 int
@@ -502,6 +503,7 @@ JSON_PATH::match_pattern (const JSON_PATH &pattern, const JSON_PATH &path)
 /*
  * db_json_path_unquote_object_keys () - Unquote, when possible, object_keys of the json_path
  *
+ * return                  : ER_JSON_INVALID_PATH if a validation error occured
  * sql_path (in/out)       : path
  */
 int
