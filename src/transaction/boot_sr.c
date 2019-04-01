@@ -2913,11 +2913,6 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   boot_check_db_at_num_shutdowns (true);
 #endif /* CUBRID_DEBUG */
 
-  if (prm_get_bool_value (PRM_ID_STATS_ON))
-    {
-      perfmon_er_log_current_stats (thread_p);
-    }
-
   sysprm_set_force (prm_get_name (PRM_ID_SUPPRESS_FSYNC), "0");
 
   /* Shutdown the system with the system transaction */

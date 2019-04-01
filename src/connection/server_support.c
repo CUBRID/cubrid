@@ -1458,8 +1458,15 @@ shutdown:
   // stop log writers
   css_stop_all_workers (*thread_p, THREAD_STOP_LOGWR);
 
-  css_Server_request_worker_pool->er_log_stats ();
-  css_Connection_worker_pool->er_log_stats ();
+  if (prm_get_bool_value (PRM_ID_STATS_ON))
+    {
+      perfmon_er_log_current_stats (thread_p);
+    }
+  else
+    {
+      css_Server_request_worker_pool->er_log_stats ();
+      css_Connection_worker_pool->er_log_stats ();
+    }
 
   // destroy thread worker pools
   thread_get_manager ()->destroy_worker_pool (css_Server_request_worker_pool);
