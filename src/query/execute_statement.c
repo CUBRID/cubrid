@@ -14869,8 +14869,18 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       /* Currently test for auto commit only, to avoid wrong cache.
        * Also, disabled for host variable since the query like cte is incorrectly printed.
+       * Also, disable testing for name oid.
        */
-      tran_get_oldest_system_savepoint (&repl_stmt.savepoint_name);
+      bool has_name_oid = false;
+      (void) parser_walk_tree (parser, statement, pt_has_name_oid, &has_name_oid, NULL, NULL);
+
+      if (!has_name_oid)
+
+	{
+
+	  tran_get_oldest_system_savepoint (&repl_stmt.savepoint_name);
+
+	}
     }
 #endif
   repl_info.info = (char *) &repl_stmt;
