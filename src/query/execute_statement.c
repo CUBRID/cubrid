@@ -14817,12 +14817,18 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   repl_stmt.db_password = NULL;
   if (strcasecmp (repl_stmt.db_user, "DBA") != 0)
     {
+      int save;
+
+      /* If we are here, no authorization required. */
+      AU_DISABLE (save);
+
       /* Need to set the password. */
       user = au_find_user (repl_stmt.db_user);
       if (user == NULL)
 	{
 	  error = ER_AU_INVALID_USER;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, repl_stmt.db_user);
+	  AU_ENABLE (save);
 	  goto end;
 	}
 
@@ -14830,6 +14836,7 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  error = ER_AU_CORRUPTED;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  AU_ENABLE (save);
 	  goto end;
 	}
 
@@ -14839,6 +14846,7 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
+	      AU_ENABLE (save);
 	      goto end;
 	    }
 
@@ -14849,6 +14857,8 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      pr_clear_value (&value);
 	    }
 	}
+
+      AU_ENABLE (save);
     }
 
   if (pt_is_ddl_statement (statement) != 0)
@@ -14875,11 +14885,8 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       (void) parser_walk_tree (parser, statement, pt_has_name_oid, &has_name_oid, NULL, NULL);
 
       if (!has_name_oid)
-
 	{
-
 	  tran_get_oldest_system_savepoint (&repl_stmt.savepoint_name);
-
 	}
     }
 #endif
