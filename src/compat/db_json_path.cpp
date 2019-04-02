@@ -171,7 +171,7 @@ db_json_path_is_token_valid_array_index (const std::string &str, bool allow_wild
   // this will point to the 4th element of the array (zero indexed)
   if (str == "-")
     {
-      return true;
+      return NO_ERROR;
     }
 
   if (end == 0)
@@ -182,14 +182,14 @@ db_json_path_is_token_valid_array_index (const std::string &str, bool allow_wild
 
   if (start == end)
     {
-      return false;
+      return db_json_er_set_path_is_invalid (ARG_FILE_LINE);
     }
 
   std::size_t last_non_space = end - 1;
   for (; last_non_space > start && str[last_non_space] == ' '; --last_non_space);
   if (allow_wildcards && start == last_non_space && str[start] == '*')
     {
-      return true;
+      return NO_ERROR;
     }
 
   // Remaining invalid cases are: 1. Non-digits are present
@@ -201,7 +201,7 @@ db_json_path_is_token_valid_array_index (const std::string &str, bool allow_wild
     {
       if (!std::isdigit (static_cast<unsigned char> (*it)))
 	{
-	  return false;
+	  return db_json_er_set_path_is_invalid (ARG_FILE_LINE);
 	}
     }
 
