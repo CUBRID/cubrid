@@ -412,7 +412,7 @@ namespace cubload
 	break;
 
       case LDR_MONETARY:
-	error_code = process_monetary_constant  (cons, attr);
+	error_code = process_monetary_constant (cons, attr);
 	break;
 
       case LDR_COLLECTION:
