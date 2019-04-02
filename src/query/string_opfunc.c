@@ -4453,11 +4453,19 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
 	}
     }
 
+  try
   {
-    /* match against pattern; std::regex_match returns true on match */
-    std::string src_string (src_char_string_p, src_length);
-    bool match = std::regex_search (src_string, *rx_compiled_regex);
+    std::string src (src_char_string_p, src_length); 
+    bool match = std::regex_search (src, *rx_compiled_regex);
     *result = match ? V_TRUE : V_FALSE;
+  }
+  catch (std::regex_error & e)
+  {
+    // regex execution exception, error_complexity or error_stack
+    error_status = ER_REGEX_EXEC_ERROR;
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, e.what ());
+    *result = V_ERROR;
+    goto cleanup;
   }
 
 cleanup:
