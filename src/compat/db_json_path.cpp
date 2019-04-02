@@ -921,6 +921,7 @@ JSON_PATH::extract_from_subtree (const JSON_PATH &path, size_t tkn_array_offset,
 	      return;
 	    }
 	  extract_from_subtree (path, tkn_array_offset + 1, m->value, vals);
+	  return;
 	}
 	case PATH_TOKEN::token_type::object_key_wildcard:
 	  for (JSON_VALUE::ConstMemberIterator m = jv.MemberBegin (); m != jv.MemberEnd (); ++m)
