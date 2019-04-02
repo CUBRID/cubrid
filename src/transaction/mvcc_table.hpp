@@ -72,6 +72,8 @@ struct mvcc_trans_status
 
   void initialize ();
   void finalize ();
+
+  bool is_active (MVCCID mvccid) const;
 };
 
 typedef struct mvcctable MVCCTABLE;
@@ -104,6 +106,7 @@ struct mvcctable
   // mvcc_snapshot/mvcc_info functions; todo - move them out
   static void allocate_mvcc_snapshot_data (mvcc_snapshot &snapshot);
   void build_mvcc_snapshot (log_tdes &tdes);
+  bool is_active (MVCCID mvccid) const;
 };
 
 #endif // !_MVCC_TABLE_H_

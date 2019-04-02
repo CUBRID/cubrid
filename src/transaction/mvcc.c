@@ -137,15 +137,6 @@ mvcc_is_active_id (THREAD_ENTRY * thread_p, MVCCID mvccid)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   MVCC_INFO *curr_mvcc_info = NULL;
-  MVCCTABLE *mvcc_table = &log_Gl.mvcc_table;
-  UINT64 *p_area;
-  int local_bit_area_length;
-  MVCCID position, local_bit_area_start_mvccid;
-  bool is_active;
-  unsigned int i;
-  MVCC_TRANS_STATUS *trans_status;
-  int index;
-  unsigned int trans_status_version;
 
   assert (tdes != NULL && mvccid != MVCCID_NULL);
 
@@ -160,78 +151,7 @@ mvcc_is_active_id (THREAD_ENTRY * thread_p, MVCCID mvccid)
       return true;
     }
 
-#if defined(HAVE_ATOMIC_BUILTINS)
-start_check_active:
-  index = ATOMIC_INC_32 (&mvcc_table->trans_status_history_position, 0);
-  trans_status = mvcc_table->trans_status_history + index;
-  trans_status_version = ATOMIC_INC_32 (&trans_status->version, 0);
-
-  local_bit_area_start_mvccid = ATOMIC_INC_64 (&trans_status->bit_area_start_mvccid, 0LL);
-  local_bit_area_length = ATOMIC_INC_32 (&trans_status->bit_area_length, 0);
-
-#else
-  (void) pthread_mutex_lock (&mvcc_table->active_trans_mutex);
-  local_bit_area_length = trans_status->bit_area_length;
-  if (local_bit_area_length == 0)
-    {
-      return false;
-    }
-  local_bit_area_start_mvccid = mvcc_table->current_trans_status->bit_area_start_mvccid;
-#endif
-
-  /* no one can change active transactions while I'm in CS */
-  if (MVCC_ID_PRECEDES (mvccid, local_bit_area_start_mvccid))
-    {
-      is_active = false;
-      /* check long time transactions */
-      if (trans_status->long_tran_mvccids_length > 0 && trans_status->long_tran_mvccids != NULL)
-	{
-	  /* called rarely - has long transactions */
-	  for (i = 0; i < trans_status->long_tran_mvccids_length; i++)
-	    {
-	      if (trans_status->long_tran_mvccids[i] == mvccid)
-		{
-		  break;
-		}
-	    }
-	  if (i < trans_status->long_tran_mvccids_length)
-	    {
-	      /* MVCCID of long transaction found */
-	      is_active = true;
-	    }
-	}
-    }
-  else if (local_bit_area_length == 0)
-    {
-      /* mvccid > highest completed MVCCID */
-      is_active = true;
-    }
-  else
-    {
-      is_active = true;
-      position = mvccid - local_bit_area_start_mvccid;
-      if ((int) position < local_bit_area_length)
-	{
-	  p_area = MVCC_GET_BITAREA_ELEMENT_PTR (trans_status->bit_area, position);
-	  if (((*p_area) & MVCC_BITAREA_MASK (position)) != 0)
-	    {
-	      /* committed transaction found */
-	      is_active = false;
-	    }
-	}
-    }
-
-#if defined(HAVE_ATOMIC_BUILTINS)
-  if (trans_status_version != ATOMIC_INC_32 (&trans_status->version, 0))
-    {
-      /* The transaction status version overwritten, need to read again */
-      goto start_check_active;
-    }
-#else
-  (void) pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
-#endif
-
-  return is_active;
+  return log_Gl.mvcc_table.is_active (mvccid);
 }
 
 /*

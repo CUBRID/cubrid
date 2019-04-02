@@ -76,6 +76,13 @@ MVCC_GET_BITAREA_ELEMENT_PTR (UINT64 *bitareaptr, size_t position)
   bitareaptr + (position / MVCC_BITAREA_ELEMENT_BITS);
 }
 
+static mvcc_trans_status::bit_area_unit_type
+MVCC_BITAREA_MASK (size_t position)
+{
+  bit_area_unit_type unit = 1;
+  return unit << (position & 63);
+}
+
 mvcc_trans_status::mvcc_trans_status ()
   : bit_area (NULL)
   , bit_area_start_mvccid (MVCCID_FIRST)
@@ -113,6 +120,48 @@ mvcc_trans_status::finalize ()
 
   delete long_tran_mvccids;
   long_tran_mvccids = NULL;
+}
+
+bool
+mvcc_trans_status::is_active (MVCCID mvccid) const
+{
+  version_type local_version = version.load ();
+  MVCCID local_bit_area_start_mvccid = bit_area_start_mvccid.load ();
+  size_t local_bit_area_length = bit_area_length.load ();
+
+  if (MVCC_ID_PRECEDES (mvccid, local_bit_area_start_mvccid))
+    {
+      /* check long time transactions */
+      if (long_tran_mvccids != NULL)
+	{
+	  for (size_t i = 0; i < long_tran_mvccids_length; i++)
+	    {
+	      if (mvccid == long_tran_mvccids[i])
+		{
+		  return true;
+		}
+	    }
+	}
+      // is committed
+      return false;
+    }
+  else if (local_bit_area_length == 0)
+    {
+      return true;
+    }
+  else
+    {
+      size_t position = mvccid - local_bit_area_start_mvccid;
+      if (position < local_bit_area_length)
+	{
+	  bit_area_unit_type *p_area = MVCC_GET_BITAREA_ELEMENT_PTR (bit_area, position);
+	  return ((*p_area) & MVCC_BITAREA_MASK (position)) != 0;
+	}
+      else
+	{
+	  return true;
+	}
+    }
 }
 
 mvcctable::mvcctable ()
@@ -362,4 +411,21 @@ mvcctbl_get_highest_completed_mvccid (mvcc_trans_status::bit_area_unit_type *bit
       count_bits = MVCC_BITAREA_ELEMENTS_TO_BITS (highest_completed_bit_area - bit_area);
       highest_completed_mvccid = bit_area_start_mvccid + count_bits + highest_completed_mvccid;
     }
+}
+
+bool
+mvcctable::is_active (MVCCID mvccid) const
+{
+  size_t index = 0;
+  bool ret_active = false;
+  // entry at trans_status_history_position must remain same while is_active () is computed. otherwise it must be
+  // repeated
+  do
+    {
+      index = trans_status_history_position.load ();
+      ret_active = trans_status_history[index].is_active (mvccid);
+    }
+  while (index != trans_status_history[index].load ());
+
+  return ret_active;
 }
