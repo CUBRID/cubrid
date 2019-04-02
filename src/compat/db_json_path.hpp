@@ -111,6 +111,9 @@ class JSON_PATH
     static MATCH_RESULT match_pattern (const JSON_PATH &pattern, const token_containter_type::const_iterator &it1,
 				       const JSON_PATH &path, const token_containter_type::const_iterator &it2);
 
+    static void extract_from_subtree (const JSON_PATH &path, size_t tkn_array_offset, const JSON_VALUE &jv,
+				      std::vector<const JSON_VALUE *> &vals);
+
     token_containter_type m_path_tokens;
 };
 

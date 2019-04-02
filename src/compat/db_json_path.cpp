@@ -39,8 +39,6 @@ enum class JSON_PATH_TYPE
   JSON_PATH_POINTER
 };
 
-static void db_json_path_find_at (const JSON_PATH &path, size_t tkn_array_offset, const JSON_VALUE &jv,
-				  std::vector<const JSON_VALUE *> &vals);
 static std::vector<std::string> db_json_split_path_by_delimiters (const std::string &path, const std::string &delim,
     bool allow_empty);
 static void db_json_trim_leading_spaces (std::string &path_string);
@@ -866,9 +864,9 @@ JSON_PATH::get (const JSON_DOC &jd) const
   return val;
 }
 
-static void
-db_json_path_find_at (const JSON_PATH &path, size_t tkn_array_offset, const JSON_VALUE &jv,
-		      std::vector<const JSON_VALUE *> &vals)
+void
+JSON_PATH::extract_from_subtree (const JSON_PATH &path, size_t tkn_array_offset, const JSON_VALUE &jv,
+				 std::vector<const JSON_VALUE *> &vals)
 {
   if (tkn_array_offset == path.get_token_count ())
     {
@@ -888,21 +886,21 @@ db_json_path_find_at (const JSON_PATH &path, size_t tkn_array_offset, const JSON
 	    {
 	      return;
 	    }
-	  db_json_path_find_at (path, tkn_array_offset + 1, jv.GetArray ()[idx], vals);
+	  extract_from_subtree (path, tkn_array_offset + 1, jv.GetArray ()[idx], vals);
 	  return;
 	}
 	case PATH_TOKEN::token_type::array_index_wildcard:
 	  for (rapidjson::SizeType i = 0; i < jv.GetArray ().Size (); ++i)
 	    {
-	      db_json_path_find_at (path, tkn_array_offset + 1, jv.GetArray ()[i], vals);
+	      extract_from_subtree (path, tkn_array_offset + 1, jv.GetArray ()[i], vals);
 	    }
 	  return;
 	case PATH_TOKEN::token_type::double_wildcard:
 	  for (rapidjson::SizeType i = 0; i < jv.GetArray ().Size (); ++i)
 	    {
-	      db_json_path_find_at (path, tkn_array_offset + 1, jv.GetArray ()[i], vals);
+	      extract_from_subtree (path, tkn_array_offset + 1, jv.GetArray ()[i], vals);
 	      // Advance in tree, keep current token_array_offset
-	      db_json_path_find_at (path, tkn_array_offset, jv.GetArray ()[i], vals);
+	      extract_from_subtree (path, tkn_array_offset, jv.GetArray ()[i], vals);
 	    }
 	  return;
 	default:
@@ -921,20 +919,20 @@ db_json_path_find_at (const JSON_PATH &path, size_t tkn_array_offset, const JSON
 	    {
 	      return;
 	    }
-	  db_json_path_find_at (path, tkn_array_offset + 1, m->value, vals);
+	  extract_from_subtree (path, tkn_array_offset + 1, m->value, vals);
 	}
 	case PATH_TOKEN::token_type::object_key_wildcard:
 	  for (JSON_VALUE::ConstMemberIterator m = jv.MemberBegin (); m != jv.MemberEnd (); ++m)
 	    {
-	      db_json_path_find_at (path, tkn_array_offset + 1, m->value, vals);
+	      extract_from_subtree (path, tkn_array_offset + 1, m->value, vals);
 	    }
 	  return;
 	case PATH_TOKEN::token_type::double_wildcard:
 	  for (JSON_VALUE::ConstMemberIterator m = jv.MemberBegin (); m != jv.MemberEnd (); ++m)
 	    {
-	      db_json_path_find_at (path, tkn_array_offset + 1, m->value, vals);
+	      extract_from_subtree (path, tkn_array_offset + 1, m->value, vals);
 	      // Advance in tree, keep current token_array_offset
-	      db_json_path_find_at (path, tkn_array_offset, m->value, vals);
+	      extract_from_subtree (path, tkn_array_offset, m->value, vals);
 	    }
 	  return;
 	default:
@@ -948,7 +946,7 @@ std::vector<const JSON_VALUE *>
 JSON_PATH::extract (const JSON_DOC &jd) const
 {
   std::vector<const JSON_VALUE *> res;
-  db_json_path_find_at (*this, 0, db_json_doc_to_value (jd), res);
+  extract_from_subtree (*this, 0, db_json_doc_to_value (jd), res);
   return res;
 }
 
