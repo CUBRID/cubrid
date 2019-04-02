@@ -30,9 +30,12 @@
 #include "dbtype.h"
 #include "heap_file.h"
 #include "lockfree_circular_queue.hpp"
+#include "log_append.hpp"
 #include "log_compress.h"
+#include "log_lsa.hpp"
 #include "log_impl.h"
 #include "mvcc.h"
+#include "object_representation_sr.h"
 #include "overflow_file.h"
 #include "page_buffer.h"
 #include "perf_monitor.h"
@@ -633,6 +636,7 @@ static void print_not_vacuumed_to_log (OID * oid, OID * class_oid, MVCC_REC_HEAD
 static bool vacuum_is_empty (void);
 static void vacuum_convert_thread_to_master (THREAD_ENTRY * thread_p, thread_type & save_type);
 static void vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, thread_type & save_type);
+static void vacuum_restore_thread (THREAD_ENTRY * thread_p, thread_type save_type);
 
 #if !defined (NDEBUG)
 /* Debug function to verify vacuum data. */
@@ -653,6 +657,9 @@ vacuum_init_thread_context (cubthread::entry &context, thread_type type, VACUUM_
   context.type = type;
   context.vacuum_worker = worker;
   context.check_interrupt = false;
+
+  assert (context.get_system_tdes () == NULL);
+  context.claim_system_worker ();
 }
 
 // class vacuum_master_context_manager
@@ -666,7 +673,7 @@ class vacuum_master_context_manager : public cubthread::daemon_entry_manager
     void on_daemon_create (cubthread::entry &context) final
     {
       // set vacuum master in execute state
-      assert (vacuum_Master.state == VACUUM_WORKER_STATE_RECOVERY || vacuum_Master.state == VACUUM_WORKER_STATE_EXECUTE);
+      assert (vacuum_Master.state == VACUUM_WORKER_STATE_EXECUTE);
       vacuum_Master.state = VACUUM_WORKER_STATE_EXECUTE;
 
       vacuum_init_thread_context (context, TT_VACUUM_MASTER, &vacuum_Master);
@@ -675,6 +682,8 @@ class vacuum_master_context_manager : public cubthread::daemon_entry_manager
     void on_daemon_retire (cubthread::entry &context) final
     {
       vacuum_finalize (&context);    // todo: is this the rightful place?
+
+      context.retire_system_worker ();
 
       if (context.vacuum_worker != NULL)
 	{
@@ -749,6 +758,8 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
 
     void on_retire (cubthread::entry & context) final
     {
+      context.retire_system_worker ();
+
       if (context.vacuum_worker != NULL)
 	{
 	  context.vacuum_worker->state = VACUUM_WORKER_STATE::VACUUM_WORKER_STATE_INACTIVE;
@@ -766,8 +777,8 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
 
     void on_recycle (cubthread::entry & context) final
     {
-      // reset tran_index (it is recycled as -1)
-      context.tran_index = 0;
+      // reset tran_index (it is recycled as NULL_TRAN_INDEX)
+      context.tran_index = LOG_SYSTEM_TRAN_INDEX;
     }
 
     // members
@@ -921,7 +932,6 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
     }
 
   /* Initialize master worker. */
-  vacuum_Master.tdes = NULL;
   vacuum_Master.drop_files_version = 0;
   vacuum_Master.state = VACUUM_WORKER_STATE_EXECUTE;	/* Master is always in execution state. */
   vacuum_Master.log_zip_p = NULL;
@@ -950,7 +960,6 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
       vacuum_Workers[i].private_lru_index = pgbuf_assign_private_lru (thread_p, true, i);
       vacuum_Workers[i].heap_objects = NULL;
       vacuum_Workers[i].heap_objects_capacity = 0;
-      vacuum_Workers[i].tdes = NULL;
       vacuum_Workers[i].prefetch_log_buffer = NULL;
       vacuum_Workers[i].prefetch_first_pageid = NULL_PAGEID;
       vacuum_Workers[i].prefetch_last_pageid = NULL_PAGEID;
@@ -967,27 +976,6 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, IO_PAGESIZE);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
-    }
-  vacuum_Master.tdes = (LOG_TDES *) malloc (sizeof (LOG_TDES));
-  if (vacuum_Master.tdes == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOG_TDES));
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto error;
-    }
-  logtb_initialize_vacuum_thread_tdes (vacuum_Master.tdes, LOG_VACUUM_MASTER_TRANID);
-
-  /* Allocate transaction descriptors for vacuum workers. */
-  for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++)
-    {
-      vacuum_Workers[i].tdes = (LOG_TDES *) malloc (sizeof (LOG_TDES));
-      if (vacuum_Workers[i].tdes == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOG_TDES));
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto error;
-	}
-      logtb_initialize_vacuum_thread_tdes (vacuum_Workers[i].tdes, VACUUM_WORKER_INDEX_TO_TRANID (i));
     }
 
   vacuum_Global_oldest_active_blockers_counter = 0;
@@ -1010,6 +998,11 @@ vacuum_boot (THREAD_ENTRY * thread_p)
     {
       /* for debug only */
       return NO_ERROR;
+    }
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
     }
 
   /* first things first... load vacuum data and do some recovery if required */
@@ -2981,7 +2974,7 @@ restart:
   log_append_redo_data2 (thread_p, RVVAC_COMPLETE, NULL, (PAGE_PTR) vacuum_Data.first_page, 0,
 			 sizeof (log_Gl.hdr.mvcc_next_id), &log_Gl.hdr.mvcc_next_id);
   vacuum_set_dirty_data_page (thread_p, vacuum_Data.first_page, DONT_FREE);
-  logpb_flush_pages_direct (thread_p);
+  logpb_force_flush_pages (thread_p);
 
   /* Cleanup dropped files. */
   vacuum_cleanup_dropped_files (thread_p);
@@ -3076,9 +3069,11 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
     {
       return NO_ERROR;
     }
+  assert (thread_p != NULL);
+  assert (thread_p->get_system_tdes () != NULL);
 
   assert (worker != NULL);
-  assert (worker->tdes->topops.last == -1);
+  assert (!LOG_FIND_CURRENT_TDES (thread_p)->is_under_sysop ());
 
   PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
   PERF_UTIME_TRACKER_START (thread_p, &job_time_tracker);
@@ -3343,11 +3338,11 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 
       /* do not leak system ops */
       assert (worker->state == VACUUM_WORKER_STATE_EXECUTE);
-      assert (worker->tdes->topops.last == -1);
+      assert (!LOG_FIND_CURRENT_TDES (thread_p)->is_under_sysop ());
     }
 
   assert (worker->state == VACUUM_WORKER_STATE_EXECUTE);
-  assert (worker->tdes->topops.last == -1);
+  assert (!LOG_FIND_CURRENT_TDES (thread_p)->is_under_sysop ());
 
   error_code = vacuum_heap (thread_p, worker, threshold_mvccid, was_interrupted);
   if (error_code != NO_ERROR)
@@ -3356,7 +3351,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
       goto end;
     }
   assert (worker->state == VACUUM_WORKER_STATE_EXECUTE);
-  assert (worker->tdes->topops.last == -1);
+  assert (!LOG_FIND_CURRENT_TDES (thread_p)->is_under_sysop ());
 
   perfmon_add_stat (thread_p, PSTAT_VAC_NUM_VACUUMED_LOG_PAGES, vacuum_Data.log_block_npages);
 
@@ -3364,7 +3359,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 
 end:
 
-  assert (worker->tdes->topops.last == -1);
+  assert (!LOG_FIND_CURRENT_TDES (thread_p)->is_under_sysop ());
 
   worker->state = VACUUM_WORKER_STATE_INACTIVE;
   if (!sa_mode_partial_block)
@@ -3400,8 +3395,7 @@ vacuum_worker_allocate_resources (THREAD_ENTRY * thread_p, VACUUM_WORKER * worke
 {
   size_t size_worker_prefetch_log_buffer;
 
-  assert (worker->state == VACUUM_WORKER_STATE::VACUUM_WORKER_STATE_INACTIVE
-	  || worker->state == VACUUM_WORKER_STATE::VACUUM_WORKER_STATE_RECOVERY);
+  assert (worker->state == VACUUM_WORKER_STATE::VACUUM_WORKER_STATE_INACTIVE);
 
   if (worker->allocated_resources)
     {
@@ -3455,7 +3449,7 @@ vacuum_worker_allocate_resources (THREAD_ENTRY * thread_p, VACUUM_WORKER * worke
     }
 
   /* Safe guard - it is assumed that transaction descriptor is already initialized. */
-  assert (worker->tdes != NULL);
+  assert (logtb_get_system_tdes (thread_p) != NULL);
 
   worker->allocated_resources = true;
 
@@ -3493,85 +3487,10 @@ vacuum_finalize_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker_info)
     {
       free_and_init (worker_info->postpone_redo_data_buffer);
     }
-  if (worker_info->tdes != NULL)
-    {
-      logtb_finalize_tdes (thread_p, worker_info->tdes);
-
-      free_and_init (worker_info->tdes);
-    }
   if (worker_info->prefetch_log_buffer != NULL)
     {
       free_and_init (worker_info->prefetch_log_buffer);
     }
-}
-
-/*
- * vacuum_rv_get_worker_by_trid () - Get vacuum worker identified by TRANID to recover its system operations.
- *
- * return	    : Transaction descriptor.
- * thread_p (in)    : Thread entry.
- * TRANID trid (in) : Transaction identifier.
- *
- * NOTE: This is currently only called during recovery.
- */
-VACUUM_WORKER *
-vacuum_rv_get_worker_by_trid (THREAD_ENTRY * thread_p, TRANID trid)
-{
-  int worker_index;
-
-  if (trid == LOG_VACUUM_MASTER_TRANID)
-    {
-      return &vacuum_Master;
-    }
-
-  /* Convert trid to vacuum worker index */
-  worker_index = VACUUM_WORKER_TRANID_TO_INDEX (trid);
-  /* Check valid TRANID/index */
-  assert (worker_index >= 0 && worker_index < VACUUM_MAX_WORKER_COUNT);
-  /* Check this is called under recovery context. */
-  assert (!LOG_ISRESTARTED ());
-
-  /* Return worker identifier by TRANID */
-  return &vacuum_Workers[worker_index];
-}
-
-/*
- * vacuum_rv_finish_worker_recovery () - Reset vacuum thread worker after finishing recovering its work.
- *
- * return	 : Void.
- * thread_p (in) : Thread entry.
- * trid (in)	 : Transaction identifier.
- */
-void
-vacuum_rv_finish_worker_recovery (THREAD_ENTRY * thread_p, TRANID trid)
-{
-  int worker_index;
-
-  if (trid == LOG_VACUUM_MASTER_TRANID)
-    {
-      vacuum_Master.state = VACUUM_WORKER_STATE_EXECUTE;	/* Master is always in execute state. */
-      vacuum_Master.tdes->state = TRAN_ACTIVE;
-
-      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_MASTER, "%s",
-		     "Finished recovery for vacuum master.");
-
-      return;
-    }
-
-  /* Convert trid to vacuum worker index */
-  worker_index = VACUUM_WORKER_TRANID_TO_INDEX (trid);
-  /* Check valid TRANID/index */
-  assert (worker_index >= 0 && worker_index < VACUUM_MAX_WORKER_COUNT);
-  /* Check this is called under recovery context. */
-  assert (!LOG_ISRESTARTED ());
-
-  vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
-		 "Finished recovery for vacuum worker with tdes->trid=%d.", trid);
-
-  /* Reset vacuum worker state */
-  vacuum_Workers[worker_index].state = VACUUM_WORKER_STATE_INACTIVE;
-  /* Reset vacuum worker transaction descriptor */
-  vacuum_Workers[worker_index].tdes->state = TRAN_ACTIVE;
 }
 
 /*
@@ -5564,14 +5483,16 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
     }
 
   /* Consume recovered blocks. */
+  thread_type tt;
+  vacuum_convert_thread_to_master (thread_p, tt);
   error_code = vacuum_consume_buffer_log_blocks (thread_p);
   if (error_code != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_recover_lost_block_data");
-      return error_code;
     }
+  vacuum_restore_thread (thread_p, tt);
 
-  return NO_ERROR;
+  return error_code;
 }
 
 /*
@@ -7933,6 +7854,10 @@ vacuum_convert_thread_to_master (THREAD_ENTRY * thread_p, thread_type & save_typ
   save_type = thread_p->type;
   thread_p->type = TT_VACUUM_MASTER;
   thread_p->vacuum_worker = &vacuum_Master;
+  if (thread_p->get_system_tdes () == NULL)
+    {
+      thread_p->claim_system_worker ();
+    }
 }
 
 /*
@@ -7956,28 +7881,9 @@ vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker
     {
       assert_release (false);
     }
-}
-
-/*
- * vacuum_convert_thread_to_vacuum () - convert this thread to a vacuum master or worker
- *
- * thread_p (in)   : thread entry
- * trid (in)       : transaction ID
- * save_type (out) : save previous thread type
- */
-void
-vacuum_rv_convert_thread_to_vacuum (THREAD_ENTRY * thread_p, TRANID trid, thread_type & save_type)
-{
-  if (trid == LOG_VACUUM_MASTER_TRANID)
+  if (thread_p->get_system_tdes () == NULL)
     {
-      vacuum_convert_thread_to_master (thread_p, save_type);
-    }
-  else
-    {
-      // safe-guard: state is expected to be in-recovery
-      assert (vacuum_rv_get_worker_by_trid (thread_p, trid)->state
-	      == VACUUM_WORKER_STATE::VACUUM_WORKER_STATE_RECOVERY);
-      vacuum_convert_thread_to_worker (thread_p, vacuum_rv_get_worker_by_trid (thread_p, trid), save_type);
+      thread_p->claim_system_worker ();
     }
 }
 
@@ -7987,7 +7893,7 @@ vacuum_rv_convert_thread_to_vacuum (THREAD_ENTRY * thread_p, TRANID trid, thread
  * thread_p (in)  : thread entry
  * save_type (in) : saved type of thread entry
  */
-void
+static void
 vacuum_restore_thread (THREAD_ENTRY * thread_p, thread_type save_type)
 {
   if (thread_p == NULL)
@@ -7996,6 +7902,8 @@ vacuum_restore_thread (THREAD_ENTRY * thread_p, thread_type save_type)
     }
   thread_p->type = save_type;
   thread_p->vacuum_worker = NULL;
+  thread_p->retire_system_worker ();
+  thread_p->tran_index = LOG_SYSTEM_TRAN_INDEX;	// restore tran_index
 }
 
 /*

@@ -34,6 +34,7 @@
 
 // forward definitions
 struct compile_context;
+struct xasl_unpack_info;
 
 /* Objects related to XASL cache entries. The information includes the object OID, the lock required to use the XASL
  * cache entry and the heap file cardinality.
@@ -61,7 +62,7 @@ typedef enum xcache_cleanup_reason XCACHE_CLEANUP_REASON;
 typedef struct xasl_clone XASL_CLONE;
 struct xasl_clone
 {
-  void *xasl_buf;		/* TODO: Make XASL_UNPACK_INFO visible. */
+  xasl_unpack_info *xasl_buf;
   XASL_NODE *xasl;
 };
 #define XASL_CLONE_INITIALIZER { NULL, NULL }
@@ -154,7 +155,7 @@ extern void xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_ent
 extern int xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_STREAM * stream,
 			  int n_oid, const OID * class_oids, const int *class_locks,
 			  const int *tcards, XASL_CACHE_ENTRY ** xcache_entry);
-extern void xcache_remove_by_oid (THREAD_ENTRY * thread_p, OID * oid);
+extern void xcache_remove_by_oid (THREAD_ENTRY * thread_p, const OID * oid);
 extern void xcache_drop_all (THREAD_ENTRY * thread_p);
 extern void xcache_dump (THREAD_ENTRY * thread_p, FILE * fp);
 

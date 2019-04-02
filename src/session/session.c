@@ -48,10 +48,11 @@
 #include "lock_free.h"
 #include "object_primitive.h"
 #include "dbtype.h"
+#include "string_opfunc.h"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
-
+#include "xasl_cache.h"
 
 
 #if !defined(SERVER_MODE)
@@ -1818,7 +1819,7 @@ error:
  */
 int
 session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char **info, int *info_len,
-				XASL_CACHE_ENTRY ** xasl_entry)
+				xasl_cache_ent ** xasl_entry)
 {
   SESSION_STATE *state_p = NULL;
   PREPARED_STATEMENT *stmt_p = NULL;
@@ -1956,7 +1957,7 @@ login_user (THREAD_ENTRY * thread_p, const char *username)
   tdes = LOG_FIND_TDES (tran_index);
   if (tdes != NULL)
     {
-      strncpy (tdes->client.db_user, username, DB_MAX_USER_LENGTH);
+      tdes->client.set_user (username);
     }
 
   return NO_ERROR;

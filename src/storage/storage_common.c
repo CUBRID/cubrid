@@ -370,14 +370,6 @@ recdes_set_data_area (RECDES * rec, char *data, int size)
 }
 
 char *
-lsa_to_string (char *buf, int buf_size, LOG_LSA * lsa)
-{
-  snprintf (buf, buf_size, "(%lld|%d)", LSA_AS_ARGS (lsa));
-  buf[buf_size - 1] = 0;
-  return buf;
-}
-
-char *
 oid_to_string (char *buf, int buf_size, OID * oid)
 {
   snprintf (buf, buf_size, "(%d|%d|%d)", oid->volid, oid->pageid, oid->slotid);
@@ -492,6 +484,7 @@ fcode_get_uppercase_name (FUNC_TYPE ftype)
       return "JSON_ARRAYAGG";
     case PT_JSON_OBJECTAGG:
       return "JSON_OBJECTAGG";
+
     case F_TABLE_SET:
       return "F_TABLE_SET";
     case F_TABLE_MULTISET:
@@ -518,6 +511,8 @@ fcode_get_uppercase_name (FUNC_TYPE ftype)
       return "INSERT_SUBSTRING";
     case F_ELT:
       return "ELT";
+    case F_BENCHMARK:
+      return "BENCHMARK";
     case F_JSON_ARRAY:
       return "JSON_ARRAY";
     case F_JSON_ARRAY_APPEND:
@@ -559,11 +554,11 @@ fcode_get_uppercase_name (FUNC_TYPE ftype)
     case F_JSON_SET:
       return "JSON_SET";
     case F_JSON_TYPE:
-      return "F_JSON_TYPE";
+      return "JSON_TYPE";
     case F_JSON_UNQUOTE:
-      return "F_JSON_UNQUOTE";
+      return "JSON_UNQUOTE";
     case F_JSON_VALID:
-      return "F_JSON_VALID";
+      return "JSON_VALID";
     default:
       return "***UNKNOWN***";
     }
@@ -662,6 +657,8 @@ fcode_get_lowercase_name (FUNC_TYPE ftype)
       return "insert";
     case F_ELT:
       return "elt";
+    case F_BENCHMARK:
+      return "benchmark";
     case F_JSON_ARRAY:
       return "json_array";
     case F_JSON_ARRAY_APPEND:

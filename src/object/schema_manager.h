@@ -95,6 +95,7 @@ extern int sm_update_class (SM_TEMPLATE * template_, MOP * classmop);
 extern int sm_update_class_with_auth (SM_TEMPLATE * template_, MOP * classmop, DB_AUTH auth, bool lock_hierarchy);
 extern int sm_update_class_auto (SM_TEMPLATE * template_, MOP * classmop);
 extern int sm_delete_class_mop (MOP op, bool is_cascade_constraints);
+extern int ib_get_thread_count ();
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int sm_delete_class (const char *name);
 #endif
@@ -319,5 +320,9 @@ extern int sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid, const ch
 
 extern int sm_find_subclass_in_hierarchy (MOP hierarchy, MOP class_mop, bool * found);
 extern bool sm_is_index_visible (SM_CLASS_CONSTRAINT * constraint_list, BTID btid);
+
+SM_DOMAIN *sm_domain_alloc ();
+void sm_domain_free (SM_DOMAIN * ptr);
+SM_DOMAIN *sm_domain_copy (SM_DOMAIN * ptr);
 
 #endif /* _SCHEMA_MANAGER_H_ */

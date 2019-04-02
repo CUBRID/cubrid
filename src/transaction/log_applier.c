@@ -32,6 +32,7 @@
 #if !defined (WINDOWS)
 #include <sys/time.h>
 #endif
+#include <signal.h>
 
 #include "log_applier.h"
 
@@ -39,7 +40,9 @@
 #include "utility.h"
 #include "environment_variable.h"
 #include "message_catalog.h"
+#include "msgcat_set_log.hpp"
 #include "log_compress.h"
+#include "log_lsa.hpp"
 #include "parser.h"
 #include "object_primitive.h"
 #include "db_value_printer.hpp"
@@ -452,6 +455,7 @@ static int la_realloc_recdes_data (RECDES * recdes, int data_size);
 static void la_clear_recdes_pool (void);
 
 static LA_CACHE_PB *la_init_cache_pb (void);
+static unsigned int log_pageid_hash (const void *key, unsigned int htsize);
 static int la_init_cache_log_buffer (LA_CACHE_PB * cache_pb, int slb_cnt, int slb_size);
 static int la_fetch_log_hdr (LA_ACT_LOG * act_log);
 static int la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbname, bool check_charset);
@@ -2450,6 +2454,27 @@ la_init_cache_pb (void)
 }
 
 /*
+ * log_pageid_hash - hash a LOG_PAGEID key
+ *   return: hash value
+ *   key(in): void pointer to LOG_PAGEID key to hash
+ *   ht_size(in): size of hash table
+ */
+static unsigned int
+log_pageid_hash (const void *key, unsigned int htsize)
+{
+  assert (key != NULL);
+
+  if ((*(const LOG_PAGEID *) key) == LOGPB_HEADER_PAGE_ID)
+    {
+      return 0;
+    }
+
+  assert ((*(const LOG_PAGEID *) key) >= 0);
+
+  return (*(const LOG_PAGEID *) key) % htsize;
+}
+
+/*
  * la_init_cache_log_buffer() - Initialize the cache log buffer area of
  *                                a cache page buffer
  *   return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
@@ -2474,7 +2499,7 @@ la_init_cache_log_buffer (LA_CACHE_PB * cache_pb, int slb_cnt, int slb_size)
     }
 
   cache_pb->hash_table =
-    mht_create ("log applier cache log buffer hash table", cache_pb->num_buffers * 8, mht_logpageidhash,
+    mht_create ("log applier cache log buffer hash table", cache_pb->num_buffers * 8, log_pageid_hash,
 		mht_compare_logpageids_are_equal);
   if (cache_pb->hash_table == NULL)
     {

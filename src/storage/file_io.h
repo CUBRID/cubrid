@@ -30,10 +30,12 @@
 
 #include "config.h"
 #include "dbtype_def.h"
+#include "log_lsa.hpp"
 #include "lzo/lzoconf.h"
 #include "lzo/lzo1x.h"
 #include "memory_hash.h"
 #include "porting.h"
+#include "porting_inline.hpp"
 #include "release_string.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
@@ -212,22 +214,6 @@ fileio_init_lsa_of_page (FILEIO_PAGE * io_page, PGLENGTH page_size)
 
   FILEIO_PAGE_WATERMARK *prv2 = fileio_get_page_watermark_pos (io_page, page_size);
   LSA_SET_NULL (&prv2->lsa);
-}
-
-STATIC_INLINE void
-fileio_init_lsa_of_temp_page (FILEIO_PAGE * io_page, PGLENGTH page_size)
-{
-  LOG_LSA *lsa_ptr;
-
-  lsa_ptr = &io_page->prv.lsa;
-  lsa_ptr->pageid = NULL_PAGEID - 1;
-  lsa_ptr->offset = NULL_OFFSET - 1;
-
-  FILEIO_PAGE_WATERMARK *prv2 = fileio_get_page_watermark_pos (io_page, page_size);
-
-  lsa_ptr = &prv2->lsa;
-  lsa_ptr->pageid = NULL_PAGEID - 1;
-  lsa_ptr->offset = NULL_OFFSET - 1;
 }
 
 STATIC_INLINE void
@@ -484,7 +470,7 @@ extern void fileio_unformat_and_rename (THREAD_ENTRY * thread_p, const char *vla
 extern int fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vdes, DKNPAGES npages, const char *to_vlabel,
 			       VOLID to_volid, bool reset_recvinfo);
 extern int fileio_reset_volume (THREAD_ENTRY * thread_p, int vdes, const char *vlabel, DKNPAGES npages,
-				LOG_LSA * reset_lsa);
+				const LOG_LSA * reset_lsa);
 extern int fileio_mount (THREAD_ENTRY * thread_p, const char *db_fullname, const char *vlabel, VOLID volid,
 			 int lockwait, bool dosync);
 extern void fileio_dismount (THREAD_ENTRY * thread_p, int vdes);

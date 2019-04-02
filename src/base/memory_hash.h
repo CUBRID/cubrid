@@ -83,7 +83,6 @@ extern unsigned int mht_3strhash (const void *key, const unsigned int ht_size);
 extern unsigned int mht_4strhash (const void *key, const unsigned int ht_size);
 extern unsigned int mht_5strhash (const void *key, const unsigned int ht_size);
 extern unsigned int mht_numhash (const void *key, const unsigned int ht_size);
-extern unsigned int mht_logpageidhash (const void *key, unsigned int htsize);
 
 extern unsigned int mht_get_hash_number (const int ht_size, const DB_VALUE * val);
 extern unsigned int mht_ptrhash (const void *ptr, const unsigned int ht_size);

@@ -52,7 +52,7 @@ extern int yycolumn;
 extern int yycolumn_end;
 extern int dot_flag;
 
-extern int str_identifier = '\0';
+int str_identifier = '\0';
 
 
 
@@ -138,6 +138,7 @@ int yybuffer_pos;
 										return AUTO_INCREMENT; }
 [aA][vV][gG]								{ begin_token(yytext);   return AVG; }
 [bB][eE][fF][oO][rR][eE]						{ begin_token(yytext);   return BEFORE; }
+[bB][eE][nN][cC][hH][mM][aA][rR][kK]					{ begin_token(yytext);   return BENCHMARK; }
 [bB][eE][tT][wW][eE][eE][nN]						{ begin_token(yytext);   return BETWEEN; }
 [bB][iI][gG][iI][nN][tT]						{ begin_token(yytext);   return BIGINT;}
 [bB][iI][nN][aA][rR][yY]						{ begin_token(yytext);   return BINARY;}
@@ -660,6 +661,7 @@ int yybuffer_pos;
 [pP][aA][gG][eE]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return PAGE; }
+[pP][aA][rR][aA][lL][lL][eE][lL]						{ begin_token(yytext);	return PARALLEL; }										
 [pP][aA][rR][aA][mM][eE][tT][eE][rR][sS]				{ begin_token(yytext);   return PARAMETERS; }
 [pP][aA][rR][tT][iI][aA][lL]						{ begin_token(yytext);   return PARTIAL; }
 [pP][aA][rR][tT][iI][tT][iI][oO][nN]					{ begin_token(yytext);

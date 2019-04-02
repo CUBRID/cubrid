@@ -26,10 +26,11 @@
 
 #ident "$Id$"
 
-#include "system_parameter.h"
-#include "porting.h"
-#include "master_util.h"
 #include "heartbeat.h"
+#include "log_lsa.hpp"
+#include "master_util.h"
+#include "porting.h"
+#include "system_parameter.h"
 
 #if defined (LINUX)
 #include <netinet/in.h>

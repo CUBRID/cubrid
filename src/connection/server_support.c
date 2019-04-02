@@ -26,6 +26,7 @@
 #include "server_support.h"
 
 #include "config.h"
+#include "log_append.hpp"
 #include "multi_thread_stream.hpp"
 #include "session.h"
 #include "thread_entry_task.hpp"
@@ -65,6 +66,7 @@
 #include "message_catalog.h"
 #include "critical_section.h"
 #include "lock_manager.h"
+#include "log_lsa.hpp"
 #include "log_manager.h"
 #include "network.h"
 #include "jsp_sr.h"
@@ -1446,33 +1448,20 @@ shutdown:
   vacuum_stop (thread_p);
 
   /* we should flush all append pages before stop log writer */
-  LOG_CS_ENTER (thread_p);
-  logpb_flush_pages_direct (thread_p);
+  logpb_force_flush_pages (thread_p);
 
 #if !defined(NDEBUG)
-  pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
-  if (!LSA_EQ (&log_Gl.append.nxio_lsa, &log_Gl.prior_info.prior_lsa))
-    {
-      LOG_PRIOR_NODE *node;
-
-      assert (LSA_LT (&log_Gl.append.nxio_lsa, &log_Gl.prior_info.prior_lsa));
-      node = log_Gl.prior_info.prior_list_header;
-      while (node != NULL)
-	{
-	  /* All active transaction and vacuum workers should have been stopped. Only system transactions are still
-	   * running. */
-	  assert (node->log_header.trid == LOG_SYSTEM_TRANID);
-	  node = node->next;
-	}
-    }
-  pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
+  /* All active transaction and vacuum workers should have been stopped. Only system transactions are still running. */
+  assert (!log_prior_has_worker_log_records (thread_p));
 #endif
-
-  LOG_CS_EXIT (thread_p);
 
   // stop log writers
   css_stop_all_workers (*thread_p, THREAD_STOP_LOGWR);
 
+  if (prm_get_bool_value (PRM_ID_STATS_ON))
+    {
+      perfmon_er_log_current_stats (thread_p);
+    }
   css_Server_request_worker_pool->er_log_stats ();
   css_Connection_worker_pool->er_log_stats ();
 
@@ -2419,7 +2408,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	      tdes = log_Gl.trantable.all_tdes[i];
 	      if (tdes != NULL && tdes->trid != NULL_TRANID)
 		{
-		  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (tdes->client.host_name, boot_Host_name,
+		  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (tdes->client.get_host_name (), boot_Host_name,
 							       tdes->client.client_type))
 		    {
 		      logtb_slam_transaction (thread_p, tdes->tran_index);

@@ -23,18 +23,14 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
-#include <stdlib.h>
-#include <string.h>
-#include <assert.h>
-
 #include "btree.h"
 
 #include "btree_load.h"
+#include "config.h"
 #include "db_value_printer.hpp"
 #include "file_manager.h"
 #include "slotted_page.h"
+#include "log_append.hpp"
 #include "log_manager.h"
 #include "overflow_file.h"
 #include "xserver_interface.h"
@@ -45,12 +41,18 @@
 #include "utility.h"
 #include "transform.h"
 #include "partition_sr.h"
+#include "porting_inline.hpp"
 #include "query_executor.h"
 #include "object_primitive.h"
 #include "perf_monitor.h"
+#include "regu_var.hpp"
 #include "fault_injection.h"
 #include "dbtype.h"
 #include "thread_manager.hpp"
+
+#include <stdlib.h>
+#include <string.h>
+#include <assert.h>
 
 #define BTREE_HEALTH_CHECK
 
@@ -1101,24 +1103,21 @@ btree_perf_unique_lock_time (THREAD_ENTRY * thread_p, PERF_UTIME_TRACKER * track
 
 /* Default buffer size of redo recovery changes. Should cover all cases. */
 /* Just a rough estimation */
+const size_t BTREE_RV_BUFFER_SIZE =
 #if defined (NDEBUG)
-#define BTREE_RV_BUFFER_SIZE \
-  ((int) (3 * LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE (BTREE_OBJECT_MAX_SIZE)))
+  (3 * LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE (BTREE_OBJECT_MAX_SIZE));
 #else /* !NDEBUG */
-#define BTREE_RV_BUFFER_SIZE \
-  ((int) (4 * LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE (BTREE_OBJECT_MAX_SIZE) \
-   + BTREE_RV_DEBUG_INFO_MAX_SIZE))
+  (4 * LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE (BTREE_OBJECT_MAX_SIZE) + BTREE_RV_DEBUG_INFO_MAX_SIZE);
 #endif /* !NDEBUG */
 
-#define BTREE_RV_GET_DATA_LENGTH(rv_ptr, rv_start, rv_length) \
-  do \
-    { \
-      assert ((rv_ptr) != NULL); \
-      assert ((rv_start) != NULL); \
-      (rv_length) = CAST_BUFLEN ((rv_ptr) - (rv_start)); \
-      assert (0 <= (rv_length) && (rv_length) <= BTREE_RV_BUFFER_SIZE); \
-    } \
-  while (false)
+static void
+BTREE_RV_GET_DATA_LENGTH (const char *rv_ptr, const char *rv_start, int &rv_length)
+{
+  assert (rv_ptr != NULL);
+  assert (rv_start != NULL);
+  rv_length = CAST_BUFLEN (rv_ptr - rv_start);
+  assert (0 <= rv_length && (size_t) rv_length <= BTREE_RV_BUFFER_SIZE);
+}
 
 /* Debug identifiers to help with detecting recovery issues. */
 enum btree_rv_debug_id
@@ -1553,7 +1552,7 @@ static int btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, B
 static int btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 static int btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 static int btree_range_scan_count_oids_leaf_and_one_ovf (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
-static int btree_scan_update_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, KEY_VAL_RANGE * key_val_range);
+static int btree_scan_update_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, key_val_range * kv_range);
 static int btree_ils_adjust_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 
 static int btree_select_visible_object_for_range_scan (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
@@ -5910,7 +5909,7 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
 {
   BTREE_SCAN btree_scan;
   int error_code = NO_ERROR;
-  KEY_VAL_RANGE key_val_range;
+  key_val_range kv_range;
   BTREE_FIND_FK_OBJECT find_fk_object = BTREE_FIND_FK_OBJECT_INITIALIZER;
 
   assert (btid != NULL);
@@ -5921,10 +5920,10 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   /* Find if key has any objects. */
 
   /* Define range of scan. */
-  pr_share_value (key, &key_val_range.key1);
-  pr_share_value (key, &key_val_range.key2);
-  key_val_range.range = GE_LE;
-  key_val_range.num_index_term = 0;
+  pr_share_value (key, &kv_range.key1);
+  pr_share_value (key, &kv_range.key2);
+  kv_range.range = GE_LE;
+  kv_range.num_index_term = 0;
 
   /* Initialize not found. */
   OID_SET_NULL (&find_fk_object.found_oid);
@@ -5936,8 +5935,7 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   /* Prepare scan. */
   BTREE_INIT_SCAN (&btree_scan);
   error_code =
-    btree_prepare_bts (thread_p, &btree_scan, btid, NULL, &key_val_range, NULL, NULL, NULL, NULL, false,
-		       &find_fk_object);
+    btree_prepare_bts (thread_p, &btree_scan, btid, NULL, &kv_range, NULL, NULL, NULL, NULL, false, &find_fk_object);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -8305,7 +8303,7 @@ btree_keyoid_checkscan_check (THREAD_ENTRY * thread_p, BTREE_CHECKSCAN * btscan,
   int k;			/* Loop iteration variable */
   INDX_SCAN_ID isid;
   DISK_ISVALID status;
-  KEY_VAL_RANGE key_val_range;
+  key_val_range kv_range;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
 
   mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
@@ -8322,16 +8320,16 @@ btree_keyoid_checkscan_check (THREAD_ENTRY * thread_p, BTREE_CHECKSCAN * btscan,
 
   assert (!pr_is_set_type (DB_VALUE_DOMAIN_TYPE (key)));
 
-  pr_share_value (key, &key_val_range.key1);
-  pr_share_value (key, &key_val_range.key2);
-  key_val_range.range = GE_LE;
-  key_val_range.num_index_term = 0;
+  pr_share_value (key, &kv_range.key1);
+  pr_share_value (key, &kv_range.key2);
+  kv_range.range = GE_LE;
+  kv_range.num_index_term = 0;
 
   do
     {
       /* search index */
       btscan->oid_list.oid_cnt =
-	btree_keyval_search (thread_p, &btscan->btid, S_SELECT, &btscan->btree_scan, &key_val_range, cls_oid, NULL,
+	btree_keyval_search (thread_p, &btscan->btid, S_SELECT, &btscan->btree_scan, &kv_range, cls_oid, NULL,
 			     &isid, false);
       assert (btscan->oid_list.oid_cnt <= btscan->oid_list.capacity);
 
@@ -14686,7 +14684,7 @@ error:
  */
 int
 btree_keyval_search (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type, BTREE_SCAN * bts,
-		     KEY_VAL_RANGE * key_val_range, OID * class_oid, FILTER_INFO * filter, INDX_SCAN_ID * isidp,
+		     key_val_range * kv_range, OID * class_oid, FILTER_INFO * filter, INDX_SCAN_ID * isidp,
 		     bool is_all_class_srch)
 {
   /* this is just a GE_LE range search with the same key */
@@ -14697,13 +14695,13 @@ btree_keyval_search (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE s
   assert (bts != NULL);
   assert (isidp != NULL);
   assert (isidp->need_count_only == false);
-  assert (key_val_range != NULL);
+  assert (kv_range != NULL);
   /* If a class must be matched, class_oid argument must be a valid OID. */
   assert (is_all_class_srch || (class_oid != NULL && !OID_ISNULL (class_oid)));
 
   /* Execute range scan */
   rc =
-    btree_prepare_bts (thread_p, bts, btid, isidp, key_val_range, filter, is_all_class_srch ? class_oid : NULL, NULL,
+    btree_prepare_bts (thread_p, bts, btid, isidp, kv_range, filter, is_all_class_srch ? class_oid : NULL, NULL,
 		       NULL, false, NULL);
   if (rc != NO_ERROR)
     {
@@ -14984,10 +14982,10 @@ btree_coerce_key (DB_VALUE * keyp, int keysize, TP_DOMAIN * btree_domainp, int k
  */
 int
 btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_SCAN_ID * index_scan_id_p,
-		   KEY_VAL_RANGE * key_val_range, FILTER_INFO * filter, const OID * match_class_oid,
+		   key_val_range * kv_range, FILTER_INFO * filter, const OID * match_class_oid,
 		   DB_BIGINT * key_limit_upper, DB_BIGINT * key_limit_lower, bool need_to_check_null, void *bts_other)
 {
-  KEY_VAL_RANGE inf_key_val_range;
+  key_val_range inf_key_val_range;
   PAGE_PTR root_page = NULL;
   VPID root_vpid;
   int error_code = NO_ERROR;
@@ -15008,16 +15006,16 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
 
   assert (VPID_ISNULL (&bts->C_vpid));
 
-  if (key_val_range == NULL)
+  if (kv_range == NULL)
     {
-      /* NULL key_val_range argument means a full range scan */
+      /* NULL kv_range argument means a full range scan */
       db_make_null (&inf_key_val_range.key1);
       db_make_null (&inf_key_val_range.key2);
       inf_key_val_range.range = INF_INF;
       inf_key_val_range.num_index_term = 0;
       inf_key_val_range.is_truncated = false;
 
-      key_val_range = &inf_key_val_range;
+      kv_range = &inf_key_val_range;
     }
 
   if (!bts->is_btid_int_valid)
@@ -15054,9 +15052,9 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
        * inaccurate. therefore, we should use btree header's domain while
        * processing btree search request from log_applier.
        */
-      if (DB_VALUE_TYPE (&key_val_range->key1) == DB_TYPE_MIDXKEY)
+      if (DB_VALUE_TYPE (&kv_range->key1) == DB_TYPE_MIDXKEY)
 	{
-	  midxkey = db_get_midxkey (&key_val_range->key1);
+	  midxkey = db_get_midxkey (&kv_range->key1);
 	  if (midxkey->domain == NULL || LOG_CHECK_LOG_APPLIER (thread_p))
 	    {
 	      /*
@@ -15071,9 +15069,9 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
 	      midxkey->domain = bts->btid_int.key_type;
 	    }
 	}
-      if (DB_VALUE_TYPE (&key_val_range->key2) == DB_TYPE_MIDXKEY)
+      if (DB_VALUE_TYPE (&kv_range->key2) == DB_TYPE_MIDXKEY)
 	{
-	  midxkey = db_get_midxkey (&key_val_range->key2);
+	  midxkey = db_get_midxkey (&kv_range->key2);
 	  if (midxkey->domain == NULL || LOG_CHECK_LOG_APPLIER (thread_p))
 	    {
 	      if (midxkey->domain)
@@ -15086,7 +15084,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
 
       /* TODO: What does this assert mean? */
       /* is from keyval_search; checkdb or find_unique */
-      assert_release (key_val_range->num_index_term == 0);
+      assert_release (kv_range->num_index_term == 0);
 
       /* B-tree scan btid_int is now valid. */
       bts->is_btid_int_valid = true;
@@ -15112,7 +15110,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
     }
 
   /* initialize the key range with given information */
-  switch (key_val_range->range)
+  switch (kv_range->range)
     {
     case EQ_NA:
     case GT_LT:
@@ -15137,7 +15135,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
   /* Only used for multi-column index with PRM_ORACLE_STYLE_EMPTY_STRING, otherwise set as zero */
 
   /* Set key range. */
-  bts->key_range.num_index_term = key_val_range->num_index_term;
+  bts->key_range.num_index_term = kv_range->num_index_term;
 
   /* re-check for partial-key domain is desc */
   if (!BTREE_IS_PART_KEY_DESC (&(bts->btid_int)))
@@ -15151,12 +15149,12 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
 	}
 
       /* get the last domain element of partial-key */
-      for (i = 1; i < key_val_range->num_index_term && dom; i++, dom = dom->next)
+      for (i = 1; i < kv_range->num_index_term && dom; i++, dom = dom->next)
 	{
 	  ;			/* nop */
 	}
 
-      if (i < key_val_range->num_index_term || dom == NULL)
+      if (i < kv_range->num_index_term || dom == NULL)
 	{
 	  assert (false);
 	  return ER_FAILED;
@@ -15166,46 +15164,46 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
     }
 
 #if !defined(NDEBUG)
-  if (DB_VALUE_TYPE (&key_val_range->key1) == DB_TYPE_MIDXKEY)
+  if (DB_VALUE_TYPE (&kv_range->key1) == DB_TYPE_MIDXKEY)
     {
-      midxkey = db_get_midxkey (&key_val_range->key1);
+      midxkey = db_get_midxkey (&kv_range->key1);
       assert (midxkey->ncolumns == midxkey->domain->precision);
     }
-  if (DB_VALUE_TYPE (&key_val_range->key2) == DB_TYPE_MIDXKEY)
+  if (DB_VALUE_TYPE (&kv_range->key2) == DB_TYPE_MIDXKEY)
     {
-      midxkey = db_get_midxkey (&key_val_range->key2);
+      midxkey = db_get_midxkey (&kv_range->key2);
       assert (midxkey->ncolumns == midxkey->domain->precision);
     }
 #endif
 
   /* lower bound key and upper bound key */
-  if (DB_IS_NULL (&key_val_range->key1) || btree_multicol_key_is_null (&key_val_range->key1))
+  if (DB_IS_NULL (&kv_range->key1) || btree_multicol_key_is_null (&kv_range->key1))
     {
       bts->key_range.lower_key = NULL;
     }
   else
     {
-      bts->key_range.lower_key = &key_val_range->key1;
+      bts->key_range.lower_key = &kv_range->key1;
     }
 
-  if (DB_IS_NULL (&key_val_range->key2) || btree_multicol_key_is_null (&key_val_range->key2))
+  if (DB_IS_NULL (&kv_range->key2) || btree_multicol_key_is_null (&kv_range->key2))
     {
       bts->key_range.upper_key = NULL;
     }
   else
     {
-      bts->key_range.upper_key = &key_val_range->key2;
+      bts->key_range.upper_key = &kv_range->key2;
     }
 
   /* range type */
-  bts->key_range.range = key_val_range->range;
+  bts->key_range.range = kv_range->range;
 
   /* Swap range for scan is descending. */
   if ((bts->use_desc_index && !BTREE_IS_PART_KEY_DESC (&bts->btid_int))
       || (!bts->use_desc_index && BTREE_IS_PART_KEY_DESC (&bts->btid_int)))
     {
       /* Reverse scan and its range. */
-      RANGE_REVERSE (bts->key_range.range);
+      range_reverse (bts->key_range.range);
       swap_key = bts->key_range.lower_key;
       bts->key_range.lower_key = bts->key_range.upper_key;
       bts->key_range.upper_key = swap_key;
@@ -15219,7 +15217,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
       if (filter && (*(filter->num_vstr_ptr) > 0) && filter->vstr_ids != NULL)
 	{
 	  ids_size = 0;		/* init */
-	  for (i = 0; i < key_val_range->num_index_term; i++)
+	  for (i = 0; i < kv_range->num_index_term; i++)
 	    {
 	      filter->vstr_ids[i] = -1;	/* init to false */
 	      for (j = 0; j < filter->scan_attrs->num_attrs; j++)
@@ -15284,17 +15282,17 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
  * key_val_range (in) : New range.
  */
 static int
-btree_scan_update_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, KEY_VAL_RANGE * key_val_range)
+btree_scan_update_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, key_val_range * kv_range)
 {
   DB_MIDXKEY *midxkey = NULL;
   DB_VALUE *swap_key = NULL;
 
   /* Assert expected arguments. */
   assert (bts != NULL);
-  assert (key_val_range != NULL);
+  assert (kv_range != NULL);
 
   /* Check valid range. */
-  switch (key_val_range->range)
+  switch (kv_range->range)
     {
     case EQ_NA:
     case GT_LT:
@@ -15314,49 +15312,49 @@ btree_scan_update_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, KEY_VAL_RANG
     }
 
   /* Set key range. */
-  bts->key_range.num_index_term = key_val_range->num_index_term;
+  bts->key_range.num_index_term = kv_range->num_index_term;
 
 #if !defined(NDEBUG)
-  if (DB_VALUE_TYPE (&key_val_range->key1) == DB_TYPE_MIDXKEY)
+  if (DB_VALUE_TYPE (&kv_range->key1) == DB_TYPE_MIDXKEY)
     {
-      midxkey = db_get_midxkey (&key_val_range->key1);
+      midxkey = db_get_midxkey (&kv_range->key1);
       assert (midxkey->ncolumns == midxkey->domain->precision);
     }
-  if (DB_VALUE_TYPE (&key_val_range->key2) == DB_TYPE_MIDXKEY)
+  if (DB_VALUE_TYPE (&kv_range->key2) == DB_TYPE_MIDXKEY)
     {
-      midxkey = db_get_midxkey (&key_val_range->key2);
+      midxkey = db_get_midxkey (&kv_range->key2);
       assert (midxkey->ncolumns == midxkey->domain->precision);
     }
 #endif
 
   /* lower bound key and upper bound key */
-  if (DB_IS_NULL (&key_val_range->key1) || btree_multicol_key_is_null (&key_val_range->key1))
+  if (DB_IS_NULL (&kv_range->key1) || btree_multicol_key_is_null (&kv_range->key1))
     {
       bts->key_range.lower_key = NULL;
     }
   else
     {
-      bts->key_range.lower_key = &key_val_range->key1;
+      bts->key_range.lower_key = &kv_range->key1;
     }
 
-  if (DB_IS_NULL (&key_val_range->key2) || btree_multicol_key_is_null (&key_val_range->key2))
+  if (DB_IS_NULL (&kv_range->key2) || btree_multicol_key_is_null (&kv_range->key2))
     {
       bts->key_range.upper_key = NULL;
     }
   else
     {
-      bts->key_range.upper_key = &key_val_range->key2;
+      bts->key_range.upper_key = &kv_range->key2;
     }
 
   /* range type */
-  bts->key_range.range = key_val_range->range;
+  bts->key_range.range = kv_range->range;
 
   /* Swap range for scan is descending. */
   if ((bts->use_desc_index && !BTREE_IS_PART_KEY_DESC (&bts->btid_int))
       || (!bts->use_desc_index && BTREE_IS_PART_KEY_DESC (&bts->btid_int)))
     {
       /* Reverse scan and its range. */
-      RANGE_REVERSE (bts->key_range.range);
+      range_reverse (bts->key_range.range);
       swap_key = bts->key_range.lower_key;
       bts->key_range.lower_key = bts->key_range.upper_key;
       bts->key_range.upper_key = swap_key;
@@ -19096,7 +19094,7 @@ btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items, int *att_idxs, T
 static int
 btree_iss_set_key (BTREE_SCAN * bts, INDEX_SKIP_SCAN * iss)
 {
-  struct regu_variable_node *key = NULL;
+  regu_variable_node *key = NULL;
   int ret = NO_ERROR;
 
   /* check environment */
@@ -19823,7 +19821,7 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   RANGE old_range;
   bool swap_ranges = false;
   int i;
-  KEY_VAL_RANGE *key_range = NULL;
+  key_val_range *key_range = NULL;
   DB_VALUE *curr_key = NULL;
   int prefix_len = 0;
   bool use_desc_index, part_key_desc;

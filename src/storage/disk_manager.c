@@ -38,7 +38,9 @@
 #endif /* !WINDOWS */
 
 #include "disk_manager.h"
+
 #include "porting.h"
+#include "porting_inline.hpp"
 #include "system_parameter.h"
 #include "error_manager.h"
 #include "language_support.h"
@@ -46,7 +48,10 @@
 #include "xserver_interface.h"
 #include "file_io.h"
 #include "page_buffer.h"
+#include "log_append.hpp"
 #include "log_manager.h"
+#include "log_lsa.hpp"
+#include "log_volids.hpp"
 #include "critical_section.h"
 #include "boot_sr.h"
 #include "tz_support.h"
@@ -562,9 +567,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   fault_inject_random_crash ();
 
   /* this log must be flushed. */
-  LOG_CS_ENTER (thread_p);
-  logpb_flush_pages_direct (thread_p);
-  LOG_CS_EXIT (thread_p);
+  logpb_force_flush_pages (thread_p);
   fault_inject_random_crash ();
 
   /* create and initialize the volume. recovery information is initialized in every page. */
@@ -720,7 +723,6 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
     {
       /* todo: understand what this code is supposed to do */
       PAGE_PTR pgptr = NULL;	/* Page pointer */
-      LOG_LSA init_with_temp_lsa;	/* A lsa for temporary purposes */
       bool flushed;
 
       /* Flush the pages so that the log is forced */
@@ -749,13 +751,11 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 	}
       if (ext_info->voltype == DB_PERMANENT_VOLTYPE)
 	{
-	  LSA_SET_TEMP_LSA (&init_with_temp_lsa);
-
 	  /* Flush all dirty pages and then invalidate them from page buffer pool. So that we can reset the recovery
 	   * information directly using the io module */
 
 	  (void) pgbuf_invalidate_all (thread_p, volid);	/* Flush and invalidate */
-	  error_code = fileio_reset_volume (thread_p, vdes, vol_fullname, max_npages, &init_with_temp_lsa);
+	  error_code = fileio_reset_volume (thread_p, vdes, vol_fullname, max_npages, &PGBUF_TEMP_LSA);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -1046,9 +1046,7 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const cha
     }
 
   /* Forcing the log here to be safer, especially in the case of permanent temp volumes. */
-  LOG_CS_ENTER (thread_p);
-  logpb_flush_pages_direct (thread_p);
-  LOG_CS_EXIT (thread_p);
+  logpb_force_flush_pages (thread_p);
 
   (void) disk_verify_volume_header (thread_p, addr.pgptr);
 
@@ -1970,9 +1968,7 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
   FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
 
   /* to be sure expansion really happens on recovery too, we must flush log! */
-  LOG_CS_ENTER (thread_p);
-  logpb_flush_pages_direct (thread_p);
-  LOG_CS_EXIT (thread_p);
+  logpb_force_flush_pages (thread_p);
 
   FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
 
@@ -3033,7 +3029,8 @@ disk_volume_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** o
   db_make_int (out_values[idx], vhdr->db_charset);
   idx++;
 
-  error = db_make_string_copy (out_values[idx], lsa_to_string (buf, sizeof (buf), &vhdr->chkpt_lsa));
+  lsa_to_string (buf, sizeof (buf), &vhdr->chkpt_lsa);
+  error = db_make_string_copy (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {

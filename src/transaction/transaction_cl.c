@@ -47,6 +47,7 @@
 #include "work_space.h"
 #include "server_interface.h"
 #include "log_comm.h"
+#include "log_lsa.hpp"
 #include "db_query.h"
 #include "boot_cl.h"
 #include "virtual_object.h"

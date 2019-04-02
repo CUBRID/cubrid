@@ -48,7 +48,7 @@ namespace test_packing
     serializator.pack_bigint (b1);
     serializator.pack_int_array (int_a, sizeof (int_a) / sizeof (int_a[0]));
     serializator.pack_int_vector (int_v);
-    for (int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
+    for (size_t i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
 	serializator.pack_db_value (values[i]);
       }
@@ -72,7 +72,7 @@ namespace test_packing
 
     deserializator.unpack_int_vector (int_v);
 
-    for (int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
+    for (size_t i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
 	deserializator.unpack_db_value (values[i]);
       }
@@ -98,7 +98,7 @@ namespace test_packing
       {
 	return false;
       }
-    for (int i = 0; i < sizeof (int_a) / sizeof (int_a[0]); i++)
+    for (size_t i = 0; i < sizeof (int_a) / sizeof (int_a[0]); i++)
       {
 	if (int_a[i] != other_po1->int_a[i])
 	  {
@@ -106,7 +106,7 @@ namespace test_packing
 	  }
       }
 
-    for (int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
+    for (size_t i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
 	if (db_value_compare (&values[i], &other_po1->values[i]) != DB_EQ)
 	  {
@@ -146,7 +146,7 @@ namespace test_packing
     entry_size += serializator.get_packed_bigint_size (entry_size);
     entry_size += serializator.get_packed_int_vector_size (entry_size, sizeof (int_a) / sizeof (int_a[0]));
     entry_size += serializator.get_packed_int_vector_size (entry_size, (int) int_v.size ());
-    for (int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
+    for (size_t i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
 	entry_size += serializator.get_packed_db_value_size (values[i], entry_size);
       }
@@ -166,11 +166,11 @@ namespace test_packing
     i1 = std::rand ();
     sh1 = std::rand ();
     b1 = std::rand ();
-    for (int i = 0; i < sizeof (int_a) / sizeof (int_a[0]); i++)
+    for (size_t i = 0; i < sizeof (int_a) / sizeof (int_a[0]); i++)
       {
 	int_a[i] = std::rand ();
       }
-    for (int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
+    for (size_t i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
 	switch (std::rand () % 5)
 	  {

@@ -31,31 +31,35 @@
 #include <assert.h>
 
 #include "locator_sr.h"
-#include "error_manager.h"
-#include "xserver_interface.h"
-#include "list_file.h"
-#include "query_manager.h"
-#include "slotted_page.h"
-#include "btree_load.h"
-#include "heap_file.h"
-#include "lock_manager.h"
-#include "critical_section.h"
-#if defined(SERVER_MODE)
-#endif /* SERVER_MODE */
-#include "object_primitive.h"
+
 #include "boot_sr.h"
-#if defined(ENABLE_SYSTEMTAP)
-#include "probes.h"
-#endif /* ENABLE_SYSTEMTAP */
-#include "filter_pred_cache.h"
-#include "fetch.h"
-#include "query_executor.h"
-#include "xasl_cache.h"
+#include "btree_load.h"
+#include "critical_section.h"
+#include "dbtype.h"
 #if defined(DMALLOC)
 #include "dmalloc.h"
 #endif /* DMALLOC */
-#include "dbtype.h"
+#include "error_manager.h"
+#include "fetch.h"
+#include "filter_pred_cache.h"
+#include "heap_file.h"
+#include "list_file.h"
+#include "log_lsa.hpp"
+#include "lock_manager.h"
+#include "object_primitive.h"
+#include "object_representation_sr.h"
+#include "query_executor.h"
+#include "query_manager.h"
+#include "query_reevaluation.hpp"
+#if defined(ENABLE_SYSTEMTAP)
+#include "probes.h"
+#endif /* ENABLE_SYSTEMTAP */
+#include "slotted_page.h"
+#include "xasl_cache.h"
+#include "xasl_predicate.hpp"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#include "transaction_transient.hpp"
+#include "xserver_interface.h"
 
 /* TODO : remove */
 extern bool catcls_Enable;
@@ -1247,7 +1251,6 @@ error:
 int
 locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA * savep_lsa)
 {
-  MODIFIED_CLASS_ENTRY *t;
   int tran_index;
   LOG_TDES *tdes;		/* Transaction descriptor */
   int error_code = NO_ERROR;
@@ -1278,16 +1281,18 @@ locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA * sa
       return ER_FAILED;
     }
 
-  for (t = tdes->modified_class_list; t != NULL; t = t->m_next)
+  // *INDENT-OFF*
+  const auto lambda_func =[&error_code, &thread_p, &savep_lsa] (const tx_transient_class_entry & t, bool & stop)
     {
-      assert (t->m_classname != NULL);
-      error_code = locator_drop_class_name_entry (thread_p, t->m_classname, savep_lsa);
+      error_code = locator_drop_class_name_entry (thread_p, t.get_classname (), savep_lsa);
       if (error_code != NO_ERROR)
-	{
-	  assert (false);	/* is impossible */
-	  break;
-	}
-    }
+        {
+	  assert (false);
+	  stop = true;
+        }
+    };
+  // *INDENT-ON*
+  tdes->m_modified_classes.map (lambda_func);
   assert (locator_get_num_transient_classnames (tran_index) >= 0);
 
   /* defence for commit or rollback; include partial rollback */
@@ -1592,7 +1597,6 @@ locator_force_drop_class_name_entry (const void *name, void *ent, void *args)
 int
 locator_savepoint_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA * savep_lsa)
 {
-  MODIFIED_CLASS_ENTRY *t;
   int tran_index;
   LOG_TDES *tdes;		/* Transaction descriptor */
   int error_code = NO_ERROR;
@@ -1609,7 +1613,7 @@ locator_savepoint_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA
 
   tdes = LOG_FIND_TDES (tran_index);
 
-  if (tdes->modified_class_list == NULL)
+  if (tdes->m_modified_classes.empty ())
     {
       /* We may have new transient classnames or dropping classnames whose heap files have not yet been updated; Then,
        * Those classnames have not been added to the modifed list Refer locator_defence_drop_class_name_entry () */
@@ -1623,16 +1627,18 @@ locator_savepoint_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA
       return ER_FAILED;
     }
 
-  for (t = tdes->modified_class_list; t != NULL; t = t->m_next)
+  // *INDENT-OFF*
+  const auto lambda_func = [&error_code, &savep_lsa] (const tx_transient_class_entry & t, bool & stop)
     {
-      assert (t->m_classname != NULL);
-      error_code = locator_savepoint_class_name_entry (t->m_classname, savep_lsa);
+      error_code = locator_savepoint_class_name_entry (t.get_classname (), savep_lsa);
       if (error_code != NO_ERROR)
-	{
-	  assert (false);	/* is impossible */
-	  break;
-	}
-    }
+        {
+	  assert (false);
+	  stop = true;
+        }
+    };
+  // *INDENT-ON*
+  tdes->m_modified_classes.map (lambda_func);
 
   csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
@@ -13624,9 +13630,7 @@ locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP
       || mvcc_cond_reeval->data_filter.scan_pred != NULL)
     {
       /* evaluate conditions */
-      scan_reev.range_filter = &mvcc_cond_reeval->range_filter;
-      scan_reev.key_filter = &mvcc_cond_reeval->key_filter;
-      scan_reev.data_filter = &mvcc_cond_reeval->data_filter;
+      scan_reev.set_filters (*mvcc_cond_reeval);
       scan_reev.qualification = &mvcc_cond_reeval->qualification;
       ev_res = locator_mvcc_reevaluate_filters (thread_p, &scan_reev, oid_inst, recdesp);
     }

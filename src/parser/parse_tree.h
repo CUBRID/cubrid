@@ -1950,6 +1950,7 @@ struct pt_index_info
   bool reverse;			/* REVERSE */
   bool unique;			/* UNIQUE specified? */
   SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
+  int ib_threads;
 };
 
 /* CREATE USER INFO */
@@ -3249,7 +3250,7 @@ struct pt_json_table_node_info
 {
   PT_NODE *columns;
   PT_NODE *nested_paths;
-  const char *path;
+  char *path;
 };
 
 struct pt_json_table_info

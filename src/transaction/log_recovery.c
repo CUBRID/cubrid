@@ -32,16 +32,24 @@
 #include <time.h>
 #include <assert.h>
 
+#include "log_2pc.h"
+#include "log_append.hpp"
 #include "log_impl.h"
+#include "log_lsa.hpp"
 #include "log_manager.h"
+#include "log_record.hpp"
+#include "log_system_tran.hpp"
+#include "log_volids.hpp"
 #include "recovery.h"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "message_catalog.h"
+#include "msgcat_set_log.hpp"
 #include "slotted_page.h"
 #include "boot_sr.h"
 #include "locator_sr.h"
 #include "page_buffer.h"
+#include "porting_inline.hpp"
 #include "log_compress.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
@@ -117,6 +125,9 @@ static int log_rv_undoredo_partial_changes_recursive (THREAD_ENTRY * thread_p, O
 STATIC_INLINE PAGE_PTR log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVINDEX rcvindex)
   __attribute__ ((ALWAYS_INLINE));
 
+static void log_rv_simulate_runtime_worker (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+static void log_rv_end_simulation (THREAD_ENTRY * thread_p);
+
 /*
  * CRASH RECOVERY PROCESS
  */
@@ -165,20 +176,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
       thread_p = thread_get_thread_entry_info ();
     }
 
-  if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
-    {
-      /* Convert thread to a vacuum worker. */
-      vacuum_rv_convert_thread_to_vacuum (thread_p, tdes->trid, save_thread_type);
-
-      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-		     "Log undo (%lld, %d), rcvindex=%d for tdes: tdes->trid=%d.",
-		     (long long int) rcv_undo_lsa->pageid, (int) rcv_undo_lsa->offset, rcvindex, tdes->trid);
-    }
-  else
-    {
-      /* Convert thread to active transaction worker. */
-      LOG_SET_CURRENT_TRAN_INDEX (thread_p, tdes->tran_index);
-    }
+  log_rv_simulate_runtime_worker (thread_p, tdes);
 
   if (MVCCID_IS_VALID (rcv->mvcc_id))
     {
@@ -403,14 +401,7 @@ end:
     }
 
   /* Convert thread back to system transaction. */
-  if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
-    {
-      vacuum_restore_thread (thread_p, (thread_type) save_thread_type);
-    }
-  else
-    {
-      LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
-    }
+  log_rv_end_simulation (thread_p);
 }
 
 /*
@@ -783,6 +774,10 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   log_recovery_undo (thread_p);
   boot_reset_db_parm (thread_p);
 
+  // *INDENT-OFF*
+  log_system_tdes::rv_final ();
+  // *INDENT-ON*
+
   if (did_incom_recovery == true)
     {
       log_recovery_notpartof_volumes (thread_p);
@@ -878,12 +873,6 @@ log_rv_analysis_undo_redo (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
       return ER_FAILED;
     }
 
-  if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
-    {
-      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS, "Found undo_redo record. tdes->trid=%d.",
-		     tdes->trid);
-    }
-
   /* New tail and next to undo */
   LSA_COPY (&tdes->tail_lsa, log_lsa);
   LSA_COPY (&tdes->undo_nxlsa, &tdes->tail_lsa);
@@ -959,12 +948,6 @@ log_rv_analysis_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_ls
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_postpone");
       return ER_FAILED;
-    }
-
-  if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
-    {
-      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS, "Found postpone record. tdes->trid=%d.",
-		     tdes->trid);
     }
 
   /* if first postpone, then set address early */
@@ -1071,13 +1054,6 @@ log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
 
       /* Reset start of postpone transaction */
       LSA_COPY (&tdes->posp_nxlsa, &run_posp->ref_lsa);
-    }
-
-  if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
-    {
-      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-		     "Found postpone record. tdes->trid=%d, tdes->state=%d, ref_lsa=(%lld, %d).", tdes->trid,
-		     tdes->state, (long long int) run_posp->ref_lsa.pageid, (int) run_posp->ref_lsa.offset);
     }
 
   return NO_ERROR;
@@ -1240,12 +1216,6 @@ log_rv_analysis_sysop_start_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_sysop_start_postpone");
       return ER_FAILED;
-    }
-
-  if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
-    {
-      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-		     "Found commit_topope_with_postpone. tdes->trid=%d. ", tdes->trid);
     }
 
   LSA_COPY (&tdes->tail_lsa, log_lsa);
@@ -1491,11 +1461,6 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
       return ER_FAILED;
     }
 
-  if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
-    {
-      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS, "Found commit sysop. tdes->trid=%d.", tdes->trid);
-    }
-
   LSA_COPY (&tdes->tail_lsa, log_lsa);
   LSA_COPY (&tdes->undo_nxlsa, &tdes->tail_lsa);
   LSA_COPY (&tdes->tail_topresult_lsa, &tdes->tail_lsa);
@@ -1632,7 +1597,7 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
   // 3. is atomic system operation equal or more recent to system operation last parent?
   if (!LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa)	/* 1 */
       && LSA_GT (&tdes->rcv.atomic_sysop_start_lsa, &tdes->rcv.sysop_start_postpone_lsa)	/* 2 */
-      && LSA_GE (&tdes->rcv.atomic_sysop_start_lsa, &sysop_end->lastparent_lsa) /* 3 */ )
+      && LSA_GT (&tdes->rcv.atomic_sysop_start_lsa, &sysop_end->lastparent_lsa) /* 3 */ )
     {
       /* reset tdes->rcv.atomic_sysop_start_lsa */
       LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
@@ -1817,7 +1782,7 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
       LSA_COPY (&tdes->savept_lsa, &chkpt_one->savept_lsa);
       LSA_COPY (&tdes->tail_topresult_lsa, &chkpt_one->tail_topresult_lsa);
       LSA_COPY (&tdes->rcv.tran_start_postpone_lsa, &chkpt_one->start_postpone_lsa);
-      logtb_set_client_ids_all (&tdes->client, 0, NULL, chkpt_one->user_name, NULL, NULL, NULL, -1);
+      tdes->client.set_system_internal_with_user (chkpt_one->user_name);
       if (LOG_ISTRAN_2PC (tdes))
 	{
 	  *may_need_synch_checkpoint_2pc = true;
@@ -3684,7 +3649,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		      /*
 		       * Obtain the participant information
 		       */
-		      logtb_set_client_ids_all (&tdes->client, 0, NULL, start_2pc->user_name, NULL, NULL, NULL, -1);
+		      tdes->client.set_system_internal_with_user (start_2pc->user_name);
 		      tdes->gtrid = start_2pc->gtrid;
 
 		      num_particps = start_2pc->num_particps;
@@ -3705,7 +3670,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		      logpb_copy_from_log (thread_p, (char *) block_particps_ids, particp_id_length * num_particps,
 					   &log_lsa, log_pgptr);
 
-		      /* Initilize the coordinator information */
+		      /* Initialize the coordinator information */
 		      if (log_2pc_alloc_coord_info (tdes, num_particps, particp_id_length, block_particps_ids) == NULL)
 			{
 			  LSA_SET_NULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
@@ -3713,7 +3678,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			  break;
 			}
 
-		      /* Initilize the Acknowledgement vector to 0 since we do not know what acknowledgments have
+		      /* Initialize the acknowledgment vector to 0 since we do not know what acknowledgments have
 		       * already been received. we need to continue reading the log */
 
 		      i = sizeof (int) * tdes->coord->num_particps;
@@ -4169,7 +4134,7 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     {
       LSA_SET_NULL (&first_postpone_to_apply);
 
-      assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
+      assert (tdes->is_active_worker_transaction ());
       assert (!LSA_ISNULL (&tdes->rcv.tran_start_postpone_lsa));
 
       /*
@@ -4223,50 +4188,32 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 static void
 log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
 {
+  // *INDENT-OFF*
   int i;
-  int save_tran_index;
-  thread_type save_thread_type = thread_type::TT_NONE;
-  TRANID trid;
-  LOG_TDES *tdes = NULL;	/* Transaction descriptor */
-  VACUUM_WORKER *worker = NULL;
+  LOG_TDES *tdes_it = NULL;	/* Transaction descriptor */
 
   /* Finish committing transactions with unfinished postpone actions */
   thread_p = thread_p != NULL ? thread_p : thread_get_thread_entry_info ();
+  assert (thread_p->tran_index == LOG_SYSTEM_TRAN_INDEX);
 
-  save_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-  for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
+  auto finish_sys_postpone = [&] (LOG_TDES & tdes)
     {
-      tdes = LOG_FIND_TDES (i);
-      if (tdes == NULL || tdes->trid == NULL_TRANID)
+      log_rv_simulate_runtime_worker (thread_p, &tdes);
+      log_recovery_finish_postpone (thread_p, &tdes);
+      log_rv_end_simulation (thread_p);
+    };
+
+  for (i = 1; i < log_Gl.trantable.num_total_indices; i++)
+    {
+      tdes_it = LOG_FIND_TDES (i);
+      if (tdes_it == NULL || tdes_it->trid == NULL_TRANID)
 	{
 	  continue;
 	}
-      LOG_SET_CURRENT_TRAN_INDEX (thread_p, i);
-      log_recovery_finish_postpone (thread_p, tdes);
-      LOG_SET_CURRENT_TRAN_INDEX (thread_p, save_tran_index);
+      finish_sys_postpone (*tdes_it);
     }
-  for (trid = LOG_FIRST_VACUUM_WORKER_TRANID; trid <= LOG_VACUUM_MASTER_TRANID; trid++)
-    {
-      /* Convert thread to vacuum worker */
-      worker = vacuum_rv_get_worker_by_trid (thread_p, trid);
-      if (worker->state != VACUUM_WORKER_STATE_RECOVERY)
-	{
-	  /* Nothing to do */
-	  continue;
-	}
-      vacuum_rv_convert_thread_to_vacuum (thread_p, trid, save_thread_type);
-      tdes = worker->tdes;
-
-      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-		     "Finish postpone for tdes: tdes->trid=%d, tdes->state=%d, tdes->topops.last=%d.",
-		     tdes->trid, tdes->state, tdes->topops.last);
-
-      log_recovery_finish_postpone (thread_p, tdes);
-
-      /* Restore thread */
-      vacuum_restore_thread (thread_p, save_thread_type);
-    }
+  log_system_tdes::rv_map_all_tdes (finish_sys_postpone);
+  // *INDENT-ON*
 }
 
 /*
@@ -4278,51 +4225,30 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
 static void
 log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
 {
+  // *INDENT-OFF*
   int i;
-  int save_tran_index;
-  thread_type save_thread_type = thread_type::TT_NONE;
-  TRANID trid;
-  LOG_TDES *tdes = NULL;	/* Transaction descriptor */
-  VACUUM_WORKER *worker = NULL;
+  LOG_TDES *tdes_it = NULL;	/* Transaction descriptor */
 
   /* Finish committing transactions with unfinished postpone actions */
   thread_p = thread_p != NULL ? thread_p : thread_get_thread_entry_info ();
-
-  save_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-  for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
+  assert (thread_p->tran_index == LOG_SYSTEM_TRAN_INDEX);
+  auto abort_atomic_func = [&] (LOG_TDES & tdes)
     {
-      tdes = LOG_FIND_TDES (i);
-      if (tdes == NULL || tdes->trid == NULL_TRANID)
+      log_rv_simulate_runtime_worker (thread_p, &tdes);
+      log_recovery_abort_atomic_sysop (thread_p, &tdes);
+      log_rv_end_simulation (thread_p);
+    };
+  for (i = 1; i < log_Gl.trantable.num_total_indices; i++)
+    {
+      tdes_it = LOG_FIND_TDES (i);
+      if (tdes_it == NULL || tdes_it->trid == NULL_TRANID)
 	{
 	  continue;
 	}
-      LOG_SET_CURRENT_TRAN_INDEX (thread_p, i);
-      log_recovery_abort_atomic_sysop (thread_p, tdes);
-      LOG_SET_CURRENT_TRAN_INDEX (thread_p, save_tran_index);
+      abort_atomic_func (*tdes_it);
     }
-  for (trid = LOG_FIRST_VACUUM_WORKER_TRANID; trid <= LOG_VACUUM_MASTER_TRANID; trid++)
-    {
-      /* Convert thread to vacuum worker */
-      worker = vacuum_rv_get_worker_by_trid (thread_p, trid);
-      if (worker->state != VACUUM_WORKER_STATE_RECOVERY)
-	{
-	  /* Nothing to do */
-	  continue;
-	}
-      vacuum_rv_convert_thread_to_vacuum (thread_p, trid, save_thread_type);
-      tdes = worker->tdes;
-
-      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-		     "Finish postpone for tdes: tdes->trid=%d, tdes->state=%d, tdes->topops.last=%d.",
-		     tdes->trid, tdes->state, tdes->topops.last);
-
-      log_recovery_abort_atomic_sysop (thread_p, tdes);
-      worker->state = VACUUM_WORKER_STATE_RECOVERY;
-
-      /* Restore thread */
-      vacuum_restore_thread (thread_p, save_thread_type);
-    }
+  log_system_tdes::rv_map_all_tdes (abort_atomic_func);
+  // *INDENT-ON*
 }
 
 /*
@@ -4336,6 +4262,11 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
 static void
 log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  LOG_PAGE *log_pgptr = NULL;
+  LOG_RECORD_HEADER *log_rec;
+  LOG_LSA prev_atomic_sysop_start_lsa;
+
   if (tdes == NULL || tdes->trid == NULL_TRANID)
     {
       /* Nothing to do */
@@ -4397,11 +4328,22 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 		    LSA_AS_ARGS (&tdes->rcv.atomic_sysop_start_lsa));
     }
 
+  /* Get transaction lsa that precede atomic_sysop_start_lsa. */
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+  if (logpb_fetch_page (thread_p, &tdes->rcv.atomic_sysop_start_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_abort_atomic_sysop");
+      return;
+    }
+  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &tdes->rcv.atomic_sysop_start_lsa);
+  LSA_COPY (&prev_atomic_sysop_start_lsa, &log_rec->prev_tranlsa);
+
   /* rollback. simulate a new system op */
   log_sysop_start (thread_p);
 
-  /* hack last parent to stop at tdes->rcv.atomic_sysop_start_lsa */
-  tdes->topops.stack[tdes->topops.last].lastparent_lsa = tdes->rcv.atomic_sysop_start_lsa;
+  /* hack last parent to stop at transaction lsa that precede atomic_sysop_start_lsa. */
+  LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa, &prev_atomic_sysop_start_lsa);
 
   /* rollback */
   log_sysop_abort (thread_p);
@@ -4421,7 +4363,7 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 static void
 log_recovery_undo (THREAD_ENTRY * thread_p)
 {
-  LOG_LSA *lsa_ptr;		/* LSA of log record to undo */
+  LOG_LSA max_undo_lsa;		/* LSA of log record to undo */
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where LSA is located */
   LOG_LSA log_lsa;
@@ -4442,7 +4384,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   int data_header_size = 0;
   LOG_ZIP *undo_unzip_ptr = NULL;
   bool is_mvcc_op;
-  VACUUM_WORKER *worker = NULL;
   volatile TRANID tran_id;
   volatile LOG_RECTYPE log_rtype;
 
@@ -4454,35 +4395,30 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
    * table.
    */
 
-  for (tran_index = 0; tran_index < log_Gl.trantable.num_total_indices; tran_index++)
+  for (tran_index = 1; tran_index < log_Gl.trantable.num_total_indices; tran_index++)
     {
-      if (tran_index != LOG_SYSTEM_TRAN_INDEX)
+      if ((tdes = LOG_FIND_TDES (tran_index)) != NULL && tdes->trid != NULL_TRANID
+	  && (tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED || tdes->state == TRAN_UNACTIVE_ABORTED)
+	  && LSA_ISNULL (&tdes->undo_nxlsa))
 	{
-	  if ((tdes = LOG_FIND_TDES (tran_index)) != NULL && tdes->trid != NULL_TRANID
-	      && (tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED || tdes->state == TRAN_UNACTIVE_ABORTED)
-	      && LSA_ISNULL (&tdes->undo_nxlsa))
-	    {
-	      (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
-	      logtb_free_tran_index (thread_p, tran_index);
-	    }
+	  (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
+	  logtb_free_tran_index (thread_p, tran_index);
 	}
     }
-  for (tran_id = LOG_FIRST_VACUUM_WORKER_TRANID; tran_id <= LOG_LAST_VACUUM_WORKER_TRANID; tran_id++)
+  // *INDENT-OFF*
+  auto delete_func = [] (const LOG_TDES & tdes)
     {
-      worker = vacuum_rv_get_worker_by_trid (thread_p, tran_id);
-      if (worker->state == VACUUM_WORKER_STATE_RECOVERY && LSA_ISNULL (&worker->tdes->undo_nxlsa))
-	{
-	  /* Nothing to recover for this worker */
-	  vacuum_rv_finish_worker_recovery (thread_p, tran_id);
-	}
-    }
+      return LSA_ISNULL (&tdes.undo_nxlsa);
+    };
+  log_system_tdes::rv_delete_all_tdes_if (delete_func);
+  // *INDENT-ON*
 
   /*
    * GO BACKWARDS, undoing records
    */
 
   /* Find the largest LSA to undo */
-  lsa_ptr = log_find_unilaterally_largest_undo_lsa (thread_p);
+  log_find_unilaterally_largest_undo_lsa (thread_p, max_undo_lsa);
 
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
@@ -4493,10 +4429,10 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
       return;
     }
 
-  while (lsa_ptr != NULL && !LSA_ISNULL (lsa_ptr))
+  while (!LSA_ISNULL (&max_undo_lsa))
     {
       /* Fetch the page where the LSA record to undo is located */
-      LSA_COPY (&log_lsa, lsa_ptr);
+      LSA_COPY (&log_lsa, &max_undo_lsa);
       if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
 	{
 	  log_zip_free (undo_unzip_ptr);
@@ -4506,10 +4442,10 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	}
 
       /* Check all log records in this phase */
-      while (lsa_ptr != NULL && lsa_ptr->pageid == log_lsa.pageid)
+      while (max_undo_lsa.pageid == log_lsa.pageid)
 	{
 	  /* Find the log record */
-	  log_lsa.offset = lsa_ptr->offset;
+	  log_lsa.offset = max_undo_lsa.offset;
 	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
 
 	  tran_id = log_rec->trid;
@@ -4517,19 +4453,15 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 	  LSA_COPY (&prev_tranlsa, &log_rec->prev_tranlsa);
 
-	  if (LOG_IS_VACUUM_THREAD_TRANID (tran_id))
+	  if (logtb_is_system_worker_tranid (tran_id))
 	    {
-	      worker = vacuum_rv_get_worker_by_trid (thread_p, tran_id);
-	      if (worker->state == VACUUM_WORKER_STATE_RECOVERY)
-		{
-		  tdes = worker->tdes;
-		}
-	      else
-		{
-		  /* State is wrong */
-		  assert (false);
-		  tdes = NULL;
-		}
+              // *INDENT-OFF*
+              tdes = log_system_tdes::rv_get_tdes (tran_id);
+              if (tdes == NULL)
+                {
+                  assert (false);
+                }
+              // *INDENT-ON*
 	    }
 	  else
 	    {
@@ -4541,7 +4473,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  er_log_debug (ARG_FILE_LINE, "log_recovery_undo: SYSTEM ERROR for log located at %lld|%d\n",
 				(long long int) log_lsa.pageid, log_lsa.offset);
 #endif /* CUBRID_DEBUG */
-		  logtb_free_tran_index_with_undo_lsa (thread_p, lsa_ptr);
+		  logtb_free_tran_index_with_undo_lsa (thread_p, &max_undo_lsa);
 		}
 	      else
 		{
@@ -4553,7 +4485,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		      er_log_debug (ARG_FILE_LINE, "log_recovery_undo: SYSTEM ERROR for log located at %lld|%d\n",
 				    (long long int) log_lsa.pageid, log_lsa.offset);
 #endif /* CUBRID_DEBUG */
-		      logtb_free_tran_index_with_undo_lsa (thread_p, lsa_ptr);
+		      logtb_free_tran_index_with_undo_lsa (thread_p, &max_undo_lsa);
 		    }
 		}
 	    }
@@ -4806,9 +4738,11 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  /* Clear MVCCID */
 		  tdes->mvccinfo.id = MVCCID_NULL;
 
-		  if (LOG_IS_VACUUM_THREAD_TRANID (tran_id))
+		  if (logtb_is_system_worker_tranid (tran_id))
 		    {
-		      vacuum_rv_finish_worker_recovery (thread_p, tran_id);
+                      // *INDENT-OFF*
+                      log_system_tdes::rv_delete_tdes (tran_id);
+                      // *INDENT-ON*
 		    }
 		  else
 		    {
@@ -4836,9 +4770,11 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  /* Clear MVCCID */
 		  tdes->mvccinfo.id = MVCCID_NULL;
 
-		  if (LOG_IS_VACUUM_THREAD_TRANID (tran_id))
+		  if (logtb_is_system_worker_tranid (tran_id))
 		    {
-		      vacuum_rv_finish_worker_recovery (thread_p, tran_id);
+		      // *INDENT-OFF*
+                      log_system_tdes::rv_delete_tdes (tran_id);
+                      // *INDENT-ON*
 		    }
 		  else
 		    {
@@ -4858,9 +4794,11 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		      /* Clear MVCCID */
 		      tdes->mvccinfo.id = MVCCID_NULL;
 
-		      if (LOG_IS_VACUUM_THREAD_TRANID (tran_id))
+		      if (logtb_is_system_worker_tranid (tran_id))
 			{
-			  vacuum_rv_finish_worker_recovery (thread_p, tran_id);
+                          // *INDENT-OFF*
+                          log_system_tdes::rv_delete_tdes (tran_id);
+                          // *INDENT-ON*
 			}
 		      else
 			{
@@ -4874,20 +4812,12 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		    {
 		      /* Update transaction next undo LSA */
 		      LSA_COPY (&tdes->undo_nxlsa, &prev_tranlsa);
-
-		      if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
-			{
-			  vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-					 "Update undo_nxlsa=(%lld, %d) for tdes->trid=%d.",
-					 (long long int) tdes->undo_nxlsa.pageid, (int) tdes->undo_nxlsa.offset,
-					 tdes->trid);
-			}
 		    }
 		}
 	    }
 
 	  /* Find the next log record to undo */
-	  lsa_ptr = log_find_unilaterally_largest_undo_lsa (thread_p);
+	  log_find_unilaterally_largest_undo_lsa (thread_p, max_undo_lsa);
 	}
     }
 
@@ -6386,4 +6316,36 @@ log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVIND
     }
 
   return page;
+}
+
+static void
+log_rv_simulate_runtime_worker (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  assert (thread_p != NULL);
+  if (tdes->is_active_worker_transaction ())
+    {
+      thread_p->tran_index = tdes->tran_index;
+#if defined (SA_MODE)
+      LOG_SET_CURRENT_TRAN_INDEX (thread_p, tdes->tran_index);
+#endif // SA_MODE
+    }
+  else if (tdes->is_system_worker_transaction ())
+    {
+      log_system_tdes::rv_simulate_system_tdes (tdes->trid);
+    }
+  else
+    {
+      assert (false);
+    }
+}
+
+static void
+log_rv_end_simulation (THREAD_ENTRY * thread_p)
+{
+  assert (thread_p != NULL);
+  thread_p->reset_system_tdes ();
+  thread_p->tran_index = LOG_SYSTEM_TRAN_INDEX;
+#if defined (SA_MODE)
+  LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
+#endif // SA_MODE
 }

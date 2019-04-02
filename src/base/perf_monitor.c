@@ -2863,7 +2863,7 @@ perfmon_stat_dump_in_buffer_flushed_block_volumes_array_stat (const UINT64 * sta
 static void
 perfmon_stat_dump_in_file_flushed_block_volumes_array_stat (FILE * stream, const UINT64 * stats_ptr)
 {
-  int flushed_block_volumes;
+  unsigned int flushed_block_volumes;
   UINT64 counter = 0;
   char buffer[15];
 
@@ -2978,6 +2978,14 @@ perfmon_initialize (int num_trans)
   pstat_Global.n_watchers = 0;
   pstat_Global.initialized = false;
   pstat_Global.activation_flag = prm_get_integer_value (PRM_ID_EXTENDED_STATISTICS_ACTIVATION);
+
+#if defined (SERVER_MODE)
+  if (prm_get_bool_value (PRM_ID_STATS_ON))
+    {
+      // always watching
+      pstat_Global.n_watchers++;
+    }
+#endif
 
   for (idx = 0; idx < PSTAT_COUNT; idx++)
     {
@@ -4211,4 +4219,29 @@ perfmon_peek_thread_daemon_stats (UINT64 * stats)
   statsp += perfmon_per_daemon_stat_count ();
 }
 #endif // SERVER_MODE
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+void
+perfmon_er_log_current_stats (THREAD_ENTRY * thread_p)
+{
+  UINT64 *stats = perfmon_allocate_values ();
+  if (stats == NULL)
+    {
+      assert (false);
+      return;
+    }
+
+  xperfmon_server_copy_global_stats (stats);
+
+  const size_t STATS_DUMP_MAX_SIZE = ONE_M;     // a mega-byte
+  char *strbuf = new char[STATS_DUMP_MAX_SIZE];
+  strbuf[0] = '\0';
+
+  perfmon_server_dump_stats_to_buffer (stats, strbuf, STATS_DUMP_MAX_SIZE, NULL);
+
+  _er_log_debug (ARG_FILE_LINE, "%s\n", strbuf);
+
+  delete strbuf;
+}
+#endif // SERVER_MODE || SA_MODE
 // *INDENT-ON*

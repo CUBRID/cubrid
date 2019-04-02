@@ -52,10 +52,12 @@
 #include "connection_defs.h"
 #include "log_writer.h"
 #include "log_applier.h"
+#include "log_lsa.hpp"
 #include "schema_manager.h"
 #include "locator_cl.h"
 #include "dynamic_array.h"
 #include "util_func.h"
+#include "xasl.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif

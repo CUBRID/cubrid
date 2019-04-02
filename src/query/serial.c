@@ -32,11 +32,14 @@
 #include "memory_hash.h"
 #include "storage_common.h"
 #include "heap_file.h"
+#include "log_append.hpp"
+#include "numeric_opfunc.h"
 #include "object_primitive.h"
 #include "server_interface.h"
 #include "xserver_interface.h"
 #include "slotted_page.h"
 #include "dbtype.h"
+#include "xasl_cache.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)

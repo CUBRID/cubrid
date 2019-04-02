@@ -46,6 +46,8 @@
 #include "memory_alloc.h"
 #include "memory_hash.h"
 #include "message_catalog.h"
+#include "mvcc.h"
+#include "object_representation_sr.h"
 #include "oid.h"
 #include "page_buffer.h"
 #include "perf_monitor.h"
@@ -64,6 +66,7 @@
 #include "tsc_timer.h"
 #include "wait_for_graph.h"
 #include "xserver_interface.h"
+#include "xasl.h"
 
 #include <array>
 
@@ -1851,9 +1854,9 @@ lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr)
 static void
 lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 {
-  char *client_prog_name;	/* Client program name for transaction */
-  char *client_user_name;	/* Client user name for transaction */
-  char *client_host_name;	/* Client host for transaction */
+  const char *client_prog_name;	/* Client program name for transaction */
+  const char *client_user_name;	/* Client user name for transaction */
+  const char *client_host_name;	/* Client host for transaction */
   int client_pid;		/* Client process id for transaction */
   char *waitfor_client_users_default = (char *) "";
   char *waitfor_client_users;	/* Waitfor users */
@@ -2123,11 +2126,10 @@ lock_set_tran_abort_reason (int tran_index, TRAN_ABORT_REASON abort_reason)
 static void
 lock_set_error_for_aborted (LK_ENTRY * entry_ptr)
 {
-  char *client_prog_name;	/* Client user name for transaction */
-  char *client_user_name;	/* Client user name for transaction */
-  char *client_host_name;	/* Client host for transaction */
+  const char *client_prog_name;	/* Client user name for transaction */
+  const char *client_user_name;	/* Client user name for transaction */
+  const char *client_host_name;	/* Client host for transaction */
   int client_pid;		/* Client process id for transaction */
-  LOG_TDES *tdes;
 
   (void) logtb_find_client_name_host_pid (entry_ptr->tran_index, &client_prog_name, &client_user_name,
 					  &client_host_name, &client_pid);
@@ -2160,9 +2162,9 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
 
   if (lk_Gl.verbose_mode)
     {
-      char *__client_prog_name;	/* Client program name for transaction */
-      char *__client_user_name;	/* Client user name for transaction */
-      char *__client_host_name;	/* Client host for transaction */
+      const char *__client_prog_name;	/* Client program name for transaction */
+      const char *__client_user_name;	/* Client user name for transaction */
+      const char *__client_host_name;	/* Client host for transaction */
       int __client_pid;		/* Client process id for transaction */
 
       fflush (stderr);
@@ -2339,9 +2341,9 @@ lock_resume (LK_ENTRY * entry_ptr, int state)
   /* The caller has identified the fact that lockwait is not NULL. that is, the thread is suspended. */
   if (lk_Gl.verbose_mode == true)
     {
-      char *__client_prog_name;	/* Client program name for transaction */
-      char *__client_user_name;	/* Client user name for transaction */
-      char *__client_host_name;	/* Client host for transaction */
+      const char *__client_prog_name;	/* Client program name for transaction */
+      const char *__client_user_name;	/* Client user name for transaction */
+      const char *__client_host_name;	/* Client host for transaction */
       int __client_pid;		/* Client process id for transaction */
 
       fflush (stderr);
@@ -4851,7 +4853,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
   char *ptr;
   int num_tran_in_cycle;
   int unit_size = LOG_USERNAME_MAX + MAXHOSTNAMELEN + PATH_MAX + 10;
-  char *client_prog_name, *client_user_name, *client_host_name;
+  const char *client_prog_name, *client_user_name, *client_host_name;
   int client_pid;
   int next_node;
   int *tran_index_in_cycle = NULL;
@@ -8671,9 +8673,9 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
   LF_HASH_TABLE_ITERATOR iterator;
 
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
-  char *client_prog_name;	/* Client program name for tran */
-  char *client_user_name;	/* Client user name for tran */
-  char *client_host_name;	/* Client host for tran */
+  const char *client_prog_name;	/* Client program name for tran */
+  const char *client_user_name;	/* Client user name for tran */
+  const char *client_host_name;	/* Client host for tran */
   int client_pid;		/* Client process id for tran */
   TRAN_ISOLATION isolation;	/* Isolation for client tran */
   TRAN_STATE state;

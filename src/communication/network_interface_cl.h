@@ -34,23 +34,29 @@
 #include <stdio.h>
 
 #include "dbtype_def.h"
+#include "elo.h"
 #include "replication.h"
 #include "server_interface.h"
 #include "perf_monitor.h"
 #include "storage_common.h"
 #include "object_domain.h"
 #include "query_list.h"
+#include "query_monitoring.hpp"
 #include "statistics.h"
 #include "connection_defs.h"
 #include "log_writer.h"
 #include "language_support.h"
-#include "log_impl.h"
+#include "log_common_impl.h"
 #include "parse_tree.h"
-#include "xasl.h"
 #include "timezone_lib_common.h"
 
-// forward definitions
+// forward declarations
+#if defined (SA_MODE)
+struct bo_restart_arg;
+#endif
 struct compile_context;
+struct xasl_node_header;
+struct xasl_stream;
 
 /* killtran supporting structures and functions */
 typedef struct one_tran_info ONE_TRAN_INFO;
@@ -187,7 +193,9 @@ extern int boot_find_number_temp_volumes (void);
 extern VOLID boot_find_last_permanent (void);
 extern int boot_find_last_temp (void);
 extern int boot_delete (const char *db_name, bool force_delete);
-extern int boot_restart_from_backup (int print_restart, const char *db_name, BO_RESTART_ARG * r_args);
+#if defined (SA_MODE)
+extern int boot_restart_from_backup (int print_restart, const char *db_name, bo_restart_arg * r_args);
+#endif // SA_MODE
 extern bool boot_shutdown_server (ER_FINAL_CODE iserfinal);
 extern int boot_soft_rename (const char *old_db_name, const char *new_db_name, const char *new_db_path,
 			     const char *new_log_path, const char *new_db_server_host, const char *new_volext_path,
@@ -220,7 +228,7 @@ extern BTREE_SEARCH btree_find_multi_uniques (OID * class_oid, int pruning_type,
 					      int count, SCAN_OPERATION_TYPE op_type, OID ** oids, int *oids_count);
 extern int btree_class_test_unique (char *buf, int buf_size);
 extern int qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid, char *buffer, int *buffer_size);
-extern int qmgr_prepare_query (struct compile_context *context, XASL_STREAM * stream);
+extern int qmgr_prepare_query (struct compile_context *context, xasl_stream * stream);
 
 extern QFILE_LIST_ID *qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt,
 					  const DB_VALUE * dbvals, QUERY_FLAG flag, CACHE_TIME * clt_cache_time,
@@ -386,7 +394,7 @@ extern int csession_reset_cur_insert_id (void);
 extern int csession_create_prepared_statement (const char *name, const char *alias_print, char *stmt_info,
 					       int info_length);
 extern int csession_get_prepared_statement (const char *name, XASL_ID * xasl_id, char **stmt_info,
-					    XASL_NODE_HEADER * xasl_header_p);
+					    xasl_node_header * xasl_header_p);
 
 extern int csession_delete_prepared_statement (const char *name);
 

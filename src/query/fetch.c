@@ -46,20 +46,22 @@
 #include "string_opfunc.h"
 #include "server_interface.h"
 #include "query_opfunc.h"
+#include "regu_var.hpp"
 #include "tz_support.h"
 #include "db_date.h"
 #include "xasl.h"
+#include "xasl_predicate.hpp"
 #include "query_executor.h"
 #include "thread_entry.hpp"
 
 #include "dbtype.h"
 
-static int fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd, OID * obj_oid,
+static int fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * obj_oid,
 			     QFILE_TUPLE tpl, DB_VALUE ** peek_dbval);
 static int fetch_peek_dbval_pos (REGU_VARIABLE * regu_var, QFILE_TUPLE tpl, int pos, DB_VALUE ** peek_dbval,
 				 QFILE_TUPLE * next_tpl);
 static int fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
-							  VAL_DESCR * vd, OID * obj_oid, QFILE_TUPLE tpl,
+							  val_descr * vd, OID * obj_oid, QFILE_TUPLE tpl,
 							  DB_VALUE ** min, DB_VALUE ** max);
 
 static bool is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var);
@@ -77,7 +79,7 @@ static int get_date_weekday (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VAL
  *   peek_dbval(out): Set to the value resulting from the fetch operation
  */
 static int
-fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd, OID * obj_oid, QFILE_TUPLE tpl,
+fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * obj_oid, QFILE_TUPLE tpl,
 		  DB_VALUE ** peek_dbval)
 {
   ARITH_TYPE *arithptr;
@@ -3755,7 +3757,7 @@ error:
  *
  */
 int
-fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd, OID * class_oid, OID * obj_oid,
+fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * class_oid, OID * obj_oid,
 		  QFILE_TUPLE tpl, DB_VALUE ** peek_dbval)
 {
   int length;
@@ -3969,7 +3971,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	    case F_JSON_UNQUOTE:
 	    case F_JSON_VALID:
 	      {
-		REGU_VARIABLE_LIST operand;
+		regu_variable_list_node *operand;
 
 		operand = funcp->operand;
 
@@ -4024,7 +4026,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	    case F_ELT:
 	      /* should sync with qdata_elt () */
 	      {
-		REGU_VARIABLE_LIST operand;
+		regu_variable_list_node *operand;
 		DB_VALUE *index = NULL;
 		DB_TYPE index_type;
 		DB_BIGINT idx = 0;
@@ -4143,6 +4145,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	case F_TABLE_SEQUENCE:
 	case F_GENERIC:
 	case F_CLASS_OF:
+	case F_BENCHMARK:
 	  /* is not constant */
 	  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
 	  assert (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
@@ -4323,7 +4326,7 @@ fetch_peek_dbval_pos (REGU_VARIABLE * regu_var, QFILE_TUPLE tpl, int pos, DB_VAL
  *   max(out): the upper bound of width_bucket
  */
 static int
-fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd,
+fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd,
 					       OID * obj_oid, QFILE_TUPLE tpl, DB_VALUE ** min, DB_VALUE ** max)
 {
   int er_status = NO_ERROR;
@@ -4350,7 +4353,7 @@ fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VAR
       goto error;
     }
 
-  pred = &pred_expr->pe.pred;
+  pred = &pred_expr->pe.m_pred;
   if (pred->lhs == NULL || pred->lhs->type != T_EVAL_TERM)
     {
       er_status = ER_QPROC_INVALID_XASLNODE;
@@ -4359,7 +4362,7 @@ fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VAR
       goto error;
     }
 
-  eval_term1 = &pred->lhs->pe.eval_term;
+  eval_term1 = &pred->lhs->pe.m_eval_term;
   if (eval_term1->et_type != T_COMP_EVAL_TERM)
     {
       er_status = ER_QPROC_INVALID_XASLNODE;
@@ -4381,7 +4384,7 @@ fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VAR
       goto error;
     }
 
-  eval_term2 = &pred->rhs->pe.eval_term;
+  eval_term2 = &pred->rhs->pe.m_eval_term;
   if (eval_term2->et_type != T_COMP_EVAL_TERM)
     {
       er_status = ER_QPROC_INVALID_XASLNODE;
@@ -4437,7 +4440,7 @@ error:
  * see fetch_peek_dbval().
  */
 int
-fetch_copy_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd, OID * class_oid, OID * obj_oid,
+fetch_copy_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * class_oid, OID * obj_oid,
 		  QFILE_TUPLE tpl, DB_VALUE * dbval)
 {
   int result;
@@ -4497,10 +4500,10 @@ fetch_copy_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
  *   peek(int):
  */
 int
-fetch_val_list (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST regu_list, VAL_DESCR * vd, OID * class_oid, OID * obj_oid,
-		QFILE_TUPLE tpl, int peek)
+fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, val_descr * vd, OID * class_oid,
+		OID * obj_oid, QFILE_TUPLE tpl, int peek)
 {
-  REGU_VARIABLE_LIST regup;
+  regu_variable_list_node *regup;
   QFILE_TUPLE next_tpl;
   int rc, pos, next_pos;
   DB_VALUE *tmp;
@@ -4576,9 +4579,9 @@ fetch_val_list (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST regu_list, VAL_DESCR
  *   regu_list(in/out): Regulator Variable list
  */
 void
-fetch_init_val_list (REGU_VARIABLE_LIST regu_list)
+fetch_init_val_list (regu_variable_list_node * regu_list)
 {
-  REGU_VARIABLE_LIST regu_p;
+  regu_variable_list_node *regu_p;
   REGU_VARIABLE *regu_var;
 
   for (regu_p = regu_list; regu_p; regu_p = regu_p->next)
@@ -4823,3 +4826,25 @@ error_exit:
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
   return error_status;
 }
+
+// *INDENT-OFF*
+// C++ implementation stuff
+void
+fetch_force_not_const_recursive (REGU_VARIABLE & reguvar)
+{
+  auto map_func = [&] (regu_variable_node &regu, bool & stop)
+    {
+    switch (regu.type)
+      {
+      case TYPE_INARITH:
+      case TYPE_OUTARITH:
+      case TYPE_FUNC:
+        REGU_VARIABLE_SET_FLAG (&regu, REGU_VARIABLE_FETCH_NOT_CONST);
+        break;
+      default:
+        break;
+      }
+    };
+  reguvar.map_regu (map_func);
+}
+// *INDENT-ON*

@@ -149,7 +149,7 @@ static AREA *Objlist_area = NULL;
  * checking on server, mark fetched object with the snapshot version and
  * don't re-fetch until snapshot version is changed.
  */
-static int ws_MVCC_snapshot_version = 0;
+static unsigned int ws_MVCC_snapshot_version = 0;
 
 /*
  * ws_area_init
@@ -4972,7 +4972,7 @@ ws_set_repl_error_into_error_link (LC_COPYAREA_ONEOBJ * obj, char *content_ptr)
  *
  * return : Current snapshot version.
  */
-int
+unsigned int
 ws_get_mvcc_snapshot_version (void)
 {
   return ws_MVCC_snapshot_version;

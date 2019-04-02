@@ -1272,7 +1272,7 @@ $ LOADDB
 1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
 1204 Json KEY "%1$s" is duplicate
 1205 Invalid type %1$s. Expecting JSON document compatible data type (STRING or JSON).
-1206 Reserved error for JSON.
+1206 Json PATH "%1$s" does not address a cell in a Json ARRAY.
 1207 Reserved error for JSON.
 1208 Reserved error for JSON.
 1209 Reserved error for JSON.
@@ -1309,8 +1309,9 @@ $ LOADDB
 1240 Online index is not allowed on classes that are part of a hierarchy chain.
 1241 XASL tree needs recompile.
 1242 Cannot create partition on a class that is part of a hierarchy chain.
+1243 Index loading was aborted after an error.
 
-1243 마지막 에러
+1244 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1467,6 +1468,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 126 테이블과 뷰 커맨트의 최대 길이는 %1$d 바이트입니다.
 127 커맨트의 최대 길이는 %1$d 바이트입니다.
 128 Invalid number of arguments for JSON_OBJECTAGG
+129 PARALLEL count argument must be between %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다

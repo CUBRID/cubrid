@@ -131,7 +131,7 @@ record_descriptor::get (cubthread::entry *thread_p, PAGE_PTR page, PGSLOTID slot
 void
 record_descriptor::resize (cubthread::entry *thread_p, std::size_t required_size, bool copy_data)
 {
-  if (required_size <= m_recdes.area_size)
+  if (m_recdes.area_size > 0 && required_size <= (size_t) m_recdes.area_size)
     {
       // resize not required
       return;

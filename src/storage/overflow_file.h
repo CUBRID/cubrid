@@ -28,11 +28,12 @@
 #ident "$Id$"
 
 #include "config.h"
-
-#include "storage_common.h"
-#include "slotted_page.h"
+#include "file_manager.h"
+#include "mvcc.h"
 #include "page_buffer.h"
 #include "recovery.h"
+#include "slotted_page.h"
+#include "storage_common.h"
 
 extern int overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid, RECDES * recdes,
 			    FILE_TYPE file_type);
