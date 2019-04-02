@@ -43,9 +43,10 @@ typedef struct mvcc_trans_status MVCC_TRANS_STATUS;
 struct mvcc_trans_status
 {
   using version_type = unsigned int;
+  using bit_area_unit_type = std::uint64_t;
 
   /* bit area to store MVCCIDS status - size MVCC_BITAREA_MAXIMUM_ELEMENTS */
-  std::uint64_t *bit_area;
+  bit_area_unit_type *bit_area;
   /* first MVCCID whose status is stored in bit area */
   MVCCID bit_area_start_mvccid;
   /* the area length expressed in bits */
@@ -62,6 +63,10 @@ struct mvcc_trans_status
   MVCCID lowest_active_mvccid;
 
   mvcc_trans_status ();
+  ~mvcc_trans_status ();
+
+  void initialize ();
+  void finalize ();
 };
 
 typedef struct mvcctable MVCCTABLE;
@@ -79,14 +84,15 @@ struct mvcctable
   volatile int trans_status_history_position;
 
   /* protect against getting new MVCCIDs concurrently */
-#if defined(HAVE_ATOMIC_BUILTINS)
-  pthread_mutex_t new_mvccid_lock;
-#endif
-
+  std::mutex new_mvccid_lock;
   /* protect against current transaction status modifications */
-  pthread_mutex_t active_trans_mutex;
+  std::mutex active_trans_mutex;
 
   mvcctable ();
+  ~mvcctable ();
+
+  void initialize ();
+  void finalize ();
 };
 
 #endif // !_MVCC_TABLE_H_

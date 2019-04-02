@@ -136,8 +136,6 @@ static void logtb_dump_top_operations (FILE * out_fp, LOG_TOPOPS_STACK * topops_
 static void logtb_dump_tdes (FILE * out_fp, LOG_TDES * tdes);
 static void logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CREDENTIAL * client_credential,
 			    int wait_msecs, TRAN_ISOLATION isolation);
-static int logtb_initialize_mvcctable (void);
-static void logtb_finalize_mvcctable (THREAD_ENTRY * thread_p);
 static void logtb_get_lowest_active_mvccid (UINT64 * bit_area, int bit_area_length, MVCCID bit_area_start_mvccid,
 					    MVCCID * long_tran_mvccids, unsigned int long_tran_mvccids_length,
 					    MVCCID * lowest_active_mvccid);
@@ -507,11 +505,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
 
-  error_code = logtb_initialize_mvcctable ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
+  log_Gl.mvcc_table.initialize ();
 
   /* Initialize the lock manager and the page buffer pool */
   error_code = lock_initialize ();
@@ -610,7 +604,7 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
   LOG_TDES *tdes;		/* Transaction descriptor */
   int i;
 
-  logtb_finalize_mvcctable (thread_p);
+  log_Gl.mvcc_table.finalize ();
   lock_finalize ();
   pgbuf_finalize ();
   file_manager_final ();
@@ -1047,225 +1041,6 @@ logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, TRAN_STATE stat
     }
 
   return tran_index;
-}
-
-/*
- * logtb_initialize_mvcctable - initialize MVCC table
- *
- * return: error code
- */
-static int
-logtb_initialize_mvcctable (void)
-{
-  MVCCTABLE *mvcc_table = &log_Gl.mvcc_table;
-  int error_code = NO_ERROR;
-  int size, i, size2;
-  MVCC_TRANS_STATUS *current_trans_status, *trans_status_history;
-
-  current_trans_status = &mvcc_table->current_trans_status;
-  current_trans_status->bit_area = NULL;
-  current_trans_status->long_tran_mvccids = NULL;
-
-  mvcc_table->transaction_lowest_active_mvccids = NULL;
-  mvcc_table->trans_status_history = NULL;
-
-  size = MVCC_BITAREA_ELEMENTS_TO_BYTES (MVCC_BITAREA_MAXIMUM_ELEMENTS);
-  current_trans_status->bit_area = (UINT64 *) malloc (size);
-  if (current_trans_status->bit_area == NULL)
-    {
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-      goto exit_on_error;
-    }
-  memset ((void *) current_trans_status->bit_area, MVCC_BITAREA_BIT_ACTIVE, size);
-  current_trans_status->bit_area_start_mvccid = MVCCID_FIRST;
-  current_trans_status->bit_area_length = 0;
-  size = NUM_TOTAL_TRAN_INDICES * sizeof (MVCCID);
-  current_trans_status->long_tran_mvccids = (MVCCID *) malloc (size);
-  if (current_trans_status->long_tran_mvccids == NULL)
-    {
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-      goto exit_on_error;
-    }
-  current_trans_status->long_tran_mvccids_length = 0;
-  current_trans_status->version = 0;
-  current_trans_status->lowest_active_mvccid = MVCCID_FIRST;
-
-  mvcc_table->transaction_lowest_active_mvccids = (MVCCID *) malloc (size);
-  if (mvcc_table->transaction_lowest_active_mvccids == NULL)
-    {
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-      goto exit_on_error;
-    }
-  memset ((void *) mvcc_table->transaction_lowest_active_mvccids, MVCCID_NULL,
-	  NUM_TOTAL_TRAN_INDICES * sizeof (MVCCID));
-
-  size = TRANS_STATUS_HISTORY_MAX_SIZE * sizeof (MVCC_TRANS_STATUS);
-  /* MVCC mvcc_table_queue */
-  mvcc_table->trans_status_history = (MVCC_TRANS_STATUS *) malloc (size);
-  if (mvcc_table->trans_status_history == NULL)
-    {
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-      goto exit_on_error;
-    }
-
-  for (i = 0; i < TRANS_STATUS_HISTORY_MAX_SIZE; i++)
-    {
-      trans_status_history = mvcc_table->trans_status_history + i;
-      trans_status_history->bit_area = NULL;
-      trans_status_history->long_tran_mvccids = NULL;
-    }
-
-  size = MVCC_BITAREA_ELEMENTS_TO_BYTES (MVCC_BITAREA_MAXIMUM_ELEMENTS);
-  size2 = NUM_TOTAL_TRAN_INDICES * sizeof (MVCCID);
-  for (i = 0; i < TRANS_STATUS_HISTORY_MAX_SIZE; i++)
-    {
-      trans_status_history = mvcc_table->trans_status_history + i;
-      trans_status_history->bit_area = (UINT64 *) malloc (size);
-      if (trans_status_history->bit_area == NULL)
-	{
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	  goto exit_on_error;
-	}
-
-      memset ((void *) trans_status_history->bit_area, MVCC_BITAREA_BIT_ACTIVE, size);
-      trans_status_history->bit_area_start_mvccid = MVCCID_FIRST;
-      trans_status_history->bit_area_length = 0;
-
-      trans_status_history->long_tran_mvccids = (MVCCID *) malloc (size2);
-      if (trans_status_history->long_tran_mvccids == NULL)
-	{
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size2);
-	  goto exit_on_error;
-	}
-      trans_status_history->long_tran_mvccids_length = 0;
-      trans_status_history->version = 0;
-      trans_status_history->lowest_active_mvccid = MVCCID_FIRST;
-    }
-  mvcc_table->trans_status_history_position = 0;
-
-#if defined(HAVE_ATOMIC_BUILTINS)
-  pthread_mutex_init (&mvcc_table->new_mvccid_lock, NULL);
-#endif
-  pthread_mutex_init (&mvcc_table->active_trans_mutex, NULL);
-
-  return NO_ERROR;
-
-exit_on_error:
-
-  current_trans_status = &mvcc_table->current_trans_status;
-  if (current_trans_status->bit_area != NULL)
-    {
-      free ((void *) current_trans_status->bit_area);
-      current_trans_status->bit_area = NULL;
-      current_trans_status->bit_area_start_mvccid = MVCCID_NULL;
-      current_trans_status->bit_area_length = 0;
-    }
-
-  if (current_trans_status->long_tran_mvccids != NULL)
-    {
-      free ((void *) current_trans_status->long_tran_mvccids);
-      current_trans_status->long_tran_mvccids = NULL;
-      current_trans_status->long_tran_mvccids_length = 0;
-    }
-
-  if (mvcc_table->transaction_lowest_active_mvccids != NULL)
-    {
-      free ((void *) mvcc_table->transaction_lowest_active_mvccids);
-      mvcc_table->transaction_lowest_active_mvccids = NULL;
-    }
-
-  current_trans_status = &log_Gl.mvcc_table.current_trans_status;
-  if (log_Gl.mvcc_table.trans_status_history != NULL)
-    {
-      for (i = 0; i < TRANS_STATUS_HISTORY_MAX_SIZE; i++)
-	{
-	  trans_status_history = mvcc_table->trans_status_history + i;
-	  if (trans_status_history->bit_area != NULL)
-	    {
-	      free ((void *) trans_status_history->bit_area);
-	      trans_status_history->bit_area = NULL;
-	    }
-	  if (trans_status_history->long_tran_mvccids != NULL)
-	    {
-	      free ((void *) trans_status_history->long_tran_mvccids);
-	      trans_status_history->long_tran_mvccids = NULL;
-	    }
-	}
-
-      free ((void *) mvcc_table->trans_status_history);
-      mvcc_table->trans_status_history = NULL;
-    }
-
-  return error_code;
-}
-
-/*
- * logtb_finalize_mvcctable - cleanup MVCC table
- *
- * return: error code
- *
- *   thread_p(in): thread entry
- */
-static void
-logtb_finalize_mvcctable (THREAD_ENTRY * thread_p)
-{
-  int i;
-  MVCCTABLE *mvcc_table = &log_Gl.mvcc_table;
-  MVCC_TRANS_STATUS *current_trans_status, *trans_status_history;
-
-  current_trans_status = &log_Gl.mvcc_table.current_trans_status;
-  if (current_trans_status->bit_area != NULL)
-    {
-      free ((void *) current_trans_status->bit_area);
-      current_trans_status->bit_area = NULL;
-      current_trans_status->bit_area_start_mvccid = MVCCID_NULL;
-      current_trans_status->bit_area_length = 0;
-    }
-
-  if (current_trans_status->long_tran_mvccids != NULL)
-    {
-      free ((void *) current_trans_status->long_tran_mvccids);
-      current_trans_status->long_tran_mvccids = NULL;
-      current_trans_status->long_tran_mvccids_length = 0;
-    }
-
-  if (mvcc_table->transaction_lowest_active_mvccids)
-    {
-      free ((void *) mvcc_table->transaction_lowest_active_mvccids);
-      mvcc_table->transaction_lowest_active_mvccids = NULL;
-    }
-
-  if (mvcc_table->trans_status_history != NULL)
-    {
-      for (i = 0; i < TRANS_STATUS_HISTORY_MAX_SIZE; i++)
-	{
-	  trans_status_history = mvcc_table->trans_status_history + i;
-	  if (trans_status_history->bit_area != NULL)
-	    {
-	      free ((void *) trans_status_history->bit_area);
-	      trans_status_history->bit_area = NULL;
-	    }
-	  if (trans_status_history->long_tran_mvccids != NULL)
-	    {
-	      free ((void *) trans_status_history->long_tran_mvccids);
-	      trans_status_history->long_tran_mvccids = NULL;
-	    }
-	}
-
-      free ((void *) mvcc_table->trans_status_history);
-      mvcc_table->trans_status_history = NULL;
-    }
-
-#if defined(HAVE_ATOMIC_BUILTINS)
-  pthread_mutex_destroy (&mvcc_table->new_mvccid_lock);
-#endif
-  pthread_mutex_destroy (&mvcc_table->active_trans_mutex);
 }
 
 int
