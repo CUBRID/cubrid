@@ -4456,20 +4456,7 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
   {
     /* match against pattern; std::regex_match returns true on match */
     std::string src_string (src_char_string_p, src_length);
-    bool match = false;
-    try
-    {
-      match = std::regex_search (src_string, *rx_compiled_regex);
-    }
-    catch (std::regex_error & e)
-    {
-      // regex execution exception
-      error_status = ER_REGEX_EXEC_ERROR;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, rx_err_buf);
-      *result = V_ERROR;
-      goto cleanup;
-    }
-
+    bool match = std::regex_search (src_string, *rx_compiled_regex);
     *result = match ? V_TRUE : V_FALSE;
   }
 
@@ -4478,7 +4465,7 @@ cleanup:
   if ((comp_regex == NULL || error_status != NO_ERROR) && rx_compiled_regex != NULL)
     {
       /* free memory if (using local regex) or (error occurred) */
-      delete (NULL, rx_compiled_regex);
+      delete rx_compiled_regex;
       rx_compiled_regex = NULL;
     }
 
