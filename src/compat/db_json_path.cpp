@@ -870,13 +870,13 @@ static void
 db_json_path_find_at (const JSON_PATH &path, size_t tkn_array_offset, const JSON_VALUE &jv,
 		      std::vector<const JSON_VALUE *> &vals)
 {
-  if (tkn_array_offset == path.m_path_tokens.size ())
+  if (tkn_array_offset == path.get_token_count ())
     {
       // No suffix remaining -> collect match
       vals.push_back (&jv);
     }
 
-  const PATH_TOKEN &crt_tkn = path.m_path_tokens[tkn_array_offset];
+  const PATH_TOKEN &crt_tkn = path.at (tkn_array_offset);
   if (jv.IsArray ())
     {
       switch (crt_tkn.m_type)
@@ -995,6 +995,13 @@ const PATH_TOKEN *
 JSON_PATH::get_last_token () const
 {
   return get_token_count () > 0 ? &m_path_tokens[get_token_count () - 1] : NULL;
+}
+
+const PATH_TOKEN &
+JSON_PATH::at (size_t idx) const
+{
+  assert (idx < m_path_tokens.size ());
+  return m_path_tokens[idx];
 }
 
 size_t

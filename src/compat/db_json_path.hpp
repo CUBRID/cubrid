@@ -84,6 +84,7 @@ class JSON_PATH
 
     const PATH_TOKEN *get_last_token () const;
     size_t get_token_count () const;
+    const PATH_TOKEN &at (size_t idx) const;
     bool is_root_path () const;
     bool is_last_array_index_less_than (size_t size) const;
     bool is_last_token_array_index_zero () const;
@@ -111,9 +112,6 @@ class JSON_PATH
 				       const JSON_PATH &path, const token_containter_type::const_iterator &it2);
 
     token_containter_type m_path_tokens;
-
-    friend void db_json_path_find_at (const JSON_PATH &path, size_t tkn_array_offset, const JSON_VALUE &jd,
-				      std::vector<const JSON_VALUE *> &vals);
 };
 
 void db_json_path_unquote_object_keys (std::string &sql_path);
