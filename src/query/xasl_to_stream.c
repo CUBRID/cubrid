@@ -44,6 +44,7 @@
 #include "xasl_analytic.hpp"
 #include "xasl_predicate.hpp"
 #include "xasl_stream.hpp"
+#include "xasl_unpack_info.hpp"
 
 #define    BYTE_SIZE        OR_INT_SIZE
 #define    LONG_SIZE        OR_INT_SIZE
@@ -7580,9 +7581,9 @@ xts_debug_check (const T &t, char *pack_start, const char *pack_end)
 
   xts_debug_clear (unpack_t);
 
-  xasl_unpack_info* unpack_info = stx_get_xasl_unpack_info_ptr (NULL);
+  xasl_unpack_info* unpack_info = get_xasl_unpack_info_ptr (NULL);
   db_private_free_and_init (NULL, unpack_info);
-  stx_set_xasl_unpack_info_ptr (NULL, NULL);
+  set_xasl_unpack_info_ptr (NULL, NULL);
 #endif // DEBUG
 }
 

@@ -35,6 +35,7 @@
 #include "dbtype.h"
 #include "xasl.h"
 #include "xasl_predicate.hpp"
+#include "xasl_unpack_info.hpp"
 
 typedef enum match_status
 {
@@ -2474,9 +2475,7 @@ partition_free_partition_predicate (PRUNING_CONTEXT * pinfo)
 
   if (pinfo->fp_cache_context != NULL)
     {
-      stx_free_additional_buff (pinfo->thread_p, pinfo->fp_cache_context);
-      stx_free_xasl_unpack_info (pinfo->fp_cache_context);
-      db_private_free_and_init (pinfo->thread_p, pinfo->fp_cache_context);
+      free_xasl_unpack_info (pinfo->thread_p, pinfo->fp_cache_context);
     }
 }
 
