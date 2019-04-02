@@ -33,6 +33,11 @@
 #include <atomic>
 #include <cstdint>
 
+// forward declarations
+struct log_tdes;
+struct mvcc_snapshot;
+struct mvcc_info;
+
 /*
  * MVCC_TRANS_STATUS keep MVCCIDs status in bit area. Thus bit 0 means active
  * MVCCID bit 1 means committed transaction. This structure keep also lowest
@@ -48,19 +53,19 @@ struct mvcc_trans_status
   /* bit area to store MVCCIDS status - size MVCC_BITAREA_MAXIMUM_ELEMENTS */
   bit_area_unit_type *bit_area;
   /* first MVCCID whose status is stored in bit area */
-  MVCCID bit_area_start_mvccid;
+  std::atomic<MVCCID> bit_area_start_mvccid;
   /* the area length expressed in bits */
-  unsigned int bit_area_length;
+  std::atomic<size_t> bit_area_length;
 
   /* long time transaction mvccid array */
   MVCCID *long_tran_mvccids;
   /* long time transactions mvccid array length */
   unsigned int long_tran_mvccids_length;
 
-  volatile version_type version;
+  std::atomic<version_type> version;
 
   /* lowest active MVCCID */
-  MVCCID lowest_active_mvccid;
+  std::atomic<MVCCID> lowest_active_mvccid;
 
   mvcc_trans_status ();
   ~mvcc_trans_status ();
@@ -72,16 +77,18 @@ struct mvcc_trans_status
 typedef struct mvcctable MVCCTABLE;
 struct mvcctable
 {
+  using lowest_active_mvccid_type = std::atomic<MVCCID>;
+
   /* current transaction status */
   mvcc_trans_status current_trans_status;
 
   /* lowest active MVCCIDs - array of size NUM_TOTAL_TRAN_INDICES */
-  volatile MVCCID *transaction_lowest_active_mvccids;
+  lowest_active_mvccid_type *transaction_lowest_active_mvccids;
 
   /* transaction status history - array of size TRANS_STATUS_HISTORY_MAX_SIZE */
   mvcc_trans_status *trans_status_history;
   /* the position in transaction status history array */
-  volatile int trans_status_history_position;
+  std::atomic<size_t> trans_status_history_position;
 
   /* protect against getting new MVCCIDs concurrently */
   std::mutex new_mvccid_lock;
@@ -93,6 +100,10 @@ struct mvcctable
 
   void initialize ();
   void finalize ();
+
+  // mvcc_snapshot/mvcc_info functions; todo - move them out
+  static void allocate_mvcc_snapshot_data (mvcc_snapshot &snapshot);
+  void build_mvcc_snapshot (log_tdes &tdes);
 };
 
 #endif // !_MVCC_TABLE_H_
