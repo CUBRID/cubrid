@@ -59,7 +59,10 @@ namespace cubload
     (void) class_id;
     OID class_oid;
 
-    locate_class (class_name, class_oid);
+    if (locate_class (class_name, class_oid) != LC_CLASSNAME_EXIST)
+      {
+	m_error_handler.on_failure_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
+      }
   }
 
   int
@@ -83,15 +86,11 @@ namespace cubload
     register_class_with_attributes (class_name->val, cmd_spec);
   }
 
-  void
+  LC_FIND_CLASSNAME
   server_class_installer::locate_class (const char *class_name, OID &class_oid)
   {
     cubthread::entry &thread_ref = cubthread::get_entry ();
-    LC_FIND_CLASSNAME found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, IX_LOCK);
-    if (found != LC_CLASSNAME_EXIST)
-      {
-	m_error_handler.on_syntax_failure ();
-      }
+    return xlocator_find_class_oid (&thread_ref, class_name, &class_oid, IX_LOCK);
   }
 
   void
@@ -107,22 +106,25 @@ namespace cubload
     assert (m_clsid != NULL_CLASS_ID);
     OID_SET_NULL (&class_oid);
 
-    locate_class (class_name, class_oid);
     if (m_session.is_failed ())
       {
 	// return in case when class does not exists
 	return;
       }
 
-    if (is_syntax_check_only)
+    if (locate_class (class_name, class_oid) != LC_CLASSNAME_EXIST)
       {
-        // We must have the class installed already.
-        if (OID_ISNULL (&class_oid))
-          {
-            // This translates into a syntax error.
-            m_error_handler.on_error_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
-            return;
-          }
+	if (is_syntax_check_only)
+	  {
+	    // We must have the class installed already.
+	    // This translates into a syntax error.
+	    m_error_handler.on_error_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
+	  }
+	else
+	  {
+	    m_error_handler.on_failure_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
+	  }
+	return;
       }
 
     int error_code = heap_attrinfo_start (&thread_ref, &class_oid, -1, NULL, &attrinfo);

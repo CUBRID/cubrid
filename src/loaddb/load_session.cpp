@@ -178,24 +178,24 @@ namespace cubload
       }
 
       void execute (cubthread::entry &thread_ref) final
-      {        
-        if (m_session.is_failed ())
+      {
+	if (m_session.is_failed ())
 	  {
 	    return;
 	  }
-        
-	bool is_syntax_check_only = m_session.get_args ().syntax_check;
-        bool is_class_registered = m_session.get_class_registry ().get_class_entry (m_batch.get_class_id ()) != NULL;
 
-        if (!is_class_registered)
-          {
-            m_session.notify_batch_done (m_batch.get_id ());
-            if (!is_syntax_check_only)
-              {
-                assert (false);
-              }
-            return;
-          }
+	bool is_syntax_check_only = m_session.get_args ().syntax_check;
+	bool is_class_registered = m_session.get_class_registry ().get_class_entry (m_batch.get_class_id ()) != NULL;
+
+	if (!is_class_registered)
+	  {
+	    m_session.notify_batch_done (m_batch.get_id ());
+	    if (!is_syntax_check_only)
+	      {
+		assert (false);
+	      }
+	    return;
+	  }
 
 	logtb_assign_tran_index (&thread_ref, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
 				 TRAN_DEFAULT_ISOLATION_LEVEL ());
@@ -203,7 +203,7 @@ namespace cubload
 	driver *driver = thread_ref.m_loaddb_driver;
 	bool parser_result = invoke_parser (driver, m_batch);
 
-	if (m_session.is_failed () || ((!m_session.get_args ().syntax_check) && (!parser_result || er_has_error ())))
+	if (m_session.is_failed () || (!is_syntax_check_only && (!parser_result || er_has_error ())))
 	  {
 	    // if a batch transaction was aborted and syntax only is not enabled then abort entire loaddb session
 	    m_session.fail ();

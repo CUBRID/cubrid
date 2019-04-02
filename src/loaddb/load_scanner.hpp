@@ -67,11 +67,11 @@ namespace cubload
        */
       void LexerError (const char *msg) override
       {
-        /* TODO: We need a better approaach since this should in fact throw an irrecoverable error
-         * which will fail the session. However, for syntax checking, this proves to abort all
-         * other batches that are being checked, which is not entirely correct since we want to
-         * use the parallelism to check for all errors in the file.
-         */
+	/* TODO: We need a better approaach since this should in fact throw an irrecoverable error
+	 * which will fail the session. However, for syntax checking, this proves to abort all
+	 * other batches that are being checked, which is not entirely correct since we want to
+	 * use the parallelism to check for all errors in the file.
+	 */
 	m_error_handler.on_failure_with_line (LOADDB_MSG_LEX_ERROR);
       }
 
