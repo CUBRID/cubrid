@@ -246,12 +246,16 @@ set(QUERY_HEADERS
 
 set(OBJECT_SOURCES
   ${OBJECT_DIR}/elo.c
-  ${OBJECT_DIR}/set_object.c
-  ${OBJECT_DIR}/object_representation.c
-  ${OBJECT_DIR}/object_primitive.c
-  ${OBJECT_DIR}/transform.c
+  ${OBJECT_DIR}/lob_locator.cpp
   ${OBJECT_DIR}/object_domain.c
+  ${OBJECT_DIR}/object_primitive.c
+  ${OBJECT_DIR}/object_representation.c
+  ${OBJECT_DIR}/set_object.c
+  ${OBJECT_DIR}/transform.c
   )
+set(OBJECT_HEADERS
+  ${OBJECT_DIR}/lob_locator.hpp
+)
   
 set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/log_consumer.cpp
@@ -435,6 +439,7 @@ set (CUBRID_LIB_HEADERS
   ${COMMUNICATION_HEADERS}
   ${COMPAT_HEADERS}
   ${MONITOR_HEADERS}
+  ${OBJECT_HEADERS}
   ${QUERY_HEADERS}
   ${REPLICATION_HEADERS}
   ${STORAGE_HEADERS}
