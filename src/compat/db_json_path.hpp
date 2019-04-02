@@ -76,6 +76,8 @@ class JSON_PATH
 
     JSON_VALUE *get (JSON_DOC &jd) const;
     const JSON_VALUE *get (const JSON_DOC &jd) const;
+    std::vector<const JSON_VALUE *> extract (const JSON_DOC &) const;
+
     void set (JSON_DOC &jd, const JSON_VALUE &jv) const;
     void set (JSON_VALUE &jd, const JSON_VALUE &jv, JSON_PRIVATE_MEMPOOL &allocator) const;
     bool erase (JSON_DOC &jd) const;
@@ -109,6 +111,9 @@ class JSON_PATH
 				       const JSON_PATH &path, const token_containter_type::const_iterator &it2);
 
     token_containter_type m_path_tokens;
+
+    friend void db_json_path_find_at (const JSON_PATH &path, size_t tkn_array_offset, const JSON_VALUE &jd,
+				      std::vector<const JSON_VALUE *> &vals);
 };
 
 void db_json_path_unquote_object_keys (std::string &sql_path);
