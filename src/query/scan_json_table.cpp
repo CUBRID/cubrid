@@ -440,7 +440,7 @@ namespace cubscan
     }
 
     int
-    scanner::scan_next_internal (cubthread::entry *thread_p, int depth, bool &found_row_output)
+    scanner::scan_next_internal (cubthread::entry *thread_p, size_t depth, bool &found_row_output)
     {
       int error_code = NO_ERROR;
       cursor &this_cursor = m_scan_cursor[depth];

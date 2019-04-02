@@ -183,7 +183,7 @@ namespace test_lockfree
       {
 	if (cqueue.consume (val))
 	  {
-	    test_common::custom_assert (val < MAX_VAL);
+	    test_common::custom_assert ((size_t) val < MAX_VAL);
 	    ++valcount[val];
 	    op_count--;
 	  }

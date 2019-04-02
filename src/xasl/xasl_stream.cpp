@@ -72,7 +72,7 @@ stx_set_xasl_errcode (THREAD_ENTRY *thread_p, int errcode)
 int
 stx_init_xasl_unpack_info (THREAD_ENTRY *thread_p, char *xasl_stream, int xasl_stream_size)
 {
-  int n;
+  size_t n;
   XASL_UNPACK_INFO *unpack_info;
   int head_offset, body_offset;
 
