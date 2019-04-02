@@ -872,9 +872,10 @@ JSON_PATH::extract_from_subtree (const JSON_PATH &path, size_t tkn_array_offset,
     {
       // No suffix remaining -> collect match
       vals.push_back (&jv);
+      return;
     }
 
-  const PATH_TOKEN &crt_tkn = path.at (tkn_array_offset);
+  const PATH_TOKEN &crt_tkn = path.m_path_tokens[tkn_array_offset];
   if (jv.IsArray ())
     {
       switch (crt_tkn.m_type)
@@ -993,13 +994,6 @@ const PATH_TOKEN *
 JSON_PATH::get_last_token () const
 {
   return get_token_count () > 0 ? &m_path_tokens[get_token_count () - 1] : NULL;
-}
-
-const PATH_TOKEN &
-JSON_PATH::at (size_t idx) const
-{
-  assert (idx < m_path_tokens.size ());
-  return m_path_tokens[idx];
 }
 
 size_t

@@ -84,7 +84,6 @@ class JSON_PATH
 
     const PATH_TOKEN *get_last_token () const;
     size_t get_token_count () const;
-    const PATH_TOKEN &at (size_t idx) const;
     bool is_root_path () const;
     bool is_last_array_index_less_than (size_t size) const;
     bool is_last_token_array_index_zero () const;
