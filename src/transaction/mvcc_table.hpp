@@ -24,6 +24,69 @@
 #ifndef _MVCC_TABLE_H_
 #define _MVCC_TABLE_H_
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Wrong Module
+#endif
 
+#include "storage_common.h"
+
+#include <atomic>
+#include <cstdint>
+
+/*
+ * MVCC_TRANS_STATUS keep MVCCIDs status in bit area. Thus bit 0 means active
+ * MVCCID bit 1 means committed transaction. This structure keep also lowest
+ * active MVCCIDs used by VACUUM for MVCCID threshold computation. Also, MVCCIDs
+ * of long time transactions MVCCIDs are kept in this structure.
+ */
+typedef struct mvcc_trans_status MVCC_TRANS_STATUS;
+struct mvcc_trans_status
+{
+  using version_type = unsigned int;
+
+  /* bit area to store MVCCIDS status - size MVCC_BITAREA_MAXIMUM_ELEMENTS */
+  std::uint64_t *bit_area;
+  /* first MVCCID whose status is stored in bit area */
+  MVCCID bit_area_start_mvccid;
+  /* the area length expressed in bits */
+  unsigned int bit_area_length;
+
+  /* long time transaction mvccid array */
+  MVCCID *long_tran_mvccids;
+  /* long time transactions mvccid array length */
+  unsigned int long_tran_mvccids_length;
+
+  volatile version_type version;
+
+  /* lowest active MVCCID */
+  MVCCID lowest_active_mvccid;
+
+  mvcc_trans_status ();
+};
+
+typedef struct mvcctable MVCCTABLE;
+struct mvcctable
+{
+  /* current transaction status */
+  mvcc_trans_status current_trans_status;
+
+  /* lowest active MVCCIDs - array of size NUM_TOTAL_TRAN_INDICES */
+  volatile MVCCID *transaction_lowest_active_mvccids;
+
+  /* transaction status history - array of size TRANS_STATUS_HISTORY_MAX_SIZE */
+  mvcc_trans_status *trans_status_history;
+  /* the position in transaction status history array */
+  volatile int trans_status_history_position;
+
+  /* protect against getting new MVCCIDs concurrently */
+#if defined(HAVE_ATOMIC_BUILTINS)
+  pthread_mutex_t new_mvccid_lock;
+#endif
+
+  /* protect against current transaction status modifications */
+  pthread_mutex_t active_trans_mutex;
+
+  mvcctable ();
+};
 
 #endif // !_MVCC_TABLE_H_

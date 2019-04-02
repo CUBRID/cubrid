@@ -30,6 +30,7 @@
 #include "log_impl.h"
 #include "log_storage.hpp"
 #include "log_writer.h"
+#include "mvcc_table.hpp"
 #include "porting.h"
 #include "storage_common.h"
 
@@ -73,7 +74,7 @@ log_global::log_global ()
   , group_commit_info LOG_GROUP_COMMIT_INFO_INITIALIZER
   , writer_info (new logwr_info ())
   , bg_archive_info ()
-  , mvcc_table MVCCTABLE_INITIALIZER
+  , mvcc_table ()
   , unique_stats_table GLOBAL_UNIQUE_STATS_TABLE_INITIALIZER
 {
 }

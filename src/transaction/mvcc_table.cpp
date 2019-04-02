@@ -22,3 +22,26 @@
 //
 
 #include "mvcc_table.hpp"
+
+mvcc_trans_status::mvcc_trans_status ()
+  : bit_area (NULL)
+  , bit_area_start_mvccid (MVCCID_FIRST)
+  , bit_area_length (0)
+  , long_tran_mvccids (NULL)
+  , long_tran_mvccids_length (0)
+  , version (0)
+  , lowest_active_mvccid (MVCCID_FIRST)
+{
+}
+
+mvcctable::mvcctable ()
+  : current_trans_status ()
+  , transaction_lowest_active_mvccids (NULL)
+  , trans_status_history (NULL)
+  , trans_status_history_position (0)
+#if defined (HAVE_ATOMIC_BUILTINS)
+  , new_mvccid_lock PTHREAD_MUTEX_INITIALIZER
+#endif
+  , active_trans_mutex PTHREAD_MUTEX_INITIALIZER
+{
+}
