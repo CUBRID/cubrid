@@ -90,7 +90,7 @@
 #define MVCC_BITAREA_ELEMENTS_AFTER_FULL_CLEANUP      16
 
 /* maximum size - 500 UINT64 */
-#define MVCC_BITAREA_MAXIMUM_ELEMENTS		     500
+#define BITAREA_MAX_SIZE		     500
 
 /* maximum size - 32000 bits */
 #define MVCC_BITAREA_MAXIMUM_BITS		   32000
@@ -4352,114 +4352,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
          } */
 
       /* Complete the current transaction */
-      position = mvccid - bit_area_start_mvccid;
-      mask = MVCC_BITAREA_MASK (position);
-      p_area = MVCC_GET_BITAREA_ELEMENT_PTR (current_trans_status->bit_area, position);
-      (*p_area) |= mask;
-
-      bit_area_length = ATOMIC_INC_32 (&current_trans_status->bit_area_length, 0);
-
-      /* check if need cleanup */
-      if (bit_area_length < bit_area_cleanup_threshold)
-	{
-	  assert (current_trans_status->bit_area_length <= MVCC_BITAREA_MAXIMUM_BITS);
-	  goto end_completed;
-	}
-
-      bits = *(current_trans_status->bit_area);
-      if (bits != MVCC_BITAREA_ELEMENT_ALL_COMMITTED)
-	{
-	  goto check_if_full_bitarea;
-	}
-      /*
-       *  We need to cleanup bit area - called not too often. There are at least two
-       * elements bits and at least the first block contains only committed
-       * transactions (64 committed transactions).
-       *  Remove bit area blocks that contains only committed transactions.
-       *  When all transactions of an element of bit_area are committed, we are sure
-       * that no other transaction can change any bit from that element. Also,
-       * no other transaction can change bit_area pointer,
-       * long_tran_mvccids pointer, bit_area_start_mvccid.
-       */
-      bit_area = current_trans_status->bit_area;
-      end_bit_area = bit_area + MVCC_BITAREA_BITS_TO_ELEMENTS (bit_area_length);
-      do
-	{
-	  bit_area++;
-	  bits = ATOMIC_INC_64 (bit_area, 0LL);
-	}
-      while ((bit_area < end_bit_area) && (bits == MVCC_BITAREA_ELEMENT_ALL_COMMITTED));
-
-      delete_dwords_count = (int) (bit_area - current_trans_status->bit_area);
-      delete_bytes_count = MVCC_BITAREA_ELEMENTS_TO_BYTES (delete_dwords_count);
-      new_bytes_count = MVCC_BITAREA_ELEMENTS_TO_BYTES ((int) (end_bit_area - bit_area));
-
-      if (new_bytes_count > 0)
-	{
-	  memmove ((void *) current_trans_status->bit_area, (void *) bit_area, new_bytes_count);
-	}
-
-      memset (((char *) (current_trans_status->bit_area)) + new_bytes_count, MVCC_BITAREA_BIT_ACTIVE,
-	      delete_bytes_count);
-      size = MVCC_BITAREA_ELEMENTS_TO_BITS (delete_dwords_count);
-      bit_area_start_mvccid = ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, size);
-      bit_area_length = ATOMIC_INC_32 (&current_trans_status->bit_area_length, -size);
-
-    check_if_full_bitarea:
-      if (bit_area_length < bit_area_long_transaction_threshold)
-	{
-	  goto end_completed;
-	}
-
-      /*
-       * Search for long transactions. Remove committed transactions and add
-       * active transactions to long transactions array
-       */
-      bit_area = current_trans_status->bit_area;
-      count = MVCC_BITAREA_BITS_TO_ELEMENTS (bit_area_length);
-      end_bit_area = bit_area + count;
-      delete_dwords_count = count - MVCC_BITAREA_ELEMENTS_AFTER_FULL_CLEANUP;
-      for (i = 1; i <= delete_dwords_count; i++)
-	{
-	  bits = ATOMIC_INC_64 (bit_area, 0LL);
-	  curr_mvccid = bit_area_start_mvccid + (i - 1) * MVCC_BITAREA_ELEMENT_BITS;
-	  if (bits != MVCC_BITAREA_ELEMENT_ALL_COMMITTED)
-	    {
-	      /* expect most of the transactions already committed */
-	      mask = 1;
-	      for (bit_pos = 0; bit_pos < MVCC_BITAREA_ELEMENT_BITS; bit_pos++, curr_mvccid++)
-		{
-		  if (!(bits & mask))
-		    {
-		      /* long active transaction founded */
-		      current_trans_status->long_tran_mvccids[current_trans_status->long_tran_mvccids_length++] =
-			curr_mvccid;
-		      /* set the bit to in order to break faster */
-		      bits |= mask;
-		      if (bits == MVCC_BITAREA_ELEMENT_ALL_COMMITTED)
-			{
-			  break;
-			}
-		    }
-		  mask <<= 1;
-		}
-	    }
-	  bit_area++;
-	}
-
-      delete_bytes_count = MVCC_BITAREA_ELEMENTS_TO_BYTES (delete_dwords_count);
-      new_bytes_count = MVCC_BITAREA_ELEMENTS_TO_BYTES (MVCC_BITAREA_ELEMENTS_AFTER_FULL_CLEANUP);
-
-      if (new_bytes_count > 0)
-	{
-	  memmove ((void *) current_trans_status->bit_area, (void *) bit_area, new_bytes_count);
-	}
-      memset (((char *) (current_trans_status->bit_area)) + new_bytes_count, MVCC_BITAREA_BIT_ACTIVE,
-	      delete_bytes_count);
-      size = MVCC_BITAREA_ELEMENTS_TO_BITS (delete_dwords_count);
-
-      bit_area_start_mvccid = ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, size);
-      bit_area_length = ATOMIC_INC_32 (&current_trans_status->bit_area_length, -size);
+      current_trans_status->m_active_mvccs.set_mvccid (mvccid);
 
     end_completed:
       /* need to copy the current bit area - other threads may read next_trans_status_history, but only the current
