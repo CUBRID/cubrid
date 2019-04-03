@@ -62,40 +62,47 @@ struct mvcc_trans_status
 
   void initialize ();
   void finalize ();
+
+  bool try_advance_oldest_active (MVCCID next_oldest_active);
 };
 
 typedef struct mvcctable MVCCTABLE;
 struct mvcctable
 {
-  using lowest_active_mvccid_type = std::atomic<MVCCID>;
+  public:
+    using lowest_active_mvccid_type = std::atomic<MVCCID>;
 
-  static const size_t HISTORY_MAX_SIZE = 2048;
+    static const size_t HISTORY_MAX_SIZE = 2048;  // must be a power of 2
 
-  /* current transaction status */
-  mvcc_trans_status current_trans_status;
+    /* current transaction status */
+    mvcc_trans_status current_trans_status;
 
-  /* lowest active MVCCIDs - array of size NUM_TOTAL_TRAN_INDICES */
-  lowest_active_mvccid_type *transaction_lowest_active_mvccids;
+    /* lowest active MVCCIDs - array of size NUM_TOTAL_TRAN_INDICES */
+    lowest_active_mvccid_type *transaction_lowest_active_mvccids;
 
-  /* transaction status history - array of size TRANS_STATUS_HISTORY_MAX_SIZE */
-  mvcc_trans_status *trans_status_history;
-  /* the position in transaction status history array */
-  std::atomic<size_t> trans_status_history_position;
+    /* transaction status history - array of size TRANS_STATUS_HISTORY_MAX_SIZE */
+    mvcc_trans_status *trans_status_history;
+    /* the position in transaction status history array */
+    std::atomic<size_t> trans_status_history_position;
 
-  /* protect against getting new MVCCIDs concurrently */
-  std::mutex new_mvccid_lock;
-  /* protect against current transaction status modifications */
-  std::mutex active_trans_mutex;
+    /* protect against getting new MVCCIDs concurrently */
+    std::mutex new_mvccid_lock;
+    /* protect against current transaction status modifications */
+    std::mutex active_trans_mutex;
 
-  mvcctable ();
-  ~mvcctable ();
+    mvcctable ();
+    ~mvcctable ();
 
-  void initialize ();
-  void finalize ();
+    void initialize ();
+    void finalize ();
 
-  // mvcc_snapshot/mvcc_info functions
-  void build_mvcc_info (log_tdes &tdes);
-  bool is_active (MVCCID mvccid) const;
+    // mvcc_snapshot/mvcc_info functions
+    void build_mvcc_info (log_tdes &tdes);
+    bool is_active (MVCCID mvccid) const;
+    void complete_mvcc (log_tdes &tdes);
+
+  private:
+    static const size_t HISTORY_INDEX_MASK = HISTORY_MAX_SIZE - 1;
 };
 
 #endif // !_MVCC_TABLE_H_

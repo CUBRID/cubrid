@@ -54,6 +54,22 @@ mvcc_trans_status::finalize ()
   m_active_mvccs.finalize ();
 }
 
+bool
+mvcc_trans_status::try_advance_oldest_active (MVCCID next_oldest_active)
+{
+  MVCCID crt_oldest_active = lowest_active_mvccid.load ();
+  if (crt_oldest_active >= next_oldest_active)
+    {
+      // already advanced to equal or better
+      break;
+    }
+  return lowest_active_mvccid.compare_exchange_strong (crt_oldest_active, next_oldest_active);
+}
+
+//
+// MVCC table
+//
+
 mvcctable::mvcctable ()
   : current_trans_status ()
   , transaction_lowest_active_mvccids (NULL)
@@ -226,4 +242,29 @@ mvcctable::is_active (MVCCID mvccid) const
   while (index != trans_status_history[index].load ());
 
   return ret_active;
+}
+
+void
+mvcctable::complete_mvcc (log_tdes &tdes)
+{
+
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  UINT64 tran_complete_time;
+  bool is_perf_tracking = perfmon_is_perf_tracking ();
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&start_tick);
+    }
+
+  if (MVCCID_IS_VALID (tdes.mvccinfo.id))
+    {
+      bit_area_start_mvccid = current_trans_status.m_active_mvccs.bit_area_start_mvccid;
+
+
+    }
+  else
+    {
+
+    }
 }
