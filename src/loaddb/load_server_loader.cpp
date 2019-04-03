@@ -59,7 +59,10 @@ namespace cubload
     (void) class_id;
     OID class_oid;
 
-    locate_class (class_name, class_oid);
+    if (locate_class (class_name, class_oid) != LC_CLASSNAME_EXIST)
+      {
+	m_error_handler.on_failure_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
+      }
   }
 
   int
@@ -83,15 +86,11 @@ namespace cubload
     register_class_with_attributes (class_name->val, cmd_spec);
   }
 
-  void
+  LC_FIND_CLASSNAME
   server_class_installer::locate_class (const char *class_name, OID &class_oid)
   {
     cubthread::entry &thread_ref = cubthread::get_entry ();
-    LC_FIND_CLASSNAME found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, IX_LOCK);
-    if (found != LC_CLASSNAME_EXIST)
-      {
-	m_error_handler.on_failure_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
-      }
+    return xlocator_find_class_oid (&thread_ref, class_name, &class_oid, IX_LOCK);
   }
 
   void
@@ -102,13 +101,29 @@ namespace cubload
     heap_scancache scancache;
     heap_cache_attrinfo attrinfo;
     cubthread::entry &thread_ref = cubthread::get_entry ();
+    bool is_syntax_check_only = m_session.get_args ().syntax_check;
 
     assert (m_clsid != NULL_CLASS_ID);
+    OID_SET_NULL (&class_oid);
 
-    locate_class (class_name, class_oid);
     if (m_session.is_failed ())
       {
 	// return in case when class does not exists
+	return;
+      }
+
+    if (locate_class (class_name, class_oid) != LC_CLASSNAME_EXIST)
+      {
+	if (is_syntax_check_only)
+	  {
+	    // We must have the class installed already.
+	    // This translates into a syntax error.
+	    m_error_handler.on_error_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
+	  }
+	else
+	  {
+	    m_error_handler.on_failure_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
+	  }
 	return;
       }
 
@@ -301,7 +316,7 @@ namespace cubload
     if (cons != NULL && attr_size == 0)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_NO_CLASS_OR_NO_ATTRIBUTE, 0);
-	m_error_handler.on_failure ();
+	m_error_handler.on_syntax_failure ();
 	return;
       }
 
@@ -310,7 +325,7 @@ namespace cubload
 	if (attr_index == attr_size)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, attr_index);
-	    m_error_handler.on_failure ();
+	    m_error_handler.on_syntax_failure ();
 	    return;
 	  }
 
@@ -318,7 +333,7 @@ namespace cubload
 	int error_code = process_constant (c, attr);
 	if (error_code != NO_ERROR)
 	  {
-	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	    m_error_handler.on_syntax_failure ();
 	    return;
 	  }
 
@@ -329,7 +344,8 @@ namespace cubload
     if (attr_index < attr_size)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MISSING_ATTRIBUTES, 2, attr_size, attr_index);
-	m_error_handler.on_failure ();
+	m_error_handler.on_syntax_failure ();
+	return;
       }
   }
 
@@ -345,15 +361,20 @@ namespace cubload
     int force_count = 0;
     int pruning_type = 0;
     int op_type = SINGLE_ROW_INSERT;
+    bool is_syntax_check_only = m_session.get_args ().syntax_check;
 
-    int error_code = locator_attribute_info_force (m_thread_ref, &m_scancache.node.hfid, &oid, &m_attrinfo, NULL, 0,
-		     LC_FLUSH_INSERT, op_type, &m_scancache, &force_count, false,
-		     REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, NULL,
-		     UPDATE_INPLACE_NONE, NULL, false);
-    if (error_code != NO_ERROR)
+    if (!is_syntax_check_only)
       {
-	m_error_handler.on_failure ();
-	return;
+	// Skip loading if syntax check only is enabled.
+	int error_code = locator_attribute_info_force (m_thread_ref, &m_scancache.node.hfid, &oid, &m_attrinfo, NULL, 0,
+			 LC_FLUSH_INSERT, op_type, &m_scancache, &force_count, false,
+			 REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, NULL,
+			 UPDATE_INPLACE_NONE, NULL, false);
+	if (error_code != NO_ERROR)
+	  {
+	    m_error_handler.on_failure ();
+	    return;
+	  }
       }
 
     m_session.stats_update_current_line (m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1);
@@ -445,6 +466,10 @@ namespace cubload
     int error_code = func (token, &attr, &db_val);
     if (error_code != NO_ERROR)
       {
+	if (error_code == ER_DATE_CONVERSION)
+	  {
+	    m_error_handler.log_date_time_conversion_error (token, pr_type_name (attr.get_domain ().type->get_id ()));
+	  }
 	return error_code;
       }
 

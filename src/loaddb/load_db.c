@@ -639,6 +639,13 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       goto error_return;
     }
 
+  if (args.load_only)
+    {
+      /* This is the default behavior. It is changed from the old one so we notify the user. */
+      print_log_msg (1, "\n--load-only is deprecated. To check the object file \
+                         for any syntax errors use --data-file-check-only.\n");
+    }
+
   /* if schema file is specified, do schema loading */
   if (schema_file != NULL)
     {
@@ -698,7 +705,14 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       schema_file = NULL;
     }
 
-  print_log_msg (1, "\nStart object loading.\n");
+  if (args.syntax_check)
+    {
+      print_log_msg (1, "\nStart object syntax checking.\n");
+    }
+  else
+    {
+      print_log_msg (1, "\nStart object loading.\n");
+    }
 #if defined (SA_MODE)
   ldr_sa_load (&args, &status, &interrupted);
 #else // !SA_MODE = CS_MODE
@@ -1035,8 +1049,12 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
 
       if (!stats.error_message.empty ())
 	{
-	  *status = 3;
-	  fprintf (stderr, "%s", stats.error_message.c_str ());
+	  /* Skip if syntax check only is enabled since we do not want to stop on error. */
+	  if (!args->syntax_check)
+	    {
+	      *status = 3;
+	      fprintf (stderr, "%s", stats.error_message.c_str ());
+	    }
 	}
       else
 	{
@@ -1044,9 +1062,14 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
 	  // log committed instances msg only there was a commit since last check
 	  if (curr_rows_committed > prev_rows_committed)
 	    {
-	      char *committed_instances_msg = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
-							      LOADDB_MSG_COMMITTED_INSTANCES);
-	      print_log_msg (args->verbose_commit, committed_instances_msg, curr_rows_committed);
+	      /* Don't print this during syntax checking */
+	      if (!args->syntax_check)
+		{
+		  char *committed_instances_msg = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
+								  LOADDB_MSG_COMMITTED_INSTANCES);
+		  print_log_msg (args->verbose_commit, committed_instances_msg, curr_rows_committed);
+		}
+
 	      prev_rows_committed = curr_rows_committed;
 	    }
 	}
@@ -1068,8 +1091,22 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INTERRUPTED_ABORT));
     }
 
-  print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INSERT_AND_FAIL_COUNT),
-		 stats.rows_committed, stats.rows_failed);
+  if (args->syntax_check)
+    {
+      if (!stats.error_message.empty ())
+	{
+	  fprintf (stderr, "%s", stats.error_message.c_str ());
+	}
+
+      print_log_msg (1,
+		     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_OBJECTS_SYNTAX_CHECKED),
+		     stats.rows_committed, stats.rows_failed);
+    }
+  else
+    {
+      print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INSERT_AND_FAIL_COUNT),
+		     stats.rows_committed, stats.rows_failed);
+    }
 
   error_code = loaddb_destroy ();
   if (error_code != NO_ERROR)

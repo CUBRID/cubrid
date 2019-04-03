@@ -443,6 +443,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 116 Toplam %1$8d nesne (ler) eklenen, %2$d nesne (ler) başarısız oldu.\n
 117 Başarısız yük.\n
 118 Sınıf adının uzunluğu en fazla %1$d bayttır.\n
+119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
 120 \
 loaddb: Veritabanına veri alma nesneler ve şemalar.\n\
 kullanım: %1$s loaddb [SEÇENEK] database-name[@host]\n\
