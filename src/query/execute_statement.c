@@ -2992,19 +2992,19 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       /* for the subset of nodes which represent top level statements, process them. For any other node, return an
        * error. */
-
-      /* disable data replication log for schema replication log types in HA mode */
-#if !defined(NDEBUG) && defined (CS_MODE)
-      if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG) && is_stmt_based_repl_type (statement))
+      if (!HA_DISABLED () && is_stmt_based_repl_type (statement))
 	{
+	  need_stmt_replication = true;
+	}
+
+#if !defined(NDEBUG) && defined (CS_MODE)
+      if (!need_stmt_replication && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
+	  && is_stmt_based_repl_type (statement) && db_get_override_tran_index () == NULL_TRAN_INDEX)
+	{
+	  /* Test replication on master node. */
 	  need_stmt_replication = true;
 	}
 #endif
-
-      if (!need_stmt_replication && !HA_DISABLED () && is_stmt_based_repl_type (statement))
-	{
-	  need_stmt_replication = true;
-	}
 
       if (need_stmt_replication)
 	{
@@ -3488,18 +3488,20 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* for the subset of nodes which represent top level statements, process them; for any other node, return an error */
+  if (!HA_DISABLED () && is_stmt_based_repl_type (statement))
+    {
+      need_stmt_based_repl = true;
+    }
 
 #if !defined(NDEBUG) && defined (CS_MODE)
-  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG) && is_stmt_based_repl_type (statement))
+  if (!need_stmt_based_repl && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG) && is_stmt_based_repl_type (statement)
+      && db_get_override_tran_index () == NULL_TRAN_INDEX)
     {
+      /* Test replication on master node. */
       need_stmt_based_repl = true;
     }
 #endif
 
-  if (!need_stmt_based_repl && !HA_DISABLED () && is_stmt_based_repl_type (statement))
-    {
-      need_stmt_based_repl = true;
-    }
 
   /* disable data replication log for schema replication log types in HA mode */
   if (need_stmt_based_repl)

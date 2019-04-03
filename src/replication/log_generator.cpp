@@ -565,9 +565,6 @@ namespace cubreplication
 
     log_abort_partial (thread_p, savepoint_name, &savept_lsa);
 
-    /* Disable replication, while we apply SBR. */
-    prm_set_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG, false);
-
     /* Simulate it again with apply. */
     assert (local_stream_entry.count_entries () == 1);
 
@@ -576,8 +573,6 @@ namespace cubreplication
       {
 	err_code = repl_obj->apply ();
       }
-
-    prm_set_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG, true);
 
     return err_code;
   }
