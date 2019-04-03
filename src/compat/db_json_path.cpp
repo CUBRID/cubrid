@@ -866,17 +866,19 @@ JSON_PATH::get (const JSON_DOC &jd) const
 }
 
 void
-JSON_PATH::extract_from_subtree (const JSON_PATH &path, size_t tkn_array_offset,
-				 const JSON_VALUE &jv, std::unordered_set<const JSON_VALUE *> &vals)
+JSON_PATH::extract_from_subtree (const JSON_PATH &path, size_t tkn_array_offset, const JSON_VALUE &jv,
+				 std::unordered_set<const JSON_VALUE *> &vals_hash_set,
+				 std::vector<const JSON_VALUE *> &vals)
 {
   if (tkn_array_offset == path.get_token_count ())
     {
       // No suffix remaining -> collect match
       // Note: some nodes of the tree are encountered multiple times (only during double wildcards)
       // therefore the use of unordered_set
-      if (vals.find (&jv) == vals.end ())
+      if (vals_hash_set.find (&jv) == vals_hash_set.end ())
 	{
-	  vals.insert (&jv);
+	  vals_hash_set.insert (&jv);
+	  vals.push_back (&jv);
 	}
       return;
     }
@@ -893,22 +895,22 @@ JSON_PATH::extract_from_subtree (const JSON_PATH &path, size_t tkn_array_offset,
 	    {
 	      return;
 	    }
-	  extract_from_subtree (path, tkn_array_offset + 1, jv.GetArray ()[idx], vals);
+	  extract_from_subtree (path, tkn_array_offset + 1, jv.GetArray ()[idx], vals_hash_set, vals);
 	  return;
 	}
 	case PATH_TOKEN::token_type::array_index_wildcard:
 	  for (rapidjson::SizeType i = 0; i < jv.GetArray ().Size (); ++i)
 	    {
-	      extract_from_subtree (path, tkn_array_offset + 1, jv.GetArray ()[i], vals);
+	      extract_from_subtree (path, tkn_array_offset + 1, jv.GetArray ()[i], vals_hash_set, vals);
 	    }
 	  return;
 	case PATH_TOKEN::token_type::double_wildcard:
 	  // Advance token_array_offset
-	  extract_from_subtree (path, tkn_array_offset + 1, jv, vals);
+	  extract_from_subtree (path, tkn_array_offset + 1, jv, vals_hash_set, vals);
 	  for (rapidjson::SizeType i = 0; i < jv.GetArray ().Size (); ++i)
 	    {
 	      // Advance in tree, keep current token_array_offset
-	      extract_from_subtree (path, tkn_array_offset, jv.GetArray ()[i], vals);
+	      extract_from_subtree (path, tkn_array_offset, jv.GetArray ()[i], vals_hash_set, vals);
 	    }
 	  return;
 	default:
@@ -927,22 +929,22 @@ JSON_PATH::extract_from_subtree (const JSON_PATH &path, size_t tkn_array_offset,
 	    {
 	      return;
 	    }
-	  extract_from_subtree (path, tkn_array_offset + 1, m->value, vals);
+	  extract_from_subtree (path, tkn_array_offset + 1, m->value, vals_hash_set, vals);
 	  return;
 	}
 	case PATH_TOKEN::token_type::object_key_wildcard:
 	  for (JSON_VALUE::ConstMemberIterator m = jv.MemberBegin (); m != jv.MemberEnd (); ++m)
 	    {
-	      extract_from_subtree (path, tkn_array_offset + 1, m->value, vals);
+	      extract_from_subtree (path, tkn_array_offset + 1, m->value, vals_hash_set, vals);
 	    }
 	  return;
 	case PATH_TOKEN::token_type::double_wildcard:
 	  // Advance token_array_offset
-	  extract_from_subtree (path, tkn_array_offset + 1, jv, vals);
+	  extract_from_subtree (path, tkn_array_offset + 1, jv, vals_hash_set, vals);
 	  for (JSON_VALUE::ConstMemberIterator m = jv.MemberBegin (); m != jv.MemberEnd (); ++m)
 	    {
 	      // Advance in tree, keep current token_array_offset
-	      extract_from_subtree (path, tkn_array_offset, m->value, vals);
+	      extract_from_subtree (path, tkn_array_offset, m->value, vals_hash_set, vals);
 	    }
 	  return;
 	default:
@@ -955,15 +957,10 @@ JSON_PATH::extract_from_subtree (const JSON_PATH &path, size_t tkn_array_offset,
 std::vector<const JSON_VALUE *>
 JSON_PATH::extract (const JSON_DOC &jd) const
 {
-  std::vector<const JSON_VALUE *> res;
+  std::unordered_set <const JSON_VALUE *> vals_hash_set;
+  std::vector <const JSON_VALUE *> res;
 
-  std::unordered_set <const JSON_VALUE *> unique_matches;
-
-  extract_from_subtree (*this, 0, db_json_doc_to_value (jd), unique_matches);
-  for (auto it = unique_matches.begin (); it != unique_matches.end (); ++it)
-    {
-      res.push_back (*it);
-    }
+  extract_from_subtree (*this, 0, db_json_doc_to_value (jd), vals_hash_set, res);
 
   return res;
 }
