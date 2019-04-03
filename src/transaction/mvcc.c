@@ -663,3 +663,55 @@ mvcc_is_mvcc_disabled_class (const OID * class_oid)
 
   return false;
 }
+
+// *INDENT-OFF*
+mvcc_snapshot::mvcc_snapshot ()
+  : lowest_active_mvccid (MVCCID_NULL)
+  , highest_completed_mvccid (MVCCID_NULL)
+  , m_active_mvccs ()
+  , snapshot_fnc (NULL)
+  , valid (false)
+{
+}
+
+void
+mvcc_snapshot::reset ()
+{
+  snapshot_fnc = NULL;
+  lowest_active_mvccid = MVCCID_NULL;
+  highest_completed_mvccid = MVCCID_NULL;
+
+  m_active_mvccs.bit_area_length = 0;
+  m_active_mvccs.bit_area_start_mvccid = MVCCID_NULL;
+  m_active_mvccs.long_tran_mvccids_length = 0;
+
+  valid = false;
+}
+
+mvcc_info::mvcc_info ()
+  : snapshot ()
+  , id (MVCCID_NULL)
+  , recent_snapshot_lowest_active_mvccid (MVCCID_NULL)
+  , sub_ids (NULL)
+  , max_sub_ids (0)
+  , count_sub_ids (0)
+  , is_sub_active (false)
+{
+}
+
+void
+mvcc_info::init ()
+{
+  new (this) mvcc_info ();
+}
+
+void
+mvcc_info::reset ()
+{
+  snapshot.reset ();
+  id = MVCCID_NULL;
+  recent_snapshot_lowest_active_mvccid = MVCCID_NULL;
+  count_sub_ids = 0;
+  is_sub_active = false;
+}
+// *INDENT-ON*

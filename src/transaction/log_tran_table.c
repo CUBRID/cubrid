@@ -574,7 +574,7 @@ logtb_initialize_system_tdes (THREAD_ENTRY * thread_p)
   logtb_clear_tdes (thread_p, tdes);
   tdes->tran_index = LOG_SYSTEM_TRAN_INDEX;
   tdes->trid = LOG_SYSTEM_TRANID;
-  MVCC_CLEAR_MVCC_INFO (&tdes->mvccinfo);
+  tdes->mvccinfo.reset ();
   tdes->isloose_end = true;
   tdes->wait_msecs = TRAN_LOCK_INFINITE_WAIT;
   tdes->isolation = TRAN_DEFAULT_ISOLATION_LEVEL ();
@@ -1168,7 +1168,7 @@ logtb_release_tran_index (THREAD_ENTRY * thread_p, int tran_index)
   tdes = LOG_FIND_TDES (tran_index);
   if (tran_index != LOG_SYSTEM_TRAN_INDEX && tdes != NULL)
     {
-      MVCC_CLEAR_MVCC_INFO (&tdes->mvccinfo);
+      tdes->mvccinfo.reset ();
       TR_TABLE_CS_ENTER (thread_p);
 
       /*
@@ -1694,7 +1694,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 
   tdes->num_log_records_written = 0;
 
-  MVCC_INIT_MVCC_INFO (&tdes->mvccinfo);
+  tdes->mvccinfo.init ();
 
   tdes->log_upd_stats.cos_count = 0;
   tdes->log_upd_stats.cos_first_chunk = NULL;

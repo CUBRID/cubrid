@@ -18,7 +18,7 @@
  */
 
 /*
- * mvcc.h - Multi-Version Concurency Control system (at Server).
+ * mvcc.h - Multi-Version Concurrency Control system (at Server).
  *
  */
 #ifndef _MVCC_H_
@@ -138,40 +138,10 @@ struct mvcc_rec_header
 #define MVCC_BITAREA_MASK(position) ((1ULL << ((position) & 0x3F)))
 
 /* clear MVCC snapshot data */
-#define MVCC_CLEAR_SNAPSHOT_DATA(snapshot) \
-  do \
-    { \
-      (snapshot)->snapshot_fnc = NULL; \
-      (snapshot)->lowest_active_mvccid = MVCCID_NULL; \
-      (snapshot)->highest_completed_mvccid = MVCCID_NULL; \
-      (snapshot)->bit_area_start_mvccid = MVCCID_NULL;  \
-      (snapshot)->bit_area_length = 0;  \
-      (snapshot)->long_tran_mvccids_length = 0; \
-      (snapshot)->valid = false; \
-    } \
-  while (0)
-
-/* clear MVCC snapshot data */
-#define MVCC_INIT_SNAPSHOT_DATA(snapshot) \
-  do \
-    { \
-      (snapshot)->snapshot_fnc = NULL; \
-      (snapshot)->lowest_active_mvccid = MVCCID_NULL; \
-      (snapshot)->highest_completed_mvccid = MVCCID_NULL; \
-      (snapshot)->bit_area = NULL; \
-      (snapshot)->long_tran_mvccids = NULL;  \
-      (snapshot)->bit_area_start_mvccid = MVCCID_NULL;  \
-      (snapshot)->bit_area_length = 0;  \
-      (snapshot)->long_tran_mvccids_length = 0; \
-      (snapshot)->valid = false; \
-    } \
-    while (0)
-
-/* clear MVCC snapshot data */
 #define MVCC_INIT_MVCC_INFO(mvccinfo) \
   do \
     { \
-      MVCC_INIT_SNAPSHOT_DATA (&(mvccinfo)->snapshot);  \
+      new (&(mvccinfo)->snapshot) mvcc_snapshot ();  \
       (mvccinfo)->id = MVCCID_NULL;	\
       (mvccinfo)->recent_snapshot_lowest_active_mvccid = MVCCID_NULL; \
       (mvccinfo)->sub_ids = NULL; \
@@ -230,17 +200,15 @@ struct mvcc_snapshot
   MVCCID highest_completed_mvccid;	/* highest mvccid in snapshot */
 
   mvcc_active_tran m_active_mvccs;
-  UINT64 *bit_area;		/* bit area */
-  MVCCID *long_tran_mvccids;	/* long time active MVCCID array */
 
   MVCC_SNAPSHOT_FUNC snapshot_fnc;	/* the snapshot function */
 
-  MVCCID bit_area_start_mvccid;	/* bit area start MVCCID */
-  int bit_area_length;		/* bit area length */
-
-  unsigned int long_tran_mvccids_length;	/* long time MVCCID array length */
-
   bool valid;			/* true, if the snapshot is valid */
+
+  // *INDENT-OFF*
+  mvcc_snapshot ();
+  void reset ();
+  // *INDENT-ON*
 };
 
 /* MVCC INFO - such structure is attached to each active transaction */
@@ -261,6 +229,12 @@ struct mvcc_info
   int max_sub_ids;		/* allocated MVCC sub-transaction ids */
   int count_sub_ids;		/* count sub-transaction ids */
   bool is_sub_active;		/* true in case that sub-transaction is running */
+
+  // *INDENT-OFF*
+  mvcc_info ();
+  void init ();
+  void reset ();
+  // *INDENT-ON*
 };
 
 enum mvcc_satisfies_delete_result
