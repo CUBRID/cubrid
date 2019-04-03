@@ -32,6 +32,7 @@
 
 #include "error_manager.h"
 #include "file_manager.h"
+#include "log_append.hpp"
 #include "slotted_page.h"
 #include "extendible_hash.h"
 #include "boot_sr.h"

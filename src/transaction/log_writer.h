@@ -26,8 +26,16 @@
 
 #ident "$Id$"
 
+#include "client_credentials.hpp"
+#include "log_archives.hpp"
+#include "log_common_impl.h"
+#include "log_lsa.hpp"
+#include "storage_common.h"
+#if defined (SERVER_MODE)
+#include "thread_compat.hpp"
+#endif // SERVER_MODE
+
 #include <stdio.h>
-#include "log_impl.h"
 
 typedef struct logwr_context LOGWR_CONTEXT;
 struct logwr_context
@@ -36,6 +44,15 @@ struct logwr_context
   int last_error;
   bool shutdown;
 };
+
+enum logwr_mode
+{
+  LOGWR_MODE_ASYNC = 1,
+  LOGWR_MODE_SEMISYNC,
+  LOGWR_MODE_SYNC
+};
+typedef enum logwr_mode LOGWR_MODE;
+#define LOGWR_COPY_FROM_FIRST_PHY_PAGE_MASK	(0x80000000)
 
 #if defined(CS_MODE)
 enum logwr_action
@@ -110,7 +127,73 @@ extern int logwr_set_hdr_and_flush_info (void);
 #if !defined(WINDOWS)
 extern int logwr_copy_log_header_check (const char *db_name, bool verbose, LOG_LSA * master_eof_lsa);
 #endif /* !WINDOWS */
-#endif /* CS_MODE */
+#else /* !CS_MODE = SERVER_MODE || SA_MODE */
+enum logwr_status
+{
+  LOGWR_STATUS_WAIT,
+  LOGWR_STATUS_FETCH,
+  LOGWR_STATUS_DONE,
+  LOGWR_STATUS_DELAY,
+  LOGWR_STATUS_ERROR
+};
+typedef enum logwr_status LOGWR_STATUS;
+
+typedef struct logwr_entry LOGWR_ENTRY;
+struct logwr_entry
+{
+  THREAD_ENTRY *thread_p;
+  LOG_PAGEID fpageid;
+  LOGWR_MODE mode;
+  LOGWR_STATUS status;
+  LOG_LSA eof_lsa;
+  LOG_LSA last_sent_eof_lsa;
+  LOG_LSA tmp_last_sent_eof_lsa;
+  INT64 start_copy_time;
+  bool copy_from_first_phy_page;
+  LOGWR_ENTRY *next;
+};
+
+typedef struct logwr_info LOGWR_INFO;
+struct logwr_info
+{
+  LOGWR_ENTRY *writer_list;
+  pthread_mutex_t wr_list_mutex;
+  pthread_cond_t flush_start_cond;
+  pthread_mutex_t flush_start_mutex;
+  pthread_cond_t flush_wait_cond;
+  pthread_mutex_t flush_wait_mutex;
+  pthread_cond_t flush_end_cond;
+  pthread_mutex_t flush_end_mutex;
+  bool skip_flush;
+  bool flush_completed;
+  bool is_init;
+
+  /* to measure the time spent by the last LWT delaying LFT */
+  bool trace_last_writer;
+  CLIENTIDS last_writer_client_info;
+  INT64 last_writer_elapsed_time;
+
+  // *INDENT-OFF*
+  logwr_info ()
+    : writer_list (NULL)
+    , wr_list_mutex PTHREAD_MUTEX_INITIALIZER
+    , flush_start_cond PTHREAD_COND_INITIALIZER
+    , flush_start_mutex PTHREAD_MUTEX_INITIALIZER
+    , flush_wait_cond PTHREAD_COND_INITIALIZER
+    , flush_wait_mutex PTHREAD_MUTEX_INITIALIZER
+    , flush_end_cond PTHREAD_COND_INITIALIZER
+    , flush_end_mutex PTHREAD_MUTEX_INITIALIZER
+    , skip_flush (false)
+    , flush_completed (false)
+    , is_init (false)
+    , trace_last_writer (false)
+    , last_writer_client_info ()
+    , last_writer_elapsed_time (0)
+  {
+  }
+  // *INDENT-ON*
+};
+#endif /* !CS_MODE = SERVER_MODE || SA_MODE */
 
 extern bool logwr_force_shutdown (void);
 extern int logwr_copy_log_file (const char *db_name, const char *log_path, int mode, INT64 start_page_id);

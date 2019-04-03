@@ -44,10 +44,14 @@ struct adj_array;
 struct css_conn_entry;
 // from fault_injection.h
 struct fi_test_item;
+// from log_system_tran.hpp
+class log_system_tdes;
 // from log_compress.h
 struct log_zip;
 // from vacuum.h
 struct vacuum_worker;
+// from xasl_unpack_info.hpp
+struct xasl_unpack_info;
 
 // forward resource trackers
 namespace cubbase
@@ -221,7 +225,7 @@ namespace cubthread
 
       css_conn_entry *conn_entry;	/* conn entry ptr */
 
-      void *xasl_unpack_info_ptr;	/* XASL_UNPACK_INFO * */
+      xasl_unpack_info *xasl_unpack_info_ptr;     /* XASL_UNPACK_INFO * */
       int xasl_errcode;		/* xasl errorcode */
       int xasl_recursion_depth;
 
@@ -305,6 +309,21 @@ namespace cubthread
 	return m_csect_tracker;
       }
 
+      log_system_tdes *get_system_tdes (void)
+      {
+	return m_systdes;
+      }
+      void set_system_tdes (log_system_tdes &sys_tdes)
+      {
+	m_systdes = &sys_tdes;
+      }
+      void reset_system_tdes (void)
+      {
+	m_systdes = NULL;
+      }
+      void claim_system_worker ();
+      void retire_system_worker ();
+
       void end_resource_tracks (void);
       void push_resource_tracks (void);
       void pop_resource_tracks (void);
@@ -324,6 +343,7 @@ namespace cubthread
       cubbase::alloc_tracker &m_alloc_tracker;
       cubbase::pgbuf_tracker &m_pgbuf_tracker;
       cubsync::critical_section_tracker &m_csect_tracker;
+      log_system_tdes *m_systdes;
   };
 
 } // namespace cubthread

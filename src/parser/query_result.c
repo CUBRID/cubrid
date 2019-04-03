@@ -32,7 +32,6 @@
 #include "parser_message.h"
 #include "server_interface.h"
 #include "db_query.h"
-#include "xasl_support.h"
 #include "object_accessor.h"
 #include "schema_manager.h"
 #include "memory_alloc.h"
@@ -43,7 +42,6 @@
 #include "network_interface_cl.h"
 #include "transaction_cl.h"
 #include "dbtype.h"
-
 
 static int pt_find_size_from_dbtype (const DB_TYPE T_type);
 static int pt_arity_of_query_type (const DB_QUERY_TYPE * qt);
@@ -230,7 +228,9 @@ pt_set_domain_class_list (SM_DOMAIN * dom, const PT_NODE * nam, const DB_OBJECT 
       if (!nam || nam->node_type != PT_NAME)
 	break;
 
-      dom = regu_domain_db_alloc ();
+      dom = sm_domain_alloc ();
+      assert (dom != NULL);
+      tp_domain_init (dom, DB_TYPE_INTEGER);
       tail->next = dom;
       tail = dom;
     }
@@ -250,11 +250,12 @@ pt_get_src_domain (PARSER_CONTEXT * parser, const PT_NODE * s, const PT_NODE * s
   PT_NODE *spec, *entity_names, *leaf = (PT_NODE *) s;
   UINTPTR spec_id;
 
-  result = regu_domain_db_alloc ();
+  result = sm_domain_alloc ();
   if (result == NULL)
     {
       return result;
     }
+  tp_domain_init (result, DB_TYPE_INTEGER);
 
   /* if s is not a path expression then its source domain is DB_TYPE_NULL */
   result->type = pr_type_from_id (DB_TYPE_NULL);
@@ -1100,7 +1101,7 @@ pt_new_query_result_descriptor (PARSER_CONTEXT * parser, PT_NODE * query)
     {
       failure = !cursor_open (&r->res.s.cursor_id, list_id, false, r->oid_included);
       /* free result, which was copied by open cursor operation! */
-      regu_free_listid (list_id);
+      cursor_free_self_list_id (list_id);
     }
   else
     {
@@ -1152,7 +1153,7 @@ pt_free_query_etc_area (PARSER_CONTEXT * parser, PT_NODE * query)
       && (pt_node_to_cmd_type (query) == CUBRID_STMT_SELECT || pt_node_to_cmd_type (query) == CUBRID_STMT_DO
 	  || pt_is_server_insert_with_generated_keys (parser, query)))
     {
-      regu_free_listid ((QFILE_LIST_ID *) query->etc);
+      cursor_free_self_list_id ((QFILE_LIST_ID *) query->etc);
     }
 }
 
@@ -1245,7 +1246,7 @@ db_object_describe (DB_OBJECT * obj_mop, int num_attrs, const char **attrs, DB_Q
       t->attr_name = NULL;
       t->src_domain = NULL;
       err = sm_att_info (class_mop, *name, &attrid, &tmp_dom, &shared, 0);
-      t->domain = regu_cp_domain (tmp_dom);
+      t->domain = sm_domain_copy (tmp_dom);
     }
 
   if (err != NO_ERROR)

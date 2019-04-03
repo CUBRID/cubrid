@@ -38,6 +38,7 @@
 #include "class_object.h"
 #include "object_template.h"
 #include "authenticate.h"
+#include "work_space.h"
 
 /*
  *

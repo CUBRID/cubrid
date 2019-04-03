@@ -34,22 +34,27 @@
 #include <stdio.h>
 
 #include "dbtype_def.h"
+#include "lob_locator.hpp"
 #include "replication.h"
 #include "server_interface.h"
 #include "perf_monitor.h"
 #include "storage_common.h"
 #include "object_domain.h"
 #include "query_list.h"
+#include "query_monitoring.hpp"
 #include "statistics.h"
 #include "connection_defs.h"
 #include "log_writer.h"
 #include "language_support.h"
-#include "log_impl.h"
+#include "log_common_impl.h"
 #include "parse_tree.h"
 #include "load_common.hpp"
 #include "timezone_lib_common.h"
 
-// forward definitions
+// forward declarations
+#if defined (SA_MODE)
+struct bo_restart_arg;
+#endif
 struct compile_context;
 struct xasl_node_header;
 struct xasl_stream;
@@ -127,10 +132,13 @@ extern void log_set_interrupt (int set);
 extern int log_checkpoint (void);
 extern void log_dump_stat (FILE * outfp);
 extern int log_set_suppress_repl_on_transaction (int set);
+
+#if defined (CS_MODE)
 extern LOB_LOCATOR_STATE log_find_lob_locator (const char *locator, char *real_locator);
 extern int log_add_lob_locator (const char *locator, LOB_LOCATOR_STATE state);
 extern int log_change_state_of_locator (const char *locator, const char *real_locator, LOB_LOCATOR_STATE state);
 extern int log_drop_lob_locator (const char *locator);
+#endif // CS_MODE
 
 extern TRAN_STATE tran_server_commit (bool retain_lock);
 extern TRAN_STATE tran_server_abort (void);
@@ -189,7 +197,9 @@ extern int boot_find_number_temp_volumes (void);
 extern VOLID boot_find_last_permanent (void);
 extern int boot_find_last_temp (void);
 extern int boot_delete (const char *db_name, bool force_delete);
-extern int boot_restart_from_backup (int print_restart, const char *db_name, BO_RESTART_ARG * r_args);
+#if defined (SA_MODE)
+extern int boot_restart_from_backup (int print_restart, const char *db_name, bo_restart_arg * r_args);
+#endif // SA_MODE
 extern bool boot_shutdown_server (ER_FINAL_CODE iserfinal);
 extern int boot_soft_rename (const char *old_db_name, const char *new_db_name, const char *new_db_path,
 			     const char *new_log_path, const char *new_db_server_host, const char *new_volext_path,

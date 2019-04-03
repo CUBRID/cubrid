@@ -36,6 +36,7 @@
 #include <assert.h>
 
 #include "porting.h"
+#include "porting_inline.hpp"
 #include "dbtype_def.h"
 #include "sha1.h"
 #include "cache_time.h"
@@ -97,69 +98,6 @@ typedef INT16 PGLENGTH;		/* Page length */
 
 typedef PAGEID FILEID;		/* File identifier */
 typedef INT32 LOLENGTH;		/* Length for a large object */
-
-/* Log address structure */
-
-struct log_lsa
-{
-  INT64 pageid:48;		/* Log page identifier : 6 bytes length */
-  INT64 offset:16;		/* Offset in page : 2 bytes length */
-  /* The offset field is defined as 16bit-INT64 type (not short), because of alignment in windows */
-};
-
-typedef struct log_lsa LOG_LSA;	/* Log address identifier */
-
-STATIC_INLINE void
-LSA_COPY (LOG_LSA * plsa1, const LOG_LSA * plsa2)
-{
-  plsa1->pageid = plsa2->pageid;
-  plsa1->offset = plsa2->offset;
-}
-
-STATIC_INLINE void
-LSA_SET_NULL (LOG_LSA * lsa_ptr)
-{
-  lsa_ptr->pageid = NULL_PAGEID;
-  lsa_ptr->offset = NULL_OFFSET;
-}
-
-STATIC_INLINE void
-LSA_SET_TEMP_LSA (LOG_LSA * lsa_ptr)
-{
-  lsa_ptr->pageid = NULL_PAGEID - 1;
-  lsa_ptr->offset = NULL_OFFSET - 1;
-}
-
-#define LSA_INITIALIZER	{NULL_PAGEID, NULL_OFFSET}
-
-#define LSA_AS_ARGS(lsa_ptr) (long long int) (lsa_ptr)->pageid, (int) (lsa_ptr)->offset
-
-#define LSA_SET_INIT_NONTEMP(lsa_ptr) LSA_SET_NULL(lsa_ptr)
-#define LSA_SET_INIT_TEMP(lsa_ptr)\
-  do {									      \
-    (lsa_ptr)->pageid = NULL_PAGEID - 1;                                      \
-    (lsa_ptr)->offset = NULL_OFFSET - 1;                                      \
-  } while(0)
-
-#define LSA_ISNULL(lsa_ptr) ((lsa_ptr)->pageid == NULL_PAGEID)
-#define LSA_IS_INIT_NONTEMP(lsa_ptr) LSA_ISNULL(lsa_ptr)
-#define LSA_IS_INIT_TEMP(lsa_ptr) (((lsa_ptr)->pageid == NULL_PAGEID - 1) &&  \
-				  ((lsa_ptr)->offset == NULL_OFFSET - 1))
-
-#define LSA_LT(lsa_ptr1, lsa_ptr2)                                            \
-  ((lsa_ptr1) != (lsa_ptr2) &&                                                \
-   ((lsa_ptr1)->pageid < (lsa_ptr2)->pageid ||                                \
-    ((lsa_ptr1)->pageid == (lsa_ptr2)->pageid &&                              \
-     (lsa_ptr1)->offset < (lsa_ptr2)->offset)))                               \
-
-#define LSA_EQ(lsa_ptr1, lsa_ptr2)                                            \
-  ((lsa_ptr1) == (lsa_ptr2) ||                                                \
-    ((lsa_ptr1)->pageid == (lsa_ptr2)->pageid &&                              \
-     (lsa_ptr1)->offset == (lsa_ptr2)->offset))
-
-#define LSA_LE(lsa_ptr1, lsa_ptr2) (!LSA_LT(lsa_ptr2, lsa_ptr1))
-#define LSA_GT(lsa_ptr1, lsa_ptr2) LSA_LT(lsa_ptr2, lsa_ptr1)
-#define LSA_GE(lsa_ptr1, lsa_ptr2) LSA_LE(lsa_ptr2, lsa_ptr1)
 
 /* BOTH IO_PAGESIZE AND DB_PAGESIZE MUST BE MULTIPLE OF sizeof(int) */
 
@@ -256,63 +194,7 @@ typedef enum
 
 typedef UINT64 MVCCID;		/* MVCC ID */
 
-/* TYPE DEFINITIONS RELATED TO KEY AND VALUES */
 
-typedef enum			/* range search option */
-{
-  NA_NA,			/* v1 and v2 are N/A, so that no range is defined */
-  GE_LE,			/* v1 <= key <= v2 */
-  GE_LT,			/* v1 <= key < v2 */
-  GT_LE,			/* v1 < key <= v2 */
-  GT_LT,			/* v1 < key < v2 */
-  GE_INF,			/* v1 <= key (<= the end) */
-  GT_INF,			/* v1 < key (<= the end) */
-  INF_LE,			/* (the beginning <=) key <= v2 */
-  INF_LT,			/* (the beginning <=) key < v2 */
-  INF_INF,			/* the beginning <= key <= the end */
-  EQ_NA,			/* key = v1, v2 is N/A */
-
-  /* following options are reserved for the future use */
-  LE_GE,			/* key <= v1 || key >= v2 or NOT (v1 < key < v2) */
-  LE_GT,			/* key <= v1 || key > v2 or NOT (v1 < key <= v2) */
-  LT_GE,			/* key < v1 || key >= v2 or NOT (v1 <= key < v2) */
-  LT_GT,			/* key < v1 || key > v2 or NOT (v1 <= key <= v2) */
-  NEQ_NA			/* key != v1 */
-} RANGE;
-
-#define RANGE_REVERSE(range) \
-  do \
-    { \
-      switch (range) \
-	{ \
-	case GT_LE: \
-	  (range) = GE_LT; \
-	  break; \
-	case GE_LT: \
-	  (range) = GT_LE; \
-	  break; \
-	case GE_INF: \
-	  (range) = INF_LE; \
-	  break; \
-	case GT_INF: \
-	  (range) = INF_LT; \
-	  break; \
-	case INF_LE: \
-	  (range) = GE_INF; \
-	  break; \
-	case INF_LT: \
-	  (range) = GT_INF; \
-	  break; \
-	case NA_NA: \
-	case GE_LE: \
-	case GT_LT: \
-	case INF_INF: \
-	case EQ_NA: \
-	default: \
-	  /* No change. */ \
-	  break; \
-	} \
-    } while (0)
 
 /* File structure identifiers */
 
@@ -407,20 +289,6 @@ struct recdes
 	  } \
       } \
   } while (false)
-
-/* MVCC RECORD HEADER */
-typedef struct mvcc_rec_header MVCC_REC_HEADER;
-struct mvcc_rec_header
-{
-  INT32 mvcc_flag:8;		/* MVCC flags */
-  INT32 repid:24;		/* representation id */
-  int chn;			/* cache coherency number */
-  MVCCID mvcc_ins_id;		/* MVCC insert id */
-  MVCCID mvcc_del_id;		/* MVCC delete id */
-  LOG_LSA prev_version_lsa;	/* log address of previous version */
-};
-#define MVCC_REC_HEADER_INITIALIZER \
-{ 0, 0, NULL_CHN, MVCCID_NULL, MVCCID_NULL, LSA_INITIALIZER }
 
 typedef struct lorecdes LORECDES;	/* Work area descriptor */
 struct lorecdes
@@ -575,26 +443,7 @@ typedef enum
 				 * compared to. */
 } BTREE_SEARCH;
 
-/* TYPEDEFS FOR BACKUP/RESTORE */
 
-/* structure for passing arguments into boot_restart_server et. al. */
-typedef struct bo_restart_arg BO_RESTART_ARG;
-struct bo_restart_arg
-{
-  bool printtoc;		/* True to show backup's table of contents */
-  time_t stopat;		/* the recovery stop time if restarting from backup */
-  const char *backuppath;	/* Pathname override for location of backup volumes */
-  int level;			/* The backup level to use */
-  const char *verbose_file;	/* restoredb verbose msg file */
-  bool newvolpath;		/* true: restore the database and log volumes to the path specified in the
-				 * database-loc-file */
-  bool restore_upto_bktime;
-
-  bool restore_slave;		/* restore slave */
-  bool is_restore_from_backup;
-  INT64 db_creation;		/* database creation time */
-  LOG_LSA restart_repl_lsa;	/* restart replication lsa after restoreslave */
-};
 
 /* Magic default values */
 #define CUBRID_MAGIC_MAX_LENGTH                 25
@@ -847,7 +696,6 @@ extern int recdes_allocate_data_area (RECDES * rec, int size);
 extern void recdes_free_data_area (RECDES * rec);
 extern void recdes_set_data_area (RECDES * rec, char *data, int size);
 
-extern char *lsa_to_string (char *buf, int buf_size, LOG_LSA * lsa);
 extern char *oid_to_string (char *buf, int buf_size, OID * oid);
 extern char *vpid_to_string (char *buf, int buf_size, VPID * vpid);
 extern char *vfid_to_string (char *buf, int buf_size, VFID * vfid);
@@ -1331,8 +1179,8 @@ typedef enum
 #define SERIAL_ATTR_CACHED_NUM    "cached_num"
 #define SERIAL_ATTR_COMMENT       "comment"
 
-#define PEEK          true	/* Peek for a slotted record */
-#define COPY          false	/* Don't peek, but copy a slotted record */
+static const bool PEEK = true;	/* Peek for a slotted record */
+static const bool COPY = false;	/* Don't peek, but copy a slotted record */
 
 enum
 {
@@ -1420,5 +1268,13 @@ typedef enum
   KILLSTMT_TRAN = 0,
   KILLSTMT_QUERY = 1,
 } KILLSTMT_TYPE;
+
+// query module
+typedef enum
+{
+  HS_NONE = 0,			/* no hash aggregation */
+  HS_ACCEPT_ALL,		/* accept tuples in hash table */
+  HS_REJECT_ALL			/* reject tuples, use normal sort-based aggregation */
+} AGGREGATE_HASH_STATE;
 
 #endif /* _STORAGE_COMMON_H_ */

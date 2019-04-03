@@ -119,7 +119,7 @@ extern "C"
   extern char *pt_short_print_l (PARSER_CONTEXT * parser, const PT_NODE * p);
 
   extern void *parser_alloc (const PARSER_CONTEXT * parser, const int length);
-  extern char *pt_append_string (const PARSER_CONTEXT * parser, char *old_string, const char *new_tail);
+  extern char *pt_append_string (const PARSER_CONTEXT * parser, const char *old_string, const char *new_tail);
 
   extern PARSER_VARCHAR *pt_append_bytes (const PARSER_CONTEXT * parser, PARSER_VARCHAR * old_bytes,
 					  const char *new_tail, const int length);

@@ -22,12 +22,19 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_date.c
   ${COMPAT_DIR}/db_elo.c
   ${COMPAT_DIR}/db_json.cpp
+  ${COMPAT_DIR}/db_json_allocator.cpp
+  ${COMPAT_DIR}/db_json_path.cpp
+  ${COMPAT_DIR}/db_json_types_internal.cpp
   ${COMPAT_DIR}/db_macro.c
   ${COMPAT_DIR}/db_set.c
   ${COMPAT_DIR}/db_value_printer.cpp
   )
 set (COMPAT_HEADERS
   ${COMPAT_DIR}/dbtype_def.h
+  ${COMPAT_DIR}/db_json.hpp
+  ${COMPAT_DIR}/db_json_allocator.hpp
+  ${COMPAT_DIR}/db_json_path.hpp
+  ${COMPAT_DIR}/db_json_types_internal.hpp
   ${COMPAT_DIR}/dbtype_function.i
   ${COMPAT_DIR}/dbtype_function.h
   )
@@ -130,13 +137,16 @@ set (BASE_HEADERS
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
   ${BASE_DIR}/mem_block.hpp
+  ${BASE_DIR}/memory_reference_store.hpp
   ${BASE_DIR}/memory_private_allocator.hpp
+  ${BASE_DIR}/msgcat_set_log.hpp
+  ${BASE_DIR}/packable_object.hpp
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
   ${BASE_DIR}/perf_def.hpp
   ${BASE_DIR}/pinning.hpp
   ${BASE_DIR}/pinnable_buffer.hpp
-  ${BASE_DIR}/packable_object.hpp
+  ${BASE_DIR}/porting_inline.hpp
   ${BASE_DIR}/process_util.h
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/string_buffer.hpp
@@ -207,11 +217,15 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/method_scan.c
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/partition.c
+  ${QUERY_DIR}/query_aggregate.cpp
+  ${QUERY_DIR}/query_analytic.cpp
   ${QUERY_DIR}/query_dump.c
   ${QUERY_DIR}/query_evaluator.c
   ${QUERY_DIR}/query_executor.c
   ${QUERY_DIR}/query_manager.c
   ${QUERY_DIR}/query_opfunc.c
+  ${QUERY_DIR}/query_reevaluation.cpp
+  ${QUERY_DIR}/regu_var.cpp
   ${QUERY_DIR}/scan_json_table.cpp
   ${QUERY_DIR}/scan_manager.c
   ${QUERY_DIR}/serial.c
@@ -223,18 +237,26 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/xasl_cache.c
   )
 set(QUERY_HEADERS
+  ${QUERY_DIR}/query_aggregate.hpp
+  ${QUERY_DIR}/query_analytic.hpp
+  ${QUERY_DIR}/query_monitoring.hpp
+  ${QUERY_DIR}/query_reevaluation.hpp
   ${QUERY_DIR}/scan_json_table.hpp
   )
 
 set(OBJECT_SOURCES
   ${OBJECT_DIR}/elo.c
-  ${OBJECT_DIR}/set_object.c
-  ${OBJECT_DIR}/object_representation.c
-  ${OBJECT_DIR}/object_primitive.c
-  ${OBJECT_DIR}/transform.c
+  ${OBJECT_DIR}/lob_locator.cpp
   ${OBJECT_DIR}/object_domain.c
+  ${OBJECT_DIR}/object_primitive.c
+  ${OBJECT_DIR}/object_representation.c
+  ${OBJECT_DIR}/set_object.c
+  ${OBJECT_DIR}/transform.c
   )
-
+set(OBJECT_HEADERS
+  ${OBJECT_DIR}/lob_locator.hpp
+)
+  
 set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/log_consumer.cpp
   ${REPLICATION_DIR}/log_generator.cpp
@@ -248,25 +270,44 @@ set(JSP_SOURCES
   )
 
 set(TRANSACTION_SOURCES
-  ${TRANSACTION_DIR}/log_compress.c
   ${TRANSACTION_DIR}/boot_sr.c
+  ${TRANSACTION_DIR}/client_credentials.cpp
   ${TRANSACTION_DIR}/locator.c
   ${TRANSACTION_DIR}/locator_sr.c
-  ${TRANSACTION_DIR}/lock_table.c
   ${TRANSACTION_DIR}/lock_manager.c
-  ${TRANSACTION_DIR}/log_manager.c
+  ${TRANSACTION_DIR}/lock_table.c
   ${TRANSACTION_DIR}/log_2pc.c
+  ${TRANSACTION_DIR}/log_append.cpp
+  ${TRANSACTION_DIR}/log_comm.c
+  ${TRANSACTION_DIR}/log_compress.c
   ${TRANSACTION_DIR}/log_global.c
+  ${TRANSACTION_DIR}/log_lsa.cpp
+  ${TRANSACTION_DIR}/log_manager.c
   ${TRANSACTION_DIR}/log_page_buffer.c
   ${TRANSACTION_DIR}/log_recovery.c
+  ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
-  ${TRANSACTION_DIR}/log_comm.c
-  ${TRANSACTION_DIR}/replication.c
-  ${TRANSACTION_DIR}/recovery.c
-  ${TRANSACTION_DIR}/transaction_sr.c
-  ${TRANSACTION_DIR}/wait_for_graph.c
   ${TRANSACTION_DIR}/log_writer.c
   ${TRANSACTION_DIR}/mvcc.c
+  ${TRANSACTION_DIR}/recovery.c
+  ${TRANSACTION_DIR}/replication.c
+  ${TRANSACTION_DIR}/transaction_sr.c
+  ${TRANSACTION_DIR}/transaction_transient.cpp
+  ${TRANSACTION_DIR}/wait_for_graph.c
+  )
+set(TRANSACTION_HEADERS
+  ${TRANSACTION_DIR}/client_credentials.hpp
+  ${TRANSACTION_DIR}/log_2pc.h
+  ${TRANSACTION_DIR}/log_append.hpp
+  ${TRANSACTION_DIR}/log_archives.hpp
+  ${TRANSACTION_DIR}/log_common_impl.h
+  ${TRANSACTION_DIR}/log_lsa.hpp
+  ${TRANSACTION_DIR}/log_record.hpp
+  ${TRANSACTION_DIR}/log_storage.hpp
+  ${TRANSACTION_DIR}/log_system_tran.hpp
+  ${TRANSACTION_DIR}/log_volids.hpp
+  ${TRANSACTION_DIR}/transaction_global.hpp
+  ${TRANSACTION_DIR}/transaction_transient.hpp
   )
 
 set(STORAGE_SOURCES
@@ -304,11 +345,19 @@ set(SESSION_SOURCES
 
 set(XASL_SOURCES
   ${XASL_DIR}/access_json_table.cpp
+  ${XASL_DIR}/xasl_analytic.cpp
+  ${XASL_DIR}/xasl_predicate.cpp
   ${XASL_DIR}/xasl_stream.cpp
+  ${XASL_DIR}/xasl_unpack_info.cpp
   )
 set(XASL_HEADERS
   ${XASL_DIR}/access_json_table.hpp
+  ${XASL_DIR}/access_spec.hpp
   ${XASL_DIR}/compile_context.h
+  ${XASL_DIR}/xasl_aggregate.hpp
+  ${XASL_DIR}/xasl_analytic.hpp
+  ${XASL_DIR}/xasl_unpack_info.hpp
+  ${XASL_DIR}/xasl_predicate.hpp
   ${XASL_DIR}/xasl_stream.hpp
   )
 
@@ -354,7 +403,10 @@ set_source_files_properties(${BISON_loader_grammar_OUTPUTS} PROPERTIES GENERATED
 set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED true)
 
 if(UNIX)
-set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${COMPAT_DIR}/db_json_allocator.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${COMPAT_DIR}/db_json_path.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${COMPAT_DIR}/db_json_types_internal.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
 endif(UNIX)
 
 SET_SOURCE_FILES_PROPERTIES(
@@ -416,11 +468,13 @@ set (CUBRID_LIB_HEADERS
   ${COMMUNICATION_HEADERS}
   ${COMPAT_HEADERS}
   ${MONITOR_HEADERS}
+  ${OBJECT_HEADERS}
   ${QUERY_HEADERS}
   ${REPLICATION_HEADERS}
-  ${THREAD_HEADERS}
   ${STORAGE_HEADERS}
   ${STREAM_HEADERS}
+  ${THREAD_HEADERS}
+  ${TRANSACTION_HEADERS}
   ${XASL_HEADERS}
   ${LOADDB_HEADERS}
   )
@@ -510,6 +564,7 @@ install(FILES
   RENAME dbi.h
   )
 install(FILES
+  # ${COMPAT_DIR}/dbtran_def.h // temporary disabled
   ${COMPAT_DIR}/dbtype_def.h
   ${COMPAT_DIR}/dbtype_function.h
   ${COMPAT_DIR}/db_date.h

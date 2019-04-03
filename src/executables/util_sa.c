@@ -50,7 +50,6 @@
 #include "btree.h"
 #include "extendible_hash.h"
 #include "locator_sr.h"
-#include "log_impl.h"
 #include "xserver_interface.h"
 #include "utility.h"
 #include "transform.h"
@@ -70,6 +69,7 @@
 
 #include "dbtype.h"
 #include "thread_manager.hpp"
+#include "log_volids.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

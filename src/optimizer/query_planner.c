@@ -46,11 +46,12 @@
 #include "parser_message.h"
 #include "intl_support.h"
 #include "storage_common.h"
+#include "xasl_analytic.hpp"
 #include "xasl_generation.h"
 #include "schema_manager.h"
 #include "network_interface_cl.h"
 #include "dbtype.h"
-#include "regu_var.h"
+#include "regu_var.hpp"
 
 #define INDENT_INCR		4
 #define INDENT_FMT		"%*c"

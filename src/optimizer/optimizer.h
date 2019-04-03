@@ -41,7 +41,7 @@
 
 // forward definitions
 struct xasl_node;
-struct regu_variable_node;
+class regu_variable_node;
 
 /*
  * These #defines are used in conjunction with assert() to announce

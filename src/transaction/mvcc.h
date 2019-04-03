@@ -26,8 +26,24 @@
 
 #ident "$Id$"
 
+#include "log_lsa.hpp"
+#include "recovery.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
+
+/* MVCC RECORD HEADER */
+typedef struct mvcc_rec_header MVCC_REC_HEADER;
+struct mvcc_rec_header
+{
+  INT32 mvcc_flag:8;		/* MVCC flags */
+  INT32 repid:24;		/* representation id */
+  int chn;			/* cache coherency number */
+  MVCCID mvcc_ins_id;		/* MVCC insert id */
+  MVCCID mvcc_del_id;		/* MVCC delete id */
+  LOG_LSA prev_version_lsa;	/* log address of previous version */
+};
+#define MVCC_REC_HEADER_INITIALIZER \
+{ 0, 0, NULL_CHN, MVCCID_NULL, MVCCID_NULL, LSA_INITIALIZER }
 
 /* MVCC Header Macros */
 #define MVCC_GET_INSID(header) \
@@ -263,6 +279,31 @@ enum mvcc_satisfies_vacuum_result
 				 * inserted. 3. it was recently deleted and has no insert MVCCID. */
 };				/* Heap record satisfies vacuum result */
 typedef enum mvcc_satisfies_vacuum_result MVCC_SATISFIES_VACUUM_RESULT;
+
+/* Definitions used to identify MVCC log records. */
+// TODO - replace with functions
+
+/* Is log record for a heap MVCC operation */
+#define LOG_IS_MVCC_HEAP_OPERATION(rcvindex) \
+  (((rcvindex) == RVHF_MVCC_DELETE_REC_HOME) \
+   || ((rcvindex) == RVHF_MVCC_INSERT) \
+   || ((rcvindex) == RVHF_UPDATE_NOTIFY_VACUUM) \
+   || ((rcvindex) == RVHF_MVCC_DELETE_MODIFY_HOME) \
+   || ((rcvindex) == RVHF_MVCC_NO_MODIFY_HOME) \
+   || ((rcvindex) == RVHF_MVCC_REDISTRIBUTE))
+
+/* Is log record for a b-tree MVCC operation */
+#define LOG_IS_MVCC_BTREE_OPERATION(rcvindex) \
+  ((rcvindex) == RVBT_MVCC_DELETE_OBJECT \
+   || (rcvindex) == RVBT_MVCC_INSERT_OBJECT \
+   || (rcvindex) == RVBT_MVCC_INSERT_OBJECT_UNQ \
+   || (rcvindex) == RVBT_MVCC_NOTIFY_VACUUM)
+
+/* Is log record for a MVCC operation */
+#define LOG_IS_MVCC_OPERATION(rcvindex) \
+  (LOG_IS_MVCC_HEAP_OPERATION (rcvindex) \
+   || LOG_IS_MVCC_BTREE_OPERATION (rcvindex) \
+   || ((rcvindex) == RVES_NOTIFY_VACUUM))
 
 extern MVCC_SATISFIES_SNAPSHOT_RESULT mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
 							       MVCC_SNAPSHOT * snapshot);

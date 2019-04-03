@@ -31,6 +31,7 @@
 #include <assert.h>
 
 #include "porting.h"
+#include "porting_inline.hpp"
 #include "perf_monitor.h"
 #include "memory_alloc.h"
 #include "storage_common.h"
@@ -39,6 +40,7 @@
 #include "btree_load.h"
 #include "perf_monitor.h"
 #include "log_impl.h"
+#include "log_lsa.hpp"
 #include "boot_sr.h"
 #include "locator_sr.h"
 #include "server_interface.h"
@@ -80,6 +82,8 @@
 #include "session.h"
 #include "xasl.h"
 #include "xasl_cache.h"
+#include "elo.h"
+#include "transaction_transient.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -325,7 +329,7 @@ need_to_abort_tran (THREAD_ENTRY * thread_p, int *errid)
       flag_abort = true;
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_UNILATERALLY_ABORTED, 4, thread_p->tran_index,
-	      tdes->client.db_user, tdes->client.host_name, tdes->client.process_id);
+	      tdes->client.get_db_user (), tdes->client.get_host_name (), tdes->client.process_id);
     }
 
   return flag_abort;
@@ -2062,7 +2066,7 @@ slog_find_lob_locator (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   (void) or_unpack_string_nocopy (request, &locator);
 
-  state = xlog_find_lob_locator (thread_p, locator, real_locator);
+  state = xtx_find_lob_locator (thread_p, locator, real_locator);
   real_loc_size = strlen (real_locator) + 1;
 
   ptr = or_pack_int (reply, real_loc_size);
@@ -2096,7 +2100,7 @@ slog_add_lob_locator (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
   ptr = or_unpack_int (ptr, &tmp_int);
   state = (LOB_LOCATOR_STATE) tmp_int;
 
-  error = xlog_add_lob_locator (thread_p, locator, state);
+  error = xtx_add_lob_locator (thread_p, locator, state);
   if (error != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -2132,7 +2136,7 @@ slog_change_state_of_locator (THREAD_ENTRY * thread_p, unsigned int rid, char *r
   ptr = or_unpack_int (ptr, &tmp_int);
   state = (LOB_LOCATOR_STATE) tmp_int;
 
-  error = xlog_change_state_of_locator (thread_p, locator, new_locator, state);
+  error = xtx_change_state_of_locator (thread_p, locator, new_locator, state);
   if (error != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -2164,7 +2168,7 @@ slog_drop_lob_locator (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   ptr = or_unpack_string_nocopy (request, &locator);
 
-  error = xlog_drop_lob_locator (thread_p, locator);
+  error = xtx_drop_lob_locator (thread_p, locator);
   if (error != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -3130,68 +3134,7 @@ stran_lock_rep_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 void
 sboot_initialize_server (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-#if defined(ENABLE_UNUSED_FUNCTION)
-  int xint;
-  BOOT_CLIENT_CREDENTIAL client_credential;
-  BOOT_DB_PATH_INFO db_path_info;
-  int db_overwrite;
-  DKNPAGES db_npages;
-  int db_desired_pagesize;
-  DKNPAGES log_npages;
-  int db_desired_log_page_size;
-  OID rootclass_oid;
-  HFID rootclass_hfid;
-  char *file_addmore_vols;
-  int client_lock_wait;
-  TRAN_ISOLATION client_isolation;
-  int tran_index;
-  char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_OID_SIZE + OR_HFID_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  memset (&client_credential, 0, sizeof (client_credential));
-  ptr = or_unpack_int (request, &xint);
-  client_credential.client_type = (BOOT_CLIENT_TYPE) xint;
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.client_info);
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.db_name);
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.db_user);
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.db_password);
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.program_name);
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.login_name);
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.host_name);
-  ptr = or_unpack_int (ptr, &client_credential.process_id);
-  ptr = or_unpack_int (ptr, &db_overwrite);
-  ptr = or_unpack_int (ptr, &db_desired_pagesize);
-  ptr = or_unpack_int (ptr, &db_npages);
-  ptr = or_unpack_int (ptr, &db_desired_log_page_size);
-  ptr = or_unpack_int (ptr, &log_npages);
-  memset (&db_path_info, 0, sizeof (db_path_info));
-  ptr = or_unpack_string_nocopy (ptr, &db_path_info.db_path);
-  ptr = or_unpack_string_nocopy (ptr, &db_path_info.vol_path);
-  ptr = or_unpack_string_nocopy (ptr, &db_path_info.log_path);
-  ptr = or_unpack_string_nocopy (ptr, &db_path_info.db_host);
-  ptr = or_unpack_string_nocopy (ptr, &db_path_info.db_comments);
-  ptr = or_unpack_string_nocopy (ptr, &file_addmore_vols);
-  ptr = or_unpack_int (ptr, &client_lock_wait);
-  ptr = or_unpack_int (ptr, &xint);
-  client_isolation = (TRAN_ISOLATION) xint;
-
-  tran_index =
-    xboot_initialize_server (thread_p, &client_credential, &db_path_info, db_overwrite, file_addmore_vols, db_npages,
-			     db_desired_pagesize, log_npages, db_desired_log_page_size, &rootclass_oid, &rootclass_hfid,
-			     client_lock_wait, client_isolation);
-  if (tran_index == NULL_TRAN_INDEX)
-    {
-      (void) return_error_to_client (thread_p, rid);
-    }
-
-  ptr = or_pack_int (reply, tran_index);
-  ptr = or_pack_oid (ptr, &rootclass_oid);
-  ptr = or_pack_hfid (ptr, &rootclass_hfid);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-#else /* ENABLE_UNUSED_FUNCTION */
   css_send_abort_to_client (thread_p->conn_entry, rid);
-#endif /* !ENABLE_UNUSED_FUNCTION */
 }
 
 /*
@@ -3216,26 +3159,16 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   TRAN_STATE tran_state;
   int area_size, strlen1, strlen2, strlen3, strlen4;
   char *reply, *area, *ptr;
+  packing_unpacker unpacker;
 
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  memset (&client_credential, 0, sizeof (client_credential));
   memset (&server_credential, 0, sizeof (server_credential));
 
-  ptr = or_unpack_int (request, &xint);
-  client_credential.client_type = (BOOT_CLIENT_TYPE) xint;
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.client_info);
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.db_name);
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.db_user);
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.db_password);
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.program_name);
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.login_name);
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.host_name);
-  ptr = or_unpack_int (ptr, &client_credential.process_id);
-  ptr = or_unpack_int (ptr, &client_lock_wait);
-  ptr = or_unpack_int (ptr, &xint);
+  unpacker.set_buffer (request, (size_t) reqlen);
+  unpacker.unpack_all (client_credential, client_lock_wait, xint);
   client_isolation = (TRAN_ISOLATION) xint;
 
   tran_index = xboot_register_client (thread_p, &client_credential, client_lock_wait, client_isolation, &tran_state,

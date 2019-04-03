@@ -28,6 +28,7 @@
 #include "error_code.h"
 #include "error_manager.h"
 #include "memory_private_allocator.hpp"
+#include "memory_reference_store.hpp"
 #include "object_primitive.h"
 
 #include <cassert>
@@ -127,10 +128,10 @@ namespace cubxasl
     column::evaluate_extract (const JSON_DOC &input)
     {
       int error_code = NO_ERROR;
-      JSON_DOC *docp = NULL;
+      JSON_DOC_STORE docp;
       TP_DOMAIN_STATUS status_cast = TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE;
 
-      error_code = db_json_extract_document_from_path (&input, std::vector<std::string> (1, m_path), docp);
+      error_code = db_json_extract_document_from_path (&input, {m_path}, docp);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -138,7 +139,7 @@ namespace cubxasl
 	  return ER_FAILED;
 	}
 
-      if (docp == NULL)
+      if (docp.is_null ())
 	{
 	  error_code = trigger_on_empty (*m_output_value_pointer);
 	  if (error_code != NO_ERROR)
@@ -150,12 +151,7 @@ namespace cubxasl
 
       // clear previous output_value
       pr_clear_value (m_output_value_pointer);
-
-      if (db_make_json (m_output_value_pointer, docp, true) != NO_ERROR)
-	{
-	  assert (false);
-	  return ER_FAILED;
-	}
+      db_make_json_from_doc_store_and_release (*m_output_value_pointer, docp);
 
       status_cast = tp_value_cast (m_output_value_pointer, m_output_value_pointer, m_domain, false);
       if (status_cast != TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE)
@@ -234,6 +230,22 @@ namespace cubxasl
       return error_code;
     }
 
+    void
+    column::clear_xasl (bool is_final_clear /* = true */)
+    {
+      if (is_final_clear)
+	{
+	  (void) pr_clear_value (m_on_empty.m_default_value);
+	  (void) pr_clear_value (m_on_error.m_default_value);
+	}
+
+      if (m_output_value_pointer != NULL)
+	{
+	  (void) pr_clear_value (m_output_value_pointer);
+	  (void) db_make_null (m_output_value_pointer);
+	}
+    }
+
     node::node (void)
     {
       init ();
@@ -259,15 +271,7 @@ namespace cubxasl
       init_ordinality ();
       for (size_t i = 0; i < m_output_columns_size; ++i)
 	{
-	  column *output_column = &m_output_columns[i];
-	  if (is_final_clear)
-	    {
-	      (void) pr_clear_value (output_column->m_on_empty.m_default_value);
-	      (void) pr_clear_value (output_column->m_on_error.m_default_value);
-	    }
-
-	  (void) pr_clear_value (output_column->m_output_value_pointer);
-	  (void) db_make_null (output_column->m_output_value_pointer);
+	  m_output_columns[i].clear_xasl (is_final_clear);
 	}
     }
 
@@ -290,13 +294,13 @@ namespace cubxasl
     }
 
     void
-    node::clear_tree (bool is_final_clear)
+    node::clear_xasl (bool is_final_clear /* = true */)
     {
       clear_columns (is_final_clear);
 
       for (size_t i = 0; i < m_nested_nodes_size; ++i)
 	{
-	  m_nested_nodes[i].clear_tree (is_final_clear);
+	  m_nested_nodes[i].clear_xasl (is_final_clear);
 	}
     }
 
@@ -326,6 +330,13 @@ namespace cubxasl
       m_root_node = NULL;
       m_json_reguvar = NULL;
       m_node_count = 0;
+    }
+
+    void
+    spec_node::clear_xasl (bool is_final_clear /* = true */)
+    {
+      // todo reguvar
+      m_root_node->clear_xasl (is_final_clear);
     }
 
   } // namespace json_table

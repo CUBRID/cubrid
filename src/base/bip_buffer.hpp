@@ -276,7 +276,7 @@ namespace cubmem
 
       int end_read (const cubmem::buffer_latch_read_id &page_idx)
       {
-	assert (page_idx >= 0 && page_idx < P);
+	assert (page_idx >= 0 && page_idx < (int) P);
 
 	assert (m_read_fcnt[page_idx] > 0);
 	m_read_fcnt[page_idx]--;

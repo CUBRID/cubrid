@@ -35,6 +35,7 @@
 #include <limits.h>
 #include <sys/stat.h>
 #include <assert.h>
+#include <signal.h>
 
 #if defined(WINDOWS)
 #include <io.h>
@@ -65,18 +66,21 @@
 #include "porting.h"
 
 #include "chartype.h"
+#include "connection_globals.h"
 #include "file_io.h"
 #include "storage_common.h"
 #include "memory_alloc.h"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "message_catalog.h"
+#include "msgcat_set_log.hpp"
 #include "util_func.h"
 #include "perf_monitor.h"
 #include "environment_variable.h"
 #include "connection_error.h"
 #include "release_string.h"
-#include "log_impl.h"
+#include "log_common_impl.h"
+#include "log_volids.hpp"
 #include "fault_injection.h"
 #if defined (SERVER_MODE)
 #include "vacuum.h"
@@ -2880,7 +2884,8 @@ error:
  *   reset_lsa(in): The reset recovery information LSA
  */
 int
-fileio_reset_volume (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, DKNPAGES npages, LOG_LSA * reset_lsa_p)
+fileio_reset_volume (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, DKNPAGES npages,
+		     const LOG_LSA * reset_lsa_p)
 {
   PAGEID page_id;
   FILEIO_PAGE *malloc_io_page_p;
