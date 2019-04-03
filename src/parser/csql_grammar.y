@@ -311,6 +311,7 @@ static FUNCTION_MAP functions[] = {
   {"crc32", PT_CRC32},
   {"schema_def", PT_SCHEMA_DEF},
   {"conv_tz", PT_CONV_TZ},
+  {"regexp_replace", F_REGEXP_REPLACE},
 };
 
 
@@ -1342,6 +1343,7 @@ int g_original_buffer_len;
 %token REFERENCES
 %token REFERENCING
 %token REGEXP
+%token REGEXP_REPLACE
 %token RELATIVE_
 %token RENAME
 %token REPLACE
@@ -17098,6 +17100,11 @@ reserved_func
 		{{
                     $$ = parser_make_func_with_arg_count (this_parser, F_BENCHMARK, $3, 2, 2);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+		| REGEXP_REPLACE '(' expression_list ')'
+		{{
+			$$ = parser_make_func_with_arg_count (this_parser, F_REGEXP_REPLACE, $3, 3, 6);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 	;
 

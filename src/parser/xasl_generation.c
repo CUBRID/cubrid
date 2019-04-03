@@ -6229,6 +6229,7 @@ pt_make_function (PARSER_CONTEXT * parser, int function_code, const REGU_VARIABL
 	}
 
       regu_dbval_type_init (regu->value.funcp->value, result_type);
+	  regu->value.funcp->tmp = NULL;
     }
 
   return regu;
@@ -6328,6 +6329,7 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	  break;
 	case F_INSERT_SUBSTRING:
 	case F_ELT:
+	case F_REGEXP_REPLACE:
 	  result_type = pt_node_to_db_type (function);
 	  break;
 	case F_BENCHMARK:

@@ -278,6 +278,7 @@ regu_init (function_node &fnode)
   fnode.value = NULL;
   fnode.ftype = (FUNC_TYPE) 0;
   fnode.operand = NULL;
+  fnode.tmp = NULL;
 
   regu_alloc (fnode.value);
 }

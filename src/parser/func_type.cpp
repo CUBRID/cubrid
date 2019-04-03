@@ -336,6 +336,15 @@ func_all_signatures sig_of_benchmark =
   {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_ANY}, {}},
 };
 
+func_all_signatures sig_of_regexp_replace =
+{
+// all signatures: src, pattern, replacement [,position [,occurrence [, match_type]]] -> STRING
+  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING}, {}},
+  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER}, {}},
+  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER}, {}},
+  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_CHAR}, {}},
+};
+
 func_all_signatures *
 get_signatures (FUNC_TYPE ft)
 {
@@ -465,6 +474,8 @@ get_signatures (FUNC_TYPE ft)
       return &sig_of_json_arrayagg;
     case PT_JSON_OBJECTAGG:
       return &sig_of_json_objectagg;
+    case F_REGEXP_REPLACE:
+      return &sig_of_regexp_replace;
     default:
       assert (false);
       return nullptr;
