@@ -262,7 +262,7 @@ namespace cubreplication
     for (int i = count_entries - 1; i >= 0; i--)
       {
 	repl_obj = m_stream_entry.get_object_at (i);
-	if (!repl_obj->is_instance_changing_attr (inst_oid))
+	if (repl_obj->is_instance_changing_attr (inst_oid))
 	  {
 	    repl_obj->set_lsa_stamp (*p_lsa);
 	    break;
