@@ -14920,9 +14920,12 @@ end:
     {
       if (repl_stmt.savepoint_name != NULL)
 	{
-	  ws_abort_mops (false);
+	  bool save_pin = sm_Root_class_mop->pinned;
+	  sm_Root_class_mop->pinned = true;
+	  ws_abort_mops (true);
 	  ws_filter_dirty ();
 	  db_string_free (repl_stmt.savepoint_name);
+	  sm_Root_class_mop->pinned = save_pin;
 	}
 
       tran_free_oldest_system_savepoint ();
