@@ -160,7 +160,6 @@ static int logtb_global_unique_stat_free (void *unique_stat);
 static int logtb_global_unique_stat_init (void *unique_stat);
 static int logtb_global_unique_stat_key_copy (void *src, void *dest);
 static void logtb_free_tran_mvcc_info (LOG_TDES * tdes);
-static int logtb_allocate_snapshot_data (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * snapshot);
 
 static int logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvcc_subid);
 
@@ -1496,17 +1495,7 @@ logtb_free_tran_mvcc_info (LOG_TDES * tdes)
 {
   MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
 
-  if (curr_mvcc_info->snapshot.long_tran_mvccids != NULL)
-    {
-      free_and_init (curr_mvcc_info->snapshot.long_tran_mvccids);
-      curr_mvcc_info->snapshot.long_tran_mvccids_length = 0;
-    }
-
-  if (curr_mvcc_info->snapshot.bit_area != NULL)
-    {
-      free_and_init (curr_mvcc_info->snapshot.bit_area);
-      curr_mvcc_info->snapshot.bit_area_length = 0;
-    }
+  curr_mvcc_info->snapshot.m_active_mvccs.finalize ();
 
   if (curr_mvcc_info->sub_ids != NULL)
     {
@@ -1514,49 +1503,6 @@ logtb_free_tran_mvcc_info (LOG_TDES * tdes)
       curr_mvcc_info->count_sub_ids = 0;
     }
 }
-
-/*
- * logtb_allocate_snapshot_data - allocate snapshot data if not allocated yet
- *
- * return: error code
- *
- *   thread_p(in): thread entry
- *   snapshot(in): The snapshot
- */
-int
-logtb_allocate_snapshot_data (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * snapshot)
-{
-  int size;
-  assert (snapshot != NULL);
-
-  if (snapshot->long_tran_mvccids == NULL)
-    {
-      /* allocate only once */
-      size = NUM_TOTAL_TRAN_INDICES * OR_MVCCID_SIZE;
-
-      snapshot->long_tran_mvccids = (MVCCID *) malloc (size);
-      if (snapshot->long_tran_mvccids == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) size);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-    }
-
-  if (snapshot->bit_area == NULL)
-    {
-      size = MVCC_BITAREA_ELEMENTS_TO_BYTES (MVCC_BITAREA_MAXIMUM_ELEMENTS);
-      snapshot->bit_area = (UINT64 *) malloc (size);
-      if (snapshot->bit_area == NULL)
-	{
-	  free_and_init (snapshot->long_tran_mvccids);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) size);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-    }
-
-  return NO_ERROR;
-}
-
 
 /*
  * logtb_clear_tdes - clear the transaction descriptor
@@ -3876,7 +3822,7 @@ logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
   int tran_index;
   LOG_TDES *tdes;
 
-  log_Gl.mvcc_table.build_mvcc_snapshot (*tdes);
+  log_Gl.mvcc_table.build_mvcc_info (*tdes);
   return NO_ERROR;
 }
 

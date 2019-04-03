@@ -337,6 +337,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_tran_table.c
   ${TRANSACTION_DIR}/log_writer.c
   ${TRANSACTION_DIR}/mvcc.c
+  ${TRANSACTION_DIR}/mvcc_active_tran.cpp
   ${TRANSACTION_DIR}/mvcc_table.cpp
   ${TRANSACTION_DIR}/replication.c
   ${TRANSACTION_DIR}/recovery.c
@@ -357,6 +358,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_system_tran.hpp
   ${TRANSACTION_DIR}/log_volids.hpp
   ${TRANSACTION_DIR}/mvcc.h
+  ${TRANSACTION_DIR}/mvcc_active_tran.hpp
   ${TRANSACTION_DIR}/mvcc_table.hpp
   ${TRANSACTION_DIR}/transaction_global.hpp
   ${TRANSACTION_DIR}/transaction_transient.hpp

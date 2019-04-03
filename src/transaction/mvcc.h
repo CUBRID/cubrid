@@ -27,6 +27,7 @@
 #ident "$Id$"
 
 #include "log_lsa.hpp"
+#include "mvcc_active_tran.hpp"
 #include "recovery.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
@@ -228,6 +229,7 @@ struct mvcc_snapshot
   MVCCID lowest_active_mvccid;	/* lowest active id */
   MVCCID highest_completed_mvccid;	/* highest mvccid in snapshot */
 
+  mvcc_active_tran m_active_mvccs;
   UINT64 *bit_area;		/* bit area */
   MVCCID *long_tran_mvccids;	/* long time active MVCCID array */
 

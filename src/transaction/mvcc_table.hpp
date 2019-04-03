@@ -28,6 +28,7 @@
 #error Wrong Module
 #endif
 
+#include "mvcc_active_tran.hpp"
 #include "storage_common.h"
 
 #include <atomic>
@@ -48,19 +49,8 @@ typedef struct mvcc_trans_status MVCC_TRANS_STATUS;
 struct mvcc_trans_status
 {
   using version_type = unsigned int;
-  using bit_area_unit_type = std::uint64_t;
 
-  /* bit area to store MVCCIDS status - size MVCC_BITAREA_MAXIMUM_ELEMENTS */
-  bit_area_unit_type *bit_area;
-  /* first MVCCID whose status is stored in bit area */
-  std::atomic<MVCCID> bit_area_start_mvccid;
-  /* the area length expressed in bits */
-  std::atomic<size_t> bit_area_length;
-
-  /* long time transaction mvccid array */
-  MVCCID *long_tran_mvccids;
-  /* long time transactions mvccid array length */
-  unsigned int long_tran_mvccids_length;
+  mvcc_active_tran m_active_mvccs;
 
   std::atomic<version_type> version;
 
@@ -72,14 +62,14 @@ struct mvcc_trans_status
 
   void initialize ();
   void finalize ();
-
-  bool is_active (MVCCID mvccid) const;
 };
 
 typedef struct mvcctable MVCCTABLE;
 struct mvcctable
 {
   using lowest_active_mvccid_type = std::atomic<MVCCID>;
+
+  static const size_t HISTORY_MAX_SIZE = 2048;
 
   /* current transaction status */
   mvcc_trans_status current_trans_status;
@@ -103,9 +93,8 @@ struct mvcctable
   void initialize ();
   void finalize ();
 
-  // mvcc_snapshot/mvcc_info functions; todo - move them out
-  static void allocate_mvcc_snapshot_data (mvcc_snapshot &snapshot);
-  void build_mvcc_snapshot (log_tdes &tdes);
+  // mvcc_snapshot/mvcc_info functions
+  void build_mvcc_info (log_tdes &tdes);
   bool is_active (MVCCID mvccid) const;
 };
 
