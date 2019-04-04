@@ -30,6 +30,9 @@
 #include <cstdlib>
 #include <errno.h>
 #include <limits>
+#include <string>
+#include <unordered_set>
+#include <vector>
 
 enum class JSON_PATH_TYPE
 {
@@ -113,6 +116,26 @@ db_json_path_quote_and_validate_unquoted_object_key (std::string &path, std::siz
       token_begin = skip_whitespaces (path, i + 2 /* we inserted 2 quotation marks */);
     }
   return validation_result;
+}
+
+std::string
+db_string_unquote (const std::string &path)
+{
+  std::string res;
+  assert (path.length () >= 2 && path[0] == '"' && path[path.length () - 1] == '"');
+  for (size_t i = 1; i < path.length () - 1; ++i)
+    {
+      if (path[i] == '\\')
+	{
+	  res += path[i + 1];
+	  ++i;
+	}
+      else
+	{
+	  res += path[i];
+	}
+    }
+  return std::move (res);
 }
 
 /*
@@ -861,7 +884,7 @@ JSON_PATH::get (const JSON_DOC &jd) const
 	    }
 
 	  assert (tkn.get_object_key ().length () >= 2);
-	  std::string unquoted_key = tkn.get_object_key ().substr (1, tkn.get_object_key ().length () - 2);
+	  std::string unquoted_key = db_string_unquote (tkn.get_object_key ());
 	  JSON_VALUE::ConstMemberIterator m = val->FindMember (unquoted_key.c_str ());
 	  if (m == val->MemberEnd ())
 	    {
@@ -875,6 +898,106 @@ JSON_PATH::get (const JSON_DOC &jd) const
 	}
     }
   return val;
+}
+
+void
+JSON_PATH::extract_from_subtree (const JSON_PATH &path, size_t tkn_array_offset, const JSON_VALUE &jv,
+				 std::unordered_set<const JSON_VALUE *> &vals_hash_set,
+				 std::vector<const JSON_VALUE *> &vals)
+{
+  if (tkn_array_offset == path.get_token_count ())
+    {
+      // No suffix remaining -> collect match
+      // Note: some nodes of the tree are encountered multiple times (only during double wildcards)
+      // therefore the use of unordered_set
+      if (vals_hash_set.find (&jv) == vals_hash_set.end ())
+	{
+	  vals_hash_set.insert (&jv);
+	  vals.push_back (&jv);
+	}
+      return;
+    }
+
+  const PATH_TOKEN &crt_tkn = path.m_path_tokens[tkn_array_offset];
+  if (jv.IsArray ())
+    {
+      switch (crt_tkn.m_type)
+	{
+	case PATH_TOKEN::token_type::array_index:
+	{
+	  unsigned idx = crt_tkn.get_array_index ();
+	  if (idx >= jv.GetArray ().Size ())
+	    {
+	      return;
+	    }
+	  extract_from_subtree (path, tkn_array_offset + 1, jv.GetArray ()[idx], vals_hash_set, vals);
+	  return;
+	}
+	case PATH_TOKEN::token_type::array_index_wildcard:
+	  for (rapidjson::SizeType i = 0; i < jv.GetArray ().Size (); ++i)
+	    {
+	      extract_from_subtree (path, tkn_array_offset + 1, jv.GetArray ()[i], vals_hash_set, vals);
+	    }
+	  return;
+	case PATH_TOKEN::token_type::double_wildcard:
+	  // Advance token_array_offset
+	  extract_from_subtree (path, tkn_array_offset + 1, jv, vals_hash_set, vals);
+	  for (rapidjson::SizeType i = 0; i < jv.GetArray ().Size (); ++i)
+	    {
+	      // Advance in tree, keep current token_array_offset
+	      extract_from_subtree (path, tkn_array_offset, jv.GetArray ()[i], vals_hash_set, vals);
+	    }
+	  return;
+	default:
+	  return;
+	}
+    }
+  else if (jv.IsObject ())
+    {
+      switch (crt_tkn.m_type)
+	{
+	case PATH_TOKEN::token_type::object_key:
+	{
+	  std::string unquoted_key = db_string_unquote (crt_tkn.get_object_key ());
+	  JSON_VALUE::ConstMemberIterator m = jv.FindMember (unquoted_key.c_str ());
+	  if (m == jv.MemberEnd ())
+	    {
+	      return;
+	    }
+	  extract_from_subtree (path, tkn_array_offset + 1, m->value, vals_hash_set, vals);
+	  return;
+	}
+	case PATH_TOKEN::token_type::object_key_wildcard:
+	  for (JSON_VALUE::ConstMemberIterator m = jv.MemberBegin (); m != jv.MemberEnd (); ++m)
+	    {
+	      extract_from_subtree (path, tkn_array_offset + 1, m->value, vals_hash_set, vals);
+	    }
+	  return;
+	case PATH_TOKEN::token_type::double_wildcard:
+	  // Advance token_array_offset
+	  extract_from_subtree (path, tkn_array_offset + 1, jv, vals_hash_set, vals);
+	  for (JSON_VALUE::ConstMemberIterator m = jv.MemberBegin (); m != jv.MemberEnd (); ++m)
+	    {
+	      // Advance in tree, keep current token_array_offset
+	      extract_from_subtree (path, tkn_array_offset, m->value, vals_hash_set, vals);
+	    }
+	  return;
+	default:
+	  return;
+	}
+    }
+  // Json scalars are ignored if there is a remaining suffix
+}
+
+std::vector<const JSON_VALUE *>
+JSON_PATH::extract (const JSON_DOC &jd) const
+{
+  std::unordered_set <const JSON_VALUE *> vals_hash_set;
+  std::vector <const JSON_VALUE *> res;
+
+  extract_from_subtree (*this, 0, db_json_doc_to_value (jd), vals_hash_set, res);
+
+  return res;
 }
 
 bool

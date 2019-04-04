@@ -400,7 +400,7 @@ namespace cubscan
     }
 
     int
-    scanner::set_next_cursor (const cursor &current_cursor, int next_depth)
+    scanner::set_next_cursor (const cursor &current_cursor, size_t next_depth)
     {
       return init_cursor (*current_cursor.m_process_doc,
 			  current_cursor.m_node->m_nested_nodes[current_cursor.m_child],

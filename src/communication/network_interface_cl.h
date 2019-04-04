@@ -34,7 +34,7 @@
 #include <stdio.h>
 
 #include "dbtype_def.h"
-#include "elo.h"
+#include "lob_locator.hpp"
 #include "replication.h"
 #include "server_interface.h"
 #include "perf_monitor.h"
@@ -131,10 +131,13 @@ extern void log_set_interrupt (int set);
 extern int log_checkpoint (void);
 extern void log_dump_stat (FILE * outfp);
 extern int log_set_suppress_repl_on_transaction (int set);
+
+#if defined (CS_MODE)
 extern LOB_LOCATOR_STATE log_find_lob_locator (const char *locator, char *real_locator);
 extern int log_add_lob_locator (const char *locator, LOB_LOCATOR_STATE state);
 extern int log_change_state_of_locator (const char *locator, const char *real_locator, LOB_LOCATOR_STATE state);
 extern int log_drop_lob_locator (const char *locator);
+#endif // CS_MODE
 
 extern TRAN_STATE tran_server_commit (bool retain_lock);
 extern TRAN_STATE tran_server_abort (void);

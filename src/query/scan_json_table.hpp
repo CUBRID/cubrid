@@ -146,7 +146,7 @@ namespace cubscan
 
 	// cursor functions
 	int init_cursor (const JSON_DOC &doc, cubxasl::json_table::node &node, cursor &cursor_out);
-	int set_next_cursor (const cursor &current_cursor, int next_depth);
+	int set_next_cursor (const cursor &current_cursor, size_t next_depth);
 
 	// to start scanning a node, an input document is set
 	int set_input_document (cursor &cursor, const cubxasl::json_table::node &node, const JSON_DOC &document);
