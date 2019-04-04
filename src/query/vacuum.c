@@ -30,6 +30,7 @@
 #include "dbtype.h"
 #include "heap_file.h"
 #include "lockfree_circular_queue.hpp"
+#include "log_append.hpp"
 #include "log_compress.h"
 #include "log_lsa.hpp"
 #include "log_impl.h"
@@ -2973,7 +2974,7 @@ restart:
   log_append_redo_data2 (thread_p, RVVAC_COMPLETE, NULL, (PAGE_PTR) vacuum_Data.first_page, 0,
 			 sizeof (log_Gl.hdr.mvcc_next_id), &log_Gl.hdr.mvcc_next_id);
   vacuum_set_dirty_data_page (thread_p, vacuum_Data.first_page, DONT_FREE);
-  logpb_flush_pages_direct (thread_p);
+  logpb_force_flush_pages (thread_p);
 
   /* Cleanup dropped files. */
   vacuum_cleanup_dropped_files (thread_p);

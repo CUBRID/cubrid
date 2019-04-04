@@ -953,7 +953,7 @@ pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str, LC_PREFETCH_FLAGS flags
 static void
 remove_appended_trigger_info (char *msg, int with_evaluate)
 {
-  int i;
+  size_t i;
   const char *scope_str = "SCOPE___ ";
   const char *from_on_str = " FROM ON ";
   const char *eval_prefix = "EVALUATE ( ";

@@ -54,6 +54,8 @@ struct binary_heap;
 
 struct xasl_node;
 typedef struct xasl_node XASL_NODE;
+struct xasl_unpack_info;
+typedef struct xasl_unpack_info XASL_UNPACK_INFO;
 
 /* XASL HEADER */
 /*
@@ -1052,7 +1054,7 @@ struct pred_expr_with_context
   int num_attrs_pred;		/* number of atts from the predicate */
   ATTR_ID *attrids_pred;	/* array of attr ids from the pred */
   HEAP_CACHE_ATTRINFO *cache_pred;	/* cache for the pred attrs */
-  void *unpack_info;		/* Buffer information. */
+  XASL_UNPACK_INFO *unpack_info;	/* Buffer information. */
 };
 typedef struct pred_expr_with_context PRED_EXPR_WITH_CONTEXT;
 

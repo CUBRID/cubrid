@@ -135,6 +135,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
   ${BASE_DIR}/mem_block.hpp
+  ${BASE_DIR}/memory_reference_store.hpp
   ${BASE_DIR}/memory_private_allocator.hpp
   ${BASE_DIR}/msgcat_set_log.hpp
   ${BASE_DIR}/packable_object.hpp
@@ -232,6 +233,7 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/class_description.cpp
   ${OBJECT_DIR}/class_object.c
   ${OBJECT_DIR}/elo.c
+  ${OBJECT_DIR}/lob_locator.cpp
   ${OBJECT_DIR}/object_accessor.c
   ${OBJECT_DIR}/object_description.cpp
   ${OBJECT_DIR}/object_domain.c
@@ -252,6 +254,9 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/virtual_object.c
   ${OBJECT_DIR}/work_space.c
   )
+set(OBJECT_HEADERS
+  ${OBJECT_DIR}/lob_locator.hpp
+)
 
 set(JSP_SOURCES
   ${JSP_DIR}/jsp_cl.c
@@ -294,6 +299,7 @@ set(XASL_SOURCES
   ${XASL_DIR}/access_json_table.cpp
   ${XASL_DIR}/xasl_analytic.cpp
   ${XASL_DIR}/xasl_predicate.cpp
+  ${XASL_DIR}/xasl_unpack_info.cpp
   ${XASL_DIR}/xasl_stream.cpp
   )
 set(XASL_HEADERS
@@ -302,6 +308,7 @@ set(XASL_HEADERS
   ${XASL_DIR}/compile_context.h
   ${XASL_DIR}/xasl_aggregate.hpp
   ${XASL_DIR}/xasl_analytic.hpp
+  ${XASL_DIR}/xasl_unpack_info.hpp
   ${XASL_DIR}/xasl_predicate.hpp
   ${XASL_DIR}/xasl_stream.hpp
   )
@@ -405,26 +412,27 @@ add_library(cubridcs SHARED
   ${EXECUTABLE_SOURCES}
   ${COMPAT_SOURCES}
   ${COMPAT_SOURCES_C}
-  ${BASE_SOURCES}
   ${BASE_HEADERS}
-  ${HEAPLAYER_SOURCES}
+  ${BASE_SOURCES}
+  ${ES_SOURCES}
+  ${COMMUNICATION_SOURCES}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
-  ${COMMUNICATION_SOURCES}
-  ${PARSER_SOURCES}
-  ${PARSER_HEADERS}
-  ${OPTIMIZER_SOURCES}
-  ${QUERY_SOURCES}
-  ${QUERY_HEADERS}
+  ${HEAPLAYER_SOURCES}
+  ${OBJECT_HEADERS}
   ${OBJECT_SOURCES}
-  ${JSP_SOURCES}
-  ${TRANSACTION_SOURCES}
-  ${TRANSACTION_HEADERS}
-  ${STORAGE_SOURCES}
-  ${ES_SOURCES}
+  ${OPTIMIZER_SOURCES}
+  ${PARSER_HEADERS}
+  ${PARSER_SOURCES}
   ${PROBES_OBJECT}
-  ${XASL_SOURCES}
+  ${QUERY_HEADERS}
+  ${QUERY_SOURCES}
+  ${JSP_SOURCES}
+  ${TRANSACTION_HEADERS}
+  ${TRANSACTION_SOURCES}
+  ${STORAGE_SOURCES}
   ${XASL_HEADERS}
+  ${XASL_SOURCES}
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 

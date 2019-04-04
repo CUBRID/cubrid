@@ -31,16 +31,18 @@
 #include <string.h>
 #include <time.h>
 
+#include "file_manager.h"
+
 #include "btree.h"
 #include "porting.h"
 #include "porting_inline.hpp"
-#include "file_manager.h"
 #include "memory_alloc.h"
 #include "storage_common.h"
 #include "error_manager.h"
 #include "file_io.h"
 #include "page_buffer.h"
 #include "disk_manager.h"
+#include "log_append.hpp"
 #include "log_manager.h"
 #include "log_impl.h"
 #include "log_lsa.hpp"

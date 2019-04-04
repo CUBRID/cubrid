@@ -916,22 +916,13 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   /* Get the user name */
   if (client_credential->db_user.empty ())
     {
-      char *user_name = au_user_name_dup ();
-
-      if (user_name != NULL)
+      if (au_has_user_name ())
 	{
-	  /* user name is upper-cased in server using server's charset */
-	  client_credential->db_user = user_name;
+	  client_credential->db_user = au_user_name ();
 	}
-
-      if (client_credential->db_user.empty ())
+      else
 	{
-	  // no user string
-	  client_credential->db_user = boot_Client_no_user_string;
-	}
-      else if (client_credential->db_user == "\0")
-	{
-	  // empty user string
+	  // default is PUBLIC
 	  client_credential->db_user = AU_PUBLIC_USER_NAME;
 	}
     }
@@ -1533,7 +1524,10 @@ boot_server_die_or_changed (void)
 #if defined(CS_MODE)
       css_terminate (true);
 #endif /* !CS_MODE */
-      er_log_debug (ARG_FILE_LINE, "boot_server_die_or_changed() terminated\n");
+      if (prm_get_bool_value (PRM_ID_TEST_MODE))
+	{
+	  er_print_callstack (ARG_FILE_LINE, "boot_server_die_or_changed() terminated\n");
+	}
     }
 }
 

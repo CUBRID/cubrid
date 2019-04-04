@@ -40,7 +40,7 @@ struct log_lsa
 
   inline log_lsa () = default;
   inline log_lsa (std::int64_t log_pageid, std::int16_t log_offset);
-  inline log_lsa (const log_lsa &olsa);
+  inline log_lsa (const log_lsa &olsa) = default;
 
   inline bool is_null () const;
   inline void set_null ();
@@ -84,12 +84,6 @@ inline bool LSA_GT (const log_lsa *plsa1, const log_lsa *plsa2);
 log_lsa::log_lsa (std::int64_t log_pageid, std::int16_t log_offset)
   : pageid (log_pageid)
   , offset (log_offset)
-{
-  //
-}
-
-log_lsa::log_lsa (const log_lsa &olsa)
-  : log_lsa (olsa.pageid, olsa.offset)
 {
   //
 }

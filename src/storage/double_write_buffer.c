@@ -32,6 +32,7 @@
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
+#include "log_append.hpp"
 #include "log_impl.h"
 #include "log_volids.hpp"
 #include "boot_sr.h"
@@ -2310,7 +2311,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool helper_can_flu
       if (s1->io_page->prv.pageid != NULL_PAGEID && logpb_need_wal (&s1->io_page->prv.lsa))
 	{
 	  /* Need WAL. Check whether log buffer pool was destroyed. */
-	  logpb_get_nxio_lsa (&nxio_lsa);
+	  nxio_lsa = log_Gl.append.get_nxio_lsa ();
 	  assert (LSA_ISNULL (&nxio_lsa));
 	}
 #endif
@@ -3602,8 +3603,9 @@ start:
   /* Check whether the initial block was flushed */
 check_flushed_blocks:
 
+  assert (initial_block_no >= 0);
   if ((ATOMIC_INC_32 (&dwb_Global.blocks_flush_counter, 0) > 0)
-      && (ATOMIC_INC_32 (&dwb_Global.next_block_to_flush, 0) == initial_block_no)
+      && (ATOMIC_INC_32 (&dwb_Global.next_block_to_flush, 0) == (unsigned int) initial_block_no)
       && (ATOMIC_INC_32 (&dwb_Global.blocks[initial_block_no].count_wb_pages, 0) == DWB_BLOCK_NUM_PAGES))
     {
       /* The initial block is currently flushing, wait for it. */

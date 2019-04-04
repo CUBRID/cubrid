@@ -50,6 +50,8 @@ class log_system_tdes;
 struct log_zip;
 // from vacuum.h
 struct vacuum_worker;
+// from xasl_unpack_info.hpp
+struct xasl_unpack_info;
 
 // forward resource trackers
 namespace cubbase
@@ -219,7 +221,7 @@ namespace cubthread
 
       css_conn_entry *conn_entry;	/* conn entry ptr */
 
-      void *xasl_unpack_info_ptr;	/* XASL_UNPACK_INFO * */
+      xasl_unpack_info *xasl_unpack_info_ptr;     /* XASL_UNPACK_INFO * */
       int xasl_errcode;		/* xasl errorcode */
       int xasl_recursion_depth;
 

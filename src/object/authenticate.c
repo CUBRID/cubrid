@@ -5802,6 +5802,12 @@ au_user_name (void)
   return name;
 }
 
+bool
+au_has_user_name (void)
+{
+  return Au_user != NULL || strlen (Au_user_name) > 0;
+}
+
 /*
  * CLASS ACCESSING
  */

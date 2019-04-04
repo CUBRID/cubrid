@@ -25,6 +25,7 @@
 #define _DB_JSON_HPP_
 
 #include "error_manager.h"
+#include "memory_reference_store.hpp"
 #include "object_representation.h"
 
 #if defined (__cplusplus)
@@ -57,12 +58,14 @@ enum DB_JSON_TYPE
   DB_JSON_BOOL,
 };
 
+using JSON_DOC_STORE = cubmem::reference_store<JSON_DOC>;
+
 bool db_json_is_valid (const char *json_str);
 const char *db_json_get_type_as_str (const JSON_DOC *document);
 unsigned int db_json_get_length (const JSON_DOC *document);
 unsigned int db_json_get_depth (const JSON_DOC *doc);
-int db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<std::string> &raw_path,
-					JSON_DOC *&result, bool allow_wildcards = true);
+int db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<const char *> &raw_path,
+					JSON_DOC_STORE &result, bool allow_wildcards = true);
 int db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> &paths, bool find_all,
 			   bool &result);
 char *db_json_get_raw_json_body_from_document (const JSON_DOC *doc);
@@ -95,7 +98,7 @@ int db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *r
 int db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
 int db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
 int db_json_remove_func (JSON_DOC &doc, const char *raw_path);
-int db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char,
+int db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char,
 			 std::vector<std::string> &paths, const std::vector<std::string> &patterns, bool find_all);
 int db_json_merge_patch_func (const JSON_DOC *source, JSON_DOC *&dest);
 int db_json_merge_preserve_func (const JSON_DOC *source, JSON_DOC *&dest);
@@ -149,12 +152,13 @@ bool db_json_doc_has_numeric_type (const JSON_DOC *doc);
 bool db_json_doc_is_uncomparable (const JSON_DOC *doc);
 
 // DB_VALUE manipulation functions
-int db_value_to_json_doc (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_doc));
-int db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val));
+int db_value_to_json_doc (const DB_VALUE &db_val, bool copy_json, JSON_DOC_STORE &json_doc);
+int db_value_to_json_value (const DB_VALUE &db_val, JSON_DOC_STORE &json_doc);
+void db_make_json_from_doc_store_and_release (DB_VALUE &value, JSON_DOC_STORE &doc_store);
 int db_value_to_json_path (const DB_VALUE *path_value, FUNC_TYPE fcode, const char **path_str);
 
 int db_json_normalize_path_string (const char *pointer_path, std::string &normalized_path);
-void db_json_path_unquote_object_keys_external (std::string &sql_path);
+int db_json_path_unquote_object_keys_external (std::string &sql_path);
 
 template <typename Fn, typename... Args>
 inline int

@@ -38,6 +38,7 @@
 #endif /* !WINDOWS */
 
 #include "disk_manager.h"
+
 #include "porting.h"
 #include "porting_inline.hpp"
 #include "system_parameter.h"
@@ -47,6 +48,7 @@
 #include "xserver_interface.h"
 #include "file_io.h"
 #include "page_buffer.h"
+#include "log_append.hpp"
 #include "log_manager.h"
 #include "log_lsa.hpp"
 #include "log_volids.hpp"
@@ -565,9 +567,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   fault_inject_random_crash ();
 
   /* this log must be flushed. */
-  LOG_CS_ENTER (thread_p);
-  logpb_flush_pages_direct (thread_p);
-  LOG_CS_EXIT (thread_p);
+  logpb_force_flush_pages (thread_p);
   fault_inject_random_crash ();
 
   /* create and initialize the volume. recovery information is initialized in every page. */
@@ -1046,9 +1046,7 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const cha
     }
 
   /* Forcing the log here to be safer, especially in the case of permanent temp volumes. */
-  LOG_CS_ENTER (thread_p);
-  logpb_flush_pages_direct (thread_p);
-  LOG_CS_EXIT (thread_p);
+  logpb_force_flush_pages (thread_p);
 
   (void) disk_verify_volume_header (thread_p, addr.pgptr);
 
@@ -1970,9 +1968,7 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
   FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
 
   /* to be sure expansion really happens on recovery too, we must flush log! */
-  LOG_CS_ENTER (thread_p);
-  logpb_flush_pages_direct (thread_p);
-  LOG_CS_EXIT (thread_p);
+  logpb_force_flush_pages (thread_p);
 
   FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
 
