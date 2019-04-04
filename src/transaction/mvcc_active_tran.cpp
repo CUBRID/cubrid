@@ -398,3 +398,17 @@ mvcc_active_tran::set_bitarea_mvccid (MVCCID mvccid)
       ltrim_area (delete_count);
     }
 }
+
+void
+mvcc_active_tran::set_inactive_mvccid (MVCCID mvccid)
+{
+  /* check whether is long transaction */
+  if (MVCC_ID_PRECEDES (mvccid, bit_area_start_mvccid))
+    {
+      remove_long_transaction (mvccid);
+    }
+  else
+    {
+      set_bitarea_mvccid (mvccid);
+    }
+}

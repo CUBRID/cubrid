@@ -83,7 +83,7 @@ struct mvcctable
     /* transaction status history - array of size TRANS_STATUS_HISTORY_MAX_SIZE */
     mvcc_trans_status *trans_status_history;
     /* the position in transaction status history array */
-    std::atomic<size_t> trans_status_history_position;
+    std::atomic<size_t> trans_status_history_position;   // protected by lock
 
     /* protect against getting new MVCCIDs concurrently */
     std::mutex new_mvccid_lock;

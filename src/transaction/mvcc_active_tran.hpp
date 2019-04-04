@@ -61,11 +61,7 @@ struct mvcc_active_tran
     MVCCID get_highest_completed_mvccid () const;
     MVCCID get_lowest_active_mvccid () const;
 
-    // todo - move to trans_status
-    void remove_long_transaction (MVCCID mvccid);
-    void add_long_transaction (MVCCID mvccid);
-    void ltrim_area (size_t trim_size);
-    void set_mvccid (MVCCID mvccid);
+    void set_inactive_mvccid (MVCCID mvccid);
 
     size_t get_bit_area_memsize () const;
     size_t get_long_tran_memsize () const;
@@ -96,6 +92,11 @@ struct mvcc_active_tran
     inline bool is_set (size_t bit_offset) const;
 
     size_t get_area_size () const;
+
+    void remove_long_transaction (MVCCID mvccid);
+    void add_long_transaction (MVCCID mvccid);
+    void ltrim_area (size_t trim_size);
+    void set_bitarea_mvccid (MVCCID mvccid);
 };
 
 #endif // !_MVCC_ACTIVE_TRAN_HPP_
