@@ -452,8 +452,9 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
       int error_code = db_json_path_is_token_valid_array_index (split_path[i], false, index);
       if (error_code != NO_ERROR)
 	{
-	  ASSERT_ERROR ();
-	  return error_code;
+	  // ignore error. We only need to decide whether to skip it in case it is not array_idx
+	  er_clear ();
+	  continue;
 	}
 
       db_json_remove_leading_zeros_index (split_path[i]);
