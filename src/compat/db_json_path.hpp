@@ -106,7 +106,7 @@ class JSON_PATH
 
     int from_json_pointer (const std::string &pointer_path);
 
-    bool validate_and_create_from_json_path (std::string &sql_path);
+    int validate_and_create_from_json_path (std::string &sql_path);
 
     static MATCH_RESULT match_pattern (const JSON_PATH &pattern, const token_containter_type::const_iterator &it1,
 				       const JSON_PATH &path, const token_containter_type::const_iterator &it2);
@@ -118,5 +118,5 @@ class JSON_PATH
     token_containter_type m_path_tokens;
 };
 
-void db_json_path_unquote_object_keys (std::string &sql_path);
+int db_json_path_unquote_object_keys (std::string &sql_path);
 #endif /* _DB_JSON_HPP_ */
