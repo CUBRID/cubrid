@@ -4255,26 +4255,12 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
   MVCC_INFO *curr_mvcc_info = NULL;
   MVCCTABLE *mvcc_table = &log_Gl.mvcc_table;
   MVCC_SNAPSHOT *p_mvcc_snapshot = NULL;
-  MVCCID mvccid, position, curr_mvccid;
-  volatile MVCCID *p_transaction_lowest_active_mvccid = NULL;
-  int tran_index, size;
-  unsigned int i, bit_pos, count, delete_dwords_count, delete_bytes_count, new_bytes_count;
-  size_t next_history_position;
-  UINT64 bits, mask;
-  MVCCID bit_area_start_mvccid;
-  UINT64 *bit_area, *end_bit_area;
-  MVCC_TRANS_STATUS *current_trans_status = NULL, *next_trans_status_history = NULL;
-  size_t trans_status_history_last_position = TRANS_STATUS_HISTORY_MAX_SIZE - 1, bit_area_length;
-  int bit_area_cleanup_threshold = MVCC_BITAREA_ELEMENT_BITS;
-  int bit_area_long_transaction_threshold = MVCC_BITAREA_MAXIMUM_BITS - NUM_TOTAL_TRAN_INDICES;
-  UINT64 *p_area = NULL;
-  int r;
+  MVCCID mvccid;
+  int tran_index;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   UINT64 tran_complete_time;
   bool is_perf_tracking = false;
-  MVCCID lowest_active_mvccid, old_lowest_active_mvccid;
-  int version;
 
   assert (tdes != NULL);
 
@@ -4288,8 +4274,6 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
   mvccid = curr_mvcc_info->id;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  p_transaction_lowest_active_mvccid = LOG_FIND_TRAN_LOWEST_ACTIVE_MVCCID (tran_index);
-  assert (p_transaction_lowest_active_mvccid != NULL);
 
   if (MVCCID_IS_VALID (mvccid))
     {
@@ -4930,30 +4914,12 @@ void
 logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   MVCC_INFO *curr_mvcc_info = NULL;
-  MVCCID mvcc_sub_id, curr_mvccid;
+  MVCCID mvcc_sub_id;
   MVCCTABLE *mvcc_table = &log_Gl.mvcc_table;
-  MVCCID position;
-  UINT64 *bit_area = NULL, *end_bit_area;
-  UINT64 bit_area_start_mvccid = MVCCID_NULL;
-  int trans_status_history_last_position = TRANS_STATUS_HISTORY_MAX_SIZE - 1, bit_area_length, size;
-  int bit_area_cleanup_threshold = 4 * MVCC_BITAREA_ELEMENT_BITS;
-  unsigned int count, i, next_history_position, delete_dwords_count, delete_bytes_count, new_bytes_count, bit_pos;
-  MVCC_TRANS_STATUS *current_trans_status, *next_trans_status_history = NULL;
-  UINT64 bits;
-  int bit_area_long_transaction_threshold = MVCC_BITAREA_MAXIMUM_BITS - NUM_TOTAL_TRAN_INDICES;
-  MVCCID *p_area = NULL;
-  UINT64 mask;
-  MVCCID lowest_active_mvccid, old_lowest_active_mvccid;
-  int r, version;
 
   assert (tdes != NULL);
 
   curr_mvcc_info = &tdes->mvccinfo;
-  if (curr_mvcc_info == NULL)
-    {
-      return;
-    }
-
   mvcc_sub_id = curr_mvcc_info->sub_ids[curr_mvcc_info->count_sub_ids - 1];
 
   mvcc_table->complete_sub_mvcc (mvcc_sub_id);
@@ -4968,21 +4934,7 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	  snapshot->highest_completed_mvccid = mvcc_sub_id;
 	  MVCCID_FORWARD (snapshot->highest_completed_mvccid);
 	}
-
-      if ((mvcc_sub_id >= snapshot->bit_area_start_mvccid)
-	  && ((mvcc_sub_id - snapshot->bit_area_start_mvccid) <
-	      MVCC_BITAREA_ELEMENTS_TO_BITS (MVCC_BITAREA_MAXIMUM_ELEMENTS)))
-	{
-	  position = mvcc_sub_id - snapshot->bit_area_start_mvccid;
-	  mask = MVCC_BITAREA_MASK (position);
-	  p_area = MVCC_GET_BITAREA_ELEMENT_PTR (snapshot->bit_area, position);
-	  (*p_area) |= mask;
-
-	  if (snapshot->bit_area_length <= (int) (position))
-	    {
-	      snapshot->bit_area_length = (int) (position + 1);
-	    }
-	}
+      snapshot->m_active_mvccs.set_inactive_mvccid (mvcc_sub_id);
     }
 }
 

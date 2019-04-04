@@ -97,6 +97,7 @@ struct mvcc_active_tran
     void add_long_transaction (MVCCID mvccid);
     void ltrim_area (size_t trim_size);
     void set_bitarea_mvccid (MVCCID mvccid);
+    void cleanup ();
 };
 
 #endif // !_MVCC_ACTIVE_TRAN_HPP_

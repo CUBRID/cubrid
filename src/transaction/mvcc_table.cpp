@@ -141,7 +141,7 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
     }
 
   // make sure snapshot has allocated data
-  tdes.mvccinfo.snapshot.active_mvccs.initialize ();
+  tdes.mvccinfo.snapshot.m_active_mvccs.initialize ();
 
   transaction_lowest_active_mvccids[tdes.tran_index].load (tx_lowest_active);
 

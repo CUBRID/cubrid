@@ -352,6 +352,14 @@ mvcc_active_tran::set_bitarea_mvccid (MVCCID mvccid)
 
   assert (mvccid >= bit_area_start_mvccid);
   size_t position = get_bit_offset (mvccid);
+  if (position >= BITAREA_MAX_BITS)
+    {
+      // force cleanup
+      cleanup ();
+      position = get_bit_offset (mvccid);
+      assert (position < BITAREA_MAX_BITS);   // is this a guaranteed?
+    }
+
   unit_type mask = get_mask_of (position);
   unit_type *p_area = get_unit_of (position);
   *p_area |= mask;
@@ -372,31 +380,37 @@ mvcc_active_tran::set_bitarea_mvccid (MVCCID mvccid)
 
   if (bit_area_length > LONG_TRAN_THRESHOLD)
     {
-      const size_t BITAREA_SIZE_AFTER_CLEANUP = 16;
-      size_t delete_count = get_area_size () - BITAREA_SIZE_AFTER_CLEANUP;
-      unit_type bits;
-      unit_type mask;
-      size_t bit_pos;
-      MVCCID long_tran_mvccid;
+      cleanup ();
+    }
+}
 
-      for (size_t i = 0; i < delete_count; i++)
+void
+mvcc_active_tran::cleanup ()
+{
+  const size_t BITAREA_SIZE_AFTER_CLEANUP = 16;
+  size_t delete_count = get_area_size () - BITAREA_SIZE_AFTER_CLEANUP;
+  unit_type bits;
+  unit_type mask;
+  size_t bit_pos;
+  MVCCID long_tran_mvccid;
+
+  for (size_t i = 0; i < delete_count; i++)
+    {
+      bits = bit_area[i];
+      // iterate on bits and find active MVCCID's
+      for (bit_pos = 0, mask = 1, long_tran_mvccid = get_mvccid (i * UNIT_TO_BITS_COUNT);
+	   bit_pos < UNIT_TO_BITS_COUNT && bits != ALL_COMMITTED;
+	   ++bit_pos, mask <<= 1, ++long_tran_mvccid)
 	{
-	  bits = bit_area[i];
-	  // iterate on bits and find active MVCCID's
-	  for (bit_pos = 0, mask = 1, long_tran_mvccid = get_mvccid (i * UNIT_TO_BITS_COUNT);
-	       bit_pos < UNIT_TO_BITS_COUNT && bits != ALL_COMMITTED;
-	       ++bit_pos, mask <<= 1, ++long_tran_mvccid)
+	  if ((bits & mask) == 0)
 	    {
-	      if ((bits & mask) == 0)
-		{
-		  add_long_transaction (long_tran_mvccid);
-		  /* set the bit to in order to break faster */
-		  bits |= mask;
-		}
+	      add_long_transaction (long_tran_mvccid);
+	      /* set the bit to in order to break faster */
+	      bits |= mask;
 	    }
 	}
-      ltrim_area (delete_count);
     }
+  ltrim_area (delete_count);
 }
 
 void
