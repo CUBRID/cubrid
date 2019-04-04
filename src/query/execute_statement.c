@@ -3340,7 +3340,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 #if !defined(NDEBUG) && defined (CS_MODE)
 	  if (db_is_ddl_proxy_client ())
 	    {
-	      /* DDL proxy, nothing to flush. */
+	      /* DDL proxy, nothing to replicate. */
 	      goto end;
 	    }
 #endif
@@ -3496,6 +3496,8 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* for the subset of nodes which represent top level statements, process them; for any other node, return an error */
+
+  /* disable data replication log for schema replication log types in HA mode */
   if (!HA_DISABLED () && is_stmt_based_repl_type (statement))
     {
       need_stmt_based_repl = true;
@@ -3510,7 +3512,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 #endif
 
 
-  /* disable data replication log for schema replication log types in HA mode */
   if (need_stmt_based_repl)
     {
       /* since we are going to suppress writing replication logs, we need to flush all dirty objects to server not to
@@ -3812,7 +3813,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 #if !defined(NDEBUG) && defined (CS_MODE)
       if (db_is_ddl_proxy_client ())
 	{
-	  /* DDL proxy, nothing to flush. */
+	  /* DDL proxy, nothing to replicate. */
 	  goto end;
 	}
 #endif
@@ -14894,9 +14895,11 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       && (statement->node_type != PT_RENAME || statement->next == NULL)
       && (parser->host_var_count == 0 && parser->auto_param_count == 0))
     {
-      /* Currently test for auto commit only, to avoid wrong cache.
+      /*
+       * TODO - The following cases leads to regressions and must be fixed.
+       * Currently test for auto commit only, to avoid wrong cache at debug and ddl_proxy_client issue.
        * Also, disabled for host variable since the query like cte is incorrectly printed.
-       * Also, disable testing for name oid.
+       * Also, disabled testing for named oid and for multiple rename.
        */
       bool has_name_oid = false;
       (void) parser_walk_tree (parser, statement, pt_has_name_oid, &has_name_oid, NULL, NULL);
@@ -14937,6 +14940,7 @@ end:
     {
       if (repl_stmt.savepoint_name != NULL)
 	{
+	  /* Avoids root decaching. */
 	  bool save_pin = sm_Root_class_mop->pinned;
 	  sm_Root_class_mop->pinned = true;
 	  ws_abort_mops (true);

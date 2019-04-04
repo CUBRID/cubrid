@@ -70,6 +70,8 @@ static const int LOCATOR_GUESS_NUM_NESTED_REFERENCES = 100;
 
 #define CLASSNAME_CACHE_SIZE            1024
 
+#define HA_DDL_PROXY_MAX_STATEMENT_LENGTH 2000
+
 /* flag for INSERT/UPDATE/DELETE statement */
 typedef enum
 {
@@ -7604,7 +7606,7 @@ end:
 	    logtb_get_tdes (thread_p)->replication_log_generator.get_stream_entry ();
 	  if (stream_entry->count_entries () > 0)
 	    {
-	      /* Abort and simulate apply on master node. */
+	      /* Aborts and simulate apply replication RBR on master node. */
 	      error_code =
 		logtb_get_tdes (thread_p)->replication_log_generator.
 		abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
@@ -11777,6 +11779,7 @@ xrepl_statement (THREAD_ENTRY * thread_p, REPL_INFO * repl_info)
 #if !defined(NDEBUG) && defined (SERVER_MODE)
 	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
 	    {
+	      /* Aborts and simulate apply SBR on master node. */
 	      char *savepoint_name = ((REPL_INFO_SBR *) repl_info->info)->savepoint_name;
 	      if (savepoint_name != NULL)
 		{
@@ -14247,13 +14250,16 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
   assert (db_user != NULL && db_password != NULL && statement != NULL && tdes != NULL);
   sprintf (tran_index_str, "%d", tran_index);
 
-  if (strlen (statement) <= 2000 && (strpbrk (statement, "\"\'\t") == NULL))
+  /* TODO - maybe we have to decide based on whole argv length rather than statement length. */
+  if (strlen (statement) <= HA_DDL_PROXY_MAX_STATEMENT_LENGTH && (strpbrk (statement, "\"\'\t") == NULL))
     {
+      /* Uses command option. */
       command_option = "-c";
       command = statement;
     }
   else
     {
+      /* Uses request option. */
       tdes->ha_sbr_statement = statement;
       command_option = "-r";
       command = "true";

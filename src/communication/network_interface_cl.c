@@ -8558,6 +8558,7 @@ repl_set_info (REPL_INFO * repl_info)
 		      + length_const_string (repl_schema->db_password, &strlen4)
 		      + length_const_string (repl_schema->sys_prm_context, &strlen5));
 
+      assert (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG) || repl_schema->savepoint_name == NULL);
       strlen6 = 0;
 #if !defined(NDEBUG) && defined (CS_MODE)
       if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
@@ -10112,12 +10113,12 @@ locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * ex_lock)
 }
 
 /*
-* locator_fetch_proxy_command - fetch proxy command
-*
-* proxy_command(out): proxy command
-* return:
-*
-*/
+ * locator_fetch_proxy_command - Get proxy command
+ *
+ * return : error code
+ * proxy_command (out): proxy command
+ *
+ */
 int
 locator_get_proxy_command (const char **proxy_command)
 {
@@ -10128,15 +10129,13 @@ locator_get_proxy_command (const char **proxy_command)
   int area_size;
 
   assert (proxy_command != NULL);
-  /*OR_ALIGNED_BUF(OR_INT_SIZE) a_request;
-     char *request; */
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply;
   char *local_proxy_command = NULL;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
   req_error =
-    net_client_request2 (NET_FETCH_PROXY_COMMAND, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area,
+    net_client_request2 (NET_GET_PROXY_COMMAND, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area,
 			 &area_size);
   if (!req_error && area != NULL)
     {

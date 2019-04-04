@@ -1046,7 +1046,7 @@ tran_set_oldest_system_savepoint (const char *savept_name)
       return er_errid ();
     }
 
-  sp->next = system_savepoint;
+  sp->next = NULL;
   system_savepoint = sp;
 
   return NO_ERROR;

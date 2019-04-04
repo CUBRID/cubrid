@@ -517,9 +517,9 @@ namespace cubreplication
 	repl_obj = local_stream_entry.get_object_at (i);
 	if (repl_obj != NULL)
 	  {
+            /* Debug code, check for SBR, quick fix. */
             if ((dynamic_cast<sbr_repl_entry *> (repl_obj)) != NULL)
-              {
-                /* Skip SBR, quick fix. */
+              {            
                 continue;
               }
 
@@ -550,7 +550,7 @@ namespace cubreplication
 
     assert (stream_entry->count_entries () > 0);
 
-    /* Called when is only one entry. */
+    /* Currently we are testing is only one entry. */
     if (m_stream_entry.count_entries () != 1)
       {
 	return NO_ERROR;

@@ -234,7 +234,7 @@ enum net_server_request
 
   NET_SERVER_BO_REGISTER_CLIENT_WITH_TRAN_INDEX,
 
-  NET_FETCH_PROXY_COMMAND,
+  NET_GET_PROXY_COMMAND,
 
   /*
    * This is the last entry. It is also used for the end of an

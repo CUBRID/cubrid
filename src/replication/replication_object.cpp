@@ -270,6 +270,7 @@ namespace cubreplication
   {
     serializator.pack_int (sbr_repl_entry::PACKING_ID);
     serializator.pack_string (m_statement);
+    serializator.pack_string (m_db_user);
     serializator.pack_string (m_db_password);
     serializator.pack_string (m_sys_prm_context);
   }
@@ -580,7 +581,7 @@ namespace cubreplication
   }
 
   rec_des_row_repl_entry::rec_des_row_repl_entry (repl_entry_type type, const char *class_name, const RECDES &rec_des,
-      LOG_LSA &lsa_stamp)
+                                                  LOG_LSA &lsa_stamp)
     : single_row_repl_entry (type, class_name, lsa_stamp)
   {
     m_rec_des.length = rec_des.length;

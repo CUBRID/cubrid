@@ -3002,8 +3002,9 @@ db_set_override_tran_index (int tran_index)
 }
 
 /*
- * db_is_ddl_proxy () -
- * return : void
+ * db_is_ddl_proxy_client () - Check whether is ddl proxy client.
+ *
+ * return : true, if is ddl proxy client.
  */
 bool
 db_is_ddl_proxy_client (void)
