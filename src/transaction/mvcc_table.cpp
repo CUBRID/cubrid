@@ -378,3 +378,19 @@ mvcctable::set_transaction_lowest_active (int tran_index, MVCCID mvccid)
 {
   transaction_lowest_active_mvccids[tran_index].store (mvccid);
 }
+
+void
+mvcctable::reset_start_mvccid ()
+{
+  assert (current_trans_status.m_active_mvccs.bit_area_length == 0
+	  && current_trans_status.m_active_mvccs.bit_area[0] == 0);
+  current_trans_status.m_active_mvccs.bit_area_start_mvccid = log_Gl.hdr.mvcc_next_id;
+
+  assert (trans_status_history_position < HISTORY_MAX_SIZE);
+  mvcc_trans_status &history_trans_status = trans_status_history[trans_status_history_position];
+  assert (history_trans_status.m_active_mvccs.bit_area_length == 0
+	  && history_trans_status.m_active_mvccs.bit_area[0] == 0);
+  history_trans_status.m_active_mvccs.bit_area_start_mvccid = log_Gl.hdr.mvcc_next_id;
+
+  lowest_active_mvccid.store (log_Gl.hdr.mvcc_next_id);
+}

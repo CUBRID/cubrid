@@ -1060,7 +1060,6 @@ extern char *log_rv_pack_redo_record_changes (char *ptr, int offset_to_data, int
 					      char *new_data);
 extern char *log_rv_pack_undo_record_changes (char *ptr, int offset_to_data, int old_data_size, int new_data_size,
 					      char *old_data);
-extern void logtb_reset_bit_area_start_mvccid (void);
 
 extern void log_set_ha_promotion_time (THREAD_ENTRY * thread_p, INT64 ha_promotion_time);
 extern void log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_time);

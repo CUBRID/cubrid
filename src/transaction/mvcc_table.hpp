@@ -101,6 +101,7 @@ struct mvcctable
     void complete_sub_mvcc (MVCCID mvccid);
     MVCCID get_new_mvccid ();
     void set_transaction_lowest_active (int tran_index, MVCCID mvccid);
+    void reset_start_mvccid ();
 
   private:
     static const size_t HISTORY_INDEX_MASK = HISTORY_MAX_SIZE - 1;

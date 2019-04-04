@@ -1367,7 +1367,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	}
     }
 
-  logtb_reset_bit_area_start_mvccid ();
+  log_Gl.mvcc_table.reset_start_mvccid ();
 
   if (prm_get_bool_value (PRM_ID_FORCE_RESTART_TO_SKIP_RECOVERY))
     {
