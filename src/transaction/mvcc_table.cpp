@@ -23,9 +23,11 @@
 
 #include "mvcc_table.hpp"
 
+#include "extensible_array.hpp"
 #include "log_impl.h"
 #include "mvcc.h"
 #include "perf_monitor.h"
+#include "thread_manager.hpp"
 
 #include <cassert>
 
@@ -58,14 +60,14 @@ mvcctable::advance_oldest_active (MVCCID next_oldest_active)
   MVCCID crt_oldest_active;
   do
     {
-      crt_oldest_active = lowest_active_mvccid.load ();
+      crt_oldest_active = m_lowest_active_mvccid.load ();
       if (crt_oldest_active >= next_oldest_active)
 	{
 	  // already advanced to equal or better
 	  break;
 	}
     }
-  while (!lowest_active_mvccid.compare_exchange_strong (crt_oldest_active, next_oldest_active));
+  while (!m_lowest_active_mvccid.compare_exchange_strong (crt_oldest_active, next_oldest_active));
 }
 
 //
@@ -75,9 +77,10 @@ mvcctable::advance_oldest_active (MVCCID next_oldest_active)
 mvcctable::mvcctable ()
   : current_trans_status ()
   , transaction_lowest_active_mvccids (NULL)
+  , transaction_lowest_active_mvccids_size (0)
   , trans_status_history (NULL)
   , trans_status_history_position (0)
-  , lowest_active_mvccid (MVCCID_FIRST)
+  , m_lowest_active_mvccid (MVCCID_FIRST)
   , new_mvccid_lock ()
   , active_trans_mutex ()
 {
@@ -99,10 +102,22 @@ mvcctable::initialize ()
       trans_status_history[idx].initialize ();
     }
   trans_status_history_position = 0;
-  lowest_active_mvccid = MVCCID_FIRST;
+  m_lowest_active_mvccid = MVCCID_FIRST;
 
-  size_t num_tx = logtb_get_number_of_total_tran_indices ();
-  transaction_lowest_active_mvccids = new lowest_active_mvccid_type[num_tx];   // all MVCCID_NULL
+  alloc_transaction_lowest_active ();
+}
+
+void
+mvcctable::alloc_transaction_lowest_active ()
+{
+  if (transaction_lowest_active_mvccids_size != logtb_get_number_of_total_tran_indices ())
+    {
+      // either first time or transaction table size has changed
+      delete transaction_lowest_active_mvccids;
+      transaction_lowest_active_mvccids_size = logtb_get_number_of_total_tran_indices ();
+      transaction_lowest_active_mvccids = new lowest_active_mvccid_type[transaction_lowest_active_mvccids_size];
+      // all are 0 = MVCCID_NULL
+    }
 }
 
 void
@@ -115,6 +130,7 @@ mvcctable::finalize ()
 
   delete transaction_lowest_active_mvccids;
   transaction_lowest_active_mvccids = NULL;
+  transaction_lowest_active_mvccids_size = 0;
 }
 
 void
@@ -173,12 +189,12 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
 	   * Is important that between next two code lines to not have delays (to not execute any other code).
 	   * Otherwise, VACUUM may delay, waiting more in logtb_get_oldest_active_mvccid.
 	   */
-	  crt_status_lowest_active = lowest_active_mvccid.load ();
+	  crt_status_lowest_active = m_lowest_active_mvccid.load ();
 	  transaction_lowest_active_mvccids[tdes.tran_index].store (crt_status_lowest_active);
 	}
       else
 	{
-	  crt_status_lowest_active = lowest_active_mvccid.load ();
+	  crt_status_lowest_active = m_lowest_active_mvccid.load ();
 	}
 
       index = transaction_lowest_active_mvccids->load ();
@@ -229,6 +245,56 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
 	  perfmon_add_stat (thread_p, PSTAT_LOG_SNAPSHOT_RETRY_COUNTERS, snapshot_retry_cnt - 1);
 	}
     }
+}
+
+MVCCID
+mvcctable::get_oldest_active_mvccid () const
+{
+  size_t MVCC_OLDEST_ACTIVE_BUFFER_LENGTH = 32;
+  cubmem::appendable_array<size_t, MVCC_OLDEST_ACTIVE_BUFFER_LENGTH> waiting_mvccids_pos;
+  MVCCID loaded_tran_mvccid;
+  MVCCID lowest_active_mvccid = m_lowest_active_mvccid.load ();
+
+  for (size_t idx = 0; idx < transaction_lowest_active_mvccids_size; idx++)
+    {
+      loaded_tran_mvccid = transaction_lowest_active_mvccids[idx].load ();
+      if (MVCCID_IS_NORMAL (loaded_tran_mvccid) && MVCC_ID_PRECEDES (loaded_tran_mvccid, lowest_active_mvccid))
+	{
+	  lowest_active_mvccid = loaded_tran_mvccid;
+	}
+      else if (loaded_tran_mvccid == MVCCID_ALL_VISIBLE)
+	{
+	  waiting_mvccids_pos.append (idx);
+	}
+    }
+
+  size_t retry_count = 0;
+  while (waiting_mvccids_pos.get_size () > 0)
+    {
+      ++retry_count;
+      if (retry_count % 20 == 0)
+	{
+	  thread_sleep (10);
+	}
+
+      for (size_t i = waiting_mvccids_pos.get_size() - 1; i >= 0; --i)
+	{
+	  loaded_tran_mvccid = transaction_lowest_active_mvccids[waiting_mvccids_pos.get_array ()[i]]->load ();
+	  if (loaded_tran_mvccid == MVCCID_ALL_VISIBLE)
+	    {
+	      /* Not set yet, need to wait more. */
+	      continue;
+	    }
+	  if (MVCCID_IS_NORMAL (loaded_tran_mvccid) && MVCC_ID_PRECEDES (loaded_tran_mvccid, lowest_active_mvccid))
+	    {
+	      lowest_active_mvccid = loaded_tran_mvccid;
+	    }
+	  // remove from waiting array
+	  waiting_mvccids_pos.erase (i);
+	}
+    }
+
+  assert (MVCCID_IS_NORMAL (lowest_active_mvccid));
 }
 
 bool
@@ -324,7 +390,7 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool commited)
   // so we try to limit recalculation when mvccid matches current global_lowest_active; since we are not locked, it is
   // not guaranteed to be always updated; therefore we add the second condition to go below trans status
   // bit area starting MVCCID; the recalculation will happen on each iteration if there are long transactions.
-  MVCCID global_lowest_active = lowest_active_mvccid.load ();
+  MVCCID global_lowest_active = m_lowest_active_mvccid.load ();
   if (global_lowest_active == mvccid
       || MVCC_ID_PRECEDES (mvccid, next_status.m_active_mvccs.bit_area_start_mvccid))
     {
@@ -406,5 +472,5 @@ mvcctable::reset_start_mvccid ()
 	  && history_trans_status.m_active_mvccs.bit_area[0] == 0);
   history_trans_status.m_active_mvccs.bit_area_start_mvccid = log_Gl.hdr.mvcc_next_id;
 
-  lowest_active_mvccid.store (log_Gl.hdr.mvcc_next_id);
+  m_lowest_active_mvccid.store (log_Gl.hdr.mvcc_next_id);
 }

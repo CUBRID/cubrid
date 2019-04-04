@@ -272,7 +272,6 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
   int total_indices;		/* Total number of transaction indices */
   int i;
   int error_code = NO_ERROR;
-  MVCCTABLE *mvcc_table;
 
 #if defined(SERVER_MODE)
   /*
@@ -342,22 +341,6 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
     }
 #endif
 
-  /* reallocate transaction_lowest_active_mvccids, if already initialized */
-  mvcc_table = &log_Gl.mvcc_table;
-  if (mvcc_table->transaction_lowest_active_mvccids != NULL)
-    {
-      mvcc_table->transaction_lowest_active_mvccids =
-	(MVCCID *) realloc ((void *) mvcc_table->transaction_lowest_active_mvccids, total_indices * sizeof (MVCCID));
-      if (mvcc_table->transaction_lowest_active_mvccids == NULL)
-	{
-	  free_and_init (area);
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, total_indices * sizeof (MVCCID));
-
-	  goto error;
-	}
-    }
-
   if (qmgr_allocate_tran_entries (thread_p, total_indices) != NO_ERROR)
     {
       free_and_init (area);
@@ -368,6 +351,9 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
   log_Gl.trantable.area = area;
   log_Gl.trantable.hint_free_index = NUM_TOTAL_TRAN_INDICES;
   logtb_set_number_of_total_tran_indices (total_indices);
+
+  // make sure MVCC table resizes if necessary
+  log_Gl.mvcc_table.alloc_transaction_lowest_active ();
 
   return error_code;
 
@@ -3892,16 +3878,6 @@ MVCCID
 logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
 {
   MVCCID lowest_active_mvccid = 0;
-  MVCCTABLE *mvcc_table = NULL;
-  size_t size;
-  int i, num_elems_behind, waiting_mvccids_length;
-  MVCCID *transaction_lowest_active_mvccids = NULL,
-    local_transaction_lowest_active_mvccid[MVCC_OLDEST_ACTIVE_BUFFER_LENGTH];
-  int *waiting_mvccids_pos = NULL, pos;
-  int local_waiting_mvccids_pos[MVCC_OLDEST_ACTIVE_BUFFER_LENGTH];
-#if !defined(HAVE_ATOMIC_BUILTINS)
-  int r;
-#endif
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   UINT64 oldest_time, retry_cnt = 0;
@@ -3913,114 +3889,7 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
       tsc_getticks (&start_tick);
     }
 
-  mvcc_table = &log_Gl.mvcc_table;
-
-  if (NUM_TOTAL_TRAN_INDICES <= MVCC_OLDEST_ACTIVE_BUFFER_LENGTH)
-    {
-      transaction_lowest_active_mvccids = local_transaction_lowest_active_mvccid;
-      waiting_mvccids_pos = local_waiting_mvccids_pos;
-    }
-  else
-    {
-      size = NUM_TOTAL_TRAN_INDICES * sizeof (MVCCID);
-      transaction_lowest_active_mvccids = (MVCCID *) malloc (size);
-      if (transaction_lowest_active_mvccids == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      size = NUM_TOTAL_TRAN_INDICES * sizeof (int);
-      waiting_mvccids_pos = (int *) malloc (size);
-      if (waiting_mvccids_pos == NULL)
-	{
-	  free (transaction_lowest_active_mvccids);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-    }
-
-  lowest_active_mvccid = ATOMIC_INC_64 (&mvcc_table->lowest_active_mvccid, 0LL);
-#if defined(HAVE_ATOMIC_BUILTINS)
-  /* read transaction_lowest_active_mvccids */
-  for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
-    {
-      transaction_lowest_active_mvccids[i] = ATOMIC_INC_64 (&mvcc_table->transaction_lowest_active_mvccids[i], 0LL);
-    }
-#else
-  /* need atomic read for lowest active mvccid */
-  r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
-  for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
-    {
-      transaction_lowest_active_mvccids[i] = mvcc_table->transaction_lowest_active_mvccids[i];
-    }
-  pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
-#endif
-
-  waiting_mvccids_length = 0;
-  for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
-    {
-      if (MVCCID_IS_NORMAL (transaction_lowest_active_mvccids[i])
-	  && MVCC_ID_PRECEDES (transaction_lowest_active_mvccids[i], lowest_active_mvccid))
-	{
-	  lowest_active_mvccid = transaction_lowest_active_mvccids[i];
-	}
-      else if (transaction_lowest_active_mvccids[i] == MVCCID_ALL_VISIBLE)
-	{
-	  waiting_mvccids_pos[waiting_mvccids_length++] = i;
-	}
-    }
-
-  while (waiting_mvccids_length > 0)
-    {
-      /* It happens rare. In such cases we have to wait the snapshot thread to set transaction_lowest_active_mvccids. */
-      retry_cnt++;
-
-#if defined(SERVER_MODE)
-      if (retry_cnt % 20 == 0)
-	{
-	  thread_sleep (10);
-	}
-#endif
-
-      for (i = waiting_mvccids_length - 1; i >= 0; i--)
-	{
-	  pos = waiting_mvccids_pos[i];
-	  transaction_lowest_active_mvccids[pos] =
-	    ATOMIC_INC_64 (&mvcc_table->transaction_lowest_active_mvccids[pos], 0LL);
-
-	  if (transaction_lowest_active_mvccids[pos] == MVCCID_ALL_VISIBLE)
-	    {
-	      /* Not set yet, need to wait more. */
-	      continue;
-	    }
-
-	  if (MVCCID_IS_NORMAL (transaction_lowest_active_mvccids[pos])
-	      && MVCC_ID_PRECEDES (transaction_lowest_active_mvccids[pos], lowest_active_mvccid))
-	    {
-	      /* Update lowest active MVCCID. */
-	      lowest_active_mvccid = transaction_lowest_active_mvccids[pos];
-	    }
-
-	  /* Remove current element from waiting array. */
-	  num_elems_behind = (waiting_mvccids_length - 1) - i;
-	  if (num_elems_behind > 0)
-	    {
-	      memmove (&waiting_mvccids_pos[i], &waiting_mvccids_pos[i + 1], num_elems_behind * sizeof (int));
-	    }
-	  waiting_mvccids_length--;
-	}
-    }
-
-  if (transaction_lowest_active_mvccids != local_transaction_lowest_active_mvccid)
-    {
-      free (transaction_lowest_active_mvccids);
-    }
-
-  if (waiting_mvccids_pos != local_waiting_mvccids_pos)
-    {
-      free (waiting_mvccids_pos);
-    }
-  assert (MVCCID_IS_NORMAL (lowest_active_mvccid));
+  lowest_active_mvccid = log_Gl.mvcc_table.get_oldest_active_mvccid ();
 
   if (is_perf_tracking)
     {

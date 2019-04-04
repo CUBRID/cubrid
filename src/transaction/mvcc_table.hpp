@@ -74,6 +74,7 @@ struct mvcctable
 
     /* lowest active MVCCIDs - array of size NUM_TOTAL_TRAN_INDICES */
     lowest_active_mvccid_type *transaction_lowest_active_mvccids;
+    size_t transaction_lowest_active_mvccids_size;
 
     /* transaction status history - array of size TRANS_STATUS_HISTORY_MAX_SIZE */
     mvcc_trans_status *trans_status_history;
@@ -81,7 +82,7 @@ struct mvcctable
     std::atomic<size_t> trans_status_history_position;   // protected by lock
 
     /* lowest active MVCCID */
-    std::atomic<MVCCID> lowest_active_mvccid;
+    std::atomic<MVCCID> m_lowest_active_mvccid;
 
     /* protect against getting new MVCCIDs concurrently */
     std::mutex new_mvccid_lock;
@@ -94,6 +95,9 @@ struct mvcctable
     void initialize ();
     void finalize ();
 
+    void alloc_transaction_lowest_active ();
+    void set_transaction_lowest_active (int tran_index, MVCCID mvccid);
+
     // mvcc_snapshot/mvcc_info functions
     void build_mvcc_info (log_tdes &tdes);
     bool is_active (MVCCID mvccid) const;
@@ -101,7 +105,8 @@ struct mvcctable
     void complete_sub_mvcc (MVCCID mvccid);
     MVCCID get_new_mvccid ();
     void get_two_new_mvccid (MVCCID &first, MVCCID &second);
-    void set_transaction_lowest_active (int tran_index, MVCCID mvccid);
+    MVCCID get_oldest_active_mvccid () const;
+
     void reset_start_mvccid ();
 
   private:
