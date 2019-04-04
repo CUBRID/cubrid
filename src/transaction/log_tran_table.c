@@ -4048,64 +4048,6 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logtb_get_new_mvccid - MVCC get new MVCCID
- *
- * return: error code
- *
- *  thread_p(in):
- *  curr_mvcc_info(in/out):
- *    Note: This function get new MVCCID for current transaction. This means
- * extending bit area length with 1, reset corresponding bit in bit area,
- * and store MVCCID in curr_mvcc_info.
- *          Also, this function clean the bit area when only committed
- * transactions are found or the size of bit area is too large.
- */
-int
-logtb_get_new_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info)
-{
-  MVCCID id;
-  MVCCTABLE *mvcc_table = &log_Gl.mvcc_table;
-  MVCC_TRANS_STATUS *current_trans_status = &mvcc_table->current_trans_status;
-  int r;
-#if !defined(NDEBUG) && defined(HAVE_ATOMIC_BUILTINS)
-  int bit_area_length;
-#endif
-
-  assert (curr_mvcc_info != NULL && curr_mvcc_info->id == MVCCID_NULL);
-
-#if defined(HAVE_ATOMIC_BUILTINS)
-  r = pthread_mutex_lock (&mvcc_table->new_mvccid_lock);
-#if !defined(NDEBUG)
-  bit_area_length = ATOMIC_INC_32 (&current_trans_status->bit_area_length, 0);
-  assert (bit_area_length < MVCC_BITAREA_MAXIMUM_BITS && bit_area_length >= 0);
-#endif
-#else
-  r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
-#endif
-  /* generate new MVCCID and increase bit area length */
-  id = log_Gl.hdr.mvcc_next_id;
-  MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
-
-#if defined(HAVE_ATOMIC_BUILTINS)
-  /* Need atomic operation since other transaction can read the values */
-  ATOMIC_INC_32 (&current_trans_status->bit_area_length, 1);
-#else
-  current_trans_status->bit_area_length++;
-#endif
-
-  /* allow to readers / local writers to start */
-#if defined(HAVE_ATOMIC_BUILTINS)
-  pthread_mutex_unlock (&mvcc_table->new_mvccid_lock);
-#else
-  pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
-#endif
-  /* store MVCCID in MVCCINFO */
-  curr_mvcc_info->id = id;
-
-  return NO_ERROR;
-}
-
-/*
  * logtb_find_current_mvccid - find current transaction MVCC id
  *
  * return: MVCCID
@@ -4157,7 +4099,7 @@ logtb_get_current_mvccid (THREAD_ENTRY * thread_p)
 
   if (MVCCID_IS_VALID (curr_mvcc_info->id) == false)
     {
-      (void) logtb_get_new_mvccid (thread_p, curr_mvcc_info);
+      curr_mvcc_info->id = log_Gl.mvcc_table.get_new_mvccid ();
     }
 
   if (tdes->mvccinfo.count_sub_ids > 0 && tdes->mvccinfo.is_sub_active)

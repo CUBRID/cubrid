@@ -363,6 +363,16 @@ mvcctable::complete_sub_mvcc (MVCCID mvccid)
   // mvccid can't be lowest, so no need to update it here
 }
 
+MVCCID
+mvcctable::get_new_mvccid ()
+{
+  MVCCID id;
+  new_mvccid_lock.lock ();
+  id = log_Gl.hdr.mvcc_next_id;
+  MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
+  new_mvccid_lock.unlock ();
+}
+
 void
 mvcctable::set_transaction_lowest_active (int tran_index, MVCCID mvccid)
 {

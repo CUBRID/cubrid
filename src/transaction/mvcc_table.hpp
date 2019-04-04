@@ -99,6 +99,7 @@ struct mvcctable
     bool is_active (MVCCID mvccid) const;
     void complete_mvcc (int tran_index, MVCCID mvccid, bool commited);
     void complete_sub_mvcc (MVCCID mvccid);
+    MVCCID get_new_mvccid ();
     void set_transaction_lowest_active (int tran_index, MVCCID mvccid);
 
   private:

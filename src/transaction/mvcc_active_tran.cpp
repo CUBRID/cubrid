@@ -340,6 +340,15 @@ mvcc_active_tran::ltrim_area (size_t trim_size)
   size_t trimmed_bits = units_to_bits (trim_size);
   bit_area_length -= trimmed_bits;
   bit_area_start_mvccid += trimmed_bits;
+  // clear moved units
+  std::memset (&bit_area[get_area_size ()], ALL_ACTIVE, trim_size * sizeof (unit_type));
+#if !defined (NDEBUG)
+  // verify untouched units are also zero
+  for (size_t i = get_area_size () + trim_size; i < BITAREA_MAX_SIZE; i++)
+    {
+      assert (bit_area[i] == ALL_ACTIVE);
+    }
+#endif // DEBUG
 
   assert (new_memsize == get_bit_area_memsize ());
 }
@@ -358,6 +367,11 @@ mvcc_active_tran::set_bitarea_mvccid (MVCCID mvccid)
       cleanup ();
       position = get_bit_offset (mvccid);
       assert (position < BITAREA_MAX_BITS);   // is this a guaranteed?
+      if (position >= bit_area_length)
+	{
+	  // extend area size; it is enough to update bit_area_length since all data is already zero
+	  bit_area_length = position + 1;
+	}
     }
 
   unit_type mask = get_mask_of (position);
