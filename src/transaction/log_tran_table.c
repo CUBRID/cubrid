@@ -4738,63 +4738,21 @@ logtb_has_deadlock_priority (int tran_index)
 int
 logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info)
 {
-  MVCCID id = MVCCID_NULL, mvcc_subid;
+  MVCCID mvcc_subid;
   MVCCTABLE *mvcc_table;
-  int r;
-  MVCC_TRANS_STATUS *current_trans_status = &log_Gl.mvcc_table.current_trans_status;
-#if !defined(NDEBUG) && defined(HAVE_ATOMIC_BUILTINS)
-  int bit_area_length;
-#endif
 
   assert (curr_mvcc_info != NULL);
 
   mvcc_table = &log_Gl.mvcc_table;
 
-#if defined(HAVE_ATOMIC_BUILTINS)
-  r = pthread_mutex_lock (&mvcc_table->new_mvccid_lock);
-#if !defined(NDEBUG)
-  bit_area_length = ATOMIC_INC_32 (&current_trans_status->bit_area_length, 0);
-  assert (bit_area_length < MVCC_BITAREA_MAXIMUM_BITS && bit_area_length >= 0);
-#endif
-#else
-  r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
-#endif
-
-  /* generate new MVCCID and increase bit area length */
-  if (!MVCCID_IS_VALID (curr_mvcc_info->id))
+  // curr_mvcc_info->id must be valid too!
+  if (MVCCID_IS_VALID (curr_mvcc_info->id))
     {
-#if !defined(NDEBUG) && defined(HAVE_ATOMIC_BUILTINS)
-      assert (bit_area_length < (MVCC_BITAREA_MAXIMUM_BITS - 1));
-#endif
-
-      id = log_Gl.hdr.mvcc_next_id;
-      MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
-#if defined(HAVE_ATOMIC_BUILTINS)
-      ATOMIC_INC_32 (&current_trans_status->bit_area_length, 1);
-#else
-      current_trans_status->bit_area_length++;
-#endif
+      mvcc_subid = mvcc_table->get_new_mvccid ();
     }
-
-  mvcc_subid = log_Gl.hdr.mvcc_next_id;
-  MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
-#if defined(HAVE_ATOMIC_BUILTINS)
-  /* Need atomic operation since other transaction can read the values */
-  ATOMIC_INC_32 (&current_trans_status->bit_area_length, 1);
-#else
-  current_trans_status->bit_area_length++;
-#endif
-
-#if defined(HAVE_ATOMIC_BUILTINS)
-  pthread_mutex_unlock (&mvcc_table->new_mvccid_lock);
-#else
-  pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
-#endif
-
-  /* store MVCCID in MVCCINFO */
-  if (MVCCID_IS_VALID (id))
+  else
     {
-      curr_mvcc_info->id = id;
+      mvcc_table->get_two_new_mvccid (curr_mvcc_info->id, mvcc_subid);
     }
 
   return logtb_assign_subtransaction_mvccid (thread_p, curr_mvcc_info, mvcc_subid);

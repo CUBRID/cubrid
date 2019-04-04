@@ -374,6 +374,20 @@ mvcctable::get_new_mvccid ()
 }
 
 void
+mvcctable::get_two_new_mvccid (MVCCID &first, MVCCID &second)
+{
+  new_mvccid_lock.lock ();
+
+  first = log_Gl.hdr.mvcc_next_id;
+  MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
+
+  second = log_Gl.hdr.mvcc_next_id;
+  MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
+
+  new_mvccid_lock.unlock ();
+}
+
+void
 mvcctable::set_transaction_lowest_active (int tran_index, MVCCID mvccid)
 {
   transaction_lowest_active_mvccids[tran_index].store (mvccid);

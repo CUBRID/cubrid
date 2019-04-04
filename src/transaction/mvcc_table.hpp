@@ -100,6 +100,7 @@ struct mvcctable
     void complete_mvcc (int tran_index, MVCCID mvccid, bool commited);
     void complete_sub_mvcc (MVCCID mvccid);
     MVCCID get_new_mvccid ();
+    void get_two_new_mvccid (MVCCID &first, MVCCID &second);
     void set_transaction_lowest_active (int tran_index, MVCCID mvccid);
     void reset_start_mvccid ();
 
