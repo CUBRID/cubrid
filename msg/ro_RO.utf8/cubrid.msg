@@ -1266,14 +1266,14 @@ $ LOADDB
 1197 Json invalid: %1$s (%2$d)
 1198 Trebuie furnizat un obiect de tipul json.
 1199 Json-ul furnizat a fost invalidat de catre schema json (Calea catre schema invalidă: %1$s, Cuvantul cheie: %2$s, Calea catre json-ul invalid furnizat: %3$s)
-1200 Cale de JSON invalida. %1$s
+1200 Cale de JSON invalida
 1201 Numele unei valori dintr-un JSON Object nu poate fi NULL.
 1202 Calea "%1$s" nu exista in %2$s
 1203 Tipul JSON-ului de la calea %1$s este invalid. Expected %2$s, dar am gasit %3$s.
 1204 Cheia "%1$s" din json este duplicata
 1205 Invalid type %1$s. Expecting JSON document compatible data type (STRING or JSON).
 1206 Calea Json "%1$s" nu adresează un element al unui Json ARRAY.
-1207 Reserved error for JSON.
+1207 Cale de JSON invalida. Index is larger than allowed by system parameter json_max_array_idx.
 1208 Reserved error for JSON.
 1209 Reserved error for JSON.
 1210 Reserved error for JSON.

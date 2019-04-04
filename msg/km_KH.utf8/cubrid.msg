@@ -1266,14 +1266,14 @@ $ LOADDB
 1197 Invalid json: %1$s (%2$d)
 1198 A json object must be provided
 1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
-1200 Invalid JSON path. %1$s
+1200 Invalid JSON path
 1201 Json object name cannot be NULL.
 1202 Json PATH "%1$s" does not exist in %2$s
 1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
 1204 Json KEY "%1$s" is duplicate
 1205 Invalid type %1$s. Expecting JSON document compatible data type (STRING or JSON).
 1206 Json PATH "%1$s" does not address a cell in an Json ARRAY.
-1207 Reserved error for JSON.
+1207 Invalid JSON path. Index is larger than allowed by system parameter json_max_array_idx.
 1208 Reserved error for JSON.
 1209 Reserved error for JSON.
 1210 Reserved error for JSON.
