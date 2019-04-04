@@ -6281,9 +6281,9 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
     {
       error_code = db_json_path_unquote_object_keys_external (paths[0]);
       if (error_code != NO_ERROR)
-      {
-        return error_code;
-      }
+	{
+	  return error_code;
+	}
 
       char *escaped;
       size_t escaped_size;
@@ -6309,9 +6309,9 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
     {
       error_code = db_json_path_unquote_object_keys_external (paths[i]);
       if (error_code != NO_ERROR)
-      {
-        return error_code;
-      }
+	{
+	  return error_code;
+	}
 
       char *escaped;
       size_t escaped_size;
