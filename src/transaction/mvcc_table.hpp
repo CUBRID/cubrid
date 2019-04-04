@@ -54,16 +54,11 @@ struct mvcc_trans_status
 
   std::atomic<version_type> version;
 
-  /* lowest active MVCCID */
-  std::atomic<MVCCID> lowest_active_mvccid;
-
   mvcc_trans_status ();
   ~mvcc_trans_status ();
 
   void initialize ();
   void finalize ();
-
-  bool try_advance_oldest_active (MVCCID next_oldest_active);
 };
 
 typedef struct mvcctable MVCCTABLE;
@@ -85,6 +80,9 @@ struct mvcctable
     /* the position in transaction status history array */
     std::atomic<size_t> trans_status_history_position;   // protected by lock
 
+    /* lowest active MVCCID */
+    std::atomic<MVCCID> lowest_active_mvccid;
+
     /* protect against getting new MVCCIDs concurrently */
     std::mutex new_mvccid_lock;
     /* protect against current transaction status modifications */
@@ -99,10 +97,16 @@ struct mvcctable
     // mvcc_snapshot/mvcc_info functions
     void build_mvcc_info (log_tdes &tdes);
     bool is_active (MVCCID mvccid) const;
-    void complete_mvcc (log_tdes &tdes);
+    void complete_mvcc (int tran_index, MVCCID mvccid, bool commited);
+    void complete_sub_mvcc (MVCCID mvccid);
+    void set_transaction_lowest_active (int tran_index, MVCCID mvccid);
 
   private:
     static const size_t HISTORY_INDEX_MASK = HISTORY_MAX_SIZE - 1;
+
+    mvcc_trans_status &next_trans_status_start ();
+    void next_tran_status_finish (mvcc_trans_status &next);
+    void advance_oldest_active (MVCCID next_oldest_active);
 };
 
 #endif // !_MVCC_TABLE_H_
