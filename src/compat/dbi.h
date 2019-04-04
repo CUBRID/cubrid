@@ -727,6 +727,7 @@ extern "C"
   extern char *db_get_database_version (void);
   extern int db_get_override_tran_index (void);
   extern void db_set_override_tran_index (int tran_index);
+  extern bool db_is_ddl_proxy_client (void);
 #ifdef __cplusplus
 }
 #endif

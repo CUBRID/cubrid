@@ -3000,3 +3000,13 @@ db_set_override_tran_index (int tran_index)
 {
   db_Override_tran_index = tran_index;
 }
+
+/*
+ * db_is_ddl_proxy () -
+ * return : void
+ */
+bool
+db_is_ddl_proxy_client (void)
+{
+  return db_Override_tran_index != NULL_TRAN_INDEX;
+}
