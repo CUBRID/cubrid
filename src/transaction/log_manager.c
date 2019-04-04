@@ -5814,19 +5814,10 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 	  assert (vacuum_Global_oldest_active_blockers_counter >= 0);
 	}
 
-#if defined (HAVE_ATOMIC_BUILTINS)
       if (iscommitted == LOG_COMMIT)
 	{
-	  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	  volatile MVCCID *p_transaction_lowest_active_mvccid = LOG_FIND_TRAN_LOWEST_ACTIVE_MVCCID (tran_index);
-
-	  if (*p_transaction_lowest_active_mvccid != MVCCID_NULL)
-	    {
-	      /* set transaction lowest active MVCCID to null to allow VACUUM advancing */
-	      ATOMIC_TAS_64 (p_transaction_lowest_active_mvccid, MVCCID_NULL);
-	    }
+	  log_Gl.mvcc_table.set_transaction_lowest_active (LOG_FIND_THREAD_TRAN_INDEX (thread_p), MVCCID_NULL);
 	}
-#endif
 
       if (get_newtrid == LOG_NEED_NEWTRID)
 	{
@@ -6111,19 +6102,10 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	  assert (vacuum_Global_oldest_active_blockers_counter >= 0);
 	}
 
-#if defined(HAVE_ATOMIC_BUILTINS)
       if (iscommitted == LOG_COMMIT)
 	{
-	  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	  volatile MVCCID *p_transaction_lowest_active_mvccid = LOG_FIND_TRAN_LOWEST_ACTIVE_MVCCID (tran_index);
-
-	  if (*p_transaction_lowest_active_mvccid != MVCCID_NULL)
-	    {
-	      /* set transaction lowest active MVCCID to null to allow VACUUM advancing */
-	      ATOMIC_TAS_64 (p_transaction_lowest_active_mvccid, MVCCID_NULL);
-	    }
+	  log_Gl.mvcc_table.set_transaction_lowest_active (LOG_FIND_THREAD_TRAN_INDEX (thread_p), MVCCID_NULL);
 	}
-#endif
 
       /* If recovery restart operation, or, if this is a coordinator loose end transaction return this index and
        * decrement coordinator loose end transactions counter. */

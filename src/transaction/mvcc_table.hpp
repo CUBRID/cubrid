@@ -65,29 +65,7 @@ typedef struct mvcctable MVCCTABLE;
 struct mvcctable
 {
   public:
-    using lowest_active_mvccid_type = std::atomic<MVCCID>;
 
-    static const size_t HISTORY_MAX_SIZE = 2048;  // must be a power of 2
-
-    /* current transaction status */
-    mvcc_trans_status current_trans_status;
-
-    /* lowest active MVCCIDs - array of size NUM_TOTAL_TRAN_INDICES */
-    lowest_active_mvccid_type *transaction_lowest_active_mvccids;
-    size_t transaction_lowest_active_mvccids_size;
-
-    /* transaction status history - array of size TRANS_STATUS_HISTORY_MAX_SIZE */
-    mvcc_trans_status *trans_status_history;
-    /* the position in transaction status history array */
-    std::atomic<size_t> trans_status_history_position;   // protected by lock
-
-    /* lowest active MVCCID */
-    std::atomic<MVCCID> m_lowest_active_mvccid;
-
-    /* protect against getting new MVCCIDs concurrently */
-    std::mutex new_mvccid_lock;
-    /* protect against current transaction status modifications */
-    std::mutex active_trans_mutex;
 
     mvcctable ();
     ~mvcctable ();
@@ -110,7 +88,30 @@ struct mvcctable
     void reset_start_mvccid ();
 
   private:
+    using lowest_active_mvccid_type = std::atomic<MVCCID>;
+
+    static const size_t HISTORY_MAX_SIZE = 2048;  // must be a power of 2
     static const size_t HISTORY_INDEX_MASK = HISTORY_MAX_SIZE - 1;
+
+    /* current transaction status */
+    mvcc_trans_status current_trans_status;
+
+    /* lowest active MVCCIDs - array of size NUM_TOTAL_TRAN_INDICES */
+    lowest_active_mvccid_type *transaction_lowest_active_mvccids;
+    size_t transaction_lowest_active_mvccids_size;
+
+    /* transaction status history - array of size TRANS_STATUS_HISTORY_MAX_SIZE */
+    mvcc_trans_status *trans_status_history;
+    /* the position in transaction status history array */
+    std::atomic<size_t> trans_status_history_position;   // protected by lock
+
+    /* lowest active MVCCID */
+    std::atomic<MVCCID> m_lowest_active_mvccid;
+
+    /* protect against getting new MVCCIDs concurrently */
+    std::mutex new_mvccid_lock;
+    /* protect against current transaction status modifications */
+    std::mutex active_trans_mutex;
 
     mvcc_trans_status &next_trans_status_start ();
     void next_tran_status_finish (mvcc_trans_status &next);

@@ -182,10 +182,6 @@ struct logwr_info;
   log_Tran_index = (index)
 #endif /* SERVER_MODE */
 
-#define LOG_FIND_TRAN_LOWEST_ACTIVE_MVCCID(tran_index) \
-  (((tran_index) >= 0 && (tran_index) < log_Gl.trantable.num_total_indices) \
-  ? (log_Gl.mvcc_table.transaction_lowest_active_mvccids + tran_index) : NULL)
-
 #define LOG_ISTRAN_ACTIVE(tdes) \
   ((tdes)->state == TRAN_ACTIVE && LOG_ISRESTARTED ())
 
