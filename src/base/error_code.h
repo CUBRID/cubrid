@@ -1550,7 +1550,7 @@
 #define ER_JSON_EXPECTING_JSON_DOC                  -1205
 
 #define ER_JSON_PATH_IS_NOT_ARRAY_CELL              -1206
-#define ER_JSON_RESERVED_ERROR_2                    -1207
+#define ER_JSON_ARRAY_INDEX_TOO_LARGE               -1207
 #define ER_JSON_RESERVED_ERROR_3                    -1208
 #define ER_JSON_RESERVED_ERROR_4                    -1209
 #define ER_JSON_RESERVED_ERROR_5                    -1210
