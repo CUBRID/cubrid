@@ -159,7 +159,7 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
   // make sure snapshot has allocated data
   tdes.mvccinfo.snapshot.m_active_mvccs.initialize ();
 
-  transaction_lowest_active_mvccids[tdes.tran_index].load (tx_lowest_active);
+  tx_lowest_active = transaction_lowest_active_mvccids[tdes.tran_index].load ();
 
   // repeat steps until a trans_status can be read successfully without a version change
   while (true)
@@ -201,6 +201,8 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
       assert (index < HISTORY_MAX_SIZE);
 
       const mvcc_trans_status &trans_status = trans_status_history[index];
+
+      trans_status_version = trans_status.version.load ();
       trans_status.m_active_mvccs.copy_to (tdes.mvccinfo.snapshot.m_active_mvccs);
       /* load statistics temporary disabled need to be enabled when activate count optimization */
 #if 0
@@ -219,7 +221,7 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
 	}
     }
 
-  highest_completed_mvccid = tdes.mvccinfo.snapshot.active_mvccs.get_highest_completed_mvccid ();
+  highest_completed_mvccid = tdes.mvccinfo.snapshot.m_active_mvccs.get_highest_completed_mvccid ();
   MVCCID_FORWARD (highest_completed_mvccid);
 
   /* update lowest active mvccid computed for the most recent snapshot */
@@ -238,11 +240,12 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
       snapshot_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
       if (snapshot_wait_time > 0)
 	{
-	  perfmon_add_stat (thread_p, PSTAT_LOG_SNAPSHOT_TIME_COUNTERS, snapshot_wait_time);
+	  perfmon_add_stat (thread_get_thread_entry_info (), PSTAT_LOG_SNAPSHOT_TIME_COUNTERS, snapshot_wait_time);
 	}
-      if (snapshot_retry_cnt > 1)
+      if (snapshot_retry_count > 1)
 	{
-	  perfmon_add_stat (thread_p, PSTAT_LOG_SNAPSHOT_RETRY_COUNTERS, snapshot_retry_cnt - 1);
+	  perfmon_add_stat (thread_get_thread_entry_info (), PSTAT_LOG_SNAPSHOT_RETRY_COUNTERS,
+			    snapshot_retry_count - 1);
 	}
     }
 }
@@ -250,7 +253,7 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
 MVCCID
 mvcctable::get_oldest_active_mvccid () const
 {
-  size_t MVCC_OLDEST_ACTIVE_BUFFER_LENGTH = 32;
+  const size_t MVCC_OLDEST_ACTIVE_BUFFER_LENGTH = 32;
   cubmem::appendable_array<size_t, MVCC_OLDEST_ACTIVE_BUFFER_LENGTH> waiting_mvccids_pos;
   MVCCID loaded_tran_mvccid;
   MVCCID lowest_active_mvccid = m_lowest_active_mvccid.load ();
@@ -279,7 +282,7 @@ mvcctable::get_oldest_active_mvccid () const
 
       for (size_t i = waiting_mvccids_pos.get_size() - 1; i >= 0; --i)
 	{
-	  loaded_tran_mvccid = transaction_lowest_active_mvccids[waiting_mvccids_pos.get_array ()[i]]->load ();
+	  loaded_tran_mvccid = transaction_lowest_active_mvccids[waiting_mvccids_pos.get_array ()[i]].load ();
 	  if (loaded_tran_mvccid == MVCCID_ALL_VISIBLE)
 	    {
 	      /* Not set yet, need to wait more. */
@@ -295,21 +298,23 @@ mvcctable::get_oldest_active_mvccid () const
     }
 
   assert (MVCCID_IS_NORMAL (lowest_active_mvccid));
+  return lowest_active_mvccid;
 }
 
 bool
 mvcctable::is_active (MVCCID mvccid) const
 {
   size_t index = 0;
+  mvcc_trans_status::version_type version;
   bool ret_active = false;
-  // entry at trans_status_history_position must remain same while is_active () is computed. otherwise it must be
-  // repeated
+  // trans status must be same before and after computing is_active. if it is not, we need to repeat the computation.
   do
     {
       index = trans_status_history_position.load ();
+      version = trans_status_history[index].version.load ();
       ret_active = trans_status_history[index].m_active_mvccs.is_active (mvccid);
     }
-  while (index != trans_status_history[index].load ());
+  while (version != trans_status_history[index].version.load ());
 
   return ret_active;
 }
@@ -340,17 +345,15 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool commited)
 {
   assert (MVCCID_IS_VALID (mvccid));
 
-  mvcc_trans_status &next_status;
-  mvcc_trans_status::version_type next_version;
-  size_t next_index;
-
   // only one can change status at a time
   std::unique_lock<std::mutex> ulock (active_trans_mutex);
 
-  next_status = next_trans_status_start (next_version, next_index);
+  mvcc_trans_status::version_type next_version;
+  size_t next_index;
+  mvcc_trans_status &next_status = next_trans_status_start (next_version, next_index);
 
   // todo - until we activate count optimization (if ever), should we move this outside mutex?
-  if (commited && logtb_tran_update_all_global_unique_stats (thread_p) != NO_ERROR)
+  if (commited && logtb_tran_update_all_global_unique_stats (thread_get_thread_entry_info ()) != NO_ERROR)
     {
       assert (false);
     }
@@ -412,11 +415,9 @@ mvcctable::complete_sub_mvcc (MVCCID mvccid)
   // only one can change status at a time
   std::unique_lock<std::mutex> ulock (active_trans_mutex);
 
-  mvcc_trans_status &next_status;
   mvcc_trans_status::version_type next_version;
   size_t next_index;
-
-  next_status = next_trans_status_start (next_version, next_index);
+  mvcc_trans_status &next_status = next_trans_status_start (next_version, next_index);
 
   // update current trans status
   current_trans_status.m_active_mvccs.set_inactive_mvccid (mvccid);
@@ -433,10 +434,13 @@ MVCCID
 mvcctable::get_new_mvccid ()
 {
   MVCCID id;
+
   new_mvccid_lock.lock ();
   id = log_Gl.hdr.mvcc_next_id;
   MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
   new_mvccid_lock.unlock ();
+
+  return id;
 }
 
 void

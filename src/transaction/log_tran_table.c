@@ -148,7 +148,6 @@ static int logtb_tran_btid_hash_cmp_func (const void *key1, const void *key2);
 static LOG_TRAN_CLASS_COS *logtb_tran_create_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid);
 static LOG_TRAN_BTID_UNIQUE_STATS *logtb_tran_create_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid);
 static int logtb_tran_update_delta_hash_func (THREAD_ENTRY * thread_p, void *data, void *args);
-static int logtb_tran_update_all_global_unique_stats (THREAD_ENTRY * thread_p);
 static int logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p, void *data, void *args);
 static int logtb_tran_reset_cos_func (THREAD_ENTRY * thread_p, void *data, void *args);
 static int logtb_load_global_statistics_to_tran (THREAD_ENTRY * thread_p);
@@ -3632,7 +3631,7 @@ logtb_tran_update_delta_hash_func (THREAD_ENTRY * thread_p, void *data, void *ar
  *
  * Note: this function must be called at the end of transaction (commit)
  */
-static int
+int
 logtb_tran_update_all_global_unique_stats (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));

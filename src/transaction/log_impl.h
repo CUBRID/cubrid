@@ -1047,6 +1047,7 @@ extern int logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, B
 						      int null_delta, int key_delta, bool log);
 extern int logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid);
 extern int logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p);
+extern int logtb_tran_update_all_global_unique_stats (THREAD_ENTRY * thread_p);
 
 extern int log_rv_undoredo_record_partial_changes (THREAD_ENTRY * thread_p, char *rcv_data, int rcv_data_length,
 						   RECDES * record, bool is_undo);

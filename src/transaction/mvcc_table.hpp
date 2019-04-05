@@ -32,6 +32,7 @@
 #include "storage_common.h"
 
 #include <atomic>
+#include <mutex>
 
 // forward declarations
 struct log_tdes;
@@ -112,8 +113,8 @@ struct mvcctable
     /* protect against current transaction status modifications */
     std::mutex active_trans_mutex;
 
-    mvcc_trans_status &next_trans_status_start ();
-    void next_tran_status_finish (mvcc_trans_status &next);
+    mvcc_trans_status &next_trans_status_start (mvcc_trans_status::version_type &next_version, size_t &next_index);
+    void next_tran_status_finish (mvcc_trans_status &next_trans_status, size_t next_index);
     void advance_oldest_active (MVCCID next_oldest_active);
 };
 
