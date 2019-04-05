@@ -233,17 +233,7 @@ logtb_finalize_mvcc_testing (THREAD_ENTRY ** thread_array)
       tdes = log_Gl.trantable.all_tdes[i];
       curr_mvcc_info = &tdes->mvccinfo;
 
-      if (curr_mvcc_info->snapshot.long_tran_mvccids != NULL)
-	{
-	  free_and_init (curr_mvcc_info->snapshot.long_tran_mvccids);
-	  curr_mvcc_info->snapshot.long_tran_mvccids_length = 0;
-	}
-
-      if (curr_mvcc_info->snapshot.bit_area != NULL)
-	{
-	  free_and_init (curr_mvcc_info->snapshot.bit_area);
-	  curr_mvcc_info->snapshot.bit_area_length = 0;
-	}
+      curr_mvcc_info->snapshot.m_active_mvccs.finalize ();
 
       if (tdes->log_upd_stats.unique_stats_hash != NULL)
 	{
@@ -326,7 +316,7 @@ test_new_mvcc_complete (void *param)
       /* here we may test whether bit was set */
       local_count_complete++;
 
-      log_GL.mvcc_table.set_transaction_lowest_active (tran_index, MVCCID_NULL);
+      log_Gl.mvcc_table.set_transaction_lowest_active (tran_index, MVCCID_NULL);
     }
 
   ATOMIC_INC_64 (&count_complete, local_count_complete);
