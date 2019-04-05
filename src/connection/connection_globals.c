@@ -179,6 +179,7 @@ css_get_required_conn_num_for_ha (void)
   ha_node_list_p = prm_get_string_value (PRM_ID_HA_NODE_LIST);
   num_of_nodes = util_get_num_of_ha_nodes (ha_node_list_p);
 
+  /* TODO[replication]: reconsider this with new design */
   if (HA_GET_MODE () == HA_MODE_REPLICA)
     {
       /* one applylogdb for each node */

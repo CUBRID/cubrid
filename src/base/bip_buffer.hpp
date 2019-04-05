@@ -111,7 +111,7 @@ namespace cubmem
 	m_reserve_margin = margin;
       };
 
-      const size_t get_reserve_margin (void)
+      const size_t &get_reserve_margin (void) const
       {
 	return m_reserve_margin;
       };

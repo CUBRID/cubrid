@@ -400,6 +400,7 @@ EXPORTS
     er_stack_push
     er_stack_pop
     er_set
+    _er_log_debug
     getopt
     getopt_long
     ini_findsec
@@ -491,8 +492,6 @@ EXPORTS
     unloaddb
     csql
     changemode
-    copylogdb
-    applylogdb
     statdump
     compactdb
     acldb

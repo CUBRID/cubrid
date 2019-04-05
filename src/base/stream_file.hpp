@@ -142,11 +142,13 @@ namespace cubstream
       size_t write_buffer (const int vol_seqno, const size_t volume_offset, const char *buf, const size_t amount);
 
     public:
-      stream_file (multi_thread_stream &stream_arg, const size_t file_size = DEFAULT_VOLUME_SIZE,
-		   const int print_digits = DEFAULT_FILENAME_DIGITS)
+      stream_file () = delete;
+
+      stream_file (multi_thread_stream &stream_arg, const std::string &path,
+		   const size_t file_size = DEFAULT_VOLUME_SIZE, const int print_digits = DEFAULT_FILENAME_DIGITS)
 	: m_stream (stream_arg)
       {
-	init (0, file_size, print_digits);
+	init (path, 0, file_size, print_digits);
       };
 
       ~stream_file ()
@@ -154,14 +156,10 @@ namespace cubstream
 	finalize ();
       };
 
-      void init (const stream_position &start_append_pos = 0,
+      void init (const std::string &path,
+		 const stream_position &start_append_pos = 0,
 		 const size_t file_size = DEFAULT_VOLUME_SIZE,
 		 const int print_digits = DEFAULT_FILENAME_DIGITS);
-
-      void set_path (const std::string &path)
-      {
-	m_base_path = path;
-      }
 
       void set_append_mode (int mode)
       {
@@ -182,6 +180,7 @@ namespace cubstream
 
       size_t get_max_available_from_pos (const stream_position &pos)
       {
+        assert (m_append_position >= pos);
 	if (m_append_position > pos)
 	  {
 	    return m_append_position - pos;

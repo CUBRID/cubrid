@@ -669,7 +669,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_REPL_LOG_GENERATOR_LOGGING "replication_log_generator_logging"
 #define PRM_NAME_REPL_LOG_LOCAL_DEBUG "replication_log_local_debug"
 
-
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2214,8 +2213,8 @@ bool PRM_DEBUG_AUTOCOMMIT = false;
 static bool prm_debug_autocommit_default = false;
 static unsigned int prm_debug_autocommit_flag = 0;
 
-bool PRM_DEBUG_REPLICATION_DATA = false;
-static bool prm_debug_replication_data_default = false;
+bool PRM_DEBUG_REPLICATION_DATA = true;
+static bool prm_debug_replication_data_default = true;
 static unsigned int prm_debug_replication_data_flag = 0;
 
 bool PRM_TRACK_REQUESTS = false;
@@ -3816,7 +3815,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_HA_APPLYLOGDB_RETRY_ERROR_LIST,
    PRM_NAME_HA_APPLYLOGDB_RETRY_ERROR_LIST,
-   (PRM_FOR_CLIENT | PRM_FOR_HA),
+   (PRM_FOR_CLIENT | PRM_FOR_HA | PRM_OBSOLETED),
    PRM_INTEGER_LIST,
    &prm_ha_applylogdb_retry_error_list_flag,
    (void *) &prm_ha_applylogdb_retry_error_list_default,
@@ -3827,7 +3826,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_HA_APPLYLOGDB_IGNORE_ERROR_LIST,
    PRM_NAME_HA_APPLYLOGDB_IGNORE_ERROR_LIST,
-   (PRM_FOR_CLIENT | PRM_FOR_HA),
+   (PRM_FOR_CLIENT | PRM_FOR_HA | PRM_OBSOLETED),
    PRM_INTEGER_LIST,
    &prm_ha_applylogdb_ignore_error_list_flag,
    (void *) &prm_ha_applylogdb_ignore_error_list_default,
@@ -3838,7 +3837,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS,
    PRM_NAME_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS,
-   (PRM_FOR_CLIENT | PRM_FOR_HA | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_FOR_HA | PRM_HIDDEN | PRM_OBSOLETED),
    PRM_INTEGER,
    &prm_ha_applylogdb_log_wait_time_in_secs_flag,
    (void *) &prm_ha_applylogdb_log_wait_time_in_secs_default,
@@ -3943,7 +3942,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) prm_sec_to_msec},
   {PRM_ID_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS,
    PRM_NAME_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS,
-   (PRM_FOR_CLIENT | PRM_FOR_HA),
+   (PRM_FOR_CLIENT | PRM_FOR_HA | PRM_OBSOLETED),
    PRM_INTEGER,
    &prm_ha_applylogdb_max_commit_interval_in_msecs_flag,
    (void *) &prm_ha_applylogdb_max_commit_interval_in_msecs_default,
@@ -3955,7 +3954,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL,
    PRM_NAME_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL,
-   (PRM_FOR_CLIENT | PRM_FOR_HA | PRM_TIME_UNIT),
+   (PRM_FOR_CLIENT | PRM_FOR_HA | PRM_TIME_UNIT | PRM_OBSOLETED),
    PRM_INTEGER,
    &prm_ha_applylogdb_max_commit_interval_in_msecs_flag,
    (void *) &prm_ha_applylogdb_max_commit_interval_in_msecs_default,

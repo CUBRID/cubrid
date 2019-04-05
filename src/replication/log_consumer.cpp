@@ -24,8 +24,11 @@
 #ident "$Id$"
 
 #include "log_consumer.hpp"
+#include "error_manager.h"
 #include "multi_thread_stream.hpp"
+#include "replication_common.hpp"
 #include "replication_stream_entry.hpp"
+#include "string_buffer.hpp"
 #include "system_parameter.h"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
@@ -76,6 +79,13 @@ namespace cubreplication
 
 	    curr_stream_entry->unpack ();
 
+	    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+	      {
+		string_buffer sb;
+		curr_stream_entry->stringify (sb, stream_entry::detailed_dump);
+		_er_log_debug (ARG_FILE_LINE, "applier_worker_task execute:\n%s", sb.get_buffer ());
+	      }
+
 	    for (int i = 0; i < curr_stream_entry->get_packable_entry_count_from_header (); i++)
 	      {
 		replication_object *obj = curr_stream_entry->get_object_at (i);
@@ -86,7 +96,7 @@ namespace cubreplication
 		int err = obj->apply ();
 		if (err != NO_ERROR)
 		  {
-		    /* TODO */
+		    /* TODO[replication] : error handling */
 		  }
 	      }
 
@@ -122,6 +132,15 @@ namespace cubreplication
 	return m_repl_stream_entries.size ();
       }
 
+      void stringify (string_buffer &sb)
+      {
+	sb ("apply_task: stream_entries:%d\n", get_entries_cnt ());
+	for (auto it = m_repl_stream_entries.begin (); it != m_repl_stream_entries.end (); it++)
+	  {
+	    (*it)->stringify (sb, stream_entry::detailed_dump);
+	  }
+      }
+
     private:
       std::vector<stream_entry *> m_repl_stream_entries;
       log_consumer &m_lc;
@@ -152,11 +171,21 @@ namespace cubreplication
 		break;
 	      }
 
+	    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+	      {
+		string_buffer sb;
+		se->stringify (sb, stream_entry::short_dump);
+		_er_log_debug (ARG_FILE_LINE, "dispatch_daemon_task execute pop_entry:\n%s", sb.get_buffer ());
+	      }
+
+	    /* TODO[replication] : on-the-fly applier & multi-threaded applier */
 	    if (se->is_group_commit ())
 	      {
 		assert (se->get_data_packed_size () == 0);
 
 		/* wait for all started tasks to finish */
+		er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task wait for all working tasks to finish\n");
+
 		m_lc.wait_for_tasks ();
 
 		for (tasks_map::iterator it = repl_tasks.begin ();
@@ -171,10 +200,13 @@ namespace cubreplication
 		      }
 		    else if (my_repl_applier_worker_task->has_abort ())
 		      {
-			/* just drop task */
+			/* TODO[replication] : when on-fly apply is active, we need to abort the transaction;
+			 * for now, we are sure that no change has been made on slave on behalf of this task,
+			 * just drop the task */
 		      }
 		    else
 		      {
+			/* tasks without commit or abort are postponed to next group commit */
 			assert (it->second->get_entries_cnt () > 0);
 			nonexecutable_repl_tasks.insert (std::make_pair (it->first, it->second));
 		      }
@@ -186,7 +218,8 @@ namespace cubreplication
 		    nonexecutable_repl_tasks.clear ();
 		  }
 
-		/* deleted the group commit stream entry */
+		/* delete the group commit stream entry */
+		assert (se->is_group_commit ());
 		delete se;
 	      }
 	    else
@@ -213,7 +246,6 @@ namespace cubreplication
 		/* stream entry is deleted by applier task thread */
 	      }
 	  }
-
       }
 
     private:
@@ -222,8 +254,6 @@ namespace cubreplication
 
   log_consumer::~log_consumer ()
   {
-    /* TODO : move to external code (a higher level object) stop & destroy of log_consumer and stream */
-
     set_stop ();
 
     if (m_use_daemons)
@@ -238,6 +268,13 @@ namespace cubreplication
 
   void log_consumer::push_entry (stream_entry *entry)
   {
+    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+      {
+	string_buffer sb;
+	entry->stringify (sb, stream_entry::short_dump);
+	_er_log_debug (ARG_FILE_LINE, "log_consumer push_entry:\n%s", sb.get_buffer ());
+      }
+
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
     m_stream_entries.push (entry);
     m_apply_task_ready = true;
@@ -286,6 +323,7 @@ namespace cubreplication
   void log_consumer::start_daemons (void)
   {
 #if defined (SERVER_MODE)
+    er_log_debug_replication (ARG_FILE_LINE, "log_consumer::start_daemons\n");
     m_consumer_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
 			new consumer_daemon_task (*this),
 			"prepare_stream_entry_daemon");
@@ -305,6 +343,13 @@ namespace cubreplication
 
   void log_consumer::execute_task (applier_worker_task *task)
   {
+    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+      {
+	string_buffer sb;
+	task->stringify (sb);
+	_er_log_debug (ARG_FILE_LINE, "log_consumer::execute_task:\n%s", sb.get_buffer ());
+      }
+
     cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
 
     m_started_tasks++;

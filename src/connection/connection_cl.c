@@ -413,6 +413,7 @@ css_read_one_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, 
     }
 
   rc = css_read_header (conn, &local_header);
+
   if (rc == NO_ERRORS)
     {
       *rid = (unsigned short) ntohl (local_header.request_id);
@@ -422,6 +423,7 @@ css_read_one_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, 
 	{
 	  *request = (int) (unsigned short) ntohs (local_header.function_code);
 	  *buffer_size = (int) ntohl (local_header.buffer_size);
+
 	  return rc;
 	}
       else

@@ -2555,6 +2555,7 @@ error_exit:
 #endif /* !WINDOWS */
 }
 
+#if defined (ENABLE_OLD_REPLICATION)
 /*
  * copylogdb() - copylogdb main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
@@ -2999,6 +3000,7 @@ error_exit:
 #endif /* !CS_MODE */
 #endif /* !WINDOWS */
 }
+#endif /* ENABLE_OLD_REPLICATION */
 
 /*
  * sig_interrupt() -

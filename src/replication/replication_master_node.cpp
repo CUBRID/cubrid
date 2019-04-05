@@ -24,8 +24,11 @@
 #ident "$Id$"
 
 #include "replication_master_node.hpp"
-#include "replication_master_senders_manager.hpp"
 #include "log_impl.h"
+#include "replication_common.hpp"
+#include "replication_master_senders_manager.hpp"
+#include "server_support.h"
+#include "stream_file.hpp"
 
 namespace cubreplication
 {
@@ -50,18 +53,47 @@ namespace cubreplication
     int num_max_appenders = log_Gl.trantable.num_total_indices + 1;
 
     g_instance->m_stream = new cubstream::multi_thread_stream (buffer_size, num_max_appenders);
+    g_instance->m_stream->set_name ("repl_" + std::string (name));
     g_instance->m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
     g_instance->m_stream->init (g_instance->m_start_position);
     log_generator::set_global_stream (g_instance->m_stream);
 
+    /* create stream file */
+    std::string replication_path;
+    replication_node::get_replication_file_path (replication_path);
+    g_instance->m_stream_file = new cubstream::stream_file (*g_instance->m_stream, replication_path);
+
     master_senders_manager::init (g_instance->m_stream);
+
+    er_log_debug_replication (ARG_FILE_LINE, "master_node:init replication_path:%s", replication_path.c_str ());
 #endif
   }
 
+  void master_node::enable_active ()
+  {
+#if defined (SERVER_MODE)
+    if (css_ha_server_state () == HA_SERVER_STATE_TO_BE_ACTIVE)
+      {
+	/* this is the first slave connecting to this node */
+	cubthread::entry *thread_p = thread_get_thread_entry_info ();
+	css_change_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE, true, HA_CHANGE_MODE_IMMEDIATELY, true);
+      }
+#endif
+  }
 
   void master_node::new_slave (int fd)
   {
 #if defined (SERVER_MODE)
+
+    enable_active ();
+
+    if (css_ha_server_state () != HA_SERVER_STATE_ACTIVE)
+      {
+	er_log_debug_replication (ARG_FILE_LINE, "new_slave invalid server state :%s",
+				  css_ha_server_state_string (css_ha_server_state ()));
+	return;
+      }
+
     cubcomm::channel chn;
 
     css_error_code rc = chn.accept (fd);
@@ -69,6 +101,8 @@ namespace cubreplication
 
     master_senders_manager::add_stream_sender
     (new cubstream::transfer_sender (std::move (chn), cubreplication::master_senders_manager::get_stream ()));
+
+    er_log_debug_replication (ARG_FILE_LINE, "new_slave connected");
 #endif
   }
 
@@ -85,6 +119,11 @@ namespace cubreplication
   {
     /* TODO : we may choose to force flush of all data, even if was read by all senders */
     g_instance->m_stream->set_last_recyclable_pos (pos);
+    g_instance->m_stream->reset_serial_data_read (pos);
+
+    er_log_debug_replication (ARG_FILE_LINE, "master_node (stream:%s) update_senders_min_position: %llu,\n"
+			      " stream_read_pos:%llu, commit_pos:%llu", g_instance->m_stream->name ().c_str (),
+			      pos, g_instance->m_stream->get_curr_read_position (), g_instance->m_stream->get_last_committed_pos ());
   }
 
 

@@ -25,6 +25,7 @@
 #include "stream_transfer_receiver.hpp"
 
 #include "byte_order.h"
+#include "system_parameter.h" /* for er_log_debug */
 #include "thread_manager.hpp"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
@@ -59,6 +60,10 @@ namespace cubstream
 	    rc = this_consumer_channel.m_channel.send ((char *) &last_recv_pos,
 		 sizeof (UINT64));
 
+	    er_log_debug (ARG_FILE_LINE, "transfer_receiver_task starting : "
+			  "m_last_received_position: %lld, rc: %d\n",
+			  this_consumer_channel.m_last_received_position, rc);
+
 	    if (rc != NO_ERRORS)
 	      {
 		assert (false);
@@ -76,6 +81,8 @@ namespace cubstream
 	    return;
 	  }
 
+	cubcomm::er_log_debug_buffer ("transfer_receiver_task receiving", this_consumer_channel.m_buffer, max_len);
+
 	if (this_consumer_channel.m_stream.write (max_len, this_consumer_channel.m_write_action_function))
 	  {
 	    this_consumer_channel.m_channel.close_connection ();
@@ -85,7 +92,7 @@ namespace cubstream
 
     private:
       cubstream::transfer_receiver &this_consumer_channel;
-      bool m_first_loop; /* TODO[arnia] may be a good idea to use create_context instead */
+      bool m_first_loop; /* TODO[replication] may be a good idea to use create_context instead */
   };
 
   transfer_receiver::transfer_receiver (cubcomm::channel &&chn,
@@ -114,7 +121,7 @@ namespace cubstream
   {
     std::size_t recv_bytes = byte_count;
 
-    std::memcpy (ptr + pos, m_buffer, recv_bytes);
+    std::memcpy (ptr, m_buffer, recv_bytes);
     m_last_received_position += recv_bytes;
 
     return NO_ERROR;

@@ -31,6 +31,7 @@
 namespace cubstream
 {
   class multi_thread_stream;
+  class stream_file;
 };
 
 namespace cubreplication
@@ -74,6 +75,7 @@ namespace cubreplication
   {
     protected:
       cubstream::multi_thread_stream *m_stream;
+      cubstream::stream_file *m_stream_file;
       cubstream::stream_position m_start_position;
       node_definition m_identity;
 
@@ -85,11 +87,14 @@ namespace cubreplication
 	  m_identity (name)
       {
 	m_stream = NULL;
+	m_stream_file = NULL;
       }
 
     public:
 
       virtual ~replication_node ();
+
+      static void get_replication_file_path (std::string &path);
   };
 
 } /* namespace cubreplication */

@@ -67,8 +67,10 @@
 
 #define SERVER_FORMAT_STRING " Server %s (rel %s, pid %d)\n"
 #define HA_SERVER_FORMAT_STRING " HA-Server %s (rel %s, pid %d)\n"
+#if defined (ENABLE_OLD_REPLICATION)
 #define HA_COPYLOGDB_FORMAT_STRING " HA-copylogdb %s (rel %s, pid %d)\n"
 #define HA_APPLYLOGDB_FORMAT_STRING " HA-applylogdb %s (rel %s, pid %d)\n"
+#endif
 
 static void css_send_command_to_server (const SOCKET_QUEUE_ENTRY * sock_entry, int command);
 static void css_send_message_to_server (const SOCKET_QUEUE_ENTRY * sock_entry, const char *message);
@@ -90,7 +92,9 @@ static void css_process_get_eof (CSS_CONN_ENTRY * conn);
 static void css_process_ha_node_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id, bool verbose_yn);
 static void css_process_ha_process_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id, bool verbose_yn);
 
+#if defined (ENABLE_OLD_REPLICATION)
 static void css_process_kill_all_ha_process (CSS_CONN_ENTRY * conn, unsigned short request_id);
+#endif
 static void css_process_is_registered_ha_proc (CSS_CONN_ENTRY * conn, unsigned short request_id, char *buf);
 static void css_process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn, unsigned short request_id, char *pid_p);
 static void css_process_ha_deregister_by_args (CSS_CONN_ENTRY * conn, unsigned short request_id, char *args);
@@ -400,12 +404,14 @@ css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 	    case '#':
 	      required_size += strlen (HA_SERVER_FORMAT_STRING);
 	      break;
+#if defined (ENABLE_OLD_REPLICATION)
 	    case '$':
 	      required_size += strlen (HA_COPYLOGDB_FORMAT_STRING);
 	      break;
 	    case '%':
 	      required_size += strlen (HA_APPLYLOGDB_FORMAT_STRING);
 	      break;
+#endif
 	    default:
 	      required_size += strlen (SERVER_FORMAT_STRING);
 	      break;
@@ -445,6 +451,7 @@ css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 	      snprintf (buffer + strlen (buffer), required_size, HA_SERVER_FORMAT_STRING, temp->name + 1,
 			(temp->version_string == NULL ? "?" : temp->version_string), temp->pid);
 	      break;
+#if defined (ENABLE_OLD_REPLICATION)
 	    case '$':
 	      snprintf (buffer + strlen (buffer), required_size, HA_COPYLOGDB_FORMAT_STRING, temp->name + 1,
 			(temp->version_string == NULL ? "?" : temp->version_string), temp->pid);
@@ -453,6 +460,7 @@ css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 	      snprintf (buffer + strlen (buffer), required_size, HA_APPLYLOGDB_FORMAT_STRING, temp->name + 1,
 			(temp->version_string == NULL ? "?" : temp->version_string), temp->pid);
 	      break;
+#endif
 	    default:
 	      snprintf (buffer + strlen (buffer), required_size, SERVER_FORMAT_STRING, temp->name,
 			(temp->version_string == NULL ? "?" : temp->version_string), temp->pid);
@@ -1177,6 +1185,7 @@ error_return:
 #endif
 }
 
+#if defined (ENABLE_OLD_REPLICATION)
 /*
  * css_process_kill_all_ha_process()
  *   return: none
@@ -1234,6 +1243,7 @@ error_return:
     }
 #endif
 }
+#endif /* ENABLE_OLD_REPLICATION */
 
 /*
  * css_process_is_registered_ha_proc()
@@ -1823,7 +1833,7 @@ css_process_server_state (CSS_CONN_ENTRY * conn, unsigned short request_id, char
 #if !defined(WINDOWS)
   SOCKET_QUEUE_ENTRY *temp;
 
-  temp = css_return_entry_of_server (server_name, css_Master_socket_anchor);
+  temp = css_return_entry_of_server (server_name, strlen (server_name), css_Master_socket_anchor);
   if (temp == NULL || IS_INVALID_SOCKET (temp->fd))
     {
       state = HB_PSTATE_DEAD;
@@ -1945,9 +1955,11 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
 	case GET_HA_ADMIN_INFO:
 	  css_process_ha_admin_info (conn, request_id);
 	  break;
+#if defined (ENABLE_OLD_REPLICATION)
 	case KILL_ALL_HA_PROCESS:
 	  css_process_kill_all_ha_process (conn, request_id);
 	  break;
+#endif
 	case IS_REGISTERED_HA_PROC:
 	  css_process_is_registered_ha_proc (conn, request_id, buffer);
 	  break;

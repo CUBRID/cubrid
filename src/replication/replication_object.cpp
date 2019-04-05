@@ -93,7 +93,7 @@ namespace cubreplication
 
   single_row_repl_entry::~single_row_repl_entry ()
   {
-    //TODO[arnia] optimize
+    //TODO[replication] optimize
 
     if (DB_IS_NULL (&m_key_value))
       {
@@ -290,7 +290,8 @@ namespace cubreplication
   void
   sbr_repl_entry::stringify (string_buffer &str)
   {
-    str ("sbr_repl_entry: statement=%s\n", m_statement.c_str ());
+    str ("sbr_repl_entry: statement=%s\nUSER=%s\nSYS_PRM=%s\n",
+	 m_statement.c_str (), m_db_user.c_str (), m_sys_prm_context.c_str ());
   }
 
   changed_attrs_row_repl_entry::~changed_attrs_row_repl_entry ()
@@ -363,6 +364,9 @@ namespace cubreplication
   {
     int count_new_values = 0;
     int int_val;
+
+    OID_SET_NULL (&m_inst_oid);
+
 #if defined (SERVER_MODE)
     HL_HEAPID save_heapid;
 
@@ -379,10 +383,8 @@ namespace cubreplication
 
     for (std::size_t i = 0; (int) i < count_new_values; i++)
       {
-	DB_VALUE val;
-
-	/* this copies the DB_VALUE to contain, should we avoid this ? */
-	m_new_values.push_back (val);
+	m_new_values.emplace_back ();
+	DB_VALUE &val = m_new_values.back ();
 	deserializator.unpack_db_value (val);
       }
 
@@ -464,7 +466,7 @@ namespace cubreplication
 	char *key_to_string = pr_valstring (&m_new_values[i]);
 	assert (key_to_string != NULL);
 
-	str ("attr_id=%d type=%s value=%s\n", m_changed_attributes[i], pr_type_name (DB_VALUE_TYPE (&m_new_values[i])),
+	str ("\tattr_id=%d type=%s value=%s\n", m_changed_attributes[i], pr_type_name (DB_VALUE_TYPE (&m_new_values[i])),
 	     key_to_string);
 
 	db_private_free (NULL, key_to_string);

@@ -30,10 +30,10 @@
 #include "object_representation.h"
 #include "packable_object.hpp"
 
+#include <algorithm>
+#include <cstring>
 #include <vector>
 #include <string>
-
-#include <cstring>
 
 namespace cubpacking
 {
@@ -847,14 +847,55 @@ namespace cubpacking
   packer::pack_buffer_with_length (const char *stream, const std::size_t length)
   {
     align (INT_ALIGNMENT);
-    m_ptr = or_pack_stream (m_ptr, stream, length);
+
+    check_range (m_ptr, m_end_ptr, length + OR_INT_SIZE);
+
+    OR_PUT_INT (m_ptr, length);
+    m_ptr += OR_INT_SIZE;
+
+    if (length > 0)
+      {
+	std::memcpy (m_ptr, stream, length);
+	m_ptr += length;
+
+	align (INT_ALIGNMENT);
+      }
   }
 
-  void
-  unpacker::unpack_buffer_with_length (char *stream, const std::size_t length)
+  void unpacker::peek_unpack_buffer_length (int &value)
   {
+    return peek_unpack_int (value);
+  }
+
+  /*
+   * unpack_buffer_with_length : unpacks a stream into a preallocated buffer
+   * stream (in/out) : output stream
+   * max_length (in) : maximum length to unpack
+   *
+   * Note : the unpacker pointer is incremented with the actual length of buffer (found in unpacker)
+   */
+  void
+  unpacker::unpack_buffer_with_length (char *stream, const std::size_t max_length)
+  {
+    size_t actual_len, copy_length;
+
     align (INT_ALIGNMENT);
-    m_ptr = or_unpack_stream (m_ptr, stream, length);
+
+    actual_len = OR_GET_INT (m_ptr);
+    m_ptr += OR_INT_SIZE;
+
+    assert (actual_len <= max_length);
+    copy_length = std::min (actual_len, max_length);
+
+    check_range (m_ptr, m_end_ptr, actual_len);
+
+    if (copy_length > 0)
+      {
+	memcpy (stream, m_ptr, copy_length);
+      }
+
+    m_ptr += actual_len;
+    align (INT_ALIGNMENT);
   }
 
   void

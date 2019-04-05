@@ -18,41 +18,15 @@
  */
 
 /*
- * replication_master_node.hpp
+ * replication_common.hpp
  */
 
 #ident "$Id$"
 
-#ifndef _REPLICATION_MASTER_NODE_HPP_
-#define _REPLICATION_MASTER_NODE_HPP_
+#ifndef _REPLICATION_COMMON_HPP_
+#define _REPLICATION_COMMON_HPP_
 
-#include "replication_node.hpp"
+#include "error_manager.h"
+#define er_log_debug_replication(...) if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA)) _er_log_debug(__VA_ARGS__)
 
-namespace cubreplication
-{
-
-  class master_node : public replication_node
-  {
-    private:
-      static master_node *g_instance;
-
-      master_node (const char *name)
-	: replication_node (name)
-      {
-      }
-
-    public:
-      static master_node *get_instance (const char *name);
-
-      static void init (const char *name);
-      static void new_slave (int fd);
-      static void final (void);
-
-      static void enable_active (void);
-
-      static void update_senders_min_position (const cubstream::stream_position &pos);
-  };
-
-} /* namespace cubreplication */
-
-#endif /* _REPLICATION_MASTER_NODE_HPP_ */
+#endif /* _REPLICATION_COMMON_HPP_ */
