@@ -153,7 +153,7 @@ typedef enum
 
 #define GUID_STANDARD_BYTES_LENGTH 16
 
-static char db_string_escape_char (char uc);
+static char db_string_escape_char (char c);
 static int qstr_trim (MISC_OPERAND tr_operand, const unsigned char *trim, int trim_length, int trim_size,
 		      const unsigned char *src_ptr, DB_TYPE src_type, int src_length, int src_size,
 		      INTL_CODESET codeset, unsigned char **res, DB_TYPE * res_type, int *res_length, int *res_size);
@@ -1895,9 +1895,9 @@ db_string_substring (const MISC_OPERAND substr_operand, const DB_VALUE * src_str
 }
 
 static char
-db_string_escape_char (char uc)
+db_string_escape_char (char c)
 {
-  switch (uc)
+  switch (c)
     {
     case '\b':
       return 'b';
@@ -1910,12 +1910,12 @@ db_string_escape_char (char uc)
     case '\t':
       return 't';
     default:
-      return uc;
+      return c;
     }
 }
 
 int
-db_string_escape (const char *src_str, size_t src_size, char **res_string, size_t * dest_size)
+db_string_escape_str (const char *src_str, size_t src_size, char **res_string, size_t * dest_size)
 {
   size_t dest_crt_pos;
   size_t src_last_pos;
@@ -1982,7 +1982,7 @@ db_string_quote (const DB_VALUE * str, DB_VALUE * res)
 
       char *escaped_string = NULL;
       size_t escaped_string_size;
-      int error_code = db_string_escape (src_str, db_get_string_size (str), &escaped_string, &escaped_string_size);
+      int error_code = db_string_escape_str (src_str, db_get_string_size (str), &escaped_string, &escaped_string_size);
       if (error_code)
 	{
 	  return error_code;
