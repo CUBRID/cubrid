@@ -286,7 +286,7 @@ test_mvcc_get_snapshot (void *param)
 	}
 
       /* Invalidate snapshot */
-      log_Gl.mvcc_table.set_transaction_lowest_active (tran_index, MVCCID_NULL);
+      log_Gl.mvcc_table.reset_transaction_lowest_active (tran_index);
       curr_mvcc_info->reset ();
     }
 
@@ -330,7 +330,7 @@ test_new_mvcc_complete (void *param)
       /* here we may test whether bit was set */
       local_count_complete++;
 
-      log_Gl.mvcc_table.set_transaction_lowest_active (tran_index, MVCCID_NULL);
+      log_Gl.mvcc_table.reset_transaction_lowest_active (tran_index);
     }
 
   ATOMIC_INC_64 (&count_complete, local_count_complete);

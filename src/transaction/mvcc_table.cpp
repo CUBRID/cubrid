@@ -68,15 +68,20 @@ struct oldest_active_event
 };
 #if !defined (NDEBUG)
 const size_t OLDEST_ACTIVE_HISTORY_SIZE = 1024 * 8;   // 8k
-std::atomic<size_t> Oldest_active_event_count;
-std::array<oldest_active_event, OLDEST_ACTIVE_HISTORY_SIZE> Oldest_active_history;
+struct oldest_active_history_tracker
+{
+  std::atomic<size_t> m_event_count;
+  std::array<oldest_active_event, OLDEST_ACTIVE_HISTORY_SIZE> m_history;
+};
+oldest_active_history_tracker Oldest_active_tracker;
+
 
 static inline void
 oldest_active_add_event (MVCCID mvccid, int tran_index, oldest_active_event::op_type set_or_get,
 			 oldest_active_event::source src)
 {
-  size_t index = Oldest_active_event_count++ % OLDEST_ACTIVE_HISTORY_SIZE;
-  Oldest_active_history[index] = { mvccid, tran_index, set_or_get, src };
+  size_t index = Oldest_active_tracker.m_event_count++ % OLDEST_ACTIVE_HISTORY_SIZE;
+  Oldest_active_tracker.m_history[index] = { mvccid, tran_index, set_or_get, src };
 }
 
 // NOTE - while investigating history, please consider that not all Oldest_active_event_count events may be mature.
@@ -102,7 +107,7 @@ oldest_active_get (const mvcctable::lowest_active_mvccid_type &lowest, int tran_
   if (mvccid != MVCCID_NULL)
     {
       // don't spam will null reads
-      oldest_active_add_event (mvccid, tran_index, oldest_active_event::SET, src);
+      oldest_active_add_event (mvccid, tran_index, oldest_active_event::GET, src);
     }
 #endif
   return mvccid;
