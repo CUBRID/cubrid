@@ -139,7 +139,6 @@ static void logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT
 static void logtb_get_lowest_active_mvccid (UINT64 * bit_area, int bit_area_length, MVCCID bit_area_start_mvccid,
 					    MVCCID * long_tran_mvccids, unsigned int long_tran_mvccids_length,
 					    MVCCID * lowest_active_mvccid);
-static int logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p);
 
 static void logtb_tran_free_update_stats (LOG_TRAN_UPDATE_STATS * log_upd_stats);
 static void logtb_tran_clear_update_stats (LOG_TRAN_UPDATE_STATS * log_upd_stats);
@@ -3787,31 +3786,6 @@ logtb_load_global_statistics_to_tran (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logtb_get_mvcc_snapshot_data - Obtain a new snapshot for current transaction.
- *
- * return	 : Error code.
- * thread_p (in) : Thread entry.
- *
- * Note: Get the snapshot by copying the transactions status from current
- *  history position. The data from current history position is atomically
- *  copied. Thus, the version number of current transaction status is saved.
- *  Then the data is copied. At the end, the actual version number of current
- *  transaction status is compared with saved version number. If they differ,
- *  then repeat the algorithm. This may rarely happens - when a lot of
- *  transactions concurrently commits (about 2000 transactions, currently),
- *  while current transaction get the snapshot.
- */
-static int
-logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
-{
-  int tran_index;
-  LOG_TDES *tdes;
-
-  log_Gl.mvcc_table.build_mvcc_info (*tdes);
-  return NO_ERROR;
-}
-
-/*
  * logtb_invalidate_snapshot_data () - Make sure MVCC is invalidated.
  *
  * return	 : Void.
@@ -4040,10 +4014,7 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 
   if (!tdes->mvccinfo.snapshot.valid)
     {
-      if (logtb_get_mvcc_snapshot_data (thread_p) != NO_ERROR)
-	{
-	  return NULL;
-	}
+      log_Gl.mvcc_table.build_mvcc_info (*tdes);
     }
 
   return &tdes->mvccinfo.snapshot;

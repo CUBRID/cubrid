@@ -79,10 +79,6 @@ static INLINE bool mvcc_is_active_id (THREAD_ENTRY * thread_p, MVCCID mvccid) __
 STATIC_INLINE bool
 mvcc_is_id_in_snapshot (THREAD_ENTRY * thread_p, MVCCID mvcc_id, MVCC_SNAPSHOT * snapshot)
 {
-  unsigned int i;
-  MVCCID position;
-  UINT64 *p_area;
-
   assert (snapshot != NULL);
 
   if (MVCC_ID_PRECEDES (mvcc_id, snapshot->lowest_active_mvccid))
