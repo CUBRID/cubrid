@@ -5816,7 +5816,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 
       if (iscommitted == LOG_COMMIT)
 	{
-	  log_Gl.mvcc_table.set_transaction_lowest_active (LOG_FIND_THREAD_TRAN_INDEX (thread_p), MVCCID_NULL);
+	  log_Gl.mvcc_table.reset_transaction_lowest_active (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 	}
 
       if (get_newtrid == LOG_NEED_NEWTRID)
@@ -6104,7 +6104,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 
       if (iscommitted == LOG_COMMIT)
 	{
-	  log_Gl.mvcc_table.set_transaction_lowest_active (LOG_FIND_THREAD_TRAN_INDEX (thread_p), MVCCID_NULL);
+	  log_Gl.mvcc_table.reset_transaction_lowest_active (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 	}
 
       /* If recovery restart operation, or, if this is a coordinator loose end transaction return this index and

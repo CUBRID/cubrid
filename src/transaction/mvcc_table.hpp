@@ -50,8 +50,17 @@ struct mvcc_trans_status
 {
   using version_type = unsigned int;
 
+  enum event_type
+  {
+    COMMIT,
+    ROLLBACK,
+    SUBTRAN
+  };
+
   mvcc_active_tran m_active_mvccs;
 
+  MVCCID m_last_completed_mvccid;   // just for info
+  event_type m_event_type;
   std::atomic<version_type> version;
 
   mvcc_trans_status ();
@@ -65,7 +74,7 @@ typedef struct mvcctable MVCCTABLE;
 struct mvcctable
 {
   public:
-
+    using lowest_active_mvccid_type = std::atomic<MVCCID>;
 
     mvcctable ();
     ~mvcctable ();
@@ -74,8 +83,7 @@ struct mvcctable
     void finalize ();
 
     void alloc_transaction_lowest_active ();
-    void set_transaction_lowest_active (int tran_index, MVCCID mvccid);
-    MVCCID get_transaction_lowest_active (int tran_index) const;
+    void reset_transaction_lowest_active (int tran_index);
 
     // mvcc_snapshot/mvcc_info functions
     void build_mvcc_info (log_tdes &tdes);
@@ -89,7 +97,6 @@ struct mvcctable
     void reset_start_mvccid ();
 
   private:
-    using lowest_active_mvccid_type = std::atomic<MVCCID>;
 
     static const size_t HISTORY_MAX_SIZE = 2048;  // must be a power of 2
     static const size_t HISTORY_INDEX_MASK = HISTORY_MAX_SIZE - 1;
@@ -118,7 +125,6 @@ struct mvcctable
     void next_tran_status_finish (mvcc_trans_status &next_trans_status, size_t next_index);
     void advance_oldest_active (MVCCID next_oldest_active);
 
-    void set_global_lowest_active (MVCCID mvccid);
     MVCCID get_global_lowest_active () const;
 };
 

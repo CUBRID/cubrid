@@ -342,7 +342,7 @@ mvcc_active_tran::ltrim_area (size_t trim_size)
     {
       return;
     }
-  size_t new_memsize = (get_area_size () - trim_size - 1) * sizeof (unit_type);
+  size_t new_memsize = (get_area_size () - trim_size) * sizeof (unit_type);
   if (new_memsize > 0)
     {
       std::memmove (bit_area, &bit_area[trim_size], new_memsize);

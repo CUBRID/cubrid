@@ -4101,7 +4101,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 #endif /* SERVER_MODE */
 
       /* atomic set transaction lowest active MVCCID */
-      mvcc_table->set_transaction_lowest_active (tran_index, MVCCID_NULL);
+      log_Gl.mvcc_table.reset_transaction_lowest_active (tran_index);
     }
 
   curr_mvcc_info->recent_snapshot_lowest_active_mvccid = MVCCID_NULL;
