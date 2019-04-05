@@ -23,6 +23,8 @@
 
 #include "porting.h"
 
+#include "thread_manager.hpp"
+
 #include <stdio.h>
 #include <pthread.h>
 #include <log_impl.h>
@@ -272,6 +274,10 @@ test_mvcc_get_snapshot (void *param)
   unsigned int local_count_snapshots = 0;
   MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
 
+  // *INDENT-OFF*
+  cubthread::set_thread_local_entry (*thread_p);
+  // *INDENT-ON*
+
   for (i = 0; i < NOPS_SNAPSHOT; i++)
     {
       if (logtb_get_mvcc_snapshot (thread_p) != NULL)
@@ -288,6 +294,10 @@ test_mvcc_get_snapshot (void *param)
   fprintf (stdout, "snapshot worker thread (%p) is leaving\n", thread_p);
   fflush (stdout);
 
+  // *INDENT-OFF*
+  cubthread::clear_thread_local_entry ();
+  // *INDENT-ON*
+
   return (THREAD_RET_T) 0;
 }
 
@@ -301,6 +311,10 @@ test_new_mvcc_complete (void *param)
   unsigned int local_count_complete = 0;
   bool committed = true;
   MVCCID mvccid;
+
+  // *INDENT-OFF*
+  cubthread::set_thread_local_entry (*thread_p);
+  // *INDENT-ON*
 
   for (i = 0; i < NOPS_COMPLPETE; i++)
     {
@@ -323,6 +337,10 @@ test_new_mvcc_complete (void *param)
   fprintf (stdout, "complete worker thread (%p) is leaving\n", thread_p);
   fflush (stdout);
 
+  // *INDENT-OFF*
+  cubthread::clear_thread_local_entry ();
+  // *INDENT-ON*
+
   return (THREAD_RET_T) 0;
 }
 
@@ -333,6 +351,10 @@ test_mvcc_get_oldest (void *param)
   THREAD_ENTRY *thread_p = (THREAD_ENTRY *) param;
   unsigned int local_count_oldest = 0;
   MVCCID prev_oldest, curr_oldest = MVCCID_NULL;
+
+  // *INDENT-OFF*
+  cubthread::set_thread_local_entry (*thread_p);
+  // *INDENT-ON*
 
   for (i = 0; i < NOPS_OLDEST; i++)
     {
@@ -351,6 +373,10 @@ test_mvcc_get_oldest (void *param)
 
   fprintf (stdout, "get_oldest thread (%p) is leaving\n", thread_p);
   fflush (stdout);
+
+  // *INDENT-OFF*
+  cubthread::clear_thread_local_entry ();
+  // *INDENT-ON*
 
   return (THREAD_RET_T) 0;
 }

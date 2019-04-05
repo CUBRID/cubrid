@@ -83,7 +83,6 @@ struct mvcc_active_tran
 
     inline static size_t units_to_bits (size_t unit_count);
     inline static size_t units_to_bytes (size_t unit_count);
-    inline static size_t bits_to_bytes (size_t bit_count);
 
     inline static unit_type get_mask_of (size_t bit_offset);
 

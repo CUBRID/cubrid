@@ -145,7 +145,7 @@ mvcc_active_tran::get_long_tran_memsize () const
 MVCCID
 mvcc_active_tran::get_highest_completed_mvccid () const
 {
-  assert (bit_area != NULL && bit_area_start_mvccid > MVCCID_FIRST);
+  assert (bit_area != NULL && bit_area_start_mvccid >= MVCCID_FIRST);
 
   if (bit_area_length == 0)
     {
