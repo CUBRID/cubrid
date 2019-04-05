@@ -5313,13 +5313,23 @@ db_evaluate_json_unquote (DB_VALUE * result, DB_VALUE * const *arg, int const nu
       return NO_ERROR;
     }
   char *str = NULL;
+
   JSON_DOC_STORE source_doc;
-  error_code = db_value_to_json_doc (*json, false, source_doc);
+  const char *json_val = db_get_string (json);
+  if (json_val[0] == '"')
+    {
+      error_code = db_value_to_json_doc (*json, false, source_doc);
+    }
+  else
+    {
+      error_code = db_value_to_json_value (*json, source_doc);
+    }
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       return error_code;
     }
+
   error_code = db_json_unquote (*source_doc.get_immutable (), str);
   if (error_code != NO_ERROR)
     {
