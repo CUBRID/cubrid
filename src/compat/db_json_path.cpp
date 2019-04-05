@@ -19,11 +19,15 @@
 
 #include "db_json_path.hpp"
 
+#include "db_json.hpp"
 #include "memory_alloc.h"
 #include "string_opfunc.h"
 #include "system_parameter.h"
 
+#include "rapidjson/encodings.h"
+#include "rapidjson/reader.h"
 #include "rapidjson/pointer.h"
+#include "rapidjson/writer.h"
 
 #include <algorithm>
 #include <cctype>
@@ -49,6 +53,8 @@ static std::size_t skip_whitespaces (const std::string &path, std::size_t token_
 static int db_json_path_is_token_valid_array_index (const std::string &str,
     bool allow_wildcards, unsigned long &index, std::size_t start = 0, std::size_t end = 0);
 static bool db_json_path_is_token_valid_quoted_object_key (const std::string &path, std::size_t &token_begin);
+static std::string db_json_decode_rapidjson_str (const char *json_val_char);
+static std::string db_json_encode_rapidjson_str (const std::string &json_val_char);
 static bool db_json_path_quote_and_validate_unquoted_object_key (std::string &path, std::size_t &token_begin);
 static bool db_json_path_is_token_valid_unquoted_object_key (const std::string &path, std::size_t &token_begin);
 static void db_json_remove_leading_zeros_index (std::string &index);
@@ -95,6 +101,34 @@ db_json_path_is_token_valid_quoted_object_key (const std::string &path, std::siz
   return true;
 }
 
+static std::string
+db_json_decode_rapidjson_str (const char *json_val_char)
+{
+  typedef rapidjson::GenericStringBuffer<JSON_ENCODING> normalized_sb;
+  const JSON_VALUE cjv (json_val_char, strlen (json_val_char));
+  normalized_sb buffer;
+  rapidjson::Writer<normalized_sb> json_default_writer (buffer);
+
+  cjv.Accept (json_default_writer);
+  buffer.Clear ();
+
+  return buffer.GetString ();
+}
+
+static std::string
+db_json_encode_rapidjson_str (const std::string &json_val_char)
+{
+  // todo: find a way to use encoder without allocating a JSON_DOC
+  JSON_DOC_STORE jd;
+  jd.create_mutable_reference ();
+
+  jd.get_mutable ()->Parse (json_val_char.c_str (), json_val_char.length ());
+
+  std::string res = jd.get_immutable ()->IsString () ? jd.get_immutable ()->GetString () : "";
+
+  return res;
+}
+
 /*
  * db_json_path_is_token_valid_unquoted_object_key () - Validate and quote an object_key
  *
@@ -110,10 +144,10 @@ db_json_path_quote_and_validate_unquoted_object_key (std::string &path, std::siz
   if (validation_result)
     {
       // we normalize object_keys by quoting them - e.g. $.objectkey we represent as $."objectkey"
-      path.insert (token_begin, "\"");
-      path.insert (i + 1, "\"");
+      // path.insert (token_begin, "\"");
+      // path.insert (i + 1, "\"");
 
-      token_begin = skip_whitespaces (path, i + 2 /* we inserted 2 quotation marks */);
+      token_begin = skip_whitespaces (path, i /* we inserted 2 quotation marks */);
     }
   return validation_result;
 }
@@ -958,8 +992,7 @@ JSON_PATH::extract_from_subtree (const JSON_PATH &path, size_t tkn_array_offset,
 	{
 	case PATH_TOKEN::token_type::object_key:
 	{
-	  std::string unquoted_key = db_string_unquote (crt_tkn.get_object_key ());
-	  JSON_VALUE::ConstMemberIterator m = jv.FindMember (unquoted_key.c_str ());
+	  JSON_VALUE::ConstMemberIterator m = jv.FindMember (db_json_encode_rapidjson_str (crt_tkn.get_object_key ()).c_str ());
 	  if (m == jv.MemberEnd ())
 	    {
 	      return;
