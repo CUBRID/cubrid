@@ -75,6 +75,7 @@ struct mvcctable
 
     void alloc_transaction_lowest_active ();
     void set_transaction_lowest_active (int tran_index, MVCCID mvccid);
+    MVCCID get_transaction_lowest_active (int tran_index) const;
 
     // mvcc_snapshot/mvcc_info functions
     void build_mvcc_info (log_tdes &tdes);
@@ -106,7 +107,7 @@ struct mvcctable
     std::atomic<size_t> trans_status_history_position;   // protected by lock
 
     /* lowest active MVCCID */
-    std::atomic<MVCCID> m_lowest_active_mvccid;
+    lowest_active_mvccid_type m_lowest_active_mvccid;
 
     /* protect against getting new MVCCIDs concurrently */
     std::mutex new_mvccid_lock;
@@ -116,6 +117,9 @@ struct mvcctable
     mvcc_trans_status &next_trans_status_start (mvcc_trans_status::version_type &next_version, size_t &next_index);
     void next_tran_status_finish (mvcc_trans_status &next_trans_status, size_t next_index);
     void advance_oldest_active (MVCCID next_oldest_active);
+
+    void set_global_lowest_active (MVCCID mvccid);
+    MVCCID get_global_lowest_active () const;
 };
 
 #endif // !_MVCC_TABLE_H_
