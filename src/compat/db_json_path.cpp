@@ -144,10 +144,10 @@ db_json_path_quote_and_validate_unquoted_object_key (std::string &path, std::siz
   if (validation_result)
     {
       // we normalize object_keys by quoting them - e.g. $.objectkey we represent as $."objectkey"
-      // path.insert (token_begin, "\"");
-      // path.insert (i + 1, "\"");
+      path.insert (token_begin, "\"");
+      path.insert (i + 1, "\"");
 
-      token_begin = skip_whitespaces (path, i /* we inserted 2 quotation marks */);
+      token_begin = skip_whitespaces (path, i + 2 /* we inserted 2 quotation marks */);
     }
   return validation_result;
 }
