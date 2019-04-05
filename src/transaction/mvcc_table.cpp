@@ -110,7 +110,7 @@ mvcctable::initialize ()
 void
 mvcctable::alloc_transaction_lowest_active ()
 {
-  if (transaction_lowest_active_mvccids_size != logtb_get_number_of_total_tran_indices ())
+  if (transaction_lowest_active_mvccids_size != (size_t) logtb_get_number_of_total_tran_indices ())
     {
       // either first time or transaction table size has changed
       delete transaction_lowest_active_mvccids;
@@ -280,7 +280,7 @@ mvcctable::get_oldest_active_mvccid () const
 	  thread_sleep (10);
 	}
 
-      for (size_t i = waiting_mvccids_pos.get_size() - 1; i >= 0; --i)
+      for (size_t i = waiting_mvccids_pos.get_size () - 1; i < waiting_mvccids_pos.get_size (); --i)
 	{
 	  loaded_tran_mvccid = transaction_lowest_active_mvccids[waiting_mvccids_pos.get_array ()[i]].load ();
 	  if (loaded_tran_mvccid == MVCCID_ALL_VISIBLE)
