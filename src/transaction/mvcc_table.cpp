@@ -62,6 +62,7 @@ struct oldest_active_event
     m_value = other.m_value;
     m_tran_index_or_global = other.m_tran_index_or_global;
     m_set_or_get = other.m_set_or_get;
+    m_source = other.m_source;
 
     return *this;
   }
