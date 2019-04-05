@@ -97,27 +97,7 @@ mvcc_is_id_in_snapshot (THREAD_ENTRY * thread_p, MVCCID mvcc_id, MVCC_SNAPSHOT *
       return true;
     }
 
-  if (snapshot->bit_area_length > 0 && mvcc_id >= snapshot->bit_area_start_mvccid)
-    {
-      position = mvcc_id - snapshot->bit_area_start_mvccid;
-      p_area = MVCC_GET_BITAREA_ELEMENT_PTR (snapshot->bit_area, position);
-      if (((*p_area) & MVCC_BITAREA_MASK (position)) == 0)
-	{
-	  /* active transaction found */
-	  return true;
-	}
-    }
-
-  for (i = 0; i < snapshot->long_tran_mvccids_length; i++)
-    {
-      /* long transactions - rare case */
-      if (MVCCID_IS_EQUAL (mvcc_id, snapshot->long_tran_mvccids[i]))
-	{
-	  return true;
-	}
-    }
-
-  return false;
+  return snapshot->m_active_mvccs.is_active (mvcc_id);
 }
 
 /*

@@ -32,7 +32,6 @@
 #include "storage_common.h"
 
 #include <atomic>
-#include <cstdint>
 
 // forward declarations
 struct log_tdes;

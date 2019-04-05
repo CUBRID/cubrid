@@ -27,6 +27,7 @@
 #include "storage_common.h"
 
 #include <cassert>
+#include <cstdint>
 
 struct mvcc_active_tran
 {
@@ -86,8 +87,8 @@ struct mvcc_active_tran
 
     inline static unit_type get_mask_of (size_t bit_offset);
 
-    inline size_t get_bit_offset (MVCCID mvccid);
-    inline MVCCID get_mvccid (size_t bit_offset);
+    inline size_t get_bit_offset (MVCCID mvccid) const;
+    inline MVCCID get_mvccid (size_t bit_offset) const;
     inline unit_type *get_unit_of (size_t bit_offset) const;
     inline bool is_set (size_t bit_offset) const;
 
@@ -97,7 +98,7 @@ struct mvcc_active_tran
     void add_long_transaction (MVCCID mvccid);
     void ltrim_area (size_t trim_size);
     void set_bitarea_mvccid (MVCCID mvccid);
-    void cleanup ();
+    void cleanup_migrate_to_long_transations ();
 };
 
 #endif // !_MVCC_ACTIVE_TRAN_HPP_
