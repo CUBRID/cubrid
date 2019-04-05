@@ -93,6 +93,8 @@ struct mvcc_active_tran
 
     size_t get_area_size () const;
 
+    void check_valid () const;
+
     void remove_long_transaction (MVCCID mvccid);
     void add_long_transaction (MVCCID mvccid);
     void ltrim_area (size_t trim_size);

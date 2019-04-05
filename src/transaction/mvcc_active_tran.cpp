@@ -210,14 +210,14 @@ mvcc_active_tran::get_lowest_active_mvccid () const
   /* find the lowest bit 0 */
   size_t end_position = bit_area_length - 1;
   unit_type *end_bit_area = get_unit_of (end_position);
-  unit_type *lowest_active_bit_area = bit_area;
+  unit_type *lowest_active_bit_area;
   size_t lowest_bit_pos = 0;
   unit_type bits;
   size_t bit_pos;
   size_t count_bits;
   unit_type mask;
 
-  while (lowest_active_bit_area <= end_bit_area)
+  for (lowest_active_bit_area = bit_area; lowest_active_bit_area <= end_bit_area; ++lowest_active_bit_area)
     {
       bits = *lowest_active_bit_area;
       if (bits == ALL_COMMITTED)
@@ -323,6 +323,8 @@ mvcc_active_tran::remove_long_transaction (MVCCID mvccid)
     }
   assert ((i < long_tran_mvccids_length - 1) || long_tran_mvccids[i] == mvccid);
   --long_tran_mvccids_length;
+
+  check_valid ();
 }
 
 void
@@ -373,18 +375,21 @@ mvcc_active_tran::set_bitarea_mvccid (MVCCID mvccid)
     {
       // force cleanup_migrate_to_long_transations
       cleanup_migrate_to_long_transations ();
+      check_valid ();
       position = get_bit_offset (mvccid);
-      assert (position < BITAREA_MAX_BITS);   // is this a guaranteed?
-      if (position >= bit_area_length)
-	{
-	  // extend area size; it is enough to update bit_area_length since all data is already zero
-	  bit_area_length = position + 1;
-	}
+    }
+  assert (position < BITAREA_MAX_BITS);   // is this a guaranteed?
+  if (position >= bit_area_length)
+    {
+      // extend area size; it is enough to update bit_area_length since all data is already zero
+      bit_area_length = position + 1;
     }
 
   unit_type mask = get_mask_of (position);
   unit_type *p_area = get_unit_of (position);
   *p_area |= mask;
+
+  check_valid ();
 
   if (bit_area_length > CLEANUP_THRESHOLD)
     {
@@ -398,11 +403,13 @@ mvcc_active_tran::set_bitarea_mvccid (MVCCID mvccid)
 	    }
 	}
       ltrim_area (first_not_all_commited);
+      check_valid ();
     }
 
   if (bit_area_length > LONG_TRAN_THRESHOLD)
     {
       cleanup_migrate_to_long_transations ();
+      check_valid ();
     }
 }
 
@@ -447,4 +454,34 @@ mvcc_active_tran::set_inactive_mvccid (MVCCID mvccid)
     {
       set_bitarea_mvccid (mvccid);
     }
+}
+
+void
+mvcc_active_tran::check_valid () const
+{
+#if !defined (NDEBUG)
+  // all bits after bit_area_length must be 0
+  unit_type last_unit = *get_unit_of (bit_area_length);
+  for (size_t i = bit_area_length % UNIT_TO_BITS_COUNT; i < UNIT_TO_BITS_COUNT; i++)
+    {
+      if ((get_mask_of (i) & last_unit) != 0)
+	{
+	  assert (false);
+	}
+    }
+  for (unit_type *p_area = get_unit_of (bit_area_length) + 1; p_area < bit_area + BITAREA_MAX_SIZE; ++p_area)
+    {
+      if (*p_area != ALL_ACTIVE)
+	{
+	  assert (false);
+	}
+    }
+
+  // all long transaction should be ordered and smaller than bit_area_start_mvccid
+  for (size_t i = 0; i < long_tran_mvccids_length; i++)
+    {
+      assert (MVCC_ID_PRECEDES (long_tran_mvccids[i], bit_area_start_mvccid));
+      assert (i == 0 || MVCC_ID_PRECEDES (long_tran_mvccids[i - 1], long_tran_mvccids[i]));
+    }
+#endif // debug
 }
