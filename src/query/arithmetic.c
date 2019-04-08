@@ -4268,7 +4268,7 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
 	      return ER_FAILED;
 	    }
 	  tmpval_p = &tmpval;
-	  /* no break here */
+	  /* FALLTHRU */
 	case DB_TYPE_DOUBLE:
 	  d = db_get_double (tmpval_p);
 	  if (d < 0)

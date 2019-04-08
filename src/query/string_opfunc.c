@@ -18692,6 +18692,7 @@ get_number_token (const INTL_LANG lang, char *fsp, int *length, char *last_posit
 	{
 	  return N_INVALID;
 	}
+      /* FALLTHRU */
 
     case '9':
     case '0':
@@ -18730,6 +18731,7 @@ get_number_token (const INTL_LANG lang, char *fsp, int *length, char *last_posit
 	  *next_fsp = &fsp[*length];
 	  return N_SPACE;
 	}
+      return N_INVALID;
 
     case '"':
       *length += 1;
@@ -23802,8 +23804,10 @@ parse_time_string (const char *timestr, int timestr_size, int *sign, int *h, int
 
 	case 1:
 	  ms_string[1] = '0';
+	  /* FALLTHRU */
 	case 2:
 	  ms_string[2] = '0';
+	  /* FALLTHRU */
 	default:
 	  *ms = atoi (ms_string);
 	}

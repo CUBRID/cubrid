@@ -984,7 +984,7 @@ mq_rewrite_agg_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *void_a
     {
     case PT_SELECT:
       info->select_stack = pt_pointer_stack_pop (parser, info->select_stack, NULL);
-      /* fall trough */
+      /* FALLTHRU */
 
     case PT_UNION:
     case PT_DIFFERENCE:
@@ -2914,7 +2914,7 @@ pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	  /* nothing found ... */
 	  break;
 	}
-      /* fall trough */
+      /* FALLTHRU */
 
     case PT_NAME:
       spec = infop->in.spec;
@@ -6251,7 +6251,7 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
       /* only translate translatable statements */
     case PT_SELECT:
       strict = !PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_NO_STRICT_OID_CHECK);
-      /* fall trough */
+      /* FALLTHRU */
 
     case PT_UNION:
     case PT_DIFFERENCE:

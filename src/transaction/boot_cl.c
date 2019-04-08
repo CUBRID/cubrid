@@ -1738,6 +1738,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
 	case ER_NET_SERVER_HAND_SHAKE:
 	case ER_NET_HS_UNKNOWN_SERVER_REL:
 	  cap_error = true;
+	  /* FALLTHRU */
 	case ER_NET_DIFFERENT_RELEASE:
 	case ER_NET_NO_SERVER_HOST:
 	case ER_NET_CANT_CONNECT_SERVER:

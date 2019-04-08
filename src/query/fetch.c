@@ -169,6 +169,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  goto error;
 	}
+      /* FALLTHRU */
+
     case T_ADD:
     case T_SUB:
     case T_MUL:

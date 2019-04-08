@@ -1422,15 +1422,17 @@ tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      if (domain->collation_flag == TP_DOMAIN_COLL_NORMAL || domain->collation_flag == TP_DOMAIN_COLL_ENFORCE)
-	{
-	  db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
-	}
       if (domain->collation_flag == TP_DOMAIN_COLL_ENFORCE)
 	{
+	  db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
 	  /* don't apply precision and type */
 	  break;
 	}
+      if (domain->collation_flag == TP_DOMAIN_COLL_NORMAL)
+	{
+	  db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+	}
+      /* FALLTHRU */
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       value->domain.char_info.type = TP_DOMAIN_TYPE (domain);
