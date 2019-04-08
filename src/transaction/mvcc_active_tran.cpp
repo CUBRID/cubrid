@@ -489,11 +489,12 @@ mvcc_active_tran::check_valid () const
 {
 #if !defined (NDEBUG)
   // all bits after bit_area_length must be 0
-  if (bit_area_length > 0)
+  if ((bit_area_length % UNIT_TO_BITS_COUNT) != 0)
     {
+      // we need to test bits after bit_area_length in same unit
       size_t last_bit_pos = bit_area_length - 1;
       unit_type last_unit = *get_unit_of (last_bit_pos);
-      for (size_t i = (last_bit_pos + 1) % UNIT_TO_BITS_COUNT; i < UNIT_TO_BITS_COUNT; i++)
+      for (size_t i = (last_bit_pos + 1) ; i < UNIT_TO_BITS_COUNT; i++)
 	{
 	  if ((get_mask_of (i) & last_unit) != 0)
 	    {
