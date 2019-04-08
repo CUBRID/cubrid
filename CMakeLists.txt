@@ -211,7 +211,7 @@ else(VERSION_MATCHES_LENGTH GREATER 3)
       message(FATAL_ERROR "Could not get count information from Git")
     endif(git_result)
     set(CUBRID_EXTRA_VERSION ${commit_count})
-    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --short=7 HEAD
       OUTPUT_VARIABLE commit_hash RESULT_VARIABLE git_result
       ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
       WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})

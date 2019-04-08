@@ -808,6 +808,7 @@ extern void perfmon_copy_values (UINT64 * src, UINT64 * dest);
 #if defined (SERVER_MODE) || defined (SA_MODE)
 extern void perfmon_start_watch (THREAD_ENTRY * thread_p);
 extern void perfmon_stop_watch (THREAD_ENTRY * thread_p);
+extern void perfmon_er_log_current_stats (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE || SA_MODE */
 
 STATIC_INLINE bool perfmon_is_perf_tracking (void) __attribute__ ((ALWAYS_INLINE));

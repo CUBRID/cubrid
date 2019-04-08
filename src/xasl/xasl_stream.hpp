@@ -26,6 +26,7 @@
 
 #include "json_table_def.h"
 #include "thread_compat.hpp"
+#include "xasl_unpack_info.hpp"
 
 #include <cstddef>
 
@@ -43,7 +44,6 @@ namespace cubxasl
   } // namespace json_table
 } // namespace cubxasl
 
-const size_t MAX_PTR_BLOCKS = 256;
 const size_t OFFSETS_PER_BLOCK = 4096;
 const size_t START_PTR_PER_BLOCK = 15;
 /*
@@ -55,61 +55,10 @@ const size_t STREAM_EXPANSION_UNIT = OFFSETS_PER_BLOCK * sizeof (int);
 const int XASL_STREAM_ALIGN_UNIT = sizeof (double);
 const int XASL_STREAM_ALIGN_MASK = XASL_STREAM_ALIGN_UNIT - 1;
 
-/* structure of a visited pointer constant */
-typedef struct visited_ptr STX_VISITED_PTR;
-struct visited_ptr
-{
-  const void *ptr;		/* a pointer constant */
-  void *str;			/* where the struct pointed by 'ptr' is stored */
-};
-
-/* structure for additional memory during filtered predicate unpacking */
-typedef struct unpack_extra_buf UNPACK_EXTRA_BUF;
-struct unpack_extra_buf
-{
-  char *buff;
-  UNPACK_EXTRA_BUF *next;
-};
-
-/* structure to hold information needed during packing */
-typedef struct xasl_unpack_info XASL_UNPACK_INFO;
-struct xasl_unpack_info
-{
-  char *packed_xasl;		/* ptr to packed xasl tree */
-#if defined (SERVER_MODE)
-  THREAD_ENTRY *thrd;		/* used for private allocation */
-#endif				/* SERVER_MODE */
-
-  /* blocks of visited pointer constants */
-  STX_VISITED_PTR *ptr_blocks[MAX_PTR_BLOCKS];
-
-  char *alloc_buf;		/* alloced buf */
-
-  int packed_size;		/* packed xasl tree size */
-
-  /* low-water-mark of visited pointers */
-  int ptr_lwm[MAX_PTR_BLOCKS];
-
-  /* max number of visited pointers */
-  int ptr_max[MAX_PTR_BLOCKS];
-
-  int alloc_size;		/* alloced buf size */
-
-  /* list of additional buffers allocated during xasl unpacking */
-  UNPACK_EXTRA_BUF *additional_buffers;
-  /* 1 if additional buffers should be tracked */
-  int track_allocated_bufers;
-
-  bool use_xasl_clone;		/* true, if uses xasl clone */
-};
-
 inline int xasl_stream_make_align (int x);
-inline int xasl_stream_get_ptr_block (const void *ptr);
 
 int stx_get_xasl_errcode (THREAD_ENTRY *thread_p);
 void stx_set_xasl_errcode (THREAD_ENTRY *thread_p, int errcode);
-XASL_UNPACK_INFO *stx_get_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p);
-void stx_set_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p, XASL_UNPACK_INFO *ptr);
 int stx_init_xasl_unpack_info (THREAD_ENTRY *thread_p, char *xasl_stream, int xasl_stream_size);
 
 int stx_mark_struct_visited (THREAD_ENTRY *thread_p, const void *ptr, void *str);
@@ -157,16 +106,10 @@ void stx_restore (THREAD_ENTRY *thread_p, char *&ptr, T *&target);
 
 #include <cassert>
 
-int
+inline int
 xasl_stream_make_align (int x)
 {
   return (((x) & ~XASL_STREAM_ALIGN_MASK) + (((x) & XASL_STREAM_ALIGN_MASK) ? XASL_STREAM_ALIGN_UNIT : 0));
-}
-
-int
-xasl_stream_get_ptr_block (const void *ptr)
-{
-  return static_cast<int> ((((UINTPTR) ptr) / sizeof (UINTPTR)) % MAX_PTR_BLOCKS);
 }
 
 // restore from stream buffer
@@ -189,7 +132,7 @@ stx_restore (THREAD_ENTRY *thread_p, char *&ptr, T *&target)
     }
   else
     {
-      char *bufptr = &stx_get_xasl_unpack_info_ptr (thread_p)->packed_xasl[offset];
+      char *bufptr = &get_xasl_unpack_info_ptr (thread_p)->packed_xasl[offset];
       target = (T *) stx_get_struct_visited_ptr (thread_p, bufptr);
       if (target != NULL)
 	{
