@@ -25,6 +25,7 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/csql_result_format.c
   ${EXECUTABLES_DIR}/csql_session.c
   ${EXECUTABLES_DIR}/csql_support.c
+  ${EXECUTABLES_DIR}/extract_schema.cpp
   ${EXECUTABLES_DIR}/file_hash.c
   ${EXECUTABLES_DIR}/load_object.c
   ${EXECUTABLES_DIR}/loaddb.c
@@ -37,6 +38,10 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/util_cs.c
   )
 
+set(EXECUTABLE_HEADERS
+  ${EXECUTABLES_DIR}/extract_schema.hpp
+  )
+  
 set(COMPAT_SOURCES
   ${COMPAT_DIR}/cnv.c
   ${COMPAT_DIR}/cnvlex.c
@@ -404,6 +409,7 @@ SET_SOURCE_FILES_PROPERTIES(
 
 add_library(cubridcs SHARED
   ${EXECUTABLE_SOURCES}
+  ${EXECUTABLE_HEADERS}
   ${COMPAT_SOURCES}
   ${COMPAT_SOURCES_C}
   ${BASE_SOURCES}

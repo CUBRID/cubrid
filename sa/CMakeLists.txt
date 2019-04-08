@@ -26,6 +26,7 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/csql_result.c
   ${EXECUTABLES_DIR}/csql_support.c
   ${EXECUTABLES_DIR}/csql_result_format.c
+  ${EXECUTABLES_DIR}/extract_schema.cpp  
   ${EXECUTABLES_DIR}/util_sa.c
   ${EXECUTABLES_DIR}/util_cs.c
   ${EXECUTABLES_DIR}/util_common.c
@@ -38,6 +39,10 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/file_hash.c
   ${EXECUTABLES_DIR}/loader.c
   ${EXECUTABLES_DIR}/loader_object_table.c
+  )
+
+set(EXECUTABLE_HEADERS
+  ${EXECUTABLES_DIR}/extract_schema.hpp
   )
 
 set(COMPAT_SOURCES
@@ -499,6 +504,7 @@ SET_SOURCE_FILES_PROPERTIES(
 
 add_library(cubridsa SHARED
   ${EXECUTABLE_SOURCES}
+  ${EXECUTABLE_HEADERS}
   ${COMPAT_SOURCES}
   ${BASE_SOURCES}
   ${BASE_HEADERS}
