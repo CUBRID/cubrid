@@ -25,6 +25,7 @@
 #include "system_parameter.h"
 
 #include "rapidjson/encodings.h"
+#include "rapidjson/error/en.h"
 #include "rapidjson/reader.h"
 #include "rapidjson/pointer.h"
 #include "rapidjson/writer.h"
@@ -118,15 +119,14 @@ db_json_decode_rapidjson_str (const char *json_val_char)
 static std::string
 db_json_encode_rapidjson_str (const std::string &json_val_char)
 {
-  // todo: find a way to use encoder without allocating a JSON_DOC
+  // we'd need to have our own rapidjson::GenericReader::ParseStringToStream implementation
+  // currently, we need to pass a strigified version of the object_key to rapidjson::GenericDocument::Parse
   JSON_DOC_STORE jd;
   jd.create_mutable_reference ();
-
   jd.get_mutable ()->Parse (json_val_char.c_str (), json_val_char.length ());
+  // might have a parsing error?
 
-  std::string res = jd.get_immutable ()->IsString () ? jd.get_immutable ()->GetString () : "";
-
-  return res;
+  return jd.get_immutable ()->IsString () ? jd.get_immutable ()->GetString () : "";
 }
 
 /*
