@@ -504,7 +504,7 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool commited)
     {
       MVCCID new_lowest_active = next_status.m_active_mvccs.get_lowest_active_mvccid ();
 #if !defined (NDEBUG)
-      oldest_active_add_event (new_lowest_active, tran_index, oldest_active_event::GET_LOWEST_ACTIVE,
+      oldest_active_add_event (new_lowest_active, (int) next_index, oldest_active_event::GET_LOWEST_ACTIVE,
 			       oldest_active_event::COMPLETE_MVCC);
 #endif // !NDEBUG
       // we need to recheck version to validate result

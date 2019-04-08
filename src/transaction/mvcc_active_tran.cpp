@@ -236,11 +236,12 @@ mvcc_active_tran::get_lowest_active_mvccid () const
 	    }
 	}
       lowest_bit_pos += bit_pos;
+      break;
     }
   /* compute lowest_active_mvccid */
   if (lowest_active_bit_area > end_bit_area)
     {
-      /* didn't fount 0 bit */
+      /* didn't find 0 bit */
       return get_mvccid (bit_area_length);
     }
   else
@@ -254,18 +255,26 @@ mvcc_active_tran::copy_to (mvcc_active_tran &dest) const
 {
   assert (m_initialized && dest.m_initialized);
 
+  if (bit_area_length > 0)
+    {
+      std::memcpy (dest.bit_area, bit_area, get_bit_area_memsize ());
+      if (dest.get_bit_area_memsize () > get_bit_area_memsize ())
+	{
+	  // clear
+	  std::memset (dest.bit_area + get_bit_area_memsize (), 0,
+		       dest.get_bit_area_memsize() - get_bit_area_memsize());
+	}
+    }
+  if (long_tran_mvccids_length > 0)
+    {
+      std::memcpy (dest.long_tran_mvccids, long_tran_mvccids, get_long_tran_memsize ());
+    }
+
   dest.bit_area_start_mvccid = bit_area_start_mvccid;
   dest.bit_area_length = bit_area_length;
   dest.long_tran_mvccids_length = long_tran_mvccids_length;
 
-  if (dest.bit_area_length > 0)
-    {
-      std::memcpy (dest.bit_area, bit_area, dest.get_bit_area_memsize ());
-    }
-  if (dest.long_tran_mvccids_length > 0)
-    {
-      std::memcpy (dest.long_tran_mvccids, long_tran_mvccids, dest.get_long_tran_memsize ());
-    }
+  dest.check_valid ();
 }
 
 bool
