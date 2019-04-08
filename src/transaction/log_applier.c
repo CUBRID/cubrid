@@ -5422,6 +5422,7 @@ la_apply_statement_log (LA_ITEM * item)
 
     case CUBRID_STMT_UPDATE_STATS:
       is_ddl = true;
+      /* FALLTHRU */
 
     case CUBRID_STMT_INSERT:
     case CUBRID_STMT_DELETE:

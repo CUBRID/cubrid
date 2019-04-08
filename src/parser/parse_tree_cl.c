@@ -5879,6 +5879,7 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.alter.alter_clause.rename.meta));
 	  q = pt_append_nulstring (parser, q, " ");
 	  q = pt_append_varchar (parser, q, r2);
+	  /* FALLTHRU */
 	case PT_FILE_RENAME:
 	  r1 = pt_print_bytes (parser, p->info.alter.alter_clause.rename.old_name);
 	  q = pt_append_varchar (parser, q, r1);
@@ -8474,6 +8475,7 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
       show_collation = true;
+      /* FALLTHRU */
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
     case PT_TYPE_FLOAT:
@@ -11866,7 +11868,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	  /* break case PT_RANGE */
 	  break;
 	}
-      /* fall through to default case */
+      /* FALLTHRU */
     default:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       r2 = pt_print_bytes (parser, p->info.expr.arg2);
@@ -18275,6 +18277,7 @@ pt_is_allowed_as_function_index (const PT_NODE * expr)
 	{
 	  break;
 	}
+      /* FALLTHRU */
     case PT_MOD:
     case PT_LEFT:
     case PT_RIGHT:

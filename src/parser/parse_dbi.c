@@ -2752,6 +2752,8 @@ pt_node_to_cmd_type (PT_NODE * node)
 	{
 	  return CUBRID_STMT_GET_TIMEOUT;
 	}
+      assert (0);		// should not reach here
+      return CUBRID_STMT_NONE;
 
     case PT_DIFFERENCE:
     case PT_INTERSECTION:

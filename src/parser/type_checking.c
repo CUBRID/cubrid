@@ -11809,6 +11809,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
     case PT_TYPEOF:
     case PT_HEX:
       do_detect_collation = false;
+      /* FALLTHRU */
     case PT_TRIM:
     case PT_LTRIM:
     case PT_RTRIM:
@@ -14349,7 +14350,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  db_make_null (result);
 	  break;
 	}
-      /* no break here */
+      /* FALLTHRU */
     case PT_CONCAT:
       if (typ1 == DB_TYPE_NULL || (typ2 == DB_TYPE_NULL && o2))
 	{
@@ -18324,6 +18325,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      case ER_REGEX_COMPILE_ERROR:	/* fall through */
 	      case ER_REGEX_EXEC_ERROR:
 		PT_ERRORc (parser, o1, er_msg ());
+		/* FALLTHRU */
 	      default:
 		return 0;
 	      }
@@ -18544,34 +18546,25 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  PT_ERRORc (parser, o1, er_msg ());
 	  return 0;
 	}
+      break;
 
     case PT_NEW_TIME:
-      {
-	error = db_new_time (arg1, arg2, arg3, result);
-	if (error < 0)
-	  {
-	    PT_ERRORc (parser, o1, er_msg ());
-	    return 0;
-	  }
-	else
-	  {
-	    return 1;
-	  }
-      }
+      error = db_new_time (arg1, arg2, arg3, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      break;
 
     case PT_FROM_TZ:
-      {
-	error = db_from_tz (arg1, arg2, result);
-	if (error < 0)
-	  {
-	    PT_ERRORc (parser, o1, er_msg ());
-	    return 0;
-	  }
-	else
-	  {
-	    return 1;
-	  }
-      }
+      error = db_from_tz (arg1, arg2, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      break;
 
     case PT_TZ_OFFSET:
       {
@@ -18665,39 +18658,38 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	{
 	  return 1;
 	}
+
     case PT_SCHEMA_DEF:
-      {
-	error = db_get_schema_def_dbval (result, arg1);
-	if (error < 0)
-	  {
-	    const char *table_name = NULL;
-	    if (error != ER_QSTR_INVALID_DATA_TYPE)
-	      {
-		table_name = db_get_string (arg1);
-		assert (table_name != NULL);
+      error = db_get_schema_def_dbval (result, arg1);
+      if (error < 0)
+	{
+	  const char *table_name = NULL;
+	  if (error != ER_QSTR_INVALID_DATA_TYPE)
+	    {
+	      table_name = db_get_string (arg1);
+	      assert (table_name != NULL);
 
-		if (error == ER_OBJ_NOT_A_CLASS)
-		  {
-		    PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A, table_name,
-				 pt_show_misc_type (PT_CLASS));
-		    return 0;
-		  }
-		else if (error == ER_AU_SELECT_FAILURE)
-		  {
-		    PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON, "select",
-				 table_name);
-		    return 0;
-		  }
-	      }
+	      if (error == ER_OBJ_NOT_A_CLASS)
+		{
+		  PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A, table_name,
+			       pt_show_misc_type (PT_CLASS));
+		  return 0;
+		}
+	      else if (error == ER_AU_SELECT_FAILURE)
+		{
+		  PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON, "select",
+			       table_name);
+		  return 0;
+		}
+	    }
 
-	    PT_ERRORc (parser, o1, er_msg ());
-	    return 0;
-	  }
-	else
-	  {
-	    return 1;
-	  }
-      }
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
 
     default:
       break;
@@ -20391,7 +20383,7 @@ pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
 	  return NO_ERROR;
 	}
 
-      /* otherwise fall through to the PT_VALUE case */
+      /* FALLTHRU */
 
     case PT_VALUE:
       {

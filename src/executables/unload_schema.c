@@ -2807,6 +2807,7 @@ emit_domain_def (DB_DOMAIN * domains)
 	    case DB_TYPE_NCHAR:
 	    case DB_TYPE_VARNCHAR:
 	      has_collation = 1;
+	      /* FALLTHRU */
 	    case DB_TYPE_BIT:
 	    case DB_TYPE_VARBIT:
 	      precision = db_domain_precision (domain);
