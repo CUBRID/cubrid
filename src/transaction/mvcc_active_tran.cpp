@@ -273,15 +273,19 @@ void
 mvcc_active_tran::copy_to (mvcc_active_tran &dest) const
 {
   assert (m_initialized && dest.m_initialized);
+  check_valid ();
+  dest.check_valid ();
 
-  if (bit_area_length > 0)
+  size_t new_bit_area_memsize = get_bit_area_memsize ();
+  size_t old_bit_area_memsize = dest.get_bit_area_memsize ();
+
+  if (new_bit_area_memsize > 0)
     {
-      std::memcpy (dest.bit_area, bit_area, get_bit_area_memsize ());
-      if (dest.get_bit_area_memsize () > get_bit_area_memsize ())
+      std::memcpy (dest.bit_area, bit_area, new_bit_area_memsize);
+      if (old_bit_area_memsize > new_bit_area_memsize)
 	{
 	  // clear
-	  std::memset (dest.bit_area + get_bit_area_memsize (), 0,
-		       dest.get_bit_area_memsize() - get_bit_area_memsize());
+	  std::memset (dest.bit_area + new_bit_area_memsize, 0, old_bit_area_memsize - new_bit_area_memsize);
 	}
     }
   if (long_tran_mvccids_length > 0)
