@@ -489,13 +489,16 @@ mvcc_active_tran::check_valid () const
 {
 #if !defined (NDEBUG)
   // all bits after bit_area_length must be 0
-  size_t last_bit_pos = bit_area_length - 1;
-  unit_type last_unit = *get_unit_of (last_bit_pos);
-  for (size_t i = (last_bit_pos + 1) % UNIT_TO_BITS_COUNT; i < UNIT_TO_BITS_COUNT; i++)
+  if (bit_area_length > 0)
     {
-      if ((get_mask_of (i) & last_unit) != 0)
+      size_t last_bit_pos = bit_area_length - 1;
+      unit_type last_unit = *get_unit_of (last_bit_pos);
+      for (size_t i = (last_bit_pos + 1) % UNIT_TO_BITS_COUNT; i < UNIT_TO_BITS_COUNT; i++)
 	{
-	  assert (false);
+	  if ((get_mask_of (i) & last_unit) != 0)
+	    {
+	      assert (false);
+	    }
 	}
     }
   for (unit_type *p_area = get_unit_of (bit_area_length) + 1; p_area < bit_area + BITAREA_MAX_SIZE; ++p_area)
