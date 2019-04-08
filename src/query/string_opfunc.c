@@ -4455,7 +4455,7 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
 
   try
   {
-    std::string src (src_char_string_p, src_length); 
+    std::string src (src_char_string_p, src_length);
     bool match = std::regex_search (src, *rx_compiled_regex);
     *result = match ? V_TRUE : V_FALSE;
   }
