@@ -681,7 +681,7 @@ struct log_global
   /* background log archiving info */
   BACKGROUND_ARCHIVING_INFO bg_archive_info;
 
-  MVCCTABLE mvcc_table;		/* MVCC table */
+  mvcctable mvcc_table;		/* MVCC table */
   GLOBAL_UNIQUE_STATS_TABLE unique_stats_table;	/* global unique statistics */
 
   // *INDENT-OFF*

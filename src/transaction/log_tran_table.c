@@ -3837,7 +3837,7 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
       tsc_getticks (&start_tick);
     }
 
-  lowest_active_mvccid = log_Gl.mvcc_table.get_oldest_active_mvccid ();
+  lowest_active_mvccid = log_Gl.mvcc_table.compute_oldest_active_mvccid ();
 
   if (is_perf_tracking)
     {
@@ -4009,7 +4009,7 @@ void
 logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 {
   MVCC_INFO *curr_mvcc_info = NULL;
-  MVCCTABLE *mvcc_table = &log_Gl.mvcc_table;
+  mvcctable *mvcc_table = &log_Gl.mvcc_table;
   MVCC_SNAPSHOT *p_mvcc_snapshot = NULL;
   MVCCID mvccid;
   int tran_index;
@@ -4553,7 +4553,7 @@ int
 logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info)
 {
   MVCCID mvcc_subid;
-  MVCCTABLE *mvcc_table;
+  mvcctable *mvcc_table;
 
   assert (curr_mvcc_info != NULL);
 
@@ -4629,7 +4629,7 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   MVCC_INFO *curr_mvcc_info = NULL;
   MVCCID mvcc_sub_id;
-  MVCCTABLE *mvcc_table = &log_Gl.mvcc_table;
+  mvcctable *mvcc_table = &log_Gl.mvcc_table;
 
   assert (tdes != NULL);
 
