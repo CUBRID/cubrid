@@ -58,36 +58,36 @@ struct extract_context
     has_indexes (0),
     classes (NULL),
     vclass_list_has_using_index (NULL)
-    {
-    }
+  {
+  }
 
   void clear_schema_workspace (void);
 };
 
 class extract_output
 {
- private:
-  std::string context_name;
+  private:
+    std::string context_name;
 
-  FILE *output_file;
+    FILE *output_file;
 
-  string_buffer *sb;
+    string_buffer *sb;
 
- public:
-  extract_output (const std::string &ctx_name, FILE *fp);
+  public:
+    extract_output (const std::string &ctx_name, FILE *fp);
 
-  extract_output (const std::string &ctx_name, string_buffer *sb_arg);
+    extract_output (const std::string &ctx_name, string_buffer *sb_arg);
 
-  const char *exec_name (void);
+    const char *exec_name (void);
 
-  static extract_output& std_output (void);
+    static extract_output &std_output (void);
 
-  string_buffer *grab_string_buffer (void)
+    string_buffer *grab_string_buffer (void)
     {
       return sb;
     }
 
-   template<typename... Args> inline int operator() (Args &&... args);
+    template<typename... Args> inline int operator() (Args &&... args);
 };
 
 

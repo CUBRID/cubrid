@@ -28,41 +28,41 @@
 
 
 void extract_context::clear_schema_workspace (void)
+{
+  if (vclass_list_has_using_index != NULL)
     {
-      if (vclass_list_has_using_index != NULL)
-        {
-          db_objlist_free (vclass_list_has_using_index);
-          vclass_list_has_using_index = NULL;
-        }
-
-      if (classes != NULL)
-        {
-          db_objlist_free (classes);
-          classes = NULL;
-        }
+      db_objlist_free (vclass_list_has_using_index);
+      vclass_list_has_using_index = NULL;
     }
 
+  if (classes != NULL)
+    {
+      db_objlist_free (classes);
+      classes = NULL;
+    }
+}
+
 extract_output::extract_output (const std::string &ctx_name, string_buffer *sb_arg) :
-    context_name (ctx_name),
-    output_file (NULL),
-    sb (sb_arg)
-  {
-  }
+  context_name (ctx_name),
+  output_file (NULL),
+  sb (sb_arg)
+{
+}
 
 extract_output::extract_output (const std::string &ctx_name, FILE *fp) :
-    context_name (ctx_name),
-    output_file (fp),
-    sb (NULL)
-  {
-  }
+  context_name (ctx_name),
+  output_file (fp),
+  sb (NULL)
+{
+}
 
-extract_output& extract_output::std_output (void)
+extract_output &extract_output::std_output (void)
 {
   static extract_output s_std_output ("STDOUT", stdout);
   return s_std_output;
 }
 
 const char *extract_output::exec_name (void)
-  {
-    return context_name.c_str ();
-  }
+{
+  return context_name.c_str ();
+}
