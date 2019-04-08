@@ -657,9 +657,7 @@ mvcc_snapshot::reset ()
   lowest_active_mvccid = MVCCID_NULL;
   highest_completed_mvccid = MVCCID_NULL;
 
-  m_active_mvccs.bit_area_length = 0;
-  m_active_mvccs.bit_area_start_mvccid = MVCCID_NULL;
-  m_active_mvccs.long_tran_mvccids_length = 0;
+  m_active_mvccs.reset ();
 
   valid = false;
 }

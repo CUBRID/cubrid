@@ -70,6 +70,21 @@ mvcc_active_tran::finalize ()
   m_initialized = false;
 }
 
+void
+mvcc_active_tran::reset ()
+{
+  if (bit_area_length > 0)
+    {
+      // clear bits
+      std::memset (bit_area, 0, get_bit_area_memsize ());
+    }
+  bit_area_length = 0;
+  bit_area_start_mvccid = MVCCID_NULL;
+  long_tran_mvccids_length = 0;
+
+  check_valid ();
+}
+
 size_t
 mvcc_active_tran::long_tran_max_size ()
 {

@@ -55,6 +55,7 @@ struct mvcc_active_tran
 
     void initialize ();
     void finalize ();
+    void reset ();
 
     bool is_active (MVCCID mvccid) const;
     void copy_to (mvcc_active_tran &dest) const;
