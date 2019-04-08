@@ -35,6 +35,7 @@
 #endif //defined(SERVER_MODE)
 
 struct trigger_description;
+class extract_output;
 
 /* HELP FUNCTIONS */
 
@@ -46,7 +47,7 @@ void help_free_names (char **names);
 
 
 /* Class/Instance printing */
-void help_fprint_obj (FILE * fp, MOP obj);
+void help_print_obj (extract_output &output_ctx, MOP obj);
 
 /* Class name help */
 // ctltool uses the functions
@@ -64,6 +65,6 @@ extern "C"
 void help_print_info (const char *command, FILE * fpp);
 int help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen);
 
-void help_fprint_describe_comment (FILE * fp, const char *comment);
+void help_print_describe_comment (extract_output &output_ctx, const char *comment);
 
 #endif /* _OBJECT_PRINT_H */

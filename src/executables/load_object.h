@@ -84,10 +84,7 @@ extern int desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DE
 extern void desc_free (DESC_OBJ * obj);
 
 extern int desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value);
-extern void desc_value_fprint (FILE * fp, DB_VALUE * value);
-#if defined (CUBRID_DEBUG)
-extern void desc_value_print (DB_VALUE * value);
-#endif
+extern void desc_value_print (extract_output &output_ctx, DB_VALUE * value);
 extern int er_filter_fileset (FILE * ef);
 extern int er_filter_errid (bool ignore_warning);
 

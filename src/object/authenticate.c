@@ -39,6 +39,7 @@
 #include <ctype.h>
 #include <assert.h>
 
+#include "extract_schema.hpp"
 #include "porting.h"
 #include "misc_string.h"
 #include "memory_alloc.h"
@@ -6930,7 +6931,7 @@ au_get_user_name (MOP obj)
  *   outfp(in): output file
  */
 int
-au_export_users (FILE * outfp)
+au_export_users (extract_output &output_ctx)
 {
   int error;
   DB_SET *direct_groups;
@@ -7059,18 +7060,18 @@ au_export_users (FILE * outfp)
 	    {
 	      if (!strlen (passbuf))
 		{
-		  fprintf (outfp, "call [add_user]('%s', '') on class [db_root];\n", uname);
+		  output_ctx ("call [add_user]('%s', '') on class [db_root];\n", uname);
 		}
 	      else
 		{
-		  fprintf (outfp, "call [add_user]('%s', '') on class [db_root] to [auser];\n", uname);
+		  output_ctx ("call [add_user]('%s', '') on class [db_root] to [auser];\n", uname);
 		  if (encrypt_mode == ENCODE_PREFIX_DES)
 		    {
-		      fprintf (outfp, "call [set_password_encoded]('%s') on [auser];\n", passbuf);
+		      output_ctx ("call [set_password_encoded]('%s') on [auser];\n", passbuf);
 		    }
 		  else
 		    {
-		      fprintf (outfp, "call [set_password_encoded_sha1]('%s') on [auser];\n", passbuf);
+		      output_ctx ("call [set_password_encoded_sha1]('%s') on [auser];\n", passbuf);
 		    }
 		}
 	    }
@@ -7078,14 +7079,14 @@ au_export_users (FILE * outfp)
 	    {
 	      if (strlen (passbuf))
 		{
-		  fprintf (outfp, "call [find_user]('%s') on class [db_user] to [auser];\n", uname);
+		  output_ctx ( "call [find_user]('%s') on class [db_user] to [auser];\n", uname);
 		  if (encrypt_mode == ENCODE_PREFIX_DES)
 		    {
-		      fprintf (outfp, "call [set_password_encoded]('%s') on [auser];\n", passbuf);
+		      output_ctx ("call [set_password_encoded]('%s') on [auser];\n", passbuf);
 		    }
 		  else
 		    {
-		      fprintf (outfp, "call [set_password_encoded_sha1]('%s') on [auser];\n", passbuf);
+		      output_ctx ("call [set_password_encoded_sha1]('%s') on [auser];\n", passbuf);
 		    }
 		}
 	    }
@@ -7093,9 +7094,9 @@ au_export_users (FILE * outfp)
 	  /* export comment */
 	  if (comment != NULL && comment[0] != '\0')
 	    {
-	      fprintf (outfp, "ALTER USER [%s] ", uname);
-	      help_fprint_describe_comment (outfp, comment);
-	      fprintf (outfp, ";\n");
+	      output_ctx ("ALTER USER [%s] ", uname);
+	      help_print_describe_comment (output_ctx, comment);
+	      output_ctx (";\n");
 	    }
 	}
 
@@ -7113,7 +7114,7 @@ au_export_users (FILE * outfp)
   /* group hierarchy */
   if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
     {
-      fprintf (outfp, "call [find_user]('PUBLIC') on class [db_user] to [g_public];\n");
+      output_ctx ("call [find_user]('PUBLIC') on class [db_user] to [g_public];\n");
       do
 	{
 	  if (db_query_get_tuple_value (query_result, 0, &user_val) != NO_ERROR)
@@ -7172,8 +7173,8 @@ au_export_users (FILE * outfp)
 
 	      if (gname != NULL)
 		{
-		  fprintf (outfp, "call [find_user]('%s') on class [db_user] to [g_%s];\n", gname, gname);
-		  fprintf (outfp, "call [add_member]('%s') on [g_%s];\n", uname, gname);
+		  output_ctx ("call [find_user]('%s') on class [db_user] to [g_%s];\n", gname, gname);
+		  output_ctx ("call [add_member]('%s') on [g_%s];\n", uname, gname);
 		  ws_free_string (gname);
 		}
 	    }
@@ -7633,12 +7634,12 @@ class_grant_loop (CLASS_AUTH * auth, FILE * outfp)
  * au_export_grants() - Issues a sequence of CSQL grant statements related
  *                      to the given class.
  *   return: error code
- *   outfp(in): output file
+ *   output_ctx(in): output context
  *   class_mop(in): class of interest
  *   quoted_id_flag(in):
  */
 int
-au_export_grants (FILE * outfp, MOP class_mop)
+au_export_grants (extract_output &output_ctx, MOP class_mop)
 {
   int error = NO_ERROR;
   CLASS_AUTH cl_auth;
@@ -7671,11 +7672,10 @@ au_export_grants (FILE * outfp, MOP class_mop)
 	       * should this be setting an error condition ?
 	       * for now, leave a comment in the output file
 	       */
-	      fprintf (outfp, "/*");
-	      fprintf (outfp,
-		       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_GRANT_DUMP_ERROR),
-		       uname);
-	      fprintf (outfp, "*/\n");
+	      output_ctx ("/*");
+	      output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_GRANT_DUMP_ERROR),
+  		          uname);
+	      output_ctx ("*/\n");
 	      ws_free_string (uname);
 	      ecount++;
 	    }

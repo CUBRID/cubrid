@@ -29,6 +29,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include "extract_schema.hpp"
 #include "language_support.h"
 #include "area_alloc.h"
 #include "work_space.h"
@@ -7417,90 +7418,91 @@ classobj_print (SM_CLASS * class_)
       return;
     }
 
-  fprintf (stdout, "Class : %s\n", sm_ch_name ((MOBJ) class_));
+  extract_output (stdout);
+  extract_output ("Class : %s\n", sm_ch_name ((MOBJ) class_));
 
   if (class_->properties != NULL)
     {
-      fprintf (stdout, "  Properties : ");
+      extract_output ("  Properties : ");
       classobj_print_props (class_->properties);
     }
 
   if (class_->ordered_attributes != NULL)
     {
-      fprintf (stdout, "Attributes\n");
+      extract_output ("Attributes\n");
       for (att = class_->ordered_attributes; att != NULL; att = att->order_link)
 	{
-	  fprintf (stdout, "  Name=%-25s, id=%3d", att->header.name, att->id);
+	  extract_output ("  Name=%-25s, id=%3d", att->header.name, att->id);
 	  if (att->domain != NULL && att->domain->type != NULL)
 	    {
-	      fprintf (stdout, ", pr_type=%-10s", att->domain->type->name);
+	      extract_output (", pr_type=%-10s", att->domain->type->name);
 	    }
-	  fprintf (stdout, "\n");
-	  fprintf (stdout, "    mem_offset=%3d, order=%3d, storage_order=%3d\n", att->offset, att->order,
+	  extract_output ("\n");
+	  extract_output ("    mem_offset=%3d, order=%3d, storage_order=%3d\n", att->offset, att->order,
 		   att->storage_order);
 
 	  if (att->properties != NULL)
 	    {
-	      fprintf (stdout, "    Properties : ");
+	      extract_output ("    Properties : ");
 	      classobj_print_props (att->properties);
 	    }
 	  if (att->comment != NULL)
 	    {
-	      fprintf (stdout, "    ");
-	      help_fprint_describe_comment (stdout, att->comment);
+	      extract_output ("    ");
+	      help_fprint_describe_comment (extract_output, att->comment);
 	    }
-	  fprintf (stdout, "\n");
+	  extract_output ( "\n");
 	}
     }
   if (class_->class_attributes != NULL)
     {
-      fprintf (stdout, "Class Attributes\n");
+      extract_output ("Class Attributes\n");
       for (att = class_->class_attributes; att != NULL; att = att->order_link)
 	{
-	  fprintf (stdout, "  Name=%-25s, id=%3d", att->header.name, att->id);
+	  extract_output ("  Name=%-25s, id=%3d", att->header.name, att->id);
 	  if (att->domain != NULL && att->domain->type != NULL)
 	    {
-	      fprintf (stdout, ", pr_type=%-10s", att->domain->type->name);
+	      extract_output (", pr_type=%-10s", att->domain->type->name);
 	    }
-	  fprintf (stdout, "\n");
-	  fprintf (stdout, "    mem_offset=%3d, order=%3d, storage_order=%3d\n", att->offset, att->order,
+	  extract_output ("\n");
+	  extract_output ("    mem_offset=%3d, order=%3d, storage_order=%3d\n", att->offset, att->order,
 		   att->storage_order);
 
 	  if (att->properties != NULL)
 	    {
-	      fprintf (stdout, "    Properties : ");
+	      extract_output ("    Properties : ");
 	      classobj_print_props (att->properties);
 	    }
 	  if (att->comment != NULL)
 	    {
-	      fprintf (stdout, "    ");
-	      help_fprint_describe_comment (stdout, att->comment);
+	      extract_output ("    ");
+	      help_print_describe_comment (extract_output, att->comment);
 	    }
-	  fprintf (stdout, "\n");
+	  extract_output ("\n");
 	}
     }
   if (class_->methods != NULL)
     {
-      fprintf (stdout, "Methods\n");
+      extract_output ("Methods\n");
       for (meth = class_->methods; meth != NULL; meth = (SM_METHOD *) meth->header.next)
 	{
-	  fprintf (stdout, "  %s\n", meth->header.name);
+	  extract_output ("  %s\n", meth->header.name);
 	  if (meth->properties != NULL)
 	    {
-	      fprintf (stdout, "    Properties : ");
+	      extract_output ("    Properties : ");
 	      classobj_print_props (meth->properties);
 	    }
 	}
     }
   if (class_->class_methods != NULL)
     {
-      fprintf (stdout, "Class Methods\n");
+      extract_output ("Class Methods\n");
       for (meth = class_->methods; meth != NULL; meth = (SM_METHOD *) meth->header.next)
 	{
-	  fprintf (stdout, "  %s\n", meth->header.name);
+	  extract_output ("  %s\n", meth->header.name);
 	  if (meth->properties != NULL)
 	    {
-	      fprintf (stdout, "    Properties : ");
+	      extract_output ("    Properties : ");
 	      classobj_print_props (meth->properties);
 	    }
 	}

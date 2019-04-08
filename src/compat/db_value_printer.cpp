@@ -25,6 +25,7 @@
 
 #include "db_date.h"
 #include "dbtype.h"
+#include "extract_schema.hpp"
 #include "memory_private_allocator.hpp"
 #include "object_primitive.h"
 #include "set_object.h"
@@ -587,6 +588,36 @@ db_fprint_value (FILE *fp, const db_value *value)
   db_value_printer printer (sb);
   printer.describe_value (value);
   fprintf (fp, "%.*s", (int) sb.len (), sb.get_buffer ());
+}
+
+/*
+ * db_value_fprint() -  Prints a description of the contents of a DB_VALUE
+ *                        to the file
+ *   return: none
+ *   fp(in) : FILE stream pointer
+ *   value(in) : value to print
+ */
+void
+db_print_value (extract_output &output_ctx, const db_value *value)
+{
+  string_buffer *p_sb;
+
+  p_sb = output_ctx.grab_string_buffer ();
+
+  if (p_sb != NULL)
+    {
+      db_value_printer printer (*p_sb);
+      printer.describe_value (value);
+    }
+  else
+    {
+      const size_t BUFFER_SIZE = 1024;
+      string_buffer sb (cubmem::PRIVATE_BLOCK_ALLOCATOR, BUFFER_SIZE);
+
+      db_value_printer printer (sb);
+      printer.describe_value (value);
+      output_ctx ("%.*s", (int) sb.len (), sb.get_buffer ());
+    }
 }
 
 /*

@@ -6700,12 +6700,12 @@ tr_status_as_string (DB_TRIGGER_STATUS status)
  * 		       re-defined from the csql interpreter.
  *                     It is intended to support the unloaddb/loadbdb migration utilities.
  *    return: error code
+ *    output_ctx(in/out): output context
  *    trigger_object(in): trigger object
- *    fp(in): output file
  *    quoted_id_flag(in):
  */
 int
-tr_dump_trigger (DB_OBJECT * trigger_object, FILE * fp)
+tr_dump_trigger (extract_output &output_ctx, DB_OBJECT * trigger_object)
 {
   int error = NO_ERROR;
   TR_TRIGGER *trigger;
@@ -6725,10 +6725,10 @@ tr_dump_trigger (DB_OBJECT * trigger_object, FILE * fp)
     {
       /* automatically filter out invalid triggers */
 
-      fprintf (fp, "CREATE TRIGGER ");
-      fprintf (fp, "[%s]\n", trigger->name);
-      fprintf (fp, "  STATUS %s\n", tr_status_as_string (trigger->status));
-      fprintf (fp, "  PRIORITY %f\n", trigger->priority);
+      output_ctx ("CREATE TRIGGER ");
+      output_ctx ("[%s]\n", trigger->name);
+      output_ctx ("  STATUS %s\n", tr_status_as_string (trigger->status));
+      output_ctx ("  PRIORITY %f\n", trigger->priority);
 
       time = TR_TIME_BEFORE;
       if (trigger->condition != NULL)
@@ -6741,60 +6741,60 @@ tr_dump_trigger (DB_OBJECT * trigger_object, FILE * fp)
 	}
 
       /* BEFORE UPDATE etc. */
-      fprintf (fp, "  %s %s", tr_time_as_string (time), tr_event_as_string (trigger->event));
+      output_ctx ("  %s %s", tr_time_as_string (time), tr_event_as_string (trigger->event));
 
       if (trigger->class_mop != NULL)
 	{
 	  name = db_get_class_name (trigger->class_mop);
-	  fprintf (fp, " ON ");
-	  fprintf (fp, "[%s]", name);
+	  output_ctx (" ON ");
+	  output_ctx ("[%s]", name);
 
 	  if (trigger->attribute != NULL)
 	    {
-	      fprintf (fp, "([%s])", trigger->attribute);
+	      output_ctx ("([%s])", trigger->attribute);
 	    }
 	}
-      fprintf (fp, "\n");
+      output_ctx ("\n");
 
       if (trigger->condition != NULL)
 	{
-	  fprintf (fp, "IF %s\n", trigger->condition->source);
+	  output_ctx ("IF %s\n", trigger->condition->source);
 	}
 
       if (trigger->action != NULL)
 	{
-	  fprintf (fp, "  EXECUTE ");
+	  output_ctx ("  EXECUTE ");
 	  if (trigger->action->time != time)
 	    {
-	      fprintf (fp, "%s ", tr_time_as_string (trigger->action->time));
+	      output_ctx ("%s ", tr_time_as_string (trigger->action->time));
 	    }
 	  switch (trigger->action->type)
 	    {
 	    case TR_ACT_EXPRESSION:
-	      fprintf (fp, "%s", trigger->action->source);
+	      output_ctx ("%s", trigger->action->source);
 	      break;
 	    case TR_ACT_REJECT:
-	      fprintf (fp, "REJECT");
+	      output_ctx ("REJECT");
 	      break;
 	    case TR_ACT_INVALIDATE:
 	      fprintf (fp, "INVALIDATE TRANSACTION");
 	      break;
 	    case TR_ACT_PRINT:
-	      fprintf (fp, "PRINT '%s'", trigger->action->source);
+	      output_ctx ("PRINT '%s'", trigger->action->source);
 	      break;
 	    default:
-	      fprintf (fp, "???");
+	      output_ctx ("???");
 	      break;
 	    }
 	}
 
       if (trigger->comment != NULL && trigger->comment[0] != '\0')
 	{
-	  fprintf (fp, " ");
-	  help_fprint_describe_comment (fp, trigger->comment);
+	  output_ctx (" ");
+	  help_print_describe_comment (output_ctx, trigger->comment);
 	}
 
-      fprintf (fp, ";\n");
+      output_ctx (";\n");
     }
 
   AU_ENABLE (save);
@@ -6941,12 +6941,12 @@ is_required_trigger (TR_TRIGGER * trigger, DB_OBJLIST * classes)
 /*
  * tr_dump_selective_triggers() -
  *    return: error code
- *    fp(in):
+ *    output_ctx(in/out):
  *    quoted_id_flag(in):
  *    classes(in):
  */
 int
-tr_dump_selective_triggers (FILE * fp, DB_OBJLIST * classes)
+tr_dump_selective_triggers (extract_output &output_ctx, DB_OBJLIST * classes)
 {
   int error = NO_ERROR;
   TR_TRIGGER *trigger;
@@ -7014,7 +7014,7 @@ tr_dump_selective_triggers (FILE * fp, DB_OBJLIST * classes)
 		      if (trigger->status != TR_STATUS_INVALID)
 			{
 			  tr_dump_trigger (trigger_object, fp);
-			  fprintf (fp, "call [change_trigger_owner]('%s'," " '%s') on class [db_root];\n\n",
+			  output_ctx ("call [change_trigger_owner]('%s'," " '%s') on class [db_root];\n\n",
 				   trigger->name, get_user_name (trigger->owner));
 			}
 		    }
