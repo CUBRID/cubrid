@@ -139,7 +139,7 @@ help_trigger_names (char ***names_ptr)
  */
 
 void
-help_print_obj (extract_output &output_ctx, MOP obj)
+help_print_obj (extract_output & output_ctx, MOP obj)
 {
   int i, status;
 
@@ -161,7 +161,7 @@ help_print_obj (extract_output &output_ctx, MOP obj)
 	  if (cinfo.init (obj, class_description::CSQL_SCHEMA_COMMAND) == NO_ERROR)
 	    {
 	      output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_TITLE),
-		       cinfo.class_type, cinfo.name);
+			  cinfo.class_type, cinfo.name);
 
 	      if (cinfo.supers != NULL)
 		{
@@ -312,7 +312,7 @@ help_print_obj (extract_output &output_ctx, MOP obj)
 	  if (oinfo.init (obj) == NO_ERROR)
 	    {
 	      output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_OBJECT_TITLE),
-		       oinfo.classname);
+			  oinfo.classname);
 	      if (oinfo.attributes != NULL)
 		{
 		  for (i = 0; oinfo.attributes[i] != NULL; i++)
@@ -714,7 +714,7 @@ help_print_info (const char *command, FILE * fpp)
  *   comment(in) : a comment string to be printed
  */
 void
-help_print_describe_comment (extract_output &output_ctx, const char *comment)
+help_print_describe_comment (extract_output & output_ctx, const char *comment)
 {
   /* TODO : optimize printing directly to string_buffer of output_ctx */
   string_buffer sb;

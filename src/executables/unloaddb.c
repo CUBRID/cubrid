@@ -152,12 +152,12 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       output_prefix = database_name;
     }
 
-  /* create here the first filename to raise error early in case output file is incorrect */ 
+  /* create here the first filename to raise error early in case output file is incorrect */
   if (create_filename_schema (output_dirname, output_prefix, output_filename_schema,
-                              sizeof (output_filename_schema)) != 0)
+			      sizeof (output_filename_schema)) != 0)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
-      goto end;      
+      goto end;
     }
 
   /* error message log file */
@@ -290,46 +290,44 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       char trigger_output_filename[PATH_MAX * 2];
 
       if (create_filename_schema (output_dirname, output_prefix, output_filename_schema,
-                                  sizeof (output_filename_schema)) != 0)
-        {
-          util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
-          goto end;      
-        }
+				  sizeof (output_filename_schema)) != 0)
+	{
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+	  goto end;
+	}
 
       if (create_filename_trigger (output_dirname, output_prefix, trigger_output_filename,
-                                   sizeof (trigger_output_filename)) != 0)
-        {
-          util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
-          goto end;      
-        }
+				   sizeof (trigger_output_filename)) != 0)
+	{
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+	  goto end;
+	}
 
       if (create_filename_indexes (output_dirname, output_prefix, indexes_output_filename,
-                                   sizeof (indexes_output_filename)) != 0)
-        {
-          util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
-          goto end;      
-        }
+				   sizeof (indexes_output_filename)) != 0)
+	{
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+	  goto end;
+	}
 
       /* do authorization as well in extractschema () */
       unload_context.do_auth = 1;
       unload_context.storage_order = order;
       unload_context.exec_name = exec_name;
       if (extract_classes_to_file (unload_context, output_filename_schema) != 0)
-        {
-          status = 1;
-        }
+	{
+	  status = 1;
+	}
 
-      if (!status
-          && extract_triggers_to_file (unload_context, trigger_output_filename) != 0)
-        {
-          status = 1;
-        }
+      if (!status && extract_triggers_to_file (unload_context, trigger_output_filename) != 0)
+	{
+	  status = 1;
+	}
 
-      if (!status
-          && extract_indexes_to_file (unload_context, indexes_output_filename) != 0)
-        {
-          status = 1;
-        }
+      if (!status && extract_indexes_to_file (unload_context, indexes_output_filename) != 0)
+	{
+	  status = 1;
+	}
 
       unload_context.clear_schema_workspace ();
     }

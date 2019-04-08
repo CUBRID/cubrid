@@ -7439,7 +7439,7 @@ classobj_print (SM_CLASS * class_)
 	    }
 	  extract_output ("\n");
 	  extract_output ("    mem_offset=%3d, order=%3d, storage_order=%3d\n", att->offset, att->order,
-		   att->storage_order);
+			  att->storage_order);
 
 	  if (att->properties != NULL)
 	    {
@@ -7451,7 +7451,7 @@ classobj_print (SM_CLASS * class_)
 	      extract_output ("    ");
 	      help_fprint_describe_comment (extract_output, att->comment);
 	    }
-	  extract_output ( "\n");
+	  extract_output ("\n");
 	}
     }
   if (class_->class_attributes != NULL)
@@ -7466,7 +7466,7 @@ classobj_print (SM_CLASS * class_)
 	    }
 	  extract_output ("\n");
 	  extract_output ("    mem_offset=%3d, order=%3d, storage_order=%3d\n", att->offset, att->order,
-		   att->storage_order);
+			  att->storage_order);
 
 	  if (att->properties != NULL)
 	    {

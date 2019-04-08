@@ -59,17 +59,17 @@ extern int lo_count;
 #define PRINT_IDENTIFIER(s) "[", (s), "]"
 #define PRINT_FUNCTION_INDEX_NAME(s) "\"", (s), "\""
 
-extern int extract_classes_to_file (extract_context &ctxt, const char *output_filename);
-extern int extract_triggers (extract_context &ctxt, extract_output &output_ctx);
-extern int extract_triggers_to_file (extract_context &ctxt, const char *output_filename);
-extern int extract_indexes_to_file (extract_context &ctxt, const char *output_filename);
-extern int extract_classes (extract_context &ctxt, extract_output &schema_output_ctx);
+extern int extract_classes_to_file (extract_context & ctxt, const char *output_filename);
+extern int extract_triggers (extract_context & ctxt, extract_output & output_ctx);
+extern int extract_triggers_to_file (extract_context & ctxt, const char *output_filename);
+extern int extract_indexes_to_file (extract_context & ctxt, const char *output_filename);
+extern int extract_classes (extract_context & ctxt, extract_output & schema_output_ctx);
 extern int extractobjects (const char *exec_name, const char *output_dirname, const char *output_prefix);
 
 extern int create_filename_schema (const char *output_dirname, const char *output_prefix,
-                                   char *output_filename_p, const size_t filename_size);
+				   char *output_filename_p, const size_t filename_size);
 extern int create_filename_trigger (const char *output_dirname, const char *output_prefix,
-                                    char *output_filename_p, const size_t filename_size);
+				    char *output_filename_p, const size_t filename_size);
 extern int create_filename_indexes (const char *output_dirname, const char *output_prefix,
-                                    char *output_filename_p, const size_t filename_size);
+				    char *output_filename_p, const size_t filename_size);
 #endif /* _UNLOADDB_H_ */

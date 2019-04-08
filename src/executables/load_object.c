@@ -72,7 +72,7 @@ static void get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, i
 static SM_ATTRIBUTE *find_current_attribute (SM_CLASS * class_, int id);
 static void get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bound_bit_flag,
 			  int offset_size);
-static void print_set (extract_output &output_ctx, DB_SET * set);
+static void print_set (extract_output & output_ctx, DB_SET * set);
 static int fprint_special_set (TEXT_OUTPUT * tout, DB_SET * set);
 static int bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size);
 static char *strnchr (char *str, char ch, int nbytes);
@@ -1042,7 +1042,7 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * ob
  *    set(in): set reference
  */
 static void
-print_set (extract_output &output_ctx, DB_SET * set)
+print_set (extract_output & output_ctx, DB_SET * set)
 {
   DB_VALUE element_value;
   int len, i;
@@ -1629,7 +1629,7 @@ exit_on_error:
  *    String printing is also hacked for "unprintable" characters.
  */
 void
-desc_value_print (extract_output &output_ctx, DB_VALUE * value)
+desc_value_print (extract_output & output_ctx, DB_VALUE * value)
 {
   switch (DB_VALUE_TYPE (value))
     {
