@@ -73,6 +73,10 @@ mvcc_active_tran::finalize ()
 void
 mvcc_active_tran::reset ()
 {
+  if (!m_initialized)
+    {
+      return;
+    }
   if (bit_area_length > 0)
     {
       // clear bits
