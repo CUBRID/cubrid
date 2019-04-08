@@ -278,15 +278,16 @@ mvcc_active_tran::copy_to (mvcc_active_tran &dest) const
 
   size_t new_bit_area_memsize = get_bit_area_memsize ();
   size_t old_bit_area_memsize = dest.get_bit_area_memsize ();
+  char *dest_bit_area = (char *) dest.bit_area;
 
   if (new_bit_area_memsize > 0)
     {
-      std::memcpy (dest.bit_area, bit_area, new_bit_area_memsize);
-      if (old_bit_area_memsize > new_bit_area_memsize)
-	{
-	  // clear
-	  std::memset (dest.bit_area + new_bit_area_memsize, 0, old_bit_area_memsize - new_bit_area_memsize);
-	}
+      std::memcpy (dest_bit_area, bit_area, new_bit_area_memsize);
+    }
+  if (old_bit_area_memsize > new_bit_area_memsize)
+    {
+      // clear
+      std::memset (dest_bit_area + new_bit_area_memsize, 0, old_bit_area_memsize - new_bit_area_memsize);
     }
   if (long_tran_mvccids_length > 0)
     {
