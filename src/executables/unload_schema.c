@@ -39,9 +39,9 @@
 
 #include "db.h"
 #include "extract_schema.hpp"
-#include "authenticate.h"
+#include "authenticate_extract.hpp"
 #include "schema_manager.h"
-#include "trigger_manager.h"
+#include "trigger_description.hpp"
 #include "load_object.h"
 #include "object_primitive.h"
 #include "parser.h"

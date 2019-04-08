@@ -26,6 +26,7 @@
 #define _EXTRACT_SCHEMA_HPP_
 
 #include "dbtype_def.h"
+#include "string_buffer.hpp"
 
 #include <stdio.h>
 #include <string>
@@ -75,8 +76,6 @@ class extract_output
  public:
   extract_output (const std::string &ctx_name, FILE *fp);
 
-  extract_output (FILE *fp);
-
   extract_output (const std::string &ctx_name, string_buffer *sb_arg);
 
   const char *exec_name (void);
@@ -90,5 +89,19 @@ class extract_output
 
    template<typename... Args> inline int operator() (Args &&... args);
 };
+
+
+template<typename... Args> int extract_output::operator() (Args &&... args)
+{
+  if (output_file != NULL)
+    {
+      return fprintf (output_file, std::forward<Args> (args)...);
+    }
+  else
+    {
+      assert (sb != NULL);
+      return (*sb) (std::forward<Args> (args)...);
+    }
+}
 
 #endif /* _EXTRACT_SCHEMA_HPP_ */

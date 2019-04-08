@@ -591,7 +591,7 @@ db_fprint_value (FILE *fp, const db_value *value)
 }
 
 /*
- * db_value_fprint() -  Prints a description of the contents of a DB_VALUE
+ * db_print_value() -  Prints a description of the contents of a DB_VALUE
  *                        to the file
  *   return: none
  *   fp(in) : FILE stream pointer

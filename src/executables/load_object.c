@@ -37,6 +37,7 @@
 #include <sys/stat.h>
 #include <math.h>
 
+#include "extract_schema.hpp"
 #include "utility.h"
 #include "misc_string.h"
 #include "memory_alloc.h"

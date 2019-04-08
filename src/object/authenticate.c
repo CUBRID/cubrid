@@ -69,7 +69,6 @@
 #include "execute_statement.h"
 #include "optimizer.h"
 #include "network_interface_cl.h"
-#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -78,27 +77,6 @@
 #if defined(SA_MODE)
 extern bool catcls_Enable;
 #endif /* SA_MODE */
-
-/*
- * Message id in the set MSGCAT_SET_AUTHORIZATION
- * in the message catalog MSGCAT_CATALOG_CUBRID (file cubrid.msg).
- */
-#define MSGCAT_AUTH_INVALID_CACHE       1
-#define MSGCAT_AUTH_CLASS_NAME          2
-#define MSGCAT_AUTH_FROM_USER           3
-#define MSGCAT_AUTH_USER_TITLE          4
-#define MSGCAT_AUTH_UNDEFINED_USER      5
-#define MSGCAT_AUTH_USER_NAME           6
-#define MSGCAT_AUTH_USER_ID             7
-#define MSGCAT_AUTH_USER_MEMBERS        8
-#define MSGCAT_AUTH_USER_GROUPS         9
-#define MSGCAT_AUTH_USER_NAME2          10
-#define MSGCAT_AUTH_CURRENT_USER        11
-#define MSGCAT_AUTH_ROOT_TITLE          12
-#define MSGCAT_AUTH_ROOT_USERS          13
-#define MSGCAT_AUTH_GRANT_DUMP_ERROR    14
-#define MSGCAT_AUTH_AUTH_TITLE          15
-#define MSGCAT_AUTH_USER_DIRECT_GROUPS  16
 
 /*
  * Authorization Class Names
@@ -135,21 +113,12 @@ const char *AU_DBA_USER_NAME = "DBA";
 #define GRANT_ENTRY_CACHE(index) 	((index) + 2)
 
 #define PASSWORD_ENCRYPTION_SEED        "U9a$y1@zw~a0%"
-#define ENCODE_PREFIX_DEFAULT           (char)0
-#define ENCODE_PREFIX_DES               (char)1
-#define ENCODE_PREFIX_SHA1              (char)2
-#define ENCODE_PREFIX_SHA2_512          (char)3
-#define IS_ENCODED_DES(string)          (string[0] == ENCODE_PREFIX_DES)
-#define IS_ENCODED_SHA1(string)         (string[0] == ENCODE_PREFIX_SHA1)
-#define IS_ENCODED_SHA2_512(string)     (string[0] == ENCODE_PREFIX_SHA2_512)
 #define IS_ENCODED_ANY(string) \
   (IS_ENCODED_SHA2_512 (string) || IS_ENCODED_SHA1 (string) || IS_ENCODED_DES (string))
 
 /* Macro to determine if a dbvalue is a character strign type. */
-#define IS_STRING(n)    (db_value_type(n) == DB_TYPE_VARCHAR  || \
-                         db_value_type(n) == DB_TYPE_CHAR     || \
-                         db_value_type(n) == DB_TYPE_VARNCHAR || \
-                         db_value_type(n) == DB_TYPE_NCHAR)
+#define IS_STRING(n)    DB_IS_STRING (n)
+
 /* Macro to determine if a name is system catalog class */
 #define IS_CATALOG_CLASS(name) \
         (strcmp(name, CT_CLASS_NAME) == 0 || \
@@ -249,49 +218,6 @@ struct au_user_cache
   int index;
 };
 
-/*
- * CLASS_GRANT
- *
- * Maintains information about a desired grant request.
- */
-typedef struct class_grant CLASS_GRANT;
-struct class_grant
-{
-  struct class_grant *next;
-
-  struct class_user *user;
-  int cache;
-};
-
-/*
- * CLASS_USER
- *
- * Maintains information about a desired grant subject user.
- */
-typedef struct class_user CLASS_USER;
-struct class_user
-{
-  struct class_user *next;
-
-  MOP obj;
-
-  CLASS_GRANT *grants;
-  int available_auth;
-};
-
-/*
- * CLASS_AUTH
- *
- * Maintains information about the grants on a particular class.
- */
-typedef struct class_auth CLASS_AUTH;
-struct class_auth
-{
-
-  MOP class_mop;
-  MOP owner;
-  CLASS_USER *users;
-};
 
 /*
  * Au_root
@@ -485,7 +411,6 @@ static DB_METHOD_LINK au_static_links[] = {
 };
 
 
-static int au_get_set (MOP obj, const char *attname, DB_SET ** set);
 static int au_get_object (MOP obj, const char *attname, MOP * mop_ptr);
 static int au_set_get_obj (DB_SET * set, int index, MOP * obj);
 static AU_CLASS_CACHE *au_make_class_cache (int depth);
@@ -512,7 +437,6 @@ static int au_propagate_del_new_auth (AU_GRANT * glist, DB_AUTH mask);
 static int check_user_name (const char *name);
 static void encrypt_password (const char *pass, int add_prefix, char *dest);
 static void encrypt_password_sha1 (const char *pass, int add_prefix, char *dest);
-static void encrypt_password_sha2_512 (const char *pass, char *dest);
 static bool match_password (const char *user, const char *database);
 static int au_set_password_internal (MOP user, const char *password, int encode, char encrypt_prefix);
 
@@ -547,13 +471,7 @@ static int au_perform_login (const char *name, const char *password, bool ignore
 
 static CLASS_GRANT *make_class_grant (CLASS_USER * user, int cache);
 static CLASS_USER *make_class_user (MOP user_obj);
-static void free_class_grants (CLASS_GRANT * grants);
-static void free_class_users (CLASS_USER * users);
-static CLASS_USER *find_or_add_user (CLASS_AUTH * auth, MOP user_obj);
 static int add_class_grant (CLASS_AUTH * auth, MOP source, MOP user, int cache);
-static int build_class_grant_list (CLASS_AUTH * cl_auth, MOP class_mop);
-static void issue_grant_statement (FILE * fp, CLASS_AUTH * auth, CLASS_GRANT * grant, int authbits);
-static int class_grant_loop (CLASS_AUTH * auth, FILE * outfp);
 
 static void au_print_cache (int cache, FILE * fp);
 static void au_print_grant_entry (DB_SET * grants, int grant_index, FILE * fp);
@@ -572,7 +490,7 @@ static int au_change_serial_owner (MOP * object, MOP new_owner);
  *   attname(in):
  *   set(in):
  */
-static int
+int
 au_get_set (MOP obj, const char *attname, DB_SET ** set)
 {
   int error = NO_ERROR;
@@ -2404,7 +2322,7 @@ encrypt_password_sha1 (const char *pass, int add_prefix, char *dest)
  *   pass(in): string to encrypt
  *   dest(out): destination buffer
  */
-static void
+void
 encrypt_password_sha2_512 (const char *pass, char *dest)
 {
   int error_status = NO_ERROR;
@@ -6924,274 +6842,6 @@ au_get_user_name (MOP obj)
 }
 
 /*
- * au_export_users - Generates a sequence of add_user and add_member method
- *                   calls that when evaluated, will re-create the current
- *                   user/group hierarchy.
- *   return: error code
- *   outfp(in): output file
- */
-int
-au_export_users (extract_output &output_ctx)
-{
-  int error;
-  DB_SET *direct_groups;
-  DB_VALUE value, gvalue;
-  MOP user, pwd;
-  int g, gcard;
-  char *uname, *str, *gname, *comment;
-  char passbuf[AU_MAX_PASSWORD_BUF];
-  char *query;
-  size_t query_size;
-  DB_QUERY_RESULT *query_result;
-  DB_QUERY_ERROR query_error;
-  DB_VALUE user_val;
-  const char *qp1 = "select [%s] from [%s];";
-  char encrypt_mode = 0x00;
-
-  query_size = strlen (qp1) + strlen (AU_USER_CLASS_NAME) * 2;
-  query = (char *) malloc (query_size);
-  if (query == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
-
-  error = db_compile_and_execute_local (query, &query_result, &query_error);
-  /* error is row count if not negative. */
-  if (error < 0)
-    {
-      free_and_init (query);
-      return error;
-    }
-
-  while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
-    {
-      if (db_query_get_tuple_value (query_result, 0, &user_val) != NO_ERROR)
-	{
-	  continue;
-	}
-
-      if (DB_IS_NULL (&user_val))
-	{
-	  user = NULL;
-	}
-      else
-	{
-	  user = db_get_object (&user_val);
-	}
-
-      uname = au_get_user_name (user);
-      strcpy (passbuf, "");
-      encrypt_mode = 0x00;
-
-      /* retrieve password */
-      error = obj_get (user, "password", &value);
-      if (error == NO_ERROR)
-	{
-	  if (DB_IS_NULL (&value))
-	    {
-	      pwd = NULL;
-	    }
-	  else
-	    {
-	      pwd = db_get_object (&value);
-	    }
-
-	  if (pwd != NULL)
-	    {
-	      error = obj_get (pwd, "password", &value);
-	      if (error == NO_ERROR)
-		{
-		  if (!DB_IS_NULL (&value) && IS_STRING (&value))
-		    {
-		      /*
-		       * copy password string using malloc
-		       * to be consistent with encrypt_password
-		       */
-		      str = db_get_string (&value);
-		      if (IS_ENCODED_DES (str))
-			{
-			  /* strip off the prefix so its readable */
-			  snprintf (passbuf, AU_MAX_PASSWORD_BUF - 1, "%s", str + 1);
-			  encrypt_mode = ENCODE_PREFIX_DES;
-			}
-		      else if (IS_ENCODED_SHA1 (str))
-			{
-			  /* strip off the prefix so its readable */
-			  snprintf (passbuf, AU_MAX_PASSWORD_BUF - 1, "%s", str + 1);
-			  encrypt_mode = ENCODE_PREFIX_SHA1;
-			}
-		      else if (IS_ENCODED_SHA2_512 (str))
-			{
-			  /* not strip off the prefix */
-			  snprintf (passbuf, AU_MAX_PASSWORD_BUF - 1, "%s", str);
-			  encrypt_mode = ENCODE_PREFIX_SHA2_512;
-			}
-		      else if (strlen (str))
-			{
-			  /* sha2 hashing with prefix */
-			  encrypt_password_sha2_512 (str, passbuf);
-			}
-		      ws_free_string (str);
-		    }
-		}
-	    }
-	}
-
-      /* retrieve comment */
-      error = obj_get (user, "comment", &value);
-      if (error == NO_ERROR)
-	{
-	  if (DB_IS_NULL (&value))
-	    {
-	      comment = NULL;
-	    }
-	  else
-	    {
-	      comment = db_get_string (&value);
-	    }
-	}
-
-      if (error == NO_ERROR)
-	{
-	  if (!ws_is_same_object (user, Au_dba_user) && !ws_is_same_object (user, Au_public_user))
-	    {
-	      if (!strlen (passbuf))
-		{
-		  output_ctx ("call [add_user]('%s', '') on class [db_root];\n", uname);
-		}
-	      else
-		{
-		  output_ctx ("call [add_user]('%s', '') on class [db_root] to [auser];\n", uname);
-		  if (encrypt_mode == ENCODE_PREFIX_DES)
-		    {
-		      output_ctx ("call [set_password_encoded]('%s') on [auser];\n", passbuf);
-		    }
-		  else
-		    {
-		      output_ctx ("call [set_password_encoded_sha1]('%s') on [auser];\n", passbuf);
-		    }
-		}
-	    }
-	  else
-	    {
-	      if (strlen (passbuf))
-		{
-		  output_ctx ( "call [find_user]('%s') on class [db_user] to [auser];\n", uname);
-		  if (encrypt_mode == ENCODE_PREFIX_DES)
-		    {
-		      output_ctx ("call [set_password_encoded]('%s') on [auser];\n", passbuf);
-		    }
-		  else
-		    {
-		      output_ctx ("call [set_password_encoded_sha1]('%s') on [auser];\n", passbuf);
-		    }
-		}
-	    }
-
-	  /* export comment */
-	  if (comment != NULL && comment[0] != '\0')
-	    {
-	      output_ctx ("ALTER USER [%s] ", uname);
-	      help_print_describe_comment (output_ctx, comment);
-	      output_ctx (";\n");
-	    }
-	}
-
-      /* remember, these were allocated in the workspace */
-      if (uname != NULL)
-	{
-	  ws_free_string (uname);
-	}
-      if (comment != NULL)
-	{
-	  ws_free_string (comment);
-	}
-    }
-
-  /* group hierarchy */
-  if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
-    {
-      output_ctx ("call [find_user]('PUBLIC') on class [db_user] to [g_public];\n");
-      do
-	{
-	  if (db_query_get_tuple_value (query_result, 0, &user_val) != NO_ERROR)
-	    {
-	      continue;
-	    }
-
-	  if (DB_IS_NULL (&user_val))
-	    {
-	      user = NULL;
-	    }
-	  else
-	    {
-	      user = db_get_object (&user_val);
-	    }
-
-	  uname = au_get_user_name (user);
-	  if (uname == NULL)
-	    {
-	      continue;
-	    }
-
-	  if (au_get_set (user, "direct_groups", &direct_groups) != NO_ERROR)
-	    {
-	      ws_free_string (uname);
-	      continue;
-	    }
-
-	  gcard = set_cardinality (direct_groups);
-	  for (g = 0; g < gcard && !error; g++)
-	    {
-	      if (set_get_element (direct_groups, g, &gvalue) != NO_ERROR)
-		{
-		  continue;
-		}
-
-	      if (ws_is_same_object (db_get_object (&gvalue), Au_public_user))
-		{
-		  continue;
-		}
-
-	      error = obj_get (db_get_object (&gvalue), "name", &value);
-	      if (error != NO_ERROR)
-		{
-		  continue;
-		}
-
-	      if (DB_IS_NULL (&value))
-		{
-		  gname = NULL;
-		}
-	      else
-		{
-		  gname = (char *) (db_get_string (&value));
-		}
-
-	      if (gname != NULL)
-		{
-		  output_ctx ("call [find_user]('%s') on class [db_user] to [g_%s];\n", gname, gname);
-		  output_ctx ("call [add_member]('%s') on [g_%s];\n", uname, gname);
-		  ws_free_string (gname);
-		}
-	    }
-
-	  set_free (direct_groups);
-	  ws_free_string (uname);
-	}
-      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS);
-    }
-
-  db_query_end (query_result);
-  free_and_init (query);
-
-  return (error);
-}
-
-/*
  * GRANT EXPORT
  *
  * This is in support of the authorization migration utilities.  We build
@@ -7260,7 +6910,7 @@ make_class_user (MOP user_obj)
  *   return: none
  *   grants(in): list of class grant structures
  */
-static void
+void
 free_class_grants (CLASS_GRANT * grants)
 {
   CLASS_GRANT *g, *next;
@@ -7277,7 +6927,7 @@ free_class_grants (CLASS_GRANT * grants)
  *   return: none
  *   users(in): class user list
  */
-static void
+void
 free_class_users (CLASS_USER * users)
 {
   CLASS_USER *u, *next;
@@ -7299,7 +6949,7 @@ free_class_users (CLASS_USER * users)
  *
  * Note: If there is already an entry in the list, it returns the found entry
  */
-static CLASS_USER *
+CLASS_USER *
 find_or_add_user (CLASS_AUTH * auth, MOP user_obj)
 {
   CLASS_USER *u, *last;
@@ -7383,7 +7033,7 @@ add_class_grant (CLASS_AUTH * auth, MOP source, MOP user, int cache)
  *       eliminated for performance reasons.  A query on the db_user class is
  *       now used to find all users.
  */
-static int
+int
 build_class_grant_list (CLASS_AUTH * cl_auth, MOP class_mop)
 {
   int error;
@@ -7471,227 +7121,6 @@ build_class_grant_list (CLASS_AUTH * cl_auth, MOP class_mop)
 
   return (error);
 }
-
-/*
- * issue_grant_statement - Generates an CSQL "grant" statement.
- *   return: none
- *   fp(in): output file
- *   auth(in): class authorization state
- *   grant(in): desired grant
- *   authbits(in): specific authorization to grant
- *   quoted_id_flag(in):
- */
-static void
-issue_grant_statement (FILE * fp, CLASS_AUTH * auth, CLASS_GRANT * grant, int authbits)
-{
-  const char *gtype, *classname;
-  char *username;
-  int typebit;
-
-  typebit = authbits & AU_TYPE_MASK;
-  switch (typebit)
-    {
-    case AU_SELECT:
-      gtype = "SELECT";
-      break;
-    case AU_INSERT:
-      gtype = "INSERT";
-      break;
-    case AU_UPDATE:
-      gtype = "UPDATE";
-      break;
-    case AU_DELETE:
-      gtype = "DELETE";
-      break;
-    case AU_ALTER:
-      gtype = "ALTER";
-      break;
-    case AU_INDEX:
-      gtype = "INDEX";
-      break;
-    case AU_EXECUTE:
-      gtype = "EXECUTE";
-      break;
-    default:
-      gtype = "???";
-      break;
-    }
-  classname = sm_get_ch_name (auth->class_mop);
-  username = au_get_user_name (grant->user->obj);
-
-  fprintf (fp, "GRANT %s ON ", gtype);
-  fprintf (fp, "[%s]", classname);
-
-  if (username != NULL)
-    {
-      fprintf (fp, " TO [%s]", username);
-    }
-  else
-    {
-      fprintf (fp, " TO %s", "???");
-    }
-
-  if (authbits & (typebit << AU_GRANT_SHIFT))
-    {
-      fprintf (fp, " WITH GRANT OPTION");
-    }
-  fprintf (fp, ";\n");
-
-  ws_free_string (username);
-}
-
-/*
- * class_grant_loop - Makes a pass on the authorization user list and
- *                    issues grant statements for any users that are able.
- *                    Returns the number of statements issued
- *   return: number of statements issued
- *   auth(in): class authorization state
- *   outfp(in): output file
- *   quoted_id_flag(in):
- *
- * Note:
- * If this resturns zero and the user list is not empty, it indicates
- * that there are illegal grants in the hierarchy that were not rooted
- * in the class owner object.
- *
- * It would likely be more efficient if rather than making a full pass
- * on the list we evaluate the first node in the list and then recursively
- * evaluate every mode affected by the first evaluation.  If the first
- * node results in no evaluations, we move to the next node in the list.
- *
- * This will tend to get grants to come out "depth first" which may be
- * more logical when examining the resulting statements.  It will probably
- * result in fewer traversals of the user list as well ?
- *
- * TODO : LP64
- */
-static int
-class_grant_loop (CLASS_AUTH * auth, FILE * outfp)
-{
-#define AU_MIN_BIT 1		/* AU_SELECT */
-#define AU_MAX_BIT 0x40		/* AU_EXECUTE */
-
-  CLASS_USER *user;
-  CLASS_GRANT *grant, *prev_grant, *next_grant;
-  int statements = 0;
-  int mask, authbits;
-
-  for (user = auth->users; user != NULL; user = user->next)
-    {
-      for (grant = user->grants, prev_grant = NULL, next_grant = NULL; grant != NULL; grant = next_grant)
-	{
-	  next_grant = grant->next;
-	  mask = AU_SELECT;
-	  for (mask = AU_MIN_BIT; mask <= AU_MAX_BIT; mask = mask << 1)
-	    {
-	      if (grant->cache & mask)
-		{
-		  /* combine auth type & grant option bit */
-		  authbits = mask | (grant->cache & (mask << AU_GRANT_SHIFT));
-		  /*
-		   * if the user has these same bits available,
-		   * issue the grant
-		   */
-		  if ((user->available_auth & authbits) == authbits)
-		    {
-		      issue_grant_statement (outfp, auth, grant, authbits);
-		      /* turn on grant bits in the granted user */
-		      grant->user->available_auth |= authbits;
-		      /* turn off the pending grant bits in granting user */
-		      grant->cache &= ~authbits;
-		      statements++;
-		    }
-		}
-	    }
-	  if (grant->cache == 0)
-	    {
-	      /* no more grants, remove it from the list */
-	      if (prev_grant == NULL)
-		{
-		  user->grants = grant->next;
-		}
-	      else
-		{
-		  prev_grant->next = grant->next;
-		}
-	      grant->next = NULL;
-	      free_class_grants (grant);
-	    }
-	  else
-	    {
-	      prev_grant = grant;
-	    }
-	}
-      /*
-       * could remove user from the list but can't free it because
-       * structure may be referenced by a grant inside another user
-       */
-    }
-  return (statements);
-}
-
-/*
- * au_export_grants() - Issues a sequence of CSQL grant statements related
- *                      to the given class.
- *   return: error code
- *   output_ctx(in): output context
- *   class_mop(in): class of interest
- *   quoted_id_flag(in):
- */
-int
-au_export_grants (extract_output &output_ctx, MOP class_mop)
-{
-  int error = NO_ERROR;
-  CLASS_AUTH cl_auth;
-  CLASS_USER *u;
-  int statements, ecount;
-  char *uname;
-
-  cl_auth.class_mop = class_mop;
-  cl_auth.owner = au_get_class_owner (class_mop);
-  cl_auth.users = NULL;
-
-  /* make an entry for the owner with complete authorization */
-  u = find_or_add_user (&cl_auth, cl_auth.owner);
-  u->available_auth = AU_FULL_AUTHORIZATION;
-
-  /* add entries for the other users with authorization on this class */
-  error = build_class_grant_list (&cl_auth, class_mop);
-  if (error == NO_ERROR)
-    {
-      /* loop through the grant list, issuing grant statements */
-      while ((statements = class_grant_loop (&cl_auth, outfp)));
-
-      for (u = cl_auth.users, ecount = 0; u != NULL; u = u->next)
-	{
-	  if (u->grants != NULL)
-	    {
-	      uname = au_get_user_name (u->obj);
-
-	      /*
-	       * should this be setting an error condition ?
-	       * for now, leave a comment in the output file
-	       */
-	      output_ctx ("/*");
-	      output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_GRANT_DUMP_ERROR),
-  		          uname);
-	      output_ctx ("*/\n");
-	      ws_free_string (uname);
-	      ecount++;
-	    }
-	}
-      if (ecount)
-	{
-	  error = ER_GENERIC_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	}
-    }
-
-  free_class_users (cl_auth.users);
-
-  return (error);
-}
-
 
 /*
  * DEBUGGING FUNCTIONS

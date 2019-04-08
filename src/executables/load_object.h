@@ -30,6 +30,8 @@
 #include "dbtype_def.h"
 #include "class_object.h"
 
+class extract_output;
+
 #define CHECK_PRINT_ERROR(print_fnc)            \
   do {                                          \
     if ((error = print_fnc) != NO_ERROR)        \

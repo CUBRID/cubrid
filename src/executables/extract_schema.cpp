@@ -56,16 +56,9 @@ extract_output::extract_output (const std::string &ctx_name, FILE *fp) :
   {
   }
 
-extract_output::extract_output (FILE *fp) :
-    context_name ("DEBUG"),
-    output_file (fp),
-    sb (NULL)
-  {
-  }
-
 extract_output& extract_output::std_output (void)
 {
-  static extract_output s_std_output (stdout);
+  static extract_output s_std_output ("STDOUT", stdout);
   return s_std_output;
 }
 
@@ -73,18 +66,3 @@ const char *extract_output::exec_name (void)
   {
     return context_name.c_str ();
   }
-
-template<typename... Args> int extract_output::operator() (Args &&... args)
-{
-  if (output_file != NULL)
-    {
-      return fprintf (output_file, std::forward<Args> (args)...);
-    }
-  else
-    {
-      assert (sb != NULL);
-      return (*sb) (std::forward<Args> (args)...);
-    }
-  
-  return len;
-}

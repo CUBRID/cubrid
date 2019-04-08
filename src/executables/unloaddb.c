@@ -337,7 +337,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   AU_SAVE_AND_ENABLE (au_save);
   if (!status && (do_objects || !do_schema))
     {
-      if (extractobjects (exec_name))
+      if (extractobjects (exec_name, output_dirname, output_prefix))
 	{
 	  status = 1;
 	}

@@ -1268,7 +1268,7 @@ db_print (DB_OBJECT * obj)
 void
 db_fprint (FILE * fp, DB_OBJECT * obj)
 {
-  extract_output output (fp);
+  extract_output output ("DEBUG", fp);
   CHECK_CONNECT_VOID ();
 
   if (fp != NULL && obj != NULL)
