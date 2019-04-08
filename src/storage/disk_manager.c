@@ -38,6 +38,7 @@
 #endif /* !WINDOWS */
 
 #include "disk_manager.h"
+
 #include "porting.h"
 #include "porting_inline.hpp"
 #include "system_parameter.h"
@@ -47,6 +48,7 @@
 #include "xserver_interface.h"
 #include "file_io.h"
 #include "page_buffer.h"
+#include "log_append.hpp"
 #include "log_manager.h"
 #include "log_lsa.hpp"
 #include "log_volids.hpp"

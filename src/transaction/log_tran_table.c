@@ -114,7 +114,6 @@
 static const int LOG_MAX_NUM_CONTIGUOUS_TDES = INT_MAX / sizeof (LOG_TDES);
 static const float LOG_EXPAND_TRANTABLE_RATIO = 1.25;	/* Increase table by 25% */
 static const int LOG_TOPOPS_STACK_INCREMENT = 3;	/* No more than 3 nested top system operations */
-static const char *log_Client_id_unknown_string = "(unknown)";
 static BOOT_CLIENT_CREDENTIAL log_Client_credential;
 
 static const unsigned int LOGTB_RETRY_SLAM_MAX_TIMES = 10;
@@ -910,10 +909,10 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CRED
   tdes->topops.stack = NULL;
   tdes->topops.max = 0;
   tdes->topops.last = -1;
-  tdes->modified_class_list = NULL;
+  tdes->m_modified_classes.clear ();
   tdes->num_transient_classnames = 0;
   tdes->first_save_entry = NULL;
-  RB_INIT (&tdes->lob_locator_root);
+  tdes->lob_locator_root.init ();
 }
 
 /*
@@ -1837,7 +1836,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       TR_TABLE_CS_EXIT (thread_p);
 #endif
     }
-  tdes->modified_class_list = NULL;
+  tdes->m_modified_classes.clear ();
 
   for (i = 0; i < tdes->cur_repl_record; i++)
     {
@@ -1957,7 +1956,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
   tdes->suppress_replication = 0;
-  RB_INIT (&tdes->lob_locator_root);
+  tdes->lob_locator_root.init ();
   tdes->query_timeout = 0;
   tdes->query_start_time = 0;
   tdes->tran_start_time = 0;
@@ -1994,7 +1993,9 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 
   tdes->block_global_oldest_active_until_commit = false;
   tdes->is_user_active = false;
-  tdes->modified_class_list = NULL;
+  // *INDENT-OFF*
+  new (&tdes->m_modified_classes) tx_transient_class_registry ();
+  // *INDENT-ON*
 
   LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
@@ -2016,6 +2017,7 @@ logtb_finalize_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   // *INDENT-OFF*
   tdes->client.~clientids ();
+  tdes->m_modified_classes.~tx_transient_class_registry ();
   // *INDENT-ON*
 
   logtb_clear_tdes (thread_p, tdes);
@@ -2361,7 +2363,9 @@ logtb_set_user_name (int tran_index, const char *user_name)
   tdes = LOG_FIND_TDES (tran_index);
   if (tdes != NULL && tdes->trid != NULL_TRANID)
     {
-      tdes->client.set_user ((user_name) ? user_name : log_Client_id_unknown_string);
+      // *INDENT-OFF*
+      tdes->client.set_user ((user_name) ? user_name : clientids::UNKNOWN_ID);
+      // *INDENT-ON*
     }
   return;
 }
@@ -2444,9 +2448,11 @@ logtb_find_client_name_host_pid (int tran_index, const char **client_prog_name, 
 
   if (tdes == NULL || tdes->trid == NULL_TRANID)
     {
-      *client_prog_name = log_Client_id_unknown_string;
-      *client_user_name = log_Client_id_unknown_string;
-      *client_host_name = log_Client_id_unknown_string;
+      // *INDENT-OFF*
+      *client_prog_name = clientids::UNKNOWN_ID;
+      *client_user_name = clientids::UNKNOWN_ID;
+      *client_host_name = clientids::UNKNOWN_ID;
+      // *INDENT-ON*
       *client_pid = -1;
       return ER_FAILED;
     }
@@ -7074,20 +7080,15 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 	}
       idx++;
 
-      /* Modified_class_list */
-      ptr_val = tdes->modified_class_list;
-      if (ptr_val == NULL)
+      /* modified class list */
+      if (tdes->m_modified_classes.empty ())
 	{
 	  db_make_null (&vals[idx]);
 	}
       else
 	{
-	  snprintf (buf, sizeof (buf), "0x%08" PRIx64, (UINT64) ptr_val);
-	  error = db_make_string_copy (&vals[idx], buf);
-	  if (error != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
+	  (void) db_make_string (&vals[idx], tdes->m_modified_classes.to_string ());
+	  vals[idx].need_clear = true;
 	}
       idx++;
 

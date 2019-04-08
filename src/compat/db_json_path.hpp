@@ -30,6 +30,7 @@
 #include "rapidjson/rapidjson.h"
 
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 struct PATH_TOKEN
@@ -76,6 +77,8 @@ class JSON_PATH
 
     JSON_VALUE *get (JSON_DOC &jd) const;
     const JSON_VALUE *get (const JSON_DOC &jd) const;
+    std::vector<const JSON_VALUE *> extract (const JSON_DOC &) const;
+
     void set (JSON_DOC &jd, const JSON_VALUE &jv) const;
     void set (JSON_VALUE &jd, const JSON_VALUE &jv, JSON_PRIVATE_MEMPOOL &allocator) const;
     bool erase (JSON_DOC &jd) const;
@@ -103,13 +106,17 @@ class JSON_PATH
 
     int from_json_pointer (const std::string &pointer_path);
 
-    bool validate_and_create_from_json_path (std::string &sql_path);
+    int validate_and_create_from_json_path (std::string &sql_path);
 
     static MATCH_RESULT match_pattern (const JSON_PATH &pattern, const token_containter_type::const_iterator &it1,
 				       const JSON_PATH &path, const token_containter_type::const_iterator &it2);
 
+    static void extract_from_subtree (const JSON_PATH &path, size_t tkn_array_offset,
+				      const JSON_VALUE &jv, std::unordered_set<const JSON_VALUE *> &unique_elements,
+				      std::vector<const JSON_VALUE *> &vals);
+
     token_containter_type m_path_tokens;
 };
 
-void db_json_path_unquote_object_keys (std::string &sql_path);
+int db_json_path_unquote_object_keys (std::string &sql_path);
 #endif /* _DB_JSON_HPP_ */

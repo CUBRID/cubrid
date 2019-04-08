@@ -67,6 +67,28 @@ struct repl_info_statement
   char *sys_prm_context;
 };
 
+#if defined(SERVER_MODE) || defined(SA_MODE)
+enum log_repl_flush
+{
+  LOG_REPL_DONT_NEED_FLUSH = -1,	/* no flush */
+  LOG_REPL_COMMIT_NEED_FLUSH = 0,	/* log must be flushed at commit */
+  LOG_REPL_NEED_FLUSH = 1	/* log must be flushed at commit and rollback */
+};
+typedef enum log_repl_flush LOG_REPL_FLUSH;
+
+typedef struct log_repl LOG_REPL_RECORD;
+struct log_repl
+{
+  LOG_RECTYPE repl_type;	/* LOG_REPLICATION_DATA or LOG_REPLICATION_SCHEMA */
+  LOG_RCVINDEX rcvindex;
+  OID inst_oid;
+  LOG_LSA lsa;
+  char *repl_data;		/* the content of the replication log record */
+  int length;
+  LOG_REPL_FLUSH must_flush;
+};
+#endif
+
 /*
  * STATES OF TRANSACTIONS
  */

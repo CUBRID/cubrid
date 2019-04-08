@@ -56,6 +56,7 @@
 #include "db_elo.h"
 #include "string_opfunc.h"
 #include "xasl.h"
+#include "xasl_unpack_info.hpp"
 #include "stream_to_xasl.h"
 #include "query_opfunc.h"
 #include "set_object.h"
@@ -65,6 +66,7 @@
 #include "dbtype.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #include "db_value_printer.hpp"
+#include "log_append.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -17261,7 +17263,7 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
   char *expr_stream = NULL;
   int expr_stream_size = 0;
   FUNC_PRED *func_pred = NULL;
-  void *unpack_info = NULL;
+  XASL_UNPACK_INFO *unpack_info = NULL;
   DB_VALUE *res = NULL;
   int i, nr_atts;
   ATTR_ID *atts = NULL;
@@ -17369,9 +17371,7 @@ end:
   if (unpack_info)
     {
       (void) qexec_clear_func_pred (thread_p, func_pred);
-      stx_free_additional_buff (thread_p, unpack_info);
-      stx_free_xasl_unpack_info (unpack_info);
-      db_private_free_and_init (thread_p, unpack_info);
+      free_xasl_unpack_info (thread_p, unpack_info);
     }
 
   return error;
@@ -17541,9 +17541,7 @@ heap_free_func_pred_unpack_info (THREAD_ENTRY * thread_p, int n_indexes, FUNC_PR
 
       if (func_indx_preds[i].unpack_info)
 	{
-	  stx_free_additional_buff (thread_p, func_indx_preds[i].unpack_info);
-	  stx_free_xasl_unpack_info (func_indx_preds[i].unpack_info);
-	  db_private_free_and_init (thread_p, func_indx_preds[i].unpack_info);
+	  free_xasl_unpack_info (thread_p, func_indx_preds[i].unpack_info);
 	}
     }
   db_private_free_and_init (thread_p, func_indx_preds);
@@ -21640,9 +21638,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
       if (is_mvcc_op)
 	{
 	  /* log home no change; vacuum needs it to reach the updated overflow record */
-	  LOG_DATA_ADDR log_addr;
-
-	  LOG_SET_DATA_ADDR (&log_addr, context->home_page_watcher_p->pgptr, &context->hfid.vfid, context->oid.slotid);
+	  LOG_DATA_ADDR log_addr (&context->hfid.vfid, context->home_page_watcher_p->pgptr, context->oid.slotid);
 
 	  heap_mvcc_log_home_no_change (thread_p, &log_addr);
 

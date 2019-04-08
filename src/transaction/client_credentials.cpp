@@ -30,6 +30,9 @@ string_ncopy (std::string &dest, const char *src, size_t max_size)
   dest.assign (src, copyupto);
 }
 
+const char *
+clientids::UNKNOWN_ID = "(unknown)";
+
 clientids::clientids ()
   : client_type (BOOT_CLIENT_UNKNOWN)
   , client_info {}
@@ -112,7 +115,16 @@ clientids::set_user (const char *db_user_arg)
 void
 clientids::set_program_name (const char *program_name_arg)
 {
-  string_ncopy (program_name, program_name_arg, PATH_MAX);
+  char prgname_buf[PATH_MAX] = {'\0'};
+
+  if (program_name_arg == NULL || basename_r (program_name_arg, prgname_buf, PATH_MAX) < 0)
+    {
+      string_ncopy (program_name, UNKNOWN_ID, PATH_MAX);
+    }
+  else
+    {
+      string_ncopy (program_name, prgname_buf, PATH_MAX);
+    }
 }
 
 void

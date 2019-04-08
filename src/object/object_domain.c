@@ -10029,7 +10029,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      const char *original_str = db_get_string (src);
 	      int error_code;
 
-	      assert (str_size >= 0);	/* if this isn't correct, we cannot rely on strlen */
 	      error_code = db_json_get_json_from_str (original_str, doc, str_size);
 	      if (error_code != NO_ERROR)
 		{

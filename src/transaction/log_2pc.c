@@ -31,6 +31,7 @@
 #endif /* SERVER_MODE */
 #include "error_manager.h"
 #include "lock_manager.h"
+#include "log_append.hpp"
 #include "log_comm.h"
 #include "log_impl.h"
 #include "log_lsa.hpp"

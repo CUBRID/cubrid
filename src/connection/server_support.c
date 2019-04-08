@@ -26,6 +26,7 @@
 #include "server_support.h"
 
 #include "config.h"
+#include "log_append.hpp"
 #include "multi_thread_stream.hpp"
 #include "session.h"
 #include "thread_entry_task.hpp"
@@ -1450,31 +1451,17 @@ shutdown:
   logpb_force_flush_pages (thread_p);
 
 #if !defined(NDEBUG)
-  LOG_CS_ENTER (thread_p);
-  pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
-  if (!LSA_EQ (&log_Gl.append.nxio_lsa, &log_Gl.prior_info.prior_lsa))
-    {
-      LOG_PRIOR_NODE *node;
-
-      assert (LSA_LT (&log_Gl.append.nxio_lsa, &log_Gl.prior_info.prior_lsa));
-      node = log_Gl.prior_info.prior_list_header;
-      while (node != NULL)
-	{
-	  /* All active transaction and vacuum workers should have been stopped. Only system transactions are still
-	   * running. */
-	  assert (node->log_header.trid == LOG_SYSTEM_TRANID);
-	  node = node->next;
-	}
-    }
-  pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
-  LOG_CS_EXIT (thread_p);
+  /* All active transaction and vacuum workers should have been stopped. Only system transactions are still running. */
+  assert (!log_prior_has_worker_log_records (thread_p));
 #endif
-
-
 
   // stop log writers
   css_stop_all_workers (*thread_p, THREAD_STOP_LOGWR);
 
+  if (prm_get_bool_value (PRM_ID_STATS_ON))
+    {
+      perfmon_er_log_current_stats (thread_p);
+    }
   css_Server_request_worker_pool->er_log_stats ();
   css_Connection_worker_pool->er_log_stats ();
 

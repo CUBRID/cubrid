@@ -400,7 +400,7 @@ namespace cubscan
     }
 
     int
-    scanner::set_next_cursor (const cursor &current_cursor, int next_depth)
+    scanner::set_next_cursor (const cursor &current_cursor, size_t next_depth)
     {
       return init_cursor (*current_cursor.m_process_doc,
 			  current_cursor.m_node->m_nested_nodes[current_cursor.m_child],
@@ -440,7 +440,7 @@ namespace cubscan
     }
 
     int
-    scanner::scan_next_internal (cubthread::entry *thread_p, int depth, bool &found_row_output)
+    scanner::scan_next_internal (cubthread::entry *thread_p, size_t depth, bool &found_row_output)
     {
       int error_code = NO_ERROR;
       cursor &this_cursor = m_scan_cursor[depth];
