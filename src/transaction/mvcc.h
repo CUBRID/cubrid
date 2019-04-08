@@ -133,35 +133,6 @@ struct mvcc_rec_header
   (chn != NULL_CHN \
    && (chn == MVCC_GET_CHN (rec_header_p)))
 
-#define MVCC_GET_BITAREA_ELEMENT_PTR(bitareaptr, position) \
-  ((UINT64 *)(bitareaptr) + ((position) >> 6))
-#define MVCC_BITAREA_MASK(position) ((1ULL << ((position) & 0x3F)))
-
-/* clear MVCC snapshot data */
-#define MVCC_INIT_MVCC_INFO(mvccinfo) \
-  do \
-    { \
-      new (&(mvccinfo)->snapshot) mvcc_snapshot ();  \
-      (mvccinfo)->id = MVCCID_NULL;	\
-      (mvccinfo)->recent_snapshot_lowest_active_mvccid = MVCCID_NULL; \
-      (mvccinfo)->sub_ids = NULL; \
-      (mvccinfo)->max_sub_ids = 0;  \
-      (mvccinfo)->count_sub_ids = 0;	\
-      (mvccinfo)->is_sub_active = false;  \
-    } \
-    while (0)
-
-#define MVCC_CLEAR_MVCC_INFO(mvccinfo) \
-  do \
-    { \
-      MVCC_CLEAR_SNAPSHOT_DATA (&(mvccinfo)->snapshot);  \
-      (mvccinfo)->id = MVCCID_NULL;	\
-      (mvccinfo)->recent_snapshot_lowest_active_mvccid = MVCCID_NULL; \
-      (mvccinfo)->count_sub_ids = 0;	\
-      (mvccinfo)->is_sub_active = false;  \
-    } \
-    while (0)
-
 #define MVCC_ID_PRECEDES(id1, id2) ((id1) < (id2))
 #define MVCC_ID_FOLLOW_OR_EQUAL(id1, id2) ((id1) >= (id2))
 

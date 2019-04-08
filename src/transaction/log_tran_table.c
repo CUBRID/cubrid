@@ -78,28 +78,6 @@
 
 #define RMUTEX_NAME_TDES_TOPOP "TDES_TOPOP"
 
-#define MVCC_OLDEST_ACTIVE_BUFFER_LENGTH 300
-
-/* bit area sizes expressed in bits */
-#define MVCC_BITAREA_ELEMENT_BITS 64
-#define MVCC_BITAREA_ELEMENT_ALL_COMMITTED 0xffffffffffffffffULL
-#define MVCC_BITAREA_BIT_COMMITTED 1
-#define MVCC_BITAREA_BIT_ACTIVE 0
-
-/* bit area size after cleanup */
-#define MVCC_BITAREA_ELEMENTS_AFTER_FULL_CLEANUP      16
-
-/* maximum size - 500 UINT64 */
-#define BITAREA_MAX_SIZE		     500
-
-/* maximum size - 32000 bits */
-#define MVCC_BITAREA_MAXIMUM_BITS		   32000
-
-#define MVCC_BITAREA_BITS_TO_ELEMENTS(count_bits) (((count_bits) + 63) >> 6)
-#define MVCC_BITAREA_BITS_TO_BYTES(count_bits) ((((count_bits) + 63) >> 6) << 3)
-#define MVCC_BITAREA_ELEMENTS_TO_BYTES(count_elements) ((count_elements) << 3)
-#define MVCC_BITAREA_ELEMENTS_TO_BITS(count_elements) ((count_elements) << 6)
-
 #define NUM_ASSIGNED_TRAN_INDICES log_Gl.trantable.num_assigned_indices
 #define NUM_TOTAL_TRAN_INDICES log_Gl.trantable.num_total_indices
 
@@ -136,9 +114,6 @@ static void logtb_dump_top_operations (FILE * out_fp, LOG_TOPOPS_STACK * topops_
 static void logtb_dump_tdes (FILE * out_fp, LOG_TDES * tdes);
 static void logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CREDENTIAL * client_credential,
 			    int wait_msecs, TRAN_ISOLATION isolation);
-static void logtb_get_lowest_active_mvccid (UINT64 * bit_area, int bit_area_length, MVCCID bit_area_start_mvccid,
-					    MVCCID * long_tran_mvccids, unsigned int long_tran_mvccids_length,
-					    MVCCID * lowest_active_mvccid);
 
 static void logtb_tran_free_update_stats (LOG_TRAN_UPDATE_STATS * log_upd_stats);
 static void logtb_tran_clear_update_stats (LOG_TRAN_UPDATE_STATS * log_upd_stats);
@@ -4674,87 +4649,6 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	  MVCCID_FORWARD (snapshot->highest_completed_mvccid);
 	}
       snapshot->m_active_mvccs.set_inactive_mvccid (mvcc_sub_id);
-    }
-}
-
-/*
- * logtb_get_lowest_active_mvccid - get lowest active MVCID
- *
- * return: error code
- *
- * bit_area(in): bit area
- * bit_area_length(in): bit area length
- * bit_area_start_mvccid(in): bit area start MVCCID
- * long_tran_mvccids(in): long time MVCCID array
- * long_tran_mvccids_length(in): long time MVCCID array length
- * lowest_active_mvccid(out): lowest active MVCCID
- *
- * Note: This function get the lowest active MVCCID in bit area.
- *     If have long transactions (long_tran_mvccids not null),
- *     long_tran_mvccids[0] is the lowest active MVCCID. If bit_area_length is 0
- *     bit_area_start_mvccid is the lowest active MVCCID. If all bits area are
- *     1, the lowest active MVCCID is bit_area_start_mvccid + bit_area_length.
- */
-void
-logtb_get_lowest_active_mvccid (UINT64 * bit_area, int bit_area_length, MVCCID bit_area_start_mvccid,
-				MVCCID * long_tran_mvccids, unsigned int long_tran_mvccids_length,
-				MVCCID * lowest_active_mvccid)
-{
-  int bit_pos, count_bits;
-  UINT64 bits, mask;
-  UINT64 *lowest_active_bit_area = NULL, *end_bit_area;
-  int lowest_bit_pos, end_position;
-
-  assert (bit_area != NULL && bit_area_length >= 0 && lowest_active_mvccid != NULL);
-
-  if (long_tran_mvccids != NULL && long_tran_mvccids_length > 0)
-    {
-      /* long time transactions are ordered */
-      *lowest_active_mvccid = *long_tran_mvccids;
-      return;
-    }
-
-  if (bit_area_length == 0)
-    {
-      *lowest_active_mvccid = bit_area_start_mvccid;
-      return;
-    }
-
-  /* find the lowest bit 0 */
-  lowest_bit_pos = -1;
-  end_position = bit_area_length - 1;
-  lowest_active_bit_area = bit_area;
-  end_bit_area = MVCC_GET_BITAREA_ELEMENT_PTR (bit_area, end_position);
-  while (lowest_active_bit_area <= end_bit_area)
-    {
-      bits = *lowest_active_bit_area;
-      if (bits != MVCC_BITAREA_ELEMENT_ALL_COMMITTED)
-	{
-	  /* find least significant bit 0 position */
-	  for (bit_pos = 0, count_bits = MVCC_BITAREA_ELEMENT_BITS / 2; count_bits > 0; count_bits >>= 1)
-	    {
-	      mask = (1ULL << count_bits) - 1;
-	      if ((bits & mask) == mask)
-		{
-		  bit_pos += count_bits;
-		  bits >>= count_bits;
-		}
-	    }
-	  lowest_bit_pos = bit_pos;
-	  break;
-	}
-      lowest_active_bit_area++;
-    }
-  /* compute lowest_active_mvccid */
-  if (lowest_bit_pos == -1)
-    {
-      /* didn't fount 0 bit */
-      *lowest_active_mvccid = bit_area_start_mvccid + bit_area_length;
-    }
-  else
-    {
-      count_bits = MVCC_BITAREA_ELEMENTS_TO_BITS ((int) (lowest_active_bit_area - bit_area));
-      *lowest_active_mvccid = bit_area_start_mvccid + count_bits + lowest_bit_pos;
     }
 }
 
