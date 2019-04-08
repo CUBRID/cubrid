@@ -50,6 +50,7 @@
 #include "btree.h"
 #include "elo.h"
 #include "recovery.h"
+#include "replication.h"
 #include "xserver_interface.h"
 #include "page_buffer.h"
 #include "porting_inline.hpp"
@@ -63,10 +64,11 @@
 #include "log_append.hpp"
 #include "log_archives.hpp"
 #include "log_compress.h"
-#include "partition_sr.h"
+#include "log_record.hpp"
 #include "log_system_tran.hpp"
 #include "log_volids.hpp"
 #include "log_writer.h"
+#include "partition_sr.h"
 #include "filter_pred_cache.h"
 #include "heap_file.h"
 #include "slotted_page.h"
@@ -85,6 +87,7 @@
 #include "thread_entry.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
+#include "transaction_transient.hpp"
 #include "vacuum.h"
 #include "xasl_cache.h"
 
@@ -152,40 +155,6 @@ static int rv;
     && ((RCVI) != RVLOC_CLASSNAME_DUMMY) \
     && ((RCVI) != RVDK_LINK_PERM_VOLEXT || !pgbuf_is_lsa_temporary(PGPTR)))
 
-/* Assume that locator end with <path>/<meta_name>.<key_name> */
-#define LOCATOR_KEY(locator_) (strrchr (locator_, '.') + 1)
-#define LOCATOR_META(locator_) (strrchr (locator_, PATH_SEPARATOR) + 1)
-#define PUT_LOCATOR_META(meta_name_, locator_) \
-   do { \
-     char *key_, *meta_; \
-     key_ = LOCATOR_KEY (locator_); \
-     meta_ = LOCATOR_META (locator_); \
-     memcpy (meta_name_, meta_, (key_ - meta_) -1); \
-     meta_name_[(key_ - meta_) -1] = '\0'; \
-   } while (0)
-
-/* definitions for lob locator tree */
-typedef struct lob_savepoint_entry LOB_SAVEPOINT_ENTRY;
-
-struct lob_savepoint_entry
-{
-  LOB_LOCATOR_STATE state;
-  LOG_LSA savept_lsa;
-  LOB_SAVEPOINT_ENTRY *prev;
-  ES_URI locator;
-};
-
-struct lob_locator_entry
-{
-  /* RB_ENTRY defines red-black tree node header for this structure. see base/rb_tree.h for more information. */
-  RB_ENTRY (lob_locator_entry) head;
-  LOB_SAVEPOINT_ENTRY *top;
-  /* key_hash is used to reduce the number of strcmp. see the comment of lob_locator_cmp for more information */
-  int key_hash;
-  /* normal case: points &key_data[0], search key: supplied */
-  char *key;
-  char key_data[1];
-};
 
 /* struct for active log header scan */
 typedef struct actve_log_header_scan_context ACTIVE_LOG_HEADER_SCAN_CTX;
@@ -275,11 +244,6 @@ static void log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * td
 static void log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_commit_log_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_lsa);
-static void log_rollback_classrepr_cache (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * upto_lsa);
-static void log_free_lob_locator (LOB_LOCATOR_ENTRY * entry);
-static int lob_locator_cmp (const LOB_LOCATOR_ENTRY * e1, const LOB_LOCATOR_ENTRY * e2);
-/* RB_PROTOTYPE_STATIC declares red-black tree functions. see base/rb_tree.h */
-RB_PROTOTYPE_STATIC (lob_rb_root, lob_locator_entry, head, lob_locator_cmp);
 
 static void log_dump_record_header_to_string (LOG_RECORD_HEADER * log, char *buf, size_t len);
 static void log_ascii_dump (FILE * out_fp, int length, void *data);
@@ -341,12 +305,7 @@ static void log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LS
 static int log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_pgptr);
 static void log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa);
 
-static int log_is_valid_locator (const char *locator);
-
-static void log_cleanup_modified_class (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * t, void *arg);
-static void log_map_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa, bool release,
-					 void (*map_func) (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * clazz,
-							   void *arg), void *arg);
+static void log_cleanup_modified_class (const tx_transient_class_entry & t, bool & stop);
 static void log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa,
 					     bool release, bool decache_classrepr);
 
@@ -4010,7 +3969,7 @@ log_sysop_abort (THREAD_ENTRY * thread_p)
 
       /* Rollback changes. */
       log_rollback (thread_p, tdes, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
-      log_rollback_classrepr_cache (thread_p, tdes, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
+      tdes->m_modified_classes.decache_heap_repr (*LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
 
       /* Log abort system operation. */
       sysop_end.type = LOG_SYSOP_END_ABORT;
@@ -4663,10 +4622,6 @@ int
 log_add_to_modified_class_list (THREAD_ENTRY * thread_p, const char *classname, const OID * class_oid)
 {
   LOG_TDES *tdes;
-  MODIFIED_CLASS_ENTRY *t = NULL;
-#if !defined(NDEBUG)
-  MODIFIED_CLASS_ENTRY *n = NULL;
-#endif
   int tran_index;
 
   assert (classname != NULL);
@@ -4681,55 +4636,7 @@ log_add_to_modified_class_list (THREAD_ENTRY * thread_p, const char *classname, 
       return ER_FAILED;
     }
 
-#if !defined(NDEBUG)
-  /* check iff duplicated {classname, class_oid} pair */
-  for (t = tdes->modified_class_list; t != NULL; t = t->m_next)
-    {
-      assert (t->m_classname != NULL);
-      assert (!OID_ISNULL (&t->m_class_oid));
-      assert (t->m_class_oid.volid >= 0);	/* is not temp_oid */
-
-      for (n = t->m_next; n != NULL; n = n->m_next)
-	{
-	  assert (!(strcmp (t->m_classname, n->m_classname) == 0 && OID_EQ (&t->m_class_oid, &n->m_class_oid)));
-	}
-    }
-#endif
-
-  for (t = tdes->modified_class_list; t != NULL; t = t->m_next)
-    {
-      if (strcmp (t->m_classname, classname) == 0 && OID_EQ (&t->m_class_oid, class_oid))
-	{
-	  break;
-	}
-    }
-
-  if (t == NULL)
-    {				/* class is not in modified_class_list */
-      t = (MODIFIED_CLASS_ENTRY *) malloc (sizeof (MODIFIED_CLASS_ENTRY));
-      if (t == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (MODIFIED_CLASS_ENTRY));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-
-      t->m_classname = strdup (classname);
-      if (t->m_classname == NULL)
-	{
-	  free_and_init (t);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (classname));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-
-      COPY_OID (&t->m_class_oid, class_oid);
-      LSA_SET_NULL (&t->m_last_modified_lsa);
-
-      t->m_next = tdes->modified_class_list;
-      tdes->modified_class_list = t;
-    }
-
-  LSA_COPY (&t->m_last_modified_lsa, &tdes->tail_lsa);
-
+  tdes->m_modified_classes.add (classname, *class_oid, tdes->tail_lsa);
   return NO_ERROR;
 }
 
@@ -4745,7 +4652,6 @@ log_is_class_being_modified (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
   LOG_TDES *tdes;
   int tran_index;
-  MODIFIED_CLASS_ENTRY *t = NULL;
 
   assert (class_oid != NULL);
   assert (!OID_ISNULL (class_oid));
@@ -4760,15 +4666,7 @@ log_is_class_being_modified (THREAD_ENTRY * thread_p, const OID * class_oid)
       return false;
     }
 
-  for (t = tdes->modified_class_list; t != NULL; t = t->m_next)
-    {
-      if (OID_EQ (&t->m_class_oid, class_oid))
-	{
-	  return true;
-	}
-    }
-
-  return false;
+  return tdes->m_modified_classes.has_class (*class_oid);
 }
 
 /*
@@ -4783,71 +4681,20 @@ log_is_class_being_modified (THREAD_ENTRY * thread_p, const OID * class_oid)
  *       This will be used to decache the class representations and XASLs when a transaction is finished.
  */
 static void
-log_cleanup_modified_class (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * t, void *arg)
+log_cleanup_modified_class (const tx_transient_class_entry & t, bool & stop)
 {
-  bool decache_classrepr = (bool) * ((bool *) arg);
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
 
-  if (decache_classrepr && !LSA_ISNULL (&t->m_last_modified_lsa))
-    {
-      (void) heap_classrepr_decache (thread_p, &t->m_class_oid);
-    }
   /* decache this class from the partitions cache also */
-  (void) partition_decache_class (thread_p, &t->m_class_oid);
+  (void) partition_decache_class (thread_p, &t.m_class_oid);
 
   /* remove XASL cache entries which are relevant with this class */
-  xcache_remove_by_oid (thread_p, &t->m_class_oid);
+  xcache_remove_by_oid (thread_p, &t.m_class_oid);
   /* remove filter predicate cache entries which are relevant with this class */
-  fpcache_remove_by_class (thread_p, &t->m_class_oid);
+  fpcache_remove_by_class (thread_p, &t.m_class_oid);
 }
 
 extern int locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA * savep_lsa);
-
-/*
- * log_map_modified_class_list -
- *
- * return:
- *
- *   tdes(in):
- *   savept_lsa(in): savepoint lsa to rollback
- *   release(in): release the memory or not
- *   map_func(in): optinal
- *   arg(in): optional
- *
- * NOTE: Function for LOG_TDES.modified_class_list
- *       This will be used to traverse a modified class list and to do something on each entry.
- */
-static void
-log_map_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa, bool release,
-			     void (*map_func) (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * clazz, void *arg),
-			     void *arg)
-{
-  MODIFIED_CLASS_ENTRY *t = NULL;
-
-  if (map_func)
-    {
-      t = tdes->modified_class_list;
-      while (t != NULL)
-	{
-	  (void) (*map_func) (thread_p, t, arg);
-	  t = t->m_next;
-	}
-    }
-
-  /* always execute for defense */
-  (void) locator_drop_transient_class_name_entries (thread_p, savept_lsa);
-
-  if (release)
-    {
-      t = tdes->modified_class_list;
-      while (t != NULL)
-	{
-	  tdes->modified_class_list = t->m_next;
-	  free ((char *) t->m_classname);
-	  free (t);
-	  t = tdes->modified_class_list;
-	}
-    }
-}
 
 /*
  * log_cleanup_modified_class_list -
@@ -4865,486 +4712,21 @@ static void
 log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa, bool release,
 				 bool decache_classrepr)
 {
-  (void) log_map_modified_class_list (thread_p, tdes, savept_lsa, release, log_cleanup_modified_class,
-				      &decache_classrepr);
-}
-
-/*
- * log_rollback_classrepr_cache - Decache class repr to rollback
- *
- * return:
- *
- *   thread_p(in):
- *   tdes(in): transaction description
- *   upto_lsa(in): LSA to rollback
- *
- */
-static void
-log_rollback_classrepr_cache (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * upto_lsa)
-{
-  MODIFIED_CLASS_ENTRY *t = NULL;
-
-  for (t = tdes->modified_class_list; t != NULL; t = t->m_next)
+  if (decache_classrepr)
     {
-      if (LSA_GT (&t->m_last_modified_lsa, upto_lsa))
-	{
-	  (void) heap_classrepr_decache (thread_p, &t->m_class_oid);
-	  LSA_SET_NULL (&t->m_last_modified_lsa);
-	}
+      // decache heap representations
+      tdes->m_modified_classes.decache_heap_repr (savept_lsa != NULL ? *savept_lsa : NULL_LSA);
+    }
+  tdes->m_modified_classes.map (log_cleanup_modified_class);
+
+  /* always execute for defense */
+  (void) locator_drop_transient_class_name_entries (thread_p, savept_lsa);
+
+  if (release)
+    {
+      tdes->m_modified_classes.clear ();
     }
 }
-
-/*
- * log_is_valid_locator -
- *
- * return: true if the locator is valid, false otherwise
- *
- *   locator(in):
- *
- * NOTE:
- */
-static int
-log_is_valid_locator (const char *locator)
-{
-  if (locator)
-    {
-      char *key, *meta;
-
-      key = (char *) LOCATOR_KEY (locator);
-      meta = (char *) LOCATOR_META (locator);
-      if (key && meta && (key > meta))
-	{
-	  return true;
-	}
-    }
-  return false;
-}
-
-/*
- * xlog_find_lob_locator -
- *
- * return: state of locator
- *
- *   thread_p(in):
- *   locator(in):
- *   real_loc_ptr(out):
- *
- * NOTE:
- */
-LOB_LOCATOR_STATE
-xlog_find_lob_locator (THREAD_ENTRY * thread_p, const char *locator, char *real_locator)
-{
-  int tran_index;
-  LOG_TDES *tdes;
-
-  assert (log_is_valid_locator (locator));
-  assert (real_locator != NULL);
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-
-  if (tdes != NULL)
-    {
-      LOB_LOCATOR_ENTRY *entry, find;
-
-      find.key = (char *) LOCATOR_KEY (locator);
-      find.key_hash = (int) mht_5strhash (find.key, INT_MAX);
-      /* Find entry from red-black tree (see base/rb_tree.h) */
-      entry = RB_FIND (lob_rb_root, &tdes->lob_locator_root, &find);
-      if (entry != NULL)
-	{
-	  memcpy (real_locator, entry->top->locator, strlen (entry->top->locator) + 1);
-	  return entry->top->state;
-	}
-    }
-
-  memcpy (real_locator, locator, strlen (locator) + 1);
-  return LOB_NOT_FOUND;
-}
-
-/*
- * xlog_add_lob_locator -
- *
- * return: error code
- *
- *   thread_p(in):
- *   locator(in):
- *   state(in):
- *
- * NOTE:
- */
-int
-xlog_add_lob_locator (THREAD_ENTRY * thread_p, const char *locator, LOB_LOCATOR_STATE state)
-{
-  int tran_index;
-  LOG_TDES *tdes;
-  LOB_LOCATOR_ENTRY *entry;
-  LOB_SAVEPOINT_ENTRY *savept;
-  char *key;
-  size_t key_len;
-
-  assert (log_is_valid_locator (locator));
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes == NULL)
-    {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
-      return ER_LOG_UNKNOWN_TRANINDEX;
-    }
-
-  key = (char *) LOCATOR_KEY (locator);
-  key_len = strlen (key);
-
-  entry = (LOB_LOCATOR_ENTRY *) malloc (sizeof (LOB_LOCATOR_ENTRY) + key_len);
-  if (entry == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOB_LOCATOR_ENTRY) + key_len);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  savept = (LOB_SAVEPOINT_ENTRY *) malloc (sizeof (LOB_SAVEPOINT_ENTRY));
-  if (savept == NULL)
-    {
-      free_and_init (entry);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOB_SAVEPOINT_ENTRY));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  entry->top = savept;
-  entry->key = &entry->key_data[0];
-  memcpy (entry->key_data, key, key_len + 1);
-  entry->key_hash = (int) mht_5strhash (entry->key, INT_MAX);
-
-  savept->state = state;
-  savept->savept_lsa = LSA_LT (&tdes->savept_lsa, &tdes->topop_lsa) ? tdes->topop_lsa : tdes->savept_lsa;
-  savept->prev = NULL;
-  strlcpy (savept->locator, locator, sizeof (ES_URI));
-
-  /* Insert entry to the red-black tree (see base/rb_tree.h) */
-  RB_INSERT (lob_rb_root, &tdes->lob_locator_root, entry);
-
-  return NO_ERROR;
-}
-
-/*
- * xlog_change_state_of_locator
- *
- * return: error code
- *
- *   thread_p(in):
- *   locator(in):
- *   new_locator(in):
- *   state(in):
- *
- * NOTE:
- */
-int
-xlog_change_state_of_locator (THREAD_ENTRY * thread_p, const char *locator, const char *new_locator,
-			      LOB_LOCATOR_STATE state)
-{
-  int tran_index;
-  LOG_TDES *tdes;
-  LOB_LOCATOR_ENTRY *entry, find;
-
-  assert (log_is_valid_locator (locator));
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes == NULL)
-    {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
-      return ER_LOG_UNKNOWN_TRANINDEX;
-    }
-
-  find.key = (char *) LOCATOR_KEY (locator);
-  find.key_hash = (int) mht_5strhash (find.key, INT_MAX);
-  entry = RB_FIND (lob_rb_root, &tdes->lob_locator_root, &find);
-
-  if (entry != NULL)
-    {
-      LOG_LSA last_lsa;
-
-      last_lsa = LSA_GE (&tdes->savept_lsa, &tdes->topop_lsa) ? tdes->savept_lsa : tdes->topop_lsa;
-
-      /* if it is created prior to current savepoint, push the previous state in the savepoint list */
-      if (LSA_LT (&entry->top->savept_lsa, &last_lsa))
-	{
-	  LOB_SAVEPOINT_ENTRY *savept;
-
-	  savept = (LOB_SAVEPOINT_ENTRY *) malloc (sizeof (LOB_SAVEPOINT_ENTRY));
-	  if (savept == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOB_SAVEPOINT_ENTRY));
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-
-	  /* copy structure (avoid reduncant memory copy) */
-	  savept->state = entry->top->state;
-	  savept->savept_lsa = entry->top->savept_lsa;
-	  memcpy (savept->locator, entry->top->locator, strlen (entry->top->locator) + 1);
-	  savept->prev = entry->top;
-	  entry->top = savept;
-	}
-
-      /* set the current state */
-      if (new_locator != NULL)
-	{
-	  strlcpy (entry->top->locator, new_locator, sizeof (ES_URI));
-	}
-      entry->top->state = state;
-      entry->top->savept_lsa = last_lsa;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * xlog_drop_lob_locator -
- *
- * return: error code
- *
- *   thread_p(in):
- *   locator(in):
- *
- * NOTE:
- */
-int
-xlog_drop_lob_locator (THREAD_ENTRY * thread_p, const char *locator)
-{
-  int tran_index;
-  LOG_TDES *tdes;
-  LOB_LOCATOR_ENTRY *entry, find;
-
-  assert (log_is_valid_locator (locator));
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes == NULL)
-    {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
-      return ER_LOG_UNKNOWN_TRANINDEX;
-    }
-
-  find.key = (char *) LOCATOR_KEY (locator);
-  find.key_hash = (int) mht_5strhash (find.key, INT_MAX);
-  /* Remove entry that matches 'find' entry from the red-black tree. see base/rb_tree.h for more information */
-  entry = RB_FIND (lob_rb_root, &tdes->lob_locator_root, &find);
-  if (entry != NULL)
-    {
-      entry = RB_REMOVE (lob_rb_root, &tdes->lob_locator_root, entry);
-      if (entry != NULL)
-	{
-	  log_free_lob_locator (entry);
-	}
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * log_free_lob_locator -
- *
- * return: void
- *
- *   entry(in):
- *
- * NOTE:
- */
-static void
-log_free_lob_locator (LOB_LOCATOR_ENTRY * entry)
-{
-  while (entry->top != NULL)
-    {
-      LOB_SAVEPOINT_ENTRY *savept;
-
-      savept = entry->top;
-      entry->top = savept->prev;
-      free_and_init (savept);
-    }
-
-  free_and_init (entry);
-}
-
-#if 0
-static const char *
-lob_state_to_string (LOB_LOCATOR_STATE state)
-{
-  switch (state)
-    {
-    case LOB_TRANSIENT_CREATED:
-      return "LOB_TRANSIENT_CREATED";
-
-    case LOB_TRANSIENT_DELETED:
-      return "LOB_TRANSIENT_DELETED";
-
-    case LOB_PERMANENT_CREATED:
-      return "LOB_PERMANENT_CREATED";
-
-    case LOB_PERMANENT_DELETED:
-      return "LOB_PERMANENT_DELETED";
-
-    default:
-      return "LOB_UNKNOWN";
-    }
-}
-#endif
-
-/*
- * log_clear_lob_locator_list -
- *
- * return: void
- *
- *   thread_p(in):
- *   tdes(in):
- *   at_commit(in):
- *   savept_lsa(in): savepoint lsa to rollback
- *
- * NOTE:
- */
-void
-log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool at_commit, LOG_LSA * savept_lsa)
-{
-  LOB_LOCATOR_ENTRY *entry, *next;
-  bool need_to_delete;
-
-  if (tdes == NULL)
-    {
-      return;
-    }
-#if 0
-  er_log_debug (ARG_FILE_LINE, "log_clear_lob_locator_list");
-#endif
-
-  for (entry = RB_MIN (lob_rb_root, &tdes->lob_locator_root); entry != NULL; entry = next)
-    {
-#if 0
-      er_log_debug (ARG_FILE_LINE, "   locator=%s, state=%s\n, savept_lsa=(%d,%d)", entry->key,
-		    lob_state_to_string (entry->top->state), entry->top->savept_lsa.pageid,
-		    entry->top->savept_lsa.offset);
-#endif
-      /* setup next link before destroy */
-      next = RB_NEXT (lob_rb_root, &tdes->lob_locator_root, entry);
-
-      need_to_delete = false;
-
-      if (at_commit)
-	{
-	  if (entry->top->state != LOB_PERMANENT_CREATED)
-	    {
-	      need_to_delete = true;
-	    }
-	}
-      else			/* rollback */
-	{
-	  /* at partial rollback, pop the previous states in the savepoint list util it meets the rollback savepoint */
-	  if (savept_lsa != NULL)
-	    {
-	      LOB_SAVEPOINT_ENTRY *savept, *tmp;
-
-	      assert (entry->top != NULL);
-	      savept = entry->top->prev;
-
-	      while (savept != NULL)
-		{
-		  if (LSA_LT (&entry->top->savept_lsa, savept_lsa))
-		    {
-		      break;
-		    }
-
-		  /* rollback file renaming */
-		  if (strcmp (entry->top->locator, savept->locator) != 0)
-		    {
-		      char meta_name[DB_MAX_SCHEMA_LENGTH];
-
-		      assert (log_is_valid_locator (savept->locator));
-		      PUT_LOCATOR_META (meta_name, savept->locator);
-		      /* ignore return value */
-		      (void) es_rename_file (entry->top->locator, meta_name, savept->locator);
-		    }
-		  tmp = entry->top;
-		  entry->top = savept;
-		  savept = savept->prev;
-		  free_and_init (tmp);
-		}
-	    }
-
-	  /* delete the locator to be created */
-	  if ((savept_lsa == NULL || LSA_GE (&entry->top->savept_lsa, savept_lsa))
-	      && entry->top->state != LOB_TRANSIENT_DELETED)
-	    {
-	      need_to_delete = true;
-	    }
-	}
-
-      /* remove from the locator tree */
-      if (need_to_delete)
-	{
-#if defined (SERVER_MODE)
-	  if (at_commit && entry->top->state == LOB_PERMANENT_DELETED)
-	    {
-	      vacuum_notify_es_deleted (thread_p, entry->top->locator);
-	    }
-	  else
-	    {
-	      /* The file is created and rolled-back and it is not visible to anyone. Delete it directly without
-	       * notifying vacuum. */
-	      (void) es_delete_file (entry->top->locator);
-	    }
-#else /* !SERVER_MODE */
-	  /* SA_MODE */
-	  (void) es_delete_file (entry->top->locator);
-#endif /* !SERVER_MODE */
-	  RB_REMOVE (lob_rb_root, &tdes->lob_locator_root, entry);
-	  log_free_lob_locator (entry);
-	}
-    }
-
-  /* at the end of transaction, free the locator list */
-  if (savept_lsa == NULL)
-    {
-      for (entry = RB_MIN (lob_rb_root, &tdes->lob_locator_root); entry != NULL; entry = next)
-	{
-	  next = RB_NEXT (lob_rb_root, &tdes->lob_locator_root, entry);
-	  RB_REMOVE (lob_rb_root, &tdes->lob_locator_root, entry);
-	  log_free_lob_locator (entry);
-	}
-      assert (RB_EMPTY (&tdes->lob_locator_root));
-    }
-}
-
-/*
- * lob_locator_cmp - compare function used lob rb tree
- *
- * return: < 0, 0, > 0
- * e1(in): entry 1
- * e2(in): entry 2
- *
- * NOTE:
- *
- * Ordering relation of lob locator entry is defined as (key_hash, key).
- * Because it is very UNLIKELY in normal case that two different locators have same hash value, this compare function
- * is very efficient.
- *
- */
-static int
-lob_locator_cmp (const LOB_LOCATOR_ENTRY * e1, const LOB_LOCATOR_ENTRY * e2)
-{
-  if (e1->key_hash != e2->key_hash)
-    {
-      return e1->key_hash - e2->key_hash;
-    }
-  else
-    {
-      return strcmp (e1->key, e2->key);
-    }
-}
-
-/*
- * Below macro generates lob rb tree functions (see base/rb_tree.h)
- * Note: semi-colon is intentionally added to be more beautiful
- */
-RB_GENERATE_STATIC (lob_rb_root, lob_locator_entry, head, lob_locator_cmp);
 
 /*
  * log_commit_local - Perform the local commit operations of a transaction
@@ -5367,7 +4749,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 {
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, false);
 
-  /* log_clear_lob_locator_list and logtb_complete_mvcc operations must be done before entering unactive state because
+  /* tx_lob_locator_clear and logtb_complete_mvcc operations must be done before entering unactive state because
    * they do some logging. We must NOT log (or do other regular changes to the database) after the transaction enters
    * the unactive state because of the following scenario: 1. enter TRAN_UNACTIVE_WILL_COMMIT state 2. a checkpoint
    * occurs and finishes. All active transactions are saved in log including their state. Our transaction will be saved
@@ -5375,7 +4757,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
    * statistics, we will lost logging of unique statistics. 4. A recovery will occur. Because our transaction was saved
    * at checkpoint with TRAN_UNACTIVE_WILL_COMMIT state, it will be committed. Because we didn't logged the changes
    * made by the transaction we will not reflect the changes. They will be definitely lost. */
-  log_clear_lob_locator_list (thread_p, tdes, true, NULL);
+  tx_lob_locator_clear (thread_p, tdes, true, NULL);
 
   /* clear mvccid before releasing the locks. This operation must be done before do_postpone because it stores unique
    * statistics for all B-trees and if an error occurs those operations and all operations of current transaction must
@@ -5534,7 +4916,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
       /* There is no need to create a new transaction identifier */
     }
 
-  log_clear_lob_locator_list (thread_p, tdes, false, NULL);
+  tx_lob_locator_clear (thread_p, tdes, false, NULL);
 
   return tdes->state;
 }
@@ -5851,7 +5233,7 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA 
 
   log_cleanup_modified_class_list (thread_p, tdes, savept_lsa, false, true);
 
-  log_clear_lob_locator_list (thread_p, tdes, false, savept_lsa);
+  tx_lob_locator_clear (thread_p, tdes, false, savept_lsa);
 
   /*
    * The following is done so that if we go over several savepoints, they

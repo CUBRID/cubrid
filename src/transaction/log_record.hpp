@@ -27,6 +27,7 @@
 // todo - this should not be exposed to client after HA refactoring
 // todo - add to a proper namespace
 
+#include "client_credentials.hpp"
 #include "log_lsa.hpp"
 #include "recovery.h"
 #include "storage_common.h"
@@ -235,6 +236,172 @@ struct log_rec_donetime
   INT64 at_time;		/* Database creation time. For safety reasons */
 };
 
+/* Log the change of the server's HA state */
+typedef struct log_rec_ha_server_state LOG_REC_HA_SERVER_STATE;
+struct log_rec_ha_server_state
+{
+  int state;			/* ha_Server_state */
+  int dummy;			/* dummy for alignment */
+
+  INT64 at_time;		/* time recorded by active server */
+};
+
+/* Information of database external redo log records */
+typedef struct log_rec_dbout_redo LOG_REC_DBOUT_REDO;
+struct log_rec_dbout_redo
+{
+  LOG_RCVINDEX rcvindex;	/* Index to recovery function */
+  int length;			/* Length of redo data */
+};
+
+/* Information of a compensating log records */
+typedef struct log_rec_compensate LOG_REC_COMPENSATE;
+struct log_rec_compensate
+{
+  LOG_DATA data;		/* Location of recovery data */
+  LOG_LSA undo_nxlsa;		/* Address of next log record to undo */
+  int length;			/* Length of compensating data */
+};
+
+/* This entry is included during commit */
+typedef struct log_rec_start_postpone LOG_REC_START_POSTPONE;
+struct log_rec_start_postpone
+{
+  LOG_LSA posp_lsa;
+};
+
+/* types of end system operation */
+enum log_sysop_end_type
+{
+  LOG_SYSOP_END_COMMIT,		/* permanent changes */
+  LOG_SYSOP_END_ABORT,		/* aborted system op */
+  LOG_SYSOP_END_LOGICAL_UNDO,	/* logical undo */
+  LOG_SYSOP_END_LOGICAL_MVCC_UNDO,	/* logical mvcc undo */
+  LOG_SYSOP_END_LOGICAL_COMPENSATE,	/* logical compensate */
+  LOG_SYSOP_END_LOGICAL_RUN_POSTPONE	/* logical run postpone */
+};
+typedef enum log_sysop_end_type LOG_SYSOP_END_TYPE;
+#define LOG_SYSOP_END_TYPE_CHECK(type) \
+  assert ((type) == LOG_SYSOP_END_COMMIT \
+          || (type) == LOG_SYSOP_END_ABORT \
+          || (type) == LOG_SYSOP_END_LOGICAL_UNDO \
+          || (type) == LOG_SYSOP_END_LOGICAL_MVCC_UNDO \
+          || (type) == LOG_SYSOP_END_LOGICAL_COMPENSATE \
+          || (type) == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
+
+/* end system operation log record */
+typedef struct log_rec_sysop_end LOG_REC_SYSOP_END;
+struct log_rec_sysop_end
+{
+  LOG_LSA lastparent_lsa;	/* last address before the top action */
+  LOG_LSA prv_topresult_lsa;	/* previous top action (either, partial abort or partial commit) address */
+  LOG_SYSOP_END_TYPE type;	/* end system op type */
+  union				/* other info based on type */
+  {
+    LOG_REC_UNDO undo;		/* undo data for logical undo */
+    LOG_REC_MVCC_UNDO mvcc_undo;	/* undo data for logical undo of MVCC operation */
+    LOG_LSA compensate_lsa;	/* compensate lsa for logical compensate */
+    struct
+    {
+      LOG_LSA postpone_lsa;	/* postpone lsa */
+      bool is_sysop_postpone;	/* true if run postpone is used during a system op postpone, false if used during
+				 * transaction postpone */
+    } run_postpone;		/* run postpone info */
+  };
+};
+
+/* This entry is included during the commit of top system operations */
+typedef struct log_rec_sysop_start_postpone LOG_REC_SYSOP_START_POSTPONE;
+struct log_rec_sysop_start_postpone
+{
+  LOG_REC_SYSOP_END sysop_end;	/* log record used for end of system operation */
+  LOG_LSA posp_lsa;		/* address where the first postpone operation start */
+};
+
+/* Information of execution of a postpone data */
+typedef struct log_rec_run_postpone LOG_REC_RUN_POSTPONE;
+struct log_rec_run_postpone
+{
+  LOG_DATA data;		/* Location of recovery data */
+  LOG_LSA ref_lsa;		/* Address of the original postpone record */
+  int length;			/* Length of redo data */
+};
+
+/* A checkpoint record */
+typedef struct log_rec_chkpt LOG_REC_CHKPT;
+struct log_rec_chkpt
+{
+  LOG_LSA redo_lsa;		/* Oldest LSA of dirty data page in page buffers */
+  int ntrans;			/* Number of active transactions */
+  int ntops;			/* Total number of system operations */
+};
+
+/* Transaction descriptor */
+typedef struct log_info_chkpt_trans LOG_INFO_CHKPT_TRANS;
+struct log_info_chkpt_trans
+{
+  int isloose_end;
+  TRANID trid;			/* Transaction identifier */
+  TRAN_STATE state;		/* Transaction state (e.g., Active, aborted) */
+  LOG_LSA head_lsa;		/* First log address of transaction */
+  LOG_LSA tail_lsa;		/* Last log record address of transaction */
+  LOG_LSA undo_nxlsa;		/* Next log record address of transaction for UNDO purposes. Needed since compensating
+				 * log records are logged during UNDO */
+  LOG_LSA posp_nxlsa;		/* First address of a postpone record */
+  LOG_LSA savept_lsa;		/* Address of last savepoint */
+  LOG_LSA tail_topresult_lsa;	/* Address of last partial abort/commit */
+  LOG_LSA start_postpone_lsa;	/* Address of start postpone (if transaction was doing postpone during checkpoint) */
+  char user_name[LOG_USERNAME_MAX];	/* Name of the client */
+
+};
+
+typedef struct log_info_chkpt_sysop LOG_INFO_CHKPT_SYSOP;
+struct log_info_chkpt_sysop
+{
+  TRANID trid;			/* Transaction identifier */
+  LOG_LSA sysop_start_postpone_lsa;	/* saved lsa of system op start postpone log record */
+  LOG_LSA atomic_sysop_start_lsa;	/* saved lsa of atomic system op start */
+};
+
+typedef struct log_rec_savept LOG_REC_SAVEPT;
+struct log_rec_savept
+{
+  LOG_LSA prv_savept;		/* Previous savepoint record */
+  int length;			/* Savepoint name */
+};
+
+/* Log a prepare to commit record */
+typedef struct log_rec_2pc_prepcommit LOG_REC_2PC_PREPCOMMIT;
+struct log_rec_2pc_prepcommit
+{
+  char user_name[DB_MAX_USER_LENGTH + 1];	/* Name of the client */
+  int gtrid;			/* Identifier of the global transaction */
+  int gtrinfo_length;		/* length of the global transaction info */
+  unsigned int num_object_locks;	/* Total number of update-type locks acquired by this transaction on the
+					 * objects. */
+  unsigned int num_page_locks;	/* Total number of update-type locks acquired by this transaction on the pages. */
+};
+
+/* Start 2PC protocol. Record information about identifiers of participants. */
+typedef struct log_rec_2pc_start LOG_REC_2PC_START;
+struct log_rec_2pc_start
+{
+  char user_name[DB_MAX_USER_LENGTH + 1];	/* Name of the client */
+  int gtrid;			/* Identifier of the global tran */
+  int num_particps;		/* number of participants */
+  int particp_id_length;	/* length of a participant identifier */
+};
+
+/*
+ * Log the acknowledgment from a participant that it received the commit/abort
+ * decision
+ */
+typedef struct log_rec_2pc_particp_ack LOG_REC_2PC_PARTICP_ACK;
+struct log_rec_2pc_particp_ack
+{
+  int particp_index;		/* Index of the acknowledging participant */
+};
+
 #define LOG_GET_LOG_RECORD_HEADER(log_page_p, lsa) \
   ((LOG_RECORD_HEADER *) ((log_page_p)->area + (lsa)->offset))
 
@@ -262,15 +429,5 @@ struct log_rec_donetime
    || ((type) == LOG_MVCC_REDO_DATA) \
    || ((type) == LOG_MVCC_UNDOREDO_DATA) \
    || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
-
-/* Log the change of the server's HA state */
-typedef struct log_rec_ha_server_state LOG_REC_HA_SERVER_STATE;
-struct log_rec_ha_server_state
-{
-  int state;			/* ha_Server_state */
-  int dummy;			/* dummy for alignment */
-
-  INT64 at_time;		/* time recorded by active server */
-};
 
 #endif // _LOG_RECORD_HPP_

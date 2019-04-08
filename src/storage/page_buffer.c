@@ -250,84 +250,6 @@ typedef enum
 #define PGBUF_BCB_COUNT_FIX_SHIFT_BITS          16
 #define PGBUF_BCB_AVOID_DEALLOC_MASK            ((int) 0x0000FFFF)
 
-/************************************************************************/
-/* Page buffer LRU section                                              */
-/************************************************************************/
-#define PGBUF_GET_LRU_LIST(lru_idx) (&pgbuf_Pool.buf_LRU_list[lru_idx])
-
-#define PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE(bcb) (pgbuf_bcb_get_zone (bcb) == PGBUF_LRU_3_ZONE)
-#define PGBUF_IS_BCB_IN_LRU(bcb) ((pgbuf_bcb_get_zone (bcb) & PGBUF_LRU_ZONE_MASK) != 0)
-
-/* How old is a BCB (bcb_age) related to age of list to which it belongs */
-#define PGBUF_AGE_DIFF(bcb_age,list_age) \
-  (((list_age) >= (bcb_age)) ? ((list_age) - (bcb_age)) : (DB_INT32_MAX - ((bcb_age) - (list_age))))
-/* is bcb old enough. we use it as indicator of the buffer lru zone. when bcb falls more than half of this buffer zone,
- * it is considered old */
-#define PGBUF_IS_BCB_OLD_ENOUGH(bcb, lru_list) \
-  (PGBUF_AGE_DIFF ((bcb)->tick_lru_list, (lru_list)->tick_list) >= ((lru_list)->count_lru2 / 2))
-/* zone counts & thresholds */
-#define PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) ((list)->count_lru1 + (list)->count_lru2)
-#define PGBUF_LRU_LIST_COUNT(list) (PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) + (list)->count_lru3)
-#define PGBUF_LRU_VICTIM_ZONE_COUNT(list) ((list)->count_lru3)
-
-#define PGBUF_LRU_IS_ZONE_ONE_OVER_THRESHOLD(list) ((list)->threshold_lru1 < (list)->count_lru1)
-#define PGBUF_LRU_IS_ZONE_TWO_OVER_THRESHOLD(list) ((list)->threshold_lru2 < (list)->count_lru2)
-#define PGBUF_LRU_ARE_ZONES_ONE_TWO_OVER_THRESHOLD(list) \
-  ((list)->threshold_lru1 + (list)->threshold_lru2 < PGBUF_LRU_ZONE_ONE_TWO_COUNT(list))
-
-/* macros for retrieving info on shared and private LRUs */
-
-/* Limits for private chains */
-#define PGBUF_PRIVATE_LRU_MIN_COUNT 4
-#define PGBUF_PRIVATE_LRU_MAX_HARD_QUOTA 5000
-
-/* Lower limit for number of pages in shared LRUs: used to compute number of private lists and number of shared lists */
-#define PGBUF_MIN_PAGES_IN_SHARED_LIST 1000
-#define PGBUF_MIN_SHARED_LIST_ADJUST_SIZE 50
-
-#define PGBUF_PAGE_QUOTA_IS_ENABLED (pgbuf_Pool.quota.num_private_LRU_list > 0)
-
-/* macros for retrieving id of private chains of thread (to use actual LRU index use PGBUF_LRU_INDEX_FROM_PRIVATE on
- * this result.
- */
-#if defined (SERVER_MODE)
-#define PGBUF_PRIVATE_LRU_FROM_THREAD(thread_p) \
-  ((thread_p) != NULL) ? ((thread_p)->private_lru_index) : (0)
-#define PGBUF_THREAD_HAS_PRIVATE_LRU(thread_p) \
-  (PGBUF_PAGE_QUOTA_IS_ENABLED && (thread_p) != NULL && (thread_p)->private_lru_index != -1)
-#else
-#define PGBUF_PRIVATE_LRU_FROM_THREAD(thread_p) 0
-#define PGBUF_THREAD_HAS_PRIVATE_LRU(thread_p) false
-#endif
-
-#define PGBUF_SHARED_LRU_COUNT (pgbuf_Pool.num_LRU_list)
-#define PGBUF_PRIVATE_LRU_COUNT (pgbuf_Pool.quota.num_private_LRU_list)
-#define PGBUF_TOTAL_LRU_COUNT (PGBUF_SHARED_LRU_COUNT + PGBUF_PRIVATE_LRU_COUNT)
-
-#define PGBUF_PRIVATE_LIST_FROM_LRU_INDEX(i) ((i) - PGBUF_SHARED_LRU_COUNT)
-#define PGBUF_LRU_INDEX_FROM_PRIVATE(private_id) (PGBUF_SHARED_LRU_COUNT + (private_id))
-
-#define PGBUF_IS_SHARED_LRU_INDEX(lru_idx) ((lru_idx) < PGBUF_SHARED_LRU_COUNT)
-#define PGBUF_IS_PRIVATE_LRU_INDEX(lru_idx) ((lru_idx) >= PGBUF_SHARED_LRU_COUNT)
-
-#define PGBUF_LRU_LIST_IS_OVER_QUOTA(list) (PGBUF_LRU_LIST_COUNT (list) > (list)->quota)
-#define PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA(list) ((PGBUF_LRU_ZONE_ONE_TWO_COUNT (list) > (list)->quota))
-#define PGBUF_LRU_LIST_OVER_QUOTA_COUNT(list) (PGBUF_LRU_LIST_COUNT (list) - (list)->quota)
-
-#define PGBUF_IS_PRIVATE_LRU_OVER_QUOTA(lru_idx) \
-  (PGBUF_IS_PRIVATE_LRU_INDEX (lru_idx) && PGBUF_LRU_LIST_IS_OVER_QUOTA (PGBUF_GET_LRU_LIST (lru_idx)))
-#define PGBUF_IS_PRIVATE_LRU_ONE_TWO_OVER_QUOTA(lru_idx) \
-  (PGBUF_IS_PRIVATE_LRU_INDEX (lru_idx) && PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (PGBUF_GET_LRU_LIST (lru_idx)))
-
-#define PGBUF_OVER_QUOTA_BUFFER(quota) MAX (10, (int) (quota * 0.01f))
-#define PGBUF_LRU_LIST_IS_OVER_QUOTA_WITH_BUFFER(list) \
-  (PGBUF_LRU_LIST_COUNT (list) > (list)->quota + PGBUF_OVER_QUOTA_BUFFER ((list)->quota))
-
-#define PBGUF_BIG_PRIVATE_MIN_SIZE 100
-
-/* LRU flags */
-#define PGBUF_LRU_VICTIM_LFCQ_FLAG ((int) 0x80000000)
-
 /* Activity on each LRU is probed and cumulated;
  * to avoid long history cumulation effect, the activity indicator is limited (PGBUF_TRAN_MAX_ACTIVITY);
  * Inactivity threshold is defined: private LRU dropping beneath this threshold are destroyed and its BCBs will be
@@ -888,6 +810,87 @@ struct pgbuf_fix_perf
   UINT64 holder_wait_time;
   UINT64 fix_wait_time;
 };
+
+/************************************************************************/
+/* Page buffer LRU section                                              */
+/************************************************************************/
+#define PGBUF_GET_LRU_LIST(lru_idx) (&pgbuf_Pool.buf_LRU_list[lru_idx])
+
+#define PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE(bcb) (pgbuf_bcb_get_zone (bcb) == PGBUF_LRU_3_ZONE)
+#define PGBUF_IS_BCB_IN_LRU(bcb) ((pgbuf_bcb_get_zone (bcb) & PGBUF_LRU_ZONE_MASK) != 0)
+
+/* How old is a BCB (bcb_age) related to age of list to which it belongs */
+#define PGBUF_AGE_DIFF(bcb_age,list_age) \
+  (((list_age) >= (bcb_age)) ? ((list_age) - (bcb_age)) : (DB_INT32_MAX - ((bcb_age) - (list_age))))
+/* is bcb old enough. we use it as indicator of the buffer lru zone. when bcb falls more than half of this buffer zone,
+ * it is considered old */
+#define PGBUF_IS_BCB_OLD_ENOUGH(bcb, lru_list) \
+  (PGBUF_AGE_DIFF ((bcb)->tick_lru_list, (lru_list)->tick_list) >= ((lru_list)->count_lru2 / 2))
+/* zone counts & thresholds */
+#define PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) ((list)->count_lru1 + (list)->count_lru2)
+#define PGBUF_LRU_LIST_COUNT(list) (PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) + (list)->count_lru3)
+#define PGBUF_LRU_VICTIM_ZONE_COUNT(list) ((list)->count_lru3)
+
+#define PGBUF_LRU_IS_ZONE_ONE_OVER_THRESHOLD(list) ((list)->threshold_lru1 < (list)->count_lru1)
+#define PGBUF_LRU_IS_ZONE_TWO_OVER_THRESHOLD(list) ((list)->threshold_lru2 < (list)->count_lru2)
+#define PGBUF_LRU_ARE_ZONES_ONE_TWO_OVER_THRESHOLD(list) \
+  ((list)->threshold_lru1 + (list)->threshold_lru2 < PGBUF_LRU_ZONE_ONE_TWO_COUNT(list))
+
+/* macros for retrieving info on shared and private LRUs */
+
+/* Limits for private chains */
+#define PGBUF_PRIVATE_LRU_MIN_COUNT 4
+#define PGBUF_PRIVATE_LRU_MAX_HARD_QUOTA 5000
+
+/* Lower limit for number of pages in shared LRUs: used to compute number of private lists and number of shared lists */
+#define PGBUF_MIN_PAGES_IN_SHARED_LIST 1000
+#define PGBUF_MIN_SHARED_LIST_ADJUST_SIZE 50
+
+#define PGBUF_PAGE_QUOTA_IS_ENABLED (pgbuf_Pool.quota.num_private_LRU_list > 0)
+
+/* macros for retrieving id of private chains of thread (to use actual LRU index use PGBUF_LRU_INDEX_FROM_PRIVATE on
+ * this result.
+ */
+#if defined (SERVER_MODE)
+#define PGBUF_PRIVATE_LRU_FROM_THREAD(thread_p) \
+  ((thread_p) != NULL) ? ((thread_p)->private_lru_index) : (0)
+static bool
+PGBUF_THREAD_HAS_PRIVATE_LRU (THREAD_ENTRY * thread_p)
+{
+  return PGBUF_PAGE_QUOTA_IS_ENABLED && (thread_p) != NULL && (thread_p)->private_lru_index != -1;
+}
+#else
+#define PGBUF_PRIVATE_LRU_FROM_THREAD(thread_p) 0
+#define PGBUF_THREAD_HAS_PRIVATE_LRU(thread_p) false
+#endif
+
+#define PGBUF_SHARED_LRU_COUNT (pgbuf_Pool.num_LRU_list)
+#define PGBUF_PRIVATE_LRU_COUNT (pgbuf_Pool.quota.num_private_LRU_list)
+#define PGBUF_TOTAL_LRU_COUNT (PGBUF_SHARED_LRU_COUNT + PGBUF_PRIVATE_LRU_COUNT)
+
+#define PGBUF_PRIVATE_LIST_FROM_LRU_INDEX(i) ((i) - PGBUF_SHARED_LRU_COUNT)
+#define PGBUF_LRU_INDEX_FROM_PRIVATE(private_id) (PGBUF_SHARED_LRU_COUNT + (private_id))
+
+#define PGBUF_IS_SHARED_LRU_INDEX(lru_idx) ((lru_idx) < PGBUF_SHARED_LRU_COUNT)
+#define PGBUF_IS_PRIVATE_LRU_INDEX(lru_idx) ((lru_idx) >= PGBUF_SHARED_LRU_COUNT)
+
+#define PGBUF_LRU_LIST_IS_OVER_QUOTA(list) (PGBUF_LRU_LIST_COUNT (list) > (list)->quota)
+#define PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA(list) ((PGBUF_LRU_ZONE_ONE_TWO_COUNT (list) > (list)->quota))
+#define PGBUF_LRU_LIST_OVER_QUOTA_COUNT(list) (PGBUF_LRU_LIST_COUNT (list) - (list)->quota)
+
+#define PGBUF_IS_PRIVATE_LRU_OVER_QUOTA(lru_idx) \
+  (PGBUF_IS_PRIVATE_LRU_INDEX (lru_idx) && PGBUF_LRU_LIST_IS_OVER_QUOTA (PGBUF_GET_LRU_LIST (lru_idx)))
+#define PGBUF_IS_PRIVATE_LRU_ONE_TWO_OVER_QUOTA(lru_idx) \
+  (PGBUF_IS_PRIVATE_LRU_INDEX (lru_idx) && PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (PGBUF_GET_LRU_LIST (lru_idx)))
+
+#define PGBUF_OVER_QUOTA_BUFFER(quota) MAX (10, (int) (quota * 0.01f))
+#define PGBUF_LRU_LIST_IS_OVER_QUOTA_WITH_BUFFER(list) \
+  (PGBUF_LRU_LIST_COUNT (list) > (list)->quota + PGBUF_OVER_QUOTA_BUFFER ((list)->quota))
+
+#define PBGUF_BIG_PRIVATE_MIN_SIZE 100
+
+/* LRU flags */
+#define PGBUF_LRU_VICTIM_LFCQ_FLAG ((int) 0x80000000)
 
 #if defined (NDEBUG)
 /* note: release bugs can be hard to debug due to compile optimization. the crash call-stack may point to a completely
@@ -8227,7 +8230,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
       current_consume_cursor = pgbuf_Pool.shared_lrus_with_victims->get_consumer_cursor ();
     }
   while (!has_flush_thread && !pgbuf_Pool.shared_lrus_with_victims->is_empty ()
-	 && ((current_consume_cursor - initial_consume_cursor) <= pgbuf_Pool.num_LRU_list)
+	 && ((int) (current_consume_cursor - initial_consume_cursor) <= pgbuf_Pool.num_LRU_list)
 	 && (++nloops <= pgbuf_Pool.num_LRU_list));
   /* todo: maybe we can find a less complicated condition of looping. Probably no need to use nloops <= pgbuf_Pool.num_LRU_list. */
   if (detailed_perf)

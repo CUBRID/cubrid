@@ -246,12 +246,16 @@ set(QUERY_HEADERS
 
 set(OBJECT_SOURCES
   ${OBJECT_DIR}/elo.c
-  ${OBJECT_DIR}/set_object.c
-  ${OBJECT_DIR}/object_representation.c
-  ${OBJECT_DIR}/object_primitive.c
-  ${OBJECT_DIR}/transform.c
+  ${OBJECT_DIR}/lob_locator.cpp
   ${OBJECT_DIR}/object_domain.c
+  ${OBJECT_DIR}/object_primitive.c
+  ${OBJECT_DIR}/object_representation.c
+  ${OBJECT_DIR}/set_object.c
+  ${OBJECT_DIR}/transform.c
   )
+set(OBJECT_HEADERS
+  ${OBJECT_DIR}/lob_locator.hpp
+)
   
 set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/log_consumer.cpp
@@ -288,6 +292,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/recovery.c
   ${TRANSACTION_DIR}/replication.c
   ${TRANSACTION_DIR}/transaction_sr.c
+  ${TRANSACTION_DIR}/transaction_transient.cpp
   ${TRANSACTION_DIR}/wait_for_graph.c
   )
 set(TRANSACTION_HEADERS
@@ -302,6 +307,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_system_tran.hpp
   ${TRANSACTION_DIR}/log_volids.hpp
   ${TRANSACTION_DIR}/transaction_global.hpp
+  ${TRANSACTION_DIR}/transaction_transient.hpp
   )
 
 set(STORAGE_SOURCES
@@ -342,6 +348,7 @@ set(XASL_SOURCES
   ${XASL_DIR}/xasl_analytic.cpp
   ${XASL_DIR}/xasl_predicate.cpp
   ${XASL_DIR}/xasl_stream.cpp
+  ${XASL_DIR}/xasl_unpack_info.cpp
   )
 set(XASL_HEADERS
   ${XASL_DIR}/access_json_table.hpp
@@ -349,6 +356,7 @@ set(XASL_HEADERS
   ${XASL_DIR}/compile_context.h
   ${XASL_DIR}/xasl_aggregate.hpp
   ${XASL_DIR}/xasl_analytic.hpp
+  ${XASL_DIR}/xasl_unpack_info.hpp
   ${XASL_DIR}/xasl_predicate.hpp
   ${XASL_DIR}/xasl_stream.hpp
   )
@@ -431,6 +439,7 @@ set (CUBRID_LIB_HEADERS
   ${COMMUNICATION_HEADERS}
   ${COMPAT_HEADERS}
   ${MONITOR_HEADERS}
+  ${OBJECT_HEADERS}
   ${QUERY_HEADERS}
   ${REPLICATION_HEADERS}
   ${STORAGE_HEADERS}

@@ -246,6 +246,7 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/class_description.cpp
   ${OBJECT_DIR}/class_object.c
   ${OBJECT_DIR}/elo.c
+  ${OBJECT_DIR}/lob_locator.cpp
   ${OBJECT_DIR}/object_description.cpp
   ${OBJECT_DIR}/object_domain.c
   ${OBJECT_DIR}/object_accessor.c
@@ -266,6 +267,9 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/virtual_object.c
   ${OBJECT_DIR}/work_space.c
   )
+set(OBJECT_HEADERS
+  ${OBJECT_DIR}/lob_locator.hpp
+)
 
 set (REPLICATION_HEADERS
   ${REPLICATION_DIR}/log_generator.hpp
@@ -341,6 +345,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/recovery.c
   ${TRANSACTION_DIR}/transaction_cl.c
   ${TRANSACTION_DIR}/transaction_sr.c
+  ${TRANSACTION_DIR}/transaction_transient.cpp
   ${TRANSACTION_DIR}/wait_for_graph.c
   )
 set(TRANSACTION_HEADERS
@@ -355,6 +360,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_system_tran.hpp
   ${TRANSACTION_DIR}/log_volids.hpp
   ${TRANSACTION_DIR}/transaction_global.hpp
+  ${TRANSACTION_DIR}/transaction_transient.hpp
   )
 
 set(STORAGE_SOURCES
@@ -397,6 +403,7 @@ set(XASL_SOURCES
   ${XASL_DIR}/xasl_analytic.cpp
   ${XASL_DIR}/xasl_predicate.cpp
   ${XASL_DIR}/xasl_stream.cpp
+  ${XASL_DIR}/xasl_unpack_info.cpp
   )
 set(XASL_HEADERS
   ${XASL_DIR}/access_json_table.hpp
@@ -404,6 +411,7 @@ set(XASL_HEADERS
   ${XASL_DIR}/compile_context.h
   ${XASL_DIR}/xasl_aggregate.hpp
   ${XASL_DIR}/xasl_analytic.hpp
+  ${XASL_DIR}/xasl_unpack_info.hpp
   ${XASL_DIR}/xasl_predicate.hpp
   ${XASL_DIR}/xasl_stream.hpp
   )
@@ -500,36 +508,37 @@ SET_SOURCE_FILES_PROPERTIES(
   )
 
 add_library(cubridsa SHARED
-  ${EXECUTABLE_SOURCES}
-  ${COMPAT_SOURCES}
-  ${BASE_SOURCES}
   ${BASE_HEADERS}
-  ${HEAPLAYER_SOURCES}
+  ${BASE_SOURCES}
+  ${COMMUNICATION_SOURCES}
+  ${COMPAT_SOURCES}
+  ${COMPAT_SOURCES_C}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
-  ${COMMUNICATION_SOURCES}
-  ${PARSER_SOURCES}
-  ${PARSER_HEADERS}
+  ${ES_SOURCES}
+  ${EXECUTABLE_SOURCES}
+  ${HEAPLAYER_SOURCES}
+  ${JSP_SOURCES}
+  ${OBJECT_HEADERS}
+  ${OBJECT_SOURCES}
   ${OPTIMIZER_SOURCES}
   ${QUERY_HEADERS}
   ${QUERY_SOURCES}
-  ${OBJECT_SOURCES}
+  ${PARSER_HEADERS}
+  ${PARSER_SOURCES}
+  ${PROBES_OBJECT}
   ${REPLICATION_HEADERS}
   ${REPLICATION_SOURCES}
   ${STREAM_HEADERS}  
   ${STREAM_SOURCES}
-  ${JSP_SOURCES}
   ${THREAD_SOURCES}
-  ${TRANSACTION_SOURCES}
   ${TRANSACTION_HEADERS}
+  ${TRANSACTION_SOURCES}
+  ${SESSION_SOURCES}
   ${STORAGE_HEADERS}
   ${STORAGE_SOURCES}
-  ${ES_SOURCES}
-  ${SESSION_SOURCES}
-  ${PROBES_OBJECT}
-  ${COMPAT_SOURCES_C}
-  ${XASL_SOURCES}
   ${XASL_HEADERS}
+  ${XASL_SOURCES}
   )
 set_target_properties(cubridsa PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 

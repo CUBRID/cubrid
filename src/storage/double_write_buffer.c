@@ -3603,8 +3603,9 @@ start:
   /* Check whether the initial block was flushed */
 check_flushed_blocks:
 
+  assert (initial_block_no >= 0);
   if ((ATOMIC_INC_32 (&dwb_Global.blocks_flush_counter, 0) > 0)
-      && (ATOMIC_INC_32 (&dwb_Global.next_block_to_flush, 0) == initial_block_no)
+      && (ATOMIC_INC_32 (&dwb_Global.next_block_to_flush, 0) == (unsigned int) initial_block_no)
       && (ATOMIC_INC_32 (&dwb_Global.blocks[initial_block_no].count_wb_pages, 0) == DWB_BLOCK_NUM_PAGES))
     {
       /* The initial block is currently flushing, wait for it. */

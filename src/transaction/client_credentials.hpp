@@ -88,6 +88,8 @@ struct clientids : public cubpacking::packable_object
     virtual void pack (cubpacking::packer &serializator) const override;
     virtual void unpack (cubpacking::unpacker &deserializator) override;
 
+    static const char *UNKNOWN_ID;
+
   private:
     void set_client_info (const char *client_info);
     void set_program_name (const char *program_name);

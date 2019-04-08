@@ -23,6 +23,7 @@
 #include "log_compress.h"
 #include "log_impl.h"
 #include "log_manager.h"
+#include "log_record.hpp"
 #include "lzo/lzoconf.h"
 #include "page_buffer.h"
 #include "perf_monitor.h"
@@ -39,7 +40,11 @@ static char *log_data_ptr = NULL;
 static int log_data_length = 0;
 #endif
 
-const size_t LOG_PRIOR_LSA_LAST_APPEND_OFFSET = LOGAREA_SIZE;
+size_t
+LOG_PRIOR_LSA_LAST_APPEND_OFFSET ()
+{
+  return LOGAREA_SIZE;
+}
 
 static void log_prior_lsa_append_align ();
 static void log_prior_lsa_append_advance_when_doesnot_fit (size_t length);
@@ -1489,7 +1494,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
     {
       log_Gl.prior_info.prior_lsa_mutex.unlock ();
 
-      if (log_Gl.prior_info.list_size >= (int) logpb_get_memsize ())
+      if (log_Gl.prior_info.list_size >= (INT64) logpb_get_memsize ())
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_PRIOR_LSA_LIST_MAXED);
 
@@ -1605,7 +1610,7 @@ prior_lsa_end_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node)
 static void
 prior_lsa_append_data (int length)
 {
-  int copy_length;		/* Amount of contiguos data that can be copied */
+  int copy_length;		/* Amount of contiguous data that can be copied */
   int current_offset;
   int last_offset;
 
@@ -1621,7 +1626,7 @@ prior_lsa_append_data (int length)
   log_prior_lsa_append_align ();
 
   current_offset = (int) log_Gl.prior_info.prior_lsa.offset;
-  last_offset = (int) LOG_PRIOR_LSA_LAST_APPEND_OFFSET;
+  last_offset = (int) LOG_PRIOR_LSA_LAST_APPEND_OFFSET ();
 
   /* Does data fit completely in current page ? */
   if ((current_offset + length) >= last_offset)
@@ -1637,7 +1642,7 @@ prior_lsa_append_data (int length)
 	      log_Gl.prior_info.prior_lsa.offset = 0;
 
 	      current_offset = 0;
-	      last_offset = (int) LOG_PRIOR_LSA_LAST_APPEND_OFFSET;
+	      last_offset = (int) LOG_PRIOR_LSA_LAST_APPEND_OFFSET ();
 	    }
 	  /* Find the amount of contiguous data that can be copied */
 	  if (current_offset + length >= last_offset)
