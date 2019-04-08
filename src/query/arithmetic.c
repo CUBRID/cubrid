@@ -6279,6 +6279,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
   JSON_DOC *result_json = nullptr;
   if (paths.size () == 1)
     {
+      // todo: can we remove this?
       error_code = db_json_path_unquote_object_keys_external (paths[0]);
       if (error_code != NO_ERROR)
 	{
@@ -6307,6 +6308,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
   result_json_owner.create_mutable_reference ();
   for (std::size_t i = 0; i < paths.size (); ++i)
     {
+      // todo: can we remove this?
       error_code = db_json_path_unquote_object_keys_external (paths[i]);
       if (error_code != NO_ERROR)
 	{

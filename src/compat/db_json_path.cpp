@@ -152,6 +152,7 @@ db_json_path_quote_and_validate_unquoted_object_key (std::string &path, std::siz
   return validation_result;
 }
 
+// todo: remove this guy
 std::string
 db_string_unquote (const std::string &path)
 {
@@ -856,13 +857,12 @@ JSON_PATH::set (JSON_VALUE &jd, const JSON_VALUE &jv, JSON_PRIVATE_MEMPOOL &allo
 	}
       else if (val->IsObject ())
 	{
-	  assert (tkn.get_object_key ().length () >= 2);
-	  std::string unquoted_key = tkn.get_object_key ().substr (1, tkn.get_object_key ().length () - 2);
-	  JSON_VALUE::MemberIterator m = val->FindMember (unquoted_key.c_str ());
+	  std::string encoded_key = db_json_encode_rapidjson_str (tkn.get_object_key ()).c_str ();
+	  JSON_VALUE::MemberIterator m = val->FindMember (encoded_key.c_str ());
 	  if (m == val->MemberEnd ())
 	    {
 	      // insert dummy
-	      val->AddMember (JSON_VALUE (unquoted_key.c_str (), (rapidjson::SizeType) unquoted_key.length (), allocator),
+	      val->AddMember (JSON_VALUE (encoded_key.c_str (), (rapidjson::SizeType) encoded_key.length (), allocator),
 			      JSON_VALUE ().SetNull (), allocator);
 
 	      val = & (--val->MemberEnd ())->value; // Assume AddMember() appends at the end
@@ -916,10 +916,7 @@ JSON_PATH::get (const JSON_DOC &jd) const
 	    {
 	      return NULL;
 	    }
-
-	  assert (tkn.get_object_key ().length () >= 2);
-	  std::string unquoted_key = db_string_unquote (tkn.get_object_key ());
-	  JSON_VALUE::ConstMemberIterator m = val->FindMember (unquoted_key.c_str ());
+	  JSON_VALUE::ConstMemberIterator m = val->FindMember (db_json_encode_rapidjson_str (tkn.get_object_key ()).c_str ());
 	  if (m == val->MemberEnd ())
 	    {
 	      return NULL;
@@ -1064,9 +1061,7 @@ JSON_PATH::erase (JSON_DOC &jd) const
 	{
 	  return false;
 	}
-      assert (tkn.get_object_key ().length () >= 2);
-      std::string unescaped = tkn.get_object_key ().substr (1, tkn.get_object_key ().length () - 2);
-      return value->EraseMember (unescaped.c_str ());
+      return value->EraseMember (db_json_encode_rapidjson_str (tkn.get_object_key ()).c_str ());
     }
 
   return false;
@@ -1216,12 +1211,11 @@ JSON_PATH::from_json_pointer (const std::string &pointer_path)
       else
 	{
 	  // object_key
-	  char *escaped;
-	  size_t escaped_size;
-	  db_string_escape (rapid_token.name, rapid_token.length, &escaped, &escaped_size);
+	  std::string quoted = "\"";
+	  quoted += rapid_token.name;
+	  quoted += '"';
 
-	  push_object_key (escaped);
-	  db_private_free (NULL, escaped);
+	  push_object_key (std::move (quoted));
 	}
     }
 
