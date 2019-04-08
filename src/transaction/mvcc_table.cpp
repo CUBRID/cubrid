@@ -30,7 +30,6 @@
 #include "thread_manager.hpp"
 
 #include <cassert>
-#include <array>
 
 // help debugging oldest active by following all changes
 struct oldest_active_event
@@ -72,10 +71,9 @@ const size_t OLDEST_ACTIVE_HISTORY_SIZE = 1024 * 8;   // 8k
 struct oldest_active_history_tracker
 {
   std::atomic<size_t> m_event_count;
-  std::array<oldest_active_event, OLDEST_ACTIVE_HISTORY_SIZE> m_history;
+  oldest_active_event m_history[OLDEST_ACTIVE_HISTORY_SIZE];
 };
 oldest_active_history_tracker Oldest_active_tracker;
-
 
 static inline void
 oldest_active_add_event (MVCCID mvccid, int tran_index, oldest_active_event::op_type set_or_get,

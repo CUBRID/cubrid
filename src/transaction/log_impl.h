@@ -68,9 +68,6 @@
 struct bo_restart_arg;
 struct logwr_info;
 
-/* TRANS_STATUS_HISTORY_MAX_SIZE must be a power of 2*/
-#define TRANS_STATUS_HISTORY_MAX_SIZE 2048
-
 #if defined(SERVER_MODE)
 #define TR_TABLE_CS_ENTER(thread_p) \
         csect_enter((thread_p), CSECT_TRAN_TABLE, INF_WAIT)
