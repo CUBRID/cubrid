@@ -314,7 +314,7 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
 	}
     }
 
-  highest_completed_mvccid = tdes.mvccinfo.snapshot.m_active_mvccs.get_highest_completed_mvccid ();
+  highest_completed_mvccid = tdes.mvccinfo.snapshot.m_active_mvccs.compute_highest_completed_mvccid ();
   MVCCID_FORWARD (highest_completed_mvccid);
 
   /* update lowest active mvccid computed for the most recent snapshot */
@@ -498,9 +498,9 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool commited)
   // bit area starting MVCCID; the recalculation will happen on each iteration if there are long transactions.
   MVCCID global_lowest_active = get_oldest_active_mvccid ();
   if (global_lowest_active == mvccid
-      || MVCC_ID_PRECEDES (mvccid, next_status.m_active_mvccs.bit_area_start_mvccid))
+      || MVCC_ID_PRECEDES (mvccid, next_status.m_active_mvccs.get_bit_area_start_mvccid ()))
     {
-      MVCCID new_lowest_active = next_status.m_active_mvccs.get_lowest_active_mvccid ();
+      MVCCID new_lowest_active = next_status.m_active_mvccs.compute_lowest_active_mvccid ();
 #if !defined (NDEBUG)
       oldest_active_add_event (new_lowest_active, (int) next_index, oldest_active_event::GET_LOWEST_ACTIVE,
 			       oldest_active_event::COMPLETE_MVCC);
@@ -583,15 +583,10 @@ mvcctable::get_global_lowest_active () const
 void
 mvcctable::reset_start_mvccid ()
 {
-  assert (current_trans_status.m_active_mvccs.bit_area_length == 0
-	  && current_trans_status.m_active_mvccs.bit_area[0] == 0);
-  current_trans_status.m_active_mvccs.bit_area_start_mvccid = log_Gl.hdr.mvcc_next_id;
+  current_trans_status.m_active_mvccs.reset_start_mvccid (log_Gl.hdr.mvcc_next_id);
 
   assert (trans_status_history_position < HISTORY_MAX_SIZE);
-  mvcc_trans_status &history_trans_status = trans_status_history[trans_status_history_position];
-  assert (history_trans_status.m_active_mvccs.bit_area_length == 0
-	  && history_trans_status.m_active_mvccs.bit_area[0] == 0);
-  history_trans_status.m_active_mvccs.bit_area_start_mvccid = log_Gl.hdr.mvcc_next_id;
+  trans_status_history[trans_status_history_position].m_active_mvccs.reset_start_mvccid (log_Gl.hdr.mvcc_next_id);
 
   m_lowest_active_mvccid.store (log_Gl.hdr.mvcc_next_id);
 }

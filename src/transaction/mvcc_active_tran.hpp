@@ -31,25 +31,10 @@
 
 struct mvcc_active_tran
 {
+  private:
+
+
   public:
-    using unit_type = std::uint64_t;
-
-    static const size_t BITAREA_MAX_SIZE = 500;
-
-    /* bit area to store MVCCIDS status - size MVCC_BITAREA_MAXIMUM_ELEMENTS */
-    unit_type *bit_area;
-    /* first MVCCID whose status is stored in bit area */
-    volatile MVCCID bit_area_start_mvccid;
-    /* the area length expressed in bits */
-    volatile size_t bit_area_length;
-
-    /* long time transaction mvccid array */
-    MVCCID *long_tran_mvccids;
-    /* long time transactions mvccid array length */
-    volatile size_t long_tran_mvccids_length;
-
-    bool m_initialized;
-
     mvcc_active_tran ();
     ~mvcc_active_tran ();
 
@@ -57,18 +42,22 @@ struct mvcc_active_tran
     void finalize ();
     void reset ();
 
+    MVCCID get_bit_area_start_mvccid ();
+
     bool is_active (MVCCID mvccid) const;
     void copy_to (mvcc_active_tran &dest) const;
 
-    MVCCID get_highest_completed_mvccid () const;
-    MVCCID get_lowest_active_mvccid () const;
+    MVCCID compute_highest_completed_mvccid () const;
+    MVCCID compute_lowest_active_mvccid () const;
 
     void set_inactive_mvccid (MVCCID mvccid);
-
-    size_t get_bit_area_memsize () const;
-    size_t get_long_tran_memsize () const;
+    void reset_start_mvccid (MVCCID mvccid);
 
   private:
+    using unit_type = std::uint64_t;
+
+    static const size_t BITAREA_MAX_SIZE = 500;
+
     static const size_t BYTE_TO_BITS_COUNT = 8;
     static const size_t UNIT_TO_BYTE_COUNT = sizeof (unit_type);
     static const size_t UNIT_TO_BITS_COUNT = UNIT_TO_BYTE_COUNT * BYTE_TO_BITS_COUNT;
@@ -76,7 +65,21 @@ struct mvcc_active_tran
     static const size_t BITAREA_MAX_BITS = BITAREA_MAX_SIZE * UNIT_TO_BITS_COUNT;
 
     static const unit_type ALL_ACTIVE = 0;
-    static const unit_type ALL_COMMITTED = (unit_type) - 1;
+    static const unit_type ALL_COMMITTED = (unit_type) -1;
+
+    /* bit area to store MVCCIDS status - size MVCC_BITAREA_MAXIMUM_ELEMENTS */
+    unit_type *m_bit_area;
+    /* first MVCCID whose status is stored in bit area */
+    volatile MVCCID m_bit_area_start_mvccid;
+    /* the area length expressed in bits */
+    volatile size_t m_bit_area_length;
+
+    /* long time transaction mvccid array */
+    MVCCID *m_long_tran_mvccids;
+    /* long time transactions mvccid array length */
+    volatile size_t m_long_tran_mvccids_length;
+
+    bool m_initialized;
 
     inline static size_t long_tran_max_size ();
 
@@ -93,6 +96,8 @@ struct mvcc_active_tran
     inline bool is_set (size_t bit_offset) const;
 
     size_t get_area_size () const;
+    size_t get_bit_area_memsize () const;
+    size_t get_long_tran_memsize () const;
 
     void check_valid () const;
 

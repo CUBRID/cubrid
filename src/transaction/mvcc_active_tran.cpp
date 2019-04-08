@@ -28,19 +28,19 @@
 #include <cstring>
 
 mvcc_active_tran::mvcc_active_tran ()
-  : bit_area (NULL)
-  , bit_area_start_mvccid (MVCCID_FIRST)
-  , bit_area_length (0)
-  , long_tran_mvccids (NULL)
-  , long_tran_mvccids_length (0)
+  : m_bit_area (NULL)
+  , m_bit_area_start_mvccid (MVCCID_FIRST)
+  , m_bit_area_length (0)
+  , m_long_tran_mvccids (NULL)
+  , m_long_tran_mvccids_length (0)
   , m_initialized (false)
 {
 }
 
 mvcc_active_tran::~mvcc_active_tran ()
 {
-  delete bit_area;
-  delete long_tran_mvccids;
+  delete m_bit_area;
+  delete m_long_tran_mvccids;
 }
 
 void
@@ -50,22 +50,22 @@ mvcc_active_tran::initialize ()
     {
       return;
     }
-  bit_area = new unit_type[BITAREA_MAX_SIZE];
-  bit_area_start_mvccid = MVCCID_FIRST;
-  bit_area_length = 0;
-  long_tran_mvccids = new MVCCID[long_tran_max_size ()];
-  long_tran_mvccids_length = 0;
+  m_bit_area = new unit_type[BITAREA_MAX_SIZE];
+  m_bit_area_start_mvccid = MVCCID_FIRST;
+  m_bit_area_length = 0;
+  m_long_tran_mvccids = new MVCCID[long_tran_max_size ()];
+  m_long_tran_mvccids_length = 0;
   m_initialized = true;
 }
 
 void
 mvcc_active_tran::finalize ()
 {
-  delete bit_area;
-  bit_area = NULL;
+  delete m_bit_area;
+  m_bit_area = NULL;
 
-  delete long_tran_mvccids;
-  long_tran_mvccids = NULL;
+  delete m_long_tran_mvccids;
+  m_long_tran_mvccids = NULL;
 
   m_initialized = false;
 }
@@ -77,16 +77,22 @@ mvcc_active_tran::reset ()
     {
       return;
     }
-  if (bit_area_length > 0)
+  if (m_bit_area_length > 0)
     {
       // clear bits
-      std::memset (bit_area, 0, get_bit_area_memsize ());
+      std::memset (m_bit_area, 0, get_bit_area_memsize ());
     }
-  bit_area_length = 0;
-  bit_area_start_mvccid = MVCCID_NULL;
-  long_tran_mvccids_length = 0;
+  m_bit_area_length = 0;
+  m_bit_area_start_mvccid = MVCCID_NULL;
+  m_long_tran_mvccids_length = 0;
 
   check_valid ();
+}
+
+MVCCID
+mvcc_active_tran::get_bit_area_start_mvccid ()
+{
+  return m_bit_area_start_mvccid;
 }
 
 size_t
@@ -122,19 +128,19 @@ mvcc_active_tran::get_mask_of (size_t bit_offset)
 size_t
 mvcc_active_tran::get_bit_offset (MVCCID mvccid) const
 {
-  return static_cast<size_t> (mvccid - bit_area_start_mvccid);
+  return static_cast<size_t> (mvccid - m_bit_area_start_mvccid);
 }
 
 MVCCID
 mvcc_active_tran::get_mvccid (size_t bit_offset) const
 {
-  return bit_area_start_mvccid + bit_offset;
+  return m_bit_area_start_mvccid + bit_offset;
 }
 
 mvcc_active_tran::unit_type *
 mvcc_active_tran::get_unit_of (size_t bit_offset) const
 {
-  return bit_area + (bit_offset / UNIT_TO_BITS_COUNT);
+  return m_bit_area + (bit_offset / UNIT_TO_BITS_COUNT);
 }
 
 bool
@@ -146,7 +152,7 @@ mvcc_active_tran::is_set (size_t bit_offset) const
 size_t
 mvcc_active_tran::get_area_size () const
 {
-  return bit_size_to_unit_size (bit_area_length);
+  return bit_size_to_unit_size (m_bit_area_length);
 }
 
 size_t
@@ -158,28 +164,28 @@ mvcc_active_tran::get_bit_area_memsize () const
 size_t
 mvcc_active_tran::get_long_tran_memsize () const
 {
-  return long_tran_mvccids_length * sizeof (MVCCID);
+  return m_long_tran_mvccids_length * sizeof (MVCCID);
 }
 
 MVCCID
-mvcc_active_tran::get_highest_completed_mvccid () const
+mvcc_active_tran::compute_highest_completed_mvccid () const
 {
-  assert (bit_area != NULL && bit_area_start_mvccid >= MVCCID_FIRST);
+  assert (m_bit_area != NULL && m_bit_area_start_mvccid >= MVCCID_FIRST);
 
-  if (bit_area_length == 0)
+  if (m_bit_area_length == 0)
     {
-      return bit_area_start_mvccid - 1;
+      return m_bit_area_start_mvccid - 1;
     }
 
   /* compute highest highest_bit_pos and highest_completed_bit_area */
-  size_t end_position = bit_area_length - 1;
+  size_t end_position = m_bit_area_length - 1;
   unit_type *highest_completed_bit_area;
   size_t highest_bit_position;
   unit_type bits;
   size_t bit_pos;
   size_t count_bits;
 
-  for (highest_completed_bit_area = get_unit_of (end_position); highest_completed_bit_area >= bit_area;
+  for (highest_completed_bit_area = get_unit_of (end_position); highest_completed_bit_area >= m_bit_area;
        --highest_completed_bit_area)
     {
       bits = *highest_completed_bit_area;
@@ -199,35 +205,35 @@ mvcc_active_tran::get_highest_completed_mvccid () const
       highest_bit_position = bit_pos;
       break;
     }
-  if (highest_completed_bit_area < bit_area)
+  if (highest_completed_bit_area < m_bit_area)
     {
       // not found
-      return bit_area_start_mvccid - 1;
+      return m_bit_area_start_mvccid - 1;
     }
   else
     {
-      return get_mvccid (units_to_bits (highest_completed_bit_area - bit_area) + highest_bit_position);
+      return get_mvccid (units_to_bits (highest_completed_bit_area - m_bit_area) + highest_bit_position);
     }
 }
 
 MVCCID
-mvcc_active_tran::get_lowest_active_mvccid () const
+mvcc_active_tran::compute_lowest_active_mvccid () const
 {
-  assert (bit_area != NULL);
+  assert (m_bit_area != NULL);
 
-  if (long_tran_mvccids_length > 0 && long_tran_mvccids != NULL)
+  if (m_long_tran_mvccids_length > 0 && m_long_tran_mvccids != NULL)
     {
       /* long time transactions are ordered */
-      return long_tran_mvccids[0];
+      return m_long_tran_mvccids[0];
     }
 
-  if (bit_area_length == 0)
+  if (m_bit_area_length == 0)
     {
-      return bit_area_start_mvccid;
+      return m_bit_area_start_mvccid;
     }
 
   /* find the lowest bit 0 */
-  size_t end_position = bit_area_length - 1;
+  size_t end_position = m_bit_area_length - 1;
   unit_type *end_bit_area = get_unit_of (end_position);
   unit_type *lowest_active_bit_area;
   size_t lowest_bit_pos = 0;
@@ -236,7 +242,7 @@ mvcc_active_tran::get_lowest_active_mvccid () const
   size_t count_bits;
   unit_type mask;
 
-  for (lowest_active_bit_area = bit_area; lowest_active_bit_area <= end_bit_area; ++lowest_active_bit_area)
+  for (lowest_active_bit_area = m_bit_area; lowest_active_bit_area <= end_bit_area; ++lowest_active_bit_area)
     {
       bits = *lowest_active_bit_area;
       if (bits == ALL_COMMITTED)
@@ -261,7 +267,7 @@ mvcc_active_tran::get_lowest_active_mvccid () const
   if (lowest_active_bit_area > end_bit_area)
     {
       /* didn't find 0 bit */
-      return get_mvccid (bit_area_length);
+      return get_mvccid (m_bit_area_length);
     }
   else
     {
@@ -278,25 +284,25 @@ mvcc_active_tran::copy_to (mvcc_active_tran &dest) const
 
   size_t new_bit_area_memsize = get_bit_area_memsize ();
   size_t old_bit_area_memsize = dest.get_bit_area_memsize ();
-  char *dest_bit_area = (char *) dest.bit_area;
+  char *dest_bit_area = (char *) dest.m_bit_area;
 
   if (new_bit_area_memsize > 0)
     {
-      std::memcpy (dest_bit_area, bit_area, new_bit_area_memsize);
+      std::memcpy (dest_bit_area, m_bit_area, new_bit_area_memsize);
     }
   if (old_bit_area_memsize > new_bit_area_memsize)
     {
       // clear
       std::memset (dest_bit_area + new_bit_area_memsize, 0, old_bit_area_memsize - new_bit_area_memsize);
     }
-  if (long_tran_mvccids_length > 0)
+  if (m_long_tran_mvccids_length > 0)
     {
-      std::memcpy (dest.long_tran_mvccids, long_tran_mvccids, get_long_tran_memsize ());
+      std::memcpy (dest.m_long_tran_mvccids, m_long_tran_mvccids, get_long_tran_memsize ());
     }
 
-  dest.bit_area_start_mvccid = bit_area_start_mvccid;
-  dest.bit_area_length = bit_area_length;
-  dest.long_tran_mvccids_length = long_tran_mvccids_length;
+  dest.m_bit_area_start_mvccid = m_bit_area_start_mvccid;
+  dest.m_bit_area_length = m_bit_area_length;
+  dest.m_long_tran_mvccids_length = m_long_tran_mvccids_length;
 
   dest.check_valid ();
 }
@@ -304,14 +310,14 @@ mvcc_active_tran::copy_to (mvcc_active_tran &dest) const
 bool
 mvcc_active_tran::is_active (MVCCID mvccid) const
 {
-  if (MVCC_ID_PRECEDES (mvccid, bit_area_start_mvccid))
+  if (MVCC_ID_PRECEDES (mvccid, m_bit_area_start_mvccid))
     {
       /* check long time transactions */
-      if (long_tran_mvccids != NULL)
+      if (m_long_tran_mvccids != NULL)
 	{
-	  for (size_t i = 0; i < long_tran_mvccids_length; i++)
+	  for (size_t i = 0; i < m_long_tran_mvccids_length; i++)
 	    {
-	      if (mvccid == long_tran_mvccids[i])
+	      if (mvccid == m_long_tran_mvccids[i])
 		{
 		  return true;
 		}
@@ -320,14 +326,14 @@ mvcc_active_tran::is_active (MVCCID mvccid) const
       // is committed
       return false;
     }
-  else if (bit_area_length == 0)
+  else if (m_bit_area_length == 0)
     {
       return true;
     }
   else
     {
       size_t position = get_bit_offset (mvccid);
-      if (position < bit_area_length)
+      if (position < m_bit_area_length)
 	{
 	  return is_set (position);
 	}
@@ -342,20 +348,20 @@ void
 mvcc_active_tran::remove_long_transaction (MVCCID mvccid)
 {
   /* Safe guard: */
-  assert (long_tran_mvccids_length > 0);
+  assert (m_long_tran_mvccids_length > 0);
 
   size_t i;
-  for (i = 0; i < long_tran_mvccids_length - 1; i++)
+  for (i = 0; i < m_long_tran_mvccids_length - 1; i++)
     {
-      if (long_tran_mvccids[i] == mvccid)
+      if (m_long_tran_mvccids[i] == mvccid)
 	{
-	  size_t memsize = (long_tran_mvccids_length - i - 1) * sizeof (MVCCID);
-	  std::memmove (&long_tran_mvccids[i], &long_tran_mvccids[i + 1], memsize);
+	  size_t memsize = (m_long_tran_mvccids_length - i - 1) * sizeof (MVCCID);
+	  std::memmove (&m_long_tran_mvccids[i], &m_long_tran_mvccids[i + 1], memsize);
 	  break;
 	}
     }
-  assert ((i < long_tran_mvccids_length - 1) || long_tran_mvccids[i] == mvccid);
-  --long_tran_mvccids_length;
+  assert ((i < m_long_tran_mvccids_length - 1) || m_long_tran_mvccids[i] == mvccid);
+  --m_long_tran_mvccids_length;
 
   check_valid ();
 }
@@ -363,9 +369,11 @@ mvcc_active_tran::remove_long_transaction (MVCCID mvccid)
 void
 mvcc_active_tran::add_long_transaction (MVCCID mvccid)
 {
-  assert (long_tran_mvccids_length < long_tran_max_size ());
-  assert (long_tran_mvccids[long_tran_mvccids_length - 1] < mvccid);
-  long_tran_mvccids[long_tran_mvccids_length++] = mvccid;
+  assert (m_long_tran_mvccids_length < long_tran_max_size ());
+  assert (m_long_tran_mvccids[m_long_tran_mvccids_length - 1] < mvccid);
+  m_long_tran_mvccids[m_long_tran_mvccids_length++] = mvccid;
+
+  check_valid ();
 }
 
 void
@@ -378,18 +386,18 @@ mvcc_active_tran::ltrim_area (size_t trim_size)
   size_t new_memsize = (get_area_size () - trim_size) * sizeof (unit_type);
   if (new_memsize > 0)
     {
-      std::memmove (bit_area, &bit_area[trim_size], new_memsize);
+      std::memmove (m_bit_area, &m_bit_area[trim_size], new_memsize);
     }
   size_t trimmed_bits = units_to_bits (trim_size);
-  bit_area_length -= trimmed_bits;
-  bit_area_start_mvccid += trimmed_bits;
+  m_bit_area_length -= trimmed_bits;
+  m_bit_area_start_mvccid += trimmed_bits;
   // clear moved units
-  std::memset (&bit_area[get_area_size ()], ALL_ACTIVE, trim_size * sizeof (unit_type));
+  std::memset (&m_bit_area[get_area_size ()], ALL_ACTIVE, trim_size * sizeof (unit_type));
 #if !defined (NDEBUG)
   // verify untouched units are also zero
   for (size_t i = get_area_size () + trim_size; i < BITAREA_MAX_SIZE; i++)
     {
-      assert (bit_area[i] == ALL_ACTIVE);
+      assert (m_bit_area[i] == ALL_ACTIVE);
     }
 #endif // DEBUG
 
@@ -402,7 +410,7 @@ mvcc_active_tran::set_bitarea_mvccid (MVCCID mvccid)
   const size_t CLEANUP_THRESHOLD = UNIT_TO_BITS_COUNT;
   const size_t LONG_TRAN_THRESHOLD = BITAREA_MAX_BITS - long_tran_max_size ();
 
-  assert (mvccid >= bit_area_start_mvccid);
+  assert (mvccid >= m_bit_area_start_mvccid);
   size_t position = get_bit_offset (mvccid);
   if (position >= BITAREA_MAX_BITS)
     {
@@ -412,10 +420,10 @@ mvcc_active_tran::set_bitarea_mvccid (MVCCID mvccid)
       position = get_bit_offset (mvccid);
     }
   assert (position < BITAREA_MAX_BITS);   // is this a guaranteed?
-  if (position >= bit_area_length)
+  if (position >= m_bit_area_length)
     {
       // extend area size; it is enough to update bit_area_length since all data is already zero
-      bit_area_length = position + 1;
+      m_bit_area_length = position + 1;
     }
 
   unit_type mask = get_mask_of (position);
@@ -424,13 +432,13 @@ mvcc_active_tran::set_bitarea_mvccid (MVCCID mvccid)
 
   check_valid ();
 
-  if (bit_area_length > CLEANUP_THRESHOLD)
+  if (m_bit_area_length > CLEANUP_THRESHOLD)
     {
       // trim all committed units from bit_area
       size_t first_not_all_commited;
       for (first_not_all_commited = 0; first_not_all_commited < get_area_size (); first_not_all_commited++)
 	{
-	  if (bit_area[first_not_all_commited] != ALL_COMMITTED)
+	  if (m_bit_area[first_not_all_commited] != ALL_COMMITTED)
 	    {
 	      break;
 	    }
@@ -439,7 +447,7 @@ mvcc_active_tran::set_bitarea_mvccid (MVCCID mvccid)
       check_valid ();
     }
 
-  if (bit_area_length > LONG_TRAN_THRESHOLD)
+  if (m_bit_area_length > LONG_TRAN_THRESHOLD)
     {
       cleanup_migrate_to_long_transations ();
       check_valid ();
@@ -458,7 +466,7 @@ mvcc_active_tran::cleanup_migrate_to_long_transations ()
 
   for (size_t i = 0; i < delete_count; i++)
     {
-      bits = bit_area[i];
+      bits = m_bit_area[i];
       // iterate on bits and find active MVCCID's
       for (bit_pos = 0, mask = 1, long_tran_mvccid = get_mvccid (i * UNIT_TO_BITS_COUNT);
 	   bit_pos < UNIT_TO_BITS_COUNT && bits != ALL_COMMITTED;
@@ -479,7 +487,7 @@ void
 mvcc_active_tran::set_inactive_mvccid (MVCCID mvccid)
 {
   /* check whether is long transaction */
-  if (MVCC_ID_PRECEDES (mvccid, bit_area_start_mvccid))
+  if (MVCC_ID_PRECEDES (mvccid, m_bit_area_start_mvccid))
     {
       remove_long_transaction (mvccid);
     }
@@ -490,14 +498,22 @@ mvcc_active_tran::set_inactive_mvccid (MVCCID mvccid)
 }
 
 void
+mvcc_active_tran::reset_start_mvccid (MVCCID mvccid)
+{
+  m_bit_area_start_mvccid = mvccid;
+
+  check_valid ();
+}
+
+void
 mvcc_active_tran::check_valid () const
 {
 #if !defined (NDEBUG)
   // all bits after bit_area_length must be 0
-  if ((bit_area_length % UNIT_TO_BITS_COUNT) != 0)
+  if ((m_bit_area_length % UNIT_TO_BITS_COUNT) != 0)
     {
       // we need to test bits after bit_area_length in same unit
-      size_t last_bit_pos = bit_area_length - 1;
+      size_t last_bit_pos = m_bit_area_length - 1;
       unit_type last_unit = *get_unit_of (last_bit_pos);
       for (size_t i = (last_bit_pos + 1) ; i < UNIT_TO_BITS_COUNT; i++)
 	{
@@ -507,7 +523,7 @@ mvcc_active_tran::check_valid () const
 	    }
 	}
     }
-  for (unit_type *p_area = get_unit_of (bit_area_length) + 1; p_area < bit_area + BITAREA_MAX_SIZE; ++p_area)
+  for (unit_type *p_area = get_unit_of (m_bit_area_length) + 1; p_area < m_bit_area + BITAREA_MAX_SIZE; ++p_area)
     {
       if (*p_area != ALL_ACTIVE)
 	{
@@ -516,10 +532,10 @@ mvcc_active_tran::check_valid () const
     }
 
   // all long transaction should be ordered and smaller than bit_area_start_mvccid
-  for (size_t i = 0; i < long_tran_mvccids_length; i++)
+  for (size_t i = 0; i < m_long_tran_mvccids_length; i++)
     {
-      assert (MVCC_ID_PRECEDES (long_tran_mvccids[i], bit_area_start_mvccid));
-      assert (i == 0 || MVCC_ID_PRECEDES (long_tran_mvccids[i - 1], long_tran_mvccids[i]));
+      assert (MVCC_ID_PRECEDES (m_long_tran_mvccids[i], m_bit_area_start_mvccid));
+      assert (i == 0 || MVCC_ID_PRECEDES (m_long_tran_mvccids[i - 1], m_long_tran_mvccids[i]));
     }
 #endif // debug
 }
