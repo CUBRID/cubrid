@@ -142,8 +142,7 @@ static DB_OBJLIST *emit_query_specs (print_output & output_ctx, DB_OBJLIST * cla
 static int emit_query_specs_has_using_index (print_output & output_ctx, DB_OBJLIST * vclass_list_has_using_index);
 static bool emit_superclasses (print_output & output_ctx, DB_OBJECT * class_, const char *class_type);
 static bool emit_resolutions (print_output & output_ctx, DB_OBJECT * class_, const char *class_type);
-static void emit_resolution_def (print_output & output_ctx, DB_RESOLUTION * resolution,
-				 RESOLUTION_QUALIFIER qualifier);
+static void emit_resolution_def (print_output & output_ctx, DB_RESOLUTION * resolution, RESOLUTION_QUALIFIER qualifier);
 static bool emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const char *class_type,
 				      int *has_indexes, EMIT_STORAGE_ORDER storage_order);
 static bool emit_class_attributes (print_output & output_ctx, DB_OBJECT * class_, const char *class_type);

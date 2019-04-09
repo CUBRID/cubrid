@@ -7439,7 +7439,7 @@ classobj_print (SM_CLASS * class_)
 	    }
 	  output_ctx ("\n");
 	  output_ctx ("    mem_offset=%3d, order=%3d, storage_order=%3d\n", att->offset, att->order,
-			  att->storage_order);
+		      att->storage_order);
 
 	  if (att->properties != NULL)
 	    {
@@ -7466,7 +7466,7 @@ classobj_print (SM_CLASS * class_)
 	    }
 	  output_ctx ("\n");
 	  output_ctx ("    mem_offset=%3d, order=%3d, storage_order=%3d\n", att->offset, att->order,
-			  att->storage_order);
+		      att->storage_order);
 
 	  if (att->properties != NULL)
 	    {
