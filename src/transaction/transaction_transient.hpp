@@ -20,6 +20,7 @@
 #ifndef _TRANSACTION_TRANSIENT_HPP_
 #define _TRANSACTION_TRANSIENT_HPP_
 
+#include "lob_locator.hpp"
 #include "dbtype_def.h"
 #include "log_lsa.hpp"
 #include "storage_common.h"
@@ -28,6 +29,17 @@
 #include <functional>
 
 // todo - namespace cubtx
+
+// forward declarations
+struct log_tdes;
+namespace cubthread
+{
+  class entry;
+}
+
+//
+// Modified classes
+//
 
 struct tx_transient_class_entry
 {
@@ -68,5 +80,27 @@ class tx_transient_class_registry
     void decache_heap_repr (const LOG_LSA &downto_lsa);
     void clear ();
 };
+
+//
+// Lobs
+//
+
+// forward declarations
+struct lob_locator_entry;
+
+// matches RB_HEAD of rb_tree.h
+struct lob_rb_root
+{
+  lob_locator_entry *rbh_root;
+
+  void init ();
+};
+
+LOB_LOCATOR_STATE xtx_find_lob_locator (cubthread::entry *thread_p, const char *locator, char *real_locator);
+int xtx_add_lob_locator (cubthread::entry *thread_p, const char *locator, LOB_LOCATOR_STATE state);
+int xtx_change_state_of_locator (cubthread::entry *thread_p, const char *locator, const char *new_locator,
+				 LOB_LOCATOR_STATE state);
+int xtx_drop_lob_locator (cubthread::entry *thread_p, const char *locator);
+void tx_lob_locator_clear (cubthread::entry *thread_p, log_tdes *tdes, bool at_commit, LOG_LSA *savept_lsa);
 
 #endif // !_TRANSACTION_TRANSIENT_HPP_
