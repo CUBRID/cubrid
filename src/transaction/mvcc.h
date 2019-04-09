@@ -179,6 +179,10 @@ struct mvcc_snapshot
   // *INDENT-OFF*
   mvcc_snapshot ();
   void reset ();
+
+  mvcc_snapshot &operator= (const mvcc_snapshot& snapshot) = delete;
+
+  void copy_to (mvcc_snapshot & other) const;
   // *INDENT-ON*
 };
 

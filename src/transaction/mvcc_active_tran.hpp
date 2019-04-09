@@ -43,6 +43,7 @@ struct mvcc_active_tran
 
     bool is_active (MVCCID mvccid) const;
     void copy_to (mvcc_active_tran &dest) const;
+    mvcc_active_tran &operator= (const mvcc_active_tran &other) = delete;
 
     MVCCID compute_highest_completed_mvccid () const;
     MVCCID compute_lowest_active_mvccid () const;

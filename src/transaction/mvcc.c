@@ -662,6 +662,18 @@ mvcc_snapshot::reset ()
   valid = false;
 }
 
+void
+mvcc_snapshot::copy_to (mvcc_snapshot & dest) const
+{
+  dest.m_active_mvccs.initialize ();
+  m_active_mvccs.copy_to (dest.m_active_mvccs);
+
+  dest.lowest_active_mvccid = lowest_active_mvccid;
+  dest.highest_completed_mvccid = highest_completed_mvccid;
+  dest.snapshot_fnc = snapshot_fnc;
+  dest.valid = valid;
+}
+
 mvcc_info::mvcc_info ()
   : snapshot ()
   , id (MVCCID_NULL)
