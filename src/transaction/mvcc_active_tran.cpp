@@ -335,7 +335,7 @@ mvcc_active_tran::is_active (MVCCID mvccid) const
       size_t position = get_bit_offset (mvccid);
       if (position < m_bit_area_length)
 	{
-	  return is_set (position);
+	  return !is_set (position);
 	}
       else
 	{
