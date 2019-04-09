@@ -31,9 +31,6 @@
 
 struct mvcc_active_tran
 {
-  private:
-
-
   public:
     mvcc_active_tran ();
     ~mvcc_active_tran ();

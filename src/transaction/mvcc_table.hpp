@@ -94,22 +94,22 @@ struct mvcctable
     static const size_t HISTORY_INDEX_MASK = HISTORY_MAX_SIZE - 1;
 
     /* lowest active MVCCIDs - array of size NUM_TOTAL_TRAN_INDICES */
-    lowest_active_mvccid_type *transaction_lowest_active_mvccids;
-    size_t transaction_lowest_active_mvccids_size;
+    lowest_active_mvccid_type *m_transaction_lowest_active_mvccids;
+    size_t m_transaction_lowest_active_mvccids_size;
     /* lowest active MVCCID */
     lowest_active_mvccid_type m_current_status_lowest_active_mvccid;
 
     /* current transaction status */
-    mvcc_trans_status current_trans_status;
+    mvcc_trans_status m_current_trans_status;
     /* transaction status history - array of size TRANS_STATUS_HISTORY_MAX_SIZE */
     /* the position in transaction status history array */
-    std::atomic<size_t> trans_status_history_position;
-    mvcc_trans_status *trans_status_history;
+    std::atomic<size_t> m_trans_status_history_position;
+    mvcc_trans_status *m_trans_status_history;
 
     /* protect against getting new MVCCIDs concurrently */
-    std::mutex new_mvccid_lock;     // theoretically, it may be replaced with atomic operations
+    std::mutex m_new_mvccid_lock;     // theoretically, it may be replaced with atomic operations
     /* protect against current transaction status modifications */
-    std::mutex active_trans_mutex;
+    std::mutex m_active_trans_mutex;
 
     mvcc_trans_status &next_trans_status_start (mvcc_trans_status::version_type &next_version, size_t &next_index);
     void next_tran_status_finish (mvcc_trans_status &next_trans_status, size_t next_index);

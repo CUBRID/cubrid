@@ -39,8 +39,8 @@ mvcc_active_tran::mvcc_active_tran ()
 
 mvcc_active_tran::~mvcc_active_tran ()
 {
-  delete m_bit_area;
-  delete m_long_tran_mvccids;
+  delete [] m_bit_area;
+  delete [] m_long_tran_mvccids;
 }
 
 void
@@ -50,10 +50,10 @@ mvcc_active_tran::initialize ()
     {
       return;
     }
-  m_bit_area = new unit_type[BITAREA_MAX_SIZE];
+  m_bit_area = new unit_type[BITAREA_MAX_SIZE] ();
   m_bit_area_start_mvccid = MVCCID_FIRST;
   m_bit_area_length = 0;
-  m_long_tran_mvccids = new MVCCID[long_tran_max_size ()];
+  m_long_tran_mvccids = new MVCCID[long_tran_max_size ()] ();
   m_long_tran_mvccids_length = 0;
   m_initialized = true;
 }
@@ -61,10 +61,10 @@ mvcc_active_tran::initialize ()
 void
 mvcc_active_tran::finalize ()
 {
-  delete m_bit_area;
+  delete [] m_bit_area;
   m_bit_area = NULL;
 
-  delete m_long_tran_mvccids;
+  delete [] m_long_tran_mvccids;
   m_long_tran_mvccids = NULL;
 
   m_initialized = false;
@@ -502,7 +502,10 @@ mvcc_active_tran::reset_start_mvccid (MVCCID mvccid)
 {
   m_bit_area_start_mvccid = mvccid;
 
-  check_valid ();
+  if (m_initialized)
+    {
+      check_valid ();
+    }
 }
 
 void

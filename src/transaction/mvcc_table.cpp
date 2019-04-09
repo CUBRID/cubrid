@@ -161,33 +161,33 @@ mvcctable::advance_oldest_active (MVCCID next_oldest_active)
 //
 
 mvcctable::mvcctable ()
-  : current_trans_status ()
-  , transaction_lowest_active_mvccids (NULL)
-  , transaction_lowest_active_mvccids_size (0)
-  , trans_status_history (NULL)
-  , trans_status_history_position (0)
+  : m_transaction_lowest_active_mvccids (NULL)
+  , m_transaction_lowest_active_mvccids_size (0)
   , m_current_status_lowest_active_mvccid (MVCCID_FIRST)
-  , new_mvccid_lock ()
-  , active_trans_mutex ()
+  , m_current_trans_status ()
+  , m_trans_status_history_position (0)
+  , m_trans_status_history (NULL)
+  , m_new_mvccid_lock ()
+  , m_active_trans_mutex ()
 {
 }
 
 mvcctable::~mvcctable ()
 {
-  delete transaction_lowest_active_mvccids;
-  delete trans_status_history;
+  delete [] m_transaction_lowest_active_mvccids;
+  delete [] m_trans_status_history;
 }
 
 void
 mvcctable::initialize ()
 {
-  current_trans_status.initialize ();
-  trans_status_history = new mvcc_trans_status[HISTORY_MAX_SIZE];
+  m_current_trans_status.initialize ();
+  m_trans_status_history = new mvcc_trans_status[HISTORY_MAX_SIZE];
   for (size_t idx = 0; idx < HISTORY_MAX_SIZE; idx++)
     {
-      trans_status_history[idx].initialize ();
+      m_trans_status_history[idx].initialize ();
     }
-  trans_status_history_position = 0;
+  m_trans_status_history_position = 0;
   m_current_status_lowest_active_mvccid = MVCCID_FIRST;
 
   alloc_transaction_lowest_active ();
@@ -196,12 +196,12 @@ mvcctable::initialize ()
 void
 mvcctable::alloc_transaction_lowest_active ()
 {
-  if (transaction_lowest_active_mvccids_size != (size_t) logtb_get_number_of_total_tran_indices ())
+  if (m_transaction_lowest_active_mvccids_size != (size_t) logtb_get_number_of_total_tran_indices ())
     {
       // either first time or transaction table size has changed
-      delete transaction_lowest_active_mvccids;
-      transaction_lowest_active_mvccids_size = logtb_get_number_of_total_tran_indices ();
-      transaction_lowest_active_mvccids = new lowest_active_mvccid_type[transaction_lowest_active_mvccids_size];
+      delete m_transaction_lowest_active_mvccids;
+      m_transaction_lowest_active_mvccids_size = logtb_get_number_of_total_tran_indices ();
+      m_transaction_lowest_active_mvccids = new lowest_active_mvccid_type[m_transaction_lowest_active_mvccids_size];
       // all are 0 = MVCCID_NULL
     }
 }
@@ -209,14 +209,14 @@ mvcctable::alloc_transaction_lowest_active ()
 void
 mvcctable::finalize ()
 {
-  current_trans_status.finalize ();
+  m_current_trans_status.finalize ();
 
-  delete trans_status_history;
-  trans_status_history = NULL;
+  delete [] m_trans_status_history;
+  m_trans_status_history = NULL;
 
-  delete transaction_lowest_active_mvccids;
-  transaction_lowest_active_mvccids = NULL;
-  transaction_lowest_active_mvccids_size = 0;
+  delete [] m_transaction_lowest_active_mvccids;
+  m_transaction_lowest_active_mvccids = NULL;
+  m_transaction_lowest_active_mvccids_size = 0;
 }
 
 void
@@ -245,7 +245,7 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
   // make sure snapshot has allocated data
   tdes.mvccinfo.snapshot.m_active_mvccs.initialize ();
 
-  tx_lowest_active = oldest_active_get (transaction_lowest_active_mvccids[tdes.tran_index], tdes.tran_index,
+  tx_lowest_active = oldest_active_get (m_transaction_lowest_active_mvccids[tdes.tran_index], tdes.tran_index,
 					oldest_active_event::BUILD_MVCC_INFO);
 
   // repeat steps until a trans_status can be read successfully without a version change
@@ -272,7 +272,7 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
 	   *    - the VACUUM thread computes the threshold again and found a value (initial global lowest active MVCCID)
 	   * less than the previously threshold
 	   */
-	  oldest_active_set (transaction_lowest_active_mvccids[tdes.tran_index], tdes.tran_index,
+	  oldest_active_set (m_transaction_lowest_active_mvccids[tdes.tran_index], tdes.tran_index,
 			     MVCCID_ALL_VISIBLE, oldest_active_event::BUILD_MVCC_INFO);
 
 	  /*
@@ -281,7 +281,7 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
 	   */
 	  crt_status_lowest_active = oldest_active_get (m_current_status_lowest_active_mvccid, 0,
 				     oldest_active_event::BUILD_MVCC_INFO);
-	  oldest_active_set (transaction_lowest_active_mvccids[tdes.tran_index], tdes.tran_index,
+	  oldest_active_set (m_transaction_lowest_active_mvccids[tdes.tran_index], tdes.tran_index,
 			     crt_status_lowest_active, oldest_active_event::BUILD_MVCC_INFO);
 	}
       else
@@ -290,10 +290,10 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
 				     oldest_active_event::BUILD_MVCC_INFO);
 	}
 
-      index = trans_status_history_position.load ();
+      index = m_trans_status_history_position.load ();
       assert (index < HISTORY_MAX_SIZE);
 
-      const mvcc_trans_status &trans_status = trans_status_history[index];
+      const mvcc_trans_status &trans_status = m_trans_status_history[index];
 
       trans_status_version = trans_status.m_version.load ();
       trans_status.m_active_mvccs.copy_to (tdes.mvccinfo.snapshot.m_active_mvccs);
@@ -352,9 +352,9 @@ mvcctable::compute_oldest_active_mvccid () const
   MVCCID lowest_active_mvccid = oldest_active_get (m_current_status_lowest_active_mvccid, 0,
 				oldest_active_event::GET_OLDEST_ACTIVE);
 
-  for (size_t idx = 0; idx < transaction_lowest_active_mvccids_size; idx++)
+  for (size_t idx = 0; idx < m_transaction_lowest_active_mvccids_size; idx++)
     {
-      loaded_tran_mvccid = oldest_active_get (transaction_lowest_active_mvccids[idx], idx,
+      loaded_tran_mvccid = oldest_active_get (m_transaction_lowest_active_mvccids[idx], idx,
 					      oldest_active_event::GET_OLDEST_ACTIVE);
       if (loaded_tran_mvccid == MVCCID_ALL_VISIBLE)
 	{
@@ -378,7 +378,7 @@ mvcctable::compute_oldest_active_mvccid () const
       for (size_t i = waiting_mvccids_pos.get_size () - 1; i < waiting_mvccids_pos.get_size (); --i)
 	{
 	  size_t pos = waiting_mvccids_pos.get_array ()[i];
-	  loaded_tran_mvccid = oldest_active_get (transaction_lowest_active_mvccids[pos], pos,
+	  loaded_tran_mvccid = oldest_active_get (m_transaction_lowest_active_mvccids[pos], pos,
 						  oldest_active_event::GET_OLDEST_ACTIVE);
 	  if (loaded_tran_mvccid == MVCCID_ALL_VISIBLE)
 	    {
@@ -407,11 +407,11 @@ mvcctable::is_active (MVCCID mvccid) const
   // trans status must be same before and after computing is_active. if it is not, we need to repeat the computation.
   do
     {
-      index = trans_status_history_position.load ();
-      version = trans_status_history[index].m_version.load ();
-      ret_active = trans_status_history[index].m_active_mvccs.is_active (mvccid);
+      index = m_trans_status_history_position.load ();
+      version = m_trans_status_history[index].m_version.load ();
+      ret_active = m_trans_status_history[index].m_active_mvccs.is_active (mvccid);
     }
-  while (version != trans_status_history[index].m_version.load ());
+  while (version != m_trans_status_history[index].m_version.load ());
 
   return ret_active;
 }
@@ -420,11 +420,11 @@ mvcc_trans_status &
 mvcctable::next_trans_status_start (mvcc_trans_status::version_type &next_version, size_t &next_index)
 {
   // new version, new status entry
-  next_index = (trans_status_history_position.load () + 1) & HISTORY_INDEX_MASK;
-  next_version = ++current_trans_status.m_version;
+  next_index = (m_trans_status_history_position.load () + 1) & HISTORY_INDEX_MASK;
+  next_version = ++m_current_trans_status.m_version;
 
   // invalidate next status entry
-  mvcc_trans_status &next_trans_status = trans_status_history[next_index];
+  mvcc_trans_status &next_trans_status = m_trans_status_history[next_index];
   next_trans_status.m_version.store (next_version);
 
   return next_trans_status;
@@ -433,10 +433,10 @@ mvcctable::next_trans_status_start (mvcc_trans_status::version_type &next_versio
 void
 mvcctable::next_tran_status_finish (mvcc_trans_status &next_trans_status, size_t next_index)
 {
-  current_trans_status.m_active_mvccs.copy_to (next_trans_status.m_active_mvccs);
-  next_trans_status.m_last_completed_mvccid = current_trans_status.m_last_completed_mvccid;
-  next_trans_status.m_event_type = current_trans_status.m_event_type;
-  trans_status_history_position.store (next_index);
+  m_current_trans_status.m_active_mvccs.copy_to (next_trans_status.m_active_mvccs);
+  next_trans_status.m_last_completed_mvccid = m_current_trans_status.m_last_completed_mvccid;
+  next_trans_status.m_event_type = m_current_trans_status.m_event_type;
+  m_trans_status_history_position.store (next_index);
 }
 
 void
@@ -445,7 +445,7 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool commited)
   assert (MVCCID_IS_VALID (mvccid));
 
   // only one can change status at a time
-  std::unique_lock<std::mutex> ulock (active_trans_mutex);
+  std::unique_lock<std::mutex> ulock (m_active_trans_mutex);
 
   mvcc_trans_status::version_type next_version;
   size_t next_index;
@@ -458,9 +458,9 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool commited)
     }
 
   // update current trans status
-  current_trans_status.m_active_mvccs.set_inactive_mvccid (mvccid);
-  current_trans_status.m_last_completed_mvccid = mvccid;
-  current_trans_status.m_event_type = commited ? mvcc_trans_status::COMMIT : mvcc_trans_status::ROLLBACK;
+  m_current_trans_status.m_active_mvccs.set_inactive_mvccid (mvccid);
+  m_current_trans_status.m_last_completed_mvccid = mvccid;
+  m_current_trans_status.m_event_type = commited ? mvcc_trans_status::COMMIT : mvcc_trans_status::ROLLBACK;
 
   // finish next trans status
   next_tran_status_finish (next_status, next_index);
@@ -475,17 +475,17 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool commited)
        *
        * It will be set to NULL after LOG_COMMIT
        */
-      MVCCID tran_lowest_active = oldest_active_get (transaction_lowest_active_mvccids[tran_index], tran_index,
+      MVCCID tran_lowest_active = oldest_active_get (m_transaction_lowest_active_mvccids[tran_index], tran_index,
 				  oldest_active_event::COMPLETE_MVCC);
       if (tran_lowest_active == MVCCID_NULL || MVCC_ID_PRECEDES (tran_lowest_active, mvccid))
 	{
-	  oldest_active_set (transaction_lowest_active_mvccids[tran_index], tran_index, mvccid,
+	  oldest_active_set (m_transaction_lowest_active_mvccids[tran_index], tran_index, mvccid,
 			     oldest_active_event::COMPLETE_MVCC);
 	}
     }
   else
     {
-      oldest_active_set (transaction_lowest_active_mvccids[tran_index], tran_index, MVCCID_NULL,
+      oldest_active_set (m_transaction_lowest_active_mvccids[tran_index], tran_index, MVCCID_NULL,
 			 oldest_active_event::COMPLETE_MVCC);
     }
 
@@ -521,16 +521,16 @@ mvcctable::complete_sub_mvcc (MVCCID mvccid)
   assert (MVCCID_IS_VALID (mvccid));
 
   // only one can change status at a time
-  std::unique_lock<std::mutex> ulock (active_trans_mutex);
+  std::unique_lock<std::mutex> ulock (m_active_trans_mutex);
 
   mvcc_trans_status::version_type next_version;
   size_t next_index;
   mvcc_trans_status &next_status = next_trans_status_start (next_version, next_index);
 
   // update current trans status
-  current_trans_status.m_active_mvccs.set_inactive_mvccid (mvccid);
-  current_trans_status.m_last_completed_mvccid = mvccid;
-  current_trans_status.m_last_completed_mvccid = mvcc_trans_status::SUBTRAN;
+  m_current_trans_status.m_active_mvccs.set_inactive_mvccid (mvccid);
+  m_current_trans_status.m_last_completed_mvccid = mvccid;
+  m_current_trans_status.m_last_completed_mvccid = mvcc_trans_status::SUBTRAN;
 
   // finish next trans status
   next_tran_status_finish (next_status, next_index);
@@ -545,10 +545,10 @@ mvcctable::get_new_mvccid ()
 {
   MVCCID id;
 
-  new_mvccid_lock.lock ();
+  m_new_mvccid_lock.lock ();
   id = log_Gl.hdr.mvcc_next_id;
   MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
-  new_mvccid_lock.unlock ();
+  m_new_mvccid_lock.unlock ();
 
   return id;
 }
@@ -556,7 +556,7 @@ mvcctable::get_new_mvccid ()
 void
 mvcctable::get_two_new_mvccid (MVCCID &first, MVCCID &second)
 {
-  new_mvccid_lock.lock ();
+  m_new_mvccid_lock.lock ();
 
   first = log_Gl.hdr.mvcc_next_id;
   MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
@@ -564,23 +564,23 @@ mvcctable::get_two_new_mvccid (MVCCID &first, MVCCID &second)
   second = log_Gl.hdr.mvcc_next_id;
   MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
 
-  new_mvccid_lock.unlock ();
+  m_new_mvccid_lock.unlock ();
 }
 
 void
 mvcctable::reset_transaction_lowest_active (int tran_index)
 {
-  oldest_active_set (transaction_lowest_active_mvccids[tran_index], tran_index, MVCCID_NULL,
+  oldest_active_set (m_transaction_lowest_active_mvccids[tran_index], tran_index, MVCCID_NULL,
 		     oldest_active_event::RESET);
 }
 
 void
 mvcctable::reset_start_mvccid ()
 {
-  current_trans_status.m_active_mvccs.reset_start_mvccid (log_Gl.hdr.mvcc_next_id);
+  m_current_trans_status.m_active_mvccs.reset_start_mvccid (log_Gl.hdr.mvcc_next_id);
 
-  assert (trans_status_history_position < HISTORY_MAX_SIZE);
-  trans_status_history[trans_status_history_position].m_active_mvccs.reset_start_mvccid (log_Gl.hdr.mvcc_next_id);
+  assert (m_trans_status_history_position < HISTORY_MAX_SIZE);
+  m_trans_status_history[m_trans_status_history_position].m_active_mvccs.reset_start_mvccid (log_Gl.hdr.mvcc_next_id);
 
   m_current_status_lowest_active_mvccid.store (log_Gl.hdr.mvcc_next_id);
 }
