@@ -598,10 +598,11 @@ db_fprint_value (FILE *fp, const db_value *value)
  *   value(in) : value to print
  */
 void
-db_print_value (extract_output &output_ctx, const db_value *value)
+db_print_value (print_output &output_ctx, const db_value *value)
 {
   string_buffer *p_sb;
 
+  /* TODO : change 'db_value_printer' to use print_output instead of string_buffer */
   p_sb = output_ctx.grab_string_buffer ();
 
   if (p_sb != NULL)

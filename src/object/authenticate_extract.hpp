@@ -32,9 +32,9 @@
 
 #include "dbtype_def.h"
 
-class extract_output;
+class print_output;
 
-extern int au_export_users (extract_output &output_ctx);
-extern int au_export_grants (extract_output &output_ctx, MOP class_mop);
+extern int au_export_users (print_output &output_ctx);
+extern int au_export_grants (print_output &output_ctx, MOP class_mop);
 
 #endif /* _AUTHENTICATE_EXTRACT_HPP_ */

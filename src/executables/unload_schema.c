@@ -127,45 +127,45 @@ static int check_domain_dependencies (DB_DOMAIN * domain, DB_OBJECT * this_class
 				      DB_OBJLIST * ordered);
 static int has_dependencies (DB_OBJECT * class_, DB_OBJLIST * unordered, DB_OBJLIST * ordered, int conservative);
 static int order_classes (DB_OBJLIST ** class_list, DB_OBJLIST ** order_list, int conservative);
-static void emit_cycle_warning (extract_output & output_ctx);
-static void force_one_class (extract_output & output_ctx, DB_OBJLIST ** class_list, DB_OBJLIST ** order_list);
-static DB_OBJLIST *get_ordered_classes (extract_output & output_ctx, MOP * class_table);
-static void emit_class_owner (extract_output & output_ctx, MOP class_);
-static int export_serial (extract_output & output_ctx);
-static int emit_indexes (extract_output & output_ctx, DB_OBJLIST * classes, int has_indexes,
+static void emit_cycle_warning (print_output & output_ctx);
+static void force_one_class (print_output & output_ctx, DB_OBJLIST ** class_list, DB_OBJLIST ** order_list);
+static DB_OBJLIST *get_ordered_classes (print_output & output_ctx, MOP * class_table);
+static void emit_class_owner (print_output & output_ctx, MOP class_);
+static int export_serial (print_output & output_ctx);
+static int emit_indexes (print_output & output_ctx, DB_OBJLIST * classes, int has_indexes,
 			 DB_OBJLIST * vclass_list_has_using_index);
 
-static int emit_schema (extract_output & output_ctx, DB_OBJLIST * classes, int do_auth,
+static int emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth,
 			DB_OBJLIST ** vclass_list_has_using_index, EMIT_STORAGE_ORDER emit_storage_order);
 static bool has_vclass_domains (DB_OBJECT * vclass);
-static DB_OBJLIST *emit_query_specs (extract_output & output_ctx, DB_OBJLIST * classes);
-static int emit_query_specs_has_using_index (extract_output & output_ctx, DB_OBJLIST * vclass_list_has_using_index);
-static bool emit_superclasses (extract_output & output_ctx, DB_OBJECT * class_, const char *class_type);
-static bool emit_resolutions (extract_output & output_ctx, DB_OBJECT * class_, const char *class_type);
-static void emit_resolution_def (extract_output & output_ctx, DB_RESOLUTION * resolution,
+static DB_OBJLIST *emit_query_specs (print_output & output_ctx, DB_OBJLIST * classes);
+static int emit_query_specs_has_using_index (print_output & output_ctx, DB_OBJLIST * vclass_list_has_using_index);
+static bool emit_superclasses (print_output & output_ctx, DB_OBJECT * class_, const char *class_type);
+static bool emit_resolutions (print_output & output_ctx, DB_OBJECT * class_, const char *class_type);
+static void emit_resolution_def (print_output & output_ctx, DB_RESOLUTION * resolution,
 				 RESOLUTION_QUALIFIER qualifier);
-static bool emit_instance_attributes (extract_output & output_ctx, DB_OBJECT * class_, const char *class_type,
+static bool emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const char *class_type,
 				      int *has_indexes, EMIT_STORAGE_ORDER storage_order);
-static bool emit_class_attributes (extract_output & output_ctx, DB_OBJECT * class_, const char *class_type);
-static bool emit_all_attributes (extract_output & output_ctx, DB_OBJECT * class_, const char *class_type,
+static bool emit_class_attributes (print_output & output_ctx, DB_OBJECT * class_, const char *class_type);
+static bool emit_all_attributes (print_output & output_ctx, DB_OBJECT * class_, const char *class_type,
 				 int *has_indexes, EMIT_STORAGE_ORDER storage_order);
-static bool emit_class_meta (extract_output & output_ctx, DB_OBJECT * table);
-static void emit_method_files (extract_output & output_ctx, DB_OBJECT * class_);
-static bool emit_methods (extract_output & output_ctx, DB_OBJECT * class_, const char *class_type);
+static bool emit_class_meta (print_output & output_ctx, DB_OBJECT * table);
+static void emit_method_files (print_output & output_ctx, DB_OBJECT * class_);
+static bool emit_methods (print_output & output_ctx, DB_OBJECT * class_, const char *class_type);
 static int ex_contains_object_reference (DB_VALUE * value);
-static void emit_attribute_def (extract_output & output_ctx, DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier);
-static void emit_unique_def (extract_output & output_ctx, DB_OBJECT * class_, const char *class_type);
-static void emit_reverse_unique_def (extract_output & output_ctx, DB_OBJECT * class_);
-static void emit_index_def (extract_output & output_ctx, DB_OBJECT * class_);
-static void emit_domain_def (extract_output & output_ctx, DB_DOMAIN * domains);
-static int emit_autoincrement_def (extract_output & output_ctx, DB_ATTRIBUTE * attribute);
-static void emit_method_def (extract_output & output_ctx, DB_METHOD * method, METHOD_QUALIFIER qualifier);
-static void emit_methfile_def (extract_output & output_ctx, DB_METHFILE * methfile);
-static void emit_partition_parts (extract_output & output_ctx, SM_PARTITION * partition_info, int partcnt);
-static void emit_partition_info (extract_output & output_ctx, MOP clsobj);
-static int emit_stored_procedure_args (extract_output & output_ctx, int arg_cnt, DB_SET * arg_set);
-static int emit_stored_procedure (extract_output & output_ctx);
-static int emit_foreign_key (extract_output & output_ctx, DB_OBJLIST * classes);
+static void emit_attribute_def (print_output & output_ctx, DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier);
+static void emit_unique_def (print_output & output_ctx, DB_OBJECT * class_, const char *class_type);
+static void emit_reverse_unique_def (print_output & output_ctx, DB_OBJECT * class_);
+static void emit_index_def (print_output & output_ctx, DB_OBJECT * class_);
+static void emit_domain_def (print_output & output_ctx, DB_DOMAIN * domains);
+static int emit_autoincrement_def (print_output & output_ctx, DB_ATTRIBUTE * attribute);
+static void emit_method_def (print_output & output_ctx, DB_METHOD * method, METHOD_QUALIFIER qualifier);
+static void emit_methfile_def (print_output & output_ctx, DB_METHFILE * methfile);
+static void emit_partition_parts (print_output & output_ctx, SM_PARTITION * partition_info, int partcnt);
+static void emit_partition_info (print_output & output_ctx, MOP clsobj);
+static int emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, DB_SET * arg_set);
+static int emit_stored_procedure (print_output & output_ctx);
+static int emit_foreign_key (print_output & output_ctx, DB_OBJLIST * classes);
 static int create_filename (const char *output_dirname, const char *output_prefix, const char *suffix,
 			    char *output_filename_p, const size_t filename_size);
 /*
@@ -442,7 +442,7 @@ order_classes (DB_OBJLIST ** class_list, DB_OBJLIST ** order_list, int conservat
  *    to handle yet.
  */
 static void
-emit_cycle_warning (extract_output & output_ctx)
+emit_cycle_warning (print_output & output_ctx)
 {
   output_ctx ("/* Error calculating class dependency order.\n");
   output_ctx ("   This indicates one of the following:\n");
@@ -470,7 +470,7 @@ emit_cycle_warning (extract_output & output_ctx)
  *    so that it can be loaded.
  */
 static void
-force_one_class (extract_output & output_ctx, DB_OBJLIST ** class_list, DB_OBJLIST ** order_list)
+force_one_class (print_output & output_ctx, DB_OBJLIST ** class_list, DB_OBJLIST ** order_list)
 {
   DB_OBJLIST *cl, *o, *last;
 
@@ -503,7 +503,7 @@ force_one_class (extract_output & output_ctx, DB_OBJLIST ** class_list, DB_OBJLI
  *    class_table(in): classes to dump
  */
 static DB_OBJLIST *
-get_ordered_classes (extract_output & output_ctx, MOP * class_table)
+get_ordered_classes (print_output & output_ctx, MOP * class_table)
 {
   DB_OBJLIST *classes, *ordered;
   int count, i;
@@ -577,7 +577,7 @@ get_ordered_classes (extract_output & output_ctx, MOP * class_table)
  *    class(in): class MOP
  */
 static void
-emit_class_owner (extract_output & output_ctx, MOP class_)
+emit_class_owner (print_output & output_ctx, MOP class_)
 {
   const char *classname;
   MOP owner;
@@ -608,7 +608,7 @@ emit_class_owner (extract_output & output_ctx, MOP class_)
  *    output_ctx(in/out): output context
  */
 static int
-export_serial (extract_output & output_ctx)
+export_serial (print_output & output_ctx)
 {
   int error = NO_ERROR;
   int i;
@@ -823,7 +823,7 @@ extract_classes_to_file (extract_context & ctxt, const char *output_filename)
       return 1;
     }
 
-  extract_output output_ctx (ctxt.exec_name, output_file);
+  file_print_output output_ctx (ctxt.exec_name, output_file);
 
   err_count = extract_classes (ctxt, output_ctx);
 
@@ -843,7 +843,7 @@ extract_classes_to_file (extract_context & ctxt, const char *output_filename)
  *    Always output the entire schema.
  */
 int
-extract_classes (extract_context & ctxt, extract_output & schema_output_ctx)
+extract_classes (extract_context & ctxt, print_output & schema_output_ctx)
 {
   DB_OBJLIST *classes = NULL;
   DB_OBJLIST *vclass_list_has_using_index = NULL;
@@ -927,7 +927,7 @@ extract_triggers_to_file (extract_context & ctxt, const char *output_filename)
       return 1;
     }
 
-  extract_output output_ctx (ctxt.exec_name, output_file);
+  file_print_output output_ctx (ctxt.exec_name, output_file);
 
   err_count = extract_triggers (ctxt, output_ctx);
 
@@ -960,7 +960,7 @@ extract_triggers_to_file (extract_context & ctxt, const char *output_filename)
  *    Always output the entire schema.
  */
 int
-extract_triggers (extract_context & ctxt, extract_output & output_ctx)
+extract_triggers (extract_context & ctxt, print_output & output_ctx)
 {
   /*
    * Trigger
@@ -1012,7 +1012,7 @@ extract_indexes_to_file (extract_context & ctxt, const char *output_filename)
       return 1;
     }
 
-  extract_output output_ctx (ctxt.exec_name, output_file);
+  file_print_output output_ctx (ctxt.exec_name, output_file);
 
   err_count = emit_indexes (output_ctx, ctxt.classes, ctxt.has_indexes, ctxt.vclass_list_has_using_index);
 
@@ -1045,7 +1045,7 @@ extract_indexes_to_file (extract_context & ctxt, const char *output_filename)
  *    vclass_list_has_using_index(in):
  */
 static int
-emit_indexes (extract_output & output_ctx, DB_OBJLIST * classes, int has_indexes,
+emit_indexes (print_output & output_ctx, DB_OBJLIST * classes, int has_indexes,
 	      DB_OBJLIST * vclass_list_has_using_index)
 {
   DB_OBJLIST *cl;
@@ -1075,7 +1075,7 @@ emit_indexes (extract_output & output_ctx, DB_OBJLIST * classes, int has_indexes
  *    vclass_list_has_using_index():
  */
 static int
-emit_schema (extract_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OBJLIST ** vclass_list_has_using_index,
+emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OBJLIST ** vclass_list_has_using_index,
 	     EMIT_STORAGE_ORDER storage_order)
 {
   DB_OBJLIST *cl;
@@ -1271,7 +1271,7 @@ has_vclass_domains (DB_OBJECT * vclass)
  *    classes(in):
  */
 static DB_OBJLIST *
-emit_query_specs (extract_output & output_ctx, DB_OBJLIST * classes)
+emit_query_specs (print_output & output_ctx, DB_OBJLIST * classes)
 {
   DB_QUERY_SPEC *specs, *s;
   DB_OBJLIST *cl;
@@ -1404,7 +1404,7 @@ emit_query_specs (extract_output & output_ctx, DB_OBJLIST * classes)
  *    vclass_list_has_using_index():
  */
 static int
-emit_query_specs_has_using_index (extract_output & output_ctx, DB_OBJLIST * vclass_list_has_using_index)
+emit_query_specs_has_using_index (print_output & output_ctx, DB_OBJLIST * vclass_list_has_using_index)
 {
   DB_QUERY_SPEC *specs, *s;
   DB_OBJLIST *cl;
@@ -1504,7 +1504,7 @@ emit_query_specs_has_using_index (extract_output & output_ctx, DB_OBJLIST * vcla
  *    class_type(in): CLASS or VCLASS
  */
 static bool
-emit_superclasses (extract_output & output_ctx, DB_OBJECT * class_, const char *class_type)
+emit_superclasses (print_output & output_ctx, DB_OBJECT * class_, const char *class_type)
 {
   DB_OBJLIST *supers, *s;
   const char *name;
@@ -1551,7 +1551,7 @@ emit_superclasses (extract_output & output_ctx, DB_OBJECT * class_, const char *
  *     inherited resolutions.
  */
 static bool
-emit_resolutions (extract_output & output_ctx, DB_OBJECT * class_, const char *class_type)
+emit_resolutions (print_output & output_ctx, DB_OBJECT * class_, const char *class_type)
 {
   DB_RESOLUTION *resolution_list;
   bool return_value = false;
@@ -1592,7 +1592,7 @@ emit_resolutions (extract_output & output_ctx, DB_OBJECT * class_, const char *c
  *    qualifier(in): the qualifier for this resolution (instance or class)
  */
 static void
-emit_resolution_def (extract_output & output_ctx, DB_RESOLUTION * resolution, RESOLUTION_QUALIFIER qualifier)
+emit_resolution_def (print_output & output_ctx, DB_RESOLUTION * resolution, RESOLUTION_QUALIFIER qualifier)
 {
   const char *name, *alias, *class_name;
   DB_OBJECT *class_;
@@ -1659,7 +1659,7 @@ emit_resolution_def (extract_output & output_ctx, DB_RESOLUTION * resolution, RE
  *    have been dumped in the main class definition.
  */
 static bool
-emit_instance_attributes (extract_output & output_ctx, DB_OBJECT * class_, const char *class_type, int *has_indexes,
+emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const char *class_type, int *has_indexes,
 			  EMIT_STORAGE_ORDER storage_order)
 {
   DB_ATTRIBUTE *attribute_list, *first_attribute, *a;
@@ -1976,7 +1976,7 @@ emit_instance_attributes (extract_output & output_ctx, DB_OBJECT * class_, const
  *    class_type(in): class type
  */
 static bool
-emit_class_attributes (extract_output & output_ctx, DB_OBJECT * class_, const char *class_type)
+emit_class_attributes (print_output & output_ctx, DB_OBJECT * class_, const char *class_type)
 {
   DB_ATTRIBUTE *class_attribute_list, *first_class_attribute, *a;
   const char *name;
@@ -2015,7 +2015,7 @@ emit_class_attributes (extract_output & output_ctx, DB_OBJECT * class_, const ch
 }
 
 static bool
-emit_class_meta (extract_output & output_ctx, DB_OBJECT * table)
+emit_class_meta (print_output & output_ctx, DB_OBJECT * table)
 {
   DB_ATTRIBUTE *attribute_list, *a;
   const char *table_name;
@@ -2057,7 +2057,7 @@ emit_class_meta (extract_output & output_ctx, DB_OBJECT * table)
  *    has_indexes(in):
  */
 static bool
-emit_all_attributes (extract_output & output_ctx, DB_OBJECT * class_, const char *class_type, int *has_indexes,
+emit_all_attributes (print_output & output_ctx, DB_OBJECT * class_, const char *class_type, int *has_indexes,
 		     EMIT_STORAGE_ORDER storage_order)
 {
   bool istatus, cstatus;
@@ -2075,7 +2075,7 @@ emit_all_attributes (extract_output & output_ctx, DB_OBJECT * class_, const char
  *    class(in): class object
  */
 static void
-emit_method_files (extract_output & output_ctx, DB_OBJECT * class_mop)
+emit_method_files (print_output & output_ctx, DB_OBJECT * class_mop)
 {
   DB_METHFILE *files, *f;
   bool printed_once = false;
@@ -2123,7 +2123,7 @@ emit_method_files (extract_output & output_ctx, DB_OBJECT * class_mop)
  *    inherited methods.
  */
 static bool
-emit_methods (extract_output & output_ctx, DB_OBJECT * class_, const char *class_type)
+emit_methods (print_output & output_ctx, DB_OBJECT * class_, const char *class_type)
 {
   DB_METHOD *method_list, *class_method_list, *m;
   DB_METHOD *first_method, *first_class_method;
@@ -2275,7 +2275,7 @@ ex_contains_object_reference (DB_VALUE * value)
  *    qualifier(in): the qualifier for the attribute (default, class or shared)
  */
 static void
-emit_attribute_def (extract_output & output_ctx, DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
+emit_attribute_def (print_output & output_ctx, DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
 {
   DB_VALUE *default_value;
   const char *name;
@@ -2400,7 +2400,7 @@ emit_attribute_def (extract_output & output_ctx, DB_ATTRIBUTE * attribute, ATTRI
  *    class(in): the class to emit the attributes for
  */
 static void
-emit_unique_def (extract_output & output_ctx, DB_OBJECT * class_, const char *class_type)
+emit_unique_def (print_output & output_ctx, DB_OBJECT * class_, const char *class_type)
 {
   DB_CONSTRAINT *constraint_list, *constraint;
   DB_ATTRIBUTE **atts, **att;
@@ -2517,7 +2517,7 @@ emit_unique_def (extract_output & output_ctx, DB_OBJECT * class_, const char *cl
  *    class(in): class object
  */
 static void
-emit_reverse_unique_def (extract_output & output_ctx, DB_OBJECT * class_)
+emit_reverse_unique_def (print_output & output_ctx, DB_OBJECT * class_)
 {
   DB_CONSTRAINT *constraint_list, *constraint;
   DB_ATTRIBUTE **atts, **att;
@@ -2582,7 +2582,7 @@ emit_reverse_unique_def (extract_output & output_ctx, DB_OBJECT * class_)
  *    class(in): the class to emit the indexes for
  */
 static void
-emit_index_def (extract_output & output_ctx, DB_OBJECT * class_)
+emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 {
   DB_CONSTRAINT *constraint_list, *constraint;
   DB_CONSTRAINT_TYPE ctype;
@@ -2768,7 +2768,7 @@ emit_index_def (extract_output & output_ctx, DB_OBJECT * class_)
  *    domains(in): domain list
  */
 static void
-emit_domain_def (extract_output & output_ctx, DB_DOMAIN * domains)
+emit_domain_def (print_output & output_ctx, DB_DOMAIN * domains)
 {
   DB_TYPE type;
   PR_TYPE *prtype;
@@ -2887,7 +2887,7 @@ emit_domain_def (extract_output & output_ctx, DB_DOMAIN * domains)
  *    attribute(in): attribute to add query part for
  */
 static int
-emit_autoincrement_def (extract_output & output_ctx, DB_ATTRIBUTE * attribute)
+emit_autoincrement_def (print_output & output_ctx, DB_ATTRIBUTE * attribute)
 {
   int error = NO_ERROR;
   DB_VALUE min_val, inc_val;
@@ -2929,7 +2929,7 @@ emit_autoincrement_def (extract_output & output_ctx, DB_ATTRIBUTE * attribute)
  *    qualifier(in): the qualifier for this method (default or class)
  */
 static void
-emit_method_def (extract_output & output_ctx, DB_METHOD * method, METHOD_QUALIFIER qualifier)
+emit_method_def (print_output & output_ctx, DB_METHOD * method, METHOD_QUALIFIER qualifier)
 {
   int arg_count, i;
   DB_DOMAIN *method_return_domain;
@@ -3006,7 +3006,7 @@ emit_method_def (extract_output & output_ctx, DB_METHOD * method, METHOD_QUALIFI
  *    methfile(in): method file
  */
 static void
-emit_methfile_def (extract_output & output_ctx, DB_METHFILE * methfile)
+emit_methfile_def (print_output & output_ctx, DB_METHFILE * methfile)
 {
   output_ctx ("       '%s'", db_methfile_name (methfile));
 }
@@ -3018,7 +3018,7 @@ emit_methfile_def (extract_output & output_ctx, DB_METHFILE * methfile)
  *    partcnt(in): relative position of 'parts'
  */
 static void
-emit_partition_parts (extract_output & output_ctx, SM_PARTITION * partition_info, int partcnt)
+emit_partition_parts (print_output & output_ctx, SM_PARTITION * partition_info, int partcnt)
 {
   DB_VALUE ele;
   int setsize, i1;
@@ -3087,7 +3087,7 @@ emit_partition_parts (extract_output & output_ctx, SM_PARTITION * partition_info
  *    clsobj(in): class object
  */
 static void
-emit_partition_info (extract_output & output_ctx, MOP clsobj)
+emit_partition_info (print_output & output_ctx, MOP clsobj)
 {
   DB_VALUE ele;
   int partcnt = 0;
@@ -3175,7 +3175,7 @@ emit_partition_info (extract_output & output_ctx, MOP clsobj)
  *    arg_set(in): set containg argument DB_VALUE
  */
 static int
-emit_stored_procedure_args (extract_output & output_ctx, int arg_cnt, DB_SET * arg_set)
+emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, DB_SET * arg_set)
 {
   MOP arg;
   DB_VALUE arg_val, arg_name_val, arg_mode_val, arg_type_val, arg_comment_val;
@@ -3245,7 +3245,7 @@ emit_stored_procedure_args (extract_output & output_ctx, int arg_cnt, DB_SET * a
  *    output_ctx(in/out): output context
  */
 static int
-emit_stored_procedure (extract_output & output_ctx)
+emit_stored_procedure (print_output & output_ctx)
 {
   MOP cls, obj, owner;
   DB_OBJLIST *sp_list = NULL, *cur_sp;
@@ -3349,7 +3349,7 @@ emit_stored_procedure (extract_output & output_ctx)
  *    classes(in): MOP list for dump foreign key
  */
 static int
-emit_foreign_key (extract_output & output_ctx, DB_OBJLIST * classes)
+emit_foreign_key (print_output & output_ctx, DB_OBJLIST * classes)
 {
   DB_OBJLIST *cl;
   DB_CONSTRAINT *constraint_list, *constraint;

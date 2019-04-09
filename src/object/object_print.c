@@ -139,7 +139,7 @@ help_trigger_names (char ***names_ptr)
  */
 
 void
-help_print_obj (extract_output & output_ctx, MOP obj)
+help_print_obj (print_output & output_ctx, MOP obj)
 {
   int i, status;
 
@@ -612,7 +612,7 @@ help_print_info (const char *command, FILE * fpp)
       fpp = stdout;
     }
 
-  extract_output output_ctx ("help_print_info", fpp);
+  file_print_output output_ctx ("help_print_info", fpp);
   if (MATCH_TOKEN (buffer, "schema"))
     {
       ptr = obj_print_next_token (ptr, buffer);
@@ -714,7 +714,7 @@ help_print_info (const char *command, FILE * fpp)
  *   comment(in) : a comment string to be printed
  */
 void
-help_print_describe_comment (extract_output & output_ctx, const char *comment)
+help_print_describe_comment (print_output & output_ctx, const char *comment)
 {
   /* TODO : optimize printing directly to string_buffer of output_ctx */
   string_buffer sb;

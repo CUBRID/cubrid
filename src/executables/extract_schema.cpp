@@ -42,27 +42,42 @@ void extract_context::clear_schema_workspace (void)
     }
 }
 
-extract_output::extract_output (const std::string &ctx_name, string_buffer *sb_arg) :
-  context_name (ctx_name),
-  output_file (NULL),
-  sb (sb_arg)
+const char *print_output::exec_name (void)
+{
+  return context_name.c_str ();
+}
+
+void print_output::operator+= (const char ch)
+{
+  m_sb.operator+= (ch);
+  (void) flush ();
+}
+
+file_print_output::file_print_output (const std::string &ctx_name, FILE *fp) :
+  print_output (ctx_name),
+  output_file (fp)
 {
 }
 
-extract_output::extract_output (const std::string &ctx_name, FILE *fp) :
-  context_name (ctx_name),
-  output_file (fp),
-  sb (NULL)
+file_print_output &file_print_output::std_output (void)
 {
-}
-
-extract_output &extract_output::std_output (void)
-{
-  static extract_output s_std_output ("STDOUT", stdout);
+  static file_print_output s_std_output ("STDOUT", stdout);
   return s_std_output;
 }
 
-const char *extract_output::exec_name (void)
+int file_print_output::flush ()
 {
-  return context_name.c_str ();
+  return (int) fwrite (m_sb.get_buffer (), 1, m_sb.len (), output_file);
+}
+
+
+string_print_output::string_print_output (const std::string &ctx_name) :
+  print_output (ctx_name)
+{
+}
+
+int string_print_output::flush ()
+{
+  /* nothing to do */
+  return (int) m_sb.len ();
 }

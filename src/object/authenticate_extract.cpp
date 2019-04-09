@@ -34,8 +34,8 @@
 #include "schema_manager.h"
 #include "set_object.h"
 
-static int class_grant_loop (extract_output &output_ctx, CLASS_AUTH *auth);
-static void issue_grant_statement (extract_output &output_ctx, CLASS_AUTH *auth, CLASS_GRANT *grant, int authbits);
+static int class_grant_loop (print_output &output_ctx, CLASS_AUTH *auth);
+static void issue_grant_statement (print_output &output_ctx, CLASS_AUTH *auth, CLASS_GRANT *grant, int authbits);
 /*
  * au_export_users - Generates a sequence of add_user and add_member method
  *                   calls that when evaluated, will re-create the current
@@ -44,7 +44,7 @@ static void issue_grant_statement (extract_output &output_ctx, CLASS_AUTH *auth,
  *   outfp(in): output file
  */
 int
-au_export_users (extract_output &output_ctx)
+au_export_users (print_output &output_ctx)
 {
   int error;
   DB_SET *direct_groups;
@@ -314,7 +314,7 @@ au_export_users (extract_output &output_ctx)
  *   quoted_id_flag(in):
  */
 int
-au_export_grants (extract_output &output_ctx, MOP class_mop)
+au_export_grants (print_output &output_ctx, MOP class_mop)
 {
   int error = NO_ERROR;
   CLASS_AUTH cl_auth;
@@ -393,7 +393,7 @@ au_export_grants (extract_output &output_ctx, MOP class_mop)
  * TODO : LP64
  */
 static int
-class_grant_loop (extract_output &output_ctx, CLASS_AUTH *auth)
+class_grant_loop (print_output &output_ctx, CLASS_AUTH *auth)
 {
 #define AU_MIN_BIT 1		/* AU_SELECT */
 #define AU_MAX_BIT 0x40		/* AU_EXECUTE */
@@ -467,7 +467,7 @@ class_grant_loop (extract_output &output_ctx, CLASS_AUTH *auth)
  *   quoted_id_flag(in):
  */
 static void
-issue_grant_statement (extract_output &output_ctx, CLASS_AUTH *auth, CLASS_GRANT *grant, int authbits)
+issue_grant_statement (print_output &output_ctx, CLASS_AUTH *auth, CLASS_GRANT *grant, int authbits)
 {
   const char *gtype, *classname;
   char *username;

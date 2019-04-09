@@ -7418,91 +7418,91 @@ classobj_print (SM_CLASS * class_)
       return;
     }
 
-  extract_output (stdout);
-  extract_output ("Class : %s\n", sm_ch_name ((MOBJ) class_));
+  file_print_output output_ctx (stdout);
+  output_ctx ("Class : %s\n", sm_ch_name ((MOBJ) class_));
 
   if (class_->properties != NULL)
     {
-      extract_output ("  Properties : ");
+      output_ctx ("  Properties : ");
       classobj_print_props (class_->properties);
     }
 
   if (class_->ordered_attributes != NULL)
     {
-      extract_output ("Attributes\n");
+      output_ctx ("Attributes\n");
       for (att = class_->ordered_attributes; att != NULL; att = att->order_link)
 	{
-	  extract_output ("  Name=%-25s, id=%3d", att->header.name, att->id);
+	  output_ctx ("  Name=%-25s, id=%3d", att->header.name, att->id);
 	  if (att->domain != NULL && att->domain->type != NULL)
 	    {
-	      extract_output (", pr_type=%-10s", att->domain->type->name);
+	      output_ctx (", pr_type=%-10s", att->domain->type->name);
 	    }
-	  extract_output ("\n");
-	  extract_output ("    mem_offset=%3d, order=%3d, storage_order=%3d\n", att->offset, att->order,
+	  output_ctx ("\n");
+	  output_ctx ("    mem_offset=%3d, order=%3d, storage_order=%3d\n", att->offset, att->order,
 			  att->storage_order);
 
 	  if (att->properties != NULL)
 	    {
-	      extract_output ("    Properties : ");
+	      output_ctx ("    Properties : ");
 	      classobj_print_props (att->properties);
 	    }
 	  if (att->comment != NULL)
 	    {
-	      extract_output ("    ");
-	      help_fprint_describe_comment (extract_output, att->comment);
+	      output_ctx ("    ");
+	      help_print_describe_comment (output_ctx, att->comment);
 	    }
-	  extract_output ("\n");
+	  output_ctx ("\n");
 	}
     }
   if (class_->class_attributes != NULL)
     {
-      extract_output ("Class Attributes\n");
+      output_ctx ("Class Attributes\n");
       for (att = class_->class_attributes; att != NULL; att = att->order_link)
 	{
-	  extract_output ("  Name=%-25s, id=%3d", att->header.name, att->id);
+	  output_ctx ("  Name=%-25s, id=%3d", att->header.name, att->id);
 	  if (att->domain != NULL && att->domain->type != NULL)
 	    {
-	      extract_output (", pr_type=%-10s", att->domain->type->name);
+	      output_ctx (", pr_type=%-10s", att->domain->type->name);
 	    }
-	  extract_output ("\n");
-	  extract_output ("    mem_offset=%3d, order=%3d, storage_order=%3d\n", att->offset, att->order,
+	  output_ctx ("\n");
+	  output_ctx ("    mem_offset=%3d, order=%3d, storage_order=%3d\n", att->offset, att->order,
 			  att->storage_order);
 
 	  if (att->properties != NULL)
 	    {
-	      extract_output ("    Properties : ");
+	      output_ctx ("    Properties : ");
 	      classobj_print_props (att->properties);
 	    }
 	  if (att->comment != NULL)
 	    {
-	      extract_output ("    ");
-	      help_print_describe_comment (extract_output, att->comment);
+	      output_ctx ("    ");
+	      help_print_describe_comment (output_ctx, att->comment);
 	    }
-	  extract_output ("\n");
+	  output_ctx ("\n");
 	}
     }
   if (class_->methods != NULL)
     {
-      extract_output ("Methods\n");
+      output_ctx ("Methods\n");
       for (meth = class_->methods; meth != NULL; meth = (SM_METHOD *) meth->header.next)
 	{
-	  extract_output ("  %s\n", meth->header.name);
+	  output_ctx ("  %s\n", meth->header.name);
 	  if (meth->properties != NULL)
 	    {
-	      extract_output ("    Properties : ");
+	      output_ctx ("    Properties : ");
 	      classobj_print_props (meth->properties);
 	    }
 	}
     }
   if (class_->class_methods != NULL)
     {
-      extract_output ("Class Methods\n");
+      output_ctx ("Class Methods\n");
       for (meth = class_->methods; meth != NULL; meth = (SM_METHOD *) meth->header.next)
 	{
-	  extract_output ("  %s\n", meth->header.name);
+	  output_ctx ("  %s\n", meth->header.name);
 	  if (meth->properties != NULL)
 	    {
-	      extract_output ("    Properties : ");
+	      output_ctx ("    Properties : ");
 	      classobj_print_props (meth->properties);
 	    }
 	}

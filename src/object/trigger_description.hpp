@@ -31,7 +31,7 @@
 #include <stdio.h>
 #include "dbtype_def.h"
 struct db_object;
-class extract_output;
+class print_output;
 
 /*
  * TRIGGER_HELP
@@ -63,7 +63,7 @@ struct trigger_description
   void fprint (FILE *file);
 };
 
-int tr_dump_trigger (extract_output &output_ctx, DB_OBJECT *trigger_object);
-int tr_dump_selective_triggers (extract_output &output_ctx, DB_OBJLIST *classes);
+int tr_dump_trigger (print_output &output_ctx, DB_OBJECT *trigger_object);
+int tr_dump_selective_triggers (print_output &output_ctx, DB_OBJLIST *classes);
 
 #endif // _TRIGGER_DESCRIPTION_HPP_

@@ -1255,7 +1255,7 @@ db_print (DB_OBJECT * obj)
 
   if (obj != NULL)
     {
-      help_print_obj (extract_output::std_output (), obj);
+      help_print_obj (file_print_output::std_output (), obj);
     }
 }
 
@@ -1268,7 +1268,7 @@ db_print (DB_OBJECT * obj)
 void
 db_fprint (FILE * fp, DB_OBJECT * obj)
 {
-  extract_output output ("DEBUG", fp);
+  file_print_output output ("DEBUG", fp);
   CHECK_CONNECT_VOID ();
 
   if (fp != NULL && obj != NULL)

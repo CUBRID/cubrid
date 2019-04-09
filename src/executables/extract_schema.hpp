@@ -64,44 +64,73 @@ struct extract_context
   void clear_schema_workspace (void);
 };
 
-class extract_output
+class print_output
 {
   private:
     std::string context_name;
 
-    FILE *output_file;
-
-    string_buffer *sb;
+  protected:
+    string_buffer m_sb;
 
   public:
-    extract_output (const std::string &ctx_name, FILE *fp);
+    print_output (const std::string &ctx_name):
+      context_name (ctx_name)
+    {}
 
-    extract_output (const std::string &ctx_name, string_buffer *sb_arg);
+    ~print_output ()
+    {
+      assert (m_sb.len () == 0);
+    }
 
     const char *exec_name (void);
 
-    static extract_output &std_output (void);
+    virtual int flush (void) = 0;
 
     string_buffer *grab_string_buffer (void)
     {
-      return sb;
+      return &m_sb;
     }
+
+    void operator+= (const char ch);
 
     template<typename... Args> inline int operator() (Args &&... args);
 };
 
 
-template<typename... Args> int extract_output::operator() (Args &&... args)
+template<typename... Args> int print_output::operator() (Args &&... args)
 {
-  if (output_file != NULL)
+  int res = m_sb (std::forward<Args> (args)...);
+  if (res < 0)
     {
-      return fprintf (output_file, std::forward<Args> (args)...);
+      return res;
     }
-  else
-    {
-      assert (sb != NULL);
-      return (*sb) (std::forward<Args> (args)...);
-    }
+
+  res = flush ();
+
+  return res;
 }
+
+
+class file_print_output : public print_output
+{
+  private:
+    FILE *output_file;
+
+  public:
+    file_print_output (const std::string &ctx_name, FILE *fp);
+    ~file_print_output () {}
+
+    static file_print_output &std_output (void);
+    int flush (void);
+};
+
+class string_print_output : public print_output
+{
+  public:
+    string_print_output (const std::string &ctx_name);
+    ~string_print_output () {}
+
+    int flush (void);
+};
 
 #endif /* _EXTRACT_SCHEMA_HPP_ */

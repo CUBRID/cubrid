@@ -236,7 +236,7 @@ void trigger_description::fprint (FILE *file)
  *    quoted_id_flag(in):
  */
 int
-tr_dump_trigger (extract_output &output_ctx, DB_OBJECT *trigger_object)
+tr_dump_trigger (print_output &output_ctx, DB_OBJECT *trigger_object)
 {
   int error = NO_ERROR;
   TR_TRIGGER *trigger;
@@ -341,7 +341,7 @@ tr_dump_trigger (extract_output &output_ctx, DB_OBJECT *trigger_object)
  *    classes(in):
  */
 int
-tr_dump_selective_triggers (extract_output &output_ctx, DB_OBJLIST *classes)
+tr_dump_selective_triggers (print_output &output_ctx, DB_OBJLIST *classes)
 {
   int error = NO_ERROR;
   TR_TRIGGER *trigger;
