@@ -18882,12 +18882,22 @@ pt_print_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p)
   substr = pt_print_bytes (parser, p->info.json_table_node_info.columns);
   pstr = pt_append_varchar (parser, pstr, substr);
 
-  if (p->info.json_table_node_info.nested_paths != NULL)
+  if (p->info.json_table_node_info.columns != NULL && p->info.json_table_node_info.nested_paths != NULL)
     {
-      // ', nested path ' print nested
-      pstr = pt_append_nulstring (parser, pstr, ", nested path ");
+      pstr = pt_append_nulstring (parser, pstr, ", ");
+    }
+
+  for (PT_NODE * nested = p->info.json_table_node_info.nested_paths; nested != NULL; nested = nested->next)
+    {
+      // 'nested path ' print nested ', '
+      pstr = pt_append_nulstring (parser, pstr, "nested path ");
       substr = pt_print_bytes (parser, p->info.json_table_node_info.nested_paths);
       pstr = pt_append_varchar (parser, pstr, substr);
+
+      if (nested->next != NULL)
+	{
+	  pstr = pt_append_nulstring (parser, pstr, ", ");
+	}
     }
 
   // ' )'
@@ -19077,8 +19087,12 @@ pt_print_json_table_columns (PARSER_CONTEXT * parser, PT_NODE * p)
   for (p_it = p; p_it->next != NULL; p_it = p_it->next)
     {
       pstr = pt_print_json_table_column_info (parser, p_it, pstr);
-      // print ','
-      pstr = pt_append_nulstring (parser, pstr, ", ");
+
+      if (p_it->next != NULL)
+	{
+	  // print ','
+	  pstr = pt_append_nulstring (parser, pstr, ", ");
+	}
     }
 
   // the last column
