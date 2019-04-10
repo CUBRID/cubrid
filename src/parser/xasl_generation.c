@@ -23748,16 +23748,26 @@ pt_substitute_analytic_references (PARSER_CONTEXT * parser, PT_NODE * node, PT_N
 	      return NULL;
 	    }
 
+	  if (arg != ret)
+	    {
+	      if (prev != NULL)
+		{
+		  prev->next = arg = ret;
+		  arg->next = save_next;
+		}
+	      else
+		{
+		  node->info.function.arg_list = arg = ret;
+		  arg->next = save_next;
+		}
+	    }
+
 	  if (prev != NULL)
 	    {
-	      prev->next = arg = ret;
-	      arg->next = save_next;
 	      prev = prev->next;
 	    }
 	  else
 	    {
-	      node->info.function.arg_list = arg = ret;
-	      arg->next = save_next;
 	      prev = node->info.function.arg_list;
 	    }
 	}
