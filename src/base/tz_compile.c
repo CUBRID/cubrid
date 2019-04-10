@@ -24,10 +24,12 @@
 #include <stdio.h>
 #include <assert.h>
 
+#include "tz_support.h"
+
+#include "authenticate.h"
 #include "porting.h"
 #include "byte_order.h"
 #include "utility.h"
-#include "tz_support.h"
 #include "db_date.h"
 #include "environment_variable.h"
 #include "chartype.h"

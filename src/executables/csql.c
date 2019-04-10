@@ -45,6 +45,7 @@
 #include <netdb.h>
 #endif /* !WINDOWS */
 
+#include "authenticate.h"
 #include "csql.h"
 #include "system_parameter.h"
 #include "message_catalog.h"

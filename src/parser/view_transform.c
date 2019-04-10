@@ -25,6 +25,7 @@
 
 #include <assert.h>
 
+#include "authenticate.h"
 #include "view_transform.h"
 #include "parser.h"
 #include "parser_message.h"

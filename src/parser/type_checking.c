@@ -40,6 +40,7 @@
 #include <sys/time.h>
 #endif /* ! WINDOWS */
 
+#include "authenticate.h"
 #include "error_manager.h"
 #include "parser.h"
 #include "parser_message.h"

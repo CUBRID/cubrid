@@ -41,6 +41,7 @@
 #include <windows.h>
 #endif /* not WINDOWS */
 
+#include "authenticate.h"
 #include "error_manager.h"
 #include "memory_alloc.h"
 #include "dbtype.h"
