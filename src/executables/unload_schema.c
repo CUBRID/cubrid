@@ -826,8 +826,12 @@ extract_classes_to_file (extract_context & ctxt, const char *output_filename)
 
   err_count = extract_classes (ctxt, output_ctx);
 
-  fprintf (output_file, "\n");
-  fprintf (output_file, "COMMIT WORK;\n");
+  if (err_count == 0)
+    {
+      output_ctx ("\n");
+      output_ctx ("COMMIT WORK;\n");
+    }
+
   fclose (output_file);
 
   return err_count;
@@ -940,9 +944,13 @@ extract_triggers_to_file (extract_context & ctxt, const char *output_filename)
       remove (output_filename);
     }
   else
-    {				/* not empty */
-      fprintf (output_file, "\n\n");
-      fprintf (output_file, "COMMIT WORK;\n");
+    {
+      /* not empty */
+      if (err_count == 0)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
       fclose (output_file);
       output_file = NULL;
     }
@@ -1026,8 +1034,11 @@ extract_indexes_to_file (extract_context & ctxt, const char *output_filename)
     }
   else
     {				/* not empty */
-      fprintf (output_file, "\n\n");
-      fprintf (output_file, "COMMIT WORK;\n");
+      if (err_count == 0)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
       fclose (output_file);
       output_file = NULL;
     }
