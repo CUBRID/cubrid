@@ -1033,6 +1033,7 @@ build_query_graph_function_index (PARSER_CONTEXT * parser, PT_NODE * tree, void 
 	    }
 
 	  if (entity != NULL && entity->info.spec.entity_name
+	      && entity->info.spec.entity_name->node_type == PT_NAME
 	      && ((cls = sm_find_class (entity->info.spec.entity_name->info.name.original)) != NULL))
 	    {
 	      constraints = sm_class_constraints (cls);
