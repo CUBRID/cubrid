@@ -23733,7 +23733,7 @@ pt_substitute_analytic_references (PARSER_CONTEXT * parser, PT_NODE * node, PT_N
     }
   else if (PT_IS_FUNCTION (node))
     {
-      for (PT_NODE * arg = node->info.function.arg_list; arg != NULL; arg = arg->next)
+      for (REFPTR (PT_NODE, arg) = node->info.function.arg_list; arg != NULL; arg = arg->next)
 	{
 	  PT_NODE *save_next = arg->next;
 
