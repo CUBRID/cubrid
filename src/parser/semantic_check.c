@@ -10119,14 +10119,6 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	{
 	  break;
 	}
-      if (node->info.json_table_info.expr->type_enum != PT_TYPE_JSON
-	  && node->info.json_table_info.expr->type_enum != PT_TYPE_CHAR
-	  && node->info.json_table_info.expr->type_enum != PT_TYPE_MAYBE)
-	{
-	  // todo: can this be improved to hint that we are talking about json_table's expression
-	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_WANT_TYPE,
-		      pt_show_type_enum (PT_TYPE_JSON));
-	}
 
       if (pt_check_json_table_node (parser, node->info.json_table_info.tree))
 	{
