@@ -23733,17 +23733,11 @@ pt_substitute_analytic_references (PARSER_CONTEXT * parser, PT_NODE * node, PT_N
     }
   else if (PT_IS_FUNCTION (node))
     {
-      PT_NODE *arg, *ret, *save_next;
-
-      /* walk function arguments */
-      arg = node->info.function.arg_list;
-      node->info.function.arg_list = NULL;
-
-      while (arg != NULL)
+      for (PT_NODE * arg = node->info.function.arg_list; arg != NULL; arg = arg->next)
 	{
-	  save_next = arg->next;
+	  PT_NODE *save_next = arg->next;
 
-	  ret = pt_substitute_analytic_references (parser, arg, ex_list);
+	  PT_NODE *ret = pt_substitute_analytic_references (parser, arg, ex_list);
 	  if (ret == NULL)
 	    {
 	      /* error has been set */
@@ -23753,9 +23747,12 @@ pt_substitute_analytic_references (PARSER_CONTEXT * parser, PT_NODE * node, PT_N
 	      return NULL;
 	    }
 
-	  node->info.function.arg_list = parser_append_node (ret, node->info.function.arg_list);
-
-	  arg = save_next;
+	  // check if node was changed (was a pointer_ref node)
+	  if (ret != arg)
+	    {
+	      arg = ret;
+	      arg->next = save_next;
+	    }
 	}
 
       return node;
