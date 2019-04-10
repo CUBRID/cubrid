@@ -23762,14 +23762,7 @@ pt_substitute_analytic_references (PARSER_CONTEXT * parser, PT_NODE * node, PT_N
 		}
 	    }
 
-	  if (prev != NULL)
-	    {
-	      prev = prev->next;
-	    }
-	  else
-	    {
-	      prev = node->info.function.arg_list;
-	    }
+	  prev = arg;
 	}
 
       return node;
