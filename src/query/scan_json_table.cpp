@@ -271,6 +271,11 @@ namespace cubscan
 	      return error_code;
 	    }
 	  error_code = init_cursor (*document.get_immutable (), *m_specp->m_root_node, m_scan_cursor[0]);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
 	}
 
       // if we gather expr from another table, for each row we need to reset the ordinality
