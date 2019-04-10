@@ -36,7 +36,6 @@
 #include "object_representation.h"
 #include "object_domain.h"
 #if !defined(SERVER_MODE)
-#include "authenticate.h"
 #include "trigger_manager.h"
 #include "dbi.h"
 #include "parser.h"

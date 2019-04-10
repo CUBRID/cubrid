@@ -36,6 +36,7 @@
 
 #include "log_applier.h"
 
+#include "authenticate.h"
 #include "porting.h"
 #include "utility.h"
 #include "environment_variable.h"

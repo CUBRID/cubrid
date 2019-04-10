@@ -33,7 +33,7 @@
 #include <setjmp.h>
 #include <assert.h>
 
-#include "authenticate.h"
+#include "class_object.h"
 #include "compile_context.h"
 #include "config.h"
 #include "cursor.h"

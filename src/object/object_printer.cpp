@@ -22,6 +22,8 @@
  */
 
 #include "object_printer.hpp"
+
+#include "authenticate.h"
 #include "class_description.hpp"
 #include "class_object.h"
 #include "db_json.hpp"

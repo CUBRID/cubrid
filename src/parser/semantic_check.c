@@ -25,8 +25,9 @@
 
 #include "config.h"
 
-
 #include <assert.h>
+
+#include "authenticate.h"
 #include "error_manager.h"
 #include "parser.h"
 #include "parser_message.h"

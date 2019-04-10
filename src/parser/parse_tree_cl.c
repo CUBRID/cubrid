@@ -33,6 +33,7 @@
 #include <assert.h>
 #include <math.h>
 
+#include "authenticate.h"
 #include "db_value_printer.hpp"
 #include "porting.h"
 #include "parser.h"

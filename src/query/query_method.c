@@ -25,6 +25,7 @@
 
 #include "query_method.h"
 
+#include "authenticate.h"
 #include "config.h"
 #include "db.h"
 #include "dbtype.h"
