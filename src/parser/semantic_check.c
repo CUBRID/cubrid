@@ -10120,6 +10120,12 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  break;
 	}
 
+      if (!pt_is_json_doc_type (node->info.json_table_info.expr->type_enum))
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_WANT_TYPE,
+		      pt_show_type_enum (PT_TYPE_JSON));
+	}
+
       if (pt_check_json_table_node (parser, node->info.json_table_info.tree))
 	{
 	  ASSERT_ERROR ();
