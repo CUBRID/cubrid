@@ -1013,7 +1013,7 @@ cci_url_match (const char *src, char *token[])
 	  }
 
 	int num_matches = match.size ();
-	for (int i = 0; match_idx[i] != -1 && i < num_matches; i++)
+	for (int i = 0; match_idx[i] != -1 && match_idx[i] < num_matches; i++)
 	  {
 	    std::csub_match sub_by_idx = match[match_idx[i]];
 	    size_t n = sub_by_idx.length ();
