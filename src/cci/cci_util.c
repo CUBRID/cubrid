@@ -50,7 +50,10 @@
 #include <windows.h>
 #endif
 #include <sys/types.h>
-#include "libregex38a/regex38a.h"
+
+#ifdef __cplusplus
+#include <regex>
+#endif
 
 /************************************************************************
  * OTHER IMPORTED HEADER FILES						*
@@ -994,79 +997,65 @@ cci_url_match (const char *src, char *token[])
     "cci:cubrid(-oracle|-mysql)?:([a-zA-Z_0-9\\.-]*):([0-9]*):([^:]+):([^:]*):([^:]*):(\\?[a-zA-Z_0-9]+=[^&=?]+(&[a-zA-Z_0-9]+=[^&=?]+)*)?";
   static int match_idx[] = { 2, 3, 4, 5, 6, 7, -1 };
 
-  unsigned i, len;
-  int error;
-  cub_regex_t regex;
-  cub_regmatch_t match[100];
+  int error = CCI_ER_NO_ERROR;
+  using namespace std::regex_constants;
+  try
+  {
+    std::regex reg (pattern, ECMAScript | icase);
 
-  char b[256];
+    std::cmatch match;
+    bool searched = std::regex_search (src, match, reg);
+    if (searched)
+      {
+	for (int i = 0; match_idx[i] != -1; i++)
+	  {
+	    token[i] = NULL;
+	  }
 
-  cub_regset_malloc (cci_reg_malloc);
-  cub_regset_realloc (cci_reg_realloc);
-  cub_regset_free (cci_reg_free);
-
-  error = cub_regcomp (&regex, pattern, CUB_REG_EXTENDED | CUB_REG_ICASE);
-  if (error != CUB_REG_OKAY)
-    {
-      /* should not reach on this */
-      cub_regerror (error, &regex, b, 256);
-      fprintf (stderr, "cub_regcomp : %s\n", b);
-      cub_regfree (&regex);
-      return CCI_ER_INVALID_URL;	/* pattern compilation error */
-    }
-
-  len = strlen (src);
-  error = cub_regexec (&regex, src, len, 100, match, 0);
-  if (error == CUB_REG_NOMATCH)
-    {
-      cub_regfree (&regex);
-      return CCI_ER_INVALID_URL;	/* invalid url */
-    }
-  if (error != CUB_REG_OKAY)
-    {
-      /* should not reach on this */
-      cub_regerror (error, &regex, b, 256);
-      fprintf (stderr, "cub_regcomp : %s\n", b);
-      cub_regfree (&regex);
-      return CCI_ER_INVALID_URL;	/* regexec error */
-    }
-
-  if (match[0].rm_eo - match[0].rm_so != len)
-    {
-      cub_regfree (&regex);
-      return CCI_ER_INVALID_URL;	/* invalid url */
-    }
-
-  for (i = 0; match_idx[i] != -1; i++)
-    {
-      token[i] = NULL;
-    }
-
-  error = CCI_ER_NO_ERROR;
-  for (i = 0; match_idx[i] != -1 && match[match_idx[i]].rm_so != -1; i++)
-    {
-      const char *t = src + match[match_idx[i]].rm_so;
-      size_t n = match[match_idx[i]].rm_eo - match[match_idx[i]].rm_so;
-      token[i] = (char *) MALLOC (n + 1);
-      if (token[i] == NULL)
-	{
-	  error = CCI_ER_NO_MORE_MEMORY;	/* out of memory */
-	  break;
-	}
-      strncpy (token[i], t, n);
-      token[i][n] = '\0';
-    }
+	int num_matches = match.size ();
+	for (int i = 0; match_idx[i] != -1 && i < num_matches; i++)
+	  {
+	    std::csub_match sub_by_idx = match[match_idx[i]];
+	    size_t n = sub_by_idx.length ();
+	    token[i] = (char *) MALLOC (n + 1);
+	    if (token[i] == NULL)
+	      {
+		error = CCI_ER_NO_MORE_MEMORY;
+		break;
+	      }
+	    std::string t = sub_by_idx.str ();
+	    strcpy (token[i], t.c_str ());
+	    token[i][n] = '\0';
+	  }
+      }
+    else
+      {
+	error = CCI_ER_INVALID_URL;
+      }
+  }
+  catch (std::regex_error & e)
+  {
+    // regex exception
+    if (e.code () == error_stack)
+      {
+	error = CCI_ER_NO_MORE_MEMORY;
+      }
+    else
+      {
+	error = CCI_ER_INVALID_URL;
+      }
+    fprintf (stderr, "regex_error : %s\n", e.what ());
+  }
 
   if (error != CCI_ER_NO_ERROR)
     {
       /* free allocated memory when error was CCI_ER_NO_MORE_MEMORY */
-      for (i = 0; match_idx[i] != -1 && match[match_idx[i]].rm_so != -1; i++)
+      for (int i = 0; match_idx[i] != -1; i++)
 	{
 	  FREE_MEM (token[i]);
 	}
     }
 
-  cub_regfree (&regex);
   return error;
 }
 
