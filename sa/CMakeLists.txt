@@ -100,6 +100,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/perf_monitor.c
   ${BASE_DIR}/pinnable_buffer.cpp
   ${BASE_DIR}/pinning.cpp
+  ${BASE_DIR}/printer.cpp
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/system_parameter.c
   ${BASE_DIR}/fault_injection.c
@@ -143,6 +144,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/pinning.hpp
   ${BASE_DIR}/pinnable_buffer.hpp
   ${BASE_DIR}/porting_inline.hpp
+  ${BASE_DIR}/printer.hpp
   ${BASE_DIR}/resource_tracker.hpp
 )
 

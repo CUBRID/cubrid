@@ -47,8 +47,6 @@
 
 class print_output;
 
-
-
 /*
  * Authorization Class Names
  */
@@ -99,6 +97,7 @@ extern const char *AU_DBA_USER_NAME;
 /* Invalid cache is identified when the high bit is on. */
 
 #define AU_CACHE_INVALID        0x80000000
+
 
 int au_disable (void);
 void au_enable (int save);
@@ -238,8 +237,8 @@ extern void au_link_static_methods (void);
 
 /* migration utilities */
 
-extern int au_export_users (print_output &output_ctx);
-extern int au_export_grants (print_output &output_ctx, MOP class_mop);
+extern int au_export_users (print_output & output_ctx);
+extern int au_export_grants (print_output & output_ctx, MOP class_mop);
 
 extern int au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth);
 

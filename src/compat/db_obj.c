@@ -36,7 +36,6 @@
 
 #include "db.h"
 #include "class_object.h"
-#include "extract_schema.hpp"
 #include "object_print.h"
 #include "server_interface.h"
 #include "boot_cl.h"
@@ -53,6 +52,7 @@
 #include "network_interface_cl.h"
 #include "transform.h"
 #include "dbtype.h"
+#include "printer.hpp"
 
 /*
  * OBJECT CREATION/DELETION

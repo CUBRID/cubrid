@@ -35,6 +35,7 @@
 #include "extract_schema.hpp"
 #include "message_catalog.h"
 #include "environment_variable.h"
+#include "printer.hpp"
 #include "schema_manager.h"
 #include "locator_cl.h"
 #include "unloaddb.h"

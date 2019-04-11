@@ -39,7 +39,6 @@
 #include <ctype.h>
 #include <assert.h>
 
-#include "extract_schema.hpp"
 #include "porting.h"
 #include "misc_string.h"
 #include "memory_alloc.h"
@@ -69,6 +68,7 @@
 #include "execute_statement.h"
 #include "optimizer.h"
 #include "network_interface_cl.h"
+#include "printer.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -549,8 +549,8 @@ static void free_class_users (CLASS_USER * users);
 static CLASS_USER *find_or_add_user (CLASS_AUTH * auth, MOP user_obj);
 static int add_class_grant (CLASS_AUTH * auth, MOP source, MOP user, int cache);
 static int build_class_grant_list (CLASS_AUTH * cl_auth, MOP class_mop);
-static void issue_grant_statement (print_output &output_ctx, CLASS_AUTH *auth, CLASS_GRANT *grant, int authbits);
-static int class_grant_loop (print_output &output_ctx, CLASS_AUTH *auth);
+static void issue_grant_statement (print_output & output_ctx, CLASS_AUTH * auth, CLASS_GRANT * grant, int authbits);
+static int class_grant_loop (print_output & output_ctx, CLASS_AUTH * auth);
 
 static void au_print_cache (int cache, FILE * fp);
 static void au_print_grant_entry (DB_SET * grants, int grant_index, FILE * fp);
@@ -6926,10 +6926,10 @@ au_get_user_name (MOP obj)
  *                   calls that when evaluated, will re-create the current
  *                   user/group hierarchy.
  *   return: error code
- *   outfp(in): output file
+ *   output_ctx(in/out): print context
  */
 int
-au_export_users (print_output &output_ctx)
+au_export_users (print_output & output_ctx)
 {
   int error;
   DB_SET *direct_groups;
@@ -7077,7 +7077,7 @@ au_export_users (print_output &output_ctx)
 	    {
 	      if (strlen (passbuf))
 		{
-		  output_ctx ( "call [find_user]('%s') on class [db_user] to [auser];\n", uname);
+		  output_ctx ("call [find_user]('%s') on class [db_user] to [auser];\n", uname);
 		  if (encrypt_mode == ENCODE_PREFIX_DES)
 		    {
 		      output_ctx ("call [set_password_encoded]('%s') on [auser];\n", passbuf);
@@ -7481,7 +7481,7 @@ build_class_grant_list (CLASS_AUTH * cl_auth, MOP class_mop)
  *   quoted_id_flag(in):
  */
 static void
-issue_grant_statement (print_output &output_ctx, CLASS_AUTH *auth, CLASS_GRANT *grant, int authbits)
+issue_grant_statement (print_output & output_ctx, CLASS_AUTH * auth, CLASS_GRANT * grant, int authbits)
 {
   const char *gtype, *classname;
   char *username;
@@ -7566,7 +7566,7 @@ issue_grant_statement (print_output &output_ctx, CLASS_AUTH *auth, CLASS_GRANT *
  * TODO : LP64
  */
 static int
-class_grant_loop (print_output &output_ctx, CLASS_AUTH *auth)
+class_grant_loop (print_output & output_ctx, CLASS_AUTH * auth)
 {
 #define AU_MIN_BIT 1		/* AU_SELECT */
 #define AU_MAX_BIT 0x40		/* AU_EXECUTE */
@@ -7640,7 +7640,7 @@ class_grant_loop (print_output &output_ctx, CLASS_AUTH *auth)
  *   quoted_id_flag(in):
  */
 int
-au_export_grants (print_output &output_ctx, MOP class_mop)
+au_export_grants (print_output & output_ctx, MOP class_mop)
 {
   int error = NO_ERROR;
   CLASS_AUTH cl_auth;
@@ -7674,8 +7674,8 @@ au_export_grants (print_output &output_ctx, MOP class_mop)
 	       * for now, leave a comment in the output file
 	       */
 	      output_ctx ("/*");
-	      output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_GRANT_DUMP_ERROR),
-			  uname);
+	      output_ctx (msgcat_message
+			  (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_GRANT_DUMP_ERROR), uname);
 	      output_ctx ("*/\n");
 	      ws_free_string (uname);
 	      ecount++;

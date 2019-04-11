@@ -45,6 +45,7 @@
 #include "load_object.h"
 #include "object_primitive.h"
 #include "parser.h"
+#include "printer.hpp"
 #include "message_catalog.h"
 #include "utility.h"
 #include "unloaddb.h"

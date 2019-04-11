@@ -37,7 +37,6 @@
 #include <sys/stat.h>
 #include <math.h>
 
-#include "extract_schema.hpp"
 #include "utility.h"
 #include "misc_string.h"
 #include "memory_alloc.h"
@@ -53,6 +52,7 @@
 #include "load_object.h"
 #include "db_value_printer.hpp"
 #include "network_interface_cl.h"
+#include "printer.hpp"
 
 #include "message_catalog.h"
 #include "string_opfunc.h"

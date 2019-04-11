@@ -25,9 +25,9 @@
 
 #include "db_date.h"
 #include "dbtype.h"
-#include "extract_schema.hpp"
 #include "memory_private_allocator.hpp"
 #include "object_primitive.h"
+#include "printer.hpp"
 #include "set_object.h"
 #include "string_buffer.hpp"
 #include "string_opfunc.h"

@@ -29,7 +29,6 @@
 #include <string.h>
 #include <assert.h>
 
-#include "extract_schema.hpp"
 #include "language_support.h"
 #include "area_alloc.h"
 #include "work_space.h"
@@ -50,6 +49,7 @@
 #include "misc_string.h"
 #endif
 #include "dbtype.h"
+#include "printer.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

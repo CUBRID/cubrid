@@ -17,26 +17,49 @@
  *
  */
 
-
 /*
- * extract_schema.cpp -
+ * printer.cpp - printing classes
  */
 
-#include "extract_schema.hpp"
-#include "dbi.h"
+#include "printer.hpp"
 
 
-void extract_context::clear_schema_workspace (void)
+const char *print_output::exec_name (void)
 {
-  if (vclass_list_has_using_index != NULL)
-    {
-      db_objlist_free (vclass_list_has_using_index);
-      vclass_list_has_using_index = NULL;
-    }
+  return context_name.c_str ();
+}
 
-  if (classes != NULL)
-    {
-      db_objlist_free (classes);
-      classes = NULL;
-    }
+void print_output::operator+= (const char ch)
+{
+  m_sb.operator+= (ch);
+  (void) flush ();
+}
+
+file_print_output::file_print_output (const std::string &ctx_name, FILE *fp) :
+  print_output (ctx_name),
+  output_file (fp)
+{
+}
+
+file_print_output &file_print_output::std_output (void)
+{
+  static file_print_output s_std_output ("STDOUT", stdout);
+  return s_std_output;
+}
+
+int file_print_output::flush ()
+{
+  return (int) fwrite (m_sb.get_buffer (), 1, m_sb.len (), output_file);
+}
+
+
+string_print_output::string_print_output (const std::string &ctx_name) :
+  print_output (ctx_name)
+{
+}
+
+int string_print_output::flush ()
+{
+  /* nothing to do */
+  return (int) m_sb.len ();
 }
