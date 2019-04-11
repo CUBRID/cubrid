@@ -89,6 +89,7 @@ namespace cubload
     size_t get_packed_size (cubpacking::packer &serializator) const override;
 
     int parse_ignore_class_file ();
+    int set_ignored_errors_array (std::vector <int> &ignored_errors);
 
     std::string volume;
     std::string input_file;
@@ -112,6 +113,7 @@ namespace cubload
     std::string table_name;
     std::string ignore_class_file;
     std::vector<std::string> ignore_classes;
+    std::vector<int> ignored_errors;
   };
 
   /*

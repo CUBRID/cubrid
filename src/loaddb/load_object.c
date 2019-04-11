@@ -1805,3 +1805,17 @@ clear_errid:
     }
   goto exit_on_end;
 }
+
+std::vector < int >
+get_ignored_errors ()
+{
+  std::vector < int >vec;
+  for (int i = 0; i < -ER_LAST_ERROR; i++)
+    {
+      if (filter_ignore_errors[i] == true)
+	{
+	  vec.push_back (-i);
+	}
+    }
+  return vec;
+}
