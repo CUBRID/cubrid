@@ -866,8 +866,7 @@ extract_classes (extract_context & ctxt, print_output & schema_output_ctx)
 	}
       else
 	{
-	  fprintf (stderr, "%s: Unknown database error occurs " "but may not be database error.\n\n",
-		   ctxt.exec_name);
+	  fprintf (stderr, "%s: Unknown database error occurs " "but may not be database error.\n\n", ctxt.exec_name);
 	  return 1;
 	}
     }
