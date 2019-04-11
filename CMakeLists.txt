@@ -146,7 +146,6 @@ set(WITH_EXTERNAL_PREFIX "EXTERNAL" CACHE STRING "External library prefix (defau
 set(WITH_BUNDLED_PREFIX "BUNDLED" CACHE STRING "Bundled library prefix (default: BUNDLED)")
 set(WITH_SYSTEM_PREFIX "SYSTEM" CACHE STRING "System library prefix (default: SYSTEM)")
 
-set(WITH_LIBREGEX     "${WITH_BUNDLED_PREFIX}" CACHE STRING "Build with regex library (default: BUNDLED)")
 set(WITH_LIBEXPAT     "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with expat library (default: EXTERNAL)")
 set(WITH_LIBJANSSON   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with jansson library (default: EXTERNAL)")
 set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editline library (default: EXTERNAL)")
@@ -848,49 +847,6 @@ endif(USE_CUBRID_ENV)
 include(ExternalProject)
 set_property(DIRECTORY PROPERTY EP_BASE "${CMAKE_BINARY_DIR}/external")
 set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external --enable-static --disable-shared --with-pic CFLAGS=${CMAKE_C_FLAGS} CXXFLAGS=${CMAKE_CXX_FLAGS})
-
-# WITH_LIBREGEX can have multiple values with different meanings
-# on Linux:
-# * "BUNDLED" - (default) builds bundled (from external/libregex38a) regex library and uses the library created by the build
-# * "SYSTEM"   - use regex library located in:
-#                  ${WITH_EXTERNAL_LIBS_PATH}
-#                  ${WITH_LIBREGEX_ROOT_PATH}/lib
-#                use regex headers located in:
-#                  ${WITH_EXTERNAL_HEADERS_PATH}
-#                  ${WITH_LIBREGEX_ROOT_PATH}/include
-# on Windows:
-# * "BUNDLED" - (default) uses the prebuilt library from cubrid/win/external
-if(WITH_LIBREGEX STREQUAL "BUNDLED")
-  set(LIBREGEX_TARGET libregex)
-  if(UNIX)
-    externalproject_add(${LIBREGEX_TARGET}
-      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libregex38a
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/external/lib
-      COMMAND ${CMAKE_COMMAND} -E copy .libs/libregex38a.a ${CMAKE_CURRENT_BINARY_DIR}/external/lib/
-      )
-    list(APPEND EP_TARGETS ${LIBREGEX_TARGET})
-    set(LIBREGEX_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libregex38a.a)
-    set(LIBREGEX_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/libregex38a)
-  else(UNIX)
-    set(LIBREGEX_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/libregex38a.lib)
-    set(LIBREGEX_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
-  endif(UNIX)
-elseif(WITH_LIBREGEX STREQUAL "SYSTEM")
-  if(UNIX)
-    find_library(LIBREGEX_LIBS NAMES libregex38a.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBREGEX_ROOT_PATH}/lib REQUIRED)
-    find_path(LIBREGEX_INCLUDES NAMES libregex38a/regex38a.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBREGEX_ROOT_PATH}/include REQUIRED)
-
-    message(STATUS "Found regex library: ${LIBREGEX_LIBS}")
-    message(STATUS "Found regex headers: ${LIBREGEX_INCLUDES}")
-  else(UNIX)
-    message(FATAL_ERROR "WITH_LIBREGEX=SYSTEM is not supported on current OS")
-  endif(UNIX)
-endif()
-list(APPEND EP_INCLUDES ${LIBREGEX_INCLUDES})
-list(APPEND EP_LIBS ${LIBREGEX_LIBS})
 
 # WITH_LIBEXPAT can have multiple values with different meanings
 # on Linux:
