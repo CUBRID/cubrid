@@ -42,7 +42,6 @@ namespace cubreplication
       UNDEFINED = 0,
       ACTIVE,
       COMMITTED,
-      SYSOP_COMMITTED,
       ABORTED,
       GROUP_COMMIT
     } TRAN_STATE;

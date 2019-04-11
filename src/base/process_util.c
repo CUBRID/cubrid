@@ -39,8 +39,8 @@
 #endif
 
 int
-create_child_process (const char *const argv[], int wait_flag, check_funct_t check_func, void *check_arg,
-		      const char *stdin_file, char *stdout_file, char *stderr_file, int *exit_status)
+create_child_process (const char *const argv[], int wait_flag, const char *stdin_file, char *stdout_file,
+		      char *stderr_file, int *exit_status)
 {
 #if defined(WINDOWS)
   int new_pid;
@@ -167,39 +167,14 @@ create_child_process (const char *const argv[], int wait_flag, check_funct_t che
   if (wait_flag)
     {
       DWORD status = 0;
-      if (check_func != NULL)
+
+      status = WaitForSingleObject (proc_info.hProcess, INFINITE);
+      if (status == WAIT_FAILED)
 	{
-	  while (1)
-	    {
-	      status = WaitForSingleObject (proc_info.hProcess, 10);
-	      if (status == WAIT_FAILED)
-		{
-		  assert (false);
-		  return 1;
-		}
-	      else if (status == WAIT_TIMEOUT)
-		{
-		  if (check_func (check_arg))
-		    {
-		      return 1;
-		    }
-		  continue;
-		}
-	      else
-		{
-		  break;
-		}
-	    }
+	  assert (false);
+	  return 1;
 	}
-      else
-	{
-	  status = WaitForSingleObject (proc_info.hProcess, INFINITE);
-	  if (status == WAIT_FAILED)
-	    {
-	      assert (false);
-	      return 1;
-	    }
-	}
+
       rc = GetExitCodeProcess (proc_info.hProcess, &status);
       if (rc == FALSE)
 	{

@@ -14283,7 +14283,7 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
 
   envvar_bindir_file (path, PATH_MAX, UTIL_DDL_PROXY_CLIENT);
 
-  error = create_child_process (ddl_argv, 1, check_interrupt_callback, thread_p, NULL, NULL, NULL, &exit_status);
+  error = create_child_process (ddl_argv, 1, NULL, NULL, NULL, &exit_status);
   tdes->ha_sbr_statement = NULL;
   if (error != NO_ERROR)
     {

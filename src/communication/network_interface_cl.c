@@ -3611,7 +3611,7 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
     {
       assert (client_credential->desired_tran_index != NULL_TRAN_INDEX);
       ptr = or_pack_int (ptr, client_credential->desired_tran_index);
-      request_id = NET_SERVER_BO_REGISTER_CLIENT_WITH_TRAN_INDEX;
+      request_id = NET_SERVER_BO_REGISTER_CLIENT;
     }
 
   req_error = net_client_request2 (request_id, request, request_size, reply,
@@ -8556,16 +8556,10 @@ repl_set_info (REPL_INFO * repl_info)
 		      + length_const_string (repl_schema->stmt_text, &strlen2)
 		      + length_const_string (repl_schema->db_user, &strlen3)
 		      + length_const_string (repl_schema->db_password, &strlen4)
-		      + length_const_string (repl_schema->sys_prm_context, &strlen5));
+		      + length_const_string (repl_schema->sys_prm_context, &strlen5)
+		      + length_const_string (repl_schema->savepoint_name, &strlen6));
 
       assert (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG) || repl_schema->savepoint_name == NULL);
-      strlen6 = 0;
-#if !defined(NDEBUG) && defined (CS_MODE)
-      if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
-	{
-	  request_size += length_const_string (repl_schema->savepoint_name, &strlen6);
-	}
-#endif
 
       request = (char *) malloc (request_size);
       if (request == NULL)
