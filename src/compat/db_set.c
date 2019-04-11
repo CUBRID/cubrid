@@ -31,6 +31,9 @@
 #include <ctype.h>
 #include <string.h>
 
+#if !defined (SERVER_MODE)
+#include "authenticate.h"
+#endif // not SERVER_MODE
 #include "db.h"
 #include "dbtype.h"
 #include "error_manager.h"

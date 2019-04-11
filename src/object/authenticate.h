@@ -32,12 +32,17 @@
 #error Does not belong to server module
 #endif /* defined (SERVER_MODE) */
 
+#ifndef __cplusplus
+#error Requires C++
+#endif // not c++
+
 #include <stdio.h>
 #include <stdlib.h>
 
 #include "error_manager.h"
 #include "class_object.h"
 #include "databases_file.h"
+#include "object_fetch.h"
 
 
 /*
@@ -218,17 +223,6 @@ MOP au_get_dba_user (void);
       (cache) = NULL; \
     } \
   while (0)
-
-typedef enum au_fetchmode
-{
-  AU_FETCH_READ,
-  AU_FETCH_SCAN,		/* scan that does not allow write */
-  AU_FETCH_EXCLUSIVE_SCAN,	/* scan that does allow neither write nor other exclusive scan, i.e, scan for load
-				 * index. */
-  AU_FETCH_WRITE,
-  AU_FETCH_UPDATE
-} AU_FETCHMODE;
-
 
 /*
  * Global Variables

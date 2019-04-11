@@ -41,6 +41,7 @@
 #define	SIGALRM	14
 #endif /* WINDOWS */
 
+#include "authenticate.h"
 #include "utility.h"
 #include "load_object.h"
 #include "log_lsa.hpp"

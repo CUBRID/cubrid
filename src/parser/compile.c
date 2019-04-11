@@ -27,6 +27,7 @@
 
 #include <assert.h>
 
+#include "authenticate.h"
 #include "dbi.h"
 #include "parser.h"
 #include "semantic_check.h"
