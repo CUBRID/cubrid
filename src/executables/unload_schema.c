@@ -39,7 +39,7 @@
 
 #include "db.h"
 #include "extract_schema.hpp"
-#include "authenticate_extract.hpp"
+#include "authenticate.h"
 #include "schema_manager.h"
 #include "trigger_description.hpp"
 #include "load_object.h"

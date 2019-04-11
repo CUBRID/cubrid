@@ -45,49 +45,9 @@
 #include "object_fetch.h"
 
 
-/*
- * CLASS_GRANT
- *
- * Maintains information about a desired grant request.
- */
-typedef struct class_grant CLASS_GRANT;
-struct class_grant
-{
-  struct class_grant *next;
+class print_output;
 
-  struct class_user *user;
-  int cache;
-};
 
-/*
- * CLASS_USER
- *
- * Maintains information about a desired grant subject user.
- */
-typedef struct class_user CLASS_USER;
-struct class_user
-{
-  struct class_user *next;
-
-  MOP obj;
-
-  CLASS_GRANT *grants;
-  int available_auth;
-};
-
-/*
- * CLASS_AUTH
- *
- * Maintains information about the grants on a particular class.
- */
-typedef struct class_auth CLASS_AUTH;
-struct class_auth
-{
-
-  MOP class_mop;
-  MOP owner;
-  CLASS_USER *users;
-};
 
 /*
  * Authorization Class Names
@@ -140,14 +100,6 @@ extern const char *AU_DBA_USER_NAME;
 
 #define AU_CACHE_INVALID        0x80000000
 
-#define ENCODE_PREFIX_DEFAULT           (char)0
-#define ENCODE_PREFIX_DES               (char)1
-#define ENCODE_PREFIX_SHA1              (char)2
-#define ENCODE_PREFIX_SHA2_512          (char)3
-#define IS_ENCODED_DES(string)          (string[0] == ENCODE_PREFIX_DES)
-#define IS_ENCODED_SHA1(string)         (string[0] == ENCODE_PREFIX_SHA1)
-#define IS_ENCODED_SHA2_512(string)     (string[0] == ENCODE_PREFIX_SHA2_512)
-
 int au_disable (void);
 void au_enable (int save);
 MOP au_get_public_user (void);
@@ -193,27 +145,6 @@ MOP au_get_dba_user (void);
 #define AU_MAX_PASSWORD_CHARS   31
 #define AU_MAX_PASSWORD_BUF     2048
 #define AU_MAX_COMMENT_CHARS    SM_MAX_COMMENT_LENGTH
-
-/*
- * Message id in the set MSGCAT_SET_AUTHORIZATION
- * in the message catalog MSGCAT_CATALOG_CUBRID (file cubrid.msg).
- */
-#define MSGCAT_AUTH_INVALID_CACHE       1
-#define MSGCAT_AUTH_CLASS_NAME          2
-#define MSGCAT_AUTH_FROM_USER           3
-#define MSGCAT_AUTH_USER_TITLE          4
-#define MSGCAT_AUTH_UNDEFINED_USER      5
-#define MSGCAT_AUTH_USER_NAME           6
-#define MSGCAT_AUTH_USER_ID             7
-#define MSGCAT_AUTH_USER_MEMBERS        8
-#define MSGCAT_AUTH_USER_GROUPS         9
-#define MSGCAT_AUTH_USER_NAME2          10
-#define MSGCAT_AUTH_CURRENT_USER        11
-#define MSGCAT_AUTH_ROOT_TITLE          12
-#define MSGCAT_AUTH_ROOT_USERS          13
-#define MSGCAT_AUTH_GRANT_DUMP_ERROR    14
-#define MSGCAT_AUTH_AUTH_TITLE          15
-#define MSGCAT_AUTH_USER_DIRECT_GROUPS  16
 
 /* free_and_init routine */
 #define au_free_authorization_cache_and_init(cache) \
@@ -307,6 +238,9 @@ extern void au_link_static_methods (void);
 
 /* migration utilities */
 
+extern int au_export_users (print_output &output_ctx);
+extern int au_export_grants (print_output &output_ctx, MOP class_mop);
+
 extern int au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth);
 
 /*
@@ -336,12 +270,6 @@ extern void au_describe_root_method (MOP class_mop, DB_VALUE * returnval, DB_VAL
 extern int au_check_serial_authorization (MOP serial_object);
 extern const char *au_get_public_user_name (void);
 extern const char *au_get_user_class_name (void);
-extern void encrypt_password_sha2_512 (const char *pass, char *dest);
-extern int au_get_set (MOP obj, const char *attname, DB_SET ** set);
-extern CLASS_USER *find_or_add_user (CLASS_AUTH * auth, MOP user_obj);
-extern int build_class_grant_list (CLASS_AUTH * cl_auth, MOP class_mop);
-extern void free_class_users (CLASS_USER * users);
-extern void free_class_grants (CLASS_GRANT * grants);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern char *toupper_string (const char *name1, char *name2);
 #endif
