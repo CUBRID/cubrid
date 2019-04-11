@@ -482,6 +482,7 @@ static DB_METHOD_LINK au_static_links[] = {
 };
 
 
+static int au_get_set (MOP obj, const char *attname, DB_SET ** set);
 static int au_get_object (MOP obj, const char *attname, MOP * mop_ptr);
 static int au_set_get_obj (DB_SET * set, int index, MOP * obj);
 static AU_CLASS_CACHE *au_make_class_cache (int depth);
@@ -2400,7 +2401,7 @@ encrypt_password_sha1 (const char *pass, int add_prefix, char *dest)
  *   pass(in): string to encrypt
  *   dest(out): destination buffer
  */
-void
+static void
 encrypt_password_sha2_512 (const char *pass, char *dest)
 {
   int error_status = NO_ERROR;
@@ -2429,274 +2430,6 @@ encrypt_password_sha2_512 (const char *pass, char *dest)
 	  strcpy (dest, "");
 	}
     }
-}
-
-/*
- * au_export_users - Generates a sequence of add_user and add_member method
- *                   calls that when evaluated, will re-create the current
- *                   user/group hierarchy.
- *   return: error code
- *   outfp(in): output file
- */
-int
-au_export_users (print_output &output_ctx)
-{
-  int error;
-  DB_SET *direct_groups;
-  DB_VALUE value, gvalue;
-  MOP user, pwd;
-  int g, gcard;
-  char *uname, *str, *gname, *comment;
-  char passbuf[AU_MAX_PASSWORD_BUF];
-  char *query;
-  size_t query_size;
-  DB_QUERY_RESULT *query_result;
-  DB_QUERY_ERROR query_error;
-  DB_VALUE user_val;
-  const char *qp1 = "select [%s] from [%s];";
-  char encrypt_mode = 0x00;
-
-  query_size = strlen (qp1) + strlen (AU_USER_CLASS_NAME) * 2;
-  query = (char *) malloc (query_size);
-  if (query == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
-
-  error = db_compile_and_execute_local (query, &query_result, &query_error);
-  /* error is row count if not negative. */
-  if (error < 0)
-    {
-      free_and_init (query);
-      return error;
-    }
-
-  while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
-    {
-      if (db_query_get_tuple_value (query_result, 0, &user_val) != NO_ERROR)
-	{
-	  continue;
-	}
-
-      if (DB_IS_NULL (&user_val))
-	{
-	  user = NULL;
-	}
-      else
-	{
-	  user = db_get_object (&user_val);
-	}
-
-      uname = au_get_user_name (user);
-      strcpy (passbuf, "");
-      encrypt_mode = 0x00;
-
-      /* retrieve password */
-      error = obj_get (user, "password", &value);
-      if (error == NO_ERROR)
-	{
-	  if (DB_IS_NULL (&value))
-	    {
-	      pwd = NULL;
-	    }
-	  else
-	    {
-	      pwd = db_get_object (&value);
-	    }
-
-	  if (pwd != NULL)
-	    {
-	      error = obj_get (pwd, "password", &value);
-	      if (error == NO_ERROR)
-		{
-		  if (!DB_IS_NULL (&value) && DB_IS_STRING (&value))
-		    {
-		      /*
-		       * copy password string using malloc
-		       * to be consistent with encrypt_password
-		       */
-		      str = db_get_string (&value);
-		      if (IS_ENCODED_DES (str))
-			{
-			  /* strip off the prefix so its readable */
-			  snprintf (passbuf, AU_MAX_PASSWORD_BUF - 1, "%s", str + 1);
-			  encrypt_mode = ENCODE_PREFIX_DES;
-			}
-		      else if (IS_ENCODED_SHA1 (str))
-			{
-			  /* strip off the prefix so its readable */
-			  snprintf (passbuf, AU_MAX_PASSWORD_BUF - 1, "%s", str + 1);
-			  encrypt_mode = ENCODE_PREFIX_SHA1;
-			}
-		      else if (IS_ENCODED_SHA2_512 (str))
-			{
-			  /* not strip off the prefix */
-			  snprintf (passbuf, AU_MAX_PASSWORD_BUF - 1, "%s", str);
-			  encrypt_mode = ENCODE_PREFIX_SHA2_512;
-			}
-		      else if (strlen (str))
-			{
-			  /* sha2 hashing with prefix */
-			  encrypt_password_sha2_512 (str, passbuf);
-			}
-		      ws_free_string (str);
-		    }
-		}
-	    }
-	}
-
-      /* retrieve comment */
-      error = obj_get (user, "comment", &value);
-      if (error == NO_ERROR)
-	{
-	  if (DB_IS_NULL (&value))
-	    {
-	      comment = NULL;
-	    }
-	  else
-	    {
-	      comment = db_get_string (&value);
-	    }
-	}
-
-      if (error == NO_ERROR)
-	{
-	  if (!ws_is_same_object (user, Au_dba_user) && !ws_is_same_object (user, Au_public_user))
-	    {
-	      if (!strlen (passbuf))
-		{
-		  output_ctx ("call [add_user]('%s', '') on class [db_root];\n", uname);
-		}
-	      else
-		{
-		  output_ctx ("call [add_user]('%s', '') on class [db_root] to [auser];\n", uname);
-		  if (encrypt_mode == ENCODE_PREFIX_DES)
-		    {
-		      output_ctx ("call [set_password_encoded]('%s') on [auser];\n", passbuf);
-		    }
-		  else
-		    {
-		      output_ctx ("call [set_password_encoded_sha1]('%s') on [auser];\n", passbuf);
-		    }
-		}
-	    }
-	  else
-	    {
-	      if (strlen (passbuf))
-		{
-		  output_ctx ( "call [find_user]('%s') on class [db_user] to [auser];\n", uname);
-		  if (encrypt_mode == ENCODE_PREFIX_DES)
-		    {
-		      output_ctx ("call [set_password_encoded]('%s') on [auser];\n", passbuf);
-		    }
-		  else
-		    {
-		      output_ctx ("call [set_password_encoded_sha1]('%s') on [auser];\n", passbuf);
-		    }
-		}
-	    }
-
-	  /* export comment */
-	  if (comment != NULL && comment[0] != '\0')
-	    {
-	      output_ctx ("ALTER USER [%s] ", uname);
-	      help_print_describe_comment (output_ctx, comment);
-	      output_ctx (";\n");
-	    }
-	}
-
-      /* remember, these were allocated in the workspace */
-      if (uname != NULL)
-	{
-	  ws_free_string (uname);
-	}
-      if (comment != NULL)
-	{
-	  ws_free_string (comment);
-	}
-    }
-
-  /* group hierarchy */
-  if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
-    {
-      output_ctx ("call [find_user]('PUBLIC') on class [db_user] to [g_public];\n");
-      do
-	{
-	  if (db_query_get_tuple_value (query_result, 0, &user_val) != NO_ERROR)
-	    {
-	      continue;
-	    }
-
-	  if (DB_IS_NULL (&user_val))
-	    {
-	      user = NULL;
-	    }
-	  else
-	    {
-	      user = db_get_object (&user_val);
-	    }
-
-	  uname = au_get_user_name (user);
-	  if (uname == NULL)
-	    {
-	      continue;
-	    }
-
-	  if (au_get_set (user, "direct_groups", &direct_groups) != NO_ERROR)
-	    {
-	      ws_free_string (uname);
-	      continue;
-	    }
-
-	  gcard = set_cardinality (direct_groups);
-	  for (g = 0; g < gcard && !error; g++)
-	    {
-	      if (set_get_element (direct_groups, g, &gvalue) != NO_ERROR)
-		{
-		  continue;
-		}
-
-	      if (ws_is_same_object (db_get_object (&gvalue), Au_public_user))
-		{
-		  continue;
-		}
-
-	      error = obj_get (db_get_object (&gvalue), "name", &value);
-	      if (error != NO_ERROR)
-		{
-		  continue;
-		}
-
-	      if (DB_IS_NULL (&value))
-		{
-		  gname = NULL;
-		}
-	      else
-		{
-		  gname = (char *) (db_get_string (&value));
-		}
-
-	      if (gname != NULL)
-		{
-		  output_ctx ("call [find_user]('%s') on class [db_user] to [g_%s];\n", gname, gname);
-		  output_ctx ("call [add_member]('%s') on [g_%s];\n", uname, gname);
-		  ws_free_string (gname);
-		}
-	    }
-
-	  set_free (direct_groups);
-	  ws_free_string (uname);
-	}
-      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS);
-    }
-
-  db_query_end (query_result);
-  free_and_init (query);
-
-  return (error);
 }
 
 /*
@@ -7185,6 +6918,275 @@ au_get_user_name (MOP obj)
 	}
     }
   return (name);
+}
+
+
+/*
+ * au_export_users - Generates a sequence of add_user and add_member method
+ *                   calls that when evaluated, will re-create the current
+ *                   user/group hierarchy.
+ *   return: error code
+ *   outfp(in): output file
+ */
+int
+au_export_users (print_output &output_ctx)
+{
+  int error;
+  DB_SET *direct_groups;
+  DB_VALUE value, gvalue;
+  MOP user, pwd;
+  int g, gcard;
+  char *uname, *str, *gname, *comment;
+  char passbuf[AU_MAX_PASSWORD_BUF];
+  char *query;
+  size_t query_size;
+  DB_QUERY_RESULT *query_result;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE user_val;
+  const char *qp1 = "select [%s] from [%s];";
+  char encrypt_mode = 0x00;
+
+  query_size = strlen (qp1) + strlen (AU_USER_CLASS_NAME) * 2;
+  query = (char *) malloc (query_size);
+  if (query == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
+
+  error = db_compile_and_execute_local (query, &query_result, &query_error);
+  /* error is row count if not negative. */
+  if (error < 0)
+    {
+      free_and_init (query);
+      return error;
+    }
+
+  while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
+    {
+      if (db_query_get_tuple_value (query_result, 0, &user_val) != NO_ERROR)
+	{
+	  continue;
+	}
+
+      if (DB_IS_NULL (&user_val))
+	{
+	  user = NULL;
+	}
+      else
+	{
+	  user = db_get_object (&user_val);
+	}
+
+      uname = au_get_user_name (user);
+      strcpy (passbuf, "");
+      encrypt_mode = 0x00;
+
+      /* retrieve password */
+      error = obj_get (user, "password", &value);
+      if (error == NO_ERROR)
+	{
+	  if (DB_IS_NULL (&value))
+	    {
+	      pwd = NULL;
+	    }
+	  else
+	    {
+	      pwd = db_get_object (&value);
+	    }
+
+	  if (pwd != NULL)
+	    {
+	      error = obj_get (pwd, "password", &value);
+	      if (error == NO_ERROR)
+		{
+		  if (!DB_IS_NULL (&value) && DB_IS_STRING (&value))
+		    {
+		      /*
+		       * copy password string using malloc
+		       * to be consistent with encrypt_password
+		       */
+		      str = db_get_string (&value);
+		      if (IS_ENCODED_DES (str))
+			{
+			  /* strip off the prefix so its readable */
+			  snprintf (passbuf, AU_MAX_PASSWORD_BUF - 1, "%s", str + 1);
+			  encrypt_mode = ENCODE_PREFIX_DES;
+			}
+		      else if (IS_ENCODED_SHA1 (str))
+			{
+			  /* strip off the prefix so its readable */
+			  snprintf (passbuf, AU_MAX_PASSWORD_BUF - 1, "%s", str + 1);
+			  encrypt_mode = ENCODE_PREFIX_SHA1;
+			}
+		      else if (IS_ENCODED_SHA2_512 (str))
+			{
+			  /* not strip off the prefix */
+			  snprintf (passbuf, AU_MAX_PASSWORD_BUF - 1, "%s", str);
+			  encrypt_mode = ENCODE_PREFIX_SHA2_512;
+			}
+		      else if (strlen (str))
+			{
+			  /* sha2 hashing with prefix */
+			  encrypt_password_sha2_512 (str, passbuf);
+			}
+		      ws_free_string (str);
+		    }
+		}
+	    }
+	}
+
+      /* retrieve comment */
+      error = obj_get (user, "comment", &value);
+      if (error == NO_ERROR)
+	{
+	  if (DB_IS_NULL (&value))
+	    {
+	      comment = NULL;
+	    }
+	  else
+	    {
+	      comment = db_get_string (&value);
+	    }
+	}
+
+      if (error == NO_ERROR)
+	{
+	  if (!ws_is_same_object (user, Au_dba_user) && !ws_is_same_object (user, Au_public_user))
+	    {
+	      if (!strlen (passbuf))
+		{
+		  output_ctx ("call [add_user]('%s', '') on class [db_root];\n", uname);
+		}
+	      else
+		{
+		  output_ctx ("call [add_user]('%s', '') on class [db_root] to [auser];\n", uname);
+		  if (encrypt_mode == ENCODE_PREFIX_DES)
+		    {
+		      output_ctx ("call [set_password_encoded]('%s') on [auser];\n", passbuf);
+		    }
+		  else
+		    {
+		      output_ctx ("call [set_password_encoded_sha1]('%s') on [auser];\n", passbuf);
+		    }
+		}
+	    }
+	  else
+	    {
+	      if (strlen (passbuf))
+		{
+		  output_ctx ( "call [find_user]('%s') on class [db_user] to [auser];\n", uname);
+		  if (encrypt_mode == ENCODE_PREFIX_DES)
+		    {
+		      output_ctx ("call [set_password_encoded]('%s') on [auser];\n", passbuf);
+		    }
+		  else
+		    {
+		      output_ctx ("call [set_password_encoded_sha1]('%s') on [auser];\n", passbuf);
+		    }
+		}
+	    }
+
+	  /* export comment */
+	  if (comment != NULL && comment[0] != '\0')
+	    {
+	      output_ctx ("ALTER USER [%s] ", uname);
+	      help_print_describe_comment (output_ctx, comment);
+	      output_ctx (";\n");
+	    }
+	}
+
+      /* remember, these were allocated in the workspace */
+      if (uname != NULL)
+	{
+	  ws_free_string (uname);
+	}
+      if (comment != NULL)
+	{
+	  ws_free_string (comment);
+	}
+    }
+
+  /* group hierarchy */
+  if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
+    {
+      output_ctx ("call [find_user]('PUBLIC') on class [db_user] to [g_public];\n");
+      do
+	{
+	  if (db_query_get_tuple_value (query_result, 0, &user_val) != NO_ERROR)
+	    {
+	      continue;
+	    }
+
+	  if (DB_IS_NULL (&user_val))
+	    {
+	      user = NULL;
+	    }
+	  else
+	    {
+	      user = db_get_object (&user_val);
+	    }
+
+	  uname = au_get_user_name (user);
+	  if (uname == NULL)
+	    {
+	      continue;
+	    }
+
+	  if (au_get_set (user, "direct_groups", &direct_groups) != NO_ERROR)
+	    {
+	      ws_free_string (uname);
+	      continue;
+	    }
+
+	  gcard = set_cardinality (direct_groups);
+	  for (g = 0; g < gcard && !error; g++)
+	    {
+	      if (set_get_element (direct_groups, g, &gvalue) != NO_ERROR)
+		{
+		  continue;
+		}
+
+	      if (ws_is_same_object (db_get_object (&gvalue), Au_public_user))
+		{
+		  continue;
+		}
+
+	      error = obj_get (db_get_object (&gvalue), "name", &value);
+	      if (error != NO_ERROR)
+		{
+		  continue;
+		}
+
+	      if (DB_IS_NULL (&value))
+		{
+		  gname = NULL;
+		}
+	      else
+		{
+		  gname = (char *) (db_get_string (&value));
+		}
+
+	      if (gname != NULL)
+		{
+		  output_ctx ("call [find_user]('%s') on class [db_user] to [g_%s];\n", gname, gname);
+		  output_ctx ("call [add_member]('%s') on [g_%s];\n", uname, gname);
+		  ws_free_string (gname);
+		}
+	    }
+
+	  set_free (direct_groups);
+	  ws_free_string (uname);
+	}
+      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS);
+    }
+
+  db_query_end (query_result);
+  free_and_init (query);
+
+  return (error);
 }
 
 /*
