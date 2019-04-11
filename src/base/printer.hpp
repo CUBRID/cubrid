@@ -34,16 +34,11 @@
  */
 class print_output
 {
-  private:
-    std::string context_name;
-
   protected:
     string_buffer m_sb;
 
   public:
-    print_output (const std::string &ctx_name):
-      context_name (ctx_name)
-    {}
+    print_output () {}
 
     ~print_output ()
     {
@@ -67,13 +62,9 @@ class print_output
 
 template<typename... Args> int print_output::operator() (Args &&... args)
 {
-  int res = m_sb (std::forward<Args> (args)...);
-  if (res < 0)
-    {
-      return res;
-    }
+  m_sb (std::forward<Args> (args)...);
 
-  res = flush ();
+  int res = flush ();
 
   return res;
 }
@@ -87,7 +78,7 @@ class file_print_output : public print_output
     FILE *output_file;
 
   public:
-    file_print_output (const std::string &ctx_name, FILE *fp);
+    file_print_output (FILE *fp);
     ~file_print_output () {}
 
     static file_print_output &std_output (void);
@@ -102,7 +93,7 @@ class file_print_output : public print_output
 class string_print_output : public print_output
 {
   public:
-    string_print_output (const std::string &ctx_name);
+    string_print_output ();
     ~string_print_output () {}
 
     int flush (void);

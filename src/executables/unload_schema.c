@@ -823,7 +823,7 @@ extract_classes_to_file (extract_context & ctxt, const char *output_filename)
       return 1;
     }
 
-  file_print_output output_ctx (ctxt.exec_name, output_file);
+  file_print_output output_ctx (output_file);
 
   err_count = extract_classes (ctxt, output_ctx);
 
@@ -867,7 +867,7 @@ extract_classes (extract_context & ctxt, print_output & schema_output_ctx)
       else
 	{
 	  fprintf (stderr, "%s: Unknown database error occurs " "but may not be database error.\n\n",
-		   schema_output_ctx.exec_name ());
+		   ctxt.exec_name);
 	  return 1;
 	}
     }
@@ -931,7 +931,7 @@ extract_triggers_to_file (extract_context & ctxt, const char *output_filename)
       return 1;
     }
 
-  file_print_output output_ctx (ctxt.exec_name, output_file);
+  file_print_output output_ctx (output_file);
 
   err_count = extract_triggers (ctxt, output_ctx);
 
@@ -1020,7 +1020,7 @@ extract_indexes_to_file (extract_context & ctxt, const char *output_filename)
       return 1;
     }
 
-  file_print_output output_ctx (ctxt.exec_name, output_file);
+  file_print_output output_ctx (output_file);
 
   err_count = emit_indexes (output_ctx, ctxt.classes, ctxt.has_indexes, ctxt.vclass_list_has_using_index);
 

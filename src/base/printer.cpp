@@ -23,27 +23,20 @@
 
 #include "printer.hpp"
 
-
-const char *print_output::exec_name (void)
-{
-  return context_name.c_str ();
-}
-
 void print_output::operator+= (const char ch)
 {
   m_sb.operator+= (ch);
   (void) flush ();
 }
 
-file_print_output::file_print_output (const std::string &ctx_name, FILE *fp) :
-  print_output (ctx_name),
+file_print_output::file_print_output (FILE *fp) :
   output_file (fp)
 {
 }
 
 file_print_output &file_print_output::std_output (void)
 {
-  static file_print_output s_std_output ("STDOUT", stdout);
+  static file_print_output s_std_output (stdout);
   return s_std_output;
 }
 
@@ -53,8 +46,7 @@ int file_print_output::flush ()
 }
 
 
-string_print_output::string_print_output (const std::string &ctx_name) :
-  print_output (ctx_name)
+string_print_output::string_print_output ()
 {
 }
 

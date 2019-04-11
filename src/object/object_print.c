@@ -612,7 +612,7 @@ help_print_info (const char *command, FILE * fpp)
       fpp = stdout;
     }
 
-  file_print_output output_ctx ("help_print_info", fpp);
+  file_print_output output_ctx (fpp);
   if (MATCH_TOKEN (buffer, "schema"))
     {
       ptr = obj_print_next_token (ptr, buffer);

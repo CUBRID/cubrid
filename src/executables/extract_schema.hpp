@@ -26,6 +26,7 @@
 #define _EXTRACT_SCHEMA_HPP_
 
 #include "dbtype_def.h"
+#include <stdio.h>
 
 typedef enum
 {
