@@ -2657,6 +2657,10 @@ db_query_seek_tuple (DB_QUERY_RESULT * result, int offset, int seek_mode)
 	    {
 	      return db_query_prev_tuple (result);
 	    }
+	  else
+	    {
+	      return DB_CURSOR_SUCCESS;
+	    }
 
 	default:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1);

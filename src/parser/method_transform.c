@@ -25,6 +25,7 @@
 
 #include "config.h"
 
+#include "authenticate.h"
 #include "porting.h"
 #include "error_manager.h"
 #include "parser.h"

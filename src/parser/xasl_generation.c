@@ -31,6 +31,7 @@
 
 #include "xasl_generation.h"
 
+#include "authenticate.h"
 #include "misc_string.h"
 #include "error_manager.h"
 #include "parser.h"
@@ -1562,6 +1563,7 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 	      *argp |= PT_PRED_ARG_INSTNUM_CONTINUE;
 	      *argp |= PT_PRED_ARG_GRBYNUM_CONTINUE;
 	      *argp |= PT_PRED_ARG_ORDBYNUM_CONTINUE;
+	      /* FALLTHRU */
 
 	    case PT_BETWEEN:
 	    case PT_RANGE:
@@ -1781,10 +1783,12 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 			  {
 			    break;
 			  }
+			/* FALLTHRU */
 		      case PT_TYPE_NCHAR:
 		      case PT_TYPE_VARNCHAR:
 			node->type_enum = PT_TYPE_NCHAR;
 			node->info.value.string_type = 'N';
+			break;
 		      default:
 			break;
 		      }
@@ -6873,6 +6877,7 @@ pt_to_regu_resolve_domain (int *p_precision, int *p_scale, const PT_NODE * node)
 		    {
 		      break;
 		    }
+		  /* FALLTHRU */
 
 		default:
 		  maybe_sci_notation = 1;
@@ -10069,7 +10074,7 @@ pt_to_list_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool
 	{
 	  goto error;
 	}
-      /* fall through into next case PT_VALUE */
+      /* FALLTHRU */
 
     case PT_VALUE:
       p = (rhs->node_type == PT_NAME) ? pt_find_value_of_label (rhs->info.name.original) : &rhs->info.value.db_value;
@@ -23729,17 +23734,12 @@ pt_substitute_analytic_references (PARSER_CONTEXT * parser, PT_NODE * node, PT_N
     }
   else if (PT_IS_FUNCTION (node))
     {
-      PT_NODE *arg, *ret, *save_next;
-
-      /* walk function arguments */
-      arg = node->info.function.arg_list;
-      node->info.function.arg_list = NULL;
-
-      while (arg != NULL)
+      PT_NODE *prev = NULL;
+      for (PT_NODE * arg = node->info.function.arg_list; arg != NULL; arg = arg->next)
 	{
-	  save_next = arg->next;
+	  PT_NODE *save_next = arg->next;
 
-	  ret = pt_substitute_analytic_references (parser, arg, ex_list);
+	  PT_NODE *ret = pt_substitute_analytic_references (parser, arg, ex_list);
 	  if (ret == NULL)
 	    {
 	      /* error has been set */
@@ -23749,9 +23749,21 @@ pt_substitute_analytic_references (PARSER_CONTEXT * parser, PT_NODE * node, PT_N
 	      return NULL;
 	    }
 
-	  node->info.function.arg_list = parser_append_node (ret, node->info.function.arg_list);
+	  if (arg != ret)
+	    {
+	      if (prev != NULL)
+		{
+		  prev->next = arg = ret;
+		  arg->next = save_next;
+		}
+	      else
+		{
+		  node->info.function.arg_list = arg = ret;
+		  arg->next = save_next;
+		}
+	    }
 
-	  arg = save_next;
+	  prev = arg;
 	}
 
       return node;

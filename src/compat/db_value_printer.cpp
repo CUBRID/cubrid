@@ -360,6 +360,7 @@ void db_value_printer::describe_data (const db_value *value)
 
     case DB_TYPE_VOBJ:
       m_buf ("vid:");
+    /* FALLTHRU */
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
@@ -379,6 +380,7 @@ void db_value_printer::describe_data (const db_value *value)
       m_buf ("%s", json_body);
       db_private_free (NULL, json_body);
       break;
+
     case DB_TYPE_MIDXKEY:
       midxkey = db_get_midxkey (value);
       if (midxkey != NULL)
@@ -430,6 +432,7 @@ void db_value_printer::describe_data (const db_value *value)
       (void) db_utime_to_string (line, TOO_BIG_TO_MATTER, db_get_timestamp (value));
       m_buf (line);
       break;
+
     case DB_TYPE_TIMESTAMPLTZ:
       (void) db_timestampltz_to_string (line, TOO_BIG_TO_MATTER, db_get_timestamp (value));
       m_buf (line);

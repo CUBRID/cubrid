@@ -153,6 +153,7 @@ typedef enum
 
 #define GUID_STANDARD_BYTES_LENGTH 16
 
+static char db_string_escape_char (char c);
 static int qstr_trim (MISC_OPERAND tr_operand, const unsigned char *trim, int trim_length, int trim_size,
 		      const unsigned char *src_ptr, DB_TYPE src_type, int src_length, int src_size,
 		      INTL_CODESET codeset, unsigned char **res, DB_TYPE * res_type, int *res_length, int *res_size);
@@ -1892,8 +1893,28 @@ db_string_substring (const MISC_OPERAND substr_operand, const DB_VALUE * src_str
   return error_status;
 }
 
+static char
+db_string_escape_char (char c)
+{
+  switch (c)
+    {
+    case '\b':
+      return 'b';
+    case '\f':
+      return 'f';
+    case '\n':
+      return 'n';
+    case '\r':
+      return 'r';
+    case '\t':
+      return 't';
+    default:
+      return c;
+    }
+}
+
 int
-db_string_escape (const char *src_str, size_t src_size, char **res_string, size_t * dest_size)
+db_string_escape_str (const char *src_str, size_t src_size, char **res_string, size_t * dest_size)
 {
   size_t dest_crt_pos;
   size_t src_last_pos;
@@ -1923,6 +1944,7 @@ db_string_escape (const char *src_str, size_t src_size, char **res_string, size_
     {
       size_t len = special_idx[i] - src_last_pos;
       memcpy (&result[dest_crt_pos], &src_str[src_last_pos], len);
+      result[dest_crt_pos] = db_string_escape_char (result[dest_crt_pos]);
       dest_crt_pos += len;
       result[dest_crt_pos] = '\\';
       ++dest_crt_pos;
@@ -1930,6 +1952,7 @@ db_string_escape (const char *src_str, size_t src_size, char **res_string, size_
     }
 
   memcpy (&result[dest_crt_pos], &src_str[src_last_pos], src_size - src_last_pos);
+  result[dest_crt_pos] = db_string_escape_char (result[dest_crt_pos]);
   result[*dest_size - 2] = '"';
   result[*dest_size - 1] = '\0';
 
@@ -1958,7 +1981,7 @@ db_string_quote (const DB_VALUE * str, DB_VALUE * res)
 
       char *escaped_string = NULL;
       size_t escaped_string_size;
-      int error_code = db_string_escape (src_str, db_get_string_size (str), &escaped_string, &escaped_string_size);
+      int error_code = db_string_escape_str (src_str, db_get_string_size (str), &escaped_string, &escaped_string_size);
       if (error_code)
 	{
 	  return error_code;
@@ -18584,6 +18607,7 @@ get_number_token (const INTL_LANG lang, char *fsp, int *length, char *last_posit
 	{
 	  return N_INVALID;
 	}
+      /* FALLTHRU */
 
     case '9':
     case '0':
@@ -18622,6 +18646,7 @@ get_number_token (const INTL_LANG lang, char *fsp, int *length, char *last_posit
 	  *next_fsp = &fsp[*length];
 	  return N_SPACE;
 	}
+      return N_INVALID;
 
     case '"':
       *length += 1;
@@ -23694,8 +23719,10 @@ parse_time_string (const char *timestr, int timestr_size, int *sign, int *h, int
 
 	case 1:
 	  ms_string[1] = '0';
+	  /* FALLTHRU */
 	case 2:
 	  ms_string[2] = '0';
+	  /* FALLTHRU */
 	default:
 	  *ms = atoi (ms_string);
 	}

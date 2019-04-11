@@ -1469,9 +1469,11 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 	  return;
 
 	default:
-	  /* fall through: error! */
+	  PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
+		      pt_short_print (parser, tree));
 	  break;
 	}
+      break;
 
     default:
       PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,

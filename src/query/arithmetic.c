@@ -4268,7 +4268,7 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
 	      return ER_FAILED;
 	    }
 	  tmpval_p = &tmpval;
-	  /* no break here */
+	  /* FALLTHRU */
 	case DB_TYPE_DOUBLE:
 	  d = db_get_double (tmpval_p);
 	  if (d < 0)
@@ -6287,7 +6287,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
 
       char *escaped;
       size_t escaped_size;
-      error_code = db_string_escape (paths[0].c_str (), paths[0].size (), &escaped, &escaped_size);
+      error_code = db_string_escape_str (paths[0].c_str (), paths[0].size (), &escaped, &escaped_size);
       cubmem::private_unique_ptr<char> escaped_unqique_ptr (escaped, NULL);
       if (error_code)
 	{
@@ -6315,7 +6315,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
 
       char *escaped;
       size_t escaped_size;
-      error_code = db_string_escape (paths[i].c_str (), paths[i].size (), &escaped, &escaped_size);
+      error_code = db_string_escape_str (paths[i].c_str (), paths[i].size (), &escaped, &escaped_size);
       cubmem::private_unique_ptr<char> escaped_unqique_ptr (escaped, NULL);
       if (error_code)
 	{

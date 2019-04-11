@@ -30,6 +30,9 @@
 #include <stdio.h>
 #include <assert.h>
 
+#if !defined (SERVER_MODE)
+#include "authenticate.h"
+#endif // not SERVER_MODE
 #include "db_value_printer.hpp"
 #include "dbtype.h"
 #include "error_manager.h"
