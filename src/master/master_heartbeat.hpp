@@ -30,7 +30,15 @@
 #include "porting.h"
 #include "system_parameter.h"
 
+#if defined (LINUX)
 #include <netinet/in.h>
+#elif defined (WINDOWS)
+#include <winsock2.h>
+#endif
+
+#if defined(WINDOWS)
+typedef int pid_t;
+#endif
 
 #define HB_PING_UNKNOWN_STR          "UNKNOWN"
 #define HB_PING_SUCCESS_STR          "SUCCESS"

@@ -28,10 +28,10 @@
 
 #include <chrono>
 #include <list>
-#include <netinet/in.h>
-#include <pthread.h>
+#if defined (LINUX)
+#include <netinet/in.h> // for sockaddr_in
+#endif
 #include <string>
-#include <sys/time.h>
 #include <vector>
 
 namespace cubhb
