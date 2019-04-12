@@ -73,7 +73,8 @@ set(CUB_MASTER_SOURCES
   ${MASTER_DIR}/master_util.c
   )
 if(UNIX)
-  list(APPEND CUB_MASTER_SOURCES ${MASTER_DIR}/master_heartbeat.c)
+  list(APPEND CUB_MASTER_SOURCES ${MASTER_DIR}/master_heartbeat.cpp)
+  list(APPEND CUB_MASTER_SOURCES ${MASTER_DIR}/heartbeat_cluster.cpp)
   SET_SOURCE_FILES_PROPERTIES(
 	${CUB_MASTER_SOURCES}
 	PROPERTIES LANGUAGE CXX

@@ -21,8 +21,6 @@
  * master.c - master main
  */
 
-#ident "$Id$"
-
 #include "config.h"
 
 #include <stdio.h>
@@ -68,7 +66,7 @@
 #include "master_util.h"
 #include "master_request.h"
 #if !defined(WINDOWS)
-#include "master_heartbeat.h"
+#include "master_heartbeat.hpp"
 #endif
 #include "environment_variable.h"
 #include "message_catalog.h"

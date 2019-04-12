@@ -21,8 +21,6 @@
  * master_request.c - master request handling module
  */
 
-#ident "$Id$"
-
 #include "config.h"
 
 #include <stdio.h>
@@ -56,7 +54,7 @@
 #endif /* ! WINDOWS */
 #include "master_util.h"
 #include "master_request.h"
-#include "master_heartbeat.h"
+#include "master_heartbeat.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
