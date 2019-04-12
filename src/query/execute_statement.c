@@ -3348,6 +3348,14 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      error = repl_error;
 	    }
 	}
+      else if (db_is_ddl_proxy_client ())
+	{
+	  /* We need to flush in case of ddl proxy. */
+	  if (error >= 0)
+	    {
+	      error = locator_all_flush ();
+	    }
+	}
     }
 
 end:
@@ -3812,6 +3820,14 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (repl_error != NO_ERROR)
 	{
 	  err = repl_error;
+	}
+    }
+  else if (db_is_ddl_proxy_client ())
+    {
+      /* We need to flush in case of ddl proxy. */
+      if (err >= 0)
+	{
+	  err = locator_all_flush ();
 	}
     }
 
