@@ -89,8 +89,8 @@ extern void desc_value_print (DB_VALUE * value);
 extern int er_filter_fileset (FILE * ef);
 extern int er_filter_errid (bool ignore_warning);
 
-extern
-std::vector < int >
-get_ignored_errors ();
+/* *INDENT-OFF* */
+extern std::vector<int> get_ignored_errors ();
+/* *INDENT-ON* */
 
 #endif /* _LOAD_OBJECT_H_ */

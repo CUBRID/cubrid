@@ -694,7 +694,7 @@ namespace cubload
   server_object_loader::er_filter_errid (bool ignore_warning)
   {
     int errcode = er_errid (), erridx;
-    std::vector<int> ignored_errors = m_session.get_args().ignored_errors;
+    std::vector<int> ignored_errors = m_session.get_args().m_ignored_errors;
     bool is_filtered = false;
 
     if (errcode == NO_ERROR)

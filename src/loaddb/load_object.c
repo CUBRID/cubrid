@@ -1806,10 +1806,11 @@ clear_errid:
   goto exit_on_end;
 }
 
-std::vector < int >
+/* *INDENT-OFF* */
+std::vector<int>
 get_ignored_errors ()
 {
-  std::vector < int >vec;
+  std::vector<int> vec;
   for (int i = 0; i < -ER_LAST_ERROR; i++)
     {
       if (filter_ignore_errors[i] == true)
@@ -1819,3 +1820,4 @@ get_ignored_errors ()
     }
   return vec;
 }
+/* *INDENT-ON* */
