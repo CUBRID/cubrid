@@ -191,7 +191,7 @@ static void hb_kill_process (pid_t *pids, int count);
 /* process command */
 static const char *hb_node_state_string (cubhb::node_entry::node_state nstate);
 static const char *hb_process_state_string (unsigned char ptype, int pstate);
-static const char *hb_ping_result_string (int ping_result);
+static const char *hb_ping_result_string (cubhb::ping_host::ping_result result);
 
 static int hb_help_sprint_processes_info (char *buffer, int max_length);
 static int hb_help_sprint_nodes_info (char *buffer, int max_length);
@@ -868,7 +868,7 @@ hb_cluster_job_check_ping (HB_JOB_ARG *arg)
   int error, rv;
   int ping_try_count = 0;
   bool ping_success = false;
-  int ping_result;
+  cubhb::ping_host::ping_result result;
   unsigned int failover_wait_time;
   HB_CLUSTER_JOB_ARG *clst_arg = (arg) ? & (arg->cluster_job_arg) : NULL;
 
@@ -889,16 +889,16 @@ hb_cluster_job_check_ping (HB_JOB_ARG *arg)
     {
       for (cubhb::ping_host *host : hb_Cluster->ping_hosts)
 	{
-	  ping_result = hb_check_ping (host->get_hostname_cstr ());
+	  result = hb_check_ping (host->get_hostname_cstr ());
 
-	  host->ping_result = ping_result;
-	  if (ping_result == cubhb::ping_host::SUCCESS)
+	  host->result = result;
+	  if (result == cubhb::ping_host::SUCCESS)
 	    {
 	      ping_try_count++;
 	      ping_success = true;
 	      break;
 	    }
-	  else if (ping_result == cubhb::ping_host::FAILURE)
+	  else if (result == cubhb::ping_host::FAILURE)
 	    {
 	      ping_try_count++;
 	    }
@@ -4468,12 +4468,12 @@ hb_process_state_string (unsigned char ptype, int pstate)
  * hb_ping_result_string -
  *   return: ping result string
  *
- *   ping_result(in):
+ *   result(in):
  */
 const char *
-hb_ping_result_string (int ping_result)
+hb_ping_result_string (cubhb::ping_host::ping_result result)
 {
-  switch (ping_result)
+  switch (result)
     {
     case cubhb::ping_host::UNKNOWN:
       return HB_PING_UNKNOWN_STR;
@@ -4666,7 +4666,7 @@ hb_get_ping_host_info_string (char **str)
   for (cubhb::ping_host *host : hb_Cluster->ping_hosts)
     {
       p += snprintf (p, MAX ((last - p), 0), HA_PING_HOSTS_FORMAT_STRING, host->get_hostname_cstr (),
-		     hb_ping_result_string (host->ping_result));
+		     hb_ping_result_string (host->result));
     }
 
   pthread_mutex_unlock (&hb_Cluster->lock);
@@ -5442,7 +5442,7 @@ hb_disable_er_log (int reason, const char *msg_fmt, ...)
  *   return : int
  *
  */
-int
+cubhb::ping_host::ping_result
 hb_check_ping (const char *host)
 {
 #define PING_COMMAND_FORMAT \
@@ -5528,7 +5528,7 @@ hb_help_sprint_ping_host_info (char *buffer, int max_length)
   for (cubhb::ping_host *host : hb_Cluster->ping_hosts)
     {
       p += snprintf (p, MAX ((last - p), 0), "%-20s %-20s\n", host->get_hostname_cstr (),
-		     hb_ping_result_string (host->ping_result));
+		     hb_ping_result_string (host->result));
     }
   p += snprintf (p, MAX ((last - p), 0),
 		 "==============================" "==================================================\n");

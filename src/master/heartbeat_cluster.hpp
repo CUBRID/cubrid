@@ -108,7 +108,7 @@ namespace cubhb
       };
 
     public: // TODO CBRD-22864 members should be private
-      int ping_result;
+      ping_result result;
   };
 
   /* heartbeat unidentified host entries */

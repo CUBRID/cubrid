@@ -343,5 +343,5 @@ int hb_return_proc_state_by_fd (int sfd);
 bool hb_is_hang_process (int sfd);
 const char *hb_find_host_name_of_master_server ();
 
-int hb_check_ping (const char *host);
+cubhb::ping_host::ping_result hb_check_ping (const char *host);
 #endif /* _MASTER_HEARTBEAT_HPP_ */

@@ -95,7 +95,7 @@ namespace cubhb
 
   ping_host::ping_host (std::string hostname)
     : hostname_node (std::move (hostname))
-    , ping_result (ping_result::UNKNOWN)
+    , result (ping_result::UNKNOWN)
   {
     //
   }
@@ -103,13 +103,13 @@ namespace cubhb
   void
   ping_host::ping ()
   {
-    ping_result = hb_check_ping (get_hostname_cstr ());
+    result = hb_check_ping (get_hostname_cstr ());
   }
 
   bool
   ping_host::is_ping_successful ()
   {
-    return ping_result == ping_result::SUCCESS;
+    return result == ping_result::SUCCESS;
   }
 
   ui_node::ui_node (std::string hostname, std::string group_id, const sockaddr_in &sockaddr, int v_result)
