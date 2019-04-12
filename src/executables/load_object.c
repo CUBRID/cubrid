@@ -52,6 +52,7 @@
 #include "load_object.h"
 #include "db_value_printer.hpp"
 #include "network_interface_cl.h"
+#include "printer.hpp"
 
 #include "message_catalog.h"
 #include "string_opfunc.h"
@@ -71,7 +72,7 @@ static void get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, i
 static SM_ATTRIBUTE *find_current_attribute (SM_CLASS * class_, int id);
 static void get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bound_bit_flag,
 			  int offset_size);
-static void fprint_set (FILE * fp, DB_SET * set);
+static void print_set (print_output & output_ctx, DB_SET * set);
 static int fprint_special_set (TEXT_OUTPUT * tout, DB_SET * set);
 static int bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size);
 static char *strnchr (char *str, char ch, int nbytes);
@@ -1035,31 +1036,31 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * ob
 
 
 /*
- * fprint_set - Print the contents of a real DB_SET (not a set descriptor).
+ * print_set - Print the contents of a real DB_SET (not a set descriptor).
  *    return: void
- *    fp(in): file pointer
+ *    output_ctx(in): output context
  *    set(in): set reference
  */
 static void
-fprint_set (FILE * fp, DB_SET * set)
+print_set (print_output & output_ctx, DB_SET * set)
 {
   DB_VALUE element_value;
   int len, i;
 
   len = set_size (set);
-  fprintf (fp, "{");
+  output_ctx ("{");
   for (i = 0; i < len; i++)
     {
       if (set_get_element (set, i, &element_value) == NO_ERROR)
 	{
-	  desc_value_fprint (fp, &element_value);
+	  desc_value_print (output_ctx, &element_value);
 	  if (i < len - 1)
 	    {
-	      fprintf (fp, ", ");
+	      output_ctx (", ");
 	    }
 	}
     }
-  fprintf (fp, "}");
+  output_ctx ("}");
 }
 
 /*
@@ -1618,9 +1619,9 @@ exit_on_error:
 
 
 /*
- * desc_value_fprint - Print a description of the given value.
+ * desc_value_print - Print a description of the given value.
  *    return: void
- *    fp(in): file pointer
+ *    output_ctx(in): output context
  *    value(in): value container
  * Note:
  *    This is based on db_value_print() but has extensions for the
@@ -1628,14 +1629,14 @@ exit_on_error:
  *    String printing is also hacked for "unprintable" characters.
  */
 void
-desc_value_fprint (FILE * fp, DB_VALUE * value)
+desc_value_print (print_output & output_ctx, DB_VALUE * value)
 {
   switch (DB_VALUE_TYPE (value))
     {
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
-      fprint_set (fp, db_get_set (value));
+      print_set (output_ctx, db_get_set (value));
       break;
 
     case DB_TYPE_BLOB:
@@ -1644,23 +1645,10 @@ desc_value_fprint (FILE * fp, DB_VALUE * value)
       break;
 
     default:
-      db_fprint_value (fp, value);
+      db_print_value (output_ctx, value);
       break;
     }
 }
-
-#if defined (CUBRID_DEBUG)
-/*
- * desc_value_print - Prints the description of a value to standard output.
- *    return: void
- *    value(in): value container
- */
-void
-desc_value_print (DB_VALUE * value)
-{
-  desc_value_fprint (stdout, value);
-}
-#endif
 
 static bool filter_ignore_errors[-ER_LAST_ERROR] = { false, };
 
