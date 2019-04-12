@@ -72,6 +72,7 @@ namespace cubload
       char *get_message_from_catalog (MSGCAT_LOADDB_MSG msg_id);
 
       void log_error_message (std::string &err_msg, bool fail);
+      bool is_last_error_filtered ();
 
       // Format string based on format string passed as input parameter. Check snprintf function for more details
       template<typename... Args>
@@ -80,6 +81,8 @@ namespace cubload
 #if defined (SERVER_MODE)
       session &m_session;
       bool m_syntax_check;
+
+      bool is_error_filtered (int err_id);
 #endif
   };
 }
@@ -95,40 +98,52 @@ namespace cubload
   void
   error_handler::on_error (MSGCAT_LOADDB_MSG msg_id, Args &&... args)
   {
-    std::string err_msg = format (get_message_from_catalog (msg_id), std::forward<Args> (args)...);
-    log_error_message (err_msg, false);
+    if (!is_last_error_filtered ())
+      {
+	std::string err_msg = format (get_message_from_catalog (msg_id), std::forward<Args> (args)...);
+	log_error_message (err_msg, false);
+      }
   }
 
   template<typename... Args>
   void
   error_handler::on_error_with_line (MSGCAT_LOADDB_MSG msg_id, Args &&... args)
   {
-    std::string err_msg;
+    if (!is_last_error_filtered ())
+      {
+	std::string err_msg;
 
-    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ()));
-    err_msg.append (format (get_message_from_catalog (msg_id), std::forward<Args> (args)...));
+	err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ()));
+	err_msg.append (format (get_message_from_catalog (msg_id), std::forward<Args> (args)...));
 
-    log_error_message (err_msg, false);
+	log_error_message (err_msg, false);
+      }
   }
 
   template<typename... Args>
   void
   error_handler::on_failure (MSGCAT_LOADDB_MSG msg_id, Args &&... args)
   {
-    std::string err_msg = format (get_message_from_catalog (msg_id), std::forward<Args> (args)...);
-    log_error_message (err_msg, true);
+    if (!is_last_error_filtered ())
+      {
+	std::string err_msg = format (get_message_from_catalog (msg_id), std::forward<Args> (args)...);
+	log_error_message (err_msg, true);
+      }
   }
 
   template<typename... Args>
   void
   error_handler::on_failure_with_line (MSGCAT_LOADDB_MSG msg_id, Args &&... args)
   {
-    std::string err_msg;
+    if (!is_last_error_filtered ())
+      {
+	std::string err_msg;
 
-    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ()));
-    err_msg.append (format (get_message_from_catalog (msg_id), std::forward<Args> (args)...));
+	err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ()));
+	err_msg.append (format (get_message_from_catalog (msg_id), std::forward<Args> (args)...));
 
-    log_error_message (err_msg, true);
+	log_error_message (err_msg, true);
+      }
   }
 
   template<typename... Args>
@@ -148,12 +163,15 @@ namespace cubload
   void
   error_handler::log_date_time_conversion_error (Args &&... args)
   {
-    std::string err_msg;
+    if (!is_last_error_filtered())
+      {
+	std::string err_msg;
 
-    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ()));
-    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_CONVERSION_ERROR), std::forward<Args> (args)...));
+	err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ()));
+	err_msg.append (format (get_message_from_catalog (LOADDB_MSG_CONVERSION_ERROR), std::forward<Args> (args)...));
 
-    log_error_message (err_msg, false);
+	log_error_message (err_msg, false);
+      }
   }
 
 } // namespace cubload

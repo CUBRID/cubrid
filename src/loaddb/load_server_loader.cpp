@@ -316,11 +316,8 @@ namespace cubload
     if (cons != NULL && attr_size == 0)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_NO_CLASS_OR_NO_ATTRIBUTE, 0);
-	if (er_filter_errid (false) != NO_ERROR)
-	  {
-	    m_error_handler.on_syntax_failure ();
-	    return;
-	  }
+	m_error_handler.on_syntax_failure ();
+	return;
       }
 
     for (constant_type *c = cons; c != NULL; c = c->next, attr_index++)
@@ -328,22 +325,16 @@ namespace cubload
 	if (attr_index == attr_size)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, attr_index);
-	    if (er_filter_errid (false) != NO_ERROR)
-	      {
-		m_error_handler.on_syntax_failure ();
-		return;
-	      }
+	    m_error_handler.on_syntax_failure ();
+	    return;
 	  }
 
 	const attribute &attr = m_class_entry->get_attribute (attr_index);
 	int error_code = process_constant (c, attr);
 	if (error_code != NO_ERROR)
 	  {
-	    if (er_filter_errid (false) != NO_ERROR)
-	      {
-		m_error_handler.on_syntax_failure ();
-		return;
-	      }
+	    m_error_handler.on_syntax_failure ();
+	    return;
 	  }
 
 	db_value &db_val = get_attribute_db_value (attr_index);
@@ -353,11 +344,8 @@ namespace cubload
     if (attr_index < attr_size)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MISSING_ATTRIBUTES, 2, attr_size, attr_index);
-	if (er_filter_errid (false) != NO_ERROR)
-	  {
-	    m_error_handler.on_syntax_failure ();
-	    return;
-	  }
+	m_error_handler.on_syntax_failure ();
+	return;
       }
   }
 
@@ -384,11 +372,8 @@ namespace cubload
 			 UPDATE_INPLACE_NONE, NULL, false);
 	if (error_code != NO_ERROR)
 	  {
-	    if (er_filter_errid (true) != NO_ERROR)
-	      {
-		m_error_handler.on_failure ();
-		return;
-	      }
+	    m_error_handler.on_failure ();
+	    return;
 	  }
       }
 
@@ -688,48 +673,6 @@ namespace cubload
 
     heap_attrinfo_end (m_thread_ref, &m_attrinfo);
     m_attrinfo_started = false;
-  }
-
-  int
-  server_object_loader::er_filter_errid (bool ignore_warning)
-  {
-    int errcode = er_errid (), erridx;
-    std::vector<int> ignored_errors = m_session.get_args().m_ignored_errors;
-    bool is_filtered = false;
-
-    if (errcode == NO_ERROR)
-      {
-	/* don't have to check */
-	return NO_ERROR;
-      }
-
-    erridx = (errcode < 0) ? -errcode : errcode;
-    is_filtered = std::find (ignored_errors.begin (), ignored_errors.end (), erridx) != ignored_errors.end ();
-    if (is_filtered)
-      {
-	goto clear_errid;
-      }
-
-    /* Check if it's an ignorable warning. */
-    if (std::find (ignored_errors.begin (), ignored_errors.end (), 0) != ignored_errors.end ())
-      {
-	if (ignore_warning && er_get_severity () == ER_WARNING_SEVERITY)
-	  {
-	    goto clear_errid;
-	  }
-      }
-
-exit_on_end:
-    return errcode;
-
-clear_errid:
-    if (errcode != NO_ERROR)
-      {
-	/* clear ignorable errid */
-	er_clearid ();
-	errcode = NO_ERROR;
-      }
-    goto exit_on_end;
   }
 
 } // namespace cubload

@@ -267,14 +267,11 @@ namespace cubload
     size_t ignore_errors_size = 0;
 
     deserializator.unpack_bigint (ignore_errors_size);
-    m_ignored_errors.reserve (ignore_errors_size);
+    m_ignored_errors.resize (ignore_errors_size);
     for (size_t i = 0; i < ignore_errors_size; i++)
       {
-	int error;
-	deserializator.unpack_int (error);
-	m_ignored_errors.push_back (error);
+	deserializator.unpack_int (m_ignored_errors[i]);
       }
-
   }
 
   size_t
