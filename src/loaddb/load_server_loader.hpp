@@ -84,6 +84,7 @@ namespace cubload
       int process_generic_constant (constant_type *cons, const attribute &attr);
       int process_monetary_constant (constant_type *cons, const attribute &attr);
       int process_collection_constant (constant_type *cons, const attribute &attr);
+      int er_filter_errid (bool ignore_warnings);
 
       void clear_db_values ();
       db_value &get_attribute_db_value (size_t attr_index);
