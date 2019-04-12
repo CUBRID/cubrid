@@ -7661,7 +7661,8 @@ au_export_grants (print_output & output_ctx, MOP class_mop)
   if (error == NO_ERROR)
     {
       /* loop through the grant list, issuing grant statements */
-      while ((statements = class_grant_loop (output_ctx, &cl_auth)));
+      while ((statements = class_grant_loop (output_ctx, &cl_auth)))
+	;
 
       for (u = cl_auth.users, ecount = 0; u != NULL; u = u->next)
 	{
@@ -7674,8 +7675,8 @@ au_export_grants (print_output & output_ctx, MOP class_mop)
 	       * for now, leave a comment in the output file
 	       */
 	      output_ctx ("/*");
-	      output_ctx (msgcat_message
-			  (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_GRANT_DUMP_ERROR), uname);
+	      output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION,
+					  MSGCAT_AUTH_GRANT_DUMP_ERROR), uname);
 	      output_ctx ("*/\n");
 	      ws_free_string (uname);
 	      ecount++;
