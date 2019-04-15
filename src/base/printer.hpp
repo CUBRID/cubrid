@@ -45,8 +45,6 @@ class print_output
       assert (m_sb.len () == 0);
     }
 
-    const char *exec_name (void);
-
     virtual int flush (void) = 0;
 
     string_buffer *grab_string_buffer (void)
