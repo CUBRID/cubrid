@@ -6595,21 +6595,17 @@ static SCAN_CODE
 scan_next_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   int error_code = NO_ERROR;
+  SCAN_CODE sc;
 
   // the status of the scan will be put in scan_id->status
-  error_code = scan_id->s.jtid.next_scan (thread_p, *scan_id);
+  error_code = scan_id->s.jtid.next_scan (thread_p, *scan_id, sc);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       return S_ERROR;
     }
 
-  if (scan_id->status == S_ENDED)
-    {
-      return S_END;
-    }
-
-  return S_SUCCESS;
+  return sc;
 }
 
 /*
