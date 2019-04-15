@@ -95,6 +95,16 @@ class string_print_output : public print_output
     ~string_print_output () {}
 
     int flush (void);
+
+    const char *get_buffer () const
+    {
+      return m_sb.get_buffer ();
+    }
+
+    void clear (void)
+    {
+      m_sb.clear ();
+    }
 };
 
 #endif // _PRINTER_HPP_

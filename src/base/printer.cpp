@@ -54,7 +54,5 @@ string_print_output::string_print_output ()
 
 int string_print_output::flush ()
 {
-  int res = (int) m_sb.len ();
-  m_sb.clear ();
-  return res;
+  return (int) m_sb.len ();
 }
