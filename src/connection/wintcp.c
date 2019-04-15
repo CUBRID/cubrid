@@ -343,13 +343,13 @@ css_fd_down (SOCKET fd)
 /*
  * css_gethostname() - interface for the "gethostname" function
  *   return: 0 if success, or error
- *   passed_name(out): buffer for name
- *   length(in): max buffer size
+ *   name(out): buffer for name
+ *   namelen(in): max buffer size
  */
 int
-css_gethostname (char *passed_name, int length)
+css_gethostname (char *name, size_t namelen)
 {
-  const char *name = "PC";
+  const char *pc_name = "PC";
   char hostname[MAXHOSTNAMELEN];
   int err = 0;
 
@@ -364,7 +364,7 @@ css_gethostname (char *passed_name, int length)
     {
       if (strlen (hostname))
 	{
-	  name = hostname;
+	  pc_name = hostname;
 	}
     }
   else
@@ -376,7 +376,7 @@ css_gethostname (char *passed_name, int length)
   css_windows_shutdown ();
 #endif /* not SERVER_MODE */
 
-  strncpy (passed_name, name, length);
+  strncpy (name, pc_name, namelen);
   return err;
 }
 

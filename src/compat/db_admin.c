@@ -69,6 +69,7 @@
 
 #if !defined(WINDOWS)
 void (*prev_sigfpe_handler) (int) = SIG_DFL;
+#include "tcp.h"
 #else
 #include "wintcp.h"
 #endif /* !WINDOWS */
