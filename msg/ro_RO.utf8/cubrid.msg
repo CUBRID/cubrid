@@ -1274,7 +1274,7 @@ $ LOADDB
 1205 Invalid type %1$s. Expecting JSON document compatible data type (STRING or JSON).
 1206 Calea Json "%1$s" nu adresează un element al unui Json ARRAY.
 1207 Cale de JSON invalida. Index is larger than allowed by system parameter json_max_array_idx.
-1208 Reserved error for JSON.
+1208 Invalid one/all argument. The one/all argument may only take one of these two values: "one", "all".
 1209 Reserved error for JSON.
 1210 Reserved error for JSON.
 1211 Reserved error for JSON.
