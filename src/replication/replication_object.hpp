@@ -76,8 +76,8 @@ namespace cubreplication
     public:
       static const int PACKING_ID = 1;
 
-      sbr_repl_entry (const char *statement, const char *user, const char * password, const char *sys_prm_ctx,
-                      LOG_LSA &lsa_stamp);
+      sbr_repl_entry (const char *statement, const char *user, const char *password, const char *sys_prm_ctx,
+		      LOG_LSA &lsa_stamp);
 
       sbr_repl_entry () = default;
       ~sbr_repl_entry () = default;
@@ -151,7 +151,8 @@ namespace cubreplication
     public:
       static const int PACKING_ID = 4;
 
-      changed_attrs_row_repl_entry (repl_entry_type type, const char *class_name, const OID &inst_oid, LOG_LSA &lsa_stamp);
+      changed_attrs_row_repl_entry (repl_entry_type type, const char *class_name, const OID &inst_oid,
+				    LOG_LSA &lsa_stamp);
 
       changed_attrs_row_repl_entry () = default;
       ~changed_attrs_row_repl_entry ();

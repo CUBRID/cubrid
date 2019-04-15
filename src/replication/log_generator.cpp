@@ -65,7 +65,8 @@ namespace cubreplication
     assert (p_lsa != NULL);
 
     sbr_repl_entry *repl_obj =
-	    new sbr_repl_entry (stmt_info.stmt_text, stmt_info.db_user, stmt_info.db_password, stmt_info.sys_prm_context, *p_lsa);
+	    new sbr_repl_entry (stmt_info.stmt_text, stmt_info.db_user, stmt_info.db_password,
+				stmt_info.sys_prm_context, *p_lsa);
     append_repl_object (*repl_obj);
   }
 
@@ -373,12 +374,12 @@ namespace cubreplication
       }
 
 #if !defined (NDEBUG)
-    if (prm_get_bool_value(PRM_ID_REPL_LOG_LOCAL_DEBUG))
-    {
-      /* Reset stream entry. */
-      m_stream_entry.reset();
-      return;
-    }
+    if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
+      {
+	/* Reset stream entry. */
+	m_stream_entry.reset();
+	return;
+      }
 #endif
 
     set_tran_repl_info (state);
@@ -415,7 +416,7 @@ namespace cubreplication
     cubthread::entry *thread_p = &cubthread::get_entry ();
     int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
     LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
-    
+
     /* save MVCCID in pre-commit phase, after commit, the MVCCID is cleanup */
     if (MVCCID_IS_VALID (tdes->mvccinfo.id))
       {
@@ -465,7 +466,7 @@ namespace cubreplication
     LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
 
     MVCCID mvccid = logtb_find_current_mvccid (&cubthread::get_entry ());
-    m_stream_entry.set_mvccid(tdes->mvccinfo.id);    
+    m_stream_entry.set_mvccid (tdes->mvccinfo.id);
     set_tran_repl_info (stream_entry_header::ACTIVE);
 
     /* Write objects in stream and then destroy them. */
@@ -562,11 +563,11 @@ namespace cubreplication
 	repl_obj = local_stream_entry.get_object_at (i);
 	if (repl_obj != NULL)
 	  {
-            /* Debug code, check for SBR, quick fix. */
-            if ((dynamic_cast<sbr_repl_entry *> (repl_obj)) != NULL)
-              {            
-                continue;
-              }
+	    /* Debug code, check for SBR, quick fix. */
+	    if ((dynamic_cast<sbr_repl_entry *> (repl_obj)) != NULL)
+	      {
+		continue;
+	      }
 
 	    err_code = repl_obj->apply ();
 	    if (err_code != NO_ERROR)
