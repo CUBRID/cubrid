@@ -25,6 +25,7 @@
 #include "fetch.h"
 #include "object_primitive.h"
 #include "scan_manager.h"
+#include "storage_common.h"
 
 #include <algorithm>
 
@@ -302,7 +303,7 @@ namespace cubscan
     }
 
     int
-    scanner::next_scan (cubthread::entry *thread_p, scan_id_struct &sid)
+    scanner::next_scan (cubthread::entry *thread_p, scan_id_struct &sid, SCAN_CODE &sc)
     {
       bool has_row = false;
       int error_code = NO_ERROR;
@@ -313,6 +314,7 @@ namespace cubscan
 	  error_code = open (thread_p);
 	  if (error_code != NO_ERROR)
 	    {
+	      sc = S_ERROR;
 	      return error_code;
 	    }
 	  sid.position = S_ON;
@@ -321,9 +323,8 @@ namespace cubscan
       else if (sid.position != S_ON)
 	{
 	  assert (false);
-	  sid.status = S_ENDED;
-	  sid.position = S_AFTER;
-	  return ER_FAILED;
+	  sc = S_END;
+	  return  NO_ERROR;
 	}
 
       while (true)
@@ -332,13 +333,14 @@ namespace cubscan
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
+	      sc = S_ERROR;
 	      return error_code;
 	    }
 	  if (!has_row)
 	    {
-	      sid.status = S_ENDED;
 	      sid.position = S_AFTER;
-	      break;
+	      sc = S_END;
+	      return NO_ERROR;
 	    }
 
 	  if (m_scan_predicate.pred_expr == NULL)
@@ -354,10 +356,12 @@ namespace cubscan
 	  if (logical == V_ERROR)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
+	      sc = S_ERROR;
 	      return error_code;
 	    }
 	}
 
+      sc = S_SUCCESS;
       return NO_ERROR;
     }
 
