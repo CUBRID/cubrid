@@ -199,7 +199,7 @@ mvcctable::alloc_transaction_lowest_active ()
   if (m_transaction_lowest_active_mvccids_size != (size_t) logtb_get_number_of_total_tran_indices ())
     {
       // either first time or transaction table size has changed
-      delete m_transaction_lowest_active_mvccids;
+      delete [] m_transaction_lowest_active_mvccids;
       m_transaction_lowest_active_mvccids_size = logtb_get_number_of_total_tran_indices ();
       m_transaction_lowest_active_mvccids = new lowest_active_mvccid_type[m_transaction_lowest_active_mvccids_size] ();
       // all are 0 = MVCCID_NULL
