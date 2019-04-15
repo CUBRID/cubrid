@@ -324,7 +324,7 @@ namespace cubscan
 	{
 	  assert (false);
 	  sc = S_END;
-	  return  NO_ERROR;
+	  return ER_FAILED;
 	}
 
       while (true)
