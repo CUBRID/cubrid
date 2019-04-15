@@ -440,7 +440,7 @@ mvcctable::next_tran_status_finish (mvcc_trans_status &next_trans_status, size_t
 }
 
 void
-mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool commited)
+mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
 {
   assert (MVCCID_IS_VALID (mvccid));
 
@@ -452,7 +452,7 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool commited)
   mvcc_trans_status &next_status = next_trans_status_start (next_version, next_index);
 
   // todo - until we activate count optimization (if ever), should we move this outside mutex?
-  if (commited && logtb_tran_update_all_global_unique_stats (thread_get_thread_entry_info ()) != NO_ERROR)
+  if (committed && logtb_tran_update_all_global_unique_stats (thread_get_thread_entry_info ()) != NO_ERROR)
     {
       assert (false);
     }
@@ -460,12 +460,12 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool commited)
   // update current trans status
   m_current_trans_status.m_active_mvccs.set_inactive_mvccid (mvccid);
   m_current_trans_status.m_last_completed_mvccid = mvccid;
-  m_current_trans_status.m_event_type = commited ? mvcc_trans_status::COMMIT : mvcc_trans_status::ROLLBACK;
+  m_current_trans_status.m_event_type = committed ? mvcc_trans_status::COMMIT : mvcc_trans_status::ROLLBACK;
 
   // finish next trans status
   next_tran_status_finish (next_status, next_index);
 
-  if (commited)
+  if (committed)
     {
       /* be sure that transaction modifications can't be vacuumed up to LOG_COMMIT. Otherwise, the following
        * scenario will corrupt the database:
