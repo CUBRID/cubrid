@@ -42,7 +42,9 @@ file_print_output &file_print_output::std_output (void)
 
 int file_print_output::flush ()
 {
-  return (int) fwrite (m_sb.get_buffer (), 1, m_sb.len (), output_file);
+  int res = (int) fwrite (m_sb.get_buffer (), 1, m_sb.len (), output_file);
+  m_sb.clear ();
+  return res;
 }
 
 
@@ -52,6 +54,5 @@ string_print_output::string_print_output ()
 
 int string_print_output::flush ()
 {
-  /* nothing to do */
   return (int) m_sb.len ();
 }
