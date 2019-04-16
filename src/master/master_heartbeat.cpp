@@ -265,6 +265,16 @@ static HB_JOB_FUNC hb_resource_jobs[] =
 #define HA_ADMIN_INFO_NOLOG_FORMAT_STRING         "  Error Logging: disabled\n"
 #define HA_ADMIN_INFO_NOLOG_EVENT_FORMAT_STRING   "    %s\n"
 
+
+test-xxx013.ncl
+test-xxx013.ncl.nhnsystem.com
+
+test-xxx010.ncl
+test-xxx013.ncl
+
+test-xxx010.ncl.nhnsystem.com
+test-xxx.ncl.nhnsystem.com
+
 /*
  * linked list
  */
@@ -4083,10 +4093,9 @@ hb_thread_initialize (void)
 #if defined(AIX)
   /* AIX's pthread is slightly different from other systems. Its performance highly depends on the pthread's scope and
    * it's related kernel parameters. */
-  rv =
-	  pthread_attr_setscope (&thread_attr,
-				 prm_get_bool_value (PRM_ID_PTHREAD_SCOPE_PROCESS) ? PTHREAD_SCOPE_PROCESS :
-				 PTHREAD_SCOPE_SYSTEM);
+  rv = pthread_attr_setscope (&thread_attr,
+			      prm_get_bool_value (PRM_ID_PTHREAD_SCOPE_PROCESS) ? PTHREAD_SCOPE_PROCESS :
+			      PTHREAD_SCOPE_SYSTEM);
 #else /* AIX */
   rv = pthread_attr_setscope (&thread_attr, PTHREAD_SCOPE_SYSTEM);
 #endif /* AIX */
