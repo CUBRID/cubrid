@@ -2230,8 +2230,7 @@ hb_resource_job_proc_start (HB_JOB_ARG *arg)
 
   pthread_mutex_unlock (&hb_Resource->lock);
 
-  error =
-	  hb_resource_job_queue (HB_RJOB_CONFIRM_START, arg,
+  error = hb_resource_job_queue (HB_RJOB_CONFIRM_START, arg,
 				 prm_get_integer_value (PRM_ID_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS));
   if (error != NO_ERROR)
     {
@@ -2323,8 +2322,7 @@ hb_resource_job_proc_dereg_end:
   pthread_mutex_unlock (&hb_Resource->lock);
   pthread_mutex_unlock (&css_Master_socket_anchor_lock);
 
-  error =
-	  hb_resource_job_queue (HB_RJOB_CONFIRM_DEREG, arg,
+  error = hb_resource_job_queue (HB_RJOB_CONFIRM_DEREG, arg,
 				 prm_get_integer_value (PRM_ID_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS));
   if (error != NO_ERROR)
     {
@@ -2473,8 +2471,7 @@ hb_resource_job_demote_confirm_shutdown (HB_JOB_ARG *arg)
     {
       pthread_mutex_unlock (&hb_Resource->lock);
 
-      error =
-	      hb_resource_job_queue (HB_RJOB_DEMOTE_CONFIRM_SHUTDOWN, arg,
+      error = hb_resource_job_queue (HB_RJOB_DEMOTE_CONFIRM_SHUTDOWN, arg,
 				     prm_get_integer_value (PRM_ID_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS));
 
       assert (error == NO_ERROR);
@@ -2555,8 +2552,7 @@ hb_resource_job_demote_start_shutdown (HB_JOB_ARG *arg)
   proc_arg->max_retries = prm_get_integer_value (PRM_ID_HA_MAX_PROCESS_DEREG_CONFIRM);
   gettimeofday (&proc_arg->ftime, NULL);
 
-  error =
-	  hb_resource_job_queue (HB_RJOB_DEMOTE_CONFIRM_SHUTDOWN, job_arg,
+  error = hb_resource_job_queue (HB_RJOB_DEMOTE_CONFIRM_SHUTDOWN, job_arg,
 				 prm_get_integer_value (PRM_ID_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS));
   if (error != NO_ERROR)
     {
@@ -2615,8 +2611,7 @@ hb_resource_job_confirm_start (HB_JOB_ARG *arg)
 
 	  /* keep checking problematic process */
 	  proc_arg->retries = 0;
-	  error =
-		  hb_resource_job_queue (HB_RJOB_CONFIRM_START, arg,
+	  error = hb_resource_job_queue (HB_RJOB_CONFIRM_START, arg,
 					 prm_get_integer_value (PRM_ID_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS));
 	  if (error != NO_ERROR)
 	    {
@@ -2636,8 +2631,7 @@ hb_resource_job_confirm_start (HB_JOB_ARG *arg)
 	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
 			 "Keep checking to confirm the completion of the process startup", error_string);
 	  proc_arg->retries = 0;
-	  error =
-		  hb_resource_job_queue (HB_RJOB_CONFIRM_START, arg,
+	  error = hb_resource_job_queue (HB_RJOB_CONFIRM_START, arg,
 					 prm_get_integer_value (PRM_ID_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS));
 	  if (error != NO_ERROR)
 	    {
@@ -2668,8 +2662,7 @@ hb_resource_job_confirm_start (HB_JOB_ARG *arg)
 	}
       else
 	{
-	  error =
-		  hb_resource_job_queue (HB_RJOB_CONFIRM_START, arg,
+	  error = hb_resource_job_queue (HB_RJOB_CONFIRM_START, arg,
 					 prm_get_integer_value (PRM_ID_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS));
 	  if (error != NO_ERROR)
 	    {
@@ -2701,8 +2694,7 @@ hb_resource_job_confirm_start (HB_JOB_ARG *arg)
 
   if (retry)
     {
-      error =
-	      hb_resource_job_queue (HB_RJOB_CONFIRM_START, arg,
+      error = hb_resource_job_queue (HB_RJOB_CONFIRM_START, arg,
 				     prm_get_integer_value (PRM_ID_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS));
       if (error != NO_ERROR)
 	{
@@ -2782,8 +2774,7 @@ hb_resource_job_confirm_dereg (HB_JOB_ARG *arg)
   if (retry)
     {
       pthread_mutex_unlock (&hb_Resource->lock);
-      error =
-	      hb_resource_job_queue (HB_RJOB_CONFIRM_DEREG, arg,
+      error = hb_resource_job_queue (HB_RJOB_CONFIRM_DEREG, arg,
 				     prm_get_integer_value (PRM_ID_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS));
       if (error != NO_ERROR)
 	{
@@ -2851,8 +2842,8 @@ hb_resource_job_change_mode (HB_JOB_ARG *arg)
   pthread_mutex_unlock (&hb_Resource->lock);
   pthread_mutex_unlock (&css_Master_socket_anchor_lock);
 
-  error =
-	  hb_resource_job_queue (HB_RJOB_CHANGE_MODE, NULL, prm_get_integer_value (PRM_ID_HA_CHANGEMODE_INTERVAL_IN_MSECS));
+  error = hb_resource_job_queue (HB_RJOB_CHANGE_MODE, NULL,
+				 prm_get_integer_value (PRM_ID_HA_CHANGEMODE_INTERVAL_IN_MSECS));
   assert (error == NO_ERROR);
 
   if (arg)
@@ -2984,8 +2975,7 @@ hb_resource_job_send_master_hostname (HB_JOB_ARG *arg)
       assert (error == NO_ERROR);
     }
 
-  error =
-	  hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL,
+  error = hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL,
 				 prm_get_integer_value (PRM_ID_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS));
   assert (error == NO_ERROR);
 
