@@ -4367,16 +4367,8 @@ hb_cluster_cleanup (void)
 {
   pthread_mutex_lock (&hb_Cluster->lock);
 
-  for (cubhb::node_entry *node : hb_Cluster->nodes)
-    {
-      if (hb_Cluster->hostname == node->get_hostname ())
-	{
-	  continue;
-	}
-
-      hb_cluster_send_heartbeat_req (node->get_hostname_cstr ());
-      node->heartbeat_gap++;
-    }
+  hb_Cluster->state = cubhb::node_entry::UNKNOWN;
+  hb_cluster_request_heartbeat_to_all ();
 
   hb_Cluster->stop ();
 
