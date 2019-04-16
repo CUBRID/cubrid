@@ -157,15 +157,12 @@ namespace cubload
   void
   error_handler::log_date_time_conversion_error (Args &&... args)
   {
-    if (!is_last_error_filtered())
-      {
-	std::string err_msg;
+    std::string err_msg;
 
-	err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ()));
-	err_msg.append (format (get_message_from_catalog (LOADDB_MSG_CONVERSION_ERROR), std::forward<Args> (args)...));
+    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ()));
+    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_CONVERSION_ERROR), std::forward<Args> (args)...));
 
-	log_error_message (err_msg, false);
-      }
+    log_error_message (err_msg, false);
   }
 
 } // namespace cubload

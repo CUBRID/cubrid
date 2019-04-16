@@ -126,11 +126,6 @@ namespace cubload
       }
 
     is_filtered = std::find (ignored_errors.begin (), ignored_errors.end (), err_id) != ignored_errors.end ();
-    if (is_filtered)
-      {
-	// Clear the error
-	er_clearid ();
-      }
 
     return is_filtered;
   }
@@ -140,7 +135,22 @@ namespace cubload
   error_handler::is_last_error_filtered ()
   {
 #if defined (SERVER_MODE)
-    return is_error_filtered (er_errid ());
+    int err = er_errid ();
+
+    if (err == NO_ERROR)
+      {
+	return true;
+      }
+
+    bool is_filtered = is_error_filtered (err);
+
+    // Clear the error if it is filtered
+    if (is_filtered)
+      {
+	er_clearid ();
+      }
+
+    return is_filtered;
 #endif
     return false;
   }
