@@ -278,13 +278,13 @@ static HB_JOB_FUNC hb_resource_jobs[] =
 static void
 hb_list_add (HB_LIST **p, HB_LIST *n)
 {
-  n->next = * (p);
+  n->next = *p;
   if (n->next)
     {
-      n->next->prev = & (n->next);
+      n->next->prev = &n->next;
     }
   n->prev = p;
-  * (p) = n;
+  *p = n;
 }
 
 /*
@@ -297,8 +297,8 @@ hb_list_remove (HB_LIST *n)
 {
   if (n->prev)
     {
-      * (n->prev) = n->next;
-      if (* (n->prev))
+      *n->prev = n->next;
+      if (*n->prev)
 	{
 	  n->next->prev = n->prev;
 	}
@@ -426,8 +426,8 @@ error_return:
 static int
 hb_job_queue (HB_JOB *jobs, unsigned int job_type, HB_JOB_ARG *arg, unsigned int msec)
 {
-  HB_JOB_ENTRY **job;
-  HB_JOB_ENTRY *new_job;
+  HB_JOB_ENTRY **job = NULL;
+  HB_JOB_ENTRY *new_job = NULL;
   struct timeval now;
   int rv;
 
@@ -446,16 +446,16 @@ hb_job_queue (HB_JOB *jobs, unsigned int job_type, HB_JOB_ARG *arg, unsigned int
   new_job->type = job_type;
   new_job->func = jobs->job_funcs[job_type];
   new_job->arg = arg;
-  memcpy ((void *) & (new_job->expire), (void *) &now, sizeof (struct timeval));
+  memcpy ((void *) &new_job->expire, (void *) &now, sizeof (struct timeval));
 
   rv = pthread_mutex_lock (&jobs->lock);
-  for (job = & (jobs->jobs); *job; job = & ((*job)->next))
+  for (job = &jobs->jobs; *job; job = & (*job)->next)
     {
       /*
        * compare expire time of new job and current job
        * until new job's expire is larger than current's
        */
-      if (hb_compare_timeval (& ((*job)->expire), &now) <= 0)
+      if (hb_compare_timeval (& (*job)->expire, &now) <= 0)
 	{
 	  continue;
 	}
@@ -538,7 +538,7 @@ hb_job_set_expire_and_reorder (HB_JOB *jobs, unsigned int job_type, unsigned int
       return;
     }
 
-  for (job = & (jobs->jobs); *job; job = & ((*job)->next))
+  for (job = &jobs->jobs; *job; job = & (*job)->next)
     {
       if ((*job)->type == job_type)
 	{
@@ -553,20 +553,20 @@ hb_job_set_expire_and_reorder (HB_JOB *jobs, unsigned int job_type, unsigned int
       return;
     }
 
-  memcpy ((void *) & (target_job->expire), (void *) &now, sizeof (struct timeval));
+  memcpy ((void *) &target_job->expire, (void *) &now, sizeof (struct timeval));
 
   /*
    * so now we change target job's turn to adjust sorted queue
    */
   hb_list_remove ((HB_LIST *) target_job);
 
-  for (job = & (jobs->jobs); *job; job = & ((*job)->next))
+  for (job = &jobs->jobs; *job; job = & (*job)->next)
     {
       /*
        * compare expiration time of target job and current job
        * until target job's expire is larger than current's
        */
-      if (hb_compare_timeval (& ((*job)->expire), & (target_job->expire)) > 0)
+      if (hb_compare_timeval (& (*job)->expire, &target_job->expire) > 0)
 	{
 	  break;
 	}
@@ -746,7 +746,7 @@ hb_cluster_job_calc_score (HB_JOB_ARG *arg)
 	  job_arg = (HB_JOB_ARG *) malloc (sizeof (HB_JOB_ARG));
 	  if (job_arg)
 	    {
-	      clst_arg = & (job_arg->cluster_job_arg);
+	      clst_arg = &job_arg->cluster_job_arg;
 	      clst_arg->ping_check_count = 0;
 	      clst_arg->retries = 0;
 
@@ -805,7 +805,7 @@ hb_cluster_job_calc_score (HB_JOB_ARG *arg)
       job_arg = (HB_JOB_ARG *) malloc (sizeof (HB_JOB_ARG));
       if (job_arg)
 	{
-	  clst_arg = & (job_arg->cluster_job_arg);
+	  clst_arg = &job_arg->cluster_job_arg;
 	  clst_arg->ping_check_count = 0;
 
 	  error = hb_cluster_job_queue (HB_CJOB_CHECK_PING, job_arg, HB_JOB_TIMER_WAIT_100_MILLISECOND);
@@ -846,8 +846,8 @@ hb_cluster_job_calc_score (HB_JOB_ARG *arg)
 calc_end:
   pthread_mutex_unlock (&hb_Cluster->lock);
 
-  error =
-	  hb_cluster_job_queue (HB_CJOB_CALC_SCORE, NULL, prm_get_integer_value (PRM_ID_HA_CALC_SCORE_INTERVAL_IN_MSECS));
+  error = hb_cluster_job_queue (HB_CJOB_CALC_SCORE, NULL,
+				prm_get_integer_value (PRM_ID_HA_CALC_SCORE_INTERVAL_IN_MSECS));
   assert (error == NO_ERROR);
 
   if (arg)
@@ -869,7 +869,7 @@ hb_cluster_job_check_ping (HB_JOB_ARG *arg)
   int ping_try_count = 0;
   bool ping_success = false;
   unsigned int failover_wait_time;
-  HB_CLUSTER_JOB_ARG *clst_arg = (arg) ? & (arg->cluster_job_arg) : NULL;
+  HB_CLUSTER_JOB_ARG *clst_arg = arg ? &arg->cluster_job_arg : NULL;
 
   ENTER_FUNC ();
 
@@ -980,8 +980,8 @@ ping_check_cancel:
   pthread_mutex_unlock (&hb_Cluster->lock);
 
   /* do calc_score job again */
-  error =
-	  hb_cluster_job_queue (HB_CJOB_CALC_SCORE, NULL, prm_get_integer_value (PRM_ID_HA_CALC_SCORE_INTERVAL_IN_MSECS));
+  error = hb_cluster_job_queue (HB_CJOB_CALC_SCORE, NULL,
+				prm_get_integer_value (PRM_ID_HA_CALC_SCORE_INTERVAL_IN_MSECS));
   assert (error == NO_ERROR);
 
   if (arg)
@@ -1037,8 +1037,8 @@ hb_cluster_job_failover (HB_JOB_ARG *arg)
   hb_cluster_request_heartbeat_to_all ();
   pthread_mutex_unlock (&hb_Cluster->lock);
 
-  error =
-	  hb_cluster_job_queue (HB_CJOB_CALC_SCORE, NULL, prm_get_integer_value (PRM_ID_HA_CALC_SCORE_INTERVAL_IN_MSECS));
+  error = hb_cluster_job_queue (HB_CJOB_CALC_SCORE, NULL,
+				prm_get_integer_value (PRM_ID_HA_CALC_SCORE_INTERVAL_IN_MSECS));
   assert (error == NO_ERROR);
 
   if (arg)
@@ -1060,7 +1060,7 @@ static void
 hb_cluster_job_demote (HB_JOB_ARG *arg)
 {
   int rv, error;
-  HB_CLUSTER_JOB_ARG *clst_arg = (arg) ? & (arg->cluster_job_arg) : NULL;
+  HB_CLUSTER_JOB_ARG *clst_arg = arg ? &arg->cluster_job_arg : NULL;
   char hb_info_str[HB_INFO_STR_MAX];
 
   ENTER_FUNC ();
@@ -1090,7 +1090,7 @@ hb_cluster_job_demote (HB_JOB_ARG *arg)
   hb_Cluster->state = cubhb::node_entry::SLAVE;
   hb_Cluster->myself->state = hb_Cluster->state;
 
-  if (hb_Cluster->is_isolated || ++ (clst_arg->retries) > HB_MAX_WAIT_FOR_NEW_MASTER)
+  if (hb_Cluster->is_isolated || ++clst_arg->retries > HB_MAX_WAIT_FOR_NEW_MASTER)
     {
       MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
 		     "Failed to find a new master node and it changes " "its role back to master again");
@@ -1243,8 +1243,8 @@ hb_cluster_job_failback (HB_JOB_ARG *arg)
       free_and_init (pids);
     }
 
-  error =
-	  hb_cluster_job_queue (HB_CJOB_CALC_SCORE, NULL, prm_get_integer_value (PRM_ID_HA_CALC_SCORE_INTERVAL_IN_MSECS));
+  error = hb_cluster_job_queue (HB_CJOB_CALC_SCORE, NULL,
+				prm_get_integer_value (PRM_ID_HA_CALC_SCORE_INTERVAL_IN_MSECS));
   assert (error == NO_ERROR);
 
   if (arg)
@@ -1934,7 +1934,7 @@ hb_resource_job_confirm_cleanup_all (HB_JOB_ARG *arg)
   char error_string[LINE_MAX] = "";
   int num_connected_rsc = 0;
 
-  resource_job_arg = (arg) ? & (arg->resource_job_arg) : NULL;
+  resource_job_arg = arg ? &arg->resource_job_arg : NULL;
 
   if (arg == NULL || resource_job_arg == NULL)
     {
@@ -1945,7 +1945,7 @@ hb_resource_job_confirm_cleanup_all (HB_JOB_ARG *arg)
 
   rv = pthread_mutex_lock (&hb_Resource->lock);
 
-  if (++ (resource_job_arg->retries) > resource_job_arg->max_retries || hb_Deactivate_immediately)
+  if (++resource_job_arg->retries > resource_job_arg->max_retries || hb_Deactivate_immediately)
     {
       for (proc = hb_Resource->procs; proc; proc = proc_next)
 	{
@@ -2099,7 +2099,7 @@ hb_resource_job_cleanup_all (HB_JOB_ARG *arg)
       return;
     }
 
-  resource_job_arg = & (job_arg->resource_job_arg);
+  resource_job_arg = &job_arg->resource_job_arg;
   resource_job_arg->retries = 0;
   resource_job_arg->max_retries = prm_get_integer_value (PRM_ID_HA_MAX_PROCESS_DEREG_CONFIRM);
   gettimeofday (&resource_job_arg->ftime, NULL);
@@ -2130,7 +2130,7 @@ hb_resource_job_proc_start (HB_JOB_ARG *arg)
   pid_t pid;
   struct timeval now;
   HB_PROC_ENTRY *proc;
-  HB_RESOURCE_JOB_ARG *proc_arg = (arg) ? & (arg->resource_job_arg) : NULL;
+  HB_RESOURCE_JOB_ARG *proc_arg = arg ? &arg->resource_job_arg : NULL;
   char *argv[HB_MAX_NUM_PROC_ARGV] = { NULL, };
 
   if (arg == NULL || proc_arg == NULL)
@@ -2251,7 +2251,7 @@ hb_resource_job_proc_dereg (HB_JOB_ARG *arg)
 {
   int error, rv;
   HB_PROC_ENTRY *proc;
-  HB_RESOURCE_JOB_ARG *proc_arg = (arg) ? & (arg->resource_job_arg) : NULL;
+  HB_RESOURCE_JOB_ARG *proc_arg = arg ? &arg->resource_job_arg : NULL;
   SOCKET_QUEUE_ENTRY *sock_entq;
   char buffer[MASTER_TO_SRV_MSG_SIZE];
 
@@ -2452,7 +2452,7 @@ hb_resource_job_demote_confirm_shutdown (HB_JOB_ARG *arg)
 {
   int error, rv;
   HB_JOB_ARG *job_arg;
-  HB_RESOURCE_JOB_ARG *proc_arg = (arg) ? & (arg->resource_job_arg) : NULL;
+  HB_RESOURCE_JOB_ARG *proc_arg = arg ? &arg->resource_job_arg : NULL;
   HB_CLUSTER_JOB_ARG *clst_arg;
 
   if (arg == NULL || proc_arg == NULL)
@@ -2463,7 +2463,7 @@ hb_resource_job_demote_confirm_shutdown (HB_JOB_ARG *arg)
 
   rv = pthread_mutex_lock (&hb_Resource->lock);
 
-  if (++ (proc_arg->retries) > proc_arg->max_retries)
+  if (++proc_arg->retries > proc_arg->max_retries)
     {
       hb_resource_demote_kill_server_proc ();
       goto demote_confirm_shutdown_end;
@@ -2497,7 +2497,7 @@ demote_confirm_shutdown_end:
       return;
     }
 
-  clst_arg = & (job_arg->cluster_job_arg);
+  clst_arg = &job_arg->cluster_job_arg;
   clst_arg->ping_check_count = 0;
   clst_arg->retries = 0;
 
@@ -2550,7 +2550,7 @@ hb_resource_job_demote_start_shutdown (HB_JOB_ARG *arg)
       return;
     }
 
-  proc_arg = & (job_arg->resource_job_arg);
+  proc_arg = &job_arg->resource_job_arg;
   proc_arg->retries = 0;
   proc_arg->max_retries = prm_get_integer_value (PRM_ID_HA_MAX_PROCESS_DEREG_CONFIRM);
   gettimeofday (&proc_arg->ftime, NULL);
@@ -2583,7 +2583,7 @@ hb_resource_job_confirm_start (HB_JOB_ARG *arg)
   char error_string[LINE_MAX] = "";
   bool retry = true;
   HB_PROC_ENTRY *proc;
-  HB_RESOURCE_JOB_ARG *proc_arg = (arg) ? & (arg->resource_job_arg) : NULL;
+  HB_RESOURCE_JOB_ARG *proc_arg = arg ? &arg->resource_job_arg : NULL;
   char hb_info_str[HB_INFO_STR_MAX];
 
   if (arg == NULL || proc_arg == NULL)
@@ -2601,7 +2601,7 @@ hb_resource_job_confirm_start (HB_JOB_ARG *arg)
       return;
     }
 
-  if (++ (proc_arg->retries) > proc_arg->max_retries)
+  if (++proc_arg->retries > proc_arg->max_retries)
     {
       snprintf (error_string, LINE_MAX, "(exceed max retry count for pid: %d, args:%s)", proc->pid, proc->args);
 
@@ -2727,7 +2727,7 @@ hb_resource_job_confirm_dereg (HB_JOB_ARG *arg)
   int error, rv;
   bool retry = true;
   HB_PROC_ENTRY *proc;
-  HB_RESOURCE_JOB_ARG *proc_arg = (arg) ? & (arg->resource_job_arg) : NULL;
+  HB_RESOURCE_JOB_ARG *proc_arg = arg ? &arg->resource_job_arg : NULL;
 
   if (arg == NULL || proc_arg == NULL)
     {
@@ -2768,7 +2768,7 @@ hb_resource_job_confirm_dereg (HB_JOB_ARG *arg)
     }
   else
     {
-      if (++ (proc_arg->retries) > proc_arg->max_retries)
+      if (++proc_arg->retries > proc_arg->max_retries)
 	{
 	  assert (proc->pid > 0);
 	  if (proc->pid > 0)
@@ -3027,7 +3027,7 @@ hb_alloc_new_proc (void)
       hb_list_add ((HB_LIST **) first_pp, (HB_LIST *) p);
     }
 
-  return (p);
+  return p;
 }
 
 /*
@@ -3253,7 +3253,7 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY *conn, SOCKET sfd)
       return;
     }
 
-  proc_arg = & (job_arg->resource_job_arg);
+  proc_arg = &job_arg->resource_job_arg;
   proc_arg->pid = proc->pid;
   memcpy ((void *) &proc_arg->args[0], proc->args, sizeof (proc_arg->args));
   proc_arg->retries = 0;
@@ -4762,7 +4762,7 @@ hb_get_node_info_string (char **str, bool verbose_yn)
   std::chrono::system_clock::time_point now = std::chrono::system_clock::now ();
   for (cubhb::ui_node *ui_node : hb_Cluster->ui_nodes)
     {
-      if ((now - ui_node->last_recv_time) > cubhb::HB_UI_NODE_CACHE_TIME_IN_MSECS)
+      if ((now - ui_node->last_recv_time) > cubhb::UI_NODE_CACHE_TIME_IN_MSECS)
 	{
 	  continue;
 	}
@@ -5119,7 +5119,7 @@ hb_deregister_process (HB_PROC_ENTRY *proc)
       return NULL;
     }
 
-  proc_arg = & (job_arg->resource_job_arg);
+  proc_arg = &job_arg->resource_job_arg;
   proc_arg->pid = proc->pid;
   memcpy ((void *) &proc_arg->args[0], proc->args, sizeof (proc_arg->args));
   proc_arg->retries = 0;

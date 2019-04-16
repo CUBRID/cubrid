@@ -41,8 +41,8 @@ namespace cubhb
   static const priority_type LOWEST_PRIORITY = std::numeric_limits<priority_type>::max ();
   static const priority_type REPLICA_PRIORITY = LOWEST_PRIORITY;
 
-  static const std::chrono::milliseconds HB_UI_NODE_CACHE_TIME_IN_MSECS (60 * 1000);
-  static const std::chrono::milliseconds HB_UI_NODE_CLEANUP_TIME_IN_MSECS (3600 * 1000);
+  static const std::chrono::milliseconds UI_NODE_CACHE_TIME_IN_MSECS (60 * 1000);
+  static const std::chrono::milliseconds UI_NODE_CLEANUP_TIME_IN_MSECS (3600 * 1000);
 
   class hostname_node
   {

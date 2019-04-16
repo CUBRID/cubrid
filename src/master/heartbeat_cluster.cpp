@@ -406,7 +406,7 @@ namespace cubhb
     std::chrono::system_clock::time_point now = std::chrono::system_clock::now ();
     for (ui_node *node : ui_nodes)
       {
-	if ((now - node->last_recv_time) > HB_UI_NODE_CLEANUP_TIME_IN_MSECS)
+	if ((now - node->last_recv_time) > UI_NODE_CLEANUP_TIME_IN_MSECS)
 	  {
 	    remove_ui_node (node);
 	  }
