@@ -56,16 +56,16 @@ struct mvcc_active_tran
 
     static const size_t BITAREA_MAX_SIZE = 500;
 
-    static const size_t BYTE_TO_BITS_COUNT = 8;
-    static const size_t UNIT_TO_BYTE_COUNT = sizeof (unit_type);
-    static const size_t UNIT_TO_BITS_COUNT = UNIT_TO_BYTE_COUNT * BYTE_TO_BITS_COUNT;
+    static const size_t BYTE_BIT_COUNT = 8;
+    static const size_t UNIT_BYTE_COUNT = sizeof (unit_type);
+    static const size_t UNIT_BIT_COUNT = UNIT_BYTE_COUNT * BYTE_BIT_COUNT;
 
-    static const size_t BITAREA_MAX_BITS = BITAREA_MAX_SIZE * UNIT_TO_BITS_COUNT;
+    static const size_t BITAREA_MAX_BITS = BITAREA_MAX_SIZE * UNIT_BIT_COUNT;
 
     static const unit_type ALL_ACTIVE = 0;
     static const unit_type ALL_COMMITTED = (unit_type) -1;
 
-    /* bit area to store MVCCIDS status - size MVCC_BITAREA_MAXIMUM_ELEMENTS */
+    /* bit area to store MVCCIDS status - size BITAREA_MAX_SIZE */
     unit_type *m_bit_area;
     /* first MVCCID whose status is stored in bit area */
     volatile MVCCID m_bit_area_start_mvccid;
