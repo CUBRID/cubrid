@@ -14220,22 +14220,6 @@ exit:
 }
 
 int
-check_interrupt_callback (void *data)
-{
-  THREAD_ENTRY *thread_p = (THREAD_ENTRY *) data;
-  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  bool is_interrupt = false;
-  int error = logtb_find_interrupt (tran_index, &is_interrupt);
-
-  if (error || is_interrupt)
-    {
-      return 1;
-    }
-
-  return 0;
-}
-
-int
 locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char *db_password,
 			const char *ha_sys_prm_context, const char *statement)
 {
@@ -14331,11 +14315,6 @@ locator_repl_start_tran (THREAD_ENTRY * thread_p)
       ASSERT_ERROR ();
       return ER_FAILED;
     }
-
-  logtb_set_current_tran_index (thread_p, tran_index);
-
-  /* this thread tran_index lock should be locked */
-  pthread_mutex_unlock (&thread_p->tran_index_lock);
 
   return NO_ERROR;
 }

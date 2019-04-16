@@ -49,9 +49,7 @@ int main (int argc, char **argv)
   assert (rc != -1);
 
   (void) create_child_process (ddl_argv,
-			       1,
-			       NULL,
-			       NULL,
+			       1,			       
 			       NULL,
 			       NULL,
 			       NULL,

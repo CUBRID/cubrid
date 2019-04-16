@@ -33,6 +33,7 @@
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_task.hpp"
+#include "locator_sr.h"
 #include <unordered_map>
 
 namespace cubreplication
@@ -71,6 +72,8 @@ namespace cubreplication
 
       void execute (cubthread::entry &thread_ref) final
       {
+	(void) locator_repl_start_tran (&thread_ref);
+
 	for (std::vector<stream_entry *>::iterator it = m_repl_stream_entries.begin ();
 	     it != m_repl_stream_entries.end ();
 	     it++)
@@ -89,10 +92,10 @@ namespace cubreplication
 	    for (int i = 0; i < curr_stream_entry->get_packable_entry_count_from_header (); i++)
 	      {
 		replication_object *obj = curr_stream_entry->get_object_at (i);
-                
-                /* For safety reason, in case of sbr, should not be other concurrent appliers. */
-                assert (m_lc.get_started_task() == 1 || typeid (obj) != typeid (sbr_repl_entry));
-                
+
+		/* For safety reason, in case of sbr, should not be other concurrent appliers. */
+		assert (m_lc.get_started_task() == 1 || !obj->is_statement_replication ());
+
 		int err = obj->apply ();
 		if (err != NO_ERROR)
 		  {
@@ -104,6 +107,8 @@ namespace cubreplication
 
 	    m_lc.end_one_task ();
 	  }
+
+	(void) locator_repl_end_tran (&thread_ref, true);
       }
 
       void add_repl_stream_entry (stream_entry *repl_stream_entry)
