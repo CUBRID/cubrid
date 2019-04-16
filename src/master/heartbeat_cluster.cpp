@@ -55,7 +55,7 @@ namespace cubhb
     return m_hostname.c_str ();
   }
 
-  node_entry::node_entry (std::string hostname, unsigned short priority)
+  node_entry::node_entry (std::string hostname, priority_type priority)
     : hostname_node (std::move (hostname))
     , priority (priority)
     , state (node_state::UNKNOWN)
@@ -223,7 +223,7 @@ namespace cubhb
 
     if (state == node_entry::node_state::REPLICA && myself != NULL)
       {
-	MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "myself should be in the ha_replica_list. \n");
+	MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "myself should be in the ha_replica_list\n");
 	return ER_FAILED;
       }
 
@@ -235,12 +235,12 @@ namespace cubhb
 
     if (myself == NULL)
       {
-	MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "cannot find myself. \n");
+	MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "cannot find myself\n");
 	return ER_FAILED;
       }
     if (nodes.empty ())
       {
-	MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "cluster cluster node list is empty.\n");
+	MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "cluster cluster node list is empty\n");
 	MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, prm_get_name (PRM_ID_HA_NODE_LIST));
 	return ER_PRM_BAD_VALUE;
       }
@@ -417,9 +417,9 @@ namespace cubhb
   cluster::find_ui_node (const std::string &node_hostname, const std::string &node_group_id,
 			 const sockaddr_in &sockaddr) const
   {
-    cubhb::ui_node *result = NULL;
+    ui_node *result = NULL;
 
-    for (cubhb::ui_node *node : ui_nodes)
+    for (ui_node *node : ui_nodes)
       {
 	if (node->get_hostname () != node_hostname)
 	  {
@@ -477,7 +477,7 @@ namespace cubhb
       }
 
     bool valid_ping_host_exists = false;
-    for (cubhb::ping_host *host : ping_hosts)
+    for (ping_host *host : ping_hosts)
       {
 	host->ping ();
 	if (host->is_ping_successful ())
@@ -554,7 +554,7 @@ namespace cubhb
     // first entry is group id
     if (tokens[0] != group_id)
       {
-	MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "different group id ('ha_node_list', 'ha_replica_list') \n");
+	MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "different group id ('ha_node_list', 'ha_replica_list')\n");
 	return ER_FAILED;
       }
 
@@ -566,7 +566,7 @@ namespace cubhb
 	    node_hostname = hostname;
 	  }
 
-	node_entry *replica = new node_entry (node_hostname, HB_REPLICA_PRIORITY);
+	node_entry *replica = new node_entry (node_hostname, REPLICA_PRIORITY);
 	nodes.push_front (replica);
 
 	if (replica->get_hostname () == hostname)
@@ -608,7 +608,7 @@ namespace cubhb
   }
 
   /*
-   * split string to token by a specified delimiter:
+   * split string to tokens by a specified delimiter:
    *
    * @param str: input string
    * @param delimiter: delimiter to use for split

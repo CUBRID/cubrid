@@ -868,7 +868,6 @@ hb_cluster_job_check_ping (HB_JOB_ARG *arg)
   int error, rv;
   int ping_try_count = 0;
   bool ping_success = false;
-  cubhb::ping_host::ping_result result;
   unsigned int failover_wait_time;
   HB_CLUSTER_JOB_ARG *clst_arg = (arg) ? & (arg->cluster_job_arg) : NULL;
 
@@ -889,16 +888,15 @@ hb_cluster_job_check_ping (HB_JOB_ARG *arg)
     {
       for (cubhb::ping_host *host : hb_Cluster->ping_hosts)
 	{
-	  result = hb_check_ping (host->get_hostname_cstr ());
+	  host->ping ();
 
-	  host->result = result;
-	  if (result == cubhb::ping_host::SUCCESS)
+	  if (host->result == cubhb::ping_host::SUCCESS)
 	    {
 	      ping_try_count++;
 	      ping_success = true;
 	      break;
 	    }
-	  else if (result == cubhb::ping_host::FAILURE)
+	  else if (host->result == cubhb::ping_host::FAILURE)
 	    {
 	      ping_try_count++;
 	    }
@@ -1648,10 +1646,13 @@ hb_set_net_header (HBP_HEADER *header, unsigned char type, bool is_req, unsigned
   header->r = (is_req) ? 1 : 0;
   header->len = htons (len);
   header->seq = htonl (seq);
+
   strncpy (header->group_id, hb_Cluster->group_id.c_str (), sizeof (header->group_id) - 1);
   header->group_id[sizeof (header->group_id) - 1] = '\0';
+
   strncpy (header->dest_host_name, dest_host_name, sizeof (header->dest_host_name) - 1);
   header->dest_host_name[sizeof (header->dest_host_name) - 1] = '\0';
+
   strncpy (header->orig_host_name, hb_Cluster->hostname.c_str (), sizeof (header->orig_host_name) - 1);
   header->orig_host_name[sizeof (header->orig_host_name) - 1] = '\0';
 }

@@ -36,8 +36,11 @@
 
 namespace cubhb
 {
+  using priority_type = unsigned short;
 
-  static const int HB_REPLICA_PRIORITY = 0x7FFF;
+  static const priority_type LOWEST_PRIORITY = std::numeric_limits<priority_type>::max ();
+  static const priority_type REPLICA_PRIORITY = LOWEST_PRIORITY;
+
   static const std::chrono::milliseconds HB_UI_NODE_CACHE_TIME_IN_MSECS (60 * 1000);
   static const std::chrono::milliseconds HB_UI_NODE_CLEANUP_TIME_IN_MSECS (3600 * 1000);
 
@@ -62,7 +65,7 @@ namespace cubhb
   {
     public:
       node_entry () = delete;
-      node_entry (std::string hostname, unsigned short priority);
+      node_entry (std::string hostname, priority_type priority);
       ~node_entry () = default;
 
       node_entry (const node_entry &other); // Copy c-tor
@@ -80,7 +83,7 @@ namespace cubhb
       };
 
     public: // TODO CBRD-22864 members should be private
-      unsigned short priority;
+      priority_type priority;
       node_state state;
       short score;
       short heartbeat_gap;
