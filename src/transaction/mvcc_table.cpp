@@ -255,8 +255,6 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
 
       if (!MVCCID_IS_VALID (tx_lowest_active))
 	{
-	  // question - while not always update lowest active?
-
 	  /*
 	   * First, by setting MVCCID_ALL_VISIBLE we will tell to VACUUM that transaction lowest MVCCID will be set
 	   * soon.
