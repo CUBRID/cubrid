@@ -153,7 +153,8 @@ namespace cubreplication
     public:
       static const int PACKING_ID = 4;
 
-      changed_attrs_row_repl_entry (repl_entry_type type, const char *class_name, const OID &inst_oid, LOG_LSA &lsa_stamp);
+      changed_attrs_row_repl_entry (repl_entry_type type, const char *class_name, const OID &inst_oid,
+				    LOG_LSA &lsa_stamp);
 
       changed_attrs_row_repl_entry () = default;
       ~changed_attrs_row_repl_entry ();

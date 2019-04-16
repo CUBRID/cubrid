@@ -89,9 +89,9 @@ namespace cubreplication
   }
 
   single_row_repl_entry::single_row_repl_entry (const repl_entry_type type, const char *class_name, LOG_LSA &lsa_stamp)
-    : replication_object (lsa_stamp),
-      m_type (type),
-      m_class_name (class_name)
+    : replication_object (lsa_stamp)
+    , m_type (type)
+    , m_class_name (class_name)
   {
     db_make_null (&m_key_value);
   }
@@ -213,13 +213,13 @@ namespace cubreplication
   }
 
   /////////////////////////////////
-  sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user, const char *password, const char *sys_prm_ctx,
-				  LOG_LSA &lsa_stamp)
-    : replication_object (lsa_stamp),
-      m_statement (statement),
-      m_db_user (user),
-      m_db_password (password ? password : ""),
-      m_sys_prm_context (sys_prm_ctx ? sys_prm_ctx : "")
+  sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user, const char *password,
+				  const char *sys_prm_ctx, LOG_LSA &lsa_stamp)
+    : replication_object (lsa_stamp)
+    , m_statement (statement)
+    , m_db_user (user)
+    , m_db_password (password ? password : "")
+    , m_sys_prm_context (sys_prm_ctx ? sys_prm_ctx : "")
   {
   }
 
@@ -322,13 +322,6 @@ namespace cubreplication
   changed_attrs_row_repl_entry::copy_and_add_changed_value (const ATTR_ID att_id, const DB_VALUE &db_val)
   {
     HL_HEAPID save_heapid;
-
-#if defined(CUBRID_DEBUG)
-    std::vector<int>::iterator it;
-
-    it = find (m_changed_attributes.begin (), m_changed_attributes.end (), att_id);
-    assert (it == m_changed_attributes.end ());
-#endif
 
     m_new_values.emplace_back ();
     DB_VALUE &last_new_value = m_new_values.back ();
