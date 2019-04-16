@@ -98,26 +98,20 @@ namespace cubload
   void
   error_handler::on_error (MSGCAT_LOADDB_MSG msg_id, Args &&... args)
   {
-    if (!is_last_error_filtered ())
-      {
-	std::string err_msg = format (get_message_from_catalog (msg_id), std::forward<Args> (args)...);
-	log_error_message (err_msg, false);
-      }
+    std::string err_msg = format (get_message_from_catalog (msg_id), std::forward<Args> (args)...);
+    log_error_message (err_msg, false);
   }
 
   template<typename... Args>
   void
   error_handler::on_error_with_line (MSGCAT_LOADDB_MSG msg_id, Args &&... args)
   {
-    if (!is_last_error_filtered ())
-      {
-	std::string err_msg;
+    std::string err_msg;
 
-	err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ()));
-	err_msg.append (format (get_message_from_catalog (msg_id), std::forward<Args> (args)...));
+    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ()));
+    err_msg.append (format (get_message_from_catalog (msg_id), std::forward<Args> (args)...));
 
-	log_error_message (err_msg, false);
-      }
+    log_error_message (err_msg, false);
   }
 
   template<typename... Args>
