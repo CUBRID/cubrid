@@ -137,13 +137,13 @@ main (int argc, char *argv[])
 	  arguments.command = strdup (optarg);
 	  break;
 
-        case DDL_PROXY_REQUEST_S:
-          if (arguments.request != NULL)
-          {
-            free ((void *) arguments.request);
-          }
-          arguments.request = strdup (optarg);
-          break;
+	case DDL_PROXY_REQUEST_S:
+	  if (arguments.request != NULL)
+	    {
+	      free ((void *) arguments.request);
+	    }
+	  arguments.request = strdup (optarg);
+	  break;
 
 	case DDL_PROXY_TRAN_INDEX_S:
 	  if (arguments.tran_index != NULL)
@@ -183,7 +183,7 @@ main (int argc, char *argv[])
     {
       utility_print (MSGCAT_UTIL_GENERIC_MISS_DBNAME);
       assert (false);
-    }  
+    }
 
   error = start_ddl_proxy_client (argv[0], &arguments);
 

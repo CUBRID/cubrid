@@ -208,7 +208,8 @@ namespace cubreplication
   }
 
   /////////////////////////////////
-  sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user, const char * password, const char *sys_prm_ctx, LOG_LSA &lsa_stamp)
+  sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user, const char *password, const char *sys_prm_ctx,
+				  LOG_LSA &lsa_stamp)
     : replication_object (lsa_stamp),
       m_statement (statement),
       m_db_user (user),
@@ -237,13 +238,13 @@ namespace cubreplication
 
     if (other_t == NULL
 	|| m_statement != other_t->m_statement
-	|| m_db_user != other_t->m_db_user      
+	|| m_db_user != other_t->m_db_user
 	|| m_sys_prm_context != other_t->m_sys_prm_context)
       {
 	return false;
       }
 
-    assert(m_db_password == other_t->m_db_password);
+    assert (m_db_password == other_t->m_db_password);
     return true;
   }
 
@@ -581,7 +582,7 @@ namespace cubreplication
   }
 
   rec_des_row_repl_entry::rec_des_row_repl_entry (repl_entry_type type, const char *class_name, const RECDES &rec_des,
-                                                  LOG_LSA &lsa_stamp)
+      LOG_LSA &lsa_stamp)
     : single_row_repl_entry (type, class_name, lsa_stamp)
   {
     m_rec_des.length = rec_des.length;

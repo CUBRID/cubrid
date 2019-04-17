@@ -180,7 +180,7 @@ namespace cubreplication
       {
 	if ((*repl_obj)->compare_inst_oid (inst_oid))
 	  {
-	    (void)m_pending_to_be_added.erase (repl_obj);
+	    (void) m_pending_to_be_added.erase (repl_obj);
 	    break;
 	  }
       }
@@ -218,7 +218,7 @@ namespace cubreplication
 	    er_log_repl_obj (repl_obj, "log_generator::set_key_to_repl_object");
 
 	    // remove
-	    (void)m_pending_to_be_added.erase (repl_obj_it);
+	    (void) m_pending_to_be_added.erase (repl_obj_it);
 
 	    found = true;
 
@@ -325,7 +325,7 @@ namespace cubreplication
       {
 	LOG_TDES *tdes = LOG_FIND_TDES (i);
 
-	log_generator *lg = & (tdes->replication_log_generator);
+	log_generator *lg = &(tdes->replication_log_generator);
 
 	lg->set_stream (stream);
       }
@@ -517,11 +517,11 @@ namespace cubreplication
 	repl_obj = local_stream_entry.get_object_at (i);
 	if (repl_obj != NULL)
 	  {
-            /* Debug code, check for SBR, quick fix. */
-            if ((dynamic_cast<sbr_repl_entry *> (repl_obj)) != NULL)
-              {            
-                continue;
-              }
+	    /* Debug code, check for SBR, quick fix. */
+	    if ((dynamic_cast<sbr_repl_entry *> (repl_obj)) != NULL)
+	      {
+		continue;
+	      }
 
 	    err_code = repl_obj->apply ();
 	    if (err_code != NO_ERROR)
