@@ -265,16 +265,6 @@ static HB_JOB_FUNC hb_resource_jobs[] =
 #define HA_ADMIN_INFO_NOLOG_FORMAT_STRING         "  Error Logging: disabled\n"
 #define HA_ADMIN_INFO_NOLOG_EVENT_FORMAT_STRING   "    %s\n"
 
-
-test-xxx013.ncl
-test-xxx013.ncl.nhnsystem.com
-
-test-xxx010.ncl
-test-xxx013.ncl
-
-test-xxx010.ncl.nhnsystem.com
-test-xxx.ncl.nhnsystem.com
-
 /*
  * linked list
  */
