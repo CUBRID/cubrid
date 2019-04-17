@@ -372,7 +372,7 @@ namespace cubhb
   }
 
   node_entry *
-  cluster::find_node (const std::string &node_hostname)
+  cluster::find_node (const std::string &node_hostname) const
   {
     for (node_entry *node : nodes)
       {
@@ -415,40 +415,26 @@ namespace cubhb
   cluster::find_ui_node (const std::string &node_hostname, const std::string &node_group_id,
 			 const sockaddr_in &sockaddr) const
   {
-    ui_node *result = NULL;
-
     for (ui_node *node : ui_nodes)
       {
-	if (node->get_hostname () != node_hostname)
+	if (node->get_hostname () == node_hostname && node->group_id == node_group_id
+	    && node->saddr.sin_addr.s_addr == sockaddr.sin_addr.s_addr)
 	  {
-	    continue;
+	    return node;
 	  }
-	if (node->group_id != node_group_id)
-	  {
-	    continue;
-	  }
-	if (node->saddr.sin_addr.s_addr != sockaddr.sin_addr.s_addr)
-	  {
-	    continue;
-	  }
-
-	result = node;
-	break;
       }
 
-    return result;
+    return NULL;
   }
 
   ui_node *
   cluster::insert_ui_node (const std::string &node_hostname, const std::string &node_group_id,
 			   const sockaddr_in &sockaddr, const int v_result)
   {
-    ui_node *node = NULL;
-
     assert (v_result == HB_VALID_UNIDENTIFIED_NODE || v_result == HB_VALID_GROUP_NAME_MISMATCH
 	    || v_result == HB_VALID_IP_ADDR_MISMATCH || v_result == HB_VALID_CANNOT_RESOLVE_HOST);
 
-    node = find_ui_node (node_hostname, node_group_id, sockaddr);
+    ui_node *node = find_ui_node (node_hostname, node_group_id, sockaddr);
     if (node)
       {
 	return node;
@@ -488,7 +474,7 @@ namespace cubhb
   }
 
   void
-  cluster::get_config_node_list (PARAM_ID prm_id, std::string &group, std::vector<std::string> &hostnames)
+  cluster::get_config_node_list (PARAM_ID prm_id, std::string &group, std::vector<std::string> &hostnames) const
   {
     char *prm_string_value = prm_get_string_value (prm_id);
     if (prm_string_value == NULL)

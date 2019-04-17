@@ -150,7 +150,7 @@ namespace cubhb
       int listen ();
       void stop ();
 
-      node_entry *find_node (const std::string &node_hostname);
+      node_entry *find_node (const std::string &node_hostname) const;
 
       void remove_ui_node (ui_node *&node);
       void cleanup_ui_nodes ();
@@ -162,7 +162,7 @@ namespace cubhb
       bool check_valid_ping_host ();
 
     private:
-      void get_config_node_list (PARAM_ID prm_id, std::string &group, std::vector<std::string> &hostnames);
+      void get_config_node_list (PARAM_ID prm_id, std::string &group, std::vector<std::string> &hostnames) const;
 
       int init_nodes ();
       int init_replica_nodes ();
