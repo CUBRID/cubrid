@@ -209,7 +209,7 @@ static char hb_Nolog_event_msg[LINE_MAX] = "";
 static HB_DEACTIVATE_INFO hb_Deactivate_info = { NULL, 0, false };
 
 static bool hb_Is_activated = true;
-static char *current_master_hostname = NULL;
+static const char *current_master_hostname = NULL;
 
 /* cluster jobs */
 static HB_JOB_FUNC hb_cluster_jobs[] =
@@ -2959,7 +2959,7 @@ hb_resource_job_send_master_hostname (HB_JOB_ARG *arg)
 
       if (current_master_hostname == NULL)
 	{
-	  current_master_hostname = const_cast<char *> (hostname);
+	  current_master_hostname = hostname;
 	  proc->knows_master_hostname = false;
 	}
       else if (current_master_hostname == hostname && proc->knows_master_hostname)
