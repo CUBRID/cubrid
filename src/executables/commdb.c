@@ -122,7 +122,9 @@ static bool commdb_Arg_ha_deregister_by_pid = false;
 static char *commdb_Arg_ha_deregister_pid = NULL;
 static bool commdb_Arg_ha_deregister_by_args = false;
 static char *commdb_Arg_ha_deregister_args = NULL;
+#if defined (ENABLE_OLD_REPLICATION)
 static bool commdb_Arg_kill_all_ha_utils = false;
+#endif
 static bool commdb_Arg_is_registered = false;
 static char *commdb_Arg_is_registered_id = NULL;
 static bool commdb_Arg_reconfig_heartbeat = false;
@@ -654,6 +656,7 @@ process_ha_admin_info_query (CSS_CONN_ENTRY * conn)
     }
 }
 
+#if defined (ENABLE_OLD_REPLICATION)
 /*
  * process_kill_all_ha_utils() - kill all copylogdb and applylogdb process
  *   return:  none
@@ -683,6 +686,7 @@ process_kill_all_ha_utils (CSS_CONN_ENTRY * conn)
       free_and_init (reply_buffer);
     }
 }
+#endif /* ENABLE_OLD_REPLICATION */
 
 /*
  * process_is_registered_proc () - check registerd copylogdb and applylogdb
@@ -1125,10 +1129,12 @@ process_batch_command (CSS_CONN_ENTRY * conn)
       process_ha_admin_info_query (conn);
     }
 
+#if defined (ENABLE_OLD_REPLICATION)
   if (commdb_Arg_kill_all_ha_utils)
     {
       process_kill_all_ha_utils (conn);
     }
+#endif
 
   if (commdb_Arg_is_registered)
     {
@@ -1317,9 +1323,11 @@ main (int argc, char **argv)
 	  commdb_Arg_ha_deregister_args = strdup (optarg);
 	  commdb_Arg_ha_deregister_by_args = true;
 	  break;
+#if defined (ENABLE_OLD_REPLICATION)
 	case 'd':
 	  commdb_Arg_kill_all_ha_utils = true;
 	  break;
+#endif
 	case 'C':
 	  if (commdb_Arg_is_registered_id != NULL)
 	    {

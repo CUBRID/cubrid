@@ -5445,6 +5445,10 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
    * made by the transaction we will not reflect the changes. They will be definitely lost. */
   log_clear_lob_locator_list (thread_p, tdes, true, NULL);
 
+  /* TODO[replication] : this is called here to save MVCCID into log_generator/stream_entry before 
+   * clear_tdes; refactor this in context in packaging */
+  tdes->replication_log_generator.on_transaction_pre_commit ();
+
   /* clear mvccid before releasing the locks. This operation must be done before do_postpone because it stores unique
    * statistics for all B-trees and if an error occurs those operations and all operations of current transaction must
    * be rolled back. */
@@ -5495,6 +5499,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	    {
 	      log_append_commit_log (thread_p, tdes, &commit_lsa);
 	    }
+
+	  tdes->replication_log_generator.on_transaction_commit ();
 
 	  if (retain_lock != true)
 	    {
@@ -5558,6 +5564,10 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
   /* destroy transaction's temporary files */
   file_tempcache_drop_tran_temp_files (thread_p);
 
+  /* TODO[replication] : this is called here to save MVCCID into log_generator/stream_entry before 
+   * clear_tdes; refactor this in context in packaging */
+  tdes->replication_log_generator.on_transaction_pre_abort ();
+
   if (!LSA_ISNULL (&tdes->tail_lsa))
     {
       /*
@@ -5604,6 +5614,8 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 
   log_clear_lob_locator_list (thread_p, tdes, false, NULL);
 
+  tdes->replication_log_generator.on_transaction_abort ();
+
   return tdes->state;
 }
 
@@ -5646,8 +5658,6 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
       error_code = ER_LOG_UNKNOWN_TRANINDEX;
       return TRAN_UNACTIVE_UNKNOWN;
     }
-
-  tdes->replication_log_generator.check_commit_end_tran ();
 
   if (!LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_2PC_PREPARE (tdes) && LOG_ISRESTARTED ())
     {
@@ -5833,8 +5843,6 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
       state = log_abort_local (thread_p, tdes, true);
       state = log_complete (thread_p, tdes, LOG_ABORT, LOG_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
     }
-
-  tdes->replication_log_generator.on_transaction_abort ();
 
   perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_ROLLBACKS);
 
@@ -6586,8 +6594,8 @@ log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
 }
 
 static LOG_PAGE *
-log_dump_record_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
-			  LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p)
+log_dump_record_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+			  LOG_ZIP * log_zip_p)
 {
   LOG_REC_UNDOREDO *undoredo;
   int undo_length;
@@ -6673,8 +6681,8 @@ log_dump_record_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 }
 
 static LOG_PAGE *
-log_dump_record_mvcc_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
-			       LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p)
+log_dump_record_mvcc_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+			       LOG_ZIP * log_zip_p)
 {
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo;
   int undo_length;
@@ -6711,8 +6719,8 @@ log_dump_record_mvcc_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA *
 }
 
 static LOG_PAGE *
-log_dump_record_mvcc_undo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
-			   LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p)
+log_dump_record_mvcc_undo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+			   LOG_ZIP * log_zip_p)
 {
   LOG_REC_MVCC_UNDO *mvcc_undo;
   int undo_length;
@@ -6743,8 +6751,8 @@ log_dump_record_mvcc_undo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log
 }
 
 static LOG_PAGE *
-log_dump_record_mvcc_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
-			   LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p)
+log_dump_record_mvcc_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+			   LOG_ZIP * log_zip_p)
 {
   LOG_REC_MVCC_REDO *mvcc_redo;
   int redo_length;
@@ -6899,8 +6907,8 @@ log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * l
  * log_zip_p (in/out)  : log unzip
  */
 static LOG_PAGE *
-log_dump_record_sysop_start_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
-				      LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p)
+log_dump_record_sysop_start_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+				      LOG_ZIP * log_zip_p)
 {
   LOG_REC_SYSOP_START_POSTPONE sysop_start_postpone;
 
@@ -6927,8 +6935,8 @@ log_dump_record_sysop_start_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LO
  * out_fp (in/out)     : dump output
  */
 static LOG_PAGE *
-log_dump_record_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * sysop_end,
-				    LOG_LSA * log_lsa, LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p, FILE * out_fp)
+log_dump_record_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * sysop_end, LOG_LSA * log_lsa,
+				    LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p, FILE * out_fp)
 {
   int undo_length;
   LOG_RCVINDEX rcvindex;
@@ -6999,8 +7007,8 @@ log_dump_record_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END *
  * out_fp (in/out)     : Dump output.
  */
 static LOG_PAGE *
-log_dump_record_sysop_end (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-			   LOG_ZIP * log_zip_p, FILE * out_fp)
+log_dump_record_sysop_end (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p,
+			   FILE * out_fp)
 {
   LOG_REC_SYSOP_END *sysop_end;
 

@@ -838,8 +838,10 @@ typedef struct _ha_config
 #define PRINT_CMD_LIST          "list"
 #define PRINT_CMD_RELOAD        "reload"
 #define PRINT_CMD_ACL           "acl"
+#if defined (ENABLE_OLD_REPLICATION)
 #define PRINT_CMD_COPYLOGDB     "copylogdb"
 #define PRINT_CMD_APPLYLOGDB    "applylogdb"
+#endif
 #define PRINT_CMD_GETID         "getid"
 #define PRINT_CMD_TEST          "test"
 #define PRINT_CMD_REPLICATION	"replication"
@@ -1687,8 +1689,10 @@ extern "C"
   extern int paramdump (UTIL_FUNCTION_ARG * arg_map);
   extern int statdump (UTIL_FUNCTION_ARG * arg_map);
   extern int changemode (UTIL_FUNCTION_ARG * arg_map);
+#if defined (ENABLE_OLD_REPLICATION)
   extern int copylogdb (UTIL_FUNCTION_ARG * arg_map);
   extern int applylogdb (UTIL_FUNCTION_ARG * arg_map);
+#endif
   extern int applyinfo (UTIL_FUNCTION_ARG * arg_map);
   extern int acldb (UTIL_FUNCTION_ARG * arg_map);
   extern int genlocale (UTIL_FUNCTION_ARG * arg_map);

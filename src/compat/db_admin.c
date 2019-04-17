@@ -107,7 +107,6 @@ static int db_Delayed_hosts_count = 0;
 static DB_HOST_STATUS_LIST db_Host_status_list;
 
 static int db_Override_tran_index = NULL_TRAN_INDEX;
-static int db_Saved_tran_index = NULL_TRAN_INDEX;
 
 static DB_HOST_STATUS *db_add_host_status (char *hostname, int status);
 static DB_HOST_STATUS *db_find_host_status (char *hostname);

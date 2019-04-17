@@ -27,13 +27,14 @@
 
 #include "config.h"
 #include "multi_thread_stream.hpp"
+#include "replication_common.hpp"
+#include "replication_master_node.hpp"
+#include "replication_slave_node.hpp"
 #include "session.h"
 #include "thread_entry_task.hpp"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
-#include "replication_master_node.hpp"
-#include "replication_slave_node.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -759,6 +760,13 @@ css_process_change_server_ha_mode_request (SOCKET master_fd)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_FROM_SERVER, 1, "Cannot change server HA mode");
 	}
+      else
+	{
+	  if (state == HA_SERVER_STATE_ACTIVE)
+	    {
+	      cubreplication::master_node::enable_active ();
+	    }
+	}
     }
   else
     {
@@ -833,14 +841,14 @@ css_process_master_hostname ()
 
   assert (hostname_length > 0 && ha_Server_state == HA_SERVER_STATE_STANDBY);
 
+  er_log_debug_replication (ARG_FILE_LINE, "css_process_master_hostname css_Master_server_name:%s,"
+    " ha_Server_master_hostname:%s\n", css_Master_server_name, ha_Server_master_hostname);
+
   error = cubreplication::slave_node::connect_to_master (ha_Server_master_hostname, css_Master_port_id);
   if (error != NO_ERROR)
     {
       return error;
     }
-
-  er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n",
-		ha_Server_master_hostname);
 
   return NO_ERRORS;
 }
@@ -1409,14 +1417,11 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
       if (!HA_DISABLED ())
 	{
-	  if (ha_Server_state == HA_SERVER_STATE_ACTIVE)
-	    {
-	      cubreplication::master_node::init (server_name);
-	    }
-	  else if (ha_Server_state == HA_SERVER_STATE_STANDBY)
-	    {
-	      cubreplication::slave_node::init (server_name);
-	    }
+	  er_log_debug (ARG_FILE_LINE, "css_init: starting HA : ha_Server_state (%s), server_name (%s)\n",
+			css_ha_server_state_string (ha_Server_state), server_name);
+	  /* start both master and slave infrastructure */
+	  cubreplication::master_node::init (server_name);
+	  cubreplication::slave_node::init (server_name);
 
 #if !defined(WINDOWS)
 	  status = hb_register_to_master (css_Master_conn, HB_PTYPE_SERVER);
@@ -1441,14 +1446,8 @@ shutdown:
 
   if (!HA_DISABLED ())
     {
-      if (ha_Server_state == HA_SERVER_STATE_ACTIVE)
-	{
-	  cubreplication::master_node::final ();
-	}
-      else if (ha_Server_state == HA_SERVER_STATE_STANDBY)
-	{
-	  cubreplication::slave_node::final ();
-	}
+      cubreplication::master_node::final ();
+      cubreplication::slave_node::final ();
     }
 
   // stop threads; in first phase we need to stop active workers, but keep log writers for a while longer to make sure
@@ -2704,8 +2703,8 @@ css_process_new_slave (SOCKET master_fd)
       assert (false);
       return;
     }
-  er_log_debug (ARG_FILE_LINE, "css_process_new_slave:" "received new slave fd from master fd=%d, current_state=%d\n",
-		new_fd, ha_Server_state);
+  er_log_debug_replication (ARG_FILE_LINE, "css_process_new_slave:"
+			    "received new slave fd from master fd=%d, current_state=%d\n", new_fd, ha_Server_state);
 
   assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
 

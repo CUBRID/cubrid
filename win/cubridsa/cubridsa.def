@@ -153,8 +153,6 @@ EXPORTS
 	alterdbhost
 	paramdump
 	changemode
-	copylogdb
-	applylogdb
 	statdump
 	acldb
 	genlocale

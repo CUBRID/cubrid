@@ -18,7 +18,6 @@
  */
 
 #include "test_log_generator.hpp"
-#include "test_replication_apply.hpp"
 #include <iostream>
 
 template <typename Func, typename ... Args>
@@ -45,9 +44,8 @@ int main ()
 {
   int global_error = 0;
 
-  test_module (global_error, test_replication_apply::test_apply_sbr);
-/* disable log generator tests 
- * since interface of log_generator changed to high-level objects, it is not possible to simulate master node state 
+/* disable log generator tests
+ * since interface of log_generator changed to high-level objects, it is not possible to simulate master node state
  */
 #if 0
   test_module (global_error, test_replication::test_log_generator1);

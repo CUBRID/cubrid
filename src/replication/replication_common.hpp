@@ -17,18 +17,16 @@
  *
  */
 
-#ifndef _TEST_REPLICATION_APPLY_HPP_
-#define _TEST_REPLICATION_APPLY_HPP_
+/*
+ * replication_common.hpp
+ */
 
+#ident "$Id$"
 
+#ifndef _REPLICATION_COMMON_HPP_
+#define _REPLICATION_COMMON_HPP_
 
-namespace test_replication_apply
-{
+#include "error_manager.h"
+#define er_log_debug_replication(...) if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA)) _er_log_debug(__VA_ARGS__)
 
-  /* testing of stream with byte objects */
-  int test_apply_sbr (void);
-
-
-}
-
-#endif /* _TEST_REPLICATION_APPLY_HPP_ */
+#endif /* _REPLICATION_COMMON_HPP_ */

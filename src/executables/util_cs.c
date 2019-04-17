@@ -2555,6 +2555,7 @@ error_exit:
 #endif /* !WINDOWS */
 }
 
+#if defined (ENABLE_OLD_REPLICATION)
 /*
  * copylogdb() - copylogdb main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
@@ -2999,6 +3000,7 @@ error_exit:
 #endif /* !CS_MODE */
 #endif /* !WINDOWS */
 }
+#endif /* ENABLE_OLD_REPLICATION */
 
 /*
  * sig_interrupt() -
@@ -3577,7 +3579,7 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
   int rc = NO_ERROR;
   int override_tran_index = NULL_TRAN_INDEX;
   char sql_log_err[LINE_MAX];
-  const char *command;
+  const char *command = NULL;
   bool save;
 
   if (args->tran_index != NULL)
@@ -3685,6 +3687,12 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
     }
 
 error:
+
+  if (command != NULL && command != args->command)
+    {
+      free_and_init (command);
+    }
+
   if (session != NULL)
     {
       db_close_session (session);

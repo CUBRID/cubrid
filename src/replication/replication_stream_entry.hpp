@@ -39,14 +39,14 @@ namespace cubreplication
   {
     typedef enum
     {
-      ACTIVE = 0,
+      UNDEFINED = 0,
+      ACTIVE,
       COMMITTED,
-      SYSOP_COMMITTED,
       ABORTED,
       GROUP_COMMIT
     } TRAN_STATE;
 
-    const static unsigned STATE_BITS = 2;
+    const static unsigned STATE_BITS = 3;
 
     const static unsigned int STATE_MASK = 0xc0000000;
 
@@ -64,7 +64,7 @@ namespace cubreplication
 	mvccid (MVCCID_NULL),
 	count_replication_entries (0),
 	data_size (0),
-	tran_state (ACTIVE)
+	tran_state (UNDEFINED)
     {
     };
 
@@ -79,10 +79,19 @@ namespace cubreplication
 
       return header_size;
     }
+
+    static const char *tran_state_string (TRAN_STATE state);
   };
 
   class stream_entry : public cubstream::entry<replication_object>
   {
+    public:
+      enum string_dump_mode
+      {
+	short_dump = 0,
+	detailed_dump = 1
+      };
+
     private:
       stream_entry_header m_header;
       cubpacking::packer m_serializator;
@@ -161,9 +170,17 @@ namespace cubreplication
 	return m_header.tran_state == stream_entry_header::ABORTED;
       }
 
+      bool is_tran_state_undefined (void)
+      {
+	return m_header.tran_state < stream_entry_header::ACTIVE
+	       || m_header.tran_state > stream_entry_header::GROUP_COMMIT;
+      }
+
       int pack_stream_entry_header ();
       int unpack_stream_entry_header ();
       int get_packable_entry_count_from_header (void);
+
+      void stringify (string_buffer &sb, const string_dump_mode mode = short_dump);
 
       bool is_equal (const cubstream::entry<replication_object> *other);
       static size_t compute_header_size (void);

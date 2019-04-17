@@ -3559,7 +3559,9 @@ hb_resource_job_send_master_hostname (HB_JOB_ARG * arg)
   proc = hb_Resource->procs;
   while (proc)
     {
-      if (proc->type == HB_PTYPE_SERVER)
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "send_master_hostname type:%d, state:%d, knows_master_hostname:%d\n",
+			   proc->type, proc->state, proc->knows_master_hostname);
+      if (proc->type == HB_PTYPE_SERVER && proc->state >= HB_PSTATE_REGISTERED)
 	{
 	  if (proc->knows_master_hostname)
 	    {
@@ -5859,6 +5861,7 @@ hb_kill_process (pid_t * pids, int count)
   return;
 }
 
+#if defined (ENABLE_OLD_REPLICATION)
 /*
  * hb_kill_all_heartbeat_process -
  *   return: none
@@ -5907,6 +5910,7 @@ hb_kill_all_heartbeat_process (char **str)
 
   free (pids);
 }
+#endif /* ENABLE_OLD_REPLICATION */
 
 /*
  * hb_deregister_by_pid -

@@ -174,6 +174,31 @@ test_string_buffer test;
 #define SB_FORMAT(frmt, ...) test.format (__FILE__, __LINE__, frmt, ##__VA_ARGS__)
 #define SB_CHAR(ch) test.character (__FILE__, __LINE__, ch)
 
+void test_dump (void)
+{
+  string_buffer sb1;
+  sb1 (" *   This program is free software; you can redistribute it and/or modify");
+  sb1 (" *   it under the terms of the GNU General Public License as published by");
+  sb1 (" *   the Free Software Foundation; either version 2 of the License, or");
+  sb1 ("*   (at your option) any later version. ");
+
+
+  string_buffer sb_hex1;
+  string_buffer sb_hex2;
+  string_buffer sb_hex3;
+  string_buffer sb_hex4;
+  sb_hex1.hex_dump (sb1, 100);
+  sb_hex2.hex_dump (sb1, sb1.len (), 8, true);
+  sb_hex3.hex_dump (sb1, sb1.len (), 12, false);
+  sb_hex4.hex_dump (sb1, sb1.len (), 12, true);
+
+  printf ("%s\n", sb_hex1.get_buffer ());
+  printf ("%s\n", sb_hex2.get_buffer ());
+  printf ("%s\n", sb_hex3.get_buffer ());
+  printf ("%s\n", sb_hex4.get_buffer ());
+
+}
+
 int main (int argc, char **argv)
 {
   enum flags

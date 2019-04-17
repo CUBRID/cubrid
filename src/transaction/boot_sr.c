@@ -3062,8 +3062,8 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 	}
       else
 	{
-	  LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
-	  tran_index = NULL_TRAN_INDEX;
+	  /* Should not happen. */
+	  assert (false);
 	}
     }
   else

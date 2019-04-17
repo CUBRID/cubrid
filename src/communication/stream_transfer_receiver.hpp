@@ -47,6 +47,7 @@ namespace cubstream
 
       int write_action (const stream_position pos, char *ptr, const size_t byte_count);
 
+      /* TODO[replication] : remove this method if not used */
       stream_position get_last_received_position ();
 
     private:

@@ -26,7 +26,9 @@
 #include "replication_slave_node.hpp"
 #include "log_consumer.hpp"
 #include "multi_thread_stream.hpp"
+#include "replication_common.hpp"
 #include "replication_stream_entry.hpp"
+#include "stream_file.hpp"
 #include "stream_transfer_receiver.hpp"
 #include "system_parameter.h"
 
@@ -62,8 +64,14 @@ namespace cubreplication
     /* consumer needs only one stream appender (the stream transfer receiver) */
     assert (g_instance->m_stream == NULL);
     g_instance->m_stream = new cubstream::multi_thread_stream (buffer_size, 2);
+    g_instance->m_stream->set_name ("repl" + std::string (hostname) + "_replica");
     g_instance->m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
     g_instance->m_stream->init (g_instance->m_start_position);
+
+    /* create stream file */
+    std::string replication_path;
+    replication_node::get_replication_file_path (replication_path);
+    g_instance->m_stream_file = new cubstream::stream_file (*g_instance->m_stream, replication_path);
 
     assert (g_instance->m_lc == NULL);
     g_instance->m_lc = new log_consumer ();
@@ -79,6 +87,9 @@ namespace cubreplication
     int error = NO_ERROR;
 
 #if defined (SERVER_MODE)
+    er_log_debug_replication (ARG_FILE_LINE, "slave_node::connect_to_master host:%s, port: %d\n",
+			      master_node_hostname, master_node_port_id);
+
     /* connect to replication master node */
     cubcomm::server_channel srv_chn (g_instance->m_identity.get_hostname ().c_str ());
 
@@ -91,7 +102,10 @@ namespace cubreplication
       }
     /* start transfer receiver */
     assert (g_instance->m_transfer_receiver == NULL);
-    g_instance->m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *g_instance->m_stream);
+    /* TODO[replication] : last position to be retrieved from recovery module */
+    cubstream::stream_position start_position = 0;
+    g_instance->m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *g_instance->m_stream,
+	start_position);
 #endif
 
     return error;

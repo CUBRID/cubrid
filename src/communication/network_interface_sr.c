@@ -7761,13 +7761,7 @@ srepl_set_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
 	    ptr = or_unpack_string_nocopy (ptr, &repl_schema.db_user);
 	    ptr = or_unpack_string_nocopy (ptr, &repl_schema.db_password);
 	    ptr = or_unpack_string_nocopy (ptr, &repl_schema.sys_prm_context);
-#if !defined(NDEBUG)
-	    if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
-	      {
-		ptr = or_unpack_string_nocopy (ptr, &repl_schema.savepoint_name);
-	      }
-#endif
-
+	    ptr = or_unpack_string_nocopy (ptr, &repl_schema.savepoint_name);
 	    repl_info.info = (char *) &repl_schema;
 	    break;
 	  }

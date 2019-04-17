@@ -2992,14 +2992,14 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       /* for the subset of nodes which represent top level statements, process them. For any other node, return an
        * error. */
-      if (!HA_DISABLED () && is_stmt_based_repl_type (statement))
+      if (!HA_DISABLED () && is_stmt_based_repl_type (statement) && !db_is_ddl_proxy_client ())
 	{
 	  need_stmt_replication = true;
 	}
 
 #if !defined(NDEBUG) && defined (CS_MODE)
       if (!need_stmt_replication && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
-	  && is_stmt_based_repl_type (statement))
+	  && is_stmt_based_repl_type (statement) && !db_is_ddl_proxy_client ())
 	{
 	  /* Test replication on master node. */
 	  need_stmt_replication = true;
@@ -3337,14 +3337,6 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  suppress_repl_error = db_set_suppress_repl_on_transaction (false);
 
-#if !defined(NDEBUG) && defined (CS_MODE)
-	  if (db_is_ddl_proxy_client ())
-	    {
-	      /* DDL proxy, nothing to replicate. */
-	      goto end;
-	    }
-#endif
-
 	  /* write schema replication log */
 	  if (error >= 0 && repl_error == NO_ERROR && suppress_repl_error == NO_ERROR)
 	    {
@@ -3354,6 +3346,14 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (repl_error != NO_ERROR)
 	    {
 	      error = repl_error;
+	    }
+	}
+      else if (db_is_ddl_proxy_client ())
+	{
+	  /* We need to flush in case of ddl proxy. */
+	  if (error >= 0)
+	    {
+	      error = locator_all_flush ();
 	    }
 	}
     }
@@ -3498,13 +3498,14 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* for the subset of nodes which represent top level statements, process them; for any other node, return an error */
 
   /* disable data replication log for schema replication log types in HA mode */
-  if (!HA_DISABLED () && is_stmt_based_repl_type (statement))
+  if (!HA_DISABLED () && is_stmt_based_repl_type (statement) && !db_is_ddl_proxy_client ())
     {
       need_stmt_based_repl = true;
     }
 
 #if !defined(NDEBUG) && defined (CS_MODE)
-  if (!need_stmt_based_repl && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG) && is_stmt_based_repl_type (statement))
+  if (!need_stmt_based_repl && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
+      && is_stmt_based_repl_type (statement) && !db_is_ddl_proxy_client ())
     {
       /* Test replication on master node. */
       need_stmt_based_repl = true;
@@ -3810,14 +3811,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       suppress_repl_error = db_set_suppress_repl_on_transaction (false);
 
-#if !defined(NDEBUG) && defined (CS_MODE)
-      if (db_is_ddl_proxy_client ())
-	{
-	  /* DDL proxy, nothing to replicate. */
-	  goto end;
-	}
-#endif
-
       /* write schema replication log */
       if (err >= 0 && repl_error == NO_ERROR && suppress_repl_error == NO_ERROR)
 	{
@@ -3827,6 +3820,14 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (repl_error != NO_ERROR)
 	{
 	  err = repl_error;
+	}
+    }
+  else if (db_is_ddl_proxy_client ())
+    {
+      /* We need to flush in case of ddl proxy. */
+      if (err >= 0)
+	{
+	  err = locator_all_flush ();
 	}
     }
 

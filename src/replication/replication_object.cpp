@@ -83,17 +83,22 @@ namespace cubreplication
     return false;
   }
 
+  bool replication_object::is_statement_replication ()
+  {
+    return false;
+  }
+
   single_row_repl_entry::single_row_repl_entry (const repl_entry_type type, const char *class_name, LOG_LSA &lsa_stamp)
-    : replication_object (lsa_stamp),
-      m_type (type),
-      m_class_name (class_name)
+    : replication_object (lsa_stamp)
+    , m_type (type)
+    , m_class_name (class_name)
   {
     db_make_null (&m_key_value);
   }
 
   single_row_repl_entry::~single_row_repl_entry ()
   {
-    //TODO[arnia] optimize
+    //TODO[replication] optimize
 
     if (DB_IS_NULL (&m_key_value))
       {
@@ -208,13 +213,13 @@ namespace cubreplication
   }
 
   /////////////////////////////////
-  sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user, const char *password, const char *sys_prm_ctx,
-				  LOG_LSA &lsa_stamp)
-    : replication_object (lsa_stamp),
-      m_statement (statement),
-      m_db_user (user),
-      m_db_password (password ? password : ""),
-      m_sys_prm_context (sys_prm_ctx ? sys_prm_ctx : "")
+  sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user, const char *password,
+				  const char *sys_prm_ctx, LOG_LSA &lsa_stamp)
+    : replication_object (lsa_stamp)
+    , m_statement (statement)
+    , m_db_user (user)
+    , m_db_password (password ? password : "")
+    , m_sys_prm_context (sys_prm_ctx ? sys_prm_ctx : "")
   {
   }
 
@@ -231,8 +236,7 @@ namespace cubreplication
     return err;
   }
 
-  bool
-  sbr_repl_entry::is_equal (const packable_object *other)
+  bool sbr_repl_entry::is_equal (const packable_object *other)
   {
     const sbr_repl_entry *other_t = dynamic_cast<const sbr_repl_entry *> (other);
 
@@ -245,6 +249,11 @@ namespace cubreplication
       }
 
     assert (m_db_password == other_t->m_db_password);
+    return true;
+  }
+
+  bool sbr_repl_entry::is_statement_replication ()
+  {
     return true;
   }
 
@@ -291,7 +300,8 @@ namespace cubreplication
   void
   sbr_repl_entry::stringify (string_buffer &str)
   {
-    str ("sbr_repl_entry: statement=%s\n", m_statement.c_str ());
+    str ("sbr_repl_entry: statement=%s\nUSER=%s\nSYS_PRM=%s\n",
+	 m_statement.c_str (), m_db_user.c_str (), m_sys_prm_context.c_str ());
   }
 
   changed_attrs_row_repl_entry::~changed_attrs_row_repl_entry ()
@@ -312,13 +322,6 @@ namespace cubreplication
   changed_attrs_row_repl_entry::copy_and_add_changed_value (const ATTR_ID att_id, const DB_VALUE &db_val)
   {
     HL_HEAPID save_heapid;
-
-#if defined(CUBRID_DEBUG)
-    std::vector<int>::iterator it;
-
-    it = find (m_changed_attributes.begin (), m_changed_attributes.end (), att_id);
-    assert (it == m_changed_attributes.end ());
-#endif
 
     m_new_values.emplace_back ();
     DB_VALUE &last_new_value = m_new_values.back ();
@@ -364,6 +367,9 @@ namespace cubreplication
   {
     int count_new_values = 0;
     int int_val;
+
+    OID_SET_NULL (&m_inst_oid);
+
 #if defined (SERVER_MODE)
     HL_HEAPID save_heapid;
 
@@ -380,10 +386,8 @@ namespace cubreplication
 
     for (std::size_t i = 0; (int) i < count_new_values; i++)
       {
-	DB_VALUE val;
-
-	/* this copies the DB_VALUE to contain, should we avoid this ? */
-	m_new_values.push_back (val);
+	m_new_values.emplace_back ();
+	DB_VALUE &val = m_new_values.back ();
 	deserializator.unpack_db_value (val);
       }
 
@@ -465,7 +469,7 @@ namespace cubreplication
 	char *key_to_string = pr_valstring (&m_new_values[i]);
 	assert (key_to_string != NULL);
 
-	str ("attr_id=%d type=%s value=%s\n", m_changed_attributes[i], pr_type_name (DB_VALUE_TYPE (&m_new_values[i])),
+	str ("\tattr_id=%d type=%s value=%s\n", m_changed_attributes[i], pr_type_name (DB_VALUE_TYPE (&m_new_values[i])),
 	     key_to_string);
 
 	db_private_free (NULL, key_to_string);
