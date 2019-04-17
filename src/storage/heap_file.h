@@ -142,6 +142,7 @@ struct heap_scancache
   char *area;			/* Pointer to last left fixed memory allocated */
   int area_size;		/* Size of allocated area */
   int num_btids;		/* Total number of indexes defined on the scanning class */
+  // todo - replace me
   BTREE_UNIQUE_STATS *index_stat_info;	/* unique-related stat info <btid,num_nulls,num_keys,num_oids> */
   FILE_TYPE file_type;		/* The file type of the heap file being scanned. Can be FILE_HEAP or
 				 * FILE_HEAP_REUSE_SLOTS */
