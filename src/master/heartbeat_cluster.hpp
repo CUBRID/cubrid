@@ -25,6 +25,7 @@
 #define _HEARTBEAT_CLUSTER_HPP_
 
 #include "porting.h"
+#include "system_parameter.h"
 
 #include <chrono>
 #include <list>
@@ -159,9 +160,13 @@ namespace cubhb
       bool check_valid_ping_host ();
 
     private:
+      void get_config_node_list (PARAM_ID prm_id, std::string &group, std::vector<std::string> &hostnames);
+
       int init_nodes ();
       int init_replica_nodes ();
       void init_ping_hosts ();
+
+      node_entry *insert_host_node (const std::string &node_hostname, const priority_type priority);
 
     public: // TODO CBRD-22864 members should be private
       pthread_mutex_t lock; // TODO CBRD-22864 replace with std::mutex
