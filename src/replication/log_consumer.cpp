@@ -93,9 +93,6 @@ namespace cubreplication
 	      {
 		replication_object *obj = curr_stream_entry->get_object_at (i);
 
-		/* For safety reason, in case of sbr, should not be other concurrent appliers. */
-		assert (m_lc.get_started_task() == 1 || !obj->is_statement_replication ());
-
 		int err = obj->apply ();
 		if (err != NO_ERROR)
 		  {
