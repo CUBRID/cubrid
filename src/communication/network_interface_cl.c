@@ -10129,7 +10129,7 @@ locator_get_proxy_command (const char **proxy_command)
   assert (proxy_command != NULL);
 
   reply = OR_ALIGNED_BUF_START (a_reply);
-  req_error = net_client_request2 (NET_GET_PROXY_COMMAND, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, 
+  req_error = net_client_request2 (NET_GET_PROXY_COMMAND, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
 				   &area, &area_size);
   if (!req_error && area != NULL)
     {
