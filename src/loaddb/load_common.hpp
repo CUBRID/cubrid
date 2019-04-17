@@ -112,7 +112,7 @@ namespace cubload
     std::string table_name;
     std::string ignore_class_file;
     std::vector<std::string> ignore_classes;
-    static const int periodic_commit_default_value = 10240;
+    static const int PERIODIC_COMMIT_DEFAULT_VALUE = 10240;
   };
 
   /*
