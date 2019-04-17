@@ -41,7 +41,6 @@
 #define LOAD_INDEX_MIN_SORT_BUFFER_PAGES 8192
 #define LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING "8192"
 #define LOADDB_LOG_FILENAME_SUFFIX "loaddb.log"
-#define LOADDB_PERIODIC_COMMIT_DEFAULT 10240
 
 using namespace cubload;
 
@@ -1001,7 +1000,7 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   if (args->periodic_commit == 0)
     {
       // We set the periodic commit to a default value.
-      args->periodic_commit = LOADDB_PERIODIC_COMMIT_DEFAULT;
+      args->periodic_commit = load_args::periodic_commit_default_value;
     }
   args->no_oid_hint = utility_get_option_bool_value (arg_map, LOAD_NO_OID_S);
   args->schema_file = schema_file ? schema_file : empty;
