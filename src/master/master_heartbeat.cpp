@@ -1067,7 +1067,7 @@ hb_cluster_job_demote (HB_JOB_ARG *arg)
 
   if (arg == NULL || clst_arg == NULL)
     {
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "invalid arg or proc_arg. " "(arg:%p, proc_arg:%p). \n", arg, clst_arg);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "invalid arg or proc_arg. (arg:%p, proc_arg:%p). \n", arg, clst_arg);
       return;
     }
 
@@ -1093,7 +1093,7 @@ hb_cluster_job_demote (HB_JOB_ARG *arg)
   if (hb_Cluster->is_isolated || ++clst_arg->retries > HB_MAX_WAIT_FOR_NEW_MASTER)
     {
       MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
-		     "Failed to find a new master node and it changes " "its role back to master again");
+		     "Failed to find a new master node and it changes its role back to master again");
       hb_Cluster->hide_to_demote = false;
 
       pthread_mutex_unlock (&hb_Cluster->lock);
@@ -1283,7 +1283,7 @@ hb_cluster_job_check_valid_ping_server (HB_JOB_ARG *arg)
 	{
 	  hb_Cluster->is_ping_check_enabled = false;
 	  snprintf (buf, LINE_MAX,
-		    "Validity check for PING failed on all hosts " "and PING check is now temporarily disabled.");
+		    "Validity check for PING failed on all hosts and PING check is now temporarily disabled.");
 	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, buf);
 	}
     }
@@ -1292,7 +1292,7 @@ hb_cluster_job_check_valid_ping_server (HB_JOB_ARG *arg)
       if (!hb_Cluster->is_ping_check_enabled)
 	{
 	  hb_Cluster->is_ping_check_enabled = true;
-	  snprintf (buf, LINE_MAX, "Validity check for PING succeeded " "and PING check is now enabled.");
+	  snprintf (buf, LINE_MAX, "Validity check for PING succeeded and PING check is now enabled.");
 	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, buf);
 	}
     }
@@ -1349,27 +1349,19 @@ hb_cluster_calc_score (void)
 	{
 	case cubhb::node_entry::MASTER:
 	case cubhb::node_entry::TO_BE_SLAVE:
-	{
 	  node->score = node->priority | HB_NODE_SCORE_MASTER;
-	}
-	break;
+	  break;
 	case cubhb::node_entry::TO_BE_MASTER:
-	{
 	  node->score = node->priority | HB_NODE_SCORE_TO_BE_MASTER;
-	}
-	break;
+	  break;
 	case cubhb::node_entry::SLAVE:
-	{
 	  node->score = node->priority | HB_NODE_SCORE_SLAVE;
-	}
-	break;
+	  break;
 	case cubhb::node_entry::REPLICA:
 	case cubhb::node_entry::UNKNOWN:
 	default:
-	{
 	  node->score = node->priority | HB_NODE_SCORE_UNKNOWN;
-	}
-	break;
+	  break;
 	}
 
       if (node->score < min_score)
@@ -1504,7 +1496,7 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
   /* validate receive message */
   if (strcmp (hb_Cluster->hostname.c_str (), hbp_header->dest_host_name) != 0)
     {
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hostname mismatch. " "(host_name:{%s}, dest_host_name:{%s}).\n",
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hostname mismatch. (host_name:{%s}, dest_host_name:{%s}).\n",
 			   hb_Cluster->hostname.c_str (), hbp_header->dest_host_name);
       pthread_mutex_unlock (&hb_Cluster->lock);
       return;
@@ -1512,7 +1504,7 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
 
   if (len != (int) (sizeof (*hbp_header) + htons (hbp_header->len)))
     {
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "size mismatch. " "(len:%d, msg_size:%d).\n", len,
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "size mismatch. (len:%d, msg_size:%d).\n", len,
 			   (sizeof (*hbp_header) + htons (hbp_header->len)));
       pthread_mutex_unlock (&hb_Cluster->lock);
       return;
@@ -1520,7 +1512,7 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
 
 #if 0
   MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
-		       "hbp_header. (type:%d, r:%d, len:%d, seq:%d, " "orig_host_name:{%s}, dest_host_name:{%s}). \n",
+		       "hbp_header. (type:%d, r:%d, len:%d, seq:%d, orig_host_name:{%s}, dest_host_name:{%s}). \n",
 		       hbp_header->type, (hbp_header->r) ? 1 : 0, ntohs (hbp_header->len), ntohl (hbp_header->seq),
 		       hbp_header->orig_host_name, hbp_header->dest_host_name);
 #endif
@@ -1538,7 +1530,7 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
 
       if (hb_state < cubhb::node_entry::UNKNOWN || hb_state >= cubhb::node_entry::MAX)
 	{
-	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "receive heartbeat have unknown state. " "(state:%u).\n", state);
+	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "receive heartbeat have unknown state. (state:%u).\n", state);
 	  pthread_mutex_unlock (&hb_Cluster->lock);
 	  return;
 	}
@@ -1559,7 +1551,7 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
 
 	      ipv4_p = (char *) &from->sin_addr.s_addr;
 	      snprintf (error_string, sizeof (error_string),
-			"Receive heartbeat from unidentified host. " "(host_name:'%s', group:'%s', "
+			"Receive heartbeat from unidentified host. (host_name:'%s', group:'%s', "
 			"ip_addr:'%u.%u.%u.%u', state:'%s')", hbp_header->orig_host_name, hbp_header->group_id,
 			(unsigned char) (ipv4_p[0]), (unsigned char) (ipv4_p[1]), (unsigned char) (ipv4_p[2]),
 			(unsigned char) (ipv4_p[3]), hb_valid_result_string (rv));
@@ -1605,16 +1597,15 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
 	}
       else
 	{
-	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "receive heartbeat have unknown host_name. " "(host_name:{%s}).\n",
+	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "receive heartbeat have unknown host_name. (host_name:{%s}).\n",
 			       hbp_header->orig_host_name);
 	}
     }
     break;
+
     default:
-    {
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "unknown heartbeat message. " "(type:%d). \n", hbp_header->type);
-    }
-    break;
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "unknown heartbeat message. (type:%d). \n", hbp_header->type);
+      break;
 
     }
 
@@ -2208,7 +2199,7 @@ hb_resource_job_proc_start (HB_JOB_ARG *arg)
 #if defined (HB_VERBOSE_DEBUG)
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
 			   "execute:{%s} arg[0]:{%s} arg[1]:{%s} arg[2]:{%s} "
-			   "arg[3]:{%s} arg{4}:{%s} arg[5]:{%s} arg[6]:{%s} " "arg[7]:{%s} arg[8]:{%s} arg[9]:{%s}.\n",
+			   "arg[3]:{%s} arg{4}:{%s} arg[5]:{%s} arg[6]:{%s} arg[7]:{%s} arg[8]:{%s} arg[9]:{%s}.\n",
 			   proc->exec_path, (argv[0]) ? argv[0] : "", (argv[1]) ? argv[1] : "",
 			   (argv[2]) ? argv[2] : "", (argv[3]) ? argv[3] : "", (argv[4]) ? argv[4] : "",
 			   (argv[5]) ? argv[5] : "", (argv[6]) ? argv[6] : "", (argv[7]) ? argv[7] : "",
@@ -2607,7 +2598,7 @@ hb_resource_job_confirm_start (HB_JOB_ARG *arg)
 	  pthread_mutex_unlock (&hb_Resource->lock);
 
 	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
-			 "Failed to restart the process " "and the current node will be demoted", error_string);
+			 "Failed to restart the process and the current node will be demoted", error_string);
 
 	  /* keep checking problematic process */
 	  proc_arg->retries = 0;
@@ -2822,7 +2813,7 @@ hb_resource_job_change_mode (HB_JOB_ARG *arg)
 		  || proc->state == HB_PSTATE_REGISTERED_AND_TO_BE_STANDBY)))
 	{
 	  /* TODO : send heartbeat changemode request */
-	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "send change-mode request. " "(node_state:%d, pid:%d, proc_state:%d). \n",
+	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "send change-mode request. (node_state:%d, pid:%d, proc_state:%d). \n",
 			       hb_Resource->state, proc->pid, proc->state);
 
 	  error = hb_resource_send_changemode (proc);
@@ -3186,7 +3177,7 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY *conn, SOCKET sfd)
 
   if (proc->state < HB_PSTATE_REGISTERED)
     {
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "unexpected process's state. " "(fd:%d, pid:%d, state:%d, args:{%s}). \n",
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "unexpected process's state. (fd:%d, pid:%d, state:%d, args:{%s}). \n",
 			   sfd, proc->pid, proc->state, proc->args);
       /*
        * Do not delete process entry.
@@ -3226,7 +3217,7 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY *conn, SOCKET sfd)
 
 	  snprintf (error_string, LINE_MAX, "(args:%s)", proc->args);
 	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
-			 "Process failure repeated within a short period of time. " "The current node will be demoted",
+			 "Process failure repeated within a short period of time. The current node will be demoted",
 			 error_string);
 
 	  /* shutdown working server processes to change its role to slave */
@@ -3383,7 +3374,7 @@ hb_register_new_process (CSS_CONN_ENTRY *conn)
 #if defined (HB_VERBOSE_DEBUG)
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
 			   "hbp_proc_register. (sizeof(hbp_proc_register):%d, \n"
-			   "type:%d, state:%d, pid:%d, exec_path:{%s}, " "args:{%s}). \n", sizeof (HBP_PROC_REGISTER),
+			   "type:%d, state:%d, pid:%d, exec_path:{%s}, args:{%s}). \n", sizeof (HBP_PROC_REGISTER),
 			   proc->type, proc->state, proc->pid, proc->exec_path, proc->args);
       hb_print_procs ();
 #endif
@@ -3455,45 +3446,38 @@ hb_resource_send_changemode (HB_PROC_ENTRY *proc)
   switch (hb_Resource->state)
     {
     case cubhb::node_entry::MASTER:
-    {
       state = HA_SERVER_STATE_ACTIVE;
       proc->knows_master_hostname = true;
-    }
-    break;
+      break;
     case cubhb::node_entry::TO_BE_SLAVE:
-    {
       state = HA_SERVER_STATE_STANDBY;
       proc->knows_master_hostname = false;
-    }
-    break;
+      break;
     case cubhb::node_entry::SLAVE:
     default:
-    {
       proc->knows_master_hostname = false;
       return ER_FAILED;
     }
-    break;
-    }
 
   error = css_send_heartbeat_request (proc->conn, SERVER_CHANGE_HA_MODE);
-  if (NO_ERRORS != error)
+  if (error != NO_ERRORS)
     {
       return ER_FAILED;
     }
 
   nstate = htonl ((int) state);
   error = css_send_heartbeat_data (proc->conn, (char *) &nstate, sizeof (nstate));
-  if (NO_ERRORS != error)
+  if (error != NO_ERRORS)
     {
       snprintf (error_string, LINE_MAX,
-		"Failed to send changemode request to the server. " "(state:%d[%s], args:[%s], pid:%d)", state,
+		"Failed to send changemode request to the server. (state:%d[%s], args:[%s], pid:%d)", state,
 		css_ha_server_state_string (state), proc->args, proc->pid);
       MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, error_string);
 
       return ER_FAILED;
     }
 
-  snprintf (error_string, LINE_MAX, "Send changemode request to the server. " "(state:%d[%s], args:[%s], pid:%d)",
+  snprintf (error_string, LINE_MAX, "Send changemode request to the server. (state:%d[%s], args:[%s], pid:%d)",
 	    state, css_ha_server_state_string (state), proc->args, proc->pid);
   MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, error_string);
 
@@ -3538,7 +3522,7 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY *conn)
       return;
     }
 
-  snprintf (error_string, LINE_MAX, "Receive changemode response from the server. " "(state:%d[%s], args:[%s], pid:%d)",
+  snprintf (error_string, LINE_MAX, "Receive changemode response from the server. (state:%d[%s], args:[%s], pid:%d)",
 	    state, css_ha_server_state_string (state), proc->args, proc->pid);
   MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, error_string);
 
@@ -4166,7 +4150,7 @@ hb_master_init (void)
 
   MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_STARTED, 0);
 #if defined (HB_VERBOSE_DEBUG)
-  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "heartbeat params. (ha_mode:%s, heartbeat_nodes:{%s}" ", ha_port_id:%d). \n",
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "heartbeat params. (ha_mode:%s, heartbeat_nodes:{%s}, ha_port_id:%d). \n",
 		       (!HA_DISABLED ())? "yes" : "no",
 		       prm_get_string_value (PRM_ID_HA_NODE_LIST), prm_get_integer_value (PRM_ID_HA_PORT_ID));
 #endif
@@ -4175,7 +4159,7 @@ hb_master_init (void)
   error = hb_cluster_initialize ();
   if (error != NO_ERROR)
     {
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_cluster_initialize failed. " "(error=%d). \n", error);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_cluster_initialize failed. (error=%d). \n", error);
       util_log_write_errstr ("%s\n", db_error_string (3));
       goto error_return;
     }
@@ -4187,7 +4171,7 @@ hb_master_init (void)
   error = hb_cluster_job_initialize ();
   if (error != NO_ERROR)
     {
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_cluster_job_initialize failed. " "(error=%d). \n", error);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_cluster_job_initialize failed. (error=%d). \n", error);
       util_log_write_errstr ("%s\n", db_error_string (3));
       goto error_return;
     }
@@ -4195,7 +4179,7 @@ hb_master_init (void)
   error = hb_resource_initialize ();
   if (error != NO_ERROR)
     {
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_resource_initialize failed. " "(error=%d). \n", error);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_resource_initialize failed. (error=%d). \n", error);
       util_log_write_errstr ("%s\n", db_error_string (3));
       goto error_return;
     }
@@ -4203,7 +4187,7 @@ hb_master_init (void)
   error = hb_resource_job_initialize ();
   if (error != NO_ERROR)
     {
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_resource_job_initialize failed. " "(error=%d). \n", error);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_resource_job_initialize failed. (error=%d). \n", error);
       util_log_write_errstr ("%s\n", db_error_string (3));
       goto error_return;
     }
@@ -4211,7 +4195,7 @@ hb_master_init (void)
   error = hb_thread_initialize ();
   if (error != NO_ERROR)
     {
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_thread_initialize failed. " "(error=%d). \n", error);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_thread_initialize failed. (error=%d). \n", error);
       util_log_write_errstr ("%s\n", db_error_string (3));
       goto error_return;
     }
@@ -4379,7 +4363,7 @@ hb_cluster_shutdown_and_cleanup (void)
 /*
  * hb_node_state_string -
  *   return: node state sring
-*
+ *
  *   nstate(in):
  */
 const char *
@@ -5498,22 +5482,22 @@ hb_help_sprint_ping_host_info (char *buffer, int max_length)
 
   p += snprintf (p, MAX ((last - p), 0), "HA Ping Host Info\n");
   p += snprintf (p, MAX ((last - p), 0),
-		 "==============================" "==================================================\n");
+		 "================================================================================\n");
 
   p += snprintf (p, MAX ((last - p), 0), " * PING check is %s\n",
 		 hb_Cluster->is_ping_check_enabled ? "enabled" : "disabled");
   p += snprintf (p, MAX ((last - p), 0),
-		 "------------------------------" "--------------------------------------------------\n");
+		 "--------------------------------------------------------------------------------\n");
   p += snprintf (p, MAX ((last - p), 0), "%-20s %-20s\n", "hostname", "PING check result");
   p += snprintf (p, MAX ((last - p), 0),
-		 "------------------------------" "--------------------------------------------------\n");
+		 "--------------------------------------------------------------------------------\n");
   for (cubhb::ping_host *host : hb_Cluster->ping_hosts)
     {
       p += snprintf (p, MAX ((last - p), 0), "%-20s %-20s\n", host->get_hostname_cstr (),
 		     hb_ping_result_string (host->result));
     }
   p += snprintf (p, MAX ((last - p), 0),
-		 "==============================" "==================================================\n");
+		 "================================================================================\n");
 
   return p - buffer;
 }
@@ -5533,16 +5517,16 @@ hb_help_sprint_nodes_info (char *buffer, int max_length)
 
   p += snprintf (p, MAX ((last - p), 0), "HA Node Info\n");
   p += snprintf (p, MAX ((last - p), 0),
-		 "==============================" "==================================================\n");
+		 "================================================================================\n");
   p += snprintf (p, MAX ((last - p), 0), " * group_id : %s   host_name : %s   state : %s \n",
 		 hb_Cluster->group_id.c_str (), hb_Cluster->hostname.c_str (),
 		 hb_node_state_string (hb_Cluster->state));
   p += snprintf (p, MAX ((last - p), 0),
-		 "------------------------------" "--------------------------------------------------\n");
+		 "--------------------------------------------------------------------------------\n");
   p += snprintf (p, MAX ((last - p), 0), "%-20s %-10s %-15s %-10s %-20s\n", "name", "priority", "state", "score",
 		 "missed heartbeat");
   p += snprintf (p, MAX ((last - p), 0),
-		 "------------------------------" "--------------------------------------------------\n");
+		 "--------------------------------------------------------------------------------\n");
 
   for (cubhb::node_entry *node : hb_Cluster->nodes)
     {
@@ -5551,7 +5535,7 @@ hb_help_sprint_nodes_info (char *buffer, int max_length)
     }
 
   p += snprintf (p, MAX ((last - p), 0),
-		 "==============================" "==================================================\n");
+		 "================================================================================\n");
   p += snprintf (p, MAX ((last - p), 0), "\n");
 
   return p - buffer;
@@ -5574,14 +5558,14 @@ hb_help_sprint_processes_info (char *buffer, int max_length)
   p += snprintf (p, MAX ((last - p), 0), "HA Process Info\n");
 
   p += snprintf (p, MAX ((last - p), 0),
-		 "==============================" "==================================================\n");
+		 "================================================================================\n");
   p += snprintf (p, MAX ((last - p), 0), " * state : %s \n", hb_node_state_string (hb_Cluster->state));
   p += snprintf (p, MAX ((last - p), 0),
-		 "------------------------------" "--------------------------------------------------\n");
+		 "--------------------------------------------------------------------------------\n");
   p += snprintf (p, MAX ((last - p), 0), "%-10s %-22s %-15s %-10s\n", "pid", "state", "type", "socket fd");
   p += snprintf (p, MAX ((last - p), 0), "     %-30s %-35s\n", "exec-path", "args");
   p += snprintf (p, MAX ((last - p), 0),
-		 "------------------------------" "--------------------------------------------------\n");
+		 "--------------------------------------------------------------------------------\n");
 
   for (proc = hb_Resource->procs; proc; proc = proc->next)
     {
@@ -5596,7 +5580,7 @@ hb_help_sprint_processes_info (char *buffer, int max_length)
     }
 
   p += snprintf (p, MAX ((last - p), 0),
-		 "==============================" "==================================================\n");
+		 "================================================================================\n");
   p += snprintf (p, MAX ((last - p), 0), "\n");
 
   return p - buffer;
@@ -5614,10 +5598,10 @@ hb_help_sprint_jobs_info (HB_JOB *jobs, char *buffer, int max_length)
 
   p += snprintf (p, MAX ((last - p), 0), "HA Job Info\n");
   p += snprintf (p, MAX ((last - p), 0),
-		 "==============================" "==================================================\n");
+		 "================================================================================\n");
   p += snprintf (p, MAX ((last - p), 0), "%-10s %-20s %-20s %-20s\n", "type", "func", "arg", "expire");
   p += snprintf (p, MAX ((last - p), 0),
-		 "------------------------------" "--------------------------------------------------\n");
+		 "--------------------------------------------------------------------------------\n");
 
   rv = pthread_mutex_lock (&jobs->lock);
   for (job = jobs->jobs; job; job = job->next)
@@ -5629,7 +5613,7 @@ hb_help_sprint_jobs_info (HB_JOB *jobs, char *buffer, int max_length)
   pthread_mutex_unlock (&jobs->lock);
 
   p += snprintf (p, MAX ((last - p), 0),
-		 "==============================" "==================================================\n");
+		 "================================================================================\n");
   p += snprintf (p, MAX ((last - p), 0), "\n");
 
   return p - buffer;
