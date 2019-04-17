@@ -886,17 +886,17 @@ hb_cluster_job_check_ping (HB_JOB_ARG *arg)
     }
   else
     {
-      for (cubhb::ping_host *host : hb_Cluster->ping_hosts)
+      for (cubhb::ping_host &host : hb_Cluster->ping_hosts)
 	{
-	  host->ping ();
+	  host.ping ();
 
-	  if (host->result == cubhb::ping_host::SUCCESS)
+	  if (host.result == cubhb::ping_host::SUCCESS)
 	    {
 	      ping_try_count++;
 	      ping_success = true;
 	      break;
 	    }
-	  else if (host->result == cubhb::ping_host::FAILURE)
+	  else if (host.result == cubhb::ping_host::FAILURE)
 	    {
 	      ping_try_count++;
 	    }
@@ -4628,10 +4628,10 @@ hb_get_ping_host_info_string (char **str)
   p += snprintf (p, MAX ((last - p), 0), HA_PING_HOSTS_INFO_FORMAT_STRING,
 		 is_ping_check_enabled ? "enabled" : "disabled");
 
-  for (cubhb::ping_host *host : hb_Cluster->ping_hosts)
+  for (cubhb::ping_host &host : hb_Cluster->ping_hosts)
     {
-      p += snprintf (p, MAX ((last - p), 0), HA_PING_HOSTS_FORMAT_STRING, host->get_hostname_cstr (),
-		     hb_ping_result_string (host->result));
+      p += snprintf (p, MAX ((last - p), 0), HA_PING_HOSTS_FORMAT_STRING, host.get_hostname_cstr (),
+		     hb_ping_result_string (host.result));
     }
 
   pthread_mutex_unlock (&hb_Cluster->lock);
@@ -5490,10 +5490,10 @@ hb_help_sprint_ping_host_info (char *buffer, int max_length)
   p += snprintf (p, MAX ((last - p), 0), "%-20s %-20s\n", "hostname", "PING check result");
   p += snprintf (p, MAX ((last - p), 0),
 		 "--------------------------------------------------------------------------------\n");
-  for (cubhb::ping_host *host : hb_Cluster->ping_hosts)
+  for (cubhb::ping_host &host : hb_Cluster->ping_hosts)
     {
-      p += snprintf (p, MAX ((last - p), 0), "%-20s %-20s\n", host->get_hostname_cstr (),
-		     hb_ping_result_string (host->result));
+      p += snprintf (p, MAX ((last - p), 0), "%-20s %-20s\n", host.get_hostname_cstr (),
+		     hb_ping_result_string (host.result));
     }
   p += snprintf (p, MAX ((last - p), 0),
 		 "================================================================================\n");

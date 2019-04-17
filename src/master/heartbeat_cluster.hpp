@@ -190,7 +190,7 @@ namespace cubhb
       bool is_ping_check_enabled;
 
       std::list<ui_node *> ui_nodes;
-      std::list<ping_host *> ping_hosts;
+      std::list<ping_host> ping_hosts;
   };
 
 } // namespace cubhb

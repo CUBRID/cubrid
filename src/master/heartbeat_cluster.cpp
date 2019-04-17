@@ -269,10 +269,6 @@ namespace cubhb
       }
     ui_nodes.clear ();
 
-    for (const ping_host *host : ping_hosts)
-      {
-	delete host;
-      }
     ping_hosts.clear ();
 
     pthread_mutex_destroy (&lock);
@@ -461,10 +457,10 @@ namespace cubhb
       }
 
     bool valid_ping_host_exists = false;
-    for (ping_host *host : ping_hosts)
+    for (ping_host &host : ping_hosts)
       {
-	host->ping ();
-	if (host->is_ping_successful ())
+	host.ping ();
+	if (host.is_ping_successful ())
 	  {
 	    valid_ping_host_exists = true;
 	  }
@@ -577,7 +573,7 @@ namespace cubhb
 
     for (const std::string &token : tokens)
       {
-	ping_hosts.push_front (new ping_host (token));
+	ping_hosts.emplace_front (token);
       }
   }
 
