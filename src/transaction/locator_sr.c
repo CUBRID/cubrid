@@ -13985,6 +13985,7 @@ retry:
       if (error_code == NO_ERROR)
 	{
 	  /* monitor */
+	  // TODO: We need another stat.
 	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_INSERTS);
 	}
       break;
@@ -14001,6 +14002,7 @@ retry:
       if (error_code == NO_ERROR)
 	{
 	  /* monitor */
+	  // TODO: We need another stat.
 	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_UPDATES);
 	}
 
@@ -14014,6 +14016,7 @@ retry:
       if (error_code == NO_ERROR)
 	{
 	  /* monitor */
+	  // TODO: We need another stat.
 	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DELETES);
 	}
       break;
@@ -14085,18 +14088,20 @@ exit:
  *      Otherwise, the new recdes is built based on old recdes and changed attributes (ids and values).
  *
  */
+// *INDENT-OFF*
 static int
 locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION rbr_operation, OID * class_oid,
-			   OID * instance_oid, RECDES * recdes, const std::vector < int >&changed_att_ids,
-			   const std::vector < DB_VALUE > &new_values, DB_VALUE * key_value,
+			   OID * instance_oid, RECDES * recdes, const std::vector<int> &changed_att_ids,
+			   const std::vector<DB_VALUE> &new_values, DB_VALUE * key_value,
 			   HEAP_SCANCACHE * force_scancache, LC_COPYAREA * &copy_area)
+// *INDENT-ON*
 {
   HEAP_CACHE_ATTRINFO attr_info;
   RECDES old_recdes;
   BTID btid;
   int error_code = NO_ERROR;
-  int last_repr_id = -1;
-  int old_chn = -1;
+  int last_repr_id = NULL_REPRID;
+  int old_chn = NULL_CHN;
   SCAN_CODE scan;
   SCAN_OPERATION_TYPE scan_op_type;
   bool attr_info_inited = false;
@@ -14136,11 +14141,10 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION 
 
       if (scan != S_SUCCESS)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  error_code = er_errid ();
+	  ASSERT_ERROR_AND_SET (error_code);
 	  if (error_code == ER_HEAP_UNKNOWN_OBJECT)
 	    {
-	      er_log_debug (ARG_FILE_LINE, "locator_repl_prepare_force : unknown oid ( %d|%d|%d )\n",
+	      er_log_debug (ARG_FILE_LINE, "locator_prepare_rbr_apply : unknown oid ( %d|%d|%d )\n",
 			    instance_oid->pageid, instance_oid->slotid, instance_oid->volid);
 	    }
 
@@ -14182,6 +14186,7 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION 
   else
     {
       assert (LC_IS_FLUSH_UPDATE (rbr_operation));
+
       /* search key -> get OID and old RECDES (only for UPDATE), create or update new_recdes */
       error_code = heap_attrinfo_start (thread_p, class_oid, -1, NULL, &attr_info);
       if (error_code != NO_ERROR)

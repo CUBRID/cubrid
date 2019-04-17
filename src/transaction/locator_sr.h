@@ -119,10 +119,14 @@ extern SCAN_OPERATION_TYPE locator_decide_operation_type (LOCK lock_mode, LC_FET
 extern LOCK locator_get_lock_mode_from_op_type (SCAN_OPERATION_TYPE op_type);
 extern int locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char *db_password,
 				   const char *ha_sys_prm_context, const char *statement);
+
+/* *INDENT-OFF* */
 extern int locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION rbr_operation,
 				   const char *class_name, DB_VALUE * key_value,
-				   const std::vector < int >&changed_att_ids,
-				   const std::vector < DB_VALUE > &new_values, const RECDES * new_recdes_arg);
+				   const std::vector<int> &changed_att_ids,
+				   const std::vector<DB_VALUE> &new_values, const RECDES *new_recdes_arg);
+/* *INDENT-ON* */
+
 extern int locator_repl_start_tran (THREAD_ENTRY * thread_p);
 extern int locator_repl_end_tran (THREAD_ENTRY * thread_p, bool commit);
 #endif /* _LOCATOR_SR_H_ */
