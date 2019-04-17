@@ -30,13 +30,6 @@ unique_stats::unique_stats (stat_type keys, stat_type nulls /* = 0 */)
   , m_keys (keys)
   , m_nulls (nulls)
 {
-  check_consistent ();
-}
-
-void
-unique_stats::check_consistent () const
-{
-  assert (m_rows == m_keys + m_nulls);
 }
 
 unique_stats::stat_type
@@ -58,37 +51,43 @@ unique_stats::get_null_count () const
 }
 
 void
-unique_stats::add_key ()
+unique_stats::add_key_and_row ()
 {
   ++m_keys;
   ++m_rows;
-
-  check_consistent ();
 }
 
 void
-unique_stats::add_null ()
+unique_stats::add_null_and_row ()
 {
   ++m_nulls;
   ++m_rows;
-
-  check_consistent ();
 }
 
 void
-unique_stats::delete_key ()
+unique_stats::add_row ()
+{
+  ++m_rows;
+}
+
+void
+unique_stats::delete_key_and_row ()
 {
   --m_keys;
   --m_rows;
-  check_consistent ();
 }
 
 void
-unique_stats::delete_null ()
+unique_stats::delete_null_and_row ()
 {
   --m_nulls;
   --m_rows;
-  check_consistent ();
+}
+
+void
+unique_stats::delete_row ()
+{
+  --m_rows;
 }
 
 bool
@@ -97,14 +96,18 @@ unique_stats::is_zero () const
   return m_keys == 0 && m_nulls == 0;
 }
 
+bool
+unique_stats::is_unique () const
+{
+  return m_rows == m_keys + m_nulls;
+}
+
 unique_stats &
 unique_stats::operator= (const unique_stats &us)
 {
   m_rows = us.m_rows;
   m_keys = us.m_keys;
   m_nulls = us.m_nulls;
-
-  check_consistent ();
 
   return *this;
 }
@@ -115,8 +118,6 @@ unique_stats::operator+= (const unique_stats &us)
   m_rows += us.m_rows;
   m_keys += us.m_keys;
   m_nulls += us.m_nulls;
-
-  check_consistent ();
 }
 
 void
@@ -125,8 +126,6 @@ unique_stats::operator-= (const unique_stats &us)
   m_rows -= us.m_rows;
   m_keys -= us.m_keys;
   m_nulls -= us.m_nulls;
-
-  check_consistent ();
 }
 
 void

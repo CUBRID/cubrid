@@ -44,12 +44,15 @@ class unique_stats
     stat_type get_row_count () const;
     stat_type get_null_count () const;
 
-    void add_key ();
-    void add_null ();
-    void delete_key ();
-    void delete_null ();
+    void add_key_and_row ();
+    void add_null_and_row ();
+    void add_row ();
+    void delete_key_and_row ();
+    void delete_null_and_row ();
+    void delete_row ();
 
     bool is_zero () const;
+    bool is_unique () const;   // rows == keys + nulls
 
     unique_stats &operator= (const unique_stats &us);
     void operator+= (const unique_stats &us);
@@ -62,8 +65,6 @@ class unique_stats
     stat_type m_rows;
     stat_type m_keys;
     stat_type m_nulls;
-
-    void check_consistent () const;
 };
 
 class multi_index_unique_stats
