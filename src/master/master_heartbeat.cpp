@@ -3940,7 +3940,6 @@ hb_cluster_initialize ()
   if (hb_Cluster == NULL)
     {
       hb_Cluster = new cubhb::cluster ();
-      pthread_mutex_init (&hb_Cluster->lock, NULL);
     }
 
   pthread_mutex_lock (&hb_Cluster->lock);

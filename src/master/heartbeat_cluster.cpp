@@ -25,7 +25,6 @@
 
 #include "master_heartbeat.hpp"
 #include "master_util.h"
-#include "system_parameter.h"
 
 namespace cubhb
 {
@@ -144,7 +143,7 @@ namespace cubhb
     , ui_nodes ()
     , ping_hosts ()
   {
-    //
+    pthread_mutex_init (&lock, NULL);
   }
 
   cluster::cluster (const cluster &other)
@@ -275,6 +274,8 @@ namespace cubhb
 	delete host;
       }
     ping_hosts.clear ();
+
+    pthread_mutex_destroy (&lock);
   }
 
   int
@@ -312,19 +313,16 @@ namespace cubhb
     // re initialization went successfully
     for (node_entry *new_node : nodes)
       {
-	for (node_entry *old_node : copy.nodes)
+	node_entry *old_node = copy.find_node (new_node->get_hostname ());
+	if (old_node != NULL)
 	  {
-	    if (new_node->get_hostname () != old_node->get_hostname ())
-	      {
-		continue;
-	      }
-	    if (copy.master && new_node->get_hostname () == copy.master->get_hostname ())
-	      {
-		master = new_node;
-	      }
-
 	    // copy node members
 	    *new_node = *old_node;
+	  }
+
+	if (copy.master && new_node->get_hostname () == copy.master->get_hostname ())
+	  {
+	    master = new_node;
 	  }
       }
 
@@ -489,38 +487,51 @@ namespace cubhb
     return valid_ping_host_exists;
   }
 
-  int
-  cluster::init_nodes ()
+  void
+  cluster::get_config_node_list (PARAM_ID prm_id, std::string &group, std::vector<std::string> &hostnames)
   {
-    char *ha_node_list = prm_get_string_value (PRM_ID_HA_NODE_LIST);
-    if (ha_node_list == NULL)
+    char *prm_string_value = prm_get_string_value (prm_id);
+    if (prm_string_value == NULL)
       {
-	MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, prm_get_name (PRM_ID_HA_NODE_LIST));
-	return ER_PRM_BAD_VALUE;
+	return;
       }
 
     std::string delimiter = "@:,";
     std::vector<std::string> tokens;
-    split_str (ha_node_list, delimiter, tokens);
-    if (tokens.size() < 2)
+    split_str (prm_string_value, delimiter, tokens);
+
+    group.clear ();
+    hostnames.clear ();
+
+    if (tokens.size () < 2)
+      {
+	return;
+      }
+
+    // first entry is group id
+    group.assign (tokens.front ());
+
+    // starting from second element, all elements are hostnames
+    hostnames.resize (tokens.size () - 1);
+    std::copy (tokens.begin () + 1, tokens.end (), hostnames.begin ());
+  }
+
+  int
+  cluster::init_nodes ()
+  {
+    std::vector<std::string> hostnames;
+
+    get_config_node_list (PRM_ID_HA_NODE_LIST, group_id, hostnames);
+    if (hostnames.empty () || group_id.empty ())
       {
 	MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, prm_get_name (PRM_ID_HA_NODE_LIST));
 	return ER_PRM_BAD_VALUE;
       }
 
-    // first entry is group id
-    group_id = tokens[0];
-    for (size_t priority = 1; priority < tokens.size (); ++priority)
+    priority_type priority = 1;
+    for (const std::string &node_hostname : hostnames)
       {
-	std::string node_hostname = tokens[priority];
-	if (node_hostname == "localhost")
-	  {
-	    node_hostname = hostname;
-	  }
-
-	node_entry *node = new node_entry (node_hostname, priority);
-	nodes.push_front (node);
-
+	node_entry *node = insert_host_node (node_hostname, priority);
 	if (node->get_hostname () == hostname)
 	  {
 	    myself = node;
@@ -528,6 +539,8 @@ namespace cubhb
 	    MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "find myself node (myself:%p, priority:%d)\n", myself, myself->priority);
 #endif
 	  }
+
+	++priority;
       }
 
     return NO_ERROR;
@@ -536,42 +549,26 @@ namespace cubhb
   int
   cluster::init_replica_nodes ()
   {
-    char *ha_replica_list = prm_get_string_value (PRM_ID_HA_REPLICA_LIST);
-    if (ha_replica_list == NULL)
+    std::string replica_group_id;
+    std::vector<std::string> hostnames;
+
+    get_config_node_list (PRM_ID_HA_REPLICA_LIST, replica_group_id, hostnames);
+    if (hostnames.empty ())
       {
 	return NO_ERROR;
       }
-
-    std::string delimiter = "@:,";
-    std::vector<std::string> tokens;
-    split_str (ha_replica_list, delimiter, tokens);
-    if (tokens.size() < 2)
-      {
-	MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, prm_get_name (PRM_ID_HA_REPLICA_LIST));
-	return ER_PRM_BAD_VALUE;
-      }
-
-    // first entry is group id
-    if (tokens[0] != group_id)
+    if (replica_group_id != group_id)
       {
 	MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "different group id ('ha_node_list', 'ha_replica_list')\n");
 	return ER_FAILED;
       }
 
-    for (size_t priority = 1; priority < tokens.size (); ++priority)
+    for (const std::string &replica_hostname : hostnames)
       {
-	std::string node_hostname = tokens[priority];
-	if (node_hostname == "localhost")
+	node_entry *replica_node = insert_host_node (replica_hostname, REPLICA_PRIORITY);
+	if (replica_node->get_hostname () == hostname)
 	  {
-	    node_hostname = hostname;
-	  }
-
-	node_entry *replica = new node_entry (node_hostname, REPLICA_PRIORITY);
-	nodes.push_front (replica);
-
-	if (replica->get_hostname () == hostname)
-	  {
-	    myself = replica;
+	    myself = replica_node;
 	    state = node_entry::node_state::REPLICA;
 	  }
       }
@@ -596,6 +593,24 @@ namespace cubhb
       {
 	ping_hosts.push_front (new ping_host (token));
       }
+  }
+
+  node_entry *
+  cluster::insert_host_node (const std::string &node_hostname, const priority_type priority)
+  {
+    node_entry *node = NULL;
+    if (node_hostname == "localhost")
+      {
+	node = new node_entry (hostname, priority);
+      }
+    else
+      {
+	node = new node_entry (node_hostname, priority);
+      }
+
+    nodes.push_front (node);
+
+    return node;
   }
 
   inline void
