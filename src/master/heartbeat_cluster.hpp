@@ -37,10 +37,6 @@
 
 namespace cubhb
 {
-  using priority_type = unsigned short;
-
-  static const priority_type LOWEST_PRIORITY = std::numeric_limits<priority_type>::max ();
-  static const priority_type REPLICA_PRIORITY = LOWEST_PRIORITY;
 
   static const std::chrono::milliseconds UI_NODE_CACHE_TIME_IN_MSECS (60 * 1000);
   static const std::chrono::milliseconds UI_NODE_CLEANUP_TIME_IN_MSECS (3600 * 1000);
@@ -65,6 +61,12 @@ namespace cubhb
   class node_entry : public hostname_node
   {
     public:
+      using priority_type = unsigned short;
+
+      static const priority_type HIGHEST_PRIORITY = std::numeric_limits<priority_type>::min () + 1;
+      static const priority_type LOWEST_PRIORITY = std::numeric_limits<priority_type>::max ();
+      static const priority_type REPLICA_PRIORITY = LOWEST_PRIORITY;
+
       node_entry () = delete;
       node_entry (std::string hostname, priority_type priority);
       ~node_entry () = default;
@@ -166,7 +168,7 @@ namespace cubhb
       int init_replica_nodes ();
       void init_ping_hosts ();
 
-      node_entry *insert_host_node (const std::string &node_hostname, const priority_type priority);
+      node_entry *insert_host_node (const std::string &node_hostname, const node_entry::priority_type priority);
 
     public: // TODO CBRD-22864 members should be private
       pthread_mutex_t lock; // TODO CBRD-22864 replace with std::mutex

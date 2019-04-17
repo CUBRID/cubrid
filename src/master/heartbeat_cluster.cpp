@@ -528,7 +528,7 @@ namespace cubhb
 	return ER_PRM_BAD_VALUE;
       }
 
-    priority_type priority = 1;
+    node_entry::priority_type priority = node_entry::HIGHEST_PRIORITY;
     for (const std::string &node_hostname : hostnames)
       {
 	node_entry *node = insert_host_node (node_hostname, priority);
@@ -565,7 +565,7 @@ namespace cubhb
 
     for (const std::string &replica_hostname : hostnames)
       {
-	node_entry *replica_node = insert_host_node (replica_hostname, REPLICA_PRIORITY);
+	node_entry *replica_node = insert_host_node (replica_hostname, node_entry::REPLICA_PRIORITY);
 	if (replica_node->get_hostname () == hostname)
 	  {
 	    myself = replica_node;
@@ -596,7 +596,7 @@ namespace cubhb
   }
 
   node_entry *
-  cluster::insert_host_node (const std::string &node_hostname, const priority_type priority)
+  cluster::insert_host_node (const std::string &node_hostname, const node_entry::priority_type priority)
   {
     node_entry *node = NULL;
     if (node_hostname == "localhost")
