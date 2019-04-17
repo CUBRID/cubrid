@@ -353,13 +353,6 @@ namespace cubload
     return NO_ERROR;
   }
 
-  int
-  load_args::set_ignored_errors_array (std::vector <int> &ignored_errors)
-  {
-    m_ignored_errors = ignored_errors;
-    return NO_ERROR;
-  }
-
   string_type::string_type ()
     : next (NULL)
     , last (NULL)

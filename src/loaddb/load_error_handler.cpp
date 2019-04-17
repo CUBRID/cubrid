@@ -120,11 +120,6 @@ namespace cubload
     std::vector<int> ignored_errors = m_session.get_args ().m_ignored_errors;
     bool is_filtered = false;
 
-    if (err_id == NO_ERROR)
-      {
-	return true;
-      }
-
     is_filtered = std::find (ignored_errors.begin (), ignored_errors.end (), err_id) != ignored_errors.end ();
 
     return is_filtered;
@@ -136,11 +131,6 @@ namespace cubload
   {
 #if defined (SERVER_MODE)
     int err = er_errid ();
-
-    if (err == NO_ERROR)
-      {
-	return true;
-      }
 
     bool is_filtered = is_error_filtered (err);
 

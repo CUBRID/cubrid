@@ -90,7 +90,7 @@ extern int er_filter_fileset (FILE * ef);
 extern int er_filter_errid (bool ignore_warning);
 
 /* *INDENT-OFF* */
-extern std::vector<int> get_ignored_errors ();
+extern void get_ignored_errors (std::vector<int> &vec);
 /* *INDENT-ON* */
 
 #endif /* _LOAD_OBJECT_H_ */
