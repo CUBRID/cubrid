@@ -8841,7 +8841,7 @@ heap_is_object_not_null (THREAD_ENTRY * thread_p, OID * class_oid, const OID * o
       goto exit_on_end;
     }
   /* Make a copy of snapshot. We need all MVCC information, but we also want to change the visibility function. */
-  copy_mvcc_snapshot = *mvcc_snapshot_ptr;
+  mvcc_snapshot_ptr->copy_to (copy_mvcc_snapshot);
   copy_mvcc_snapshot.snapshot_fnc = mvcc_is_not_deleted_for_snapshot;
   scan_cache.mvcc_snapshot = &copy_mvcc_snapshot;
 
