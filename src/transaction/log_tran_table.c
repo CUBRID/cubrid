@@ -3561,7 +3561,7 @@ logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int 
 
 // *INDENT-OFF*
 int
-logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID &btid, const unique_stats &ustats,
+logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID &btid, const btree_unique_stats &ustats,
                                 bool write_to_log)
 {
   if (ustats.is_zero ())

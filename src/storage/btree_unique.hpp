@@ -32,13 +32,13 @@
 // forward definitions
 class string_buffer;
 
-class unique_stats
+class btree_unique_stats
 {
   public:
     using stat_type = std::int64_t;
 
-    unique_stats () = default;
-    unique_stats (stat_type keys, stat_type nulls = 0);
+    btree_unique_stats () = default;
+    btree_unique_stats (stat_type keys, stat_type nulls = 0);
 
     stat_type get_key_count () const;
     stat_type get_row_count () const;
@@ -54,9 +54,9 @@ class unique_stats
     bool is_zero () const;
     bool is_unique () const;   // rows == keys + nulls
 
-    unique_stats &operator= (const unique_stats &us);
-    void operator+= (const unique_stats &us);
-    void operator-= (const unique_stats &us);
+    btree_unique_stats &operator= (const btree_unique_stats &us);
+    void operator+= (const btree_unique_stats &us);
+    void operator-= (const btree_unique_stats &us);
 
     void to_string (string_buffer &strbuf) const;
 
@@ -82,19 +82,19 @@ class multi_index_unique_stats
     multi_index_unique_stats () = default;
     ~multi_index_unique_stats () = default;
 
-    using container_type = std::map<BTID, unique_stats, btid_comparator>;
+    using container_type = std::map<BTID, btree_unique_stats, btid_comparator>;
 
     void construct ();
     void destruct ();
 
-    void accumulate (const BTID &index, const unique_stats &us);
+    void accumulate (const BTID &index, const btree_unique_stats &us);
     void add_empty (const BTID &index);
     void clear ();
 
     const container_type &get_map () const;
     bool empty () const;
 
-    unique_stats &get_stats_of (const BTID &index);
+    btree_unique_stats &get_stats_of (const BTID &index);
 
     void to_string (string_buffer &strbuf) const;
 

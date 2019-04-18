@@ -27,85 +27,85 @@
 
 #include <utility>
 
-unique_stats::unique_stats (stat_type keys, stat_type nulls /* = 0 */)
+btree_unique_stats::btree_unique_stats (stat_type keys, stat_type nulls /* = 0 */)
   : m_rows (keys + nulls)
   , m_keys (keys)
   , m_nulls (nulls)
 {
 }
 
-unique_stats::stat_type
-unique_stats::get_key_count () const
+btree_unique_stats::stat_type
+btree_unique_stats::get_key_count () const
 {
   return m_keys;
 }
 
-unique_stats::stat_type
-unique_stats::get_row_count () const
+btree_unique_stats::stat_type
+btree_unique_stats::get_row_count () const
 {
   return m_rows;
 }
 
-unique_stats::stat_type
-unique_stats::get_null_count () const
+btree_unique_stats::stat_type
+btree_unique_stats::get_null_count () const
 {
   return m_nulls;
 }
 
 void
-unique_stats::add_key_and_row ()
+btree_unique_stats::add_key_and_row ()
 {
   ++m_keys;
   ++m_rows;
 }
 
 void
-unique_stats::add_null_and_row ()
+btree_unique_stats::add_null_and_row ()
 {
   ++m_nulls;
   ++m_rows;
 }
 
 void
-unique_stats::add_row ()
+btree_unique_stats::add_row ()
 {
   ++m_rows;
 }
 
 void
-unique_stats::delete_key_and_row ()
+btree_unique_stats::delete_key_and_row ()
 {
   --m_keys;
   --m_rows;
 }
 
 void
-unique_stats::delete_null_and_row ()
+btree_unique_stats::delete_null_and_row ()
 {
   --m_nulls;
   --m_rows;
 }
 
 void
-unique_stats::delete_row ()
+btree_unique_stats::delete_row ()
 {
   --m_rows;
 }
 
 bool
-unique_stats::is_zero () const
+btree_unique_stats::is_zero () const
 {
   return m_keys == 0 && m_nulls == 0;
 }
 
 bool
-unique_stats::is_unique () const
+btree_unique_stats::is_unique () const
 {
   return m_rows == m_keys + m_nulls;
 }
 
-unique_stats &
-unique_stats::operator= (const unique_stats &us)
+btree_unique_stats &
+btree_unique_stats::operator= (const btree_unique_stats &us)
 {
   m_rows = us.m_rows;
   m_keys = us.m_keys;
@@ -115,7 +115,7 @@ unique_stats::operator= (const unique_stats &us)
 }
 
 void
-unique_stats::operator+= (const unique_stats &us)
+btree_unique_stats::operator+= (const btree_unique_stats &us)
 {
   m_rows += us.m_rows;
   m_keys += us.m_keys;
@@ -123,7 +123,7 @@ unique_stats::operator+= (const unique_stats &us)
 }
 
 void
-unique_stats::operator-= (const unique_stats &us)
+btree_unique_stats::operator-= (const btree_unique_stats &us)
 {
   m_rows -= us.m_rows;
   m_keys -= us.m_keys;
@@ -131,7 +131,7 @@ unique_stats::operator-= (const unique_stats &us)
 }
 
 void
-unique_stats::to_string (string_buffer &strbuf) const
+btree_unique_stats::to_string (string_buffer &strbuf) const
 {
   strbuf ("oids=%d keys=%d nulls=%d", m_rows, m_keys, m_nulls);
 }
@@ -149,7 +149,7 @@ multi_index_unique_stats::destruct ()
 }
 
 void
-multi_index_unique_stats::accumulate (const BTID &index, const unique_stats &us)
+multi_index_unique_stats::accumulate (const BTID &index, const btree_unique_stats &us)
 {
   m_stats_map[index] += us;
 }
@@ -157,7 +157,7 @@ multi_index_unique_stats::accumulate (const BTID &index, const unique_stats &us)
 void
 multi_index_unique_stats::add_empty (const BTID &index)
 {
-  m_stats_map[index] = unique_stats ();
+  m_stats_map[index] = btree_unique_stats ();
 }
 
 void
@@ -178,7 +178,7 @@ multi_index_unique_stats::empty () const
   return m_stats_map.empty ();
 }
 
-unique_stats &
+btree_unique_stats &
 multi_index_unique_stats::get_stats_of (const BTID &index)
 {
   return m_stats_map[index];
