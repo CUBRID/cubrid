@@ -1012,13 +1012,15 @@ extern void logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 
 extern LOG_TRAN_CLASS_COS *logtb_tran_find_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid, bool create);
 extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int n_keys, int n_oids,
+					   int n_nulls, bool write_to_log);
+
 // *INDENT-OFF*
 extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID &btid, const btree_unique_stats &ustats,
                                            bool write_to_log);
 extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const multi_index_unique_stats &multi_stats,
                                            bool write_to_log);
 // *INDENT-ON*
-					   int n_nulls, bool write_to_log);
+
 extern int logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int n_keys, int n_oids,
 						int n_nulls);
 extern LOG_TRAN_BTID_UNIQUE_STATS *logtb_tran_find_btid_stats (THREAD_ENTRY * thread_p, const BTID * btid, bool create);
