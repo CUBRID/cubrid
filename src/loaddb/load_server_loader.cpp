@@ -464,13 +464,9 @@ namespace cubload
     conv_func &func = get_conv_func (cons->type, attr.get_domain ().type->get_id ());
 
     int error_code = func (token, &attr, &db_val);
-    if (error_code != NO_ERROR)
+    if (error_code == ER_DATE_CONVERSION)
       {
-	if (error_code == ER_DATE_CONVERSION)
-	  {
-	    m_error_handler.log_date_time_conversion_error (token, pr_type_name (attr.get_domain ().type->get_id ()));
-	  }
-	return error_code;
+	m_error_handler.log_date_time_conversion_error (token, pr_type_name (attr.get_domain ().type->get_id ()));
       }
 
     return error_code;

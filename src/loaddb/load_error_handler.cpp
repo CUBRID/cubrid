@@ -30,6 +30,7 @@
 #endif
 #include "message_catalog.h"
 #include "thread_manager.hpp"
+#include "error_manager.h"
 
 namespace cubload
 {
@@ -60,8 +61,11 @@ namespace cubload
   void
   error_handler::on_failure ()
   {
-    std::string empty;
-    log_error_message (empty, true);
+    if (!is_last_error_filtered ())
+      {
+	std::string empty;
+	log_error_message (empty, true);
+      }
   }
 
   void
@@ -107,6 +111,38 @@ namespace cubload
 
     fprintf (stderr, "%s", err_msg.c_str ());
 #endif
+  }
+
+#if defined (SERVER_MODE)
+  bool
+  error_handler::is_error_filtered (int err_id)
+  {
+    std::vector<int> ignored_errors = m_session.get_args ().m_ignored_errors;
+    bool is_filtered = false;
+
+    is_filtered = std::find (ignored_errors.begin (), ignored_errors.end (), err_id) != ignored_errors.end ();
+
+    return is_filtered;
+  }
+#endif //SERVER_MODE
+
+  bool
+  error_handler::is_last_error_filtered ()
+  {
+#if defined (SERVER_MODE)
+    int err = er_errid ();
+
+    bool is_filtered = is_error_filtered (err);
+
+    // Clear the error if it is filtered
+    if (is_filtered)
+      {
+	er_clearid ();
+      }
+
+    return is_filtered;
+#endif
+    return false;
   }
 
 } // namespace cubload

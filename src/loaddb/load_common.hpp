@@ -112,6 +112,7 @@ namespace cubload
     std::string table_name;
     std::string ignore_class_file;
     std::vector<std::string> ignore_classes;
+    std::vector<int> m_ignored_errors;
   };
 
   /*

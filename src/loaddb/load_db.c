@@ -625,6 +625,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	}
       er_filter_fileset (error_file);
       fclose (error_file);
+      get_ignored_errors (args.m_ignored_errors);
     }
 
   /* check if no log option can be applied */

@@ -26,6 +26,7 @@
 
 #include "dbtype_def.h"
 #include "class_object.h"
+#include <vector>
 
 #define CHECK_PRINT_ERROR(print_fnc)            \
   do {                                          \
@@ -87,5 +88,9 @@ extern void desc_value_print (DB_VALUE * value);
 #endif
 extern int er_filter_fileset (FILE * ef);
 extern int er_filter_errid (bool ignore_warning);
+
+/* *INDENT-OFF* */
+extern void get_ignored_errors (std::vector<int> &vec);
+/* *INDENT-ON* */
 
 #endif /* _LOAD_OBJECT_H_ */
