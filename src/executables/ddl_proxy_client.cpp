@@ -40,17 +40,17 @@ utility_print (int message_num, ...)
 {
   typedef const char * (*GET_MESSAGE) (int message_index);
 
-  DSO_HANDLE util_sa_library;
+  DSO_HANDLE util_cs_library;
   DSO_HANDLE symbol;
   GET_MESSAGE get_message_fn;
 
-  utility_load_library (&util_sa_library, LIB_UTIL_SA_NAME);
-  if (util_sa_library == NULL)
+  utility_load_library (&util_cs_library, LIB_UTIL_CS_NAME);
+  if (util_cs_library == NULL)
     {
       utility_load_print_error (stderr);
       return;
     }
-  utility_load_symbol (util_sa_library, &symbol, UTILITY_GENERIC_MSG_FUNC_NAME);
+  utility_load_symbol (util_cs_library, &symbol, UTILITY_GENERIC_MSG_FUNC_NAME);
   if (symbol == NULL)
     {
       utility_load_print_error (stderr);
@@ -167,6 +167,8 @@ main (int argc, char *argv[])
 
 	default:
 	  assert (false);
+	  // TODO
+	  // goto print_usage;
 	}
     }
 
@@ -178,11 +180,15 @@ main (int argc, char *argv[])
     {
       utility_print (MSGCAT_UTIL_GENERIC_ARGS_OVER, argv[optind + 1]);
       assert (false);
+      // TODO
+      // goto print_usage;
     }
   else
     {
       utility_print (MSGCAT_UTIL_GENERIC_MISS_DBNAME);
       assert (false);
+      // TODO
+      // goto print_usage;
     }
 
   error = start_ddl_proxy_client (argv[0], &arguments);
