@@ -397,7 +397,7 @@ net_server_init (void)
   req_p->processing_function = slocator_redistribute_partition_data;
   req_p->name = "NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA";
 
-  req_p = &net_Requests[NET_GET_PROXY_COMMAND];
+  req_p = &net_Requests[NET_SERVER_LC_GET_PROXY_COMMAND];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slocator_get_proxy_command;
   req_p->name = "NET_SERVER_LC_GET_PROXY_COMMAND";
