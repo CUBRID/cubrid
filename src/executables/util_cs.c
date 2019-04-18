@@ -3612,7 +3612,7 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
     {
       command = args->command;
     }
-  else if (args->request != NULL && !strcmp (args->request, "true"))
+  else if (args->request != NULL && !strcasecmp (args->request, "true"))
     {
       if (db_get_proxy_command (&command) != NO_ERROR)
 	{
@@ -3639,11 +3639,10 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
 	  goto error;
 	}
 
-      save = au_disable ();
-
       total_stmts = db_statement_count (session);
       for (i = 0; i < total_stmts; i++)
 	{
+	  save = au_disable ();
 	  stmt_id = db_compile_statement (session);
 	  if (stmt_id < 0)
 	    {
@@ -3656,6 +3655,7 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
 	  if (stmt_id == 0)
 	    {
 	      /* this means that we processed all statements */
+	      au_enable (save);
 	      break;
 	    }
 
@@ -3681,9 +3681,8 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
 	    }
 
 	  db_drop_statement (session, stmt_id);
+	  au_enable (save);
 	}
-
-      au_enable (save);
     }
 
 error:
