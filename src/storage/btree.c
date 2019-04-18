@@ -26128,7 +26128,7 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
       btree_insert_log (&insert_helper, "BTREE UNIQUE MULTI-UPDATE STATS: %s \n"
 			BTREE_INSERT_HELPER_MSG ("\t")
 			"\t" BTREE_ID_MSG "\n"
-			"\t" "%s: new stats = %" PRId64 " keys, %" PRId64 " objects, %" PRId64 " nulls.",
+			"\t" "%s: new stats = %lld keys, %lld objects, %lld nulls.",
 			(btree_is_insert_object_purpose (insert_helper.purpose)) ? "Insert" : "MVCC Delete",
 			BTREE_INSERT_HELPER_AS_ARGS (&insert_helper), BTID_AS_ARGS (btid_int.sys_btid),
 			(btree_is_insert_object_purpose (insert_helper.purpose)) ?
