@@ -7608,8 +7608,8 @@ end:
 	    {
 	      /* Aborts and simulate apply replication RBR on master node. */
 	      error_code =
-		logtb_get_tdes (thread_p)->replication_log_generator.
-		abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
+		logtb_get_tdes (thread_p)->
+		replication_log_generator.abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
 	    }
 	  else
 	    {
@@ -11765,40 +11765,40 @@ locator_decrease_catalog_count (THREAD_ENTRY * thread_p, OID * cls_oid)
 int
 xrepl_statement (THREAD_ENTRY * thread_p, REPL_INFO * repl_info)
 {
-  int error_code = NO_ERROR;
+  int err = NO_ERROR;
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
-  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
+  if (LOG_CHECK_LOG_APPLIER (thread_p) || !log_does_allow_replication ())
     {
-      switch (repl_info->repl_info_type)
-	{
-	case REPL_INFO_TYPE_SBR:
-
-	  tdes->replication_log_generator.add_statement (*(REPL_INFO_SBR *) repl_info->info);
-
-#if !defined(NDEBUG) && defined (SERVER_MODE)
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
-	    {
-	      /* Aborts and simulate apply SBR on master node. */
-	      char *savepoint_name = ((REPL_INFO_SBR *) repl_info->info)->savepoint_name;
-	      if (savepoint_name != NULL)
-		{
-		  error_code =
-		    tdes->replication_log_generator.
-		    abort_partial_and_simulate_apply_sbr_repl_on_master (savepoint_name);
-		}
-
-	    }
-#endif
-	  break;
-	default:
-	  error_code = ER_REPL_ERROR;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1, "can't make repl sbr info");
-	  break;
-	}
+      return NO_ERROR;
     }
 
-  return error_code;
+  switch (repl_info->repl_info_type)
+    {
+    case REPL_INFO_TYPE_SBR:
+      tdes->replication_log_generator.add_statement (*(REPL_INFO_SBR *) repl_info->info);
+
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+      if (!LOG_CHECK_LOG_APPLIER (thread_p) && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
+	{
+	  /* Aborts and simulate apply SBR on master node. */
+	  char *savepoint_name = ((REPL_INFO_SBR *) repl_info->info)->savepoint_name;
+	  if (savepoint_name != NULL)
+	    {
+	      err =
+		tdes->replication_log_generator.abort_partial_and_simulate_apply_sbr_repl_on_master (savepoint_name);
+	    }
+	}
+#endif
+      break;
+
+    default:
+      err = ER_REPL_ERROR;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1, "can't make repl sbr info");
+      break;
+    }
+
+  return err;
 }
 
 /*

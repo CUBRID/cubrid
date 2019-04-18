@@ -68,22 +68,26 @@ namespace cubreplication
     LSA_COPY (&m_lsa_stamp, &lsa_stamp);
   }
 
-  void replication_object::get_lsa_stamp (LOG_LSA &lsa_stamp)
+  void
+  replication_object::get_lsa_stamp (LOG_LSA &lsa_stamp)
   {
     LSA_COPY (&lsa_stamp, &m_lsa_stamp);
   }
 
-  void replication_object::set_lsa_stamp (const LOG_LSA &lsa_stamp)
+  void
+  replication_object::set_lsa_stamp (const LOG_LSA &lsa_stamp)
   {
     LSA_COPY (&m_lsa_stamp, &lsa_stamp);
   }
 
-  bool replication_object::is_instance_changing_attr (const OID &inst_oid)
+  bool
+  replication_object::is_instance_changing_attr (const OID &inst_oid)
   {
     return false;
   }
 
-  bool replication_object::is_statement_replication ()
+  bool
+  replication_object::is_statement_replication ()
   {
     return false;
   }
@@ -236,7 +240,8 @@ namespace cubreplication
     return err;
   }
 
-  bool sbr_repl_entry::is_equal (const packable_object *other)
+  bool
+  sbr_repl_entry::is_equal (const packable_object *other)
   {
     const sbr_repl_entry *other_t = dynamic_cast<const sbr_repl_entry *> (other);
 
@@ -252,7 +257,8 @@ namespace cubreplication
     return true;
   }
 
-  bool sbr_repl_entry::is_statement_replication ()
+  bool
+  sbr_repl_entry::is_statement_replication ()
   {
     return true;
   }
@@ -478,7 +484,8 @@ namespace cubreplication
     str ("inst oid: pageid:%d slotid:%d volid:%d\n", m_inst_oid.pageid, m_inst_oid.slotid, m_inst_oid.volid);
   }
 
-  bool changed_attrs_row_repl_entry::is_instance_changing_attr (const OID &inst_oid)
+  bool
+  changed_attrs_row_repl_entry::is_instance_changing_attr (const OID &inst_oid)
   {
     if (compare_inst_oid (inst_oid))
       {

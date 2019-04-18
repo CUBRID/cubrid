@@ -7754,17 +7754,16 @@ srepl_set_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
       switch (repl_info.repl_info_type)
 	{
 	case REPL_INFO_TYPE_SBR:
-	  {
-	    ptr = or_unpack_int (ptr, &repl_schema.statement_type);
-	    ptr = or_unpack_string_nocopy (ptr, &repl_schema.name);
-	    ptr = or_unpack_string_nocopy (ptr, &repl_schema.stmt_text);
-	    ptr = or_unpack_string_nocopy (ptr, &repl_schema.db_user);
-	    ptr = or_unpack_string_nocopy (ptr, &repl_schema.db_password);
-	    ptr = or_unpack_string_nocopy (ptr, &repl_schema.sys_prm_context);
-	    ptr = or_unpack_string_nocopy (ptr, &repl_schema.savepoint_name);
-	    repl_info.info = (char *) &repl_schema;
-	    break;
-	  }
+	  ptr = or_unpack_int (ptr, &repl_schema.statement_type);
+	  ptr = or_unpack_string_nocopy (ptr, &repl_schema.name);
+	  ptr = or_unpack_string_nocopy (ptr, &repl_schema.stmt_text);
+	  ptr = or_unpack_string_nocopy (ptr, &repl_schema.db_user);
+	  ptr = or_unpack_string_nocopy (ptr, &repl_schema.db_password);
+	  ptr = or_unpack_string_nocopy (ptr, &repl_schema.sys_prm_context);
+	  ptr = or_unpack_string_nocopy (ptr, &repl_schema.savepoint_name);
+	  repl_info.info = (char *) &repl_schema;
+	  break;
+
 	default:
 	  success = ER_FAILED;
 	  break;
