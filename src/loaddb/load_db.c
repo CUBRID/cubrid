@@ -997,6 +997,14 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   args->disable_statistics = utility_get_option_bool_value (arg_map, LOAD_NO_STATISTICS_S);
   args->periodic_commit = utility_get_option_int_value (arg_map, LOAD_PERIODIC_COMMIT_S);
   args->verbose_commit = args->periodic_commit > 0;
+
+  /* *INDENT-OFF* */
+  if (args->periodic_commit == 0)
+    {
+      // We set the periodic commit to a default value.
+      args->periodic_commit = load_args::PERIODIC_COMMIT_DEFAULT_VALUE;
+    }
+  /* *INDENT-ON* */
   args->no_oid_hint = utility_get_option_bool_value (arg_map, LOAD_NO_OID_S);
   args->schema_file = schema_file ? schema_file : empty;
   args->index_file = index_file ? index_file : empty;
