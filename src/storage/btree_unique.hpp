@@ -44,8 +44,8 @@ class btree_unique_stats
     stat_type get_row_count () const;
     stat_type get_null_count () const;
 
-    void add_key_and_row ();
-    void add_null_and_row ();
+    void insert_key_and_row ();
+    void insert_null_and_row ();
     void add_row ();
     void delete_key_and_row ();
     void delete_null_and_row ();

@@ -26112,7 +26112,7 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
       else if (purpose == BTREE_OP_INSERT_MVCC_DELID || purpose == BTREE_OP_INSERT_MARK_DELETED)
 	{
 	  // revert
-	  unique_stat_info->add_key_and_row ();
+	  unique_stat_info->insert_key_and_row ();
 	  // delete only row
 	  unique_stat_info->delete_row ();
 	}
@@ -26278,11 +26278,11 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 	  /* Object is being inserted. */
 	  if (insert_helper->is_null)
 	    {
-	      incr.add_null_and_row ();
+	      incr.insert_null_and_row ();
 	    }
 	  else
 	    {
-	      incr.add_key_and_row ();
+	      incr.insert_key_and_row ();
 	    }
 	}
       /* Update statistics. */
@@ -29655,7 +29655,7 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
       assert (delete_helper.unique_stats_info != NULL);
       // todo - just remove row, not key from the beginning
       // revert
-      delete_helper.unique_stats_info->add_key_and_row ();
+      delete_helper.unique_stats_info->insert_key_and_row ();
       // delete row
       delete_helper.unique_stats_info->delete_row ();
     }
