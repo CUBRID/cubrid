@@ -37,7 +37,7 @@ class btree_unique_stats
   public:
     using stat_type = std::int64_t;
 
-    btree_unique_stats () = default;
+    btree_unique_stats ();
     btree_unique_stats (stat_type keys, stat_type nulls = 0);
 
     stat_type get_key_count () const;

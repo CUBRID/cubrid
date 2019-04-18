@@ -34,6 +34,11 @@ btree_unique_stats::btree_unique_stats (stat_type keys, stat_type nulls /* = 0 *
 {
 }
 
+btree_unique_stats::btree_unique_stats ()
+  : btree_unique_stats (0, 0)
+{
+}
+
 btree_unique_stats::stat_type
 btree_unique_stats::get_key_count () const
 {
