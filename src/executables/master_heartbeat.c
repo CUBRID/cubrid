@@ -238,7 +238,6 @@ static int hb_help_sprint_nodes_info (char *buffer, int max_length);
 static int hb_help_sprint_jobs_info (HB_JOB * jobs, char *buffer, int max_length);
 static int hb_help_sprint_ping_host_info (char *buffer, int max_length);
 
-static bool is_canonical_name (const char *hostname, size_t * pos);
 static bool are_hostnames_equal (const char *hostname_a, const char *hostname_b);
 
 HB_CLUSTER *hb_Cluster = NULL;
@@ -6606,32 +6605,6 @@ hb_help_sprint_jobs_info (HB_JOB * jobs, char *buffer, int max_length)
 }
 
 /**
- * Checks if a host name is canonical name (if contains a '.' (dot))
- *
- * @param hostname host name to check
- * @param pos (out) first occurrence of the '.' (dot) character
- *
- * @return true if host name is canonical name, false otherwise
- * NOTE: if return is true then also pos output param is set to the first occurrence of the '.' (dot) character
- */
-static bool
-is_canonical_name (const char *hostname, size_t * pos)
-{
-  *pos = 0;
-  size_t str_len = strlen (hostname);
-  for (size_t i = 0; i < str_len; ++i)
-    {
-      if (hostname[i] == '.')
-	{
-	  *pos = i;
-	  return true;
-	}
-    }
-
-  return false;
-}
-
-/**
  * Compare two host names if are equal, if one of the host names is canonical name and the other is not, then
  * only host part (e.g. for canonical name "host-1.cubrid.org" host part is "host-1") is used for comparison
  *
@@ -6656,35 +6629,30 @@ is_canonical_name (const char *hostname, size_t * pos)
 static bool
 are_hostnames_equal (const char *hostname_a, const char *hostname_b)
 {
-  size_t dot_pos_a = 0;
-  bool is_canonical_name_a = is_canonical_name (hostname_a, &dot_pos_a);
+  size_t hostname_a_len = strlen (hostname_a);
+  size_t hostname_b_len = strlen (hostname_b);
+  size_t hostname_max_len = std::max (hostname_a_len, hostname_b_len);
 
-  size_t dot_pos_b = 0;
-  bool is_canonical_name_b = is_canonical_name (hostname_b, &dot_pos_b);
-
-  if (is_canonical_name_a && !is_canonical_name_b)
+  for (size_t pos = 0; pos < hostname_max_len; ++pos)
     {
-      // first is canonical and second is not
-      char tmp_hostname_a[MAXHOSTNAMELEN];
-      strncpy (tmp_hostname_a, hostname_a, dot_pos_a);
-      tmp_hostname_a[dot_pos_a] = '\0';
+      if (hostname_a_len == pos && hostname_b_len > pos)
+	{
+	  // if hostname_a reached the end, hostname_b[pos] must be '.'
+	  return hostname_b[pos] == '.';
+	}
+      if (hostname_b_len == pos && hostname_a_len > pos)
+	{
+	  // if hostname_b reached the end, hostname_a[pos] must be '.'
+	  return hostname_a[pos] == '.';
+	}
 
-      return strcmp (tmp_hostname_a, hostname_b) == 0;
+      if (hostname_a[pos] != hostname_b[pos])
+	{
+	  return false;
+	}
     }
-  else if (!is_canonical_name_a && is_canonical_name_b)
-    {
-      // first is not canonical and second is
-      char tmp_hostname_b[MAXHOSTNAMELEN];
-      strncpy (tmp_hostname_b, hostname_b, dot_pos_b);
-      tmp_hostname_b[dot_pos_b] = '\0';
 
-      return strcmp (hostname_a, tmp_hostname_b) == 0;
-    }
-  else
-    {
-      // both are canonical or both are not
-      return strcmp (hostname_a, hostname_b) == 0;
-    }
+  return true;
 }
 
 int
