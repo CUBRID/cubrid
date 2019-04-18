@@ -22972,6 +22972,7 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * quer
       class_->num_lob_attrs = 0;
       class_->lob_attr_ids = NULL;
       class_->crt_del_lob_info = NULL;
+      class_->m_unique_stats.construct ();
       class_->extra_assign_reev_cnt = 0;
       class_->mvcc_extra_assign_reev = NULL;
       class_->mvcc_reev_assigns = NULL;
@@ -23129,6 +23130,7 @@ qexec_clear_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO_INTERNA
 	{
 	  db_private_free_and_init (thread_p, cls_int->mvcc_extra_assign_reev);
 	}
+      cls_int->m_unique_stats.destruct ();
     }
 }
 

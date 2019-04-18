@@ -7036,6 +7036,7 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
   else
     {
       delete scan_cache->m_index_stats;
+      scan_cache->m_index_stats = NULL;
       scan_cache->num_btids = 0;
 
       if (scan_cache->cache_last_fix_page == true)
