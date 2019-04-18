@@ -187,6 +187,7 @@ namespace cubload
     , table_name ()
     , ignore_class_file ()
     , ignore_classes ()
+    , m_ignored_errors ()
   {
     //
   }
@@ -220,6 +221,11 @@ namespace cubload
     for (const std::string &ignore_class : ignore_classes)
       {
 	serializator.pack_string (ignore_class);
+      }
+    serializator.pack_bigint (m_ignored_errors.size ());
+    for (const int error : m_ignored_errors)
+      {
+	serializator.pack_int (error);
       }
   }
 
@@ -258,6 +264,14 @@ namespace cubload
 	deserializator.unpack_string (ignore_class);
 	ignore_classes.push_back (ignore_class);
       }
+    size_t ignore_errors_size = 0;
+
+    deserializator.unpack_bigint (ignore_errors_size);
+    m_ignored_errors.resize (ignore_errors_size);
+    for (size_t i = 0; i < ignore_errors_size; i++)
+      {
+	deserializator.unpack_int (m_ignored_errors[i]);
+      }
   }
 
   size_t
@@ -291,6 +305,12 @@ namespace cubload
     for (const std::string &ignore_class : ignore_classes)
       {
 	size += serializator.get_packed_string_size (ignore_class, size);
+      }
+
+    size += serializator.get_packed_bigint_size (size);
+    for (const int i : m_ignored_errors)
+      {
+	size += serializator.get_packed_int_size (size);
       }
 
     return size;

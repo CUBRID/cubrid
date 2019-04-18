@@ -1805,3 +1805,17 @@ clear_errid:
     }
   goto exit_on_end;
 }
+
+/* *INDENT-OFF* */
+void
+get_ignored_errors (std::vector<int> &vec)
+{
+  for (int i = 0; i < -ER_LAST_ERROR; i++)
+    {
+      if (filter_ignore_errors[i])
+	{
+	  vec.push_back (-i);
+	}
+    }
+}
+/* *INDENT-ON* */
