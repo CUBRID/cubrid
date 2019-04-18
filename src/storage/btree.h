@@ -46,7 +46,7 @@
 
 // forward definition
 struct key_val_range;
-class unique_stats;
+class btree_unique_stats;
 
 #define SINGLE_ROW_INSERT    1
 #define SINGLE_ROW_DELETE    2
@@ -571,13 +571,13 @@ extern int btree_estimate_total_numpages (THREAD_ENTRY * thread_p, int dis_key_c
 
 extern int btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc);
 extern int btree_physical_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * oid, OID * class_oid,
-				  int *unique, int op_type, unique_stats * unique_stat_info);
+				  int *unique, int op_type, btree_unique_stats * unique_stat_info);
 extern int btree_vacuum_insert_mvccid (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key, OID * oid,
 				       OID * class_oid, MVCCID insert_mvccid);
 extern int btree_vacuum_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key, OID * oid, OID * class_oid,
 				MVCCID delete_mvccid);
 extern int btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key, DB_VALUE * new_key, OID * cls_oid,
-			 OID * oid, int op_type, unique_stats * unique_stat_info, int *unique,
+			 OID * oid, int op_type, btree_unique_stats * unique_stat_info, int *unique,
 			 MVCC_REC_HEADER * p_mvcc_rec_header);
 extern int btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_STATS * unique_stat_info,
 						   bool only_active_tran);
@@ -666,9 +666,9 @@ extern void btree_leaf_change_first_object (THREAD_ENTRY * thread_p, RECDES * re
 					    OID * class_oidp, BTREE_MVCC_INFO * mvcc_info, int *key_offset,
 					    char **rv_undo_data_ptr, char **rv_redo_data_ptr);
 extern int btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * cls_oid, OID * oid, int op_type,
-			 unique_stats * unique_stat_info, int *unique, MVCC_REC_HEADER * p_mvcc_rec_header);
+			 btree_unique_stats * unique_stat_info, int *unique, MVCC_REC_HEADER * p_mvcc_rec_header);
 extern int btree_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid,
-			      int op_type, unique_stats * unique_stat_info, int *unique,
+			      int op_type, btree_unique_stats * unique_stat_info, int *unique,
 			      MVCC_REC_HEADER * p_mvcc_rec_header);
 
 extern void btree_set_mvcc_header_ids_for_update (THREAD_ENTRY * thread_p, bool do_delete_only, bool do_insert_only,
