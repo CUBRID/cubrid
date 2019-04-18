@@ -238,6 +238,9 @@ static int hb_help_sprint_nodes_info (char *buffer, int max_length);
 static int hb_help_sprint_jobs_info (HB_JOB * jobs, char *buffer, int max_length);
 static int hb_help_sprint_ping_host_info (char *buffer, int max_length);
 
+static bool is_canonical_name (const char *hostname, size_t * pos);
+static bool are_hostnames_equal (const char *hostname_a, const char *hostname_b);
+
 HB_CLUSTER *hb_Cluster = NULL;
 HB_RESOURCE *hb_Resource = NULL;
 HB_JOB *cluster_Jobs = NULL;
@@ -1532,8 +1535,10 @@ hb_cluster_request_heartbeat_to_all (void)
 
   for (node = hb_Cluster->nodes; node; node = node->next)
     {
-      if (strcmp (hb_Cluster->host_name, node->host_name) == 0)
-	continue;
+      if (are_hostnames_equal (hb_Cluster->host_name, node->host_name))
+	{
+	  continue;
+	}
 
       hb_cluster_send_heartbeat_req (node->host_name);
       node->heartbeat_gap++;
@@ -1635,7 +1640,7 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
     }
 
   /* validate receive message */
-  if (strcmp (hb_Cluster->host_name, hbp_header->dest_host_name))
+  if (!are_hostnames_equal (hb_Cluster->host_name, hbp_header->dest_host_name))
     {
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hostname mismatch. " "(host_name:{%s}, dest_host_name:{%s}).\n",
 			   hb_Cluster->host_name, hbp_header->dest_host_name);
@@ -1995,7 +2000,7 @@ hb_add_node_to_cluster (char *host_name, unsigned short priority)
   p = (HB_NODE_ENTRY *) malloc (sizeof (HB_NODE_ENTRY));
   if (p)
     {
-      if (strcmp (host_name, "localhost") == 0)
+      if (are_hostnames_equal (host_name, "localhost"))
 	{
 	  strncpy (p->host_name, hb_Cluster->host_name, sizeof (p->host_name) - 1);
 	}
@@ -2172,7 +2177,7 @@ hb_return_node_by_name (char *name)
 
   for (node = hb_Cluster->nodes; node; node = node->next)
     {
-      if (strcmp (name, node->host_name))
+      if (!are_hostnames_equal (name, node->host_name))
 	{
 	  continue;
 	}
@@ -2196,7 +2201,7 @@ hb_return_node_by_name_except_me (char *name)
 
   for (node = hb_Cluster->nodes; node; node = node->next)
     {
-      if (strcmp (name, node->host_name) || (strcmp (name, hb_Cluster->host_name) == 0))
+      if (!are_hostnames_equal (name, node->host_name) || are_hostnames_equal (name, hb_Cluster->host_name))
 	{
 	  continue;
 	}
@@ -2276,7 +2281,7 @@ hb_return_ui_node (char *host_name, char *group_id, struct sockaddr_in saddr)
 
   for (node = hb_Cluster->ui_nodes; node; node = node->next)
     {
-      if (strcmp (node->host_name, host_name) != 0)
+      if (!are_hostnames_equal (node->host_name, host_name))
 	{
 	  continue;
 	}
@@ -2436,7 +2441,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 	  node = hb_add_node_to_cluster (p, (priority));
 	  if (node)
 	    {
-	      if (strcmp (node->host_name, hb_Cluster->host_name) == 0)
+	      if (are_hostnames_equal (node->host_name, hb_Cluster->host_name))
 		{
 		  hb_Cluster->myself = node;
 #if defined (HB_VERBOSE_DEBUG)
@@ -2479,7 +2484,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 	  node = hb_add_node_to_cluster (p, HB_REPLICA_PRIORITY);
 	  if (node)
 	    {
-	      if (strcmp (node->host_name, hb_Cluster->host_name) == 0)
+	      if (are_hostnames_equal (node->host_name, hb_Cluster->host_name))
 		{
 		  hb_Cluster->myself = node;
 		  hb_Cluster->state = HB_NSTATE_REPLICA;
@@ -5132,8 +5137,10 @@ hb_cluster_cleanup (void)
 
   for (node = hb_Cluster->nodes; node; node = node->next)
     {
-      if (strcmp (hb_Cluster->host_name, node->host_name) == 0)
-	continue;
+      if (are_hostnames_equal (hb_Cluster->host_name, node->host_name))
+	{
+	  continue;
+	}
 
       hb_cluster_send_heartbeat_req (node->host_name);
       node->heartbeat_gap++;
@@ -5318,11 +5325,11 @@ hb_reload_config (void)
 #endif
       for (old_node = old_nodes; old_node; old_node = old_node->next)
 	{
-	  if (strcmp (new_node->host_name, old_node->host_name))
+	  if (!are_hostnames_equal (new_node->host_name, old_node->host_name))
 	    {
 	      continue;
 	    }
-	  if (old_master && strcmp (new_node->host_name, old_master->host_name) == 0)
+	  if (old_master && are_hostnames_equal (new_node->host_name, old_master->host_name))
 	    {
 	      hb_Cluster->master = new_node;
 	    }
@@ -6381,7 +6388,7 @@ hb_check_ping (const char *host)
   /* If host_p is in the cluster node, then skip to check */
   for (node = hb_Cluster->nodes; node; node = node->next)
     {
-      if (strcmp (host, node->host_name) == 0)
+      if (are_hostnames_equal (host, node->host_name))
 	{
 	  /* PING Host is same as cluster's host name */
 	  snprintf (buf, sizeof (buf), "Useless PING host name %s", host);
@@ -6596,6 +6603,88 @@ hb_help_sprint_jobs_info (HB_JOB * jobs, char *buffer, int max_length)
   p += snprintf (p, MAX ((last - p), 0), "\n");
 
   return p - buffer;
+}
+
+/**
+ * Checks if a host name is canonical name (if contains a '.' (dot))
+ *
+ * @param hostname host name to check
+ * @param pos (out) first occurrence of the '.' (dot) character
+ *
+ * @return true if host name is canonical name, false otherwise
+ * NOTE: if return is true then also pos output param is set to the first occurrence of the '.' (dot) character
+ */
+static bool
+is_canonical_name (const char *hostname, size_t * pos)
+{
+  *pos = 0;
+  size_t str_len = strlen (hostname);
+  for (size_t i = 0; i < str_len; ++i)
+    {
+      if (hostname[i] == '.')
+	{
+	  *pos = i;
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/**
+ * Compare two host names if are equal, if one of the host names is canonical name and the other is not, then
+ * only host part (e.g. for canonical name "host-1.cubrid.org" host part is "host-1") is used for comparison
+ *
+ * for example following hosts are equal:
+ *  "host-1"            "host-1"
+ *  "host-1"            "host-1.cubrid.org"
+ *  "host-1.cubrid.org" "host-1"
+ *  "host-1.cubrid.org" "host-1.cubrid.org"
+ *
+ * for example following hosts are not equal:
+ *  "host-1"            "host-2"
+ *  "host-1.cubrid.org" "host-2"
+ *  "host-1"            "host-2.cubrid.org"
+ *  "host-1.cubrid.org" "host-2.cubrid.org"
+ *  "host-1.cubrid.org" "host-1.cubrid.com"
+ *
+ * @param hostname_a first hostname
+ * @param hostname_b second hostname
+ *
+ * @return true if hostname_a is same as hostname_b
+ */
+static bool
+are_hostnames_equal (const char *hostname_a, const char *hostname_b)
+{
+  size_t dot_pos_a = 0;
+  bool is_canonical_name_a = is_canonical_name (hostname_a, &dot_pos_a);
+
+  size_t dot_pos_b = 0;
+  bool is_canonical_name_b = is_canonical_name (hostname_b, &dot_pos_b);
+
+  if (is_canonical_name_a && !is_canonical_name_b)
+    {
+      // first is canonical and second is not
+      char tmp_hostname_a[MAXHOSTNAMELEN];
+      strncpy (tmp_hostname_a, hostname_a, dot_pos_a);
+      tmp_hostname_a[dot_pos_a] = '\0';
+
+      return strcmp (tmp_hostname_a, hostname_b) == 0;
+    }
+  else if (!is_canonical_name_a && is_canonical_name_b)
+    {
+      // first is not canonical and second is
+      char tmp_hostname_b[MAXHOSTNAMELEN];
+      strncpy (tmp_hostname_b, hostname_b, dot_pos_b);
+      tmp_hostname_b[dot_pos_b] = '\0';
+
+      return strcmp (hostname_a, tmp_hostname_b) == 0;
+    }
+  else
+    {
+      // both are canonical or both are not
+      return strcmp (hostname_a, hostname_b) == 0;
+    }
 }
 
 int
@@ -6827,7 +6916,7 @@ hb_find_host_name_of_master_server ()
     {
       if (node->state == HB_NSTATE_MASTER && hb_Cluster->master == node)
 	{
-	  assert (strcmp (node->host_name, hb_Cluster->master->host_name) == 0);
+	  assert (are_hostnames_equal (node->host_name, hb_Cluster->master->host_name));
 	  pthread_mutex_unlock (&hb_Cluster->lock);
 	  return node->host_name;
 	}
