@@ -9394,8 +9394,11 @@ static void
 qexec_update_btree_unique_stats_info (THREAD_ENTRY * thread_p, multi_index_unique_stats * info,
 				      const HEAP_SCANCACHE * scan_cache)
 {
-  assert (scan_cache != NULL && scan_cache->m_index_stats != NULL);
-  (*info) += (*scan_cache->m_index_stats);
+  assert (scan_cache != NULL);
+  if (scan_cache->m_index_stats != NULL)
+    {
+      (*info) += (*scan_cache->m_index_stats);
+    }
 }
 
 
@@ -11513,22 +11516,24 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   else
     {
       // *INDENT-OFF*
-      assert (scan_cache.m_index_stats != NULL);
-      for (const auto &it : scan_cache.m_index_stats->get_map ())
-	{
-          if (!it.second.is_unique ())
+      if (scan_cache.m_index_stats != NULL)
+        {
+          for (const auto &it : scan_cache.m_index_stats->get_map ())
 	    {
-              // set no error?
-	      GOTO_EXIT_ON_ERROR;
-	    }
+              if (!it.second.is_unique ())
+	        {
+                  // set no error?
+	          GOTO_EXIT_ON_ERROR;
+	        }
 
-	  error = logtb_tran_update_unique_stats (thread_p, it.first, it.second, true);
-	  if (error != NO_ERROR)
-	    {
-              ASSERT_ERROR ();
-	      GOTO_EXIT_ON_ERROR;
+	      error = logtb_tran_update_unique_stats (thread_p, it.first, it.second, true);
+	      if (error != NO_ERROR)
+	        {
+                  ASSERT_ERROR ();
+	          GOTO_EXIT_ON_ERROR;
+	        }
 	    }
-	}
+        }
       // *INDENT-ON*
     }
 
