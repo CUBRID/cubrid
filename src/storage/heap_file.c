@@ -6702,7 +6702,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   scan_cache->area = NULL;
   scan_cache->area_size = -1;
   scan_cache->num_btids = 0;
-  scan_cache->index_stat_info = NULL;
+  scan_cache->m_index_stats = NULL;
 
   scan_cache->debug_initpattern = HEAP_DEBUG_SCANCACHE_INITPATTERN;
   scan_cache->mvcc_snapshot = mvcc_snapshot;
@@ -6721,7 +6721,7 @@ exit_on_error:
   scan_cache->area = NULL;
   scan_cache->area_size = 0;
   scan_cache->num_btids = 0;
-  scan_cache->index_stat_info = NULL;
+  scan_cache->m_index_stats = NULL;
   scan_cache->file_type = FILE_UNKNOWN_TYPE;
   scan_cache->debug_initpattern = 0;
   scan_cache->mvcc_snapshot = NULL;
@@ -6784,7 +6784,7 @@ heap_scancache_start_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
 {
   OR_CLASSREP *classrepr = NULL;
   int classrepr_cacheindex = -1;
-  int malloc_size, i;
+  int i;
   int ret = NO_ERROR;
 
   if (heap_scancache_start_internal (thread_p, scan_cache, hfid, NULL, false, false, false, mvcc_snapshot) != NO_ERROR)
@@ -6817,28 +6817,12 @@ heap_scancache_start_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
 
       if (scan_cache->num_btids > 0)
 	{
-	  /* allocate local btree statistical information structure */
-	  malloc_size = sizeof (BTREE_UNIQUE_STATS) * scan_cache->num_btids;
-
-	  if (scan_cache->index_stat_info != NULL)
-	    {
-	      db_private_free (thread_p, scan_cache->index_stat_info);
-	    }
-
-	  scan_cache->index_stat_info = (BTREE_UNIQUE_STATS *) db_private_alloc (thread_p, malloc_size);
-	  if (scan_cache->index_stat_info == NULL)
-	    {
-	      ret = ER_OUT_OF_VIRTUAL_MEMORY;
-	      heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
-	      goto exit_on_error;
-	    }
+	  delete scan_cache->m_index_stats;
+	  scan_cache->m_index_stats = new multi_index_unique_stats ();
 	  /* initialize the structure */
 	  for (i = 0; i < scan_cache->num_btids; i++)
 	    {
-	      BTID_COPY (&(scan_cache->index_stat_info[i].btid), &(classrepr->indexes[i].btid));
-	      scan_cache->index_stat_info[i].num_nulls = 0;
-	      scan_cache->index_stat_info[i].num_keys = 0;
-	      scan_cache->index_stat_info[i].num_oids = 0;
+	      scan_cache->m_index_stats->add_empty (classrepr->indexes[i].btid);
 	    }
 	}
 
@@ -6847,7 +6831,7 @@ heap_scancache_start_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
     }
 
   /* In case of SINGLE_ROW_INSERT, SINGLE_ROW_UPDATE, SINGLE_ROW_DELETE, or SINGLE_ROW_MODIFY, the 'num_btids' and
-   * 'index_stat_info' of scan cache structure have to be set as 0 and NULL, respectively. */
+   * 'm_index_stats' of scan cache structure have to be set as 0 and NULL, respectively. */
 
   return ret;
 
@@ -7020,7 +7004,7 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
   scan_cache->area = NULL;
   scan_cache->area_size = 0;
   scan_cache->num_btids = 0;
-  scan_cache->index_stat_info = NULL;
+  scan_cache->m_index_stats = NULL;
   scan_cache->file_type = FILE_UNKNOWN_TYPE;
   scan_cache->debug_initpattern = HEAP_DEBUG_SCANCACHE_INITPATTERN;
   scan_cache->mvcc_snapshot = NULL;
@@ -7051,12 +7035,8 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
     }
   else
     {
-      if (scan_cache->index_stat_info != NULL)
-	{
-	  /* deallocate memory space allocated for index stat info. */
-	  db_private_free_and_init (thread_p, scan_cache->index_stat_info);
-	  scan_cache->num_btids = 0;
-	}
+      delete scan_cache->m_index_stats;
+      scan_cache->num_btids = 0;
 
       if (scan_cache->cache_last_fix_page == true)
 	{

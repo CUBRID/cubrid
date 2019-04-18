@@ -25,6 +25,8 @@
 
 #include "string_buffer.hpp"
 
+#include <utility>
+
 unique_stats::unique_stats (stat_type keys, stat_type nulls /* = 0 */)
   : m_rows (keys + nulls)
   , m_keys (keys)
@@ -153,6 +155,12 @@ multi_index_unique_stats::accumulate (const BTID &index, const unique_stats &us)
 }
 
 void
+multi_index_unique_stats::add_empty (const BTID &index)
+{
+  m_stats_map[index] = unique_stats ();
+}
+
+void
 multi_index_unique_stats::clear ()
 {
   m_stats_map.clear ();
@@ -170,6 +178,12 @@ multi_index_unique_stats::empty () const
   return m_stats_map.empty ();
 }
 
+unique_stats &
+multi_index_unique_stats::get_stats_of (const BTID &index)
+{
+  return m_stats_map[index];
+}
+
 void
 multi_index_unique_stats::to_string (string_buffer &strbuf) const
 {
@@ -185,4 +199,21 @@ multi_index_unique_stats::to_string (string_buffer &strbuf) const
       strbuf ("}");
     }
   strbuf ("}");
+}
+
+multi_index_unique_stats &
+multi_index_unique_stats::operator= (multi_index_unique_stats &&other)
+{
+  m_stats_map = std::move (other.m_stats_map);
+  return *this;
+}
+
+void
+multi_index_unique_stats::operator+= (const multi_index_unique_stats &other)
+{
+  // collector all stats from other.m_stats_map
+  for (const auto &it : other.m_stats_map)
+    {
+      m_stats_map[it.first] += it.second;
+    }
 }

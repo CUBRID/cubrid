@@ -6370,8 +6370,7 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
   HEAP_SCANCACHE scan_cache;
   int scan_cache_inited = 0;
   LOG_TDES *tdes;
-  int i, s;
-  int malloc_size;
+  int i;
   int force_count;
   int tran_index;
   int error_code = NO_ERROR;
@@ -6495,15 +6494,15 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 	    }
 	}			/* end-for */
 
-      for (s = 0; s < scan_cache.num_btids; s++)
+      assert (scan_cache.m_index_stats != NULL);
+    for (const auto & it:scan_cache.m_index_stats->get_map ())
 	{
-	  unique_stats temp_info (scan_cache.index_stat_info[s].num_keys, scan_cache.index_stat_info[s].num_nulls);
-	  if (temp_info.is_zero ())
+	  if (it.second.is_zero ())
 	    {
 	      continue;
 	    }
 	  /* non-unique index would be filtered out at above statement. */
-	  tdes->m_multiupd_stats.accumulate (scan_cache.index_stat_info[s].btid, temp_info);
+	  tdes->m_multiupd_stats.accumulate (it.first, it.second);
 	}
 
       locator_end_force_scan_cache (thread_p, &scan_cache);
@@ -6512,20 +6511,7 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 
   if (mobjs->end_multi_update)
     {
-      // *INDENT-OFF*
-      for (multi_index_unique_stats::container_type::const_iterator it = tdes->m_multiupd_stats.get_map ().cbegin ();
-           it != tdes->m_multiupd_stats.get_map ().cend (); ++it)
-        {
-          error_code = logtb_tran_update_unique_stats (thread_p, &it->first, (int) it->second.get_key_count (),
-                                                        (int) it->second.get_row_count (),
-                                                        (int) it->second.get_null_count (), true);
-          if (error_code != NO_ERROR)
-            {
-              ASSERT_ERROR ();
-              goto error;
-            }
-        }
-      // *INDENT-ON*
+      logtb_tran_update_unique_stats (thread_p, tdes->m_multiupd_stats, true);
       tdes->m_multiupd_stats.clear ();
     }
 
@@ -7583,7 +7569,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
   DB_VALUE *key_dbvalue, *key_ins_del = NULL;
   DB_VALUE dbvalue;
   int unique_pk;
-  BTREE_UNIQUE_STATS *unique_stat_info;
+  unique_stats *unique_stat_info;
   HEAP_IDX_ELEMENTS_INFO idx_info;
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
   OR_INDEX *index;
@@ -7700,7 +7686,8 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	    {
 	      if (op_type == MULTI_ROW_UPDATE || op_type == MULTI_ROW_INSERT || op_type == MULTI_ROW_DELETE)
 		{
-		  unique_stat_info = &(scan_cache->index_stat_info[i]);
+		  assert (scan_cache->m_index_stats != NULL);
+		  unique_stat_info = &scan_cache->m_index_stats->get_stats_of (index->btid);
 		}
 	      else
 		{
@@ -8113,7 +8100,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   OR_INDEX *index = NULL;
   int i, j, k, num_btids, old_num_btids, unique_pk;
   bool found_btid = true;
-  BTREE_UNIQUE_STATS *unique_stat_info;
+  unique_stats *unique_stat_info;
   HEAP_IDX_ELEMENTS_INFO new_idx_info;
   HEAP_IDX_ELEMENTS_INFO old_idx_info;
   char newbuf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_newbuf;
@@ -8360,7 +8347,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	{
 	  if (op_type == MULTI_ROW_UPDATE || op_type == MULTI_ROW_INSERT || op_type == MULTI_ROW_DELETE)
 	    {
-	      unique_stat_info = &(scan_cache->index_stat_info[i]);
+	      assert (scan_cache->m_index_stats != NULL);
+	      unique_stat_info = &scan_cache->m_index_stats->get_stats_of (index->btid);
 	    }
 	  else
 	    {
@@ -8803,7 +8791,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
   DB_VALUE *dbvalue_ptr = NULL;
   SCAN_CODE scan;
   char *new_area;
-  BTREE_UNIQUE_STATS unique_info;
+  unique_stats unique_info;
   HEAP_IDX_ELEMENTS_INFO idx_info;
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
   int error_code = NO_ERROR;
@@ -8833,12 +8821,6 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (copy_rec.area_size));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
-
-  /* initialize 'unique_info' structure. */
-  BTID_COPY (&(unique_info.btid), btid);
-  unique_info.num_nulls = 0;
-  unique_info.num_keys = 0;
-  unique_info.num_oids = 0;
 
   /* Start a scan cursor */
   error_code = heap_scancache_start (thread_p, &scan_cache, hfid, class_oid, false, false, mvcc_snapshot);
@@ -8975,15 +8957,10 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
 	}
     }
 
-  if (unique_info.num_nulls != 0 || unique_info.num_keys != 0 || unique_info.num_oids != 0)
+  error_code = logtb_tran_update_unique_stats (thread_p, *btid, unique_info, true);
+  if (error_code != NO_ERROR)
     {
-      error_code =
-	logtb_tran_update_unique_stats (thread_p, btid, unique_info.num_keys, unique_info.num_oids,
-					unique_info.num_nulls, true);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
+      goto error;
     }
 
   error_code = heap_scancache_end (thread_p, &scan_cache);

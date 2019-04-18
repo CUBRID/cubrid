@@ -88,12 +88,19 @@ class multi_index_unique_stats
     void destruct ();
 
     void accumulate (const BTID &index, const unique_stats &us);
+    void add_empty (const BTID &index);
     void clear ();
 
     const container_type &get_map () const;
     bool empty () const;
 
+    unique_stats &get_stats_of (const BTID &index);
+
     void to_string (string_buffer &strbuf) const;
+
+    multi_index_unique_stats &operator= (multi_index_unique_stats &&other);
+    multi_index_unique_stats &operator= (const multi_index_unique_stats &other) = delete;
+    void operator+= (const multi_index_unique_stats &other);
 
   private:
     container_type m_stats_map;

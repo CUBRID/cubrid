@@ -3559,6 +3559,36 @@ logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int 
   return error;
 }
 
+// *INDENT-OFF*
+int
+logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID &btid, const unique_stats &ustats,
+                                bool write_to_log)
+{
+  if (ustats.is_zero ())
+    {
+      return NO_ERROR;
+    }
+  return logtb_tran_update_unique_stats (thread_p, &btid, (int) ustats.get_key_count (), (int) ustats.get_row_count (),
+                                         (int) ustats.get_null_count(), write_to_log);
+}
+
+int
+logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const multi_index_unique_stats &multi_stats, bool write_to_log)
+{
+  int error = NO_ERROR;
+  for (const auto &it : multi_stats.get_map ())
+    {
+      error = logtb_tran_update_unique_stats (thread_p, it.first, it.second, write_to_log);
+      if (error != NO_ERROR)
+        {
+          ASSERT_ERROR ();
+          return error;
+        }
+    }
+  return NO_ERROR;
+}
+// *INDENT-ON*
+
 /*
  * logtb_tran_update_delta_hash_func () - updates statistics associated with
  *					  the given btid by local statistics

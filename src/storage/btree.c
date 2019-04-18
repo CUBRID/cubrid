@@ -50,9 +50,10 @@
 #include "dbtype.h"
 #include "thread_manager.hpp"
 
+#include <assert.h>
+#include <cinttypes>
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
 
 #define BTREE_HEALTH_CHECK
 
@@ -18245,7 +18246,7 @@ end:
 
 
 int
-btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * class_oid, BTID * btid,
+btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * class_oid, const BTID * btid,
 		 const char *bt_name, int severity, int err_id, const char *filename, int lineno)
 {
   char btid_msg_buf[OID_MSG_BUF_SIZE];
@@ -25933,7 +25934,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * cls_oi
  */
 int
 btree_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid, int op_type,
-		   BTREE_UNIQUE_STATS * unique_stat_info, int *unique, MVCC_REC_HEADER * p_mvcc_rec_header)
+		   unique_stats * unique_stat_info, int *unique, MVCC_REC_HEADER * p_mvcc_rec_header)
 {
   BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
 
@@ -26100,17 +26101,20 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
       assert (op_type == MULTI_ROW_UPDATE);
       assert (unique_stat_info != NULL);
 
-      /* Save the actual BTID to help reporting an unique violation error of a partition table. */
-      unique_stat_info->btid = *(btid_int.sys_btid);
-
       /* Key was not inserted/deleted. Correct unique_stat_info (which assumed that key will be inserted/deleted). */
       if (purpose == BTREE_OP_INSERT_NEW_OBJECT)
 	{
-	  unique_stat_info->num_keys--;
+	  // revert
+	  unique_stat_info->delete_key_and_row ();
+	  // insert just row
+	  unique_stat_info->add_row ();
 	}
       else if (purpose == BTREE_OP_INSERT_MVCC_DELID || purpose == BTREE_OP_INSERT_MARK_DELETED)
 	{
-	  unique_stat_info->num_keys++;
+	  // revert
+	  unique_stat_info->add_key_and_row ();
+	  // delete only row
+	  unique_stat_info->delete_row ();
 	}
       else
 	{
@@ -26124,13 +26128,14 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
       btree_insert_log (&insert_helper, "BTREE UNIQUE MULTI-UPDATE STATS: %s \n"
 			BTREE_INSERT_HELPER_MSG ("\t")
 			"\t" BTREE_ID_MSG "\n"
-			"\t" "%s: new stats = %d keys, %d objects, %d nulls.",
+			"\t" "%s: new stats = %" PRId64 " keys, %" PRId64 " objects, %" PRId64 " nulls.",
 			(btree_is_insert_object_purpose (insert_helper.purpose)) ? "Insert" : "MVCC Delete",
 			BTREE_INSERT_HELPER_AS_ARGS (&insert_helper), BTID_AS_ARGS (btid_int.sys_btid),
 			(btree_is_insert_object_purpose (insert_helper.purpose)) ?
 			(insert_helper.is_unique_key_added_or_deleted ? "Added new key" : "Did not add new key") :
 			(insert_helper.is_unique_key_added_or_deleted) ? "Removed key" : "Did not remove key",
-			unique_stat_info->num_keys, unique_stat_info->num_oids, unique_stat_info->num_nulls);
+			unique_stat_info->get_key_count (), unique_stat_info->get_row_count (),
+			unique_stat_info->get_null_count ());
     }
 
   return NO_ERROR;
@@ -26163,10 +26168,6 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
   OID *notification_class_oid;
   int error_code;
   int key_len;
-  int increment;
-  int increment_nulls;
-  int increment_keys;
-  int increment_oids;
 
   /* Assert expected arguments. */
   assert (insert_helper != NULL);
@@ -26303,9 +26304,7 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 	  /* Update transactions collected statistics. */
 	  if (!btree_is_online_index_loading (insert_helper->purpose))
 	    {
-	      error_code = logtb_tran_update_unique_stats (thread_p, btid, (int) incr.get_key_count (),
-							   (int) incr.get_row_count (), (int) incr.get_null_count (),
-							   true);
+	      error_code = logtb_tran_update_unique_stats (thread_p, *btid, incr, true);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -29851,9 +29850,7 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 	  /* Save and log statistics changes. */
 	  if (!btree_is_online_index_loading (delete_helper->purpose))
 	    {
-	      error_code = logtb_tran_update_unique_stats (thread_p, btid, (int) incr.get_key_count (),
-							   (int) incr.get_row_count (), (int) incr.get_null_count (),
-							   true);
+	      error_code = logtb_tran_update_unique_stats (thread_p, *btid, incr, true);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
