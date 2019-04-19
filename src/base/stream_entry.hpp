@@ -313,7 +313,7 @@ namespace cubstream
 	return m_packable_entries[pos];
       }
 
-      const size_t count_entries ()
+      size_t count_entries () const
       {
 	return m_packable_entries.size ();
       }

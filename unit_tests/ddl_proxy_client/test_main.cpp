@@ -68,8 +68,6 @@ int main (int argc, char **argv)
 			       NULL,
 			       NULL,
 			       NULL,
-			       NULL,
-			       NULL,
 			       &exit_status);
   if (exit_status != 0)
     {
