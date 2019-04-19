@@ -84,29 +84,6 @@ enum HBP_CLUSTER_MESSAGE
 #define HB_MAX_SZ_PROC_ARGV             (64)
 #define HB_MAX_SZ_PROC_ARGS             (HB_MAX_NUM_PROC_ARGV*HB_MAX_SZ_PROC_ARGV)
 
-/* heartbeat node state */
-enum HB_NODE_STATE
-{
-  HB_NSTATE_UNKNOWN = 0,
-  HB_NSTATE_SLAVE = 1,
-  HB_NSTATE_TO_BE_MASTER = 2,
-  HB_NSTATE_TO_BE_SLAVE = 3,
-  HB_NSTATE_MASTER = 4,
-  HB_NSTATE_REPLICA = 5,
-  HB_NSTATE_MAX
-};
-
-#define HB_NSTATE_UNKNOWN_STR   "unknown"
-#define HB_NSTATE_SLAVE_STR     "slave"
-#define HB_NSTATE_TO_BE_MASTER_STR    "to-be-master"
-#define HB_NSTATE_TO_BE_SLAVE_STR "to-be-slave"
-#define HB_NSTATE_MASTER_STR    "master"
-#define HB_NSTATE_REPLICA_STR   "replica"
-
-#define HB_NSTATE_STR_SZ        (32)
-
-typedef enum HB_NODE_STATE HB_NODE_STATE_TYPE;
-
 /*
  * heartbeat cluster message header and body
  */
@@ -162,7 +139,6 @@ extern int hb_register_to_master (CSS_CONN_ENTRY * conn, int type);
 extern int hb_deregister_from_master (void);
 extern int hb_process_init (const char *server_name, const char *log_path, HB_PROC_TYPE type);
 extern void hb_process_term (void);
-extern const char *hb_node_state_string (HB_NODE_STATE_TYPE nstate);
 
 extern bool hb_Proc_shutdown;
 

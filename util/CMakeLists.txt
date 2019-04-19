@@ -68,12 +68,13 @@ endif(UNIX)
 add_dependencies(csql cubridsa cubridcs)
 
 set(CUB_MASTER_SOURCES
-  ${EXECUTABLES_DIR}/master.c
-  ${EXECUTABLES_DIR}/master_request.c
-  ${EXECUTABLES_DIR}/master_util.c
+  ${MASTER_DIR}/master.c
+  ${MASTER_DIR}/master_request.c
+  ${MASTER_DIR}/master_util.c
   )
 if(UNIX)
-  list(APPEND CUB_MASTER_SOURCES ${EXECUTABLES_DIR}/master_heartbeat.c)
+  list(APPEND CUB_MASTER_SOURCES ${MASTER_DIR}/master_heartbeat.cpp)
+  list(APPEND CUB_MASTER_SOURCES ${MASTER_DIR}/heartbeat_cluster.cpp)
   SET_SOURCE_FILES_PROPERTIES(
 	${CUB_MASTER_SOURCES}
 	PROPERTIES LANGUAGE CXX
@@ -150,14 +151,14 @@ target_link_libraries(cubrid-bin LINK_PRIVATE cubridsa)
 set(CUB_COMMDB_SOURCES
   ${EXECUTABLES_DIR}/commdb.c
   ${EXECUTABLES_DIR}/util_support.c
-  ${EXECUTABLES_DIR}/master_util.c
+  ${MASTER_DIR}/master_util.c
   )
 
 SET_SOURCE_FILES_PROPERTIES(
   ${CUB_COMMDB_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
-  
+
 if(WIN32)
   list(APPEND CUB_COMMDB_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
@@ -244,7 +245,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/esql_translate.c
   ${EXECUTABLES_DIR}/esql_host_variable.c
   PROPERTIES LANGUAGE CXX
-  )  
+  )
 if(WIN32)
   list(APPEND CUBRID_ESQL_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
@@ -326,17 +327,17 @@ if(UNIX)
   set(UNITTESTS_SNAPSHOT_SOURCES
       ${EXECUTABLES_DIR}/unittests_snapshot.c
       )
-      
+
     SET_SOURCE_FILES_PROPERTIES(
       ${UNITTESTS_SNAPSHOT_SOURCES}
       PROPERTIES LANGUAGE CXX
     )
-    
+
     add_executable(unittests_snapshot ${UNITTESTS_SNAPSHOT_SOURCES})
     target_compile_definitions(unittests_snapshot PRIVATE SERVER_MODE ${COMMON_DEFS})
     target_include_directories(unittests_snapshot PRIVATE ${EP_INCLUDES})
     target_link_libraries(unittests_snapshot LINK_PRIVATE cubrid)
-    
+
   set(UNITTESTS_BIT_SOURCES
     ${EXECUTABLES_DIR}/unittests_bit.c
     )

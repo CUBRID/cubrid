@@ -21,8 +21,6 @@
  * master_util.c - common module for commdb and master
  */
 
-#ident "$Id$"
-
 #include "config.h"
 
 #include <sys/types.h>

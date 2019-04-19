@@ -26,8 +26,6 @@
 #ifndef _MASTER_UTIL_H_
 #define _MASTER_UTIL_H_
 
-#ident "$Id$"
-
 #include "connection_defs.h"
 
 #if defined(WINDOWS)

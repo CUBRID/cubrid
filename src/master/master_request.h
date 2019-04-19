@@ -25,8 +25,6 @@
 #ifndef _MASTER_REQUEST_H_
 #define _MASTER_REQUEST_H_
 
-#ident "$Id$"
-
 #include "connection_defs.h"
 #include "master_util.h"
 

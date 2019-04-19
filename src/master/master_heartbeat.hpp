@@ -18,18 +18,17 @@
  */
 
 /*
- * master_heartbeat.h - heartbeat module in cub_master
+ * master_heartbeat.hpp - heartbeat module in cub_master
  */
 
-#ifndef _MASTER_HEARTBEAT_H_
-#define _MASTER_HEARTBEAT_H_
+#ifndef _MASTER_HEARTBEAT_HPP_
+#define _MASTER_HEARTBEAT_HPP_
 
-#ident "$Id$"
-
-#include "system_parameter.h"
-#include "porting.h"
-#include "master_util.h"
 #include "heartbeat.h"
+#include "heartbeat_cluster.hpp"
+#include "master_util.h"
+#include "porting.h"
+#include "system_parameter.h"
 
 #if defined (LINUX)
 #include <netinet/in.h>
@@ -40,16 +39,6 @@
 #if defined(WINDOWS)
 typedef int pid_t;
 #endif
-
-/* ping result */
-enum HB_PING_RESULT
-{
-  HB_PING_UNKNOWN = -1,
-  HB_PING_SUCCESS = 0,
-  HB_PING_USELESS_HOST = 1,
-  HB_PING_SYS_ERR = 2,
-  HB_PING_FAILURE = 3
-};
 
 #define HB_PING_UNKNOWN_STR          "UNKNOWN"
 #define HB_PING_SUCCESS_STR          "SUCCESS"
@@ -105,19 +94,26 @@ enum HB_PROC_STATE
   HB_PSTATE_REGISTERED_AND_TO_BE_ACTIVE = 8,
   HB_PSTATE_MAX
 };
-#define HB_PSTATE_UNKNOWN_STR                   "unknown"
-#define HB_PSTATE_DEAD_STR                      "dead"
-#define HB_PSTATE_DEREGISTERED_STR              "deregistered"
-#define HB_PSTATE_STARTED_STR                   "started"
-#define HB_PSTATE_NOT_REGISTERED_STR            "not_registered"
-#define HB_PSTATE_REGISTERED_STR                "registered"
-#define HB_PSTATE_REGISTERED_AND_STANDBY_STR		"registered_and_standby"
-#define HB_PSTATE_REGISTERED_AND_TO_BE_STANDBY_STR	"registered_and_to_be_standby"
-#define HB_PSTATE_REGISTERED_AND_ACTIVE_STR			"registered_and_active"
-#define HB_PSTATE_REGISTERED_AND_TO_BE_ACTIVE_STR	"registered_and_to_be_active"
-#define HB_PSTATE_STR_SZ                        (32)
 
-#define HB_REPLICA_PRIORITY                     0x7FFF
+#define HB_NSTATE_UNKNOWN_STR       "unknown"
+#define HB_NSTATE_SLAVE_STR         "slave"
+#define HB_NSTATE_TO_BE_MASTER_STR  "to-be-master"
+#define HB_NSTATE_TO_BE_SLAVE_STR   "to-be-slave"
+#define HB_NSTATE_MASTER_STR        "master"
+#define HB_NSTATE_REPLICA_STR       "replica"
+#define HB_NSTATE_STR_SZ            (32)
+
+#define HB_PSTATE_UNKNOWN_STR                       "unknown"
+#define HB_PSTATE_DEAD_STR                          "dead"
+#define HB_PSTATE_DEREGISTERED_STR                  "deregistered"
+#define HB_PSTATE_STARTED_STR                       "started"
+#define HB_PSTATE_NOT_REGISTERED_STR                "not_registered"
+#define HB_PSTATE_REGISTERED_STR                    "registered"
+#define HB_PSTATE_REGISTERED_AND_STANDBY_STR        "registered_and_standby"
+#define HB_PSTATE_REGISTERED_AND_TO_BE_STANDBY_STR  "registered_and_to_be_standby"
+#define HB_PSTATE_REGISTERED_AND_ACTIVE_STR         "registered_and_active"
+#define HB_PSTATE_REGISTERED_AND_TO_BE_ACTIVE_STR   "registered_and_to_be_active"
+#define HB_PSTATE_STR_SZ                             (32)
 
 /* heartbeat node score bitmask */
 #define HB_NODE_SCORE_MASTER                    0x8000
@@ -130,8 +126,8 @@ enum HB_PROC_STATE
 #define HB_MAX_NUM_RESOURCE_PROC                (16)
 #define HB_MAX_PING_CHECK                       (3)
 #define HB_MAX_WAIT_FOR_NEW_MASTER              (60)
-#define HB_MAX_CHANGEMODE_DIFF_TO_TERM		(12)
-#define HB_MAX_CHANGEMODE_DIFF_TO_KILL		(24)
+#define HB_MAX_CHANGEMODE_DIFF_TO_TERM          (12)
+#define HB_MAX_CHANGEMODE_DIFF_TO_KILL          (24)
 
 /* various strings for er_set */
 #define HB_RESULT_SUCCESS_STR                   "Success"
@@ -183,8 +179,6 @@ enum HB_VALID_RESULT
 
 #define HB_PROC_RECOVERY_DELAY_TIME		(30* 1000)	/* milli-second */
 
-#define HB_UI_NODE_CLEANUP_TIME_IN_MSECS	(3600 * 1000)
-#define HB_UI_NODE_CACHE_TIME_IN_MSECS		(60 * 1000)
 #define HB_IPV4_STR_LEN				(16)
 
 /* heartbeat list */
@@ -193,78 +187,6 @@ struct hb_list
 {
   HB_LIST *next;
   HB_LIST **prev;
-};
-
-
-/* heartbeat node entries */
-typedef struct hb_node_entry HB_NODE_ENTRY;
-struct hb_node_entry
-{
-  HB_NODE_ENTRY *next;
-  HB_NODE_ENTRY **prev;
-
-  char host_name[MAXHOSTNAMELEN];
-  unsigned short priority;
-  HB_NODE_STATE_TYPE state;
-  short score;
-  short heartbeat_gap;
-
-  struct timeval last_recv_hbtime;	/* last received heartbeat time */
-};
-
-/* heartbeat ping host entries */
-typedef struct hb_ping_host_entry HB_PING_HOST_ENTRY;
-struct hb_ping_host_entry
-{
-  HB_PING_HOST_ENTRY *next;
-  HB_PING_HOST_ENTRY **prev;
-
-  char host_name[MAXHOSTNAMELEN];
-  int ping_result;
-};
-
-/* heartbeat unidentifed host entries */
-typedef struct hb_ui_node_entry HB_UI_NODE_ENTRY;
-struct hb_ui_node_entry
-{
-  HB_UI_NODE_ENTRY *next;
-  HB_UI_NODE_ENTRY **prev;
-
-  char host_name[MAXHOSTNAMELEN];
-  char group_id[HB_MAX_GROUP_ID_LEN];
-  struct sockaddr_in saddr;
-  struct timeval last_recv_time;
-  int v_result;
-};
-
-/* herartbeat cluster */
-typedef struct hb_cluster HB_CLUSTER;
-struct hb_cluster
-{
-  pthread_mutex_t lock;
-
-  SOCKET sfd;
-
-  HB_NODE_STATE_TYPE state;
-  char group_id[HB_MAX_GROUP_ID_LEN];
-  char host_name[MAXHOSTNAMELEN];
-
-  int num_nodes;
-  HB_NODE_ENTRY *nodes;
-
-  HB_NODE_ENTRY *myself;
-  HB_NODE_ENTRY *master;
-
-  bool shutdown;
-  bool hide_to_demote;
-  bool is_isolated;
-  bool is_ping_check_enabled;
-
-  HB_PING_HOST_ENTRY *ping_hosts;
-  int num_ping_hosts;
-
-  HB_UI_NODE_ENTRY *ui_nodes;
-  int num_ui_nodes;
 };
 
 /* heartbeat processs entries */
@@ -308,7 +230,7 @@ struct hb_resource
 {
   pthread_mutex_t lock;
 
-  HB_NODE_STATE_TYPE state;	/* mode/state */
+  cubhb::node_entry::node_state state;	/* mode/state */
 
   int num_procs;
   HB_PROC_ENTRY *procs;
@@ -379,54 +301,55 @@ struct hb_job
   bool shutdown;
 };
 
-extern HB_CLUSTER *hb_Cluster;
+extern cubhb::cluster *hb_Cluster;
 extern HB_RESOURCE *hb_Resource;
 extern HB_JOB *cluster_Jobs;
 extern HB_JOB *resource_Jobs;
 
 extern bool hb_Deactivate_immediately;
 
-extern int hb_master_init (void);
-extern void hb_resource_shutdown_and_cleanup (void);
-extern void hb_cluster_shutdown_and_cleanup (void);
+int hb_master_init (void);
+void hb_resource_shutdown_and_cleanup (void);
+void hb_cluster_shutdown_and_cleanup (void);
 
-extern void hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd);
+void hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY *conn, SOCKET sfd);
 
-extern void hb_get_node_info_string (char **str, bool verbose_yn);
-extern void hb_get_process_info_string (char **str, bool verbose_yn);
-extern void hb_get_ping_host_info_string (char **str);
-extern void hb_get_admin_info_string (char **str);
+void hb_get_node_info_string (char **str, bool verbose_yn);
+void hb_get_process_info_string (char **str, bool verbose_yn);
+void hb_get_ping_host_info_string (char **str);
+void hb_get_admin_info_string (char **str);
 #if defined (ENABLE_OLD_REPLICATION)
-extern void hb_kill_all_heartbeat_process (char **str);
+void hb_kill_all_heartbeat_process (char **str);
 #endif
 
-extern void hb_deregister_by_pid (pid_t pid);
-extern void hb_deregister_by_args (char *args);
+void hb_deregister_by_pid (pid_t pid);
+void hb_deregister_by_args (char *args);
 
-extern void hb_reconfig_heartbeat (char **str);
-extern int hb_prepare_deactivate_heartbeat (void);
-extern int hb_deactivate_heartbeat (void);
-extern int hb_activate_heartbeat (void);
+void hb_reconfig_heartbeat (char **str);
+int hb_prepare_deactivate_heartbeat (void);
+int hb_deactivate_heartbeat (void);
+int hb_activate_heartbeat (void);
 
-extern bool hb_is_registered_process (CSS_CONN_ENTRY * conn, char *args);
-extern void hb_register_new_process (CSS_CONN_ENTRY * conn);
-extern void hb_resource_receive_changemode (CSS_CONN_ENTRY * conn);
-extern void hb_resource_receive_get_eof (CSS_CONN_ENTRY * conn);
+bool hb_is_registered_process (CSS_CONN_ENTRY *conn, char *args);
+void hb_register_new_process (CSS_CONN_ENTRY *conn);
+void hb_resource_receive_changemode (CSS_CONN_ENTRY *conn);
+void hb_resource_receive_get_eof (CSS_CONN_ENTRY *conn);
 
-extern int hb_check_request_eligibility (SOCKET sd);
-extern void hb_start_deactivate_server_info (void);
-extern int hb_get_deactivating_server_count (void);
-extern bool hb_is_deactivation_started (void);
-extern bool hb_is_deactivation_ready (void);
-extern void hb_finish_deactivate_server_info (void);
+int hb_check_request_eligibility (SOCKET sd);
+void hb_start_deactivate_server_info (void);
+int hb_get_deactivating_server_count (void);
+bool hb_is_deactivation_started (void);
+bool hb_is_deactivation_ready (void);
+void hb_finish_deactivate_server_info (void);
 
-extern int hb_start_util_process (char *args);
+int hb_start_util_process (char *args);
 
-extern void hb_enable_er_log (void);
-extern void hb_disable_er_log (int reason, const char *msg_fmt, ...);
+void hb_enable_er_log (void);
+void hb_disable_er_log (int reason, const char *msg_fmt, ...);
 
-extern int hb_return_proc_state_by_fd (int sfd);
-extern bool hb_is_hang_process (int sfd);
-extern char *hb_find_host_name_of_master_server ();
+int hb_return_proc_state_by_fd (int sfd);
+bool hb_is_hang_process (int sfd);
+const char *hb_find_host_name_of_master_server ();
 
-#endif /* _MASTER_HEARTBEAT_H_ */
+cubhb::ping_host::ping_result hb_check_ping (const char *host);
+#endif /* _MASTER_HEARTBEAT_HPP_ */

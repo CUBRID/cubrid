@@ -32,7 +32,7 @@
 #include "connection_defs.h"
 #include "connection_sr.h"
 #include "thread_compat.hpp"
-#include "master_heartbeat.h"
+#include "master_heartbeat.hpp"
 
 // forward definitions
 namespace cubthread

@@ -748,32 +748,3 @@ hb_process_term (void)
     }
   hb_Proc_shutdown = true;
 }
-
-/*
- * hb_node_state_string -
- *   return: node state sring
-*
- *   nstate(in):
- */
-const char *
-hb_node_state_string (HB_NODE_STATE_TYPE nstate)
-{
-  switch (nstate)
-    {
-    case HB_NSTATE_UNKNOWN:
-      return HB_NSTATE_UNKNOWN_STR;
-    case HB_NSTATE_SLAVE:
-      return HB_NSTATE_SLAVE_STR;
-    case HB_NSTATE_TO_BE_MASTER:
-      return HB_NSTATE_TO_BE_MASTER_STR;
-    case HB_NSTATE_TO_BE_SLAVE:
-      return HB_NSTATE_TO_BE_SLAVE_STR;
-    case HB_NSTATE_MASTER:
-      return HB_NSTATE_MASTER_STR;
-    case HB_NSTATE_REPLICA:
-      return HB_NSTATE_REPLICA_STR;
-
-    default:
-      return "invalid";
-    }
-}
