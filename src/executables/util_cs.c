@@ -3589,7 +3589,6 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
     }
 
   rc = db_restart_ex (program_name, args->db_name, args->user_name, args->passwd, NULL, DB_CLIENT_TYPE_DDL_PROXY);
-
   if (rc != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -3599,12 +3598,14 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
   if (args->sys_param != NULL)
     {
       er_stack_push ();
+
       int error = db_set_system_parameters_for_ha_repl (args->sys_param);
       if (error != NO_ERROR)
 	{
 	  snprintf (sql_log_err, sizeof (sql_log_err), "failed to change sys prm: %s", args->sys_param);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, sql_log_err);
 	}
+
       er_stack_pop ();
     }
 
@@ -3626,23 +3627,27 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
       int total_stmts, stmt_id, i, num_of_rows;
       DB_QUERY_RESULT *result = NULL;
 
+      /* For now, disable authorization. */
+      save = au_disable ();
+
       session = db_open_buffer (command);
       if (session == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (rc);
+	  au_enable (save);
 	  goto error;
 	}
 
       if (db_get_errors (session) || er_errid () != NO_ERROR)
 	{
 	  ASSERT_ERROR_AND_SET (rc);
+	  au_enable (save);
 	  goto error;
 	}
 
       total_stmts = db_statement_count (session);
       for (i = 0; i < total_stmts; i++)
 	{
-	  save = au_disable ();
 	  stmt_id = db_compile_statement (session);
 	  if (stmt_id < 0)
 	    {
@@ -3659,7 +3664,6 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
 	      break;
 	    }
 
-	  /* For now, disable authorization. */
 
 	  num_of_rows = db_execute_statement (session, stmt_id, &result);
 	  if (num_of_rows < 0)
@@ -3681,8 +3685,10 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
 	    }
 
 	  db_drop_statement (session, stmt_id);
-	  au_enable (save);
 	}
+
+      /* enable authorization back */
+      au_enable (save);
     }
 
 error:
