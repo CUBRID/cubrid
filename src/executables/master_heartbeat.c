@@ -6629,30 +6629,26 @@ hb_help_sprint_jobs_info (HB_JOB * jobs, char *buffer, int max_length)
 static bool
 are_hostnames_equal (const char *hostname_a, const char *hostname_b)
 {
-  size_t hostname_a_len = strlen (hostname_a);
-  size_t hostname_b_len = strlen (hostname_b);
-  size_t hostname_max_len = std::max (hostname_a_len, hostname_b_len);
+  const char *a;
+  const char *b;
 
-  for (size_t pos = 0; pos < hostname_max_len; ++pos)
+  for (a = hostname_a, b = hostname_b; *a && *b && (*a == *b); a++, b++)
+    ;
+
+  if (*a == '\0' && *b != '\0')
     {
-      if (hostname_a_len == pos && hostname_b_len > pos)
-	{
-	  // if hostname_a reached the end, hostname_b[pos] must be '.'
-	  return hostname_b[pos] == '.';
-	}
-      if (hostname_b_len == pos && hostname_a_len > pos)
-	{
-	  // if hostname_b reached the end, hostname_a[pos] must be '.'
-	  return hostname_a[pos] == '.';
-	}
-
-      if (hostname_a[pos] != hostname_b[pos])
-	{
-	  return false;
-	}
+      // if a reached the end and b does not, b must be '.'
+      return *b == '.';
     }
-
-  return true;
+  else if (*a != '\0' && *b == '\0')
+    {
+      // if b reached the end and a does not, a must be '.'
+      return *a == '.';
+    }
+  else
+    {
+      return *a == *b;
+    }
 }
 
 int
