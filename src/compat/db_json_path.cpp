@@ -581,7 +581,7 @@ db_json_path_unquote_object_keys (std::string &sql_path)
 {
   // todo: rewrite as json_path.dump () + unquoting the object_keys
   std::vector<std::string> tokens;
-  int error_code = db_json_split_path_by_delimiters (sql_path, ".[", false, tokens);
+  int error_code = db_json_split_path_by_delimiters (sql_path, ".[", true, tokens);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -593,20 +593,19 @@ db_json_path_unquote_object_keys (std::string &sql_path)
   assert (!tokens.empty () && tokens[0] == "$");
   for (std::size_t i = 1; i < tokens.size(); ++i)
     {
-      if (tokens[i][0] == '"')
+      if (tokens[i][0] != '[')
 	{
-	  res += ".";
-	  std::string unquoted = tokens[i].substr (1, tokens[i].length () - 2);
+	  res += ".\"";
 	  std::size_t start = 0;
-
-	  if (db_json_path_is_token_valid_unquoted_object_key (unquoted, start) && start >= unquoted.length ())
+	  if (db_json_path_is_token_valid_unquoted_object_key (tokens[i], start) /*&& start >= unquoted.length ()*/)
 	    {
-	      res.append (unquoted);
+	      res.append (tokens[i]);
 	    }
 	  else
 	    {
 	      res += tokens[i];
 	    }
+	  res += '"';
 	}
       else
 	{
