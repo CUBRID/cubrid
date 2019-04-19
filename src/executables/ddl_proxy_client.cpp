@@ -36,36 +36,17 @@
 #include "authenticate.h"
 
 static void
-utility_print (int message_num, ...)
+ddl_proxy_print_msg (int message_num, ...)
 {
-  typedef const char * (*GET_MESSAGE) (int message_index);
-
-  DSO_HANDLE util_cs_library;
-  DSO_HANDLE symbol;
-  GET_MESSAGE get_message_fn;
-
-  utility_load_library (&util_cs_library, LIB_UTIL_CS_NAME);
-  if (util_cs_library == NULL)
+  const char *message = utility_get_generic_message (message_num);
+  if (message != NULL)
     {
-      utility_load_print_error (stderr);
-      return;
+      va_list ap;
+
+      va_start (ap, message_num);
+      vfprintf (stderr, message, ap);
+      va_end (ap);
     }
-  utility_load_symbol (util_cs_library, &symbol, UTILITY_GENERIC_MSG_FUNC_NAME);
-  if (symbol == NULL)
-    {
-      utility_load_print_error (stderr);
-      return;
-    }
-
-  get_message_fn = (GET_MESSAGE) symbol;
-
-  {
-    va_list ap;
-
-    va_start (ap, message_num);
-    vfprintf (stderr, get_message_fn (message_num), ap);
-    va_end (ap);
-  }
 }
 
 int
@@ -162,7 +143,7 @@ main (int argc, char *argv[])
 	  break;
 
 	case VERSION_S:
-	  utility_print (MSGCAT_UTIL_GENERIC_VERSION, UTIL_DDL_PROXY_CLIENT, PRODUCT_STRING);
+	  ddl_proxy_print_msg (MSGCAT_UTIL_GENERIC_VERSION, UTIL_DDL_PROXY_CLIENT, PRODUCT_STRING);
 	  goto exit_on_end;
 
 	default:
@@ -178,14 +159,14 @@ main (int argc, char *argv[])
     }
   else if (argc > optind)
     {
-      utility_print (MSGCAT_UTIL_GENERIC_ARGS_OVER, argv[optind + 1]);
+      ddl_proxy_print_msg (MSGCAT_UTIL_GENERIC_ARGS_OVER, argv[optind + 1]);
       assert (false);
       // TODO
       // goto print_usage;
     }
   else
     {
-      utility_print (MSGCAT_UTIL_GENERIC_MISS_DBNAME);
+      ddl_proxy_print_msg (MSGCAT_UTIL_GENERIC_MISS_DBNAME);
       assert (false);
       // TODO
       // goto print_usage;
