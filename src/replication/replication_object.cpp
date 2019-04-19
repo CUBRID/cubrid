@@ -39,7 +39,8 @@ namespace cubreplication
   static LC_COPYAREA_OPERATION
   op_type_from_repl_type_and_prunning (repl_entry_type repl_type)
   {
-    assert (repl_type == REPL_UPDATE || repl_type == LC_FLUSH_INSERT || LC_FLUSH_DELETE);
+    assert (repl_type == REPL_UPDATE || repl_type == REPL_INSERT || repl_type == REPL_DELETE);
+
     switch (repl_type)
       {
       case REPL_UPDATE:
