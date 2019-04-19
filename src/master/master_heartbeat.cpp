@@ -198,8 +198,6 @@ static int hb_help_sprint_nodes_info (char *buffer, int max_length);
 static int hb_help_sprint_jobs_info (HB_JOB *jobs, char *buffer, int max_length);
 static int hb_help_sprint_ping_host_info (char *buffer, int max_length);
 
-static bool are_hostnames_equal (const char *hostname_a, const char *hostname_b);
-
 cubhb::cluster *hb_Cluster = NULL;
 HB_RESOURCE *hb_Resource = NULL;
 HB_JOB *cluster_Jobs = NULL;
@@ -1397,7 +1395,7 @@ hb_cluster_request_heartbeat_to_all (void)
 
   for (cubhb::node_entry *node : hb_Cluster->nodes)
     {
-      if (strcmp (hb_Cluster->host_name, node->host_name) == 0)
+      if (hb_Cluster->hostname == node->get_hostname ())
 	{
 	  continue;
 	}
@@ -1829,8 +1827,6 @@ hb_cluster_job_shutdown (void)
 }
 
 /*
-      if (strcmp (host_name, "localhost") == 0)
-      if (strcmp (name, node->host_name))
  * hb_return_node_by_name_except_me() -
  *   return: pointer to heartbeat node entry
  *
@@ -1910,9 +1906,6 @@ hb_valid_result_string (int v_result)
 }
 
 /*
-      if (strcmp (node->host_name, host_name) != 0)
-	      if (strcmp (node->host_name, hb_Cluster->host_name) == 0)
-	      if (strcmp (node->host_name, hb_Cluster->host_name) == 0)
  * resource process job actions
  */
 
@@ -4346,9 +4339,6 @@ hb_cluster_cleanup (void)
 {
   pthread_mutex_lock (&hb_Cluster->lock);
 
-  if (strcmp (hb_Cluster->host_name, node->host_name) == 0)
-    {
-    }
   hb_Cluster->state = cubhb::node_entry::UNKNOWN;
   hb_cluster_request_heartbeat_to_all ();
 
@@ -4463,9 +4453,7 @@ hb_ping_result_string (cubhb::ping_host::ping_result result)
     default:
       return "invalid";
     }
-  if (strcmp (new_node->host_name, old_node->host_name))
-    if (old_master && strcmp (new_node->host_name, old_master->host_name) == 0)
-    }
+}
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 static void
@@ -5628,53 +5616,6 @@ hb_help_sprint_jobs_info (HB_JOB *jobs, char *buffer, int max_length)
   p += snprintf (p, MAX ((last - p), 0), "\n");
 
   return p - buffer;
-}
-
-/**
- * Compare two host names if are equal, if one of the host names is canonical name and the other is not, then
- * only host part (e.g. for canonical name "host-1.cubrid.org" host part is "host-1") is used for comparison
- *
- * for example following hosts are equal:
- *  "host-1"            "host-1"
- *  "host-1"            "host-1.cubrid.org"
- *  "host-1.cubrid.org" "host-1"
- *  "host-1.cubrid.org" "host-1.cubrid.org"
- *
- * for example following hosts are not equal:
- *  "host-1"            "host-2"
- *  "host-1.cubrid.org" "host-2"
- *  "host-1"            "host-2.cubrid.org"
- *  "host-1.cubrid.org" "host-2.cubrid.org"
- *  "host-1.cubrid.org" "host-1.cubrid.com"
- *
- * @param hostname_a first hostname
- * @param hostname_b second hostname
- *
- * @return true if hostname_a is same as hostname_b
- */
-static bool
-are_hostnames_equal (const char *hostname_a, const char *hostname_b)
-{
-  const char *a;
-  const char *b;
-
-  for (a = hostname_a, b = hostname_b; *a && *b && (*a == *b); a++, b++)
-    ;
-
-  if (*a == '\0' && *b != '\0')
-    {
-      // if a reached the end and b does not, b must be '.'
-      return *b == '.';
-    }
-  else if (*a != '\0' && *b == '\0')
-    {
-      // if b reached the end and a does not, a must be '.'
-      return *a == '.';
-    }
-  else
-    {
-      return *a == *b;
-    }
 }
 
 int
