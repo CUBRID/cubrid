@@ -171,8 +171,8 @@ namespace cubreplication
     er_log_repl_obj (entry, "log_generator::add_attribute_change");
   }
 
-
-  void log_generator::remove_attribute_change (const OID &class_oid, const OID &inst_oid)
+  void
+  log_generator::remove_attribute_change (const OID &class_oid, const OID &inst_oid)
   {
     if (is_row_replication_disabled ())
       {
@@ -298,7 +298,8 @@ namespace cubreplication
     m_pending_to_be_added.clear ();
   }
 
-  stream_entry *log_generator::get_stream_entry (void)
+  stream_entry *
+  log_generator::get_stream_entry (void)
   {
     return &m_stream_entry;
   }
@@ -480,7 +481,8 @@ namespace cubreplication
     on_transaction_finish (stream_entry_header::TRAN_STATE::ABORTED);
   }
 
-  void log_generator::on_sysop_abort (LOG_LSA &start_lsa)
+  void
+  log_generator::on_sysop_abort (LOG_LSA &start_lsa)
   {
     cubthread::entry *thread_p = &cubthread::get_entry ();
     cubreplication::stream_entry *stream_entry = logtb_get_tdes (thread_p)->replication_log_generator.get_stream_entry ();
@@ -528,7 +530,8 @@ namespace cubreplication
   }
 
 #if !defined (NDEBUG) && defined (SERVER_MODE)
-  int log_generator::abort_sysop_and_simulate_apply_repl_rbr_on_master (LOG_LSA &filter_replication_lsa)
+  int
+  log_generator::abort_sysop_and_simulate_apply_repl_rbr_on_master (LOG_LSA &filter_replication_lsa)
   {
     /* This function is used for debug purpose only. */
     int err_code = NO_ERROR;
@@ -584,7 +587,8 @@ namespace cubreplication
 #endif
 
 #if !defined (NDEBUG) && defined (SERVER_MODE)
-  int log_generator::abort_partial_and_simulate_apply_sbr_repl_on_master (const char *savepoint_name)
+  int
+  log_generator::abort_partial_and_simulate_apply_sbr_repl_on_master (const char *savepoint_name)
   {
     /* This function is used for debug purpose only. */
     int err_code = NO_ERROR;

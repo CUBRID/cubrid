@@ -343,14 +343,15 @@ namespace cubreplication
   changed_attrs_row_repl_entry::apply (void)
   {
     int err = NO_ERROR;
-#if defined (SERVER_MODE)
 
+#if defined (SERVER_MODE)
     LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type);
     cubthread::entry &my_thread = cubthread::get_entry ();
 
     err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
 				  m_changed_attributes, m_new_values, NULL);
 #endif
+
     return err;
   }
 
@@ -506,6 +507,7 @@ namespace cubreplication
   rec_des_row_repl_entry::apply (void)
   {
     int err = NO_ERROR;
+
 #if defined (SERVER_MODE)
     assert (m_type != REPL_DELETE);
 
@@ -518,6 +520,7 @@ namespace cubreplication
     err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
 				  dummy_int_vector, dummy_val_vector, &m_rec_des);
 #endif
+
     return err;
   }
 
