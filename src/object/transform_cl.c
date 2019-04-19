@@ -4094,6 +4094,11 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
 	  if (serial_class_mop == NULL)
 	    {
 	      serial_class_mop = sm_find_class (CT_SERIAL_NAME);
+	      if (serial_class_mop == NULL)
+		{
+		  ASSERT_ERROR ();
+		  goto on_error;
+		}
 	    }
 
 	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name, sm_ch_name ((MOBJ) class_), att->header.name);

@@ -198,6 +198,8 @@ static int hb_help_sprint_nodes_info (char *buffer, int max_length);
 static int hb_help_sprint_jobs_info (HB_JOB *jobs, char *buffer, int max_length);
 static int hb_help_sprint_ping_host_info (char *buffer, int max_length);
 
+static bool are_hostnames_equal (const char *hostname_a, const char *hostname_b);
+
 cubhb::cluster *hb_Cluster = NULL;
 HB_RESOURCE *hb_Resource = NULL;
 HB_JOB *cluster_Jobs = NULL;
@@ -1395,12 +1397,12 @@ hb_cluster_request_heartbeat_to_all (void)
 
   for (cubhb::node_entry *node : hb_Cluster->nodes)
     {
-      if (hb_Cluster->hostname == node->get_hostname ())
+      if (strcmp (hb_Cluster->host_name, node->host_name) == 0)
 	{
 	  continue;
 	}
 
-      hb_cluster_send_heartbeat_req (node->get_hostname_cstr ());
+      hb_cluster_send_heartbeat_req (node->get_hostname ().as_c_str ());
       node->heartbeat_gap++;
     }
 }
@@ -1494,10 +1496,10 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
     }
 
   /* validate receive message */
-  if (strcmp (hb_Cluster->hostname.c_str (), hbp_header->dest_host_name) != 0)
+  if (hb_Cluster->hostname != hbp_header->dest_host_name)
     {
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hostname mismatch. (host_name:{%s}, dest_host_name:{%s}).\n",
-			   hb_Cluster->hostname.c_str (), hbp_header->dest_host_name);
+			   hb_Cluster->hostname.as_c_str (), hbp_header->dest_host_name);
       pthread_mutex_unlock (&hb_Cluster->lock);
       return;
     }
@@ -1568,7 +1570,7 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
       /*
        * if heartbeat group id is mismatch, ignore heartbeat
        */
-      if (strcmp (hbp_header->group_id, hb_Cluster->group_id.c_str ()) != 0)
+      if (hb_Cluster->group_id != hbp_header->group_id)
 	{
 	  pthread_mutex_unlock (&hb_Cluster->lock);
 	  return;
@@ -1644,7 +1646,7 @@ hb_set_net_header (HBP_HEADER *header, unsigned char type, bool is_req, unsigned
   strncpy (header->dest_host_name, dest_host_name, sizeof (header->dest_host_name) - 1);
   header->dest_host_name[sizeof (header->dest_host_name) - 1] = '\0';
 
-  strncpy (header->orig_host_name, hb_Cluster->hostname.c_str (), sizeof (header->orig_host_name) - 1);
+  strncpy (header->orig_host_name, hb_Cluster->hostname.as_c_str (), sizeof (header->orig_host_name) - 1);
   header->orig_host_name[sizeof (header->orig_host_name) - 1] = '\0';
 }
 
@@ -1827,6 +1829,8 @@ hb_cluster_job_shutdown (void)
 }
 
 /*
+      if (strcmp (host_name, "localhost") == 0)
+      if (strcmp (name, node->host_name))
  * hb_return_node_by_name_except_me() -
  *   return: pointer to heartbeat node entry
  *
@@ -1837,7 +1841,7 @@ hb_return_node_by_name_except_me (char *name)
 {
   for (cubhb::node_entry *node : hb_Cluster->nodes)
     {
-      if (strcmp (name, node->get_hostname_cstr ()) != 0 || strcmp (name, hb_Cluster->hostname.c_str ()) == 0)
+      if (node->get_hostname () != name || hb_Cluster->hostname == name)
 	{
 	  continue;
 	}
@@ -1860,7 +1864,7 @@ hb_is_heartbeat_valid (char *host_name, char *group_id, struct sockaddr_in *from
       return HB_VALID_UNIDENTIFIED_NODE;
     }
 
-  if (strcmp (group_id, hb_Cluster->group_id.c_str ()) != 0)
+  if (hb_Cluster->group_id != group_id)
     {
       return HB_VALID_GROUP_NAME_MISMATCH;
     }
@@ -1906,6 +1910,9 @@ hb_valid_result_string (int v_result)
 }
 
 /*
+      if (strcmp (node->host_name, host_name) != 0)
+	      if (strcmp (node->host_name, hb_Cluster->host_name) == 0)
+	      if (strcmp (node->host_name, hb_Cluster->host_name) == 0)
  * resource process job actions
  */
 
@@ -4339,6 +4346,9 @@ hb_cluster_cleanup (void)
 {
   pthread_mutex_lock (&hb_Cluster->lock);
 
+  if (strcmp (hb_Cluster->host_name, node->host_name) == 0)
+    {
+    }
   hb_Cluster->state = cubhb::node_entry::UNKNOWN;
   hb_cluster_request_heartbeat_to_all ();
 
@@ -4453,7 +4463,9 @@ hb_ping_result_string (cubhb::ping_host::ping_result result)
     default:
       return "invalid";
     }
-}
+  if (strcmp (new_node->host_name, old_node->host_name))
+    if (old_master && strcmp (new_node->host_name, old_master->host_name) == 0)
+    }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 static void
@@ -4630,7 +4642,7 @@ hb_get_ping_host_info_string (char **str)
 
   for (cubhb::ping_host &host : hb_Cluster->ping_hosts)
     {
-      p += snprintf (p, MAX ((last - p), 0), HA_PING_HOSTS_FORMAT_STRING, host.get_hostname_cstr (),
+      p += snprintf (p, MAX ((last - p), 0), HA_PING_HOSTS_FORMAT_STRING, host.get_hostname ().as_c_str (),
 		     hb_ping_result_string (host.result));
     }
 
@@ -4707,12 +4719,12 @@ hb_get_node_info_string (char **str, bool verbose_yn)
   p = (char *) (*str);
   last = p + buf_size;
 
-  p += snprintf (p, MAX ((last - p), 0), HA_NODE_INFO_FORMAT_STRING, hb_Cluster->hostname.c_str (),
+  p += snprintf (p, MAX ((last - p), 0), HA_NODE_INFO_FORMAT_STRING, hb_Cluster->hostname.as_c_str (),
 		 hb_node_state_string (hb_Cluster->state));
 
   for (cubhb::node_entry *node : hb_Cluster->nodes)
     {
-      p += snprintf (p, MAX ((last - p), 0), HA_NODE_FORMAT_STRING, node->get_hostname_cstr (), node->priority,
+      p += snprintf (p, MAX ((last - p), 0), HA_NODE_FORMAT_STRING, node->get_hostname ().as_c_str (), node->priority,
 		     hb_node_state_string (node->state));
       if (verbose_yn)
 	{
@@ -4734,7 +4746,7 @@ hb_get_node_info_string (char **str, bool verbose_yn)
       ipv4_p = (char *) &ui_node->saddr.sin_addr.s_addr;
       snprintf (ipv4_str, sizeof (ipv4_str), "%u.%u.%u.%u", (unsigned char) ipv4_p[0], (unsigned char) ipv4_p[1],
 		(unsigned char) ipv4_p[2], (unsigned char) ipv4_p[3]);
-      p += snprintf (p, MAX ((last - p), 0), HA_UI_NODE_FORMAT_STRING, ui_node->get_hostname_cstr (), ipv4_str,
+      p += snprintf (p, MAX ((last - p), 0), HA_UI_NODE_FORMAT_STRING, ui_node->get_hostname ().as_c_str (), ipv4_str,
 		     ui_node->group_id.c_str (), hb_valid_result_string (ui_node->v_result));
     }
 
@@ -5424,7 +5436,7 @@ hb_check_ping (const char *host)
   /* If host_p is in the cluster node, then skip to check */
   for (cubhb::node_entry *node : hb_Cluster->nodes)
     {
-      if (strcmp (host, node->get_hostname_cstr ()) == 0)
+      if (node->get_hostname () == host)
 	{
 	  /* PING Host is same as cluster's host name */
 	  snprintf (buf, sizeof (buf), "Useless PING host name %s", host);
@@ -5492,7 +5504,7 @@ hb_help_sprint_ping_host_info (char *buffer, int max_length)
 		 "--------------------------------------------------------------------------------\n");
   for (cubhb::ping_host &host : hb_Cluster->ping_hosts)
     {
-      p += snprintf (p, MAX ((last - p), 0), "%-20s %-20s\n", host.get_hostname_cstr (),
+      p += snprintf (p, MAX ((last - p), 0), "%-20s %-20s\n", host.get_hostname ().as_c_str (),
 		     hb_ping_result_string (host.result));
     }
   p += snprintf (p, MAX ((last - p), 0),
@@ -5518,7 +5530,7 @@ hb_help_sprint_nodes_info (char *buffer, int max_length)
   p += snprintf (p, MAX ((last - p), 0),
 		 "================================================================================\n");
   p += snprintf (p, MAX ((last - p), 0), " * group_id : %s   host_name : %s   state : %s \n",
-		 hb_Cluster->group_id.c_str (), hb_Cluster->hostname.c_str (),
+		 hb_Cluster->group_id.c_str (), hb_Cluster->hostname.as_c_str (),
 		 hb_node_state_string (hb_Cluster->state));
   p += snprintf (p, MAX ((last - p), 0),
 		 "--------------------------------------------------------------------------------\n");
@@ -5529,7 +5541,7 @@ hb_help_sprint_nodes_info (char *buffer, int max_length)
 
   for (cubhb::node_entry *node : hb_Cluster->nodes)
     {
-      p += snprintf (p, MAX ((last - p), 0), "%-20s %-10u %-15s %-10d %-20d\n", node->get_hostname_cstr (),
+      p += snprintf (p, MAX ((last - p), 0), "%-20s %-10u %-15s %-10d %-20d\n", node->get_hostname ().as_c_str (),
 		     node->priority, hb_node_state_string (node->state), node->score, node->heartbeat_gap);
     }
 
@@ -5618,6 +5630,53 @@ hb_help_sprint_jobs_info (HB_JOB *jobs, char *buffer, int max_length)
   return p - buffer;
 }
 
+/**
+ * Compare two host names if are equal, if one of the host names is canonical name and the other is not, then
+ * only host part (e.g. for canonical name "host-1.cubrid.org" host part is "host-1") is used for comparison
+ *
+ * for example following hosts are equal:
+ *  "host-1"            "host-1"
+ *  "host-1"            "host-1.cubrid.org"
+ *  "host-1.cubrid.org" "host-1"
+ *  "host-1.cubrid.org" "host-1.cubrid.org"
+ *
+ * for example following hosts are not equal:
+ *  "host-1"            "host-2"
+ *  "host-1.cubrid.org" "host-2"
+ *  "host-1"            "host-2.cubrid.org"
+ *  "host-1.cubrid.org" "host-2.cubrid.org"
+ *  "host-1.cubrid.org" "host-1.cubrid.com"
+ *
+ * @param hostname_a first hostname
+ * @param hostname_b second hostname
+ *
+ * @return true if hostname_a is same as hostname_b
+ */
+static bool
+are_hostnames_equal (const char *hostname_a, const char *hostname_b)
+{
+  const char *a;
+  const char *b;
+
+  for (a = hostname_a, b = hostname_b; *a && *b && (*a == *b); a++, b++)
+    ;
+
+  if (*a == '\0' && *b != '\0')
+    {
+      // if a reached the end and b does not, b must be '.'
+      return *b == '.';
+    }
+  else if (*a != '\0' && *b == '\0')
+    {
+      // if b reached the end and a does not, a must be '.'
+      return *a == '.';
+    }
+  else
+    {
+      return *a == *b;
+    }
+}
+
 int
 hb_check_request_eligibility (SOCKET sd)
 {
@@ -5644,10 +5703,10 @@ hb_check_request_eligibility (SOCKET sd)
   result = HB_HC_UNAUTHORIZED;
   for (cubhb::node_entry *node : hb_Cluster->nodes)
     {
-      error = hb_hostname_to_sin_addr (node->get_hostname_cstr (), &node_addr);
+      error = hb_hostname_to_sin_addr (node->get_hostname ().as_c_str (), &node_addr);
       if (error != NO_ERROR)
 	{
-	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "Failed to resolve IP address of %s", node->get_hostname_cstr ());
+	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "Failed to resolve IP address of %s", node->get_hostname ().as_c_str ());
 	  result = HB_HC_FAILED;
 	  continue;
 	}
@@ -5843,9 +5902,11 @@ hb_find_host_name_of_master_server ()
     {
       if (node->state == cubhb::node_entry::MASTER && hb_Cluster->master == node)
 	{
-	  assert (node->get_hostname () == hb_Cluster->master->get_hostname ());
+	  bool is_node_master = node->get_hostname () == hb_Cluster->master->get_hostname ();
+	  assert (is_node_master);
+
 	  pthread_mutex_unlock (&hb_Cluster->lock);
-	  return node->get_hostname_cstr ();
+	  return node->get_hostname ().as_c_str ();
 	}
     }
   pthread_mutex_unlock (&hb_Cluster->lock);

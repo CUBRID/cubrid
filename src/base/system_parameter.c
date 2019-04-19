@@ -65,7 +65,6 @@
 #include "page_buffer.h"
 #include "session.h"
 #include "vacuum.h"
-#include "log_impl.h"
 #include "log_manager.h"
 #include "xserver_interface.h"
 #include "double_write_buffer.h"
@@ -639,6 +638,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_DWB_LOGGING "double_write_buffer_logging"
 
 #define PRM_NAME_JSON_LOG_ALLOCATIONS "json_log_allocations"
+#define PRM_NAME_JSON_MAX_ARRAY_IDX "json_max_array_idx"
 
 #define PRM_NAME_CONNECTION_LOGGING "connection_logging"
 
@@ -665,6 +665,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_TRACK_REQUESTS "track_client_requests"
 #define PRM_NAME_LOG_PGBUF_VICTIM_FLUSH "log_pgbuf_victim_flush"
 #define PRM_NAME_LOG_CHKPT_DETAILED "detailed_checkpoint_logging"
+#define PRM_NAME_IB_TASK_MEMSIZE "index_load_task_memsize"
+#define PRM_NAME_STATS_ON "stats_on"
 
 #define PRM_NAME_REPL_LOG_GENERATOR_LOGGING "replication_log_generator_logging"
 #define PRM_NAME_REPL_LOG_LOCAL_DEBUG "replication_log_local_debug"
@@ -2127,6 +2129,12 @@ bool PRM_JSON_LOG_ALLOCATIONS = false;
 static bool prm_json_log_allocations_default = false;
 static unsigned int prm_json_log_allocations_flag = 0;
 
+int PRM_JSON_MAX_ARRAY_IDX = 64 * ONE_K;
+static int prm_json_max_array_idx_default = 64 * ONE_K;
+static unsigned int prm_json_max_array_idx_flag = 0;
+static int prm_json_max_array_idx_upper = ONE_M;
+static int prm_json_max_array_idx_lower = ONE_K;
+
 bool PRM_CONNECTION_LOGGING = false;
 static bool prm_connection_logging_default = false;
 static unsigned int prm_connection_logging_flag = 0;
@@ -2228,6 +2236,16 @@ static unsigned int prm_log_pgbuf_victim_flush_flag = 0;
 bool PRM_LOG_CHKPT_DETAILED = false;
 static bool prm_log_chkpt_detailed_default = false;
 static unsigned int prm_log_chkpt_detailed_flag = 0;
+
+UINT64 PRM_IB_TASK_MEMSIZE = 16 * ONE_M;
+static UINT64 prm_ib_task_memsize_default = 16 * ONE_M;
+static UINT64 prm_ib_task_memsize_lower = ONE_K;
+static UINT64 prm_ib_task_memsize_upper = 128 * ONE_M;
+static unsigned int prm_ib_task_memsize_flag = 0;
+
+bool PRM_STATS_ON = false;
+static bool prm_stats_on_default = false;
+static unsigned int prm_stats_on_flag = 0;
 
 bool PRM_REPL_LOG_GENERATOR_LOGGING = false;
 static bool prm_repl_log_generator_default = false;
@@ -5468,6 +5486,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_JSON_MAX_ARRAY_IDX,
+   PRM_NAME_JSON_MAX_ARRAY_IDX,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   &prm_json_max_array_idx_flag,
+   (void *) &prm_json_max_array_idx_default,
+   (void *) &PRM_JSON_MAX_ARRAY_IDX,
+   (void *) &prm_json_max_array_idx_upper,
+   (void *) &prm_json_max_array_idx_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_CONNECTION_LOGGING,
    PRM_NAME_CONNECTION_LOGGING,
    (PRM_FOR_SERVER | PRM_HIDDEN),
@@ -5725,6 +5755,28 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_IB_TASK_MEMSIZE,
+   PRM_NAME_IB_TASK_MEMSIZE,
+   (PRM_FOR_SERVER | PRM_SIZE_UNIT | PRM_HIDDEN),
+   PRM_BIGINT,
+   &prm_ib_task_memsize_flag,
+   (void *) &prm_ib_task_memsize_default,
+   (void *) &PRM_IB_TASK_MEMSIZE,
+   (void *) &prm_ib_task_memsize_upper, (void *) &prm_ib_task_memsize_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STATS_ON,
+   PRM_NAME_STATS_ON,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_stats_on_flag,
+   (void *) &prm_stats_on_default,
+   (void *) &PRM_STATS_ON,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_REPL_LOG_GENERATOR_LOGGING,
    PRM_NAME_REPL_LOG_GENERATOR_LOGGING,
    (PRM_FOR_SERVER | PRM_HIDDEN),
@@ -5746,7 +5798,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))

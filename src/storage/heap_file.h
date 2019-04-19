@@ -34,6 +34,7 @@
 #include "config.h"
 #include "file_manager.h"
 #include "heap_attrinfo.h"
+#include "mvcc.h"
 #include "page_buffer.h"
 #include "perf_monitor.h"
 #include "storage_common.h"
@@ -183,6 +184,7 @@ struct heap_hfid_table_entry
 
 // forward declaration
 struct func_pred;
+struct xasl_unpack_info;
 
 typedef struct function_index_info FUNCTION_INDEX_INFO;
 struct function_index_info
@@ -198,7 +200,7 @@ typedef struct func_pred_unpack_info FUNC_PRED_UNPACK_INFO;
 struct func_pred_unpack_info
 {
   struct func_pred *func_pred;
-  void *unpack_info;
+  xasl_unpack_info *unpack_info;
 };
 
 #if 0				/* TODO: check not use - ksseo */

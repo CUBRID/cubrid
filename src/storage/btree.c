@@ -23,18 +23,14 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
-#include <stdlib.h>
-#include <string.h>
-#include <assert.h>
-
 #include "btree.h"
 
 #include "btree_load.h"
+#include "config.h"
 #include "db_value_printer.hpp"
 #include "file_manager.h"
 #include "slotted_page.h"
+#include "log_append.hpp"
 #include "log_manager.h"
 #include "overflow_file.h"
 #include "xserver_interface.h"
@@ -45,13 +41,18 @@
 #include "utility.h"
 #include "transform.h"
 #include "partition_sr.h"
+#include "porting_inline.hpp"
 #include "query_executor.h"
 #include "object_primitive.h"
 #include "perf_monitor.h"
-#include "regu_var.h"
+#include "regu_var.hpp"
 #include "fault_injection.h"
 #include "dbtype.h"
 #include "thread_manager.hpp"
+
+#include <stdlib.h>
+#include <string.h>
+#include <assert.h>
 
 #define BTREE_HEALTH_CHECK
 
@@ -1102,24 +1103,21 @@ btree_perf_unique_lock_time (THREAD_ENTRY * thread_p, PERF_UTIME_TRACKER * track
 
 /* Default buffer size of redo recovery changes. Should cover all cases. */
 /* Just a rough estimation */
+const size_t BTREE_RV_BUFFER_SIZE =
 #if defined (NDEBUG)
-#define BTREE_RV_BUFFER_SIZE \
-  ((int) (3 * LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE (BTREE_OBJECT_MAX_SIZE)))
+  (3 * LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE (BTREE_OBJECT_MAX_SIZE));
 #else /* !NDEBUG */
-#define BTREE_RV_BUFFER_SIZE \
-  ((int) (4 * LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE (BTREE_OBJECT_MAX_SIZE) \
-   + BTREE_RV_DEBUG_INFO_MAX_SIZE))
+  (4 * LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE (BTREE_OBJECT_MAX_SIZE) + BTREE_RV_DEBUG_INFO_MAX_SIZE);
 #endif /* !NDEBUG */
 
-#define BTREE_RV_GET_DATA_LENGTH(rv_ptr, rv_start, rv_length) \
-  do \
-    { \
-      assert ((rv_ptr) != NULL); \
-      assert ((rv_start) != NULL); \
-      (rv_length) = CAST_BUFLEN ((rv_ptr) - (rv_start)); \
-      assert (0 <= (rv_length) && (rv_length) <= BTREE_RV_BUFFER_SIZE); \
-    } \
-  while (false)
+static void
+BTREE_RV_GET_DATA_LENGTH (const char *rv_ptr, const char *rv_start, int &rv_length)
+{
+  assert (rv_ptr != NULL);
+  assert (rv_start != NULL);
+  rv_length = CAST_BUFLEN (rv_ptr - rv_start);
+  assert (0 <= rv_length && (size_t) rv_length <= BTREE_RV_BUFFER_SIZE);
+}
 
 /* Debug identifiers to help with detecting recovery issues. */
 enum btree_rv_debug_id
@@ -15205,7 +15203,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
       || (!bts->use_desc_index && BTREE_IS_PART_KEY_DESC (&bts->btid_int)))
     {
       /* Reverse scan and its range. */
-      RANGE_REVERSE (bts->key_range.range);
+      range_reverse (bts->key_range.range);
       swap_key = bts->key_range.lower_key;
       bts->key_range.lower_key = bts->key_range.upper_key;
       bts->key_range.upper_key = swap_key;
@@ -15356,7 +15354,7 @@ btree_scan_update_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, key_val_rang
       || (!bts->use_desc_index && BTREE_IS_PART_KEY_DESC (&bts->btid_int)))
     {
       /* Reverse scan and its range. */
-      RANGE_REVERSE (bts->key_range.range);
+      range_reverse (bts->key_range.range);
       swap_key = bts->key_range.lower_key;
       bts->key_range.lower_key = bts->key_range.upper_key;
       bts->key_range.upper_key = swap_key;
@@ -19096,7 +19094,7 @@ btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items, int *att_idxs, T
 static int
 btree_iss_set_key (BTREE_SCAN * bts, INDEX_SKIP_SCAN * iss)
 {
-  struct regu_variable_node *key = NULL;
+  regu_variable_node *key = NULL;
   int ret = NO_ERROR;
 
   /* check environment */

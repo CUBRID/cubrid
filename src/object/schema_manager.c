@@ -16597,3 +16597,76 @@ sm_is_index_visible (SM_CLASS_CONSTRAINT * constraint_list, BTID btid)
       return (constr->index_status == SM_NORMAL_INDEX);
     }
 }
+
+/*
+ * sm_domain_free () -
+ *   return:
+ *   ptr(in)    : pointer to a schema manager domain
+ *
+ * Note: Free function for SM_DOMAIN using free_and_init.
+ */
+void
+sm_domain_free (SM_DOMAIN * ptr)
+{
+  if (ptr != NULL)
+    {
+      sm_domain_free (ptr->next);
+      sm_domain_free (ptr->setdomain);
+      free_and_init (ptr);
+    }
+}
+
+SM_DOMAIN *
+sm_domain_alloc ()
+{
+  return (SM_DOMAIN *) malloc (sizeof (SM_DOMAIN));
+}
+
+/*
+ * sm_domain_copy () -
+ *   return: SM_DOMAIN *
+ *   ptr(in)    : pointer to a schema manager domain
+ *
+ * Note: Copy function for SM_DOMAIN.
+ */
+SM_DOMAIN *
+sm_domain_copy (SM_DOMAIN * ptr)
+{
+  SM_DOMAIN *new_ptr;
+
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+
+  new_ptr = sm_domain_alloc ();
+  if (new_ptr == NULL)
+    {
+      return NULL;
+    }
+  *new_ptr = *ptr;
+
+  if (ptr->next != NULL)
+    {
+      new_ptr->next = sm_domain_copy (ptr->next);
+      if (new_ptr->next == NULL)
+	{
+	  free_and_init (new_ptr);
+	  return NULL;
+	}
+    }
+
+  if (ptr->setdomain != NULL)
+    {
+      new_ptr->setdomain = sm_domain_copy (ptr->setdomain);
+      if (new_ptr->setdomain == NULL)
+	{
+	  sm_domain_free (new_ptr->next);
+	  new_ptr->next = NULL;
+	  free_and_init (new_ptr);
+	  return NULL;
+	}
+    }
+
+  return new_ptr;
+}

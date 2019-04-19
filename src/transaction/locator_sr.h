@@ -45,6 +45,15 @@
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
+// forward definitions
+// *INDENT-OFF*
+namespace cubquery
+{
+  struct mvcc_reev_data;
+}
+using MVCC_REEV_DATA = cubquery::mvcc_reev_data;
+// *INDENT-ON*
+
 enum
 {
   LOB_FLAG_EXCLUDE_LOB,

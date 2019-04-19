@@ -46,7 +46,6 @@
 #include "parser_support.h"
 #include "view_transform.h"
 #include "network_interface_cl.h"
-#include "xasl_support.h"
 #include "transform.h"
 #include "dbtype.h"
 
@@ -226,10 +225,7 @@ pt_set_table_to_db (PARSER_CONTEXT * parser, PT_NODE * subquery_in, DB_VALUE * d
 	}
     }
 
-  if (list_id)
-    {
-      regu_free_listid (list_id);
-    }
+  cursor_free_self_list_id (list_id);
 
   pt_end_query (parser, query_id_self);
 
@@ -1309,7 +1305,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 		}
 	    }
 
-	  regu_free_listid ((QFILE_LIST_ID *) temp->etc);
+	  cursor_free_self_list_id ((QFILE_LIST_ID *) temp->etc);
 	  pt_end_query (parser, query_id_self);
 	}
       else
@@ -1473,9 +1469,11 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 	  return;
 
 	default:
-	  /* fall through: error! */
+	  PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
+		      pt_short_print (parser, tree));
 	  break;
 	}
+      break;
 
     default:
       PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,

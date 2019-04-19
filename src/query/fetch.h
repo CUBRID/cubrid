@@ -33,7 +33,7 @@
 #include "query_list.h"
 
 // forward definitions
-struct regu_variable_node;
+class regu_variable_node;
 struct val_descr;
 struct regu_variable_list_node;
 

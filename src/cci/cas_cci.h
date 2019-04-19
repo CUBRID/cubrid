@@ -44,6 +44,7 @@
  * IMPORTED OTHER HEADER FILES						*
  ************************************************************************/
 #include "cas_error.h"
+#include "dbtran_def.h"
 
 /************************************************************************
  * EXPORTED DEFINITIONS							*
@@ -727,27 +728,7 @@ typedef enum
   CCI_DS_KEY_MAX_POOL_SIZE
 } T_CCI_DATASOURCE_KEY;
 
-#if !defined(CAS)
-#ifdef DBDEF_HEADER_
-typedef int T_CCI_TRAN_ISOLATION;
-#else
-typedef enum
-{
-  TRAN_UNKNOWN_ISOLATION = 0,
-  TRAN_ISOLATION_MIN = 4,
-
-  TRAN_READ_COMMITTED = 4,
-  TRAN_REP_CLASS_COMMIT_INSTANCE = 4,	/* for backward compatibility */
-
-  TRAN_REPEATABLE_READ = 5,
-  TRAN_REP_CLASS_REP_INSTANCE = 5,	/* for backward compatibility */
-
-  TRAN_SERIALIZABLE = 6,
-
-  TRAN_ISOLATION_MAX = 6
-} T_CCI_TRAN_ISOLATION;
-#endif
-#endif
+typedef DB_TRAN_ISOLATION T_CCI_TRAN_ISOLATION;	// alias
 
 typedef enum
 {

@@ -35,8 +35,16 @@
 struct access_spec_node;
 struct func_pred;
 struct func_pred_unpack_info;
-struct hierarchy_aggregate_helper;
 struct val_descr;
+struct xasl_unpack_info;
+
+// *INDENT-OFF*
+namespace cubquery
+{
+  struct hierarchy_aggregate_helper;
+}
+using HIERARCHY_AGGREGATE_HELPER = cubquery::hierarchy_aggregate_helper;
+// *INDENT-ON*
 
 /* object for caching objects used in multi row modify statements for each partition */
 typedef struct pruning_scan_cache PRUNING_SCAN_CACHE;
@@ -72,7 +80,7 @@ struct pruning_context
   SCANCACHE_LIST *scan_cache_list;	/* caches for partitions affected by the query using this context */
   int count;			/* number of partitions */
 
-  void *fp_cache_context;	/* unpacking info */
+  xasl_unpack_info *fp_cache_context;	/* unpacking info */
   func_pred *partition_pred;	/* partition predicate */
   int attr_position;		/* attribute position in index key */
   ATTR_ID attr_id;		/* id of the attribute which defines the partitions */
@@ -119,7 +127,7 @@ extern int partition_get_partition_oids (THREAD_ENTRY * thread_p, const OID * cl
 					 int *count);
 
 extern int partition_load_aggregate_helper (PRUNING_CONTEXT * pcontext, access_spec_node * spec, int pruned_count,
-					    BTID * root_btid, hierarchy_aggregate_helper * helper);
+					    BTID * root_btid, HIERARCHY_AGGREGATE_HELPER * helper);
 #if 0
 extern int partition_is_global_index (THREAD_ENTRY * thread_p, PRUNING_CONTEXT * contextp, OID * class_oid, BTID * btid,
 				      BTREE_TYPE * btree_typep, int *is_global_index);

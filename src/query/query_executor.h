@@ -46,12 +46,12 @@ struct func_pred;
 struct pred_expr_with_context;
 struct qfile_list_id;
 struct qfile_tuple_record;
-struct regu_variable_node;
+class regu_variable_node;
 struct tp_domain;
-struct val_descr;
 struct valptr_list_node;
 struct xasl_node;
 struct xasl_state;
+using XASL_STATE = xasl_state;
 
 #define QEXEC_NULL_COMMAND_ID   -1	/* Invalid command identifier */
 
@@ -61,6 +61,18 @@ struct upddel_class_instances_lock_info
   OID class_oid;
   bool instances_locked;
 };
+
+typedef struct val_descr VAL_DESCR;
+struct val_descr
+{
+  DB_VALUE *dbval_ptr;		/* Array of values */
+  int dbval_cnt;		/* Value Count */
+  DB_DATETIME sys_datetime;
+  DB_TIMESTAMP sys_epochtime;
+  long lrand;
+  double drand;
+  XASL_STATE *xasl_state;	/* XASL_STATE pointer */
+};				/* Value Descriptor */
 
 extern qfile_list_id *qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt,
 					   const DB_VALUE * dbval_ptr, QUERY_ID query_id);

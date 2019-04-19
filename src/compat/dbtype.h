@@ -62,6 +62,11 @@
 
 #define DB_IS_NULL(value)               db_value_is_null(value)
 
+#define DB_IS_STRING(value)       (db_value_type(value) == DB_TYPE_VARCHAR  || \
+                                   db_value_type(value) == DB_TYPE_CHAR     || \
+                                   db_value_type(value) == DB_TYPE_VARNCHAR || \
+                                   db_value_type(value) == DB_TYPE_NCHAR)
+
 #define DB_VALUE_DOMAIN_TYPE(value)     db_value_domain_type(value)
 
 #define DB_VALUE_TYPE(value)            db_value_type(value)

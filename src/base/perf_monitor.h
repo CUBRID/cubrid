@@ -35,6 +35,7 @@
 #include "log_impl.h"
 #endif // SERVER_MODE or SA_MODE
 #include "memory_alloc.h"
+#include "porting_inline.hpp"
 #include "storage_common.h"
 #include "thread_compat.hpp"
 #include "tsc_timer.h"
@@ -148,6 +149,7 @@ extern int log_Tran_index;	/* Index onto transaction table for current thread of
 #endif /* !SERVER_MODE */
 
 #if defined (SERVER_MODE)
+// todo - remove from here
 #if !defined(LOG_FIND_THREAD_TRAN_INDEX)
 #define LOG_FIND_THREAD_TRAN_INDEX(thrd) \
   ((thrd) ? (thrd)->tran_index : logtb_get_current_tran_index())
@@ -806,6 +808,7 @@ extern void perfmon_copy_values (UINT64 * src, UINT64 * dest);
 #if defined (SERVER_MODE) || defined (SA_MODE)
 extern void perfmon_start_watch (THREAD_ENTRY * thread_p);
 extern void perfmon_stop_watch (THREAD_ENTRY * thread_p);
+extern void perfmon_er_log_current_stats (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE || SA_MODE */
 
 STATIC_INLINE bool perfmon_is_perf_tracking (void) __attribute__ ((ALWAYS_INLINE));

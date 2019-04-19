@@ -35,8 +35,11 @@
 #include "query_bitset.h"
 
 // forward definitions
-struct analytic_eval_type;
 struct xasl_node;
+namespace cubxasl
+{
+  struct analytic_eval_type;
+}
 
 #define QO_CPU_WEIGHT   0.0025
 
@@ -193,7 +196,9 @@ struct qo_plan
   } plan_un;
 
   QO_PLAN_ULTI_RANGE_OPT_USE multi_range_opt_use;	/* used to determine if this plan uses multi range opt */
-  analytic_eval_type *analytic_eval_list;	/* analytic evaluation list */
+  // *INDENT-OFF*
+  cubxasl::analytic_eval_type *analytic_eval_list;	/* analytic evaluation list */
+  // *INDENT-ON*
   bool has_sort_limit;		/* true if this plan or one if its subplans is a SORT-LIMIT plan */
   bool use_iscan_descending;
 };

@@ -29,6 +29,7 @@
 #include <ctype.h>
 #include <assert.h>
 
+#include "authenticate.h"
 #include "error_manager.h"
 #include "parser.h"
 #include "parser_message.h"
@@ -52,7 +53,6 @@
 #include "object_primitive.h"
 #include "memory_hash.h"
 #include "locator_cl.h"
-#include "xasl_support.h"
 #include "network_interface_cl.h"
 #include "view_transform.h"
 #include "xasl_to_stream.h"

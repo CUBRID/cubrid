@@ -38,6 +38,8 @@
 #include "porting.h"
 #include "error_manager.h"
 #include "partition_sr.h"
+#include "query_aggregate.hpp"
+#include "query_analytic.hpp"
 #include "query_opfunc.h"
 #include "fetch.h"
 #include "dbtype.h"
@@ -47,11 +49,14 @@
 #include "xasl_cache.h"
 #include "stream_to_xasl.h"
 #include "query_manager.h"
+#include "query_reevaluation.hpp"
 #include "extendible_hash.h"
 #include "replication.h"
 #include "elo.h"
 #include "db_elo.h"
 #include "locator_sr.h"
+#include "log_lsa.hpp"
+#include "log_volids.hpp"
 #include "xserver_interface.h"
 #include "tz_support.h"
 #include "session.h"
@@ -68,8 +73,20 @@
 #include "db_json.hpp"
 #include "dbtype.h"
 #include "thread_entry.hpp"
-#include "regu_var.h"
+#include "regu_var.hpp"
 #include "xasl.h"
+#include "xasl_aggregate.hpp"
+#include "xasl_analytic.hpp"
+#include "xasl_predicate.hpp"
+
+// XASL_STATE
+typedef struct xasl_state XASL_STATE;
+struct xasl_state
+{
+  VAL_DESCR vd;			/* Value Descriptor */
+  QUERY_ID query_id;		/* Query associated with XASL */
+  int qp_xasl_line;		/* Error line */
+};
 
 #define GOTO_EXIT_ON_ERROR \
   do \
@@ -709,16 +726,16 @@ qexec_eval_instnum_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 
       /* this case is for: select * from table limit 3, or select * from table where rownum <= 3 and we can change
        * operator <= to < and reevaluate last condition. (to stop scan at this time) */
-      if (pr->type == T_EVAL_TERM && pr->pe.eval_term.et_type == T_COMP_EVAL_TERM
-	  && (pr->pe.eval_term.et.et_comp.lhs->type == TYPE_CONSTANT
-	      && pr->pe.eval_term.et.et_comp.rhs->type == TYPE_POS_VALUE)
-	  && xasl->instnum_pred->pe.eval_term.et.et_comp.rel_op == R_LE)
+      if (pr->type == T_EVAL_TERM && pr->pe.m_eval_term.et_type == T_COMP_EVAL_TERM
+	  && (pr->pe.m_eval_term.et.et_comp.lhs->type == TYPE_CONSTANT
+	      && pr->pe.m_eval_term.et.et_comp.rhs->type == TYPE_POS_VALUE)
+	  && xasl->instnum_pred->pe.m_eval_term.et.et_comp.rel_op == R_LE)
 	{
-	  xasl->instnum_pred->pe.eval_term.et.et_comp.rel_op = R_LT;
+	  xasl->instnum_pred->pe.m_eval_term.et.et_comp.rel_op = R_LT;
 	  /* evaluate predicate */
 	  ev_res = eval_pred (thread_p, xasl->instnum_pred, &xasl_state->vd, NULL);
 
-	  xasl->instnum_pred->pe.eval_term.et.et_comp.rel_op = R_LE;
+	  xasl->instnum_pred->pe.m_eval_term.et.et_comp.rel_op = R_LE;
 
 	  if (ev_res != V_TRUE)
 	    {
@@ -1195,7 +1212,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	    }
 
 	  if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.g_hash_eligible
-	      && xasl->proc.buildlist.agg_hash_context.state != HS_REJECT_ALL)
+	      && xasl->proc.buildlist.agg_hash_context->state != HS_REJECT_ALL)
 	    {
 	      /* aggregate using hash table */
 	      if (qexec_hash_gby_agg_tuple (thread_p, xasl, xasl_state, &xasl->proc.buildlist, tplrec,
@@ -1400,24 +1417,24 @@ qexec_clear_xasl_head (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 static int
 qexec_clear_arith_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ARITH_TYPE * list, bool is_final)
 {
-  ARITH_TYPE *p;
-  int pg_cnt;
+  int pg_cnt = 0;
 
-  pg_cnt = 0;
-  for (p = list; p; p = p->next)
+  if (list == NULL)
     {
-      /* restore the original domain, in order to avoid coerce when the XASL clones will be used again */
-      p->domain = p->original_domain;
-      pr_clear_value (p->value);
-      pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, p->leftptr, is_final);
-      pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, p->rightptr, is_final);
-      pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, p->thirdptr, is_final);
-      pg_cnt += qexec_clear_pred (thread_p, xasl_p, p->pred, is_final);
+      return NO_ERROR;
+    }
 
-      if (p->rand_seed != NULL)
-	{
-	  free_and_init (p->rand_seed);
-	}
+  /* restore the original domain, in order to avoid coerce when the XASL clones will be used again */
+  list->domain = list->original_domain;
+  pr_clear_value (list->value);
+  pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, list->leftptr, is_final);
+  pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, list->rightptr, is_final);
+  pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, list->thirdptr, is_final);
+  pg_cnt += qexec_clear_pred (thread_p, xasl_p, list->pred, is_final);
+
+  if (list->rand_seed != NULL)
+    {
+      free_and_init (list->rand_seed);
     }
 
   return pg_cnt;
@@ -1677,19 +1694,19 @@ qexec_clear_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, PRED_EXPR * pr, b
   switch (pr->type)
     {
     case T_PRED:
-      pg_cnt += qexec_clear_pred (thread_p, xasl_p, pr->pe.pred.lhs, is_final);
-      for (expr = pr->pe.pred.rhs; expr && expr->type == T_PRED; expr = expr->pe.pred.rhs)
+      pg_cnt += qexec_clear_pred (thread_p, xasl_p, pr->pe.m_pred.lhs, is_final);
+      for (expr = pr->pe.m_pred.rhs; expr && expr->type == T_PRED; expr = expr->pe.m_pred.rhs)
 	{
-	  pg_cnt += qexec_clear_pred (thread_p, xasl_p, expr->pe.pred.lhs, is_final);
+	  pg_cnt += qexec_clear_pred (thread_p, xasl_p, expr->pe.m_pred.lhs, is_final);
 	}
       pg_cnt += qexec_clear_pred (thread_p, xasl_p, expr, is_final);
       break;
     case T_EVAL_TERM:
-      switch (pr->pe.eval_term.et_type)
+      switch (pr->pe.m_eval_term.et_type)
 	{
 	case T_COMP_EVAL_TERM:
 	  {
-	    COMP_EVAL_TERM *et_comp = &pr->pe.eval_term.et.et_comp;
+	    COMP_EVAL_TERM *et_comp = &pr->pe.m_eval_term.et.et_comp;
 
 	    pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, et_comp->lhs, is_final);
 	    pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, et_comp->rhs, is_final);
@@ -1697,7 +1714,7 @@ qexec_clear_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, PRED_EXPR * pr, b
 	  break;
 	case T_ALSM_EVAL_TERM:
 	  {
-	    ALSM_EVAL_TERM *et_alsm = &pr->pe.eval_term.et.et_alsm;
+	    ALSM_EVAL_TERM *et_alsm = &pr->pe.m_eval_term.et.et_alsm;
 
 	    pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, et_alsm->elem, is_final);
 	    pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, et_alsm->elemset, is_final);
@@ -1705,7 +1722,7 @@ qexec_clear_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, PRED_EXPR * pr, b
 	  break;
 	case T_LIKE_EVAL_TERM:
 	  {
-	    LIKE_EVAL_TERM *et_like = &pr->pe.eval_term.et.et_like;
+	    LIKE_EVAL_TERM *et_like = &pr->pe.m_eval_term.et.et_like;
 
 	    pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, et_like->src, is_final);
 	    pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, et_like->pattern, is_final);
@@ -1714,7 +1731,7 @@ qexec_clear_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, PRED_EXPR * pr, b
 	  break;
 	case T_RLIKE_EVAL_TERM:
 	  {
-	    RLIKE_EVAL_TERM *et_rlike = &pr->pe.eval_term.et.et_rlike;
+	    RLIKE_EVAL_TERM *et_rlike = &pr->pe.m_eval_term.et.et_rlike;
 
 	    pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, et_rlike->src, is_final);
 	    pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, et_rlike->pattern, is_final);
@@ -1737,7 +1754,7 @@ qexec_clear_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, PRED_EXPR * pr, b
 	}
       break;
     case T_NOT_TERM:
-      pg_cnt += qexec_clear_pred (thread_p, xasl_p, pr->pe.not_term, is_final);
+      pg_cnt += qexec_clear_pred (thread_p, xasl_p, pr->pe.m_not_term, is_final);
       break;
     }
 
@@ -2026,7 +2043,7 @@ qexec_clear_analytic_function_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p,
 	  p->domain = p->original_domain;
 	  p->opr_dbtype = p->original_opr_dbtype;
 	  pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, &p->operand, is_final);
-	  stx_init_analytic_type_unserialized_fields (p);
+	  p->init ();
 	}
     }
 
@@ -3687,7 +3704,7 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 			  BUILDLIST_PROC_NODE * proc, QFILE_TUPLE_RECORD * tplrec, QFILE_TUPLE_DESCRIPTOR * tpldesc,
 			  QFILE_LIST_ID * groupby_list, bool * output_tuple)
 {
-  AGGREGATE_HASH_CONTEXT *context = &proc->agg_hash_context;
+  AGGREGATE_HASH_CONTEXT *context = proc->agg_hash_context;
   AGGREGATE_HASH_KEY *key = context->temp_key;
   AGGREGATE_HASH_VALUE *value;
   HENTRY_PTR hentry;
@@ -4409,7 +4426,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 				      buildlist->eptr_list, buildlist->g_agg_list, buildlist->g_regu_list,
 				      buildlist->g_val_list, buildlist->g_outptr_list, buildlist->g_hk_sort_regu_list,
 				      buildlist->g_with_rollup != 0, buildlist->g_hash_eligible,
-				      &buildlist->agg_hash_context, xasl, xasl_state, &list_id->type_list,
+				      buildlist->agg_hash_context, xasl, xasl_state, &list_id->type_list,
 				      tplrec) == NULL)
     {
       GOTO_EXIT_ON_ERROR;
@@ -7344,15 +7361,15 @@ qexec_reset_pred_expr (PRED_EXPR * pred)
   switch (pred->type)
     {
     case T_PRED:
-      qexec_reset_pred_expr (pred->pe.pred.lhs);
-      qexec_reset_pred_expr (pred->pe.pred.rhs);
+      qexec_reset_pred_expr (pred->pe.m_pred.lhs);
+      qexec_reset_pred_expr (pred->pe.m_pred.rhs);
       break;
     case T_EVAL_TERM:
-      switch (pred->pe.eval_term.et_type)
+      switch (pred->pe.m_eval_term.et_type)
 	{
 	case T_COMP_EVAL_TERM:
 	  {
-	    COMP_EVAL_TERM *et_comp = &pred->pe.eval_term.et.et_comp;
+	    COMP_EVAL_TERM *et_comp = &pred->pe.m_eval_term.et.et_comp;
 
 	    qexec_reset_regu_variable (et_comp->lhs);
 	    qexec_reset_regu_variable (et_comp->rhs);
@@ -7360,7 +7377,7 @@ qexec_reset_pred_expr (PRED_EXPR * pred)
 	  break;
 	case T_ALSM_EVAL_TERM:
 	  {
-	    ALSM_EVAL_TERM *et_alsm = &pred->pe.eval_term.et.et_alsm;
+	    ALSM_EVAL_TERM *et_alsm = &pred->pe.m_eval_term.et.et_alsm;
 
 	    qexec_reset_regu_variable (et_alsm->elem);
 	    qexec_reset_regu_variable (et_alsm->elemset);
@@ -7368,7 +7385,7 @@ qexec_reset_pred_expr (PRED_EXPR * pred)
 	  break;
 	case T_LIKE_EVAL_TERM:
 	  {
-	    LIKE_EVAL_TERM *et_like = &pred->pe.eval_term.et.et_like;
+	    LIKE_EVAL_TERM *et_like = &pred->pe.m_eval_term.et.et_like;
 
 	    qexec_reset_regu_variable (et_like->src);
 	    qexec_reset_regu_variable (et_like->pattern);
@@ -7377,7 +7394,7 @@ qexec_reset_pred_expr (PRED_EXPR * pred)
 	  break;
 	case T_RLIKE_EVAL_TERM:
 	  {
-	    RLIKE_EVAL_TERM *et_rlike = &pred->pe.eval_term.et.et_rlike;
+	    RLIKE_EVAL_TERM *et_rlike = &pred->pe.m_eval_term.et.et_rlike;
 	    qexec_reset_regu_variable (et_rlike->case_sensitive);
 	    qexec_reset_regu_variable (et_rlike->pattern);
 	    qexec_reset_regu_variable (et_rlike->src);
@@ -7385,7 +7402,7 @@ qexec_reset_pred_expr (PRED_EXPR * pred)
 	}
       break;
     case T_NOT_TERM:
-      qexec_reset_pred_expr (pred->pe.not_term);
+      qexec_reset_pred_expr (pred->pe.m_not_term);
       break;
     }
 }
@@ -8687,7 +8704,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   (void) logtb_get_mvcc_snapshot (thread_p);
 
   mvcc_upddel_reev_data.copyarea = NULL;
-  SET_MVCC_UPDATE_REEV_DATA (&mvcc_reev_data, &mvcc_upddel_reev_data, V_TRUE);
+  mvcc_reev_data.set_update_reevaluation (mvcc_upddel_reev_data);
   class_oid_cnt = update->num_classes;
   mvcc_reev_class_cnt = update->num_reev_classes;
 
@@ -9658,7 +9675,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   class_oid_cnt = delete_->num_classes;
   mvcc_reev_class_cnt = delete_->num_reev_classes;
-  SET_MVCC_UPDATE_REEV_DATA (&mvcc_reev_data, &mvcc_upddel_reev_data, V_TRUE);
+  mvcc_reev_data.set_update_reevaluation (mvcc_upddel_reev_data);
 
   mvcc_upddel_reev_data.copyarea = NULL;
 
@@ -11135,7 +11152,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	    tdes = LOG_FIND_TDES (tran_index);
 	    if (tdes)
 	      {
-		size_t len = strlen (tdes->client.db_user) + strlen (tdes->client.host_name) + 2;
+		size_t len = tdes->client.db_user.length () + tdes->client.host_name.length () + 2;
 		temp = (char *) db_private_alloc (thread_p, len);
 		if (temp == NULL)
 		  {
@@ -11144,9 +11161,9 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  }
 		else
 		  {
-		    strcpy (temp, tdes->client.db_user);
+		    strcpy (temp, tdes->client.get_db_user ());
 		    strcat (temp, "@");
-		    strcat (temp, tdes->client.host_name);
+		    strcat (temp, tdes->client.get_host_name ());
 		  }
 	      }
 
@@ -11164,7 +11181,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	    tdes = LOG_FIND_TDES (tran_index);
 	    if (tdes != NULL)
 	      {
-		temp = tdes->client.db_user;
+		temp = CONST_CAST (char *, tdes->client.get_db_user ());	// will not be modified
 	      }
 	    db_make_string (&insert_val, temp);
 	  }
@@ -12489,8 +12506,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   SCAN_CODE scan_code;
   MVCC_INFO *curr_mvcc_info = NULL;
   LOG_TDES *tdes = NULL;
-  SCAN_ID *scan_id = NULL;
-  FILTER_INFO range_filter, key_filter, data_filter;
+  UPDDEL_MVCC_COND_REEVAL upd_reev;
   MVCC_SCAN_REEV_DATA mvcc_sel_reev_data;
   MVCC_REEV_DATA mvcc_reev_data, *p_mvcc_reev_data = NULL;
   bool clear_list_id = false;
@@ -12503,14 +12519,10 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   if (QEXEC_SEL_UPD_USE_REEVALUATION (xasl))
     {
       /* need reevaluation in this function */
-      scan_id = &xasl->spec_list->s_id;
-
-      /* initialize range and key filter, data filter already initialized */
-      INIT_FILTER_INFO_FOR_SCAN_REEV (scan_id, &range_filter, &key_filter, &data_filter);
-      /* init scan reevaluation structure */
-      INIT_SCAN_REEV_DATA (&mvcc_sel_reev_data, &range_filter, &key_filter, &data_filter, &scan_id->qualification);
-      /* set reevaluation data */
-      SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data, V_TRUE);
+      upd_reev.init (xasl->spec_list->s_id);
+      mvcc_sel_reev_data.set_filters (upd_reev);
+      mvcc_sel_reev_data.qualification = &xasl->spec_list->s_id.qualification;
+      mvcc_reev_data.set_scan_reevaluation (mvcc_sel_reev_data);
       p_mvcc_reev_data = &mvcc_reev_data;
 
       /* clear list id if all reevaluations result is false */
@@ -14651,7 +14663,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
   if (tdes != NULL)
     {
       client_id = tdes->client_id;
-      db_user = tdes->client.db_user;
+      db_user = tdes->client.get_db_user ();
     }
 #endif /* ENABLE_SYSTEMTAP */
 
@@ -16154,36 +16166,36 @@ qexec_replace_prior_regu_vars_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pred, X
   switch (pred->type)
     {
     case T_PRED:
-      qexec_replace_prior_regu_vars_pred (thread_p, pred->pe.pred.lhs, xasl);
-      qexec_replace_prior_regu_vars_pred (thread_p, pred->pe.pred.rhs, xasl);
+      qexec_replace_prior_regu_vars_pred (thread_p, pred->pe.m_pred.lhs, xasl);
+      qexec_replace_prior_regu_vars_pred (thread_p, pred->pe.m_pred.rhs, xasl);
       break;
 
     case T_EVAL_TERM:
-      switch (pred->pe.eval_term.et_type)
+      switch (pred->pe.m_eval_term.et_type)
 	{
 	case T_COMP_EVAL_TERM:
-	  qexec_replace_prior_regu_vars (thread_p, pred->pe.eval_term.et.et_comp.lhs, xasl);
-	  qexec_replace_prior_regu_vars (thread_p, pred->pe.eval_term.et.et_comp.rhs, xasl);
+	  qexec_replace_prior_regu_vars (thread_p, pred->pe.m_eval_term.et.et_comp.lhs, xasl);
+	  qexec_replace_prior_regu_vars (thread_p, pred->pe.m_eval_term.et.et_comp.rhs, xasl);
 	  break;
 
 	case T_ALSM_EVAL_TERM:
-	  qexec_replace_prior_regu_vars (thread_p, pred->pe.eval_term.et.et_alsm.elem, xasl);
-	  qexec_replace_prior_regu_vars (thread_p, pred->pe.eval_term.et.et_alsm.elemset, xasl);
+	  qexec_replace_prior_regu_vars (thread_p, pred->pe.m_eval_term.et.et_alsm.elem, xasl);
+	  qexec_replace_prior_regu_vars (thread_p, pred->pe.m_eval_term.et.et_alsm.elemset, xasl);
 	  break;
 
 	case T_LIKE_EVAL_TERM:
-	  qexec_replace_prior_regu_vars (thread_p, pred->pe.eval_term.et.et_like.pattern, xasl);
-	  qexec_replace_prior_regu_vars (thread_p, pred->pe.eval_term.et.et_like.src, xasl);
+	  qexec_replace_prior_regu_vars (thread_p, pred->pe.m_eval_term.et.et_like.pattern, xasl);
+	  qexec_replace_prior_regu_vars (thread_p, pred->pe.m_eval_term.et.et_like.src, xasl);
 	  break;
 	case T_RLIKE_EVAL_TERM:
-	  qexec_replace_prior_regu_vars (thread_p, pred->pe.eval_term.et.et_rlike.pattern, xasl);
-	  qexec_replace_prior_regu_vars (thread_p, pred->pe.eval_term.et.et_rlike.src, xasl);
+	  qexec_replace_prior_regu_vars (thread_p, pred->pe.m_eval_term.et.et_rlike.pattern, xasl);
+	  qexec_replace_prior_regu_vars (thread_p, pred->pe.m_eval_term.et.et_rlike.src, xasl);
 	  break;
 	}
       break;
 
     case T_NOT_TERM:
-      qexec_replace_prior_regu_vars_pred (thread_p, pred->pe.not_term, xasl);
+      qexec_replace_prior_regu_vars_pred (thread_p, pred->pe.m_not_term, xasl);
       break;
     }
 }
@@ -16515,19 +16527,21 @@ bf2df_str_son_index (THREAD_ENTRY * thread_p, char **son_index, char *father_ind
   size = strlen (counter) + n + 2;
 
   /* more space needed? */
-  if (size > *len_son_index)
+  if ((*len_son_index > 0) && (size > ((size_t) (*len_son_index))))
     {
       do
 	{
 	  *len_son_index += CONNECTBY_TUPLE_INDEX_STRING_MEM;
 	}
-      while (size > *len_son_index);
+      while (size > ((size_t) (*len_son_index)));
+
       db_private_free_and_init (thread_p, *son_index);
       *son_index = (char *) db_private_alloc (thread_p, *len_son_index);
       if ((*son_index) == NULL)
 	{
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
+
       memset (*son_index, 0, *len_son_index);
     }
 
@@ -16793,7 +16807,7 @@ qexec_get_index_pseudocolumn_value_from_tuple (THREAD_ENTRY * thread_p, XASL_NOD
   if (!db_value_is_null (*index_valp))
     {
       /* increase the size if more space needed */
-      while (strlen ((*index_valp)->data.ch.medium.buf) + 1 > *index_len)
+      while ((int) strlen ((*index_valp)->data.ch.medium.buf) + 1 > *index_len)
 	{
 	  (*index_len) += CONNECTBY_TUPLE_INDEX_STRING_MEM;
 	  db_private_free_and_init (thread_p, *index_value);
@@ -18475,7 +18489,7 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist, OUTPTR_LIST
   /* update hash aggregation domains */
   if (buildlist->g_hash_eligible)
     {
-      AGGREGATE_HASH_CONTEXT *context = &buildlist->agg_hash_context;
+      AGGREGATE_HASH_CONTEXT *context = buildlist->agg_hash_context;
       int i, index;
 
       /* update key domains */
@@ -23314,9 +23328,6 @@ static int
 qexec_upddel_mvcc_set_filters (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
 			       UPDDEL_MVCC_COND_REEVAL * mvcc_reev_class, OID * class_oid)
 {
-  SCAN_ID *scan_id = NULL;
-  HEAP_SCAN_ID *hsidp = NULL;
-  INDX_SCAN_ID *isidp = NULL;
   ACCESS_SPEC_TYPE *curr_spec = NULL;
 
   while (aptr_list != NULL && curr_spec == NULL)
@@ -23334,44 +23345,8 @@ qexec_upddel_mvcc_set_filters (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
       return ER_FAILED;
     }
 
+  mvcc_reev_class->init (curr_spec->s_id);
   mvcc_reev_class->cls_oid = *class_oid;
-
-  scan_id = &curr_spec->s_id;
-  switch (scan_id->type)
-    {
-    case S_HEAP_SCAN:
-      {
-	hsidp = &scan_id->s.hsid;
-	scan_init_filter_info (&mvcc_reev_class->range_filter, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL);
-	scan_init_filter_info (&mvcc_reev_class->key_filter, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL);
-	scan_init_filter_info (&mvcc_reev_class->data_filter, &hsidp->scan_pred, &hsidp->pred_attrs, scan_id->val_list,
-			       scan_id->vd, &hsidp->cls_oid, 0, NULL, NULL, NULL);
-	mvcc_reev_class->rest_attrs = &hsidp->rest_attrs;
-	mvcc_reev_class->rest_regu_list = hsidp->rest_regu_list;
-	mvcc_reev_class->qualification = scan_id->qualification;
-      }
-      break;
-
-    case S_INDX_SCAN:
-      {
-	isidp = &scan_id->s.isid;
-	scan_init_filter_info (&mvcc_reev_class->range_filter, &isidp->range_pred, &isidp->range_attrs,
-			       scan_id->val_list, scan_id->vd, &isidp->cls_oid, 0, NULL, &isidp->num_vstr,
-			       isidp->vstr_ids);
-	scan_init_filter_info (&mvcc_reev_class->key_filter, &isidp->key_pred, &isidp->key_attrs, scan_id->val_list,
-			       scan_id->vd, &isidp->cls_oid, isidp->bt_num_attrs, isidp->bt_attr_ids, &isidp->num_vstr,
-			       isidp->vstr_ids);
-	scan_init_filter_info (&mvcc_reev_class->data_filter, &isidp->scan_pred, &isidp->pred_attrs, scan_id->val_list,
-			       scan_id->vd, &isidp->cls_oid, 0, NULL, NULL, NULL);
-	mvcc_reev_class->rest_attrs = &isidp->rest_attrs;
-	mvcc_reev_class->rest_regu_list = isidp->rest_regu_list;
-	mvcc_reev_class->qualification = scan_id->qualification;
-      }
-      break;
-
-    default:
-      break;
-    }
 
   return NO_ERROR;
 }
@@ -24513,15 +24488,15 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
   db_make_null (&left_bound);
   db_make_null (&right_bound);
 
-  if (pred->type == T_PRED && pred->pe.pred.bool_op == B_AND)
+  if (pred->type == T_PRED && pred->pe.m_pred.bool_op == B_AND)
     {
-      error = qexec_get_orderbynum_upper_bound (thread_p, pred->pe.pred.lhs, vd, &left_bound);
+      error = qexec_get_orderbynum_upper_bound (thread_p, pred->pe.m_pred.lhs, vd, &left_bound);
       if (error != NO_ERROR)
 	{
 	  goto error_return;
 	}
 
-      error = qexec_get_orderbynum_upper_bound (thread_p, pred->pe.pred.rhs, vd, &right_bound);
+      error = qexec_get_orderbynum_upper_bound (thread_p, pred->pe.m_pred.rhs, vd, &right_bound);
       if (error != NO_ERROR)
 	{
 	  goto error_return;
@@ -24554,9 +24529,9 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
   if (pred->type == T_EVAL_TERM)
     {
       /* This should be TYPE_CONSTANT comp TYPE_VALUE. If not, we bail out */
-      lhs = pred->pe.eval_term.et.et_comp.lhs;
-      rhs = pred->pe.eval_term.et.et_comp.rhs;
-      op = pred->pe.eval_term.et.et_comp.rel_op;
+      lhs = pred->pe.m_eval_term.et.et_comp.lhs;
+      rhs = pred->pe.m_eval_term.et.et_comp.rhs;
+      op = pred->pe.m_eval_term.et.et_comp.rel_op;
       if (lhs->type != TYPE_CONSTANT)
 	{
 	  if (lhs->type != TYPE_POS_VALUE && lhs->type != TYPE_DBVAL)
@@ -24571,7 +24546,7 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 
 	  /* reverse comparison */
 	  rhs = lhs;
-	  lhs = pred->pe.eval_term.et.et_comp.rhs;
+	  lhs = pred->pe.m_eval_term.et.et_comp.rhs;
 	  switch (op)
 	    {
 	    case R_GT:
@@ -24753,36 +24728,36 @@ qexec_clear_pred_xasl (THREAD_ENTRY * thread_p, PRED_EXPR * pred)
   switch (pred->type)
     {
     case T_PRED:
-      qexec_clear_pred_xasl (thread_p, pred->pe.pred.lhs);
-      for (pr = pred->pe.pred.rhs; pr && pr->type == T_PRED; pr = pr->pe.pred.rhs)
+      qexec_clear_pred_xasl (thread_p, pred->pe.m_pred.lhs);
+      for (pr = pred->pe.m_pred.rhs; pr && pr->type == T_PRED; pr = pr->pe.m_pred.rhs)
 	{
-	  qexec_clear_pred_xasl (thread_p, pr->pe.pred.lhs);
+	  qexec_clear_pred_xasl (thread_p, pr->pe.m_pred.lhs);
 	}
       qexec_clear_pred_xasl (thread_p, pr);
       break;
     case T_EVAL_TERM:
       /* operands of type TYPE_LIST_ID are the XASLs we need to clear list files for */
-      if (pred->pe.eval_term.et_type == T_COMP_EVAL_TERM)
+      if (pred->pe.m_eval_term.et_type == T_COMP_EVAL_TERM)
 	{
-	  COMP_EVAL_TERM *et_comp = &pred->pe.eval_term.et.et_comp;
+	  COMP_EVAL_TERM *et_comp = &pred->pe.m_eval_term.et.et_comp;
 	  if (et_comp->rel_op == R_EXISTS && et_comp->lhs->type == TYPE_LIST_ID)
 	    {
-	      qexec_clear_head_lists (thread_p, REGU_VARIABLE_XASL (et_comp->lhs));
+	      qexec_clear_head_lists (thread_p, et_comp->lhs->xasl);
 	    }
 	}
-      else if (pred->pe.eval_term.et_type == T_ALSM_EVAL_TERM)
+      else if (pred->pe.m_eval_term.et_type == T_ALSM_EVAL_TERM)
 	{
-	  ALSM_EVAL_TERM *et_alsm = &pred->pe.eval_term.et.et_alsm;
+	  ALSM_EVAL_TERM *et_alsm = &pred->pe.m_eval_term.et.et_alsm;
 	  if (et_alsm->elemset->type == TYPE_LIST_ID)
 	    {
-	      qexec_clear_head_lists (thread_p, REGU_VARIABLE_XASL (et_alsm->elemset));
+	      qexec_clear_head_lists (thread_p, et_alsm->elemset->xasl);
 	    }
 	}
       /* no need to check into eval terms of type T_LIKE_EVAL_TERM and T_RLIKE_EVAL_TERM since they don't have
        * TYPE_LIST_ID operands */
       break;
     case T_NOT_TERM:
-      qexec_clear_pred_xasl (thread_p, pred->pe.not_term);
+      qexec_clear_pred_xasl (thread_p, pred->pe.m_not_term);
       break;
     }
 }
@@ -24807,30 +24782,31 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
     {
       return NO_ERROR;
     }
+  assert (proc->agg_hash_context != NULL);
 
   /* clear fields (in case of error, things will get properly disposed) */
-  proc->agg_hash_context.key_domains = NULL;
-  proc->agg_hash_context.accumulator_domains = NULL;
-  proc->agg_hash_context.temp_dbval_array = NULL;
-  proc->agg_hash_context.part_list_id = NULL;
-  proc->agg_hash_context.sorted_part_list_id = NULL;
-  proc->agg_hash_context.hash_table = NULL;
-  proc->agg_hash_context.temp_key = NULL;
-  proc->agg_hash_context.temp_part_key = NULL;
-  proc->agg_hash_context.curr_part_key = NULL;
-  proc->agg_hash_context.temp_part_value = NULL;
-  proc->agg_hash_context.curr_part_value = NULL;
-  proc->agg_hash_context.sort_key.key = NULL;
-  proc->agg_hash_context.sort_key.nkeys = 0;
+  proc->agg_hash_context->key_domains = NULL;
+  proc->agg_hash_context->accumulator_domains = NULL;
+  proc->agg_hash_context->temp_dbval_array = NULL;
+  proc->agg_hash_context->part_list_id = NULL;
+  proc->agg_hash_context->sorted_part_list_id = NULL;
+  proc->agg_hash_context->hash_table = NULL;
+  proc->agg_hash_context->temp_key = NULL;
+  proc->agg_hash_context->temp_part_key = NULL;
+  proc->agg_hash_context->curr_part_key = NULL;
+  proc->agg_hash_context->temp_part_value = NULL;
+  proc->agg_hash_context->curr_part_value = NULL;
+  proc->agg_hash_context->sort_key.key = NULL;
+  proc->agg_hash_context->sort_key.nkeys = 0;
 
   /*
    * create temporary dbvalue array
    */
   if (proc->g_func_count > 0)
     {
-      proc->agg_hash_context.temp_dbval_array =
+      proc->agg_hash_context->temp_dbval_array =
 	(DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * proc->g_func_count);
-      if (proc->agg_hash_context.temp_dbval_array == NULL)
+      if (proc->agg_hash_context->temp_dbval_array == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  sizeof (DB_VALUE) * proc->g_func_count);
@@ -24841,9 +24817,9 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   /*
    * keep key domains
    */
-  proc->agg_hash_context.key_domains =
+  proc->agg_hash_context->key_domains =
     (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * proc->g_hkey_size);
-  if (proc->agg_hash_context.key_domains == NULL)
+  if (proc->agg_hash_context->key_domains == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN *) * proc->g_hkey_size);
       goto exit_on_error;
@@ -24853,7 +24829,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   for (i = 0; i < proc->g_hkey_size; i++, regu_list = regu_list->next)
     {
       assert (regu_list);
-      proc->agg_hash_context.key_domains[i] = regu_list->value.domain;
+      proc->agg_hash_context->key_domains[i] = regu_list->value.domain;
     }
 
   /*
@@ -24861,11 +24837,11 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
    */
   if (proc->g_func_count > 0)
     {
-      proc->agg_hash_context.accumulator_domains =
+      proc->agg_hash_context->accumulator_domains =
 	(AGGREGATE_ACCUMULATOR_DOMAIN **) db_private_alloc (thread_p,
 							    sizeof (AGGREGATE_ACCUMULATOR_DOMAIN *) *
 							    proc->g_func_count);
-      if (proc->agg_hash_context.accumulator_domains == NULL)
+      if (proc->agg_hash_context->accumulator_domains == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  sizeof (AGGREGATE_ACCUMULATOR_DOMAIN *) * proc->g_func_count);
@@ -24876,7 +24852,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
       for (i = 0; i < proc->g_func_count; i++, agg_list = agg_list->next)
 	{
 	  assert (agg_list);
-	  proc->agg_hash_context.accumulator_domains[i] = &agg_list->accumulator_domain;
+	  proc->agg_hash_context->accumulator_domains[i] = &agg_list->accumulator_domain;
 	}
     }
 
@@ -24917,55 +24893,56 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   type_list.domp[value_count++] = &tp_Integer_domain;
 
   /* create sort key */
-  proc->agg_hash_context.sort_key.key = NULL;
-  proc->agg_hash_context.sort_key.nkeys = 0;
+  proc->agg_hash_context->sort_key.key = NULL;
+  proc->agg_hash_context->sort_key.nkeys = 0;
 
   /* create list files */
-  proc->agg_hash_context.part_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0);
-  proc->agg_hash_context.sorted_part_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0);
+  proc->agg_hash_context->part_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0);
+  proc->agg_hash_context->sorted_part_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0);
 
   /* create tuple descriptor for partial list files */
-  proc->agg_hash_context.part_list_id->tpl_descr.f_cnt = type_list.type_cnt;
-  proc->agg_hash_context.part_list_id->tpl_descr.f_valp = (DB_VALUE **) malloc (sizeof (DB_VALUE) * type_list.type_cnt);
-  if (proc->agg_hash_context.part_list_id->tpl_descr.f_valp == NULL)
+  proc->agg_hash_context->part_list_id->tpl_descr.f_cnt = type_list.type_cnt;
+  proc->agg_hash_context->part_list_id->tpl_descr.f_valp =
+    (DB_VALUE **) malloc (sizeof (DB_VALUE) * type_list.type_cnt);
+  if (proc->agg_hash_context->part_list_id->tpl_descr.f_valp == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE) * type_list.type_cnt);
       goto exit_on_error;
     }
-  proc->agg_hash_context.part_list_id->tpl_descr.clear_f_val_at_clone_decache =
+  proc->agg_hash_context->part_list_id->tpl_descr.clear_f_val_at_clone_decache =
     (bool *) malloc (sizeof (bool) * type_list.type_cnt);
-  if (proc->agg_hash_context.part_list_id->tpl_descr.clear_f_val_at_clone_decache == NULL)
+  if (proc->agg_hash_context->part_list_id->tpl_descr.clear_f_val_at_clone_decache == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (bool) * type_list.type_cnt);
       goto exit_on_error;
     }
   for (i = 0; i < type_list.type_cnt; i++)
     {
-      proc->agg_hash_context.part_list_id->tpl_descr.clear_f_val_at_clone_decache[i] = false;
+      proc->agg_hash_context->part_list_id->tpl_descr.clear_f_val_at_clone_decache[i] = false;
     }
 
-  proc->agg_hash_context.sorted_part_list_id->tpl_descr.f_cnt = type_list.type_cnt;
-  proc->agg_hash_context.sorted_part_list_id->tpl_descr.f_valp =
+  proc->agg_hash_context->sorted_part_list_id->tpl_descr.f_cnt = type_list.type_cnt;
+  proc->agg_hash_context->sorted_part_list_id->tpl_descr.f_valp =
     (DB_VALUE **) malloc (sizeof (DB_VALUE) * type_list.type_cnt);
-  if (proc->agg_hash_context.sorted_part_list_id->tpl_descr.f_valp == NULL)
+  if (proc->agg_hash_context->sorted_part_list_id->tpl_descr.f_valp == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE) * type_list.type_cnt);
       goto exit_on_error;
     }
-  proc->agg_hash_context.sorted_part_list_id->tpl_descr.clear_f_val_at_clone_decache =
+  proc->agg_hash_context->sorted_part_list_id->tpl_descr.clear_f_val_at_clone_decache =
     (bool *) malloc (sizeof (bool) * type_list.type_cnt);
-  if (proc->agg_hash_context.sorted_part_list_id->tpl_descr.clear_f_val_at_clone_decache == NULL)
+  if (proc->agg_hash_context->sorted_part_list_id->tpl_descr.clear_f_val_at_clone_decache == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (bool) * type_list.type_cnt);
       goto exit_on_error;
     }
   for (i = 0; i < type_list.type_cnt; i++)
     {
-      proc->agg_hash_context.sorted_part_list_id->tpl_descr.clear_f_val_at_clone_decache[i] = false;
+      proc->agg_hash_context->sorted_part_list_id->tpl_descr.clear_f_val_at_clone_decache[i] = false;
     }
 
   /* initialize scan; this way we can call qfile_close_scan on an unopened scan without repercussions */
-  proc->agg_hash_context.part_scan_id.status = S_CLOSED;
+  proc->agg_hash_context->part_scan_id.status = S_CLOSED;
 
   /* free memory */
   db_private_free (thread_p, type_list.domp);
@@ -24973,27 +24950,27 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   /*
    * create hash table
    */
-  proc->agg_hash_context.hash_table =
+  proc->agg_hash_context->hash_table =
     mht_create ("Hash aggregate evaluation", HASH_AGGREGATE_DEFAULT_TABLE_SIZE, qdata_hash_agg_hkey, qdata_agg_hkey_eq);
-  if (proc->agg_hash_context.hash_table == NULL)
+  if (proc->agg_hash_context->hash_table == NULL)
     {
       goto exit_on_error;
     }
   else
     {
       /* we need the least recently used list */
-      proc->agg_hash_context.hash_table->build_lru_list = true;
+      proc->agg_hash_context->hash_table->build_lru_list = true;
     }
 
   /*
    * create temp keys
    */
-  proc->agg_hash_context.temp_key = qdata_alloc_agg_hkey (thread_p, proc->g_hkey_size, false);
-  proc->agg_hash_context.temp_part_key = qdata_alloc_agg_hkey (thread_p, proc->g_hkey_size, true);
-  proc->agg_hash_context.curr_part_key = qdata_alloc_agg_hkey (thread_p, proc->g_hkey_size, true);
+  proc->agg_hash_context->temp_key = qdata_alloc_agg_hkey (thread_p, proc->g_hkey_size, false);
+  proc->agg_hash_context->temp_part_key = qdata_alloc_agg_hkey (thread_p, proc->g_hkey_size, true);
+  proc->agg_hash_context->curr_part_key = qdata_alloc_agg_hkey (thread_p, proc->g_hkey_size, true);
 
-  if (proc->agg_hash_context.temp_key == NULL || proc->agg_hash_context.temp_part_key == NULL
-      || proc->agg_hash_context.curr_part_key == NULL)
+  if (proc->agg_hash_context->temp_key == NULL || proc->agg_hash_context->temp_part_key == NULL
+      || proc->agg_hash_context->curr_part_key == NULL)
     {
       goto exit_on_error;
     }
@@ -25001,10 +24978,10 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   /*
    * create temp values
    */
-  proc->agg_hash_context.temp_part_value = qdata_alloc_agg_hvalue (thread_p, proc->g_func_count);
-  proc->agg_hash_context.curr_part_value = qdata_alloc_agg_hvalue (thread_p, proc->g_func_count);
+  proc->agg_hash_context->temp_part_value = qdata_alloc_agg_hvalue (thread_p, proc->g_func_count);
+  proc->agg_hash_context->curr_part_value = qdata_alloc_agg_hvalue (thread_p, proc->g_func_count);
 
-  if (proc->agg_hash_context.temp_part_value == NULL || proc->agg_hash_context.curr_part_value == NULL)
+  if (proc->agg_hash_context->temp_part_value == NULL || proc->agg_hash_context->curr_part_value == NULL)
     {
       goto exit_on_error;
     }
@@ -25012,25 +24989,25 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   /*
    * initialize recdes
    */
-  proc->agg_hash_context.tuple_recdes.data = 0;
-  proc->agg_hash_context.tuple_recdes.type = 0;
-  proc->agg_hash_context.tuple_recdes.length = 0;
-  proc->agg_hash_context.tuple_recdes.area_size = 0;
+  proc->agg_hash_context->tuple_recdes.data = 0;
+  proc->agg_hash_context->tuple_recdes.type = 0;
+  proc->agg_hash_context->tuple_recdes.length = 0;
+  proc->agg_hash_context->tuple_recdes.area_size = 0;
 
   /*
    * initialize sort input tuple
    */
-  proc->agg_hash_context.input_tuple.size = 0;
-  proc->agg_hash_context.input_tuple.tpl = NULL;
+  proc->agg_hash_context->input_tuple.size = 0;
+  proc->agg_hash_context->input_tuple.tpl = NULL;
 
   /*
    * initialize remaining fields
    */
-  proc->agg_hash_context.hash_size = 0;
-  proc->agg_hash_context.group_count = 0;
-  proc->agg_hash_context.tuple_count = 0;
-  proc->agg_hash_context.sorted_count = 0;
-  proc->agg_hash_context.state = HS_ACCEPT_ALL;
+  proc->agg_hash_context->hash_size = 0;
+  proc->agg_hash_context->group_count = 0;
+  proc->agg_hash_context->tuple_count = 0;
+  proc->agg_hash_context->sorted_count = 0;
+  proc->agg_hash_context->state = HS_ACCEPT_ALL;
 
   /* all ok */
   return NO_ERROR;
@@ -25056,100 +25033,100 @@ qexec_free_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * proc
     }
 
   /* free value array */
-  if (proc->agg_hash_context.temp_dbval_array != NULL)
+  if (proc->agg_hash_context->temp_dbval_array != NULL)
     {
-      db_private_free (thread_p, proc->agg_hash_context.temp_dbval_array);
-      proc->agg_hash_context.temp_dbval_array = NULL;
+      db_private_free (thread_p, proc->agg_hash_context->temp_dbval_array);
+      proc->agg_hash_context->temp_dbval_array = NULL;
     }
 
   /* free domain lists */
-  if (proc->agg_hash_context.accumulator_domains != NULL)
+  if (proc->agg_hash_context->accumulator_domains != NULL)
     {
-      db_private_free (thread_p, proc->agg_hash_context.accumulator_domains);
-      proc->agg_hash_context.accumulator_domains = NULL;
+      db_private_free (thread_p, proc->agg_hash_context->accumulator_domains);
+      proc->agg_hash_context->accumulator_domains = NULL;
     }
 
-  if (proc->agg_hash_context.key_domains != NULL)
+  if (proc->agg_hash_context->key_domains != NULL)
     {
-      db_private_free (thread_p, proc->agg_hash_context.key_domains);
-      proc->agg_hash_context.key_domains = NULL;
+      db_private_free (thread_p, proc->agg_hash_context->key_domains);
+      proc->agg_hash_context->key_domains = NULL;
     }
 
   /* free sort key */
-  qfile_clear_sort_key_info (&proc->agg_hash_context.sort_key);
+  qfile_clear_sort_key_info (&proc->agg_hash_context->sort_key);
 
   /* free entries and hash table */
-  if (proc->agg_hash_context.hash_table != NULL)
+  if (proc->agg_hash_context->hash_table != NULL)
     {
-      (void) mht_clear (proc->agg_hash_context.hash_table, qdata_free_agg_hentry, (void *) thread_p);
-      mht_destroy (proc->agg_hash_context.hash_table);
+      (void) mht_clear (proc->agg_hash_context->hash_table, qdata_free_agg_hentry, (void *) thread_p);
+      mht_destroy (proc->agg_hash_context->hash_table);
 
-      proc->agg_hash_context.hash_table = NULL;
+      proc->agg_hash_context->hash_table = NULL;
     }
 
   /* close scan */
-  qfile_close_scan (thread_p, &proc->agg_hash_context.part_scan_id);
+  qfile_close_scan (thread_p, &proc->agg_hash_context->part_scan_id);
 
   /* free partial lists */
-  if (proc->agg_hash_context.part_list_id != NULL)
+  if (proc->agg_hash_context->part_list_id != NULL)
     {
-      qfile_close_list (thread_p, proc->agg_hash_context.part_list_id);
-      qfile_destroy_list (thread_p, proc->agg_hash_context.part_list_id);
-      qfile_free_list_id (proc->agg_hash_context.part_list_id);
-      proc->agg_hash_context.part_list_id = NULL;
+      qfile_close_list (thread_p, proc->agg_hash_context->part_list_id);
+      qfile_destroy_list (thread_p, proc->agg_hash_context->part_list_id);
+      qfile_free_list_id (proc->agg_hash_context->part_list_id);
+      proc->agg_hash_context->part_list_id = NULL;
     }
 
-  if (proc->agg_hash_context.sorted_part_list_id != NULL)
+  if (proc->agg_hash_context->sorted_part_list_id != NULL)
     {
-      qfile_close_list (thread_p, proc->agg_hash_context.sorted_part_list_id);
-      qfile_destroy_list (thread_p, proc->agg_hash_context.sorted_part_list_id);
-      qfile_free_list_id (proc->agg_hash_context.sorted_part_list_id);
-      proc->agg_hash_context.sorted_part_list_id = NULL;
+      qfile_close_list (thread_p, proc->agg_hash_context->sorted_part_list_id);
+      qfile_destroy_list (thread_p, proc->agg_hash_context->sorted_part_list_id);
+      qfile_free_list_id (proc->agg_hash_context->sorted_part_list_id);
+      proc->agg_hash_context->sorted_part_list_id = NULL;
     }
 
   /* free temp keys and values */
-  if (proc->agg_hash_context.temp_key != NULL)
+  if (proc->agg_hash_context->temp_key != NULL)
     {
-      qdata_free_agg_hkey (thread_p, proc->agg_hash_context.temp_key);
-      proc->agg_hash_context.temp_key = NULL;
+      qdata_free_agg_hkey (thread_p, proc->agg_hash_context->temp_key);
+      proc->agg_hash_context->temp_key = NULL;
     }
 
-  if (proc->agg_hash_context.temp_part_key != NULL)
+  if (proc->agg_hash_context->temp_part_key != NULL)
     {
-      qdata_free_agg_hkey (thread_p, proc->agg_hash_context.temp_part_key);
-      proc->agg_hash_context.temp_part_key = NULL;
+      qdata_free_agg_hkey (thread_p, proc->agg_hash_context->temp_part_key);
+      proc->agg_hash_context->temp_part_key = NULL;
     }
 
-  if (proc->agg_hash_context.curr_part_key != NULL)
+  if (proc->agg_hash_context->curr_part_key != NULL)
     {
-      qdata_free_agg_hkey (thread_p, proc->agg_hash_context.curr_part_key);
-      proc->agg_hash_context.curr_part_key = NULL;
+      qdata_free_agg_hkey (thread_p, proc->agg_hash_context->curr_part_key);
+      proc->agg_hash_context->curr_part_key = NULL;
     }
 
-  if (proc->agg_hash_context.temp_part_value != NULL)
+  if (proc->agg_hash_context->temp_part_value != NULL)
     {
-      qdata_free_agg_hvalue (thread_p, proc->agg_hash_context.temp_part_value);
-      proc->agg_hash_context.temp_part_value = NULL;
+      qdata_free_agg_hvalue (thread_p, proc->agg_hash_context->temp_part_value);
+      proc->agg_hash_context->temp_part_value = NULL;
     }
 
-  if (proc->agg_hash_context.curr_part_value != NULL)
+  if (proc->agg_hash_context->curr_part_value != NULL)
     {
-      qdata_free_agg_hvalue (thread_p, proc->agg_hash_context.curr_part_value);
-      proc->agg_hash_context.curr_part_value = NULL;
+      qdata_free_agg_hvalue (thread_p, proc->agg_hash_context->curr_part_value);
+      proc->agg_hash_context->curr_part_value = NULL;
     }
 
   /* free recdes area */
-  if (proc->agg_hash_context.tuple_recdes.data != NULL)
+  if (proc->agg_hash_context->tuple_recdes.data != NULL)
     {
-      db_private_free (thread_p, proc->agg_hash_context.tuple_recdes.data);
-      proc->agg_hash_context.tuple_recdes.data = NULL;
-      proc->agg_hash_context.tuple_recdes.area_size = 0;
+      db_private_free (thread_p, proc->agg_hash_context->tuple_recdes.data);
+      proc->agg_hash_context->tuple_recdes.data = NULL;
+      proc->agg_hash_context->tuple_recdes.area_size = 0;
     }
 
   /* reinit counters */
-  proc->agg_hash_context.hash_size = 0;
-  proc->agg_hash_context.group_count = 0;
-  proc->agg_hash_context.tuple_count = 0;
+  proc->agg_hash_context->hash_size = 0;
+  proc->agg_hash_context->group_count = 0;
+  proc->agg_hash_context->tuple_count = 0;
 }
 
 /*

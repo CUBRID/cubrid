@@ -37,7 +37,7 @@
 #include "system_parameter.h"
 #include "xasl.h"
 #include "xasl_generation.h"
-#include "xasl_support.h"
+#include "xasl_predicate.hpp"
 
 typedef int (*ELIGIBILITY_FN) (QO_TERM *);
 
@@ -1721,10 +1721,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	      xasl = pt_gen_simple_merge_plan (parser, QO_ENV_PT_TREE (env), plan, xasl);
 	      break;
 	    }
-	  else
-	    {
-	      /* FALL THROUGH */
-	    }
+	  /* FALLTHRU */
 	case QO_JOINMETHOD_IDX_JOIN:
 	  for (i = bitset_iterate (&(plan->plan_un.join.join_terms), &bi); i != -1; i = bitset_next_member (&bi))
 	    {
@@ -3005,14 +3002,14 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
   TP_DOMAIN *dom_bigint = tp_domain_resolve_default (DB_TYPE_BIGINT);
   REGU_VARIABLE *regu_one, *regu_low;
 
-  if (pred == NULL || pred->type != T_EVAL_TERM || pred->pe.eval_term.et_type != T_COMP_EVAL_TERM)
+  if (pred == NULL || pred->type != T_EVAL_TERM || pred->pe.m_eval_term.et_type != T_COMP_EVAL_TERM)
     {
       return false;
     }
 
-  lhs = pred->pe.eval_term.et.et_comp.lhs;
-  rhs = pred->pe.eval_term.et.et_comp.rhs;
-  op = pred->pe.eval_term.et.et_comp.rel_op;
+  lhs = pred->pe.m_eval_term.et.et_comp.lhs;
+  rhs = pred->pe.m_eval_term.et.et_comp.rhs;
+  op = pred->pe.m_eval_term.et.et_comp.rel_op;
 
   if (!lhs || !rhs)
     {
@@ -3028,8 +3025,8 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
   /* switch the ops to transform into instnum rel_op value/hostvar */
   if (rhs->type == TYPE_CONSTANT)
     {
-      rhs = pred->pe.eval_term.et.et_comp.lhs;
-      lhs = pred->pe.eval_term.et.et_comp.rhs;
+      rhs = pred->pe.m_eval_term.et.et_comp.lhs;
+      lhs = pred->pe.m_eval_term.et.et_comp.rhs;
       switch (op)
 	{
 	case R_LE:
@@ -3153,10 +3150,10 @@ qo_get_limit_from_instnum_pred (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_
       return false;
     }
 
-  if (pred->type == T_PRED && pred->pe.pred.bool_op == B_AND)
+  if (pred->type == T_PRED && pred->pe.m_pred.bool_op == B_AND)
     {
-      return (qo_get_limit_from_instnum_pred (parser, pred->pe.pred.lhs, lower, upper)
-	      && qo_get_limit_from_instnum_pred (parser, pred->pe.pred.rhs, lower, upper));
+      return (qo_get_limit_from_instnum_pred (parser, pred->pe.m_pred.lhs, lower, upper)
+	      && qo_get_limit_from_instnum_pred (parser, pred->pe.m_pred.rhs, lower, upper));
     }
 
   if (pred->type == T_EVAL_TERM)

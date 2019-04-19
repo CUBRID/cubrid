@@ -35,8 +35,13 @@
 #include "dbtype.h"
 #include "external_sort.h"
 #include "heap_file.h"
+#include "log_append.hpp"
+#include "log_manager.h"
+#include "memory_alloc.h"
 #include "memory_private_allocator.hpp"
+#include "mvcc.h"
 #include "object_primitive.h"
+#include "object_representation_sr.h"
 #include "partition.h"
 #include "partition_sr.h"
 #include "query_executor.h"
@@ -46,6 +51,7 @@
 #include "thread_entry_task.hpp"
 #include "xserver_interface.h"
 #include "xasl.h"
+#include "xasl_unpack_info.hpp"
 
 typedef struct sort_args SORT_ARGS;
 struct sort_args
@@ -153,32 +159,58 @@ struct btree_scan_partition_info
 };
 
 // *INDENT-OFF*
-struct index_builder_loader_context
+class index_builder_loader_context : public cubthread::entry_manager
 {
-  std::atomic_bool m_has_error;
-  std::atomic<std::uint64_t> m_tasks_executed;
-  int m_tran_index;
-  int m_error_code;
+  public:
+    std::atomic_bool m_has_error;
+    std::atomic<std::uint64_t> m_tasks_executed;
+    int m_error_code;
+    const TP_DOMAIN* m_key_type;
+
+    index_builder_loader_context () = default;
+
+  protected:
+    void on_create (context_type & context) override;
+    void on_retire (context_type & context) override;
+    void on_recycle (context_type & context) override;
+};
+
+struct index_builder_key_oid
+{
+  DB_VALUE m_key;
+  OID m_oid;
 };
 
 class index_builder_loader_task: public cubthread::entry_task
 {
-private:
+  private:
     BTID m_btid;
-    DB_VALUE m_key;
-    OID m_class_oid, m_oid;
+    std::vector<index_builder_key_oid> m_keys_oids;
+    OID m_class_oid;
     int m_unique_pk;
     index_builder_loader_context & m_load_context; // Loader context.
+    size_t m_memsize;
 
-public:
-    index_builder_loader_task (const BTID * btid, const OID * class_oid, const OID * oid, int unique_pk,
+  public:
+    enum batch_key_status
+    {
+      BATCH_EMPTY,
+      BATCH_CONTINUE,
+      BATCH_FULL
+    };
+
+    index_builder_loader_task (const BTID * btid, const OID * class_oid, int unique_pk,
                                index_builder_loader_context & load_context);
-    
-    void set_key (const DB_VALUE * key);
-
     ~index_builder_loader_task ();
+    
+    // add key to key set and return true if task is ready for execution, false otherwise
+    batch_key_status add_key (const DB_VALUE * key, const OID& oid);
+    bool has_keys () const;
 
     void execute (cubthread::entry & thread_ref);
+
+  private:
+    void clear_keys ();
 };
 
 // *INDENT-ON*
@@ -226,7 +258,7 @@ static int online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, H
 				 int n_classes, int *attrids, int n_attrs, FUNCTION_INDEX_INFO func_idx_info,
 				 PRED_EXPR_WITH_CONTEXT * filter_pred, int *attrs_prefix_length,
 				 HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scancache, int unique_pk,
-				 int ib_thread_count);
+				 int ib_thread_count, const TP_DOMAIN * key_type);
 static bool btree_is_worker_pool_logging_true ();
 
 /*
@@ -693,7 +725,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   PRED_EXPR_WITH_CONTEXT *filter_pred = NULL;
   FUNCTION_INDEX_INFO func_index_info;
   DB_TYPE single_node_type = DB_TYPE_NULL;
-  void *func_unpack_info = NULL;
+  XASL_UNPACK_INFO *func_unpack_info = NULL;
   bool has_fk;
   BTID btid_global_stats = BTID_INITIALIZER;
   OID *notification_class_oid;
@@ -1034,11 +1066,13 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       /* to clear db values from dbvalue regu variable */
       qexec_clear_pred_context (thread_p, sort_args->filter, true);
     }
-  if (filter_pred != NULL && filter_pred->unpack_info != NULL)
+  if (filter_pred != NULL)
     {
-      stx_free_additional_buff (thread_p, filter_pred->unpack_info);
-      stx_free_xasl_unpack_info (filter_pred->unpack_info);
-      db_private_free_and_init (thread_p, filter_pred->unpack_info);
+      if (filter_pred->unpack_info != NULL)
+	{
+	  free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
+	}
+      db_private_free_and_init (thread_p, filter_pred);
     }
   if (sort_args->func_index_info && sort_args->func_index_info->expr)
     {
@@ -1046,9 +1080,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     }
   if (func_unpack_info)
     {
-      stx_free_additional_buff (thread_p, func_unpack_info);
-      stx_free_xasl_unpack_info (func_unpack_info);
-      db_private_free_and_init (thread_p, func_unpack_info);
+      free_xasl_unpack_info (thread_p, func_unpack_info);
     }
 
   thread_p->pop_resource_tracks ();
@@ -1068,9 +1100,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       /* index was not loaded and xbtree_add_index was called instead. we have nothing to log here. */
     }
 
-  LOG_CS_ENTER (thread_p);
-  logpb_flush_pages_direct (thread_p);
-  LOG_CS_EXIT (thread_p);
+  logpb_force_flush_pages (thread_p);
 
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
@@ -1149,11 +1179,13 @@ error:
       /* to clear db values from dbvalue regu variable */
       qexec_clear_pred_context (thread_p, sort_args->filter, true);
     }
-  if (filter_pred != NULL && filter_pred->unpack_info != NULL)
+  if (filter_pred != NULL)
     {
-      stx_free_additional_buff (thread_p, filter_pred->unpack_info);
-      stx_free_xasl_unpack_info (filter_pred->unpack_info);
-      db_private_free_and_init (thread_p, filter_pred->unpack_info);
+      if (filter_pred->unpack_info != NULL)
+	{
+	  free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
+	}
+      db_private_free_and_init (thread_p, filter_pred);
     }
   if (sort_args->func_index_info && sort_args->func_index_info->expr)
     {
@@ -1161,9 +1193,7 @@ error:
     }
   if (func_unpack_info)
     {
-      stx_free_additional_buff (thread_p, func_unpack_info);
-      stx_free_xasl_unpack_info (func_unpack_info);
-      db_private_free_and_init (thread_p, func_unpack_info);
+      free_xasl_unpack_info (thread_p, func_unpack_info);
     }
 
   thread_p->pop_resource_tracks ();
@@ -4390,7 +4420,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   PRED_EXPR_WITH_CONTEXT *filter_pred = NULL;
   FUNCTION_INDEX_INFO func_index_info;
   DB_TYPE single_node_type = DB_TYPE_NULL;
-  void *func_unpack_info = NULL;
+  XASL_UNPACK_INFO *func_unpack_info = NULL;
   bool is_sysop_started = false;
   MVCC_SNAPSHOT *builder_snapshot = NULL;
   HEAP_SCANCACHE scan_cache;
@@ -4562,7 +4592,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
       ret =
 	online_index_builder (thread_p, &btid_int, &hfids[cur_class], &class_oids[cur_class], n_classes, attr_ids,
 			      n_attrs, func_index_info, filter_pred, attrs_prefix_length, &attr_info, &scan_cache,
-			      unique_pk, ib_thread_count);
+			      unique_pk, ib_thread_count, key_type);
       if (ret != NO_ERROR)
 	{
 	  break;
@@ -4678,10 +4708,9 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 
       if (filter_pred->unpack_info != NULL)
 	{
-	  stx_free_additional_buff (thread_p, filter_pred->unpack_info);
-	  stx_free_xasl_unpack_info (filter_pred->unpack_info);
-	  db_private_free_and_init (thread_p, filter_pred->unpack_info);
+	  free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
 	}
+      db_private_free_and_init (thread_p, filter_pred);
     }
 
   if (func_index_info.expr != NULL)
@@ -4692,9 +4721,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 
   if (func_unpack_info != NULL)
     {
-      stx_free_additional_buff (thread_p, func_unpack_info);
-      stx_free_xasl_unpack_info (func_unpack_info);
-      db_private_free_and_init (thread_p, func_unpack_info);
+      free_xasl_unpack_info (thread_p, func_unpack_info);
     }
 
   if (list_btid != NULL)
@@ -4703,9 +4730,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
       list_btid = NULL;
     }
 
-  LOG_CS_ENTER (thread_p);
-  logpb_flush_pages_direct (thread_p);
-  LOG_CS_EXIT (thread_p);
+  logpb_force_flush_pages (thread_p);
 
   /* TODO: Is this all right? */
   /* Invalidate snapshot. */
@@ -4746,10 +4771,9 @@ error:
 
       if (filter_pred->unpack_info != NULL)
 	{
-	  stx_free_additional_buff (thread_p, filter_pred->unpack_info);
-	  stx_free_xasl_unpack_info (filter_pred->unpack_info);
-	  db_private_free_and_init (thread_p, filter_pred->unpack_info);
+	  free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
 	}
+      db_private_free_and_init (thread_p, filter_pred);
     }
 
   if (func_index_info.expr != NULL)
@@ -4759,9 +4783,7 @@ error:
 
   if (func_unpack_info != NULL)
     {
-      stx_free_additional_buff (thread_p, func_unpack_info);
-      stx_free_xasl_unpack_info (func_unpack_info);
-      db_private_free_and_init (thread_p, func_unpack_info);
+      free_xasl_unpack_info (thread_p, func_unpack_info);
     }
 
   if (list_btid != NULL)
@@ -4778,11 +4800,12 @@ error:
   return NULL;
 }
 
+// *INDENT-OFF*
 static int
 online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids, OID * class_oids, int n_classes,
 		      int *attrids, int n_attrs, FUNCTION_INDEX_INFO func_idx_info,
 		      PRED_EXPR_WITH_CONTEXT * filter_pred, int *attrs_prefix_length, HEAP_CACHE_ATTRINFO * attr_info,
-		      HEAP_SCANCACHE * scancache, int unique_pk, int ib_thread_count)
+		      HEAP_SCANCACHE * scancache, int unique_pk, int ib_thread_count, const TP_DOMAIN * key_type)
 {
   int ret = NO_ERROR, eval_res;
   OID cur_oid;
@@ -4800,12 +4823,14 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   index_builder_loader_context load_context;
   bool is_parallel = ib_thread_count > 0;
 
-  // *INDENT-OFF*
+  std::unique_ptr<index_builder_loader_task> load_task = NULL;
+
   // a worker pool is built only of loading is done in parallel
-  cubthread::entry_workpool * ib_workpool =
-    is_parallel ? thread_get_manager()->create_worker_pool (ib_thread_count, 32, "Online index loader pool", NULL, 1,
-                                                            btree_is_worker_pool_logging_true ()) : NULL;
-  // *INDENT-ON*
+  cubthread::entry_workpool *ib_workpool =
+    is_parallel ?
+    thread_get_manager()->create_worker_pool (ib_thread_count, 32, "Online index loader pool", &load_context, 1,
+                                              btree_is_worker_pool_logging_true ())
+    : NULL;
 
   aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
   p_func_idx_info = func_idx_info.expr ? &func_idx_info : NULL;
@@ -4822,6 +4847,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   load_context.m_has_error = false;
   load_context.m_error_code = NO_ERROR;
   load_context.m_tasks_executed = 0UL;
+  load_context.m_key_type = key_type;
 
   /* Start extracting from heap. */
   for (;;)
@@ -4839,7 +4865,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       if (sc == S_ERROR)
 	{
 	  ASSERT_ERROR_AND_SET (ret);
-	  return ret;
+	  break;
 	}
       else if (sc == S_END)
 	{
@@ -4855,13 +4881,14 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	  ret = heap_attrinfo_read_dbvalues (thread_p, &cur_oid, &cur_record, NULL, filter_pred->cache_pred);
 	  if (ret != NO_ERROR)
 	    {
-	      return ret;
+	      break;
 	    }
 
 	  eval_res = (*filter_eval_fnc) (thread_p, filter_pred->pred, NULL, &cur_oid);
 	  if (eval_res == V_ERROR)
 	    {
-	      return ER_FAILED;
+	      ret = ER_FAILED;
+	      break;
 	    }
 	  else if (eval_res != V_TRUE)
 	    {
@@ -4875,7 +4902,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 					     p_func_idx_info->expr->cache_attrinfo);
 	  if (ret != NO_ERROR)
 	    {
-	      return ret;
+	      break;
 	    }
 	}
 
@@ -4885,7 +4912,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	  ret = heap_attrinfo_read_dbvalues (thread_p, &cur_oid, &cur_record, NULL, attr_info);
 	  if (ret != NO_ERROR)
 	    {
-	      return ret;
+	      break;
 	    }
 	}
 
@@ -4900,19 +4927,24 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 					      &cur_record, &dbvalue, aligned_midxkey_buf, p_func_idx_info);
       if (p_dbvalue == NULL)
 	{
-	  return ER_FAILED;
+	  ret = ER_FAILED;
+	  break;
 	}
 
       /* Dispatch the insert operation */
-      index_builder_loader_task *load_task = new index_builder_loader_task (btid_int->sys_btid, &class_oids[cur_class],
-									    &cur_oid, unique_pk, load_context);
-
-      load_task->set_key (p_dbvalue);
-
-      thread_get_manager ()->push_task (ib_workpool, load_task);
-
-      /* Increment tasks started. */
-      tasks_started++;
+      if (load_task == NULL)
+        {
+          // create a new task
+	  load_task.reset (new index_builder_loader_task (btid_int->sys_btid, &class_oids[cur_class], unique_pk,
+							  load_context));
+        }
+      if (load_task->add_key (p_dbvalue, cur_oid) == index_builder_loader_task::BATCH_FULL)
+        {
+          // send task to worker pool for execution
+	  thread_get_manager ()->push_task (ib_workpool, load_task.release ());
+	  /* Increment tasks started. */
+	  tasks_started++;
+        }
 
       /* Clear index key. */
       pr_clear_value (p_dbvalue);
@@ -4921,79 +4953,140 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       if (load_context.m_has_error)
 	{
 	  /* Also stop all threads. */
-	  thread_get_manager ()->destroy_worker_pool (ib_workpool);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, load_context.m_error_code, 0);
-	  return load_context.m_error_code;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IB_ERROR_ABORT, 0);
+	  ret = load_context.m_error_code;
+	  break;
 	}
     }
 
-  /* Check if the workerpool is empty */
-  do
+  /* Check if the worker pool is empty */
+  if (ret == NO_ERROR)
     {
-      bool dummy_continue_checking = true;
-
-      if (load_context.m_has_error != NO_ERROR)
+      if (load_task != NULL && load_task->has_keys ())
+        {
+          // one last task
+          thread_get_manager ()->push_task (ib_workpool, load_task.release ());
+          /* Increment tasks started. */
+          tasks_started++;
+        }
+      do
 	{
-	  /* Also stop all threads. */
-	  thread_get_manager ()->destroy_worker_pool (ib_workpool);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, load_context.m_error_code, 0);
-	  return load_context.m_error_code;
-	}
+	  bool dummy_continue_checking = true;
 
-      /* Wait for threads to finish. */
-      thread_sleep (10);
+	  if (load_context.m_has_error != NO_ERROR)
+	    {
+	      /* Also stop all threads. */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IB_ERROR_ABORT, 0);
+	      ret = load_context.m_error_code;
+	      break;
+	    }
 
-      /* Check for interrupts. */
-      if (logtb_is_interrupted (thread_p, true, &dummy_continue_checking))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	  thread_get_manager ()->destroy_worker_pool (ib_workpool);
-	  return ER_INTERRUPTED;
+	  /* Wait for threads to finish. */
+	  thread_sleep (10);
+
+	  /* Check for interrupts. */
+	  if (logtb_is_interrupted (thread_p, true, &dummy_continue_checking))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	      ret = ER_INTERRUPTED;
+	      break;
+	    }
 	}
+      while (load_context.m_tasks_executed != tasks_started);
     }
-  while (load_context.m_tasks_executed != tasks_started);
 
-  assert (load_context.m_tasks_executed == tasks_started);
   thread_get_manager ()->destroy_worker_pool (ib_workpool);
 
   return ret;
 }
 
-// *INDENT-OFF*
 static bool
 btree_is_worker_pool_logging_true ()
 {
   return cubthread::is_logging_configured (cubthread::LOG_WORKER_POOL_INDEX_BUILDER);
 }
 
-index_builder_loader_task::index_builder_loader_task (const BTID * btid, const OID * class_oid, const OID * oid,
-                                                      int unique_pk, index_builder_loader_context & load_context)
+void
+index_builder_loader_context::on_create (context_type &context)
+{
+  context.claim_system_worker ();
+}
+
+void
+index_builder_loader_context::on_retire (context_type &context)
+{
+  context.retire_system_worker ();
+}
+
+void
+index_builder_loader_context::on_recycle (context_type &context)
+{
+  context.tran_index = LOG_SYSTEM_TRAN_INDEX;
+}
+
+index_builder_loader_task::index_builder_loader_task (const BTID *btid, const OID *class_oid, int unique_pk,
+						      index_builder_loader_context &load_context)
   : m_load_context (load_context)
 {
   BTID_COPY (&m_btid, btid);
   COPY_OID (&m_class_oid, class_oid);
-  COPY_OID (&m_oid, oid);
   m_unique_pk = unique_pk;
   m_load_context.m_has_error = false;
-  m_load_context.m_tran_index = thread_get_thread_entry_info ()->tran_index;
-  db_make_null (&m_key);
+  m_memsize = 0;
 }
 
 index_builder_loader_task::~index_builder_loader_task ()
 {
-  cubmem::switch_to_global_allocator_and_call (pr_clear_value, &m_key);
+  cubmem::switch_to_global_allocator_and_call ([this] { clear_keys (); });
 }
 
-void
-index_builder_loader_task::set_key (const DB_VALUE * key)
+index_builder_loader_task::batch_key_status
+index_builder_loader_task::add_key (const DB_VALUE *key, const OID &oid)
 {
-  cubmem::switch_to_global_allocator_and_call (qdata_copy_db_value, &m_key, key);
+  m_keys_oids.emplace_back ();
+
+  m_keys_oids.back ().m_oid = oid;
+
+  db_value &last_key = m_keys_oids.back ().m_key;
+  db_make_null (&last_key);
+  
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+
+  /* Switch to global heapID. */
+  HL_HEAPID prev_id = db_change_private_heap (thread_p, 0);
+
+  qdata_copy_db_value (&last_key, key);
+  m_memsize += m_load_context.m_key_type->type->get_disk_size_of_value (&last_key);
+
+  /* reset back to previous heapID. */
+  db_change_private_heap (thread_p, prev_id);
+
+  m_memsize += OR_OID_SIZE;
+  m_memsize = DB_ALIGN (m_memsize, BTREE_MAX_ALIGN);
+
+  return (m_memsize > (size_t) prm_get_bigint_value (PRM_ID_IB_TASK_MEMSIZE)) ? BATCH_FULL : BATCH_CONTINUE;
+}
+
+bool
+index_builder_loader_task::has_keys () const
+{
+  return !m_keys_oids.empty ();
 }
 
 void
-index_builder_loader_task::execute (cubthread::entry & thread_ref)
+index_builder_loader_task::clear_keys ()
+{
+  for (auto &key_oid : m_keys_oids)
+    {
+      pr_clear_value (&key_oid.m_key);
+    }
+}
+
+void
+index_builder_loader_task::execute (cubthread::entry &thread_ref)
 {
   int ret = NO_ERROR;
+  size_t key_count = 0;
 
   /* Check for possible errors set by the other threads. */
   if (m_load_context.m_has_error)
@@ -5001,23 +5094,31 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
       return;
     }
 
-  thread_ref.tran_index = m_load_context.m_tran_index;
-
-  ret = btree_online_index_dispatcher (&thread_ref, &m_btid, &m_key, &m_class_oid, &m_oid,
-				       m_unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
-
-  if (ret != NO_ERROR)
+  for (auto &key_oid : m_keys_oids)
     {
-      if (!m_load_context.m_has_error.exchange (true))
-        {
-          m_load_context.m_error_code = ret;
-          // TODO: We need a mechanism to also copy the error message!!
-        }
+      ret = btree_online_index_dispatcher (&thread_ref, &m_btid, &key_oid.m_key, &m_class_oid, &key_oid.m_oid,
+					   m_unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
+
+      if (ret != NO_ERROR)
+	{
+	  if (!m_load_context.m_has_error.exchange (true))
+	    {
+	      m_load_context.m_error_code = ret;
+	      // TODO: We need a mechanism to also copy the error message!!
+	    }
+	  break;
+	}
+
+      cubmem::switch_to_global_allocator_and_call (pr_clear_value, &key_oid.m_key);
+      key_count++;
     }
 
   /* Increment tasks executed. */
-  m_load_context.m_tasks_executed++;
+  if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
+    {
+      _er_log_debug (ARG_FILE_LINE, "Finished task; loaded %zu keys\n", key_count);
+    }
 
-  return;
+  m_load_context.m_tasks_executed++;
 }
 // *INDENT-ON*

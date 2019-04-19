@@ -33,6 +33,7 @@
 #if defined(SERVER_MODE) || defined(SA_MODE)
 #include "log_impl.h"
 #endif /* defined(SERVER_MODE) || defined(SA_MODE) */
+#include "log_lsa.hpp"
 #include "memory_alloc.h"
 #include "oid.h"
 #include "system_parameter.h"
@@ -67,6 +68,28 @@ struct repl_info_sbr
   char *sys_prm_context;
   char *savepoint_name;		/* Debug purpose, must be removed with PRM_ID_REPL_LOG_LOCAL_DEBUG */
 };
+
+#if defined(SERVER_MODE) || defined(SA_MODE)
+enum log_repl_flush
+{
+  LOG_REPL_DONT_NEED_FLUSH = -1,	/* no flush */
+  LOG_REPL_COMMIT_NEED_FLUSH = 0,	/* log must be flushed at commit */
+  LOG_REPL_NEED_FLUSH = 1	/* log must be flushed at commit and rollback */
+};
+typedef enum log_repl_flush LOG_REPL_FLUSH;
+
+typedef struct log_repl LOG_REPL_RECORD;
+struct log_repl
+{
+  LOG_RECTYPE repl_type;	/* LOG_REPLICATION_DATA or LOG_REPLICATION_SCHEMA */
+  LOG_RCVINDEX rcvindex;
+  OID inst_oid;
+  LOG_LSA lsa;
+  char *repl_data;		/* the content of the replication log record */
+  int length;
+  LOG_REPL_FLUSH must_flush;
+};
+#endif
 
 /*
  * STATES OF TRANSACTIONS

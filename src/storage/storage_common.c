@@ -373,14 +373,6 @@ recdes_set_data_area (RECDES * rec, char *data, int size)
 }
 
 char *
-lsa_to_string (char *buf, int buf_size, LOG_LSA * lsa)
-{
-  snprintf (buf, buf_size, "(%lld|%d)", LSA_AS_ARGS (lsa));
-  buf[buf_size - 1] = 0;
-  return buf;
-}
-
-char *
 oid_to_string (char *buf, int buf_size, OID * oid)
 {
   snprintf (buf, buf_size, "(%d|%d|%d)", oid->volid, oid->pageid, oid->slotid);

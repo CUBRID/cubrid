@@ -42,12 +42,6 @@ extern "C"
   typedef char need_clear_type;
 #endif
 
-#define IS_VALID_ISOLATION_LEVEL(isolation_level) \
-    (TRAN_MINVALUE_ISOLATION <= (isolation_level) \
-     && (isolation_level) <= TRAN_MAXVALUE_ISOLATION)
-
-#define TRAN_DEFAULT_ISOLATION_LEVEL()	(TRAN_DEFAULT_ISOLATION)
-
 #if defined (__GNUC__) && defined (NDEBUG)
 #define ALWAYS_INLINE always_inline
 #else
@@ -75,29 +69,6 @@ extern "C"
 
   /******************************************/
   /* From cubrid_api.h */
-  typedef enum
-  {
-    TRAN_UNKNOWN_ISOLATION = 0x00,	/* 0 0000 */
-
-    TRAN_READ_COMMITTED = 0x04,	/* 0 0100 */
-    TRAN_REP_CLASS_COMMIT_INSTANCE = 0x04,	/* Alias of above */
-    TRAN_CURSOR_STABILITY = 0x04,	/* Alias of above */
-
-    TRAN_REPEATABLE_READ = 0x05,	/* 0 0101 */
-    TRAN_REP_READ = 0x05,	/* Alias of above */
-    TRAN_REP_CLASS_REP_INSTANCE = 0x05,	/* Alias of above */
-    TRAN_DEGREE_2_9999_CONSISTENCY = 0x05,	/* Alias of above */
-
-    TRAN_SERIALIZABLE = 0x06,	/* 0 0110 */
-    TRAN_DEGREE_3_CONSISTENCY = 0x06,	/* Alias of above */
-    TRAN_NO_PHANTOM_READ = 0x06,	/* Alias of above */
-
-    TRAN_DEFAULT_ISOLATION = TRAN_READ_COMMITTED,
-    MVCC_TRAN_DEFAULT_ISOLATION = TRAN_READ_COMMITTED,
-
-    TRAN_MINVALUE_ISOLATION = 0x04,	/* internal use only */
-    TRAN_MAXVALUE_ISOLATION = 0x06	/* internal use only */
-  } DB_TRAN_ISOLATION;
 
   typedef enum
   {
@@ -183,9 +154,6 @@ extern "C"
    *       then we can move all this back to dbdef, include dbdef in dbtype_common and add dbdef to the list of exposed
    *       headers.
    */
-
-#define TRAN_ASYNC_WS_BIT                        0x10	/* 1 0000 */
-#define TRAN_ISO_LVL_BITS                        0x0F	/* 0 1111 */
 
 #define DB_AUTH_ALL \
   ((DB_AUTH) (DB_AUTH_SELECT | DB_AUTH_INSERT | DB_AUTH_UPDATE | DB_AUTH_DELETE | \

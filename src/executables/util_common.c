@@ -35,7 +35,8 @@
 #include "util_func.h"
 #include "porting.h"
 #include "message_catalog.h"
-#include "log_impl.h"
+#include "log_common_impl.h"
+#include "log_writer.h"
 #include "mprec.h"
 #include "system_parameter.h"
 #include "environment_variable.h"
@@ -417,9 +418,9 @@ utility_localtime (const time_t * ts, struct tm *result)
 bool
 util_is_localhost (char *host)
 {
-  char localhost[PATH_MAX];
+  char localhost[MAXHOSTNAMELEN];
 
-  GETHOSTNAME (localhost, PATH_MAX);
+  GETHOSTNAME (localhost, MAXHOSTNAMELEN);
   if (strcmp (host, localhost) == 0)
     {
       return true;

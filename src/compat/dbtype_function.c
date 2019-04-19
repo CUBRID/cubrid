@@ -30,4 +30,8 @@
 #include "language_support.h"
 #include "intl_support.h"
 #include "memory_alloc.h"
+
+// hidden functions (suppress -Wmissing-prototypes)
+int db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, char *str, const int size);
+
 #include "dbtype_function.i"

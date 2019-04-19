@@ -121,7 +121,7 @@ namespace cubmem
 	const char *reserved_ptr = NULL;
 	bool need_take_margin = true;
 
-        need_read_range_adjust = false;
+	need_read_range_adjust = false;
 	/* TODO : adaptive reserve margin */
 	/* TODO : a possible optimization would be to increase m_ptr_end_a with page increments,
 	 * instead of keeping it consistently ahead of append with a fixed amount */
@@ -148,7 +148,7 @@ namespace cubmem
 		activate_region_b ();
 	      }
 	    switch_to_region_b ();
-            need_read_range_adjust = true;
+	    need_read_range_adjust = true;
 	    /* fall through */
 	  }
 
@@ -157,7 +157,7 @@ namespace cubmem
 	    /* enough till end of buffer, but need to extend region A */
 	    take_margin_in_region_a (amount);
 	    need_take_margin = false;
-            need_read_range_adjust = true;
+	    need_read_range_adjust = true;
 	    /* fall through */
 	  }
 
@@ -175,7 +175,7 @@ namespace cubmem
 	if (need_take_margin)
 	  {
 	    take_margin_in_region_a (0);
-            need_read_range_adjust = true;
+	    need_read_range_adjust = true;
 	  }
 
 	return reserved_ptr;
@@ -285,7 +285,7 @@ namespace cubmem
 
       int end_read (const cubmem::buffer_latch_read_id &page_idx)
       {
-	assert (page_idx >= 0 && page_idx < P);
+	assert (page_idx >= 0 && page_idx < (int) P);
 
 	assert (m_read_fcnt[page_idx] > 0);
 	m_read_fcnt[page_idx]--;

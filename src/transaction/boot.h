@@ -24,32 +24,10 @@
 #ifndef _BOOT_H_
 #define _BOOT_H_
 
+#include "client_credentials.hpp"
+#include "es_common.h"
 #include "porting.h"
 #include "storage_common.h"
-#include "es_common.h"
-
-/* this enumeration should be matched with DB_CLIENT_TYPE_XXX in db.h */
-enum boot_client_type
-{
-  BOOT_CLIENT_UNKNOWN = -1,
-  BOOT_CLIENT_SYSTEM_INTERNAL = 0,
-  BOOT_CLIENT_DEFAULT = 1,
-  BOOT_CLIENT_CSQL = 2,
-  BOOT_CLIENT_READ_ONLY_CSQL = 3,
-  BOOT_CLIENT_BROKER = 4,
-  BOOT_CLIENT_READ_ONLY_BROKER = 5,
-  BOOT_CLIENT_SLAVE_ONLY_BROKER = 6,
-  BOOT_CLIENT_ADMIN_UTILITY = 7,
-  BOOT_CLIENT_ADMIN_CSQL = 8,
-  BOOT_CLIENT_LOG_COPIER = 9,
-  BOOT_CLIENT_LOG_APPLIER = 10,
-  BOOT_CLIENT_RW_BROKER_REPLICA_ONLY = 11,
-  BOOT_CLIENT_RO_BROKER_REPLICA_ONLY = 12,
-  BOOT_CLIENT_SO_BROKER_REPLICA_ONLY = 13,
-  BOOT_CLIENT_ADMIN_CSQL_WOS = 14,	/* admin csql that can write on standby */
-  BOOT_CLIENT_DDL_PROXY = 15
-};
-typedef enum boot_client_type BOOT_CLIENT_TYPE;
 
 #define BOOT_NORMAL_CLIENT_TYPE(client_type) \
         ((client_type) == BOOT_CLIENT_DEFAULT \
@@ -112,23 +90,6 @@ typedef enum boot_client_type BOOT_CLIENT_TYPE;
 #define BOOT_IS_PREFERRED_HOSTS_SET(credential) \
         ((credential)->preferred_hosts != NULL \
         && (credential)->preferred_hosts[0] != '\0')
-
-typedef struct boot_client_credential BOOT_CLIENT_CREDENTIAL;
-struct boot_client_credential
-{
-  BOOT_CLIENT_TYPE client_type;
-  char *client_info;		/* DB_MAX_IDENTIFIER_LENGTH */
-  char *db_name;		/* DB_MAX_IDENTIFIER_LENGTH */
-  char *db_user;		/* DB_MAX_USER_LENGTH */
-  char *db_password;		/* DB_MAX_PASSWORD_LENGTH */
-  char *program_name;		/* PATH_MAX */
-  char *login_name;		/* L_cuserid */
-  char *host_name;		/* MAXHOSTNAMELEN */
-  char *preferred_hosts;	/* LINE_MAX */
-  int connect_order;
-  int process_id;
-  int desired_tran_index;
-};
 
 typedef struct boot_db_path_info BOOT_DB_PATH_INFO;
 struct boot_db_path_info

@@ -31,6 +31,7 @@
 #include "system_parameter.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #include "xasl.h"
+#include "xasl_unpack_info.hpp"
 
 typedef struct fpcache_ent FPCACHE_ENTRY;
 struct fpcache_ent
@@ -267,7 +268,7 @@ fpcache_entry_init (void *entry)
   /* Add here if anything should be initialized. */
   /* Allocate clone stack. */
   fpcache_entry->clone_stack =
-    (PRED_EXPR_WITH_CONTEXT **) malloc (fpcache_Clone_stack_size * sizeof (PRED_EXPR_WITH_CONTEXT));
+    (PRED_EXPR_WITH_CONTEXT **) malloc (fpcache_Clone_stack_size * sizeof (PRED_EXPR_WITH_CONTEXT *));
   if (fpcache_entry->clone_stack == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
@@ -301,9 +302,8 @@ fpcache_entry_uninit (void *entry)
       assert (pred_expr != NULL);
 
       qexec_clear_pred_context (thread_p, pred_expr, true);
-      stx_free_additional_buff (thread_p, pred_expr->unpack_info);
-      stx_free_xasl_unpack_info (pred_expr->unpack_info);
-      db_private_free_and_init (thread_p, pred_expr->unpack_info);
+      free_xasl_unpack_info (thread_p, pred_expr->unpack_info);
+      db_private_free_and_init (thread_p, pred_expr);
     }
 
   (void) db_change_private_heap (thread_p, old_private_heap);
@@ -483,9 +483,8 @@ fpcache_retire (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, pred_expr
     {
       /* Filter predicate expression could not be cached. Free it. */
       HL_HEAPID old_private_heap = db_change_private_heap (thread_p, 0);
-      stx_free_additional_buff (thread_p, filter_pred->unpack_info);
-      stx_free_xasl_unpack_info (filter_pred->unpack_info);
-      db_private_free_and_init (thread_p, filter_pred->unpack_info);
+      free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
+      db_private_free_and_init (thread_p, filter_pred);
       (void) db_change_private_heap (thread_p, old_private_heap);
     }
   return error_code;
@@ -499,7 +498,7 @@ fpcache_retire (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, pred_expr
  * class_oid (in) : Class OID.
  */
 void
-fpcache_remove_by_class (THREAD_ENTRY * thread_p, OID * class_oid)
+fpcache_remove_by_class (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
 #define FPCACHE_DELETE_BTIDS_SIZE 1024
 

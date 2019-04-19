@@ -29,6 +29,7 @@
 
 #include "error_manager.h"
 #include "log_comm.h"
+#include "log_lsa.hpp"
 #include "thread_compat.hpp"
 
 #include <stdio.h>

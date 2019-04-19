@@ -35,7 +35,7 @@
 // forward declarations
 struct db_value;
 struct tp_domain;
-struct regu_variable_node;
+class regu_variable_node;
 class JSON_DOC;
 class JSON_ITERATOR;
 
@@ -61,6 +61,7 @@ namespace cubxasl
 
 	void init ();
 	int evaluate (const JSON_DOC &input, size_t ordinality);
+	void clear_xasl (bool is_final_clear = true);
 
       private:
 	int evaluate_extract (const JSON_DOC &input);
@@ -88,7 +89,7 @@ namespace cubxasl
       void init ();
       void clear_columns (bool is_final_clear);
       void clear_iterators (bool is_final_clear);
-      void clear_tree (bool is_final_clear);
+      void clear_xasl (bool is_final_clear = true);
       void init_iterator ();
       void init_ordinality ();
     };
@@ -102,6 +103,7 @@ namespace cubxasl
       spec_node ();
 
       void init ();
+      void clear_xasl (bool is_final_clear = true);
     };
 
   } // namespace json_table

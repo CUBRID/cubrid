@@ -75,7 +75,6 @@
 #include "authenticate.h"
 #include "xasl_generation.h"
 #include "virtual_object.h"
-#include "xasl_support.h"
 #include "environment_variable.h"
 #include "set_object.h"
 #include "intl_support.h"
@@ -8258,7 +8257,7 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
 	      spec = spec->next;
 	    }
 	}
-      regu_free_listid (list_id);
+      cursor_free_self_list_id (list_id);
     }
   pt_end_query (parser, query_id_self);
 
@@ -8565,7 +8564,7 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_
 	  /* update each oid */
 	  error = update_objs_for_list_file (parser, oid_list, statement, savepoint_started);
 
-	  regu_free_listid (oid_list);
+	  cursor_free_self_list_id (oid_list);
 	  pt_end_query (parser, query_id_self);
 	}
       else
@@ -9379,7 +9378,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  err = list_id->tuple_cnt;	/* as a result */
 		}
-	      regu_free_listid (list_id);
+	      cursor_free_self_list_id (list_id);
 	    }
 	  /* end the query; reset query_id and call qmgr_end_query() */
 	  pt_end_query (parser, query_id_self);
@@ -9893,7 +9892,7 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      node = node->next;
 	    }
 	}
-      regu_free_listid (list_id);
+      cursor_free_self_list_id (list_id);
     }
 
   pt_end_query (parser, query_id_self);
@@ -10042,7 +10041,7 @@ delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       /* delete each oid */
       error = delete_list_by_oids (parser, statement, oid_list, false);
-      regu_free_listid (oid_list);
+      cursor_free_self_list_id (oid_list);
       pt_end_query (parser, query_id_self);
     }
 
@@ -10658,7 +10657,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  err = err2;
 		}
 	    }
-	  regu_free_listid (list_id);
+	  cursor_free_self_list_id (list_id);
 	}
 
       /* end the query; reset query_id and call qmgr_end_query() */
@@ -11146,7 +11145,7 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else
 	{
-	  regu_free_listid (list_id);
+	  cursor_free_self_list_id (list_id);
 	}
     }
 
@@ -13004,7 +13003,7 @@ cleanup:
       set_free (seq);
     }
 
-  regu_free_listid ((QFILE_LIST_ID *) qry->etc);
+  cursor_free_self_list_id ((QFILE_LIST_ID *) qry->etc);
   pt_end_query (parser, query_id_self);
 
   return cnt;
@@ -13612,7 +13611,7 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else
 	{
-	  regu_free_listid (list_id);
+	  cursor_free_self_list_id (list_id);
 	}
     }
 
@@ -15813,7 +15812,7 @@ exit:
 
   if (list_id != NULL)
     {
-      regu_free_listid (list_id);
+      cursor_free_self_list_id (list_id);
       if (upd_query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
 	{
 	  qmgr_end_query (upd_query_id);
@@ -15824,7 +15823,7 @@ exit:
     {
       if (ins_select_stmt->etc != NULL)
 	{
-	  regu_free_listid ((QFILE_LIST_ID *) ins_select_stmt->etc);
+	  cursor_free_self_list_id ((QFILE_LIST_ID *) ins_select_stmt->etc);
 	  if (ins_query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
 	    {
 	      qmgr_end_query (ins_query_id);
@@ -16411,7 +16410,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      result += list_id->tuple_cnt;
 	    }
-	  regu_free_listid (list_id);
+	  cursor_free_self_list_id (list_id);
 	  list_id = NULL;
 	}
 
@@ -16560,7 +16559,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		    {
 		      err = sm_flush_and_decache_objects (class_obj, true);
 		    }
-		  regu_free_listid (list_id);
+		  cursor_free_self_list_id (list_id);
 		  list_id = NULL;
 		}
 	    }
@@ -16628,7 +16627,7 @@ exit:
     {
       if (ins_select_stmt->etc != NULL)
 	{
-	  regu_free_listid ((QFILE_LIST_ID *) ins_select_stmt->etc);
+	  cursor_free_self_list_id ((QFILE_LIST_ID *) ins_select_stmt->etc);
 	  if (ins_query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
 	    {
 	      qmgr_end_query (ins_query_id);
@@ -16639,7 +16638,7 @@ exit:
 
   if (list_id != NULL)
     {
-      regu_free_listid (list_id);
+      cursor_free_self_list_id (list_id);
     }
 
   /* If err == er_errid () and parser has error, we already record the parser error to sys error, no need to call

@@ -28,7 +28,10 @@
 #include <assert.h>
 
 #include "transaction_sr.h"
+
 #include "locator_sr.h"
+#include "log_2pc.h"
+#include "log_lsa.hpp"
 #include "log_manager.h"
 #if defined(SERVER_MODE)
 #endif
@@ -141,9 +144,9 @@ tran_server_unilaterally_abort (THREAD_ENTRY * thread_p, int tran_index)
 {
   TRAN_STATE state;
   int save_tran_index;
-  char *client_prog_name;	/* Client user name for transaction */
-  char *client_user_name;	/* Client user name for transaction */
-  char *client_host_name;	/* Client host for transaction */
+  const char *client_prog_name;	/* Client user name for transaction */
+  const char *client_user_name;	/* Client user name for transaction */
+  const char *client_host_name;	/* Client host for transaction */
   int client_pid;		/* Client process identifier for transaction */
 
   if (thread_p == NULL)
@@ -287,7 +290,7 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
 	}
       if (result == LOG_RESULT_TOPOP_ABORT)
 	{
-	  log_clear_lob_locator_list (thread_p, tdes, false, topop_lsa);
+	  tx_lob_locator_clear (thread_p, tdes, false, topop_lsa);
 	}
       break;
 
@@ -403,7 +406,7 @@ xtran_server_partial_abort (THREAD_ENTRY * thread_p, const char *savept_name, LO
 int
 xtran_server_set_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *info, int size)
 {
-  return log_set_global_tran_info (thread_p, gtrid, info, size);
+  return log_2pc_set_global_tran_info (thread_p, gtrid, info, size);
 }
 
 /*
@@ -425,7 +428,7 @@ xtran_server_set_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *inf
 int
 xtran_server_get_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *buffer, int size)
 {
-  return log_get_global_tran_info (thread_p, gtrid, buffer, size);
+  return log_2pc_get_global_tran_info (thread_p, gtrid, buffer, size);
 }
 
 /*
@@ -706,7 +709,7 @@ bool
 xtran_should_connection_reset (THREAD_ENTRY * thread_p, bool has_updated)
 {
   int client_type;
-  char *hostname;
+  const char *hostname;
   HA_SERVER_STATE ha_state;
   bool should_conn_reset = false;
 

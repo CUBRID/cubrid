@@ -211,7 +211,7 @@ else(VERSION_MATCHES_LENGTH GREATER 3)
       message(FATAL_ERROR "Could not get count information from Git")
     endif(git_result)
     set(CUBRID_EXTRA_VERSION ${commit_count})
-    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --short=7 HEAD
       OUTPUT_VARIABLE commit_hash RESULT_VARIABLE git_result
       ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
       WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
@@ -261,12 +261,30 @@ if(UNIX)
       add_definitions(-D_USE_LIBREGEX_)
     endif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9.0)
 
-    set(CMAKE_C_FLAGS_DEBUG "-ggdb -fno-inline -fno-omit-frame-pointer")
-    set(CMAKE_CXX_FLAGS_DEBUG "-Wall -ggdb -fno-inline -fno-omit-frame-pointer -std=c++0x")
-    set(CMAKE_C_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer -std=c++0x")
-    set(CMAKE_CXX_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer -std=c++0x")
-    set(CMAKE_C_FLAGS_RELWITHDEBINFO "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer -std=c++0x")
-    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer -std=c++0x")
+    # C/C++ common flags for both debug and release build
+    set(CMAKE_C_CXX_COMMON_FLAGS "-ggdb -fno-omit-frame-pointer -std=c++0x")
+    # C/C++ common flags for both debug
+    set(CMAKE_C_CXX_DEBUG_FLAGS "-Wall -fno-inline ${CMAKE_C_CXX_COMMON_FLAGS}")
+    # C/C++ common flags for release build
+    set(CMAKE_C_CXX_RELEASE_FLAGS "-O2 -DNDEBUG -finline-functions ${CMAKE_C_CXX_COMMON_FLAGS}")
+
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_CXX_DEBUG_FLAGS}")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_C_CXX_DEBUG_FLAGS}")
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${CMAKE_C_CXX_RELEASE_FLAGS}")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}  ${CMAKE_C_CXX_RELEASE_FLAGS}")
+    set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO}  ${CMAKE_C_CXX_RELEASE_FLAGS}")
+    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}  ${CMAKE_C_CXX_RELEASE_FLAGS}")
+
+    if(WITH_SOURCES)
+      set(DEBUG_PREFIX_MAP_FLAG "-fdebug-prefix-map=${CMAKE_SOURCE_DIR}/src=${CMAKE_INSTALL_PREFIX}/src")
+
+      set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${DEBUG_PREFIX_MAP_FLAG}")
+      set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${DEBUG_PREFIX_MAP_FLAG}")
+      set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${DEBUG_PREFIX_MAP_FLAG}")
+      set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${DEBUG_PREFIX_MAP_FLAG}")
+      set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} ${DEBUG_PREFIX_MAP_FLAG}")
+      set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} ${DEBUG_PREFIX_MAP_FLAG}")
+    endif(WITH_SOURCES)
 
     # set has-style
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--hash-style=both")
@@ -282,12 +300,14 @@ else(UNIX)
   #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
   string(REPLACE "INCREMENTAL:YES" "INCREMENTAL:NO" replaceIncFlag ${CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO})
   set(CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO "/INCREMENTAL:NO ${replaceIncFlag}" )
+
   string(REPLACE "INCREMENTAL:YES" "INCREMENTAL:NO" replaceIncFlag ${CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO})
   set(CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO "/INCREMENTAL:NO ${replaceIncFlag}" )
-  #SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} /WX /wd4820 /showIncludes" )
-  SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} /W3 /wd4820" )
-  SET( CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} /W3" )
-  set (CMAKE_CXX_STANDARD 11)
+
+  #set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /WX /wd4820 /showIncludes" )
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W3 /wd4820" )
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W3" )
+  set(CMAKE_CXX_STANDARD 11)
 endif(UNIX)
 
 # check target platform
@@ -767,6 +787,7 @@ if(USE_CUBRID_ENV)
   set(CUBRID_PREFIXDIR .)
   set(CUBRID_BINDIR bin)
   set(CUBRID_LIBDIR lib)
+  set(CUBRID_SRCDIR src)
   set(CUBRID_INCLUDEDIR include)
   set(CUBRID_VARDIR var)
   set(CUBRID_DATADIR share)
@@ -797,6 +818,12 @@ else(USE_CUBRID_ENV)
     list(APPEND DIR_DEFS CUBRID_LIBDIR="${CUBRID_LIBDIR}")
   else()
     list(APPEND DIR_DEFS CUBRID_LIBDIR="${CUBRID_PREFIXDIR}/${CUBRID_LIBDIR}")
+  endif()
+  set(CUBRID_SRCDIR src CACHE STRING "The directory for source files")
+  if(IS_ABSOLUTE ${CUBRID_SRCDIR})
+    list(APPEND DIR_DEFS CUBRID_SRCDIR="${CUBRID_SRCDIR}")
+  else()
+    list(APPEND DIR_DEFS CUBRID_SRCDIR="${CUBRID_PREFIXDIR}/${CUBRID_SRCDIR}")
   endif()
   set(CUBRID_VARDIR var CACHE STRING "The directory for variable data files")
   if(IS_ABSOLUTE ${CUBRID_VARDIR})
@@ -1317,6 +1344,9 @@ if(USE_CUBRID_ENV)
     DESTINATION ${CUBRID_PREFIXDIR})
 endif(USE_CUBRID_ENV)
 
+if(WITH_SOURCES)
+  install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/ DESTINATION ${CUBRID_SRCDIR})
+endif(WITH_SOURCES)
 
 # for packaging
 if(UNIX)

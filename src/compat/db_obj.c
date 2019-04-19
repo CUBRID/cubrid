@@ -52,6 +52,7 @@
 #include "network_interface_cl.h"
 #include "transform.h"
 #include "dbtype.h"
+#include "printer.hpp"
 
 /*
  * OBJECT CREATION/DELETION
@@ -1254,7 +1255,7 @@ db_print (DB_OBJECT * obj)
 
   if (obj != NULL)
     {
-      help_fprint_obj (stdout, obj);
+      help_print_obj (file_print_output::std_output (), obj);
     }
 }
 
@@ -1267,11 +1268,12 @@ db_print (DB_OBJECT * obj)
 void
 db_fprint (FILE * fp, DB_OBJECT * obj)
 {
+  file_print_output output (fp);
   CHECK_CONNECT_VOID ();
 
   if (fp != NULL && obj != NULL)
     {
-      help_fprint_obj (fp, obj);
+      help_print_obj (output, obj);
     }
 }
 

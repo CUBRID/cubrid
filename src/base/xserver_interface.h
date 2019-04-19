@@ -31,17 +31,17 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "boot.h"
+#include "config.h"
 #include "error_manager.h"
 #include "file_io.h"
 #include "locator.h"
 #include "log_comm.h"
+#include "log_lsa.hpp"
 #include "query_list.h"
 #include "query_manager.h"
 #include "perf_monitor.h"
@@ -235,12 +235,6 @@ extern void xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp);
 extern int xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_p,
 				       int include_query_exec_info);
 
-extern LOB_LOCATOR_STATE xlog_find_lob_locator (THREAD_ENTRY * thread_p, const char *locator, char *real_locator);
-extern int xlog_add_lob_locator (THREAD_ENTRY * thread_p, const char *locator, LOB_LOCATOR_STATE state);
-extern int xlog_change_state_of_locator (THREAD_ENTRY * thread_p, const char *locator, const char *new_locator,
-					 LOB_LOCATOR_STATE state);
-extern int xlog_drop_lob_locator (THREAD_ENTRY * thread_p, const char *locator);
-extern void log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool at_commit, LOG_LSA * savept_lsa);
 extern int xboot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids, int n_classes, int space_to_process,
 			     int instance_lock_timeout, int class_lock_timeout, bool delete_old_repr,
 			     OID * last_processed_class_oid, OID * last_processed_oid, int *total_objects,

@@ -321,4 +321,8 @@ extern int sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid, const ch
 extern int sm_find_subclass_in_hierarchy (MOP hierarchy, MOP class_mop, bool * found);
 extern bool sm_is_index_visible (SM_CLASS_CONSTRAINT * constraint_list, BTID btid);
 
+SM_DOMAIN *sm_domain_alloc ();
+void sm_domain_free (SM_DOMAIN * ptr);
+SM_DOMAIN *sm_domain_copy (SM_DOMAIN * ptr);
+
 #endif /* _SCHEMA_MANAGER_H_ */

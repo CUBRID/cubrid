@@ -41,6 +41,7 @@
 #include "tz_support.h"
 #include "db_date.h"
 #include "mprec.h"
+#include "porting_inline.hpp"
 #include "set_object.h"
 #include "string_opfunc.h"
 #include "tz_support.h"
@@ -548,7 +549,6 @@ TP_DOMAIN **tp_Domain_conversion_matrix[] = {
 static pthread_mutex_t tp_domain_cache_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif /* SERVER_MODE */
 
-static void domain_init (TP_DOMAIN * domain, DB_TYPE typeid_);
 static int tp_domain_size_internal (const TP_DOMAIN * domain);
 static void tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain);
 static TP_DOMAIN *tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, TP_DOMAIN ** ins_pos);
@@ -969,7 +969,7 @@ tp_domain_free (TP_DOMAIN * dom)
 }
 
 /*
- * domain_init - initializes a domain structure to contain reasonable "default"
+ * tp_domain_init - initializes a domain structure to contain reasonable "default"
  * values.
  *    return: none
  *    domain(out): domain structure to initialize
@@ -978,8 +978,8 @@ tp_domain_free (TP_DOMAIN * dom)
  *    Used by tp_domain_new and also in some other places
  *    where we need to quickly synthesize some transient domain structures.
  */
-static void
-domain_init (TP_DOMAIN * domain, DB_TYPE type_id)
+void
+tp_domain_init (TP_DOMAIN * domain, DB_TYPE type_id)
 {
   assert (type_id <= DB_TYPE_LAST);
 
@@ -1044,7 +1044,7 @@ tp_domain_new (DB_TYPE type)
   new_dm = (TP_DOMAIN *) area_alloc (tp_Domain_area);
   if (new_dm != NULL)
     {
-      domain_init (new_dm, type);
+      tp_domain_init (new_dm, type);
     }
 
   return new_dm;
@@ -1422,15 +1422,17 @@ tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      if (domain->collation_flag == TP_DOMAIN_COLL_NORMAL || domain->collation_flag == TP_DOMAIN_COLL_ENFORCE)
-	{
-	  db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
-	}
       if (domain->collation_flag == TP_DOMAIN_COLL_ENFORCE)
 	{
+	  db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
 	  /* don't apply precision and type */
 	  break;
 	}
+      if (domain->collation_flag == TP_DOMAIN_COLL_NORMAL)
+	{
+	  db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+	}
+      /* FALLTHRU */
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       value->domain.char_info.type = TP_DOMAIN_TYPE (domain);
@@ -3291,7 +3293,7 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	  else
 	    {
 	      domain = dbuf;
-	      domain_init (domain, value_type);
+	      tp_domain_init (domain, value_type);
 	    }
 	  domain->codeset = db_get_string_codeset (val);
 	  domain->collation_id = db_get_string_collation (val);
@@ -3354,7 +3356,7 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	  else
 	    {
 	      domain = dbuf;
-	      domain_init (dbuf, value_type);
+	      tp_domain_init (dbuf, value_type);
 	    }
 	  domain->precision = db_value_precision (val);
 	  domain->scale = db_value_scale (val);
@@ -3405,7 +3407,7 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	  else
 	    {
 	      domain = dbuf;
-	      domain_init (domain, value_type);
+	      tp_domain_init (domain, value_type);
 	    }
 
 	  if (db_get_json_schema (val) != NULL)
@@ -10029,7 +10031,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      const char *original_str = db_get_string (src);
 	      int error_code;
 
-	      assert (str_size >= 0);	/* if this isn't correct, we cannot rely on strlen */
 	      error_code = db_json_get_json_from_str (original_str, doc, str_size);
 	      if (error_code != NO_ERROR)
 		{

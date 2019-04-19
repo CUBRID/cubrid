@@ -1273,8 +1273,8 @@ $ LOADDB
 1204 Json KEY "%1$s" is duplicate
 1205 Invalid type %1$s. Expecting JSON document compatible data type (STRING or JSON).
 1206 Json PATH "%1$s" does not address a cell in an Json ARRAY.
-1207 Reserved error for JSON.
-1208 Reserved error for JSON.
+1207 Invalid JSON path. Index is larger than allowed by system parameter json_max_array_idx.
+1208 Invalid one/all argument. The one/all argument may only take one of these two values: "one", "all".
 1209 Reserved error for JSON.
 1210 Reserved error for JSON.
 1211 Reserved error for JSON.
@@ -1309,8 +1309,9 @@ $ LOADDB
 1240 Online index is not allowed on classes that are part of a hierarchy chain.
 1241 XASL tree needs recompile.
 1242 Cannot create partition on a class that is part of a hierarchy chain.
+1243 Index loading was aborted after an error.
 
-1243 Dernière erreur
+1244 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
