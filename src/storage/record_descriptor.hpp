@@ -21,8 +21,12 @@
 // record_descriptor - RECDES extended functionality
 //
 
+#ifndef _RECORD_DESCRIPTOR_HPP_
+#define _RECORD_DESCRIPTOR_HPP_
+
 #include "mem_block.hpp"
 #include "memory_alloc.h"
+#include "packable_object.hpp"
 #include "storage_common.h"
 
 // forward definitions
@@ -51,7 +55,7 @@ enum class record_get_mode
   COPY_RECORD = COPY
 };
 
-class record_descriptor
+class record_descriptor : cubpacking::packable_object
 {
   public:
 
@@ -106,6 +110,10 @@ class record_descriptor
     // move record data starting from source_offset to dest_offset
     void move_data (std::size_t dest_offset, std::size_t source_offset);
 
+    void pack (cubpacking::packer &packer) const override;
+    void unpack (cubpacking::unpacker &unpacker) override;
+    std::size_t get_packed_size (cubpacking::packer &packer, std::size_t curr_offset) const override;
+
   private:
 
     // resize record buffer; copy_data is true if existing data must be preserved
@@ -153,3 +161,5 @@ record_descriptor::set_data_to_object (const T &t)
 {
   set_data (reinterpret_cast<const char *> (&t), sizeof (t));
 }
+
+#endif // !_RECORD_DESCRIPTOR_HPP_

@@ -236,14 +236,6 @@ struct recdes
   int length;			/* Length of the data. Does not include the length and type fields */
   INT16 type;			/* Type of record */
   char *data;			/* The data */
-
-/* *INDENT-OFF* */
-#if defined (__cplusplus)
-  void pack (cubpacking::packer &packer) const;
-  void unpack (cubpacking::unpacker &unpacker);
-  std::size_t get_packed_size (cubpacking::packer &packer, std::size_t curr_offset) const;
-#endif
-/* *INDENT-ON* */
 };
 /* Replace existing data in record at offset_to_data and size old_data_size
  * with new_data of size new_data_size.

@@ -85,7 +85,7 @@ struct clientids : public cubpacking::packable_object
     void reset ();
 
     // packable_object
-    virtual size_t get_packed_size (cubpacking::packer &serializator) const override;
+    virtual size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const override;
     virtual void pack (cubpacking::packer &serializator) const override;
     virtual void unpack (cubpacking::unpacker &deserializator) override;
 
@@ -114,7 +114,7 @@ struct boot_client_credential : public clientids
   const char *get_db_password () const;
 
   // packable_object
-  virtual size_t get_packed_size (cubpacking::packer &serializator) const override;
+  virtual size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const override;
   virtual void pack (cubpacking::packer &serializator) const override;
   virtual void unpack (cubpacking::unpacker &deserializator) override;
 };

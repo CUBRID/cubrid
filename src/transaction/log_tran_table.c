@@ -198,7 +198,6 @@ logtb_allocate_tdes_area (int num_indices)
   LOG_ADDR_TDESAREA *area;	/* Contiguous area for new transaction indices */
   LOG_TDES *tdes;		/* Transaction descriptor */
   int i, tran_index;
-  size_t area_size;
 
   /*
    * Allocate an area for the transaction descriptors, set the address of

@@ -26,10 +26,12 @@
 #ifndef _REPLICATION_OBJECT_HPP_
 #define _REPLICATION_OBJECT_HPP_
 
-#include "packable_object.hpp"
-#include "dbtype.h"
-#include "storage_common.h"
 #include "dbtype_def.h"
+#include "dbtype.h"
+#include "log_lsa.hpp"
+#include "packable_object.hpp"
+#include "record_descriptor.hpp"
+#include "storage_common.h"
 
 #include <vector>
 #include <string>
@@ -145,7 +147,7 @@ namespace cubreplication
       void stringify (string_buffer &str) final;
 
     private:
-      RECDES m_rec_des;
+      record_descriptor m_rec_des;
   };
 
   class changed_attrs_row_repl_entry : public single_row_repl_entry

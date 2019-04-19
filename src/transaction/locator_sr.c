@@ -14299,19 +14299,10 @@ int
 locator_repl_start_tran (THREAD_ENTRY * thread_p)
 {
   /* TODO */
-  static BOOT_CLIENT_CREDENTIAL applier_Client_credentials = {
-    BOOT_CLIENT_LOG_APPLIER,	/* client_type */
-    NULL,			/* client_info */
-    NULL,			/* db_name */
-    NULL,			/* db_user */
-    NULL,			/* db_password */
-    (char *) "(repl_applier)",	/* program_name */
-    NULL,			/* login_name */
-    NULL,			/* host_name */
-    NULL,			/* preferred_hosts */
-    0,				/* connect_order */
-    -1				/* process_id */
-  };
+  BOOT_CLIENT_CREDENTIAL applier_Client_credentials;
+  applier_Client_credentials.client_type = BOOT_CLIENT_LOG_APPLIER;
+  applier_Client_credentials.program_name = "(repl_applier)";
+  applier_Client_credentials.process_id = -1;
 
   int client_lock_wait = 0;
   TRAN_ISOLATION client_isolation = TRAN_DEFAULT_ISOLATION;

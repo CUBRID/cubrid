@@ -26,9 +26,11 @@
 #ifndef _REPLICATION_STREAM_ENTRY_HPP_
 #define _REPLICATION_STREAM_ENTRY_HPP_
 
+#include "log_lsa.hpp"
 #include "replication_object.hpp"
 #include "stream_entry.hpp"
 #include "storage_common.h"
+
 #include <vector>
 
 namespace cubreplication

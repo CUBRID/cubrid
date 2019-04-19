@@ -24,13 +24,15 @@
 #ident "$Id$"
 
 #include "replication_object.hpp"
+
 #include "object_representation.h"
 #include "thread_manager.hpp"
 #include "memory_alloc.h"
 #include "object_primitive.h"
 #include "string_buffer.hpp"
-
 #include "locator_sr.h"
+
+#include <cstring>
 
 namespace cubreplication
 {
@@ -519,7 +521,7 @@ namespace cubreplication
     std::vector<DB_VALUE> dummy_val_vector;
 
     err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
-				  dummy_int_vector, dummy_val_vector, &m_rec_des);
+				  dummy_int_vector, dummy_val_vector, &m_rec_des.get_recdes ());
 #endif
 
     return err;
@@ -585,10 +587,9 @@ namespace cubreplication
 	return true;
       }
 
-    if (m_rec_des.length != other_t->m_rec_des.length
-	|| m_rec_des.area_size != other_t->m_rec_des.area_size
-	|| m_rec_des.type != other_t->m_rec_des.type
-	|| memcmp (m_rec_des.data, other_t->m_rec_des.data, m_rec_des.length) != 0)
+    if (m_rec_des.get_size () != other_t->m_rec_des.get_size ()
+	|| m_rec_des.get_recdes().type != other_t->m_rec_des.get_recdes ().type
+	|| std::memcmp (m_rec_des.get_recdes ().data, other_t->m_rec_des.get_recdes().data, m_rec_des.get_size ()) != 0)
       {
 	return false;
       }
@@ -599,25 +600,12 @@ namespace cubreplication
   rec_des_row_repl_entry::rec_des_row_repl_entry (repl_entry_type type, const char *class_name, const RECDES &rec_des,
       LOG_LSA &lsa_stamp)
     : single_row_repl_entry (type, class_name, lsa_stamp)
+    , m_rec_des (rec_des)
   {
-    m_rec_des.length = rec_des.length;
-    m_rec_des.area_size = rec_des.area_size;
-    m_rec_des.type = rec_des.type;
-
-    m_rec_des.data = (char *) malloc (m_rec_des.length);
-    if (m_rec_des.data == NULL)
-      {
-	assert (false);
-      }
-    memcpy (m_rec_des.data, rec_des.data, m_rec_des.length);
   }
 
   rec_des_row_repl_entry::~rec_des_row_repl_entry ()
   {
-    if (m_rec_des.data != NULL)
-      {
-	free (m_rec_des.data);
-      }
   }
 
   void
@@ -625,11 +613,7 @@ namespace cubreplication
   {
     str ("rec_des_row_repl_entry::");
     single_row_repl_entry::stringify (str);
-
-    if (m_rec_des.data != NULL)
-      {
-	str ("recdes length=%d\n", m_rec_des.length);
-      }
+    str ("recdes length=%zu\n", m_rec_des.get_size ());
   }
 
 } /* namespace cubreplication */

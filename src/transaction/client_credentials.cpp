@@ -20,6 +20,7 @@
 #include "client_credentials.hpp"
 
 #include "porting.h"
+#include "storage_common.h"
 
 #include <algorithm>
 
@@ -173,7 +174,7 @@ clientids::reset ()
   client_type_as_int, client_info, db_user, program_name, login_name, host_name, process_id
 
 size_t
-clientids::get_packed_size (cubpacking::packer &serializator) const
+clientids::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
 {
   return serializator.get_all_packed_size (CLIENTID_PACKER_ARGS (static_cast<int> (client_type)));
 }
@@ -202,6 +203,7 @@ boot_client_credential::boot_client_credential ()
   , db_password {}
   , preferred_hosts (NULL)
   , connect_order (0)
+  , desired_tran_index (NULL_TRAN_INDEX)
 {
 }
 
@@ -229,7 +231,7 @@ boot_client_credential::get_db_password () const
   db_name, db_password
 
 size_t
-boot_client_credential::get_packed_size (cubpacking::packer &serializator) const
+boot_client_credential::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
 {
   size_t total_size =
 	  clientids::get_packed_size (serializator) + serializator.get_all_packed_size (BOOTCLCRED_PACKER_ARGS);
@@ -237,6 +239,7 @@ boot_client_credential::get_packed_size (cubpacking::packer &serializator) const
     {
       total_size += serializator.get_packed_int_size (total_size);
     }
+  return total_size;
 }
 
 void

@@ -412,35 +412,7 @@ btid_to_string (char *buf, int buf_size, BTID * btid)
   return buf;
 }
 
-/* *INDENT-OFF* */
-#if defined (__cplusplus)
-void
-recdes::pack (cubpacking::packer &packer) const
-{
-  packer.pack_short (type);
-  packer.pack_buffer_with_length (data, length);
-}
 
-void recdes::unpack (cubpacking::unpacker &unpacker)
-{
-  unpacker.unpack_short (type);
-  unpacker.peek_unpack_buffer_length (length);
-  data = (char *) malloc (length);
-  if (data)
-    {
-      unpacker.unpack_buffer_with_length (data, length);
-    }
-}
-
-std::size_t recdes::get_packed_size (cubpacking::packer &packer, std::size_t curr_offset) const
-{
-  std::size_t entry_size = packer.get_packed_short_size (curr_offset);
-  entry_size += packer.get_packed_buffer_size (data, length, entry_size);
-
-  return entry_size;
-}
-#endif
-/* *INDENT-ON* */
 
 const char *
 fcode_get_uppercase_name (FUNC_TYPE ftype)

@@ -26,6 +26,7 @@
 
 #include "heartbeat.h"
 #include "heartbeat_cluster.hpp"
+#include "log_lsa.hpp"
 #include "master_util.h"
 #include "porting.h"
 #include "system_parameter.h"

@@ -26,6 +26,7 @@
 #ifndef _LOG_GENERATOR_HPP_
 #define _LOG_GENERATOR_HPP_
 
+#include "log_lsa.hpp"
 #include "replication_stream_entry.hpp"
 #include "storage_common.h"
 #include "recovery.h"
