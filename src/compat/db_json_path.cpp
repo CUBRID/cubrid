@@ -593,23 +593,18 @@ db_json_path_unquote_object_keys (std::string &sql_path)
   assert (!tokens.empty () && tokens[0] == "$");
   for (std::size_t i = 1; i < tokens.size(); ++i)
     {
-      if (tokens[i][0] != '[')
+      std::size_t start = 0;
+      if (db_json_path_is_token_valid_unquoted_object_key (tokens[i], start) /*&& start >= unquoted.length ()*/)
 	{
+	  // object_key
 	  res += ".\"";
-	  std::size_t start = 0;
-	  if (db_json_path_is_token_valid_unquoted_object_key (tokens[i], start) /*&& start >= unquoted.length ()*/)
-	    {
-	      res.append (tokens[i]);
-	    }
-	  else
-	    {
-	      res += tokens[i];
-	    }
+	  res.append (tokens[i]);
 	  res += '"';
 	}
       else
 	{
-	  res += "[";
+	  // array_idx
+	  res += '[';
 	  res += tokens[i];
 	}
     }
