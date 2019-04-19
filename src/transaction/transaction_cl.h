@@ -83,6 +83,9 @@ extern int tran_2pc_recovery_prepared (int gtrids[], int size);
 extern int tran_2pc_attach_global_tran (int gtrid);
 extern int tran_2pc_prepare_global_tran (int gtrid);
 extern void tran_free_savepoint_list (void);
+extern void tran_get_oldest_system_savepoint (char **savepoint_name);
+extern void tran_free_oldest_system_savepoint (void);
+
 extern int tran_system_savepoint (const char *savept_name);
 extern int tran_savepoint_internal (const char *savept_name, SAVEPOINT_TYPE savepoint_type);
 extern int tran_abort_upto_user_savepoint (const char *savepoint_name);

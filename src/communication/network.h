@@ -232,6 +232,8 @@ enum net_server_request
 
   NET_SERVER_LC_DEMOTE_CLASS_LOCK,
 
+  NET_SERVER_LC_GET_PROXY_COMMAND,
+
   /*
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.

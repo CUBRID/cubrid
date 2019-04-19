@@ -25,8 +25,8 @@ set (TEST_REPLICATION_H
   test_log_generator.hpp
   )
 SET_SOURCE_FILES_PROPERTIES(
-  ${TEST_REPLICATION_SRC}
-  PROPERTIES LANGUAGE CXX
+  ${TEST_STREAM_SRC}
+  PROPERTIES LANGUAGE CXX  
   )
 
 add_executable(test_replication
@@ -48,12 +48,12 @@ target_link_libraries(test_replication PRIVATE
   )
 if(UNIX)
   target_link_libraries(test_replication PRIVATE
-    cubrid
-    )
+  cubrid
+  )
 elseif(WIN32)
-	target_link_libraries(test_replication PRIVATE
-    cubrid-win-lib
-    )
+  target_link_libraries(test_replication PRIVATE
+  cubrid-win-lib
+  )
 else()
   message( SEND_ERROR "Replication unit testing is for unix/windows")
 endif ()

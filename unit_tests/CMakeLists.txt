@@ -40,6 +40,7 @@ option (UNIT_TEST_DDL_CL "Unit testing: ddl proxy client module")
 option (UNIT_TEST_REPLICATION_CHANNELS "Unit testing: replication channels module")
 option (UNIT_TEST_RESOURCE_TRACKER "Unit testing: resource tracker")
 option (UNIT_TEST_MONITOR "Unit testing: monitor")
+option (UNIT_TEST_MONITOR "Unit testing: replication")
 
 
 message("  unit_tests/...")

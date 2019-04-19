@@ -34,7 +34,8 @@
 namespace cubreplication
 {
 
-  const char *stream_entry_header::tran_state_string (stream_entry_header::TRAN_STATE state)
+  const char *
+  stream_entry_header::tran_state_string (stream_entry_header::TRAN_STATE state)
   {
     switch (state)
       {
@@ -52,7 +53,8 @@ namespace cubreplication
     return "UNDEFINED";
   }
 
-  void stream_entry::stringify (string_buffer &sb, const string_dump_mode mode)
+  void
+  stream_entry::stringify (string_buffer &sb, const string_dump_mode mode)
   {
     sb ("HEADER : MVCCID:%lld | tran_state:%s | repl_entries_cnt:%d | data_size:%d | data_start_pos:%lld | %p\n",
 	m_header.mvccid, stream_entry_header::tran_state_string (m_header.tran_state),
@@ -67,22 +69,26 @@ namespace cubreplication
       }
   }
 
-  size_t stream_entry::get_data_packed_size (void)
+  size_t
+  stream_entry::get_data_packed_size (void)
   {
     return m_header.data_size;
   }
 
-  void stream_entry::set_header_data_size (const size_t &data_size)
+  void
+  stream_entry::set_header_data_size (const size_t &data_size)
   {
     m_header.data_size = (int) data_size;
   }
 
-  cubstream::entry<replication_object>::packable_factory *stream_entry::get_builder ()
+  cubstream::entry<replication_object>::packable_factory *
+  stream_entry::get_builder ()
   {
     return s_replication_factory_po;
   }
 
-  cubstream::entry<replication_object>::packable_factory *stream_entry::create_builder ()
+  cubstream::entry<replication_object>::packable_factory *
+  stream_entry::create_builder ()
   {
     static cubstream::entry<replication_object>::packable_factory replication_factory_po;
     replication_factory_po.register_creator<sbr_repl_entry> (sbr_repl_entry::PACKING_ID);
@@ -93,7 +99,8 @@ namespace cubreplication
     return &replication_factory_po;
   }
 
-  int stream_entry::pack_stream_entry_header ()
+  int
+  stream_entry::pack_stream_entry_header ()
   {
     cubpacking::packer *serializator = get_packer ();
     unsigned int count_and_flags;
@@ -119,7 +126,8 @@ namespace cubreplication
     return NO_ERROR;
   }
 
-  int stream_entry::unpack_stream_entry_header ()
+  int
+  stream_entry::unpack_stream_entry_header ()
   {
     cubpacking::unpacker *serializator = get_unpacker ();
     unsigned int count_and_flags;
@@ -147,12 +155,14 @@ namespace cubreplication
     return NO_ERROR;
   }
 
-  int stream_entry::get_packable_entry_count_from_header (void)
+  int
+  stream_entry::get_packable_entry_count_from_header (void)
   {
     return m_header.count_replication_entries;
   }
 
-  bool stream_entry::is_equal (const cubstream::entry<replication_object> *other)
+  bool
+  stream_entry::is_equal (const cubstream::entry<replication_object> *other)
   {
     size_t i;
     const stream_entry *other_t = dynamic_cast <const stream_entry *> (other);
@@ -183,7 +193,8 @@ namespace cubreplication
     return true;
   }
 
-  size_t stream_entry::compute_header_size (void)
+  size_t
+  stream_entry::compute_header_size (void)
   {
     stream_entry_header e;
     cubpacking::packer serializator;
@@ -192,6 +203,84 @@ namespace cubreplication
     size_t aligned_stream_entry_header_size = DB_ALIGN (stream_entry_header_size, MAX_ALIGNMENT);
 
     return aligned_stream_entry_header_size;
+  }
+
+  void
+  stream_entry::move_replication_objects_after_lsa_to_stream (LOG_LSA &lsa, stream_entry &entry)
+  {
+    cubreplication::replication_object *repl_obj;
+    LOG_LSA repl_lsa_stamp;
+    int start_index = 0;
+    int i, cnt_entries;
+
+    assert (count_entries () < INT_MAX);
+    cnt_entries = (int) count_entries ();
+    for (i = cnt_entries - 1; i >= 0; i--)
+      {
+	repl_obj = get_object_at (i);
+	repl_obj->get_lsa_stamp (repl_lsa_stamp);
+	if (LSA_LE (&repl_lsa_stamp, &lsa))
+	  {
+	    start_index = i + 1;
+	    break;
+	  }
+      }
+
+    /* Add it to repl_objects_after_lsa. */
+    for (i = start_index; i < cnt_entries; i++)
+      {
+	entry.m_packable_entries.push_back (get_object_at (i));
+      }
+
+    /* Remove it from repl_objects_after_lsa. */
+    for (i = 0; i < cnt_entries - start_index; i++)
+      {
+	m_packable_entries.pop_back ();
+      }
+  }
+
+  void
+  stream_entry::destroy_objects_after_lsa (LOG_LSA &start_lsa)
+  {
+    if (LSA_ISNULL (&start_lsa))
+      {
+	for (unsigned int i = 0; i < m_packable_entries.size (); i++)
+	  {
+	    if (m_packable_entries[i] != NULL)
+	      {
+		delete (m_packable_entries[i]);
+	      }
+	  }
+	m_packable_entries.clear ();
+      }
+    else
+      {
+	cubreplication::replication_object *repl_obj;
+	LOG_LSA repl_lsa_stamp;
+	int start_index = 0;
+
+	for (int i = (int) (count_entries () - 1); i >= 0; i--)
+	  {
+	    repl_obj = m_packable_entries[i];
+	    repl_obj->get_lsa_stamp (repl_lsa_stamp);
+
+	    if (LSA_LE (&repl_lsa_stamp, &start_lsa))
+	      {
+		start_index = i + 1;
+		break;
+	      }
+	  }
+
+	for (unsigned int i = start_index; i < m_packable_entries.size (); i++)
+	  {
+	    if (m_packable_entries[i] != NULL)
+	      {
+		delete (m_packable_entries[i]);
+	      }
+	  }
+
+	m_packable_entries.erase (m_packable_entries.begin () + start_index, m_packable_entries.end ());
+      }
   }
 
   size_t stream_entry::s_header_size = stream_entry::compute_header_size ();

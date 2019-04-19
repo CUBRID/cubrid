@@ -148,6 +148,11 @@ namespace cubreplication
 	m_started_tasks--;
       }
 
+      int get_started_task (void)
+      {
+        return m_started_tasks;
+      }
+
       void wait_for_tasks (void);
 
       bool is_stopping (void)

@@ -3931,6 +3931,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	  /* for the replication agent guarantee the order of transaction */
 	  /* for CC(Click Counter) : at here */
 	  log_append_repl_info (thread_p, tdes, false);
+	  tdes->replication_log_generator.on_sysop_commit (*LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
 	}
 
       log_record->lastparent_lsa = *LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes);
@@ -4101,7 +4102,7 @@ log_sysop_abort (THREAD_ENTRY * thread_p)
       if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
 	  && log_does_allow_replication () == true)
 	{
-	  repl_log_abort_after_lsa (tdes, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
+	  tdes->replication_log_generator.on_sysop_abort (*LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
 	}
 
       /* Abort changes in system op. */

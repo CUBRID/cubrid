@@ -11143,7 +11143,7 @@ exit_on_error:
  * Note: Set DB_VALUE of desired attribute identifier.
  */
 int
-heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HEAP_CACHE_ATTRINFO * attr_info)
+heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, const DB_VALUE * attr_val, HEAP_CACHE_ATTRINFO * attr_info)
 {
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
   PR_TYPE *pr_type;		/* Primitive type array function structure */
@@ -11228,9 +11228,14 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
 
   value->state = HEAP_WRITTEN_ATTRVALUE;
 
-  /* TODO[replication] : inst_oid == NULL -> insert case ? */
   if (inst_oid != NULL)
     {
+      /* For simplicity, we added attribute change object here. Later, when update index, this replication object
+       * containing all modified attributes, will be added to stream. In order to proper work update HA, we have
+       * to be sure that heap_attrinfo_set is called before updating index. A better way is to use a HA_CTX structure
+       * where to keep all attributes whose values are modified (together with other HA info). A parameter having
+       * HA_CTX type must be added to locator_update_ functions.
+       */
       logtb_get_tdes (thread_p)->replication_log_generator.add_attribute_change (attr_info->class_oid, *inst_oid,
 										 attrid, *attr_val);
     }

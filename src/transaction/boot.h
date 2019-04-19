@@ -47,6 +47,7 @@ enum boot_client_type
   BOOT_CLIENT_RO_BROKER_REPLICA_ONLY = 12,
   BOOT_CLIENT_SO_BROKER_REPLICA_ONLY = 13,
   BOOT_CLIENT_ADMIN_CSQL_WOS = 14,	/* admin csql that can write on standby */
+  BOOT_CLIENT_DDL_PROXY = 15
 };
 typedef enum boot_client_type BOOT_CLIENT_TYPE;
 
@@ -126,6 +127,7 @@ struct boot_client_credential
   char *preferred_hosts;	/* LINE_MAX */
   int connect_order;
   int process_id;
+  int desired_tran_index;
 };
 
 typedef struct boot_db_path_info BOOT_DB_PATH_INFO;

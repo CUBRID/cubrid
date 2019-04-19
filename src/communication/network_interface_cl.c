@@ -3567,6 +3567,7 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
   int request_size, area_size, req_error, temp_int;
   char *request, *reply, *area, *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  int request_id = NET_SERVER_BO_REGISTER_CLIENT;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -3581,6 +3582,12 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 		  + OR_INT_SIZE	/* process_id */
 		  + OR_INT_SIZE	/* client_lock_wait */
 		  + OR_INT_SIZE /* client_isolation */ );
+
+  if (client_credential->client_type == BOOT_CLIENT_DDL_PROXY)
+    {
+      assert (client_credential->desired_tran_index != NULL_TRAN_INDEX);
+      request_size += OR_INT_SIZE;	/* desired_tran_index */
+    }
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -3600,8 +3607,14 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
   ptr = or_pack_int (ptr, client_credential->process_id);
   ptr = or_pack_int (ptr, client_lock_wait);
   ptr = or_pack_int (ptr, (int) client_isolation);
+  if (client_credential->client_type == BOOT_CLIENT_DDL_PROXY)
+    {
+      assert (client_credential->desired_tran_index != NULL_TRAN_INDEX);
+      ptr = or_pack_int (ptr, client_credential->desired_tran_index);
+      request_id = NET_SERVER_BO_REGISTER_CLIENT;
+    }
 
-  req_error = net_client_request2 (NET_SERVER_BO_REGISTER_CLIENT, request, request_size, reply,
+  req_error = net_client_request2 (request_id, request, request_size, reply,
 				   OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
   if (!req_error)
     {
@@ -8525,7 +8538,7 @@ repl_set_info (REPL_INFO * repl_info)
 {
 #if defined(CS_MODE)
   int req_error, success = ER_FAILED;
-  int request_size = 0, strlen1, strlen2, strlen3, strlen4;
+  int request_size = 0, strlen1, strlen2, strlen3, strlen4, strlen5, strlen6;
   char *request = NULL, *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
@@ -8542,7 +8555,11 @@ repl_set_info (REPL_INFO * repl_info)
 		      + length_const_string (repl_schema->name, &strlen1)
 		      + length_const_string (repl_schema->stmt_text, &strlen2)
 		      + length_const_string (repl_schema->db_user, &strlen3)
-		      + length_const_string (repl_schema->sys_prm_context, &strlen4));
+		      + length_const_string (repl_schema->db_password, &strlen4)
+		      + length_const_string (repl_schema->sys_prm_context, &strlen5)
+		      + length_const_string (repl_schema->savepoint_name, &strlen6));
+
+      assert (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG) || repl_schema->savepoint_name == NULL);
 
       request = (char *) malloc (request_size);
       if (request == NULL)
@@ -8556,7 +8573,10 @@ repl_set_info (REPL_INFO * repl_info)
       ptr = pack_const_string_with_length (ptr, repl_schema->name, strlen1);
       ptr = pack_const_string_with_length (ptr, repl_schema->stmt_text, strlen2);
       ptr = pack_const_string_with_length (ptr, repl_schema->db_user, strlen3);
-      ptr = pack_const_string_with_length (ptr, repl_schema->sys_prm_context, strlen4);
+      ptr = pack_const_string_with_length (ptr, repl_schema->db_password, strlen4);
+      ptr = pack_const_string_with_length (ptr, repl_schema->sys_prm_context, strlen5);
+      ptr = pack_const_string_with_length (ptr, repl_schema->savepoint_name, strlen6);
+
       req_error =
 	net_client_request (NET_SERVER_REPL_INFO, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
 			    0, NULL, 0);
@@ -10083,5 +10103,61 @@ locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * ex_lock)
   return rc;
 #else /* CS_MODE */
   return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+/*
+ * locator_fetch_proxy_command - Get proxy command
+ *
+ * return : error code
+ * proxy_command (out): proxy command
+ *
+ */
+int
+locator_get_proxy_command (const char **proxy_command)
+{
+#if defined(CS_MODE)
+  int error_code = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error;
+  char *area = NULL, *ptr;
+  int area_size;
+
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply;
+  char *local_proxy_command = NULL;
+
+  assert (proxy_command != NULL);
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  req_error = net_client_request2 (NET_SERVER_LC_GET_PROXY_COMMAND, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				   NULL, 0, &area, &area_size);
+  if (!req_error && area != NULL)
+    {
+      ptr = or_unpack_int (reply, &area_size);
+      ptr = or_unpack_int (ptr, &error_code);
+      or_unpack_string_nocopy (area, &local_proxy_command);
+      if (local_proxy_command != NULL)
+	{
+	  *proxy_command = strdup (local_proxy_command);
+	  if (*proxy_command == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      (size_t) (strlen (local_proxy_command) + 1));
+	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	}
+      free_and_init (area);
+    }
+
+  return error_code;
+#else /* CS_MODE */
+  int error_code;
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  error_code = xlocator_get_proxy_command (thread_p, proxy_command);
+
+  exit_server (*thread_p);
+
+  return error_code;
 #endif /* !CS_MODE */
 }

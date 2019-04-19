@@ -317,7 +317,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   /* If the client is restarted, shutdown the client */
   if (BOOT_IS_CLIENT_RESTARTED ())
     {
-      (void) boot_shutdown_client (true);
+      (void) boot_shutdown_client (true, BOOT_END_TRANSACTION);
     }
 
   if (!boot_Is_client_all_final)
@@ -642,7 +642,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 
   if (error_code != NO_ERROR)
     {
-      (void) boot_shutdown_client (false);
+      (void) boot_shutdown_client (false, BOOT_END_TRANSACTION);
     }
   else
     {
@@ -679,7 +679,7 @@ error_exit:
   if (BOOT_IS_CLIENT_RESTARTED ())
     {
       er_log_debug (ARG_FILE_LINE, "boot_initialize_client: unregister client { tran %d }\n", tm_Tran_index);
-      boot_shutdown_client (false);
+      boot_shutdown_client (false, BOOT_END_TRANSACTION);
     }
   else
     {
@@ -694,6 +694,9 @@ error_exit:
 
       showstmt_metadata_final ();
       tran_free_savepoint_list ();
+#if !defined(NDEBUG) && defined (CS_MODE)
+      tran_free_oldest_system_savepoint ();
+#endif
       set_final ();
       tr_final ();
       au_final ();
@@ -782,7 +785,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   /* If the client is restarted, shutdown the client */
   if (BOOT_IS_CLIENT_RESTARTED ())
     {
-      (void) boot_shutdown_client (true);
+      (void) boot_shutdown_client (true, BOOT_END_TRANSACTION);
     }
 
   if (!boot_Is_client_all_final)
@@ -1245,7 +1248,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto error;
     }
 
-  /* Initialize client modules for execution */
   boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
 
   oid_set_root (&boot_Server_credential.root_class_oid);
@@ -1375,7 +1377,7 @@ error:
   if (BOOT_IS_CLIENT_RESTARTED ())
     {
       er_log_debug (ARG_FILE_LINE, "boot_restart_client: unregister client { tran %d }\n", tm_Tran_index);
-      boot_shutdown_client (false);
+      boot_shutdown_client (false, BOOT_END_TRANSACTION);
     }
   else
     {
@@ -1390,6 +1392,9 @@ error:
 
       showstmt_metadata_final ();
       tran_free_savepoint_list ();
+#if !defined(NDEBUG) && defined (CS_MODE)
+      tran_free_oldest_system_savepoint ();
+#endif
       set_final ();
       tr_final ();
       au_final ();
@@ -1442,33 +1447,35 @@ error:
  */
 
 int
-boot_shutdown_client (bool is_er_final)
+boot_shutdown_client (bool is_er_final, BOOT_CLIENT_TERMINATION_MODE termination_mode)
 {
   if (BOOT_IS_CLIENT_RESTARTED ())
     {
-      /*
-       * wait for other server request to finish.
-       * if db_shutdown() is called by signal handler or atexit handler,
-       * the server request may be running.
-       */
-      tran_wait_server_active_trans ();
-
-      /*
-       * Either Abort or commit the current transaction depending upon the value
-       * of the commit_on_shutdown system parameter.
-       */
-      if (tran_is_active_and_has_updated ())
+      if (termination_mode == BOOT_END_TRANSACTION)
 	{
-	  if (prm_get_bool_value (PRM_ID_COMMIT_ON_SHUTDOWN) != false)
+	  /*
+	   * wait for other server request to finish.
+	   * if db_shutdown() is called by signal handler or atexit handler,
+	   * the server request may be running.
+	   */
+	  tran_wait_server_active_trans ();
+
+	  /*
+	   * Either Abort or commit the current transaction depending upon the value
+	   * of the commit_on_shutdown system parameter.
+	   */
+	  if (tran_is_active_and_has_updated ())
 	    {
-	      (void) tran_commit (false);
-	    }
-	  else
-	    {
-	      (void) tran_abort ();
+	      if (prm_get_bool_value (PRM_ID_COMMIT_ON_SHUTDOWN) != false)
+		{
+		  (void) tran_commit (false);
+		}
+	      else
+		{
+		  (void) tran_abort ();
+		}
 	    }
 	}
-
       /*
        * Make sure that we are still up. For example, if the server died, we do
        * not need to call the following stuff any longer.
@@ -1517,7 +1524,7 @@ boot_shutdown_client_at_exit (void)
 	  er_init (NULL, ER_NEVER_EXIT);
 	}
 
-      (void) boot_shutdown_client (true);
+      (void) boot_shutdown_client (true, BOOT_END_TRANSACTION);
     }
 }
 
@@ -1602,6 +1609,9 @@ boot_client_all_finalize (bool is_er_final)
 
       showstmt_metadata_final ();
       tran_free_savepoint_list ();
+#if !defined(NDEBUG) && defined (CS_MODE)
+      tran_free_oldest_system_savepoint ();
+#endif
       sm_flush_static_methods ();
       set_final ();
       parser_final ();

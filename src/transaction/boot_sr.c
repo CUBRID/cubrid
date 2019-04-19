@@ -3052,10 +3052,27 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
       client_credential->db_user = db_user_upper;
     }
 
-  /* Assign a transaction index to the client */
-  tran_index =
-    logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, client_credential, tran_state, client_lock_wait,
-			     client_isolation);
+  if (client_credential->client_type == BOOT_CLIENT_DDL_PROXY)
+    {
+      /* DDL proxy client has already a transaction */
+      tran_index = client_credential->desired_tran_index;
+      if (tran_index != NULL_TRAN_INDEX && logtb_find_thread_by_tran_index_except_me (tran_index) != NULL)
+	{
+	  logtb_set_current_tran_index (thread_p, tran_index);
+	}
+      else
+	{
+	  /* Should not happen. */
+	  assert (false);
+	}
+    }
+  else
+    {
+      /* Assign a transaction index to the client */
+      tran_index = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, client_credential, tran_state,
+					    client_lock_wait, client_isolation);
+    }
+
 #if defined (SERVER_MODE)
   if (thread_p->conn_entry->status != CONN_OPEN)
     {
@@ -5758,6 +5775,8 @@ boot_client_type_to_string (BOOT_CLIENT_TYPE type)
       return "SO_BROKER_REPLICA_ONLY";
     case BOOT_CLIENT_ADMIN_CSQL_WOS:
       return "ADMIN_CSQL_WOS";
+    case BOOT_CLIENT_DDL_PROXY:
+      return "DDL_PROXY";
     case BOOT_CLIENT_UNKNOWN:
     default:
       return "UNKNOWN";

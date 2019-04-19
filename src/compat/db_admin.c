@@ -106,6 +106,8 @@ static int db_Delayed_hosts_count = 0;
 /* a list of abnormal host status */
 static DB_HOST_STATUS_LIST db_Host_status_list;
 
+static int db_Override_tran_index = NULL_TRAN_INDEX;
+
 static DB_HOST_STATUS *db_add_host_status (char *hostname, int status);
 static DB_HOST_STATUS *db_find_host_status (char *hostname);
 
@@ -896,6 +898,14 @@ db_restart (const char *program, int print_version, const char *volume)
       client_credential.process_id = -1;
       client_credential.preferred_hosts = db_Preferred_hosts;
       client_credential.connect_order = db_Connect_order;
+      if (db_Client_type == BOOT_CLIENT_DDL_PROXY)
+	{
+	  client_credential.desired_tran_index = db_get_override_tran_index ();
+	}
+      else
+	{
+	  client_credential.desired_tran_index = NULL_TRAN_INDEX;
+	}
 
       error = boot_restart_client (&client_credential);
       if (error != NO_ERROR)
@@ -971,7 +981,32 @@ db_shutdown (void)
 {
   int error = NO_ERROR;
 
-  error = boot_shutdown_client (true);
+  error = boot_shutdown_client (true, BOOT_END_TRANSACTION);
+  db_Database_name[0] = '\0';
+  db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
+  db_Program_name[0] = '\0';
+#if !defined(WINDOWS)
+  (void) os_set_signal_handler (SIGFPE, prev_sigfpe_handler);
+#endif
+  db_Disable_modifications = 0;
+
+  db_free_execution_plan ();
+
+  return (error);
+}
+
+/*
+ * db_shutdown_keep_transaction() - This closes a database that was previously restarted.
+ * return : error code.
+ *
+ * note: similar to db_shutdown, but keeps transaction alive
+ */
+int
+db_shutdown_keep_transaction (void)
+{
+  int error = NO_ERROR;
+
+  error = boot_shutdown_client (true, BOOT_KEEP_TRANSACTION);
   db_Database_name[0] = '\0';
   db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
   db_Program_name[0] = '\0';
@@ -2736,6 +2771,19 @@ db_set_system_parameters_for_ha_repl (const char *data)
 }
 
 /*
+ * db_get_proxy_command () - get proxy command
+ *
+ * return    : error code
+ * proxy_command (out) : proxy command
+ *
+ */
+int
+db_get_proxy_command (const char **proxy_command)
+{
+  return locator_get_proxy_command (proxy_command);
+}
+
+/*
  * db_reset_system_parameters_from_assignments () - reset system parameter
  *	values from a string containing list of assignments
  *
@@ -2923,11 +2971,42 @@ db_get_row_count_cache (void)
 }
 
 /*
-* db_update_row_count_cache () - update the cached value of row count
-* return : void
-*/
+ * db_update_row_count_cache () - update the cached value of row count
+ * return : void
+ */
 void
 db_update_row_count_cache (const int row_count)
 {
   db_Row_count = row_count;
+}
+
+/*
+ * db_get_override_tran_index () -
+ * return : tran index
+ */
+int
+db_get_override_tran_index (void)
+{
+  return db_Override_tran_index;
+}
+
+/*
+ * db_set_override_tran_index () -
+ * return : void
+ */
+void
+db_set_override_tran_index (int tran_index)
+{
+  db_Override_tran_index = tran_index;
+}
+
+/*
+ * db_is_ddl_proxy_client () - Check whether is ddl proxy client.
+ *
+ * return : true, if is ddl proxy client.
+ */
+bool
+db_is_ddl_proxy_client (void)
+{
+  return db_Override_tran_index != NULL_TRAN_INDEX;
 }

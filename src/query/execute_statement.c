@@ -123,6 +123,12 @@
 #define PT_NODE_SR_NO_CACHE(node)		\
 	((node)->info.serial.no_cache)
 
+ /* Macro to determine if a dbvalue is a character strign type. */
+#define IS_STRING(n)    (db_value_type(n) == DB_TYPE_VARCHAR  || \
+                         db_value_type(n) == DB_TYPE_CHAR     || \
+                         db_value_type(n) == DB_TYPE_VARNCHAR || \
+                         db_value_type(n) == DB_TYPE_NCHAR)
+
 static void do_set_trace_to_query_flag (QUERY_FLAG * query_flag);
 static void do_send_plan_trace_to_session (PARSER_CONTEXT * parser);
 static int do_vacuum (PARSER_CONTEXT * parser, PT_NODE * statement);
@@ -2986,12 +2992,22 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       /* for the subset of nodes which represent top level statements, process them. For any other node, return an
        * error. */
-
-      /* disable data replication log for schema replication log types in HA mode */
-      if (!HA_DISABLED () && is_stmt_based_repl_type (statement))
+      if (!HA_DISABLED () && is_stmt_based_repl_type (statement) && !db_is_ddl_proxy_client ())
 	{
 	  need_stmt_replication = true;
+	}
 
+#if !defined(NDEBUG) && defined (CS_MODE)
+      if (!need_stmt_replication && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
+	  && is_stmt_based_repl_type (statement) && !db_is_ddl_proxy_client ())
+	{
+	  /* Test replication on master node. */
+	  need_stmt_replication = true;
+	}
+#endif
+
+      if (need_stmt_replication)
+	{
 	  /* since we are going to suppress writing replication logs, we need to flush all dirty objects to server not
 	   * to lose them. */
 	  error = locator_all_flush ();
@@ -3332,6 +3348,14 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      error = repl_error;
 	    }
 	}
+      else if (db_is_ddl_proxy_client ())
+	{
+	  /* We need to flush in case of ddl proxy. */
+	  if (error >= 0)
+	    {
+	      error = locator_all_flush ();
+	    }
+	}
     }
 
 end:
@@ -3474,10 +3498,23 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* for the subset of nodes which represent top level statements, process them; for any other node, return an error */
 
   /* disable data replication log for schema replication log types in HA mode */
-  if (!HA_DISABLED () && is_stmt_based_repl_type (statement))
+  if (!HA_DISABLED () && is_stmt_based_repl_type (statement) && !db_is_ddl_proxy_client ())
     {
       need_stmt_based_repl = true;
+    }
 
+#if !defined(NDEBUG) && defined (CS_MODE)
+  if (!need_stmt_based_repl && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
+      && is_stmt_based_repl_type (statement) && !db_is_ddl_proxy_client ())
+    {
+      /* Test replication on master node. */
+      need_stmt_based_repl = true;
+    }
+#endif
+
+
+  if (need_stmt_based_repl)
+    {
       /* since we are going to suppress writing replication logs, we need to flush all dirty objects to server not to
        * lose them */
       err = locator_all_flush ();
@@ -3783,6 +3820,14 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (repl_error != NO_ERROR)
 	{
 	  err = repl_error;
+	}
+    }
+  else if (db_is_ddl_proxy_client ())
+    {
+      /* We need to flush in case of ddl proxy. */
+      if (err >= 0)
+	{
+	  err = locator_all_flush ();
 	}
     }
 
@@ -14602,11 +14647,13 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   REPL_INFO repl_info;
-  REPL_INFO_SBR repl_stmt;
+  REPL_INFO_SBR repl_stmt = { 0, NULL, NULL, NULL, NULL, NULL, NULL };
   PARSER_VARCHAR *name = NULL;
   static const char *unknown_name = "-";
   char stmt_separator;
   char *stmt_end = NULL;
+  MOP user;
+  DB_VALUE value;
 
   if (log_does_allow_replication () == false)
     {
@@ -14764,16 +14811,74 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       repl_stmt.name = (char *) pt_get_varchar_bytes (name);
     }
 
-  /* it may contain multiple statements */
-  if (strlen (statement->sql_user_text) > statement->sql_user_text_len)
+  if (parser->host_var_count == 0 && parser->auto_param_count == 0)
     {
-      stmt_end = &statement->sql_user_text[statement->sql_user_text_len];
-      stmt_separator = *stmt_end;
-      *stmt_end = '\0';
+      /* it may contain multiple statements */
+      if (strlen (statement->sql_user_text) > statement->sql_user_text_len)
+	{
+	  stmt_end = &statement->sql_user_text[statement->sql_user_text_len];
+	  stmt_separator = *stmt_end;
+	  *stmt_end = '\0';
+	}
+      repl_stmt.stmt_text = statement->sql_user_text;
     }
-  repl_stmt.stmt_text = statement->sql_user_text;
+  else
+    {
+      PT_PRINT_VALUE_FUNC saved_func = parser->print_db_value;
+      parser->print_db_value = pt_print_node_value;
+      repl_stmt.stmt_text = parser_print_tree (parser, statement);
+      parser->print_db_value = saved_func;
+    }
 
   repl_stmt.db_user = db_get_user_name ();
+  assert_release (repl_stmt.db_user != NULL);
+
+  repl_stmt.db_password = NULL;
+  if (strcasecmp (repl_stmt.db_user, "DBA") != 0)
+    {
+      int save;
+
+      /* If we are here, no authorization required. */
+      AU_DISABLE (save);
+
+      /* Need to set the password. */
+      user = au_find_user (repl_stmt.db_user);
+      if (user == NULL)
+	{
+	  error = ER_AU_INVALID_USER;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, repl_stmt.db_user);
+	  AU_ENABLE (save);
+	  goto end;
+	}
+
+      if (obj_get (user, "password", &value) != NO_ERROR)
+	{
+	  error = ER_AU_CORRUPTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  AU_ENABLE (save);
+	  goto end;
+	}
+
+      if (!DB_IS_NULL (&value) && db_get_object (&value) != NULL)
+	{
+	  if (obj_get (db_get_object (&value), "password", &value))
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	      AU_ENABLE (save);
+	      goto end;
+	    }
+
+	  if (!DB_IS_NULL (&value) && IS_STRING (&value))
+	    {
+	      const char *name = db_get_string (&value);
+	      repl_stmt.db_password = ws_copy_string (name);
+	      pr_clear_value (&value);
+	    }
+	}
+
+      AU_ENABLE (save);
+    }
 
   if (pt_is_ddl_statement (statement) != 0)
     {
@@ -14784,8 +14889,28 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       repl_stmt.sys_prm_context = NULL;
     }
 
-  assert_release (repl_stmt.db_user != NULL);
+  repl_stmt.savepoint_name = NULL;
+#if !defined(NDEBUG) && defined (CS_MODE)
+  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
+      && parser->is_auto_commit
+      && (statement->node_type != PT_RENAME || statement->next == NULL)
+      && (parser->host_var_count == 0 && parser->auto_param_count == 0))
+    {
+      /*
+       * TODO - The following cases leads to regressions and must be fixed.
+       * Currently test for auto commit only, to avoid wrong cache at debug and ddl_proxy_client issue.
+       * Also, disabled for host variable since the query like cte is incorrectly printed.
+       * Also, disabled testing for named oid and for multiple rename.
+       */
+      bool has_name_oid = false;
+      (void) parser_walk_tree (parser, statement, pt_has_name_oid, &has_name_oid, NULL, NULL);
 
+      if (!has_name_oid)
+	{
+	  tran_get_oldest_system_savepoint (&repl_stmt.savepoint_name);
+	}
+    }
+#endif
   repl_info.info = (char *) &repl_stmt;
 
   error = locator_flush_replication_info (&repl_info);
@@ -14795,11 +14920,39 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       *stmt_end = stmt_separator;
     }
 
-  db_string_free (repl_stmt.db_user);
+end:
+  if (repl_stmt.db_user != NULL)
+    {
+      db_string_free (repl_stmt.db_user);
+    }
+
+  if (repl_stmt.db_password != NULL)
+    {
+      db_string_free (repl_stmt.db_password);
+    }
+
   if (repl_stmt.sys_prm_context)
     {
       free (repl_stmt.sys_prm_context);
     }
+
+#if !defined(NDEBUG) && defined (CS_MODE)
+  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
+    {
+      if (repl_stmt.savepoint_name != NULL)
+	{
+	  /* Avoids root decaching. */
+	  bool save_pin = sm_Root_class_mop->pinned;
+	  sm_Root_class_mop->pinned = true;
+	  ws_abort_mops (true);
+	  ws_filter_dirty ();
+	  db_string_free (repl_stmt.savepoint_name);
+	  sm_Root_class_mop->pinned = save_pin;
+	}
+
+      tran_free_oldest_system_savepoint ();
+    }
+#endif
 
   return error;
 }

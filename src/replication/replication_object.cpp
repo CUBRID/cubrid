@@ -30,19 +30,86 @@
 #include "object_primitive.h"
 #include "string_buffer.hpp"
 
+#include "locator_sr.h"
+
 namespace cubreplication
 {
   static const char *repl_entry_type_str[] = { "update", "insert", "delete" };
 
-  single_row_repl_entry::single_row_repl_entry (const repl_entry_type type, const char *class_name)
-    : m_type (type),
-      m_class_name (class_name)
+  static LC_COPYAREA_OPERATION
+  op_type_from_repl_type_and_prunning (repl_entry_type repl_type)
   {
+    assert (repl_type == REPL_UPDATE || repl_type == REPL_INSERT || repl_type == REPL_DELETE);
+
+    switch (repl_type)
+      {
+      case REPL_UPDATE:
+	return LC_FLUSH_UPDATE;
+
+      case REPL_INSERT:
+	return LC_FLUSH_INSERT;
+
+      case REPL_DELETE:
+	return LC_FLUSH_DELETE;
+
+      default:
+	assert (false);
+      }
+
+    return LC_FETCH;
+  }
+
+  replication_object::replication_object ()
+  {
+    LSA_SET_NULL (&m_lsa_stamp);
+  }
+
+  replication_object::replication_object (LOG_LSA &lsa_stamp)
+  {
+    LSA_COPY (&m_lsa_stamp, &lsa_stamp);
+  }
+
+  void
+  replication_object::get_lsa_stamp (LOG_LSA &lsa_stamp)
+  {
+    LSA_COPY (&lsa_stamp, &m_lsa_stamp);
+  }
+
+  void
+  replication_object::set_lsa_stamp (const LOG_LSA &lsa_stamp)
+  {
+    LSA_COPY (&m_lsa_stamp, &lsa_stamp);
+  }
+
+  bool
+  replication_object::is_instance_changing_attr (const OID &inst_oid)
+  {
+    return false;
+  }
+
+  bool
+  replication_object::is_statement_replication ()
+  {
+    return false;
+  }
+
+  single_row_repl_entry::single_row_repl_entry (const repl_entry_type type, const char *class_name, LOG_LSA &lsa_stamp)
+    : replication_object (lsa_stamp)
+    , m_type (type)
+    , m_class_name (class_name)
+  {
+    db_make_null (&m_key_value);
   }
 
   single_row_repl_entry::~single_row_repl_entry ()
   {
     //TODO[replication] optimize
+
+    if (DB_IS_NULL (&m_key_value))
+      {
+	return;
+      }
+
     cubthread::entry *my_thread = thread_get_thread_entry_info ();
 
     HL_HEAPID save_heapid;
@@ -56,8 +123,19 @@ namespace cubreplication
   int
   single_row_repl_entry::apply (void)
   {
-    /* TODO */
-    return NO_ERROR;
+    int err = NO_ERROR;
+#if defined (SERVER_MODE)
+    assert (m_type == REPL_DELETE);
+
+    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type);
+    cubthread::entry &my_thread = cubthread::get_entry ();
+    std::vector <int> dummy_int_vector;
+    std::vector <DB_VALUE> dummy_val_vector;
+
+    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
+				  dummy_int_vector, dummy_val_vector, NULL);
+#endif
+    return err;
   }
 
   bool
@@ -140,18 +218,27 @@ namespace cubreplication
   }
 
   /////////////////////////////////
-  sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user, const char *sys_prm_ctx)
-    : m_statement (statement),
-      m_db_user (user),
-      m_sys_prm_context (sys_prm_ctx)
+  sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user, const char *password,
+				  const char *sys_prm_ctx, LOG_LSA &lsa_stamp)
+    : replication_object (lsa_stamp)
+    , m_statement (statement)
+    , m_db_user (user)
+    , m_db_password (password ? password : "")
+    , m_sys_prm_context (sys_prm_ctx ? sys_prm_ctx : "")
   {
   }
 
   int
   sbr_repl_entry::apply (void)
   {
-    /* TODO */
-    return NO_ERROR;
+    int err = NO_ERROR;
+#if defined (SERVER_MODE)
+    cubthread::entry &my_thread = cubthread::get_entry ();
+    err = locator_repl_apply_sbr (&my_thread, m_db_user.c_str (), m_db_password.c_str(),
+				  m_sys_prm_context.empty () ? NULL : m_sys_prm_context.c_str (),
+				  m_statement.c_str ());
+#endif
+    return err;
   }
 
   bool
@@ -159,10 +246,21 @@ namespace cubreplication
   {
     const sbr_repl_entry *other_t = dynamic_cast<const sbr_repl_entry *> (other);
 
-    if (other_t == NULL || m_statement != other_t->m_statement)
+    if (other_t == NULL
+	|| m_statement != other_t->m_statement
+	|| m_db_user != other_t->m_db_user
+	|| m_sys_prm_context != other_t->m_sys_prm_context)
       {
 	return false;
       }
+
+    assert (m_db_password == other_t->m_db_password);
+    return true;
+  }
+
+  bool
+  sbr_repl_entry::is_statement_replication ()
+  {
     return true;
   }
 
@@ -178,6 +276,7 @@ namespace cubreplication
 
     entry_size += serializator.get_packed_string_size (m_statement, entry_size);
     entry_size += serializator.get_packed_string_size (m_db_user, entry_size);
+    entry_size += serializator.get_packed_string_size (m_db_password, entry_size);
     entry_size += serializator.get_packed_string_size (m_sys_prm_context, entry_size);
 
     return entry_size;
@@ -189,6 +288,7 @@ namespace cubreplication
     serializator.pack_int (sbr_repl_entry::PACKING_ID);
     serializator.pack_string (m_statement);
     serializator.pack_string (m_db_user);
+    serializator.pack_string (m_db_password);
     serializator.pack_string (m_sys_prm_context);
   }
 
@@ -200,6 +300,7 @@ namespace cubreplication
     deserializator.unpack_int (entry_type_not_used);
     deserializator.unpack_string (m_statement);
     deserializator.unpack_string (m_db_user);
+    deserializator.unpack_string (m_db_password);
     deserializator.unpack_string (m_sys_prm_context);
   }
 
@@ -229,13 +330,6 @@ namespace cubreplication
   {
     HL_HEAPID save_heapid;
 
-#if defined(CUBRID_DEBUG)
-    std::vector<int>::iterator it;
-
-    it = find (m_changed_attributes.begin (), m_changed_attributes.end (), att_id);
-    assert (it == m_changed_attributes.end ());
-#endif
-
     m_new_values.emplace_back ();
     DB_VALUE &last_new_value = m_new_values.back ();
 
@@ -246,11 +340,25 @@ namespace cubreplication
     (void) db_change_private_heap (NULL, save_heapid);
   }
 
+  int
+  changed_attrs_row_repl_entry::apply (void)
+  {
+    int err = NO_ERROR;
+
+#if defined (SERVER_MODE)
+    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type);
+    cubthread::entry &my_thread = cubthread::get_entry ();
+
+    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
+				  m_changed_attributes, m_new_values, NULL);
+#endif
+
+    return err;
+  }
+
   void
   changed_attrs_row_repl_entry::pack (cubpacking::packer &serializator) const
   {
-    int rc = NO_ERROR;
-
     serializator.pack_int (changed_attrs_row_repl_entry::PACKING_ID);
     single_row_repl_entry::pack (serializator);
     serializator.pack_int_vector (m_changed_attributes);
@@ -378,11 +486,43 @@ namespace cubreplication
     str ("inst oid: pageid:%d slotid:%d volid:%d\n", m_inst_oid.pageid, m_inst_oid.slotid, m_inst_oid.volid);
   }
 
+  bool
+  changed_attrs_row_repl_entry::is_instance_changing_attr (const OID &inst_oid)
+  {
+    if (compare_inst_oid (inst_oid))
+      {
+	return true;
+      }
+
+    return false;
+  }
+
   changed_attrs_row_repl_entry::changed_attrs_row_repl_entry (repl_entry_type type, const char *class_name,
-      const OID &inst_oid)
-    : single_row_repl_entry (type, class_name)
+      const OID &inst_oid, LOG_LSA &lsa_stamp)
+    : single_row_repl_entry (type, class_name, lsa_stamp)
   {
     m_inst_oid = inst_oid;
+  }
+
+  int
+  rec_des_row_repl_entry::apply (void)
+  {
+    int err = NO_ERROR;
+
+#if defined (SERVER_MODE)
+    assert (m_type != REPL_DELETE);
+
+    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type);
+    cubthread::entry &my_thread = cubthread::get_entry ();
+
+    std::vector<int> dummy_int_vector;
+    std::vector<DB_VALUE> dummy_val_vector;
+
+    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
+				  dummy_int_vector, dummy_val_vector, &m_rec_des);
+#endif
+
+    return err;
   }
 
   void
@@ -456,8 +596,9 @@ namespace cubreplication
     return true;
   }
 
-  rec_des_row_repl_entry::rec_des_row_repl_entry (repl_entry_type type, const char *class_name, const RECDES &rec_des)
-    : single_row_repl_entry (type, class_name)
+  rec_des_row_repl_entry::rec_des_row_repl_entry (repl_entry_type type, const char *class_name, const RECDES &rec_des,
+      LOG_LSA &lsa_stamp)
+    : single_row_repl_entry (type, class_name, lsa_stamp)
   {
     m_rec_des.length = rec_des.length;
     m_rec_des.area_size = rec_des.area_size;

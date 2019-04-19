@@ -174,6 +174,7 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
 	  assert (false);
 	  return 1;
 	}
+
       rc = GetExitCodeProcess (proc_info.hProcess, &status);
       if (rc == FALSE)
 	{

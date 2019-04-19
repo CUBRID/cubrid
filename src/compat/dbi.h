@@ -79,6 +79,7 @@ extern "C"
   extern int db_get_last_insert_id (DB_VALUE * value);
   extern int db_get_variable (DB_VALUE * name, DB_VALUE * value);
   extern int db_shutdown (void);
+  extern int db_shutdown_keep_transaction (void);
   extern int db_ping_server (int client_val, int *server_val);
   extern int db_disable_modification (void);
   extern int db_enable_modification (void);
@@ -717,12 +718,16 @@ extern "C"
   extern int db_set_system_parameters_for_ha_repl (const char *data);
   extern int db_reset_system_parameters_from_assignments (const char *data);
   extern int db_get_system_parameters (char *data, int len);
+  extern int db_get_proxy_command (const char **proxy_command);
 
   extern char *db_get_host_connected (void);
   extern int db_get_ha_server_state (char *buffer, int maxlen);
 
   extern void db_clear_host_connected (void);
   extern char *db_get_database_version (void);
+  extern int db_get_override_tran_index (void);
+  extern void db_set_override_tran_index (int tran_index);
+  extern bool db_is_ddl_proxy_client (void);
 #ifdef __cplusplus
 }
 #endif

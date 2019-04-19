@@ -58,6 +58,9 @@
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #include "replication_object.hpp"
 #include "log_generator.hpp"
+#include "process_util.h"
+#include "environment_variable.h"
+#include "utility.h"
 
 /* TODO : remove */
 extern bool catcls_Enable;
@@ -66,6 +69,8 @@ static const int LOCATOR_GUESS_NUM_NESTED_REFERENCES = 100;
 #define LOCATOR_GUESS_HT_SIZE    LOCATOR_GUESS_NUM_NESTED_REFERENCES * 2
 
 #define CLASSNAME_CACHE_SIZE            1024
+
+#define HA_DDL_PROXY_MAX_STATEMENT_LENGTH 2000
 
 /* flag for INSERT/UPDATE/DELETE statement */
 typedef enum
@@ -4396,6 +4401,8 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
 		  if (fkref->del_action == SM_FOREIGN_KEY_CASCADE)
 		    {
+		      bool disabled_row_replication = false;
+
 		      if (lob_exist)
 			{
 			  error_code = locator_delete_lob_force (thread_p, &fkref->self_oid, oid_ptr, NULL);
@@ -4405,10 +4412,27 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 			  goto error1;
 			}
 
+		      if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
+			{
+			  if (!logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
+			    {
+			      /* Disable row replication. */
+			      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
+			      disabled_row_replication = true;
+			    }
+			}
+
 		      /* oid already locked at locator_lock_and_get_object */
 		      error_code =
 			locator_delete_force (thread_p, &hfid, oid_ptr, true, SINGLE_ROW_DELETE, &scan_cache,
 					      &force_count, NULL, false);
+
+		      if (disabled_row_replication)
+			{
+			  /* Enable row replication. */
+			  logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+			}
+
 		      if (error_code == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 			{
 			  /* skip foreign keys that were already deleted. For example the "cross type" reference */
@@ -5252,6 +5276,12 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
       return error;
     }
 
+  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
+    {
+      /* Remove attribute change since we moved, instead of doing update. At abort, all pending objects are removed. */
+      logtb_get_tdes (thread_p)->replication_log_generator.remove_attribute_change (*old_class_oid, *obj_oid);
+    }
+
   COPY_OID (obj_oid, &new_obj_oid);
 
   return NO_ERROR;
@@ -5889,6 +5919,13 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  goto error;
 	}
       isold_object = update_context.is_logical_old;
+
+
+      if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
+	{
+	  /* Update lsa to be sure that the object is part of current sys operation. */
+	  logtb_get_tdes (thread_p)->replication_log_generator.update_lsastamp_for_changed_repl_object (*oid);
+	}
 
 #if defined(ENABLE_UNUSED_FUNCTION)
       if (isold_object == false)
@@ -7018,6 +7055,9 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
   int error_code = NO_ERROR;
   int pruning_type = 0;
   int has_index;
+#if !defined(NDEBUG)
+  bool disabled_row_replication = false;
+#endif
 
   /* need to start a topop to ensure the atomic operation. */
   error_code = xtran_server_start_topop (thread_p, &lsa);
@@ -7025,6 +7065,16 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
     {
       return error_code;
     }
+
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+  if (!LOG_CHECK_LOG_APPLIER (thread_p) && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
+      && !logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
+    {
+      /* TODO - Remove this code, test and fix. For now, disable testing HA. */
+      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
+      disabled_row_replication = true;
+    }
+#endif
 
   mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (force_area);
   obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (mobjs);
@@ -7193,6 +7243,14 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &lsa);
 
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+  if (disabled_row_replication)
+    {
+      /* Enable row replication. */
+      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+    }
+#endif
+
   return error_code;
 
 error:
@@ -7207,6 +7265,13 @@ error:
     }
 
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
+
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+  if (disabled_row_replication)
+    {
+      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+    }
+#endif
 
   return error_code;
 }
@@ -7343,7 +7408,10 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
   HFID class_hfid;
   OID class_oid;
   MVCC_SNAPSHOT *saved_mvcc_snapshot = NULL;
-
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+  LOG_LSA filter_replication_lsa;
+  bool sysop_started = false;
+#endif
   /*
    * While scanning objects, the given scancache does not fix the last
    * accessed page. So, the object must be copied to the record descriptor.
@@ -7352,11 +7420,29 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 
   /* Backup the provided class_oid and class_hfid because the locator actions bellow will change them if this is a
    * pruning operation. This changes must not be reflected in the calls to this function. */
+  OID_SET_NULL (&class_oid);
   HFID_COPY (&class_hfid, hfid);
   if (attr_info != NULL)
     {
       COPY_OID (&class_oid, &attr_info->class_oid);
     }
+  else
+    {
+      heap_get_class_oid (thread_p, oid, &class_oid);
+    }
+
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+  if (!LOG_CHECK_LOG_APPLIER (thread_p) && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
+      && !logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
+    {
+      /* Used for testing apply on master. */
+      assert (log_does_allow_replication ());
+      log_sysop_start (thread_p);
+      LSA_COPY (&filter_replication_lsa, &logtb_get_tdes (thread_p)->tail_lsa);
+
+      sysop_started = true;
+    }
+#endif
 
   switch (operation)
     {
@@ -7408,7 +7494,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
       else if (scan == S_ERROR || scan == S_DOESNT_FIT)
 	{
 	  /* Whenever an error including an interrupt was broken out, quit the update. */
-	  return ER_FAILED;
+	  error_code = ER_FAILED;
+	  goto end;
 	}
       else if (scan == S_DOESNT_EXIST)
 	{
@@ -7420,17 +7507,20 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	    }
 	  else
 	    {
-	      return ((err_id == NO_ERROR) ? ER_HEAP_UNKNOWN_OBJECT : err_id);	/* other errors should return S_ERROR? */
+	      error_code = ((err_id == NO_ERROR) ? ER_HEAP_UNKNOWN_OBJECT : err_id);	/* other errors should return S_ERROR? */
+	      goto end;
 	    }
 	}
       else if (scan == S_SNAPSHOT_NOT_SATISFIED)
 	{
-	  return ER_FAILED;
+	  error_code = ER_FAILED;
+	  goto end;
 	}
       else
 	{
 	  assert (false);
-	  return ER_FAILED;
+	  error_code = ER_FAILED;
+	  goto end;
 	}
 
       old_recdes = &copy_recdes;
@@ -7504,6 +7594,35 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
       error_code = ER_LC_BADFORCE_OPERATION;
       break;
     }
+
+end:
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+  if (sysop_started)
+    {
+      assert (!LOG_CHECK_LOG_APPLIER (thread_p) && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG));
+      if (error_code == NO_ERROR)
+	{
+	  cubreplication::stream_entry * stream_entry =
+	    logtb_get_tdes (thread_p)->replication_log_generator.get_stream_entry ();
+	  if (stream_entry->count_entries () > 0)
+	    {
+	      /* Aborts and simulate apply replication RBR on master node. */
+	      error_code =
+		logtb_get_tdes (thread_p)->
+		replication_log_generator.abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
+	    }
+	  else
+	    {
+	      log_sysop_attach_to_outer (thread_p);
+	    }
+	}
+      else
+	{
+	  log_sysop_abort (thread_p);
+	}
+    }
+#endif
+
   return error_code;
 }
 
@@ -8259,6 +8378,12 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	  repl_info->need_replication = false;
 	}
 
+      if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
+	{
+	  /* Remove attribute change since we don't have primary key. At abort, all pending objects are removed. */
+	  logtb_get_tdes (thread_p)->replication_log_generator.remove_attribute_change (*class_oid, *oid);
+	}
+
       return NO_ERROR;
     }
 
@@ -8744,8 +8869,13 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
     }
   else
     {
-      // todo - handle no pk case
       /* No need to replicate this record since there is no primary key */
+      if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
+	{
+	  /* Remove attribute change since we don't have primary key. At abort, all pending objects are removed. */
+	  logtb_get_tdes (thread_p)->replication_log_generator.remove_attribute_change (*class_oid, *oid);
+	}
+
       if (repl_info != NULL)
 	{
 	  repl_info->need_replication = false;
@@ -11635,23 +11765,40 @@ locator_decrease_catalog_count (THREAD_ENTRY * thread_p, OID * cls_oid)
 int
 xrepl_statement (THREAD_ENTRY * thread_p, REPL_INFO * repl_info)
 {
-  int error_code = NO_ERROR;
+  int err = NO_ERROR;
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
-  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
+  if (LOG_CHECK_LOG_APPLIER (thread_p) || !log_does_allow_replication ())
     {
-      switch (repl_info->repl_info_type)
-	{
-	case REPL_INFO_TYPE_SBR:
-	  logtb_get_tdes (thread_p)->replication_log_generator.add_statement (*(REPL_INFO_SBR *) repl_info->info);
-	  break;
-	default:
-	  error_code = ER_REPL_ERROR;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1, "can't make repl sbr info");
-	  break;
-	}
+      return NO_ERROR;
     }
 
-  return error_code;
+  switch (repl_info->repl_info_type)
+    {
+    case REPL_INFO_TYPE_SBR:
+      tdes->replication_log_generator.add_statement (*(REPL_INFO_SBR *) repl_info->info);
+
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+      if (!LOG_CHECK_LOG_APPLIER (thread_p) && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
+	{
+	  /* Aborts and simulate apply SBR on master node. */
+	  char *savepoint_name = ((REPL_INFO_SBR *) repl_info->info)->savepoint_name;
+	  if (savepoint_name != NULL)
+	    {
+	      err =
+		tdes->replication_log_generator.abort_partial_and_simulate_apply_sbr_repl_on_master (savepoint_name);
+	    }
+	}
+#endif
+      break;
+
+    default:
+      err = ER_REPL_ERROR;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1, "can't make repl sbr info");
+      break;
+    }
+
+  return err;
 }
 
 /*
@@ -12080,9 +12227,22 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
   int tran_index;
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
   MVCCID threshold_mvccid;
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+  bool disabled_row_replication = false;
+#endif
 
   HFID_SET_NULL (&hfid);
   OID_SET_NULL (&last_oid);
+
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+  if (!LOG_CHECK_LOG_APPLIER (thread_p) && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
+      && !logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
+    {
+      /* TODO - Remove this code, test and fix. For now, disable testing HA. */
+      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
+      disabled_row_replication = true;
+    }
+#endif
 
   if (class_oid == NULL || OID_ISNULL (class_oid) || att_id < 0)
     {
@@ -12221,6 +12381,14 @@ error_exit:
     {
       heap_scancache_end_modify (thread_p, &upd_scancache);
     }
+
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+  if (disabled_row_replication)
+    {
+      /* Enable row replication. */
+      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+    }
+#endif
 
   return error;
 }
@@ -13702,3 +13870,481 @@ xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK
 {
   return lock_demote_class_lock (thread_p, class_oid, lock, ex_lock);
 }
+
+int
+xlocator_get_proxy_command (THREAD_ENTRY * thread_p, const char **proxy_command)
+{
+  LOG_TDES *tdes;
+  assert (proxy_command != NULL);
+
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  *proxy_command = tdes->ha_sbr_statement;
+
+  return NO_ERROR;
+}
+
+
+#if defined(SERVER_MODE)
+static int
+locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION rbr_operation, OID * class_oid,
+			   OID * instance_oid, RECDES * recdes, const std::vector < int >&changed_att_ids,
+			   const std::vector < DB_VALUE > &new_values, DB_VALUE * key_value,
+			   HEAP_SCANCACHE * force_scancache, LC_COPYAREA * &copy_area);
+
+/*
+ * locator_repl_apply_rbr () - prepare required info for each operation
+ *
+ * return: NO_ERROR if all OK, ER_ status otherwise
+ *
+ *   thread_p(in):
+ *
+ * Note : this functions should be used only on slave replication server
+ *
+ */
+int
+locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION rbr_operation, const char *class_name,
+			DB_VALUE * key_value, const std::vector < int >&changed_att_ids,
+			const std::vector < DB_VALUE > &new_values, const RECDES * new_recdes_arg)
+{
+  OID class_oid;
+  OID instance_oid;
+  HFID hfid;
+  LC_COPYAREA *copy_area = NULL;
+  RECDES new_recdes;
+  LOG_LSA topop_lsa;
+  int dummy_force_count;
+  int error_code;
+  LC_FIND_CLASSNAME status;
+  /* TODO : make these arguments of function */
+  int op_type = SINGLE_ROW_UPDATE;
+  /* TODO : ommit checking foreign key */
+  bool do_not_check_fk = true;
+  HEAP_SCANCACHE scan_cache;
+  bool scan_cache_inited = false;
+  int pruning_type = DB_NOT_PARTITIONED_CLASS;
+  int num_retry = 0, max_retry = 5;
+
+  /* TODO : do we really need the lock on class OID ?
+   * TODO - Optimizations. Use cached context to avoids finding class_oid, starting scan cache, representation.
+   * Also we may optimize update/delete to not use LC_FLAG_HAS_INDEX flag, if there is no index to update.
+   * Do not use locking since transactions included in a group are independent.
+   */
+  status = xlocator_find_class_oid (thread_p, class_name, &class_oid, NULL_LOCK);
+  if (status != LC_CLASSNAME_EXIST)
+    {
+      /* TODO : can we handle errors ? */
+      error_code = ER_FAILED;
+      goto exit;
+    }
+
+  error_code = heap_get_hfid_from_class_oid (thread_p, &class_oid, &hfid);
+  if (error_code != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  if (new_recdes_arg != NULL)
+    {
+      assert (LC_IS_FLUSH_INSERT (rbr_operation) || LC_IS_FLUSH_UPDATE (rbr_operation));
+      new_recdes = *new_recdes_arg;
+    }
+
+  error_code = locator_start_force_scan_cache (thread_p, &scan_cache, &hfid, &class_oid, op_type);
+  if (error_code != NO_ERROR)
+    {
+      goto exit;
+    }
+  scan_cache_inited = true;
+
+  error_code = locator_prepare_rbr_apply (thread_p, rbr_operation, &class_oid, &instance_oid, &new_recdes,
+					  changed_att_ids, new_values, key_value, &scan_cache, copy_area);
+  if (error_code != NO_ERROR)
+    {
+      goto exit;
+    }
+
+retry:
+
+  error_code = xtran_server_start_topop (thread_p, &topop_lsa);
+  if (error_code != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  switch (rbr_operation)
+    {
+    case LC_FLUSH_INSERT:
+    case LC_FLUSH_INSERT_PRUNE:
+    case LC_FLUSH_INSERT_PRUNE_VERIFY:
+      pruning_type = locator_area_op_to_pruning_type (rbr_operation);
+      error_code =
+	locator_insert_force (thread_p, &hfid, &class_oid, &instance_oid, &new_recdes, LC_FLAG_HAS_INDEX,
+			      SINGLE_ROW_INSERT, &scan_cache, &dummy_force_count, pruning_type, NULL, NULL,
+			      UPDATE_INPLACE_NONE);
+
+      if (error_code == NO_ERROR)
+	{
+	  /* monitor */
+	  // TODO: We need another stat.
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_INSERTS);
+	}
+      break;
+
+    case LC_FLUSH_UPDATE:
+    case LC_FLUSH_UPDATE_PRUNE:
+    case LC_FLUSH_UPDATE_PRUNE_VERIFY:
+      pruning_type = locator_area_op_to_pruning_type (rbr_operation);
+      error_code =
+	locator_update_force (thread_p, &hfid, &class_oid, &instance_oid, NULL, &new_recdes, LC_FLAG_HAS_INDEX,
+			      NULL, 0, SINGLE_ROW_UPDATE, &scan_cache, &dummy_force_count, false,
+			      REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, false);
+
+      if (error_code == NO_ERROR)
+	{
+	  /* monitor */
+	  // TODO: We need another stat.
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_UPDATES);
+	}
+
+      break;
+
+    case LC_FLUSH_DELETE:
+      error_code =
+	locator_delete_force (thread_p, &hfid, &instance_oid, LC_FLAG_HAS_INDEX, SINGLE_ROW_DELETE, &scan_cache,
+			      &dummy_force_count, NULL, false);
+
+      if (error_code == NO_ERROR)
+	{
+	  /* monitor */
+	  // TODO: We need another stat.
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DELETES);
+	}
+      break;
+
+    default:
+      /* TODO : error handling  */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_BADFORCE_OPERATION, 4, rbr_operation, instance_oid.volid,
+	      instance_oid.pageid, instance_oid.slotid);
+      error_code = ER_LC_BADFORCE_OPERATION;
+      break;
+    }				/* end-switch */
+
+  if (error_code != NO_ERROR)
+    {
+      /* Should not happens. However, we have to handle it. */
+      assert (er_errid () != NO_ERROR);
+
+      (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &topop_lsa);
+
+      /* TODO : error handling */
+
+      if (num_retry++ < max_retry)
+	{
+	  er_clear ();
+	  error_code = NO_ERROR;
+
+	  /* Maybe error caused by concurrent thread, try again. */
+	  goto retry;
+	}
+    }
+  else
+    {
+      (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &topop_lsa);
+    }
+
+exit:
+  if (copy_area != NULL)
+    {
+      locator_free_copy_area (copy_area);
+      copy_area = NULL;
+      new_recdes.data = NULL;
+      new_recdes.area_size = 0;
+    }
+
+  if (scan_cache_inited)
+    {
+      locator_end_force_scan_cache (thread_p, &scan_cache);
+    }
+
+  return error_code;
+}
+
+/*
+ * locator_prepare_rbr_apply () - prepare RBR operation
+ *
+ * return: NO_ERROR if all OK, ER_ status otherwise
+ *
+ *   thread_p(in):
+ *   obj(in): object that describes the current operation
+ *   recdes(in/out): record to be applied
+ *   changed_att_ids(in): changed attribute ids
+ *   new_values(in): new values
+ *   key_value(in): primary key value
+ *   force_scancache(in):
+ *   copy_area(in/out): copy area
+ *
+ *    Note: This function obtains all informations required to execute rbr. Thus, at delete and update, it obtain OID.
+ *      At insert and update, obtain the new recdes. If is already built, it sets last representation id and chn.
+ *      Otherwise, the new recdes is built based on old recdes and changed attributes (ids and values).
+ *
+ */
+// *INDENT-OFF*
+static int
+locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION rbr_operation, OID * class_oid,
+			   OID * instance_oid, RECDES * recdes, const std::vector<int> &changed_att_ids,
+			   const std::vector<DB_VALUE> &new_values, DB_VALUE * key_value,
+			   HEAP_SCANCACHE * force_scancache, LC_COPYAREA * &copy_area)
+// *INDENT-ON*
+{
+  HEAP_CACHE_ATTRINFO attr_info;
+  RECDES old_recdes;
+  BTID btid;
+  int error_code = NO_ERROR;
+  int last_repr_id = NULL_REPRID;
+  int old_chn = NULL_CHN;
+  SCAN_CODE scan;
+  SCAN_OPERATION_TYPE scan_op_type;
+  bool attr_info_inited = false;
+
+  if (LC_IS_FLUSH_INSERT (rbr_operation) == false)
+    {
+      error_code = btree_get_pkey_btid (thread_p, class_oid, &btid);
+      if (error_code != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      if (rbr_operation == LC_FLUSH_DELETE)
+	{
+	  scan_op_type = S_DELETE;
+	}
+      else if (LC_IS_FLUSH_UPDATE (rbr_operation) == true)
+	{
+	  scan_op_type = S_UPDATE;
+	}
+
+      if (xbtree_find_unique (thread_p, &btid, scan_op_type, key_value, class_oid, instance_oid, true) !=
+	  BTREE_KEY_FOUND)
+	{
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
+	  error_code = ER_OBJ_OBJECT_NOT_FOUND;
+	  goto exit;
+	}
+    }
+
+  if (LC_IS_FLUSH_UPDATE (rbr_operation) == true)
+    {
+      assert (OID_ISNULL (instance_oid) != true);
+
+      old_recdes.data = NULL;
+      scan = heap_get_visible_version (thread_p, instance_oid, class_oid, &old_recdes, force_scancache, PEEK, NULL_CHN);
+
+      if (scan != S_SUCCESS)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  if (error_code == ER_HEAP_UNKNOWN_OBJECT)
+	    {
+	      er_log_debug (ARG_FILE_LINE, "locator_prepare_rbr_apply : unknown oid ( %d|%d|%d )\n",
+			    instance_oid->pageid, instance_oid->slotid, instance_oid->volid);
+	    }
+
+	  goto exit;
+	}
+    }
+
+  /* Build */
+  if (changed_att_ids.size () == 0)
+    {
+      if (rbr_operation != LC_FLUSH_DELETE)
+	{
+	  last_repr_id = heap_get_class_repr_id (thread_p, class_oid);
+	  if (last_repr_id == 0)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CT_INVALID_REPRID, 1, last_repr_id);
+	      error_code = ER_CT_INVALID_REPRID;
+	      goto exit;
+	    }
+
+	  error_code = or_replace_rep_id (recdes, last_repr_id);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
+
+      if (LC_IS_FLUSH_UPDATE (rbr_operation) == true)
+	{
+	  old_chn = or_chn (&old_recdes);
+
+	  error_code = or_replace_chn (recdes, old_chn + 1);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
+    }
+  else
+    {
+      assert (LC_IS_FLUSH_UPDATE (rbr_operation));
+
+      /* search key -> get OID and old RECDES (only for UPDATE), create or update new_recdes */
+      error_code = heap_attrinfo_start (thread_p, class_oid, -1, NULL, &attr_info);
+      if (error_code != NO_ERROR)
+	{
+	  goto exit;
+	}
+      attr_info_inited = true;
+
+      /* set key and new values into attr_info */
+      assert (changed_att_ids.size () == new_values.size ());
+      for (int i = 0; i < changed_att_ids.size (); i++)
+	{
+	  error_code = heap_attrinfo_set (NULL, changed_att_ids[i], &(new_values[i]), &attr_info);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
+
+      copy_area =
+	locator_allocate_copy_area_by_attr_info (thread_p, &attr_info, &old_recdes, recdes, -1, LOB_FLAG_INCLUDE_LOB);
+      if (copy_area == NULL)
+	{
+	  error_code = ER_FAILED;
+	  goto exit;
+	}
+    }
+
+exit:
+  if (attr_info_inited)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+    }
+
+  return error_code;
+}
+
+int
+locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char *db_password,
+			const char *ha_sys_prm_context, const char *statement)
+{
+  char path[PATH_MAX];
+  static const char *db_name = boot_db_name ();
+  int error = NO_ERROR, exit_status;
+  char tran_index_str[DB_BIGINT_PRECISION + 1] = { 0 };
+  const char *command_option = NULL, *command = NULL;
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+  assert (db_user != NULL && db_password != NULL && statement != NULL && tdes != NULL);
+  sprintf (tran_index_str, "%d", tran_index);
+
+  /* TODO - maybe we have to decide based on whole argv length rather than statement length. */
+  if (strlen (statement) <= HA_DDL_PROXY_MAX_STATEMENT_LENGTH && (strpbrk (statement, "\"\'\t") == NULL))
+    {
+      /* Uses command option. */
+      command_option = "-c";
+      command = statement;
+    }
+  else
+    {
+      /* Uses request option. */
+      tdes->ha_sbr_statement = statement;
+      command_option = "-r";
+      command = "true";
+    }
+
+  const char *ddl_argv[13] = {
+    path,
+    "-u",
+    db_user,
+    "-p",
+    db_password,
+    db_name,
+    command_option,
+    command,
+    "-t",
+    tran_index_str,
+    (ha_sys_prm_context != NULL) ? "-s" : NULL,
+    ha_sys_prm_context,
+    NULL
+  };
+
+  envvar_bindir_file (path, PATH_MAX, UTIL_DDL_PROXY_CLIENT);
+
+  error = create_child_process (ddl_argv, 1, NULL, NULL, NULL, &exit_status);
+  tdes->ha_sbr_statement = NULL;
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  _er_log_debug (ARG_FILE_LINE, "apply SBR: tran_index:%d, exit_status:%d, stmt:\n%s", tran_index, exit_status,
+		 statement);
+
+  if (exit_status != 0)
+    {
+      /* TODO : get error from ddl_proxy & set error */
+      error = ER_FAILED;
+    }
+
+  return error;
+}
+
+int
+locator_repl_start_tran (THREAD_ENTRY * thread_p)
+{
+  /* TODO */
+  static BOOT_CLIENT_CREDENTIAL applier_Client_credentials = {
+    BOOT_CLIENT_LOG_APPLIER,	/* client_type */
+    NULL,			/* client_info */
+    NULL,			/* db_name */
+    NULL,			/* db_user */
+    NULL,			/* db_password */
+    (char *) "(repl_applier)",	/* program_name */
+    NULL,			/* login_name */
+    NULL,			/* host_name */
+    NULL,			/* preferred_hosts */
+    0,				/* connect_order */
+    -1				/* process_id */
+  };
+
+  int client_lock_wait = 0;
+  TRAN_ISOLATION client_isolation = TRAN_DEFAULT_ISOLATION;
+
+  int tran_index =
+    logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, &applier_Client_credentials, NULL, client_lock_wait,
+			     client_isolation);
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      ASSERT_ERROR ();
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+int
+locator_repl_end_tran (THREAD_ENTRY * thread_p, bool commit)
+{
+  int saved_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  if (commit)
+    {
+      xtran_server_commit (thread_p, false);
+      _er_log_debug (ARG_FILE_LINE, "replication_apply : tran_index :%d committed", saved_tran_index);
+    }
+  else
+    {
+      xtran_server_abort (thread_p);
+      _er_log_debug (ARG_FILE_LINE, "replication_apply : tran_index :%d aborted", saved_tran_index);
+    }
+
+  logtb_release_tran_index (thread_p, saved_tran_index);
+
+  logtb_set_current_tran_index (thread_p, saved_tran_index);
+
+  return NO_ERROR;
+}
+
+#endif /* SERVER_MODE */

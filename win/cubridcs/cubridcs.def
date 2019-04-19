@@ -140,6 +140,8 @@ EXPORTS
     db_execute_and_keep_statement
     db_execute_statement
     db_set_statement_auto_commit
+    db_set_system_parameters_for_ha_repl
+    db_get_proxy_command
     db_find_all_triggers
     db_find_class
     db_find_user
@@ -342,6 +344,7 @@ EXPORTS
     db_set_preferred_hosts
     db_set_connect_order
     db_shutdown
+    db_shutdown_keep_transaction
     db_string_free
     db_synchronize_cache
     db_time_decode
@@ -394,6 +397,8 @@ EXPORTS
     er_clear
     er_final
     er_init
+    er_stack_push
+    er_stack_pop
     er_set
     _er_log_debug
     getopt
@@ -491,6 +496,7 @@ EXPORTS
     compactdb
     acldb
     vacuumdb
+    start_ddl_proxy_client
 ;
 ; libesql reference's functions
 ;
@@ -825,6 +831,7 @@ EXPORTS
     db_set_method_arg_domain
     db_set_print
     db_set_type
+    db_set_override_tran_index
     db_sqlx_debug_print_result
     db_statement_count
     db_strftime

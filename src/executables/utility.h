@@ -1388,6 +1388,12 @@ typedef struct _ha_config
 #define DDL_PROXY_OUTPUT_FILE_S 'o'
 #define DDL_PROXY_COMMAND_L "command"
 #define DDL_PROXY_COMMAND_S 'c'
+#define DDL_PROXY_REQUEST_L "request"
+#define DDL_PROXY_REQUEST_S 'r'
+#define DDL_PROXY_TRAN_INDEX_L "tran-index"
+#define DDL_PROXY_TRAN_INDEX_S 't'
+#define DDL_PROXY_SYS_PARAM_L "sys-param"
+#define DDL_PROXY_SYS_PARAM_S 's'
 
 /* paramdump option list */
 #define PARAMDUMP_OUTPUT_FILE_S                 'o'
@@ -1634,6 +1640,18 @@ extern "C"
   } UTIL_FUNCTION_ARG;
   typedef int (*UTILITY_FUNCTION) (UTIL_FUNCTION_ARG *);
 
+  typedef struct
+  {
+    const char *db_name;
+    const char *user_name;
+    const char *passwd;
+    const char *command;
+    const char *request;
+    const char *out_file_name;
+    const char *tran_index;
+    const char *sys_param;
+  } DDL_CLIENT_ARGUMENT;
+
   extern int compactdb (UTIL_FUNCTION_ARG * arg_map);
 #if defined (ENABLE_UNUSED_FUNCTION)
   extern int loaddb_dba (UTIL_FUNCTION_ARG * arg_map);
@@ -1689,6 +1707,8 @@ extern "C"
 
   extern void util_admin_usage (const char *argv0);
   extern void util_admin_version (const char *argv0);
+
+  extern int start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args);
 #ifdef __cplusplus
 }
 #endif

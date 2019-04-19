@@ -33,127 +33,20 @@
 #include "cubrid_getopt.h"
 #include "db_admin.h"
 #include "dbi.h"
-
-typedef struct
-{
-  const char *db_name;
-  const char *user_name;
-  const char *passwd;
-  const char *command;
-  const char *out_file_name;
-} DDL_CLIENT_ARGUMENT;
+#include "authenticate.h"
 
 static void
-utility_print (int message_num, ...)
+ddl_proxy_print_msg (int message_num, ...)
 {
-  typedef const char * (*GET_MESSAGE) (int message_index);
-
-  DSO_HANDLE util_sa_library;
-  DSO_HANDLE symbol;
-  GET_MESSAGE get_message_fn;
-
-  utility_load_library (&util_sa_library, LIB_UTIL_SA_NAME);
-  if (util_sa_library == NULL)
+  const char *message = utility_get_generic_message (message_num);
+  if (message != NULL)
     {
-      utility_load_print_error (stderr);
-      return;
+      va_list ap;
+
+      va_start (ap, message_num);
+      vfprintf (stderr, message, ap);
+      va_end (ap);
     }
-  utility_load_symbol (util_sa_library, &symbol, UTILITY_GENERIC_MSG_FUNC_NAME);
-  if (symbol == NULL)
-    {
-      utility_load_print_error (stderr);
-      return;
-    }
-
-  get_message_fn = (GET_MESSAGE) symbol;
-
-  {
-    va_list ap;
-
-    va_start (ap, message_num);
-    vfprintf (stderr, get_message_fn (message_num), ap);
-    va_end (ap);
-  }
-}
-
-static int start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT *args)
-{
-  DB_SESSION *session = NULL;
-  int rc = NO_ERROR;
-
-  rc = db_restart_ex (program_name, args->db_name, args->user_name, args->passwd, NULL, DB_CLIENT_TYPE_ADMIN_CSQL);
-
-  if (rc != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return rc;
-    }
-
-  if (args->command != NULL)
-    {
-      int total_stmts, stmt_id, i, num_of_rows;
-      DB_QUERY_RESULT *result = NULL;
-
-      session = db_open_buffer ((const char *) args->command);
-      if (session == NULL)
-	{
-	  ASSERT_ERROR_AND_SET (rc);
-	  goto error;
-	}
-
-      if (db_get_errors (session) || er_errid () != NO_ERROR)
-	{
-	  ASSERT_ERROR_AND_SET (rc);
-	  goto error;
-	}
-
-      total_stmts = db_statement_count (session);
-      for (i = 0; i < total_stmts; i++)
-	{
-	  stmt_id = db_compile_statement (session);
-	  if (stmt_id < 0)
-	    {
-	      ASSERT_ERROR_AND_SET (rc);
-	      db_abort_transaction ();
-	      goto error;
-	    }
-
-	  if (stmt_id == 0)
-	    {
-	      /* this means that we processed all statements */
-	      break;
-	    }
-	  num_of_rows = db_execute_statement (session, stmt_id, &result);
-	  if (num_of_rows < 0)
-	    {
-	      ASSERT_ERROR_AND_SET (rc);
-	      db_abort_transaction ();
-	      goto error;
-	    }
-
-	  if (result != NULL)
-	    {
-	      db_query_end (result);
-	      result = NULL;
-	    }
-	  else
-	    {
-	      db_free_query (session);
-	    }
-
-	  db_drop_statement (session, stmt_id);
-	}
-    }
-
-error:
-  if (session != NULL)
-    {
-      db_close_session (session);
-    }
-  db_commit_transaction ();
-  db_shutdown ();
-
-  return rc;
 }
 
 int
@@ -169,6 +62,9 @@ main (int argc, char *argv[])
     {DDL_PROXY_PASSWORD_L, 1, 0, DDL_PROXY_PASSWORD_S},
     {DDL_PROXY_OUTPUT_FILE_L, 1, 0, DDL_PROXY_OUTPUT_FILE_S},
     {DDL_PROXY_COMMAND_L, 1, 0, DDL_PROXY_COMMAND_S},
+    {DDL_PROXY_REQUEST_L, 1, 0, DDL_PROXY_REQUEST_S },
+    {DDL_PROXY_TRAN_INDEX_L, 1, 0, DDL_PROXY_TRAN_INDEX_S},
+    {DDL_PROXY_SYS_PARAM_L, 1, 0, DDL_PROXY_SYS_PARAM_S},
     {VERSION_L, 0, 0, VERSION_S},
     {0, 0, 0, 0}
   };
@@ -189,7 +85,7 @@ main (int argc, char *argv[])
 
       switch (option_key)
 	{
-	case CSQL_USER_S:
+	case DDL_PROXY_USER_S:
 	  if (arguments.user_name != NULL)
 	    {
 	      free ((void *) arguments.user_name);
@@ -197,7 +93,7 @@ main (int argc, char *argv[])
 	  arguments.user_name = strdup (optarg);
 	  break;
 
-	case CSQL_PASSWORD_S:
+	case DDL_PROXY_PASSWORD_S:
 	  if (arguments.passwd != NULL)
 	    {
 	      free ((void *) arguments.passwd);
@@ -206,7 +102,7 @@ main (int argc, char *argv[])
 	  util_hide_password (optarg);
 	  break;
 
-	case CSQL_OUTPUT_FILE_S:
+	case DDL_PROXY_OUTPUT_FILE_S:
 	  if (arguments.out_file_name != NULL)
 	    {
 	      free ((void *) arguments.out_file_name);
@@ -214,7 +110,7 @@ main (int argc, char *argv[])
 	  arguments.out_file_name = strdup (optarg);
 	  break;
 
-	case CSQL_COMMAND_S:
+	case DDL_PROXY_COMMAND_S:
 	  if (arguments.command != NULL)
 	    {
 	      free ((void *) arguments.command);
@@ -222,12 +118,38 @@ main (int argc, char *argv[])
 	  arguments.command = strdup (optarg);
 	  break;
 
+	case DDL_PROXY_REQUEST_S:
+	  if (arguments.request != NULL)
+	    {
+	      free ((void *) arguments.request);
+	    }
+	  arguments.request = strdup (optarg);
+	  break;
+
+	case DDL_PROXY_TRAN_INDEX_S:
+	  if (arguments.tran_index != NULL)
+	    {
+	      free ((void *) arguments.tran_index);
+	    }
+	  arguments.tran_index = strdup (optarg);
+	  break;
+
+	case DDL_PROXY_SYS_PARAM_S:
+	  if (arguments.sys_param != NULL)
+	    {
+	      free ((void *) arguments.sys_param);
+	    }
+	  arguments.sys_param = strdup (optarg);
+	  break;
+
 	case VERSION_S:
-	  utility_print (MSGCAT_UTIL_GENERIC_VERSION, UTIL_DDL_PROXY_CLIENT, PRODUCT_STRING);
+	  ddl_proxy_print_msg (MSGCAT_UTIL_GENERIC_VERSION, UTIL_DDL_PROXY_CLIENT, PRODUCT_STRING);
 	  goto exit_on_end;
 
 	default:
 	  assert (false);
+	  // TODO
+	  // goto print_usage;
 	}
     }
 
@@ -237,13 +159,17 @@ main (int argc, char *argv[])
     }
   else if (argc > optind)
     {
-      utility_print (MSGCAT_UTIL_GENERIC_ARGS_OVER, argv[optind + 1]);
+      ddl_proxy_print_msg (MSGCAT_UTIL_GENERIC_ARGS_OVER, argv[optind + 1]);
       assert (false);
+      // TODO
+      // goto print_usage;
     }
   else
     {
-      utility_print (MSGCAT_UTIL_GENERIC_MISS_DBNAME);
+      ddl_proxy_print_msg (MSGCAT_UTIL_GENERIC_MISS_DBNAME);
       assert (false);
+      // TODO
+      // goto print_usage;
     }
 
   error = start_ddl_proxy_client (argv[0], &arguments);
@@ -264,6 +190,18 @@ exit_on_end:
   if (arguments.command != NULL)
     {
       free ((void *) arguments.command);
+    }
+  if (arguments.request != NULL)
+    {
+      free ((void *) arguments.request);
+    }
+  if (arguments.tran_index != NULL)
+    {
+      free ((void *) arguments.tran_index);
+    }
+  if (arguments.sys_param != NULL)
+    {
+      free ((void *) arguments.sys_param);
     }
 
   return error;

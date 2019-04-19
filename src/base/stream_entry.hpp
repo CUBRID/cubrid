@@ -283,6 +283,7 @@ namespace cubstream
 
       void reset (void)
       {
+	/* Destroy all replication objects. */
 	destroy_objects ();
       };
 
@@ -312,6 +313,11 @@ namespace cubstream
 	return m_packable_entries[pos];
       }
 
+      const size_t count_entries ()
+      {
+	return m_packable_entries.size ();
+      }
+
       /* stream entry header methods : header is implementation dependent, is not known here ! */
       virtual cubpacking::packer *get_packer () = 0;
       virtual cubpacking::unpacker *get_unpacker () = 0;
@@ -322,7 +328,6 @@ namespace cubstream
       virtual int unpack_stream_entry_header (void) = 0;
       virtual int get_packable_entry_count_from_header (void) = 0;
       virtual bool is_equal (const entry *other) = 0;
-
       virtual void destroy_objects ()
       {
 	for (unsigned int i = 0; i < m_packable_entries.size (); i++)

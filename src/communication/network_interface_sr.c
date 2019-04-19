@@ -3241,6 +3241,16 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   ptr = or_unpack_int (ptr, &xint);
   client_isolation = (TRAN_ISOLATION) xint;
 
+  if (client_credential.client_type == BOOT_CLIENT_DDL_PROXY)
+    {
+      ptr = or_unpack_int (ptr, &client_credential.desired_tran_index);
+      assert (client_credential.desired_tran_index != NULL_TRAN_INDEX);
+    }
+  else
+    {
+      client_credential.desired_tran_index = NULL_TRAN_INDEX;
+    }
+
   tran_index = xboot_register_client (thread_p, &client_credential, client_lock_wait, client_isolation, &tran_state,
 				      &server_credential);
   if (tran_index == NULL_TRAN_INDEX)
@@ -7736,7 +7746,7 @@ srepl_set_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
   REPL_INFO repl_info = { NULL, 0, false };
-  REPL_INFO_SBR repl_schema = { 0, NULL, NULL, NULL, NULL };
+  REPL_INFO_SBR repl_schema = { 0, NULL, NULL, NULL, NULL, NULL, NULL };
 
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
     {
@@ -7744,16 +7754,16 @@ srepl_set_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
       switch (repl_info.repl_info_type)
 	{
 	case REPL_INFO_TYPE_SBR:
-	  {
-	    ptr = or_unpack_int (ptr, &repl_schema.statement_type);
-	    ptr = or_unpack_string_nocopy (ptr, &repl_schema.name);
-	    ptr = or_unpack_string_nocopy (ptr, &repl_schema.stmt_text);
-	    ptr = or_unpack_string_nocopy (ptr, &repl_schema.db_user);
-	    ptr = or_unpack_string_nocopy (ptr, &repl_schema.sys_prm_context);
+	  ptr = or_unpack_int (ptr, &repl_schema.statement_type);
+	  ptr = or_unpack_string_nocopy (ptr, &repl_schema.name);
+	  ptr = or_unpack_string_nocopy (ptr, &repl_schema.stmt_text);
+	  ptr = or_unpack_string_nocopy (ptr, &repl_schema.db_user);
+	  ptr = or_unpack_string_nocopy (ptr, &repl_schema.db_password);
+	  ptr = or_unpack_string_nocopy (ptr, &repl_schema.sys_prm_context);
+	  ptr = or_unpack_string_nocopy (ptr, &repl_schema.savepoint_name);
+	  repl_info.info = (char *) &repl_schema;
+	  break;
 
-	    repl_info.info = (char *) &repl_schema;
-	    break;
-	  }
 	default:
 	  success = ER_FAILED;
 	  break;
@@ -9785,4 +9795,55 @@ slocator_demote_class_lock (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   ptr = or_pack_int (reply, error);
   ptr = or_pack_lock (ptr, ex_lock);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * slocator_get_proxy_command - Get proxy command
+ *
+ * return:  void
+ *
+ *   thread_p (in) : thread entry
+ *   rid (in):  request ID
+ *   request (in): request data
+ *   reqlen (in): request data length
+ */
+void
+slocator_get_proxy_command (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int area_size, strlen1;
+  char *area = NULL, *p = NULL;
+  const char *proxy_command = NULL;
+  int error_code;
+
+  error_code = xlocator_get_proxy_command (thread_p, &proxy_command);
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+      area_size = 0;
+      area = NULL;
+    }
+  else
+    {
+      area_size = or_packed_string_length (proxy_command, &strlen1);
+      area = (char *) db_private_alloc (thread_p, area_size);
+      if (area == NULL)
+	{
+	  (void) return_error_to_client (thread_p, rid);
+	  area_size = 0;
+	}
+      else
+	{
+	  (void) or_pack_string_with_length (area, proxy_command, strlen1);
+	}
+    }
+
+  p = or_pack_int (reply, area_size);
+  p = or_pack_int (p, error_code);
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
+  if (area != NULL)
+    {
+      db_private_free_and_init (thread_p, area);
+    }
 }
