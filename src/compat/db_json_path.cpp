@@ -654,11 +654,16 @@ JSON_PATH::dump_json_path () const
 	  char *escaped;
 	  if (needs_escaping (raw_object_key))
 	    {
+	      res += "\"";
 	      (void) db_string_escape (raw_object_key.c_str (), raw_object_key.length (), &escaped, &escaped_size);
+	      res += escaped;
+	      db_private_free (NULL, escaped);
+	      res += "\"";
 	    }
-
-	  res += escaped;
-	  db_private_free (NULL, escaped);
+	  else
+	    {
+	      res += raw_object_key;
+	    }
 	  break;
 	}
 	case PATH_TOKEN::object_key_wildcard:
