@@ -98,6 +98,8 @@ void
 log_lsa::set_null ()
 {
   pageid = NULL_LOG_PAGEID;
+  offset = NULL_LOG_OFFSET;   // this is how LOG_LSA is initialized many times; we need to initialize both fields or
+  // we'll have "conditional jump or move on uninitialized value"
 }
 
 bool
