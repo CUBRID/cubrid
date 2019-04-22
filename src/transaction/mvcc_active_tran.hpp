@@ -35,6 +35,12 @@ struct mvcc_active_tran
     mvcc_active_tran ();
     ~mvcc_active_tran ();
 
+    enum class copy_safety
+    {
+      THREAD_SAFE,
+      THREAD_UNSAFE
+    };
+
     void initialize ();
     void finalize ();
     void reset ();
@@ -42,7 +48,7 @@ struct mvcc_active_tran
     MVCCID get_bit_area_start_mvccid ();
 
     bool is_active (MVCCID mvccid) const;
-    void copy_to (mvcc_active_tran &dest) const;
+    void copy_to (mvcc_active_tran &dest, copy_safety safety) const;
     mvcc_active_tran &operator= (const mvcc_active_tran &other) = delete;
 
     MVCCID compute_highest_completed_mvccid () const;
@@ -50,6 +56,8 @@ struct mvcc_active_tran
 
     void set_inactive_mvccid (MVCCID mvccid);
     void reset_start_mvccid (MVCCID mvccid);
+
+    void check_valid () const;
 
   private:
     using unit_type = std::uint64_t;
@@ -96,8 +104,6 @@ struct mvcc_active_tran
     size_t get_area_size () const;
     size_t get_bit_area_memsize () const;
     size_t get_long_tran_memsize () const;
-
-    void check_valid () const;
 
     void remove_long_transaction (MVCCID mvccid);
     void add_long_transaction (MVCCID mvccid);
