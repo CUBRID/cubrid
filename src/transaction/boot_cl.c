@@ -95,6 +95,8 @@
 
 #if defined(WINDOWS)
 #include "wintcp.h"
+#else /* WINDOWS */
+#include "tcp.h"
 #endif /* WINDOWS */
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -115,13 +117,6 @@ extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
 
 typedef int (*DEF_FUNCTION) ();
 typedef int (*DEF_CLASS_FUNCTION) (MOP);
-
-typedef struct catcls_function CATCLS_FUNCTION;
-struct catcls_function
-{
-  const char *name;
-  const DEF_FUNCTION function;
-};
 
 typedef struct column COLUMN;
 struct column
@@ -1738,6 +1733,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
 	case ER_NET_SERVER_HAND_SHAKE:
 	case ER_NET_HS_UNKNOWN_SERVER_REL:
 	  cap_error = true;
+	  /* FALLTHRU */
 	case ER_NET_DIFFERENT_RELEASE:
 	case ER_NET_NO_SERVER_HOST:
 	case ER_NET_CANT_CONNECT_SERVER:
@@ -3945,28 +3941,35 @@ boot_define_charsets (MOP class_mop)
 static int
 catcls_class_install (void)
 {
-  CATCLS_FUNCTION clist[] = {
-    {CT_CLASS_NAME, (DEF_FUNCTION) boot_define_class},
-    {CT_ATTRIBUTE_NAME, (DEF_FUNCTION) boot_define_attribute},
-    {CT_DOMAIN_NAME, (DEF_FUNCTION) boot_define_domain},
-    {CT_METHOD_NAME, (DEF_FUNCTION) boot_define_method},
-    {CT_METHSIG_NAME, (DEF_FUNCTION) boot_define_meth_sig},
-    {CT_METHARG_NAME, (DEF_FUNCTION) boot_define_meth_argument},
-    {CT_METHFILE_NAME, (DEF_FUNCTION) boot_define_meth_file},
-    {CT_QUERYSPEC_NAME, (DEF_FUNCTION) boot_define_query_spec},
-    {CT_INDEX_NAME, (DEF_FUNCTION) boot_define_index},
-    {CT_INDEXKEY_NAME, (DEF_FUNCTION) boot_define_index_key},
-    {CT_DATATYPE_NAME, (DEF_FUNCTION) boot_define_data_type},
-    {CT_CLASSAUTH_NAME, (DEF_FUNCTION) boot_define_class_authorization},
-    {CT_PARTITION_NAME, (DEF_FUNCTION) boot_define_partition},
-    {CT_STORED_PROC_NAME, (DEF_FUNCTION) boot_define_stored_procedure},
-    {CT_STORED_PROC_ARGS_NAME,
-     (DEF_FUNCTION) boot_define_stored_procedure_arguments},
-    {CT_SERIAL_NAME, (DEF_FUNCTION) boot_define_serial},
-    {CT_HA_APPLY_INFO_NAME, (DEF_FUNCTION) boot_define_ha_apply_info},
-    {CT_COLLATION_NAME, (DEF_FUNCTION) boot_define_collations},
-    {CT_CHARSET_NAME, (DEF_FUNCTION) boot_define_charsets}
+  // *INDENT-OFF*
+  struct catcls_function
+  {
+    const char *name;
+    const DEF_CLASS_FUNCTION function;
+  }
+  clist[] =
+  {
+    {CT_CLASS_NAME, boot_define_class},
+    {CT_ATTRIBUTE_NAME, boot_define_attribute},
+    {CT_DOMAIN_NAME, boot_define_domain},
+    {CT_METHOD_NAME, boot_define_method},
+    {CT_METHSIG_NAME, boot_define_meth_sig},
+    {CT_METHARG_NAME, boot_define_meth_argument},
+    {CT_METHFILE_NAME, boot_define_meth_file},
+    {CT_QUERYSPEC_NAME, boot_define_query_spec},
+    {CT_INDEX_NAME, boot_define_index},
+    {CT_INDEXKEY_NAME, boot_define_index_key},
+    {CT_DATATYPE_NAME, boot_define_data_type},
+    {CT_CLASSAUTH_NAME, boot_define_class_authorization},
+    {CT_PARTITION_NAME, boot_define_partition},
+    {CT_STORED_PROC_NAME, boot_define_stored_procedure},
+    {CT_STORED_PROC_ARGS_NAME, boot_define_stored_procedure_arguments},
+    {CT_SERIAL_NAME, boot_define_serial},
+    {CT_HA_APPLY_INFO_NAME, boot_define_ha_apply_info},
+    {CT_COLLATION_NAME, boot_define_collations},
+    {CT_CHARSET_NAME, boot_define_charsets}
   };
+  // *INDENT-ON*
 
   MOP class_mop[sizeof (clist) / sizeof (clist[0])];
   int i, save;
@@ -3989,7 +3992,7 @@ catcls_class_install (void)
 
   for (i = 0; i < num_classes; i++)
     {
-      error_code = ((DEF_CLASS_FUNCTION) (clist[i].function)) (class_mop[i]);
+      error_code = (clist[i].function) (class_mop[i]);
       if (error_code != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -5366,7 +5369,14 @@ boot_define_view_db_charset (void)
 static int
 catcls_vclass_install (void)
 {
-  CATCLS_FUNCTION clist[] = {
+  // *INDENT-OFF*
+  struct catcls_function
+  {
+    const char *name;
+    const DEF_FUNCTION function;
+  }
+  clist[] =
+  {
     {"CTV_CLASS_NAME", boot_define_view_class},
     {"CTV_SUPER_CLASS_NAME", boot_define_view_super_class},
     {"CTV_VCLASS_NAME", boot_define_view_vclass},
@@ -5386,6 +5396,7 @@ catcls_vclass_install (void)
     {"CTV_DB_COLLATION_NAME", boot_define_view_db_collation},
     {"CTV_DB_CHARSET_NAME", boot_define_view_db_charset}
   };
+  // *INDENT-ON*
 
   int save;
   size_t i;

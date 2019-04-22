@@ -60,6 +60,8 @@
 
 #if defined(WINDOWS)
 #include "wintcp.h"
+#else /* WINDOWS */
+#include "tcp.h"
 #endif /* WINDOWS */
 
 int tm_Tran_index = NULL_TRAN_INDEX;

@@ -1721,10 +1721,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	      xasl = pt_gen_simple_merge_plan (parser, QO_ENV_PT_TREE (env), plan, xasl);
 	      break;
 	    }
-	  else
-	    {
-	      /* FALL THROUGH */
-	    }
+	  /* FALLTHRU */
 	case QO_JOINMETHOD_IDX_JOIN:
 	  for (i = bitset_iterate (&(plan->plan_un.join.join_terms), &bi); i != -1; i = bitset_next_member (&bi))
 	    {

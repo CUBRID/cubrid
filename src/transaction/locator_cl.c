@@ -29,6 +29,7 @@
 #include <assert.h>
 #include <signal.h>
 
+#include "authenticate.h"
 #include "db.h"
 #include "environment_variable.h"
 #include "porting.h"

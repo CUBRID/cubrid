@@ -32,6 +32,7 @@
 #include <time.h>
 #include <assert.h>
 
+#include "authenticate.h"
 #include "db.h"
 #include "dbi.h"
 #include "db_query.h"

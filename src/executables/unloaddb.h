@@ -29,16 +29,13 @@
 
 #include "locator_cl.h"
 
-typedef enum
-{
-  FOLLOW_STORAGE_ORDER = 0,
-  FOLLOW_ATTRIBUTE_ORDER = 1
-} EMIT_STORAGE_ORDER;
+
+
+struct extract_context;
+class print_output;
 
 extern char *database_name;
-extern const char *output_dirname;
 extern char *input_filename;
-extern FILE *output_file;
 extern struct text_output *obj_out;
 extern int page_size;
 extern int cached_pages;
@@ -47,7 +44,6 @@ extern char *hash_filename;
 extern int debug_flag;
 extern bool verbose_flag;
 extern bool include_references;
-extern char *output_prefix;
 extern bool do_schema;
 extern bool do_objects;
 extern bool ignore_err_flag;
@@ -63,7 +59,17 @@ extern int lo_count;
 #define PRINT_IDENTIFIER(s) "[", (s), "]"
 #define PRINT_FUNCTION_INDEX_NAME(s) "\"", (s), "\""
 
-extern int extract_schema (const char *exec_name, int do_auth, EMIT_STORAGE_ORDER emit_storage_order);
-extern int extract_objects (const char *exec_name);
+extern int extract_classes_to_file (extract_context & ctxt, const char *output_filename);
+extern int extract_triggers (extract_context & ctxt, print_output & output_ctx);
+extern int extract_triggers_to_file (extract_context & ctxt, const char *output_filename);
+extern int extract_indexes_to_file (extract_context & ctxt, const char *output_filename);
+extern int extract_classes (extract_context & ctxt, print_output & schema_output_ctx);
+extern int extractobjects (const char *exec_name, const char *output_dirname, const char *output_prefix);
 
+extern int create_filename_schema (const char *output_dirname, const char *output_prefix,
+				   char *output_filename_p, const size_t filename_size);
+extern int create_filename_trigger (const char *output_dirname, const char *output_prefix,
+				    char *output_filename_p, const size_t filename_size);
+extern int create_filename_indexes (const char *output_dirname, const char *output_prefix,
+				    char *output_filename_p, const size_t filename_size);
 #endif /* _UNLOADDB_H_ */

@@ -22,6 +22,7 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/csql_result.c
   ${EXECUTABLES_DIR}/csql_support.c
   ${EXECUTABLES_DIR}/csql_result_format.c
+  ${EXECUTABLES_DIR}/extract_schema.cpp  
   ${EXECUTABLES_DIR}/util_sa.c
   ${EXECUTABLES_DIR}/util_cs.c
   ${EXECUTABLES_DIR}/util_common.c
@@ -30,6 +31,10 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/file_hash.c
+  )
+
+set(EXECUTABLE_HEADERS
+  ${EXECUTABLES_DIR}/extract_schema.hpp
   )
 
 set(COMPAT_SOURCES
@@ -87,6 +92,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/perf_monitor.c
   ${BASE_DIR}/pinnable_buffer.cpp
   ${BASE_DIR}/pinning.cpp
+  ${BASE_DIR}/printer.cpp
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/system_parameter.c
   ${BASE_DIR}/fault_injection.c
@@ -130,6 +136,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/pinning.hpp
   ${BASE_DIR}/pinnable_buffer.hpp
   ${BASE_DIR}/porting_inline.hpp
+  ${BASE_DIR}/printer.hpp
   ${BASE_DIR}/resource_tracker.hpp
 )
 
@@ -333,6 +340,8 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_tran_table.c
   ${TRANSACTION_DIR}/log_writer.c
   ${TRANSACTION_DIR}/mvcc.c
+  ${TRANSACTION_DIR}/mvcc_active_tran.cpp
+  ${TRANSACTION_DIR}/mvcc_table.cpp
   ${TRANSACTION_DIR}/replication.c
   ${TRANSACTION_DIR}/recovery.c
   ${TRANSACTION_DIR}/transaction_cl.c
@@ -351,6 +360,9 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_storage.hpp
   ${TRANSACTION_DIR}/log_system_tran.hpp
   ${TRANSACTION_DIR}/log_volids.hpp
+  ${TRANSACTION_DIR}/mvcc.h
+  ${TRANSACTION_DIR}/mvcc_active_tran.hpp
+  ${TRANSACTION_DIR}/mvcc_table.hpp
   ${TRANSACTION_DIR}/transaction_global.hpp
   ${TRANSACTION_DIR}/transaction_transient.hpp
   )
@@ -519,6 +531,10 @@ SET_SOURCE_FILES_PROPERTIES(
   )
 
 add_library(cubridsa SHARED
+  ${EXECUTABLE_SOURCES}
+  ${EXECUTABLE_HEADERS}
+  ${COMPAT_SOURCES}
+  ${BASE_SOURCES}
   ${BASE_HEADERS}
   ${BASE_SOURCES}
   ${COMMUNICATION_SOURCES}

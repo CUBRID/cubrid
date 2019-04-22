@@ -22,6 +22,7 @@
  */
 
 #include "object_description.hpp"
+
 #include "authenticate.h"
 #include "class_object.h"
 #include "db_value_printer.hpp"

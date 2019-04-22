@@ -4268,7 +4268,7 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
 	      return ER_FAILED;
 	    }
 	  tmpval_p = &tmpval;
-	  /* no break here */
+	  /* FALLTHRU */
 	case DB_TYPE_DOUBLE:
 	  d = db_get_double (tmpval_p);
 	  if (d < 0)
@@ -6059,8 +6059,7 @@ db_evaluate_json_contains_path (DB_VALUE * result, DB_VALUE * const *arg, const 
   error_code = is_str_find_all (arg[1], find_all);
   if (error_code != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-      error_code = ER_QSTR_INVALID_DATA_TYPE;
+      ASSERT_ERROR ();
       return error_code;
     }
 
@@ -6241,8 +6240,8 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
   error_code = is_str_find_all (args[1], find_all);
   if (error_code != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-      return ER_QSTR_INVALID_DATA_TYPE;
+      ASSERT_ERROR ();
+      return error_code;
     }
 
   DB_VALUE *pattern = args[2];
@@ -6287,7 +6286,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
 
       char *escaped;
       size_t escaped_size;
-      error_code = db_string_escape (paths[0].c_str (), paths[0].size (), &escaped, &escaped_size);
+      error_code = db_string_escape_str (paths[0].c_str (), paths[0].size (), &escaped, &escaped_size);
       cubmem::private_unique_ptr<char> escaped_unqique_ptr (escaped, NULL);
       if (error_code)
 	{
@@ -6315,7 +6314,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
 
       char *escaped;
       size_t escaped_size;
-      error_code = db_string_escape (paths[i].c_str (), paths[i].size (), &escaped, &escaped_size);
+      error_code = db_string_escape_str (paths[i].c_str (), paths[i].size (), &escaped, &escaped_size);
       cubmem::private_unique_ptr<char> escaped_unqique_ptr (escaped, NULL);
       if (error_code)
 	{
@@ -6428,7 +6427,8 @@ is_str_find_all (DB_VALUE * val, bool & find_all)
 {
   if (DB_IS_NULL (val))
     {
-      return ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_ONE_ALL_ARGUMENT, 0);
+      return ER_INVALID_ONE_ALL_ARGUMENT;
     }
 
   // *INDENT-OFF*
@@ -6443,7 +6443,8 @@ is_str_find_all (DB_VALUE * val, bool & find_all)
     }
   if (!find_all && find_all_str != "one")
     {
-      return ER_QSTR_INVALID_DATA_TYPE;	// todo - set a proper error
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_ONE_ALL_ARGUMENT, 0);
+      return ER_INVALID_ONE_ALL_ARGUMENT;
     }
   return NO_ERROR;
 }

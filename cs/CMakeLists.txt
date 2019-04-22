@@ -23,6 +23,7 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/csql_result_format.c
   ${EXECUTABLES_DIR}/csql_session.c
   ${EXECUTABLES_DIR}/csql_support.c
+  ${EXECUTABLES_DIR}/extract_schema.cpp
   ${EXECUTABLES_DIR}/file_hash.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c
@@ -31,6 +32,10 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/util_cs.c
   )
 
+set(EXECUTABLE_HEADERS
+  ${EXECUTABLES_DIR}/extract_schema.hpp
+  )
+  
 set(COMPAT_SOURCES
   ${COMPAT_DIR}/cnv.c
   ${COMPAT_DIR}/cnvlex.c
@@ -107,6 +112,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/pinnable_buffer.cpp
   ${BASE_DIR}/pinning.cpp
   ${BASE_DIR}/porting.c
+  ${BASE_DIR}/printer.cpp
   ${BASE_DIR}/release_string.c
   ${BASE_DIR}/resource_tracker.cpp
   ${BASE_DIR}/sha1.c
@@ -139,6 +145,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/pinning.hpp
   ${BASE_DIR}/pinnable_buffer.hpp
   ${BASE_DIR}/porting_inline.hpp
+  ${BASE_DIR}/printer.hpp
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   )
@@ -411,6 +418,7 @@ SET_SOURCE_FILES_PROPERTIES(
 
 add_library(cubridcs SHARED
   ${EXECUTABLE_SOURCES}
+  ${EXECUTABLE_HEADERS}
   ${COMPAT_SOURCES}
   ${COMPAT_SOURCES_C}
   ${BASE_HEADERS}
