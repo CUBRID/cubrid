@@ -73,7 +73,7 @@ class JSON_PATH
 
     std::string dump_json_path () const;
     int parse (const char *path);
-    const JSON_PATH get_parent () const;
+    JSON_PATH get_parent () const;
 
     JSON_VALUE *get (JSON_DOC &jd) const;
     const JSON_VALUE *get (const JSON_DOC &jd) const;
@@ -117,6 +117,4 @@ class JSON_PATH
 
     token_containter_type m_path_tokens;
 };
-
-int db_json_path_unquote_object_keys (std::string &sql_path);
 #endif /* _DB_JSON_HPP_ */

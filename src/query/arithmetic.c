@@ -29,6 +29,7 @@
 #include "crypt_opfunc.h"
 #include "db_date.h"
 #include "db_json.hpp"
+#include "db_json_path.hpp"
 #include "dbtype.h"
 #include "error_manager.h"
 #include "memory_private_allocator.hpp"
@@ -6264,7 +6265,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
       starting_paths.push_back ("$");
     }
 
-  std::vector<std::string> paths;
+  std::vector<JSON_PATH> paths;
   error_code = db_json_search_func (*doc.get_immutable (), pattern, esc_char, paths, starting_paths, find_all);
   if (error_code != NO_ERROR)
     {
@@ -6279,22 +6280,9 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
   JSON_DOC *result_json = nullptr;
   if (paths.size () == 1)
     {
-      // todo: can we remove this?
-      error_code = db_json_path_unquote_object_keys_external (paths[0]);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-
-      char *escaped;
-      size_t escaped_size;
-      error_code = db_string_escape (paths[0].c_str (), paths[0].size (), &escaped, &escaped_size);
-      cubmem::private_unique_ptr<char> escaped_unqique_ptr (escaped, NULL);
-      if (error_code)
-	{
-	  return error_code;
-	}
-      error_code = db_json_get_json_from_str (escaped, result_json, escaped_size);
+      std::string path = paths[0].dump_json_path ();
+      
+      error_code = db_json_get_json_from_str (path.c_str (), result_json, path.length ());
       if (error_code != NO_ERROR)
 	{
           ASSERT_ERROR ();
@@ -6308,31 +6296,16 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
   result_json_owner.create_mutable_reference ();
   for (std::size_t i = 0; i < paths.size (); ++i)
     {
-      // todo: can we remove this?
-      error_code = db_json_path_unquote_object_keys_external (paths[i]);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-
-      char *escaped;
-      size_t escaped_size;
-      error_code = db_string_escape (paths[i].c_str (), paths[i].size (), &escaped, &escaped_size);
-      cubmem::private_unique_ptr<char> escaped_unqique_ptr (escaped, NULL);
-      if (error_code)
-	{
-	  return error_code;
-	}
+      std::string path = paths[i].dump_json_path ();
 
       JSON_DOC *json_array_elem = nullptr;
-      error_code = db_json_get_json_from_str (escaped, json_array_elem, escaped_size);
+      error_code = db_json_get_json_from_str (path.c_str (), json_array_elem, path.length ());
       json_array_elem_owner.set_mutable_reference (json_array_elem);
       if (error_code != NO_ERROR)
 	{
           ASSERT_ERROR ();
 	  return error_code;
 	}
-
       db_json_add_element_to_array (result_json_owner.get_mutable (), json_array_elem_owner.get_immutable ());
     }
 

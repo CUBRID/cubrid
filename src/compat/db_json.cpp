@@ -1944,7 +1944,7 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
  */
 int
 db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char,
-		     std::vector<std::string> &paths, const std::vector<std::string> &patterns, bool find_all)
+		     std::vector<JSON_PATH> &paths, const std::vector<std::string> &patterns, bool find_all)
 {
   std::vector<JSON_PATH> json_paths;
   for (const auto &path : patterns)
@@ -1988,7 +1988,7 @@ db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALU
 
 	if (res == JSON_PATH::MATCH_RESULT::PREFIX_MATCH || res == JSON_PATH::MATCH_RESULT::FULL_MATCH)
 	  {
-	    paths.push_back (crt_path.dump_json_path ());
+	    paths.push_back (crt_path);
 	    if (!find_all)
 	      {
 		stop = true;
@@ -2733,12 +2733,6 @@ db_json_normalize_path_string (const char *pointer_path, std::string &output)
   output = jp.dump_json_path ();
 
   return NO_ERROR;
-}
-
-int
-db_json_path_unquote_object_keys_external (std::string &sql_path)
-{
-  return db_json_path_unquote_object_keys (sql_path);
 }
 
 /*
