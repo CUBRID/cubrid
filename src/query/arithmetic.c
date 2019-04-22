@@ -6280,7 +6280,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
   JSON_DOC *result_json = nullptr;
   if (paths.size () == 1)
     {
-      std::string path = paths[0].dump_json_path ();
+      std::string path = "\"" + paths[0].dump_json_path () + "\"";
       
       error_code = db_json_get_json_from_str (path.c_str (), result_json, path.length ());
       if (error_code != NO_ERROR)
@@ -6296,7 +6296,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
   result_json_owner.create_mutable_reference ();
   for (std::size_t i = 0; i < paths.size (); ++i)
     {
-      std::string path = paths[i].dump_json_path ();
+      std::string path = "\"" + paths[i].dump_json_path () + "\"";
 
       JSON_DOC *json_array_elem = nullptr;
       error_code = db_json_get_json_from_str (path.c_str (), json_array_elem, path.length ());
