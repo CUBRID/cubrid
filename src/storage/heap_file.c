@@ -7536,7 +7536,7 @@ try_again:
 	  return S_DOESNT_EXIST;
 	}
       /* REC_NEWHOME are only allowed to be accessed through REC_RELOCATION slots. */
-      /* Fall through to error. */
+      /* FALLTHRU */
     default:
       /* Unexpected case. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_BAD_OBJECT_TYPE, 3, context->oid_p->volid,
@@ -8841,7 +8841,7 @@ heap_is_object_not_null (THREAD_ENTRY * thread_p, OID * class_oid, const OID * o
       goto exit_on_end;
     }
   /* Make a copy of snapshot. We need all MVCC information, but we also want to change the visibility function. */
-  copy_mvcc_snapshot = *mvcc_snapshot_ptr;
+  mvcc_snapshot_ptr->copy_to (copy_mvcc_snapshot);
   copy_mvcc_snapshot.snapshot_fnc = mvcc_is_not_deleted_for_snapshot;
   scan_cache.mvcc_snapshot = &copy_mvcc_snapshot;
 
@@ -11786,6 +11786,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
        * if the longjmp status was anything other than ER_TF_BUFFER_OVERFLOW,
        * it represents an error condition and er_set will have been called
        */
+      /* FALLTHRU */
     case ER_TF_BUFFER_OVERFLOW:
 
       status = S_DOESNT_FIT;
@@ -22888,7 +22889,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     case REC_ASSIGN_ADDRESS:
       /* it's not an old record, it was inserted in this transaction */
       context->is_logical_old = false;
-      /* fall trough */
+      /* FALLTHRU */
     case REC_HOME:
       rc = heap_update_home (thread_p, context, is_mvcc_op);
       break;

@@ -33,6 +33,7 @@
 #include <assert.h>
 #include <math.h>
 
+#include "authenticate.h"
 #include "db_value_printer.hpp"
 #include "porting.h"
 #include "parser.h"
@@ -5879,6 +5880,7 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.alter.alter_clause.rename.meta));
 	  q = pt_append_nulstring (parser, q, " ");
 	  q = pt_append_varchar (parser, q, r2);
+	  /* FALLTHRU */
 	case PT_FILE_RENAME:
 	  r1 = pt_print_bytes (parser, p->info.alter.alter_clause.rename.old_name);
 	  q = pt_append_varchar (parser, q, r1);
@@ -8474,6 +8476,7 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
       show_collation = true;
+      /* FALLTHRU */
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
     case PT_TYPE_FLOAT:
@@ -11866,7 +11869,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	  /* break case PT_RANGE */
 	  break;
 	}
-      /* fall through to default case */
+      /* FALLTHRU */
     default:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       r2 = pt_print_bytes (parser, p->info.expr.arg2);
@@ -18275,6 +18278,7 @@ pt_is_allowed_as_function_index (const PT_NODE * expr)
 	{
 	  break;
 	}
+      /* FALLTHRU */
     case PT_MOD:
     case PT_LEFT:
     case PT_RIGHT:
@@ -18879,12 +18883,22 @@ pt_print_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p)
   substr = pt_print_bytes (parser, p->info.json_table_node_info.columns);
   pstr = pt_append_varchar (parser, pstr, substr);
 
-  if (p->info.json_table_node_info.nested_paths != NULL)
+  if (p->info.json_table_node_info.columns != NULL && p->info.json_table_node_info.nested_paths != NULL)
     {
-      // ', nested path ' print nested
-      pstr = pt_append_nulstring (parser, pstr, ", nested path ");
+      pstr = pt_append_nulstring (parser, pstr, ", ");
+    }
+
+  for (PT_NODE * nested = p->info.json_table_node_info.nested_paths; nested != NULL; nested = nested->next)
+    {
+      // 'nested path ' print nested ', '
+      pstr = pt_append_nulstring (parser, pstr, "nested path ");
       substr = pt_print_bytes (parser, p->info.json_table_node_info.nested_paths);
       pstr = pt_append_varchar (parser, pstr, substr);
+
+      if (nested->next != NULL)
+	{
+	  pstr = pt_append_nulstring (parser, pstr, ", ");
+	}
     }
 
   // ' )'
@@ -19074,8 +19088,12 @@ pt_print_json_table_columns (PARSER_CONTEXT * parser, PT_NODE * p)
   for (p_it = p; p_it->next != NULL; p_it = p_it->next)
     {
       pstr = pt_print_json_table_column_info (parser, p_it, pstr);
-      // print ','
-      pstr = pt_append_nulstring (parser, pstr, ", ");
+
+      if (p_it->next != NULL)
+	{
+	  // print ','
+	  pstr = pt_append_nulstring (parser, pstr, ", ");
+	}
     }
 
   // the last column

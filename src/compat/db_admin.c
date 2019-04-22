@@ -34,6 +34,7 @@
 #include <assert.h>
 #include <signal.h>
 
+#include "authenticate.h"
 #include "porting.h"
 #include "system_parameter.h"
 #include "storage_common.h"
@@ -68,6 +69,7 @@
 
 #if !defined(WINDOWS)
 void (*prev_sigfpe_handler) (int) = SIG_DFL;
+#include "tcp.h"
 #else
 #include "wintcp.h"
 #endif /* !WINDOWS */

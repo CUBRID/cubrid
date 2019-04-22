@@ -2441,7 +2441,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	      log_recovery_resetlog (thread_p, &lsa, true, end_redo_lsa);
 	      *did_incom_recovery = true;
 
-	      logtb_reset_bit_area_start_mvccid ();
+	      log_Gl.mvcc_table.reset_start_mvccid ();
 	      return;
 	    }
 	  else
@@ -2836,7 +2836,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	}
     }
 
-  logtb_reset_bit_area_start_mvccid ();
+  log_Gl.mvcc_table.reset_start_mvccid ();
 
   if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
     {
@@ -3875,7 +3875,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   log_zip_free (undo_unzip_ptr);
   log_zip_free (redo_unzip_ptr);
 
-  logtb_reset_bit_area_start_mvccid ();
+  log_Gl.mvcc_table.reset_start_mvccid ();
 
   /* Abort all atomic system operations that were open when server crashed */
   log_recovery_abort_all_atomic_sysops (thread_p);

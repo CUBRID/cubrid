@@ -30,10 +30,10 @@
 #include "object_representation.h"
 #include "packable_object.hpp"
 
+#include <algorithm>
+#include <cstring>
 #include <vector>
 #include <string>
-
-#include <cstring>
 
 namespace cubpacking
 {
@@ -783,6 +783,77 @@ namespace cubpacking
   {
     return get_curr_ptr () == get_buffer_end ();
   }
+
+  size_t
+  packer::get_packed_buffer_size (const char *stream, const size_t length, const size_t curr_offset) const
+  {
+    size_t actual_length = 0;
+
+    if (stream != NULL)
+      {
+	actual_length = length;
+      }
+
+    size_t entry_size = OR_INT_SIZE + actual_length;
+
+    return DB_ALIGN (curr_offset, INT_ALIGNMENT) + entry_size - curr_offset;
+  }
+
+  void
+  packer::pack_buffer_with_length (const char *stream, const size_t length)
+  {
+    align (INT_ALIGNMENT);
+
+    check_range (m_ptr, m_end_ptr, length + OR_INT_SIZE);
+
+    OR_PUT_INT (m_ptr, length);
+    m_ptr += OR_INT_SIZE;
+
+    if (length > 0)
+      {
+	std::memcpy (m_ptr, stream, length);
+	m_ptr += length;
+
+	align (INT_ALIGNMENT);
+      }
+  }
+
+  void unpacker::peek_unpack_buffer_length (int &value)
+  {
+    return peek_unpack_int (value);
+  }
+
+  /*
+   * unpack_buffer_with_length : unpacks a stream into a preallocated buffer
+   * stream (in/out) : output stream
+   * max_length (in) : maximum length to unpack
+   *
+   * Note : the unpacker pointer is incremented with the actual length of buffer (found in unpacker)
+   */
+  void
+  unpacker::unpack_buffer_with_length (char *stream, const size_t max_length)
+  {
+    size_t actual_len, copy_length;
+
+    align (INT_ALIGNMENT);
+
+    actual_len = OR_GET_INT (m_ptr);
+    m_ptr += OR_INT_SIZE;
+
+    assert (actual_len <= max_length);
+    copy_length = std::min (actual_len, max_length);
+
+    check_range (m_ptr, m_end_ptr, actual_len);
+
+    if (copy_length > 0)
+      {
+	memcpy (stream, m_ptr, copy_length);
+      }
+
+    m_ptr += actual_len;
+    align (INT_ALIGNMENT);
+  }
+
 
   void
   packer::delegate_to_or_buf (const size_t size, or_buf &buf)

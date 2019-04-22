@@ -33,6 +33,7 @@ struct db_midxkey;
 struct db_monetary;
 struct db_value;
 class string_buffer;
+class print_output;
 
 class db_value_printer
 {
@@ -57,6 +58,7 @@ class db_value_printer
 };
 
 void db_fprint_value (FILE *fp, const db_value *value);
+void db_print_value (print_output &output_ctx, const db_value *value);
 void db_sprint_value (const db_value *value, string_buffer &sb);
 
 #endif //_DB_VALUE_PRINTER_HPP_

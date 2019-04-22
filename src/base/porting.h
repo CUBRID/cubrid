@@ -349,11 +349,7 @@ extern int free_space (const char *, int);
 #define SETJMP _setjmp
 #endif
 
-#if defined (WINDOWS)
 #define GETHOSTNAME(p, l) css_gethostname(p, l)
-#else /* ! WINDOWS */
-#define GETHOSTNAME(p, l) gethostname(p, l)
-#endif /* ! WINDOWS */
 
 #if defined (WINDOWS)
 #define FINITE(x) _finite(x)

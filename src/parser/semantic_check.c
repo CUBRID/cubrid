@@ -25,8 +25,9 @@
 
 #include "config.h"
 
-
 #include <assert.h>
+
+#include "authenticate.h"
 #include "error_manager.h"
 #include "parser.h"
 #include "parser_message.h"
@@ -4409,7 +4410,6 @@ pt_find_aggregate_analytic_in_where (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_INTERSECTION:
       /* search in args recursively */
       find = pt_find_aggregate_analytic_in_where (parser, node->info.query.q.union_.arg1);
-
       if (find)
 	{
 	  break;
@@ -4425,7 +4425,7 @@ pt_find_aggregate_analytic_in_where (PARSER_CONTEXT * parser, PT_NODE * node)
 	  break;
 	}
 
-      /* fall through to search nested nodes */
+      /* FALLTHRU */
 
     case PT_EXPR:
     case PT_MERGE:
@@ -4820,7 +4820,8 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	}
       alter->info.alter.alter_clause.ch_attr_def.data_default_list =
 	pt_check_data_default (parser, alter->info.alter.alter_clause.ch_attr_def.data_default_list);
-      /* fall through, no break */
+
+      /* FALL THRU */
 
     case PT_MODIFY_DEFAULT:
       pt_resolve_default_external (parser, alter);
@@ -5011,7 +5012,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  pt_validate_query_spec (parser, qry, db);
 	}
-      /* fall through to next case. do NOT put a break here! */
+      /* FALLTHRU */
     case PT_DROP_QUERY:
       if (type == PT_CLASS)
 	{
@@ -10119,11 +10120,9 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	{
 	  break;
 	}
-      if (node->info.json_table_info.expr->type_enum != PT_TYPE_JSON
-	  && node->info.json_table_info.expr->type_enum != PT_TYPE_CHAR
-	  && node->info.json_table_info.expr->type_enum != PT_TYPE_MAYBE)
+
+      if (!pt_is_json_doc_type (node->info.json_table_info.expr->type_enum))
 	{
-	  // todo: can this be improved to hint that we are talking about json_table's expression
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_WANT_TYPE,
 		      pt_show_type_enum (PT_TYPE_JSON));
 	}
@@ -10645,6 +10644,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	{
 	  pt_resolve_object (parser, node);
 	}
+      /* FALLTHRU */
 
     case PT_HOST_VAR:
     case PT_EXPR:

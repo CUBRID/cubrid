@@ -25,6 +25,7 @@
 
 #include "error_code.h"
 #include "memory_alloc.h"
+#include "packer.hpp"
 #include "slotted_page.h"
 
 #include <cstring>
@@ -283,4 +284,29 @@ void
 record_descriptor::check_changes_are_permitted (void) const
 {
   assert (m_data_source == data_source::COPIED || m_data_source == data_source::NEW);
+}
+
+void
+record_descriptor::pack (cubpacking::packer &packer) const
+{
+  packer.pack_short (m_recdes.type);
+  packer.pack_buffer_with_length (m_recdes.data, m_recdes.length);
+}
+
+void
+record_descriptor::unpack (cubpacking::unpacker &unpacker)
+{
+  unpacker.unpack_short (m_recdes.type);
+  unpacker.peek_unpack_buffer_length (m_recdes.length);
+  resize (NULL, m_recdes.length, true);
+  unpacker.unpack_buffer_with_length (m_recdes.data, m_recdes.length);
+}
+
+size_t
+record_descriptor::get_packed_size (cubpacking::packer &packer) const
+{
+  size_t entry_size = packer.get_packed_short_size (0);
+  entry_size += packer.get_packed_buffer_size (m_recdes.data, m_recdes.length, entry_size);
+
+  return entry_size;
 }

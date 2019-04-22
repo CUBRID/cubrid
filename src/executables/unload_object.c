@@ -41,6 +41,7 @@
 #define	SIGALRM	14
 #endif /* WINDOWS */
 
+#include "authenticate.h"
 #include "utility.h"
 #include "load_object.h"
 #include "log_lsa.hpp"
@@ -430,7 +431,7 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
  *    exec_name(in): utility name
  */
 int
-extractobjects (const char *exec_name)
+extractobjects (const char *exec_name, const char *output_dirname, const char *output_prefix)
 {
   int i, error;
   HFID *hfid;
