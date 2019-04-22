@@ -160,6 +160,7 @@ db_string_unquote (const std::string &path)
   return std::move (res);
 }
 
+// todo: make this check utf-8 characters
 bool
 needs_escaping (const std::string &s)
 {
@@ -641,14 +642,23 @@ JSON_PATH::dump_json_path () const
 	case PATH_TOKEN::object_key:
 	{
 	  res += '.';
-	  std::string raw_object_key = tkn.get_object_key ();
+	  const std::string &raw_object_key = tkn.get_object_key ();
 
 	  if (raw_object_key.length () == 0)
 	    {
 	      res += "\"\"";
+	      break;
 	    }
 
-	  res += raw_object_key;
+	  size_t escaped_size;
+	  char *escaped;
+	  if (needs_escaping (raw_object_key))
+	    {
+	      (void) db_string_escape (raw_object_key.c_str (), raw_object_key.length (), &escaped, &escaped_size);
+	    }
+
+	  res += escaped;
+	  db_private_free (NULL, escaped);
 	  break;
 	}
 	case PATH_TOKEN::object_key_wildcard:
