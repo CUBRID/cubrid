@@ -315,7 +315,7 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
 	{
 	  // a failed copy may break data validity; to make sure next copy is not affected, it is better to reset
 	  // bit area.
-	  tdes.mvccinfo.snapshot.m_active_mvccs.reset_bit_area ();
+	  tdes.mvccinfo.snapshot.m_active_mvccs.reset_active_transactions ();
 	}
     }
 

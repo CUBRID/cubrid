@@ -57,7 +57,7 @@ struct mvcc_active_tran
     void set_inactive_mvccid (MVCCID mvccid);
     void reset_start_mvccid (MVCCID mvccid);
 
-    void reset_bit_area ();
+    void reset_active_transactions ();
     void check_valid () const;
 
   private:
