@@ -74,7 +74,7 @@ class multi_index_unique_stats
     {
       bool operator() (const BTID &a, const BTID &b) const
       {
-	return a.root_pageid < b.root_pageid || a.vfid.volid < b.vfid.volid;
+	return a.root_pageid < b.root_pageid || (a.root_pageid == b.root_pageid && a.vfid.volid < b.vfid.volid);
       }
     };
 
@@ -87,7 +87,7 @@ class multi_index_unique_stats
     void construct ();
     void destruct ();
 
-    void accumulate (const BTID &index, const btree_unique_stats &us);
+    void add_index_stats (const BTID &index, const btree_unique_stats &us);
     void add_empty (const BTID &index);
     void clear ();
 

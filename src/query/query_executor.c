@@ -557,7 +557,7 @@ static void qexec_update_btree_unique_stats_info (THREAD_ENTRY * thread_p, multi
 static int qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, VAL_DESCR * vd,
 			     SCAN_OPERATION_TYPE scan_op_type);
 static int qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p, PRUNING_CONTEXT * pcontext);
-static int qexec_process_unique_stats (THREAD_ENTRY * thread_p, OID * class_oid, UPDDEL_CLASS_INFO_INTERNAL * class_);
+static int qexec_process_unique_stats (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO_INTERNAL * class_);
 static SCAN_CODE qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec);
 
 static int qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
@@ -9393,7 +9393,7 @@ static void
 qexec_update_btree_unique_stats_info (THREAD_ENTRY * thread_p, multi_index_unique_stats * info,
 				      const HEAP_SCANCACHE * scan_cache)
 {
-  assert (scan_cache != NULL);
+  assert (info != NULL && scan_cache != NULL);
 
   if (scan_cache->m_index_stats != NULL)
     {
@@ -9410,8 +9410,10 @@ qexec_update_btree_unique_stats_info (THREAD_ENTRY * thread_p, multi_index_uniqu
  * internal_class (in) :
  */
 static int
-qexec_process_unique_stats (THREAD_ENTRY * thread_p, OID * class_oid, UPDDEL_CLASS_INFO_INTERNAL * internal_class)
+qexec_process_unique_stats (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO_INTERNAL * internal_class)
 {
+  assert (internal_class != NULL);
+
   int error = NO_ERROR;
 
   if (internal_class->m_inited_scancache)
@@ -9444,6 +9446,8 @@ qexec_process_unique_stats (THREAD_ENTRY * thread_p, OID * class_oid, UPDDEL_CLA
 static int
 qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p, PRUNING_CONTEXT * pcontext)
 {
+  assert (pcontext != NULL);
+
   PRUNING_SCAN_CACHE *pruned_scan_cache = NULL;
   SCANCACHE_LIST *node = NULL;
   int error = NO_ERROR;

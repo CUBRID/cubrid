@@ -43,6 +43,7 @@
 #include "boot_sr.h"
 #include "locator_sr.h"
 #include "btree.h"
+#include "btree_unique.hpp"
 #include "transform.h"		/* for CT_SERIAL_NAME */
 #include "serial.h"
 #include "object_primitive.h"

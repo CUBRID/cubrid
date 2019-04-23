@@ -154,7 +154,7 @@ multi_index_unique_stats::destruct ()
 }
 
 void
-multi_index_unique_stats::accumulate (const BTID &index, const btree_unique_stats &us)
+multi_index_unique_stats::add_index_stats (const BTID &index, const btree_unique_stats &us)
 {
   m_stats_map[index] += us;
 }

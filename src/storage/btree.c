@@ -26260,7 +26260,6 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
     {
       btree_unique_stats incr;
 
-      /* Is increment positive/negative? (is object inserted/deleted?) */
       if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID
 	  || insert_helper->purpose == BTREE_OP_INSERT_MARK_DELETED)
 	{

@@ -3569,7 +3569,7 @@ logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID &btid, const
       return NO_ERROR;
     }
   return logtb_tran_update_unique_stats (thread_p, &btid, (int) ustats.get_key_count (), (int) ustats.get_row_count (),
-                                         (int) ustats.get_null_count(), write_to_log);
+                                         (int) ustats.get_null_count (), write_to_log);
 }
 
 int
