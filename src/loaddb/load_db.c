@@ -34,6 +34,7 @@
 #include "schema_manager.h"
 #include "transform.h"
 #include "utility.h"
+#include "authenticate.h"
 
 #include <fstream>
 #include <thread>
