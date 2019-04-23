@@ -58,14 +58,14 @@ btree_unique_stats::get_null_count () const
 }
 
 void
-btree_unique_stats::add_key_and_row ()
+btree_unique_stats::insert_key_and_row ()
 {
   ++m_keys;
   ++m_rows;
 }
 
 void
-btree_unique_stats::add_null_and_row ()
+btree_unique_stats::insert_null_and_row ()
 {
   ++m_nulls;
   ++m_rows;
