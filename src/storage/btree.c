@@ -26259,6 +26259,7 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
   if (BTREE_IS_UNIQUE (btid_int->unique_pk))
     {
       btree_unique_stats incr;
+
       /* Is increment positive/negative? (is object inserted/deleted?) */
       if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID
 	  || insert_helper->purpose == BTREE_OP_INSERT_MARK_DELETED)
@@ -26285,6 +26286,7 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 	      incr.insert_key_and_row ();
 	    }
 	}
+
       /* Update statistics. */
       /* Based on type of operation - single or multi, update the unique_stats_info structure or update the transaction
        * collected statistics. They will be reflected into global statistics later. */
@@ -29823,6 +29825,7 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
     {
       /* Do not update statistics when vacuuming or during undo recovery. */
       btree_unique_stats incr;
+
       if (is_null)
 	{
 	  incr.delete_null_and_row ();
@@ -29831,6 +29834,7 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 	{
 	  incr.delete_key_and_row ();
 	}
+
       if (BTREE_IS_MULTI_ROW_OP (delete_helper->op_type))
 	{
 	  /* Collect statistics */
@@ -29859,6 +29863,7 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 	    }
 	}
     }
+
   if (is_null)
     {
       /* Nothing to do anymore. */

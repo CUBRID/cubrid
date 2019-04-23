@@ -9384,8 +9384,7 @@ exit_on_error:
 }
 
 /*
- * qexec_update_btree_unique_stats_info () - updates statistical information
- *	structure
+ * qexec_update_btree_unique_stats_info () - updates statistical information structure
  *   return: NO_ERROR or ER_code
  *   thread_p(in)   :
  *   info(in)     : structure to update
@@ -9395,12 +9394,12 @@ qexec_update_btree_unique_stats_info (THREAD_ENTRY * thread_p, multi_index_uniqu
 				      const HEAP_SCANCACHE * scan_cache)
 {
   assert (scan_cache != NULL);
+
   if (scan_cache->m_index_stats != NULL)
     {
       (*info) += (*scan_cache->m_index_stats);
     }
 }
-
 
 /*
  * qexec_process_unique_stats () - verify unique statistic information for
@@ -9420,18 +9419,19 @@ qexec_process_unique_stats (THREAD_ENTRY * thread_p, OID * class_oid, UPDDEL_CLA
       /* Accumulate current statistics */
       qexec_update_btree_unique_stats_info (thread_p, &internal_class->m_unique_stats, &internal_class->m_scancache);
     }
+
   error = logtb_tran_update_unique_stats (thread_p, internal_class->m_unique_stats, true);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
       return error;
     }
+
   return NO_ERROR;
 }
 
 /*
- * qexec_process_partition_unique_stats () - process unique statistics on a
- *					     partitioned class
+ * qexec_process_partition_unique_stats () - process unique statistics on a partitioned class
  * return : error code or NO_ERROR
  * thread_p (in) :
  * pcontext (in) :
@@ -9456,6 +9456,7 @@ qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p, PRUNING_CONTEXT *
 	{
 	  continue;
 	}
+
       HEAP_SCANCACHE &scan_cache = pruned_scan_cache->scan_cache;
       if (scan_cache.m_index_stats != NULL)
 	{
@@ -9481,6 +9482,7 @@ qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p, PRUNING_CONTEXT *
                     }
                   return ER_FAILED;
                 }
+
               error = logtb_tran_update_unique_stats (thread_p, it.first, it.second, true);
               if (error != NO_ERROR)
                 {
@@ -9491,6 +9493,7 @@ qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p, PRUNING_CONTEXT *
 	}
       // *INDENT-ON*
     }
+
   return NO_ERROR;
 }
 
