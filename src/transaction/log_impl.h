@@ -57,6 +57,7 @@
 #include "thread_entry.hpp"
 #include "transaction_transient.hpp"
 #include "log_generator.hpp"
+#include "replication_db_copy.hpp"
 
 #include <assert.h>
 #if defined(SOLARIS)
@@ -540,6 +541,7 @@ struct log_tdes
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
   cubreplication::log_generator replication_log_generator;
+  cubreplication::copy_context replication_copy_context;
 
   bool is_active_worker_transaction () const;
   bool is_system_transaction () const;
