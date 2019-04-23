@@ -251,17 +251,39 @@ if(UNIX)
       message(SEND_ERROR "Cannot compile 32-bit program with gcc version (${CMAKE_CXX_COMPILER_VERSION})")
       message(FATAL_ERROR "4.3.4 or higher version is required. (ref. https://gcc.gnu.org/bugzilla/show_bug.cgi?id=16185)")
     endif(ENABLE_32BIT AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.3.4)
-    
+
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4.7)
       message(SEND_ERROR "Cannot compile with gcc version ${CMAKE_CXX_COMPILER_VERSION}. Require at least 4.4.7.")
     endif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4.7)
 
-    set(CMAKE_C_FLAGS_DEBUG "-ggdb -fno-inline -fno-omit-frame-pointer")
-    set(CMAKE_CXX_FLAGS_DEBUG "-Wall -ggdb -fno-inline -fno-omit-frame-pointer -std=c++0x")
-    set(CMAKE_C_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer -std=c++0x")
-    set(CMAKE_CXX_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer -std=c++0x")
-    set(CMAKE_C_FLAGS_RELWITHDEBINFO "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer -std=c++0x")
-    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer -std=c++0x")
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9.0)
+      add_definitions(-D_USE_LIBREGEX_)
+    endif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9.0)
+
+    # C/C++ common flags for both debug and release build
+    set(CMAKE_C_CXX_COMMON_FLAGS "-ggdb -fno-omit-frame-pointer -std=c++0x")
+    # C/C++ common flags for both debug
+    set(CMAKE_C_CXX_DEBUG_FLAGS "-Wall -fno-inline ${CMAKE_C_CXX_COMMON_FLAGS}")
+    # C/C++ common flags for release build
+    set(CMAKE_C_CXX_RELEASE_FLAGS "-O2 -DNDEBUG -finline-functions ${CMAKE_C_CXX_COMMON_FLAGS}")
+
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_CXX_DEBUG_FLAGS}")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_C_CXX_DEBUG_FLAGS}")
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${CMAKE_C_CXX_RELEASE_FLAGS}")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}  ${CMAKE_C_CXX_RELEASE_FLAGS}")
+    set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO}  ${CMAKE_C_CXX_RELEASE_FLAGS}")
+    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}  ${CMAKE_C_CXX_RELEASE_FLAGS}")
+
+    if(WITH_SOURCES)
+      set(DEBUG_PREFIX_MAP_FLAG "-fdebug-prefix-map=${CMAKE_SOURCE_DIR}/src=${CMAKE_INSTALL_PREFIX}/src")
+
+      set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${DEBUG_PREFIX_MAP_FLAG}")
+      set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${DEBUG_PREFIX_MAP_FLAG}")
+      set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${DEBUG_PREFIX_MAP_FLAG}")
+      set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${DEBUG_PREFIX_MAP_FLAG}")
+      set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} ${DEBUG_PREFIX_MAP_FLAG}")
+      set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} ${DEBUG_PREFIX_MAP_FLAG}")
+    endif(WITH_SOURCES)
 
     # set has-style
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--hash-style=both")
@@ -273,16 +295,18 @@ if(UNIX)
   endif(CMAKE_COMPILER_IS_GNUCC)
 else(UNIX)
   # turn off LinkIncremental option for release build
-  
+
   #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
   string(REPLACE "INCREMENTAL:YES" "INCREMENTAL:NO" replaceIncFlag ${CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO})
   set(CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO "/INCREMENTAL:NO ${replaceIncFlag}" )
+
   string(REPLACE "INCREMENTAL:YES" "INCREMENTAL:NO" replaceIncFlag ${CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO})
   set(CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO "/INCREMENTAL:NO ${replaceIncFlag}" )
-  #SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} /WX /wd4820 /showIncludes" )
-  SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} /W3 /wd4820" )
-  SET( CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} /W3" )
-  set (CMAKE_CXX_STANDARD 11)
+
+  #set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /WX /wd4820 /showIncludes" )
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W3 /wd4820" )
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W3" )
+  set(CMAKE_CXX_STANDARD 11)
 endif(UNIX)
 
 # check target platform
@@ -327,7 +351,7 @@ find_package(BISON)
 
 if(BISON_FOUND)
   if(BISON_VERSION VERSION_GREATER 2.3)
-    set(USE_BISON_NEWDIRECTIVE 1) 
+    set(USE_BISON_NEWDIRECTIVE 1)
   endif(BISON_VERSION VERSION_GREATER 2.3)
 else(BISON_FOUND)
   if(UNIX)
@@ -367,8 +391,8 @@ endif(USE_BISON_NEWDIRECTIVE)
 
 set(CSQL_GRAMMAR_INPUT ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy)
 
-# because csql_grammar.yy are generated through a custom command 
-# whenever csql_grammar.y is modified, bison and flex will be 
+# because csql_grammar.yy are generated through a custom command
+# whenever csql_grammar.y is modified, bison and flex will be
 # run to create new outputs
 
 bison_target(csql_grammar ${CSQL_GRAMMAR_INPUT} ${CSQL_GRAMMAR_OUTPUT}
@@ -409,8 +433,8 @@ endif(USE_BISON_NEWDIRECTIVE)
 set(ESQL_GRAMMAR_INPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy)
 
 
-# because esql_grammar.yy are generated through a custom command 
-# whenever esql_grammar.y is modified, bison and flex will be 
+# because esql_grammar.yy are generated through a custom command
+# whenever esql_grammar.y is modified, bison and flex will be
 # run to create new outputs
 
 bison_target(esql_grammar ${ESQL_GRAMMAR_INPUT} ${ESQL_GRAMMAR_OUTPUT}
@@ -760,6 +784,7 @@ if(USE_CUBRID_ENV)
   set(CUBRID_PREFIXDIR .)
   set(CUBRID_BINDIR bin)
   set(CUBRID_LIBDIR lib)
+  set(CUBRID_SRCDIR src)
   set(CUBRID_INCLUDEDIR include)
   set(CUBRID_VARDIR var)
   set(CUBRID_DATADIR share)
@@ -790,6 +815,12 @@ else(USE_CUBRID_ENV)
     list(APPEND DIR_DEFS CUBRID_LIBDIR="${CUBRID_LIBDIR}")
   else()
     list(APPEND DIR_DEFS CUBRID_LIBDIR="${CUBRID_PREFIXDIR}/${CUBRID_LIBDIR}")
+  endif()
+  set(CUBRID_SRCDIR src CACHE STRING "The directory for source files")
+  if(IS_ABSOLUTE ${CUBRID_SRCDIR})
+    list(APPEND DIR_DEFS CUBRID_SRCDIR="${CUBRID_SRCDIR}")
+  else()
+    list(APPEND DIR_DEFS CUBRID_SRCDIR="${CUBRID_PREFIXDIR}/${CUBRID_SRCDIR}")
   endif()
   set(CUBRID_VARDIR var CACHE STRING "The directory for variable data files")
   if(IS_ABSOLUTE ${CUBRID_VARDIR})
@@ -1267,6 +1298,9 @@ if(USE_CUBRID_ENV)
     DESTINATION ${CUBRID_PREFIXDIR})
 endif(USE_CUBRID_ENV)
 
+if(WITH_SOURCES)
+  install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/ DESTINATION ${CUBRID_SRCDIR})
+endif(WITH_SOURCES)
 
 # for packaging
 if(UNIX)

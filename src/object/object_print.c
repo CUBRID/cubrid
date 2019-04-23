@@ -38,6 +38,7 @@
 #include "object_description.hpp"
 #include "object_print_util.hpp"
 #include "object_printer.hpp"
+#include "printer.hpp"
 #include "schema_manager.h"
 #include "string_buffer.hpp"
 #include "trigger_description.hpp"
@@ -130,15 +131,15 @@ help_trigger_names (char ***names_ptr)
 /* These functions build help structures and print them to a file. */
 
 /*
- * help_fprint_obj () - Prints the description of a class or instance object
- *                      to the file.
+ * help_print_obj () - Prints the description of a class or instance object
+ *                      to a generic output.
  *   return: none
  *   fp(in):file pointer
  *   obj(in):class or instance to describe
  */
 
 void
-help_fprint_obj (FILE * fp, MOP obj)
+help_print_obj (print_output & output_ctx, MOP obj)
 {
   int i, status;
 
@@ -152,95 +153,95 @@ help_fprint_obj (FILE * fp, MOP obj)
     {
       if (locator_is_root (obj))
 	{
-	  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_ROOTCLASS_TITLE));
+	  output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_ROOTCLASS_TITLE));
 	}
       else
 	{
 	  class_description cinfo;
 	  if (cinfo.init (obj, class_description::CSQL_SCHEMA_COMMAND) == NO_ERROR)
 	    {
-	      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_TITLE),
-		       cinfo.class_type, cinfo.name);
+	      output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_TITLE),
+			  cinfo.class_type, cinfo.name);
 
 	      if (cinfo.supers != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_SUPER_CLASSES));
+		  output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_SUPER_CLASSES));
 		  for (i = 0; cinfo.supers[i] != NULL; i++)
 		    {
-		      fprintf (fp, "  %s\n", cinfo.supers[i]);
+		      output_ctx ("  %s\n", cinfo.supers[i]);
 		    }
 		}
 	      if (cinfo.subs != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_SUB_CLASSES));
+		  output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_SUB_CLASSES));
 		  for (i = 0; cinfo.subs[i] != NULL; i++)
 		    {
-		      fprintf (fp, "  %s\n", cinfo.subs[i]);
+		      output_ctx ("  %s\n", cinfo.subs[i]);
 		    }
 		}
 	      if (cinfo.attributes != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_ATTRIBUTES));
+		  output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_ATTRIBUTES));
 		  for (i = 0; cinfo.attributes[i] != NULL; i++)
 		    {
-		      fprintf (fp, "  %s\n", cinfo.attributes[i]);
+		      output_ctx ("  %s\n", cinfo.attributes[i]);
 		    }
 		}
 	      if (cinfo.methods != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_METHODS));
+		  output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_METHODS));
 		  for (i = 0; cinfo.methods[i] != NULL; i++)
 		    {
-		      fprintf (fp, "  %s\n", cinfo.methods[i]);
+		      output_ctx ("  %s\n", cinfo.methods[i]);
 		    }
 		}
 	      if (cinfo.class_attributes != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_ATTRIBUTES));
+		  output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_ATTRIBUTES));
 		  for (i = 0; cinfo.class_attributes[i] != NULL; i++)
 		    {
-		      fprintf (fp, "  %s\n", cinfo.class_attributes[i]);
+		      output_ctx ("  %s\n", cinfo.class_attributes[i]);
 		    }
 		}
 	      if (cinfo.class_methods != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_METHODS));
+		  output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_METHODS));
 		  for (i = 0; cinfo.class_methods[i] != NULL; i++)
 		    {
-		      fprintf (fp, "  %s\n", cinfo.class_methods[i]);
+		      output_ctx ("  %s\n", cinfo.class_methods[i]);
 		    }
 		}
 	      if (cinfo.resolutions != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_RESOLUTIONS));
+		  output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_RESOLUTIONS));
 		  for (i = 0; cinfo.resolutions[i] != NULL; i++)
 		    {
-		      fprintf (fp, "  %s\n", cinfo.resolutions[i]);
+		      output_ctx ("  %s\n", cinfo.resolutions[i]);
 		    }
 		}
 	      if (cinfo.method_files != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_METHOD_FILES));
+		  output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_METHOD_FILES));
 		  for (i = 0; cinfo.method_files[i] != NULL; i++)
 		    {
-		      fprintf (fp, "  %s\n", cinfo.method_files[i]);
+		      output_ctx ("  %s\n", cinfo.method_files[i]);
 		    }
 		}
 	      if (cinfo.query_spec != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_QUERY_SPEC));
+		  output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_QUERY_SPEC));
 		  for (i = 0; cinfo.query_spec[i] != NULL; i++)
 		    {
-		      fprintf (fp, "  %s\n", cinfo.query_spec[i]);
+		      output_ctx ("  %s\n", cinfo.query_spec[i]);
 		    }
 		}
 	      if (cinfo.triggers.size () > 0)	//triggers
 		{
 		  /* fprintf(fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_TRIGGERS)); */
-		  fprintf (fp, "Triggers:\n");
+		  output_ctx ("Triggers:\n");
 		  for (size_t n = cinfo.triggers.size (), i = 0; i < n; ++i)
 		    {
-		      fprintf (fp, "  %s\n", cinfo.triggers[i]);
+		      output_ctx ("  %s\n", cinfo.triggers[i]);
 		    }
 		}
 	    }
@@ -256,51 +257,51 @@ help_fprint_obj (FILE * fp, MOP obj)
 
 	  if (tinfo.init (obj) == NO_ERROR)
 	    {
-	      fprintf (fp, "Trigger : %s", tinfo.name);
+	      output_ctx ("Trigger : %s", tinfo.name);
 	      if (tinfo.status)
 		{
-		  fprintf (fp, " (INACTIVE)\n");
+		  output_ctx (" (INACTIVE)\n");
 		}
 	      else
 		{
-		  fprintf (fp, "\n");
+		  output_ctx ("\n");
 		}
 
-	      fprintf (fp, "  %s %s ", tinfo.condition_time, tinfo.event);
+	      output_ctx ("  %s %s ", tinfo.condition_time, tinfo.event);
 	      if (tinfo.class_name != NULL)
 		{
 		  if (tinfo.attribute != NULL)
 		    {
-		      fprintf (fp, "%s ON %s ", tinfo.attribute, tinfo.class_name);
+		      output_ctx ("%s ON %s ", tinfo.attribute, tinfo.class_name);
 		    }
 		  else
 		    {
-		      fprintf (fp, "ON %s ", tinfo.class_name);
+		      output_ctx ("ON %s ", tinfo.class_name);
 		    }
 		}
 
-	      fprintf (fp, "PRIORITY %s\n", tinfo.priority);
+	      output_ctx ("PRIORITY %s\n", tinfo.priority);
 
 	      if (tinfo.condition)
 		{
-		  fprintf (fp, "  IF %s\n", tinfo.condition);
+		  output_ctx ("  IF %s\n", tinfo.condition);
 		}
 
 	      if (tinfo.action != NULL)
 		{
-		  fprintf (fp, "  EXECUTE ");
+		  output_ctx ("  EXECUTE ");
 		  if (strcmp (tinfo.condition_time, tinfo.action_time) != 0)
 		    {
-		      fprintf (fp, "%s ", tinfo.action_time);
+		      output_ctx ("%s ", tinfo.action_time);
 		    }
-		  fprintf (fp, "%s\n", tinfo.action);
+		  output_ctx ("%s\n", tinfo.action);
 		}
 
 	      if (tinfo.comment != NULL && tinfo.comment[0] != '\0')
 		{
-		  fprintf (fp, " ");
-		  help_fprint_describe_comment (fp, tinfo.comment);
-		  fprintf (fp, "\n");
+		  output_ctx (" ");
+		  help_print_describe_comment (output_ctx, tinfo.comment);
+		  output_ctx ("\n");
 		}
 	    }
 	}
@@ -310,20 +311,20 @@ help_fprint_obj (FILE * fp, MOP obj)
 
 	  if (oinfo.init (obj) == NO_ERROR)
 	    {
-	      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_OBJECT_TITLE),
-		       oinfo.classname);
+	      output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_OBJECT_TITLE),
+			  oinfo.classname);
 	      if (oinfo.attributes != NULL)
 		{
 		  for (i = 0; oinfo.attributes[i] != NULL; i++)
 		    {
-		      fprintf (fp, "%s\n", oinfo.attributes[i]);
+		      output_ctx ("%s\n", oinfo.attributes[i]);
 		    }
 		}
 	      if (oinfo.shared != NULL)
 		{
 		  for (i = 0; oinfo.shared[i] != NULL; i++)
 		    {
-		      fprintf (fp, "%s\n", oinfo.shared[i]);
+		      output_ctx ("%s\n", oinfo.shared[i]);
 		    }
 		}
 	    }
@@ -611,6 +612,7 @@ help_print_info (const char *command, FILE * fpp)
       fpp = stdout;
     }
 
+  file_print_output output_ctx (fpp);
   if (MATCH_TOKEN (buffer, "schema"))
     {
       ptr = obj_print_next_token (ptr, buffer);
@@ -623,7 +625,7 @@ help_print_info (const char *command, FILE * fpp)
 	  class_mop = db_find_class (buffer);
 	  if (class_mop != NULL)
 	    {
-	      help_fprint_obj (fpp, class_mop);
+	      help_print_obj (output_ctx, class_mop);
 	    }
 	}
     }
@@ -706,19 +708,20 @@ help_print_info (const char *command, FILE * fpp)
 }
 
 /*
- * help_fprint_describe_comment() - Print description of a comment to a file.
+ * help_print_describe_comment() - Print description of a comment to a generic output.
  *   return: N/A
+ *   output_ctx(in/out) : output context
  *   comment(in) : a comment string to be printed
  */
 void
-help_fprint_describe_comment (FILE * fp, const char *comment)
+help_print_describe_comment (print_output & output_ctx, const char *comment)
 {
+  /* TODO : optimize printing directly to string_buffer of output_ctx */
   string_buffer sb;
   object_printer printer (sb);
 
-  assert (fp != NULL);
   assert (comment != NULL);
 
   printer.describe_comment (comment);
-  fprintf (fp, "%.*s", int (sb.len ()), sb.get_buffer ());
+  output_ctx ("%.*s", int (sb.len ()), sb.get_buffer ());
 }

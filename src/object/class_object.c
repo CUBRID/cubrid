@@ -49,6 +49,7 @@
 #include "misc_string.h"
 #endif
 #include "dbtype.h"
+#include "printer.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -7417,90 +7418,91 @@ classobj_print (SM_CLASS * class_)
       return;
     }
 
-  fprintf (stdout, "Class : %s\n", sm_ch_name ((MOBJ) class_));
+  file_print_output output_ctx (stdout);
+  output_ctx ("Class : %s\n", sm_ch_name ((MOBJ) class_));
 
   if (class_->properties != NULL)
     {
-      fprintf (stdout, "  Properties : ");
+      output_ctx ("  Properties : ");
       classobj_print_props (class_->properties);
     }
 
   if (class_->ordered_attributes != NULL)
     {
-      fprintf (stdout, "Attributes\n");
+      output_ctx ("Attributes\n");
       for (att = class_->ordered_attributes; att != NULL; att = att->order_link)
 	{
-	  fprintf (stdout, "  Name=%-25s, id=%3d", att->header.name, att->id);
+	  output_ctx ("  Name=%-25s, id=%3d", att->header.name, att->id);
 	  if (att->domain != NULL && att->domain->type != NULL)
 	    {
-	      fprintf (stdout, ", pr_type=%-10s", att->domain->type->name);
+	      output_ctx (", pr_type=%-10s", att->domain->type->name);
 	    }
-	  fprintf (stdout, "\n");
-	  fprintf (stdout, "    mem_offset=%3d, order=%3d, storage_order=%3d\n", att->offset, att->order,
-		   att->storage_order);
+	  output_ctx ("\n");
+	  output_ctx ("    mem_offset=%3d, order=%3d, storage_order=%3d\n", att->offset, att->order,
+		      att->storage_order);
 
 	  if (att->properties != NULL)
 	    {
-	      fprintf (stdout, "    Properties : ");
+	      output_ctx ("    Properties : ");
 	      classobj_print_props (att->properties);
 	    }
 	  if (att->comment != NULL)
 	    {
-	      fprintf (stdout, "    ");
-	      help_fprint_describe_comment (stdout, att->comment);
+	      output_ctx ("    ");
+	      help_print_describe_comment (output_ctx, att->comment);
 	    }
-	  fprintf (stdout, "\n");
+	  output_ctx ("\n");
 	}
     }
   if (class_->class_attributes != NULL)
     {
-      fprintf (stdout, "Class Attributes\n");
+      output_ctx ("Class Attributes\n");
       for (att = class_->class_attributes; att != NULL; att = att->order_link)
 	{
-	  fprintf (stdout, "  Name=%-25s, id=%3d", att->header.name, att->id);
+	  output_ctx ("  Name=%-25s, id=%3d", att->header.name, att->id);
 	  if (att->domain != NULL && att->domain->type != NULL)
 	    {
-	      fprintf (stdout, ", pr_type=%-10s", att->domain->type->name);
+	      output_ctx (", pr_type=%-10s", att->domain->type->name);
 	    }
-	  fprintf (stdout, "\n");
-	  fprintf (stdout, "    mem_offset=%3d, order=%3d, storage_order=%3d\n", att->offset, att->order,
-		   att->storage_order);
+	  output_ctx ("\n");
+	  output_ctx ("    mem_offset=%3d, order=%3d, storage_order=%3d\n", att->offset, att->order,
+		      att->storage_order);
 
 	  if (att->properties != NULL)
 	    {
-	      fprintf (stdout, "    Properties : ");
+	      output_ctx ("    Properties : ");
 	      classobj_print_props (att->properties);
 	    }
 	  if (att->comment != NULL)
 	    {
-	      fprintf (stdout, "    ");
-	      help_fprint_describe_comment (stdout, att->comment);
+	      output_ctx ("    ");
+	      help_print_describe_comment (output_ctx, att->comment);
 	    }
-	  fprintf (stdout, "\n");
+	  output_ctx ("\n");
 	}
     }
   if (class_->methods != NULL)
     {
-      fprintf (stdout, "Methods\n");
+      output_ctx ("Methods\n");
       for (meth = class_->methods; meth != NULL; meth = (SM_METHOD *) meth->header.next)
 	{
-	  fprintf (stdout, "  %s\n", meth->header.name);
+	  output_ctx ("  %s\n", meth->header.name);
 	  if (meth->properties != NULL)
 	    {
-	      fprintf (stdout, "    Properties : ");
+	      output_ctx ("    Properties : ");
 	      classobj_print_props (meth->properties);
 	    }
 	}
     }
   if (class_->class_methods != NULL)
     {
-      fprintf (stdout, "Class Methods\n");
+      output_ctx ("Class Methods\n");
       for (meth = class_->methods; meth != NULL; meth = (SM_METHOD *) meth->header.next)
 	{
-	  fprintf (stdout, "  %s\n", meth->header.name);
+	  output_ctx ("  %s\n", meth->header.name);
 	  if (meth->properties != NULL)
 	    {
-	      fprintf (stdout, "    Properties : ");
+	      output_ctx ("    Properties : ");
 	      classobj_print_props (meth->properties);
 	    }
 	}
