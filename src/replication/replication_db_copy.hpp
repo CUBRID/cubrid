@@ -26,9 +26,10 @@
 #ifndef _REPLICATION_DB_COPY_HPP_
 #define _REPLICATION_DB_COPY_HPP_
 
+#include "record_descriptor.hpp"
 #include "heap_attrinfo.h"  /* for HEAP_CACHE_ATTRINFO */
+#include <string>
 
-class record_descriptor;
 
 namespace cubstream
 {

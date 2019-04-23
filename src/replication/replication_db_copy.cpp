@@ -83,6 +83,7 @@ namespace cubreplication
   int row_object::apply (void)
   {
     /* TODO[replication] */
+    return NO_ERROR;
   }
 
   void row_object::pack (cubpacking::packer &serializator) const
@@ -335,7 +336,7 @@ namespace cubreplication
         if (heap_objects.is_pack_needed ())
           {
             /* pack and add to stream */
-            tdes->replication_copy_context.pack_and_add_object (heap_objects);
+            tdes->replication_copy_context->pack_and_add_object (heap_objects);
             heap_objects.reset ();
           }
       }
