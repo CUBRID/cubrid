@@ -9273,7 +9273,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	    }
 	  else
 	    {
-	      error = qexec_process_unique_stats (thread_p, upd_cls->class_oid, internal_class);
+	      error = qexec_process_unique_stats (thread_p, internal_class);
 	    }
 	  if (error != NO_ERROR)
 	    {
@@ -9891,7 +9891,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	}
       else
 	{
-	  error = qexec_process_unique_stats (thread_p, query_class->class_oid, internal_class);
+	  error = qexec_process_unique_stats (thread_p, internal_class);
 	}
       if (error != NO_ERROR)
 	{
