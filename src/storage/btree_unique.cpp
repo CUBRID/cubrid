@@ -156,12 +156,14 @@ multi_index_unique_stats::destruct ()
 void
 multi_index_unique_stats::add_index_stats (const BTID &index, const btree_unique_stats &us)
 {
+  assert (!BTID_IS_NULL (&index));
   m_stats_map[index] += us;
 }
 
 void
 multi_index_unique_stats::add_empty (const BTID &index)
 {
+  assert (!BTID_IS_NULL (&index));
   m_stats_map[index] = btree_unique_stats ();
 }
 
@@ -186,6 +188,7 @@ multi_index_unique_stats::empty () const
 btree_unique_stats &
 multi_index_unique_stats::get_stats_of (const BTID &index)
 {
+  assert (!BTID_IS_NULL (&index));
   return m_stats_map[index];
 }
 
