@@ -4794,8 +4794,7 @@ fileio_get_number_of_partition_free_pages (const char *path_p, size_t page_size)
   return (free_space (path_p, (int) IO_PAGESIZE));
 #else /* WINDOWS */
   int vol_fd;
-  INT64 npages = -1;
-
+  INT64 npages_of_partition = -1;
 #if defined(SOLARIS)
   struct statvfs buf;
 #else /* SOLARIS */
@@ -4804,20 +4803,18 @@ fileio_get_number_of_partition_free_pages (const char *path_p, size_t page_size)
 
 #if defined(SOLARIS)
   if (statvfs (path_p, &buf) == -1)
-    {
 #elif defined(AIX)
   if (statfs ((char *) path_p, &buf) == -1)
-    {
 #else /* AIX */
   if (statfs (path_p, &buf) == -1)
-    {
 #endif /* AIX */
-
+    {
       if (errno == ENOENT
 	  && ((vol_fd = fileio_open (path_p, FILEIO_DISK_FORMAT_MODE, FILEIO_DISK_PROTECTION_MODE)) != NULL_VOLDES))
 	{
 	  /* The given file did not exist. We create it for temporary consumption then it is removed */
-	  npages = fileio_get_number_of_partition_free_pages (path_p, page_size);
+	  npages_of_partition = fileio_get_number_of_partition_free_pages (path_p, page_size);
+
 	  /* Close the file and remove it */
 	  fileio_close (vol_fd);
 	  (void) remove (path_p);
@@ -4829,29 +4826,24 @@ fileio_get_number_of_partition_free_pages (const char *path_p, size_t page_size)
     }
   else
     {
-#if defined(SOLARIS)
-      npages = (buf.f_bavail / page_size) * ((off_t) buf.f_frsize);
-#else /* SOLARIS */
-      npages = (buf.f_bavail / page_size) * ((off_t) buf.f_bsize);
-#endif /* SOLARIS */
-
-      if (npages < 0 || npages > INT_MAX)
+      const size_t io_pagesize_in_block = page_size / buf.f_bsize;
+      npages_of_partition = buf.f_bavail / io_pagesize_in_block;
+      if (npages_of_partition < 0 || npages_of_partition > INT_MAX)
 	{
-	  npages = INT_MAX;
+	  npages_of_partition = INT_MAX;
 	}
     }
 
-  if (npages < 0)
+  if (npages_of_partition < 0)
     {
       return -1;
     }
   else
     {
-      assert (npages <= INT_MAX);
+      assert (npages_of_partition <= INT_MAX);
 
-      return (int) npages;
+      return (int) npages_of_partition;
     }
-
 #endif /* WINDOWS */
 }
 
@@ -4868,8 +4860,7 @@ fileio_get_number_of_partition_free_sectors (const char *path_p)
   return (DKNSECTS) free_space (path_p, IO_SECTORSIZE);
 #else /* WINDOWS */
   int vol_fd;
-  INT64 nsects = -1;
-
+  INT64 nsectors_of_partition = -1;
 #if defined(SOLARIS)
   struct statvfs buf;
 #else /* SOLARIS */
@@ -4878,20 +4869,18 @@ fileio_get_number_of_partition_free_sectors (const char *path_p)
 
 #if defined(SOLARIS)
   if (statvfs (path_p, &buf) == -1)
-    {
 #elif defined(AIX)
   if (statfs ((char *) path_p, &buf) == -1)
-    {
 #else /* AIX */
   if (statfs (path_p, &buf) == -1)
-    {
 #endif /* AIX */
-
+    {
       if (errno == ENOENT
 	  && ((vol_fd = fileio_open (path_p, FILEIO_DISK_FORMAT_MODE, FILEIO_DISK_PROTECTION_MODE)) != NULL_VOLDES))
 	{
 	  /* The given file did not exist. We create it for temporary consumption then it is removed */
-	  nsects = fileio_get_number_of_partition_free_sectors (path_p);
+	  nsectors_of_partition = fileio_get_number_of_partition_free_sectors (path_p);
+
 	  /* Close the file and remove it */
 	  fileio_close (vol_fd);
 	  (void) remove (path_p);
@@ -4903,29 +4892,24 @@ fileio_get_number_of_partition_free_sectors (const char *path_p)
     }
   else
     {
-#if defined(SOLARIS)
-      nsects = (buf.f_bavail / IO_SECTORSIZE) * ((off_t) buf.f_frsize);
-#else /* SOLARIS */
-      nsects = (buf.f_bavail / IO_SECTORSIZE) * ((off_t) buf.f_bsize);
-#endif /* SOLARIS */
-
-      if (nsects < 0 || nsects > INT_MAX)
+      const size_t io_sectorsize_in_block = IO_SECTORSIZE / buf.f_bsize;
+      nsectors_of_partition = buf.f_bavail / io_sectorsize_in_block;
+      if (nsectors_of_partition < 0 || nsectors_of_partition > INT_MAX)
 	{
-	  nsects = INT_MAX;
+	  nsectors_of_partition = INT_MAX;
 	}
     }
 
-  if (nsects < 0)
+  if (nsectors_of_partition < 0)
     {
       return -1;
     }
   else
     {
-      assert (nsects <= INT_MAX);
+      assert (nsectors_of_partition <= INT_MAX);
 
-      return (DKNSECTS) nsects;
+      return (DKNSECTS) nsectors_of_partition;
     }
-
 #endif /* WINDOWS */
 }
 
