@@ -655,7 +655,7 @@ JSON_PATH::dump_json_path () const
 	  if (needs_escaping (raw_object_key))
 	    {
 	      res += "\"";
-	      (void) db_string_escape (raw_object_key.c_str (), raw_object_key.length (), &escaped, &escaped_size);
+	      (void) db_string_escape_str (raw_object_key.c_str (), raw_object_key.length (), &escaped, &escaped_size);
 	      res += escaped;
 	      db_private_free (NULL, escaped);
 	      res += "\"";
