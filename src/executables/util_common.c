@@ -418,8 +418,8 @@ utility_localtime (const time_t * ts, struct tm *result)
 bool
 util_is_localhost (char *host)
 {
-  char localhost[MAXHOSTNAMELEN];
-  GETHOSTNAME (localhost, MAXHOSTNAMELEN);
+  char localhost[CUB_MAXHOSTNAMELEN];
+  GETHOSTNAME (localhost, CUB_MAXHOSTNAMELEN);
 
   return are_hostnames_equal (host, localhost);
 }
@@ -612,7 +612,7 @@ util_is_replica_node (void)
 {
   bool is_replica_node = false;
   int i;
-  char local_host_name[MAXHOSTNAMELEN];
+  char local_host_name[CUB_MAXHOSTNAMELEN];
   char *ha_replica_list_p, **ha_replica_list_pp = NULL;
 
   ha_replica_list_p = prm_get_string_value (PRM_ID_HA_REPLICA_LIST);

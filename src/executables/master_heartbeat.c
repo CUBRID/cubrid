@@ -4634,7 +4634,7 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
 {
   int rv;
   struct sockaddr_in udp_saddr;
-  char host_name[MAXHOSTNAMELEN];
+  char host_name[CUB_MAXHOSTNAMELEN];
 
   if (nodes == NULL)
     {
@@ -5539,7 +5539,7 @@ hb_get_ping_host_info_string (char **str)
   buf_size += required_size;
 
   required_size = strlen (HA_PING_HOSTS_FORMAT_STRING);
-  required_size += MAXHOSTNAMELEN;
+  required_size += CUB_MAXHOSTNAMELEN;
   required_size += HB_PING_STR_SIZE;	/* length of ping test result */
   required_size *= hb_Cluster->num_ping_hosts;
 
@@ -5602,12 +5602,12 @@ hb_get_node_info_string (char **str, bool verbose_yn)
     }
 
   required_size = strlen (HA_NODE_INFO_FORMAT_STRING);
-  required_size += MAXHOSTNAMELEN;	/* length of node name */
+  required_size += CUB_MAXHOSTNAMELEN;	/* length of node name */
   required_size += HB_NSTATE_STR_SZ;	/* length of node state */
   buf_size += required_size;
 
   required_size = strlen (HA_NODE_FORMAT_STRING);
-  required_size += MAXHOSTNAMELEN;	/* length of node name */
+  required_size += CUB_MAXHOSTNAMELEN;	/* length of node name */
   required_size += 5;		/* length of priority */
   required_size += HB_NSTATE_STR_SZ;	/* length of node state */
   if (verbose_yn)

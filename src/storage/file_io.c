@@ -1175,8 +1175,8 @@ fileio_lock (const char *db_full_name_p, const char *vol_label_p, int vol_fd, bo
 {
   FILE *fp;
   char name_info_lock[PATH_MAX];
-  char host[MAXHOSTNAMELEN];
-  char host2[MAXHOSTNAMELEN];
+  char host[CUB_MAXHOSTNAMELEN];
+  char host2[CUB_MAXHOSTNAMELEN];
   char user[FILEIO_USER_NAME_SIZE];
   char login_name[FILEIO_USER_NAME_SIZE];
   INT64 lock_time;
@@ -1228,7 +1228,7 @@ fileio_lock (const char *db_full_name_p, const char *vol_label_p, int vol_fd, bo
    *       problem with this secundary technique
    */
 
-  sprintf (format_string, "%%%ds %%d %%%ds %%lld", FILEIO_USER_NAME_SIZE - 1, MAXHOSTNAMELEN - 1);
+  sprintf (format_string, "%%%ds %%d %%%ds %%lld", FILEIO_USER_NAME_SIZE - 1, CUB_MAXHOSTNAMELEN - 1);
 
 again:
   while (retry == true && fileio_lock_file_write (vol_fd, 0, SEEK_SET, 0) < 0)
@@ -1295,8 +1295,8 @@ again:
 	  login_name[FILEIO_USER_NAME_SIZE - 1] = '\0';
 
 	  if (!
-	      (strcmp (user, login_name) == 0 && GETHOSTNAME (host2, MAXHOSTNAMELEN) == 0 && strcmp (host, host2) == 0
-	       && fileio_is_terminated_process (pid) != 0 && errno == ESRCH))
+	      (strcmp (user, login_name) == 0 && GETHOSTNAME (host2, CUB_MAXHOSTNAMELEN) == 0
+	       && strcmp (host, host2) == 0 && fileio_is_terminated_process (pid) != 0 && errno == ESRCH))
 	    {
 	      if (dowait != false)
 		{
@@ -1347,7 +1347,7 @@ again:
   fp = fopen (name_info_lock, "w");
   if (fp != NULL)
     {
-      if (GETHOSTNAME (host, MAXHOSTNAMELEN) != 0)
+      if (GETHOSTNAME (host, CUB_MAXHOSTNAMELEN) != 0)
 	{
 	  strcpy (host, "???");
 	}
@@ -1387,7 +1387,7 @@ FILEIO_LOCKF_TYPE
 fileio_lock_la_log_path (const char *db_full_name_p, const char *lock_path_p, int vol_fd, int *last_deleted_arv_num)
 {
   FILE *fp;
-  char host[MAXHOSTNAMELEN];
+  char host[CUB_MAXHOSTNAMELEN];
   char user[FILEIO_USER_NAME_SIZE];
   char login_name[FILEIO_USER_NAME_SIZE];
   INT64 lock_time;
@@ -1428,7 +1428,7 @@ fileio_lock_la_log_path (const char *db_full_name_p, const char *lock_path_p, in
    *       the lock. This is important to avoid a possible synchronization
    *       problem with this secundary technique
    */
-  sprintf (format_string, "%%d %%%ds %%d %%%ds %%lld", FILEIO_USER_NAME_SIZE - 1, MAXHOSTNAMELEN - 1);
+  sprintf (format_string, "%%d %%%ds %%d %%%ds %%lld", FILEIO_USER_NAME_SIZE - 1, CUB_MAXHOSTNAMELEN - 1);
 
   while (retry == true && fileio_lock_file_write (vol_fd, 0, SEEK_SET, 0) < 0)
     {
@@ -1496,7 +1496,7 @@ fileio_lock_la_log_path (const char *db_full_name_p, const char *lock_path_p, in
 
       lseek (vol_fd, (off_t) 0, SEEK_SET);
 
-      if (GETHOSTNAME (host, MAXHOSTNAMELEN) != 0)
+      if (GETHOSTNAME (host, CUB_MAXHOSTNAMELEN) != 0)
 	{
 	  strcpy (host, "???");
 	}
@@ -1760,14 +1760,14 @@ fileio_check_lockby_file (char *name_info_lock_p)
   int pid;
   char login_name[FILEIO_USER_NAME_SIZE];
   char user[FILEIO_USER_NAME_SIZE];
-  char host[MAXHOSTNAMELEN];
-  char host2[MAXHOSTNAMELEN];
+  char host[CUB_MAXHOSTNAMELEN];
+  char host2[CUB_MAXHOSTNAMELEN];
   char format_string[32];
 
   fp = fopen (name_info_lock_p, "r");
   if (fp != NULL)
     {
-      sprintf (format_string, "%%%ds %%d %%%ds", FILEIO_USER_NAME_SIZE - 1, MAXHOSTNAMELEN - 1);
+      sprintf (format_string, "%%%ds %%d %%%ds", FILEIO_USER_NAME_SIZE - 1, CUB_MAXHOSTNAMELEN - 1);
       if (fscanf (fp, format_string, user, &pid, host) != 3)
 	{
 	  strcpy (user, "???");
@@ -1779,7 +1779,7 @@ fileio_check_lockby_file (char *name_info_lock_p)
       /* Check for same process, same user, same host */
       getuserid (login_name, FILEIO_USER_NAME_SIZE);
 
-      if (pid == GETPID () && strcmp (user, login_name) == 0 && GETHOSTNAME (host2, MAXHOSTNAMELEN) == 0
+      if (pid == GETPID () && strcmp (user, login_name) == 0 && GETHOSTNAME (host2, CUB_MAXHOSTNAMELEN) == 0
 	  && strcmp (host, host2) == 0)
 	{
 	  (void) remove (name_info_lock_p);
