@@ -187,6 +187,51 @@ namespace cubreplication
       OID m_inst_oid;
   };
 
+  /* packs multiple records (record_descriptor/recdes) from heap to be copied into a new replicated server */
+  class row_object : public replication_object
+  {
+    public:
+      static const size_t DATA_PACK_THRESHOLD_SIZE = 16384;
+      static const size_t DATA_PACK_THRESHOLD_CNT = 100;
+
+      static const int PACKING_ID = 5;
+
+      row_object (const char *class_name);
+
+      ~row_object ();
+
+      void reset ();
+
+      int apply () override;
+
+      void pack (cubpacking::packer &serializator) const final;
+      void unpack (cubpacking::unpacker &deserializator) final;
+      std::size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const final;
+
+      bool is_equal (const cubpacking::packable_object *other) final;
+      void stringify (string_buffer &str) final;
+
+      void add_record (const record_descriptor &record);
+
+      bool is_pack_needed (void)
+      {
+	return m_rec_des_list.size () >= DATA_PACK_THRESHOLD_CNT || m_data_size >= DATA_PACK_THRESHOLD_SIZE;
+      }
+
+      size_t get_rec_cnt () const
+      {
+	return m_rec_des_list.size ();
+      }
+
+    private:
+      std::vector<record_descriptor> m_rec_des_list;
+      std::string m_class_name;
+
+      /* non-serialized data members: */
+      /* total size of all record_descriptor buffers */
+      std::size_t m_data_size;
+  };
+
 } /* namespace cubreplication */
 
 #endif /* _REPLICATION_OBJECT_HPP_ */

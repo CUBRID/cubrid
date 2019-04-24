@@ -109,7 +109,7 @@ struct heap_scan_id
   regu_variable_list_node *recordinfo_regu_list;	/* regulator variable list for record info */
 
 #if defined (__cplusplus)
-  record_descriptor *row_record;                  /* record descriptor */
+  record_descriptor *row_record;	/* record descriptor */
 #endif
 };				/* Regular Heap File Scan Identifier */
 

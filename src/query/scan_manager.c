@@ -7650,4 +7650,3 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
     }
 }
 #endif
-
