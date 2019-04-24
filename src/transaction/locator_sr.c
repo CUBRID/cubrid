@@ -6494,8 +6494,10 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 	    }
 	}			/* end-for */
 
-      assert (scan_cache.m_index_stats != NULL);
-      tdes->m_multiupd_stats += *scan_cache.m_index_stats;
+      if (scan_cache.m_index_stats != NULL)
+	{
+	  tdes->m_multiupd_stats += *scan_cache.m_index_stats;
+	}
       locator_end_force_scan_cache (thread_p, &scan_cache);
       scan_cache_inited = 0;
     }
