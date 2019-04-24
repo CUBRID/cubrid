@@ -69,6 +69,7 @@ struct mvcc_active_tran
     static const size_t UNIT_BYTE_COUNT = sizeof (unit_type);
     static const size_t UNIT_BIT_COUNT = UNIT_BYTE_COUNT * BYTE_BIT_COUNT;
 
+    static const size_t BITAREA_MAX_MEMSIZE = BITAREA_MAX_SIZE * UNIT_BYTE_COUNT;
     static const size_t BITAREA_MAX_BITS = BITAREA_MAX_SIZE * UNIT_BIT_COUNT;
 
     static const unit_type ALL_ACTIVE = 0;
