@@ -6839,6 +6839,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   log_Gl.run_nxchkpt_atpageid = (log_Gl.hdr.append_lsa.pageid + log_Gl.chkpt_every_npages);
   /*
    * Clear all tail and heads information of current system transaction
+   * todo - is it safe to clear though?
    */
   logtb_clear_tdes (thread_p, tdes);
 

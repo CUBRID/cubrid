@@ -10049,6 +10049,10 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		}
 	    }
 	    break;
+	  case DB_TYPE_SHORT:
+	    doc = db_json_allocate_doc ();
+	    db_json_set_int_to_doc (doc, db_get_short (src));
+	    break;
 	  case DB_TYPE_INTEGER:
 	    doc = db_json_allocate_doc ();
 	    db_json_set_int_to_doc (doc, db_get_int (src));

@@ -276,11 +276,15 @@ mvcc_active_tran::compute_lowest_active_mvccid () const
 }
 
 void
-mvcc_active_tran::copy_to (mvcc_active_tran &dest) const
+mvcc_active_tran::copy_to (mvcc_active_tran &dest, copy_safety safety) const
 {
   assert (m_initialized && dest.m_initialized);
-  check_valid ();
-  dest.check_valid ();
+
+  if (safety == copy_safety::THREAD_SAFE)
+    {
+      check_valid ();
+      dest.check_valid ();
+    }
 
   size_t new_bit_area_memsize = get_bit_area_memsize ();
   size_t old_bit_area_memsize = dest.get_bit_area_memsize ();
@@ -304,7 +308,10 @@ mvcc_active_tran::copy_to (mvcc_active_tran &dest) const
   dest.m_bit_area_length = m_bit_area_length;
   dest.m_long_tran_mvccids_length = m_long_tran_mvccids_length;
 
-  dest.check_valid ();
+  if (safety == copy_safety::THREAD_SAFE)
+    {
+      dest.check_valid ();
+    }
 }
 
 bool
@@ -506,6 +513,14 @@ mvcc_active_tran::reset_start_mvccid (MVCCID mvccid)
     {
       check_valid ();
     }
+}
+
+void
+mvcc_active_tran::reset_active_transactions ()
+{
+  std::memset (m_bit_area, 0, get_bit_area_memsize ());
+  m_bit_area_length = 0;
+  m_long_tran_mvccids_length = 0;
 }
 
 void
