@@ -557,7 +557,8 @@ static void qexec_update_btree_unique_stats_info (THREAD_ENTRY * thread_p, multi
 static int qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, VAL_DESCR * vd,
 			     SCAN_OPERATION_TYPE scan_op_type);
 static int qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p, PRUNING_CONTEXT * pcontext);
-static int qexec_process_unique_stats (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO_INTERNAL * class_);
+static int qexec_process_unique_stats (THREAD_ENTRY * thread_p, const OID * class_oid,
+				       UPDDEL_CLASS_INFO_INTERNAL * class_);
 static SCAN_CODE qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec);
 
 static int qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
@@ -9273,7 +9274,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	    }
 	  else
 	    {
-	      error = qexec_process_unique_stats (thread_p, internal_class);
+	      error = qexec_process_unique_stats (thread_p, upd_cls->class_oid, internal_class);
 	    }
 	  if (error != NO_ERROR)
 	    {
@@ -9410,9 +9411,9 @@ qexec_update_btree_unique_stats_info (THREAD_ENTRY * thread_p, multi_index_uniqu
  * internal_class (in) :
  */
 static int
-qexec_process_unique_stats (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO_INTERNAL * internal_class)
+qexec_process_unique_stats (THREAD_ENTRY * thread_p, const OID * class_oid, UPDDEL_CLASS_INFO_INTERNAL * internal_class)
 {
-  assert (internal_class != NULL);
+  assert (class_oid != NULL && internal_class != NULL);
 
   int error = NO_ERROR;
 
@@ -9422,13 +9423,20 @@ qexec_process_unique_stats (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO_INTERNAL 
       qexec_update_btree_unique_stats_info (thread_p, &internal_class->m_unique_stats, &internal_class->m_scancache);
     }
 
-  error = logtb_tran_update_unique_stats (thread_p, internal_class->m_unique_stats, true);
-  if (error != NO_ERROR)
+for (const auto & it:internal_class->m_unique_stats.get_map ())
     {
-      ASSERT_ERROR ();
-      return error;
+      if (!it.second.is_unique ())
+	{
+	  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL, class_oid, &it.first, NULL);
+	  return ER_BTREE_UNIQUE_FAILED;
+	}
+      error = logtb_tran_update_unique_stats (thread_p, it.first, it.second, true);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error;
+	}
     }
-
   return NO_ERROR;
 }
 
@@ -9484,7 +9492,7 @@ qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p, PRUNING_CONTEXT *
                     {
                       free_and_init (index_name);
                     }
-                  return ER_FAILED;
+                  return ER_BTREE_UNIQUE_FAILED;
                 }
 
               error = logtb_tran_update_unique_stats (thread_p, it.first, it.second, true);
@@ -9891,7 +9899,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	}
       else
 	{
-	  error = qexec_process_unique_stats (thread_p, internal_class);
+	  error = qexec_process_unique_stats (thread_p, query_class->class_oid, internal_class);
 	}
       if (error != NO_ERROR)
 	{

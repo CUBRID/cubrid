@@ -6504,7 +6504,21 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 
   if (mobjs->end_multi_update)
     {
-      logtb_tran_update_unique_stats (thread_p, tdes->m_multiupd_stats, true);
+    for (const auto & it:tdes->m_multiupd_stats.get_map ())
+	{
+	  if (!it.second.is_unique ())
+	    {
+	      BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL, &mobjs->objs.class_oid, &it.first, NULL);
+	      error_code = ER_BTREE_UNIQUE_FAILED;
+	      goto error;
+	    }
+	  error_code = logtb_tran_update_unique_stats (thread_p, it.first, it.second, true);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto error;
+	    }
+	}
       tdes->m_multiupd_stats.clear ();
     }
 

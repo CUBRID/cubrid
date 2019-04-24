@@ -644,8 +644,9 @@ extern int btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_
 extern int btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, int *btree_att_ids,
 					 int btree_num_att, HEAP_CACHE_ATTRINFO * attr_info, int func_index_col_id);
 extern int btree_coerce_key (DB_VALUE * src_keyp, int keysize, TP_DOMAIN * btree_domainp, int key_minmax);
-extern int btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * class_oid, const BTID * btid,
-			    const char *bt_name, int severity, int err_id, const char *filename, int lineno);
+extern int btree_set_error (THREAD_ENTRY * thread_p, const DB_VALUE * key, const OID * obj_oid, const OID * class_oid,
+			    const BTID * btid, const char *bt_name, int severity, int err_id, const char *filename,
+			    int lineno);
 extern DISK_ISVALID btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, BTID * btid, bool repair);
 extern int btree_index_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt,
 				   void **ctx);

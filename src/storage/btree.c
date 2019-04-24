@@ -18246,8 +18246,8 @@ end:
 
 
 int
-btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * class_oid, const BTID * btid,
-		 const char *bt_name, int severity, int err_id, const char *filename, int lineno)
+btree_set_error (THREAD_ENTRY * thread_p, const DB_VALUE * key, const OID * obj_oid, const OID * class_oid,
+		 const BTID * btid, const char *bt_name, int severity, int err_id, const char *filename, int lineno)
 {
   char btid_msg_buf[OID_MSG_BUF_SIZE];
   char class_oid_msg_buf[OID_MSG_BUF_SIZE];
