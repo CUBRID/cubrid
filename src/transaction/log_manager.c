@@ -3707,7 +3707,15 @@ log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 #if defined(SERVER_MODE)
       log_wakeup_checkpoint_daemon ();
 #else /* SERVER_MODE */
-      (void) logpb_checkpoint (thread_p);
+      if (!tdes->is_under_sysop ())
+	{
+	  (void) logpb_checkpoint (thread_p);
+	}
+      else
+	{
+	  // not safe to do a checkpoint in the middle of a system operations; for instance, tdes is cleared after
+	  // checkpoint
+	}
 #endif /* SERVER_MODE */
     }
 }
