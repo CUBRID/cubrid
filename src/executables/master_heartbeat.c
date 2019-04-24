@@ -238,8 +238,6 @@ static int hb_help_sprint_nodes_info (char *buffer, int max_length);
 static int hb_help_sprint_jobs_info (HB_JOB * jobs, char *buffer, int max_length);
 static int hb_help_sprint_ping_host_info (char *buffer, int max_length);
 
-static bool are_hostnames_equal (const char *hostname_a, const char *hostname_b);
-
 HB_CLUSTER *hb_Cluster = NULL;
 HB_RESOURCE *hb_Resource = NULL;
 HB_JOB *cluster_Jobs = NULL;
@@ -1790,7 +1788,7 @@ hb_set_net_header (HBP_HEADER * header, unsigned char type, bool is_req, unsigne
   header->group_id[sizeof (header->group_id) - 1] = '\0';
   strncpy (header->dest_host_name, dest_host_name, sizeof (header->dest_host_name) - 1);
   header->dest_host_name[sizeof (header->dest_host_name) - 1] = '\0';
-  strncpy (header->orig_host_name, hb_Cluster->host_name, sizeof (header->orig_host_name) - 1);
+  strncpy (header->orig_host_name, hb_Cluster->myself->host_name, sizeof (header->orig_host_name) - 1);
   header->orig_host_name[sizeof (header->orig_host_name) - 1] = '\0';
 }
 
@@ -6602,53 +6600,6 @@ hb_help_sprint_jobs_info (HB_JOB * jobs, char *buffer, int max_length)
   p += snprintf (p, MAX ((last - p), 0), "\n");
 
   return p - buffer;
-}
-
-/**
- * Compare two host names if are equal, if one of the host names is canonical name and the other is not, then
- * only host part (e.g. for canonical name "host-1.cubrid.org" host part is "host-1") is used for comparison
- *
- * for example following hosts are equal:
- *  "host-1"            "host-1"
- *  "host-1"            "host-1.cubrid.org"
- *  "host-1.cubrid.org" "host-1"
- *  "host-1.cubrid.org" "host-1.cubrid.org"
- *
- * for example following hosts are not equal:
- *  "host-1"            "host-2"
- *  "host-1.cubrid.org" "host-2"
- *  "host-1"            "host-2.cubrid.org"
- *  "host-1.cubrid.org" "host-2.cubrid.org"
- *  "host-1.cubrid.org" "host-1.cubrid.com"
- *
- * @param hostname_a first hostname
- * @param hostname_b second hostname
- *
- * @return true if hostname_a is same as hostname_b
- */
-static bool
-are_hostnames_equal (const char *hostname_a, const char *hostname_b)
-{
-  const char *a;
-  const char *b;
-
-  for (a = hostname_a, b = hostname_b; *a && *b && (*a == *b); a++, b++)
-    ;
-
-  if (*a == '\0' && *b != '\0')
-    {
-      // if a reached the end and b does not, b must be '.'
-      return *b == '.';
-    }
-  else if (*a != '\0' && *b == '\0')
-    {
-      // if b reached the end and a does not, a must be '.'
-      return *a == '.';
-    }
-  else
-    {
-      return *a == *b;
-    }
 }
 
 int
