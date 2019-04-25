@@ -76,6 +76,9 @@ class record_descriptor : cubpacking::packable_object
     // peek record from page; changes into record data will not be permitted
     int peek (cubthread::entry *thread_p, PAGE_PTR page, PGSLOTID slotid);
 
+    // move from recdes
+    void move_copied_recdes (recdes &rec);
+
     // copy record from page
     int copy (cubthread::entry *thread_p, PAGE_PTR page, PGSLOTID slotid);
 

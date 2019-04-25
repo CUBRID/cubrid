@@ -5274,7 +5274,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       scan_id->scan_stats.qualified_rows++;
 
-      new (scan_id->s.hsid.row_record) record_descriptor (recdes);
+      scan_id->s.hsid.row_recdes = recdes;
 
       if (hsidp->rest_regu_list)
 	{

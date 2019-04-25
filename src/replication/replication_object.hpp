@@ -211,7 +211,7 @@ namespace cubreplication
       bool is_equal (const cubpacking::packable_object *other) final;
       void stringify (string_buffer &str) final;
 
-      void add_record (const record_descriptor &record);
+      void add_copied_recdes (RECDES &recdes);
 
       bool is_pack_needed (void)
       {

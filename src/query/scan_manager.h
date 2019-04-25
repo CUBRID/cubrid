@@ -108,9 +108,7 @@ struct heap_scan_id
   DB_VALUE **cache_recordinfo;	/* cache for record information */
   regu_variable_list_node *recordinfo_regu_list;	/* regulator variable list for record info */
 
-#if defined (__cplusplus)
-  record_descriptor *row_record;	/* record descriptor */
-#endif
+  RECDES row_recdes;		/* record descriptor of current row */
 };				/* Regular Heap File Scan Identifier */
 
 typedef struct heap_page_scan_id HEAP_PAGE_SCAN_ID;

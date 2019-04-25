@@ -31,7 +31,7 @@
 namespace cubreplication
 {
 
-  int convert_to_last_representation (cubthread::entry *thread_p, record_descriptor &record,
+  int convert_to_last_representation (cubthread::entry *thread_p, RECDES &rec_des, RECDES &new_rec_des,
 				      const OID &inst_oid, HEAP_CACHE_ATTRINFO &attr_info);
   copy_context::copy_context ()
   {
@@ -150,13 +150,14 @@ namespace cubreplication
 	    goto end;
 	  }
 
-	error_code = convert_to_last_representation (thread_p, *s_id.s.hsid.row_record,
+	RECDES new_recdes;
+	error_code = convert_to_last_representation (thread_p, s_id.s.hsid.row_recdes, new_recdes,
 		     s_id.s.hsid.curr_oid, attr_info);
 	if (error_code != NO_ERROR)
 	  {
 	    goto end;
 	  }
-	heap_objects.add_record (*s_id.s.hsid.row_record);
+	heap_objects.add_copied_recdes (new_recdes);
 
 	if (heap_objects.is_pack_needed ())
 	  {
@@ -185,49 +186,42 @@ end:
    * convert_to_last_representation - converts a row record to last representation
    *
    * thread_p (in):
-   * record (in/out): row record to be changed
+   * rec_des (in/out): recdes be changed converted
+   * new_rec_des (in/out): new recdes
    * inst_oid(in): instance OID of record
    * attr_info(in/out): cache attributes storing representations and attribute values
    */
-  int convert_to_last_representation (cubthread::entry *thread_p, record_descriptor &record,
+  int convert_to_last_representation (cubthread::entry *thread_p, RECDES &rec_des, RECDES &new_rec_des,
 				      const OID &inst_oid, HEAP_CACHE_ATTRINFO &attr_info)
   {
     int error_code = NO_ERROR;
-    RECDES *old_recdes = const_cast <RECDES *> (& (record.get_recdes ()));
-    const int reprid = or_rep_id (old_recdes);
+    const int reprid = or_rep_id (&rec_des);
     RECDES new_recdes;
     LC_COPYAREA *copyarea = NULL;
 
     if (reprid == attr_info.last_classrepr->id)
       {
-	/* nothing to to */
+	new_rec_des = rec_des;
 	return error_code;
       }
 
-    error_code = heap_attrinfo_read_dbvalues (thread_p, &inst_oid, old_recdes, NULL, &attr_info);
+    error_code = heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &rec_des, NULL, &attr_info);
     if (error_code != NO_ERROR)
       {
+	ASSERT_ERROR ();
 	return error_code;
       }
 
-    /* TODO[replication] : optimization to reuse copyarea */
-    copyarea =
-	    locator_allocate_copy_area_by_attr_info (thread_p, &attr_info, old_recdes, &new_recdes, -1,
-		LOB_FLAG_EXCLUDE_LOB);
-    if (copyarea == NULL)
+    /* old_recdes.data maybe be PEEKed (buffer in page) or COPYed (buffer managed by heap SCAN_CACHE),
+     * we don't care about its buffer */
+    char *recdes_mem;
+    recdes_mem = locator_allocate_private_by_attr_info (thread_p, &attr_info, &rec_des, &new_recdes, -1,
+		 LOB_FLAG_EXCLUDE_LOB);
+    if (recdes_mem == NULL)
       {
+	ASSERT_ERROR ();
 	error_code = ER_FAILED;
-	goto end;
-      }
-
-    record.~record_descriptor ();
-    new (&record) record_descriptor (new_recdes);
-
-end:
-    if (copyarea != NULL)
-      {
-	locator_free_copy_area (copyarea);
-	copyarea = NULL;
+	return error_code;
       }
 
     return error_code;
