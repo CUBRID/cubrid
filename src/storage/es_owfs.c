@@ -45,12 +45,12 @@
 typedef struct
 {
   es_list_head_t list;
-  char mds_ip[MAXHOSTNAMELEN];
+  char mds_ip[CUB_MAXHOSTNAMELEN];
   char svc_code[MAXSVCCODELEN];
   fs_handle fsh;
 } ES_OWFS_FSH;
 
-static char es_base_mds_ip[MAXHOSTNAMELEN];
+static char es_base_mds_ip[CUB_MAXHOSTNAMELEN];
 static char es_base_svc_code[MAXSVCCODELEN];
 
 pthread_mutex_t es_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -143,7 +143,7 @@ es_parse_owfs_path (const char *base_path, char *mds_ip, char *svc_code, char *o
     }
   base_path++;
   /* get MDS IP part */
-  base_path = es_get_token (base_path, mds_ip, MAXHOSTNAMELEN);
+  base_path = es_get_token (base_path, mds_ip, CUB_MAXHOSTNAMELEN);
   if (base_path == NULL)
     {
       return ER_FAILED;
@@ -323,7 +323,7 @@ es_owfs_init (const char *base_path)
     }
   base_path++;
   /* get MDS IP part */
-  base_path = es_get_token (base_path, es_base_mds_ip, MAXHOSTNAMELEN);
+  base_path = es_get_token (base_path, es_base_mds_ip, CUB_MAXHOSTNAMELEN);
   if (base_path != NULL)
     {
       /* get service code part */
@@ -441,7 +441,7 @@ retry:
 ssize_t
 es_owfs_write_file (const char *path, const void *buf, size_t count, off_t offset)
 {
-  char mds_ip[MAXHOSTNAMELEN], svc_code[MAXSVCCODELEN], owner_name[NAME_MAX], file_name[NAME_MAX];
+  char mds_ip[CUB_MAXHOSTNAMELEN], svc_code[MAXSVCCODELEN], owner_name[NAME_MAX], file_name[NAME_MAX];
   ES_OWFS_FSH *fsh;
   owner_handle oh;
   owfs_file_stat ostat;
@@ -519,7 +519,7 @@ es_owfs_write_file (const char *path, const void *buf, size_t count, off_t offse
 ssize_t
 es_owfs_read_file (const char *path, void *buf, size_t count, off_t offset)
 {
-  char mds_ip[MAXHOSTNAMELEN], svc_code[MAXSVCCODELEN], owner_name[NAME_MAX], file_name[NAME_MAX];
+  char mds_ip[CUB_MAXHOSTNAMELEN], svc_code[MAXSVCCODELEN], owner_name[NAME_MAX], file_name[NAME_MAX];
   ES_OWFS_FSH *fsh;
   owner_handle oh;
   file_handle fh;
@@ -595,7 +595,7 @@ es_owfs_read_file (const char *path, void *buf, size_t count, off_t offset)
 int
 es_owfs_delete_file (const char *path)
 {
-  char mds_ip[MAXHOSTNAMELEN], svc_code[MAXSVCCODELEN], owner_name[NAME_MAX], file_name[NAME_MAX];
+  char mds_ip[CUB_MAXHOSTNAMELEN], svc_code[MAXSVCCODELEN], owner_name[NAME_MAX], file_name[NAME_MAX];
   ES_OWFS_FSH *fsh;
   owner_handle oh;
   int ret;
@@ -645,7 +645,7 @@ es_owfs_delete_file (const char *path)
 int
 es_owfs_copy_file (const char *src_path, const char *metaname, char *new_path)
 {
-  char src_mds_ip[MAXHOSTNAMELEN], src_svc_code[MAXSVCCODELEN], src_owner_name[NAME_MAX], src_file_name[NAME_MAX];
+  char src_mds_ip[CUB_MAXHOSTNAMELEN], src_svc_code[MAXSVCCODELEN], src_owner_name[NAME_MAX], src_file_name[NAME_MAX];
   char new_owner_name[NAME_MAX], new_file_name[NAME_MAX];
   ES_OWFS_FSH *src_fsh, *dest_fsh;
   owner_handle src_oh, dest_oh;
@@ -752,7 +752,7 @@ retry:
 int
 es_owfs_rename_file (const char *src_path, const char *metaname, char *new_path)
 {
-  char src_mds_ip[MAXHOSTNAMELEN], src_svc_code[MAXSVCCODELEN], src_owner_name[NAME_MAX], src_file_name[NAME_MAX],
+  char src_mds_ip[CUB_MAXHOSTNAMELEN], src_svc_code[MAXSVCCODELEN], src_owner_name[NAME_MAX], src_file_name[NAME_MAX],
     tgt_file_name[NAME_MAX];
   char *s;
   ES_OWFS_FSH *src_fsh;
@@ -811,7 +811,7 @@ es_owfs_rename_file (const char *src_path, const char *metaname, char *new_path)
 off_t
 es_owfs_get_file_size (const char *path)
 {
-  char mds_ip[MAXHOSTNAMELEN], svc_code[MAXSVCCODELEN], owner_name[NAME_MAX], file_name[NAME_MAX];
+  char mds_ip[CUB_MAXHOSTNAMELEN], svc_code[MAXSVCCODELEN], owner_name[NAME_MAX], file_name[NAME_MAX];
   ES_OWFS_FSH *fsh;
   owner_handle oh;
   owfs_file_stat ostat;
