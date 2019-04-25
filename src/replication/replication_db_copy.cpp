@@ -115,6 +115,7 @@ namespace cubreplication
     error_code = heap_get_class_name (thread_p, &class_oid, &class_name);
     if (error_code != NO_ERROR)
       {
+	ASSERT_ERROR ();
 	return error_code;
       }
 
@@ -123,12 +124,14 @@ namespace cubreplication
     error_code = heap_get_hfid_from_class_oid (thread_p, &class_oid, &class_hfid);
     if (error_code != NO_ERROR)
       {
+	ASSERT_ERROR ();
 	goto end;
       }
 
     error_code = heap_attrinfo_start (thread_p, &class_oid, -1, NULL, &attr_info);
     if (error_code != NO_ERROR)
       {
+	ASSERT_ERROR ();
 	goto end;
       }
 
@@ -146,7 +149,7 @@ namespace cubreplication
 
 	if (sc_scan != S_SUCCESS)
 	  {
-	    error_code = ER_FAILED;
+	    ASSERT_ERROR_AND_SET (error_code);
 	    goto end;
 	  }
 
@@ -155,6 +158,7 @@ namespace cubreplication
 		     s_id.s.hsid.curr_oid, attr_info);
 	if (error_code != NO_ERROR)
 	  {
+	    ASSERT_ERROR ();
 	    goto end;
 	  }
 	heap_objects.add_copied_recdes (new_recdes);
