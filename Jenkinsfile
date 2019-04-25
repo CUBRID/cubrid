@@ -1,10 +1,6 @@
 pipeline {
   agent none
 
-  triggers {
-    pollSCM('H 3 * * *')
-  }
-
   environment {
     OUTPUT_DIR = 'packages'
     TEST_REPORT = 'reports'
@@ -25,11 +21,17 @@ pipeline {
             MAKEFLAGS = '-j'
           }
           steps {
+            script {
+              currentBuild.displayName = sh(returnStdout: true, script: './build.sh -v').trim()
+            }
+            
+            echo 'Building...'
             sh '/entrypoint.sh build'
             
-            echo 'testing...'
+            echo 'Packing...'
             sh '/entrypoint.sh dist -o ${OUTPUT_DIR}'
             
+            echo 'Testing...'
             sh '/entrypoint.sh test || echo "$? failed"'
           }
           post {
@@ -52,11 +54,13 @@ pipeline {
             MAKEFLAGS = '-j'
           }
           steps {
+            echo 'Building...'
             sh '/entrypoint.sh build -m debug'
             
-            echo 'testing...'
+            echo 'Packing...'
             sh '/entrypoint.sh dist  -m debug -o ${OUTPUT_DIR}'
             
+            echo 'Testing...'
             sh '/entrypoint.sh test || echo "$? failed"'
           }
           post {
@@ -77,13 +81,13 @@ pipeline {
             echo 'Building 32bit...'
             bat "win/build.bat build"
 
-            echo 'Packing...'
+            echo 'Packing 32bit...'
             bat "win/build.bat /out ${OUTPUT_DIR}"
             
             echo 'Building 64bit...'
             bat "win/build.bat build /64"
 
-            echo 'Packing...'
+            echo 'Packing 64bit...'
             bat "win/build.bat /out ${OUTPUT_DIR} /64"
           }
           
