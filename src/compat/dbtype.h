@@ -299,7 +299,7 @@ extern "C"
 	return;
       }
 
-    *dst = *src;
+    memcpy (dst, src, sizeof (DB_VALUE));
     dst->need_clear = false;
 
     if (DB_IS_NULL (src))
