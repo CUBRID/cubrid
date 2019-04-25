@@ -298,7 +298,8 @@ extern "C"
 	// do nothing
 	return;
       }
-     *dst = *src;
+
+    *dst = *src;
     dst->need_clear = false;
 
     if (DB_IS_NULL (src))
