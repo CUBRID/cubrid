@@ -1499,7 +1499,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     {
       log_2pc_free_coord_info (tdes);
     }
-  tdes->m_multiupd_stats.destruct ();
+  tdes->m_multiupd_stats.clear ();
   if (tdes->interrupt == (int) true)
     {
       tdes->interrupt = false;

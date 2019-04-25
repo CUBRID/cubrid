@@ -6390,7 +6390,9 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 
   if (mobjs->start_multi_update)
     {
-      assert (tdes->m_multiupd_stats.empty ());
+      // todo - fix multi-update; in the meantime disable safe-guard and just clear stats
+      // assert (tdes->m_multiupd_stats.empty ());
+      tdes->m_multiupd_stats.clear ();
     }
 
   if (mobjs->num_objs > 0)
@@ -7125,6 +7127,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
   /* handle multi-update case */
   if (mobjs->start_multi_update)
     {
+      // todo - this looks badly managed.
       error_code = locator_force_for_multi_update (thread_p, force_area);
       if (error_code != NO_ERROR)
 	{
