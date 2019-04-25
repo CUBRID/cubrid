@@ -350,7 +350,7 @@ extern int free_space (const char *, int);
  * Host software MUST handle host names of up to 63 characters and
  * SHOULD handle host names of up to 255 characters.
  */
-#define CUB_MAXHOSTNAMELEN 256	// 255 +  1 (for NULL terminator)
+#define CUB_MAXHOSTNAMELEN 256	/* 255 + 1(for NULL terminator) */
 
 #define GETHOSTNAME(p, l) css_gethostname(p, l)
 
