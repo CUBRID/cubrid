@@ -85,9 +85,9 @@ extern int locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * h
 extern LC_COPYAREA *locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							     RECDES * old_recdes, RECDES * new_recdes,
 							     const int copyarea_length_hint, int lob_create_flag);
-extern char * locator_allocate_private_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-                                                     RECDES * old_recdes, RECDES * new_recdes, const int length_hint,
-                                                     int lob_create_flag);
+extern char *locator_allocate_private_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
+						    RECDES * old_recdes, RECDES * new_recdes, const int length_hint,
+						    int lob_create_flag);
 extern int locator_other_insert_delete (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, BTID * btid,
 					bool btid_dup_key_locked, HFID * newhfid, OID * newoid,
 					HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scan_cache, int *force_count,

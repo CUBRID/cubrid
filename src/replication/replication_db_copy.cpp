@@ -31,7 +31,7 @@
 namespace cubreplication
 {
 
-  int convert_to_last_representation (cubthread::entry *thread_p, RECDES &rec_des, RECDES &new_rec_des,
+  int convert_to_last_representation (cubthread::entry *thread_p, RECDES &rec_des, record_descriptor &record,
 				      const OID &inst_oid, HEAP_CACHE_ATTRINFO &attr_info);
   copy_context::copy_context ()
   {
@@ -153,15 +153,15 @@ namespace cubreplication
 	    goto end;
 	  }
 
-	RECDES new_recdes;
-	error_code = convert_to_last_representation (thread_p, s_id.s.hsid.row_recdes, new_recdes,
+	record_descriptor record;
+	error_code = convert_to_last_representation (thread_p, s_id.s.hsid.row_recdes, record,
 		     s_id.s.hsid.curr_oid, attr_info);
 	if (error_code != NO_ERROR)
 	  {
 	    ASSERT_ERROR ();
 	    goto end;
 	  }
-	heap_objects.add_copied_recdes (new_recdes);
+	heap_objects.add_record (record);
 
 	if (heap_objects.is_pack_needed ())
 	  {
@@ -190,12 +190,12 @@ end:
    * convert_to_last_representation - converts a row record to last representation
    *
    * thread_p (in):
-   * rec_des (in/out): recdes be changed converted
-   * new_rec_des (in/out): new recdes
+   * rec_des (in): input recdes
+   * record (out): output record_descriptor containing a copy of converted RECDES
    * inst_oid(in): instance OID of record
    * attr_info(in/out): cache attributes storing representations and attribute values
    */
-  int convert_to_last_representation (cubthread::entry *thread_p, RECDES &rec_des, RECDES &new_rec_des,
+  int convert_to_last_representation (cubthread::entry *thread_p, RECDES &rec_des, record_descriptor &record,
 				      const OID &inst_oid, HEAP_CACHE_ATTRINFO &attr_info)
   {
     int error_code = NO_ERROR;
@@ -205,7 +205,8 @@ end:
 
     if (reprid == attr_info.last_classrepr->id)
       {
-	new_rec_des = rec_des;
+	/* create by copying the rec_des */
+	new (&record) record_descriptor (rec_des);
 	return error_code;
       }
 
@@ -227,6 +228,9 @@ end:
 	error_code = ER_FAILED;
 	return error_code;
       }
+
+    record.move_copied_recdes (new_recdes);
+    assert (new_recdes.data == NULL);
 
     return error_code;
   }

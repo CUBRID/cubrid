@@ -7410,7 +7410,7 @@ locator_allocate_private_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRI
 
       if (scan != S_SUCCESS)
 	{
-          db_private_free_and_init (thread_p, mem_block);
+	  db_private_free_and_init (thread_p, mem_block);
 
 	  new_recdes->data = NULL;
 	  new_recdes->area_size = 0;
@@ -7438,7 +7438,7 @@ locator_allocate_private_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRI
 	    }
 	}
     }
-  return copyarea;
+  return mem_block;
 }
 
 
@@ -7693,8 +7693,8 @@ end:
 	    {
 	      /* Aborts and simulate apply replication RBR on master node. */
 	      error_code =
-		logtb_get_tdes (thread_p)->
-		replication_log_generator.abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
+		logtb_get_tdes (thread_p)->replication_log_generator.
+		abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
 	    }
 	  else
 	    {

@@ -746,11 +746,9 @@ namespace cubreplication
       }
   }
 
-  void row_object::add_copied_recdes (RECDES &recdes)
+  void row_object::add_record (record_descriptor &record)
   {
-    m_rec_des_list.emplace_back ();
-    record_descriptor &record = m_rec_des_list.back ();
-    record.move_copied_recdes (recdes);
+    m_rec_des_list.push_back (record);
     m_data_size += record.get_recdes ().length;
   }
 
