@@ -224,12 +224,6 @@ extern int poll (struct pollfd *fds, nfds_t nfds, int timeout);
 #define _PC_PATH_MAX 5
 #define _PC_NO_TRUNC 8
 
-/*
- * MAXHOSTNAMELEN definition
- * This is defined in sys/param.h on the linux.
- */
-#define MAXHOSTNAMELEN 64
-
 typedef char *caddr_t;
 
 typedef SSIZE_T ssize_t;
@@ -348,6 +342,15 @@ extern int free_space (const char *, int);
 #define LONGJMP _longjmp
 #define SETJMP _setjmp
 #endif
+
+/**
+ * RFC1123 - Section 2.1
+ * https://tools.ietf.org/html/rfc1123
+ *
+ * Host software MUST handle host names of up to 63 characters and
+ * SHOULD handle host names of up to 255 characters.
+ */
+#define CUB_MAXHOSTNAMELEN 256	/* 255 + 1(for NULL terminator) */
 
 #define GETHOSTNAME(p, l) css_gethostname(p, l)
 

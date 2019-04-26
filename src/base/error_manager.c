@@ -1602,7 +1602,7 @@ er_log (int err_id)
   int tran_index;
   char *more_info_p;
   int ret;
-  char more_info[MAXHOSTNAMELEN + PATH_MAX + 64];
+  char more_info[CUB_MAXHOSTNAMELEN + PATH_MAX + 64];
   const char *log_file_name;
   const char *log_file_suffix;
   FILE **log_fh;

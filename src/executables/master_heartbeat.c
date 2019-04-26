@@ -108,10 +108,10 @@ static void hb_cluster_job_check_valid_ping_server (HB_JOB_ARG * arg);
 static void hb_cluster_job_demote (HB_JOB_ARG * arg);
 
 static void hb_cluster_request_heartbeat_to_all (void);
-static void hb_cluster_send_heartbeat_req (char *dest_host_name);
-static void hb_cluster_send_heartbeat_resp (struct sockaddr_in *saddr, socklen_t saddr_len, char *dest_host_name);
-static void hb_cluster_send_heartbeat_internal (struct sockaddr_in *saddr, socklen_t saddr_len, char *dest_host_name,
-						bool is_req);
+static int hb_cluster_send_heartbeat_req (char *dest_host_name);
+static int hb_cluster_send_heartbeat_resp (struct sockaddr_in *saddr, socklen_t saddr_len, char *dest_host_name);
+static int hb_cluster_send_heartbeat_internal (struct sockaddr_in *saddr, socklen_t saddr_len, char *dest_host_name,
+					       bool is_req);
 
 static void hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, socklen_t from_len);
 static bool hb_cluster_is_isolated (void);
@@ -120,8 +120,8 @@ static bool hb_cluster_check_valid_ping_server (void);
 
 static int hb_cluster_calc_score (void);
 
-static void hb_set_net_header (HBP_HEADER * header, unsigned char type, bool is_req, unsigned short len,
-			       unsigned int seq, char *dest_host_name);
+static int hb_set_net_header (HBP_HEADER * header, unsigned char type, bool is_req, unsigned short len,
+			      unsigned int seq, char *dest_host_name);
 static int hb_hostname_to_sin_addr (const char *host, struct in_addr *addr);
 static int hb_hostname_n_port_to_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * slen);
 
@@ -237,8 +237,6 @@ static int hb_help_sprint_processes_info (char *buffer, int max_length);
 static int hb_help_sprint_nodes_info (char *buffer, int max_length);
 static int hb_help_sprint_jobs_info (HB_JOB * jobs, char *buffer, int max_length);
 static int hb_help_sprint_ping_host_info (char *buffer, int max_length);
-
-static bool are_hostnames_equal (const char *hostname_a, const char *hostname_b);
 
 HB_CLUSTER *hb_Cluster = NULL;
 HB_RESOURCE *hb_Resource = NULL;
@@ -1552,7 +1550,7 @@ hb_cluster_request_heartbeat_to_all (void)
  *
  *   host_name(in):
  */
-static void
+static int
 hb_cluster_send_heartbeat_req (char *dest_host_name)
 {
   struct sockaddr_in saddr;
@@ -1560,25 +1558,24 @@ hb_cluster_send_heartbeat_req (char *dest_host_name)
 
   /* construct destination address */
   memset ((void *) &saddr, 0, sizeof (saddr));
-  if (hb_hostname_n_port_to_sockaddr (dest_host_name, prm_get_integer_value (PRM_ID_HA_PORT_ID),
-				      (struct sockaddr *) &saddr, &saddr_len) != NO_ERROR)
+  int error_code = hb_hostname_n_port_to_sockaddr (dest_host_name, prm_get_integer_value (PRM_ID_HA_PORT_ID),
+						   (struct sockaddr *) &saddr, &saddr_len);
+  if (error_code != NO_ERROR)
     {
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_hostname_n_port_to_sockaddr failed. \n");
-      return;
+      return error_code;
     }
 
-  hb_cluster_send_heartbeat_internal (&saddr, saddr_len, dest_host_name, true);
-  return;
+  return hb_cluster_send_heartbeat_internal (&saddr, saddr_len, dest_host_name, true);
 }
 
-static void
+static int
 hb_cluster_send_heartbeat_resp (struct sockaddr_in *saddr, socklen_t saddr_len, char *dest_host_name)
 {
-  hb_cluster_send_heartbeat_internal (saddr, saddr_len, dest_host_name, false);
-  return;
+  return hb_cluster_send_heartbeat_internal (saddr, saddr_len, dest_host_name, false);
 }
 
-static void
+static int
 hb_cluster_send_heartbeat_internal (struct sockaddr_in *saddr, socklen_t saddr_len, char *dest_host_name, bool is_req)
 {
   HBP_HEADER *hbp_header;
@@ -1589,21 +1586,31 @@ hb_cluster_send_heartbeat_internal (struct sockaddr_in *saddr, socklen_t saddr_l
   memset ((void *) buffer, 0, sizeof (buffer));
   hbp_header = (HBP_HEADER *) (&buffer[0]);
 
-  hb_set_net_header (hbp_header, HBP_CLUSTER_HEARTBEAT, is_req, OR_INT_SIZE, 0, dest_host_name);
+  int error_code = hb_set_net_header (hbp_header, HBP_CLUSTER_HEARTBEAT, is_req, OR_INT_SIZE, 0, dest_host_name);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
 
   p = (char *) (hbp_header + 1);
   p = or_pack_int (p, hb_Cluster->state);
 
   hb_len = sizeof (HBP_HEADER) + OR_INT_SIZE;
 
+  if (hb_Cluster->sfd == INVALID_SOCKET)
+    {
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_DATAGRAM_SOCKET, 0);
+      return ERR_CSS_TCP_DATAGRAM_SOCKET;
+    }
+
   send_len = sendto (hb_Cluster->sfd, (void *) &buffer[0], hb_len, 0, (struct sockaddr *) saddr, saddr_len);
   if (send_len <= 0)
     {
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "sendto failed. \n");
-      /* TODO : error */
+      return ER_FAILED;
     }
 
-  return;
+  return NO_ERROR;
 }
 
 
@@ -1778,10 +1785,16 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
  *   seq(in):
  *   dest_host_name(in):
  */
-static void
+static int
 hb_set_net_header (HBP_HEADER * header, unsigned char type, bool is_req, unsigned short len, unsigned int seq,
 		   char *dest_host_name)
 {
+  if (hb_Cluster->myself == NULL)
+    {
+      // if myself is NULL then cluster is not healthy
+      return ER_FAILED;
+    }
+
   header->type = type;
   header->r = (is_req) ? 1 : 0;
   header->len = htons (len);
@@ -1790,8 +1803,10 @@ hb_set_net_header (HBP_HEADER * header, unsigned char type, bool is_req, unsigne
   header->group_id[sizeof (header->group_id) - 1] = '\0';
   strncpy (header->dest_host_name, dest_host_name, sizeof (header->dest_host_name) - 1);
   header->dest_host_name[sizeof (header->dest_host_name) - 1] = '\0';
-  strncpy (header->orig_host_name, hb_Cluster->host_name, sizeof (header->orig_host_name) - 1);
+  strncpy (header->orig_host_name, hb_Cluster->myself->host_name, sizeof (header->orig_host_name) - 1);
   header->orig_host_name[sizeof (header->orig_host_name) - 1] = '\0';
+
+  return NO_ERROR;
 }
 
 /*
@@ -4636,7 +4651,7 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
 {
   int rv;
   struct sockaddr_in udp_saddr;
-  char host_name[MAXHOSTNAMELEN];
+  char host_name[CUB_MAXHOSTNAMELEN];
 
   if (nodes == NULL)
     {
@@ -5541,7 +5556,7 @@ hb_get_ping_host_info_string (char **str)
   buf_size += required_size;
 
   required_size = strlen (HA_PING_HOSTS_FORMAT_STRING);
-  required_size += MAXHOSTNAMELEN;
+  required_size += CUB_MAXHOSTNAMELEN;
   required_size += HB_PING_STR_SIZE;	/* length of ping test result */
   required_size *= hb_Cluster->num_ping_hosts;
 
@@ -5604,12 +5619,12 @@ hb_get_node_info_string (char **str, bool verbose_yn)
     }
 
   required_size = strlen (HA_NODE_INFO_FORMAT_STRING);
-  required_size += MAXHOSTNAMELEN;	/* length of node name */
+  required_size += CUB_MAXHOSTNAMELEN;	/* length of node name */
   required_size += HB_NSTATE_STR_SZ;	/* length of node state */
   buf_size += required_size;
 
   required_size = strlen (HA_NODE_FORMAT_STRING);
-  required_size += MAXHOSTNAMELEN;	/* length of node name */
+  required_size += CUB_MAXHOSTNAMELEN;	/* length of node name */
   required_size += 5;		/* length of priority */
   required_size += HB_NSTATE_STR_SZ;	/* length of node state */
   if (verbose_yn)
@@ -6602,53 +6617,6 @@ hb_help_sprint_jobs_info (HB_JOB * jobs, char *buffer, int max_length)
   p += snprintf (p, MAX ((last - p), 0), "\n");
 
   return p - buffer;
-}
-
-/**
- * Compare two host names if are equal, if one of the host names is canonical name and the other is not, then
- * only host part (e.g. for canonical name "host-1.cubrid.org" host part is "host-1") is used for comparison
- *
- * for example following hosts are equal:
- *  "host-1"            "host-1"
- *  "host-1"            "host-1.cubrid.org"
- *  "host-1.cubrid.org" "host-1"
- *  "host-1.cubrid.org" "host-1.cubrid.org"
- *
- * for example following hosts are not equal:
- *  "host-1"            "host-2"
- *  "host-1.cubrid.org" "host-2"
- *  "host-1"            "host-2.cubrid.org"
- *  "host-1.cubrid.org" "host-2.cubrid.org"
- *  "host-1.cubrid.org" "host-1.cubrid.com"
- *
- * @param hostname_a first hostname
- * @param hostname_b second hostname
- *
- * @return true if hostname_a is same as hostname_b
- */
-static bool
-are_hostnames_equal (const char *hostname_a, const char *hostname_b)
-{
-  const char *a;
-  const char *b;
-
-  for (a = hostname_a, b = hostname_b; *a && *b && (*a == *b); a++, b++)
-    ;
-
-  if (*a == '\0' && *b != '\0')
-    {
-      // if a reached the end and b does not, b must be '.'
-      return *b == '.';
-    }
-  else if (*a != '\0' && *b == '\0')
-    {
-      // if b reached the end and a does not, a must be '.'
-      return *a == '.';
-    }
-  else
-    {
-      return *a == *b;
-    }
 }
 
 int

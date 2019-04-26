@@ -516,6 +516,14 @@ mvcc_active_tran::reset_start_mvccid (MVCCID mvccid)
 }
 
 void
+mvcc_active_tran::reset_active_transactions ()
+{
+  std::memset (m_bit_area, 0, BITAREA_MAX_MEMSIZE);
+  m_bit_area_length = 0;
+  m_long_tran_mvccids_length = 0;
+}
+
+void
 mvcc_active_tran::check_valid () const
 {
 #if !defined (NDEBUG)
