@@ -107,7 +107,7 @@ namespace cubreplication
     HFID class_hfid;
     bool attr_info_inited = false;
     int error_code = NO_ERROR;
-    char *class_name;
+    char *class_name = NULL;
     LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
     assert (tdes != NULL);
@@ -175,6 +175,11 @@ namespace cubreplication
     tdes->replication_copy_context.pack_and_add_object (heap_objects);
 
 end:
+    if (class_name != NULL)
+      {
+	free_and_init (class_name);
+      }
+
     if (attr_info_inited)
       {
 	heap_attrinfo_end (thread_p, &attr_info);
