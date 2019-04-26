@@ -1024,7 +1024,7 @@ cci_url_match (const char *src, char *token[])
 		break;
 	      }
 	    std::string t = sub_by_idx.str ();
-	    strcpy (token[i], t.c_str ());
+	    strncpy (token[i], t.c_str (), n);
 	    token[i][n] = '\0';
 	  }
       }
