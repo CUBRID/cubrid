@@ -256,10 +256,6 @@ if(UNIX)
       message(SEND_ERROR "Cannot compile with gcc version ${CMAKE_CXX_COMPILER_VERSION}. Require at least 4.4.7.")
     endif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4.7)
 
-    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9.0)
-      add_definitions(-D_USE_LIBREGEX_)
-    endif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9.0)
-
     # C/C++ common flags for both debug and release build
     set(CMAKE_C_CXX_COMMON_FLAGS "-ggdb -fno-omit-frame-pointer -std=c++0x")
     # C/C++ common flags for both debug
