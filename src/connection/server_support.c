@@ -1517,6 +1517,8 @@ css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, 
 
   assert (conn != NULL);
 
+  logtb_finalize_client_request ();
+
   rc = css_send_data (conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
   return (rc == NO_ERRORS) ? 0 : rc;
 }
@@ -1541,6 +1543,8 @@ css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char
   int rc = 0;
 
   assert (conn != NULL);
+
+  logtb_finalize_client_request ();
 
   if (buffer_size > 0 && buffer != NULL)
     {
@@ -1658,6 +1662,9 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
     {
       return (css_send_reply_and_data_to_client (conn, eid, reply, reply_size, buffer1, buffer1_size));
     }
+
+  logtb_finalize_client_request ();
+
   rc =
     css_send_three_data (conn, CSS_RID_FROM_EID (eid), reply, reply_size, buffer1, buffer1_size, buffer2, buffer2_size);
 
@@ -1696,6 +1703,8 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
 						   buffer2_size));
     }
 
+  logtb_finalize_client_request ();
+
   rc = css_send_four_data (conn, CSS_RID_FROM_EID (eid), reply, reply_size, buffer1, buffer1_size, buffer2,
 			   buffer2_size, buffer3, buffer3_size);
 
@@ -1720,6 +1729,8 @@ css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer,
 
   assert (conn != NULL);
 
+  logtb_finalize_client_request ();
+
   rc = css_send_error (conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
 
   return (rc == NO_ERRORS) ? 0 : rc;
@@ -1736,6 +1747,8 @@ css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
   int rc = 0;
 
   assert (conn != NULL);
+
+  logtb_finalize_client_request ();
 
   rc = css_send_abort_request (conn, CSS_RID_FROM_EID (eid));
 

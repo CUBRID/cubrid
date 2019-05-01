@@ -337,7 +337,7 @@ namespace cubreplication
       {
 	LOG_TDES *tdes = LOG_FIND_TDES (i);
 
-	log_generator *lg = &(tdes->replication_log_generator);
+	log_generator *lg = & (tdes->replication_log_generator);
 
 	lg->set_stream (stream);
       }
@@ -527,6 +527,23 @@ namespace cubreplication
   log_generator::set_row_replication_disabled (bool disable_if_true)
   {
     m_is_row_replication_disabled = disable_if_true;
+  }
+
+  void log_generator::finalize_client_request (void)
+  {
+    assert (m_pending_to_be_added.size () == 0);
+
+    if (m_stream_entry.count_entries () == 0)
+      {
+	return;
+      }
+
+    if (log_does_allow_replication () == false)
+      {
+	return;
+      }
+
+    pack_stream_entry ();
   }
 
 #if !defined (NDEBUG) && defined (SERVER_MODE)
