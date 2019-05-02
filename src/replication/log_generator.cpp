@@ -337,7 +337,7 @@ namespace cubreplication
       {
 	LOG_TDES *tdes = LOG_FIND_TDES (i);
 
-	log_generator *lg = & (tdes->replication_log_generator);
+	log_generator *lg = &(tdes->replication_log_generator);
 
 	lg->set_stream (stream);
       }
