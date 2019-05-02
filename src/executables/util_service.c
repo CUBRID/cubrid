@@ -3826,7 +3826,7 @@ process_heartbeat_stop (HA_CONF * ha_conf, int argc, const char **argv)
   int status = NO_ERROR;
   int master_port;
   char db_name[64] = "";	/* DBNAME_LEN */
-  char remote_host_name[MAXHOSTNAMELEN] = "";
+  char remote_host_name[CUB_MAXHOSTNAMELEN] = "";
   bool immediate_stop = false;
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HEARTBEAT_NAME, PRINT_CMD_STOP);
@@ -3963,7 +3963,7 @@ process_heartbeat_status (int argc, const char **argv)
   int status = NO_ERROR;
   int master_port;
   bool verbose;
-  char remote_host_name[MAXHOSTNAMELEN];
+  char remote_host_name[CUB_MAXHOSTNAMELEN];
   int ext_opt_offset;
 
   const char *node_list_argv[] = {
@@ -4112,8 +4112,8 @@ process_heartbeat_util (HA_CONF * ha_conf, int command_type, int argc, const cha
   int sub_command_type;
 
   char db_name[64];
-  char node_name[MAXHOSTNAMELEN];
-  char host_name[MAXHOSTNAMELEN];
+  char node_name[CUB_MAXHOSTNAMELEN];
+  char host_name[CUB_MAXHOSTNAMELEN];
   char *db_name_p, *node_name_p, *host_name_p;
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HEARTBEAT_NAME, command_string (command_type));

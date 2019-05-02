@@ -103,8 +103,8 @@ struct hbp_header
   unsigned short len;
   unsigned int seq;
   char group_id[HB_MAX_GROUP_ID_LEN];
-  char orig_host_name[MAXHOSTNAMELEN];
-  char dest_host_name[MAXHOSTNAMELEN];
+  char orig_host_name[CUB_MAXHOSTNAMELEN];
+  char dest_host_name[CUB_MAXHOSTNAMELEN];
 };
 
 

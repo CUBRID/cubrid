@@ -26,6 +26,7 @@
 
 #include "mem_block.hpp"
 #include "memory_alloc.h"
+#include "memory_private_allocator.hpp"
 #include "packable_object.hpp"
 #include "storage_common.h"
 
@@ -55,14 +56,14 @@ enum class record_get_mode
   COPY_RECORD = COPY
 };
 
-class record_descriptor : cubpacking::packable_object
+class record_descriptor : public cubpacking::packable_object
 {
   public:
 
     // constructors
 
     // default
-    record_descriptor (void);
+    record_descriptor (const cubmem::block_allocator &alloc = cubmem::PRIVATE_BLOCK_ALLOCATOR);
     ~record_descriptor (void);
 
     // based on an buffers
@@ -71,7 +72,7 @@ class record_descriptor : cubpacking::packable_object
     record_descriptor (const char *data, size_t size);
 
     // based on recdes
-    record_descriptor (const recdes &rec);
+    record_descriptor (const recdes &rec, const cubmem::block_allocator &alloc = cubmem::PRIVATE_BLOCK_ALLOCATOR);
 
     // peek record from page; changes into record data will not be permitted
     int peek (cubthread::entry *thread_p, PAGE_PTR page, PGSLOTID slotid);
@@ -135,7 +136,7 @@ class record_descriptor : cubpacking::packable_object
     };
 
     recdes m_recdes;                  // underlaying recdes
-    char *m_own_data;                 // non-nil value if record descriptor is owner of data buffer; is freed on
+    cubmem::extensible_block m_own_data;
     // destruction
     data_source m_data_source;        // source of record data
 };

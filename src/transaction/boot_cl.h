@@ -52,7 +52,7 @@ typedef enum
 extern VOLID boot_User_volid;
 #if defined(CS_MODE)
 /* Server host connected */
-extern char boot_Host_connected[MAXHOSTNAMELEN];
+extern char boot_Host_connected[CUB_MAXHOSTNAMELEN];
 #endif /* CS_MODE */
 
 extern int boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info,

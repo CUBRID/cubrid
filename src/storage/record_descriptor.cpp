@@ -25,6 +25,7 @@
 
 #include "error_code.h"
 #include "memory_alloc.h"
+#include "packer.hpp"
 #include "slotted_page.h"
 
 #include <cstring>
@@ -42,18 +43,20 @@
 //  };
 //
 
-record_descriptor::record_descriptor (void)
+record_descriptor::record_descriptor (const cubmem::block_allocator &alloc /* = cubmem::PRIVATE_BLOCK_ALLOCATOR */)
+  : m_recdes ()
+  , m_own_data (alloc)
+  , m_data_source (data_source::INVALID)
 {
   m_recdes.area_size = 0;
   m_recdes.length = 0;
   m_recdes.type = REC_HOME;
   m_recdes.data = NULL;
-  m_own_data = NULL;
-  m_data_source = data_source::INVALID;
 }
 
-record_descriptor::record_descriptor (const recdes &rec)
-  : record_descriptor ()
+record_descriptor::record_descriptor (const recdes &rec,
+				      const cubmem::block_allocator &alloc /* = cubmem::PRIVATE_BLOCK_ALLOCATOR */)
+  : record_descriptor (alloc)
 {
   m_recdes.type = rec.type;
   if (rec.length != 0)
@@ -61,8 +64,8 @@ record_descriptor::record_descriptor (const recdes &rec)
       // copy content from argument
       m_recdes.area_size = rec.length;
       m_recdes.length = m_recdes.area_size;
-      m_own_data = m_recdes.data = (char *) db_private_alloc (NULL, m_recdes.area_size);
-      assert (m_own_data != NULL);
+      m_own_data.extend_to ((size_t) m_recdes.area_size);
+      m_recdes.data = m_own_data.get_ptr ();
       std::memcpy (m_recdes.data, rec.data, m_recdes.length);
 
       m_data_source = data_source::COPIED;  // we assume this is a copied record
@@ -77,10 +80,6 @@ record_descriptor::record_descriptor (const char *data, size_t size)
 
 record_descriptor::~record_descriptor (void)
 {
-  if (m_own_data != NULL)
-    {
-      db_private_free (NULL, m_own_data);
-    }
 }
 
 int
@@ -137,27 +136,9 @@ record_descriptor::resize (cubthread::entry *thread_p, std::size_t required_size
       return;
     }
 
-  if (m_own_data == NULL)
-    {
-      m_own_data = (char *) db_private_alloc (thread_p, static_cast<int> (required_size));
-      assert (m_own_data != NULL);
-      if (copy_data)
-	{
-	  assert (m_recdes.data != NULL);
-	  std::memcpy (m_own_data, m_recdes.data, m_recdes.length);
-	}
-    }
-  else
-    {
-      m_own_data = (char *) db_private_realloc (thread_p, m_own_data, static_cast<int> (required_size));
-      assert (m_own_data != NULL);
-      if (copy_data)
-	{
-	  // realloc copied data
-	}
-    }
+  m_own_data.extend_to (required_size);
 
-  m_recdes.data = m_own_data;
+  m_recdes.data = m_own_data.get_ptr ();
   m_recdes.area_size = (int) required_size;
 }
 

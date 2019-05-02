@@ -3077,8 +3077,8 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *database_name;
   const char *master_node_name;
-  char local_database_name[MAXHOSTNAMELEN];
-  char master_database_name[MAXHOSTNAMELEN];
+  char local_database_name[CUB_MAXHOSTNAMELEN];
+  char master_database_name[CUB_MAXHOSTNAMELEN];
   bool check_applied_info, check_copied_info;
   bool check_master_info, check_replica_info;
   bool verbose;
@@ -3192,7 +3192,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
       if (check_applied_info)
 	{
-	  memset (local_database_name, 0x00, MAXHOSTNAMELEN);
+	  memset (local_database_name, 0x00, CUB_MAXHOSTNAMELEN);
 	  strcpy (local_database_name, database_name);
 	  strcat (local_database_name, "@localhost");
 
@@ -3226,7 +3226,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	}
       else if (check_copied_info)
 	{
-	  memset (local_database_name, 0x00, MAXHOSTNAMELEN);
+	  memset (local_database_name, 0x00, CUB_MAXHOSTNAMELEN);
 	  strcpy (local_database_name, database_name);
 	  strcat (local_database_name, "@localhost");
 
@@ -3244,7 +3244,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
       if (check_master_info)
 	{
-	  memset (master_database_name, 0x00, MAXHOSTNAMELEN);
+	  memset (master_database_name, 0x00, CUB_MAXHOSTNAMELEN);
 	  strcpy (master_database_name, database_name);
 	  strcat (master_database_name, "@");
 	  strcat (master_database_name, master_node_name);

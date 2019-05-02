@@ -5045,6 +5045,7 @@ db_is_json_value_type (DB_TYPE type)
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NULL:
+    case DB_TYPE_SHORT:
     case DB_TYPE_INTEGER:
     case DB_TYPE_DOUBLE:
     case DB_TYPE_JSON:

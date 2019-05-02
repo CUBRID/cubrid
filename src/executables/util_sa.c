@@ -1890,7 +1890,7 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
   int dbtxt_vdes = NULL_VOLDES;
   int log_vdes = NULL_VOLDES;
   char dbtxt_label[PATH_MAX];
-  char host_name_buf[MAXHOSTNAMELEN + 1];
+  char host_name_buf[CUB_MAXHOSTNAMELEN + 1];
   DB_INFO *db = NULL;
   DB_INFO *dir = NULL;
   const char *log_prefix;
@@ -1917,7 +1917,7 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
   if (host_name == NULL)
     {
 #if 0				/* use Unix-domain socket for localhost */
-      if (GETHOSTNAME (host_name_buf, MAXHOSTNAMELEN) != 0)
+      if (GETHOSTNAME (host_name_buf, CUB_MAXHOSTNAMELEN) != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
 	  goto error;
