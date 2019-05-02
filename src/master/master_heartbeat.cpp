@@ -99,10 +99,10 @@ static void hb_cluster_job_check_valid_ping_server (HB_JOB_ARG *arg);
 static void hb_cluster_job_demote (HB_JOB_ARG *arg);
 
 static void hb_cluster_request_heartbeat_to_all (void);
-static int hb_cluster_send_heartbeat_req (char *dest_host_name);
+static int hb_cluster_send_heartbeat_req (const char *dest_host_name);
 static int hb_cluster_send_heartbeat_resp (struct sockaddr_in *saddr, socklen_t saddr_len, char *dest_host_name);
-static int hb_cluster_send_heartbeat_internal (struct sockaddr_in *saddr, socklen_t saddr_len, char *dest_host_name,
-					       bool is_req);
+static int hb_cluster_send_heartbeat_internal (struct sockaddr_in *saddr, socklen_t saddr_len,
+    const char *dest_host_name, bool is_req);
 
 static void hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, socklen_t from_len);
 static bool hb_cluster_is_isolated (void);
@@ -110,8 +110,8 @@ static bool hb_cluster_is_received_heartbeat_from_all (void);
 
 static int hb_cluster_calc_score (void);
 
-static int hb_set_net_header (HBP_HEADER * header, unsigned char type, bool is_req, unsigned short len,
-			      unsigned int seq, char *dest_host_name);
+static int hb_set_net_header (HBP_HEADER *header, unsigned char type, bool is_req, unsigned short len,
+			      unsigned int seq, const char *dest_host_name);
 static int hb_hostname_to_sin_addr (const char *host, struct in_addr *addr);
 static int hb_hostname_n_port_to_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t *slen);
 
@@ -1412,7 +1412,7 @@ hb_cluster_request_heartbeat_to_all (void)
  *   host_name(in):
  */
 static int
-hb_cluster_send_heartbeat_req (char *dest_host_name)
+hb_cluster_send_heartbeat_req (const char *dest_host_name)
 {
   struct sockaddr_in saddr;
   socklen_t saddr_len;
@@ -1420,7 +1420,7 @@ hb_cluster_send_heartbeat_req (char *dest_host_name)
   /* construct destination address */
   memset ((void *) &saddr, 0, sizeof (saddr));
   int error_code = hb_hostname_n_port_to_sockaddr (dest_host_name, prm_get_integer_value (PRM_ID_HA_PORT_ID),
-						   (struct sockaddr *) &saddr, &saddr_len);
+		   (struct sockaddr *) &saddr, &saddr_len);
   if (error_code != NO_ERROR)
     {
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_hostname_n_port_to_sockaddr failed. \n");
@@ -1437,7 +1437,8 @@ hb_cluster_send_heartbeat_resp (struct sockaddr_in *saddr, socklen_t saddr_len, 
 }
 
 static int
-hb_cluster_send_heartbeat_internal (struct sockaddr_in *saddr, socklen_t saddr_len, char *dest_host_name, bool is_req)
+hb_cluster_send_heartbeat_internal (struct sockaddr_in *saddr, socklen_t saddr_len, const char *dest_host_name,
+				    bool is_req)
 {
   HBP_HEADER *hbp_header;
   char buffer[HB_BUFFER_SZ], *p;
@@ -1642,8 +1643,8 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
  *   dest_host_name(in):
  */
 static int
-hb_set_net_header (HBP_HEADER * header, unsigned char type, bool is_req, unsigned short len, unsigned int seq,
-		   char *dest_host_name)
+hb_set_net_header (HBP_HEADER *header, unsigned char type, bool is_req, unsigned short len, unsigned int seq,
+		   const char *dest_host_name)
 {
   if (hb_Cluster->myself == NULL)
     {
@@ -1661,7 +1662,8 @@ hb_set_net_header (HBP_HEADER * header, unsigned char type, bool is_req, unsigne
 
   strncpy (header->dest_host_name, dest_host_name, sizeof (header->dest_host_name) - 1);
   header->dest_host_name[sizeof (header->dest_host_name) - 1] = '\0';
-  strncpy (header->orig_host_name, hb_Cluster->myself->host_name, sizeof (header->orig_host_name) - 1);
+
+  strncpy (header->orig_host_name, hb_Cluster->myself->get_hostname ().as_c_str (), sizeof (header->orig_host_name) - 1);
   header->orig_host_name[sizeof (header->orig_host_name) - 1] = '\0';
 
   return NO_ERROR;
@@ -3940,17 +3942,6 @@ hb_cluster_job_initialize (void)
 static int
 hb_cluster_initialize ()
 {
-  int rv;
-  struct sockaddr_in udp_saddr;
-  char host_name[CUB_MAXHOSTNAMELEN];
-
-  if (nodes == NULL)
-    {
-      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, prm_get_name (PRM_ID_HA_NODE_LIST));
-
-      return ER_PRM_BAD_VALUE;
-    }
-
   if (hb_Cluster == NULL)
     {
       hb_Cluster = new cubhb::cluster ();
