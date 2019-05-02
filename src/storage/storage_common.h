@@ -455,18 +455,6 @@ typedef enum
 #define CUBRID_MAGIC_DATABASE_BACKUP            "CUBRID/Backup_v2"
 #define CUBRID_MAGIC_DATABASE_BACKUP_OLD        "CUBRID/Backup"
 
-/* B+tree local statististical information for Uniqueness enforcement */
-typedef struct btree_unique_stats BTREE_UNIQUE_STATS;
-struct btree_unique_stats
-{
-  BTID btid;
-  int num_nulls;
-  int num_keys;
-  int num_oids;
-};
-
-#define UNIQUE_STAT_INFO_INCREMENT   10
-
 /*
  * Typedefs related to the scan data structures
  */
