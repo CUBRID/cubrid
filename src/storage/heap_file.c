@@ -38,6 +38,7 @@
 
 #include "porting.h"
 #include "porting_inline.hpp"
+#include "record_descriptor.hpp"
 #include "slotted_page.h"
 #include "overflow_file.h"
 #include "boot_sr.h"
@@ -722,7 +723,7 @@ static int heap_get_spage_type (void);
 static bool heap_is_reusable_oid (const FILE_TYPE file_type);
 
 static SCAN_CODE heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-							   RECDES * old_recdes, RECDES * new_recdes,
+							   RECDES * old_recdes, record_descriptor * new_recdes,
 							   int lob_create_flag);
 static int heap_stats_del_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid);
 static int heap_stats_del_bestspace_by_hfid (THREAD_ENTRY * thread_p, const HFID * hfid);
@@ -11434,7 +11435,7 @@ re_check:
  */
 SCAN_CODE
 heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
-				 RECDES * new_recdes)
+				 record_descriptor * new_recdes)
 {
   return heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, new_recdes, LOB_FLAG_INCLUDE_LOB);
 }
@@ -11454,7 +11455,7 @@ heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * 
  */
 SCAN_CODE
 heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-					    RECDES * old_recdes, RECDES * new_recdes)
+					    RECDES * old_recdes, record_descriptor * new_recdes)
 {
   return heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, new_recdes, LOB_FLAG_EXCLUDE_LOB);
 }
@@ -11475,7 +11476,7 @@ heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_
  */
 static SCAN_CODE
 heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
-					  RECDES * new_recdes, int lob_create_flag)
+					  record_descriptor * new_recdes, int lob_create_flag)
 {
   OR_BUF orep, *buf;
   char *ptr_bound, *ptr_varvals;
@@ -11486,10 +11487,13 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   SCAN_CODE status;
   int i;
   DB_VALUE *dbvalue = NULL;
-  int expected_size, tmp;
+  size_t expected_size;
+  int tmp;
   volatile int offset_size;
   int mvcc_wasted_space = 0, header_size;
   bool is_mvcc_class;
+
+  assert (new_recdes != NULL);
 
   /* check to make sure the attr_info has been used, it should not be empty. */
   if (attr_info->num_values == -1)
@@ -11506,10 +11510,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
     }
 
   /* Start transforming the dbvalues into disk values for the object */
-  OR_BUF_INIT2 (orep, new_recdes->data, new_recdes->area_size);
-  buf = &orep;
-
   is_mvcc_class = !mvcc_is_mvcc_disabled_class (&(attr_info->class_oid));
+
   expected_size = heap_attrinfo_get_disksize (attr_info, is_mvcc_class, &tmp);
   offset_size = tmp;
 
@@ -11526,6 +11528,12 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
   /* reserve enough space if need to add additional MVCC header info */
   expected_size += mvcc_wasted_space;
+
+resize_and_start:
+
+  new_recdes->resize_buffer (expected_size);
+  OR_BUF_INIT2 (orep, new_recdes->get_data_for_modify (), (int) expected_size);
+  buf = &orep;
 
   switch (_setjmp (buf->env))
     {
@@ -11606,8 +11614,9 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
       if (ptr_varvals + mvcc_wasted_space >= buf->endptr)
 	{
-	  new_recdes->length = -expected_size;	/* set to negative */
-	  return S_DOESNT_FIT;
+	  // is it possible?
+	  expected_size += DB_PAGESIZE;
+	  goto resize_and_start;
 	}
 
       for (i = 0; i < attr_info->num_values; i++)
@@ -11774,7 +11783,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	}
 
       /* Record the length of the object */
-      new_recdes->length = CAST_BUFLEN (ptr_varvals - buf->buffer);
+      new_recdes->set_record_length (ptr_varvals - buf->buffer);
 
       /* if not enough MVCC wasted space need to reallocate */
       if (ptr_varvals + mvcc_wasted_space < buf->endptr)
@@ -11788,29 +11797,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
        */
       /* FALLTHRU */
     case ER_TF_BUFFER_OVERFLOW:
-
-      status = S_DOESNT_FIT;
-
-      /*
-       * Give a hint of the needed space. The hint is given as a negative
-       * value in the record descriptor length. Make sure that this length
-       * is larger than the current record descriptor area.
-       */
-
-      new_recdes->length = -expected_size;	/* set to negative */
-
-      if (new_recdes->area_size > -new_recdes->length)
-	{
-	  /*
-	   * This may be an error. The estimated disk size is smaller
-	   * than the current record descriptor area size. For now assume
-	   * at least 20% above the current area descriptor. The main problem
-	   * is that heap_attrinfo_get_disksize () guess its size as much as
-	   * possible
-	   */
-	  new_recdes->length = -(int) (new_recdes->area_size * 1.20);
-	}
-      break;
+      expected_size += DB_PAGESIZE;
+      goto resize_and_start;
 
     default:
       status = S_ERROR;
