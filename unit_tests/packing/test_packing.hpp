@@ -47,6 +47,12 @@ namespace test_packing
   class po1 : public cubpacking::packable_object
   {
     public:
+      enum rgb
+      {
+	RED, GREEN, BLUE,
+	MAX
+      };
+
       int i1;
       short sh1;
       std::int64_t b1;
@@ -57,6 +63,7 @@ namespace test_packing
       std::string large_str;
       std::string str1;
       char str2[300];
+      rgb color;
 
     public:
 

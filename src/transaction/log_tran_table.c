@@ -51,6 +51,7 @@
 #include "log_lsa.hpp"
 #include "log_manager.h"
 #include "log_system_tran.hpp"
+#include "memory_private_allocator.hpp"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "xserver_interface.h"
@@ -68,6 +69,7 @@
 #if defined (SERVER_MODE)
 #include "server_support.h"
 #endif // SERVER_MODE
+#include "string_buffer.hpp"
 #if defined (SA_MODE)
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
@@ -1504,12 +1506,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     {
       log_2pc_free_coord_info (tdes);
     }
-  if (tdes->tran_unique_stats != NULL)
-    {
-      free_and_init (tdes->tran_unique_stats);
-      tdes->num_unique_btrees = 0;
-      tdes->max_unique_btrees = 0;
-    }
+  tdes->m_multiupd_stats.clear ();
   if (tdes->interrupt == (int) true)
     {
       tdes->interrupt = false;
@@ -1622,7 +1619,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->topops.max = 0;
   tdes->num_unique_btrees = 0;
   tdes->max_unique_btrees = 0;
-  tdes->tran_unique_stats = NULL;
+  tdes->m_multiupd_stats.construct ();
   tdes->num_transient_classnames = 0;
   tdes->first_save_entry = NULL;
   tdes->lob_locator_root.init ();
@@ -3478,7 +3475,7 @@ logtb_tran_find_btid_stats (THREAD_ENTRY * thread_p, const BTID * btid, bool cre
  * Note: the statistics are searched and created if they not exist.
  */
 int
-logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int n_keys, int n_oids, int n_nulls)
+logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int n_keys, int n_oids, int n_nulls)
 {
   /* search and create if not found */
   LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = logtb_tran_find_btid_stats (thread_p, btid, true);
@@ -3511,7 +3508,7 @@ logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int n
  * Note: the statistics are searched and created if they not exist.
  */
 int
-logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int n_keys, int n_oids, int n_nulls,
+logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int n_keys, int n_oids, int n_nulls,
 				bool write_to_log)
 {
   int error = NO_ERROR;
@@ -3549,6 +3546,36 @@ logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int n_keys
 
   return error;
 }
+
+// *INDENT-OFF*
+int
+logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID &btid, const btree_unique_stats &ustats,
+                                bool write_to_log)
+{
+  if (ustats.is_zero ())
+    {
+      return NO_ERROR;
+    }
+  return logtb_tran_update_unique_stats (thread_p, &btid, (int) ustats.get_key_count (), (int) ustats.get_row_count (),
+                                         (int) ustats.get_null_count (), write_to_log);
+}
+
+int
+logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const multi_index_unique_stats &multi_stats, bool write_to_log)
+{
+  int error = NO_ERROR;
+  for (const auto &it : multi_stats.get_map ())
+    {
+      error = logtb_tran_update_unique_stats (thread_p, it.first, it.second, write_to_log);
+      if (error != NO_ERROR)
+        {
+          ASSERT_ERROR ();
+          return error;
+        }
+    }
+  return NO_ERROR;
+}
+// *INDENT-ON*
 
 /*
  * logtb_tran_update_delta_hash_func () - updates statistics associated with
@@ -5467,15 +5494,16 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
       // todo - replace fields with new system values
 
       /* Tran_unique_stats */
-      ptr_val = tdes->tran_unique_stats;
-      if (ptr_val == NULL)
+      if (tdes->m_multiupd_stats.empty ())
 	{
 	  db_make_null (&vals[idx]);
 	}
       else
 	{
-	  snprintf (buf, sizeof (buf), "0x%08" PRIx64, (UINT64) ptr_val);
-	  error = db_make_string_copy (&vals[idx], buf);
+	  string_buffer strbuf (cubmem::PRIVATE_BLOCK_ALLOCATOR);
+	  tdes->m_multiupd_stats.to_string (strbuf);
+	  error = db_make_string (&vals[idx], strbuf.release_ptr ());
+	  vals[idx].need_clear = true;
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_error;

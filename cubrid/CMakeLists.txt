@@ -326,6 +326,7 @@ set(TRANSACTION_HEADERS
 set(STORAGE_SOURCES
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
+  ${STORAGE_DIR}/btree_unique.cpp
   ${STORAGE_DIR}/catalog_class.c
   ${STORAGE_DIR}/compactdb_sr.c
   ${STORAGE_DIR}/double_write_buffer.c
@@ -348,6 +349,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/system_catalog.c
   )
 set(STORAGE_HEADERS
+  ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
 )
 
