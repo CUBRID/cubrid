@@ -1658,7 +1658,6 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
     {
       return (css_send_reply_and_data_to_client (conn, eid, reply, reply_size, buffer1, buffer1_size));
     }
-
   rc =
     css_send_three_data (conn, CSS_RID_FROM_EID (eid), reply, reply_size, buffer1, buffer1_size, buffer2, buffer2_size);
 
