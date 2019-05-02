@@ -25,12 +25,13 @@
 
 #include "replication_object.hpp"
 
-#include "object_representation.h"
-#include "thread_manager.hpp"
+#include "locator_sr.h"
+#include "mem_block.hpp"
 #include "memory_alloc.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "string_buffer.hpp"
-#include "locator_sr.h"
+#include "thread_manager.hpp"
 
 #include <cstring>
 
@@ -600,7 +601,7 @@ namespace cubreplication
   rec_des_row_repl_entry::rec_des_row_repl_entry (repl_entry_type type, const char *class_name, const RECDES &rec_des,
       LOG_LSA &lsa_stamp)
     : single_row_repl_entry (type, class_name, lsa_stamp)
-    , m_rec_des (rec_des)
+    , m_rec_des (rec_des, cubmem::STANDARD_BLOCK_ALLOCATOR)
   {
   }
 
