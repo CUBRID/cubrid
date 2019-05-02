@@ -529,23 +529,6 @@ namespace cubreplication
     m_is_row_replication_disabled = disable_if_true;
   }
 
-  void log_generator::finalize_client_request (void)
-  {
-    assert (m_pending_to_be_added.size () == 0);
-
-    if (m_stream_entry.count_entries () == 0)
-      {
-	return;
-      }
-
-    if (log_does_allow_replication () == false)
-      {
-	return;
-      }
-
-    pack_stream_entry ();
-  }
-
 #if !defined (NDEBUG) && defined (SERVER_MODE)
   int
   log_generator::abort_sysop_and_simulate_apply_repl_rbr_on_master (LOG_LSA &filter_replication_lsa)

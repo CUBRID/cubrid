@@ -6076,21 +6076,6 @@ logtb_get_system_tdes (THREAD_ENTRY * thread_p)
     }
 }
 
-/*
- * logtb_finalize_client_request -
- */
-void
-logtb_finalize_client_request (void)
-{
-  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-
-  if (tdes != NULL)
-    {
-      tdes->replication_log_generator.finalize_client_request ();
-    }
-}
-
 // *INDENT-OFF*
 // C++
 

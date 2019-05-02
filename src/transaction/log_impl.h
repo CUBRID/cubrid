@@ -1068,8 +1068,6 @@ extern int logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgpt
 
 extern LOG_TDES *logtb_get_system_tdes (THREAD_ENTRY * thread_p = NULL);
 
-extern void logtb_finalize_client_request (void);
-
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation
 //////////////////////////////////////////////////////////////////////////
