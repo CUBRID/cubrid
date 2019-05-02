@@ -129,7 +129,7 @@ typedef struct boot_server_credential BOOT_SERVER_CREDENTIAL;
 struct boot_server_credential
 {
   char *db_full_name;		/* PATH_MAX */
-  char *host_name;		/* MAXHOSTNAMELEN */
+  char *host_name;		/* CUB_MAXHOSTNAMELEN */
   char *lob_path;		/* PATH_MAX + LOB_PATH_PREFIX_MAX */
   int process_id;
   OID root_class_oid;
@@ -143,7 +143,7 @@ struct boot_server_credential
   char *db_lang;
 };
 
-extern char boot_Host_name[MAXHOSTNAMELEN];
+extern char boot_Host_name[CUB_MAXHOSTNAMELEN];
 
 #define LOB_PATH_PREFIX_MAX     ES_URI_PREFIX_MAX
 #define LOB_PATH_DEFAULT_PREFIX ES_POSIX_PATH_PREFIX

@@ -1468,7 +1468,7 @@ css_process_deactivate_heartbeat (CSS_CONN_ENTRY * conn, unsigned short request_
   int result;
   char *message;
   char error_string[LINE_MAX];
-  char request_from[MAXHOSTNAMELEN] = "";
+  char request_from[CUB_MAXHOSTNAMELEN] = "";
 
   if (HA_DISABLED ())
     {
@@ -1630,7 +1630,7 @@ css_process_deact_stop_all (CSS_CONN_ENTRY * conn, unsigned short request_id, ch
 #if !defined(WINDOWS)
   int result;
   char error_string[LINE_MAX];
-  char request_from[MAXHOSTNAMELEN] = "";
+  char request_from[CUB_MAXHOSTNAMELEN] = "";
 
   if (HA_DISABLED ())
     {
@@ -2067,7 +2067,7 @@ css_send_to_my_server_the_master_hostname (const char *master_current_hostname, 
 #if !defined (WINDOWS)
   int rc = NO_ERROR, rv;
   int master_hostname_length = master_current_hostname == NULL ? 0 : strlen (master_current_hostname);
-  char master_hostname[sizeof (int) + MAXHOSTNAMELEN];
+  char master_hostname[sizeof (int) + CUB_MAXHOSTNAMELEN];
 
   if (proc == NULL || conn == NULL || IS_INVALID_SOCKET (conn->fd))
     {

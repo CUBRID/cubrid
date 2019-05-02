@@ -539,7 +539,7 @@ server_ping (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqle
 int
 server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + (OR_INT_SIZE * 3) + MAXHOSTNAMELEN) a_reply;
+  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + (OR_INT_SIZE * 3) + CUB_MAXHOSTNAMELEN) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int reply_size = OR_ALIGNED_BUF_SIZE (a_reply);
   char *ptr, *client_release, *client_host;

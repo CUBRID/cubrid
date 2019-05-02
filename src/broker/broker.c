@@ -2000,7 +2000,7 @@ insert_db_server_check_list (T_DB_SERVER * list_p, int check_list_cnt, const cha
     }
 
   strncpy (list_p[i].database_name, db_name, SRV_CON_DBNAME_SIZE - 1);
-  strncpy (list_p[i].database_host, db_host, MAXHOSTNAMELEN - 1);
+  strncpy (list_p[i].database_host, db_host, CUB_MAXHOSTNAMELEN - 1);
   list_p[i].state = -1;
 
   return i + 1;
@@ -2115,7 +2115,7 @@ server_monitor_thr_f (void *arg)
 	      strncpy (shm_appl->unusable_databases[u_index][cnt].database_name, check_list[i].database_name,
 		       SRV_CON_DBNAME_SIZE - 1);
 	      strncpy (shm_appl->unusable_databases[u_index][cnt].database_host, check_list[i].database_host,
-		       MAXHOSTNAMELEN - 1);
+		       CUB_MAXHOSTNAMELEN - 1);
 	      cnt++;
 	    }
 	}

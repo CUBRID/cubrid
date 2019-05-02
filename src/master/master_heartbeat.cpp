@@ -99,9 +99,9 @@ static void hb_cluster_job_check_valid_ping_server (HB_JOB_ARG *arg);
 static void hb_cluster_job_demote (HB_JOB_ARG *arg);
 
 static void hb_cluster_request_heartbeat_to_all (void);
-static void hb_cluster_send_heartbeat_req (const char *dest_host_name);
-static void hb_cluster_send_heartbeat_resp (struct sockaddr_in *saddr, socklen_t saddr_len, char *dest_host_name);
-static void hb_cluster_send_heartbeat_internal (struct sockaddr_in *saddr, socklen_t saddr_len,
+static int hb_cluster_send_heartbeat_req (const char *dest_host_name);
+static int hb_cluster_send_heartbeat_resp (struct sockaddr_in *saddr, socklen_t saddr_len, char *dest_host_name);
+static int hb_cluster_send_heartbeat_internal (struct sockaddr_in *saddr, socklen_t saddr_len,
     const char *dest_host_name, bool is_req);
 
 static void hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, socklen_t from_len);
@@ -110,8 +110,8 @@ static bool hb_cluster_is_received_heartbeat_from_all (void);
 
 static int hb_cluster_calc_score (void);
 
-static void hb_set_net_header (HBP_HEADER *header, unsigned char type, bool is_req, unsigned short len,
-			       unsigned int seq, const char *dest_host_name);
+static int hb_set_net_header (HBP_HEADER *header, unsigned char type, bool is_req, unsigned short len,
+			      unsigned int seq, const char *dest_host_name);
 static int hb_hostname_to_sin_addr (const char *host, struct in_addr *addr);
 static int hb_hostname_n_port_to_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t *slen);
 
@@ -1411,7 +1411,7 @@ hb_cluster_request_heartbeat_to_all (void)
  *
  *   host_name(in):
  */
-static void
+static int
 hb_cluster_send_heartbeat_req (const char *dest_host_name)
 {
   struct sockaddr_in saddr;
@@ -1419,23 +1419,24 @@ hb_cluster_send_heartbeat_req (const char *dest_host_name)
 
   /* construct destination address */
   memset ((void *) &saddr, 0, sizeof (saddr));
-  if (hb_hostname_n_port_to_sockaddr (dest_host_name, prm_get_integer_value (PRM_ID_HA_PORT_ID),
-				      (struct sockaddr *) &saddr, &saddr_len) != NO_ERROR)
+  int error_code = hb_hostname_n_port_to_sockaddr (dest_host_name, prm_get_integer_value (PRM_ID_HA_PORT_ID),
+		   (struct sockaddr *) &saddr, &saddr_len);
+  if (error_code != NO_ERROR)
     {
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_hostname_n_port_to_sockaddr failed. \n");
-      return;
+      return error_code;
     }
 
-  hb_cluster_send_heartbeat_internal (&saddr, saddr_len, dest_host_name, true);
+  return hb_cluster_send_heartbeat_internal (&saddr, saddr_len, dest_host_name, true);
 }
 
-static void
+static int
 hb_cluster_send_heartbeat_resp (struct sockaddr_in *saddr, socklen_t saddr_len, char *dest_host_name)
 {
-  hb_cluster_send_heartbeat_internal (saddr, saddr_len, dest_host_name, false);
+  return hb_cluster_send_heartbeat_internal (saddr, saddr_len, dest_host_name, false);
 }
 
-static void
+static int
 hb_cluster_send_heartbeat_internal (struct sockaddr_in *saddr, socklen_t saddr_len, const char *dest_host_name,
 				    bool is_req)
 {
@@ -1447,19 +1448,31 @@ hb_cluster_send_heartbeat_internal (struct sockaddr_in *saddr, socklen_t saddr_l
   memset ((void *) buffer, 0, sizeof (buffer));
   hbp_header = (HBP_HEADER *) (&buffer[0]);
 
-  hb_set_net_header (hbp_header, HBP_CLUSTER_HEARTBEAT, is_req, OR_INT_SIZE, 0, dest_host_name);
+  int error_code = hb_set_net_header (hbp_header, HBP_CLUSTER_HEARTBEAT, is_req, OR_INT_SIZE, 0, dest_host_name);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
 
   p = (char *) (hbp_header + 1);
   p = or_pack_int (p, hb_Cluster->state);
 
   hb_len = sizeof (HBP_HEADER) + OR_INT_SIZE;
 
+  if (hb_Cluster->sfd == INVALID_SOCKET)
+    {
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_DATAGRAM_SOCKET, 0);
+      return ERR_CSS_TCP_DATAGRAM_SOCKET;
+    }
+
   send_len = sendto (hb_Cluster->sfd, (void *) &buffer[0], hb_len, 0, (struct sockaddr *) saddr, saddr_len);
   if (send_len <= 0)
     {
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "sendto failed. \n");
-      /* TODO : error */
+      return ER_FAILED;
     }
+
+  return NO_ERROR;
 }
 
 /*
@@ -1629,10 +1642,16 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
  *   seq(in):
  *   dest_host_name(in):
  */
-static void
+static int
 hb_set_net_header (HBP_HEADER *header, unsigned char type, bool is_req, unsigned short len, unsigned int seq,
 		   const char *dest_host_name)
 {
+  if (hb_Cluster->myself == NULL)
+    {
+      // if myself is NULL then cluster is not healthy
+      return ER_FAILED;
+    }
+
   header->type = type;
   header->r = (is_req) ? 1 : 0;
   header->len = htons (len);
@@ -1644,8 +1663,10 @@ hb_set_net_header (HBP_HEADER *header, unsigned char type, bool is_req, unsigned
   strncpy (header->dest_host_name, dest_host_name, sizeof (header->dest_host_name) - 1);
   header->dest_host_name[sizeof (header->dest_host_name) - 1] = '\0';
 
-  strncpy (header->orig_host_name, hb_Cluster->hostname.as_c_str (), sizeof (header->orig_host_name) - 1);
+  strncpy (header->orig_host_name, hb_Cluster->myself->get_hostname ().as_c_str (), sizeof (header->orig_host_name) - 1);
   header->orig_host_name[sizeof (header->orig_host_name) - 1] = '\0';
+
+  return NO_ERROR;
 }
 
 /*
@@ -4607,7 +4628,7 @@ hb_get_ping_host_info_string (char **str)
   buf_size += required_size;
 
   required_size = strlen (HA_PING_HOSTS_FORMAT_STRING);
-  required_size += MAXHOSTNAMELEN;
+  required_size += CUB_MAXHOSTNAMELEN;
   required_size += HB_PING_STR_SIZE;	/* length of ping test result */
   required_size *= hb_Cluster->ping_hosts.size ();
 
@@ -4664,12 +4685,12 @@ hb_get_node_info_string (char **str, bool verbose_yn)
     }
 
   required_size = strlen (HA_NODE_INFO_FORMAT_STRING);
-  required_size += MAXHOSTNAMELEN;	/* length of node name */
+  required_size += CUB_MAXHOSTNAMELEN;	/* length of node name */
   required_size += HB_NSTATE_STR_SZ;	/* length of node state */
   buf_size += required_size;
 
   required_size = strlen (HA_NODE_FORMAT_STRING);
-  required_size += MAXHOSTNAMELEN;	/* length of node name */
+  required_size += CUB_MAXHOSTNAMELEN;	/* length of node name */
   required_size += 5;		/* length of priority */
   required_size += HB_NSTATE_STR_SZ;	/* length of node state */
   if (verbose_yn)

@@ -231,7 +231,7 @@ _op_db_login (nvplist * out, nvplist * in, int ha_mode, char *_dbmt_error)
 {
   int errcode;
   char *id, *pwd, *db_name;
-  char dbname_at_hostname[MAXHOSTNAMELEN + DB_NAME_LEN];
+  char dbname_at_hostname[CUB_MAXHOSTNAMELEN + DB_NAME_LEN];
 
   id = nv_get_val (in, "_DBID");
   pwd = nv_get_val (in, "_DBPASSWD");
@@ -390,7 +390,7 @@ cm_tsDBMTUserLogin (nvplist * in, nvplist * out, char *_dbmt_error)
   int i;
   bool isdba = false;
   T_DB_SERVICE_MODE db_mode = DB_SERVICE_MODE_NONE;
-  char dbname_at_hostname[MAXHOSTNAMELEN + DB_NAME_LEN];
+  char dbname_at_hostname[CUB_MAXHOSTNAMELEN + DB_NAME_LEN];
 
   targetid = nv_get_val (in, "targetid");
   dbname = nv_get_val (in, "dbname");
