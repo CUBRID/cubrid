@@ -137,7 +137,7 @@ clientids::set_login_name (const char *login_name_arg)
 void
 clientids::set_host_name (const char *host_name_arg)
 {
-  string_ncopy (host_name, host_name_arg, MAXHOSTNAMELEN);
+  string_ncopy (host_name, host_name_arg, CUB_MAXHOSTNAMELEN);
 }
 
 void

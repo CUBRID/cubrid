@@ -350,7 +350,7 @@ int
 css_gethostname (char *name, size_t namelen)
 {
   const char *pc_name = "PC";
-  char hostname[MAXHOSTNAMELEN];
+  char hostname[CUB_MAXHOSTNAMELEN];
   int err = 0;
 
 #if !defined(SERVER_MODE)
@@ -360,7 +360,7 @@ css_gethostname (char *name, size_t namelen)
     }
 #endif /* not SERVER_MODE */
 
-  if (gethostname (hostname, MAXHOSTNAMELEN) != SOCKET_ERROR)
+  if (gethostname (hostname, CUB_MAXHOSTNAMELEN) != SOCKET_ERROR)
     {
       if (strlen (hostname))
 	{
@@ -389,7 +389,7 @@ unsigned int
 css_gethostid (void)
 {
   struct hostent *hp;
-  char hostname[MAXHOSTNAMELEN];
+  char hostname[CUB_MAXHOSTNAMELEN];
   unsigned int inaddr;
   unsigned int retval;
 
@@ -401,7 +401,7 @@ css_gethostid (void)
 #endif /* not SERVER_MODE */
 
   retval = 0;
-  if (gethostname (hostname, MAXHOSTNAMELEN) == SOCKET_ERROR)
+  if (gethostname (hostname, CUB_MAXHOSTNAMELEN) == SOCKET_ERROR)
     {
       css_Wsa_error = CSS_ER_WINSOCK_HOSTNAME;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTNAME, 1, WSAGetLastError ());

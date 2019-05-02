@@ -408,7 +408,7 @@ LA_RECDES_POOL la_recdes_pool;
 static bool la_applier_need_shutdown = false;
 static bool la_applier_shutdown_by_signal = false;
 static char la_slave_db_name[DB_MAX_IDENTIFIER_LENGTH + 1];
-static char la_peer_host[MAXHOSTNAMELEN + 1];
+static char la_peer_host[CUB_MAXHOSTNAMELEN + 1];
 
 static bool la_enable_sql_logging = false;
 
@@ -7857,11 +7857,11 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   s = la_get_hostname_from_log_path ((char *) log_path);
   if (s)
     {
-      strncpy (la_peer_host, s, MAXHOSTNAMELEN);
+      strncpy (la_peer_host, s, CUB_MAXHOSTNAMELEN);
     }
   else
     {
-      strncpy (la_peer_host, "unknown", MAXHOSTNAMELEN);
+      strncpy (la_peer_host, "unknown", CUB_MAXHOSTNAMELEN);
     }
 
   /* init la_Info */
