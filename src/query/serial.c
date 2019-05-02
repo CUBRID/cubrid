@@ -853,10 +853,6 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
       return ER_FAILED;
     }
 
-#if defined (SERVER_MODE)
-  (void) logtb_get_current_mvccid (thread_p);
-#endif
-
   lock_mode = lock_get_object_lock (serial_oidp, serial_class_oidp, tran_index);
 
   /* need to start topop for replication Replication will recognize and realize a special type of update for serial by

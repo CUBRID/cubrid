@@ -12516,10 +12516,6 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   assert (xasl->list_id->tuple_cnt == 1);
   OID_SET_NULL (&last_cached_class_oid);
 
-#if defined (SERVER_MODE)
-  (void) logtb_get_current_mvccid (thread_p);
-#endif
-
   if (QEXEC_SEL_UPD_USE_REEVALUATION (xasl))
     {
       /* need reevaluation in this function */
