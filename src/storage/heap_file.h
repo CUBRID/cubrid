@@ -41,6 +41,7 @@
 #include "thread_compat.hpp"
 
 // forward declarations
+class multi_index_unique_stats;
 class record_descriptor;
 
 #define HFID_EQ(hfid_ptr1, hfid_ptr2) \
@@ -145,7 +146,7 @@ struct heap_scancache
   char *area;			/* Pointer to last left fixed memory allocated */
   int area_size;		/* Size of allocated area */
   int num_btids;		/* Total number of indexes defined on the scanning class */
-  BTREE_UNIQUE_STATS *index_stat_info;	/* unique-related stat info <btid,num_nulls,num_keys,num_oids> */
+  multi_index_unique_stats *m_index_stats;	// does this really belong to scan cache??
   FILE_TYPE file_type;		/* The file type of the heap file being scanned. Can be FILE_HEAP or
 				 * FILE_HEAP_REUSE_SLOTS */
   MVCC_SNAPSHOT *mvcc_snapshot;	/* mvcc snapshot */

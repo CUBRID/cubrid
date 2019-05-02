@@ -6371,10 +6371,7 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
   HEAP_SCANCACHE scan_cache;
   int scan_cache_inited = 0;
   LOG_TDES *tdes;
-  int i, s, t;
-  int malloc_size;
-  BTREE_UNIQUE_STATS *temp_info;
-  char *ptr;
+  int i;
   int force_count;
   int tran_index;
   int error_code = NO_ERROR;
@@ -6392,20 +6389,11 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 
   mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (force_area);
 
-  if (mobjs->start_multi_update && tdes->tran_unique_stats == NULL)
+  if (mobjs->start_multi_update)
     {
-      tdes->num_unique_btrees = 0;
-      tdes->max_unique_btrees = UNIQUE_STAT_INFO_INCREMENT;
-
-      malloc_size = sizeof (BTREE_UNIQUE_STATS) * UNIQUE_STAT_INFO_INCREMENT;
-
-      /* Do not use db_private_alloc */
-      tdes->tran_unique_stats = (BTREE_UNIQUE_STATS *) malloc (malloc_size);
-      if (tdes->tran_unique_stats == NULL)
-	{
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto error;
-	}
+      // todo - fix multi-update; in the meantime disable safe-guard and just clear stats
+      // assert (tdes->m_multiupd_stats.empty ());
+      tdes->m_multiupd_stats.clear ();
     }
 
   if (mobjs->num_objs > 0)
@@ -6509,92 +6497,32 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 	    }
 	}			/* end-for */
 
-      for (s = 0; s < scan_cache.num_btids; s++)
+      if (scan_cache.m_index_stats != NULL)
 	{
-	  temp_info = &(scan_cache.index_stat_info[s]);
-	  if (temp_info->num_nulls == 0 && temp_info->num_keys == 0 && temp_info->num_oids == 0)
-	    {
-	      continue;
-	    }
-	  /* non-unique index would be filtered out at above statement. */
-
-	  for (t = 0; t < tdes->num_unique_btrees; t++)
-	    {
-	      if (BTID_IS_EQUAL (&temp_info->btid, &tdes->tran_unique_stats[t].btid))
-		{
-		  break;
-		}
-	    }
-	  if (t < tdes->num_unique_btrees)
-	    {
-	      /* The same unique index has been found */
-	      tdes->tran_unique_stats[t].num_nulls += temp_info->num_nulls;
-	      tdes->tran_unique_stats[t].num_keys += temp_info->num_keys;
-	      tdes->tran_unique_stats[t].num_oids += temp_info->num_oids;
-	    }
-	  else
-	    {
-	      /* The same unique index has not been found */
-	      if (tdes->num_unique_btrees == tdes->max_unique_btrees)
-		{
-		  /* we need more space for storing unique index stat. info.  */
-		  tdes->max_unique_btrees += UNIQUE_STAT_INFO_INCREMENT;
-		  malloc_size = (sizeof (BTREE_UNIQUE_STATS) * tdes->max_unique_btrees);
-
-		  /* Do not use db_private_realloc */
-		  ptr = (char *) realloc (tdes->tran_unique_stats, malloc_size);
-		  if (ptr == NULL)
-		    {
-		      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-		      goto error;
-		    }
-		  tdes->tran_unique_stats = (BTREE_UNIQUE_STATS *) ptr;
-		}
-	      t = tdes->num_unique_btrees;
-	      BTID_COPY (&tdes->tran_unique_stats[t].btid, &temp_info->btid);
-	      tdes->tran_unique_stats[t].num_nulls = temp_info->num_nulls;
-	      tdes->tran_unique_stats[t].num_keys = temp_info->num_keys;
-	      tdes->tran_unique_stats[t].num_oids = temp_info->num_oids;
-	      tdes->num_unique_btrees++;	/* increment */
-	    }
+	  tdes->m_multiupd_stats += *scan_cache.m_index_stats;
 	}
-
       locator_end_force_scan_cache (thread_p, &scan_cache);
       scan_cache_inited = 0;
     }
 
   if (mobjs->end_multi_update)
     {
-      BTREE_UNIQUE_STATS *unique_stats = NULL;
-
-      for (s = 0; s < tdes->num_unique_btrees; s++)
+    for (const auto & it:tdes->m_multiupd_stats.get_map ())
 	{
-	  unique_stats = &tdes->tran_unique_stats[s];
-	  if (unique_stats->num_nulls == 0 && unique_stats->num_keys == 0 && unique_stats->num_oids == 0)
+	  if (!it.second.is_unique ())
 	    {
-	      continue;		/* no modification : non-unique index */
-	    }
-	  if ((unique_stats->num_nulls + unique_stats->num_keys) != unique_stats->num_oids)
-	    {
-	      BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL, &mobjs->objs.class_oid, &unique_stats->btid,
-						NULL);
+	      BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL, &mobjs->objs.class_oid, &it.first, NULL);
 	      error_code = ER_BTREE_UNIQUE_FAILED;
 	      goto error;
 	    }
-
-	  error_code =
-	    logtb_tran_update_unique_stats (thread_p, &unique_stats->btid, unique_stats->num_keys,
-					    unique_stats->num_oids, unique_stats->num_nulls, true);
+	  error_code = logtb_tran_update_unique_stats (thread_p, it.first, it.second, true);
 	  if (error_code != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      goto error;
 	    }
 	}
-
-      if (tdes->tran_unique_stats != NULL)
-	{
-	  free_and_init (tdes->tran_unique_stats);
-	}
+      tdes->m_multiupd_stats.clear ();
     }
 
   return error_code;
@@ -6605,9 +6533,9 @@ error:
       locator_end_force_scan_cache (thread_p, &scan_cache);
     }
 
-  if (tdes != NULL && tdes->tran_unique_stats != NULL)
+  if (tdes != NULL)
     {
-      free_and_init (tdes->tran_unique_stats);
+      tdes->m_multiupd_stats.clear ();
     }
 
   return error_code;
@@ -7200,6 +7128,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
   /* handle multi-update case */
   if (mobjs->start_multi_update)
     {
+      // todo - this looks badly managed.
       error_code = locator_force_for_multi_update (thread_p, force_area);
       if (error_code != NO_ERROR)
 	{
@@ -7651,7 +7580,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
   DB_VALUE *key_dbvalue, *key_ins_del = NULL;
   DB_VALUE dbvalue;
   int unique_pk;
-  BTREE_UNIQUE_STATS *unique_stat_info;
+  btree_unique_stats *unique_stat_info;
   HEAP_IDX_ELEMENTS_INFO idx_info;
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
   OR_INDEX *index;
@@ -7768,7 +7697,8 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	    {
 	      if (op_type == MULTI_ROW_UPDATE || op_type == MULTI_ROW_INSERT || op_type == MULTI_ROW_DELETE)
 		{
-		  unique_stat_info = &(scan_cache->index_stat_info[i]);
+		  assert (scan_cache->m_index_stats != NULL);
+		  unique_stat_info = &scan_cache->m_index_stats->get_stats_of (index->btid);
 		}
 	      else
 		{
@@ -8181,7 +8111,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   OR_INDEX *index = NULL;
   int i, j, k, num_btids, old_num_btids, unique_pk;
   bool found_btid = true;
-  BTREE_UNIQUE_STATS *unique_stat_info;
+  btree_unique_stats *unique_stat_info;
   HEAP_IDX_ELEMENTS_INFO new_idx_info;
   HEAP_IDX_ELEMENTS_INFO old_idx_info;
   char newbuf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_newbuf;
@@ -8428,7 +8358,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	{
 	  if (op_type == MULTI_ROW_UPDATE || op_type == MULTI_ROW_INSERT || op_type == MULTI_ROW_DELETE)
 	    {
-	      unique_stat_info = &(scan_cache->index_stat_info[i]);
+	      assert (scan_cache->m_index_stats != NULL);
+	      unique_stat_info = &scan_cache->m_index_stats->get_stats_of (index->btid);
 	    }
 	  else
 	    {
@@ -8871,7 +8802,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
   DB_VALUE *dbvalue_ptr = NULL;
   SCAN_CODE scan;
   char *new_area;
-  BTREE_UNIQUE_STATS unique_info;
+  btree_unique_stats unique_info;
   HEAP_IDX_ELEMENTS_INFO idx_info;
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
   int error_code = NO_ERROR;
@@ -8901,12 +8832,6 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (copy_rec.area_size));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
-
-  /* initialize 'unique_info' structure. */
-  BTID_COPY (&(unique_info.btid), btid);
-  unique_info.num_nulls = 0;
-  unique_info.num_keys = 0;
-  unique_info.num_oids = 0;
 
   /* Start a scan cursor */
   error_code = heap_scancache_start (thread_p, &scan_cache, hfid, class_oid, false, false, mvcc_snapshot);
@@ -9043,15 +8968,10 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
 	}
     }
 
-  if (unique_info.num_nulls != 0 || unique_info.num_keys != 0 || unique_info.num_oids != 0)
+  error_code = logtb_tran_update_unique_stats (thread_p, *btid, unique_info, true);
+  if (error_code != NO_ERROR)
     {
-      error_code =
-	logtb_tran_update_unique_stats (thread_p, btid, unique_info.num_keys, unique_info.num_oids,
-					unique_info.num_nulls, true);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
+      goto error;
     }
 
   error_code = heap_scancache_end (thread_p, &scan_cache);
