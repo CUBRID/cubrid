@@ -12517,7 +12517,9 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   OID_SET_NULL (&last_cached_class_oid);
 
   /* TODO : CBRD-22340 */
+#if defined (SERVER_MODE)
   (void) logtb_get_current_mvccid (thread_p);
+#endif
 
   if (QEXEC_SEL_UPD_USE_REEVALUATION (xasl))
     {
