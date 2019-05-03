@@ -1683,10 +1683,11 @@ logtb_finalize_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   int r;
 
-  // *INDENT-OFF*
-  tdes->client.~clientids ();
-  tdes->m_modified_classes.~tx_transient_class_registry ();
-  // *INDENT-ON*
+  /*
+   * LOG_TDES is destroyed using 'delete' operator, no need to explicity call destructor of component objects
+   * tdes->client.~clientids ();
+   * tdes->m_modified_classes.~tx_transient_class_registry ();
+   */
 
   logtb_clear_tdes (thread_p, tdes);
   logtb_free_tran_mvcc_info (tdes);
