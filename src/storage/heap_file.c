@@ -70,6 +70,8 @@
 #include "db_value_printer.hpp"
 #include "log_append.hpp"
 
+#include <set>
+
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
 #define pthread_mutex_destroy(a)
@@ -11474,6 +11476,9 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   volatile int offset_size;
   int mvcc_wasted_space = 0, header_size;
   bool is_mvcc_class;
+  // *INDENT-OFF*
+  std::set<int> incremented_attrids;
+  // *INDENT-ON*
 
   assert (new_recdes != NULL);
 
@@ -11619,20 +11624,21 @@ resize_and_start:
 	      /*
 	       * Fixed attribute
 	       * Write the fixed attributes values, if unbound, does not matter
-	       * what value is stored. We need to set the appropiate bit in the
+	       * what value is stored. We need to set the appropriate bit in the
 	       * bound bit array for fixed attributes. For variable attributes,
 	       */
 	      buf->ptr = (buf->buffer
 			  + OR_FIXED_ATTRIBUTES_OFFSET_BY_OBJ (buf->buffer, attr_info->last_classrepr->n_variable)
 			  + value->last_attrepr->location);
 
-	      if (value->do_increment)
+	      if (value->do_increment && (incremented_attrids.find (i) == incremented_attrids.end ()))
 		{
 		  if (qdata_increment_dbval (dbvalue, dbvalue, value->do_increment) != NO_ERROR)
 		    {
 		      status = S_ERROR;
 		      break;
 		    }
+		  incremented_attrids.insert (i);
 		}
 
 	      if (dbvalue == NULL || db_value_is_null (dbvalue) == true)
