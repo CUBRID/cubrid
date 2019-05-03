@@ -71,7 +71,8 @@ namespace cubstream
 
   multi_thread_stream::~multi_thread_stream ()
   {
-    assert (m_append_position - m_read_position == 0);
+    /* TODO : in single node with HA enabled, there are no readers and this assert will not hold */
+    /* assert (m_append_position - m_read_position == 0); */
   }
 
   int multi_thread_stream::init (const stream_position &start_position)
