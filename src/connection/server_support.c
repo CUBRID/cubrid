@@ -1446,15 +1446,16 @@ shutdown:
    * start to shutdown server
    */
 
+  // stop threads; in first phase we need to stop active workers, but keep log writers for a while longer to make sure
+  // all log is transfered
+  css_stop_all_workers (*thread_p, THREAD_STOP_WORKERS_EXCEPT_LOGWR);
+
+  /* replication stops after workers */
   if (!HA_DISABLED ())
     {
       cubreplication::master_node::final ();
       cubreplication::slave_node::final ();
     }
-
-  // stop threads; in first phase we need to stop active workers, but keep log writers for a while longer to make sure
-  // all log is transfered
-  css_stop_all_workers (*thread_p, THREAD_STOP_WORKERS_EXCEPT_LOGWR);
 
   /* stop vacuum threads. */
   vacuum_stop (thread_p);
