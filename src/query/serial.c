@@ -833,7 +833,9 @@ static int
 serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdesc, HEAP_CACHE_ATTRINFO * attr_info,
 			     const OID * serial_class_oidp, const OID * serial_oidp, DB_VALUE * key_val)
 {
-  cubmem::stack_block < IO_MAX_PAGE_SIZE + MAX_ALIGNMENT > copyarea;
+  // *INDENT-OFF*
+  cubmem::stack_block<IO_MAX_PAGE_SIZE> copyarea;
+  // *INDENT-ON*
   record_descriptor new_recdesc;
   SCAN_CODE scan;
   LOG_DATA_ADDR addr;

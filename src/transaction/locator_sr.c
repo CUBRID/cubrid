@@ -7181,7 +7181,9 @@ locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
   LC_COPYAREA *copyarea = NULL;
   int copyarea_length = copyarea_length_hint <= 0 ? DB_PAGESIZE : copyarea_length_hint;
   SCAN_CODE scan = S_DOESNT_FIT;
+  // *INDENT-OFF*
   record_descriptor build_record (cubmem::CSTYLE_BLOCK_ALLOCATOR);
+  // *INDENT-ON*
 
   new_recdes->data = NULL;
   new_recdes->area_size = 0;
@@ -7229,6 +7231,8 @@ locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 	  return NULL;
 	}
       std::memcpy (copyarea->mem, allocated_data, build_record.get_size ());
+
+      free (allocated_data);	// c-style allocator was used
     }
 
   *new_recdes = build_record.get_recdes ();
