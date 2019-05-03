@@ -337,7 +337,7 @@ namespace cubreplication
       {
 	LOG_TDES *tdes = LOG_FIND_TDES (i);
 
-	log_generator *lg = &(tdes->replication_log_generator);
+	log_generator *lg = & (tdes->replication_log_generator);
 
 	lg->set_stream (stream);
       }
@@ -388,69 +388,23 @@ namespace cubreplication
     /* TODO[replication] : force a group commit :
      * move this to log_manager group commit when multi-threaded apply is enabled */
     pack_group_commit_entry ();
-    m_stream_entry.set_mvccid (MVCCID_NULL);
-    // reset state
-    m_stream_entry.set_state (stream_entry_header::ACTIVE);
-  }
-
-  void
-  log_generator::on_transaction_pre_commit (void)
-  {
-    check_commit_end_tran ();
-    on_transaction_pre_finish ();
-  }
-
-  void
-  log_generator::on_transaction_pre_abort (void)
-  {
-    on_transaction_pre_finish ();
-  }
-
-  void
-  log_generator::on_transaction_pre_finish (void)
-  {
-    if (is_replication_disabled ())
-      {
-	return;
-      }
-
-    cubthread::entry *thread_p = &cubthread::get_entry ();
-    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-    LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
-
-    /* save MVCCID in pre-commit phase, after commit, the MVCCID is cleanup */
-    if (MVCCID_IS_VALID (tdes->mvccinfo.id))
-      {
-	m_stream_entry.set_mvccid (tdes->mvccinfo.id);
-      }
   }
 
   void
   log_generator::on_transaction_commit (void)
   {
+    assert (m_pending_to_be_added.size () == 0);
     on_transaction_finish (stream_entry_header::TRAN_STATE::COMMITTED);
   }
 
   void log_generator::on_sysop_commit (LOG_LSA &start_lsa)
   {
-    replication_object *repl_obj;
-    LOG_LSA highest_repl_lsa_stamp;
-    cubstream::multi_thread_stream *p_multi_thread_stream = get_stream ();
-    cubreplication::stream_entry local_stream_entry (p_multi_thread_stream);
-
     if (m_stream_entry.count_entries () == 0)
       {
 	return;
       }
 
-    /* Get the highest lsa stamp. */
-    repl_obj = m_stream_entry.get_object_at ((int) (m_stream_entry.count_entries () - 1));
-    repl_obj->get_lsa_stamp (highest_repl_lsa_stamp);
-    if (LSA_LE (&highest_repl_lsa_stamp, &start_lsa))
-      {
-	/* No object in current sysop. */
-	return;
-      }
+    cubreplication::stream_entry local_stream_entry (m_stream_entry.get_stream ());
 
     m_stream_entry.move_replication_objects_after_lsa_to_stream (start_lsa, local_stream_entry);
 #if !defined (NDEBUG)
@@ -462,13 +416,10 @@ namespace cubreplication
       }
 #endif
 
-    cubthread::entry *thread_p = &cubthread::get_entry ();
-    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-    LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+    local_stream_entry.set_mvccid (m_stream_entry.get_mvccid ());
+    local_stream_entry.set_state (stream_entry_header::ACTIVE);
 
-    MVCCID mvccid = logtb_find_current_mvccid (&cubthread::get_entry ());
-    m_stream_entry.set_mvccid (tdes->mvccinfo.id);
-    set_tran_repl_info (stream_entry_header::ACTIVE);
+    assert (MVCCID_IS_VALID (local_stream_entry.get_mvccid ()));
 
     /* Write objects in stream and then destroy them. */
     local_stream_entry.pack ();
@@ -484,16 +435,7 @@ namespace cubreplication
   void
   log_generator::on_sysop_abort (LOG_LSA &start_lsa)
   {
-    cubthread::entry *thread_p = &cubthread::get_entry ();
-    cubreplication::stream_entry *stream_entry = logtb_get_tdes (thread_p)->replication_log_generator.get_stream_entry ();
-    int count_entries = (int) stream_entry->count_entries ();
-
-    if (count_entries == 0)
-      {
-	return;
-      }
-
-    stream_entry->destroy_objects_after_lsa (start_lsa);
+    m_stream_entry.destroy_objects_after_lsa (start_lsa);
   }
 
   void
