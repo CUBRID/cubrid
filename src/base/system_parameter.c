@@ -6765,8 +6765,8 @@ prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name, con
 {
   INI_TABLE *ini;
   char sec_name[LINE_MAX];
-  char host_name[MAXHOSTNAMELEN];
-  char user_name[MAXHOSTNAMELEN];
+  char host_name[CUB_MAXHOSTNAMELEN];
+  char user_name[CUB_MAXHOSTNAMELEN];
   int error;
 
   ini = ini_parser_load (prm_file_name);
@@ -6796,11 +6796,11 @@ prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name, con
       error = prm_load_by_section (ini, "service", false, reload, prm_file_name, load_flags);
     }
   if (error == NO_ERROR && !SYSPRM_LOAD_IS_IGNORE_HA (load_flags) && PRM_HA_MODE != HA_MODE_OFF
-      && GETHOSTNAME (host_name, MAXHOSTNAMELEN) == 0)
+      && GETHOSTNAME (host_name, CUB_MAXHOSTNAMELEN) == 0)
     {
       snprintf (sec_name, LINE_MAX, "%%%s|*", host_name);
       error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, load_flags);
-      if (error == NO_ERROR && getlogin_r (user_name, MAXHOSTNAMELEN) == 0)
+      if (error == NO_ERROR && getlogin_r (user_name, CUB_MAXHOSTNAMELEN) == 0)
 	{
 	  snprintf (sec_name, LINE_MAX, "%%%s|%s", host_name, user_name);
 	  error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, load_flags);
@@ -10096,7 +10096,7 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *tz_leap_second_support_prm;
 
   char newval[LINE_MAX];
-  char host_name[MAXHOSTNAMELEN];
+  char host_name[CUB_MAXHOSTNAMELEN];
   int max_clients;
 
   /* Find the parameters that require tuning */
@@ -10344,7 +10344,7 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *tz_leap_second_support_prm;
 
   char newval[LINE_MAX];
-  char host_name[MAXHOSTNAMELEN];
+  char host_name[CUB_MAXHOSTNAMELEN];
 
   /* Find the parameters that require tuning */
   max_plan_cache_entries_prm = prm_find (PRM_NAME_XASL_CACHE_MAX_ENTRIES, NULL);

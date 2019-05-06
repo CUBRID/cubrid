@@ -294,7 +294,8 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
       const mvcc_trans_status &trans_status = m_trans_status_history[index];
 
       trans_status_version = trans_status.m_version.load ();
-      trans_status.m_active_mvccs.copy_to (tdes.mvccinfo.snapshot.m_active_mvccs);
+      trans_status.m_active_mvccs.copy_to (tdes.mvccinfo.snapshot.m_active_mvccs,
+					   mvcc_active_tran::copy_safety::THREAD_UNSAFE);
       /* load statistics temporary disabled need to be enabled when activate count optimization */
 #if 0
       /* load global statistics. This must take place here and nowhere else. */
@@ -310,7 +311,16 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
 	  // no version change; copying status was successful
 	  break;
 	}
+      else
+	{
+	  // a failed copy may break data validity; to make sure next copy is not affected, it is better to reset
+	  // bit area.
+	  tdes.mvccinfo.snapshot.m_active_mvccs.reset_active_transactions ();
+	}
     }
+
+  // tdes.mvccinfo.snapshot.m_active_mvccs was not checked because it was not safe; now it is
+  tdes.mvccinfo.snapshot.m_active_mvccs.check_valid ();
 
   highest_completed_mvccid = tdes.mvccinfo.snapshot.m_active_mvccs.compute_highest_completed_mvccid ();
   MVCCID_FORWARD (highest_completed_mvccid);
@@ -431,7 +441,8 @@ mvcctable::next_trans_status_start (mvcc_trans_status::version_type &next_versio
 void
 mvcctable::next_tran_status_finish (mvcc_trans_status &next_trans_status, size_t next_index)
 {
-  m_current_trans_status.m_active_mvccs.copy_to (next_trans_status.m_active_mvccs);
+  m_current_trans_status.m_active_mvccs.copy_to (next_trans_status.m_active_mvccs,
+      mvcc_active_tran::copy_safety::THREAD_SAFE);
   next_trans_status.m_last_completed_mvccid = m_current_trans_status.m_last_completed_mvccid;
   next_trans_status.m_event_type = m_current_trans_status.m_event_type;
   m_trans_status_history_position.store (next_index);

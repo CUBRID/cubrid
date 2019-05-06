@@ -298,8 +298,15 @@ extern "C"
 	// do nothing
 	return;
       }
-     *dst = *src;
+
+    memcpy (dst, src, sizeof (DB_VALUE));
     dst->need_clear = false;
+
+    if (DB_IS_NULL (src))
+      {
+	// avoid checking type if db_val is null
+	return;
+      }
 
     DB_TYPE type = db_value_domain_type (src);
     if (type == DB_TYPE_STRING || type == DB_TYPE_VARNCHAR)

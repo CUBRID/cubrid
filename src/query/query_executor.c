@@ -321,17 +321,6 @@ struct parent_pos_info
   PARENT_POS_INFO *stack;
 };
 
-/* used for unique statistics update in multi-table delete*/
-typedef struct btree_unique_stats_update_info BTREE_UNIQUE_STATS_UPDATE_INFO;
-struct btree_unique_stats_update_info
-{
-  int num_unique_btrees;	/* number of used elements in unique_stat_info array */
-  int max_unique_btrees;	/* number of allocated elements in unique_stat_info array */
-  bool scan_cache_inited;	/* true if scan_cache member has valid data */
-  HEAP_SCANCACHE scan_cache;	/* scan cache */
-  BTREE_UNIQUE_STATS *unique_stat_info;	/* array of statistical info */
-};
-
 /* used for deleting lob files */
 typedef struct del_lob_info DEL_LOB_INFO;
 struct del_lob_info
@@ -362,7 +351,9 @@ struct upddel_class_info_internal
   int num_lob_attrs;		/* number of lob attributes */
   int *lob_attr_ids;		/* lob attribute ids */
   DEL_LOB_INFO *crt_del_lob_info;	/* DEL_LOB_INFO for current class_oid */
-  BTREE_UNIQUE_STATS_UPDATE_INFO unique_stats;	/* unique indexes statistics */
+  multi_index_unique_stats m_unique_stats;
+  HEAP_SCANCACHE m_scancache;
+  bool m_inited_scancache;
   int extra_assign_reev_cnt;	/* size of mvcc_extra_assign_reev in elements */
   UPDDEL_MVCC_COND_REEVAL **mvcc_extra_assign_reev;	/* classes in the select list that are referenced in
 							 * assignments to the attributes of current class and are not
@@ -561,11 +552,13 @@ static int qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * 
 static void qexec_clear_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static int qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				   ANALYTIC_EVAL_TYPE * analytic_eval, QFILE_TUPLE_RECORD * tplrec, bool is_last);
-static int qexec_update_btree_unique_stats_info (THREAD_ENTRY * thread_p, BTREE_UNIQUE_STATS_UPDATE_INFO * info);
+static void qexec_update_btree_unique_stats_info (THREAD_ENTRY * thread_p, multi_index_unique_stats * info,
+						  const HEAP_SCANCACHE * scan_cache);
 static int qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, VAL_DESCR * vd,
 			     SCAN_OPERATION_TYPE scan_op_type);
 static int qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p, PRUNING_CONTEXT * pcontext);
-static int qexec_process_unique_stats (THREAD_ENTRY * thread_p, OID * class_oid, UPDDEL_CLASS_INFO_INTERNAL * class_);
+static int qexec_process_unique_stats (THREAD_ENTRY * thread_p, const OID * class_oid,
+				       UPDDEL_CLASS_INFO_INTERNAL * class_);
 static SCAN_CODE qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec);
 
 static int qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
@@ -8931,8 +8924,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	      if (class_oid
 		  && (!OID_EQ (&internal_class->prev_class_oid, class_oid)
 		      || (!should_delete && BTREE_IS_MULTI_ROW_OP (op_type) && upd_cls->has_uniques
-			  && internal_class->scan_cache != NULL
-			  && internal_class->scan_cache->index_stat_info == NULL)))
+			  && internal_class->scan_cache != NULL && internal_class->scan_cache->m_index_stats == NULL)))
 		{
 		  /* Load internal_class object with information for class_oid */
 		  error =
@@ -9393,77 +9385,22 @@ exit_on_error:
 }
 
 /*
- * qexec_update_btree_unique_stats_info () - updates statistical information
- *	structure
+ * qexec_update_btree_unique_stats_info () - updates statistical information structure
  *   return: NO_ERROR or ER_code
  *   thread_p(in)   :
  *   info(in)     : structure to update
  */
-static int
-qexec_update_btree_unique_stats_info (THREAD_ENTRY * thread_p, BTREE_UNIQUE_STATS_UPDATE_INFO * info)
+static void
+qexec_update_btree_unique_stats_info (THREAD_ENTRY * thread_p, multi_index_unique_stats * info,
+				      const HEAP_SCANCACHE * scan_cache)
 {
-  int s, t;
-  BTREE_UNIQUE_STATS *temp_info = NULL;
-  int malloc_size;
-  char *ptr;
-  BTREE_UNIQUE_STATS *unique_stat_info = info->unique_stat_info;
-  HEAP_SCANCACHE *scan_cache = &info->scan_cache;
-  int num_unique_btrees = info->num_unique_btrees;
-  int max_unique_btrees = info->max_unique_btrees;
+  assert (info != NULL && scan_cache != NULL);
 
-  for (s = 0; s < scan_cache->num_btids; s++)
+  if (scan_cache->m_index_stats != NULL)
     {
-      temp_info = &(scan_cache->index_stat_info[s]);
-      if (temp_info->num_nulls == 0 && temp_info->num_keys == 0 && temp_info->num_oids == 0)
-	{
-	  continue;
-	}
-      /* non-unique index would be filtered out at above statement. */
-
-      for (t = 0; t < num_unique_btrees; t++)
-	{
-	  if (BTID_IS_EQUAL (&temp_info->btid, &unique_stat_info[t].btid))
-	    {
-	      break;
-	    }
-	}
-      if (t < num_unique_btrees)
-	{
-	  /* The same unique index has been found */
-	  unique_stat_info[t].num_nulls += temp_info->num_nulls;
-	  unique_stat_info[t].num_keys += temp_info->num_keys;
-	  unique_stat_info[t].num_oids += temp_info->num_oids;
-	}
-      else
-	{
-	  /* The same unique index has not been found */
-	  if (num_unique_btrees == max_unique_btrees)
-	    {
-	      /* need more space for storing the local stat info */
-	      max_unique_btrees += UNIQUE_STAT_INFO_INCREMENT;
-	      malloc_size = sizeof (BTREE_UNIQUE_STATS) * max_unique_btrees;
-	      ptr = (char *) db_private_realloc (thread_p, unique_stat_info, malloc_size);
-	      if (ptr == NULL)
-		{
-		  info->num_unique_btrees = num_unique_btrees;
-		  return ER_FAILED;
-		}
-	      unique_stat_info = (BTREE_UNIQUE_STATS *) ptr;
-	      info->unique_stat_info = unique_stat_info;
-	      info->max_unique_btrees = max_unique_btrees;
-	    }
-	  t = num_unique_btrees;
-	  BTID_COPY (&unique_stat_info[t].btid, &temp_info->btid);
-	  unique_stat_info[t].num_nulls = temp_info->num_nulls;
-	  unique_stat_info[t].num_keys = temp_info->num_keys;
-	  unique_stat_info[t].num_oids = temp_info->num_oids;
-	  num_unique_btrees++;	/* increment */
-	}
-    }				/* for */
-  info->num_unique_btrees = num_unique_btrees;
-  return NO_ERROR;
+      (*info) += (*scan_cache->m_index_stats);
+    }
 }
-
 
 /*
  * qexec_process_unique_stats () - verify unique statistic information for
@@ -9474,48 +9411,29 @@ qexec_update_btree_unique_stats_info (THREAD_ENTRY * thread_p, BTREE_UNIQUE_STAT
  * internal_class (in) :
  */
 static int
-qexec_process_unique_stats (THREAD_ENTRY * thread_p, OID * class_oid, UPDDEL_CLASS_INFO_INTERNAL * internal_class)
+qexec_process_unique_stats (THREAD_ENTRY * thread_p, const OID * class_oid, UPDDEL_CLASS_INFO_INTERNAL * internal_class)
 {
-  BTREE_UNIQUE_STATS *unique_stat_info, *unique_stat1 = NULL;
-  int error = NO_ERROR, i;
+  assert (class_oid != NULL && internal_class != NULL);
 
-  if (internal_class->unique_stats.scan_cache_inited)
+  int error = NO_ERROR;
+
+  if (internal_class->m_inited_scancache)
     {
       /* Accumulate current statistics */
-      error = qexec_update_btree_unique_stats_info (thread_p, &internal_class->unique_stats);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
+      qexec_update_btree_unique_stats_info (thread_p, &internal_class->m_unique_stats, &internal_class->m_scancache);
     }
 
-  unique_stat_info = internal_class->unique_stats.unique_stat_info;
-
-  /* When uniqueness checking based on each local statistical information turns out as valid, the local statistical
-   * information must be reflected into the global statistical information kept in the root page of corresponding
-   * unique index. */
-  for (i = 0; i < internal_class->unique_stats.num_unique_btrees; i++)
+for (const auto & it:internal_class->m_unique_stats.get_map ())
     {
-      unique_stat1 = &unique_stat_info[i];
-      /* If local statistical information is not valid, skip it. */
-      if (unique_stat1->num_nulls == 0 && unique_stat1->num_keys == 0 && unique_stat1->num_oids == 0)
+      if (!it.second.is_unique ())
 	{
-	  /* no modification : non-unique index */
-	  continue;
+	  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL, class_oid, &it.first, NULL);
+	  return ER_BTREE_UNIQUE_FAILED;
 	}
-      /* uniqueness checking based on local statistical information */
-      if ((unique_stat1->num_nulls + unique_stat1->num_keys) != unique_stat1->num_oids)
-	{
-	  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL, class_oid, &unique_stat1->btid, NULL);
-	  return ER_FAILED;
-	}
-
-      /* In MVCC, at this point, we will update only in-memory statistics */
-      error =
-	logtb_tran_update_unique_stats (thread_p, &unique_stat1->btid, unique_stat1->num_keys, unique_stat1->num_oids,
-					unique_stat1->num_nulls, true);
+      error = logtb_tran_update_unique_stats (thread_p, it.first, it.second, true);
       if (error != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  return error;
 	}
     }
@@ -9523,8 +9441,7 @@ qexec_process_unique_stats (THREAD_ENTRY * thread_p, OID * class_oid, UPDDEL_CLA
 }
 
 /*
- * qexec_process_partition_unique_stats () - process unique statistics on a
- *					     partitioned class
+ * qexec_process_partition_unique_stats () - process unique statistics on a partitioned class
  * return : error code or NO_ERROR
  * thread_p (in) :
  * pcontext (in) :
@@ -9537,59 +9454,58 @@ qexec_process_unique_stats (THREAD_ENTRY * thread_p, OID * class_oid, UPDDEL_CLA
 static int
 qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p, PRUNING_CONTEXT * pcontext)
 {
-  PRUNING_SCAN_CACHE *scan_cache = NULL;
+  assert (pcontext != NULL);
+
+  PRUNING_SCAN_CACHE *pruned_scan_cache = NULL;
   SCANCACHE_LIST *node = NULL;
-  BTREE_UNIQUE_STATS *unique_stat_info, *unique_stat = NULL;
-  int error = NO_ERROR, i;
+  int error = NO_ERROR;
 
   for (node = pcontext->scan_cache_list; node != NULL; node = node->next)
     {
-      scan_cache = &node->scan_cache;
-      if (!scan_cache->is_scan_cache_started)
+      // *INDENT-OFF*
+      pruned_scan_cache = &node->scan_cache;
+      if (!pruned_scan_cache->is_scan_cache_started)
 	{
 	  continue;
 	}
-      unique_stat_info = scan_cache->scan_cache.index_stat_info;
-      if (unique_stat_info != NULL)
+
+      HEAP_SCANCACHE &scan_cache = pruned_scan_cache->scan_cache;
+      if (scan_cache.m_index_stats != NULL)
 	{
-	  for (i = 0; i < scan_cache->scan_cache.num_btids; i++)
-	    {
-	      unique_stat = &unique_stat_info[i];
-	      if (unique_stat->num_keys == 0 && unique_stat->num_nulls == 0 && unique_stat->num_oids == 0)
-		{
-		  continue;
-		}
-	      if ((unique_stat->num_nulls + unique_stat->num_keys) != unique_stat->num_oids)
-		{
-		  char *index_name = NULL;
-		  error =
-		    heap_get_indexinfo_of_btid (thread_p, &scan_cache->scan_cache.node.class_oid, &unique_stat->btid,
-						NULL, NULL, NULL, NULL, &index_name, NULL);
-		  if (error != NO_ERROR)
-		    {
-		      return error;
-		    }
+          for (const auto &it : scan_cache.m_index_stats->get_map ())
+            {
+              if (!it.second.is_unique ())
+                {
+                  char *index_name = NULL;
+                  error = heap_get_indexinfo_of_btid (thread_p, &scan_cache.node.class_oid, &it.first, NULL, NULL, NULL,
+                                                      NULL, &index_name, NULL);
+                  if (error != NO_ERROR)
+                    {
+                      ASSERT_ERROR ();
+                      return error;
+                    }
 
-		  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL, &scan_cache->scan_cache.node.class_oid,
-						    &unique_stat->btid, index_name);
+                  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL, &scan_cache.node.class_oid, &it.first,
+                                                    index_name);
 
-		  if (index_name)
-		    {
-		      free_and_init (index_name);
-		    }
-		  return ER_FAILED;
-		}
+                  if (index_name != NULL)
+                    {
+                      free_and_init (index_name);
+                    }
+                  return ER_BTREE_UNIQUE_FAILED;
+                }
 
-	      error =
-		logtb_tran_update_unique_stats (thread_p, &unique_stat->btid, unique_stat->num_keys,
-						unique_stat->num_oids, unique_stat->num_nulls, true);
-	      if (error != NO_ERROR)
-		{
-		  return error;
-		}
-	    }
+              error = logtb_tran_update_unique_stats (thread_p, it.first, it.second, true);
+              if (error != NO_ERROR)
+                {
+                  ASSERT_ERROR ();
+                  return error;
+                }
+            }
 	}
+      // *INDENT-ON*
     }
+
   return NO_ERROR;
 }
 
@@ -11614,31 +11530,26 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
     }
   else
     {
-      BTREE_UNIQUE_STATS *unique_stats = NULL;
-
-      for (k = 0; k < scan_cache.num_btids; k++)
-	{
-	  unique_stats = &scan_cache.index_stat_info[k];
-	  if (unique_stats->num_nulls == 0 && unique_stats->num_keys == 0 && unique_stats->num_oids == 0)
+      // *INDENT-OFF*
+      if (scan_cache.m_index_stats != NULL)
+        {
+          for (const auto &it : scan_cache.m_index_stats->get_map ())
 	    {
-	      /* No modification to be done. Either a non-unique index or the delete/insert operations canceled each
-	       * other out. */
-	      continue;
-	    }
+              if (!it.second.is_unique ())
+	        {
+                  // set no error?
+	          GOTO_EXIT_ON_ERROR;
+	        }
 
-	  if (unique_stats->num_nulls + unique_stats->num_keys != unique_stats->num_oids)
-	    {
-	      GOTO_EXIT_ON_ERROR;
+	      error = logtb_tran_update_unique_stats (thread_p, it.first, it.second, true);
+	      if (error != NO_ERROR)
+	        {
+                  ASSERT_ERROR ();
+	          GOTO_EXIT_ON_ERROR;
+	        }
 	    }
-
-	  error =
-	    logtb_tran_update_unique_stats (thread_p, &unique_stats->btid, unique_stats->num_keys,
-					    unique_stats->num_oids, unique_stats->num_nulls, true);
-	  if (error != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-	}
+        }
+      // *INDENT-ON*
     }
 
   if (func_indx_preds)
@@ -12286,7 +12197,6 @@ qexec_execute_increment (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, HF
 	  error = NO_ERROR;
 	}
       else if (error != NO_ERROR)
-
 	{
 	  error = ER_FAILED;
 	  goto wrapup;
@@ -23064,7 +22974,6 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * quer
       return ER_FAILED;
     }
 
-  size = UNIQUE_STAT_INFO_INCREMENT * sizeof (BTREE_UNIQUE_STATS);
   /* initialize internal structures */
   for (i = 0; i < count; i++)
     {
@@ -23079,29 +22988,17 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * quer
       OID_SET_NULL (&class_->prev_class_oid);
       class_->is_attr_info_inited = 0;
 
-      class_->unique_stats.unique_stat_info = NULL;
-
       class_->num_lob_attrs = 0;
       class_->lob_attr_ids = NULL;
       class_->crt_del_lob_info = NULL;
+      class_->m_unique_stats.construct ();
       class_->extra_assign_reev_cnt = 0;
       class_->mvcc_extra_assign_reev = NULL;
       class_->mvcc_reev_assigns = NULL;
 
       partition_init_pruning_context (&class_->context);
 
-      class_->unique_stats.scan_cache_inited = false;
-      class_->unique_stats.num_unique_btrees = 0;
-      class_->unique_stats.max_unique_btrees = UNIQUE_STAT_INFO_INCREMENT;
-      class_->unique_stats.unique_stat_info = NULL;
-      if (query_class->has_uniques)
-	{
-	  class_->unique_stats.unique_stat_info = (BTREE_UNIQUE_STATS *) db_private_alloc (thread_p, size);
-	  if (class_->unique_stats.unique_stat_info == NULL)
-	    {
-	      goto exit_on_error;
-	    }
-	}
+      class_->m_inited_scancache = false;
 
       if (query_class->needs_pruning)
 	{
@@ -23235,14 +23132,11 @@ qexec_clear_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO_INTERNA
   for (i = 0; i < count; i++)
     {
       cls_int = &classes[i];
-      if (cls_int->unique_stats.scan_cache_inited)
+      if (cls_int->m_inited_scancache)
 	{
-	  locator_end_force_scan_cache (thread_p, &cls_int->unique_stats.scan_cache);
+	  locator_end_force_scan_cache (thread_p, &cls_int->m_scancache);
 	}
-      if (cls_int->unique_stats.unique_stat_info != NULL)
-	{
-	  db_private_free_and_init (thread_p, cls_int->unique_stats.unique_stat_info);
-	}
+      cls_int->m_unique_stats.clear ();
       if (cls_int->is_attr_info_inited)
 	{
 	  heap_attrinfo_end (thread_p, &cls_int->attr_info);
@@ -23255,6 +23149,7 @@ qexec_clear_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO_INTERNA
 	{
 	  db_private_free_and_init (thread_p, cls_int->mvcc_extra_assign_reev);
 	}
+      cls_int->m_unique_stats.destruct ();
     }
 }
 
@@ -23398,31 +23293,28 @@ qexec_upddel_setup_current_class (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * q
     }
   else
     {
-      if (internal_class->unique_stats.scan_cache_inited)
+      if (internal_class->m_inited_scancache)
 	{
 	  if (query_class->has_uniques && BTREE_IS_MULTI_ROW_OP (op_type))
 	    {
 	      /* In this case, consider class hierarchy as well as single class. Therefore, construct the local
 	       * statistical information by collecting the statistical information during scanning on each class of
 	       * class hierarchy. */
-	      error = qexec_update_btree_unique_stats_info (thread_p, &internal_class->unique_stats);
-	      if (error != NO_ERROR)
-		{
-		  return error;
-		}
+	      qexec_update_btree_unique_stats_info (thread_p, &internal_class->m_unique_stats,
+						    &internal_class->m_scancache);
 	    }
-	  (void) locator_end_force_scan_cache (thread_p, &internal_class->unique_stats.scan_cache);
-	  internal_class->unique_stats.scan_cache_inited = false;
+	  (void) locator_end_force_scan_cache (thread_p, &internal_class->m_scancache);
+	  internal_class->m_inited_scancache = false;
 	}
       error =
-	locator_start_force_scan_cache (thread_p, &internal_class->unique_stats.scan_cache, internal_class->class_hfid,
+	locator_start_force_scan_cache (thread_p, &internal_class->m_scancache, internal_class->class_hfid,
 					internal_class->class_oid, op_type);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
-      internal_class->unique_stats.scan_cache_inited = true;
-      internal_class->scan_cache = &internal_class->unique_stats.scan_cache;
+      internal_class->m_inited_scancache = true;
+      internal_class->scan_cache = &internal_class->m_scancache;
       internal_class->scan_cache->mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
 
     }

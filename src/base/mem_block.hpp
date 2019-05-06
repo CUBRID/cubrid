@@ -136,6 +136,7 @@ namespace cubmem
 
       inline void extend_by (size_t additional_bytes);
       inline void extend_to (size_t total_bytes);
+      inline void freemem ();
 
       inline char *get_ptr ();
       inline const char *get_read_ptr () const;
@@ -317,6 +318,12 @@ namespace cubmem
 	return;
       }
     extend_by (total_bytes - m_block.dim);
+  }
+
+  void
+  extensible_block::freemem ()
+  {
+    m_allocator->m_dealloc_f (m_block);
   }
 
   char *

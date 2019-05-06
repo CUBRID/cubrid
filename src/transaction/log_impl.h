@@ -33,6 +33,7 @@
 #endif // not SERVER/SA modes
 
 #include "boot.h"
+#include "btree_unique.hpp"
 #include "client_credentials.hpp"
 #include "config.h"
 #include "connection_globals.h"
@@ -496,8 +497,7 @@ struct log_tdes
 				 * this site is a participant. */
   int num_unique_btrees;	/* # of unique btrees contained in unique_stat_info array */
   int max_unique_btrees;	/* size of unique_stat_info array */
-  BTREE_UNIQUE_STATS *tran_unique_stats;	/* Store local statistical info for multiple row update performed by
-						 * client. */
+  multi_index_unique_stats m_multiupd_stats;
 #if defined(_AIX)
   sig_atomic_t interrupt;
 #else				/* _AIX */
@@ -1011,9 +1011,17 @@ extern void logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool 
 extern void logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 
 extern LOG_TRAN_CLASS_COS *logtb_tran_find_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid, bool create);
-extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int n_keys, int n_oids, int n_nulls,
-					   bool write_to_log);
-extern int logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int n_keys, int n_oids,
+extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int n_keys, int n_oids,
+					   int n_nulls, bool write_to_log);
+
+// *INDENT-OFF*
+extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID &btid, const btree_unique_stats &ustats,
+                                           bool write_to_log);
+extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const multi_index_unique_stats &multi_stats,
+                                           bool write_to_log);
+// *INDENT-ON*
+
+extern int logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int n_keys, int n_oids,
 						int n_nulls);
 extern LOG_TRAN_BTID_UNIQUE_STATS *logtb_tran_find_btid_stats (THREAD_ENTRY * thread_p, const BTID * btid, bool create);
 extern int logtb_tran_prepare_count_optim_classes (THREAD_ENTRY * thread_p, const char **classes,

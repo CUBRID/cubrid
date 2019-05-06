@@ -143,7 +143,7 @@ BOOT_SERVER_STATUS boot_Server_status = BOOT_SERVER_DOWN;
 
 #if defined(SERVER_MODE)
 /* boot_cl.c:boot_Host_name[] if CS_MODE and SA_MODE */
-char boot_Host_name[MAXHOSTNAMELEN] = "";
+char boot_Host_name[CUB_MAXHOSTNAMELEN] = "";
 #endif /* SERVER_MODE */
 
 /*
@@ -2172,11 +2172,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	}
     }
 
-  if (GETHOSTNAME (boot_Host_name, MAXHOSTNAMELEN) != 0)
+  if (GETHOSTNAME (boot_Host_name, CUB_MAXHOSTNAMELEN) != 0)
     {
       strcpy (boot_Host_name, "(unknown)");
     }
-  boot_Host_name[MAXHOSTNAMELEN - 1] = '\0';	/* bullet proof */
+  boot_Host_name[CUB_MAXHOSTNAMELEN - 1] = '\0';	/* bullet proof */
 
   COMPOSE_FULL_NAME (boot_Db_full_name, sizeof (boot_Db_full_name), db->pathname, db_name);
   error_code = boot_make_session_server_key ();
@@ -3793,7 +3793,7 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
   char new_lob_pathbuf[PATH_MAX];
   char new_volext_pathbuf[PATH_MAX];
   char fixed_pathbuf[PATH_MAX];
-  char new_db_server_host_buf[MAXHOSTNAMELEN + 1];
+  char new_db_server_host_buf[CUB_MAXHOSTNAMELEN + 1];
   char dbtxt_label[PATH_MAX];
   int dbtxt_vdes = NULL_VOLDES;
   int error_code = NO_ERROR;
@@ -3915,7 +3915,7 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
   if (new_db_server_host == NULL)
     {
 #if 0				/* use Unix-domain socket for localhost */
-      if (GETHOSTNAME (new_db_server_host_buf, MAXHOSTNAMELEN) != 0)
+      if (GETHOSTNAME (new_db_server_host_buf, CUB_MAXHOSTNAMELEN) != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
 	  error_code = ER_BO_UNABLE_TO_FIND_HOSTNAME;
@@ -4184,7 +4184,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
   DB_INFO *dir = NULL;
   DB_INFO *db = NULL;
   const char *newlog_prefix;
-  char new_db_server_host_buf[MAXHOSTNAMELEN + 1];
+  char new_db_server_host_buf[CUB_MAXHOSTNAMELEN + 1];
   char new_db_fullname[PATH_MAX];
   char new_db_pathbuf[PATH_MAX];
   char new_log_pathbuf[PATH_MAX];
@@ -4273,7 +4273,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
   if (new_db_server_host == NULL)
     {
 #if 0				/* use Unix-domain socekt for localhost */
-      if (GETHOSTNAME (new_db_server_host_buf, MAXHOSTNAMELEN) != 0)
+      if (GETHOSTNAME (new_db_server_host_buf, CUB_MAXHOSTNAMELEN) != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
 	  error_code = ER_BO_UNABLE_TO_FIND_HOSTNAME;
