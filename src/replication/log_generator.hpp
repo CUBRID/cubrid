@@ -152,6 +152,7 @@ namespace cubreplication
 
       void set_row_replication_disabled (bool disable_if_true);
       bool is_row_replication_disabled (void);
+      void apply_tran_mvccid (void);
 
 #if !defined(NDEBUG) && defined (SERVER_MODE)
       int abort_sysop_and_simulate_apply_repl_rbr_on_master (LOG_LSA &filter_replication_lsa);

@@ -337,7 +337,7 @@ namespace cubreplication
       {
 	LOG_TDES *tdes = LOG_FIND_TDES (i);
 
-	log_generator *lg = & (tdes->replication_log_generator);
+	log_generator *lg = &tdes->replication_log_generator;
 
 	lg->set_stream (stream);
       }
@@ -416,6 +416,11 @@ namespace cubreplication
       }
 #endif
 
+    if (local_stream_entry.count_entries () == 0)
+      {
+	return;
+      }
+
     local_stream_entry.set_mvccid (m_stream_entry.get_mvccid ());
     local_stream_entry.set_state (stream_entry_header::ACTIVE);
 
@@ -469,6 +474,17 @@ namespace cubreplication
   log_generator::set_row_replication_disabled (bool disable_if_true)
   {
     m_is_row_replication_disabled = disable_if_true;
+  }
+
+  void
+  log_generator::apply_tran_mvccid (void)
+  {
+    cubthread::entry *thread_p = &cubthread::get_entry ();
+    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+    LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+
+    m_stream_entry.set_mvccid (tdes->mvccinfo.id);
+    m_stream_entry.set_state (stream_entry_header::ACTIVE);
   }
 
 #if !defined (NDEBUG) && defined (SERVER_MODE)

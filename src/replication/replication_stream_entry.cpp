@@ -216,6 +216,7 @@ namespace cubreplication
 
     assert (count_entries () < INT_MAX);
     cnt_entries = (int) count_entries ();
+    assert (cnt_entries > 0);
 
     /* Get the highest lsa stamp. */
     repl_obj = get_object_at ((int) (cnt_entries - 1));
