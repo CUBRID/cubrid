@@ -6359,7 +6359,6 @@ static int
 ldr_json_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   JSON_DOC *document = NULL;
-  char *json_body = NULL;
   int error_code = NO_ERROR;
 
   error_code = db_json_get_json_from_str (str, document, len);
@@ -6368,8 +6367,6 @@ ldr_json_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
       assert (document == NULL);
       return error_code;
     }
-
-  json_body = db_private_strdup (NULL, str);
 
   db_make_json (val, document, true);
   return NO_ERROR;
@@ -6385,5 +6382,6 @@ ldr_json_db_json (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE 
   CHECK_ERR (err, ldr_generic (context, &val));
 
 error_exit:
+  db_value_clear (&val);
   return err;
 }
