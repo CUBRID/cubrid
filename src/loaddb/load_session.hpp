@@ -173,7 +173,6 @@ namespace cubload
 	std::string log_msg;
 	log_msg = m_driver->get_error_handler ().format_log_msg (msg_id, class_name, std::forward<Args> (args)...);
 
-
 	std::unique_lock<std::mutex> ulock (m_stats_mutex);
 
 	m_stats.log_message.append (log_msg);

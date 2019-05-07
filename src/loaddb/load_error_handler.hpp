@@ -178,7 +178,15 @@ namespace cubload
       {
 	log_msg.append ("Class " + class_name + ": ");
       }
+    if (msg_id == LOADDB_MSG_UPDATING_STATISTICS)
+      {
+	// In case of updating statistics we need to also add the class that had the statistics updated.
+	log_msg.append (get_message_from_catalog (LOADDB_MSG_UPDATING_STATISTICS));
+	msg_id = LOADDB_MSG_CLASS_TITLE;
+      }
+
     log_msg.append (format (get_message_from_catalog (msg_id), std::forward<Args> (args)...));
+    log_msg.append ("\n");
     return log_msg;
   }
 

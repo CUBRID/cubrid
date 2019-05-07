@@ -216,11 +216,26 @@ namespace cubload
 	    m_session.wait_for_previous_batch (m_batch.get_id ());
 
 	    xtran_server_commit (&thread_ref, false);
-	    std::string class_name = m_session.get_class_registry ().get_class_entry (m_batch.get_class_id())->get_class_name();
+	    std::string class_name = m_session.get_class_registry ().get_class_entry (m_batch.get_class_id ())->get_class_name ();
+
+	    if (m_session.get_args ().syntax_check)
+	      {
+		m_session.append_log_msg (LOADDB_MSG_INSTANCE_COUNT, class_name, m_batch.get_rows_number ());
+	      }
+	    else
+	      {
+		m_session.append_log_msg (LOADDB_MSG_COMMITTED_INSTANCES, class_name, m_batch.get_rows_number ());
+	      }
 
 	    // update load statistics after commit
 	    m_session.stats_update_rows_committed (m_batch.get_rows_number ());
 	    m_session.stats_update_last_committed_line (driver->get_scanner ().lineno () + 1);
+
+	    if (!m_session.get_args ().syntax_check)
+	      {
+		std::string dummy_string;
+		m_session.append_log_msg (LOADDB_MSG_UPDATING_STATISTICS, dummy_string, class_name.c_str ());
+	      }
 
 	  }
 
