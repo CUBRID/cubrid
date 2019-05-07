@@ -15522,6 +15522,56 @@ primary
 			  }
 
 		DBG_PRINT}}
+        | ROW '(' expression_list ')' %dprec 4
+                {{
+                        PT_NODE *exp = $3;
+                        PT_NODE *val, *tmp;
+
+                        bool is_single_expression = true;
+                        if (exp && exp->next != NULL)
+                          {
+                            is_single_expression = false;
+                          }
+
+                        if (is_single_expression)
+                          {
+                            if (exp && exp->node_type == PT_EXPR)
+                              {
+                                exp->info.expr.paren_type = 1;
+                              }
+
+                            if (exp)
+                              {
+                                exp->is_paren = 1;
+                              }
+
+                            $$ = exp;
+                            PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                          }
+                        else
+                          {
+                            val = parser_new_node (this_parser, PT_VALUE);
+                            if (val)
+                              {
+                                for (tmp = exp; tmp; tmp = tmp->next)
+                                  {
+                                    if (tmp->node_type == PT_VALUE && tmp->type_enum == PT_TYPE_EXPR_SET)
+                                      {
+                                        tmp->type_enum = PT_TYPE_SEQUENCE;
+                                      }
+                                  }
+
+                                val->info.value.data_value.set = exp;
+                                val->type_enum = PT_TYPE_EXPR_SET;
+                              }
+
+                            exp = val;
+                            $$ = exp;
+                            PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                            parser_groupby_exception = PT_EXPR;
+                          }
+
+                DBG_PRINT}}
 	| '(' search_condition_query ')' %dprec 2
 		{{
 
