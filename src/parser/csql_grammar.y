@@ -18734,6 +18734,7 @@ predicate_expr_sub
 				      }
 				    else
 				      {
+                                        pt_select_list_to_one_col (this_parser, t, true);
 					found_paren_set_expr = true;
 				      }
 				  }
