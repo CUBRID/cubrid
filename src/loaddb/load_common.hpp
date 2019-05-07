@@ -257,6 +257,7 @@ namespace cubload
     int last_committed_line;
     int rows_failed; // // equivalent of 'errors' from SA_MODE
     std::string error_message;
+    std::string log_message;
     bool is_failed;
     bool is_completed;
 

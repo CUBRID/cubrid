@@ -216,10 +216,12 @@ namespace cubload
 	    m_session.wait_for_previous_batch (m_batch.get_id ());
 
 	    xtran_server_commit (&thread_ref, false);
+	    std::string class_name = m_session.get_class_registry ().get_class_entry (m_batch.get_class_id())->get_class_name();
 
 	    // update load statistics after commit
 	    m_session.stats_update_rows_committed (m_batch.get_rows_number ());
 	    m_session.stats_update_last_committed_line (driver->get_scanner ().lineno () + 1);
+
 	  }
 
 	// free transaction index
@@ -529,5 +531,7 @@ namespace cubload
       {
 	m_stats.error_message.clear ();
       }
+    m_stats.log_message.clear ();
   }
+
 } // namespace cubload

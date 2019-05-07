@@ -29,10 +29,13 @@
 #include "load_common.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
+#include "utility.h"
 
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
+#include <string>
+#include <memory>
 
 namespace cubload
 {
@@ -125,6 +128,9 @@ namespace cubload
 
       class_registry &get_class_registry ();
 
+      template<typename... Args>
+      void append_log_msg (MSGCAT_LOADDB_MSG msg_id, std::string class_name, Args &&... args);
+
     private:
       void notify_waiting_threads ();
       bool is_completed ();
@@ -154,6 +160,26 @@ namespace cubload
   };
 
 } // namespace cubload
+
+namespace cubload
+{
+  // Template implementation
+  template<typename... Args>
+  void
+  session::append_log_msg (MSGCAT_LOADDB_MSG msg_id, std::string class_name, Args &&... args)
+  {
+    if (get_args ().verbose)
+      {
+	std::string log_msg;
+	log_msg = m_driver->get_error_handler ().format_log_msg (msg_id, class_name, std::forward<Args> (args)...);
+
+
+	std::unique_lock<std::mutex> ulock (m_stats_mutex);
+
+	m_stats.log_message.append (log_msg);
+      }
+  }
+}
 
 // alias declaration for legacy C files
 using load_session = cubload::session;

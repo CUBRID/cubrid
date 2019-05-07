@@ -1057,6 +1057,11 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
 	  break;
 	}
 
+      if (!stats.log_message.empty ())
+	{
+	  print_log_msg (args->verbose, stats.log_message.c_str ());
+	}
+
       if (!stats.error_message.empty ())
 	{
 	  /* Skip if syntax check only is enabled since we do not want to stop on error. */
