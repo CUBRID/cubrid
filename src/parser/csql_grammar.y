@@ -18528,7 +18528,7 @@ predicate_expr_sub
 				      }
 				  }
 			      }
-			    if (op == PT_EQ || op == PT_NE)
+			    if (op == PT_EQ || op == PT_NE || op == PT_GT || op == PT_GE || op == PT_LT || op == PT_LE)
 			      {
 				/* expression number check */
 				if (found_paren_set_expr == true &&
