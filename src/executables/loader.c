@@ -6378,6 +6378,7 @@ ldr_json_db_json (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE 
   int err = NO_ERROR;
   DB_VALUE val;
 
+  db_make_null (&val);
   CHECK_ERR (err, ldr_json_elem (context, str, len, &val));
   CHECK_ERR (err, ldr_generic (context, &val));
 
