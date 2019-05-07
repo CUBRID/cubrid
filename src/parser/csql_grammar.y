@@ -19089,31 +19089,8 @@ in_pred_operand
 	: expression_
 		{{
 			container_2 ctn;
-			PT_NODE *node = $1;
-			PT_NODE *exp = NULL;
-			bool is_single_expression = true;
-
-			if (node != NULL)
-			  {
-			    if (node->node_type == PT_VALUE
-				&& node->type_enum == PT_TYPE_EXPR_SET)
-			      {
-				exp = node->info.value.data_value.set;
-				node->info.value.data_value.set = NULL;
-				parser_free_node (this_parser, node);
-			      }
-			    else
-			      {
-				exp = node;
-			      }
-			  }
-
-			if (exp && exp->next != NULL)
-			  {
-			    is_single_expression = false;
-			  }
-
-			if (is_single_expression && exp && exp->is_paren == 0)
+			PT_NODE *exp = $1;
+			if (exp && exp->is_paren == 0)
 			  {
 			    SET_CONTAINER_2 (ctn, FROM_NUMBER (0), exp);
 			  }
