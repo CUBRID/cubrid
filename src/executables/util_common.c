@@ -418,15 +418,55 @@ utility_localtime (const time_t * ts, struct tm *result)
 bool
 util_is_localhost (char *host)
 {
-  char localhost[PATH_MAX];
+  char localhost[CUB_MAXHOSTNAMELEN];
+  GETHOSTNAME (localhost, CUB_MAXHOSTNAMELEN);
 
-  GETHOSTNAME (localhost, PATH_MAX);
-  if (strcmp (host, localhost) == 0)
+  return are_hostnames_equal (host, localhost);
+}
+
+/**
+ * Compare two host names if are equal, if one of the host names is canonical name and the other is not, then
+ * only host part (e.g. for canonical name "host-1.cubrid.org" host part is "host-1") is used for comparison
+ *
+ * for example following hosts are equal:
+ *  "host-1"            "host-1"
+ *  "host-1"            "host-1.cubrid.org"
+ *  "host-1.cubrid.org" "host-1"
+ *  "host-1.cubrid.org" "host-1.cubrid.org"
+ *
+ * for example following hosts are not equal:
+ *  "host-1"            "host-2"
+ *  "host-1.cubrid.org" "host-2"
+ *  "host-1"            "host-2.cubrid.org"
+ *  "host-1.cubrid.org" "host-2.cubrid.org"
+ *  "host-1.cubrid.org" "host-1.cubrid.com"
+ *
+ * @param hostname_a first hostname
+ * @param hostname_b second hostname
+ *
+ * @return true if hostname_a is same as hostname_b
+ */
+bool
+are_hostnames_equal (const char *hostname_a, const char *hostname_b)
+{
+  const char *a;
+  const char *b;
+
+  for (a = hostname_a, b = hostname_b; *a && *b && (*a == *b); ++a, ++b)
+    ;
+
+  if (*a == '\0' && *b != '\0')
     {
-      return true;
+      return *b == '.';
     }
-
-  return false;
+  else if (*a != '\0' && *b == '\0')
+    {
+      return *a == '.';
+    }
+  else
+    {
+      return *a == *b;
+    }
 }
 
 /*
@@ -572,7 +612,7 @@ util_is_replica_node (void)
 {
   bool is_replica_node = false;
   int i;
-  char local_host_name[MAXHOSTNAMELEN];
+  char local_host_name[CUB_MAXHOSTNAMELEN];
   char *ha_replica_list_p, **ha_replica_list_pp = NULL;
 
   ha_replica_list_p = prm_get_string_value (PRM_ID_HA_REPLICA_LIST);

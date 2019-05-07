@@ -1327,7 +1327,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	}
     }
 
-  logtb_reset_bit_area_start_mvccid ();
+  log_Gl.mvcc_table.reset_start_mvccid ();
 
   if (prm_get_bool_value (PRM_ID_FORCE_RESTART_TO_SKIP_RECOVERY))
     {
@@ -3707,7 +3707,15 @@ log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 #if defined(SERVER_MODE)
       log_wakeup_checkpoint_daemon ();
 #else /* SERVER_MODE */
-      (void) logpb_checkpoint (thread_p);
+      if (!tdes->is_under_sysop ())
+	{
+	  (void) logpb_checkpoint (thread_p);
+	}
+      else
+	{
+	  // not safe to do a checkpoint in the middle of a system operations; for instance, tdes is cleared after
+	  // checkpoint
+	}
 #endif /* SERVER_MODE */
     }
 }
@@ -4985,16 +4993,7 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
 	}
     }
 
-  if (tdes->tran_unique_stats != NULL)
-    {
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "log_commit: Warning, unique statistical information kept in transaction entry is not freed.");
-#endif /* CUBRID_DEBUG */
-      free_and_init (tdes->tran_unique_stats);
-      tdes->num_unique_btrees = 0;
-      tdes->max_unique_btrees = 0;
-    }
+  tdes->m_multiupd_stats.clear ();
 
   if (log_2pc_clear_and_is_tran_distributed (tdes))
     {
@@ -5109,16 +5108,7 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
 	}
     }
 
-  if (tdes->tran_unique_stats != NULL)
-    {
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "log_abort: Warning, unique statistical information kept in transaction entry is not freed.");
-#endif /* CUBRID_DEBUG */
-      free_and_init (tdes->tran_unique_stats);
-      tdes->num_unique_btrees = 0;
-      tdes->max_unique_btrees = 0;
-    }
+  tdes->m_multiupd_stats.clear ();
 
   /*
    * If we are in prepare to commit mode. I cannot be the root coodinator,
@@ -5322,19 +5312,10 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 	  assert (vacuum_Global_oldest_active_blockers_counter >= 0);
 	}
 
-#if defined (HAVE_ATOMIC_BUILTINS)
       if (iscommitted == LOG_COMMIT)
 	{
-	  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	  volatile MVCCID *p_transaction_lowest_active_mvccid = LOG_FIND_TRAN_LOWEST_ACTIVE_MVCCID (tran_index);
-
-	  if (*p_transaction_lowest_active_mvccid != MVCCID_NULL)
-	    {
-	      /* set transaction lowest active MVCCID to null to allow VACUUM advancing */
-	      ATOMIC_TAS_64 (p_transaction_lowest_active_mvccid, MVCCID_NULL);
-	    }
+	  log_Gl.mvcc_table.reset_transaction_lowest_active (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 	}
-#endif
 
       if (get_newtrid == LOG_NEED_NEWTRID)
 	{
@@ -5478,7 +5459,8 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 		   * for only one the new or the old one.
 		   */
 
-		  *new_tdes = *tdes;
+		  // todo - this is completely unsafe.
+		  memcpy (new_tdes, tdes, sizeof (*tdes));
 		  new_tdes->tran_index = new_tran_index;
 		  new_tdes->isloose_end = true;
 		  /* new_tdes does not inherit topops fields */
@@ -5619,19 +5601,10 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	  assert (vacuum_Global_oldest_active_blockers_counter >= 0);
 	}
 
-#if defined(HAVE_ATOMIC_BUILTINS)
       if (iscommitted == LOG_COMMIT)
 	{
-	  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	  volatile MVCCID *p_transaction_lowest_active_mvccid = LOG_FIND_TRAN_LOWEST_ACTIVE_MVCCID (tran_index);
-
-	  if (*p_transaction_lowest_active_mvccid != MVCCID_NULL)
-	    {
-	      /* set transaction lowest active MVCCID to null to allow VACUUM advancing */
-	      ATOMIC_TAS_64 (p_transaction_lowest_active_mvccid, MVCCID_NULL);
-	    }
+	  log_Gl.mvcc_table.reset_transaction_lowest_active (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 	}
-#endif
 
       /* If recovery restart operation, or, if this is a coordinator loose end transaction return this index and
        * decrement coordinator loose end transactions counter. */

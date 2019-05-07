@@ -95,6 +95,8 @@
 
 #if defined(WINDOWS)
 #include "wintcp.h"
+#else /* WINDOWS */
+#include "tcp.h"
 #endif /* WINDOWS */
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -145,15 +147,15 @@ static char boot_Client_id_buffer[L_cuserid + 1];
 static char boot_Db_path_buf[PATH_MAX];
 static char boot_Log_path_buf[PATH_MAX];
 static char boot_Lob_path_buf[PATH_MAX];
-static char boot_Db_host_buf[MAXHOSTNAMELEN + 1];
+static char boot_Db_host_buf[CUB_MAXHOSTNAMELEN + 1];
 
 /* Volume assigned for new files/objects (e.g., heap files) */
 VOLID boot_User_volid = 0;	/* todo: boot_User_volid looks deprecated */
 #if defined(CS_MODE)
 /* Server host connected */
-char boot_Host_connected[MAXHOSTNAMELEN] = "";
+char boot_Host_connected[CUB_MAXHOSTNAMELEN] = "";
 #endif /* CS_MODE */
-char boot_Host_name[MAXHOSTNAMELEN] = "";
+char boot_Host_name[CUB_MAXHOSTNAMELEN] = "";
 
 static char boot_Volume_label[PATH_MAX] = " ";
 static bool boot_Is_client_all_final = true;
@@ -435,13 +437,13 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   if (db_path_info->db_host == NULL)
     {
 #if 0				/* use Unix-domain socket for localhost */
-      if (GETHOSTNAME (db_host_buf, MAXHOSTNAMELEN) != 0)
+      if (GETHOSTNAME (db_host_buf, CUB_MAXHOSTNAMELEN) != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
 	  error_code = ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	  goto error_exit;
 	}
-      db_host_buf[MAXHOSTNAMELEN] = '\0';
+      db_host_buf[CUB_MAXHOSTNAMELEN] = '\0';
 #else
       strcpy (boot_Db_host_buf, "localhost");
 #endif
@@ -1626,7 +1628,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
   int error = ER_NET_NO_SERVER_HOST;
   int hn, n;
   char *hostlist[MAX_NUM_DB_HOSTS];
-  char strbuf[(MAXHOSTNAMELEN + 1) * MAX_NUM_DB_HOSTS];
+  char strbuf[(CUB_MAXHOSTNAMELEN + 1) * MAX_NUM_DB_HOSTS];
   bool cap_error = false, boot_host_connected_exist = false;
   int max_num_delayed_hosts_lookup;
 
@@ -1708,7 +1710,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
 	  /* save the hostname for the use of calling functions */
 	  if (boot_Host_connected != hostlist[n])
 	    {
-	      strncpy (boot_Host_connected, hostlist[n], MAXHOSTNAMELEN);
+	      strncpy (boot_Host_connected, hostlist[n], CUB_MAXHOSTNAMELEN);
 	    }
 	  db_set_connected_host_status (hostlist[n]);
 
@@ -1770,10 +1772,10 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
   strbuf[0] = '\0';
   for (n = 0; n < hn - 1 && n < (MAX_NUM_DB_HOSTS - 1); n++)
     {
-      strncat (strbuf, hostlist[n], MAXHOSTNAMELEN);
+      strncat (strbuf, hostlist[n], CUB_MAXHOSTNAMELEN);
       strcat (strbuf, ":");
     }
-  strncat (strbuf, hostlist[n], MAXHOSTNAMELEN);
+  strncat (strbuf, hostlist[n], CUB_MAXHOSTNAMELEN);
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CONNECT_FAILED, 2, db->name, strbuf);
 
   if (check_capabilities == true && cap_error == true)
@@ -5641,11 +5643,11 @@ boot_get_host_name (void)
 {
   if (boot_Host_name[0] == '\0')
     {
-      if (GETHOSTNAME (boot_Host_name, MAXHOSTNAMELEN) != 0)
+      if (GETHOSTNAME (boot_Host_name, CUB_MAXHOSTNAMELEN) != 0)
 	{
 	  strcpy (boot_Host_name, boot_Client_id_unknown_string);
 	}
-      boot_Host_name[MAXHOSTNAMELEN - 1] = '\0';	/* bullet proof */
+      boot_Host_name[CUB_MAXHOSTNAMELEN - 1] = '\0';	/* bullet proof */
     }
 
   return boot_Host_name;

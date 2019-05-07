@@ -505,7 +505,7 @@ struct last_access_status
 {
   char db_user[DB_MAX_USER_LENGTH];
   time_t time;
-  char host[MAXHOSTNAMELEN];
+  char host[CUB_MAXHOSTNAMELEN];
   char program_name[32];
   LAST_ACCESS_STATUS *next;
 };

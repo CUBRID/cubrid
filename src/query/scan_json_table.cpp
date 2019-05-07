@@ -25,6 +25,7 @@
 #include "fetch.h"
 #include "object_primitive.h"
 #include "scan_manager.h"
+#include "storage_common.h"
 
 #include <algorithm>
 
@@ -228,7 +229,6 @@ namespace cubscan
     scanner::open (cubthread::entry *thread_p)
     {
       int error_code = NO_ERROR;
-      const JSON_DOC *document = NULL;
 
       // we need the starting value to expand into a list of records
       DB_VALUE *value_p = NULL;
@@ -254,9 +254,7 @@ namespace cubscan
 
       if (db_value_type (value_p) == DB_TYPE_JSON)
 	{
-	  document = db_get_json_document (value_p);
-
-	  error_code = init_cursor (*document, *m_specp->m_root_node, m_scan_cursor[0]);
+	  error_code = init_cursor (*db_get_json_document (value_p), *m_specp->m_root_node, m_scan_cursor[0]);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -265,22 +263,15 @@ namespace cubscan
 	}
       else
 	{
-	  // we need json
-	  DB_VALUE json_cast_value;
+	  JSON_DOC_STORE document;
 
-	  // we should use explicit coercion, implicit coercion is not allowed between char and json
-	  tp_domain_status status = tp_value_cast (value_p, &json_cast_value, &tp_Json_domain, false);
-	  if (status != DOMAIN_COMPATIBLE)
+	  error_code = db_value_to_json_doc (*value_p, false, document);
+	  if (error_code != NO_ERROR)
 	    {
-	      ASSERT_ERROR_AND_SET (error_code);
+	      ASSERT_ERROR ();
 	      return error_code;
 	    }
-
-	  document = db_get_json_document (&json_cast_value);
-
-	  error_code = init_cursor (*document, *m_specp->m_root_node, m_scan_cursor[0]);
-
-	  pr_clear_value (&json_cast_value);
+	  error_code = init_cursor (*document.get_immutable (), *m_specp->m_root_node, m_scan_cursor[0]);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -302,7 +293,7 @@ namespace cubscan
     }
 
     int
-    scanner::next_scan (cubthread::entry *thread_p, scan_id_struct &sid)
+    scanner::next_scan (cubthread::entry *thread_p, scan_id_struct &sid, SCAN_CODE &sc)
     {
       bool has_row = false;
       int error_code = NO_ERROR;
@@ -313,6 +304,7 @@ namespace cubscan
 	  error_code = open (thread_p);
 	  if (error_code != NO_ERROR)
 	    {
+	      sc = S_ERROR;
 	      return error_code;
 	    }
 	  sid.position = S_ON;
@@ -321,8 +313,7 @@ namespace cubscan
       else if (sid.position != S_ON)
 	{
 	  assert (false);
-	  sid.status = S_ENDED;
-	  sid.position = S_AFTER;
+	  sc = S_END;
 	  return ER_FAILED;
 	}
 
@@ -332,13 +323,14 @@ namespace cubscan
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
+	      sc = S_ERROR;
 	      return error_code;
 	    }
 	  if (!has_row)
 	    {
-	      sid.status = S_ENDED;
 	      sid.position = S_AFTER;
-	      break;
+	      sc = S_END;
+	      return NO_ERROR;
 	    }
 
 	  if (m_scan_predicate.pred_expr == NULL)
@@ -354,10 +346,12 @@ namespace cubscan
 	  if (logical == V_ERROR)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
+	      sc = S_ERROR;
 	      return error_code;
 	    }
 	}
 
+      sc = S_SUCCESS;
       return NO_ERROR;
     }
 

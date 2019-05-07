@@ -175,7 +175,7 @@ css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name, const char *
 {
   CSS_CONN_ENTRY *conn;
   static char user_name[L_cuserid] = { '\0' };
-  static char host_name[MAXHOSTNAMELEN] = { '\0' };
+  static char host_name[CUB_MAXHOSTNAMELEN] = { '\0' };
   static int pid;
   int tran_index = -1;
 
@@ -188,7 +188,7 @@ css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name, const char *
 	  strcpy (user_name, "");
 	}
 
-      if (GETHOSTNAME (host_name, MAXHOSTNAMELEN) != 0)
+      if (GETHOSTNAME (host_name, CUB_MAXHOSTNAMELEN) != 0)
 	{
 	  strcpy (host_name, "???");
 	}

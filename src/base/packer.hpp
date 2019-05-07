@@ -116,6 +116,13 @@ namespace cubpacking
       const char *get_buffer_end (void);
       bool is_ended (void);
 
+      size_t get_packed_buffer_size (const char *stream, const size_t length, const size_t curr_offset) const;
+      void pack_buffer_with_length (const char *stream, const size_t length);
+
+      // template function to pack object as int type
+      template <typename T>
+      void pack_to_int (const T &t);
+
       // template functions to pack objects in bulk
       // note - it requires versions of get_packed_size_overloaded and pack_overloaded
 
@@ -194,6 +201,9 @@ namespace cubpacking
 
       void unpack_overloaded (packable_object &po);
 
+      void peek_unpack_buffer_length (int &value);
+      void unpack_buffer_with_length (char *stream, const size_t max_length);
+
       const char *get_curr_ptr (void);
       void align (const size_t req_alignment);
       size_t get_current_size (void);
@@ -205,6 +215,10 @@ namespace cubpacking
       // strictly dependent on or_buf, so packer will have to cede at least some of the packing to or_buf
       //
       void delegate_to_or_buf (const size_t size, or_buf &buf);
+
+      // template function to unpack object from int type to T type
+      template <typename T>
+      void unpack_from_int (T &t);
 
       // template functions to unpack object in bulk
       // note - it requires implementations of unpack_overloaded for all types
@@ -246,6 +260,13 @@ namespace cubpacking
   //
   // packer
   //
+
+  template <typename T>
+  void
+  packer::pack_to_int (const T &t)
+  {
+    pack_int ((int) t);
+  }
 
   template <typename ... Args>
   size_t
@@ -305,6 +326,15 @@ namespace cubpacking
   //
   // unpacker
   //
+
+  template <typename T>
+  void
+  unpacker::unpack_from_int (T &t)
+  {
+    int int_val;
+    unpack_int (int_val);
+    t = (T) int_val;
+  }
 
   template <typename ... Args>
   void
