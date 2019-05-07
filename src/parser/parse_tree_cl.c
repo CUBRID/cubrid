@@ -4699,6 +4699,7 @@ pt_rewrite_set_eq_set (PARSER_CONTEXT * parser, PT_NODE * exp)
 	  p->info.expr.op = PT_EQ;
 	  p->info.expr.arg1 = e1;
 	  p->info.expr.arg2 = e2;
+          p->type_enum = PT_TYPE_LOGICAL;
 	}
     }
   else
@@ -4764,6 +4765,7 @@ pt_rewrite_set_eq_set (PARSER_CONTEXT * parser, PT_NODE * exp)
 	      rhs->info.expr.op = PT_EQ;
 	      rhs->info.expr.arg1 = e1;
 	      rhs->info.expr.arg2 = e2;
+              rhs->type_enum = PT_TYPE_LOGICAL;
 	    }
 	}
       else
@@ -4786,6 +4788,7 @@ pt_rewrite_set_eq_set (PARSER_CONTEXT * parser, PT_NODE * exp)
       p->info.expr.arg1 = lhs;
       p->info.expr.arg2 = rhs;
       p->info.expr.arg3 = NULL;
+      p->type_enum = PT_TYPE_LOGICAL;
 
       pt_push (parser, p);
     }
