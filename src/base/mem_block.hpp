@@ -38,6 +38,7 @@
 
 #include <cassert>
 #include <cinttypes>
+#include <cstring>
 
 namespace cubmem
 {
@@ -273,6 +274,7 @@ namespace cubmem
   stack_block<S>::operator= (stack_block &&other)
   {
     std::memcpy (m_buf, other.m_buf, S);
+    return *this;
   }
 
   //
@@ -434,12 +436,13 @@ namespace cubmem
     m_use_stack = b.m_use_stack;
     if (b.m_use_stack)
       {
-	m_stack = b.m_stack;
+	m_stack = std::move (b.m_stack);
       }
     else
       {
-	m_ext_block = b.m_ext_block;
+	m_ext_block = std::move (b.m_ext_block);
       }
+    return *this;
   }
 } // namespace cubmem
 
