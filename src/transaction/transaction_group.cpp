@@ -35,6 +35,57 @@ tx_group::add (int tran_index, MVCCID mvccid, TRAN_STATE tran_state)
   add (node_info (tran_index, mvccid, tran_state));
 }
 
+tx_group::iterator
+tx_group::begin () noexcept
+{
+  return iterator (m_group.get_data_ptr ());
+}
+
+tx_group::const_iterator
+tx_group::begin () const noexcept
+{
+  return const_iterator (m_group.get_array ());
+}
+
+tx_group::const_iterator
+tx_group::cbegin () const noexcept
+{
+  return const_iterator (m_group.get_array ());
+}
+
+tx_group::iterator
+tx_group::end () noexcept
+{
+  return iterator (m_group.get_append_ptr ());
+}
+
+tx_group::const_iterator
+tx_group::end () const noexcept
+{
+  return const_iterator (m_group.get_append_ptr ());
+}
+
+tx_group::const_iterator
+tx_group::cend () const noexcept
+{
+  return const_iterator (m_group.get_append_ptr ());
+}
+
+void
+tx_group::transfer_to (tx_group &dest)
+{
+  dest.m_group = std::move (m_group);  // buffer is moved
+}
+
+// node_info
+
+tx_group::node_info::node_info (int tran_index, MVCCID mvccid, TRAN_STATE tran_state)
+  : m_tran_index (tran_index)
+  , m_mvccid (mvccid)
+  , m_tran_state (tran_state)
+{
+}
+
 // iterators
 
 tx_group::iterator::iterator (tx_group::node_info *ptr)

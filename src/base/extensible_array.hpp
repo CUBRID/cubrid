@@ -50,6 +50,8 @@ namespace cubmem
 
       inline std::size_t get_size () const;
 
+      inline appendible_block &operator= (appendible_block &&other);
+
     private:
       inline void reset ();
 
@@ -67,9 +69,13 @@ namespace cubmem
       void extend_to (size_t count);
 
       const T *get_array (void) const;
+      T *release_array ();
+
+      T *get_data_ptr ();
+
+      extensible_array &operator= (extensible_array &&other);
 
     protected:
-      T *get_data_ptr ();
 
       size_t get_memsize_for_count (size_t count) const;
   };
@@ -92,12 +98,14 @@ namespace cubmem
       void reset (void);                               // reset array
 
       inline size_t get_size (void) const;                    // get current size
-
       size_t get_memsize () const;
 
-    private:
-      inline T *get_append_ptr ();
+      T *get_append_ptr ();
+      const T *get_append_ptr () const;
 
+      appendable_array &operator= (appendable_array &&other);
+
+    private:
       size_t m_size;                                          // current size
   };
 } // namespace cubmem
@@ -133,6 +141,24 @@ namespace cubmem
   appendible_block<Size>::get_size () const
   {
     return m_size;
+  }
+
+  template <size_t Size>
+  appendible_block<Size> &
+  appendible_block<Size>::operator= (appendible_block &&other)
+  {
+    ~appendible_block<Size> ();
+    m_size = other.m_size;
+    m_use_stack = other.m_use_stack;
+    if (m_use_stack)
+      {
+	// m_stack = other.m_stack would copy entire buffer. we need only m_size
+	std::memcpy (m_stack.get_ptr (), other.get_ptr (), m_size);
+      }
+    else
+      {
+	m_ext_block = other.m_ext_block;
+      }
   }
 
   template <size_t Size>
@@ -193,6 +219,13 @@ namespace cubmem
 
   template <typename T, size_t Size>
   T *
+  extensible_array<T, Size>::release_array ()
+  {
+    return reinterpret_cast<T *> (base_type::release_ptr ());
+  }
+
+  template <typename T, size_t Size>
+  T *
   extensible_array<T, Size>::get_data_ptr ()
   {
     return reinterpret_cast<T *> (base_type::get_ptr ());
@@ -203,6 +236,14 @@ namespace cubmem
   extensible_array<T, Size>::get_memsize_for_count (size_t count) const
   {
     return count * sizeof (T);
+  }
+
+  template <typename T, size_t Size>
+  extensible_array<T, Size> &
+  extensible_array<T, Size>::operator= (extensible_array &&other)
+  {
+    base_type::operator= (std::move (other));
+    return *this;
   }
 
   //
@@ -235,6 +276,13 @@ namespace cubmem
   appendable_array<T, Size>::get_append_ptr ()
   {
     return base_type::get_data_ptr () + m_size;
+  }
+
+  template <typename T, size_t Size>
+  const T *
+  appendable_array<T, Size>::get_append_ptr () const
+  {
+    return base_type::get_array () + m_size;
   }
 
   template <typename T, size_t Size>
@@ -302,6 +350,14 @@ namespace cubmem
   {
     // set size to zero
     m_size = 0;
+  }
+
+  template <typename T, size_t Size>
+  appendable_array<T, Size> &
+  appendable_array<T, Size>::operator= (appendable_array &&other)
+  {
+    base_type::operator= (std::move (other));
+    return *this;
   }
 
 } // namespace cubmem
