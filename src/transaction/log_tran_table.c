@@ -3927,6 +3927,7 @@ logtb_get_current_mvccid (THREAD_ENTRY * thread_p)
   if (MVCCID_IS_VALID (curr_mvcc_info->id) == false)
     {
       curr_mvcc_info->id = log_Gl.mvcc_table.get_new_mvccid ();
+      tdes->replication_log_generator.apply_tran_mvccid ();
     }
 
   if (tdes->mvccinfo.count_sub_ids > 0 && tdes->mvccinfo.is_sub_active)

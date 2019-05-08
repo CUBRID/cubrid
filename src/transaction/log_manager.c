@@ -4687,10 +4687,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
    * made by the transaction we will not reflect the changes. They will be definitely lost. */
   tx_lob_locator_clear (thread_p, tdes, true, NULL);
 
-  /* TODO[replication] : this is called here to save MVCCID into log_generator/stream_entry before 
-   * clear_tdes; refactor this in context in packaging */
-  tdes->replication_log_generator.on_transaction_pre_commit ();
-
   /* clear mvccid before releasing the locks. This operation must be done before do_postpone because it stores unique
    * statistics for all B-trees and if an error occurs those operations and all operations of current transaction must
    * be rolled back. */
@@ -4805,10 +4801,6 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 
   /* destroy transaction's temporary files */
   file_tempcache_drop_tran_temp_files (thread_p);
-
-  /* TODO[replication] : this is called here to save MVCCID into log_generator/stream_entry before 
-   * clear_tdes; refactor this in context in packaging */
-  tdes->replication_log_generator.on_transaction_pre_abort ();
 
   if (!LSA_ISNULL (&tdes->tail_lsa))
     {
