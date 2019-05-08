@@ -149,15 +149,15 @@ namespace cubmem
   {
     ~appendible_block<Size> ();
     m_size = other.m_size;
-    m_use_stack = other.m_use_stack;
-    if (m_use_stack)
+    this->m_use_stack = other.m_use_stack;
+    if (this->m_use_stack)
       {
 	// m_stack = other.m_stack would copy entire buffer. we need only m_size
-	std::memcpy (m_stack.get_ptr (), other.get_ptr (), m_size);
+	std::memcpy (this->m_stack.get_ptr (), other.get_ptr (), m_size);
       }
     else
       {
-	m_ext_block = other.m_ext_block;
+	this->m_ext_block = other.m_ext_block;
       }
   }
 
