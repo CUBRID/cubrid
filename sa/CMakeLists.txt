@@ -361,7 +361,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/replication.c
   ${TRANSACTION_DIR}/recovery.c
   ${TRANSACTION_DIR}/transaction_cl.c
-  ${TRANSACTION_DIR}/transaction_group.hpp
+  ${TRANSACTION_DIR}/transaction_group.cpp
   ${TRANSACTION_DIR}/transaction_sr.c
   ${TRANSACTION_DIR}/transaction_transient.cpp
   ${TRANSACTION_DIR}/wait_for_graph.c
