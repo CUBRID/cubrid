@@ -68,13 +68,13 @@ endif(UNIX)
 add_dependencies(csql cubridsa cubridcs)
 
 set(CUB_MASTER_SOURCES
-  ${MASTER_DIR}/heartbeat_service.cpp
   ${MASTER_DIR}/master.c
   ${MASTER_DIR}/master_request.c
   ${MASTER_DIR}/master_util.c
   )
 if(UNIX)
   list(APPEND CUB_MASTER_SOURCES ${MASTER_DIR}/heartbeat_cluster.cpp)
+  list(APPEND CUB_MASTER_SOURCES ${MASTER_DIR}/heartbeat_service.cpp)
   list(APPEND CUB_MASTER_SOURCES ${MASTER_DIR}/heartbeat_transport.cpp)
   list(APPEND CUB_MASTER_SOURCES ${MASTER_DIR}/master_heartbeat.cpp)
   SET_SOURCE_FILES_PROPERTIES(
@@ -88,8 +88,6 @@ else(UNIX)
   )
   list(APPEND CUB_MASTER_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(UNIX)
-
-
 
 add_executable(cub_master ${CUB_MASTER_SOURCES})
 target_compile_definitions(cub_master PRIVATE ${COMMON_DEFS})
