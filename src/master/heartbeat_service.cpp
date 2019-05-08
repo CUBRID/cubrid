@@ -41,6 +41,12 @@ namespace cubhb
   int
   heartbeat_service::send_heartbeat_request (const cubbase::hostname_type &dest_hostname) const
   {
+    if (m_cluster.get_myself_node () == NULL)
+      {
+	// if myself is NULL then cluster is not healthy
+	return ER_FAILED;
+      }
+
     request_type request (dest_hostname);
     heartbeat_arg arg (true, dest_hostname, m_cluster);
     request.set_body (HEARTBEAT, arg);
