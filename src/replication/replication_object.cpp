@@ -106,7 +106,6 @@ namespace cubreplication
 
   int repl_tran_info::apply ()
   {
-    // empty
     return 0;
   }
 

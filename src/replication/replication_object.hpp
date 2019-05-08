@@ -59,9 +59,9 @@ namespace cubreplication
       virtual int apply (void) = 0;
       // todo: const
       virtual void stringify (string_buffer &str) = 0;
-      // todo: unextendable
+      // todo: unreferenced
       virtual bool is_instance_changing_attr (const OID &inst_oid);
-      // todo: unextendable
+      // todo: unreferenced
       virtual bool is_statement_replication ();
 
       void get_lsa_stamp (LOG_LSA &lsa_stamp);
