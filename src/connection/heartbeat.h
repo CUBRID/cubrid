@@ -72,41 +72,11 @@ typedef enum hb_proc_type HB_PROC_TYPE;
 #define HB_PTYPE_APPLYLOGDB_STR         "HA-applylogdb"
 #define HB_PTYPE_STR_SZ                 (16)
 
-enum HBP_CLUSTER_MESSAGE
-{
-  HBP_CLUSTER_HEARTBEAT = 0,
-  HBP_CLUSTER_MSG_MAX
-};
-
 #define HB_MAX_GROUP_ID_LEN		(64)
 #define HB_MAX_SZ_PROC_EXEC_PATH        (128)
 #define HB_MAX_NUM_PROC_ARGV            (16)
 #define HB_MAX_SZ_PROC_ARGV             (64)
 #define HB_MAX_SZ_PROC_ARGS             (HB_MAX_NUM_PROC_ARGV*HB_MAX_SZ_PROC_ARGV)
-
-/*
- * heartbeat cluster message header and body
- */
-
-/* heartbeat net header */
-typedef struct hbp_header HBP_HEADER;
-struct hbp_header
-{
-  unsigned char type;
-#if defined(HPUX) || defined(_AIX) || defined(sparc)
-  char r:1;			/* is request? */
-  char reserved:7;
-#else
-  char reserved:7;
-  char r:1;			/* is request? */
-#endif
-  unsigned short len;
-  unsigned int seq;
-  char group_id[HB_MAX_GROUP_ID_LEN];
-  char orig_host_name[CUB_MAXHOSTNAMELEN];
-  char dest_host_name[CUB_MAXHOSTNAMELEN];
-};
-
 
 /*
  * heartbeat resource message body

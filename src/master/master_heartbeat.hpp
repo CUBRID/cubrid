@@ -155,15 +155,6 @@ enum HB_NOLOG_REASON
   HB_NOLOG_MAX = HB_NOLOG_REMOTE_STOP
 };
 
-/* heartbeat validation result */
-enum HB_VALID_RESULT
-{
-  HB_VALID_NO_ERROR = 0,
-  HB_VALID_UNIDENTIFIED_NODE = 1,
-  HB_VALID_GROUP_NAME_MISMATCH = 2,
-  HB_VALID_IP_ADDR_MISMATCH = 3,
-  HB_VALID_CANNOT_RESOLVE_HOST = 4
-};
 #define HB_VALID_NO_ERROR_STR			"no_error"
 #define HB_VALID_UNIDENTIFIED_NODE_STR		"unidentified_node"
 #define HB_VALID_GROUP_NAME_MISMATCH_STR	"group_name_mismatch"
@@ -174,9 +165,6 @@ enum HB_VALID_RESULT
 #define HB_GET_ELAPSED_TIME(end_time, start_time) \
             ((double)(end_time.tv_sec - start_time.tv_sec) * 1000 + \
              (end_time.tv_usec - start_time.tv_usec)/1000.0)
-
-#define HB_IS_INITIALIZED_TIME(arg_time) \
-            ((arg_time.tv_sec == 0 && arg_time.tv_usec == 0) ? 1 : 0)
 
 #define HB_PROC_RECOVERY_DELAY_TIME		(30* 1000)	/* milli-second */
 
@@ -231,7 +219,7 @@ struct hb_resource
 {
   pthread_mutex_t lock;
 
-  cubhb::node_entry::node_state state;	/* mode/state */
+  cubhb::node_state state;	/* mode/state */
 
   int num_procs;
   HB_PROC_ENTRY *procs;
@@ -353,4 +341,8 @@ bool hb_is_hang_process (int sfd);
 const char *hb_find_host_name_of_master_server ();
 
 cubhb::ping_host::ping_result hb_check_ping (const char *host);
+const char *hb_valid_result_string (cubhb::ui_node_result v_result);
+
+/* cluster jobs queue */
+int hb_cluster_job_set_expire_and_reorder (unsigned int job_type, unsigned int msec);
 #endif /* _MASTER_HEARTBEAT_HPP_ */

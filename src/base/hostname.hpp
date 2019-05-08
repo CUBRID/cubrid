@@ -24,20 +24,22 @@
 #ifndef _HOSTNAME_HPP_
 #define _HOSTNAME_HPP_
 
-#include <string>
-
 #include "error_code.h"
+#include "packable_object.hpp"
 #include "porting.h"
 #if defined (WINDOWS)
 #include "wintcp.h"
 #else
 #include "tcp.h"
+#include <netdb.h>
 #endif
+
+#include <cstring>
 
 namespace cubbase
 {
 
-  class hostname_type
+  class hostname_type : public cubpacking::packable_object
   {
     private:
       std::string m_hostname;
@@ -108,26 +110,26 @@ namespace cubbase
       }
 
       /**
-      * Compare two host names if are equal, if one of the host names is canonical name and the other is not, then
-      * only host part (e.g. for canonical name "host-1.cubrid.org" host part is "host-1") is used for comparison
-      *
-      * for example following hosts are equal:
-      *  "host-1"            "host-1"
-      *  "host-1"            "host-1.cubrid.org"
-      *  "host-1.cubrid.org" "host-1"
-      *  "host-1.cubrid.org" "host-1.cubrid.org"
-      *
-      * for example following hosts are not equal:
-      *  "host-1"            "host-2"
-      *  "host-1.cubrid.org" "host-2"
-      *  "host-1"            "host-2.cubrid.org"
-      *  "host-1.cubrid.org" "host-2.cubrid.org"
-      *  "host-1.cubrid.org" "host-1.cubrid.com"
-      *
-      * @param other second hostname (first hostname is this->m_hostname)
-      *
-      * @return true if this->m_hostname is same as other
-      */
+       * Compare two host names if are equal, if one of the host names is canonical name and the other is not, then
+       * only host part (e.g. for canonical name "host-1.cubrid.org" host part is "host-1") is used for comparison
+       *
+       * for example following hosts are equal:
+       *  "host-1"            "host-1"
+       *  "host-1"            "host-1.cubrid.org"
+       *  "host-1.cubrid.org" "host-1"
+       *  "host-1.cubrid.org" "host-1.cubrid.org"
+       *
+       * for example following hosts are not equal:
+       *  "host-1"            "host-2"
+       *  "host-1.cubrid.org" "host-2"
+       *  "host-1"            "host-2.cubrid.org"
+       *  "host-1.cubrid.org" "host-2.cubrid.org"
+       *  "host-1.cubrid.org" "host-1.cubrid.com"
+       *
+       * @param other second hostname (first hostname is this->m_hostname)
+       *
+       * @return true if this->m_hostname is same as other
+       */
       bool
       operator== (const char *other) const
       {
@@ -151,6 +153,30 @@ namespace cubbase
 	  {
 	    return *rhs == *lhs;
 	  }
+      }
+
+      int
+      to_udp_sockaddr (int port, sockaddr *saddr, socklen_t *slen) const
+      {
+	// Construct address for UDP socket
+	sockaddr_in udp_saddr;
+	memset ((void *) &udp_saddr, 0, sizeof (udp_saddr));
+	udp_saddr.sin_family = AF_INET;
+	udp_saddr.sin_port = htons (port);
+
+	unsigned char sin_addr[4];
+	int error_code = css_hostname_to_ip (as_c_str (), sin_addr);
+	if (error_code != NO_ERROR)
+	  {
+	    return error_code;
+	  }
+
+	std::memcpy ((void *) &udp_saddr.sin_addr, (void *) sin_addr, sizeof (in_addr));
+
+	*slen = sizeof (udp_saddr);
+	std::memcpy ((void *) saddr, (void *) &udp_saddr, *slen);
+
+	return NO_ERROR;
       }
 
       // Public functions
@@ -179,6 +205,25 @@ namespace cubbase
       as_c_str () const
       {
 	return m_hostname.c_str ();
+      }
+
+      // pack/unpack functions
+      size_t
+      get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override
+      {
+	return serializator.get_packed_string_size (m_hostname, start_offset);
+      }
+
+      void
+      pack (cubpacking::packer &serializator) const override
+      {
+	serializator.pack_string (m_hostname);
+      }
+
+      void
+      unpack (cubpacking::unpacker &deserializator) override
+      {
+	deserializator.unpack_string (m_hostname);
       }
   };
 
