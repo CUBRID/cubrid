@@ -370,7 +370,8 @@ namespace cubstream
 
     if (m_flush_on_commit && collapsed_reserve)
       {
-	wake_up_flusher (2.0f, m_last_recyclable_pos, new_completed_position - m_last_recyclable_pos);
+	stream_position last_recyclable_pos = m_last_recyclable_pos;
+	wake_up_flusher (2.0f, last_recyclable_pos, new_completed_position - last_recyclable_pos);
       }
   }
 
@@ -710,7 +711,8 @@ namespace cubstream
   void multi_thread_stream::wait_for_flush_or_readers (const stream_position &last_commit_pos,
       const stream_position &last_append_pos)
   {
-    wake_up_flusher (2.0f, m_last_recyclable_pos, last_commit_pos - m_last_recyclable_pos);
+    stream_position last_recyclable_pos = m_last_recyclable_pos;
+    wake_up_flusher (2.0f, last_recyclable_pos, last_commit_pos - last_recyclable_pos);
 
     /* set fill factor to force a flush */
     std::unique_lock<std::mutex> local_lock (m_recyclable_pos_mutex);
