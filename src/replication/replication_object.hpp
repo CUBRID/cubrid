@@ -198,8 +198,6 @@ namespace cubreplication
 
       explicit repl_tran_info (const tx_group::node_info &tx_group_node);
       repl_tran_info () = default;
-      // todo: for testing purposes. Remove this
-      repl_tran_info (int tran_index, MVCCID mvccid, TRAN_STATE tran_state);
       ~repl_tran_info () = default;
 
       int apply () override;
@@ -207,9 +205,11 @@ namespace cubreplication
       void unpack (cubpacking::unpacker &deserializator);
       std::size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const;
       void stringify (string_buffer &str) override final;
+
+      MVCCID get_mvccid ();
+      TRAN_STATE get_tran_state ();
     private:
       MVCCID m_mvccid;
-      int m_tran_idx;
       TRAN_STATE m_tran_state;
   };
 

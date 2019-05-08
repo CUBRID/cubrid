@@ -207,11 +207,21 @@ namespace cubreplication
   }
 
   void
-  stream_entry::add_gc_transactions_info (const tx_group &tx_group)
+  stream_entry::from_tx_group (const tx_group &tx_group)
   {
     for (auto it = tx_group.begin (); it != tx_group.end (); ++it)
       {
 	m_packable_entries.push_back (new repl_tran_info (*it));
+      }
+  }
+
+  void
+  stream_entry::as_tx_group (tx_group &tx_group)
+  {
+    for (auto it : m_packable_entries)
+      {
+	repl_tran_info *repl_tr_info = dynamic_cast<repl_tran_info *> (it);
+	tx_group.add (0, repl_tr_info->get_mvccid (), repl_tr_info->get_tran_state ());
       }
   }
 
