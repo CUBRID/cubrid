@@ -36,7 +36,7 @@ class tx_complete_manager
   public:
     using ticket_type = std::uint64_t;
 
-    virtual ~tx_complete_manager ();
+    virtual ~tx_complete_manager () = 0;
 
     virtual ticket_type register_transaction (int tran_index, MVCCID mvccid, TRAN_STATE state) = 0;
     virtual void wait_ack (ticket_type ticket) = 0;
