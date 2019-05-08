@@ -95,6 +95,7 @@ namespace cubreplication
     replication_factory_po.register_creator<single_row_repl_entry> (single_row_repl_entry::PACKING_ID);
     replication_factory_po.register_creator<rec_des_row_repl_entry> (rec_des_row_repl_entry::PACKING_ID);
     replication_factory_po.register_creator<changed_attrs_row_repl_entry> (changed_attrs_row_repl_entry::PACKING_ID);
+    replication_factory_po.register_creator<repl_tran_info> (repl_tran_info::PACKING_ID);
 
     return &replication_factory_po;
   }
@@ -203,6 +204,15 @@ namespace cubreplication
     size_t aligned_stream_entry_header_size = DB_ALIGN (stream_entry_header_size, MAX_ALIGNMENT);
 
     return aligned_stream_entry_header_size;
+  }
+
+  void
+  stream_entry::add_gc_transactions_info (const tx_group &tx_group)
+  {
+    for (auto it = tx_group.begin (); it != tx_group.end (); ++it)
+      {
+	m_packable_entries.push_back (new repl_tran_info (*it));
+      }
   }
 
   void

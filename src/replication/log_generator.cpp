@@ -47,8 +47,8 @@ namespace cubreplication
   log_generator::set_tran_repl_info (stream_entry_header::TRAN_STATE state)
   {
     assert (m_has_stream);
-    assert (MVCCID_IS_VALID (m_stream_entry.get_mvccid ()));
     m_stream_entry.set_state (state);
+    m_stream_entry.set_mvccid (stream_entry_header::TRAN_STATE::GROUP_COMMIT ? MVCCID_FIRST : MVCCID_NULL);
   }
 
   void
@@ -309,7 +309,6 @@ namespace cubreplication
   {
     assert (m_has_stream);
     assert (!m_stream_entry.is_tran_state_undefined ());
-    assert (MVCCID_IS_VALID (m_stream_entry.get_mvccid ()));
 
     if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
       {
@@ -325,9 +324,9 @@ namespace cubreplication
   void
   log_generator::pack_group_commit_entry (void)
   {
-    /* use non-NULL MVCCID to prevent assertion fail on stream packer */
-    static stream_entry gc_stream_entry (s_stream, MVCCID_FIRST, stream_entry_header::GROUP_COMMIT);
-    gc_stream_entry.pack ();
+    set_tran_repl_info (stream_entry_header::GROUP_COMMIT);
+    m_stream_entry.pack ();
+    m_stream_entry.reset ();
   }
 
   void
@@ -337,7 +336,7 @@ namespace cubreplication
       {
 	LOG_TDES *tdes = LOG_FIND_TDES (i);
 
-	log_generator *lg = &(tdes->replication_log_generator);
+	log_generator *lg = & (tdes->replication_log_generator);
 
 	lg->set_stream (stream);
       }
@@ -388,9 +387,8 @@ namespace cubreplication
     /* TODO[replication] : force a group commit :
      * move this to log_manager group commit when multi-threaded apply is enabled */
     pack_group_commit_entry ();
-    m_stream_entry.set_mvccid (MVCCID_NULL);
     // reset state
-    m_stream_entry.set_state (stream_entry_header::ACTIVE);
+    set_tran_repl_info (stream_entry_header::ACTIVE);
   }
 
   void

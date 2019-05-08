@@ -32,6 +32,7 @@
 #include "object_representation.h"
 #include "string_buffer.hpp"
 #include "thread_manager.hpp"
+#include "transaction_group.hpp"
 
 #include <cstring>
 
@@ -94,6 +95,50 @@ namespace cubreplication
   replication_object::is_statement_replication ()
   {
     return false;
+  }
+
+  repl_tran_info::repl_tran_info (const tx_group::node_info &tx_group_node)
+    : m_mvccid (tx_group_node.m_mvccid)
+    , m_tran_idx (tx_group_node.m_tran_index)
+    , m_tran_state (tx_group_node.m_tran_state)
+  {
+    //
+  }
+
+  repl_tran_info::repl_tran_info (int tran_index, MVCCID mvccid, TRAN_STATE tran_state)
+    : m_mvccid (mvccid)
+    , m_tran_idx (tran_index)
+    , m_tran_state (tran_state)
+  {
+    //
+  }
+
+  int repl_tran_info::apply ()
+  {
+    // empty
+    return 0;
+  }
+
+  void repl_tran_info::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_all (m_mvccid, m_tran_idx, (int) m_tran_state);
+  }
+
+  void repl_tran_info::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_all (m_mvccid, m_tran_idx, (int &) m_tran_state);
+  }
+
+  std::size_t repl_tran_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    return serializator.get_all_packed_size (m_mvccid, m_tran_idx, (int) m_tran_state);
+  }
+
+  void repl_tran_info::stringify (string_buffer &str)
+  {
+    str ("repl_tran_info: m_mvccid=%d key_dbvalue=%d table=%d\n", m_mvccid,
+	 m_tran_idx,
+	 m_tran_state);
   }
 
   single_row_repl_entry::single_row_repl_entry (const repl_entry_type type, const char *class_name, LOG_LSA &lsa_stamp)
