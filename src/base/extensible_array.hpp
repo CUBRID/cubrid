@@ -89,13 +89,13 @@ namespace cubmem
       inline void append (const T *source, size_t length);    // append at the end of existing data
       inline void copy (const T *source, size_t length);      // overwrite entire array
       void erase (size_t index);    // remove at index; does not preserve order
+      void reset (void);                               // reset array
 
       inline size_t get_size (void) const;                    // get current size
 
       size_t get_memsize () const;
 
     private:
-      inline void reset (void);                               // reset array
       inline T *get_append_ptr ();
 
       size_t m_size;                                          // current size
