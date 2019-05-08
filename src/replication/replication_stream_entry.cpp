@@ -216,7 +216,7 @@ namespace cubreplication
   }
 
   void
-  stream_entry::move_replication_objects_after_lsa_to_stream (LOG_LSA &lsa, stream_entry &entry)
+  stream_entry::move_replication_objects_after_lsa_to_stream (LOG_LSA &start_lsa, stream_entry &entry)
   {
     cubreplication::replication_object *repl_obj;
     LOG_LSA repl_lsa_stamp;
