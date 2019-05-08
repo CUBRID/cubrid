@@ -38,7 +38,6 @@
 
 #include <cassert>
 #include <cinttypes>
-#include <cstring>
 
 namespace cubmem
 {
@@ -85,8 +84,6 @@ namespace cubmem
       stack_block (void) = default;
       inline char *get_ptr (void);
       inline const char *get_read_ptr () const;
-
-      inline stack_block &operator= (stack_block &&other);
 
     private:
       union
@@ -169,10 +166,6 @@ namespace cubmem
 
       inline char *get_ptr ();
       inline const char *get_read_ptr () const;
-
-      inline char *release_ptr ();
-
-      inline extensible_stack_block &operator= (extensible_stack_block &&b);                   //move assignment
 
     private:
       stack_block<S> m_stack;
@@ -267,14 +260,6 @@ namespace cubmem
   stack_block<S>::get_read_ptr (void) const
   {
     return &m_buf[0];
-  }
-
-  template <size_t S>
-  stack_block<S> &
-  stack_block<S>::operator= (stack_block &&other)
-  {
-    std::memcpy (m_buf, other.m_buf, S);
-    return *this;
   }
 
   //
@@ -419,30 +404,6 @@ namespace cubmem
   extensible_stack_block<S>::get_read_ptr () const
   {
     return m_use_stack ? m_stack.get_read_ptr () : m_ext_block.get_read_ptr ();
-  }
-
-  template <size_t S>
-  char *
-  extensible_stack_block<S>::release_ptr ()
-  {
-    return m_ext_block.release_ptr ();
-  }
-
-  template <size_t S>
-  extensible_stack_block<S> &
-  extensible_stack_block<S>::operator= (extensible_stack_block &&b)
-  {
-    this->~extensible_stack_block ();
-    m_use_stack = b.m_use_stack;
-    if (b.m_use_stack)
-      {
-	m_stack = std::move (b.m_stack);
-      }
-    else
-      {
-	m_ext_block = std::move (b.m_ext_block);
-      }
-    return *this;
   }
 } // namespace cubmem
 
