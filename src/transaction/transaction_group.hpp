@@ -28,7 +28,7 @@
 #include "log_comm.h"
 
 #include <cstddef>
-#include <iterator>
+#include <vector>
 
 // todo - namespace cubtx
 class tx_group
@@ -46,79 +46,19 @@ class tx_group
       ~node_info () = default;
     };
 
-    class iterator;
-    class const_iterator;
+    using container_type = std::vector<node_info>;
 
     tx_group () = default;
     ~tx_group () = default;
 
     void add (const node_info &ni);
     void add (int tran_index, MVCCID mvccid, TRAN_STATE tran_state);
-
-    iterator begin () noexcept;
-    const_iterator begin () const noexcept;
-    const_iterator cbegin () const noexcept;
-    iterator end () noexcept;
-    const_iterator end () const noexcept;
-    const_iterator cend () const noexcept;
+    const container_type &get_container () const;
 
     void transfer_to (tx_group &dest);
 
   private:
-    static const size_t DEFAULT_GROUP_SIZE = 64;
-    cubmem::appendable_array<node_info, DEFAULT_GROUP_SIZE> m_group;
-};
-
-class tx_group::iterator
-{
-  public:
-    using difference_type = std::ptrdiff_t;
-    using value_type = tx_group::node_info;
-    using reference = tx_group::node_info&;
-    using pointer = tx_group::node_info*;
-    using iterator_category = std::forward_iterator_tag;
-
-    iterator () = default;
-    iterator (tx_group::node_info *ptr);
-    iterator (const iterator &);
-    ~iterator () = default;
-
-    iterator &operator= (const iterator &);
-    bool operator== (const iterator &) const;
-    bool operator!= (const iterator &) const;
-
-    iterator &operator++ ();
-    reference operator*() const;
-    pointer operator->() const;
-
-  private:
-    tx_group::node_info *m_ptr;
-};
-
-class tx_group::const_iterator
-{
-  public:
-    using difference_type = std::ptrdiff_t;
-    using value_type = tx_group::node_info;
-    using reference = const tx_group::node_info&;
-    using pointer = const tx_group::node_info*;
-    using iterator_category = std::forward_iterator_tag;
-
-    const_iterator () = default;
-    const_iterator (const tx_group::node_info *ptr);
-    const_iterator (const const_iterator &);
-    ~const_iterator () = default;
-
-    const_iterator &operator= (const const_iterator &);
-    bool operator== (const const_iterator &) const;
-    bool operator!= (const const_iterator &) const;
-
-    const_iterator &operator++ ();
-    reference operator* () const;
-    pointer operator-> () const;
-
-  private:
-    const tx_group::node_info *m_ptr;
+    container_type m_group;
 };
 
 #endif // !_TRANSACTION_GROUP_HPP_
