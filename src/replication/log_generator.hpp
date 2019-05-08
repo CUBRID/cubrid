@@ -137,6 +137,7 @@ namespace cubreplication
       void check_commit_end_tran (void);
 
       static void pack_group_commit_entry (void);
+
       static cubstream::multi_thread_stream *get_global_stream (void)
       {
 	return s_stream;

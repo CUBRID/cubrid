@@ -309,6 +309,7 @@ namespace cubreplication
   {
     assert (m_has_stream);
     assert (!m_stream_entry.is_tran_state_undefined ());
+    assert (MVCCID_IS_VALID (m_stream_entry.get_mvccid ()));
 
     if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
       {
