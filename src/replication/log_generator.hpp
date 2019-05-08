@@ -102,10 +102,6 @@ namespace cubreplication
 
       ~log_generator ();
 
-      void on_transaction_pre_abort (void);
-
-      void on_transaction_pre_commit (void);
-
       // act when trasaction is committed; replication entries are logged
       void on_transaction_commit (void);
       // act when sysop with HA info is committed; replication entries are logged
@@ -155,6 +151,8 @@ namespace cubreplication
 
       void set_row_replication_disabled (bool disable_if_true);
       bool is_row_replication_disabled (void);
+      void apply_tran_mvccid (void);
+
 #if !defined(NDEBUG) && defined (SERVER_MODE)
       int abort_sysop_and_simulate_apply_repl_rbr_on_master (LOG_LSA &filter_replication_lsa);
       int abort_partial_and_simulate_apply_sbr_repl_on_master (const char *savepoint_name);
@@ -171,8 +169,6 @@ namespace cubreplication
       void set_tran_repl_info (stream_entry_header::TRAN_STATE state);
 
       char *get_classname (const OID &class_oid);     // todo - optimize this step
-
-      void on_transaction_pre_finish (void);
 
       // common point for transaction commit/abort; replication entries are logged
       void on_transaction_finish (stream_entry_header::TRAN_STATE state);

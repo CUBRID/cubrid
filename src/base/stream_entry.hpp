@@ -216,6 +216,13 @@ namespace cubstream
 	reset ();
       };
 
+      /* the usage of std::function members requires custom actions in constructors;
+       * just disable them */
+      entry &operator= (const entry &se) = delete;
+      entry &operator= (entry &&se) = delete;
+      entry (const entry &se) = delete;
+      entry (entry &&se) = delete;
+
       void set_stream (multi_thread_stream *stream)
       {
 	m_stream = stream;
@@ -328,6 +335,7 @@ namespace cubstream
       virtual int unpack_stream_entry_header (void) = 0;
       virtual int get_packable_entry_count_from_header (void) = 0;
       virtual bool is_equal (const entry *other) = 0;
+
       virtual void destroy_objects ()
       {
 	for (unsigned int i = 0; i < m_packable_entries.size (); i++)
