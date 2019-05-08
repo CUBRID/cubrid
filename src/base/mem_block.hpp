@@ -274,6 +274,7 @@ namespace cubmem
   stack_block<S>::operator= (stack_block &&other)
   {
     std::memcpy (m_buf, other.m_buf, S);
+    return *this;
   }
 
   //
