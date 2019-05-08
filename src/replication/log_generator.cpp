@@ -47,8 +47,8 @@ namespace cubreplication
   log_generator::set_tran_repl_info (stream_entry_header::TRAN_STATE state)
   {
     assert (m_has_stream);
+    assert (MVCCID_IS_VALID (m_stream_entry.get_mvccid ()));
     m_stream_entry.set_state (state);
-    m_stream_entry.set_mvccid (stream_entry_header::TRAN_STATE::GROUP_COMMIT ? MVCCID_FIRST : MVCCID_NULL);
   }
 
   void
@@ -324,9 +324,9 @@ namespace cubreplication
   void
   log_generator::pack_group_commit_entry (void)
   {
-    set_tran_repl_info (stream_entry_header::GROUP_COMMIT);
-    m_stream_entry.pack ();
-    m_stream_entry.reset ();
+    /* use non-NULL MVCCID to prevent assertion fail on stream packer */
+    static stream_entry gc_stream_entry (s_stream, MVCCID_FIRST, stream_entry_header::GROUP_COMMIT);
+    gc_stream_entry.pack ();
   }
 
   void
