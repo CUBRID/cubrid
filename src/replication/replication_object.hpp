@@ -229,6 +229,8 @@ namespace cubreplication
 
       row_object (const char *class_name);
 
+      row_object () = default;
+
       ~row_object ();
 
       void reset ();

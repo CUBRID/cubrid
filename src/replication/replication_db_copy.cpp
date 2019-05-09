@@ -161,7 +161,7 @@ namespace cubreplication
 	    ASSERT_ERROR ();
 	    goto end;
 	  }
-	heap_objects.add_record (record);
+	heap_objects.move_record (std::move (record));
 
 	if (heap_objects.is_pack_needed ())
 	  {
