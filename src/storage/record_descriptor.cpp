@@ -82,20 +82,6 @@ record_descriptor::~record_descriptor (void)
 {
 }
 
-void
-record_descriptor::move_copied_recdes (recdes &rec)
-{
-  assert ( m_recdes.data != NULL);
-
-  m_recdes.type = rec.type;
-  m_recdes = rec;
-  m_own_data = m_recdes.data;
-
-  m_recdes.data = NULL;
-  
-  m_data_source = data_source::COPIED;  // this should be copied record
-}
-
 int
 record_descriptor::peek (cubthread::entry *thread_p, PAGE_PTR page, PGSLOTID slotid)
 {

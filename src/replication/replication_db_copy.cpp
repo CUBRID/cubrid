@@ -25,7 +25,7 @@
 
 #include "replication_db_copy.hpp"
 #include "heap_attrinfo.h"  /* for HEAP_CACHE_ATTRINFO */
-#include "locator_sr.h"
+#include "heap_file.h"      /* heap_attrinfo_transform_to_disk */
 #include "scan_manager.h"
 
 namespace cubreplication
@@ -205,8 +205,6 @@ end:
   {
     int error_code = NO_ERROR;
     const int reprid = or_rep_id (&rec_des);
-    RECDES new_recdes;
-    LC_COPYAREA *copyarea = NULL;
 
     if (reprid == attr_info.last_classrepr->id)
       {
@@ -224,18 +222,13 @@ end:
 
     /* old_recdes.data maybe be PEEKed (buffer in page) or COPYed (buffer managed by heap SCAN_CACHE),
      * we don't care about its buffer */
-    char *recdes_mem;
-    recdes_mem = locator_allocate_private_by_attr_info (thread_p, &attr_info, &rec_des, &new_recdes, -1,
-		 LOB_FLAG_EXCLUDE_LOB);
-    if (recdes_mem == NULL)
+    SCAN_CODE scan_code = heap_attrinfo_transform_to_disk (thread_p, &attr_info, &rec_des, &record);
+    if (scan_code != S_SUCCESS)
       {
 	ASSERT_ERROR ();
 	error_code = ER_FAILED;
 	return error_code;
       }
-
-    record.move_copied_recdes (new_recdes);
-    assert (new_recdes.data == NULL);
 
     return error_code;
   }
