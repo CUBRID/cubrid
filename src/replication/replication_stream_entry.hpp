@@ -50,7 +50,7 @@ namespace cubreplication
 
     const static unsigned STATE_BITS = 3;
 
-    const static unsigned int STATE_MASK = 0xc0000000;
+    const static unsigned int STATE_MASK = 0xe0000000;
 
     const static unsigned int COUNT_VALUE_MASK = ~ (STATE_MASK);
 
