@@ -4687,10 +4687,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
    * made by the transaction we will not reflect the changes. They will be definitely lost. */
   tx_lob_locator_clear (thread_p, tdes, true, NULL);
 
-  /* TODO[replication] : this is called here to save MVCCID into log_generator/stream_entry before 
-   * clear_tdes; refactor this in context in packaging */
-  tdes->replication_log_generator.on_transaction_pre_commit ();
-
   /* clear mvccid before releasing the locks. This operation must be done before do_postpone because it stores unique
    * statistics for all B-trees and if an error occurs those operations and all operations of current transaction must
    * be rolled back. */
@@ -4805,10 +4801,6 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 
   /* destroy transaction's temporary files */
   file_tempcache_drop_tran_temp_files (thread_p);
-
-  /* TODO[replication] : this is called here to save MVCCID into log_generator/stream_entry before 
-   * clear_tdes; refactor this in context in packaging */
-  tdes->replication_log_generator.on_transaction_pre_abort ();
 
   if (!LSA_ISNULL (&tdes->tail_lsa))
     {
@@ -4925,16 +4917,7 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
 	}
     }
 
-  if (tdes->tran_unique_stats != NULL)
-    {
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "log_commit: Warning, unique statistical information kept in transaction entry is not freed.");
-#endif /* CUBRID_DEBUG */
-      free_and_init (tdes->tran_unique_stats);
-      tdes->num_unique_btrees = 0;
-      tdes->max_unique_btrees = 0;
-    }
+  tdes->m_multiupd_stats.clear ();
 
   if (log_2pc_clear_and_is_tran_distributed (tdes))
     {
@@ -5051,16 +5034,7 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
 	}
     }
 
-  if (tdes->tran_unique_stats != NULL)
-    {
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "log_abort: Warning, unique statistical information kept in transaction entry is not freed.");
-#endif /* CUBRID_DEBUG */
-      free_and_init (tdes->tran_unique_stats);
-      tdes->num_unique_btrees = 0;
-      tdes->max_unique_btrees = 0;
-    }
+  tdes->m_multiupd_stats.clear ();
 
   /*
    * If we are in prepare to commit mode. I cannot be the root coodinator,

@@ -24,6 +24,7 @@
 #ifndef _HEARTBEAT_CLUSTER_HPP_
 #define _HEARTBEAT_CLUSTER_HPP_
 
+#include "hostname.hpp"
 #include "porting.h"
 #include "system_parameter.h"
 
@@ -41,33 +42,6 @@ namespace cubhb
   static const std::chrono::milliseconds UI_NODE_CACHE_TIME_IN_MSECS (60 * 1000);
   static const std::chrono::milliseconds UI_NODE_CLEANUP_TIME_IN_MSECS (3600 * 1000);
 
-  class hostname_type
-  {
-    public:
-      hostname_type () = default;
-      explicit hostname_type (const char *hostname);
-      explicit hostname_type (const std::string &hostname);
-      hostname_type (const hostname_type &other) = default;
-
-      hostname_type &operator= (const char *hostname);
-      hostname_type &operator= (const std::string &hostname);
-      hostname_type &operator= (const hostname_type &other) = default;
-
-      bool operator== (const char *other) const;
-      bool operator== (const std::string &other) const;
-      bool operator== (const hostname_type &other) const;
-
-      bool operator!= (const char *other) const;
-      bool operator!= (const std::string &other) const;
-      bool operator!= (const hostname_type &other) const;
-
-      const char *as_c_str () const;
-      const std::string &as_str () const;
-
-    private:
-      std::string m_hostname;
-  };
-
   /* heartbeat node entries */
   class node_entry
   {
@@ -79,13 +53,13 @@ namespace cubhb
       static const priority_type REPLICA_PRIORITY = LOWEST_PRIORITY;
 
       node_entry () = delete;
-      node_entry (hostname_type &hostname, priority_type priority);
+      node_entry (cubbase::hostname_type &hostname, priority_type priority);
       ~node_entry () = default;
 
       node_entry (const node_entry &other); // Copy c-tor
       node_entry &operator= (const node_entry &other); // Copy assignment
 
-      const hostname_type &get_hostname () const;
+      const cubbase::hostname_type &get_hostname () const;
 
       enum node_state
       {
@@ -99,7 +73,7 @@ namespace cubhb
       };
 
     public: // TODO CBRD-22864 members should be private
-      hostname_type hostname;
+      cubbase::hostname_type hostname;
       priority_type priority;
       node_state state;
       short score;
@@ -118,7 +92,7 @@ namespace cubhb
       void ping ();
       bool is_ping_successful ();
 
-      const hostname_type &get_hostname () const;
+      const cubbase::hostname_type &get_hostname () const;
 
       enum ping_result
       {
@@ -130,7 +104,7 @@ namespace cubhb
       };
 
     public: // TODO CBRD-22864 members should be private
-      hostname_type hostname;
+      cubbase::hostname_type hostname;
       ping_result result;
   };
 
@@ -142,10 +116,10 @@ namespace cubhb
       ~ui_node () = default;
 
       void set_last_recv_time_to_now ();
-      const hostname_type &get_hostname () const;
+      const cubbase::hostname_type &get_hostname () const;
 
     public: // TODO CBRD-22864 members should be private
-      hostname_type hostname;
+      cubbase::hostname_type hostname;
       std::string group_id;
       sockaddr_in saddr;
       std::chrono::system_clock::time_point last_recv_time;
@@ -169,7 +143,7 @@ namespace cubhb
       int listen ();
       void stop ();
 
-      node_entry *find_node (const hostname_type &node_hostname) const;
+      node_entry *find_node (const cubbase::hostname_type &node_hostname) const;
 
       void remove_ui_node (ui_node *&node);
       void cleanup_ui_nodes ();
@@ -196,7 +170,7 @@ namespace cubhb
 
       node_entry::node_state state;
       std::string group_id;
-      hostname_type hostname;
+      cubbase::hostname_type hostname;
 
       std::list<node_entry *> nodes;
 

@@ -74,12 +74,8 @@ namespace cubreplication
       {
 	(void) locator_repl_start_tran (&thread_ref);
 
-	for (std::vector<stream_entry *>::iterator it = m_repl_stream_entries.begin ();
-	     it != m_repl_stream_entries.end ();
-	     it++)
+	for (stream_entry *curr_stream_entry : m_repl_stream_entries)
 	  {
-	    stream_entry *curr_stream_entry = *it;
-
 	    curr_stream_entry->unpack ();
 
 	    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
@@ -92,6 +88,9 @@ namespace cubreplication
 	    for (int i = 0; i < curr_stream_entry->get_packable_entry_count_from_header (); i++)
 	      {
 		replication_object *obj = curr_stream_entry->get_object_at (i);
+
+		/* clean error code */
+		er_clear ();
 
 		int err = obj->apply ();
 		if (err != NO_ERROR)

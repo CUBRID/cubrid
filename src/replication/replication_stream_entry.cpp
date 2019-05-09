@@ -95,6 +95,8 @@ namespace cubreplication
     replication_factory_po.register_creator<single_row_repl_entry> (single_row_repl_entry::PACKING_ID);
     replication_factory_po.register_creator<rec_des_row_repl_entry> (rec_des_row_repl_entry::PACKING_ID);
     replication_factory_po.register_creator<changed_attrs_row_repl_entry> (changed_attrs_row_repl_entry::PACKING_ID);
+    replication_factory_po.register_creator<repl_gc_info> (repl_gc_info::PACKING_ID);
+    replication_factory_po.register_creator<row_object> (row_object::PACKING_ID);
 
     return &replication_factory_po;
   }
@@ -206,20 +208,32 @@ namespace cubreplication
   }
 
   void
-  stream_entry::move_replication_objects_after_lsa_to_stream (LOG_LSA &lsa, stream_entry &entry)
+  stream_entry::move_replication_objects_after_lsa_to_stream (LOG_LSA &start_lsa, stream_entry &entry)
   {
     cubreplication::replication_object *repl_obj;
     LOG_LSA repl_lsa_stamp;
+    LOG_LSA highest_repl_lsa_stamp;
     int start_index = 0;
     int i, cnt_entries;
 
     assert (count_entries () < INT_MAX);
     cnt_entries = (int) count_entries ();
+    assert (cnt_entries > 0);
+
+    /* Get the highest lsa stamp. */
+    repl_obj = get_object_at ((int) (cnt_entries - 1));
+    repl_obj->get_lsa_stamp (highest_repl_lsa_stamp);
+    if (LSA_LE (&highest_repl_lsa_stamp, &start_lsa))
+      {
+	/* No object after this LSA */
+	return;
+      }
+
     for (i = cnt_entries - 1; i >= 0; i--)
       {
 	repl_obj = get_object_at (i);
 	repl_obj->get_lsa_stamp (repl_lsa_stamp);
-	if (LSA_LE (&repl_lsa_stamp, &lsa))
+	if (LSA_LE (&repl_lsa_stamp, &start_lsa))
 	  {
 	    start_index = i + 1;
 	    break;
@@ -242,16 +256,14 @@ namespace cubreplication
   void
   stream_entry::destroy_objects_after_lsa (LOG_LSA &start_lsa)
   {
+    if (m_packable_entries.size () == 0)
+      {
+	return;
+      }
+
     if (LSA_ISNULL (&start_lsa))
       {
-	for (unsigned int i = 0; i < m_packable_entries.size (); i++)
-	  {
-	    if (m_packable_entries[i] != NULL)
-	      {
-		delete (m_packable_entries[i]);
-	      }
-	  }
-	m_packable_entries.clear ();
+	destroy_objects ();
       }
     else
       {

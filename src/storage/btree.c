@@ -50,9 +50,10 @@
 #include "dbtype.h"
 #include "thread_manager.hpp"
 
+#include <assert.h>
+#include <cinttypes>
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
 
 #define BTREE_HEALTH_CHECK
 
@@ -698,7 +699,7 @@ struct btree_insert_helper
   BTREE_OBJECT_INFO obj_info;	/* B-tree object info. Keeps old version for mvcc update same key. */
   BTREE_OP_PURPOSE purpose;	/* Purpose/context for calling btree_insert_internal. */
   int op_type;			/* Single-multi insert/modify operation type. */
-  BTREE_UNIQUE_STATS *unique_stats_info;	/* Unique statistics kept when operation type is not single. */
+  btree_unique_stats *unique_stats_info;	/* Unique statistics kept when operation type is not single. */
   int key_len_in_page;		/* Packed length of key being inserted. */
 
   PGBUF_LATCH_MODE nonleaf_latch_mode;	/* Default page latch mode while advancing through non-leaf nodes. */
@@ -827,7 +828,7 @@ struct btree_delete_helper
   BTREE_OP_PURPOSE purpose;	/* Purpose of delete operation. */
   PGBUF_LATCH_MODE nonleaf_latch_mode;	/* Latch mode used to for non-leaf nodes. */
   int op_type;			/* Operation type. */
-  BTREE_UNIQUE_STATS *unique_stats_info;	/* Used to collect statistics of multi-row operations in unique
+  btree_unique_stats *unique_stats_info;	/* Used to collect statistics of multi-row operations in unique
 						 * indexes. */
   BTREE_MVCC_INFO match_mvccinfo;	/* Used to match MVCC information when searching for object in index key. */
   OR_BUF *buffered_key;		/* Buffered key value. */
@@ -1564,7 +1565,7 @@ static int btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_
 				       void *args);
 
 static int btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid,
-				  int op_type, BTREE_UNIQUE_STATS * unique_stat_info, int *unique,
+				  int op_type, btree_unique_stats * unique_stat_info, int *unique,
 				  BTREE_MVCC_INFO * mvcc_info, LOG_LSA * undo_nxlsa, BTREE_OP_PURPOSE purpose);
 static int btree_undo_delete_physical (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid,
 				       BTREE_MVCC_INFO * mvcc_info, LOG_LSA * undo_nxlsa);
@@ -1625,7 +1626,7 @@ static void btree_key_record_check_no_visible (THREAD_ENTRY * thread_p, BTID_INT
 
 static int btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * class_oid,
 				  BTREE_MVCC_INFO * mvcc_info, DB_VALUE * key, OR_BUF * buffered_key, int *unique,
-				  int op_type, BTREE_UNIQUE_STATS * unique_stat_info, BTREE_MVCC_INFO * match_mvccinfo,
+				  int op_type, btree_unique_stats * unique_stat_info, BTREE_MVCC_INFO * match_mvccinfo,
 				  LOG_LSA * undo_nxlsa, BTREE_OBJECT_INFO * second_obj_info, BTREE_OP_PURPOSE purpose);
 static int btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_int, DB_VALUE * key,
 				      PAGE_PTR * root_page, bool * is_leaf, BTREE_SEARCH_KEY_HELPER * search_key,
@@ -13901,7 +13902,7 @@ exit_on_error:
  */
 int
 btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key, DB_VALUE * new_key, OID * cls_oid, OID * oid,
-	      int op_type, BTREE_UNIQUE_STATS * unique_stat_info, int *unique, MVCC_REC_HEADER * p_mvcc_rec_header)
+	      int op_type, btree_unique_stats * unique_stat_info, int *unique, MVCC_REC_HEADER * p_mvcc_rec_header)
 {
   MVCC_REC_HEADER *p_local_rec_header = NULL;
   int ret = NO_ERROR;
@@ -18245,8 +18246,8 @@ end:
 
 
 int
-btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * class_oid, BTID * btid,
-		 const char *bt_name, int severity, int err_id, const char *filename, int lineno)
+btree_set_error (THREAD_ENTRY * thread_p, const DB_VALUE * key, const OID * obj_oid, const OID * class_oid,
+		 const BTID * btid, const char *bt_name, int severity, int err_id, const char *filename, int lineno)
 {
   char btid_msg_buf[OID_MSG_BUF_SIZE];
   char class_oid_msg_buf[OID_MSG_BUF_SIZE];
@@ -25881,7 +25882,7 @@ btree_undo_delete_physical (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key
  */
 int
 btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * cls_oid, OID * oid, int op_type,
-	      BTREE_UNIQUE_STATS * unique_stat_info, int *unique, MVCC_REC_HEADER * p_mvcc_rec_header)
+	      btree_unique_stats * unique_stat_info, int *unique, MVCC_REC_HEADER * p_mvcc_rec_header)
 {
   BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
 
@@ -25933,7 +25934,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * cls_oi
  */
 int
 btree_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid, int op_type,
-		   BTREE_UNIQUE_STATS * unique_stat_info, int *unique, MVCC_REC_HEADER * p_mvcc_rec_header)
+		   btree_unique_stats * unique_stat_info, int *unique, MVCC_REC_HEADER * p_mvcc_rec_header)
 {
   BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
 
@@ -25981,7 +25982,7 @@ btree_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * c
  */
 static int
 btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid, int op_type,
-		       BTREE_UNIQUE_STATS * unique_stat_info, int *unique, BTREE_MVCC_INFO * mvcc_info,
+		       btree_unique_stats * unique_stat_info, int *unique, BTREE_MVCC_INFO * mvcc_info,
 		       LOG_LSA * undo_nxlsa, BTREE_OP_PURPOSE purpose)
 {
   int error_code = NO_ERROR;	/* Error code. */
@@ -26100,17 +26101,20 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
       assert (op_type == MULTI_ROW_UPDATE);
       assert (unique_stat_info != NULL);
 
-      /* Save the actual BTID to help reporting an unique violation error of a partition table. */
-      unique_stat_info->btid = *(btid_int.sys_btid);
-
       /* Key was not inserted/deleted. Correct unique_stat_info (which assumed that key will be inserted/deleted). */
       if (purpose == BTREE_OP_INSERT_NEW_OBJECT)
 	{
-	  unique_stat_info->num_keys--;
+	  // revert
+	  unique_stat_info->delete_key_and_row ();
+	  // insert just row
+	  unique_stat_info->add_row ();
 	}
       else if (purpose == BTREE_OP_INSERT_MVCC_DELID || purpose == BTREE_OP_INSERT_MARK_DELETED)
 	{
-	  unique_stat_info->num_keys++;
+	  // revert
+	  unique_stat_info->insert_key_and_row ();
+	  // delete only row
+	  unique_stat_info->delete_row ();
 	}
       else
 	{
@@ -26124,13 +26128,14 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
       btree_insert_log (&insert_helper, "BTREE UNIQUE MULTI-UPDATE STATS: %s \n"
 			BTREE_INSERT_HELPER_MSG ("\t")
 			"\t" BTREE_ID_MSG "\n"
-			"\t" "%s: new stats = %d keys, %d objects, %d nulls.",
+			"\t" "%s: new stats = %lld keys, %lld objects, %lld nulls.",
 			(btree_is_insert_object_purpose (insert_helper.purpose)) ? "Insert" : "MVCC Delete",
 			BTREE_INSERT_HELPER_AS_ARGS (&insert_helper), BTID_AS_ARGS (btid_int.sys_btid),
 			(btree_is_insert_object_purpose (insert_helper.purpose)) ?
 			(insert_helper.is_unique_key_added_or_deleted ? "Added new key" : "Did not add new key") :
 			(insert_helper.is_unique_key_added_or_deleted) ? "Removed key" : "Did not remove key",
-			unique_stat_info->num_keys, unique_stat_info->num_oids, unique_stat_info->num_nulls);
+			unique_stat_info->get_key_count (), unique_stat_info->get_row_count (),
+			unique_stat_info->get_null_count ());
     }
 
   return NO_ERROR;
@@ -26163,10 +26168,6 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
   OID *notification_class_oid;
   int error_code;
   int key_len;
-  int increment;
-  int increment_nulls;
-  int increment_keys;
-  int increment_oids;
 
   /* Assert expected arguments. */
   assert (insert_helper != NULL);
@@ -26257,31 +26258,34 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
    * automatically by undo logs. NOTE that users to see the header statistics may have the transient values. */
   if (BTREE_IS_UNIQUE (btid_int->unique_pk))
     {
-      /* Is increment positive/negative? (is object inserted/deleted?) */
+      btree_unique_stats incr;
+
       if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID
 	  || insert_helper->purpose == BTREE_OP_INSERT_MARK_DELETED)
 	{
 	  /* Object is being logically deleted. */
-	  increment = -1;
+	  if (insert_helper->is_null)
+	    {
+	      incr.delete_null_and_row ();
+	    }
+	  else
+	    {
+	      incr.delete_key_and_row ();
+	    }
 	}
       else
 	{
 	  /* Object is being inserted. */
-	  increment = 1;
+	  if (insert_helper->is_null)
+	    {
+	      incr.insert_null_and_row ();
+	    }
+	  else
+	    {
+	      incr.insert_key_and_row ();
+	    }
 	}
-      /* Set increment of each counter: nulls, oids, keys. */
-      if (insert_helper->is_null)
-	{
-	  increment_keys = 0;
-	  increment_oids = increment;
-	  increment_nulls = increment;
-	}
-      else
-	{
-	  increment_keys = increment;
-	  increment_oids = increment;
-	  increment_nulls = 0;
-	}
+
       /* Update statistics. */
       /* Based on type of operation - single or multi, update the unique_stats_info structure or update the transaction
        * collected statistics. They will be reflected into global statistics later. */
@@ -26294,17 +26298,14 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 	      error_code = ER_FAILED;
 	      goto error;
 	    }
-	  insert_helper->unique_stats_info->num_keys += increment_keys;
-	  insert_helper->unique_stats_info->num_oids += increment_oids;
-	  insert_helper->unique_stats_info->num_nulls += increment_nulls;
+	  (*insert_helper->unique_stats_info) += incr;
 	}
       else
 	{
 	  /* Update transactions collected statistics. */
 	  if (!btree_is_online_index_loading (insert_helper->purpose))
 	    {
-	      error_code =
-		logtb_tran_update_unique_stats (thread_p, btid, increment_keys, increment_oids, increment_nulls, true);
+	      error_code = logtb_tran_update_unique_stats (thread_p, *btid, incr, true);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -29242,7 +29243,7 @@ btree_rv_remove_unique_stats (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  */
 int
 btree_physical_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * oid, OID * class_oid, int *unique,
-		       int op_type, BTREE_UNIQUE_STATS * unique_stat_info)
+		       int op_type, btree_unique_stats * unique_stat_info)
 {
   BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
 
@@ -29519,7 +29520,7 @@ btree_delete_postponed (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_
 static int
 btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * class_oid, BTREE_MVCC_INFO * mvcc_info,
 		       DB_VALUE * key, OR_BUF * buffered_key, int *unique, int op_type,
-		       BTREE_UNIQUE_STATS * unique_stat_info, BTREE_MVCC_INFO * match_mvccinfo, LOG_LSA * ref_lsa,
+		       btree_unique_stats * unique_stat_info, BTREE_MVCC_INFO * match_mvccinfo, LOG_LSA * ref_lsa,
 		       BTREE_OBJECT_INFO * second_object_info, BTREE_OP_PURPOSE purpose)
 {
   /* Structure used by internal functions. */
@@ -29653,7 +29654,11 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
     {
       /* Correct unique stats info (key is not actually deleted). */
       assert (delete_helper.unique_stats_info != NULL);
-      delete_helper.unique_stats_info->num_keys++;
+      // todo - just remove row, not key from the beginning
+      // revert
+      delete_helper.unique_stats_info->insert_key_and_row ();
+      // delete row
+      delete_helper.unique_stats_info->delete_row ();
     }
 
   return NO_ERROR;
@@ -29682,9 +29687,6 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
   /* Structure used for internal functions used in btree_delete_internal. */
   BTREE_DELETE_HELPER *delete_helper = (BTREE_DELETE_HELPER *) other_args;
   int error_code = NO_ERROR;	/* Error code. */
-  int increment_nulls;		/* Increment value of number of NULL's. */
-  int increment_keys;		/* Increment value of number of keys. */
-  int increment_oids;		/* Increment value of number of OID's. */
   bool is_null = false;		/* Is key null. */
 
   /* Assert expected arguments. */
@@ -29821,25 +29823,22 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
   if (BTREE_IS_UNIQUE (btid_int->unique_pk) && delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL)
     {
       /* Do not update statistics when vacuuming or during undo recovery. */
+      btree_unique_stats incr;
+
       if (is_null)
 	{
-	  increment_keys = 0;
-	  increment_nulls = -1;
-	  increment_oids = -1;
+	  incr.delete_null_and_row ();
 	}
       else
 	{
-	  increment_keys = -1;
-	  increment_nulls = 0;
-	  increment_oids = -1;
+	  incr.delete_key_and_row ();
 	}
+
       if (BTREE_IS_MULTI_ROW_OP (delete_helper->op_type))
 	{
 	  /* Collect statistics */
 	  assert (delete_helper->unique_stats_info != NULL);
-	  delete_helper->unique_stats_info->num_keys += increment_keys;
-	  delete_helper->unique_stats_info->num_oids += increment_oids;
-	  delete_helper->unique_stats_info->num_nulls += increment_nulls;
+	  (*delete_helper->unique_stats_info) += incr;
 
 	  if (delete_helper->op_type == MULTI_ROW_UPDATE)
 	    {
@@ -29854,8 +29853,7 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 	  /* Save and log statistics changes. */
 	  if (!btree_is_online_index_loading (delete_helper->purpose))
 	    {
-	      error_code =
-		logtb_tran_update_unique_stats (thread_p, btid, increment_keys, increment_oids, increment_nulls, true);
+	      error_code = logtb_tran_update_unique_stats (thread_p, *btid, incr, true);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -29864,6 +29862,7 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 	    }
 	}
     }
+
   if (is_null)
     {
       /* Nothing to do anymore. */
