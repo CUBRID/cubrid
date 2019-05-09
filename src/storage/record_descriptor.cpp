@@ -312,6 +312,7 @@ record_descriptor::unpack (cubpacking::unpacker &unpacker)
   unpacker.peek_unpack_buffer_length (m_recdes.length);
   resize_buffer (m_recdes.length);
   unpacker.unpack_buffer_with_length (m_recdes.data, m_recdes.length);
+  m_data_source = data_source::COPIED;
 }
 
 size_t
