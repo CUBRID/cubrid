@@ -42,6 +42,7 @@
 
 // forward declarations
 class multi_index_unique_stats;
+class record_descriptor;
 
 #define HFID_EQ(hfid_ptr1, hfid_ptr2) \
   ((hfid_ptr1) == (hfid_ptr2) \
@@ -450,9 +451,9 @@ extern DB_VALUE *heap_attrinfo_access (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * att
 extern int heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, const DB_VALUE * attr_val,
 			      HEAP_CACHE_ATTRINFO * attr_info);
 extern SCAN_CODE heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-						  RECDES * old_recdes, RECDES * new_recdes);
+						  RECDES * old_recdes, record_descriptor * new_recdes);
 extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-							     RECDES * old_recdes, RECDES * new_recdes);
+							     RECDES * old_recdes, record_descriptor * new_recdes);
 
 extern DB_VALUE *heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, int *atts_prefix_length,
 					     HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes, DB_VALUE * dbvalue,

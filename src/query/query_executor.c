@@ -12257,7 +12257,6 @@ qexec_execute_increment (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, HF
 	  error = NO_ERROR;
 	}
       else if (error != NO_ERROR)
-
 	{
 	  error = ER_FAILED;
 	  goto wrapup;
