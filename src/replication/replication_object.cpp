@@ -32,6 +32,7 @@
 #include "object_representation.h"
 #include "string_buffer.hpp"
 #include "thread_manager.hpp"
+#include "transaction_group.hpp"
 
 #include <cstring>
 
@@ -94,6 +95,78 @@ namespace cubreplication
   replication_object::is_statement_replication ()
   {
     return false;
+  }
+
+  repl_gc_info::repl_gc_info (const tx_group &tx_group_node)
+  {
+    for (const tx_group::node_info &node_info : tx_group_node.get_container ())
+      {
+	m_gc_trans.emplace_back (tran_info {node_info.m_mvccid, node_info.m_tran_state});
+      }
+  }
+
+  tx_group
+  repl_gc_info::as_tx_group () const
+  {
+    tx_group res;
+    for (const tran_info &ti : m_gc_trans)
+      {
+	res.add (0, ti.m_mvccid, ti.m_tran_state);
+      }
+    return std::move (res);
+  }
+
+  int repl_gc_info::apply ()
+  {
+    return 0;
+  }
+
+  void repl_gc_info::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_to_int (m_gc_trans.size ());
+    for (const tran_info &t : m_gc_trans)
+      {
+	serializator.pack_to_int (t.m_tran_state);
+      }
+
+    for (const tran_info &t : m_gc_trans)
+      {
+	serializator.pack_bigint (t.m_mvccid);
+      }
+  }
+
+  void repl_gc_info::unpack (cubpacking::unpacker &deserializator)
+  {
+    size_t gc_trans_sz;
+    deserializator.unpack_from_int (gc_trans_sz);
+    m_gc_trans.resize (gc_trans_sz);
+    for (size_t i = 0; i < gc_trans_sz; ++i)
+      {
+	deserializator.unpack_from_int (m_gc_trans[i].m_tran_state);
+      }
+    for (size_t i = 0; i < gc_trans_sz; ++i)
+      {
+	deserializator.unpack_bigint (m_gc_trans[i].m_mvccid);
+      }
+  }
+
+  std::size_t repl_gc_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    std::size_t entry_size = start_offset;
+    entry_size += serializator.get_packed_int_vector_size (start_offset, m_gc_trans.size ());
+    entry_size += DB_ALIGN (entry_size, MAX_ALIGNMENT) - entry_size;
+    entry_size += OR_BIGINT_SIZE * m_gc_trans.size ();
+
+    return entry_size;
+  }
+
+  void repl_gc_info::stringify (string_buffer &str)
+  {
+    str ("repl_gc_info:\n");
+    for (size_t i = 0; i< m_gc_trans.size (); ++i)
+      {
+	str ("\ttraninfo[%d]:: mvccid=%d, tran_state=%d\n", i, m_gc_trans[i].m_mvccid, m_gc_trans[i].m_tran_state);
+      }
   }
 
   single_row_repl_entry::single_row_repl_entry (const repl_entry_type type, const char *class_name, LOG_LSA &lsa_stamp)

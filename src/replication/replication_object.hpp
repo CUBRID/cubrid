@@ -32,6 +32,7 @@
 #include "packable_object.hpp"
 #include "record_descriptor.hpp"
 #include "storage_common.h"
+#include "transaction_group.hpp"
 
 #include <vector>
 #include <string>
@@ -56,8 +57,11 @@ namespace cubreplication
       replication_object ();
       replication_object (LOG_LSA &lsa_stamp);
       virtual int apply (void) = 0;
+      // todo: const
       virtual void stringify (string_buffer &str) = 0;
+      // todo: unreferenced
       virtual bool is_instance_changing_attr (const OID &inst_oid);
+      // todo: unreferenced
       virtual bool is_statement_replication ();
 
       void get_lsa_stamp (LOG_LSA &lsa_stamp);
@@ -185,6 +189,33 @@ namespace cubreplication
       std::vector <DB_VALUE> m_new_values;
 
       OID m_inst_oid;
+  };
+
+  class repl_gc_info : public replication_object
+  {
+    public:
+      struct tran_info
+      {
+	MVCCID m_mvccid;
+	TRAN_STATE m_tran_state;
+      };
+
+      static const int PACKING_ID = 5;
+
+      explicit repl_gc_info (const tx_group &tx_group_node);
+      repl_gc_info () = default;
+      ~repl_gc_info () = default;
+
+      tx_group as_tx_group () const;
+
+      int apply () override;
+      void pack (cubpacking::packer &serializator) const;
+      void unpack (cubpacking::unpacker &deserializator);
+      std::size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const;
+      void stringify (string_buffer &str) override final;
+
+    private:
+      std::vector<tran_info> m_gc_trans;
   };
 
 } /* namespace cubreplication */

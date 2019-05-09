@@ -7236,59 +7236,63 @@ locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
   LC_COPYAREA *copyarea = NULL;
   int copyarea_length = copyarea_length_hint <= 0 ? DB_PAGESIZE : copyarea_length_hint;
   SCAN_CODE scan = S_DOESNT_FIT;
+  // *INDENT-OFF*
+  record_descriptor build_record (cubmem::CSTYLE_BLOCK_ALLOCATOR);
+  // *INDENT-ON*
 
-  while (scan == S_DOESNT_FIT)
+  new_recdes->data = NULL;
+  new_recdes->area_size = 0;
+
+  copyarea = locator_allocate_copy_area_by_length (copyarea_length);
+  if (copyarea == NULL)
     {
+      return NULL;
+    }
+
+  assert (copyarea->length > 0);
+  build_record.set_external_buffer (copyarea->mem, (size_t) copyarea->length);
+
+  new_recdes->data = copyarea->mem;
+  new_recdes->area_size = copyarea->length;
+
+  if (lob_create_flag == LOB_FLAG_EXCLUDE_LOB)
+    {
+      scan = heap_attrinfo_transform_to_disk_except_lob (thread_p, attr_info, old_recdes, &build_record);
+    }
+  else
+    {
+      scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, old_recdes, &build_record);
+    }
+  if (scan != S_SUCCESS)
+    {
+      /* Get the real length used in the copy area */
+      copyarea_length = copyarea->length;
+      locator_free_copy_area (copyarea);
+      return NULL;
+    }
+
+  char *allocated_data = NULL;
+  size_t allocated_size = 0;
+  build_record.release_buffer (allocated_data, allocated_size);
+  if (allocated_data != NULL)
+    {
+      assert (allocated_size > (size_t) copyarea_length);
+      locator_free_copy_area (copyarea);
+
+      copyarea_length = DB_ALIGN ((int) allocated_size, DB_PAGESIZE);
       copyarea = locator_allocate_copy_area_by_length (copyarea_length);
       if (copyarea == NULL)
 	{
-	  break;
+	  return NULL;
 	}
+      std::memcpy (copyarea->mem, allocated_data, build_record.get_size ());
 
-      new_recdes->data = copyarea->mem;
-      new_recdes->area_size = copyarea->length;
-
-      if (lob_create_flag == LOB_FLAG_EXCLUDE_LOB)
-	{
-	  scan = heap_attrinfo_transform_to_disk_except_lob (thread_p, attr_info, old_recdes, new_recdes);
-	}
-      else
-	{
-	  scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, old_recdes, new_recdes);
-	}
-
-      if (scan != S_SUCCESS)
-	{
-	  /* Get the real length used in the copy area */
-	  copyarea_length = copyarea->length;
-	  locator_free_copy_area (copyarea);
-	  copyarea = NULL;
-	  new_recdes->data = NULL;
-	  new_recdes->area_size = 0;
-
-	  /* Is more space needed ? */
-	  if (scan == S_DOESNT_FIT)
-	    {
-	      /*
-	       * The object does not fit into copy area, increase the area
-	       * to estimated size included in length of record descriptor.
-	       */
-	      if (copyarea_length < (-new_recdes->length))
-		{
-		  copyarea_length = DB_ALIGN (-new_recdes->length, MAX_ALIGNMENT);
-		}
-	      else
-		{
-		  /*
-		   * This is done for security purposes only, since the
-		   * transformation may not have given us the correct length,
-		   * somehow.
-		   */
-		  copyarea_length += DB_PAGESIZE;
-		}
-	    }
-	}
+      free (allocated_data);	// c-style allocator was used
     }
+
+  *new_recdes = build_record.get_recdes ();
+  new_recdes->data = copyarea->mem;
+  new_recdes->area_size = copyarea->length;
   return copyarea;
 }
 
