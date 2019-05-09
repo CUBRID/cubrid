@@ -4305,6 +4305,7 @@ regex_compile (const char *pattern, std::regex * &rx_compiled_regex,
 {
   int error_status = NO_ERROR;
 
+  // *INDENT-OFF*
   try
   {
     rx_compiled_regex = new std::regex (pattern, reg_flags);
@@ -4316,9 +4317,10 @@ regex_compile (const char *pattern, std::regex * &rx_compiled_regex,
     er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, e.what ());
     delete rx_compiled_regex;
     rx_compiled_regex = NULL;
-    return error_status;
   }
-  return NO_ERROR;
+  // *INDENT-ON*
+
+  return error_status;
 }
 
 /*
@@ -4365,7 +4367,10 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
 
   char rx_err_buf[REGEX_MAX_ERROR_MSG_SIZE] = { '\0' };
   char *rx_compiled_pattern = NULL;
-  std::regex * rx_compiled_regex = NULL;
+
+  // *INDENT-OFF*
+  std::regex *rx_compiled_regex = NULL;
+  // *INDENT-ON*
 
   /* check for allocated DB values */
   assert (src_string != NULL);
@@ -4460,12 +4465,14 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
       memcpy (rx_compiled_pattern, pattern_char_string_p, pattern_length);
       rx_compiled_pattern[pattern_length] = '\0';
 
+      // *INDENT-OFF*
       std::regex_constants::syntax_option_type reg_flags = std::regex_constants::ECMAScript;
       reg_flags |= std::regex_constants::nosubs;
       if (!is_case_sensitive)
 	{
 	  reg_flags |= std::regex_constants::icase;
 	}
+      // *INDENT-ON*
 
       error_status = regex_compile (rx_compiled_pattern, rx_compiled_regex, reg_flags);
       if (error_status != NO_ERROR)
@@ -4476,20 +4483,22 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
 	}
     }
 
+  // *INDENT-OFF*
   try
-  {
-    std::string src (src_char_string_p, src_length);
-    bool match = std::regex_search (src, *rx_compiled_regex);
-    *result = match ? V_TRUE : V_FALSE;
-  }
+    {
+      std::string src (src_char_string_p, src_length);
+      bool match = std::regex_search (src, *rx_compiled_regex);
+      *result = match ? V_TRUE : V_FALSE;
+    }
   catch (std::regex_error & e)
-  {
-    // regex execution exception, error_complexity or error_stack
-    error_status = ER_REGEX_EXEC_ERROR;
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, e.what ());
-    *result = V_ERROR;
-    goto cleanup;
-  }
+    {
+      // regex execution exception, error_complexity or error_stack
+      error_status = ER_REGEX_EXEC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, e.what ());
+      *result = V_ERROR;
+      goto cleanup;
+    }
+  // *INDENT-ON*
 
 cleanup:
 
