@@ -57,7 +57,8 @@ class tx_group_complete_manager : public tx_complete_manager
     ticket_type register_transaction (int tran_index, MVCCID mvccid, TRAN_STATE state) override final;
 
   protected:
-    void generate_group (tx_group &group_out);   // to be used only by derived classes
+    void generate_group (tx_group &group_out);
+    bool is_next_group_ready () = 0;
 
   private:
     ticket_type m_current_ticket;   // is also the group identifier
