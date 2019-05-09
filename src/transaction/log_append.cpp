@@ -347,6 +347,7 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
     case LOG_2PC_ABORT_DECISION:
     case LOG_COMMIT_WITH_POSTPONE:
     case LOG_SYSOP_START_POSTPONE:
+    case LOG_GROUP_COMMIT:
     case LOG_COMMIT:
     case LOG_ABORT:
     case LOG_2PC_COMMIT_INFORM_PARTICPS:
@@ -1259,6 +1260,10 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
 
     case LOG_SYSOP_START_POSTPONE:
       node->data_header_length = sizeof (LOG_REC_SYSOP_START_POSTPONE);
+      break;
+
+    case LOG_GROUP_COMMIT:
+      node->data_header_length = sizeof (LOG_REC_GROUP_COMPLETE);
       break;
 
     case LOG_COMMIT:

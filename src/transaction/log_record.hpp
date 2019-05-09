@@ -28,6 +28,7 @@
 // todo - add to a proper namespace
 
 #include "client_credentials.hpp"
+#include "transaction_group.hpp"
 #include "log_lsa.hpp"
 #include "recovery.h"
 #include "storage_common.h"
@@ -134,6 +135,8 @@ enum log_rectype
   LOG_DUMMY_GENERIC,		/* used for flush for now. it is ridiculous to create dummy log records for every single
 				 * case. we should find a different approach */
 
+  LOG_GROUP_COMMIT,
+
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
 };
 typedef enum log_rectype LOG_RECTYPE;
@@ -234,6 +237,16 @@ typedef struct log_rec_donetime LOG_REC_DONETIME;
 struct log_rec_donetime
 {
   INT64 at_time;		/* Database creation time. For safety reasons */
+};
+
+typedef struct log_rec_group_complete LOG_REC_GROUP_COMPLETE;
+struct log_rec_group_complete
+{
+  INT64 at_time;		/* time recorded by active server */
+  INT64 stream_pos;
+
+  // try for now too keep a tx_group? need something better?
+  int group_sz;
 };
 
 /* Log the change of the server's HA state */

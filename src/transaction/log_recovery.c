@@ -3787,6 +3787,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	      break;
 
+	    case LOG_GROUP_COMMIT:
+	      // todo: GC recovery.
+	      /// iterate through tran_id & complete them
+	      break;
+
 	    case LOG_MVCC_UNDO_DATA:
 	      /* Must detect MVCC operations and recover vacuum data buffer. The found operation is not actually
 	       * redone/undone, but it has information that can be used for vacuum. */
@@ -4751,7 +4756,10 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		    }
 		  tdes = NULL;
 		  break;
-
+		case LOG_GROUP_COMMIT:
+		  // should not happen
+		  // todo [GC recovery]:
+		  break;
 		case LOG_SMALLER_LOGREC_TYPE:
 		case LOG_LARGER_LOGREC_TYPE:
 		default:
