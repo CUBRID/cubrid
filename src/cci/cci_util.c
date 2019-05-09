@@ -995,6 +995,8 @@ cci_url_match (const char *src, char *token[])
   static int match_idx[] = { 2, 3, 4, 5, 6, 7, -1 };
 
   int error = CCI_ER_NO_ERROR;
+
+  // *INDENT-OFF*
   using namespace std::regex_constants;
   try
   {
@@ -1043,6 +1045,7 @@ cci_url_match (const char *src, char *token[])
       }
     fprintf (stderr, "regex_error : %s\n", e.what ());
   }
+  // *INDENT-ON*
 
   if (error != CCI_ER_NO_ERROR)
     {
