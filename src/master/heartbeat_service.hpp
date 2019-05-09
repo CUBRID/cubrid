@@ -29,21 +29,27 @@
 
 namespace cubhb
 {
+  // forward declarations
+  class udp_server;
+  class server_request;
   class cluster;
-  class transport;
-  class request_type;
-  class response_type;
 
   class heartbeat_service
   {
     public:
-      heartbeat_service (transport &transport_, cluster &cluster_);
+      heartbeat_service (udp_server &server, cluster &cluster_);
+      ~heartbeat_service () = default;
 
-      int send_heartbeat_request (const cubbase::hostname_type &dest_hostname) const;
-      void on_heartbeat_request (const request_type &request, response_type &response);
+      heartbeat_service (heartbeat_service &&other) = delete;
+      heartbeat_service &operator= (heartbeat_service &&other) = delete;
+      heartbeat_service (const heartbeat_service &other) = delete;
+      heartbeat_service &operator= (const heartbeat_service &other) = delete;
+
+      void handle_heartbeat (server_request &request);
+      void send_heartbeat (const cubbase::hostname_type &node_hostname);
 
     private:
-      transport &m_transport;
+      udp_server &m_server;
       cluster &m_cluster;
   };
 

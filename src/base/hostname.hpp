@@ -24,17 +24,14 @@
 #ifndef _HOSTNAME_HPP_
 #define _HOSTNAME_HPP_
 
-#include "error_code.h"
 #include "packable_object.hpp"
-#include "porting.h"
 #if defined (WINDOWS)
 #include "wintcp.h"
 #else
 #include "tcp.h"
-#include <netdb.h>
 #endif
 
-#include <cstring>
+#include <string>
 
 namespace cubbase
 {
@@ -153,30 +150,6 @@ namespace cubbase
 	  {
 	    return *rhs == *lhs;
 	  }
-      }
-
-      int
-      to_udp_sockaddr (int port, sockaddr *saddr, socklen_t *slen) const
-      {
-	// Construct address for UDP socket
-	sockaddr_in udp_saddr;
-	memset ((void *) &udp_saddr, 0, sizeof (udp_saddr));
-	udp_saddr.sin_family = AF_INET;
-	udp_saddr.sin_port = htons (port);
-
-	unsigned char sin_addr[4];
-	int error_code = css_hostname_to_ip (as_c_str (), sin_addr);
-	if (error_code != NO_ERROR)
-	  {
-	    return error_code;
-	  }
-
-	std::memcpy ((void *) &udp_saddr.sin_addr, (void *) sin_addr, sizeof (in_addr));
-
-	*slen = sizeof (udp_saddr);
-	std::memcpy ((void *) saddr, (void *) &udp_saddr, *slen);
-
-	return NO_ERROR;
       }
 
       // Public functions

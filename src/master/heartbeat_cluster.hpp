@@ -25,14 +25,11 @@
 #define _HEARTBEAT_CLUSTER_HPP_
 
 #include "hostname.hpp"
-#include "porting.h"
 #include "system_parameter.h"
+#include "udp_rpc.hpp"
 
 #include <chrono>
 #include <list>
-#if defined (LINUX)
-#include <netinet/in.h> // for sockaddr_in
-#endif
 #include <string>
 #include <vector>
 
@@ -42,7 +39,7 @@ namespace cubhb
   static const std::chrono::milliseconds UI_NODE_CACHE_TIME_IN_MSECS (60 * 1000);
   static const std::chrono::milliseconds UI_NODE_CLEANUP_TIME_IN_MSECS (3600 * 1000);
 
-  class transport;
+  // forward declarations
   class heartbeat_arg;
   class heartbeat_service;
 
@@ -126,7 +123,7 @@ namespace cubhb
   class ui_node
   {
     public:
-      ui_node (const cubbase::hostname_type &hostname, const std::string &group_id, const sockaddr_in &sockaddr,
+      ui_node (const cubbase::hostname_type &hostname, const std::string &group_id, ipv4_type ip_addr,
 	       ui_node_result v_result);
       ~ui_node () = default;
 
@@ -135,7 +132,7 @@ namespace cubhb
     public: // TODO CBRD-22864 members should be private
       cubbase::hostname_type hostname;
       std::string group_id;
-      sockaddr_in saddr;
+      ipv4_type ip_addr;
       std::chrono::system_clock::time_point last_recv_time;
       ui_node_result v_result;
   };
@@ -143,12 +140,12 @@ namespace cubhb
   class cluster
   {
     public:
-      explicit cluster (transport *transport_);
+      explicit cluster (udp_server *server);
 
       cluster (const cluster &other); // Copy c-tor
       cluster &operator= (const cluster &other); // Copy assignment
 
-      virtual ~cluster ();
+      ~cluster ();
 
       int init ();
       void destroy ();
@@ -160,7 +157,7 @@ namespace cubhb
       const std::string &get_group_id () const;
       const node_entry *get_myself_node () const;
 
-      void on_heartbeat_request (const heartbeat_arg &arg, const sockaddr_in *from);
+      void handle_heartbeat (const heartbeat_arg &arg, ipv4_type from_ip);
       void send_heartbeat_to_all ();
       bool is_heartbeat_received_from_all ();
 
@@ -180,15 +177,14 @@ namespace cubhb
 
       void remove_ui_node (ui_node *&node);
       ui_node *find_ui_node (const cubbase::hostname_type &node_hostname, const std::string &node_group_id,
-			     const sockaddr_in &sockaddr) const;
+			     ipv4_type ip_addr) const;
       ui_node *insert_ui_node (const cubbase::hostname_type &node_hostname, const std::string &node_group_id,
-			       const sockaddr_in &sockaddr, ui_node_result v_result);
+			       ipv4_type ip_addr, ui_node_result v_result);
 
       node_entry *insert_host_node (const std::string &node_hostname, node_entry::priority_type priority);
 
-      virtual ui_node_result is_heartbeat_valid (const cubbase::hostname_type &node_hostname,
-	  const std::string &node_group_id,
-	  const sockaddr_in *from) const;
+      ui_node_result is_heartbeat_valid (const cubbase::hostname_type &node_hostname, const std::string &node_group_id,
+					 ipv4_type from_ip_addr) const;
 
     public: // TODO CBRD-22864 members should be private
       pthread_mutex_t lock; // TODO CBRD-22864 replace with std::mutex
@@ -209,7 +205,7 @@ namespace cubhb
       std::list<ping_host> ping_hosts;
 
     protected:
-      transport *m_transport;
+      udp_server *m_server;
       heartbeat_service *m_hb_service;
 
       std::string m_group_id;

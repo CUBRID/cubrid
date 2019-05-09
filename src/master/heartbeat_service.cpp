@@ -24,50 +24,44 @@
 #include "heartbeat_service.hpp"
 
 #include "heartbeat_cluster.hpp"
-#include "heartbeat_transport.hpp"
+#include "udp_rpc.hpp"
 
 namespace cubhb
 {
 
-  heartbeat_service::heartbeat_service (transport &transport_, cluster &cluster_)
-    : m_transport (transport_)
+  heartbeat_service::heartbeat_service (udp_server &server, cluster &cluster_)
+    : m_server (server)
     , m_cluster (cluster_)
   {
-    transport::handler_type handler = std::bind (&heartbeat_service::on_heartbeat_request, std::ref (*this),
-				      std::placeholders::_1, std::placeholders::_2);
-    m_transport.register_handler (HEARTBEAT, handler);
-  }
-
-  int
-  heartbeat_service::send_heartbeat_request (const cubbase::hostname_type &dest_hostname) const
-  {
-    if (m_cluster.get_myself_node () == NULL)
-      {
-	// if myself is NULL then cluster is not healthy
-	return ER_FAILED;
-      }
-
-    request_type request (dest_hostname);
-    heartbeat_arg arg (true, dest_hostname, m_cluster);
-    request.set_body (HEARTBEAT, arg);
-
-    return m_transport.send_request (request);
+    server_request_handler handler = std::bind (&heartbeat_service::handle_heartbeat, std::ref (*this),
+				     std::placeholders::_1);
+    m_server.register_handler (HEARTBEAT, handler);
   }
 
   void
-  heartbeat_service::on_heartbeat_request (const request_type &request, response_type &response)
+  heartbeat_service::handle_heartbeat (server_request &request)
   {
     heartbeat_arg request_arg;
     request.get_body (request_arg);
 
-    m_cluster.on_heartbeat_request (request_arg, (const sockaddr_in *) request.get_saddr ());
+    m_cluster.handle_heartbeat (request_arg, request.get_remote_ip_address ());
 
     // must send heartbeat response in order to avoid split-brain when heartbeat configuration changed
     if (request_arg.is_request () && !m_cluster.hide_to_demote)
       {
 	heartbeat_arg response_arg (false, request_arg.get_orig_hostname (), m_cluster);
-	response.set_body (HEARTBEAT, response_arg);
+	request.get_response ().set_body (response_arg);
       }
+  }
+
+  void
+  heartbeat_service::send_heartbeat (const cubbase::hostname_type &node_hostname)
+  {
+    heartbeat_arg request_arg (true, node_hostname, m_cluster);
+    client_request request (m_server.get_socket (), node_hostname, m_server.get_port ());
+
+    request.set_body (message_type::HEARTBEAT, request_arg);
+    request.end ();
   }
 
   heartbeat_arg::heartbeat_arg ()

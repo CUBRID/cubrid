@@ -29,13 +29,13 @@
 #include "environment_variable.h"
 #include "error_context.hpp"
 #include "heartbeat.h"
-#include "heartbeat_transport.hpp"
 #include "master_request.h"
 #include "master_util.h"
 #include "message_catalog.h"
 #include "object_representation.h"
 #include "porting.h"
 #include "tcp.h"
+#include "udp_rpc.hpp"
 #include "utility.h"
 
 #include <arpa/inet.h>
@@ -3384,8 +3384,8 @@ hb_cluster_initialize ()
 {
   if (hb_Cluster == NULL)
     {
-      cubhb::transport *udp_server = new cubhb::udp_server (prm_get_integer_value (PRM_ID_HA_PORT_ID));
-      int error_code = udp_server->start ();
+      cubhb::udp_server *server = new cubhb::udp_server (prm_get_integer_value (PRM_ID_HA_PORT_ID));
+      int error_code = server->start ();
       if (error_code != NO_ERROR)
 	{
 	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
@@ -3393,7 +3393,7 @@ hb_cluster_initialize ()
 	  return error_code;
 	}
 
-      hb_Cluster = new cubhb::cluster (udp_server);
+      hb_Cluster = new cubhb::cluster (server);
     }
 
   pthread_mutex_lock (&hb_Cluster->lock);
@@ -4105,7 +4105,6 @@ hb_get_node_info_string (char **str, bool verbose_yn)
 {
   int rv, buf_size = 0, required_size = 0;
   char *p, *last;
-  char *ipv4_p;
   char ipv4_str[HB_IPV4_STR_LEN];
 
   if (hb_Cluster == NULL)
@@ -4187,9 +4186,8 @@ hb_get_node_info_string (char **str, bool verbose_yn)
 	  continue;
 	}
 
-      ipv4_p = (char *) &ui_node->saddr.sin_addr.s_addr;
-      snprintf (ipv4_str, sizeof (ipv4_str), "%u.%u.%u.%u", (unsigned char) ipv4_p[0], (unsigned char) ipv4_p[1],
-		(unsigned char) ipv4_p[2], (unsigned char) ipv4_p[3]);
+      unsigned char *ipv4_p = (unsigned char *) &ui_node->ip_addr;
+      snprintf (ipv4_str, sizeof (ipv4_str), "%u.%u.%u.%u", ipv4_p[0], ipv4_p[1], ipv4_p[2], ipv4_p[3]);
       p += snprintf (p, MAX ((last - p), 0), HA_UI_NODE_FORMAT_STRING, ui_node->get_hostname ().as_c_str (), ipv4_str,
 		     ui_node->group_id.c_str (), hb_valid_result_string (ui_node->v_result));
     }
