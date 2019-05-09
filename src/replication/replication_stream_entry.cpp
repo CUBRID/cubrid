@@ -95,6 +95,7 @@ namespace cubreplication
     replication_factory_po.register_creator<single_row_repl_entry> (single_row_repl_entry::PACKING_ID);
     replication_factory_po.register_creator<rec_des_row_repl_entry> (rec_des_row_repl_entry::PACKING_ID);
     replication_factory_po.register_creator<changed_attrs_row_repl_entry> (changed_attrs_row_repl_entry::PACKING_ID);
+    replication_factory_po.register_creator<repl_gc_info> (repl_gc_info::PACKING_ID);
 
     return &replication_factory_po;
   }
