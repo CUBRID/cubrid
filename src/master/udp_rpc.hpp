@@ -67,7 +67,7 @@ namespace cubhb
       void set (message_type type, const Body &b);
 
       template <typename Body>
-      void get (message_type &type, Body &b) const;
+      void get (message_type &type, Body &body) const;
 
     private:
       bool m_use_eblock;
@@ -104,7 +104,7 @@ namespace cubhb
       void end () const;
 
       template <typename Body>
-      void get_body (Body &b) const;
+      void get_body (Body &body) const;
 
     private:
       socket_type m_sfd;
@@ -120,7 +120,7 @@ namespace cubhb
       client_request () = delete;
       client_request (socket_type sfd, const cubbase::hostname_type &host, port_type port);
 
-      void end ();
+      void end () const;
 
       template <typename Body>
       void set_body (message_type type, Body &body);
@@ -128,7 +128,6 @@ namespace cubhb
     private:
       port_type m_port;
       cubbase::hostname_type m_host;
-      ipv4_type m_remote_ip_addr;
       socket_type m_sfd;
       body_type m_body;
   };
@@ -176,28 +175,28 @@ namespace cubhb
 
   template <typename Body>
   void
-  body_type::set (message_type type, const Body &b)
+  body_type::set (message_type type, const Body &body)
   {
     cubpacking::packer packer;
 
     size_t total_size = 0;
     total_size += packer.get_packed_int_size (total_size); // message_type
-    total_size += packer.get_packed_size_overloaded (b, total_size); // body buffer
+    total_size += packer.get_packed_size_overloaded (body, total_size); // body buffer
     m_eblock.extend_to (total_size);
 
     packer.set_buffer (m_eblock.get_ptr (), total_size);
     packer.pack_to_int (type);
-    packer.pack_overloaded (b);
+    packer.pack_overloaded (body);
   }
 
   template <typename Body>
   void
-  body_type::get (message_type &type, Body &b) const
+  body_type::get (message_type &type, Body &body) const
   {
     cubpacking::unpacker unpacker (get_ptr (), size ());
 
     unpacker.unpack_from_int (type);
-    unpacker.unpack_overloaded (b);
+    unpacker.unpack_overloaded (body);
   }
 
   template <typename Body>
@@ -210,10 +209,10 @@ namespace cubhb
 
   template <typename Body>
   void
-  server_request::get_body (Body &b) const
+  server_request::get_body (Body &body) const
   {
     message_type type;
-    m_body.get (type, b);
+    m_body.get (type, body);
   }
 
   template <typename Body>

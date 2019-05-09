@@ -31,6 +31,12 @@
 namespace cubhb
 {
 
+  void send_to (const body_type &body, socket_type sfd, port_type port, ipv4_type ip_addr);
+}
+
+namespace cubhb
+{
+
   body_type::body_type ()
     : m_use_eblock (true)
     , m_block ()
@@ -146,32 +152,12 @@ namespace cubhb
   void
   server_request::end () const
   {
-    if (m_response.m_body.empty ())
-      {
-	// nothing to send
-	return;
-      }
-    if (m_sfd == INVALID_SOCKET)
-      {
-	return;
-      }
-
-    sockaddr_in remote_sock_addr;
-    socklen_t remote_sock_addr_len = sizeof (sockaddr_in);
-    std::memset (&remote_sock_addr, 0, remote_sock_addr_len);
-
-    remote_sock_addr.sin_port = htons (m_remote_port);
-    remote_sock_addr.sin_addr.s_addr = m_remote_ip_addr;
-    remote_sock_addr.sin_family = AF_INET;
-
-    sendto (m_sfd, m_response.m_body.get_ptr (), m_response.m_body.size (), 0, (sockaddr *) &remote_sock_addr,
-	    remote_sock_addr_len);
+    send_to (m_response.m_body, m_sfd, m_remote_port, m_remote_ip_addr);
   }
 
   client_request::client_request (socket_type sfd, const cubbase::hostname_type &host, port_type port)
     : m_port (port)
     , m_host (host)
-    , m_remote_ip_addr (0)
     , m_sfd (sfd)
     , m_body ()
   {
@@ -179,18 +165,8 @@ namespace cubhb
   }
 
   void
-  client_request::end ()
+  client_request::end () const
   {
-    if (m_body.empty ())
-      {
-	// nothing to send
-	return;
-      }
-    if (m_sfd == INVALID_SOCKET)
-      {
-	return;
-      }
-
     unsigned char sin_addr[4];
     int error_code = css_hostname_to_ip (m_host.as_c_str (), sin_addr);
     if (error_code != NO_ERROR)
@@ -198,17 +174,10 @@ namespace cubhb
 	return;
       }
 
-    sockaddr_in remote_sock_addr;
-    socklen_t remote_sock_addr_len = sizeof (sockaddr_in);
-    std::memset (&remote_sock_addr, 0, remote_sock_addr_len);
+    ipv4_type remote_ip_addr = 0;
+    std::memcpy (&remote_ip_addr, sin_addr, sizeof (ipv4_type));
 
-    remote_sock_addr.sin_family = AF_INET;
-    remote_sock_addr.sin_port = htons (m_port);
-
-    std::memcpy (&remote_sock_addr.sin_addr, sin_addr, sizeof (in_addr));
-    m_remote_ip_addr = remote_sock_addr.sin_addr.s_addr;
-
-    sendto (m_sfd, m_body.get_ptr (), m_body.size (), 0, (const sockaddr *) &remote_sock_addr, remote_sock_addr_len);
+    send_to (m_body, m_sfd, m_port, remote_ip_addr);
   }
 
   udp_server::udp_server (int port)
@@ -302,10 +271,11 @@ namespace cubhb
   udp_server::poll (udp_server *arg)
   {
     sockaddr_in from;
-    std::memset (&from, 0, sizeof (sockaddr_in));
+    socklen_t from_len = sizeof (sockaddr_in);
+    std::memset (&from, 0, from_len);
 
+    pollfd fds[1] = {{0, 0, 0}};
     socket_type sfd = arg->m_sfd;
-    pollfd po[1] = {{0, 0, 0}};
 
     char buffer[BUFFER_SIZE + MAX_ALIGNMENT];
     char *aligned_buffer = PTR_ALIGN (buffer, MAX_ALIGNMENT);
@@ -314,18 +284,17 @@ namespace cubhb
 
     while (!arg->m_shutdown)
       {
-	po[0].fd = sfd;
-	po[0].events = POLLIN;
+	fds[0].fd = sfd;
+	fds[0].events = POLLIN;
 
-	int error_code = ::poll (po, 1, 1);
+	int error_code = ::poll (fds, 1, 1);
 	if (error_code <= 0)
 	  {
 	    continue;
 	  }
 
-	if ((po[0].revents & POLLIN) && sfd == arg->m_sfd)
+	if ((fds[0].revents & POLLIN) && sfd == arg->m_sfd)
 	  {
-	    socklen_t from_len = sizeof (from);
 	    ssize_t buffer_size = recvfrom (sfd, (void *) aligned_buffer, BUFFER_SIZE, 0, (sockaddr *) &from, &from_len);
 	    if (buffer_size <= 0)
 	      {
@@ -356,6 +325,25 @@ namespace cubhb
 
     // send response
     request.end ();
+  }
+
+  void
+  send_to (const body_type &body, socket_type sfd, port_type port, ipv4_type ip_addr)
+  {
+    if (body.empty () || sfd == INVALID_SOCKET)
+      {
+	return;
+      }
+
+    sockaddr_in remote_sock_addr;
+    socklen_t remote_sock_addr_len = sizeof (sockaddr_in);
+    std::memset (&remote_sock_addr, 0, remote_sock_addr_len);
+
+    remote_sock_addr.sin_family = AF_INET;
+    remote_sock_addr.sin_port = htons (port);
+    remote_sock_addr.sin_addr.s_addr = ip_addr;
+
+    sendto (sfd, body.get_ptr (), body.size (), 0, (const sockaddr *) &remote_sock_addr, remote_sock_addr_len);
   }
 
 } /* namespace cubhb */
