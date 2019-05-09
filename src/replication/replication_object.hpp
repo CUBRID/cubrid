@@ -191,14 +191,22 @@ namespace cubreplication
       OID m_inst_oid;
   };
 
-  class repl_tran_info : public replication_object
+  class repl_gc_info : public replication_object
   {
     public:
+      struct tran_info
+      {
+	MVCCID m_mvccid;
+	TRAN_STATE m_tran_state;
+      };
+
       static const int PACKING_ID = 5;
 
-      explicit repl_tran_info (const tx_group::node_info &tx_group_node);
-      repl_tran_info () = default;
-      ~repl_tran_info () = default;
+      explicit repl_gc_info (const tx_group &tx_group_node);
+      repl_gc_info () = default;
+      ~repl_gc_info () = default;
+
+      tx_group as_tx_group () const;
 
       int apply () override;
       void pack (cubpacking::packer &serializator) const;
@@ -206,11 +214,8 @@ namespace cubreplication
       std::size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const;
       void stringify (string_buffer &str) override final;
 
-      MVCCID get_mvccid ();
-      TRAN_STATE get_tran_state ();
     private:
-      MVCCID m_mvccid;
-      TRAN_STATE m_tran_state;
+      std::vector<tran_info> m_gc_trans;
   };
 
 } /* namespace cubreplication */

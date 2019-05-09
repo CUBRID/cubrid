@@ -95,7 +95,7 @@ namespace cubreplication
     replication_factory_po.register_creator<single_row_repl_entry> (single_row_repl_entry::PACKING_ID);
     replication_factory_po.register_creator<rec_des_row_repl_entry> (rec_des_row_repl_entry::PACKING_ID);
     replication_factory_po.register_creator<changed_attrs_row_repl_entry> (changed_attrs_row_repl_entry::PACKING_ID);
-    replication_factory_po.register_creator<repl_tran_info> (repl_tran_info::PACKING_ID);
+    replication_factory_po.register_creator<repl_gc_info> (repl_gc_info::PACKING_ID);
 
     return &replication_factory_po;
   }
@@ -204,27 +204,6 @@ namespace cubreplication
     size_t aligned_stream_entry_header_size = DB_ALIGN (stream_entry_header_size, MAX_ALIGNMENT);
 
     return aligned_stream_entry_header_size;
-  }
-
-  void
-  stream_entry::from_tx_group (const tx_group &tx_group)
-  {
-    for (const tx_group::node_info &it : tx_group.get_container ())
-      {
-	m_packable_entries.push_back (new repl_tran_info (it));
-      }
-  }
-
-  tx_group
-  stream_entry::as_tx_group ()
-  {
-    tx_group res;
-    for (auto it : m_packable_entries)
-      {
-	repl_tran_info *repl_tr_info = dynamic_cast<repl_tran_info *> (it);
-	res.add (0, repl_tr_info->get_mvccid (), repl_tr_info->get_tran_state ());
-      }
-    return std::move (res);
   }
 
   void

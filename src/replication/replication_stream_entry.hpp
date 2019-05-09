@@ -30,7 +30,6 @@
 #include "replication_object.hpp"
 #include "stream_entry.hpp"
 #include "storage_common.h"
-#include "transaction_group.hpp"
 
 #include <vector>
 
@@ -187,8 +186,6 @@ namespace cubreplication
 
       bool is_equal (const cubstream::entry<replication_object> *other);
       static size_t compute_header_size (void);
-      void from_tx_group (const tx_group &tx_group);
-      tx_group as_tx_group ();
       void move_replication_objects_after_lsa_to_stream (LOG_LSA &lsa, stream_entry &entry);
       void destroy_objects_after_lsa (LOG_LSA &start_lsa);
 

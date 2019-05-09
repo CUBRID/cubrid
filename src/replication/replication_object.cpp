@@ -97,49 +97,76 @@ namespace cubreplication
     return false;
   }
 
-  repl_tran_info::repl_tran_info (const tx_group::node_info &tx_group_node)
-    : m_mvccid (tx_group_node.m_mvccid)
-    , m_tran_state (tx_group_node.m_tran_state)
+  repl_gc_info::repl_gc_info (const tx_group &tx_group_node)
   {
-    //
+    for (const tx_group::node_info &node_info : tx_group_node.get_container ())
+      {
+	m_gc_trans.emplace_back (tran_info {node_info.m_mvccid, node_info.m_tran_state});
+      }
   }
 
-  int repl_tran_info::apply ()
+  tx_group
+  repl_gc_info::as_tx_group () const
+  {
+    tx_group res;
+    for (const tran_info &ti : m_gc_trans)
+      {
+	res.add (0, ti.m_mvccid, ti.m_tran_state);
+      }
+    return std::move (res);
+  }
+
+  int repl_gc_info::apply ()
   {
     return 0;
   }
 
-  void repl_tran_info::pack (cubpacking::packer &serializator) const
+  void repl_gc_info::pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_all (m_mvccid, (int) m_tran_state);
+    serializator.pack_int (m_gc_trans.size ());
+    for (const tran_info &t : m_gc_trans)
+      {
+	serializator.pack_int (t.m_tran_state);
+      }
+
+    for (const tran_info &t : m_gc_trans)
+      {
+	serializator.pack_bigint (t.m_mvccid);
+      }
   }
 
-  void repl_tran_info::unpack (cubpacking::unpacker &deserializator)
+  void repl_gc_info::unpack (cubpacking::unpacker &deserializator)
   {
-    deserializator.unpack_all (m_mvccid, (int &) m_tran_state);
+    size_t gc_trans_sz;
+    deserializator.unpack_bigint (gc_trans_sz);
+    m_gc_trans.resize (gc_trans_sz);
+    for (size_t i = 0; i < gc_trans_sz; ++i)
+      {
+	deserializator.unpack_int ((int &) m_gc_trans[i].m_tran_state);
+      }
+    for (size_t i = 0; i < gc_trans_sz; ++i)
+      {
+	deserializator.unpack_bigint (m_gc_trans[i].m_mvccid);
+      }
   }
 
-  std::size_t repl_tran_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  std::size_t repl_gc_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    return serializator.get_all_packed_size (m_mvccid, (int) m_tran_state);
+    std::size_t entry_size = start_offset;
+    entry_size += serializator.get_packed_int_vector_size (start_offset, m_gc_trans.size ());
+    entry_size += DB_ALIGN (entry_size, INT_ALIGNMENT) - entry_size;
+    entry_size += OR_BIGINT_SIZE * m_gc_trans.size ();
+
+    return entry_size;
   }
 
-  void repl_tran_info::stringify (string_buffer &str)
+  void repl_gc_info::stringify (string_buffer &str)
   {
-    str ("repl_tran_info: m_mvccid=%d m_tran_state=%d\n", m_mvccid,
-	 m_tran_state);
-  }
-
-  MVCCID
-  repl_tran_info::get_mvccid ()
-  {
-    return m_mvccid;
-  }
-
-  TRAN_STATE
-  repl_tran_info::get_tran_state ()
-  {
-    return m_tran_state;
+    str ("repl_gc_info:\n");
+    for (size_t i = 0; i< m_gc_trans.size (); ++i)
+      {
+	str ("\ttraninfo[%d]:: mvccid=%d, tran_state=%d\n", i, m_gc_trans[i].m_mvccid, m_gc_trans[i].m_tran_state);
+      }
   }
 
   single_row_repl_entry::single_row_repl_entry (const repl_entry_type type, const char *class_name, LOG_LSA &lsa_stamp)
