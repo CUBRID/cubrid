@@ -50,10 +50,7 @@
 #include <windows.h>
 #endif
 #include <sys/types.h>
-
-#ifdef __cplusplus
 #include <regex>
-#endif
 
 /************************************************************************
  * OTHER IMPORTED HEADER FILES						*
