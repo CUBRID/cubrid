@@ -76,6 +76,8 @@ class record_descriptor : public cubpacking::packable_object
     // based on recdes
     record_descriptor (const recdes &rec, const cubmem::block_allocator &alloc = cubmem::PRIVATE_BLOCK_ALLOCATOR);
 
+    record_descriptor (record_descriptor &&other);
+
     // peek record from page; changes into record data will not be permitted
     int peek (cubthread::entry *thread_p, PAGE_PTR page, PGSLOTID slotid);
 

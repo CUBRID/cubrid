@@ -72,6 +72,13 @@ record_descriptor::record_descriptor (const recdes &rec,
     }
 }
 
+record_descriptor::record_descriptor (record_descriptor &&other)
+{
+  m_recdes = other.m_recdes;
+  m_own_data = std::move (other.m_own_data);
+  m_data_source = other.m_data_source;
+}
+
 record_descriptor::record_descriptor (const char *data, size_t size)
   : record_descriptor ()
 {
