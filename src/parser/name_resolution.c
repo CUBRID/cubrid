@@ -1941,7 +1941,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	}
 
       /* STEP 3 */
-      if (seq)
+      if (seq && node->info.query.q.select.list->next)
 	{
 	  seq->info.value.data_value.set = node->info.query.q.select.list;
 	  node->info.query.q.select.list = seq;
