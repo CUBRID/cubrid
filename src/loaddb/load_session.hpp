@@ -129,7 +129,7 @@ namespace cubload
       class_registry &get_class_registry ();
 
       template<typename... Args>
-      void append_log_msg (MSGCAT_LOADDB_MSG msg_id, std::string class_name, Args &&... args);
+      void append_log_msg (MSGCAT_LOADDB_MSG msg_id, Args &&... args);
 
     private:
       void notify_waiting_threads ();
@@ -166,12 +166,13 @@ namespace cubload
   // Template implementation
   template<typename... Args>
   void
-  session::append_log_msg (MSGCAT_LOADDB_MSG msg_id, std::string class_name, Args &&... args)
+  session::append_log_msg (MSGCAT_LOADDB_MSG msg_id, Args &&... args)
   {
     if (get_args ().verbose)
       {
 	std::string log_msg;
-	log_msg = m_driver->get_error_handler ().format_log_msg (msg_id, class_name, std::forward<Args> (args)...);
+	error_handler dummy_err (*this);
+	log_msg = dummy_err.format_log_msg (msg_id, std::forward<Args> (args)...);
 
 	std::unique_lock<std::mutex> ulock (m_stats_mutex);
 

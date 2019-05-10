@@ -422,7 +422,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Instanz %1$d der Klasse %2$s wurde schon definiert\n
 46 Instanz %1$d der Klasse %2$s wurde schon reserviert\n
 47 UNIQUE Verletzung auf Attribut '%1$s', konvertiert zu NULL\n
-48   %1$d Instanzen\n
+48 %1$s %2$d Instanzen\n
 49 Klasse %1$s\n
 50 Passwort:
 51 \n*** Klassenstatistiken werden aktualisiert ***\n
@@ -432,10 +432,11 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 55 fehlt
 56 in %1$s
 57 Inkompatible Argumente, \"%1$s\", und \"%2$s\"\n
-58 %1$d Instanzen festgeschrieben\n
+58 %1$s %2$d Instanzen festgeschrieben\n
 59 \nNicht optimierte Version von loaddb kann nicht aufgerufen werden.\n
 60 Parse-Fehler \"%1$s\", wie %2$s Typ.\n
 61 Object Reference is not supported in CS mode.\n
+62 Updated statistics for class %1$s.\n
 112   %1$d Instanzen\r
 113 Letzte festgeschriebene Zeile: %1$d\n
 114 Fehler-Kontroll-Datei

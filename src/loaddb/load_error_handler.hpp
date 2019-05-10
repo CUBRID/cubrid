@@ -68,16 +68,16 @@ namespace cubload
       void log_date_time_conversion_error (Args &&... args);
 
       template<typename... Args>
-      std::string format_log_msg (MSGCAT_LOADDB_MSG msg_id, std::string class_name, Args &&... args);
+      std::string format_log_msg (MSGCAT_LOADDB_MSG msg_id, Args &&... args);
+
+    private:
+      int get_lineno ();
 
       // Format string based on format string passed as input parameter. Check snprintf function for more details
       template<typename... Args>
       std::string format (const char *fmt, Args &&... args);
 
       char *get_message_from_catalog (MSGCAT_LOADDB_MSG msg_id);
-
-    private:
-      int get_lineno ();
 
       void log_error_message (std::string &err_msg, bool fail);
       bool is_last_error_filtered ();
@@ -89,6 +89,7 @@ namespace cubload
       bool is_error_filtered (int err_id);
 #endif
   };
+
 }
 
 /************************************************************************/
@@ -171,25 +172,14 @@ namespace cubload
 
   template<typename... Args>
   std::string
-  error_handler::format_log_msg (MSGCAT_LOADDB_MSG msg_id, std::string class_name, Args &&... args)
+  error_handler::format_log_msg (MSGCAT_LOADDB_MSG msg_id, Args &&... args)
   {
     std::string log_msg;
-    if (!class_name.empty ())
-      {
-	log_msg.append ("Class " + class_name + ": ");
-      }
-    if (msg_id == LOADDB_MSG_UPDATING_STATISTICS)
-      {
-	// In case of updating statistics we need to also add the class that had the statistics updated.
-	log_msg.append (get_message_from_catalog (LOADDB_MSG_UPDATING_STATISTICS));
-	msg_id = LOADDB_MSG_CLASS_TITLE;
-      }
 
     log_msg.append (format (get_message_from_catalog (msg_id), std::forward<Args> (args)...));
     log_msg.append ("\n");
     return log_msg;
   }
-
 } // namespace cubload
 
 #endif /* _LOAD_ERROR_HANDLER_HPP_ */

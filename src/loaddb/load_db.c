@@ -1082,7 +1082,8 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
 		{
 		  char *committed_instances_msg = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
 								  LOADDB_MSG_COMMITTED_INSTANCES);
-		  print_log_msg (args->verbose_commit, committed_instances_msg, curr_rows_committed);
+		  char *dummy = "";
+		  print_log_msg (args->verbose_commit, committed_instances_msg, dummy, curr_rows_committed);
 		}
 
 	      prev_rows_committed = curr_rows_committed;

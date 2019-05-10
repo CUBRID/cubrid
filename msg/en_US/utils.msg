@@ -423,7 +423,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Instance %1$d of class %2$s has already been defined\n
 46 Instance %1$d of class %2$s has already been reserved\n
 47 UNIQUE violation on attribute '%1$s', converted to NULL\n
-48   %1$d instances\n
+48 %1$s %2$d instances\n
 49 Class %1$s\n
 50 Password:
 51 \n*** Updating class statistics ***\n
@@ -433,10 +433,11 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 55 missing
 56 in %1$s
 57 Incompatible arguments, \"%1$s\", and \"%2$s\"\n
-58 %1$d instances committed\n
+58 %1$s %2$d instances committed\n
 59 \nCannot invoke non-optimized version of loaddb.\n
 60 Error parsing \"%1$s\", as %2$s type.\n
 61 Object Reference is not supported in CS mode.\n
+62 Updated statistics for class %1$s.\n
 112   %1$d instances\r
 113 Last committed line : %1$d\n
 114 error-control-file

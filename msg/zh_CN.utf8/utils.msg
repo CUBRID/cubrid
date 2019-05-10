@@ -422,7 +422,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 类 %2$s 的实例 %1$d 已经被定义\n
 46 类 %2$s 的实例 %1$d 已经被保留\n
 47 在属性 '%1$s' 上违反了唯一性, 转化为 NULL\n
-48   %1$d 个实例\n
+48 %1$s %2$d 个实例\n
 49 类 %1$s\n
 50 密码:
 51 \n*** 更新类统计信息 ***\n
@@ -432,10 +432,11 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 55 丢失
 56 在 %1$s
 57 不兼容的参数, \"%1$s\", 和 \"%2$s\"\n
-58 %1$d 个实例被提交\n
+58 %1$s %2$d 个实例被提交\n
 59 \n无法调用非优化版本的loaddb.\n
 60 将 \"%1$s\" 解析为 %2$s 类型时出错.\n
 61 Object Reference is not supported in CS mode.\n
+62 Updated statistics for class %1$s.\n
 112   %1$d 个实例\r
 113 最后提交的行 : %1$d\n
 114 错误控制文件

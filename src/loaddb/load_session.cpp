@@ -220,11 +220,11 @@ namespace cubload
 
 	    if (m_session.get_args ().syntax_check)
 	      {
-		m_session.append_log_msg (LOADDB_MSG_INSTANCE_COUNT, class_name, m_batch.get_rows_number ());
+		m_session.append_log_msg (LOADDB_MSG_INSTANCE_COUNT, class_name.c_str (), m_batch.get_rows_number ());
 	      }
 	    else
 	      {
-		m_session.append_log_msg (LOADDB_MSG_COMMITTED_INSTANCES, class_name, m_batch.get_rows_number ());
+		m_session.append_log_msg (LOADDB_MSG_COMMITTED_INSTANCES, class_name.c_str (), m_batch.get_rows_number ());
 	      }
 
 	    // update load statistics after commit
@@ -234,7 +234,7 @@ namespace cubload
 	    if (!m_session.get_args ().syntax_check)
 	      {
 		std::string dummy_string;
-		m_session.append_log_msg (LOADDB_MSG_UPDATING_STATISTICS, dummy_string, class_name.c_str ());
+		m_session.append_log_msg (LOADDB_MSG_UPDATED_CLASS_STATS, class_name.c_str ());
 	      }
 
 	  }
