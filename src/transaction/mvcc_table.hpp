@@ -37,6 +37,7 @@
 // forward declarations
 struct log_tdes;
 struct mvcc_info;
+class tx_group;
 
 struct mvcc_trans_status
 {
@@ -46,7 +47,8 @@ struct mvcc_trans_status
   {
     COMMIT,
     ROLLBACK,
-    SUBTRAN
+    SUBTRAN,
+    GROUP_COMPLETE
   };
 
   mvcc_active_tran m_active_mvccs;
@@ -82,6 +84,7 @@ struct mvcctable
     void complete_sub_mvcc (MVCCID mvccid);
     MVCCID get_new_mvccid ();
     void get_two_new_mvccid (MVCCID &first, MVCCID &second);
+    void complete_group_mvcc (const tx_group &group);
 
     bool is_active (MVCCID mvccid) const;
     MVCCID compute_oldest_active_mvccid () const;
@@ -114,6 +117,7 @@ struct mvcctable
     mvcc_trans_status &next_trans_status_start (mvcc_trans_status::version_type &next_version, size_t &next_index);
     void next_tran_status_finish (mvcc_trans_status &next_trans_status, size_t next_index);
     void advance_oldest_active (MVCCID next_oldest_active);
+    void update_tran_oldest_active (int tran_index, MVCCID new_oldest_active, bool committed);
 };
 
 #endif // !_MVCC_TABLE_H_

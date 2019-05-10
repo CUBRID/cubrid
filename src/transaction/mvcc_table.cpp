@@ -28,6 +28,7 @@
 #include "mvcc.h"
 #include "perf_monitor.h"
 #include "thread_manager.hpp"
+#include "transaction_group.hpp"
 
 #include <cassert>
 
@@ -474,29 +475,7 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
   // finish next trans status
   next_tran_status_finish (next_status, next_index);
 
-  if (committed)
-    {
-      /* be sure that transaction modifications can't be vacuumed up to LOG_COMMIT. Otherwise, the following
-       * scenario will corrupt the database:
-       * - transaction set its lowest_active_mvccid to MVCCID_NULL
-       * - VACUUM clean up transaction modifications
-       * - the system crash before LOG_COMMIT of current transaction
-       *
-       * It will be set to NULL after LOG_COMMIT
-       */
-      MVCCID tran_lowest_active = oldest_active_get (m_transaction_lowest_active_mvccids[tran_index], tran_index,
-				  oldest_active_event::COMPLETE_MVCC);
-      if (tran_lowest_active == MVCCID_NULL || MVCC_ID_PRECEDES (tran_lowest_active, mvccid))
-	{
-	  oldest_active_set (m_transaction_lowest_active_mvccids[tran_index], tran_index, mvccid,
-			     oldest_active_event::COMPLETE_MVCC);
-	}
-    }
-  else
-    {
-      oldest_active_set (m_transaction_lowest_active_mvccids[tran_index], tran_index, MVCCID_NULL,
-			 oldest_active_event::COMPLETE_MVCC);
-    }
+  update_tran_oldest_active (tran_index, mvccid, committed);
 
   ulock.unlock ();
 
@@ -547,6 +526,86 @@ mvcctable::complete_sub_mvcc (MVCCID mvccid)
   ulock.unlock ();
 
   // mvccid can't be lowest, so no need to update it here
+}
+
+void
+mvcctable::complete_group_mvcc (const tx_group &group)
+{
+  if (group.get_container ().empty ())
+    {
+      // do nothing
+      return;
+    }
+
+  // only one can change status at a time
+  std::unique_lock<std::mutex> ulock (m_active_trans_mutex);
+
+  mvcc_trans_status::version_type next_version;
+  size_t next_index;
+  mvcc_trans_status &next_status = next_trans_status_start (next_version, next_index);
+
+  // set inactive MVCCID's
+  for (const tx_group::node_info &tran_info : group.get_container ())
+    {
+      assert (MVCCID_IS_VALID (tran_info.m_mvccid));
+
+      // note - updating global statistics must be done by transactions...
+      m_current_trans_status.m_active_mvccs.set_inactive_mvccid (tran_info.m_mvccid);
+    }
+  m_current_trans_status.m_last_completed_mvccid = group.get_container ().back ().m_mvccid;
+  m_current_trans_status.m_event_type = mvcc_trans_status::GROUP_COMPLETE;
+
+  // finish next trans status
+  next_tran_status_finish (next_status, next_index);
+
+  // update oldest active MVCCID's
+  for (const tx_group::node_info &tran_info : group.get_container ())
+    {
+      update_tran_oldest_active (tran_info.m_tran_index, tran_info.m_mvccid,
+				 tran_info.m_tran_state != TRAN_UNACTIVE_ABORTED);
+    }
+
+  ulock.unlock ();
+
+  MVCCID new_lowest_active = next_status.m_active_mvccs.compute_lowest_active_mvccid ();
+#if !defined (NDEBUG)
+  oldest_active_add_event (new_lowest_active, (int) next_index, oldest_active_event::GET_LOWEST_ACTIVE,
+			   oldest_active_event::COMPLETE_MVCC);
+#endif // !NDEBUG
+  // we need to recheck version to validate result
+  if (next_status.m_version.load () == next_version)
+    {
+      // advance
+      advance_oldest_active (new_lowest_active);
+    }
+}
+
+void
+mvcctable::update_tran_oldest_active (int tran_index, MVCCID tran_mvccid, bool committed)
+{
+  if (committed)
+    {
+      /* be sure that transaction modifications can't be vacuumed up to LOG_COMMIT. Otherwise, the following
+       * scenario will corrupt the database:
+       * - transaction set its lowest_active_mvccid to MVCCID_NULL
+       * - VACUUM clean up transaction modifications
+       * - the system crash before flushing log record of current transaction commit
+       *
+       * It will be set to NULL later
+       */
+      MVCCID current_oldest_active = oldest_active_get (m_transaction_lowest_active_mvccids[tran_index], tran_index,
+				     oldest_active_event::COMPLETE_MVCC);
+      if (current_oldest_active == MVCCID_NULL || MVCC_ID_PRECEDES (current_oldest_active, tran_mvccid))
+	{
+	  oldest_active_set (m_transaction_lowest_active_mvccids[tran_index], tran_index, tran_mvccid,
+			     oldest_active_event::COMPLETE_MVCC);
+	}
+    }
+  else
+    {
+      oldest_active_set (m_transaction_lowest_active_mvccids[tran_index], tran_index, MVCCID_NULL,
+			 oldest_active_event::COMPLETE_MVCC);
+    }
 }
 
 MVCCID
