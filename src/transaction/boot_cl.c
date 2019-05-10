@@ -914,7 +914,12 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     {
       if (au_has_user_name ())
 	{
-	  client_credential->db_user = au_user_name ();
+	  char *name = db_get_user_name ();
+	  if (name != NULL)
+	    {
+	      client_credential->db_user = name;
+	      ws_free_string (name);
+	    }
 	}
       else
 	{

@@ -35,6 +35,7 @@
 #include "log_append.hpp"
 #include "numeric_opfunc.h"
 #include "object_primitive.h"
+#include "record_descriptor.hpp"
 #include "server_interface.h"
 #include "xserver_interface.h"
 #include "slotted_page.h"
@@ -832,9 +833,10 @@ static int
 serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdesc, HEAP_CACHE_ATTRINFO * attr_info,
 			     const OID * serial_class_oidp, const OID * serial_oidp, DB_VALUE * key_val)
 {
-  RECDES new_recdesc;
-  char copyarea_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  int new_copyarea_length;
+  // *INDENT-OFF*
+  cubmem::stack_block<IO_MAX_PAGE_SIZE> copyarea;
+  // *INDENT-ON*
+  record_descriptor new_recdesc;
   SCAN_CODE scan;
   LOG_DATA_ADDR addr;
   int ret;
@@ -872,9 +874,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
   // todo - why was repl_start_flush_mark used here?
   // http://jira.cubrid.org/browse/CBRD-22340
 
-  new_copyarea_length = DB_PAGESIZE;
-  new_recdesc.data = PTR_ALIGN (copyarea_buf, MAX_ALIGNMENT);
-  new_recdesc.area_size = DB_PAGESIZE;
+  new_recdesc.set_external_buffer (copyarea);
 
   scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, recdesc, &new_recdesc);
   if (scan != S_SUCCESS)
@@ -884,22 +884,16 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
     }
 
   /* Log the changes */
-  new_recdesc.type = recdesc->type;
+  new_recdesc.set_type (recdesc->type);
   addr.offset = serial_oidp->slotid;
   addr.pgptr = pgptr;
 
-#if defined (DEBUG)
-  if (spage_is_updatable (thread_p, addr.pgptr, serial_oidp->slotid, new_recdesc.length) == false)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CANNOT_UPDATE_SERIAL, 0);
-      goto exit_on_error;
-    }
-#endif
+  assert (spage_is_updatable (thread_p, addr.pgptr, serial_oidp->slotid, (int) new_recdesc.get_size ()));
 
-  log_append_redo_recdes (thread_p, RVHF_UPDATE, &addr, &new_recdesc);
+  log_append_redo_recdes (thread_p, RVHF_UPDATE, &addr, &new_recdesc.get_recdes ());
 
   /* Now really update */
-  sp_success = spage_update (thread_p, addr.pgptr, serial_oidp->slotid, &new_recdesc);
+  sp_success = spage_update (thread_p, addr.pgptr, serial_oidp->slotid, &new_recdesc.get_recdes ());
   if (sp_success != SP_SUCCESS)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CANNOT_UPDATE_SERIAL, 0);
@@ -909,7 +903,8 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
   /* make replication log for the special type of update for serial */
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
     {
-      tdes->replication_log_generator.add_update_row (*key_val, *serial_oidp, *serial_class_oidp, &new_recdesc);
+      tdes->replication_log_generator.add_update_row (*key_val, *serial_oidp, *serial_class_oidp,
+						      &new_recdesc.get_recdes ());
 
       // todo - why was repl_end_flush_mark used here?
       // http://jira.cubrid.org/browse/CBRD-22340
