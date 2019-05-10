@@ -239,8 +239,8 @@ struct log_rec_donetime
   INT64 at_time;		/* Database creation time. For safety reasons */
 };
 
-typedef struct log_rec_group_complete LOG_REC_GROUP_COMPLETE;
-struct log_rec_group_complete
+typedef struct log_rec_group_commit LOG_REC_GROUP_COMMIT;
+struct log_rec_group_commit
 {
   INT64 at_time;		/* time recorded by active server */
   INT64 stream_pos;

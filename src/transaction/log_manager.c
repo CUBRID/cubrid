@@ -44,7 +44,7 @@
 #include <fcntl.h>
 
 #include <cstdint>
-#include <new>
+#include <vector>
 
 #include "log_manager.h"
 
@@ -241,11 +241,10 @@ static void log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * 
 static void log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * eot_lsa,
 					  LOG_RECTYPE iscommitted, enum LOG_PRIOR_LSA_LOCK with_lock);
-static void log_append_group_commit_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
+static void log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 					  LOG_LSA * lsa);
 static void log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
-static void log_append_group_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_commit_log_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_lsa);
 
@@ -4457,24 +4456,39 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
 }
 
 static void
-log_append_group_commit_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa)
+log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, const tx_group & group,
+			 LOG_LSA * commit_lsa)
 {
   LOG_PRIOR_NODE *node;
-
   LOG_LSA lsa;
 
   commit_lsa->pageid = NULL_PAGEID;
   commit_lsa->offset = NULL_OFFSET;
 
-  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_GROUP_COMMIT, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
+  struct gc_tran_info
+  {
+    int m_tran_index;
+    TRAN_STATE m_tran_state;
+  };
 
-  LOG_REC_GROUP_COMPLETE *gc = (LOG_REC_GROUP_COMPLETE *) node->data_header;
+  std::vector < gc_tran_info > v;
+for (const auto & ti:group.get_container ())
+    {
+      v.push_back (
+		    {
+		    ti.m_tran_index, ti.m_tran_state});
+    }
+
+  node =
+    prior_lsa_alloc_and_copy_data (thread_p, LOG_GROUP_COMMIT, RV_NOT_DEFINED, NULL, 0, NULL,
+				   v.size () * sizeof (gc_tran_info), (const char *) v.data ());
+
+  LOG_REC_GROUP_COMMIT *gc = (LOG_REC_GROUP_COMMIT *) node->data_header;
   gc->at_time = time (NULL);
-  gc->stream_pos = 0;
-  gc->group_sz = 0;
+  gc->stream_pos = stream_pos;
+  gc->group_sz = v.size ();
 
-  // todo: confirm guess that we do not need to get lock during recovery
-  lsa = prior_lsa_next_record_with_lock (thread_p, node, tdes);
+  lsa = prior_lsa_next_record (thread_p, node, tdes);
 
   LSA_COPY (commit_lsa, &lsa);
 }
@@ -4533,12 +4547,6 @@ static void
 log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa)
 {
   log_append_donetime_internal (thread_p, tdes, commit_lsa, LOG_COMMIT, LOG_PRIOR_LSA_WITHOUT_LOCK);
-}
-
-static void
-log_append_group_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa)
-{
-  log_append_group_commit_internal (thread_p, tdes, commit_lsa);
 }
 
 /*
@@ -6107,7 +6115,7 @@ log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
 static LOG_PAGE *
 log_dump_record_group_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  LOG_REC_GROUP_COMPLETE *group_complete = (LOG_REC_GROUP_COMPLETE *) ((char *) log_page_p->area + log_lsa->offset);
+  LOG_REC_GROUP_COMMIT *group_complete = (LOG_REC_GROUP_COMMIT *) ((char *) log_page_p->area + log_lsa->offset);
   char time_val[CTIME_MAX];
 
   /* Read the DATA HEADER */

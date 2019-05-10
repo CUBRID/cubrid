@@ -60,6 +60,8 @@ static int prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LO
     const LOG_CRUMB *rcrumbs);
 static int prior_lsa_gen_2pc_prepare_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, int gtran_length,
     const char *gtran_data, int lock_length, const char *lock_data);
+static int prior_lsa_gen_group_commit_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, int redo_length,
+    const char *redo_data);
 static int prior_lsa_gen_end_chkpt_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, int tran_length,
     const char *tran_data, int topop_length, const char *topop_data);
 static int prior_lsa_copy_undo_data_to_node (LOG_PRIOR_NODE *node, int length, const char *data);
@@ -332,6 +334,11 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
       error_code = prior_lsa_gen_end_chkpt_record (thread_p, node, ulength, udata, rlength, rdata);
       break;
 
+    case LOG_GROUP_COMMIT:
+      assert (ulength == 0 && udata == NULL);
+      assert (addr == NULL);
+      error_code = prior_lsa_gen_group_commit_record (thread_p, node, rlength, rdata);
+      break;
     case LOG_RUN_POSTPONE:
     case LOG_COMPENSATE:
     case LOG_SAVEPOINT:
@@ -347,7 +354,6 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
     case LOG_2PC_ABORT_DECISION:
     case LOG_COMMIT_WITH_POSTPONE:
     case LOG_SYSOP_START_POSTPONE:
-    case LOG_GROUP_COMMIT:
     case LOG_COMMIT:
     case LOG_ABORT:
     case LOG_2PC_COMMIT_INFORM_PARTICPS:
@@ -1168,6 +1174,20 @@ prior_lsa_gen_2pc_prepare_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, 
   return error_code;
 }
 
+static int
+prior_lsa_gen_group_commit_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, int redo_length, const char *redo_data)
+{
+  node->data_header_length = sizeof (LOG_REC_GROUP_COMMIT);
+  node->data_header = (char *) malloc (node->data_header_length);
+  if (node->data_header == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) node->data_header_length);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  return prior_lsa_copy_redo_data_to_node (node, redo_length, redo_data);
+}
+
 /*
  * prior_lsa_gen_end_chkpt_record -
  *
@@ -1260,10 +1280,6 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
 
     case LOG_SYSOP_START_POSTPONE:
       node->data_header_length = sizeof (LOG_REC_SYSOP_START_POSTPONE);
-      break;
-
-    case LOG_GROUP_COMMIT:
-      node->data_header_length = sizeof (LOG_REC_GROUP_COMPLETE);
       break;
 
     case LOG_COMMIT:
