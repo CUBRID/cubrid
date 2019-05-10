@@ -28,6 +28,7 @@
 // todo - add to a proper namespace
 
 #include "client_credentials.hpp"
+#include "cubstream.hpp"
 #include "log_lsa.hpp"
 #include "recovery.h"
 #include "storage_common.h"
@@ -242,9 +243,11 @@ typedef struct log_rec_group_commit LOG_REC_GROUP_COMMIT;
 struct log_rec_group_commit
 {
   INT64 at_time;		/* time recorded by active server */
-  INT64 stream_pos;
+  // *INDENT-OFF*
+  cubstream::stream_position stream_pos;
+  // *INDENT-ON*
 
-  int group_sz;
+  size_t redo_size;
 };
 
 /* Log the change of the server's HA state */

@@ -44,7 +44,6 @@
 #include <fcntl.h>
 
 #include <cstdint>
-#include <vector>
 
 #include "log_manager.h"
 
@@ -59,6 +58,7 @@
 #include "message_catalog.h"
 #include "msgcat_set_log.hpp"
 #include "environment_variable.h"
+#include "extensible_array.hpp"
 #if defined(SERVER_MODE)
 #include "server_support.h"
 #endif /* SERVER_MODE */
@@ -4474,21 +4474,27 @@ log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_
   commit_lsa->offset = NULL_OFFSET;
 
   // *INDENT-OFF*
-  std::vector<gc_tran_info> v;
+  cubmem::appendible_block<1024> v;
   for (const auto & ti : group.get_container ())
-    {
-      v.push_back ({ti.m_tran_index, ti.m_tran_state});
+    {      
+      v.append (ti.m_tran_index);
+      v.append (ti.m_tran_state);
+      if (ti.m_tran_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
+      {
+	const log_tdes * tdes = LOG_FIND_TDES (ti.m_tran_index);
+	v.append (tdes->posp_nxlsa);
+      }
     }
   // *INDENT-ON*
 
   node =
     prior_lsa_alloc_and_copy_data (thread_p, LOG_GROUP_COMMIT, RV_NOT_DEFINED, NULL, 0, NULL,
-				   v.size () * sizeof (gc_tran_info), (const char *) v.data ());
+				   v.get_size (), v.get_read_ptr ());
 
   LOG_REC_GROUP_COMMIT *gc = (LOG_REC_GROUP_COMMIT *) node->data_header;
   gc->at_time = time (NULL);
   gc->stream_pos = stream_pos;
-  gc->group_sz = v.size ();
+  gc->redo_size = group.get_container ().size ();
 
   lsa = prior_lsa_next_record (thread_p, node, tdes);
 
@@ -6117,16 +6123,17 @@ log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
 static LOG_PAGE *
 log_dump_record_group_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  LOG_REC_GROUP_COMMIT *group_commit = (LOG_REC_GROUP_COMMIT *) ((char *) log_page_p->area + log_lsa->offset);
+  LOG_REC_GROUP_COMMIT *group_commit;
   char time_val[CTIME_MAX];
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*group_commit), log_lsa, log_page_p);
+  LOG_REC_GROUP_COMMIT *group_commit = (LOG_REC_GROUP_COMMIT *) ((char *) log_page_p->area + log_lsa->offset);
 
   time_t tmp_time = (time_t) group_commit->at_time;
   (void) ctime_r (&tmp_time, time_val);
   fprintf (out_fp, ",\n     Group commit (group_sz = %d, stream_pos = %d) finish time at = %s\n",
-	   group_commit->group_sz, group_commit->stream_pos, time_val);
+	   group_commit->redo_size, group_commit->stream_pos, time_val);
 
   return log_page_p;
 }
