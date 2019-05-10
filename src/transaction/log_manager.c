@@ -214,6 +214,13 @@ private:
   log_tdes &m_tdes;
 };
 #endif // SERVER_MODE
+
+struct gc_tran_info
+{
+  int m_tran_index;
+  TRAN_STATE m_tran_state;
+};
+
 // *INDENT-ON*
 
 static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_dbcreation);
@@ -241,7 +248,8 @@ static void log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * 
 static void log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * eot_lsa,
 					  LOG_RECTYPE iscommitted, enum LOG_PRIOR_LSA_LOCK with_lock);
-static void log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
+static void log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, const tx_group & group,
+				     LOG_LSA * commit_lsa);
 static void log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 					  LOG_LSA * lsa);
 static void log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
@@ -4465,19 +4473,13 @@ log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_
   commit_lsa->pageid = NULL_PAGEID;
   commit_lsa->offset = NULL_OFFSET;
 
-  struct gc_tran_info
-  {
-    int m_tran_index;
-    TRAN_STATE m_tran_state;
-  };
-
-  std::vector < gc_tran_info > v;
-for (const auto & ti:group.get_container ())
+  // *INDENT-OFF*
+  std::vector<gc_tran_info> v;
+  for (const auto & ti:group.get_container ())
     {
-      v.push_back (
-		    {
-		    ti.m_tran_index, ti.m_tran_state});
+      v.push_back ({ti.m_tran_index, ti.m_tran_state});
     }
+  // *INDENT-ON*
 
   node =
     prior_lsa_alloc_and_copy_data (thread_p, LOG_GROUP_COMMIT, RV_NOT_DEFINED, NULL, 0, NULL,

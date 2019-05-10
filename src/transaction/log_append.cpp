@@ -339,6 +339,7 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
       assert (addr == NULL);
       error_code = prior_lsa_gen_group_commit_record (thread_p, node, rlength, rdata);
       break;
+
     case LOG_RUN_POSTPONE:
     case LOG_COMPENSATE:
     case LOG_SAVEPOINT:
@@ -1184,6 +1185,8 @@ prior_lsa_gen_group_commit_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) node->data_header_length);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+
+  assert (redo_length > 0);
 
   return prior_lsa_copy_redo_data_to_node (node, redo_length, redo_data);
 }

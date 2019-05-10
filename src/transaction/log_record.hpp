@@ -28,7 +28,6 @@
 // todo - add to a proper namespace
 
 #include "client_credentials.hpp"
-#include "transaction_group.hpp"
 #include "log_lsa.hpp"
 #include "recovery.h"
 #include "storage_common.h"
@@ -245,7 +244,6 @@ struct log_rec_group_commit
   INT64 at_time;		/* time recorded by active server */
   INT64 stream_pos;
 
-  // try for now too keep a tx_group? need something better?
   int group_sz;
 };
 

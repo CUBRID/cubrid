@@ -2250,6 +2250,9 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
       (void) log_rv_analysis_complete (thread_p, tran_id, log_lsa, log_page_p, prev_lsa, is_media_crash, stop_at,
 				       did_incom_recovery);
       break;
+    case LOG_GROUP_COMMIT:
+      // todo [GC recovery]:
+      break;
 
     case LOG_SYSOP_END:
       log_rv_analysis_sysop_end (thread_p, tran_id, log_lsa, log_page_p);
@@ -3788,8 +3791,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      break;
 
 	    case LOG_GROUP_COMMIT:
-	      // todo: GC recovery.
-	      /// iterate through tran_id & complete them
+	      // todo [GC recovery]:
 	      break;
 
 	    case LOG_MVCC_UNDO_DATA:
@@ -4759,6 +4761,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_GROUP_COMMIT:
 		  // should not happen
 		  // todo [GC recovery]:
+		  assert (false);
 		  break;
 		case LOG_SMALLER_LOGREC_TYPE:
 		case LOG_LARGER_LOGREC_TYPE:
@@ -5488,7 +5491,6 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_GROUP_COMMIT), &log_lsa, log_pgptr);
       break;
-
 
     case LOG_SYSOP_START_POSTPONE:
       {
