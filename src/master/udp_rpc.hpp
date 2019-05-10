@@ -53,11 +53,12 @@ namespace cubhb
       body_type ();
       body_type (const char *b, std::size_t size);
 
-      body_type (const body_type &other) = delete;
-      body_type &operator= (const body_type &other) = delete;
-
       body_type (body_type &&other) noexcept;
       body_type &operator= (body_type &&other) noexcept;
+
+      // Don't allow copy of body_type
+      body_type (const body_type &other) = delete;
+      body_type &operator= (const body_type &other) = delete;
 
       bool empty () const;
       std::size_t size () const ;
@@ -80,8 +81,6 @@ namespace cubhb
     public:
       server_response ();
 
-      void set_message_type (message_type type);
-
       template <typename Body>
       void set_body (const Body &body);
 
@@ -101,6 +100,7 @@ namespace cubhb
       message_type get_message_type () const;
       ipv4_type get_remote_ip_address () const;
       server_response &get_response ();
+
       void end () const;
 
       template <typename Body>
@@ -123,7 +123,7 @@ namespace cubhb
       void end () const;
 
       template <typename Body>
-      void set_body (message_type type, Body &body);
+      void set_body (message_type type, const Body &body);
 
     private:
       port_type m_port;
@@ -140,17 +140,18 @@ namespace cubhb
       explicit udp_server (port_type port);
       ~udp_server ();
 
-      udp_server (const udp_server &other) = delete;
-      udp_server &operator= (const udp_server &other) = delete;
+      // Don't allow copy/move of udp_server
       udp_server (udp_server &&other) = delete;
+      udp_server (const udp_server &other) = delete;
       udp_server &operator= (udp_server &&other) = delete;
+      udp_server &operator= (const udp_server &other) = delete;
 
       int start ();
       void stop ();
 
       port_type get_port () const;
       socket_type get_socket () const;
-      void register_handler (message_type m_type, server_request_handler &handler);
+      void register_handler (message_type type, server_request_handler &handler);
 
     private:
       using request_handlers_type = std::map<message_type, server_request_handler>;
@@ -164,7 +165,7 @@ namespace cubhb
 
       int listen ();
       static void poll (udp_server *arg);
-      void handle (server_request &request);
+      void handle (server_request &request) const;
   };
 
 } /* namespace cubhb */
@@ -177,9 +178,12 @@ namespace cubhb
   void
   body_type::set (message_type type, const Body &body)
   {
-    cubpacking::packer packer;
+    // in case the body is overridden
+    assert (empty ());
 
     size_t total_size = 0;
+    cubpacking::packer packer;
+
     total_size += packer.get_packed_int_size (total_size); // message_type
     total_size += packer.get_packed_size_overloaded (body, total_size); // body buffer
     m_eblock.extend_to (total_size);
@@ -217,7 +221,7 @@ namespace cubhb
 
   template <typename Body>
   void
-  client_request::set_body (message_type type, Body &body)
+  client_request::set_body (message_type type, const Body &body)
   {
     m_body.set (type, body);
   }

@@ -109,12 +109,6 @@ namespace cubhb
 
   }
 
-  void
-  server_response::set_message_type (message_type type)
-  {
-    m_type = type;
-  }
-
   server_request::server_request (socket_type sfd, ipv4_type ip_addr, port_type port, const char *body,
 				  std::size_t body_size)
     : m_sfd (sfd)
@@ -145,7 +139,7 @@ namespace cubhb
   server_response &
   server_request::get_response ()
   {
-    m_response.set_message_type (get_message_type ());
+    m_response.m_type = get_message_type ();
     return m_response;
   }
 
@@ -239,9 +233,9 @@ namespace cubhb
   }
 
   void
-  udp_server::register_handler (message_type m_type, server_request_handler &handler)
+  udp_server::register_handler (message_type type, server_request_handler &handler)
   {
-    m_handlers.emplace (m_type, handler);
+    m_handlers.emplace (type, handler);
   }
 
   int
@@ -311,7 +305,7 @@ namespace cubhb
   }
 
   void
-  udp_server::handle (server_request &request)
+  udp_server::handle (server_request &request) const
   {
     auto found = m_handlers.find (request.get_message_type ());
     if (found == m_handlers.end ())
