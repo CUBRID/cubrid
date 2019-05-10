@@ -31,76 +31,11 @@
 namespace cubhb
 {
 
-  void send_to (const body_type &body, socket_type sfd, port_type port, ipv4_type ip_addr);
+  void send_to (const char *buffer, std::size_t buffer_size, socket_type sfd, port_type port, ipv4_type ip_addr);
 }
 
 namespace cubhb
 {
-
-  body_type::body_type ()
-    : m_use_eblock (true)
-    , m_block ()
-    , m_eblock ()
-  {
-    //
-  }
-
-  body_type::body_type (const char *b, std::size_t size)
-    : m_use_eblock (false)
-    , m_block (size, (void *) b)
-    , m_eblock ()
-  {
-    //
-  }
-
-  body_type::body_type (body_type &&other) noexcept
-    : m_use_eblock (other.m_use_eblock)
-    , m_block (std::move (other.m_block))
-    , m_eblock (std::move (other.m_eblock))
-  {
-  }
-
-  body_type &
-  body_type::operator= (body_type &&other) noexcept
-  {
-    m_use_eblock = other.m_use_eblock;
-    m_block = std::move (other.m_block);
-    m_eblock = std::move (other.m_eblock);
-
-    return *this;
-  }
-
-  bool
-  body_type::empty () const
-  {
-    return get_ptr () == NULL || size () == 0;
-  }
-
-  std::size_t
-  body_type::size () const
-  {
-    if (m_use_eblock)
-      {
-	return m_eblock.get_size ();
-      }
-    else
-      {
-	return m_block.dim;
-      }
-  }
-
-  const char *
-  body_type::get_ptr () const
-  {
-    if (m_use_eblock)
-      {
-	return m_eblock.get_read_ptr ();
-      }
-    else
-      {
-	return m_block.ptr;
-      }
-  }
 
   server_response::server_response ()
     : m_type (message_type::UNKNOWN_MSG)
@@ -114,7 +49,7 @@ namespace cubhb
     : m_sfd (sfd)
     , m_remote_ip_addr (ip_addr)
     , m_remote_port (port)
-    , m_body (body, body_size)
+    , m_body (body_size, (void *) body)
     , m_response ()
   {
     //
@@ -123,7 +58,8 @@ namespace cubhb
   message_type
   server_request::get_message_type () const
   {
-    cubpacking::unpacker unpacker (m_body.get_ptr (), m_body.size ());
+    assert (m_body.is_valid ());
+    cubpacking::unpacker unpacker (m_body.ptr, m_body.dim);
     message_type type;
     unpacker.unpack_from_int (type);
 
@@ -146,7 +82,7 @@ namespace cubhb
   void
   server_request::end () const
   {
-    send_to (m_response.m_body, m_sfd, m_remote_port, m_remote_ip_addr);
+    send_to (m_response.m_body.get_read_ptr (), m_response.m_body.get_size (), m_sfd, m_remote_port, m_remote_ip_addr);
   }
 
   client_request::client_request (socket_type sfd, const cubbase::hostname_type &host, port_type port)
@@ -171,7 +107,7 @@ namespace cubhb
     ipv4_type remote_ip_addr = 0;
     std::memcpy (&remote_ip_addr, sin_addr, sizeof (ipv4_type));
 
-    send_to (m_body, m_sfd, m_port, remote_ip_addr);
+    send_to (m_body.get_read_ptr (), m_body.get_size (), m_sfd, m_port, remote_ip_addr);
   }
 
   udp_server::udp_server (port_type port)
@@ -322,9 +258,9 @@ namespace cubhb
   }
 
   void
-  send_to (const body_type &body, socket_type sfd, port_type port, ipv4_type ip_addr)
+  send_to (const char *buffer, std::size_t buffer_size, socket_type sfd, port_type port, ipv4_type ip_addr)
   {
-    if (body.empty () || sfd == INVALID_SOCKET)
+    if (buffer == NULL || buffer_size == 0 || sfd == INVALID_SOCKET)
       {
 	return;
       }
@@ -337,7 +273,7 @@ namespace cubhb
     remote_sock_addr.sin_port = htons (port);
     remote_sock_addr.sin_addr.s_addr = ip_addr;
 
-    sendto (sfd, body.get_ptr (), body.size (), 0, (const sockaddr *) &remote_sock_addr, remote_sock_addr_len);
+    sendto (sfd, buffer, buffer_size, 0, (const sockaddr *) &remote_sock_addr, remote_sock_addr_len);
   }
 
 } /* namespace cubhb */

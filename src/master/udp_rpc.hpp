@@ -47,34 +47,13 @@ namespace cubhb
     HEARTBEAT = 1
   };
 
-  class body_type
-  {
-    public:
-      body_type ();
-      body_type (const char *b, std::size_t size);
+  // pack body and message type into the buffer
+  template <typename Body>
+  void pack (cubmem::extensible_block &buffer, message_type &type, const Body &body);
 
-      body_type (body_type &&other) noexcept;
-      body_type &operator= (body_type &&other) noexcept;
-
-      // Don't allow copy of body_type
-      body_type (const body_type &other) = delete;
-      body_type &operator= (const body_type &other) = delete;
-
-      bool empty () const;
-      std::size_t size () const ;
-      const char *get_ptr () const;
-
-      template <typename Body>
-      void set (message_type type, const Body &b);
-
-      template <typename Body>
-      void get (message_type &type, Body &body) const;
-
-    private:
-      bool m_use_eblock;
-      cubmem::block m_block;
-      cubmem::extensible_block m_eblock;
-  };
+  // unpack body and message type from the buffer
+  template <typename Body>
+  void unpack (const cubmem::block &buffer, message_type &type, Body &body);
 
   class server_response
   {
@@ -88,7 +67,7 @@ namespace cubhb
       friend class server_request;
 
       message_type m_type;
-      body_type m_body;
+      cubmem::extensible_block m_body;
   };
 
   class server_request
@@ -110,7 +89,7 @@ namespace cubhb
       socket_type m_sfd;
       ipv4_type m_remote_ip_addr;
       port_type m_remote_port;
-      body_type m_body;
+      cubmem::block m_body;
       server_response m_response;
   };
 
@@ -129,7 +108,7 @@ namespace cubhb
       port_type m_port;
       cubbase::hostname_type m_host;
       socket_type m_sfd;
-      body_type m_body;
+      cubmem::extensible_block m_body;
   };
 
   using server_request_handler = std::function<void (server_request &)>;
@@ -176,28 +155,26 @@ namespace cubhb
 
   template <typename Body>
   void
-  body_type::set (message_type type, const Body &body)
+  pack (cubmem::extensible_block &buffer, message_type &type, const Body &body)
   {
-    // in case the body is overridden
-    assert (empty ());
-
     size_t total_size = 0;
     cubpacking::packer packer;
 
     total_size += packer.get_packed_int_size (total_size); // message_type
     total_size += packer.get_packed_size_overloaded (body, total_size); // body buffer
-    m_eblock.extend_to (total_size);
+    buffer.extend_to (total_size);
 
-    packer.set_buffer (m_eblock.get_ptr (), total_size);
+    packer.set_buffer (buffer.get_ptr (), total_size);
     packer.pack_to_int (type);
     packer.pack_overloaded (body);
   }
 
   template <typename Body>
   void
-  body_type::get (message_type &type, Body &body) const
+  unpack (const cubmem::block &buffer, message_type &type, Body &body)
   {
-    cubpacking::unpacker unpacker (get_ptr (), size ());
+    assert (buffer.is_valid ());
+    cubpacking::unpacker unpacker (buffer.ptr, buffer.dim);
 
     unpacker.unpack_from_int (type);
     unpacker.unpack_overloaded (body);
@@ -208,7 +185,7 @@ namespace cubhb
   server_response::set_body (const Body &body)
   {
     assert (m_type != message_type::UNKNOWN_MSG);
-    m_body.set (m_type, body);
+    pack (m_body, m_type, body);
   }
 
   template <typename Body>
@@ -216,14 +193,14 @@ namespace cubhb
   server_request::get_body (Body &body) const
   {
     message_type type;
-    m_body.get (type, body);
+    unpack (m_body, type, body);
   }
 
   template <typename Body>
   void
   client_request::set_body (message_type type, const Body &body)
   {
-    m_body.set (type, body);
+    pack (m_body, type, body);
   }
 
 } /* namespace cubhb */
