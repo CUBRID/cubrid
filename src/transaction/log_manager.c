@@ -4475,7 +4475,7 @@ log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_
 
   // *INDENT-OFF*
   std::vector<gc_tran_info> v;
-  for (const auto & ti:group.get_container ())
+  for (const auto & ti : group.get_container ())
     {
       v.push_back ({ti.m_tran_index, ti.m_tran_state});
     }
