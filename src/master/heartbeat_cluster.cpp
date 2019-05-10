@@ -389,27 +389,16 @@ namespace cubhb
   }
 
   void
-  cluster::remove_ui_node (ui_node *&node)
-  {
-    if (node == NULL)
-      {
-	return;
-      }
-
-    ui_nodes.remove (node);
-    delete node;
-    node = NULL;
-  }
-
-  void
   cluster::cleanup_ui_nodes ()
   {
     std::chrono::system_clock::time_point now = std::chrono::system_clock::now ();
-    for (ui_node *node : ui_nodes)
+    for (std::list<ui_node *>::iterator it = ui_nodes.begin (); it != ui_nodes.end (); ++it)
       {
-	if ((now - node->last_recv_time) > UI_NODE_CLEANUP_TIME_IN_MSECS)
+	if ((now - (*it)->last_recv_time) > UI_NODE_CLEANUP_TIME_IN_MSECS)
 	  {
-	    remove_ui_node (node);
+	    auto tmp = it;
+	    ui_nodes.erase (it--);
+	    delete *tmp;
 	  }
       }
   }
@@ -627,7 +616,8 @@ namespace cubhb
 	else
 	  {
 	    // if result differ then remove exiting node and reinsert with the new result
-	    remove_ui_node (ui_node);
+	    ui_nodes.remove (ui_node);
+	    delete ui_node;
 	  }
       }
 

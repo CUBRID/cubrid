@@ -175,7 +175,6 @@ namespace cubhb
       node_entry *find_node (const cubbase::hostname_type &node_hostname) const;
       node_entry *find_node_except_me (const cubbase::hostname_type &node_hostname) const;
 
-      void remove_ui_node (ui_node *&node);
       ui_node *find_ui_node (const cubbase::hostname_type &node_hostname, const std::string &node_group_id,
 			     ipv4_type ip_addr) const;
       ui_node *insert_ui_node (const cubbase::hostname_type &node_hostname, const std::string &node_group_id,
