@@ -23,6 +23,11 @@
 
 #include "transaction_complete_manager.hpp"
 
+tx_complete_manager::~tx_complete_manager ()
+{
+  // pure virtual destructor must have a body
+}
+
 tx_group_complete_manager::ticket_type
 tx_group_complete_manager::register_transaction (int tran_index, MVCCID mvccid, TRAN_STATE state)
 {
