@@ -6117,15 +6117,16 @@ log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
 static LOG_PAGE *
 log_dump_record_group_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  LOG_REC_GROUP_COMMIT *group_complete = (LOG_REC_GROUP_COMMIT *) ((char *) log_page_p->area + log_lsa->offset);
+  LOG_REC_GROUP_COMMIT *group_commit = (LOG_REC_GROUP_COMMIT *) ((char *) log_page_p->area + log_lsa->offset);
   char time_val[CTIME_MAX];
 
   /* Read the DATA HEADER */
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*group_complete), log_lsa, log_page_p);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*group_commit), log_lsa, log_page_p);
 
-  time_t tmp_time = (time_t) group_complete->at_time;
+  time_t tmp_time = (time_t) group_commit->at_time;
   (void) ctime_r (&tmp_time, time_val);
-  fprintf (out_fp, ",\n     Transaction finish time at = %s\n", time_val);
+  fprintf (out_fp, ",\n     Group commit (group_sz = %d, stream_pos = %d) finish time at = %s\n",
+	   group_commit->group_sz, group_commit->stream_pos, time_val);
 
   return log_page_p;
 }
