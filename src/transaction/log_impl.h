@@ -56,6 +56,7 @@
 #include "release_string.h"
 #include "storage_common.h"
 #include "thread_entry.hpp"
+#include "transaction_complete_manager.hpp"
 #include "transaction_transient.hpp"
 #include "log_generator.hpp"
 
@@ -667,6 +668,8 @@ struct log_global
 
   /* group commit information */
   LOG_GROUP_COMMIT_INFO group_commit_info;
+  tx_complete_manager *m_tran_complete_mgr;
+
   /* remote log writer information */
   logwr_info *writer_info;
   /* background log archiving info */
