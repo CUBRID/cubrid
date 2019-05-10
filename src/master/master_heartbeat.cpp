@@ -3384,7 +3384,7 @@ hb_cluster_initialize ()
 {
   if (hb_Cluster == NULL)
     {
-      cubhb::udp_server *server = new cubhb::udp_server (prm_get_integer_value (PRM_ID_HA_PORT_ID));
+      cubhb::udp_server *server = new cubhb::udp_server ((cubhb::port_type) prm_get_integer_value (PRM_ID_HA_PORT_ID));
       int error_code = server->start ();
       if (error_code != NO_ERROR)
 	{

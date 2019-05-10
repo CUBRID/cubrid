@@ -137,7 +137,7 @@ namespace cubhb
   class udp_server
   {
     public:
-      explicit udp_server (int port);
+      explicit udp_server (port_type port);
       ~udp_server ();
 
       udp_server (const udp_server &other) = delete;
@@ -157,7 +157,7 @@ namespace cubhb
 
       std::thread m_thread;
       bool m_shutdown;
-      int m_port;
+      port_type m_port;
       socket_type m_sfd;
 
       request_handlers_type m_handlers;

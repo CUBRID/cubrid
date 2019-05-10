@@ -180,7 +180,7 @@ namespace cubhb
     send_to (m_body, m_sfd, m_port, remote_ip_addr);
   }
 
-  udp_server::udp_server (int port)
+  udp_server::udp_server (port_type port)
     : m_thread ()
     , m_shutdown (true)
     , m_port (port)
