@@ -478,74 +478,26 @@ namespace cubhb
   void
   cluster::handle_heartbeat (const heartbeat_arg &arg, ipv4_type from_ip)
   {
-    pthread_mutex_lock (&lock);
-    if (shutdown)
+    if (shutdown || m_hostname != arg.get_dest_hostname ())
       {
-	pthread_mutex_unlock (&lock);
+	// if the cluster is stopped or there is a mismatch on hostname then exit
 	return;
       }
 
-    // validate receive message
-    if (m_hostname != arg.get_dest_hostname ())
-      {
-	MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hostname mismatch. (host_name:{%s}, dest_host_name:{%s}).\n",
-			     m_hostname.as_c_str (), arg.get_dest_hostname ().as_c_str ());
-	pthread_mutex_unlock (&lock);
-	return;
-      }
-    // if heartbeat group id is mismatch, ignore heartbeat
+    pthread_mutex_lock (&lock);
+
+    // apply heartbeat request on unidentified host entries
+    apply_heartbeat_on_ui_node (arg, from_ip);
+
     if (m_group_id != arg.get_group_id ())
       {
+	// if there is a mismatch on group, exit
 	pthread_mutex_unlock (&lock);
 	return;
       }
 
-    ui_node_result result = is_heartbeat_valid (arg.get_orig_hostname (), arg.get_group_id (), from_ip);
-    if (result != VALID_NODE)
-      {
-	ui_node *ui_node = find_ui_node (arg.get_orig_hostname (), arg.get_group_id (), from_ip);
-	if (ui_node && ui_node->v_result != result)
-	  {
-	    remove_ui_node (ui_node);
-	  }
-
-	if (ui_node == NULL)
-	  {
-	    insert_ui_node (arg.get_orig_hostname (), arg.get_group_id (), from_ip, result);
-
-	    string_buffer sb;
-	    unsigned char *ipv4_p = (unsigned char *) &from_ip;
-	    sb ("Receive heartbeat from unidentified host. ");
-	    sb ("(host_name:'%s', group:'%s', ", arg.get_orig_hostname ().as_c_str (), arg.get_group_id ().c_str ());
-	    sb ("ip_addr:'%u.%u.%u.%u', ", ipv4_p[0], ipv4_p[1], ipv4_p[2], ipv4_p[3]);
-	    sb ("state:'%s')", hb_valid_result_string (result));
-
-	    MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, sb.get_buffer ());
-	  }
-	else
-	  {
-	    ui_node->last_recv_time = std::chrono::system_clock::now ();
-	  }
-      }
-
-    bool is_state_changed = false;
-    node_entry *node = find_node_except_me (arg.get_orig_hostname ());
-    if (node != NULL)
-      {
-	if (node->state == node_state::MASTER && node->state != (node_state) arg.get_state ())
-	  {
-	    is_state_changed = true;
-	  }
-
-	node->state = (node_state) arg.get_state ();
-	node->heartbeat_gap = std::max (0, (node->heartbeat_gap - 1));
-	node->last_recv_hbtime = std::chrono::system_clock::now ();
-      }
-    else
-      {
-	MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "receive heartbeat have unknown host_name. (host_name:{%s}).\n",
-			     arg.get_orig_hostname ().as_c_str ());
-      }
+    // apply heartbeat request on cluster member node
+    bool is_state_changed = apply_heartbeat_on_node (arg);
 
     pthread_mutex_unlock (&lock);
 
@@ -627,6 +579,69 @@ namespace cubhb
       }
 
     return VALID_NODE;
+  }
+
+  bool
+  cluster::apply_heartbeat_on_node (const heartbeat_arg &arg)
+  {
+    bool is_state_changed = false;
+    node_entry *node = find_node_except_me (arg.get_orig_hostname ());
+    if (node == NULL)
+      {
+	MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "receive heartbeat have unknown host_name. (host_name:{%s}).\n",
+			     arg.get_orig_hostname ().as_c_str ());
+	return is_state_changed;
+      }
+
+    if (node->state == node_state::MASTER && node->state != (node_state) arg.get_state ())
+      {
+	is_state_changed = true;
+      }
+
+    node->state = (node_state) arg.get_state ();
+    node->heartbeat_gap = std::max (0, (node->heartbeat_gap - 1));
+    node->last_recv_hbtime = std::chrono::system_clock::now ();
+
+    return is_state_changed;
+  }
+
+  void
+  cluster::apply_heartbeat_on_ui_node (const heartbeat_arg &arg, ipv4_type from_ip)
+  {
+    ui_node_result result = is_heartbeat_valid (arg.get_orig_hostname (), arg.get_group_id (), from_ip);
+    if (result == VALID_NODE)
+      {
+	// if the node is validated then do nothing
+	return;
+      }
+
+    ui_node *ui_node = find_ui_node (arg.get_orig_hostname (), arg.get_group_id (), from_ip);
+    if (ui_node != NULL)
+      {
+	if (ui_node->v_result == result)
+	  {
+	    // if the result is same then update time when hb was received and exit
+	    ui_node->last_recv_time = std::chrono::system_clock::now ();
+	    return;
+	  }
+	else
+	  {
+	    // if result differ then remove exiting node and reinsert with the new result
+	    remove_ui_node (ui_node);
+	  }
+      }
+
+    // add the node to unidentified host entries
+    insert_ui_node (arg.get_orig_hostname (), arg.get_group_id (), from_ip, result);
+
+    string_buffer sb;
+    unsigned char *ipv4_p = (unsigned char *) &from_ip;
+    sb ("Receive heartbeat from unidentified host. ");
+    sb ("(host_name:'%s', group:'%s', ", arg.get_orig_hostname ().as_c_str (), arg.get_group_id ().c_str ());
+    sb ("ip_addr:'%u.%u.%u.%u', ", ipv4_p[0], ipv4_p[1], ipv4_p[2], ipv4_p[3]);
+    sb ("state:'%s')", hb_valid_result_string (result));
+
+    MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, sb.get_buffer ());
   }
 
   void

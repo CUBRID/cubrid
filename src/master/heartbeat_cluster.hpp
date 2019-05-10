@@ -186,6 +186,9 @@ namespace cubhb
       ui_node_result is_heartbeat_valid (const cubbase::hostname_type &node_hostname, const std::string &node_group_id,
 					 ipv4_type from_ip_addr) const;
 
+      bool apply_heartbeat_on_node (const heartbeat_arg &arg);
+      void apply_heartbeat_on_ui_node (const heartbeat_arg &arg, ipv4_type from_ip);
+
     public: // TODO CBRD-22864 members should be private
       pthread_mutex_t lock; // TODO CBRD-22864 replace with std::mutex
 
