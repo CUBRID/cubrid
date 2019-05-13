@@ -43,7 +43,7 @@ namespace cubhb
     heartbeat_arg request_arg;
     request.get_message (request_arg);
 
-    m_cluster.handle_heartbeat (request_arg, request.get_remote_ip_address ());
+    m_cluster.receive_heartbeat (request_arg, request.get_remote_ip_address ());
 
     // must send heartbeat response in order to avoid split-brain when heartbeat configuration changed
     if (request.is_response_requested () && !m_cluster.hide_to_demote)

@@ -164,7 +164,7 @@ namespace cubhb
       const std::string &get_group_id () const;
       const node_entry *get_myself_node () const;
 
-      void handle_heartbeat (const heartbeat_arg &arg, ipv4_type from_ip);
+      void receive_heartbeat (const heartbeat_arg &arg, ipv4_type from_ip);
       void send_heartbeat_to_all ();
       bool is_heartbeat_received_from_all ();
 

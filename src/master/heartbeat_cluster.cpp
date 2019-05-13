@@ -465,7 +465,7 @@ namespace cubhb
   }
 
   void
-  cluster::handle_heartbeat (const heartbeat_arg &arg, ipv4_type from_ip)
+  cluster::receive_heartbeat (const heartbeat_arg &arg, ipv4_type from_ip)
   {
     pthread_mutex_lock (&lock);
     if (shutdown)
