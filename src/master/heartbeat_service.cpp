@@ -23,50 +23,48 @@
 
 #include "heartbeat_service.hpp"
 
-#include "heartbeat_cluster.hpp"
 #include "udp_rpc.hpp"
 
 namespace cubhb
 {
 
-  heartbeat_service::heartbeat_service (udp_server &server, cluster &cluster_)
+  heartbeat_service::heartbeat_service (ha_server &server, cluster &cluster_)
     : m_server (server)
     , m_cluster (cluster_)
   {
-    server_request_handler handler = std::bind (&heartbeat_service::handle_heartbeat, std::ref (*this),
-				     std::placeholders::_1);
+    ha_server::server_request_handler handler = std::bind (&heartbeat_service::handle_heartbeat, std::ref (*this),
+	std::placeholders::_1);
     m_server.register_handler (HEARTBEAT, handler);
   }
 
   void
-  heartbeat_service::handle_heartbeat (server_request &request)
+  heartbeat_service::handle_heartbeat (ha_server::server_request &request)
   {
     heartbeat_arg request_arg;
-    request.get_body (request_arg);
+    request.get_message (request_arg);
 
     m_cluster.handle_heartbeat (request_arg, request.get_remote_ip_address ());
 
     // must send heartbeat response in order to avoid split-brain when heartbeat configuration changed
-    if (request_arg.is_request () && !m_cluster.hide_to_demote)
+    if (request.is_response_requested () && !m_cluster.hide_to_demote)
       {
-	heartbeat_arg response_arg (false, request_arg.get_orig_hostname (), m_cluster);
-	request.get_response ().set_body (response_arg);
+	heartbeat_arg response_arg (request_arg.get_orig_hostname (), m_cluster);
+	request.get_response ().set_message (response_arg);
       }
   }
 
   void
   heartbeat_service::send_heartbeat (const cubbase::hostname_type &node_hostname)
   {
-    heartbeat_arg request_arg (true, node_hostname, m_cluster);
-    client_request request = m_server.create_client_request (node_hostname);
+    heartbeat_arg request_arg (node_hostname, m_cluster);
+    ha_server::client_request request = m_server.create_client_request (node_hostname);
 
-    request.set_body (message_type::HEARTBEAT, request_arg);
+    request.set_message (message_type::HEARTBEAT, request_arg);
     request.end ();
   }
 
   heartbeat_arg::heartbeat_arg ()
-    : m_is_request (false)
-    , m_state (node_state::UNKNOWN)
+    : m_state (node_state::UNKNOWN)
     , m_group_id ()
     , m_orig_hostname ()
     , m_dest_hostname ()
@@ -74,9 +72,8 @@ namespace cubhb
     //
   }
 
-  heartbeat_arg::heartbeat_arg (bool is_request, const cubbase::hostname_type &dest_hostname, const cluster &cluster_)
-    : m_is_request (is_request)
-    , m_state (cluster_.get_state ())
+  heartbeat_arg::heartbeat_arg (const cubbase::hostname_type &dest_hostname, const cluster &cluster_)
+    : m_state (cluster_.get_state ())
     , m_group_id (cluster_.get_group_id ())
     , m_orig_hostname ()
     , m_dest_hostname (dest_hostname)
@@ -85,12 +82,6 @@ namespace cubhb
       {
 	m_orig_hostname = cluster_.get_myself_node ()->get_hostname ();
       }
-  }
-
-  const bool &
-  heartbeat_arg::is_request () const
-  {
-    return m_is_request;
   }
 
   int
@@ -120,8 +111,7 @@ namespace cubhb
   size_t
   heartbeat_arg::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_bool_size (start_offset); // m_is_request
-    size += serializator.get_packed_int_size (size); // m_state
+    size_t size = serializator.get_packed_int_size (start_offset); // m_state
     size += serializator.get_packed_string_size (m_group_id, size);
     size += m_orig_hostname.get_packed_size (serializator, size);
     size += m_dest_hostname.get_packed_size (serializator, size);
@@ -132,7 +122,6 @@ namespace cubhb
   void
   heartbeat_arg::pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_bool (m_is_request);
     serializator.pack_int (m_state);
     serializator.pack_string (m_group_id);
     m_orig_hostname.pack (serializator);
@@ -142,7 +131,6 @@ namespace cubhb
   void
   heartbeat_arg::unpack (cubpacking::unpacker &deserializator)
   {
-    deserializator.unpack_bool (m_is_request);
     deserializator.unpack_int (m_state);
     deserializator.unpack_string (m_group_id);
     m_orig_hostname.unpack (deserializator);

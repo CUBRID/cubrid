@@ -43,6 +43,13 @@ namespace cubhb
   class heartbeat_arg;
   class heartbeat_service;
 
+  enum message_type
+  {
+    HEARTBEAT = 1
+  };
+
+  using ha_server = udp_server<message_type>;
+
   enum node_state
   {
     UNKNOWN = 0,
@@ -140,7 +147,7 @@ namespace cubhb
   class cluster
   {
     public:
-      explicit cluster (udp_server *server);
+      explicit cluster (ha_server *server);
 
       cluster (const cluster &other); // Copy c-tor
       cluster &operator= (const cluster &other); // Copy assignment
@@ -207,7 +214,7 @@ namespace cubhb
       std::list<ping_host> ping_hosts;
 
     protected:
-      udp_server *m_server;
+      ha_server *m_server;
       heartbeat_service *m_hb_service;
 
       std::string m_group_id;

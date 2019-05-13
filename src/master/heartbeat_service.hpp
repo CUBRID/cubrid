@@ -24,15 +24,12 @@
 #ifndef _HEARTBEAT_SERVICE_HPP_
 #define _HEARTBEAT_SERVICE_HPP_
 
+#include "heartbeat_cluster.hpp"
 #include "hostname.hpp"
 #include "packable_object.hpp"
 
 namespace cubhb
 {
-  // forward declarations
-  class udp_server;
-  class server_request;
-  class cluster;
 
   /**
    * heartbeat helper class: encapsulates the logic for sending/receiving cubhb:message_type::HEARTBEAT messages
@@ -40,7 +37,7 @@ namespace cubhb
   class heartbeat_service
   {
     public:
-      heartbeat_service (udp_server &server, cluster &cluster_);
+      heartbeat_service (ha_server &server, cluster &cluster_);
       ~heartbeat_service () = default;
 
       // Don't allow copy/move of heartbeat_service
@@ -50,13 +47,13 @@ namespace cubhb
       heartbeat_service &operator= (const heartbeat_service &other) = delete;
 
       // handle incoming heartbeat request
-      void handle_heartbeat (server_request &request);
+      void handle_heartbeat (ha_server::server_request &request);
 
       // send a heartbeat request to the node_hostname
       void send_heartbeat (const cubbase::hostname_type &node_hostname);
 
     private:
-      udp_server &m_server;
+      ha_server &m_server;
       cluster &m_cluster;
   };
 
@@ -67,9 +64,8 @@ namespace cubhb
   {
     public:
       heartbeat_arg ();
-      heartbeat_arg (bool is_request, const cubbase::hostname_type &dest_hostname, const cluster &cluster_);
+      heartbeat_arg (const cubbase::hostname_type &dest_hostname, const cluster &cluster_);
 
-      const bool &is_request () const;
       int get_state () const;
       const std::string &get_group_id () const;
       const cubbase::hostname_type &get_orig_hostname () const;
@@ -80,7 +76,6 @@ namespace cubhb
       void unpack (cubpacking::unpacker &deserializator) override;
 
     private:
-      bool m_is_request;
       int m_state;
       std::string m_group_id;
       cubbase::hostname_type m_orig_hostname;
