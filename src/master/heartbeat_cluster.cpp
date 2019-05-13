@@ -103,7 +103,7 @@ namespace cubhb
     return hostname;
   }
 
-  cluster::cluster (udp_server *server)
+  cluster::cluster (ha_server *server)
     : lock ()
     , state (node_state ::UNKNOWN)
     , nodes ()
@@ -396,9 +396,9 @@ namespace cubhb
       {
 	if ((now - (*it)->last_recv_time) > UI_NODE_CLEANUP_TIME_IN_MSECS)
 	  {
-	    auto tmp = it;
+	    ui_node *tmp_node = *it;
 	    ui_nodes.erase (it--);
-	    delete *tmp;
+	    delete tmp_node;
 	  }
       }
   }
@@ -467,13 +467,19 @@ namespace cubhb
   void
   cluster::handle_heartbeat (const heartbeat_arg &arg, ipv4_type from_ip)
   {
-    if (shutdown || m_hostname != arg.get_dest_hostname ())
+    pthread_mutex_lock (&lock);
+    if (shutdown)
       {
-	// if the cluster is stopped or there is a mismatch on hostname then exit
+	pthread_mutex_unlock (&lock);
 	return;
       }
-
-    pthread_mutex_lock (&lock);
+    if (m_hostname != arg.get_dest_hostname ())
+      {
+	MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hostname mismatch. " "(host_name:{%s}, dest_host_name:{%s}).\n",
+			     m_hostname.as_c_str (), arg.get_dest_hostname ().as_c_str ());
+	pthread_mutex_unlock (&lock);
+	return;
+      }
 
     // apply heartbeat request on unidentified host entries
     apply_heartbeat_on_ui_node (arg, from_ip);
