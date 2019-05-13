@@ -475,7 +475,7 @@ namespace cubhb
       }
     if (m_hostname != arg.get_dest_hostname ())
       {
-	MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hostname mismatch. " "(host_name:{%s}, dest_host_name:{%s}).\n",
+	MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hostname mismatch. (host_name:{%s}, dest_host_name:{%s}).\n",
 			     m_hostname.as_c_str (), arg.get_dest_hostname ().as_c_str ());
 	pthread_mutex_unlock (&lock);
 	return;
