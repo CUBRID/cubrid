@@ -34,18 +34,25 @@ namespace cubhb
   class server_request;
   class cluster;
 
+  /**
+   * heartbeat helper class: encapsulates the logic for sending/receiving cubhb:message_type::HEARTBEAT messages
+   */
   class heartbeat_service
   {
     public:
       heartbeat_service (udp_server &server, cluster &cluster_);
       ~heartbeat_service () = default;
 
+      // Don't allow copy/move of heartbeat_service
       heartbeat_service (heartbeat_service &&other) = delete;
       heartbeat_service &operator= (heartbeat_service &&other) = delete;
       heartbeat_service (const heartbeat_service &other) = delete;
       heartbeat_service &operator= (const heartbeat_service &other) = delete;
 
+      // handle incoming heartbeat request
       void handle_heartbeat (server_request &request);
+
+      // send a heartbeat request to the node_hostname
       void send_heartbeat (const cubbase::hostname_type &node_hostname);
 
     private:
@@ -53,6 +60,9 @@ namespace cubhb
       cluster &m_cluster;
   };
 
+  /**
+   * heartbeat argument payload used to send/receive to/from the network
+   */
   class heartbeat_arg : public cubpacking::packable_object
   {
     public:

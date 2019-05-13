@@ -55,11 +55,34 @@ namespace cubhb
   template <typename Body>
   void unpack (const cubmem::block &buffer, message_type &type, Body &body);
 
+  class client_request
+  {
+    public:
+      client_request () = delete;
+      client_request (socket_type sfd, const cubbase::hostname_type &host, port_type port);
+
+      // send the request to destination host
+      void end () const;
+
+      // template function: set the payload of the client request
+      // Body will be automatically packed into a buffer
+      template <typename Body>
+      void set_body (message_type type, const Body &body);
+
+    private:
+      port_type m_port;
+      cubbase::hostname_type m_host;
+      socket_type m_sfd;
+      cubmem::extensible_block m_body;
+  };
+
   class server_response
   {
     public:
       server_response ();
 
+      // template function: set the payload of the server response
+      // Body will be automatically packed into a buffer
       template <typename Body>
       void set_body (const Body &body);
 
@@ -80,8 +103,11 @@ namespace cubhb
       ipv4_type get_remote_ip_address () const;
       server_response &get_response ();
 
+      // send the response
       void end () const;
 
+      // template function: get the payload of the server request
+      // payload will be automatically unpacked into Body type
       template <typename Body>
       void get_body (Body &body) const;
 
@@ -93,25 +119,75 @@ namespace cubhb
       server_response m_response;
   };
 
-  class client_request
-  {
-    public:
-      client_request () = delete;
-      client_request (socket_type sfd, const cubbase::hostname_type &host, port_type port);
-
-      void end () const;
-
-      template <typename Body>
-      void set_body (message_type type, const Body &body);
-
-    private:
-      port_type m_port;
-      cubbase::hostname_type m_host;
-      socket_type m_sfd;
-      cubmem::extensible_block m_body;
-  };
-
   using server_request_handler = std::function<void (server_request &)>;
+
+  /**
+   * Server to Server communication model:
+   *
+   *    cub_master[udp_server host1:port] |                    | cub_master[udp_server host2:port]
+   *                                      |                    |
+   *                    client_request -> |                    | ->  server_request --
+   *                                      |                    |                     |
+   *                                      |                    |                     |
+   *                                      |                    |                     |
+   *                    server_request <- |                    | <- server_response --
+   */
+  /**
+   * description:
+   *   A UDP server used for RPC (Remote Procedure Call) between two heartbeat instances.
+   *   Since this is a server to server communication, a server instance can act as both client and server
+   *
+   *   This is how request/response pattern works:
+   *     1. server[host1] - creates a client_request and sends it to server[host2]
+   *     2. server[host2] - receives data from the socket and create a server request
+   *     3. server[host2] - searches in m_handlers map for appropriate handler to handle the request
+   *     3. server[host2] - ends the request by sending some data
+   *     4. server[host1] - receives the response as a server request
+   *
+   *
+   * usage:
+   *   cubhb::udp_server server (port);
+   *   int error_code = server->start ();
+   *   if (error_code != NO_ERROR)
+   *     {
+   *       // something happened, handle the error
+   *       return;
+   *     }
+   *
+   *   // server started successfully
+   *   // do stuff
+   *
+   *   // on shutdown
+   *   server->stop ();
+   *
+   *
+   * send a client request:
+   *   cubbase:hostname_type host ("destination_hostname");
+   *   cubpacking::packable_object body_data; // payload to be sent
+   *
+   *   client_request request = server.create_client_request (host); // server is a udp_server instance
+   *
+   *   request.set_body (message_type::<some message type>, body_data);
+   *   request.end ();
+   *
+   *
+   * handle a server request:
+   *   server_request_handler handler = <use some_handler function>
+   *   server.register_handler (message_type::<some message type>, handler);
+   *
+   *   void
+   *   some_handler (server_request &request)
+   *   {
+   *     cubpacking::packable_object request_body_data;
+   *     request.get_body (request_body_data);
+   *
+   *     // do your magic with request_body_data
+   *
+   *     // send the response body
+   *     cubpacking::packable_object response_body_data;
+   *     request.get_response ().set_body (response_body_data);
+   *   }
+   */
 
   class udp_server
   {
