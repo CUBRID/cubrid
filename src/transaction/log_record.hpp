@@ -137,6 +137,8 @@ enum log_rectype
 
   LOG_GROUP_COMMIT,
 
+  LOG_FINISH_POSTPONE,
+
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
 };
 typedef enum log_rectype LOG_RECTYPE;
@@ -282,6 +284,12 @@ typedef struct log_rec_start_postpone LOG_REC_START_POSTPONE;
 struct log_rec_start_postpone
 {
   LOG_LSA posp_lsa;
+};
+
+typedef struct log_rec_finish_postpone LOG_REC_FINISH_POSTPONE;
+struct log_rec_finish_postpone
+{
+  INT64 at_time;		/* time recorded by active server */
 };
 
 /* types of end system operation */

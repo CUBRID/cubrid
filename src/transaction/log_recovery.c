@@ -72,6 +72,8 @@ static int log_rv_analysis_compensate (THREAD_ENTRY * thread_p, int tran_id, LOG
 static int log_rv_analysis_will_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
 						 LOG_PAGE * log_page_p);
+static int log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
+					 LOG_PAGE * log_page_p);
 static int log_rv_analysis_sysop_start_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
 						 LOG_PAGE * log_page_p);
 static int log_rv_analysis_atomic_sysop_start (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
@@ -1189,6 +1191,100 @@ log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
   return NO_ERROR;
 }
 
+static int
+log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+{
+  LOG_TDES *gc_tdes;
+  LOG_REC_GROUP_COMMIT *start_posp;
+
+  /*
+   * If this is the first time, the transaction is seen. Assign a new
+   * index to describe it. The transaction was in the process of
+   * getting committed at this point.
+   */
+  gc_tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
+  if (gc_tdes == NULL)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_commit_with_postpone");
+      return ER_FAILED;
+    }
+
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_GROUP_COMMIT), log_lsa, log_page_p);
+
+  start_posp = (LOG_REC_GROUP_COMMIT *) ((char *) log_page_p->area + log_lsa->offset);
+
+  int sz = start_posp->redo_size;
+
+  // costumized read of tgroup
+  tx_group tgroup;
+  int crt_pos = 0;
+  const char *crt_buf = (char *) log_page_p->area + log_lsa->offset + sizeof (LOG_REC_GROUP_COMMIT);
+  std::vector < LOG_LSA > v;
+  while (crt_pos < sz)
+    {
+      int idx = *((int *) crt_buf);
+      crt_buf += 4;
+      TRAN_STATE state = *((TRAN_STATE *) crt_buf);
+      crt_buf += 8;
+      crt_pos += 8;
+
+      if (state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
+	{
+	  LOG_LSA pp_lsa = *((LOG_LSA *) crt_buf);
+	  crt_buf += 8;
+	  crt_pos += 8;
+	  v.push_back (pp_lsa);
+	}
+
+      tgroup.add (idx, 0, state);
+      if (crt_pos >= sz)
+	{
+	  break;
+	}
+    }
+
+  size_t i = 0;
+for (const auto & ti:tgroup.get_container ())
+    {
+      if (ti.m_tran_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
+	{
+	  // copy LOG_COMMIT_WITH_POSTPONE operations:
+
+	  // todo: bind tdes->head_lsa to LOG_REC_GC?
+	  LOG_TDES *tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
+	  if (tdes == NULL)
+	    {
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_commit_with_postpone");
+	      return ER_FAILED;
+	    }
+
+	  tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+
+	  /* Nothing to undo */
+	  LSA_SET_NULL (&tdes->undo_nxlsa);
+
+	  // todo: last record read for the trans is  
+	  LSA_COPY (&tdes->tail_lsa, log_lsa);
+	  // todo: check where is this used
+	  tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
+	  LSA_COPY (&tdes->posp_nxlsa, &v[i]);
+	  //
+	  ++i;
+	}
+
+      // do I care? treat it as a 
+    }
+
+  assert (false);
+
+
+
+
+
+  return NO_ERROR;
+}
+
 /*
  * log_rv_analysis_sysop_start_postpone - start system op postpone.
  *
@@ -2251,6 +2347,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
 				       did_incom_recovery);
       break;
     case LOG_GROUP_COMMIT:
+      (void) log_rv_analysis_group_commit (thread_p, tran_id, log_lsa, log_page_p);
       // todo [GC recovery]:
       break;
 
@@ -3791,6 +3888,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      break;
 
 	    case LOG_GROUP_COMMIT:
+	      // start postpones or 
+	      {
+		assert (false);
+	      }
+
 	      // todo [GC recovery]:
 	      break;
 
@@ -5486,12 +5588,17 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       break;
 
     case LOG_GROUP_COMMIT:
-      /* Read the DATA HEADER */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_GROUP_COMMIT), &log_lsa, log_pgptr);
+      {
+	/* Read the DATA HEADER */
+	assert (false);
+	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_GROUP_COMMIT), &log_lsa, log_pgptr);
+	LOG_REC_GROUP_COMMIT *gc = (LOG_REC_GROUP_COMMIT *) ((char *) log_pgptr->area + log_lsa.offset);
+	redo_length = gc->redo_size;
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_GROUP_COMMIT), &log_lsa, log_pgptr);
-      break;
-
+	LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_GROUP_COMMIT), &log_lsa, log_pgptr);
+	LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);
+	break;
+      }
     case LOG_SYSOP_START_POSTPONE:
       {
 	LOG_REC_SYSOP_START_POSTPONE *sysop_start_postpone;

@@ -4487,7 +4487,8 @@ log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_
   LOG_REC_GROUP_COMMIT *gc = (LOG_REC_GROUP_COMMIT *) node->data_header;
   gc->at_time = time (NULL);
   gc->stream_pos = stream_pos;
-  gc->redo_size = group.get_container ().size ();
+  gc->redo_size = v.get_size ();
+  //gc->redo_size = group.get_container ().size ();
 
   lsa = prior_lsa_next_record (thread_p, node, tdes);
 
@@ -7667,6 +7668,19 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   assert (tdes->topops.last < 0);
 
   log_append_commit_postpone (thread_p, tdes, &tdes->posp_nxlsa);
+
+  // add data after tdes changed its status
+  tx_group tg;
+  LOG_LSA commit_lsa;
+  tg.add (
+	   {
+	   tdes->tran_index, tdes->mvccinfo.id, tdes->state}
+  );
+  log_append_group_commit (thread_p, tdes, 0, tg, &commit_lsa);
+
+  logpb_flush_pages (thread_p, &commit_lsa);
+
+  assert (false);
   log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
 }
 
