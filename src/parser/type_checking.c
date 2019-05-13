@@ -21811,6 +21811,11 @@ pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser, const PT_NOD
 	  current_set_node = node->info.value.data_value.set;
 	  is_collection_of_collection = true;
 	}
+      else if ((node->node_type == PT_SELECT) && (PT_IS_COLLECTION_TYPE (node->type_enum)))
+        {
+          current_set_node = node->info.query.q.select.list;
+          is_collection_of_collection = true;
+        }  
 
       if (is_collection_of_collection)
 	{
@@ -21977,6 +21982,7 @@ error:
  *
  */
 static COLLATION_RESULT
+
 pt_get_collation_of_collection (PARSER_CONTEXT * parser, const PT_NODE * node, PT_COLL_INFER * coll_infer,
 				const bool is_inner_collection, bool * is_first_element)
 {
