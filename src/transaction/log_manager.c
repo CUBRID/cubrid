@@ -214,13 +214,6 @@ private:
   log_tdes &m_tdes;
 };
 #endif // SERVER_MODE
-
-struct gc_tran_info
-{
-  int m_tran_index;
-  TRAN_STATE m_tran_state;
-};
-
 // *INDENT-ON*
 
 static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_dbcreation);
@@ -4489,7 +4482,7 @@ log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_
 
   node =
     prior_lsa_alloc_and_copy_data (thread_p, LOG_GROUP_COMMIT, RV_NOT_DEFINED, NULL, 0, NULL,
-				   v.get_size (), v.get_read_ptr ());
+				   (int) v.get_size (), v.get_read_ptr ());
 
   LOG_REC_GROUP_COMMIT *gc = (LOG_REC_GROUP_COMMIT *) node->data_header;
   gc->at_time = time (NULL);
@@ -6132,7 +6125,7 @@ log_dump_record_group_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * 
 
   time_t tmp_time = (time_t) group_commit->at_time;
   (void) ctime_r (&tmp_time, time_val);
-  fprintf (out_fp, ",\n     Group commit (group_sz = %d, stream_pos = %d) finish time at = %s\n",
+  fprintf (out_fp, ",\n     Group commit (group_sz = %llu, stream_pos = %llu) finish time at = %s\n",
 	   group_commit->redo_size, group_commit->stream_pos, time_val);
 
   return log_page_p;
