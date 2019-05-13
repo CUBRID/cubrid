@@ -45,13 +45,13 @@ namespace cubbase
       // C-tors
       hostname_type () = default;
       explicit hostname_type (const char *hostname)
-	:m_hostname (hostname)
+	: m_hostname (hostname)
       {
 	//
       }
 
       explicit hostname_type (const std::string &hostname)
-	:m_hostname (hostname)
+	: m_hostname (hostname)
       {
 	//
       }
