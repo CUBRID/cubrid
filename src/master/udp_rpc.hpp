@@ -128,8 +128,7 @@ namespace cubhb
       int start ();
       void stop ();
 
-      port_type get_port () const;
-      socket_type get_socket () const;
+      client_request create_client_request (const cubbase::hostname_type &host) const;
       void register_handler (message_type type, server_request_handler &handler);
 
     private:

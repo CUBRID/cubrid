@@ -156,16 +156,10 @@ namespace cubhb
     m_thread.join ();
   }
 
-  port_type
-  udp_server::get_port () const
+  client_request
+  udp_server::create_client_request (const cubbase::hostname_type &host) const
   {
-    return m_port;
-  }
-
-  socket_type
-  udp_server::get_socket () const
-  {
-    return m_sfd;
+    return {m_sfd, host, m_port};
   }
 
   void

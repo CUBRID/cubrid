@@ -58,7 +58,7 @@ namespace cubhb
   heartbeat_service::send_heartbeat (const cubbase::hostname_type &node_hostname)
   {
     heartbeat_arg request_arg (true, node_hostname, m_cluster);
-    client_request request (m_server.get_socket (), node_hostname, m_server.get_port ());
+    client_request request = m_server.create_client_request (node_hostname);
 
     request.set_body (message_type::HEARTBEAT, request_arg);
     request.end ();
