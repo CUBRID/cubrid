@@ -3895,6 +3895,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		    logtb_free_tran_index (thread_p, tran_index);
 		  }
 	      }
+	      break;
 
 	    case LOG_MVCC_UNDO_DATA:
 	      /* Must detect MVCC operations and recover vacuum data buffer. The found operation is not actually
