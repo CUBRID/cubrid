@@ -225,13 +225,14 @@ class udp_server
 
 // serialize message and message id into the buffer
 template <typename MsgId, typename Msg>
-void serialize (cubmem::extensible_block &buffer, MsgId &msg_id, const Msg &msg, bool response_requested);
+void udp_serialize (cubmem::extensible_block &buffer, MsgId &msg_id, const Msg &msg, bool response_requested);
 
 // deserialize buffer into message and message id
 template <typename MsgId, typename Msg>
-void deserialize (const cubmem::block &buffer, MsgId &msg_id, Msg &msg, bool &response_requested);
+void udp_deserialize (const cubmem::block &buffer, MsgId &msg_id, Msg &msg, bool &response_requested);
 
-inline void send_to (const char *buffer, std::size_t buffer_size, socket_type sfd, ipv4_type ip_addr, port_type port);
+inline void udp_send_to (const char *buffer, std::size_t buffer_size, socket_type sfd, ipv4_type ip_addr,
+			 port_type port);
 
 // Template function implementation
 
@@ -463,7 +464,7 @@ udp_server<MsgId>::client_request::end () const
   ipv4_type remote_ip_addr = 0;
   std::memcpy (&remote_ip_addr, sin_addr, sizeof (ipv4_type));
 
-  send_to (m_buffer.get_read_ptr (), m_buffer.get_size (), m_sfd, remote_ip_addr, m_port);
+  udp_send_to (m_buffer.get_read_ptr (), m_buffer.get_size (), m_sfd, remote_ip_addr, m_port);
 }
 
 template <typename MsgId>
@@ -471,7 +472,7 @@ template <typename Msg>
 void
 udp_server<MsgId>::client_request::set_message (MsgId msg_id, const Msg &msg)
 {
-  serialize (m_buffer, msg_id, msg, true);
+  udp_serialize (m_buffer, msg_id, msg, true);
 }
 
 //
@@ -490,7 +491,7 @@ template <typename Msg>
 void
 udp_server<MsgId>::server_response::set_message (const Msg &msg)
 {
-  serialize (m_buffer, m_message_id, msg, false);
+  udp_serialize (m_buffer, m_message_id, msg, false);
 }
 
 //
@@ -557,7 +558,8 @@ template <typename MsgId>
 void
 udp_server<MsgId>::server_request::end () const
 {
-  send_to (m_response.m_buffer.get_read_ptr (), m_response.m_buffer.get_size (), m_sfd, m_remote_ip_addr, m_remote_port);
+  udp_send_to (m_response.m_buffer.get_read_ptr (), m_response.m_buffer.get_size (), m_sfd, m_remote_ip_addr,
+	       m_remote_port);
 }
 
 template <typename MsgId>
@@ -567,12 +569,12 @@ udp_server<MsgId>::server_request::get_message (Msg &msg) const
 {
   MsgId msg_id;
   bool response_requested;
-  deserialize (m_buffer, msg_id, msg, response_requested);
+  udp_deserialize (m_buffer, msg_id, msg, response_requested);
 }
 
 template <typename MsgId, typename Msg>
 void
-serialize (cubmem::extensible_block &buffer, MsgId &msg_id, const Msg &msg, bool response_requested)
+udp_serialize (cubmem::extensible_block &buffer, MsgId &msg_id, const Msg &msg, bool response_requested)
 {
   cubpacking::packer packer;
 
@@ -593,7 +595,7 @@ serialize (cubmem::extensible_block &buffer, MsgId &msg_id, const Msg &msg, bool
 
 template <typename MsgId, typename Msg>
 void
-deserialize (const cubmem::block &buffer, MsgId &msg_id, Msg &msg, bool &response_requested)
+udp_deserialize (const cubmem::block &buffer, MsgId &msg_id, Msg &msg, bool &response_requested)
 {
   assert (buffer.is_valid ());
   cubpacking::unpacker unpacker (buffer.ptr, buffer.dim);
@@ -608,7 +610,7 @@ deserialize (const cubmem::block &buffer, MsgId &msg_id, Msg &msg, bool &respons
 }
 
 void
-send_to (const char *buffer, std::size_t buffer_size, socket_type sfd, ipv4_type ip_addr, port_type port)
+udp_send_to (const char *buffer, std::size_t buffer_size, socket_type sfd, ipv4_type ip_addr, port_type port)
 {
   if (buffer == NULL || buffer_size == 0 || sfd == INVALID_SOCKET)
     {
