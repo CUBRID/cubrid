@@ -51,11 +51,12 @@ static const std::size_t BUFFER_SIZE = 4096;
  *
  *    cub_master[udp_server host1:port] |                    | cub_master[udp_server host2:port]
  *                                      |                    |
- *                    client_request -> |                    | ->  server_request --
- *                                      |                    |                     |
- *                                      |                    |                     |
- *                                      |                    |                     |
- *                    server_request <- |                    | <- server_response --
+ *                   client_request --> |                    | -->  server_request                ----
+ *                                      |                    |     (is_response_requested is true)   |
+ *                                      |                    |                                       |
+ *                                      |                    |                                       |
+ *                   server_request <-- |                    | <-- server_response                ----
+ *  (is_response_requested is false)
  *
  *
  * description:
@@ -64,10 +65,10 @@ static const std::size_t BUFFER_SIZE = 4096;
  *
  *   This is how request/response pattern works:
  *     1. server[host1] - creates a client_request and sends it to server[host2]
- *     2. server[host2] - receives data from the socket and create a server request
+ *     2. server[host2] - receives data from the socket and create a server request (with is_response_requested to true)
  *     3. server[host2] - searches in m_handlers map for appropriate handler to handle the request
  *     3. server[host2] - ends the request by sending some data
- *     4. server[host1] - receives the response as a server request
+ *     4. server[host1] - receives the response as a server request (with is_response_requested set to false)
  *
  *
  * usage:
