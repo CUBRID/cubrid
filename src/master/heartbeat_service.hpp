@@ -53,6 +53,9 @@ namespace cubhb
       void send_heartbeat (const cubbase::hostname_type &node_hostname);
 
     private:
+      // reply to heartbeat request
+      void reply_heartbeat (ha_server::server_request &request, const cubbase::hostname_type &node_hostname);
+
       ha_server &m_server;
       cluster &m_cluster;
   };

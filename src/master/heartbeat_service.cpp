@@ -43,14 +43,11 @@ namespace cubhb
     heartbeat_arg request_arg;
     request.get_message (request_arg);
 
+    // process heartbeat request
     m_cluster.receive_heartbeat (request_arg, request.get_remote_ip_address ());
 
-    // must send heartbeat response in order to avoid split-brain when heartbeat configuration changed
-    if (request.is_response_requested () && !m_cluster.hide_to_demote)
-      {
-	heartbeat_arg response_arg (request_arg.get_orig_hostname (), m_cluster);
-	request.get_response ().set_message (response_arg);
-      }
+    // send heartbeat back
+    reply_heartbeat (request, request_arg.get_orig_hostname ());
   }
 
   void
@@ -61,6 +58,17 @@ namespace cubhb
 
     request.set_message (message_type::HEARTBEAT, request_arg);
     request.end ();
+  }
+
+  void
+  heartbeat_service::reply_heartbeat (ha_server::server_request &request, const cubbase::hostname_type &node_hostname)
+  {
+    // must send heartbeat response in order to avoid split-brain when heartbeat configuration changed
+    if (request.is_response_requested () && !m_cluster.hide_to_demote)
+      {
+	heartbeat_arg response_arg (node_hostname, m_cluster);
+	request.get_response ().set_message (response_arg);
+      }
   }
 
   heartbeat_arg::heartbeat_arg ()

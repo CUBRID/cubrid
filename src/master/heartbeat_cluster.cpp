@@ -621,7 +621,7 @@ namespace cubhb
 	  }
 	else
 	  {
-	    // if result differ then remove exiting node and reinsert with the new result
+	    // if result differ then remove existing node and reinsert with the new result
 	    ui_nodes.remove (ui_node);
 	    delete ui_node;
 	  }
