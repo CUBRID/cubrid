@@ -6128,7 +6128,7 @@ log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
 }
 
 // *INDENT-OFF*
-extern void log_unpack_group_commit (LOG_LSA *log_lsa, LOG_PAGE *log_page_p, int buf_size, tx_group & group, std::vector<LOG_LSA> &postpones)
+void log_unpack_group_commit (LOG_LSA *log_lsa, LOG_PAGE *log_page_p, int buf_size, tx_group & group, std::vector<LOG_LSA> &postpones)
 // *INDENT-ON*
 
 {
@@ -7747,19 +7747,6 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   assert (tdes->topops.last < 0);
 
   log_append_commit_postpone (thread_p, tdes, &tdes->posp_nxlsa);
-
-  // add data after tdes changed its status
-  tx_group tg;
-  LOG_LSA commit_lsa;
-  tg.add (
-	   {
-	   tdes->tran_index, tdes->mvccinfo.id, tdes->state}
-  );
-  log_append_group_commit (thread_p, tdes, 0, tg, &commit_lsa);
-
-  logpb_flush_pages (thread_p, &commit_lsa);
-
-  assert (false);
   log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
 }
 

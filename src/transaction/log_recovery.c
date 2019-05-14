@@ -5595,7 +5595,6 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
     case LOG_GROUP_COMMIT:
       {
 	/* Read the DATA HEADER */
-	assert (false);
 	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_GROUP_COMMIT), &log_lsa, log_pgptr);
 	LOG_REC_GROUP_COMMIT *gc = (LOG_REC_GROUP_COMMIT *) ((char *) log_pgptr->area + log_lsa.offset);
 	redo_length = gc->redo_size;

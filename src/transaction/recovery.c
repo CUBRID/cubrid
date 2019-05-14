@@ -813,12 +813,6 @@ struct rvfun RV_fun[] = {
    btree_rv_redo_record_modify,
    btree_rv_keyval_dump,
    log_rv_dump_hexa},
-  {RVREPL_GROUP_COMMIT,
-   "RVREPL_GROUP_COMMIT",
-   NULL,
-   NULL,
-   NULL,
-   log_rv_dump_hexa}
 };
 
 /*
