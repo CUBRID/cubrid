@@ -1654,7 +1654,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
   short i, k, lhs_location, rhs_location, level;
   PT_JOIN_TYPE join_type;
   void *save_etc = NULL;
-  
+
   *continue_walk = PT_CONTINUE_WALK;
 
   if (!node || !parser)
@@ -1780,7 +1780,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  if (node->info.query.q.select.list->node_type == PT_VALUE
 	      && node->info.query.q.select.list->type_enum == PT_TYPE_STAR)
 	    {
-              PT_NODE *next = node->info.query.q.select.list->next;
+	      PT_NODE *next = node->info.query.q.select.list->next;
 
 	      /* To consider 'select *, xxx ...', release "*" node only. */
 	      node->info.query.q.select.list->next = NULL;
@@ -1823,7 +1823,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			{
 			  /* find "class_name.*" */
 			  do_resolve = true;
-                          break;
+			  break;
 			}
 
 		      prev_attr = attr;	/* save previous attr */
@@ -1872,7 +1872,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			{	/* error */
 			  do_resolve = false;
 			  node->info.query.q.select.list = NULL;
-                          break;
+			  break;
 			}
 		      else
 			{
@@ -1941,11 +1941,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	}
 
       /* STEP 3 */
-      if (seq && node->info.query.q.select.list->next)
+      if (seq)
 	{
-          seq->info.value.data_value.set = node->info.query.q.select.list;
+	  seq->info.value.data_value.set = node->info.query.q.select.list;
 	  node->info.query.q.select.list = seq;
-        }
+	}
 
       (void) pt_resolve_hint (parser, node);
 

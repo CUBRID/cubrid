@@ -21812,10 +21812,10 @@ pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser, const PT_NOD
 	  is_collection_of_collection = true;
 	}
       else if ((node->node_type == PT_SELECT) && (PT_IS_COLLECTION_TYPE (node->type_enum)))
-        {
-          current_set_node = node->info.query.q.select.list;
-          is_collection_of_collection = true;
-        }  
+	{
+	  current_set_node = node->info.query.q.select.list;
+	  is_collection_of_collection = true;
+	}  
 
       if (is_collection_of_collection)
 	{
