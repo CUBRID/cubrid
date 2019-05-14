@@ -18473,9 +18473,11 @@ predicate_expr_sub
 	: pred_lhs comp_op normal_expression
 		{{
 
-			PT_NODE *e, *opd1, *opd2, *subq;
+			PT_NODE *e, *opd1, *opd2, *subq, *t;
 			PT_OP_TYPE op;
 			bool found_paren_set_expr = false;
+                        int lhs_cnt, rhs_cnt = 0;
+                        bool found_match = false;
 
 			opd2 = $3;
 			e = parser_make_expression (this_parser, $2, $1, NULL, NULL);
@@ -18504,7 +18506,12 @@ predicate_expr_sub
 				      }
 				    else
 				      {
-					found_paren_set_expr = true;
+					if (subq)
+                                          {
+                                            /* If not PT_TYPE_STAR */
+                                            pt_select_list_to_one_col (this_parser, opd1, true);     
+                                          }                                        
+                                        found_paren_set_expr = true;
 				      }
 				  }
 			      }
@@ -18524,24 +18531,49 @@ predicate_expr_sub
 				      }
 				    else
 				      {
-					found_paren_set_expr = true;
+                                        if (subq)
+                                          {
+                                            /* If not PT_TYPE_STAR */
+                                            pt_select_list_to_one_col (this_parser, opd2, true);     
+                                          }                                        
+                                        found_paren_set_expr = true;
 				      }
 				  }
 			      }
+                              if (found_paren_set_expr == true)
+                              {
+                                /* expression number check */
+                                if ((lhs_cnt = pt_get_expression_count (opd1)) < 0)
+                                  {
+                                    found_match = true;
+                                  }
+                                else
+                                  {
+                                    for (t = opd2; t; t = t->next)
+                                      {
+                                        rhs_cnt = pt_get_expression_count (t);
+                                        if ((rhs_cnt < 0) || (lhs_cnt == rhs_cnt))
+                                          {
+                                            /* can not check negative rhs_cnt. go ahead */
+                                            found_match = true;
+                                            break;
+                                          }
+                                      }
+                                  }
+
+                                if (found_match == false)
+                                  {
+                                    PT_ERRORmf2 (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+                                                 MSGCAT_SEMANTIC_ATT_CNT_COL_CNT_NE,
+                                                 lhs_cnt, rhs_cnt);
+                                  }
+                              }
 			    if (op == PT_EQ || op == PT_NE || op == PT_GT || op == PT_GE || op == PT_LT || op == PT_LE)
 			      {
 				/* expression number check */
 				if (found_paren_set_expr == true &&
 				    pt_check_set_count_set (this_parser, opd1, opd2))
 				  {
-				    if (PT_IS_QUERY_NODE_TYPE (opd1->node_type))
-				      {
-					pt_select_list_to_one_col (this_parser, opd1, true);
-				      }
-				    if (PT_IS_QUERY_NODE_TYPE (opd2->node_type))
-				      {
-					pt_select_list_to_one_col (this_parser, opd2, true);
-				      }
 				    /* rewrite parentheses set expr equi-comparions predicate
 				     * as equi-comparison predicates tree of each elements.
 				     * for example, (a, b) = (x, y) -> a = x and b = y
@@ -18675,7 +18707,12 @@ predicate_expr_sub
 				      }
 				    else
 				      {
-					found_paren_set_expr = true;
+					if (subq)
+                                          {
+                                            /* If not PT_TYPE_STAR */
+                                            pt_select_list_to_one_col (this_parser, lhs, true);     
+                                          }                                        
+                                        found_paren_set_expr = true;
 				      }
 				  }
 			      }
@@ -18734,7 +18771,11 @@ predicate_expr_sub
 				      }
 				    else
 				      {
-                                        pt_select_list_to_one_col (this_parser, t, true);
+                                        if (subq)
+                                          {
+                                            /* If not PT_TYPE_STAR */
+                                            pt_select_list_to_one_col (this_parser, t, true);     
+                                          }                                        
 					found_paren_set_expr = true;
 				      }
 				  }
