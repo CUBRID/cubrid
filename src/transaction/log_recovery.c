@@ -68,12 +68,15 @@ static int log_rv_analysis_dummy_head_postpone (THREAD_ENTRY * thread_p, int tra
 static int log_rv_analysis_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 					 LOG_LSA * check_point);
+static int log_rv_analysis_finish_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
+					    LOG_PAGE * log_page_p, LOG_LSA * prev_lsa);
 static int log_rv_analysis_compensate (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p);
 static int log_rv_analysis_will_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
 						 LOG_PAGE * log_page_p);
 static int log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
-					 LOG_PAGE * log_page_p);
+					 LOG_PAGE * log_page_p, LOG_LSA * prev_lsa, bool is_media_crash,
+					 time_t * stop_at, bool * did_incom_recovery);
 static int log_rv_analysis_sysop_start_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
 						 LOG_PAGE * log_page_p);
 static int log_rv_analysis_atomic_sysop_start (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
@@ -1061,6 +1064,13 @@ log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
   return NO_ERROR;
 }
 
+static int
+log_rv_analysis_finish_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+				 LOG_LSA * prev_lsa)
+{
+
+}
+
 /*
  * log_rv_analysis_compensate -
  *
@@ -1192,35 +1202,23 @@ log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
 }
 
 static int
-log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+			      LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at, bool * did_incom_recovery)
 {
-  LOG_TDES *gc_tdes;
-  LOG_REC_GROUP_COMMIT *start_posp;
-
-  /*
-   * If this is the first time, the transaction is seen. Assign a new
-   * index to describe it. The transaction was in the process of
-   * getting committed at this point.
-   */
-  gc_tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
-  if (gc_tdes == NULL)
-    {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_commit_with_postpone");
-      return ER_FAILED;
-    }
-
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_GROUP_COMMIT), log_lsa, log_page_p);
 
-  start_posp = (LOG_REC_GROUP_COMMIT *) ((char *) log_page_p->area + log_lsa->offset);
-
-  int sz = start_posp->redo_size;
+  LOG_REC_GROUP_COMMIT *group_commit = (LOG_REC_GROUP_COMMIT *) ((char *) log_page_p->area + log_lsa->offset);
+  int sz = group_commit->redo_size;
 
   // costumized read of tgroup
+  // todo [GC_RECOVERY]: probably take this in a reusable function
   tx_group tgroup;
   int crt_pos = 0;
   const char *crt_buf = (char *) log_page_p->area + log_lsa->offset + sizeof (LOG_REC_GROUP_COMMIT);
-  std::vector < LOG_LSA > v;
+  // *INDENT-OFF*
+  std::vector<LOG_LSA> v;
+  // *INDENT-ON*
   while (crt_pos < sz)
     {
       int idx = *((int *) crt_buf);
@@ -1245,42 +1243,41 @@ log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
     }
 
   size_t i = 0;
-for (const auto & ti:tgroup.get_container ())
-    {
-      if (ti.m_tran_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
-	{
-	  // copy LOG_COMMIT_WITH_POSTPONE operations:
+  // *INDENT-OFF*
+  for (const auto & ti : tgroup.get_container ())
+  // *INDENT-ON*
+  {
+    if (ti.m_tran_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
+      {
+	// todo [GC_RECOVERY]: bind tdes->head_lsa to LOG_REC_GC?
+	LOG_TDES *tdes = logtb_rv_find_allocate_tran_index (thread_p, ti.m_tran_index, log_lsa);
+	if (tdes == NULL)
+	  {
+	    logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_group_commit");
+	    return ER_FAILED;
+	  }
 
-	  // todo: bind tdes->head_lsa to LOG_REC_GC?
-	  LOG_TDES *tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
-	  if (tdes == NULL)
-	    {
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_commit_with_postpone");
-	      return ER_FAILED;
-	    }
+	tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
 
-	  tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
-
-	  /* Nothing to undo */
-	  LSA_SET_NULL (&tdes->undo_nxlsa);
-
-	  // todo: last record read for the trans is  
-	  LSA_COPY (&tdes->tail_lsa, log_lsa);
-	  // todo: check where is this used
-	  tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
-	  LSA_COPY (&tdes->posp_nxlsa, &v[i]);
-	  //
-	  ++i;
-	}
-
-      // do I care? treat it as a 
-    }
-
-  assert (false);
-
-
-
-
+	/* Nothing to undo */
+	LSA_SET_NULL (&tdes->undo_nxlsa);
+	LSA_COPY (&tdes->tail_lsa, log_lsa);
+	tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
+	LSA_COPY (&tdes->posp_nxlsa, &v[i]);
+	//
+	++i;
+      }
+    else
+      {
+	// commited without postpone
+	// todo: [GC recovery] Case when tran_indexes alloced without postpone?
+	int tran_index = logtb_find_tran_index (thread_p, ti.m_tran_index);
+	if (tran_index != NULL_TRAN_INDEX)
+	  {
+	    logtb_free_tran_index (thread_p, tran_index);
+	  }
+      }
+  }
 
   return NO_ERROR;
 }
@@ -2325,6 +2322,10 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
       (void) log_rv_analysis_run_postpone (thread_p, tran_id, log_lsa, log_page_p, checkpoint_lsa);
       break;
 
+    case LOG_FINISH_POSTPONE:
+      (void) log_rv_analysis_finish_postpone (thread_p, tran_id, log_lsa, log_page_p, prev_lsa);
+      break;
+
     case LOG_COMPENSATE:
       (void) log_rv_analysis_compensate (thread_p, tran_id, log_lsa, log_page_p);
       break;
@@ -2347,7 +2348,8 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
 				       did_incom_recovery);
       break;
     case LOG_GROUP_COMMIT:
-      (void) log_rv_analysis_group_commit (thread_p, tran_id, log_lsa, log_page_p);
+      (void) log_rv_analysis_group_commit (thread_p, tran_id, log_lsa, log_page_p, prev_lsa, is_media_crash, stop_at,
+					   did_incom_recovery);
       // todo [GC recovery]:
       break;
 
@@ -5225,7 +5227,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
 	  || (log_Gl.hdr.fpageid > new_append_lsa->pageid && new_append_lsa->offset > 0))
 	{
 	  /*
-	   * We are going to rest the header of the active log to the past.
+	   * We are going to reset the header of the active log to the past.
 	   * Save the content of the new append page since it has to be
 	   * transfered to the new location. This is needed since we may not
 	   * start at location zero.
