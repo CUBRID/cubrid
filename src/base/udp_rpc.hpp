@@ -348,6 +348,8 @@ udp_server<MsgId>::init_socket ()
       close_socket ();
       return ERR_CSS_TCP_DATAGRAM_SOCKET;
     }
+
+  return NO_ERROR;
 }
 
 template <typename MsgId>
