@@ -531,7 +531,7 @@ namespace cubstream
 
     if ((flags & FILE_CREATE_FLAG) == FILE_CREATE_FLAG)
       {
-	fd = create_file (file_path);
+	fd = create_file (file_path, RW_USR_MODE);
 	if (fd < 0 && errno == EACCES)
 	  {
 	    if (std::remove (file_path) != 0)
@@ -541,7 +541,7 @@ namespace cubstream
 		return ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME;
 	      }
 
-	    fd = create_file (file_path);
+	    fd = create_file (file_path, RW_USR_MODE);
 	    if (fd < 0)
 	      {
 		/* TODO[replication] : error */
@@ -568,14 +568,14 @@ namespace cubstream
     return fd;
   }
 
-  int stream_file::create_file (const char *file_path)
+  int stream_file::create_file (const char *file_path, unsigned int mode)
   {
     int fd;
 
 #if defined (WINDOWS)
-    fd = _sopen (file_path, O_RDWR | O_CREAT | O_BINARY, _SH_DENYWR, 0600);
+    fd = _sopen (file_path, O_RDWR | O_CREAT | O_BINARY, _SH_DENYWR, mode);
 #else
-    fd = open (file_path, O_RDWR | O_CREAT | O_EXCL);
+    fd = open (file_path, O_RDWR | O_CREAT | O_EXCL, mode);
 #endif
 
     if (fd < 0)
