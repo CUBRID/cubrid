@@ -68,15 +68,13 @@ static int log_rv_analysis_dummy_head_postpone (THREAD_ENTRY * thread_p, int tra
 static int log_rv_analysis_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 					 LOG_LSA * check_point);
-static int log_rv_analysis_finish_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
-					    LOG_PAGE * log_page_p, LOG_LSA * prev_lsa);
+static int log_rv_analysis_finish_postpone (THREAD_ENTRY * thread_p, int tran_id);
 static int log_rv_analysis_compensate (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p);
 static int log_rv_analysis_will_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
 						 LOG_PAGE * log_page_p);
 static int log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
-					 LOG_PAGE * log_page_p, LOG_LSA * prev_lsa, bool is_media_crash,
-					 time_t * stop_at, bool * did_incom_recovery);
+					 LOG_PAGE * log_page_p);
 static int log_rv_analysis_sysop_start_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
 						 LOG_PAGE * log_page_p);
 static int log_rv_analysis_atomic_sysop_start (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
@@ -1065,10 +1063,15 @@ log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
 }
 
 static int
-log_rv_analysis_finish_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-				 LOG_LSA * prev_lsa)
+log_rv_analysis_finish_postpone (THREAD_ENTRY * thread_p, int tran_id)
 {
+  int tran_index = logtb_find_tran_index (thread_p, tran_id);
 
+  if (tran_index != NULL_TRAN_INDEX)
+    {
+      logtb_free_tran_index (thread_p, tran_index);
+    }
+  return NO_ERROR;
 }
 
 /*
@@ -1202,49 +1205,22 @@ log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
 }
 
 static int
-log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-			      LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at, bool * did_incom_recovery)
+log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_GROUP_COMMIT), log_lsa, log_page_p);
 
   LOG_REC_GROUP_COMMIT *group_commit = (LOG_REC_GROUP_COMMIT *) ((char *) log_page_p->area + log_lsa->offset);
-  int sz = group_commit->redo_size;
 
-  // costumized read of tgroup
-  // todo [GC_RECOVERY]: probably take this in a reusable function
-  tx_group tgroup;
-  int crt_pos = 0;
-  const char *crt_buf = (char *) log_page_p->area + log_lsa->offset + sizeof (LOG_REC_GROUP_COMMIT);
+  tx_group group;
   // *INDENT-OFF*
-  std::vector<LOG_LSA> v;
+  std::vector<LOG_LSA> postpones;
   // *INDENT-ON*
-  while (crt_pos < sz)
-    {
-      int idx = *((int *) crt_buf);
-      crt_buf += 4;
-      TRAN_STATE state = *((TRAN_STATE *) crt_buf);
-      crt_buf += 8;
-      crt_pos += 8;
-
-      if (state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
-	{
-	  LOG_LSA pp_lsa = *((LOG_LSA *) crt_buf);
-	  crt_buf += 8;
-	  crt_pos += 8;
-	  v.push_back (pp_lsa);
-	}
-
-      tgroup.add (idx, 0, state);
-      if (crt_pos >= sz)
-	{
-	  break;
-	}
-    }
+  log_unpack_group_commit (log_lsa, log_page_p, group_commit->redo_size, group, postpones);
 
   size_t i = 0;
   // *INDENT-OFF*
-  for (const auto & ti : tgroup.get_container ())
+  for (const auto & ti : group.get_container ())
   // *INDENT-ON*
   {
     if (ti.m_tran_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
@@ -1263,14 +1239,11 @@ log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
 	LSA_SET_NULL (&tdes->undo_nxlsa);
 	LSA_COPY (&tdes->tail_lsa, log_lsa);
 	tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
-	LSA_COPY (&tdes->posp_nxlsa, &v[i]);
-	//
-	++i;
+	LSA_COPY (&tdes->posp_nxlsa, &postpones[i++]);
       }
     else
       {
 	// commited without postpone
-	// todo: [GC recovery] Case when tran_indexes alloced without postpone?
 	int tran_index = logtb_find_tran_index (thread_p, ti.m_tran_index);
 	if (tran_index != NULL_TRAN_INDEX)
 	  {
@@ -2323,7 +2296,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
       break;
 
     case LOG_FINISH_POSTPONE:
-      (void) log_rv_analysis_finish_postpone (thread_p, tran_id, log_lsa, log_page_p, prev_lsa);
+      (void) log_rv_analysis_finish_postpone (thread_p, tran_id);
       break;
 
     case LOG_COMPENSATE:
@@ -2348,9 +2321,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
 				       did_incom_recovery);
       break;
     case LOG_GROUP_COMMIT:
-      (void) log_rv_analysis_group_commit (thread_p, tran_id, log_lsa, log_page_p, prev_lsa, is_media_crash, stop_at,
-					   did_incom_recovery);
-      // todo [GC recovery]:
+      (void) log_rv_analysis_group_commit (thread_p, tran_id, log_lsa, log_page_p);
       break;
 
     case LOG_SYSOP_END:
@@ -3890,13 +3861,40 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      break;
 
 	    case LOG_GROUP_COMMIT:
-	      // start postpones or 
 	      {
-		assert (false);
-	      }
+		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
+		LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_GROUP_COMMIT), &log_lsa, log_pgptr);
 
-	      // todo [GC recovery]:
+		LOG_REC_GROUP_COMMIT *group_commit =
+		  (LOG_REC_GROUP_COMMIT *) ((char *) log_pgptr->area + log_lsa.offset);
+
+		tx_group group;
+		// *INDENT-OFF*
+		std::vector<LOG_LSA> postpones;
+		log_unpack_group_commit (&log_lsa, log_pgptr, group_commit->redo_size, group, postpones);
+		
+		for (const auto & ti : group.get_container ())
+		// *INDENT-ON*
+		{
+		  if (ti.m_tran_state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
+		    {
+		      tran_index = logtb_find_tran_index (thread_p, ti.m_tran_index);
+		      if (tran_index != NULL_TRAN_INDEX && tran_index != LOG_SYSTEM_TRAN_INDEX)
+			{
+			  logtb_free_tran_index (thread_p, tran_index);
+			}
+		    }
+		}
+	      }
 	      break;
+	    case LOG_FINISH_POSTPONE:
+	      {
+		tran_index = logtb_find_tran_index (thread_p, tran_id);
+		if (tran_index != NULL_TRAN_INDEX && tran_index != LOG_SYSTEM_TRAN_INDEX)
+		  {
+		    logtb_free_tran_index (thread_p, tran_index);
+		  }
+	      }
 
 	    case LOG_MVCC_UNDO_DATA:
 	      /* Must detect MVCC operations and recover vacuum data buffer. The found operation is not actually
@@ -5552,6 +5550,11 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_RUN_POSTPONE), &log_lsa, log_pgptr);
       LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);
+      break;
+
+    case LOG_FINISH_POSTPONE:
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_FINISH_POSTPONE), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_FINISH_POSTPONE), &log_lsa, log_pgptr);
       break;
 
     case LOG_DBEXTERN_REDO_DATA:

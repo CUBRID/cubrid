@@ -275,6 +275,8 @@ static LOG_PAGE *log_dump_record_compensate (THREAD_ENTRY * thread_p, FILE * out
 					     LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
 						  LOG_PAGE * log_page_p);
+static LOG_PAGE *log_dump_record_group_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
+					       LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_transaction_finish (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
 						     LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
@@ -401,6 +403,9 @@ log_to_string (LOG_RECTYPE type)
 
     case LOG_RUN_POSTPONE:
       return "LOG_RUN_POSTPONE";
+
+    case LOG_FINISH_POSTPONE:
+      return "LOG_FINISH_POSTPONE";
 
     case LOG_COMPENSATE:
       return "LOG_COMPENSATE";
@@ -2866,6 +2871,15 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
     }
 }
 
+void
+log_append_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa)
+{
+  LOG_PRIOR_NODE *node =
+    prior_lsa_alloc_and_copy_data (thread_p, LOG_FINISH_POSTPONE, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
+  LOG_LSA lsa = prior_lsa_next_record (thread_p, node, tdes);
+  LSA_COPY (commit_lsa, &lsa);
+}
+
 /*
  * log_append_compensate - LOG COMPENSATE DATA
  *
@@ -4488,7 +4502,6 @@ log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_
   gc->at_time = time (NULL);
   gc->stream_pos = stream_pos;
   gc->redo_size = v.get_size ();
-  //gc->redo_size = group.get_container ().size ();
 
   lsa = prior_lsa_next_record (thread_p, node, tdes);
 
@@ -6114,6 +6127,36 @@ log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
   return log_page_p;
 }
 
+// *INDENT-OFF*
+extern void log_unpack_group_commit (LOG_LSA *log_lsa, LOG_PAGE *log_page_p, int buf_size, tx_group & group, std::vector<LOG_LSA> &postpones)
+// *INDENT-ON*
+
+{
+  const char *crt_buf = (char *) log_page_p->area + log_lsa->offset;
+  const char *end_of_buf = crt_buf + buf_size;
+  while (crt_buf < end_of_buf)
+    {
+      int idx;
+      TRAN_STATE state;
+      assert (crt_buf + sizeof (idx) + sizeof (state) <= end_of_buf);
+      idx = *((int *) crt_buf);
+      crt_buf += sizeof (idx);
+      state = *((TRAN_STATE *) crt_buf);
+      crt_buf += sizeof (state);
+
+      if (state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
+	{
+	  LOG_LSA pp_lsa;
+	  assert (crt_buf + sizeof (pp_lsa) <= end_of_buf);
+	  pp_lsa = *((LOG_LSA *) crt_buf);
+	  crt_buf += sizeof (pp_lsa);
+	  postpones.push_back (pp_lsa);
+	}
+
+      group.add (idx, 0, state);
+    }
+}
+
 static LOG_PAGE *
 log_dump_record_group_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
@@ -6128,7 +6171,36 @@ log_dump_record_group_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * 
   (void) ctime_r (&tmp_time, time_val);
   fprintf (out_fp, ",\n     Group commit (group_sz = %llu, stream_pos = %llu) finish time at = %s\n",
 	   group_commit->redo_size, group_commit->stream_pos, time_val);
+  fprintf (out_fp, "     Group: ");
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (*group_commit), log_lsa, log_page_p);
 
+  tx_group group;
+  // *INDENT-OFF*
+  std::vector<LOG_LSA> postpones;
+  // *INDENT-ON*
+  log_unpack_group_commit (log_lsa, log_page_p, group_commit->redo_size, group, postpones);
+
+  size_t crt_postpone_idx = 0;
+  // *INDENT-OFF*
+  for (const auto & ti : group.get_container ())
+  // *INDENT-ON*
+  {
+    fprintf (out_fp, "\n        tran_index = %d, tran_state = %d", ti.m_tran_index, ti.m_tran_state);
+    if (ti.m_tran_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
+      {
+	fprintf (out_fp, ", postpone lsa = %llu", postpones[crt_postpone_idx++]);
+      }
+  }
+  fprintf (out_fp, "\n");
+
+  return log_page_p;
+}
+
+static LOG_PAGE *
+log_dump_record_finish_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+{
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_FINISH_POSTPONE), log_lsa, log_page_p);
+  fprintf (out_fp, ",\n     Finish Postpone\n");
   return log_page_p;
 }
 
@@ -6477,6 +6549,10 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
 
     case LOG_RUN_POSTPONE:
       log_page_p = log_dump_record_postpone (thread_p, out_fp, log_lsa, log_page_p);
+      break;
+
+    case LOG_FINISH_POSTPONE:
+      log_page_p = log_dump_record_finish_postpone (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
     case LOG_DBEXTERN_REDO_DATA:
@@ -7471,6 +7547,9 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	      LSA_SET_NULL (&prev_tranlsa);
 	      break;
 
+	    case LOG_GROUP_COMMIT:
+	    case LOG_FINISH_POSTPONE:
+	      assert (false);
 	    case LOG_WILL_COMMIT:
 	    case LOG_COMMIT:
 	    case LOG_ABORT:

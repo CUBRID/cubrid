@@ -289,7 +289,7 @@ struct log_rec_start_postpone
 typedef struct log_rec_finish_postpone LOG_REC_FINISH_POSTPONE;
 struct log_rec_finish_postpone
 {
-  INT64 at_time;		/* time recorded by active server */
+  // todo: use WILL_COMMIT as a model for header-only?
 };
 
 /* types of end system operation */

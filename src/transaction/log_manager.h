@@ -122,6 +122,7 @@ extern void log_append_redo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvin
 extern void log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int length, const void *data);
 extern void log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int length,
 				 const void *data);
+extern void log_append_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 extern void log_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid, PGLENGTH offset,
 				   PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes);
 extern void log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid,
@@ -164,6 +165,7 @@ extern void log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log, int flus
 #endif
 extern void log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 				     const VPID * rcv_vpid, int length, const void *data, const LOG_LSA * ref_lsa);
+extern void log_append_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 extern int log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa,
 				    LOG_TOPOP_RANGE ** out_nxtop_range_stack);
 extern void log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit);
@@ -217,6 +219,10 @@ extern void log_flush_daemon_get_stats (UINT64 * statsp);
 #endif // SERVER_MODE
 
 extern void log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p);
+
+// *INDENT-OFF*
+extern void log_unpack_group_commit (LOG_LSA *log_lsa, LOG_PAGE *log_page_p, int buf_size, tx_group & group, std::vector<LOG_LSA> &postpones);
+// *INDENT-ON*
 
 //
 // log critical section

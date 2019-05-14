@@ -341,6 +341,7 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
       break;
 
     case LOG_RUN_POSTPONE:
+    case LOG_FINISH_POSTPONE:
     case LOG_COMPENSATE:
     case LOG_SAVEPOINT:
 
@@ -1262,6 +1263,10 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
 
     case LOG_RUN_POSTPONE:
       node->data_header_length = sizeof (LOG_REC_RUN_POSTPONE);
+      break;
+
+    case LOG_FINISH_POSTPONE:
+      node->data_header_length = sizeof (LOG_REC_FINISH_POSTPONE);
       break;
 
     case LOG_COMPENSATE:
