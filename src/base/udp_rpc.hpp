@@ -26,11 +26,16 @@
 
 #include "error_context.hpp"
 #include "hostname.hpp"
+#if defined (LINUX)
+#include "tcp.h"
+#endif
+#if defined (WINDOWS)
+#include "wintcp.h"
+#endif
 
 #include <cstring>
 #include <functional>
 #include <map>
-#include <netdb.h>
 #include <thread>
 
 // type aliases
@@ -212,6 +217,8 @@ class udp_server
     request_handlers_type m_handlers;
 
     int listen ();
+    int init_socket ();
+    void close_socket ();
     static void poll (udp_server *arg);
     void handle (server_request &request) const;
 };
@@ -274,8 +281,7 @@ udp_server<MsgId>::stop ()
       return;
     }
 
-  ::close (m_sfd);
-  m_sfd = INVALID_SOCKET;
+  close_socket ();
 
   m_shutdown = true;
   m_thread.join ();
@@ -299,10 +305,10 @@ template <typename MsgId>
 int
 udp_server<MsgId>::listen ()
 {
-  m_sfd = socket (AF_INET, SOCK_DGRAM, 0);
-  if (m_sfd < 0)
+  int error_code = init_socket ();
+  if (error_code != NO_ERROR)
     {
-      return ERR_CSS_TCP_DATAGRAM_SOCKET;
+      return error_code;
     }
 
   sockaddr_in udp_sockaddr;
@@ -311,12 +317,58 @@ udp_server<MsgId>::listen ()
   udp_sockaddr.sin_addr.s_addr = htonl (INADDR_ANY);
   udp_sockaddr.sin_port = htons (m_port);
 
-  if (bind (m_sfd, (sockaddr *) &udp_sockaddr, sizeof (udp_sockaddr)) < 0)
+  int bind_result = bind (m_sfd, (sockaddr *) &udp_sockaddr, sizeof (udp_sockaddr));
+  if (bind_result < 0)
     {
+      close_socket ();
       return ERR_CSS_TCP_DATAGRAM_BIND;
     }
 
   return NO_ERROR;
+}
+
+template <typename MsgId>
+int
+udp_server<MsgId>::init_socket ()
+{
+#if defined (WINDOWS)
+  int error_code = css_windows_startup ();
+  if (error_code != NO_ERROR)
+    {
+      close_socket ();
+      return error_code;
+    }
+#endif
+
+  m_sfd = socket (AF_INET, SOCK_DGRAM, 0);
+  if (m_sfd < 0)
+    {
+      close_socket ();
+      return ERR_CSS_TCP_DATAGRAM_SOCKET;
+    }
+}
+
+template <typename MsgId>
+void
+udp_server<MsgId>::close_socket ()
+{
+#if defined (WINDOWS)
+  css_windows_shutdown ();
+#endif
+
+  if (m_sfd == INVALID_SOCKET)
+    {
+      return;
+    }
+
+#if defined (LINUX)
+  ::close (m_sfd);
+#endif
+#if defined (WINDOWS)
+  css_shutdown_socket (m_sfd);
+#endif
+
+  m_sfd = INVALID_SOCKET;
 }
 
 template <typename MsgId>
