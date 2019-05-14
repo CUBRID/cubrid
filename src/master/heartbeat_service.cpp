@@ -132,6 +132,8 @@ namespace cubhb
   heartbeat_arg::unpack (cubpacking::unpacker &deserializator)
   {
     deserializator.unpack_int (m_state);
+    assert (m_state >= node_state::UNKNOWN && m_state < node_state::MAX);
+
     deserializator.unpack_string (m_group_id);
     m_orig_hostname.unpack (deserializator);
     m_dest_hostname.unpack (deserializator);
