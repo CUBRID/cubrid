@@ -27,6 +27,7 @@
 #include "log_impl.h"
 #include "replication_common.hpp"
 #include "replication_master_senders_manager.hpp"
+#include "transaction_master_group_complete_manager.hpp"
 #include "server_support.h"
 #include "stream_file.hpp"
 
@@ -64,6 +65,8 @@ namespace cubreplication
     g_instance->m_stream_file = new cubstream::stream_file (*g_instance->m_stream, replication_path);
 
     master_senders_manager::init (g_instance->m_stream);
+
+    cubtx::tx_master_group_complete_manager::init ();
 
     er_log_debug_replication (ARG_FILE_LINE, "master_node:init replication_path:%s", replication_path.c_str ());
 #endif
@@ -110,6 +113,9 @@ namespace cubreplication
   {
 #if defined (SERVER_MODE)
     master_senders_manager::final ();
+
+    cubtx::tx_master_group_complete_manager::final ();
+
     delete g_instance;
     g_instance = NULL;
 #endif

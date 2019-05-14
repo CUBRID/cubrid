@@ -167,6 +167,8 @@ extern void log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvin
 extern int log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa,
 				    LOG_TOPOP_RANGE ** out_nxtop_range_stack);
 extern void log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit);
+extern void log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, const tx_group & group,
+				     LOG_LSA * commit_lsa, bool * has_postpone);
 
 /*
  * FOR DEBUGGING

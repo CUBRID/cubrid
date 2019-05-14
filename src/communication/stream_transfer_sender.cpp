@@ -31,6 +31,7 @@
  */
 
 #include "stream_transfer_sender.hpp"
+#include "transaction_master_group_complete_manager.hpp"
 
 #include "system_parameter.h" /* for er_log_debug */
 #include "thread_manager.hpp"
@@ -122,6 +123,8 @@ namespace cubstream
     m_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (daemon_period,
 		      new transfer_sender_task (*this),
 		      "stream_transfer_sender");
+
+    p_stream_ack = cubtx::tx_master_group_complete_manager::get_instance ();
   }
 
   transfer_sender::~transfer_sender ()
@@ -147,6 +150,11 @@ namespace cubstream
 	cubcomm::er_log_debug_buffer ("transfer_sender::read_action", ptr, byte_count);
 
 	m_last_sent_position += byte_count;
+
+        if (p_stream_ack)
+          {
+            p_stream_ack->notify_stream_ack (m_last_sent_position);
+          }
 	return NO_ERROR;
       }
 

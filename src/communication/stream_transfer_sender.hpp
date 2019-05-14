@@ -36,6 +36,13 @@ namespace cubthread
 namespace cubstream
 {
 
+  /* Interface used by stream senders/receivers to notify threads. */
+  class stream_ack
+  {
+    public:
+      virtual void notify_stream_ack (const cubstream::stream_position stream_pos) = 0;
+  };
+
   class transfer_sender
   {
 
@@ -64,6 +71,9 @@ namespace cubstream
       stream_position m_last_sent_position;
       cubthread::daemon *m_sender_daemon;
       char m_buffer[cubcomm::MTU];
+
+      /* TO DO - move p_stream_ack in new receiver threads on master node. */
+      stream_ack * p_stream_ack;
 
     protected:
       cubstream::stream::read_func_t m_read_action_function;

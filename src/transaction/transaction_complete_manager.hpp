@@ -21,8 +21,6 @@
 // Manager of completed transactions
 //
 
-// todo: use cubtx namespace
-
 #ifndef _TRANSACTION_COMPLETE_MANAGER_HPP_
 #define _TRANSACTION_COMPLETE_MANAGER_HPP_
 
@@ -31,39 +29,23 @@
 #include <cinttypes>
 #include <mutex>
 
-class tx_complete_manager
+namespace cubtx
 {
-  public:
-    using ticket_type = std::uint64_t;
+  //
+  // tx_group_complete_manager is the common interface used by transactions to wait for commit
+  //
+  class tx_complete_manager
+  {
+    public:
+      using id_type = std::uint64_t;
 
-    virtual ~tx_complete_manager () = 0;
+      virtual ~tx_complete_manager () = 0;
 
-    virtual ticket_type register_transaction (int tran_index, MVCCID mvccid, TRAN_STATE state) = 0;
-    virtual void wait_ack (ticket_type ticket) = 0;
-    virtual void wait_until_is_safe_to_unlock_all_locks (ticket_type ticket) = 0;
-    virtual void wait_until_is_safe_to_do_postpone (ticket_type ticket) = 0;
-};
-
-//
-// tx_group_complete_manager is the common interface used by complete managers based on grouping the commits
-//
-// todo: extend by master_gcm, single_gcm and slave_gcm
-//
-class tx_group_complete_manager : public tx_complete_manager
-{
-  public:
-    ~tx_group_complete_manager () override = default;
-
-    ticket_type register_transaction (int tran_index, MVCCID mvccid, TRAN_STATE state) override final;
-
-  protected:
-    void generate_group (tx_group &group_out);
-    virtual bool is_next_group_ready () = 0;
-
-  private:
-    ticket_type m_current_ticket;   // is also the group identifier
-    tx_group m_current_group;
-    std::mutex m_group_mutex;
-};
+      virtual id_type register_transaction (int tran_index, MVCCID mvccid, TRAN_STATE state) = 0;
+      virtual void wait_for_complete_mvcc (id_type id) = 0;
+      virtual void wait_for_logging (id_type id) = 0;
+      virtual void wait_for_complete (id_type id) = 0;
+  };
+}
 
 #endif // !_TRANSACTION_COMPLETE_MANAGER_HPP_

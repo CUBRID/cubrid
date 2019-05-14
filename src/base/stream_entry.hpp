@@ -239,7 +239,7 @@ namespace cubstream
        *  2. set data size value in header field (before packing)
        *  3. stream.write using packing_function as argument
        */
-      int pack (void)
+      int pack (stream_position * p_stream_position)
       {
 	size_t total_stream_entry_size;
 	size_t data_size;
@@ -255,7 +255,7 @@ namespace cubstream
 	set_header_data_size (data_size);
 	assert (DB_WASTED_ALIGN (total_stream_entry_size, MAX_ALIGNMENT) == 0);
 
-	err = m_stream->write (total_stream_entry_size, m_packing_func);
+	err = m_stream->write (total_stream_entry_size, m_packing_func, p_stream_position);
 
 	return (err < 0) ? err : NO_ERROR;
       };

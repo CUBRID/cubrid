@@ -301,6 +301,8 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/mvcc_table.cpp
   ${TRANSACTION_DIR}/recovery.c
   ${TRANSACTION_DIR}/replication.c
+  ${TRANSACTION_DIR}/transaction_master_group_complete_manager.cpp
+  ${TRANSACTION_DIR}/transaction_group_complete_manager.cpp
   ${TRANSACTION_DIR}/transaction_complete_manager.cpp
   ${TRANSACTION_DIR}/transaction_group.cpp
   ${TRANSACTION_DIR}/transaction_sr.c
