@@ -18563,7 +18563,7 @@ predicate_expr_sub
 
                                 if (found_match == false)
                                   {
-                                    PT_ERRORmf2 (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+                                    PT_ERRORmf2 (this_parser, e, MSGCAT_SET_PARSER_SEMANTIC,
                                                  MSGCAT_SEMANTIC_ATT_CNT_COL_CNT_NE,
                                                  lhs_cnt, rhs_cnt);
                                   }
