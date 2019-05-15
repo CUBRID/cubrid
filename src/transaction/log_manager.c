@@ -6128,7 +6128,8 @@ log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
 }
 
 // *INDENT-OFF*
-void log_unpack_group_commit (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, int buf_size, tx_group & group, std::vector<LOG_LSA> & postpones)
+void log_unpack_group_commit (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, int buf_size,
+			      std::vector<rv_gc_info> & group, std::vector<LOG_LSA> & postpones)
 // *INDENT-ON*
 
 {
@@ -6139,6 +6140,11 @@ void log_unpack_group_commit (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PA
     {
       /* Need to copy the data into a contiguous area */
       start_buf = (char *) malloc (buf_size);
+      if (start_buf == NULL)
+	{
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_unpack_group_commit");
+	  return;
+	}
       needs_free = true;
 
       /* Copy the data */
@@ -6149,24 +6155,24 @@ void log_unpack_group_commit (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PA
   const char *end_of_buf = start_buf + buf_size;
   while (crt_buf < end_of_buf)
     {
-      int idx;
+      TRANID trid;
       TRAN_STATE state;
-      assert (crt_buf + sizeof (idx) + sizeof (state) <= end_of_buf);
-      idx = *((int *) crt_buf);
-      crt_buf += sizeof (idx);
+      assert (crt_buf + sizeof (trid) + sizeof (state) <= end_of_buf);
+      trid = *((TRANID *) crt_buf);
+      crt_buf += sizeof (trid);
       state = *((TRAN_STATE *) crt_buf);
       crt_buf += sizeof (state);
 
       if (state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
 	{
-	  LOG_LSA pp_lsa;
-	  assert (crt_buf + sizeof (pp_lsa) <= end_of_buf);
-	  pp_lsa = *((LOG_LSA *) crt_buf);
-	  crt_buf += sizeof (pp_lsa);
-	  postpones.push_back (pp_lsa);
+	  assert (crt_buf + sizeof (LOG_LSA) <= end_of_buf);
+	  postpones.push_back (*((LOG_LSA *) crt_buf));
+	  crt_buf += sizeof (LOG_LSA);
 	}
 
-      group.add (idx, 0, state);
+      // *INDENT-OFF*
+      group.push_back ({trid, state});
+      // *INDENT-ON*
     }
 
   if (needs_free)
@@ -6192,19 +6198,19 @@ log_dump_record_group_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * 
   fprintf (out_fp, "     Group: ");
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*group_commit), log_lsa, log_page_p);
 
-  tx_group group;
   // *INDENT-OFF*
+  std::vector<rv_gc_info> group;
   std::vector<LOG_LSA> postpones;
   // *INDENT-ON*
   log_unpack_group_commit (thread_p, log_lsa, log_page_p, group_commit->redo_size, group, postpones);
 
   size_t crt_postpone_idx = 0;
   // *INDENT-OFF*
-  for (const auto & ti : group.get_container ())
+  for (const auto & ti : group)
   // *INDENT-ON*
   {
-    fprintf (out_fp, "\n        tran_index = %d, tran_state = %d", ti.m_tran_index, ti.m_tran_state);
-    if (ti.m_tran_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
+    fprintf (out_fp, "\n        tran_index = %d, tran_state = %d", ti.m_tr_id, ti.m_state);
+    if (ti.m_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
       {
 	fprintf (out_fp, ", postpone lsa = %llu", postpones[crt_postpone_idx++]);
       }

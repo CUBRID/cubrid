@@ -57,6 +57,12 @@ struct log_topop_range
   LOG_LSA end_lsa;
 };
 
+struct rv_gc_info
+{
+  int m_tr_id;
+  TRAN_STATE m_state;
+};
+
 #define LOG_IS_SYSTEM_OP_STARTED(tdes) ((tdes)->topops.last >= 0)
 
 extern const char *log_to_string (LOG_RECTYPE type);
@@ -222,7 +228,7 @@ extern void log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p);
 
 // *INDENT-OFF*
 extern void log_unpack_group_commit (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, int buf_size, 
-				     tx_group & group, std::vector<LOG_LSA> &postpones);
+				     std::vector<rv_gc_info> & group, std::vector<LOG_LSA> &postpones);
 // *INDENT-ON*
 
 //

@@ -1211,6 +1211,9 @@ static int
 log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 			      LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at, bool * did_incom_recovery)
 {
+  LOG_LSA record_header_lsa;
+  LSA_COPY (&record_header_lsa, log_lsa);
+
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_GROUP_COMMIT), log_lsa, log_page_p);
 
@@ -1218,8 +1221,9 @@ log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
   time_t last_at_time = (time_t) group_commit->at_time;
 
   // replace struct with something that hints at having a trid and not tran_idx
-  tx_group group;
+
   // *INDENT-OFF*
+  std::vector<rv_gc_info> group;
   std::vector<LOG_LSA> postpones;
   // *INDENT-ON*
   log_unpack_group_commit (thread_p, log_lsa, log_page_p, group_commit->redo_size, group, postpones);
@@ -1245,9 +1249,6 @@ log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
        * holding a page.
        */
 
-      LOG_LSA record_header_lsa;
-      LSA_COPY (&record_header_lsa, log_lsa);
-
       log_lsa->pageid = NULL_PAGEID;
       log_recovery_resetlog (thread_p, &record_header_lsa, false, prev_lsa);
       *did_incom_recovery = true;
@@ -1257,12 +1258,12 @@ log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
 
   size_t i = 0;
   // *INDENT-OFF*
-  for (const auto & ti : group.get_container ())
+  for (const auto & ti : group)
   // *INDENT-ON*
   {
-    if (ti.m_tran_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
+    if (ti.m_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
       {
-	LOG_TDES *tdes = logtb_rv_find_allocate_tran_index (thread_p, ti.m_tran_index, log_lsa);
+	LOG_TDES *tdes = logtb_rv_find_allocate_tran_index (thread_p, ti.m_tr_id, log_lsa);
 	if (tdes == NULL)
 	  {
 	    logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_group_commit");
@@ -1280,7 +1281,7 @@ log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
     else
       {
 	// commited without postpone
-	int tran_index = logtb_find_tran_index (thread_p, ti.m_tran_index);
+	int tran_index = logtb_find_tran_index (thread_p, ti.m_tr_id);
 	// posit that only commit with postpone did allocations
 	// todo: remove above comment, will be obsolete
 	assert (tran_index == NULL_TRAN_INDEX);
@@ -3897,6 +3898,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      break;
 
 	    case LOG_GROUP_COMMIT:
+#if !defined(NDEBUG)
 	      {
 		// NO-op, just assert dealloc not needed
 
@@ -3906,23 +3908,23 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		LOG_REC_GROUP_COMMIT *group_commit =
 		  (LOG_REC_GROUP_COMMIT *) ((char *) log_pgptr->area + log_lsa.offset);
 
-		// todo: use some different structure, tx_group uses tran_index and not trid
-		tx_group group;
 		// *INDENT-OFF*
+		std::vector<rv_gc_info> group;
 		std::vector<LOG_LSA> postpones;
 		log_unpack_group_commit (thread_p, &log_lsa, log_pgptr, group_commit->redo_size, group, postpones);
 		
-		for (const auto & ti : group.get_container ())
+		for (const auto & ti : group)
 		// *INDENT-ON*
 		{
-		  if (ti.m_tran_state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
+		  if (ti.m_state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
 		    {
-		      tran_index = logtb_find_tran_index (thread_p, ti.m_tran_index);
+		      tran_index = logtb_find_tran_index (thread_p, ti.m_tr_id);
 		      // posit tran was freed at analysis
 		      assert (tran_index == NULL_TRAN_INDEX);
 		    }
 		}
 	      }
+#endif
 	      break;
 	    case LOG_FINISH_POSTPONE:
 	      {
