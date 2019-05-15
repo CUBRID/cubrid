@@ -4732,7 +4732,7 @@ TRAN_STATE
 log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bool is_local_tran)
 {
 #if 0
-  cubtx::tx_complete_manager::id_type id = 0xFFFFFFFFFFFFFFFFUL;
+  cubtx::complete_manager::id_type id = 0xFFFFFFFFFFFFFFFFUL;
 #endif
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, false);
 
@@ -4901,7 +4901,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 TRAN_STATE
 log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 {
-  cubtx::tx_complete_manager::id_type id;
+  cubtx::complete_manager::id_type id;
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, true);
 
   tdes->state = TRAN_UNACTIVE_ABORTED;

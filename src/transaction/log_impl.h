@@ -659,7 +659,6 @@ struct log_global
 #else				/* SERVER_MODE */
   LOG_LSA final_restored_lsa;
 #endif				/* SERVER_MODE */
-
   /* Buffer for log hdr I/O, size : SIZEOF_LOG_PAGE_SIZE */
   LOG_PAGE *loghdr_pgptr;
 
@@ -668,7 +667,9 @@ struct log_global
 
   /* group commit information */
   LOG_GROUP_COMMIT_INFO group_commit_info;
-    cubtx::tx_complete_manager * m_tran_complete_mgr;
+  // *INDENT-OFF*
+  cubtx::complete_manager * m_tran_complete_mgr;
+  // *INDENT-ON*
 
   /* remote log writer information */
   logwr_info *writer_info;

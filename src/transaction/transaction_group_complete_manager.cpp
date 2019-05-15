@@ -21,16 +21,16 @@
 // Manager of completed group
 //
 
-#include "transaction_group_complete_manager.hpp"
 #include "log_impl.h"
 #include "thread_manager.hpp"
+#include "transaction_group_complete_manager.hpp"
 
 namespace cubtx
 {
   //
   // register_transaction register the transaction that must wait for complete.
   //
-  tx_group_complete_manager::id_type tx_group_complete_manager::register_transaction (int tran_index, MVCCID mvccid,
+  group_complete_manager::id_type group_complete_manager::register_transaction (int tran_index, MVCCID mvccid,
       TRAN_STATE state)
   {
     std::unique_lock<std::mutex> ulock (m_group_mutex);
@@ -42,7 +42,7 @@ namespace cubtx
   //
   // wait_for_complete_mvcc waits for MVCC complete event on specified group_id.
   //
-  void tx_group_complete_manager::wait_for_complete_mvcc (id_type group_id)
+  void group_complete_manager::wait_for_complete_mvcc (id_type group_id)
   {
     if (group_id < m_latest_closed_group_id)
       {
@@ -51,14 +51,14 @@ namespace cubtx
       }
 
     std::unique_lock<std::mutex> ulock (m_ack_mutex);
-    /* TODO - consider stop */
+    /* TODO - consider stop and optimize next call */
     m_ack_condvar.wait (ulock, [&] {return is_group_mvcc_completed (group_id);});
   }
 
   //
   // wait_for_logging waits for logging event on specified group_id.
   //
-  void tx_group_complete_manager::wait_for_logging (id_type group_id)
+  void group_complete_manager::wait_for_logging (id_type group_id)
   {
     if (group_id < m_latest_closed_group_id)
       {
@@ -67,13 +67,14 @@ namespace cubtx
       }
 
     std::unique_lock<std::mutex> ulock (m_ack_mutex);
+    /* TODO - consider stop and optimize next call */
     m_ack_condvar.wait (ulock, [&] {return is_group_logged (group_id);});
   }
 
   //
   // wait_for_complete waits for complete event on specified group_id.
   //
-  void tx_group_complete_manager::wait_for_complete (id_type group_id)
+  void group_complete_manager::wait_for_complete (id_type group_id)
   {
     if (group_id < m_latest_closed_group_id)
       {
@@ -82,6 +83,7 @@ namespace cubtx
       }
 
     std::unique_lock<std::mutex> ulock (m_ack_mutex);
+    /* TODO - consider stop and optimize next call */
     m_ack_condvar.wait (ulock, [&] {return is_group_completed (group_id);});
   }
 
@@ -89,7 +91,7 @@ namespace cubtx
   // notify_all notifies all waiting transactions. When a thread is waked up, it will
   //      check again waiting condition.
   //
-  void tx_group_complete_manager::notify_all ()
+  void group_complete_manager::notify_all ()
   {
     std::unique_lock<std::mutex> ulock (m_ack_mutex);
     m_ack_condvar.notify_all ();
@@ -98,7 +100,7 @@ namespace cubtx
   //
   // close_current_group close the current group. Next comming transactions will be added into the next group.
   //
-  bool tx_group_complete_manager::close_current_group ()
+  bool group_complete_manager::close_current_group ()
   {
     std::unique_lock<std::mutex> ulock (m_group_mutex);
     /* Check again under mutex protection. */
@@ -120,7 +122,7 @@ namespace cubtx
   //
   // notify_group_mvcc_complete notify all threads waiting for group mvcc complete event.
   //
-  void tx_group_complete_manager::notify_group_mvcc_complete (const tx_group &closed_group)
+  void group_complete_manager::notify_group_mvcc_complete (const tx_group &closed_group)
   {
     m_latest_closed_group_state |= GROUP_MVCC_COMPLETED;
 
@@ -131,7 +133,7 @@ namespace cubtx
   //
   // notify_group_logged notify all threads waiting for group logged event.
   //
-  void tx_group_complete_manager::notify_group_logged ()
+  void group_complete_manager::notify_group_logged ()
   {
     m_latest_closed_group_state |= GROUP_LOGGED;
 
@@ -142,7 +144,7 @@ namespace cubtx
   //
   // notify_group_complete notifies threads waiting for group complete event.
   //
-  void tx_group_complete_manager::notify_group_complete ()
+  void group_complete_manager::notify_group_complete ()
   {
     m_latest_closed_group_state |= GROUP_COMPLETED;
 
@@ -153,7 +155,7 @@ namespace cubtx
   //
   // is_latest_closed_group_mvcc_completed checks whether the latest closed group has mvcc completed.
   //
-  bool tx_group_complete_manager::is_latest_closed_group_mvcc_completed ()
+  bool group_complete_manager::is_latest_closed_group_mvcc_completed ()
   {
     return ((m_latest_closed_group_state & GROUP_MVCC_COMPLETED) == GROUP_MVCC_COMPLETED);
   }
@@ -161,7 +163,7 @@ namespace cubtx
   //
   // is_latest_closed_group_logged checks whether the latest closed group is logged.
   //
-  bool tx_group_complete_manager::is_latest_closed_group_logged ()
+  bool group_complete_manager::is_latest_closed_group_logged ()
   {
     return ((m_latest_closed_group_state & GROUP_LOGGED) == GROUP_LOGGED);
   }
@@ -169,7 +171,7 @@ namespace cubtx
   //
   // is_latest_closed_group_completed checks whether the latest closed group is completed.
   //
-  bool tx_group_complete_manager::is_latest_closed_group_completed ()
+  bool group_complete_manager::is_latest_closed_group_completed ()
   {
     return ((m_latest_closed_group_state & GROUP_COMPLETED) == GROUP_COMPLETED);
   }
@@ -178,7 +180,7 @@ namespace cubtx
   // is_current_group_empty checks whether the current group is empty.
   //  Note: This function must be called under m_group_mutex protection
   //
-  bool tx_group_complete_manager::is_current_group_empty ()
+  bool group_complete_manager::is_current_group_empty ()
   {
     if (m_current_group.get_container ().empty ())
       {
@@ -191,7 +193,7 @@ namespace cubtx
   //
   // get_last_closed_group get latest closed group.
   //
-  tx_group & tx_group_complete_manager::get_last_closed_group ()
+  tx_group & group_complete_manager::get_last_closed_group ()
   {
     return m_latest_closed_group;
   }
@@ -200,7 +202,7 @@ namespace cubtx
   // is_group_mvcc_completed checks whether the group has MVCC completed.
   //  Note: This function must be called under m_group_mutex protection
   //
-  bool tx_group_complete_manager::is_group_mvcc_completed (id_type group_id)
+  bool group_complete_manager::is_group_mvcc_completed (id_type group_id)
   {
     if (group_id < m_latest_closed_group_id)
       {
@@ -223,7 +225,7 @@ namespace cubtx
   // is_group_logged checks whether the group is logged.
   //  Note: This function must be called under m_group_mutex protection
   //
-  bool tx_group_complete_manager::is_group_logged (id_type group_id)
+  bool group_complete_manager::is_group_logged (id_type group_id)
   {
     if (group_id < m_latest_closed_group_id)
       {
@@ -246,7 +248,7 @@ namespace cubtx
   // is_group_completed checks whether the group is completed.
   //  Note: This function must be called under m_group_mutex protection
   //
-  bool tx_group_complete_manager::is_group_completed (id_type group_id)
+  bool group_complete_manager::is_group_completed (id_type group_id)
   {
     if (group_id < m_latest_closed_group_id)
       {

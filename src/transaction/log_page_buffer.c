@@ -10259,7 +10259,7 @@ logpb_initialize_tran_complete_manager (void)
   else
     {
       /* TODO - slave. For now consider only master. */
-      log_Gl.m_tran_complete_mgr = cubtx::tx_master_group_complete_manager::get_instance ();
+      log_Gl.m_tran_complete_mgr = cubtx::master_group_complete_manager::get_instance ();
     }
 #else
   /* TODO - SA mode */

@@ -21,8 +21,6 @@
 // Manager of completed group
 //
 
-// todo: use cubtx namespace
-
 #ifndef _GROUP_COMPLETE_MANAGER_HPP_
 #define _GROUP_COMPLETE_MANAGER_HPP_
 
@@ -41,19 +39,19 @@ namespace cubtx
   };
 
   //
-  // tx_group_complete_manager is the common interface used by complete managers based on grouping the commits
+  // group_complete_manager is the common interface used by complete managers based on grouping the commits
   //
-  class tx_group_complete_manager : public tx_complete_manager
+  class group_complete_manager : public complete_manager
   {
     public:
-      tx_group_complete_manager ()
+      group_complete_manager ()
 	: m_current_group_id (1)
 	, m_latest_closed_group_id (0)
 	, m_latest_closed_group_state (GROUP_CLOSED | GROUP_MVCC_COMPLETED | GROUP_LOGGED | GROUP_COMPLETED)
       {
 
       }
-      ~tx_group_complete_manager () override = default;
+      ~group_complete_manager () override = default;
 
       id_type register_transaction (int tran_index, MVCCID mvccid, TRAN_STATE state) override final;
 

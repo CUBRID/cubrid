@@ -18,10 +18,8 @@
  */
 
 //
-// Manager of completed group
+// Manager of completed group on a HA master node
 //
-
-// todo: use cubtx namespace
 
 #ifndef _MASTER_GROUP_COMPLETE_MANAGER_HPP_
 #define _MASTER_GROUP_COMPLETE_MANAGER_HPP_
@@ -30,31 +28,32 @@
 #include "stream_transfer_sender.hpp"
 
 #include "cubstream.hpp"
+#include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
-#include "thread_manager.hpp"
+
 
 namespace cubtx
 {
   //
-  // tx_master_group_complete_manager is a manager for group commits on master node
-  //    Implements tx_complete_manager interface used by transaction threads.
+  // master_group_complete_manager is a manager for group commits on master node
+  //    Implements complete_manager interface used by transaction threads.
   //    Implements task interface used bt GC thread
   //    Implements stream_ack interface used by stream senders.
   //
-  class tx_master_group_complete_manager : public tx_group_complete_manager, public cubthread::entry_task,
+  class master_group_complete_manager : public group_complete_manager, public cubthread::entry_task,
     public cubstream::stream_ack
   {
     public:
-      ~tx_master_group_complete_manager () override;
+      ~master_group_complete_manager () override;
 
-      static tx_master_group_complete_manager *get_instance ();
+      static master_group_complete_manager *get_instance ();
       static void init ();
       static void final ();
 
       /* stream_ack methods */
       void notify_stream_ack (const cubstream::stream_position stream_pos) override;
 
-      /* tx_group_complete_manager methods */
+      /* group_complete_manager methods */
       bool can_close_current_group () override;
       virtual void prepare_complete (THREAD_ENTRY *thread_p) override;
       virtual void do_complete (THREAD_ENTRY *thread_p) override;
@@ -65,7 +64,7 @@ namespace cubtx
     protected:
 
     private:
-      static tx_master_group_complete_manager *gl_master_group;
+      static master_group_complete_manager *gl_master_group;
       cubthread::daemon *m_gc_daemon;
       std::atomic<cubstream::stream_position> m_latest_closed_group_stream_positon;
   };

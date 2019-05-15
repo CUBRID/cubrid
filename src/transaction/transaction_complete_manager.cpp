@@ -25,7 +25,7 @@
 
 namespace cubtx
 {
-  tx_complete_manager::~tx_complete_manager ()
+  complete_manager::~complete_manager ()
   {
     // pure virtual destructor must have a body
   }

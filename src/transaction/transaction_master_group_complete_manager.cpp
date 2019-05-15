@@ -18,16 +18,16 @@
  */
 
 //
-// Manager of completed group
+// Manager of completed group on a HA master node
 //
 
-#include "thread_daemon.hpp"
-#include "transaction_master_group_complete_manager.hpp"
 #include "log_manager.h"
+#include "thread_manager.hpp"
+#include "transaction_master_group_complete_manager.hpp"
 
 namespace cubtx
 {
-  tx_master_group_complete_manager::~tx_master_group_complete_manager ()
+  master_group_complete_manager::~master_group_complete_manager ()
   {
     cubthread::get_manager ()->destroy_daemon (m_gc_daemon);
   }
@@ -35,11 +35,11 @@ namespace cubtx
   //
   // get global master instance
   //
-  tx_master_group_complete_manager *tx_master_group_complete_manager::get_instance ()
+  master_group_complete_manager *master_group_complete_manager::get_instance ()
   {
     if (gl_master_group == NULL)
       {
-	gl_master_group = new tx_master_group_complete_manager ();
+	gl_master_group = new master_group_complete_manager ();
       }
     return gl_master_group;
   }
@@ -47,7 +47,7 @@ namespace cubtx
   //
   // init initialize master group commit
   //
-  void tx_master_group_complete_manager::init ()
+  void master_group_complete_manager::init ()
   {
 #if defined (SERVER_MODE)
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
@@ -60,7 +60,7 @@ namespace cubtx
   //
   // final finalizes master group commit
   //
-  void tx_master_group_complete_manager::final ()
+  void master_group_complete_manager::final ()
   {
 #if defined (SERVER_MODE)
     delete gl_master_group->m_gc_daemon;
@@ -74,7 +74,7 @@ namespace cubtx
   //
   // notify_stream_ack notifies stream ack.
   //
-  void tx_master_group_complete_manager::notify_stream_ack (const cubstream::stream_position stream_pos)
+  void master_group_complete_manager::notify_stream_ack (const cubstream::stream_position stream_pos)
   {
     /* TO DO - disable it temporary since it is not tested */
     return;
@@ -91,7 +91,7 @@ namespace cubtx
   //
   // execute is thread main method.
   //
-  void tx_master_group_complete_manager::execute (cubthread::entry &thread_ref)
+  void master_group_complete_manager::execute (cubthread::entry &thread_ref)
   {
     /* TO DO - disable it temporary since it is not tested */
     return;
@@ -103,7 +103,7 @@ namespace cubtx
   //
   // can_close_current_group check whether the current group can be closed.
   //
-  bool tx_master_group_complete_manager::can_close_current_group ()
+  bool master_group_complete_manager::can_close_current_group ()
   {
     if (!is_latest_closed_group_completed ())
       {
@@ -123,7 +123,7 @@ namespace cubtx
   //
   // prepare_complete prepares group complete. Always should be called before do_complete.
   //
-  void tx_master_group_complete_manager::prepare_complete (THREAD_ENTRY *thread_p)
+  void master_group_complete_manager::prepare_complete (THREAD_ENTRY *thread_p)
   {
     if (close_current_group ())
       {
@@ -143,7 +143,7 @@ namespace cubtx
   //
   // do_complete complete does group complete. Always should be called after prepare_complete.
   //
-  void tx_master_group_complete_manager::do_complete (THREAD_ENTRY *thread_p)
+  void master_group_complete_manager::do_complete (THREAD_ENTRY *thread_p)
   {
     tx_group closed_group;
     LOG_LSA closed_group_commit_lsa;
@@ -179,5 +179,5 @@ namespace cubtx
 #endif
   }
 
-  tx_master_group_complete_manager *tx_master_group_complete_manager::gl_master_group = NULL;
+  master_group_complete_manager *master_group_complete_manager::gl_master_group = NULL;
 }

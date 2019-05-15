@@ -124,7 +124,7 @@ namespace cubstream
 		      new transfer_sender_task (*this),
 		      "stream_transfer_sender");
 
-    p_stream_ack = cubtx::tx_master_group_complete_manager::get_instance ();
+    p_stream_ack = cubtx::master_group_complete_manager::get_instance ();
   }
 
   transfer_sender::~transfer_sender ()

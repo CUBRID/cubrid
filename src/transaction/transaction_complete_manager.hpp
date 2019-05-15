@@ -32,14 +32,14 @@
 namespace cubtx
 {
   //
-  // tx_group_complete_manager is the common interface used by transactions to wait for commit
+  // group_complete_manager is the common interface used by transactions to wait for commit
   //
-  class tx_complete_manager
+  class complete_manager
   {
     public:
       using id_type = std::uint64_t;
 
-      virtual ~tx_complete_manager () = 0;
+      virtual ~complete_manager () = 0;
 
       virtual id_type register_transaction (int tran_index, MVCCID mvccid, TRAN_STATE state) = 0;
       virtual void wait_for_complete_mvcc (id_type id) = 0;
