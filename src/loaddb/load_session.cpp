@@ -233,7 +233,6 @@ namespace cubload
 
 	    if (!m_session.get_args ().syntax_check)
 	      {
-		std::string dummy_string;
 		m_session.append_log_msg (LOADDB_MSG_UPDATED_CLASS_STATS, class_name.c_str ());
 	      }
 

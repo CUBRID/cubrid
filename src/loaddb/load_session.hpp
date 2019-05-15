@@ -162,6 +162,9 @@ namespace cubload
 
 } // namespace cubload
 
+// alias declaration for legacy C files
+using load_session = cubload::session;
+
 namespace cubload
 {
   // Template implementation
@@ -172,8 +175,7 @@ namespace cubload
     if (get_args ().verbose)
       {
 	std::string log_msg;
-	error_handler dummy_err (*this);
-	log_msg = dummy_err.format_log_msg (msg_id, std::forward<Args> (args)...);
+	error_handler::format_log_msg (msg_id, std::forward<Args> (args)...);
 
 	std::unique_lock<std::mutex> ulock (m_stats_mutex);
 
@@ -181,8 +183,5 @@ namespace cubload
       }
   }
 }
-
-// alias declaration for legacy C files
-using load_session = cubload::session;
 
 #endif /* _LOAD_SESSION_HPP_ */

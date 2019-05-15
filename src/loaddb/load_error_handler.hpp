@@ -68,16 +68,16 @@ namespace cubload
       void log_date_time_conversion_error (Args &&... args);
 
       template<typename... Args>
-      std::string format_log_msg (MSGCAT_LOADDB_MSG msg_id, Args &&... args);
+      static std::string format_log_msg (MSGCAT_LOADDB_MSG msg_id, Args &&... args);
 
     private:
       int get_lineno ();
 
       // Format string based on format string passed as input parameter. Check snprintf function for more details
       template<typename... Args>
-      std::string format (const char *fmt, Args &&... args);
+      static std::string format (const char *fmt, Args &&... args);
 
-      char *get_message_from_catalog (MSGCAT_LOADDB_MSG msg_id);
+      static char *get_message_from_catalog (MSGCAT_LOADDB_MSG msg_id);
 
       void log_error_message (std::string &err_msg, bool fail);
       bool is_last_error_filtered ();
@@ -171,13 +171,12 @@ namespace cubload
   }
 
   template<typename... Args>
-  std::string
+  static std::string
   error_handler::format_log_msg (MSGCAT_LOADDB_MSG msg_id, Args &&... args)
   {
     std::string log_msg;
 
     log_msg.append (format (get_message_from_catalog (msg_id), std::forward<Args> (args)...));
-    log_msg.append ("\n");
     return log_msg;
   }
 } // namespace cubload
