@@ -163,9 +163,10 @@ namespace cubtx
     log_wakeup_log_flush_daemon ();
     if (has_postpone)
       {
-	/* Don't care about optimization here since postpone is a rare case. Wait to be sure that postpone is on disk. */
-	logpb_flush_pages (thread_p, &closed_group_commit_lsa);
-	/* Notify group postpone. */
+	/* Notify group postpone. For consistency, we need preserve the order: log GC with postpone first and then
+         * RUN_POSTPONE. The transaction having postpone must wait for GC with postpone log record to be appended.
+         * It seems that we don't need to wait for log flush here.
+         */
 	notify_group_logged ();
       }
 
