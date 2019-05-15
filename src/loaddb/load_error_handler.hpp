@@ -171,7 +171,7 @@ namespace cubload
   }
 
   template<typename... Args>
-  static std::string
+  std::string
   error_handler::format_log_msg (MSGCAT_LOADDB_MSG msg_id, Args &&... args)
   {
     std::string log_msg;
