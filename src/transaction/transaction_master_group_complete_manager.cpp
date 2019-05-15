@@ -145,7 +145,6 @@ namespace cubtx
   //
   void master_group_complete_manager::do_complete (THREAD_ENTRY *thread_p)
   {
-    tx_group closed_group;
     LOG_LSA closed_group_commit_lsa;
     LOG_TDES *tdes = logtb_get_tdes (&cubthread::get_entry ());
     bool has_postpone;
@@ -156,6 +155,7 @@ namespace cubtx
 	return;
       }
 
+    tx_group & closed_group = get_last_closed_group ();
     /* TODO - consider parameter for MVCC complete here. */
     /* Add group commit log record and wakeup  log flush daemon. */
     log_append_group_commit (thread_p, tdes, m_latest_closed_group_stream_positon, closed_group,
