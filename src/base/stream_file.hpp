@@ -37,6 +37,10 @@ namespace cubthread
 namespace cubstream
 {
 
+  // same as FILEIO_DISK_PROTECTION_MODE from file_io.c
+  // better redefine another one here in order not to pull all dependencies from file_io module
+  static const unsigned int RW_USR_MODE = 0600;
+
   /*
    * class for handling reading/writing to volumes from a stream
    * stream file consists of several physical files (volumes) on disk;
@@ -136,7 +140,7 @@ namespace cubstream
 
       int open_file (const char *file_path, int flags = 0);
 
-      int create_file (const char *file_path);
+      int create_file (const char *file_path, unsigned int mode);
 
       size_t read_buffer (const int vol_seqno, const size_t volume_offset, char *buf, const size_t amount);
       size_t write_buffer (const int vol_seqno, const size_t volume_offset, const char *buf, const size_t amount);
@@ -180,7 +184,7 @@ namespace cubstream
 
       size_t get_max_available_from_pos (const stream_position &pos)
       {
-        assert (m_append_position >= pos);
+	assert (m_append_position >= pos);
 	if (m_append_position > pos)
 	  {
 	    return m_append_position - pos;
