@@ -59,7 +59,7 @@ struct log_topop_range
 
 struct rv_gc_info
 {
-  int m_tr_id;
+  TRANID m_tr_id;
   TRAN_STATE m_state;
 };
 
