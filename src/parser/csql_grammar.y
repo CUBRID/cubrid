@@ -1506,6 +1506,7 @@ int g_original_buffer_len;
 %token <cptr> BIT_AND
 %token <cptr> BIT_OR
 %token <cptr> BIT_XOR
+%token <cptr> BUFFER
 %token <cptr> CACHE
 %token <cptr> CAPACITY
 %token <cptr> CHARACTER_SET_
@@ -7083,6 +7084,10 @@ show_type
 	| JOB QUEUES
 		{{
 			$$ = SHOWSTMT_JOB_QUEUES;
+		}}
+	| PAGE BUFFER STATUS
+		{{
+			$$ = SHOWSTMT_PAGE_BUFFER_STATUS;
 		}}
 	| TIMEZONES
 		{{
@@ -22845,6 +22850,16 @@ identifier
 
 		DBG_PRINT}}
 	| BIT_XOR
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| BUFFER
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);

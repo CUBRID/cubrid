@@ -87,6 +87,7 @@ static SHOWSTMT_METADATA *metadata_of_timezones (void);
 static SHOWSTMT_METADATA *metadata_of_full_timezones (void);
 static SHOWSTMT_METADATA *metadata_of_tran_tables (void);
 static SHOWSTMT_METADATA *metadata_of_threads (void);
+static SHOWSTMT_METADATA *metadata_of_page_buffer_status (void);
 
 static SHOWSTMT_METADATA *
 metadata_of_volume_header (void)
@@ -688,6 +689,43 @@ metadata_of_threads (void)
   return &md;
 }
 
+
+static SHOWSTMT_METADATA *
+metadata_of_page_buffer_status (void)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"Hit_rate", "numeric(13,10)"},
+    {"Num_hit", "bigint"},
+    {"Num_page_request", "bigint"},
+    {"Pool_size", "int"},
+    {"Page_size", "int"},
+    {"Free_pages", "int"},
+    {"Victim_candidate_pages", "int"},
+    {"Clean_pages", "int"},
+    {"Dirty_pages", "int"},
+    {"Num_index_pages", "int"},
+    {"Num_data_pages", "int"},
+    {"Num_system_pages", "int"},
+    {"Num_temp_pages", "int"},
+    {"Num_pages_created", "bigint"},
+    {"Num_pages_written", "bigint"},
+    {"pages_written_rate", "numeric(20,10)"},
+    {"Num_pages_read", "bigint"},
+    {"pages_read_rate", "numeric(20,10)"},
+    {"Num_victim_waiting_threads", "int"}
+  };
+
+  static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
+    {1, ORDER_ASC}
+  };
+
+  static SHOWSTMT_METADATA md = {
+    SHOWSTMT_PAGE_BUFFER_STATUS, true /* only_for_dba */ , "show page buffer status",
+    cols, DIM (cols), orderby, DIM (orderby), NULL, 0, NULL, NULL
+  };
+  return &md;
+}
+
 /*
  * showstmt_get_metadata() -  return show statement column infos
  *   return:-
@@ -929,6 +967,7 @@ showstmt_metadata_init (void)
   show_Metas[SHOWSTMT_FULL_TIMEZONES] = metadata_of_full_timezones ();
   show_Metas[SHOWSTMT_TRAN_TABLES] = metadata_of_tran_tables ();
   show_Metas[SHOWSTMT_THREADS] = metadata_of_threads ();
+  show_Metas[SHOWSTMT_PAGE_BUFFER_STATUS] = metadata_of_page_buffer_status ();
 
   for (i = 0; i < DIM (show_Metas); i++)
     {

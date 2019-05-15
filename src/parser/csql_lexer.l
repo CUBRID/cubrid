@@ -158,6 +158,8 @@ int yybuffer_pos;
 [bB][oO][tT][hH]							{ begin_token(yytext);   return BOTH_; }
 [bB][rR][eE][aA][dD][tT][hH]						{ begin_token(yytext);   return BREADTH; }
 [bB][yY]								{ begin_token(yytext);   return BY; }
+[bB][uU][fF][fF][eE][rR]								{ begin_token(yytext);   return BUFFER; }
+
 [cC][aA][lL][lL]							{ begin_token(yytext);   return CALL; }
 [cC][aA][cC][hH][eE]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);

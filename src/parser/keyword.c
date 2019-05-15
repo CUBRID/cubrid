@@ -80,6 +80,7 @@ static KEYWORD_RECORD keywords[] = {
   {BOTH_, "BOTH", 0},
   {BREADTH, "BREADTH", 0},
   {BY, "BY", 0},
+  {BUFFER, "BUFFER", 1},
   {CALL, "CALL", 0},
   {CACHE, "CACHE", 1},
   {CAPACITY, "CAPACITY", 1},

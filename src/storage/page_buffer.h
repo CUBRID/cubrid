@@ -451,4 +451,6 @@ extern void pgbuf_daemons_init ();
 extern void pgbuf_daemons_destroy ();
 #endif /* SERVER_MODE */
 
+extern int pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ptr);
+
 #endif /* _PAGE_BUFFER_H_ */
