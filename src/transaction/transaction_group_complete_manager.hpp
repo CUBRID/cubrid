@@ -82,12 +82,14 @@ namespace cubtx
 
       bool is_current_group_empty ();
 
+      tx_group & get_last_closed_group ();
+
     private:
       bool is_group_mvcc_completed (id_type group_id);
       bool is_group_logged (id_type group_id);
       bool is_group_completed (id_type group_id);
 
-      void notify_all();
+      void notify_all ();
 
       /* Current group info - TODO Maybe better to use a structure here. */
       std::atomic<id_type> m_current_group_id;   // is also the group identifier

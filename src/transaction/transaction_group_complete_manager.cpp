@@ -189,6 +189,14 @@ namespace cubtx
   }
 
   //
+  // get_last_closed_group get latest closed group.
+  //
+  tx_group & tx_group_complete_manager::get_last_closed_group ()
+  {
+    return m_latest_closed_group;
+  }
+
+  //
   // is_group_mvcc_completed checks whether the group has MVCC completed.
   //  Note: This function must be called under m_group_mutex protection
   //

@@ -125,10 +125,10 @@ namespace cubtx
   //
   void tx_master_group_complete_manager::prepare_complete (THREAD_ENTRY *thread_p)
   {
-    if (close_current_group())
+    if (close_current_group ())
       {
 	cubstream::stream_position gc_position;
-	tx_group closed_group;
+        tx_group & closed_group = get_last_closed_group ();
 
 	/* TODO - Introduce parameter. For now complete group MVCC only here. Notify MVCC complete. */
 	log_Gl.mvcc_table.complete_group_mvcc (closed_group);
