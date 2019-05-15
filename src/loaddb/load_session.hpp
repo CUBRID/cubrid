@@ -30,6 +30,7 @@
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
 #include "utility.h"
+#include "load_error_handler.hpp"
 
 #include <atomic>
 #include <condition_variable>
