@@ -4483,12 +4483,12 @@ log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_
   // *INDENT-OFF*
   cubmem::appendible_block<1024> v;
   for (const auto & ti : group.get_container ())
-    {      
-      v.append (ti.m_tran_index);
+    {
+      const log_tdes * tdes = LOG_FIND_TDES (ti.m_tran_index);
+      v.append (tdes->trid);
       v.append (ti.m_tran_state);
       if (ti.m_tran_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
       {
-	const log_tdes * tdes = LOG_FIND_TDES (ti.m_tran_index);
 	v.append (tdes->posp_nxlsa);
       }
     }
@@ -6128,12 +6128,25 @@ log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
 }
 
 // *INDENT-OFF*
-void log_unpack_group_commit (LOG_LSA *log_lsa, LOG_PAGE *log_page_p, int buf_size, tx_group & group, std::vector<LOG_LSA> &postpones)
+void log_unpack_group_commit (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, int buf_size, tx_group & group, std::vector<LOG_LSA> & postpones)
 // *INDENT-ON*
 
 {
-  const char *crt_buf = (char *) log_page_p->area + log_lsa->offset;
-  const char *end_of_buf = crt_buf + buf_size;
+  char *start_buf = log_page_p->area + log_lsa->offset;
+  bool needs_free = false;
+
+  if (log_lsa->offset + buf_size >= (int) LOGAREA_SIZE)
+    {
+      /* Need to copy the data into a contiguous area */
+      start_buf = (char *) malloc (buf_size);
+      needs_free = true;
+
+      /* Copy the data */
+      logpb_copy_from_log (thread_p, start_buf, buf_size, log_lsa, log_page_p);
+    }
+
+  const char *crt_buf = start_buf;
+  const char *end_of_buf = start_buf + buf_size;
   while (crt_buf < end_of_buf)
     {
       int idx;
@@ -6154,6 +6167,11 @@ void log_unpack_group_commit (LOG_LSA *log_lsa, LOG_PAGE *log_page_p, int buf_si
 	}
 
       group.add (idx, 0, state);
+    }
+
+  if (needs_free)
+    {
+      free_and_init (start_buf);
     }
 }
 
@@ -6178,7 +6196,7 @@ log_dump_record_group_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * 
   // *INDENT-OFF*
   std::vector<LOG_LSA> postpones;
   // *INDENT-ON*
-  log_unpack_group_commit (log_lsa, log_page_p, group_commit->redo_size, group, postpones);
+  log_unpack_group_commit (thread_p, log_lsa, log_page_p, group_commit->redo_size, group, postpones);
 
   size_t crt_postpone_idx = 0;
   // *INDENT-OFF*

@@ -1216,7 +1216,7 @@ log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
   // *INDENT-OFF*
   std::vector<LOG_LSA> postpones;
   // *INDENT-ON*
-  log_unpack_group_commit (log_lsa, log_page_p, group_commit->redo_size, group, postpones);
+  log_unpack_group_commit (thread_p, log_lsa, log_page_p, group_commit->redo_size, group, postpones);
 
   size_t i = 0;
   // *INDENT-OFF*
@@ -1225,7 +1225,6 @@ log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
   {
     if (ti.m_tran_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
       {
-	// todo [GC_RECOVERY]: bind tdes->head_lsa to LOG_REC_GC?
 	LOG_TDES *tdes = logtb_rv_find_allocate_tran_index (thread_p, ti.m_tran_index, log_lsa);
 	if (tdes == NULL)
 	  {
@@ -1245,10 +1244,9 @@ log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
       {
 	// commited without postpone
 	int tran_index = logtb_find_tran_index (thread_p, ti.m_tran_index);
-	if (tran_index != NULL_TRAN_INDEX)
-	  {
-	    logtb_free_tran_index (thread_p, tran_index);
-	  }
+	// posit that only commit with postpone did allocations
+	// todo: remove above comment, will be obsolete
+	assert (tran_index == NULL_TRAN_INDEX);
       }
   }
 
@@ -3868,10 +3866,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		LOG_REC_GROUP_COMMIT *group_commit =
 		  (LOG_REC_GROUP_COMMIT *) ((char *) log_pgptr->area + log_lsa.offset);
 
+		// todo: use some different structure, tx_group uses tran_index and not trid
 		tx_group group;
 		// *INDENT-OFF*
 		std::vector<LOG_LSA> postpones;
-		log_unpack_group_commit (&log_lsa, log_pgptr, group_commit->redo_size, group, postpones);
+		log_unpack_group_commit (thread_p, &log_lsa, log_pgptr, group_commit->redo_size, group, postpones);
 		
 		for (const auto & ti : group.get_container ())
 		// *INDENT-ON*
@@ -3879,10 +3878,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  if (ti.m_tran_state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
 		    {
 		      tran_index = logtb_find_tran_index (thread_p, ti.m_tran_index);
-		      if (tran_index != NULL_TRAN_INDEX && tran_index != LOG_SYSTEM_TRAN_INDEX)
-			{
-			  logtb_free_tran_index (thread_p, tran_index);
-			}
+		      // posit tran was freed at analysis
+		      assert (tran_index == NULL_TRAN_INDEX);
 		    }
 		}
 	      }
@@ -3890,10 +3887,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_FINISH_POSTPONE:
 	      {
 		tran_index = logtb_find_tran_index (thread_p, tran_id);
-		if (tran_index != NULL_TRAN_INDEX && tran_index != LOG_SYSTEM_TRAN_INDEX)
-		  {
-		    logtb_free_tran_index (thread_p, tran_index);
-		  }
+		// posit tran was freed at analysis
+		assert (tran_index == NULL_TRAN_INDEX);
 	      }
 	      break;
 
