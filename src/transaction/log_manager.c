@@ -4831,7 +4831,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 		    log_Gl.m_tran_complete_mgr->register_transaction (tdes->tran_index, tdes->mvccinfo.id, tdes->state);
 		}
 
-	      if (retain_lock)
+	      if (retain_lock != true)
 		{
 		  /* For consistency, we must complete MVCCID before unlock. Maybe we will consider atomicity here. */
 		  log_Gl.m_tran_complete_mgr->wait_for_complete_mvcc (id);
@@ -4901,7 +4901,9 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 TRAN_STATE
 log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 {
+#if 0
   cubtx::complete_manager::id_type id;
+#endif
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, true);
 
   tdes->state = TRAN_UNACTIVE_ABORTED;
@@ -4927,6 +4929,8 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 	  tdes->first_save_entry = NULL;
 	}
 
+#if 0
+      /* TODO  - Activate the following code and rewrite all cases with group complete. */
       if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
 	  assert (MVCCID_IS_VALID (tdes->mvccinfo.id));
@@ -4939,6 +4943,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 	  lock_unlock_all (thread_p);
 	}
       else
+#endif
 	{
 	  /* clear mvccid before releasing the locks */
 	  logtb_complete_mvcc (thread_p, tdes, false);

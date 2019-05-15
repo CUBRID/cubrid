@@ -26,6 +26,8 @@
 
 #include "transaction_complete_manager.hpp"
 #include <atomic>
+#include <condition_variable>
+#include <mutex>
 
 namespace cubtx
 {

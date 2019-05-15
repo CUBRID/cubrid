@@ -27,7 +27,6 @@
 #include "transaction_group.hpp"
 
 #include <cinttypes>
-#include <mutex>
 
 namespace cubtx
 {
