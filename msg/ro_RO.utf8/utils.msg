@@ -434,7 +434,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Instanţa %1$d a clasei %2$s a fost deja definită\n
 46 Instanţa %1$d a clasei %2$s a fost deja rezervată\n
 47 Încălcare a constrângerii UNIQUE pentru atributul '%1$s', conversie la NULL\n
-48   %1$d instanţe\n
+48 %1$s %2$d instanţe\n
 49 Clasa %1$s\n
 50 Parola:
 51 \n*** Se actualizează statisticile claselor ***\n
@@ -444,10 +444,11 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 55 absent
 56 în %1$s
 57 Argumente incompatibile, \"%1$s\", şi \"%2$s\"\n
-58 %1$d instanţe commise (salvate)\n
+58 %1$s %2$d instanţe commise (salvate)\n
 59 \nNu se poate invoca versiunea neoptimizată a lui loaddb.\n
 60 Eroare la parsarea lui \"%1$s\", ca fiind de tip %2$s.\n
 61 Referinţa de obiecte nu este acceptată în modul de execuţie independent.\n
+62 Statisticile pentru clasa %1$s au fost updatate.\n
 112   %1$d instanţe\r
 113 Ultima linie salvata (prin commit) : %1$d\n
 114 error-control-file

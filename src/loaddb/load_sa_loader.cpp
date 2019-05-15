@@ -4708,7 +4708,7 @@ ldr_finish_context (LDR_CONTEXT *context)
 	  if (context->args->verbose)
 	    {
 	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INSTANCE_COUNT),
-		       context->inst_total);
+		       (context->class_name ? context->class_name : ""), context->inst_total);
 	    }
 	}
     }
@@ -6658,7 +6658,7 @@ ldr_report_num_of_commits (int num_committed)
 {
   print_log_msg (ldr_Current_context->args->verbose_commit,
 		 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_COMMITTED_INSTANCES),
-		 num_committed);
+		 (ldr_Current_context->class_name ? ldr_Current_context->class_name : ""), num_committed);
 }
 
 /*

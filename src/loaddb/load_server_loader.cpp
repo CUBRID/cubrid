@@ -63,6 +63,8 @@ namespace cubload
       {
 	m_error_handler.on_failure_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
       }
+
+    m_session.append_log_msg (LOADDB_MSG_CLASS_TITLE, class_name);
   }
 
   int

@@ -446,6 +446,7 @@ namespace cubload
     , last_committed_line (0)
     , rows_failed (0)
     , error_message ()
+    , log_message ()
     , is_failed (false)
     , is_completed (false)
   {
@@ -459,6 +460,7 @@ namespace cubload
     , last_committed_line (copy.last_committed_line)
     , rows_failed (copy.rows_failed)
     , error_message (copy.error_message)
+    , log_message (copy.log_message)
     , is_failed (copy.is_failed)
     , is_completed (copy.is_completed)
   {
@@ -473,6 +475,7 @@ namespace cubload
     this->last_committed_line = other.last_committed_line;
     this->rows_failed = other.rows_failed;
     this->error_message = other.error_message;
+    this->log_message = other.log_message;
     this->is_failed = other.is_failed;
     this->is_completed = other.is_completed;
 
@@ -487,6 +490,7 @@ namespace cubload
     last_committed_line = 0;
     rows_failed = 0;
     error_message.clear ();
+    log_message.clear ();
     is_failed = false;
     is_completed = false;
   }
@@ -499,6 +503,7 @@ namespace cubload
     serializator.pack_int (last_committed_line);
     serializator.pack_int (rows_failed);
     serializator.pack_string (error_message);
+    serializator.pack_string (log_message);
     serializator.pack_bool (is_failed);
     serializator.pack_bool (is_completed);
   }
@@ -515,6 +520,7 @@ namespace cubload
     deserializator.unpack_int (last_committed_line);
     deserializator.unpack_int (rows_failed);
     deserializator.unpack_string (error_message);
+    deserializator.unpack_string (log_message);
     deserializator.unpack_bool (is_failed);
     deserializator.unpack_bool (is_completed);
   }
@@ -529,6 +535,7 @@ namespace cubload
     size += serializator.get_packed_int_size (size); // last_committed_line
     size += serializator.get_packed_int_size (size); // rows_failed
     size += serializator.get_packed_string_size (error_message, size);
+    size += serializator.get_packed_string_size (log_message, size);
     size += serializator.get_packed_bool_size (size); // is_failed
     size += serializator.get_packed_bool_size (size); // is_completed
 

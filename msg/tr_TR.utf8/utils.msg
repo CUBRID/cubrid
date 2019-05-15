@@ -422,7 +422,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Sınıf %2$s Derece %1$d zaten tanımlanmış\n
 46 Sınıf %2$s Derece %1$d zaten ayrılmıştır\n
 47 Özniteliği '%1$s 'EŞSİZ aykırı, NULL'a dönüştürülür\n
-48   %1$d örnekleri\n
+48 %1$s %2$d örnekleri\n
 49 Sınıf %1$s\n
 50 Şifre:
 51 \n*** Sınıf istatistikleri güncelleniyor ***\n
@@ -432,10 +432,11 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 55 eksik
 56 %1$s de
 57 Uyumsuz bağımsız değişkenleri, \"%1$s\", ve \"%2$s\"\n
-58 %1$d taahhüt örnekleri\n
+58 %1$s %2$d taahhüt örnekleri\n
 59 \nLoaddb olmayan-optimize edilmiş sürümü çağırılamaz.\n
 60 Hata ayrıştırma \"%1$s\", gibi %2$s tür.\n
 61 Object Reference is not supported in CS mode.\n
+62 Updated statistics for class %1$s.\n
 112   %1$d örnekleri\r
 113 Son kararlı hattı: %1$d\n
 114 hata-kontrol-dosyası

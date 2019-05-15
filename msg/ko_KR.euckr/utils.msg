@@ -422,7 +422,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 클래스 %2$s의 인스턴스 %1$d은(는) 이미 정의되었습니다.\n
 46 클래스 %2$s의 인스턴스 %1$d은(는) 이미 사용되었습니다.\n
 47 속성 '%1$s'상의 UNIQUE 위반, NULL로 변환 되었습니다.\n
-48    %1$d 인스턴스\n
+48 %1$s %2$d 인스턴스\n
 49 클래스 %1$s\n
 50 패스워드:
 51 \n*** 클래스 통계 정보 갱신 중 ***\n
@@ -432,10 +432,11 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 55 missing
 56 in %1$s
 57 함께 사용할 수 없는 인자 \"%1$s\", 와 \"%2$s\"\n
-58 %1$d 인스턴스가 커밋 되었습니다\n
+58 %1$s %2$d 인스턴스가 커밋 되었습니다\n
 59 \n이전 버전의 loaddb를 수행할 수 없습니다.\n
 60 에러 parsing \"%1$s\", as %2$s type.\n
 61 Object Reference is not supported in CS mode.\n
+62 Updated statistics for class %1$s.\n
 112   %1$d 개의 인스턴스\r
 113 마지막으로 커밋된 라인 : %1$d\n
 114 에러 제어 파일
