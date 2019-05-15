@@ -73,8 +73,9 @@ static int log_rv_analysis_compensate (THREAD_ENTRY * thread_p, int tran_id, LOG
 static int log_rv_analysis_will_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
 						 LOG_PAGE * log_page_p);
-static int log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
-					 LOG_PAGE * log_page_p);
+static int log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+					 LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at,
+					 bool * did_incom_recovery);
 static int log_rv_analysis_sysop_start_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
 						 LOG_PAGE * log_page_p);
 static int log_rv_analysis_atomic_sysop_start (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
@@ -1065,6 +1066,8 @@ log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
 static int
 log_rv_analysis_finish_postpone (THREAD_ENTRY * thread_p, int tran_id)
 {
+  // todo [GC recovery]: need media crash's stop_at handling?
+
   int tran_index = logtb_find_tran_index (thread_p, tran_id);
 
   if (tran_index != NULL_TRAN_INDEX)
@@ -1205,18 +1208,52 @@ log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
 }
 
 static int
-log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+			      LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at, bool * did_incom_recovery)
 {
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_GROUP_COMMIT), log_lsa, log_page_p);
 
   LOG_REC_GROUP_COMMIT *group_commit = (LOG_REC_GROUP_COMMIT *) ((char *) log_page_p->area + log_lsa->offset);
+  time_t last_at_time = (time_t) group_commit->at_time;
 
+  // replace struct with something that hints at having a trid and not tran_idx
   tx_group group;
   // *INDENT-OFF*
   std::vector<LOG_LSA> postpones;
   // *INDENT-ON*
   log_unpack_group_commit (thread_p, log_lsa, log_page_p, group_commit->redo_size, group, postpones);
+
+  // check whether we want to stop at a timepoint before gc_record's timestamp
+  if (is_media_crash && (stop_at != NULL && *stop_at != (time_t) (-1) && difftime (*stop_at, last_at_time) < 0))
+    {
+#if !defined(NDEBUG)
+      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
+	{
+	  char time_val[CTIME_MAX];
+	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+	  (void) ctime_r (&last_at_time, time_val);
+	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_INCOMPLTE_MEDIA_RECOVERY),
+		   log_lsa->pageid, log_lsa->offset, time_val);
+	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+	  fflush (stdout);
+	}
+#endif /* !NDEBUG */
+      /*
+       * Reset the log active and stop the recovery process at this
+       * point. Before reseting the log, make sure that we are not
+       * holding a page.
+       */
+
+      LOG_LSA record_header_lsa;
+      LSA_COPY (&record_header_lsa, log_lsa);
+
+      log_lsa->pageid = NULL_PAGEID;
+      log_recovery_resetlog (thread_p, &record_header_lsa, false, prev_lsa);
+      *did_incom_recovery = true;
+
+      return NO_ERROR;
+    }
 
   size_t i = 0;
   // *INDENT-OFF*
@@ -2319,7 +2356,8 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
 				       did_incom_recovery);
       break;
     case LOG_GROUP_COMMIT:
-      (void) log_rv_analysis_group_commit (thread_p, tran_id, log_lsa, log_page_p);
+      (void) log_rv_analysis_group_commit (thread_p, tran_id, log_lsa, log_page_p, prev_lsa, is_media_crash, stop_at,
+					   did_incom_recovery);
       break;
 
     case LOG_SYSOP_END:
@@ -3860,6 +3898,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	    case LOG_GROUP_COMMIT:
 	      {
+		// NO-op, just assert dealloc not needed
+
 		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
 		LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_GROUP_COMMIT), &log_lsa, log_pgptr);
 
