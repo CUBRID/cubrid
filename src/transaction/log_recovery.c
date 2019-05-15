@@ -4301,18 +4301,20 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       if (!LSA_ISNULL (&first_postpone_to_apply))
 	{
 	  log_do_postpone (thread_p, tdes, &first_postpone_to_apply);
-	}
-
-      if (tdes->coord == NULL)
-	{			/* If this is a local transaction */
-	  (void) log_complete (thread_p, tdes, LOG_COMMIT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
-	  logtb_free_tran_index (thread_p, tdes->tran_index);
+	  LOG_LSA finish_lsa;
+	  if (tdes->coord == NULL)
+	    {
+	      log_append_finish_postpone (thread_p, tdes, &finish_lsa);
+	      logtb_free_tran_index (thread_p, tdes->tran_index);
+	    }
 	}
     }
   else if (tdes->state == TRAN_UNACTIVE_COMMITTED)
     {
       if (tdes->coord == NULL)
 	{
+	  // add 1-tran gc without postpone
+	  // todo: who alloced tran given that only commit_with_postpone allocs trans during recovery?
 	  (void) log_complete (thread_p, tdes, LOG_COMMIT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
 	  logtb_free_tran_index (thread_p, tdes->tran_index);
 	}

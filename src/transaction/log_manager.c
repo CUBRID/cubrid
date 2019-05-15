@@ -4793,7 +4793,11 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	    }
 	  else
 	    {
-	      log_append_commit_log (thread_p, tdes, &commit_lsa);
+	      // append finish_postpone only if gc with postpone was appended
+	      if (!LSA_ISNULL (&tdes->posp_nxlsa))
+		{
+		  log_append_finish_postpone (thread_p, tdes, &commit_lsa);
+		}
 	    }
 
 	  tdes->replication_log_generator.on_transaction_commit ();
@@ -5269,18 +5273,23 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
        */
       if (wrote_eot_log == LOG_NEED_TO_WRITE_EOT_LOG)
 	{
+	  // take care of calls that want to append commit only after commit_with_postpone
 	  if (iscommitted == LOG_COMMIT)
 	    {
 	      LOG_LSA commit_lsa;
+	      tx_group group;
+	      group.add (tdes->tran_index, 0, TRAN_UNACTIVE_COMMITTED);
 
-	      log_append_commit_log (thread_p, tdes, &commit_lsa);
+	      log_append_group_commit (thread_p, tdes, 0, group, &commit_lsa);
 	      log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT, &commit_lsa);
 	    }
 	  else
 	    {
 	      LOG_LSA abort_lsa;
+	      tx_group group;
+	      group.add (tdes->tran_index, 0, TRAN_UNACTIVE_ABORTED);
 
-	      log_append_abort_log (thread_p, tdes, &abort_lsa);
+	      log_append_group_commit (thread_p, tdes, 0, group, &abort_lsa);
 	      log_change_tran_as_completed (thread_p, tdes, LOG_ABORT, &abort_lsa);
 	    }
 
@@ -7762,16 +7771,27 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * sta
 static void
 log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
-  if (LSA_ISNULL (&tdes->posp_nxlsa))
+  tx_group group;
+  group.add (
+	      {
+	      tdes->tran_index, 0, tdes->state});
+
+  LOG_LSA commit_lsa;
+  log_append_group_commit (thread_p, tdes, 0, group, &commit_lsa);
+
+  if (!LSA_ISNULL (&tdes->posp_nxlsa))
     {
-      /* nothing to do */
-      return;
+      assert (tdes->topops.last < 0);
+
+      tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+
+      logpb_flush_pages (thread_p, &commit_lsa);
+
+      log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
+
+      logpb_force_flush_pages (thread_p);
+      assert (false);
     }
-
-  assert (tdes->topops.last < 0);
-
-  log_append_commit_postpone (thread_p, tdes, &tdes->posp_nxlsa);
-  log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
 }
 
 /*
