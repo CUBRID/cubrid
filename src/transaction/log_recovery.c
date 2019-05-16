@@ -1226,6 +1226,8 @@ log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
   std::vector<rv_gc_info> group;
   std::vector<LOG_LSA> postpones;
   // *INDENT-ON*
+
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_GROUP_COMMIT), log_lsa, log_page_p);
   log_unpack_group_commit (thread_p, log_lsa, log_page_p, group_commit->redo_size, group, postpones);
 
   // check whether we want to stop at a timepoint before gc_record's timestamp
@@ -1274,8 +1276,7 @@ log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
 
 	/* Nothing to undo */
 	LSA_SET_NULL (&tdes->undo_nxlsa);
-	LSA_COPY (&tdes->tail_lsa, log_lsa);
-	tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
+	LSA_COPY (&tdes->rcv.tran_start_postpone_lsa, log_lsa);
 	LSA_COPY (&tdes->posp_nxlsa, &postpones[i++]);
       }
     else
@@ -3911,6 +3912,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		// *INDENT-OFF*
 		std::vector<rv_gc_info> group;
 		std::vector<LOG_LSA> postpones;
+
+		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_GROUP_COMMIT), &log_lsa, log_pgptr);
 		log_unpack_group_commit (thread_p, &log_lsa, log_pgptr, group_commit->redo_size, group, postpones);
 		
 		for (const auto & ti : group)
@@ -4301,12 +4304,13 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       if (!LSA_ISNULL (&first_postpone_to_apply))
 	{
 	  log_do_postpone (thread_p, tdes, &first_postpone_to_apply);
+	}
+
+      if (tdes->coord == NULL)
+	{
 	  LOG_LSA finish_lsa;
-	  if (tdes->coord == NULL)
-	    {
-	      log_append_finish_postpone (thread_p, tdes, &finish_lsa);
-	      logtb_free_tran_index (thread_p, tdes->tran_index);
-	    }
+	  log_append_finish_postpone (thread_p, tdes, &finish_lsa);
+	  logtb_free_tran_index (thread_p, tdes->tran_index);
 	}
     }
   else if (tdes->state == TRAN_UNACTIVE_COMMITTED)
