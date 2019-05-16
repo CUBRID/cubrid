@@ -7772,9 +7772,7 @@ static void
 log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   tx_group group;
-  group.add (
-	      {
-	      tdes->tran_index, 0, tdes->state});
+  group.add (tdes->tran_index, 0, tdes->state);
 
   LOG_LSA commit_lsa;
   log_append_group_commit (thread_p, tdes, 0, group, &commit_lsa);
@@ -7788,9 +7786,6 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       logpb_flush_pages (thread_p, &commit_lsa);
 
       log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
-
-      logpb_force_flush_pages (thread_p);
-      assert (false);
     }
 }
 
