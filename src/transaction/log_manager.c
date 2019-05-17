@@ -7799,7 +7799,7 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   assert (tdes->topops.last < 0);
 
   tx_group group;
-  group.add (tdes->tran_index, 0, tdes->state);
+  group.add (tdes->tran_index, 0, TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
 
   log_append_group_commit (thread_p, tdes, 0, group, &commit_lsa);
 

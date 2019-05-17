@@ -1215,15 +1215,15 @@ log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_GROUP_COMMIT), log_lsa, log_page_p);
 
-  LOG_REC_GROUP_COMMIT *group_commit = (LOG_REC_GROUP_COMMIT *) ((char *) log_page_p->area + log_lsa->offset);
-  time_t last_at_time = (time_t) group_commit->at_time;
+  LOG_REC_GROUP_COMMIT group_commit = *(LOG_REC_GROUP_COMMIT *) ((char *) log_page_p->area + log_lsa->offset);
+  time_t last_at_time = (time_t) group_commit.at_time;
 
   // *INDENT-OFF*
   std::vector<rv_gc_info> group;
   // *INDENT-ON*
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_GROUP_COMMIT), log_lsa, log_page_p);
-  log_unpack_group_commit (thread_p, log_lsa, log_page_p, group_commit->redo_size, group);
+  log_unpack_group_commit (thread_p, log_lsa, log_page_p, group_commit.redo_size, group);
 
   // check whether we want to stop at a timepoint before gc_record's timestamp
   if (is_media_crash && (stop_at != NULL && *stop_at != (time_t) (-1) && difftime (*stop_at, last_at_time) < 0))
@@ -1254,37 +1254,37 @@ log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
     }
 
   // *INDENT-OFF*
-  for (const auto & ti : group)
+  for (const auto & ti : group) 
+    {
+      if (ti.m_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
+	{
+	  LOG_TDES *tdes = logtb_rv_find_allocate_tran_index (thread_p, ti.m_tr_id, log_lsa);
+	  if (tdes == NULL)
+	    {
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_group_commit");
+	      return ER_FAILED;
+	    }
+
+	  tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+
+	  /* Nothing to undo */
+	  LSA_SET_NULL (&tdes->undo_nxlsa);
+	  LSA_COPY (&tdes->tail_lsa, log_lsa);
+	  tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
+	  LSA_COPY (&tdes->posp_nxlsa, &ti.m_postpone_lsa);
+	}
+      else
+	{
+	  // commited without postpone
+	  int tran_index = logtb_find_tran_index (thread_p, ti.m_tr_id);
+	  if (tran_index != NULL_TRAN_INDEX)
+	    {
+	      logtb_free_tran_index (thread_p, tran_index);
+	    }
+	}
+    }
   // *INDENT-ON*
-  {
-    if (ti.m_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
-      {
-	LOG_TDES *tdes = logtb_rv_find_allocate_tran_index (thread_p, ti.m_tr_id, log_lsa);
-	if (tdes == NULL)
-	  {
-	    logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_group_commit");
-	    return ER_FAILED;
-	  }
 
-	tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
-
-	/* Nothing to undo */
-	LSA_SET_NULL (&tdes->undo_nxlsa);
-	LSA_COPY (&tdes->tail_lsa, log_lsa);
-	tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
-	LSA_COPY (&tdes->posp_nxlsa, &ti.m_postpone_lsa);
-      }
-    else
-      {
-	// commited without postpone
-	int tran_index = logtb_find_tran_index (thread_p, ti.m_tr_id);
-	if (tran_index != NULL_TRAN_INDEX)
-	  {
-	    logtb_free_tran_index (thread_p, tran_index);
-	  }
-
-      }
-  }
 
   return NO_ERROR;
 }
@@ -3903,14 +3903,14 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
 		LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_GROUP_COMMIT), &log_lsa, log_pgptr);
 
-		LOG_REC_GROUP_COMMIT *group_commit =
-		  (LOG_REC_GROUP_COMMIT *) ((char *) log_pgptr->area + log_lsa.offset);
+		LOG_REC_GROUP_COMMIT group_commit =
+		  *(LOG_REC_GROUP_COMMIT *) ((char *) log_pgptr->area + log_lsa.offset);
 
 		// *INDENT-OFF*
 		std::vector<rv_gc_info> group;
 
 		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_GROUP_COMMIT), &log_lsa, log_pgptr);
-		log_unpack_group_commit (thread_p, &log_lsa, log_pgptr, group_commit->redo_size, group);
+		log_unpack_group_commit (thread_p, &log_lsa, log_pgptr, group_commit.redo_size, group);
 		
 		for (const auto & ti : group)
 		// *INDENT-ON*
@@ -3919,7 +3919,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		    {
 		      tran_index = logtb_find_tran_index (thread_p, ti.m_tr_id);
 		      // posit tran was freed at analysis
-		      assert (tran_index == NULL_TRAN_INDEX);
+		      assert (tran_index == NULL_TRAN_INDEX || tran_index == LOG_SYSTEM_TRAN_INDEX);
 		    }
 		}
 	      }
@@ -3929,7 +3929,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      {
 		tran_index = logtb_find_tran_index (thread_p, tran_id);
 		// posit tran was freed at analysis
-		assert (tran_index == NULL_TRAN_INDEX);
+		assert (tran_index == NULL_TRAN_INDEX || tran_index == LOG_SYSTEM_TRAN_INDEX);
 	      }
 	      break;
 
