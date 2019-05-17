@@ -36,6 +36,9 @@ namespace cubtx
     std::unique_lock<std::mutex> ulock (m_group_mutex);
 
     m_current_group.add (tran_index, mvccid, state);
+
+    on_register_transaction ();
+
     return m_current_group_id;
   }
 
@@ -50,9 +53,9 @@ namespace cubtx
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_ack_mutex);
+    std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
     /* TODO - consider stop and optimize next call */
-    m_ack_condvar.wait (ulock, [&] {return is_group_mvcc_completed (group_id);});
+    m_group_complete_condvar.wait (ulock, [&] {return is_group_mvcc_completed (group_id);});
   }
 
   //
@@ -66,9 +69,9 @@ namespace cubtx
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_ack_mutex);
+    std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
     /* TODO - consider stop and optimize next call */
-    m_ack_condvar.wait (ulock, [&] {return is_group_logged (group_id);});
+    m_group_complete_condvar.wait (ulock, [&] {return is_group_logged (group_id);});
   }
 
   //
@@ -82,9 +85,9 @@ namespace cubtx
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_ack_mutex);
+    std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
     /* TODO - consider stop and optimize next call */
-    m_ack_condvar.wait (ulock, [&] {return is_group_completed (group_id);});
+    m_group_complete_condvar.wait (ulock, [&] {return is_group_completed (group_id);});
   }
 
   //
@@ -93,8 +96,30 @@ namespace cubtx
   //
   void group_complete_manager::notify_all ()
   {
-    std::unique_lock<std::mutex> ulock (m_ack_mutex);
-    m_ack_condvar.notify_all ();
+    std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
+    m_group_complete_condvar.notify_all ();
+  }
+
+  //
+  // set_current_group_minimum_transactions set minimum number of transactions for current group.
+  //
+  complete_manager::id_type group_complete_manager::set_current_group_minimum_transactions (
+	  int count_minimum_transactions,
+	  bool &has_group_enough_transactions)
+  {
+    std::unique_lock<std::mutex> ulock (m_group_mutex);
+    m_current_group_min_transactions = count_minimum_transactions;
+
+    if (m_current_group_min_transactions <= m_current_group.get_container ().size ())
+      {
+	has_group_enough_transactions = true;
+      }
+    else
+      {
+	has_group_enough_transactions = false;
+      }
+
+    return m_current_group_id;
   }
 
   //
@@ -193,9 +218,25 @@ namespace cubtx
   //
   // get_last_closed_group get latest closed group.
   //
-  tx_group & group_complete_manager::get_last_closed_group ()
+  const tx_group &group_complete_manager::get_last_closed_group ()
   {
     return m_latest_closed_group;
+  }
+
+  //
+  // get_current_group get current group.
+  //
+  const tx_group &group_complete_manager::get_current_group ()
+  {
+    return m_current_group;
+  }
+
+  //
+  // get_current_group get current group.
+  //
+  int group_complete_manager::get_current_group_min_transactions ()
+  {
+    return m_current_group_min_transactions;
   }
 
   //
