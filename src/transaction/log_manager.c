@@ -241,7 +241,7 @@ static void log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * 
 static void log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * eot_lsa,
 					  LOG_RECTYPE iscommitted, enum LOG_PRIOR_LSA_LOCK with_lock);
-static void log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, const tx_group & group,
+static void log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, tx_group & group,
 				     LOG_LSA * commit_lsa);
 static void log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 					  LOG_LSA * lsa);
@@ -4472,7 +4472,7 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
 }
 
 static void
-log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, const tx_group & group,
+log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, tx_group & group,
 			 LOG_LSA * commit_lsa)
 {
   LOG_PRIOR_NODE *node;
@@ -4506,7 +4506,27 @@ log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_
   gc->stream_pos = stream_pos;
   gc->redo_size = v.get_size ();
 
-  lsa = prior_lsa_next_record (thread_p, node, tdes);
+  // be sure to set tdes->rcv.tran_start_postpone_lsa and do appends under prior_lock
+  // to protect against inconsistent checkpoints
+  log_Gl.prior_info.prior_lsa_mutex.lock ();
+  // *INDENT-OFF*
+  for (tx_group::node_info & ti : group.get_container ())
+  {
+    LOG_TDES *tdes = LOG_FIND_TDES (ti.m_tran_index);
+    assert (tdes != NULL);
+    if (LSA_ISNULL (&tdes->posp_nxlsa))
+    {
+      // filter out transactions without postpone
+      continue;
+    }
+
+    tdes->state = ti.m_tran_state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+    tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
+  }
+  // *INDENT-ON*
+
+  lsa = prior_lsa_next_record_with_lock (thread_p, node, tdes);
+  log_Gl.prior_info.prior_lsa_mutex.unlock ();
 
   LSA_COPY (commit_lsa, &lsa);
 }
@@ -4753,6 +4773,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
    * be rolled back. */
   logtb_complete_mvcc (thread_p, tdes, true);
 
+  // todo: do we really need this? Investigate removing this state assignment
   tdes->state = TRAN_UNACTIVE_WILL_COMMIT;
   /* undo_nxlsa is no longer required here and must be reset, in case checkpoint takes a snapshot of this transaction
    * during TRAN_UNACTIVE_WILL_COMMIT phase.
@@ -6222,20 +6243,17 @@ log_dump_record_group_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * 
 
   // *INDENT-OFF*
   std::vector<rv_gc_info> group;
-  // *INDENT-ON*
   log_unpack_group_commit (thread_p, log_lsa, log_page_p, group_commit->redo_size, group);
-
-  size_t crt_postpone_idx = 0;
-  // *INDENT-OFF*
   for (const auto & ti : group)
+    {
+      fprintf (out_fp, "\n        tran_index = %d, tran_state = %d", ti.m_tr_id, ti.m_state);
+      if (ti.m_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
+        {
+  	  fprintf (out_fp, ", postpone lsa = %llu", ti.m_postpone_lsa);
+        }
+    }
   // *INDENT-ON*
-  {
-    fprintf (out_fp, "\n        tran_index = %d, tran_state = %d", ti.m_tr_id, ti.m_state);
-    if (ti.m_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
-      {
-	fprintf (out_fp, ", postpone lsa = %llu", ti.m_postpone_lsa);
-      }
-  }
+
   fprintf (out_fp, "\n");
 
   return log_page_p;
@@ -7772,35 +7790,14 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   if (LSA_ISNULL (&tdes->posp_nxlsa))
     {
       return;
-
     }
 
   LOG_LSA commit_lsa;
 
   assert (tdes->topops.last < 0);
 
-  tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
   tx_group group;
   group.add (tdes->tran_index, 0, tdes->state);
-
-  // todo: will be used when the gc-managing thread will do the gc append for gc with postpones
-  log_Gl.prior_info.prior_lsa_mutex.lock ();
-  // *INDENT-OFF*
-  for (tx_group::node_info & ti : group.get_container ())
-  // *INDENT-ON*
-  {
-    LOG_TDES *tdes = LOG_FIND_TDES (ti.m_tran_index);
-    assert (tdes != NULL);
-    if (LSA_ISNULL (&tdes->posp_nxlsa))
-      {
-	// filter out transactions without postpone
-	continue;
-      }
-
-    tdes->state = ti.m_tran_state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
-    tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
-  }
-  log_Gl.prior_info.prior_lsa_mutex.unlock ();
 
   log_append_group_commit (thread_p, tdes, 0, group, &commit_lsa);
 
