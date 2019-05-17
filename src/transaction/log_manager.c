@@ -7021,6 +7021,8 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
       is_zipped = true;
     }
 
+  // todo: Investigate this & other similar references in this document that do copy on equality too.
+  // Check whether extra safety for equality is needed. E.g. Unpack_group_commit did not
   if (log_lsa->offset + rcv->length < (int) LOGAREA_SIZE)
     {
       rcv->data = (char *) log_page_p->area + log_lsa->offset;
