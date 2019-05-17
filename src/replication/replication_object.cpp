@@ -578,9 +578,8 @@ namespace cubreplication
     : single_row_repl_entry (type, class_name, lsa_stamp)
     , m_changed_attributes ()
     , m_new_values ()
-    , m_inst_oid (inst_oid)
   {
-    //
+    m_inst_oid = inst_oid;
   }
 
   int
