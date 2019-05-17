@@ -2874,6 +2874,7 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
 void
 log_append_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa)
 {
+  assert (commit_lsa != NULL);
   LOG_PRIOR_NODE *node =
     prior_lsa_alloc_and_copy_data (thread_p, LOG_FINISH_POSTPONE, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
   LOG_LSA lsa = prior_lsa_next_record (thread_p, node, tdes);
@@ -4477,6 +4478,7 @@ log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_
   LOG_PRIOR_NODE *node;
   LOG_LSA lsa;
 
+  assert (commit_lsa != NULL);
   commit_lsa->pageid = NULL_PAGEID;
   commit_lsa->offset = NULL_OFFSET;
 
@@ -4485,6 +4487,7 @@ log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_
   for (const auto & ti : group.get_container ())
     {
       const log_tdes * tdes = LOG_FIND_TDES (ti.m_tran_index);
+      assert (tdes != NULL);
       v.append (tdes->trid);
       v.append (ti.m_tran_state);
       if (ti.m_tran_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
@@ -6153,14 +6156,14 @@ log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
 
 // *INDENT-OFF*
 void log_unpack_group_commit (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, int buf_size,
-			      std::vector<rv_gc_info> & group, std::vector<LOG_LSA> & postpones)
+			      std::vector<rv_gc_info> & group)
 // *INDENT-ON*
 
 {
   char *start_buf = log_page_p->area + log_lsa->offset;
   bool needs_free = false;
 
-  if (log_lsa->offset + buf_size >= (int) LOGAREA_SIZE)
+  if (log_lsa->offset + buf_size > (int) LOGAREA_SIZE)
     {
       /* Need to copy the data into a contiguous area */
       start_buf = (char *) malloc (buf_size);
@@ -6181,6 +6184,8 @@ void log_unpack_group_commit (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PA
     {
       TRANID trid;
       TRAN_STATE state;
+      LOG_LSA pp_lsa;
+      LSA_SET_NULL (&pp_lsa);
       assert (crt_buf + sizeof (trid) + sizeof (state) <= end_of_buf);
       trid = *((TRANID *) crt_buf);
       crt_buf += sizeof (trid);
@@ -6190,12 +6195,12 @@ void log_unpack_group_commit (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PA
       if (state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
 	{
 	  assert (crt_buf + sizeof (LOG_LSA) <= end_of_buf);
-	  postpones.push_back (*((LOG_LSA *) crt_buf));
+	  LSA_COPY (&pp_lsa, ((LOG_LSA *) crt_buf));
 	  crt_buf += sizeof (LOG_LSA);
 	}
 
       // *INDENT-OFF*
-      group.push_back ({trid, state});
+      group.push_back ({trid, state, pp_lsa});
       // *INDENT-ON*
     }
 
@@ -6224,9 +6229,8 @@ log_dump_record_group_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * 
 
   // *INDENT-OFF*
   std::vector<rv_gc_info> group;
-  std::vector<LOG_LSA> postpones;
   // *INDENT-ON*
-  log_unpack_group_commit (thread_p, log_lsa, log_page_p, group_commit->redo_size, group, postpones);
+  log_unpack_group_commit (thread_p, log_lsa, log_page_p, group_commit->redo_size, group);
 
   size_t crt_postpone_idx = 0;
   // *INDENT-OFF*
@@ -6236,7 +6240,7 @@ log_dump_record_group_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * 
     fprintf (out_fp, "\n        tran_index = %d, tran_state = %d", ti.m_tr_id, ti.m_state);
     if (ti.m_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
       {
-	fprintf (out_fp, ", postpone lsa = %llu", postpones[crt_postpone_idx++]);
+	fprintf (out_fp, ", postpone lsa = %llu", ti.m_postpone_lsa);
       }
   }
   fprintf (out_fp, "\n");

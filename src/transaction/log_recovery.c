@@ -1222,11 +1222,10 @@ log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
 
   // *INDENT-OFF*
   std::vector<rv_gc_info> group;
-  std::vector<LOG_LSA> postpones;
   // *INDENT-ON*
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_GROUP_COMMIT), log_lsa, log_page_p);
-  log_unpack_group_commit (thread_p, log_lsa, log_page_p, group_commit->redo_size, group, postpones);
+  log_unpack_group_commit (thread_p, log_lsa, log_page_p, group_commit->redo_size, group);
 
   // check whether we want to stop at a timepoint before gc_record's timestamp
   if (is_media_crash && (stop_at != NULL && *stop_at != (time_t) (-1) && difftime (*stop_at, last_at_time) < 0))
@@ -1256,7 +1255,6 @@ log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
       return NO_ERROR;
     }
 
-  size_t i = 0;
   // *INDENT-OFF*
   for (const auto & ti : group)
   // *INDENT-ON*
@@ -1275,7 +1273,7 @@ log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
 	/* Nothing to undo */
 	LSA_SET_NULL (&tdes->undo_nxlsa);
 	LSA_COPY (&tdes->rcv.tran_start_postpone_lsa, log_lsa);
-	LSA_COPY (&tdes->posp_nxlsa, &postpones[i++]);
+	LSA_COPY (&tdes->posp_nxlsa, &ti.m_postpone_lsa);
       }
     else
       {
@@ -3911,10 +3909,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 		// *INDENT-OFF*
 		std::vector<rv_gc_info> group;
-		std::vector<LOG_LSA> postpones;
 
 		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_GROUP_COMMIT), &log_lsa, log_pgptr);
-		log_unpack_group_commit (thread_p, &log_lsa, log_pgptr, group_commit->redo_size, group, postpones);
+		log_unpack_group_commit (thread_p, &log_lsa, log_pgptr, group_commit->redo_size, group);
 		
 		for (const auto & ti : group)
 		// *INDENT-ON*
