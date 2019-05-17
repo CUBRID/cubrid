@@ -179,7 +179,9 @@ namespace cubreplication
       {
 	if ((*repl_obj)->compare_inst_oid (inst_oid))
 	  {
+	    changed_attrs_row_repl_entry *entry = *repl_obj;
 	    (void) m_pending_to_be_added.erase (repl_obj--);
+	    delete entry;
 	    break;
 	  }
       }
