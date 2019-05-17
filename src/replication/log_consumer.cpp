@@ -313,6 +313,7 @@ namespace cubreplication
     err = se->prepare ();
     if (err != NO_ERROR)
       {
+	delete se;
 	return err;
       }
 
