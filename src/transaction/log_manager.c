@@ -4784,23 +4784,17 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	{
 	  LOG_LSA commit_lsa;
 
-	  /* To write unlock log before releasing locks for transactional consistencies. When a transaction(T2) which
-	   * is resumed by this committing transaction(T1) commits and a crash happens before T1 completes, transaction
-	   * consistencies will be broken because T1 will be aborted during restart recovery and T2 was already
-	   * committed. */
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_active_worker_transaction ()
-	      && log_does_allow_replication () == true)
+	  if (LSA_ISNULL (&tdes->posp_nxlsa))
 	    {
-	      /* for the replication agent guarantee the order of transaction */
-	      log_append_repl_info_and_commit_log (thread_p, tdes, &commit_lsa);
+	      tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+	      tx_group group;
+	      group.add (tdes->tran_index, 0, tdes->state);
+	      log_append_group_commit (thread_p, tdes, 0, group, &commit_lsa);
 	    }
 	  else
 	    {
 	      // append finish_postpone only if gc with postpone was appended
-	      if (!LSA_ISNULL (&tdes->posp_nxlsa))
-		{
-		  log_append_finish_postpone (thread_p, tdes, &commit_lsa);
-		}
+	      log_append_finish_postpone (thread_p, tdes, &commit_lsa);
 	    }
 
 	  tdes->replication_log_generator.on_transaction_commit ();
@@ -7776,30 +7770,37 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * sta
 static void
 log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
+  if (LSA_ISNULL (&tdes->posp_nxlsa))
+    {
+      return;
+
+    }
 
   LOG_LSA commit_lsa;
 
-  if (!LSA_ISNULL (&tdes->posp_nxlsa))
+  assert (tdes->topops.last < 0);
+
+  tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+  tx_group group;
+  group.add (tdes->tran_index, 0, tdes->state);
+
+  // todo: will be used when the gc-managing thread will do the gc append for gc with postpones
+  log_Gl.prior_info.prior_lsa_mutex.lock ();
+for (tx_group::node_info & ti:group.get_container ())
     {
-      assert (tdes->topops.last < 0);
+      LOG_TDES *tdes = LOG_FIND_TDES (ti.m_tran_index);
+      assert (tdes != NULL);
 
-      tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
-      tx_group group;
-      group.add (tdes->tran_index, 0, tdes->state);
-
-      log_append_group_commit (thread_p, tdes, 0, group, &commit_lsa);
-
-      logpb_flush_pages (thread_p, &commit_lsa);
-
-      log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
+      tdes->state = ti.m_tran_state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+      tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
     }
-  else
-    {
-      tx_group group;
-      group.add (tdes->tran_index, 0, tdes->state);
+  log_Gl.prior_info.prior_lsa_mutex.unlock ();
 
-      log_append_group_commit (thread_p, tdes, 0, group, &commit_lsa);
-    }
+  log_append_group_commit (thread_p, tdes, 0, group, &commit_lsa);
+
+  logpb_flush_pages (thread_p, &commit_lsa);
+
+  log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
 }
 
 /*

@@ -1218,8 +1218,6 @@ log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
   LOG_REC_GROUP_COMMIT *group_commit = (LOG_REC_GROUP_COMMIT *) ((char *) log_page_p->area + log_lsa->offset);
   time_t last_at_time = (time_t) group_commit->at_time;
 
-  // replace struct with something that hints at having a trid and not tran_idx
-
   // *INDENT-OFF*
   std::vector<rv_gc_info> group;
   // *INDENT-ON*
@@ -1272,7 +1270,8 @@ log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
 
 	/* Nothing to undo */
 	LSA_SET_NULL (&tdes->undo_nxlsa);
-	LSA_COPY (&tdes->rcv.tran_start_postpone_lsa, log_lsa);
+	LSA_COPY (&tdes->tail_lsa, log_lsa);
+	tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
 	LSA_COPY (&tdes->posp_nxlsa, &ti.m_postpone_lsa);
       }
     else
@@ -4315,7 +4314,6 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       if (tdes->coord == NULL)
 	{
 	  // add 1-tran gc without postpone
-	  // todo: who alloced tran given that only commit_with_postpone allocs trans during recovery?
 	  (void) log_complete (thread_p, tdes, LOG_COMMIT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
 	  logtb_free_tran_index (thread_p, tdes->tran_index);
 	}
