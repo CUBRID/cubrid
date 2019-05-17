@@ -5285,7 +5285,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 	      else
 		{
 		  tx_group group;
-		  group.add (tdes->tran_index, 0, TRAN_UNACTIVE_COMMITED);
+		  group.add (tdes->tran_index, 0, TRAN_UNACTIVE_COMMITTED);
 		  log_append_group_commit (thread_p, tdes, 0, group, &commit_lsa);
 		}
 	      log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT, &commit_lsa);
