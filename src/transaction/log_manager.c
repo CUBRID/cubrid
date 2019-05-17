@@ -4786,7 +4786,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 
 	  if (LSA_ISNULL (&tdes->posp_nxlsa))
 	    {
-	      tdes->state = TRAN_UNACTIVE_COMMITTED;
 	      tx_group group;
 	      group.add (tdes->tran_index, 0, tdes->state);
 	      log_append_group_commit (thread_p, tdes, 0, group, &commit_lsa);
