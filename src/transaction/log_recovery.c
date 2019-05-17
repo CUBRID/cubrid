@@ -1066,8 +1066,6 @@ log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
 static int
 log_rv_analysis_finish_postpone (THREAD_ENTRY * thread_p, int tran_id)
 {
-  // todo [GC recovery]: need media crash's stop_at handling?
-
   int tran_index = logtb_find_tran_index (thread_p, tran_id);
 
   if (tran_index != NULL_TRAN_INDEX)
@@ -1283,9 +1281,11 @@ log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
       {
 	// commited without postpone
 	int tran_index = logtb_find_tran_index (thread_p, ti.m_tr_id);
-	// posit that only commit with postpone did allocations
-	// todo: remove above comment, will be obsolete
-	assert (tran_index == NULL_TRAN_INDEX);
+	if (tran_index != NULL_TRAN_INDEX)
+	  {
+	    logtb_free_tran_index (thread_p, tran_index);
+	  }
+
       }
   }
 
@@ -5596,11 +5596,6 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);
       break;
 
-    case LOG_FINISH_POSTPONE:
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_FINISH_POSTPONE), &log_lsa, log_pgptr);
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_FINISH_POSTPONE), &log_lsa, log_pgptr);
-      break;
-
     case LOG_DBEXTERN_REDO_DATA:
       /* Read the data header */
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_DBOUT_REDO), &log_lsa, log_pgptr);
@@ -5753,6 +5748,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       break;
 
     case LOG_WILL_COMMIT:
+    case LOG_FINISH_POSTPONE:
     case LOG_START_CHKPT:
     case LOG_2PC_COMMIT_DECISION:
     case LOG_2PC_ABORT_DECISION:

@@ -1258,15 +1258,12 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
     case LOG_2PC_ABORT_INFORM_PARTICPS:
     case LOG_START_CHKPT:
     case LOG_SYSOP_ATOMIC_START:
+    case LOG_FINISH_POSTPONE:
       assert (length == 0 && data == NULL);
       break;
 
     case LOG_RUN_POSTPONE:
       node->data_header_length = sizeof (LOG_REC_RUN_POSTPONE);
-      break;
-
-    case LOG_FINISH_POSTPONE:
-      node->data_header_length = sizeof (LOG_REC_FINISH_POSTPONE);
       break;
 
     case LOG_COMPENSATE:

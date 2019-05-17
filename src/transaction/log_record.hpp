@@ -286,12 +286,6 @@ struct log_rec_start_postpone
   LOG_LSA posp_lsa;
 };
 
-typedef struct log_rec_finish_postpone LOG_REC_FINISH_POSTPONE;
-struct log_rec_finish_postpone
-{
-  // todo: use WILL_COMMIT as a model for header-only?
-};
-
 /* types of end system operation */
 enum log_sysop_end_type
 {

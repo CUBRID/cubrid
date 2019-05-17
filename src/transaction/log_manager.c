@@ -6245,14 +6245,6 @@ log_dump_record_group_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * 
 }
 
 static LOG_PAGE *
-log_dump_record_finish_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
-{
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_FINISH_POSTPONE), log_lsa, log_page_p);
-  fprintf (out_fp, ",\n     Finish Postpone\n");
-  return log_page_p;
-}
-
-static LOG_PAGE *
 log_dump_record_transaction_finish (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
   LOG_REC_DONETIME *donetime;
@@ -6599,10 +6591,6 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
       log_page_p = log_dump_record_postpone (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
-    case LOG_FINISH_POSTPONE:
-      log_page_p = log_dump_record_finish_postpone (thread_p, out_fp, log_lsa, log_page_p);
-      break;
-
     case LOG_DBEXTERN_REDO_DATA:
       log_page_p = log_dump_record_dbout_redo (thread_p, out_fp, log_lsa, log_page_p);
       break;
@@ -6613,10 +6601,6 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
 
     case LOG_COMMIT_WITH_POSTPONE:
       log_page_p = log_dump_record_commit_postpone (thread_p, out_fp, log_lsa, log_page_p);
-      break;
-
-    case LOG_WILL_COMMIT:
-      fprintf (out_fp, "\n");
       break;
 
     case LOG_COMMIT:
@@ -6661,6 +6645,8 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
       log_page_p = log_dump_record_ha_server_state (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
+    case LOG_FINISH_POSTPONE:
+    case LOG_WILL_COMMIT:
     case LOG_START_CHKPT:
     case LOG_2PC_COMMIT_DECISION:
     case LOG_2PC_ABORT_DECISION:
