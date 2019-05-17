@@ -7785,14 +7785,21 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   // todo: will be used when the gc-managing thread will do the gc append for gc with postpones
   log_Gl.prior_info.prior_lsa_mutex.lock ();
-for (tx_group::node_info & ti:group.get_container ())
-    {
-      LOG_TDES *tdes = LOG_FIND_TDES (ti.m_tran_index);
-      assert (tdes != NULL);
+  // *INDENT-OFF*
+  for (tx_group::node_info & ti : group.get_container ())
+  // *INDENT-ON*
+  {
+    LOG_TDES *tdes = LOG_FIND_TDES (ti.m_tran_index);
+    assert (tdes != NULL);
+    if (LSA_ISNULL (&tdes->posp_nxlsa))
+      {
+	// filter out transactions without postpone
+	continue;
+      }
 
-      tdes->state = ti.m_tran_state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
-      tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
-    }
+    tdes->state = ti.m_tran_state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+    tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
+  }
   log_Gl.prior_info.prior_lsa_mutex.unlock ();
 
   log_append_group_commit (thread_p, tdes, 0, group, &commit_lsa);
