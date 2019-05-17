@@ -182,7 +182,7 @@ namespace cubreplication
 		  }
 		else
 		  {
-		    it = master_server_stream_senders.erase (it);
+		    it = master_server_stream_senders.erase (it--);
 		  }
 	      }
 	    else

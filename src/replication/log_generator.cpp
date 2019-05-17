@@ -135,8 +135,6 @@ namespace cubreplication
       }
 
     changed_attrs_row_repl_entry *entry = NULL;
-    char *class_name = NULL;
-
     for (auto &repl_obj : m_pending_to_be_added)
       {
 	if (repl_obj->compare_inst_oid (inst_oid))
@@ -153,8 +151,6 @@ namespace cubreplication
     else
       {
 	LOG_LSA *p_lsa;
-	int error_code = NO_ERROR;
-
 	char *class_name = get_classname (class_oid);
 
 	cubthread::entry *thread_p = &cubthread::get_entry ();
@@ -183,7 +179,7 @@ namespace cubreplication
       {
 	if ((*repl_obj)->compare_inst_oid (inst_oid))
 	  {
-	    (void) m_pending_to_be_added.erase (repl_obj);
+	    (void) m_pending_to_be_added.erase (repl_obj--);
 	    break;
 	  }
       }
@@ -221,7 +217,7 @@ namespace cubreplication
 	    er_log_repl_obj (repl_obj, "log_generator::set_key_to_repl_object");
 
 	    // remove
-	    (void) m_pending_to_be_added.erase (repl_obj_it);
+	    (void) m_pending_to_be_added.erase (repl_obj_it--);
 
 	    found = true;
 
