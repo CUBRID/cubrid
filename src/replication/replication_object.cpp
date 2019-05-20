@@ -576,6 +576,8 @@ namespace cubreplication
   changed_attrs_row_repl_entry::changed_attrs_row_repl_entry (repl_entry_type type, const char *class_name,
       const OID &inst_oid, LOG_LSA &lsa_stamp)
     : single_row_repl_entry (type, class_name, lsa_stamp)
+    , m_changed_attributes ()
+    , m_new_values ()
   {
     m_inst_oid = inst_oid;
   }

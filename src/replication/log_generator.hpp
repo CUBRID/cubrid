@@ -94,7 +94,8 @@ namespace cubreplication
       };
 
       log_generator (cubstream::multi_thread_stream *stream)
-	: m_stream_entry (stream)
+	: m_pending_to_be_added ()
+	, m_stream_entry (stream)
 	, m_has_stream (false)
 	, m_is_row_replication_disabled (true)
       {
