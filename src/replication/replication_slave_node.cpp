@@ -31,7 +31,6 @@
 #include "stream_file.hpp"
 #include "stream_transfer_receiver.hpp"
 #include "system_parameter.h"
-#include "transaction_slave_group_complete_manager.hpp"
 
 
 namespace cubreplication
@@ -123,8 +122,6 @@ namespace cubreplication
     g_instance->m_lc->set_stop ();
     delete g_instance->m_lc;
     g_instance->m_lc = NULL;
-
-    cubtx::slave_group_complete_manager::final ();
 
     delete g_instance->m_stream;
     g_instance->m_stream = NULL;

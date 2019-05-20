@@ -124,7 +124,7 @@ namespace cubstream
 		      new transfer_sender_task (*this),
 		      "stream_transfer_sender");
 
-    m_p_stream_ack = cubtx::master_group_complete_manager::get_instance ();
+    p_stream_ack = cubtx::master_group_complete_manager::get_instance ();
   }
 
   transfer_sender::~transfer_sender ()
@@ -151,10 +151,10 @@ namespace cubstream
 
 	m_last_sent_position += byte_count;
 
-	if (m_p_stream_ack)
-	  {
-	    m_p_stream_ack->notify_stream_ack (m_last_sent_position);
-	  }
+        if (p_stream_ack)
+          {
+            p_stream_ack->notify_stream_ack (m_last_sent_position);
+          }
 	return NO_ERROR;
       }
 
