@@ -123,9 +123,6 @@ namespace cubreplication
     delete g_instance->m_lc;
     g_instance->m_lc = NULL;
 
-    delete g_instance->m_stream;
-    g_instance->m_stream = NULL;
-
     delete g_instance;
     g_instance = NULL;
 #endif
