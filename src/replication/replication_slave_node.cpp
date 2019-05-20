@@ -56,29 +56,29 @@ namespace cubreplication
     assert (g_instance == NULL);
     slave_node *instance = slave_node::get_instance (hostname);
 
-    instance ->apply_start_position ();
+    instance->apply_start_position ();
 
     INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_CONSUMER_BUFFER_SIZE);
 
     /* create stream :*/
     /* consumer needs only one stream appender (the stream transfer receiver) */
-    assert (instance ->m_stream == NULL);
-    instance ->m_stream = new cubstream::multi_thread_stream (buffer_size, 2);
-    instance ->m_stream->set_name ("repl" + std::string (hostname) + "_replica");
-    instance ->m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
-    instance ->m_stream->init (instance ->m_start_position);
+    assert (instance->m_stream == NULL);
+    instance->m_stream = new cubstream::multi_thread_stream (buffer_size, 2);
+    instance->m_stream->set_name ("repl" + std::string (hostname) + "_replica");
+    instance->m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
+    instance->m_stream->init (instance->m_start_position);
 
     /* create stream file */
     std::string replication_path;
     replication_node::get_replication_file_path (replication_path);
-    instance ->m_stream_file = new cubstream::stream_file (*instance ->m_stream, replication_path);
+    instance->m_stream_file = new cubstream::stream_file (*instance->m_stream, replication_path);
 
-    assert (instance ->m_lc == NULL);
-    instance ->m_lc = new log_consumer ();
+    assert (instance->m_lc == NULL);
+    instance->m_lc = new log_consumer ();
 
-    instance ->m_lc->set_stream (instance ->m_stream);
+    instance->m_lc->set_stream (instance->m_stream);
     /* start log_consumer daemons and apply thread pool */
-    instance ->m_lc->start_daemons ();
+    instance->m_lc->start_daemons ();
 #endif
   }
 
