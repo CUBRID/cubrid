@@ -49,8 +49,8 @@ namespace cubtx
       static void final ();
 
       /* group_complete_manager methods */
-      virtual void prepare_complete (THREAD_ENTRY *thread_p) override;
-      virtual void do_complete (THREAD_ENTRY *thread_p) override;
+      void prepare_complete (THREAD_ENTRY *thread_p) override;
+      void do_complete (THREAD_ENTRY *thread_p) override;
 
       /* stream_ack methods */
       void notify_stream_ack (const cubstream::stream_position stream_pos) override;
