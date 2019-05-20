@@ -66,6 +66,8 @@ namespace cubtx
     protected:
       bool close_current_group ();
 
+      virtual void on_register_transaction () = 0;
+
       virtual bool can_close_current_group () = 0;
 
       virtual void prepare_complete (THREAD_ENTRY *thread_p) = 0;
@@ -82,7 +84,8 @@ namespace cubtx
 
       bool is_current_group_empty ();
 
-      tx_group & get_last_closed_group ();
+      const tx_group &get_last_closed_group ();
+      const tx_group &get_current_group ();
 
     private:
       bool is_group_mvcc_completed (id_type group_id);
@@ -102,8 +105,8 @@ namespace cubtx
       std::atomic<int> m_latest_closed_group_state;
 
       /* Wakeup info. */
-      std::mutex m_ack_mutex;
-      std::condition_variable m_ack_condvar;
+      std::mutex m_group_complete_mutex;
+      std::condition_variable m_group_complete_condvar;
   };
 }
 #endif // !_GROUP_COMPLETE_MANAGER_HPP_

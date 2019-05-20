@@ -1421,7 +1421,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 	{
 	  er_log_debug (ARG_FILE_LINE, "css_init: starting HA : ha_Server_state (%s), server_name (%s)\n",
 			css_ha_server_state_string (ha_Server_state), server_name);
-	  /* start both master and slave infrastructure */
+	  /* start both master and slave infrastructure */	  
 	  cubreplication::master_node::init (server_name);
 	  cubreplication::slave_node::init (server_name);
 
@@ -1449,7 +1449,7 @@ shutdown:
   // stop threads; in first phase we need to stop active workers, but keep log writers for a while longer to make sure
   // all log is transfered
   css_stop_all_workers (*thread_p, THREAD_STOP_WORKERS_EXCEPT_LOGWR);
-
+  
   /* replication stops after workers */
   if (!HA_DISABLED ())
     {

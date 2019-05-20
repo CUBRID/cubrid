@@ -36,6 +36,9 @@ namespace cubtx
     std::unique_lock<std::mutex> ulock (m_group_mutex);
 
     m_current_group.add (tran_index, mvccid, state);
+
+    on_register_transaction ();
+
     return m_current_group_id;
   }
 
@@ -50,9 +53,9 @@ namespace cubtx
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_ack_mutex);
+    std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
     /* TODO - consider stop and optimize next call */
-    m_ack_condvar.wait (ulock, [&] {return is_group_mvcc_completed (group_id);});
+    m_group_complete_condvar.wait (ulock, [&] {return is_group_mvcc_completed (group_id);});
   }
 
   //
@@ -66,9 +69,9 @@ namespace cubtx
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_ack_mutex);
+    std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
     /* TODO - consider stop and optimize next call */
-    m_ack_condvar.wait (ulock, [&] {return is_group_logged (group_id);});
+    m_group_complete_condvar.wait (ulock, [&] {return is_group_logged (group_id);});
   }
 
   //
@@ -82,9 +85,9 @@ namespace cubtx
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_ack_mutex);
+    std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
     /* TODO - consider stop and optimize next call */
-    m_ack_condvar.wait (ulock, [&] {return is_group_completed (group_id);});
+    m_group_complete_condvar.wait (ulock, [&] {return is_group_completed (group_id);});
   }
 
   //
@@ -93,8 +96,8 @@ namespace cubtx
   //
   void group_complete_manager::notify_all ()
   {
-    std::unique_lock<std::mutex> ulock (m_ack_mutex);
-    m_ack_condvar.notify_all ();
+    std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
+    m_group_complete_condvar.notify_all ();
   }
 
   //
@@ -193,12 +196,18 @@ namespace cubtx
   //
   // get_last_closed_group get latest closed group.
   //
-  tx_group & group_complete_manager::get_last_closed_group ()
+  const tx_group &group_complete_manager::get_last_closed_group ()
   {
     return m_latest_closed_group;
   }
 
   //
+  // get_current_group get current group.
+  //
+  const tx_group &group_complete_manager::get_current_group ()
+  {
+    return m_current_group;
+  }
   // is_group_mvcc_completed checks whether the group has MVCC completed.
   //  Note: This function must be called under m_group_mutex protection
   //
