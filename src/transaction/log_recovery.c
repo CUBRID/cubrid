@@ -3908,23 +3908,26 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 		// *INDENT-OFF*
 		std::vector<rv_gc_info> group;
+		// *INDENT-ON*
 
 		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_GROUP_COMMIT), &log_lsa, log_pgptr);
 		log_unpack_group_commit (thread_p, &log_lsa, log_pgptr, group_commit.redo_size, group);
-		
-		for (const auto & ti : group)
+
+		// *INDENT-OFF*
+	        for (const auto & ti:group)
+		  {
+		    if (ti.m_state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
+		      {
+			tran_index = logtb_find_tran_index (thread_p, ti.m_tr_id);
+			// posit tran was freed at analysis
+			assert (tran_index == NULL_TRAN_INDEX || tran_index == LOG_SYSTEM_TRAN_INDEX);
+		      }
+		  }
 		// *INDENT-ON*
-		{
-		  if (ti.m_state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
-		    {
-		      tran_index = logtb_find_tran_index (thread_p, ti.m_tr_id);
-		      // posit tran was freed at analysis
-		      assert (tran_index == NULL_TRAN_INDEX || tran_index == LOG_SYSTEM_TRAN_INDEX);
-		    }
-		}
 	      }
 #endif
 	      break;
+
 	    case LOG_FINISH_POSTPONE:
 	      {
 		tran_index = logtb_find_tran_index (thread_p, tran_id);

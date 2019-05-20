@@ -4486,20 +4486,19 @@ log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_
   cubmem::appendible_block<1024> v;
   for (const auto & ti : group.get_container ())
     {
-      const log_tdes * tdes = LOG_FIND_TDES (ti.m_tran_index);
+      const log_tdes *tdes = LOG_FIND_TDES (ti.m_tran_index);
       assert (tdes != NULL);
       v.append (tdes->trid);
       v.append (ti.m_tran_state);
       if (ti.m_tran_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
-      {
-	v.append (tdes->posp_nxlsa);
-      }
+        {
+	  v.append (tdes->posp_nxlsa);
+        }
     }
   // *INDENT-ON*
 
-  node =
-    prior_lsa_alloc_and_copy_data (thread_p, LOG_GROUP_COMMIT, RV_NOT_DEFINED, NULL, 0, NULL,
-				   (int) v.get_size (), v.get_read_ptr ());
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_GROUP_COMMIT, RV_NOT_DEFINED, NULL, 0, NULL,
+					(int) v.get_size (), v.get_read_ptr ());
 
   LOG_REC_GROUP_COMMIT *gc = (LOG_REC_GROUP_COMMIT *) node->data_header;
   gc->at_time = time (NULL);
@@ -4510,19 +4509,19 @@ log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_
   // to protect against inconsistent checkpoints
   log_Gl.prior_info.prior_lsa_mutex.lock ();
   // *INDENT-OFF*
-  for (tx_group::node_info & ti : group.get_container ())
-  {
-    LOG_TDES *tdes = LOG_FIND_TDES (ti.m_tran_index);
-    assert (tdes != NULL);
-    if (LSA_ISNULL (&tdes->posp_nxlsa))
+  for (tx_group::node_info &ti : group.get_container ())
     {
-      // filter out transactions without postpone
-      continue;
-    }
+      LOG_TDES *tdes = LOG_FIND_TDES (ti.m_tran_index);
+      assert (tdes != NULL);
+      if (LSA_ISNULL (&tdes->posp_nxlsa))
+	{
+	  // filter out transactions without postpone
+	  continue;
+	}
 
-    tdes->state = ti.m_tran_state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
-    tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
-  }
+      tdes->state = ti.m_tran_state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+      tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
+    }
   // *INDENT-ON*
 
   lsa = prior_lsa_next_record_with_lock (thread_p, node, tdes);
@@ -6236,7 +6235,7 @@ log_dump_record_group_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * 
 
   time_t tmp_time = (time_t) group_commit->at_time;
   (void) ctime_r (&tmp_time, time_val);
-  fprintf (out_fp, ",\n     Group commit (group_sz = %llu, stream_pos = %llu) finish time at = %s\n",
+  fprintf (out_fp, ",\n     Group commit (group_sz = %lu, stream_pos = %lu) finish time at = %s\n",
 	   group_commit->redo_size, group_commit->stream_pos, time_val);
   fprintf (out_fp, "     Group: ");
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*group_commit), log_lsa, log_page_p);
@@ -6249,7 +6248,7 @@ log_dump_record_group_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * 
       fprintf (out_fp, "\n        tran_index = %d, tran_state = %d", ti.m_tr_id, ti.m_state);
       if (ti.m_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
         {
-  	  fprintf (out_fp, ", postpone lsa = %llu", ti.m_postpone_lsa);
+  	  fprintf (out_fp, ", postpone lsa = %lld|%d", LSA_AS_ARGS (&ti.m_postpone_lsa));
         }
     }
   // *INDENT-ON*
