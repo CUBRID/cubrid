@@ -52,7 +52,7 @@ extern int yycolumn;
 extern int yycolumn_end;
 extern int dot_flag;
 
-extern int str_identifier = '\0';
+int str_identifier = '\0';
 
 
 

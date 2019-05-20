@@ -25,7 +25,7 @@
 #define _XASL_ANALYTIC_HPP_
 
 #include "dbtype_def.h"
-#include "regu_var.h"             // regu_variable_node
+#include "regu_var.hpp"             // regu_variable_node
 #include "storage_common.h"       // FUNC_TYPE, QUERY_OPTIONS
 
 // forward definitions

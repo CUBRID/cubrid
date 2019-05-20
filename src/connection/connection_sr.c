@@ -1072,7 +1072,7 @@ css_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid,
 CSS_CONN_ENTRY *
 css_connect_to_master_server (int master_port_id, const char *server_name, int name_length)
 {
-  char hname[MAXHOSTNAMELEN];
+  char hname[CUB_MAXHOSTNAMELEN];
   CSS_CONN_ENTRY *conn;
   unsigned short rid;
   int response, response_buff;
@@ -1084,7 +1084,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 #endif
 
   css_Service_id = master_port_id;
-  if (GETHOSTNAME (hname, MAXHOSTNAMELEN) != 0)
+  if (GETHOSTNAME (hname, CUB_MAXHOSTNAMELEN) != 0)
     {
       return NULL;
     }

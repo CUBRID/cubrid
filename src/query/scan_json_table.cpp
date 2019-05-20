@@ -25,6 +25,7 @@
 #include "fetch.h"
 #include "object_primitive.h"
 #include "scan_manager.h"
+#include "storage_common.h"
 
 #include <algorithm>
 
@@ -36,7 +37,7 @@ namespace cubscan
     {
       std::size_t m_child;                // current child
       cubxasl::json_table::node *m_node;  // pointer to access node
-      JSON_DOC *m_input_doc;              // input JSON document value
+      JSON_DOC_STORE m_input_doc;         // input JSON document value
       const JSON_DOC *m_process_doc;      // for no expand, it matched input document. when node is expanded, it will
       // point iterator value
       bool m_is_row_fetched;              // set to true when current row is fetched
@@ -50,16 +51,14 @@ namespace cubscan
       void start_json_iterator (void);    // start json iteration of changing input document
       int fetch_row (void);               // fetch current row (if not fetched)
       void end (void);                    // finish current node scan
-      void delete_input_doc ();
 
       cursor (void);
-      ~cursor (void);
     };
 
     scanner::cursor::cursor (void)
       : m_child (0)
       , m_node (NULL)
-      , m_input_doc (NULL)
+      , m_input_doc ()
       , m_process_doc (NULL)
       , m_is_row_fetched (false)
       , m_need_advance_row (false)
@@ -67,20 +66,6 @@ namespace cubscan
       , m_iteration_started (false)
     {
       //
-    }
-
-    scanner::cursor::~cursor (void)
-    {
-      delete_input_doc ();
-    }
-
-    void
-    scanner::cursor::delete_input_doc ()
-    {
-      if (m_input_doc != NULL)
-	{
-	  db_json_delete_doc (m_input_doc);
-	}
     }
 
     void
@@ -115,8 +100,8 @@ namespace cubscan
       m_is_node_consumed = false;
       if (m_node->m_is_iterable_node)
 	{
-	  assert (db_json_get_type (m_input_doc) == DB_JSON_ARRAY);
-	  db_json_set_iterator (m_node->m_iterator, *m_input_doc);
+	  assert (db_json_get_type (m_input_doc.get_immutable ()) == DB_JSON_ARRAY);
+	  db_json_set_iterator (m_node->m_iterator, *m_input_doc.get_mutable ());
 	}
     }
 
@@ -137,7 +122,8 @@ namespace cubscan
       else
 	{
 	  assert (!m_node->m_is_iterable_node);
-	  m_process_doc = m_input_doc;
+	  // todo: is it guaranteed we do not use m_process_doc after we delete input_doc?
+	  m_process_doc = m_input_doc.get_immutable ();
 	}
 
       if (m_process_doc == NULL)
@@ -215,13 +201,13 @@ namespace cubscan
       m_specp->m_root_node->clear_xasl (is_final_clear);
       reset_ordinality (*m_specp->m_root_node);
 
-      // all json documents should be release depending on is_final
+      // all json documents should be released depending on is_final
       if (is_final)
 	{
 	  for (size_t i = 0; i < m_tree_height; ++i)
 	    {
 	      cursor &cursor = m_scan_cursor[i];
-	      cursor.delete_input_doc ();
+	      cursor.m_input_doc.clear ();
 
 	      cursor.m_child = 0;
 	      cursor.m_is_row_fetched = false;
@@ -243,7 +229,6 @@ namespace cubscan
     scanner::open (cubthread::entry *thread_p)
     {
       int error_code = NO_ERROR;
-      const JSON_DOC *document = NULL;
 
       // we need the starting value to expand into a list of records
       DB_VALUE *value_p = NULL;
@@ -269,9 +254,7 @@ namespace cubscan
 
       if (db_value_type (value_p) == DB_TYPE_JSON)
 	{
-	  document = db_get_json_document (value_p);
-
-	  error_code = init_cursor (*document, *m_specp->m_root_node, m_scan_cursor[0]);
+	  error_code = init_cursor (*db_get_json_document (value_p), *m_specp->m_root_node, m_scan_cursor[0]);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -280,22 +263,15 @@ namespace cubscan
 	}
       else
 	{
-	  // we need json
-	  DB_VALUE json_cast_value;
+	  JSON_DOC_STORE document;
 
-	  // we should use explicit coercion, implicit coercion is not allowed between char and json
-	  tp_domain_status status = tp_value_cast (value_p, &json_cast_value, &tp_Json_domain, false);
-	  if (status != DOMAIN_COMPATIBLE)
+	  error_code = db_value_to_json_doc (*value_p, false, document);
+	  if (error_code != NO_ERROR)
 	    {
-	      ASSERT_ERROR_AND_SET (error_code);
+	      ASSERT_ERROR ();
 	      return error_code;
 	    }
-
-	  document = db_get_json_document (&json_cast_value);
-
-	  error_code = init_cursor (*document, *m_specp->m_root_node, m_scan_cursor[0]);
-
-	  pr_clear_value (&json_cast_value);
+	  error_code = init_cursor (*document.get_immutable (), *m_specp->m_root_node, m_scan_cursor[0]);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -317,7 +293,7 @@ namespace cubscan
     }
 
     int
-    scanner::next_scan (cubthread::entry *thread_p, scan_id_struct &sid)
+    scanner::next_scan (cubthread::entry *thread_p, scan_id_struct &sid, SCAN_CODE &sc)
     {
       bool has_row = false;
       int error_code = NO_ERROR;
@@ -328,6 +304,7 @@ namespace cubscan
 	  error_code = open (thread_p);
 	  if (error_code != NO_ERROR)
 	    {
+	      sc = S_ERROR;
 	      return error_code;
 	    }
 	  sid.position = S_ON;
@@ -336,8 +313,7 @@ namespace cubscan
       else if (sid.position != S_ON)
 	{
 	  assert (false);
-	  sid.status = S_ENDED;
-	  sid.position = S_AFTER;
+	  sc = S_END;
 	  return ER_FAILED;
 	}
 
@@ -347,13 +323,14 @@ namespace cubscan
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
+	      sc = S_ERROR;
 	      return error_code;
 	    }
 	  if (!has_row)
 	    {
-	      sid.status = S_ENDED;
 	      sid.position = S_AFTER;
-	      break;
+	      sc = S_END;
+	      return NO_ERROR;
 	    }
 
 	  if (m_scan_predicate.pred_expr == NULL)
@@ -369,10 +346,12 @@ namespace cubscan
 	  if (logical == V_ERROR)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
+	      sc = S_ERROR;
 	      return error_code;
 	    }
 	}
 
+      sc = S_SUCCESS;
       return NO_ERROR;
     }
 
@@ -380,23 +359,17 @@ namespace cubscan
     scanner::set_input_document (cursor &cursor_arg, const cubxasl::json_table::node &node, const JSON_DOC &document)
     {
       int error_code = NO_ERROR;
-
-      if (cursor_arg.m_input_doc != nullptr)
-	{
-	  // do not gather previous result
-	  db_json_delete_doc (cursor_arg.m_input_doc);
-	}
+      cursor_arg.m_input_doc.clear ();
 
       // extract input document
-      error_code = db_json_extract_document_from_path (&document, std::vector<std::string> (1, node.m_path),
-		   cursor_arg.m_input_doc);
+      error_code = db_json_extract_document_from_path (&document, {node.m_path}, cursor_arg.m_input_doc);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return error_code;
 	}
 
-      if (cursor_arg.m_input_doc == nullptr)
+      if (cursor_arg.m_input_doc.is_null ())
 	{
 	  // cannot retrieve input_doc from path
 	  cursor_arg.m_is_node_consumed = true;
@@ -421,7 +394,7 @@ namespace cubscan
     }
 
     int
-    scanner::set_next_cursor (const cursor &current_cursor, int next_depth)
+    scanner::set_next_cursor (const cursor &current_cursor, size_t next_depth)
     {
       return init_cursor (*current_cursor.m_process_doc,
 			  current_cursor.m_node->m_nested_nodes[current_cursor.m_child],
@@ -461,7 +434,7 @@ namespace cubscan
     }
 
     int
-    scanner::scan_next_internal (cubthread::entry *thread_p, int depth, bool &found_row_output)
+    scanner::scan_next_internal (cubthread::entry *thread_p, size_t depth, bool &found_row_output)
     {
       int error_code = NO_ERROR;
       cursor &this_cursor = m_scan_cursor[depth];

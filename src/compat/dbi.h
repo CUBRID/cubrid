@@ -34,6 +34,8 @@
 
 #include <stdio.h>
 #include <time.h>
+
+#include "dbtran_def.h"
 #include "dbtype_def.h"
 #include "db_date.h"
 #include "db_elo.h"

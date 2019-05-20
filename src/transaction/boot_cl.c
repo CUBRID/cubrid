@@ -85,6 +85,7 @@
 #include "tz_support.h"
 #include "dbtype.h"
 #include "object_primitive.h"
+#include "connection_globals.h"
 
 #if defined(CS_MODE)
 #include "network.h"
@@ -94,6 +95,8 @@
 
 #if defined(WINDOWS)
 #include "wintcp.h"
+#else /* WINDOWS */
+#include "tcp.h"
 #endif /* WINDOWS */
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -114,13 +117,6 @@ extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
 
 typedef int (*DEF_FUNCTION) ();
 typedef int (*DEF_CLASS_FUNCTION) (MOP);
-
-typedef struct catcls_function CATCLS_FUNCTION;
-struct catcls_function
-{
-  const char *name;
-  const DEF_FUNCTION function;
-};
 
 typedef struct column COLUMN;
 struct column
@@ -151,15 +147,15 @@ static char boot_Client_id_buffer[L_cuserid + 1];
 static char boot_Db_path_buf[PATH_MAX];
 static char boot_Log_path_buf[PATH_MAX];
 static char boot_Lob_path_buf[PATH_MAX];
-static char boot_Db_host_buf[MAXHOSTNAMELEN + 1];
+static char boot_Db_host_buf[CUB_MAXHOSTNAMELEN + 1];
 
 /* Volume assigned for new files/objects (e.g., heap files) */
 VOLID boot_User_volid = 0;	/* todo: boot_User_volid looks deprecated */
 #if defined(CS_MODE)
 /* Server host connected */
-char boot_Host_connected[MAXHOSTNAMELEN] = "";
+char boot_Host_connected[CUB_MAXHOSTNAMELEN] = "";
 #endif /* CS_MODE */
-char boot_Host_name[MAXHOSTNAMELEN] = "";
+char boot_Host_name[CUB_MAXHOSTNAMELEN] = "";
 
 static char boot_Volume_label[PATH_MAX] = " ";
 static bool boot_Is_client_all_final = true;
@@ -309,7 +305,6 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 #if defined (CS_MODE)
   char format[BOOT_FORMAT_MAX_LENGTH];
 #endif
-  bool is_db_user_alloced = false;
 
   assert (client_credential != NULL);
   assert (db_path_info != NULL);
@@ -349,7 +344,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
     }
 
   /* database name must be specified */
-  if (client_credential->db_name == NULL)
+  if (client_credential->db_name.empty ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, "(null)");
       error_code = ER_BO_UNKNOWN_DATABASE;
@@ -365,7 +360,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
     }
 
   /* initialize system parameters */
-  if (sysprm_load_and_init_client (client_credential->db_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init_client (client_credential->get_db_name (), NULL) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
       error_code = ER_BO_CANT_LOAD_SYSPRM;
@@ -427,12 +422,12 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
     }
 
   /* make sure that the full path for the database is not too long */
-  length = strlen (client_credential->db_name) + strlen (db_path_info->db_path) + 2;
+  length = (unsigned int) (client_credential->db_name.length () + strlen (db_path_info->db_path) + 2);
   if (length > (unsigned) PATH_MAX)
     {
       /* db_path + db_name is too long */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 3, db_path_info->db_path,
-	      client_credential->db_name, length, PATH_MAX);
+	      client_credential->get_db_name (), length, PATH_MAX);
 
       error_code = ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG;
       goto error_exit;
@@ -442,13 +437,13 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   if (db_path_info->db_host == NULL)
     {
 #if 0				/* use Unix-domain socket for localhost */
-      if (GETHOSTNAME (db_host_buf, MAXHOSTNAMELEN) != 0)
+      if (GETHOSTNAME (db_host_buf, CUB_MAXHOSTNAMELEN) != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
 	  error_code = ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	  goto error_exit;
 	}
-      db_host_buf[MAXHOSTNAMELEN] = '\0';
+      db_host_buf[CUB_MAXHOSTNAMELEN] = '\0';
 #else
       strcpy (boot_Db_host_buf, "localhost");
 #endif
@@ -458,22 +453,24 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   /* make new DB_INFO */
   hosts[0] = db_path_info->db_host;
   hosts[1] = NULL;
-  db = cfg_new_db (client_credential->db_name, db_path_info->db_path, db_path_info->log_path, db_path_info->lob_path,
-		   hosts);
+  db =
+    cfg_new_db (client_credential->get_db_name (), db_path_info->db_path, db_path_info->log_path,
+		db_path_info->lob_path, hosts);
   if (db == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, client_credential->db_name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, client_credential->get_db_name ());
       error_code = ER_BO_UNKNOWN_DATABASE;
       goto error_exit;
     }
 
   /* Get the absolute path name */
-  COMPOSE_FULL_NAME (boot_Volume_label, sizeof (boot_Volume_label), db_path_info->db_path, client_credential->db_name);
+  COMPOSE_FULL_NAME (boot_Volume_label, sizeof (boot_Volume_label), db_path_info->db_path,
+		     client_credential->get_db_name ());
 
   er_clear ();
 
   /* Get the user name */
-  if (client_credential->db_user == NULL)
+  if (client_credential->db_user.empty ())
     {
       char *user_name = au_user_name_dup ();
       int upper_case_name_size;
@@ -492,19 +489,18 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 	    {
 	      intl_identifier_upper (user_name, upper_case_name);
 	      client_credential->db_user = upper_case_name;
-	      is_db_user_alloced = true;
 	    }
 	  free_and_init (user_name);
 	}
       upper_case_name = NULL;
 
-      if (client_credential->db_user == NULL)
+      if (client_credential->db_user.empty ())
 	{
-	  client_credential->db_user = (char *) boot_Client_no_user_string;
+	  client_credential->db_user = boot_Client_no_user_string;
 	}
     }
   /* Get the login name, host, and process identifier */
-  if (client_credential->login_name == NULL)
+  if (client_credential->login_name.empty ())
     {
       if (getuserid (boot_Client_id_buffer, L_cuserid) != (char *) NULL)
 	{
@@ -512,11 +508,11 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 	}
       else
 	{
-	  client_credential->login_name = (char *) boot_Client_id_unknown_string;
+	  client_credential->login_name = boot_Client_id_unknown_string;
 	}
     }
 
-  if (client_credential->host_name == NULL)
+  if (client_credential->host_name.empty ())
     {
       client_credential->host_name = boot_get_host_name ();
     }
@@ -527,7 +523,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
    */
 #if !defined(WINDOWS)
 #if !defined (SOLARIS) && !defined(LINUX) && !defined(AIX)
-  (void) dl_initiate_module (client_credential->program_name);
+  (void) dl_initiate_module (client_credential->get_program_name ());
 #else /* !SOLARIS && !LINUX && !AIX */
   (void) dl_initiate_module ();
 #endif /* !SOLARIS && !LINUX && !AIX */
@@ -537,8 +533,8 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 #if defined(CS_MODE)
   /* Initialize the communication subsystem */
   error_code =
-    boot_client_initialize_css (db, client_credential->client_type, false, BOOT_NO_OPT_CAP, false, DB_CONNECT_ORDER_SEQ,
-				false);
+    boot_client_initialize_css (db, client_credential->client_type, false, BOOT_NO_OPT_CAP, false,
+				DB_CONNECT_ORDER_SEQ, false);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -575,13 +571,6 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
     boot_initialize_server (client_credential, db_path_info, db_overwrite, file_addmore_vols, npages,
 			    db_desired_pagesize, log_npages, db_desired_log_page_size, &rootclass_oid, &rootclass_hfid,
 			    tran_lock_wait_msecs, tran_isolation);
-  if (is_db_user_alloced == true)
-    {
-      assert (client_credential->db_user != NULL);
-      assert (client_credential->db_user != boot_Client_no_user_string);
-      free_and_init (client_credential->db_user);
-      is_db_user_alloced = false;
-    }
 
   if (tran_index == NULL_TRAN_INDEX)
     {
@@ -596,7 +585,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
     }
 
   // create session
-  (void) db_find_or_create_session (client_credential->db_user, client_credential->program_name);
+  (void) db_find_or_create_session (client_credential->get_db_user (), client_credential->get_program_name ());
 
   oid_set_root (&rootclass_oid);
   OID_INIT_TEMPID ();
@@ -667,13 +656,6 @@ error_exit:
     {
       cfg_free_directory (db);
       db = NULL;
-    }
-
-  if (is_db_user_alloced == true)
-    {
-      assert (client_credential->db_user != NULL);
-      assert (client_credential->db_user != boot_Client_no_user_string);
-      free_and_init (client_credential->db_user);
     }
 
   if (BOOT_IS_CLIENT_RESTARTED ())
@@ -775,7 +757,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   bool skip_preferred_hosts = false;
   bool skip_db_info = false;
 #endif /* CS_MODE */
-  bool is_db_user_alloced = false;
 
   assert (client_credential != NULL);
 
@@ -817,7 +798,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
 
   /* database name must be specified */
-  if (client_credential->db_name == NULL)
+  if (client_credential->get_db_name () == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, "(null)");
       error_code = ER_BO_UNKNOWN_DATABASE;
@@ -833,7 +814,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
 
   /* initialize system parameters */
-  if (sysprm_load_and_init_client (client_credential->db_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init_client (client_credential->get_db_name (), NULL) != NO_ERROR)
     {
       error_code = ER_BO_CANT_LOAD_SYSPRM;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
@@ -860,16 +841,16 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto error;
     }
 
-  ptr = (char *) strstr (client_credential->db_name, "@");
+  ptr = (char *) strstr (client_credential->get_db_name (), "@");
   if (ptr == NULL)
     {
       /* Find the location of the database and the log from the database.txt */
-      db = cfg_find_db (client_credential->db_name);
+      db = cfg_find_db (client_credential->get_db_name ());
 #if defined(CS_MODE)
       if (db == NULL)
 	{
 	  /* if not found, use secondary host lists */
-	  db = cfg_new_db (client_credential->db_name, NULL, NULL, NULL, NULL);
+	  db = cfg_new_db (client_credential->get_db_name (), NULL, NULL, NULL, NULL);
 	}
 
       if (db == NULL
@@ -894,7 +875,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	  ha_node_list = ptr + 1;
 	  ha_hosts = cfg_get_hosts (ha_node_list, &num_hosts, false);
 
-	  db = cfg_new_db (client_credential->db_name, NULL, NULL, NULL, (const char **) ha_hosts);
+	  db = cfg_new_db (client_credential->get_db_name (), NULL, NULL, NULL, (const char **) ha_hosts);
 
 	  if (ha_hosts)
 	    {
@@ -906,12 +887,12 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	  hosts[0] = ptr + 1;
 	  hosts[1] = NULL;
 
-	  db = cfg_new_db (client_credential->db_name, NULL, NULL, NULL, hosts);
+	  db = cfg_new_db (client_credential->get_db_name (), NULL, NULL, NULL, hosts);
 	}
       *ptr = (char) '@';
 #else /* CS_MODE */
       error_code = ER_NOT_IN_STANDALONE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, client_credential->db_name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, client_credential->get_db_name ());
       goto error;
 #endif /* !CS_MODE */
     }
@@ -919,37 +900,32 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   if (db == NULL)
     {
       error_code = ER_BO_UNKNOWN_DATABASE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, client_credential->db_name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, client_credential->get_db_name ());
       goto error;
     }
 
   er_clear ();
 
   /* Get the user name */
-  if (client_credential->db_user == NULL)
+  if (client_credential->db_user.empty ())
     {
-      char *user_name = au_user_name_dup ();
-
-      if (user_name != NULL)
+      if (au_has_user_name ())
 	{
-	  /* user name is upper-cased in server using server's charset */
-	  client_credential->db_user = user_name;
-	  is_db_user_alloced = true;
+	  char *name = db_get_user_name ();
+	  if (name != NULL)
+	    {
+	      client_credential->db_user = name;
+	      ws_free_string (name);
+	    }
 	}
-
-      if (client_credential->db_user == NULL)
+      else
 	{
-	  client_credential->db_user = (char *) boot_Client_no_user_string;
-	}
-      else if (client_credential->db_user[0] == '\0')
-	{
-	  free_and_init (client_credential->db_user);
-	  is_db_user_alloced = false;
-	  client_credential->db_user = (char *) AU_PUBLIC_USER_NAME;
+	  // default is PUBLIC
+	  client_credential->db_user = AU_PUBLIC_USER_NAME;
 	}
     }
   /* Get the login name, host, and process identifier */
-  if (client_credential->login_name == NULL)
+  if (client_credential->login_name.empty ())
     {
       if (getuserid (boot_Client_id_buffer, L_cuserid) != (char *) NULL)
 	{
@@ -957,10 +933,10 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	}
       else
 	{
-	  client_credential->login_name = (char *) boot_Client_id_unknown_string;
+	  client_credential->login_name = boot_Client_id_unknown_string;
 	}
     }
-  if (client_credential->host_name == NULL)
+  if (client_credential->host_name.empty ())
     {
       client_credential->host_name = boot_get_host_name ();
     }
@@ -972,7 +948,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
    */
 #if !defined(WINDOWS)
 #if !defined (SOLARIS) && !defined(LINUX) && !defined(AIX)
-  (void) dl_initiate_module (client_credential->program_name);
+  (void) dl_initiate_module (client_credential->get_program_name ());
 #else /* !SOLARIS && !LINUX && !AIX */
   (void) dl_initiate_module ();
 #endif /* !SOLARIS && !LINUX && !AIX */
@@ -1034,8 +1010,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
 	  /* connect to preferred hosts in a sequential order even though a user sets CONNECT_ORDER to RANDOM */
 	  error_code =
-	    boot_client_initialize_css (tmp_db, client_credential->client_type, check_capabilities, optional_cap, false,
-					DB_CONNECT_ORDER_SEQ, true);
+	    boot_client_initialize_css (tmp_db, client_credential->client_type, check_capabilities,
+					optional_cap, false, DB_CONNECT_ORDER_SEQ, true);
 
 	  if (error_code != NO_ERROR)
 	    {
@@ -1081,8 +1057,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	    }
 
 	  error_code =
-	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities, optional_cap, false,
-					client_credential->connect_order, false);
+	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities,
+					optional_cap, false, client_credential->connect_order, false);
 	}
       else if (BOOT_CSQL_CLIENT_TYPE (client_credential->client_type))
 	{
@@ -1092,8 +1068,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	  optional_cap = BOOT_NO_OPT_CAP;
 
 	  error_code =
-	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities, optional_cap, false,
-					DB_CONNECT_ORDER_SEQ, false);
+	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities,
+					optional_cap, false, DB_CONNECT_ORDER_SEQ, false);
 	  break;		/* dont retry */
 	}
       else if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
@@ -1110,8 +1086,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	    }
 
 	  error_code =
-	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities, optional_cap, false,
-					client_credential->connect_order, false);
+	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities,
+					optional_cap, false, client_credential->connect_order, false);
 
 	}
       else
@@ -1121,8 +1097,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	  check_capabilities = false;
 	  optional_cap = BOOT_NO_OPT_CAP;
 	  error_code =
-	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities, optional_cap, false,
-					client_credential->connect_order, false);
+	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities,
+					optional_cap, false, client_credential->connect_order, false);
 	  break;		/* dont retry */
 	}
 
@@ -1150,9 +1126,9 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto error;
     }
 
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CONNECTED_TO, 5, client_credential->program_name,
-	  client_credential->process_id, client_credential->db_name, boot_Host_connected,
-	  prm_get_integer_value (PRM_ID_TCP_PORT_ID));
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CONNECTED_TO, 5,
+	  client_credential->get_program_name (), client_credential->process_id,
+	  client_credential->get_db_name (), boot_Host_connected, prm_get_integer_value (PRM_ID_TCP_PORT_ID));
 
   /* tune some client parameters with the value from the server */
   sysprm_tune_client_parameters ();
@@ -1195,10 +1171,11 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
   er_log_debug (ARG_FILE_LINE,
 		"boot_restart_client: register client { type %d db %s user %s password %s "
-		"program %s login %s host %s pid %d }\n", client_credential->client_type, client_credential->db_name,
-		client_credential->db_user,
-		client_credential->db_password == NULL ? "(null)" : client_credential->db_password,
-		client_credential->program_name, client_credential->login_name, client_credential->host_name,
+		"program %s login %s host %s pid %d }\n", client_credential->client_type,
+		client_credential->get_db_name (), client_credential->get_db_user (),
+		client_credential->db_password.empty ()? "(null)" : client_credential->get_db_password (),
+		client_credential->get_program_name (),
+		client_credential->get_login_name (), client_credential->get_host_name (),
 		client_credential->process_id);
 
   tran_index =
@@ -1266,16 +1243,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto error;
     }
 
-  (void) db_find_or_create_session (client_credential->db_user, client_credential->program_name);
-  /* free the thing get from au_user_name_dup() */
-  if (is_db_user_alloced == true)
-    {
-      assert (client_credential->db_user != NULL);
-      assert (client_credential->db_user != boot_Client_no_user_string);
-      assert (client_credential->db_user != AU_PUBLIC_USER_NAME);
-      free_and_init (client_credential->db_user);
-      is_db_user_alloced = false;
-    }
+  (void) db_find_or_create_session (client_credential->get_db_user (), client_credential->get_program_name ());
 
 #if defined(CS_MODE)
   error_code = boot_check_locales (client_credential);
@@ -1350,15 +1318,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   return error_code;
 
 error:
-
-  /* free the thing get from au_user_name_dup() */
-  if (is_db_user_alloced == true)
-    {
-      assert (client_credential->db_user != NULL);
-      assert (client_credential->db_user != boot_Client_no_user_string);
-      assert (client_credential->db_user != AU_PUBLIC_USER_NAME);
-      free_and_init (client_credential->db_user);
-    }
 
   /* Protect against falsely returning NO_ERROR to caller */
   if (error_code == NO_ERROR)
@@ -1563,7 +1522,10 @@ boot_server_die_or_changed (void)
 #if defined(CS_MODE)
       css_terminate (true);
 #endif /* !CS_MODE */
-      er_log_debug (ARG_FILE_LINE, "boot_server_die_or_changed() terminated\n");
+      if (prm_get_bool_value (PRM_ID_TEST_MODE))
+	{
+	  er_print_callstack (ARG_FILE_LINE, "boot_server_die_or_changed() terminated\n");
+	}
     }
 }
 
@@ -1671,7 +1633,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
   int error = ER_NET_NO_SERVER_HOST;
   int hn, n;
   char *hostlist[MAX_NUM_DB_HOSTS];
-  char strbuf[(MAXHOSTNAMELEN + 1) * MAX_NUM_DB_HOSTS];
+  char strbuf[(CUB_MAXHOSTNAMELEN + 1) * MAX_NUM_DB_HOSTS];
   bool cap_error = false, boot_host_connected_exist = false;
   int max_num_delayed_hosts_lookup;
 
@@ -1753,7 +1715,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
 	  /* save the hostname for the use of calling functions */
 	  if (boot_Host_connected != hostlist[n])
 	    {
-	      strncpy (boot_Host_connected, hostlist[n], MAXHOSTNAMELEN);
+	      strncpy (boot_Host_connected, hostlist[n], CUB_MAXHOSTNAMELEN);
 	    }
 	  db_set_connected_host_status (hostlist[n]);
 
@@ -1776,6 +1738,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
 	case ER_NET_SERVER_HAND_SHAKE:
 	case ER_NET_HS_UNKNOWN_SERVER_REL:
 	  cap_error = true;
+	  /* FALLTHRU */
 	case ER_NET_DIFFERENT_RELEASE:
 	case ER_NET_NO_SERVER_HOST:
 	case ER_NET_CANT_CONNECT_SERVER:
@@ -1814,10 +1777,10 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
   strbuf[0] = '\0';
   for (n = 0; n < hn - 1 && n < (MAX_NUM_DB_HOSTS - 1); n++)
     {
-      strncat (strbuf, hostlist[n], MAXHOSTNAMELEN);
+      strncat (strbuf, hostlist[n], CUB_MAXHOSTNAMELEN);
       strcat (strbuf, ":");
     }
-  strncat (strbuf, hostlist[n], MAXHOSTNAMELEN);
+  strncat (strbuf, hostlist[n], CUB_MAXHOSTNAMELEN);
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CONNECT_FAILED, 2, db->name, strbuf);
 
   if (check_capabilities == true && cap_error == true)
@@ -3983,28 +3946,35 @@ boot_define_charsets (MOP class_mop)
 static int
 catcls_class_install (void)
 {
-  CATCLS_FUNCTION clist[] = {
-    {CT_CLASS_NAME, (DEF_FUNCTION) boot_define_class},
-    {CT_ATTRIBUTE_NAME, (DEF_FUNCTION) boot_define_attribute},
-    {CT_DOMAIN_NAME, (DEF_FUNCTION) boot_define_domain},
-    {CT_METHOD_NAME, (DEF_FUNCTION) boot_define_method},
-    {CT_METHSIG_NAME, (DEF_FUNCTION) boot_define_meth_sig},
-    {CT_METHARG_NAME, (DEF_FUNCTION) boot_define_meth_argument},
-    {CT_METHFILE_NAME, (DEF_FUNCTION) boot_define_meth_file},
-    {CT_QUERYSPEC_NAME, (DEF_FUNCTION) boot_define_query_spec},
-    {CT_INDEX_NAME, (DEF_FUNCTION) boot_define_index},
-    {CT_INDEXKEY_NAME, (DEF_FUNCTION) boot_define_index_key},
-    {CT_DATATYPE_NAME, (DEF_FUNCTION) boot_define_data_type},
-    {CT_CLASSAUTH_NAME, (DEF_FUNCTION) boot_define_class_authorization},
-    {CT_PARTITION_NAME, (DEF_FUNCTION) boot_define_partition},
-    {CT_STORED_PROC_NAME, (DEF_FUNCTION) boot_define_stored_procedure},
-    {CT_STORED_PROC_ARGS_NAME,
-     (DEF_FUNCTION) boot_define_stored_procedure_arguments},
-    {CT_SERIAL_NAME, (DEF_FUNCTION) boot_define_serial},
-    {CT_HA_APPLY_INFO_NAME, (DEF_FUNCTION) boot_define_ha_apply_info},
-    {CT_COLLATION_NAME, (DEF_FUNCTION) boot_define_collations},
-    {CT_CHARSET_NAME, (DEF_FUNCTION) boot_define_charsets}
+  // *INDENT-OFF*
+  struct catcls_function
+  {
+    const char *name;
+    const DEF_CLASS_FUNCTION function;
+  }
+  clist[] =
+  {
+    {CT_CLASS_NAME, boot_define_class},
+    {CT_ATTRIBUTE_NAME, boot_define_attribute},
+    {CT_DOMAIN_NAME, boot_define_domain},
+    {CT_METHOD_NAME, boot_define_method},
+    {CT_METHSIG_NAME, boot_define_meth_sig},
+    {CT_METHARG_NAME, boot_define_meth_argument},
+    {CT_METHFILE_NAME, boot_define_meth_file},
+    {CT_QUERYSPEC_NAME, boot_define_query_spec},
+    {CT_INDEX_NAME, boot_define_index},
+    {CT_INDEXKEY_NAME, boot_define_index_key},
+    {CT_DATATYPE_NAME, boot_define_data_type},
+    {CT_CLASSAUTH_NAME, boot_define_class_authorization},
+    {CT_PARTITION_NAME, boot_define_partition},
+    {CT_STORED_PROC_NAME, boot_define_stored_procedure},
+    {CT_STORED_PROC_ARGS_NAME, boot_define_stored_procedure_arguments},
+    {CT_SERIAL_NAME, boot_define_serial},
+    {CT_HA_APPLY_INFO_NAME, boot_define_ha_apply_info},
+    {CT_COLLATION_NAME, boot_define_collations},
+    {CT_CHARSET_NAME, boot_define_charsets}
   };
+  // *INDENT-ON*
 
   MOP class_mop[sizeof (clist) / sizeof (clist[0])];
   int i, save;
@@ -4027,7 +3997,7 @@ catcls_class_install (void)
 
   for (i = 0; i < num_classes; i++)
     {
-      error_code = ((DEF_CLASS_FUNCTION) (clist[i].function)) (class_mop[i]);
+      error_code = (clist[i].function) (class_mop[i]);
       if (error_code != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -5404,7 +5374,14 @@ boot_define_view_db_charset (void)
 static int
 catcls_vclass_install (void)
 {
-  CATCLS_FUNCTION clist[] = {
+  // *INDENT-OFF*
+  struct catcls_function
+  {
+    const char *name;
+    const DEF_FUNCTION function;
+  }
+  clist[] =
+  {
     {"CTV_CLASS_NAME", boot_define_view_class},
     {"CTV_SUPER_CLASS_NAME", boot_define_view_super_class},
     {"CTV_VCLASS_NAME", boot_define_view_vclass},
@@ -5424,6 +5401,7 @@ catcls_vclass_install (void)
     {"CTV_DB_COLLATION_NAME", boot_define_view_db_collation},
     {"CTV_DB_CHARSET_NAME", boot_define_view_db_charset}
   };
+  // *INDENT-ON*
 
   int save;
   size_t i;
@@ -5670,11 +5648,11 @@ boot_get_host_name (void)
 {
   if (boot_Host_name[0] == '\0')
     {
-      if (GETHOSTNAME (boot_Host_name, MAXHOSTNAMELEN) != 0)
+      if (GETHOSTNAME (boot_Host_name, CUB_MAXHOSTNAMELEN) != 0)
 	{
 	  strcpy (boot_Host_name, boot_Client_id_unknown_string);
 	}
-      boot_Host_name[MAXHOSTNAMELEN - 1] = '\0';	/* bullet proof */
+      boot_Host_name[CUB_MAXHOSTNAMELEN - 1] = '\0';	/* bullet proof */
     }
 
   return boot_Host_name;
@@ -5704,8 +5682,8 @@ boot_check_locales (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto exit;
     }
 
-  (void) basename_r (client_credential->program_name, cli_text, sizeof (cli_text));
-  snprintf (srv_text, sizeof (srv_text) - 1, "server '%s'", client_credential->db_name);
+  (void) basename_r (client_credential->get_program_name (), cli_text, sizeof (cli_text));
+  snprintf (srv_text, sizeof (srv_text) - 1, "server '%s'", client_credential->get_db_name ());
 
   error_code = lang_check_coll_compat (server_collations, server_coll_cnt, cli_text, srv_text);
   if (error_code != NO_ERROR)
@@ -5771,8 +5749,8 @@ boot_check_timezone_checksum (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto exit;
     }
 
-  (void) basename_r (client_credential->program_name, cli_text, sizeof (cli_text));
-  snprintf (srv_text, sizeof (srv_text) - 1, "server '%s'", client_credential->db_name);
+  (void) basename_r (client_credential->get_program_name (), cli_text, sizeof (cli_text));
+  snprintf (srv_text, sizeof (srv_text) - 1, "server '%s'", client_credential->get_db_name ());
 
   tzd = tz_get_data ();
   assert (tzd != NULL);

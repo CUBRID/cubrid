@@ -27,7 +27,9 @@
 
 #include <stdio.h>
 #include <assert.h>
+#include <signal.h>
 
+#include "authenticate.h"
 #include "db.h"
 #include "environment_variable.h"
 #include "porting.h"
@@ -50,6 +52,7 @@
 #include "transaction_cl.h"
 #include "network_interface_cl.h"
 #include "execute_statement.h"
+#include "log_lsa.hpp"
 
 #define WS_SET_FOUND_DELETED(mop) WS_SET_DELETED(mop)
 #define MAX_FETCH_SIZE 64
@@ -6877,7 +6880,7 @@ locator_flush_replication_info (REPL_INFO * repl_info)
  *   lsa(in):
  */
 int
-locator_get_append_lsa (LOG_LSA * lsa)
+locator_get_append_lsa (struct log_lsa *lsa)
 {
   return repl_log_get_append_lsa (lsa);
 }

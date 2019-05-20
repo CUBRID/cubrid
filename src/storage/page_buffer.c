@@ -31,18 +31,22 @@
 #include <assert.h>
 
 #include "page_buffer.h"
+
 #include "storage_common.h"
 #include "memory_alloc.h"
 #include "system_parameter.h"
 #include "error_manager.h"
 #include "file_io.h"
 #include "lockfree_circular_queue.hpp"
+#include "log_append.hpp"
 #include "log_manager.h"
 #include "log_impl.h"
+#include "log_volids.hpp"
 #include "transaction_sr.h"
 #include "memory_hash.h"
 #include "critical_section.h"
 #include "perf_monitor.h"
+#include "porting_inline.hpp"
 #include "environment_variable.h"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
@@ -247,84 +251,6 @@ typedef enum
 /* fix & avoid dealloc counter... we have one integer and each uses two bytes. fix counter is offset by two bytes. */
 #define PGBUF_BCB_COUNT_FIX_SHIFT_BITS          16
 #define PGBUF_BCB_AVOID_DEALLOC_MASK            ((int) 0x0000FFFF)
-
-/************************************************************************/
-/* Page buffer LRU section                                              */
-/************************************************************************/
-#define PGBUF_GET_LRU_LIST(lru_idx) (&pgbuf_Pool.buf_LRU_list[lru_idx])
-
-#define PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE(bcb) (pgbuf_bcb_get_zone (bcb) == PGBUF_LRU_3_ZONE)
-#define PGBUF_IS_BCB_IN_LRU(bcb) ((pgbuf_bcb_get_zone (bcb) & PGBUF_LRU_ZONE_MASK) != 0)
-
-/* How old is a BCB (bcb_age) related to age of list to which it belongs */
-#define PGBUF_AGE_DIFF(bcb_age,list_age) \
-  (((list_age) >= (bcb_age)) ? ((list_age) - (bcb_age)) : (DB_INT32_MAX - ((bcb_age) - (list_age))))
-/* is bcb old enough. we use it as indicator of the buffer lru zone. when bcb falls more than half of this buffer zone,
- * it is considered old */
-#define PGBUF_IS_BCB_OLD_ENOUGH(bcb, lru_list) \
-  (PGBUF_AGE_DIFF ((bcb)->tick_lru_list, (lru_list)->tick_list) >= ((lru_list)->count_lru2 / 2))
-/* zone counts & thresholds */
-#define PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) ((list)->count_lru1 + (list)->count_lru2)
-#define PGBUF_LRU_LIST_COUNT(list) (PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) + (list)->count_lru3)
-#define PGBUF_LRU_VICTIM_ZONE_COUNT(list) ((list)->count_lru3)
-
-#define PGBUF_LRU_IS_ZONE_ONE_OVER_THRESHOLD(list) ((list)->threshold_lru1 < (list)->count_lru1)
-#define PGBUF_LRU_IS_ZONE_TWO_OVER_THRESHOLD(list) ((list)->threshold_lru2 < (list)->count_lru2)
-#define PGBUF_LRU_ARE_ZONES_ONE_TWO_OVER_THRESHOLD(list) \
-  ((list)->threshold_lru1 + (list)->threshold_lru2 < PGBUF_LRU_ZONE_ONE_TWO_COUNT(list))
-
-/* macros for retrieving info on shared and private LRUs */
-
-/* Limits for private chains */
-#define PGBUF_PRIVATE_LRU_MIN_COUNT 4
-#define PGBUF_PRIVATE_LRU_MAX_HARD_QUOTA 5000
-
-/* Lower limit for number of pages in shared LRUs: used to compute number of private lists and number of shared lists */
-#define PGBUF_MIN_PAGES_IN_SHARED_LIST 1000
-#define PGBUF_MIN_SHARED_LIST_ADJUST_SIZE 50
-
-#define PGBUF_PAGE_QUOTA_IS_ENABLED (pgbuf_Pool.quota.num_private_LRU_list > 0)
-
-/* macros for retrieving id of private chains of thread (to use actual LRU index use PGBUF_LRU_INDEX_FROM_PRIVATE on
- * this result.
- */
-#if defined (SERVER_MODE)
-#define PGBUF_PRIVATE_LRU_FROM_THREAD(thread_p) \
-  ((thread_p) != NULL) ? ((thread_p)->private_lru_index) : (0)
-#define PGBUF_THREAD_HAS_PRIVATE_LRU(thread_p) \
-  (PGBUF_PAGE_QUOTA_IS_ENABLED && (thread_p) != NULL && (thread_p)->private_lru_index != -1)
-#else
-#define PGBUF_PRIVATE_LRU_FROM_THREAD(thread_p) 0
-#define PGBUF_THREAD_HAS_PRIVATE_LRU(thread_p) false
-#endif
-
-#define PGBUF_SHARED_LRU_COUNT (pgbuf_Pool.num_LRU_list)
-#define PGBUF_PRIVATE_LRU_COUNT (pgbuf_Pool.quota.num_private_LRU_list)
-#define PGBUF_TOTAL_LRU_COUNT (PGBUF_SHARED_LRU_COUNT + PGBUF_PRIVATE_LRU_COUNT)
-
-#define PGBUF_PRIVATE_LIST_FROM_LRU_INDEX(i) ((i) - PGBUF_SHARED_LRU_COUNT)
-#define PGBUF_LRU_INDEX_FROM_PRIVATE(private_id) (PGBUF_SHARED_LRU_COUNT + (private_id))
-
-#define PGBUF_IS_SHARED_LRU_INDEX(lru_idx) ((lru_idx) < PGBUF_SHARED_LRU_COUNT)
-#define PGBUF_IS_PRIVATE_LRU_INDEX(lru_idx) ((lru_idx) >= PGBUF_SHARED_LRU_COUNT)
-
-#define PGBUF_LRU_LIST_IS_OVER_QUOTA(list) (PGBUF_LRU_LIST_COUNT (list) > (list)->quota)
-#define PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA(list) ((PGBUF_LRU_ZONE_ONE_TWO_COUNT (list) > (list)->quota))
-#define PGBUF_LRU_LIST_OVER_QUOTA_COUNT(list) (PGBUF_LRU_LIST_COUNT (list) - (list)->quota)
-
-#define PGBUF_IS_PRIVATE_LRU_OVER_QUOTA(lru_idx) \
-  (PGBUF_IS_PRIVATE_LRU_INDEX (lru_idx) && PGBUF_LRU_LIST_IS_OVER_QUOTA (PGBUF_GET_LRU_LIST (lru_idx)))
-#define PGBUF_IS_PRIVATE_LRU_ONE_TWO_OVER_QUOTA(lru_idx) \
-  (PGBUF_IS_PRIVATE_LRU_INDEX (lru_idx) && PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (PGBUF_GET_LRU_LIST (lru_idx)))
-
-#define PGBUF_OVER_QUOTA_BUFFER(quota) MAX (10, (int) (quota * 0.01f))
-#define PGBUF_LRU_LIST_IS_OVER_QUOTA_WITH_BUFFER(list) \
-  (PGBUF_LRU_LIST_COUNT (list) > (list)->quota + PGBUF_OVER_QUOTA_BUFFER ((list)->quota))
-
-#define PBGUF_BIG_PRIVATE_MIN_SIZE 100
-
-/* LRU flags */
-#define PGBUF_LRU_VICTIM_LFCQ_FLAG ((int) 0x80000000)
 
 /* Activity on each LRU is probed and cumulated;
  * to avoid long history cumulation effect, the activity indicator is limited (PGBUF_TRAN_MAX_ACTIVITY);
@@ -924,6 +850,87 @@ struct pgbuf_fix_perf
   UINT64 fix_wait_time;
 };
 
+/************************************************************************/
+/* Page buffer LRU section                                              */
+/************************************************************************/
+#define PGBUF_GET_LRU_LIST(lru_idx) (&pgbuf_Pool.buf_LRU_list[lru_idx])
+
+#define PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE(bcb) (pgbuf_bcb_get_zone (bcb) == PGBUF_LRU_3_ZONE)
+#define PGBUF_IS_BCB_IN_LRU(bcb) ((pgbuf_bcb_get_zone (bcb) & PGBUF_LRU_ZONE_MASK) != 0)
+
+/* How old is a BCB (bcb_age) related to age of list to which it belongs */
+#define PGBUF_AGE_DIFF(bcb_age,list_age) \
+  (((list_age) >= (bcb_age)) ? ((list_age) - (bcb_age)) : (DB_INT32_MAX - ((bcb_age) - (list_age))))
+/* is bcb old enough. we use it as indicator of the buffer lru zone. when bcb falls more than half of this buffer zone,
+ * it is considered old */
+#define PGBUF_IS_BCB_OLD_ENOUGH(bcb, lru_list) \
+  (PGBUF_AGE_DIFF ((bcb)->tick_lru_list, (lru_list)->tick_list) >= ((lru_list)->count_lru2 / 2))
+/* zone counts & thresholds */
+#define PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) ((list)->count_lru1 + (list)->count_lru2)
+#define PGBUF_LRU_LIST_COUNT(list) (PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) + (list)->count_lru3)
+#define PGBUF_LRU_VICTIM_ZONE_COUNT(list) ((list)->count_lru3)
+
+#define PGBUF_LRU_IS_ZONE_ONE_OVER_THRESHOLD(list) ((list)->threshold_lru1 < (list)->count_lru1)
+#define PGBUF_LRU_IS_ZONE_TWO_OVER_THRESHOLD(list) ((list)->threshold_lru2 < (list)->count_lru2)
+#define PGBUF_LRU_ARE_ZONES_ONE_TWO_OVER_THRESHOLD(list) \
+  ((list)->threshold_lru1 + (list)->threshold_lru2 < PGBUF_LRU_ZONE_ONE_TWO_COUNT(list))
+
+/* macros for retrieving info on shared and private LRUs */
+
+/* Limits for private chains */
+#define PGBUF_PRIVATE_LRU_MIN_COUNT 4
+#define PGBUF_PRIVATE_LRU_MAX_HARD_QUOTA 5000
+
+/* Lower limit for number of pages in shared LRUs: used to compute number of private lists and number of shared lists */
+#define PGBUF_MIN_PAGES_IN_SHARED_LIST 1000
+#define PGBUF_MIN_SHARED_LIST_ADJUST_SIZE 50
+
+#define PGBUF_PAGE_QUOTA_IS_ENABLED (pgbuf_Pool.quota.num_private_LRU_list > 0)
+
+/* macros for retrieving id of private chains of thread (to use actual LRU index use PGBUF_LRU_INDEX_FROM_PRIVATE on
+ * this result.
+ */
+#if defined (SERVER_MODE)
+#define PGBUF_PRIVATE_LRU_FROM_THREAD(thread_p) \
+  ((thread_p) != NULL) ? ((thread_p)->private_lru_index) : (0)
+static bool
+PGBUF_THREAD_HAS_PRIVATE_LRU (THREAD_ENTRY * thread_p)
+{
+  return PGBUF_PAGE_QUOTA_IS_ENABLED && (thread_p) != NULL && (thread_p)->private_lru_index != -1;
+}
+#else
+#define PGBUF_PRIVATE_LRU_FROM_THREAD(thread_p) 0
+#define PGBUF_THREAD_HAS_PRIVATE_LRU(thread_p) false
+#endif
+
+#define PGBUF_SHARED_LRU_COUNT (pgbuf_Pool.num_LRU_list)
+#define PGBUF_PRIVATE_LRU_COUNT (pgbuf_Pool.quota.num_private_LRU_list)
+#define PGBUF_TOTAL_LRU_COUNT (PGBUF_SHARED_LRU_COUNT + PGBUF_PRIVATE_LRU_COUNT)
+
+#define PGBUF_PRIVATE_LIST_FROM_LRU_INDEX(i) ((i) - PGBUF_SHARED_LRU_COUNT)
+#define PGBUF_LRU_INDEX_FROM_PRIVATE(private_id) (PGBUF_SHARED_LRU_COUNT + (private_id))
+
+#define PGBUF_IS_SHARED_LRU_INDEX(lru_idx) ((lru_idx) < PGBUF_SHARED_LRU_COUNT)
+#define PGBUF_IS_PRIVATE_LRU_INDEX(lru_idx) ((lru_idx) >= PGBUF_SHARED_LRU_COUNT)
+
+#define PGBUF_LRU_LIST_IS_OVER_QUOTA(list) (PGBUF_LRU_LIST_COUNT (list) > (list)->quota)
+#define PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA(list) ((PGBUF_LRU_ZONE_ONE_TWO_COUNT (list) > (list)->quota))
+#define PGBUF_LRU_LIST_OVER_QUOTA_COUNT(list) (PGBUF_LRU_LIST_COUNT (list) - (list)->quota)
+
+#define PGBUF_IS_PRIVATE_LRU_OVER_QUOTA(lru_idx) \
+  (PGBUF_IS_PRIVATE_LRU_INDEX (lru_idx) && PGBUF_LRU_LIST_IS_OVER_QUOTA (PGBUF_GET_LRU_LIST (lru_idx)))
+#define PGBUF_IS_PRIVATE_LRU_ONE_TWO_OVER_QUOTA(lru_idx) \
+  (PGBUF_IS_PRIVATE_LRU_INDEX (lru_idx) && PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (PGBUF_GET_LRU_LIST (lru_idx)))
+
+#define PGBUF_OVER_QUOTA_BUFFER(quota) MAX (10, (int) (quota * 0.01f))
+#define PGBUF_LRU_LIST_IS_OVER_QUOTA_WITH_BUFFER(list) \
+  (PGBUF_LRU_LIST_COUNT (list) > (list)->quota + PGBUF_OVER_QUOTA_BUFFER ((list)->quota))
+
+#define PBGUF_BIG_PRIVATE_MIN_SIZE 100
+
+/* LRU flags */
+#define PGBUF_LRU_VICTIM_LFCQ_FLAG ((int) 0x80000000)
+
 #if defined (NDEBUG)
 /* note: release bugs can be hard to debug due to compile optimization. the crash call-stack may point to a completely
  *       different code than the one that caused the crash. my workaround is to save the line of code in this global
@@ -1177,6 +1184,9 @@ static void pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru);
 
 // TODO: find a better place for this, but not log_impl.h
 STATIC_INLINE int pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+
+static bool pgbuf_is_temp_lsa (const log_lsa & lsa);
+static void pgbuf_init_temp_page_lsa (FILEIO_PAGE * io_page, PGLENGTH page_size);
 
 int pgbuf_scan_bcb_table(THREAD_ENTRY * thread_p);
 
@@ -2442,7 +2452,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
    * has not changed since the database restart, a warning is given about
    * lack of logging
    */
-  if (pgbuf_bcb_is_dirty (bufptr) && !LSA_IS_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa)
+  if (pgbuf_bcb_is_dirty (bufptr) && !pgbuf_is_temp_lsa (bufptr->iopage_buffer->iopage.prv.lsa)
       && PGBUF_IS_AUXILIARY_VOLUME (bufptr->vpid.volid) == false
       && !log_is_logged_since_restart (&bufptr->iopage_buffer->iopage.prv.lsa))
     {
@@ -3304,9 +3314,7 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   else
 #endif /* SERVER_MODE */
     {
-      LOG_CS_ENTER (thread_p);
-      logpb_flush_pages_direct (thread_p);
-      LOG_CS_EXIT (thread_p);
+      logpb_force_flush_pages (thread_p);
     }
 
   if (prm_get_bool_value (PRM_ID_PB_SEQUENTIAL_VICTIM_FLUSH) == true)
@@ -4406,7 +4414,7 @@ pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr)
    * Don't change LSA of temporary volumes or auxiliary volumes.
    * (e.g., those of copydb, backupdb).
    */
-  if (LSA_IS_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa)
+  if (pgbuf_is_temp_lsa (bufptr->iopage_buffer->iopage.prv.lsa)
       || PGBUF_IS_AUXILIARY_VOLUME (bufptr->vpid.volid) == true)
     {
       return NULL;
@@ -4418,7 +4426,7 @@ pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr)
    */
   if (pgbuf_is_temporary_volume (bufptr->vpid.volid) == true)
     {
-      fileio_init_lsa_of_temp_page (&bufptr->iopage_buffer->iopage, IO_PAGESIZE);
+      pgbuf_init_temp_page_lsa (&bufptr->iopage_buffer->iopage, IO_PAGESIZE);
       if (logtb_is_current_active (thread_p))
 	{
 	  return NULL;
@@ -4481,7 +4489,7 @@ pgbuf_reset_temp_lsa (PAGE_PTR pgptr)
   PGBUF_BCB *bufptr;
 
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
-  fileio_init_lsa_of_temp_page (&bufptr->iopage_buffer->iopage, IO_PAGESIZE);
+  pgbuf_init_temp_page_lsa (&bufptr->iopage_buffer->iopage, IO_PAGESIZE);
 }
 
 /*
@@ -4709,42 +4717,8 @@ pgbuf_set_lsa_as_temporary (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
   assert (!VPID_ISNULL (&bufptr->vpid));
 
-  fileio_init_lsa_of_temp_page (&bufptr->iopage_buffer->iopage, IO_PAGESIZE);
+  pgbuf_init_temp_page_lsa (&bufptr->iopage_buffer->iopage, IO_PAGESIZE);
   pgbuf_set_dirty_buffer_ptr (thread_p, bufptr);
-}
-
-/*
- * pgbuf_set_lsa_as_permanent () - The log sequence address of the page is set to permanent lsa address
- *   return: void
- *   pgptr(in): Pointer to page
- *
- * Note: Set the log sequence address of the page to a permananet LSA address.
- *       Logging can be done in this page.
- *
- *       This function is used for debugging.
- */
-void
-pgbuf_set_lsa_as_permanent (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
-{
-  PGBUF_BCB *bufptr;
-  LOG_LSA *restart_lsa;
-
-  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
-  assert (!VPID_ISNULL (&bufptr->vpid));
-
-  if (LSA_IS_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa)
-      || LSA_IS_INIT_NONTEMP (&bufptr->iopage_buffer->iopage.prv.lsa))
-    {
-      restart_lsa = logtb_find_current_tran_lsa (thread_p);
-      if (restart_lsa == NULL || LSA_ISNULL (restart_lsa))
-	{
-	  restart_lsa = log_get_restart_lsa ();
-	}
-
-      fileio_set_page_lsa (&bufptr->iopage_buffer->iopage, restart_lsa, IO_PAGESIZE);
-
-      pgbuf_set_dirty_buffer_ptr (thread_p, bufptr);
-    }
 }
 
 /*
@@ -4838,7 +4812,7 @@ pgbuf_is_lsa_temporary (PAGE_PTR pgptr)
 
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
 
-  if (LSA_IS_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa)
+  if (pgbuf_is_temp_lsa (bufptr->iopage_buffer->iopage.prv.lsa)
       || pgbuf_is_temporary_volume (bufptr->vpid.volid) == true)
     {
       return true;
@@ -5909,9 +5883,9 @@ do_block:
 
       if (wait_msec == LK_ZERO_WAIT)
 	{
-	  char *client_prog_name;	/* Client program name for tran */
-	  char *client_user_name;	/* Client user name for tran */
-	  char *client_host_name;	/* Client host for tran */
+	  const char *client_prog_name;	/* Client program name for tran */
+	  const char *client_user_name;	/* Client user name for tran */
+	  const char *client_host_name;	/* Client host for tran */
 	  int client_pid;	/* Client process identifier for tran */
 
 	  /* setup timeout error, if wait_msec == LK_ZERO_WAIT */
@@ -6561,9 +6535,9 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * t
   int wait_secs;
   int old_wait_msecs;
   int save_request_latch_mode;
-  char *client_prog_name;	/* Client program name for trans */
-  char *client_user_name;	/* Client user name for tran */
-  char *client_host_name;	/* Client host for tran */
+  const char *client_prog_name;	/* Client program name for trans */
+  const char *client_user_name;	/* Client user name for tran */
+  const char *client_host_name;	/* Client host for tran */
   int client_pid;		/* Client process identifier for tran */
 
   TSC_TICKS start_tick, end_tick;
@@ -6677,9 +6651,9 @@ er_set_return:
       PGBUF_BCB_UNLOCK (bufptr);
       if (logtb_is_current_active (thread_p) == true)
 	{
-	  char *client_prog_name;	/* Client user name for transaction */
-	  char *client_user_name;	/* Client user name for transaction */
-	  char *client_host_name;	/* Client host for transaction */
+	  const char *client_prog_name;	/* Client user name for transaction */
+	  const char *client_user_name;	/* Client user name for transaction */
+	  const char *client_host_name;	/* Client host for transaction */
 	  int client_pid;	/* Client process identifier for transaction */
 	  int tran_index;
 
@@ -7703,10 +7677,10 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 #endif /* ENABLE_SYSTEMTAP */
       if (pgbuf_is_temporary_volume (vpid->volid) == true)
 	{
-	  /* Check iff the first time to access */
-	  if (!LSA_IS_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa))
+	  /* Check if the first time to access */
+	  if (!pgbuf_is_temp_lsa (bufptr->iopage_buffer->iopage.prv.lsa))
 	    {
-	      fileio_init_lsa_of_temp_page (&bufptr->iopage_buffer->iopage, IO_PAGESIZE);
+	      pgbuf_init_temp_page_lsa (&bufptr->iopage_buffer->iopage, IO_PAGESIZE);
 	      pgbuf_set_dirty_buffer_ptr (thread_p, bufptr);
 	    }
 	}
@@ -7742,7 +7716,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
       /* Don't need to read page from disk since it is a new page. */
       if (pgbuf_is_temporary_volume (vpid->volid) == true)
 	{
-	  fileio_init_lsa_of_temp_page (&bufptr->iopage_buffer->iopage, IO_PAGESIZE);
+	  pgbuf_init_temp_page_lsa (&bufptr->iopage_buffer->iopage, IO_PAGESIZE);
 	}
       else
 	{
@@ -8319,7 +8293,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
       current_consume_cursor = pgbuf_Pool.shared_lrus_with_victims->get_consumer_cursor ();
     }
   while (!has_flush_thread && !pgbuf_Pool.shared_lrus_with_victims->is_empty ()
-	 && ((current_consume_cursor - initial_consume_cursor) <= pgbuf_Pool.num_LRU_list)
+	 && ((int) (current_consume_cursor - initial_consume_cursor) <= pgbuf_Pool.num_LRU_list)
 	 && (++nloops <= pgbuf_Pool.num_LRU_list));
   /* todo: maybe we can find a less complicated condition of looping. Probably no need to use nloops <= pgbuf_Pool.num_LRU_list. */
   if (detailed_perf)
@@ -15939,6 +15913,21 @@ pgbuf_is_page_flush_daemon_available ()
 #else
   return false;
 #endif
+}
+
+static bool
+pgbuf_is_temp_lsa (const log_lsa & lsa)
+{
+  return lsa == PGBUF_TEMP_LSA;
+}
+
+static void
+pgbuf_init_temp_page_lsa (FILEIO_PAGE * io_page, PGLENGTH page_size)
+{
+  io_page->prv.lsa = PGBUF_TEMP_LSA;
+
+  FILEIO_PAGE_WATERMARK *prv2 = fileio_get_page_watermark_pos (io_page, page_size);
+  prv2->lsa = PGBUF_TEMP_LSA;
 }
 
 void pgbuf_scan_bcb_table()

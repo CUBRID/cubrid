@@ -34,10 +34,15 @@
 #include "config.h"
 #include "file_manager.h"
 #include "heap_attrinfo.h"
+#include "mvcc.h"
 #include "page_buffer.h"
 #include "perf_monitor.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
+
+// forward declarations
+class multi_index_unique_stats;
+class record_descriptor;
 
 #define HFID_EQ(hfid_ptr1, hfid_ptr2) \
   ((hfid_ptr1) == (hfid_ptr2) \
@@ -141,7 +146,7 @@ struct heap_scancache
   char *area;			/* Pointer to last left fixed memory allocated */
   int area_size;		/* Size of allocated area */
   int num_btids;		/* Total number of indexes defined on the scanning class */
-  BTREE_UNIQUE_STATS *index_stat_info;	/* unique-related stat info <btid,num_nulls,num_keys,num_oids> */
+  multi_index_unique_stats *m_index_stats;	// does this really belong to scan cache??
   FILE_TYPE file_type;		/* The file type of the heap file being scanned. Can be FILE_HEAP or
 				 * FILE_HEAP_REUSE_SLOTS */
   MVCC_SNAPSHOT *mvcc_snapshot;	/* mvcc snapshot */
@@ -183,6 +188,7 @@ struct heap_hfid_table_entry
 
 // forward declaration
 struct func_pred;
+struct xasl_unpack_info;
 
 typedef struct function_index_info FUNCTION_INDEX_INFO;
 struct function_index_info
@@ -198,7 +204,7 @@ typedef struct func_pred_unpack_info FUNC_PRED_UNPACK_INFO;
 struct func_pred_unpack_info
 {
   struct func_pred *func_pred;
-  void *unpack_info;
+  xasl_unpack_info *unpack_info;
 };
 
 #if 0				/* TODO: check not use - ksseo */
@@ -445,9 +451,9 @@ extern DB_VALUE *heap_attrinfo_access (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * att
 extern int heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val,
 			      HEAP_CACHE_ATTRINFO * attr_info);
 extern SCAN_CODE heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-						  RECDES * old_recdes, RECDES * new_recdes);
+						  RECDES * old_recdes, record_descriptor * new_recdes);
 extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-							     RECDES * old_recdes, RECDES * new_recdes);
+							     RECDES * old_recdes, record_descriptor * new_recdes);
 
 extern DB_VALUE *heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, int *atts_prefix_length,
 					     HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes, DB_VALUE * dbvalue,

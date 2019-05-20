@@ -34,7 +34,7 @@
 
 // forward definitions
 struct function_node;
-struct regu_variable_node;
+class regu_variable_node;
 struct tp_domain;
 struct val_descr;
 struct val_list_node;

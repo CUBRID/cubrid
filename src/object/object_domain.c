@@ -41,6 +41,7 @@
 #include "tz_support.h"
 #include "db_date.h"
 #include "mprec.h"
+#include "porting_inline.hpp"
 #include "set_object.h"
 #include "string_opfunc.h"
 #include "tz_support.h"
@@ -1421,15 +1422,17 @@ tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      if (domain->collation_flag == TP_DOMAIN_COLL_NORMAL || domain->collation_flag == TP_DOMAIN_COLL_ENFORCE)
-	{
-	  db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
-	}
       if (domain->collation_flag == TP_DOMAIN_COLL_ENFORCE)
 	{
+	  db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
 	  /* don't apply precision and type */
 	  break;
 	}
+      if (domain->collation_flag == TP_DOMAIN_COLL_NORMAL)
+	{
+	  db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+	}
+      /* FALLTHRU */
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       value->domain.char_info.type = TP_DOMAIN_TYPE (domain);
@@ -10028,7 +10031,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      const char *original_str = db_get_string (src);
 	      int error_code;
 
-	      assert (str_size >= 0);	/* if this isn't correct, we cannot rely on strlen */
 	      error_code = db_json_get_json_from_str (original_str, doc, str_size);
 	      if (error_code != NO_ERROR)
 		{
@@ -10046,6 +10048,10 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  break;
 		}
 	    }
+	    break;
+	  case DB_TYPE_SHORT:
+	    doc = db_json_allocate_doc ();
+	    db_json_set_int_to_doc (doc, db_get_short (src));
 	    break;
 	  case DB_TYPE_INTEGER:
 	    doc = db_json_allocate_doc ();

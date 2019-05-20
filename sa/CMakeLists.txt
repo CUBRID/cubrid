@@ -26,6 +26,7 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/csql_result.c
   ${EXECUTABLES_DIR}/csql_support.c
   ${EXECUTABLES_DIR}/csql_result_format.c
+  ${EXECUTABLES_DIR}/extract_schema.cpp  
   ${EXECUTABLES_DIR}/util_sa.c
   ${EXECUTABLES_DIR}/util_cs.c
   ${EXECUTABLES_DIR}/util_common.c
@@ -40,6 +41,10 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/loader_object_table.c
   )
 
+set(EXECUTABLE_HEADERS
+  ${EXECUTABLES_DIR}/extract_schema.hpp
+  )
+
 set(COMPAT_SOURCES
   ${COMPAT_DIR}/cnv.c
   ${COMPAT_DIR}/cnvlex.c
@@ -49,6 +54,9 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_elo.c
   ${COMPAT_DIR}/db_info.c
   ${COMPAT_DIR}/db_json.cpp
+  ${COMPAT_DIR}/db_json_allocator.cpp
+  ${COMPAT_DIR}/db_json_path.cpp
+  ${COMPAT_DIR}/db_json_types_internal.cpp
   ${COMPAT_DIR}/db_macro.c
   ${COMPAT_DIR}/db_obj.c
   ${COMPAT_DIR}/db_old.c
@@ -92,6 +100,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/perf_monitor.c
   ${BASE_DIR}/pinnable_buffer.cpp
   ${BASE_DIR}/pinning.cpp
+  ${BASE_DIR}/printer.cpp
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/system_parameter.c
   ${BASE_DIR}/fault_injection.c
@@ -127,12 +136,15 @@ set(BASE_HEADERS
   ${BASE_DIR}/fileline_location.hpp
   ${BASE_DIR}/mem_block.hpp
   ${BASE_DIR}/memory_private_allocator.cpp
+  ${BASE_DIR}/msgcat_set_log.hpp
+  ${BASE_DIR}/packable_object.hpp
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
   ${BASE_DIR}/perf_def.hpp
   ${BASE_DIR}/pinning.hpp
   ${BASE_DIR}/pinnable_buffer.hpp
-  ${BASE_DIR}/packable_object.hpp
+  ${BASE_DIR}/porting_inline.hpp
+  ${BASE_DIR}/printer.hpp
   ${BASE_DIR}/resource_tracker.hpp
 )
 
@@ -216,6 +228,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/query_manager.c
   ${QUERY_DIR}/query_opfunc.c
   ${QUERY_DIR}/query_reevaluation.cpp
+  ${QUERY_DIR}/regu_var.cpp
   ${QUERY_DIR}/scan_json_table.cpp
   ${QUERY_DIR}/scan_manager.c
   ${QUERY_DIR}/serial.c
@@ -230,6 +243,7 @@ set(QUERY_SOURCES
 set(QUERY_HEADERS
   ${QUERY_DIR}/query_aggregate.hpp
   ${QUERY_DIR}/query_analytic.hpp
+  ${QUERY_DIR}/query_monitoring.hpp
   ${QUERY_DIR}/query_reevaluation.hpp
   ${QUERY_DIR}/scan_json_table.hpp
   )
@@ -239,6 +253,7 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/class_description.cpp
   ${OBJECT_DIR}/class_object.c
   ${OBJECT_DIR}/elo.c
+  ${OBJECT_DIR}/lob_locator.cpp
   ${OBJECT_DIR}/object_description.cpp
   ${OBJECT_DIR}/object_domain.c
   ${OBJECT_DIR}/object_accessor.c
@@ -259,6 +274,9 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/virtual_object.c
   ${OBJECT_DIR}/work_space.c
   )
+set(OBJECT_HEADERS
+  ${OBJECT_DIR}/lob_locator.hpp
+)
 
 set (REPLICATION_HEADERS
   ${REPLICATION_DIR}/log_generator.hpp
@@ -309,33 +327,58 @@ set(THREAD_HEADERS
   )
 
 set(TRANSACTION_SOURCES
-  ${TRANSACTION_DIR}/log_compress.c
   ${TRANSACTION_DIR}/boot_cl.c
   ${TRANSACTION_DIR}/boot_sr.c
+  ${TRANSACTION_DIR}/client_credentials.cpp
   ${TRANSACTION_DIR}/locator.c
   ${TRANSACTION_DIR}/locator_cl.c
   ${TRANSACTION_DIR}/locator_sr.c
   ${TRANSACTION_DIR}/lock_manager.c
   ${TRANSACTION_DIR}/lock_table.c
   ${TRANSACTION_DIR}/log_2pc.c
+  ${TRANSACTION_DIR}/log_append.cpp
   ${TRANSACTION_DIR}/log_comm.c
+  ${TRANSACTION_DIR}/log_compress.c
   ${TRANSACTION_DIR}/log_global.c
+  ${TRANSACTION_DIR}/log_lsa.cpp
   ${TRANSACTION_DIR}/log_manager.c
   ${TRANSACTION_DIR}/log_page_buffer.c
   ${TRANSACTION_DIR}/log_recovery.c
+  ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
+  ${TRANSACTION_DIR}/log_writer.c
+  ${TRANSACTION_DIR}/mvcc.c
+  ${TRANSACTION_DIR}/mvcc_active_tran.cpp
+  ${TRANSACTION_DIR}/mvcc_table.cpp
   ${TRANSACTION_DIR}/replication.c
   ${TRANSACTION_DIR}/recovery.c
   ${TRANSACTION_DIR}/transaction_cl.c
   ${TRANSACTION_DIR}/transaction_sr.c
+  ${TRANSACTION_DIR}/transaction_transient.cpp
   ${TRANSACTION_DIR}/wait_for_graph.c
-  ${TRANSACTION_DIR}/log_writer.c
-  ${TRANSACTION_DIR}/mvcc.c
+  )
+set(TRANSACTION_HEADERS
+  ${TRANSACTION_DIR}/client_credentials.hpp
+  ${TRANSACTION_DIR}/log_2pc.h
+  ${TRANSACTION_DIR}/log_append.hpp
+  ${TRANSACTION_DIR}/log_archives.hpp
+  ${TRANSACTION_DIR}/log_common_impl.h
+  ${TRANSACTION_DIR}/log_lsa.hpp
+  ${TRANSACTION_DIR}/log_record.hpp
+  ${TRANSACTION_DIR}/log_storage.hpp
+  ${TRANSACTION_DIR}/log_system_tran.hpp
+  ${TRANSACTION_DIR}/log_volids.hpp
+  ${TRANSACTION_DIR}/mvcc.h
+  ${TRANSACTION_DIR}/mvcc_active_tran.hpp
+  ${TRANSACTION_DIR}/mvcc_table.hpp
+  ${TRANSACTION_DIR}/transaction_global.hpp
+  ${TRANSACTION_DIR}/transaction_transient.hpp
   )
 
 set(STORAGE_SOURCES
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
+  ${STORAGE_DIR}/btree_unique.cpp
   ${STORAGE_DIR}/catalog_class.c
   ${STORAGE_DIR}/compactdb_sr.c
   ${STORAGE_DIR}/double_write_buffer.c
@@ -360,6 +403,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/system_catalog.c
   )
 set(STORAGE_HEADERS
+  ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
 )
 
@@ -371,7 +415,9 @@ set(SESSION_SOURCES
 set(XASL_SOURCES
   ${XASL_DIR}/access_json_table.cpp
   ${XASL_DIR}/xasl_analytic.cpp
+  ${XASL_DIR}/xasl_predicate.cpp
   ${XASL_DIR}/xasl_stream.cpp
+  ${XASL_DIR}/xasl_unpack_info.cpp
   )
 set(XASL_HEADERS
   ${XASL_DIR}/access_json_table.hpp
@@ -379,6 +425,8 @@ set(XASL_HEADERS
   ${XASL_DIR}/compile_context.h
   ${XASL_DIR}/xasl_aggregate.hpp
   ${XASL_DIR}/xasl_analytic.hpp
+  ${XASL_DIR}/xasl_unpack_info.hpp
+  ${XASL_DIR}/xasl_predicate.hpp
   ${XASL_DIR}/xasl_stream.hpp
   )
 
@@ -397,7 +445,10 @@ set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED tr
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
 
 if(UNIX)
-set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${COMPAT_DIR}/db_json_allocator.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${COMPAT_DIR}/db_json_path.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${COMPAT_DIR}/db_json_types_internal.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
 endif(UNIX)
 
 SET_SOURCE_FILES_PROPERTIES(
@@ -472,34 +523,40 @@ SET_SOURCE_FILES_PROPERTIES(
 
 add_library(cubridsa SHARED
   ${EXECUTABLE_SOURCES}
+  ${EXECUTABLE_HEADERS}
   ${COMPAT_SOURCES}
   ${BASE_SOURCES}
   ${BASE_HEADERS}
-  ${HEAPLAYER_SOURCES}
+  ${BASE_SOURCES}
+  ${COMMUNICATION_SOURCES}
+  ${COMPAT_SOURCES}
+  ${COMPAT_SOURCES_C}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
-  ${COMMUNICATION_SOURCES}
-  ${PARSER_SOURCES}
-  ${PARSER_HEADERS}
+  ${ES_SOURCES}
+  ${EXECUTABLE_SOURCES}
+  ${HEAPLAYER_SOURCES}
+  ${JSP_SOURCES}
+  ${OBJECT_HEADERS}
+  ${OBJECT_SOURCES}
   ${OPTIMIZER_SOURCES}
   ${QUERY_HEADERS}
   ${QUERY_SOURCES}
-  ${OBJECT_SOURCES}
+  ${PARSER_HEADERS}
+  ${PARSER_SOURCES}
+  ${PROBES_OBJECT}
   ${REPLICATION_HEADERS}
   ${REPLICATION_SOURCES}
   ${STREAM_HEADERS}  
   ${STREAM_SOURCES}
-  ${JSP_SOURCES}
   ${THREAD_SOURCES}
+  ${TRANSACTION_HEADERS}
   ${TRANSACTION_SOURCES}
+  ${SESSION_SOURCES}
   ${STORAGE_HEADERS}
   ${STORAGE_SOURCES}
-  ${ES_SOURCES}
-  ${SESSION_SOURCES}
-  ${PROBES_OBJECT}
-  ${COMPAT_SOURCES_C}
-  ${XASL_SOURCES}
   ${XASL_HEADERS}
+  ${XASL_SOURCES}
   )
 set_target_properties(cubridsa PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 

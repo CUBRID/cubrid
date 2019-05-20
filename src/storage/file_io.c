@@ -35,6 +35,7 @@
 #include <limits.h>
 #include <sys/stat.h>
 #include <assert.h>
+#include <signal.h>
 
 #if defined(WINDOWS)
 #include <io.h>
@@ -65,18 +66,21 @@
 #include "porting.h"
 
 #include "chartype.h"
+#include "connection_globals.h"
 #include "file_io.h"
 #include "storage_common.h"
 #include "memory_alloc.h"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "message_catalog.h"
+#include "msgcat_set_log.hpp"
 #include "util_func.h"
 #include "perf_monitor.h"
 #include "environment_variable.h"
 #include "connection_error.h"
 #include "release_string.h"
-#include "log_impl.h"
+#include "log_common_impl.h"
+#include "log_volids.hpp"
 #include "fault_injection.h"
 #if defined (SERVER_MODE)
 #include "vacuum.h"
@@ -85,6 +89,8 @@
 
 #if defined(WINDOWS)
 #include "wintcp.h"
+#else /* WINDOWS */
+#include "tcp.h"
 #endif /* WINDOWS */
 
 #if defined(SERVER_MODE)
@@ -1169,8 +1175,8 @@ fileio_lock (const char *db_full_name_p, const char *vol_label_p, int vol_fd, bo
 {
   FILE *fp;
   char name_info_lock[PATH_MAX];
-  char host[MAXHOSTNAMELEN];
-  char host2[MAXHOSTNAMELEN];
+  char host[CUB_MAXHOSTNAMELEN];
+  char host2[CUB_MAXHOSTNAMELEN];
   char user[FILEIO_USER_NAME_SIZE];
   char login_name[FILEIO_USER_NAME_SIZE];
   INT64 lock_time;
@@ -1222,7 +1228,7 @@ fileio_lock (const char *db_full_name_p, const char *vol_label_p, int vol_fd, bo
    *       problem with this secundary technique
    */
 
-  sprintf (format_string, "%%%ds %%d %%%ds %%lld", FILEIO_USER_NAME_SIZE - 1, MAXHOSTNAMELEN - 1);
+  sprintf (format_string, "%%%ds %%d %%%ds %%lld", FILEIO_USER_NAME_SIZE - 1, CUB_MAXHOSTNAMELEN - 1);
 
 again:
   while (retry == true && fileio_lock_file_write (vol_fd, 0, SEEK_SET, 0) < 0)
@@ -1289,8 +1295,8 @@ again:
 	  login_name[FILEIO_USER_NAME_SIZE - 1] = '\0';
 
 	  if (!
-	      (strcmp (user, login_name) == 0 && GETHOSTNAME (host2, MAXHOSTNAMELEN) == 0 && strcmp (host, host2) == 0
-	       && fileio_is_terminated_process (pid) != 0 && errno == ESRCH))
+	      (strcmp (user, login_name) == 0 && GETHOSTNAME (host2, CUB_MAXHOSTNAMELEN) == 0
+	       && strcmp (host, host2) == 0 && fileio_is_terminated_process (pid) != 0 && errno == ESRCH))
 	    {
 	      if (dowait != false)
 		{
@@ -1341,7 +1347,7 @@ again:
   fp = fopen (name_info_lock, "w");
   if (fp != NULL)
     {
-      if (GETHOSTNAME (host, MAXHOSTNAMELEN) != 0)
+      if (GETHOSTNAME (host, CUB_MAXHOSTNAMELEN) != 0)
 	{
 	  strcpy (host, "???");
 	}
@@ -1381,7 +1387,7 @@ FILEIO_LOCKF_TYPE
 fileio_lock_la_log_path (const char *db_full_name_p, const char *lock_path_p, int vol_fd, int *last_deleted_arv_num)
 {
   FILE *fp;
-  char host[MAXHOSTNAMELEN];
+  char host[CUB_MAXHOSTNAMELEN];
   char user[FILEIO_USER_NAME_SIZE];
   char login_name[FILEIO_USER_NAME_SIZE];
   INT64 lock_time;
@@ -1422,7 +1428,7 @@ fileio_lock_la_log_path (const char *db_full_name_p, const char *lock_path_p, in
    *       the lock. This is important to avoid a possible synchronization
    *       problem with this secundary technique
    */
-  sprintf (format_string, "%%d %%%ds %%d %%%ds %%lld", FILEIO_USER_NAME_SIZE - 1, MAXHOSTNAMELEN - 1);
+  sprintf (format_string, "%%d %%%ds %%d %%%ds %%lld", FILEIO_USER_NAME_SIZE - 1, CUB_MAXHOSTNAMELEN - 1);
 
   while (retry == true && fileio_lock_file_write (vol_fd, 0, SEEK_SET, 0) < 0)
     {
@@ -1490,7 +1496,7 @@ fileio_lock_la_log_path (const char *db_full_name_p, const char *lock_path_p, in
 
       lseek (vol_fd, (off_t) 0, SEEK_SET);
 
-      if (GETHOSTNAME (host, MAXHOSTNAMELEN) != 0)
+      if (GETHOSTNAME (host, CUB_MAXHOSTNAMELEN) != 0)
 	{
 	  strcpy (host, "???");
 	}
@@ -1754,14 +1760,14 @@ fileio_check_lockby_file (char *name_info_lock_p)
   int pid;
   char login_name[FILEIO_USER_NAME_SIZE];
   char user[FILEIO_USER_NAME_SIZE];
-  char host[MAXHOSTNAMELEN];
-  char host2[MAXHOSTNAMELEN];
+  char host[CUB_MAXHOSTNAMELEN];
+  char host2[CUB_MAXHOSTNAMELEN];
   char format_string[32];
 
   fp = fopen (name_info_lock_p, "r");
   if (fp != NULL)
     {
-      sprintf (format_string, "%%%ds %%d %%%ds", FILEIO_USER_NAME_SIZE - 1, MAXHOSTNAMELEN - 1);
+      sprintf (format_string, "%%%ds %%d %%%ds", FILEIO_USER_NAME_SIZE - 1, CUB_MAXHOSTNAMELEN - 1);
       if (fscanf (fp, format_string, user, &pid, host) != 3)
 	{
 	  strcpy (user, "???");
@@ -1773,7 +1779,7 @@ fileio_check_lockby_file (char *name_info_lock_p)
       /* Check for same process, same user, same host */
       getuserid (login_name, FILEIO_USER_NAME_SIZE);
 
-      if (pid == GETPID () && strcmp (user, login_name) == 0 && GETHOSTNAME (host2, MAXHOSTNAMELEN) == 0
+      if (pid == GETPID () && strcmp (user, login_name) == 0 && GETHOSTNAME (host2, CUB_MAXHOSTNAMELEN) == 0
 	  && strcmp (host, host2) == 0)
 	{
 	  (void) remove (name_info_lock_p);
@@ -2880,7 +2886,8 @@ error:
  *   reset_lsa(in): The reset recovery information LSA
  */
 int
-fileio_reset_volume (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, DKNPAGES npages, LOG_LSA * reset_lsa_p)
+fileio_reset_volume (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, DKNPAGES npages,
+		     const LOG_LSA * reset_lsa_p)
 {
   PAGEID page_id;
   FILEIO_PAGE *malloc_io_page_p;
@@ -4926,8 +4933,7 @@ fileio_get_number_of_partition_free_pages (const char *path_p, size_t page_size)
   return (free_space (path_p, (int) IO_PAGESIZE));
 #else /* WINDOWS */
   int vol_fd;
-  INT64 npages = -1;
-
+  INT64 npages_of_partition = -1;
 #if defined(SOLARIS)
   struct statvfs buf;
 #else /* SOLARIS */
@@ -4936,20 +4942,18 @@ fileio_get_number_of_partition_free_pages (const char *path_p, size_t page_size)
 
 #if defined(SOLARIS)
   if (statvfs (path_p, &buf) == -1)
-    {
 #elif defined(AIX)
   if (statfs ((char *) path_p, &buf) == -1)
-    {
 #else /* AIX */
   if (statfs (path_p, &buf) == -1)
-    {
 #endif /* AIX */
-
+    {
       if (errno == ENOENT
 	  && ((vol_fd = fileio_open (path_p, FILEIO_DISK_FORMAT_MODE, FILEIO_DISK_PROTECTION_MODE)) != NULL_VOLDES))
 	{
 	  /* The given file did not exist. We create it for temporary consumption then it is removed */
-	  npages = fileio_get_number_of_partition_free_pages (path_p, page_size);
+	  npages_of_partition = fileio_get_number_of_partition_free_pages (path_p, page_size);
+
 	  /* Close the file and remove it */
 	  fileio_close (vol_fd);
 	  (void) remove (path_p);
@@ -4961,29 +4965,24 @@ fileio_get_number_of_partition_free_pages (const char *path_p, size_t page_size)
     }
   else
     {
-#if defined(SOLARIS)
-      npages = (buf.f_bavail / page_size) * ((off_t) buf.f_frsize);
-#else /* SOLARIS */
-      npages = (buf.f_bavail / page_size) * ((off_t) buf.f_bsize);
-#endif /* SOLARIS */
-
-      if (npages < 0 || npages > INT_MAX)
+      const size_t io_pagesize_in_block = page_size / buf.f_bsize;
+      npages_of_partition = buf.f_bavail / io_pagesize_in_block;
+      if (npages_of_partition < 0 || npages_of_partition > INT_MAX)
 	{
-	  npages = INT_MAX;
+	  npages_of_partition = INT_MAX;
 	}
     }
 
-  if (npages < 0)
+  if (npages_of_partition < 0)
     {
       return -1;
     }
   else
     {
-      assert (npages <= INT_MAX);
+      assert (npages_of_partition <= INT_MAX);
 
-      return (int) npages;
+      return (int) npages_of_partition;
     }
-
 #endif /* WINDOWS */
 }
 
@@ -5000,8 +4999,7 @@ fileio_get_number_of_partition_free_sectors (const char *path_p)
   return (DKNSECTS) free_space (path_p, IO_SECTORSIZE);
 #else /* WINDOWS */
   int vol_fd;
-  INT64 nsects = -1;
-
+  INT64 nsectors_of_partition = -1;
 #if defined(SOLARIS)
   struct statvfs buf;
 #else /* SOLARIS */
@@ -5010,20 +5008,18 @@ fileio_get_number_of_partition_free_sectors (const char *path_p)
 
 #if defined(SOLARIS)
   if (statvfs (path_p, &buf) == -1)
-    {
 #elif defined(AIX)
   if (statfs ((char *) path_p, &buf) == -1)
-    {
 #else /* AIX */
   if (statfs (path_p, &buf) == -1)
-    {
 #endif /* AIX */
-
+    {
       if (errno == ENOENT
 	  && ((vol_fd = fileio_open (path_p, FILEIO_DISK_FORMAT_MODE, FILEIO_DISK_PROTECTION_MODE)) != NULL_VOLDES))
 	{
 	  /* The given file did not exist. We create it for temporary consumption then it is removed */
-	  nsects = fileio_get_number_of_partition_free_sectors (path_p);
+	  nsectors_of_partition = fileio_get_number_of_partition_free_sectors (path_p);
+
 	  /* Close the file and remove it */
 	  fileio_close (vol_fd);
 	  (void) remove (path_p);
@@ -5035,29 +5031,24 @@ fileio_get_number_of_partition_free_sectors (const char *path_p)
     }
   else
     {
-#if defined(SOLARIS)
-      nsects = (buf.f_bavail / IO_SECTORSIZE) * ((off_t) buf.f_frsize);
-#else /* SOLARIS */
-      nsects = (buf.f_bavail / IO_SECTORSIZE) * ((off_t) buf.f_bsize);
-#endif /* SOLARIS */
-
-      if (nsects < 0 || nsects > INT_MAX)
+      const size_t io_sectorsize_in_block = IO_SECTORSIZE / buf.f_bsize;
+      nsectors_of_partition = buf.f_bavail / io_sectorsize_in_block;
+      if (nsectors_of_partition < 0 || nsectors_of_partition > INT_MAX)
 	{
-	  nsects = INT_MAX;
+	  nsectors_of_partition = INT_MAX;
 	}
     }
 
-  if (nsects < 0)
+  if (nsectors_of_partition < 0)
     {
       return -1;
     }
   else
     {
-      assert (nsects <= INT_MAX);
+      assert (nsectors_of_partition <= INT_MAX);
 
-      return (DKNSECTS) nsects;
+      return (DKNSECTS) nsectors_of_partition;
     }
-
 #endif /* WINDOWS */
 }
 

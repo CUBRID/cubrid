@@ -26,10 +26,11 @@
 
 #ident "$Id$"
 
-#include "system_parameter.h"
-#include "porting.h"
-#include "master_util.h"
 #include "heartbeat.h"
+#include "log_lsa.hpp"
+#include "master_util.h"
+#include "porting.h"
+#include "system_parameter.h"
 
 #if defined (LINUX)
 #include <netinet/in.h>
@@ -203,7 +204,7 @@ struct hb_node_entry
   HB_NODE_ENTRY *next;
   HB_NODE_ENTRY **prev;
 
-  char host_name[MAXHOSTNAMELEN];
+  char host_name[CUB_MAXHOSTNAMELEN];
   unsigned short priority;
   HB_NODE_STATE_TYPE state;
   short score;
@@ -219,7 +220,7 @@ struct hb_ping_host_entry
   HB_PING_HOST_ENTRY *next;
   HB_PING_HOST_ENTRY **prev;
 
-  char host_name[MAXHOSTNAMELEN];
+  char host_name[CUB_MAXHOSTNAMELEN];
   int ping_result;
 };
 
@@ -230,7 +231,7 @@ struct hb_ui_node_entry
   HB_UI_NODE_ENTRY *next;
   HB_UI_NODE_ENTRY **prev;
 
-  char host_name[MAXHOSTNAMELEN];
+  char host_name[CUB_MAXHOSTNAMELEN];
   char group_id[HB_MAX_GROUP_ID_LEN];
   struct sockaddr_in saddr;
   struct timeval last_recv_time;
@@ -247,7 +248,7 @@ struct hb_cluster
 
   HB_NODE_STATE_TYPE state;
   char group_id[HB_MAX_GROUP_ID_LEN];
-  char host_name[MAXHOSTNAMELEN];
+  char host_name[CUB_MAXHOSTNAMELEN];
 
   int num_nodes;
   HB_NODE_ENTRY *nodes;

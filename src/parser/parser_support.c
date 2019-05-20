@@ -36,6 +36,7 @@
 #include <stdarg.h>
 #endif
 
+#include "authenticate.h"
 #include "chartype.h"
 #include "parser.h"
 #include "parser_message.h"

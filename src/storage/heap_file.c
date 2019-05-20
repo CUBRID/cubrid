@@ -37,14 +37,18 @@
 #include "heap_file.h"
 
 #include "porting.h"
+#include "porting_inline.hpp"
+#include "record_descriptor.hpp"
 #include "slotted_page.h"
 #include "overflow_file.h"
 #include "boot_sr.h"
 #include "locator_sr.h"
 #include "btree.h"
+#include "btree_unique.hpp"
 #include "transform.h"		/* for CT_SERIAL_NAME */
 #include "serial.h"
 #include "object_primitive.h"
+#include "object_representation_sr.h"
 #include "xserver_interface.h"
 #include "chartype.h"
 #include "query_executor.h"
@@ -54,6 +58,7 @@
 #include "db_elo.h"
 #include "string_opfunc.h"
 #include "xasl.h"
+#include "xasl_unpack_info.hpp"
 #include "stream_to_xasl.h"
 #include "query_opfunc.h"
 #include "set_object.h"
@@ -63,6 +68,9 @@
 #include "dbtype.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #include "db_value_printer.hpp"
+#include "log_append.hpp"
+
+#include <set>
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -718,7 +726,7 @@ static int heap_get_spage_type (void);
 static bool heap_is_reusable_oid (const FILE_TYPE file_type);
 
 static SCAN_CODE heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-							   RECDES * old_recdes, RECDES * new_recdes,
+							   RECDES * old_recdes, record_descriptor * new_recdes,
 							   int lob_create_flag);
 static int heap_stats_del_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid);
 static int heap_stats_del_bestspace_by_hfid (THREAD_ENTRY * thread_p, const HFID * hfid);
@@ -5305,9 +5313,7 @@ end:
   log_sysop_attach_to_outer (thread_p);
   vacuum_log_add_dropped_file (thread_p, &hfid->vfid, class_oid, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
-  LOG_CS_ENTER (thread_p);
-  logpb_flush_pages_direct (thread_p);
-  LOG_CS_EXIT (thread_p);
+  logpb_force_flush_pages (thread_p);
 
   return NO_ERROR;
 
@@ -6700,7 +6706,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   scan_cache->area = NULL;
   scan_cache->area_size = -1;
   scan_cache->num_btids = 0;
-  scan_cache->index_stat_info = NULL;
+  scan_cache->m_index_stats = NULL;
 
   scan_cache->debug_initpattern = HEAP_DEBUG_SCANCACHE_INITPATTERN;
   scan_cache->mvcc_snapshot = mvcc_snapshot;
@@ -6719,7 +6725,7 @@ exit_on_error:
   scan_cache->area = NULL;
   scan_cache->area_size = 0;
   scan_cache->num_btids = 0;
-  scan_cache->index_stat_info = NULL;
+  scan_cache->m_index_stats = NULL;
   scan_cache->file_type = FILE_UNKNOWN_TYPE;
   scan_cache->debug_initpattern = 0;
   scan_cache->mvcc_snapshot = NULL;
@@ -6782,7 +6788,7 @@ heap_scancache_start_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
 {
   OR_CLASSREP *classrepr = NULL;
   int classrepr_cacheindex = -1;
-  int malloc_size, i;
+  int i;
   int ret = NO_ERROR;
 
   if (heap_scancache_start_internal (thread_p, scan_cache, hfid, NULL, false, false, false, mvcc_snapshot) != NO_ERROR)
@@ -6815,28 +6821,12 @@ heap_scancache_start_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
 
       if (scan_cache->num_btids > 0)
 	{
-	  /* allocate local btree statistical information structure */
-	  malloc_size = sizeof (BTREE_UNIQUE_STATS) * scan_cache->num_btids;
-
-	  if (scan_cache->index_stat_info != NULL)
-	    {
-	      db_private_free (thread_p, scan_cache->index_stat_info);
-	    }
-
-	  scan_cache->index_stat_info = (BTREE_UNIQUE_STATS *) db_private_alloc (thread_p, malloc_size);
-	  if (scan_cache->index_stat_info == NULL)
-	    {
-	      ret = ER_OUT_OF_VIRTUAL_MEMORY;
-	      heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
-	      goto exit_on_error;
-	    }
+	  delete scan_cache->m_index_stats;
+	  scan_cache->m_index_stats = new multi_index_unique_stats ();
 	  /* initialize the structure */
 	  for (i = 0; i < scan_cache->num_btids; i++)
 	    {
-	      BTID_COPY (&(scan_cache->index_stat_info[i].btid), &(classrepr->indexes[i].btid));
-	      scan_cache->index_stat_info[i].num_nulls = 0;
-	      scan_cache->index_stat_info[i].num_keys = 0;
-	      scan_cache->index_stat_info[i].num_oids = 0;
+	      scan_cache->m_index_stats->add_empty (classrepr->indexes[i].btid);
 	    }
 	}
 
@@ -6845,7 +6835,7 @@ heap_scancache_start_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
     }
 
   /* In case of SINGLE_ROW_INSERT, SINGLE_ROW_UPDATE, SINGLE_ROW_DELETE, or SINGLE_ROW_MODIFY, the 'num_btids' and
-   * 'index_stat_info' of scan cache structure have to be set as 0 and NULL, respectively. */
+   * 'm_index_stats' of scan cache structure have to be set as 0 and NULL, respectively. */
 
   return ret;
 
@@ -7018,7 +7008,7 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
   scan_cache->area = NULL;
   scan_cache->area_size = 0;
   scan_cache->num_btids = 0;
-  scan_cache->index_stat_info = NULL;
+  scan_cache->m_index_stats = NULL;
   scan_cache->file_type = FILE_UNKNOWN_TYPE;
   scan_cache->debug_initpattern = HEAP_DEBUG_SCANCACHE_INITPATTERN;
   scan_cache->mvcc_snapshot = NULL;
@@ -7049,12 +7039,9 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
     }
   else
     {
-      if (scan_cache->index_stat_info != NULL)
-	{
-	  /* deallocate memory space allocated for index stat info. */
-	  db_private_free_and_init (thread_p, scan_cache->index_stat_info);
-	  scan_cache->num_btids = 0;
-	}
+      delete scan_cache->m_index_stats;
+      scan_cache->m_index_stats = NULL;
+      scan_cache->num_btids = 0;
 
       if (scan_cache->cache_last_fix_page == true)
 	{
@@ -7534,7 +7521,7 @@ try_again:
 	  return S_DOESNT_EXIST;
 	}
       /* REC_NEWHOME are only allowed to be accessed through REC_RELOCATION slots. */
-      /* Fall through to error. */
+      /* FALLTHRU */
     default:
       /* Unexpected case. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_BAD_OBJECT_TYPE, 3, context->oid_p->volid,
@@ -8839,7 +8826,7 @@ heap_is_object_not_null (THREAD_ENTRY * thread_p, OID * class_oid, const OID * o
       goto exit_on_end;
     }
   /* Make a copy of snapshot. We need all MVCC information, but we also want to change the visibility function. */
-  copy_mvcc_snapshot = *mvcc_snapshot_ptr;
+  mvcc_snapshot_ptr->copy_to (copy_mvcc_snapshot);
   copy_mvcc_snapshot.snapshot_fnc = mvcc_is_not_deleted_for_snapshot;
   scan_cache.mvcc_snapshot = &copy_mvcc_snapshot;
 
@@ -11432,7 +11419,7 @@ re_check:
  */
 SCAN_CODE
 heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
-				 RECDES * new_recdes)
+				 record_descriptor * new_recdes)
 {
   return heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, new_recdes, LOB_FLAG_INCLUDE_LOB);
 }
@@ -11452,7 +11439,7 @@ heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * 
  */
 SCAN_CODE
 heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-					    RECDES * old_recdes, RECDES * new_recdes)
+					    RECDES * old_recdes, record_descriptor * new_recdes)
 {
   return heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, new_recdes, LOB_FLAG_EXCLUDE_LOB);
 }
@@ -11473,7 +11460,7 @@ heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_
  */
 static SCAN_CODE
 heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
-					  RECDES * new_recdes, int lob_create_flag)
+					  record_descriptor * new_recdes, int lob_create_flag)
 {
   OR_BUF orep, *buf;
   char *ptr_bound, *ptr_varvals;
@@ -11484,10 +11471,16 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   SCAN_CODE status;
   int i;
   DB_VALUE *dbvalue = NULL;
-  int expected_size, tmp;
+  size_t expected_size;
+  int tmp;
   volatile int offset_size;
   int mvcc_wasted_space = 0, header_size;
   bool is_mvcc_class;
+  // *INDENT-OFF*
+  std::set<int> incremented_attrids;
+  // *INDENT-ON*
+
+  assert (new_recdes != NULL);
 
   /* check to make sure the attr_info has been used, it should not be empty. */
   if (attr_info->num_values == -1)
@@ -11504,10 +11497,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
     }
 
   /* Start transforming the dbvalues into disk values for the object */
-  OR_BUF_INIT2 (orep, new_recdes->data, new_recdes->area_size);
-  buf = &orep;
-
   is_mvcc_class = !mvcc_is_mvcc_disabled_class (&(attr_info->class_oid));
+
   expected_size = heap_attrinfo_get_disksize (attr_info, is_mvcc_class, &tmp);
   offset_size = tmp;
 
@@ -11524,6 +11515,12 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
   /* reserve enough space if need to add additional MVCC header info */
   expected_size += mvcc_wasted_space;
+
+resize_and_start:
+
+  new_recdes->resize_buffer (expected_size);
+  OR_BUF_INIT2 (orep, new_recdes->get_data_for_modify (), (int) expected_size);
+  buf = &orep;
 
   switch (_setjmp (buf->env))
     {
@@ -11604,8 +11601,9 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
       if (ptr_varvals + mvcc_wasted_space >= buf->endptr)
 	{
-	  new_recdes->length = -expected_size;	/* set to negative */
-	  return S_DOESNT_FIT;
+	  // is it possible?
+	  expected_size += DB_PAGESIZE;
+	  goto resize_and_start;
 	}
 
       for (i = 0; i < attr_info->num_values; i++)
@@ -11626,20 +11624,21 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	      /*
 	       * Fixed attribute
 	       * Write the fixed attributes values, if unbound, does not matter
-	       * what value is stored. We need to set the appropiate bit in the
+	       * what value is stored. We need to set the appropriate bit in the
 	       * bound bit array for fixed attributes. For variable attributes,
 	       */
 	      buf->ptr = (buf->buffer
 			  + OR_FIXED_ATTRIBUTES_OFFSET_BY_OBJ (buf->buffer, attr_info->last_classrepr->n_variable)
 			  + value->last_attrepr->location);
 
-	      if (value->do_increment)
+	      if (value->do_increment && (incremented_attrids.find (i) == incremented_attrids.end ()))
 		{
 		  if (qdata_increment_dbval (dbvalue, dbvalue, value->do_increment) != NO_ERROR)
 		    {
 		      status = S_ERROR;
 		      break;
 		    }
+		  incremented_attrids.insert (i);
 		}
 
 	      if (dbvalue == NULL || db_value_is_null (dbvalue) == true)
@@ -11772,7 +11771,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	}
 
       /* Record the length of the object */
-      new_recdes->length = CAST_BUFLEN (ptr_varvals - buf->buffer);
+      new_recdes->set_record_length (ptr_varvals - buf->buffer);
 
       /* if not enough MVCC wasted space need to reallocate */
       if (ptr_varvals + mvcc_wasted_space < buf->endptr)
@@ -11784,30 +11783,10 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
        * if the longjmp status was anything other than ER_TF_BUFFER_OVERFLOW,
        * it represents an error condition and er_set will have been called
        */
+      /* FALLTHRU */
     case ER_TF_BUFFER_OVERFLOW:
-
-      status = S_DOESNT_FIT;
-
-      /*
-       * Give a hint of the needed space. The hint is given as a negative
-       * value in the record descriptor length. Make sure that this length
-       * is larger than the current record descriptor area.
-       */
-
-      new_recdes->length = -expected_size;	/* set to negative */
-
-      if (new_recdes->area_size > -new_recdes->length)
-	{
-	  /*
-	   * This may be an error. The estimated disk size is smaller
-	   * than the current record descriptor area size. For now assume
-	   * at least 20% above the current area descriptor. The main problem
-	   * is that heap_attrinfo_get_disksize () guess its size as much as
-	   * possible
-	   */
-	  new_recdes->length = -(int) (new_recdes->area_size * 1.20);
-	}
-      break;
+      expected_size += DB_PAGESIZE;
+      goto resize_and_start;
 
     default:
       status = S_ERROR;
@@ -17261,7 +17240,7 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
   char *expr_stream = NULL;
   int expr_stream_size = 0;
   FUNC_PRED *func_pred = NULL;
-  void *unpack_info = NULL;
+  XASL_UNPACK_INFO *unpack_info = NULL;
   DB_VALUE *res = NULL;
   int i, nr_atts;
   ATTR_ID *atts = NULL;
@@ -17369,9 +17348,7 @@ end:
   if (unpack_info)
     {
       (void) qexec_clear_func_pred (thread_p, func_pred);
-      stx_free_additional_buff (thread_p, unpack_info);
-      stx_free_xasl_unpack_info (unpack_info);
-      db_private_free_and_init (thread_p, unpack_info);
+      free_xasl_unpack_info (thread_p, unpack_info);
     }
 
   return error;
@@ -17541,9 +17518,7 @@ heap_free_func_pred_unpack_info (THREAD_ENTRY * thread_p, int n_indexes, FUNC_PR
 
       if (func_indx_preds[i].unpack_info)
 	{
-	  stx_free_additional_buff (thread_p, func_indx_preds[i].unpack_info);
-	  stx_free_xasl_unpack_info (func_indx_preds[i].unpack_info);
-	  db_private_free_and_init (thread_p, func_indx_preds[i].unpack_info);
+	  free_xasl_unpack_info (thread_p, func_indx_preds[i].unpack_info);
 	}
     }
   db_private_free_and_init (thread_p, func_indx_preds);
@@ -21640,9 +21615,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
       if (is_mvcc_op)
 	{
 	  /* log home no change; vacuum needs it to reach the updated overflow record */
-	  LOG_DATA_ADDR log_addr;
-
-	  LOG_SET_DATA_ADDR (&log_addr, context->home_page_watcher_p->pgptr, &context->hfid.vfid, context->oid.slotid);
+	  LOG_DATA_ADDR log_addr (&context->hfid.vfid, context->home_page_watcher_p->pgptr, context->oid.slotid);
 
 	  heap_mvcc_log_home_no_change (thread_p, &log_addr);
 
@@ -22892,7 +22865,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     case REC_ASSIGN_ADDRESS:
       /* it's not an old record, it was inserted in this transaction */
       context->is_logical_old = false;
-      /* fall trough */
+      /* FALLTHRU */
     case REC_HOME:
       rc = heap_update_home (thread_p, context, is_mvcc_op);
       break;

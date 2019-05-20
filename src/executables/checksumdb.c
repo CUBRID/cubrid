@@ -31,6 +31,7 @@
 #include <ctype.h>
 #include <assert.h>
 
+#include "authenticate.h"
 #include "error_code.h"
 #include "system_parameter.h"
 #include "message_catalog.h"

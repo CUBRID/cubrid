@@ -34,7 +34,7 @@
 #include "fetch.h"
 #include "list_file.h"
 #include "object_primitive.h"
-#include "regu_var.h"
+#include "regu_var.hpp"
 #include "set_object.h"
 #include "xasl.h"
 #include "dbtype.h"

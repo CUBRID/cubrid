@@ -92,7 +92,7 @@ static unsigned int
 ini_table_hash (char *key)
 {
   size_t len;
-  int i;
+  size_t i;
   unsigned int hash;
 
   len = strlen (key);

@@ -40,7 +40,7 @@ extern void fpcache_finalize (THREAD_ENTRY * thread_p);
 extern int fpcache_claim (THREAD_ENTRY * thread_p, BTID * btid, or_predicate * or_pred,
 			  pred_expr_with_context ** pred_expr);
 extern int fpcache_retire (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, pred_expr_with_context * filter_pred);
-extern void fpcache_remove_by_class (THREAD_ENTRY * thread_p, OID * class_oid);
+extern void fpcache_remove_by_class (THREAD_ENTRY * thread_p, const OID * class_oid);
 extern void fpcache_drop_all (THREAD_ENTRY * thread_p);
 extern void fpcache_dump (THREAD_ENTRY * thread_p, FILE * fp);
 

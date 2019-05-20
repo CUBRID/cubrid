@@ -33,6 +33,7 @@
 #include <limits.h>
 #include <ctype.h>
 
+#include "authenticate.h"
 #include "show_meta.h"
 #include "error_manager.h"
 #include "parser.h"

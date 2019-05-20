@@ -32,7 +32,9 @@
 #include <stdarg.h>
 #include <ctype.h>
 #include <assert.h>
+#include <signal.h>
 
+#include "authenticate.h"
 #include "porting.h"
 #include "system_parameter.h"
 #include "storage_common.h"
@@ -67,6 +69,7 @@
 
 #if !defined(WINDOWS)
 void (*prev_sigfpe_handler) (int) = SIG_DFL;
+#include "tcp.h"
 #else
 #include "wintcp.h"
 #endif /* !WINDOWS */
@@ -75,7 +78,7 @@ void (*prev_sigfpe_handler) (int) = SIG_DFL;
 typedef struct db_host_status DB_HOST_STATUS;
 struct db_host_status
 {
-  char hostname[MAXHOSTNAMELEN];
+  char hostname[CUB_MAXHOSTNAMELEN];
   int status;
 };
 
@@ -250,13 +253,8 @@ db_init (const char *program, int print_version, const char *dbname, const char 
     }
 
   client_credential.client_type = BOOT_CLIENT_ADMIN_UTILITY;
-  client_credential.client_info = NULL;
-  client_credential.db_name = (char *) dbname;
-  client_credential.db_user = NULL;
-  client_credential.db_password = NULL;
-  client_credential.program_name = (char *) program;
-  client_credential.login_name = NULL;
-  client_credential.host_name = NULL;
+  client_credential.db_name = dbname;
+  client_credential.program_name = program;
   client_credential.process_id = -1;
 
   db_path_info.db_path = (char *) db_path;
@@ -886,13 +884,8 @@ db_restart (const char *program, int print_version, const char *volume)
       db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 
       client_credential.client_type = (BOOT_CLIENT_TYPE) db_Client_type;
-      client_credential.client_info = NULL;
-      client_credential.db_name = (char *) volume;
-      client_credential.db_user = NULL;
-      client_credential.db_password = NULL;
-      client_credential.program_name = (char *) program;
-      client_credential.login_name = NULL;
-      client_credential.host_name = NULL;
+      client_credential.db_name = volume;
+      client_credential.program_name = program;
       client_credential.process_id = -1;
       client_credential.preferred_hosts = db_Preferred_hosts;
       client_credential.connect_order = db_Connect_order;
@@ -1939,10 +1932,10 @@ db_get_user_and_host_name (void)
 {
   char *user = NULL;
   char *username = NULL;
-  char hostname[MAXHOSTNAMELEN];
+  char hostname[CUB_MAXHOSTNAMELEN];
   int len;
 
-  if (GETHOSTNAME (hostname, MAXHOSTNAMELEN) != 0)
+  if (GETHOSTNAME (hostname, CUB_MAXHOSTNAMELEN) != 0)
     {
       return NULL;
     }

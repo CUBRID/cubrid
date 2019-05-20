@@ -45,6 +45,7 @@
 #include <netdb.h>
 #endif /* !WINDOWS */
 
+#include "authenticate.h"
 #include "csql.h"
 #include "system_parameter.h"
 #include "message_catalog.h"
@@ -2115,7 +2116,7 @@ csql_print_database (void)
   struct sockaddr_in sin;
   const char *db_name, *host_name;
   char *pstr;
-  char converted_host_name[MAXHOSTNAMELEN + 1];
+  char converted_host_name[CUB_MAXHOSTNAMELEN + 1];
   char ha_state[16];
   int res;
 
@@ -2140,19 +2141,19 @@ csql_print_database (void)
        */
       if (res != 0)
 	{
-	  strncpy (converted_host_name, host_name, MAXHOSTNAMELEN);
-	  converted_host_name[MAXHOSTNAMELEN] = '\0';
+	  strncpy (converted_host_name, host_name, CUB_MAXHOSTNAMELEN);
+	  converted_host_name[CUB_MAXHOSTNAMELEN] = '\0';
 	}
 
       if (strcasecmp (converted_host_name, "localhost") == 0
 	  || strcasecmp (converted_host_name, "localhost.localdomain") == 0)
 	{
-	  if (GETHOSTNAME (converted_host_name, MAXHOSTNAMELEN) != 0)
+	  if (GETHOSTNAME (converted_host_name, CUB_MAXHOSTNAMELEN) != 0)
 	    {
-	      strncpy (converted_host_name, host_name, MAXHOSTNAMELEN);
+	      strncpy (converted_host_name, host_name, CUB_MAXHOSTNAMELEN);
 	    }
 	}
-      converted_host_name[MAXHOSTNAMELEN] = '\0';
+      converted_host_name[CUB_MAXHOSTNAMELEN] = '\0';
 
       /*
        * if there is hostname or ip address in db_name,

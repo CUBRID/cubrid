@@ -84,7 +84,6 @@ void csql_yyerror (const char *s);
 extern int g_msg[1024];
 extern int msg_ptr;
 extern int yybuffer_pos;
-extern size_t json_table_column_count;
 /*%CODE_END%*/%}
 
 %{
@@ -696,6 +695,8 @@ int g_original_buffer_len;
 %type <number> show_type_id_dot_id
 %type <number> kill_type
 %type <number> procedure_or_function
+%type <boolean> opt_analytic_from_last
+%type <boolean> opt_analytic_ignore_nulls
 /*}}}*/
 
 /* define rule type (node) */
@@ -986,8 +987,6 @@ int g_original_buffer_len;
 %type <node> session_variable_definition
 %type <node> session_variable_expression
 %type <node> session_variable_list
-%type <node> opt_analytic_from_last
-%type <node> opt_analytic_ignore_nulls
 %type <node> opt_analytic_partition_by
 %type <node> opt_over_analytic_partition_by
 %type <node> opt_analytic_order_by
@@ -1848,8 +1847,8 @@ stmt
 
 			    if (node)
 			      {
-				char *curr_ptr = this_parser->original_buffer + pos;
-				int len = curr_ptr - g_query_string;
+				const char *curr_ptr = this_parser->original_buffer + pos;
+				int len = (int) (curr_ptr - g_query_string);
 				node->sql_user_text_len = len;
 				g_query_string_len = len;
 			      }
@@ -1960,7 +1959,7 @@ stmt_
 			PT_NODE *dt, *set_dt;
 			PT_TYPE_ENUM typ;
 
-			typ = TO_NUMBER (CONTAINER_AT_0 ($2));
+			typ = (PT_TYPE_ENUM) TO_NUMBER (CONTAINER_AT_0 ($2));
 			dt = CONTAINER_AT_1 ($2);
 
 			if (!dt)
@@ -2441,8 +2440,7 @@ session_variable
 			      pt_append_bytes (this_parser, NULL,
 			      				   id->info.name.original,
 			      				   strlen (id->info.name.original));
-			    node->info.value.text =
-			      node->info.value.data_value.str->bytes;
+			    node->info.value.text = (const char *) node->info.value.data_value.str->bytes;
 			  }
 
 			$$ = node;
@@ -3484,7 +3482,7 @@ alter_stmt
 			 * 1: increment_val,
 			 * 2: max_val,
 			 * 3: no_max,
-			 * 4: min_val,
+			 * 4: min_val, 
 			 * 5: no_min,
 			 * 6: cyclic,
 			 * 7: no_cyclic,
@@ -3496,13 +3494,13 @@ alter_stmt
 			PT_NODE *start_val = CONTAINER_AT_0 ($4);
 			PT_NODE *increment_val = CONTAINER_AT_1 ($4);
 			PT_NODE *max_val = CONTAINER_AT_2 ($4);
-			int no_max = TO_NUMBER (CONTAINER_AT_3 ($4));
+			int no_max = (int) TO_NUMBER (CONTAINER_AT_3 ($4));
 			PT_NODE *min_val = CONTAINER_AT_4 ($4);
-			int no_min = TO_NUMBER (CONTAINER_AT_5 ($4));
-			int cyclic = TO_NUMBER (CONTAINER_AT_6 ($4));
-			int no_cyclic = TO_NUMBER (CONTAINER_AT_7 ($4));
+			int no_min = (int) TO_NUMBER (CONTAINER_AT_5 ($4));
+			int cyclic = (int) TO_NUMBER (CONTAINER_AT_6 ($4));
+			int no_cyclic = (int) TO_NUMBER (CONTAINER_AT_7 ($4));
 			PT_NODE *cached_num_val = CONTAINER_AT_8 ($4);
-			int no_cache = TO_NUMBER (CONTAINER_AT_9 ($4));
+			int no_cache = (int) TO_NUMBER (CONTAINER_AT_9 ($4));
 			PT_NODE *comment = $5;
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SERIAL);
@@ -4484,7 +4482,7 @@ extended_table_spec_list
 			container_2 ctn;
 			PT_NODE *n1 = CONTAINER_AT_0 ($1);
 			PT_NODE *n2 = $3;
-			int number = TO_NUMBER (CONTAINER_AT_1 ($1));
+			int number = (int) TO_NUMBER (CONTAINER_AT_1 ($1));
 			SET_CONTAINER_2 (ctn, parser_make_link (n1, n2), FROM_NUMBER (number));
 			$$ = ctn;
 
@@ -9864,7 +9862,7 @@ attr_index_def
 			  }
 			node->info.index.column_names = col;
 			node->info.index.index_status = SM_NORMAL_INDEX;
-			if ($6 != NULL)
+			if ($6)
 				{
 					node->info.index.index_status = SM_INVISIBLE_INDEX;
 				}
@@ -11720,7 +11718,7 @@ opt_of_data_type_cursor
 	| data_type
 		{{
 
-			$$ = TO_NUMBER (CONTAINER_AT_0 ($1));
+			$$ = (int) TO_NUMBER (CONTAINER_AT_0 ($1));
 
 		DBG_PRINT}}
 	| CURSOR
@@ -15812,10 +15810,7 @@ reserved_func
 			    node->info.function.all_or_distinct = PT_ALL;
 			    node->info.function.arg_list = $3;
 
-			    if ($5 == PT_IGNORE_NULLS)
-			      {
-			        node->info.function.analytic.ignore_nulls = true;
-			      }
+			    node->info.function.analytic.ignore_nulls = $5;
 
 			    node->info.function.analytic.is_analytic = true;
 			    node->info.function.analytic.partition_by = $8;
@@ -15845,15 +15840,8 @@ reserved_func
 				    node->info.function.analytic.default_value->type_enum = PT_TYPE_NULL;
 			      }
 
-			    if ($7 == PT_FROM_LAST)
-			      {
-			        node->info.function.analytic.from_last = true;
-			      }
-
-			    if ($8 == PT_IGNORE_NULLS)
-			      {
-			        node->info.function.analytic.ignore_nulls = true;
-			      }
+			    node->info.function.analytic.from_last = $7;
+			    node->info.function.analytic.ignore_nulls = $8;
 
 			    node->info.function.analytic.is_analytic = true;
 			    node->info.function.analytic.partition_by = $11;
@@ -17491,19 +17479,19 @@ opt_analytic_from_last
 	: /* empty */
 		{{
 
-			$$ = NULL;
+			$$ = false;
 
 		DBG_PRINT}}
 	| FROM FIRST
 		{{
 
-			$$ = NULL;
+			$$ = false;
 
 		DBG_PRINT}}
 	| FROM LAST
 		{{
 
-			$$ = PT_FROM_LAST;
+			$$ = true;
 
 		DBG_PRINT}}
 	;
@@ -17512,19 +17500,19 @@ opt_analytic_ignore_nulls
 	: /* empty */
 		{{
 
-			$$ = NULL;
+			$$ = false;
 
 		DBG_PRINT}}
 	| RESPECT NULLS
 		{{
 
-			$$ = NULL;
+			$$ = false;
 
 		DBG_PRINT}}
 	| IGNORE_ NULLS
 		{{
 
-			$$ = PT_IGNORE_NULLS;
+			$$ = true;
 
 		DBG_PRINT}}
 	;
@@ -20968,7 +20956,7 @@ signed_literal_
 			    {
 			      const char *min_big_int = "9223372036854775808";
 			      if (node->info.value.data_value.str->length == 19
-				  && (strcmp (node->info.value.data_value.str->bytes,
+				  && (strcmp ((const char *) node->info.value.data_value.str->bytes,
 				  	      min_big_int) == 0))
 			        {
 				  node->info.value.data_value.bigint = DB_BIGINT_MIN;
@@ -20983,9 +20971,7 @@ signed_literal_
 				  buf = pt_append_nulstring (this_parser, buf,
 							     minus_sign);
 				  buf = pt_append_nulstring (this_parser, buf,
-							     node->info.value.
-							     data_value.str->
-							     bytes);
+							     (const char *) node->info.value.data_value.str->bytes);
 				  node->info.value.data_value.str = buf;
 			        }
 			    }
@@ -21029,8 +21015,7 @@ signed_literal_
 			      buf = pt_append_nulstring (this_parser, buf,
 						       minus_sign);
 			      buf = pt_append_nulstring (this_parser, buf,
-						         node->info.value.
-						         data_value.str->bytes);
+						         (const char *) node->info.value.data_value.str->bytes);
 			      node->info.value.data_value.str = buf;
 			    }
 
@@ -26269,7 +26254,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 
       if(a2->node_type == PT_VALUE
          && PT_IS_STRING_TYPE(a2->type_enum)
-         && strcasecmp(a2->info.value.data_value.str->bytes, "default") == 0)
+         && strcasecmp((const char *) a2->info.value.data_value.str->bytes, "default") == 0)
         {
           PT_ERRORf (this_parser, a2, "check syntax at %s",
                      parser_print_tree (this_parser, a2));
@@ -26312,7 +26297,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
       /* prevent user input "default" */
       if (a2->node_type == PT_VALUE
           && a2->type_enum == PT_TYPE_CHAR
-          && strcasecmp (a2->info.value.data_value.str->bytes, "default") == 0)
+          && strcasecmp ((const char *) a2->info.value.data_value.str->bytes, "default") == 0)
         {
           PT_ERRORf (this_parser, a2, "check syntax at %s",
                      parser_print_tree (this_parser, a2));
@@ -27347,7 +27332,7 @@ pt_value_set_collation_info (PARSER_CONTEXT *parser, PT_NODE *node,
       assert (coll_node->node_type == PT_VALUE);
 
       assert (coll_node->info.value.data_value.str != NULL);
-      lang_coll = lang_get_collation_by_name (coll_node->info.value.data_value.str->bytes);
+      lang_coll = lang_get_collation_by_name ((const char *) coll_node->info.value.data_value.str->bytes);
     }
 
   if (lang_coll != NULL)
@@ -27450,7 +27435,7 @@ pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
   assert (coll_node->node_type == PT_VALUE);
 
   assert (coll_node->info.value.data_value.str != NULL);
-  lang_coll = lang_get_collation_by_name (coll_node->info.value.data_value.str->bytes);
+  lang_coll = lang_get_collation_by_name ((const char *) coll_node->info.value.data_value.str->bytes);
 
   if (lang_coll == NULL)
     {

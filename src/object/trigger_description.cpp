@@ -23,9 +23,15 @@
 
 #include "trigger_description.hpp"
 
+#include "authenticate.h"
 #include "dbi.h"
+#include "dbtype_function.h"
+#include "object_accessor.h"
+#include "object_print.h"
 #include "object_printer.hpp"
 #include "object_print_util.hpp"
+#include "printer.hpp"
+#include "set_object.h"
 #include "schema_manager.h"
 #include "trigger_manager.h"
 #include "work_space.h"
@@ -33,6 +39,9 @@
 /* safe string free */
 #define STRFREE_W(string)                               \
   if (string != NULL) db_string_free((char *) (string))
+
+static int is_required_trigger (TR_TRIGGER *trigger, DB_OBJLIST *classes);
+static char *get_user_name (DB_OBJECT *user);
 
 trigger_description::trigger_description ()
   : name (0)
@@ -215,4 +224,269 @@ void trigger_description::fprint (FILE *file)
 	  fprintf (file, "Comment '%s'\n", comment);
 	}
     }
+}
+
+/*
+ * tr_dump_trigger() - This function is used to dump a trigger definition in ASCII format so that it can be read and
+ * 		       re-defined from the csql interpreter.
+ *                     It is intended to support the unloaddb/loadbdb migration utilities.
+ *    return: error code
+ *    output_ctx(in/out): output context
+ *    trigger_object(in): trigger object
+ *    quoted_id_flag(in):
+ */
+int
+tr_dump_trigger (print_output &output_ctx, DB_OBJECT *trigger_object)
+{
+  int error = NO_ERROR;
+  TR_TRIGGER *trigger;
+  DB_TRIGGER_TIME time;
+  int save;
+  const char *name;
+
+  AU_DISABLE (save);
+
+  trigger = tr_map_trigger (trigger_object, 1);
+
+  if (trigger == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+    }
+  else if (trigger->status != TR_STATUS_INVALID)
+    {
+      /* automatically filter out invalid triggers */
+
+      output_ctx ("CREATE TRIGGER ");
+      output_ctx ("[%s]\n", trigger->name);
+      output_ctx ("  STATUS %s\n", tr_status_as_string (trigger->status));
+      output_ctx ("  PRIORITY %f\n", trigger->priority);
+
+      time = TR_TIME_BEFORE;
+      if (trigger->condition != NULL)
+	{
+	  time = trigger->condition->time;
+	}
+      else if (trigger->action != NULL)
+	{
+	  time = trigger->action->time;
+	}
+
+      /* BEFORE UPDATE etc. */
+      output_ctx ("  %s %s", tr_time_as_string (time), tr_event_as_string (trigger->event));
+
+      if (trigger->class_mop != NULL)
+	{
+	  name = db_get_class_name (trigger->class_mop);
+	  output_ctx (" ON ");
+	  output_ctx ("[%s]", name);
+
+	  if (trigger->attribute != NULL)
+	    {
+	      output_ctx ("([%s])", trigger->attribute);
+	    }
+	}
+      output_ctx ("\n");
+
+      if (trigger->condition != NULL)
+	{
+	  output_ctx ("IF %s\n", trigger->condition->source);
+	}
+
+      if (trigger->action != NULL)
+	{
+	  output_ctx ("  EXECUTE ");
+	  if (trigger->action->time != time)
+	    {
+	      output_ctx ("%s ", tr_time_as_string (trigger->action->time));
+	    }
+	  switch (trigger->action->type)
+	    {
+	    case TR_ACT_EXPRESSION:
+	      output_ctx ("%s", trigger->action->source);
+	      break;
+	    case TR_ACT_REJECT:
+	      output_ctx ("REJECT");
+	      break;
+	    case TR_ACT_INVALIDATE:
+	      output_ctx ("INVALIDATE TRANSACTION");
+	      break;
+	    case TR_ACT_PRINT:
+	      output_ctx ("PRINT '%s'", trigger->action->source);
+	      break;
+	    default:
+	      output_ctx ("???");
+	      break;
+	    }
+	}
+
+      if (trigger->comment != NULL && trigger->comment[0] != '\0')
+	{
+	  output_ctx (" ");
+	  help_print_describe_comment (output_ctx, trigger->comment);
+	}
+
+      output_ctx (";\n");
+    }
+
+  AU_ENABLE (save);
+  return error;
+}
+
+
+/*
+ * tr_dump_selective_triggers() -
+ *    return: error code
+ *    output_ctx(in/out):
+ *    quoted_id_flag(in):
+ *    classes(in):
+ */
+int
+tr_dump_selective_triggers (print_output &output_ctx, DB_OBJLIST *classes)
+{
+  int error = NO_ERROR;
+  TR_TRIGGER *trigger;
+  DB_SET *table;
+  DB_VALUE value;
+  DB_OBJECT *trigger_object;
+  int max, i;
+
+  if (Au_root == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  error = obj_get (Au_root, "triggers", &value);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (DB_IS_NULL (&value))
+    {
+      table = NULL;
+    }
+  else
+    {
+      table = db_get_set (&value);
+    }
+
+  if (table == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  error = set_filter (table);
+  max = set_size (table);
+  for (i = 1; i < max && error == NO_ERROR; i += 2)
+    {
+      error = set_get_element (table, i, &value);
+      if (error == NO_ERROR)
+	{
+	  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value) && db_get_object (&value) != NULL)
+	    {
+	      trigger_object = db_get_object (&value);
+	      trigger = tr_map_trigger (trigger_object, 1);
+	      if (trigger == NULL)
+		{
+		  ASSERT_ERROR_AND_SET (error);
+		}
+	      else
+		{
+		  int is_system_class = 0;
+
+		  if (trigger->class_mop != NULL && !is_required_trigger (trigger, classes))
+		    {
+		      continue;
+		    }
+
+		  /* don't dump system class triggers */
+		  if (trigger->class_mop != NULL)
+		    {
+		      is_system_class = sm_is_system_class (trigger->class_mop);
+		    }
+		  if (is_system_class == 0)
+		    {
+		      if (trigger->status != TR_STATUS_INVALID)
+			{
+			  tr_dump_trigger (output_ctx, trigger_object);
+			  output_ctx ("call [change_trigger_owner]('%s'," " '%s') on class [db_root];\n\n",
+				      trigger->name, get_user_name (trigger->owner));
+			}
+		    }
+		  else if (is_system_class < 0)
+		    {
+		      error = is_system_class;
+		    }
+		}
+	    }
+	}
+    }
+  set_free (table);
+
+  return error;
+}
+
+/*
+ * is_required_trigger() -
+ *    return: int
+ *    trigger(in):
+ *    classes(in):
+ */
+static int
+is_required_trigger (TR_TRIGGER *trigger, DB_OBJLIST *classes)
+{
+  DB_OBJLIST *cl;
+
+  for (cl = classes; cl != NULL; cl = cl->next)
+    {
+      if (trigger->class_mop == cl->op)
+	{
+	  return 1;
+	}
+    }
+
+  return 0;
+}
+
+/*
+ * get_user_name() - Shorthand function for getting the user name out of a user object.
+ *		     The name is stored in a static array so we don't have to worry about freeing it.
+ *    return: user name
+ *    user(in): user object
+ */
+static char *
+get_user_name (DB_OBJECT *user)
+{
+#define MAX_USER_NAME 32	/* actually its 8 */
+
+  static char namebuf[MAX_USER_NAME];
+
+  DB_VALUE value;
+  char *tmp;
+
+  if (db_get (user, "name", &value))
+    {
+      /* error */
+      strcpy (namebuf, "???");
+      return namebuf;
+    }
+
+  if (DB_VALUE_TYPE (&value) != DB_TYPE_STRING || DB_IS_NULL (&value) || db_get_string (&value) == NULL)
+    {
+      strcpy (namebuf, "???");
+    }
+  else
+    {
+      tmp = db_get_string (&value);
+      if (tmp)
+	{
+	  strncpy (namebuf, tmp, sizeof (namebuf) - 1);
+	}
+      namebuf[MAX_USER_NAME - 1] = '\0';
+    }
+  db_value_clear (&value);
+
+  return namebuf;
+
+#undef MAX_USER_NAME
 }
