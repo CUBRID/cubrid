@@ -362,9 +362,9 @@ struct pgbuf_show_status
 {
   struct now
   {
-    float hit_rate;  
-    unsigned long long num_hit;  
-    unsigned long long num_page_request;  
+    float hit_rate;
+    unsigned long long num_hit;
+    unsigned long long num_page_request;
     unsigned int free_pages;
     unsigned int victim_candidate_pages;
     unsigned int clean_pages;
@@ -378,11 +378,11 @@ struct pgbuf_show_status
     unsigned long long num_pages_read;
     unsigned int num_victim_waiting_threads;
   } now;
-    
+
   struct old
   {
-    unsigned long long num_hit;  
-    unsigned long long num_page_request;  
+    unsigned long long num_hit;
+    unsigned long long num_page_request;
     unsigned long long num_pages_created;
     unsigned long long num_pages_written;
     unsigned long long num_pages_read;
@@ -1188,7 +1188,7 @@ STATIC_INLINE int pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p) __attr
 static bool pgbuf_is_temp_lsa (const log_lsa & lsa);
 static void pgbuf_init_temp_page_lsa (FILEIO_PAGE * io_page, PGLENGTH page_size);
 
-int pgbuf_scan_bcb_table(THREAD_ENTRY * thread_p);
+int pgbuf_scan_bcb_table (THREAD_ENTRY * thread_p);
 
 #if defined (SERVER_MODE)
 // *INDENT-OFF*
@@ -1470,7 +1470,7 @@ pgbuf_initialize (void)
       goto error;
     }
 
-  pgbuf_Pool.show_status.old.print_out_time = time(NULL);
+  pgbuf_Pool.show_status.old.print_out_time = time (NULL);
 
 
   return NO_ERROR;
@@ -1820,8 +1820,8 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
       tsc_getticks (&perf.start_tick);
     }
 
-    //ATOMIC_INC_64 (&(pgbuf_Pool.show_status.now.num_page_request), 1);
-    pgbuf_Pool.show_status.now.num_page_request++;
+  //ATOMIC_INC_64 (&(pgbuf_Pool.show_status.now.num_page_request), 1);
+  pgbuf_Pool.show_status.now.num_page_request++;
 
 try_again:
 
@@ -7637,37 +7637,37 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	  /* Nothing to do, copied from DWB */
 	}
       else
-    { 
-      //ATOMIC_INC_64 (&(pgbuf_Pool.show_status.now.num_pages_read), 1);
-      pgbuf_Pool.show_status.now.num_pages_read++;
+	{
+	  //ATOMIC_INC_64 (&(pgbuf_Pool.show_status.now.num_pages_read), 1);
+	  pgbuf_Pool.show_status.now.num_pages_read++;
 
-      if (fileio_read (thread_p, fileio_get_volume_descriptor (vpid->volid), &bufptr->iopage_buffer->iopage,
-	      vpid->pageid, IO_PAGESIZE) == NULL)
-      {
-	    /* There was an error in reading the page. Clean the buffer... since it may have been corrupted */
-	    ASSERT_ERROR ();
+	  if (fileio_read (thread_p, fileio_get_volume_descriptor (vpid->volid), &bufptr->iopage_buffer->iopage,
+			   vpid->pageid, IO_PAGESIZE) == NULL)
+	    {
+	      /* There was an error in reading the page. Clean the buffer... since it may have been corrupted */
+	      ASSERT_ERROR ();
 
-	    /* bufptr->mutex will be released in following function. */
-	    pgbuf_put_bcb_into_invalid_list (thread_p, bufptr);
+	      /* bufptr->mutex will be released in following function. */
+	      pgbuf_put_bcb_into_invalid_list (thread_p, bufptr);
 
-	    /*
-	     * Now, caller is not holding any mutex.
-	     * the last argument of pgbuf_unlock_page () is true that
-	     * means hash_mutex must be held before unlocking page.
-	     */
-	    (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
+	      /*
+	       * Now, caller is not holding any mutex.
+	       * the last argument of pgbuf_unlock_page () is true that
+	       * means hash_mutex must be held before unlocking page.
+	       */
+	      (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
 
 #if defined(ENABLE_SYSTEMTAP)
-	    if (monitored == true)
-	      {
-	        CUBRID_IO_READ_END (query_id, IO_PAGESIZE, 1);
-	      }
+	      if (monitored == true)
+		{
+		  CUBRID_IO_READ_END (query_id, IO_PAGESIZE, 1);
+		}
 #endif /* ENABLE_SYSTEMTAP */
 
-	    PGBUF_BCB_CHECK_MUTEX_LEAKS ();
-	    return NULL;
-	  }
-    }
+	      PGBUF_BCB_CHECK_MUTEX_LEAKS ();
+	      return NULL;
+	    }
+	}
 
 #if defined(ENABLE_SYSTEMTAP)
       if (monitored == true)
@@ -11655,7 +11655,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 
 	  if (req_page_has_group == true)
 	    {
-          //이미 req_vpid보다 큰 vpid가 잡혀있으니까 풀었다 다시 잡아야함 (vpid 순서로 fix)
+	      //이미 req_vpid보다 큰 vpid가 잡혀있으니까 풀었다 다시 잡아야함 (vpid 순서로 fix)
 	      diff = pgbuf_compare_hold_vpid_for_sort (&req_page_holder_info, &ordered_holders_info[saved_pages_cnt]);
 	    }
 	  else
@@ -15930,7 +15930,8 @@ pgbuf_init_temp_page_lsa (FILEIO_PAGE * io_page, PGLENGTH page_size)
   prv2->lsa = PGBUF_TEMP_LSA;
 }
 
-void pgbuf_scan_bcb_table()
+void
+pgbuf_scan_bcb_table ()
 {
   int bufid;
   int flags;
@@ -15938,73 +15939,72 @@ void pgbuf_scan_bcb_table()
   PAGE_TYPE page_type;
   VPID vpid;
 
-  for(bufid = 0; bufid < pgbuf_Pool.num_buffers; bufid++)
-  {
-    bufptr = PGBUF_FIND_BCB_PTR (bufid);
-    page_type = (PAGE_TYPE) (bufptr->iopage_buffer->iopage.prv.ptype);
-    vpid = bufptr->vpid;
-    flags = bufptr->flags;
-
-    if((flags & PGBUF_BCB_DIRTY_FLAG) != 0)
+  for (bufid = 0; bufid < pgbuf_Pool.num_buffers; bufid++)
     {
-      pgbuf_Pool.show_status.now.dirty_pages++;
-    }
-    else
-    {
-      pgbuf_Pool.show_status.now.clean_pages++;
-    }
+      bufptr = PGBUF_FIND_BCB_PTR (bufid);
+      page_type = (PAGE_TYPE) (bufptr->iopage_buffer->iopage.prv.ptype);
+      vpid = bufptr->vpid;
+      flags = bufptr->flags;
 
-    if((flags & PGBUF_INVALID_ZONE) != 0)
-    {
-      pgbuf_Pool.show_status.now.free_pages++;
-      continue;
-    }
+      if ((flags & PGBUF_BCB_DIRTY_FLAG) != 0)
+	{
+	  pgbuf_Pool.show_status.now.dirty_pages++;
+	}
+      else
+	{
+	  pgbuf_Pool.show_status.now.clean_pages++;
+	}
 
-    if((PGBUF_GET_ZONE (flags) == PGBUF_LRU_3_ZONE) && (flags & PGBUF_BCB_DIRTY_FLAG) != 0)
-    {
-      pgbuf_Pool.show_status.now.victim_candidate_pages++;
-    }
+      if ((flags & PGBUF_INVALID_ZONE) != 0)
+	{
+	  pgbuf_Pool.show_status.now.free_pages++;
+	  continue;
+	}
 
-    /* count temporary pages and permanent pages */
-    if(pgbuf_is_temporary_volume (vpid.volid) == true)
-    {
-      pgbuf_Pool.show_status.now.num_temp_pages++;
+      if ((PGBUF_GET_ZONE (flags) == PGBUF_LRU_3_ZONE) && (flags & PGBUF_BCB_DIRTY_FLAG) != 0)
+	{
+	  pgbuf_Pool.show_status.now.victim_candidate_pages++;
+	}
 
-      //TODO below assert to be deleted  becouse this function dosen't lock bcb mutex
-      assert((page_type == PAGE_UNKNOWN) || // dealloc pages, we don't know page type
-             (page_type == PAGE_AREA) || (page_type == PAGE_QRESULT) || // temporary page type
-             (page_type == PAGE_EHASH) || (page_type == PAGE_VOLHEADER) ||
-             (page_type == PAGE_VOLBITMAP) || (page_type == PAGE_FTAB)); // It can be temporary or permanent type file
+      /* count temporary pages and permanent pages */
+      if (pgbuf_is_temporary_volume (vpid.volid) == true)
+	{
+	  pgbuf_Pool.show_status.now.num_temp_pages++;
 
-      //assert((page_type != PAGE_VACUUM_DATA) && (page_type != PAGE_DROPPED_FILES);
+	  //TODO below assert to be deleted  becouse this function dosen't lock bcb mutex
+	  assert ((page_type == PAGE_UNKNOWN) ||	// dealloc pages, we don't know page type
+		  (page_type == PAGE_AREA) || (page_type == PAGE_QRESULT) ||	// temporary page type
+		  (page_type == PAGE_EHASH) || (page_type == PAGE_VOLHEADER) || (page_type == PAGE_VOLBITMAP) || (page_type == PAGE_FTAB));	// It can be temporary or permanent type file
+
+	  //assert((page_type != PAGE_VACUUM_DATA) && (page_type != PAGE_DROPPED_FILES);
+	}
+      else
+	{
+	  switch (page_type)
+	    {
+	    case PAGE_BTREE:
+	      pgbuf_Pool.show_status.now.num_index_pages++;
+	      break;
+	    case PAGE_OVERFLOW:
+	    case PAGE_HEAP:
+	      pgbuf_Pool.show_status.now.num_data_pages++;
+	      break;
+	    case PAGE_CATALOG:
+	    case PAGE_VOLBITMAP:
+	    case PAGE_VOLHEADER:
+	    case PAGE_FTAB:
+	    case PAGE_EHASH:
+	    case PAGE_VACUUM_DATA:
+	    case PAGE_DROPPED_FILES:
+	      pgbuf_Pool.show_status.now.num_system_pages++;
+	      break;
+	    default:
+	      // dealloc pages, we don't know page type
+	      assert (page_type == PAGE_UNKNOWN);
+	      break;
+	    }
+	}
     }
-    else 
-    {
-      switch(page_type)
-      {
-        case PAGE_BTREE:
-          pgbuf_Pool.show_status.now.num_index_pages++;
-          break;
-        case PAGE_OVERFLOW:
-        case PAGE_HEAP:
-          pgbuf_Pool.show_status.now.num_data_pages++;
-          break;
-        case PAGE_CATALOG: 
-        case PAGE_VOLBITMAP:
-        case PAGE_VOLHEADER:
-        case PAGE_FTAB:
-        case PAGE_EHASH:
-        case PAGE_VACUUM_DATA:
-        case PAGE_DROPPED_FILES:
-          pgbuf_Pool.show_status.now.num_system_pages++;
-          break;
-        default:
-          // dealloc pages, we don't know page type
-          assert(page_type == PAGE_UNKNOWN);
-          break;
-      }
-    }
-  }
 }
 
 /*
@@ -16033,7 +16033,7 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
 
   *ptr = NULL;
 
-  pgbuf_scan_bcb_table();
+  pgbuf_scan_bcb_table ();
 
   ctx = showstmt_alloc_array_context (thread_p, 1, num_cols);
   if (ctx == NULL)
@@ -16044,29 +16044,29 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
 
   vals = showstmt_alloc_tuple_in_context (thread_p, ctx);
   if (vals == NULL)
-    {   
+    {
       error = er_errid ();
       goto exit_on_error;
-    }   
+    }
 
-  cur_time = time(NULL);
+  cur_time = time (NULL);
 
-  time_delta = difftime(cur_time, pgbuf_Pool.show_status.old.print_out_time) + 0.0001; // avoid dividing by 0
+  time_delta = difftime (cur_time, pgbuf_Pool.show_status.old.print_out_time) + 0.0001;	// avoid dividing by 0
 
   idx = 0;
 
-  hit_rate = (pgbuf_Pool.show_status.now.num_hit - pgbuf_Pool.show_status.old.num_hit)/
-  ((pgbuf_Pool.show_status.now.num_page_request - pgbuf_Pool.show_status.old.num_page_request) + 0.0000000000001);
+  hit_rate = (pgbuf_Pool.show_status.now.num_hit - pgbuf_Pool.show_status.old.num_hit) /
+    ((pgbuf_Pool.show_status.now.num_page_request - pgbuf_Pool.show_status.old.num_page_request) + 0.0000000000001);
   hit_rate = hit_rate * 100;
 
   db_make_double (&db_val, hit_rate);
   db_value_domain_init (&vals[idx], DB_TYPE_NUMERIC, 13, 10);
   error = numeric_db_value_coerce_to_num (&db_val, &vals[idx], &data_status);
   idx++;
-  if ( error != NO_ERROR)
-  {
-    goto exit_on_error;
-  }
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
 
   delta = pgbuf_Pool.show_status.now.num_hit - pgbuf_Pool.show_status.old.num_hit;
   db_make_bigint (&vals[idx], delta);
@@ -16078,38 +16078,38 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
 
   db_make_int (&vals[idx], pgbuf_Pool.num_buffers);
   idx++;
-  
+
   db_make_int (&vals[idx], PGBUF_IOPAGE_BUFFER_SIZE);
   idx++;
 
   db_make_int (&vals[idx], pgbuf_Pool.show_status.now.free_pages);
   idx++;
-  
+
   db_make_int (&vals[idx], pgbuf_Pool.show_status.now.victim_candidate_pages);
   idx++;
-  
+
   db_make_int (&vals[idx], pgbuf_Pool.show_status.now.clean_pages);
   idx++;
-  
+
   db_make_int (&vals[idx], pgbuf_Pool.show_status.now.dirty_pages);
   idx++;
-  
+
   db_make_int (&vals[idx], pgbuf_Pool.show_status.now.num_index_pages);
   idx++;
-  
+
   db_make_int (&vals[idx], pgbuf_Pool.show_status.now.num_data_pages);
   idx++;
-  
+
   db_make_int (&vals[idx], pgbuf_Pool.show_status.now.num_system_pages);
   idx++;
-  
+
   db_make_int (&vals[idx], pgbuf_Pool.show_status.now.num_temp_pages);
   idx++;
-  
+
   delta = pgbuf_Pool.show_status.now.num_pages_created - pgbuf_Pool.show_status.old.num_pages_created;
   db_make_bigint (&vals[idx], delta);
   idx++;
-  
+
   delta = pgbuf_Pool.show_status.now.num_pages_written - pgbuf_Pool.show_status.old.num_pages_written;
   db_make_bigint (&vals[idx], delta);
   idx++;
@@ -16118,11 +16118,11 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
   db_value_domain_init (&vals[idx], DB_TYPE_NUMERIC, 20, 10);
   error = numeric_db_value_coerce_to_num (&db_val, &vals[idx], &data_status);
   idx++;
-  if ( error != NO_ERROR)
-  {
-    goto exit_on_error;
-  }
-  
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
   delta = pgbuf_Pool.show_status.now.num_pages_read - pgbuf_Pool.show_status.old.num_pages_read;
   db_make_bigint (&vals[idx], delta);
   idx++;
@@ -16131,15 +16131,15 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
   db_value_domain_init (&vals[idx], DB_TYPE_NUMERIC, 20, 10);
   error = numeric_db_value_coerce_to_num (&db_val, &vals[idx], &data_status);
   idx++;
-  if ( error != NO_ERROR)
-  {
-    goto exit_on_error;
-  }
-  
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
   db_make_int (&vals[idx], pgbuf_Pool.show_status.now.num_victim_waiting_threads);
   idx++;
 
-  assert(idx == num_cols);
+  assert (idx == num_cols);
 
   /* set now data to old data */
   pgbuf_Pool.show_status.old.num_hit = pgbuf_Pool.show_status.now.num_hit;
