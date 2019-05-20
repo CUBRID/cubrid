@@ -88,6 +88,7 @@
 #include "thread_daemon.hpp"
 #include "thread_entry.hpp"
 #include "thread_entry_task.hpp"
+#include "transaction_single_node_group_complete_manager.hpp"
 #include "thread_manager.hpp"
 #include "transaction_transient.hpp"
 #include "vacuum.h"
@@ -9909,8 +9910,14 @@ class log_check_ha_delay_info_daemon_task : public cubthread::entry_task
 class log_flush_daemon_task : public cubthread::entry_task
 {
   public:
+    log_flush_daemon_task ()
+    {
+      m_p_log_flush_lsa = cubtx::single_node_group_complete_manager::get_instance ();
+    }
+
     void execute (cubthread::entry & thread_ref) override
     {
+      LOG_LSA nxio_lsa;
       if (!BO_IS_SERVER_RESTARTED () || !log_Flush_has_been_requested)
 	{
 	  return;
@@ -9924,12 +9931,18 @@ class log_flush_daemon_task : public cubthread::entry_task
       LOG_CS_EXIT (&thread_ref);
 
       log_Stat.gc_flush_count++;
+      
+      nxio_lsa = log_Gl.append.get_nxio_lsa ();
+      m_p_log_flush_lsa->notify_log_flush_lsa (&nxio_lsa);
 
       pthread_mutex_lock (&log_Gl.group_commit_info.gc_mutex);
       pthread_cond_broadcast (&log_Gl.group_commit_info.gc_cond);
       log_Flush_has_been_requested = false;
       pthread_mutex_unlock (&log_Gl.group_commit_info.gc_mutex);
     }
+
+  private:
+    log_flush_lsa * m_p_log_flush_lsa;
 };
 #endif /* SERVER_MODE */
 
