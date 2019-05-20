@@ -99,8 +99,6 @@ namespace cubreplication
 
       bool m_use_daemons;
 
-      std::atomic<int> m_started_tasks;
-
       std::condition_variable m_apply_task_cv;
       bool m_apply_task_ready;
 
@@ -116,7 +114,6 @@ namespace cubreplication
 	m_applier_workers_pool (NULL),
 	m_applier_worker_threads_count (100),
 	m_use_daemons (false),
-	m_started_tasks (0),
 	m_apply_task_ready (false),
 	m_is_stopped (false)
       {
@@ -143,24 +140,23 @@ namespace cubreplication
 	return m_stream;
       }
 
-      void end_one_task (void)
-      {
-	m_started_tasks--;
-      }
-
-      int get_started_task (void)
-      {
-	return m_started_tasks;
-      }
-
-      void wait_for_tasks (void);
-
       bool is_stopping (void)
       {
 	return m_is_stopped;
       }
 
       void set_stop (void);
+  };
+
+  //
+  // dispatch_consumer is the common interface used by dispatch to control group creation.
+  //
+  class dispatch_consumer
+  {
+    public:
+      virtual void wait_for_complete_stream_position (cubstream::stream_position stream_position) = 0;
+      virtual void set_close_info_for_current_group (cubstream::stream_position stream_position,
+	  int count_expected_transactions) = 0;
   };
 
 } /* namespace cubreplication */
