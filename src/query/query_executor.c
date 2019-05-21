@@ -79,6 +79,8 @@
 #include "xasl_analytic.hpp"
 #include "xasl_predicate.hpp"
 
+#include <vector>
+
 // XASL_STATE
 typedef struct xasl_state XASL_STATE;
 struct xasl_state
@@ -12359,6 +12361,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   bool clear_list_id = false;
   MVCC_SNAPSHOT *mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
   bool need_ha_replication = !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true;
+  size_t index = 0;
 
   // *INDENT-OFF*
   struct incr_info
@@ -12583,7 +12586,6 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
       submvcc_used = true;
     }
 
-  size_t index = 0;
   for (selupd = list; selupd; selupd = selupd->next)
     {
       for (outptr = selupd->select_list; outptr; outptr = outptr->next)
