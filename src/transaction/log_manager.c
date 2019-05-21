@@ -6201,16 +6201,19 @@ void log_unpack_group_commit (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PA
       LSA_SET_NULL (&pp_lsa);
 
       assert (crt_buf + sizeof (trid) + sizeof (state) <= end_of_buf);
+      ASSERT_ALIGN (crt_buf, INT_ALIGNMENT);
 
       trid = *((TRANID *) crt_buf);
       crt_buf += sizeof (trid);
 
+      ASSERT_ALIGN (crt_buf, INT_ALIGNMENT);
       state = *((TRAN_STATE *) crt_buf);
       crt_buf += sizeof (state);
 
       if (state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
 	{
 	  assert (crt_buf + sizeof (LOG_LSA) <= end_of_buf);
+	  ASSERT_ALIGN (crt_buf, MAX_ALIGNMENT);
 	  LSA_COPY (&pp_lsa, ((LOG_LSA *) crt_buf));
 	  crt_buf += sizeof (LOG_LSA);
 	}

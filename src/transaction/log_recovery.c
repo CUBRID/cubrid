@@ -4308,6 +4308,7 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       if (tdes->coord == NULL)
 	{
 	  LOG_LSA finish_lsa;
+	  assert (!LSA_IS_NULL (&tdes->posp_nxlsa));
 	  log_append_finish_postpone (thread_p, tdes, &finish_lsa);
 	  logtb_free_tran_index (thread_p, tdes->tran_index);
 	}
