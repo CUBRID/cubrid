@@ -697,8 +697,7 @@ namespace cubstream
     /* wake up flusher (if any) :
      * fill_factor : ratio of flush to disk trigger size occupied in the stream buffer
      */
-    if (m_filled_stream_handler
-	&& fill_factor > 1.0f)
+    if (!m_is_stopped && m_filled_stream_handler && fill_factor > 1.0f)
       {
 	m_filled_stream_handler (start_flush_pos, flush_amount);
       }
