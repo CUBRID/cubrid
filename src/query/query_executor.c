@@ -12360,6 +12360,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   MVCC_SNAPSHOT *mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
   bool need_ha_replication = !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true;
 
+  // *INDENT-OFF*
   struct incr_info
   {
     OID m_oid;
@@ -12369,10 +12370,9 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
     int m_n_increment;
     DB_CLASS_PARTITION_TYPE m_ptype;
 
-      incr_info () = default;
-      incr_info (const incr_info & other) = default;
+    incr_info () = default;
+    incr_info (const incr_info & other) = default;
   };
-  // *INDENT-OFF*
   std::vector<incr_info> all_incr_info;
   // *INDENT-ON*
 
