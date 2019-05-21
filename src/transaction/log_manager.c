@@ -4446,8 +4446,8 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
   LOG_PRIOR_NODE *node;
   LOG_LSA lsa;
 
-  eot_lsa->pageid = NULL_PAGEID;
-  eot_lsa->offset = NULL_OFFSET;
+  eot_lsa->pageid = NULL_LOG_PAGEID;
+  eot_lsa->offset = NULL_LOG_OFFSET;
 
   node = prior_lsa_alloc_and_copy_data (thread_p, iscommitted, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
   if (node == NULL)
@@ -4479,8 +4479,8 @@ log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_
   LOG_LSA lsa;
 
   assert (commit_lsa != NULL);
-  commit_lsa->pageid = NULL_PAGEID;
-  commit_lsa->offset = NULL_OFFSET;
+  commit_lsa->pageid = NULL_LOG_PAGEID;
+  commit_lsa->offset = NULL_LOG_OFFSET;
 
   // *INDENT-OFF*
   cubmem::appendible_block<1024> v;
@@ -4788,7 +4788,10 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
        * Transaction updated data.
        */
 
-      log_tran_do_postpone (thread_p, tdes);
+      if (!LSA_ISNULL (&tdes->posp_nxlsa))
+	{
+	  log_tran_do_postpone (thread_p, tdes);
+	}
 
       /* The files created by this transaction are not new files any longer. Close any query cursors at this moment
        * too. */
@@ -5304,6 +5307,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 		  group.add (tdes->tran_index, 0, TRAN_UNACTIVE_COMMITTED);
 		  log_append_group_commit (thread_p, tdes, 0, group, &commit_lsa);
 		}
+
 	      log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT, &commit_lsa);
 	    }
 	  else
@@ -6193,15 +6197,20 @@ void log_unpack_group_commit (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PA
 
   const char *crt_buf = start_buf;
   const char *end_of_buf = start_buf + buf_size;
+
   while (crt_buf < end_of_buf)
     {
       TRANID trid;
       TRAN_STATE state;
       LOG_LSA pp_lsa;
+
       LSA_SET_NULL (&pp_lsa);
+
       assert (crt_buf + sizeof (trid) + sizeof (state) <= end_of_buf);
+
       trid = *((TRANID *) crt_buf);
       crt_buf += sizeof (trid);
+
       state = *((TRAN_STATE *) crt_buf);
       crt_buf += sizeof (state);
 
