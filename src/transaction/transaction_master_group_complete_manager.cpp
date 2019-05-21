@@ -143,7 +143,7 @@ namespace cubtx
   }
 
   //
-  // do_complete complete does group complete. Always should be called after prepare_complete.
+  // do_complete does group complete. Always should be called after prepare_complete.
   //
   void master_group_complete_manager::do_complete (THREAD_ENTRY *thread_p)
   {
@@ -158,11 +158,14 @@ namespace cubtx
       }
 
     const tx_group &closed_group = get_last_closed_group ();
+
     /* TODO - consider parameter for MVCC complete here. */
     /* Add group commit log record and wakeup  log flush daemon. */
     log_append_group_commit (thread_p, tdes, m_latest_closed_group_stream_positon, closed_group,
 			     &closed_group_commit_lsa, &has_postpone);
+
     log_wakeup_log_flush_daemon ();
+
     if (has_postpone)
       {
 	/* Notify group postpone. For consistency, we need preserve the order: log GC with postpone first and then
@@ -194,3 +197,4 @@ namespace cubtx
   master_group_complete_manager *master_group_complete_manager::gl_master_group = NULL;
   cubthread::daemon *master_group_complete_manager::gl_master_group_complete_daemon = NULL;
 }
+

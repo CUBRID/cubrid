@@ -208,6 +208,7 @@ namespace cubtx
   {
     return m_current_group;
   }
+
   // is_group_mvcc_completed checks whether the group has MVCC completed.
   //  Note: This function must be called under m_group_mutex protection
   //
