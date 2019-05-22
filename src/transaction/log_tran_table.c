@@ -3634,6 +3634,52 @@ logtb_tran_update_all_global_unique_stats (THREAD_ENTRY * thread_p)
   return error_code;
 }
 
+#if defined (SERVER_MODE)
+/*
+ * logtb_tran_update_serial_global_unique_stats () - update serial global unique statistics
+ *
+ *
+ * return	    : error code or NO_ERROR
+ * thread_p(in)	    : thread entry
+ *
+ * Note: this function must be called at the end of transaction (commit)
+ */
+void
+logtb_tran_update_serial_global_unique_stats (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  int error_code = NO_ERROR;
+  BTID serial_index_btid = BTID_INITIALIZER;
+  LOG_TRAN_BTID_UNIQUE_STATS *serial_unique_stats = NULL;
+
+  assert (tdes != NULL);
+
+  /* There is one unique index that can be modified with no MVCCID being generated: db_serial primary key. This
+   * could happen in a transaction that only does a create serial and commits. Next code makes sure serial
+   * index statistics are reflected. */
+
+  /* Get serial index BTID. */
+  serial_get_index_btid (&serial_index_btid);
+  assert (!BTID_IS_NULL (&serial_index_btid));
+
+  /* Get statistics for serial unique index. */
+  serial_unique_stats = logtb_tran_find_btid_stats (thread_p, &serial_index_btid, false);
+  if (serial_unique_stats != NULL)
+    {
+      /* Reflect serial unique statistics. */
+      if (logtb_update_global_unique_stats_by_delta (thread_p, &serial_index_btid,
+						     serial_unique_stats->tran_stats.num_oids,
+						     serial_unique_stats->tran_stats.num_nulls,
+						     serial_unique_stats->tran_stats.num_keys, true) != NO_ERROR)
+	{
+	  /* No errors are permitted here. */
+	  assert (false);
+	  /* Fall through to do everything we would do in case of no error. */
+	}
+    }
+}
+#endif
+
 /*
  * logtb_tran_load_global_stats_func () - load global statistics into the
  *					  current transaction for a given class.
@@ -4002,87 +4048,21 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logtb_complete_mvcc () - Called at commit or rollback, completes MVCC info
- *			    for current transaction.
+ * logtb_reset_mvcc () - Reset MVCC
  *
  * return	  : Void.
  * thread_p (in)  : Thread entry.
  * tdes (in)	  : Transaction descriptor.
- * committed (in) : True if transaction was committed false if it was aborted.
+ *
+ *  Note : This function reset MVCC and clear update stats and count optimization states.
+ *      Clearing update and count optimization state may be moved outside.
  */
 void
-logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
+logtb_reset_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
-  MVCC_INFO *curr_mvcc_info = NULL;
   mvcctable *mvcc_table = &log_Gl.mvcc_table;
   MVCC_SNAPSHOT *p_mvcc_snapshot = NULL;
-  MVCCID mvccid;
-  int tran_index;
-  TSC_TICKS start_tick, end_tick;
-  TSCTIMEVAL tv_diff;
-  UINT64 tran_complete_time;
-  bool is_perf_tracking = false;
-
-  assert (tdes != NULL);
-
-  is_perf_tracking = perfmon_is_perf_tracking ();
-  if (is_perf_tracking)
-    {
-      tsc_getticks (&start_tick);
-    }
-
-  curr_mvcc_info = &tdes->mvccinfo;
-  mvccid = curr_mvcc_info->id;
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-  if (MVCCID_IS_VALID (mvccid))
-    {
-      mvcc_table->complete_mvcc (tran_index, mvccid, committed);
-    }
-  else
-    {
-#if defined(SA_MODE)
-      if (committed && logtb_tran_update_all_global_unique_stats (thread_p) != NO_ERROR)
-	{
-	  assert (false);
-	}
-#else	/* !SA_MODE */	       /* SERVER_MODE */
-      if (committed)
-	{
-	  /* There is one unique index that can be modified with no MVCCID being generated: db_serial primary key. This
-	   * could happen in a transaction that only does a create serial and commits. Next code makes sure serial
-	   * index statistics are reflected. */
-	  BTID serial_index_btid = BTID_INITIALIZER;
-	  LOG_TRAN_BTID_UNIQUE_STATS *serial_unique_stats = NULL;
-
-	  /* Get serial index BTID. */
-	  serial_get_index_btid (&serial_index_btid);
-	  assert (!BTID_IS_NULL (&serial_index_btid));
-
-	  /* Get statistics for serial unique index. */
-	  serial_unique_stats = logtb_tran_find_btid_stats (thread_p, &serial_index_btid, false);
-	  if (serial_unique_stats != NULL)
-	    {
-	      /* Reflect serial unique statistics. */
-	      if (logtb_update_global_unique_stats_by_delta (thread_p, &serial_index_btid,
-							     serial_unique_stats->tran_stats.num_oids,
-							     serial_unique_stats->tran_stats.num_nulls,
-							     serial_unique_stats->tran_stats.num_keys,
-							     true) != NO_ERROR)
-		{
-		  /* No errors are permitted here. */
-		  assert (false);
-
-		  /* Fall through to do everything we would do in case of no error. */
-		}
-	    }
-	}
-#endif /* SERVER_MODE */
-
-      /* atomic set transaction lowest active MVCCID */
-      log_Gl.mvcc_table.reset_transaction_lowest_active (tran_index);
-    }
+  MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
 
   curr_mvcc_info->recent_snapshot_lowest_active_mvccid = MVCCID_NULL;
 
@@ -4095,17 +4075,6 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
   curr_mvcc_info->reset ();
 
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
-
-  if (is_perf_tracking)
-    {
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      tran_complete_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-      if (tran_complete_time > 0)
-	{
-	  perfmon_add_stat (thread_p, PSTAT_LOG_TRAN_COMPLETE_TIME_COUNTERS, tran_complete_time);
-	}
-    }
 }
 
 /*

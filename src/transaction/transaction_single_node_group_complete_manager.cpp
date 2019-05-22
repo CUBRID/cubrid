@@ -48,13 +48,15 @@ namespace cubtx
   //
   void single_node_group_complete_manager::init ()
   {
-    cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
     gl_single_node_group = get_instance ();
     LSA_SET_NULL (&gl_single_node_group->m_latest_closed_group_log_lsa);
 
+#if defined(SERVER_MODE)
+    cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
     single_node_group_complete_manager::gl_single_node_group_complete_daemon = cubthread::get_manager ()->create_daemon ((
 		looper),
 	new single_node_group_complete_task (), "single_node_group_complete_daemon");
+#endif
   }
 
   //
@@ -76,10 +78,7 @@ namespace cubtx
   // notify_log_flush notifies single node group commit.
   //
   void single_node_group_complete_manager::notify_log_flush_lsa (const LOG_LSA *lsa)
-  {
-    /* TO DO - disable it temporary since it is not tested */
-    return;
-
+  {    
     assert (lsa != NULL && LSA_GE (lsa, &m_latest_closed_group_log_lsa));
 
     /* TODO - use m_latest_closed_group_stream_start_positon, m_latest_closed_group_stream_end_positon */
@@ -98,11 +97,13 @@ namespace cubtx
     /* This function is called after adding a transaction to the current group.
      * Currently, we wakeup GC thread when first transaction is added into current group.
      */
+#if defined (SERVER_MODE)
     if (is_latest_closed_group_completed ()
 	&& get_current_group ().get_container ().size () == 1)
       {
 	gl_single_node_group_complete_daemon->wakeup ();
       }
+#endif
   }
 
   //
@@ -128,7 +129,7 @@ namespace cubtx
   //
   // prepare_complete prepares group complete. Always should be called before do_complete.
   //
-  void single_node_group_complete_manager::prepare_complete (THREAD_ENTRY *thread_p)
+  void single_node_group_complete_manager::do_prepare_complete (THREAD_ENTRY *thread_p)
   {
     LOG_LSA closed_group_commit_lsa;
     LOG_TDES *tdes = logtb_get_tdes (&cubthread::get_entry());
@@ -139,7 +140,7 @@ namespace cubtx
 	const tx_group &closed_group = get_last_closed_group ();
 
 	/* TODO - Introduce parameter. For now complete group MVCC only here. Notify MVCC complete. */
-	log_Gl.mvcc_table.complete_group_mvcc (closed_group);
+	log_Gl.mvcc_table.complete_group_mvcc (thread_p, closed_group);
 	notify_group_mvcc_complete (closed_group);
 
 	log_append_group_commit (thread_p, tdes, 0, closed_group, &closed_group_commit_lsa, &has_postpone);
@@ -168,20 +169,19 @@ namespace cubtx
     /* Finally, notify complete. */
     notify_group_complete ();
 
+#if defined (SERVER_MODE)
     /* wakeup GC thread */
     if (gl_single_node_group_complete_daemon != NULL)
       {
 	gl_single_node_group_complete_daemon->wakeup ();
       }
+#endif
   }
 
   void single_node_group_complete_task::execute (cubthread::entry &thread_ref)
-  {
-    /* TO DO - disable it temporary since it is not tested */
-    return;
-
-    cubthread::entry *thread_p = &cubthread::get_entry();
-    single_node_group_complete_manager::gl_single_node_group->prepare_complete (thread_p);
+  {    
+    cubthread::entry *thread_p = &cubthread::get_entry ();
+    single_node_group_complete_manager::gl_single_node_group->do_prepare_complete (thread_p);
   }
 
   single_node_group_complete_manager *single_node_group_complete_manager::gl_single_node_group = NULL;

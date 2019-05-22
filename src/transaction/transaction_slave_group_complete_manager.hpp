@@ -44,7 +44,7 @@ namespace cubtx
       static void final ();
 
       /* group complete methods */
-      virtual void prepare_complete (THREAD_ENTRY *thread_p) override;
+      virtual void do_prepare_complete (THREAD_ENTRY *thread_p) override;
       virtual void do_complete (THREAD_ENTRY *thread_p) override;
 
       /* dispatch complete methods */

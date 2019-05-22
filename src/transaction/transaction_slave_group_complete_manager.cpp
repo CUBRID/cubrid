@@ -120,7 +120,7 @@ namespace cubtx
   //
   // prepare_complete prepares group complete. Always should be called before do_complete.
   //
-  void slave_group_complete_manager::prepare_complete (THREAD_ENTRY *thread_p)
+  void slave_group_complete_manager::do_prepare_complete (THREAD_ENTRY *thread_p)
   {
     /* TODO - consider whether stream position was saved on disk, when close the group */
     if (close_current_group ())
@@ -130,7 +130,7 @@ namespace cubtx
 	const tx_group &closed_group = get_last_closed_group ();
 
 	/* TODO - Introduce parameter. For now complete group MVCC only here. Notify MVCC complete. */
-	log_Gl.mvcc_table.complete_group_mvcc (closed_group);
+	log_Gl.mvcc_table.complete_group_mvcc (thread_p, closed_group);
 	notify_group_mvcc_complete (closed_group);
       }
   }
@@ -177,7 +177,7 @@ namespace cubtx
     if (stream_position <= m_latest_group_stream_positon)
       {
 	/* I have the id of latest group */
-	wait_for_complete (m_latest_group_id);
+	complete (m_latest_group_id);
 	return;
       }
 
@@ -213,7 +213,7 @@ namespace cubtx
     return;
 
     cubthread::entry *thread_p = &cubthread::get_entry();
-    slave_group_complete_manager::gl_slave_group->prepare_complete (thread_p);
+    slave_group_complete_manager::gl_slave_group->do_prepare_complete (thread_p);
     slave_group_complete_manager::gl_slave_group->do_complete (thread_p);
   }
 

@@ -58,11 +58,11 @@ namespace cubtx
 
       id_type register_transaction (int tran_index, MVCCID mvccid, TRAN_STATE state) override final;
 
-      void wait_for_complete_mvcc (id_type group_id) override final;
+      void complete_mvcc (id_type group_id) override final;
 
-      void wait_for_complete (id_type group_id) override final;
+      void complete (id_type group_id) override final;
 
-      void wait_for_logging (id_type group_id) override final;
+      void complete_logging (id_type group_id) override final;
 
     protected:
       id_type set_current_group_minimum_transactions (int count_minimum_transactions, bool &has_group_enough_transactions);
@@ -73,7 +73,7 @@ namespace cubtx
 
       virtual bool can_close_current_group () = 0;
 
-      virtual void prepare_complete (THREAD_ENTRY *thread_p) = 0;
+      virtual void do_prepare_complete (THREAD_ENTRY *thread_p) = 0;
 
       virtual void do_complete (THREAD_ENTRY *thread_p) = 0;
 

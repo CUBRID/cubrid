@@ -321,18 +321,6 @@ struct log_flush_info
 #endif				/* SERVER_MODE */
 };
 
-typedef struct log_group_commit_info LOG_GROUP_COMMIT_INFO;
-struct log_group_commit_info
-{
-  /* group commit waiters count */
-  pthread_mutex_t gc_mutex;
-  pthread_cond_t gc_cond;
-};
-
-#define LOG_GROUP_COMMIT_INFO_INITIALIZER \
-  { PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER }
-
-
 
 typedef struct log_topops_addresses LOG_TOPOPS_ADDRESSES;
 struct log_topops_addresses
@@ -665,8 +653,6 @@ struct log_global
   /* Flush information for dirty log pages */
   LOG_FLUSH_INFO flush_info;
 
-  /* group commit information */
-  LOG_GROUP_COMMIT_INFO group_commit_info;
   // *INDENT-OFF*
   cubtx::complete_manager * m_tran_complete_mgr;
   // *INDENT-ON*
@@ -884,7 +870,9 @@ extern void logpb_fatal_error_exit_immediately_wo_flush (THREAD_ENTRY * thread_p
 extern int logpb_check_and_reset_temp_lsa (THREAD_ENTRY * thread_p, VOLID volid);
 extern void logpb_initialize_arv_page_info_table (void);
 extern void logpb_initialize_logging_statistics (void);
-extern void logpb_initialize_tran_complete_manager (void);
+extern void logpb_initialize_tran_complete_manager (THREAD_ENTRY * thread_p);
+extern void logpb_finalize_tran_complete_manager (void);
+
 extern int logpb_background_archiving (THREAD_ENTRY * thread_p);
 extern void xlogpb_dump_stat (FILE * outfp);
 
@@ -1004,7 +992,7 @@ extern int xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
 extern bool logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern bool logtb_is_mvccid_committed (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern MVCC_SNAPSHOT *logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
-extern void logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed);
+extern void logtb_reset_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 extern void logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 
 extern LOG_TRAN_CLASS_COS *logtb_tran_find_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid, bool create);
@@ -1037,6 +1025,9 @@ extern int logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, B
 extern int logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid);
 extern int logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p);
 extern int logtb_tran_update_all_global_unique_stats (THREAD_ENTRY * thread_p);
+#if defined (SERVER_MODE)
+extern void logtb_tran_update_serial_global_unique_stats (THREAD_ENTRY * thread_p);
+#endif
 
 extern int log_rv_undoredo_record_partial_changes (THREAD_ENTRY * thread_p, char *rcv_data, int rcv_data_length,
 						   RECDES * record, bool is_undo);
