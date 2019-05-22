@@ -95,16 +95,18 @@ namespace cubreplication
       }
 
     cubcomm::channel repl_chn;
-    cubcomm::channel ack_chn;
+    cubcomm::channel *ack_chn = new cubcomm::channel;
     css_error_code rc = repl_chn.accept (repl_fd);
     assert (rc == NO_ERRORS);
-    rc = ack_chn.accept (ack_fd);
+    // 2nd fd does not get a connection
+    rc = ack_chn->accept (ack_fd);
     assert (rc == NO_ERRORS);
 
     master_senders_manager::add_stream_sender
     (new cubstream::transfer_sender (std::move (repl_chn), cubreplication::master_senders_manager::get_stream ()));
-    cubreplication::add_ack_chn (new cubstream::ack_receiver (std::move (ack_chn)));
+    cubreplication::add_ack_chn (ack_chn);
 
+    assert(false);
     er_log_debug_replication (ARG_FILE_LINE, "new_slave connected");
 #endif
   }

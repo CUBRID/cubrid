@@ -35,7 +35,7 @@ namespace cubreplication
 {
 
   std::vector <cubstream::transfer_sender *> master_senders_manager::master_server_stream_senders;
-  std::list <cubstream::ack_receiver*> ack_channels;
+  std::list <cubcomm::channel *> ack_channels;
   std::mutex mtx;
   cubthread::daemon *master_senders_manager::master_channels_supervisor_daemon = NULL;
   bool master_senders_manager::is_initialized = false;
@@ -47,10 +47,9 @@ namespace cubreplication
   const unsigned int master_senders_manager::SUPERVISOR_DAEMON_DELAY_MS = 10;
   const unsigned int master_senders_manager::SUPERVISOR_DAEMON_CHECK_CONN_MS = 5000;
 
-  void add_ack_chn (cubstream::ack_receiver * receiver)
+  void add_ack_chn (cubcomm::channel * receiver)
   {
-    std::unique_lock<std::mutex> ulock(mtx);
-    
+          // needs concurrent access protection
     ack_channels.push_back (receiver);
   }
 

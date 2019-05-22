@@ -87,19 +87,36 @@ namespace cubreplication
     int error = NO_ERROR;
 
 #if defined (SERVER_MODE)
-    er_log_debug_replication (ARG_FILE_LINE, "slave_node::connect_to_master host:%s, port: %d\n",
+    er_log_debug (ARG_FILE_LINE, "slave_node::connect_to_master host:%s, port: %d\n",
 			      master_node_hostname, master_node_port_id);
 
     /* connect to replication master node */
     cubcomm::server_channel srv_chn (g_instance->m_identity.get_hostname ().c_str ());
 
+    cubcomm::server_channel ack_chn (g_instance->m_identity.get_hostname ().c_str ());
+
     g_instance->m_master_identity.set_hostname (master_node_hostname);
     g_instance->m_master_identity.set_port (master_node_port_id);
+
+    // todo [communication channel] here is the point that does not connect
+    // fix protocol
+    // protocol was changed and 
     error = srv_chn.connect (master_node_hostname, master_node_port_id);
     if (error != css_error_code::NO_ERRORS)
       {
+        // this breaks
+        assert (false);
 	return error;
       }
+
+        assert (false);
+        error = ack_chn.connect (master_node_hostname, master_node_port_id);
+if (error != css_error_code::NO_ERRORS)
+{
+        assert (false);
+        return error;
+}
+    
     /* start transfer receiver */
     assert (g_instance->m_transfer_receiver == NULL);
     /* TODO[replication] : last position to be retrieved from recovery module */

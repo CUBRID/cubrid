@@ -45,7 +45,7 @@ namespace cubthread
 
 namespace cubreplication
 {
-  void add_ack_chn(cubstream::ack_receiver * receiver);
+  void add_ack_chn (cubcomm::channel * receiver);
 
   class master_senders_manager
   {
