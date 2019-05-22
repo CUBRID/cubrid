@@ -111,6 +111,14 @@ extern PRUNING_SCAN_CACHE *locator_get_partition_scancache (PRUNING_CONTEXT * pc
 							    const HFID * hfid, int op_type, bool has_function_index);
 extern int xlocator_redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oids, OID * oid_list);
 
+// *INDENT-OFF*
+// basic insert operation:
+extern int locator_insert_record (THREAD_ENTRY & thread_ref, HEAP_SCANCACHE & scan_cache, RECDES & recdes,
+                                  OID & oid_inserted);
+extern int locator_prune_insert_record (THREAD_ENTRY & thread_ref, HEAP_SCANCACHE & scan_cache, RECDES & recdes,
+                                        LC_COPYAREA_OPERATION op_type, PRUNING_CONTEXT * pcontext, OID & oid_inserted);
+// *INDENT-ON*
+
 extern int locator_rv_redo_rename (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
 extern SCAN_CODE locator_lock_and_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,

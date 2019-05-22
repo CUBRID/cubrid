@@ -24,9 +24,15 @@
 #ifndef _REPLICATION_ROW_APPLY_HPP_
 #define _REPLICATION_ROW_APPLY_HPP_
 
+#include <string>
+
+// forward declarations
+struct db_value;
+class record_descriptor;
+
 namespace cubreplication
 {
-
+  int row_apply_insert (const std::string &classname, const db_value &value, const record_descriptor &record);
 } // namespace cubreplication
 
 #endif // !_REPLICATION_ROW_APPLY_HPP_

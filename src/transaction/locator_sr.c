@@ -14267,3 +14267,22 @@ locator_repl_end_tran (THREAD_ENTRY * thread_p, bool commit)
 }
 
 #endif /* SERVER_MODE */
+
+// *INDENT-OFF*
+int
+locator_insert_record (THREAD_ENTRY & thread_ref, HEAP_SCANCACHE & scan_cache, RECDES & recdes, OID & oid_inserted)
+{
+  return locator_prune_insert_record (thread_ref, scan_cache, recdes, LC_FLUSH_INSERT, NULL, oid_inserted);
+}
+
+int
+locator_prune_insert_record (THREAD_ENTRY & thread_ref, HEAP_SCANCACHE & scan_cache, RECDES & recdes,
+                             LC_COPYAREA_OPERATION op_type, PRUNING_CONTEXT * pcontext, OID & oid_inserted)
+{
+  DB_CLASS_PARTITION_TYPE ptype = (DB_CLASS_PARTITION_TYPE) locator_area_op_to_pruning_type (op_type);
+  int force_count_out;
+  return locator_insert_force (&thread_ref, &scan_cache.node.hfid, &scan_cache.node.class_oid, &oid_inserted, &recdes,
+                               LC_FLAG_HAS_INDEX, SINGLE_ROW_INSERT, &scan_cache, &force_count_out, ptype, pcontext,
+                               NULL, UPDATE_INPLACE_NONE);
+}
+// *INDENT-ON*
