@@ -267,6 +267,20 @@ typedef enum
   CONSOLE_OUTPUT
 } QUERY_SERVER_REQUEST;
 
+/* type of buffer : used by NET_SERVER_LC_SEND_PROXY_BUFFER request */
+enum net_buf_type
+{
+  NET_BUF_TYPE_UNKNWON = 0,
+  NET_BUF_TYPE_EXTRACT_CLASSES,
+  NET_BUF_TYPE_EXTRACT_CLASSES_END,
+  NET_BUF_TYPE_EXTRACT_TRIGGERS,
+  NET_BUF_TYPE_EXTRACT_TRIGGERS_END,
+  NET_BUF_TYPE_EXTRACT_INDEXES,
+  NET_BUF_TYPE_EXTRACT_INDEXES_END,
+
+  NET_BUF_TYPE_LAST
+};
+
 /* Server startup */
 extern int net_server_start (const char *name);
 extern const char *net_server_request_name (int request);

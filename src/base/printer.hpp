@@ -108,6 +108,7 @@ class string_print_output : public print_output
 };
 
 
+
 /* TODO[replication] : move to replication_ source file 
  * net_print_output : ouput to a CUBRID network request
  */
