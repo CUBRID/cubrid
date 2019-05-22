@@ -747,7 +747,7 @@ namespace cubreplication
       }
   }
 
-  std::size_t row_object ::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  std::size_t row_object::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
     std::size_t entry_size = start_offset;
 

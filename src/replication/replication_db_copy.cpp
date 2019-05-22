@@ -26,6 +26,7 @@
 #include "replication_db_copy.hpp"
 #include "heap_attrinfo.h"  /* for HEAP_CACHE_ATTRINFO */
 #include "heap_file.h"      /* heap_attrinfo_transform_to_disk */
+#include "replication_object.hpp"
 #include "scan_manager.h"
 
 namespace cubreplication
