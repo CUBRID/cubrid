@@ -3623,7 +3623,48 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
 	}
     }
 
-  if (command != NULL)
+  if (command == NULL)
+    {
+      goto error;
+    }
+
+  if (strcasecmp (command, ";extract-schema-to-net")
+    {
+      /* TODO[replication] : move to replication_ source code */
+      extract_context copy_schema_context;
+      copy_schema_context.do_auth = 1;
+      copy_schema_context.storage_order = FOLLOW_ATTRIBUTE_ORDER;
+      copy_schema_context.exec_name = program_name;
+
+      net_print_output output_net_schema (EXTRACT_CLASSES);
+      net_print_output output_net_trigger (EXTRACT_TRIGGERS);
+      net_print_output output_net_index (EXTRACT_INDEXES);
+
+      if (extract_classes (copy_schema_context, output_net_schema) != 0)
+	{
+	  status = 1;
+	}
+      output_net_schema.set_buffer_type (EXTRACT_CLASSES_END);
+      output_net_schema.send_to_network ();
+
+      if (!status && extract_triggers (copy_schema_context, output_net_trigger) != 0)
+	{
+	  status = 1;
+	}
+      output_net_trigger.set_buffer_type (EXTRACT_TRIGGERS_END);
+      output_net_trigger.send_to_network ();
+
+      if (!status && emit_indexes (output_net_index, copy_schema_context.classes, copy_schema_context.has_indexes, copy_schema_context.vclass_list_has_using_index) != 0)
+	{
+	  status = 1;
+	}
+      output_net_index.set_buffer_type (EXTRACT_INDEXES_END);
+      output_net_index.send_to_network ();
+
+      copy_schema_context.clear_schema_workspace ();
+
+    }
+  else
     {
       int total_stmts, stmt_id, i, num_of_rows;
       DB_QUERY_RESULT *result = NULL;

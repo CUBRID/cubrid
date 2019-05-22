@@ -234,6 +234,8 @@ enum net_server_request
 
   NET_SERVER_LC_GET_PROXY_COMMAND,
 
+  NET_SERVER_LC_SEND_PROXY_BUFFER,
+
   /*
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.

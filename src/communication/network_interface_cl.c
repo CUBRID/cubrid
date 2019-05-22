@@ -9996,3 +9996,53 @@ locator_get_proxy_command (const char **proxy_command)
   return error_code;
 #endif /* !CS_MODE */
 }
+
+/*
+ * locator_send_buffer - Sends a buffer to server
+ *
+ * return : error code
+ * buffer (in): buffer
+ *
+ */
+int
+locator_send_proxy_buffer (const int type, const size_t buf_size, const char *buffer)
+{
+#if defined(CS_MODE)
+  int req_error;
+  char *ptr;
+  int request_size;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+  int server_error;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = OR_INT_SIZE + OR_INT_SIZE + buf_size;
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = or_pack_int (request, type);
+  ptr = or_pack_int (ptr, buf_size);
+  memcpy (ptr, buffer, buf_size);
+  ptr += buf_size;
+
+  req_error = net_client_request (NET_SERVER_LC_SEND_PROXY_BUFFER, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &server_error);
+    }
+  free_and_init (request);
+
+  return req_error ? req_error : server_error;
+
+#else /* CS_MODE */
+  assert (false);
+  return ER_FAILED;
+#endif /* !CS_MODE */
+}

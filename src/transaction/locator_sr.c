@@ -13811,6 +13811,18 @@ xlocator_get_proxy_command (THREAD_ENTRY * thread_p, const char **proxy_command)
   return NO_ERROR;
 }
 
+int
+xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_t buf_size, const char *buffer)
+{
+  /* TODO : 
+   * 1. retrieve transaction context and copy context
+   * 2. append to a SBR
+   * 3. if type is final : add SBR to copy stream or store of later
+   */
+
+  return NO_ERROR;
+}
+
 
 #if defined(SERVER_MODE)
 static int

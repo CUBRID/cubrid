@@ -56,3 +56,38 @@ int string_print_output::flush ()
 {
   return (int) m_sb.len ();
 }
+
+
+
+net_print_output::net_print_output (const int buffer_type, const size_t flush_size)
+ : m_buffer_type (buffer_type),
+   m_flush_size (flush_size)
+{
+  m_send_error_cnt = 0;
+}
+
+int net_print_output::flush ()
+{
+  if (m_sb.len () > m_flush_size)
+    {
+      return send_to_network ();
+    }
+  return 0;
+}
+
+int net_print_output::send_to_network ()
+{
+  int res = m_sb.len;
+  int error;
+
+  error = locator_send_proxy_buffer (m_buffer_type, m_sb.len, m_sb.get_buffer ());
+  if (error != NO_ERROR)
+    {
+      m_send_error_cnt++;
+      return 0;
+    }
+
+  m_sb.clear ();
+
+  return res;
+}
