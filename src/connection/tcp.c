@@ -1117,7 +1117,8 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
  *   rid(in):
  */
 bool
-css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid, CSS_SERVER_REQUEST request_for_server)
+css_transfer_fd (SOCKET server_fd, const std::vector < SOCKET > &client_fds, unsigned short rid,
+		 CSS_SERVER_REQUEST request_for_server)
 {
   int request;
   unsigned short req_id;
@@ -1147,16 +1148,20 @@ css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid, CSS_SER
   msg.msg_accrights = (caddr_t) & client_fd;
   msg.msg_accrightslen = sizeof (client_fd);
 #else /* LINUX || AIX */
-  if (cmptr == NULL && (cmptr = (struct cmsghdr *) malloc (CONTROLLEN)) == NULL)
+  if (cmptr == NULL && (cmptr = (struct cmsghdr *) malloc (CONTROLLEN * client_fds.size ())) == NULL)
     {
       return false;
     }
-  cmptr->cmsg_level = SOL_SOCKET;
-  cmptr->cmsg_type = SCM_RIGHTS;
-  cmptr->cmsg_len = CONTROLLEN;
+  struct cmsghdr *crt_cmsghdr = cmptr;
+  for (size_t i = 0; i < client_fds.size (); ++i, crt_cmsghdr += CONTROLLEN)
+    {
+      crt_cmsghdr->cmsg_level = SOL_SOCKET;
+      crt_cmsghdr->cmsg_type = SCM_RIGHTS;
+      crt_cmsghdr->cmsg_len = CONTROLLEN;
+      *(SOCKET *) CMSG_DATA (crt_cmsghdr) = client_fds[i];
+    }
   msg.msg_control = (void *) cmptr;
-  msg.msg_controllen = CONTROLLEN;
-  *(SOCKET *) CMSG_DATA (cmptr) = client_fd;
+  msg.msg_controllen = CONTROLLEN * client_fds.size ();
 #endif /* LINUX || AIX */
 
   if (sendmsg (server_fd, &msg, 0) < 0)

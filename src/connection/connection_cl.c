@@ -98,6 +98,10 @@ static void css_close_conn (CSS_CONN_ENTRY * conn);
 static void css_dealloc_conn (CSS_CONN_ENTRY * conn);
 
 static int css_read_header (CSS_CONN_ENTRY * conn, NET_HEADER * local_header);
+static CSS_CONN_ENTRY *css_make_master_comm_channels (const char *host_name, CSS_CONN_ENTRY * conn, int connect_type,
+						      const char *server_name, int server_name_length, int port,
+						      int timeout, unsigned short *rid, bool send_magic,
+						      SOCKET & ack_fd);
 static CSS_CONN_ENTRY *css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_type,
 					   const char *server_name, int server_name_length, int port, int timeout,
 					   unsigned short *rid, bool send_magic);
@@ -701,6 +705,60 @@ begin:
   assert (0);
 }
 
+static CSS_CONN_ENTRY *
+css_make_master_comm_channels (const char *host_name, CSS_CONN_ENTRY * conn, int connect_type, const char *server_name,
+			       int server_name_length, int port, int timeout, unsigned short *rid, bool send_magic,
+			       SOCKET & ack_fd)
+{
+  // duplicated func with the one below, only 2 connections on same port      
+
+  SOCKET fd;
+
+#if !defined (WINDOWS)
+  if (timeout > 0)
+    {
+      /* timeout in milli-seconds in css_tcp_client_open_with_timeout() */
+      fd = css_tcp_client_open_with_timeout (host_name, port, timeout * 1000);
+      ack_fd = css_tcp_client_open_with_timeout (host_name, port, timeout * 1000);
+    }
+  else
+    {
+      fd = css_tcp_client_open_with_retry (host_name, port, true);
+      ack_fd = css_tcp_client_open_with_retry (host_name, port, true);
+    }
+#else /* !WINDOWS */
+  fd = css_tcp_client_open_with_retry (host_name, port, true);
+  ack_fd = css_tcp_client_open_with_retry (host_name, port, true);
+#endif /* WINDOWS */
+
+  if (!IS_INVALID_SOCKET (fd))
+    {
+      conn->fd = fd;
+
+      if (send_magic == true && css_send_magic (conn) != NO_ERRORS)
+	{
+	  return NULL;
+	}
+
+      if (css_send_request (conn, connect_type, rid, server_name, server_name_length) == NO_ERRORS)
+	{
+	  return conn;
+	}
+    }
+#if !defined (WINDOWS)
+  else if (errno == ETIMEDOUT)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_CONNECT_TIMEDOUT, 2, host_name, timeout);
+    }
+#endif /* !WINDOWS */
+  else
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER, 1, host_name);
+    }
+
+  return NULL;
+}
+
 /*
  * css_common_connect () - actually try to make a connection to a server
  *   return:
@@ -783,9 +841,11 @@ css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, char *server_name, u
       length = 0;
     }
 
+  SOCKET ack_fd;
+
   /* timeout in second in css_common_connect() */
-  return (css_common_connect (host_name, conn, DATA_REQUEST, server_name, length, css_Service_id,
-			      prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT), rid, true));
+  return (css_make_master_comm_channels (host_name, conn, DATA_REQUEST, server_name, length, css_Service_id,
+					 prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT), rid, true, ack_fd));
 }
 
 /* New style server connection function that uses an explicit port id */

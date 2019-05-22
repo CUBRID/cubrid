@@ -2700,12 +2700,20 @@ css_process_new_slave (SOCKET master_fd)
       assert (false);
       return;
     }
+
+  SOCKET ack_fd = css_open_new_socket_from_master (master_fd, &rid);
+  if (IS_INVALID_SOCKET (ack_fd))
+    {
+      assert (false);
+      return;
+    }
+
   er_log_debug_replication (ARG_FILE_LINE, "css_process_new_slave:"
 			    "received new slave fd from master fd=%d, current_state=%d\n", new_fd, ha_Server_state);
 
   assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
 
-  cubreplication::master_node::new_slave (new_fd);
+  cubreplication::master_node::new_slave (new_fd, ack_fd);
 }
 
 const char *

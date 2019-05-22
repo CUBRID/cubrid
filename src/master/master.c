@@ -28,6 +28,7 @@
 #include <string.h>
 #include <errno.h>
 #include <time.h>
+#include <vector>
 
 #if defined(_AIX)
 #include <sys/select.h>
@@ -86,10 +87,12 @@ static void css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, S
 				    char *server_name, int server_name_length);
 static void css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid);
 static void css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid);
-static bool css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned short rid,
-					    CSS_SERVER_REQUEST request);
-static void css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERVER_REQUEST request);
-static void css_process_new_connection (SOCKET fd);
+static bool css_send_new_request_to_server (SOCKET server_fd, const std::vector < SOCKET > &client_fds,
+					    unsigned short rid, CSS_SERVER_REQUEST request);
+static void css_send_to_existing_server (CSS_CONN_ENTRY * conn, SOCKET ack_chn, unsigned short rid,
+					 CSS_SERVER_REQUEST request);
+static void css_process_new_connection (CSS_CONN_ENTRY * conn, SOCKET ack_chn);
+static CSS_CONN_ENTRY *css_create_new_connection (SOCKET fd, SOCKET ack_fd);
 static int css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var);
 static int css_enroll_write_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var);
 static int css_enroll_exception_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var);
@@ -610,9 +613,10 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
  *   rid(in)
  */
 static bool
-css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned short rid, CSS_SERVER_REQUEST request)
+css_send_new_request_to_server (SOCKET server_fd, const std::vector < SOCKET > &client_fds, unsigned short rid,
+				CSS_SERVER_REQUEST request)
 {
-  return (css_transfer_fd (server_fd, client_fd, rid, request));
+  return (css_transfer_fd (server_fd, client_fds, rid, request));
 }
 
 /*
@@ -633,7 +637,7 @@ css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned sho
  *   to the server.
  */
 static void
-css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERVER_REQUEST request)
+css_send_to_existing_server (CSS_CONN_ENTRY * conn, SOCKET ack_chn, unsigned short rid, CSS_SERVER_REQUEST request)
 {
   SOCKET_QUEUE_ENTRY *temp;
   char *server_name = NULL;
@@ -670,12 +674,27 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
 		      return;
 		    }
 #endif
-		  if (css_send_new_request_to_server (temp->fd, conn->fd, rid, request))
+		  std::vector < SOCKET > client_fds;
+		  if (ack_chn != -1)
+		    {
+		      client_fds =
+		      {
+		      conn->fd, ack_chn};
+		    }
+		  else
+		    {
+		      client_fds =
+		      {
+		      conn->fd};
+		    }
+
+		  if (css_send_new_request_to_server (temp->fd, client_fds, rid, request))
 		    {
 		      free_and_init (server_name);
 		      css_free_conn (conn);
 		      return;
 		    }
+
 		  else if (!temp->ha_mode)
 		    {
 		      temp = css_return_entry_of_server (server_name, name_length, css_Master_socket_anchor);
@@ -714,6 +733,17 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
     }
 }
 
+CSS_CONN_ENTRY *
+css_create_new_connection (SOCKET fd, SOCKET ack)
+{
+  CSS_CONN_ENTRY *conn;
+
+  int buffer_size = sizeof (NET_HEADER);
+  css_Total_request_count++;
+  conn = css_make_conn (fd);
+  return conn;
+}
+
 /*
  * css_process_new_connection()
  *   return: none
@@ -725,20 +755,15 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
  *   register itself) and an information client request (master control client).
  */
 static void
-css_process_new_connection (SOCKET fd)
+css_process_new_connection (CSS_CONN_ENTRY * conn, SOCKET ack_chn)
 {
-  CSS_CONN_ENTRY *conn;
-  int function_code;
-  int buffer_size;
-  unsigned short rid;
-
-  buffer_size = sizeof (NET_HEADER);
-  css_Total_request_count++;
-  conn = css_make_conn (fd);
   if (conn == NULL)
     {
       return;
     }
+  unsigned short rid;
+  int function_code;
+  int buffer_size;
 
   if (css_check_magic (conn) != NO_ERRORS)
     {
@@ -751,10 +776,10 @@ css_process_new_connection (SOCKET fd)
       switch (function_code)
 	{
 	case INFO_REQUEST:	/* request for information */
-	  css_add_request_to_socket_queue (conn, true, NULL, fd, READ_WRITE, 0, &css_Master_socket_anchor);
+	  css_add_request_to_socket_queue (conn, true, NULL, conn->fd, READ_WRITE, 0, &css_Master_socket_anchor);
 	  break;
 	case DATA_REQUEST:	/* request from a remote client */
-	  css_send_to_existing_server (conn, rid, SERVER_START_NEW_CLIENT);
+	  css_send_to_existing_server (conn, -1, rid, SERVER_START_NEW_CLIENT);
 	  break;
 	case SERVER_REQUEST:	/* request from a new server */
 	  css_register_new_server (conn, rid);
@@ -764,7 +789,7 @@ css_process_new_connection (SOCKET fd)
 	  css_register_new_server2 (conn, rid);
 	  break;
 	case SERVER_REQUEST_CONNECT_NEW_SLAVE:
-	  css_send_to_existing_server (conn, rid, SERVER_CONNECT_NEW_SLAVE);
+	  css_send_to_existing_server (conn, ack_chn, rid, SERVER_CONNECT_NEW_SLAVE);
 	  break;
 	default:
 	  css_free_conn (conn);
@@ -959,9 +984,12 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 	  if (temp->fd == css_Master_socket_fd[0] || temp->fd == css_Master_socket_fd[1])
 	    {
 	      new_fd = css_master_accept (temp->fd);
+	      // accept 2nd channel
+	      SOCKET ack_fd = css_master_accept (temp->fd);
 	      if (!IS_INVALID_SOCKET (new_fd))
 		{
-		  css_process_new_connection (new_fd);
+		  CSS_CONN_ENTRY *conn = css_create_new_connection (new_fd, ack_fd);
+		  css_process_new_connection (conn, ack_fd);
 		}
 	    }
 	  else if (!IS_INVALID_SOCKET (temp->fd))

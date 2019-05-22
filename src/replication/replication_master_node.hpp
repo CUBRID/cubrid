@@ -45,7 +45,7 @@ namespace cubreplication
       static master_node *get_instance (const char *name);
 
       static void init (const char *name);
-      static void new_slave (int fd);
+      static void new_slave (int fd, int ack_fd);
       static void final (void);
 
       static void enable_active (void);

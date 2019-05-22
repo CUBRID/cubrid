@@ -81,7 +81,7 @@ namespace cubreplication
 #endif
   }
 
-  void master_node::new_slave (int fd)
+  void master_node::new_slave (int repl_fd, int ack_fd)
   {
 #if defined (SERVER_MODE)
 
@@ -94,13 +94,16 @@ namespace cubreplication
 	return;
       }
 
-    cubcomm::channel chn;
-
-    css_error_code rc = chn.accept (fd);
+    cubcomm::channel repl_chn;
+    cubcomm::channel ack_chn;
+    css_error_code rc = repl_chn.accept (repl_fd);
+    assert (rc == NO_ERRORS);
+    rc = ack_chn.accept (ack_fd);
     assert (rc == NO_ERRORS);
 
     master_senders_manager::add_stream_sender
-    (new cubstream::transfer_sender (std::move (chn), cubreplication::master_senders_manager::get_stream ()));
+    (new cubstream::transfer_sender (std::move (repl_chn), cubreplication::master_senders_manager::get_stream ()));
+    cubreplication::add_ack_chn (new cubstream::ack_receiver (std::move (ack_chn)));
 
     er_log_debug_replication (ARG_FILE_LINE, "new_slave connected");
 #endif

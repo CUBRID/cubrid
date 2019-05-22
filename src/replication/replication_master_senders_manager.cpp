@@ -24,7 +24,9 @@
 
 #include "replication_master_senders_manager.hpp"
 #include "replication_master_node.hpp"
+#include "communication_channel.hpp"
 
+#include <list>
 #include <utility>
 #include "thread_manager.hpp"
 #include "thread_daemon.hpp"
@@ -33,6 +35,8 @@ namespace cubreplication
 {
 
   std::vector <cubstream::transfer_sender *> master_senders_manager::master_server_stream_senders;
+  std::list <cubstream::ack_receiver*> ack_channels;
+  std::mutex mtx;
   cubthread::daemon *master_senders_manager::master_channels_supervisor_daemon = NULL;
   bool master_senders_manager::is_initialized = false;
   std::mutex master_senders_manager::mutex_for_singleton;
@@ -42,6 +46,13 @@ namespace cubreplication
 
   const unsigned int master_senders_manager::SUPERVISOR_DAEMON_DELAY_MS = 10;
   const unsigned int master_senders_manager::SUPERVISOR_DAEMON_CHECK_CONN_MS = 5000;
+
+  void add_ack_chn (cubstream::ack_receiver * receiver)
+  {
+    std::unique_lock<std::mutex> ulock(mtx);
+    
+    ack_channels.push_back (receiver);
+  }
 
   void master_senders_manager::init (cubstream::stream *stream)
   {
