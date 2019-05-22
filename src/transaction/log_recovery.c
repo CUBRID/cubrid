@@ -73,9 +73,9 @@ static int log_rv_analysis_compensate (THREAD_ENTRY * thread_p, int tran_id, LOG
 static int log_rv_analysis_will_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
 						 LOG_PAGE * log_page_p);
-static int log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-					 LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at,
-					 bool * did_incom_recovery);
+static int log_rv_analysis_group_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
+					   LOG_PAGE * log_page_p, LOG_LSA * prev_lsa, bool is_media_crash,
+					   time_t * stop_at, bool * did_incom_recovery);
 static int log_rv_analysis_sysop_start_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
 						 LOG_PAGE * log_page_p);
 static int log_rv_analysis_atomic_sysop_start (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
@@ -1206,23 +1206,23 @@ log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
 }
 
 static int
-log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-			      LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at, bool * did_incom_recovery)
+log_rv_analysis_group_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+				LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at, bool * did_incom_recovery)
 {
   LOG_LSA record_header_lsa;
   LSA_COPY (&record_header_lsa, log_lsa);
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_GROUP_COMMIT), log_lsa, log_page_p);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_GROUP_COMPLETE), log_lsa, log_page_p);
 
-  LOG_REC_GROUP_COMMIT group_commit = *(LOG_REC_GROUP_COMMIT *) ((char *) log_page_p->area + log_lsa->offset);
+  LOG_REC_GROUP_COMPLETE group_commit = *(LOG_REC_GROUP_COMPLETE *) ((char *) log_page_p->area + log_lsa->offset);
   time_t last_at_time = (time_t) group_commit.at_time;
 
   // *INDENT-OFF*
   std::vector<rv_gc_info> group;
   // *INDENT-ON*
 
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_GROUP_COMMIT), log_lsa, log_page_p);
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_GROUP_COMPLETE), log_lsa, log_page_p);
   log_unpack_group_commit (thread_p, log_lsa, log_page_p, group_commit.redo_size, group);
 
   // check whether we want to stop at a timepoint before gc_record's timestamp
@@ -1261,7 +1261,7 @@ log_rv_analysis_group_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
 	  LOG_TDES *tdes = logtb_rv_find_allocate_tran_index (thread_p, ti.m_tr_id, log_lsa);
 	  if (tdes == NULL)
 	    {
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_group_commit");
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_group_complete");
 	      return ER_FAILED;
 	    }
 
@@ -2354,9 +2354,9 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
       (void) log_rv_analysis_complete (thread_p, tran_id, log_lsa, log_page_p, prev_lsa, is_media_crash, stop_at,
 				       did_incom_recovery);
       break;
-    case LOG_GROUP_COMMIT:
-      (void) log_rv_analysis_group_commit (thread_p, tran_id, log_lsa, log_page_p, prev_lsa, is_media_crash, stop_at,
-					   did_incom_recovery);
+    case LOG_GROUP_COMPLETE:
+      (void) log_rv_analysis_group_complete (thread_p, tran_id, log_lsa, log_page_p, prev_lsa, is_media_crash, stop_at,
+					     did_incom_recovery);
       break;
 
     case LOG_SYSOP_END:
@@ -3895,22 +3895,22 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	      break;
 
-	    case LOG_GROUP_COMMIT:
+	    case LOG_GROUP_COMPLETE:
 #if !defined(NDEBUG)
 	      {
 		// NO-op, just assert dealloc not needed
 
 		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
-		LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_GROUP_COMMIT), &log_lsa, log_pgptr);
+		LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_GROUP_COMPLETE), &log_lsa, log_pgptr);
 
-		LOG_REC_GROUP_COMMIT group_commit =
-		  *(LOG_REC_GROUP_COMMIT *) ((char *) log_pgptr->area + log_lsa.offset);
+		LOG_REC_GROUP_COMPLETE group_commit =
+		  *(LOG_REC_GROUP_COMPLETE *) ((char *) log_pgptr->area + log_lsa.offset);
 
 		// *INDENT-OFF*
 		std::vector<rv_gc_info> group;
 		// *INDENT-ON*
 
-		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_GROUP_COMMIT), &log_lsa, log_pgptr);
+		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_GROUP_COMPLETE), &log_lsa, log_pgptr);
 		log_unpack_group_commit (thread_p, &log_lsa, log_pgptr, group_commit.redo_size, group);
 
 		// *INDENT-OFF*
@@ -4308,7 +4308,7 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       if (tdes->coord == NULL)
 	{
 	  LOG_LSA finish_lsa;
-	  assert (!LSA_IS_NULL (&tdes->posp_nxlsa));
+	  assert (!LSA_ISNULL (&tdes->posp_nxlsa));
 	  log_append_finish_postpone (thread_p, tdes, &finish_lsa);
 	  logtb_free_tran_index (thread_p, tdes->tran_index);
 	}
@@ -4903,7 +4903,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		    }
 		  tdes = NULL;
 		  break;
-		case LOG_GROUP_COMMIT:
+		case LOG_GROUP_COMPLETE:
 		  // should not happen
 		  // todo [GC recovery]:
 		  assert (false);
@@ -5630,14 +5630,14 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_DONETIME), &log_lsa, log_pgptr);
       break;
 
-    case LOG_GROUP_COMMIT:
+    case LOG_GROUP_COMPLETE:
       {
 	/* Read the DATA HEADER */
-	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_GROUP_COMMIT), &log_lsa, log_pgptr);
-	LOG_REC_GROUP_COMMIT *gc = (LOG_REC_GROUP_COMMIT *) ((char *) log_pgptr->area + log_lsa.offset);
+	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_GROUP_COMPLETE), &log_lsa, log_pgptr);
+	LOG_REC_GROUP_COMPLETE *gc = (LOG_REC_GROUP_COMPLETE *) ((char *) log_pgptr->area + log_lsa.offset);
 	redo_length = gc->redo_size;
 
-	LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_GROUP_COMMIT), &log_lsa, log_pgptr);
+	LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_GROUP_COMPLETE), &log_lsa, log_pgptr);
 	LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);
 	break;
       }

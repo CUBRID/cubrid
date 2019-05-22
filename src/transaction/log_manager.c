@@ -416,8 +416,8 @@ log_to_string (LOG_RECTYPE type)
     case LOG_COMMIT_WITH_POSTPONE:
       return "LOG_COMMIT_WITH_POSTPONE";
 
-    case LOG_GROUP_COMMIT:
-      return "LOG_GROUP_COMMIT";
+    case LOG_GROUP_COMPLETE:
+      return "LOG_GROUP_COMPLETE";
 
     case LOG_COMMIT:
       return "LOG_COMMIT";
@@ -4497,10 +4497,10 @@ log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_
     }
   // *INDENT-ON*
 
-  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_GROUP_COMMIT, RV_NOT_DEFINED, NULL, 0, NULL,
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_GROUP_COMPLETE, RV_NOT_DEFINED, NULL, 0, NULL,
 					(int) v.get_size (), v.get_read_ptr ());
 
-  LOG_REC_GROUP_COMMIT *gc = (LOG_REC_GROUP_COMMIT *) node->data_header;
+  LOG_REC_GROUP_COMPLETE *gc = (LOG_REC_GROUP_COMPLETE *) node->data_header;
   gc->at_time = time (NULL);
   gc->stream_pos = stream_pos;
   gc->redo_size = v.get_size ();
@@ -6231,23 +6231,24 @@ void log_unpack_group_commit (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PA
 static LOG_PAGE *
 log_dump_record_group_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  LOG_REC_GROUP_COMMIT *group_commit;
+  LOG_REC_GROUP_COMPLETE *group_commit;
   char time_val[CTIME_MAX];
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*group_commit), log_lsa, log_page_p);
-  group_commit = (LOG_REC_GROUP_COMMIT *) ((char *) log_page_p->area + log_lsa->offset);
+  group_commit = (LOG_REC_GROUP_COMPLETE *) ((char *) log_page_p->area + log_lsa->offset);
 
   time_t tmp_time = (time_t) group_commit->at_time;
   (void) ctime_r (&tmp_time, time_val);
   fprintf (out_fp, ",\n     Group commit (group_sz = %lu, stream_pos = %lu) finish time at = %s\n",
 	   group_commit->redo_size, group_commit->stream_pos, time_val);
   fprintf (out_fp, "     Group: ");
+  int buf_size = group_commit->redo_size;
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*group_commit), log_lsa, log_page_p);
 
   // *INDENT-OFF*
   std::vector<rv_gc_info> group;
-  log_unpack_group_commit (thread_p, log_lsa, log_page_p, group_commit->redo_size, group);
+  log_unpack_group_commit (thread_p, log_lsa, log_page_p, buf_size, group);
   for (const auto & ti : group)
     {
       fprintf (out_fp, "\n        tran_index = %d, tran_state = %d", ti.m_tr_id, ti.m_state);
@@ -7602,7 +7603,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	      LSA_SET_NULL (&prev_tranlsa);
 	      break;
 
-	    case LOG_GROUP_COMMIT:
+	    case LOG_GROUP_COMPLETE:
 	    case LOG_FINISH_POSTPONE:
 	      assert (false);
 	    case LOG_WILL_COMMIT:

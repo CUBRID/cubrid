@@ -135,7 +135,7 @@ enum log_rectype
   LOG_DUMMY_GENERIC,		/* used for flush for now. it is ridiculous to create dummy log records for every single
 				 * case. we should find a different approach */
 
-  LOG_GROUP_COMMIT,
+  LOG_GROUP_COMPLETE,
 
   LOG_FINISH_POSTPONE,
 
@@ -241,14 +241,11 @@ struct log_rec_donetime
   INT64 at_time;		/* Database creation time. For safety reasons */
 };
 
-typedef struct log_rec_group_commit LOG_REC_GROUP_COMMIT;
-struct log_rec_group_commit
+typedef struct log_rec_group_complete LOG_REC_GROUP_COMPLETE;
+struct log_rec_group_complete
 {
   INT64 at_time;		/* time recorded by active server */
-  // *INDENT-OFF*
   cubstream::stream_position stream_pos;
-  // *INDENT-ON*
-
   size_t redo_size;
 };
 
