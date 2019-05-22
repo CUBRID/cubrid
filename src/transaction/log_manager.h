@@ -227,8 +227,8 @@ extern void log_flush_daemon_get_stats (UINT64 * statsp);
 extern void log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p);
 
 // *INDENT-OFF*
-extern void log_unpack_group_commit (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, int buf_size, 
-				     std::vector<rv_gc_info> & group);
+extern void log_unpack_group_complete (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, int buf_size,
+				       std::vector<rv_gc_info> & group);
 // *INDENT-ON*
 
 //

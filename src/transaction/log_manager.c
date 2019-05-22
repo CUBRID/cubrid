@@ -241,8 +241,8 @@ static void log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * 
 static void log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * eot_lsa,
 					  LOG_RECTYPE iscommitted, enum LOG_PRIOR_LSA_LOCK with_lock);
-static void log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, tx_group & group,
-				     LOG_LSA * commit_lsa);
+static void log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, tx_group & group,
+				       LOG_LSA * commit_lsa);
 static void log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 					  LOG_LSA * lsa);
 static void log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
@@ -275,8 +275,8 @@ static LOG_PAGE *log_dump_record_compensate (THREAD_ENTRY * thread_p, FILE * out
 					     LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
 						  LOG_PAGE * log_page_p);
-static LOG_PAGE *log_dump_record_group_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
-					       LOG_PAGE * log_page_p);
+static LOG_PAGE *log_dump_record_group_complete (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
+						 LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_transaction_finish (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
 						     LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
@@ -4472,8 +4472,8 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
 }
 
 static void
-log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, tx_group & group,
-			 LOG_LSA * commit_lsa)
+log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, tx_group & group,
+			   LOG_LSA * commit_lsa)
 {
   LOG_PRIOR_NODE *node;
   LOG_LSA lsa;
@@ -4811,7 +4811,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	    {
 	      tx_group group;
 	      group.add (tdes->tran_index, 0, tdes->state);
-	      log_append_group_commit (thread_p, tdes, 0, group, &commit_lsa);
+	      log_append_group_complete (thread_p, tdes, 0, group, &commit_lsa);
 	    }
 	  else
 	    {
@@ -5305,7 +5305,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 		{
 		  tx_group group;
 		  group.add (tdes->tran_index, 0, TRAN_UNACTIVE_COMMITTED);
-		  log_append_group_commit (thread_p, tdes, 0, group, &commit_lsa);
+		  log_append_group_complete (thread_p, tdes, 0, group, &commit_lsa);
 		}
 
 	      log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT, &commit_lsa);
@@ -5316,7 +5316,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 
 	      tx_group group;
 	      group.add (tdes->tran_index, 0, TRAN_UNACTIVE_ABORTED);
-	      log_append_group_commit (thread_p, tdes, 0, group, &abort_lsa);
+	      log_append_group_complete (thread_p, tdes, 0, group, &abort_lsa);
 
 	      log_change_tran_as_completed (thread_p, tdes, LOG_ABORT, &abort_lsa);
 	    }
@@ -6165,8 +6165,8 @@ log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
 }
 
 // *INDENT-OFF*
-void log_unpack_group_commit (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, int buf_size,
-			      std::vector<rv_gc_info> & group)
+void log_unpack_group_complete (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, int buf_size,
+			        std::vector<rv_gc_info> & group)
 // *INDENT-ON*
 
 {
@@ -6229,26 +6229,26 @@ void log_unpack_group_commit (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PA
 }
 
 static LOG_PAGE *
-log_dump_record_group_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+log_dump_record_group_complete (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  LOG_REC_GROUP_COMPLETE *group_commit;
+  LOG_REC_GROUP_COMPLETE *group_complete;
   char time_val[CTIME_MAX];
 
   /* Read the DATA HEADER */
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*group_commit), log_lsa, log_page_p);
-  group_commit = (LOG_REC_GROUP_COMPLETE *) ((char *) log_page_p->area + log_lsa->offset);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*group_complete), log_lsa, log_page_p);
+  group_complete = (LOG_REC_GROUP_COMPLETE *) ((char *) log_page_p->area + log_lsa->offset);
 
-  time_t tmp_time = (time_t) group_commit->at_time;
+  time_t tmp_time = (time_t) group_complete->at_time;
   (void) ctime_r (&tmp_time, time_val);
   fprintf (out_fp, ",\n     Group commit (group_sz = %lu, stream_pos = %lu) finish time at = %s\n",
-	   group_commit->redo_size, group_commit->stream_pos, time_val);
+	   group_complete->redo_size, group_complete->stream_pos, time_val);
   fprintf (out_fp, "     Group: ");
-  int buf_size = group_commit->redo_size;
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (*group_commit), log_lsa, log_page_p);
+  int buf_size = group_complete->redo_size;
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (*group_complete), log_lsa, log_page_p);
 
   // *INDENT-OFF*
   std::vector<rv_gc_info> group;
-  log_unpack_group_commit (thread_p, log_lsa, log_page_p, buf_size, group);
+  log_unpack_group_complete (thread_p, log_lsa, log_page_p, buf_size, group);
   for (const auto & ti : group)
     {
       fprintf (out_fp, "\n        tran_index = %d, tran_state = %d", ti.m_tr_id, ti.m_state);
@@ -7027,7 +7027,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
     }
 
   // todo: Investigate this & other similar references in this document that do copy on equality too.
-  // Check whether extra safety for equality is needed. E.g. Unpack_group_commit did not
+  // Check whether extra safety for equality is needed. E.g. Unpack_group_complete did not need it
   if (log_lsa->offset + rcv->length < (int) LOGAREA_SIZE)
     {
       rcv->data = (char *) log_page_p->area + log_lsa->offset;
@@ -7806,7 +7806,7 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tx_group group;
   group.add (tdes->tran_index, 0, TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
 
-  log_append_group_commit (thread_p, tdes, 0, group, &commit_lsa);
+  log_append_group_complete (thread_p, tdes, 0, group, &commit_lsa);
 
   logpb_flush_pages (thread_p, &commit_lsa);
 

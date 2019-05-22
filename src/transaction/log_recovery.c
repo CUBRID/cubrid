@@ -1215,15 +1215,15 @@ log_rv_analysis_group_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_GROUP_COMPLETE), log_lsa, log_page_p);
 
-  LOG_REC_GROUP_COMPLETE group_commit = *(LOG_REC_GROUP_COMPLETE *) ((char *) log_page_p->area + log_lsa->offset);
-  time_t last_at_time = (time_t) group_commit.at_time;
+  LOG_REC_GROUP_COMPLETE group_complete = *(LOG_REC_GROUP_COMPLETE *) ((char *) log_page_p->area + log_lsa->offset);
+  time_t last_at_time = (time_t) group_complete.at_time;
 
   // *INDENT-OFF*
   std::vector<rv_gc_info> group;
   // *INDENT-ON*
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_GROUP_COMPLETE), log_lsa, log_page_p);
-  log_unpack_group_commit (thread_p, log_lsa, log_page_p, group_commit.redo_size, group);
+  log_unpack_group_complete (thread_p, log_lsa, log_page_p, group_complete.redo_size, group);
 
   // check whether we want to stop at a timepoint before gc_record's timestamp
   if (is_media_crash && (stop_at != NULL && *stop_at != (time_t) (-1) && difftime (*stop_at, last_at_time) < 0))
@@ -3903,7 +3903,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
 		LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_GROUP_COMPLETE), &log_lsa, log_pgptr);
 
-		LOG_REC_GROUP_COMPLETE group_commit =
+		LOG_REC_GROUP_COMPLETE group_complete =
 		  *(LOG_REC_GROUP_COMPLETE *) ((char *) log_pgptr->area + log_lsa.offset);
 
 		// *INDENT-OFF*
@@ -3911,7 +3911,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		// *INDENT-ON*
 
 		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_GROUP_COMPLETE), &log_lsa, log_pgptr);
-		log_unpack_group_commit (thread_p, &log_lsa, log_pgptr, group_commit.redo_size, group);
+		log_unpack_group_complete (thread_p, &log_lsa, log_pgptr, group_complete.redo_size, group);
 
 		// *INDENT-OFF*
 	        for (const auto & ti:group)
