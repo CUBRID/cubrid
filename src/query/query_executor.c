@@ -12361,7 +12361,6 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   bool clear_list_id = false;
   MVCC_SNAPSHOT *mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
   bool need_ha_replication = !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true;
-  size_t index = 0;
 
   // *INDENT-OFF*
   struct incr_info
@@ -12377,6 +12376,9 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
     incr_info (const incr_info & other) = default;
   };
   std::vector<incr_info> all_incr_info;
+  std::vector<bool> all_skipped;
+  size_t incr_info_index = 0;
+  size_t skipped_index = 0;
   // *INDENT-ON*
 
   assert (xasl->list_id->tuple_cnt == 1);
@@ -12440,6 +12442,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	    {
 	      /* Probably this would be INCR(NULL). When the source value is NULL, INCR/DECR expression is also NULL. */
 	      clear_list_id = false;
+	      all_skipped.push_back (true);
 	      continue;
 	    }
 	  crt_incr_info.m_oid = *db_get_oid (rightvalp);
@@ -12450,6 +12453,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	       * fixed, it does not need to be checked */
 	      er_log_debug (ARG_FILE_LINE, "qexec_execute_selupd_list: OID is null\n");
 	      clear_list_id = false;
+	      all_skipped.push_back (true);
 	      continue;
 	    }
 
@@ -12521,6 +12525,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 				    "for OID { %d %d %d } class OID { %d %d %d }\n", OID_AS_ARGS (&crt_incr_info.m_oid),
 				    OID_AS_ARGS (&crt_incr_info.m_class_oid));
 		      er_clear ();
+		      all_skipped.push_back (true);
 		      continue;
 		    }
 		  else
@@ -12535,7 +12540,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 				    "{ %d %d %d } class OID { %d %d %d } error_id %d\n",
 				    OID_AS_ARGS (&crt_incr_info.m_oid), OID_AS_ARGS (&crt_incr_info.m_class_oid),
 				    er_id);
-
+		      all_skipped.push_back (true);
 		      continue;
 		    }
 		}
@@ -12546,7 +12551,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 				"qexec_execute_selupd_list: skip for OID "
 				"{ %d %d %d } class OID { %d %d %d } error_id %d\n", OID_AS_ARGS (&crt_incr_info.m_oid),
 				OID_AS_ARGS (&crt_incr_info.m_class_oid), NO_ERROR);
-
+		  all_skipped.push_back (true);
 		  continue;
 		}
 	      else
@@ -12563,6 +12568,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	    }
 
 	  all_incr_info.push_back (crt_incr_info);
+	  all_skipped.push_back (false);
 	}
     }
 
@@ -12590,7 +12596,12 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
     {
       for (outptr = selupd->select_list; outptr; outptr = outptr->next)
 	{
-	  const incr_info & crt_incr_info = all_incr_info[index++];
+	  if (all_skipped[skipped_index++])
+	    {
+	      // skip this increment
+	      continue;
+	    }
+	  const incr_info & crt_incr_info = all_incr_info[incr_info_index++];
 	  if (qexec_execute_increment (thread_p, &crt_incr_info.m_oid, &crt_incr_info.m_class_oid,
 				       &crt_incr_info.m_class_hfid, crt_incr_info.m_attrid, crt_incr_info.m_n_increment,
 				       crt_incr_info.m_ptype) != NO_ERROR)
@@ -12599,6 +12610,8 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	    }
 	}
     }
+  assert (skipped_index == all_skipped.size ());
+  assert (incr_info_index == all_incr_info.size ());
 
   if (scan_cache_inited == true)
     {
