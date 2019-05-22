@@ -119,6 +119,12 @@ extern int locator_prune_insert_record (THREAD_ENTRY & thread_ref, HEAP_SCANCACH
                                         LC_COPYAREA_OPERATION op_type, PRUNING_CONTEXT * pcontext, OID & oid_inserted);
 // basic delete operation:
 extern int locator_delete_record (THREAD_ENTRY & thread_ref, HEAP_SCANCACHE & scan_cache, const OID &oid);
+// basic update operation:
+extern int locator_update_record (THREAD_ENTRY & thread_ref, HEAP_SCANCACHE & scan_cache, const OID &oid,
+                                  RECDES & old_recdes, RECDES & new_recdes, bool disable_fk_check = false);
+extern int locator_prune_update_record (THREAD_ENTRY & thread_ref, HEAP_SCANCACHE & scan_cache, const OID &oid,
+                                        RECDES & old_recdes, RECDES & new_recdes, LC_COPYAREA_OPERATION op,
+                                        PRUNING_CONTEXT * pcontext, bool disable_fk_check = false);
 // *INDENT-ON*
 
 extern int locator_rv_redo_rename (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

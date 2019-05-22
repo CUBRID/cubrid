@@ -14294,4 +14294,26 @@ locator_delete_record (THREAD_ENTRY & thread_ref, HEAP_SCANCACHE & scan_cache, c
                                const_cast<OID *> (&oid) /* todo: fix locator_delete_force signature */,
                                LC_FLAG_HAS_INDEX, LC_FLUSH_DELETE, &scan_cache, &force_count_out, NULL, true);
 }
+
+int
+locator_update_record (THREAD_ENTRY & thread_ref, HEAP_SCANCACHE & scan_cache, const OID &oid, RECDES & old_recdes,
+                       RECDES & new_recdes, bool disable_fk_check)
+{
+  return locator_prune_update_record (thread_ref, scan_cache, oid, old_recdes, new_recdes, LC_FLUSH_UPDATE, NULL,
+                                      disable_fk_check);
+}
+
+int
+locator_prune_update_record (THREAD_ENTRY & thread_ref, HEAP_SCANCACHE & scan_cache, const OID &oid,
+                             RECDES & old_recdes, RECDES & new_recdes, LC_COPYAREA_OPERATION op,
+                             PRUNING_CONTEXT * pcontext, bool disable_fk_check)
+{
+  int force_count_out;
+  DB_CLASS_PARTITION_TYPE ptype = (DB_CLASS_PARTITION_TYPE) locator_area_op_to_pruning_type (op);
+  return locator_update_force (&thread_ref, &scan_cache.node.hfid, &scan_cache.node.class_oid,
+                               const_cast<OID *> (&oid) /* todo: fix locator_update_force signature */, &old_recdes,
+                               &new_recdes, LC_FLAG_HAS_INDEX, NULL, 0, LC_FLUSH_UPDATE, &scan_cache, &force_count_out,
+                               disable_fk_check, REPL_INFO_TYPE_RBR_NORMAL, ptype, pcontext, NULL, UPDATE_INPLACE_NONE,
+                               true);
+}
 // *INDENT-ON*

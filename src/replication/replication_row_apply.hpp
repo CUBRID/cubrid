@@ -32,8 +32,9 @@ class record_descriptor;
 
 namespace cubreplication
 {
-  int row_apply_insert (const std::string &classname, const db_value &value, const record_descriptor &record);
-  int row_apply_delete (const std::string &classname, const db_value &value);
+  int row_apply_insert (const std::string &classname, const record_descriptor &record);
+  int row_apply_delete (const std::string &classname, const db_value &key_value);
+  int row_apply_update (const std::string &classname, const db_value &key_value, const record_descriptor &record);
 
 } // namespace cubreplication
 

@@ -42,7 +42,7 @@ namespace cubreplication
 				HEAP_SCANCACHE &scan_cache, SCAN_OPERATION_TYPE op_type, OID &instance_oid);
 
   int
-  row_apply_insert (const std::string &classname, const db_value &value, const record_descriptor &record)
+  row_apply_insert (const std::string &classname, const record_descriptor &record)
   {
     cubthread::entry &thread_ref = cubthread::get_entry ();
     /* monitor */
@@ -76,7 +76,7 @@ namespace cubreplication
   }
 
   int
-  row_apply_delete (const std::string &classname, const db_value &value)
+  row_apply_delete (const std::string &classname, const db_value &key_value)
   {
     cubthread::entry &thread_ref = cubthread::get_entry ();
     /* monitor */
@@ -95,7 +95,7 @@ namespace cubreplication
     assert (!OID_ISNULL (&scan_cache.node.class_oid));
     assert (!HFID_IS_NULL (&scan_cache.node.hfid));
 
-    error_code = find_instance_oid (thread_ref, scan_cache.node.class_oid, value, scan_cache, S_DELETE, instance_oid);
+    error_code = find_instance_oid (thread_ref, scan_cache.node.class_oid, key_value, scan_cache, S_DELETE, instance_oid);
     if (error_code != NO_ERROR)
       {
 	assert (false);
@@ -104,6 +104,61 @@ namespace cubreplication
       }
 
     error_code = locator_delete_record (thread_ref, scan_cache, instance_oid);
+    assert (error_code == NO_ERROR);
+
+    heap_scancache_end_modify (&thread_ref, &scan_cache);
+    return NO_ERROR;
+  }
+
+  int
+  row_apply_update (const std::string &classname, const db_value &key_value, const record_descriptor &record)
+  {
+    cubthread::entry &thread_ref = cubthread::get_entry ();
+    /* monitor */
+    // TODO: We need another stat.
+    perfmon_inc_stat (&thread_ref, PSTAT_QM_NUM_DELETES);
+
+    HEAP_SCANCACHE scan_cache;
+    OID instance_oid = OID_INITIALIZER;
+
+    int error_code = prepare_scan (thread_ref, classname, scan_cache);
+    if (error_code != NO_ERROR)
+      {
+	assert (false);
+	return error_code;
+      }
+    assert (!OID_ISNULL (&scan_cache.node.class_oid));
+    assert (!HFID_IS_NULL (&scan_cache.node.hfid));
+
+    error_code = find_instance_oid (thread_ref, scan_cache.node.class_oid, key_value, scan_cache, S_DELETE, instance_oid);
+    if (error_code != NO_ERROR)
+      {
+	assert (false);
+	heap_scancache_end_modify (&thread_ref, &scan_cache);
+	return error_code;
+      }
+
+    RECDES old_recdes;
+    if (heap_get_visible_version (&thread_ref, &instance_oid, &scan_cache.node.class_oid, &old_recdes, &scan_cache,
+				  PEEK, NULL_CHN) != S_SUCCESS)
+      {
+	assert (false);
+	heap_scancache_end_modify (&thread_ref, &scan_cache);
+	return ER_FAILED;
+      }
+
+    // copy new recdes
+    RECDES new_recdes = record_descriptor (record.get_recdes ()).get_recdes ();
+    overwrite_last_reprid (thread_ref, scan_cache.node.class_oid, new_recdes);
+    error_code = or_replace_chn (&new_recdes, or_chn (&old_recdes) + 1);
+    if (error_code != NO_ERROR)
+      {
+	assert (false);
+	heap_scancache_end_modify (&thread_ref, &scan_cache);
+	return ER_FAILED;
+      }
+
+    error_code = locator_update_record (thread_ref, scan_cache, instance_oid, old_recdes, new_recdes, true);
     assert (error_code == NO_ERROR);
 
     heap_scancache_end_modify (&thread_ref, &scan_cache);
