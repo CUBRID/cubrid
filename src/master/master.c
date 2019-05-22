@@ -789,8 +789,11 @@ css_process_new_connection (CSS_CONN_ENTRY * conn, SOCKET ack_chn)
 	  css_register_new_server2 (conn, rid);
 	  break;
 	case SERVER_REQUEST_CONNECT_NEW_SLAVE:
-	  css_send_to_existing_server (conn, ack_chn, rid, SERVER_CONNECT_NEW_SLAVE);
-	  break;
+	  {
+	    SOCKET ack_fd = css_master_accept (conn->fd);
+	    css_send_to_existing_server (conn, ack_chn, rid, SERVER_CONNECT_NEW_SLAVE);
+	    break;
+	  }
 	default:
 	  css_free_conn (conn);
 	  break;
@@ -985,11 +988,11 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 	    {
 	      new_fd = css_master_accept (temp->fd);
 	      // accept 2nd channel
-	      SOCKET ack_fd = css_master_accept (temp->fd);
+
 	      if (!IS_INVALID_SOCKET (new_fd))
 		{
-		  CSS_CONN_ENTRY *conn = css_create_new_connection (new_fd, ack_fd);
-		  css_process_new_connection (conn, ack_fd);
+		  CSS_CONN_ENTRY *conn = css_create_new_connection (new_fd, -1);
+		  css_process_new_connection (conn, -1);
 		}
 	    }
 	  else if (!IS_INVALID_SOCKET (temp->fd))
