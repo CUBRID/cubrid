@@ -209,7 +209,7 @@ end:
     if (reprid == attr_info.last_classrepr->id)
       {
 	/* create by copying the rec_des */
-	new (&record) record_descriptor (rec_des);
+	record.set_recdes (rec_des);
 	return error_code;
       }
 
