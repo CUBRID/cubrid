@@ -27,12 +27,15 @@
 #include "dbtype_def.h"
 #include "heap_file.h"
 #include "locator_sr.h"
+#include "object_representation_sr.h"
 #include "thread_manager.hpp"
 #include "xserver_interface.h"
 
 namespace cubreplication
 {
-  static int prepare_scan (const char *classname, OID &class_oid, HEAP_SCANCACHE &scan_cache);
+  static int prepare_scan (cubthread::entry &thread_ref, const char *classname, OID &class_oid,
+			   HEAP_SCANCACHE &scan_cache);
+  static int overwrite_last_reprid (cubthread::entry &thread_ref, const OID &class_oid, RECDES &recdes);
 
   static int
   prepare_scan (cubthread::entry &thread_ref, const char *classname, OID &class_oid, HEAP_SCANCACHE &scan_cache)
@@ -59,5 +62,23 @@ namespace cubreplication
       }
 
     return NO_ERROR;
+  }
+
+  static int overwrite_last_reprid (cubthread::entry &thread_ref, const OID &class_oid, RECDES &recdes)
+  {
+    int last_reprid = heap_get_class_repr_id (&thread_ref, &class_oid);
+    if (last_reprid == 0)
+      {
+	assert (false);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CT_INVALID_REPRID, 1, last_reprid);
+	return ER_CT_INVALID_REPRID;
+      }
+
+    if (or_replace_rep_id (&recdes, last_reprid) != NO_ERROR)
+      {
+	// never happens; we should make or_replace_rep_id return void
+	assert (false);
+	return ER_FAILED;
+      }
   }
 } // namespace cubreplication
