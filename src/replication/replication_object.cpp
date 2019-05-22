@@ -722,7 +722,7 @@ namespace cubreplication
     serializator.pack_string (m_class_name);
     serializator.pack_int ((int) m_rec_des_list.size ());
 
-    for (const record_descriptor& rec : m_rec_des_list)
+    for (const record_descriptor &rec : m_rec_des_list)
       {
 	rec.pack (serializator);
       }
@@ -755,7 +755,7 @@ namespace cubreplication
 
     entry_size += serializator.get_packed_string_size (m_class_name, entry_size);
     entry_size += serializator.get_packed_int_size (entry_size);
-    for (const record_descriptor& rec : m_rec_des_list)
+    for (const record_descriptor &rec : m_rec_des_list)
       {
 	entry_size += rec.get_packed_size (serializator, entry_size);
       }
@@ -809,14 +809,11 @@ namespace cubreplication
     str ("row_object::row_object table=%s records_cnt:%d\n", m_class_name.c_str (), m_rec_des_list.size ());
     for (int i = 0; i < m_rec_des_list.size (); i++)
       {
-	string_buffer sb_hex;
-
 	size_t buf_size = m_rec_des_list[i].get_size ();
 
-	sb_hex.hex_dump (m_rec_des_list[i].get_recdes ().data, buf_size);
 	str ("\trecord:%d, size:%d\n", i, buf_size);
 	buf_size = std::min (buf_size, (size_t) 256);
-	str.add_bytes (sb_hex.len (), sb_hex.get_buffer ());
+	str.hex_dump (m_rec_des_list[i].get_recdes ().data, buf_size);
       }
   }
 
