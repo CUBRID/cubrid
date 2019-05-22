@@ -22,3 +22,42 @@
 //
 
 #include "replication_row_apply.hpp"
+
+#include "btree.h"                  // SINGLE_ROW_MODIFY
+#include "dbtype_def.h"
+#include "heap_file.h"
+#include "locator_sr.h"
+#include "thread_manager.hpp"
+#include "xserver_interface.h"
+
+namespace cubreplication
+{
+  static int prepare_scan (const char *classname, OID &class_oid, HEAP_SCANCACHE &scan_cache);
+
+  static int
+  prepare_scan (cubthread::entry &thread_ref, const char *classname, OID &class_oid, HEAP_SCANCACHE &scan_cache)
+  {
+    if (xlocator_find_class_oid (&thread_ref, classname, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
+      {
+	assert (false);
+	return ER_FAILED;
+      }
+
+    HFID hfid = HFID_INITIALIZER;
+    int error_code = heap_get_hfid_from_class_oid (&thread_ref, &class_oid, &hfid);
+    if (error_code != NO_ERROR)
+      {
+	assert (false); // can we expect errors? e.g. interrupt
+	return error_code;
+      }
+
+    error_code = heap_scancache_start_modify (&thread_ref, &scan_cache, &hfid, &class_oid, SINGLE_ROW_MODIFY, NULL);
+    if (error_code != NO_ERROR)
+      {
+	assert (false);
+	return error_code;
+      }
+
+    return NO_ERROR;
+  }
+} // namespace cubreplication

@@ -24,6 +24,9 @@
 #ifndef _REPLICATION_ROW_APPLY_HPP_
 #define _REPLICATION_ROW_APPLY_HPP_
 
+namespace cubreplication
+{
 
+} // namespace cubreplication
 
 #endif // !_REPLICATION_ROW_APPLY_HPP_
