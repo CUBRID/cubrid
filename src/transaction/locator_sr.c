@@ -14285,4 +14285,13 @@ locator_prune_insert_record (THREAD_ENTRY & thread_ref, HEAP_SCANCACHE & scan_ca
                                LC_FLAG_HAS_INDEX, SINGLE_ROW_INSERT, &scan_cache, &force_count_out, ptype, pcontext,
                                NULL, UPDATE_INPLACE_NONE);
 }
+
+int
+locator_delete_record (THREAD_ENTRY & thread_ref, HEAP_SCANCACHE & scan_cache, const OID &oid)
+{
+  int force_count_out;
+  return locator_delete_force (&thread_ref, &scan_cache.node.hfid,
+                               const_cast<OID *> (&oid) /* todo: fix locator_delete_force signature */,
+                               LC_FLAG_HAS_INDEX, LC_FLUSH_DELETE, &scan_cache, &force_count_out, NULL, true);
+}
 // *INDENT-ON*

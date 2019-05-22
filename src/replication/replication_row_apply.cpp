@@ -30,6 +30,7 @@
 #include "object_representation_sr.h"
 #include "perf_monitor.h"
 #include "record_descriptor.hpp"
+#include "storage_common.h"                   // SCAN_OPERATION_TYPE
 #include "thread_manager.hpp"
 #include "xserver_interface.h"
 
@@ -37,6 +38,8 @@ namespace cubreplication
 {
   static int prepare_scan (cubthread::entry &thread_ref, const std::string &classname, HEAP_SCANCACHE &scan_cache);
   static void overwrite_last_reprid (cubthread::entry &thread_ref, const OID &class_oid, RECDES &recdes);
+  static int find_instance_oid (cubthread::entry &thread_ref, const OID &class_oid, const db_value &key_value,
+				HEAP_SCANCACHE &scan_cache, SCAN_OPERATION_TYPE op_type, OID &instance_oid);
 
   int
   row_apply_insert (const std::string &classname, const db_value &value, const record_descriptor &record)
@@ -72,6 +75,41 @@ namespace cubreplication
     return error_code;
   }
 
+  int
+  row_apply_delete (const std::string &classname, const db_value &value)
+  {
+    cubthread::entry &thread_ref = cubthread::get_entry ();
+    /* monitor */
+    // TODO: We need another stat.
+    perfmon_inc_stat (&thread_ref, PSTAT_QM_NUM_DELETES);
+
+    HEAP_SCANCACHE scan_cache;
+    OID instance_oid = OID_INITIALIZER;
+
+    int error_code = prepare_scan (thread_ref, classname, scan_cache);
+    if (error_code != NO_ERROR)
+      {
+	assert (false);
+	return error_code;
+      }
+    assert (!OID_ISNULL (&scan_cache.node.class_oid));
+    assert (!HFID_IS_NULL (&scan_cache.node.hfid));
+
+    error_code = find_instance_oid (thread_ref, scan_cache.node.class_oid, value, scan_cache, S_DELETE, instance_oid);
+    if (error_code != NO_ERROR)
+      {
+	assert (false);
+	heap_scancache_end_modify (&thread_ref, &scan_cache);
+	return error_code;
+      }
+
+    error_code = locator_delete_record (thread_ref, scan_cache, instance_oid);
+    assert (error_code == NO_ERROR);
+
+    heap_scancache_end_modify (&thread_ref, &scan_cache);
+    return NO_ERROR;
+  }
+
   static int
   prepare_scan (cubthread::entry &thread_ref, const std::string &classname, HEAP_SCANCACHE &scan_cache)
   {
@@ -101,7 +139,8 @@ namespace cubreplication
     return NO_ERROR;
   }
 
-  static void overwrite_last_reprid (cubthread::entry &thread_ref, const OID &class_oid, RECDES &recdes)
+  static void
+  overwrite_last_reprid (cubthread::entry &thread_ref, const OID &class_oid, RECDES &recdes)
   {
     int last_reprid = heap_get_class_repr_id (&thread_ref, &class_oid);
     if (last_reprid == 0)
@@ -117,4 +156,28 @@ namespace cubreplication
 	return;
       }
   }
+
+  static int
+  find_instance_oid (cubthread::entry &thread_ref, const OID &class_oid, const db_value &key_value,
+		     HEAP_SCANCACHE &scan_cache, SCAN_OPERATION_TYPE op_type, OID &instance_oid)
+  {
+    BTID pkey_btid;
+    int error_code = btree_get_pkey_btid (&thread_ref, &class_oid, &pkey_btid);
+    if (error_code != NO_ERROR)
+      {
+	assert (false);
+	return error_code;
+      }
+
+    if (xbtree_find_unique (&thread_ref, &pkey_btid, op_type,
+			    const_cast<db_value *> (&key_value) /* todo: fix xbtree_find_unique signature */,
+			    &class_oid, &instance_oid, true) != BTREE_KEY_FOUND)
+      {
+	assert (false);
+	return ER_OBJ_OBJECT_NOT_FOUND;
+      }
+    return NO_ERROR;
+  }
+
+
 } // namespace cubreplication

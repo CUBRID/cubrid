@@ -7767,7 +7767,7 @@ exit_on_end:
 }
 
 int
-btree_get_pkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * pkey_btid)
+btree_get_pkey_btid (THREAD_ENTRY * thread_p, const OID * cls_oid, BTID * pkey_btid)
 {
   OR_CLASSREP *cls_repr = NULL;
   OR_INDEX *curr_idx;
@@ -23900,7 +23900,7 @@ btree_record_satisfies_snapshot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, R
  */
 BTREE_SEARCH
 xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type, DB_VALUE * key,
-		    OID * class_oid, OID * oid, bool is_all_class_srch)
+		    const OID * class_oid, OID * oid, bool is_all_class_srch)
 {
   /* Helper used to describe find unique process and to output results. */
   BTREE_FIND_UNIQUE_HELPER find_unique_helper = BTREE_FIND_UNIQUE_HELPER_INITIALIZER;
