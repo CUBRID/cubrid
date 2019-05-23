@@ -1285,7 +1285,6 @@ log_rv_analysis_group_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * 
     }
   // *INDENT-ON*
 
-
   return NO_ERROR;
 }
 

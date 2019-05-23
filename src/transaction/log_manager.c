@@ -242,7 +242,7 @@ static void log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TD
 static void log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * eot_lsa,
 					  LOG_RECTYPE iscommitted, enum LOG_PRIOR_LSA_LOCK with_lock);
 static void log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, tx_group & group,
-				       LOG_LSA * commit_lsa);
+				       LOG_LSA * complete_lsa);
 static void log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 					  LOG_LSA * lsa);
 static void log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
@@ -4473,14 +4473,14 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
 
 static void
 log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, tx_group & group,
-			   LOG_LSA * commit_lsa)
+			   LOG_LSA * complete_lsa)
 {
   LOG_PRIOR_NODE *node;
   LOG_LSA lsa;
 
-  assert (commit_lsa != NULL);
-  commit_lsa->pageid = NULL_LOG_PAGEID;
-  commit_lsa->offset = NULL_LOG_OFFSET;
+  assert (complete_lsa != NULL);
+  complete_lsa->pageid = NULL_LOG_PAGEID;
+  complete_lsa->offset = NULL_LOG_OFFSET;
 
   // *INDENT-OFF*
   cubmem::appendible_block<1024> v;
@@ -4527,7 +4527,7 @@ log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 strea
   lsa = prior_lsa_next_record_with_lock (thread_p, node, tdes);
   log_Gl.prior_info.prior_lsa_mutex.unlock ();
 
-  LSA_COPY (commit_lsa, &lsa);
+  LSA_COPY (complete_lsa, &lsa);
 }
 
 /*
@@ -6179,7 +6179,7 @@ void log_unpack_group_complete (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
       start_buf = (char *) malloc (buf_size);
       if (start_buf == NULL)
 	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_unpack_group_commit");
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_unpack_group_complete");
 	  return;
 	}
       needs_free = true;
@@ -6212,7 +6212,7 @@ void log_unpack_group_complete (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
       if (state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
 	{
 	  assert (crt_buf + sizeof (LOG_LSA) <= end_of_buf);
-	  ASSERT_ALIGN (crt_buf, MAX_ALIGNMENT);
+	  ASSERT_ALIGN (crt_buf, DOUBLE_ALIGNMENT);
 	  LSA_COPY (&pp_lsa, ((LOG_LSA *) crt_buf));
 	  crt_buf += sizeof (LOG_LSA);
 	}
