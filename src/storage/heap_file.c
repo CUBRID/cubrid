@@ -24656,6 +24656,15 @@ heap_scancache::start_area ()
 }
 
 void
+heap_scancache::alloc_area ()
+{
+  if (m_area == NULL)
+    {
+      m_area = new cubmem::single_block_allocator (HEAP_SCANCACHE_BLOCK_ALLOCATOR);
+    }
+}
+
+void
 heap_scancache::end_area ()
 {
   delete m_area;
@@ -24665,10 +24674,7 @@ heap_scancache::end_area ()
 void
 heap_scancache::reserve_area (size_t size)
 {
-  if (m_area == NULL)
-    {
-      m_area = new cubmem::single_block_allocator (HEAP_SCANCACHE_BLOCK_ALLOCATOR);
-    }
+  alloc_area ();
   m_area->reserve (size);
 }
 
@@ -24685,6 +24691,13 @@ bool
 heap_scancache::is_recdes_assigned_to_area (const RECDES & recdes) const
 {
   return m_area != NULL && recdes.data == m_area->get_ptr ();
+}
+
+const cubmem::block_allocator &
+heap_scancache::get_area_block_allocator ()
+{
+  alloc_area ();
+  return m_area->get_block_allocator ();
 }
 
 // *INDENT-ON*

@@ -43,6 +43,13 @@
 // forward declarations
 class multi_index_unique_stats;
 class record_descriptor;
+// *INDENT-OFF*
+namespace cubmem
+{
+  struct block_allocator;
+  class single_block_allocator;
+} // namespace cubmem
+// *INDENT-ON*
 
 #define HFID_EQ(hfid_ptr1, hfid_ptr2) \
   ((hfid_ptr1) == (hfid_ptr2) \
@@ -133,7 +140,7 @@ struct heap_scancache_node_list
   HEAP_SCANCACHE_NODE_LIST *next;
 };
 
-// *IDENT-OFF*
+// *INDENT-OFF*
 typedef struct heap_scancache HEAP_SCANCACHE;
 struct heap_scancache
 {				/* Define a scan over the whole heap file */
@@ -159,11 +166,14 @@ public:
   void reserve_area (size_t size = 0);
   void assign_recdes_to_area (RECDES & recdes, size_t size = 0);
   bool is_recdes_assigned_to_area (const RECDES & recdes) const;
+  const cubmem::block_allocator &get_area_block_allocator ();
 
 private:
-  // todo - add constructor/destructor; should automatically call heap_scancache_end on destructor if started.
+  // todo - add constructor/destructor; should automatically call heap_scancache_end on destructor if started
 
-    cubmem::single_block_allocator * m_area;
+  void alloc_area ();
+
+  cubmem::single_block_allocator * m_area;
 };
 // *INDENT-ON*
 
