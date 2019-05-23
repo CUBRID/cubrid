@@ -120,11 +120,13 @@ namespace cubmem
       single_block_allocator (const block_allocator &base_alloc);
       ~single_block_allocator ();
 
-      const block_allocator &get_allocator () const;
+      const block_allocator &get_block_allocator () const;
       const block &get_block () const;
 
       char *get_ptr () const;
       size_t get_size () const;
+
+      void reserve (size_t size);
 
     private:
 

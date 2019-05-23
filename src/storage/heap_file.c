@@ -36,6 +36,7 @@
 
 #include "heap_file.h"
 
+#include "mem_block.hpp"
 #include "porting.h"
 #include "porting_inline.hpp"
 #include "record_descriptor.hpp"
@@ -762,8 +763,6 @@ static SCAN_CODE heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 
 static SCAN_CODE heap_get_page_info (THREAD_ENTRY * thread_p, const OID * cls_oid, const HFID * hfid, const VPID * vpid,
 				     const PAGE_PTR pgptr, DB_VALUE ** page_info);
-static int heap_scancache_start_chain_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * new_scan_cache,
-					      HEAP_SCANCACHE * old_scan_cache, OID * next_row_version);
 static SCAN_CODE heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, bool ispeeking,
 					  OID * forward_oid, RECDES * recdes);
 static void heap_mvcc_log_insert (THREAD_ENTRY * thread_p, RECDES * p_recdes, LOG_DATA_ADDR * p_addr);
@@ -873,6 +872,13 @@ STATIC_INLINE int heap_copy_chain (THREAD_ENTRY * thread_p, PAGE_PTR page_heap, 
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int heap_get_last_vpid (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * last_vpid)
   __attribute__ ((ALWAYS_INLINE));
+
+// *INDENT-OFF*
+static void heap_scancache_block_allocate (cubmem::block &b, size_t size);
+static void heap_scancache_block_deallocate (cubmem::block &b);
+
+static const cubmem::block_allocator HEAP_SCANCACHE_BLOCK_ALLOCATOR { heap_scancache_block_allocate, heap_scancache_block_deallocate };
+// *INDENT-ON*
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -6703,11 +6709,9 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 
   scan_cache->cache_last_fix_page = cache_last_fix_page;
   PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_HEAP_NORMAL, hfid);
-  scan_cache->area = NULL;
-  scan_cache->area_size = -1;
+  scan_cache->start_area ();
   scan_cache->num_btids = 0;
   scan_cache->m_index_stats = NULL;
-
   scan_cache->debug_initpattern = HEAP_DEBUG_SCANCACHE_INITPATTERN;
   scan_cache->mvcc_snapshot = mvcc_snapshot;
   scan_cache->partition_list = NULL;
@@ -6722,8 +6726,6 @@ exit_on_error:
   scan_cache->page_latch = NULL_LOCK;
   scan_cache->cache_last_fix_page = false;
   PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_RANK_UNDEFINED, PGBUF_ORDERED_NULL_HFID);
-  scan_cache->area = NULL;
-  scan_cache->area_size = 0;
   scan_cache->num_btids = 0;
   scan_cache->m_index_stats = NULL;
   scan_cache->file_type = FILE_UNKNOWN_TYPE;
@@ -7005,8 +7007,7 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
   OID_SET_NULL (&scan_cache->node.class_oid);
   scan_cache->page_latch = S_LOCK;
   scan_cache->cache_last_fix_page = true;
-  scan_cache->area = NULL;
-  scan_cache->area_size = 0;
+  scan_cache->start_area ();
   scan_cache->num_btids = 0;
   scan_cache->m_index_stats = NULL;
   scan_cache->file_type = FILE_UNKNOWN_TYPE;
@@ -7052,12 +7053,6 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
 	    }
 	}
 
-      /* Free memory */
-      if (scan_cache->area)
-	{
-	  db_private_free_and_init (thread_p, scan_cache->area);
-	}
-
       if (scan_cache->partition_list)
 	{
 	  HEAP_SCANCACHE_NODE_LIST *next_node = NULL;
@@ -7079,8 +7074,7 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
   OID_SET_NULL (&scan_cache->node.class_oid);
   scan_cache->page_latch = NULL_LOCK;
   assert (PGBUF_IS_CLEAN_WATCHER (&(scan_cache->page_watcher)));
-  scan_cache->area = NULL;
-  scan_cache->area_size = 0;
+  scan_cache->end_area ();
   scan_cache->file_type = FILE_UNKNOWN_TYPE;
   scan_cache->debug_initpattern = 0;
 
@@ -18353,23 +18347,8 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
     case REC_HOME:
       if (scan_cache != NULL && ispeeking == COPY && recdes->data == NULL)
 	{
-	  /* It is guaranteed that scan_cache is not NULL. */
-	  if (scan_cache->area == NULL)
-	    {
-	      /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better
-	       * estimates. */
-	      scan_cache->area_size = DB_PAGESIZE * 2;
-	      scan_cache->area = (char *) db_private_alloc (thread_p, scan_cache->area_size);
-	      if (scan_cache->area == NULL)
-		{
-		  scan_cache->area_size = -1;
-		  pgbuf_ordered_unfix (thread_p, page_watcher);
-		  return S_ERROR;
-		}
-	    }
-	  recdes->data = scan_cache->area;
-	  recdes->area_size = scan_cache->area_size;
-	  /* The allocated space is enough to save the instance. */
+	  scan_cache->assign_recdes_to_area (*recdes);
+	  /* The default allocated space is enough to save the instance. */
 	}
       if (scan_cache != NULL && scan_cache->cache_last_fix_page == true)
 	{
@@ -18415,34 +18394,13 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
       if (scan_cache != NULL && (ispeeking == PEEK || recdes->data == NULL))
 	{
 	  /* It is guaranteed that scan_cache is not NULL. */
-	  if (scan_cache->area == NULL)
-	    {
-	      /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better
-	       * estimates. We could call heap_ovf_get_length, but it may be better to just guess and realloc if
-	       * needed. We could also check the estimates for average object length, but again, it may be expensive
-	       * and may not be accurate for the object. */
-	      scan_cache->area_size = DB_PAGESIZE * 2;
-	      scan_cache->area = (char *) db_private_alloc (thread_p, scan_cache->area_size);
-	      if (scan_cache->area == NULL)
-		{
-		  scan_cache->area_size = -1;
-		  return S_ERROR;
-		}
-	    }
-	  recdes->data = scan_cache->area;
-	  recdes->area_size = scan_cache->area_size;
+	  scan_cache->assign_recdes_to_area (*recdes);
 
 	  while ((scan = heap_ovf_get (thread_p, &forward_oid, recdes, NULL_CHN, NULL)) == S_DOESNT_FIT)
 	    {
 	      /* The object did not fit into such an area, reallocate a new area */
-	      recdes->area_size = -recdes->length;
-	      recdes->data = (char *) db_private_realloc (thread_p, scan_cache->area, recdes->area_size);
-	      if (recdes->data == NULL)
-		{
-		  return S_ERROR;
-		}
-	      scan_cache->area_size = recdes->area_size;
-	      scan_cache->area = recdes->data;
+	      assert (recdes->length < 0);
+	      scan_cache->assign_recdes_to_area (*recdes, (size_t) (-recdes->length));
 	    }
 	  if (scan != S_SUCCESS)
 	    {
@@ -18614,62 +18572,6 @@ heap_prev_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_o
 }
 
 /*
- * heap_scancache_start_chain_update  () - start new scan cache for MVCC
- *					  chain update
- *   return: error code
- *   thread_p(in): thread entry
- *   new_scan_cache(in/out): the new scan cache
- *   old_scan_cache(in/out): the old scan cache
- *   next_row_version(in): next row version
- *
- * Note: This function start a new scan cache used to update
- *	MVCC chain. The old and new scan cache may share common data.
- */
-int
-heap_scancache_start_chain_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * new_scan_cache,
-				   HEAP_SCANCACHE * old_scan_cache, OID * next_row_version)
-{
-  assert (new_scan_cache != NULL);
-  assert (old_scan_cache != NULL);
-
-  /* update scan cache */
-
-  /* start a local cache that is suitable for our needs */
-  if (heap_scancache_start (thread_p, new_scan_cache, &old_scan_cache->node.hfid, &old_scan_cache->node.class_oid,
-			    true, false, NULL) != NO_ERROR)
-    {
-      /* TODO - er_set */
-      return ER_FAILED;
-    }
-
-  /* use current_scan_cache->area in order to alloc only once */
-  new_scan_cache->area = old_scan_cache->area;
-  new_scan_cache->area_size = old_scan_cache->area_size;
-  /* set pgptr if is the case */
-  if (old_scan_cache->page_watcher.pgptr != NULL)
-    {
-      /* handle this case, just to be sure */
-      VPID *vpidptr_incache;
-      VPID vpid;
-
-      vpid.volid = next_row_version->volid;
-      vpid.pageid = next_row_version->pageid;
-      vpidptr_incache = pgbuf_get_vpid_ptr (old_scan_cache->page_watcher.pgptr);
-      if (VPID_EQ (&vpid, vpidptr_incache))
-	{
-	  pgbuf_replace_watcher (thread_p, &old_scan_cache->page_watcher, &new_scan_cache->page_watcher);
-	}
-      else
-	{
-	  /* Free the previous scan page */
-	  pgbuf_ordered_unfix (thread_p, &old_scan_cache->page_watcher);
-	}
-    }
-
-  return NO_ERROR;
-}
-
-/*
  * heap_get_mvcc_rec_header_from_overflow () - Get record header from overflow
  *					       page.
  *
@@ -18754,42 +18656,18 @@ heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, b
   SCAN_CODE scan = S_SUCCESS;
 
   /* Try to reuse the previously allocated area No need to check the snapshot since was already checked */
-  if (scan_cache != NULL && (ispeeking == PEEK || recdes->data == NULL || recdes->data == scan_cache->area))
+  if (scan_cache != NULL && (ispeeking == PEEK || recdes->data == NULL
+			     || scan_cache->is_recdes_assigned_to_area (*recdes)))
     {
-      if (scan_cache->area == NULL)
-	{
-	  /*
-	   * Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates.
-	   * We could call heap_ovf_get_length, but it may be better to just guess and realloc if needed.
-	   * We could also check the estimates for average object length, but again, it may be expensive and may not be
-	   * accurate for this object.
-	   */
-	  scan_cache->area_size = DB_PAGESIZE * 2;
-	  scan_cache->area = (char *) db_private_alloc (thread_p, scan_cache->area_size);
-	  if (scan_cache->area == NULL)
-	    {
-	      scan_cache->area_size = -1;
-	      return S_ERROR;
-	    }
-	}
-      recdes->data = scan_cache->area;
-      recdes->area_size = scan_cache->area_size;
+      scan_cache->assign_recdes_to_area (*recdes);
 
       while ((scan = heap_ovf_get (thread_p, forward_oid, recdes, NULL_CHN, NULL)) == S_DOESNT_FIT)
 	{
 	  /*
-	   * The object did not fit into such an area, reallocate a new
-	   * area
+	   * The object did not fit into such an area, reallocate a new area
 	   */
-
-	  recdes->area_size = -recdes->length;
-	  recdes->data = (char *) db_private_realloc (thread_p, scan_cache->area, recdes->area_size);
-	  if (recdes->data == NULL)
-	    {
-	      return S_ERROR;
-	    }
-	  scan_cache->area_size = recdes->area_size;
-	  scan_cache->area = recdes->data;
+	  assert (recdes->length < 0);
+	  scan_cache->assign_recdes_to_area (*recdes, (size_t) (-recdes->length));
 	}
       if (scan != S_SUCCESS)
 	{
@@ -24008,21 +23886,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 
   if (recdes->data == NULL)
     {
-      if (scan_cache->area == NULL)
-	{
-	  /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better
-	   * estimates. */
-	  scan_cache->area_size = DB_PAGESIZE * 2;
-	  scan_cache->area = (char *) db_private_alloc (thread_p, scan_cache->area_size);
-	  if (scan_cache->area == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, scan_cache->area_size);
-	      scan_cache->area_size = -1;
-	      return S_ERROR;
-	    }
-	}
-      recdes->data = scan_cache->area;
-      recdes->area_size = scan_cache->area_size;
+      scan_cache->assign_recdes_to_area (*recdes);
     }
 
   /* check visibility of old versions from log following prev_version_lsa links */
@@ -24042,18 +23906,11 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
       scan_code = log_get_undo_record (thread_p, log_page_p, process_lsa, recdes);
       if (scan_code != S_SUCCESS)
 	{
-	  if (scan_code == S_DOESNT_FIT && recdes->data == scan_cache->area)
+	  if (scan_code == S_DOESNT_FIT && scan_cache->is_recdes_assigned_to_area (*recdes))
 	    {
 	      /* expand record area and try again */
-	      recdes->data = (char *) db_private_realloc (thread_p, scan_cache->area, -recdes->length);
-	      if (recdes->data == NULL)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, -recdes->length);
-		  return S_ERROR;
-		}
-	      recdes->area_size = scan_cache->area_size = -recdes->length;
-	      scan_cache->area = recdes->data;
-
+	      assert (recdes->length < 0);
+	      scan_cache->assign_recdes_to_area (*recdes, (size_t) - recdes->length);
 	      /* final try to get the undo record */
 	      continue;
 	    }
@@ -24597,30 +24454,7 @@ int
 heap_scan_cache_allocate_area (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p, int size)
 {
   assert (scan_cache_p != NULL && size > 0);
-  if (scan_cache_p->area == NULL)
-    {
-      /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates. */
-      scan_cache_p->area = (char *) db_private_alloc (thread_p, size);
-      if (scan_cache_p->area == NULL)
-	{
-	  scan_cache_p->area_size = -1;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      scan_cache_p->area_size = size;
-    }
-  else if (scan_cache_p->area_size < size)
-    {
-      scan_cache_p->area = (char *) db_private_realloc (thread_p, scan_cache_p->area, size);
-      if (scan_cache_p->area == NULL)
-	{
-	  scan_cache_p->area_size = -1;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      scan_cache_p->area_size = size;
-    }
-
+  scan_cache_p->reserve_area ((size_t) size);
   return NO_ERROR;
 }
 
@@ -24637,18 +24471,8 @@ static int
 heap_scan_cache_allocate_recdes_data (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p, RECDES * recdes_p,
 				      int size)
 {
-  int error_code;
-  assert (scan_cache_p != NULL && recdes_p != NULL);
-
-  error_code = heap_scan_cache_allocate_area (thread_p, scan_cache_p, size);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  recdes_p->data = scan_cache_p->area;
-  recdes_p->area_size = scan_cache_p->area_size;
-
+  assert (scan_cache_p != NULL && recdes_p != NULL && size >= 0);
+  scan_cache_p->assign_recdes_to_area (*recdes_p, (size_t) size);
   return NO_ERROR;
 }
 
@@ -24777,3 +24601,90 @@ heap_is_page_header (THREAD_ENTRY * thread_p, PAGE_PTR page)
     }
   return false;
 }
+
+//
+// C++ code
+//
+// *INDENT-OFF*
+static void
+heap_scancache_block_allocate (cubmem::block &b, size_t size)
+{
+  const size_t DEFAULT_MINSIZE = (size_t) DB_PAGESIZE * 2;
+
+  if (size <= DEFAULT_MINSIZE)
+    {
+      size = DEFAULT_MINSIZE;
+    }
+  else
+    {
+      size = DB_ALIGN (size, (size_t) DB_PAGESIZE);
+    }
+
+  if (b.ptr != NULL && b.dim > size)
+    {
+      // no need to change
+      return;
+    }
+
+  if (b.ptr == NULL)
+    {
+      b.ptr = (char *) db_private_alloc (NULL, size);
+      assert (b.ptr != NULL);
+    }
+  else
+    {
+      b.ptr = (char *) db_private_realloc (NULL, b.ptr, size);
+      assert (b.ptr != NULL);
+    }
+  b.dim = size;
+}
+
+static void
+heap_scancache_block_deallocate (cubmem::block &b)
+{
+  db_private_free_and_init (NULL, b.ptr);
+  b.dim = 0;
+}
+
+//
+// heap_scancache
+//
+void
+heap_scancache::start_area ()
+{
+  m_area = NULL;    // start as null; it will be allocated when it is first needed
+}
+
+void
+heap_scancache::end_area ()
+{
+  delete m_area;
+  m_area = NULL;
+}
+
+void
+heap_scancache::reserve_area (size_t size)
+{
+  if (m_area == NULL)
+    {
+      m_area = new cubmem::single_block_allocator (HEAP_SCANCACHE_BLOCK_ALLOCATOR);
+    }
+  m_area->reserve (size);
+}
+
+void
+heap_scancache::assign_recdes_to_area (RECDES & recdes, size_t size /* = 0 */)
+{
+  reserve_area (size);
+
+  recdes.data = m_area->get_ptr ();
+  recdes.area_size = (int) m_area->get_size ();
+}
+
+bool
+heap_scancache::is_recdes_assigned_to_area (const RECDES & recdes) const
+{
+  return m_area != NULL && recdes.data == m_area->get_ptr ();
+}
+
+// *INDENT-ON*

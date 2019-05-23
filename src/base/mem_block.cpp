@@ -180,7 +180,7 @@ namespace cubmem
   }
 
   const block_allocator &
-  single_block_allocator::get_allocator () const
+  single_block_allocator::get_block_allocator () const
   {
     return m_allocator;
   }
@@ -201,6 +201,12 @@ namespace cubmem
   single_block_allocator::get_size () const
   {
     return m_block.dim;
+  }
+
+  void
+  single_block_allocator::reserve (size_t size)
+  {
+    m_base_allocator.m_alloc_f (m_block, size);
   }
 
 } // namespace cubmem

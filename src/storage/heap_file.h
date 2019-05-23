@@ -133,9 +133,11 @@ struct heap_scancache_node_list
   HEAP_SCANCACHE_NODE_LIST *next;
 };
 
+// *IDENT-OFF*
 typedef struct heap_scancache HEAP_SCANCACHE;
 struct heap_scancache
 {				/* Define a scan over the whole heap file */
+public:
   int debug_initpattern;	/* A pattern which indicates that the structure has been initialized */
   HEAP_SCANCACHE_NODE node;	/* current scanned heap file information */
   LOCK page_latch;		/* Indicates the latch/lock to be acquired on heap pages. Its value may be NULL_LOCK
@@ -143,8 +145,6 @@ struct heap_scancache
 				 * been locked with either S_LOCK, SIX_LOCK, or X_LOCK */
   bool cache_last_fix_page;	/* Indicates if page buffers and memory are cached (left fixed) */
   PGBUF_WATCHER page_watcher;
-  char *area;			/* Pointer to last left fixed memory allocated */
-  int area_size;		/* Size of allocated area */
   int num_btids;		/* Total number of indexes defined on the scanning class */
   multi_index_unique_stats *m_index_stats;	// does this really belong to scan cache??
   FILE_TYPE file_type;		/* The file type of the heap file being scanned. Can be FILE_HEAP or
@@ -152,7 +152,20 @@ struct heap_scancache
   MVCC_SNAPSHOT *mvcc_snapshot;	/* mvcc snapshot */
   HEAP_SCANCACHE_NODE_LIST *partition_list;	/* list holding the heap file information for partition nodes involved
 						 * in the scan */
+
+
+  void start_area ();
+  void end_area ();
+  void reserve_area (size_t size = 0);
+  void assign_recdes_to_area (RECDES & recdes, size_t size = 0);
+  bool is_recdes_assigned_to_area (const RECDES & recdes) const;
+
+private:
+  // todo - add constructor/destructor; should automatically call heap_scancache_end on destructor if started.
+
+    cubmem::single_block_allocator * m_area;
 };
+// *INDENT-ON*
 
 typedef struct heap_scanrange HEAP_SCANRANGE;
 struct heap_scanrange
