@@ -114,6 +114,29 @@ namespace cubmem
   extern const block_allocator EXPONENTIAL_STANDARD_BLOCK_ALLOCATOR;
   extern const block_allocator CSTYLE_BLOCK_ALLOCATOR;
 
+  class single_block_allocator
+  {
+    public:
+      single_block_allocator (const block_allocator &base_alloc);
+      ~single_block_allocator ();
+
+      const block_allocator &get_allocator () const;
+      const block &get_block () const;
+
+      char *get_ptr () const;
+      size_t get_size () const;
+
+    private:
+
+      void allocate (block &b, size_t size);
+      void deallocate (block &b);
+
+      const block_allocator &m_base_allocator;
+
+      block m_block;
+      block_allocator m_allocator;
+  };
+
   /* Memory Block - Extensible
    * - able to extend/reallocate to accommodate additional bytes
    * - owns the memory by default and it will free the memory in destructor unless it is moved:
