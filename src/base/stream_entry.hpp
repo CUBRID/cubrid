@@ -65,6 +65,8 @@ namespace cubstream
       multi_thread_stream *m_stream;
 
       stream_position m_data_start_position;
+      stream_position m_start_position;
+      stream_position m_end_position;
 
       stream::write_func_t m_packing_func;
       stream::read_prepare_func_t m_prepare_func;
@@ -105,7 +107,8 @@ namespace cubstream
 #endif
 	  }
 	serializator->align (MAX_ALIGNMENT);
-
+	m_start_position = pos;
+	m_end_position = m_start_position + reserved_amount;
 	int packed_amount = (int) (serializator->get_curr_ptr () - serializator->get_buffer_start ());
 
 	return packed_amount;
@@ -135,6 +138,8 @@ namespace cubstream
 
 	m_data_start_position = data_start_pos;
 	payload_size = get_data_packed_size ();
+        m_start_position = m_data_start_position - header_size;
+        m_end_position = m_data_start_position + payload_size;
 
 	return error_code;
       };
@@ -239,7 +244,7 @@ namespace cubstream
        *  2. set data size value in header field (before packing)
        *  3. stream.write using packing_function as argument
        */
-      int pack (stream_position * p_stream_position)
+      int pack ()
       {
 	size_t total_stream_entry_size;
 	size_t data_size;
@@ -255,7 +260,7 @@ namespace cubstream
 	set_header_data_size (data_size);
 	assert (DB_WASTED_ALIGN (total_stream_entry_size, MAX_ALIGNMENT) == 0);
 
-	err = m_stream->write (total_stream_entry_size, m_packing_func, p_stream_position);
+	err = m_stream->write (total_stream_entry_size, m_packing_func);
 
 	return (err < 0) ? err : NO_ERROR;
       };
@@ -347,6 +352,16 @@ namespace cubstream
 	  }
 	m_packable_entries.clear ();
       };
+
+      stream_position get_stream_entry_start_position ()
+      {
+	return m_start_position;
+      }
+
+      stream_position get_stream_entry_end_position ()
+      {
+	return m_end_position;
+      }
   };
 
 } /* namespace cubstream */

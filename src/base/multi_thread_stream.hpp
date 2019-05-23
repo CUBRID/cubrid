@@ -187,7 +187,7 @@ namespace cubstream
       virtual ~multi_thread_stream ();
       int init (const stream_position &start_position = 0);
 
-      int write (const size_t byte_count, write_func_t &write_action, stream_position * p_stream_position);
+      int write (const size_t byte_count, write_func_t &write_action);
       int read_partial (const stream_position first_pos, const size_t byte_count, size_t &actual_read_bytes,
 			read_partial_func_t &read_partial_action);
       int read (const stream_position first_pos, const size_t byte_count, read_func_t &read_action);
