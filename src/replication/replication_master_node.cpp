@@ -100,13 +100,15 @@ namespace cubreplication
     assert (rc == NO_ERRORS);
     // 2nd fd does not get a connection
     rc = ack_chn->accept (ack_fd);
+    assert (ack_fd != 0);
     assert (rc == NO_ERRORS);
 
     master_senders_manager::add_stream_sender
     (new cubstream::transfer_sender (std::move (repl_chn), cubreplication::master_senders_manager::get_stream ()));
     cubreplication::add_ack_chn (ack_chn);
 
-    assert(false);
+    // this assert means it worked!
+    assert (false);
     er_log_debug_replication (ARG_FILE_LINE, "new_slave connected");
 #endif
   }

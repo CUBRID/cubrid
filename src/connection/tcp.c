@@ -1046,6 +1046,76 @@ css_tcp_master_datagram (char *path_name, SOCKET * sockfd)
   return true;
 }
 
+std::vector < SOCKET > css_open_new_socks_from_master (SOCKET fd, unsigned short *rid)
+{
+  unsigned short req_id;
+  std::vector < SOCKET > new_fds;
+  new_fds.push_back (INVALID_SOCKET);
+  new_fds.push_back (INVALID_SOCKET);
+  int rc;
+  struct iovec iov[1];
+  struct msghdr msg;
+  int pid;
+#if defined(LINUX) || defined(AIX)
+  static struct cmsghdr *cmptr = NULL;
+#endif /* LINUX || AIX */
+
+  iov[0].iov_base = (char *) &req_id;
+  iov[0].iov_len = sizeof (unsigned short);
+  msg.msg_iov = iov;
+  msg.msg_iovlen = 1;
+  msg.msg_name = (caddr_t) NULL;
+  msg.msg_namelen = 0;
+#if !defined(LINUX) && !defined(AIX)
+  msg.msg_accrights = (caddr_t) & new_fd;	/* address of descriptor */
+  msg.msg_accrightslen = sizeof (new_fd);	/* receive 1 descriptor */
+#else /* not LINUX and not AIX */
+  if (cmptr == NULL && (cmptr = (struct cmsghdr *) malloc (CONTROLLEN * 2)) == NULL)
+    {
+      return
+      {
+      INVALID_SOCKET};
+    }
+  msg.msg_control = (void *) cmptr;
+  msg.msg_controllen = CONTROLLEN * 2;
+#endif /* not LINUX */
+
+  rc = recvmsg (fd, &msg, 0);
+  if (rc < 0)
+    {
+      TPRINTF ("recvmsg failed for fd = %d\n", rc);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_RECVMSG, 0);
+      return
+      {
+      INVALID_SOCKET};
+    }
+
+  *rid = ntohs (req_id);
+
+  pid = getpid ();
+#if defined(LINUX) || defined(AIX)
+
+  struct cmsghdr *crt = cmptr;
+for (SOCKET & sock:new_fds)
+    {
+      sock = *(SOCKET *) CMSG_DATA (crt);
+
+#ifdef SYSV
+      ioctl (sock, SIOCSPGRP, (caddr_t) & pid);
+#else /* not SYSV */
+      fcntl (sock, F_SETOWN, pid);
+#endif /* not SYSV */
+
+      css_sockopt (sock);
+
+      crt += CONTROLLEN;
+    }
+#endif /* LINUX || AIX */
+
+
+  return new_fds;
+}
+
 /*
  * css_open_new_socket_from_master() - the message interface to the master
  *                                     server

@@ -35,14 +35,7 @@ namespace cubthread
 
 namespace cubstream
 {
-  struct ack_receiver
-  {
-    ack_receiver (cubcomm::channel &&chn);      
-    ~ack_receiver();
   
-    cubcomm::channel m_channel;
-  };
-
   class transfer_sender
   {
 

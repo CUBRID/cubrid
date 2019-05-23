@@ -683,6 +683,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, SOCKET ack_chn, unsigned sho
 		    }
 		  else
 		    {
+		      assert (false);
 		      client_fds =
 		      {
 		      conn->fd};
@@ -987,7 +988,6 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 	  if (temp->fd == css_Master_socket_fd[0] || temp->fd == css_Master_socket_fd[1])
 	    {
 	      new_fd = css_master_accept (temp->fd);
-	      // accept 2nd channel
 
 	      if (!IS_INVALID_SOCKET (new_fd))
 		{

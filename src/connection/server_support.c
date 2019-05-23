@@ -2690,30 +2690,28 @@ xacl_reload (THREAD_ENTRY * thread_p)
 static void
 css_process_new_slave (SOCKET master_fd)
 {
-  SOCKET new_fd;
+  //SOCKET new_fd;
+  std::vector < SOCKET > new_fds;
+
   unsigned short rid;
 
   /* receive new socket descriptor from the master */
-  new_fd = css_open_new_socket_from_master (master_fd, &rid);
-  if (IS_INVALID_SOCKET (new_fd))
-    {
-      assert (false);
-      return;
-    }
+  new_fds = css_open_new_socks_from_master (master_fd, &rid);
+  //new_fd = css_open_new_socket_from_master (master_fd, &rid);
 
-  SOCKET ack_fd = css_open_new_socket_from_master (master_fd, &rid);
-  if (IS_INVALID_SOCKET (ack_fd))
-    {
-      assert (false);
-      return;
-    }
+
+  assert (new_fds.size () == 2);
+
+  assert (!IS_INVALID_SOCKET (new_fds[0]));
+  assert (!IS_INVALID_SOCKET (new_fds[1]));
 
   er_log_debug_replication (ARG_FILE_LINE, "css_process_new_slave:"
-			    "received new slave fd from master fd=%d, current_state=%d\n", new_fd, ha_Server_state);
+			    "received new slave fds from master fd1=%d, fd2=%d, current_state=%d\n", new_fds[0],
+			    new_fds[1], ha_Server_state);
 
   assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
 
-  cubreplication::master_node::new_slave (new_fd, ack_fd);
+  cubreplication::master_node::new_slave (new_fds[0], new_fds[1]);
 }
 
 const char *

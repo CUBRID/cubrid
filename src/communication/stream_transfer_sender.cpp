@@ -107,17 +107,6 @@ namespace cubstream
       bool m_first_loop;
   };
 
-  ack_receiver::ack_receiver (cubcomm::channel &&chn)
-    : m_channel (std::move (chn))
-  {
-
-  }
-
-  ack_receiver::~ack_receiver ()
-  {
-
-  }
-
   transfer_sender::transfer_sender (cubcomm::channel &&chn, cubstream::stream &stream,
 				    cubstream::stream_position begin_sending_position)
     : m_channel (std::move (chn)),
