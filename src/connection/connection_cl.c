@@ -849,6 +849,8 @@ css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, char *server_name, u
 				   prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT), rid, true, ack_fd);
 
   assert (!IS_INVALID_SOCKET (ack_fd));
+
+  return res;
 }
 
 /* New style server connection function that uses an explicit port id */
