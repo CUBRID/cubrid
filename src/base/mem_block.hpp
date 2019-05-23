@@ -127,7 +127,7 @@ namespace cubmem
       single_block_allocator (const block_allocator &base_alloc);
       ~single_block_allocator ();
 
-      const block_allocator &get_block_allocator () const;
+      const block_allocator &get_block_allocator () const;   // a block allocator that always outputs m_block
       const block &get_block () const;
 
       char *get_ptr () const;
@@ -137,13 +137,13 @@ namespace cubmem
 
     private:
 
-      void allocate (block &b, size_t size);
+      void allocate (block &b, size_t size);  // the output b will be always equal to m_block
       void deallocate (block &b);
 
-      const block_allocator &m_base_allocator;
+      const block_allocator &m_base_allocator;    // allocator for m_block
 
-      block m_block;
-      block_allocator m_allocator;
+      block m_block;                              // the single block
+      block_allocator m_allocator;                // allocator that always outputs m_block
   };
 
   /* Memory Block - Extensible
