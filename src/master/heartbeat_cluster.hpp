@@ -25,14 +25,11 @@
 #define _HEARTBEAT_CLUSTER_HPP_
 
 #include "hostname.hpp"
-#include "porting.h"
 #include "system_parameter.h"
+#include "udp_rpc.hpp"
 
 #include <chrono>
 #include <list>
-#if defined (LINUX)
-#include <netinet/in.h> // for sockaddr_in
-#endif
 #include <string>
 #include <vector>
 
@@ -41,6 +38,28 @@ namespace cubhb
 
   static const std::chrono::milliseconds UI_NODE_CACHE_TIME_IN_MSECS (60 * 1000);
   static const std::chrono::milliseconds UI_NODE_CLEANUP_TIME_IN_MSECS (3600 * 1000);
+
+  // forward declarations
+  class heartbeat_arg;
+  class heartbeat_service;
+
+  enum message_type
+  {
+    HEARTBEAT = 1
+  };
+
+  using ha_server = udp_server<message_type>;
+
+  enum node_state
+  {
+    UNKNOWN = 0,
+    SLAVE = 1,
+    TO_BE_MASTER = 2,
+    TO_BE_SLAVE = 3,
+    MASTER = 4,
+    REPLICA = 5,
+    MAX
+  };
 
   /* heartbeat node entries */
   class node_entry
@@ -56,21 +75,11 @@ namespace cubhb
       node_entry (cubbase::hostname_type &hostname, priority_type priority);
       ~node_entry () = default;
 
-      node_entry (const node_entry &other); // Copy c-tor
-      node_entry &operator= (const node_entry &other); // Copy assignment
+      node_entry (const node_entry &other) = default; // Copy c-tor
+      node_entry &operator= (const node_entry &other) = default; // Copy assignment
 
       const cubbase::hostname_type &get_hostname () const;
-
-      enum node_state
-      {
-	UNKNOWN = 0,
-	SLAVE = 1,
-	TO_BE_MASTER = 2,
-	TO_BE_SLAVE = 3,
-	MASTER = 4,
-	REPLICA = 5,
-	MAX
-      };
+      bool is_time_initialized () const;
 
     public: // TODO CBRD-22864 members should be private
       cubbase::hostname_type hostname;
@@ -78,7 +87,7 @@ namespace cubhb
       node_state state;
       short score;
       short heartbeat_gap;
-      timeval last_recv_hbtime; // last received heartbeat time
+      std::chrono::system_clock::time_point last_recv_hbtime; // last received heartbeat time
   };
 
   /* heartbeat ping host entries */
@@ -108,28 +117,37 @@ namespace cubhb
       ping_result result;
   };
 
+  enum ui_node_result
+  {
+    VALID_NODE = 0,
+    UNIDENTIFIED_NODE = 1,
+    GROUP_NAME_MISMATCH = 2,
+    IP_ADDR_MISMATCH = 3,
+    CANNOT_RESOLVE_HOST = 4
+  };
+
   /* heartbeat unidentified host entries */
   class ui_node
   {
     public:
-      explicit ui_node (const std::string &hostname, const std::string &group_id, const sockaddr_in &sockaddr, int v_result);
+      ui_node (const cubbase::hostname_type &hostname, const std::string &group_id, ipv4_type ip_addr,
+	       ui_node_result v_result);
       ~ui_node () = default;
 
-      void set_last_recv_time_to_now ();
       const cubbase::hostname_type &get_hostname () const;
 
     public: // TODO CBRD-22864 members should be private
       cubbase::hostname_type hostname;
       std::string group_id;
-      sockaddr_in saddr;
+      ipv4_type ip_addr;
       std::chrono::system_clock::time_point last_recv_time;
-      int v_result;
+      ui_node_result v_result;
   };
 
   class cluster
   {
     public:
-      cluster ();
+      explicit cluster (ha_server *server);
 
       cluster (const cluster &other); // Copy c-tor
       cluster &operator= (const cluster &other); // Copy assignment
@@ -139,18 +157,18 @@ namespace cubhb
       int init ();
       void destroy ();
       int reload ();
-
-      int listen ();
       void stop ();
 
-      node_entry *find_node (const cubbase::hostname_type &node_hostname) const;
+      const cubbase::hostname_type &get_hostname () const;
+      const node_state &get_state () const;
+      const std::string &get_group_id () const;
+      const node_entry *get_myself_node () const;
 
-      void remove_ui_node (ui_node *&node);
+      void receive_heartbeat (const heartbeat_arg &arg, ipv4_type from_ip);
+      void send_heartbeat_to_all ();
+      bool is_heartbeat_received_from_all ();
+
       void cleanup_ui_nodes ();
-      ui_node *find_ui_node (const std::string &node_hostname, const std::string &node_group_id,
-			     const sockaddr_in &sockaddr) const;
-      ui_node *insert_ui_node (const std::string &node_hostname, const std::string &node_group_id,
-			       const sockaddr_in &sockaddr, const int v_result);
 
       bool check_valid_ping_host ();
 
@@ -161,16 +179,26 @@ namespace cubhb
       int init_replica_nodes ();
       void init_ping_hosts ();
 
-      node_entry *insert_host_node (const std::string &node_hostname, const node_entry::priority_type priority);
+      node_entry *find_node (const cubbase::hostname_type &node_hostname) const;
+      node_entry *find_node_except_me (const cubbase::hostname_type &node_hostname) const;
+
+      ui_node *find_ui_node (const cubbase::hostname_type &node_hostname, const std::string &node_group_id,
+			     ipv4_type ip_addr) const;
+      ui_node *insert_ui_node (const cubbase::hostname_type &node_hostname, const std::string &node_group_id,
+			       ipv4_type ip_addr, ui_node_result v_result);
+
+      node_entry *insert_host_node (const std::string &node_hostname, node_entry::priority_type priority);
+
+      ui_node_result is_heartbeat_valid (const cubbase::hostname_type &node_hostname, const std::string &node_group_id,
+					 ipv4_type from_ip_addr) const;
+
+      bool apply_heartbeat_on_node (const heartbeat_arg &arg);
+      void apply_heartbeat_on_ui_node (const heartbeat_arg &arg, ipv4_type from_ip);
 
     public: // TODO CBRD-22864 members should be private
       pthread_mutex_t lock; // TODO CBRD-22864 replace with std::mutex
 
-      SOCKET sfd;
-
-      node_entry::node_state state;
-      std::string group_id;
-      cubbase::hostname_type hostname;
+      node_state state;
 
       std::list<node_entry *> nodes;
 
@@ -184,6 +212,13 @@ namespace cubhb
 
       std::list<ui_node *> ui_nodes;
       std::list<ping_host> ping_hosts;
+
+    protected:
+      ha_server *m_server;
+      heartbeat_service *m_hb_service;
+
+      std::string m_group_id;
+      cubbase::hostname_type m_hostname;
   };
 
 } // namespace cubhb

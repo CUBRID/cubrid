@@ -54,6 +54,7 @@ class tx_group
     void add (const node_info &ni);
     void add (int tran_index, MVCCID mvccid, TRAN_STATE tran_state);
     const container_type &get_container () const;
+    container_type &get_container ();
 
     void transfer_to (tx_group &dest);
 
