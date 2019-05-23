@@ -36,7 +36,6 @@
 
 #include "heap_file.h"
 
-#include "mem_block.hpp"
 #include "porting.h"
 #include "porting_inline.hpp"
 #include "record_descriptor.hpp"

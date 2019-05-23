@@ -34,6 +34,7 @@
 #include "config.h"
 #include "file_manager.h"
 #include "heap_attrinfo.h"
+#include "mem_block.hpp"
 #include "mvcc.h"
 #include "page_buffer.h"
 #include "perf_monitor.h"
@@ -43,13 +44,6 @@
 // forward declarations
 class multi_index_unique_stats;
 class record_descriptor;
-// *INDENT-OFF*
-namespace cubmem
-{
-  struct block_allocator;
-  class single_block_allocator;
-} // namespace cubmem
-// *INDENT-ON*
 
 #define HFID_EQ(hfid_ptr1, hfid_ptr2) \
   ((hfid_ptr1) == (hfid_ptr2) \
