@@ -41,6 +41,12 @@ tx_group::get_container () const
   return m_group;
 }
 
+tx_group::container_type &
+tx_group::get_container ()
+{
+  return m_group;
+}
+
 void
 tx_group::transfer_to (tx_group &dest)
 {
