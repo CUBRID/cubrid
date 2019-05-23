@@ -84,7 +84,7 @@ namespace cubtx
 
       bool is_current_group_empty ();
 
-      tx_group &get_last_closed_group ();
+      tx_group &get_latest_closed_group ();
       const tx_group &get_current_group ();
 
     private:

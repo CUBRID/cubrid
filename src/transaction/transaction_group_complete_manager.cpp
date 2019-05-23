@@ -194,9 +194,9 @@ namespace cubtx
   }
 
   //
-  // get_last_closed_group get latest closed group.
+  // get_latest_closed_group get latest closed group.
   //
-  tx_group &group_complete_manager::get_last_closed_group ()
+  tx_group &group_complete_manager::get_latest_closed_group ()
   {
     return m_latest_closed_group;
   }
@@ -208,6 +208,7 @@ namespace cubtx
   {
     return m_current_group;
   }
+
   // is_group_mvcc_completed checks whether the group has MVCC completed.
   //  Note: This function must be called under m_group_mutex protection
   //
@@ -215,7 +216,7 @@ namespace cubtx
   {
     if (group_id < m_latest_closed_group_id)
       {
-	/* The requested group was closed and commited. */
+	/* The requested group was closed and committed. */
 	return true;
       }
     else if (group_id > m_latest_closed_group_id)
@@ -225,7 +226,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed grup - check whether MVCC was completed.*/
+	/* Current closed group - check whether MVCC was completed.*/
 	return is_latest_closed_group_mvcc_completed ();
       }
   }
@@ -238,7 +239,7 @@ namespace cubtx
   {
     if (group_id < m_latest_closed_group_id)
       {
-	/* The requested group was closed and commited. */
+	/* The requested group was closed and committed. */
 	return true;
       }
     else if (group_id > m_latest_closed_group_id)
@@ -248,7 +249,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed grup - check whether the group was logged.*/
+	/* Current closed group - check whether the group was logged.*/
 	return is_latest_closed_group_logged ();
       }
   }
@@ -261,7 +262,7 @@ namespace cubtx
   {
     if (group_id < m_latest_closed_group_id)
       {
-	/* The requested group was closed and commited. */
+	/* The requested group was closed and committed. */
 	return true;
       }
     else if (group_id > m_latest_closed_group_id)
@@ -271,7 +272,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed grup - check whether the group was completed.*/
+	/* Current closed group - check whether the group was completed.*/
 	return is_latest_closed_group_completed ();
       }
   }
