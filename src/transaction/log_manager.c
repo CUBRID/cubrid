@@ -4675,6 +4675,47 @@ log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_L
 }
 
 /*
+ * log_update_global_unique_statistics () - Called at commit, updates global unique
+ *			     statistics for current transaction.
+ *
+ * return	  : Nothing.
+ * thread_p (in)  : Thread entry.
+ * tdes (in)	  : Transaction descriptor. 
+ */
+void
+log_update_global_unique_statistics (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  assert (tdes != NULL);
+  assert (tdes->state == TRAN_UNACTIVE_WILL_COMMIT);
+
+  if (tdes->log_upd_stats.unique_stats_hash->nentries == 0)
+    {
+      /* Nothing to update. */
+      return;
+    }
+
+  if (MVCCID_IS_VALID (tdes->mvccinfo.id))
+    {
+      /* TODO - on server mode, do not allow group creation if not all unique stats are updated */
+      if (logtb_tran_update_all_global_unique_stats (thread_get_thread_entry_info ()) != NO_ERROR)
+	{
+	  assert (false);
+	}
+    }
+  else
+    {
+#if defined(SA_MODE)
+      if (logtb_tran_update_all_global_unique_stats (thread_get_thread_entry_info ()) != NO_ERROR)
+	{
+	  assert (false);
+	}
+#else	/* !SA_MODE */	       /* SERVER_MODE */
+      logtb_tran_update_serial_global_unique_stats (thread_p);
+#endif /* SERVER_MODE */
+    }
+}
+
+/*
  * log_commit_local - Perform the local commit operations of a transaction
  *
  * return: state of commit operation
@@ -4708,6 +4749,13 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
    * made by the transaction we will not reflect the changes. They will be definitely lost. */
   tx_lob_locator_clear (thread_p, tdes, true, NULL);
 
+  /* clear mvccid before releasing the locks. This operation must be done before do_postpone because it stores unique
+   * statistics for all B-trees and if an error occurs those operations and all operations of current transaction must
+   * be rolled back. The order must be : update statistics, pack replication entries - if the case, complete mvccc,
+   * do_postpone - if the case, complete.
+   */
+  log_update_global_unique_statistics (thread_p, tdes);
+
   tdes->state = TRAN_UNACTIVE_WILL_COMMIT;
   /* undo_nxlsa is no longer required here and must be reset, in case checkpoint takes a snapshot of this transaction
    * during TRAN_UNACTIVE_WILL_COMMIT phase.
@@ -4723,43 +4771,23 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
        * Transaction updated data.
        */
 
+      /* Pack replication entries, if the case, before creating group. */
+      tdes->replication_log_generator.on_transaction_commit ();
+      id_complete = log_Gl.m_tran_complete_mgr->register_transaction (tdes->tran_index, tdes->mvccinfo.id, tdes->state);
+      if (MVCCID_IS_VALID (tdes->mvccinfo.id))
+	{
+	  log_Gl.m_tran_complete_mgr->complete_mvcc (id_complete);
+	}
+      else
+	{
+	  log_Gl.mvcc_table.reset_transaction_lowest_active (tdes->tran_index);
+	}
+      logtb_reset_mvcc (thread_p, tdes);
+
       if (!LSA_ISNULL (&tdes->posp_nxlsa))
 	{
-	  /* clear mvccid before releasing the locks. This operation must be done before do_postpone because it stores unique
-	   * statistics for all B-trees and if an error occurs those operations and all operations of current transaction must
-	   * be rolled back. */
-	  tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
-	  tdes->replication_log_generator.on_transaction_commit ();
-	  id_complete =
-	    log_Gl.m_tran_complete_mgr->register_transaction (tdes->tran_index, tdes->mvccinfo.id, tdes->state);
-
-	  if (MVCCID_IS_VALID (tdes->mvccinfo.id))
-	    {
-	      /* TODO - on server mode, do not allow group creation if not all unique stats are updated */
-	      if (logtb_tran_update_all_global_unique_stats (thread_get_thread_entry_info ()) != NO_ERROR)
-		{
-		  assert (false);
-		}
-
-	      log_Gl.m_tran_complete_mgr->complete_mvcc (id_complete);
-	    }
-	  else
-	    {
-#if defined(SA_MODE)
-	      if (logtb_tran_update_all_global_unique_stats (thread_get_thread_entry_info ()) != NO_ERROR)
-		{
-		  assert (false);
-		}
-#else
-            logtb_tran_update_serial_global_unique_stats (thread_p);
-#endif	      
-	      /* atomic set transaction lowest active MVCCID */
-	      log_Gl.mvcc_table.reset_transaction_lowest_active (tdes->tran_index);
-	    }
-
-	  logtb_reset_mvcc (thread_p, tdes);
-
 	  log_Gl.m_tran_complete_mgr->complete_logging (id_complete);
+	  tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
 	  log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
 
 	  /* TODO - append finish postpone. Probably no need to wait for flush here, since the transaction is committed */
@@ -4777,39 +4805,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 
       if (is_local_tran)
 	{
-	  if (id_complete == TRAN_COMPLETE_NULL_ID)
-	    {
-	      tdes->replication_log_generator.on_transaction_commit ();
-	      id_complete =
-		log_Gl.m_tran_complete_mgr->register_transaction (tdes->tran_index, tdes->mvccinfo.id, tdes->state);
-
-	      if (MVCCID_IS_VALID (tdes->mvccinfo.id))
-		{
-		  /* TODO - on server mode, do not allow group creation if not all unique stats are updated */
-		  if (logtb_tran_update_all_global_unique_stats (thread_get_thread_entry_info ()) != NO_ERROR)
-		    {
-		      assert (false);
-		    }
-
-		  log_Gl.m_tran_complete_mgr->complete_mvcc (id_complete);
-		}
-	      else
-		{
-#if defined(SA_MODE)
-		  if (logtb_tran_update_all_global_unique_stats (thread_get_thread_entry_info ()) != NO_ERROR)
-		    {
-		      assert (false);
-		    }
-#else
-                  logtb_tran_update_serial_global_unique_stats(thread_p);
-#endif		  
-		  /* atomic set transaction lowest active MVCCID */
-		  log_Gl.mvcc_table.reset_transaction_lowest_active (tdes->tran_index);
-		}
-
-	      logtb_reset_mvcc (thread_p, tdes);
-	    }
-
+	  assert (id_complete != TRAN_COMPLETE_NULL_ID);
 	  if (retain_lock != true)
 	    {
 	      /* Release the lock since MVCC is completed. Since the current transaction group is closed,
@@ -4818,7 +4814,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	      lock_unlock_all (thread_p);
 	    }
 
-	  /* Wait for commit. */
+	  /* Adds commit log. */
 	  log_Gl.m_tran_complete_mgr->complete (id_complete);
 	  log_Stat.commit_count++;
 	  tdes->state = TRAN_UNACTIVE_COMMITTED;
@@ -4830,9 +4826,11 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
     }
   else
     {
-      /* No statistics to update. */
+      /* No MVCCID, no statistics to update. */
       assert (!MVCCID_IS_VALID (tdes->mvccinfo.id));
       assert (tdes->log_upd_stats.unique_stats_hash->nentries == 0);
+      log_Gl.mvcc_table.reset_transaction_lowest_active (tdes->tran_index);
+      logtb_reset_mvcc (thread_p, tdes);
 
       /*
        * Transaction did not update anything or we are not logging
@@ -4846,9 +4844,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	  spage_free_saved_spaces (thread_p, tdes->first_save_entry);
 	  tdes->first_save_entry = NULL;
 	}
-
-      log_Gl.mvcc_table.reset_transaction_lowest_active (tdes->tran_index);
-      logtb_reset_mvcc (thread_p, tdes);
 
       if (retain_lock != true)
 	{
@@ -4912,13 +4907,8 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran,
 	  tdes->first_save_entry = NULL;
 	}
 
-      assert (MVCCID_IS_VALID (tdes->mvccinfo.id));
-      /* Need to finish transaction befor waiting for log. */
       tdes->replication_log_generator.on_transaction_abort ();
       id_complete = log_Gl.m_tran_complete_mgr->register_transaction (tdes->tran_index, tdes->mvccinfo.id, tdes->state);
-      /* For consistency, we must complete MVCCID before unlock. Maybe we need atomicity here. */
-
-      /* atomic set transaction lowest active MVCCID */
       if (MVCCID_IS_VALID (tdes->mvccinfo.id))
 	{
 	  log_Gl.m_tran_complete_mgr->complete_mvcc (id_complete);
@@ -5327,11 +5317,11 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
       if (wrote_eot_log == LOG_NEED_TO_WRITE_EOT_LOG)
 	{
 	  cubtx::complete_manager::id_type id_complete;
-	  if (iscommitted != LOG_COMMIT || LSA_ISNULL (&tdes->posp_nxlsa))
+	  if (iscommitted == LOG_ABORT || LSA_ISNULL (&tdes->posp_nxlsa))
 	    {
+	      /* I need id complete to be sure that adds EOT log. */
 	      if (p_id_complete)
 		{
-		  /* Transaction already registerd. Needs to wait for complete. */
 		  id_complete = *p_id_complete;
 		}
 	      else
@@ -5349,6 +5339,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 		}
 	      else
 		{
+		  /* Adds commit log. */
 		  log_Gl.m_tran_complete_mgr->complete (id_complete);
 		}
 	      log_Stat.commit_count++;
@@ -5356,7 +5347,10 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 	    }
 	  else
 	    {
-	      log_Gl.m_tran_complete_mgr->complete (id_complete);
+	      /* However, I need to know that an id was registered for current transaction. This means
+	       * that the current transaction is part of a groupand a log abort will be added.
+	       */
+	      assert (id_complete != TRAN_COMPLETE_NULL_ID);
 	      tdes->state = TRAN_UNACTIVE_ABORTED;
 	    }
 

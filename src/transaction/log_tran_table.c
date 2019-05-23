@@ -4054,8 +4054,8 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
  * thread_p (in)  : Thread entry.
  * tdes (in)	  : Transaction descriptor.
  *
- *  Note : This function reset MVCC and clear update stats and count optimization states.
- *      Clearing update and count optimization state may be moved outside.
+ *  Note : This function reset MVCC and clear related states - update stats and count optimization.
+ *      Clearing update stats and count optimization may be moved outside.
  */
 void
 logtb_reset_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
