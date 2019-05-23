@@ -78,7 +78,7 @@ namespace cubtx
   // notify_log_flush notifies single node group commit.
   //
   void single_node_group_complete_manager::notify_log_flush_lsa (const LOG_LSA *lsa)
-  {    
+  {
     assert (lsa != NULL && LSA_GE (lsa, &m_latest_closed_group_log_lsa));
 
     /* TODO - use m_latest_closed_group_stream_start_positon, m_latest_closed_group_stream_end_positon */
@@ -179,7 +179,7 @@ namespace cubtx
   }
 
   void single_node_group_complete_task::execute (cubthread::entry &thread_ref)
-  {    
+  {
     cubthread::entry *thread_p = &cubthread::get_entry ();
     single_node_group_complete_manager::gl_single_node_group->do_prepare_complete (thread_p);
   }

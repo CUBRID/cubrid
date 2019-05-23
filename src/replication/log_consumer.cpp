@@ -190,10 +190,9 @@ namespace cubreplication
 
 		/* wait for all started tasks to finish */
 		er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task wait for all working tasks to finish\n");
-
-		/* TODO - check positions */
+		
 		m_prev_group_stream_position = m_curr_group_stream_position;
-		m_curr_group_stream_position = se->get_stream()->get_curr_read_position ();
+		m_curr_group_stream_position = se->get_stream_entry_start_position ();
 
 		/* We need to wait for previous group to completed. Otherwise, we mix transactions from previous and current groups. */
 		m_p_dispatch_consumer->wait_for_complete_stream_position (m_prev_group_stream_position);

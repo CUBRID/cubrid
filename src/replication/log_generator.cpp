@@ -318,16 +318,19 @@ namespace cubreplication
 	_er_log_debug (ARG_FILE_LINE, "log_generator::pack_stream_entry\n%s\n", sb.get_buffer ());
       }
 
-    m_stream_entry.pack (NULL);
+    m_stream_entry.pack ();
     m_stream_entry.reset ();
   }
-
+  
   void
-  log_generator::pack_group_commit_entry (cubstream::stream_position &stream_position)
+  log_generator::pack_group_commit_entry (cubstream::stream_position & stream_start_pos,
+    cubstream::stream_position & stream_end_pos)
   {
     /* use non-NULL MVCCID to prevent assertion fail on stream packer */
     static stream_entry gc_stream_entry (s_stream, MVCCID_FIRST, stream_entry_header::GROUP_COMMIT);
-    gc_stream_entry.pack (&stream_position);
+    gc_stream_entry.pack ();
+    stream_start_pos = gc_stream_entry.get_stream_entry_start_position ();
+    stream_start_pos = gc_stream_entry.get_stream_entry_end_position ();    
   }
 
   void
@@ -424,7 +427,7 @@ namespace cubreplication
     assert (MVCCID_IS_VALID (local_stream_entry.get_mvccid ()));
 
     /* Write objects in stream and then destroy them. */
-    local_stream_entry.pack (NULL);
+    local_stream_entry.pack ();
     local_stream_entry.reset ();
   }
 
