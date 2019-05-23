@@ -34,6 +34,7 @@
 #include "thread_manager.hpp"
 #include "transaction_group.hpp"
 
+#include <algorithm>
 #include <cstring>
 
 namespace cubreplication
@@ -690,6 +691,140 @@ namespace cubreplication
     str ("rec_des_row_repl_entry::");
     single_row_repl_entry::stringify (str);
     str ("recdes length=%zu\n", m_rec_des.get_size ());
+  }
+
+
+  row_object::row_object (const char *class_name)
+  {
+    m_class_name = class_name;
+    m_data_size = 0;
+  }
+
+  row_object::~row_object ()
+  {
+  }
+
+  void row_object::reset (void)
+  {
+    m_data_size = 0;
+
+    m_rec_des_list.clear ();
+  }
+
+
+  int row_object::apply (void)
+  {
+    /* TODO[replication] */
+    return NO_ERROR;
+  }
+
+  void row_object::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_int (row_object::PACKING_ID);
+    serializator.pack_string (m_class_name);
+    serializator.pack_int ((int) m_rec_des_list.size ());
+
+    for (const record_descriptor &rec : m_rec_des_list)
+      {
+	rec.pack (serializator);
+      }
+  }
+
+  void row_object::unpack (cubpacking::unpacker &deserializator)
+  {
+    int entry_type_not_used;
+
+    deserializator.unpack_int (entry_type_not_used);
+
+    deserializator.unpack_string (m_class_name);
+    int rec_des_cnt = 0;
+
+    deserializator.unpack_int (rec_des_cnt);
+
+    for (int i = 0; i < rec_des_cnt; i++)
+      {
+	m_rec_des_list.emplace_back ();
+	record_descriptor &rec = m_rec_des_list.back ();
+	rec.unpack (deserializator);
+      }
+  }
+
+  std::size_t row_object::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    std::size_t entry_size = start_offset;
+
+    entry_size += serializator.get_packed_int_size (0);
+
+    entry_size += serializator.get_packed_string_size (m_class_name, entry_size);
+    entry_size += serializator.get_packed_int_size (entry_size);
+    for (const record_descriptor &rec : m_rec_des_list)
+      {
+	entry_size += rec.get_packed_size (serializator, entry_size);
+      }
+
+    return entry_size;
+  }
+
+
+  bool row_object::is_equal (const cubpacking::packable_object *other)
+  {
+    const row_object *other_t = dynamic_cast<const row_object *> (other);
+
+    if (other_t == NULL)
+      {
+	return false;
+      }
+
+    if (m_class_name.compare (other_t->m_class_name) != 0)
+      {
+	return false;
+      }
+
+    if (m_rec_des_list.size () != other_t->m_rec_des_list.size ())
+      {
+	return false;
+      }
+
+    for (int i = 0; i < m_rec_des_list.size (); i++)
+      {
+	if (m_rec_des_list[i].get_size () != other_t->m_rec_des_list[i].get_size ())
+	  {
+	    return false;
+	  }
+
+	if (m_rec_des_list[i].get_recdes ().type != other_t->m_rec_des_list[i].get_recdes ().type)
+	  {
+	    return false;
+	  }
+
+	if (std::memcmp (m_rec_des_list[i].get_recdes ().data, other_t->m_rec_des_list[i].get_recdes().data,
+			 m_rec_des_list[i].get_size ()) != 0)
+	  {
+	    return false;
+	  }
+      }
+    return true;
+  }
+
+  void row_object::stringify (string_buffer &str)
+  {
+    str ("row_object::row_object table=%s records_cnt:%d\n", m_class_name.c_str (), m_rec_des_list.size ());
+    for (int i = 0; i < m_rec_des_list.size (); i++)
+      {
+	size_t buf_size = m_rec_des_list[i].get_size ();
+
+	str ("\trecord:%d, size:%d\n", i, buf_size);
+	buf_size = std::min (buf_size, (size_t) 256);
+	str.hex_dump (m_rec_des_list[i].get_recdes ().data, buf_size);
+      }
+  }
+
+  void row_object::move_record (record_descriptor &&record)
+  {
+    size_t rec_size = record.get_recdes ().length;
+
+    m_rec_des_list.push_back (std::move (record));
+    m_data_size += rec_size;
   }
 
 } /* namespace cubreplication */
