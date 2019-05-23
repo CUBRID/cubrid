@@ -24621,7 +24621,7 @@ heap_scancache_block_allocate (cubmem::block &b, size_t size)
       size = DB_ALIGN (size, (size_t) DB_PAGESIZE);
     }
 
-  if (b.ptr != NULL && b.dim > size)
+  if (b.ptr != NULL && b.dim >= size)
     {
       // no need to change
       return;
