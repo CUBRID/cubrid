@@ -844,8 +844,11 @@ css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, char *server_name, u
   SOCKET ack_fd;
 
   /* timeout in second in css_common_connect() */
-  return (css_make_master_comm_channels (host_name, conn, DATA_REQUEST, server_name, length, css_Service_id,
-					 prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT), rid, true, ack_fd));
+  CSS_CONN_ENTRY *res =
+    css_make_master_comm_channels (host_name, conn, DATA_REQUEST, server_name, length, css_Service_id,
+				   prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT), rid, true, ack_fd);
+
+  assert (!IS_INVALID_SOCKET (ack_fd));
 }
 
 /* New style server connection function that uses an explicit port id */

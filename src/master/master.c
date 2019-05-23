@@ -791,8 +791,9 @@ css_process_new_connection (CSS_CONN_ENTRY * conn, SOCKET ack_chn)
 	  break;
 	case SERVER_REQUEST_CONNECT_NEW_SLAVE:
 	  {
-	    SOCKET ack_fd = css_master_accept (conn->fd);
-	    css_send_to_existing_server (conn, ack_chn, rid, SERVER_CONNECT_NEW_SLAVE);
+	    assert (ack_chn != conn->fd && !IS_INVALID_SOCKET (conn->fd));
+	    SOCKET ack_fd = css_master_accept (ack_chn);
+	    css_send_to_existing_server (conn, ack_fd, rid, SERVER_CONNECT_NEW_SLAVE);
 	    break;
 	  }
 	default:
@@ -992,7 +993,7 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 	      if (!IS_INVALID_SOCKET (new_fd))
 		{
 		  CSS_CONN_ENTRY *conn = css_create_new_connection (new_fd, -1);
-		  css_process_new_connection (conn, -1);
+		  css_process_new_connection (conn, temp->fd);
 		}
 	    }
 	  else if (!IS_INVALID_SOCKET (temp->fd))
