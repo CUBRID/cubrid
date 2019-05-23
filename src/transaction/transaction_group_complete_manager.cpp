@@ -216,7 +216,7 @@ namespace cubtx
   {
     if (group_id < m_latest_closed_group_id)
       {
-	/* The requested group was closed and commited. */
+	/* The requested group was closed and committed. */
 	return true;
       }
     else if (group_id > m_latest_closed_group_id)
@@ -226,7 +226,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed grup - check whether MVCC was completed.*/
+	/* Current closed group - check whether MVCC was completed.*/
 	return is_latest_closed_group_mvcc_completed ();
       }
   }
@@ -239,7 +239,7 @@ namespace cubtx
   {
     if (group_id < m_latest_closed_group_id)
       {
-	/* The requested group was closed and commited. */
+	/* The requested group was closed and committed. */
 	return true;
       }
     else if (group_id > m_latest_closed_group_id)
@@ -249,7 +249,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed grup - check whether the group was logged.*/
+	/* Current closed group - check whether the group was logged.*/
 	return is_latest_closed_group_logged ();
       }
   }
@@ -262,7 +262,7 @@ namespace cubtx
   {
     if (group_id < m_latest_closed_group_id)
       {
-	/* The requested group was closed and commited. */
+	/* The requested group was closed and committed. */
 	return true;
       }
     else if (group_id > m_latest_closed_group_id)
@@ -272,7 +272,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed grup - check whether the group was completed.*/
+	/* Current closed group - check whether the group was completed.*/
 	return is_latest_closed_group_completed ();
       }
   }
