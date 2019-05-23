@@ -109,7 +109,6 @@ namespace cubreplication
 	return error;
       }
 
-        assert (false);
         error = ack_chn.connect (master_node_hostname, master_node_port_id);
 if (error != css_error_code::NO_ERRORS)
 {
