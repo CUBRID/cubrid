@@ -178,8 +178,7 @@ namespace cubreplication
   row_apply_update (const std::string &classname, const db_value &key_value, const std::vector<int> &attr_ids,
 		    const std::vector<db_value> &attr_values)
   {
-    return row_apply_update_internal<const std::vector<int> &, const std::vector<db_value> &> (classname, key_value,
-	   attr_ids, attr_values);
+    return row_apply_update_internal (classname, key_value, attr_ids, attr_values);
   }
 
   int
@@ -258,7 +257,7 @@ namespace cubreplication
   {
     generated_record.set_recdes (new_record.get_recdes ());
     overwrite_last_reprid (thread_ref, class_oid, generated_record);
-    return NO_ERROR; // or_replace_chn (&generated_record, or_chn (&old_recdes) + 1);
+    return or_replace_chn (const_cast<RECDES *> (&generated_record.get_recdes ()), or_chn (&old_recdes) + 1);
   }
 
   int
