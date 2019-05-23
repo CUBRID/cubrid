@@ -4474,7 +4474,7 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
 }
 
 static void
-log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, const tx_group & group,
+log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, tx_group & group,
 				    LOG_LSA * complete_lsa, bool * has_postpone)
 {
   LOG_PRIOR_NODE *node;
@@ -4546,7 +4546,7 @@ log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, IN
 }
 
 void
-log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, const tx_group & group,
+log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, tx_group & group,
 			   LOG_LSA * commit_lsa, bool * has_postpone)
 {
   log_append_group_complete_internal (thread_p, tdes, stream_pos, group, commit_lsa, has_postpone);

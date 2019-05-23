@@ -196,7 +196,7 @@ namespace cubtx
   //
   // get_last_closed_group get latest closed group.
   //
-  const tx_group &group_complete_manager::get_last_closed_group ()
+  tx_group &group_complete_manager::get_last_closed_group ()
   {
     return m_latest_closed_group;
   }

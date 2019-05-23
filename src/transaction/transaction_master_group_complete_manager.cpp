@@ -157,7 +157,7 @@ namespace cubtx
 	return;
       }
 
-    const tx_group &closed_group = get_last_closed_group ();
+    tx_group &closed_group = get_last_closed_group ();
     /* TODO - consider parameter for MVCC complete here. */
     /* Add group commit log record and wakeup  log flush daemon. */
     log_append_group_complete (thread_p, tdes, m_latest_closed_group_stream_positon, closed_group,
