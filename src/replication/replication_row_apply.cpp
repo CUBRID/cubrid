@@ -117,7 +117,7 @@ namespace cubreplication
   }
 
   template <typename ... Args>
-  static void
+  static int
   row_apply_update_internal (const std::string &classname, const db_value &key_value, Args &&... args)
   {
     cubthread::entry &thread_ref = cubthread::get_entry ();
@@ -158,7 +158,7 @@ namespace cubreplication
     record_descriptor generated_record;
 
     error_code = generate_updated_record (thread_ref, scan_cache.node.class_oid, old_recdes, generated_record,
-					  std::forward<Args> (args));
+					  std::forward<Args> (args)...);
     if (error_code != NO_ERROR)
       {
 	assert (false);
