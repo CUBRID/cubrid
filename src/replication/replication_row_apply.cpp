@@ -37,9 +37,16 @@
 namespace cubreplication
 {
   static int prepare_scan (cubthread::entry &thread_ref, const std::string &classname, HEAP_SCANCACHE &scan_cache);
-  static void overwrite_last_reprid (cubthread::entry &thread_ref, const OID &class_oid, RECDES &recdes);
+  static void overwrite_last_reprid (cubthread::entry &thread_ref, const OID &class_oid, record_descriptor &record);
   static int find_instance_oid (cubthread::entry &thread_ref, const OID &class_oid, const db_value &key_value,
 				HEAP_SCANCACHE &scan_cache, SCAN_OPERATION_TYPE op_type, OID &instance_oid);
+  static int generate_updated_record (cubthread::entry &thread_ref, const OID &class_oid, const RECDES &old_recdes,
+				      record_descriptor &generated_record, const record_descriptor &new_record);
+  static int generate_updated_record (cubthread::entry &thread_ref, const OID &class_oid, const RECDES &old_recdes,
+				      record_descriptor &generated_record, const std::vector<int> &attr_ids,
+				      const std::vector<db_value> &attr_values);
+  template <typename ... Args>
+  static int row_apply_update_internal (const std::string &classname, const db_value &key_value, Args &&... args);
 
   int
   row_apply_insert (const std::string &classname, const record_descriptor &record)
@@ -61,11 +68,10 @@ namespace cubreplication
     assert (!HFID_IS_NULL (&scan_cache.node.hfid));
 
     record_descriptor record_copy (record.get_recdes ());
-    RECDES recdes_copy = record_copy.get_recdes ();
-
-    overwrite_last_reprid (thread_ref, scan_cache.node.class_oid, recdes_copy);
+    overwrite_last_reprid (thread_ref, scan_cache.node.class_oid, record_copy);
 
     OID oid_out = OID_INITIALIZER;
+    RECDES recdes_copy = record_copy.get_recdes ();
     // todo: pruning
     error_code = locator_insert_record (thread_ref, scan_cache, recdes_copy, oid_out);
     assert (error_code == NO_ERROR);
@@ -110,8 +116,9 @@ namespace cubreplication
     return NO_ERROR;
   }
 
-  int
-  row_apply_update (const std::string &classname, const db_value &key_value, const record_descriptor &record)
+  template <typename ... Args>
+  static void
+  row_apply_update_internal (const std::string &classname, const db_value &key_value, Args &&... args)
   {
     cubthread::entry &thread_ref = cubthread::get_entry ();
     /* monitor */
@@ -148,9 +155,10 @@ namespace cubreplication
       }
 
     // copy new recdes
-    RECDES new_recdes = record_descriptor (record.get_recdes ()).get_recdes ();
-    overwrite_last_reprid (thread_ref, scan_cache.node.class_oid, new_recdes);
-    error_code = or_replace_chn (&new_recdes, or_chn (&old_recdes) + 1);
+    record_descriptor generated_record;
+
+    error_code = generate_updated_record (thread_ref, scan_cache.node.class_oid, old_recdes, generated_record,
+					  std::forward<Args> (args));
     if (error_code != NO_ERROR)
       {
 	assert (false);
@@ -158,11 +166,26 @@ namespace cubreplication
 	return ER_FAILED;
       }
 
+    RECDES new_recdes = generated_record.get_recdes ();
     error_code = locator_update_record (thread_ref, scan_cache, instance_oid, old_recdes, new_recdes, true);
     assert (error_code == NO_ERROR);
 
     heap_scancache_end_modify (&thread_ref, &scan_cache);
     return NO_ERROR;
+  }
+
+  int
+  row_apply_update (const std::string &classname, const db_value &key_value, const std::vector<int> &attr_ids,
+		    const std::vector<db_value> &attr_values)
+  {
+    return row_apply_update_internal<const std::vector<int> &, const std::vector<db_value> &> (classname, key_value,
+	   attr_ids, attr_values);
+  }
+
+  int
+  row_apply_update (const std::string &classname, const db_value &key_value, const record_descriptor &record)
+  {
+    return row_apply_update_internal (classname, key_value, record);
   }
 
   static int
@@ -195,7 +218,7 @@ namespace cubreplication
   }
 
   static void
-  overwrite_last_reprid (cubthread::entry &thread_ref, const OID &class_oid, RECDES &recdes)
+  overwrite_last_reprid (cubthread::entry &thread_ref, const OID &class_oid, record_descriptor &record)
   {
     int last_reprid = heap_get_class_repr_id (&thread_ref, &class_oid);
     if (last_reprid == 0)
@@ -204,12 +227,7 @@ namespace cubreplication
 	return;
       }
 
-    if (or_replace_rep_id (&recdes, last_reprid) != NO_ERROR)
-      {
-	// never happens; we should make or_replace_rep_id return void
-	assert (false);
-	return;
-      }
+    or_set_repid (record.get_data_for_modify (), last_reprid);
   }
 
   static int
@@ -234,5 +252,49 @@ namespace cubreplication
     return NO_ERROR;
   }
 
+  int
+  generate_updated_record (cubthread::entry &thread_ref, const OID &class_oid, const RECDES &old_recdes,
+			   record_descriptor &generated_record, const record_descriptor &new_record)
+  {
+    generated_record.set_recdes (new_record.get_recdes ());
+    overwrite_last_reprid (thread_ref, class_oid, generated_record);
+    return NO_ERROR; // or_replace_chn (&generated_record, or_chn (&old_recdes) + 1);
+  }
+
+  int
+  generate_updated_record (cubthread::entry &thread_ref, const OID &class_oid, const RECDES &old_recdes,
+			   record_descriptor &generated_record, const std::vector<int> &attr_ids,
+			   const std::vector<db_value> &attr_values)
+  {
+    HEAP_CACHE_ATTRINFO attr_info;
+
+    int error_code = heap_attrinfo_start (&thread_ref, &class_oid, -1, NULL, &attr_info);
+    if (error_code != NO_ERROR)
+      {
+	assert (false);
+	return error_code;
+      }
+
+    assert (attr_ids.size () == attr_values.size ());
+    for (size_t i = 0; i < attr_ids.size (); i++)
+      {
+	error_code = heap_attrinfo_set (NULL, attr_ids[i], &attr_values[i], &attr_info);
+	if (error_code != NO_ERROR)
+	  {
+	    assert (false);
+	    return error_code;
+	  }
+      }
+
+    record_descriptor new_record;
+    error_code =
+	    heap_attrinfo_transform_to_disk (&thread_ref, &attr_info,
+		const_cast<RECDES *> (&old_recdes) /* fix heap_attrinfo_transform_to_disk */,
+		&generated_record);
+    assert (error_code == NO_ERROR);
+
+    heap_attrinfo_end (&thread_ref, &attr_info);
+    return error_code;
+  }
 
 } // namespace cubreplication

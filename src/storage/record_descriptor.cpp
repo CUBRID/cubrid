@@ -93,6 +93,25 @@ record_descriptor::~record_descriptor (void)
 {
 }
 
+void
+record_descriptor::set_recdes (const recdes &rec)
+{
+  assert (m_data_source == data_source::INVALID);
+
+  m_recdes.type = rec.type;
+  if (rec.length != 0)
+    {
+      // copy content from argument
+      m_recdes.area_size = rec.length;
+      m_recdes.length = m_recdes.area_size;
+      m_own_data.extend_to ((size_t) m_recdes.area_size);
+      m_recdes.data = m_own_data.get_ptr ();
+      std::memcpy (m_recdes.data, rec.data, m_recdes.length);
+
+      m_data_source = data_source::COPIED;  // we assume this is a copied record
+    }
+}
+
 int
 record_descriptor::peek (cubthread::entry *thread_p, PAGE_PTR page, PGSLOTID slotid)
 {

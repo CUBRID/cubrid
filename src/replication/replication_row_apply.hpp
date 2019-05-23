@@ -24,10 +24,12 @@
 #ifndef _REPLICATION_ROW_APPLY_HPP_
 #define _REPLICATION_ROW_APPLY_HPP_
 
+#include "dbtype_def.h"
+
 #include <string>
+#include <vector>
 
 // forward declarations
-struct db_value;
 class record_descriptor;
 
 namespace cubreplication
@@ -35,6 +37,8 @@ namespace cubreplication
   int row_apply_insert (const std::string &classname, const record_descriptor &record);
   int row_apply_delete (const std::string &classname, const db_value &key_value);
   int row_apply_update (const std::string &classname, const db_value &key_value, const record_descriptor &record);
+  int row_apply_update (const std::string &classname, const db_value &key_value,
+			const std::vector<int> &attr_ids, const std::vector<db_value> &attr_values);
 
 } // namespace cubreplication
 
