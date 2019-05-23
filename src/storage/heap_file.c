@@ -877,7 +877,8 @@ STATIC_INLINE int heap_get_last_vpid (THREAD_ENTRY * thread_p, const HFID * hfid
 static void heap_scancache_block_allocate (cubmem::block &b, size_t size);
 static void heap_scancache_block_deallocate (cubmem::block &b);
 
-static const cubmem::block_allocator HEAP_SCANCACHE_BLOCK_ALLOCATOR { heap_scancache_block_allocate, heap_scancache_block_deallocate };
+static const cubmem::block_allocator HEAP_SCANCACHE_BLOCK_ALLOCATOR =
+  { heap_scancache_block_allocate, heap_scancache_block_deallocate };
 // *INDENT-ON*
 
 /*
