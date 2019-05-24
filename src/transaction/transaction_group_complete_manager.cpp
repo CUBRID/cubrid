@@ -101,7 +101,7 @@ namespace cubtx
   }
 
   //
-  // close_current_group close the current group. Next comming transactions will be added into the next group.
+  // close_current_group close the current group. Next coming transactions will be added into the next group.
   //
   bool group_complete_manager::close_current_group ()
   {
@@ -226,7 +226,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed group - check whether MVCC was completed.*/
+	/* Current closed group - check whether MVCC was completed. */
 	return is_latest_closed_group_mvcc_completed ();
       }
   }
@@ -249,7 +249,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed group - check whether the group was logged.*/
+	/* Current closed group - check whether the group was logged. */
 	return is_latest_closed_group_logged ();
       }
   }
@@ -272,7 +272,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed group - check whether the group was completed.*/
+	/* Current closed group - check whether the group was completed. */
 	return is_latest_closed_group_completed ();
       }
   }

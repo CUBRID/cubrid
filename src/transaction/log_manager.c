@@ -4499,13 +4499,13 @@ log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, IN
       v.append (tdes->trid);
       v.append (ti.m_tran_state);
       if (ti.m_tran_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
-      {
-	v.append (tdes->posp_nxlsa);
-        if (has_postpone)
-          {
-            *has_postpone = true;
-          }        
-      }
+        {
+	  v.append (tdes->posp_nxlsa);
+          if (has_postpone)
+            {
+              *has_postpone = true;
+            }
+        }
     }
   // *INDENT-ON*
 
@@ -4525,7 +4525,7 @@ log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, IN
     {
       LOG_TDES *tdes = LOG_FIND_TDES (ti.m_tran_index);
       assert (tdes != NULL);
-      if (LSA_ISNULL (&tdes->posp_nxlsa)) 
+      if (LSA_ISNULL (&tdes->posp_nxlsa))
 	{
 	  // filter out transactions without postpone
 	  continue;
@@ -4547,9 +4547,9 @@ log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, IN
 
 void
 log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, tx_group & group,
-			   LOG_LSA * commit_lsa, bool * has_postpone)
+			   LOG_LSA * complete_lsa, bool * has_postpone)
 {
-  log_append_group_complete_internal (thread_p, tdes, stream_pos, group, commit_lsa, has_postpone);
+  log_append_group_complete_internal (thread_p, tdes, stream_pos, group, complete_lsa, has_postpone);
 }
 
 /*

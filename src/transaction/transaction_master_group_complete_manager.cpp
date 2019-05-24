@@ -77,7 +77,7 @@ namespace cubtx
   //
   void master_group_complete_manager::notify_stream_ack (const cubstream::stream_position stream_pos)
   {
-    /* TO DO - disable it temporary since it is not tested */
+    /* TODO - disable it temporary since it is not tested */
     return;
 
     /* TODO - consider quorum. Consider multiple calls of same thread. */
@@ -189,7 +189,7 @@ namespace cubtx
 
   void master_group_complete_task::execute (cubthread::entry &thread_ref)
   {
-    /* TO DO - disable it temporary since it is not tested */
+    /* TODO - disable it temporary since it is not tested */
     return;
 
     cubthread::entry *thread_p = &cubthread::get_entry();
