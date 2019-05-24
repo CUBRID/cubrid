@@ -18656,8 +18656,8 @@ heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, b
   SCAN_CODE scan = S_SUCCESS;
 
   /* Try to reuse the previously allocated area No need to check the snapshot since was already checked */
-  if (scan_cache != NULL && (ispeeking == PEEK || recdes->data == NULL
-			     || scan_cache->is_recdes_assigned_to_area (*recdes)))
+  if (scan_cache != NULL
+      && (ispeeking == PEEK || recdes->data == NULL || scan_cache->is_recdes_assigned_to_area (*recdes)))
     {
       scan_cache->assign_recdes_to_area (*recdes);
 
@@ -23910,7 +23910,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 	    {
 	      /* expand record area and try again */
 	      assert (recdes->length < 0);
-	      scan_cache->assign_recdes_to_area (*recdes, (size_t) - recdes->length);
+	      scan_cache->assign_recdes_to_area (*recdes, (size_t) (-recdes->length));
 	      /* final try to get the undo record */
 	      continue;
 	    }
