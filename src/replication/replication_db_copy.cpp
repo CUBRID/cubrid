@@ -37,6 +37,7 @@ namespace cubreplication
   copy_context::copy_context ()
   {
     m_stream = NULL;
+    m_state = NOT_STARTED;
   }
 
   void copy_context::set_credentials (const char *user, const char *password)
@@ -69,6 +70,45 @@ namespace cubreplication
 
     stream_entry.pack ();
   }
+
+
+  int copy_context::transit_state (copy_stage new_state)
+  {
+    int error = NO_ERROR;
+
+    /* TODO: extend with copy daemon interaction */
+
+    if ((int) m_state != ((int) new_state - 1))
+      {
+	return ER_FAILED;
+      }
+
+    m_state = new_state;
+
+    if (m_state == SCHEMA_APPLY_CLASSES_FINISHED)
+      {
+	pack_and_add_sbr (m_class_schema);
+      }
+
+    return error;
+  }
+
+  void copy_context::append_class_schema (const char *buffer, const size_t buf_size)
+  {
+    m_class_schema.append_statement (buffer, buf_size);
+  }
+
+  void copy_context::append_triggers_schema (const char *buffer, const size_t buf_size)
+  {
+    m_triggers.append_statement (buffer, buf_size);
+  }
+
+
+  void copy_context::append_indexes_schema (const char *buffer, const size_t buf_size)
+  {
+    m_indexes.append_statement (buffer, buf_size);
+  }
+
 
   /*
    * create_scan_for_replication_copy - creates a HEAP SCAN to be used by replication copy (no regu variables)
