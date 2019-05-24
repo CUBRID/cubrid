@@ -2244,10 +2244,10 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 	}
 
       size += (3 * OR_INT_SIZE	/* tran index + tran state + process id */
-	       + or_packed_string_length (tdes->client.get_db_user (), NULL)
-	       + or_packed_string_length (tdes->client.get_program_name (), NULL)
-	       + or_packed_string_length (tdes->client.get_login_name (), NULL)
-	       + or_packed_string_length (tdes->client.get_host_name (), NULL));
+	       + OR_INT_SIZE + DB_ALIGN (LOG_USERNAME_MAX, INT_ALIGNMENT)
+	       + OR_INT_SIZE + DB_ALIGN (PATH_MAX, INT_ALIGNMENT)
+	       + OR_INT_SIZE + DB_ALIGN (L_cuserid, INT_ALIGNMENT)
+	       + OR_INT_SIZE + DB_ALIGN (CUB_MAXHOSTNAMELEN, INT_ALIGNMENT));
 
 #if defined(SERVER_MODE)
       if (include_query_exec_info)
@@ -2346,10 +2346,10 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
       ptr = or_pack_int (ptr, tdes->tran_index);
       ptr = or_pack_int (ptr, tdes->state);
       ptr = or_pack_int (ptr, tdes->client.process_id);
-      ptr = or_pack_string (ptr, tdes->client.get_db_user ());
-      ptr = or_pack_string (ptr, tdes->client.get_program_name ());
-      ptr = or_pack_string (ptr, tdes->client.get_login_name ());
-      ptr = or_pack_string (ptr, tdes->client.get_host_name ());
+      ptr = or_pack_string_with_length (ptr, tdes->client.get_db_user (), tdes->client.db_user.size ());
+      ptr = or_pack_string_with_length (ptr, tdes->client.get_program_name (), tdes->client.program_name.size ());
+      ptr = or_pack_string_with_length (ptr, tdes->client.get_login_name (), tdes->client.login_name.size ());
+      ptr = or_pack_string_with_length (ptr, tdes->client.get_host_name (), tdes->client.host_name.size ());
 
 #if defined(SERVER_MODE)
       if (include_query_exec_info)
