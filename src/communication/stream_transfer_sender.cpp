@@ -96,7 +96,7 @@ namespace cubstream
 
             char buf[64];
             size_t len_recv;
-            // todo: do I need to read the magic shit? look at cub_master how he does it?
+            // todo: do I need to read the magic thing? look at cub_master how he does it?
             this_producer_channel.m_ack_chn.recv (buf, len_recv);                        
 
 	    if (error_code != NO_ERROR)

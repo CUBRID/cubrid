@@ -677,15 +677,15 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, SOCKET ack_chn, unsigned sho
 		  std::vector < SOCKET > client_fds;
 		  if (ack_chn != -1)
 		    {
-		      client_fds =
-		      {
-		      conn->fd, ack_chn};
+                      // *INDENT-OFF*
+		      client_fds = {conn->fd, ack_chn};
+                      // *INDENT-ON*
 		    }
 		  else
 		    {
-		      client_fds =
-		      {
-		      conn->fd};
+                      // *INDENT-OFF*
+                      client_fds = {conn->fd};
+                      // *INDENT-ON*
 		    }
 
 		  if (css_send_new_request_to_server (temp->fd, client_fds, rid, request))
