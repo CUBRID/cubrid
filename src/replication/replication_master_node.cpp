@@ -108,7 +108,6 @@ namespace cubreplication
     cubreplication::add_ack_chn (ack_chn);
 
     // this assert means it worked!
-    assert (false);
     er_log_debug_replication (ARG_FILE_LINE, "new_slave connected");
 #endif
   }

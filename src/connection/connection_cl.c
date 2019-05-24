@@ -842,7 +842,7 @@ css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, char *server_name, u
     }
 
   SOCKET ack_fd;
-
+  assert (false);
   /* timeout in second in css_common_connect() */
   CSS_CONN_ENTRY *res =
     css_make_master_comm_channels (host_name, conn, DATA_REQUEST, server_name, length, css_Service_id,
