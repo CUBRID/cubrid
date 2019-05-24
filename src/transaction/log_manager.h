@@ -42,6 +42,7 @@
 #include "recovery.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
+#include "transaction_group.hpp"
 
 #include <time.h>
 
@@ -144,15 +145,18 @@ extern LOG_LSA *log_get_parent_lsa_system_op (THREAD_ENTRY * thread_p, LOG_LSA *
 extern bool log_is_tran_in_system_op (THREAD_ENTRY * thread_p);
 extern int log_add_to_modified_class_list (THREAD_ENTRY * thread_p, const char *classname, const OID * class_oid);
 extern bool log_is_class_being_modified (THREAD_ENTRY * thread_p, const OID * class_oid);
-extern TRAN_STATE log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bool is_local_tran);
-extern TRAN_STATE log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran);
+extern TRAN_STATE log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bool is_local_tran,
+				    cubtx::complete_manager::id_type * p_id_complete);
+extern TRAN_STATE log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran,
+				   cubtx::complete_manager::id_type * p_id_complete);
 extern TRAN_STATE log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock);
 extern TRAN_STATE log_abort (THREAD_ENTRY * thread_p, int tran_index);
 extern TRAN_STATE log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA * savept_lsa);
 extern TRAN_STATE log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
-				LOG_GETNEWTRID get_newtrid, LOG_WRITE_EOT_LOG wrote_eot_log);
+				LOG_GETNEWTRID get_newtrid, LOG_WRITE_EOT_LOG wrote_eot_log,
+				cubtx::complete_manager::id_type * p_id_complete);
 extern TRAN_STATE log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
-					LOG_GETNEWTRID get_newtrid);
+					LOG_GETNEWTRID get_newtrid, cubtx::complete_manager::id_type * p_id_complete);
 extern void log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_posplsa);
 extern int log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_REDO * redo,
 				     char *redo_rcv_data);
@@ -171,7 +175,7 @@ extern void log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log, int flus
 #endif
 extern void log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 				     const VPID * rcv_vpid, int length, const void *data, const LOG_LSA * ref_lsa);
-extern void log_append_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
+extern void log_append_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 extern int log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa,
 				    LOG_TOPOP_RANGE ** out_nxtop_range_stack);
 extern void log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit);

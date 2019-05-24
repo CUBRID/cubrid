@@ -102,6 +102,8 @@
 #include "thread_manager.hpp"
 #include "crypt_opfunc.h"
 #include "transaction_master_group_complete_manager.hpp"
+#include "transaction_single_node_group_complete_manager.hpp"
+#include "transaction_slave_group_complete_manager.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -541,7 +543,6 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
 {
   int error_code = NO_ERROR;
   int i;
-  LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
   LOGWR_INFO *writer_info = log_Gl.writer_info;
   size_t size;
 
@@ -622,9 +623,6 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   logpb_Initialized = true;
   pthread_mutex_init (&log_Gl.chkpt_lsa_lock, NULL);
 
-  pthread_cond_init (&group_commit_info->gc_cond, NULL);
-  pthread_mutex_init (&group_commit_info->gc_mutex, NULL);
-
   pthread_mutex_init (&writer_info->wr_list_mutex, NULL);
 
   pthread_cond_init (&writer_info->flush_start_cond, NULL);
@@ -691,9 +689,6 @@ logpb_finalize_pool (THREAD_ENTRY * thread_p)
   logpb_finalize_flush_info ();
 
   pthread_mutex_destroy (&log_Gl.chkpt_lsa_lock);
-
-  pthread_mutex_destroy (&log_Gl.group_commit_info.gc_mutex);
-  pthread_cond_destroy (&log_Gl.group_commit_info.gc_cond);
 
   logpb_finalize_writer_info ();
 
@@ -3672,7 +3667,6 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
   bool need_wakeup_LFT, need_wait;
   bool async_commit, group_commit;
   LOG_LSA nxio_lsa;
-  LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
 
   assert (flush_lsa != NULL && !LSA_ISNULL (flush_lsa));
 
@@ -3750,11 +3744,9 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 	  (void) timeval_add_msec (&tmp_timeval, &start_time, max_wait_time_in_msec);
 	  (void) timeval_to_timespec (&to, &tmp_timeval);
 
-	  rv = pthread_mutex_lock (&group_commit_info->gc_mutex);
 	  nxio_lsa = log_Gl.append.get_nxio_lsa ();
 	  if (LSA_GE (&nxio_lsa, flush_lsa))
 	    {
-	      pthread_mutex_unlock (&group_commit_info->gc_mutex);
 	      break;
 	    }
 
@@ -3762,8 +3754,9 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 	    {
 	      log_wakeup_log_flush_daemon ();
 	    }
-	  (void) pthread_cond_timedwait (&group_commit_info->gc_cond, &group_commit_info->gc_mutex, &to);
-	  pthread_mutex_unlock (&group_commit_info->gc_mutex);
+
+	  /* Currently we sleep. This happens for 2pc. Needs to update to wait for GC. */
+	  thread_sleep (20);
 
 	  need_wakeup_LFT = true;
 	  nxio_lsa = log_Gl.append.get_nxio_lsa ();
@@ -10242,28 +10235,57 @@ logpb_initialize_logging_statistics (void)
 }
 
 /*
- * logpb_initialize_tran_complete_manager - Initialize transaction complete manager
- *
- * return: nothing
- *
- * NOTE:
- */
+* logpb_initialize_tran_complete_manager - Initialize transaction complete manager
+*
+* return: nothing
+* thread_p(in): thread entry
+*
+*/
 void
-logpb_initialize_tran_complete_manager (void)
+logpb_initialize_tran_complete_manager (THREAD_ENTRY * thread_p)
 {
-#if defined(SERVER_MODE)
   if (!log_does_allow_replication ())
     {
-      /* TODO - HA disabled, server mode */
+      /* HA disabled. */
+      cubtx::single_node_group_complete_manager::init ();
+      log_Gl.m_tran_complete_mgr = cubtx::single_node_group_complete_manager::get_instance ();
     }
   else
     {
-      /* TODO - slave. For now consider only master. */
-      log_Gl.m_tran_complete_mgr = cubtx::master_group_complete_manager::get_instance ();
-    }
+#if defined(SERVER_MODE)
+      /* Get complete manager interface.  */
+      if (!LOG_CHECK_LOG_APPLIER (thread_p))
+	{
+	  /* Master case */
+	  log_Gl.m_tran_complete_mgr = cubtx::master_group_complete_manager::get_instance ();
+	}
+      else
+	{
+	  /* Slave case. */
+	  log_Gl.m_tran_complete_mgr = cubtx::slave_group_complete_manager::get_instance ();
+	}
 #else
-  /* TODO - SA mode */
+      assert (false);
 #endif
+    }
+}
+
+/*
+* logpb_finalize_tran_complete_manager - Finalize transaction complete manager
+*
+* return: nothing
+*
+* NOTE:
+*/
+void
+logpb_finalize_tran_complete_manager (void)
+{
+  if (!log_does_allow_replication ())
+    {
+      /* HA disabled. */
+      cubtx::single_node_group_complete_manager::final ();
+    }
+  log_Gl.m_tran_complete_mgr = NULL;
 }
 
 /*

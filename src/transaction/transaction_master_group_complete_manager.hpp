@@ -49,7 +49,7 @@ namespace cubtx
       static void final ();
 
       /* group_complete_manager methods */
-      void prepare_complete (THREAD_ENTRY *thread_p) override;
+      void do_prepare_complete (THREAD_ENTRY *thread_p) override;
       void do_complete (THREAD_ENTRY *thread_p) override;
 
       /* stream_ack methods */

@@ -46,7 +46,7 @@ namespace cubtx
       static void final ();
 
       /* group_complete_manager methods */
-      void prepare_complete (THREAD_ENTRY *thread_p) override;
+      void do_prepare_complete (THREAD_ENTRY *thread_p) override;
       void do_complete (THREAD_ENTRY *thread_p) override;
 
       void notify_log_flush_lsa (const LOG_LSA *lsa) override;
@@ -59,7 +59,7 @@ namespace cubtx
       static single_node_group_complete_manager *gl_single_node_group;
       static cubthread::daemon *gl_single_node_group_complete_daemon;
 
-      LOG_LSA m_latest_closed_group_log_lsa;      
+      LOG_LSA m_latest_closed_group_log_lsa;
   };
 
   //

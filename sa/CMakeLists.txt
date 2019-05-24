@@ -363,6 +363,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/replication.c
   ${TRANSACTION_DIR}/recovery.c
   ${TRANSACTION_DIR}/transaction_cl.c
+  ${TRANSACTION_DIR}/transaction_single_node_group_complete_manager.cpp
   ${TRANSACTION_DIR}/transaction_group_complete_manager.cpp
   ${TRANSACTION_DIR}/transaction_complete_manager.cpp
   ${TRANSACTION_DIR}/transaction_group.cpp
@@ -384,6 +385,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/mvcc.h
   ${TRANSACTION_DIR}/mvcc_active_tran.hpp
   ${TRANSACTION_DIR}/mvcc_table.hpp
+  ${TRANSACTION_DIR}/transaction_single_node_group_complete_manager.cpp
   ${TRANSACTION_DIR}/transaction_group_complete_manager.hpp
   ${TRANSACTION_DIR}/transaction_complete_manager.hpp
   ${TRANSACTION_DIR}/transaction_global.hpp
