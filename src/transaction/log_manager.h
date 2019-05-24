@@ -42,7 +42,6 @@
 #include "recovery.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
-#include "transaction_group.hpp"
 
 #include <time.h>
 
@@ -138,18 +137,15 @@ extern LOG_LSA *log_get_parent_lsa_system_op (THREAD_ENTRY * thread_p, LOG_LSA *
 extern bool log_is_tran_in_system_op (THREAD_ENTRY * thread_p);
 extern int log_add_to_modified_class_list (THREAD_ENTRY * thread_p, const char *classname, const OID * class_oid);
 extern bool log_is_class_being_modified (THREAD_ENTRY * thread_p, const OID * class_oid);
-extern TRAN_STATE log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bool is_local_tran,
-				    cubtx::complete_manager::id_type * p_id_complete);
-extern TRAN_STATE log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran,
-				   cubtx::complete_manager::id_type * p_id_complete);
+extern TRAN_STATE log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bool is_local_tran);
+extern TRAN_STATE log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran);
 extern TRAN_STATE log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock);
 extern TRAN_STATE log_abort (THREAD_ENTRY * thread_p, int tran_index);
 extern TRAN_STATE log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA * savept_lsa);
 extern TRAN_STATE log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
-				LOG_GETNEWTRID get_newtrid, LOG_WRITE_EOT_LOG wrote_eot_log,
-				cubtx::complete_manager::id_type * p_id_complete);
+				LOG_GETNEWTRID get_newtrid, LOG_WRITE_EOT_LOG wrote_eot_log);
 extern TRAN_STATE log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
-					LOG_GETNEWTRID get_newtrid, cubtx::complete_manager::id_type * p_id_complete);
+					LOG_GETNEWTRID get_newtrid);
 extern void log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_posplsa);
 extern int log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_REDO * redo,
 				     char *redo_rcv_data);
@@ -237,12 +233,4 @@ void LOG_CS_PROMOTE (THREAD_ENTRY * thread_p);
 bool LOG_CS_OWN (THREAD_ENTRY * thread_p);
 bool LOG_CS_OWN_WRITE_MODE (THREAD_ENTRY * thread_p);
 
-// *INDENT-OFF*
-/* Interface used by log flush to notify threads. */
-class log_flush_lsa
-{
-public:
-  virtual void notify_log_flush_lsa (const LOG_LSA * lsa) = 0;
-};
-// *INDENT-ON*
 #endif /* _LOG_MANAGER_H_ */

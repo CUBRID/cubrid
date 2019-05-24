@@ -41,9 +41,9 @@ namespace cubtx
       virtual ~complete_manager () = 0;
 
       virtual id_type register_transaction (int tran_index, MVCCID mvccid, TRAN_STATE state) = 0;
-      virtual void complete_mvcc (id_type id) = 0;
-      virtual void complete_logging (id_type id) = 0;
-      virtual void complete (id_type id) = 0;
+      virtual void wait_for_complete_mvcc (id_type id) = 0;
+      virtual void wait_for_logging (id_type id) = 0;
+      virtual void wait_for_complete (id_type id) = 0;
   };
 }
 

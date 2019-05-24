@@ -545,7 +545,6 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 static TRAN_STATE
 log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * decision)
 {
-  cubtx::complete_manager::id_type id_complete;
   TRAN_STATE state;
 
   if (*decision == true)
@@ -570,7 +569,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
       /* Save the state.. so it can be reverted to the 2pc state .. */
       state = tdes->state;
       /* 2PC protocol does not support RETAIN LOCK */
-      (void) log_commit_local (thread_p, tdes, false, false, &id_complete);
+      (void) log_commit_local (thread_p, tdes, false, false);
 
       tdes->state = state;	/* Revert to 2PC state... */
       /*
@@ -581,7 +580,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
       (void) log_2pc_send_commit_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->ack_received,
 					   tdes->coord->block_particps_ids);
       /* Check if all the acknowledgments have been received */
-      state = log_complete_for_2pc (thread_p, tdes, LOG_COMMIT, LOG_NEED_NEWTRID, &id_complete);
+      state = log_complete_for_2pc (thread_p, tdes, LOG_COMMIT, LOG_NEED_NEWTRID);
     }
   else
     {
@@ -616,7 +615,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
       /* Save the state.. so it can be reverted to the 2pc state .. */
       state = tdes->state;
       /* 2PC protocol does not support RETAIN LOCK */
-      (void) log_abort_local (thread_p, tdes, false, &id_complete);
+      (void) log_abort_local (thread_p, tdes, false);
 
       if (tdes->state == TRAN_UNACTIVE_ABORTED)
 	{
@@ -653,7 +652,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
 					      tdes->coord->block_particps_ids, false);
 	}
       /* Check if all the acknowledgments have been received */
-      state = log_complete_for_2pc (thread_p, tdes, LOG_ABORT, LOG_NEED_NEWTRID, &id_complete);
+      state = log_complete_for_2pc (thread_p, tdes, LOG_ABORT, LOG_NEED_NEWTRID);
     }
 
   return state;
@@ -2121,7 +2120,6 @@ log_2pc_recovery_collecting_participant_votes (THREAD_ENTRY * thread_p, LOG_TDES
 static void
 log_2pc_recovery_abort_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
-  cubtx::complete_manager::id_type id_complete;
   TRAN_STATE state;
 
   /*
@@ -2141,7 +2139,7 @@ log_2pc_recovery_abort_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   state = tdes->state;
 
   /* 2PC protocol does not support RETAIN LOCK */
-  (void) log_abort_local (thread_p, tdes, false, &id_complete);
+  (void) log_abort_local (thread_p, tdes, false);
 
   if (tdes->state == TRAN_UNACTIVE_ABORTED)
     {
@@ -2158,7 +2156,7 @@ log_2pc_recovery_abort_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   (void) log_2pc_send_abort_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->ack_received,
 				      tdes->coord->block_particps_ids, true);
   /* Check if all the acknowledgements have been received */
-  (void) log_complete_for_2pc (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, &id_complete);
+  (void) log_complete_for_2pc (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID);
 }
 
 /*
@@ -2174,13 +2172,13 @@ static void
 log_2pc_recovery_commit_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   TRAN_STATE state;
-  cubtx::complete_manager::id_type id_complete;
+
 
   /* Save the state.. so it can be reverted to the 2pc state .. */
   state = tdes->state;
 
   /* First perform local commit; 2PC protocol does not support RETAIN LOCK */
-  (void) log_commit_local (thread_p, tdes, false, false, &id_complete);
+  (void) log_commit_local (thread_p, tdes, false, false);
   tdes->state = state;		/* Revert to 2PC state... */
 
   /*
@@ -2192,7 +2190,7 @@ log_2pc_recovery_commit_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   (void) log_2pc_send_commit_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->ack_received,
 				       tdes->coord->block_particps_ids);
   /* Check if all the acknowledgments have been received */
-  (void) log_complete_for_2pc (thread_p, tdes, LOG_COMMIT, LOG_DONT_NEED_NEWTRID, &id_complete);
+  (void) log_complete_for_2pc (thread_p, tdes, LOG_COMMIT, LOG_DONT_NEED_NEWTRID);
 }
 
 /*
@@ -2218,7 +2216,7 @@ log_2pc_recovery_committed_informing_participants (THREAD_ENTRY * thread_p, LOG_
    */
   (void) log_2pc_send_commit_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->ack_received,
 				       tdes->coord->block_particps_ids);
-  (void) log_complete_for_2pc (thread_p, tdes, LOG_COMMIT, LOG_DONT_NEED_NEWTRID, NULL);
+  (void) log_complete_for_2pc (thread_p, tdes, LOG_COMMIT, LOG_DONT_NEED_NEWTRID);
 }
 
 /*
@@ -2245,7 +2243,7 @@ log_2pc_recovery_aborted_informing_participants (THREAD_ENTRY * thread_p, LOG_TD
 
   (void) log_2pc_send_abort_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->ack_received,
 				      tdes->coord->block_particps_ids, true);
-  (void) log_complete_for_2pc (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, NULL);
+  (void) log_complete_for_2pc (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID);
 }
 
 /*

@@ -529,24 +529,13 @@ mvcctable::complete_sub_mvcc (MVCCID mvccid)
 }
 
 void
-mvcctable::complete_group_mvcc (THREAD_ENTRY * thread_p, const tx_group &group)
+mvcctable::complete_group_mvcc (const tx_group &group)
 {
-  TSC_TICKS start_tick, end_tick;
-  TSCTIMEVAL tv_diff;
-  UINT64 tran_complete_time;
-  bool is_perf_tracking = false;
-
   if (group.get_container ().empty ())
     {
       // do nothing
       return;
     }
-
-  is_perf_tracking = perfmon_is_perf_tracking ();
-  if (is_perf_tracking)
-  {
-    tsc_getticks (&start_tick);
-  }
 
   // only one can change status at a time
   std::unique_lock<std::mutex> ulock (m_active_trans_mutex);
@@ -558,11 +547,8 @@ mvcctable::complete_group_mvcc (THREAD_ENTRY * thread_p, const tx_group &group)
   // set inactive MVCCID's
   for (const tx_group::node_info &tran_info : group.get_container ())
     {
-      if (!MVCCID_IS_VALID (tran_info.m_mvccid))
-      {
-        continue;
-      }
-      
+      assert (MVCCID_IS_VALID (tran_info.m_mvccid));
+
       // note - updating global statistics must be done by transactions...
       m_current_trans_status.m_active_mvccs.set_inactive_mvccid (tran_info.m_mvccid);
     }
@@ -592,17 +578,6 @@ mvcctable::complete_group_mvcc (THREAD_ENTRY * thread_p, const tx_group &group)
       // advance
       advance_oldest_active (new_lowest_active);
     }
-
-  if (is_perf_tracking)
-  {
-    tsc_getticks(&end_tick);
-    tsc_elapsed_time_usec(&tv_diff, end_tick, start_tick);
-    tran_complete_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-    if (tran_complete_time > 0)
-    {
-      perfmon_add_stat (thread_p, PSTAT_LOG_TRAN_COMPLETE_TIME_COUNTERS, tran_complete_time);
-    }
-  }
 }
 
 void

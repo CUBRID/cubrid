@@ -34,7 +34,6 @@
 #include "thread_entry_task.hpp"
 #include "thread_task.hpp"
 #include "locator_sr.h"
-#include "transaction_slave_group_complete_manager.hpp"
 #include <unordered_map>
 
 namespace cubreplication
@@ -101,6 +100,8 @@ namespace cubreplication
 	      }
 
 	    delete curr_stream_entry;
+
+	    m_lc.end_one_task ();
 	  }
 
 	(void) locator_repl_end_tran (&thread_ref, true);
@@ -151,10 +152,7 @@ namespace cubreplication
     public:
       dispatch_daemon_task (log_consumer &lc)
 	: m_lc (lc)
-	, m_prev_group_stream_position (0)
-	, m_curr_group_stream_position (0)
       {
-	m_p_dispatch_consumer = cubtx::slave_group_complete_manager::get_instance ();
       }
 
       void execute (cubthread::entry &thread_ref) override
@@ -163,9 +161,7 @@ namespace cubreplication
 	using tasks_map = std::unordered_map <MVCCID, applier_worker_task *>;
 	tasks_map repl_tasks;
 	tasks_map nonexecutable_repl_tasks;
-	int count_expected_transaction;
 
-	assert (m_p_dispatch_consumer != NULL);
 	while (true)
 	  {
 	    bool should_stop = false;
@@ -190,14 +186,9 @@ namespace cubreplication
 
 		/* wait for all started tasks to finish */
 		er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task wait for all working tasks to finish\n");
-		
-		m_prev_group_stream_position = m_curr_group_stream_position;
-		m_curr_group_stream_position = se->get_stream_entry_start_position ();
 
-		/* We need to wait for previous group to completed. Otherwise, we mix transactions from previous and current groups. */
-		m_p_dispatch_consumer->wait_for_complete_stream_position (m_prev_group_stream_position);
+		m_lc.wait_for_tasks ();
 
-		count_expected_transaction = 0;
 		for (tasks_map::iterator it = repl_tasks.begin ();
 		     it != repl_tasks.end ();
 		     it++)
@@ -207,7 +198,6 @@ namespace cubreplication
 		    if (my_repl_applier_worker_task->has_commit ())
 		      {
 			m_lc.execute_task (it->second);
-			count_expected_transaction++;
 		      }
 		    else if (my_repl_applier_worker_task->has_abort ())
 		      {
@@ -232,11 +222,6 @@ namespace cubreplication
 		/* delete the group commit stream entry */
 		assert (se->is_group_commit ());
 		delete se;
-
-		/* The transactions started but can't complete yet since waits for current group complete which is disabled,
-		 * since close info were not yet set.
-		 */
-		m_p_dispatch_consumer->set_close_info_for_current_group (m_curr_group_stream_position, count_expected_transaction);
 	      }
 	    else
 	      {
@@ -266,9 +251,6 @@ namespace cubreplication
 
     private:
       log_consumer &m_lc;
-      cubstream::stream_position m_prev_group_stream_position;
-      cubstream::stream_position m_curr_group_stream_position;
-      dispatch_consumer *m_p_dispatch_consumer;
   };
 
   log_consumer::~log_consumer ()
@@ -370,6 +352,16 @@ namespace cubreplication
       }
 
     cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
+
+    m_started_tasks++;
+  }
+
+  void log_consumer::wait_for_tasks (void)
+  {
+    while (m_started_tasks > 0)
+      {
+	thread_sleep (1);
+      }
   }
 
   void log_consumer::set_stop (void)
