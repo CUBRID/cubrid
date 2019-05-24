@@ -64,8 +64,6 @@ namespace cubtx
       static cubthread::daemon *gl_master_group_complete_daemon;
       std::atomic<cubstream::stream_position> m_latest_closed_group_start_stream_position;
       std::atomic<cubstream::stream_position> m_latest_closed_group_end_stream_position;
-
-      friend class master_group_complete_task;
   };
 
   //

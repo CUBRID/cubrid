@@ -193,7 +193,7 @@ namespace cubtx
     return;
 
     cubthread::entry *thread_p = &cubthread::get_entry();
-    master_group_complete_manager::gl_master_group->prepare_complete (thread_p);
+    master_group_complete_manager::get_instance ()->prepare_complete (thread_p);
   }
 
   master_group_complete_manager *master_group_complete_manager::gl_master_group = NULL;
