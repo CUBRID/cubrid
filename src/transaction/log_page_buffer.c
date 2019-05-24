@@ -101,6 +101,7 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "crypt_opfunc.h"
+#include "transaction_master_group_complete_manager.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -10238,6 +10239,31 @@ void
 logpb_initialize_logging_statistics (void)
 {
   memset (&log_Stat, 0, sizeof (LOG_LOGGING_STAT));
+}
+
+/*
+ * logpb_initialize_tran_complete_manager - Initialize transaction complete manager
+ *
+ * return: nothing
+ *
+ * NOTE:
+ */
+void
+logpb_initialize_tran_complete_manager (void)
+{
+#if defined(SERVER_MODE)
+  if (!log_does_allow_replication ())
+    {
+      /* TODO - HA disabled, server mode */
+    }
+  else
+    {
+      /* TODO - slave. For now consider only master. */
+      log_Gl.m_tran_complete_mgr = cubtx::master_group_complete_manager::get_instance ();
+    }
+#else
+  /* TODO - SA mode */
+#endif
 }
 
 /*
