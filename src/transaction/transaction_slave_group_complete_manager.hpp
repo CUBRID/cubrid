@@ -65,10 +65,8 @@ namespace cubtx
       id_type m_latest_group_id;
       std::atomic<cubstream::stream_position> m_latest_group_stream_positon;
 
-      /* has_latest_group_close_info - true, if stream position and count expected transactions were set. */
-      std::atomic<bool> has_latest_group_close_info;
-
-      friend class slave_group_complete_task;
+      /* m_has_latest_group_close_info - true, if stream position and count expected transactions were set. */
+      std::atomic<bool> m_has_latest_group_close_info;
   };
 
   //

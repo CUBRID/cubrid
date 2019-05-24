@@ -90,7 +90,7 @@ namespace cubstream
    * 3. commit the reserve position
    *  the write_function is expected to return error code (negative value) or number of written bytes (positive)
    */
-  int multi_thread_stream::write (const size_t byte_count, write_func_t &write_action, stream_position * p_stream_position)
+  int multi_thread_stream::write (const size_t byte_count, write_func_t &write_action)
   {
     int err = NO_ERROR;
     stream_reserve_context *reserve_context = NULL;
@@ -115,11 +115,6 @@ namespace cubstream
     if (written_bytes < 0)
       {
 	ASSERT_ERROR_AND_SET (err);
-      }
-
-    if (p_stream_position)
-      {
-        *p_stream_position = reserved_pos;
       }
 
     return (err < 0) ? err : written_bytes;
@@ -702,8 +697,7 @@ namespace cubstream
     /* wake up flusher (if any) :
      * fill_factor : ratio of flush to disk trigger size occupied in the stream buffer
      */
-    if (m_filled_stream_handler
-	&& fill_factor > 1.0f)
+    if (!m_is_stopped && m_filled_stream_handler && fill_factor > 1.0f)
       {
 	m_filled_stream_handler (start_flush_pos, flush_amount);
       }

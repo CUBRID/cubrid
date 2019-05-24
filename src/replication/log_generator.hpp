@@ -94,7 +94,8 @@ namespace cubreplication
       };
 
       log_generator (cubstream::multi_thread_stream *stream)
-	: m_stream_entry (stream)
+	: m_pending_to_be_added ()
+	, m_stream_entry (stream)
 	, m_has_stream (false)
 	, m_is_row_replication_disabled (true)
       {
@@ -136,7 +137,8 @@ namespace cubreplication
 
       void check_commit_end_tran (void);
 
-      static void pack_group_commit_entry (cubstream::stream_position &stream_position);
+      static void pack_group_commit_entry (cubstream::stream_position & stream_start_pos,
+					   cubstream::stream_position & stream_end_pos);
 
       static cubstream::multi_thread_stream *get_global_stream (void)
       {

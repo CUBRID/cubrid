@@ -190,12 +190,11 @@ namespace cubreplication
 
 		/* wait for all started tasks to finish */
 		er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task wait for all working tasks to finish\n");
+		
+		m_prev_group_stream_position = m_curr_group_stream_position;                
+                m_curr_group_stream_position = se->get_stream_entry_start_position ();
 
-		/* TODO - check positions */
-		m_prev_group_stream_position = m_curr_group_stream_position;
-		m_curr_group_stream_position = se->get_stream()->get_curr_read_position ();
-
-		/* We need to wait for previous group to completed. Otherwise, we mix transactions from previous and current groups. */
+		/* We need to wait for previous group to complete. Otherwise, we mix transactions from previous and current groups. */
 		m_p_dispatch_consumer->wait_for_complete_stream_position (m_prev_group_stream_position);
 
 		count_expected_transaction = 0;
@@ -215,6 +214,7 @@ namespace cubreplication
 			/* TODO[replication] : when on-fly apply is active, we need to abort the transaction;
 			 * for now, we are sure that no change has been made on slave on behalf of this task,
 			 * just drop the task */
+                        count_expected_transaction++;
 		      }
 		    else
 		      {
@@ -234,8 +234,8 @@ namespace cubreplication
 		assert (se->is_group_commit ());
 		delete se;
 
-		/* The transactions started but can't complete yet since waits for current group complete which is disabled,
-		 * since close info were not yet set.
+		/* The transactions started but can't complete yet since it waits for the current group complete. But the current group
+		 * can't complete, since GC thread is waiting for close info. Now is safe to set close info.
 		 */
 		m_p_dispatch_consumer->set_close_info_for_current_group (m_curr_group_stream_position, count_expected_transaction);
 	      }
@@ -332,6 +332,7 @@ namespace cubreplication
     err = se->prepare ();
     if (err != NO_ERROR)
       {
+	delete se;
 	return err;
       }
 

@@ -52,7 +52,7 @@ namespace cubtx
     gl_slave_group = get_instance ();
     gl_slave_group->m_latest_group_id = 0;
     gl_slave_group->m_latest_group_stream_positon = 0;
-    gl_slave_group->has_latest_group_close_info = false;
+    gl_slave_group->m_has_latest_group_close_info = false;
 
     slave_group_complete_manager::gl_slave_group_complete_daemon = cubthread::get_manager()->create_daemon ((looper),
 	new slave_group_complete_task (), "slave_group_complete_daemon");
@@ -101,9 +101,10 @@ namespace cubtx
 	return false;
       }
 
-    /* Check whether latest group info were set. */
-    if (has_latest_group_close_info == false)
+    /* Check whether close info for latest group were set. */
+    if (m_has_latest_group_close_info == false)
       {
+	/* Can't close yet the current group. */
 	return false;
       }
 
@@ -126,8 +127,8 @@ namespace cubtx
     if (close_current_group ())
       {
 	/* The new group does not have group close info yet - stream position, count transactions. */
-	has_latest_group_close_info = false;
-	const tx_group &closed_group = get_last_closed_group ();
+	m_has_latest_group_close_info = false;
+	const tx_group &closed_group = get_latest_closed_group ();
 
 	/* TODO - Introduce parameter. For now complete group MVCC only here. Notify MVCC complete. */
 	log_Gl.mvcc_table.complete_group_mvcc (closed_group);
@@ -150,11 +151,11 @@ namespace cubtx
 	return;
       }
 
-    const tx_group &closed_group = get_last_closed_group ();
+    tx_group &closed_group = get_latest_closed_group ();
     /* TODO - consider parameter for MVCC complete here. */
     /* Add group commit log record and wakeup  log flush daemon. */
-    log_append_group_commit (thread_p, tdes, m_latest_group_stream_positon, closed_group,
-			     &closed_group_commit_lsa, &has_postpone);
+    log_append_group_complete (thread_p, tdes, m_latest_group_stream_positon, closed_group,
+			       &closed_group_commit_lsa, &has_postpone);
     log_wakeup_log_flush_daemon ();
     if (has_postpone)
       {
@@ -193,11 +194,11 @@ namespace cubtx
   {
     bool has_group_enough_transactions;
     /* Can't set close info twice. */
-    assert (has_latest_group_close_info == false);
+    assert (m_has_latest_group_close_info == false);
 
     m_latest_group_stream_positon = stream_position;
     m_latest_group_id = set_current_group_minimum_transactions (count_expected_transactions, has_group_enough_transactions);
-    has_latest_group_close_info = true;
+    m_has_latest_group_close_info = true;
     if (has_group_enough_transactions)
       {
 	gl_slave_group_complete_daemon->wakeup ();
@@ -213,8 +214,8 @@ namespace cubtx
     return;
 
     cubthread::entry *thread_p = &cubthread::get_entry();
-    slave_group_complete_manager::gl_slave_group->prepare_complete (thread_p);
-    slave_group_complete_manager::gl_slave_group->do_complete (thread_p);
+    slave_group_complete_manager::get_instance ()->prepare_complete (thread_p);
+    slave_group_complete_manager::get_instance ()->do_complete (thread_p);
   }
 
   slave_group_complete_manager *slave_group_complete_manager::gl_slave_group = NULL;

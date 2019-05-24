@@ -18,44 +18,35 @@
  */
 
 /*
- * replication_node.cpp
+ * replication_db_copy.hpp
  */
 
 #ident "$Id$"
 
-#include "replication_node.hpp"
-#include "multi_thread_stream.hpp"
-#include "boot_sr.h"        /* database full name */
-#include "error_code.h"
-#include "file_io.h"        /* file name manipulation */
-#include "stream_file.hpp"
+#ifndef _REPLICATION_DB_COPY_HPP_
+#define _REPLICATION_DB_COPY_HPP_
+
+namespace cubstream
+{
+  class multi_thread_stream;
+};
 
 namespace cubreplication
 {
-  replication_node::~replication_node ()
+  class row_object;
+
+  class copy_context
   {
-    // stream and stream file are interdependent, therefore first stop the stream
-    m_stream->set_stop ();
+    public:
+      copy_context ();
 
-    delete m_stream_file;
-    m_stream_file = NULL;
-    delete m_stream;
-    m_stream = NULL;
-  }
+      ~copy_context () {}
 
-  int replication_node::apply_start_position (void)
-  {
-    /* TODO set m_start_position from recovery log ? */
-    return NO_ERROR;
-  }
-
-  void replication_node::get_replication_file_path (std::string &path)
-  {
-    char buf_temp_path[PATH_MAX];
-    char *temp_path;
-
-    temp_path = fileio_get_directory_path (buf_temp_path, boot_db_full_name ());
-    path.assign (temp_path);
-  }
+      void pack_and_add_object (row_object &obj);
+    private:
+      cubstream::multi_thread_stream *m_stream;
+  };
 
 } /* namespace cubreplication */
+
+#endif /* _REPLICATION_DB_COPY_HPP_ */

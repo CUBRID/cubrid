@@ -49,8 +49,8 @@ namespace cubtx
       static void final ();
 
       /* group_complete_manager methods */
-      virtual void prepare_complete (THREAD_ENTRY *thread_p) override;
-      virtual void do_complete (THREAD_ENTRY *thread_p) override;
+      void prepare_complete (THREAD_ENTRY *thread_p) override;
+      void do_complete (THREAD_ENTRY *thread_p) override;
 
       /* stream_ack methods */
       void notify_stream_ack (const cubstream::stream_position stream_pos) override;
@@ -62,9 +62,8 @@ namespace cubtx
     private:
       static master_group_complete_manager *gl_master_group;
       static cubthread::daemon *gl_master_group_complete_daemon;
-      std::atomic<cubstream::stream_position> m_latest_closed_group_stream_positon;
-
-      friend class master_group_complete_task;
+      std::atomic<cubstream::stream_position> m_latest_closed_group_start_stream_position;
+      std::atomic<cubstream::stream_position> m_latest_closed_group_end_stream_position;
   };
 
   //
