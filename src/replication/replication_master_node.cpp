@@ -68,8 +68,6 @@ namespace cubreplication
 
     cubtx::master_group_complete_manager::init ();
 
-    cubtx::master_group_complete_manager::init ();
-
     er_log_debug_replication (ARG_FILE_LINE, "master_node:init replication_path:%s", replication_path.c_str ());
 #endif
   }

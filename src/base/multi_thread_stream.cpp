@@ -115,7 +115,7 @@ namespace cubstream
     if (written_bytes < 0)
       {
 	ASSERT_ERROR_AND_SET (err);
-      }    
+      }
 
     return (err < 0) ? err : written_bytes;
   }

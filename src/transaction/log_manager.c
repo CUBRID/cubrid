@@ -4510,7 +4510,7 @@ log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, IN
   // *INDENT-ON*
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_GROUP_COMPLETE, RV_NOT_DEFINED, NULL, 0, NULL,
-				   (int) v.get_size (), v.get_read_ptr ());
+					(int) v.get_size (), v.get_read_ptr ());
 
   LOG_REC_GROUP_COMPLETE *gc = (LOG_REC_GROUP_COMPLETE *) node->data_header;
   gc->at_time = time (NULL);
