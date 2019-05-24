@@ -45,7 +45,8 @@ namespace cubreplication
       ACTIVE,
       COMMITTED,
       ABORTED,
-      GROUP_COMMIT
+      GROUP_COMMIT,
+      SUBTRAN_COMMIT
     } TRAN_STATE;
 
     const static unsigned STATE_BITS = 3;

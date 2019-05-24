@@ -33,10 +33,13 @@
 #include "storage_common.h"
 #include "heap_file.h"
 #include "log_append.hpp"
+#include "log_generator.hpp"
 #include "numeric_opfunc.h"
 #include "object_primitive.h"
 #include "record_descriptor.hpp"
+#include "replication_object.hpp"
 #include "server_interface.h"
+#include "transform.h"
 #include "xserver_interface.h"
 #include "slotted_page.h"
 #include "dbtype.h"
@@ -830,19 +833,19 @@ exit_on_error:
  *   key_val(in)       :
  */
 static int
-serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdesc, HEAP_CACHE_ATTRINFO * attr_info,
-			     const OID * serial_class_oidp, const OID * serial_oidp, DB_VALUE * key_val)
+serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * old_recdesc,
+			     HEAP_CACHE_ATTRINFO * attr_info, const OID * serial_class_oidp, const OID * serial_oidp,
+			     DB_VALUE * key_val)
 {
   // *INDENT-OFF*
   cubmem::stack_block<IO_MAX_PAGE_SIZE> copyarea;
   // *INDENT-ON*
-  record_descriptor new_recdesc;
+  record_descriptor new_record;
   SCAN_CODE scan;
   LOG_DATA_ADDR addr;
   int ret;
   int sp_success;
   int tran_index;
-  LOCK lock_mode = NULL_LOCK;
   LOG_TDES *tdes;
 
   assert_release (serial_class_oidp != NULL && !OID_ISNULL (serial_class_oidp));
@@ -852,80 +855,88 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
 
   if (tdes == NULL)
     {
+      assert (false);
       return ER_FAILED;
     }
+
+  bool need_replication = !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true;
+
+  /* need to start topop for replication Replication will recognize and realize a special type of update for serial by
+   * this top operation log record. If lock_mode is X_LOCK means we created or altered the serial obj in an
+   * uncommitted trans For this case, topop and flush mark are not used, since these may cause problem with replication
+   * log.
+   *
+   * TODO: serial being created or altered guarantees that its object is being locked with X_LOCK. The reversed is not
+   *       always true, the serial is also locked when it is added to cache for the first time.
+   */
+  bool need_instant_replication =
+    need_replication && (lock_get_object_lock (serial_oidp, serial_class_oidp, tran_index) == X_LOCK);
 
   /* TODO : CBRD-22340 */
 #if defined (SERVER_MODE)
   (void) logtb_get_current_mvccid (thread_p);
 #endif
 
-  lock_mode = lock_get_object_lock (serial_oidp, serial_class_oidp, tran_index);
+  new_record.set_external_buffer (copyarea);
 
-  /* need to start topop for replication Replication will recognize and realize a special type of update for serial by
-   * this top operation log record. If lock_mode is X_LOCK means we created or altered the serial obj in an
-   * uncommitted trans For this case, topop and flush mark are not used, since these may cause problem with replication
-   * log. */
-  if (lock_mode != X_LOCK)
-    {
-      log_sysop_start (thread_p);
-    }
-
-  // todo - why was repl_start_flush_mark used here?
-  // http://jira.cubrid.org/browse/CBRD-22340
-
-  new_recdesc.set_external_buffer (copyarea);
-
-  scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, recdesc, &new_recdesc);
+  scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, old_recdesc, &new_record);
   if (scan != S_SUCCESS)
     {
       assert (false);
-      goto exit_on_error;
+      return ER_FAILED;
     }
 
   /* Log the changes */
-  new_recdesc.set_type (recdesc->type);
+  new_record.set_type (old_recdesc->type);
   addr.offset = serial_oidp->slotid;
   addr.pgptr = pgptr;
 
-  assert (spage_is_updatable (thread_p, addr.pgptr, serial_oidp->slotid, (int) new_recdesc.get_size ()));
+  assert (spage_is_updatable (thread_p, addr.pgptr, serial_oidp->slotid, (int) new_record.get_size ()));
 
-  log_append_redo_recdes (thread_p, RVHF_UPDATE, &addr, &new_recdesc.get_recdes ());
-
-  /* Now really update */
-  sp_success = spage_update (thread_p, addr.pgptr, serial_oidp->slotid, &new_recdesc.get_recdes ());
+  sp_success = spage_update (thread_p, addr.pgptr, serial_oidp->slotid, &new_record.get_recdes ());
   if (sp_success != SP_SUCCESS)
     {
+      assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CANNOT_UPDATE_SERIAL, 0);
-      goto exit_on_error;
+      return ER_QPROC_CANNOT_UPDATE_SERIAL;
     }
 
-  /* make replication log for the special type of update for serial */
-  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
+  if (!need_instant_replication)
     {
-      tdes->replication_log_generator.add_update_row (*key_val, *serial_oidp, *serial_class_oidp,
-						      &new_recdesc.get_recdes ());
+      log_append_redo_recdes (thread_p, RVHF_UPDATE, &addr, &new_record.get_recdes ());
 
-      // todo - why was repl_end_flush_mark used here?
-      // http://jira.cubrid.org/browse/CBRD-22340
+      if (need_replication)
+	{
+	  tdes->replication_log_generator.add_update_row (*key_val, *serial_oidp, *serial_class_oidp,
+							  &new_record.get_recdes ());
+	}
     }
-
-  if (lock_mode != X_LOCK)
+  else
     {
-      log_sysop_commit (thread_p);
+      // *INDENT-OFF*
+      cubreplication::rec_des_row_repl_entry *replobj = NULL;
+      cubreplication::stream_entry stream_entry (cubreplication::log_generator::get_global_stream ());
+      cubstream::stream_position stream_pos;
+      
+      replobj = new cubreplication::rec_des_row_repl_entry (cubreplication::repl_entry_type::REPL_UPDATE,
+                                                            CT_SERIAL_NAME, new_record.get_recdes (), NULL_LSA);
+      replobj->set_key_value (*key_val);
+      stream_entry.set_state (cubreplication::stream_entry_header::TRAN_STATE::SUBTRAN_COMMIT);
+      stream_entry.add_packable_entry (replobj);
+
+      // we need sysop commit replication
+      log_sysop_start (thread_p);
+
+      log_append_undoredo_recdes (thread_p, RVHF_UPDATE, &addr, old_recdesc, &new_record.get_recdes ());
+
+      // append to stream
+      
+      stream_entry.pack ();
+      log_sysop_commit_replicated (thread_p, stream_pos);
+      // *INDENT-ON*
     }
 
   return NO_ERROR;
-
-exit_on_error:
-
-  if (lock_mode != X_LOCK)
-    {
-      log_sysop_abort (thread_p);
-    }
-
-  ASSERT_ERROR_AND_SET (ret);
-  return ret;
 }
 
 /*
