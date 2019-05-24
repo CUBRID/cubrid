@@ -36,6 +36,9 @@ namespace cubtx
     std::unique_lock<std::mutex> ulock (m_group_mutex);
 
     m_current_group.add (tran_index, mvccid, state);
+
+    on_register_transaction ();
+
     return m_current_group_id;
   }
 
@@ -50,9 +53,9 @@ namespace cubtx
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_ack_mutex);
+    std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
     /* TODO - consider stop and optimize next call */
-    m_ack_condvar.wait (ulock, [&] {return is_group_mvcc_completed (group_id);});
+    m_group_complete_condvar.wait (ulock, [&] {return is_group_mvcc_completed (group_id);});
   }
 
   //
@@ -66,9 +69,9 @@ namespace cubtx
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_ack_mutex);
+    std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
     /* TODO - consider stop and optimize next call */
-    m_ack_condvar.wait (ulock, [&] {return is_group_logged (group_id);});
+    m_group_complete_condvar.wait (ulock, [&] {return is_group_logged (group_id);});
   }
 
   //
@@ -82,9 +85,9 @@ namespace cubtx
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_ack_mutex);
+    std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
     /* TODO - consider stop and optimize next call */
-    m_ack_condvar.wait (ulock, [&] {return is_group_completed (group_id);});
+    m_group_complete_condvar.wait (ulock, [&] {return is_group_completed (group_id);});
   }
 
   //
@@ -93,12 +96,12 @@ namespace cubtx
   //
   void group_complete_manager::notify_all ()
   {
-    std::unique_lock<std::mutex> ulock (m_ack_mutex);
-    m_ack_condvar.notify_all ();
+    std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
+    m_group_complete_condvar.notify_all ();
   }
 
   //
-  // close_current_group close the current group. Next comming transactions will be added into the next group.
+  // close_current_group close the current group. Next coming transactions will be added into the next group.
   //
   bool group_complete_manager::close_current_group ()
   {
@@ -191,14 +194,21 @@ namespace cubtx
   }
 
   //
-  // get_last_closed_group get latest closed group.
+  // get_latest_closed_group get latest closed group.
   //
-  tx_group & group_complete_manager::get_last_closed_group ()
+  tx_group &group_complete_manager::get_latest_closed_group ()
   {
     return m_latest_closed_group;
   }
 
   //
+  // get_current_group get current group.
+  //
+  const tx_group &group_complete_manager::get_current_group ()
+  {
+    return m_current_group;
+  }
+
   // is_group_mvcc_completed checks whether the group has MVCC completed.
   //  Note: This function must be called under m_group_mutex protection
   //
@@ -206,7 +216,7 @@ namespace cubtx
   {
     if (group_id < m_latest_closed_group_id)
       {
-	/* The requested group was closed and commited. */
+	/* The requested group was closed and committed. */
 	return true;
       }
     else if (group_id > m_latest_closed_group_id)
@@ -216,7 +226,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed grup - check whether MVCC was completed.*/
+	/* Current closed group - check whether MVCC was completed. */
 	return is_latest_closed_group_mvcc_completed ();
       }
   }
@@ -229,7 +239,7 @@ namespace cubtx
   {
     if (group_id < m_latest_closed_group_id)
       {
-	/* The requested group was closed and commited. */
+	/* The requested group was closed and committed. */
 	return true;
       }
     else if (group_id > m_latest_closed_group_id)
@@ -239,7 +249,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed grup - check whether the group was logged.*/
+	/* Current closed group - check whether the group was logged. */
 	return is_latest_closed_group_logged ();
       }
   }
@@ -252,7 +262,7 @@ namespace cubtx
   {
     if (group_id < m_latest_closed_group_id)
       {
-	/* The requested group was closed and commited. */
+	/* The requested group was closed and committed. */
 	return true;
       }
     else if (group_id > m_latest_closed_group_id)
@@ -262,7 +272,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed grup - check whether the group was completed.*/
+	/* Current closed group - check whether the group was completed. */
 	return is_latest_closed_group_completed ();
       }
   }

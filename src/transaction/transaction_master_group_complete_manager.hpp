@@ -37,11 +37,9 @@ namespace cubtx
   //
   // master_group_complete_manager is a manager for group commits on master node
   //    Implements complete_manager interface used by transaction threads.
-  //    Implements task interface used bt GC thread
   //    Implements stream_ack interface used by stream senders.
   //
-  class master_group_complete_manager : public group_complete_manager, public cubthread::entry_task,
-    public cubstream::stream_ack
+  class master_group_complete_manager : public group_complete_manager, public cubstream::stream_ack
   {
     public:
       ~master_group_complete_manager () override;
@@ -50,24 +48,32 @@ namespace cubtx
       static void init ();
       static void final ();
 
+      /* group_complete_manager methods */
+      void prepare_complete (THREAD_ENTRY *thread_p) override;
+      void do_complete (THREAD_ENTRY *thread_p) override;
+
       /* stream_ack methods */
       void notify_stream_ack (const cubstream::stream_position stream_pos) override;
 
-      /* group_complete_manager methods */
-      bool can_close_current_group () override;
-      virtual void prepare_complete (THREAD_ENTRY *thread_p) override;
-      virtual void do_complete (THREAD_ENTRY *thread_p) override;
-
-      /* entry_task methods */
-      void execute (cubthread::entry &thread_ref) override;
-
     protected:
+      bool can_close_current_group () override;
+      void on_register_transaction () override;
 
     private:
       static master_group_complete_manager *gl_master_group;
-      cubthread::daemon *m_gc_daemon;
-      std::atomic<cubstream::stream_position> m_latest_closed_group_stream_positon;
+      static cubthread::daemon *gl_master_group_complete_daemon;
+      std::atomic<cubstream::stream_position> m_latest_closed_group_start_stream_position;
+      std::atomic<cubstream::stream_position> m_latest_closed_group_end_stream_position;
   };
 
+  //
+  // master_group_complete_task is class for master group complete daemon
+  //
+  class master_group_complete_task : public cubthread::entry_task
+  {
+    public:
+      /* entry_task methods */
+      void execute (cubthread::entry &thread_ref) override;
+  };
 }
 #endif // !_MASTER_GROUP_COMPLETE_MANAGER_HPP_

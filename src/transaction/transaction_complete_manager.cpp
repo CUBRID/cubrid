@@ -30,3 +30,4 @@ namespace cubtx
     // pure virtual destructor must have a body
   }
 }
+

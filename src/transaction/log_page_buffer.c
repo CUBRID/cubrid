@@ -10242,12 +10242,12 @@ logpb_initialize_logging_statistics (void)
 }
 
 /*
-* logpb_initialize_tran_complete_manager - Initialize transaction complete manager
-*
-* return: nothing
-*
-* NOTE:
-*/
+ * logpb_initialize_tran_complete_manager - Initialize transaction complete manager
+ *
+ * return: nothing
+ *
+ * NOTE:
+ */
 void
 logpb_initialize_tran_complete_manager (void)
 {

@@ -54,31 +54,31 @@ namespace cubreplication
   {
 #if defined (SERVER_MODE)
     assert (g_instance == NULL);
-    g_instance = slave_node::get_instance (hostname);
+    slave_node *instance = slave_node::get_instance (hostname);
 
-    g_instance->apply_start_position ();
+    instance->apply_start_position ();
 
     INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_CONSUMER_BUFFER_SIZE);
 
     /* create stream :*/
     /* consumer needs only one stream appender (the stream transfer receiver) */
-    assert (g_instance->m_stream == NULL);
-    g_instance->m_stream = new cubstream::multi_thread_stream (buffer_size, 2);
-    g_instance->m_stream->set_name ("repl" + std::string (hostname) + "_replica");
-    g_instance->m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
-    g_instance->m_stream->init (g_instance->m_start_position);
+    assert (instance->m_stream == NULL);
+    instance->m_stream = new cubstream::multi_thread_stream (buffer_size, 2);
+    instance->m_stream->set_name ("repl" + std::string (hostname) + "_replica");
+    instance->m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
+    instance->m_stream->init (instance->m_start_position);
 
     /* create stream file */
     std::string replication_path;
     replication_node::get_replication_file_path (replication_path);
-    g_instance->m_stream_file = new cubstream::stream_file (*g_instance->m_stream, replication_path);
+    instance->m_stream_file = new cubstream::stream_file (*instance->m_stream, replication_path);
 
-    assert (g_instance->m_lc == NULL);
-    g_instance->m_lc = new log_consumer ();
+    assert (instance->m_lc == NULL);
+    instance->m_lc = new log_consumer ();
 
-    g_instance->m_lc->set_stream (g_instance->m_stream);
+    instance->m_lc->set_stream (instance->m_stream);
     /* start log_consumer daemons and apply thread pool */
-    g_instance->m_lc->start_daemons ();
+    instance->m_lc->start_daemons ();
 #endif
   }
 
@@ -122,9 +122,6 @@ namespace cubreplication
     g_instance->m_lc->set_stop ();
     delete g_instance->m_lc;
     g_instance->m_lc = NULL;
-
-    delete g_instance->m_stream;
-    g_instance->m_stream = NULL;
 
     delete g_instance;
     g_instance = NULL;

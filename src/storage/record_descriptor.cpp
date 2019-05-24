@@ -58,18 +58,7 @@ record_descriptor::record_descriptor (const recdes &rec,
 				      const cubmem::block_allocator &alloc /* = cubmem::PRIVATE_BLOCK_ALLOCATOR */)
   : record_descriptor (alloc)
 {
-  m_recdes.type = rec.type;
-  if (rec.length != 0)
-    {
-      // copy content from argument
-      m_recdes.area_size = rec.length;
-      m_recdes.length = m_recdes.area_size;
-      m_own_data.extend_to ((size_t) m_recdes.area_size);
-      m_recdes.data = m_own_data.get_ptr ();
-      std::memcpy (m_recdes.data, rec.data, m_recdes.length);
-
-      m_data_source = data_source::COPIED;  // we assume this is a copied record
-    }
+  set_recdes (rec);
 }
 
 record_descriptor::record_descriptor (record_descriptor &&other)
@@ -91,6 +80,25 @@ record_descriptor::record_descriptor (const char *data, size_t size)
 
 record_descriptor::~record_descriptor (void)
 {
+}
+
+void
+record_descriptor::set_recdes (const recdes &rec)
+{
+  assert (m_data_source == data_source::INVALID);
+
+  m_recdes.type = rec.type;
+  if (rec.length != 0)
+    {
+      // copy content from argument
+      m_recdes.area_size = rec.length;
+      m_recdes.length = m_recdes.area_size;
+      m_own_data.extend_to ((size_t) m_recdes.area_size);
+      m_recdes.data = m_own_data.get_ptr ();
+      std::memcpy (m_recdes.data, rec.data, m_recdes.length);
+
+      m_data_source = data_source::COPIED;  // we assume this is a copied record
+    }
 }
 
 int
@@ -319,11 +327,13 @@ record_descriptor::pack (cubpacking::packer &packer) const
 void
 record_descriptor::unpack (cubpacking::unpacker &unpacker)
 {
+  // resize_buffer requires m_data_source to be set
+  m_data_source = data_source::COPIED;
+
   unpacker.unpack_short (m_recdes.type);
   unpacker.peek_unpack_buffer_length (m_recdes.length);
   resize_buffer (m_recdes.length);
   unpacker.unpack_buffer_with_length (m_recdes.data, m_recdes.length);
-  m_data_source = data_source::COPIED;
 }
 
 size_t
