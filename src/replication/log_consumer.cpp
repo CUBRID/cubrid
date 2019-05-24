@@ -223,6 +223,10 @@ namespace cubreplication
 		assert (se->is_group_commit ());
 		delete se;
 	      }
+	    else if (se->is_subtran_commit ())
+	      {
+		// todo: apply sub-transactions
+	      }
 	    else
 	      {
 		MVCCID mvccid = se->get_mvccid ();
