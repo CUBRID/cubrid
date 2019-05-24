@@ -3487,6 +3487,8 @@ log_sysop_end_type_string (LOG_SYSOP_END_TYPE end_type)
       return "LOG_SYSOP_END_LOGICAL_COMPENSATE";
     case LOG_SYSOP_END_LOGICAL_RUN_POSTPONE:
       return "LOG_SYSOP_END_LOGICAL_RUN_POSTPONE";
+    case LOG_SYSOP_END_COMMIT_REPLICATED:
+      return "LOG_SYSOP_END_COMMIT_REPLICATED";
     default:
       assert (false);
       return "UNKNOWN LOG_SYSOP_END_TYPE";
@@ -3780,7 +3782,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	}
       else
 	{
-	  assert (log_record->type == LOG_SYSOP_END_COMMIT);
+	  assert (log_record->type == LOG_SYSOP_END_COMMIT || log_record->type == LOG_SYSOP_END_COMMIT_REPLICATED);
 	  assert (tdes->state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE
 		  && (tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE || is_rv_finish_postpone));
 	}
@@ -3826,6 +3828,18 @@ log_sysop_commit (THREAD_ENTRY * thread_p)
 
   log_sysop_commit_internal (thread_p, &log_record, 0, NULL, false);
 }
+
+// *INDENT-OFF*
+void
+log_sysop_commit_replicated (THREAD_ENTRY * thread_p, cubstream::stream_position repl_stream_pos)
+{
+  LOG_REC_SYSOP_END log_record;
+  log_record.type = LOG_SYSOP_END_COMMIT_REPLICATED;
+  log_record.repl_stream_position = repl_stream_pos;
+
+  log_sysop_commit_internal (thread_p, &log_record, 0, NULL, false);
+}
+// *INDENT-ON*
 
 /*
  * log_sysop_end_logical_undo () - Commit system operation and add an undo log record. This is a logical undo for complex
@@ -7571,6 +7585,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	      else
 		{
 		  /* jump to last parent */
+		  // TBD: what to do in case of LOG_SYSOP_END_COMMIT_REPLICATED
 		  LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
 		}
 	      break;

@@ -73,6 +73,7 @@ log_global::log_global ()
      }
   , group_commit_info LOG_GROUP_COMMIT_INFO_INITIALIZER
   , m_tran_complete_mgr (NULL)    // to be instantiated on boot
+  , m_ack_stream_position (std::numeric_limits<cubstream::stream_position>::max ())
   , writer_info (new logwr_info ())
   , bg_archive_info ()
   , mvcc_table ()
