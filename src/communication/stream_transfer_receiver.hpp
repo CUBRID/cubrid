@@ -41,6 +41,7 @@ namespace cubstream
     public:
 
       transfer_receiver (cubcomm::channel &&chn,
+                         cubcomm::channel &&ack_chn,
 			 cubstream::stream &stream,
 			 stream_position received_from_position = 0);
       virtual ~transfer_receiver ();
@@ -55,6 +56,7 @@ namespace cubstream
       friend class transfer_receiver_task;
 
       cubcomm::channel m_channel;
+      cubcomm::channel m_ack_channel;
       cubstream::stream &m_stream;
       cubstream::stream_position m_last_received_position;
       cubthread::daemon *m_receiver_daemon;
