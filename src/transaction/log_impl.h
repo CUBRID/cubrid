@@ -661,7 +661,6 @@ struct log_global
 #else				/* SERVER_MODE */
   LOG_LSA final_restored_lsa;
 #endif				/* SERVER_MODE */
-
   /* Buffer for log hdr I/O, size : SIZEOF_LOG_PAGE_SIZE */
   LOG_PAGE *loghdr_pgptr;
 
@@ -670,7 +669,9 @@ struct log_global
 
   /* group commit information */
   LOG_GROUP_COMMIT_INFO group_commit_info;
-  tx_complete_manager *m_tran_complete_mgr;
+  // *INDENT-OFF*
+  cubtx::complete_manager *m_tran_complete_mgr;
+  // *INDENT-ON*
 
   /* remote log writer information */
   logwr_info *writer_info;
@@ -885,6 +886,7 @@ extern void logpb_fatal_error_exit_immediately_wo_flush (THREAD_ENTRY * thread_p
 extern int logpb_check_and_reset_temp_lsa (THREAD_ENTRY * thread_p, VOLID volid);
 extern void logpb_initialize_arv_page_info_table (void);
 extern void logpb_initialize_logging_statistics (void);
+extern void logpb_initialize_tran_complete_manager (void);
 extern int logpb_background_archiving (THREAD_ENTRY * thread_p);
 extern void xlogpb_dump_stat (FILE * outfp);
 
