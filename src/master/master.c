@@ -683,7 +683,6 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, SOCKET ack_chn, unsigned sho
 		    }
 		  else
 		    {
-		      assert (false);
 		      client_fds =
 		      {
 		      conn->fd};

@@ -1098,8 +1098,10 @@ std::vector < SOCKET > css_open_new_socks_from_master (SOCKET fd, unsigned short
 
   size_t offset = 0;
   int len = msg.msg_controllen;
-  //assert (cmptr->cmsg_len == CMSG_LEN (sizeof (int) * 2));
   assert (msg.msg_controllen == CMSG_SPACE (sizeof (int) * 2));
+  // todo: should use msg_controllen to determine sizeof socket
+  // for now hope that clients's connection requests route to the other fd receive
+
 for (SOCKET & sock:new_fds)
     {
       sock = *(SOCKET *) (CMSG_DATA (cmptr) + offset);
@@ -1200,7 +1202,6 @@ css_transfer_fd (SOCKET server_fd, const std::vector < SOCKET > &client_fds, uns
   static struct cmsghdr *cmptr = NULL;
 #endif /* LINUX || AIX */
 
-  assert (client_fds.size () == 2);
   request = htonl (request_for_server);
 
   if (send (server_fd, (char *) &request, sizeof (int), 0) < 0)
@@ -1229,8 +1230,7 @@ css_transfer_fd (SOCKET server_fd, const std::vector < SOCKET > &client_fds, uns
 
   cmptr->cmsg_level = SOL_SOCKET;
   cmptr->cmsg_type = SCM_RIGHTS;
-  // use 2 socket fds
-  cmptr->cmsg_len = CMSG_LEN (sizeof (int) * 2);
+  cmptr->cmsg_len = CMSG_LEN (sizeof (int) * client_fds.size ());
 
   size_t offset = 0;
 
@@ -1239,10 +1239,9 @@ css_transfer_fd (SOCKET server_fd, const std::vector < SOCKET > &client_fds, uns
       assert (client_fds[i] != 0);
       (*(SOCKET *) (CMSG_DATA (cmptr) + offset)) = client_fds[i];
     }
-  CMSG_FIRSTHDR (&msg);
 
   msg.msg_control = (void *) cmptr;
-  msg.msg_controllen = CMSG_SPACE (sizeof (int) * 2);
+  msg.msg_controllen = CMSG_SPACE (sizeof (int) * client_fds.size ());
 #endif /* LINUX || AIX */
 
 
