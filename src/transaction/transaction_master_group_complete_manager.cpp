@@ -96,7 +96,8 @@ namespace cubtx
     /* This function is called after adding a transaction to the current group.
      * Currently, we wakeup GC thread when first transaction is added into current group.
      */
-    if (get_current_group ().get_container ().size () == 1)
+    if (is_latest_closed_group_completed ()
+        && get_current_group ().get_container ().size () == 1)
       {
 	gl_master_group_complete_daemon->wakeup ();
       }

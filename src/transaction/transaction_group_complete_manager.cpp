@@ -101,7 +101,29 @@ namespace cubtx
   }
 
   //
-  // close_current_group close the current group. Next coming transactions will be added into the next group.
+  // set_current_group_minimum_transactions set minimum number of transactions for current group.
+  //
+  complete_manager::id_type group_complete_manager::set_current_group_minimum_transactions (
+	  int count_minimum_transactions,
+	  bool &has_group_enough_transactions)
+  {
+    std::unique_lock<std::mutex> ulock (m_group_mutex);
+    m_current_group_min_transactions = count_minimum_transactions;
+
+    if (m_current_group_min_transactions <= m_current_group.get_container ().size ())
+      {
+	has_group_enough_transactions = true;
+      }
+    else
+      {
+	has_group_enough_transactions = false;
+      }
+
+    return m_current_group_id;
+  }
+
+  //
+  // close_current_group close the current group. Next comming transactions will be added into the next group.
   //
   bool group_complete_manager::close_current_group ()
   {
@@ -209,6 +231,15 @@ namespace cubtx
     return m_current_group;
   }
 
+  //
+  // get_current_group get current group.
+  //
+  int group_complete_manager::get_current_group_min_transactions ()
+  {
+    return m_current_group_min_transactions;
+  }
+
+  //
   // is_group_mvcc_completed checks whether the group has MVCC completed.
   //  Note: This function must be called under m_group_mutex protection
   //
@@ -216,7 +247,7 @@ namespace cubtx
   {
     if (group_id < m_latest_closed_group_id)
       {
-	/* The requested group was closed and committed. */
+	/* The requested group was closed and completed. */
 	return true;
       }
     else if (group_id > m_latest_closed_group_id)
@@ -226,7 +257,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed group - check whether MVCC was completed. */
+	/* Current closed group - check whether MVCC was completed.*/
 	return is_latest_closed_group_mvcc_completed ();
       }
   }
@@ -239,7 +270,7 @@ namespace cubtx
   {
     if (group_id < m_latest_closed_group_id)
       {
-	/* The requested group was closed and committed. */
+	/* The requested group was closed and completed. */
 	return true;
       }
     else if (group_id > m_latest_closed_group_id)
@@ -249,7 +280,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed group - check whether the group was logged. */
+	/* Current closed group - check whether the group was logged.*/
 	return is_latest_closed_group_logged ();
       }
   }
@@ -262,7 +293,7 @@ namespace cubtx
   {
     if (group_id < m_latest_closed_group_id)
       {
-	/* The requested group was closed and committed. */
+	/* The requested group was closed and completed. */
 	return true;
       }
     else if (group_id > m_latest_closed_group_id)
@@ -272,7 +303,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed group - check whether the group was completed. */
+	/* Current closed group - check whether the group was completed.*/
 	return is_latest_closed_group_completed ();
       }
   }

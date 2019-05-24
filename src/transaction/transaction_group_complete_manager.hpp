@@ -48,6 +48,7 @@ namespace cubtx
     public:
       group_complete_manager ()
 	: m_current_group_id (1)
+	, m_current_group_min_transactions (0)
 	, m_latest_closed_group_id (0)
 	, m_latest_closed_group_state (GROUP_CLOSED | GROUP_MVCC_COMPLETED | GROUP_LOGGED | GROUP_COMPLETED)
       {
@@ -64,6 +65,8 @@ namespace cubtx
       void wait_for_logging (id_type group_id) override final;
 
     protected:
+      id_type set_current_group_minimum_transactions (int count_minimum_transactions, bool &has_group_enough_transactions);
+
       bool close_current_group ();
 
       virtual void on_register_transaction () = 0;
@@ -86,6 +89,7 @@ namespace cubtx
 
       tx_group &get_latest_closed_group ();
       const tx_group &get_current_group ();
+      int get_current_group_min_transactions ();
 
     private:
       bool is_group_mvcc_completed (id_type group_id);
@@ -97,6 +101,7 @@ namespace cubtx
       /* Current group info - TODO Maybe better to use a structure here. */
       std::atomic<id_type> m_current_group_id;   // is also the group identifier
       tx_group m_current_group;
+      int m_current_group_min_transactions;
       std::mutex m_group_mutex;
 
       /* Latest closed group info - TODO Maybe better to use a structure here. */
