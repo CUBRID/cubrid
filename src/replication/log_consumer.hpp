@@ -49,8 +49,9 @@ namespace cubreplication
    * main class for consuming log packing stream entries;
    * it should be created only as a global instance
    */
-  class stream_entry;
   class applier_worker_task;
+  class stream_entry;
+  class subtran_applier;
 
   /*
    * log_consumer : class intended as singleton for slave server
@@ -94,8 +95,9 @@ namespace cubreplication
       cubthread::daemon *m_dispatch_daemon;
 
       cubthread::entry_workpool *m_applier_workers_pool;
-
       int m_applier_worker_threads_count;
+
+      cubreplication::subtran_applier *m_subtran_applier;
 
       bool m_use_daemons;
 
@@ -109,16 +111,17 @@ namespace cubreplication
     private:
 
     public:
-      log_consumer () :
-	m_stream (NULL),
-	m_consumer_daemon (NULL),
-	m_dispatch_daemon (NULL),
-	m_applier_workers_pool (NULL),
-	m_applier_worker_threads_count (100),
-	m_use_daemons (false),
-	m_started_tasks (0),
-	m_apply_task_ready (false),
-	m_is_stopped (false)
+      log_consumer ()
+	: m_stream (NULL)
+	, m_consumer_daemon (NULL)
+	, m_dispatch_daemon (NULL)
+	, m_applier_workers_pool (NULL)
+	, m_applier_worker_threads_count (100)
+	, m_subtran_applier (NULL)
+	, m_use_daemons (false)
+	, m_started_tasks (0)
+	, m_apply_task_ready (false)
+	, m_is_stopped (false)
       {
       };
 
@@ -132,6 +135,7 @@ namespace cubreplication
 
       void start_daemons (void);
       void execute_task (applier_worker_task *task);
+      void push_task (cubthread::entry_task *task);
 
       void set_stream (cubstream::multi_thread_stream *stream)
       {

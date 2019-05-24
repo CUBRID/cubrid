@@ -28,6 +28,7 @@
 #include "multi_thread_stream.hpp"
 #include "replication_common.hpp"
 #include "replication_stream_entry.hpp"
+#include "replication_subtran_apply.hpp"
 #include "string_buffer.hpp"
 #include "system_parameter.h"
 #include "thread_daemon.hpp"
@@ -268,6 +269,8 @@ namespace cubreplication
 	cubthread::get_manager ()->destroy_worker_pool (m_applier_workers_pool);
       }
 
+    delete m_subtran_applier; // must be deleted after worker pool
+
     assert (m_stream_entries.empty ());
   }
 
@@ -329,6 +332,8 @@ namespace cubreplication
   void log_consumer::start_daemons (void)
   {
 #if defined (SERVER_MODE)
+    m_subtran_applier = new subtran_applier (*this);
+
     er_log_debug_replication (ARG_FILE_LINE, "log_consumer::start_daemons\n");
     m_consumer_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
 			new consumer_daemon_task (*this),
@@ -347,6 +352,13 @@ namespace cubreplication
 #endif /* defined (SERVER_MODE) */
   }
 
+  void log_consumer::push_task (cubthread::entry_task *task)
+  {
+    cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
+
+    m_started_tasks++;
+  }
+
   void log_consumer::execute_task (applier_worker_task *task)
   {
     if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
@@ -356,9 +368,7 @@ namespace cubreplication
 	_er_log_debug (ARG_FILE_LINE, "log_consumer::execute_task:\n%s", sb.get_buffer ());
       }
 
-    cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
-
-    m_started_tasks++;
+    push_task (task);
   }
 
   void log_consumer::wait_for_tasks (void)

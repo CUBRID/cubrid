@@ -843,7 +843,6 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * o
   record_descriptor new_record;
   SCAN_CODE scan;
   LOG_DATA_ADDR addr;
-  int ret;
   int sp_success;
   int tran_index;
   LOG_TDES *tdes;

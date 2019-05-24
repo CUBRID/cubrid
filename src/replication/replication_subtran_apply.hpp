@@ -24,6 +24,36 @@
 #ifndef _REPLICATION_SUBTRAN_APPLY_HPP_
 #define _REPLICATION_SUBTRAN_APPLY_HPP_
 
+#include <list>
+#include <mutex>
 
+// forward declarations
+namespace cubreplication
+{
+  class log_consumer;
+  class stream_entry;
+}
+
+namespace cubreplication
+{
+  class subtran_applier
+  {
+    public:
+      subtran_applier () = delete;
+      subtran_applier (log_consumer &lc);
+
+      void insert_stream_entry (stream_entry *se);
+
+    private:
+      class task;
+
+      task *alloc_task (stream_entry *se);
+      void finished_task ();
+
+      log_consumer &m_lc;
+      std::mutex m_tasks_mutex;
+      std::list<task *> m_tasks;
+  };
+} // namespace cubreplication
 
 #endif // !_REPLICATION_SUBTRAN_APPLY_HPP_

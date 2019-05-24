@@ -55,7 +55,7 @@ namespace cubreplication
   {
     public:
       replication_object ();
-      replication_object (LOG_LSA &lsa_stamp);
+      replication_object (const LOG_LSA &lsa_stamp);
       virtual int apply (void) = 0;
       // todo: const
       virtual void stringify (string_buffer &str) = 0;

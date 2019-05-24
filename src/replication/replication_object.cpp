@@ -69,7 +69,7 @@ namespace cubreplication
     LSA_SET_NULL (&m_lsa_stamp);
   }
 
-  replication_object::replication_object (LOG_LSA &lsa_stamp)
+  replication_object::replication_object (const LOG_LSA &lsa_stamp)
   {
     LSA_COPY (&m_lsa_stamp, &lsa_stamp);
   }
