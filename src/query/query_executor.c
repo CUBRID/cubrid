@@ -12346,8 +12346,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   REGU_VARLIST_LIST outptr = NULL;
   REGU_VARIABLE *varptr = NULL;
   DB_VALUE *rightvalp = NULL, *thirdvalp = NULL;
-  bool savepoint_used = false;
-  bool submvcc_used = false;
+  bool sysop_started = false;
   OID last_cached_class_oid;
   int tran_index;
   int err = NO_ERROR;
@@ -12576,7 +12575,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
     {
       /* in this function, several instances can be updated, so it need to be atomic */
       log_sysop_start (thread_p);
-      savepoint_used = true;
+      sysop_started = true;
 
       if (need_ha_replication)
 	{
@@ -12585,11 +12584,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 
       tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
       assert (tdes != NULL);
-      if (logtb_get_new_subtransaction_mvccid (thread_p, &tdes->mvccinfo) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-      submvcc_used = true;
+      logtb_get_new_subtransaction_mvccid (thread_p, &tdes->mvccinfo);
     }
 
   for (selupd = list; selupd; selupd = selupd->next)
@@ -12619,7 +12614,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
       scan_cache_inited = false;
     }
 
-  if (savepoint_used)
+  if (sysop_started)
     {
       assert (lock_is_instant_lock_mode (tran_index));
       if (need_ha_replication)
@@ -12630,7 +12625,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
     }
 
 exit:
-  if (submvcc_used)
+  if (sysop_started)
     {
       logtb_complete_sub_mvcc (thread_p, tdes);
     }
@@ -12658,7 +12653,7 @@ exit_on_error:
       scan_cache_inited = false;
     }
 
-  if (savepoint_used)
+  if (sysop_started)
     {
       if (need_ha_replication)
 	{

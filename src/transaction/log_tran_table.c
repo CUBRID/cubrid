@@ -136,7 +136,7 @@ static int logtb_global_unique_stat_init (void *unique_stat);
 static int logtb_global_unique_stat_key_copy (void *src, void *dest);
 static void logtb_free_tran_mvcc_info (LOG_TDES * tdes);
 
-static int logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvcc_subid);
+static void logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvcc_subid);
 
 static int logtb_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id, bool * has_authorization);
 static void logtb_find_thread_entry_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, int tran_index,
@@ -1469,12 +1469,7 @@ logtb_free_tran_mvcc_info (LOG_TDES * tdes)
   MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
 
   curr_mvcc_info->snapshot.m_active_mvccs.finalize ();
-
-  if (curr_mvcc_info->sub_ids != NULL)
-    {
-      free_and_init (curr_mvcc_info->sub_ids);
-      curr_mvcc_info->count_sub_ids = 0;
-    }
+  curr_mvcc_info->sub_ids.clear ();
 }
 
 /*
@@ -3908,10 +3903,9 @@ logtb_find_current_mvccid (THREAD_ENTRY * thread_p)
   tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   if (tdes != NULL)
     {
-      if (tdes->mvccinfo.count_sub_ids > 0 && tdes->mvccinfo.is_sub_active)
+      if (!tdes->mvccinfo.sub_ids.empty ())
 	{
-	  assert (tdes->mvccinfo.sub_ids != NULL);
-	  id = tdes->mvccinfo.sub_ids[tdes->mvccinfo.count_sub_ids - 1];
+	  id = tdes->mvccinfo.sub_ids.back ();
 	}
       else
 	{
@@ -3947,10 +3941,9 @@ logtb_get_current_mvccid (THREAD_ENTRY * thread_p)
       curr_mvcc_info->id = log_Gl.mvcc_table.get_new_mvccid ();
     }
 
-  if (tdes->mvccinfo.count_sub_ids > 0 && tdes->mvccinfo.is_sub_active)
+  if (!tdes->mvccinfo.sub_ids.empty ())
     {
-      assert (tdes->mvccinfo.sub_ids != NULL);
-      return tdes->mvccinfo.sub_ids[tdes->mvccinfo.count_sub_ids - 1];
+      return tdes->mvccinfo.sub_ids.back ();
     }
 
   return curr_mvcc_info->id;
@@ -3969,7 +3962,6 @@ logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   MVCC_INFO *curr_mvcc_info;
-  int i;
 
   assert (tdes != NULL);
 
@@ -3978,12 +3970,9 @@ logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
     {
       return true;
     }
-  else if (curr_mvcc_info->count_sub_ids > 0)
+  else if (curr_mvcc_info->sub_ids.size () > 0)
     {
-      /* is the child of current transaction ? */
-      assert (curr_mvcc_info->sub_ids != NULL);
-
-      for (i = 0; i < curr_mvcc_info->count_sub_ids; i++)
+      for (size_t i = 0; i < curr_mvcc_info->sub_ids.size (); i++)
 	{
 	  if (curr_mvcc_info->sub_ids[i] == mvccid)
 	    {
@@ -4577,7 +4566,7 @@ logtb_has_deadlock_priority (int tran_index)
  *  Note: If transaction MVCCID is NULL then a new transaction MVCCID is
  *    allocated first.
  */
-int
+void
 logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info)
 {
   MVCCID mvcc_subid;
@@ -4597,7 +4586,7 @@ logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_m
       mvcc_table->get_two_new_mvccid (curr_mvcc_info->id, mvcc_subid);
     }
 
-  return logtb_assign_subtransaction_mvccid (thread_p, curr_mvcc_info, mvcc_subid);
+  logtb_assign_subtransaction_mvccid (thread_p, curr_mvcc_info, mvcc_subid);
 }
 
 /*
@@ -4608,41 +4597,12 @@ logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_m
  * curr_mvcc_info (in) : Current transaction MVCC information.
  * mvcc_subid (in)     : Sub-transaction MVCCID.
  */
-static int
+static void
 logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvcc_subid)
 {
   assert (curr_mvcc_info != NULL);
   assert (MVCCID_IS_VALID (curr_mvcc_info->id));
-
-  if (curr_mvcc_info->sub_ids == NULL)
-    {
-      curr_mvcc_info->sub_ids = (MVCCID *) malloc (OR_MVCCID_SIZE * 10);
-      if (curr_mvcc_info->sub_ids == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (MVCCID) * 10);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      curr_mvcc_info->count_sub_ids = 0;
-      curr_mvcc_info->max_sub_ids = 10;
-    }
-  else if (curr_mvcc_info->count_sub_ids >= curr_mvcc_info->max_sub_ids)
-    {
-      curr_mvcc_info->sub_ids =
-	(MVCCID *) realloc (curr_mvcc_info->sub_ids, OR_MVCCID_SIZE * (curr_mvcc_info->max_sub_ids + 10));
-      if (curr_mvcc_info->sub_ids == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  (size_t) (OR_MVCCID_SIZE * (curr_mvcc_info->max_sub_ids + 10)));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      curr_mvcc_info->max_sub_ids += 10;
-    }
-
-  curr_mvcc_info->sub_ids[curr_mvcc_info->count_sub_ids] = mvcc_subid;
-  curr_mvcc_info->count_sub_ids++;
-  curr_mvcc_info->is_sub_active = true;
-
-  return NO_ERROR;
+  curr_mvcc_info->sub_ids.push_back (mvcc_subid);
 }
 
 /*
@@ -4662,11 +4622,11 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   assert (tdes != NULL);
 
   curr_mvcc_info = &tdes->mvccinfo;
-  mvcc_sub_id = curr_mvcc_info->sub_ids[curr_mvcc_info->count_sub_ids - 1];
+  mvcc_sub_id = curr_mvcc_info->sub_ids.back ();
 
   mvcc_table->complete_sub_mvcc (mvcc_sub_id);
+  curr_mvcc_info->sub_ids.pop_back ();
 
-  curr_mvcc_info->is_sub_active = false;
   if (tdes->mvccinfo.snapshot.valid)
     {
       /* adjust snapshot to reflect committed sub-transaction, since the parent transaction didn't finished yet */
