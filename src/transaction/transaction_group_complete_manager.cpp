@@ -257,7 +257,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed grup - check whether MVCC was completed.*/
+	/* Current closed group - check whether MVCC was completed.*/
 	return is_latest_closed_group_mvcc_completed ();
       }
   }
@@ -280,7 +280,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed grup - check whether the group was logged.*/
+	/* Current closed group - check whether the group was logged.*/
 	return is_latest_closed_group_logged ();
       }
   }
@@ -303,7 +303,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed grup - check whether the group was completed.*/
+	/* Current closed group - check whether the group was completed.*/
 	return is_latest_closed_group_completed ();
       }
   }
