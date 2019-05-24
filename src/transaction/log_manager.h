@@ -246,4 +246,12 @@ void LOG_CS_PROMOTE (THREAD_ENTRY * thread_p);
 bool LOG_CS_OWN (THREAD_ENTRY * thread_p);
 bool LOG_CS_OWN_WRITE_MODE (THREAD_ENTRY * thread_p);
 
+// *INDENT-OFF*
+/* Interface used by log flush to notify threads. */
+class log_flush_lsa
+{
+public:
+  virtual void notify_log_flush_lsa (const LOG_LSA * lsa) = 0;
+};
+// *INDENT-ON*
 #endif /* _LOG_MANAGER_H_ */
