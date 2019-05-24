@@ -916,7 +916,6 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * o
       // *INDENT-OFF*
       cubreplication::rec_des_row_repl_entry *replobj = NULL;
       cubreplication::stream_entry stream_entry (cubreplication::log_generator::get_global_stream ());
-      cubstream::stream_position stream_pos;
       
       replobj = new cubreplication::rec_des_row_repl_entry (cubreplication::repl_entry_type::REPL_UPDATE,
                                                             CT_SERIAL_NAME, new_record.get_recdes (), NULL_LSA);
@@ -932,7 +931,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * o
       // append to stream
       
       stream_entry.pack ();
-      log_sysop_commit_replicated (thread_p, stream_pos);
+      log_sysop_commit_replicated (thread_p, stream_entry.get_stream_entry_start_position ());
       // *INDENT-ON*
     }
 
