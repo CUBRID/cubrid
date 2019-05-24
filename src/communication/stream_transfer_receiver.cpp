@@ -91,7 +91,7 @@ namespace cubstream
         
 
         stream_position sp = this_consumer_channel.get_last_received_position ();
-        this_consumer_channel.m_ack_channel.send ((const char *)&sp, sizeof (sp));
+        this_consumer_channel.m_ack_channel.send ((const char *) &sp, sizeof (sp));
       }
 
     private:

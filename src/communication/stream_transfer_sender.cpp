@@ -94,6 +94,11 @@ namespace cubstream
 	    error_code = this_producer_channel.m_stream.read (this_producer_channel.m_last_sent_position, byte_count,
 			 this_producer_channel.m_read_action_function);
 
+            char buf[64];
+            size_t len_recv;
+            // todo: do I need to read the magic shit? look at cub_master how he does it?
+            this_producer_channel.m_ack_chn.recv (buf, len_recv);                        
+
 	    if (error_code != NO_ERROR)
 	      {
 		this_producer_channel.m_channel.close_connection ();
@@ -107,9 +112,10 @@ namespace cubstream
       bool m_first_loop;
   };
 
-  transfer_sender::transfer_sender (cubcomm::channel &&chn, cubstream::stream &stream,
-				    cubstream::stream_position begin_sending_position)
+  transfer_sender::transfer_sender (cubcomm::channel &&chn, cubcomm::channel &&ack_chn,
+                                    cubstream::stream &stream, cubstream::stream_position begin_sending_position)
     : m_channel (std::move (chn)),
+      m_ack_chn (std::move (ack_chn)),
       m_stream (stream),
       m_last_sent_position (begin_sending_position)
   {
