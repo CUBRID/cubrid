@@ -318,6 +318,20 @@ namespace cubreplication
     return err;
   }
 
+  void sbr_repl_entry::set_params (const char *statement, const char *user, const char *password,
+                                   const char *sys_prm_ctx)
+  {
+    m_statement = statement;
+    m_db_user = user;
+    m_db_password = password;
+    m_sys_prm_context = sys_prm_ctx;
+  }
+
+  void sbr_repl_entry::append_statement (const char *buffer, const size_t buf_size)
+  {
+    m_statement.append (buffer, buf_size);
+  }
+
   bool
   sbr_repl_entry::is_equal (const packable_object *other)
   {

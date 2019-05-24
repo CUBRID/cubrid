@@ -107,32 +107,4 @@ class string_print_output : public print_output
     }
 };
 
-
-
-/* TODO[replication] : move to replication_ source file 
- * net_print_output : ouput to a CUBRID network request
- */
-class net_print_output : public print_output
-{
-  private:
-    int m_buffer_type;
-    size_t m_flush_size;
-    int m_send_error_cnt;
-
-  public:
-    const static size_t DEFAULT_FLUSH_SIZE = 4096;
-
-    net_print_output () = delete;
-    net_print_output (const int buffer_type, const size_t flush_size = DEFAULT_FLUSH_SIZE);
-    ~net_print_output () {}
-
-    int flush (void);
-
-    int send_to_network ();
-
-    void set_buffer_type (const int buffer_type) { m_buffer_type = buffer_type; }
-
-    int get_error_count () { return m_send_error_cnt; }
-};
-
 #endif // _PRINTER_HPP_

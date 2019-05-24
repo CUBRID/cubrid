@@ -48,6 +48,7 @@
 #include "log_generator.hpp"
 #include "log_lsa.hpp"
 #include "lock_manager.h"
+#include "network.h"
 #include "object_primitive.h"
 #include "object_representation_sr.h"
 #include "query_executor.h"
@@ -57,6 +58,7 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "process_util.h"
+#include "replication_db_copy.hpp"
 #include "replication_object.hpp"
 #include "slotted_page.h"
 #include "utility.h"
@@ -13814,11 +13816,42 @@ xlocator_get_proxy_command (THREAD_ENTRY * thread_p, const char **proxy_command)
 int
 xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_t buf_size, const char *buffer)
 {
-  /* TODO : 
-   * 1. retrieve transaction context and copy context
-   * 2. append to a SBR
-   * 3. if type is final : add SBR to copy stream or store of later
-   */
+  LOG_TDES *tdes;
+
+  assert (thread_p != NULL);
+
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  cubreplication::copy_context& repl_copy_ctxt = tdes->replication_copy_context;
+
+  switch (type)
+    {
+      case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES:
+         repl_copy_ctxt.m_class_schema.append_statement (buffer, buf_size);
+         break;
+
+      case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS:
+         repl_copy_ctxt.m_triggers.append_statement (buffer, buf_size);
+         break;
+
+      case NET_PROXY_BUF_TYPE_EXTRACT_INDEXES:
+         repl_copy_ctxt.m_indexes.append_statement (buffer, buf_size);
+         break;
+
+      case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END:
+         repl_copy_ctxt.pack_and_add_sbr (repl_copy_ctxt.m_class_schema);
+         break;
+
+      case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS_END:
+         repl_copy_ctxt.pack_and_add_sbr (repl_copy_ctxt.m_triggers);
+         break;
+
+      case NET_PROXY_BUF_TYPE_EXTRACT_INDEXES_END:
+         repl_copy_ctxt.pack_and_add_sbr (repl_copy_ctxt.m_indexes);
+         break;
+
+      default:
+        assert (false);
+    }
 
   return NO_ERROR;
 }

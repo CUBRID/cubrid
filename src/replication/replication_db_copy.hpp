@@ -26,6 +26,8 @@
 #ifndef _REPLICATION_DB_COPY_HPP_
 #define _REPLICATION_DB_COPY_HPP_
 
+#include "replication_object.hpp"
+
 namespace cubstream
 {
   class multi_thread_stream;
@@ -40,9 +42,17 @@ namespace cubreplication
     public:
       copy_context ();
 
-      ~copy_context () {}
+      ~copy_context () = default;
+
+      void set_credentials (const char *user, const char *password);
 
       void pack_and_add_object (row_object &obj);
+      void pack_and_add_sbr (sbr_repl_entry &sbr);
+
+      sbr_repl_entry m_class_schema;
+      sbr_repl_entry m_triggers;
+      sbr_repl_entry m_indexes;
+
     private:
       cubstream::multi_thread_stream *m_stream;
   };

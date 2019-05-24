@@ -91,6 +91,10 @@ namespace cubreplication
 
       int apply () override;
 
+      void set_params (const char *statement, const char *user, const char *password, const char *sys_prm_ctx);
+
+      void append_statement (const char *buffer, const size_t buf_size);
+
       bool is_equal (const cubpacking::packable_object *other);
       bool is_statement_replication ();
 

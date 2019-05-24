@@ -39,6 +39,13 @@ namespace cubreplication
     m_stream = NULL;
   }
 
+  void copy_context::set_credentials (const char *user, const char *password)
+  {
+     m_class_schema.set_params ("", user, password, "");
+     m_triggers.set_params ("", user, password, "");;
+     m_indexes.set_params ("", user, password, "");;
+  }
+
   void copy_context::pack_and_add_object (row_object &obj)
   {
     if (obj.get_rec_cnt () == 0)
@@ -49,6 +56,16 @@ namespace cubreplication
     stream_entry stream_entry (m_stream);
 
     stream_entry.add_packable_entry (&obj);
+
+    stream_entry.pack ();
+  }
+
+
+  void copy_context::pack_and_add_sbr (sbr_repl_entry &sbr)
+  {
+    stream_entry stream_entry (m_stream);
+
+    stream_entry.add_packable_entry (&sbr);
 
     stream_entry.pack ();
   }
@@ -233,6 +250,5 @@ end:
 
     return error_code;
   }
-
 
 } /* namespace cubreplication */

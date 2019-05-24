@@ -18,41 +18,42 @@
  */
 
 /*
- * printer.cpp - printing classes
+ * replication_schema_extract.hpp
  */
+
+#ifndef _REPLICATION_SCHEMA_EXTRACT_HPP_
+#define _REPLICATION_SCHEMA_EXTRACT_HPP_
 
 #include "printer.hpp"
 
-void print_output::operator+= (const char ch)
+namespace cubreplication
 {
-  m_sb.operator+= (ch);
-  (void) flush ();
-}
 
-file_print_output::file_print_output (FILE *fp) :
-  output_file (fp)
+class net_print_output : public print_output
 {
-}
+  private:
+    int m_buffer_type;
+    size_t m_flush_size;
+    int m_send_error_cnt;
 
-file_print_output &file_print_output::std_output (void)
-{
-  static file_print_output s_std_output (stdout);
-  return s_std_output;
-}
+  public:
+    const static size_t DEFAULT_FLUSH_SIZE = 4096;
 
-int file_print_output::flush ()
-{
-  int res = (int) fwrite (m_sb.get_buffer (), 1, m_sb.len (), output_file);
-  m_sb.clear ();
-  return res;
-}
+    net_print_output () = delete;
+    net_print_output (const int buffer_type, const size_t flush_size = DEFAULT_FLUSH_SIZE);
+    ~net_print_output () {}
 
+    int flush (void);
 
-string_print_output::string_print_output ()
-{
-}
+    int send_to_network ();
 
-int string_print_output::flush ()
-{
-  return (int) m_sb.len ();
-}
+    void set_buffer_type (const int buffer_type) { m_buffer_type = buffer_type; }
+
+    int get_error_count () { return m_send_error_cnt; }
+};
+
+} /* namespace cubreplication */
+
+extern int replication_schema_extract (const char *program_name);
+
+#endif /* _REPLICATION_SCHEMA_EXTRACT_HPP_ */

@@ -62,6 +62,8 @@ extern int lo_count;
 extern int extract_classes_to_file (extract_context & ctxt, const char *output_filename);
 extern int extract_triggers (extract_context & ctxt, print_output & output_ctx);
 extern int extract_triggers_to_file (extract_context & ctxt, const char *output_filename);
+extern int emit_indexes (print_output & output_ctx, DB_OBJLIST * classes, int has_indexes,
+	                 DB_OBJLIST * vclass_list_has_using_index);
 extern int extract_indexes_to_file (extract_context & ctxt, const char *output_filename);
 extern int extract_classes (extract_context & ctxt, print_output & schema_output_ctx);
 extern int extractobjects (const char *exec_name, const char *output_dirname, const char *output_prefix);

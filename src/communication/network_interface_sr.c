@@ -9786,8 +9786,7 @@ slocator_send_proxy_buffer (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 {
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  int area_size, strlen1;
-  char *area = NULL, *p = NULL;
+  char *ptr = NULL;
   int error_code;
   int type;
   int buf_size;
