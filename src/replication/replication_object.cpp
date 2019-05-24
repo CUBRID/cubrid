@@ -319,7 +319,7 @@ namespace cubreplication
   }
 
   void sbr_repl_entry::set_params (const char *statement, const char *user, const char *password,
-                                   const char *sys_prm_ctx)
+				   const char *sys_prm_ctx)
   {
     m_statement = statement;
     m_db_user = user;

@@ -41,9 +41,9 @@ namespace cubreplication
 
   void copy_context::set_credentials (const char *user, const char *password)
   {
-     m_class_schema.set_params ("", user, password, "");
-     m_triggers.set_params ("", user, password, "");;
-     m_indexes.set_params ("", user, password, "");;
+    m_class_schema.set_params ("", user, password, "");
+    m_triggers.set_params ("", user, password, "");;
+    m_indexes.set_params ("", user, password, "");;
   }
 
   void copy_context::pack_and_add_object (row_object &obj)

@@ -7549,8 +7549,8 @@ end:
 	    {
 	      /* Aborts and simulate apply replication RBR on master node. */
 	      error_code =
-		logtb_get_tdes (thread_p)->replication_log_generator.
-		abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
+		logtb_get_tdes (thread_p)->
+		replication_log_generator.abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
 	    }
 	  else
 	    {
@@ -13821,36 +13821,36 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
   assert (thread_p != NULL);
 
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  cubreplication::copy_context& repl_copy_ctxt = tdes->replication_copy_context;
+  cubreplication::copy_context & repl_copy_ctxt = tdes->replication_copy_context;
 
   switch (type)
     {
-      case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES:
-         repl_copy_ctxt.m_class_schema.append_statement (buffer, buf_size);
-         break;
+    case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES:
+      repl_copy_ctxt.m_class_schema.append_statement (buffer, buf_size);
+      break;
 
-      case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS:
-         repl_copy_ctxt.m_triggers.append_statement (buffer, buf_size);
-         break;
+    case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS:
+      repl_copy_ctxt.m_triggers.append_statement (buffer, buf_size);
+      break;
 
-      case NET_PROXY_BUF_TYPE_EXTRACT_INDEXES:
-         repl_copy_ctxt.m_indexes.append_statement (buffer, buf_size);
-         break;
+    case NET_PROXY_BUF_TYPE_EXTRACT_INDEXES:
+      repl_copy_ctxt.m_indexes.append_statement (buffer, buf_size);
+      break;
 
-      case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END:
-         repl_copy_ctxt.pack_and_add_sbr (repl_copy_ctxt.m_class_schema);
-         break;
+    case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END:
+      repl_copy_ctxt.pack_and_add_sbr (repl_copy_ctxt.m_class_schema);
+      break;
 
-      case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS_END:
-         repl_copy_ctxt.pack_and_add_sbr (repl_copy_ctxt.m_triggers);
-         break;
+    case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS_END:
+      repl_copy_ctxt.pack_and_add_sbr (repl_copy_ctxt.m_triggers);
+      break;
 
-      case NET_PROXY_BUF_TYPE_EXTRACT_INDEXES_END:
-         repl_copy_ctxt.pack_and_add_sbr (repl_copy_ctxt.m_indexes);
-         break;
+    case NET_PROXY_BUF_TYPE_EXTRACT_INDEXES_END:
+      repl_copy_ctxt.pack_and_add_sbr (repl_copy_ctxt.m_indexes);
+      break;
 
-      default:
-        assert (false);
+    default:
+      assert (false);
     }
 
   return NO_ERROR;

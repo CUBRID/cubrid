@@ -9795,7 +9795,7 @@ slocator_send_proxy_buffer (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   ptr = or_unpack_int (request, &type);
   ptr = or_unpack_int (ptr, &buf_size);
   buffer_start = ptr;
-  
+
   error_code = xlocator_send_proxy_buffer (thread_p, type, buf_size, buffer_start);
   if (error_code != NO_ERROR)
     {

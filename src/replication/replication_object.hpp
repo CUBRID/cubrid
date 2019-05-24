@@ -267,7 +267,7 @@ namespace cubreplication
       /* non-serialized data members: */
       /* total size of all record_descriptor buffers */
       std::size_t m_data_size;
-    };
+  };
 
 } /* namespace cubreplication */
 
