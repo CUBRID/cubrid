@@ -109,7 +109,7 @@ namespace cubtx
   {
     std::unique_lock<std::mutex> ulock (m_group_mutex);
     m_current_group_min_transactions = count_minimum_transactions;
-
+    /* TODO - in case of slave, the condition should be equal. */
     if (m_current_group_min_transactions <= m_current_group.get_container ().size ())
       {
 	has_group_enough_transactions = true;

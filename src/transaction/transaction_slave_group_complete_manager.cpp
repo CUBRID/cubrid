@@ -171,11 +171,11 @@ namespace cubtx
   }
 
   //
-  // wait_for_complete_stream_position - waits for complete stream position
+  // wait_for_group_complete - waits for complete stream position
   //
-  void slave_group_complete_manager::wait_for_complete_stream_position (cubstream::stream_position stream_position)
+  void slave_group_complete_manager::wait_for_group_complete (cubstream::stream_position group_stream_position)
   {
-    if (stream_position <= m_latest_group_stream_positon)
+    if (group_stream_position <= m_latest_group_stream_positon)
       {
 	/* I have the id of latest group */
 	wait_for_complete (m_latest_group_id);
@@ -194,8 +194,7 @@ namespace cubtx
   {
     bool has_group_enough_transactions;
     /* Can't set close info twice. */
-    assert (m_has_latest_group_close_info == false);
-
+    assert (m_has_latest_group_close_info == false);    
     m_latest_group_stream_positon = stream_position;
     m_latest_group_id = set_current_group_minimum_transactions (count_expected_transactions, has_group_enough_transactions);
     m_has_latest_group_close_info = true;

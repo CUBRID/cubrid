@@ -32,9 +32,9 @@ namespace cubtx
   //
   // slave_group_complete_manager is a manager for group commits on slave node
   //    Implements group complete_manager interface used by transaction threads.
-  //    Implements dispatch_consumer interface used by dispatch thread.
+  //    Implements dispatch_group_controller interface used by dispatch thread.
   //
-  class slave_group_complete_manager : public group_complete_manager, public cubreplication::dispatch_consumer
+  class slave_group_complete_manager : public group_complete_manager, public cubreplication::dispatch_group_controller
   {
     public:
       ~slave_group_complete_manager () override;
@@ -48,7 +48,7 @@ namespace cubtx
       void do_complete (THREAD_ENTRY *thread_p) override;
 
       /* dispatch complete methods */
-      void wait_for_complete_stream_position (cubstream::stream_position stream_position) override;
+      void wait_for_group_complete (cubstream::stream_position group_stream_position) override;
       void set_close_info_for_current_group (cubstream::stream_position stream_position,
 					     int count_expected_transactions) override;
 

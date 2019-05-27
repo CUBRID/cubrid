@@ -149,12 +149,12 @@ namespace cubreplication
   };
 
   //
-  // dispatch_consumer is the common interface used by dispatch to control group creation.
+  // dispatch_group_controller is the common interface used by dispatch to control group creation.
   //
-  class dispatch_consumer
+  class dispatch_group_controller
   {
     public:
-      virtual void wait_for_complete_stream_position (cubstream::stream_position stream_position) = 0;
+      virtual void wait_for_group_complete (cubstream::stream_position group_stream_position) = 0;
       virtual void set_close_info_for_current_group (cubstream::stream_position stream_position,
 	  int count_expected_transactions) = 0;
   };
