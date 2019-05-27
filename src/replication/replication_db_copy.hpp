@@ -17,47 +17,36 @@
  *
  */
 
-//
-// group of transactions class
-//
+/*
+ * replication_db_copy.hpp
+ */
 
-#include "transaction_group.hpp"
+#ident "$Id$"
 
-void
-tx_group::add (const node_info &ni)
+#ifndef _REPLICATION_DB_COPY_HPP_
+#define _REPLICATION_DB_COPY_HPP_
+
+namespace cubstream
 {
-  m_group.push_back (ni);
-}
+  class multi_thread_stream;
+};
 
-void
-tx_group::add (int tran_index, MVCCID mvccid, TRAN_STATE tran_state)
+namespace cubreplication
 {
-  m_group.emplace_back (tran_index, mvccid, tran_state);
-}
+  class row_object;
 
-const tx_group::container_type &
-tx_group::get_container () const
-{
-  return m_group;
-}
+  class copy_context
+  {
+    public:
+      copy_context ();
 
-tx_group::container_type &
-tx_group::get_container ()
-{
-  return m_group;
-}
+      ~copy_context () {}
 
-void
-tx_group::transfer_to (tx_group &dest)
-{
-  dest.m_group = std::move (m_group);  // buffer is moved
-}
+      void pack_and_add_object (row_object &obj);
+    private:
+      cubstream::multi_thread_stream *m_stream;
+  };
 
-// node_info
+} /* namespace cubreplication */
 
-tx_group::node_info::node_info (int tran_index, MVCCID mvccid, TRAN_STATE tran_state)
-  : m_tran_index (tran_index)
-  , m_mvccid (mvccid)
-  , m_tran_state (tran_state)
-{
-}
+#endif /* _REPLICATION_DB_COPY_HPP_ */

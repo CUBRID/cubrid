@@ -57,6 +57,13 @@ struct log_topop_range
   LOG_LSA end_lsa;
 };
 
+struct rv_gc_info
+{
+  TRANID m_tr_id;
+  TRAN_STATE m_state;
+  LOG_LSA m_postpone_lsa;
+};
+
 #define LOG_IS_SYSTEM_OP_STARTED(tdes) ((tdes)->topops.last >= 0)
 
 extern const char *log_to_string (LOG_RECTYPE type);
@@ -164,9 +171,12 @@ extern void log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log, int flus
 #endif
 extern void log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 				     const VPID * rcv_vpid, int length, const void *data, const LOG_LSA * ref_lsa);
+extern void log_append_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 extern int log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa,
 				    LOG_TOPOP_RANGE ** out_nxtop_range_stack);
 extern void log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit);
+extern void log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos,
+				       tx_group & group, LOG_LSA * complete_lsa, bool * has_postpone);
 
 /*
  * FOR DEBUGGING
@@ -217,6 +227,11 @@ extern void log_flush_daemon_get_stats (UINT64 * statsp);
 #endif // SERVER_MODE
 
 extern void log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p);
+
+// *INDENT-OFF*
+extern void log_unpack_group_complete (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, int buf_size,
+				       std::vector<rv_gc_info> & group);
+// *INDENT-ON*
 
 //
 // log critical section

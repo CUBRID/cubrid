@@ -150,7 +150,7 @@ namespace cubreplication
 
       int get_started_task (void)
       {
-        return m_started_tasks;
+	return m_started_tasks;
       }
 
       void wait_for_tasks (void);

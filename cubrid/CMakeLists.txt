@@ -205,6 +205,7 @@ set (REPLICATION_HEADERS
   ${REPLICATION_DIR}/log_generator.hpp
   ${REPLICATION_DIR}/log_consumer.hpp
   ${REPLICATION_DIR}/replication_common.hpp
+  ${REPLICATION_DIR}/replication_db_copy.hpp
   ${REPLICATION_DIR}/replication_master_node.hpp
   ${REPLICATION_DIR}/replication_master_senders_manager.hpp
   ${REPLICATION_DIR}/replication_node.hpp
@@ -265,6 +266,7 @@ set(OBJECT_HEADERS
 set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/log_consumer.cpp
   ${REPLICATION_DIR}/log_generator.cpp
+  ${REPLICATION_DIR}/replication_db_copy.cpp
   ${REPLICATION_DIR}/replication_object.cpp
   ${REPLICATION_DIR}/replication_master_node.cpp
   ${REPLICATION_DIR}/replication_master_senders_manager.cpp
@@ -301,6 +303,8 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/mvcc_table.cpp
   ${TRANSACTION_DIR}/recovery.c
   ${TRANSACTION_DIR}/replication.c
+  ${TRANSACTION_DIR}/transaction_master_group_complete_manager.cpp
+  ${TRANSACTION_DIR}/transaction_group_complete_manager.cpp
   ${TRANSACTION_DIR}/transaction_complete_manager.cpp
   ${TRANSACTION_DIR}/transaction_group.cpp
   ${TRANSACTION_DIR}/transaction_sr.c
@@ -321,6 +325,8 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/mvcc.h
   ${TRANSACTION_DIR}/mvcc_active_tran.hpp
   ${TRANSACTION_DIR}/mvcc_table.hpp
+  ${TRANSACTION_DIR}/transaction_master_group_complete_manager.hpp
+  ${TRANSACTION_DIR}/transaction_group_complete_manager.hpp
   ${TRANSACTION_DIR}/transaction_complete_manager.hpp
   ${TRANSACTION_DIR}/transaction_global.hpp
   ${TRANSACTION_DIR}/transaction_group.hpp
