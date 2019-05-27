@@ -543,6 +543,7 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
 {
   int error_code = NO_ERROR;
   int i;
+  LOG_FLUSH_SYNC_INFO *flush_sync_info = &log_Gl.flush_sync_info;
   LOGWR_INFO *writer_info = log_Gl.writer_info;
   size_t size;
 
@@ -623,6 +624,9 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   logpb_Initialized = true;
   pthread_mutex_init (&log_Gl.chkpt_lsa_lock, NULL);
 
+  pthread_cond_init (&flush_sync_info->cond, NULL);
+  pthread_mutex_init (&flush_sync_info->mutex, NULL);
+
   pthread_mutex_init (&writer_info->wr_list_mutex, NULL);
 
   pthread_cond_init (&writer_info->flush_start_cond, NULL);
@@ -689,6 +693,9 @@ logpb_finalize_pool (THREAD_ENTRY * thread_p)
   logpb_finalize_flush_info ();
 
   pthread_mutex_destroy (&log_Gl.chkpt_lsa_lock);
+
+  pthread_mutex_destroy (&log_Gl.flush_sync_info.mutex);
+  pthread_cond_destroy (&log_Gl.flush_sync_info.cond);
 
   logpb_finalize_writer_info ();
 
@@ -3667,6 +3674,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
   bool need_wakeup_LFT, need_wait;
   bool async_commit, group_commit;
   LOG_LSA nxio_lsa;
+  LOG_FLUSH_SYNC_INFO *flush_sync_info = &log_Gl.flush_sync_info;
 
   assert (flush_lsa != NULL && !LSA_ISNULL (flush_lsa));
 
@@ -3744,9 +3752,11 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 	  (void) timeval_add_msec (&tmp_timeval, &start_time, max_wait_time_in_msec);
 	  (void) timeval_to_timespec (&to, &tmp_timeval);
 
+	  rv = pthread_mutex_lock (&flush_sync_info->mutex);
 	  nxio_lsa = log_Gl.append.get_nxio_lsa ();
 	  if (LSA_GE (&nxio_lsa, flush_lsa))
 	    {
+	      pthread_mutex_unlock (&flush_sync_info->mutex);
 	      break;
 	    }
 
@@ -3754,9 +3764,8 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 	    {
 	      log_wakeup_log_flush_daemon ();
 	    }
-
-	  /* Currently we sleep. This happens for 2pc. Needs to update to wait for GC. */
-	  thread_sleep (20);
+	  (void) pthread_cond_timedwait (&flush_sync_info->cond, &flush_sync_info->mutex, &to);
+	  pthread_mutex_unlock (&flush_sync_info->mutex);
 
 	  need_wakeup_LFT = true;
 	  nxio_lsa = log_Gl.append.get_nxio_lsa ();

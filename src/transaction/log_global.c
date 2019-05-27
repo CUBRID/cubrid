@@ -70,7 +70,8 @@ log_global::log_global ()
 #if defined(SERVER_MODE)
                 , PTHREAD_MUTEX_INITIALIZER
 #endif /* SERVER_MODE */
-     }  
+     }
+  , flush_sync_info LOG_FLUSH_SYNC_INFO_INITIALIZER
   , m_tran_complete_mgr (NULL)    // to be instantiated on boot
   , writer_info (new logwr_info ())
   , bg_archive_info ()

@@ -10073,9 +10073,17 @@ class log_flush_daemon_task : public cubthread::entry_task
 
       log_Stat.gc_flush_count++;
       
+      /* Wakeup transaction waiting for group complete. */
       nxio_lsa = log_Gl.append.get_nxio_lsa ();
       m_p_log_flush_lsa->notify_log_flush_lsa (&nxio_lsa);
+      
+      /* Wakeup transaction waiting for specific LSA - not waiting for group complete.
+       * A better way wil be to use another object that implements log_flush_lsa interface.
+       */
+      pthread_mutex_lock (&log_Gl.flush_sync_info.mutex);
+      pthread_cond_broadcast (&log_Gl.flush_sync_info.cond);
       log_Flush_has_been_requested = false;
+      pthread_mutex_unlock (&log_Gl.flush_sync_info.mutex);
     }
 
 private:

@@ -322,6 +322,15 @@ struct log_flush_info
 #endif				/* SERVER_MODE */
 };
 
+typedef struct log_flush_sync_info LOG_FLUSH_SYNC_INFO;
+struct log_flush_sync_info
+{
+  pthread_mutex_t mutex;
+  pthread_cond_t cond;
+};
+
+#define LOG_FLUSH_SYNC_INFO_INITIALIZER \
+  { PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER }
 
 typedef struct log_topops_addresses LOG_TOPOPS_ADDRESSES;
 struct log_topops_addresses
@@ -654,6 +663,9 @@ struct log_global
 
   /* Flush information for dirty log pages */
   LOG_FLUSH_INFO flush_info;
+
+  /* flush sync information */
+  LOG_FLUSH_SYNC_INFO flush_sync_info;
 
   // *INDENT-OFF*
   cubtx::complete_manager * m_tran_complete_mgr;
