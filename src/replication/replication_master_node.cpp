@@ -101,7 +101,7 @@ namespace cubreplication
     cubcomm::channel ctrl_chn;
     css_error_code rc = repl_chn.accept (repl_fd);
     assert (rc == NO_ERRORS);
-    rc = ctrl_chn.accept (crtl_fd);
+    rc = ctrl_chn.accept (ctrl_fd);
     assert (rc == NO_ERRORS);
 
     master_senders_manager::add_stream_sender

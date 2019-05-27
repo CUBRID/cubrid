@@ -91,20 +91,20 @@ namespace cubreplication
 		  master_node_hostname, master_node_port_id);
 
     /* connect to replication master node */
-    cubcomm::server_channel srv_chn (g_instance->m_identity.get_hostname ().c_str ());
+    cubcomm::server_channel repl_chn (g_instance->m_identity.get_hostname ().c_str ());
 
-    cubcomm::server_channel ack_chn (g_instance->m_identity.get_hostname ().c_str ());
+    cubcomm::server_channel ctrl_chn (g_instance->m_identity.get_hostname ().c_str ());
 
     g_instance->m_master_identity.set_hostname (master_node_hostname);
     g_instance->m_master_identity.set_port (master_node_port_id);
 
-    error = srv_chn.connect (master_node_hostname, master_node_port_id);
+    error = repl_chn.connect (master_node_hostname, master_node_port_id);
     if (error != css_error_code::NO_ERRORS)
       {
         return error;
       }
 
-    error = ack_chn.connect (master_node_hostname, master_node_port_id);
+    error = ctrl_chn.connect (master_node_hostname, master_node_port_id);
     if (error != css_error_code::NO_ERRORS)
       {
         return error;
@@ -114,7 +114,7 @@ namespace cubreplication
     assert (g_instance->m_transfer_receiver == NULL);
     /* TODO[replication] : last position to be retrieved from recovery module */
     cubstream::stream_position start_position = 0;
-    g_instance->m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), std::move (ack_chn), *g_instance->m_stream,
+    g_instance->m_transfer_receiver = new cubstream::transfer_receiver (std::move (repl_chn), std::move (ctrl_chn), *g_instance->m_stream,
 	start_position);
 #endif
 

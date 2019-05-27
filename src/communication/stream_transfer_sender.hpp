@@ -48,8 +48,8 @@ namespace cubstream
 
     public:
 
-      transfer_sender (cubcomm::channel &&chn,
-                       cubcomm::channel &&ack_chn,
+      transfer_sender (cubcomm::channel &&repl_chn,
+                       cubcomm::channel &&ctrl_chn,
 		       cubstream::stream &stream,
 		       stream_position begin_sending_position = 0);
       virtual ~transfer_sender ();
@@ -67,8 +67,8 @@ namespace cubstream
 
       friend class transfer_sender_task;
 
-      cubcomm::channel m_channel;
-      cubcomm::channel m_ack_chn;
+      cubcomm::channel m_repl_channel;
+      cubcomm::channel m_ctrl_channel;
       cubstream::stream &m_stream;
       stream_position m_last_sent_position;
       cubthread::daemon *m_sender_daemon;

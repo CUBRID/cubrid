@@ -63,10 +63,10 @@ namespace cubstream
 	    UINT64 last_sent_position = 0;
 	    std::size_t max_len = sizeof (UINT64);
 
-	    assert (this_producer_channel.m_channel.is_connection_alive ());
+	    assert (this_producer_channel.m_repl_channel.is_connection_alive ());
 	    assert (sizeof (stream_position) == sizeof (UINT64));
 
-	    rc = this_producer_channel.m_channel.recv ((char *) &last_sent_position, max_len);
+	    rc = this_producer_channel.m_repl_channel.recv ((char *) &last_sent_position, max_len);
 	    this_producer_channel.m_last_sent_position = last_sent_position;
 
 	    er_log_debug (ARG_FILE_LINE, "transfer_sender_task starting : last_sent_position:%lld, rc:%d\n",
@@ -76,7 +76,7 @@ namespace cubstream
 
 	    if (rc != NO_ERRORS)
 	      {
-		this_producer_channel.m_channel.close_connection ();
+		this_producer_channel.m_repl_channel.close_connection ();
 		return;
 	      }
 
@@ -98,11 +98,11 @@ namespace cubstream
             // todo: for now read ack from slave here. Will be moved to a separate thread that notifies gcm on reads.
             char buf[64];
             size_t len_recv;
-            this_producer_channel.m_ack_chn.recv (buf, len_recv);
+            this_producer_channel.m_ctrl_channel.recv (buf, len_recv);
 
 	    if (error_code != NO_ERROR)
 	      {
-		this_producer_channel.m_channel.close_connection ();
+		this_producer_channel.m_repl_channel.close_connection ();
 		break;
 	      }
 	  }
@@ -113,10 +113,10 @@ namespace cubstream
       bool m_first_loop;
   };
 
-  transfer_sender::transfer_sender (cubcomm::channel &&chn, cubcomm::channel &&ack_chn,
+  transfer_sender::transfer_sender (cubcomm::channel &&repl_chn, cubcomm::channel &&ctrl_chn,
                                     cubstream::stream &stream, cubstream::stream_position begin_sending_position)
-    : m_channel (std::move (chn)),
-      m_ack_chn (std::move (ack_chn)),
+    : m_repl_channel (std::move (repl_chn)),
+      m_ctrl_channel (std::move (ctrl_chn)),
       m_stream (stream),
       m_last_sent_position (begin_sending_position)
   {
@@ -140,7 +140,7 @@ namespace cubstream
 
   cubcomm::channel &transfer_sender::get_channel ()
   {
-    return m_channel;
+    return m_repl_channel;
   }
 
   //TODO[replication] make this atomic
@@ -151,7 +151,7 @@ namespace cubstream
 
   int transfer_sender::read_action (char *ptr, const size_t byte_count)
   {
-    if (m_channel.send (ptr, byte_count) == NO_ERRORS)
+    if (m_repl_channel.send (ptr, byte_count) == NO_ERRORS)
       {
 	cubcomm::er_log_debug_buffer ("transfer_sender::read_action", ptr, byte_count);
 

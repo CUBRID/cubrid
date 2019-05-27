@@ -53,11 +53,11 @@ namespace cubstream
 	  {
 	    UINT64 last_recv_pos = 0;
 
-	    assert (this_consumer_channel.m_channel.is_connection_alive ());
+	    assert (this_consumer_channel.m_repl_channel.is_connection_alive ());
 	    assert (sizeof (stream_position) == sizeof (UINT64));
 
 	    last_recv_pos = htoni64 (this_consumer_channel.m_last_received_position);
-	    rc = this_consumer_channel.m_channel.send ((char *) &last_recv_pos,
+	    rc = this_consumer_channel.m_repl_channel.send ((char *) &last_recv_pos,
 		 sizeof (UINT64));
 
 	    er_log_debug (ARG_FILE_LINE, "transfer_receiver_task starting : "
@@ -67,17 +67,17 @@ namespace cubstream
 	    if (rc != NO_ERRORS)
 	      {
 		assert (false);
-		this_consumer_channel.m_channel.close_connection ();
+		this_consumer_channel.m_repl_channel.close_connection ();
 		return;
 	      }
 
 	    m_first_loop = false;
 	  }
 
-	rc = this_consumer_channel.m_channel.recv (this_consumer_channel.m_buffer, max_len);
+	rc = this_consumer_channel.m_repl_channel.recv (this_consumer_channel.m_buffer, max_len);
 	if (rc != NO_ERRORS)
 	  {
-	    this_consumer_channel.m_channel.close_connection ();
+	    this_consumer_channel.m_repl_channel.close_connection ();
 	    return;
 	  }
 
@@ -85,12 +85,12 @@ namespace cubstream
 
 	if (this_consumer_channel.m_stream.write (max_len, this_consumer_channel.m_write_action_function))
 	  {
-	    this_consumer_channel.m_channel.close_connection ();
+	    this_consumer_channel.m_repl_channel.close_connection ();
 	    return;
 	  }        
 
         stream_position sp = this_consumer_channel.get_last_received_position ();
-        this_consumer_channel.m_ack_channel.send ((const char *) &sp, sizeof (sp));
+        this_consumer_channel.m_ctrl_channel.send ((const char *) &sp, sizeof (sp));
       }
 
     private:
@@ -98,12 +98,12 @@ namespace cubstream
       bool m_first_loop; /* TODO[replication] may be a good idea to use create_context instead */
   };
 
-  transfer_receiver::transfer_receiver (cubcomm::channel &&chn,
-                                        cubcomm::channel &&ack_chn,
+  transfer_receiver::transfer_receiver (cubcomm::channel &&repl_chn,
+                                        cubcomm::channel &&ctrl_chn,
 					stream &stream,
 					stream_position received_from_position)
-    : m_channel (std::move (chn)),
-      m_ack_channel (std::move (ack_chn)),
+    : m_repl_channel (std::move (repl_chn)),
+      m_ctrl_channel (std::move (ctrl_chn)),
       m_stream (stream),
       m_last_received_position (received_from_position)
   {
