@@ -678,7 +678,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, SOCKET ack_chn, unsigned sho
 		  // *INDENT-OFF*
                   std::vector<SOCKET> client_fds;
                   // *INDENT-ON*
-					    /*                  if (ack_chn != -1)
+					    /*                                                             if (ack_chn != -1)
 					       {
 					       // *INDENT-OFF*
                       // *INDENT-OFF*
