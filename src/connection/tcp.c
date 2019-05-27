@@ -1072,6 +1072,7 @@ css_open_new_socks_from_master (SOCKET fd, size_t expected_fds, unsigned short *
 #if defined(LINUX) || defined(AIX)
   static struct cmsghdr *cmptr = NULL;
 #endif /* LINUX || AIX */
+
   iov[0].iov_base = (char *) &req_id;
   iov[0].iov_len = sizeof (unsigned short);
   msg.msg_iov = iov;
@@ -1106,11 +1107,12 @@ css_open_new_socks_from_master (SOCKET fd, size_t expected_fds, unsigned short *
     }
 
   *rid = ntohs (req_id);
+
   pid = getpid ();
-#if defined(LINUX) || defined(AIX)
   size_t offset = 0;
   for (size_t i = 0; i < expected_fds; ++i, offset += sizeof (SOCKET))
     {
+#if defined(LINUX) || defined(AIX)
       SOCKET sock = *(SOCKET *) (CMSG_DATA (cmptr) + offset);
       new_fds.push_back (sock);
 #ifdef SYSV
@@ -1119,10 +1121,9 @@ css_open_new_socks_from_master (SOCKET fd, size_t expected_fds, unsigned short *
       fcntl (sock, F_SETOWN, pid);
 #endif /* not SYSV */
 
+#endif /* LINUX || AIX */
       css_sockopt (sock);
     }
-#endif /* LINUX || AIX */
-
   return new_fds;
 }
 
@@ -1135,7 +1136,7 @@ css_open_new_socks_from_master (SOCKET fd, size_t expected_fds, unsigned short *
  */
 /* *INDENT-OFF* */
 bool
-css_transfer_fd (SOCKET server_fd,  const std::vector <SOCKET> &client_fds, unsigned short rid,
+css_transfer_fd (SOCKET server_fd,  const std::vector<SOCKET> &client_fds, unsigned short rid,
 		 CSS_SERVER_REQUEST request_for_server)
 /* *INDENT-ON* */
 {

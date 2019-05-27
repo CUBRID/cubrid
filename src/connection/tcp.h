@@ -54,7 +54,7 @@ extern SOCKET css_master_accept (SOCKET sockfd);
 
 /* *INDENT-OFF* */ 
 extern std::vector<SOCKET> css_open_new_socks_from_master (SOCKET fd, size_t expected_fds, unsigned short *rid);
-extern bool css_transfer_fd (SOCKET server_fd, const std::vector <SOCKET> &client_fds, unsigned short rid,
+extern bool css_transfer_fd (SOCKET server_fd, const std::vector<SOCKET> &client_fds, unsigned short rid,
                              CSS_SERVER_REQUEST request);
 /* *INDENT-ON* */
 extern void css_shutdown_socket (SOCKET fd);

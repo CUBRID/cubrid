@@ -88,7 +88,7 @@ static void css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, S
 static void css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid);
 static void css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid);
 // *INDENT-OFF*
-static bool css_send_new_request_to_server (SOCKET server_fd, const std::vector <SOCKET> &client_fds,
+static bool css_send_new_request_to_server (SOCKET server_fd, const std::vector<SOCKET> &client_fds,
 					    unsigned short rid, CSS_SERVER_REQUEST request);
 // *INDENT-ON*
 static void css_send_to_existing_server (CSS_CONN_ENTRY * conn, SOCKET ack_chn, unsigned short rid,
@@ -617,7 +617,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
  */
 // *INDENT-OFF*
 static bool
-css_send_new_request_to_server (SOCKET server_fd, const std::vector <SOCKET> &client_fds,
+css_send_new_request_to_server (SOCKET server_fd, const std::vector<SOCKET> &client_fds,
                                 unsigned short rid, CSS_SERVER_REQUEST request)
 // *INDENT-ON*
 {
@@ -1057,6 +1057,7 @@ css_check_master_socket_exception (fd_set * fd_var)
   int rv;
 #endif
   SOCKET_QUEUE_ENTRY *temp;
+
 again:
 #if !defined(WINDOWS)
   rv = pthread_mutex_lock (&css_Master_socket_anchor_lock);
@@ -1118,6 +1119,7 @@ css_master_loop (void)
   fd_set read_fd, write_fd, exception_fd;
   static struct timeval timeout;
   int rc, run_code;
+
   run_code = 1;
   while (run_code)
     {
@@ -1367,6 +1369,7 @@ css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p, char *name
 				 SOCKET_QUEUE_ENTRY ** anchor_p)
 {
   SOCKET_QUEUE_ENTRY *p;
+
   p = (SOCKET_QUEUE_ENTRY *) malloc (sizeof (SOCKET_QUEUE_ENTRY));
   if (p == NULL)
     {
@@ -1376,6 +1379,7 @@ css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p, char *name
   p->conn_ptr = conn_p;
   p->fd = fd;
   p->ha_mode = FALSE;
+
   if (name_p)
     {
       p->name = (char *) malloc (strlen (name_p) + 1);
@@ -1583,6 +1587,7 @@ out:
    */
 
   fd_max = css_get_max_socket_fds ();
+
   for (fd = 3; fd < fd_max; fd++)
     {
       close (fd);

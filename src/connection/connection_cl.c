@@ -710,8 +710,6 @@ css_make_master_comm_channels (const char *host_name, CSS_CONN_ENTRY * conn, int
 			       int server_name_length, int port, int timeout, unsigned short *rid, bool send_magic,
 			       SOCKET & ack_fd)
 {
-  // duplicated func with the one below, only 2 connections on same port      
-
   SOCKET fd;
 
 #if !defined (WINDOWS)

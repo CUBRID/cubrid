@@ -817,6 +817,7 @@ int
 css_process_master_hostname ()
 {
   int hostname_length, error;
+  cubcomm::server_channel chn (css_Master_server_name);
 
   error = css_receive_heartbeat_data (css_Master_conn, (char *) &hostname_length, sizeof (int));
   if (error != NO_ERRORS)
@@ -2690,7 +2691,7 @@ static void
 css_process_new_slave (SOCKET master_fd)
 {
   // *INDENT-OFF*
-  std::vector <SOCKET> new_fds;
+  std::vector<SOCKET> new_fds;
   // *INDENT-ON*
 
   unsigned short rid;
