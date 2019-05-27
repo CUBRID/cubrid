@@ -49,7 +49,8 @@ namespace cubtx
   void single_node_group_complete_manager::init ()
   {
     gl_single_node_group = get_instance ();
-    LSA_SET_NULL (&gl_single_node_group->m_latest_closed_group_log_lsa);
+    LSA_SET_NULL (&gl_single_node_group->m_latest_closed_group_start_log_lsa);
+    LSA_SET_NULL(&gl_single_node_group->m_latest_closed_group_end_log_lsa);
 
 #if defined(SERVER_MODE)
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
@@ -79,10 +80,10 @@ namespace cubtx
   //
   void single_node_group_complete_manager::notify_log_flush_lsa (const LOG_LSA *lsa)
   {
-    assert (lsa != NULL && LSA_GE (lsa, &m_latest_closed_group_log_lsa));
+    assert (lsa != NULL);
 
     /* TODO - use m_latest_closed_group_stream_start_positon, m_latest_closed_group_stream_end_positon */
-    if (LSA_GT (lsa, &m_latest_closed_group_log_lsa))
+    if (LSA_GE (lsa, &m_latest_closed_group_end_log_lsa))
       {
 	cubthread::entry *thread_p = &cubthread::get_entry();
 	do_complete (thread_p);
@@ -131,7 +132,7 @@ namespace cubtx
   //
   void single_node_group_complete_manager::do_prepare_complete (THREAD_ENTRY *thread_p)
   {
-    LOG_LSA closed_group_commit_lsa;
+    LOG_LSA closed_group_start_commit_lsa, closed_group_end_commit_lsa;
     LOG_TDES *tdes = logtb_get_tdes (&cubthread::get_entry());
     bool has_postpone;
 
@@ -143,13 +144,16 @@ namespace cubtx
 	log_Gl.mvcc_table.complete_group_mvcc (thread_p, closed_group);
 	notify_group_mvcc_complete (closed_group);
 
-	log_append_group_complete (thread_p, tdes, 0, closed_group, &closed_group_commit_lsa, &has_postpone);
-	LSA_COPY (&m_latest_closed_group_log_lsa, &closed_group_commit_lsa);
+	log_append_group_complete (thread_p, tdes, 0, closed_group, &closed_group_start_commit_lsa, &closed_group_end_commit_lsa, &has_postpone);
+	LSA_COPY (&m_latest_closed_group_start_log_lsa, &closed_group_start_commit_lsa);
+        LSA_COPY (&m_latest_closed_group_end_log_lsa, &closed_group_end_commit_lsa);
 	log_wakeup_log_flush_daemon ();
 	if (has_postpone)
 	  {
 	    notify_group_logged ();
 	  }
+
+        /* TODO - er_log_debug (closed_group_start_commit_lsa, closed_group_end_commit_lsa) */
       }
   }
 

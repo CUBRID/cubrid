@@ -245,7 +245,8 @@ static void log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TD
 static void log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * eot_lsa,
 					  LOG_RECTYPE iscommitted, enum LOG_PRIOR_LSA_LOCK with_lock);
 static void log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos,
-						tx_group & group, LOG_LSA * commit_lsa, bool * has_postpone);
+						tx_group & group, LOG_LSA * complete_start_lsa,
+						LOG_LSA * complete_end_lsa, bool * has_postpone);
 static void log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_commit_log_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_lsa);
@@ -4476,16 +4477,13 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
 
 static void
 log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, tx_group & group,
-				    LOG_LSA * complete_lsa, bool * has_postpone)
+				    LOG_LSA * complete_start_lsa, LOG_LSA * complete_end_lsa, bool * has_postpone)
 {
   LOG_PRIOR_NODE *node;
-  LOG_LSA lsa;
-
-  assert (complete_lsa != NULL);
-  complete_lsa->pageid = NULL_LOG_PAGEID;
-  complete_lsa->offset = NULL_LOG_OFFSET;
+  LOG_LSA start_lsa, end_lsa;
 
   /* TODO - add and use group.has_postpone and get rid of has_postpone parameter */
+  /* TODO - complete_start_lsa can be used for debug purpose */
   if (has_postpone)
     {
       *has_postpone = false;
@@ -4540,17 +4538,28 @@ log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, IN
     }
   // *INDENT-ON*
 
-  lsa = prior_lsa_next_record_with_lock (thread_p, node, tdes);
+  start_lsa = prior_lsa_next_record_with_lock (thread_p, node, tdes);
+  LSA_COPY (&end_lsa, &node->log_header.forw_lsa);
+
   log_Gl.prior_info.prior_lsa_mutex.unlock ();
 
-  LSA_COPY (complete_lsa, &lsa);
+  if (complete_start_lsa != NULL)
+    {
+      LSA_COPY (complete_start_lsa, &start_lsa);
+    }
+
+  if (complete_end_lsa != NULL)
+    {
+      LSA_COPY (complete_end_lsa, &end_lsa);
+    }
 }
 
 void
 log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, tx_group & group,
-			   LOG_LSA * complete_lsa, bool * has_postpone)
+			   LOG_LSA * complete_start_lsa, LOG_LSA * complete_end_lsa, bool * has_postpone)
 {
-  log_append_group_complete_internal (thread_p, tdes, stream_pos, group, complete_lsa, has_postpone);
+  log_append_group_complete_internal (thread_p, tdes, stream_pos, group, complete_start_lsa, complete_end_lsa,
+				      has_postpone);
 }
 
 /*
@@ -7871,6 +7880,7 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * sta
 static void
 log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
+  LOG_LSA complete_end_lsa;
   if (LSA_ISNULL (&tdes->posp_nxlsa))
     {
       return;
@@ -7883,9 +7893,9 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tx_group group;
   group.add (tdes->tran_index, 0, TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
 
-  log_append_group_complete (thread_p, tdes, 0, group, &commit_lsa, NULL);
+  log_append_group_complete (thread_p, tdes, 0, group, NULL, &complete_end_lsa, NULL);
 
-  logpb_flush_pages (thread_p, &commit_lsa);
+  logpb_flush_pages (thread_p, &complete_end_lsa);
 
   log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
 }
