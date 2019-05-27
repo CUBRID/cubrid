@@ -4502,11 +4502,11 @@ log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, IN
       if (ti.m_tran_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
       {
 	v.append (tdes->posp_nxlsa);
-          if (has_postpone)
-            {
-              *has_postpone = true;
-            }
-    }
+        if (has_postpone)
+        {
+          *has_postpone = true;
+        }
+      }
     }
   // *INDENT-ON*
 
@@ -10097,7 +10097,7 @@ class log_flush_daemon_task : public cubthread::entry_task
     }
 
   private:
-    log_flush_lsa * m_p_log_flush_lsa;
+    log_flush_lsa *m_p_log_flush_lsa;
 };
 #endif /* SERVER_MODE */
 

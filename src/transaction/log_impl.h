@@ -670,7 +670,7 @@ struct log_global
   /* group commit information */
   LOG_GROUP_COMMIT_INFO group_commit_info;
   // *INDENT-OFF*
-  cubtx::complete_manager * m_tran_complete_mgr;
+  cubtx::complete_manager *m_tran_complete_mgr;
   // *INDENT-ON*
 
   /* remote log writer information */
