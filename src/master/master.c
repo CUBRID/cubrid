@@ -93,7 +93,7 @@ static bool css_send_new_request_to_server (SOCKET server_fd, const std::vector<
 // *INDENT-ON*
 static void css_send_to_existing_server (CSS_CONN_ENTRY * conn, SOCKET ctrl_fd, unsigned short rid,
 					 CSS_SERVER_REQUEST request);
-static CSS_CONN_ENTRY *css_create_new_connection (SOCKET fd, SOCKET ack_fd);
+static CSS_CONN_ENTRY *css_create_new_connection (SOCKET fd);
 static void css_process_new_connection (CSS_CONN_ENTRY * conn, SOCKET orig_fd);
 
 static int css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var);
@@ -741,13 +741,20 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, SOCKET ctrl_chn, unsigned sh
 }
 
 CSS_CONN_ENTRY *
-css_create_new_connection (SOCKET fd, SOCKET ack)
+css_create_new_connection (SOCKET fd)
 {
-  CSS_CONN_ENTRY *conn;
-  int buffer_size = sizeof (NET_HEADER);
   css_Total_request_count++;
-  conn = css_make_conn (fd);
-  return conn;
+  CSS_CONN_ENTRY *conn = css_make_conn (fd);
+  if (conn == NULL)
+    {
+      return conn;
+    }
+
+  if (css_check_magic (conn) != NO_ERRORS)
+    {
+      css_free_conn (conn);
+      return NULL;
+    }
 }
 
 /*
@@ -768,11 +775,6 @@ css_process_new_connection (CSS_CONN_ENTRY * conn, SOCKET orig_fd)
   int function_code;
   int buffer_size;
   assert (conn != NULL);
-  if (css_check_magic (conn) != NO_ERRORS)
-    {
-      css_free_conn (conn);
-      return;
-    }
 
   if (css_receive_request (conn, &rid, &function_code, &buffer_size) == NO_ERRORS)
     {
@@ -993,10 +995,13 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 	      new_fd = css_master_accept (temp->fd);
 	      if (!IS_INVALID_SOCKET (new_fd))
 		{
-		  CSS_CONN_ENTRY *conn = css_create_new_connection (new_fd, -1);
+		  CSS_CONN_ENTRY *conn = css_create_new_connection (new_fd);
 		  // keep original fd to use it in case a new slave connection is handled
 		  // and open the ctrl_channel
-		  css_process_new_connection (conn, temp->fd);
+		  if (conn != NULL)
+		    {
+		      css_process_new_connection (conn, temp->fd);
+		    }
 		}
 	    }
 	  else if (!IS_INVALID_SOCKET (temp->fd))
