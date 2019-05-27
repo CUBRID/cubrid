@@ -18,42 +18,36 @@
  */
 
 /*
- * replication_master_node.hpp
+ * replication_control_channel_receiver.hpp - manages master replication channel entries; it is a singleton
+ *                                          - it maintains the minimum successful sent position
  */
 
-#ident "$Id$"
+#ifndef _REPLICATION_CONTROL_CHANNEL_RECEIVER_HPP_
+#define _REPLICATION_CONTROL_CHANNEL_RECEIVER_HPP_
 
-#ifndef _REPLICATION_MASTER_NODE_HPP_
-#define _REPLICATION_MASTER_NODE_HPP_
+#include <list>
+#include "communication_channel.hpp"
 
-#include "replication_node.hpp"
+namespace cubthread
+{
+  class daemon;
+  class looper;
+};
+
+namespace cubstream
+{
+  class stream_ack;
+};
 
 namespace cubreplication
 {
-
-  class master_node : public replication_node
+  namespace control_channel
   {
-    private:
-      static master_node *g_instance;
-
-      master_node (const char *name)
-	: replication_node (name)
-      {
-      }
-
-    public:
-      static master_node *get_instance (const char *name);
-
-      static void init (const char *name);
-      static void new_slave (int fd);
-      static void add_ctrl_chn (int fd);
-      static void final (void);
-
-      static void enable_active (void);
-
-      static void update_senders_min_position (const cubstream::stream_position &pos);
+    void init (cubstream::stream_ack *stream_ack);
+    void add (cubcomm::channel &&chn);
   };
+
 
 } /* namespace cubreplication */
 
-#endif /* _REPLICATION_MASTER_NODE_HPP_ */
+#endif /* _REPLICATION_CONTROL_CHANNEL_RECEIVER_HPP_ */

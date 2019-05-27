@@ -67,6 +67,7 @@ enum css_command_type
   UNUSED_REQUEST = 4,		/* unused request - leave it for compatibility */
   SERVER_REQUEST_NEW = 5,	/* new-style server request */
   SERVER_REQUEST_CONNECT_NEW_SLAVE = 6,	/* slave server wants to connect to master server */
+  SERVER_REQUEST_CONNECT_NEW_SLAVE_CC = 7,	/* slave connects to a control channel */
   MAX_REQUEST
 };
 typedef enum css_command_type CSS_COMMAND_TYPE;
@@ -151,7 +152,8 @@ enum css_server_request
   SERVER_DEREGISTER_HA_PROCESS = 12,
   SERVER_GET_EOF = 13,
   SERVER_RECEIVE_MASTER_HOSTNAME = 14,
-  SERVER_CONNECT_NEW_SLAVE = 15
+  SERVER_CONNECT_NEW_SLAVE = 15,
+  SERVER_CONNECT_NEW_SLAVE_CC = 16
 };
 typedef enum css_server_request CSS_SERVER_REQUEST;
 

@@ -235,6 +235,7 @@ static int css_process_new_connection_request (void);
 static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
 static void css_process_new_slave (SOCKET master_fd);
+static void css_process_add_ctrl_chn (SOCKET master_fd);
 
 static void css_push_server_task (CSS_CONN_ENTRY & conn_ref);
 static void css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool &, THREAD_ENTRY & stopper_thread_ref);
@@ -575,6 +576,9 @@ css_process_master_request (SOCKET master_fd)
       break;
     case SERVER_CONNECT_NEW_SLAVE:
       css_process_new_slave (master_fd);
+      break;
+    case SERVER_CONNECT_NEW_SLAVE_CC:
+      css_process_add_ctrl_chn (master_fd);
       break;
 #endif
     default:
@@ -2706,6 +2710,29 @@ css_process_new_slave (SOCKET master_fd)
   assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
 
   cubreplication::master_node::new_slave (new_fd);
+}
+
+static void
+css_process_add_ctrl_chn (SOCKET master_fd)
+{
+  SOCKET new_fd;
+  unsigned short rid;
+
+  assert (ha_Server_state == HA_SERVER_STATE_ACTIVE);
+
+  /* receive new socket descriptor from the master */
+  new_fd = css_open_new_socket_from_master (master_fd, &rid);
+  if (IS_INVALID_SOCKET (new_fd))
+    {
+      assert (false);
+      return;
+    }
+
+  er_log_debug_replication (ARG_FILE_LINE, "css_process_add_ctrl_chn:"
+			    "add new control channel fd from master fd=%d, current_state=%d\n", new_fd,
+			    ha_Server_state);
+
+  cubreplication::master_node::add_ctrl_chn (new_fd);
 }
 
 const char *

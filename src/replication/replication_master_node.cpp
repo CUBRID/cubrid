@@ -109,6 +109,25 @@ namespace cubreplication
 #endif
   }
 
+  void master_node::add_ctrl_chn (int fd)
+  {
+#if defined (SERVER_MODE)
+    if (css_ha_server_state () != HA_SERVER_STATE_ACTIVE)
+      {
+	er_log_debug_replication (ARG_FILE_LINE, "add_ctrl_chn invalid server state :%s",
+				  css_ha_server_state_string (css_ha_server_state ()));
+	return;
+      }
+
+    cubcomm::channel chn;
+
+    css_error_code rc = chn.accept (fd);
+    assert (rc == NO_ERRORS);
+
+    er_log_debug_replication (ARG_FILE_LINE, "control channel added");
+#endif
+  }
+
   void master_node::final (void)
   {
 #if defined (SERVER_MODE)

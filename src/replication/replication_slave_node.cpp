@@ -95,7 +95,14 @@ namespace cubreplication
 
     g_instance->m_master_identity.set_hostname (master_node_hostname);
     g_instance->m_master_identity.set_port (master_node_port_id);
-    error = srv_chn.connect (master_node_hostname, master_node_port_id);
+    error = srv_chn.connect (master_node_hostname, master_node_port_id, SERVER_REQUEST_CONNECT_NEW_SLAVE);
+    if (error != css_error_code::NO_ERRORS)
+      {
+	return error;
+      }
+
+    cubcomm::server_channel control_chn (g_instance->m_identity.get_hostname ().c_str ());
+    error = control_chn.connect (master_node_hostname, master_node_port_id, SERVER_REQUEST_CONNECT_NEW_SLAVE_CC);
     if (error != css_error_code::NO_ERRORS)
       {
 	return error;
@@ -106,6 +113,8 @@ namespace cubreplication
     cubstream::stream_position start_position = 0;
     g_instance->m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *g_instance->m_stream,
 	start_position);
+
+    // todo: add the slave-end ack handling
 #endif
 
     return error;
