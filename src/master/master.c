@@ -675,13 +675,16 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, SOCKET ack_chn, unsigned sho
 		      return;
 		    }
 #endif
-		  std::vector < SOCKET > client_fds;
-		  if (ack_chn != -1)
-		    {
+		  // *INDENT-OFF*
+                  std::vector<SOCKET> client_fds;
+                  // *INDENT-ON*
+					    /*                  if (ack_chn != -1)
+					       {
+					       // *INDENT-OFF*
                       // *INDENT-OFF*
 		      client_fds = {conn->fd, ack_chn};
                       // *INDENT-ON*
-					    /*                    }
+					       }
 					       else
 					       {
 					       // *INDENT-OFF*
@@ -722,6 +725,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, SOCKET ack_chn, unsigned sho
 					    buffer = htonl (temp->port_id);
 					    css_send_data (conn, rid, (char *) &buffer, sizeof (int));}
 					    }
+
 					    css_reject_client_request (conn, rid, SERVER_NOT_FOUND);}
 
 					    css_free_conn (conn); if (server_name != NULL)
