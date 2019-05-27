@@ -43,8 +43,8 @@ namespace cubreplication
   void copy_context::set_credentials (const char *user, const char *password)
   {
     m_class_schema.set_params ("", user, password, "");
-    m_triggers.set_params ("", user, password, "");;
-    m_indexes.set_params ("", user, password, "");;
+    m_triggers.set_params ("", user, password, "");
+    m_indexes.set_params ("", user, password, "");
   }
 
   void copy_context::pack_and_add_object (row_object &obj)
@@ -61,7 +61,6 @@ namespace cubreplication
     stream_entry.pack ();
   }
 
-
   void copy_context::pack_and_add_sbr (sbr_repl_entry &sbr)
   {
     stream_entry stream_entry (m_stream);
@@ -70,7 +69,6 @@ namespace cubreplication
 
     stream_entry.pack ();
   }
-
 
   int copy_context::transit_state (copy_stage new_state)
   {
@@ -103,12 +101,10 @@ namespace cubreplication
     m_triggers.append_statement (buffer, buf_size);
   }
 
-
   void copy_context::append_indexes_schema (const char *buffer, const size_t buf_size)
   {
     m_indexes.append_statement (buffer, buf_size);
   }
-
 
   /*
    * create_scan_for_replication_copy - creates a HEAP SCAN to be used by replication copy (no regu variables)

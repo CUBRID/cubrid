@@ -9998,7 +9998,7 @@ locator_get_proxy_command (const char **proxy_command)
 }
 
 /*
- * locator_send_buffer - Sends a buffer to server
+ * locator_send_proxy_buffer - Sends a buffer to server
  *
  * return : error code
  * buffer (in): buffer
@@ -10040,7 +10040,6 @@ locator_send_proxy_buffer (const int type, const size_t buf_size, const char *bu
   free_and_init (request);
 
   return req_error ? req_error : server_error;
-
 #else /* CS_MODE */
   assert (false);
   return ER_FAILED;

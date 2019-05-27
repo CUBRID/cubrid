@@ -64,11 +64,9 @@ namespace cubreplication
 
       int transit_state (copy_stage new_state);
 
-
       void append_class_schema (const char *buffer, const size_t buf_size);
       void append_triggers_schema (const char *buffer, const size_t buf_size);
       void append_indexes_schema (const char *buffer, const size_t buf_size);
-
 
     private:
       cubstream::multi_thread_stream *m_stream;
