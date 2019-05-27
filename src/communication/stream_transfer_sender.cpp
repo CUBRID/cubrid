@@ -77,6 +77,7 @@ namespace cubstream
 	    if (rc != NO_ERRORS)
 	      {
 		this_producer_channel.m_repl_channel.close_connection ();
+                this_producer_channel.m_ctrl_channel.close_connection ();
 		return;
 	      }
 
@@ -93,16 +94,23 @@ namespace cubstream
 			  this_producer_channel.m_last_sent_position, byte_count);
 
 	    error_code = this_producer_channel.m_stream.read (this_producer_channel.m_last_sent_position, byte_count,
-			 this_producer_channel.m_read_action_function);
-
-            // todo: for now read ack from slave here. Will be moved to a separate thread that notifies gcm on reads.
-            char buf[64];
-            size_t len_recv;
-            this_producer_channel.m_ctrl_channel.recv (buf, len_recv);
+			 this_producer_channel.m_read_action_function);            
 
 	    if (error_code != NO_ERROR)
 	      {
 		this_producer_channel.m_repl_channel.close_connection ();
+                this_producer_channel.m_ctrl_channel.close_connection ();
+		break;
+	      }
+
+            // todo: for now read ack from slave here. Will be moved to a separate thread that notifies gcm on reads.
+            stream_position pos;
+            size_t stream_position_len = sizeof (stream_position);
+            error_code = this_producer_channel.m_ctrl_channel.recv ((char *) &pos, stream_position_len);
+            if (error_code != NO_ERROR)
+	      {
+                this_producer_channel.m_repl_channel.close_connection ();
+		this_producer_channel.m_ctrl_channel.close_connection ();
 		break;
 	      }
 	  }

@@ -68,6 +68,7 @@ namespace cubstream
 	      {
 		assert (false);
 		this_consumer_channel.m_repl_channel.close_connection ();
+                this_consumer_channel.m_ctrl_channel.close_connection ();
 		return;
 	      }
 
@@ -78,6 +79,7 @@ namespace cubstream
 	if (rc != NO_ERRORS)
 	  {
 	    this_consumer_channel.m_repl_channel.close_connection ();
+            this_consumer_channel.m_ctrl_channel.close_connection ();
 	    return;
 	  }
 
@@ -86,11 +88,17 @@ namespace cubstream
 	if (this_consumer_channel.m_stream.write (max_len, this_consumer_channel.m_write_action_function))
 	  {
 	    this_consumer_channel.m_repl_channel.close_connection ();
+            this_consumer_channel.m_ctrl_channel.close_connection ();
 	    return;
 	  }        
 
         stream_position sp = this_consumer_channel.get_last_received_position ();
-        this_consumer_channel.m_ctrl_channel.send ((const char *) &sp, sizeof (sp));
+        if (this_consumer_channel.m_ctrl_channel.send ((const char *) &sp, sizeof (sp)))
+        {
+            this_consumer_channel.m_repl_channel.close_connection ();
+            this_consumer_channel.m_ctrl_channel.close_connection ();
+	    return;
+        }
       }
 
     private:
