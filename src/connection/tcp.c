@@ -1091,7 +1091,7 @@ css_open_new_socks_from_master (SOCKET fd, size_t expected_fds, unsigned short *
       /* *INDENT-ON* */
     }
   msg.msg_control = (void *) cmptr;
-  msg.msg_controllen = CMSG_LEN (sizeof (SOCEKT) * 2);
+  msg.msg_controllen = CMSG_LEN (sizeof (SOCKET) * 2);
 #endif /* not LINUX */
 
   rc = recvmsg (fd, &msg, 0);
@@ -1111,7 +1111,8 @@ css_open_new_socks_from_master (SOCKET fd, size_t expected_fds, unsigned short *
   size_t offset = 0;
   for (size_t i = 0; i < expected_fds; ++i, offset += sizeof (SOCKET))
     {
-      new_fds.push_back (*(SOCKET *) (CMSG_DATA (cmptr) + offset));
+      SOCKET sock = *(SOCKET *) (CMSG_DATA (cmptr) + offset);
+      new_fds.push_back (sock);
 #ifdef SYSV
       ioctl (sock, SIOCSPGRP, (caddr_t) & pid);
 #else /* not SYSV */

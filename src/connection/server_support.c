@@ -2697,10 +2697,11 @@ css_process_new_slave (SOCKET master_fd)
 
   /* receive new socket descriptors from the master */
   new_fds = css_open_new_socks_from_master (master_fd, 2, &rid);
-  if (new_fds.size () != 2 || IS_INVALID_SOCKET (new_fd[0]) || IS_INVALID_SOCKET (new_fd[1]))
+  if (new_fds.size () != 2 || IS_INVALID_SOCKET (new_fds[0]) || IS_INVALID_SOCKET (new_fds[1]))
     {
       assert (false);
-    return}
+      return;
+    }
 
   er_log_debug_replication (ARG_FILE_LINE, "css_process_new_slave:"
 			    "received new slave fds from master fd1=%d, fd2=%d, current_state=%d\n", new_fds[0],
