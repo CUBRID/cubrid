@@ -490,12 +490,15 @@ css_tcp_master_datagram (char *pathname, SOCKET * sockfd)
  * Note: The Windows platforms do not support this and will instead use the
  *       "new-style" multiple port-id connection interface
  */
+/* *INDENT-OFF* */
 bool
-css_transfer_fd (SOCKET server_fd, const std::vector < SOCKET > &client_fds, unsigned short rid,
+css_transfer_fd (SOCKET server_fd, const std::vector<SOCKET> &client_fds, unsigned short rid,
 		 CSS_SERVER_REQUEST request)
+/* *INDENT-ON* */
 {
   return false;
 }
+
 
 /* These functions support the new-style connection protocol used by Windows. */
 

@@ -98,23 +98,17 @@ namespace cubreplication
     g_instance->m_master_identity.set_hostname (master_node_hostname);
     g_instance->m_master_identity.set_port (master_node_port_id);
 
-    // todo [communication channel] here is the point that does not connect
-    // fix protocol
-    // protocol was changed and 
     error = srv_chn.connect (master_node_hostname, master_node_port_id);
     if (error != css_error_code::NO_ERRORS)
       {
-        // this breaks
-        assert (false);
-	return error;
+        return error;
       }
 
     error = ack_chn.connect (master_node_hostname, master_node_port_id);
     if (error != css_error_code::NO_ERRORS)
-    {
-            assert (false);
-            return error;
-    }
+      {
+        return error;
+      }
 
     /* start transfer receiver */
     assert (g_instance->m_transfer_receiver == NULL);

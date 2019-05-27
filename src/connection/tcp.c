@@ -1046,7 +1046,16 @@ css_tcp_master_datagram (char *path_name, SOCKET * sockfd)
   return true;
 }
 
-// *INDENT-OFF*
+/*
+ * css_open_new_socks_from_master() - the message interface to the master
+ *                                    server
+ *   return:
+ *   fd(in):
+ *   expected_fds(in):
+ *   rid(in):
+ */
+
+// *INDENT-OFF**/
 std::vector<SOCKET>
 // *INDENT-ON*
 
@@ -1075,37 +1084,34 @@ css_open_new_socks_from_master (SOCKET fd, size_t expected_fds, unsigned short *
   msg.msg_accrightslen = sizeof (SOCKET) * expected_fds;	/* receive expected_fds descriptor */
 #else /* not LINUX and not AIX */
   // for now we know we get 2 fds
-  if (cmptr == NULL && (cmptr = (struct cmsghdr *) malloc (CMSG_LEN (sizeof (int) * 2))) == NULL)
+  if (cmptr == NULL && (cmptr = (struct cmsghdr *) malloc (CMSG_LEN (sizeof (SOCKET) * 2))) == NULL)
     {
-      return			/* *INDENT-OFF* */
-      {
-      INVALID_SOCKET};		/* *INDENT-ON* */
+      /* *INDENT-OFF* */    
+      return {INVALID_SOCKET};
+      /* *INDENT-ON* */
     }
   msg.msg_control = (void *) cmptr;
-  msg.msg_controllen = CMSG_LEN (sizeof (int) * 2);
+  msg.msg_controllen = CMSG_LEN (sizeof (SOCEKT) * 2);
 #endif /* not LINUX */
 
   rc = recvmsg (fd, &msg, 0);
-  if (rc <= 0)
+  if (rc < 0)
     {
       assert (false);
       TPRINTF ("recvmsg failed for fd = %d\n", fd);
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_RECVMSG, 0);
-      return			/* *INDENT-OFF* */
-      {
-      INVALID_SOCKET};		/* *INDENT-ON* */
+      /* *INDENT-OFF* */
+      return {INVALID_SOCKET};
+      /* *INDENT-ON* */
     }
 
   *rid = ntohs (req_id);
   pid = getpid ();
 #if defined(LINUX) || defined(AIX)
-  // todo : client connections & slave connections fd transfer race
-  // for now we know we get 2 fds
   size_t offset = 0;
   for (size_t i = 0; i < expected_fds; ++i, offset += sizeof (SOCKET))
     {
-      SOCKET sock = *(SOCKET *) (CMSG_DATA (cmptr) + offset);
-      new_fds.push_back (sock);
+      new_fds.push_back (*(SOCKET *) (CMSG_DATA (cmptr) + offset));
 #ifdef SYSV
       ioctl (sock, SIOCSPGRP, (caddr_t) & pid);
 #else /* not SYSV */

@@ -61,9 +61,10 @@ extern unsigned int css_gethostid (void);
 extern bool css_tcp_setup_server_datagram (char *pathname, SOCKET * sockfd);
 extern bool css_tcp_listen_server_datagram (SOCKET sockfd, SOCKET * newfd);
 extern bool css_tcp_master_datagram (char *pathname, SOCKET * sockfd);
-extern bool css_transfer_fd (SOCKET server_fd, /* *INDENT-OFF* */
-			     const std::vector < SOCKET > &client_fds /* *INDENT-OFF* */ , unsigned short rid,
+/* *INDENT-OFF* */
+extern bool css_transfer_fd (SOCKET server_fd, const std::vector < SOCKET > &client_fds, unsigned short rid,
 			     CSS_SERVER_REQUEST request);
+/* *INDENT-ON* */
 extern int css_tcp_master_open (int port, SOCKET * sockfd);
 extern SOCKET css_master_accept (SOCKET sockfd);
 extern int css_open_server_connection_socket (void);

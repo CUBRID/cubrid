@@ -615,12 +615,12 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
  *   client_fd(in)
  *   rid(in)
  */
-static bool
 // *INDENT-OFF*
+static bool
 css_send_new_request_to_server (SOCKET server_fd, const std::vector <SOCKET> &client_fds,
                                 unsigned short rid, CSS_SERVER_REQUEST request)
 // *INDENT-ON*
-//{
+{
   return (css_transfer_fd (server_fd, client_fds, rid, request));
 }
 
