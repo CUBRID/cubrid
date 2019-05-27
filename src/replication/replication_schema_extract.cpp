@@ -31,7 +31,8 @@ namespace cubreplication
 {
 
   net_print_output::net_print_output (const int buffer_type, const size_t flush_size)
-    : m_buffer_type (buffer_type),
+    : m_buffer_type (buffer_type)
+    , m_flush_size (flush_size)
       m_flush_size (flush_size)
   {
     m_send_error_cnt = 0;
