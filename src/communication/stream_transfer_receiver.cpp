@@ -68,7 +68,7 @@ namespace cubstream
 	      {
 		assert (false);
 		this_consumer_channel.m_repl_channel.close_connection ();
-                this_consumer_channel.m_ctrl_channel.close_connection ();
+		this_consumer_channel.m_ctrl_channel.close_connection ();
 		return;
 	      }
 
@@ -79,7 +79,7 @@ namespace cubstream
 	if (rc != NO_ERRORS)
 	  {
 	    this_consumer_channel.m_repl_channel.close_connection ();
-            this_consumer_channel.m_ctrl_channel.close_connection ();
+	    this_consumer_channel.m_ctrl_channel.close_connection ();
 	    return;
 	  }
 
@@ -88,17 +88,17 @@ namespace cubstream
 	if (this_consumer_channel.m_stream.write (max_len, this_consumer_channel.m_write_action_function))
 	  {
 	    this_consumer_channel.m_repl_channel.close_connection ();
-            this_consumer_channel.m_ctrl_channel.close_connection ();
+	    this_consumer_channel.m_ctrl_channel.close_connection ();
 	    return;
-	  }        
+	  }
 
-        stream_position sp = this_consumer_channel.get_last_received_position ();
-        if (this_consumer_channel.m_ctrl_channel.send ((const char *) &sp, sizeof (sp)))
-        {
-            this_consumer_channel.m_repl_channel.close_connection ();
-            this_consumer_channel.m_ctrl_channel.close_connection ();
+	stream_position sp = this_consumer_channel.get_last_received_position ();
+	if (this_consumer_channel.m_ctrl_channel.send ((const char *) &sp, sizeof (sp)))
+	  {
+	    this_consumer_channel.m_repl_channel.close_connection ();
+	    this_consumer_channel.m_ctrl_channel.close_connection ();
 	    return;
-        }
+	  }
       }
 
     private:
@@ -107,7 +107,7 @@ namespace cubstream
   };
 
   transfer_receiver::transfer_receiver (cubcomm::channel &&repl_chn,
-                                        cubcomm::channel &&ctrl_chn,
+					cubcomm::channel &&ctrl_chn,
 					stream &stream,
 					stream_position received_from_position)
     : m_repl_channel (std::move (repl_chn)),

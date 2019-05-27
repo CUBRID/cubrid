@@ -755,6 +755,8 @@ css_create_new_connection (SOCKET fd)
       css_free_conn (conn);
       return NULL;
     }
+
+  return conn;
 }
 
 /*
