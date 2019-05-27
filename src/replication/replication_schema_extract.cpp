@@ -33,7 +33,6 @@ namespace cubreplication
   net_print_output::net_print_output (const int buffer_type, const size_t flush_size)
     : m_buffer_type (buffer_type)
     , m_flush_size (flush_size)
-      m_flush_size (flush_size)
   {
     m_send_error_cnt = 0;
   }
@@ -87,15 +86,16 @@ int replication_schema_extract (const char *program_name)
   output_net_schema.set_buffer_type (NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END);
   output_net_schema.send_to_network ();
 
-  if (error != NO_ERROR && extract_triggers (copy_schema_context, output_net_trigger) != 0)
+  if (error == NO_ERROR && extract_triggers (copy_schema_context, output_net_trigger) != 0)
     {
       error = er_errid ();
     }
   output_net_trigger.set_buffer_type (NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS_END);
   output_net_trigger.send_to_network ();
 
-  if (error != NO_ERROR && emit_indexes (output_net_index, copy_schema_context.classes,
-					 copy_schema_context.has_indexes, copy_schema_context.vclass_list_has_using_index) != 0)
+  if (error == NO_ERROR && emit_indexes (output_net_index, copy_schema_context.classes,
+					 copy_schema_context.has_indexes,
+					 copy_schema_context.vclass_list_has_using_index) != 0)
     {
       error = er_errid ();
     }
