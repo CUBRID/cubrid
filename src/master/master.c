@@ -93,8 +93,9 @@ static bool css_send_new_request_to_server (SOCKET server_fd, const std::vector 
 // *INDENT-ON*
 static void css_send_to_existing_server (CSS_CONN_ENTRY * conn, SOCKET ack_chn, unsigned short rid,
 					 CSS_SERVER_REQUEST request);
-static void css_process_new_connection (CSS_CONN_ENTRY * conn, SOCKET ack_chn);
 static CSS_CONN_ENTRY *css_create_new_connection (SOCKET fd, SOCKET ack_fd);
+static void css_process_new_connection (CSS_CONN_ENTRY * conn, SOCKET ack_chn);
+
 static int css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var);
 static int css_enroll_write_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var);
 static int css_enroll_exception_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var);
@@ -701,7 +702,6 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, SOCKET ack_chn, unsigned sho
 		      css_free_conn (conn);
 		      return;
 		    }
-
 		  else if (!temp->ha_mode)
 		    {
 		      temp = css_return_entry_of_server (server_name, name_length, css_Master_socket_anchor);
@@ -731,10 +731,8 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, SOCKET ack_chn, unsigned sho
 	      css_send_data (conn, rid, (char *) &buffer, sizeof (int));
 	    }
 	}
-
       css_reject_client_request (conn, rid, SERVER_NOT_FOUND);
     }
-
   css_free_conn (conn);
   if (server_name != NULL)
     {
@@ -826,6 +824,7 @@ css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var)
 {
   SOCKET_QUEUE_ENTRY *temp;
   SOCKET max_fd = 0;
+
   FD_ZERO (fd_var);
   for (temp = anchor_p; temp; temp = temp->next)
     {
@@ -894,6 +893,7 @@ css_enroll_exception_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var)
 {
   SOCKET_QUEUE_ENTRY *temp;
   SOCKET max_fd = 0;
+
   FD_ZERO (fd_var);
   for (temp = anchor_p; temp; temp = temp->next)
     {
@@ -932,6 +932,7 @@ css_master_select_error (void)
 #if !defined(WINDOWS)
   int rv;
   SOCKET_QUEUE_ENTRY *temp;
+
 again:
   rv = pthread_mutex_lock (&css_Master_socket_anchor_lock);
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
@@ -978,6 +979,7 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 #endif
   SOCKET_QUEUE_ENTRY *temp, *next;
   SOCKET new_fd;
+
 #if !defined(WINDOWS)
   rv = pthread_mutex_lock (&css_Master_socket_anchor_lock);
 #endif
@@ -1065,8 +1067,8 @@ again:
 #if !defined(WINDOWS)
 					     (fcntl (temp->fd, F_GETFL, 0) < 0) ||
 #endif /* !WINDOWS */
-					     (temp->error_p != 0)
-					     || (temp->conn_ptr == NULL) || (temp->conn_ptr->status == CONN_CLOSED))))
+					     (temp->error_p != 0) || (temp->conn_ptr == NULL)
+					     || (temp->conn_ptr->status == CONN_CLOSED))))
 	{
 #if defined(DEBUG)
 	  if (css_Active_server_count > 0)
@@ -1120,12 +1122,16 @@ css_master_loop (void)
   while (run_code)
     {
       int max_fd, max_fd1, max_fd2, max_fd3;
+
       max_fd1 = css_enroll_master_read_sockets (&read_fd);
       max_fd2 = css_enroll_master_write_sockets (&write_fd);
       max_fd3 = css_enroll_master_exception_sockets (&exception_fd);
+
       max_fd = MAX (MAX (max_fd1, max_fd2), max_fd3);
+
       timeout.tv_sec = css_Master_timeout_value_in_seconds;
       timeout.tv_usec = css_Master_timeout_value_in_microseconds;
+
       rc = select (max_fd + 1, &read_fd, &write_fd, &exception_fd, &timeout);
       switch (rc)
 	{
@@ -1159,6 +1165,7 @@ main (int argc, char **argv)
   char *errlog = NULL;
   int status = EXIT_SUCCESS;
   const char *msg_format;
+
   if (utility_initialize () != NO_ERROR)
     {
       return EXIT_FAILURE;
@@ -1166,6 +1173,7 @@ main (int argc, char **argv)
 
 #if defined(WINDOWS)
   FreeConsole ();
+
   if (css_windows_startup () < 0)
     {
       printf ("Unable to initialize Winsock.\n");
@@ -1208,9 +1216,11 @@ main (int argc, char **argv)
     }
 
   TPRINTF (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_STARTING), 0);
+
   /* close the message catalog and let the master daemon reopen. */
   (void) msgcat_final ();
   er_final (ER_ALL_FINAL);
+
 #if !defined(WINDOWS)
   if (envvar_get ("NO_DAEMON") == NULL)
     {
@@ -1220,7 +1230,9 @@ main (int argc, char **argv)
 
   (void) utility_initialize ();
   (void) er_init (errlog, ER_NEVER_EXIT);
+
   time (&css_Start_time);
+
   if (css_master_init (port_id, css_Master_socket_fd) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s: %s\n", argv[0], db_error_string (1));
@@ -1254,13 +1266,16 @@ main (int argc, char **argv)
   css_master_loop ();
   css_master_cleanup (SIGINT);
   css_master_error (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_EXITING));
+
 cleanup:
 #if defined(WINDOWS)
   /* make sure Winsock is properly closed */
   css_windows_shutdown ();
 #endif /* WINDOWS */
   msgcat_final ();
+
   er_final (ER_ALL_FINAL);
+
   return status;
 }
 
@@ -1309,6 +1324,7 @@ void
 css_remove_entry_by_conn (CSS_CONN_ENTRY * conn_p, SOCKET_QUEUE_ENTRY ** anchor_p)
 {
   SOCKET_QUEUE_ENTRY *p, *q;
+
   if (conn_p == NULL)
     {
       return;
@@ -1347,8 +1363,8 @@ css_remove_entry_by_conn (CSS_CONN_ENTRY * conn_p, SOCKET_QUEUE_ENTRY ** anchor_
  *   anchor_p(out):
  */
 SOCKET_QUEUE_ENTRY *
-css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p,
-				 char *name_p, SOCKET fd, int fd_type, int pid, SOCKET_QUEUE_ENTRY ** anchor_p)
+css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p, char *name_p, SOCKET fd, int fd_type, int pid,
+				 SOCKET_QUEUE_ENTRY ** anchor_p)
 {
   SOCKET_QUEUE_ENTRY *p;
   p = (SOCKET_QUEUE_ENTRY *) malloc (sizeof (SOCKET_QUEUE_ENTRY));
@@ -1367,8 +1383,8 @@ css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p,
 	{
 	  strcpy (p->name, name_p);
 #if !defined(WINDOWS)
-	  if (IS_MASTER_CONN_NAME_HA_SERVER (p->name)
-	      || IS_MASTER_CONN_NAME_HA_COPYLOG (p->name) || IS_MASTER_CONN_NAME_HA_APPLYLOG (p->name))
+	  if (IS_MASTER_CONN_NAME_HA_SERVER (p->name) || IS_MASTER_CONN_NAME_HA_COPYLOG (p->name)
+	      || IS_MASTER_CONN_NAME_HA_APPLYLOG (p->name))
 	    {
 	      p->ha_mode = TRUE;
 	    }
@@ -1391,6 +1407,7 @@ css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p,
   p->next = *anchor_p;
   p->port_id = -1;
   *anchor_p = p;
+
   return p;
 }
 
@@ -1404,7 +1421,9 @@ SOCKET_QUEUE_ENTRY *
 css_return_entry_of_server (char *name_p, const size_t name_len, SOCKET_QUEUE_ENTRY * anchor_p)
 {
   SOCKET_QUEUE_ENTRY *p;
+
   assert (name_len >= 0);
+
   if (name_p == NULL)
     {
       return NULL;
@@ -1442,6 +1461,7 @@ SOCKET_QUEUE_ENTRY *
 css_return_entry_by_conn (CSS_CONN_ENTRY * conn_p, SOCKET_QUEUE_ENTRY ** anchor_p)
 {
   SOCKET_QUEUE_ENTRY *p;
+
   if (conn_p == NULL)
     {
       return NULL;
@@ -1475,9 +1495,12 @@ css_daemon_start (void)
 #endif /* sun */
   int fd_max;
   int ppid = getpid ();
+
+
   /* If we were started by init (process 1) from the /etc/inittab file there's no need to detatch. This test is
    * unreliable due to an unavoidable ambiguity if the process is started by some other process and orphaned (i.e., if
    * the parent process terminates before we get here). */
+
   if (getppid () == 1)
     {
       goto out;
@@ -1550,6 +1573,7 @@ css_daemon_start (void)
     }
 
   setsid ();
+
 out:
 
   /*
@@ -1565,10 +1589,12 @@ out:
     }
 
   errno = 0;			/* Reset errno from last close */
+
   /*
    * The file mode creation mask that is inherited could be set to deny
    * certain permissions. Therefore, clear the file mode creation mask.
    */
+
   umask (0);
 }
 #endif
