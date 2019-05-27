@@ -10067,6 +10067,7 @@ class log_flush_daemon_task : public cubthread::entry_task
   public:
     log_flush_daemon_task ()
     {
+      /* TODO - consider master/slave case */
       m_p_log_flush_lsa = cubtx::single_node_group_complete_manager::get_instance ();
     }
 
