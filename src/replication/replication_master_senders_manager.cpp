@@ -42,6 +42,7 @@ namespace cubreplication
 
   const unsigned int master_senders_manager::SUPERVISOR_DAEMON_DELAY_MS = 10;
   const unsigned int master_senders_manager::SUPERVISOR_DAEMON_CHECK_CONN_MS = 5000;
+  
   void master_senders_manager::init (cubstream::stream *stream)
   {
 #if defined (SERVER_MODE)

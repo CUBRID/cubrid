@@ -91,10 +91,10 @@ static void css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 static bool css_send_new_request_to_server (SOCKET server_fd, const std::vector<SOCKET> &client_fds,
 					    unsigned short rid, CSS_SERVER_REQUEST request);
 // *INDENT-ON*
-static void css_send_to_existing_server (CSS_CONN_ENTRY * conn, SOCKET ack_chn, unsigned short rid,
+static void css_send_to_existing_server (CSS_CONN_ENTRY * conn, SOCKET ctrl_fd, unsigned short rid,
 					 CSS_SERVER_REQUEST request);
 static CSS_CONN_ENTRY *css_create_new_connection (SOCKET fd, SOCKET ack_fd);
-static void css_process_new_connection (CSS_CONN_ENTRY * conn, SOCKET ack_chn);
+static void css_process_new_connection (CSS_CONN_ENTRY * conn, SOCKET orig_fd);
 
 static int css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var);
 static int css_enroll_write_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var);
@@ -629,6 +629,7 @@ css_send_new_request_to_server (SOCKET server_fd, const std::vector<SOCKET> &cli
  *                                 an existing server
  *   return: none
  *   conn(in)
+ *   ctrl_chn(in)
  *   rid(in)
  *
  * Note:
@@ -642,7 +643,7 @@ css_send_new_request_to_server (SOCKET server_fd, const std::vector<SOCKET> &cli
  *   to the server.
  */
 static void
-css_send_to_existing_server (CSS_CONN_ENTRY * conn, SOCKET ack_chn, unsigned short rid, CSS_SERVER_REQUEST request)
+css_send_to_existing_server (CSS_CONN_ENTRY * conn, SOCKET ctrl_chn, unsigned short rid, CSS_SERVER_REQUEST request)
 {
   SOCKET_QUEUE_ENTRY *temp;
   char *server_name = NULL;
@@ -679,14 +680,13 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, SOCKET ack_chn, unsigned sho
 		      return;
 		    }
 #endif
-		  // *INDENT-OFF*
+                  // *INDENT-OFF*
                   std::vector<SOCKET> client_fds;
                   // *INDENT-ON*
-		  if (ack_chn != -1)
+		  if (!IS_INVALID_SOCKET (ctrl_chn))
 		    {
-
                       // *INDENT-OFF*
-		      client_fds = {conn->fd, ack_chn};
+		      client_fds = {conn->fd, ctrl_chn};
                       // *INDENT-ON*
 		    }
 		  else
@@ -754,6 +754,7 @@ css_create_new_connection (SOCKET fd, SOCKET ack)
  * css_process_new_connection()
  *   return: none
  *   fd(in)
+ *   orig_fd(in)
  *
  * Note:
  *   Selects the appropriate handler based on the type of connection. We can
@@ -761,15 +762,12 @@ css_create_new_connection (SOCKET fd, SOCKET ack)
  *   register itself) and an information client request (master control client).
  */
 static void
-css_process_new_connection (CSS_CONN_ENTRY * conn, SOCKET ack_chn)
+css_process_new_connection (CSS_CONN_ENTRY * conn, SOCKET orig_fd)
 {
-  if (conn == NULL)
-    {
-      return;
-    }
   unsigned short rid;
   int function_code;
   int buffer_size;
+  assert (conn != NULL);
   if (css_check_magic (conn) != NO_ERRORS)
     {
       css_free_conn (conn);
@@ -795,9 +793,9 @@ css_process_new_connection (CSS_CONN_ENTRY * conn, SOCKET ack_chn)
 	  break;
 	case SERVER_REQUEST_CONNECT_NEW_SLAVE:
 	  {
-	    assert (ack_chn != conn->fd && !IS_INVALID_SOCKET (conn->fd));
-	    SOCKET ack_fd = css_master_accept (ack_chn);
-	    css_send_to_existing_server (conn, ack_fd, rid, SERVER_CONNECT_NEW_SLAVE);
+	    assert (orig_fd != conn->fd && !IS_INVALID_SOCKET (conn->fd));
+	    SOCKET ctrl_fd = css_master_accept (orig_fd);
+	    css_send_to_existing_server (conn, ctrl_fd, rid, SERVER_CONNECT_NEW_SLAVE);
 	    break;
 	  }
 	default:
@@ -996,6 +994,8 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 	      if (!IS_INVALID_SOCKET (new_fd))
 		{
 		  CSS_CONN_ENTRY *conn = css_create_new_connection (new_fd, -1);
+		  // keep original fd to use it in case a new slave connection is handled
+		  // and open the ctrl_channel
 		  css_process_new_connection (conn, temp->fd);
 		}
 	    }

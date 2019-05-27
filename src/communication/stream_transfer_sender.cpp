@@ -94,10 +94,10 @@ namespace cubstream
 	    error_code = this_producer_channel.m_stream.read (this_producer_channel.m_last_sent_position, byte_count,
 			 this_producer_channel.m_read_action_function);
 
+            // todo: for now read ack from slave here. Will be moved to a separate thread that notifies gcm on reads.
             char buf[64];
             size_t len_recv;
-            // todo: do I need to read the magic thing? look at cub_master how he does it?
-            this_producer_channel.m_ack_chn.recv (buf, len_recv);                        
+            this_producer_channel.m_ack_chn.recv (buf, len_recv);
 
 	    if (error_code != NO_ERROR)
 	      {

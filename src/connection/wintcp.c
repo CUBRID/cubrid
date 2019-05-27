@@ -499,7 +499,6 @@ css_transfer_fd (SOCKET server_fd, const std::vector<SOCKET> &client_fds, unsign
   return false;
 }
 
-
 /* These functions support the new-style connection protocol used by Windows. */
 
 /*

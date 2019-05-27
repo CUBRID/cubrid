@@ -101,7 +101,7 @@ static int css_read_header (CSS_CONN_ENTRY * conn, NET_HEADER * local_header);
 static CSS_CONN_ENTRY *css_make_master_comm_channels (const char *host_name, CSS_CONN_ENTRY * conn, int connect_type,
 						      const char *server_name, int server_name_length, int port,
 						      int timeout, unsigned short *rid, bool send_magic,
-						      SOCKET & ack_fd);
+						      SOCKET & ctrl_fd);
 static CSS_CONN_ENTRY *css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_type,
 					   const char *server_name, int server_name_length, int port, int timeout,
 					   unsigned short *rid, bool send_magic);
@@ -708,7 +708,7 @@ begin:
 static CSS_CONN_ENTRY *
 css_make_master_comm_channels (const char *host_name, CSS_CONN_ENTRY * conn, int connect_type, const char *server_name,
 			       int server_name_length, int port, int timeout, unsigned short *rid, bool send_magic,
-			       SOCKET & ack_fd)
+			       SOCKET & ctrl_fd)
 {
   SOCKET fd;
 
@@ -717,19 +717,19 @@ css_make_master_comm_channels (const char *host_name, CSS_CONN_ENTRY * conn, int
     {
       /* timeout in milli-seconds in css_tcp_client_open_with_timeout() */
       fd = css_tcp_client_open_with_timeout (host_name, port, timeout * 1000);
-      ack_fd = css_tcp_client_open_with_timeout (host_name, port, timeout * 1000);
+      ctrl_fd = css_tcp_client_open_with_timeout (host_name, port, timeout * 1000);
     }
   else
     {
       fd = css_tcp_client_open_with_retry (host_name, port, true);
-      ack_fd = css_tcp_client_open_with_retry (host_name, port, true);
+      ctrl_fd = css_tcp_client_open_with_retry (host_name, port, true);
     }
 #else /* !WINDOWS */
   fd = css_tcp_client_open_with_retry (host_name, port, true);
-  ack_fd = css_tcp_client_open_with_retry (host_name, port, true);
+  ctrl_fd = css_tcp_client_open_with_retry (host_name, port, true);
 #endif /* WINDOWS */
 
-  if (!IS_INVALID_SOCKET (fd))
+  if (!IS_INVALID_SOCKET (fd) && !IS_INVALID_SOCKET (ctrl_fd))
     {
       conn->fd = fd;
 
