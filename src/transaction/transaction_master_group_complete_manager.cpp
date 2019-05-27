@@ -150,6 +150,7 @@ namespace cubtx
   //
   void master_group_complete_manager::do_complete (THREAD_ENTRY *thread_p)
   {
+    LOG_LSA closed_group_start_complete_lsa, closed_group_end_complete_lsa;
     LOG_TDES *tdes = logtb_get_tdes (&cubthread::get_entry ());
     bool has_postpone;
 
@@ -164,7 +165,7 @@ namespace cubtx
     /* TODO - consider parameter for MVCC complete here. */
     /* Add group commit log record and wakeup  log flush daemon. */
     log_append_group_complete (thread_p, tdes, m_latest_closed_group_start_stream_position, closed_group,
-			       NULL, NULL, &has_postpone);
+			       &closed_group_start_complete_lsa, &closed_group_end_complete_lsa, &has_postpone);
 
     log_wakeup_log_flush_daemon ();
 
@@ -185,6 +186,8 @@ namespace cubtx
       {
 	gl_master_group_complete_daemon->wakeup ();
       }
+
+    /* TODO - er_log_debug (closed_group_start_complete_lsa, closed_group_end_complete_lsa) */
   }
 
   void master_group_complete_task::execute (cubthread::entry &thread_ref)
