@@ -54,6 +54,7 @@
 #include "porting.h"
 #include "recovery.h"
 #include "release_string.h"
+#include "cubstream.hpp"
 #include "storage_common.h"
 #include "thread_entry.hpp"
 #include "transaction_complete_manager.hpp"
@@ -671,6 +672,7 @@ struct log_global
   LOG_GROUP_COMMIT_INFO group_commit_info;
   // *INDENT-OFF*
   cubtx::complete_manager *m_tran_complete_mgr;
+  cubstream::stream_position m_ack_stream_position;
   // *INDENT-ON*
 
   /* remote log writer information */

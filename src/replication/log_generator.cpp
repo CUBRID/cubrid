@@ -321,8 +321,8 @@ namespace cubreplication
   }
 
   void
-  log_generator::pack_group_commit_entry (cubstream::stream_position & stream_start_pos,
-					  cubstream::stream_position & stream_end_pos)
+  log_generator::pack_group_commit_entry (cubstream::stream_position &stream_start_pos,
+					  cubstream::stream_position &stream_end_pos)
   {
     /* use non-NULL MVCCID to prevent assertion fail on stream packer */
     static stream_entry gc_stream_entry (s_stream, MVCCID_FIRST, stream_entry_header::GROUP_COMMIT);

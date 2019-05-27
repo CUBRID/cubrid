@@ -1582,6 +1582,7 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
       break;
 
     case LOG_SYSOP_END_COMMIT:
+    case LOG_SYSOP_END_COMMIT_REPLICATED:
       assert (tdes->state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
     case LOG_SYSOP_END_LOGICAL_UNDO:
     case LOG_SYSOP_END_LOGICAL_MVCC_UNDO:
@@ -4848,6 +4849,19 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		    {
 		      /* compensate */
 		      LSA_COPY (&prev_tranlsa, &sysop_end->compensate_lsa);
+		    }
+		  else if (sysop_end->type == LOG_SYSOP_END_COMMIT_REPLICATED)
+		    {
+		      // commit only if replicated
+		      if (sysop_end->repl_stream_position < log_Gl.m_ack_stream_position)
+			{
+			  // it was replicated, so sysop is committed. jump to last parent
+			  prev_tranlsa = sysop_end->lastparent_lsa;
+			}
+		      else
+			{
+			  // it was not replicated, nested operations must be undone. proceed with prev_tranlsa
+			}
 		    }
 		  else
 		    {

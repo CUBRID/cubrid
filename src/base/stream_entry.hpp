@@ -138,8 +138,8 @@ namespace cubstream
 
 	m_data_start_position = data_start_pos;
 	payload_size = get_data_packed_size ();
-        m_start_position = m_data_start_position - header_size;
-        m_end_position = m_data_start_position + payload_size;
+	m_start_position = m_data_start_position - header_size;
+	m_end_position = m_data_start_position + payload_size;
 
 	return error_code;
       };
@@ -200,8 +200,8 @@ namespace cubstream
       {
 	m_stream = stream;
 	m_data_start_position = 0;
-        m_start_position = 0;
-        m_end_position = 0;
+	m_start_position = 0;
+	m_end_position = 0;
 
 	m_packing_func = std::bind (&entry::packing_func, std::ref (*this),
 				    std::placeholders::_1,
