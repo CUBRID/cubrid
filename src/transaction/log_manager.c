@@ -243,7 +243,9 @@ static void log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TD
 static void log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * eot_lsa,
 					  LOG_RECTYPE iscommitted, enum LOG_PRIOR_LSA_LOCK with_lock);
 static void log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos,
-						tx_group & group, LOG_LSA * commit_lsa, bool * has_postpone);
+						tx_group & group, LOG_LSA * complete_start_lsa,
+						LOG_LSA * complete_end_lsa, bool * has_postpone);
+
 static void log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 					  LOG_LSA * lsa);
 static void log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
@@ -4475,17 +4477,15 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
 }
 
 static void
-log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, tx_group & group,
-				    LOG_LSA * complete_lsa, bool * has_postpone)
+log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos,
+				    tx_group & group, LOG_LSA * complete_start_lsa,
+				    LOG_LSA * complete_end_lsa, bool * has_postpone)
 {
   LOG_PRIOR_NODE *node;
-  LOG_LSA lsa;
-
-  assert (complete_lsa != NULL);
-  complete_lsa->pageid = NULL_LOG_PAGEID;
-  complete_lsa->offset = NULL_LOG_OFFSET;
+  LOG_LSA start_lsa, end_lsa;
 
   /* TODO - add and use group.has_postpone and get rid of has_postpone parameter */
+  /* TODO - complete_start_lsa can be used for debug purpose */
   if (has_postpone)
     {
       *has_postpone = false;
@@ -4493,21 +4493,21 @@ log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, IN
 
   // *INDENT-OFF*
   cubmem::appendible_block<1024> v;
-  for (const auto & ti : group.get_container ())
+  for (const auto & ti : group.get_container())
+  {
+    const log_tdes *tdes = LOG_FIND_TDES(ti.m_tran_index);
+    assert(tdes != NULL);
+    v.append(tdes->trid);
+    v.append(ti.m_tran_state);
+    if (!LSA_ISNULL (&tdes->posp_nxlsa))
     {
-      const log_tdes *tdes = LOG_FIND_TDES (ti.m_tran_index);
-      assert (tdes != NULL);
-      v.append (tdes->trid);
-      v.append (ti.m_tran_state);
-      if (ti.m_tran_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
+      v.append(tdes->posp_nxlsa);
+      if (has_postpone)
       {
-	v.append (tdes->posp_nxlsa);
-        if (has_postpone)
-        {
-          *has_postpone = true;
-        }
+        *has_postpone = true;
       }
     }
+  }
   // *INDENT-ON*
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_GROUP_COMPLETE, RV_NOT_DEFINED, NULL, 0, NULL,
@@ -4522,35 +4522,46 @@ log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, IN
   // to protect against inconsistent checkpoints
   log_Gl.prior_info.prior_lsa_mutex.lock ();
   // *INDENT-OFF*
-  for (tx_group::node_info &ti : group.get_container ())
+  for (tx_group::node_info &ti : group.get_container())
+  {
+    LOG_TDES *tdes = LOG_FIND_TDES(ti.m_tran_index);
+    assert(tdes != NULL);
+    if (LSA_ISNULL(&tdes->posp_nxlsa))
     {
-      LOG_TDES *tdes = LOG_FIND_TDES (ti.m_tran_index);
-      assert (tdes != NULL);
-      if (LSA_ISNULL (&tdes->posp_nxlsa))
-	{
-	  // filter out transactions without postpone
-	  continue;
-	}
-
-      /* TODO - find a better solution. It is dangerous to set transaction state and
-       * LSA here. A simple solution may be to add a small delay at checkpoint.
-       */
-      tdes->state = ti.m_tran_state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
-      tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
+      // filter out transactions without postpone
+      continue;
     }
+
+    /* TODO - find a better solution. It is dangerous to set transaction state and
+    * LSA here. A simple solution may be to add a small delay at checkpoint.
+    */
+    tdes->state = ti.m_tran_state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+    tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
+  }
   // *INDENT-ON*
 
-  lsa = prior_lsa_next_record_with_lock (thread_p, node, tdes);
+  start_lsa = prior_lsa_next_record_with_lock (thread_p, node, tdes);
+  LSA_COPY (&end_lsa, &node->log_header.forw_lsa);
+
   log_Gl.prior_info.prior_lsa_mutex.unlock ();
 
-  LSA_COPY (complete_lsa, &lsa);
+  if (complete_start_lsa != NULL)
+    {
+      LSA_COPY (complete_start_lsa, &start_lsa);
+    }
+
+  if (complete_end_lsa != NULL)
+    {
+      LSA_COPY (complete_end_lsa, &end_lsa);
+    }
 }
 
 void
 log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, tx_group & group,
-			   LOG_LSA * complete_lsa, bool * has_postpone)
+			   LOG_LSA * complete_start_lsa, LOG_LSA * complete_end_lsa, bool * has_postpone)
 {
-  log_append_group_complete_internal (thread_p, tdes, stream_pos, group, complete_lsa, has_postpone);
+  log_append_group_complete_internal (thread_p, tdes, stream_pos, group, complete_start_lsa, complete_end_lsa,
+				      has_postpone);
 }
 
 /*
@@ -4860,7 +4871,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	    {
 	      tx_group group;
 	      group.add (tdes->tran_index, 0, tdes->state);
-	      log_append_group_complete (thread_p, tdes, 0, group, &commit_lsa, NULL);
+	      log_append_group_complete (thread_p, tdes, 0, group, NULL, &commit_lsa, NULL);
 	    }
 	  else
 	    {
@@ -5401,7 +5412,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 		{
 		  tx_group group;
 		  group.add (tdes->tran_index, 0, TRAN_UNACTIVE_COMMITTED);
-		  log_append_group_complete (thread_p, tdes, 0, group, &commit_lsa, NULL);
+		  log_append_group_complete (thread_p, tdes, 0, group, NULL, &commit_lsa, NULL);
 		}
 
 	      log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT, &commit_lsa);
@@ -5412,7 +5423,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 
 	      tx_group group;
 	      group.add (tdes->tran_index, 0, TRAN_UNACTIVE_ABORTED);
-	      log_append_group_complete (thread_p, tdes, 0, group, &abort_lsa, NULL);
+	      log_append_group_complete (thread_p, tdes, 0, group, NULL, &abort_lsa, NULL);
 
 	      log_change_tran_as_completed (thread_p, tdes, LOG_ABORT, &abort_lsa);
 	    }
@@ -7895,6 +7906,7 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * sta
 static void
 log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
+  LOG_LSA complete_end_lsa;
   if (LSA_ISNULL (&tdes->posp_nxlsa))
     {
       return;
@@ -7907,9 +7919,9 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tx_group group;
   group.add (tdes->tran_index, 0, TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
 
-  log_append_group_complete (thread_p, tdes, 0, group, &commit_lsa, NULL);
+  log_append_group_complete (thread_p, tdes, 0, group, NULL, &complete_end_lsa, NULL);
 
-  logpb_flush_pages (thread_p, &commit_lsa);
+  logpb_flush_pages (thread_p, &complete_end_lsa);
 
   log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
 }

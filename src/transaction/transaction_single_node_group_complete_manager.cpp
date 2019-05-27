@@ -50,7 +50,8 @@ namespace cubtx
   {
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
     gl_single_node_group = get_instance ();
-    LSA_SET_NULL (&gl_single_node_group->m_latest_closed_group_log_lsa);
+    LSA_SET_NULL (&gl_single_node_group->m_latest_closed_group_start_log_lsa);
+    LSA_SET_NULL (&gl_single_node_group->m_latest_closed_group_end_log_lsa);
 
     single_node_group_complete_manager::gl_single_node_group_complete_daemon = cubthread::get_manager ()->create_daemon ((
 		looper),
@@ -80,10 +81,10 @@ namespace cubtx
     /* TO DO - disable it temporary since it is not tested */
     return;
 
-    assert (lsa != NULL && LSA_GE (lsa, &m_latest_closed_group_log_lsa));
+    assert (lsa != NULL);
 
     /* TODO - use m_latest_closed_group_stream_start_positon, m_latest_closed_group_stream_end_positon */
-    if (LSA_GT (lsa, &m_latest_closed_group_log_lsa))
+    if (LSA_GE (lsa, &m_latest_closed_group_end_log_lsa))
       {
 	cubthread::entry *thread_p = &cubthread::get_entry();
 	do_complete (thread_p);
@@ -130,7 +131,7 @@ namespace cubtx
   //
   void single_node_group_complete_manager::prepare_complete (THREAD_ENTRY *thread_p)
   {
-    LOG_LSA closed_group_commit_lsa;
+    LOG_LSA closed_group_start_complete_lsa, closed_group_end_complete_lsa;
     LOG_TDES *tdes = logtb_get_tdes (&cubthread::get_entry());
     bool has_postpone;
 
@@ -142,13 +143,17 @@ namespace cubtx
 	log_Gl.mvcc_table.complete_group_mvcc (closed_group);
 	notify_group_mvcc_complete (closed_group);
 
-	log_append_group_complete (thread_p, tdes, 0, closed_group, &closed_group_commit_lsa, &has_postpone);
-	LSA_COPY (&m_latest_closed_group_log_lsa, &closed_group_commit_lsa);
+	log_append_group_complete (thread_p, tdes, 0, closed_group, &closed_group_start_complete_lsa,
+				   &closed_group_end_complete_lsa, &has_postpone);
+	LSA_COPY (&m_latest_closed_group_start_log_lsa, &closed_group_start_complete_lsa);
+	LSA_COPY (&m_latest_closed_group_end_log_lsa, &closed_group_end_complete_lsa);
 	log_wakeup_log_flush_daemon ();
 	if (has_postpone)
 	  {
 	    notify_group_logged ();
 	  }
+
+	/* TODO - er_log_debug ( closed_group_start_complete_lsa, closed_group_end_complete_lsa) */
       }
   }
 
@@ -180,7 +185,7 @@ namespace cubtx
     /* TO DO - disable it temporary since it is not tested */
     return;
 
-    cubthread::entry *thread_p = &cubthread::get_entry();    
+    cubthread::entry *thread_p = &cubthread::get_entry();
     single_node_group_complete_manager::get_instance ()->prepare_complete (thread_p);
   }
 
