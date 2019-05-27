@@ -35,7 +35,7 @@ namespace cubthread
 
 namespace cubstream
 {
-  
+
   class transfer_sender
   {
 

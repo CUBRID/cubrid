@@ -79,7 +79,7 @@ namespace cubstream
 	  {
 	    this_consumer_channel.m_channel.close_connection ();
 	    return;
-	  }          
+	  }
 
 	cubcomm::er_log_debug_buffer ("transfer_receiver_task receiving", this_consumer_channel.m_buffer, max_len);
 
@@ -87,8 +87,7 @@ namespace cubstream
 	  {
 	    this_consumer_channel.m_channel.close_connection ();
 	    return;
-	  }
-        
+	  }        
 
         stream_position sp = this_consumer_channel.get_last_received_position ();
         this_consumer_channel.m_ack_channel.send ((const char *) &sp, sizeof (sp));

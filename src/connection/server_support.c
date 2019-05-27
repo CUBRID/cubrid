@@ -678,7 +678,7 @@ css_process_new_client (SOCKET master_fd)
   unsigned short rid;
 
   /* receive new socket descriptor from the master */
-  new_fd = css_open_new_socket_from_master (master_fd, &rid);
+  new_fd = css_open_new_socks_from_master (master_fd, 1, &rid)[0];
   if (IS_INVALID_SOCKET (new_fd))
     {
       return;
@@ -836,7 +836,6 @@ css_process_master_hostname ()
   error = css_receive_heartbeat_data (css_Master_conn, ha_Server_master_hostname, hostname_length);
   if (error != NO_ERRORS)
     {
-            assert (false);
       return error;
     }
   ha_Server_master_hostname[hostname_length] = '\0';
@@ -2690,20 +2689,14 @@ xacl_reload (THREAD_ENTRY * thread_p)
 static void
 css_process_new_slave (SOCKET master_fd)
 {
-  //SOCKET new_fd;
-  std::vector < SOCKET > new_fds;
+  // *INDENT-OFF*
+  std::vector <SOCKET> new_fds;
+  // *INDENT-ON*
 
   unsigned short rid;
 
   /* receive new socket descriptor from the master */
-  new_fds = css_open_new_socks_from_master (master_fd, &rid);
-  //new_fd = css_open_new_socket_from_master (master_fd, &rid);
-
-
-  assert (new_fds.size () == 2);
-
-  assert (!IS_INVALID_SOCKET (new_fds[0]));
-  assert (!IS_INVALID_SOCKET (new_fds[1]));
+  new_fds = css_open_new_socks_from_master (master_fd, 2, &rid);
 
   er_log_debug_replication (ARG_FILE_LINE, "css_process_new_slave:"
 			    "received new slave fds from master fd1=%d, fd2=%d, current_state=%d\n", new_fds[0],

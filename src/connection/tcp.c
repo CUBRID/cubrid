@@ -1046,20 +1046,23 @@ css_tcp_master_datagram (char *path_name, SOCKET * sockfd)
   return true;
 }
 
-std::vector < SOCKET > css_open_new_socks_from_master (SOCKET fd, unsigned short *rid)
+// *INDENT-OFF*
+std::vector<SOCKET>
+// *INDENT-ON*
+
+css_open_new_socks_from_master (SOCKET fd, size_t expected_fds, unsigned short *rid)
 {
   unsigned short req_id;
-  std::vector < SOCKET > new_fds;
-  new_fds.push_back (INVALID_SOCKET);
-  new_fds.push_back (INVALID_SOCKET);
   int rc;
   struct iovec iov[1];
   struct msghdr msg;
   int pid;
+// *INDENT-OFF*
+  std::vector<SOCKET> new_fds;
+// *INDENT-ON*
 #if defined(LINUX) || defined(AIX)
   static struct cmsghdr *cmptr = NULL;
 #endif /* LINUX || AIX */
-
   iov[0].iov_base = (char *) &req_id;
   iov[0].iov_len = sizeof (unsigned short);
   msg.msg_iov = iov;
@@ -1067,45 +1070,42 @@ std::vector < SOCKET > css_open_new_socks_from_master (SOCKET fd, unsigned short
   msg.msg_name = (caddr_t) NULL;
   msg.msg_namelen = 0;
 #if !defined(LINUX) && !defined(AIX)
-  msg.msg_accrights = (caddr_t) & new_fd;	/* address of descriptor */
-  msg.msg_accrightslen = sizeof (new_fd);	/* receive 1 descriptor */
+  new_fds.resize (expected_fds);
+  msg.msg_accrights = (caddr_t) new_fds.data ();	/* address of descriptors */
+  msg.msg_accrightslen = sizeof (SOCKET) * expected_fds;	/* receive expected_fds descriptor */
 #else /* not LINUX and not AIX */
-  if (cmptr == NULL && (cmptr = (struct cmsghdr *) malloc (CMSG_SPACE (sizeof (int) * 2))) == NULL)
+  // for now we know we get 2 fds
+  if (cmptr == NULL && (cmptr = (struct cmsghdr *) malloc (CMSG_LEN (sizeof (int) * 2))) == NULL)
     {
-      return
+      return /* *INDENT-OFF* */
       {
-      INVALID_SOCKET};
+      INVALID_SOCKET};		/* *INDENT-ON* */
     }
   msg.msg_control = (void *) cmptr;
-  msg.msg_controllen = CMSG_SPACE (sizeof (int) * 2);
+  msg.msg_controllen = CMSG_LEN (sizeof (int) * 2);
 #endif /* not LINUX */
 
   rc = recvmsg (fd, &msg, 0);
   if (rc <= 0)
     {
       assert (false);
-      TPRINTF ("recvmsg failed for fd = %d\n", rc);
+      TPRINTF ("recvmsg failed for fd = %d\n", fd);
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_RECVMSG, 0);
-      return
+      return /* *INDENT-OFF* */
       {
-      INVALID_SOCKET};
+      INVALID_SOCKET};		/* *INDENT-ON* */
     }
 
   *rid = ntohs (req_id);
-
   pid = getpid ();
 #if defined(LINUX) || defined(AIX)
-
+  // todo : client connections & slave connections fd transfer race
+  // for now we know we get 2 fds
   size_t offset = 0;
-  int len = msg.msg_controllen;
-  assert (msg.msg_controllen == CMSG_SPACE (sizeof (int) * 2));
-  // todo: should use msg_controllen to determine sizeof socket
-  // for now hope that clients's connection requests route to the other fd receive
-
-for (SOCKET & sock:new_fds)
+  for (size_t i = 0; i < expected_fds; ++i, offset += sizeof (SOCKET))
     {
-      sock = *(SOCKET *) (CMSG_DATA (cmptr) + offset);
-      assert (sock != 0);
+      SOCKET sock = *(SOCKET *) (CMSG_DATA (cmptr) + offset);
+      new_fds.push_back (sock);
 #ifdef SYSV
       ioctl (sock, SIOCSPGRP, (caddr_t) & pid);
 #else /* not SYSV */
@@ -1113,74 +1113,10 @@ for (SOCKET & sock:new_fds)
 #endif /* not SYSV */
 
       css_sockopt (sock);
-      offset += sizeof (int);
     }
 #endif /* LINUX || AIX */
 
   return new_fds;
-}
-
-/*
- * css_open_new_socket_from_master() - the message interface to the master
- *                                     server
- *   return:
- *   fd(in):
- *   rid(in):
- */
-SOCKET
-css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
-{
-  unsigned short req_id;
-  SOCKET new_fd = INVALID_SOCKET;
-  int rc;
-  struct iovec iov[1];
-  struct msghdr msg;
-  int pid;
-#if defined(LINUX) || defined(AIX)
-  static struct cmsghdr *cmptr = NULL;
-#endif /* LINUX || AIX */
-
-  iov[0].iov_base = (char *) &req_id;
-  iov[0].iov_len = sizeof (unsigned short);
-  msg.msg_iov = iov;
-  msg.msg_iovlen = 1;
-  msg.msg_name = (caddr_t) NULL;
-  msg.msg_namelen = 0;
-#if !defined(LINUX) && !defined(AIX)
-  msg.msg_accrights = (caddr_t) & new_fd;	/* address of descriptor */
-  msg.msg_accrightslen = sizeof (new_fd);	/* receive 1 descriptor */
-#else /* not LINUX and not AIX */
-  if (cmptr == NULL && (cmptr = (struct cmsghdr *) malloc (CONTROLLEN)) == NULL)
-    {
-      return INVALID_SOCKET;
-    }
-  msg.msg_control = (void *) cmptr;
-  msg.msg_controllen = CONTROLLEN;
-#endif /* not LINUX */
-
-  rc = recvmsg (fd, &msg, 0);
-  if (rc < 0)
-    {
-      TPRINTF ("recvmsg failed for fd = %d\n", rc);
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_RECVMSG, 0);
-      return INVALID_SOCKET;
-    }
-
-  *rid = ntohs (req_id);
-
-  pid = getpid ();
-#if defined(LINUX) || defined(AIX)
-  new_fd = *(SOCKET *) CMSG_DATA (cmptr);
-#endif /* LINUX || AIX */
-
-#ifdef SYSV
-  ioctl (new_fd, SIOCSPGRP, (caddr_t) & pid);
-#else /* not SYSV */
-  fcntl (new_fd, F_SETOWN, pid);
-#endif /* not SYSV */
-
-  css_sockopt (new_fd);
-  return new_fd;
 }
 
 /*
@@ -1191,7 +1127,8 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
  *   rid(in):
  */
 bool
-css_transfer_fd (SOCKET server_fd, const std::vector < SOCKET > &client_fds, unsigned short rid,
+css_transfer_fd (SOCKET server_fd, /* *INDENT-OFF* */ const std::vector < SOCKET > &client_fds /* *INDENT-ON* */ ,
+		 unsigned short rid,
 		 CSS_SERVER_REQUEST request_for_server)
 {
   int request;
@@ -1203,7 +1140,6 @@ css_transfer_fd (SOCKET server_fd, const std::vector < SOCKET > &client_fds, uns
 #endif /* LINUX || AIX */
 
   request = htonl (request_for_server);
-
   if (send (server_fd, (char *) &request, sizeof (int), 0) < 0)
     {
       /* Master->Server link down. remove old link, and try again. */
@@ -1220,30 +1156,28 @@ css_transfer_fd (SOCKET server_fd, const std::vector < SOCKET > &client_fds, uns
   msg.msg_namelen = 0;
   msg.msg_name = (caddr_t) 0;
 #if !defined(LINUX) && !defined(AIX)
-  msg.msg_accrights = (caddr_t) & client_fd;
-  msg.msg_accrightslen = sizeof (client_fd);
+  msg.msg_accrights = (caddr_t) client_fds.data ();
+  msg.msg_accrightslen = sizeof (SOCKET) * client_fds.size ();
 #else /* LINUX || AIX */
-  if (cmptr == NULL && (cmptr = (struct cmsghdr *) malloc (CMSG_SPACE (sizeof (int) * 2))) == NULL)
+  assert (client_fds.size () <= 2 && !client_fds.empty ());
+  if (cmptr == NULL && (cmptr = (struct cmsghdr *) malloc (CMSG_LEN (sizeof (SOCKET) * 2))) == NULL)
     {
       return false;
     }
 
   cmptr->cmsg_level = SOL_SOCKET;
   cmptr->cmsg_type = SCM_RIGHTS;
-  cmptr->cmsg_len = CMSG_LEN (sizeof (int) * client_fds.size ());
+  cmptr->cmsg_len = CMSG_LEN (sizeof (SOCKET) * client_fds.size ());
 
   size_t offset = 0;
-
-  for (size_t i = 0; i < client_fds.size (); ++i, offset += sizeof (int))
+  for (size_t i = 0; i < client_fds.size (); ++i, offset += sizeof (SOCKET))
     {
-      assert (client_fds[i] != 0);
       (*(SOCKET *) (CMSG_DATA (cmptr) + offset)) = client_fds[i];
     }
 
   msg.msg_control = (void *) cmptr;
-  msg.msg_controllen = CMSG_SPACE (sizeof (int) * client_fds.size ());
+  msg.msg_controllen = CMSG_LEN (sizeof (SOCKET) * client_fds.size ());
 #endif /* LINUX || AIX */
-
 
   if (sendmsg (server_fd, &msg, 0) < 0)
     {

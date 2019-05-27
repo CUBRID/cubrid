@@ -481,21 +481,6 @@ css_tcp_master_datagram (char *pathname, SOCKET * sockfd)
 }
 
 /*
- * css_open_new_socket_from_master() - datagram stubs
- *   return:
- *   fd(in):
- *   rid(in):
- *
- * Note: The Windows platforms do not support this and will instead use the
- *       "new-style" multiple port-id connection interface
- */
-SOCKET
-css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
-{
-  return INVALID_SOCKET;
-}
-
-/*
  * css_transfer_fd() - datagram stubs
  *   return:
  *   server_fd(in):
