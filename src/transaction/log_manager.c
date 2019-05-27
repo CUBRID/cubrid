@@ -4499,13 +4499,13 @@ log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, IN
       assert (tdes != NULL);
       v.append (tdes->trid);
       v.append (ti.m_tran_state);
-      if (ti.m_tran_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
+      if (!LSA_ISNULL (&tdes->posp_nxlsa))
       {
 	v.append (tdes->posp_nxlsa);
-          if (has_postpone)
-            {
-              *has_postpone = true;
-      }
+        if (has_postpone)
+        {
+          *has_postpone = true;
+        }
     }
     }
   // *INDENT-ON*
@@ -4797,9 +4797,10 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
    * be rolled back. The order must be : update statistics, pack replication entries - if the case, complete mvccc,
    * do_postpone - if the case, complete.
    */
+  tdes->state = TRAN_UNACTIVE_WILL_COMMIT;
+
   log_update_global_unique_statistics (thread_p, tdes);
 
-  tdes->state = TRAN_UNACTIVE_WILL_COMMIT;
   /* undo_nxlsa is no longer required here and must be reset, in case checkpoint takes a snapshot of this transaction
    * during TRAN_UNACTIVE_WILL_COMMIT phase.
    */
