@@ -1077,7 +1077,7 @@ css_open_new_socks_from_master (SOCKET fd, size_t expected_fds, unsigned short *
   // for now we know we get 2 fds
   if (cmptr == NULL && (cmptr = (struct cmsghdr *) malloc (CMSG_LEN (sizeof (int) * 2))) == NULL)
     {
-      return /* *INDENT-OFF* */
+      return			/* *INDENT-OFF* */
       {
       INVALID_SOCKET};		/* *INDENT-ON* */
     }
@@ -1091,7 +1091,7 @@ css_open_new_socks_from_master (SOCKET fd, size_t expected_fds, unsigned short *
       assert (false);
       TPRINTF ("recvmsg failed for fd = %d\n", fd);
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_RECVMSG, 0);
-      return /* *INDENT-OFF* */
+      return			/* *INDENT-OFF* */
       {
       INVALID_SOCKET};		/* *INDENT-ON* */
     }
@@ -1126,10 +1126,11 @@ css_open_new_socks_from_master (SOCKET fd, size_t expected_fds, unsigned short *
  *   client_fd(in):
  *   rid(in):
  */
+/* *INDENT-OFF* */
 bool
-css_transfer_fd (SOCKET server_fd, /* *INDENT-OFF* */ const std::vector < SOCKET > &client_fds /* *INDENT-ON* */ ,
-		 unsigned short rid,
+css_transfer_fd (SOCKET server_fd,  const std::vector <SOCKET> &client_fds, unsigned short rid,
 		 CSS_SERVER_REQUEST request_for_server)
+/* *INDENT-ON* */
 {
   int request;
   unsigned short req_id;
