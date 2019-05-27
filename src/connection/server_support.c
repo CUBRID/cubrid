@@ -573,7 +573,7 @@ css_process_master_request (SOCKET master_fd)
     case SERVER_RECEIVE_MASTER_HOSTNAME:
       css_process_master_hostname ();
       break;
-    case SERVER_CONNECT_NEW_SLAVE:
+    case SERVER_CONNECT_SLAVE_REPL:
       css_process_new_slave (master_fd);
       break;
 #endif

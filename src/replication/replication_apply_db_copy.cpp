@@ -24,7 +24,15 @@
 #ident "$Id$"
 
 #include "replication_apply_db_copy.hpp"
+#include "communication_server_channel.hpp"
+#include "replication_common.hpp"
+#include "replication_node.hpp"
 #include "replication_stream_entry.hpp"
+#include "stream_transfer_receiver.hpp"
+#include "stream_file.hpp"
+#include "string_buffer.hpp"
+#include "thread_entry_task.hpp"
+#include <unordered_map>
 
 namespace cubreplication
 {
@@ -34,7 +42,7 @@ namespace cubreplication
     m_stream = NULL;
   }
 
-  apply_copy_context::init (void)
+  void apply_copy_context::init (void)
   {
     INT64 buffer_size = 1 * 1024 * 1024;
     m_stream = new cubstream::multi_thread_stream (buffer_size, 2);
@@ -45,6 +53,292 @@ namespace cubreplication
     /* create stream file */
     std::string replication_path;
     replication_node::get_replication_file_path (replication_path);
-    m_stream_file = new cubstream::stream_file (*instance->m_stream, replication_path);
+    m_stream_file = new cubstream::stream_file (*m_stream, replication_path);
+  }
+
+
+  int apply_copy_context::connect_to_source (const node_definition *source_node)
+  {
+    int error = NO_ERROR;
+
+    er_log_debug_replication (ARG_FILE_LINE, "apply_copy_context::connect_to_source host:%s, port: %d\n",
+			      m_source_identity->get_hostname ().c_str (), m_source_identity->get_port ());
+
+    /* connect to replication master node */
+    cubcomm::server_channel srv_chn (m_my_identity->get_hostname ().c_str ());
+
+    m_source_identity = source_node;
+    error = srv_chn.connect_with_command (m_source_identity->get_hostname ().c_str (), m_source_identity->get_port (),
+                                          SERVER_CONNECT_SLAVE_COPY_DB);
+    if (error != css_error_code::NO_ERRORS)
+      {
+	return error;
+      }
+    /* start transfer receiver */
+    assert (m_transfer_receiver == NULL);
+    /* TODO[replication] : start position in case of resume of copy process */
+    cubstream::stream_position start_position = 0;
+    m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *m_stream, start_position);
+
+    return error;
+  }
+
+  /* TODO : refactor with log_consumer:: consumer_daemon_task */
+  class copy_db_consumer_daemon_task : public cubthread::entry_task
+  {
+    public:
+      copy_db_consumer_daemon_task (copy_db_consumer &lc)
+	: m_lc (lc)
+      {
+      };
+
+      void execute (cubthread::entry &thread_ref) override
+      {
+	stream_entry *se = NULL;
+
+	int err = m_lc.fetch_stream_entry (se);
+	if (err == NO_ERROR)
+	  {
+	    m_lc.push_entry (se);
+	  }
+      };
+
+    private:
+      copy_db_consumer &m_lc;
+  };
+
+
+  /* TODO : refactor with log_consumer:: applier_worker_task */
+  class copy_db_worker_task : public cubthread::entry_task
+  {
+    public:
+      copy_db_worker_task (stream_entry *repl_stream_entry, copy_db_consumer &lc)
+	: m_lc (lc)
+      {
+	add_repl_stream_entry (repl_stream_entry);
+      }
+
+      void execute (cubthread::entry &thread_ref) final
+      {
+	for (stream_entry *curr_stream_entry : m_repl_stream_entries)
+	  {
+	    curr_stream_entry->unpack ();
+
+	    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+	      {
+		string_buffer sb;
+		curr_stream_entry->stringify (sb, stream_entry::detailed_dump);
+		_er_log_debug (ARG_FILE_LINE, "applier_worker_task execute:\n%s", sb.get_buffer ());
+	      }
+
+	    for (int i = 0; i < curr_stream_entry->get_packable_entry_count_from_header (); i++)
+	      {
+		replication_object *obj = curr_stream_entry->get_object_at (i);
+
+		/* clean error code */
+		er_clear ();
+
+		int err = obj->apply ();
+		if (err != NO_ERROR)
+		  {
+		    /* TODO[replication] : error handling */
+		  }
+	      }
+
+	    delete curr_stream_entry;
+
+	    m_lc.end_one_task ();
+	  }
+      }
+
+      void add_repl_stream_entry (stream_entry *repl_stream_entry)
+      {
+	m_repl_stream_entries.push_back (repl_stream_entry);
+      }
+
+       size_t get_entries_cnt (void)
+      {
+	return m_repl_stream_entries.size ();
+      }
+
+      void stringify (string_buffer &sb)
+      {
+	sb ("apply_task: stream_entries:%d\n", get_entries_cnt ());
+	for (auto it = m_repl_stream_entries.begin (); it != m_repl_stream_entries.end (); it++)
+	  {
+	    (*it)->stringify (sb, stream_entry::detailed_dump);
+	  }
+      }
+
+    private:
+      std::vector<stream_entry *> m_repl_stream_entries;
+      copy_db_consumer &m_lc;
+  };
+
+
+  /* TODO : refactor with log_consumer:: dispatch_daemon_task */
+  class copy_dispatch_daemon_task : public cubthread::entry_task
+  {
+    public:
+      copy_dispatch_daemon_task (copy_db_consumer &lc)
+	: m_lc (lc)
+      {
+      }
+
+      void execute (cubthread::entry &thread_ref) override
+      {
+	stream_entry *se = NULL;
+	using tasks_map = std::unordered_map <MVCCID, copy_db_worker_task *>;
+	tasks_map repl_tasks;
+	tasks_map nonexecutable_repl_tasks;
+
+	while (true)
+	  {
+	    bool should_stop = false;
+	    m_lc.pop_entry (se, should_stop);
+
+	    if (should_stop)
+	      {
+		break;
+	      }
+
+	    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+	      {
+		string_buffer sb;
+		se->stringify (sb, stream_entry::short_dump);
+		_er_log_debug (ARG_FILE_LINE, "dispatch_daemon_task execute pop_entry:\n%s", sb.get_buffer ());
+	      }
+
+
+
+		/* stream entry is deleted by applier task thread */
+	  }
+      }
+
+    private:
+      copy_db_consumer &m_lc;
+  };
+
+  copy_db_consumer::~copy_db_consumer ()
+  {
+    set_stop ();
+
+    if (m_use_daemons)
+      {
+	cubthread::get_manager ()->destroy_daemon (m_consumer_daemon);
+	cubthread::get_manager ()->destroy_daemon (m_dispatch_daemon);
+	cubthread::get_manager ()->destroy_worker_pool (m_applier_workers_pool);
+      }
+
+    assert (m_stream_entries.empty ());
+  }
+
+  void copy_db_consumer::push_entry (stream_entry *entry)
+  {
+    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+      {
+	string_buffer sb;
+	entry->stringify (sb, stream_entry::short_dump);
+	_er_log_debug (ARG_FILE_LINE, "copy_db_consumer push_entry:\n%s", sb.get_buffer ());
+      }
+
+    std::unique_lock<std::mutex> ulock (m_queue_mutex);
+    m_stream_entries.push (entry);
+    m_apply_task_ready = true;
+    ulock.unlock ();
+    m_apply_task_cv.notify_one ();
+  }
+
+  void copy_db_consumer::pop_entry (stream_entry *&entry, bool &should_stop)
+  {
+    std::unique_lock<std::mutex> ulock (m_queue_mutex);
+    if (m_stream_entries.empty ())
+      {
+	m_apply_task_ready = false;
+	m_apply_task_cv.wait (ulock, [this] { return m_is_stopped || m_apply_task_ready;});
+      }
+
+    if (m_is_stopped)
+      {
+	should_stop = true;
+	return;
+      }
+
+    assert (m_stream_entries.empty () == false);
+
+    entry = m_stream_entries.front ();
+    m_stream_entries.pop ();
+  }
+
+  int copy_db_consumer::fetch_stream_entry (stream_entry *&entry)
+  {
+    int err = NO_ERROR;
+
+    stream_entry *se = new stream_entry (get_stream ());
+
+    err = se->prepare ();
+    if (err != NO_ERROR)
+      {
+	delete se;
+	return err;
+      }
+
+    entry = se;
+
+    return err;
+  }
+
+  void copy_db_consumer::start_daemons (void)
+  {
+#if defined (SERVER_MODE)
+    er_log_debug_replication (ARG_FILE_LINE, "copy_db_consumer::start_daemons\n");
+    m_consumer_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
+			new copy_db_consumer_daemon_task (*this),
+			"repl_copy_db_prepare_stream_entry_daemon");
+
+    m_dispatch_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
+			new copy_dispatch_daemon_task (*this),
+			"repl_copy_db_dispatch_stream_entry_daemon");
+
+    m_applier_workers_pool = cubthread::get_manager ()->create_worker_pool (m_applier_worker_threads_count,
+			     m_applier_worker_threads_count,
+			     "repl_copy_db_apply_workers",
+			     NULL, 1, 1);
+
+    m_use_daemons = true;
+#endif /* defined (SERVER_MODE) */
+  }
+
+  void copy_db_consumer::execute_task (copy_db_worker_task *task)
+  {
+    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+      {
+	string_buffer sb;
+	task->stringify (sb);
+	_er_log_debug (ARG_FILE_LINE, "copy_db_consumer::execute_task:\n%s", sb.get_buffer ());
+      }
+
+    cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
+
+    m_started_tasks++;
+  }
+
+  void copy_db_consumer::wait_for_tasks (void)
+  {
+    while (m_started_tasks > 0)
+      {
+	thread_sleep (1);
+      }
+  }
+
+  void copy_db_consumer::set_stop (void)
+  {
+    copy_db_consumer::get_stream ()->set_stop ();
+
+    std::unique_lock<std::mutex> ulock (m_queue_mutex);
+    m_is_stopped = true;
+    ulock.unlock ();
+    m_apply_task_cv.notify_one ();
+  }
     
 } /* namespace cubreplication */

@@ -95,7 +95,7 @@ namespace cubreplication
 
     g_instance->m_master_identity.set_hostname (master_node_hostname);
     g_instance->m_master_identity.set_port (master_node_port_id);
-    error = srv_chn.connect (master_node_hostname, master_node_port_id);
+    error = srv_chn.connect_with_command (master_node_hostname, master_node_port_id, SERVER_CONNECT_SLAVE_REPL);
     if (error != css_error_code::NO_ERRORS)
       {
 	return error;

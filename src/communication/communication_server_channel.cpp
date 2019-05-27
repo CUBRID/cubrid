@@ -49,7 +49,7 @@ namespace cubcomm
     return *this;
   }
 
-  css_error_code server_channel::connect (const char *hostname, int port)
+  css_error_code server_channel::connect_with_command (const char *hostname, int port, int command_type)
   {
     unsigned short m_request_id;
     css_error_code rc = NO_ERRORS;
@@ -72,10 +72,11 @@ namespace cubcomm
       }
 
     /* send request */
-    er_log_debug (ARG_FILE_LINE, "SERVER_REQUEST_CONNECT_NEW_SLAVE to %s, port:%d, server_name:%s,"
-		  " server_name_size:%d\n", hostname, port, m_server_name.c_str (), m_server_name.size ());
+    er_log_debug (ARG_FILE_LINE, "SERVER_REQUEST_CONNECT_NEW_SLAVE (type:%d) to %s, port:%d, server_name:%s,"
+		  " server_name_size:%d\n",
+                  command_type, hostname, port, m_server_name.c_str (), m_server_name.size ());
 
-    rc = (css_error_code) css_send_request_with_socket (m_socket, SERVER_REQUEST_CONNECT_NEW_SLAVE, &m_request_id,
+    rc = (css_error_code) css_send_request_with_socket (m_socket, command_type, &m_request_id,
 	 m_server_name.c_str (), m_server_name.size ());
     if (rc != NO_ERRORS)
       {

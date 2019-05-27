@@ -68,6 +68,11 @@ namespace cubreplication
       {
 	return m_hostname;
       }
+
+      int get_port () const
+      {
+        return m_data_port;
+      }
   };
 
   /* base class for collection of data and methods of a replication node (actually running) */
