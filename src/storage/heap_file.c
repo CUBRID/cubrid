@@ -5882,7 +5882,7 @@ heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid
   heap_create_insert_context (&insert_context, (HFID *) hfid, class_oid, &recdes, NULL);
 
   /* insert */
-  rc = heap_insert_logical (thread_p, &insert_context);
+  rc = heap_insert_logical (thread_p, &insert_context, NULL);
   if (rc != NO_ERROR)
     {
       return rc;
@@ -22381,7 +22381,7 @@ heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID
  *         moment.
  */
 int
-heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
+heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, PGBUF_WATCHER * home_hint_p)
 {
   bool is_mvcc_op;
   int rc = NO_ERROR;
@@ -22456,7 +22456,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     }
 
   /* get insert location (includes locking) */
-  if (heap_get_insert_location_with_lock (thread_p, context, NULL) != NO_ERROR)
+  if (heap_get_insert_location_with_lock (thread_p, context, home_hint_p) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -24777,3 +24777,82 @@ heap_is_page_header (THREAD_ENTRY * thread_p, PAGE_PTR page)
     }
   return false;
 }
+
+// *INDENT-OFF*
+int
+heap_multi_insert_with_page_hint (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID ** oid,
+                                  std::vector<RECDES> recdes, HEAP_SCANCACHE * scan_cache,
+                                  UPDATE_INPLACE_STYLE force_in_place, VPID * new_vpid)
+{
+  int error_code = NO_ERROR;
+  HEAP_CHAIN new_page_chain;
+  VPID last_page_vpid;
+  HEAP_SCANCACHE local_scan_cache;
+  PGBUF_WATCHER *page_watcher = NULL;
+  PAGE_PTR last_page_ptr;
+
+  VPID_SET_NULL (&last_page_vpid);
+
+  if (recdes.size () == 0)
+    {
+      // Nothing to insert.
+      return NO_ERROR;
+    }
+  
+  new_page_chain.class_oid = *class_oid;
+  VPID_SET_NULL (&new_page_chain.next_vpid);
+  VPID_SET_NULL (&new_page_chain.prev_vpid);
+  new_page_chain.max_mvccid = MVCCID_NULL;
+  new_page_chain.flags = 0;
+  HEAP_PAGE_SET_VACUUM_STATUS (&new_page_chain, HEAP_PAGE_VACUUM_NONE);
+
+  PGBUF_INIT_WATCHER (page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+
+  // Alloc a new page.
+  error_code = file_alloc (thread_p, &hfid->vfid, heap_vpid_init_new, &new_page_chain, &last_page_vpid, &last_page_ptr);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  // Need to get the watcher to the new page.
+  pgbuf_attach_watcher (thread_p, last_page_ptr, PGBUF_LATCH_WRITE, hfid, page_watcher);
+
+  // Make sure we have fixed the page.
+  assert (pgbuf_is_page_fixed_by_thread (thread_p, &last_page_vpid));
+
+  // Begin inserting into the new page.
+  for (int i = 0; i < recdes.size (); i++)
+    {
+      HEAP_OPERATION_CONTEXT context;
+
+      local_scan_cache = *scan_cache;
+      heap_create_insert_context (&context, hfid, class_oid, &recdes[i], &local_scan_cache);
+      context.update_in_place = force_in_place;
+
+      error_code = heap_insert_logical (thread_p, &context, page_watcher);
+      if (error_code != NO_ERROR)
+        {
+          ASSERT_ERROR ();
+          goto cleanup;
+        }
+
+      // Copy the OID
+      COPY_OID (oid[i], &context.oid);
+
+      heap_clear_operation_context (&context, hfid);
+    }
+
+  // Copy the new page VPID.
+  VPID_COPY (new_vpid, &last_page_vpid);
+
+cleanup:
+
+  pgbuf_unfix_and_init (thread_p, last_page_ptr);
+
+  PGBUF_CLEAR_WATCHER (page_watcher);
+  return error_code;
+}
+
+// *INDENT-ON*

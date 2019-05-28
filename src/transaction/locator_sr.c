@@ -4972,7 +4972,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
     }
 
   /* execute insert */
-  if (heap_insert_logical (thread_p, &context) != NO_ERROR)
+  if (heap_insert_logical (thread_p, &context, NULL) != NO_ERROR)
     {
       /*
        * Problems inserting the object...Maybe, the transaction should be
@@ -13700,3 +13700,113 @@ xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK
 {
   return lock_demote_class_lock (thread_p, class_oid, lock, ex_lock);
 }
+
+
+// *INDENT-OFF*
+int 
+locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID ** oids, RECDES ** recdes,
+                            int n_recdes, int has_index, int op_type, HEAP_SCANCACHE * scan_cache, int *force_count,
+                            int pruning_type, PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
+                            UPDATE_INPLACE_STYLE force_in_place)
+{		/* Make sure that this is an old object */
+  bool is_cached = false;
+  LC_COPYAREA *cache_attr_copyarea = NULL;
+  int error_code = NO_ERROR;
+  OID real_class_oid;
+  HFID real_hfid;
+  ssize_t accumulated_records_size = 0;
+  const ssize_t heap_max_page_size = spage_get_default_empty_page_size ();
+  std::vector <RECDES> recdes_array;
+  std::vector <OID> oids_array;
+  std::vector <VPID> heap_pages_array;
+  
+  HFID_COPY (&real_hfid, hfid);
+  COPY_OID (&real_class_oid, class_oid);
+
+  *force_count = 0;
+
+  for (int i = 0; i < n_recdes; i++)
+  {
+    // Loop until we insert all records.
+    RECDES *local_recdes = recdes[i];
+    OID *local_oid = oids[i];
+    HEAP_SCANCACHE local_scan_cache;
+    FUNC_PRED_UNPACK_INFO local_func_preds;
+
+    local_scan_cache = *scan_cache;
+    local_func_preds = *func_preds;
+
+    if (local_recdes->type != REC_HOME)
+      {
+        // We insert other records normally.
+        error_code = locator_insert_force (thread_p, hfid, class_oid, local_oid, local_recdes, has_index, op_type,
+                                          &local_scan_cache, force_count, pruning_type, pcontext, &local_func_preds, force_in_place);
+        if (error_code != NO_ERROR)
+          {
+            ASSERT_ERROR ();
+            goto cleanup;
+          }
+      }
+    else
+      {        
+        // get records until we fit the size of a page.
+        // TODO: Fix this!!
+        if ((local_recdes->length + accumulated_records_size) > heap_max_page_size)
+          {
+            VPID new_page_vpid;
+
+            VPID_SET_NULL (&new_page_vpid);
+            // We have to insert the collected records in a single page.
+            error_code = heap_multi_insert_with_page_hint (thread_p, hfid, class_oid, oids, recdes_array, scan_cache,
+                                                           force_in_place, &new_page_vpid);
+            if (error_code != NO_ERROR)
+              {
+                ASSERT_ERROR ();
+                return error_code;
+              }
+
+            // Add the new VPID to the VPID array.
+            heap_pages_array.push_back (new_page_vpid);
+            // Clear the recdes array.
+            recdes_array.clear ();
+            oids_array.clear ();
+          }
+        else
+          {
+            // Add this records to the recdes array and increase the accumulated size.
+            recdes_array.push_back (*local_recdes);
+            oids_array.push_back (*local_oid);
+            accumulated_records_size += local_recdes->length;
+          }
+      }
+  }
+
+  // We must check if we have records which did not fill an entire page.
+  for (int i = 0; i < recdes_array.size (); i++)
+    {
+      HEAP_SCANCACHE local_scan_cache;
+      FUNC_PRED_UNPACK_INFO local_func_preds;
+
+      local_scan_cache = *scan_cache;
+      local_func_preds = *func_preds;
+      error_code = locator_insert_force (thread_p, hfid, class_oid, &oids_array[i], &recdes_array[i], has_index, op_type,
+                                        &local_scan_cache, force_count, pruning_type, pcontext, &local_func_preds, force_in_place);
+      if (error_code != NO_ERROR)
+        {
+          ASSERT_ERROR ();
+          goto cleanup;
+        }
+    }
+
+  // Now form a heap chain with the pages and add the chain to the current heap.
+  // TODO: this!
+
+cleanup:
+
+  recdes_array.clear ();
+  oids_array.clear ();
+  
+  return error_code;
+}
+
+// *INDENT-ON*

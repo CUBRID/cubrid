@@ -167,4 +167,5 @@ extern int spage_slots_end_scan (THREAD_ENTRY * thread_p, void **ctx);
 
 extern void spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid, bool reusable);
 extern bool spage_need_compact (THREAD_ENTRY * thread_p, PAGE_PTR page_p);
+extern int spage_get_default_empty_page_size ();
 #endif /* _SLOTTED_PAGE_H_ */
