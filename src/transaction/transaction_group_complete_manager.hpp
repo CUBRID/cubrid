@@ -37,7 +37,8 @@ namespace cubtx
     GROUP_CLOSED = 0x01, /* Group closed. No other transaction can be included in a closed group. */
     GROUP_MVCC_COMPLETED = 0x02, /* MVCC completed. */
     GROUP_LOGGED = 0x04, /* Group log added. */
-    GROUP_COMPLETED = 0x08  /* Group completed. */
+    GROUP_PREPARED_FOR_COMPLETE = 0x08,  /* Group prepared for complete. */
+    GROUP_COMPLETED = 0x10  /* Group completed. */
   };
 
   //
@@ -80,6 +81,9 @@ namespace cubtx
       void notify_group_mvcc_complete (const tx_group &closed_group);
       void notify_group_logged ();
       void notify_group_complete ();
+
+      void mark_group_prepared_for_complete ();
+      bool is_latest_closed_group_prepared_for_complete ();
 
       bool is_latest_closed_group_mvcc_completed ();
       bool is_latest_closed_group_logged ();
