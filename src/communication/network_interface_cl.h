@@ -420,4 +420,5 @@ extern int netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, S
 extern int locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * ex_lock);
 
 extern int locator_get_proxy_command (const char **proxy_command);
+extern int locator_send_proxy_buffer (const int type, const size_t buf_size, const char *buffer);
 #endif /* _NETWORK_INTERFACE_CL_H_ */
