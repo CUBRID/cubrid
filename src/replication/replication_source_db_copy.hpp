@@ -18,13 +18,13 @@
  */
 
 /*
- * replication_db_copy.hpp
+ * replication_source_db_copy.hpp
  */
 
 #ident "$Id$"
 
-#ifndef _REPLICATION_DB_COPY_HPP_
-#define _REPLICATION_DB_COPY_HPP_
+#ifndef _REPLICATION_SOURCE_DB_COPY_HPP_
+#define _REPLICATION_SOURCE_DB_COPY_HPP_
 
 #include "replication_object.hpp"
 
@@ -37,7 +37,7 @@ namespace cubreplication
 {
   class row_object;
 
-  class copy_context
+  class source_copy_context
   {
     public:
       enum copy_stage
@@ -53,9 +53,9 @@ namespace cubreplication
 	SCHEMA_APPLY_TRIGGERS_INDEXES_FINISHED
       };
 
-      copy_context ();
+      source_copy_context ();
 
-      ~copy_context () = default;
+      ~source_copy_context () = default;
 
       void set_credentials (const char *user, const char *password);
 
@@ -80,4 +80,4 @@ namespace cubreplication
 
 } /* namespace cubreplication */
 
-#endif /* _REPLICATION_DB_COPY_HPP_ */
+#endif /* _REPLICATION_SOURCE_DB_COPY_HPP_ */

@@ -18,12 +18,12 @@
  */
 
 /*
- * replication_db_copy.cpp
+ * replication_source_db_copy.cpp
  */
 
 #ident "$Id$"
 
-#include "replication_db_copy.hpp"
+#include "replication_source_db_copy.hpp"
 #include "heap_attrinfo.h"  /* for HEAP_CACHE_ATTRINFO */
 #include "heap_file.h"      /* heap_attrinfo_transform_to_disk */
 #include "replication_object.hpp"
@@ -34,20 +34,20 @@ namespace cubreplication
 
   int convert_to_last_representation (cubthread::entry *thread_p, RECDES &rec_des, record_descriptor &record,
 				      const OID &inst_oid, HEAP_CACHE_ATTRINFO &attr_info);
-  copy_context::copy_context ()
+  source_copy_context::source_copy_context ()
   {
     m_stream = NULL;
     m_state = NOT_STARTED;
   }
 
-  void copy_context::set_credentials (const char *user, const char *password)
+  void source_copy_context::set_credentials (const char *user, const char *password)
   {
     m_class_schema.set_params ("", user, password, "");
     m_triggers.set_params ("", user, password, "");
     m_indexes.set_params ("", user, password, "");
   }
 
-  void copy_context::pack_and_add_object (row_object &obj)
+  void source_copy_context::pack_and_add_object (row_object &obj)
   {
     if (obj.get_rec_cnt () == 0)
       {
@@ -61,7 +61,7 @@ namespace cubreplication
     stream_entry.pack ();
   }
 
-  void copy_context::pack_and_add_sbr (sbr_repl_entry &sbr)
+  void source_copy_context::pack_and_add_sbr (sbr_repl_entry &sbr)
   {
     stream_entry stream_entry (m_stream);
 
@@ -70,7 +70,7 @@ namespace cubreplication
     stream_entry.pack ();
   }
 
-  int copy_context::transit_state (copy_stage new_state)
+  int source_copy_context::transit_state (copy_stage new_state)
   {
     int error = NO_ERROR;
 
@@ -91,17 +91,17 @@ namespace cubreplication
     return error;
   }
 
-  void copy_context::append_class_schema (const char *buffer, const size_t buf_size)
+  void source_copy_context::append_class_schema (const char *buffer, const size_t buf_size)
   {
     m_class_schema.append_statement (buffer, buf_size);
   }
 
-  void copy_context::append_triggers_schema (const char *buffer, const size_t buf_size)
+  void source_copy_context::append_triggers_schema (const char *buffer, const size_t buf_size)
   {
     m_triggers.append_statement (buffer, buf_size);
   }
 
-  void copy_context::append_indexes_schema (const char *buffer, const size_t buf_size)
+  void source_copy_context::append_indexes_schema (const char *buffer, const size_t buf_size)
   {
     m_indexes.append_statement (buffer, buf_size);
   }
