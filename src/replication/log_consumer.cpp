@@ -226,7 +226,7 @@ namespace cubreplication
 	      }
 	    else if (se->is_subtran_commit ())
 	      {
-		// todo: apply sub-transactions
+		m_lc.get_subtran_applier ().insert_stream_entry (se);
 	      }
 	    else
 	      {
@@ -387,6 +387,11 @@ namespace cubreplication
     m_is_stopped = true;
     ulock.unlock ();
     m_apply_task_cv.notify_one ();
+  }
+
+  subtran_applier &log_consumer::get_subtran_applier ()
+  {
+    return *m_subtran_applier;
   }
 
 } /* namespace cubreplication */

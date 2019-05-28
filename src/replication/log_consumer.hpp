@@ -165,6 +165,8 @@ namespace cubreplication
       }
 
       void set_stop (void);
+
+      subtran_applier &get_subtran_applier ();
   };
 
 } /* namespace cubreplication */
