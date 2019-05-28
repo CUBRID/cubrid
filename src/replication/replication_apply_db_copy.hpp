@@ -45,12 +45,12 @@ namespace cubreplication
   class apply_copy_context
   {
     public:
-      apply_copy_context ();
+      apply_copy_context (node_definition *myself);
 
       ~apply_copy_context () {}
 
       void init (void);
-      int connect_to_source (const node_definition *source_node);
+      int connect_to_source (node_definition *source_node);
 
     private:
       node_definition *m_source_identity;

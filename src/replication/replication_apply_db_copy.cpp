@@ -32,13 +32,15 @@
 #include "stream_file.hpp"
 #include "string_buffer.hpp"
 #include "thread_entry_task.hpp"
+#include "thread_looper.hpp"
 #include <unordered_map>
 
 namespace cubreplication
 {
 
-  apply_copy_context::apply_copy_context ()
+  apply_copy_context::apply_copy_context (node_definition *myself)
   {
+    m_source_identity = myself;
     m_stream = NULL;
   }
 
@@ -46,7 +48,7 @@ namespace cubreplication
   {
     INT64 buffer_size = 1 * 1024 * 1024;
     m_stream = new cubstream::multi_thread_stream (buffer_size, 2);
-    m_stream->set_name ("repl_copy_" + std::string (hostname) + "_replica");
+    m_stream->set_name ("repl_copy_" + std::string (m_source_identity->get_hostname ().c_str ()) + "_replica");
     m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
     m_stream->init (0);
 
@@ -57,7 +59,7 @@ namespace cubreplication
   }
 
 
-  int apply_copy_context::connect_to_source (const node_definition *source_node)
+  int apply_copy_context::connect_to_source (node_definition *source_node)
   {
     int error = NO_ERROR;
 
@@ -67,7 +69,6 @@ namespace cubreplication
     /* connect to replication master node */
     cubcomm::server_channel srv_chn (m_my_identity->get_hostname ().c_str ());
 
-    m_source_identity = source_node;
     error = srv_chn.connect_with_command (m_source_identity->get_hostname ().c_str (), m_source_identity->get_port (),
                                           SERVER_CONNECT_SLAVE_COPY_DB);
     if (error != css_error_code::NO_ERRORS)
