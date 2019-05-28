@@ -36,16 +36,11 @@ namespace cubstream
   class stream_ack;
 };
 
-namespace cubreplication
+namespace control_channel
 {
-  namespace control_channel
-  {
-    void init (cubstream::stream_ack *stream_ack);
-    void add (cubcomm::channel &&chn);
-    void finalize ();
-  };
-
-
-} /* namespace cubreplication */
+  void init (cubstream::stream_ack *stream_ack);
+  void add (cubcomm::channel &&chn);
+  void finalize ();
+} /* namespace control_channel */
 
 #endif /* _REPLICATION_CONTROL_CHANNEL_RECEIVER_HPP_ */
