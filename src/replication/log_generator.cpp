@@ -246,6 +246,18 @@ namespace cubreplication
   }
 
   void
+  log_generator::add_create_savepoint (const char *savept_name)
+  {
+    append_repl_object (* (new savepoint_object (savept_name, savepoint_object::CREATE_SAVEPOINT)));
+  }
+
+  void
+  log_generator::add_rollback_to_savepoint (const char *savept_name)
+  {
+    append_repl_object (* (new savepoint_object (savept_name, savepoint_object::ROLLBACK_TO_SAVEPOINT)));
+  }
+
+  void
   log_generator::update_lsastamp_for_changed_repl_object (const OID &inst_oid)
   {
     if (is_row_replication_disabled ())
@@ -390,7 +402,7 @@ namespace cubreplication
     /* TODO[replication] : force a group commit :
      * move this to log_manager group commit when multi-threaded apply is enabled */
     cubstream::stream_position sp1;
-    cubstream::stream_position sp2;    
+    cubstream::stream_position sp2;
     pack_group_commit_entry (sp1, sp2);
   }
 
