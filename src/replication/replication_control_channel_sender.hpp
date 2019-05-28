@@ -21,35 +21,23 @@
  * replication_control_channel_sender.hpp - manages slave control channel entries
  */
 
-#include <atomic>
 #include <memory>
-#include <mutex>
-#include <condition_variable>
 
 #include "cubstream.hpp"
-#include "thread_manager.hpp"
-#include "thread_daemon.hpp"
 
 namespace cubcomm
 {
   class channel;
 }
 
-namespace control_channel
+namespace cubreplication
 {
-  class sender : public cubthread::task_without_context
+  class slave_control_manager
   {
     public:
-      sender (cubcomm::channel &&chn);
-      void execute () override;
-
-      void wake_up_and_send (cubstream::stream_position sp);
+      slave_control_manager (cubcomm::channel &&chn);
+      void send_ack (cubstream::stream_position sp);
     private:
       std::unique_ptr<cubcomm::channel> m_chn;
-
-      /* Wakeup info. */
-      std::condition_variable m_condvar;
-      std::mutex m_mtx;
-      std::atomic<cubstream::stream_position> m_latest_stream_position;
   };
 }

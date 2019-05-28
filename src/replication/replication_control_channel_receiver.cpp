@@ -25,74 +25,76 @@
 
 #include <list>
 #include <mutex>
-#include <queue>
-#include <vector>
 
 #include "communication_channel.hpp"
 #include "stream_transfer_sender.hpp"
 #include "thread_manager.hpp"
 #include "thread_daemon.hpp"
 
-namespace control_channel
+namespace cubreplication
 {
-  class control_reader : public cubthread::task_without_context
+  namespace master_ctrl
   {
-    public:
-      control_reader (cubcomm::channel &&chn, cubstream::stream_ack *stream_ack);
-      void execute () override;
+    class chn_manager : public cubthread::task_without_context
+    {
+      public:
+	chn_manager (cubcomm::channel &&chn, cubstream::stream_ack *stream_ack);
+	void execute () override;
 
-    private:
-      cubcomm::channel m_chn;
-      cubstream::stream_ack *m_stream_ack;
-  };
+      private:
+	cubcomm::channel m_chn;
+	cubstream::stream_ack *m_stream_ack;
+    };
 
-  std::list<cubthread::daemon *> chns;
-  std::mutex mtx;
-  cubstream::stream_ack *g_stream_ack = NULL;
+    std::list<cubthread::daemon *> chns;
+    std::mutex mtx;
+    cubstream::stream_ack *g_stream_ack = NULL;
 
-  control_reader::control_reader (cubcomm::channel &&chn, cubstream::stream_ack *stream_ack)
-    : m_chn (std::move (chn))
-    , m_stream_ack (stream_ack)
-  {
-  }
+    chn_manager::chn_manager (cubcomm::channel &&chn, cubstream::stream_ack *stream_ack)
+      : m_chn (std::move (chn))
+      , m_stream_ack (stream_ack)
+    {
+    }
 
-  void control_reader::execute ()
-  {
-    size_t len = sizeof (cubstream::stream_position);
-    cubstream::stream_position ack_sp;
-    css_error_code ec = m_chn.recv ((char *) &ack_sp, len);
-    if (ec != NO_ERRORS)
-      {
-	m_chn.close_connection ();
-	retire ();
-	return;
-      }
-    m_stream_ack->notify_stream_ack (ack_sp);
-  }
+    void chn_manager::execute ()
+    {
+      size_t len = sizeof (cubstream::stream_position);
+      cubstream::stream_position ack_sp;
+      css_error_code ec = m_chn.recv ((char *) &ack_sp, len);
+      if (ec != NO_ERRORS)
+	{
+	  m_chn.close_connection ();
+	  retire ();
+	  // todo: does it also need to get erased from the list
+	  return;
+	}
+      m_stream_ack->notify_stream_ack (ack_sp);
+    }
 
-  void init (cubstream::stream_ack *stream_ack)
-  {
-    assert (stream_ack != NULL);
+    void init (cubstream::stream_ack *stream_ack)
+    {
+      assert (stream_ack != NULL);
 
-    g_stream_ack = stream_ack;
-  }
+      g_stream_ack = stream_ack;
+    }
 
-  void finalize ()
-  {
-    for (cubthread::daemon *cr : chns)
-      {
-	cubthread::get_manager()->destroy_daemon (cr);
-      }
-    chns.clear ();
+    void finalize ()
+    {
+      for (cubthread::daemon *cr : chns)
+	{
+	  cubthread::get_manager()->destroy_daemon (cr);
+	}
+      chns.clear ();
 
-    // we are not the ones resposible for deallocing this
-    g_stream_ack = NULL;
-  }
+      // we are not the ones resposible for deallocing this
+      g_stream_ack = NULL;
+    }
 
-  void add (cubcomm::channel &&chn)
-  {
-    std::lock_guard<std::mutex> lg (mtx);
-    chns.push_back (cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
-		    new control_reader (std::move (chn), g_stream_ack), "control channel reader"));
+    void add (cubcomm::channel &&chn)
+    {
+      std::lock_guard<std::mutex> lg (mtx);
+      chns.push_back (cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
+		      new chn_manager (std::move (chn), g_stream_ack), "control channel reader"));
+    }
   }
 }

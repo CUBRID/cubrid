@@ -23,41 +23,20 @@
 
 #include "replication_control_channel_sender.hpp"
 
-#include <atomic>
 #include <memory>
-#include <mutex>
 
 #include "communication_channel.hpp"
 
-namespace control_channel
+namespace cubreplication
 {
-  sender::sender (cubcomm::channel &&chn)
+  slave_control_manager::slave_control_manager (cubcomm::channel &&chn)
     : m_chn (new cubcomm::channel (std::move (chn)))
   {
+
   }
 
-  void sender::execute ()
+  void slave_control_manager::send_ack (cubstream::stream_position sp)
   {
-    std::unique_lock<std::mutex> lk (m_mtx);
-    m_condvar.wait (lk);
-
-    cubstream::stream_position latest = m_latest_stream_position.load ();
-    css_error_code ec = m_chn->send ((const char *) &latest, sizeof (latest));
-
-    if ( ec != NO_ERRORS)
-      {
-	m_chn->close_connection ();
-	retire ();
-	return;
-      }
-  }
-
-  void sender::wake_up_and_send (cubstream::stream_position sp)
-  {
-    while ( m_latest_stream_position.load () < sp)
-      {
-	m_latest_stream_position.compare_exchange_strong (sp, m_latest_stream_position.load ());
-      }
-    m_condvar.notify_one ();
+    m_chn->send ((const char *) &sp, sizeof (sp));
   }
 }

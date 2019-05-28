@@ -69,7 +69,7 @@ namespace cubreplication
 
     cubtx::master_group_complete_manager::init ();
 
-    control_channel::init (cubtx::master_group_complete_manager::get_instance ());
+    cubreplication::master_ctrl::init (cubtx::master_group_complete_manager::get_instance ());
 
     er_log_debug_replication (ARG_FILE_LINE, "master_node:init replication_path:%s", replication_path.c_str ());
 #endif
@@ -128,7 +128,7 @@ namespace cubreplication
     css_error_code rc = chn.accept (fd);
     assert (rc == NO_ERRORS);
 
-    control_channel::add (std::move (chn));
+    cubreplication::master_ctrl::add (std::move (chn));
 
     er_log_debug_replication (ARG_FILE_LINE, "control channel added");
 #endif
@@ -144,7 +144,7 @@ namespace cubreplication
     delete g_instance;
     g_instance = NULL;
 
-    control_channel::finalize ();
+    cubreplication::master_ctrl::finalize ();
 #endif
   }
 
