@@ -670,8 +670,7 @@ extern int heap_get_hfid_from_vfid (THREAD_ENTRY * thread_p, const VFID * vfid, 
 extern int heap_scan_cache_allocate_area (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p, int size);
 extern bool heap_is_page_header (THREAD_ENTRY * thread_p, PAGE_PTR page);
 
-extern int heap_multi_insert_with_page_hint (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
-					     OID ** oid, std::vector < RECDES > recdes, HEAP_SCANCACHE * scan_cache,
-					     UPDATE_INPLACE_STYLE force_in_place, VPID * new_vpid);
+extern int heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, PGBUF_WATCHER * home_hint_p,
+				VPID * new_page_vpid);
 
 #endif /* _HEAP_FILE_H_ */
