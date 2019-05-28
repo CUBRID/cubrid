@@ -26,8 +26,11 @@
 #include "replication_source_db_copy.hpp"
 #include "heap_attrinfo.h"  /* for HEAP_CACHE_ATTRINFO */
 #include "heap_file.h"      /* heap_attrinfo_transform_to_disk */
+#include "replication_master_node.hpp"
+#include "replication_node.hpp"
 #include "replication_object.hpp"
 #include "scan_manager.h"
+#include "thread_entry_task.hpp"
 
 namespace cubreplication
 {
@@ -37,6 +40,8 @@ namespace cubreplication
   source_copy_context::source_copy_context ()
   {
     m_stream = NULL;
+    m_stream_file = NULL;
+    m_transfer_sender = NULL;
     m_state = NOT_STARTED;
   }
 
@@ -105,6 +110,50 @@ namespace cubreplication
   {
     m_indexes.append_statement (buffer, buf_size);
   }
+
+  cubstream::multi_thread_stream *source_copy_context::get_stream_for_copy ()
+  {
+    INT64 buffer_size = 1 * 1024 * 1024;
+    int num_max_appenders = log_Gl.trantable.num_total_indices + 1;
+
+    /* TODO[replication] : here, we create a new stream for each new slave copy, but as an optimization,
+     * we should reuse a db copy stream which is recent enough (for slave doesn't matter) */
+
+    cubstream::multi_thread_stream *copy_db_stream = new cubstream::multi_thread_stream (buffer_size, 2);
+    const node_definition *myself = master_node::get_instance (NULL)->get_node_identity ();
+    copy_db_stream->set_name ("repl_copy_" + std::string (myself->get_hostname ().c_str ()));
+    copy_db_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
+    copy_db_stream->init (0);
+
+    return copy_db_stream;
+  }
+
+
+  class source_copy_daemon_task : public cubthread::entry_task
+  {
+    public:
+      source_copy_daemon_task ()
+      {
+      };
+
+      void execute (cubthread::entry &thread_ref) override
+      {
+        /* - create transaction 
+         * - start DDL proxy
+         * - scan heaps
+         * - terminate
+         */
+        //locator_repl_start_tran (&thread_ref);
+
+
+        //locator_repl_extract_schema ();
+
+      };
+
+    private:
+
+  };
+
 
   /*
    * create_scan_for_replication_copy - creates a HEAP SCAN to be used by replication copy (no regu variables)

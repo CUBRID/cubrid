@@ -46,6 +46,7 @@ namespace cubreplication
 
       static void init (const char *name);
       static void new_slave (int fd);
+      static void new_slave_copy (int fd);
       static void final (void);
 
       static void enable_active (void);

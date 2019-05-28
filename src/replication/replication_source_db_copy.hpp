@@ -31,6 +31,8 @@
 namespace cubstream
 {
   class multi_thread_stream;
+  class stream_file;
+  class transfer_sender;
 };
 
 namespace cubreplication
@@ -68,8 +70,12 @@ namespace cubreplication
       void append_triggers_schema (const char *buffer, const size_t buf_size);
       void append_indexes_schema (const char *buffer, const size_t buf_size);
 
+      static cubstream::multi_thread_stream *get_stream_for_copy ();
+
     private:
       cubstream::multi_thread_stream *m_stream;
+      cubstream::stream_file *m_stream_file;
+      cubstream::transfer_sender *m_transfer_sender;
 
       sbr_repl_entry m_class_schema;
       sbr_repl_entry m_triggers;

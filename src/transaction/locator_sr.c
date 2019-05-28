@@ -14268,6 +14268,61 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
 }
 
 int
+locator_repl_extract_schema (THREAD_ENTRY * thread_p, const char *db_user, const char *db_password,
+			     const char *ha_sys_prm_context)
+{
+  char path[PATH_MAX];
+  static const char *db_name = boot_db_name ();
+  int error = NO_ERROR, exit_status;
+  char tran_index_str[DB_BIGINT_PRECISION + 1] = { 0 };
+  const char *command_option = NULL, *command = NULL;
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+  assert (db_user != NULL && db_password != NULL && tdes != NULL);
+  sprintf (tran_index_str, "%d", tran_index);
+
+   /* Uses command option. */
+   command_option = "-c";
+   command = ";extract-schema-to-net";
+
+  const char *ddl_argv[13] = {
+    path,
+    "-u",
+    db_user,
+    "-p",
+    db_password,
+    db_name,
+    command_option,
+    command,
+    "-t",
+    tran_index_str,
+    (ha_sys_prm_context != NULL) ? "-s" : NULL,
+    ha_sys_prm_context,
+    NULL
+  };
+
+  envvar_bindir_file (path, PATH_MAX, UTIL_DDL_PROXY_CLIENT);
+
+  error = create_child_process (ddl_argv, 1, NULL, NULL, NULL, &exit_status);
+  tdes->ha_sbr_statement = NULL;
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  _er_log_debug (ARG_FILE_LINE, "extract schema: tran_index:%d, exit_status:%d\n%s", tran_index, exit_status);
+
+  if (exit_status != 0)
+    {
+      /* TODO : get error from ddl_proxy & set error */
+      error = ER_FAILED;
+    }
+
+  return error;
+}
+
+int
 locator_repl_start_tran (THREAD_ENTRY * thread_p)
 {
   /* TODO */

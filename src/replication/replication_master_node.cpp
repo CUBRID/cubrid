@@ -109,6 +109,29 @@ namespace cubreplication
 #endif
   }
 
+  void master_node::new_slave_copy (int fd)
+  {
+#if defined (SERVER_MODE)
+
+    if (css_ha_server_state () != HA_SERVER_STATE_ACTIVE)
+      {
+	er_log_debug_replication (ARG_FILE_LINE, "new_slave_copy invalid server state :%s",
+				  css_ha_server_state_string (css_ha_server_state ()));
+	return;
+      }
+
+    cubstream::multi_thread_stream *copy_db_stream = source_copy_context::get_stream_for_copy ();
+    cubcomm::channel chn;
+
+    css_error_code rc = chn.accept (fd);
+    assert (rc == NO_ERRORS);
+
+    master_senders_manager::add_stream_sender (new cubstream::transfer_sender (std::move (chn), *copy_db_stream));
+
+    er_log_debug_replication (ARG_FILE_LINE, "new_slave_copy connected");
+#endif
+  }
+
   void master_node::final (void)
   {
 #if defined (SERVER_MODE)
