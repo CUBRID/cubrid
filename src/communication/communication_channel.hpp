@@ -66,6 +66,8 @@ namespace cubcomm
       css_error_code send (const std::string &message);
       css_error_code send (const char *buffer, std::size_t length);
 
+      css_error_code read_after_poll (char *buffer, size_t &maxlen_in_recvlen_out);
+
       /* simple connect */
       virtual css_error_code connect (const char *hostname, int port);
 

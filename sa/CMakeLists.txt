@@ -295,7 +295,6 @@ set (REPLICATION_HEADERS
 set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/log_consumer.cpp
   ${REPLICATION_DIR}/log_generator.cpp
-  ${REPLICATION_DIR}/replication_control_channel_receiver.cpp
   ${REPLICATION_DIR}/replication_db_copy.cpp
   ${REPLICATION_DIR}/replication_object.cpp
   ${REPLICATION_DIR}/replication_master_node.cpp

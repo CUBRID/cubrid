@@ -25,14 +25,11 @@
 #ifndef _REPLICATION_CONTROL_CHANNEL_RECEIVER_HPP_
 #define _REPLICATION_CONTROL_CHANNEL_RECEIVER_HPP_
 
-#include <list>
-#include "communication_channel.hpp"
 
-namespace cubthread
+namespace cubcomm
 {
-  class daemon;
-  class looper;
-};
+  class channel;
+}
 
 namespace cubstream
 {
@@ -45,6 +42,7 @@ namespace cubreplication
   {
     void init (cubstream::stream_ack *stream_ack);
     void add (cubcomm::channel &&chn);
+    void finalize ();
   };
 
 

@@ -26,6 +26,7 @@
 #include "replication_master_node.hpp"
 #include "log_impl.h"
 #include "replication_common.hpp"
+#include "replication_control_channel_receiver.hpp"
 #include "replication_master_senders_manager.hpp"
 #include "transaction_master_group_complete_manager.hpp"
 #include "server_support.h"
@@ -67,6 +68,8 @@ namespace cubreplication
     master_senders_manager::init (instance->m_stream);
 
     cubtx::master_group_complete_manager::init ();
+
+    control_channel::init (cubtx::master_group_complete_manager::get_instance ());
 
     er_log_debug_replication (ARG_FILE_LINE, "master_node:init replication_path:%s", replication_path.c_str ());
 #endif
@@ -119,10 +122,13 @@ namespace cubreplication
 	return;
       }
 
-    cubcomm::channel chn;
+    // zero timeout because we read after polling
+    cubcomm::channel chn (0);
 
     css_error_code rc = chn.accept (fd);
     assert (rc == NO_ERRORS);
+
+    control_channel::add (std::move (chn));
 
     er_log_debug_replication (ARG_FILE_LINE, "control channel added");
 #endif
@@ -137,6 +143,8 @@ namespace cubreplication
 
     delete g_instance;
     g_instance = NULL;
+
+    control_channel::finalize ();
 #endif
   }
 
