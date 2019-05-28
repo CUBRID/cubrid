@@ -7685,7 +7685,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	      else
 		{
 		  /* jump to last parent */
-		  assert (sysop_end->type == LOG_SYSOP_END_COMMIT);
+		  assert (sysop_end->type == LOG_SYSOP_END_COMMIT || sysop_end->type == LOG_SYSOP_END_ABORT);
 		  LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
 		}
 	      break;
