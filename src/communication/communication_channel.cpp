@@ -102,12 +102,6 @@ namespace cubcomm
     return (css_error_code) rc;
   }
 
-  css_error_code channel::read_after_poll (char *buffer, std::size_t &maxlen_in_recvlen_out)
-  {
-    // todo: recv seems not well optimized for poll then read
-    return recv (buffer, maxlen_in_recvlen_out);
-  }
-
   css_error_code channel::connect (const char *hostname, int port)
   {
     if (is_connection_alive ())
