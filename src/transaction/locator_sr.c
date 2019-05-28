@@ -13770,14 +13770,14 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
             // Clear the recdes array.
             recdes_array.clear ();
             oids_array.clear ();
+            accumulated_records_size = 0;
+
           }
-        else
-          {
-            // Add this records to the recdes array and increase the accumulated size.
-            recdes_array.push_back (*local_recdes);
-            oids_array.push_back (*local_oid);
-            accumulated_records_size += local_recdes->length;
-          }
+
+        // Add this record to the recdes array and increase the accumulated size.
+        recdes_array.push_back (*local_recdes);
+        oids_array.push_back (*local_oid);
+        accumulated_records_size += local_recdes->length;
       }
   }
 
