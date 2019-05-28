@@ -141,6 +141,7 @@ namespace cubtx
 	    closed_group_stream_end_position);
 	m_latest_closed_group_start_stream_position = closed_group_stream_start_position;
 	m_latest_closed_group_end_stream_position = closed_group_stream_end_position;
+	mark_group_prepared_for_complete ();
       }
   }
 
@@ -156,6 +157,14 @@ namespace cubtx
     if (is_latest_closed_group_completed ())
       {
 	/* Latest closed group is already completed. */
+	return;
+      }
+
+    if (!is_latest_closed_group_prepared_for_complete ())
+      {
+	/* The user must call again do_complete since the data is not prepared for complete.
+	 * Another option may be to wait. Since rarely happens, we can use thread_sleep.
+	 */
 	return;
       }
 

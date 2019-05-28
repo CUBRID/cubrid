@@ -147,6 +147,7 @@ namespace cubtx
 				   &closed_group_end_complete_lsa, &has_postpone);
 	LSA_COPY (&m_latest_closed_group_start_log_lsa, &closed_group_start_complete_lsa);
 	LSA_COPY (&m_latest_closed_group_end_log_lsa, &closed_group_end_complete_lsa);
+	mark_group_prepared_for_complete ();
 	log_wakeup_log_flush_daemon ();
 	if (has_postpone)
 	  {
@@ -167,6 +168,14 @@ namespace cubtx
     if (is_latest_closed_group_completed ())
       {
 	/* Latest closed group is already completed. */
+	return;
+      }
+
+    if (!is_latest_closed_group_prepared_for_complete())
+      {
+	/* The user must call again do_complete since the data is not prepared for complete.
+	* Another option may be to wait. Since rarely happens, we can use thread_sleep.
+	*/
 	return;
       }
 
