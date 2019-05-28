@@ -4863,13 +4863,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	{
 	  LOG_LSA commit_lsa;
 
-	  /* To write unlock log before releasing locks for transactional consistencies. When a transaction(T2) which
-	   * is resumed by this committing transaction(T1) commits and a crash happens before T1 completes, transaction
-	   * consistencies will be broken because T1 will be aborted during restart recovery and T2 was already
-	   * committed. */
-	  /* TODO - with GC, no need to append log commit or ha commit. */
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_active_worker_transaction ()
-	      && log_does_allow_replication () == true)
+	  if (LSA_ISNULL (&tdes->posp_nxlsa))
 	    {
 	      tx_group group;
 	      group.add (tdes->tran_index, 0, tdes->state);
@@ -7691,7 +7685,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	      else
 		{
 		  /* jump to last parent */
-		  assert (sysop_end->type == LOG_SYSOP_END_COMMIT);
+		  assert (sysop_end->type == LOG_SYSOP_END_COMMIT || sysop_end->type == LOG_SYSOP_END_ABORT);
 		  LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
 		}
 	      break;

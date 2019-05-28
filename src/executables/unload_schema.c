@@ -133,8 +133,6 @@ static void force_one_class (print_output & output_ctx, DB_OBJLIST ** class_list
 static DB_OBJLIST *get_ordered_classes (print_output & output_ctx, MOP * class_table);
 static void emit_class_owner (print_output & output_ctx, MOP class_);
 static int export_serial (print_output & output_ctx);
-static int emit_indexes (print_output & output_ctx, DB_OBJLIST * classes, int has_indexes,
-			 DB_OBJLIST * vclass_list_has_using_index);
 
 static int emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth,
 			DB_OBJLIST ** vclass_list_has_using_index, EMIT_STORAGE_ORDER emit_storage_order);
@@ -1054,7 +1052,7 @@ extract_indexes_to_file (extract_context & ctxt, const char *output_filename)
  *    has_indexes(in):
  *    vclass_list_has_using_index(in):
  */
-static int
+int
 emit_indexes (print_output & output_ctx, DB_OBJLIST * classes, int has_indexes,
 	      DB_OBJLIST * vclass_list_has_using_index)
 {

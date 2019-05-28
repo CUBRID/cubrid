@@ -9770,3 +9770,38 @@ slocator_get_proxy_command (THREAD_ENTRY * thread_p, unsigned int rid, char *req
       db_private_free_and_init (thread_p, area);
     }
 }
+
+/*
+ * slocator_send_proxy_buffer - Get proxy command
+ *
+ * return:  void
+ *
+ *   thread_p (in) : thread entry
+ *   rid (in):  request ID
+ *   request (in): request data
+ *   reqlen (in): request data length
+ */
+void
+slocator_send_proxy_buffer (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr = NULL;
+  int error_code;
+  int type;
+  int buf_size;
+  char *buffer_start;
+
+  ptr = or_unpack_int (request, &type);
+  ptr = or_unpack_int (ptr, &buf_size);
+  buffer_start = ptr;
+
+  error_code = xlocator_send_proxy_buffer (thread_p, type, buf_size, buffer_start);
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}

@@ -402,6 +402,11 @@ net_server_init (void)
   req_p->processing_function = slocator_get_proxy_command;
   req_p->name = "NET_SERVER_LC_GET_PROXY_COMMAND";
 
+  req_p = &net_Requests[NET_SERVER_LC_SEND_PROXY_BUFFER];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = slocator_send_proxy_buffer;
+  req_p->name = "NET_SERVER_LC_SEND_PROXY_BUFFER";
+
   req_p = &net_Requests[NET_SERVER_LC_DEMOTE_CLASS_LOCK];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slocator_demote_class_lock;
