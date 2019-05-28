@@ -7682,10 +7682,16 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 		  /* we have to stop */
 		  LSA_SET_NULL (&prev_tranlsa);
 		}
+	      else if (sysop_end->type == LOG_SYSOP_END_COMMIT_REPLICATED)
+		{
+		  /* jump to last parent */
+		  // TBD: imitate behavior of LOG_SYSOP_END_COMMIT until we have a proper solution
+		  LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
+		}
 	      else
 		{
 		  /* jump to last parent */
-		  // TBD: what to do in case of LOG_SYSOP_END_COMMIT_REPLICATED
+		  assert (sysop_end->type == LOG_SYSOP_END_COMMIT);
 		  LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
 		}
 	      break;
