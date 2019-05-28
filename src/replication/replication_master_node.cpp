@@ -122,8 +122,7 @@ namespace cubreplication
 	return;
       }
 
-    // zero timeout because we read after polling
-    cubcomm::channel chn (0);
+    cubcomm::channel chn;
 
     css_error_code rc = chn.accept (fd);
     assert (rc == NO_ERRORS);

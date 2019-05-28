@@ -48,7 +48,7 @@ namespace cubreplication
 #if defined (SERVER_MODE)
       node_definition m_master_identity;
       cubstream::transfer_receiver *m_transfer_receiver;
-      cubreplication::slave_control_manager *m_control_channel_sender;
+      slave_control_manager *m_control_channel_sender;
 #endif
 
       slave_node (const char *name)

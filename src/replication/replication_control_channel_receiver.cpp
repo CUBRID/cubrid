@@ -65,7 +65,6 @@ namespace cubreplication
 	{
 	  m_chn.close_connection ();
 	  retire ();
-	  // todo: does it also need to get erased from the list
 	  return;
 	}
       m_stream_ack->notify_stream_ack (ack_sp);

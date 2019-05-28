@@ -116,7 +116,6 @@ namespace cubreplication
 	start_position);
 
     g_instance->m_control_channel_sender = new cubreplication::slave_control_manager (std::move (control_chn));
-    // todo: add the slave-end ack handling
 #endif
 
     return error;
