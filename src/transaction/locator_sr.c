@@ -48,6 +48,7 @@
 #include "log_generator.hpp"
 #include "log_lsa.hpp"
 #include "lock_manager.h"
+#include "network.h"
 #include "object_primitive.h"
 #include "object_representation_sr.h"
 #include "query_executor.h"
@@ -57,6 +58,7 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "process_util.h"
+#include "replication_db_copy.hpp"
 #include "replication_object.hpp"
 #include "slotted_page.h"
 #include "utility.h"
@@ -13807,6 +13809,52 @@ xlocator_get_proxy_command (THREAD_ENTRY * thread_p, const char **proxy_command)
 
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
   *proxy_command = tdes->ha_sbr_statement;
+
+  return NO_ERROR;
+}
+
+int
+xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_t buf_size, const char *buffer)
+{
+  LOG_TDES *tdes;
+
+  assert (thread_p != NULL);
+
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  cubreplication::copy_context & repl_copy_ctxt = tdes->replication_copy_context;
+
+  switch (type)
+    {
+    case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES:
+      repl_copy_ctxt.append_class_schema (buffer, buf_size);
+      break;
+
+    case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END:
+      repl_copy_ctxt.append_class_schema (buffer, buf_size);
+      repl_copy_ctxt.transit_state (cubreplication::copy_context::SCHEMA_APPLY_CLASSES_FINISHED);
+      break;
+
+    case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS:
+      repl_copy_ctxt.append_triggers_schema (buffer, buf_size);
+      break;
+
+    case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS_END:
+      repl_copy_ctxt.append_triggers_schema (buffer, buf_size);
+      repl_copy_ctxt.transit_state (cubreplication::copy_context::SCHEMA_TRIGGERS_RECEIVED);
+      break;
+
+    case NET_PROXY_BUF_TYPE_EXTRACT_INDEXES:
+      repl_copy_ctxt.append_indexes_schema (buffer, buf_size);
+      break;
+
+    case NET_PROXY_BUF_TYPE_EXTRACT_INDEXES_END:
+      repl_copy_ctxt.append_indexes_schema (buffer, buf_size);
+      repl_copy_ctxt.transit_state (cubreplication::copy_context::SCHEMA_INDEXES_RECEIVED);
+      break;
+
+    default:
+      assert (false);
+    }
 
   return NO_ERROR;
 }
