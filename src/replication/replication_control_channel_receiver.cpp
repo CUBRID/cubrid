@@ -18,8 +18,7 @@
  */
 
 /*
- * replication_control_channel_receiver.cpp - manages master replication channel entries; it is a singleton
- *                                          - it maintains the minimum successful sent position
+ * replication_control_channel_receiver.cpp - manages master control channel entries
  */
 
 #include "replication_control_channel_receiver.hpp"
@@ -66,6 +65,7 @@ namespace control_channel
       {
 	m_chn.close_connection ();
 	retire ();
+	return;
       }
     m_stream_ack->notify_stream_ack (ack_sp);
   }

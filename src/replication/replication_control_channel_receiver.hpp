@@ -18,8 +18,7 @@
  */
 
 /*
- * replication_control_channel_receiver.hpp - manages master replication channel entries; it is a singleton
- *                                          - it maintains the minimum successful sent position
+ * replication_control_channel_receiver.hpp - manages master control channel entries
  */
 
 #ifndef _REPLICATION_CONTROL_CHANNEL_RECEIVER_HPP_
