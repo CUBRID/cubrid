@@ -165,7 +165,7 @@ namespace cubcomm
     return rc;
   }
 
-  bool channel::is_connection_alive ()
+  bool channel::is_connection_alive () const
   {
     return !IS_INVALID_SOCKET (m_socket);
   }

@@ -103,7 +103,7 @@ namespace cubreplication
       }
 
     cubcomm::server_channel control_chn (g_instance->m_identity.get_hostname ().c_str ());
-    error = control_chn.connect (master_node_hostname, master_node_port_id, SERVER_REQUEST_CONNECT_NEW_SLAVE_CC);
+    error = control_chn.connect (master_node_hostname, master_node_port_id, SERVER_REQUEST_CONNECT_NEW_SLAVE_CONTROL);
     if (error != css_error_code::NO_ERRORS)
       {
 	return error;

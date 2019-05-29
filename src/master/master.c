@@ -766,7 +766,7 @@ css_process_new_connection (SOCKET fd)
 	case SERVER_REQUEST_CONNECT_NEW_SLAVE:
 	  css_send_to_existing_server (conn, rid, SERVER_CONNECT_NEW_SLAVE);
 	  break;
-	case SERVER_REQUEST_CONNECT_NEW_SLAVE_CC:
+	case SERVER_REQUEST_CONNECT_NEW_SLAVE_CONTROL:
 	  css_send_to_existing_server (conn, rid, SERVER_CONNECT_NEW_SLAVE_CC);
 	  break;
 	default:

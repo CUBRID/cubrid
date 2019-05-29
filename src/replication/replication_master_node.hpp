@@ -30,6 +30,7 @@
 
 namespace cubreplication
 {
+  class master_ctrl;
 
   class master_node : public replication_node
   {
@@ -42,6 +43,8 @@ namespace cubreplication
       }
 
     public:
+      master_ctrl *control_channel_manager;
+
       static master_node *get_instance (const char *name);
 
       static void init (const char *name);

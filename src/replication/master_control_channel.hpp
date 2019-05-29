@@ -24,6 +24,8 @@
 #ifndef _MASTER_CONTROL_CHANNEL_HPP_
 #define _MASTER_CONTROL_CHANNEL_HPP_
 
+#include <list>
+#include <mutex>
 
 namespace cubcomm
 {
@@ -35,14 +37,29 @@ namespace cubstream
   class stream_ack;
 };
 
+namespace cubthread
+{
+  class daemon;
+};
+
 namespace cubreplication
 {
-  namespace master_ctrl
+  class control_channel_managing_task;
+
+  class master_ctrl
   {
-    void init (cubstream::stream_ack *stream_ack);
-    void add (cubcomm::channel &&chn);
-    void finalize ();
-  }
+    public:
+      master_ctrl ();
+      ~master_ctrl ();
+      void init_stream_ack_ref (cubstream::stream_ack *stream_ack);
+      void add (cubcomm::channel &&chn);
+
+    private:
+      cubthread::daemon *m_managing_looper;
+      std::list<std::pair<cubthread::daemon *, const cubcomm::channel *>> m_ctrl_channel_readers;
+      std::mutex m_mtx;
+      cubstream::stream_ack *m_stream_ack = NULL;
+  };
 } /* namespace cubreplication */
 
 #endif /* _MASTER_CONTROL_CHANNEL_HPP_ */
