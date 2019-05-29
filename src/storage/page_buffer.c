@@ -1188,7 +1188,7 @@ STATIC_INLINE int pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p) __attr
 static bool pgbuf_is_temp_lsa (const log_lsa & lsa);
 static void pgbuf_init_temp_page_lsa (FILEIO_PAGE * io_page, PGLENGTH page_size);
 
-int pgbuf_scan_bcb_table (THREAD_ENTRY * thread_p);
+static int pgbuf_scan_bcb_table (THREAD_ENTRY * thread_p);
 
 #if defined (SERVER_MODE)
 // *INDENT-OFF*
@@ -1820,7 +1820,6 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
       tsc_getticks (&perf.start_tick);
     }
 
-  //ATOMIC_INC_64 (&(pgbuf_Pool.show_status.now.num_page_request), 1);
   pgbuf_Pool.show_status.now.num_page_request++;
 
 try_again:
@@ -1854,7 +1853,6 @@ try_again:
       pgbuf_hit = true;
 #endif /* ENABLE_SYSTEMTAP */
 
-      //ATOMIC_INC_64 (&(pgbuf_Pool.show_status.now.num_hit), 1);
       pgbuf_Pool.show_status.now.num_hit++;
 
       if (fetch_mode == NEW_PAGE)
@@ -7638,7 +7636,6 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	}
       else
 	{
-	  //ATOMIC_INC_64 (&(pgbuf_Pool.show_status.now.num_pages_read), 1);
 	  pgbuf_Pool.show_status.now.num_pages_read++;
 
 	  if (fileio_read (thread_p, fileio_get_volume_descriptor (vpid->volid), &bufptr->iopage_buffer->iopage,
@@ -7736,7 +7733,6 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	  perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
 	}
 
-      //ATOMIC_INC_64 (&(pgbuf_Pool.show_status.now.num_pages_created), 1);
       pgbuf_Pool.show_status.now.num_pages_created++;
     }
 
@@ -9938,7 +9934,6 @@ copy_unflushed_lsa:
     }
   else
     {
-      //ATOMIC_INC_64 (&(pgbuf_Pool.show_status.now.num_pages_written), 1);
       pgbuf_Pool.show_status.now.num_pages_written++;
 
       /* Record number of writes in statistics */
@@ -11655,7 +11650,6 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 
 	  if (req_page_has_group == true)
 	    {
-	      //이미 req_vpid보다 큰 vpid가 잡혀있으니까 풀었다 다시 잡아야함 (vpid 순서로 fix)
 	      diff = pgbuf_compare_hold_vpid_for_sort (&req_page_holder_info, &ordered_holders_info[saved_pages_cnt]);
 	    }
 	  else
@@ -15930,6 +15924,9 @@ pgbuf_init_temp_page_lsa (FILEIO_PAGE * io_page, PGLENGTH page_size)
   prv2->lsa = PGBUF_TEMP_LSA;
 }
 
+/*
+ * pgbuf_scan_bcb_table () -  scan bcb table to count snapshot data with no bcb mutex
+ */
 void
 pgbuf_scan_bcb_table ()
 {
@@ -15966,17 +15963,15 @@ pgbuf_scan_bcb_table ()
 	  pgbuf_Pool.show_status.now.victim_candidate_pages++;
 	}
 
-      /* count temporary pages and permanent pages */
+      /* count temporary and permanent pages */
       if (pgbuf_is_temporary_volume (vpid.volid) == true)
 	{
 	  pgbuf_Pool.show_status.now.num_temp_pages++;
 
-	  //TODO below assert to be deleted  becouse this function dosen't lock bcb mutex
-	  assert ((page_type == PAGE_UNKNOWN) ||	// dealloc pages, we don't know page type
-		  (page_type == PAGE_AREA) || (page_type == PAGE_QRESULT) ||	// temporary page type
-		  (page_type == PAGE_EHASH) || (page_type == PAGE_VOLHEADER) || (page_type == PAGE_VOLBITMAP) || (page_type == PAGE_FTAB));	// It can be temporary or permanent type file
-
-	  //assert((page_type != PAGE_VACUUM_DATA) && (page_type != PAGE_DROPPED_FILES);
+	  assert ((page_type == PAGE_UNKNOWN) ||	/* dealloc pages, we don't know page type */
+		  (page_type == PAGE_AREA) || (page_type == PAGE_QRESULT) ||	/* temporary page type */
+		  (page_type == PAGE_EHASH) || (page_type == PAGE_VOLHEADER)	/* It can be temporary or permanent pages */
+		  || (page_type == PAGE_VOLBITMAP) || (page_type == PAGE_FTAB));	/* It can be temporary or permanent pages */
 	}
       else
 	{
@@ -15999,7 +15994,7 @@ pgbuf_scan_bcb_table ()
 	      pgbuf_Pool.show_status.now.num_system_pages++;
 	      break;
 	    default:
-	      // dealloc pages, we don't know page type
+	      /* dealloc pages, we don't know page type */
 	      assert (page_type == PAGE_UNKNOWN);
 	      break;
 	    }
