@@ -18,7 +18,7 @@
  */
 
 /*
- * replication_control_channel_sender.hpp - manages slave control channel entries
+ * slave_control_channel.hpp - manages slave control channel entries
  */
 
 #include <memory>
@@ -32,12 +32,13 @@ namespace cubcomm
 
 namespace cubreplication
 {
-  class slave_control_manager
+  class slave_control_channel
   {
     public:
-      slave_control_manager (cubcomm::channel &&chn);
+      slave_control_channel (cubcomm::channel &&chn);
       void send_ack (cubstream::stream_position sp);
     private:
       std::unique_ptr<cubcomm::channel> m_chn;
   };
 }
+

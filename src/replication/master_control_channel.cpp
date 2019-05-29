@@ -18,10 +18,10 @@
  */
 
 /*
- * replication_control_channel_receiver.cpp - manages master control channel entries
+ * master_control_channel.cpp - manages master control channel entries
  */
 
-#include "replication_control_channel_receiver.hpp"
+#include "master_control_channel.hpp"
 
 #include <list>
 #include <mutex>
@@ -58,13 +58,17 @@ namespace cubreplication
 
     void chn_manager::execute ()
     {
+      if (!m_chn.is_connection_alive ())
+	{
+	  return;
+	  // todo: notify master_ctrl to gracefully destoy me
+	}
       size_t len = sizeof (cubstream::stream_position);
       cubstream::stream_position ack_sp;
       css_error_code ec = m_chn.recv ((char *) &ack_sp, len);
       if (ec != NO_ERRORS)
 	{
 	  m_chn.close_connection ();
-	  retire ();
 	  return;
 	}
       m_stream_ack->notify_stream_ack (ack_sp);

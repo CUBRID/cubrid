@@ -27,7 +27,7 @@
 #include "log_consumer.hpp"
 #include "multi_thread_stream.hpp"
 #include "replication_common.hpp"
-#include "replication_control_channel_sender.hpp"
+#include "slave_control_channel.hpp"
 #include "replication_stream_entry.hpp"
 #include "stream_file.hpp"
 #include "stream_transfer_receiver.hpp"
@@ -115,7 +115,7 @@ namespace cubreplication
     g_instance->m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *g_instance->m_stream,
 	start_position);
 
-    g_instance->m_control_channel_sender = new cubreplication::slave_control_manager (std::move (control_chn));
+    g_instance->m_control_channel_sender = new cubreplication::slave_control_channel (std::move (control_chn));
 #endif
 
     return error;

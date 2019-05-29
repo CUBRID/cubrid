@@ -37,7 +37,7 @@ namespace cubstream
 namespace cubreplication
 {
   class log_consumer;
-  class slave_control_manager;
+  class slave_control_channel;
 
   class slave_node : public replication_node
   {
@@ -48,7 +48,7 @@ namespace cubreplication
 #if defined (SERVER_MODE)
       node_definition m_master_identity;
       cubstream::transfer_receiver *m_transfer_receiver;
-      slave_control_manager *m_control_channel_sender;
+      slave_control_channel *m_control_channel_sender;
 #endif
 
       slave_node (const char *name)

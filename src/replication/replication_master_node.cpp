@@ -26,7 +26,7 @@
 #include "replication_master_node.hpp"
 #include "log_impl.h"
 #include "replication_common.hpp"
-#include "replication_control_channel_receiver.hpp"
+#include "master_control_channel.hpp"
 #include "replication_master_senders_manager.hpp"
 #include "transaction_master_group_complete_manager.hpp"
 #include "server_support.h"

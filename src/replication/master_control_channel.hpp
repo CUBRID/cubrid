@@ -18,11 +18,11 @@
  */
 
 /*
- * replication_control_channel_receiver.hpp - manages master control channel entries
+ * master_control_channel.hpp - manages master control channel entries
  */
 
-#ifndef _REPLICATION_CONTROL_CHANNEL_RECEIVER_HPP_
-#define _REPLICATION_CONTROL_CHANNEL_RECEIVER_HPP_
+#ifndef _MASTER_CONTROL_CHANNEL_HPP_
+#define _MASTER_CONTROL_CHANNEL_HPP_
 
 
 namespace cubcomm
@@ -45,4 +45,4 @@ namespace cubreplication
   }
 } /* namespace cubreplication */
 
-#endif /* _REPLICATION_CONTROL_CHANNEL_RECEIVER_HPP_ */
+#endif /* _MASTER_CONTROL_CHANNEL_HPP_ */
