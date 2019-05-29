@@ -69,7 +69,7 @@ namespace cubreplication
 
     cubtx::master_group_complete_manager::init ();
 
-    instance->control_channel_manager->init_stream_ack_ref (cubtx::master_group_complete_manager::get_instance ());
+    instance->m_control_channel_manager = new master_ctrl (cubtx::master_group_complete_manager::get_instance ());
 
     er_log_debug_replication (ARG_FILE_LINE, "master_node:init replication_path:%s", replication_path.c_str ());
 #endif
@@ -127,7 +127,7 @@ namespace cubreplication
     css_error_code rc = chn.accept (fd);
     assert (rc == NO_ERRORS);
 
-    g_instance->control_channel_manager->add (std::move (chn));
+    g_instance->m_control_channel_manager->add (std::move (chn));
 
     er_log_debug_replication (ARG_FILE_LINE, "control channel added");
 #endif
@@ -138,8 +138,8 @@ namespace cubreplication
 #if defined (SERVER_MODE)
     master_senders_manager::final ();
 
-    delete g_instance->control_channel_manager;
-    g_instance->control_channel_manager = NULL;
+    delete g_instance->m_control_channel_manager;
+    g_instance->m_control_channel_manager = NULL;
 
     cubtx::master_group_complete_manager::final ();
 

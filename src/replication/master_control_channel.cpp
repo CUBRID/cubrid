@@ -73,56 +73,36 @@ namespace cubreplication
   class control_channel_managing_task : public cubthread::task_without_context
   {
     public:
-      control_channel_managing_task (std::list <std::pair<cubthread::daemon *, const cubcomm::channel *>>
-				     &ctrl_channel_readers, std::mutex &mtx);
+      control_channel_managing_task (master_ctrl &master_ctrl );
       void execute () override;
 
     private:
-      std::list<std::pair<cubthread::daemon *, const cubcomm::channel *>> &m_managed_readers;
-      std::mutex &m_mtx;
+      master_ctrl &m_master_ctrl;
   };
 
-  control_channel_managing_task::control_channel_managing_task (std::list
-      <std::pair<cubthread::daemon *, const cubcomm::channel *>> &ctrl_channel_readers, std::mutex &mtx)
-    : m_managed_readers (m_managed_readers)
-    , m_mtx (mtx)
+  control_channel_managing_task::control_channel_managing_task (master_ctrl &master_ctrl)
+    : m_master_ctrl (master_ctrl)
   {
 
   }
 
   void control_channel_managing_task ::execute ()
   {
-    std::lock_guard <std::mutex> lg (m_mtx);
-
-    for (auto it = m_managed_readers.begin (); it != m_managed_readers.end (); ++it)
-      {
-	if (!it->second->is_connection_alive ())
-	  {
-	    cubthread::get_manager ()->destroy_daemon (it->first);
-	    m_managed_readers.erase (it);
-	    --it;
-	  }
-      }
+    m_master_ctrl.check_alive ();
   }
 
-  master_ctrl::master_ctrl ()
+  master_ctrl::master_ctrl (cubstream::stream_ack *stream_ack)
+    : m_stream_ack (stream_ack)
   {
-    m_managing_looper = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (
-				std::chrono::seconds (10)),
-			new control_channel_managing_task (m_ctrl_channel_readers, m_mtx), "control channels manager");
-  }
-
-  void
-  master_ctrl::init_stream_ack_ref (cubstream::stream_ack *stream_ack)
-  {
-    assert (stream_ack != NULL);
-
-    m_stream_ack = stream_ack;
+    cubthread::delta_time dt = std::chrono::seconds (10);
+    control_channel_managing_task *ctrl_channels_manager = new control_channel_managing_task (*this);
+    m_managing_daemon = cubthread::get_manager ()->create_daemon_without_entry (dt, ctrl_channels_manager,
+			"control channels manager");
   }
 
   master_ctrl::~master_ctrl ()
   {
-    cubthread::get_manager ()->destroy_daemon (m_managing_looper);
+    cubthread::get_manager ()->destroy_daemon (m_managing_daemon);
 
     for (auto &cr : m_ctrl_channel_readers)
       {
@@ -136,15 +116,29 @@ namespace cubreplication
   void
   master_ctrl::add (cubcomm::channel &&chn)
   {
-    assert (m_stream_ack != NULL);
-
     std::lock_guard<std::mutex> lg (m_mtx);
 
     // assure caller's param gets moved from
     cubcomm::channel *moved_to_chn = new cubcomm::channel (std::move (chn));
+    cubthread::delta_time dt = cubthread::delta_time (0);
+    ack_reader_task *ack_reader = new ack_reader_task (moved_to_chn, m_stream_ack);
+    m_ctrl_channel_readers.push_back (std::make_pair (cubthread::get_manager ()->create_daemon_without_entry (dt,
+				      ack_reader, "control channel reader"), moved_to_chn));
+  }
 
-    m_ctrl_channel_readers.push_back (std::make_pair (cubthread::get_manager ()->create_daemon_without_entry (
-	cubthread::delta_time (0),
-	new ack_reader_task (moved_to_chn, m_stream_ack), "control channel reader"), moved_to_chn));
+  void
+  master_ctrl::check_alive ()
+  {
+    std::lock_guard <std::mutex> lg (m_mtx);
+    for (auto it =  m_ctrl_channel_readers.begin (); it !=  m_ctrl_channel_readers.end (); ++it)
+      {
+	if (!it->second->is_connection_alive ())
+	  {
+	    cubthread::get_manager ()->destroy_daemon (it->first);
+	    m_ctrl_channel_readers.erase (it);
+	    --it;
+	  }
+      }
   }
 }
+

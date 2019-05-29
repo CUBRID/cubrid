@@ -43,7 +43,7 @@ namespace cubreplication
       }
 
     public:
-      master_ctrl *control_channel_manager;
+      master_ctrl *m_control_channel_manager;
 
       static master_node *get_instance (const char *name);
 
