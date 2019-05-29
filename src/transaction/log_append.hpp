@@ -58,7 +58,7 @@ struct log_data_addr
   PAGE_PTR pgptr;
   offset_type offset;		/* Offset or slot */
 
-  log_data_addr () = default;
+  log_data_addr ();
   log_data_addr (const VFID *vfid, PAGE_PTR pgptr, PGLENGTH offset);
 };
 #define LOG_DATA_ADDR_INITIALIZER { NULL, NULL, 0 } // todo: remove me

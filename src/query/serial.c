@@ -884,6 +884,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * o
   new_record.set_type (old_recdesc->type);
   addr.offset = serial_oidp->slotid;
   addr.pgptr = pgptr;
+  addr.vfid = NULL;
 
   assert (spage_is_updatable (thread_p, addr.pgptr, serial_oidp->slotid, (int) new_record.get_size ()));
 

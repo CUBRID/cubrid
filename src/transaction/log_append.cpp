@@ -78,6 +78,13 @@ static LOG_ZIP *log_append_get_zip_redo (THREAD_ENTRY *thread_p);
 static char *log_append_get_data_ptr (THREAD_ENTRY *thread_p);
 static bool log_append_realloc_data_ptr (THREAD_ENTRY *thread_p, int length);
 
+log_data_addr::log_data_addr ()
+  : vfid (NULL)
+  , pgptr (NULL)
+  , offset (0)
+{
+}
+
 log_data_addr::log_data_addr (const VFID *vfid_arg, PAGE_PTR pgptr_arg, PGLENGTH offset_arg)
   : vfid (vfid_arg)
   , pgptr (pgptr_arg)
