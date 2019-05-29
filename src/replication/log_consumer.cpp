@@ -100,11 +100,10 @@ namespace cubreplication
 	      }
 
 	    delete curr_stream_entry;
-
-	    m_lc.end_one_task ();
 	  }
 
 	(void) locator_repl_end_tran (&thread_ref, true);
+	m_lc.end_one_task ();
       }
 
       void add_repl_stream_entry (stream_entry *repl_stream_entry)
