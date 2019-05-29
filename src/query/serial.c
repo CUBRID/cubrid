@@ -913,6 +913,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * o
   else
     {
       // *INDENT-OFF*
+      // todo: encapsulate creating stream entry into a different function
       cubreplication::rec_des_row_repl_entry *replobj = NULL;
       cubreplication::stream_entry stream_entry (cubreplication::log_generator::get_global_stream ());
       
