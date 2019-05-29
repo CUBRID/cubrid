@@ -54,6 +54,7 @@
 #include "porting.h"
 #include "recovery.h"
 #include "release_string.h"
+#include "cubstream.hpp"
 #include "storage_common.h"
 #include "thread_entry.hpp"
 #include "transaction_complete_manager.hpp"
@@ -669,6 +670,7 @@ struct log_global
 
   // *INDENT-OFF*
   cubtx::complete_manager * m_tran_complete_mgr;
+  cubstream::stream_position m_ack_stream_position;
   // *INDENT-ON*
 
   /* remote log writer information */
@@ -996,7 +998,7 @@ extern MVCCID logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p);
 extern LOG_PAGEID logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p);
 extern int logpb_find_oldest_available_arv_num (THREAD_ENTRY * thread_p);
 
-extern int logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info);
+extern void logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info);
 
 extern MVCCID logtb_find_current_mvccid (THREAD_ENTRY * thread_p);
 extern MVCCID logtb_get_current_mvccid (THREAD_ENTRY * thread_p);

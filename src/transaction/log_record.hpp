@@ -291,7 +291,8 @@ enum log_sysop_end_type
   LOG_SYSOP_END_LOGICAL_UNDO,	/* logical undo */
   LOG_SYSOP_END_LOGICAL_MVCC_UNDO,	/* logical mvcc undo */
   LOG_SYSOP_END_LOGICAL_COMPENSATE,	/* logical compensate */
-  LOG_SYSOP_END_LOGICAL_RUN_POSTPONE	/* logical run postpone */
+  LOG_SYSOP_END_LOGICAL_RUN_POSTPONE,	/* logical run postpone */
+  LOG_SYSOP_END_COMMIT_REPLICATED       /* permanent changes if also replicated */
 };
 typedef enum log_sysop_end_type LOG_SYSOP_END_TYPE;
 #define LOG_SYSOP_END_TYPE_CHECK(type) \
@@ -300,7 +301,8 @@ typedef enum log_sysop_end_type LOG_SYSOP_END_TYPE;
           || (type) == LOG_SYSOP_END_LOGICAL_UNDO \
           || (type) == LOG_SYSOP_END_LOGICAL_MVCC_UNDO \
           || (type) == LOG_SYSOP_END_LOGICAL_COMPENSATE \
-          || (type) == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
+          || (type) == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE \
+          || (type) == LOG_SYSOP_END_COMMIT_REPLICATED)
 
 /* end system operation log record */
 typedef struct log_rec_sysop_end LOG_REC_SYSOP_END;
@@ -320,6 +322,9 @@ struct log_rec_sysop_end
       bool is_sysop_postpone;	/* true if run postpone is used during a system op postpone, false if used during
 				 * transaction postpone */
     } run_postpone;		/* run postpone info */
+    // *INDENT-OFF*
+    cubstream::stream_position repl_stream_position;
+    // *INDENT-ON*
   };
 };
 

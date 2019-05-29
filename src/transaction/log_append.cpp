@@ -961,10 +961,9 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
 	}
       else
 	{
-	  if (tdes->mvccinfo.count_sub_ids > 0 && tdes->mvccinfo.is_sub_active)
+	  if (!tdes->mvccinfo.sub_ids.empty ())
 	    {
-	      assert (tdes->mvccinfo.sub_ids != NULL);
-	      *mvccid_p = tdes->mvccinfo.sub_ids[tdes->mvccinfo.count_sub_ids - 1];
+	      *mvccid_p = tdes->mvccinfo.sub_ids.back ();
 	    }
 	  else
 	    {
@@ -1177,7 +1176,8 @@ prior_lsa_gen_2pc_prepare_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, 
 }
 
 static int
-prior_lsa_gen_group_complete_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, int redo_length, const char *redo_data)
+prior_lsa_gen_group_complete_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, int redo_length,
+				     const char *redo_data)
 {
   node->data_header_length = sizeof (LOG_REC_GROUP_COMPLETE);
   node->data_header = (char *) malloc (node->data_header_length);

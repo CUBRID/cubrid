@@ -26,6 +26,8 @@
 #ifndef _REPLICATION_DB_COPY_HPP_
 #define _REPLICATION_DB_COPY_HPP_
 
+#include "replication_object.hpp"
+
 namespace cubstream
 {
   class multi_thread_stream;
@@ -38,13 +40,42 @@ namespace cubreplication
   class copy_context
   {
     public:
+      enum copy_stage
+      {
+	NOT_STARTED = 0,
+	SCHEMA_APPLY_CLASSES,
+	SCHEMA_APPLY_CLASSES_FINISHED,
+	SCHEMA_TRIGGERS_RECEIVED,
+	SCHEMA_INDEXES_RECEIVED,
+	HEAP_COPY,
+	HEAP_COPY_FINISHED,
+	SCHEMA_APPLY_TRIGGERS_INDEXES,
+	SCHEMA_APPLY_TRIGGERS_INDEXES_FINISHED
+      };
+
       copy_context ();
 
-      ~copy_context () {}
+      ~copy_context () = default;
+
+      void set_credentials (const char *user, const char *password);
 
       void pack_and_add_object (row_object &obj);
+      void pack_and_add_sbr (sbr_repl_entry &sbr);
+
+      int transit_state (copy_stage new_state);
+
+      void append_class_schema (const char *buffer, const size_t buf_size);
+      void append_triggers_schema (const char *buffer, const size_t buf_size);
+      void append_indexes_schema (const char *buffer, const size_t buf_size);
+
     private:
       cubstream::multi_thread_stream *m_stream;
+
+      sbr_repl_entry m_class_schema;
+      sbr_repl_entry m_triggers;
+      sbr_repl_entry m_indexes;
+
+      copy_stage m_state;
   };
 
 } /* namespace cubreplication */
