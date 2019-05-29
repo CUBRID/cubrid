@@ -71,7 +71,7 @@ log_global::log_global ()
                 , PTHREAD_MUTEX_INITIALIZER
 #endif /* SERVER_MODE */
      }
-  , flush_sync_info LOG_FLUSH_SYNC_INFO_INITIALIZER
+  , flush_notify_info LOG_FLUSH_NOTIFY_INFO_INITIALIZER
   , m_tran_complete_mgr (NULL)    // to be instantiated on boot
   , writer_info (new logwr_info ())
   , bg_archive_info ()

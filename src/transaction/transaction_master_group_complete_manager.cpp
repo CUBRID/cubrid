@@ -49,9 +49,9 @@ namespace cubtx
   void master_group_complete_manager::init ()
   {
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
-    gl_master_group = get_instance ();
-    gl_master_group->m_latest_closed_group_start_stream_position = 0;
-    gl_master_group->m_latest_closed_group_end_stream_position = 0;
+    master_group_complete_manager * p_gl_master_group = get_instance ();
+    p_gl_master_group->m_latest_closed_group_start_stream_position = 0;
+    p_gl_master_group->m_latest_closed_group_end_stream_position = 0;
 
     master_group_complete_manager::gl_master_group_complete_daemon = cubthread::get_manager ()->create_daemon ((looper),
 	new master_group_complete_task (), "master_group_complete_daemon");
@@ -93,14 +93,24 @@ namespace cubtx
   //
   void master_group_complete_manager::on_register_transaction ()
   {
-    /* This function is called after adding a transaction to the current group.
-     * Currently, we wakeup GC thread when first transaction is added into current group.
-     */
-    if (is_latest_closed_group_completed ()
-	&& get_current_group ().get_container ().size () == 1)
+    /* This function is called after adding a transaction to the current group. */
+    assert (get_current_group ().get_container ().size () >= 1);
+
+#if defined (SERVER_MODE)
+    if (is_latest_closed_group_completed ())
       {
+	/* This means that GC thread didn't start yet group close. */
 	gl_master_group_complete_daemon->wakeup ();
       }
+    else if (!is_latest_closed_group_complete_started ()
+	     && is_latest_closed_group_prepared_for_complete ())
+      {
+	/* TODO - Be sure that stream senders knows that GC thread waits for it.
+	 * Since currently stream transfer threads run continuosly, so there is nothing to do here.
+	 * A better option will be to use wait/wakeup mechanism for stream transfer threads.
+	 */
+      }
+#endif
   }
 
   //
@@ -142,6 +152,7 @@ namespace cubtx
 	    closed_group_stream_end_position);
 	m_latest_closed_group_start_stream_position = closed_group_stream_start_position;
 	m_latest_closed_group_end_stream_position = closed_group_stream_end_position;
+	mark_latest_closed_group_prepared_for_complete ();
       }
   }
 
@@ -159,6 +170,16 @@ namespace cubtx
 	/* Latest closed group is already completed. */
 	return;
       }
+
+    if (!is_latest_closed_group_prepared_for_complete ())
+      {
+	/* The user must call again do_complete since the data is not prepared for complete.
+	 * Another option may be to wait. Since rarely happens, we can use thread_sleep.
+	 */
+	return;
+      }
+
+    mark_latest_closed_group_complete_started ();
 
     tx_group &closed_group = get_latest_closed_group ();
 

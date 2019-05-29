@@ -4048,7 +4048,7 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logtb_reset_mvcc () - Reset MVCC
+ * logtb_reset_mvcc_and_related_states () - Reset MVCC and related states
  *
  * return	  : Void.
  * thread_p (in)  : Thread entry.
@@ -4058,7 +4058,7 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
  *      Clearing update stats and count optimization may be moved outside.
  */
 void
-logtb_reset_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+logtb_reset_mvcc_and_related_states (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   mvcctable *mvcc_table = &log_Gl.mvcc_table;
   MVCC_SNAPSHOT *p_mvcc_snapshot = NULL;

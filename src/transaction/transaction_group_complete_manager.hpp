@@ -37,7 +37,9 @@ namespace cubtx
     GROUP_CLOSED = 0x01, /* Group closed. No other transaction can be included in a closed group. */
     GROUP_MVCC_COMPLETED = 0x02, /* MVCC completed. */
     GROUP_LOGGED = 0x04, /* Group log added. */
-    GROUP_COMPLETED = 0x08  /* Group completed. */
+    GROUP_PREPARED_FOR_COMPLETE = 0x08,  /* Group prepared for complete. */
+    GROUP_COMPLETE_STARTED = 0x10,  /* Group complete started. */
+    GROUP_COMPLETED = 0x20  /* Group completed. */
   };
 
   //
@@ -65,7 +67,7 @@ namespace cubtx
       void complete_logging (id_type group_id) override final;
 
     protected:
-      id_type set_current_group_minimum_transactions (int count_minimum_transactions, bool &has_group_enough_transactions);
+      id_type set_current_group_minimum_transactions (unsigned int count_minimum_transactions, bool &has_group_enough_transactions);
 
       bool close_current_group ();
 
@@ -80,6 +82,12 @@ namespace cubtx
       void notify_group_mvcc_complete (const tx_group &closed_group);
       void notify_group_logged ();
       void notify_group_complete ();
+
+      void mark_latest_closed_group_prepared_for_complete ();
+      bool is_latest_closed_group_prepared_for_complete ();
+
+      void mark_latest_closed_group_complete_started ();
+      bool is_latest_closed_group_complete_started ();
 
       bool is_latest_closed_group_mvcc_completed ();
       bool is_latest_closed_group_logged ();
@@ -98,10 +106,14 @@ namespace cubtx
 
       void notify_all ();
 
+#if defined(SERVER_MODE)
+      bool need_wait_for_complete ();
+#endif
+
       /* Current group info - TODO Maybe better to use a structure here. */
       std::atomic<id_type> m_current_group_id;   // is also the group identifier
       tx_group m_current_group;
-      int m_current_group_min_transactions;
+      unsigned int m_current_group_min_transactions;
       std::mutex m_group_mutex;
 
       /* Latest closed group info - TODO Maybe better to use a structure here. */

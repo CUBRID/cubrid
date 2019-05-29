@@ -21,6 +21,7 @@
 // Manager of completed group on single node
 //
 
+#include "page_buffer.h"
 #include "log_manager.h"
 #include "thread_manager.hpp"
 #include "transaction_single_node_group_complete_manager.hpp"
@@ -48,12 +49,12 @@ namespace cubtx
   //
   void single_node_group_complete_manager::init ()
   {
-    gl_single_node_group = get_instance ();
-    LSA_SET_NULL (&gl_single_node_group->m_latest_closed_group_start_log_lsa);
-    LSA_SET_NULL (&gl_single_node_group->m_latest_closed_group_end_log_lsa);
+    single_node_group_complete_manager * p_gl_single_node_group = get_instance ();
+    LSA_SET_NULL (&p_gl_single_node_group->m_latest_closed_group_start_log_lsa);
+    LSA_SET_NULL (&p_gl_single_node_group->m_latest_closed_group_end_log_lsa);
 
 #if defined(SERVER_MODE)
-    cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
+    cubthread::looper looper = cubthread::looper (single_node_group_complete_manager::get_group_commit_interval);
     single_node_group_complete_manager::gl_single_node_group_complete_daemon = cubthread::get_manager ()->create_daemon ((
 		looper),
 	new single_node_group_complete_task (), "single_node_group_complete_daemon");
@@ -95,17 +96,55 @@ namespace cubtx
   //
   void single_node_group_complete_manager::on_register_transaction ()
   {
-    /* This function is called after adding a transaction to the current group.
-     * Currently, we wakeup GC thread when first transaction is added into current group.
-     */
+    /* This function is called after adding a transaction to the current group. */
+    assert (get_current_group ().get_container ().size () >= 1);
 #if defined (SERVER_MODE)
-    if (is_latest_closed_group_completed ()
-	&& get_current_group ().get_container ().size () == 1)
+    if (is_latest_closed_group_completed ())
       {
-	gl_single_node_group_complete_daemon->wakeup ();
+	/* We can move the next calls outside of mutex. */
+	if (can_wakeup_group_complete_daemon (true)
+	    || pgbuf_has_perm_pages_fixed (&cubthread::get_entry ()))
+	  {
+	    /* This means that GC thread didn't start yet group close. */
+	    gl_single_node_group_complete_daemon->wakeup ();
+	  }
+      }
+    else if (!is_latest_closed_group_complete_started ()
+	     && is_latest_closed_group_prepared_for_complete ())
+      {
+	/* Be sure that log flush knows that GC thread waits for it. */
+	log_wakeup_log_flush_daemon ();
       }
 #endif
   }
+
+#if defined (SERVER_MODE)
+  //
+  // can_wakeup_group_complete_daemon - true, if can wakeup group complete daemon
+  //
+  bool single_node_group_complete_manager::can_wakeup_group_complete_daemon (bool inc_gc_request_count)
+  {
+    bool can_wakeup_GC;
+
+    if (!LOG_IS_GROUP_COMMIT_ACTIVE ())
+      {
+	/* non-group commit */
+	can_wakeup_GC = true;
+      }
+    else
+      {
+	/* group commit */
+	can_wakeup_GC = false;
+
+	if (inc_gc_request_count)
+	  {
+	    log_Stat.gc_commit_request_count++;
+	  }
+      }
+
+    return can_wakeup_GC;
+  }
+#endif
 
   //
   // can_close_current_group check whether the current group can be closed.
@@ -125,6 +164,29 @@ namespace cubtx
       }
 
     return true;
+  }
+
+  /*
+  * get_group_commit_interval () - setup flush daemon period based on system parameter
+  */
+  void single_node_group_complete_manager::get_group_commit_interval (bool & is_timed_wait, cubthread::delta_time & period)
+  {
+    is_timed_wait = true;
+
+    /* TODO - 0 when gc close is forced */
+    const int MAX_WAIT_TIME_MSEC = 1000;
+    int log_group_commit_interval_msec = prm_get_integer_value(PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS);
+
+    assert(log_group_commit_interval_msec >= 0);
+
+    if (log_group_commit_interval_msec == 0)
+    {
+      period = std::chrono::milliseconds(MAX_WAIT_TIME_MSEC);
+    }
+    else
+    {
+      period = std::chrono::milliseconds (log_group_commit_interval_msec);
+    }
   }
 
   //
@@ -148,6 +210,7 @@ namespace cubtx
 				   &closed_group_end_complete_lsa, &has_postpone);
 	LSA_COPY (&m_latest_closed_group_start_log_lsa, &closed_group_start_complete_lsa);
 	LSA_COPY (&m_latest_closed_group_end_log_lsa, &closed_group_end_complete_lsa);
+	mark_latest_closed_group_prepared_for_complete ();
 	log_wakeup_log_flush_daemon ();
 	if (has_postpone)
 	  {
@@ -171,12 +234,23 @@ namespace cubtx
 	return;
       }
 
+    if (!is_latest_closed_group_prepared_for_complete ())
+      {
+	/* The user must call again do_complete since the data is not prepared for complete.
+	 * Another option may be to wait. Since rarely happens, we can use thread_sleep.
+	 */
+	return;
+      }
+
+    mark_latest_closed_group_complete_started ();
+
     /* Finally, notify complete. */
     notify_group_complete ();
 
 #if defined (SERVER_MODE)
     /* wakeup GC thread */
-    if (gl_single_node_group_complete_daemon != NULL)
+    if (gl_single_node_group_complete_daemon != NULL
+	&& can_wakeup_group_complete_daemon (false))
       {
 	gl_single_node_group_complete_daemon->wakeup ();
       }

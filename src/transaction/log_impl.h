@@ -322,14 +322,14 @@ struct log_flush_info
 #endif				/* SERVER_MODE */
 };
 
-typedef struct log_flush_sync_info LOG_FLUSH_SYNC_INFO;
-struct log_flush_sync_info
+typedef struct log_flush_notify_info LOG_FLUSH_NOTIFY_INFO;
+struct log_flush_notify_info
 {
   pthread_mutex_t mutex;
   pthread_cond_t cond;
 };
 
-#define LOG_FLUSH_SYNC_INFO_INITIALIZER \
+#define LOG_FLUSH_NOTIFY_INFO_INITIALIZER \
   { PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER }
 
 typedef struct log_topops_addresses LOG_TOPOPS_ADDRESSES;
@@ -664,8 +664,8 @@ struct log_global
   /* Flush information for dirty log pages */
   LOG_FLUSH_INFO flush_info;
 
-  /* flush sync information */
-  LOG_FLUSH_SYNC_INFO flush_sync_info;
+  /* flush notify information */
+  LOG_FLUSH_NOTIFY_INFO flush_notify_info;
 
   // *INDENT-OFF*
   cubtx::complete_manager * m_tran_complete_mgr;
@@ -1006,7 +1006,7 @@ extern int xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
 extern bool logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern bool logtb_is_mvccid_committed (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern MVCC_SNAPSHOT *logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
-extern void logtb_reset_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+extern void logtb_reset_mvcc_and_related_states (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 extern void logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 
 extern LOG_TRAN_CLASS_COS *logtb_tran_find_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid, bool create);

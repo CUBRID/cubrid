@@ -49,10 +49,10 @@ namespace cubtx
   void slave_group_complete_manager::init ()
   {
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
-    gl_slave_group = get_instance ();
-    gl_slave_group->m_latest_group_id = 0;
-    gl_slave_group->m_latest_group_stream_positon = 0;
-    gl_slave_group->m_has_latest_group_close_info = false;
+    slave_group_complete_manager * p_gl_slave_group = get_instance ();
+    p_gl_slave_group->m_latest_group_id = 0;
+    p_gl_slave_group->m_latest_group_stream_positon = 0;
+    p_gl_slave_group->m_has_latest_group_close_info = false;
 
     slave_group_complete_manager::gl_slave_group_complete_daemon = cubthread::get_manager()->create_daemon ((looper),
 	new slave_group_complete_task (), "slave_group_complete_daemon");
@@ -82,7 +82,7 @@ namespace cubtx
     /* This function is called after adding a transaction to the current group.
      * Currently, we wakeup GC thread when all expected transactions were added into current group.
      */
-    int count_min_group_transactions = get_current_group_min_transactions ();
+    unsigned int count_min_group_transactions = get_current_group_min_transactions ();
     if (get_current_group ().get_container ().size () >= count_min_group_transactions)
       {
 	gl_slave_group_complete_daemon->wakeup ();
@@ -109,7 +109,7 @@ namespace cubtx
       }
 
     /* Check whether all expected transactions already registered. */
-    int count_min_transactions = get_current_group_min_transactions ();
+    unsigned int count_min_transactions = get_current_group_min_transactions ();
     if (get_current_group ().get_container ().size () < count_min_transactions)
       {
 	return false;
@@ -133,6 +133,8 @@ namespace cubtx
 	/* TODO - Introduce parameter. For now complete group MVCC only here. Notify MVCC complete. */
 	log_Gl.mvcc_table.complete_group_mvcc (thread_p, closed_group);
 	notify_group_mvcc_complete (closed_group);
+
+	mark_latest_closed_group_prepared_for_complete ();
       }
   }
 
@@ -151,11 +153,21 @@ namespace cubtx
 	return;
       }
 
+    if (!is_latest_closed_group_prepared_for_complete ())
+      {
+	/* The user must call again do_complete since the data is not prepared for complete.
+	 * Another option may be to wait. Since rarely happens, we can use thread_sleep.
+	 */
+	return;
+      }
+
+    mark_latest_closed_group_complete_started ();
+
     tx_group &closed_group = get_latest_closed_group ();
     /* TODO - consider parameter for MVCC complete here. */
     /* Add group commit log record and wakeup  log flush daemon. */
     log_append_group_complete (thread_p, tdes, m_latest_group_stream_positon, closed_group,
-                               &closed_group_start_complete_lsa, &closed_group_end_complete_lsa, &has_postpone);
+			       &closed_group_start_complete_lsa, &closed_group_end_complete_lsa, &has_postpone);
     log_wakeup_log_flush_daemon ();
     if (has_postpone)
       {
@@ -215,9 +227,10 @@ namespace cubtx
     /* TO DO - disable it temporary since it is not tested */
     return;
 
-    cubthread::entry *thread_p = &cubthread::get_entry();
-    slave_group_complete_manager::get_instance ()->do_prepare_complete (thread_p);
-    slave_group_complete_manager::get_instance ()->do_complete (thread_p);
+    cubthread::entry *thread_p = &cubthread::get_entry ();
+    slave_group_complete_manager * p_gl_slave_group = slave_group_complete_manager::get_instance ();
+    p_gl_slave_group->do_prepare_complete (thread_p);
+    p_gl_slave_group->do_complete (thread_p);
   }
 
   slave_group_complete_manager *slave_group_complete_manager::gl_slave_group = NULL;
