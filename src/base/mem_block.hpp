@@ -114,6 +114,38 @@ namespace cubmem
   extern const block_allocator EXPONENTIAL_STANDARD_BLOCK_ALLOCATOR;
   extern const block_allocator CSTYLE_BLOCK_ALLOCATOR;
 
+  // single_block_allocator - maintains and allocates a single memory block
+  //
+  // it is designed as a memory cache that can be reused for multiple purposes in multiple places. must be used with
+  // care because it doesn't guarantee exclusive access to memory
+  //
+  // use get_block_allocator to pass the cached memory block to structures like extensible_buffer
+  //
+  class single_block_allocator
+  {
+    public:
+      single_block_allocator (const block_allocator &base_alloc);
+      ~single_block_allocator ();
+
+      const block_allocator &get_block_allocator () const;   // a block allocator that always outputs m_block
+      const block &get_block () const;
+
+      char *get_ptr () const;
+      size_t get_size () const;
+
+      void reserve (size_t size);
+
+    private:
+
+      void allocate (block &b, size_t size);  // the output b will be always equal to m_block
+      void deallocate (block &b);
+
+      const block_allocator &m_base_allocator;    // allocator for m_block
+
+      block m_block;                              // the single block
+      block_allocator m_allocator;                // allocator that always outputs m_block
+  };
+
   /* Memory Block - Extensible
    * - able to extend/reallocate to accommodate additional bytes
    * - owns the memory by default and it will free the memory in destructor unless it is moved:
