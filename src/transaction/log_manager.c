@@ -4924,7 +4924,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran,
 		 cubtx::complete_manager::id_type * p_id_complete)
 {
 
-  cubtx::complete_manager::id_type id_complete = TRAN_COMPLETE_NULL_ID;;
+  cubtx::complete_manager::id_type id_complete = TRAN_COMPLETE_NULL_ID;
 
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, true);
 
