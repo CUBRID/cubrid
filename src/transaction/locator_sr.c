@@ -13705,32 +13705,38 @@ xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK
 
 // *INDENT-OFF*
 int 
-locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID ** oids, RECDES ** recdes,
-                            int n_recdes, int has_index, int op_type, HEAP_SCANCACHE * scan_cache, int *force_count,
-                            int pruning_type, PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
-                            UPDATE_INPLACE_STYLE force_in_place)
-{		/* Make sure that this is an old object */
-  bool is_cached = false;
-  LC_COPYAREA *cache_attr_copyarea = NULL;
+locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, std::vector<OID> oids,
+                            std::vector<RECDES> recdes, int has_index, int op_type, HEAP_SCANCACHE * scan_cache,
+                            int *force_count, int pruning_type, PRUNING_CONTEXT * pcontext,
+                            FUNC_PRED_UNPACK_INFO * func_preds, UPDATE_INPLACE_STYLE force_in_place)
+{
   int error_code = NO_ERROR;
-  OID real_class_oid;
-  HFID real_hfid;
-  ssize_t accumulated_records_size = 0;
-  const ssize_t heap_max_page_size = spage_get_default_empty_page_size ();
+  size_t accumulated_records_size = 0;
+  size_t heap_max_page_size;
   std::vector <RECDES> recdes_array;
   std::vector <OID> oids_array;
   std::vector <VPID> heap_pages_array;
-  
-  HFID_COPY (&real_hfid, hfid);
-  COPY_OID (&real_class_oid, class_oid);
 
+  // Safeguard
+  assert (recdes.size() == oids.size ());
+
+  // Early-out
+  if (recdes.size () == 0)
+    {
+      // Nothing to insert.
+      return NO_ERROR;
+    }
+  
   *force_count = 0;
 
-  for (int i = 0; i < n_recdes; i++)
+  // Take into account the unfill factor of the heap file.
+  heap_max_page_size = heap_get_default_empty_page_size () * (1.0f - prm_get_float_value (PRM_ID_HF_UNFILL_FACTOR));
+
+  for (int i = 0; i < recdes.size (); i++)
   {
     // Loop until we insert all records.
-    RECDES *local_recdes = recdes[i];
-    OID *local_oid = oids[i];
+    RECDES *local_recdes = &recdes[i];
+    OID *local_oid = &oids[i];
     HEAP_SCANCACHE local_scan_cache;
     FUNC_PRED_UNPACK_INFO local_func_preds;
 
@@ -13745,26 +13751,25 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
         if (error_code != NO_ERROR)
           {
             ASSERT_ERROR ();
-            goto cleanup;
+            return error_code;
           }
       }
     else
       {        
         // get records until we fit the size of a page.
-        // TODO: Fix this!!
-        if ((local_recdes->length + accumulated_records_size) > heap_max_page_size)
+        if ((local_recdes->length + accumulated_records_size) >= heap_max_page_size)
           {
             VPID new_page_vpid;
-            PGBUF_WATCHER * home_hint_p;
+            PGBUF_WATCHER home_hint_p;
 
             VPID_SET_NULL (&new_page_vpid);
 
             // First alloc a new empty heap page.
-            error_code = heap_alloc_new_page (thread_p, hfid, home_hint_p, &new_page_vpid);
+            error_code = heap_alloc_new_page (thread_p, hfid, &home_hint_p, &new_page_vpid);
             if (error_code != NO_ERROR)
               {
                 ASSERT_ERROR ();
-                goto cleanup;
+                return error_code;
               }
 
             for (int j = 0; j < recdes_array.size (); j++)
@@ -13774,11 +13779,11 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 
                 error_code = locator_insert_force (thread_p, hfid, class_oid, &ins_oid, &ins_record, has_index, op_type,
                                                    &local_scan_cache, force_count, pruning_type, pcontext,
-                                                   &local_func_preds, force_in_place, home_hint_p);
+                                                   &local_func_preds, force_in_place, &home_hint_p);
                 if (error_code != NO_ERROR)
                   {
                     ASSERT_ERROR ();
-                    goto cleanup;
+                    return error_code;
                   }
               }
 
@@ -13812,18 +13817,12 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
       if (error_code != NO_ERROR)
         {
           ASSERT_ERROR ();
-          goto cleanup;
+          return error_code;
         }
     }
 
   // Now form a heap chain with the pages and add the chain to the current heap.
   // TODO: this!
-
-cleanup:
-
-  recdes_array.clear ();
-  oids_array.clear ();
-  heap_pages_array.clear ();
   
   return error_code;
 }

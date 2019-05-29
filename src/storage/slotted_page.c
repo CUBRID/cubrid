@@ -5283,9 +5283,3 @@ spage_need_compact (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
 
   return false;
 }
-
-int
-spage_get_default_empty_page_size ()
-{
-  return SPAGE_DB_PAGESIZE - sizeof (SPAGE_HEADER);
-}

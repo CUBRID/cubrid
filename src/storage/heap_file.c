@@ -24729,4 +24729,10 @@ heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, PGBUF_WATCHER * home_
   return error_code;
 }
 
+int
+heap_get_default_empty_page_size ()
+{
+  return SPAGE_DB_PAGESIZE - sizeof (SPAGE_HEADER) - sizeof (HEAP_CHAIN);
+}
+
 // *INDENT-ON*
