@@ -869,12 +869,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * o
    *       always true, the serial is also locked when it is added to cache for the first time.
    */
   bool need_instant_replication =
-    need_replication && (lock_get_object_lock (serial_oidp, serial_class_oidp, tran_index) == X_LOCK);
-
-  /* TODO : CBRD-22340 */
-#if defined (SERVER_MODE)
-  (void) logtb_get_current_mvccid (thread_p);
-#endif
+    need_replication && (lock_get_object_lock (serial_oidp, serial_class_oidp, tran_index) != X_LOCK);
 
   new_record.set_external_buffer (copyarea);
 
