@@ -61,6 +61,7 @@
 #include "replication_db_copy.hpp"
 #include "replication_object.hpp"
 #include "slotted_page.h"
+#include "string_buffer.hpp"
 #include "utility.h"
 #include "xasl_cache.h"
 #include "xasl_predicate.hpp"
@@ -14230,13 +14231,17 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
       command = "true";
     }
 
+  // connect explicitly to localhost
+  string_buffer db_name_buffer;
+  db_name_buffer ("%s@%s", db_name, "localhost");
+
   const char *ddl_argv[13] = {
     path,
     "-u",
     db_user,
     "-p",
     db_password,
-    db_name,
+    db_name_buffer.get_buffer (),
     command_option,
     command,
     "-t",
