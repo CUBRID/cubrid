@@ -673,6 +673,6 @@ extern bool heap_is_page_header (THREAD_ENTRY * thread_p, PAGE_PTR page);
 extern int heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, PGBUF_WATCHER * home_hint_p,
 				VPID * new_page_vpid);
 
-extern int heap_get_default_empty_page_size ();
+extern int heap_nonheader_page_capacity ();
 
 #endif /* _HEAP_FILE_H_ */

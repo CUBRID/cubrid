@@ -5283,3 +5283,9 @@ spage_need_compact (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
 
   return false;
 }
+
+int
+spage_get_default_size ()
+{
+  return SPAGE_DB_PAGESIZE;
+}

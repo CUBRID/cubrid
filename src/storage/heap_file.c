@@ -24708,6 +24708,8 @@ heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, PGBUF_WATCHER * home_
   VPID vpid;
   PAGE_PTR page_ptr;
 
+  assert (hfid != NULL && home_hint_p != NULL && new_page_vpid != NULL);
+
   PGBUF_INIT_WATCHER (home_hint_p, PGBUF_ORDERED_HEAP_NORMAL, hfid);
   
   // Alloc a new page.
@@ -24730,9 +24732,9 @@ heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, PGBUF_WATCHER * home_
 }
 
 int
-heap_get_default_empty_page_size ()
+heap_nonheader_page_capacity ()
 {
-  return SPAGE_DB_PAGESIZE - sizeof (SPAGE_HEADER) - sizeof (HEAP_CHAIN);
+  return spage_get_default_size () - sizeof (SPAGE_HEADER) - sizeof (HEAP_CHAIN);
 }
 
 // *INDENT-ON*
