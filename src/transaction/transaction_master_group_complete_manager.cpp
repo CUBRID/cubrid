@@ -49,7 +49,7 @@ namespace cubtx
   void master_group_complete_manager::init ()
   {
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
-    master_group_complete_manager * p_gl_master_group = get_instance ();
+    master_group_complete_manager *p_gl_master_group = get_instance ();
     p_gl_master_group->m_latest_closed_group_start_stream_position = 0;
     p_gl_master_group->m_latest_closed_group_end_stream_position = 0;
 
@@ -77,9 +77,6 @@ namespace cubtx
   //
   void master_group_complete_manager::notify_stream_ack (const cubstream::stream_position stream_pos)
   {
-    /* TODO - disable it temporary since it is not tested */
-    return;
-
     /* TODO - consider quorum. Consider multiple calls of same thread. */
     if (stream_pos >= m_latest_closed_group_end_stream_position)
       {
@@ -213,10 +210,7 @@ namespace cubtx
 
   void master_group_complete_task::execute (cubthread::entry &thread_ref)
   {
-    /* TODO - disable it temporary since it is not tested */
-    return;
-
-    cubthread::entry *thread_p = &cubthread::get_entry();
+    cubthread::entry *thread_p = &cubthread::get_entry ();
     master_group_complete_manager::get_instance ()->do_prepare_complete (thread_p);
   }
 

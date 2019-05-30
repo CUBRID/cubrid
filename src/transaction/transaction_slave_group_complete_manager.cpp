@@ -224,9 +224,6 @@ namespace cubtx
   //
   void slave_group_complete_task::execute (cubthread::entry &thread_ref)
   {
-    /* TO DO - disable it temporary since it is not tested */
-    return;
-
     cubthread::entry *thread_p = &cubthread::get_entry ();
     slave_group_complete_manager * p_gl_slave_group = slave_group_complete_manager::get_instance ();
     p_gl_slave_group->do_prepare_complete (thread_p);
