@@ -577,7 +577,7 @@ css_process_master_request (SOCKET master_fd)
     case SERVER_CONNECT_NEW_SLAVE:
       css_process_new_slave (master_fd);
       break;
-    case SERVER_CONNECT_NEW_SLAVE_CC:
+    case SERVER_CONNECT_NEW_SLAVE_CONTROL_CHANNEL:
       css_process_add_ctrl_chn (master_fd);
       break;
 #endif
