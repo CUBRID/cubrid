@@ -25,6 +25,7 @@
 
 #include <memory>
 
+#include "byte_order.h"
 #include "communication_channel.hpp"
 
 namespace cubreplication
@@ -37,7 +38,8 @@ namespace cubreplication
 
   void slave_control_channel::send_ack (cubstream::stream_position sp)
   {
-    m_chn->send ((const char *) &sp, sizeof (sp));
+    cubstream::stream_position net_sp = htoni64 (sp);
+    m_chn->send ((const char *) &net_sp, sizeof (net_sp));
   }
 }
 

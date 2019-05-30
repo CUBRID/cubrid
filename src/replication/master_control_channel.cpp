@@ -28,6 +28,7 @@
 #include <memory>
 #include <mutex>
 
+#include "byte_order.h"
 #include "communication_channel.hpp"
 #include "stream_transfer_sender.hpp"
 #include "thread_manager.hpp"
@@ -67,7 +68,7 @@ namespace cubreplication
 	// will get cleared by control_channel_managing_task
 	return;
       }
-    m_stream_ack->notify_stream_ack (ack_sp);
+    m_stream_ack->notify_stream_ack (ntohi64 (ack_sp));
   }
 
   class control_channel_managing_task : public cubthread::task_without_context
