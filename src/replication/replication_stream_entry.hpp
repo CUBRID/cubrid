@@ -84,6 +84,8 @@ namespace cubreplication
     }
 
     static const char *tran_state_string (TRAN_STATE state);
+
+    bool needs_mvccid () const;
   };
 
   class stream_entry : public cubstream::entry<replication_object>

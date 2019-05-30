@@ -53,6 +53,12 @@ namespace cubreplication
     return "UNDEFINED";
   }
 
+  bool
+  stream_entry_header::needs_mvccid () const
+  {
+    return tran_state != TRAN_STATE::GROUP_COMMIT && tran_state != TRAN_STATE::SUBTRAN_COMMIT;
+  }
+
   void
   stream_entry::stringify (string_buffer &sb, const string_dump_mode mode)
   {
@@ -108,7 +114,7 @@ namespace cubreplication
     unsigned int count_and_flags;
     unsigned int state_flags;
 
-    assert (m_header.mvccid != MVCCID_NULL);
+    assert (!m_header.needs_mvccid () || m_header.mvccid != MVCCID_NULL);
 
     m_header.count_replication_entries = (int) m_packable_entries.size ();
     serializator->pack_bigint (m_header.prev_record);
