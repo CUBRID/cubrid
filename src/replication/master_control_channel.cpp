@@ -74,7 +74,7 @@ namespace cubreplication
   class control_channel_managing_task : public cubthread::task_without_context
   {
     public:
-      control_channel_managing_task (master_ctrl &master_ctrl );
+      control_channel_managing_task (master_ctrl &master_ctrl);
       void execute () override;
 
     private:
@@ -110,7 +110,7 @@ namespace cubreplication
 	cubthread::get_manager ()->destroy_daemon (cr.first);
       }
 
-    // we are not the ones resposible for deallocing this
+    // we are not the ones responsible for deallocating this
     m_stream_ack = NULL;
   }
 
@@ -130,7 +130,7 @@ namespace cubreplication
   void
   master_ctrl::check_alive ()
   {
-    std::lock_guard <std::mutex> lg (m_mtx);
+    std::lock_guard<std::mutex> lg (m_mtx);
     for (auto it =  m_ctrl_channel_readers.begin (); it !=  m_ctrl_channel_readers.end (); ++it)
       {
 	if (!it->second->is_connection_alive ())
