@@ -86,7 +86,7 @@ namespace cubreplication
 
   }
 
-  void control_channel_managing_task ::execute ()
+  void control_channel_managing_task::execute ()
   {
     m_master_ctrl.check_alive ();
   }
