@@ -21,6 +21,9 @@
  * slave_control_channel.hpp - manages slave control channel entries
  */
 
+#ifndef _SLAVE_CONTROL_CHANNEL_HPP_
+#define _SLAVE_CONTROL_CHANNEL_HPP_
+
 #include <memory>
 
 #include "cubstream.hpp"
@@ -41,4 +44,6 @@ namespace cubreplication
       std::unique_ptr<cubcomm::channel> m_chn;
   };
 }
+
+#endif
 
