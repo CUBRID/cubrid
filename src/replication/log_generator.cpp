@@ -386,12 +386,6 @@ namespace cubreplication
 
     set_tran_repl_info (state);
     pack_stream_entry ();
-
-    /* TODO[replication] : force a group commit :
-     * move this to log_manager group commit when multi-threaded apply is enabled */
-    cubstream::stream_position sp1;
-    cubstream::stream_position sp2;    
-    pack_group_commit_entry (sp1, sp2);
   }
 
   void
