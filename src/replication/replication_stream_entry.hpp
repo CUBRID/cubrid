@@ -49,12 +49,6 @@ namespace cubreplication
       SUBTRAN_COMMIT
     } TRAN_STATE;
 
-    const static unsigned STATE_BITS = 3;
-
-    const static unsigned int STATE_MASK = 0xe0000000;
-
-    const static unsigned int COUNT_VALUE_MASK = ~ (STATE_MASK);
-
     cubstream::stream_position prev_record;
     MVCCID mvccid;
     unsigned int count_replication_entries;
@@ -77,6 +71,7 @@ namespace cubreplication
 
       header_size += serializator.get_packed_bigint_size (header_size);
       header_size += serializator.get_packed_bigint_size (header_size);
+      header_size += serializator.get_packed_int_size (header_size);
       header_size += serializator.get_packed_int_size (header_size);
       header_size += serializator.get_packed_int_size (header_size);
 
