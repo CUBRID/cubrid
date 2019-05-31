@@ -35,7 +35,7 @@ namespace cubreplication
   class subtran_applier::task : public cubthread::entry_task
   {
     public:
-      using callback_function_type = std::function<void ()>;
+      using callback_function_type = std::function<void (task *)>;
 
       task () = delete;
       task (stream_entry *se, const callback_function_type &callback);
@@ -76,22 +76,28 @@ namespace cubreplication
   }
 
   void
-  subtran_applier::finished_task ()
+  subtran_applier::finished_task (subtran_applier::task *task_arg)
   {
-    m_lc.end_one_task ();
-
     std::unique_lock<std::mutex> ulock (m_tasks_mutex);
+    assert (!m_tasks.empty ());
+    assert (m_tasks.front () == task_arg);
+    m_tasks.pop_front ();
+
     if (!m_tasks.empty ())
       {
+	// push next task
 	m_lc.push_task (m_tasks.front ());
-	m_tasks.pop_front ();
       }
+    ulock.unlock ();
+
+    // notify consumer a task was finished
+    m_lc.end_one_task ();
   }
 
   subtran_applier::task *
   subtran_applier::alloc_task (stream_entry *se)
   {
-    return new task (se, std::bind (&subtran_applier::finished_task, this));
+    return new task (se, std::bind (&subtran_applier::finished_task, this, std::placeholders::_1));
   }
 
   //
@@ -131,7 +137,7 @@ namespace cubreplication
     log_sysop_commit_replicated (&thread_ref, m_stream_entry->get_stream_entry_start_position ());
     thread_ref.retire_system_worker ();
 
-    m_callback_function ();
+    m_callback_function (this);
   }
 
 } // namespace cubreplication

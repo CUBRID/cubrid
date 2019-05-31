@@ -13937,6 +13937,7 @@ locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION rbr
 					  changed_att_ids, new_values, key_value, &scan_cache, copy_area);
   if (error_code != NO_ERROR)
     {
+      assert (false);
       goto exit;
     }
 
@@ -14088,6 +14089,7 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION 
       error_code = btree_get_pkey_btid (thread_p, class_oid, &btid);
       if (error_code != NO_ERROR)
 	{
+	  assert (false);
 	  goto exit;
 	}
 
@@ -14103,6 +14105,7 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION 
       if (xbtree_find_unique (thread_p, &btid, scan_op_type, key_value, class_oid, instance_oid, true) !=
 	  BTREE_KEY_FOUND)
 	{
+	  assert (false);
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
 	  error_code = ER_OBJ_OBJECT_NOT_FOUND;
 	  goto exit;
@@ -14137,6 +14140,7 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION 
 	  last_repr_id = heap_get_class_repr_id (thread_p, class_oid);
 	  if (last_repr_id == 0)
 	    {
+	      assert (false);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CT_INVALID_REPRID, 1, last_repr_id);
 	      error_code = ER_CT_INVALID_REPRID;
 	      goto exit;
@@ -14145,6 +14149,7 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION 
 	  error_code = or_replace_rep_id (recdes, last_repr_id);
 	  if (error_code != NO_ERROR)
 	    {
+	      assert (false);
 	      goto exit;
 	    }
 	}
@@ -14156,6 +14161,7 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION 
 	  error_code = or_replace_chn (recdes, old_chn + 1);
 	  if (error_code != NO_ERROR)
 	    {
+	      assert (false);
 	      goto exit;
 	    }
 	}
@@ -14168,6 +14174,7 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION 
       error_code = heap_attrinfo_start (thread_p, class_oid, -1, NULL, &attr_info);
       if (error_code != NO_ERROR)
 	{
+	  assert (false);
 	  goto exit;
 	}
       attr_info_inited = true;
@@ -14179,6 +14186,7 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION 
 	  error_code = heap_attrinfo_set (NULL, changed_att_ids[i], &(new_values[i]), &attr_info);
 	  if (error_code != NO_ERROR)
 	    {
+	      assert (false);
 	      goto exit;
 	    }
 	}
@@ -14187,6 +14195,7 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION 
 	locator_allocate_copy_area_by_attr_info (thread_p, &attr_info, &old_recdes, recdes, -1, LOB_FLAG_INCLUDE_LOB);
       if (copy_area == NULL)
 	{
+	  assert (false);
 	  error_code = ER_FAILED;
 	  goto exit;
 	}

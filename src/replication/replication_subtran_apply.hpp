@@ -48,7 +48,7 @@ namespace cubreplication
       class task;
 
       task *alloc_task (stream_entry *se);
-      void finished_task ();
+      void finished_task (subtran_applier::task *task_arg);
 
       log_consumer &m_lc;
       std::mutex m_tasks_mutex;
