@@ -319,7 +319,7 @@ namespace cubreplication
       }
 
     entry = se;
-    m_ctrl_chn->send_ack (entry->get_stream_entry_end_position ());
+    m_ctrl_chn->send_ack (entry->get_stream_entry_start_position ());
 
     return err;
   }
