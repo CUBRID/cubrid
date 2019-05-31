@@ -5759,8 +5759,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      local_scan_cache->mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
 	      if (local_scan_cache->mvcc_snapshot == NULL)
 		{
-		  ASSERT_ERROR_AND_SET (error_code);
-		  goto error;
+		  // might be a system worker; accept this
 		}
 
 	      scan =
