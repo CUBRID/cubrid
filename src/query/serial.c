@@ -1571,6 +1571,11 @@ serial_heap_record::update_record ()
       abort_replication ();
       return error_code;
     }
+  if (m_need_replication)
+    {
+      // record is updated, commit replication
+      commit_replication ();
+    }
 
   pr_clear_value (&key_value);
   return NO_ERROR;
