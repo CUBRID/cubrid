@@ -26,7 +26,6 @@
 #ifndef _LOG_CONSUMER_HPP_
 #define _LOG_CONSUMER_HPP_
 
-#include "communication_channel.hpp"
 #include "cubstream.hpp"
 #include "thread_manager.hpp"
 #include <chrono>
