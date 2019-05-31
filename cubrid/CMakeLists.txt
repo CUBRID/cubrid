@@ -208,6 +208,8 @@ set (REPLICATION_HEADERS
   ${REPLICATION_DIR}/replication_db_copy.hpp
   ${REPLICATION_DIR}/replication_master_node.hpp
   ${REPLICATION_DIR}/replication_master_senders_manager.hpp
+  ${REPLICATION_DIR}/slave_control_channel.hpp
+  ${REPLICATION_DIR}/master_control_channel.hpp
   ${REPLICATION_DIR}/replication_node.hpp
   ${REPLICATION_DIR}/replication_object.hpp
   ${REPLICATION_DIR}/replication_slave_node.hpp
@@ -268,6 +270,8 @@ set(OBJECT_HEADERS
 set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/log_consumer.cpp
   ${REPLICATION_DIR}/log_generator.cpp
+  ${REPLICATION_DIR}/slave_control_channel.cpp
+  ${REPLICATION_DIR}/master_control_channel.cpp
   ${REPLICATION_DIR}/replication_db_copy.cpp
   ${REPLICATION_DIR}/replication_object.cpp
   ${REPLICATION_DIR}/replication_master_node.cpp

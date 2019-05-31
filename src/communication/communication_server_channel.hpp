@@ -43,7 +43,7 @@ namespace cubcomm
       server_channel (server_channel &&comm);
       server_channel &operator= (server_channel &&comm);
 
-      css_error_code connect (const char *hostname, int port) override;
+      css_error_code connect (const char *hostname, int port, css_command_type cmd_type);
 
     private:
       std::string m_server_name;

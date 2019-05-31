@@ -26,6 +26,7 @@
 #include "replication_master_node.hpp"
 #include "log_impl.h"
 #include "replication_common.hpp"
+#include "master_control_channel.hpp"
 #include "replication_master_senders_manager.hpp"
 #include "transaction_master_group_complete_manager.hpp"
 #include "server_support.h"
@@ -68,6 +69,8 @@ namespace cubreplication
 
     cubtx::master_group_complete_manager::init ();
 
+    instance->m_control_channel_manager = new master_ctrl (cubtx::master_group_complete_manager::get_instance ());
+
     er_log_debug_replication (ARG_FILE_LINE, "master_node:init replication_path:%s", replication_path.c_str ());
 #endif
   }
@@ -109,10 +112,34 @@ namespace cubreplication
 #endif
   }
 
+  void master_node::add_ctrl_chn (int fd)
+  {
+#if defined (SERVER_MODE)
+    if (css_ha_server_state () != HA_SERVER_STATE_ACTIVE)
+      {
+	er_log_debug_replication (ARG_FILE_LINE, "add_ctrl_chn invalid server state :%s",
+				  css_ha_server_state_string (css_ha_server_state ()));
+	return;
+      }
+
+    cubcomm::channel chn;
+
+    css_error_code rc = chn.accept (fd);
+    assert (rc == NO_ERRORS);
+
+    g_instance->m_control_channel_manager->add (std::move (chn));
+
+    er_log_debug_replication (ARG_FILE_LINE, "control channel added");
+#endif
+  }
+
   void master_node::final (void)
   {
 #if defined (SERVER_MODE)
     master_senders_manager::final ();
+
+    delete g_instance->m_control_channel_manager;
+    g_instance->m_control_channel_manager = NULL;
 
     cubtx::master_group_complete_manager::final ();
 

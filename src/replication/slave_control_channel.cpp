@@ -18,45 +18,28 @@
  */
 
 /*
- * replication_master_node.hpp
+ * slave_control_channel.cpp - manages slave control channel entries
  */
 
-#ident "$Id$"
+#include "slave_control_channel.hpp"
 
-#ifndef _REPLICATION_MASTER_NODE_HPP_
-#define _REPLICATION_MASTER_NODE_HPP_
+#include <memory>
 
-#include "replication_node.hpp"
+#include "byte_order.h"
+#include "communication_channel.hpp"
 
 namespace cubreplication
 {
-  class master_ctrl;
-
-  class master_node : public replication_node
+  slave_control_channel::slave_control_channel (cubcomm::channel &&chn)
+    : m_chn (new cubcomm::channel (std::move (chn)))
   {
-    private:
-      static master_node *g_instance;
 
-      master_node (const char *name)
-	: replication_node (name)
-      {
-      }
+  }
 
-    public:
-      master_ctrl *m_control_channel_manager;
+  void slave_control_channel::send_ack (cubstream::stream_position sp)
+  {
+    cubstream::stream_position net_sp = htoni64 (sp);
+    m_chn->send ((const char *) &net_sp, sizeof (net_sp));
+  }
+}
 
-      static master_node *get_instance (const char *name);
-
-      static void init (const char *name);
-      static void new_slave (int fd);
-      static void add_ctrl_chn (int fd);
-      static void final (void);
-
-      static void enable_active (void);
-
-      static void update_senders_min_position (const cubstream::stream_position &pos);
-  };
-
-} /* namespace cubreplication */
-
-#endif /* _REPLICATION_MASTER_NODE_HPP_ */
