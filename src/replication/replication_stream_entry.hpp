@@ -182,8 +182,7 @@ namespace cubreplication
 
       bool is_tran_state_undefined (void) const
       {
-	return m_header.tran_state < stream_entry_header::ACTIVE
-	       || m_header.tran_state > stream_entry_header::GROUP_COMMIT;
+	return m_header.tran_state != stream_entry_header::TRAN_STATE::UNDEFINED;
       }
 
       bool check_mvccid_is_valid () const;
