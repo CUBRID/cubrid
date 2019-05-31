@@ -153,10 +153,9 @@ namespace cubreplication
     serializator->unpack_bigint (m_header.prev_record);
     serializator->unpack_bigint (m_header.mvccid);
     serializator->unpack_from_int (m_header.tran_state);
+    assert (m_header.tran_state != stream_entry_header::UNDEFINED);
     serializator->unpack_from_int (m_header.count_replication_entries);
     serializator->unpack_int (m_header.data_size);
-
-    assert (m_header.tran_state != stream_entry_header::UNDEFINED);
 
     return NO_ERROR;
   }
