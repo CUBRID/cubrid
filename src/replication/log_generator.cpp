@@ -454,6 +454,7 @@ namespace cubreplication
   void
   log_generator::on_subtran_commit ()
   {
+    assert (m_pending_to_be_added.size () == 0);
     set_tran_repl_info (cubreplication::stream_entry_header::SUBTRAN_COMMIT);
   }
 

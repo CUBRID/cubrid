@@ -1506,6 +1506,16 @@ serial_heap_record::commit_replication ()
   assert (m_need_replication);
   assert (m_is_replication_started);
 
+  DB_VALUE key_value;
+  db_make_null (&key_value);
+
+  // serial name is required as key for replication
+  int name_attrid = serial_get_attrid (m_thread_p, SERIAL_ATTR_NAME_INDEX);
+  assert (name_attrid != NOT_FOUND);
+  pr_clone_value (heap_attrinfo_access (name_attrid, &m_attrinfo), &key_value);
+
+  m_replgen_p->add_update_row (key_value, m_serial_oid, *oid_Serial_class_oid, NULL);
+
   if (m_is_instant_replication)
     {
       m_subtran_gen.commit ();
@@ -1514,6 +1524,8 @@ serial_heap_record::commit_replication ()
     {
       // it will be committed when transaction is committed
     }
+
+  pr_clear_value (&key_value);
 
   m_is_replication_started = false;
 #endif // SERVER_MODE
@@ -1558,17 +1570,6 @@ int
 serial_heap_record::update_record ()
 {
   int error_code = NO_ERROR;
-
-  DB_VALUE key_value;
-  db_make_null (&key_value);
-
-  if (m_need_replication)
-    {
-      // serial name is required as key for replication
-      int name_attrid = serial_get_attrid (m_thread_p, SERIAL_ATTR_NAME_INDEX);
-      assert (name_attrid != NOT_FOUND);
-      pr_clone_value (heap_attrinfo_access (name_attrid, &m_attrinfo), &key_value);
-    }
   
   // undoredo is required for instant replication; redo is enough otherwise
   error_code = serial_update_serial_object (m_thread_p, m_scancache.page_watcher.pgptr, &m_peek_recdes, &m_attrinfo,
@@ -1586,7 +1587,7 @@ serial_heap_record::update_record ()
       commit_replication ();
     }
 
-  pr_clear_value (&key_value);
+  
   return NO_ERROR;
 }
 
