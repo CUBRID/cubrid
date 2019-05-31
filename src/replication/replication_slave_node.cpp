@@ -27,6 +27,7 @@
 #include "log_consumer.hpp"
 #include "multi_thread_stream.hpp"
 #include "replication_common.hpp"
+#include "slave_control_channel.hpp"
 #include "replication_stream_entry.hpp"
 #include "stream_file.hpp"
 #include "stream_transfer_receiver.hpp"
@@ -95,7 +96,14 @@ namespace cubreplication
 
     g_instance->m_master_identity.set_hostname (master_node_hostname);
     g_instance->m_master_identity.set_port (master_node_port_id);
-    error = srv_chn.connect (master_node_hostname, master_node_port_id);
+    error = srv_chn.connect (master_node_hostname, master_node_port_id, SERVER_REQUEST_CONNECT_NEW_SLAVE);
+    if (error != css_error_code::NO_ERRORS)
+      {
+	return error;
+      }
+
+    cubcomm::server_channel control_chn (g_instance->m_identity.get_hostname ().c_str ());
+    error = control_chn.connect (master_node_hostname, master_node_port_id, SERVER_REQUEST_CONNECT_NEW_SLAVE_CONTROL);
     if (error != css_error_code::NO_ERRORS)
       {
 	return error;
@@ -106,6 +114,8 @@ namespace cubreplication
     cubstream::stream_position start_position = 0;
     g_instance->m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *g_instance->m_stream,
 	start_position);
+
+    g_instance->m_control_channel_sender = new cubreplication::slave_control_channel (std::move (control_chn));
 #endif
 
     return error;
@@ -118,6 +128,9 @@ namespace cubreplication
 
     delete g_instance->m_transfer_receiver;
     g_instance->m_transfer_receiver = NULL;
+
+    delete g_instance->m_control_channel_sender;
+    g_instance->m_control_channel_sender = NULL;
 
     g_instance->m_lc->set_stop ();
     delete g_instance->m_lc;

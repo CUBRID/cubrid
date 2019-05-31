@@ -18,45 +18,51 @@
  */
 
 /*
- * replication_master_node.hpp
+ * master_control_channel.hpp - manages master control channel entries
  */
 
-#ident "$Id$"
+#ifndef _MASTER_CONTROL_CHANNEL_HPP_
+#define _MASTER_CONTROL_CHANNEL_HPP_
 
-#ifndef _REPLICATION_MASTER_NODE_HPP_
-#define _REPLICATION_MASTER_NODE_HPP_
+#include <list>
+#include <mutex>
 
-#include "replication_node.hpp"
+namespace cubcomm
+{
+  class channel;
+}
+
+namespace cubstream
+{
+  class stream_ack;
+};
+
+namespace cubthread
+{
+  class daemon;
+};
 
 namespace cubreplication
 {
-  class master_ctrl;
+  class control_channel_managing_task;
 
-  class master_node : public replication_node
+  class master_ctrl
   {
-    private:
-      static master_node *g_instance;
-
-      master_node (const char *name)
-	: replication_node (name)
-      {
-      }
-
     public:
-      master_ctrl *m_control_channel_manager;
+      master_ctrl (cubstream::stream_ack *stream_ack);
+      ~master_ctrl ();
+      void add (cubcomm::channel &&chn);
 
-      static master_node *get_instance (const char *name);
+    private:
+      void check_alive ();
 
-      static void init (const char *name);
-      static void new_slave (int fd);
-      static void add_ctrl_chn (int fd);
-      static void final (void);
+      cubthread::daemon *m_managing_daemon;
+      std::list<std::pair<cubthread::daemon *, const cubcomm::channel *>> m_ctrl_channel_readers;
+      std::mutex m_mtx;
+      cubstream::stream_ack *m_stream_ack;
 
-      static void enable_active (void);
-
-      static void update_senders_min_position (const cubstream::stream_position &pos);
+      friend class control_channel_managing_task;
   };
-
 } /* namespace cubreplication */
 
-#endif /* _REPLICATION_MASTER_NODE_HPP_ */
+#endif /* _MASTER_CONTROL_CHANNEL_HPP_ */
