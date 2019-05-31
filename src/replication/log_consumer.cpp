@@ -186,6 +186,7 @@ namespace cubreplication
 	    /* TODO[replication] : on-the-fly applier & multi-threaded applier */
 	    if (se->is_group_commit ())
 	      {
+                se->unpack ();
 		assert (se->get_data_packed_size () == 0);
 
 		/* wait for all started tasks to finish */
