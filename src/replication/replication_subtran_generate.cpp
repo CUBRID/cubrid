@@ -32,8 +32,19 @@ namespace cubreplication
 {
   subtran_generate::subtran_generate ()
     : m_generator (cubreplication::log_generator::get_global_stream ())
+    , m_started (false)
   {
     m_generator.set_row_replication_disabled (false);
+  }
+
+  subtran_generate::~subtran_generate ()
+  {
+    if (m_started)
+      {
+	// should be manually stopped; but make sure we don't "leak" sysops
+	assert (false);
+	abort ();
+      }
   }
 
   void

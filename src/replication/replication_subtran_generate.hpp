@@ -33,7 +33,7 @@ namespace cubreplication
     public:
 
       subtran_generate ();
-      ~subtran_generate () = default;
+      ~subtran_generate ();
 
       void start ();
       void commit ();
@@ -43,6 +43,7 @@ namespace cubreplication
 
     private:
       log_generator m_generator;
+      bool m_started;
   };
 } // namespace cubreplication
 

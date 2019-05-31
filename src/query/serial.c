@@ -574,6 +574,13 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
       return ret;
     }
 
+  ret = serial_heaprec.update_record ();
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return ret;
+    }
+
   return NO_ERROR;
 }
 
@@ -1487,6 +1494,8 @@ serial_heap_record::start_replication ()
       assert (tdes != NULL);
       m_replgen_p = &tdes->replication_log_generator;
     }
+
+  m_is_replication_started = true;
 #endif // SERVER_MODE
 }
 
