@@ -133,17 +133,29 @@ int serial_Num_attrs = -1;
 class serial_heap_record
 {
   public:
-
-    serial_heap_record () = delete;
     serial_heap_record (cubthread::entry * thread_p, const OID &serial_oid);
     ~serial_heap_record ();
 
     int load ();
     int update_current_value (const db_value &crt_val);
+    int set_started_value ();
 
-    heap_cache_attrinfo &get_attrinfo ();
+    int update_record ();
+
+    heap_cache_attrinfo &get_attrinfo (); // normally should return const heap_cache_attrinfo &
+                                          // heap_attrinfo_access signature must be fixed first
 
   private:
+    serial_heap_record () = default;
+
+    int update_value (int attr_index, const DB_VALUE &val);
+    bool is_undo_logging_needed ();
+
+    // replication functions; on SA_MODE, they do nothing
+    void start_replication ();
+    void commit_replication ();
+    void abort_replication ();
+
     cubthread::entry *m_thread_p;
     OID m_serial_oid;
     heap_scancache m_scancache;
@@ -151,6 +163,15 @@ class serial_heap_record
     heap_cache_attrinfo m_attrinfo;
 
     bool m_loaded;
+    bool m_need_replication;
+
+#if defined (SERVER_MODE)
+    // replication
+    cubreplication::subtran_generate m_subtran_gen;
+    cubreplication::log_generator *m_replgen_p;
+    bool m_is_instant_replication;
+    bool m_is_replication_started;
+#endif
 };
 // *INDENT-ON*
 
@@ -638,10 +659,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   if (db_get_int (&started) == 0)
     {
       /* This is the first time to generate the serial value. */
-      db_make_int (&started, 1);
-      attrid = serial_get_attrid (thread_p, SERIAL_ATTR_STARTED_INDEX);
-      assert (attrid != NOT_FOUND);
-      ret = heap_attrinfo_set (serial_oidp, attrid, &started, attr_info_p);
+      ret = serial_heaprec.set_started_value ();
       if (ret == NO_ERROR)
 	{
 	  pr_share_value (&cur_val, &next_val);
@@ -682,8 +700,6 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
     }
 
   /* Now update record */
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX);
-  assert (attrid != NOT_FOUND);
   if (cached_num > 1 && !DB_IS_NULL (&last_val))
     {
       ret = serial_heaprec.update_current_value (last_val);
@@ -692,6 +708,12 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
     {
       ret = serial_heaprec.update_current_value (next_val);
     }
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return ret;
+    }
+  ret = serial_heaprec.update_record ();
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1306,17 +1328,23 @@ serial_get_index_btid (BTID * output)
 //
 // *INDENT-OFF*
 serial_heap_record::serial_heap_record (cubthread::entry *thread_p, const OID &serial_oid)
-  : m_thread_p (thread_p)
-  , m_serial_oid (serial_oid)
-  , m_scancache ()
-  , m_peek_recdes ()
-  , m_attrinfo ()
-  , m_loaded (false)
+  : serial_heap_record ()
 {
+  m_thread_p = thread_p;
+  m_serial_oid = serial_oid;
+
+  m_loaded = false;
+
+  m_need_replication = !LOG_CHECK_LOG_APPLIER (m_thread_p) && log_does_allow_replication () == true;
+
+#if defined (SERVER_MODE)
+  m_is_replication_started = false;
+#endif
 }
 
 serial_heap_record::~serial_heap_record ()
 {
+  abort_replication ();
   if (m_loaded)
     {
       heap_attrinfo_end (m_thread_p, &m_attrinfo);
@@ -1373,13 +1401,70 @@ serial_heap_record::load ()
 }
 
 int
+serial_heap_record::update_value (int attr_index, const DB_VALUE &val)
+{
+  int error_code = NO_ERROR;
+  assert (m_loaded);
+
+  int attrid = serial_get_attrid (m_thread_p, attr_index);
+  assert (attrid != NOT_FOUND);
+
+  if (m_need_replication)
+    {
+#if defined (SERVER_MODE)
+      start_replication (); // it only starts once
+
+      assert (m_replgen_p != NULL);
+      error_code = heap_attrinfo_set_and_replicate (&m_serial_oid, attrid, &val, &m_attrinfo, *m_replgen_p);
+      if (error_code != NO_ERROR)
+        {
+          ASSERT_ERROR ();
+          return error_code;
+        }
+#else // not SERVER_MODE = SA_MODE
+      assert (false);
+#endif // not SERVER_MODE = SA_MODE
+    }
+  else
+    {
+      error_code = heap_attrinfo_set (&m_serial_oid, attrid, &val, &m_attrinfo);
+      if (error_code != NO_ERROR)
+        {
+          ASSERT_ERROR ();
+          return error_code;
+        }
+    }
+
+  return NO_ERROR;
+}
+
+int
 serial_heap_record::update_current_value (const db_value &crt_val)
 {
-#if defined (SERVER_MODE)
-  int error_code = NO_ERROR;
-  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread_p);
+  return update_value (SERIAL_ATTR_CURRENT_VAL_INDEX, crt_val);
+}
 
-  bool need_replication = !LOG_CHECK_LOG_APPLIER (m_thread_p) && log_does_allow_replication () == true;
+int
+serial_heap_record::set_started_value ()
+{
+  DB_VALUE start_dbval;
+  db_make_int (&start_dbval, 1);
+
+  return update_value (SERIAL_ATTR_STARTED_INDEX, start_dbval);
+}
+
+void
+serial_heap_record::start_replication ()
+{
+#if defined (SERVER_MODE)
+  assert (m_need_replication);
+
+  if (m_is_replication_started)
+    {
+      // already started
+      return;
+    }
+
   /* need to start topop for replication Replication will recognize and realize a special type of update for serial by
    * this top operation log record. If lock_mode is X_LOCK means we created or altered the serial obj in an
    * uncommitted trans For this case, topop and flush mark are not used, since these may cause problem with replication
@@ -1388,110 +1473,107 @@ serial_heap_record::update_current_value (const db_value &crt_val)
    * TODO: serial being created or altered guarantees that its object is being locked with X_LOCK. The reversed is not
    *       always true, the serial is also locked when it is added to cache for the first time.
    */
-  bool need_instant_replication =
-    need_replication && (lock_get_object_lock (&m_serial_oid, oid_Serial_class_oid, tran_index) != X_LOCK);
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread_p);
+  m_is_instant_replication = lock_get_object_lock (&m_serial_oid, oid_Serial_class_oid, tran_index) != X_LOCK;
+
+  if (m_is_instant_replication)
+    {
+      m_subtran_gen.start ();
+      m_replgen_p = &m_subtran_gen.get_repl_generator ();
+    }
+  else
+    {
+      LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+      assert (tdes != NULL);
+      m_replgen_p = &tdes->replication_log_generator;
+    }
+#endif // SERVER_MODE
+}
+
+void
+serial_heap_record::commit_replication ()
+{
+#if defined (SERVER_MODE)
+  assert (m_need_replication);
+  assert (m_is_replication_started);
+
+  if (m_is_instant_replication)
+    {
+      m_subtran_gen.commit ();
+    }
+  else
+    {
+      // it will be committed when transaction is committed
+    }
+
+  m_is_replication_started = false;
+#endif // SERVER_MODE
+}
+
+void
+serial_heap_record::abort_replication ()
+{
+#if defined (SERVER_MODE)
+  assert (m_need_replication);
+  
+  if (!m_is_replication_started)
+    {
+      // nothing to abort
+      return;
+    }
+
+  m_replgen_p->remove_attribute_change (*oid_Serial_class_oid, m_serial_oid);
+  if (m_is_instant_replication)
+    {
+      m_subtran_gen.abort ();
+    }
+
+  m_is_replication_started = false;
+#endif // SERVER_MODE
+}
+
+bool
+serial_heap_record::is_undo_logging_needed ()
+{
+#if defined (SERVER_MODE)
+  if (m_need_replication && m_is_instant_replication)
+    {
+      // serial changes can be undone if they are not replicated
+      return true;
+    }
+#endif
+  return false;
+}
+
+int
+serial_heap_record::update_record ()
+{
+  int error_code = NO_ERROR;
 
   DB_VALUE key_value;
   db_make_null (&key_value);
 
-  if (need_replication)
+  if (m_need_replication)
     {
       // serial name is required as key for replication
       int name_attrid = serial_get_attrid (m_thread_p, SERIAL_ATTR_NAME_INDEX);
       assert (name_attrid != NOT_FOUND);
       pr_clone_value (heap_attrinfo_access (name_attrid, &m_attrinfo), &key_value);
     }
-
-  int attrid = serial_get_attrid (m_thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX);
-
-  // we have three cases on how to handle serial updates:
-  //
-  //  1. no replication:
-  //     it is enough to set current value and call serial_update_serial_object (changes are redo logged)
-  //
-  //  2. replication not instant:
-  //     replication log is appended to transaction replication generator. other than that is similar to no replication
-  //
-  //  3. replication instant:
-  //     replication log is immediately packed to stream; it requires a more complex handling (see subtran_generate).
-  //     serial_update_serial_object needs to log undoredo.
-  if (need_instant_replication)
-    {
-      // case 3: replication instant. use cubreplication::subtran_generate
-      cubreplication::subtran_generate repl_subtran_gen;
-
-      repl_subtran_gen.start ();
-
-      error_code = heap_attrinfo_set_and_replicate (&m_serial_oid, attrid, &crt_val, &m_attrinfo,
-                                                    repl_subtran_gen.get_repl_generator ());
-      if (error_code == NO_ERROR)
-        {
-          error_code = serial_update_serial_object (m_thread_p, m_scancache.page_watcher.pgptr, &m_peek_recdes,
-                                                    &m_attrinfo, oid_Serial_class_oid, &m_serial_oid, true);
-        }
-
-      if (error_code == NO_ERROR)
-        {
-          repl_subtran_gen.get_repl_generator ().add_update_row (key_value, m_serial_oid, *oid_Serial_class_oid, NULL);
-          repl_subtran_gen.commit ();
-        }
-      else
-        {
-          repl_subtran_gen.abort ();
-        }
-    }
-  else
-    {
-      // case 1 and 2
-      error_code = heap_attrinfo_set (&m_serial_oid, attrid, &crt_val, &m_attrinfo);
-      if (error_code == NO_ERROR)
-        {
-          error_code = serial_update_serial_object (m_thread_p, m_scancache.page_watcher.pgptr, &m_peek_recdes,
-                                                    &m_attrinfo, oid_Serial_class_oid, &m_serial_oid, false);
-        }
-
-      if (need_replication)
-        {
-          // case 2 only: append replication to transaction descriptor
-          LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
-          assert (tdes != NULL);
-
-          if (error_code == NO_ERROR)
-            {
-              tdes->replication_log_generator.add_update_row (key_value, m_serial_oid, *oid_Serial_class_oid, NULL);
-            }
-          else
-            {
-              tdes->replication_log_generator.remove_attribute_change (*oid_Serial_class_oid, m_serial_oid);
-            }
-        }
-    }
-
+  
+  // undoredo is required for instant replication; redo is enough otherwise
+  error_code = serial_update_serial_object (m_thread_p, m_scancache.page_watcher.pgptr, &m_peek_recdes, &m_attrinfo,
+                                            oid_Serial_class_oid, &m_serial_oid,
+                                            is_undo_logging_needed ());
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
+      abort_replication ();
+      return error_code;
     }
 
   pr_clear_value (&key_value);
-  return error_code;
-#else // not server mode = SA mode
-  int attrid = serial_get_attrid (m_thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX);
-  int error_code = heap_attrinfo_set (&m_serial_oid, attrid, &crt_val, &m_attrinfo);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
-    }
-  error_code = serial_update_serial_object (m_thread_p, m_scancache.page_watcher.pgptr, &m_peek_recdes,
-                                            &m_attrinfo, oid_Serial_class_oid, &m_serial_oid, false);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
-    }
-
   return NO_ERROR;
-#endif // not server mode = SA mode
 }
 
 heap_cache_attrinfo &
