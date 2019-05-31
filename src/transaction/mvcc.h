@@ -32,6 +32,8 @@
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
+#include <vector>
+
 /* MVCC RECORD HEADER */
 typedef struct mvcc_rec_header MVCC_REC_HEADER;
 struct mvcc_rec_header
@@ -200,9 +202,9 @@ struct mvcc_info
    * are not active anymore */
   MVCCID recent_snapshot_lowest_active_mvccid;
 
-  MVCCID *sub_ids;		/* MVCC sub-transaction ID array */
-  int max_sub_ids;		/* allocated MVCC sub-transaction ids */
-  int count_sub_ids;		/* count sub-transaction ids */
+  // *INDENT-OFF*
+  std::vector<MVCCID> sub_ids;		/* MVCC sub-transaction ID array */
+  // *INDENT-ON*
   bool is_sub_active;		/* true in case that sub-transaction is running */
 
   // *INDENT-OFF*

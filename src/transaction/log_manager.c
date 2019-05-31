@@ -3489,6 +3489,8 @@ log_sysop_end_type_string (LOG_SYSOP_END_TYPE end_type)
       return "LOG_SYSOP_END_LOGICAL_COMPENSATE";
     case LOG_SYSOP_END_LOGICAL_RUN_POSTPONE:
       return "LOG_SYSOP_END_LOGICAL_RUN_POSTPONE";
+    case LOG_SYSOP_END_COMMIT_REPLICATED:
+      return "LOG_SYSOP_END_COMMIT_REPLICATED";
     default:
       assert (false);
       return "UNKNOWN LOG_SYSOP_END_TYPE";
@@ -3782,7 +3784,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	}
       else
 	{
-	  assert (log_record->type == LOG_SYSOP_END_COMMIT);
+	  assert (log_record->type == LOG_SYSOP_END_COMMIT || log_record->type == LOG_SYSOP_END_COMMIT_REPLICATED);
 	  assert (tdes->state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE
 		  && (tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE || is_rv_finish_postpone));
 	}
@@ -3828,6 +3830,18 @@ log_sysop_commit (THREAD_ENTRY * thread_p)
 
   log_sysop_commit_internal (thread_p, &log_record, 0, NULL, false);
 }
+
+// *INDENT-OFF*
+void
+log_sysop_commit_replicated (THREAD_ENTRY * thread_p, cubstream::stream_position repl_stream_pos)
+{
+  LOG_REC_SYSOP_END log_record;
+  log_record.type = LOG_SYSOP_END_COMMIT_REPLICATED;
+  log_record.repl_stream_position = repl_stream_pos;
+
+  log_sysop_commit_internal (thread_p, &log_record, 0, NULL, false);
+}
+// *INDENT-ON*
 
 /*
  * log_sysop_end_logical_undo () - Commit system operation and add an undo log record. This is a logical undo for complex
@@ -4849,13 +4863,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	{
 	  LOG_LSA commit_lsa;
 
-	  /* To write unlock log before releasing locks for transactional consistencies. When a transaction(T2) which
-	   * is resumed by this committing transaction(T1) commits and a crash happens before T1 completes, transaction
-	   * consistencies will be broken because T1 will be aborted during restart recovery and T2 was already
-	   * committed. */
-	  /* TODO - with GC, no need to append log commit or ha commit. */
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_active_worker_transaction ()
-	      && log_does_allow_replication () == true)
+	  if (LSA_ISNULL (&tdes->posp_nxlsa))
 	    {
 	      tx_group group;
 	      group.add (tdes->tran_index, 0, tdes->state);
@@ -7668,9 +7676,16 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 		  /* we have to stop */
 		  LSA_SET_NULL (&prev_tranlsa);
 		}
+	      else if (sysop_end->type == LOG_SYSOP_END_COMMIT_REPLICATED)
+		{
+		  /* jump to last parent */
+		  // TBD: imitate behavior of LOG_SYSOP_END_COMMIT until we have a proper solution
+		  LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
+		}
 	      else
 		{
 		  /* jump to last parent */
+		  assert (sysop_end->type == LOG_SYSOP_END_COMMIT || sysop_end->type == LOG_SYSOP_END_ABORT);
 		  LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
 		}
 	      break;
