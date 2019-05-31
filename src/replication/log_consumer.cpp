@@ -28,6 +28,7 @@
 #include "multi_thread_stream.hpp"
 #include "replication_common.hpp"
 #include "replication_stream_entry.hpp"
+#include "communication_channel.hpp"
 #include "slave_control_channel.hpp"
 #include "string_buffer.hpp"
 #include "system_parameter.h"
