@@ -329,7 +329,8 @@ test_new_mvcc_complete (void *param)
 	  abort ();
 	}
 
-      logtb_complete_mvcc (thread_p, tdes, committed);
+	  /* Disabled complete MVCC temporary */
+      //logtb_complete_mvcc (thread_p, tdes, committed);
       committed = !committed;
 
       /* here we may test whether bit was set */
