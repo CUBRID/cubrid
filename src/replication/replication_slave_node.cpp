@@ -113,6 +113,8 @@ namespace cubreplication
 
     g_instance->m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *g_instance->m_stream,
 	start_position);
+
+    return NO_ERROR;
   }
 
   void slave_node::final (void)
