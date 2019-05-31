@@ -46,7 +46,7 @@ namespace cubreplication
   void
   log_generator::set_tran_repl_info (stream_entry_header::TRAN_STATE state)
   {
-    assert (m_has_stream);
+    assert (m_stream_entry.get_stream () != NULL);
     m_stream_entry.set_state (state);
     m_stream_entry.check_mvccid_is_valid ();
   }
@@ -307,9 +307,8 @@ namespace cubreplication
   {
     cubstream::stream_position start_pos;
 
-    assert (m_has_stream);
+    assert (m_stream_entry.get_stream () != NULL);
     assert (!m_stream_entry.is_tran_state_undefined ());
-    assert (MVCCID_IS_VALID (m_stream_entry.get_mvccid ()));
 
     if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
       {

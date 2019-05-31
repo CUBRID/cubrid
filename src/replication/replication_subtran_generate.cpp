@@ -33,6 +33,7 @@ namespace cubreplication
   subtran_generate::subtran_generate ()
     : m_generator (cubreplication::log_generator::get_global_stream ())
   {
+    m_generator.set_row_replication_disabled (false);
   }
 
   void
