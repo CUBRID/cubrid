@@ -5964,7 +5964,6 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   *force_count = 1;
 
 error:
-  ASSERT_ERROR ();
 
   if (old_classname != NULL && old_classname != classname)
     {
