@@ -107,12 +107,20 @@ namespace cubreplication
     return &replication_factory_po;
   }
 
+  bool
+  stream_entry::check_mvccid_is_valid () const
+  {
+    return !m_header.needs_mvccid () || MVCCID_IS_VALID (m_header.mvccid);
+  }
+
   int
   stream_entry::pack_stream_entry_header ()
   {
     cubpacking::packer *serializator = get_packer ();
     unsigned int count_and_flags;
     unsigned int state_flags;
+
+    assert (check_mvccid_is_valid ());
 
     assert (!m_header.needs_mvccid () || m_header.mvccid != MVCCID_NULL);
 

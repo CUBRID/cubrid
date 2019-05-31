@@ -111,6 +111,7 @@ namespace cubreplication
       void on_transaction_abort (void);
       // act when sysop is aborted
       void on_sysop_abort (LOG_LSA &start_lsa);
+      void on_subtran_commit ();
       // clear transaction data (e.g. logtb_clear_tdes)
       void clear_transaction (void);
 
@@ -131,7 +132,7 @@ namespace cubreplication
 
       stream_entry *get_stream_entry (void);
 
-      void pack_stream_entry (void);
+      cubstream::stream_position pack_stream_entry (void);
 
       void er_log_repl_obj (replication_object *obj, const char *message);
 

@@ -160,35 +160,37 @@ namespace cubreplication
 	m_header.tran_state = state;
       }
 
-      bool is_group_commit (void)
+      bool is_group_commit (void) const
       {
 	return m_header.tran_state == stream_entry_header::GROUP_COMMIT;
       }
 
-      bool is_subtran_commit (void)
+      bool is_subtran_commit (void) const
       {
 	return m_header.tran_state == stream_entry_header::SUBTRAN_COMMIT;
       }
 
-      bool is_tran_commit (void)
+      bool is_tran_commit (void) const
       {
 	return m_header.tran_state == stream_entry_header::COMMITTED;
       }
 
-      bool is_tran_abort (void)
+      bool is_tran_abort (void) const
       {
 	return m_header.tran_state == stream_entry_header::ABORTED;
       }
 
-      bool is_tran_state_undefined (void)
+      bool is_tran_state_undefined (void) const
       {
 	return m_header.tran_state < stream_entry_header::ACTIVE
 	       || m_header.tran_state > stream_entry_header::GROUP_COMMIT;
       }
 
-      int pack_stream_entry_header ();
-      int unpack_stream_entry_header ();
-      int get_packable_entry_count_from_header (void);
+      bool check_mvccid_is_valid () const;
+
+      int pack_stream_entry_header () override;
+      int unpack_stream_entry_header () override;
+      int get_packable_entry_count_from_header (void) override;
 
       void stringify (string_buffer &sb, const string_dump_mode mode = short_dump);
 

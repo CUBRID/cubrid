@@ -37,8 +37,9 @@
 #include "numeric_opfunc.h"
 #include "object_primitive.h"
 #include "record_descriptor.hpp"
-#include "replication_object.hpp"
+#include "replication_subtran_generate.hpp"
 #include "server_interface.h"
+#include "thread_manager.hpp"
 #include "transform.h"
 #include "xserver_interface.h"
 #include "slotted_page.h"
@@ -128,6 +129,31 @@ BTID serial_Cached_btid = BTID_INITIALIZER;
 ATTR_ID serial_Attrs_id[SERIAL_ATTR_MAX_INDEX];
 int serial_Num_attrs = -1;
 
+// *INDENT-OFF*
+class serial_heap_record
+{
+  public:
+
+    serial_heap_record () = delete;
+    serial_heap_record (cubthread::entry * thread_p, const OID &serial_oid);
+    ~serial_heap_record ();
+
+    int load ();
+    int update_current_value (const db_value &crt_val);
+
+    heap_cache_attrinfo &get_attrinfo ();
+
+  private:
+    cubthread::entry *m_thread_p;
+    OID m_serial_oid;
+    heap_scancache m_scancache;
+    recdes m_peek_recdes;
+    heap_cache_attrinfo m_attrinfo;
+
+    bool m_loaded;
+};
+// *INDENT-ON*
+
 static int xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * serial_oidp);
 static int xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * serial_oidp,
 					    int num_alloc);
@@ -135,7 +161,7 @@ static int serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_E
 static int serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry);
 static int serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdesc,
 					HEAP_CACHE_ATTRINFO * attr_info, const OID * serial_class_oidp,
-					const OID * serial_oidp, DB_VALUE * key_val);
+					const OID * serial_oidp, bool need_undo);
 static int serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val, DB_VALUE * max_val,
 				 DB_VALUE * cyclic, int nth, DB_VALUE * result_val);
 static void serial_set_cache_entry (SERIAL_CACHE_ENTRY * entry, DB_VALUE * inc_val, DB_VALUE * cur_val,
@@ -503,16 +529,9 @@ static int
 serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry)
 {
   int ret = NO_ERROR;
-  HEAP_SCANCACHE scan_cache;
-  SCAN_CODE scan;
-  RECDES recdesc;
-  HEAP_CACHE_ATTRINFO attr_info, *attr_info_p = NULL;
-  DB_VALUE *val;
-  DB_VALUE key_val;
-  ATTR_ID attrid;
-  OID serial_class_oid;
-
-  db_make_null (&key_val);
+  serial_heap_record serial_heaprec
+  {
+  thread_p, entry->oid};
 
   CHECK_MODIFICATION_NO_RETURN (thread_p, ret);
   if (ret != NO_ERROR)
@@ -520,81 +539,21 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
       return ret;
     }
 
-  oid_get_serial_oid (&serial_class_oid);
-  heap_scancache_quick_start_modify_with_class_oid (thread_p, &scan_cache, &serial_class_oid);
-
-  scan = heap_get_visible_version (thread_p, &entry->oid, &serial_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN);
-  if (scan != S_SUCCESS)
-    {
-      if (er_errid () == ER_PB_BAD_PAGEID)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, entry->oid.volid, entry->oid.pageid,
-		  entry->oid.slotid);
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CANNOT_FETCH_SERIAL, 0);
-	}
-      goto exit_on_error;
-    }
-
-  /* retrieve attribute */
-  ret = heap_attrinfo_start (thread_p, oid_Serial_class_oid, -1, NULL, &attr_info);
+  ret = serial_heaprec.load ();
   if (ret != NO_ERROR)
     {
-      goto exit_on_error;
+      ASSERT_ERROR ();
+      return ret;
     }
 
-  ret = heap_attrinfo_read_dbvalues (thread_p, &entry->oid, &recdesc, NULL, &attr_info);
+  ret = serial_heaprec.update_current_value (entry->last_cached_val);
   if (ret != NO_ERROR)
     {
-      heap_attrinfo_end (thread_p, &attr_info);
-      goto exit_on_error;
+      ASSERT_ERROR ();
+      return ret;
     }
-
-  attr_info_p = &attr_info;
-
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_NAME_INDEX);
-  assert (attrid != NOT_FOUND);
-  val = heap_attrinfo_access (attrid, attr_info_p);
-  pr_clone_value (val, &key_val);
-
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX);
-  assert (attrid != NOT_FOUND);
-  ret = heap_attrinfo_set (&entry->oid, attrid, &entry->last_cached_val, attr_info_p);
-  if (ret != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  ret =
-    serial_update_serial_object (thread_p, scan_cache.page_watcher.pgptr, &recdesc, attr_info_p, oid_Serial_class_oid,
-				 &entry->oid, &key_val);
-  if (ret != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  pr_clear_value (&key_val);
-
-  heap_attrinfo_end (thread_p, attr_info_p);
-
-  heap_scancache_end (thread_p, &scan_cache);
 
   return NO_ERROR;
-
-exit_on_error:
-
-  pr_clear_value (&key_val);
-
-  if (attr_info_p != NULL)
-    {
-      heap_attrinfo_end (thread_p, attr_info_p);
-    }
-
-  heap_scancache_end (thread_p, &scan_cache);
-
-  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -607,10 +566,7 @@ static int
 xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * serial_oidp, int num_alloc)
 {
   int ret = NO_ERROR;
-  HEAP_SCANCACHE scan_cache;
-  SCAN_CODE scan;
-  RECDES recdesc;
-  HEAP_CACHE_ATTRINFO attr_info, *attr_info_p = NULL;
+  HEAP_CACHE_ATTRINFO *attr_info_p = NULL;
   DB_VALUE *val = NULL;
   DB_VALUE cur_val;
   DB_VALUE inc_val;
@@ -619,43 +575,22 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   DB_VALUE cyclic;
   DB_VALUE started;
   DB_VALUE next_val;
-  DB_VALUE key_val;
   DB_VALUE last_val;
   int cached_num, nturns;
   SERIAL_CACHE_ENTRY *entry = NULL;
   ATTR_ID attrid;
-  OID serial_class_oid;
+  serial_heap_record serial_heaprec
+  {
+  thread_p, *serial_oidp};
 
-  db_make_null (&key_val);
-
-  oid_get_serial_oid (&serial_class_oid);
-  heap_scancache_quick_start_modify_with_class_oid (thread_p, &scan_cache, &serial_class_oid);
-
-  scan = heap_get_visible_version (thread_p, serial_oidp, &serial_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN);
-  if (scan != S_SUCCESS)
-    {
-      if (er_errid () == ER_PB_BAD_PAGEID)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, serial_oidp->volid, serial_oidp->pageid,
-		  serial_oidp->slotid);
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CANNOT_FETCH_SERIAL, 0);
-	}
-      goto exit_on_error;
-    }
-
-  /* retrieve attribute */
-  ret = heap_attrinfo_start (thread_p, oid_Serial_class_oid, -1, NULL, &attr_info);
+  ret = serial_heaprec.load ();
   if (ret != NO_ERROR)
     {
-      goto exit_on_error;
+      ASSERT_ERROR ();
+      return ret;
     }
 
-  ret = heap_attrinfo_read_dbvalues (thread_p, serial_oidp, &recdesc, NULL, &attr_info);
-
-  attr_info_p = &attr_info;
+  attr_info_p = &serial_heaprec.get_attrinfo ();
 
   attrid = serial_get_attrid (thread_p, SERIAL_ATTR_CACHED_NUM_INDEX);
   if (attrid == NOT_FOUND)
@@ -667,11 +602,6 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
       val = heap_attrinfo_access (attrid, attr_info_p);
       cached_num = db_get_int (val);
     }
-
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_NAME_INDEX);
-  assert (attrid != NOT_FOUND);
-  val = heap_attrinfo_access (attrid, attr_info_p);
-  pr_clone_value (val, &key_val);
 
   attrid = serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX);
   assert (attrid != NOT_FOUND);
@@ -747,7 +677,8 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 
   if (ret != NO_ERROR)
     {
-      goto exit_on_error;
+      ASSERT_ERROR ();
+      return ret;
     }
 
   /* Now update record */
@@ -755,33 +686,20 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   assert (attrid != NOT_FOUND);
   if (cached_num > 1 && !DB_IS_NULL (&last_val))
     {
-      ret = heap_attrinfo_set (serial_oidp, attrid, &last_val, attr_info_p);
+      ret = serial_heaprec.update_current_value (last_val);
     }
   else
     {
-      ret = heap_attrinfo_set (serial_oidp, attrid, &next_val, attr_info_p);
+      ret = serial_heaprec.update_current_value (next_val);
     }
   if (ret != NO_ERROR)
     {
-      goto exit_on_error;
-    }
-
-  ret =
-    serial_update_serial_object (thread_p, scan_cache.page_watcher.pgptr, &recdesc, attr_info_p, oid_Serial_class_oid,
-				 serial_oidp, &key_val);
-  if (ret != NO_ERROR)
-    {
-      goto exit_on_error;
+      ASSERT_ERROR ();
+      return ret;
     }
 
   /* copy result value */
   pr_share_value (&next_val, result_num);
-
-  pr_clear_value (&key_val);
-
-  heap_attrinfo_end (thread_p, attr_info_p);
-
-  heap_scancache_end (thread_p, &scan_cache);
 
   if (cached_num > 1)
     {
@@ -807,19 +725,6 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
     }
 
   return NO_ERROR;
-
-exit_on_error:
-
-  pr_clear_value (&key_val);
-
-  if (attr_info_p != NULL)
-    {
-      heap_attrinfo_end (thread_p, attr_info_p);
-    }
-
-  heap_scancache_end (thread_p, &scan_cache);
-
-  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -835,7 +740,7 @@ exit_on_error:
 static int
 serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * old_recdesc,
 			     HEAP_CACHE_ATTRINFO * attr_info, const OID * serial_class_oidp, const OID * serial_oidp,
-			     DB_VALUE * key_val)
+			     bool needs_undo)
 {
   // *INDENT-OFF*
   cubmem::stack_block<IO_MAX_PAGE_SIZE> copyarea;
@@ -844,32 +749,8 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * o
   SCAN_CODE scan;
   LOG_DATA_ADDR addr;
   int sp_success;
-  int tran_index;
-  LOG_TDES *tdes;
 
   assert_release (serial_class_oidp != NULL && !OID_ISNULL (serial_class_oidp));
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-
-  if (tdes == NULL)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  bool need_replication = !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true;
-
-  /* need to start topop for replication Replication will recognize and realize a special type of update for serial by
-   * this top operation log record. If lock_mode is X_LOCK means we created or altered the serial obj in an
-   * uncommitted trans For this case, topop and flush mark are not used, since these may cause problem with replication
-   * log.
-   *
-   * TODO: serial being created or altered guarantees that its object is being locked with X_LOCK. The reversed is not
-   *       always true, the serial is also locked when it is added to cache for the first time.
-   */
-  bool need_instant_replication =
-    need_replication && (lock_get_object_lock (serial_oidp, serial_class_oidp, tran_index) != X_LOCK);
 
   new_record.set_external_buffer (copyarea);
 
@@ -896,39 +777,13 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * o
       return ER_QPROC_CANNOT_UPDATE_SERIAL;
     }
 
-  if (!need_instant_replication)
+  if (needs_undo)
     {
-      log_append_redo_recdes (thread_p, RVHF_UPDATE, &addr, &new_record.get_recdes ());
-
-      if (need_replication)
-	{
-	  tdes->replication_log_generator.add_update_row (*key_val, *serial_oidp, *serial_class_oidp,
-							  &new_record.get_recdes ());
-	}
+      log_append_undoredo_recdes (thread_p, RVHF_UPDATE, &addr, old_recdesc, &new_record.get_recdes ());
     }
   else
     {
-      // *INDENT-OFF*
-      // todo: encapsulate creating stream entry into a different function
-      cubreplication::rec_des_row_repl_entry *replobj = NULL;
-      cubreplication::stream_entry stream_entry (cubreplication::log_generator::get_global_stream ());
-      
-      replobj = new cubreplication::rec_des_row_repl_entry (cubreplication::repl_entry_type::REPL_UPDATE,
-                                                            CT_SERIAL_NAME, new_record.get_recdes (), NULL_LSA);
-      replobj->set_key_value (*key_val);
-      stream_entry.set_state (cubreplication::stream_entry_header::TRAN_STATE::SUBTRAN_COMMIT);
-      stream_entry.add_packable_entry (replobj);
-
-      // we need sysop commit replication
-      log_sysop_start (thread_p);
-
-      log_append_undoredo_recdes (thread_p, RVHF_UPDATE, &addr, old_recdesc, &new_record.get_recdes ());
-
-      // append to stream
-      
-      stream_entry.pack ();
-      log_sysop_commit_replicated (thread_p, stream_entry.get_stream_entry_start_position ());
-      // *INDENT-ON*
+      log_append_redo_recdes (thread_p, RVHF_UPDATE, &addr, &new_record.get_recdes ());
     }
 
   return NO_ERROR;
@@ -1445,3 +1300,204 @@ serial_get_index_btid (BTID * output)
   BTID_COPY (output, &serial_Cached_btid);
 }
 #endif /* SERVER_MODE */
+
+//
+// C++
+//
+// *INDENT-OFF*
+serial_heap_record::serial_heap_record (cubthread::entry *thread_p, const OID &serial_oid)
+  : m_thread_p (thread_p)
+  , m_serial_oid (serial_oid)
+  , m_scancache ()
+  , m_peek_recdes ()
+  , m_attrinfo ()
+  , m_loaded (false)
+{
+}
+
+serial_heap_record::~serial_heap_record ()
+{
+  if (m_loaded)
+    {
+      heap_attrinfo_end (m_thread_p, &m_attrinfo);
+      heap_scancache_end (m_thread_p, &m_scancache);
+    }
+}
+
+int
+serial_heap_record::load ()
+{
+  int error_code = NO_ERROR;
+
+  heap_scancache_quick_start_modify_with_class_oid (m_thread_p, &m_scancache, oid_Serial_class_oid);
+
+  SCAN_CODE scan = heap_get_visible_version (m_thread_p, &m_serial_oid, oid_Serial_class_oid, &m_peek_recdes,
+                                             &m_scancache, PEEK, NULL_CHN);
+  if (scan == S_SUCCESS)
+    {
+      // start and read m_attrinfo
+      error_code = heap_attrinfo_start (m_thread_p, oid_Serial_class_oid, -1, NULL, &m_attrinfo);
+      if (error_code == NO_ERROR)
+        {
+          error_code = heap_attrinfo_read_dbvalues (m_thread_p, &m_serial_oid, &m_peek_recdes, &m_scancache,
+                                                    &m_attrinfo);
+          if (error_code != NO_ERROR)
+            {
+              heap_attrinfo_end (m_thread_p, &m_attrinfo);
+            }
+        }
+    }
+  else
+    {
+      if (er_errid () == ER_PB_BAD_PAGEID)
+	{
+          error_code = ER_HEAP_UNKNOWN_OBJECT;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 3, OID_AS_ARGS (&m_serial_oid));
+	}
+      else
+	{
+          error_code = ER_QPROC_CANNOT_FETCH_SERIAL;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	}
+    }
+
+  if (error_code == NO_ERROR)
+    {
+      m_loaded = true;
+    }
+  else
+    {
+      heap_scancache_end (m_thread_p, &m_scancache);
+    }
+  return error_code;
+}
+
+int
+serial_heap_record::update_current_value (const db_value &crt_val)
+{
+#if defined (SERVER_MODE)
+  int error_code = NO_ERROR;
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread_p);
+
+  bool need_replication = !LOG_CHECK_LOG_APPLIER (m_thread_p) && log_does_allow_replication () == true;
+  /* need to start topop for replication Replication will recognize and realize a special type of update for serial by
+   * this top operation log record. If lock_mode is X_LOCK means we created or altered the serial obj in an
+   * uncommitted trans For this case, topop and flush mark are not used, since these may cause problem with replication
+   * log.
+   *
+   * TODO: serial being created or altered guarantees that its object is being locked with X_LOCK. The reversed is not
+   *       always true, the serial is also locked when it is added to cache for the first time.
+   */
+  bool need_instant_replication =
+    need_replication && (lock_get_object_lock (&m_serial_oid, oid_Serial_class_oid, tran_index) != X_LOCK);
+
+  DB_VALUE key_value;
+  db_make_null (&key_value);
+
+  if (need_replication)
+    {
+      // serial name is required as key for replication
+      int name_attrid = serial_get_attrid (m_thread_p, SERIAL_ATTR_NAME_INDEX);
+      assert (name_attrid != NOT_FOUND);
+      pr_clone_value (heap_attrinfo_access (name_attrid, &m_attrinfo), &key_value);
+    }
+
+  int attrid = serial_get_attrid (m_thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX);
+
+  // we have three cases on how to handle serial updates:
+  //
+  //  1. no replication:
+  //     it is enough to set current value and call serial_update_serial_object (changes are redo logged)
+  //
+  //  2. replication not instant:
+  //     replication log is appended to transaction replication generator. other than that is similar to no replication
+  //
+  //  3. replication instant:
+  //     replication log is immediately packed to stream; it requires a more complex handling (see subtran_generate).
+  //     serial_update_serial_object needs to log undoredo.
+  if (need_instant_replication)
+    {
+      // case 3: replication instant. use cubreplication::subtran_generate
+      cubreplication::subtran_generate repl_subtran_gen;
+
+      repl_subtran_gen.start ();
+
+      error_code = heap_attrinfo_set_and_replicate (&m_serial_oid, attrid, &crt_val, &m_attrinfo,
+                                                    repl_subtran_gen.get_repl_generator ());
+      if (error_code == NO_ERROR)
+        {
+          error_code = serial_update_serial_object (m_thread_p, m_scancache.page_watcher.pgptr, &m_peek_recdes,
+                                                    &m_attrinfo, oid_Serial_class_oid, &m_serial_oid, true);
+        }
+
+      if (error_code == NO_ERROR)
+        {
+          repl_subtran_gen.get_repl_generator ().add_update_row (key_value, m_serial_oid, *oid_Serial_class_oid, NULL);
+          repl_subtran_gen.commit ();
+        }
+      else
+        {
+          repl_subtran_gen.abort ();
+        }
+    }
+  else
+    {
+      // case 1 and 2
+      error_code = heap_attrinfo_set (&m_serial_oid, attrid, &crt_val, &m_attrinfo);
+      if (error_code == NO_ERROR)
+        {
+          error_code = serial_update_serial_object (m_thread_p, m_scancache.page_watcher.pgptr, &m_peek_recdes,
+                                                    &m_attrinfo, oid_Serial_class_oid, &m_serial_oid, false);
+        }
+
+      if (need_replication)
+        {
+          // case 2 only: append replication to transaction descriptor
+          LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+          assert (tdes != NULL);
+
+          if (error_code == NO_ERROR)
+            {
+              tdes->replication_log_generator.add_update_row (key_value, m_serial_oid, *oid_Serial_class_oid, NULL);
+            }
+          else
+            {
+              tdes->replication_log_generator.remove_attribute_change (*oid_Serial_class_oid, m_serial_oid);
+            }
+        }
+    }
+
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+
+  pr_clear_value (&key_value);
+  return error_code;
+#else // not server mode = SA mode
+  int attrid = serial_get_attrid (m_thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX);
+  int error_code = heap_attrinfo_set (&m_serial_oid, attrid, &crt_val, &m_attrinfo);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  error_code = serial_update_serial_object (m_thread_p, m_scancache.page_watcher.pgptr, &m_peek_recdes,
+                                            &m_attrinfo, oid_Serial_class_oid, &m_serial_oid, false);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  return NO_ERROR;
+#endif // not server mode = SA mode
+}
+
+heap_cache_attrinfo &
+serial_heap_record::get_attrinfo ()
+{
+  return m_attrinfo;
+}
+
+// *INDENT-ON*

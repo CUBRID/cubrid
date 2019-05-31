@@ -675,6 +675,8 @@ static int heap_moreattr_attrinfo (int attrid, HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_reset);
 static int heap_attrinfo_recache (THREAD_ENTRY * thread_p, REPR_ID reprid, HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_check (const OID * inst_oid, HEAP_CACHE_ATTRINFO * attr_info);
+static int heap_attrinfo_set_internal (const OID * inst_oid, ATTR_ID attrid, const DB_VALUE * attr_val,
+				       HEAP_CACHE_ATTRINFO * attr_info, cubreplication::log_generator & repl_generator);
 static int heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
 					    HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info);
@@ -11126,6 +11128,22 @@ exit_on_error:
 int
 heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, const DB_VALUE * attr_val, HEAP_CACHE_ATTRINFO * attr_info)
 {
+  // todo - find a more elegant way to manage replication context
+  return heap_attrinfo_set_internal (inst_oid, attrid, attr_val, attr_info,
+				     logtb_get_tdes (thread_get_thread_entry_info ())->replication_log_generator);
+}
+
+int
+heap_attrinfo_set_and_replicate (const OID * inst_oid, ATTR_ID attrid, const DB_VALUE * attr_val,
+				 HEAP_CACHE_ATTRINFO * attr_info, cubreplication::log_generator & repl_generator)
+{
+  return heap_attrinfo_set_internal (inst_oid, attrid, attr_val, attr_info, repl_generator);
+}
+
+static int
+heap_attrinfo_set_internal (const OID * inst_oid, ATTR_ID attrid, const DB_VALUE * attr_val,
+			    HEAP_CACHE_ATTRINFO * attr_info, cubreplication::log_generator & repl_generator)
+{
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
   PR_TYPE *pr_type;		/* Primitive type array function structure */
   TP_DOMAIN_STATUS dom_status;
@@ -11217,8 +11235,7 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, const DB_VALUE * attr_v
        * where to keep all attributes whose values are modified (together with other HA info). A parameter having
        * HA_CTX type must be added to locator_update_ functions.
        */
-      logtb_get_tdes (thread_p)->replication_log_generator.add_attribute_change (attr_info->class_oid, *inst_oid,
-										 attrid, *attr_val);
+      repl_generator.add_attribute_change (attr_info->class_oid, *inst_oid, attrid, *attr_val);
     }
 
   return ret;
