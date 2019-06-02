@@ -28,6 +28,8 @@
 #include "multi_thread_stream.hpp"
 #include "replication_common.hpp"
 #include "replication_stream_entry.hpp"
+#include "communication_channel.hpp"
+#include "slave_control_channel.hpp"
 #include "string_buffer.hpp"
 #include "system_parameter.h"
 #include "thread_daemon.hpp"
@@ -317,13 +319,13 @@ namespace cubreplication
       }
 
     entry = se;
+    m_ctrl_chn->send_ack (entry->get_stream_entry_start_position ());
 
     return err;
   }
 
   void log_consumer::start_daemons (void)
   {
-#if defined (SERVER_MODE)
     er_log_debug_replication (ARG_FILE_LINE, "log_consumer::start_daemons\n");
     m_consumer_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
 			new consumer_daemon_task (*this),
@@ -339,7 +341,6 @@ namespace cubreplication
 			     NULL, 1, 1);
 
     m_use_daemons = true;
-#endif /* defined (SERVER_MODE) */
   }
 
   void log_consumer::execute_task (applier_worker_task *task)

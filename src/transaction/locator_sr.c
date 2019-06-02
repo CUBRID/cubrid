@@ -7550,8 +7550,8 @@ end:
 	    {
 	      /* Aborts and simulate apply replication RBR on master node. */
 	      error_code =
-		logtb_get_tdes (thread_p)->replication_log_generator.
-		abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
+		logtb_get_tdes (thread_p)->
+		replication_log_generator.abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
 	    }
 	  else
 	    {
