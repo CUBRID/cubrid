@@ -22,6 +22,7 @@
 //
 
 #include "log_manager.h"
+#include "replication_master_senders_manager.hpp"
 #include "thread_manager.hpp"
 #include "transaction_master_group_complete_manager.hpp"
 
@@ -150,6 +151,9 @@ namespace cubtx
 	m_latest_closed_group_start_stream_position = closed_group_stream_start_position;
 	m_latest_closed_group_end_stream_position = closed_group_stream_end_position;
 	mark_latest_closed_group_prepared_for_complete ();
+
+	/* Wakeup senders, just to be sure. */
+	cubreplication::master_senders_manager::wakeup_transfer_senders (closed_group_stream_end_position);
       }
   }
 

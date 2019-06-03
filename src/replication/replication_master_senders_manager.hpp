@@ -56,7 +56,7 @@ namespace cubreplication
       static void add_stream_sender (cubstream::transfer_sender *sender);
       static std::size_t get_number_of_stream_senders ();
       static void final ();
-      static void block_until_position_sent (cubstream::stream_position desired_position);
+      static void wakeup_transfer_senders (cubstream::stream_position desired_position);
 
       static inline cubstream::stream &get_stream ()
       {

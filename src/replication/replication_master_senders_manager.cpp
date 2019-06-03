@@ -123,29 +123,18 @@ namespace cubreplication
     return length;
   }
 
-  void master_senders_manager::block_until_position_sent (cubstream::stream_position desired_position)
+  void master_senders_manager::wakeup_transfer_senders (cubstream::stream_position desired_position)
   {
 #if defined (SERVER_MODE)
-    bool is_position_sent = false;
-    const std::chrono::microseconds SLEEP_BETWEEN_SPINS (20);
-
-    while (!is_position_sent)
+    rwlock_read_lock (&master_senders_lock);
+    for (cubstream::transfer_sender *sender : master_server_stream_senders)
       {
-	is_position_sent = true;
-
-	rwlock_read_lock (&master_senders_lock);
-	for (cubstream::transfer_sender *sender : master_server_stream_senders)
+	if (sender->get_last_sent_position () < desired_position)
 	  {
-	    if (sender->get_last_sent_position () < desired_position)
-	      {
-		is_position_sent = false;
-		sender->get_daemon ()->wakeup ();
-	      }
+	    sender->get_daemon ()->wakeup ();
 	  }
-	rwlock_read_unlock (&master_senders_lock);
-
-	std::this_thread::sleep_for (SLEEP_BETWEEN_SPINS);
       }
+    rwlock_read_unlock (&master_senders_lock);
 #endif
   }
 
