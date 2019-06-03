@@ -24,11 +24,14 @@
 #ident "$Id$"
 
 #include "log_consumer.hpp"
+
+#include "communication_channel.hpp"
 #include "error_manager.h"
 #include "multi_thread_stream.hpp"
 #include "replication_common.hpp"
 #include "replication_stream_entry.hpp"
 #include "replication_subtran_apply.hpp"
+#include "slave_control_channel.hpp"
 #include "string_buffer.hpp"
 #include "system_parameter.h"
 #include "thread_daemon.hpp"
@@ -324,13 +327,13 @@ namespace cubreplication
       }
 
     entry = se;
+    m_ctrl_chn->send_ack (entry->get_stream_entry_start_position ());
 
     return err;
   }
 
   void log_consumer::start_daemons (void)
   {
-#if defined (SERVER_MODE)
     m_subtran_applier = new subtran_applier (*this);
 
     er_log_debug_replication (ARG_FILE_LINE, "log_consumer::start_daemons\n");
@@ -348,7 +351,6 @@ namespace cubreplication
 			     NULL, 1, 1);
 
     m_use_daemons = true;
-#endif /* defined (SERVER_MODE) */
   }
 
   void log_consumer::push_task (cubthread::entry_task *task)

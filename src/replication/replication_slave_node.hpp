@@ -45,20 +45,14 @@ namespace cubreplication
       static slave_node *g_instance;
       log_consumer *m_lc;
 
-#if defined (SERVER_MODE)
       node_definition m_master_identity;
       cubstream::transfer_receiver *m_transfer_receiver;
-      slave_control_channel *m_control_channel_sender;
-#endif
 
       slave_node (const char *name)
 	: replication_node (name)
 	, m_lc (NULL)
-#if defined (SERVER_MODE)
 	, m_master_identity ("")
 	, m_transfer_receiver (NULL)
-	, m_control_channel_sender (NULL)
-#endif
       {
       }
 

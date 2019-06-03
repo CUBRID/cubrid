@@ -31,16 +31,17 @@
 #include "byte_order.h"
 #include "communication_channel.hpp"
 #include "stream_transfer_sender.hpp"
-#include "thread_manager.hpp"
 #include "thread_daemon.hpp"
+#include "thread_entry_task.hpp"
+#include "thread_manager.hpp"
 
 namespace cubreplication
 {
-  class ack_reader_task : public cubthread::task_without_context
+  class ack_reader_task : public cubthread::entry_task
   {
     public:
       ack_reader_task (cubcomm::channel *chn, cubstream::stream_ack *stream_ack);
-      void execute () override;
+      void execute (cubthread::entry &thread_ref) override;
 
     private:
       std::unique_ptr<cubcomm::channel> m_chn;
@@ -53,7 +54,7 @@ namespace cubreplication
   {
   }
 
-  void ack_reader_task::execute ()
+  void ack_reader_task::execute (cubthread::entry &thread_ref)
   {
     if (!m_chn->is_connection_alive ())
       {
@@ -103,7 +104,7 @@ namespace cubreplication
 
   master_ctrl::~master_ctrl ()
   {
-    cubthread::get_manager ()->destroy_daemon (m_managing_daemon);
+    cubthread::get_manager ()->destroy_daemon_without_entry (m_managing_daemon);
 
     for (auto &cr : m_ctrl_channel_readers)
       {
@@ -123,7 +124,7 @@ namespace cubreplication
     cubcomm::channel *moved_to_chn = new cubcomm::channel (std::move (chn));
     cubthread::delta_time dt = cubthread::delta_time (0);
     ack_reader_task *ack_reader = new ack_reader_task (moved_to_chn, m_stream_ack);
-    m_ctrl_channel_readers.push_back (std::make_pair (cubthread::get_manager ()->create_daemon_without_entry (dt,
+    m_ctrl_channel_readers.push_back (std::make_pair (cubthread::get_manager ()->create_daemon (dt,
 				      ack_reader, "control channel reader"), moved_to_chn));
   }
 
