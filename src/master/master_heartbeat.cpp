@@ -29,6 +29,7 @@
 #include "environment_variable.h"
 #include "error_context.hpp"
 #include "heartbeat.h"
+#include "hostname.hpp"
 #include "master_request.h"
 #include "master_util.h"
 #include "message_catalog.h"
@@ -189,6 +190,7 @@ static char hb_Nolog_event_msg[LINE_MAX] = "";
 static HB_DEACTIVATE_INFO hb_Deactivate_info = { NULL, 0, false };
 
 static bool hb_Is_activated = true;
+
 static const hostname_type current_master_hostname;
 
 /* cluster jobs */
@@ -5298,6 +5300,8 @@ hb_is_hang_process (int sfd)
 const hostname_type &
 hb_find_host_name_of_master_server ()
 {
+  static const empty_hostname;
+
   int rv = pthread_mutex_lock (&hb_Cluster->lock);
   for (cubhb::node_entry *node : hb_Cluster->nodes)
     {
@@ -5307,10 +5311,10 @@ hb_find_host_name_of_master_server ()
 	  assert (is_node_master);
 
 	  pthread_mutex_unlock (&hb_Cluster->lock);
-	  return node->get_hostname ().as_c_str ();
+	  return node->get_hostname ();
 	}
     }
   pthread_mutex_unlock (&hb_Cluster->lock);
 
-  return NULL;
+  return empty_hostname;
 }
