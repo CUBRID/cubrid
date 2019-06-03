@@ -54,11 +54,13 @@
 #include "porting.h"
 #include "recovery.h"
 #include "release_string.h"
+#include "cubstream.hpp"
 #include "storage_common.h"
 #include "thread_entry.hpp"
 #include "transaction_complete_manager.hpp"
 #include "transaction_transient.hpp"
 #include "log_generator.hpp"
+#include "replication_db_copy.hpp"
 
 #include <assert.h>
 #if defined(SOLARIS)
@@ -541,6 +543,7 @@ struct log_tdes
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
   cubreplication::log_generator replication_log_generator;
+  cubreplication::copy_context replication_copy_context;
 
   bool is_active_worker_transaction () const;
   bool is_system_transaction () const;
@@ -659,7 +662,6 @@ struct log_global
 #else				/* SERVER_MODE */
   LOG_LSA final_restored_lsa;
 #endif				/* SERVER_MODE */
-
   /* Buffer for log hdr I/O, size : SIZEOF_LOG_PAGE_SIZE */
   LOG_PAGE *loghdr_pgptr;
 
@@ -668,7 +670,10 @@ struct log_global
 
   /* group commit information */
   LOG_GROUP_COMMIT_INFO group_commit_info;
-  tx_complete_manager *m_tran_complete_mgr;
+  // *INDENT-OFF*
+  cubtx::complete_manager *m_tran_complete_mgr;
+  cubstream::stream_position m_ack_stream_position;
+  // *INDENT-ON*
 
   /* remote log writer information */
   logwr_info *writer_info;
@@ -883,6 +888,7 @@ extern void logpb_fatal_error_exit_immediately_wo_flush (THREAD_ENTRY * thread_p
 extern int logpb_check_and_reset_temp_lsa (THREAD_ENTRY * thread_p, VOLID volid);
 extern void logpb_initialize_arv_page_info_table (void);
 extern void logpb_initialize_logging_statistics (void);
+extern void logpb_initialize_tran_complete_manager (void);
 extern int logpb_background_archiving (THREAD_ENTRY * thread_p);
 extern void xlogpb_dump_stat (FILE * outfp);
 
@@ -992,7 +998,7 @@ extern MVCCID logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p);
 extern LOG_PAGEID logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p);
 extern int logpb_find_oldest_available_arv_num (THREAD_ENTRY * thread_p);
 
-extern int logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info);
+extern void logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info);
 
 extern MVCCID logtb_find_current_mvccid (THREAD_ENTRY * thread_p);
 extern MVCCID logtb_get_current_mvccid (THREAD_ENTRY * thread_p);

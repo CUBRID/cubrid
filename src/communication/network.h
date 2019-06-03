@@ -234,6 +234,8 @@ enum net_server_request
 
   NET_SERVER_LC_GET_PROXY_COMMAND,
 
+  NET_SERVER_LC_SEND_PROXY_BUFFER,
+
   /*
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.
@@ -264,6 +266,20 @@ typedef enum
   END_CALLBACK,			/* normal end of non-query callback */
   CONSOLE_OUTPUT
 } QUERY_SERVER_REQUEST;
+
+/* type of buffer : used by NET_SERVER_LC_SEND_PROXY_BUFFER request */
+enum net_proxy_buf_type
+{
+  NET_PROXY_BUF_TYPE_UNKNOWN = 0,
+  NET_PROXY_BUF_TYPE_EXTRACT_CLASSES,
+  NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END,
+  NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS,
+  NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS_END,
+  NET_PROXY_BUF_TYPE_EXTRACT_INDEXES,
+  NET_PROXY_BUF_TYPE_EXTRACT_INDEXES_END,
+
+  NET_BUF_TYPE_LAST
+};
 
 /* Server startup */
 extern int net_server_start (const char *name);

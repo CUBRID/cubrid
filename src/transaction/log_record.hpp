@@ -135,7 +135,9 @@ enum log_rectype
   LOG_DUMMY_GENERIC,		/* used for flush for now. it is ridiculous to create dummy log records for every single
 				 * case. we should find a different approach */
 
-  LOG_GROUP_COMMIT,
+  LOG_GROUP_COMPLETE,
+
+  LOG_FINISH_POSTPONE,
 
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
 };
@@ -239,14 +241,11 @@ struct log_rec_donetime
   INT64 at_time;		/* Database creation time. For safety reasons */
 };
 
-typedef struct log_rec_group_commit LOG_REC_GROUP_COMMIT;
-struct log_rec_group_commit
+typedef struct log_rec_group_complete LOG_REC_GROUP_COMPLETE;
+struct log_rec_group_complete
 {
   INT64 at_time;		/* time recorded by active server */
-  // *INDENT-OFF*
   cubstream::stream_position stream_pos;
-  // *INDENT-ON*
-
   size_t redo_size;
 };
 
@@ -292,7 +291,8 @@ enum log_sysop_end_type
   LOG_SYSOP_END_LOGICAL_UNDO,	/* logical undo */
   LOG_SYSOP_END_LOGICAL_MVCC_UNDO,	/* logical mvcc undo */
   LOG_SYSOP_END_LOGICAL_COMPENSATE,	/* logical compensate */
-  LOG_SYSOP_END_LOGICAL_RUN_POSTPONE	/* logical run postpone */
+  LOG_SYSOP_END_LOGICAL_RUN_POSTPONE,	/* logical run postpone */
+  LOG_SYSOP_END_COMMIT_REPLICATED       /* permanent changes if also replicated */
 };
 typedef enum log_sysop_end_type LOG_SYSOP_END_TYPE;
 #define LOG_SYSOP_END_TYPE_CHECK(type) \
@@ -301,7 +301,8 @@ typedef enum log_sysop_end_type LOG_SYSOP_END_TYPE;
           || (type) == LOG_SYSOP_END_LOGICAL_UNDO \
           || (type) == LOG_SYSOP_END_LOGICAL_MVCC_UNDO \
           || (type) == LOG_SYSOP_END_LOGICAL_COMPENSATE \
-          || (type) == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
+          || (type) == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE \
+          || (type) == LOG_SYSOP_END_COMMIT_REPLICATED)
 
 /* end system operation log record */
 typedef struct log_rec_sysop_end LOG_REC_SYSOP_END;
@@ -321,6 +322,9 @@ struct log_rec_sysop_end
       bool is_sysop_postpone;	/* true if run postpone is used during a system op postpone, false if used during
 				 * transaction postpone */
     } run_postpone;		/* run postpone info */
+    // *INDENT-OFF*
+    cubstream::stream_position repl_stream_position;
+    // *INDENT-ON*
   };
 };
 

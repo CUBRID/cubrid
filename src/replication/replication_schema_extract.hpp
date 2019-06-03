@@ -18,45 +18,48 @@
  */
 
 /*
- * replication_master_node.hpp
+ * replication_schema_extract.hpp
  */
 
-#ident "$Id$"
+#ifndef _REPLICATION_SCHEMA_EXTRACT_HPP_
+#define _REPLICATION_SCHEMA_EXTRACT_HPP_
 
-#ifndef _REPLICATION_MASTER_NODE_HPP_
-#define _REPLICATION_MASTER_NODE_HPP_
-
-#include "replication_node.hpp"
+#include "printer.hpp"
 
 namespace cubreplication
 {
-  class master_ctrl;
 
-  class master_node : public replication_node
+  class net_print_output : public print_output
   {
     private:
-      static master_node *g_instance;
-
-      master_node (const char *name)
-	: replication_node (name)
-      {
-      }
+      int m_buffer_type;
+      size_t m_flush_size;
+      int m_send_error_cnt;
 
     public:
-      master_ctrl *m_control_channel_manager;
+      const static size_t DEFAULT_FLUSH_SIZE = 4096;
 
-      static master_node *get_instance (const char *name);
+      net_print_output () = delete;
+      net_print_output (const int buffer_type, const size_t flush_size = DEFAULT_FLUSH_SIZE);
+      ~net_print_output () {}
 
-      static void init (const char *name);
-      static void new_slave (int fd);
-      static void add_ctrl_chn (int fd);
-      static void final (void);
+      int flush (void);
 
-      static void enable_active (void);
+      int send_to_network ();
 
-      static void update_senders_min_position (const cubstream::stream_position &pos);
+      void set_buffer_type (const int buffer_type)
+      {
+	m_buffer_type = buffer_type;
+      }
+
+      int get_error_count ()
+      {
+	return m_send_error_cnt;
+      }
   };
 
 } /* namespace cubreplication */
 
-#endif /* _REPLICATION_MASTER_NODE_HPP_ */
+extern int replication_schema_extract (const char *program_name);
+
+#endif /* _REPLICATION_SCHEMA_EXTRACT_HPP_ */

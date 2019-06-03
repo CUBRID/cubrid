@@ -23,31 +23,11 @@
 
 #include "transaction_complete_manager.hpp"
 
-tx_complete_manager::~tx_complete_manager ()
+namespace cubtx
 {
-  // pure virtual destructor must have a body
+  complete_manager::~complete_manager ()
+  {
+    // pure virtual destructor must have a body
+  }
 }
 
-tx_group_complete_manager::ticket_type
-tx_group_complete_manager::register_transaction (int tran_index, MVCCID mvccid, TRAN_STATE state)
-{
-  std::unique_lock<std::mutex> ulock (m_group_mutex);
-
-  m_current_group.add (tran_index, mvccid, state);
-  return m_current_ticket;
-}
-
-void
-tx_group_complete_manager::generate_group (tx_group &group_out)
-{
-  std::unique_lock<std::mutex> ulock (m_group_mutex);
-  if (m_current_group.get_container ().empty ())
-    {
-      // no transaction, no group to generate.
-    }
-  else
-    {
-      m_current_group.transfer_to (group_out);
-      m_current_ticket++;
-    }
-}

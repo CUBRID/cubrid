@@ -17,47 +17,29 @@
  *
  */
 
-//
-// group of transactions class
-//
+/*
+ * slave_control_channel.cpp - manages slave control channel entries
+ */
 
-#include "transaction_group.hpp"
+#include "slave_control_channel.hpp"
 
-void
-tx_group::add (const node_info &ni)
+#include <memory>
+
+#include "byte_order.h"
+#include "communication_channel.hpp"
+
+namespace cubreplication
 {
-  m_group.push_back (ni);
+  slave_control_channel::slave_control_channel (cubcomm::channel &&chn)
+    : m_chn (new cubcomm::channel (std::move (chn)))
+  {
+
+  }
+
+  void slave_control_channel::send_ack (cubstream::stream_position sp)
+  {
+    cubstream::stream_position net_sp = htoni64 (sp);
+    m_chn->send ((const char *) &net_sp, sizeof (net_sp));
+  }
 }
 
-void
-tx_group::add (int tran_index, MVCCID mvccid, TRAN_STATE tran_state)
-{
-  m_group.emplace_back (tran_index, mvccid, tran_state);
-}
-
-const tx_group::container_type &
-tx_group::get_container () const
-{
-  return m_group;
-}
-
-tx_group::container_type &
-tx_group::get_container ()
-{
-  return m_group;
-}
-
-void
-tx_group::transfer_to (tx_group &dest)
-{
-  dest.m_group = std::move (m_group);  // buffer is moved
-}
-
-// node_info
-
-tx_group::node_info::node_info (int tran_index, MVCCID mvccid, TRAN_STATE tran_state)
-  : m_tran_index (tran_index)
-  , m_mvccid (mvccid)
-  , m_tran_state (tran_state)
-{
-}

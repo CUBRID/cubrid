@@ -46,6 +46,7 @@
 #include "authenticate.h"
 #include "server_interface.h"
 #include "object_representation.h"
+#include "replication_schema_extract.hpp"
 #include "transaction_cl.h"
 #include "porting.h"
 #include "network_interface_cl.h"
@@ -3623,7 +3624,16 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
 	}
     }
 
-  if (command != NULL)
+  if (command == NULL)
+    {
+      goto error;
+    }
+
+  if (strcasecmp (command, ";extract-schema-to-net") == 0)
+    {
+      replication_schema_extract (program_name);
+    }
+  else
     {
       int total_stmts, stmt_id, i, num_of_rows;
       DB_QUERY_RESULT *result = NULL;

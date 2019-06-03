@@ -241,8 +241,8 @@ static void log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * 
 static void log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * eot_lsa,
 					  LOG_RECTYPE iscommitted, enum LOG_PRIOR_LSA_LOCK with_lock);
-static void log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, const tx_group & group,
-				     LOG_LSA * commit_lsa);
+static void log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos,
+						tx_group & group, LOG_LSA * commit_lsa, bool * has_postpone);
 static void log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 					  LOG_LSA * lsa);
 static void log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
@@ -275,6 +275,8 @@ static LOG_PAGE *log_dump_record_compensate (THREAD_ENTRY * thread_p, FILE * out
 					     LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
 						  LOG_PAGE * log_page_p);
+static LOG_PAGE *log_dump_record_group_complete (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
+						 LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_transaction_finish (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
 						     LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
@@ -402,6 +404,9 @@ log_to_string (LOG_RECTYPE type)
     case LOG_RUN_POSTPONE:
       return "LOG_RUN_POSTPONE";
 
+    case LOG_FINISH_POSTPONE:
+      return "LOG_FINISH_POSTPONE";
+
     case LOG_COMPENSATE:
       return "LOG_COMPENSATE";
 
@@ -411,8 +416,8 @@ log_to_string (LOG_RECTYPE type)
     case LOG_COMMIT_WITH_POSTPONE:
       return "LOG_COMMIT_WITH_POSTPONE";
 
-    case LOG_GROUP_COMMIT:
-      return "LOG_GROUP_COMMIT";
+    case LOG_GROUP_COMPLETE:
+      return "LOG_GROUP_COMPLETE";
 
     case LOG_COMMIT:
       return "LOG_COMMIT";
@@ -1465,6 +1470,8 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	  (void) logpb_background_archiving (thread_p);
 	}
     }
+
+  logpb_initialize_tran_complete_manager ();
 
   LOG_CS_EXIT (thread_p);
 
@@ -2866,6 +2873,16 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
     }
 }
 
+void
+log_append_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa)
+{
+  assert (commit_lsa != NULL);
+  LOG_PRIOR_NODE *node =
+    prior_lsa_alloc_and_copy_data (thread_p, LOG_FINISH_POSTPONE, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
+  LOG_LSA lsa = prior_lsa_next_record (thread_p, node, tdes);
+  LSA_COPY (commit_lsa, &lsa);
+}
+
 /*
  * log_append_compensate - LOG COMPENSATE DATA
  *
@@ -3472,6 +3489,8 @@ log_sysop_end_type_string (LOG_SYSOP_END_TYPE end_type)
       return "LOG_SYSOP_END_LOGICAL_COMPENSATE";
     case LOG_SYSOP_END_LOGICAL_RUN_POSTPONE:
       return "LOG_SYSOP_END_LOGICAL_RUN_POSTPONE";
+    case LOG_SYSOP_END_COMMIT_REPLICATED:
+      return "LOG_SYSOP_END_COMMIT_REPLICATED";
     default:
       assert (false);
       return "UNKNOWN LOG_SYSOP_END_TYPE";
@@ -3765,7 +3784,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	}
       else
 	{
-	  assert (log_record->type == LOG_SYSOP_END_COMMIT);
+	  assert (log_record->type == LOG_SYSOP_END_COMMIT || log_record->type == LOG_SYSOP_END_COMMIT_REPLICATED);
 	  assert (tdes->state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE
 		  && (tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE || is_rv_finish_postpone));
 	}
@@ -3811,6 +3830,18 @@ log_sysop_commit (THREAD_ENTRY * thread_p)
 
   log_sysop_commit_internal (thread_p, &log_record, 0, NULL, false);
 }
+
+// *INDENT-OFF*
+void
+log_sysop_commit_replicated (THREAD_ENTRY * thread_p, cubstream::stream_position repl_stream_pos)
+{
+  LOG_REC_SYSOP_END log_record;
+  log_record.type = LOG_SYSOP_END_COMMIT_REPLICATED;
+  log_record.repl_stream_position = repl_stream_pos;
+
+  log_sysop_commit_internal (thread_p, &log_record, 0, NULL, false);
+}
+// *INDENT-ON*
 
 /*
  * log_sysop_end_logical_undo () - Commit system operation and add an undo log record. This is a logical undo for complex
@@ -4431,8 +4462,8 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
   LOG_PRIOR_NODE *node;
   LOG_LSA lsa;
 
-  eot_lsa->pageid = NULL_PAGEID;
-  eot_lsa->offset = NULL_OFFSET;
+  eot_lsa->pageid = NULL_LOG_PAGEID;
+  eot_lsa->offset = NULL_LOG_OFFSET;
 
   node = prior_lsa_alloc_and_copy_data (thread_p, iscommitted, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
   if (node == NULL)
@@ -4457,41 +4488,82 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
 }
 
 static void
-log_append_group_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, const tx_group & group,
-			 LOG_LSA * commit_lsa)
+log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, tx_group & group,
+				    LOG_LSA * complete_lsa, bool * has_postpone)
 {
   LOG_PRIOR_NODE *node;
   LOG_LSA lsa;
 
-  commit_lsa->pageid = NULL_PAGEID;
-  commit_lsa->offset = NULL_OFFSET;
+  assert (complete_lsa != NULL);
+  complete_lsa->pageid = NULL_LOG_PAGEID;
+  complete_lsa->offset = NULL_LOG_OFFSET;
+
+  /* TODO - add and use group.has_postpone and get rid of has_postpone parameter */
+  if (has_postpone)
+    {
+      *has_postpone = false;
+    }
 
   // *INDENT-OFF*
   cubmem::appendible_block<1024> v;
   for (const auto & ti : group.get_container ())
-    {      
-      v.append (ti.m_tran_index);
+    {
+      const log_tdes *tdes = LOG_FIND_TDES (ti.m_tran_index);
+      assert (tdes != NULL);
+      v.append (tdes->trid);
       v.append (ti.m_tran_state);
       if (ti.m_tran_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
-      {
-	const log_tdes * tdes = LOG_FIND_TDES (ti.m_tran_index);
-	v.append (tdes->posp_nxlsa);
-      }
+        {
+	  v.append (tdes->posp_nxlsa);
+          if (has_postpone)
+            {
+              *has_postpone = true;
+            }
+        }
     }
   // *INDENT-ON*
 
-  node =
-    prior_lsa_alloc_and_copy_data (thread_p, LOG_GROUP_COMMIT, RV_NOT_DEFINED, NULL, 0, NULL,
-				   (int) v.get_size (), v.get_read_ptr ());
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_GROUP_COMPLETE, RV_NOT_DEFINED, NULL, 0, NULL,
+					(int) v.get_size (), v.get_read_ptr ());
 
-  LOG_REC_GROUP_COMMIT *gc = (LOG_REC_GROUP_COMMIT *) node->data_header;
+  LOG_REC_GROUP_COMPLETE *gc = (LOG_REC_GROUP_COMPLETE *) node->data_header;
   gc->at_time = time (NULL);
   gc->stream_pos = stream_pos;
-  gc->redo_size = group.get_container ().size ();
+  gc->redo_size = v.get_size ();
 
-  lsa = prior_lsa_next_record (thread_p, node, tdes);
+  // be sure to set tdes->rcv.tran_start_postpone_lsa and do appends under prior_lock
+  // to protect against inconsistent checkpoints
+  log_Gl.prior_info.prior_lsa_mutex.lock ();
+  // *INDENT-OFF*
+  for (tx_group::node_info &ti : group.get_container ())
+    {
+      LOG_TDES *tdes = LOG_FIND_TDES (ti.m_tran_index);
+      assert (tdes != NULL);
+      if (LSA_ISNULL (&tdes->posp_nxlsa))
+	{
+	  // filter out transactions without postpone
+	  continue;
+	}
 
-  LSA_COPY (commit_lsa, &lsa);
+      /* TODO - find a better solution. It is dangerous to set transaction state and
+       * LSA here. A simple solution may be to add a small delay at checkpoint.
+       */
+      tdes->state = ti.m_tran_state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+      tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
+    }
+  // *INDENT-ON*
+
+  lsa = prior_lsa_next_record_with_lock (thread_p, node, tdes);
+  log_Gl.prior_info.prior_lsa_mutex.unlock ();
+
+  LSA_COPY (complete_lsa, &lsa);
+}
+
+void
+log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, tx_group & group,
+			   LOG_LSA * complete_lsa, bool * has_postpone)
+{
+  log_append_group_complete_internal (thread_p, tdes, stream_pos, group, complete_lsa, has_postpone);
 }
 
 /*
@@ -4719,6 +4791,9 @@ log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_L
 TRAN_STATE
 log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bool is_local_tran)
 {
+#if 0
+  cubtx::complete_manager::id_type id = 0xFFFFFFFFFFFFFFFFUL;
+#endif
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, false);
 
   /* tx_lob_locator_clear and logtb_complete_mvcc operations must be done before entering unactive state because
@@ -4734,8 +4809,11 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
   /* clear mvccid before releasing the locks. This operation must be done before do_postpone because it stores unique
    * statistics for all B-trees and if an error occurs those operations and all operations of current transaction must
    * be rolled back. */
+
+  /* TODO - remove complete MVCC. The GC thread will complete MVCC. */
   logtb_complete_mvcc (thread_p, tdes, true);
 
+  // todo: do we really need this? Investigate removing this state assignment
   tdes->state = TRAN_UNACTIVE_WILL_COMMIT;
   /* undo_nxlsa is no longer required here and must be reset, in case checkpoint takes a snapshot of this transaction
    * during TRAN_UNACTIVE_WILL_COMMIT phase.
@@ -4751,7 +4829,25 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
        * Transaction updated data.
        */
 
-      log_tran_do_postpone (thread_p, tdes);
+      if (!LSA_ISNULL (&tdes->posp_nxlsa))
+	{
+#if 0
+	  /* TODO  - Activate the following code after stabilizing it. */
+	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
+	    {
+	      /* Need to finish transaction befor waiting for log. */
+	      tdes->replication_log_generator.on_transaction_commit ();
+	      id = log_Gl.m_tran_complete_mgr->register_transaction (tdes->tran_index, tdes->mvccinfo.id, tdes->state);
+	      /* Wait for postpone logging, before running postpone. */
+	      log_Gl.m_tran_complete_mgr->wait_for_logging (id);
+	      log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
+	    }
+	  else
+#endif
+	    {
+	      log_tran_do_postpone (thread_p, tdes);
+	    }
+	}
 
       /* The files created by this transaction are not new files any longer. Close any query cursors at this moment
        * too. */
@@ -4767,30 +4863,53 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	{
 	  LOG_LSA commit_lsa;
 
-	  /* To write unlock log before releasing locks for transactional consistencies. When a transaction(T2) which
-	   * is resumed by this committing transaction(T1) commits and a crash happens before T1 completes, transaction
-	   * consistencies will be broken because T1 will be aborted during restart recovery and T2 was already
-	   * committed. */
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_active_worker_transaction ()
-	      && log_does_allow_replication () == true)
+	  if (LSA_ISNULL (&tdes->posp_nxlsa))
 	    {
-	      /* for the replication agent guarantee the order of transaction */
-	      log_append_repl_info_and_commit_log (thread_p, tdes, &commit_lsa);
+	      tx_group group;
+	      group.add (tdes->tran_index, 0, tdes->state);
+	      log_append_group_complete (thread_p, tdes, 0, group, &commit_lsa, NULL);
 	    }
 	  else
 	    {
-	      log_append_commit_log (thread_p, tdes, &commit_lsa);
+	      // append finish_postpone only if gc with postpone was appended
+	      log_append_finish_postpone (thread_p, tdes, &commit_lsa);
 	    }
 
 	  tdes->replication_log_generator.on_transaction_commit ();
-
-	  if (retain_lock != true)
+#if 0
+	  /* TODO  - Activate the following code and rewrite all cases with group complete. */
+	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	    {
-	      lock_unlock_all (thread_p);
-	    }
+	      /* Register transaction after on_transaction_commit call. */
+	      if (id == 0xFFFFFFFFFFFFFFFFUL)
+		{
+		  /* TODO - consider wakeup GC thread if this is the first transaction in group */
+		  id =
+		    log_Gl.m_tran_complete_mgr->register_transaction (tdes->tran_index, tdes->mvccinfo.id, tdes->state);
+		}
 
-	  /* Flush commit log and change the transaction state. */
-	  log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT, &commit_lsa);
+	      if (retain_lock != true)
+		{
+		  /* For consistency, we must complete MVCCID before unlock. Maybe we will consider atomicity here. */
+		  log_Gl.m_tran_complete_mgr->wait_for_complete_mvcc (id);
+		  /* Release the lock since MVCC is completed. */
+		  lock_unlock_all (thread_p);
+		}
+
+	      /* Wait for commit. */
+	      log_Gl.m_tran_complete_mgr->wait_for_complete (id);
+	    }
+	  else
+#endif
+	    {
+	      if (retain_lock != true)
+		{
+		  lock_unlock_all (thread_p);
+		}
+
+	      /* Flush commit log and change the transaction state. */
+	      log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT, &commit_lsa);
+	    }
 	}
       else
 	{
@@ -4839,6 +4958,9 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 TRAN_STATE
 log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 {
+#if 0
+  cubtx::complete_manager::id_type id;
+#endif
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, true);
 
   tdes->state = TRAN_UNACTIVE_ABORTED;
@@ -4864,11 +4986,28 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 	  tdes->first_save_entry = NULL;
 	}
 
-      /* clear mvccid before releasing the locks */
-      logtb_complete_mvcc (thread_p, tdes, false);
+#if 0
+      /* TODO  - Activate the following code and rewrite all cases with group complete. */
+      if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
+	{
+	  assert (MVCCID_IS_VALID (tdes->mvccinfo.id));
+	  /* Need to finish transaction befor waiting for log. */
+	  tdes->replication_log_generator.on_transaction_abort ();
+	  id = log_Gl.m_tran_complete_mgr->register_transaction (tdes->tran_index, tdes->mvccinfo.id, tdes->state);
+	  /* For consistency, we must complete MVCCID before unlock. Maybe we will consider atomicity here. */
+	  log_Gl.m_tran_complete_mgr->wait_for_complete_mvcc (id);
+	  /* Release the lock since MVCC is completed. */
+	  lock_unlock_all (thread_p);
+	}
+      else
+#endif
+	{
+	  /* clear mvccid before releasing the locks */
+	  logtb_complete_mvcc (thread_p, tdes, false);
 
-      /* It is safe to release locks here, since we already completed abort. */
-      lock_unlock_all (thread_p);
+	  /* It is safe to release locks here, since we already completed abort. */
+	  lock_unlock_all (thread_p);
+	}
     }
   else
     {
@@ -4892,6 +5031,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 
   tx_lob_locator_clear (thread_p, tdes, false, NULL);
 
+  /* TODO - remove the next call */
   tdes->replication_log_generator.on_transaction_abort ();
 
   return tdes->state;
@@ -5255,20 +5395,39 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
        */
       if (wrote_eot_log == LOG_NEED_TO_WRITE_EOT_LOG)
 	{
+	  // take care of calls that want to append commit only after commit_with_postpone
 	  if (iscommitted == LOG_COMMIT)
 	    {
 	      LOG_LSA commit_lsa;
 
-	      log_append_commit_log (thread_p, tdes, &commit_lsa);
+	      if (!LSA_ISNULL (&tdes->posp_nxlsa))
+		{
+		  log_append_finish_postpone (thread_p, tdes, &commit_lsa);
+		}
+	      else
+		{
+		  tx_group group;
+		  group.add (tdes->tran_index, 0, TRAN_UNACTIVE_COMMITTED);
+		  log_append_group_complete (thread_p, tdes, 0, group, &commit_lsa, NULL);
+		}
+
 	      log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT, &commit_lsa);
 	    }
 	  else
 	    {
 	      LOG_LSA abort_lsa;
 
-	      log_append_abort_log (thread_p, tdes, &abort_lsa);
+	      tx_group group;
+	      group.add (tdes->tran_index, 0, TRAN_UNACTIVE_ABORTED);
+	      log_append_group_complete (thread_p, tdes, 0, group, &abort_lsa, NULL);
+
 	      log_change_tran_as_completed (thread_p, tdes, LOG_ABORT, &abort_lsa);
 	    }
+
+#if 0
+	  /* Wait for commmit. */
+	  log_Gl.m_tran_complete_mgr->wait_for_complete (id);
+#endif
 
 	  state = tdes->state;
 	}
@@ -6113,20 +6272,102 @@ log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
   return log_page_p;
 }
 
-static LOG_PAGE *
-log_dump_record_group_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+// *INDENT-OFF*
+void log_unpack_group_complete (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, int buf_size,
+			        std::vector<rv_gc_info> & group)
+// *INDENT-ON*
+
 {
-  LOG_REC_GROUP_COMMIT *group_commit;
+  char *start_buf = log_page_p->area + log_lsa->offset;
+  bool needs_free = false;
+
+  if (log_lsa->offset + buf_size > (int) LOGAREA_SIZE)
+    {
+      /* Need to copy the data into a contiguous area */
+      start_buf = (char *) malloc (buf_size);
+      if (start_buf == NULL)
+	{
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_unpack_group_complete");
+	  return;
+	}
+      needs_free = true;
+
+      /* Copy the data */
+      logpb_copy_from_log (thread_p, start_buf, buf_size, log_lsa, log_page_p);
+    }
+
+  const char *crt_buf = start_buf;
+  const char *end_of_buf = start_buf + buf_size;
+
+  while (crt_buf < end_of_buf)
+    {
+      TRANID trid;
+      TRAN_STATE state;
+      LOG_LSA pp_lsa;
+
+      LSA_SET_NULL (&pp_lsa);
+
+      assert (crt_buf + sizeof (trid) + sizeof (state) <= end_of_buf);
+      ASSERT_ALIGN (crt_buf, INT_ALIGNMENT);
+
+      trid = *((TRANID *) crt_buf);
+      crt_buf += sizeof (trid);
+
+      ASSERT_ALIGN (crt_buf, INT_ALIGNMENT);
+      state = *((TRAN_STATE *) crt_buf);
+      crt_buf += sizeof (state);
+
+      if (state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
+	{
+	  assert (crt_buf + sizeof (LOG_LSA) <= end_of_buf);
+	  ASSERT_ALIGN (crt_buf, DOUBLE_ALIGNMENT);
+	  LSA_COPY (&pp_lsa, ((LOG_LSA *) crt_buf));
+	  crt_buf += sizeof (LOG_LSA);
+	}
+
+      // *INDENT-OFF*
+      group.push_back ({trid, state, pp_lsa});
+      // *INDENT-ON*
+    }
+
+  if (needs_free)
+    {
+      free_and_init (start_buf);
+    }
+}
+
+static LOG_PAGE *
+log_dump_record_group_complete (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+{
+  LOG_REC_GROUP_COMPLETE *group_complete;
   char time_val[CTIME_MAX];
 
   /* Read the DATA HEADER */
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*group_commit), log_lsa, log_page_p);
-  group_commit = (LOG_REC_GROUP_COMMIT *) ((char *) log_page_p->area + log_lsa->offset);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*group_complete), log_lsa, log_page_p);
+  group_complete = (LOG_REC_GROUP_COMPLETE *) ((char *) log_page_p->area + log_lsa->offset);
 
-  time_t tmp_time = (time_t) group_commit->at_time;
+  time_t tmp_time = (time_t) group_complete->at_time;
   (void) ctime_r (&tmp_time, time_val);
-  fprintf (out_fp, ",\n     Group commit (group_sz = %llu, stream_pos = %llu) finish time at = %s\n",
-	   group_commit->redo_size, group_commit->stream_pos, time_val);
+  fprintf (out_fp, ",\n     Group commit (group_sz = %lu, stream_pos = %lu) finish time at = %s\n",
+	   group_complete->redo_size, group_complete->stream_pos, time_val);
+  fprintf (out_fp, "     Group: ");
+  int buf_size = group_complete->redo_size;
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (*group_complete), log_lsa, log_page_p);
+
+  // *INDENT-OFF*
+  std::vector<rv_gc_info> group;
+  log_unpack_group_complete (thread_p, log_lsa, log_page_p, buf_size, group);
+  for (const auto & ti : group)
+    {
+      fprintf (out_fp, "\n        tran_index = %d, tran_state = %d", ti.m_tr_id, ti.m_state);
+      if (ti.m_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
+        {
+  	  fprintf (out_fp, ", postpone lsa = %lld|%d", LSA_AS_ARGS (&ti.m_postpone_lsa));
+        }
+    }
+  // *INDENT-ON*
+
+  fprintf (out_fp, "\n");
 
   return log_page_p;
 }
@@ -6490,10 +6731,6 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
       log_page_p = log_dump_record_commit_postpone (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
-    case LOG_WILL_COMMIT:
-      fprintf (out_fp, "\n");
-      break;
-
     case LOG_COMMIT:
     case LOG_ABORT:
       log_page_p = log_dump_record_transaction_finish (thread_p, out_fp, log_lsa, log_page_p);
@@ -6536,6 +6773,8 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
       log_page_p = log_dump_record_ha_server_state (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
+    case LOG_FINISH_POSTPONE:
+    case LOG_WILL_COMMIT:
     case LOG_START_CHKPT:
     case LOG_2PC_COMMIT_DECISION:
     case LOG_2PC_ABORT_DECISION:
@@ -6895,6 +7134,8 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
       is_zipped = true;
     }
 
+  // todo: Investigate this & other similar references in this document that do copy on equality too.
+  // Check whether extra safety for equality is needed. E.g. Unpack_group_complete did not need it
   if (log_lsa->offset + rcv->length < (int) LOGAREA_SIZE)
     {
       rcv->data = (char *) log_page_p->area + log_lsa->offset;
@@ -7435,9 +7676,16 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 		  /* we have to stop */
 		  LSA_SET_NULL (&prev_tranlsa);
 		}
+	      else if (sysop_end->type == LOG_SYSOP_END_COMMIT_REPLICATED)
+		{
+		  /* jump to last parent */
+		  // TBD: imitate behavior of LOG_SYSOP_END_COMMIT until we have a proper solution
+		  LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
+		}
 	      else
 		{
 		  /* jump to last parent */
+		  assert (sysop_end->type == LOG_SYSOP_END_COMMIT || sysop_end->type == LOG_SYSOP_END_ABORT);
 		  LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
 		}
 	      break;
@@ -7470,6 +7718,9 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	      LSA_SET_NULL (&prev_tranlsa);
 	      break;
 
+	    case LOG_GROUP_COMPLETE:
+	    case LOG_FINISH_POSTPONE:
+	      assert (false);
 	    case LOG_WILL_COMMIT:
 	    case LOG_COMMIT:
 	    case LOG_ABORT:
@@ -7660,13 +7911,20 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   if (LSA_ISNULL (&tdes->posp_nxlsa))
     {
-      /* nothing to do */
       return;
     }
 
+  LOG_LSA commit_lsa;
+
   assert (tdes->topops.last < 0);
 
-  log_append_commit_postpone (thread_p, tdes, &tdes->posp_nxlsa);
+  tx_group group;
+  group.add (tdes->tran_index, 0, TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
+
+  log_append_group_complete (thread_p, tdes, 0, group, &commit_lsa, NULL);
+
+  logpb_flush_pages (thread_p, &commit_lsa);
+
   log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
 }
 
