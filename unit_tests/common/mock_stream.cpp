@@ -3,10 +3,7 @@
 #include <assert.h>
 #include <error_code.h>
 
-namespace cubcomm
-{
-  size_t MTU = 1500;
-}
+#include "communication_channel.hpp"
 
 mock_stream::mock_stream ()
 {
