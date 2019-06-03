@@ -66,10 +66,7 @@ namespace cubreplication
 	// no preceding tasks, can be pushed
 	m_lc.push_task (new_task);
       }
-    else
-      {
-	m_tasks.push_back (new_task);
-      }
+    m_tasks.push_back (new_task);
   }
 
   void
