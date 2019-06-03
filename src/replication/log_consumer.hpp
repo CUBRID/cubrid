@@ -116,7 +116,7 @@ namespace cubreplication
 
     public:
       log_consumer ()
-	: m_ctrl_chn (nullptr),
+	: m_ctrl_chn (nullptr)
 	, m_stream (NULL)
 	, m_consumer_daemon (NULL)
 	, m_dispatch_daemon (NULL)
