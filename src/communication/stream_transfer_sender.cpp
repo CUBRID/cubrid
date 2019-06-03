@@ -132,7 +132,7 @@ namespace cubstream
 
   transfer_sender::~transfer_sender ()
   {
-    cubthread::get_manager ()->destroy_daemon_without_entry (m_sender_daemon);
+    cubthread::get_manager ()->destroy_daemon (m_sender_daemon);
   }
 
   cubcomm::channel &transfer_sender::get_channel ()
