@@ -52,7 +52,8 @@ namespace cubtx
 	: m_current_group_id (1)
 	, m_current_group_min_transactions (0)
 	, m_latest_closed_group_id (0)
-	, m_latest_closed_group_state (GROUP_CLOSED | GROUP_MVCC_COMPLETED | GROUP_LOGGED | GROUP_COMPLETED)
+	, m_latest_closed_group_state (GROUP_CLOSED | GROUP_MVCC_COMPLETED | GROUP_LOGGED | GROUP_PREPARED_FOR_COMPLETE
+                                       | GROUP_COMPLETE_STARTED | GROUP_COMPLETED)
       {
 
       }
