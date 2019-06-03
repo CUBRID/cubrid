@@ -884,6 +884,7 @@ namespace cubreplication
   void
   savepoint_object::pack (cubpacking::packer &serializator) const
   {
+    serializator.pack_int (PACKING_ID);
     serializator.pack_string (m_savepoint_name);
     serializator.pack_to_int (m_event);
   }
@@ -891,6 +892,9 @@ namespace cubreplication
   void
   savepoint_object::unpack (cubpacking::unpacker &deserializator)
   {
+    int check_id;
+    deserializator.unpack_int (check_id);
+    assert (check_id == PACKING_ID);
     deserializator.unpack_string (m_savepoint_name);
     deserializator.unpack_from_int (m_event);
   }
@@ -898,7 +902,9 @@ namespace cubreplication
   std::size_t
   savepoint_object::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_string_size (m_savepoint_name, start_offset);
+    size_t size = 0;
+    size += serializator.get_packed_int_size (start_offset + size);
+    size += serializator.get_packed_string_size (m_savepoint_name, start_offset + size);
     size += serializator.get_packed_int_size (start_offset + size);
     return size;
   }
