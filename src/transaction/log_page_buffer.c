@@ -10199,7 +10199,7 @@ logpb_initialize_logging_statistics (void)
 void
 logpb_initialize_tran_complete_manager (THREAD_ENTRY * thread_p)
 {
-  if (!log_does_allow_replication ())
+  if (HA_DISABLED ())
     {
       /* HA disabled. */
       cubtx::single_node_group_complete_manager::init ();
