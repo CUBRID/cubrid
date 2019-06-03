@@ -103,10 +103,8 @@ namespace cubtx
     else if (!is_latest_closed_group_complete_started ()
 	     && is_latest_closed_group_prepared_for_complete ())
       {
-	/* TODO - Be sure that stream senders knows that GC thread waits for it.
-	 * Since currently stream transfer threads run continuosly, so there is nothing to do here.
-	 * A better option will be to use wait/wakeup mechanism for stream transfer threads.
-	 */
+	/* Wakeup senders, just to be sure. */
+	cubreplication::master_senders_manager::wakeup_transfer_senders (m_latest_closed_group_end_stream_position);
       }
 #endif
   }
