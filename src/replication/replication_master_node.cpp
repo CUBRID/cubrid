@@ -80,6 +80,7 @@ namespace cubreplication
 	/* this is the first slave connecting to this node */
 	cubthread::entry *thread_p = thread_get_thread_entry_info ();
 	css_change_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE, true, HA_CHANGE_MODE_IMMEDIATELY, true);
+	log_Gl.m_tran_complete_mgr = cubtx::master_group_complete_manager::get_instance();
       }
 #endif
   }

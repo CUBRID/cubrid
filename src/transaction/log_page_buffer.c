@@ -10207,21 +10207,8 @@ logpb_initialize_tran_complete_manager (THREAD_ENTRY * thread_p)
     }
   else
     {
-#if defined(SERVER_MODE)
-      /* Get complete manager interface.  */
-      if (!LOG_CHECK_LOG_APPLIER (thread_p))
-	{
-	  /* Master case */
-	  log_Gl.m_tran_complete_mgr = cubtx::master_group_complete_manager::get_instance ();
-	}
-      else
-	{
-	  /* Slave case. */
-	  log_Gl.m_tran_complete_mgr = cubtx::slave_group_complete_manager::get_instance ();
-	}
-#else
-      assert (false);
-#endif
+      /* Will be initialized later. */
+      log_Gl.m_tran_complete_mgr = NULL;
     }
 }
 

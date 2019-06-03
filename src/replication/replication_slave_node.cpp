@@ -24,6 +24,7 @@
 #ident "$Id$"
 
 #include "replication_slave_node.hpp"
+#include "log_impl.h"
 #include "log_consumer.hpp"
 #include "multi_thread_stream.hpp"
 #include "replication_common.hpp"
@@ -109,6 +110,7 @@ namespace cubreplication
     cubstream::stream_position start_position = 0;
     g_instance->m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *g_instance->m_stream,
 	start_position);
+    log_Gl.m_tran_complete_mgr = cubtx::slave_group_complete_manager::get_instance();
 #endif
 
     return error;
