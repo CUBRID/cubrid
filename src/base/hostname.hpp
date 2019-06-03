@@ -180,6 +180,12 @@ namespace cubbase
 	return m_hostname.c_str ();
       }
 
+      bool
+      empty () const
+      {
+	return !m_hostname.empty ();
+      }
+
       // pack/unpack functions
       size_t
       get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override

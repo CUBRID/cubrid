@@ -189,7 +189,7 @@ static char hb_Nolog_event_msg[LINE_MAX] = "";
 static HB_DEACTIVATE_INFO hb_Deactivate_info = { NULL, 0, false };
 
 static bool hb_Is_activated = true;
-static const char *current_master_hostname = NULL;
+static const hostname_type current_master_hostname;
 
 /* cluster jobs */
 static HB_JOB_FUNC hb_cluster_jobs[] =
@@ -2430,7 +2430,7 @@ hb_resource_job_shutdown (void)
 static void
 hb_resource_job_send_master_hostname (HB_JOB_ARG *arg)
 {
-  const char *hostname = hb_find_host_name_of_master_server ();
+  const hostname_type &master_hostname = hb_find_host_name_of_master_server ();
   int error, rv;
   HB_PROC_ENTRY *proc = NULL;
   CSS_CONN_ENTRY *conn = NULL;
@@ -2458,28 +2458,33 @@ hb_resource_job_send_master_hostname (HB_JOB_ARG *arg)
 
   if (proc != NULL)
     {
-      if (hostname == NULL)
+      if (master_hostname.empty ())
 	{
 	  proc->knows_master_hostname = false;
-	  current_master_hostname = NULL;
+	  current_master_hostname = "";
 	  return;
 	}
 
-      if (current_master_hostname == NULL)
+      if (current_master_hostname.empty ())
 	{
-	  current_master_hostname = hostname;
+	  current_master_hostname = master_hostname;
 	  proc->knows_master_hostname = false;
 	}
-      else if (current_master_hostname == hostname && proc->knows_master_hostname)
+      else if (current_master_hostname == master_hostname && proc->knows_master_hostname)
 	{
 	  return;
 	}
-      else if (current_master_hostname != hostname)
+      else if (current_master_hostname != master_hostname)
 	{
 	  proc->knows_master_hostname = false;
 	}
 
-      error = css_send_to_my_server_the_master_hostname (hostname, proc, conn);
+      if (hb_Cluster->get_hostname () == current_master_hostname)
+	{
+	  return;
+	}
+
+      error = css_send_to_my_server_the_master_hostname (master_hostname.as_c_str (), proc, conn);
       assert (error == NO_ERROR);
     }
 
@@ -5290,7 +5295,7 @@ hb_is_hang_process (int sfd)
   return false;
 }
 
-const char *
+const hostname_type &
 hb_find_host_name_of_master_server ()
 {
   int rv = pthread_mutex_lock (&hb_Cluster->lock);
