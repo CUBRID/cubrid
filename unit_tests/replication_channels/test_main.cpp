@@ -25,7 +25,6 @@
 #include <thread>
 
 #define MAX_THREADS 16
-#define MAX_CYCLES 10
 
 static cubthread::entry *thread_p = NULL;
 
@@ -103,7 +102,7 @@ static int finish ()
 {
   int rc = NO_ERROR;
 
-  slave::finish ();
+  slave::destroy ();
   master::finish ();
   cub_master_mock::finish ();
 
@@ -137,11 +136,14 @@ static int run ()
       std::this_thread::sleep_for (std::chrono::milliseconds (100));
       cycles++;
     }
-  while (cycles < MAX_CYCLES);
+  while (cycles < cubtest::MAX_CYCLES);
+
+  // wait for slaves to read and update their stream
+  slave::finish ();
 
   for (slave_replication_channel_mock *slave : slaves)
     {
-      if (slave->m_stream.last_position == cubcomm::MTU * MAX_CYCLES)
+      if (slave->m_stream.last_position == cubcomm::MTU * cubtest::MAX_CYCLES)
 	{
 	  unsigned int sum = 0;
 

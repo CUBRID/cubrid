@@ -3,9 +3,14 @@
 #include <assert.h>
 #include <error_code.h>
 
+namespace cubcomm
+{
+  size_t MTU = 1500;
+}
+
 mock_stream::mock_stream ()
 {
-  write_buffer = (char *) malloc (5000 * sizeof (int));
+  write_buffer = (char *) malloc (cubcomm::MTU * cubtest::MAX_CYCLES);
   last_position = 0;
 }
 
@@ -23,7 +28,7 @@ int mock_stream::write (const size_t byte_count, cubstream::stream::write_func_t
 {
   int err;
 
-  err = write_action (last_position, write_buffer, byte_count);
+  err = write_action (last_position, write_buffer + last_position, byte_count);
   if (err == NO_ERROR)
     {
       last_position += byte_count;

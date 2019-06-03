@@ -37,7 +37,7 @@ namespace slave
     cubcomm::server_channel chn ("", 1000);
     slave_replication_channel_mock *mock;
 
-    err = chn.connect ("127.0.0.1", port);
+    err = chn.connect ("127.0.0.1", port, SERVER_REQUEST_CONNECT_NEW_SLAVE);
     assert (err == NO_ERRORS);
     assert (chn.is_connection_alive ());
 
@@ -65,10 +65,16 @@ namespace slave
 	cubthread::get_manager()->destroy_worker_pool (workpool);
       }
 
+    return NO_ERROR;
+  }
+
+  int destroy ()
+  {
     for (unsigned int i = 0; i < slaves.size(); i++)
       {
 	delete slaves[i];
       }
+    slaves.clear ();
 
     return NO_ERROR;
   }
