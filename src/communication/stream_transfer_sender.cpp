@@ -44,10 +44,7 @@
 namespace cubstream
 {
 
-  /* TODO - temporary derived from entry_task. May be replaced with cubthread::task_without_context
-   * when notify_ack will be moved into control channel
-   */
-  class transfer_sender_task : public cubthread::entry_task
+  class transfer_sender_task : public cubthread::task_without_context
   {
     public:
       transfer_sender_task (cubstream::transfer_sender &producer_channel)
@@ -56,7 +53,7 @@ namespace cubstream
       {
       }
 
-      void execute (cubthread::entry &thread_ref) override
+      void execute () override
       {
 	css_error_code rc = NO_ERRORS;
 	stream_position last_reported_ready_pos = this_producer_channel.m_stream.get_last_committed_pos ();
@@ -123,16 +120,14 @@ namespace cubstream
 	    std::bind (&transfer_sender::read_action, std::ref (*this), std::placeholders::_1,
 		       std::placeholders::_2);
 
-    m_sender_daemon = cubthread::get_manager ()->create_daemon (daemon_period,
+    m_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (daemon_period,
 		      new transfer_sender_task (*this),
-		      "stream_transfer_sender");
-
-    m_p_stream_ack = cubtx::master_group_complete_manager::get_instance ();
+		      "stream_transfer_sender");    
   }
 
   transfer_sender::~transfer_sender ()
   {
-    cubthread::get_manager ()->destroy_daemon (m_sender_daemon);
+    cubthread::get_manager ()->destroy_daemon_without_entry (m_sender_daemon);
   }
 
   cubcomm::channel &transfer_sender::get_channel ()
@@ -154,10 +149,6 @@ namespace cubstream
 
 	m_last_sent_position += byte_count;
 
-	if (m_p_stream_ack)
-	  {
-	    m_p_stream_ack->notify_stream_ack (m_last_sent_position);
-	  }
 	return NO_ERROR;
       }
 
