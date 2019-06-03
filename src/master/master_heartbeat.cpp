@@ -5300,7 +5300,7 @@ hb_is_hang_process (int sfd)
 const cubbase::hostname_type &
 hb_find_host_name_of_master_server ()
 {
-  static const empty_hostname;
+  static const cubbase::hostname_type empty_hostname;
 
   int rv = pthread_mutex_lock (&hb_Cluster->lock);
   for (cubhb::node_entry *node : hb_Cluster->nodes)
