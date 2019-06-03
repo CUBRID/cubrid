@@ -30,6 +30,7 @@
 #include "memory_alloc.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "replication_row_apply.hpp"
 #include "string_buffer.hpp"
 #include "thread_manager.hpp"
 #include "transaction_group.hpp"
@@ -200,14 +201,12 @@ namespace cubreplication
     int err = NO_ERROR;
 #if defined (SERVER_MODE)
     assert (m_type == REPL_DELETE);
-
-    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type);
-    cubthread::entry &my_thread = cubthread::get_entry ();
-    std::vector <int> dummy_int_vector;
-    std::vector <DB_VALUE> dummy_val_vector;
-
-    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
-				  dummy_int_vector, dummy_val_vector, NULL);
+    err = row_apply_delete (m_class_name, m_key_value);
+    if (err != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	return err;
+      }
 #endif
     return err;
   }
@@ -433,11 +432,12 @@ namespace cubreplication
     int err = NO_ERROR;
 
 #if defined (SERVER_MODE)
-    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type);
-    cubthread::entry &my_thread = cubthread::get_entry ();
-
-    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
-				  m_changed_attributes, m_new_values, NULL);
+    err = row_apply_update (m_class_name, m_key_value, m_changed_attributes, m_new_values);
+    if (err != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	return err;
+      }
 #endif
 
     return err;
@@ -597,16 +597,29 @@ namespace cubreplication
     int err = NO_ERROR;
 
 #if defined (SERVER_MODE)
-    assert (m_type != REPL_DELETE);
-
-    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type);
-    cubthread::entry &my_thread = cubthread::get_entry ();
-
-    std::vector<int> dummy_int_vector;
-    std::vector<DB_VALUE> dummy_val_vector;
-
-    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
-				  dummy_int_vector, dummy_val_vector, &m_rec_des.get_recdes ());
+    if (m_type == REPL_INSERT)
+      {
+	err = row_apply_insert (m_class_name, m_rec_des);
+	if (err != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    return err;
+	  }
+      }
+    else if (m_type == REPL_UPDATE)
+      {
+	err = row_apply_update (m_class_name, m_key_value, m_rec_des);
+	if (err != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    return err;
+	  }
+      }
+    else
+      {
+	assert (false);
+	err = ER_FAILED;
+      }
 #endif
 
     return err;
