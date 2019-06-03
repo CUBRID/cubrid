@@ -191,7 +191,7 @@ static HB_DEACTIVATE_INFO hb_Deactivate_info = { NULL, 0, false };
 
 static bool hb_Is_activated = true;
 
-static const hostname_type current_master_hostname;
+static cubbase::hostname_type current_master_hostname;
 
 /* cluster jobs */
 static HB_JOB_FUNC hb_cluster_jobs[] =
@@ -2432,7 +2432,7 @@ hb_resource_job_shutdown (void)
 static void
 hb_resource_job_send_master_hostname (HB_JOB_ARG *arg)
 {
-  const hostname_type &master_hostname = hb_find_host_name_of_master_server ();
+  const cubbase::hostname_type &master_hostname = hb_find_host_name_of_master_server ();
   int error, rv;
   HB_PROC_ENTRY *proc = NULL;
   CSS_CONN_ENTRY *conn = NULL;
@@ -5297,7 +5297,7 @@ hb_is_hang_process (int sfd)
   return false;
 }
 
-const hostname_type &
+const cubbase::hostname_type &
 hb_find_host_name_of_master_server ()
 {
   static const empty_hostname;
