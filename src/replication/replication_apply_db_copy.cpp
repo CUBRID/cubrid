@@ -46,7 +46,9 @@ namespace cubreplication
 
   void apply_copy_context::init (void)
   {
+    int error = NO_ERROR;
     INT64 buffer_size = 1 * 1024 * 1024;
+    /* create stream */
     m_stream = new cubstream::multi_thread_stream (buffer_size, 2);
     m_stream->set_name ("repl_copy_" + std::string (m_source_identity->get_hostname ().c_str ()) + "_replica");
     m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
@@ -58,7 +60,6 @@ namespace cubreplication
     m_stream_file = new cubstream::stream_file (*m_stream, replication_path);
   }
 
-
   int apply_copy_context::connect_to_source (node_definition *source_node)
   {
     int error = NO_ERROR;
@@ -66,6 +67,7 @@ namespace cubreplication
     er_log_debug_replication (ARG_FILE_LINE, "apply_copy_context::connect_to_source host:%s, port: %d\n",
 			      m_source_identity->get_hostname ().c_str (), m_source_identity->get_port ());
 
+    assert (m_stream != NULL);
     /* connect to replication master node */
     cubcomm::server_channel srv_chn (m_my_identity->get_hostname ().c_str ());
 
@@ -207,7 +209,7 @@ namespace cubreplication
 	      {
 		string_buffer sb;
 		se->stringify (sb, stream_entry::short_dump);
-		_er_log_debug (ARG_FILE_LINE, "dispatch_daemon_task execute pop_entry:\n%s", sb.get_buffer ());
+		_er_log_debug (ARG_FILE_LINE, "copy_dispatch_daemon_task execute pop_entry:\n%s", sb.get_buffer ());
 	      }
 
 

@@ -27,6 +27,7 @@
 #define _REPLICATION_SOURCE_DB_COPY_HPP_
 
 #include "replication_object.hpp"
+#include <list>
 
 namespace cubstream
 {
@@ -39,6 +40,16 @@ namespace cubreplication
 {
   class row_object;
 
+  /* 
+   * source_copy_context : server side context stored on transaction description
+   * It holds objects required for 
+   *  - communication : stream (instance for db copy), stream transfer, stream file
+   *  - storing of partial contructed objects (SBRs of schema)
+   *
+   * It centralizes the state of copy process on source server, required to drive the copy extraction process.
+   * Depending on the state transition, it may append finalized SBRS objects to db copy stream.
+   * 
+   */
   class source_copy_context
   {
     public:
@@ -47,6 +58,7 @@ namespace cubreplication
 	NOT_STARTED = 0,
 	SCHEMA_APPLY_CLASSES,
 	SCHEMA_APPLY_CLASSES_FINISHED,
+        SCHEMA_CLASSES_LIST_FINISHED,
 	SCHEMA_TRIGGERS_RECEIVED,
 	SCHEMA_INDEXES_RECEIVED,
 	HEAP_COPY,
@@ -69,10 +81,25 @@ namespace cubreplication
       void append_class_schema (const char *buffer, const size_t buf_size);
       void append_triggers_schema (const char *buffer, const size_t buf_size);
       void append_indexes_schema (const char *buffer, const size_t buf_size);
+      void unpack_class_oid_list (const char *buffer, const size_t buf_size);
 
       static cubstream::multi_thread_stream *get_stream_for_copy ();
 
+      int wait_end_classes (void);
+      int wait_end_triggers_indexes (void);
+
+      int get_tran_index (void);
+      void inc_error_cnt ();
+
+      const std::list<OID>* peek_class_list (void) const;
+
     private:
+      int wait_for_state (copy_stage desired_state);
+
+    private:
+      int m_tran_index;
+      int m_error_cnt;
+
       cubstream::multi_thread_stream *m_stream;
       cubstream::stream_file *m_stream_file;
       cubstream::transfer_sender *m_transfer_sender;
@@ -80,8 +107,13 @@ namespace cubreplication
       sbr_repl_entry m_class_schema;
       sbr_repl_entry m_triggers;
       sbr_repl_entry m_indexes;
+      std::list<OID> m_class_oid_list;
 
       copy_stage m_state;
+
+      std::mutex m_state_mutex;
+
+      std::condition_variable m_state_cv;
   };
 
 } /* namespace cubreplication */

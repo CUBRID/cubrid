@@ -24,7 +24,10 @@
 #ifndef _REPLICATION_SCHEMA_EXTRACT_HPP_
 #define _REPLICATION_SCHEMA_EXTRACT_HPP_
 
+#include "dbtype_def.h"
+#include "mem_block.hpp"
 #include "printer.hpp"
+#include <list>
 
 namespace cubreplication
 {

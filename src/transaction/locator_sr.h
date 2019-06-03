@@ -136,6 +136,6 @@ extern int locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const LC_COPYAREA_OP
 				   const std::vector<DB_VALUE> &new_values, const RECDES *new_recdes_arg);
 /* *INDENT-ON* */
 
-extern int locator_repl_start_tran (THREAD_ENTRY * thread_p);
+extern int locator_repl_start_tran (THREAD_ENTRY * thread_p, const boot_client_type client_type);
 extern int locator_repl_end_tran (THREAD_ENTRY * thread_p, bool commit);
 #endif /* _LOCATOR_SR_H_ */

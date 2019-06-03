@@ -152,6 +152,7 @@ namespace cubreplication
 	return m_header.mvccid;
       }
 
+      /* TODO[replication]: change as set_type */
       void set_state (stream_entry_header::TRAN_STATE state)
       {
 	m_header.tran_state = state;

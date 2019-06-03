@@ -13852,6 +13852,11 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
       repl_copy_ctxt.transit_state (cubreplication::source_copy_context::SCHEMA_INDEXES_RECEIVED);
       break;
 
+    case NET_PROXY_BUF_TYPE_OID_LIST:
+      repl_copy_ctxt.unpack_class_oid_list (buffer, buf_size);
+      repl_copy_ctxt.transit_state (cubreplication::source_copy_context::SCHEMA_CLASSES_LIST_FINISHED);
+      break;
+
     default:
       assert (false);
     }
@@ -14323,12 +14328,20 @@ locator_repl_extract_schema (THREAD_ENTRY * thread_p, const char *db_user, const
 }
 
 int
-locator_repl_start_tran (THREAD_ENTRY * thread_p)
+locator_repl_start_tran (THREAD_ENTRY * thread_p, const boot_client_type client_type)
 {
   /* TODO */
   BOOT_CLIENT_CREDENTIAL applier_Client_credentials;
-  applier_Client_credentials.client_type = BOOT_CLIENT_LOG_APPLIER;
-  applier_Client_credentials.program_name = "(repl_applier)";
+  applier_Client_credentials.client_type = client_type;
+  
+  if (client_type == BOOT_CLIENT_LOG_APPLIER)
+    {
+      applier_Client_credentials.program_name = "(repl_applier)";
+    }
+  else if (client_type == BOOT_CLIENT_DDL_PROXY)
+    {
+      applier_Client_credentials.program_name = "(dll_proxy)";
+    }
   applier_Client_credentials.process_id = -1;
 
   int client_lock_wait = 0;

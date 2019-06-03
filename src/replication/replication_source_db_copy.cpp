@@ -26,6 +26,7 @@
 #include "replication_source_db_copy.hpp"
 #include "heap_attrinfo.h"  /* for HEAP_CACHE_ATTRINFO */
 #include "heap_file.h"      /* heap_attrinfo_transform_to_disk */
+#include "locator_sr.h"     /* locator_ functions */
 #include "replication_master_node.hpp"
 #include "replication_node.hpp"
 #include "replication_object.hpp"
@@ -35,14 +36,13 @@
 namespace cubreplication
 {
 
-  int convert_to_last_representation (cubthread::entry *thread_p, RECDES &rec_des, record_descriptor &record,
-				      const OID &inst_oid, HEAP_CACHE_ATTRINFO &attr_info);
   source_copy_context::source_copy_context ()
   {
     m_stream = NULL;
     m_stream_file = NULL;
     m_transfer_sender = NULL;
     m_state = NOT_STARTED;
+    m_error_cnt = 0;
   }
 
   void source_copy_context::set_credentials (const char *user, const char *password)
@@ -79,7 +79,9 @@ namespace cubreplication
   {
     int error = NO_ERROR;
 
-    /* TODO: extend with copy daemon interaction */
+    assert (new_state != m_state);
+
+    std::unique_lock<std::mutex>  ulock_state (m_state_mutex);
 
     if ((int) m_state != ((int) new_state - 1))
       {
@@ -88,12 +90,56 @@ namespace cubreplication
 
     m_state = new_state;
 
-    if (m_state == SCHEMA_APPLY_CLASSES_FINISHED)
+    ulock_state.unlock ();
+
+    if (new_state == SCHEMA_APPLY_CLASSES_FINISHED)
       {
 	pack_and_add_sbr (m_class_schema);
       }
+    else if (new_state == SCHEMA_APPLY_TRIGGERS_INDEXES)
+      {
+	pack_and_add_sbr (m_triggers);
+      }
+    else if (new_state == SCHEMA_APPLY_TRIGGERS_INDEXES_FINISHED)
+      {
+	pack_and_add_sbr (m_indexes);
+        /* TODO : add stream entry for FINISH */
+      }
+
+    m_state_cv.notify_one ();
 
     return error;
+  }
+
+  int source_copy_context::wait_for_state (copy_stage desired_state)
+  {
+    std::unique_lock<std::mutex> ulock_state (m_state_mutex);
+    m_state_cv.wait (ulock, [this] { return m_state == desired_state;});
+  }
+
+  int source_copy_context::wait_end_classes (void)
+  {
+    wait_for_state (SCHEMA_CLASSES_LIST_FINISHED);
+  }
+
+  int source_copy_context::wait_end_triggers_indexes (void)
+  {
+    wait_for_state (SCHEMA_APPLY_TRIGGERS_INDEXES_FINISHED);
+  }
+
+  int source_copy_context::get_tran_index (void)
+  {
+    return m_tran_index;
+  }
+
+  void source_copy_context::inc_error_cnt (void)
+  {
+    m_error_cnt++;
+  }
+
+  const std::list<OID>* peek_class_list (void) const
+  {
+    return &m_class_oid_list;
   }
 
   void source_copy_context::append_class_schema (const char *buffer, const size_t buf_size)
@@ -111,15 +157,29 @@ namespace cubreplication
     m_indexes.append_statement (buffer, buf_size);
   }
 
+  void source_copy_context::unpack_class_oid_list (const char *buffer, const size_t buf_size)
+  {
+    cubpacking::unpacker unpacker (buffer, buf_size);
+
+    int class_oid_cnt;
+    unpacker.unpack_int (class_oid_cnt);
+
+    for (int i = 0; i < class_oid_cnt; i++)
+      {
+        OID &class_oid = m_class_oid_list.emplace_back ();
+        unpacker.unpack_all (class_oid);
+      }
+  }
+
   cubstream::multi_thread_stream *source_copy_context::get_stream_for_copy ()
   {
     INT64 buffer_size = 1 * 1024 * 1024;
-    int num_max_appenders = log_Gl.trantable.num_total_indices + 1;
 
     /* TODO[replication] : here, we create a new stream for each new slave copy, but as an optimization,
      * we should reuse a db copy stream which is recent enough (for slave doesn't matter) */
 
-    cubstream::multi_thread_stream *copy_db_stream = new cubstream::multi_thread_stream (buffer_size, 2);
+    /* TODO[replication] : max appenders in stream must be greater than number of parallel heap scanners */
+    cubstream::multi_thread_stream *copy_db_stream = new cubstream::multi_thread_stream (buffer_size, 100);
     const node_definition *myself = master_node::get_instance (NULL)->get_node_identity ();
     copy_db_stream->set_name ("repl_copy_" + std::string (myself->get_hostname ().c_str ()));
     copy_db_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
@@ -128,11 +188,46 @@ namespace cubreplication
     return copy_db_stream;
   }
 
+  /* task executing the extraction of the rows from a single heap file */
+  /* TODO[replication] : enhance for splitting into multiple ranges a heap file */
+  class heap_extract_worker_task : public cubthread::entry_task
+  {
+    public:
+      heap_extract_worker_task (source_copy_context &src_copy_ctxt, const OID &class_oid)
+        :m_src_copy_ctxt (src_copy_ctxt)
+        ,m_class_oid (class_oid)
+      {
+      }
 
+      void execute (cubthread::entry &thread_ref) final
+      {
+        int error = NO_ERROR;
+
+        logtb_set_current_tran_index (&thread_ref, m_src_copy_ctxt.get_tran_index ());
+
+        error = copy_class (&thread_ref, m_class_oid);
+        if (error != NO_ERROR)
+          {
+            m_src_copy_ctxt.inc_error_cnt ();
+          }
+      }
+
+    private:
+      std::vector<stream_entry *> m_repl_stream_entries;
+      source_copy_context &m_src_copy_ctxt;
+      OID m_class_oid;
+  };
+
+
+  /* daemon task of the daemon thread executing the entire process of schema and heaps contents on the source node 
+   * this is a single shot task (executed only one iteration by the daemon) */
   class source_copy_daemon_task : public cubthread::entry_task
   {
     public:
-      source_copy_daemon_task ()
+      const size_t EXTRACT_HEAP_WORKER_POOL_SIZE = 100;
+
+      source_copy_daemon_task (source_copy_context &src_copy_ctx):
+        m_src_copy_ctx (src_copy_ctx)
       {
       };
 
@@ -143,18 +238,44 @@ namespace cubreplication
          * - scan heaps
          * - terminate
          */
-        //locator_repl_start_tran (&thread_ref);
+        locator_repl_start_tran (&thread_ref, BOOT_CLIENT_DDL_PROXY);
+
+        locator_repl_extract_schema (&thread_ref, "", "", "");
+
+        src_copy_ctx.wait_end_classes ();
+
+        /* start heap copy : one thread task for each class */
+        cubthread::entry_workpool *heap_extract_workers_pool = cubthread::get_manager ()->create_worker_pool (EXTRACT_HEAP_WORKER_POOL_SIZE,
+			     EXTRACT_HEAP_WORKER_POOL_SIZE, "replication_extract_heap_workers", NULL, 1, 1);
+
+        const std::list<OID> *class_list = src_copy_ctx.peek_class_list ();
+        for (const OID class_oid : *class_list)
+          {
+            heap_extract_worker_task *task = new heap_extract_worker_task (src_copy_ctx, class_oid);
+            cubthread::get_manager ()->push_task (heap_extract_workers_pool, task);
+          }
+        /* wait for all threads to end */
 
 
-        //locator_repl_extract_schema ();
+        /* wait for indexes and triggers schema */
+        src_copy_ctx.wait_end_triggers_indexes ();
+
+
+
 
       };
 
     private:
-
+      source_copy_context &m_src_copy_ctx;
   };
 
+  /* 
+   * utility functions for source server extraction of database replication copy 
+   *
+   */
 
+  int convert_to_last_representation (cubthread::entry *thread_p, RECDES &rec_des, record_descriptor &record,
+				      const OID &inst_oid, HEAP_CACHE_ATTRINFO &attr_info);
   /*
    * create_scan_for_replication_copy - creates a HEAP SCAN to be used by replication copy (no regu variables)
    *

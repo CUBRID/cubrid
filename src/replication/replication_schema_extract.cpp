@@ -66,6 +66,34 @@ namespace cubreplication
 } /* namespace cubreplication */
 
 
+int send_class_list (DB_OBJLIST *classes)
+{
+  DB_OBJLIST *cl;
+  int cnt_classes = 0;
+  int error = NO_ERROR;
+
+  cubmem::extensible_block blk;
+  cubpacking::packer packer;
+
+  for (cl = classes; cl != NULL; cl = cl->next)
+    {
+      ++cnt_classes;
+    }
+
+  blk.extend_to (OR_INT_SIZE + cnt_classes * OR_OID_SIZE);
+  packer.set_buffer_and_pack_all (blk, cnt_classes);
+
+  for (cl = classes; cl != NULL; cl = cl->next)
+    {
+      OID *oid = ws_oid (cl->op);
+      packer.append_to_buffer_and_pack_all (blk, oid);
+    }
+
+  error = locator_send_proxy_buffer (NET_PROXY_BUF_TYPE_OID_LIST, blk.get_read_ptr (), blk.get_size ());
+
+  return error;
+}
+
 int replication_schema_extract (const char *program_name)
 {
   int error = NO_ERROR;
@@ -85,6 +113,11 @@ int replication_schema_extract (const char *program_name)
     }
   output_net_schema.set_buffer_type (NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END);
   output_net_schema.send_to_network ();
+
+  if (error == NO_ERROR)
+    {
+      error = send_class_list (copy_schema_context.classes);
+    }
 
   if (error == NO_ERROR && extract_triggers (copy_schema_context, output_net_trigger) != 0)
     {

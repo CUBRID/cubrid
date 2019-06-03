@@ -147,6 +147,11 @@ namespace cubpacking
       template <typename ExtBlk, typename ... Args>
       void set_buffer_and_pack_all (ExtBlk &eb, Args &... args);
 
+      // compute size of all arguments, extend the buffer by new required size and then pack all arguments and then end of previous end of buffer
+      template <typename ExtBlk, typename ... Args>
+      void
+      append_to_buffer_and_pack_all (ExtBlk &eb, Args &... args);
+
     private:
 
       template <typename T, typename ... Args>
@@ -319,6 +324,36 @@ namespace cubpacking
     eb.extend_to (total_size);
 
     set_buffer (eb.get_ptr (), total_size);
+    pack_all (std::forward<Args> (args)...);
+  }
+
+
+  template <typename ExtBlk, typename ... Args>
+  void
+  packer::append_to_buffer_and_pack_all (ExtBlk &eb, Args &... args)
+  {
+    if (get_buffer_start () != eb.get_ptr ())
+      {
+        /* first call */
+        return set_buffer_and_pack_all (eb, std::forward<Args> (args)...);
+      }
+
+
+        assert (get_curr_ptr () >= eb.get_ptr () && get_curr_ptr () < eb.get_ptr () + eb.get_size ());
+
+        size_t offset = get_curr_ptr () - get_buffer_start ();
+        assert (offset >= 0);
+
+        size_t available = eb.get_ptr () + eb.get_size () - get_curr_ptr ();
+
+        size_t total_size = get_all_packed_size (std::forward<Args> (args)...);
+
+        if (available < total_size)
+          {
+            eb.extend_by (total_size);
+          }
+        set_buffer (eb.get_ptr () + offset, total_size);
+    
     pack_all (std::forward<Args> (args)...);
   }
 
