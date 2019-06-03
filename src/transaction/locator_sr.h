@@ -116,7 +116,7 @@ extern int xlocator_redistribute_partition_data (THREAD_ENTRY * thread_p, OID * 
 extern int locator_insert_record (THREAD_ENTRY & thread_ref, HEAP_SCANCACHE & scan_cache, RECDES & recdes,
                                   OID & oid_inserted);
 extern int locator_prune_insert_record (THREAD_ENTRY & thread_ref, HEAP_SCANCACHE & scan_cache, RECDES & recdes,
-                                        int op_type, PRUNING_CONTEXT * pcontext, OID & oid_inserted);
+                                        LC_COPYAREA_OPERATION op_type, PRUNING_CONTEXT * pcontext, OID & oid_inserted);
 // basic delete operation:
 extern int locator_delete_record (THREAD_ENTRY & thread_ref, HEAP_SCANCACHE & scan_cache, const OID &oid);
 // basic update operation:
