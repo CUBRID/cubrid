@@ -183,7 +183,7 @@ namespace cubbase
       bool
       empty () const
       {
-	return !m_hostname.empty ();
+	return m_hostname.empty ();
       }
 
       // pack/unpack functions
