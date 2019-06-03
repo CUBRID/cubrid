@@ -338,7 +338,7 @@ void hb_disable_er_log (int reason, const char *msg_fmt, ...);
 
 int hb_return_proc_state_by_fd (int sfd);
 bool hb_is_hang_process (int sfd);
-const cubbase::hostname_type& hb_find_host_name_of_master_server ();
+const cubbase::hostname_type &hb_find_host_name_of_master_server ();
 
 cubhb::ping_host::ping_result hb_check_ping (const char *host);
 const char *hb_valid_result_string (cubhb::ui_node_result v_result);
