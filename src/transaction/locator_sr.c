@@ -61,6 +61,7 @@
 #include "replication_db_copy.hpp"
 #include "replication_object.hpp"
 #include "slotted_page.h"
+#include "string_buffer.hpp"
 #include "utility.h"
 #include "xasl_cache.h"
 #include "xasl_predicate.hpp"
@@ -7549,8 +7550,8 @@ end:
 	    {
 	      /* Aborts and simulate apply replication RBR on master node. */
 	      error_code =
-		logtb_get_tdes (thread_p)->replication_log_generator.
-		abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
+		logtb_get_tdes (thread_p)->
+		replication_log_generator.abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
 	    }
 	  else
 	    {
@@ -14230,13 +14231,17 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
       command = "true";
     }
 
+  // connect explicitly to localhost
+  string_buffer db_name_buffer;
+  db_name_buffer ("%s@%s", db_name, "localhost");
+
   const char *ddl_argv[13] = {
     path,
     "-u",
     db_user,
     "-p",
     db_password,
-    db_name,
+    db_name_buffer.get_buffer (),
     command_option,
     command,
     "-t",
@@ -14276,7 +14281,9 @@ locator_repl_start_tran (THREAD_ENTRY * thread_p)
   applier_Client_credentials.program_name = "(repl_applier)";
   applier_Client_credentials.process_id = -1;
 
-  int client_lock_wait = 0;
+  /* TODO : configurable lock wait for replication 
+   * zero time is not correct, since applier transaction may attempt to latch pages being currently vacuumed */
+  int client_lock_wait = TRAN_LOCK_INFINITE_WAIT;
   TRAN_ISOLATION client_isolation = TRAN_DEFAULT_ISOLATION;
 
   int tran_index =

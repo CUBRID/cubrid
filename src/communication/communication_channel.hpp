@@ -77,7 +77,7 @@ namespace cubcomm
        */
       int wait_for (unsigned short int events, unsigned short int &revents);
 
-      bool is_connection_alive ();
+      bool is_connection_alive () const;
       SOCKET get_socket ();
       void close_connection ();
 

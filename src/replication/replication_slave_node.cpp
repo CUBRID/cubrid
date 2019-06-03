@@ -27,6 +27,7 @@
 #include "log_consumer.hpp"
 #include "multi_thread_stream.hpp"
 #include "replication_common.hpp"
+#include "slave_control_channel.hpp"
 #include "replication_stream_entry.hpp"
 #include "stream_file.hpp"
 #include "stream_transfer_receiver.hpp"
@@ -52,7 +53,6 @@ namespace cubreplication
 
   void slave_node::init (const char *hostname)
   {
-#if defined (SERVER_MODE)
     assert (g_instance == NULL);
     slave_node *instance = slave_node::get_instance (hostname);
 
@@ -79,14 +79,11 @@ namespace cubreplication
     instance->m_lc->set_stream (instance->m_stream);
     /* start log_consumer daemons and apply thread pool */
     instance->m_lc->start_daemons ();
-#endif
   }
 
   int slave_node::connect_to_master (const char *master_node_hostname, const int master_node_port_id)
   {
     int error = NO_ERROR;
-
-#if defined (SERVER_MODE)
     er_log_debug_replication (ARG_FILE_LINE, "slave_node::connect_to_master host:%s, port: %d\n",
 			      master_node_hostname, master_node_port_id);
 
@@ -95,7 +92,14 @@ namespace cubreplication
 
     g_instance->m_master_identity.set_hostname (master_node_hostname);
     g_instance->m_master_identity.set_port (master_node_port_id);
-    error = srv_chn.connect (master_node_hostname, master_node_port_id);
+    error = srv_chn.connect (master_node_hostname, master_node_port_id, SERVER_REQUEST_CONNECT_NEW_SLAVE);
+    if (error != css_error_code::NO_ERRORS)
+      {
+	return error;
+      }
+
+    cubcomm::server_channel control_chn (g_instance->m_identity.get_hostname ().c_str ());
+    error = control_chn.connect (master_node_hostname, master_node_port_id, SERVER_REQUEST_CONNECT_NEW_SLAVE_CONTROL);
     if (error != css_error_code::NO_ERRORS)
       {
 	return error;
@@ -104,16 +108,17 @@ namespace cubreplication
     assert (g_instance->m_transfer_receiver == NULL);
     /* TODO[replication] : last position to be retrieved from recovery module */
     cubstream::stream_position start_position = 0;
+
+    g_instance->m_lc->set_ctrl_chn (new cubreplication::slave_control_channel (std::move (control_chn)));
+
     g_instance->m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *g_instance->m_stream,
 	start_position);
-#endif
 
-    return error;
+    return NO_ERROR;
   }
 
   void slave_node::final (void)
   {
-#if defined (SERVER_MODE)
     assert (g_instance != NULL);
 
     delete g_instance->m_transfer_receiver;
@@ -125,7 +130,6 @@ namespace cubreplication
 
     delete g_instance;
     g_instance = NULL;
-#endif
   }
 
   slave_node *slave_node::g_instance = NULL;
