@@ -23,6 +23,7 @@
 
 #include "replication_subtran_apply.hpp"
 
+#include "locator_sr.h"
 #include "log_consumer.hpp"
 #include "log_manager.h"
 #include "replication_stream_entry.hpp"
@@ -118,7 +119,8 @@ namespace cubreplication
 	return;
       }
 
-    thread_ref.claim_system_worker ();
+    // object might be locked. we need a transaction
+    locator_repl_start_tran (&thread_ref);
     log_sysop_start (&thread_ref);
     for (size_t i = 0; i < m_stream_entry->get_packable_entry_count_from_header (); ++i)
       {
@@ -129,7 +131,7 @@ namespace cubreplication
 	  }
       }
     log_sysop_commit_replicated (&thread_ref, m_stream_entry->get_stream_entry_start_position ());
-    thread_ref.retire_system_worker ();
+    locator_repl_end_tran (&thread_ref, true);
 
     m_subtran_applier.finished_task (this);
   }
