@@ -27,10 +27,12 @@
 #define _LOG_CONSUMER_HPP_
 
 #include "cubstream.hpp"
+#include "slave_control_channel.hpp"
 #include "thread_manager.hpp"
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
+#include <memory>
 #include <queue>
 
 namespace cubthread
@@ -50,7 +52,7 @@ namespace cubreplication
    * it should be created only as a global instance
    */
   class stream_entry;
-  class applier_worker_task;
+  class applier_worker_task;  
 
   /*
    * log_consumer : class intended as singleton for slave server
@@ -85,6 +87,8 @@ namespace cubreplication
     private:
       std::queue<stream_entry *> m_stream_entries;
 
+      std::unique_ptr<slave_control_channel> m_ctrl_chn;
+
       cubstream::multi_thread_stream *m_stream;
 
       std::mutex m_queue_mutex;
@@ -108,6 +112,7 @@ namespace cubreplication
 
     public:
       log_consumer () :
+	m_ctrl_chn (nullptr),
 	m_stream (NULL),
 	m_consumer_daemon (NULL),
 	m_dispatch_daemon (NULL),
@@ -140,6 +145,15 @@ namespace cubreplication
 	return m_stream;
       }
 
+      slave_control_channel *get_ctrl_chn ()
+      {
+	return m_ctrl_chn.get ();
+      }
+
+      void set_ctrl_chn (slave_control_channel *ctrl_chn)
+      {
+	m_ctrl_chn.reset (ctrl_chn);
+      }
       bool is_stopping (void)
       {
 	return m_is_stopped;

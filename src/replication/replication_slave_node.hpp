@@ -28,6 +28,7 @@
 
 #include "replication_node.hpp"
 #include "communication_server_channel.hpp"
+#include "slave_control_channel.hpp"
 
 namespace cubstream
 {
@@ -36,7 +37,7 @@ namespace cubstream
 
 namespace cubreplication
 {
-  class log_consumer;
+  class log_consumer;  
 
   class slave_node : public replication_node
   {
@@ -44,18 +45,14 @@ namespace cubreplication
       static slave_node *g_instance;
       log_consumer *m_lc;
 
-#if defined (SERVER_MODE)
       node_definition m_master_identity;
       cubstream::transfer_receiver *m_transfer_receiver;
-#endif
 
       slave_node (const char *name)
 	: replication_node (name)
 	, m_lc (NULL)
-#if defined (SERVER_MODE)
 	, m_master_identity ("")
 	, m_transfer_receiver (NULL)
-#endif
       {
       }
 

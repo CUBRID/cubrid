@@ -24616,6 +24616,13 @@ heap_is_page_header (THREAD_ENTRY * thread_p, PAGE_PTR page)
   return false;
 }
 
+void
+heap_record_reserve_for_adjustments (record_descriptor & record)
+{
+  // to be sure there is enough space for adjustments, add record header size to current record length.
+  record.resize_buffer (record.get_size () + OR_MVCC_MAX_HEADER_SIZE);
+}
+
 //
 // C++ code
 //

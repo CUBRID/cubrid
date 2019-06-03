@@ -7550,8 +7550,8 @@ end:
 	    {
 	      /* Aborts and simulate apply replication RBR on master node. */
 	      error_code =
-		logtb_get_tdes (thread_p)->replication_log_generator.
-		abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
+		logtb_get_tdes (thread_p)->
+		replication_log_generator.abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
 	    }
 	  else
 	    {
@@ -14281,7 +14281,9 @@ locator_repl_start_tran (THREAD_ENTRY * thread_p)
   applier_Client_credentials.program_name = "(repl_applier)";
   applier_Client_credentials.process_id = -1;
 
-  int client_lock_wait = 0;
+  /* TODO : configurable lock wait for replication 
+   * zero time is not correct, since applier transaction may attempt to latch pages being currently vacuumed */
+  int client_lock_wait = TRAN_LOCK_INFINITE_WAIT;
   TRAN_ISOLATION client_isolation = TRAN_DEFAULT_ISOLATION;
 
   int tran_index =

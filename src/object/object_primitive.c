@@ -13204,6 +13204,31 @@ mr_setval_varnchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 				db_get_string_collation (src));
 	      dest->need_clear = true;
 	    }
+
+	  if (src->data.ch.medium.compressed_buf == NULL)
+	    {
+	      dest->data.ch.medium.compressed_buf = NULL;
+	      dest->data.ch.info.compressed_need_clear = false;
+	    }
+	  else
+	    {
+	      char *new_compressed_buf = (char *) db_private_alloc (NULL, src->data.ch.medium.compressed_size + 1);
+	      if (new_compressed_buf == NULL)
+		{
+		  db_value_domain_init (dest, DB_TYPE_VARNCHAR, src_precision, 0);
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		}
+	      else
+		{
+		  memcpy (new_compressed_buf, src->data.ch.medium.compressed_buf, src->data.ch.medium.compressed_size);
+		  new_compressed_buf[src->data.ch.medium.compressed_size] = '\0';
+		  dest->data.ch.medium.compressed_buf = new_compressed_buf;
+		  dest->data.ch.info.compressed_need_clear = true;
+		}
+	    }
+
+	  dest->data.ch.medium.compressed_size = src->data.ch.medium.compressed_size;
 	}
     }
 
