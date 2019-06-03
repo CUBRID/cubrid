@@ -550,9 +550,9 @@ static int
 serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry)
 {
   int ret = NO_ERROR;
-  serial_heap_record serial_heaprec
-  {
-  thread_p, entry->oid};
+  // *INDENT-OFF*
+  serial_heap_record serial_heaprec { thread_p, entry->oid };
+  // *INDENT-ON*
 
   CHECK_MODIFICATION_NO_RETURN (thread_p, ret);
   if (ret != NO_ERROR)
@@ -607,9 +607,9 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   int cached_num, nturns;
   SERIAL_CACHE_ENTRY *entry = NULL;
   ATTR_ID attrid;
-  serial_heap_record serial_heaprec
-  {
-  thread_p, *serial_oidp};
+  // *INDENT-OFF*
+  serial_heap_record serial_heaprec { thread_p, *serial_oidp };
+  // *INDENT-ON*
 
   ret = serial_heaprec.load ();
   if (ret != NO_ERROR)

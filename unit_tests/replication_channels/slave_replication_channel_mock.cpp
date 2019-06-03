@@ -37,7 +37,7 @@ namespace slave
     cubcomm::server_channel chn ("", 1000);
     slave_replication_channel_mock *mock;
 
-    err = chn.connect ("127.0.0.1", port, NULL_REQUEST);
+    err = chn.connect ("127.0.0.1", port);
     assert (err == NO_ERRORS);
     assert (chn.is_connection_alive ());
 
