@@ -46,6 +46,7 @@ namespace cubreplication
 
     private:
       class task;
+      friend class task;
 
       task *alloc_task (stream_entry *se);
       void finished_task (subtran_applier::task *task_arg);

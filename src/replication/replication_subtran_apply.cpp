@@ -28,24 +28,21 @@
 #include "replication_stream_entry.hpp"
 #include "thread_entry_task.hpp"
 
-#include <functional>
-
 namespace cubreplication
 {
   class subtran_applier::task : public cubthread::entry_task
   {
     public:
-      using callback_function_type = std::function<void (task *)>;
 
       task () = delete;
-      task (stream_entry *se, const callback_function_type &callback);
+      task (stream_entry *se, subtran_applier &subtx_apl);
       ~task ();
 
       void execute (cubthread::entry &thread_ref) final;
 
     private:
       stream_entry *m_stream_entry;
-      const callback_function_type &m_callback_function;
+      subtran_applier &m_subtran_applier;
   };
 
   //
@@ -97,15 +94,15 @@ namespace cubreplication
   subtran_applier::task *
   subtran_applier::alloc_task (stream_entry *se)
   {
-    return new task (se, std::bind (&subtran_applier::finished_task, this, std::placeholders::_1));
+    return new task (se, *this);
   }
 
   //
   // subtran_apply_task
   //
-  subtran_applier::task::task (stream_entry *se, const callback_function_type &callback)
+  subtran_applier::task::task (stream_entry *se, subtran_applier &subtx_apl)
     : m_stream_entry (se)
-    , m_callback_function (callback)
+    , m_subtran_applier (subtx_apl)
   {
   }
 
@@ -137,7 +134,7 @@ namespace cubreplication
     log_sysop_commit_replicated (&thread_ref, m_stream_entry->get_stream_entry_start_position ());
     thread_ref.retire_system_worker ();
 
-    m_callback_function (this);
+    m_subtran_applier.finished_task (this);
   }
 
 } // namespace cubreplication
