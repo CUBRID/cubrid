@@ -848,7 +848,7 @@ namespace cubreplication
     cubthread::entry &thread_ref = cubthread::get_entry ();
     if (m_event == CREATE_SAVEPOINT)
       {
-	if (log_append_savepoint (&thread_ref, m_savepoint_name.c_str ()) != NULL)
+	if (log_append_savepoint (&thread_ref, m_savepoint_name.c_str ()) == NULL)
 	  {
 	    assert (false);
 	    return ER_FAILED;
