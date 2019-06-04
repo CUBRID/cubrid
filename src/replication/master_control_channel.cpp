@@ -56,20 +56,24 @@ namespace cubreplication
 
   void ack_reader_task::execute (cubthread::entry &thread_ref)
   {
-    if (!m_chn->is_connection_alive ())
+    while (true)
       {
-	return;
+        /* TODO - consider stop */
+	if (!m_chn->is_connection_alive())
+	  {
+	    return;
+	  }
+	size_t len = sizeof (cubstream::stream_position);
+	cubstream::stream_position ack_sp;
+	css_error_code ec = m_chn->recv ((char *)&ack_sp, len);
+	if (ec != NO_ERRORS)
+	  {
+	    m_chn->close_connection();
+	    // will get cleared by control_channel_managing_task
+	    return;
+	  }
+	m_stream_ack->notify_stream_ack (ntohi64 (ack_sp));
       }
-    size_t len = sizeof (cubstream::stream_position);
-    cubstream::stream_position ack_sp;
-    css_error_code ec = m_chn->recv ((char *) &ack_sp, len);
-    if (ec != NO_ERRORS)
-      {
-	m_chn->close_connection ();
-	// will get cleared by control_channel_managing_task
-	return;
-      }
-    m_stream_ack->notify_stream_ack (ntohi64 (ack_sp));
   }
 
   class control_channel_managing_task : public cubthread::task_without_context
