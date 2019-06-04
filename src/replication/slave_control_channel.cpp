@@ -23,13 +23,45 @@
 
 #include "slave_control_channel.hpp"
 
+#include <atomic>
+#include <condition_variable>
 #include <memory>
+#include <mutex>
 
 #include "byte_order.h"
 #include "communication_channel.hpp"
 
 namespace cubreplication
 {
+  slave_control_sender::slave_control_sender (slave_control_channel &&ctrl_chn)
+    : m_ctrl_chn (std::move (ctrl_chn))
+  {
+  }
+
+  slave_control_sender::~slave_control_sender ()
+  {
+    m_stop = true;
+    std::unique_lock<std::mutex> ul (m_mtx);
+    m_cv.notify_one ();
+  }
+
+  void slave_control_sender::execute ()
+  {
+    std::unique_lock<std::mutex> ul (m_mtx);
+    m_cv.wait (ul);
+    if (!m_stop)
+      {
+	m_ctrl_chn.send_ack (m_last_stream_pos);
+      }
+  }
+
+  void slave_control_sender::append_synced (const cubstream::stream_position &sp)
+  {
+    std::unique_lock<std::mutex> ul (m_mtx);
+    m_last_stream_pos = sp;
+    m_cv.notify_one ();
+  }
+
   slave_control_channel::slave_control_channel (cubcomm::channel &&chn)
     : m_chn (new cubcomm::channel (std::move (chn)))
   {
