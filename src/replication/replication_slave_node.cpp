@@ -32,6 +32,9 @@
 #include "stream_file.hpp"
 #include "stream_transfer_receiver.hpp"
 #include "system_parameter.h"
+#include "thread_entry.hpp"
+#include "thread_looper.hpp"
+#include "thread_manager.hpp"
 
 
 namespace cubreplication
@@ -109,7 +112,16 @@ namespace cubreplication
     /* TODO[replication] : last position to be retrieved from recovery module */
     cubstream::stream_position start_position = 0;
 
-    g_instance->m_lc->set_ctrl_chn (new cubreplication::slave_control_channel (std::move (control_chn)));
+    cubreplication::slave_control_sender *sender = new slave_control_sender (std::move (
+		cubreplication::slave_control_channel (std::move (control_chn))));
+
+    g_instance->m_ctrl_sender = cubthread::get_manager()->create_daemon_without_entry (cubthread::delta_time (0),sender,
+				"slave_control_sender");
+
+    g_instance->m_stream_file->set_sync_notify ([sender] (const cubstream::stream_position & sp, size_t)
+    {
+      sender->append_synced (sp);
+    });
 
     g_instance->m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *g_instance->m_stream,
 	start_position);

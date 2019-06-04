@@ -205,7 +205,7 @@ namespace cubstream
 	  }
       }
 
-      void set_sync_position (stream_position to_be_synced)
+      void push_sync_position (stream_position to_be_synced)
       {
 	std::lock_guard<std::mutex> lg (m_sync_mtx);
 	m_sync_positions.push (to_be_synced);
@@ -234,7 +234,7 @@ namespace cubstream
 	return m_append_position;
       }
 
-      void set_sync_notify (cubstream::stream::notify_func_t sync_done_notify)
+      void set_sync_notify (const cubstream::stream::notify_func_t &sync_done_notify)
       {
 	std::lock_guard<std::mutex> lg (m_sync_mtx);
 	m_sync_done_notify = sync_done_notify;
