@@ -24,6 +24,7 @@
 #include "porting.h"
 
 #include "thread_manager.hpp"
+#include "transaction_group.hpp"
 
 #include <stdio.h>
 #include <pthread.h>
@@ -316,6 +317,8 @@ test_new_mvcc_complete (void *param)
   unsigned int local_count_complete = 0;
   bool committed = true;
   MVCCID mvccid;
+  mvcctable *mvcc_table = &log_Gl.mvcc_table;
+  MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
 
   // *INDENT-OFF*
   cubthread::set_thread_local_entry (*thread_p);
@@ -329,13 +332,20 @@ test_new_mvcc_complete (void *param)
 	  abort ();
 	}
 
-	  /* Disabled complete MVCC temporary */
-      //logtb_complete_mvcc (thread_p, tdes, committed);
+      if (MVCCID_IS_VALID (mvccid))
+	{
+	  /* Group containing only current transaction. */
+	  tx_group current_tran_group;
+	  current_tran_group.add (tran_index, mvccid, tdes->state);
+	  log_Gl.mvcc_table.complete_group_mvcc (thread_p, current_tran_group);
+	}
+
       committed = !committed;
 
       /* here we may test whether bit was set */
       local_count_complete++;
 
+      curr_mvcc_info->reset ();
       log_Gl.mvcc_table.reset_transaction_lowest_active (tran_index);
     }
 

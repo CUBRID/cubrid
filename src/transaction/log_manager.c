@@ -335,6 +335,7 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 				   int data_size, const char *data);
 
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
+static void log_update_global_unique_statistics (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
@@ -4710,7 +4711,7 @@ log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_L
  * thread_p (in)  : Thread entry.
  * tdes (in)	  : Transaction descriptor.
  */
-void
+static void
 log_update_global_unique_statistics (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   assert (tdes != NULL);
