@@ -149,6 +149,11 @@ record_descriptor::get (cubthread::entry *thread_p, PAGE_PTR page, PGSLOTID slot
 void
 record_descriptor::resize_buffer (std::size_t required_size)
 {
+  if (m_data_source == data_source::INVALID)
+    {
+      // this is first time to initialize buffer; record will be considered new.
+      m_data_source = data_source::NEW;
+    }
   check_changes_are_permitted ();
 
   if (m_recdes.area_size > 0 && required_size <= (size_t) m_recdes.area_size)
