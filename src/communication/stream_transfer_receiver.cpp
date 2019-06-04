@@ -74,19 +74,23 @@ namespace cubstream
 	    m_first_loop = false;
 	  }
 
-	rc = this_consumer_channel.m_channel.recv (this_consumer_channel.m_buffer, max_len);
-	if (rc != NO_ERRORS)
+	while (true)
 	  {
-	    this_consumer_channel.m_channel.close_connection ();
-	    return;
-	  }
+            /* TODO - consider stop */
+	    rc = this_consumer_channel.m_channel.recv (this_consumer_channel.m_buffer, max_len);
+	    if (rc != NO_ERRORS)
+	      {
+		this_consumer_channel.m_channel.close_connection ();
+		return;
+	      }
 
-	cubcomm::er_log_debug_buffer ("transfer_receiver_task receiving", this_consumer_channel.m_buffer, max_len);
+	    cubcomm::er_log_debug_buffer ("transfer_receiver_task receiving", this_consumer_channel.m_buffer, max_len);
 
-	if (this_consumer_channel.m_stream.write (max_len, this_consumer_channel.m_write_action_function))
-	  {
-	    this_consumer_channel.m_channel.close_connection ();
-	    return;
+	    if (this_consumer_channel.m_stream.write (max_len, this_consumer_channel.m_write_action_function))
+	      {
+		this_consumer_channel.m_channel.close_connection ();
+		return;
+	      }
 	  }
       }
 
