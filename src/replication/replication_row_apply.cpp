@@ -72,9 +72,19 @@ namespace cubreplication
 
     OID oid_out = OID_INITIALIZER;
     RECDES recdes_copy = record_copy.get_recdes ();
+
+    log_sysop_start (&thread_ref);
     // todo: pruning
     error_code = locator_insert_record (thread_ref, scan_cache, recdes_copy, oid_out);
-    assert (error_code == NO_ERROR);
+    if (error_code != NO_ERROR)
+      {
+	assert (false);
+	log_sysop_abort (&thread_ref);
+      }
+    else
+      {
+	log_sysop_attach_to_outer (&thread_ref);
+      }
 
     heap_scancache_end_modify (&thread_ref, &scan_cache);
 
@@ -109,8 +119,17 @@ namespace cubreplication
 	return error_code;
       }
 
+    log_sysop_start (&thread_ref);
     error_code = locator_delete_record (thread_ref, scan_cache, instance_oid);
-    assert (error_code == NO_ERROR);
+    if (error_code != NO_ERROR)
+      {
+	assert (false);
+	log_sysop_abort (&thread_ref);
+      }
+    else
+      {
+	log_sysop_attach_to_outer (&thread_ref);
+      }
 
     heap_scancache_end_modify (&thread_ref, &scan_cache);
     return NO_ERROR;
@@ -166,9 +185,18 @@ namespace cubreplication
 	return ER_FAILED;
       }
 
+    log_sysop_start (&thread_ref);
     RECDES new_recdes = generated_record.get_recdes ();
     error_code = locator_update_record (thread_ref, scan_cache, instance_oid, old_recdes, new_recdes, true);
-    assert (error_code == NO_ERROR);
+    if (error_code != NO_ERROR)
+      {
+	assert (false);
+	log_sysop_abort (&thread_ref);
+      }
+    else
+      {
+	log_sysop_attach_to_outer (&thread_ref);
+      }
 
     heap_scancache_end_modify (&thread_ref, &scan_cache);
     return NO_ERROR;
