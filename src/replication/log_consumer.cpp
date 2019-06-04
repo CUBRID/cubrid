@@ -56,6 +56,12 @@ namespace cubreplication
 	int err = m_lc.fetch_stream_entry (se);
 	if (err == NO_ERROR)
 	  {
+	    if (se->is_group_commit())
+	      {
+		se->unpack ();
+		assert (se->get_stream_entry_end_position () > se->get_stream_entry_start_position ());
+		m_lc.get_ctrl_chn ()->send_ack (se->get_stream_entry_end_position ());
+	      }
 	    m_lc.push_entry (se);
 	  }
       };
@@ -105,7 +111,7 @@ namespace cubreplication
 	    delete curr_stream_entry;
 	  }
 
-	(void) locator_repl_end_tran (&thread_ref, true);	
+	(void) locator_repl_end_tran (&thread_ref, true);
       }
 
       void add_repl_stream_entry (stream_entry *repl_stream_entry)
@@ -188,11 +194,11 @@ namespace cubreplication
 	    /* TODO[replication] : on-the-fly applier & multi-threaded applier */
 	    if (se->is_group_commit ())
 	      {
-                se->unpack ();
 		assert (se->get_data_packed_size () == 0);
 
 		/* wait for all started tasks to finish */
 		er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task wait for all working tasks to finish\n");
+		assert (se->get_stream_entry_start_position () < se->get_stream_entry_end_position ());
 
 		m_prev_group_stream_position = m_curr_group_stream_position;
 		m_curr_group_stream_position = se->get_stream_entry_start_position ();
@@ -340,7 +346,6 @@ namespace cubreplication
       }
 
     entry = se;
-    m_ctrl_chn->send_ack (entry->get_stream_entry_start_position ());
 
     return err;
   }
