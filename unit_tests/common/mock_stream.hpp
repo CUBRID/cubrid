@@ -3,6 +3,11 @@
 
 #include "cubstream.hpp"
 
+namespace cubtest
+{
+  const size_t MAX_CYCLES = 10;
+}
+
 class mock_stream : public cubstream::stream
 {
   public:

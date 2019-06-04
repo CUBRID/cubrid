@@ -25,6 +25,7 @@
 
 #include "replication_object.hpp"
 
+#include "heap_file.h"
 #include "locator_sr.h"
 #include "mem_block.hpp"
 #include "memory_alloc.h"
@@ -643,7 +644,10 @@ namespace cubreplication
 
     (void) single_row_repl_entry::unpack (deserializator);
 
+    m_rec_des.resize_buffer ((size_t) DB_PAGESIZE);
     m_rec_des.unpack (deserializator);
+    // record may be resized by heap_update_adjust_recdes_header; make sure there is enough space.
+    heap_record_reserve_for_adjustments (m_rec_des);
   }
 
   std::size_t
