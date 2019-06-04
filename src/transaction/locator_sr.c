@@ -13706,7 +13706,7 @@ xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK
 // *INDENT-OFF*
 int 
 locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
-                            std::vector<RECDES>& recdes, int has_index, int op_type, HEAP_SCANCACHE * scan_cache,
+                            const std::vector<RECDES>& recdes, int has_index, int op_type, HEAP_SCANCACHE * scan_cache,
                             int *force_count, int pruning_type, PRUNING_CONTEXT * pcontext,
                             FUNC_PRED_UNPACK_INFO * func_preds, UPDATE_INPLACE_STYLE force_in_place)
 {
@@ -13714,8 +13714,8 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
   size_t accumulated_records_size = 0;
   size_t heap_max_page_size;
   OID dummy_oid;
-  std::vector <RECDES> recdes_array;
-  std::vector <VPID> heap_pages_array;
+  std::vector<RECDES> recdes_array;
+  std::vector<VPID> heap_pages_array;
   
   // Early-out
   if (recdes.size () == 0)
@@ -13736,7 +13736,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
     if (heap_is_big_length (recdes[i].length))
       {
         // We insert other records normally.
-        error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, &recdes[i], has_index, op_type,
+        error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, (RECDES*) &recdes[i], has_index, op_type,
                                            scan_cache, force_count, pruning_type, pcontext, func_preds, force_in_place, NULL);
         if (error_code != NO_ERROR)
           {
@@ -13755,7 +13755,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
             VPID_SET_NULL (&new_page_vpid);
 
             // First alloc a new empty heap page.
-            error_code = heap_alloc_new_page (thread_p, hfid, &home_hint_p, &new_page_vpid);
+            error_code = heap_alloc_new_page (thread_p, hfid, *class_oid, &home_hint_p, &new_page_vpid);
             if (error_code != NO_ERROR)
               {
                 ASSERT_ERROR ();
