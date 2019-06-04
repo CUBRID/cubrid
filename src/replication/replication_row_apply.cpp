@@ -286,11 +286,13 @@ namespace cubreplication
       }
 
     record_descriptor new_record;
-    error_code =
-	    heap_attrinfo_transform_to_disk (&thread_ref, &attr_info,
-		const_cast<RECDES *> (&old_recdes) /* fix heap_attrinfo_transform_to_disk */,
-		&generated_record);
-    assert (error_code == NO_ERROR);
+    if (heap_attrinfo_transform_to_disk (&thread_ref, &attr_info,
+					 const_cast<RECDES *> (&old_recdes) /* fix heap_attrinfo_transform_to_disk */,
+					 &generated_record) != S_SUCCESS)
+      {
+	assert (false);
+	error_code = ER_FAILED;
+      }
 
     heap_attrinfo_end (&thread_ref, &attr_info);
     return error_code;
