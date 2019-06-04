@@ -28,6 +28,7 @@
 
 #include "multi_thread_stream.hpp"
 #include <map>
+#include <queue>
 
 namespace cubthread
 {
@@ -112,6 +113,14 @@ namespace cubstream
 
       stream_position m_req_start_flush_position;
 
+      /* notify on fsync data */
+      std::atomic<bool> m_notify_on_sync;
+      stream_position m_sync_flush_position;
+      std::queue<int> m_sync_seq_nrs;
+      std::queue<stream_position> m_sync_positions;
+      std::mutex m_sync_mtx;
+      cubstream::stream::notify_func_t m_sync_done_notify;
+
       cubstream::stream::notify_func_t m_start_flush_handler;
 
       cubthread::daemon *m_write_daemon;
@@ -144,13 +153,14 @@ namespace cubstream
 
       size_t read_buffer (const int vol_seqno, const size_t volume_offset, char *buf, const size_t amount);
       size_t write_buffer (const int vol_seqno, const size_t volume_offset, const char *buf, const size_t amount);
-
+      int sync_writes ();
     public:
       stream_file () = delete;
 
       stream_file (multi_thread_stream &stream_arg, const std::string &path,
 		   const size_t file_size = DEFAULT_VOLUME_SIZE, const int print_digits = DEFAULT_FILENAME_DIGITS)
 	: m_stream (stream_arg)
+	, m_notify_on_sync (false)
       {
 	init (path, 0, file_size, print_digits);
       };
@@ -195,9 +205,40 @@ namespace cubstream
 	  }
       }
 
+      void set_sync_position (stream_position to_be_synced)
+      {
+	std::lock_guard<std::mutex> lg (m_sync_mtx);
+	m_sync_positions.push (to_be_synced);
+      }
+
+      stream_position sync_front ()
+      {
+	std::lock_guard<std::mutex> lg (m_sync_mtx);
+	return m_sync_positions.front ();
+      }
+
+      void sync_pop ()
+      {
+	std::lock_guard<std::mutex> lg (m_sync_mtx);
+	m_sync_positions.pop ();
+      }
+
+      bool sync_empty ()
+      {
+	std::lock_guard<std::mutex> lg (m_sync_mtx);
+	return m_sync_positions.empty ();
+      }
+
       stream_position get_last_flushed_position (void)
       {
 	return m_append_position;
+      }
+
+      void set_sync_notify (cubstream::stream::notify_func_t sync_done_notify)
+      {
+	std::lock_guard<std::mutex> lg (m_sync_mtx);
+	m_sync_done_notify = sync_done_notify;
+	m_notify_on_sync = true;
       }
 
       void start_flush (const stream_position &start_position, const size_t amount_to_flush);

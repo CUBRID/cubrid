@@ -42,6 +42,7 @@
 
 #include <cstdio>     /* for std::remove */
 #include <limits>     /* for std::numeric_limits */
+#include <queue>
 
 namespace cubstream
 {
@@ -667,6 +668,28 @@ namespace cubstream
   }
 
   /*
+   * sync_writes : writes using pwrite are not guaranteed to be written to disk. Make sure, using fsync, that
+   *               queued up writes are durable
+   * return : NO_ERROR or encountered error
+   */
+  int stream_file::sync_writes ()
+  {
+    while (!m_sync_seq_nrs.empty ())
+      {
+	int seq_nr = m_sync_seq_nrs.front ();
+	int fd = get_file_desc_from_vol_seqno (seq_nr);
+
+	int rc = fsync (fd);
+	if (rc != 0)
+	  {
+	    return rc;
+	  }
+	m_sync_seq_nrs.pop ();
+      }
+    return NO_ERROR;
+  }
+
+  /*
    * write
    *
    * writes the contents of buf of size amount into the stream file starting from position pos
@@ -756,10 +779,32 @@ namespace cubstream
 	    return err;
 	  }
 
+	if (m_notify_on_sync)
+	  {
+	    m_sync_seq_nrs.push (vol_seqno);
+	  }
+
 	rem_amount -= actual_write;
 	curr_pos += current_to_write;
 	buf += current_to_write;
       }
+
+    if (m_notify_on_sync && !sync_empty ())
+      {
+	m_sync_flush_position = sync_front ();
+
+	if (curr_pos >= m_sync_flush_position)
+	  {
+	    if (sync_writes () != NO_ERROR)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 3, m_stream.name ().c_str (), curr_pos, 0);
+		return err;
+	      }
+	    sync_pop ();
+	    m_sync_done_notify (m_sync_flush_position, 0);
+	  }
+      }
+
 
     /* get flush mutex while incrementing append_position:
      * this is not mandatory, but we only need to protect the assertions from start_flush and wait_flush_signal
