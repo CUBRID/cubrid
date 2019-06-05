@@ -8461,13 +8461,13 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       select = node->info.create_entity.create_select;
       if (select != NULL)
 	{
+	  select = pt_semantic_check (parser, select);
+
 	  if (pt_has_parameters (parser, select))
 	    {
 	      PT_ERRORmf (parser, select, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VARIABLE_NOT_ALLOWED, 0);
 	      return;
 	    }
-
-	  pt_semantic_check (parser, select);
 	}
       if (!pt_has_error (parser) && node->info.create_entity.partition_info)
 	{
