@@ -438,8 +438,10 @@ enum param_id
   PRM_ID_REPL_LOG_GENERATOR_LOGGING,
   PRM_ID_REPL_LOG_LOCAL_DEBUG,
 
+  PRM_ID_REPL_ACK_ON_STREAM_FLUSH,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_REPL_LOG_LOCAL_DEBUG
+  PRM_LAST_ID = PRM_ID_REPL_ACK_ON_STREAM_FLUSH
 };
 typedef enum param_id PARAM_ID;
 

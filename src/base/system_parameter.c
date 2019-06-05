@@ -671,6 +671,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_REPL_LOG_GENERATOR_LOGGING "replication_log_generator_logging"
 #define PRM_NAME_REPL_LOG_LOCAL_DEBUG "replication_log_local_debug"
 
+#define PRM_NAME_REPL_ACK_ON_STREAM_FLUSH "replication_ack_on_stream_flush"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2254,6 +2256,10 @@ static unsigned int prm_repl_log_generator_flag = 0;
 bool PRM_REPL_LOG_LOCAL_DEBUG = false;
 static bool prm_repl_log_local_debug_default = false;
 static unsigned int prm_repl_log_local_debug_flag = false;
+
+bool PRM_REPL_ACK_ON_STREAM_FLUSH = false;
+static bool prm_repl_ack_on_stream_flush_default = false;
+static unsigned int prm_repl_ack_on_stream_flush_flag = false;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5799,6 +5805,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_REPL_ACK_ON_STREAM_FLUSH,
+   PRM_NAME_REPL_ACK_ON_STREAM_FLUSH,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_repl_ack_on_stream_flush_flag,
+   (void *) &prm_repl_ack_on_stream_flush_default,
+   (void *) &PRM_REPL_ACK_ON_STREAM_FLUSH,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL}
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
