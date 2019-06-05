@@ -38,21 +38,27 @@ namespace cubreplication
   {
   }
 
-  slave_control_sender::~slave_control_sender ()
-  {
-    m_stop = true;
-    std::unique_lock<std::mutex> ul (m_mtx);
-    m_cv.notify_one ();
-  }
-
   void slave_control_sender::execute ()
   {
     std::unique_lock<std::mutex> ul (m_mtx);
+    if (m_stop)
+      {
+	return;
+      }
+
     m_cv.wait (ul);
+
     if (!m_stop)
       {
 	m_ctrl_chn.send_ack (m_last_stream_pos);
       }
+  }
+
+  void slave_control_sender::stop ()
+  {
+    std::unique_lock<std::mutex> ul (m_mtx);
+    m_stop = true;
+    m_cv.notify_one ();
   }
 
   void slave_control_sender::append_synced (const cubstream::stream_position &sp)
