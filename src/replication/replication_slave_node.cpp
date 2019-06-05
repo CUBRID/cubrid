@@ -24,6 +24,7 @@
 #ident "$Id$"
 
 #include "replication_slave_node.hpp"
+#include "log_applier.h"
 #include "log_consumer.hpp"
 #include "multi_thread_stream.hpp"
 #include "replication_common.hpp"
@@ -81,8 +82,9 @@ namespace cubreplication
 
     instance->m_lc->set_stream (instance->m_stream);
 
-    if (prm_get_bool_value (PRM_ID_REPL_ACK_ON_STREAM_FLUSH))
+    if ((REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) == REPL_SEMISYNC_ACK_ON_FLUSH)
       {
+	// route produced stream positions to get validated as flushed on disk before sending them
 	instance->m_lc->set_produce_ack ([instance] (cubstream::stream_position ack_sp)
 	{
 	  instance->m_stream_file->push_sync_position (ack_sp);
@@ -130,7 +132,7 @@ namespace cubreplication
 
     g_instance->m_ctrl_sender = sender;
 
-    if (prm_get_bool_value (PRM_ID_REPL_ACK_ON_STREAM_FLUSH))
+    if ((REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) == REPL_SEMISYNC_ACK_ON_FLUSH)
       {
 	g_instance->m_stream_file->set_sync_notify ([sender] (const cubstream::stream_position & sp, size_t)
 	{

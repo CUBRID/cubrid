@@ -52,6 +52,12 @@ typedef enum
   REPL_FILTER_EXCLUDE_TBL
 } REPL_FILTER_TYPE;
 
+typedef enum
+{
+  REPL_SEMISYNC_ACK_ON_CONSUME,
+  REPL_SEMISYNC_ACK_ON_FLUSH
+} REPL_SEMISYNC_ACK_MODE;
+
 #if defined (CS_MODE)
 int la_log_page_check (const char *database_name, const char *log_path, INT64 page_num, bool check_applied_info,
 		       bool check_copied_info, bool check_replica_info, bool verbose, LOG_LSA * copied_eof_lsa,
