@@ -115,7 +115,6 @@ namespace cubstream
 
       /* notify on fsync data */
       std::atomic<bool> m_notify_on_sync;
-      stream_position m_sync_flush_position;
       std::queue<int> m_sync_seq_nrs;
       std::queue<stream_position> m_sync_positions;
       std::mutex m_sync_mtx;

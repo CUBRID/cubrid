@@ -124,7 +124,7 @@ namespace cubreplication
     cubreplication::slave_control_sender *sender = new slave_control_sender (std::move (
 		cubreplication::slave_control_channel (std::move (control_chn))));
 
-    g_instance->m_ctrl_sender = cubthread::get_manager()->create_daemon_without_entry (cubthread::delta_time (0),sender,
+    g_instance->m_ctrl_sender = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0), sender,
 				"slave_control_sender");
 
     if (prm_get_bool_value (PRM_ID_REPL_ACK_ON_STREAM_FLUSH))
