@@ -791,9 +791,9 @@ namespace cubstream
 
     if (m_notify_on_sync && !sync_empty ())
       {
-	m_sync_flush_position = sync_front ();
+	cubstream::stream_position sync_flush_position = sync_front ();
 
-	if (curr_pos >= m_sync_flush_position)
+	if (curr_pos >= sync_flush_position)
 	  {
 	    if (sync_writes () != NO_ERROR)
 	      {
@@ -801,7 +801,7 @@ namespace cubstream
 		return err;
 	      }
 	    sync_pop ();
-	    m_sync_done_notify (m_sync_flush_position, 0);
+	    m_sync_done_notify (sync_flush_position, 0);
 	  }
       }
 
