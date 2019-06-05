@@ -8461,7 +8461,11 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       select = node->info.create_entity.create_select;
       if (select != NULL)
 	{
-	  select = pt_semantic_check (parser, select);
+	  if (select->info.query.with != NULL)
+	    {
+	      // run semantic check only for CREATE ... AS WITH ...
+	      select = pt_semantic_check (parser, select);
+	    }
 
 	  if (pt_has_parameters (parser, select))
 	    {
