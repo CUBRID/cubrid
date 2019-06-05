@@ -80,6 +80,15 @@ namespace cubreplication
     instance->m_lc = new log_consumer ();
 
     instance->m_lc->set_stream (instance->m_stream);
+
+    if (prm_get_bool_value (PRM_ID_REPL_ACK_ON_STREAM_FLUSH))
+      {
+	instance->m_lc->set_produce_ack ([instance] (cubstream::stream_position ack_sp)
+	{
+	  instance->m_stream_file->push_sync_position (ack_sp);
+	});
+      }
+
     /* start log_consumer daemons and apply thread pool */
     instance->m_lc->start_daemons ();
   }
@@ -118,10 +127,20 @@ namespace cubreplication
     g_instance->m_ctrl_sender = cubthread::get_manager()->create_daemon_without_entry (cubthread::delta_time (0),sender,
 				"slave_control_sender");
 
-    g_instance->m_stream_file->set_sync_notify ([sender] (const cubstream::stream_position & sp, size_t)
-    {
-      sender->append_synced (sp);
-    });
+    if (prm_get_bool_value (PRM_ID_REPL_ACK_ON_STREAM_FLUSH))
+      {
+	g_instance->m_stream_file->set_sync_notify ([sender] (const cubstream::stream_position & sp, size_t)
+	{
+	  sender->append_synced (sp);
+	});
+      }
+    else
+      {
+	g_instance->m_lc->set_produce_ack ([sender] (cubstream::stream_position sp)
+	{
+	  sender->append_synced (sp);
+	});
+      }
 
     g_instance->m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *g_instance->m_stream,
 	start_position);
@@ -139,6 +158,8 @@ namespace cubreplication
     g_instance->m_lc->set_stop ();
     delete g_instance->m_lc;
     g_instance->m_lc = NULL;
+
+    cubthread::get_manager()->destroy_daemon_without_entry (g_instance->m_ctrl_sender);
 
     delete g_instance;
     g_instance = NULL;

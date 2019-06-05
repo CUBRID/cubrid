@@ -60,8 +60,10 @@ namespace cubreplication
 	      {
 		se->unpack ();
 		assert (se->get_stream_entry_end_position () > se->get_stream_entry_start_position ());
-		cubstream::stream_file *stream = m_lc.get_stream ()->get_stream_file ();
-		stream->push_sync_position (se->get_stream_entry_end_position ());
+
+		// todo: add safeguard std::function is correctly initialized (we do not reache here when there is no
+		// connection to master established)
+		m_lc.get_produce_ack () (se->get_stream_entry_end_position ());
 	      }
 	    m_lc.push_entry (se);
 	  }
