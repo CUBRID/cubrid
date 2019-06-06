@@ -47,7 +47,7 @@ namespace cubstream
       void execute () override
       {
 	css_error_code rc = NO_ERRORS;
-	std::size_t max_len = cubcomm::MTU;
+	std::size_t max_len = cubcomm::MTU, recv_len;
 
 	if (m_first_loop)
 	  {
@@ -76,17 +76,18 @@ namespace cubstream
 
 	while (true)
 	  {
-            /* TODO - consider stop */
-	    rc = this_consumer_channel.m_channel.recv (this_consumer_channel.m_buffer, max_len);
+	    /* TODO - consider stop */
+	    recv_len = max_len;
+	    rc = this_consumer_channel.m_channel.recv (this_consumer_channel.m_buffer, recv_len);
 	    if (rc != NO_ERRORS)
 	      {
 		this_consumer_channel.m_channel.close_connection ();
 		return;
 	      }
 
-	    cubcomm::er_log_debug_buffer ("transfer_receiver_task receiving", this_consumer_channel.m_buffer, max_len);
+	    cubcomm::er_log_debug_buffer ("transfer_receiver_task receiving", this_consumer_channel.m_buffer, recv_len);
 
-	    if (this_consumer_channel.m_stream.write (max_len, this_consumer_channel.m_write_action_function))
+	    if (this_consumer_channel.m_stream.write (recv_len, this_consumer_channel.m_write_action_function))
 	      {
 		this_consumer_channel.m_channel.close_connection ();
 		return;
