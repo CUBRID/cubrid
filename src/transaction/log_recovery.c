@@ -3937,8 +3937,14 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_FINISH_POSTPONE:
 	      {
 		tran_index = logtb_find_tran_index (thread_p, tran_id);
-		// posit tran was freed at analysis
-		assert (tran_index == NULL_TRAN_INDEX || tran_index == LOG_SYSTEM_TRAN_INDEX);
+		// it may have been freed once at analysis, but if transaction was active during checkpoint,
+		// the end checkpoint had already re-created the TDES, free it again here
+		if (tran_index != NULL_TRAN_INDEX && tran_index != LOG_SYSTEM_TRAN_INDEX)
+		  {
+		    tdes = LOG_FIND_TDES (tran_index);
+		    assert (tdes && tdes->state != TRAN_ACTIVE);
+		    logtb_free_tran_index (thread_p, tran_index);
+		  }
 	      }
 	      break;
 
