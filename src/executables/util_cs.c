@@ -3649,8 +3649,16 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
 	  goto error;
 	}
 
-      if (db_get_errors (session) || er_errid () != NO_ERROR)
+      DB_SESSION_ERROR *session_errors = db_get_errors (session);
+      if (session_errors || er_errid () != NO_ERROR)
 	{
+	  do
+	    {
+	      int line = 0, col = 0;
+	      session_errors = db_get_next_error (session_errors, &line, &col);
+	    }
+	  while (session_errors);
+
 	  ASSERT_ERROR_AND_SET (rc);
 	  au_enable (save);
 	  goto error;
