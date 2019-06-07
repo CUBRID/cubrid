@@ -543,7 +543,6 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
 {
   int error_code = NO_ERROR;
   int i;
-  LOG_FLUSH_NOTIFY_INFO *flush_notify_info = &log_Gl.flush_notify_info;
   LOGWR_INFO *writer_info = log_Gl.writer_info;
   size_t size;
 
@@ -624,9 +623,6 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   logpb_Initialized = true;
   pthread_mutex_init (&log_Gl.chkpt_lsa_lock, NULL);
 
-  pthread_cond_init (&flush_notify_info->cond, NULL);
-  pthread_mutex_init (&flush_notify_info->mutex, NULL);
-
   pthread_mutex_init (&writer_info->wr_list_mutex, NULL);
 
   pthread_cond_init (&writer_info->flush_start_cond, NULL);
@@ -693,9 +689,6 @@ logpb_finalize_pool (THREAD_ENTRY * thread_p)
   logpb_finalize_flush_info ();
 
   pthread_mutex_destroy (&log_Gl.chkpt_lsa_lock);
-
-  pthread_mutex_destroy (&log_Gl.flush_notify_info.mutex);
-  pthread_cond_destroy (&log_Gl.flush_notify_info.cond);
 
   logpb_finalize_writer_info ();
 
@@ -3666,11 +3659,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
   logpb_flush_pages_direct (thread_p);
   LOG_CS_EXIT (thread_p);
 #else /* SERVER_MODE */
-  int rv;
-  struct timeval start_time = { 0, 0 };
-  struct timeval tmp_timeval = { 0, 0 };
-  struct timespec to = { 0, 0 };
-  int max_wait_time_in_msec = 1000;
+  std::chrono::milliseconds max_wait_time_in_msec (1000);
   LOG_LSA nxio_lsa;
   LOG_FLUSH_NOTIFY_INFO *flush_notify_info = &log_Gl.flush_notify_info;
 
@@ -3699,21 +3688,17 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 
   while (LSA_LT (&nxio_lsa, flush_lsa))
     {
-      gettimeofday (&start_time, NULL);
-      (void) timeval_add_msec (&tmp_timeval, &start_time, max_wait_time_in_msec);
-      (void) timeval_to_timespec (&to, &tmp_timeval);
-
-      rv = pthread_mutex_lock (&flush_notify_info->mutex);
+      std::unique_lock < std::mutex > ulock (flush_notify_info->m_mutex);
       nxio_lsa = log_Gl.append.get_nxio_lsa ();
       if (LSA_GE (&nxio_lsa, flush_lsa))
 	{
-	  pthread_mutex_unlock (&flush_notify_info->mutex);
+	  ulock.unlock ();
 	  break;
 	}
 
       log_wakeup_log_flush_daemon ();
-      (void) pthread_cond_timedwait (&flush_notify_info->cond, &flush_notify_info->mutex, &to);
-      pthread_mutex_unlock (&flush_notify_info->mutex);
+      flush_notify_info->m_cond.wait_for (ulock, max_wait_time_in_msec);
+      ulock.unlock ();
 
       nxio_lsa = log_Gl.append.get_nxio_lsa ();
     }

@@ -57,12 +57,12 @@ namespace cubreplication
   void ack_reader_task::execute (cubthread::entry &thread_ref)
   {
     while (true)
-      {
-        /* TODO - consider stop */
-	if (!m_chn->is_connection_alive())
+      {       
+	if (!m_chn->is_connection_alive ())
 	  {
 	    return;
 	  }
+
 	size_t len = sizeof (cubstream::stream_position);
 	cubstream::stream_position ack_sp;
 	css_error_code ec = m_chn->recv ((char *)&ack_sp, len);

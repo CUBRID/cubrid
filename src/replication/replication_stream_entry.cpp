@@ -35,16 +35,12 @@ namespace cubreplication
 {
 
   const char *
-  stream_entry_header::tran_state_string (stream_entry_header::TRAN_STATE state)
+  stream_entry_header::type_string (stream_entry_header::TYPE stream_entry_header_type)
   {
-    switch (state)
+    switch (stream_entry_header_type)
       {
       case ACTIVE:
 	return "ACTIVE";
-      case COMMITTED:
-	return "COMMITTED";
-      case ABORTED:
-	return "ABORTED";
       case GROUP_COMMIT:
 	return "GROUP_COMMIT";
       default:
@@ -57,7 +53,7 @@ namespace cubreplication
   stream_entry::stringify (string_buffer &sb, const string_dump_mode mode)
   {
     sb ("HEADER : MVCCID:%lld | tran_state:%s | repl_entries_cnt:%d | data_size:%d | data_start_pos:%lld | %p\n",
-	m_header.mvccid, stream_entry_header::tran_state_string (m_header.tran_state),
+	m_header.mvccid, stream_entry_header::type_string (m_header.type),
 	m_header.count_replication_entries, m_header.data_size, m_data_start_position, this);
 
     if (mode == detailed_dump)
@@ -117,8 +113,8 @@ namespace cubreplication
     assert ((m_header.count_replication_entries & stream_entry_header::COUNT_VALUE_MASK)
 	    == m_header.count_replication_entries);
 
-    state_flags = m_header.tran_state;
-    state_flags = state_flags << (32 - stream_entry_header::STATE_BITS);
+    state_flags = m_header.type;
+    state_flags = state_flags << (32 - stream_entry_header::TYPE_BITS);
 
     count_and_flags = m_header.count_replication_entries | state_flags;
 
@@ -133,7 +129,7 @@ namespace cubreplication
   {
     cubpacking::unpacker *serializator = get_unpacker ();
     unsigned int count_and_flags;
-    unsigned int state_flags;
+    unsigned int type_flags;
 
     if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
       {
@@ -148,8 +144,8 @@ namespace cubreplication
     serializator->unpack_bigint (m_header.mvccid);
     serializator->unpack_int (reinterpret_cast<int &> (count_and_flags)); // is this safe?s
 
-    state_flags = (count_and_flags & stream_entry_header::STATE_MASK) >> (32 - stream_entry_header::STATE_BITS);
-    m_header.tran_state = (stream_entry_header::TRAN_STATE) state_flags;
+    type_flags = (count_and_flags & stream_entry_header::TYPE_MASK) >> (32 - stream_entry_header::TYPE_BITS);
+    m_header.type = (stream_entry_header::TYPE) type_flags;
 
     m_header.count_replication_entries = count_and_flags & stream_entry_header::COUNT_VALUE_MASK;
     serializator->unpack_int (m_header.data_size);
@@ -177,7 +173,7 @@ namespace cubreplication
     if (m_header.prev_record != other_t->m_header.prev_record
 	|| m_header.mvccid != other_t->m_header.mvccid
 	|| m_header.data_size != other_t->m_header.data_size
-	|| m_header.tran_state != other_t->m_header.tran_state
+	|| m_header.type != other_t->m_header.type
 	|| m_header.count_replication_entries != other_t->m_header.count_replication_entries
 	|| m_packable_entries.size () != other_t->m_packable_entries.size ())
       {

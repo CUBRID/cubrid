@@ -125,6 +125,7 @@ namespace cubreplication
 
   void repl_gc_info::pack (cubpacking::packer &serializator) const
   {
+    serializator.pack_int (repl_gc_info::PACKING_ID);
     serializator.pack_to_int (m_gc_trans.size ());
     for (const tran_info &t : m_gc_trans)
       {
@@ -139,7 +140,10 @@ namespace cubreplication
 
   void repl_gc_info::unpack (cubpacking::unpacker &deserializator)
   {
+    int entry_type_not_used;
     size_t gc_trans_sz;
+
+    deserializator.unpack_int (entry_type_not_used);
     deserializator.unpack_from_int (gc_trans_sz);
     m_gc_trans.resize (gc_trans_sz);
     for (size_t i = 0; i < gc_trans_sz; ++i)
@@ -155,6 +159,9 @@ namespace cubreplication
   std::size_t repl_gc_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
     std::size_t entry_size = start_offset;
+
+    entry_size += serializator.get_packed_int_size (0);
+
     entry_size += serializator.get_packed_int_vector_size (start_offset, m_gc_trans.size ());
     entry_size += DB_ALIGN (entry_size, MAX_ALIGNMENT) - entry_size;
     entry_size += OR_BIGINT_SIZE * m_gc_trans.size ();

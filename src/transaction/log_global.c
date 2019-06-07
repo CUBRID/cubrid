@@ -71,7 +71,7 @@ log_global::log_global ()
                 , PTHREAD_MUTEX_INITIALIZER
 #endif /* SERVER_MODE */
      }
-  , flush_notify_info LOG_FLUSH_NOTIFY_INFO_INITIALIZER
+  , flush_notify_info ()
   , m_tran_complete_mgr (NULL)    // to be instantiated on boot
   // todo: m_ack_stream_position is temporary initialized as max value; fix when m_ack_stream_position is mature
   , m_ack_stream_position (std::numeric_limits<cubstream::stream_position>::max ())

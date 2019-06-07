@@ -44,14 +44,6 @@ namespace cubreplication
   }
 
   void
-  log_generator::set_tran_repl_info (stream_entry_header::TRAN_STATE state)
-  {
-    assert (m_has_stream);
-    assert (MVCCID_IS_VALID (m_stream_entry.get_mvccid ()));
-    m_stream_entry.set_state (state);
-  }
-
-  void
   log_generator::add_statement (repl_info_sbr &stmt_info)
   {
     LOG_LSA *p_lsa;
@@ -321,12 +313,18 @@ namespace cubreplication
   }
 
   void
-  log_generator::pack_group_commit_entry (cubstream::stream_position &stream_start_pos,
+  log_generator::pack_group_commit_entry (const tx_group &group,
+					  cubstream::stream_position &stream_start_pos,
 					  cubstream::stream_position &stream_end_pos)
   {
     /* use non-NULL MVCCID to prevent assertion fail on stream packer */
     static stream_entry gc_stream_entry (s_stream, MVCCID_FIRST, stream_entry_header::GROUP_COMMIT);
+
+    repl_gc_info gc_entry (group);
+    gc_stream_entry.add_packable_entry (&gc_entry);
     gc_stream_entry.pack ();
+    gc_stream_entry.reset ();
+
     stream_start_pos = gc_stream_entry.get_stream_entry_start_position ();
     stream_end_pos = gc_stream_entry.get_stream_entry_end_position ();
   }
@@ -368,7 +366,7 @@ namespace cubreplication
   }
 
   void
-  log_generator::on_transaction_finish (stream_entry_header::TRAN_STATE state)
+  log_generator::on_transaction_finish ()
   {
     if (is_replication_disabled () || !MVCCID_IS_VALID (m_stream_entry.get_mvccid ()))
       {
@@ -384,7 +382,6 @@ namespace cubreplication
       }
 #endif
 
-    set_tran_repl_info (state);
     pack_stream_entry ();
   }
 
@@ -392,7 +389,7 @@ namespace cubreplication
   log_generator::on_transaction_commit (void)
   {
     assert (m_pending_to_be_added.size () == 0);
-    on_transaction_finish (stream_entry_header::TRAN_STATE::COMMITTED);
+    on_transaction_finish ();
   }
 
   void log_generator::on_sysop_commit (LOG_LSA &start_lsa)
@@ -432,7 +429,7 @@ namespace cubreplication
   void
   log_generator::on_transaction_abort (void)
   {
-    on_transaction_finish (stream_entry_header::TRAN_STATE::ABORTED);
+    on_transaction_finish ();
   }
 
   void

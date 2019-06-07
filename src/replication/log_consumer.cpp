@@ -56,7 +56,7 @@ namespace cubreplication
 	int err = m_lc.fetch_stream_entry (se);
 	if (err == NO_ERROR)
 	  {
-	    if (se->is_group_commit())
+	    if (se->is_group_commit ())
 	      {
 		se->unpack ();
 		assert (se->get_stream_entry_end_position () > se->get_stream_entry_start_position ());
@@ -119,22 +119,6 @@ namespace cubreplication
 	m_repl_stream_entries.push_back (repl_stream_entry);
       }
 
-      bool has_commit (void)
-      {
-	assert (get_entries_cnt () > 0);
-	stream_entry *se = m_repl_stream_entries.back ();
-
-	return se->is_tran_commit ();
-      }
-
-      bool has_abort (void)
-      {
-	assert (get_entries_cnt () > 0);
-	stream_entry *se = m_repl_stream_entries.back ();
-
-	return se->is_tran_abort ();
-      }
-
       size_t get_entries_cnt (void)
       {
 	return m_repl_stream_entries.size ();
@@ -194,11 +178,17 @@ namespace cubreplication
 	    /* TODO[replication] : on-the-fly applier & multi-threaded applier */
 	    if (se->is_group_commit ())
 	      {
-		assert (se->get_data_packed_size () == 0);
+		applier_worker_task *my_repl_applier_worker_task;
+		const repl_gc_info *gc_entry;
+		tx_group transactions_group;
+		TRAN_STATE tran_state;
 
-		/* wait for all started tasks to finish */
-		er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task wait for all working tasks to finish\n");
+		assert (se->count_entries () == 1);
 		assert (se->get_stream_entry_start_position () < se->get_stream_entry_end_position ());
+		gc_entry = dynamic_cast <const repl_gc_info *> (se->get_object_at (0));
+		transactions_group = gc_entry->as_tx_group ();
+
+		er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task wait for all working tasks to finish\n");
 
 		m_prev_group_stream_position = m_curr_group_stream_position;
 		m_curr_group_stream_position = se->get_stream_entry_start_position ();
@@ -207,23 +197,33 @@ namespace cubreplication
 		m_p_dispatch_consumer->wait_for_complete_stream_position (m_prev_group_stream_position);
 
 		count_expected_transaction = 0;
-		for (tasks_map::iterator it = repl_tasks.begin ();
-		     it != repl_tasks.end ();
-		     it++)
+		for (tasks_map::iterator it = repl_tasks.begin (); it != repl_tasks.end (); it++)
 		  {
+		    tran_state = TRAN_ACTIVE;
+		    /* Get transaction state. Would be better to include it in a method in tx_group. */
+		    for (const tx_group::node_info &transaction_info : transactions_group.get_container ())
+		      {
+			if (transaction_info.m_mvccid == it->first)
+			  {
+			    tran_state = transaction_info.m_tran_state;
+			    break;
+			  }
+		      }
+
 		    /* check last stream entry of task */
-		    applier_worker_task *my_repl_applier_worker_task = it->second;
-		    if (my_repl_applier_worker_task->has_commit ())
+		    my_repl_applier_worker_task = it->second;
+
+		    /* We don't need to check all commit/abort states, but is not wrong. */
+		    if (LOG_ISTRAN_STATE_COMMIT (tran_state))
 		      {
 			m_lc.execute_task (it->second);
 			count_expected_transaction++;
 		      }
-		    else if (my_repl_applier_worker_task->has_abort ())
+		    else if (LOG_ISTRAN_STATE_ABORT (tran_state))
 		      {
 			/* TODO[replication] : when on-fly apply is active, we need to abort the transaction;
 			 * for now, we are sure that no change has been made on slave on behalf of this task,
 			 * just drop the task */
-			count_expected_transaction++;
 		      }
 		    else
 		      {

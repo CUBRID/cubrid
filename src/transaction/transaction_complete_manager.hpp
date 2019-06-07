@@ -38,6 +38,7 @@ namespace cubtx
     public:
       using id_type = std::uint64_t;
 
+      static const id_type NULL_ID = 0;
       virtual ~complete_manager () = 0;
 
       virtual id_type register_transaction (int tran_index, MVCCID mvccid, TRAN_STATE state) = 0;
