@@ -320,8 +320,8 @@ namespace cubreplication
     /* use non-NULL MVCCID to prevent assertion fail on stream packer */
     static stream_entry gc_stream_entry (s_stream, MVCCID_FIRST, stream_entry_header::GROUP_COMMIT);
 
-    repl_gc_info gc_entry (group);
-    gc_stream_entry.add_packable_entry (&gc_entry);
+    repl_gc_info * gc_entry = new repl_gc_info (group);
+    gc_stream_entry.add_packable_entry (gc_entry);
     gc_stream_entry.pack ();
     gc_stream_entry.reset ();
 
