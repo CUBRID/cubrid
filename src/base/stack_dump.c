@@ -509,5 +509,8 @@ er_dump_call_stack_to_string (void)
 {
   string_print_output output;
   er_dump_call_stack_internal (output);
-  return strdup (output.get_buffer ());
+  char *ptr = strdup (output.get_buffer ());
+  output.clear ();
+
+  return ptr;
 }
