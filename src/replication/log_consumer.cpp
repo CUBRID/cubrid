@@ -52,16 +52,17 @@ namespace cubreplication
       void execute (cubthread::entry &thread_ref) override
       {
 	stream_entry *se = NULL;
-
 	int err = m_lc.fetch_stream_entry (se);
+
 	if (err == NO_ERROR)
 	  {
-	    if (se->is_group_commit())
+	    if (se->is_group_commit ())
 	      {
 		se->unpack ();
 		assert (se->get_stream_entry_end_position () > se->get_stream_entry_start_position ());
 		m_lc.get_ctrl_chn ()->send_ack (se->get_stream_entry_end_position ());
 	      }
+
 	    m_lc.push_entry (se);
 	  }
       };
@@ -168,7 +169,7 @@ namespace cubreplication
       void execute (cubthread::entry &thread_ref) override
       {
 	stream_entry *se = NULL;
-	using tasks_map = std::unordered_map <MVCCID, applier_worker_task *>;
+	using tasks_map = std::unordered_map<MVCCID, applier_worker_task *>;
 	tasks_map repl_tasks;
 	tasks_map nonexecutable_repl_tasks;
 	int count_expected_transaction;
@@ -203,7 +204,8 @@ namespace cubreplication
 		m_prev_group_stream_position = m_curr_group_stream_position;
 		m_curr_group_stream_position = se->get_stream_entry_start_position ();
 
-		/* We need to wait for previous group to complete. Otherwise, we mix transactions from previous and current groups. */
+		// We need to wait for previous group to complete. Otherwise, we mix transactions from previous and
+		// current groups.
 		m_p_dispatch_consumer->wait_for_complete_stream_position (m_prev_group_stream_position);
 
 		count_expected_transaction = 0;
@@ -232,7 +234,9 @@ namespace cubreplication
 			nonexecutable_repl_tasks.insert (std::make_pair (it->first, it->second));
 		      }
 		  }
+
 		repl_tasks.clear ();
+
 		if (nonexecutable_repl_tasks.size () > 0)
 		  {
 		    repl_tasks = nonexecutable_repl_tasks;
@@ -243,10 +247,11 @@ namespace cubreplication
 		assert (se->is_group_commit ());
 		delete se;
 
-		/* The transactions started but can't complete yet since it waits for the current group complete. But the current group
-		 * can't complete, since GC thread is waiting for close info. Now is safe to set close info.
-		 */
-		m_p_dispatch_consumer->set_close_info_for_current_group (m_curr_group_stream_position, count_expected_transaction);
+		// The transactions started but can't complete yet since it waits for the current group complete.
+		// But the current group can't complete, since GC thread is waiting for close info.
+		// Now is safe to set close info.
+		m_p_dispatch_consumer->set_close_info_for_current_group (m_curr_group_stream_position,
+		    count_expected_transaction);
 	      }
 	    else
 	      {
@@ -317,7 +322,7 @@ namespace cubreplication
     if (m_stream_entries.empty ())
       {
 	m_apply_task_ready = false;
-	m_apply_task_cv.wait (ulock, [this] { return m_is_stopped || m_apply_task_ready;});
+	m_apply_task_cv.wait (ulock, [this] { return m_is_stopped || m_apply_task_ready; } );
       }
 
     if (m_is_stopped)
