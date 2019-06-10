@@ -27,11 +27,13 @@
 
 #ident "$Id$"
 
+class print_output;
 #if defined(LINUX)
 #include "memory_hash.h"
 extern MHT_TABLE *fname_table;
 #endif
 
 extern void er_dump_call_stack (FILE * outfp);
+extern void er_dump_call_stack (std::string & str_output);
 
 #endif /* _STACK_DUMP_H_ */

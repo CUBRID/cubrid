@@ -81,6 +81,9 @@
 #endif /* defined (SA_MODE) */
 #include "db_value_printer.hpp"
 #include "mem_block.hpp"
+#if !defined (NDEBUG)
+#include "stack_dump.h"
+#endif /* NDEBUG */
 #include "string_buffer.hpp"
 #include "boot_sr.h"
 #include "thread_daemon.hpp"
@@ -3558,6 +3561,9 @@ log_sysop_start (THREAD_ENTRY * thread_p)
   /* NOTE if tdes->topops.last >= 0, there is an already defined top system operation. */
   tdes->topops.last++;
   LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa, &tdes->tail_lsa);
+#if !defined (NDEBUG)
+  er_dump_call_stack (tdes->topops.stack[tdes->topops.last].exec_stack);
+#endif
   LSA_COPY (&tdes->topop_lsa, &tdes->tail_lsa);
 
   LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].posp_lsa);
