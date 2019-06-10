@@ -253,6 +253,10 @@ namespace cubreplication
 		m_p_dispatch_consumer->set_close_info_for_current_group (m_curr_group_stream_position,
 		    count_expected_transaction);
 	      }
+	    else if (se->is_new_master ())
+	      {
+		repl_tasks.clear ();
+	      }
 	    else
 	      {
 		MVCCID mvccid = se->get_mvccid ();

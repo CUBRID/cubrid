@@ -47,7 +47,7 @@ namespace cubstream
       void execute () override
       {
 	css_error_code rc = NO_ERRORS;
-	std::size_t max_len = cubcomm::MTU, recv_len;
+	std::size_t max_len = DB_ALIGN_BELOW (cubcomm::MTU, MAX_ALIGNMENT), recv_len;
 
 	if (m_first_loop)
 	  {
