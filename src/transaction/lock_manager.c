@@ -1866,7 +1866,7 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
   int *wait_for = wait_for_buf, *t;
   LK_ENTRY *entry;
   LK_RES *res_ptr = NULL;
-  int unit_size = LOG_USERNAME_MAX + MAXHOSTNAMELEN + PATH_MAX + 20 + 4;
+  int unit_size = LOG_USERNAME_MAX + CUB_MAXHOSTNAMELEN + PATH_MAX + 20 + 4;
   char *ptr;
   int rv;
   bool is_classname_alloced = false;
@@ -4852,7 +4852,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
   char *cycle_info_string;
   char *ptr;
   int num_tran_in_cycle;
-  int unit_size = LOG_USERNAME_MAX + MAXHOSTNAMELEN + PATH_MAX + 10;
+  int unit_size = LOG_USERNAME_MAX + CUB_MAXHOSTNAMELEN + PATH_MAX + 10;
   const char *client_prog_name, *client_user_name, *client_host_name;
   int client_pid;
   int next_node;

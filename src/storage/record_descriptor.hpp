@@ -26,8 +26,11 @@
 
 #include "mem_block.hpp"
 #include "memory_alloc.h"
+#include "memory_private_allocator.hpp"
 #include "packable_object.hpp"
 #include "storage_common.h"
+
+#include <cinttypes>
 
 // forward definitions
 namespace cubthread
@@ -62,7 +65,7 @@ class record_descriptor : public cubpacking::packable_object
     // constructors
 
     // default
-    record_descriptor (void);
+    record_descriptor (const cubmem::block_allocator &alloc = cubmem::PRIVATE_BLOCK_ALLOCATOR);
     ~record_descriptor (void);
 
     // based on an buffers
@@ -71,7 +74,9 @@ class record_descriptor : public cubpacking::packable_object
     record_descriptor (const char *data, size_t size);
 
     // based on recdes
-    record_descriptor (const recdes &rec);
+    record_descriptor (const recdes &rec, const cubmem::block_allocator &alloc = cubmem::PRIVATE_BLOCK_ALLOCATOR);
+
+    record_descriptor (record_descriptor &&other);
 
     // peek record from page; changes into record data will not be permitted
     int peek (cubthread::entry *thread_p, PAGE_PTR page, PGSLOTID slotid);
@@ -94,6 +99,9 @@ class record_descriptor : public cubpacking::packable_object
     template <typename T>
     void set_data_to_object (const T &t);               // set record data to object
 
+    void set_record_length (size_t length);
+    void set_type (std::int16_t type);
+
     //
     // manipulate record data
     //
@@ -114,13 +122,23 @@ class record_descriptor : public cubpacking::packable_object
     void unpack (cubpacking::unpacker &unpacker) override;
     std::size_t get_packed_size (cubpacking::packer &packer) const override;
 
-  private:
+    //
+    // manipulate record memory buffer
+    //
 
-    // resize record buffer; copy_data is true if existing data must be preserved
-    void resize (cubthread::entry *thread_p, std::size_t size, bool copy_data);
+    // resize record buffer
+    void resize_buffer (std::size_t size);
+    // set external buffer; record type is set to new automatically
+    void set_external_buffer (char *buf, size_t buf_size);
+    template <size_t S>
+    void set_external_buffer (cubmem::stack_block<S> &membuf);
+    void release_buffer (char *&data, size_t &size);
+
+  private:
 
     // debug function to check if data changes are permitted; e.g. changes into peeked records are not permitted
     void check_changes_are_permitted (void) const;
+    bool is_mutable () const;
 
     void update_source_after_get (record_get_mode mode);
 
@@ -135,7 +153,7 @@ class record_descriptor : public cubpacking::packable_object
     };
 
     recdes m_recdes;                  // underlaying recdes
-    char *m_own_data;                 // non-nil value if record descriptor is owner of data buffer; is freed on
+    cubmem::extensible_block m_own_data;
     // destruction
     data_source m_data_source;        // source of record data
 };
@@ -145,13 +163,12 @@ class record_descriptor : public cubpacking::packable_object
 //////////////////////////////////////////////////////////////////////////
 
 template <size_t S>
-record_descriptor::record_descriptor (cubmem::stack_block<S> &membuf)
+void
+record_descriptor::set_external_buffer (cubmem::stack_block<S> &membuf)
 {
+  m_own_data.freemem ();
   m_recdes.area_size = membuf.SIZE;
-  m_recdes.length = 0;
-  m_recdes.type = REC_HOME;
   m_recdes.data = membuf.get_ptr ();
-  m_own_data = NULL;
   m_data_source = data_source::NEW;
 }
 

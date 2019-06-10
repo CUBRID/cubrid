@@ -103,7 +103,7 @@ unsigned short method_request_id;
 #endif /* CS_MODE */
 
 /* Contains the name of the current sever host machine.  */
-static char net_Server_host[MAXHOSTNAMELEN + 1] = "";
+static char net_Server_host[CUB_MAXHOSTNAMELEN + 1] = "";
 
 /* Contains the name of the current server name. */
 static char net_Server_name[DB_MAX_IDENTIFIER_LENGTH + 1] = "";
@@ -3776,9 +3776,9 @@ net_client_ping_server_with_handshake (int client_type, bool check_capabilities,
   const char *client_release;
   char *server_release, *server_host, *server_handshake, *ptr;
   int error = NO_ERROR;
-  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + (OR_INT_SIZE * 2) + MAXHOSTNAMELEN) a_request;
+  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + (OR_INT_SIZE * 2) + CUB_MAXHOSTNAMELEN) a_request;
   char *request = OR_ALIGNED_BUF_START (a_request);
-  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + (OR_INT_SIZE * 3) + MAXHOSTNAMELEN) a_reply;
+  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + (OR_INT_SIZE * 3) + CUB_MAXHOSTNAMELEN) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply), *reply_ptr;
   int reply_size = OR_ALIGNED_BUF_SIZE (a_reply);
   int eid, request_size, server_capabilities, server_bit_platform;
@@ -3926,7 +3926,7 @@ net_client_init (const char *dbname, const char *hostname)
    * things to the system console */
 
   /* set our host/server names for further css communication */
-  if (hostname != NULL && strlen (hostname) <= MAXHOSTNAMELEN)
+  if (hostname != NULL && strlen (hostname) <= CUB_MAXHOSTNAMELEN)
     {
       strcpy (net_Server_host, hostname);
       if (dbname != NULL && strlen (dbname) <= DB_MAX_IDENTIFIER_LENGTH)

@@ -666,7 +666,7 @@ void
 mvcc_snapshot::copy_to (mvcc_snapshot & dest) const
 {
   dest.m_active_mvccs.initialize ();
-  m_active_mvccs.copy_to (dest.m_active_mvccs);
+  m_active_mvccs.copy_to (dest.m_active_mvccs, mvcc_active_tran::copy_safety::THREAD_SAFE);
 
   dest.lowest_active_mvccid = lowest_active_mvccid;
   dest.highest_completed_mvccid = highest_completed_mvccid;
@@ -678,10 +678,7 @@ mvcc_info::mvcc_info ()
   : snapshot ()
   , id (MVCCID_NULL)
   , recent_snapshot_lowest_active_mvccid (MVCCID_NULL)
-  , sub_ids (NULL)
-  , max_sub_ids (0)
-  , count_sub_ids (0)
-  , is_sub_active (false)
+  , sub_ids ()
 {
 }
 
@@ -697,7 +694,6 @@ mvcc_info::reset ()
   snapshot.reset ();
   id = MVCCID_NULL;
   recent_snapshot_lowest_active_mvccid = MVCCID_NULL;
-  count_sub_ids = 0;
-  is_sub_active = false;
+  sub_ids.clear ();
 }
 // *INDENT-ON*

@@ -78,7 +78,7 @@ void (*prev_sigfpe_handler) (int) = SIG_DFL;
 typedef struct db_host_status DB_HOST_STATUS;
 struct db_host_status
 {
-  char hostname[MAXHOSTNAMELEN];
+  char hostname[CUB_MAXHOSTNAMELEN];
   int status;
 };
 
@@ -1932,10 +1932,10 @@ db_get_user_and_host_name (void)
 {
   char *user = NULL;
   char *username = NULL;
-  char hostname[MAXHOSTNAMELEN];
+  char hostname[CUB_MAXHOSTNAMELEN];
   int len;
 
-  if (GETHOSTNAME (hostname, MAXHOSTNAMELEN) != 0)
+  if (GETHOSTNAME (hostname, CUB_MAXHOSTNAMELEN) != 0)
     {
       return NULL;
     }
