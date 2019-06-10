@@ -3564,7 +3564,7 @@ log_sysop_start (THREAD_ENTRY * thread_p)
 #if !defined (NDEBUG)
   if (prm_get_bool_value (PRM_ID_DEBUG_SYSOP))
     {
-      er_dump_call_stack (tdes->topops.stack[tdes->topops.last].exec_stack);
+      er_dump_call_stack_to_string (tdes->topops.stack[tdes->topops.last].exec_stack);
     }
 #endif
   LSA_COPY (&tdes->topop_lsa, &tdes->tail_lsa);

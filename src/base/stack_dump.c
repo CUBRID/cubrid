@@ -505,7 +505,7 @@ er_dump_call_stack (FILE * outfp)
 }
 
 void
-er_dump_call_stack (std::string & str_output)
+er_dump_call_stack_to_string (std::string & str_output)
 {
   string_print_output output;
   er_dump_call_stack_internal (output);
