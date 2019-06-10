@@ -50,7 +50,7 @@ namespace cubtx
   {
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
     slave_group_complete_manager * p_gl_slave_group = get_instance ();
-    p_gl_slave_group->m_latest_group_id = 0;
+    p_gl_slave_group->m_latest_group_id = NULL_ID;
     p_gl_slave_group->m_latest_group_stream_positon = 0;
     p_gl_slave_group->m_has_latest_group_close_info = false;
 

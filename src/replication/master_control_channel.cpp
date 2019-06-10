@@ -57,8 +57,7 @@ namespace cubreplication
   void ack_reader_task::execute (cubthread::entry &thread_ref)
   {
     while (true)
-      {
-	/* TODO - consider stop */
+      {       
 	if (!m_chn->is_connection_alive ())
 	  {
 	    return;

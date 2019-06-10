@@ -41,32 +41,30 @@ namespace cubreplication
   {
     typedef enum
     {
-      UNDEFINED = 0,
-      ACTIVE,
-      COMMITTED,
-      ABORTED,
-      GROUP_COMMIT
-    } TRAN_STATE;
+      UNDEFINED = 0x0,
+      ACTIVE = 0x01,
+      GROUP_COMMIT = 0x02
+    } TYPE;
 
-    const static unsigned STATE_BITS = 3;
+    const static unsigned TYPE_BITS = 2;
 
-    const static unsigned int STATE_MASK = 0xe0000000;
+    const static unsigned int TYPE_MASK = 0xc0000000;
 
-    const static unsigned int COUNT_VALUE_MASK = ~ (STATE_MASK);
+    const static unsigned int COUNT_VALUE_MASK = ~ (TYPE_MASK);
 
     cubstream::stream_position prev_record;
     MVCCID mvccid;
     unsigned int count_replication_entries;
     int data_size;
 
-    TRAN_STATE tran_state;
+    TYPE type;
 
     stream_entry_header ()
       : prev_record (0),
 	mvccid (MVCCID_NULL),
 	count_replication_entries (0),
 	data_size (0),
-	tran_state (UNDEFINED)
+	type (UNDEFINED)
     {
     };
 
@@ -82,7 +80,7 @@ namespace cubreplication
       return header_size;
     }
 
-    static const char *tran_state_string (TRAN_STATE state);
+    static const char *type_string (TYPE stream_entry_header_type);
   };
 
   class stream_entry : public cubstream::entry<replication_object>
@@ -113,13 +111,13 @@ namespace cubreplication
 
       stream_entry (cubstream::multi_thread_stream *stream_p,
 		    MVCCID arg_mvccid,
-		    stream_entry_header::TRAN_STATE state)
+		    stream_entry_header::TYPE strem_entry_header_type)
 	: entry (stream_p)
 	, m_serializator ()
 	, m_deserializator ()
       {
 	m_header.mvccid = arg_mvccid;
-	m_header.tran_state = state;
+	m_header.type = strem_entry_header_type;
       };
 
       size_t get_packed_header_size () override
@@ -152,30 +150,20 @@ namespace cubreplication
 	return m_header.mvccid;
       }
 
-      void set_state (stream_entry_header::TRAN_STATE state)
+      void set_state (stream_entry_header::TYPE strem_entry_header_type)
       {
-	m_header.tran_state = state;
+	m_header.type = strem_entry_header_type;
       }
 
       bool is_group_commit (void)
       {
-	return m_header.tran_state == stream_entry_header::GROUP_COMMIT;
-      }
-
-      bool is_tran_commit (void)
-      {
-	return m_header.tran_state == stream_entry_header::COMMITTED;
-      }
-
-      bool is_tran_abort (void)
-      {
-	return m_header.tran_state == stream_entry_header::ABORTED;
+	return m_header.type == stream_entry_header::GROUP_COMMIT;
       }
 
       bool is_tran_state_undefined (void)
       {
-	return m_header.tran_state < stream_entry_header::ACTIVE
-	       || m_header.tran_state > stream_entry_header::GROUP_COMMIT;
+	return m_header.type < stream_entry_header::ACTIVE
+	       || m_header.type > stream_entry_header::GROUP_COMMIT;
       }
 
       int pack_stream_entry_header ();

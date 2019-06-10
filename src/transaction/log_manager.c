@@ -83,6 +83,7 @@
 #include "db_value_printer.hpp"
 #include "mem_block.hpp"
 #include "replication_stream_entry.hpp"
+#include "serial.h"
 #include "string_buffer.hpp"
 #include "boot_sr.h"
 #include "thread_daemon.hpp"
@@ -188,8 +189,6 @@ extern INT32 vacuum_Global_oldest_active_blockers_counter;
 #define LOG_TDES_LAST_SYSOP_PARENT_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->lastparent_lsa)
 #define LOG_TDES_LAST_SYSOP_POSP_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->posp_lsa)
 
-#define TRAN_COMPLETE_NULL_ID 0
-
 #if defined (SERVER_MODE)
 /* Current time in milliseconds */
 // *INDENT-OFF*
@@ -243,9 +242,6 @@ static void log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * 
 static void log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * eot_lsa,
 					  LOG_RECTYPE iscommitted, enum LOG_PRIOR_LSA_LOCK with_lock);
-static void log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos,
-						tx_group & group, LOG_LSA * complete_start_lsa,
-						LOG_LSA * complete_end_lsa, bool * has_postpone);
 static void log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_commit_log_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_lsa);
@@ -336,6 +332,9 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
 static void log_update_global_unique_statistics (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+#if defined (SERVER_MODE)
+static void logtb_tran_update_serial_global_unique_stats (THREAD_ENTRY * thread_p);
+#endif
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
@@ -4452,9 +4451,9 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
   LSA_COPY (eot_lsa, &lsa);
 }
 
-static void
-log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, tx_group & group,
-				    LOG_LSA * complete_start_lsa, LOG_LSA * complete_end_lsa, bool * has_postpone)
+void
+log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, tx_group & group,
+			   LOG_LSA * complete_start_lsa, LOG_LSA * complete_end_lsa, bool * has_postpone)
 {
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa, end_lsa;
@@ -4474,14 +4473,14 @@ log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, IN
       assert (tdes != NULL);
       v.append (tdes->trid);
       v.append (ti.m_tran_state);
-      if (!LSA_ISNULL (&tdes->posp_nxlsa))
+      if (ti.m_tran_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
       {
 	v.append (tdes->posp_nxlsa);
         if (has_postpone)
         {
           *has_postpone = true;
         }
-    }
+      }
     }
   // *INDENT-ON*
 
@@ -4529,14 +4528,6 @@ log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, IN
     {
       LSA_COPY (complete_end_lsa, &end_lsa);
     }
-}
-
-void
-log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, tx_group & group,
-			   LOG_LSA * complete_start_lsa, LOG_LSA * complete_end_lsa, bool * has_postpone)
-{
-  log_append_group_complete_internal (thread_p, tdes, stream_pos, group, complete_start_lsa, complete_end_lsa,
-				      has_postpone);
 }
 
 /*
@@ -4765,7 +4756,8 @@ TRAN_STATE
 log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bool is_local_tran,
 		  cubtx::complete_manager::id_type * p_id_complete)
 {
-  cubtx::complete_manager::id_type id_complete = TRAN_COMPLETE_NULL_ID;
+  cubtx::complete_manager::id_type id_complete = cubtx::complete_manager::NULL_ID;
+  TRAN_STATE tran_state;
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, false);
 
   /* tx_lob_locator_clear and complete mvcc operations must be done before entering unactive state because
@@ -4801,9 +4793,18 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
        * Transaction updated data.
        */
 
+      if (LSA_ISNULL (&tdes->posp_nxlsa))
+	{
+	  tran_state = tdes->state;
+	}
+      else
+	{
+	  tran_state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+	}
+
       /* Pack replication entries, if the case, before creating group. */
       tdes->replication_log_generator.on_transaction_commit ();
-      id_complete = log_Gl.m_tran_complete_mgr->register_transaction (tdes->tran_index, tdes->mvccinfo.id, tdes->state);
+      id_complete = log_Gl.m_tran_complete_mgr->register_transaction (tdes->tran_index, tdes->mvccinfo.id, tran_state);
       if (MVCCID_IS_VALID (tdes->mvccinfo.id))
 	{
 	  log_Gl.m_tran_complete_mgr->complete_mvcc (id_complete);
@@ -4836,7 +4837,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 
       if (is_local_tran)
 	{
-	  assert (id_complete != TRAN_COMPLETE_NULL_ID);
+	  assert (id_complete != cubtx::complete_manager::NULL_ID);
 	  if (retain_lock != true)
 	    {
 	      /* Release the lock since MVCC is completed. Since the current transaction group is closed,
@@ -4845,11 +4846,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	      lock_unlock_all (thread_p);
 	    }
 
-	  if (LSA_ISNULL (&tdes->posp_nxlsa))
-	    {
-	      /* Wait for complete. */
-	      log_Gl.m_tran_complete_mgr->complete (id_complete);
-	    }
+	  /* Wait for complete. Probably not need to wait in case of postpone LSA. */
+	  log_Gl.m_tran_complete_mgr->complete (id_complete);
 
 	  log_Stat.commit_count++;
 	  tdes->state = TRAN_UNACTIVE_COMMITTED;
@@ -4925,7 +4923,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran,
 		 cubtx::complete_manager::id_type * p_id_complete)
 {
 
-  cubtx::complete_manager::id_type id_complete = TRAN_COMPLETE_NULL_ID;
+  cubtx::complete_manager::id_type id_complete = cubtx::complete_manager::NULL_ID;
 
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, true);
 
@@ -5406,7 +5404,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 	       * that the current transaction is part of a group and a log abort will be added.
 	       * No need to wait for log abort here.
 	       */
-	      assert (id_complete != TRAN_COMPLETE_NULL_ID);
+	      assert (id_complete != cubtx::complete_manager::NULL_ID);
 	      tdes->state = TRAN_UNACTIVE_ABORTED;
 	    }
 
@@ -10040,10 +10038,10 @@ class log_flush_daemon_task : public cubthread::entry_task
       /* Wakeup active transaction waiting for specific LSA - not waiting for group complete.
        * A better way will be to use another object that implements log_flush_lsa interface.
        */
-      pthread_mutex_lock (&log_Gl.flush_notify_info.mutex);
-      pthread_cond_broadcast (&log_Gl.flush_notify_info.cond);
+      std::unique_lock<std::mutex> ulock (log_Gl.flush_notify_info.m_mutex);
+      log_Gl.flush_notify_info.m_cond.notify_all ();      
       log_Flush_has_been_requested = false;
-      pthread_mutex_unlock (&log_Gl.flush_notify_info.mutex);
+      ulock.unlock ();
     }
 
 private:
@@ -10356,3 +10354,49 @@ LOG_CS_OWN_WRITE_MODE (THREAD_ENTRY * thread_p)
   return true;
 #endif // not server mode
 }
+
+#if defined (SERVER_MODE)
+/*
+* logtb_tran_update_serial_global_unique_stats () - update serial global unique statistics
+*
+*
+* return	    : error code or NO_ERROR
+* thread_p(in)	    : thread entry
+*
+* Note: this function must be called at the end of transaction (commit)
+*/
+void
+logtb_tran_update_serial_global_unique_stats (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  int error_code = NO_ERROR;
+  BTID serial_index_btid = BTID_INITIALIZER;
+  LOG_TRAN_BTID_UNIQUE_STATS *serial_unique_stats = NULL;
+
+  assert (tdes != NULL);
+
+  /* There is one unique index that can be modified with no MVCCID being generated: db_serial primary key. This
+   * could happen in a transaction that only does a create serial and commits. Next code makes sure serial
+   * index statistics are reflected. */
+
+  /* Get serial index BTID. */
+  serial_get_index_btid (&serial_index_btid);
+  assert (!BTID_IS_NULL (&serial_index_btid));
+
+  /* Get statistics for serial unique index. */
+  serial_unique_stats = logtb_tran_find_btid_stats (thread_p, &serial_index_btid, false);
+  if (serial_unique_stats != NULL)
+    {
+      /* Reflect serial unique statistics. */
+      if (logtb_update_global_unique_stats_by_delta (thread_p, &serial_index_btid,
+						     serial_unique_stats->tran_stats.num_oids,
+						     serial_unique_stats->tran_stats.num_nulls,
+						     serial_unique_stats->tran_stats.num_keys, true) != NO_ERROR)
+	{
+	  /* No errors are permitted here. */
+	  assert (false);
+	  /* Fall through to do everything we would do in case of no error. */
+	}
+    }
+}
+#endif

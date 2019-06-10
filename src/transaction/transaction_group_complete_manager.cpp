@@ -59,14 +59,8 @@ namespace cubtx
       {
 	if (is_latest_closed_group_mvcc_completed ())
 	  {
-	    /* Check again whether m_latest_closed_group_id has changed
-	     * We may resume from start if group change meanwhile, but is a rare case.
-	     */
-	    if (group_id == m_latest_closed_group_id)
-	      {
-		/* MVCC completed for group_id. No need to acquire mutex. */
-		return;
-	      }
+            /* Completed mvcc for group_id. No need to acquire mutex. */
+            assert (group_id <= m_latest_closed_group_id);
 	  }
       }
 
@@ -99,14 +93,9 @@ namespace cubtx
       {
 	if (is_latest_closed_group_logged ())
 	  {
-	    /* Check again whether m_latest_closed_group_id has changed
-	     * We may resume from start if group change meanwhile, but is a rare case.
-	     */
-	    if (group_id == m_latest_closed_group_id)
-	      {
-		/* Logging completed for group_id. No need to acquire mutex. */
-		return;
-	      }
+            assert (group_id <= m_latest_closed_group_id);
+            /* Logging completed for group_id. No need to acquire mutex. */
+            return;	      
 	  }
       }
 
@@ -145,12 +134,9 @@ namespace cubtx
       {
 	if (is_latest_closed_group_completed ())
 	  {
-	    /* Check again whether m_latest_closed_group_id has changed */
-	    if (group_id == m_latest_closed_group_id)
-	      {
-		/* Completed group_id. No need to acquire mutex. */
-		return;
-	      }
+            /* Group_id complete. No need to acquire mutex. */
+            assert (group_id <= m_latest_closed_group_id);
+            return;	   
 	  }
       }
 

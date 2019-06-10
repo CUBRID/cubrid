@@ -185,18 +185,24 @@ struct logwr_info;
 #define LOG_ISTRAN_ACTIVE(tdes) \
   ((tdes)->state == TRAN_ACTIVE && LOG_ISRESTARTED ())
 
+#define LOG_ISTRAN_STATE_COMMIT(state) \
+  ((state) == TRAN_UNACTIVE_COMMITTED \
+   || (state) == TRAN_UNACTIVE_WILL_COMMIT \
+   || (state) == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE \
+   || (state) == TRAN_UNACTIVE_2PC_COMMIT_DECISION \
+   || (state) == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
+
 #define LOG_ISTRAN_COMMITTED(tdes) \
-  ((tdes)->state == TRAN_UNACTIVE_COMMITTED \
-   || (tdes)->state == TRAN_UNACTIVE_WILL_COMMIT \
-   || (tdes)->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE \
-   || (tdes)->state == TRAN_UNACTIVE_2PC_COMMIT_DECISION \
-   || (tdes)->state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
+  (LOG_ISTRAN_STATE_COMMIT ((tdes)->state))
+
+#define LOG_ISTRAN_STATE_ABORT(state) \
+  ((state) == TRAN_UNACTIVE_ABORTED \
+     || (state) == TRAN_UNACTIVE_UNILATERALLY_ABORTED \
+     || (state) == TRAN_UNACTIVE_2PC_ABORT_DECISION \
+     || (state) == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
 
 #define LOG_ISTRAN_ABORTED(tdes) \
-  ((tdes)->state == TRAN_UNACTIVE_ABORTED \
-   || (tdes)->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED \
-   || (tdes)->state == TRAN_UNACTIVE_2PC_ABORT_DECISION \
-   || (tdes)->state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
+  (LOG_ISTRAN_STATE_ABORT ((tdes)->state))
 
 #define LOG_ISTRAN_LOOSE_ENDS(tdes) \
   ((tdes)->state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS \
@@ -326,12 +332,9 @@ struct log_flush_info
 typedef struct log_flush_notify_info LOG_FLUSH_NOTIFY_INFO;
 struct log_flush_notify_info
 {
-  pthread_mutex_t mutex;
-  pthread_cond_t cond;
+  std::mutex m_mutex;
+  std::condition_variable m_cond;
 };
-
-#define LOG_FLUSH_NOTIFY_INFO_INITIALIZER \
-  { PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER }
 
 typedef struct log_topops_addresses LOG_TOPOPS_ADDRESSES;
 struct log_topops_addresses
@@ -669,7 +672,7 @@ struct log_global
   LOG_FLUSH_NOTIFY_INFO flush_notify_info;
 
   // *INDENT-OFF*
-  cubtx::complete_manager * m_tran_complete_mgr;
+  cubtx::complete_manager *m_tran_complete_mgr;
   cubstream::stream_position m_ack_stream_position;
   // *INDENT-ON*
 
@@ -1041,9 +1044,6 @@ extern int logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, B
 extern int logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid);
 extern int logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p);
 extern int logtb_tran_update_all_global_unique_stats (THREAD_ENTRY * thread_p);
-#if defined (SERVER_MODE)
-extern void logtb_tran_update_serial_global_unique_stats (THREAD_ENTRY * thread_p);
-#endif
 
 extern int log_rv_undoredo_record_partial_changes (THREAD_ENTRY * thread_p, char *rcv_data, int rcv_data_length,
 						   RECDES * record, bool is_undo);
