@@ -61,6 +61,7 @@ namespace cubload
        */
       virtual int yylex (parser::semantic_type *yylval, parser::location_type *yylloc);
 
+#if defined (SERVER_MODE)
       /*
        * Lexer error function
        * @param msg a description of the lexer error.
@@ -74,6 +75,7 @@ namespace cubload
 	 */
 	m_error_handler.on_failure_with_line (LOADDB_MSG_LEX_ERROR);
       }
+#endif
 
     private:
       semantic_helper &m_semantic_helper;

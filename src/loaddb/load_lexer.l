@@ -26,6 +26,8 @@
 #include "load_driver.hpp"
 #include "load_grammar.hpp"
 #include "load_scanner.hpp"
+#include "error_manager.h"
+#include "error_code.h"
 
 #undef YY_DECL
 #define YY_DECL \
@@ -501,6 +503,10 @@ using token = cubload::parser::token;
     m_semantic_helper.append_char ('\0');
     // PRINT ("IDENTIFIER %s\n", qstr_Buf_p);
     yylval->string = m_semantic_helper.make_string_by_buffer ();
+	if (er_errid () != NO_ERROR)
+	{
+		YY_FATAL_ERROR (er_msg ());
+	}
     BEGIN INITIAL;
     return token::IDENTIFIER;
 }
@@ -513,6 +519,10 @@ using token = cubload::parser::token;
     m_semantic_helper.append_char ('\0');
     // PRINT ("IDENTIFIER %s\n", qstr_Buf_p);
     yylval->string = m_semantic_helper.make_string_by_buffer ();
+	if (er_errid () != NO_ERROR)
+	{
+		YY_FATAL_ERROR (er_msg ());
+	}
     BEGIN INITIAL;
     return token::IDENTIFIER;
 }
@@ -552,7 +562,11 @@ using token = cubload::parser::token;
 <DQS>\" {
     m_semantic_helper.append_char ('\0');
     // PRINT ("DQS_String_Body %s\n", qstr_Buf_p);
-    yylval->string = m_semantic_helper.make_string_by_buffer ();
+   yylval->string = m_semantic_helper.make_string_by_buffer ();
+	if (er_errid () != NO_ERROR)
+	{
+		YY_FATAL_ERROR (er_msg ());
+	}
     BEGIN INITIAL;
     return token::DQS_String_Body;
 }
@@ -572,6 +586,10 @@ using token = cubload::parser::token;
     m_semantic_helper.append_char ('\0');
     // PRINT ("String_Completion %s\n", qstr_Buf_p);
     yylval->string = m_semantic_helper.make_string_by_buffer ();
+	if (er_errid () != NO_ERROR)
+	{
+		YY_FATAL_ERROR (er_msg ());
+	}
     BEGIN INITIAL;
     return token::SQS_String_Body;
 }
@@ -580,6 +598,10 @@ using token = cubload::parser::token;
     m_semantic_helper.append_char ('\0');
     // PRINT ("String_Completion2 %s\n", qstr_Buf_p);
     yylval->string = m_semantic_helper.make_string_by_buffer ();
+	if (er_errid () != NO_ERROR)
+	{
+		YY_FATAL_ERROR (er_msg ());
+	}
     BEGIN INITIAL;
     return token::SQS_String_Body;
 }
