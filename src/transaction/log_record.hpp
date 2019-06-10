@@ -246,6 +246,7 @@ struct log_rec_group_complete
 {
   INT64 at_time;		/* time recorded by active server */
   cubstream::stream_position stream_pos;
+  cubstream::stream_position last_ack_stream_position;
   size_t redo_size;
 };
 
@@ -322,9 +323,7 @@ struct log_rec_sysop_end
       bool is_sysop_postpone;	/* true if run postpone is used during a system op postpone, false if used during
 				 * transaction postpone */
     } run_postpone;		/* run postpone info */
-    // *INDENT-OFF*
     cubstream::stream_position repl_stream_position;
-    // *INDENT-ON*
   };
 };
 
@@ -352,6 +351,7 @@ struct log_rec_chkpt
   LOG_LSA redo_lsa;		/* Oldest LSA of dirty data page in page buffers */
   int ntrans;			/* Number of active transactions */
   int ntops;			/* Total number of system operations */
+  cubstream::stream_position last_ack_stream_position; /* ack stream position */
 };
 
 /* Transaction descriptor */

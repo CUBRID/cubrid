@@ -25,6 +25,8 @@
 #include "thread_manager.hpp"
 #include "transaction_master_group_complete_manager.hpp"
 
+#include <algorithm>
+
 namespace cubtx
 {
   master_group_complete_manager::~master_group_complete_manager ()
@@ -77,6 +79,10 @@ namespace cubtx
   //
   void master_group_complete_manager::notify_stream_ack (const cubstream::stream_position stream_pos)
   {
+    std::lock_guard<std::mutex> lg (m_ack_mtx);
+    // for quorum: postpone assignment
+    log_Gl.m_ack_stream_position = std::max (log_Gl.m_ack_stream_position, stream_pos);
+
     /* TODO - disable it temporary since it is not tested */
     return;
 
