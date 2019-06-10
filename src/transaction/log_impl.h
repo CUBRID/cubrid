@@ -341,7 +341,7 @@ struct log_topops_addresses
   LOG_LSA posp_lsa;		/* The first address of a postpone log record for top system operation. We add this
 				 * since it is reset during recovery to the last reference postpone address. */
 #if !defined(NDEBUG)
-    std::string exec_stack;
+  char *exec_stack;
 #endif
 };
 

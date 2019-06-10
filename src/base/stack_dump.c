@@ -504,10 +504,10 @@ er_dump_call_stack (FILE * outfp)
   er_dump_call_stack_internal (output);
 }
 
-void
-er_dump_call_stack_to_string (std::string & str_output)
+char *
+er_dump_call_stack_to_string (void)
 {
   string_print_output output;
   er_dump_call_stack_internal (output);
-  str_output = output.get_buffer ();
+  return strdup (output.get_buffer ());
 }
