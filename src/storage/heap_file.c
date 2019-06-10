@@ -24741,7 +24741,7 @@ heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, PGBUF_
 int
 heap_nonheader_page_capacity ()
 {
-  return spage_get_default_size () - sizeof (SPAGE_HEADER) - sizeof (HEAP_CHAIN);
+  return spage_max_record_size () - sizeof (HEAP_CHAIN);
 }
 
 // *INDENT-ON*
