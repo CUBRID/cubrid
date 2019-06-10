@@ -3562,7 +3562,10 @@ log_sysop_start (THREAD_ENTRY * thread_p)
   tdes->topops.last++;
   LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa, &tdes->tail_lsa);
 #if !defined (NDEBUG)
-  er_dump_call_stack (tdes->topops.stack[tdes->topops.last].exec_stack);
+  if (prm_get_bool_value (PRM_ID_DEBUG_SYSOP))
+    {
+      er_dump_call_stack (tdes->topops.stack[tdes->topops.last].exec_stack);
+    }
 #endif
   LSA_COPY (&tdes->topop_lsa, &tdes->tail_lsa);
 

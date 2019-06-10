@@ -434,9 +434,10 @@ enum param_id
   PRM_ID_LOG_CHKPT_DETAILED,
   PRM_ID_IB_TASK_MEMSIZE,
   PRM_ID_STATS_ON,
+  PRM_ID_DEBUG_SYSOP,
 
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_STATS_ON
+  PRM_LAST_ID = PRM_ID_DEBUG_SYSOP
 };
 typedef enum param_id PARAM_ID;
 
