@@ -53,7 +53,7 @@ namespace cubtx
     LSA_SET_NULL (&p_gl_single_node_group->m_latest_closed_group_start_log_lsa);
     LSA_SET_NULL (&p_gl_single_node_group->m_latest_closed_group_end_log_lsa);
 
-#if defined(SERVER_MODE)
+#if defined (SERVER_MODE)
     cubthread::looper looper = cubthread::looper (single_node_group_complete_manager::get_group_commit_interval);
     single_node_group_complete_manager::gl_single_node_group_complete_daemon = cubthread::get_manager ()->create_daemon ((
 		looper),
@@ -68,7 +68,7 @@ namespace cubtx
   {
     if (gl_single_node_group_complete_daemon != NULL)
       {
-	cubthread::get_manager()->destroy_daemon (gl_single_node_group_complete_daemon);
+	cubthread::get_manager ()->destroy_daemon (gl_single_node_group_complete_daemon);
 	gl_single_node_group_complete_daemon = NULL;
       }
 
@@ -83,10 +83,10 @@ namespace cubtx
   {
     assert (lsa != NULL);
 
-    /* TODO - use m_latest_closed_group_stream_start_positon, m_latest_closed_group_stream_end_positon */
+    /* TODO - use m_latest_closed_group_stream_start_position, m_latest_closed_group_stream_end_position */
     if (LSA_GE (lsa, &m_latest_closed_group_end_log_lsa))
       {
-	cubthread::entry *thread_p = &cubthread::get_entry();
+	cubthread::entry *thread_p = &cubthread::get_entry ();
 	do_complete (thread_p);
       }
   }
@@ -166,22 +166,22 @@ namespace cubtx
     return true;
   }
 
-  /*
-  * get_group_commit_interval () - setup flush daemon period based on system parameter
-  */
+  //
+  // get_group_commit_interval () - setup flush daemon period based on system parameter
+  //
   void single_node_group_complete_manager::get_group_commit_interval (bool & is_timed_wait, cubthread::delta_time & period)
   {
     is_timed_wait = true;
 
     /* TODO - 0 when gc close is forced */
     const int MAX_WAIT_TIME_MSEC = 1000;
-    int log_group_commit_interval_msec = prm_get_integer_value(PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS);
+    int log_group_commit_interval_msec = prm_get_integer_value (PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS);
 
-    assert(log_group_commit_interval_msec >= 0);
+    assert (log_group_commit_interval_msec >= 0);
 
     if (log_group_commit_interval_msec == 0)
     {
-      period = std::chrono::milliseconds(MAX_WAIT_TIME_MSEC);
+      period = std::chrono::milliseconds (MAX_WAIT_TIME_MSEC);
     }
     else
     {
@@ -195,7 +195,7 @@ namespace cubtx
   void single_node_group_complete_manager::do_prepare_complete (THREAD_ENTRY *thread_p)
   {
     LOG_LSA closed_group_start_complete_lsa, closed_group_end_complete_lsa;
-    LOG_TDES *tdes = logtb_get_tdes (&cubthread::get_entry());
+    LOG_TDES *tdes = logtb_get_tdes (&cubthread::get_entry ());
     bool has_postpone;
 
     if (close_current_group ())

@@ -333,7 +333,7 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
 static void log_update_global_unique_statistics (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 #if defined (SERVER_MODE)
-static void logtb_tran_update_serial_global_unique_stats (THREAD_ENTRY * thread_p);
+static void log_tran_update_serial_global_unique_stats (THREAD_ENTRY * thread_p);
 #endif
 
 #if defined(SERVER_MODE)
@@ -4467,20 +4467,20 @@ log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 strea
 
   // *INDENT-OFF*
   cubmem::appendible_block<1024> v;
-  for (const auto & ti : group.get_container ())
+  for (const auto &ti : group.get_container ())
     {
       const log_tdes *tdes = LOG_FIND_TDES (ti.m_tran_index);
       assert (tdes != NULL);
       v.append (tdes->trid);
       v.append (ti.m_tran_state);
       if (ti.m_tran_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
-      {
-	v.append (tdes->posp_nxlsa);
-        if (has_postpone)
         {
-          *has_postpone = true;
+	  v.append (tdes->posp_nxlsa);
+          if (has_postpone)
+            {
+              *has_postpone = true;
+            }
         }
-      }
     }
   // *INDENT-ON*
 
@@ -4730,7 +4730,7 @@ log_update_global_unique_statistics (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	  assert (false);
 	}
 #else	/* !SA_MODE */	       /* SERVER_MODE */
-      logtb_tran_update_serial_global_unique_stats (thread_p);
+      log_tran_update_serial_global_unique_stats (thread_p);
 #endif /* SERVER_MODE */
     }
 }
@@ -10001,19 +10001,20 @@ class log_flush_daemon_task : public cubthread::entry_task
   public:
     log_flush_daemon_task ()
     {
-      if (HA_DISABLED())
-      {
-        m_p_log_flush_lsa = cubtx::single_node_group_complete_manager::get_instance ();
-      }
+      if (HA_DISABLED ())
+	{
+	  m_p_log_flush_lsa = cubtx::single_node_group_complete_manager::get_instance ();
+	}
       else
-      {
-        m_p_log_flush_lsa = NULL;
-      }
+	{
+	  m_p_log_flush_lsa = NULL;
+	}
     }
 
-    void execute (cubthread::entry & thread_ref) override
+    void execute (cubthread::entry &thread_ref) override
     {
       LOG_LSA nxio_lsa;
+
       if (!BO_IS_SERVER_RESTARTED () || !log_Flush_has_been_requested)
 	{
 	  return;
@@ -10030,22 +10031,22 @@ class log_flush_daemon_task : public cubthread::entry_task
 
       /* Wakeup transaction waiting for group complete. */
       if (m_p_log_flush_lsa != NULL)
-      {
-        nxio_lsa = log_Gl.append.get_nxio_lsa();
-        m_p_log_flush_lsa->notify_log_flush_lsa (&nxio_lsa);
-      }
+	{
+	  nxio_lsa = log_Gl.append.get_nxio_lsa();
+	  m_p_log_flush_lsa->notify_log_flush_lsa (&nxio_lsa);
+	}
 
       /* Wakeup active transaction waiting for specific LSA - not waiting for group complete.
        * A better way will be to use another object that implements log_flush_lsa interface.
        */
       std::unique_lock<std::mutex> ulock (log_Gl.flush_notify_info.m_mutex);
-      log_Gl.flush_notify_info.m_cond.notify_all ();      
+      log_Gl.flush_notify_info.m_cond.notify_all ();
       log_Flush_has_been_requested = false;
       ulock.unlock ();
     }
 
 private:
-    log_flush_lsa * m_p_log_flush_lsa;
+    log_flush_lsa *m_p_log_flush_lsa;
 };
 #endif /* SERVER_MODE */
 
@@ -10357,16 +10358,16 @@ LOG_CS_OWN_WRITE_MODE (THREAD_ENTRY * thread_p)
 
 #if defined (SERVER_MODE)
 /*
-* logtb_tran_update_serial_global_unique_stats () - update serial global unique statistics
-*
-*
-* return	    : error code or NO_ERROR
-* thread_p(in)	    : thread entry
-*
-* Note: this function must be called at the end of transaction (commit)
-*/
-void
-logtb_tran_update_serial_global_unique_stats (THREAD_ENTRY * thread_p)
+ * log_tran_update_serial_global_unique_stats () - update serial global unique statistics
+ *
+ *
+ * return	    : error code or NO_ERROR
+ * thread_p(in)	    : thread entry
+ *
+ * Note: this function must be called at the end of transaction (commit)
+ */
+static void
+log_tran_update_serial_global_unique_stats (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   int error_code = NO_ERROR;

@@ -50,7 +50,7 @@ namespace cubreplication
 
     const static unsigned int TYPE_MASK = 0xc0000000;
 
-    const static unsigned int COUNT_VALUE_MASK = ~ (TYPE_MASK);
+    const static unsigned int COUNT_VALUE_MASK = ~TYPE_MASK;
 
     cubstream::stream_position prev_record;
     MVCCID mvccid;
@@ -111,13 +111,13 @@ namespace cubreplication
 
       stream_entry (cubstream::multi_thread_stream *stream_p,
 		    MVCCID arg_mvccid,
-		    stream_entry_header::TYPE strem_entry_header_type)
+		    stream_entry_header::TYPE stream_entry_header_type)
 	: entry (stream_p)
 	, m_serializator ()
 	, m_deserializator ()
       {
 	m_header.mvccid = arg_mvccid;
-	m_header.type = strem_entry_header_type;
+	m_header.type = stream_entry_header_type;
       };
 
       size_t get_packed_header_size () override
@@ -150,9 +150,9 @@ namespace cubreplication
 	return m_header.mvccid;
       }
 
-      void set_state (stream_entry_header::TYPE strem_entry_header_type)
+      void set_state (stream_entry_header::TYPE stream_entry_header_type)
       {
-	m_header.type = strem_entry_header_type;
+	m_header.type = stream_entry_header_type;
       }
 
       bool is_group_commit (void)

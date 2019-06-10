@@ -3688,7 +3688,10 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 
   while (LSA_LT (&nxio_lsa, flush_lsa))
     {
-      std::unique_lock < std::mutex > ulock (flush_notify_info->m_mutex);
+      // *INDENT-OFF*
+      std::unique_lock<std::mutex> ulock (flush_notify_info->m_mutex);
+      // *INDENT-ON*
+
       nxio_lsa = log_Gl.append.get_nxio_lsa ();
       if (LSA_GE (&nxio_lsa, flush_lsa))
 	{
@@ -10175,12 +10178,12 @@ logpb_initialize_logging_statistics (void)
 }
 
 /*
-* logpb_initialize_tran_complete_manager - Initialize transaction complete manager
-*
-* return: nothing
-* thread_p(in): thread entry
-*
-*/
+ * logpb_initialize_tran_complete_manager - Initialize transaction complete manager
+ *
+ * return: nothing
+ * thread_p(in): thread entry
+ *
+ */
 void
 logpb_initialize_tran_complete_manager (THREAD_ENTRY * thread_p)
 {
@@ -10198,12 +10201,12 @@ logpb_initialize_tran_complete_manager (THREAD_ENTRY * thread_p)
 }
 
 /*
-* logpb_finalize_tran_complete_manager - Finalize transaction complete manager
-*
-* return: nothing
-*
-* NOTE:
-*/
+ * logpb_finalize_tran_complete_manager - Finalize transaction complete manager
+ *
+ * return: nothing
+ *
+ * NOTE:
+ */
 void
 logpb_finalize_tran_complete_manager (void)
 {

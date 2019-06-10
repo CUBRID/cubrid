@@ -69,7 +69,7 @@ namespace cubtx
   };
 
   //
-  // single_noder_group_complete_task is class for master group complete daemon
+  // single_node_group_complete_task is class for master group complete daemon
   //
   class single_node_group_complete_task : public cubthread::entry_task
   {

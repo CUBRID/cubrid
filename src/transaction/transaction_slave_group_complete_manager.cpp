@@ -51,7 +51,7 @@ namespace cubtx
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
     slave_group_complete_manager * p_gl_slave_group = get_instance ();
     p_gl_slave_group->m_latest_group_id = NULL_ID;
-    p_gl_slave_group->m_latest_group_stream_positon = 0;
+    p_gl_slave_group->m_latest_group_stream_position = 0;
     p_gl_slave_group->m_has_latest_group_close_info = false;
 
     slave_group_complete_manager::gl_slave_group_complete_daemon = cubthread::get_manager()->create_daemon ((looper),
@@ -166,7 +166,7 @@ namespace cubtx
     tx_group &closed_group = get_latest_closed_group ();
     /* TODO - consider parameter for MVCC complete here. */
     /* Add group commit log record and wakeup  log flush daemon. */
-    log_append_group_complete (thread_p, tdes, m_latest_group_stream_positon, closed_group,
+    log_append_group_complete (thread_p, tdes, m_latest_group_stream_position, closed_group,
 			       &closed_group_start_complete_lsa, &closed_group_end_complete_lsa, &has_postpone);
     log_wakeup_log_flush_daemon ();
     if (has_postpone)
@@ -189,7 +189,7 @@ namespace cubtx
   //
   void slave_group_complete_manager::wait_for_complete_stream_position (cubstream::stream_position stream_position)
   {
-    if (stream_position <= m_latest_group_stream_positon)
+    if (stream_position <= m_latest_group_stream_position)
       {
 	/* I have the id of latest group */
 	complete (m_latest_group_id);
@@ -210,7 +210,7 @@ namespace cubtx
     /* Can't set close info twice. */
     assert (m_has_latest_group_close_info == false);
 
-    m_latest_group_stream_positon = stream_position;
+    m_latest_group_stream_position = stream_position;
     m_latest_group_id = set_current_group_minimum_transactions (count_expected_transactions, has_group_enough_transactions);
     m_has_latest_group_close_info = true;
     if (has_group_enough_transactions)
