@@ -82,7 +82,7 @@ namespace cubreplication
 	cubthread::entry *thread_p = thread_get_thread_entry_info ();
 	css_change_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE, true, HA_CHANGE_MODE_IMMEDIATELY, true);
 
-	stream_entry fail_over_entry (g_instance->m_stream, MVCCID_FIRST, stream_entry_header::FAIL_OVER);
+	stream_entry fail_over_entry (g_instance->m_stream, MVCCID_FIRST, stream_entry_header::NEW_MASTER);
 	fail_over_entry.pack ();
       }
   }

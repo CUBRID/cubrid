@@ -46,7 +46,7 @@ namespace cubreplication
       COMMITTED,
       ABORTED,
       GROUP_COMMIT,
-      FAIL_OVER
+      NEW_MASTER
     } TRAN_STATE;
 
     const static unsigned STATE_BITS = 3;
@@ -163,9 +163,9 @@ namespace cubreplication
 	return m_header.tran_state == stream_entry_header::GROUP_COMMIT;
       }
 
-      bool is_fail_over ()
+      bool is_new_master ()
       {
-	return m_header.tran_state == stream_entry_header::FAIL_OVER;
+	return m_header.tran_state == stream_entry_header::NEW_MASTER;
       }
 
       bool is_tran_commit (void)
@@ -181,7 +181,7 @@ namespace cubreplication
       bool is_tran_state_undefined (void)
       {
 	return m_header.tran_state < stream_entry_header::ACTIVE
-	       || m_header.tran_state > stream_entry_header::FAIL_OVER;
+	       || m_header.tran_state > stream_entry_header::NEW_MASTER;
       }
 
       int pack_stream_entry_header ();
