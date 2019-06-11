@@ -5888,7 +5888,7 @@ heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid
   heap_create_insert_context (&insert_context, (HFID *) hfid, class_oid, &recdes, NULL);
 
   /* insert */
-  rc = heap_insert_logical (thread_p, &insert_context);
+  rc = heap_insert_logical (thread_p, &insert_context, NULL);
   if (rc != NO_ERROR)
     {
       return rc;
@@ -22259,7 +22259,7 @@ heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID
  *         moment.
  */
 int
-heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
+heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, PGBUF_WATCHER * home_hint_p)
 {
   bool is_mvcc_op;
   int rc = NO_ERROR;
@@ -22334,7 +22334,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     }
 
   /* get insert location (includes locking) */
-  if (heap_get_insert_location_with_lock (thread_p, context, NULL) != NO_ERROR)
+  if (heap_get_insert_location_with_lock (thread_p, context, home_hint_p) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -24698,6 +24698,50 @@ heap_scancache::get_area_block_allocator ()
 {
   alloc_area ();
   return m_area->get_block_allocator ();
+}
+
+int
+heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, PGBUF_WATCHER * home_hint_p, VPID * new_page_vpid)
+{
+  int error_code = NO_ERROR;
+  HEAP_CHAIN new_page_chain;
+  PAGE_PTR page_ptr;
+
+  assert (hfid != NULL && home_hint_p != NULL && new_page_vpid != NULL);
+
+  PGBUF_INIT_WATCHER (home_hint_p, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+
+  // Init the heap page chain
+  new_page_chain.class_oid = class_oid;
+  VPID_SET_NULL (&new_page_chain.prev_vpid);
+  VPID_SET_NULL (&new_page_chain.next_vpid);
+  new_page_chain.max_mvccid = MVCCID_NULL;
+  new_page_chain.flags = 0;
+  HEAP_PAGE_SET_VACUUM_STATUS (&new_page_chain, HEAP_PAGE_VACUUM_NONE);
+
+  VPID_SET_NULL (new_page_vpid);
+  
+  // Alloc a new page.
+  error_code = file_alloc (thread_p, &hfid->vfid, heap_vpid_init_new, &new_page_chain, new_page_vpid, &page_ptr);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  // Need to get the watcher to the new page.
+  pgbuf_attach_watcher (thread_p, page_ptr, PGBUF_LATCH_WRITE, hfid, home_hint_p);
+
+  // Make sure we have fixed the page.
+  assert (pgbuf_is_page_fixed_by_thread (thread_p, new_page_vpid));
+
+  return error_code;
+}
+
+int
+heap_nonheader_page_capacity ()
+{
+  return spage_max_record_size () - sizeof (HEAP_CHAIN);
 }
 
 // *INDENT-ON*
