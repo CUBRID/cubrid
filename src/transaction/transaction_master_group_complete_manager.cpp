@@ -77,7 +77,6 @@ namespace cubtx
   //
   void master_group_complete_manager::notify_stream_ack (const cubstream::stream_position stream_pos)
   {
-
     /* TODO - disable it temporary since it is not tested */
     return;
 
