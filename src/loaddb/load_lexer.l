@@ -46,7 +46,7 @@ using token = cubload::parser::token;
 
 #define CHECK_NULL_AND_SET_ERROR(p)     \
   do {                                  \
-    if (p == NULL) {                    \
+    if ((p) == NULL) {                    \
         ASSERT_ERROR ();                \
         YY_FATAL_ERROR (er_msg ());     \
       }                                 \
