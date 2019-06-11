@@ -13777,6 +13777,9 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 		      ASSERT_ERROR ();
 		      return error_code;
 		    }
+
+		  // Safeguard. We should not have the page fixed here.
+		  assert (home_hint_p.pgptr == NULL);
 		}
 
 	      // Add the new VPID to the VPID array.
@@ -13787,8 +13790,6 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	      recdes_array.clear ();
 	      accumulated_records_size = 0;
 
-	      // Safeguard.
-	      assert (home_hint_p.pgptr == NULL);
 	    }
 
 	  // Add this record to the recdes array and increase the accumulated size.
