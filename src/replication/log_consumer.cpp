@@ -257,7 +257,7 @@ namespace cubreplication
 	      {
 		repl_tasks.clear ();
 	      }
-	    else
+	    else if (se->get_packable_entry_count_from_header () > 0)
 	      {
 		MVCCID mvccid = se->get_mvccid ();
 		auto it = repl_tasks.find (mvccid);
@@ -280,6 +280,11 @@ namespace cubreplication
 
 		/* stream entry is deleted by applier task thread */
 	      }
+            else
+              {
+                assert (se->get_packable_entry_count_from_header () == 0);
+                delete se;
+              }
 	  }
       }
 
