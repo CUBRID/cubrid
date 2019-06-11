@@ -672,7 +672,7 @@ struct log_global
   LOG_GROUP_COMMIT_INFO group_commit_info;
   // *INDENT-OFF*
   cubtx::complete_manager *m_tran_complete_mgr;
-  cubstream::stream_position m_ack_stream_position;
+  std::atomic<cubstream::stream_position> m_ack_stream_position;
   // *INDENT-ON*
 
   /* remote log writer information */

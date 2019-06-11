@@ -246,7 +246,6 @@ struct log_rec_group_complete
 {
   INT64 at_time;		/* time recorded by active server */
   cubstream::stream_position stream_pos;
-  cubstream::stream_position last_ack_stream_position;
   size_t redo_size;
 };
 
