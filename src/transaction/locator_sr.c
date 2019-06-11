@@ -13786,6 +13786,9 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	      // Clear the recdes array.
 	      recdes_array.clear ();
 	      accumulated_records_size = 0;
+
+	      // Safeguard.
+	      assert (home_hint_p.pgptr == NULL);
 	    }
 
 	  // Add this record to the recdes array and increase the accumulated size.
