@@ -26,6 +26,8 @@
 #include "load_driver.hpp"
 #include "load_grammar.hpp"
 #include "load_scanner.hpp"
+#include "error_manager.h"
+#include "error_code.h"
 
 #undef YY_DECL
 #define YY_DECL \
@@ -41,6 +43,14 @@ using token = cubload::parser::token;
 #else
 #define PRINT(a, b)
 #endif
+
+#define CHECK_NULL_AND_SET_ERROR(p)     \
+  do {                                  \
+    if ((p) == NULL) {                    \
+        ASSERT_ERROR ();                \
+        YY_FATAL_ERROR (er_msg ());     \
+      }                                 \
+  } while (0)                           \
 %}
 
 /*** Flex Declarations and Options ***/
@@ -501,6 +511,7 @@ using token = cubload::parser::token;
     m_semantic_helper.append_char ('\0');
     // PRINT ("IDENTIFIER %s\n", qstr_Buf_p);
     yylval->string = m_semantic_helper.make_string_by_buffer ();
+    CHECK_NULL_AND_SET_ERROR (yylval->string);
     BEGIN INITIAL;
     return token::IDENTIFIER;
 }
@@ -513,6 +524,7 @@ using token = cubload::parser::token;
     m_semantic_helper.append_char ('\0');
     // PRINT ("IDENTIFIER %s\n", qstr_Buf_p);
     yylval->string = m_semantic_helper.make_string_by_buffer ();
+    CHECK_NULL_AND_SET_ERROR (yylval->string);
     BEGIN INITIAL;
     return token::IDENTIFIER;
 }
@@ -553,6 +565,7 @@ using token = cubload::parser::token;
     m_semantic_helper.append_char ('\0');
     // PRINT ("DQS_String_Body %s\n", qstr_Buf_p);
     yylval->string = m_semantic_helper.make_string_by_buffer ();
+    CHECK_NULL_AND_SET_ERROR (yylval->string);
     BEGIN INITIAL;
     return token::DQS_String_Body;
 }
@@ -572,6 +585,7 @@ using token = cubload::parser::token;
     m_semantic_helper.append_char ('\0');
     // PRINT ("String_Completion %s\n", qstr_Buf_p);
     yylval->string = m_semantic_helper.make_string_by_buffer ();
+    CHECK_NULL_AND_SET_ERROR (yylval->string);
     BEGIN INITIAL;
     return token::SQS_String_Body;
 }
@@ -580,6 +594,7 @@ using token = cubload::parser::token;
     m_semantic_helper.append_char ('\0');
     // PRINT ("String_Completion2 %s\n", qstr_Buf_p);
     yylval->string = m_semantic_helper.make_string_by_buffer ();
+    CHECK_NULL_AND_SET_ERROR (yylval->string);
     BEGIN INITIAL;
     return token::SQS_String_Body;
 }
