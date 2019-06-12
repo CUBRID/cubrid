@@ -713,7 +713,7 @@ metadata_of_page_buffer_status (void)
     {"pages_written_rate", "numeric(20,10)"},
     {"Num_pages_read", "bigint"},
     {"pages_read_rate", "numeric(20,10)"},
-    {"Num_victim_waiting_threads", "int"}
+    {"Num_flusher_waiting_threads", "int"}
   };
 
   static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {

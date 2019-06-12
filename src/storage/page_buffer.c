@@ -376,7 +376,7 @@ struct pgbuf_show_status
     unsigned long long num_pages_created;
     unsigned long long num_pages_written;
     unsigned long long num_pages_read;
-    unsigned int num_victim_waiting_threads;
+    unsigned int num_flusher_waiting_threads;
   } now;
 
   struct old
@@ -1188,7 +1188,7 @@ STATIC_INLINE int pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p) __attr
 static bool pgbuf_is_temp_lsa (const log_lsa & lsa);
 static void pgbuf_init_temp_page_lsa (FILEIO_PAGE * io_page, PGLENGTH page_size);
 
-static int pgbuf_scan_bcb_table (THREAD_ENTRY * thread_p);
+static void pgbuf_scan_bcb_table (THREAD_ENTRY * thread_p);
 
 #if defined (SERVER_MODE)
 // *INDENT-OFF*
@@ -1820,8 +1820,6 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
       tsc_getticks (&perf.start_tick);
     }
 
-  pgbuf_Pool.show_status.now.num_page_request++;
-
 try_again:
 
   /* interrupt check */
@@ -2074,6 +2072,8 @@ try_again:
       assert (fetch_mode != NEW_PAGE || pgbuf_is_lsa_temporary (pgptr));
     }
 
+
+  pgbuf_Pool.show_status.now.num_page_request++;
   /* Record number of fetches in statistics */
   if (perf.is_perf_tracking)
     {
@@ -7437,11 +7437,11 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
       // before migration of the page_flush_daemon it was a try_wakeup, check if still needed
       pgbuf_wakeup_page_flush_daemon (thread_p);
 
-      ATOMIC_INC_32 (&(pgbuf_Pool.show_status.now.num_victim_waiting_threads), 1);
+      ATOMIC_INC_32 (&(pgbuf_Pool.show_status.now.num_flusher_waiting_threads), 1);
 
       r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_ALLOC_BCB_SUSPENDED);
 
-      ATOMIC_INC_32 (&(pgbuf_Pool.show_status.now.num_victim_waiting_threads), -1);
+      ATOMIC_INC_32 (&(pgbuf_Pool.show_status.now.num_flusher_waiting_threads), -1);
 
       PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_alloc_search_and_wait, pstat_cond_wait);
 
@@ -7614,6 +7614,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
     {
       /* Record number of reads in statistics */
       perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
+      pgbuf_Pool.show_status.now.num_pages_read++;
 
 #if defined(ENABLE_SYSTEMTAP)
       query_id = qmgr_get_current_query_id (thread_p);
@@ -7634,36 +7635,31 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	{
 	  /* Nothing to do, copied from DWB */
 	}
-      else
+      else if (fileio_read (thread_p, fileio_get_volume_descriptor (vpid->volid), &bufptr->iopage_buffer->iopage,
+			    vpid->pageid, IO_PAGESIZE) == NULL)
 	{
-	  pgbuf_Pool.show_status.now.num_pages_read++;
+	  /* There was an error in reading the page. Clean the buffer... since it may have been corrupted */
+	  ASSERT_ERROR ();
 
-	  if (fileio_read (thread_p, fileio_get_volume_descriptor (vpid->volid), &bufptr->iopage_buffer->iopage,
-			   vpid->pageid, IO_PAGESIZE) == NULL)
-	    {
-	      /* There was an error in reading the page. Clean the buffer... since it may have been corrupted */
-	      ASSERT_ERROR ();
+	  /* bufptr->mutex will be released in following function. */
+	  pgbuf_put_bcb_into_invalid_list (thread_p, bufptr);
 
-	      /* bufptr->mutex will be released in following function. */
-	      pgbuf_put_bcb_into_invalid_list (thread_p, bufptr);
-
-	      /*
-	       * Now, caller is not holding any mutex.
-	       * the last argument of pgbuf_unlock_page () is true that
-	       * means hash_mutex must be held before unlocking page.
-	       */
-	      (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
+	  /*
+	   * Now, caller is not holding any mutex.
+	   * the last argument of pgbuf_unlock_page () is true that
+	   * means hash_mutex must be held before unlocking page.
+	   */
+	  (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
 
 #if defined(ENABLE_SYSTEMTAP)
-	      if (monitored == true)
-		{
-		  CUBRID_IO_READ_END (query_id, IO_PAGESIZE, 1);
-		}
+	  if (monitored == true)
+	    {
+	      CUBRID_IO_READ_END (query_id, IO_PAGESIZE, 1);
+	    }
 #endif /* ENABLE_SYSTEMTAP */
 
-	      PGBUF_BCB_CHECK_MUTEX_LEAKS ();
-	      return NULL;
-	    }
+	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
+	  return NULL;
 	}
 
 #if defined(ENABLE_SYSTEMTAP)
@@ -7734,6 +7730,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	}
 
       pgbuf_Pool.show_status.now.num_pages_created++;
+      pgbuf_Pool.show_status.now.num_hit++;
     }
 
   return bufptr;
@@ -15927,7 +15924,7 @@ pgbuf_init_temp_page_lsa (FILEIO_PAGE * io_page, PGLENGTH page_size)
 /*
  * pgbuf_scan_bcb_table () -  scan bcb table to count snapshot data with no bcb mutex
  */
-void
+static void
 pgbuf_scan_bcb_table ()
 {
   int bufid;
@@ -16131,7 +16128,7 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
       goto exit_on_error;
     }
 
-  db_make_int (&vals[idx], pgbuf_Pool.show_status.now.num_victim_waiting_threads);
+  db_make_int (&vals[idx], pgbuf_Pool.show_status.now.num_flusher_waiting_threads);
   idx++;
 
   assert (idx == num_cols);
