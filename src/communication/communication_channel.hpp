@@ -39,8 +39,9 @@
 namespace cubcomm
 {
 
-  /* TODO[replication] this needs to be calculated a priori */
-  const std::size_t MTU = 1500;
+  /* TODO :
+   * optimal TCP packet size ~ 1500 bytes and TCP header is 16 bytes and we need each read aligned to 8 bytes */
+  const std::size_t MTU = 1480;
 
   enum CHANNEL_TYPE
   {

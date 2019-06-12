@@ -75,11 +75,15 @@ namespace cubreplication
 
   void master_node::enable_active ()
   {
+    std::lock_guard<std::mutex> lg (g_enable_active_mtx);
     if (css_ha_server_state () == HA_SERVER_STATE_TO_BE_ACTIVE)
       {
 	/* this is the first slave connecting to this node */
 	cubthread::entry *thread_p = thread_get_thread_entry_info ();
 	css_change_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE, true, HA_CHANGE_MODE_IMMEDIATELY, true);
+
+	stream_entry fail_over_entry (g_instance->m_stream, MVCCID_FIRST, stream_entry_header::NEW_MASTER);
+	fail_over_entry.pack ();
       }
   }
 
@@ -150,4 +154,5 @@ namespace cubreplication
 
 
   master_node *master_node::g_instance = NULL;
+  std::mutex master_node::g_enable_active_mtx;
 } /* namespace cubreplication */

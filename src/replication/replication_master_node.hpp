@@ -28,6 +28,8 @@
 
 #include "replication_node.hpp"
 
+#include <mutex>
+
 namespace cubreplication
 {
   class master_ctrl;
@@ -36,6 +38,7 @@ namespace cubreplication
   {
     private:
       static master_node *g_instance;
+      static std::mutex g_enable_active_mtx;
 
       master_node (const char *name)
 	: replication_node (name)
