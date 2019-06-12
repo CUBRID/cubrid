@@ -623,7 +623,7 @@ extern void heap_create_delete_context (HEAP_OPERATION_CONTEXT * context, HFID *
 					HEAP_SCANCACHE * scancache_p);
 extern void heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * oid_p, OID * class_oid_p,
 					RECDES * recdes_p, HEAP_SCANCACHE * scancache_p, UPDATE_INPLACE_STYLE in_place);
-extern int heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, PGBUF_WATCHER * home_hint_p);
+extern int heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 extern int heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 extern int heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 
@@ -669,10 +669,4 @@ extern int heap_get_best_space_num_stats_entries (void);
 extern int heap_get_hfid_from_vfid (THREAD_ENTRY * thread_p, const VFID * vfid, HFID * hfid);
 extern int heap_scan_cache_allocate_area (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p, int size);
 extern bool heap_is_page_header (THREAD_ENTRY * thread_p, PAGE_PTR page);
-
-extern int heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, PGBUF_WATCHER * home_hint_p,
-				VPID * new_page_vpid);
-
-extern int heap_nonheader_page_capacity ();
-
 #endif /* _HEAP_FILE_H_ */
