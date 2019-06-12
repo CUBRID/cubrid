@@ -219,7 +219,7 @@ namespace cubreplication
 	    er_log_repl_obj (repl_obj, "log_generator::set_key_to_repl_object");
 
 	    // remove
-	    (void) m_pending_to_be_added.erase (repl_obj_it--);
+	    (void) m_pending_to_be_added.erase (repl_obj_it);
 
 	    found = true;
 
