@@ -43,7 +43,8 @@ namespace cubreplication
     {
       UNDEFINED = 0x0,
       ACTIVE = 0x01,
-      GROUP_COMMIT = 0x02
+      GROUP_COMMIT = 0x02,
+      NEW_MASTER = 0x03
     } TYPE;
 
     const static unsigned TYPE_BITS = 2;
@@ -160,10 +161,15 @@ namespace cubreplication
 	return m_header.type == stream_entry_header::GROUP_COMMIT;
       }
 
+      bool is_new_master ()
+      {
+	return m_header.type == stream_entry_header::NEW_MASTER;
+      }
+
       bool is_tran_state_undefined (void)
       {
 	return m_header.type < stream_entry_header::ACTIVE
-	       || m_header.type > stream_entry_header::GROUP_COMMIT;
+	       || m_header.type > stream_entry_header::NEW_MASTER;
       }
 
       int pack_stream_entry_header ();

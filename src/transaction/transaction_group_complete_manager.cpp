@@ -200,7 +200,7 @@ namespace cubtx
 	  unsigned int count_minimum_transactions,
 	  bool &has_group_enough_transactions)
   {
-    assert (count_minimum_transactions > 0);
+    assert (count_minimum_transactions >= 0);
     std::unique_lock<std::mutex> ulock (m_group_mutex);
     m_current_group_min_transactions = count_minimum_transactions;
 

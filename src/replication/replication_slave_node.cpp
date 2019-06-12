@@ -135,9 +135,6 @@ namespace cubreplication
 
     cubtx::slave_group_complete_manager::final ();
 
-    delete g_instance->m_stream;
-    g_instance->m_stream = NULL;
-
     delete g_instance;
     g_instance = NULL;
   }

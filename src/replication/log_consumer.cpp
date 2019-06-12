@@ -253,7 +253,11 @@ namespace cubreplication
 		m_p_dispatch_consumer->set_close_info_for_current_group (m_curr_group_stream_position,
 		    count_expected_transaction);
 	      }
-	    else
+	    else if (se->is_new_master ())
+	      {
+		repl_tasks.clear ();
+	      }
+	    else if (se->get_packable_entry_count_from_header () > 0)
 	      {
 		MVCCID mvccid = se->get_mvccid ();
 		auto it = repl_tasks.find (mvccid);
@@ -276,6 +280,11 @@ namespace cubreplication
 
 		/* stream entry is deleted by applier task thread */
 	      }
+            else
+              {
+                assert (se->get_packable_entry_count_from_header () == 0);
+                delete se;
+              }
 	  }
       }
 
