@@ -2882,18 +2882,17 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	}
     }
 
-  // todo: is this big enough to guarantee it is greater than any head_lsa
-  LSA_COPY (&log_Gl.m_min_active_lsa, end_redo_lsa);
+  assert (LSA_ISNULL (&log_Gl.m_min_active_lsa));
   for (int i = 1; i < log_Gl.trantable.num_total_indices; ++i)
     {
       LOG_TDES *crt_tdes = NULL;
-      // negate log_recovery_undo ()'s check for finished transaction : todo: make sure this is the searched for set
       if ((crt_tdes = LOG_FIND_TDES (i)) != NULL && crt_tdes->trid != NULL_TRANID
 	  && !LSA_ISNULL (&crt_tdes->undo_nxlsa))
 	{
-	  if (LSA_LT (&crt_tdes->head_lsa, &log_Gl.m_min_active_lsa))
+	  if (LSA_ISNULL (&log_Gl.m_min_active_lsa) || LSA_LT (&crt_tdes->head_lsa, &log_Gl.m_min_active_lsa))
 	    {
 	      LSA_COPY (&log_Gl.m_min_active_lsa, &crt_tdes->head_lsa);
+	      assert (!LSA_ISNULL (&crt_tdes->head_lsa));
 	    }
 	}
     }
@@ -5031,21 +5030,22 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   /* Find log_Gl m_active_start position located in the last GROUP COMPLETE record before m_min_active_lsa */
   if (!LSA_ISNULL (&log_Gl.m_min_active_lsa))
     {
+      assert (log_Gl.m_active_start_position == 0);
       bool found = false;
+      LSA_COPY (&log_lsa, &log_Gl.m_min_active_lsa);
       while (!found)
 	{
-	  LSA_COPY (&log_lsa, &log_Gl.m_min_active_lsa);
 	  if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
 	    {
 	      log_zip_free (undo_unzip_ptr);
 
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_undo");
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_undo active start position recovery");
 	      return;
 	    }
 
 	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
 
-	  while (log_lsa.pageid == log_rec->back_lsa.pageid)
+	  while (true)
 	    {
 	      if (log_rec->type == LOG_GROUP_COMPLETE)
 		{
@@ -5060,11 +5060,28 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  break;
 		}
 
-	      LSA_COPY (&log_lsa, &log_rec->back_lsa);
+	      if (LSA_ISNULL (&log_rec->back_lsa))
+		{
+		  assert (false);
+		  log_zip_free (undo_unzip_ptr);
+		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_undo active start position recovery");
+		  return;
+		}
 
-	      log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
+	      if (log_lsa.pageid != log_rec->back_lsa.pageid)
+		{
+		  LSA_COPY (&log_lsa, &log_rec->back_lsa);
+		  break;
+		}
+	      else
+		{
+		  LSA_COPY (&log_lsa, &log_rec->back_lsa);
+		  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
+		}
 	    }
 	}
+
+      assert (log_Gl.m_active_start_position != 0);
     }
 
   log_zip_free (undo_unzip_ptr);
