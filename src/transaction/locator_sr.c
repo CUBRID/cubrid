@@ -4425,7 +4425,8 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 			{
 			  if (!logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
 			    {
-			      /* Disable row replication. */
+			      /* Disable row replication: SM_FOREIGN_KEY_CASCADE constraint from slave will make sure
+			       * these changes are replicated */
 			      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
 			      disabled_row_replication = true;
 			    }

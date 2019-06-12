@@ -211,6 +211,8 @@ namespace cubreplication
 	if (repl_obj->compare_inst_oid (inst_oid))
 	  {
 	    repl_obj->set_key_value (key);
+	    /* subclasses, partitions : set new class name */
+	    repl_obj->set_class_name (class_name);
 
 	    /* Set the current transaction lsa. It may be rewritten later. */
 	    repl_obj->set_lsa_stamp (*p_lsa);
