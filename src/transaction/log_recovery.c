@@ -2882,6 +2882,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	}
     }
 
+  /* Find min pos of last active transaction at the end of analysis */
   assert (LSA_ISNULL (&log_Gl.m_min_active_lsa));
   for (int i = 1; i < log_Gl.trantable.num_total_indices; ++i)
     {
@@ -5027,7 +5028,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	}
     }
 
-  /* Find log_Gl m_active_start position located in the last GROUP COMPLETE record before m_min_active_lsa */
+  /* Find log_Gl m_active_start position located in the last GROUP COMPLETE record before m_min_active_lsa (min pos */
+  /* of last active transaction at the end of analysis) - we go backwards until we find a GC record */
   if (!LSA_ISNULL (&log_Gl.m_min_active_lsa))
     {
       assert (log_Gl.m_active_start_position == 0);
@@ -5070,6 +5072,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 	      if (log_lsa.pageid != log_rec->back_lsa.pageid)
 		{
+		  // page is different; we need to change the fetched log page
 		  LSA_COPY (&log_lsa, &log_rec->back_lsa);
 		  break;
 		}
