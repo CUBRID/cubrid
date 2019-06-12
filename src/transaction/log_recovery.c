@@ -2882,6 +2882,22 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	}
     }
 
+  // todo: is this big enough to guarantee it is greater than any head_lsa
+  LSA_COPY (&log_Gl.m_min_active_lsa, end_redo_lsa);
+  for (int i = 1; i < log_Gl.trantable.num_total_indices; ++i)
+    {
+      LOG_TDES *crt_tdes = NULL;
+      // negate log_recovery_undo ()'s check for finished transaction : todo: make sure this is the searched for set
+      if ((crt_tdes = LOG_FIND_TDES (i)) != NULL && crt_tdes->trid != NULL_TRANID
+	  && !LSA_ISNULL (&crt_tdes->undo_nxlsa))
+	{
+	  if (LSA_LT (&crt_tdes->head_lsa, &log_Gl.m_min_active_lsa))
+	    {
+	      LSA_COPY (&log_Gl.m_min_active_lsa, &crt_tdes->head_lsa);
+	    }
+	}
+    }
+
   if (may_need_synch_checkpoint_2pc == true)
     {
       /*
@@ -4941,7 +4957,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  break;
 		case LOG_GROUP_COMPLETE:
 		  // should not happen
-		  // todo [GC recovery]:
 		  assert (false);
 		  break;
 		case LOG_SMALLER_LOGREC_TYPE:
@@ -5010,6 +5025,45 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 	  /* Find the next log record to undo */
 	  log_find_unilaterally_largest_undo_lsa (thread_p, max_undo_lsa);
+	}
+    }
+
+  /* Find log_Gl m_active_start position located in the last GROUP COMPLETE record before m_min_active_lsa */
+  if (!LSA_ISNULL (&log_Gl.m_min_active_lsa))
+    {
+      bool found = false;
+      while (!found)
+	{
+	  LSA_COPY (&log_lsa, &log_Gl.m_min_active_lsa);
+	  if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
+	    {
+	      log_zip_free (undo_unzip_ptr);
+
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_undo");
+	      return;
+	    }
+
+	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
+
+	  while (log_lsa.pageid == log_rec->back_lsa.pageid)
+	    {
+	      if (log_rec->type == LOG_GROUP_COMPLETE)
+		{
+		  data_header_size = sizeof (LOG_REC_GROUP_COMPLETE);
+		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, data_header_size, &log_lsa, log_pgptr);
+		  LOG_REC_GROUP_COMPLETE *gc_rec =
+		    (LOG_REC_GROUP_COMPLETE *) ((char *) log_pgptr->area + log_lsa.offset);
+
+		  // found start of filtered apply
+		  log_Gl.m_active_start_position = gc_rec->stream_pos;
+		  found = true;
+		  break;
+		}
+
+	      LSA_COPY (&log_lsa, &log_rec->back_lsa);
+
+	      log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
+	    }
 	}
     }
 
