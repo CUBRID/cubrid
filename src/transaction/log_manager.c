@@ -10001,7 +10001,8 @@ class log_flush_daemon_task : public cubthread::entry_task
   public:
     log_flush_daemon_task ()
     {
-      if (HA_DISABLED ())
+      /* TODO - temp fix for cubridci */
+      if (HA_DISABLED () || log_Gl.m_tran_complete_mgr == cubtx::single_node_group_complete_manager::get_instance())
 	{
 	  m_p_log_flush_lsa = cubtx::single_node_group_complete_manager::get_instance ();
 	}

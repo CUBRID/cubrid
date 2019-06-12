@@ -10187,17 +10187,21 @@ logpb_initialize_logging_statistics (void)
 void
 logpb_initialize_tran_complete_manager (THREAD_ENTRY * thread_p)
 {
-  if (HA_DISABLED ())
-    {
-      /* HA disabled. */
-      cubtx::single_node_group_complete_manager::init ();
-      log_Gl.m_tran_complete_mgr = cubtx::single_node_group_complete_manager::get_instance ();
-    }
-  else
-    {
-      /* Will be initialized later. */
-      log_Gl.m_tran_complete_mgr = NULL;
-    }
+  /* TODO - temp fix for cubridci */
+  //if (HA_DISABLED ())
+  //  {
+  //    /* HA disabled. */
+  //    cubtx::single_node_group_complete_manager::init ();
+  //    log_Gl.m_tran_complete_mgr = cubtx::single_node_group_complete_manager::get_instance ();
+  //  }
+  //else
+  //  {
+  //    /* Will be initialized later. */
+  //    log_Gl.m_tran_complete_mgr = NULL;
+  //  }
+
+  cubtx::single_node_group_complete_manager::init ();
+  log_Gl.m_tran_complete_mgr = cubtx::single_node_group_complete_manager::get_instance ();
 }
 
 /*
