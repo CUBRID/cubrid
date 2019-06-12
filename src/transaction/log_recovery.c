@@ -25,6 +25,7 @@
 
 #include "config.h"
 
+#include <algorithm>
 #include <stdio.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -1254,6 +1255,10 @@ log_rv_analysis_group_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * 
     }
 
   // *INDENT-OFF*
+  // get max between checkpoint's and group_complete's last_ack reads
+  log_Gl.m_ack_stream_position = std::max ((cubstream::stream_position) log_Gl.m_ack_stream_position.load (),
+					   group_complete.stream_pos);
+
   for (const auto & ti : group) 
     {
       if (ti.m_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
@@ -1810,6 +1815,12 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_CHKPT), log_lsa, log_page_p);
   tmp_chkpt = (LOG_REC_CHKPT *) ((char *) log_page_p->area + log_lsa->offset);
   chkpt = *tmp_chkpt;
+
+  // get max between checkpoint's and group_complete's last_ack reads
+  // *INDENT-OFF*
+  log_Gl.m_ack_stream_position = std::max ((cubstream::stream_position) log_Gl.m_ack_stream_position.load (),
+					   chkpt.last_ack_stream_position);
+  // *INDENT-ON*
 
   /* GET THE CHECKPOINT TRANSACTION INFORMATION */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_CHKPT), log_lsa, log_page_p);

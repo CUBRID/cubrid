@@ -73,8 +73,7 @@ log_global::log_global ()
      }
   , group_commit_info LOG_GROUP_COMMIT_INFO_INITIALIZER
   , m_tran_complete_mgr (NULL)    // to be instantiated on boot
-  // todo: m_ack_stream_position is temporary initialized as max value; fix when m_ack_stream_position is mature
-  , m_ack_stream_position (std::numeric_limits<cubstream::stream_position>::max ())
+  , m_ack_stream_position (std::numeric_limits<cubstream::stream_position>::min ())
   , writer_info (new logwr_info ())
   , bg_archive_info ()
   , mvcc_table ()
