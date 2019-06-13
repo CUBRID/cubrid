@@ -222,6 +222,7 @@ namespace cubreplication
 
 	    // remove
 	    (void) m_pending_to_be_added.erase (repl_obj_it);
+	    repl_obj_it = m_pending_to_be_added.end ();
 
 	    found = true;
 
