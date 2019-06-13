@@ -282,6 +282,7 @@ namespace cubreplication
 	      }
             else
               {
+                /* Skip entry without data, to avoid commit issues. Readers does not wait for group complete. */
                 assert (se->get_packable_entry_count_from_header () == 0);
                 delete se;
               }

@@ -55,7 +55,7 @@ namespace cubreplication
       static void add_ctrl_chn (int fd);
       static void final (void);
 
-      static void enable_active (void);
+      static void enable_active (bool new_slave);
 
       static void update_senders_min_position (const cubstream::stream_position &pos);
   };

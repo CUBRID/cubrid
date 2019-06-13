@@ -32,6 +32,7 @@
 #include "replication_master_node.hpp"
 #include "replication_slave_node.hpp"
 #include "session.h"
+#include "replication_master_senders_manager.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
@@ -770,7 +771,7 @@ css_process_change_server_ha_mode_request (SOCKET master_fd)
 	{
 	  if (state == HA_SERVER_STATE_ACTIVE)
 	    {
-	      cubreplication::master_node::enable_active ();
+	      cubreplication::master_node::enable_active (false);
 	    }
 	}
     }
@@ -2301,6 +2302,13 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
       && !(force && ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE && state == HA_SERVER_STATE_ACTIVE))
     {
       return NO_ERROR;
+    }
+
+  if (state == HA_SERVER_STATE_ACTIVE && log_Gl.m_tran_complete_mgr == NULL)
+    {
+      /* I expect no senders here. */
+      assert (cubreplication::master_senders_manager::get_number_of_stream_senders() == 0);
+      logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
     }
 
   csect_enter (thread_p, CSECT_HA_SERVER_STATE, INF_WAIT);

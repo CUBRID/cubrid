@@ -200,11 +200,19 @@ namespace cubtx
 
     if (close_current_group ())
       {
+        cubstream::stream_position closed_group_stream_start_position = 0, closed_group_stream_end_position = 0;
 	tx_group &closed_group = get_latest_closed_group ();
 
 	/* TODO - Introduce parameter. For now complete group MVCC only here. Notify MVCC complete. */
 	log_Gl.mvcc_table.complete_group_mvcc (thread_p, closed_group);
 	notify_group_mvcc_complete (closed_group);
+
+        if (!HA_DISABLED ())
+          {
+            /* This is a single node that must generate stream group commits. */
+            logtb_get_tdes(thread_p)->replication_log_generator.pack_group_commit_entry (closed_group,
+              closed_group_stream_start_position, closed_group_stream_end_position);
+          }
 
 	log_append_group_complete (thread_p, tdes, 0, closed_group, &closed_group_start_complete_lsa,
 				   &closed_group_end_complete_lsa, &has_postpone);

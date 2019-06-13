@@ -1346,6 +1346,9 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       init_emergency = true;
     }
 
+  cubtx::single_node_group_complete_manager::init ();
+  logpb_initialize_tran_complete_manager (thread_p);
+
   /*
    * Was the database system shut down or was it involved in a crash ?
    */
@@ -1470,8 +1473,6 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	  (void) logpb_background_archiving (thread_p);
 	}
     }
-
-  logpb_initialize_tran_complete_manager (thread_p);
 
   LOG_CS_EXIT (thread_p);
 
@@ -10001,15 +10002,6 @@ class log_flush_daemon_task : public cubthread::entry_task
   public:
     log_flush_daemon_task ()
     {
-      /* TODO - temp fix for cubridci */
-      if (HA_DISABLED () || log_Gl.m_tran_complete_mgr == cubtx::single_node_group_complete_manager::get_instance())
-	{
-	  m_p_log_flush_lsa = cubtx::single_node_group_complete_manager::get_instance ();
-	}
-      else
-	{
-	  m_p_log_flush_lsa = NULL;
-	}
     }
 
     void execute (cubthread::entry &thread_ref) override
@@ -10031,10 +10023,10 @@ class log_flush_daemon_task : public cubthread::entry_task
       log_Stat.gc_flush_count++;
 
       /* Wakeup transaction waiting for group complete. */
-      if (m_p_log_flush_lsa != NULL)
+      if (gl_p_log_flush_lsa != NULL)
 	{
-	  nxio_lsa = log_Gl.append.get_nxio_lsa();
-	  m_p_log_flush_lsa->notify_log_flush_lsa (&nxio_lsa);
+          nxio_lsa = log_Gl.append.get_nxio_lsa ();
+          gl_p_log_flush_lsa->notify_log_flush_lsa(&nxio_lsa);
 	}
 
       /* Wakeup active transaction waiting for specific LSA - not waiting for group complete.
@@ -10046,10 +10038,30 @@ class log_flush_daemon_task : public cubthread::entry_task
       ulock.unlock ();
     }
 
-private:
-    log_flush_lsa *m_p_log_flush_lsa;
+    static log_flush_lsa *gl_p_log_flush_lsa;
 };
+
+log_flush_lsa *log_flush_daemon_task::gl_p_log_flush_lsa = NULL;
 #endif /* SERVER_MODE */
+
+/*
+ * log_set_notify () - True, if need log notify
+ */
+void
+log_set_notify (bool need_log_notify)
+{
+  er_log_debug (ARG_FILE_LINE, "log_set_notify = %d\n", (int) need_log_notify);
+#if defined (SERVER_MODE)
+  if (need_log_notify)
+  {
+    log_flush_daemon_task::gl_p_log_flush_lsa = cubtx::single_node_group_complete_manager::get_instance ();
+  }
+  else
+  {
+    log_flush_daemon_task::gl_p_log_flush_lsa = NULL;
+  }
+#endif /* SERVER_MODE */
+}
 
 #if defined(SERVER_MODE)
 /*

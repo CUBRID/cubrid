@@ -764,6 +764,14 @@ enum log_cs_access_mode
 { LOG_CS_FORCE_USE, LOG_CS_SAFE_READER };
 typedef enum log_cs_access_mode LOG_CS_ACCESS_MODE;
 
+enum log_tran_complete_manager_type
+{
+  LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE,
+  LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE,
+  LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE,
+};
+typedef enum log_tran_complete_manager_type LOG_TRAN_COMPLETE_MANAGER_TYPE;
+
 #if !defined(SERVER_MODE)
 #if !defined(LOG_TRAN_INDEX)
 #define LOG_TRAN_INDEX
@@ -1087,6 +1095,7 @@ extern bool logtb_get_check_interrupt (THREAD_ENTRY * thread_p);
 extern int logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 
 extern LOG_TDES *logtb_get_system_tdes (THREAD_ENTRY * thread_p = NULL);
+extern void logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type);
 
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation

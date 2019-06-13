@@ -10187,21 +10187,63 @@ logpb_initialize_logging_statistics (void)
 void
 logpb_initialize_tran_complete_manager (THREAD_ENTRY * thread_p)
 {
-  /* TODO - temp fix for cubridci */
-  //if (HA_DISABLED ())
-  //  {
-  //    /* HA disabled. */
-  //    cubtx::single_node_group_complete_manager::init ();
-  //    log_Gl.m_tran_complete_mgr = cubtx::single_node_group_complete_manager::get_instance ();
-  //  }
-  //else
-  //  {
-  //    /* Will be initialized later. */
-  //    log_Gl.m_tran_complete_mgr = NULL;
-  //  }
+  if (HA_DISABLED ())
+    {
+      /* HA disabled. */
+      er_log_debug (ARG_FILE_LINE, "logpb_initialize_tran_complete_manager single node \n");
+      log_Gl.m_tran_complete_mgr = cubtx::single_node_group_complete_manager::get_instance ();
+      log_set_notify (true);
+    }
+  else
+    {
+      /* Will be initialized later. */
+      log_Gl.m_tran_complete_mgr = NULL;
+    }
+}
 
-  cubtx::single_node_group_complete_manager::init ();
-  log_Gl.m_tran_complete_mgr = cubtx::single_node_group_complete_manager::get_instance ();
+/*
+ * logpb_resets_tran_complete_manager - Resets transaction complete manager.
+ *
+ * return: nothing
+ * manager_type(in) : manager type
+ *    Note: This function does not deallocate the old complete manager here. Just activate it.
+ *      TODO - We need to consider atomic reset.
+ */
+void
+logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
+{
+#if defined(SERVER_MODE)
+
+  switch (manager_type)
+    {
+    case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
+      /* Not allowed to reset in non-HA. */
+      assert (log_Gl.m_tran_complete_mgr == NULL);
+
+      /* Single node. Need to wait for log flush. */
+      log_set_notify (true);
+      log_Gl.m_tran_complete_mgr = cubtx::single_node_group_complete_manager::get_instance ();
+      er_log_debug (ARG_FILE_LINE, "logpb_resets_tran_complete_manager single node \n");
+      break;
+
+    case LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE:
+      /* Master with slaves. Need to wait for stream ack sent by slaves. */
+      log_set_notify (false);
+      log_Gl.m_tran_complete_mgr = cubtx::master_group_complete_manager::get_instance ();
+      er_log_debug (ARG_FILE_LINE, "logpb_resets_tran_complete_manager master node \n");
+      break;
+
+    case LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE:
+      /* Master with slaves. Need to wait for master stream. */
+      log_set_notify (false);
+      log_Gl.m_tran_complete_mgr = cubtx::slave_group_complete_manager::get_instance ();
+      er_log_debug (ARG_FILE_LINE, "logpb_resets_tran_complete_manager slave node \n");
+      break;
+
+    default:
+      assert (false);
+    }
+#endif
 }
 
 /*
@@ -10214,7 +10256,8 @@ logpb_initialize_tran_complete_manager (THREAD_ENTRY * thread_p)
 void
 logpb_finalize_tran_complete_manager (void)
 {
-  if (!log_does_allow_replication ())
+  log_set_notify (false);
+  if (HA_DISABLED ())
     {
       /* HA disabled. */
       cubtx::single_node_group_complete_manager::final ();

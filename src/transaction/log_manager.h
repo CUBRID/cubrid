@@ -226,6 +226,7 @@ extern INT64 log_get_clock_msec (void);
 extern void log_wakeup_remove_log_archive_daemon ();
 extern void log_wakeup_checkpoint_daemon ();
 extern void log_wakeup_log_flush_daemon ();
+extern void log_set_notify (bool need_log_notify);
 
 extern bool log_is_log_flush_daemon_available ();
 #if defined (SERVER_MODE)

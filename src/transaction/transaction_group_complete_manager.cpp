@@ -61,6 +61,7 @@ namespace cubtx
 	  {
             /* Completed mvcc for group_id. No need to acquire mutex. */
             assert (group_id <= m_latest_closed_group_id);
+            return;
 	  }
       }
 
@@ -93,9 +94,9 @@ namespace cubtx
       {
 	if (is_latest_closed_group_logged ())
 	  {
-            assert (group_id <= m_latest_closed_group_id);
             /* Logging completed for group_id. No need to acquire mutex. */
-            return;	      
+            assert (group_id <= m_latest_closed_group_id);
+            return;
 	  }
       }
 

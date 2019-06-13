@@ -25,6 +25,7 @@
 
 #include "replication_master_node.hpp"
 #include "log_impl.h"
+#include "log_manager.h"
 #include "replication_common.hpp"
 #include "master_control_channel.hpp"
 #include "replication_master_senders_manager.hpp"
@@ -73,7 +74,7 @@ namespace cubreplication
     er_log_debug_replication (ARG_FILE_LINE, "master_node:init replication_path:%s", replication_path.c_str ());
   }
 
-  void master_node::enable_active ()
+  void master_node::enable_active (bool new_slave)
   {
     std::lock_guard<std::mutex> lg (g_enable_active_mtx);
     if (css_ha_server_state () == HA_SERVER_STATE_TO_BE_ACTIVE)
@@ -84,13 +85,24 @@ namespace cubreplication
 
 	stream_entry fail_over_entry (g_instance->m_stream, MVCCID_FIRST, stream_entry_header::NEW_MASTER);
 	fail_over_entry.pack ();
-	log_Gl.m_tran_complete_mgr = cubtx::master_group_complete_manager::get_instance ();
+
+        if (log_Gl.m_tran_complete_mgr == NULL)
+          {
+            if ((new_slave) || (cubreplication::master_senders_manager::get_number_of_stream_senders() > 0))
+              {
+                logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE);
+              }
+            else
+              {
+                logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
+              }
+          }
       }
   }
 
   void master_node::new_slave (int fd)
   {
-    enable_active ();
+    enable_active (true);
 
     if (css_ha_server_state () != HA_SERVER_STATE_ACTIVE)
       {
