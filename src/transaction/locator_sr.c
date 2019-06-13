@@ -13719,7 +13719,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
   std::vector<VPID> heap_pages_array;
 // *INDENT-ON*
 
-   // Early-out
+  // Early-out
   if (recdes.size () == 0)
     {
       // Nothing to insert.
@@ -13728,12 +13728,12 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 
    *force_count = 0;
 
-   // Take into account the unfill factor of the heap file.
+  // Take into account the unfill factor of the heap file.
   heap_max_page_size = heap_nonheader_page_capacity () * (1.0f - prm_get_float_value (PRM_ID_HF_UNFILL_FACTOR));
 
    for (size_t i = 0; i < recdes.size (); i++)
     {
-      // Loop until we insert all records.
+        // Loop until we insert all records.
 
        if (heap_is_big_length (recdes[i].length))
 	{
@@ -13796,7 +13796,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	}
     }
 
-   // We must check if we have records which did not fill an entire page.
+  // We must check if we have records which did not fill an entire page.
   for (size_t i = 0; i < recdes_array.size (); i++)
     {
       error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, &recdes_array[i], has_index, op_type,
@@ -13809,7 +13809,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	}
     }
 
-   // Now form a heap chain with the pages and add the chain to the current heap.
+  // Now form a heap chain with the pages and add the chain to the current heap.
   // TODO: this!
 
    return error_code;

@@ -24710,7 +24710,7 @@ heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, PGBUF_
    assert (hfid != NULL && home_hint_p != NULL && new_page_vpid != NULL);
 
    PGBUF_INIT_WATCHER (home_hint_p, PGBUF_ORDERED_HEAP_NORMAL, hfid);
-   // Init the heap page chain
+  // Init the heap page chain
   new_page_chain.class_oid = class_oid;
   VPID_SET_NULL (&new_page_chain.prev_vpid);
   VPID_SET_NULL (&new_page_chain.next_vpid);
@@ -24720,7 +24720,7 @@ heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, PGBUF_
 
    VPID_SET_NULL (new_page_vpid);
 
-   // Alloc a new page.
+  // Alloc a new page.
   error_code = file_alloc (thread_p, &hfid->vfid, heap_vpid_init_new, &new_page_chain, new_page_vpid, &page_ptr);
   if (error_code != NO_ERROR)
     {
@@ -24728,10 +24728,10 @@ heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, PGBUF_
       return error_code;
     }
 
-   // Need to get the watcher to the new page.
+  // Need to get the watcher to the new page.
   pgbuf_attach_watcher (thread_p, page_ptr, PGBUF_LATCH_WRITE, hfid, home_hint_p);
 
-   // Make sure we have fixed the page.
+  // Make sure we have fixed the page.
   assert (pgbuf_is_page_fixed_by_thread (thread_p, new_page_vpid));
 
    return error_code;
