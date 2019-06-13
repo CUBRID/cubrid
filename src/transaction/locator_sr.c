@@ -4425,7 +4425,8 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 			{
 			  if (!logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
 			    {
-			      /* Disable row replication. */
+			      /* Disable row replication: SM_FOREIGN_KEY_CASCADE constraint from slave will make sure
+			       * these changes are replicated */
 			      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
 			      disabled_row_replication = true;
 			    }
@@ -7550,8 +7551,8 @@ end:
 	    {
 	      /* Aborts and simulate apply replication RBR on master node. */
 	      error_code =
-		logtb_get_tdes (thread_p)->
-		replication_log_generator.abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
+		logtb_get_tdes (thread_p)->replication_log_generator.
+		abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
 	    }
 	  else
 	    {
@@ -14088,6 +14089,12 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION 
       error_code = btree_get_pkey_btid (thread_p, class_oid, &btid);
       if (error_code != NO_ERROR)
 	{
+	  goto exit;
+	}
+
+      if (BTID_IS_NULL (&btid))
+	{
+	  /* missing primary key : silently ignore */
 	  goto exit;
 	}
 
