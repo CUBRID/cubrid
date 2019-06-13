@@ -6060,12 +6060,12 @@ exit:
 static PT_NODE *
 qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  PT_NODE *cnf_node, *arg1, *arg2, *select_list;
+  PT_NODE *cnf_node, *arg1, *arg2, *select_list, *arg2_list;
   PT_OP_TYPE op_type;
   PT_NODE *new_spec, *new_attr, *new_func;
   int *idx = (int *) arg;
   bool do_rewrite;
-  PT_NODE *save_next, *arg1_next, *new_attr_next, *tmp;
+  PT_NODE *save_next, *arg1_next, *new_attr_next, *tmp, *arg2_next;
   PT_OP_TYPE saved_op_type;
 
   if (node->node_type != PT_SELECT)
@@ -6102,24 +6102,60 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	  continue;
 	}
 
+      select_list = pt_get_select_list (parser, arg2);
+      if ((op_type == PT_EQ || op_type == PT_IS_IN || op_type == PT_EQ_SOME) && select_list
+	  && PT_IS_COLLECTION_TYPE(arg1->type_enum) && PT_IS_FUNCTION(arg1)
+	  && PT_IS_COLLECTION_TYPE(arg2->type_enum) && PT_IS_FUNCTION(select_list))
+	{
+	  /* collection case : (col1,col2) [in or =] (select col1,col2 ...) */
+	  arg1 = arg1->info.function.arg_list;
+	  arg2_list = select_list->info.function.arg_list;
+	}
+      else if (op_type == PT_EQ)
+	{
+	  /* one column subquery is not rewrited to join with derived table. ex) col1 = (select col1 ... ) */
+	  continue;
+	}
+      else
+	{
+	  arg2_list = arg2;
+	}
+
       do_rewrite = false;
       select_list = NULL;
 
       /* should be 'attr op uncorr-subquery', and select list of the subquery should be indexable-column */
-
-      if (tp_valid_indextype (pt_type_enum_to_db (arg1->type_enum))
-	  && (pt_is_attr (arg1) || pt_is_function_index_expression (arg1)))
+      for (arg1_next = arg1, arg2_next = arg2_list; arg1_next && arg2_next; arg1_next = arg1_next->next, arg2_next = arg2_next->next)
 	{
-	  if (tp_valid_indextype (pt_type_enum_to_db (arg2->type_enum)) && !pt_has_analytic (parser, arg2))
+	  if (tp_valid_indextype (pt_type_enum_to_db (arg1_next->type_enum))
+	      && (pt_is_attr (arg1_next) || pt_is_function_index_expression (arg1_next)))
 	    {
-	      select_list = pt_get_select_list (parser, arg2);
-	      if (select_list != NULL && arg2->info.query.correlation_level == 0)
+	      if (tp_valid_indextype (pt_type_enum_to_db (arg2_next->type_enum)) && !pt_has_analytic (parser, arg2))
 		{
-		  assert (pt_length_of_select_list (select_list, EXCLUDE_HIDDEN_COLUMNS) == 1);
+		  select_list = pt_get_select_list (parser, arg2);
+		  if (select_list != NULL && arg2->info.query.correlation_level == 0)
+		    {
+		      assert (pt_length_of_select_list (select_list, EXCLUDE_HIDDEN_COLUMNS) == 1);
 
-		  /* match 'indexable-attr op indexable-uncorr-subquery' */
-		  do_rewrite = true;
+		      /* match 'indexable-attr op indexable-uncorr-subquery' */
+		      do_rewrite = true;
+		    }
+		  else
+		    {
+		      do_rewrite = false;
+		      break;
+		    }
 		}
+	      else
+		{
+		  do_rewrite = false;
+		  break;
+		}
+	    }
+	  else
+	    {
+	      do_rewrite = false;
+	      break;
 	    }
 	}
 
@@ -6131,6 +6167,12 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	    case PT_EQ:	/* arg1 = set_func_elements */
 	    case PT_IS_IN:	/* arg1 = set_func_elements, attr */
 	    case PT_EQ_SOME:	/* arg1 = attr */
+	      if (PT_IS_COLLECTION_TYPE(arg2->type_enum) && select_list && PT_IS_FUNCTION(select_list))
+		{
+		  /* if arg2 is collection type then select_list is rewrited to multi col */
+		  pt_select_list_to_one_col(parser,arg2, false);
+		}
+
 	      /* make new derived spec and append it to FROM */
 	      if (mq_make_derived_spec (parser, node, arg2, idx, &new_spec, &new_attr) == NULL)
 		{
