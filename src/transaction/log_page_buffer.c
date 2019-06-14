@@ -10257,11 +10257,7 @@ void
 logpb_finalize_tran_complete_manager (void)
 {
   log_set_notify (false);
-  if (HA_DISABLED ())
-    {
-      /* HA disabled. */
-      cubtx::single_node_group_complete_manager::final ();
-    }
+  cubtx::single_node_group_complete_manager::final ();
   log_Gl.m_tran_complete_mgr = NULL;
 }
 
