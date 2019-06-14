@@ -195,13 +195,14 @@ namespace cubtx
   void single_node_group_complete_manager::do_prepare_complete (THREAD_ENTRY *thread_p)
   {
     LOG_LSA closed_group_start_complete_lsa, closed_group_end_complete_lsa;
-    LOG_TDES *tdes = logtb_get_tdes (&cubthread::get_entry ());
+    LOG_TDES *tdes;
     bool has_postpone;
 
     if (close_current_group ())
       {
         cubstream::stream_position closed_group_stream_start_position = 0, closed_group_stream_end_position = 0;
 	tx_group &closed_group = get_latest_closed_group ();
+        tdes = logtb_get_tdes (thread_p);
 
 	/* TODO - Introduce parameter. For now complete group MVCC only here. Notify MVCC complete. */
 	log_Gl.mvcc_table.complete_group_mvcc (thread_p, closed_group);
@@ -210,7 +211,7 @@ namespace cubtx
         if (!HA_DISABLED ())
           {
             /* This is a single node that must generate stream group commits. */
-            logtb_get_tdes(thread_p)->replication_log_generator.pack_group_commit_entry (closed_group,
+            tdes->replication_log_generator.pack_group_commit_entry (closed_group,
               closed_group_stream_start_position, closed_group_stream_end_position);
           }
 
