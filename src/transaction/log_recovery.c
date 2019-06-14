@@ -2882,6 +2882,22 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	}
     }
 
+  /* Find min pos of last active transaction at the end of analysis */
+  assert (LSA_ISNULL (&log_Gl.m_min_active_lsa));
+  for (int i = 1; i < log_Gl.trantable.num_total_indices; ++i)
+    {
+      LOG_TDES *crt_tdes = NULL;
+      if ((crt_tdes = LOG_FIND_TDES (i)) != NULL && crt_tdes->trid != NULL_TRANID
+	  && !LSA_ISNULL (&crt_tdes->undo_nxlsa))
+	{
+	  if (LSA_ISNULL (&log_Gl.m_min_active_lsa) || LSA_LT (&crt_tdes->head_lsa, &log_Gl.m_min_active_lsa))
+	    {
+	      LSA_COPY (&log_Gl.m_min_active_lsa, &crt_tdes->head_lsa);
+	      assert (!LSA_ISNULL (&crt_tdes->head_lsa));
+	    }
+	}
+    }
+
   if (may_need_synch_checkpoint_2pc == true)
     {
       /*
@@ -4941,7 +4957,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  break;
 		case LOG_GROUP_COMPLETE:
 		  // should not happen
-		  // todo [GC recovery]:
 		  assert (false);
 		  break;
 		case LOG_SMALLER_LOGREC_TYPE:
@@ -5011,6 +5026,65 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	  /* Find the next log record to undo */
 	  log_find_unilaterally_largest_undo_lsa (thread_p, max_undo_lsa);
 	}
+    }
+
+  /* Find log_Gl m_active_start position located in the last GROUP COMPLETE record before m_min_active_lsa (min pos */
+  /* of last active transaction at the end of analysis) - we go backwards until we find a GC record */
+  if (!LSA_ISNULL (&log_Gl.m_min_active_lsa))
+    {
+      assert (log_Gl.m_active_start_position == 0);
+      bool found = false;
+      LSA_COPY (&log_lsa, &log_Gl.m_min_active_lsa);
+      while (!found)
+	{
+	  if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
+	    {
+	      log_zip_free (undo_unzip_ptr);
+
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_undo active start position recovery");
+	      return;
+	    }
+
+	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
+
+	  while (true)
+	    {
+	      if (log_rec->type == LOG_GROUP_COMPLETE)
+		{
+		  data_header_size = sizeof (LOG_REC_GROUP_COMPLETE);
+		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, data_header_size, &log_lsa, log_pgptr);
+		  LOG_REC_GROUP_COMPLETE *gc_rec =
+		    (LOG_REC_GROUP_COMPLETE *) ((char *) log_pgptr->area + log_lsa.offset);
+
+		  // found start of filtered apply
+		  log_Gl.m_active_start_position = gc_rec->stream_pos;
+		  found = true;
+		  break;
+		}
+
+	      if (LSA_ISNULL (&log_rec->back_lsa))
+		{
+		  assert (false);
+		  log_zip_free (undo_unzip_ptr);
+		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_undo active start position recovery");
+		  return;
+		}
+
+	      if (log_lsa.pageid != log_rec->back_lsa.pageid)
+		{
+		  // page is different; we need to change the fetched log page
+		  LSA_COPY (&log_lsa, &log_rec->back_lsa);
+		  break;
+		}
+	      else
+		{
+		  LSA_COPY (&log_lsa, &log_rec->back_lsa);
+		  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
+		}
+	    }
+	}
+
+      assert (log_Gl.m_active_start_position != 0);
     }
 
   log_zip_free (undo_unzip_ptr);
