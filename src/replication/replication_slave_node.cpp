@@ -25,6 +25,7 @@
 
 #include "replication_slave_node.hpp"
 #include "log_consumer.hpp"
+#include "log_impl.h"
 #include "multi_thread_stream.hpp"
 #include "replication_common.hpp"
 #include "slave_control_channel.hpp"
@@ -56,7 +57,7 @@ namespace cubreplication
     assert (g_instance == NULL);
     slave_node *instance = slave_node::get_instance (hostname);
 
-    instance->apply_start_position ();
+    instance->apply_start_position (log_Gl.m_active_start_position);
 
     INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_CONSUMER_BUFFER_SIZE);
 

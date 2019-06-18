@@ -26,6 +26,7 @@
 #include "config.h"
 
 #include <algorithm>
+#include <unordered_set>
 #include <stdio.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -2890,6 +2891,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
       if ((crt_tdes = LOG_FIND_TDES (i)) != NULL && crt_tdes->trid != NULL_TRANID
 	  && !LSA_ISNULL (&crt_tdes->undo_nxlsa))
 	{
+	  log_Gl.m_active_mvcc_ids.insert (crt_tdes->mvccinfo.id);
 	  if (LSA_ISNULL (&log_Gl.m_min_active_lsa) || LSA_LT (&crt_tdes->head_lsa, &log_Gl.m_min_active_lsa))
 	    {
 	      LSA_COPY (&log_Gl.m_min_active_lsa, &crt_tdes->head_lsa);

@@ -63,6 +63,8 @@
 #include "replication_db_copy.hpp"
 
 #include <assert.h>
+#include <atomic>
+#include <unordered_set>
 #if defined(SOLARIS)
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
 #endif /* SOLARIS */
@@ -674,6 +676,7 @@ struct log_global
   cubtx::complete_manager *m_tran_complete_mgr;
   std::atomic<cubstream::stream_position> m_ack_stream_position;
   cubstream::stream_position m_active_start_position;
+  std::unordered_set<MVCCID> m_active_mvcc_ids;
   // *INDENT-ON*
   LOG_LSA m_min_active_lsa;
 

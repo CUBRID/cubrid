@@ -48,7 +48,7 @@ namespace cubreplication
     assert (g_instance == NULL);
     master_node *instance = master_node::get_instance (name);
 
-    instance->apply_start_position ();
+    instance->apply_start_position (log_Gl.m_active_start_position);
 
     INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_GENERATOR_BUFFER_SIZE);
     int num_max_appenders = log_Gl.trantable.num_total_indices + 1;
