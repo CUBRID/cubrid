@@ -60,6 +60,7 @@
 #include "process_util.h"
 #include "replication_db_copy.hpp"
 #include "replication_object.hpp"
+#include "session.h"
 #include "slotted_page.h"
 #include "string_buffer.hpp"
 #include "utility.h"
@@ -14283,6 +14284,7 @@ int
 locator_repl_start_tran (THREAD_ENTRY * thread_p)
 {
   /* TODO */
+  int error_code = NO_ERROR;
   BOOT_CLIENT_CREDENTIAL applier_Client_credentials;
   applier_Client_credentials.client_type = BOOT_CLIENT_LOG_APPLIER;
   applier_Client_credentials.program_name = "(repl_applier)";
@@ -14298,11 +14300,20 @@ locator_repl_start_tran (THREAD_ENTRY * thread_p)
 			     client_isolation);
   if (tran_index == NULL_TRAN_INDEX)
     {
-      ASSERT_ERROR ();
-      return ER_FAILED;
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
     }
 
-  return NO_ERROR;
+  SESSION_ID id = DB_EMPTY_SESSION;
+
+  error_code = session_state_create (thread_p, &id);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  return error_code;
 }
 
 int
@@ -14324,6 +14335,8 @@ locator_repl_end_tran (THREAD_ENTRY * thread_p, bool commit)
   logtb_release_tran_index (thread_p, saved_tran_index);
 
   logtb_set_current_tran_index (thread_p, saved_tran_index);
+
+  (void) session_state_destroy (thread_p, thread_p->get_session_id ());
 
   return NO_ERROR;
 }
