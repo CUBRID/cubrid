@@ -462,6 +462,13 @@ namespace cubthread
     tran_index = NULL_TRAN_INDEX;
   }
 
+  void
+  entry::clear_conn_session ()
+  {
+    conn_entry = NULL;
+    set_session (NULL);
+    set_session_id (DB_EMPTY_SESSION);
+  }
 } // namespace cubthread
 
 //////////////////////////////////////////////////////////////////////////

@@ -321,6 +321,7 @@ namespace cubthread
       }
       void claim_system_worker ();
       void retire_system_worker ();
+      void clear_conn_session ();
 
       void end_resource_tracks (void);
       void push_resource_tracks (void);
