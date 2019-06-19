@@ -231,7 +231,7 @@ namespace cubreplication
 	    else
 	      {
 		MVCCID mvccid = se->get_mvccid ();
-		if (log_Gl.m_ack_stream_position <= se->get_stream_entry_end_position ())
+		if (log_Gl.m_ack_stream_position > se->get_stream_entry_end_position ())
 		  {
 		    if (log_Gl.m_active_mvcc_ids.find (mvccid) == log_Gl.m_active_mvcc_ids.end ())
 		      {
