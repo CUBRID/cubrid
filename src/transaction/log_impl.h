@@ -673,7 +673,9 @@ struct log_global
   // *INDENT-OFF*
   cubtx::complete_manager *m_tran_complete_mgr;
   std::atomic<cubstream::stream_position> m_ack_stream_position;
+  cubstream::stream_position m_active_start_position;
   // *INDENT-ON*
+  LOG_LSA m_min_active_lsa;
 
   /* remote log writer information */
   logwr_info *writer_info;
