@@ -80,7 +80,7 @@ namespace cubreplication
       node_definition m_identity;
 
       /* a replication node has stream start position : this is read from persistent storage */
-      virtual int apply_start_position ();
+      virtual int apply_start_position (cubstream::stream_position apply_start_pos);
 
       replication_node (const char *name)
 	: m_start_position (0),

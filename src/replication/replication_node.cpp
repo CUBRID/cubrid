@@ -43,9 +43,9 @@ namespace cubreplication
     m_stream = NULL;
   }
 
-  int replication_node::apply_start_position ()
+  int replication_node::apply_start_position (cubstream::stream_position apply_start_pos)
   {
-    //
+    m_start_position = apply_start_pos;
     return NO_ERROR;
   }
 
