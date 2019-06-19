@@ -2737,17 +2737,9 @@ session_set_session_data (THREAD_ENTRY * thread_p, SESSION_STATE * session_p)
 	}
     }
 
-  if (thread_p->conn_entry != NULL)
-    {
-      /* If we have a connection entry associated with this thread, setup session data for this conn_entry */
-      thread_p->conn_entry->set_session (session_p);
-      thread_p->conn_entry->set_session_id (session_p->id);
-    }
-  else
-    {
-      thread_p->set_connectionless_session (session_p);
-      thread_p->set_connectionless_session_id (session_p->id);
-    }
+  thread_p->set_session (session_p);
+  thread_p->set_session_id (session_p->id);
+
   thread_p->private_lru_index = session_p->private_lru_index;
 #endif
 }

@@ -138,7 +138,8 @@ namespace cubthread
 		       PGBUF_TRACK_RES_NAME, PGBUF_TRACK_MAX_AMOUNT))
     , m_csect_tracker (*new cubsync::critical_section_tracker (ENABLE_TRACKERS))
     , m_systdes (NULL)
-    , m_connectionless_session_p (NULL)
+    , m_session_p (NULL)
+    , m_session_id (DB_EMPTY_SESSION)
   {
     if (pthread_mutex_init (&tran_index_lock, NULL) != 0)
       {
@@ -220,22 +221,11 @@ namespace cubthread
       {
 	conn_entry->set_session (session_arg);
       }
-    else
-      {
-	/* no connection for this thread entry */
-	set_connectionless_session (session_arg);
-      }
+
+    m_session_p = session_arg;
 #else
     assert (0);
 #endif /* SERVER_MODE */
-  }
-
-  void
-  entry::set_connectionless_session (session_state *session_arg)
-  {
-    assert (conn_entry == NULL);
-
-    m_connectionless_session_p = session_arg;
   }
 
   void
@@ -246,36 +236,22 @@ namespace cubthread
       {
 	conn_entry->set_session_id (id);
       }
-    else
-      {
-	/* no connection for this thread entry */
-	set_connectionless_session_id (id);
-      }
+
+    m_session_id = id;
 #else
     assert (0);
 #endif /* SERVER_MODE */
   }
 
-  void
-  entry::set_connectionless_session_id (SESSION_ID id)
-  {
-    assert (conn_entry == NULL);
-    m_connectionless_session_id = id;
-  }
-
   session_state *
-  entry::get_session ()
+  entry::get_session () const
   {
 #if defined (SERVER_MODE)
     if (conn_entry != NULL)
       {
-	return conn_entry->get_session ();
+	assert (m_session_p == conn_entry->get_session ());
       }
-    else
-      {
-	/* no connection for this thread entry */
-	return get_connectionless_session ();
-      }
+    return m_session_p;
 #else
     assert (0);
     return NULL;
@@ -283,29 +259,19 @@ namespace cubthread
   }
 
   SESSION_ID
-  entry::get_session_id ()
+  entry::get_session_id () const
   {
 #if defined (SERVER_MODE)
     if (conn_entry != NULL)
       {
-	return conn_entry->get_session_id ();
+	assert (m_session_id == conn_entry->get_session_id ());
       }
-    else
-      {
-	/* no connection for this thread entry */
-	return m_connectionless_session_id;
-      }
+    
+    return m_session_id;
 #else
     assert (0);
-    return NULL;
+    return DB_EMPTY_SESSION;
 #endif /* SERVER_MODE */
-  }
-
-  session_state *
-  entry::get_connectionless_session ()
-  {
-    assert (conn_entry == NULL);
-    return m_connectionless_session_p;
   }
 
   void

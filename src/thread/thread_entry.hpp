@@ -327,12 +327,9 @@ namespace cubthread
       void pop_resource_tracks (void);
 
       void set_session (session_state *session_arg);
-      void set_connectionless_session (session_state *session_arg);
       void set_session_id (SESSION_ID id);
-      void set_connectionless_session_id (SESSION_ID id);
-      session_state *get_session ();
-      SESSION_ID get_session_id ();
-      session_state *get_connectionless_session ();
+      session_state *get_session () const;
+      SESSION_ID get_session_id () const;
 
     private:
       void clear_resources (void);
@@ -351,8 +348,8 @@ namespace cubthread
       cubsync::critical_section_tracker &m_csect_tracker;
       log_system_tdes *m_systdes;
 
-      session_state *m_connectionless_session_p;
-      SESSION_ID m_connectionless_session_id;
+      session_state *m_session_p;
+      SESSION_ID m_session_id;
   };
 
 } // namespace cubthread

@@ -474,10 +474,10 @@ struct css_conn_entry
   void set_tran_index (int tran_index);
   int get_tran_index (void);
   void set_session_id (SESSION_ID id);
-  const SESSION_ID get_session_id () const;
+  SESSION_ID get_session_id () const;
 #if defined(SERVER_MODE)
   void set_session (session_state * session_arg);
-  session_state *get_session (void);
+  session_state *get_session (void) const;
 #endif				/* SERVER_MODE */
 
 private:

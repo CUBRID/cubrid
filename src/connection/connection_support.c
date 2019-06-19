@@ -2930,7 +2930,8 @@ css_conn_entry::set_session_id (SESSION_ID id)
   session_id = id;
 }
 
-const SESSION_ID css_conn_entry::get_session_id () const
+SESSION_ID
+css_conn_entry::get_session_id () const
 {
   return session_id;
 }
@@ -2943,7 +2944,7 @@ css_conn_entry::set_session (session_state *session_arg)
 }
 
 session_state *
-css_conn_entry::get_session ()
+css_conn_entry::get_session () const
 {
   return session_p;
 }
