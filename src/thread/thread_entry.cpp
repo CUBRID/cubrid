@@ -266,7 +266,7 @@ namespace cubthread
       {
 	assert (m_session_id == conn_entry->get_session_id ());
       }
-    
+
     return m_session_id;
 #else
     assert (0);

@@ -958,7 +958,7 @@ session_remove_expired_sessions (THREAD_ENTRY * thread_p)
 	      goto exit_on_end;
 	    }
 
-          /* TODO : implement a mechanism to expire sessions without connnection */
+	  /* TODO : implement a mechanism to expire sessions without connnection */
 	  if (state->mode != SESSION_WITHOUT_CONNECTION && is_expired)
 	    {
 	      expired_sid_buffer[n_expired_sids++] = state->id;
@@ -3057,7 +3057,7 @@ session_state_verify_ref_count (THREAD_ENTRY * thread_p, SESSION_STATE * session
       assert (ref_count == 0);
       ref_count = 1;
     }
-  
+
   if (ref_count != session_p->ref_count)
     {
       END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
