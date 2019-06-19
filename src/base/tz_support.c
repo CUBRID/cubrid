@@ -2845,7 +2845,6 @@ tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info, bool
 #endif
 	  err_status = ER_TZ_INTERNAL_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
-	  assert (false);
 	}
       goto exit;
     }
