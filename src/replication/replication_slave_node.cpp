@@ -107,8 +107,7 @@ namespace cubreplication
       }
     /* start transfer receiver */
     assert (g_instance->m_transfer_receiver == NULL);
-    /* TODO[replication] : last position to be retrieved from recovery module */
-    cubstream::stream_position start_position = 0;
+    cubstream::stream_position start_position = log_Gl.m_active_start_position;
 
     g_instance->m_lc->set_ctrl_chn (new cubreplication::slave_control_channel (std::move (control_chn)));
 
