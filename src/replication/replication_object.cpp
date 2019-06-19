@@ -244,6 +244,12 @@ namespace cubreplication
     db_change_private_heap (NULL, save_heapid);
   }
 
+  void
+  single_row_repl_entry::set_class_name (const char *class_name)
+  {
+    m_class_name = class_name;
+  }
+
   std::size_t
   single_row_repl_entry::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
