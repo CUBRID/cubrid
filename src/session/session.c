@@ -141,6 +141,8 @@ struct session_state
   int ref_count;
   TZ_REGION session_tz_region;
   int private_lru_index;
+
+  SESSION_MODE mode;
 };
 
 /* session state manipulation functions */
@@ -282,6 +284,7 @@ session_state_init (void *st)
   session_p->trace_format = QUERY_TRACE_TEXT;
   session_p->private_lru_index = -1;
   session_p->auto_commit = false;
+  session_p->mode = SESSION_WITH_CONNECTION;
 
   return NO_ERROR;
 }
@@ -345,6 +348,7 @@ session_state_uninit (void *st)
 
   (void) pgbuf_release_private_lru (thread_p, session->private_lru_index);
   session->private_lru_index = -1;
+  session->mode = SESSION_WITH_CONNECTION;
 
 #if defined (SESSION_DEBUG)
   er_log_debug (ARG_FILE_LINE, "session_free_session closed %d queries for %d\n", cnt, session->id);
@@ -626,13 +630,14 @@ session_states_finalize (THREAD_ENTRY * thread_p)
  * session_state_create () - Create a sessions state with the specified id
  *   return: NO_ERROR or error code
  *   session_id (in) : the session id
+ *   mode (in): with or without an associated connection
  *
  * Note: This function creates and adds a sessions state object to the
  *       sessions state memory hash. This function should be called when a
  *	 session starts.
  */
 int
-session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
+session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id, const SESSION_MODE mode)
 {
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_SESSIONS);
   SESSION_STATE *session_p = NULL;
@@ -646,6 +651,8 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
   if (old_session != NULL)
     {
       SESSION_ID old_id = thread_p->get_session_id ();
+
+      assert (mode != SESSION_WITHOUT_CONNECTION);
 
       /* session_check_session should clear session_p, right? add safe-guard if necessary. */
 
@@ -702,6 +709,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
 
   /* initialize session active time */
   session_p->active_time = time (NULL);
+  session_p->mode = mode;
 
 #if defined (SERVER_MODE)
 #if !defined (NDEBUG)
@@ -950,7 +958,8 @@ session_remove_expired_sessions (THREAD_ENTRY * thread_p)
 	      goto exit_on_end;
 	    }
 
-	  if (is_expired)
+          /* TODO : implement a mechanism to expire sessions without connnection */
+	  if (state->mode != SESSION_WITHOUT_CONNECTION && is_expired)
 	    {
 	      expired_sid_buffer[n_expired_sids++] = state->id;
 	      if (n_expired_sids == EXPIRED_SESSION_BUFFER_SIZE)
@@ -3042,6 +3051,13 @@ session_state_verify_ref_count (THREAD_ENTRY * thread_p, SESSION_STATE * session
 	}
     }
 
+  if (session_p->mode == SESSION_WITHOUT_CONNECTION)
+    {
+      /* TODO : implement reference from thread only */
+      assert (ref_count == 0);
+      ref_count = 1;
+    }
+  
   if (ref_count != session_p->ref_count)
     {
       END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);

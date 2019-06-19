@@ -14306,7 +14306,7 @@ locator_repl_start_tran (THREAD_ENTRY * thread_p)
 
   SESSION_ID id = DB_EMPTY_SESSION;
 
-  error_code = session_state_create (thread_p, &id);
+  error_code = session_state_create (thread_p, &id, SESSION_WITHOUT_CONNECTION);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error_code);
