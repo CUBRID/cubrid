@@ -218,12 +218,12 @@ namespace cubthread
 #if defined (SERVER_MODE)
     if (conn_entry != NULL)
       {
-        conn_entry->set_session (session_arg);
+	conn_entry->set_session (session_arg);
       }
     else
       {
-        /* no connection for this thread entry */
-        set_connectionless_session (session_arg);
+	/* no connection for this thread entry */
+	set_connectionless_session (session_arg);
       }
 #else
     assert (0);
@@ -244,12 +244,12 @@ namespace cubthread
 #if defined (SERVER_MODE)
     if (conn_entry != NULL)
       {
-        conn_entry->set_session_id (id);
+	conn_entry->set_session_id (id);
       }
     else
       {
-        /* no connection for this thread entry */
-        set_connectionless_session_id (id);
+	/* no connection for this thread entry */
+	set_connectionless_session_id (id);
       }
 #else
     assert (0);
@@ -263,18 +263,18 @@ namespace cubthread
     m_connectionless_session_id = id;
   }
 
-  session_state*
+  session_state *
   entry::get_session ()
   {
 #if defined (SERVER_MODE)
     if (conn_entry != NULL)
       {
-        return conn_entry->get_session ();
+	return conn_entry->get_session ();
       }
     else
       {
-        /* no connection for this thread entry */
-        return get_connectionless_session ();
+	/* no connection for this thread entry */
+	return get_connectionless_session ();
       }
 #else
     assert (0);
@@ -288,12 +288,12 @@ namespace cubthread
 #if defined (SERVER_MODE)
     if (conn_entry != NULL)
       {
-        return conn_entry->get_session_id ();
+	return conn_entry->get_session_id ();
       }
     else
       {
-        /* no connection for this thread entry */
-        return m_connectionless_session_id;
+	/* no connection for this thread entry */
+	return m_connectionless_session_id;
       }
 #else
     assert (0);
@@ -301,7 +301,7 @@ namespace cubthread
 #endif /* SERVER_MODE */
   }
 
-  session_state*
+  session_state *
   entry::get_connectionless_session ()
   {
     assert (conn_entry == NULL);

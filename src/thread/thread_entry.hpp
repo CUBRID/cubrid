@@ -330,9 +330,9 @@ namespace cubthread
       void set_connectionless_session (session_state *session_arg);
       void set_session_id (SESSION_ID id);
       void set_connectionless_session_id (SESSION_ID id);
-      session_state* get_session ();
+      session_state *get_session ();
       SESSION_ID get_session_id ();
-      session_state* get_connectionless_session ();
+      session_state *get_connectionless_session ();
 
     private:
       void clear_resources (void);

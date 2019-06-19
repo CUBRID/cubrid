@@ -476,9 +476,9 @@ struct css_conn_entry
   void set_session_id (SESSION_ID id);
   const SESSION_ID get_session_id () const;
 #if defined(SERVER_MODE)
-  void set_session (session_state *session_arg);
-  session_state* get_session (void);
-#endif /* SERVER_MODE */
+  void set_session (session_state * session_arg);
+  session_state *get_session (void);
+#endif				/* SERVER_MODE */
 
 private:
   // note - I want to protect this.
@@ -486,14 +486,14 @@ private:
   SESSION_ID session_id;
 #if defined(SERVER_MODE)
   session_state *session_p;	/* session object for current request */
-#endif /* SERVER_MODE */
+#endif				/* SERVER_MODE */
 
 #else				// not c++ = c
   int transaction_id;
   SESSION_ID session_id;
 #if defined(SERVER_MODE)
   struct session_state *session_p;	/* session object for current request */
-#endif /* SERVER_MODE */
+#endif				/* SERVER_MODE */
 #endif				// not c++ = c
 };
 
