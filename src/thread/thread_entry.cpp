@@ -249,7 +249,8 @@ namespace cubthread
 #if defined (SERVER_MODE)
     if (conn_entry != NULL)
       {
-	assert (m_session_p == conn_entry->get_session ());
+	assert (m_session_p == NULL || m_session_p == conn_entry->get_session ());
+	return conn_entry->get_session ();
       }
     return m_session_p;
 #else
@@ -264,7 +265,8 @@ namespace cubthread
 #if defined (SERVER_MODE)
     if (conn_entry != NULL)
       {
-	assert (m_session_id == conn_entry->get_session_id ());
+	assert (m_session_id == DB_EMPTY_SESSION || m_session_id == conn_entry->get_session_id ());
+	return conn_entry->get_session_id ();
       }
 
     return m_session_id;
