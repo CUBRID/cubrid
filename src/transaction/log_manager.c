@@ -10026,7 +10026,7 @@ class log_flush_daemon_task : public cubthread::entry_task
       if (gl_p_log_flush_lsa != NULL)
 	{
           nxio_lsa = log_Gl.append.get_nxio_lsa ();
-          gl_p_log_flush_lsa->notify_log_flush_lsa(&nxio_lsa);
+          gl_p_log_flush_lsa->notify_log_flush_lsa (&nxio_lsa);
 	}
 
       /* Wakeup active transaction waiting for specific LSA - not waiting for group complete.
@@ -10051,15 +10051,16 @@ void
 log_set_notify (bool need_log_notify)
 {
   er_log_debug (ARG_FILE_LINE, "log_set_notify = %d\n", (int) need_log_notify);
+
 #if defined (SERVER_MODE)
   if (need_log_notify)
-  {
-    log_flush_daemon_task::gl_p_log_flush_lsa = cubtx::single_node_group_complete_manager::get_instance ();
-  }
+    {
+      log_flush_daemon_task::gl_p_log_flush_lsa = cubtx::single_node_group_complete_manager::get_instance ();
+    }
   else
-  {
-    log_flush_daemon_task::gl_p_log_flush_lsa = NULL;
-  }
+    {
+      log_flush_daemon_task::gl_p_log_flush_lsa = NULL;
+    }
 #endif /* SERVER_MODE */
 }
 

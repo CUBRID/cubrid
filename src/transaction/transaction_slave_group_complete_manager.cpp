@@ -54,7 +54,7 @@ namespace cubtx
     p_gl_slave_group->m_latest_group_stream_position = 0;
     p_gl_slave_group->m_has_latest_group_close_info = false;
 
-    slave_group_complete_manager::gl_slave_group_complete_daemon = cubthread::get_manager()->create_daemon ((looper),
+    slave_group_complete_manager::gl_slave_group_complete_daemon = cubthread::get_manager ()->create_daemon ((looper),
 	new slave_group_complete_task (), "slave_group_complete_daemon");
   }
 
@@ -65,7 +65,7 @@ namespace cubtx
   {
     if (gl_slave_group_complete_daemon != NULL)
       {
-	cubthread::get_manager()->destroy_daemon (gl_slave_group_complete_daemon);
+	cubthread::get_manager ()->destroy_daemon (gl_slave_group_complete_daemon);
 	gl_slave_group_complete_daemon = NULL;
       }
 

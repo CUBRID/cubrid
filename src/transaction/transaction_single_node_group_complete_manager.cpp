@@ -49,7 +49,7 @@ namespace cubtx
   //
   void single_node_group_complete_manager::init ()
   {
-    single_node_group_complete_manager * p_gl_single_node_group = get_instance ();
+    single_node_group_complete_manager *p_gl_single_node_group = get_instance ();
     LSA_SET_NULL (&p_gl_single_node_group->m_latest_closed_group_start_log_lsa);
     LSA_SET_NULL (&p_gl_single_node_group->m_latest_closed_group_end_log_lsa);
 
@@ -169,7 +169,7 @@ namespace cubtx
   //
   // get_group_commit_interval () - setup flush daemon period based on system parameter
   //
-  void single_node_group_complete_manager::get_group_commit_interval (bool & is_timed_wait, cubthread::delta_time & period)
+  void single_node_group_complete_manager::get_group_commit_interval (bool &is_timed_wait, cubthread::delta_time &period)
   {
     is_timed_wait = true;
 
@@ -180,13 +180,13 @@ namespace cubtx
     assert (log_group_commit_interval_msec >= 0);
 
     if (log_group_commit_interval_msec == 0)
-    {
-      period = std::chrono::milliseconds (MAX_WAIT_TIME_MSEC);
-    }
+      {
+	period = std::chrono::milliseconds (MAX_WAIT_TIME_MSEC);
+      }
     else
-    {
-      period = std::chrono::milliseconds (log_group_commit_interval_msec);
-    }
+      {
+	period = std::chrono::milliseconds (log_group_commit_interval_msec);
+      }
   }
 
   //
@@ -200,20 +200,20 @@ namespace cubtx
 
     if (close_current_group ())
       {
-        cubstream::stream_position closed_group_stream_start_position = 0, closed_group_stream_end_position = 0;
+	cubstream::stream_position closed_group_stream_start_position = 0, closed_group_stream_end_position = 0;
 	tx_group &closed_group = get_latest_closed_group ();
-        tdes = logtb_get_tdes (thread_p);
+	tdes = logtb_get_tdes (thread_p);
 
 	/* TODO - Introduce parameter. For now complete group MVCC only here. Notify MVCC complete. */
 	log_Gl.mvcc_table.complete_group_mvcc (thread_p, closed_group);
 	notify_group_mvcc_complete (closed_group);
 
-        if (!HA_DISABLED ())
-          {
-            /* This is a single node that must generate stream group commits. */
-            tdes->replication_log_generator.pack_group_commit_entry (closed_group,
-              closed_group_stream_start_position, closed_group_stream_end_position);
-          }
+	if (!HA_DISABLED ())
+	  {
+	    /* This is a single node that must generate stream group commits. */
+	    tdes->replication_log_generator.pack_group_commit_entry (closed_group,
+		closed_group_stream_start_position, closed_group_stream_end_position);
+	  }
 
 	log_append_group_complete (thread_p, tdes, 0, closed_group, &closed_group_start_complete_lsa,
 				   &closed_group_end_complete_lsa, &has_postpone);
@@ -231,7 +231,7 @@ namespace cubtx
   }
 
   //
-  // do_complete complete does group complete. Always should be called after prepare_complete.
+  // do_complete does group complete. Always should be called after prepare_complete.
   //
   void single_node_group_complete_manager::do_complete (THREAD_ENTRY *thread_p)
   {

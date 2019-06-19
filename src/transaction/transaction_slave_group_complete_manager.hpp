@@ -20,6 +20,10 @@
 //
 // Manager of completed group on a HA slave node
 //
+
+#ifndef __TRANSACTION_SLAVE_GROUP_COMPLETE_MANAGER_HPP_
+#define __TRANSACTION_SLAVE_GROUP_COMPLETE_MANAGER_HPP_
+
 #include "transaction_group_complete_manager.hpp"
 
 #include "cubstream.hpp"
@@ -79,3 +83,5 @@ namespace cubtx
       void execute (cubthread::entry &thread_ref) override;
   };
 }
+
+#endif // __TRANSACTION_SLAVE_GROUP_COMPLETE_MANAGER_HPP_
