@@ -156,6 +156,22 @@ namespace cubtx
   }
 
   //
+  // mark_group_prepared_for_complete mark group as prepared for complete.
+  //
+  void group_complete_manager::mark_group_prepared_for_complete ()
+  {
+    m_latest_closed_group_state |= GROUP_PREPARED_FOR_COMPLETE;
+  }
+
+  //
+  // is_latest_closed_group_prepared_for_complete checks whether the latest closed group is preapared for complete.
+  //
+  bool group_complete_manager::is_latest_closed_group_prepared_for_complete ()
+  {
+    return ((m_latest_closed_group_state & GROUP_PREPARED_FOR_COMPLETE) == GROUP_PREPARED_FOR_COMPLETE);
+  }
+
+  //
   // is_latest_closed_group_mvcc_completed checks whether the latest closed group has mvcc completed.
   //
   bool group_complete_manager::is_latest_closed_group_mvcc_completed ()

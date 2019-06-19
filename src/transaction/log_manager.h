@@ -176,7 +176,8 @@ extern int log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LO
 				    LOG_TOPOP_RANGE ** out_nxtop_range_stack);
 extern void log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit);
 extern void log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos,
-				       tx_group & group, LOG_LSA * complete_lsa, bool * has_postpone);
+				       tx_group & group, LOG_LSA * complete_start_lsa, LOG_LSA * complete_end_lsa,
+				       bool * has_postpone);
 
 /*
  * FOR DEBUGGING
@@ -247,4 +248,12 @@ void LOG_CS_PROMOTE (THREAD_ENTRY * thread_p);
 bool LOG_CS_OWN (THREAD_ENTRY * thread_p);
 bool LOG_CS_OWN_WRITE_MODE (THREAD_ENTRY * thread_p);
 
+// *INDENT-OFF*
+/* Interface used by log flush to notify threads. */
+class log_flush_lsa
+{
+public:
+  virtual void notify_log_flush_lsa (const LOG_LSA * lsa) = 0;
+};
+// *INDENT-ON*
 #endif /* _LOG_MANAGER_H_ */
