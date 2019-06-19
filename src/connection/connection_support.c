@@ -2923,4 +2923,30 @@ css_conn_entry::get_tran_index ()
   assert (transaction_id != LOG_SYSTEM_TRAN_INDEX);
   return transaction_id;
 }
+
+void
+css_conn_entry::set_session_id (SESSION_ID id)
+{
+  session_id = id;
+}
+
+const SESSION_ID css_conn_entry::get_session_id () const
+{
+  return session_id;
+}
+
+#if defined(SERVER_MODE)
+void
+css_conn_entry::set_session (session_state *session_arg)
+{
+  session_p = session_arg;
+}
+
+session_state *
+css_conn_entry::get_session ()
+{
+  return session_p;
+}
+#endif
+
 // *INDENT-ON*

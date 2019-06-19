@@ -138,6 +138,7 @@ namespace cubthread
 		       PGBUF_TRACK_RES_NAME, PGBUF_TRACK_MAX_AMOUNT))
     , m_csect_tracker (*new cubsync::critical_section_tracker (ENABLE_TRACKERS))
     , m_systdes (NULL)
+    , m_connectionless_session_p (NULL)
   {
     if (pthread_mutex_init (&tran_index_lock, NULL) != 0)
       {
@@ -209,6 +210,102 @@ namespace cubthread
     tran_entries[THREAD_TS_XCACHE] = lf_tran_request_entry (&xcache_Ts);
     tran_entries[THREAD_TS_FPCACHE] = lf_tran_request_entry (&fpcache_Ts);
     tran_entries[THREAD_TS_DWB_SLOTS] = lf_tran_request_entry (&dwb_slots_Ts);
+  }
+
+  void
+  entry::set_session (session_state *session_arg)
+  {
+#if defined (SERVER_MODE)
+    if (conn_entry != NULL)
+      {
+        conn_entry->set_session (session_arg);
+      }
+    else
+      {
+        /* no connection for this thread entry */
+        set_connectionless_session (session_arg);
+      }
+#else
+    assert (0);
+#endif /* SERVER_MODE */
+  }
+
+  void
+  entry::set_connectionless_session (session_state *session_arg)
+  {
+    assert (conn_entry == NULL);
+
+    m_connectionless_session_p = session_arg;
+  }
+
+  void
+  entry::set_session_id (SESSION_ID id)
+  {
+#if defined (SERVER_MODE)
+    if (conn_entry != NULL)
+      {
+        conn_entry->set_session_id (id);
+      }
+    else
+      {
+        /* no connection for this thread entry */
+        set_connectionless_session_id (id);
+      }
+#else
+    assert (0);
+#endif /* SERVER_MODE */
+  }
+
+  void
+  entry::set_connectionless_session_id (SESSION_ID id)
+  {
+    assert (conn_entry == NULL);
+    m_connectionless_session_id = id;
+  }
+
+  session_state*
+  entry::get_session ()
+  {
+#if defined (SERVER_MODE)
+    if (conn_entry != NULL)
+      {
+        return conn_entry->get_session ();
+      }
+    else
+      {
+        /* no connection for this thread entry */
+        return get_connectionless_session ();
+      }
+#else
+    assert (0);
+    return NULL;
+#endif /* SERVER_MODE */
+  }
+
+  SESSION_ID
+  entry::get_session_id ()
+  {
+#if defined (SERVER_MODE)
+    if (conn_entry != NULL)
+      {
+        return conn_entry->get_session_id ();
+      }
+    else
+      {
+        /* no connection for this thread entry */
+        return m_connectionless_session_id;
+      }
+#else
+    assert (0);
+    return NULL;
+#endif /* SERVER_MODE */
+  }
+
+  session_state*
+  entry::get_connectionless_session ()
+  {
+    assert (conn_entry == NULL);
+    return m_connectionless_session_p;
   }
 
   void

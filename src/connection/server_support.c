@@ -2866,9 +2866,9 @@ css_server_task::execute (context_type &thread_ref)
 {
   thread_ref.conn_entry = &m_conn;
 
-  if (thread_ref.conn_entry->session_p != NULL)
+  if (thread_ref.get_session () != NULL)
     {
-      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.conn_entry->session_p);
+      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.get_session ());
     }
   else
     {
@@ -2891,9 +2891,9 @@ void
 css_server_external_task::execute (context_type &thread_ref)
 {
   thread_ref.conn_entry = m_conn;
-  if (thread_ref.conn_entry != NULL && thread_ref.conn_entry->session_p != NULL)
+  if (thread_ref.get_session () != NULL)
     {
-      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.conn_entry->session_p);
+      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.get_session ());
     }
   else
     {
