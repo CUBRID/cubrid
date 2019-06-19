@@ -3051,14 +3051,8 @@ session_state_verify_ref_count (THREAD_ENTRY * thread_p, SESSION_STATE * session
 	}
     }
 
-  if (session_p->mode == SESSION_WITHOUT_CONNECTION)
-    {
-      /* TODO : implement reference from thread only */
-      assert (ref_count == 0);
-      ref_count = 1;
-    }
-
-  if (ref_count != session_p->ref_count)
+  /* TODO : implement reference check when session is linked from thread only */
+  if (session_p->mode != SESSION_WITHOUT_CONNECTION && ref_count != session_p->ref_count)
     {
       END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
       assert (0);
