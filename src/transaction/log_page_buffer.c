@@ -10211,9 +10211,6 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
   switch (manager_type)
     {
     case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
-      /* Not allowed to reset in non-HA. */
-      assert (log_Gl.m_tran_complete_mgr == NULL);
-
       /* Single node. Need to wait for log flush. */
       log_set_notify (true);
       log_Gl.m_tran_complete_mgr = cubtx::single_node_group_complete_manager::get_instance ();
