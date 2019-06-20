@@ -10189,18 +10189,10 @@ logpb_initialize_logging_statistics (void)
 void
 logpb_initialize_tran_complete_manager (THREAD_ENTRY * thread_p)
 {
-  if (HA_DISABLED ())
-    {
-      /* HA disabled. */
-      er_log_debug (ARG_FILE_LINE, "logpb_initialize_tran_complete_manager single node \n");
-      log_Gl.m_tran_complete_mgr = cubtx::single_node_group_complete_manager::get_instance ();
-      log_set_notify (true);
-    }
-  else
-    {
-      /* Will be initialized later. */
-      log_Gl.m_tran_complete_mgr = NULL;
-    }
+  /* Initialize with single mode for recovery purpose. If non-HA, this mode remains. Otherwise, reset it later. */
+  er_log_debug (ARG_FILE_LINE, "logpb_initialize_tran_complete_manager single node \n");
+  log_Gl.m_tran_complete_mgr = cubtx::single_node_group_complete_manager::get_instance ();
+  log_set_notify (true);
 }
 
 /*
@@ -10241,6 +10233,12 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
       log_Gl.m_tran_complete_mgr = cubtx::slave_group_complete_manager::get_instance ();
       er_log_debug (ARG_FILE_LINE, "logpb_resets_tran_complete_manager slave node \n");
       break;
+
+    case LOG_TRAN_COMPLETE_NO_MANAGER:
+      /* No manager. Temporary state. Will be reset later when HA state will be available. */
+      log_set_notify (false);
+      log_Gl.m_tran_complete_mgr = NULL;
+      er_log_debug (ARG_FILE_LINE, "logpb_resets_tran_complete_manager NULL \n");
 
     default:
       assert (false);
