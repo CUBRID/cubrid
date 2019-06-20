@@ -10236,6 +10236,7 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
       log_set_notify (false);
       log_Gl.m_tran_complete_mgr = NULL;
       er_log_debug (ARG_FILE_LINE, "logpb_resets_tran_complete_manager NULL \n");
+      break;
 
     default:
       assert (false);
