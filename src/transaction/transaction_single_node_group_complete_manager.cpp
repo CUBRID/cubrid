@@ -23,6 +23,7 @@
 
 #include "page_buffer.h"
 #include "log_manager.h"
+#include "server_support.h"
 #include "thread_manager.hpp"
 #include "transaction_single_node_group_complete_manager.hpp"
 
@@ -208,7 +209,7 @@ namespace cubtx
 	log_Gl.mvcc_table.complete_group_mvcc (thread_p, closed_group);
 	notify_group_mvcc_complete (closed_group);
 
-	if (!HA_DISABLED ())
+        if (css_ha_server_state () == HA_SERVER_STATE_ACTIVE)
 	  {
 	    /* This is a single node that must generate stream group commits. */
 	    tdes->replication_log_generator.pack_group_commit_entry (closed_group,
