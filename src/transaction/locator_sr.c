@@ -7105,17 +7105,11 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 		}
 	    }
 
-	  if (topop_started && need_to_abort_oneobj)
+	  if (topop_started)
 	    {
-	      (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &oneobj_lsa);
-	    }
-	  else if (topop_started)
-	    {
-	      (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &oneobj_lsa);
-	    }
-	  else
-	    {
-	      // top op was not started
+	      LOG_RESULT_TOPOP result_topop =
+		need_to_abort_oneobj ? LOG_RESULT_TOPOP_ABORT : LOG_RESULT_TOPOP_ATTACH_TO_OUTER;
+	      (void) xtran_server_end_topop (thread_p, result_topop, &oneobj_lsa);
 	    }
 	}
 
