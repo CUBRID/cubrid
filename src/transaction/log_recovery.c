@@ -4320,10 +4320,13 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   if (tdes->state == TRAN_UNACTIVE_WILL_COMMIT || tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
     {
+      /* There is a small chance to have tdes->state = TRAN_UNACTIVE_WILL_COMMIT and NULL tdes->rcv.tran_start_postpone_lsa
+       * The scenario: transaction without postpone wants to commit and waits for group complete and log flush,
+       * checkpoint executed, log flushed, system crash.
+       */
       LSA_SET_NULL (&first_postpone_to_apply);
 
       assert (tdes->is_active_worker_transaction ());
-      assert (!LSA_ISNULL (&tdes->rcv.tran_start_postpone_lsa));
 
       /*
        * The transaction was the one that was committing
@@ -4346,8 +4349,12 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
       if (tdes->coord == NULL)
 	{
-	  assert (!LSA_ISNULL (&tdes->posp_nxlsa));
-	  log_append_finish_postpone (thread_p, tdes);
+	  /* We may have tdes->state = TRAN_UNACTIVE_WILL_COMMIT and null tdes->posp_nxlsa. */
+	  if (!LSA_ISNULL (&tdes->posp_nxlsa))
+	    {
+	      log_append_finish_postpone (thread_p, tdes);
+	    }
+
 	  logtb_free_tran_index (thread_p, tdes->tran_index);
 	}
     }
