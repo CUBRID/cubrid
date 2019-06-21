@@ -32,18 +32,17 @@
 namespace cubreplication
 {
 
-  std::vector <cubstream::transfer_sender *> master_senders_manager::master_server_stream_senders;
+  std::vector<cubstream::transfer_sender *> master_senders_manager::master_server_stream_senders;
   cubthread::daemon *master_senders_manager::master_channels_supervisor_daemon = NULL;
   bool master_senders_manager::is_initialized = false;
   std::mutex master_senders_manager::mutex_for_singleton;
   cubstream::stream_position master_senders_manager::g_minimum_successful_stream_position;
-  cubstream::stream *master_senders_manager::g_stream;
   SYNC_RWLOCK master_senders_manager::master_senders_lock;
 
   const unsigned int master_senders_manager::SUPERVISOR_DAEMON_DELAY_MS = 10;
   const unsigned int master_senders_manager::SUPERVISOR_DAEMON_CHECK_CONN_MS = 5000;
 
-  void master_senders_manager::init (cubstream::stream *stream)
+  void master_senders_manager::init ()
   {
 #if defined (SERVER_MODE)
     int error_code = NO_ERROR;
@@ -60,7 +59,6 @@ namespace cubreplication
 	new master_senders_supervisor_task (),
 	"supervisor_daemon");
     g_minimum_successful_stream_position = 0;
-    g_stream = stream;
 
     error_code = rwlock_initialize (&master_senders_lock, "MASTER_SENDERS_LOCK");
     assert (error_code == NO_ERROR);
