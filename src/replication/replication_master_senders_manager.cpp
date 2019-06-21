@@ -161,15 +161,16 @@ namespace cubreplication
     int active_senders = 0;
     cubstream::stream_position min_position_send = std::numeric_limits<cubstream::stream_position>::max ();
 
-    if (check_conn_delay_counter >
-	SUPERVISOR_DAEMON_CHECK_CONN_MS / SUPERVISOR_DAEMON_DELAY_MS)
+    if (check_conn_delay_counter > SUPERVISOR_DAEMON_CHECK_CONN_MS / SUPERVISOR_DAEMON_DELAY_MS)
       {
-	std::vector <cubstream::transfer_sender *>::iterator it;
+	std::vector<cubstream::transfer_sender *>::iterator it;
 
 	rwlock_read_lock (&master_senders_lock);
 	for (it = master_server_stream_senders.begin (); it != master_server_stream_senders.end ();)
 	  {
-	    if (! (*it)->get_channel ().is_connection_alive ())
+	    cubstream::transfer_sender *sender = *it;
+
+	    if (!sender->get_channel ().is_connection_alive ())
 	      {
 		if (!have_write_lock)
 		  {
@@ -183,16 +184,18 @@ namespace cubreplication
 		else
 		  {
 		    it = master_server_stream_senders.erase (it);
+		    delete sender;
 		  }
 	      }
 	    else
 	      {
-		cubstream::stream_position this_sender_pos = (*it)->get_last_sent_position ();
+		cubstream::stream_position this_sender_pos = sender->get_last_sent_position ();
 		min_position_send = std::min (this_sender_pos, min_position_send);
 		active_senders++;
 		++it;
 	      }
 	  }
+
 	if (!have_write_lock)
 	  {
 	    rwlock_read_unlock (&master_senders_lock);
