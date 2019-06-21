@@ -2874,9 +2874,9 @@ css_server_task::execute (context_type &thread_ref)
 {
   thread_ref.conn_entry = &m_conn;
 
-  if (thread_ref.conn_entry->session_p != NULL)
+  if (thread_ref.get_session () != NULL)
     {
-      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.conn_entry->session_p);
+      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.get_session ());
     }
   else
     {
@@ -2891,7 +2891,7 @@ css_server_task::execute (context_type &thread_ref)
   (void) css_internal_request_handler (thread_ref, m_conn);
 
   thread_ref.private_lru_index = -1;
-  thread_ref.conn_entry = NULL;
+  thread_ref.clear_conn_session ();
   thread_ref.m_status = cubthread::entry::status::TS_FREE;
 }
 
@@ -2899,9 +2899,9 @@ void
 css_server_external_task::execute (context_type &thread_ref)
 {
   thread_ref.conn_entry = m_conn;
-  if (thread_ref.conn_entry != NULL && thread_ref.conn_entry->session_p != NULL)
+  if (thread_ref.get_session () != NULL)
     {
-      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.conn_entry->session_p);
+      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.get_session ());
     }
   else
     {
@@ -2915,7 +2915,7 @@ css_server_external_task::execute (context_type &thread_ref)
   m_task->execute (thread_ref);
 
   thread_ref.private_lru_index = -1;
-  thread_ref.conn_entry = NULL;
+  thread_ref.clear_conn_session ();
 }
 
 void
@@ -2928,7 +2928,7 @@ css_connection_task::execute (context_type & thread_ref)
   pthread_mutex_lock (&thread_ref.tran_index_lock);
   (void) css_connection_handler_thread (&thread_ref, &m_conn);
 
-  thread_ref.conn_entry = NULL;
+  thread_ref.clear_conn_session ();
 }
 
 //
