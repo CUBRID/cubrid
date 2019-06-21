@@ -7008,12 +7008,17 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	  continue;
 	}
 
+      bool topop_started = false;
       if (LOG_CHECK_LOG_APPLIER (thread_p) || num_ignore_error > 0)
 	{
 	  error_code = xtran_server_start_topop (thread_p, &oneobj_lsa);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
+	    }
+	  else
+	    {
+	      topop_started = true;
 	    }
 	}
 
@@ -7100,13 +7105,17 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 		}
 	    }
 
-	  if (need_to_abort_oneobj)
+	  if (topop_started && need_to_abort_oneobj)
 	    {
 	      (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &oneobj_lsa);
 	    }
-	  else
+	  else if (topop_started)
 	    {
 	      (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &oneobj_lsa);
+	    }
+	  else
+	    {
+	      // top op was not started
 	    }
 	}
 
