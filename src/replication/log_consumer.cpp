@@ -153,6 +153,7 @@ namespace cubreplication
     public:
       dispatch_daemon_task (log_consumer &lc)
 	: m_lc (lc)
+	, finished_recov (false)
       {
       }
 
@@ -231,18 +232,27 @@ namespace cubreplication
 	    else
 	      {
 		MVCCID mvccid = se->get_mvccid ();
-		if (log_Gl.m_ack_stream_position > se->get_stream_entry_end_position ())
+
+		// apply only some selected mvccids until we reach last m_ack_stream_position, then continue normally
+
+		if (log_Gl.hdr.m_ack_stream_position != 0 && log_Gl.hdr.m_ack_stream_position > se->get_stream_entry_end_position ())
 		  {
 		    if (log_Gl.m_active_mvcc_ids.find (mvccid) == log_Gl.m_active_mvcc_ids.end ())
 		      {
 			continue;
 		      }
+		    else
+		      {
+			assert (false);
+		      }
 		  }
 		else
 		  {
+		    //assert (finished_recov || !log_Gl.m_active_mvcc_ids.empty ());
 		    if (!log_Gl.m_active_mvcc_ids.empty ())
 		      {
 			log_Gl.m_active_mvcc_ids.clear ();
+			//finished_recov = true;
 		      }
 		  }
 
@@ -270,6 +280,7 @@ namespace cubreplication
       }
 
     private:
+      bool finished_recov;
       log_consumer &m_lc;
   };
 

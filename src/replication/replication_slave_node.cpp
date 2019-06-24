@@ -57,17 +57,16 @@ namespace cubreplication
     assert (g_instance == NULL);
     slave_node *instance = slave_node::get_instance (hostname);
 
-    instance->apply_start_position (log_Gl.m_active_start_position);
+    // needs to make same init as master node
+    instance->apply_start_position (log_Gl.hdr.m_ack_stream_position);
 
     INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_CONSUMER_BUFFER_SIZE);
 
     /* create stream :*/
     /* consumer needs only one stream appender (the stream transfer receiver) */
     assert (instance->m_stream == NULL);
-    instance->m_stream = new cubstream::multi_thread_stream (buffer_size, 2);
-    instance->m_stream->set_name ("repl" + std::string (hostname) + "_replica");
-    instance->m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
-    instance->m_stream->init (instance->m_start_position);
+    instance->m_stream = cubstream::multi_thread_stream::get_instance (buffer_size, 2, "repl" + std::string (hostname),
+			 stream_entry::compute_header_size (), instance->m_start_position);
 
     /* create stream file */
     std::string replication_path;

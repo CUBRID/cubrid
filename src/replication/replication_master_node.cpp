@@ -48,15 +48,14 @@ namespace cubreplication
     assert (g_instance == NULL);
     master_node *instance = master_node::get_instance (name);
 
-    instance->apply_start_position (log_Gl.m_active_start_position);
+    instance->apply_start_position (log_Gl.hdr.m_ack_stream_position);
 
     INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_GENERATOR_BUFFER_SIZE);
     int num_max_appenders = log_Gl.trantable.num_total_indices + 1;
 
-    instance->m_stream = new cubstream::multi_thread_stream (buffer_size, num_max_appenders);
-    instance->m_stream->set_name ("repl_" + std::string (name));
-    instance->m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
-    instance->m_stream->init (instance->m_start_position);
+    instance->m_stream = cubstream::multi_thread_stream::get_instance (buffer_size, 2, "repl" + std::string (name),
+			 stream_entry::compute_header_size (), instance->m_start_position);
+
     log_generator::set_global_stream (instance->m_stream);
 
     /* create stream file */

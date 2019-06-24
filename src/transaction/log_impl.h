@@ -674,8 +674,9 @@ struct log_global
   LOG_GROUP_COMMIT_INFO group_commit_info;
   // *INDENT-OFF*
   cubtx::complete_manager *m_tran_complete_mgr;
-  std::atomic<cubstream::stream_position> m_ack_stream_position;
+  
   cubstream::stream_position m_active_start_position;
+  std::unordered_set<TRANID> m_active_tran_ids;
   std::unordered_set<MVCCID> m_active_mvcc_ids;
   // *INDENT-ON*
   LOG_LSA m_min_active_lsa;

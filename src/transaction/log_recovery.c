@@ -1256,9 +1256,6 @@ log_rv_analysis_group_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * 
     }
 
   // *INDENT-OFF*
-  // get max between checkpoint's and group_complete's last_ack reads
-  log_Gl.m_ack_stream_position = std::max ((cubstream::stream_position) log_Gl.m_ack_stream_position.load (),
-					   group_complete.stream_pos);
 
   for (const auto & ti : group) 
     {
@@ -1816,12 +1813,6 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_CHKPT), log_lsa, log_page_p);
   tmp_chkpt = (LOG_REC_CHKPT *) ((char *) log_page_p->area + log_lsa->offset);
   chkpt = *tmp_chkpt;
-
-  // get max between checkpoint's and group_complete's last_ack reads
-  // *INDENT-OFF*
-  log_Gl.m_ack_stream_position = std::max ((cubstream::stream_position) log_Gl.m_ack_stream_position.load (),
-					   chkpt.last_ack_stream_position);
-  // *INDENT-ON*
 
   /* GET THE CHECKPOINT TRANSACTION INFORMATION */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_CHKPT), log_lsa, log_page_p);
@@ -2891,7 +2882,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
       if ((crt_tdes = LOG_FIND_TDES (i)) != NULL && crt_tdes->trid != NULL_TRANID
 	  && !LSA_ISNULL (&crt_tdes->undo_nxlsa))
 	{
-	  log_Gl.m_active_mvcc_ids.insert (crt_tdes->mvccinfo.id);
+	  _er_log_debug (ARG_FILE_LINE, "found active at end of analysis: trid:%d", crt_tdes->trid);
+	  log_Gl.m_active_tran_ids.insert (crt_tdes->trid);
 	  if (LSA_ISNULL (&log_Gl.m_min_active_lsa) || LSA_LT (&crt_tdes->head_lsa, &log_Gl.m_min_active_lsa))
 	    {
 	      LSA_COPY (&log_Gl.m_min_active_lsa, &crt_tdes->head_lsa);
@@ -4894,7 +4886,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  else if (sysop_end->type == LOG_SYSOP_END_COMMIT_REPLICATED)
 		    {
 		      // commit only if replicated
-		      if (sysop_end->repl_stream_position < log_Gl.m_ack_stream_position)
+		      if (sysop_end->repl_stream_position < log_Gl.hdr.m_ack_stream_position)
 			{
 			  // it was replicated, so sysop is committed. jump to last parent
 			  prev_tranlsa = sysop_end->lastparent_lsa;
@@ -5054,6 +5046,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	      if (log_rec->type == LOG_GROUP_COMPLETE)
 		{
 		  data_header_size = sizeof (LOG_REC_GROUP_COMPLETE);
+		  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
 		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, data_header_size, &log_lsa, log_pgptr);
 		  LOG_REC_GROUP_COMPLETE *gc_rec =
 		    (LOG_REC_GROUP_COMPLETE *) ((char *) log_pgptr->area + log_lsa.offset);
@@ -5086,7 +5079,61 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	    }
 	}
 
-      assert (log_Gl.m_active_start_position != 0);
+      _er_log_debug (ARG_FILE_LINE, "Successfully executed recovery of min active stream position"
+		     "m_active_start_position=%llu, m_ack_stream_position=%llu",
+		     (std::uint64_t) log_Gl.m_active_start_position, (std::uint64_t) log_Gl.hdr.m_ack_stream_position);
+
+    }
+
+  if (!LSA_ISNULL (&log_Gl.m_min_active_lsa))
+    {
+      bool found = false;
+      LSA_COPY (&log_lsa, &log_Gl.m_min_active_lsa);
+      while (!LSA_ISNULL (&log_rec->forw_lsa))
+	{
+	  if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
+	    {
+	      log_zip_free (undo_unzip_ptr);
+
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_undo active start position recovery");
+	      return;
+	    }
+
+	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
+
+	  while (!LSA_ISNULL (&log_rec->forw_lsa))
+	    {
+	      if (log_Gl.m_active_tran_ids.find (log_rec->trid) != log_Gl.m_active_tran_ids.end () &&
+		  (log_rec->type == LOG_MVCC_UNDOREDO_DATA || log_rec->type == LOG_MVCC_DIFF_UNDOREDO_DATA))
+		{
+		  data_header_size = sizeof (LOG_REC_MVCC_UNDOREDO);
+		  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
+		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, data_header_size, &log_lsa, log_pgptr);
+		  LOG_REC_MVCC_UNDOREDO *mvcc_undoredo =
+		    (LOG_REC_MVCC_UNDOREDO *) ((char *) log_pgptr->area + log_lsa.offset);
+
+		  // found start of filtered apply
+		  log_Gl.m_active_mvcc_ids.insert (mvcc_undoredo->mvccid);
+		}
+
+	      if (log_lsa.pageid != log_rec->forw_lsa.pageid)
+		{
+		  // page is different; we need to change the fetched log page
+		  LSA_COPY (&log_lsa, &log_rec->forw_lsa);
+		  break;
+		}
+	      else
+		{
+		  LSA_COPY (&log_lsa, &log_rec->forw_lsa);
+		  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
+		}
+	    }
+	}
+
+      for (auto it = log_Gl.m_active_mvcc_ids.begin (); it != log_Gl.m_active_mvcc_ids.end (); ++it)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Master recovery: MVCCID found:" "%llu", (std::uint64_t) * it);
+	}
     }
 
   log_zip_free (undo_unzip_ptr);

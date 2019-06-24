@@ -33,6 +33,8 @@
 #include "stream_transfer_sender.hpp"
 #include "transaction_master_group_complete_manager.hpp"
 
+#include "log_impl.h"
+
 #include "system_parameter.h" /* for er_log_debug */
 #include "thread_manager.hpp"
 #include "thread_daemon.hpp"
@@ -151,9 +153,14 @@ namespace cubstream
 
 	m_last_sent_position += byte_count;
 
+	_er_log_debug (ARG_FILE_LINE, "m_ack_stream_position updated: (transfer sender sent)"
+		       "previous m_ack_stream_position=%llu, new m_ack_stream_position=%llu",
+		       (std::uint64_t) log_Gl.hdr.m_ack_stream_position, m_last_sent_position);
+	log_Gl.hdr.m_ack_stream_position = m_last_sent_position;
+
 	if (m_p_stream_ack)
 	  {
-	    m_p_stream_ack->notify_stream_ack (m_last_sent_position);
+	    //m_p_stream_ack->notify_stream_ack (m_last_sent_position);
 	  }
 	return NO_ERROR;
       }
