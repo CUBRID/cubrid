@@ -83,6 +83,7 @@ namespace cubthread
     context.end_resource_tracks ();
     std::memset (&context.event_stats, 0, sizeof (context.event_stats));  // clear even stats
     context.tran_index = NULL_TRAN_INDEX;    // clear transaction ID
+    context.private_lru_index = -1;
 #if defined (SERVER_MODE)
     context.resume_status = THREAD_RESUME_NONE;
     context.shutdown = false;
