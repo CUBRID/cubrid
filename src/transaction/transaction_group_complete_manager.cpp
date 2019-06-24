@@ -21,6 +21,7 @@
 // Manager of completed group
 //
 
+#include "boot_sr.h"
 #include "log_impl.h"
 #include "log_manager.h"
 #include "thread_manager.hpp"
@@ -55,27 +56,32 @@ namespace cubtx
       }
 
 #if defined (SERVER_MODE)
-    if (group_id == m_latest_closed_group_id)
+    if (BO_IS_SERVER_RESTARTED ())
       {
-	if (is_latest_closed_group_mvcc_completed ())
+	if (group_id == m_latest_closed_group_id)
 	  {
-            /* Completed mvcc for group_id. No need to acquire mutex. */
-            assert (group_id <= m_latest_closed_group_id);
-            return;
+	    if (is_latest_closed_group_mvcc_completed ())
+	      {
+		/* Completed mvcc for group_id. No need to acquire mutex. */
+		assert (group_id <= m_latest_closed_group_id);
+		return;
+	      }
 	  }
-      }
 
-    /* Waits for MVCC complete event on specified group_id, even in async case. */
-    std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
-    /* TODO - consider stop and optimize next call */
-    m_group_complete_condvar.wait (ulock, [&] {return is_group_mvcc_completed (group_id);});
-#else
+	/* Waits for MVCC complete event on specified group_id, even in async case. */
+	std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
+	/* TODO - consider stop and optimize next call */
+	m_group_complete_condvar.wait (ulock, [&] {return is_group_mvcc_completed (group_id);});
+
+	return;
+      }
+#endif
+
     /* I'm the only thread. All completes are done by me. */
     cubthread::entry *thread_p = &cubthread::get_entry ();
     do_prepare_complete (thread_p);
     do_complete (thread_p);
     assert (is_group_mvcc_completed (group_id));
-#endif
   }
 
   //
@@ -90,33 +96,38 @@ namespace cubtx
       }
 
 #if defined (SERVER_MODE)
-    if (group_id == m_latest_closed_group_id)
+    if (BO_IS_SERVER_RESTARTED ())
       {
-	if (is_latest_closed_group_logged ())
+	if (group_id == m_latest_closed_group_id)
 	  {
-            /* Logging completed for group_id. No need to acquire mutex. */
-            assert (group_id <= m_latest_closed_group_id);
-            return;
+	    if (is_latest_closed_group_logged ())
+	      {
+		/* Logging completed for group_id. No need to acquire mutex. */
+		assert (group_id <= m_latest_closed_group_id);
+		return;
+	      }
 	  }
-      }
 
-    if (!need_wait_for_complete ())
-      {
-	/* Async case. */
+	if (!need_wait_for_complete ())
+	  {
+	    /* Async case. */
+	    return;
+	  }
+
+	/* Waits on group logged event on specified group_id */
+	std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
+	/* TODO - consider stop and optimize next call */
+	m_group_complete_condvar.wait (ulock, [&] {return is_group_logged (group_id);});
+
 	return;
       }
+#endif
 
-    /* Waits on group logged event on specified group_id */
-    std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
-    /* TODO - consider stop and optimize next call */
-    m_group_complete_condvar.wait (ulock, [&] {return is_group_logged (group_id);});
-#else
     /* I'm the only thread. All completes are done by me. */
     cubthread::entry *thread_p = &cubthread::get_entry ();
     do_prepare_complete (thread_p);
     do_complete (thread_p);
     assert (is_group_logged (group_id));
-#endif
   }
 
   //
@@ -131,33 +142,38 @@ namespace cubtx
       }
 
 #if defined (SERVER_MODE)
-    if (group_id == m_latest_closed_group_id)
+    if (BO_IS_SERVER_RESTARTED ())
       {
-	if (is_latest_closed_group_completed ())
+	if (group_id == m_latest_closed_group_id)
 	  {
-            /* Group_id complete. No need to acquire mutex. */
-            assert (group_id <= m_latest_closed_group_id);
-            return;	   
+	    if (is_latest_closed_group_completed ())
+	      {
+		/* Group_id complete. No need to acquire mutex. */
+		assert (group_id <= m_latest_closed_group_id);
+		return;
+	      }
 	  }
-      }
 
-    if (!need_wait_for_complete ())
-      {
-	/* Async case. */
+	if (!need_wait_for_complete ())
+	  {
+	    /* Async case. */
+	    return;
+	  }
+
+	/* Waits for complete event on specified group_id. */
+	std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
+	/* TODO - consider stop and optimize next call */
+	m_group_complete_condvar.wait (ulock, [&] {return is_group_completed (group_id);});
+
 	return;
       }
+#endif
 
-    /* Waits for complete event on specified group_id. */
-    std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
-    /* TODO - consider stop and optimize next call */
-    m_group_complete_condvar.wait (ulock, [&] {return is_group_completed (group_id);});
-#else
     /* I'm the only thread. All completes are done by me. */
     cubthread::entry *thread_p = &cubthread::get_entry ();
     do_prepare_complete (thread_p);
     do_complete (thread_p);
     assert (is_group_completed (group_id));
-#endif
   }
 
   //

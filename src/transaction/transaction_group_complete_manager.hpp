@@ -53,7 +53,7 @@ namespace cubtx
 	, m_current_group_min_transactions (0)
 	, m_latest_closed_group_id (0)
 	, m_latest_closed_group_state (GROUP_CLOSED | GROUP_MVCC_COMPLETED | GROUP_LOGGED | GROUP_PREPARED_FOR_COMPLETE
-                                       | GROUP_COMPLETE_STARTED | GROUP_COMPLETED)
+				       | GROUP_COMPLETE_STARTED | GROUP_COMPLETED)
       {
 
       }
@@ -68,7 +68,8 @@ namespace cubtx
       void complete_logging (id_type group_id) override final;
 
     protected:
-      id_type set_current_group_minimum_transactions (unsigned int count_minimum_transactions, bool &has_group_enough_transactions);
+      id_type set_current_group_minimum_transactions (unsigned int count_minimum_transactions,
+	  bool &has_group_enough_transactions);
 
       bool close_current_group ();
 

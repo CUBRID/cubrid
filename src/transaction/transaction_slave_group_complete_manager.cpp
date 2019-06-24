@@ -21,6 +21,7 @@
 // Manager of completed group on a HA slave node
 //
 
+#include "boot_sr.h"
 #include "log_manager.h"
 #include "thread_manager.hpp"
 #include "transaction_slave_group_complete_manager.hpp"
@@ -224,6 +225,11 @@ namespace cubtx
   //
   void slave_group_complete_task::execute (cubthread::entry &thread_ref)
   {
+    if (!BO_IS_SERVER_RESTARTED ())
+      {
+        return;
+      }
+
     cubthread::entry *thread_p = &cubthread::get_entry ();
     slave_group_complete_manager * p_gl_slave_group = slave_group_complete_manager::get_instance ();
     p_gl_slave_group->do_prepare_complete (thread_p);

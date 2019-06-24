@@ -21,6 +21,7 @@
 // Manager of completed group on a HA master node
 //
 
+#include "boot_sr.h"
 #include "log_manager.h"
 #include "replication_master_senders_manager.hpp"
 #include "thread_manager.hpp"
@@ -215,6 +216,11 @@ namespace cubtx
 
   void master_group_complete_task::execute (cubthread::entry &thread_ref)
   {
+    if (!BO_IS_SERVER_RESTARTED ())
+      {
+        return;
+      }
+
     cubthread::entry *thread_p = &cubthread::get_entry ();
     master_group_complete_manager::get_instance ()->do_prepare_complete (thread_p);
   }

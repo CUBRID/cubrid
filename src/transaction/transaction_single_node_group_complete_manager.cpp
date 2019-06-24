@@ -21,6 +21,7 @@
 // Manager of completed group on single node
 //
 
+#include "boot_sr.h"
 #include "page_buffer.h"
 #include "log_manager.h"
 #include "server_support.h"
@@ -209,7 +210,7 @@ namespace cubtx
 	log_Gl.mvcc_table.complete_group_mvcc (thread_p, closed_group);
 	notify_group_mvcc_complete (closed_group);
 
-        if (!HA_DISABLED () && css_ha_server_state () == HA_SERVER_STATE_ACTIVE)
+	if (!HA_DISABLED () && css_ha_server_state () == HA_SERVER_STATE_ACTIVE)
 	  {
 	    /* This is a single node that must generate stream group commits. */
 	    tdes->replication_log_generator.pack_group_commit_entry (closed_group,
@@ -269,6 +270,11 @@ namespace cubtx
 
   void single_node_group_complete_task::execute (cubthread::entry &thread_ref)
   {
+    if (!BO_IS_SERVER_RESTARTED ())
+      {
+	return;
+      }
+
     cubthread::entry *thread_p = &cubthread::get_entry ();
     single_node_group_complete_manager::get_instance ()->do_prepare_complete (thread_p);
   }
