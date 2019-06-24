@@ -1356,7 +1356,7 @@ css_initialize_server_interfaces (int (*request_handler) (THREAD_ENTRY * thrd, u
 int
 css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_id)
 {
-  CSS_CONN_ENTRY *conn;
+  CSS_CONN_ENTRY *conn = NULL;
   int status = NO_ERROR;
 
   if (server_name == NULL || port_id <= 0)
