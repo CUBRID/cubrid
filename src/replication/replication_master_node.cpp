@@ -129,6 +129,11 @@ namespace cubreplication
 
   void master_node::final (void)
   {
+    if (g_instance == NULL)
+      {
+	return;
+      }
+
     master_senders_manager::final ();
 
     delete g_instance->m_control_channel_manager;

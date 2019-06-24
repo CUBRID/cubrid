@@ -119,7 +119,10 @@ namespace cubreplication
 
   void slave_node::final (void)
   {
-    assert (g_instance != NULL);
+    if (g_instance == NULL)
+      {
+	return;
+      }
 
     delete g_instance->m_transfer_receiver;
     g_instance->m_transfer_receiver = NULL;
