@@ -27,39 +27,55 @@
 #define _REPLICATION_MASTER_NODE_HPP_
 
 #include "replication_node.hpp"
+#include "stream_file.hpp"
+#include "multi_thread_stream.hpp"
 
 #include <mutex>
 
 namespace cubreplication
 {
   class master_ctrl;
+  class slave_node;
 
   class master_node : public replication_node
   {
     private:
-      static master_node *g_instance;
       static std::mutex g_enable_active_mtx;
 
-      master_node (const char *name)
-	: replication_node (name)
-      {
-      }
-
     public:
+      master_node (const char *nam, cubstream::multi_thread_stream *stream, cubstream::stream_file *stream_file);
+      ~master_node ();
       master_ctrl *m_control_channel_manager;
 
-      static master_node *get_instance (const char *name);
-
-      static void init (const char *name);
-      static void new_slave (int fd);
-      static void add_ctrl_chn (int fd);
-      static void final (void);
-
-      static void enable_active (void);
-
-      static void update_senders_min_position (const cubstream::stream_position &pos);
+      void init (const char *name);
+      void new_slave (int fd);
+      void add_ctrl_chn (int fd);
+      void final (void);
+      void enable_active (void);
+      void update_senders_min_position (const cubstream::stream_position &pos);
   };
 
+  class replication_node_manager
+  {
+    public:
+      static void init_hostname (const char *name);
+      static replication_node_manager *get_instance ();
+      static void finalize ();
+
+      void commute_to_master_state ();
+      void commute_to_slave_state ();
+
+      master_node *get_master_node ();
+      slave_node *get_slave_node ();
+
+    private:
+      replication_node_manager (const char *name);
+      ~replication_node_manager ();
+
+      cubstream::stream_file *m_stream_file;
+      cubstream::multi_thread_stream *m_stream;
+      cubreplication::replication_node *m_repl_node;
+  };
 } /* namespace cubreplication */
 
 #endif /* _REPLICATION_MASTER_NODE_HPP_ */

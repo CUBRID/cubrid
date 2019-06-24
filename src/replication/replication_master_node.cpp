@@ -24,6 +24,7 @@
 #ident "$Id$"
 
 #include "replication_master_node.hpp"
+#include "replication_slave_node.hpp"
 #include "log_impl.h"
 #include "replication_common.hpp"
 #include "master_control_channel.hpp"
@@ -34,41 +35,27 @@
 
 namespace cubreplication
 {
-  master_node *master_node::get_instance (const char *name)
+  master_node::master_node (const char *name, cubstream::multi_thread_stream *stream, cubstream::stream_file *stream_file)
+    : replication_node (name)
   {
-    if (g_instance == NULL)
-      {
-	g_instance = new master_node (name);
-      }
-    return g_instance;
-  }
-
-  void master_node::init (const char *name)
-  {
-    assert (g_instance == NULL);
-    master_node *instance = master_node::get_instance (name);
-
-    instance->apply_start_position ();
+    apply_start_position ();
 
     INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_GENERATOR_BUFFER_SIZE);
     int num_max_appenders = log_Gl.trantable.num_total_indices + 1;
 
-    instance->m_stream = new cubstream::multi_thread_stream (buffer_size, num_max_appenders);
-    instance->m_stream->set_name ("repl_" + std::string (name));
-    instance->m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
-    instance->m_stream->init (instance->m_start_position);
-    log_generator::set_global_stream (instance->m_stream);
+    m_stream = stream;
+    log_generator::set_global_stream (m_stream);
 
     /* create stream file */
     std::string replication_path;
     replication_node::get_replication_file_path (replication_path);
-    instance->m_stream_file = new cubstream::stream_file (*instance->m_stream, replication_path);
+    m_stream_file = stream_file;
 
     master_senders_manager::init ();
 
     cubtx::master_group_complete_manager::init ();
 
-    instance->m_control_channel_manager = new master_ctrl (cubtx::master_group_complete_manager::get_instance ());
+    m_control_channel_manager = new master_ctrl (cubtx::master_group_complete_manager::get_instance ());
 
     er_log_debug_replication (ARG_FILE_LINE, "master_node:init replication_path:%s", replication_path.c_str ());
   }
@@ -82,7 +69,7 @@ namespace cubreplication
 	cubthread::entry *thread_p = thread_get_thread_entry_info ();
 	css_change_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE, true, HA_CHANGE_MODE_IMMEDIATELY, true);
 
-	stream_entry fail_over_entry (g_instance->m_stream, MVCCID_FIRST, stream_entry_header::NEW_MASTER);
+	stream_entry fail_over_entry (m_stream, MVCCID_FIRST, stream_entry_header::NEW_MASTER);
 	fail_over_entry.pack ();
       }
   }
@@ -103,7 +90,7 @@ namespace cubreplication
     css_error_code rc = chn.accept (fd);
     assert (rc == NO_ERRORS);
 
-    master_senders_manager::add_stream_sender (new cubstream::transfer_sender (std::move (chn), *g_instance->m_stream));
+    master_senders_manager::add_stream_sender (new cubstream::transfer_sender (std::move (chn), *m_stream));
 
     er_log_debug_replication (ARG_FILE_LINE, "new_slave connected");
   }
@@ -122,36 +109,95 @@ namespace cubreplication
     css_error_code rc = chn.accept (fd);
     assert (rc == NO_ERRORS);
 
-    g_instance->m_control_channel_manager->add (std::move (chn));
+    m_control_channel_manager->add (std::move (chn));
 
     er_log_debug_replication (ARG_FILE_LINE, "control channel added");
   }
 
-  void master_node::final (void)
+  master_node::~master_node ()
   {
     master_senders_manager::final ();
 
-    delete g_instance->m_control_channel_manager;
-    g_instance->m_control_channel_manager = NULL;
+    delete m_control_channel_manager;
+    m_control_channel_manager = NULL;
 
     cubtx::master_group_complete_manager::final ();
-
-    delete g_instance;
-    g_instance = NULL;
   }
 
   void master_node::update_senders_min_position (const cubstream::stream_position &pos)
   {
     /* TODO : we may choose to force flush of all data, even if was read by all senders */
-    g_instance->m_stream->set_last_recyclable_pos (pos);
-    g_instance->m_stream->reset_serial_data_read (pos);
+    m_stream->set_last_recyclable_pos (pos);
+    m_stream->reset_serial_data_read (pos);
 
     er_log_debug_replication (ARG_FILE_LINE, "master_node (stream:%s) update_senders_min_position: %llu,\n"
-			      " stream_read_pos:%llu, commit_pos:%llu", g_instance->m_stream->name ().c_str (),
-			      pos, g_instance->m_stream->get_curr_read_position (), g_instance->m_stream->get_last_committed_pos ());
+			      " stream_read_pos:%llu, commit_pos:%llu", m_stream->name ().c_str (),
+			      pos, m_stream->get_curr_read_position (),m_stream->get_last_committed_pos ());
   }
 
-
-  master_node *master_node::g_instance = NULL;
   std::mutex master_node::g_enable_active_mtx;
+
+  std::string host_name;
+  replication_node_manager *g_instance;
+
+  // Start as slave
+  replication_node_manager::replication_node_manager (const char *name)
+    : m_repl_node (new slave_node (name, m_stream, m_stream_file))
+  {
+
+  }
+
+  replication_node_manager::~replication_node_manager ()
+  {
+    // stream and stream file are interdependent, therefore first stop the stream
+    m_stream->set_stop ();
+
+    delete m_stream_file;
+    delete m_stream;
+    delete m_repl_node;
+  }
+
+  void replication_node_manager::init_hostname (const char *name)
+  {
+    host_name = name;
+  }
+
+  replication_node_manager *replication_node_manager::get_instance ()
+  {
+    if (g_instance == NULL)
+      {
+	g_instance = new replication_node_manager (host_name.c_str ());
+      }
+
+    return g_instance;
+  }
+
+  void replication_node_manager::finalize ()
+  {
+    delete g_instance;
+    g_instance = NULL;
+  }
+
+  void replication_node_manager::commute_to_master_state ()
+  {
+    delete m_repl_node;
+    m_repl_node = new master_node (host_name.c_str (), m_stream, m_stream_file);
+  }
+
+  void replication_node_manager::commute_to_slave_state ()
+  {
+    delete m_repl_node;
+    m_repl_node = new slave_node (host_name.c_str (), m_stream, m_stream_file);
+  }
+
+  master_node *replication_node_manager::get_master_node ()
+  {
+    return (master_node *) m_repl_node;
+  }
+
+  slave_node *replication_node_manager::get_slave_node ()
+  {
+    return (slave_node *) m_repl_node;
+  }
+
 } /* namespace cubreplication */
