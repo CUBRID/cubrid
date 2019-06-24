@@ -4509,10 +4509,11 @@ log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 strea
 
       /* TODO - find a better solution. It is dangerous to set transaction state and
        * LSA here. A simple solution may be to add a small delay at checkpoint.
+       * Set tran_start_postpone_lsa to log_Gl.prior_info.prior_lsa since we are under
+       * mutex protection.
        */
-      /* TODO - probably log_Gl.prior_info.prior_lsa instead tdes->tail_lsa */
       tdes->state = ti.m_tran_state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
-      tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
+      tdes->rcv.tran_start_postpone_lsa = log_Gl.prior_info.prior_lsa;
     }
   // *INDENT-ON*
 

@@ -4175,7 +4175,7 @@ log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, 
   if (LSA_ISNULL (&last_parent_lsa))
     {
       /* no run postpones before system op. stop at start postpone. */
-      assert (LSA_EQ (&iter_lsa, postpone_start_lsa));
+      assert (LSA_LE (&iter_lsa, postpone_start_lsa));
       last_parent_lsa = *postpone_start_lsa;
     }
 
