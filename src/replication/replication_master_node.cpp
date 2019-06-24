@@ -64,7 +64,7 @@ namespace cubreplication
     replication_node::get_replication_file_path (replication_path);
     instance->m_stream_file = new cubstream::stream_file (*instance->m_stream, replication_path);
 
-    master_senders_manager::init (instance->m_stream);
+    master_senders_manager::init ();
 
     cubtx::master_group_complete_manager::init ();
 
@@ -103,8 +103,7 @@ namespace cubreplication
     css_error_code rc = chn.accept (fd);
     assert (rc == NO_ERRORS);
 
-    master_senders_manager::add_stream_sender
-    (new cubstream::transfer_sender (std::move (chn), cubreplication::master_senders_manager::get_stream ()));
+    master_senders_manager::add_stream_sender (new cubstream::transfer_sender (std::move (chn), *g_instance->m_stream));
 
     er_log_debug_replication (ARG_FILE_LINE, "new_slave connected");
   }
