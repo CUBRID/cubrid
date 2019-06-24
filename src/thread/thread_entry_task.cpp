@@ -67,6 +67,7 @@ namespace cubthread
     context.unregister_id ();
     context.tran_index = -1;
     context.check_interrupt = true;
+    context.private_lru_index = -1;
 #if defined (SERVER_MODE)
     context.m_status = entry::status::TS_FREE;
     context.resume_status = THREAD_RESUME_NONE;
