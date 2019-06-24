@@ -148,6 +148,9 @@ namespace cubstream
     public:
       stream_file () = delete;
 
+      static stream_file *get_instance (cubstream::multi_thread_stream &stream, const std::string &path,
+					const size_t file_size = DEFAULT_VOLUME_SIZE, const int print_digits = DEFAULT_FILENAME_DIGITS);
+
       stream_file (multi_thread_stream &stream_arg, const std::string &path,
 		   const size_t file_size = DEFAULT_VOLUME_SIZE, const int print_digits = DEFAULT_FILENAME_DIGITS)
 	: m_stream (stream_arg)

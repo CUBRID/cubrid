@@ -34,13 +34,6 @@ namespace cubreplication
 {
   replication_node::~replication_node ()
   {
-    // stream and stream file are interdependent, therefore first stop the stream
-    m_stream->set_stop ();
-
-    delete m_stream_file;
-    m_stream_file = NULL;
-    delete m_stream;
-    m_stream = NULL;
   }
 
   int replication_node::apply_start_position (cubstream::stream_position apply_start_pos)

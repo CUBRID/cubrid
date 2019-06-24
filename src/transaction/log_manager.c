@@ -4864,8 +4864,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	  LOG_LSA commit_lsa;
 
 	  // todo: temp change, revert me
-	  tdes->replication_log_generator.on_transaction_commit ();
-	  logpb_force_flush_header_and_pages (thread_p);
+	  //logpb_force_flush_header_and_pages (thread_p);
 
 	  if (log_Gl.m_active_start_position == 0)
 	    {
@@ -4877,7 +4876,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	    {
 	      tx_group group;
 	      group.add (tdes->tran_index, 0, tdes->state);
-	      log_append_group_complete (thread_p, tdes, log_Gl.hdr.m_ack_stream_position, group, &commit_lsa, NULL);
+	      log_append_group_complete (thread_p, tdes, 0, group, &commit_lsa, NULL);
 	    }
 	  else
 	    {
@@ -4885,6 +4884,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	      log_append_finish_postpone (thread_p, tdes, &commit_lsa);
 	    }
 
+	  tdes->replication_log_generator.on_transaction_commit ();
 #if 0
 	  /* TODO  - Activate the following code and rewrite all cases with group complete. */
 	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)

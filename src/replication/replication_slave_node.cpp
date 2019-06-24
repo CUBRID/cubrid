@@ -41,6 +41,8 @@ namespace cubreplication
   {
     delete m_lc;
     m_lc = NULL;
+
+    // stream & stream_files are shared with master_node and are cleared by it
   }
 
   slave_node *slave_node::get_instance (const char *name)
@@ -58,20 +60,22 @@ namespace cubreplication
     slave_node *instance = slave_node::get_instance (hostname);
 
     // needs to make same init as master node
-    instance->apply_start_position (log_Gl.hdr.m_ack_stream_position);
+    instance->apply_start_position (0);
+    int num_max_appenders = log_Gl.trantable.num_total_indices + 1;
 
     INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_CONSUMER_BUFFER_SIZE);
 
     /* create stream :*/
     /* consumer needs only one stream appender (the stream transfer receiver) */
     assert (instance->m_stream == NULL);
-    instance->m_stream = cubstream::multi_thread_stream::get_instance (buffer_size, 2, "repl" + std::string (hostname),
+    instance->m_stream = cubstream::multi_thread_stream::get_instance (buffer_size, num_max_appenders,
+			 "repl" + std::string (hostname),
 			 stream_entry::compute_header_size (), instance->m_start_position);
 
     /* create stream file */
     std::string replication_path;
     replication_node::get_replication_file_path (replication_path);
-    instance->m_stream_file = new cubstream::stream_file (*instance->m_stream, replication_path);
+    instance->m_stream_file = cubstream::stream_file::get_instance (*instance->m_stream, replication_path);
 
     assert (instance->m_lc == NULL);
     instance->m_lc = new log_consumer ();

@@ -43,17 +43,29 @@ namespace cubreplication
     return g_instance;
   }
 
+  master_node::~master_node ()
+  {
+    // stream and stream file are interdependent, therefore first stop the stream
+    m_stream->set_stop ();
+
+    delete m_stream_file;
+    m_stream_file = NULL;
+    delete m_stream;
+    m_stream = NULL;
+  }
+
   void master_node::init (const char *name)
   {
     assert (g_instance == NULL);
     master_node *instance = master_node::get_instance (name);
 
-    instance->apply_start_position (log_Gl.hdr.m_ack_stream_position);
+    instance->apply_start_position (0);
 
     INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_GENERATOR_BUFFER_SIZE);
     int num_max_appenders = log_Gl.trantable.num_total_indices + 1;
 
-    instance->m_stream = cubstream::multi_thread_stream::get_instance (buffer_size, 2, "repl" + std::string (name),
+    instance->m_stream = cubstream::multi_thread_stream::get_instance (buffer_size, num_max_appenders,
+			 "repl" + std::string (name),
 			 stream_entry::compute_header_size (), instance->m_start_position);
 
     log_generator::set_global_stream (instance->m_stream);
@@ -61,7 +73,7 @@ namespace cubreplication
     /* create stream file */
     std::string replication_path;
     replication_node::get_replication_file_path (replication_path);
-    instance->m_stream_file = new cubstream::stream_file (*instance->m_stream, replication_path);
+    instance->m_stream_file = cubstream::stream_file::get_instance (*instance->m_stream, replication_path);
 
     master_senders_manager::init (instance->m_stream);
 

@@ -45,6 +45,8 @@ namespace cubreplication
       {
       }
 
+      ~master_node ();
+
     public:
       master_ctrl *m_control_channel_manager;
 

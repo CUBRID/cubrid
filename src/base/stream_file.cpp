@@ -48,6 +48,9 @@ namespace cubstream
 
   const int stream_file::FILE_CREATE_FLAG = O_CREAT;
 
+  stream_file *sf_instance = NULL;
+  std::mutex sf_mtx;
+
   /* daemon task for writing stream contents to stream file
    * The stream_file object has a m_target_flush_position; this is the target set by the stream
    * and is the position which desired to be saved to file (all data up to this position)
@@ -125,6 +128,17 @@ namespace cubstream
 
       cubstream::stream::read_func_t m_copy_to_buffer_func;
   };
+
+  stream_file *stream_file::get_instance (cubstream::multi_thread_stream &stream, const std::string &path,
+					  const size_t file_size, const int print_digits)
+  {
+    std::lock_guard <std::mutex> lg (sf_mtx);
+    if (sf_instance == NULL)
+      {
+	sf_instance = new stream_file (stream, path, file_size, print_digits);
+      }
+    return sf_instance;
+  }
 
 
   void stream_file::init (const std::string &path, const stream_position &start_append_pos, const size_t file_size,
