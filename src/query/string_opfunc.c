@@ -1977,11 +1977,10 @@ db_string_quote (const DB_VALUE * str, DB_VALUE * res)
     }
   else
     {
-      char *src_str = db_get_string (str);
-
       char *escaped_string = NULL;
       size_t escaped_string_size;
-      int error_code = db_string_escape_str (src_str, db_get_string_size (str), &escaped_string, &escaped_string_size);
+      int error_code =
+	db_string_escape_str (db_get_string (str), db_get_string_size (str), &escaped_string, &escaped_string_size);
       if (error_code)
 	{
 	  return error_code;

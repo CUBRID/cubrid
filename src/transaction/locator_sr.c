@@ -54,6 +54,7 @@
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
+#include "record_descriptor.hpp"
 #include "slotted_page.h"
 #include "xasl_cache.h"
 #include "xasl_predicate.hpp"
@@ -151,7 +152,7 @@ static void locator_repl_add_error_to_copyarea (LC_COPYAREA ** copy_area, RECDES
 static int locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * recdes,
 				 int has_index, int op_type, HEAP_SCANCACHE * scan_cache, int *force_count,
 				 int pruning_type, PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
-				 UPDATE_INPLACE_STYLE force_in_place);
+				 UPDATE_INPLACE_STYLE force_in_place, PGBUF_WATCHER * home_hint_p);
 static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * ikdrecdes,
 				 RECDES * recdes, int has_index, ATTR_ID * att_id, int n_att_id, int op_type,
 				 HEAP_SCANCACHE * scan_cache, int *force_count, bool not_check_fk,
@@ -4851,7 +4852,7 @@ static int
 locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * recdes, int has_index,
 		      int op_type, HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type,
 		      PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
-		      UPDATE_INPLACE_STYLE force_in_place)
+		      UPDATE_INPLACE_STYLE force_in_place, PGBUF_WATCHER * home_hint_p)
 {
 #if 0				/* TODO - dead code; do not delete me */
   OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
@@ -4971,7 +4972,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
     }
 
   /* execute insert */
-  if (heap_insert_logical (thread_p, &context) != NO_ERROR)
+  if (heap_insert_logical (thread_p, &context, home_hint_p) != NO_ERROR)
     {
       /*
        * Problems inserting the object...Maybe, the transaction should be
@@ -5222,7 +5223,7 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
 
       error =
 	locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, recdes, has_index, op_type,
-			      insert_cache, force_count, context->pruning_type, NULL, NULL, UPDATE_INPLACE_NONE);
+			      insert_cache, force_count, context->pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, NULL);
     }
   else
     {
@@ -5238,7 +5239,8 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
       /* insert the new record */
       error =
 	locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, recdes, has_index, op_type,
-			      &insert_cache, force_count, DB_NOT_PARTITIONED_CLASS, NULL, NULL, UPDATE_INPLACE_NONE);
+			      &insert_cache, force_count, DB_NOT_PARTITIONED_CLASS, NULL, NULL, UPDATE_INPLACE_NONE,
+			      NULL);
       heap_scancache_end (thread_p, &insert_cache);
     }
 
@@ -6370,10 +6372,7 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
   HEAP_SCANCACHE scan_cache;
   int scan_cache_inited = 0;
   LOG_TDES *tdes;
-  int i, s, t;
-  int malloc_size;
-  BTREE_UNIQUE_STATS *temp_info;
-  char *ptr;
+  int i;
   int force_count;
   int tran_index;
   int error_code = NO_ERROR;
@@ -6391,20 +6390,11 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 
   mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (force_area);
 
-  if (mobjs->start_multi_update && tdes->tran_unique_stats == NULL)
+  if (mobjs->start_multi_update)
     {
-      tdes->num_unique_btrees = 0;
-      tdes->max_unique_btrees = UNIQUE_STAT_INFO_INCREMENT;
-
-      malloc_size = sizeof (BTREE_UNIQUE_STATS) * UNIQUE_STAT_INFO_INCREMENT;
-
-      /* Do not use db_private_alloc */
-      tdes->tran_unique_stats = (BTREE_UNIQUE_STATS *) malloc (malloc_size);
-      if (tdes->tran_unique_stats == NULL)
-	{
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto error;
-	}
+      // todo - fix multi-update; in the meantime disable safe-guard and just clear stats
+      // assert (tdes->m_multiupd_stats.empty ());
+      tdes->m_multiupd_stats.clear ();
     }
 
   if (mobjs->num_objs > 0)
@@ -6508,92 +6498,32 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 	    }
 	}			/* end-for */
 
-      for (s = 0; s < scan_cache.num_btids; s++)
+      if (scan_cache.m_index_stats != NULL)
 	{
-	  temp_info = &(scan_cache.index_stat_info[s]);
-	  if (temp_info->num_nulls == 0 && temp_info->num_keys == 0 && temp_info->num_oids == 0)
-	    {
-	      continue;
-	    }
-	  /* non-unique index would be filtered out at above statement. */
-
-	  for (t = 0; t < tdes->num_unique_btrees; t++)
-	    {
-	      if (BTID_IS_EQUAL (&temp_info->btid, &tdes->tran_unique_stats[t].btid))
-		{
-		  break;
-		}
-	    }
-	  if (t < tdes->num_unique_btrees)
-	    {
-	      /* The same unique index has been found */
-	      tdes->tran_unique_stats[t].num_nulls += temp_info->num_nulls;
-	      tdes->tran_unique_stats[t].num_keys += temp_info->num_keys;
-	      tdes->tran_unique_stats[t].num_oids += temp_info->num_oids;
-	    }
-	  else
-	    {
-	      /* The same unique index has not been found */
-	      if (tdes->num_unique_btrees == tdes->max_unique_btrees)
-		{
-		  /* we need more space for storing unique index stat. info.  */
-		  tdes->max_unique_btrees += UNIQUE_STAT_INFO_INCREMENT;
-		  malloc_size = (sizeof (BTREE_UNIQUE_STATS) * tdes->max_unique_btrees);
-
-		  /* Do not use db_private_realloc */
-		  ptr = (char *) realloc (tdes->tran_unique_stats, malloc_size);
-		  if (ptr == NULL)
-		    {
-		      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-		      goto error;
-		    }
-		  tdes->tran_unique_stats = (BTREE_UNIQUE_STATS *) ptr;
-		}
-	      t = tdes->num_unique_btrees;
-	      BTID_COPY (&tdes->tran_unique_stats[t].btid, &temp_info->btid);
-	      tdes->tran_unique_stats[t].num_nulls = temp_info->num_nulls;
-	      tdes->tran_unique_stats[t].num_keys = temp_info->num_keys;
-	      tdes->tran_unique_stats[t].num_oids = temp_info->num_oids;
-	      tdes->num_unique_btrees++;	/* increment */
-	    }
+	  tdes->m_multiupd_stats += *scan_cache.m_index_stats;
 	}
-
       locator_end_force_scan_cache (thread_p, &scan_cache);
       scan_cache_inited = 0;
     }
 
   if (mobjs->end_multi_update)
     {
-      BTREE_UNIQUE_STATS *unique_stats = NULL;
-
-      for (s = 0; s < tdes->num_unique_btrees; s++)
+    for (const auto & it:tdes->m_multiupd_stats.get_map ())
 	{
-	  unique_stats = &tdes->tran_unique_stats[s];
-	  if (unique_stats->num_nulls == 0 && unique_stats->num_keys == 0 && unique_stats->num_oids == 0)
+	  if (!it.second.is_unique ())
 	    {
-	      continue;		/* no modification : non-unique index */
-	    }
-	  if ((unique_stats->num_nulls + unique_stats->num_keys) != unique_stats->num_oids)
-	    {
-	      BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL, &mobjs->objs.class_oid, &unique_stats->btid,
-						NULL);
+	      BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL, &mobjs->objs.class_oid, &it.first, NULL);
 	      error_code = ER_BTREE_UNIQUE_FAILED;
 	      goto error;
 	    }
-
-	  error_code =
-	    logtb_tran_update_unique_stats (thread_p, &unique_stats->btid, unique_stats->num_keys,
-					    unique_stats->num_oids, unique_stats->num_nulls, true);
+	  error_code = logtb_tran_update_unique_stats (thread_p, it.first, it.second, true);
 	  if (error_code != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      goto error;
 	    }
 	}
-
-      if (tdes->tran_unique_stats != NULL)
-	{
-	  free_and_init (tdes->tran_unique_stats);
-	}
+      tdes->m_multiupd_stats.clear ();
     }
 
   return error_code;
@@ -6604,9 +6534,9 @@ error:
       locator_end_force_scan_cache (thread_p, &scan_cache);
     }
 
-  if (tdes != NULL && tdes->tran_unique_stats != NULL)
+  if (tdes != NULL)
     {
-      free_and_init (tdes->tran_unique_stats);
+      tdes->m_multiupd_stats.clear ();
     }
 
   return error_code;
@@ -6910,7 +6840,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	      error_code =
 		locator_insert_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, &recdes, has_index,
 				      SINGLE_ROW_INSERT, force_scancache, &force_count, pruning_type, NULL, NULL,
-				      UPDATE_INPLACE_NONE);
+				      UPDATE_INPLACE_NONE, NULL);
 
 	      if (error_code == NO_ERROR)
 		{
@@ -7065,15 +6995,6 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	  force_scancache = &scan_cache;
 	}
 
-      if (LOG_CHECK_LOG_APPLIER (thread_p) || num_ignore_error > 0)
-	{
-	  error_code = xtran_server_start_topop (thread_p, &oneobj_lsa);
-	  if (error_code != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	}
-
       has_index = LC_ONEOBJ_GET_INDEX_FLAG (obj);
 
       /* For multi update, we're just interested in the INSERT and DELETE operations here, which were generated by
@@ -7085,6 +7006,20 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	  && !OID_EQ (&obj->class_oid, oid_Root_class_oid))
 	{
 	  continue;
+	}
+
+      bool topop_started = false;
+      if (LOG_CHECK_LOG_APPLIER (thread_p) || num_ignore_error > 0)
+	{
+	  error_code = xtran_server_start_topop (thread_p, &oneobj_lsa);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  else
+	    {
+	      topop_started = true;
+	    }
 	}
 
       /* delete old row must be set to true for system classes and false for others, therefore it must be updated for
@@ -7099,7 +7034,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	  error_code =
 	    locator_insert_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, &recdes, has_index,
 				  SINGLE_ROW_INSERT, force_scancache, &force_count, pruning_type, NULL, NULL,
-				  UPDATE_INPLACE_NONE);
+				  UPDATE_INPLACE_NONE, NULL);
 
 	  if (error_code == NO_ERROR)
 	    {
@@ -7170,13 +7105,11 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 		}
 	    }
 
-	  if (need_to_abort_oneobj)
+	  if (topop_started)
 	    {
-	      (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &oneobj_lsa);
-	    }
-	  else
-	    {
-	      (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &oneobj_lsa);
+	      LOG_RESULT_TOPOP result_topop =
+		need_to_abort_oneobj ? LOG_RESULT_TOPOP_ABORT : LOG_RESULT_TOPOP_ATTACH_TO_OUTER;
+	      (void) xtran_server_end_topop (thread_p, result_topop, &oneobj_lsa);
 	    }
 	}
 
@@ -7199,6 +7132,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
   /* handle multi-update case */
   if (mobjs->start_multi_update)
     {
+      // todo - this looks badly managed.
       error_code = locator_force_for_multi_update (thread_p, force_area);
       if (error_code != NO_ERROR)
 	{
@@ -7251,59 +7185,63 @@ locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
   LC_COPYAREA *copyarea = NULL;
   int copyarea_length = copyarea_length_hint <= 0 ? DB_PAGESIZE : copyarea_length_hint;
   SCAN_CODE scan = S_DOESNT_FIT;
+  // *INDENT-OFF*
+  record_descriptor build_record (cubmem::CSTYLE_BLOCK_ALLOCATOR);
+  // *INDENT-ON*
 
-  while (scan == S_DOESNT_FIT)
+  new_recdes->data = NULL;
+  new_recdes->area_size = 0;
+
+  copyarea = locator_allocate_copy_area_by_length (copyarea_length);
+  if (copyarea == NULL)
     {
+      return NULL;
+    }
+
+  assert (copyarea->length > 0);
+  build_record.set_external_buffer (copyarea->mem, (size_t) copyarea->length);
+
+  new_recdes->data = copyarea->mem;
+  new_recdes->area_size = copyarea->length;
+
+  if (lob_create_flag == LOB_FLAG_EXCLUDE_LOB)
+    {
+      scan = heap_attrinfo_transform_to_disk_except_lob (thread_p, attr_info, old_recdes, &build_record);
+    }
+  else
+    {
+      scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, old_recdes, &build_record);
+    }
+  if (scan != S_SUCCESS)
+    {
+      /* Get the real length used in the copy area */
+      copyarea_length = copyarea->length;
+      locator_free_copy_area (copyarea);
+      return NULL;
+    }
+
+  char *allocated_data = NULL;
+  size_t allocated_size = 0;
+  build_record.release_buffer (allocated_data, allocated_size);
+  if (allocated_data != NULL)
+    {
+      assert (allocated_size > (size_t) copyarea_length);
+      locator_free_copy_area (copyarea);
+
+      copyarea_length = DB_ALIGN ((int) allocated_size, DB_PAGESIZE);
       copyarea = locator_allocate_copy_area_by_length (copyarea_length);
       if (copyarea == NULL)
 	{
-	  break;
+	  return NULL;
 	}
+      std::memcpy (copyarea->mem, allocated_data, build_record.get_size ());
 
-      new_recdes->data = copyarea->mem;
-      new_recdes->area_size = copyarea->length;
-
-      if (lob_create_flag == LOB_FLAG_EXCLUDE_LOB)
-	{
-	  scan = heap_attrinfo_transform_to_disk_except_lob (thread_p, attr_info, old_recdes, new_recdes);
-	}
-      else
-	{
-	  scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, old_recdes, new_recdes);
-	}
-
-      if (scan != S_SUCCESS)
-	{
-	  /* Get the real length used in the copy area */
-	  copyarea_length = copyarea->length;
-	  locator_free_copy_area (copyarea);
-	  copyarea = NULL;
-	  new_recdes->data = NULL;
-	  new_recdes->area_size = 0;
-
-	  /* Is more space needed ? */
-	  if (scan == S_DOESNT_FIT)
-	    {
-	      /*
-	       * The object does not fit into copy area, increase the area
-	       * to estimated size included in length of record descriptor.
-	       */
-	      if (copyarea_length < (-new_recdes->length))
-		{
-		  copyarea_length = DB_ALIGN (-new_recdes->length, MAX_ALIGNMENT);
-		}
-	      else
-		{
-		  /*
-		   * This is done for security purposes only, since the
-		   * transformation may not have given us the correct length,
-		   * somehow.
-		   */
-		  copyarea_length += DB_PAGESIZE;
-		}
-	    }
-	}
+      free (allocated_data);	// c-style allocator was used
     }
+
+  *new_recdes = build_record.get_recdes ();
+  new_recdes->data = copyarea->mem;
+  new_recdes->area_size = copyarea->length;
   return copyarea;
 }
 
@@ -7468,7 +7406,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	{
 	  error_code =
 	    locator_insert_force (thread_p, &class_hfid, &class_oid, oid, &new_recdes, true, op_type, scan_cache,
-				  force_count, pruning_type, pcontext, func_preds, UPDATE_INPLACE_NONE);
+				  force_count, pruning_type, pcontext, func_preds, UPDATE_INPLACE_NONE, NULL);
 	}
       else
 	{
@@ -7650,7 +7588,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
   DB_VALUE *key_dbvalue, *key_ins_del = NULL;
   DB_VALUE dbvalue;
   int unique_pk;
-  BTREE_UNIQUE_STATS *unique_stat_info;
+  btree_unique_stats *unique_stat_info;
   HEAP_IDX_ELEMENTS_INFO idx_info;
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
   OR_INDEX *index;
@@ -7767,7 +7705,8 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	    {
 	      if (op_type == MULTI_ROW_UPDATE || op_type == MULTI_ROW_INSERT || op_type == MULTI_ROW_DELETE)
 		{
-		  unique_stat_info = &(scan_cache->index_stat_info[i]);
+		  assert (scan_cache->m_index_stats != NULL);
+		  unique_stat_info = &scan_cache->m_index_stats->get_stats_of (index->btid);
 		}
 	      else
 		{
@@ -8180,7 +8119,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   OR_INDEX *index = NULL;
   int i, j, k, num_btids, old_num_btids, unique_pk;
   bool found_btid = true;
-  BTREE_UNIQUE_STATS *unique_stat_info;
+  btree_unique_stats *unique_stat_info;
   HEAP_IDX_ELEMENTS_INFO new_idx_info;
   HEAP_IDX_ELEMENTS_INFO old_idx_info;
   char newbuf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_newbuf;
@@ -8427,7 +8366,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	{
 	  if (op_type == MULTI_ROW_UPDATE || op_type == MULTI_ROW_INSERT || op_type == MULTI_ROW_DELETE)
 	    {
-	      unique_stat_info = &(scan_cache->index_stat_info[i]);
+	      assert (scan_cache->m_index_stats != NULL);
+	      unique_stat_info = &scan_cache->m_index_stats->get_stats_of (index->btid);
 	    }
 	  else
 	    {
@@ -8870,7 +8810,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
   DB_VALUE *dbvalue_ptr = NULL;
   SCAN_CODE scan;
   char *new_area;
-  BTREE_UNIQUE_STATS unique_info;
+  btree_unique_stats unique_info;
   HEAP_IDX_ELEMENTS_INFO idx_info;
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
   int error_code = NO_ERROR;
@@ -8900,12 +8840,6 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (copy_rec.area_size));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
-
-  /* initialize 'unique_info' structure. */
-  BTID_COPY (&(unique_info.btid), btid);
-  unique_info.num_nulls = 0;
-  unique_info.num_keys = 0;
-  unique_info.num_oids = 0;
 
   /* Start a scan cursor */
   error_code = heap_scancache_start (thread_p, &scan_cache, hfid, class_oid, false, false, mvcc_snapshot);
@@ -9042,15 +8976,10 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
 	}
     }
 
-  if (unique_info.num_nulls != 0 || unique_info.num_keys != 0 || unique_info.num_oids != 0)
+  error_code = logtb_tran_update_unique_stats (thread_p, *btid, unique_info, true);
+  if (error_code != NO_ERROR)
     {
-      error_code =
-	logtb_tran_update_unique_stats (thread_p, btid, unique_info.num_keys, unique_info.num_oids,
-					unique_info.num_nulls, true);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
+      goto error;
     }
 
   error_code = heap_scancache_end (thread_p, &scan_cache);
@@ -12858,7 +12787,7 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 	      error =
 		locator_insert_force (thread_p, &class_hfid, &cls_oid, &oid, &recdes, true, SINGLE_ROW_INSERT,
 				      &parent_scan_cache, &force_count, DB_PARTITIONED_CLASS, &pcontext, NULL,
-				      UPDATE_INPLACE_OLD_MVCCID);
+				      UPDATE_INPLACE_OLD_MVCCID, NULL);
 	      if (error != NO_ERROR)
 		{
 		  goto exit;
@@ -13774,4 +13703,118 @@ int
 xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK lock, LOCK * ex_lock)
 {
   return lock_demote_class_lock (thread_p, class_oid, lock, ex_lock);
+}
+
+// *INDENT-OFF*
+int
+locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
+                            const std::vector<RECDES> &recdes, int has_index, int op_type, HEAP_SCANCACHE * scan_cache,
+                            int *force_count, int pruning_type, PRUNING_CONTEXT * pcontext,
+                            FUNC_PRED_UNPACK_INFO * func_preds, UPDATE_INPLACE_STYLE force_in_place)
+// *INDENT-ON*
+
+{
+  int error_code = NO_ERROR;
+  size_t accumulated_records_size = 0;
+  size_t heap_max_page_size;
+  OID dummy_oid;
+  // *INDENT-OFF*
+  std::vector<RECDES> recdes_array;
+  std::vector<VPID> heap_pages_array;
+  // *INDENT-ON*
+
+  // Early-out
+  if (recdes.size () == 0)
+    {
+      // Nothing to insert.
+      return NO_ERROR;
+    }
+
+  *force_count = 0;
+
+  // Take into account the unfill factor of the heap file.
+  heap_max_page_size = heap_nonheader_page_capacity () * (1.0f - prm_get_float_value (PRM_ID_HF_UNFILL_FACTOR));
+
+  for (size_t i = 0; i < recdes.size (); i++)
+    {
+      // Loop until we insert all records.
+
+      if (heap_is_big_length (recdes[i].length))
+	{
+	  // We insert other records normally.
+	  error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, (RECDES *) (&recdes[i]), has_index,
+					     op_type, scan_cache, force_count, pruning_type, pcontext, func_preds,
+					     force_in_place, NULL);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	}
+      else
+	{
+	  // get records until we fit the size of a page.
+	  if ((recdes[i].length + accumulated_records_size) >= heap_max_page_size)
+	    {
+	      VPID new_page_vpid;
+	      PGBUF_WATCHER home_hint_p;
+
+	      VPID_SET_NULL (&new_page_vpid);
+
+	      // First alloc a new empty heap page.
+	      error_code = heap_alloc_new_page (thread_p, hfid, *class_oid, &home_hint_p, &new_page_vpid);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  return error_code;
+		}
+
+	      for (size_t j = 0; j < recdes_array.size (); j++)
+		{
+		  error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, &recdes_array[j], has_index,
+						     op_type, scan_cache, force_count, pruning_type, pcontext,
+						     func_preds, force_in_place, &home_hint_p);
+		  if (error_code != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      return error_code;
+		    }
+
+		  // Safeguard. We should not have the page fixed here.
+		  assert (home_hint_p.pgptr == NULL);
+		}
+
+	      // Add the new VPID to the VPID array.
+	      assert (!VPID_ISNULL (&new_page_vpid));
+	      heap_pages_array.push_back (new_page_vpid);
+
+	      // Clear the recdes array.
+	      recdes_array.clear ();
+	      accumulated_records_size = 0;
+
+	    }
+
+	  // Add this record to the recdes array and increase the accumulated size.
+	  recdes_array.push_back (recdes[i]);
+	  accumulated_records_size += recdes[i].length;
+	}
+    }
+
+  // We must check if we have records which did not fill an entire page.
+  for (size_t i = 0; i < recdes_array.size (); i++)
+    {
+      error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, &recdes_array[i], has_index, op_type,
+					 scan_cache, force_count, pruning_type, pcontext, func_preds, force_in_place,
+					 NULL);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+    }
+
+  // Now form a heap chain with the pages and add the chain to the current heap.
+  // TODO: this!
+
+  return error_code;
 }

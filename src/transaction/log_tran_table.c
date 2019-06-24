@@ -51,6 +51,7 @@
 #include "log_lsa.hpp"
 #include "log_manager.h"
 #include "log_system_tran.hpp"
+#include "memory_private_allocator.hpp"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "xserver_interface.h"
@@ -68,6 +69,7 @@
 #if defined (SERVER_MODE)
 #include "server_support.h"
 #endif // SERVER_MODE
+#include "string_buffer.hpp"
 #if defined (SA_MODE)
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
@@ -134,7 +136,7 @@ static int logtb_global_unique_stat_init (void *unique_stat);
 static int logtb_global_unique_stat_key_copy (void *src, void *dest);
 static void logtb_free_tran_mvcc_info (LOG_TDES * tdes);
 
-static int logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvcc_subid);
+static void logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvcc_subid);
 
 static int logtb_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id, bool * has_authorization);
 static void logtb_find_thread_entry_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, int tran_index,
@@ -198,22 +200,25 @@ logtb_allocate_tdes_area (int num_indices)
   LOG_ADDR_TDESAREA *area;	/* Contiguous area for new transaction indices */
   LOG_TDES *tdes;		/* Transaction descriptor */
   int i, tran_index;
-  size_t area_size;
 
   /*
    * Allocate an area for the transaction descriptors, set the address of
    * each transaction descriptor, and keep the address of the area for
    * deallocation purposes at shutdown time.
    */
-  area_size = num_indices * sizeof (LOG_TDES) + sizeof (LOG_ADDR_TDESAREA);
-  area = (LOG_ADDR_TDESAREA *) malloc (area_size);
+  area = (LOG_ADDR_TDESAREA *) malloc (sizeof (LOG_ADDR_TDESAREA));
   if (area == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, area_size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOG_ADDR_TDESAREA));
       return NULL;
     }
 
-  area->tdesarea = ((LOG_TDES *) ((char *) area + sizeof (LOG_ADDR_TDESAREA)));
+  area->tdesarea = new LOG_TDES[num_indices];
+  if (area->tdesarea == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, num_indices * sizeof (LOG_TDES));
+      return NULL;
+    }
   area->next = log_Gl.trantable.area;
 
   /*
@@ -309,6 +314,9 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
   error_code = wfg_alloc_nodes (thread_p, total_indices);
   if (error_code != NO_ERROR)
     {
+      /* *INDENT-OFF* */
+      delete [] area->tdesarea;
+      /* *INDENT-ON* */
       free_and_init (area);
       goto error;
     }
@@ -316,6 +324,9 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
 
   if (qmgr_allocate_tran_entries (thread_p, total_indices) != NO_ERROR)
     {
+      /* *INDENT-OFF* */
+      delete [] area->tdesarea;
+      /* *INDENT-ON* */
       free_and_init (area);
       error_code = ER_FAILED;
       goto error;
@@ -601,6 +612,9 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
       while (area != NULL)
 	{
 	  log_Gl.trantable.area = area->next;
+	  /* *INDENT-OFF* */
+	  delete[] area->tdesarea;
+	  /* *INDENT-ON* */
 	  free_and_init (area);
 	  area = log_Gl.trantable.area;
 	}
@@ -1455,12 +1469,7 @@ logtb_free_tran_mvcc_info (LOG_TDES * tdes)
   MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
 
   curr_mvcc_info->snapshot.m_active_mvccs.finalize ();
-
-  if (curr_mvcc_info->sub_ids != NULL)
-    {
-      free_and_init (curr_mvcc_info->sub_ids);
-      curr_mvcc_info->count_sub_ids = 0;
-    }
+  curr_mvcc_info->sub_ids.clear ();
 }
 
 /*
@@ -1497,12 +1506,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     {
       log_2pc_free_coord_info (tdes);
     }
-  if (tdes->tran_unique_stats != NULL)
-    {
-      free_and_init (tdes->tran_unique_stats);
-      tdes->num_unique_btrees = 0;
-      tdes->max_unique_btrees = 0;
-    }
+  tdes->m_multiupd_stats.clear ();
   if (tdes->interrupt == (int) true)
     {
       tdes->interrupt = false;
@@ -1598,9 +1602,6 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->isloose_end = false;
   tdes->coord = NULL;
   tdes->client_id = -1;
-  // *INDENT-OFF*
-  new (&tdes->client) clientids ();
-  // *INDENT-ON*
   tdes->gtrid = LOG_2PC_NULL_GTRID;
   tdes->gtrinfo.info_length = 0;
   tdes->gtrinfo.info_data = NULL;
@@ -1623,7 +1624,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->topops.max = 0;
   tdes->num_unique_btrees = 0;
   tdes->max_unique_btrees = 0;
-  tdes->tran_unique_stats = NULL;
+  tdes->m_multiupd_stats.construct ();
   tdes->num_transient_classnames = 0;
   tdes->num_repl_records = 0;
   tdes->cur_repl_record = 0;
@@ -1671,9 +1672,6 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 
   tdes->block_global_oldest_active_until_commit = false;
   tdes->is_user_active = false;
-  // *INDENT-OFF*
-  new (&tdes->m_modified_classes) tx_transient_class_registry ();
-  // *INDENT-ON*
 
   LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
@@ -1692,11 +1690,6 @@ void
 logtb_finalize_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   int r;
-
-  // *INDENT-OFF*
-  tdes->client.~clientids ();
-  tdes->m_modified_classes.~tx_transient_class_registry ();
-  // *INDENT-ON*
 
   logtb_clear_tdes (thread_p, tdes);
   logtb_free_tran_mvcc_info (tdes);
@@ -2246,10 +2239,10 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 	}
 
       size += (3 * OR_INT_SIZE	/* tran index + tran state + process id */
-	       + or_packed_string_length (tdes->client.get_db_user (), NULL)
-	       + or_packed_string_length (tdes->client.get_program_name (), NULL)
-	       + or_packed_string_length (tdes->client.get_login_name (), NULL)
-	       + or_packed_string_length (tdes->client.get_host_name (), NULL));
+	       + OR_INT_SIZE + DB_ALIGN (LOG_USERNAME_MAX, INT_ALIGNMENT)
+	       + OR_INT_SIZE + DB_ALIGN (PATH_MAX, INT_ALIGNMENT)
+	       + OR_INT_SIZE + DB_ALIGN (L_cuserid, INT_ALIGNMENT)
+	       + OR_INT_SIZE + DB_ALIGN (CUB_MAXHOSTNAMELEN, INT_ALIGNMENT));
 
 #if defined(SERVER_MODE)
       if (include_query_exec_info)
@@ -2348,10 +2341,10 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
       ptr = or_pack_int (ptr, tdes->tran_index);
       ptr = or_pack_int (ptr, tdes->state);
       ptr = or_pack_int (ptr, tdes->client.process_id);
-      ptr = or_pack_string (ptr, tdes->client.get_db_user ());
-      ptr = or_pack_string (ptr, tdes->client.get_program_name ());
-      ptr = or_pack_string (ptr, tdes->client.get_login_name ());
-      ptr = or_pack_string (ptr, tdes->client.get_host_name ());
+      ptr = or_pack_string_with_length (ptr, tdes->client.get_db_user (), tdes->client.db_user.size ());
+      ptr = or_pack_string_with_length (ptr, tdes->client.get_program_name (), tdes->client.program_name.size ());
+      ptr = or_pack_string_with_length (ptr, tdes->client.get_login_name (), tdes->client.login_name.size ());
+      ptr = or_pack_string_with_length (ptr, tdes->client.get_host_name (), tdes->client.host_name.size ());
 
 #if defined(SERVER_MODE)
       if (include_query_exec_info)
@@ -3490,7 +3483,7 @@ logtb_tran_find_btid_stats (THREAD_ENTRY * thread_p, const BTID * btid, bool cre
  * Note: the statistics are searched and created if they not exist.
  */
 int
-logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int n_keys, int n_oids, int n_nulls)
+logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int n_keys, int n_oids, int n_nulls)
 {
   /* search and create if not found */
   LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = logtb_tran_find_btid_stats (thread_p, btid, true);
@@ -3523,7 +3516,7 @@ logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int n
  * Note: the statistics are searched and created if they not exist.
  */
 int
-logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int n_keys, int n_oids, int n_nulls,
+logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int n_keys, int n_oids, int n_nulls,
 				bool write_to_log)
 {
   int error = NO_ERROR;
@@ -3561,6 +3554,36 @@ logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int n_keys
 
   return error;
 }
+
+// *INDENT-OFF*
+int
+logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID &btid, const btree_unique_stats &ustats,
+                                bool write_to_log)
+{
+  if (ustats.is_zero ())
+    {
+      return NO_ERROR;
+    }
+  return logtb_tran_update_unique_stats (thread_p, &btid, (int) ustats.get_key_count (), (int) ustats.get_row_count (),
+                                         (int) ustats.get_null_count (), write_to_log);
+}
+
+int
+logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const multi_index_unique_stats &multi_stats, bool write_to_log)
+{
+  int error = NO_ERROR;
+  for (const auto &it : multi_stats.get_map ())
+    {
+      error = logtb_tran_update_unique_stats (thread_p, it.first, it.second, write_to_log);
+      if (error != NO_ERROR)
+        {
+          ASSERT_ERROR ();
+          return error;
+        }
+    }
+  return NO_ERROR;
+}
+// *INDENT-ON*
 
 /*
  * logtb_tran_update_delta_hash_func () - updates statistics associated with
@@ -3880,10 +3903,9 @@ logtb_find_current_mvccid (THREAD_ENTRY * thread_p)
   tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   if (tdes != NULL)
     {
-      if (tdes->mvccinfo.count_sub_ids > 0 && tdes->mvccinfo.is_sub_active)
+      if (!tdes->mvccinfo.sub_ids.empty ())
 	{
-	  assert (tdes->mvccinfo.sub_ids != NULL);
-	  id = tdes->mvccinfo.sub_ids[tdes->mvccinfo.count_sub_ids - 1];
+	  id = tdes->mvccinfo.sub_ids.back ();
 	}
       else
 	{
@@ -3919,10 +3941,9 @@ logtb_get_current_mvccid (THREAD_ENTRY * thread_p)
       curr_mvcc_info->id = log_Gl.mvcc_table.get_new_mvccid ();
     }
 
-  if (tdes->mvccinfo.count_sub_ids > 0 && tdes->mvccinfo.is_sub_active)
+  if (!tdes->mvccinfo.sub_ids.empty ())
     {
-      assert (tdes->mvccinfo.sub_ids != NULL);
-      return tdes->mvccinfo.sub_ids[tdes->mvccinfo.count_sub_ids - 1];
+      return tdes->mvccinfo.sub_ids.back ();
     }
 
   return curr_mvcc_info->id;
@@ -3941,7 +3962,6 @@ logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   MVCC_INFO *curr_mvcc_info;
-  int i;
 
   assert (tdes != NULL);
 
@@ -3950,12 +3970,9 @@ logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
     {
       return true;
     }
-  else if (curr_mvcc_info->count_sub_ids > 0)
+  else if (curr_mvcc_info->sub_ids.size () > 0)
     {
-      /* is the child of current transaction ? */
-      assert (curr_mvcc_info->sub_ids != NULL);
-
-      for (i = 0; i < curr_mvcc_info->count_sub_ids; i++)
+      for (size_t i = 0; i < curr_mvcc_info->sub_ids.size (); i++)
 	{
 	  if (curr_mvcc_info->sub_ids[i] == mvccid)
 	    {
@@ -4549,7 +4566,7 @@ logtb_has_deadlock_priority (int tran_index)
  *  Note: If transaction MVCCID is NULL then a new transaction MVCCID is
  *    allocated first.
  */
-int
+void
 logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info)
 {
   MVCCID mvcc_subid;
@@ -4569,7 +4586,7 @@ logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_m
       mvcc_table->get_two_new_mvccid (curr_mvcc_info->id, mvcc_subid);
     }
 
-  return logtb_assign_subtransaction_mvccid (thread_p, curr_mvcc_info, mvcc_subid);
+  logtb_assign_subtransaction_mvccid (thread_p, curr_mvcc_info, mvcc_subid);
 }
 
 /*
@@ -4580,41 +4597,12 @@ logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_m
  * curr_mvcc_info (in) : Current transaction MVCC information.
  * mvcc_subid (in)     : Sub-transaction MVCCID.
  */
-static int
+static void
 logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvcc_subid)
 {
   assert (curr_mvcc_info != NULL);
   assert (MVCCID_IS_VALID (curr_mvcc_info->id));
-
-  if (curr_mvcc_info->sub_ids == NULL)
-    {
-      curr_mvcc_info->sub_ids = (MVCCID *) malloc (OR_MVCCID_SIZE * 10);
-      if (curr_mvcc_info->sub_ids == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (MVCCID) * 10);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      curr_mvcc_info->count_sub_ids = 0;
-      curr_mvcc_info->max_sub_ids = 10;
-    }
-  else if (curr_mvcc_info->count_sub_ids >= curr_mvcc_info->max_sub_ids)
-    {
-      curr_mvcc_info->sub_ids =
-	(MVCCID *) realloc (curr_mvcc_info->sub_ids, OR_MVCCID_SIZE * (curr_mvcc_info->max_sub_ids + 10));
-      if (curr_mvcc_info->sub_ids == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  (size_t) (OR_MVCCID_SIZE * (curr_mvcc_info->max_sub_ids + 10)));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      curr_mvcc_info->max_sub_ids += 10;
-    }
-
-  curr_mvcc_info->sub_ids[curr_mvcc_info->count_sub_ids] = mvcc_subid;
-  curr_mvcc_info->count_sub_ids++;
-  curr_mvcc_info->is_sub_active = true;
-
-  return NO_ERROR;
+  curr_mvcc_info->sub_ids.push_back (mvcc_subid);
 }
 
 /*
@@ -4634,11 +4622,11 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   assert (tdes != NULL);
 
   curr_mvcc_info = &tdes->mvccinfo;
-  mvcc_sub_id = curr_mvcc_info->sub_ids[curr_mvcc_info->count_sub_ids - 1];
+  mvcc_sub_id = curr_mvcc_info->sub_ids.back ();
 
   mvcc_table->complete_sub_mvcc (mvcc_sub_id);
+  curr_mvcc_info->sub_ids.pop_back ();
 
-  curr_mvcc_info->is_sub_active = false;
   if (tdes->mvccinfo.snapshot.valid)
     {
       /* adjust snapshot to reflect committed sub-transaction, since the parent transaction didn't finished yet */
@@ -5510,15 +5498,16 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
       idx++;
 
       /* Tran_unique_stats */
-      ptr_val = tdes->tran_unique_stats;
-      if (ptr_val == NULL)
+      if (tdes->m_multiupd_stats.empty ())
 	{
 	  db_make_null (&vals[idx]);
 	}
       else
 	{
-	  snprintf (buf, sizeof (buf), "0x%08" PRIx64, (UINT64) ptr_val);
-	  error = db_make_string_copy (&vals[idx], buf);
+	  string_buffer strbuf (cubmem::PRIVATE_BLOCK_ALLOCATOR);
+	  tdes->m_multiupd_stats.to_string (strbuf);
+	  error = db_make_string (&vals[idx], strbuf.release_ptr ());
+	  vals[idx].need_clear = true;
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_error;
