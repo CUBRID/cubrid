@@ -1455,7 +1455,7 @@ shutdown:
   css_stop_all_workers (*thread_p, THREAD_STOP_WORKERS_EXCEPT_LOGWR);
 
   /* replication stops after workers */
-  if (!HA_DISABLED ())
+  if (!HA_DISABLED () && conn != NULL)
     {
       cubreplication::master_node::final ();
       cubreplication::slave_node::final ();
