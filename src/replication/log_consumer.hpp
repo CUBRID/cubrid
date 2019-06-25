@@ -27,6 +27,7 @@
 #define _LOG_CONSUMER_HPP_
 
 #include "cubstream.hpp"
+#include "slave_control_channel.hpp"
 #include "thread_manager.hpp"
 #include <chrono>
 #include <condition_variable>
@@ -51,7 +52,6 @@ namespace cubreplication
    * it should be created only as a global instance
    */
   class applier_worker_task;
-  class slave_control_channel;
   class stream_entry;
   class subtran_applier;
 
