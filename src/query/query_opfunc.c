@@ -59,7 +59,6 @@
 #include "dbtype.h"
 
 #include <chrono>
-#include <memory>
 #include <regex>
 
 #define NOT_NULL_VALUE(a, b)	((a) ? (a) : (b))

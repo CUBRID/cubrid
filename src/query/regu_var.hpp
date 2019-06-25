@@ -30,7 +30,6 @@
 #include "string_opfunc.h"
 
 #include <functional>
-#include <memory>
 
 // forward definitions
 struct xasl_node;
