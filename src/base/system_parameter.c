@@ -651,8 +651,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_THREAD_WORKER_POOLING                "thread_worker_pooling"
 #define PRM_NAME_THREAD_WORKER_TIMEOUT_SECONDS        "thread_worker_timeout_seconds"
 
-#define PRM_NAME_REPL_GENERATOR_BUFFER_SIZE "replication_generator_buffer_size"
-#define PRM_NAME_REPL_CONSUMER_BUFFER_SIZE "replication_consumer_buffer_size"
+#define PRM_NAME_REPL_BUFFER_SIZE "replication_buffer_size"
 
 #define PRM_NAME_DATA_FILE_ADVISE "data_file_os_advise"
 
