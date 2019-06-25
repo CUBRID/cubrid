@@ -40,7 +40,7 @@ namespace cubreplication
 
   replication_node_manager::replication_node_manager ()
   {
-    INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_CONSUMER_BUFFER_SIZE);
+    INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_BUFFER_SIZE);
     int num_max_appenders = log_Gl.trantable.num_total_indices + 1;
     m_stream = new cubstream::multi_thread_stream (buffer_size, num_max_appenders);
     m_stream->set_name ("repl" + host_name);
@@ -60,9 +60,9 @@ namespace cubreplication
     // stream and stream file are interdependent, therefore first stop the stream
     m_stream->set_stop ();
 
+    delete m_repl_node;
     delete m_stream_file;
     delete m_stream;
-    delete m_repl_node;
   }
 
   void replication_node_manager::init_hostname (const char *name)

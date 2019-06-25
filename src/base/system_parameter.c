@@ -2187,15 +2187,10 @@ bool PRM_DWB_LOGGING = false;
 static bool prm_dwb_logging_default = false;
 static unsigned int prm_dwb_logging_flag = 0;
 
-UINT64 PRM_REPL_GENERATOR_BUFFER_SIZE = 100 * 1024 * 1024;
-static UINT64 prm_repl_generator_buffer_size_default = 100 * 1024 * 1024;
-static UINT64 prm_repl_generator_buffer_size_lower = 100 * 1024;
-static unsigned int prm_repl_generator_buffer_size_flag = 0;
-
-UINT64 PRM_REPL_CONSUMER_BUFFER_SIZE = 10 * 1024 * 1024;
-static UINT64 prm_repl_consumer_buffer_size_default = 10 * 1024 * 1024;
-static UINT64 prm_repl_consumer_buffer_size_lower = 100 * 1024;
-static unsigned int prm_repl_consumer_buffer_size_flag = 0;
+UINT64 PRM_REPL_BUFFER_SIZE = 100 * 1024 * 1024;
+static UINT64 prm_repl_buffer_size_default = 100 * 1024 * 1024;
+static UINT64 prm_repl_buffer_size_lower = 100 * 1024;
+static unsigned int prm_repl_buffer_size_flag = 0;
 
 int PRM_DATA_FILE_ADVISE = 0;
 static int prm_data_file_advise_default = 0;
@@ -5577,25 +5572,14 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_REPL_GENERATOR_BUFFER_SIZE,
-   PRM_NAME_REPL_GENERATOR_BUFFER_SIZE,
+  {PRM_ID_REPLICATION_BUFFER_SIZE,
+   PRM_NAME_REPL_BUFFER_SIZE,
    (PRM_FOR_SERVER | PRM_SIZE_UNIT),
    PRM_BIGINT,
-   &prm_repl_generator_buffer_size_flag,
-   (void *) &prm_repl_generator_buffer_size_default,
-   (void *) &PRM_REPL_GENERATOR_BUFFER_SIZE,
-   (void *) NULL, (void *) &prm_repl_generator_buffer_size_lower,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_REPL_CONSUMER_BUFFER_SIZE,
-   PRM_NAME_REPL_CONSUMER_BUFFER_SIZE,
-   (PRM_FOR_SERVER | PRM_SIZE_UNIT),
-   PRM_BIGINT,
-   &prm_repl_consumer_buffer_size_flag,
-   (void *) &prm_repl_consumer_buffer_size_default,
-   (void *) &PRM_REPL_CONSUMER_BUFFER_SIZE,
-   (void *) NULL, (void *) &prm_repl_consumer_buffer_size_lower,
+   &prm_repl_buffer_size_flag,
+   (void *) &prm_repl_buffer_size_default,
+   (void *) &PRM_REPL_BUFFER_SIZE,
+   (void *) NULL, (void *) &prm_repl_buffer_size_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
