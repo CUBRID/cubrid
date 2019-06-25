@@ -5372,7 +5372,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 	{
 	  cubtx::complete_manager::id_type id_complete;
 	  /* I need id complete to be sure that adds EOT log. */
-	  if (LSA_ISNULL (&tdes->posp_nxlsa))
+	  if (LSA_ISNULL (&tdes->posp_nxlsa) || iscommitted != LOG_COMMIT)
 	    {
 	      if (p_id_complete)
 		{
@@ -5389,7 +5389,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 	    {
 	      if (LSA_ISNULL (&tdes->posp_nxlsa))
 		{
-		  /* Adds commit log. */
+		  /* Waits for complete */
 		  log_Gl.m_tran_complete_mgr->complete (id_complete);
 		}
 	      else
@@ -5405,9 +5405,12 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 	    {
 	      /* I need to know that an id was registered for current transaction. This means
 	       * that the current transaction is part of a group and a log abort will be added.
-	       * No need to wait for log abort here.
+	       * I need to wait for log abort here. Otherwise, the client can disconnect and will set tran_id to NULL.
+	       * The group complete manager will log NULL tran_id that will cause crash at recovery.
 	       */
-	      assert (p_id_complete != NULL && (*p_id_complete) != cubtx::complete_manager::NULL_ID);
+	      assert (id_complete != cubtx::complete_manager::NULL_ID);
+              /* Waits for complete */
+	      log_Gl.m_tran_complete_mgr->complete (id_complete);
 	      tdes->state = TRAN_UNACTIVE_ABORTED;
 	    }
 
