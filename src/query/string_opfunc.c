@@ -4538,20 +4538,6 @@ cleanup:
   return error_status;
 }
 
-compiled_regex::~compiled_regex ()
-{
-  if (regex != NULL)
-    {
-      delete regex;
-      regex = NULL;
-    }
-  if (pattern != NULL)
-    {
-      delete[]pattern;
-      pattern = NULL;
-    }
-}
-
 /*
  * db_string_regexp_replace ()  returns replaced string by regex pattern
  *
@@ -4600,7 +4586,7 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
   {
     const DB_VALUE *src = args[0];
     const DB_VALUE *pattern = args[1];
-    const DB_VALUE *replacement = args[2];
+    const DB_VALUE *repl = args[2];
     const DB_VALUE *position = NULL;
     const DB_VALUE *occurrence = NULL;
     const DB_VALUE *match_type = NULL;
@@ -4608,10 +4594,10 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
     /* check for allocated DB values */
     assert (src != (DB_VALUE *) NULL);
     assert (pattern != (DB_VALUE *) NULL);
-    assert (replacement != (DB_VALUE *) NULL);
+    assert (repl != (DB_VALUE *) NULL);
 
-    bool is_any_null = (DB_IS_NULL (src) || DB_IS_NULL (pattern) || DB_IS_NULL (replacement));
-
+    /* get optional arguments and check null */
+    bool is_any_null = (DB_IS_NULL (src) || DB_IS_NULL (pattern) || DB_IS_NULL (repl));
     if (num_args >= 4)
       {
 	position = args[3];
@@ -4654,13 +4640,13 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
     /* type checking */
     QSTR_CATEGORY src_category = qstr_get_category (src);
     QSTR_CATEGORY pattern_category = qstr_get_category (pattern);
-    QSTR_CATEGORY replacement_category = qstr_get_category (replacement);
+    QSTR_CATEGORY repl_category = qstr_get_category (repl);
 
     DB_TYPE src_type = DB_VALUE_DOMAIN_TYPE (src);
     DB_TYPE pattern_type = DB_VALUE_DOMAIN_TYPE (pattern);
-    DB_TYPE replacement_type = DB_VALUE_DOMAIN_TYPE (replacement);
+    DB_TYPE repl_type = DB_VALUE_DOMAIN_TYPE (repl);
 
-    if (!QSTR_IS_ANY_CHAR (src_type) || !QSTR_IS_ANY_CHAR (pattern_type) || !QSTR_IS_ANY_CHAR (replacement_type))
+    if (!QSTR_IS_ANY_CHAR (src_type) || !QSTR_IS_ANY_CHAR (pattern_type) || !QSTR_IS_ANY_CHAR (repl_type))
       {
 	error_status = ER_QSTR_INVALID_DATA_TYPE;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
@@ -4676,7 +4662,7 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	goto exit;
       }
 
-    LANG_RT_COMMON_COLL (coll_id_tmp, db_get_string_collation (replacement), coll_id);
+    LANG_RT_COMMON_COLL (coll_id_tmp, db_get_string_collation (repl), coll_id);
     if (coll_id == -1)
       {
 	error_status = ER_QSTR_INCOMPATIBLE_COLLATIONS;
@@ -4727,14 +4713,10 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 		switch (opt)
 		  {
 		  case 'c':
-		    reg_flags &= ~ (std::regex_constants::icase);
+		    reg_flags &= ~std::regex_constants::icase;
 		    break;
 		  case 'i':
 		    reg_flags |= std::regex_constants::icase;
-		    break;
-		  case 'm':
-		  case 'n':
-		  case 'u':
 		    break;
 		  default:
 		    error_status = ER_OBJ_INVALID_ARGUMENTS;
@@ -4781,11 +4763,11 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 
     try
       {
-	std::string repl_string (db_get_string (replacement), db_get_string_size (replacement));
+	std::string repl_string (db_get_string (repl), db_get_string_size (repl));
 	std::string result_string;
 
 	/* occurrence option */
-	int occurrence_value = occurrence ? db_get_int (occurrence) : 0;
+	int occurrence_value = (occurrence != NULL) ? db_get_int (occurrence) : 0;
 	if (occurrence_value == 0)
 	  {
 	    result_string = std::regex_replace (target, *rx_compiled_regex, repl_string);

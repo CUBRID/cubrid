@@ -6229,7 +6229,7 @@ pt_make_function (PARSER_CONTEXT * parser, int function_code, const REGU_VARIABL
 	}
 
       regu_dbval_type_init (regu->value.funcp->value, result_type);
-	  regu->value.funcp->tmp = NULL;
+	  regu->value.funcp->tmp_obj = NULL;
     }
 
   return regu;

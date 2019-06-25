@@ -5672,7 +5672,7 @@ stx_build_function_type (THREAD_ENTRY * thread_p, char *ptr, FUNCTION_TYPE * fun
 	}
     }
   
-  function->tmp = NULL;
+  function->tmp_obj = NULL;
 
   return ptr;
 }

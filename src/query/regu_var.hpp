@@ -143,7 +143,12 @@ struct function_node
   DB_VALUE *value;		/* value of the function */
   REGU_VARIABLE_LIST operand;	/* operands */
   FUNC_TYPE ftype;		/* function to call */
-  mutable void *tmp;
+  mutable union function_temp_obj *tmp_obj;
+};
+
+union function_temp_obj
+{
+  COMPILED_REGEX *compiled_regex;
 };
 
 /* regular variable flags */

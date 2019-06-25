@@ -221,19 +221,34 @@ extern int db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern
 			   int *result);
 
 #ifdef __cplusplus
+// *INDENT-OFF*
 typedef struct compiled_regex COMPILED_REGEX;
-struct compiled_regex {
+struct compiled_regex
+{
   mutable std::regex *regex;
   mutable char *pattern;
 
-  compiled_regex() : regex(NULL), pattern(NULL) {}
-  ~compiled_regex();
+  compiled_regex() : regex (NULL), pattern (NULL) {}
+  ~compiled_regex()
+  {
+    if (regex != NULL)
+      {
+	delete regex;
+	regex = NULL;
+      }
+    if (pattern != NULL)
+      {
+	delete[] pattern;
+	pattern = NULL;
+      }
+  }
 };
 
-extern int db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_VALUE * case_sensitive,
-			    std::regex ** comp_regex, char **comp_pattern, int *result);
-extern int db_string_regexp_replace(DB_VALUE * result, DB_VALUE * args[], const int num_args,
-	std::regex ** comp_regex, char **comp_pattern);
+extern int db_string_rlike (const DB_VALUE *src_string, const DB_VALUE *pattern, const DB_VALUE *case_sensitive,
+			    std::regex **comp_regex, char **comp_pattern, int *result);
+extern int db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], const int num_args,
+				     std::regex **comp_regex, char **comp_pattern);
+// *INDENT-ON*
 #endif
 
 extern int db_string_limit_size_string (DB_VALUE * src_string, DB_VALUE * result, const int new_size, int *spare_bytes);

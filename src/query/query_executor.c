@@ -1529,22 +1529,26 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
     case TYPE_FUNC:
       pr_clear_value (regu_var->value.funcp->value);
       pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, regu_var->value.funcp->operand, is_final);
-      switch (regu_var->value.funcp->ftype)
-	{
-	case F_REGEXP_REPLACE:
-	  {
-	    COMPILED_REGEX *compiled_regex = static_cast < COMPILED_REGEX * >(regu_var->value.funcp->tmp);
-	    if (compiled_regex != NULL)
-	      {
-		delete compiled_regex;
-	      }
-	  }
-	  break;
-	default:
-	  //nothing to do
-	  break;
-	}
-      regu_var->value.funcp->tmp = NULL;
+	  
+	  if(regu_var->value.funcp->tmp_obj != NULL)
+      {
+        switch (regu_var->value.funcp->ftype)
+        {
+        case F_REGEXP_REPLACE:
+        {
+          delete regu_var->value.funcp->tmp_obj->compiled_regex;
+        }
+        break;
+        default:
+          //any of union member may have been erased
+          assert(0);
+          break;
+        }
+
+        delete regu_var->value.funcp->tmp_obj;
+        regu_var->value.funcp->tmp_obj = NULL;
+      }
+
       break;
     case TYPE_REGUVAL_LIST:
       pg_cnt += qexec_clear_regu_value_list (thread_p, xasl_p, regu_var->value.reguval_list, is_final);
