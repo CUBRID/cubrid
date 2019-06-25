@@ -47,6 +47,8 @@ namespace cubreplication
 	return "ABORTED";
       case GROUP_COMMIT:
 	return "GROUP_COMMIT";
+      case NEW_MASTER:
+	return "NEW_MASTER";
       default:
 	break;
       }

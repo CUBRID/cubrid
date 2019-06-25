@@ -238,6 +238,12 @@ namespace cubreplication
     db_change_private_heap (NULL, save_heapid);
   }
 
+  void
+  single_row_repl_entry::set_class_name (const char *class_name)
+  {
+    m_class_name = class_name;
+  }
+
   std::size_t
   single_row_repl_entry::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
@@ -406,10 +412,9 @@ namespace cubreplication
   changed_attrs_row_repl_entry::~changed_attrs_row_repl_entry ()
   {
     cubthread::entry *my_thread = thread_get_thread_entry_info ();
-
     HL_HEAPID save_heapid = db_change_private_heap (my_thread, 0);
 
-    for (std::vector <DB_VALUE>::iterator it = m_new_values.begin (); it != m_new_values.end (); it++)
+    for (std::vector<DB_VALUE>::iterator it = m_new_values.begin (); it != m_new_values.end (); ++it)
       {
 	pr_clear_value (& (*it));
       }
@@ -448,6 +453,9 @@ namespace cubreplication
   void
   changed_attrs_row_repl_entry::pack (cubpacking::packer &serializator) const
   {
+    cubthread::entry &thread_ref = cubthread::get_entry ();
+    HL_HEAPID save_heapid = db_change_private_heap (&thread_ref, 0);
+
     serializator.pack_int (changed_attrs_row_repl_entry::PACKING_ID);
     single_row_repl_entry::pack (serializator);
     serializator.pack_int_vector (m_changed_attributes);
@@ -457,6 +465,8 @@ namespace cubreplication
       {
 	serializator.pack_db_value (m_new_values[i]);
       }
+
+    db_change_private_heap (&thread_ref, save_heapid);
   }
 
   void
@@ -497,6 +507,9 @@ namespace cubreplication
     /* we assume that offset start has already MAX_ALIGNMENT */
 
     /* type of packed object */
+    cubthread::entry &thread_ref = cubthread::get_entry ();
+    HL_HEAPID save_heapid = db_change_private_heap (&thread_ref, 0);
+
     std::size_t entry_size = start_offset;
 
     entry_size += serializator.get_packed_int_size (0);
@@ -509,6 +522,8 @@ namespace cubreplication
       {
 	entry_size += serializator.get_packed_db_value_size (m_new_values[i], entry_size);
       }
+
+    db_change_private_heap (&thread_ref, save_heapid);
 
     return entry_size;
   }

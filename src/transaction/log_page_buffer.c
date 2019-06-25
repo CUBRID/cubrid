@@ -6468,6 +6468,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     }
 #endif /* SERVER_MODE */
 
+  tmp_chkpt.last_ack_stream_position = log_Gl.m_ack_stream_position;
+
   TR_TABLE_CS_ENTER (thread_p);
 
   /* allocate memory space for the transaction descriptors */

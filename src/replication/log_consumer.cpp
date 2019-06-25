@@ -226,10 +226,14 @@ namespace cubreplication
 		assert (se->is_group_commit ());
 		delete se;
 	      }
+	    else if (se->is_new_master ())
+	      {
+		repl_tasks.clear ();
+	      }
 	    else if (se->is_subtran_commit ())
 	      {
 		m_lc.get_subtran_applier ().insert_stream_entry (se);
-	      }
+              }
 	    else
 	      {
 		MVCCID mvccid = se->get_mvccid ();

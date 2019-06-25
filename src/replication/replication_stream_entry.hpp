@@ -46,6 +46,7 @@ namespace cubreplication
       COMMITTED,
       ABORTED,
       GROUP_COMMIT,
+      NEW_MASTER,
       SUBTRAN_COMMIT
     } TRAN_STATE;
 
@@ -160,14 +161,19 @@ namespace cubreplication
 	return m_header.tran_state == stream_entry_header::GROUP_COMMIT;
       }
 
+      bool is_new_master ()
+      {
+	return m_header.tran_state == stream_entry_header::NEW_MASTER;
+      }
+
+      bool is_tran_commit (void)
+      {
+	return m_header.tran_state == stream_entry_header::COMMITTED;
+      }
+
       bool is_subtran_commit (void) const
       {
 	return m_header.tran_state == stream_entry_header::SUBTRAN_COMMIT;
-      }
-
-      bool is_tran_commit (void) const
-      {
-	return m_header.tran_state == stream_entry_header::COMMITTED;
       }
 
       bool is_tran_abort (void) const
@@ -177,7 +183,8 @@ namespace cubreplication
 
       bool is_tran_state_undefined (void) const
       {
-	return m_header.tran_state == stream_entry_header::TRAN_STATE::UNDEFINED;
+	return m_header.tran_state < stream_entry_header::ACTIVE
+	       || m_header.tran_state > stream_entry_header::SUBTRAN_COMMIT;
       }
 
       bool check_mvccid_is_valid () const;

@@ -211,6 +211,8 @@ namespace cubreplication
 	if (repl_obj->compare_inst_oid (inst_oid))
 	  {
 	    repl_obj->set_key_value (key);
+	    /* subclasses, partitions : set new class name */
+	    repl_obj->set_class_name (class_name);
 
 	    /* Set the current transaction lsa. It may be rewritten later. */
 	    repl_obj->set_lsa_stamp (*p_lsa);
@@ -219,7 +221,8 @@ namespace cubreplication
 	    er_log_repl_obj (repl_obj, "log_generator::set_key_to_repl_object");
 
 	    // remove
-	    (void) m_pending_to_be_added.erase (repl_obj_it--);
+	    (void) m_pending_to_be_added.erase (repl_obj_it);
+	    repl_obj_it = m_pending_to_be_added.end ();
 
 	    found = true;
 

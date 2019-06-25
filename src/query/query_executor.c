@@ -10645,7 +10645,6 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
   int local_op_type = SINGLE_ROW_UPDATE;
   HEAP_SCANCACHE *local_scan_cache = NULL;
   int ispeeking;
-  bool disabled_row_replication = false;
 
   OID_SET_NULL (&unique_oid);
 
@@ -10676,16 +10675,6 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
       assert (er_errid () == ER_INTERRUPTED);
       error = ER_FAILED;
       goto exit_on_error;
-    }
-
-  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
-    {
-      if (!logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
-	{
-	  /* Disable row replication. */
-	  logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
-	  disabled_row_replication = true;
-	}
     }
 
   /* setup operation type and handle partition representation id */
@@ -10783,12 +10772,6 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
   heap_attrinfo_clear_dbvalues (attr_info);
   heap_attrinfo_clear_dbvalues (odku->attr_info);
 
-  if (disabled_row_replication)
-    {
-      /* Enable row replication. */
-      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
-    }
-
   return error;
 
 exit_on_error:
@@ -10796,12 +10779,6 @@ exit_on_error:
   if (need_clear)
     {
       heap_attrinfo_clear_dbvalues (odku->attr_info);
-    }
-
-  if (disabled_row_replication)
-    {
-      /* Enable row replication. */
-      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
     }
 
   assert (error != NO_ERROR);

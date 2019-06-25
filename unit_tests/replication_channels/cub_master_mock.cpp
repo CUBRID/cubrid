@@ -85,8 +85,7 @@ namespace cub_master_mock
 	      }
 
 	    cubreplication::master_senders_manager::add_stream_sender (
-		    new cubstream::transfer_sender (std::move (listener_chn),
-						    cubreplication::master_senders_manager::get_stream ()));
+		    new cubstream::transfer_sender (std::move (listener_chn), master::get_mock_stream ()));
 	  }
       }
   };
