@@ -323,7 +323,10 @@ namespace cubreplication
       }
 
     entry = se;
-    m_ctrl_chn->send_ack (entry->get_stream_entry_start_position ());
+    if (m_ctrl_chn != NULL)
+      {
+	m_ctrl_chn->send_ack (entry->get_stream_entry_start_position ());
+      }
 
     return err;
   }
@@ -371,7 +374,8 @@ namespace cubreplication
 
   void log_consumer::set_stop (void)
   {
-    log_consumer::get_stream ()->set_stop ();
+    // todo: is it needed to temporarily stop the stream?
+    //log_consumer::get_stream ()->set_stop ();
 
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
     m_is_stopped = true;

@@ -142,9 +142,19 @@ namespace cubreplication
 
   // Start as slave
   replication_node_manager::replication_node_manager (const char *name)
-    : m_repl_node (new slave_node (name, m_stream, m_stream_file))
   {
+    INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_CONSUMER_BUFFER_SIZE);
+    int num_max_appenders = log_Gl.trantable.num_total_indices + 1;
+    m_stream = new cubstream::multi_thread_stream (buffer_size, num_max_appenders);
+    m_stream->set_name ("repl" + std::string (name));
+    m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
+    m_stream->init (0);
 
+    std::string replication_path;
+    replication_node::get_replication_file_path (replication_path);
+    m_stream_file = new cubstream::stream_file (*m_stream, replication_path);
+
+    m_repl_node = new slave_node (name, m_stream, m_stream_file);
   }
 
   replication_node_manager::~replication_node_manager ()
@@ -180,6 +190,7 @@ namespace cubreplication
 
   void replication_node_manager::commute_to_master_state ()
   {
+    _er_log_debug (ARG_FILE_LINE, "Commuted to master\n");
     delete m_repl_node;
     m_repl_node = new master_node (host_name.c_str (), m_stream, m_stream_file);
   }
@@ -192,6 +203,11 @@ namespace cubreplication
 
   master_node *replication_node_manager::get_master_node ()
   {
+    // todo: syncronize this
+    if (dynamic_cast<master_node *> (m_repl_node) == nullptr)
+      {
+	commute_to_master_state ();
+      }
     return (master_node *) m_repl_node;
   }
 
