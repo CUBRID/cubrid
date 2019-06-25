@@ -285,6 +285,7 @@ session_state_init (void *st)
   session_p->private_lru_index = -1;
   session_p->auto_commit = false;
   session_p->mode = SESSION_WITH_CONNECTION;
+  tz_get_system_tz_region (&session_p->session_tz_region);
 
   return NO_ERROR;
 }
