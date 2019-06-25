@@ -4471,7 +4471,7 @@ log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 strea
   for (const auto &ti : group.get_container ())
     {
       const log_tdes *tdes = LOG_FIND_TDES (ti.m_tran_index);
-      assert (tdes != NULL);
+      assert (tdes != NULL && tdes->trid != NULL_TRANID);
       v.append (tdes->trid);
       v.append (ti.m_tran_state);
       if (ti.m_tran_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
