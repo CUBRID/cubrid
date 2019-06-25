@@ -30,6 +30,7 @@
 #include "multi_thread_stream.hpp"
 #include "replication_common.hpp"
 #include "replication_master_node.hpp"
+#include "replication_node_manager.hpp"
 #include "replication_slave_node.hpp"
 #include "session.h"
 #include "thread_entry_task.hpp"

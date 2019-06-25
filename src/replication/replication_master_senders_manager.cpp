@@ -24,6 +24,7 @@
 
 #include "replication_master_senders_manager.hpp"
 #include "replication_master_node.hpp"
+#include "replication_node_manager.hpp"
 
 #include <utility>
 #include "thread_manager.hpp"
