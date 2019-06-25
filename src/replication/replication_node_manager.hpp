@@ -21,9 +21,10 @@
  * replication_node_manager.hpp
  */
 
-
 #ifndef _REPLICATION_NODE_MANAGER_HPP_
 #define _REPLICATION_NODE_MANAGER_HPP_
+
+#include "cubstream.hpp"
 
 namespace cubstream
 {
@@ -40,22 +41,37 @@ namespace cubreplication
   class replication_node_manager
   {
     public:
-      static void init_hostname (const char *name);
-      static replication_node_manager *get_instance ();
+      static void init (const char *name);
       static void finalize ();
+
+      // master methods
+      static void new_slave (int fd);
+      static void add_ctrl_chn (int fd);
+      static void enable_active ();
+      static void update_senders_min_position (const cubstream::stream_position &pos);
+
+      // slave methods
+      static int connect_to_master (const char *master_node_hostname, const int master_node_port_id);
+
+    private:
+      enum repl_mode
+      {
+	SLAVE_MODE,
+	MASTER_MODE
+      };
+
+      static replication_node_manager *get_instance ();
+      master_node *get_master_node ();
+      slave_node *get_slave_node ();
+      replication_node_manager ();
+      ~replication_node_manager ();
 
       void commute_to_master_state ();
       void commute_to_slave_state ();
 
-      master_node *get_master_node ();
-      slave_node *get_slave_node ();
-
-    private:
-      replication_node_manager ();
-      ~replication_node_manager ();
-
       cubstream::stream_file *m_stream_file;
       cubstream::multi_thread_stream *m_stream;
+      repl_mode m_mode;
       cubreplication::replication_node *m_repl_node;
   };
 }

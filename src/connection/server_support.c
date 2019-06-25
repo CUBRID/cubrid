@@ -30,9 +30,7 @@
 #include "log_append.hpp"
 #include "multi_thread_stream.hpp"
 #include "replication_common.hpp"
-#include "replication_master_node.hpp"
 #include "replication_node_manager.hpp"
-#include "replication_slave_node.hpp"
 #include "session.h"
 #include "thread_entry_task.hpp"
 #include "thread_entry.hpp"
@@ -399,6 +397,7 @@ css_master_thread (void)
 {
   int r, run_code = 1, status = 0, nfds;
   struct pollfd po[] = { {0, 0, 0}, {0, 0, 0} };
+
   while (run_code)
     {
       /* check if socket has error or client is down */
@@ -771,7 +770,7 @@ css_process_change_server_ha_mode_request (SOCKET master_fd)
 	{
 	  if (state == HA_SERVER_STATE_ACTIVE)
 	    {
-	      cubreplication::replication_node_manager::get_instance ()->get_master_node ()->enable_active ();
+	      cubreplication::replication_node_manager::enable_active ();
 	    }
 	  // todo: also ACTIVE -> TO_BE_ACTIVE (set from slave state to master state)
 	}
@@ -852,8 +851,7 @@ css_process_master_hostname ()
   er_log_debug_replication (ARG_FILE_LINE, "css_process_master_hostname css_Master_server_name:%s,"
     " ha_Server_master_hostname:%s\n", css_Master_server_name, ha_Server_master_hostname);
 
-  error = cubreplication::replication_node_manager::get_instance ()->get_slave_node ()->
-                          connect_to_master (ha_Server_master_hostname, css_Master_port_id);
+  error = cubreplication::replication_node_manager::connect_to_master (ha_Server_master_hostname, css_Master_port_id);
   if (error != NO_ERROR)
     {
       return error;
@@ -1428,8 +1426,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 	{
 	  er_log_debug (ARG_FILE_LINE, "css_init: starting HA : ha_Server_state (%s), server_name (%s)\n",
 			css_ha_server_state_string (ha_Server_state), server_name);
-	  cubreplication::replication_node_manager::init_hostname (server_name);
-	  cubreplication::replication_node_manager::get_instance ();
+	  cubreplication::replication_node_manager::init (server_name);
 
 #if !defined(WINDOWS)
 	  status = hb_register_to_master (css_Master_conn, HB_PTYPE_SERVER);
@@ -2710,7 +2707,7 @@ css_process_new_slave (SOCKET master_fd)
 
   assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
 
-  cubreplication::replication_node_manager::get_instance ()->get_master_node ()->new_slave (new_fd);
+  cubreplication::replication_node_manager::new_slave (new_fd);
 }
 
 static void
@@ -2733,7 +2730,7 @@ css_process_add_ctrl_chn (SOCKET master_fd)
 			    "add new control channel fd from master fd=%d, current_state=%d\n", new_fd,
 			    ha_Server_state);
 
-  cubreplication::replication_node_manager::get_instance ()->get_master_node ()->add_ctrl_chn (new_fd);
+  cubreplication::replication_node_manager::add_ctrl_chn (new_fd);
 }
 
 const char *

@@ -33,6 +33,7 @@
 
 namespace cubreplication
 {
+  // Protection against commuted/deleted g_instance
   std::mutex commute_mtx;
 
   std::string host_name;
@@ -65,23 +66,52 @@ namespace cubreplication
     delete m_stream;
   }
 
-  void replication_node_manager::init_hostname (const char *name)
+  void replication_node_manager::new_slave (int fd)
+  {
+    std::lock_guard<std::mutex> lg (commute_mtx);
+    get_instance ()->get_master_node ()->new_slave (fd);
+  }
+  void replication_node_manager::add_ctrl_chn (int fd)
+  {
+    std::lock_guard<std::mutex> lg (commute_mtx);
+    get_instance ()->get_master_node ()->add_ctrl_chn (fd);
+  }
+
+  void replication_node_manager::enable_active ()
+  {
+    std::lock_guard<std::mutex> lg (commute_mtx);
+    get_instance ()->get_master_node ()->enable_active ();
+  }
+
+  void replication_node_manager::update_senders_min_position (const cubstream::stream_position &pos)
+  {
+    std::lock_guard<std::mutex> lg (commute_mtx);
+    get_instance ()->get_master_node ()->update_senders_min_position (pos);
+  }
+
+  int replication_node_manager::connect_to_master (const char *master_node_hostname, const int master_node_port_id)
+  {
+    std::lock_guard<std::mutex> lg (commute_mtx);
+    return get_instance ()->get_slave_node ()->connect_to_master (master_node_hostname,  master_node_port_id);
+  }
+
+  void replication_node_manager::init (const char *name)
   {
     host_name = name;
+
+    assert (g_instance == NULL);
+    g_instance = new replication_node_manager ();
   }
 
   replication_node_manager *replication_node_manager::get_instance ()
   {
-    if (g_instance == NULL)
-      {
-	g_instance = new replication_node_manager ();
-      }
-
+    assert (g_instance != NULL);
     return g_instance;
   }
 
   void replication_node_manager::finalize ()
   {
+    std::lock_guard<std::mutex> lg (commute_mtx);
     delete g_instance;
     g_instance = NULL;
   }
@@ -90,28 +120,29 @@ namespace cubreplication
   {
     delete m_repl_node;
     m_repl_node = new master_node (host_name.c_str (), m_stream, m_stream_file);
+    m_mode = MASTER_MODE;
   }
 
   void replication_node_manager::commute_to_slave_state ()
   {
     delete m_repl_node;
     m_repl_node = new slave_node (host_name.c_str (), m_stream, m_stream_file);
+    m_mode = SLAVE_MODE;
   }
 
   master_node *replication_node_manager::get_master_node ()
   {
-    std::lock_guard<std::mutex> lg (commute_mtx);
-    if (dynamic_cast<master_node *> (m_repl_node) == nullptr)
+    if (m_mode == SLAVE_MODE)
       {
 	commute_to_master_state ();
       }
-    return (master_node *) m_repl_node;
+    return static_cast<master_node *> (m_repl_node);
   }
 
   slave_node *replication_node_manager::get_slave_node ()
   {
-    std::lock_guard<std::mutex> lg (commute_mtx);
-    assert (dynamic_cast<slave_node *> (m_repl_node) != nullptr);
-    return (slave_node *) m_repl_node;
+    // todo: remove this when downgrading from master to slave is fully supported
+    assert (m_mode == SLAVE_MODE);
+    return static_cast<slave_node *> (m_repl_node);
   }
 }
