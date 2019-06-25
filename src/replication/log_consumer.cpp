@@ -260,7 +260,7 @@ namespace cubreplication
 
   log_consumer::~log_consumer ()
   {
-    set_stop ();
+    stop ();
 
     if (m_use_daemons)
       {
@@ -372,9 +372,9 @@ namespace cubreplication
       }
   }
 
-  void log_consumer::set_stop (void)
+  void log_consumer::stop (void)
   {
-    get_stream ()->set_stop ();
+    get_stream ()->stop ();
 
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
     m_is_stopped = true;

@@ -852,7 +852,8 @@ css_process_master_hostname ()
   er_log_debug_replication (ARG_FILE_LINE, "css_process_master_hostname css_Master_server_name:%s,"
     " ha_Server_master_hostname:%s\n", css_Master_server_name, ha_Server_master_hostname);
 
-  error = cubreplication::replication_node_manager::get_instance ()-> get_slave_node ()->connect_to_master (ha_Server_master_hostname, css_Master_port_id);
+  error = cubreplication::replication_node_manager::get_instance ()->get_slave_node ()->
+                          connect_to_master (ha_Server_master_hostname, css_Master_port_id);
   if (error != NO_ERROR)
     {
       return error;
@@ -1427,7 +1428,6 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 	{
 	  er_log_debug (ARG_FILE_LINE, "css_init: starting HA : ha_Server_state (%s), server_name (%s)\n",
 			css_ha_server_state_string (ha_Server_state), server_name);
-	  /* start both master and slave infrastructure */
 	  cubreplication::replication_node_manager::init_hostname (server_name);
 	  cubreplication::replication_node_manager::get_instance ();
 
