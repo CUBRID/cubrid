@@ -1506,15 +1506,16 @@ serial_heap_record::commit_replication ()
   assert (m_need_replication);
   assert (m_is_replication_started);
 
-  DB_VALUE key_value;
-  db_make_null (&key_value);
+  DB_VALUE *key_value;
 
   // serial name is required as key for replication
   int name_attrid = serial_get_attrid (m_thread_p, SERIAL_ATTR_NAME_INDEX);
   assert (name_attrid != NOT_FOUND);
-  pr_clone_value (heap_attrinfo_access (name_attrid, &m_attrinfo), &key_value);
+  key_value = heap_attrinfo_access (name_attrid, &m_attrinfo);
 
-  m_replgen_p->add_update_row (key_value, m_serial_oid, *oid_Serial_class_oid, NULL);
+  assert (key_value != NULL);
+
+  m_replgen_p->add_update_row (*key_value, m_serial_oid, *oid_Serial_class_oid, NULL);
 
   if (m_is_instant_replication)
     {
@@ -1524,8 +1525,6 @@ serial_heap_record::commit_replication ()
     {
       // it will be committed when transaction is committed
     }
-
-  pr_clear_value (&key_value);
 
   m_is_replication_started = false;
 #endif // SERVER_MODE
