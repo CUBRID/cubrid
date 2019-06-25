@@ -24,14 +24,13 @@
 #ident "$Id$"
 
 #include "replication_master_node.hpp"
-#include "replication_slave_node.hpp"
 #include "log_impl.h"
-#include "replication_common.hpp"
 #include "master_control_channel.hpp"
+#include "replication_common.hpp"
 #include "replication_master_senders_manager.hpp"
-#include "transaction_master_group_complete_manager.hpp"
 #include "server_support.h"
 #include "stream_file.hpp"
+#include "transaction_master_group_complete_manager.hpp"
 
 namespace cubreplication
 {

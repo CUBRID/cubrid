@@ -24,13 +24,14 @@
 #ident "$Id$"
 
 #include "replication_slave_node.hpp"
+#include "communication_server_channel.hpp"
 #include "log_consumer.hpp"
 #include "multi_thread_stream.hpp"
 #include "replication_common.hpp"
-#include "slave_control_channel.hpp"
 #include "replication_stream_entry.hpp"
-#include "stream_file.hpp"
+#include "slave_control_channel.hpp"
 #include "stream_transfer_receiver.hpp"
+#include "stream_file.hpp"
 #include "system_parameter.h"
 
 

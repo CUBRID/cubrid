@@ -88,7 +88,6 @@ namespace cubreplication
 
   void replication_node_manager::commute_to_master_state ()
   {
-    _er_log_debug (ARG_FILE_LINE, "Commuted to master\n");
     delete m_repl_node;
     m_repl_node = new master_node (host_name.c_str (), m_stream, m_stream_file);
   }

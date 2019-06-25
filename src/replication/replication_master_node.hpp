@@ -27,10 +27,12 @@
 #define _REPLICATION_MASTER_NODE_HPP_
 
 #include "replication_node.hpp"
-#include "stream_file.hpp"
-#include "multi_thread_stream.hpp"
 
-#include <mutex>
+namespace cubstream
+{
+  class stream_file;
+  class multi_thread_stream;
+}
 
 namespace cubreplication
 {

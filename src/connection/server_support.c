@@ -26,6 +26,7 @@
 #include "server_support.h"
 
 #include "config.h"
+#include "communication_server_channel.hpp"
 #include "log_append.hpp"
 #include "multi_thread_stream.hpp"
 #include "replication_common.hpp"
@@ -1435,7 +1436,6 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 	    {
 	      fprintf (stderr, "failed to heartbeat register.\n");
 	    }
-	  er_log_debug (ARG_FILE_LINE, "Connected to cub_master\n");
 #endif
 	}
 
@@ -1453,7 +1453,6 @@ shutdown:
 
   // stop threads; in first phase we need to stop active workers, but keep log writers for a while longer to make sure
   // all log is transfered
-  er_log_debug (ARG_FILE_LINE, "Shutdown reached\n");
   css_stop_all_workers (*thread_p, THREAD_STOP_WORKERS_EXCEPT_LOGWR);
 
   /* replication stops after workers */
