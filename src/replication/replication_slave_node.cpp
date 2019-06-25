@@ -37,7 +37,7 @@
 namespace cubreplication
 {
   slave_node::slave_node (const char *hostname, cubstream::multi_thread_stream *stream,
-			  cubstream::stream_file *stream_file )
+			  cubstream::stream_file *stream_file)
     : replication_node (hostname)
     , m_lc (NULL)
     , m_master_identity ("")

@@ -36,7 +36,7 @@ namespace cubreplication
   std::mutex commute_mtx;
 
   std::string host_name;
-  replication_node_manager *g_instance;
+  replication_node_manager *g_instance = NULL;
 
   replication_node_manager::replication_node_manager ()
   {
