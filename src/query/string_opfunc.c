@@ -4583,6 +4583,9 @@ compiled_regex::~compiled_regex ()
  *      ER_REGEX_EXECUTION_ERROR:
  *          An illegal regex pattern is specified.
  * 
+ *      ER_OBJ_INVALID_ARGUMENTS:
+ *          invalid function arguments exist
+ * 
  */
 // *INDENT-OFF*
 int
@@ -4720,7 +4723,7 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	    auto mt_iter = match_type_value.begin ();
 	    for (; mt_iter != match_type_value.end (); ++mt_iter)
 	      {
-		char opt = * (mt_iter);
+		char opt = *mt_iter;
 		switch (opt)
 		  {
 		  case 'c':
@@ -4883,6 +4886,12 @@ exit:
   if (error_status != NO_ERROR)
     {
       db_make_null (result);
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+      {
+        /* clear error and return NULL */
+        er_clear ();
+        return NO_ERROR;
+      }
     }
 
   return error_status;
