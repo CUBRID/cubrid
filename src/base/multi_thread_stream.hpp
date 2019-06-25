@@ -240,6 +240,11 @@ namespace cubstream
 	m_recyclable_pos_cv.notify_one ();
       }
 
+      void start ()
+      {
+	m_is_stopped = false;
+      }
+
       void set_stream_file (stream_file *sf)
       {
 	m_stream_file = sf;

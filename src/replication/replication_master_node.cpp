@@ -38,17 +38,13 @@ namespace cubreplication
   master_node::master_node (const char *name, cubstream::multi_thread_stream *stream, cubstream::stream_file *stream_file)
     : replication_node (name)
   {
-    apply_start_position ();
-
-    INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_GENERATOR_BUFFER_SIZE);
-    int num_max_appenders = log_Gl.trantable.num_total_indices + 1;
-
     m_stream = stream;
+
+    // was stopped during slave_node destruction
+    m_stream->start ();
+
     log_generator::set_global_stream (m_stream);
 
-    /* create stream file */
-    std::string replication_path;
-    replication_node::get_replication_file_path (replication_path);
     m_stream_file = stream_file;
 
     master_senders_manager::init ();
@@ -62,6 +58,7 @@ namespace cubreplication
 
   void master_node::enable_active ()
   {
+    _er_log_debug (ARG_FILE_LINE, "Enable active: prev state  %d\n", css_ha_server_state ());
     std::lock_guard<std::mutex> lg (g_enable_active_mtx);
     if (css_ha_server_state () == HA_SERVER_STATE_TO_BE_ACTIVE)
       {
@@ -77,6 +74,7 @@ namespace cubreplication
   void master_node::new_slave (int fd)
   {
     enable_active ();
+
 
     if (css_ha_server_state () != HA_SERVER_STATE_ACTIVE)
       {
@@ -136,6 +134,8 @@ namespace cubreplication
   }
 
   std::mutex master_node::g_enable_active_mtx;
+
+  std::mutex commute_mtx;
 
   std::string host_name;
   replication_node_manager *g_instance;
@@ -203,7 +203,7 @@ namespace cubreplication
 
   master_node *replication_node_manager::get_master_node ()
   {
-    // todo: syncronize this
+    std::lock_guard<std::mutex> lg (commute_mtx);
     if (dynamic_cast<master_node *> (m_repl_node) == nullptr)
       {
 	commute_to_master_state ();
@@ -213,6 +213,8 @@ namespace cubreplication
 
   slave_node *replication_node_manager::get_slave_node ()
   {
+    std::lock_guard<std::mutex> lg (commute_mtx);
+    assert (dynamic_cast<slave_node *> (m_repl_node) != nullptr);
     return (slave_node *) m_repl_node;
   }
 

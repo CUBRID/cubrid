@@ -375,7 +375,7 @@ namespace cubreplication
   void log_consumer::set_stop (void)
   {
     // todo: is it needed to temporarily stop the stream?
-    //log_consumer::get_stream ()->set_stop ();
+    get_stream ()->set_stop ();
 
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
     m_is_stopped = true;
