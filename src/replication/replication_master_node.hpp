@@ -45,10 +45,8 @@ namespace cubreplication
       master_node (const char *nam, cubstream::multi_thread_stream *stream, cubstream::stream_file *stream_file);
       ~master_node ();
 
-      void init (const char *name);
       void new_slave (int fd);
       void add_ctrl_chn (int fd);
-      void final (void);
       void enable_active (void);
       void update_senders_min_position (const cubstream::stream_position &pos);
   };
