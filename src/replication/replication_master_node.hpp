@@ -35,17 +35,15 @@
 namespace cubreplication
 {
   class master_ctrl;
-  class slave_node;
 
   class master_node : public replication_node
   {
     private:
-      static std::mutex g_enable_active_mtx;
+      master_ctrl *m_control_channel_manager;
 
     public:
       master_node (const char *nam, cubstream::multi_thread_stream *stream, cubstream::stream_file *stream_file);
       ~master_node ();
-      master_ctrl *m_control_channel_manager;
 
       void init (const char *name);
       void new_slave (int fd);
@@ -54,6 +52,7 @@ namespace cubreplication
       void enable_active (void);
       void update_senders_min_position (const cubstream::stream_position &pos);
   };
+
 } /* namespace cubreplication */
 
 #endif /* _REPLICATION_MASTER_NODE_HPP_ */

@@ -44,7 +44,6 @@ namespace cubreplication
     private:
       log_consumer *m_lc;
 
-      // todo: there is an identity in replication_node already. Do we need it?
       node_definition m_master_identity;
       cubstream::transfer_receiver *m_transfer_receiver;
 
@@ -53,7 +52,6 @@ namespace cubreplication
       slave_node (const char *hostname, cubstream::multi_thread_stream *stream, cubstream::stream_file *stream_file);
       ~slave_node ();
 
-      static slave_node *get_instance (const char *name);
       int connect_to_master (const char *master_node_hostname, const int master_node_port_id);
   };
 

@@ -27,8 +27,8 @@
 
 namespace cubstream
 {
-  class stream_file;
   class multi_thread_stream;
+  class stream_file;
 }
 
 namespace cubreplication

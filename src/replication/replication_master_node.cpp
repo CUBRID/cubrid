@@ -35,6 +35,8 @@
 
 namespace cubreplication
 {
+  std::mutex enable_active_mtx;
+
   master_node::master_node (const char *name, cubstream::multi_thread_stream *stream, cubstream::stream_file *stream_file)
     : replication_node (name)
   {
@@ -56,8 +58,7 @@ namespace cubreplication
 
   void master_node::enable_active ()
   {
-    _er_log_debug (ARG_FILE_LINE, "Enable active: prev state  %d\n", css_ha_server_state ());
-    std::lock_guard<std::mutex> lg (g_enable_active_mtx);
+    std::lock_guard<std::mutex> lg (enable_active_mtx);
     if (css_ha_server_state () == HA_SERVER_STATE_TO_BE_ACTIVE)
       {
 	/* this is the first slave connecting to this node */
@@ -72,7 +73,6 @@ namespace cubreplication
   void master_node::new_slave (int fd)
   {
     enable_active ();
-
 
     if (css_ha_server_state () != HA_SERVER_STATE_ACTIVE)
       {
@@ -130,6 +130,4 @@ namespace cubreplication
 			      " stream_read_pos:%llu, commit_pos:%llu", m_stream->name ().c_str (),
 			      pos, m_stream->get_curr_read_position (),m_stream->get_last_committed_pos ());
   }
-
-  std::mutex master_node::g_enable_active_mtx;
 } /* namespace cubreplication */

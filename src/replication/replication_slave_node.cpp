@@ -36,16 +36,6 @@
 
 namespace cubreplication
 {
-  slave_node::~slave_node ()
-  {
-    delete m_transfer_receiver;
-    m_transfer_receiver = NULL;
-
-    m_lc->set_stop ();
-    delete m_lc;
-    m_lc = NULL;
-  }
-
   slave_node::slave_node (const char *hostname, cubstream::multi_thread_stream *stream,
 			  cubstream::stream_file *stream_file )
     : replication_node (hostname)
@@ -62,6 +52,16 @@ namespace cubreplication
 
     /* start log_consumer daemons and apply thread pool */
     m_lc->start_daemons ();
+  }
+
+  slave_node::~slave_node ()
+  {
+    delete m_transfer_receiver;
+    m_transfer_receiver = NULL;
+
+    m_lc->set_stop ();
+    delete m_lc;
+    m_lc = NULL;
   }
 
   int slave_node::connect_to_master (const char *master_node_hostname, const int master_node_port_id)

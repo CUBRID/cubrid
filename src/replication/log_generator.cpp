@@ -337,7 +337,6 @@ namespace cubreplication
   void
   log_generator::set_global_stream (cubstream::multi_thread_stream *stream)
   {
-    er_log_debug (ARG_FILE_LINE, "Set global stream called num tr = %d\n", log_Gl.trantable.num_total_indices);
     for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
       {
 	LOG_TDES *tdes = LOG_FIND_TDES (i);
