@@ -773,6 +773,7 @@ css_process_change_server_ha_mode_request (SOCKET master_fd)
 	    {
 	      cubreplication::replication_node_manager::get_instance ()->get_master_node ()->enable_active ();
 	    }
+	  // todo: also ACTIVE -> TO_BE_ACTIVE (set from slave state to master state)
 	}
     }
   else
