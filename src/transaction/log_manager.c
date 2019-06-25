@@ -5407,7 +5407,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 	       * that the current transaction is part of a group and a log abort will be added.
 	       * No need to wait for log abort here.
 	       */
-	      assert (id_complete != cubtx::complete_manager::NULL_ID);
+	      assert (*p_id_complete != cubtx::complete_manager::NULL_ID);
 	      tdes->state = TRAN_UNACTIVE_ABORTED;
 	    }
 
