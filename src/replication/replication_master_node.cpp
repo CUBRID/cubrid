@@ -52,8 +52,6 @@ namespace cubreplication
     cubtx::master_group_complete_manager::init ();
 
     m_control_channel_manager = new master_ctrl (cubtx::master_group_complete_manager::get_instance ());
-
-    er_log_debug_replication (ARG_FILE_LINE, "master_node:init replication_path:%s", replication_path.c_str ());
   }
 
   void master_node::enable_active ()
