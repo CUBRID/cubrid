@@ -880,10 +880,10 @@ static const cubmem::block_allocator HEAP_SCANCACHE_BLOCK_ALLOCATOR =
   { heap_scancache_block_allocate, heap_scancache_block_deallocate };
 // *INDENT-ON*
 
-static int heap_get_page_with_watcher (THREAD_ENTRY * thread_p, VPID * page_vpid, PGBUF_WATCHER * pg_watcher);
-static int heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * vpid, VPID * next_link,
-				 VPID * prev_link, PGBUF_WATCHER * page_watcher, bool keep_page_fixed,
-				 bool is_page_watcher_inited);
+static int heap_get_page_with_watcher (THREAD_ENTRY * thread_p, const VPID * page_vpid, PGBUF_WATCHER * pg_watcher);
+static int heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, const VPID * next_link,
+                                 const VPID * prev_link, PGBUF_WATCHER * page_watcher, bool keep_page_fixed,
+                                 bool is_page_watcher_inited);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -24760,7 +24760,8 @@ heap_nonheader_page_capacity ()
  *
  */
 int
-heap_append_pages_to_heap (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, std::vector<VPID> heap_pages_array)
+heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID &class_oid,
+                           const std::vector<VPID> &heap_pages_array)
 {
   int error_code = NO_ERROR;
   PGBUF_WATCHER page_watcher;
@@ -24778,7 +24779,7 @@ heap_append_pages_to_heap (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, 
   VPID_SET_NULL (&heap_last_page_vpid);
 
   PGBUF_INIT_WATCHER (&page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
-  PGBUF_INIT_WATCHER (&heap_header_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+  PGBUF_INIT_WATCHER (&heap_header_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
   PGBUF_INIT_WATCHER (&heap_last_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 
   // Early out
@@ -24910,7 +24911,7 @@ cleanup:
 }
 
 static int
-heap_get_page_with_watcher (THREAD_ENTRY * thread_p, VPID *page_vpid, PGBUF_WATCHER * pg_watcher)
+heap_get_page_with_watcher (THREAD_ENTRY * thread_p, const VPID *page_vpid, PGBUF_WATCHER * pg_watcher)
 {
   int error_code = NO_ERROR;
 
@@ -24929,8 +24930,9 @@ heap_get_page_with_watcher (THREAD_ENTRY * thread_p, VPID *page_vpid, PGBUF_WATC
 }
 
 static int
-heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * vpid, VPID * next_link, VPID * prev_link,
-                      PGBUF_WATCHER * page_watcher, bool keep_page_fixed, bool is_page_watcher_inited)
+heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, const VPID * next_link,
+                      const VPID * prev_link, PGBUF_WATCHER * page_watcher, bool keep_page_fixed,
+                      bool is_page_watcher_inited)
 {
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
   int error_code = NO_ERROR;
@@ -24949,8 +24951,8 @@ heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * vpid, V
         }
     }
 
-  // We must have the page fixed.
-  assert (pgbuf_is_page_fixed_by_thread (thread_p, vpid));
+  // Make sure we fixed the page.
+  assert (pgbuf_is_page_fixed_by_thread (thread_p, (VPID *) vpid));
 
   // Prepare logging
   addr.vfid = &hfid->vfid;
@@ -24968,9 +24970,6 @@ heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * vpid, V
       error_code = ER_FAILED;
       return error_code;
     }
-
-  // Make sure we fixed the page.
-  assert (pgbuf_is_page_fixed_by_thread (thread_p, vpid));
 
   // Save the old chain for logging.
   chain_prev = *chain;
