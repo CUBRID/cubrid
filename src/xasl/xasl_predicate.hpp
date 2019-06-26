@@ -134,7 +134,7 @@ namespace cubxasl
     regu_variable_node *src;
     regu_variable_node *pattern;
     regu_variable_node *case_sensitive;
-    mutable std::regex *compiled_regex;
+    mutable std::wregex *compiled_regex;
     mutable char *compiled_pattern;
   };
 

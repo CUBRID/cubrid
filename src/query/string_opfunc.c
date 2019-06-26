@@ -53,9 +53,13 @@
 #include "dbtype.h"
 #include "elo.h"
 #include "db_elo.h"
+#include "locale_helper.hpp"
+
 #include <algorithm>
 #include <regex>
 #include <string>
+#include <locale>
+
 #if !defined (SERVER_MODE)
 #include "parse_tree.h"
 #include "es_common.h"
@@ -4298,16 +4302,20 @@ db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_
   return ((*result == V_ERROR) ? ER_QSTR_INVALID_ESCAPE_SEQUENCE : error_status);
 }
 
+// *INDENT-OFF*
+template <typename charT>
 static int
-regex_compile (const char *pattern, std::regex * &rx_compiled_regex,
-	       std::regex_constants::syntax_option_type & reg_flags)
+regex_compile (const std::basic_string<charT> &pattern, std::basic_regex<charT, std::regex_traits<charT> > * &rx_compiled_regex,
+	       std::regex_constants::syntax_option_type & reg_flags, std::locale & loc)
 {
   int error_status = NO_ERROR;
 
-  // *INDENT-OFF*
+
   try
   {
-    rx_compiled_regex = new std::regex (pattern, reg_flags);
+    rx_compiled_regex = new std::basic_regex<charT, std::regex_traits<charT> > ();
+    rx_compiled_regex->imbue(loc);
+    rx_compiled_regex->assign(pattern, reg_flags);
   }
   catch (std::regex_error & e)
   {
@@ -4317,10 +4325,10 @@ regex_compile (const char *pattern, std::regex * &rx_compiled_regex,
     delete rx_compiled_regex;
     rx_compiled_regex = NULL;
   }
-  // *INDENT-ON*
 
   return error_status;
 }
+// *INDENT-ON*
 
 /*
  * db_string_rlike () - check for match between string and regex
@@ -4351,7 +4359,7 @@ regex_compile (const char *pattern, std::regex * &rx_compiled_regex,
 
 int
 db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_VALUE * case_sensitive,
-		 std::regex ** comp_regex, char **comp_pattern, int *result)
+		 std::wregex ** comp_regex, char **comp_pattern, int *result)
 {
   QSTR_CATEGORY src_category = QSTR_UNKNOWN;
   QSTR_CATEGORY pattern_category = QSTR_UNKNOWN;
@@ -4363,130 +4371,147 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
   const char *pattern_char_string_p = NULL;
   bool is_case_sensitive = false;
   int src_length = 0, pattern_length = 0;
+  int coll_id = -1;
 
   char rx_err_buf[REGEX_MAX_ERROR_MSG_SIZE] = { '\0' };
   char *rx_compiled_pattern = NULL;
 
   // *INDENT-OFF*
-  std::regex *rx_compiled_regex = NULL;
+  std::wregex *rx_compiled_regex = NULL;
   // *INDENT-ON*
+  {
+    /* check for allocated DB values */
+    assert (src_string != NULL);
+    assert (pattern != NULL);
+    assert (case_sensitive != NULL);
 
-  /* check for allocated DB values */
-  assert (src_string != NULL);
-  assert (pattern != NULL);
-  assert (case_sensitive != NULL);
+    /* get compiled pattern */
+    if (comp_pattern != NULL)
+      {
+	rx_compiled_pattern = *comp_pattern;
+      }
 
-  /* get compiled pattern */
-  if (comp_pattern != NULL)
-    {
-      rx_compiled_pattern = *comp_pattern;
-    }
+    /* if regex object was specified, use local regex */
+    if (comp_regex != NULL)
+      {
+	rx_compiled_regex = *comp_regex;
+      }
 
-  /* if regex object was specified, use local regex */
-  if (comp_regex != NULL)
-    {
-      rx_compiled_regex = *comp_regex;
-    }
+    /* type checking */
+    src_category = qstr_get_category (src_string);
+    pattern_category = qstr_get_category (pattern);
 
-  /* type checking */
-  src_category = qstr_get_category (src_string);
-  pattern_category = qstr_get_category (pattern);
+    src_type = DB_VALUE_DOMAIN_TYPE (src_string);
+    pattern_type = DB_VALUE_DOMAIN_TYPE (pattern);
+    case_sens_type = DB_VALUE_DOMAIN_TYPE (case_sensitive);
 
-  src_type = DB_VALUE_DOMAIN_TYPE (src_string);
-  pattern_type = DB_VALUE_DOMAIN_TYPE (pattern);
-  case_sens_type = DB_VALUE_DOMAIN_TYPE (case_sensitive);
+    if (!QSTR_IS_ANY_CHAR (src_type) || !QSTR_IS_ANY_CHAR (pattern_type))
+      {
+	error_status = ER_QSTR_INVALID_DATA_TYPE;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+	*result = V_ERROR;
+	goto cleanup;
+      }
 
-  if (!QSTR_IS_ANY_CHAR (src_type) || !QSTR_IS_ANY_CHAR (pattern_type))
-    {
-      error_status = ER_QSTR_INVALID_DATA_TYPE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-      *result = V_ERROR;
-      goto cleanup;
-    }
+    if (src_category != pattern_category)
+      {
+	error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	*result = V_ERROR;
+	goto cleanup;
+      }
 
-  if (src_category != pattern_category)
-    {
-      error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-      *result = V_ERROR;
-      goto cleanup;
-    }
+    if (DB_IS_NULL (src_string) || DB_IS_NULL (pattern))
+      {
+	*result = V_UNKNOWN;
+	goto cleanup;
+      }
 
-  if (DB_IS_NULL (src_string) || DB_IS_NULL (pattern))
-    {
-      *result = V_UNKNOWN;
-      goto cleanup;
-    }
+    if (DB_IS_NULL (case_sensitive) || case_sens_type != DB_TYPE_INTEGER)
+      {
+	error_status = ER_QPROC_INVALID_PARAMETER;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	*result = V_ERROR;
+	goto cleanup;
+      }
 
-  if (DB_IS_NULL (case_sensitive) || case_sens_type != DB_TYPE_INTEGER)
-    {
-      error_status = ER_QPROC_INVALID_PARAMETER;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-      *result = V_ERROR;
-      goto cleanup;
-    }
+    LANG_RT_COMMON_COLL (db_get_string_collation (src_string), db_get_string_collation (pattern), coll_id);
+    if (coll_id == -1)
+      {
+	error_status = ER_QSTR_INCOMPATIBLE_COLLATIONS;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	*result = V_ERROR;
+	goto cleanup;
+      }
 
-  src_char_string_p = db_get_string (src_string);
-  src_length = db_get_string_size (src_string);
+    LANG_COLLATION *collation = lang_get_collation (coll_id);
+    assert (collation != NULL);
 
-  pattern_char_string_p = db_get_string (pattern);
-  pattern_length = db_get_string_size (pattern);
+    src_char_string_p = db_get_string (src_string);
+    src_length = db_get_string_size (src_string);
 
-  /* extract case sensitivity */
-  is_case_sensitive = (case_sensitive->data.i != 0);
+    pattern_char_string_p = db_get_string (pattern);
+    pattern_length = db_get_string_size (pattern);
 
-  /* check for recompile */
-  if (rx_compiled_pattern == NULL || rx_compiled_regex == NULL || pattern_length != strlen (rx_compiled_pattern)
-      || strncmp (rx_compiled_pattern, pattern_char_string_p, pattern_length) != 0)
-    {
-      /* regex must be recompiled if regex object is not specified, pattern is not specified or compiled pattern does
-       * not match current pattern */
+    /* extract case sensitivity */
+    is_case_sensitive = (case_sensitive->data.i != 0);
 
-      /* update compiled pattern */
-      if (rx_compiled_pattern != NULL)
-	{
-	  /* free old memory */
-	  db_private_free_and_init (NULL, rx_compiled_pattern);
-	}
+    /* check for recompile */
+    if (rx_compiled_pattern == NULL || rx_compiled_regex == NULL || pattern_length != strlen (rx_compiled_pattern)
+	|| strncmp (rx_compiled_pattern, pattern_char_string_p, pattern_length) != 0)
+      {
+	/* regex must be recompiled if regex object is not specified, pattern is not specified or compiled pattern does
+	 * not match current pattern */
 
-      /* allocate new memory */
-      rx_compiled_pattern = (char *) db_private_alloc (NULL, pattern_length + 1);
+	/* update compiled pattern */
+	if (rx_compiled_pattern != NULL)
+	  {
+	    /* free old memory */
+	    db_private_free_and_init (NULL, rx_compiled_pattern);
+	  }
 
-      if (rx_compiled_pattern == NULL)
-	{
-	  /* out of memory */
-	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-	  *result = V_ERROR;
-	  goto cleanup;
-	}
+	/* allocate new memory */
+	rx_compiled_pattern = (char *) db_private_alloc (NULL, pattern_length + 1);
 
-      /* copy string */
-      memcpy (rx_compiled_pattern, pattern_char_string_p, pattern_length);
-      rx_compiled_pattern[pattern_length] = '\0';
+	if (rx_compiled_pattern == NULL)
+	  {
+	    /* out of memory */
+	    error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	    *result = V_ERROR;
+	    goto cleanup;
+	  }
+
+	/* copy string */
+	memcpy (rx_compiled_pattern, pattern_char_string_p, pattern_length);
+	rx_compiled_pattern[pattern_length] = '\0';
 
       // *INDENT-OFF*
       std::regex_constants::syntax_option_type reg_flags = std::regex_constants::ECMAScript;
       reg_flags |= std::regex_constants::nosubs;
+      reg_flags |= std::regex_constants::collate;
       if (!is_case_sensitive)
 	{
 	  reg_flags |= std::regex_constants::icase;
 	}
+      std::wstring wpattern;
+      cublocale::convert_to_wstring(wpattern, std::string(rx_compiled_pattern), collation);
+      std::locale loc = cublocale::get_locale(collation);
+      error_status = regex_compile<wchar_t> (wpattern, rx_compiled_regex, reg_flags, loc);
       // *INDENT-ON*
-
-      error_status = regex_compile (rx_compiled_pattern, rx_compiled_regex, reg_flags);
-      if (error_status != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  *result = V_ERROR;
-	  goto cleanup;
-	}
-    }
+	if (error_status != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    *result = V_ERROR;
+	    goto cleanup;
+	  }
+      }
 
   // *INDENT-OFF*
   try
     {
-      std::string src (src_char_string_p, src_length);
-      bool match = std::regex_search (src, *rx_compiled_regex);
+      std::wstring wsrc;
+      cublocale::convert_to_wstring(wsrc, std::string (src_char_string_p, src_length), collation);
+      bool match = std::regex_search (wsrc, *rx_compiled_regex);
       *result = match ? V_TRUE : V_FALSE;
     }
   catch (std::regex_error & e)
@@ -4498,7 +4523,7 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
       goto cleanup;
     }
   // *INDENT-ON*
-
+  }
 cleanup:
 
   if ((comp_regex == NULL || error_status != NO_ERROR) && rx_compiled_regex != NULL)
@@ -4576,11 +4601,11 @@ cleanup:
 // *INDENT-OFF*
 int
 db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args,
-			  std::regex **comp_regex, char **comp_pattern)
+			  std::wregex **comp_regex, char **comp_pattern)
 {
   int error_status = NO_ERROR;
 
-  std::regex *rx_compiled_regex = NULL;
+  std::wregex *rx_compiled_regex = NULL;
   char *rx_compiled_pattern = NULL;
 
   {
@@ -4670,6 +4695,9 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	goto exit;
       }
 
+    LANG_COLLATION *collation = lang_get_collation(coll_id);
+    assert (collation != NULL);
+
     std::string pattern_string (db_get_string (pattern), db_get_string_size (pattern));
     int pattern_length = pattern_string.size();
     /* check for recompile */
@@ -4727,7 +4755,10 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	      }
 	  }
 
-	error_status = regex_compile (rx_compiled_pattern, rx_compiled_regex, reg_flags);
+  std::wstring wpattern;
+  cublocale::convert_to_wstring(wpattern, pattern_string, collation);
+  std::locale loc = cublocale::get_locale(collation);
+	error_status = regex_compile<wchar_t> (wpattern, rx_compiled_regex, reg_flags, loc);
 	if (error_status != NO_ERROR)
 	  {
 	    ASSERT_ERROR ();
@@ -4736,18 +4767,20 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
       }
 
     /* split source string by position value */
-    std::string prefix;
-    std::string target;
+    std::wstring prefix;
+    std::wstring target;
 
-    int src_length = db_get_string_size (src);
-    std::string src_string (db_get_string (src), src_length);
+    std::wstring wsrc;
+    cublocale::convert_to_wstring(wsrc, std::string (db_get_string (src), db_get_string_size (src)), collation);
+
+    int src_length = wsrc.size();
     if (position)
       {
 	int position_value = db_get_int (position) - 1;
 	if (position_value >= 0 && position_value < src_length)
 	  {
-	    prefix = std::move (src_string.substr (0, position_value));
-	    target = std::move (src_string.substr (position_value, src_length - position_value));
+	    prefix = std::move (wsrc.substr (0, position_value));
+	    target = std::move (wsrc.substr (position_value, src_length - position_value));
 	  }
 	else
 	  {
@@ -4758,56 +4791,63 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
       }
     else
       {
-	target = std::move (src_string);
+	target = std::move (wsrc);
       }
 
     try
       {
 	std::string repl_string (db_get_string (repl), db_get_string_size (repl));
-	std::string result_string;
+      
+  std::wstring wrepl;
+  cublocale::convert_to_wstring(wrepl, repl_string, collation);
+
+	std::wstring wresult_string;
 
 	/* occurrence option */
 	int occurrence_value = (occurrence != NULL) ? db_get_int (occurrence) : 0;
 	if (occurrence_value == 0)
 	  {
-	    result_string = std::regex_replace (target, *rx_compiled_regex, repl_string);
+	    wresult_string = std::regex_replace (target, *rx_compiled_regex, wrepl);
 	  }
 	else if (occurrence_value > 0)
 	  {
-	    auto reg_iter = std::sregex_iterator (target.begin (), target.end (), *rx_compiled_regex);
-	    auto reg_end = std::sregex_iterator ();
+	    auto reg_iter = std::wsregex_iterator (target.begin (), target.end (), *rx_compiled_regex);
+	    auto reg_end = std::wsregex_iterator ();
 
 	    if (reg_iter != reg_end)
 	      {
-		auto out = std::back_inserter (result_string);
+		auto out = std::back_inserter (wresult_string);
 		auto last_iter = reg_iter;
 
 		for (std::size_t n = occurrence_value; n-- && reg_iter != reg_end; ++reg_iter)
 		  {
-		    std::string prefix = reg_iter->prefix ().str ();
+		    std::wstring prefix = reg_iter->prefix ().str ();
 		    out = std::copy (prefix.begin (), prefix.end (), out);
 		    if (n == 0)
 		      {
-			out = reg_iter->format (out, repl_string);
+			out = reg_iter->format (out, wrepl);
 		      }
 		    else
 		      {
-			std::string match_str = reg_iter->str ();
+			std::wstring match_str = reg_iter->str ();
 			out = std::copy (match_str.begin (), match_str.end (), out);
 		      }
 		    last_iter = reg_iter;
 		  }
-		std::string suffix = last_iter->suffix ().str ();
+		std::wstring suffix = last_iter->suffix ().str ();
 		out = std::copy (suffix.begin (), suffix.end (), out);
 	      }
 	  }
 	else
 	  {
-	    result_string = std::move (target);
+	    wresult_string = std::move (target);
 	  }
 
 	/* concatenate with prefix */
-	result_string.insert (0, prefix);
+	wresult_string.insert (0, prefix);
+
+  std::string result_string;
+  cublocale::convert_to_string (result_string, wresult_string, collation);
 
 	/* allocate new memory for result string */
 	char *result_char_string = NULL;
