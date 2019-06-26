@@ -4470,8 +4470,9 @@ log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 strea
   cubmem::appendible_block<1024> v;
   for (const auto &ti : group.get_container ())
     {
+      /* When transaction has MVCCID but has no log we may have tdes->trid = NULL_TRANID. */
       const log_tdes *tdes = LOG_FIND_TDES (ti.m_tran_index);
-      assert (tdes != NULL && tdes->trid != NULL_TRANID);
+      assert (tdes != NULL);
       v.append (tdes->trid);
       v.append (ti.m_tran_state);
       if (ti.m_tran_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
@@ -5409,7 +5410,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 	       * The group complete manager will log NULL tran_id that will cause crash at recovery.
 	       */
 	      assert (id_complete != cubtx::complete_manager::NULL_ID);
-              /* Waits for complete */
+	      /* Waits for complete */
 	      log_Gl.m_tran_complete_mgr->complete (id_complete);
 	      tdes->state = TRAN_UNACTIVE_ABORTED;
 	    }
