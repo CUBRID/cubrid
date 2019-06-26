@@ -45,8 +45,6 @@ namespace cubreplication
     // was stopped during slave_node destruction
     m_stream->start ();
 
-    log_generator::set_global_stream (m_stream);
-
     m_stream_file = stream_file;
 
     master_senders_manager::init ();

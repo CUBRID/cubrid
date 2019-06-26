@@ -48,6 +48,8 @@ namespace cubreplication
     m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
     m_stream->init (0);
 
+    log_generator::set_global_stream (m_stream);
+
     std::string replication_path;
     replication_node::get_replication_file_path (replication_path);
     m_stream_file = new cubstream::stream_file (*m_stream, replication_path);
