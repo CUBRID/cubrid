@@ -235,6 +235,10 @@ namespace cubreplication
 		assert (se->is_group_commit ());
 		delete se;
 	      }
+	    else if (se->is_new_master ())
+	      {
+		repl_tasks.clear ();
+	      }
 	    else
 	      {
 		MVCCID mvccid = se->get_mvccid ();

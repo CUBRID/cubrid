@@ -116,6 +116,7 @@ namespace cubreplication
       virtual bool is_equal (const cubpacking::packable_object *other);
 
       void set_key_value (const DB_VALUE &db_val);
+      void set_class_name (const char *class_name);
       single_row_repl_entry (const repl_entry_type type, const char *class_name, LOG_LSA &lsa_stamp);
       single_row_repl_entry () = default;
 
