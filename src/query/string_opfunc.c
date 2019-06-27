@@ -4494,9 +4494,16 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
 	  reg_flags |= std::regex_constants::icase;
 	}
       std::wstring wpattern;
-      cublocale::convert_to_wstring(wpattern, std::string(rx_compiled_pattern), collation);
-      std::locale loc = cublocale::get_locale(collation);
-      error_status = regex_compile<wchar_t> (wpattern, rx_compiled_regex, reg_flags, loc);
+      if (cublocale::convert_to_wstring(wpattern, std::string(rx_compiled_pattern), collation) == true)
+      {
+        std::locale loc = cublocale::get_locale(collation);
+        error_status = regex_compile<wchar_t> (wpattern, rx_compiled_regex, reg_flags, loc);
+      }
+      else
+      {
+        *result = V_FALSE;
+        goto cleanup;
+      }
       // *INDENT-ON*
 	if (error_status != NO_ERROR)
 	  {
@@ -4509,10 +4516,17 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
   // *INDENT-OFF*
   try
     {
+      std::string src_string (src_char_string_p, src_length);
       std::wstring wsrc;
-      cublocale::convert_to_wstring(wsrc, std::string (src_char_string_p, src_length), collation);
-      bool match = std::regex_search (wsrc, *rx_compiled_regex);
-      *result = match ? V_TRUE : V_FALSE;
+      if (cublocale::convert_to_wstring(wsrc, src_string, collation) == true)
+      {
+        bool match = std::regex_search (wsrc, *rx_compiled_regex);
+        *result = match ? V_TRUE : V_FALSE;
+      }
+      else
+      {
+        *result = V_FALSE;
+      }
     }
   catch (std::regex_error & e)
     {
@@ -4756,7 +4770,12 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	  }
 
   std::wstring wpattern;
-  cublocale::convert_to_wstring(wpattern, pattern_string, collation);
+  if (cublocale::convert_to_wstring(wpattern, pattern_string, collation) == false)
+  {
+    db_make_null (result);
+	  goto exit;
+  }
+
   std::locale loc = cublocale::get_locale(collation);
 	error_status = regex_compile<wchar_t> (wpattern, rx_compiled_regex, reg_flags, loc);
 	if (error_status != NO_ERROR)
@@ -4770,8 +4789,13 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
     std::wstring prefix;
     std::wstring target;
 
+    std::string src_string (db_get_string (src), db_get_string_size (src));
     std::wstring wsrc;
-    cublocale::convert_to_wstring(wsrc, std::string (db_get_string (src), db_get_string_size (src)), collation);
+    if (cublocale::convert_to_wstring(wsrc, src_string, collation) == false)
+    {
+      db_make_null (result);
+      goto exit;
+    }
 
     int src_length = wsrc.size();
     if (position)
@@ -4799,10 +4823,13 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	std::string repl_string (db_get_string (repl), db_get_string_size (repl));
       
   std::wstring wrepl;
-  cublocale::convert_to_wstring(wrepl, repl_string, collation);
+  if (cublocale::convert_to_wstring(wrepl, repl_string, collation) == false)
+    {
+      db_make_null (result);
+      goto exit;
+    }
 
 	std::wstring wresult_string;
-
 	/* occurrence option */
 	int occurrence_value = (occurrence != NULL) ? db_get_int (occurrence) : 0;
 	if (occurrence_value == 0)
@@ -4847,7 +4874,11 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	wresult_string.insert (0, prefix);
 
   std::string result_string;
-  cublocale::convert_to_string (result_string, wresult_string, collation);
+  if (cublocale::convert_to_string (result_string, wresult_string, collation) == false)
+    {
+      db_make_null (result);
+      goto exit;
+    }
 
 	/* allocate new memory for result string */
 	char *result_char_string = NULL;

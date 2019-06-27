@@ -73,123 +73,91 @@ namespace cublocale
   bool convert_to_wstring (std::wstring &out, const std::string &in, const LANG_COLLATION *lang_coll)
   {
     INTL_CODESET codeset = lang_coll->codeset;
+    bool success = false;
 
-    switch (codeset)
+    std::string utf8_str;
+    if (codeset != INTL_CODESET_UTF8)
+    {
+      std::string utf8_converted;
+      utf8_converted.resize(in.size() * INTL_CODESET_MULT(INTL_CODESET_UTF8), 0);
+      std::string::pointer utf8_str_ptr = (char*) utf8_converted.data();
+
+      int conv_size = 0;
+      switch (codeset)
       {
-      case INTL_CODESET_UTF8:
-      {
-	std::wstring converted = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> {}.from_bytes (in);
-	out.assign (std::move (converted));
-      }
-      break;
-      case INTL_CODESET_ISO88591:
-      case INTL_CODESET_RAW_BYTES:
-      case INTL_CODESET_KSC5601_EUC:
-      {
-	typedef std::ctype<wchar_t> wchar_facet;
-	std::locale loc = get_locale (lang_coll);
-	std::wstring return_value;
-	if (in.empty())
-	  {
-	    return_value.assign (L"");
-	  }
-	if (std::has_facet<wchar_facet> (loc))
-	  {
-	    std::vector<wchar_t> to (in.size() + 2, 0);
-	    std::vector<wchar_t>::pointer toPtr = to.data();
-	    const wchar_facet &facet = std::use_facet<wchar_facet> (loc);
-	    if (facet.widen (in.c_str(), in.c_str() + in.size(), toPtr) != 0)
-	      {
-		return_value = to.data();
-	      }
-	  }
-	out.assign (std::move (return_value));
-      }
-      break;
-      default:
-	assert (0);
-	break;
+        case INTL_CODESET_ISO88591:
+        intl_fast_iso88591_to_utf8 ((const unsigned char *) in.data(), in.size(), (unsigned char **) &utf8_str_ptr, &conv_size);
+        break;
+        case INTL_CODESET_KSC5601_EUC:
+        intl_euckr_to_utf8 ((const unsigned char *) in.data(), in.size(), (unsigned char **) &utf8_str_ptr, &conv_size);
+        break;
+        case INTL_CODESET_RAW_BYTES:
+        intl_binary_to_utf8 ((const unsigned char *) in.data(), in.size(), (unsigned char **) &utf8_str_ptr, &conv_size);
+        break;
+        default:
+        // unrecognized codeset
+        assert (false);
+        intl_binary_to_utf8 ((const unsigned char *) in.data(), in.size(), (unsigned char **) &utf8_str_ptr, &conv_size);
+        break;
       }
 
-    return true;
+      utf8_converted.resize(conv_size);
+      std::wstring converted = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> {}.from_bytes (utf8_converted);
+      out.assign (std::move (converted));
+      success = true;
+    }
+    else
+    {
+      std::wstring converted = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> {}.from_bytes (in);
+	    out.assign (std::move (converted));
+      success = true;
+    }
+    
+    return success;
   }
 
   bool convert_to_string (std::string &out, const std::wstring &in, const LANG_COLLATION *lang_coll)
   {
     INTL_CODESET codeset = lang_coll->codeset;
+    bool success = false;
 
-    switch (codeset)
+    std::string converted = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> {}.to_bytes (in);
+    if (codeset == INTL_CODESET_UTF8)
+    {
+        out.assign (std::move (converted));
+        success = true;
+    }
+    else
+    {
+      std::string to_str;
+      to_str.resize(converted.size(), 0);
+      std::string::pointer to_str_ptr = (char*) to_str.data();
+
+      int conv_size = 0;
+      switch (codeset)
       {
-      case INTL_CODESET_UTF8:
-      {
-	std::string converted = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> {}.to_bytes (in);
-	out.assign (std::move (converted));
+        case INTL_CODESET_ISO88591:
+        intl_utf8_to_iso88591 ((const unsigned char *) converted.data(), converted.size(), (unsigned char **) &to_str_ptr, &conv_size);
+        break;
+        case INTL_CODESET_KSC5601_EUC:
+        intl_utf8_to_euckr ((const unsigned char *) converted.data(), converted.size(), (unsigned char **) &to_str_ptr, &conv_size);
+        break;
+        case INTL_CODESET_RAW_BYTES:
+        /* when coercing multibyte to binary charset, we just reinterpret each byte as one character */
+        to_str.assign (in.begin(), in.end());
+        break;
+        default:
+        // unrecognized codeset
+        assert (false);
+        to_str.assign (in.begin(), in.end());
+        break;
       }
-      break;
-      case INTL_CODESET_ISO88591:
-      case INTL_CODESET_RAW_BYTES:
-      case INTL_CODESET_KSC5601_EUC:
-      {
-	std::locale loc = get_locale (lang_coll);
+      to_str.resize(conv_size);
+      out.assign (std::move(to_str));
+      success = true;
+    }
 
-	typedef std::codecvt<wchar_t, char, std::mbstate_t> converter_type;
-	typedef std::ctype<wchar_t> wchar_facet;
-	std::string return_value;
-	if (in.empty())
-	  {
-	    return "";
-	  }
-	const wchar_t *from = in.c_str();
-	size_t len = in.length();
-
-	size_t converterMaxLength = 6;
-	size_t vectorSize = ((len + 6) * converterMaxLength);
-	if (std::has_facet<converter_type> (loc))
-	  {
-	    const converter_type &converter = std::use_facet<converter_type> (loc);
-	    if (converter.always_noconv())
-	      {
-		converterMaxLength = converter.max_length();
-		if (converterMaxLength != 6)
-		  {
-		    vectorSize = ((len + 6) * converterMaxLength);
-		  }
-		std::mbstate_t state;
-		const wchar_t *from_next = nullptr;
-		std::vector<char> to (vectorSize, 0);
-		std::vector<char>::pointer toPtr = to.data();
-		std::vector<char>::pointer to_next = nullptr;
-		const converter_type::result result = converter.out (
-		    state, from, from + len, from_next,
-		    toPtr, toPtr + vectorSize, to_next);
-		if (
-			(converter_type::ok == result || converter_type::noconv == result)
-			&& 0 != toPtr[0]
-		)
-		  {
-		    return_value.assign (toPtr, to_next);
-		  }
-	      }
-	  }
-	if (return_value.empty() && std::has_facet<wchar_facet> (loc))
-	  {
-	    std::vector<char> to (vectorSize, 0);
-	    std::vector<char>::pointer toPtr = to.data();
-	    const wchar_facet &facet = std::use_facet<wchar_facet> (loc);
-	    if (facet.narrow (from, from + len, '?', toPtr) != 0)
-	      {
-		return_value = toPtr;
-	      }
-	  }
-	out.assign (std::move (return_value));
-      }
-      break;
-      default:
-	assert (0);
-	break;
-      }
-
-    return true;
+    return success;
   }
 }
 
