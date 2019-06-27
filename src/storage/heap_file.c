@@ -24773,6 +24773,7 @@ heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID
   VPID heap_last_page_vpid;
   HEAP_HDR_STATS *heap_hdr = NULL;
   LOG_DATA_ADDR addr;
+  HEAP_HDR_STATS heap_hdr_prev;
 
   VPID_SET_NULL (&null_vpid);
   VPID_SET_NULL (&heap_hdr_vpid);
@@ -24843,7 +24844,7 @@ heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID
     }
 
   // Save for logging.
-  HEAP_HDR_STATS heap_hdr_prev = *heap_hdr;
+  heap_hdr_prev = *heap_hdr;
 
   // Get the last page of the heap.
   error_code = heap_get_last_page (thread_p, hfid, heap_hdr, NULL, &heap_last_page_vpid, &heap_last_page_watcher);
