@@ -56,6 +56,7 @@ namespace cubreplication
 
     // Start as slave
     m_repl_node = new slave_node (host_name.c_str (), m_stream, m_stream_file);
+    m_mode = SLAVE_MODE;
   }
 
   replication_node_manager::~replication_node_manager ()
@@ -99,6 +100,7 @@ namespace cubreplication
 
   void replication_node_manager::init (const char *name)
   {
+    std::lock_guard<std::mutex> lg (commute_mtx);
     host_name = name;
 
     assert (g_instance == NULL);
