@@ -2222,7 +2222,7 @@ static bool prm_debug_autocommit_default = false;
 static unsigned int prm_debug_autocommit_flag = 0;
 
 bool PRM_DEBUG_REPLICATION_DATA = true;
-static bool prm_debug_replication_data_default = true;
+static bool prm_debug_replication_data_default = false;
 static unsigned int prm_debug_replication_data_flag = 0;
 
 bool PRM_TRACK_REQUESTS = false;
