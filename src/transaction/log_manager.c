@@ -6722,6 +6722,10 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
       log_page_p = log_dump_record_transaction_finish (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
+    case LOG_GROUP_COMPLETE:
+      log_page_p = log_dump_record_group_complete (thread_p, out_fp, log_lsa, log_page_p);
+      break;
+
     case LOG_REPLICATION_DATA:
     case LOG_REPLICATION_STATEMENT:
       log_page_p = log_dump_record_replication (thread_p, out_fp, log_lsa, log_page_p);
