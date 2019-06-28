@@ -153,6 +153,7 @@ class serial_heap_record
 
     // replication functions; on SA_MODE, they do nothing
     void start_replication ();
+    void add_replication_record ();
     void commit_replication ();
     void abort_replication ();
 
@@ -1351,7 +1352,11 @@ serial_heap_record::serial_heap_record (cubthread::entry *thread_p, const OID &s
 
 serial_heap_record::~serial_heap_record ()
 {
-  abort_replication ();
+  if (m_need_replication)
+    {
+      abort_replication ();
+    }
+
   if (m_loaded)
     {
       heap_attrinfo_end (m_thread_p, &m_attrinfo);
@@ -1500,7 +1505,7 @@ serial_heap_record::start_replication ()
 }
 
 void
-serial_heap_record::commit_replication ()
+serial_heap_record::add_replication_record ()
 {
 #if defined (SERVER_MODE)
   assert (m_need_replication);
@@ -1516,8 +1521,17 @@ serial_heap_record::commit_replication ()
   assert (key_value != NULL);
 
   m_replgen_p->add_update_row (*key_value, m_serial_oid, *oid_Serial_class_oid, NULL);
+#endif // SERVER_MODE
+}
 
-  if (m_is_instant_replication)
+void
+serial_heap_record::commit_replication ()
+{
+#if defined (SERVER_MODE)
+  assert (m_need_replication);
+  assert (m_is_replication_started);
+
+   if (m_is_instant_replication)
     {
       m_subtran_gen.commit ();
     }
@@ -1570,6 +1584,14 @@ serial_heap_record::update_record ()
 {
   int error_code = NO_ERROR;
   
+  /* add replication record before pushing serial update to page:
+   * the attr_info values are PEEKed directly from page and after update to page,
+   * the attr_info values may point to random data */
+  if (m_need_replication)
+    {
+      add_replication_record ();
+    }
+
   // undoredo is required for instant replication; redo is enough otherwise
   error_code = serial_update_serial_object (m_thread_p, m_scancache.page_watcher.pgptr, &m_peek_recdes, &m_attrinfo,
                                             oid_Serial_class_oid, &m_serial_oid,
@@ -1577,7 +1599,10 @@ serial_heap_record::update_record ()
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      abort_replication ();
+      if (m_need_replication)
+        {
+          abort_replication ();
+        }
       return error_code;
     }
   if (m_need_replication)
