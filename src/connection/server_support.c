@@ -2304,7 +2304,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
       return NO_ERROR;
     }
 
-  if (state == HA_SERVER_STATE_ACTIVE && log_Gl.m_tran_complete_mgr == NULL)
+  if ((state == HA_SERVER_STATE_ACTIVE || state == HA_SERVER_STATE_MAINTENANCE) && log_Gl.m_tran_complete_mgr == NULL)
     {
       /* I expect no senders here. */
       assert (cubreplication::master_senders_manager::get_number_of_stream_senders () == 0);
