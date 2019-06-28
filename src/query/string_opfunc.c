@@ -4305,26 +4305,27 @@ db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_
 // *INDENT-OFF*
 template <typename charT>
 static int
-regex_compile (const std::basic_string<charT> &pattern, std::basic_regex<charT, std::regex_traits<charT> > * &rx_compiled_regex,
-	       std::regex_constants::syntax_option_type & reg_flags, std::locale & loc)
+regex_compile (const std::basic_string<charT> &pattern,
+	       std::basic_regex<charT, std::regex_traits<charT> >*&rx_compiled_regex,
+	       std::regex_constants::syntax_option_type &reg_flags, std::locale &loc)
 {
   int error_status = NO_ERROR;
 
 
   try
-  {
-    rx_compiled_regex = new std::basic_regex<charT, std::regex_traits<charT> > ();
-    rx_compiled_regex->imbue(loc);
-    rx_compiled_regex->assign(pattern, reg_flags);
-  }
-  catch (std::regex_error & e)
-  {
-    // regex compilation exception
-    error_status = ER_REGEX_COMPILE_ERROR;
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, e.what ());
-    delete rx_compiled_regex;
-    rx_compiled_regex = NULL;
-  }
+    {
+      rx_compiled_regex = new std::basic_regex<charT, std::regex_traits<charT> > ();
+      rx_compiled_regex->imbue (loc);
+      rx_compiled_regex->assign (pattern, reg_flags);
+    }
+  catch (std::regex_error &e)
+    {
+      // regex compilation exception
+      error_status = ER_REGEX_COMPILE_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, e.what ());
+      delete rx_compiled_regex;
+      rx_compiled_regex = NULL;
+    }
 
   return error_status;
 }
@@ -4709,7 +4710,7 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	goto exit;
       }
 
-    LANG_COLLATION *collation = lang_get_collation(coll_id);
+    LANG_COLLATION *collation = lang_get_collation (coll_id);
     assert (collation != NULL);
 
     std::string pattern_string (db_get_string (pattern), db_get_string_size (pattern));
@@ -4769,14 +4770,14 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	      }
 	  }
 
-  std::wstring wpattern;
-  if (cublocale::convert_to_wstring(wpattern, pattern_string, collation) == false)
-  {
-    db_make_null (result);
-	  goto exit;
-  }
+	std::wstring wpattern;
+	if (cublocale::convert_to_wstring (wpattern, pattern_string, collation) == false)
+	  {
+	    db_make_null (result);
+	    goto exit;
+	  }
 
-  std::locale loc = cublocale::get_locale(collation);
+	std::locale loc = cublocale::get_locale (collation);
 	error_status = regex_compile<wchar_t> (wpattern, rx_compiled_regex, reg_flags, loc);
 	if (error_status != NO_ERROR)
 	  {
@@ -4791,11 +4792,11 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 
     std::string src_string (db_get_string (src), db_get_string_size (src));
     std::wstring wsrc;
-    if (cublocale::convert_to_wstring(wsrc, src_string, collation) == false)
-    {
-      db_make_null (result);
-      goto exit;
-    }
+    if (cublocale::convert_to_wstring (wsrc, src_string, collation) == false)
+      {
+	db_make_null (result);
+	goto exit;
+      }
 
     int src_length = wsrc.size();
     if (position)
@@ -4821,13 +4822,13 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
     try
       {
 	std::string repl_string (db_get_string (repl), db_get_string_size (repl));
-      
-  std::wstring wrepl;
-  if (cublocale::convert_to_wstring(wrepl, repl_string, collation) == false)
-    {
-      db_make_null (result);
-      goto exit;
-    }
+
+	std::wstring wrepl;
+	if (cublocale::convert_to_wstring (wrepl, repl_string, collation) == false)
+	  {
+	    db_make_null (result);
+	    goto exit;
+	  }
 
 	std::wstring wresult_string;
 	/* occurrence option */
@@ -4873,12 +4874,12 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	/* concatenate with prefix */
 	wresult_string.insert (0, prefix);
 
-  std::string result_string;
-  if (cublocale::convert_to_string (result_string, wresult_string, collation) == false)
-    {
-      db_make_null (result);
-      goto exit;
-    }
+	std::string result_string;
+	if (cublocale::convert_to_string (result_string, wresult_string, collation) == false)
+	  {
+	    db_make_null (result);
+	    goto exit;
+	  }
 
 	/* allocate new memory for result string */
 	char *result_char_string = NULL;
@@ -4935,16 +4936,23 @@ exit:
       /* pass compiled pattern out */
       *comp_pattern = rx_compiled_pattern;
     }
+r and return NULL */
+	  er_clear ();
+	  return NO_ERROR;
+	}
+    }
 
+  return error_status;
+}
   if (error_status != NO_ERROR)
     {
       db_make_null (result);
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
-      {
-        /* clear error and return NULL */
-        er_clear ();
-        return NO_ERROR;
-      }
+	{
+	  /* clear error and return NULL */
+	  er_clear ();
+	  return NO_ERROR;
+	}
     }
 
   return error_status;

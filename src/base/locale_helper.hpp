@@ -65,8 +65,8 @@ namespace cublocale
       }
     catch (std::exception &e)
       {
-	// return default locale, locale name is not supported
-	return std::locale ();
+	// return the environment's default locale, locale name is not supported
+	return std::locale ("");
       }
   }
 
@@ -77,42 +77,50 @@ namespace cublocale
 
     std::string utf8_str;
     if (codeset != INTL_CODESET_UTF8)
-    {
-      std::string utf8_converted;
-      utf8_converted.resize(in.size() * INTL_CODESET_MULT(INTL_CODESET_UTF8), 0);
-      std::string::pointer utf8_str_ptr = (char*) utf8_converted.data();
-
-      int conv_size = 0;
-      switch (codeset)
       {
-        case INTL_CODESET_ISO88591:
-        intl_fast_iso88591_to_utf8 ((const unsigned char *) in.data(), in.size(), (unsigned char **) &utf8_str_ptr, &conv_size);
-        break;
-        case INTL_CODESET_KSC5601_EUC:
-        intl_euckr_to_utf8 ((const unsigned char *) in.data(), in.size(), (unsigned char **) &utf8_str_ptr, &conv_size);
-        break;
-        case INTL_CODESET_RAW_BYTES:
-        intl_binary_to_utf8 ((const unsigned char *) in.data(), in.size(), (unsigned char **) &utf8_str_ptr, &conv_size);
-        break;
-        default:
-        // unrecognized codeset
-        assert (false);
-        intl_binary_to_utf8 ((const unsigned char *) in.data(), in.size(), (unsigned char **) &utf8_str_ptr, &conv_size);
-        break;
+	std::string utf8_converted;
+	utf8_converted.resize (in.size() * INTL_CODESET_MULT (INTL_CODESET_UTF8));
+	std::string::pointer utf8_str_ptr = (char *) utf8_converted.data();
+
+	int conv_size = 0;
+	switch (codeset)
+	  {
+	  case INTL_CODESET_ISO88591:
+	    intl_fast_iso88591_to_utf8 ((const unsigned char *) in.data(), in.size(), (unsigned char **) &utf8_str_ptr, &conv_size);
+	    break;
+	  case INTL_CODESET_KSC5601_EUC:
+	    intl_euckr_to_utf8 ((const unsigned char *) in.data(), in.size(), (unsigned char **) &utf8_str_ptr, &conv_size);
+	    break;
+	  case INTL_CODESET_RAW_BYTES:
+	    intl_binary_to_utf8 ((const unsigned char *) in.data(), in.size(), (unsigned char **) &utf8_str_ptr, &conv_size);
+	    break;
+	  default:
+	    // unrecognized codeset
+	    assert (false);
+	    intl_binary_to_utf8 ((const unsigned char *) in.data(), in.size(), (unsigned char **) &utf8_str_ptr, &conv_size);
+	    break;
+	  }
+
+	utf8_converted.resize (conv_size);
+	utf8_str.assign (std::move (utf8_converted));
+      }
+    else
+      {
+	utf8_str.assign (std::move (in));
       }
 
-      utf8_converted.resize(conv_size);
-      std::wstring converted = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> {}.from_bytes (utf8_converted);
-      out.assign (std::move (converted));
-      success = true;
-    }
-    else
-    {
-      std::wstring converted = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> {}.from_bytes (in);
-	    out.assign (std::move (converted));
-      success = true;
-    }
-    
+    try
+      {
+	std::wstring converted = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> {}.from_bytes (utf8_str);
+	out.assign (std::move (converted));
+	success = true;
+      }
+    catch (const std::range_error &re)
+      {
+	// do nothing
+	success = false;
+      }
+
     return success;
   }
 
@@ -121,41 +129,51 @@ namespace cublocale
     INTL_CODESET codeset = lang_coll->codeset;
     bool success = false;
 
-    std::string converted = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> {}.to_bytes (in);
-    if (codeset == INTL_CODESET_UTF8)
-    {
-        out.assign (std::move (converted));
-        success = true;
-    }
-    else
-    {
-      std::string to_str;
-      to_str.resize(converted.size(), 0);
-      std::string::pointer to_str_ptr = (char*) to_str.data();
-
-      int conv_size = 0;
-      switch (codeset)
+    try
       {
-        case INTL_CODESET_ISO88591:
-        intl_utf8_to_iso88591 ((const unsigned char *) converted.data(), converted.size(), (unsigned char **) &to_str_ptr, &conv_size);
-        break;
-        case INTL_CODESET_KSC5601_EUC:
-        intl_utf8_to_euckr ((const unsigned char *) converted.data(), converted.size(), (unsigned char **) &to_str_ptr, &conv_size);
-        break;
-        case INTL_CODESET_RAW_BYTES:
-        /* when coercing multibyte to binary charset, we just reinterpret each byte as one character */
-        to_str.assign (in.begin(), in.end());
-        break;
-        default:
-        // unrecognized codeset
-        assert (false);
-        to_str.assign (in.begin(), in.end());
-        break;
+	std::string converted = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> {}.to_bytes (in);
+	if (codeset == INTL_CODESET_UTF8)
+	  {
+	    out.assign (std::move (converted));
+	    success = true;
+	  }
+	else
+	  {
+	    std::string to_str;
+	    to_str.resize (converted.size());
+	    std::string::pointer to_str_ptr = (char *) to_str.data();
+
+	    int conv_size = 0;
+	    switch (codeset)
+	      {
+	      case INTL_CODESET_ISO88591:
+		intl_utf8_to_iso88591 ((const unsigned char *) converted.data(), converted.size(), (unsigned char **) &to_str_ptr,
+				       &conv_size);
+		break;
+	      case INTL_CODESET_KSC5601_EUC:
+		intl_utf8_to_euckr ((const unsigned char *) converted.data(), converted.size(), (unsigned char **) &to_str_ptr,
+				    &conv_size);
+		break;
+	      case INTL_CODESET_RAW_BYTES:
+		/* when coercing multibyte to binary charset, we just reinterpret each byte as one character */
+		to_str.assign (in.begin(), in.end());
+		break;
+	      default:
+		// unrecognized codeset
+		assert (false);
+		to_str.assign (in.begin(), in.end());
+		break;
+	      }
+	    to_str.resize (conv_size);
+	    out.assign (std::move (to_str));
+	    success = true;
+	  }
       }
-      to_str.resize(conv_size);
-      out.assign (std::move(to_str));
-      success = true;
-    }
+    catch (const std::range_error &re)
+      {
+	// do nothing
+	success = false;
+      }
 
     return success;
   }
