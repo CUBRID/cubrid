@@ -116,9 +116,8 @@ namespace cubstream
       /* notify on fsync data */
       std::atomic<bool> m_notify_on_sync;
       std::queue<int> m_sync_seq_nrs;
-      std::queue<stream_position> m_sync_positions;
-      std::mutex m_sync_mtx;
-      cubstream::stream::notify_func_t m_sync_done_notify;
+      stream_position m_to_be_synced;
+      cubstream::stream::notify_send_stream_pos_func_t m_notify_on_synced;
 
       cubstream::stream::notify_func_t m_start_flush_handler;
 
@@ -152,7 +151,7 @@ namespace cubstream
 
       size_t read_buffer (const int vol_seqno, const size_t volume_offset, char *buf, const size_t amount);
       size_t write_buffer (const int vol_seqno, const size_t volume_offset, const char *buf, const size_t amount);
-      int sync_writes ();
+      int fsync_writes ();
     public:
       stream_file () = delete;
 
@@ -204,28 +203,9 @@ namespace cubstream
 	  }
       }
 
-      void push_sync_position (stream_position to_be_synced)
+      void update_sync_position (stream_position to_be_synced)
       {
-	std::lock_guard<std::mutex> lg (m_sync_mtx);
-	m_sync_positions.push (to_be_synced);
-      }
-
-      stream_position sync_front ()
-      {
-	std::lock_guard<std::mutex> lg (m_sync_mtx);
-	return m_sync_positions.front ();
-      }
-
-      void sync_pop ()
-      {
-	std::lock_guard<std::mutex> lg (m_sync_mtx);
-	m_sync_positions.pop ();
-      }
-
-      bool sync_empty ()
-      {
-	std::lock_guard<std::mutex> lg (m_sync_mtx);
-	return m_sync_positions.empty ();
+	m_to_be_synced = to_be_synced;
       }
 
       stream_position get_last_flushed_position (void)
@@ -233,10 +213,9 @@ namespace cubstream
 	return m_append_position;
       }
 
-      void set_sync_notify (const cubstream::stream::notify_func_t &sync_done_notify)
+      void set_sync_notify (const cubstream::stream::notify_send_stream_pos_func_t &sync_done_notify)
       {
-	std::lock_guard<std::mutex> lg (m_sync_mtx);
-	m_sync_done_notify = sync_done_notify;
+	m_notify_on_synced = sync_done_notify;
 	m_notify_on_sync = true;
       }
 

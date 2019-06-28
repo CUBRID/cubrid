@@ -672,19 +672,19 @@ namespace cubstream
    *               queued up writes are durable
    * return : NO_ERROR or encountered error
    */
-  int stream_file::sync_writes ()
+  int stream_file::fsync_writes ()
   {
+    int seq_nr;
     while (!m_sync_seq_nrs.empty ())
       {
-	int seq_nr = m_sync_seq_nrs.front ();
+	seq_nr = m_sync_seq_nrs.front ();
+	m_sync_seq_nrs.pop ();
 	int fd = get_file_desc_from_vol_seqno (seq_nr);
-
 	int rc = fsync (fd);
 	if (rc != 0)
 	  {
 	    return rc;
 	  }
-	m_sync_seq_nrs.pop ();
       }
     return NO_ERROR;
   }
@@ -789,20 +789,16 @@ namespace cubstream
 	buf += current_to_write;
       }
 
-    if (m_notify_on_sync && !sync_empty ())
+    cubstream::stream_position to_be_synced = m_to_be_synced;
+    if (m_notify_on_sync && curr_pos >= to_be_synced)
       {
-	cubstream::stream_position sync_flush_position = sync_front ();
-
-	if (curr_pos >= sync_flush_position)
+	if (fsync_writes () != NO_ERROR)
 	  {
-	    if (sync_writes () != NO_ERROR)
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 3, m_stream.name ().c_str (), curr_pos, 0);
-		return err;
-	      }
-	    sync_pop ();
-	    m_sync_done_notify (sync_flush_position, 0);
+	    err = ER_STREAM_FILE_INVALID_WRITE;
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 3, m_stream.name ().c_str (), curr_pos, 0);
+	    return err;
 	  }
+	m_notify_on_synced (to_be_synced);
       }
 
 

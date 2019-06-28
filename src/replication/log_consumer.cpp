@@ -56,13 +56,11 @@ namespace cubreplication
 	int err = m_lc.fetch_stream_entry (se);
 	if (err == NO_ERROR)
 	  {
-	    if (se->is_group_commit())
+	    if (se->is_group_commit ())
 	      {
 		se->unpack ();
 		assert (se->get_stream_entry_end_position () > se->get_stream_entry_start_position ());
 
-		// todo: add safeguard std::function is correctly initialized (we do not reache here when there is no
-		// connection to master established)
 		m_lc.get_produce_ack () (se->get_stream_entry_end_position ());
 	      }
 	    m_lc.push_entry (se);

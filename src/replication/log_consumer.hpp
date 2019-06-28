@@ -151,7 +151,7 @@ namespace cubreplication
 	m_started_tasks--;
       }
 
-      std::function<void (cubstream::stream_position)> &get_produce_ack()
+      std::function<void (cubstream::stream_position)> &get_produce_ack ()
       {
 	return m_produce_ack;
       }

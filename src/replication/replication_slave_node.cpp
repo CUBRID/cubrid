@@ -87,7 +87,7 @@ namespace cubreplication
 	// route produced stream positions to get validated as flushed on disk before sending them
 	instance->m_lc->set_produce_ack ([instance] (cubstream::stream_position ack_sp)
 	{
-	  instance->m_stream_file->push_sync_position (ack_sp);
+	  instance->m_stream_file->update_sync_position (ack_sp);
 	});
       }
 
@@ -127,15 +127,15 @@ namespace cubreplication
 		cubreplication::slave_control_channel (std::move (control_chn))));
 
     g_instance->m_ctrl_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
-				       sender,
-				       "slave_control_sender");
+				       sender, "slave_control_sender");
 
     g_instance->m_ctrl_sender = sender;
 
     if ((REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) == REPL_SEMISYNC_ACK_ON_FLUSH)
       {
-	g_instance->m_stream_file->set_sync_notify ([sender] (const cubstream::stream_position & sp, size_t)
+	g_instance->m_stream_file->set_sync_notify ([sender] (const cubstream::stream_position & sp)
 	{
+	  // route produced stream positions to get validated as flushed on disk before sending them
 	  sender->append_synced (sp);
 	});
       }
