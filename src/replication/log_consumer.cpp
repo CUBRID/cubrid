@@ -270,6 +270,7 @@ namespace cubreplication
       }
 
     assert (m_stream_entries.empty ());
+    get_stream ()->start ();
   }
 
   void log_consumer::push_entry (stream_entry *entry)
@@ -380,9 +381,6 @@ namespace cubreplication
     m_is_stopped = true;
     ulock.unlock ();
     m_apply_task_cv.notify_one ();
-
-    // todo: make sure everything is closed correctly and call get_stream ()->start ()
-    // before returning
   }
 
 } /* namespace cubreplication */

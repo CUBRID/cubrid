@@ -60,7 +60,6 @@ namespace cubreplication
     delete m_transfer_receiver;
     m_transfer_receiver = NULL;
 
-    m_lc->stop ();
     delete m_lc;
     m_lc = NULL;
   }

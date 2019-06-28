@@ -42,9 +42,6 @@ namespace cubreplication
   {
     m_stream = stream;
 
-    // was stopped during slave_node destruction
-    m_stream->start ();
-
     m_stream_file = stream_file;
 
     master_senders_manager::init ();
