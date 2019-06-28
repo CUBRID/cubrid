@@ -34,6 +34,7 @@ namespace cubreplication
 {
   replication_node::~replication_node ()
   {
+
   }
 
   int replication_node::apply_start_position (cubstream::stream_position apply_start_pos)

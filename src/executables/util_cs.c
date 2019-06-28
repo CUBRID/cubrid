@@ -3597,6 +3597,9 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
       return rc;
     }
 
+  // ddl_proxy should not fire trigger action
+  db_disable_trigger ();
+
   if (args->sys_param != NULL)
     {
       er_stack_push ();

@@ -236,11 +236,16 @@ namespace cubstream
 	return ((float) m_last_committed_pos - (float) m_last_recyclable_pos) / (float) m_trigger_flush_to_disk_size;
       };
 
-      void set_stop (void)
+      void stop (void)
       {
 	m_is_stopped = true;
 	m_serial_read_cv.notify_one ();
 	m_recyclable_pos_cv.notify_one ();
+      }
+
+      void start ()
+      {
+	m_is_stopped = false;
       }
 
       void set_stream_file (stream_file *sf)

@@ -286,7 +286,7 @@ namespace cubreplication
 
   log_consumer::~log_consumer ()
   {
-    set_stop ();
+    stop ();
 
     if (m_use_daemons)
       {
@@ -296,6 +296,7 @@ namespace cubreplication
       }
 
     assert (m_stream_entries.empty ());
+    get_stream ()->start ();
   }
 
   void log_consumer::push_entry (stream_entry *entry)
@@ -349,6 +350,10 @@ namespace cubreplication
       }
 
     entry = se;
+    if (m_ctrl_chn != NULL)
+      {
+	m_ctrl_chn->send_ack (entry->get_stream_entry_start_position ());
+      }
 
     return err;
   }
@@ -394,9 +399,9 @@ namespace cubreplication
       }
   }
 
-  void log_consumer::set_stop (void)
+  void log_consumer::stop (void)
   {
-    log_consumer::get_stream ()->set_stop ();
+    get_stream ()->stop ();
 
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
     m_is_stopped = true;

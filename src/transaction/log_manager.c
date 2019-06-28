@@ -5153,8 +5153,6 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
       LOG_CS_EXIT (thread_p);
     }
 
-  tdes->replication_log_generator.on_transaction_commit ();
-
   perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_COMMITS);
 
   return state;
