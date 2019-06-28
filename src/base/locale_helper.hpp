@@ -35,32 +35,40 @@
 
 namespace cublocale
 {
+  std::string get_lang_name (const LANG_COLLATION *lang_coll)
+  {
+    const char *lang_name = lang_coll->default_lang->lang_name;
+    std::string lang_str (lang_name);
+    return lang_str;
+  }
+
+  std::string get_codeset_name (const LANG_COLLATION *lang_coll)
+  {
+    const char *codeset_name = lang_get_codeset_name (lang_coll->codeset);
+    std::string codeset_str (codeset_name);
+    return codeset_str;
+  }
+
   std::string get_locale_name (const LANG_COLLATION *lang_coll)
   {
     INTL_CODESET codeset = lang_coll->codeset;
-    const char *codeset_name = lang_get_codeset_name (codeset);
-    const char *lang_name = lang_coll->default_lang->lang_name;
-
     std::string locale_str;
     switch (codeset)
       {
       case INTL_CODESET_ISO88591:
       case INTL_CODESET_UTF8:
       case INTL_CODESET_KSC5601_EUC:
-	locale_str = lang_name;
-	locale_str += ".";
-	locale_str += codeset_name;
-	break;
+        locale_str = get_lang_name(lang_coll) + "." + get_codeset_name(lang_coll);
+	      break;
       }
     return locale_str;
   }
 
-  std::locale get_locale (const LANG_COLLATION *lang_coll)
+  std::locale get_locale (const std::string& charset, const std::string& lang)
   {
-    std::string locale_str = get_locale_name (lang_coll);
     try
       {
-	std::locale loc (locale_str.c_str());
+	std::locale loc (lang + "." + charset);
 	return loc;
       }
     catch (std::exception &e)

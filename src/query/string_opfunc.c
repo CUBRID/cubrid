@@ -4495,7 +4495,7 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
       std::wstring wpattern;
       if (cublocale::convert_to_wstring(wpattern, std::string(rx_compiled_pattern), collation) == true)
       {
-        std::locale loc = cublocale::get_locale(collation);
+        std::locale loc = cublocale::get_locale(std::string("utf-8"), cublocale::get_lang_name(collation));
         error_status = regex_compile<wchar_t> (wpattern, rx_compiled_regex, reg_flags, loc);
       }
       else
@@ -4775,7 +4775,7 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	    goto exit;
 	  }
 
-	std::locale loc = cublocale::get_locale (collation);
+	std::locale loc = cublocale::get_locale(std::string("utf-8"), cublocale::get_lang_name(collation));
 	error_status = regex_compile<wchar_t> (wpattern, rx_compiled_regex, reg_flags, loc);
 	if (error_status != NO_ERROR)
 	  {
