@@ -4305,27 +4305,25 @@ db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_
 // *INDENT-OFF*
 template <typename charT>
 static int
-regex_compile (const std::basic_string<charT> &pattern,
-	       std::basic_regex<charT, std::regex_traits<charT> >*&rx_compiled_regex,
-	       std::regex_constants::syntax_option_type &reg_flags, std::locale &loc)
+regex_compile (const std::basic_string<charT> &pattern, std::basic_regex<charT, std::regex_traits<charT> > * &rx_compiled_regex,
+	       std::regex_constants::syntax_option_type & reg_flags, std::locale & loc)
 {
   int error_status = NO_ERROR;
 
-
   try
-    {
-      rx_compiled_regex = new std::basic_regex<charT, std::regex_traits<charT> > ();
-      rx_compiled_regex->imbue (loc);
-      rx_compiled_regex->assign (pattern, reg_flags);
-    }
-  catch (std::regex_error &e)
-    {
-      // regex compilation exception
-      error_status = ER_REGEX_COMPILE_ERROR;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, e.what ());
-      delete rx_compiled_regex;
-      rx_compiled_regex = NULL;
-    }
+  {
+    rx_compiled_regex = new std::basic_regex<charT, std::regex_traits<charT> > ();
+    rx_compiled_regex->imbue(loc);
+    rx_compiled_regex->assign(pattern, reg_flags);
+  }
+  catch (std::regex_error & e)
+  {
+    // regex compilation exception
+    error_status = ER_REGEX_COMPILE_ERROR;
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, e.what ());
+    delete rx_compiled_regex;
+    rx_compiled_regex = NULL;
+  }
 
   return error_status;
 }
@@ -4936,14 +4934,7 @@ exit:
       /* pass compiled pattern out */
       *comp_pattern = rx_compiled_pattern;
     }
-r and return NULL */
-	  er_clear ();
-	  return NO_ERROR;
-	}
-    }
-
-  return error_status;
-}
+	  
   if (error_status != NO_ERROR)
     {
       db_make_null (result);
