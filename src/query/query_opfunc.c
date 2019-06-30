@@ -8518,7 +8518,7 @@ qdata_regexp_replace_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function
 
     if (function_p->tmp_obj == NULL)
       {
-        function_p->tmp_obj = new function_temp_obj;
+        function_p->tmp_obj = new function_tmp_obj;
         function_p->tmp_obj->compiled_regex = new COMPILED_REGEX();
       }
 
