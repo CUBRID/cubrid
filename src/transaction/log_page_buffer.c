@@ -101,6 +101,7 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "crypt_opfunc.h"
+#include "server_support.h"
 #include "transaction_master_group_complete_manager.hpp"
 #include "transaction_single_node_group_complete_manager.hpp"
 #include "transaction_slave_group_complete_manager.hpp"
@@ -10213,29 +10214,33 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
     case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
       /* Single node. Need to wait for log flush. */
       log_set_notify (true);
-      log_Gl.m_tran_complete_mgr = cubtx::single_node_group_complete_manager::get_instance ();
-      er_log_debug (ARG_FILE_LINE, "logpb_resets_tran_complete_manager single node \n");
+      log_Gl.m_tran_complete_mgr = cubtx::single_node_group_complete_manager::get_instance ();      
+      er_print_callstack (ARG_FILE_LINE, "logpb_resets_tran_complete_manager single node, ha_server_state = %s\n",
+        css_ha_server_state_string (css_ha_server_state ()));
       break;
 
     case LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE:
       /* Master with slaves. Need to wait for stream ack sent by slaves. */
       log_set_notify (false);
       log_Gl.m_tran_complete_mgr = cubtx::master_group_complete_manager::get_instance ();
-      er_log_debug (ARG_FILE_LINE, "logpb_resets_tran_complete_manager master node \n");
+      er_print_callstack (ARG_FILE_LINE, "logpb_resets_tran_complete_manager master node, ha_server_state = %s\n",
+        css_ha_server_state_string (css_ha_server_state ()));
       break;
 
     case LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE:
       /* Master with slaves. Need to wait for master stream. */
       log_set_notify (false);
       log_Gl.m_tran_complete_mgr = cubtx::slave_group_complete_manager::get_instance ();
-      er_log_debug (ARG_FILE_LINE, "logpb_resets_tran_complete_manager slave node \n");
+      er_print_callstack (ARG_FILE_LINE, "logpb_resets_tran_complete_manager slave node, ha_server_state = %s\n",
+        css_ha_server_state_string (css_ha_server_state ()));
       break;
 
     case LOG_TRAN_COMPLETE_NO_MANAGER:
       /* No manager. Temporary state. Will be reset later when HA state will be available. */
       log_set_notify (false);
       log_Gl.m_tran_complete_mgr = NULL;
-      er_log_debug (ARG_FILE_LINE, "logpb_resets_tran_complete_manager NULL \n");
+      er_print_callstack (ARG_FILE_LINE, "logpb_resets_tran_complete_manager NULL, ha_server_state = %s\n",
+        css_ha_server_state_string (css_ha_server_state ()));
       break;
 
     default:
@@ -10254,6 +10259,8 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
 void
 logpb_finalize_tran_complete_manager (void)
 {
+  /* Finalize complete manager. */
+  er_log_debug (ARG_FILE_LINE, "logpb_finalize_tran_complete_manager \n");
   log_set_notify (false);
   cubtx::single_node_group_complete_manager::final ();
   log_Gl.m_tran_complete_mgr = NULL;
