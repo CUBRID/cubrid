@@ -160,7 +160,6 @@ namespace cubreplication
     public:
       dispatch_daemon_task (log_consumer &lc)
 	: m_lc (lc)
-	, finished_recov (false)
       {
       }
 
@@ -294,7 +293,6 @@ namespace cubreplication
       }
 
     private:
-      bool finished_recov;
       log_consumer &m_lc;
   };
 
