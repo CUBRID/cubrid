@@ -69,7 +69,7 @@ namespace cubstream
 	    assert (sizeof (stream_position) == sizeof (UINT64));
 
 	    rc = this_producer_channel.m_channel.recv ((char *) &last_sent_position, max_len);
-	    this_producer_channel.m_last_sent_position = last_sent_position;
+	    this_producer_channel.m_last_sent_position = htoni64 (last_sent_position);
 
 	    er_log_debug (ARG_FILE_LINE, "transfer_sender_task starting : last_sent_position:%lld, rc:%d\n",
 			  last_sent_position, rc);

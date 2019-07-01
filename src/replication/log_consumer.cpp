@@ -241,25 +241,32 @@ namespace cubreplication
 		MVCCID mvccid = se->get_mvccid ();
 
 		// apply only some selected mvccids until we reach last m_ack_stream_position, then continue normally
-
-		if (log_Gl.hdr.m_ack_stream_position != 0 && log_Gl.hdr.m_ack_stream_position > se->get_stream_entry_end_position ())
+		if (log_Gl.hdr.m_ack_stream_position != 0 && log_Gl.hdr.m_ack_stream_position >= se->get_stream_entry_end_position ())
 		  {
+		    for (auto el : log_Gl.m_active_mvcc_ids)
+		      {
+			_er_log_debug (ARG_FILE_LINE, "Filtered apply: Active mvvcid: %llu\n", el);
+		      }
+
 		    if (log_Gl.m_active_mvcc_ids.find (mvccid) == log_Gl.m_active_mvcc_ids.end ())
 		      {
+			_er_log_debug (ARG_FILE_LINE, "Filtered apply: Ignoring stream entry with mvccid = %llu from %llu ending in %llu \n",
+				       mvccid,
+				       se->get_stream_entry_start_position (), se->get_stream_entry_end_position ());
 			continue;
 		      }
 		    else
 		      {
-			assert (false);
+			_er_log_debug (ARG_FILE_LINE, "Filtered apply: Applying stream entry with mvccid = %llu from %llu ending in %llu \n",
+				       mvccid,
+				       se->get_stream_entry_start_position (), se->get_stream_entry_end_position ());
 		      }
 		  }
 		else
 		  {
-		    //assert (finished_recov || !log_Gl.m_active_mvcc_ids.empty ());
 		    if (!log_Gl.m_active_mvcc_ids.empty ())
 		      {
 			log_Gl.m_active_mvcc_ids.clear ();
-			//finished_recov = true;
 		      }
 		  }
 
