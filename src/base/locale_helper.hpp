@@ -49,21 +49,6 @@ namespace cublocale
     return codeset_str;
   }
 
-  std::string get_locale_name (const LANG_COLLATION *lang_coll)
-  {
-    INTL_CODESET codeset = lang_coll->codeset;
-    std::string locale_str;
-    switch (codeset)
-      {
-      case INTL_CODESET_ISO88591:
-      case INTL_CODESET_UTF8:
-      case INTL_CODESET_KSC5601_EUC:
-        locale_str = get_lang_name(lang_coll) + "." + get_codeset_name(lang_coll);
-	      break;
-      }
-    return locale_str;
-  }
-
   std::locale get_locale (const std::string& charset, const std::string& lang)
   {
     try

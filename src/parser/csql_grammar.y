@@ -311,7 +311,6 @@ static FUNCTION_MAP functions[] = {
   {"crc32", PT_CRC32},
   {"schema_def", PT_SCHEMA_DEF},
   {"conv_tz", PT_CONV_TZ},
-  {"regexp_replace", F_REGEXP_REPLACE},
 };
 
 
