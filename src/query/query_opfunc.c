@@ -8467,7 +8467,7 @@ qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR 
 }
 
 /*
- * qdata_regex_replace_function () - Evaluates regexp_replace() function.
+ * qdata_regexp_replace_function () - Evaluates regexp_replace() function.
  *   return: NO_ERROR, or ER_FAILED code
  *   thread_p   : thread context
  *   funcp(in)  : function structure pointer
