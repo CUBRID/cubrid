@@ -2304,9 +2304,11 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
       return NO_ERROR;
     }
 
-  if ((state == HA_SERVER_STATE_ACTIVE || state == HA_SERVER_STATE_MAINTENANCE) && log_Gl.m_tran_complete_mgr == NULL)
+  if (log_Gl.m_tran_complete_mgr == NULL)
     {
-      /* I expect no senders here. */
+      /* Initialize with single node here. If no master, nobody should modify the database.
+       * However we need to log ha_server_state.
+       */
       assert (cubreplication::master_senders_manager::get_number_of_stream_senders () == 0);
       logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
     }

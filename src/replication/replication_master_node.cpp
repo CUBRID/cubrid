@@ -86,16 +86,13 @@ namespace cubreplication
 	stream_entry fail_over_entry (g_instance->m_stream, MVCCID_FIRST, stream_entry_header::NEW_MASTER);
 	fail_over_entry.pack ();
 
-        if (log_Gl.m_tran_complete_mgr == NULL)
+        if ((new_slave) || (cubreplication::master_senders_manager::get_number_of_stream_senders () > 0))
           {
-            if ((new_slave) || (cubreplication::master_senders_manager::get_number_of_stream_senders () > 0))
-              {
-                logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE);
-              }
-            else
-              {
-                logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
-              }
+            logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE);
+          }
+        else
+          {
+            logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
           }
       }
   }

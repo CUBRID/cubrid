@@ -119,10 +119,8 @@ namespace cubreplication
     g_instance->m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *g_instance->m_stream,
 	start_position);
 
-    if (log_Gl.m_tran_complete_mgr == NULL)
-      {
-        logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE);
-      }
+    logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE);
+
     assert (log_Gl.m_tran_complete_mgr == cubtx::slave_group_complete_manager::get_instance ());
 
     return NO_ERROR;
