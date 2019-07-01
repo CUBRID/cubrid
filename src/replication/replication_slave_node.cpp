@@ -68,7 +68,6 @@ namespace cubreplication
   int slave_node::connect_to_master (const char *master_node_hostname, const int master_node_port_id)
   {
     int error = NO_ERROR;
-    assert (false);
     er_log_debug_replication (ARG_FILE_LINE, "slave_node::connect_to_master host:%s, port: %d\n",
 			      master_node_hostname, master_node_port_id);
 
