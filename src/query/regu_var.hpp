@@ -142,9 +142,11 @@ struct function_node
   DB_VALUE *value;		/* value of the function */
   REGU_VARIABLE_LIST operand;	/* operands */
   FUNC_TYPE ftype;		/* function to call */
-  mutable union function_tmp_obj *tmp_obj;
+  mutable union function_tmp_obj *tmp_obj; /* any object to be used temporary in query execution */
 };
 
+// NOTE: The following union is used when a function needs to store any object temporary in query execution
+// please don't forget to delete the concrete object and its allocated members
 union function_tmp_obj
 {
   COMPILED_REGEX *compiled_regex;
