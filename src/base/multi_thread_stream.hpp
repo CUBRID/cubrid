@@ -183,9 +183,6 @@ namespace cubstream
       int wait_for_data (const size_t amount, const STREAM_SKIP_MODE skip_mode);
 
     public:
-      static multi_thread_stream *get_instance (size_t buf_size, size_t num, const std::string &name, size_t header_sz,
-	  cubstream::stream_position start_pos);
-
       multi_thread_stream (const size_t buffer_capacity, const int max_appenders);
       virtual ~multi_thread_stream ();
       int init (const stream_position &start_position = 0);
