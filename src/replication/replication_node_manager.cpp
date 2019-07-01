@@ -23,6 +23,7 @@
 
 #include "replication_node_manager.hpp"
 
+#include "error_manager.h"
 #include "log_impl.h"
 #include "multi_thread_stream.hpp"
 #include "replication_master_node.hpp"
@@ -47,6 +48,8 @@ namespace cubreplication
     m_stream->set_name ("repl" + host_name);
     m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
     m_stream->init (log_Gl.m_active_start_position);
+
+    _er_log_debug (ARG_FILE_LINE, "Created stream using start stream position: %llu \n", log_Gl.m_active_start_position);
 
     log_generator::set_global_stream (m_stream);
 
