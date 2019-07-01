@@ -117,7 +117,7 @@ namespace cubstream
       std::atomic<bool> m_notify_on_sync;
       std::queue<int> m_sync_seq_nrs;
       stream_position m_to_be_synced;
-      cubstream::stream::notify_send_stream_pos_func_t m_notify_on_synced;
+      cubstream::stream::notify_send_stream_pos_func_t m_sync_notifier;
 
       cubstream::stream::notify_func_t m_start_flush_handler;
 
@@ -213,9 +213,9 @@ namespace cubstream
 	return m_append_position;
       }
 
-      void set_sync_notify (const cubstream::stream::notify_send_stream_pos_func_t &sync_done_notify)
+      void set_sync_notifier (const cubstream::stream::notify_send_stream_pos_func_t &sync_done_notify)
       {
-	m_notify_on_synced = sync_done_notify;
+	m_sync_notifier = sync_done_notify;
 	m_notify_on_sync = true;
       }
 

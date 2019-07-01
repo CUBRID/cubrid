@@ -85,7 +85,7 @@ namespace cubreplication
     if ((REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) == REPL_SEMISYNC_ACK_ON_FLUSH)
       {
 	// route produced stream positions to get validated as flushed on disk before sending them
-	instance->m_lc->set_produce_ack ([instance] (cubstream::stream_position ack_sp)
+	instance->m_lc->set_ack_producer ([instance] (cubstream::stream_position ack_sp)
 	{
 	  instance->m_stream_file->update_sync_position (ack_sp);
 	});
@@ -133,17 +133,17 @@ namespace cubreplication
 
     if ((REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) == REPL_SEMISYNC_ACK_ON_FLUSH)
       {
-	g_instance->m_stream_file->set_sync_notify ([sender] (const cubstream::stream_position & sp)
+	g_instance->m_stream_file->set_sync_notifier ([sender] (const cubstream::stream_position & sp)
 	{
 	  // route produced stream positions to get validated as flushed on disk before sending them
-	  sender->append_synced (sp);
+	  sender->set_synced_position (sp);
 	});
       }
     else
       {
-	g_instance->m_lc->set_produce_ack ([sender] (cubstream::stream_position sp)
+	g_instance->m_lc->set_ack_producer ([sender] (cubstream::stream_position sp)
 	{
-	  sender->append_synced (sp);
+	  sender->set_synced_position (sp);
 	});
       }
 

@@ -54,7 +54,7 @@ namespace cubreplication
 
       void execute () override;
       void stop ();
-      void append_synced (const cubstream::stream_position &sp);
+      void set_synced_position (const cubstream::stream_position &sp);
 
     private:
       slave_control_channel m_ctrl_chn;

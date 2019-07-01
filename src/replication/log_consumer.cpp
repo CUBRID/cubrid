@@ -61,7 +61,7 @@ namespace cubreplication
 		se->unpack ();
 		assert (se->get_stream_entry_end_position () > se->get_stream_entry_start_position ());
 
-		m_lc.get_produce_ack () (se->get_stream_entry_end_position ());
+		m_lc.get_ack_producer () (se->get_stream_entry_end_position ());
 	      }
 	    m_lc.push_entry (se);
 	  }

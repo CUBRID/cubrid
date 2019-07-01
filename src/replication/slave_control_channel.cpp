@@ -61,7 +61,7 @@ namespace cubreplication
     m_cv.notify_one ();
   }
 
-  void slave_control_sender::append_synced (const cubstream::stream_position &sp)
+  void slave_control_sender::set_synced_position (const cubstream::stream_position &sp)
   {
     std::unique_lock<std::mutex> ul (m_mtx);
     m_last_stream_pos = sp;
