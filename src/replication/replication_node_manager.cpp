@@ -46,7 +46,7 @@ namespace cubreplication
     m_stream = new cubstream::multi_thread_stream (buffer_size, num_max_appenders);
     m_stream->set_name ("repl" + host_name);
     m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
-    m_stream->init (0);
+    m_stream->init (log_Gl.m_active_start_position);
 
     log_generator::set_global_stream (m_stream);
 

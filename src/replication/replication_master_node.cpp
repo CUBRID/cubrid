@@ -43,8 +43,6 @@ namespace cubreplication
   {
     m_stream = stream;
 
-    apply_start_position (0);
-
     m_stream_file = stream_file;
 
     master_senders_manager::init ();
