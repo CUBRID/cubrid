@@ -55,6 +55,13 @@ namespace cubreplication
 	int err = m_lc.fetch_stream_entry (se);
 	if (err == NO_ERROR)
 	  {
+	    if (se->is_group_commit ())
+	      {
+		se->unpack ();
+		assert (se->get_stream_entry_end_position () > se->get_stream_entry_start_position ());
+		m_lc.get_ctrl_chn ()->send_ack (se->get_stream_entry_end_position ());
+	      }
+
 	    m_lc.push_entry (se);
 	  }
       };
@@ -350,10 +357,6 @@ namespace cubreplication
       }
 
     entry = se;
-    if (m_ctrl_chn != NULL)
-      {
-	m_ctrl_chn->send_ack (entry->get_stream_entry_start_position ());
-      }
 
     return err;
   }
