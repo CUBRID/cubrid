@@ -160,7 +160,7 @@ namespace cubstream
 
 	if (m_p_stream_ack)
 	  {
-	    //m_p_stream_ack->notify_stream_ack (m_last_sent_position);
+	    m_p_stream_ack->notify_stream_ack (m_last_sent_position);
 	  }
 	return NO_ERROR;
       }
