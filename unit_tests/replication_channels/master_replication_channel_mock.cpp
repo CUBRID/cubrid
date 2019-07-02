@@ -14,7 +14,6 @@
 #include "test_output.hpp"
 #include "connection_cl.h"
 #include "thread_looper.hpp"
-#include "mock_stream.hpp"
 
 static mock_stream master_mock_stream;
 
@@ -25,12 +24,18 @@ namespace master
   {
     master_mock_stream.init (0);
 
-    cubreplication::master_senders_manager::init (&master_mock_stream);
+    cubreplication::master_senders_manager::init ();
   }
 
   void finish ()
   {
     cubreplication::master_senders_manager::final ();
+  }
+
+  mock_stream &
+  get_mock_stream ()
+  {
+    return master_mock_stream;
   }
 
   void stream_produce (unsigned int num_bytes)

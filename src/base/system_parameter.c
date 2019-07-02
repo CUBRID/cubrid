@@ -2222,7 +2222,7 @@ static bool prm_debug_autocommit_default = false;
 static unsigned int prm_debug_autocommit_flag = 0;
 
 bool PRM_DEBUG_REPLICATION_DATA = true;
-static bool prm_debug_replication_data_default = true;
+static bool prm_debug_replication_data_default = false;
 static unsigned int prm_debug_replication_data_flag = 0;
 
 bool PRM_TRACK_REQUESTS = false;
@@ -3170,7 +3170,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_ANSI_QUOTES,
    PRM_NAME_ANSI_QUOTES,
-   (PRM_FOR_CLIENT | PRM_TEST_CHANGE),
+   (PRM_FOR_CLIENT | PRM_TEST_CHANGE | PRM_FOR_HA_CONTEXT),
    PRM_BOOLEAN,
    &prm_ansi_quotes_flag,
    (void *) &prm_ansi_quotes_default,
@@ -3226,7 +3226,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_MYSQL_TRIGGER_CORRELATION_NAMES,
    PRM_NAME_MYSQL_TRIGGER_CORRELATION_NAMES,
-   (PRM_FOR_CLIENT | PRM_TEST_CHANGE),
+   (PRM_FOR_CLIENT | PRM_TEST_CHANGE | PRM_FOR_HA_CONTEXT),
    PRM_BOOLEAN,
    &prm_mysql_trigger_correlation_names_flag,
    (void *) &prm_mysql_trigger_correlation_names_default,
@@ -3248,7 +3248,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_NO_BACKSLASH_ESCAPES,
    PRM_NAME_NO_BACKSLASH_ESCAPES,
-   (PRM_FOR_CLIENT | PRM_TEST_CHANGE),
+   (PRM_FOR_CLIENT | PRM_TEST_CHANGE | PRM_FOR_HA_CONTEXT),
    PRM_BOOLEAN,
    &prm_no_backslash_escapes_flag,
    (void *) &prm_no_backslash_escapes_default,

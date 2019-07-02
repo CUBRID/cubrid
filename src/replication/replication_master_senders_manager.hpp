@@ -52,17 +52,11 @@ namespace cubreplication
       master_senders_manager () = delete;
       ~master_senders_manager () = delete;
 
-      static void init (cubstream::stream *stream);
+      static void init ();
       static void add_stream_sender (cubstream::transfer_sender *sender);
       static std::size_t get_number_of_stream_senders ();
       static void final ();
       static void wakeup_transfer_senders (cubstream::stream_position desired_position);
-
-      static inline cubstream::stream &get_stream ()
-      {
-	assert (g_stream != NULL);
-	return *g_stream;
-      }
 
       static cubstream::stream_position g_minimum_successful_stream_position;
 
@@ -78,11 +72,10 @@ namespace cubreplication
 
       friend class master_senders_supervisor_task;
 
-      static std::vector <cubstream::transfer_sender *> master_server_stream_senders;
+      static std::vector<cubstream::transfer_sender *> master_server_stream_senders;
       static cubthread::daemon *master_channels_supervisor_daemon;
       static bool is_initialized;
       static std::mutex mutex_for_singleton;
-      static cubstream::stream *g_stream;
 
       static const unsigned int SUPERVISOR_DAEMON_DELAY_MS;
       static const unsigned int SUPERVISOR_DAEMON_CHECK_CONN_MS;

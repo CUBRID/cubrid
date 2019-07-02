@@ -1357,7 +1357,7 @@ css_initialize_server_interfaces (int (*request_handler) (THREAD_ENTRY * thrd, u
 int
 css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_id)
 {
-  CSS_CONN_ENTRY *conn;
+  CSS_CONN_ENTRY *conn = NULL;
   int status = NO_ERROR;
 
   if (server_name == NULL || port_id <= 0)
@@ -1456,7 +1456,7 @@ shutdown:
   css_stop_all_workers (*thread_p, THREAD_STOP_WORKERS_EXCEPT_LOGWR);
 
   /* replication stops after workers */
-  if (!HA_DISABLED ())
+  if (!HA_DISABLED () && conn != NULL)
     {
       cubreplication::master_node::final ();
       cubreplication::slave_node::final ();
@@ -2892,7 +2892,6 @@ css_server_task::execute (context_type &thread_ref)
   pthread_mutex_lock (&thread_ref.tran_index_lock);
   (void) css_internal_request_handler (thread_ref, m_conn);
 
-  thread_ref.private_lru_index = -1;
   thread_ref.clear_conn_session ();
   thread_ref.m_status = cubthread::entry::status::TS_FREE;
 }
@@ -2916,7 +2915,6 @@ css_server_external_task::execute (context_type &thread_ref)
 
   m_task->execute (thread_ref);
 
-  thread_ref.private_lru_index = -1;
   thread_ref.clear_conn_session ();
 }
 
