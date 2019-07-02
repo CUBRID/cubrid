@@ -10206,8 +10206,6 @@ logpb_initialize_tran_complete_manager (THREAD_ENTRY * thread_p)
 void
 logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
 {
-#if defined(SERVER_MODE)
-
   switch (manager_type)
     {
     case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
@@ -10218,6 +10216,7 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
 			  css_ha_server_state_string (css_ha_server_state ()));
       break;
 
+#if defined(SERVER_MODE)
     case LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE:
       /* Master with slaves. Need to wait for stream ack sent by slaves. */
       log_set_notify (false);
@@ -10233,6 +10232,7 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
       er_print_callstack (ARG_FILE_LINE, "logpb_resets_tran_complete_manager slave node, ha_server_state = %s\n",
 			  css_ha_server_state_string (css_ha_server_state ()));
       break;
+#endif
 
     case LOG_TRAN_COMPLETE_NO_MANAGER:
       /* No manager. Temporary state. Will be reset later when HA state will be available. */
@@ -10245,7 +10245,6 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
     default:
       assert (false);
     }
-#endif
 }
 
 /*
