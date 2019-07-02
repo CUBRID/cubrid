@@ -84,6 +84,8 @@ namespace cubreplication
 
       bool m_has_stream;
       bool m_is_row_replication_disabled;
+      cubstream::stream_position gc_end_position;
+
       static cubstream::multi_thread_stream *s_stream;
 
     public:
@@ -98,6 +100,7 @@ namespace cubreplication
 	, m_stream_entry (stream)
 	, m_has_stream (false)
 	, m_is_row_replication_disabled (true)
+	, gc_end_position (0)
       {
       };
 
@@ -154,6 +157,7 @@ namespace cubreplication
 
       void set_row_replication_disabled (bool disable_if_true);
       bool is_row_replication_disabled (void);
+      cubstream::stream_position get_last_end_position () const;
       void apply_tran_mvccid (void);
 
 #if !defined(NDEBUG) && defined (SERVER_MODE)

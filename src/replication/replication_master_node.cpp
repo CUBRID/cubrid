@@ -124,6 +124,6 @@ namespace cubreplication
 
     er_log_debug_replication (ARG_FILE_LINE, "master_node (stream:%s) update_senders_min_position: %llu,\n"
 			      " stream_read_pos:%llu, commit_pos:%llu", m_stream->name ().c_str (),
-			      pos, m_stream->get_curr_read_position (),m_stream->get_last_committed_pos ());
+			      pos, m_stream->get_curr_read_position (), m_stream->get_last_committed_pos ());
   }
 } /* namespace cubreplication */

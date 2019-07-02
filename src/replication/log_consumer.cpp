@@ -249,14 +249,16 @@ namespace cubreplication
 
 		    if (log_Gl.m_active_mvcc_ids.find (mvccid) == log_Gl.m_active_mvcc_ids.end ())
 		      {
-			_er_log_debug (ARG_FILE_LINE, "Filtered apply: Ignoring stream entry with mvccid = %llu from %llu ending in %llu \n",
+			_er_log_debug (ARG_FILE_LINE, "Filtered apply: \
+                                       Ignoring stream entry with mvccid = %llu from %llu ending in %llu \n",
 				       mvccid,
 				       se->get_stream_entry_start_position (), se->get_stream_entry_end_position ());
 			continue;
 		      }
 		    else
 		      {
-			_er_log_debug (ARG_FILE_LINE, "Filtered apply: Applying stream entry with mvccid = %llu from %llu ending in %llu \n",
+			_er_log_debug (ARG_FILE_LINE, "Filtered apply: \
+                                       Applying stream entry with mvccid = %llu from %llu ending in %llu \n",
 				       mvccid,
 				       se->get_stream_entry_start_position (), se->get_stream_entry_end_position ());
 		      }

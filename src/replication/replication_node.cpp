@@ -37,9 +37,9 @@ namespace cubreplication
 
   }
 
-  int replication_node::apply_start_position (cubstream::stream_position apply_start_pos)
+  int replication_node::apply_start_position ()
   {
-    m_start_position = apply_start_pos;
+    // todo: remove start stream position since this object is created only after stream & stream_files are created
     return NO_ERROR;
   }
 

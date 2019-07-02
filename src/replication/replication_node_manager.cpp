@@ -47,7 +47,14 @@ namespace cubreplication
     m_stream = new cubstream::multi_thread_stream (buffer_size, num_max_appenders);
     m_stream->set_name ("repl" + host_name);
     m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
-    m_stream->init (log_Gl.m_active_start_position);
+    if (log_Gl.m_active_start_position != 0)
+      {
+	m_stream->init (log_Gl.m_active_start_position);
+      }
+    else
+      {
+	m_stream->init (log_Gl.hdr.m_ack_stream_position);
+      }
 
     _er_log_debug (ARG_FILE_LINE, "Created stream using start stream position: %llu \n", log_Gl.m_active_start_position);
 

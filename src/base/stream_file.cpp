@@ -126,6 +126,7 @@ namespace cubstream
       cubstream::stream::read_func_t m_copy_to_buffer_func;
   };
 
+
   void stream_file::init (const std::string &path, const stream_position &start_append_pos, const size_t file_size,
 			  const int print_digits)
   {

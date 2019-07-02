@@ -45,7 +45,7 @@ namespace cubreplication
     , m_master_identity ("")
     , m_transfer_receiver (NULL)
   {
-    apply_start_position (0);
+    apply_start_position ();
     m_stream = stream;
     m_stream_file = stream_file;
 
@@ -90,11 +90,13 @@ namespace cubreplication
       }
     /* start transfer receiver */
     assert (m_transfer_receiver == NULL);
+
     // todo: make sure active start position is in hdr (we might have recovered it one, but then we close the system,
     // second startup will not recover the active start position since it was not done during a crash)
     cubstream::stream_position start_position = log_Gl.m_active_start_position;
 
-    _er_log_debug (ARG_FILE_LINE, "Connect to master using start stream position: %llu \n", log_Gl.m_active_start_position);
+    _er_log_debug (ARG_FILE_LINE, "Connect to master requesting stream data starting from stream position: %llu \n",
+		   log_Gl.m_active_start_position);
 
     m_lc->set_ctrl_chn (new cubreplication::slave_control_channel (std::move (control_chn)));
 

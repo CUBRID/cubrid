@@ -110,7 +110,6 @@ namespace cubcomm
 	return INTERNAL_CSS_ERROR;
       }
 
-    _er_log_debug (ARG_FILE_LINE, "CONNECTIONG to something?");
     m_type = CHANNEL_TYPE::INITIATOR;
     m_socket = css_tcp_client_open (hostname, port);
 
