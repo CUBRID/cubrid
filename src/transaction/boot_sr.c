@@ -2752,14 +2752,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   json_set_alloc_funcs (malloc, free);
 #endif
 
-  if (!HA_DISABLED ())
-    {
-      /* We don't know yet the type of complete manager. Reset to NULL now since we don't know yet HA mode.
-       * Will be reset again later when HA mode will be available. Maybe is better to not reset here.
-       */
-      logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_NO_MANAGER);
-    }
-
   return NO_ERROR;
 
 error:
