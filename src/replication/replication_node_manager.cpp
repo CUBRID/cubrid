@@ -41,27 +41,6 @@ namespace cubreplication
 
   namespace replication_node_manager
   {
-
-    void new_slave (int fd)
-    {
-      g_master_node->new_slave (fd);
-    }
-
-    void add_ctrl_chn (int fd)
-    {
-      g_master_node->add_ctrl_chn (fd);
-    }
-
-    void update_senders_min_position (const cubstream::stream_position &pos)
-    {
-      g_master_node->update_senders_min_position (pos);
-    }
-
-    int connect_to_master (const char *master_node_hostname, const int master_node_port_id)
-    {
-      return g_slave_node->connect_to_master (master_node_hostname,  master_node_port_id);
-    }
-
     void init (const char *name)
     {
       host_name = name;

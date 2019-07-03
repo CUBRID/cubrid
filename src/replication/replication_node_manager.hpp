@@ -43,14 +43,6 @@ namespace cubreplication
     void init (const char *name);
     void finalize ();
 
-    // master methods
-    void new_slave (int fd);
-    void add_ctrl_chn (int fd);
-    void update_senders_min_position (const cubstream::stream_position &pos);
-
-    // slave methods
-    int connect_to_master (const char *master_node_hostname, const int master_node_port_id);
-
     master_node *get_master_node ();
     slave_node *get_slave_node ();
 

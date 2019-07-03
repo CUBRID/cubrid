@@ -30,7 +30,9 @@
 #include "log_append.hpp"
 #include "multi_thread_stream.hpp"
 #include "replication_common.hpp"
+#include "replication_master_node.hpp"
 #include "replication_node_manager.hpp"
+#include "replication_slave_node.hpp"
 #include "session.h"
 #include "thread_entry_task.hpp"
 #include "thread_entry.hpp"
@@ -844,7 +846,7 @@ css_process_master_hostname ()
     " ha_Server_master_hostname:%s\n", css_Master_server_name, ha_Server_master_hostname);
 
   cubreplication::replication_node_manager::commute_to_slave_state ();
-  error = cubreplication::replication_node_manager::connect_to_master (ha_Server_master_hostname, css_Master_port_id);
+  error = cubreplication::replication_node_manager::get_slave_node ()->connect_to_master (ha_Server_master_hostname, css_Master_port_id);
   if (error != NO_ERROR)
     {
       return error;
@@ -2315,7 +2317,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	    }
           else if (state == HA_SERVER_STATE_STANDBY)
           {
-              cubreplication::replication_node_manager::commute_to_master_state ();	          
+              cubreplication::replication_node_manager::commute_to_slave_state ();	          
           }
           
           /* append a dummy log record for LFT to wake LWTs up */
@@ -2709,7 +2711,7 @@ css_process_new_slave (SOCKET master_fd)
   assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
 
   cubreplication::replication_node_manager::commute_to_master_state ();
-  cubreplication::replication_node_manager::new_slave (new_fd);
+  cubreplication::replication_node_manager::get_master_node ()->new_slave (new_fd);
 }
 
 static void
@@ -2732,7 +2734,7 @@ css_process_add_ctrl_chn (SOCKET master_fd)
 			    "add new control channel fd from master fd=%d, current_state=%d\n", new_fd,
 			    ha_Server_state);
 
-  cubreplication::replication_node_manager::add_ctrl_chn (new_fd);
+  cubreplication::replication_node_manager::get_master_node ()->add_ctrl_chn (new_fd);
 }
 
 const char *

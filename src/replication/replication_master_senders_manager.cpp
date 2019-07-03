@@ -24,6 +24,7 @@
 
 #include "replication_master_senders_manager.hpp"
 #include "replication_node_manager.hpp"
+#include "replication_master_node.hpp"
 
 #include <utility>
 #include "thread_manager.hpp"
@@ -207,7 +208,7 @@ namespace cubreplication
 	if (active_senders > 0)
 	  {
 	    cubreplication::replication_node_manager::commute_to_master_state ();
-	    cubreplication::replication_node_manager::update_senders_min_position (min_position_send);
+	    cubreplication::replication_node_manager::get_master_node ()->update_senders_min_position (min_position_send);
 	  }
       }
 
