@@ -766,14 +766,6 @@ css_process_change_server_ha_mode_request (SOCKET master_fd)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_FROM_SERVER, 1, "Cannot change server HA mode");
 	}
-      else
-	{
-	  if (state == HA_SERVER_STATE_ACTIVE)
-	    {
-	      cubreplication::replication_node_manager::enable_active ();
-	    }
-	  // todo: also ACTIVE -> TO_BE_ACTIVE (set from slave state to master state)
-	}
     }
   else
     {
@@ -851,6 +843,7 @@ css_process_master_hostname ()
   er_log_debug_replication (ARG_FILE_LINE, "css_process_master_hostname css_Master_server_name:%s,"
     " ha_Server_master_hostname:%s\n", css_Master_server_name, ha_Server_master_hostname);
 
+  cubreplication::replication_node_manager::commute_to_slave_state ();
   error = cubreplication::replication_node_manager::connect_to_master (ha_Server_master_hostname, css_Master_port_id);
   if (error != NO_ERROR)
     {
@@ -2312,14 +2305,20 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state:" " set force from %s to state %s\n",
 			css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (state));
 
-	  if (state == HA_SERVER_STATE_ACTIVE)
+	  ha_Server_state = state;
+
+          if (state == HA_SERVER_STATE_ACTIVE)
 	    {
 	      er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: logtb_enable_update()\n");
+              cubreplication::replication_node_manager::commute_to_master_state ();
 	      logtb_enable_update (thread_p);
 	    }
-
-	  ha_Server_state = state;
-	  /* append a dummy log record for LFT to wake LWTs up */
+          else if (state == HA_SERVER_STATE_STANDBY)
+          {
+              cubreplication::replication_node_manager::commute_to_master_state ();	          
+          }
+          
+          /* append a dummy log record for LFT to wake LWTs up */
 	  log_append_ha_server_state (thread_p, state);
 	  if (!HA_DISABLED ())
 	    {
@@ -2352,6 +2351,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
       if (state == HA_SERVER_STATE_ACTIVE)
 	{
 	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_enable_update() \n");
+          cubreplication::replication_node_manager::commute_to_master_state ();
 	  logtb_enable_update (thread_p);
 	}
       break;
@@ -2389,6 +2389,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
       if (state == HA_SERVER_STATE_STANDBY)
 	{
 	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_disable_update() \n");
+          cubreplication::replication_node_manager::commute_to_slave_state ();
 	  logtb_disable_update (thread_p);
 	}
       break;
@@ -2707,6 +2708,7 @@ css_process_new_slave (SOCKET master_fd)
 
   assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
 
+  cubreplication::replication_node_manager::commute_to_master_state ();
   cubreplication::replication_node_manager::new_slave (new_fd);
 }
 
