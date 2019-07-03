@@ -34,8 +34,6 @@
 
 namespace cubreplication
 {
-  std::mutex enable_active_mtx;
-
   master_node::master_node (const char *name, cubstream::multi_thread_stream *stream,
 			    cubstream::stream_file *stream_file)
     : replication_node (name)
