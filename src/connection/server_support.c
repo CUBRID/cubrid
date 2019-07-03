@@ -2709,6 +2709,7 @@ css_process_new_slave (SOCKET master_fd)
 
   assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
 
+  // todo: wait for ha_Server_state to become HA_SERVER_STATE_ACTIVE
   cubreplication::replication_node_manager::commute_to_master_state ();
   cubreplication::replication_node_manager::get_master_node ()->new_slave (new_fd);
 }

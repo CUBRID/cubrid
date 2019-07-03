@@ -37,12 +37,6 @@ namespace cubreplication
 
   }
 
-  int replication_node::apply_start_position (void)
-  {
-    /* TODO set m_start_position from recovery log ? */
-    return NO_ERROR;
-  }
-
   void replication_node::get_replication_file_path (std::string &path)
   {
     char buf_temp_path[PATH_MAX];

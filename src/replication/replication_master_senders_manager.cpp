@@ -207,7 +207,6 @@ namespace cubreplication
 
 	if (active_senders > 0)
 	  {
-	    cubreplication::replication_node_manager::commute_to_master_state ();
 	    cubreplication::replication_node_manager::get_master_node ()->update_senders_min_position (min_position_send);
 	  }
       }

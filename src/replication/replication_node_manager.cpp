@@ -99,11 +99,13 @@ namespace cubreplication
 
     master_node *get_master_node ()
     {
+      assert (g_master_node != NULL);
       return g_master_node;
     }
 
     slave_node *get_slave_node ()
     {
+      assert (g_slave_node != NULL);
       return g_slave_node;
     }
   }

@@ -44,7 +44,6 @@ namespace cubreplication
     , m_master_identity ("")
     , m_transfer_receiver (NULL)
   {
-    apply_start_position ();
     m_stream = stream;
     m_stream_file = stream_file;
 
