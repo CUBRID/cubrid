@@ -798,7 +798,7 @@ namespace cubstream
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 3, m_stream.name ().c_str (), curr_pos, 0);
 	    return err;
 	  }
-	m_notify_on_synced (to_be_synced);
+	m_sync_notifier (to_be_synced);
       }
 
 

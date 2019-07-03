@@ -92,8 +92,6 @@ namespace cubreplication
 
       cubthread::daemon *m_consumer_daemon;
 
-      std::function<void (cubstream::stream_position)> m_ack_producer;
-
       cubthread::daemon *m_dispatch_daemon;
 
       cubthread::entry_workpool *m_applier_workers_pool;
@@ -112,6 +110,9 @@ namespace cubreplication
     private:
 
     public:
+
+      std::function<void (cubstream::stream_position)> ack_produce;
+
       log_consumer () :
 	m_stream (NULL),
 	m_consumer_daemon (NULL),
@@ -121,7 +122,11 @@ namespace cubreplication
 	m_use_daemons (false),
 	m_started_tasks (0),
 	m_apply_task_ready (false),
-	m_is_stopped (false)
+	m_is_stopped (false),
+	ack_produce ([] (cubstream::stream_position)
+      {
+	assert (false);
+      })
       {
       };
 
@@ -151,14 +156,9 @@ namespace cubreplication
 	m_started_tasks--;
       }
 
-      std::function<void (cubstream::stream_position)> &get_ack_producer ()
-      {
-	return m_ack_producer;
-      }
-
       void set_ack_producer (const std::function<void (cubstream::stream_position)> &ack_producer)
       {
-	m_ack_producer = ack_producer;
+	ack_produce = ack_producer;
       }
 
       int get_started_task (void)

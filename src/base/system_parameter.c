@@ -5809,7 +5809,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_REPL_SEMISYNC_ACK_MODE,
    PRM_NAME_REPL_SEMISYNC_ACK_MODE,
-   (PRM_FOR_SERVER | PRM_HIDDEN),
+   (PRM_FOR_SERVER),
    PRM_KEYWORD,
    &prm_repl_semisync_ack_mode_flag,
    (void *) &prm_repl_semisync_ack_mode_default,
