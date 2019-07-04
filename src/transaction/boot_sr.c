@@ -2713,7 +2713,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   css_set_ha_num_of_hosts (db->num_hosts);
   /* set server's starting mode for HA according to the 'ha_mode' parameter */
   css_change_ha_server_state (thread_p, (HA_SERVER_STATE) prm_get_integer_value (PRM_ID_HA_SERVER_STATE), false,
-			      HA_CHANGE_MODE_IMMEDIATELY, true);
+			      HA_CHANGE_MODE_IMMEDIATELY, true, db_name);
 #endif
 
   /* initialize partitions cache */

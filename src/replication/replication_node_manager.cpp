@@ -31,45 +31,47 @@
 
 namespace cubreplication
 {
-  std::string host_name;
+  std::string g_hostname;
 
-  cubstream::multi_thread_stream *stream = NULL;
-  cubstream::stream_file *stream_file = NULL;
+  cubstream::multi_thread_stream *g_stream = NULL;
+  cubstream::stream_file *g_stream_file = NULL;
 
   cubreplication::master_node *g_master_node = NULL;
   cubreplication::slave_node *g_slave_node = NULL;
 
   namespace replication_node_manager
   {
-    void init (const char *name)
+    void init (const char *server_name)
     {
-      host_name = name;
+      g_hostname = server_name;
 
       INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_BUFFER_SIZE);
       int num_max_appenders = log_Gl.trantable.num_total_indices + 1;
-      stream = new cubstream::multi_thread_stream (buffer_size, num_max_appenders);
-      stream->set_name ("repl" + host_name);
-      stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
-      stream->init (0);
+      g_stream = new cubstream::multi_thread_stream (buffer_size, num_max_appenders);
+      g_stream->set_name ("repl" + g_hostname);
+      g_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
+      g_stream->init (0);
 
-      log_generator::set_global_stream (stream);
+      log_generator::set_global_stream (g_stream);
 
       std::string replication_path;
       replication_node::get_replication_file_path (replication_path);
-      stream_file = new cubstream::stream_file (*stream, replication_path);
+      g_stream_file = new cubstream::stream_file (*g_stream, replication_path);
     }
 
     void finalize ()
     {
+      g_hostname.clear ();
+
       delete g_slave_node;
       g_slave_node = NULL;
       delete g_master_node;
       g_master_node = NULL;
 
-      delete stream;
-      stream = NULL;
-      delete stream_file;
-      stream_file = NULL;
+      delete g_stream;
+      g_stream = NULL;
+      delete g_stream_file;
+      g_stream_file = NULL;
     }
 
     void commute_to_master_state ()
@@ -79,7 +81,7 @@ namespace cubreplication
 
       if (g_master_node == NULL)
 	{
-	  g_master_node = new master_node (host_name.c_str (), stream, stream_file);
+	  g_master_node = new master_node (g_hostname.c_str (), g_stream, g_stream_file);
 	}
     }
 
@@ -93,7 +95,7 @@ namespace cubreplication
 
       if (g_slave_node == NULL)
 	{
-	  g_slave_node = new cubreplication::slave_node (host_name.c_str (), stream, stream_file);
+	  g_slave_node = new cubreplication::slave_node (g_hostname.c_str (), g_stream, g_stream_file);
 	}
     }
 
