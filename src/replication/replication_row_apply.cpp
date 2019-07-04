@@ -269,6 +269,8 @@ namespace cubreplication
 	return error_code;
       }
 
+    // TODO: add early out for null pkey_btid?
+
     if (xbtree_find_unique (&thread_ref, &pkey_btid, op_type,
 			    const_cast<db_value *> (&key_value) /* todo: fix xbtree_find_unique signature */,
 			    &class_oid, &instance_oid, true) != BTREE_KEY_FOUND)

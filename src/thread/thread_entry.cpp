@@ -138,6 +138,8 @@ namespace cubthread
 		       PGBUF_TRACK_RES_NAME, PGBUF_TRACK_MAX_AMOUNT))
     , m_csect_tracker (*new cubsync::critical_section_tracker (ENABLE_TRACKERS))
     , m_systdes (NULL)
+    , m_session_p (NULL)
+    , m_session_id (DB_EMPTY_SESSION)
   {
     if (pthread_mutex_init (&tran_index_lock, NULL) != 0)
       {
@@ -209,6 +211,69 @@ namespace cubthread
     tran_entries[THREAD_TS_XCACHE] = lf_tran_request_entry (&xcache_Ts);
     tran_entries[THREAD_TS_FPCACHE] = lf_tran_request_entry (&fpcache_Ts);
     tran_entries[THREAD_TS_DWB_SLOTS] = lf_tran_request_entry (&dwb_slots_Ts);
+  }
+
+  void
+  entry::set_session (session_state *session_arg)
+  {
+#if defined (SERVER_MODE)
+    if (conn_entry != NULL)
+      {
+	conn_entry->set_session (session_arg);
+      }
+
+    m_session_p = session_arg;
+#else
+    assert (0);
+#endif /* SERVER_MODE */
+  }
+
+  void
+  entry::set_session_id (SESSION_ID id)
+  {
+#if defined (SERVER_MODE)
+    if (conn_entry != NULL)
+      {
+	conn_entry->set_session_id (id);
+      }
+
+    m_session_id = id;
+#else
+    assert (0);
+#endif /* SERVER_MODE */
+  }
+
+  session_state *
+  entry::get_session () const
+  {
+#if defined (SERVER_MODE)
+    if (conn_entry != NULL)
+      {
+	assert (m_session_p == NULL || m_session_p == conn_entry->get_session ());
+	return conn_entry->get_session ();
+      }
+    return m_session_p;
+#else
+    assert (0);
+    return NULL;
+#endif /* SERVER_MODE */
+  }
+
+  SESSION_ID
+  entry::get_session_id () const
+  {
+#if defined (SERVER_MODE)
+    if (conn_entry != NULL)
+      {
+	assert (m_session_id == DB_EMPTY_SESSION || m_session_id == conn_entry->get_session_id ());
+	return conn_entry->get_session_id ();
+      }
+
+    return m_session_id;
+#else
+    assert (0);
+    return DB_EMPTY_SESSION;
+#endif /* SERVER_MODE */
   }
 
   void
@@ -399,6 +464,13 @@ namespace cubthread
     tran_index = NULL_TRAN_INDEX;
   }
 
+  void
+  entry::clear_conn_session ()
+  {
+    conn_entry = NULL;
+    set_session (NULL);
+    set_session_id (DB_EMPTY_SESSION);
+  }
 } // namespace cubthread
 
 //////////////////////////////////////////////////////////////////////////

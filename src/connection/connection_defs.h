@@ -458,7 +458,6 @@ struct css_conn_entry
   CSS_LIST abort_queue;		/* list of aborted requests */
   CSS_LIST buffer_queue;	/* list of buffers queued for data */
   CSS_LIST error_queue;		/* list of (server) error messages */
-  struct session_state *session_p;	/* session object for current request */
 #else
   FILE *file;
   CSS_QUEUE_ENTRY *request_queue;	/* the header for unseen requests */
@@ -468,19 +467,33 @@ struct css_conn_entry
   CSS_QUEUE_ENTRY *error_queue;	/* queue of (server) error messages */
   void *cnxn;
 #endif
-  SESSION_ID session_id;
   CSS_CONN_ENTRY *next;
 
 #if defined __cplusplus
   // transaction ID manipulation
   void set_tran_index (int tran_index);
   int get_tran_index (void);
+  void set_session_id (SESSION_ID id);
+  SESSION_ID get_session_id () const;
+#if defined(SERVER_MODE)
+  void set_session (session_state * session_arg);
+  session_state *get_session (void) const;
+#endif				/* SERVER_MODE */
 
 private:
   // note - I want to protect this.
   int transaction_id;
+  SESSION_ID session_id;
+#if defined(SERVER_MODE)
+  session_state *session_p;	/* session object for current request */
+#endif				/* SERVER_MODE */
+
 #else				// not c++ = c
   int transaction_id;
+  SESSION_ID session_id;
+#if defined(SERVER_MODE)
+  struct session_state *session_p;	/* session object for current request */
+#endif				/* SERVER_MODE */
 #endif				// not c++ = c
 };
 

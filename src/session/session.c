@@ -141,6 +141,8 @@ struct session_state
   int ref_count;
   TZ_REGION session_tz_region;
   int private_lru_index;
+
+  SESSION_MODE mode;
 };
 
 /* session state manipulation functions */
@@ -200,7 +202,7 @@ static SESSION_QUERY_ENTRY *qentry_to_sentry (QMGR_QUERY_ENTRY * qentry_p);
 static int session_preserve_temporary_files (THREAD_ENTRY * thread_p, SESSION_QUERY_ENTRY * q_entry);
 static void sentry_to_qentry (const SESSION_QUERY_ENTRY * sentry_p, QMGR_QUERY_ENTRY * qentry_p);
 static void session_free_sentry_data (THREAD_ENTRY * thread_p, SESSION_QUERY_ENTRY * sentry_p);
-static void session_set_conn_entry_data (THREAD_ENTRY * thread_p, SESSION_STATE * session_p);
+static void session_set_session_data (THREAD_ENTRY * thread_p, SESSION_STATE * session_p);
 static SESSION_STATE *session_get_session_state (THREAD_ENTRY * thread_p);
 #if !defined (NDEBUG) && defined (SERVER_MODE)
 static int session_state_verify_ref_count (THREAD_ENTRY * thread_p, SESSION_STATE * session_p);
@@ -282,6 +284,8 @@ session_state_init (void *st)
   session_p->trace_format = QUERY_TRACE_TEXT;
   session_p->private_lru_index = -1;
   session_p->auto_commit = false;
+  session_p->mode = SESSION_WITH_CONNECTION;
+  tz_get_system_tz_region (&session_p->session_tz_region);
 
   return NO_ERROR;
 }
@@ -345,6 +349,7 @@ session_state_uninit (void *st)
 
   (void) pgbuf_release_private_lru (thread_p, session->private_lru_index);
   session->private_lru_index = -1;
+  session->mode = SESSION_WITH_CONNECTION;
 
 #if defined (SESSION_DEBUG)
   er_log_debug (ARG_FILE_LINE, "session_free_session closed %d queries for %d\n", cnt, session->id);
@@ -626,13 +631,14 @@ session_states_finalize (THREAD_ENTRY * thread_p)
  * session_state_create () - Create a sessions state with the specified id
  *   return: NO_ERROR or error code
  *   session_id (in) : the session id
+ *   mode (in): with or without an associated connection
  *
  * Note: This function creates and adds a sessions state object to the
  *       sessions state memory hash. This function should be called when a
  *	 session starts.
  */
 int
-session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
+session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id, const SESSION_MODE mode)
 {
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_SESSIONS);
   SESSION_STATE *session_p = NULL;
@@ -642,13 +648,16 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
   assert (id != NULL);
 
 #if defined (SERVER_MODE)
-  if (thread_p && thread_p->conn_entry && thread_p->conn_entry->session_p)
+  session_state *old_session = (thread_p != NULL) ? thread_p->get_session () : NULL;
+  if (old_session != NULL)
     {
-      SESSION_ID old_id = thread_p->conn_entry->session_id;
+      SESSION_ID old_id = thread_p->get_session_id ();
+
+      assert (mode != SESSION_WITHOUT_CONNECTION);
 
       /* session_check_session should clear session_p, right? add safe-guard if necessary. */
 
-      assert (thread_p->conn_entry->session_p->id == old_id);
+      assert (thread_p->get_session ()->id == old_id);
 
       ret = lf_hash_find (t_entry, &sessions.sessions_table, (void *) &old_id, (void **) &session_p);
       if (ret != NO_ERROR)
@@ -658,18 +667,18 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
 	}
       if (session_p == NULL)
 	{
-	  thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
-	  thread_p->conn_entry->session_p = NULL;
+	  thread_p->set_session_id (DB_EMPTY_SESSION);
+	  thread_p->set_session (NULL);
 	}
       else
 	{
-	  assert (session_p == thread_p->conn_entry->session_p);
+	  assert (session_p == thread_p->get_session ());
 
 #if !defined(NDEBUG)
 	  session_state_verify_ref_count (thread_p, session_p);
 #endif
-	  thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
-	  thread_p->conn_entry->session_p = NULL;
+	  thread_p->set_session_id (DB_EMPTY_SESSION);
+	  thread_p->set_session (NULL);
 	  session_state_decrease_ref_count (thread_p, session_p);
 
 	  logtb_set_current_user_active (thread_p, false);
@@ -701,6 +710,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
 
   /* initialize session active time */
   session_p->active_time = time (NULL);
+  session_p->mode = mode;
 
 #if defined (SERVER_MODE)
 #if !defined (NDEBUG)
@@ -711,7 +721,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
 
   session_p->private_lru_index = pgbuf_assign_private_lru (thread_p, false, (int) session_p->id);
   /* set as thread session */
-  session_set_conn_entry_data (thread_p, session_p);
+  session_set_session_data (thread_p, session_p);
 
   logtb_set_current_user_active (thread_p, true);
 #endif
@@ -772,11 +782,10 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
 #if defined (SERVER_MODE)
   assert (session_p->ref_count > 0);
 
-  if (thread_p != NULL && thread_p->conn_entry != NULL && thread_p->conn_entry->session_p != NULL
-      && thread_p->conn_entry->session_p == session_p)
+  if (thread_p != NULL && thread_p->get_session () != NULL && thread_p->get_session () == session_p)
     {
-      thread_p->conn_entry->session_p = NULL;
-      thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
+      thread_p->set_session (NULL);
+      thread_p->set_session_id (DB_EMPTY_SESSION);
 
       session_state_decrease_ref_count (thread_p, session_p);
     }
@@ -836,11 +845,11 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
 #endif /* SESSION_DEBUG */
 
 #if defined (SERVER_MODE)
-  if (thread_p && thread_p->conn_entry && thread_p->conn_entry->session_p)
+  if (thread_p && thread_p->get_session () != NULL)
     {
-      SESSION_ID old_id = thread_p->conn_entry->session_id;
+      SESSION_ID old_id = thread_p->get_session_id ();
 
-      assert (thread_p->conn_entry->session_p->id == old_id);
+      assert (thread_p->get_session ()->id == old_id);
 
       error = lf_hash_find (t_entry, &sessions.sessions_table, (void *) &old_id, (void **) &session_p);
       if (error != NO_ERROR)
@@ -852,19 +861,19 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
 	{
 	  /* the session in connection entry no longer exists... */
 	  /* todo: add safe guard if we cannot accept this case */
-	  thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
-	  thread_p->conn_entry->session_p = NULL;
+	  thread_p->set_session_id (DB_EMPTY_SESSION);
+	  thread_p->set_session (NULL);
 
 	  return ER_FAILED;
 	}
 
-      assert (session_p == thread_p->conn_entry->session_p);
+      assert (session_p == thread_p->get_session ());
 
 #if !defined(NDEBUG)
       session_state_verify_ref_count (thread_p, session_p);
 #endif
-      thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
-      thread_p->conn_entry->session_p = NULL;
+      thread_p->set_session_id (DB_EMPTY_SESSION);
+      thread_p->set_session (session_p);
       session_state_decrease_ref_count (thread_p, session_p);
 
       logtb_set_current_user_active (thread_p, false);
@@ -892,7 +901,7 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
 #endif
   /* increase reference count of new session_p */
   session_state_increase_ref_count (thread_p, session_p);
-  session_set_conn_entry_data (thread_p, session_p);
+  session_set_session_data (thread_p, session_p);
 
   logtb_set_current_user_active (thread_p, true);
 #endif
@@ -950,7 +959,8 @@ session_remove_expired_sessions (THREAD_ENTRY * thread_p)
 	      goto exit_on_end;
 	    }
 
-	  if (is_expired)
+	  /* TODO : implement a mechanism to expire sessions without connnection */
+	  if (state->mode != SESSION_WITHOUT_CONNECTION && is_expired)
 	    {
 	      expired_sid_buffer[n_expired_sids++] = state->id;
 	      if (n_expired_sids == EXPIRED_SESSION_BUFFER_SIZE)
@@ -1398,7 +1408,7 @@ session_get_session_id (THREAD_ENTRY * thread_p, SESSION_ID * id)
       return ER_FAILED;
     }
 
-  *id = thread_p->conn_entry->session_id;
+  *id = thread_p->conn_entry->get_session_id ();
 
   return NO_ERROR;
 #endif /* SERVER_MODE */
@@ -2718,15 +2728,14 @@ session_is_queryid_idle (THREAD_ENTRY * thread_p, const QUERY_ID query_id, QUERY
 }
 
 /*
- * session_set_conn_entry_data () - set references to session state objects
- *				    into the connection entry associated
- *				    with this thread
+ * session_set_session_data () - set references to session state objects into the thread entry
+ *
  * return : void
  * thread_p (in) : current thread
  * session_p (in) : session state object
  */
 static void
-session_set_conn_entry_data (THREAD_ENTRY * thread_p, SESSION_STATE * session_p)
+session_set_session_data (THREAD_ENTRY * thread_p, SESSION_STATE * session_p)
 {
 #if defined(SERVER_MODE)
   if (thread_p == NULL)
@@ -2738,12 +2747,9 @@ session_set_conn_entry_data (THREAD_ENTRY * thread_p, SESSION_STATE * session_p)
 	}
     }
 
-  if (thread_p->conn_entry != NULL)
-    {
-      /* If we have a connection entry associated with this thread, setup session data for this conn_entry */
-      thread_p->conn_entry->session_p = session_p;
-      thread_p->conn_entry->session_id = session_p->id;
-    }
+  thread_p->set_session (session_p);
+  thread_p->set_session_id (session_p->id);
+
   thread_p->private_lru_index = session_p->private_lru_index;
 #endif
 }
@@ -2757,19 +2763,16 @@ session_set_conn_entry_data (THREAD_ENTRY * thread_p, SESSION_STATE * session_p)
 SESSION_PARAM *
 session_get_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id)
 {
-  int i, count;
-  SESSION_STATE *session_p = NULL;
-
-  session_p = session_get_session_state (thread_p);
-  if (session_p == NULL)
+  SESSION_STATE *session_p = session_get_session_state (thread_p);
+  if (session_p == NULL || session_p->session_parameters == NULL)
     {
       return NULL;
     }
 
   assert (id <= PRM_LAST_ID);
 
-  count = sysprm_get_session_parameters_count ();
-  for (i = 0; i < count; i++)
+  int count = sysprm_get_session_parameters_count ();
+  for (int i = 0; i < count; ++i)
     {
       if (session_p->session_parameters[i].prm_id == id)
 	{
@@ -2795,9 +2798,10 @@ session_get_session_state (THREAD_ENTRY * thread_p)
     {
       thread_p = thread_get_thread_entry_info ();
     }
-  if (thread_p != NULL && thread_p->conn_entry != NULL && thread_p->conn_entry->session_p != NULL)
+
+  if (thread_p != NULL && thread_p->get_session () != NULL)
     {
-      return thread_p->conn_entry->session_p;
+      return thread_p->get_session ();
     }
   else
     {
@@ -3039,13 +3043,14 @@ session_state_verify_ref_count (THREAD_ENTRY * thread_p, SESSION_STATE * session
 
   for (conn = css_Active_conn_anchor; conn != NULL; conn = conn->next)
     {
-      if (session_p->id == conn->session_id)
+      if (session_p->id == conn->get_session_id ())
 	{
 	  ref_count++;
 	}
     }
 
-  if (ref_count != session_p->ref_count)
+  /* TODO : implement reference check when session is linked from thread only */
+  if (session_p->mode != SESSION_WITHOUT_CONNECTION && ref_count != session_p->ref_count)
     {
       END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
       assert (0);

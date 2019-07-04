@@ -303,9 +303,9 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->free_net_header_list = NULL;
   conn->free_net_header_count = 0;
 
-  conn->session_id = DB_EMPTY_SESSION;
+  conn->set_session_id (DB_EMPTY_SESSION);
 #if defined(SERVER_MODE)
-  conn->session_p = NULL;
+  conn->set_session (NULL);
   conn->client_type = BOOT_CLIENT_UNKNOWN;
 #endif
 
@@ -402,11 +402,11 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
     }
 
 #if defined(SERVER_MODE)
-  if (conn->session_p)
+  if (conn->get_session ())
     {
-      session_state_decrease_ref_count (NULL, conn->session_p);
-      conn->session_p = NULL;
-      conn->session_id = DB_EMPTY_SESSION;
+      session_state_decrease_ref_count (NULL, conn->get_session ());
+      conn->set_session (NULL);
+      conn->set_session_id (DB_EMPTY_SESSION);
     }
 #endif
 
@@ -1299,7 +1299,7 @@ css_get_session_ids_for_active_connections (SESSION_ID ** session_ids, int *coun
   for (conn = css_Active_conn_anchor; conn != NULL; conn = next)
     {
       next = conn->next;
-      sessions_p[i] = conn->session_id;
+      sessions_p[i] = conn->get_session_id ();
       i++;
     }
 
