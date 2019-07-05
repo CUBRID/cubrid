@@ -26,6 +26,7 @@
 #include "replication_master_node.hpp"
 
 #include <utility>
+#include "log_impl.h"
 #include "thread_manager.hpp"
 #include "thread_daemon.hpp"
 
@@ -73,6 +74,7 @@ namespace cubreplication
 
     rwlock_write_lock (&master_senders_lock);
     master_server_stream_senders.push_back (sender);
+    logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE);
     rwlock_write_unlock (&master_senders_lock);
   }
 
@@ -146,6 +148,7 @@ namespace cubreplication
     static unsigned int check_conn_delay_counter = 0;
     bool have_write_lock = false;
     int active_senders = 0;
+    bool senders_deleted = false;
     cubstream::stream_position min_position_send = std::numeric_limits<cubstream::stream_position>::max ();
 
     if (check_conn_delay_counter > SUPERVISOR_DAEMON_CHECK_CONN_MS / SUPERVISOR_DAEMON_DELAY_MS)
@@ -172,6 +175,7 @@ namespace cubreplication
 		  {
 		    it = master_server_stream_senders.erase (it);
 		    delete sender;
+		    senders_deleted = true;
 		  }
 	      }
 	    else
@@ -181,6 +185,11 @@ namespace cubreplication
 		active_senders++;
 		++it;
 	      }
+	  }
+
+	if (senders_deleted && active_senders == 0)
+	  {
+	    logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
 	  }
 
 	if (!have_write_lock)
