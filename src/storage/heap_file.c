@@ -25031,6 +25031,4 @@ heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * v
    return NO_ERROR;
 }
 
-static int
-heap_create_chain (THREAD_ENTRY * thread_p, std)
 // *INDENT-ON*
