@@ -24790,6 +24790,20 @@ heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID
       return error_code;
     }
 
+  // Safe-guards
+  assert (hfid != NULL);
+
+  // Check every page is allocated
+  for (size_t i = 0; i < array_size; i++)
+    {
+      error_code = pgbuf_is_valid_page (thread_p, &heap_pages_array[i], false, NULL, NULL);
+      if (error_code != NO_ERROR)
+        {
+          ASSERT_ERROR ();
+          return error_code;
+        }
+    }
+
   // Start a system operation since we write in multiple pages.
   log_sysop_start (thread_p);
 
@@ -24886,10 +24900,7 @@ heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID
                             &heap_hdr_prev, heap_hdr);
 
   // Set the page as dirty.
-  pgbuf_set_dirty (thread_p, heap_header_watcher.pgptr, DONT_FREE);
-
-   // Now we can commit the sysop.
-  log_sysop_commit (thread_p);
+  pgbuf_set_dirty (thread_p, heap_header_watcher.pgptr, DONT_FREE);  
 
 cleanup:
 
@@ -24898,17 +24909,30 @@ cleanup:
       pgbuf_ordered_unfix_and_init (thread_p, page_watcher.pgptr, &page_watcher);
     }
 
-   if (heap_last_page_watcher.pgptr)
+  if (heap_last_page_watcher.pgptr)
     {
       pgbuf_ordered_unfix_and_init (thread_p, heap_last_page_watcher.pgptr, &heap_last_page_watcher);
     }
 
-   if (heap_header_watcher.pgptr)
+  if (heap_header_watcher.pgptr)
     {
       pgbuf_ordered_unfix_and_init (thread_p, heap_header_watcher.pgptr, &heap_header_watcher);
     }
 
-   return error_code;
+  // Check if we have errors to abort the sysop.
+  if (error_code != NO_ERROR)
+    {
+      // Safeguard
+      ASSERT_ERROR ();
+      log_sysop_abort (thread_p);
+    }
+  else
+    {
+      // Commit the sysop
+      log_sysop_commit (thread_p);
+    }
+
+  return error_code;
 }
 
 static int
@@ -24955,10 +24979,6 @@ heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * v
   // Make sure we fixed the page.
   assert (pgbuf_is_page_fixed_by_thread (thread_p, (VPID *) vpid));
 
-  // Prepare logging
-  addr.vfid = &hfid->vfid;
-  addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
-
   // Prepare the chain.
   HEAP_CHAIN *chain, chain_prev;
 
@@ -24987,6 +25007,9 @@ heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * v
       VPID_COPY (&chain->next_vpid, next_link);
     }
 
+  // Prepare logging
+  addr.vfid = &hfid->vfid;
+  addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
   addr.pgptr = page_watcher->pgptr;
 
   // Log the changes.
@@ -25008,5 +25031,6 @@ heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * v
    return NO_ERROR;
 }
 
-
+static int
+heap_create_chain (THREAD_ENTRY * thread_p, std)
 // *INDENT-ON*
