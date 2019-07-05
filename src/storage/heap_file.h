@@ -670,10 +670,10 @@ extern int heap_get_hfid_from_vfid (THREAD_ENTRY * thread_p, const VFID * vfid, 
 extern int heap_scan_cache_allocate_area (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p, int size);
 extern bool heap_is_page_header (THREAD_ENTRY * thread_p, PAGE_PTR page);
 
- extern int heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, PGBUF_WATCHER * home_hint_p,
-				 VPID * new_page_vpid);
+extern int heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, PGBUF_WATCHER * home_hint_p,
+				VPID * new_page_vpid);
 
- extern int heap_nonheader_page_capacity ();
+extern int heap_nonheader_page_capacity ();
 
 // *INDENT-OFF*
 extern int heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID &class_oid,
