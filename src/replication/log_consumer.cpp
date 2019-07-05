@@ -185,15 +185,15 @@ namespace cubreplication
 	    /* TODO[replication] : on-the-fly applier & multi-threaded applier */
 	    if (se->is_group_commit ())
 	      {
-		// apply all sub-transaction first
-		m_lc.get_subtran_applier ().apply ();
-
 		assert (se->get_data_packed_size () == 0);
 
 		/* wait for all started tasks to finish */
 		er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task wait for all working tasks to finish\n");
 
 		m_lc.wait_for_tasks ();
+
+		// apply all sub-transaction first
+		m_lc.get_subtran_applier ().apply ();
 
 		for (tasks_map::iterator it = repl_tasks.begin ();
 		     it != repl_tasks.end ();
