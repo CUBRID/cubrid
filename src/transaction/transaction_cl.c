@@ -318,7 +318,7 @@ tran_commit (bool retain_lock)
   tran_free_oldest_system_savepoint ();
 #endif
 
-  if (!tran_was_latest_query_committed ())
+  if (!tran_was_latest_query_committed () && (db_Client_type != BOOT_CLIENT_DDL_PROXY))
     {
       /* Forward the commit the transaction manager in the server */
       state = tran_server_commit (retain_lock);
