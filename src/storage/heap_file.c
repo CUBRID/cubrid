@@ -882,8 +882,8 @@ static const cubmem::block_allocator HEAP_SCANCACHE_BLOCK_ALLOCATOR =
 
 static int heap_get_page_with_watcher (THREAD_ENTRY * thread_p, const VPID * page_vpid, PGBUF_WATCHER * pg_watcher);
 static int heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, const VPID * next_link,
-                                 const VPID * prev_link, PGBUF_WATCHER * page_watcher, bool keep_page_fixed,
-                                 bool is_page_watcher_inited);
+				 const VPID * prev_link, PGBUF_WATCHER * page_watcher, bool keep_page_fixed,
+				 bool is_page_watcher_inited);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
