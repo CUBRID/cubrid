@@ -7357,6 +7357,12 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, int tran_index,
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
   int rv;
 
+  if (thread_p->type == TT_REPL_SUBTRAN_APPLIER)
+    {
+      // hack to return true
+      return 1;
+    }
+
   if (oid == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2, "lock_has_lock_on_object", "NULL OID pointer");
