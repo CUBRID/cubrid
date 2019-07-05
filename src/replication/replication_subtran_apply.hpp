@@ -24,6 +24,7 @@
 #ifndef _REPLICATION_SUBTRAN_APPLY_HPP_
 #define _REPLICATION_SUBTRAN_APPLY_HPP_
 
+#include <condition_variable>
 #include <list>
 #include <mutex>
 
@@ -43,17 +44,19 @@ namespace cubreplication
       subtran_applier (log_consumer &lc);
 
       void insert_stream_entry (stream_entry *se);
+      void apply ();
 
     private:
       class task;
       friend class task;
 
-      task *alloc_task (stream_entry *se);
-      void finished_task (subtran_applier::task *task_arg);
+      void finished_task ();
 
       log_consumer &m_lc;
       std::mutex m_tasks_mutex;
-      std::list<task *> m_tasks;
+      std::condition_variable m_condvar;
+      bool m_waiting_for_tasks;
+      std::list<stream_entry *> m_stream_entries;
   };
 } // namespace cubreplication
 

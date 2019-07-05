@@ -185,6 +185,9 @@ namespace cubreplication
 	    /* TODO[replication] : on-the-fly applier & multi-threaded applier */
 	    if (se->is_group_commit ())
 	      {
+		// apply all sub-transaction first
+		m_lc.get_subtran_applier ().apply ();
+
 		assert (se->get_data_packed_size () == 0);
 
 		/* wait for all started tasks to finish */
@@ -233,7 +236,7 @@ namespace cubreplication
 	    else if (se->is_subtran_commit ())
 	      {
 		m_lc.get_subtran_applier ().insert_stream_entry (se);
-              }
+	      }
 	    else
 	      {
 		MVCCID mvccid = se->get_mvccid ();

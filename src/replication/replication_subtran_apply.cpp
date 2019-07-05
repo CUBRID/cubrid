@@ -36,13 +36,11 @@ namespace cubreplication
     public:
 
       task () = delete;
-      task (stream_entry *se, subtran_applier &subtx_apl);
-      ~task ();
+      task (subtran_applier &subtx_apl);
 
       void execute (cubthread::entry &thread_ref) final;
 
     private:
-      stream_entry *m_stream_entry;
       subtran_applier &m_subtran_applier;
   };
 
@@ -52,88 +50,89 @@ namespace cubreplication
   subtran_applier::subtran_applier (log_consumer &lc)
     : m_lc (lc)
     , m_tasks_mutex ()
-    , m_tasks ()
+    , m_stream_entries ()
   {
   }
 
   void
   subtran_applier::insert_stream_entry (stream_entry *se)
   {
-    task *new_task = alloc_task (se);
-
-    std::unique_lock<std::mutex> ulock (m_tasks_mutex);
-    if (m_tasks.empty ())
-      {
-	// no preceding tasks, can be pushed
-	m_lc.push_task (new_task);
-      }
-    m_tasks.push_back (new_task);
+    m_stream_entries.push_back (se);
   }
 
   void
-  subtran_applier::finished_task (subtran_applier::task *task_arg)
+  subtran_applier::apply ()
   {
-    std::unique_lock<std::mutex> ulock (m_tasks_mutex);
-    assert (!m_tasks.empty ());
-    assert (m_tasks.front () == task_arg);
-    m_tasks.pop_front ();
-
-    if (!m_tasks.empty ())
+    if (m_stream_entries.empty ())
       {
-	// push next task
-	m_lc.push_task (m_tasks.front ());
+	return;
       }
-    ulock.unlock ();
 
-    // notify consumer a task was finished
-    m_lc.end_one_task ();
+    std::unique_lock<std::mutex> ulock (m_tasks_mutex);
+    m_waiting_for_tasks = true;
+
+    m_lc.push_task (new task (*this));
+
+    m_condvar.wait (ulock, [this] { return !m_waiting_for_tasks; });
   }
 
-  subtran_applier::task *
-  subtran_applier::alloc_task (stream_entry *se)
+  void
+  subtran_applier::finished_task ()
   {
-    return new task (se, *this);
+    std::unique_lock<std::mutex> ulock (m_tasks_mutex);
+    m_waiting_for_tasks = false;
+    ulock.unlock ();
+    m_condvar.notify_all ();
   }
 
   //
   // subtran_apply_task
   //
-  subtran_applier::task::task (stream_entry *se, subtran_applier &subtx_apl)
-    : m_stream_entry (se)
-    , m_subtran_applier (subtx_apl)
+  subtran_applier::task::task (subtran_applier &subtx_apl)
+    : m_subtran_applier (subtx_apl)
   {
-  }
-
-  subtran_applier::task::~task ()
-  {
-    delete m_stream_entry;
   }
 
   void
   subtran_applier::task::execute (cubthread::entry &thread_ref)
   {
-    if (m_stream_entry->unpack () != NO_ERROR)
-      {
-	// can we accept this case?
-	assert (false);
-	return;
-      }
+    thread_type tt = thread_ref.type;
+    thread_ref.type = TT_REPL_SUBTRAN_APPLIER;
+    thread_ref.claim_system_worker ();
 
-    // object might be locked. we need a transaction
-    locator_repl_start_tran (&thread_ref);
-    log_sysop_start (&thread_ref);
-    for (size_t i = 0; i < m_stream_entry->get_packable_entry_count_from_header (); ++i)
+    for (stream_entry *se : m_subtran_applier.m_stream_entries)
       {
-	if (m_stream_entry->get_object_at (i)->apply () != NO_ERROR)
+	if (se->unpack () != NO_ERROR)
 	  {
-	    /* TODO[replication] : error handling */
 	    assert (false);
+	    break;
 	  }
-      }
-    log_sysop_commit_replicated (&thread_ref, m_stream_entry->get_stream_entry_start_position ());
-    locator_repl_end_tran (&thread_ref, true);
 
-    m_subtran_applier.finished_task (this);
+	log_sysop_start (&thread_ref);
+	// todo - what about sub-transaction MVCCID...
+
+	for (size_t i = 0; i < se->get_packable_entry_count_from_header (); ++i)
+	  {
+	    if (se->get_object_at (i)->apply () != NO_ERROR)
+	      {
+		/* TODO[replication] : error handling */
+		assert (false);
+	      }
+	  }
+
+	log_sysop_commit_replicated (&thread_ref, se->get_stream_entry_start_position ());
+      }
+    for (stream_entry *se : m_subtran_applier.m_stream_entries)
+      {
+	delete se;
+      }
+    m_subtran_applier.m_stream_entries.clear ();
+
+    // restore thread type
+    thread_ref.retire_system_worker ();
+    thread_ref.type = tt;
+
+    m_subtran_applier.finished_task ();
   }
 
 } // namespace cubreplication
