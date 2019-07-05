@@ -2258,16 +2258,10 @@ bool PRM_REPL_LOG_LOCAL_DEBUG = false;
 static bool prm_repl_log_local_debug_default = false;
 static unsigned int prm_repl_log_local_debug_flag = false;
 
-typedef enum
-{
-  REPL_SEMISYNC_ACK_ON_CONSUME,
-  REPL_SEMISYNC_ACK_ON_FLUSH
-} REPL_SEMISYNC_ACK_MODE;
-
-int PRM_REPL_SEMISYNC_ACK_MODE = REPL_SEMISYNC_ACK_ON_CONSUME;
-static int prm_repl_semisync_ack_mode_default = REPL_SEMISYNC_ACK_ON_CONSUME;
-static int prm_repl_semisync_ack_mode_lower = REPL_SEMISYNC_ACK_ON_CONSUME;
-static int prm_repl_semisync_ack_mode_upper = REPL_SEMISYNC_ACK_ON_FLUSH;
+int PRM_REPL_SEMISYNC_ACK_MODE = cubstream::REPL_SEMISYNC_ACK_ON_CONSUME;
+static int prm_repl_semisync_ack_mode_default = cubstream::REPL_SEMISYNC_ACK_ON_CONSUME;
+static int prm_repl_semisync_ack_mode_lower = cubstream::REPL_SEMISYNC_ACK_ON_CONSUME;
+static int prm_repl_semisync_ack_mode_upper = cubstream::REPL_SEMISYNC_ACK_ON_FLUSH;
 static unsigned int prm_repl_semisync_ack_mode_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
@@ -5994,8 +5988,8 @@ static KEYVAL ha_repl_filter_type_words[] = {
 };
 
 static KEYVAL ha_repl_semisync_ack_mode_words[] = {
-  {"on_consume", REPL_SEMISYNC_ACK_ON_CONSUME},
-  {"on_flush", REPL_SEMISYNC_ACK_ON_FLUSH}
+  {"on_consume", cubstream::REPL_SEMISYNC_ACK_ON_CONSUME},
+  {"on_flush", cubstream::REPL_SEMISYNC_ACK_ON_FLUSH}
 };
 
 static const char *compat_mode_values_PRM_ANSI_QUOTES[COMPAT_ORACLE + 2] = {

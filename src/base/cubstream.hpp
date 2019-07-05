@@ -33,7 +33,12 @@
 #include <functional>
 
 namespace cubstream
-{
+{  
+  typedef enum
+  {
+    REPL_SEMISYNC_ACK_ON_CONSUME,
+    REPL_SEMISYNC_ACK_ON_FLUSH
+  } REPL_SEMISYNC_ACK_MODE;
 
   typedef std::uint64_t stream_position;
 
