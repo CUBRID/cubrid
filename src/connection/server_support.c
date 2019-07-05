@@ -2267,7 +2267,7 @@ css_check_ha_log_applier_working (void)
  *   heartbeat(in): from heartbeat master
  */
 int
-css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool force, int timeout, bool heartbeat, const char * server_name)
+css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool force, int timeout, bool heartbeat)
 {
   HA_SERVER_STATE orig_state;
   int i;
@@ -2376,7 +2376,6 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	      state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
 	      assert (state == HA_SERVER_STATE_STANDBY);
 	    }
-	  cubreplication::replication_node_manager::init (server_name);
 	}
       else
 	{
