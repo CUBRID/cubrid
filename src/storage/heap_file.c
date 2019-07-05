@@ -885,6 +885,10 @@ static int heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, con
 				 const VPID * prev_link, PGBUF_WATCHER * page_watcher, bool keep_page_fixed,
 				 bool is_page_watcher_inited);
 
+static int heap_update_and_log_header (THREAD_ENTRY * thread_p, const HFID * hfid,
+				       const PGBUF_WATCHER heap_header_watcher, HEAP_HDR_STATS * heap_hdr,
+				       const VPID new_last_vpid, const int new_num_pages);
+
 /*
  * heap_hash_vpid () - Hash a page identifier
  *   return: hash value
@@ -24772,8 +24776,6 @@ heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID
   VPID heap_hdr_vpid;
   VPID heap_last_page_vpid;
   HEAP_HDR_STATS *heap_hdr = NULL;
-  LOG_DATA_ADDR addr;
-  HEAP_HDR_STATS heap_hdr_prev;
 
   VPID_SET_NULL (&null_vpid);
   VPID_SET_NULL (&heap_hdr_vpid);
@@ -24857,9 +24859,6 @@ heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID
       goto cleanup;
     }
 
-  // Save for logging.
-  heap_hdr_prev = *heap_hdr;
-
   // Get the last page of the heap.
   error_code = heap_get_last_page (thread_p, hfid, heap_hdr, NULL, &heap_last_page_vpid, &heap_last_page_watcher);
   if (error_code != NO_ERROR)
@@ -24888,21 +24887,27 @@ heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID
 
   // Now update the last page of the heap header.
 
-  heap_hdr->estimates.last_vpid = heap_pages_array[array_size - 1];
-  heap_hdr->estimates.num_pages += (int) array_size;
-
-  // Log this change.
-  addr.pgptr = heap_header_watcher.pgptr;
-  addr.vfid = &hfid->vfid;
-  addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
-
-  log_append_undoredo_data (thread_p, RVHF_STATS, &addr, sizeof(HEAP_HDR_STATS), sizeof (HEAP_HDR_STATS), 
-                            &heap_hdr_prev, heap_hdr);
-
-  // Set the page as dirty.
-  pgbuf_set_dirty (thread_p, heap_header_watcher.pgptr, DONT_FREE);  
+  error_code = heap_update_and_log_header (thread_p, hfid, heap_header_watcher, heap_hdr, heap_pages_array[array_size - 1],
+                                           array_size);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto cleanup;
+    }
 
 cleanup:
+  // Check if we have errors to abort the sysop.
+  if (error_code != NO_ERROR)
+    {
+      // Safeguard
+      ASSERT_ERROR ();
+      log_sysop_abort (thread_p);
+    }
+  else
+    {
+      // Commit the sysop
+      log_sysop_commit (thread_p);
+    }
 
    if (page_watcher.pgptr)
     {
@@ -24917,19 +24922,6 @@ cleanup:
   if (heap_header_watcher.pgptr)
     {
       pgbuf_ordered_unfix_and_init (thread_p, heap_header_watcher.pgptr, &heap_header_watcher);
-    }
-
-  // Check if we have errors to abort the sysop.
-  if (error_code != NO_ERROR)
-    {
-      // Safeguard
-      ASSERT_ERROR ();
-      log_sysop_abort (thread_p);
-    }
-  else
-    {
-      // Commit the sysop
-      log_sysop_commit (thread_p);
     }
 
   return error_code;
@@ -25029,6 +25021,38 @@ heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * v
     }
 
    return NO_ERROR;
+}
+
+static
+int heap_update_and_log_header (THREAD_ENTRY * thread_p, const HFID * hfid, const PGBUF_WATCHER heap_header_watcher,
+                                HEAP_HDR_STATS * heap_hdr, const VPID new_last_vpid, const int new_num_pages)
+{
+  int error_code = NO_ERROR;
+  HEAP_HDR_STATS heap_hdr_prev;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+  
+  assert (!PGBUF_IS_CLEAN_WATCHER (&heap_header_watcher));
+  assert (heap_hdr != NULL);
+
+  // Save for logging.
+  heap_hdr_prev = *heap_hdr;
+
+  // Now add the info to the header.
+  heap_hdr->estimates.last_vpid = new_last_vpid;
+  heap_hdr->estimates.num_pages += new_num_pages;
+
+  // Log this change.
+  addr.pgptr = heap_header_watcher.pgptr;
+  addr.vfid = &hfid->vfid;
+  addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
+
+  log_append_undoredo_data (thread_p, RVHF_STATS, &addr, sizeof(HEAP_HDR_STATS), sizeof (HEAP_HDR_STATS), 
+                            &heap_hdr_prev, heap_hdr);
+
+  // Set the page as dirty.
+  pgbuf_set_dirty (thread_p, heap_header_watcher.pgptr, DONT_FREE);
+
+  return NO_ERROR;
 }
 
 // *INDENT-ON*
