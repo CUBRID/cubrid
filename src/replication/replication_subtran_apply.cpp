@@ -74,6 +74,8 @@ namespace cubreplication
     m_lc.push_task (new task (*this));
 
     m_condvar.wait (ulock, [this] { return !m_waiting_for_tasks; });
+
+    m_lc.end_one_task ();
   }
 
   void
