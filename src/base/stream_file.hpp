@@ -117,9 +117,8 @@ namespace cubstream
       std::atomic<bool> m_notify_on_sync;
       std::queue<int> m_sync_seq_nrs;
       stream_position m_to_be_synced;
-      cubstream::stream::notify_send_stream_pos_func_t m_sync_notifier;
-
-      cubstream::stream::notify_func_t m_start_flush_handler;
+      stream::notify_send_stream_pos_func_t m_sync_notifier;
+      stream::notify_func_t m_start_flush_handler;
 
       cubthread::daemon *m_write_daemon;
       std::mutex m_flush_mutex;
@@ -152,6 +151,7 @@ namespace cubstream
       size_t read_buffer (const int vol_seqno, const size_t volume_offset, char *buf, const size_t amount);
       size_t write_buffer (const int vol_seqno, const size_t volume_offset, const char *buf, const size_t amount);
       int fsync_writes ();
+
     public:
       stream_file () = delete;
 
@@ -213,7 +213,7 @@ namespace cubstream
 	return m_append_position;
       }
 
-      void set_sync_notifier (const cubstream::stream::notify_send_stream_pos_func_t &sync_done_notify)
+      void set_sync_notifier (const stream::notify_send_stream_pos_func_t &sync_done_notify)
       {
 	m_sync_notifier = sync_done_notify;
 	m_notify_on_sync = true;

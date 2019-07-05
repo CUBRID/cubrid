@@ -55,7 +55,6 @@ namespace cubreplication
       cubthread::daemon *m_ctrl_sender_daemon;
       slave_control_sender *m_ctrl_sender;
 
-
       slave_node (const char *name)
 	: replication_node (name)
 	, m_lc (NULL)

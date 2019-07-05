@@ -84,6 +84,7 @@
 #include "tz_support.h"
 #include "perf_monitor.h"
 #include "fault_injection.h"
+#include "cubstream.hpp"
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
@@ -2256,6 +2257,12 @@ static unsigned int prm_repl_log_generator_flag = 0;
 bool PRM_REPL_LOG_LOCAL_DEBUG = false;
 static bool prm_repl_log_local_debug_default = false;
 static unsigned int prm_repl_log_local_debug_flag = false;
+
+typedef enum
+{
+  REPL_SEMISYNC_ACK_ON_CONSUME,
+  REPL_SEMISYNC_ACK_ON_FLUSH
+} REPL_SEMISYNC_ACK_MODE;
 
 int PRM_REPL_SEMISYNC_ACK_MODE = REPL_SEMISYNC_ACK_ON_CONSUME;
 static int prm_repl_semisync_ack_mode_default = REPL_SEMISYNC_ACK_ON_CONSUME;
@@ -5986,6 +5993,11 @@ static KEYVAL ha_repl_filter_type_words[] = {
   {"exclude_table", REPL_FILTER_EXCLUDE_TBL}
 };
 
+static KEYVAL ha_repl_semisync_ack_mode_words[] = {
+  {"on_consume", REPL_SEMISYNC_ACK_ON_CONSUME},
+  {"on_flush", REPL_SEMISYNC_ACK_ON_FLUSH}
+};
+
 static const char *compat_mode_values_PRM_ANSI_QUOTES[COMPAT_ORACLE + 2] = {
   NULL,				/* COMPAT_CUBRID */
   "no",				/* COMPAT_MYSQL */
@@ -7923,6 +7935,12 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 	  keyvalp =
 	    prm_keyword (PRM_GET_INT (prm->value), NULL, ha_repl_filter_type_words, DIM (ha_repl_filter_type_words));
 	}
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_REPL_SEMISYNC_ACK_MODE) == 0)
+	{
+	  keyvalp =
+	    prm_keyword (PRM_GET_INT (prm_value), NULL, ha_repl_semisync_ack_mode_words,
+			 DIM (ha_repl_semisync_ack_mode_words));
+	}
       else
 	{
 	  assert (false);
@@ -8218,6 +8236,10 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_
       else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_REPL_FILTER_TYPE) == 0)
 	{
 	  keyvalp = prm_keyword (value.i, NULL, ha_repl_filter_type_words, DIM (ha_repl_filter_type_words));
+	}
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_REPL_SEMISYNC_ACK_MODE) == 0)
+	{
+	  keyvalp = prm_keyword (value.i, NULL, ha_repl_semisync_ack_mode_words, DIM (ha_repl_semisync_ack_mode_words));
 	}
       else
 	{
@@ -9421,6 +9443,10 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 	else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_REPL_FILTER_TYPE) == 0)
 	  {
 	    keyvalp = prm_keyword (-1, value, ha_repl_filter_type_words, DIM (ha_repl_filter_type_words));
+	  }
+	else if (intl_mbs_casecmp (prm->name, PRM_NAME_REPL_SEMISYNC_ACK_MODE) == 0)
+	  {
+	    keyvalp = prm_keyword (-1, value, ha_repl_semisync_ack_mode_words, DIM (ha_repl_semisync_ack_mode_words));
 	  }
 	else
 	  {
