@@ -54,13 +54,6 @@ namespace cubreplication
 
   void master_node::new_slave (int fd)
   {
-    if (css_ha_server_state () != HA_SERVER_STATE_ACTIVE)
-      {
-	er_log_debug_replication (ARG_FILE_LINE, "new_slave invalid server state :%s",
-				  css_ha_server_state_string (css_ha_server_state ()));
-	return;
-      }
-
     cubcomm::channel chn;
 
     css_error_code rc = chn.accept (fd);
@@ -73,13 +66,6 @@ namespace cubreplication
 
   void master_node::add_ctrl_chn (int fd)
   {
-    if (css_ha_server_state () != HA_SERVER_STATE_ACTIVE)
-      {
-	er_log_debug_replication (ARG_FILE_LINE, "add_ctrl_chn invalid server state :%s",
-				  css_ha_server_state_string (css_ha_server_state ()));
-	return;
-      }
-
     cubcomm::channel chn;
 
     css_error_code rc = chn.accept (fd);
