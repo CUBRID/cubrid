@@ -2278,9 +2278,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 
   assert (state >= HA_SERVER_STATE_IDLE && state <= HA_SERVER_STATE_DEAD);
 
-  if (state == ha_Server_state
-      || (!force && ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE && state == HA_SERVER_STATE_ACTIVE)
-      || (!force && ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY && state == HA_SERVER_STATE_STANDBY))
+  if (state == ha_Server_state)      
     {
       return NO_ERROR;
     }
@@ -2724,8 +2722,6 @@ css_process_add_ctrl_chn (SOCKET master_fd)
 {
   SOCKET new_fd;
   unsigned short rid;
-
-  assert (ha_Server_state == HA_SERVER_STATE_ACTIVE);
 
   /* receive new socket descriptor from the master */
   new_fd = css_open_new_socket_from_master (master_fd, &rid);
