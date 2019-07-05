@@ -249,6 +249,18 @@ namespace cubreplication
   }
 
   void
+  log_generator::add_create_savepoint (const char *savept_name)
+  {
+    append_repl_object (* (new savepoint_object (savept_name, savepoint_object::CREATE_SAVEPOINT)));
+  }
+
+  void
+  log_generator::add_rollback_to_savepoint (const char *savept_name)
+  {
+    append_repl_object (* (new savepoint_object (savept_name, savepoint_object::ROLLBACK_TO_SAVEPOINT)));
+  }
+
+  void
   log_generator::update_lsastamp_for_changed_repl_object (const OID &inst_oid)
   {
     if (is_row_replication_disabled ())
