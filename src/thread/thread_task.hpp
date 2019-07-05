@@ -87,26 +87,13 @@ namespace cubthread
 
       callable_task () = delete;
 
+      // constructor with default retire (delete/do nothing)
       template <typename F>
-      callable_task (F f, bool delete_on_retire = true)
-	: m_exec_f (f)
-      {
-	if (delete_on_retire)
-	  {
-	    m_retire_f = [this] { delete this; };
-	  }
-	else
-	  {
-	    m_retire_f = [] {};  // do nothing
-	  }
-      }
+      callable_task (F f, bool delete_on_retire = true);
 
+      // constructor with custom retire
       template <typename FuncExec, typename FuncRetire>
-      callable_task (FuncExec fe, FuncRetire fr)
-	: m_exec_f (fe)
-	, m_retire_f (fr)
-      {
-      }
+      callable_task (FuncExec fe, FuncRetire fr);
 
       void execute (context_type &ctx) final
       {
@@ -146,26 +133,13 @@ namespace cubthread
 
       callable_task () = delete;
 
+      // constructor with default retire (delete/do nothing)
       template <typename F>
-      callable_task (F f, bool delete_on_retire = true)
-	: m_exec_f (f)
-      {
-	if (delete_on_retire)
-	  {
-	    m_retire_f = [this] { delete this; };
-	  }
-	else
-	  {
-	    m_retire_f = [] {};  // do nothing
-	  }
-      }
+      callable_task (F f, bool delete_on_retire = true);
 
+      // constructor with custom retire
       template <typename FuncExec, typename FuncRetire>
-      callable_task (FuncExec fe, FuncRetire fr)
-	: m_exec_f (fe)
-	, m_retire_f (fr)
-      {
-      }
+      callable_task (FuncExec fe, FuncRetire fr);
 
       void execute () final
       {
@@ -239,5 +213,57 @@ namespace cubthread
   };
 
 } // namespace cubthread
+
+//////////////////////////////////////////////////////////////////////////
+// Implementation
+//////////////////////////////////////////////////////////////////////////
+
+namespace cubthread
+{
+  template<typename Context>
+  template<typename F>
+  callable_task<Context>::callable_task (F f, bool delete_on_retire)
+    : m_exec_f (f)
+  {
+    if (delete_on_retire)
+      {
+	m_retire_f = [this] { delete this; };
+      }
+    else
+      {
+	m_retire_f = [] {};  // do nothing
+      }
+  }
+
+  template<typename Context>
+  template<typename FuncExec, typename FuncRetire>
+  callable_task<Context>::callable_task (FuncExec fe, FuncRetire fr)
+    : m_exec_f (fe)
+    , m_retire_f (fr)
+  {
+  }
+
+  template<typename F>
+  callable_task<void>::callable_task (F f, bool delete_on_retire)
+    : m_exec_f (f)
+  {
+    if (delete_on_retire)
+      {
+	m_retire_f = [this] { delete this; };
+      }
+    else
+      {
+	m_retire_f = [] {};  // do nothing
+      }
+  }
+
+  template<typename FuncExec, typename FuncRetire>
+  callable_task<void>::callable_task (FuncExec fe, FuncRetire fr)
+    : m_exec_f (fe)
+    , m_retire_f (fr)
+  {
+  }
+} // namespace cubthread
+
 
 #endif // _THREAD_TASK_HPP_
