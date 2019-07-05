@@ -27,6 +27,7 @@
 
 #include "heap_file.h"
 #include "locator_sr.h"
+#include "log_manager.h"
 #include "mem_block.hpp"
 #include "memory_alloc.h"
 #include "object_primitive.h"
@@ -853,6 +854,79 @@ namespace cubreplication
 
     m_rec_des_list.push_back (std::move (record));
     m_data_size += rec_size;
+  }
+
+  savepoint_object::savepoint_object (const char *savepoint_name, event_type event)
+    : m_savepoint_name (savepoint_name)
+    , m_event (event)
+  {
+  }
+
+  int
+  savepoint_object::apply ()
+  {
+    cubthread::entry &thread_ref = cubthread::get_entry ();
+    if (m_event == CREATE_SAVEPOINT)
+      {
+	if (log_append_savepoint (&thread_ref, m_savepoint_name.c_str ()) == NULL)
+	  {
+	    assert (false);
+	    return ER_FAILED;
+	  }
+      }
+    else
+      {
+	LOG_LSA savept_lsa;
+	if (log_abort_partial (&thread_ref, m_savepoint_name.c_str (), &savept_lsa) != TRAN_UNACTIVE_ABORTED)
+	  {
+	    assert (false);
+	    return ER_FAILED;
+	  }
+      }
+    return NO_ERROR;
+  }
+
+  void
+  savepoint_object::stringify (string_buffer &str)
+  {
+    if (m_event == CREATE_SAVEPOINT)
+      {
+	str ("create ");
+      }
+    else
+      {
+	str ("rollback to ");
+      }
+    str ("savepoint ");
+    str (m_savepoint_name.c_str ());
+  }
+
+  void
+  savepoint_object::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_int (PACKING_ID);
+    serializator.pack_string (m_savepoint_name);
+    serializator.pack_to_int (m_event);
+  }
+
+  void
+  savepoint_object::unpack (cubpacking::unpacker &deserializator)
+  {
+    int check_id;
+    deserializator.unpack_int (check_id);
+    assert (check_id == PACKING_ID);
+    deserializator.unpack_string (m_savepoint_name);
+    deserializator.unpack_from_int (m_event);
+  }
+
+  std::size_t
+  savepoint_object::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    size_t size = 0;
+    size += serializator.get_packed_int_size (start_offset + size);
+    size += serializator.get_packed_string_size (m_savepoint_name, start_offset + size);
+    size += serializator.get_packed_int_size (start_offset + size);
+    return size;
   }
 
 } /* namespace cubreplication */

@@ -271,6 +271,33 @@ namespace cubreplication
       std::size_t m_data_size;
   };
 
+  class savepoint_object : public replication_object
+  {
+    public:
+      static const int PACKING_ID = 7;
+
+      enum event_type
+      {
+	CREATE_SAVEPOINT,
+	ROLLBACK_TO_SAVEPOINT
+      };
+
+      savepoint_object () = default;
+      savepoint_object (const char *savepoint_name, event_type event);
+      ~savepoint_object () = default;
+
+      int apply () override;
+      void stringify (string_buffer &str) final;
+
+      void pack (cubpacking::packer &serializator) const final;
+      void unpack (cubpacking::unpacker &deserializator) final;
+      std::size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const final;
+
+    private:
+      std::string m_savepoint_name;
+      event_type m_event;
+  };
+
 } /* namespace cubreplication */
 
 #endif /* _REPLICATION_OBJECT_HPP_ */
