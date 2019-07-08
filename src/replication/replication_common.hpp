@@ -29,4 +29,13 @@
 #include "error_manager.h"
 #define er_log_debug_replication(...) if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA)) _er_log_debug(__VA_ARGS__)
 
+namespace cubreplication
+{
+  typedef enum
+  {
+    REPL_SEMISYNC_ACK_ON_CONSUME,
+    REPL_SEMISYNC_ACK_ON_FLUSH
+  } REPL_SEMISYNC_ACK_MODE;
+};
+
 #endif /* _REPLICATION_COMMON_HPP_ */

@@ -84,7 +84,7 @@
 #include "tz_support.h"
 #include "perf_monitor.h"
 #include "fault_injection.h"
-#include "cubstream.hpp"
+#include "replication_common.hpp"
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
@@ -672,7 +672,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_REPL_LOG_GENERATOR_LOGGING "replication_log_generator_logging"
 #define PRM_NAME_REPL_LOG_LOCAL_DEBUG "replication_log_local_debug"
 
-#define PRM_NAME_REPL_SEMISYNC_ACK_MODE "replication_semisync_ack_mode"
+#define PRM_NAME_REPL_SEMISYNC_ACK_MODE "semisync_replication_ack_mode"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2259,10 +2259,10 @@ static bool prm_repl_log_local_debug_default = false;
 static unsigned int prm_repl_log_local_debug_flag = false;
 
 /* *INDENT-OFF* */
-int PRM_REPL_SEMISYNC_ACK_MODE = cubstream::REPL_SEMISYNC_ACK_ON_CONSUME;
-static int prm_repl_semisync_ack_mode_default = cubstream::REPL_SEMISYNC_ACK_ON_CONSUME;
-static int prm_repl_semisync_ack_mode_lower = cubstream::REPL_SEMISYNC_ACK_ON_CONSUME;
-static int prm_repl_semisync_ack_mode_upper = cubstream::REPL_SEMISYNC_ACK_ON_FLUSH;
+int PRM_REPL_SEMISYNC_ACK_MODE = cubreplication::REPL_SEMISYNC_ACK_ON_CONSUME;
+static int prm_repl_semisync_ack_mode_default = cubreplication::REPL_SEMISYNC_ACK_ON_CONSUME;
+static int prm_repl_semisync_ack_mode_lower = cubreplication::REPL_SEMISYNC_ACK_ON_CONSUME;
+static int prm_repl_semisync_ack_mode_upper = cubreplication::REPL_SEMISYNC_ACK_ON_FLUSH;
 static unsigned int prm_repl_semisync_ack_mode_flag = 0;
 /* *INDENT-ON* */
 
@@ -5991,8 +5991,8 @@ static KEYVAL ha_repl_filter_type_words[] = {
 
 /* *INDENT-OFF* */
 static KEYVAL ha_repl_semisync_ack_mode_words[] = {
-  {"on_consume", cubstream::REPL_SEMISYNC_ACK_ON_CONSUME},
-  {"on_flush", cubstream::REPL_SEMISYNC_ACK_ON_FLUSH}
+  {"on_receive", cubreplication::REPL_SEMISYNC_ACK_ON_CONSUME},
+  {"on_flush", cubreplication::REPL_SEMISYNC_ACK_ON_FLUSH}
 };
 /* *INDENT-ON* */
 
