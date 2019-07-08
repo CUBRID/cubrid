@@ -13719,7 +13719,6 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
   std::vector<RECDES> recdes_array;
   std::vector<VPID> heap_pages_array;
 
-
   // Early-out
   if (recdes.size () == 0)
     {
@@ -13811,7 +13810,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
     }
 
   // Now form a heap chain with the pages and add the chain to the current heap.
-  error_code = heap_append_pages_to_heap (thread_p, hfid, (const OID &) class_oid, heap_pages_array);
+  error_code = heap_append_pages_to_heap (thread_p, hfid, *class_oid, heap_pages_array);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

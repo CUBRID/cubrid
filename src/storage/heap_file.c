@@ -24969,7 +24969,7 @@ heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * v
     }
 
   // Make sure we fixed the page.
-  assert (pgbuf_is_page_fixed_by_thread (thread_p, (VPID *) vpid));
+  assert (pgbuf_is_page_fixed_by_thread (thread_p, vpid));
 
   // Prepare the chain.
   HEAP_CHAIN *chain, chain_prev;
