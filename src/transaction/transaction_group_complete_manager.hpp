@@ -101,10 +101,11 @@ namespace cubtx
       const tx_group &get_current_group ();
       int get_current_group_min_transactions ();
 
+      bool is_group_completed (id_type group_id);
+
     private:
       bool is_group_mvcc_completed (id_type group_id);
       bool is_group_logged (id_type group_id);
-      bool is_group_completed (id_type group_id);
 
       void notify_all ();
 

@@ -87,7 +87,7 @@ namespace cubtx
     if (get_current_group ().get_container ().size () >= count_min_group_transactions)
       {
 	gl_slave_group_complete_daemon->wakeup ();
-      }
+  }
   }
 
   //
@@ -106,6 +106,16 @@ namespace cubtx
     if (m_has_latest_group_close_info == false)
       {
 	/* Can't close yet the current group. */
+        if (!is_current_group_empty () && is_group_completed (m_latest_group_id))
+        {
+          /* Something wrong happens. The latest group was closed, but, we have a transaction
+           * waiting for another group. Forces a group complete to not stuck the system.
+           */
+          _er_log_debug (ARG_FILE_LINE, "can_close_current_group: wrong transaction waiting beyond the latest group id (%llu)",
+            m_latest_group_id);
+          return true;
+        }
+
 	return false;
       }
 
@@ -216,6 +226,7 @@ namespace cubtx
     m_has_latest_group_close_info = true;
     if (has_group_enough_transactions)
       {
+        /* Wakeup group complete thread, since we have all informations that allows group close. */
 	gl_slave_group_complete_daemon->wakeup ();
       }
   }

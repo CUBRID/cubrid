@@ -113,6 +113,7 @@ namespace cubreplication
 	  }
 
 	(void) locator_repl_end_tran (&thread_ref, true);
+	m_lc.end_one_task ();
       }
 
       void add_repl_stream_entry (stream_entry *repl_stream_entry)
@@ -193,6 +194,10 @@ namespace cubreplication
 
 		m_prev_group_stream_position = m_curr_group_stream_position;
 		m_curr_group_stream_position = se->get_stream_entry_start_position ();
+
+		// Noramlly, is enough to wait for group to complete. However, for safety reason, it is better to
+		// start wait for workers first, then wait for complete manager.
+		m_lc.wait_for_tasks ();
 
 		// We need to wait for previous group to complete. Otherwise, we mix transactions from previous and
 		// current groups.
@@ -280,12 +285,12 @@ namespace cubreplication
 
 		/* stream entry is deleted by applier task thread */
 	      }
-            else
-              {
-                /* Skip entry without data, to avoid commit issues. Readers do not wait for group complete. */
-                assert (se->get_packable_entry_count_from_header () == 0);
-                delete se;
-              }
+	    else
+	      {
+		/* Skip entry without data, to avoid commit issues. Readers do not wait for group complete. */
+		assert (se->get_packable_entry_count_from_header () == 0);
+		delete se;
+	      }
 	  }
       }
 
@@ -394,6 +399,20 @@ namespace cubreplication
       }
 
     cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
+
+    m_started_tasks++;
+  }
+
+  void log_consumer::wait_for_tasks ()
+  {
+    /* First, check without mutex. */
+    if (m_started_tasks == 0)
+      {
+	return;
+      }
+
+    std::unique_lock<std::mutex> ulock (m_join_tasks_mutex);
+    m_join_tasks_cv.wait (ulock, [this] {return m_started_tasks == 0;});
   }
 
   void log_consumer::set_stop (void)

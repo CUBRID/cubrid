@@ -52,7 +52,7 @@ namespace cubreplication
    * it should be created only as a global instance
    */
   class stream_entry;
-  class applier_worker_task;  
+  class applier_worker_task;
 
   /*
    * log_consumer : class intended as singleton for slave server
@@ -103,6 +103,10 @@ namespace cubreplication
 
       bool m_use_daemons;
 
+      std::atomic<int> m_started_tasks;
+      std::mutex m_join_tasks_mutex;
+      std::condition_variable m_join_tasks_cv;
+
       std::condition_variable m_apply_task_cv;
       bool m_apply_task_ready;
 
@@ -119,6 +123,7 @@ namespace cubreplication
 	m_applier_workers_pool (NULL),
 	m_applier_worker_threads_count (100),
 	m_use_daemons (false),
+	m_started_tasks (0),
 	m_apply_task_ready (false),
 	m_is_stopped (false)
       {
@@ -145,6 +150,19 @@ namespace cubreplication
 	return m_stream;
       }
 
+      void end_one_task (void)
+      {
+	int started_task;
+	started_task = --m_started_tasks;
+
+	if (started_task == 0)
+	  {
+	    /* Notify all. Currently, there  is only one waiter, but may be added others, later. */
+	    std::unique_lock<std::mutex> ulock (m_join_tasks_mutex);
+	    m_join_tasks_cv.notify_all ();
+	  }
+      }
+
       slave_control_channel *get_ctrl_chn ()
       {
 	return m_ctrl_chn.get ();
@@ -158,6 +176,8 @@ namespace cubreplication
       {
 	return m_is_stopped;
       }
+
+      void wait_for_tasks ();
 
       void set_stop (void);
   };
