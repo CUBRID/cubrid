@@ -792,6 +792,7 @@ namespace cubstream
     cubstream::stream_position to_be_synced = m_to_be_synced;
     if (m_notify_on_sync && curr_pos >= to_be_synced)
       {
+	er_log_debug (ARG_FILE_LINE, "curr pos: %llu, to_be_synced: %llu\n ", curr_pos, to_be_synced);
 	if (fsync_writes () != NO_ERROR)
 	  {
 	    err = ER_STREAM_FILE_INVALID_WRITE;

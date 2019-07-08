@@ -159,6 +159,7 @@ namespace cubstream
 		   const size_t file_size = DEFAULT_VOLUME_SIZE, const int print_digits = DEFAULT_FILENAME_DIGITS)
 	: m_stream (stream_arg)
 	, m_notify_on_sync (false)
+	, m_to_be_synced (std::numeric_limits<stream_position>::min ())
       {
 	init (path, 0, file_size, print_digits);
       };
