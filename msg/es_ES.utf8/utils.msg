@@ -1,18 +1,18 @@
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
 $
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
+$   This program is free software; you can redistribute it and/or modify
+$   it under the terms of the GNU General Public License as published by
 $   the Free Software Foundation; either version 2 of the License, or
 $   (at your option) any later version.
 $
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
+$  This program is distributed in the hope that it will be useful,
+$  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+$  GNU General Public License for more details.
 $
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
+$  You should have received a copy of the GNU General Public License
+$  along with this program; if not, write to the Free Software
 $  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 $
 
@@ -422,31 +422,36 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Instancia %1$d de la clase %2$s ha sido ya definida\n
 46 Instancia %1$d de la clase %2$s ha sido ya reservada\n
 47 Violacion UNIQUE en atributo '%1$s', convertida en NULL\n
-48 %1$d instancias\n
+48 %1$s %2$d instancias\n
 49 Clase %1$s\n
 50 Contrasena:
 51 \n*** Actualizando estadisticas de clase ***\n
 52 %1$s cerca de la linea %2$d (texto era '%3$s')\n
-53 Error lexical
+53 Error lexical\n
 54 linea %1$d: error de sintaxis en \"%2$s\"
 55 faltando
 56 en %1$s
 57 Argumentos incompatibles, \"%1$s\", y \"%2$s\"\n
-58 %1$d instancias cometidas\n
+58 %1$s %2$d instancias cometidas\n
 59 No se pueden apelar versiones no-optimizadas de loaddb.\n
 60 Error al analizar \"%1$s\", como tipo %2$s.\n
+61 Object Reference is not supported in CS mode.\n
+62 Updated statistics for class %1$s.\n
 112 %1$d instancias\r
-113 Ultima linea cometida: %1$d
+113 Ultima linea cometida: %1$d\n
 114 error-control-file
 115 archivo de entrada para controlar error(es) al cargar
 116 Total %8d object(s) inserted, %d object(s) failed.\n
 117 Carga fallida.\n
 118 La longitud máxima del nombre de la clase es %1$d bytes.\n
+119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
 120 \
 loaddb: Importar objetos y esquemas en la base de datos.\n\
-uso: %1$s loaddb [OPTION] database-name\n\
+uso: %1$s loaddb [OPTION] database-name[@host]\n\
 \n\
 opciones validas:\n\
+  -S, --SA-mode                 modo de ejecucion independiente\n\
+  -C, --CS-mode                 modo de ejecucion cliente-servidor\n\
   -u, --user=ID                 ID de utilizador para acceso a la base de datos; estandar: "public"\n\
   -p, --password=PASS           contrasena de utilizador; estandar: ninguna\n\
       --data-file-check-only    verificar sintaxis para archivo de datos sin cargar; estandar: cargar despues de verificar\n\
@@ -459,6 +464,8 @@ opciones validas:\n\
   -s, --schema-file=FILE[:LINE] crear esquema de la LINEA con ARCHIVO\n\
   -i, --index-file=FILE[:LINE]  crear indice de la LINEA CON ARCHIVO\n\
   -d, --data-file=FILE          cargar datos con ARCHIVO\n\
+      --server-data-file=FILE   load data with FILE on server,\n\
+                                absolute path must be provided and the file must exist on server file system\n\
   -t, --table=TABLE             nombre de tabla que es sustituido por falta de encabezamiento de clase en archivo de datos\n\
       --error-control-file=FILE ARCHIVO para controlar error(es) al cargar\n\
       --ignore-class-file=FILE  archivo de entrada de nombres de clase que saltan carga\n
@@ -852,7 +859,7 @@ uso: %1$s plandump [OPTION] database-name\n\
 \n\
 opciones validas:\n\
   -d, --drop                   soltar todos planes en la memoria cache del servidor\n\
-  -o, --output-file=FILE       redireccionar mensajes de salida al ARCHIVO; estandar: ninguno\n  
+  -o, --output-file=FILE       redireccionar mensajes de salida al ARCHIVO; estandar: ninguno\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 No se puede abrir archivo de salida '%1$s'\n
@@ -903,7 +910,7 @@ opciones validas: \n\
   -L, --log-path=PATH         RUTA de directorio para los volumenes de registro copiadas\n\
   -m, --mode=MODE             modo de operacion; estandar: sync\n\
                               MODO: sync o semisync o async\n\
-  -S, --start-page-id=ID      first log page to copy\n 
+  -S, --start-page-id=ID      first log page to copy\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 Introducir contrasena DBA:
@@ -1033,7 +1040,7 @@ opciones validas:\n\
   -f, --force-only    Actualiza las colaciones en la base de datos para que sean iguales con las colaciones de la nueva configuracion del sistema.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 Introducir %1$s clave: 
+20 Introducir %1$s clave:
 22 Tran index          User name      Host name      Process id      Program name\n
 23 -------------------------------------------------------------------------------\n
 24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n

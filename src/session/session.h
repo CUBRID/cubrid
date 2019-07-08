@@ -28,6 +28,7 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "dbtype_def.h"
+#include "load_session.hpp"
 #include "query_list.h"
 #include "query_manager.h"
 #include "thread_compat.hpp"
@@ -82,4 +83,7 @@ extern TZ_REGION *session_get_session_tz_region (THREAD_ENTRY * thread_p);
 extern int session_get_number_of_holdable_cursors (void);
 extern int session_get_private_lru_idx (const void *session_p);
 extern int session_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit);
+
+extern int session_set_load_session (THREAD_ENTRY * thread_p, load_session * load_session_p);
+extern int session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_session_ref_ptr));
 #endif /* _SESSION_H_ */

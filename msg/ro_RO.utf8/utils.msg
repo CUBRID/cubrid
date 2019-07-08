@@ -1,18 +1,18 @@
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
 $
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
+$   This program is free software; you can redistribute it and/or modify
+$   it under the terms of the GNU General Public License as published by
 $   the Free Software Foundation; either version 2 of the License, or
 $   (at your option) any later version.
 $
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
+$  This program is distributed in the hope that it will be useful,
+$  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+$  GNU General Public License for more details.
 $
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
+$  You should have received a copy of the GNU General Public License
+$  along with this program; if not, write to the Free Software
 $  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 $
 
@@ -434,31 +434,36 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Instanţa %1$d a clasei %2$s a fost deja definită\n
 46 Instanţa %1$d a clasei %2$s a fost deja rezervată\n
 47 Încălcare a constrângerii UNIQUE pentru atributul '%1$s', conversie la NULL\n
-48   %1$d instanţe\n
+48 %1$s %2$d instanţe\n
 49 Clasa %1$s\n
 50 Parola:
 51 \n*** Se actualizează statisticile claselor ***\n
 52 %1$s lânga linia %2$d (textul a fost '%3$s')\n
-53 Eroare lexicală
+53 Eroare lexicală\n
 54 linia %1$d: eroare de sintaxă la \"%2$s\"
 55 absent
 56 în %1$s
 57 Argumente incompatibile, \"%1$s\", şi \"%2$s\"\n
-58 %1$d instanţe commise (salvate)\n
+58 %1$s %2$d instanţe commise (salvate)\n
 59 \nNu se poate invoca versiunea neoptimizată a lui loaddb.\n
 60 Eroare la parsarea lui \"%1$s\", ca fiind de tip %2$s.\n
+61 Referinţa de obiecte nu este acceptată în modul de execuţie independent.\n
+62 Statisticile pentru clasa %1$s au fost updatate.\n
 112   %1$d instanţe\r
-113 Ultima linie salvata (prin commit) : %1$d
+113 Ultima linie salvata (prin commit) : %1$d\n
 114 error-control-file
 115 una sau mai multe erori la încărcarea fişierului de intrare de control
 116 Total %8d object(s) inserted, %d object(s) failed.\n
 117 Load failed.\n
 118 Maximum length of class name is %1$d bytes.\n
+119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
 120 \
 loaddb: Importă obiecte şi scheme în baza de date.\n\
-utilizare: %1$s loaddb [OPŢIUNI] nume-bază-de-date\n\
+utilizare: %1$s loaddb [OPŢIUNI] nume-bază-de-date[@host]\n\
 \n\
 opţiuni valide:\n\
+  -S, --SA-mode                     mod de execuţie independent\n\
+  -C, --CS-mode                     mod de execuţie client-server\n\
   -u, --user=ID                     ID de utilizator pentru acces la baza de date; implicit: "public"\n\
   -p, --password=PAROLA             parola de utilizator; implicit: nulă\n\
       --data-file-check-only        verifică sintaxa pentru fişierul de date fără a-l încarca;\n\
@@ -472,8 +477,11 @@ opţiuni valide:\n\
       --no-oid                      nu se va folosi OID\n\
       --no-statistics               nu se vor actualiza statisticile în timpul încărcării\n\
   -s, --schema-file=FIŞIER[:LINIE]  creează schema de la linia, respectiv din fişierul specificat\n\
-  -i, --index-file=FIŞIER[:LINIE]   creeaza index de la linia, respectiv din fişierul specificat\n\
-  -d, --data-file=FIŞIER            incarca datele din FIŞIER\n\
+  -i, --index-file=FIŞIER[:LINIE]   creează index de la linia, respectiv din fişierul specificat\n\
+  -d, --data-file=FIŞIER            incarcă datele din FIŞIER\n\
+      --server-data-file=FILE       incarcă datele din FIŞIER pe server,\n\
+                                    trebuie specificată calea absolută a fişierului\n\
+                                    şi fişierul trebuie să se afle pe sistemul de fişiere al serverului\n\
   -t, --table=TABELA                numele tabelei înlocuite pentru antetul de clasă absent din fişierul de date\n\
       --error-control-file=FIŞIER   FIŞIER de control al erorilor în timpul încărcării\n\
       --ignore-class-file=FIŞIER    FIŞIER de intrare cu numele claselor ce nu vor fi încărcate\n
@@ -921,7 +929,7 @@ opţiuni valide:\n\
   -L, --log-path=CALE       CALEA către directorul pentru volumele de log copiate\n\
   -m, --mode=MODE           mod de operare; implicit: sync\n\
                             MOD: sync sau semisync sau async\n\
-  -S, --start-page-id=ID    first log page to copy\n 
+  -S, --start-page-id=ID    first log page to copy\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 Introduceţi parola de administrator (DBA):
@@ -1055,7 +1063,7 @@ opţiuni valide:\n\
                       configuraţie a sistemului.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 Introduceţi parola pentru %1$s: 
+20 Introduceţi parola pentru %1$s:
 22 Index tranzacţie   Nume utilizator   Nume gazda   ID proces      Nume program\n
 23 -------------------------------------------------------------------------------\n
 24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n

@@ -283,8 +283,8 @@ extern "C"
   extern int intl_mbs_cmp (const char *mbs1, const char *mbs2);
 #endif
   extern int intl_mbs_ncasecmp (const char *mbs1, const char *mbs2, size_t n);
-#if !defined (SERVER_MODE)
   extern INTL_UTF8_VALIDITY intl_check_string (const char *buf, int size, char **pos, const INTL_CODESET codeset);
+#if !defined (SERVER_MODE)
   extern bool intl_is_bom_magic (const char *buf, const int size);
 #endif
   extern int intl_cp_to_utf8 (const unsigned int codepoint, unsigned char *utf8_seq);

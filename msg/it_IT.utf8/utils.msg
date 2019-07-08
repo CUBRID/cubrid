@@ -1,18 +1,18 @@
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
 $
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
+$   This program is free software; you can redistribute it and/or modify
+$   it under the terms of the GNU General Public License as published by
 $   the Free Software Foundation; either version 2 of the License, or
 $   (at your option) any later version.
 $
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
+$  This program is distributed in the hope that it will be useful,
+$  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+$  GNU General Public License for more details.
 $
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
+$  You should have received a copy of the GNU General Public License
+$  along with this program; if not, write to the Free Software
 $  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 $
 
@@ -422,31 +422,36 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Instanza %1$d della classe %2$s è già stato definito\n
 46 Instanza %1$d della classe %2$s è già stata riservata\n
 47 UNIQUE violation da attributo '%1$s', convertito a NULL\n
-48   %1$d istanze\n
+48 %1$s %2$d istanze\n
 49 Classe %1$s\n
 50 Password:
 51 \n*** Aggiornamento statistiche di classe ***\n
 52 %1$s nella linea %2$d (testo era '%3$s')\n
-53 Errore lessicale
+53 Errore lessicale\n
 54 linea %1$d: errore di sintassi in \"%2$s\"
 55 mancante
 56 in %1$s
 57 Argomenti incompatibili, \"%1$s\", e \"%2$s\"\n
-58 %1$d instanzioni committed\n
+58 %1$s %2$d instanzioni committed\n
 59 \nImpossibile richiamare la versione non ottimizzata di loaddb.\n
 60 Errore durante l'analisi di \"%1$s\", come tipo %2$s.\n
+61 Object Reference is not supported in CS mode.\n
+62 Updated statistics for class %1$s.\n
 112   %1$d instanze\r
-113 Ultima linea committed : %1$d
+113 Ultima linea committed : %1$d\n
 114 error-control-file
 115 file di input per il controllo di errori durante il carico
 116 Total %8d object(s) inserted, %d object(s) failed.\n
 117 Load failed.\n
 118 Maximum length of class name is %1$d bytes.\n
+119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
 120 \
 loaddb: Importare oggetti e gli schemi al database.\n\
-uso: %1$s loaddb [OPZIONE] nome-database\n\
+uso: %1$s loaddb [OPZIONE] nome-database[@host]\n\
 \n\
 opzioni valide:\n\
+  -S, --SA-mode                 modalità di esecuzione autonoma\n\
+  -C, --CS-mode                 modalità di esecuzione client-server\n\
   -u, --user=ID                 user ID per l'accesso al database; predefinito: "public"\n\
   -p, --password=PASS           password utente; predefinito: nessuno\n\
       --data-file-check-only    controllare la sintassi per il file di dati senza carico; predefinito: dopo il controllo di carico\n\
@@ -459,6 +464,8 @@ opzioni valide:\n\
   -s, --schema-file=FILE[:LINE] creare schema da LINE con FILE\n\
   -i, --index-file=FILE[:LINE]  creare un indice da LINE con FILE\n\
   -d, --data-file=FILE          dati di carico con FILE\n\
+      --server-data-file=FILE   load data with FILE on server,\n\
+                                absolute path must be provided and the file must exist on server file system\n\
   -t, --table=TABLE             nome della tabella che viene sostituito con manca intestazione di classe nel file di dati\n\
       --error-control-file=FILE FILE per il controllo di errore (s) durante il carico\n\
       --ignore-class-file=FILE  ifile di input di nomi di classe che saltino carico\n
@@ -903,7 +910,7 @@ opzioni valide:\n\
   -L, --log-path=PATH         directory PATH per volumi di log copiati\n\
   -m, --mode=MODE             modalità di funzionamento; predefinito: sync\n\
                               MODE: sync o semisync o async\n\
-  -S, --start-page-id=ID      first log page to copy\n 
+  -S, --start-page-id=ID      first log page to copy\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 Inserire la password di DBA:
@@ -1033,7 +1040,7 @@ opzioni valide:\n\
   -f, --force-only    Aggiornamenti delle collations di database per essere lo stesso le collations di nuova configurazione del sistema.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 Inserire la password %1$s: 
+20 Inserire la password %1$s:
 22 Tran index          User name      Host name      Process id      Program name\n
 23 -------------------------------------------------------------------------------\n
 24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n

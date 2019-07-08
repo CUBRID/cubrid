@@ -254,7 +254,7 @@ set_referenced_subclasses (DB_OBJECT * class_)
       goto exit_on_error;
     }
 
-  if (check_reference_chain == true)
+  if (check_reference_chain)
     {
       mark_referenced_domain (class_ptr, &num_set);
     }
@@ -393,8 +393,7 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
 
   for (attribute = class_ptr->shared; attribute != NULL; attribute = (SM_ATTRIBUTE *) attribute->header.next)
     {
-      if (check_referenced_domain (attribute->domain, true /* do marking */ ,
-				   num_set) != false)
+      if (check_referenced_domain (attribute->domain, true /* do marking */ , num_set))
 	{
 	  return false;
 	}
@@ -402,8 +401,7 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
 
   for (attribute = class_ptr->class_attributes; attribute != NULL; attribute = (SM_ATTRIBUTE *) attribute->header.next)
     {
-      if (check_referenced_domain (attribute->domain, true /* do marking */ ,
-				   num_set) != false)
+      if (check_referenced_domain (attribute->domain, true /* do marking */ , num_set))
 	{
 	  return false;
 	}
@@ -415,8 +413,7 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
 	{
 	  continue;
 	}
-      if (check_referenced_domain (attribute->domain, true /* do marking */ ,
-				   num_set) != false)
+      if (check_referenced_domain (attribute->domain, true /* do marking */ , num_set))
 	{
 	  return false;
 	}
@@ -426,7 +423,7 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
 
 
 /*
- * extractobjects - dump the database in loader format.
+ * extract_objects - dump the database in loader format.
  *    return: 0 for success. 1 for error
  *    exec_name(in): utility name
  */
@@ -650,7 +647,9 @@ extractobjects (const char *exec_name, const char *output_dirname, const char *o
 		}
 	    }
 	  else
-	    MARK_CLASS_REQUESTED (i);
+	    {
+	      MARK_CLASS_REQUESTED (i);
+	    }
 
 	  if (!datafile_per_class && (!required_class_only || IS_CLASS_REQUESTED (i)))
 	    {

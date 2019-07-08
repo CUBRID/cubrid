@@ -1,18 +1,18 @@
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
 $
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
+$   This program is free software; you can redistribute it and/or modify
+$   it under the terms of the GNU General Public License as published by
 $   the Free Software Foundation; either version 2 of the License, or
 $   (at your option) any later version.
 $
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
+$  This program is distributed in the hope that it will be useful,
+$  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+$  GNU General Public License for more details.
 $
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
+$  You should have received a copy of the GNU General Public License
+$  along with this program; if not, write to the Free Software
 $  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 $
 
@@ -422,46 +422,53 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Instanz %1$d der Klasse %2$s wurde schon definiert\n
 46 Instanz %1$d der Klasse %2$s wurde schon reserviert\n
 47 UNIQUE Verletzung auf Attribut '%1$s', konvertiert zu NULL\n
-48   %1$d Instanzen\n
+48 %1$s %2$d Instanzen\n
 49 Klasse %1$s\n
 50 Passwort:
 51 \n*** Klassenstatistiken werden aktualisiert ***\n
 52 %1$s bei Zeile %2$d (Text war '%3$s')\n
-53 Lexik-Fehler 
+53 Lexik-Fehler\n
 54 Zeile %1$d: Syntaxfehler bei \"%2$s\"
 55 fehlt
 56 in %1$s
 57 Inkompatible Argumente, \"%1$s\", und \"%2$s\"\n
-58 %1$d Instanzen festgeschrieben\n
+58 %1$s %2$d Instanzen festgeschrieben\n
 59 \nNicht optimierte Version von loaddb kann nicht aufgerufen werden.\n
 60 Parse-Fehler \"%1$s\", wie %2$s Typ.\n
+61 Object Reference is not supported in CS mode.\n
+62 Updated statistics for class %1$s.\n
 112   %1$d Instanzen\r
-113 Letzte festgeschriebene Zeile: %1$d
+113 Letzte festgeschriebene Zeile: %1$d\n
 114 Fehler-Kontroll-Datei
-115 Eingangsdatei für Fehlerkontrolle während Ladung 
+115 Eingangsdatei für Fehlerkontrolle während Ladung
 116 Total %8d object(s) inserted, %d object(s) failed.\n
 117 Laden fehlgeschlagen.\n
 118 Maximale Länge des Klassennamens ist %1$d Bytes.\n
+119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
 120 \
 loaddb: Import von Objekten und Schemas in die Datenbank.\n\
-Anwendung: %1$s loaddb [OPTION] Datenbanknamen\n\
+Anwendung: %1$s loaddb [OPTION] Datenbanknamen[@host]\n\
 \n\
 gültige Optionen:\n\
-  -u, --user=ID                 Benutzer ID für Datenbankzugang; Standard: "public"\n\
-  -p, --password=PASSWORT           Benutzerpasswort; Standard: keinen\n\
-      --data-file-check-only    Syntaxprüfung für Daten ohne Ladung; Standard: Ladung nach Prüfung\n\
-  -l, --load-only               Daten ohne Syntaxprüfung laden; Standard: Ladung nach Prüfung\n\
-      --estimated-size=ANZAHL   abgeschätzte Anzahl von Instanzen; Standard: 5000\n\
-  -v, --verbose                 ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
-  -c, --periodic-commit=ANZAHL   Einfügungsanzahl für periodische Festschreibung; Standard: keine Festschreibung während der Ladung\n\
-      --no-oid                  OID nicht anwenden\n\
-      --no-statistics           Statistiken während Ladung nicht aktualisieren \n\
-  -s, --schema-file=DATEI[:ZEILE] Schema ab ZEILE mit DATEI erstellen \n\
-  -i, --index-file=DATEI[:ZEILE]  Index ab ZEILE mit DATEI erstellen \n\
-  -d, --data-file=DATEI          DATEI laden \n\
-  -t, --table=TABLE             Name der Tabelle, die für das fehlende Klassenheader in der Datei ersetzt wird \n\
-      --error-control-file=DATEI DATEI für Fehlerkontrolle während Ladung\n\
-      --ignore-class-file=DATEI  Eingangsdatei für Klassenamen, die nicht geladen werden\n
+  -S, --SA-mode                   Stand-Alone-Ausführung\n\
+  -C, --CS-mode                   Client-Server-Ausführung\n\
+  -u, --user=ID                   Benutzer ID für Datenbankzugang; Standard: "public"\n\
+  -p, --password=PASSWORT         Benutzerpasswort; Standard: keinen\n\
+      --data-file-check-only      Syntaxprüfung für Daten ohne Ladung; Standard: Ladung nach Prüfung\n\
+  -l, --load-only                 Daten ohne Syntaxprüfung laden; Standard: Ladung nach Prüfung\n\
+      --estimated-size=ANZAHL     abgeschätzte Anzahl von Instanzen; Standard: 5000\n\
+  -v, --verbose                   ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
+  -c, --periodic-commit=ANZAHL    Einfügungsanzahl für periodische Festschreibung; Standard: keine Festschreibung während der Ladung\n\
+      --no-oid                    OID nicht anwenden\n\
+      --no-statistics             Statistiken während Ladung nicht aktualisieren\n\
+  -s, --schema-file=DATEI[:ZEILE] Schema ab ZEILE mit DATEI erstellen\n\
+  -i, --index-file=DATEI[:ZEILE]  Index ab ZEILE mit DATEI erstellen\n\
+  -d, --data-file=DATEI           DATEI laden\n\
+      --server-data-file=FILE     load data with FILE on server,\n\
+                                  absolute path must be provided and the file must exist on server file system\n\
+  -t, --table=TABLE               Name der Tabelle, die für das fehlende Klassenheader in der Datei ersetzt wird\n\
+      --error-control-file=DATEI  DATEI für Fehlerkontrolle während Ladung\n\
+      --ignore-class-file=DATEI   Eingangsdatei für Klassenamen, die nicht geladen werden\n
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 Cached-Seiten-Anzahl ungültig.\n
@@ -478,24 +485,24 @@ unloaddb: Export Objekte und Schemas aus der Datenbank.\n\
 Anwendung: %1$s unloaddb [OPTION] Datenbanknamen\n\
 \n\
 gültige Optionen:\n\
-  -u, --user=ID               Benutzer ID für Datenbankzugang; Standard: "dba"\n\
-  -p, --password=PASSWORT     Benutzerpasswort; Standard: keinen\n\
+  -u, --user=ID                Benutzer ID für Datenbankzugang; Standard: "dba"\n\
+  -p, --password=PASSWORT      Benutzerpasswort; Standard: keinen\n\
   -i, --input-class-file=DATEI Eingangsdatei für Tabellennamen; Standard: Alle Klassen exportieren\n\
-      --include-reference     referenzierte Tabellen einfügen; mit -i Option; Standard: deaktiviert\n\
-      --input-class-only      nur angegebene Klasse einfügen; mit -i Option; Standard: deaktiviert\n\
+      --include-reference      referenzierte Tabellen einfügen; mit -i Option; Standard: deaktiviert\n\
+      --input-class-only       nur angegebene Klasse einfügen; mit -i Option; Standard: deaktiviert\n\
       --lo-count=ANZAHL        lo Datei ANZAHL per Verzeichnis; Standard: 0\n\
-      --estimated-size=ANZAHL abgeschätzte ANZAHL von Instanzen; Standard: autoberechnet\n\
-      --cached-pages= ANZAHL  ANZAHL der cached Seiten; Standard: 100\n\
-  -O, --output-path=PFAD      PFAD des Ausgangsverzeichnis; Standard: Arbeitsverzeichnis\n\
-  -s, --schema-only           nur Schema exportieren; Standard: Schema und die Objekte\n\
-  -d, --data-only             nur Objekte exportieren; Standard: Schema und die Objekte\n\
-      --output-prefix=PRÄFIX PRÄFIX für die Ausgangdateien; Standard: Datenbanknamen\n\
+      --estimated-size=ANZAHL  abgeschätzte ANZAHL von Instanzen; Standard: autoberechnet\n\
+      --cached-pages= ANZAHL   ANZAHL der cached Seiten; Standard: 100\n\
+  -O, --output-path=PFAD       PFAD des Ausgangsverzeichnis; Standard: Arbeitsverzeichnis\n\
+  -s, --schema-only            nur Schema exportieren; Standard: Schema und die Objekte\n\
+  -d, --data-only              nur Objekte exportieren; Standard: Schema und die Objekte\n\
+      --output-prefix=PRÄFIX   PRÄFIX für die Ausgangdateien; Standard: Datenbanknamen\n\
       --hash-file=DATEI        Datei für Hash; Standard: erzeugt bei tmpnam()\n\
-  -v, --verbose               ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
-      --use-delimiter         '"' verwenden, wo ein Identifikator anfängt und endet; Standard: nicht verwenden\n\
-  -S, --SA-mode               Stand-Alone-Ausführung\n\
-  -C, --CS-mode               Client-Server-Ausführung\n\
-      --datafile-per-class    eine Objektdatei für jede Klasse erzeugen; Standard: inaktiv\n
+  -v, --verbose                ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
+      --use-delimiter          '"' verwenden, wo ein Identifikator anfängt und endet; Standard: nicht verwenden\n\
+  -S, --SA-mode                Stand-Alone-Ausführung\n\
+  -C, --CS-mode                Client-Server-Ausführung\n\
+      --datafile-per-class     eine Objektdatei für jede Klasse erzeugen; Standard: inaktiv\n
 
 
 
@@ -809,7 +816,7 @@ $set 31 MSGCAT_UTIL_SET_MIGRATE
 1 Datenbanknamen
 2 erforderlicher Argument, keinen Standardwert
 3 Kompatibilitätsprüfung
-4 nur Kompatibilitätsprüfung 
+4 nur Kompatibilitätsprüfung
 5 Backup-Ziel
 6 ein Verzeichnispfad oder ein Gerät als Ziel des Backupdatenträgers
 20 Datenbank '%1$s' existiert nicht.
@@ -902,7 +909,7 @@ gültige Optionen:\n\
   -L, --log-path=PFAD         Verzeichnispfad für kopierten Logdatenträger\n\
   -m, --mode=MODE             Operationsmodus; Standard: sync\n\
                               MODUS: sync oder semisync oder async\n\
-  -S, --start-page-id=ID      first log page to copy\n 
+  -S, --start-page-id=ID      first log page to copy\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 DBA-Passwort eingeben:
@@ -1032,7 +1039,7 @@ gültige Optionen:\n\
   -f, --force-only    Aktualisiert die Kollationen in der Datenbank, so dass sie gleich mit den Kollationen einer neuen Systemkonfiguration sind.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 Passwort %1$s eingeben: 
+20 Passwort %1$s eingeben:
 22 Tran index          Benutzername      Hostname      Prozess ID      Programmname\n
 23 -------------------------------------------------------------------------------\n
 24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n

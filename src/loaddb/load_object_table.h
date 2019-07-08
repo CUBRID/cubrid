@@ -17,15 +17,12 @@
  *
  */
 
-
 /*
- *      loader_object_table.h: Object table definitions
+ * load_object_table.h: Object table definitions
  */
 
-#ident "$Id$"
-
-#ifndef _LOADER_OBJECT_TABLE_H_
-#define _LOADER_OBJECT_TABLE_H_
+#ifndef _LOAD_OBJECT_TABLE_H_
+#define _LOAD_OBJECT_TABLE_H_
 
 #include "oid.h"
 #include "work_space.h"
@@ -94,4 +91,4 @@ extern void otable_final (void);
 
 extern int otable_map_reserved (OTABLE_MAPFUNC mapfunc, int stop_on_error);
 
-#endif /* _LOADER_OBJECT_TABLE_H_ */
+#endif /* _LOAD_OBJECT_TABLE_H_ */

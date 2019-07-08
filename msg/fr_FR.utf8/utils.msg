@@ -1,18 +1,18 @@
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
 $
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
+$   This program is free software; you can redistribute it and/or modify
+$   it under the terms of the GNU General Public License as published by
 $   the Free Software Foundation; either version 2 of the License, or
 $   (at your option) any later version.
 $
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
+$  This program is distributed in the hope that it will be useful,
+$  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+$  GNU General Public License for more details.
 $
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
+$  You should have received a copy of the GNU General Public License
+$  along with this program; if not, write to the Free Software
 $  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 $
 
@@ -424,43 +424,50 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Instance %1$d de la classe %2$s a été déjà  définie\n
 46 Instance %1$d de la classe %2$s a été déjà réservée\n
 47 Violation d'UNIQUE sur l'attribut '%1$s', converti en NULL\n
-48   %1$d instances\n
+48 %1$s %2$d instances\n
 49 Classe %1$s\n
 50 Mot de passe:
 51 \n*** Mise à jour des statistiques de classe ***\n
 52 %1$s Près de ligne %2$d (texte était '%3$s')\n
-53 Erreur lexicale
+53 Erreur lexicale\n
 54 ligne %1$d: erreur de syntaxe à \"%2$s\"
 55 manquant
 56 dans %1$s
 57 arguments incompatible, \"%1$s\", et \"%2$s\"\n
-58 %1$d instances validées\n
+58 %1$s %2$d instances validées\n
 59 \nImpossible d'invoquer la non-optimisé version de loaddb.\n
 60 Erreur d'analyse du \"%1$s\", comme type %2$s.\n
+61 Object Reference is not supported in CS mode.\n
+62 Updated statistics for class %1$s.\n
 112   %1$d instances\r
-113 Dernière ligne validée: %1$d
+113 Dernière ligne validée: %1$d\n
 114 error-control-file
 115 fichier d'entrée pour le contrôle d'erreur(s) pendant le chargement
 116 Total %8d object(s) inserted, %d object(s) failed.\n
 117 Chargement échoué.\n
 118 La longueur maximale du nom de classe est %1$d bytes.\n
+119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
 120 \
 loaddb: Importe les objets et les schémas dans la base de données.\n\
-usage: %1$s loaddb [OPTION] database-name\n\
+usage: %1$s loaddb [OPTION] database-name[@host]\n\
 \n\
 options valids:\n\
-  -u, --user=ID                 ID d'utilisateur pour l'accès à la base de données, par défaut: "public"\n\
-  -p, --password=MOT-DE-PASSE   MOT DE PASSE d'utilisateur; par défaut: aucun\n\
-      --data-file-check-only    vérifie la syntaxe pour le fichier de données sans chargement; par défaut: chargement après vérification\n\
-  -l, --load-only               charge le fichier de données sans vérification de la syntaxe; par défaut: chargement après vérification\n\
-      --estimated-size=NOMBRE   estimation du NOMBRE des instances; par défaut: 5000\n\
-  -v, --verbose                 activer les messages verbeux d'état; par défaut: désactivé\n\
-  -c, --periodic-commit=COMPTE  COMPTE d'insertion pour la validation périodique; par défaut: aucune validation pendant le chargement\n\
-      --no-oid                  utilise pas l'OID\n\
-      --no-statistics           ne met pas à jour les statistiques pendant le chargement\n\
+  -S, --SA-mode                     exécution en mode autonome\n\
+  -C, --CS-mode                     exécution en mode client-serveur\n\
+  -u, --user=ID                     ID d'utilisateur pour l'accès à la base de données, par défaut: "public"\n\
+  -p, --password=MOT-DE-PASSE       MOT DE PASSE d'utilisateur; par défaut: aucun\n\
+      --data-file-check-only        vérifie la syntaxe pour le fichier de données sans chargement; par défaut: chargement après vérification\n\
+  -l, --load-only                   charge le fichier de données sans vérification de la syntaxe; par défaut: chargement après vérification\n\
+      --estimated-size=NOMBRE       estimation du NOMBRE des instances; par défaut: 5000\n\
+  -v, --verbose                     activer les messages verbeux d'état; par défaut: désactivé\n\
+  -c, --periodic-commit=COMPTE      COMPTE d'insertion pour la validation périodique; par défaut: aucune validation pendant le chargement\n\
+      --no-oid                      utilise pas l'OID\n\
+      --no-statistics               ne met pas à jour les statistiques pendant le chargement\n\
   -s, --schema-file=FICHIER[:LIGNE] crée le schéma de la LIGNE en utilisant le FICHIER\n\
   -i, --index-file=FICHIER[:LIGNE]  crée un index de la LIGNE en utilisant le FICHIER\n\
   -d, --data-file=FICHIER           charge des données en utilisant le FICHIER\n\
+      --server-data-file=FILE       load data with FILE on server,\n\
+                                    absolute path must be provided and the file must exist on server file system\n\
   -t, --table=TABLE                 nom de la TABLE qui se substitue à en-tête de\n\
                                     classe manquante dans le fichier de données\n\
       --error-control-file=FICHIER  FICHIER de contrôle d'erreur(s) pendant le chargement\n\
@@ -906,7 +913,7 @@ options valids:\n\
   -L, --log-path=CHEMIN     CHEMIN vers un répertoire pour les volumes de journaux copiés\n\
   -m, --mode=MODE           mode de fonctionnement; par défaut: sync\n\
                             MODE: sync ou semisync ou async\n\
-  -S, --start-page-id=ID    first log page to copy\n 
+  -S, --start-page-id=ID    first log page to copy\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 Entrez mot de passe DBA:
@@ -1043,7 +1050,7 @@ options valides:\n\
   -f, --force-only    Mises à jour des classements dans les bases de données d'être les mêmes que les classements de sytem nouvelle configuration.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 Entrez le mot de passe %1$s: 
+20 Entrez le mot de passe %1$s:
 22 Indice de tran.       Utilisateur         Nom d'hôte      ID de processus   Nom du programme\n
 23 -------------------------------------------------------------------------------\n
 24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n
@@ -1166,7 +1173,7 @@ options valides:\n\
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Impossible de charger les noms de table dans %1$s.\n
-2 checksumdb doit être exécuté sur un serveur HA actif. %1$s (état courant: %2$s)\n 
+2 checksumdb doit être exécuté sur un serveur HA actif. %1$s (état courant: %2$s)\n
 58 Fonctionnalité HA est pas supporté sur cette plate-forme.\n
 59 checksumdb ne peut pas être exécuté dans le mode autonome.\n
 60 \

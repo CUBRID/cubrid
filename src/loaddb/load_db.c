@@ -18,115 +18,54 @@
  */
 
 /*
- * loaddb.c - Main for database loader
+ * load_db.c - Main for database loader
  */
-
-#ident "$Id$"
 
 #include "config.h"
 
-#include <stdio.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <stdarg.h>
-#include <assert.h>
-
-#if !defined (WINDOWS)
-#include <unistd.h>
-#include <sys/param.h>
-#endif
-#include "porting.h"
-#include "db.h"
-#include "utility.h"
-#include "misc_string.h"
-#include "loader.h"
-#include "load_object.h"
-#include "environment_variable.h"
-#include "message_catalog.h"
 #include "chartype.h"
+#include "db.h"
+#include "load_object.h"
+#if defined (SA_MODE)
+#include "load_sa_loader.hpp"
+#endif // SA_MODE
+#include "network_interface_cl.h"
+#include "porting.h"
 #include "schema_manager.h"
 #include "transform.h"
-#include "server_interface.h"
+#include "utility.h"
 #include "authenticate.h"
-#include "dbi.h"
-#include "network_interface_cl.h"
-#include "util_func.h"
 
-#if defined (SA_MODE)
-extern bool locator_Dont_check_foreign_key;	/* from locator_sr.h */
-#endif
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-  extern void do_loader_parse (FILE * fp);
-#ifdef __cplusplus
-}
-#endif
-#define LOADDB_INIT_DEBUG()
-#define LOADDB_DEBUG_PRINTF(x)
+#include <fstream>
+#include <thread>
 
 #define LOAD_INDEX_MIN_SORT_BUFFER_PAGES 8192
 #define LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING "8192"
+#define LOADDB_LOG_FILENAME_SUFFIX "loaddb.log"
 
-static const char *Volume = "";
-static const char *Input_file = "";
-static const char *Schema_file = "";
-static const char *Index_file = "";
-static const char *Object_file = "";
-static const char *Error_file = "";
-static const char *User_name = NULL;
-static const char *Password = NULL;
-static const char *Ignore_class_file = NULL;
-static const char *Table_name = "";
+using namespace cubload;
 
-static bool Syntax_check = false;
-/* No syntax checking performed */
-static bool Load_only = false;
-static bool Verbose = false;
-static int Verbose_commit = 0;
-static int Estimated_size = 5000;
-static bool Disable_statistics = false;
-#if 0
-static bool obsolete_Disable_statistics = false;
-#endif
-static int Periodic_commit = 0;
-/* Don't ignore logging */
-static int Ignore_logging = 0;
-static int Interrupt_type = LDR_NO_INTERRUPT;
 static int schema_file_start_line = 1;
 static int index_file_start_line = 1;
-static int compare_Storage_order = 0;
 
-#define LOADDB_LOG_FILENAME_SUFFIX "loaddb.log"
 static FILE *loaddb_log_file;
 
-bool No_oid_hint = false;
-
-/* The number of objects inserted if an interrupted occurred. */
-int Total_objects_loaded = 0;
-
-/* Jump buffer for loader to jump to if we have an interrupt */
-static jmp_buf loaddb_jmp_buf;
-
 int interrupt_query = false;
-jmp_buf ldr_exec_query_status;
+bool load_interrupted = false;
 
-static int ldr_validate_object_file (FILE * outfp, const char *argv0);
-static int ldr_check_file_name_and_line_no (void);
-static void signal_handler (void);
-static void loaddb_report_num_of_commits (int num_committed);
-static void loaddb_get_num_of_inserted_objects (int num_objects);
-#if defined (WINDOWS)
-static int run_proc (char *path, char *cmd_line);
-#endif /* WINDOWS */
+static int ldr_validate_object_file (const char *argv0, load_args * args);
+static int ldr_check_file_name_and_line_no (load_args * args);
 static int loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode);
 static void ldr_exec_query_interrupt_handler (void);
-static int ldr_exec_query_from_file (const char *file_name, FILE * file, int *start_line, int commit_period);
-static int get_ignore_class_list (const char *filename);
-static void free_ignoreclasslist (void);
+static int ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start_line, load_args * args);
 static int ldr_compare_attribute_with_meta (char *table_name, char *meta, DB_ATTRIBUTE * attribute);
 static int ldr_compare_storage_order (FILE * schema_file);
+static void get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args);
+
+static void ldr_server_load (load_args * args, int *status, bool * interrupted);
+static void register_signal_handlers ();
+static int load_object_file (load_args * args);
+static void print_er_msg ();
 
 /*
  * print_log_msg - print log message
@@ -161,6 +100,17 @@ print_log_msg (int verbose, const char *fmt, ...)
     }
 }
 
+static void
+print_er_msg ()
+{
+  if (!er_has_error ())
+    {
+      return;
+    }
+
+  fprintf (stderr, "%s\n", er_msg ());
+}
+
 /*
  * load_usage() - print an usage of the load-utility
  *   return: void
@@ -176,47 +126,43 @@ load_usage (const char *argv0)
 
 /*
  * ldr_validate_object_file - check input file arguments
- *    return: 0 if successful, 1 if error
- *    outfp(out): error message destination
+ *    return: NO_ERROR if successful, ER_FAILED if error
  */
 static int
-ldr_validate_object_file (FILE * outfp, const char *argv0)
+ldr_validate_object_file (const char *argv0, load_args * args)
 {
-  if (Volume == NULL)
+  if (args->volume.empty ())
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_MISSING_DBNAME));
       load_usage (argv0);
-      return 1;
+      return ER_FAILED;
     }
 
-  if (Input_file[0] == 0 && Object_file[0] == 0)
+  if (args->input_file.empty () && args->object_file.empty () && args->server_object_file.empty ())
     {
       /* if schema/index file are specified, process them only */
-      if (Schema_file[0] == 0 && Index_file[0] == 0)
+      if (args->schema_file.empty () && args->index_file.empty ())
 	{
 	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 	  load_usage (argv0);
-	  return 1;
-	}
-      else
-	{
-	  return 0;
+	  return ER_FAILED;
 	}
     }
-  else if (Input_file[0] != 0 && Object_file[0] != 0 && strcmp (Input_file, Object_file) != 0)
+  else if (!args->input_file.empty () && !args->object_file.empty () && args->input_file != args->object_file)
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_GENERAL, MSGCAT_GENERAL_ARG_DUPLICATE),
 			     "input-file");
-      return 1;
+      return ER_FAILED;
     }
   else
     {
-      if (Object_file[0] == 0)
+      if (args->object_file.empty ())
 	{
-	  Object_file = Input_file;
+	  args->object_file = args->input_file;
 	}
-      return 0;
     }
+
+  return NO_ERROR;
 }
 
 /*
@@ -224,13 +170,15 @@ ldr_validate_object_file (FILE * outfp, const char *argv0)
  *    return: void
  */
 static int
-ldr_check_file_name_and_line_no (void)
+ldr_check_file_name_and_line_no (load_args * args)
 {
   char *p, *q;
 
-  if (Schema_file[0] != 0)
+  if (!args->schema_file.empty ())
     {
-      p = (char *) strchr (Schema_file, ':');
+      /* *INDENT-OFF* */
+      p = strchr (const_cast<char *> (args->schema_file.c_str ()), ':');
+      /* *INDENT-ON* */
       if (p != NULL)
 	{
 	  for (q = p + 1; *q; q++)
@@ -248,9 +196,11 @@ ldr_check_file_name_and_line_no (void)
 	}
     }
 
-  if (Index_file[0] != 0)
+  if (!args->index_file.empty ())
     {
-      p = (char *) strchr (Index_file, ':');
+      /* *INDENT-OFF* */
+      p = strchr (const_cast<char *> (args->index_file.c_str ()), ':');
+      /* *INDENT-ON* */
       if (p != NULL)
 	{
 	  for (q = p + 1; *q; q++)
@@ -270,95 +220,6 @@ ldr_check_file_name_and_line_no (void)
 
   return 0;
 }
-
-
-/*
- * signal_handler - signal handler registered via util_arm_signal_handlers
- *    return: void
- */
-static void
-signal_handler (void)
-{
-  LOADDB_DEBUG_PRINTF (("Signal caught : interrupt flag : %d\n", Interrupt_type));
-
-  /* Flag the loader that that an interrupt has occurred. */
-  ldr_interrupt_has_occurred (Interrupt_type);
-
-  print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SIG1));
-}
-
-/*
- * loaddb_report_num_of_commits - report number of commits
- *    return: void
- *    num_committed(in): number of commits
- *
- * Note:
- *    registered as a callback function the loader will call this function
- *    to report the number of insertion that have taken place if the '-vc',
- *    verbose commit parameter was specified.
- */
-static void
-loaddb_report_num_of_commits (int num_committed)
-{
-  print_log_msg (Verbose_commit,
-		 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_COMMITTED_INSTANCES),
-		 num_committed);
-}
-
-/*
- * loaddb_get_num_of_inserted_objects - set of object inserted value to
- * Total_objects_loaded global variable
- *    return: void
- *    num_objects(in): number of inserted object to set
- */
-static void
-loaddb_get_num_of_inserted_objects (int num_objects)
-{
-  Total_objects_loaded = num_objects;
-}
-
-#if defined (WINDOWS)
-/*
- * run_proc - run a process with a given command_line
- *    return: 0 for success, non-zero otherwise
- *    path(in): progarm path
- *    cmd_line(in): command line
- */
-static int
-run_proc (char *path, char *cmd_line)
-{
-  STARTUPINFO start_info;
-  PROCESS_INFORMATION proc_info;
-  BOOL status;
-
-  GetStartupInfo (&start_info);
-  start_info.wShowWindow = SW_HIDE;
-  start_info.dwFlags = STARTF_USESTDHANDLES;
-  start_info.hStdInput = GetStdHandle (STD_INPUT_HANDLE);
-  start_info.hStdOutput = GetStdHandle (STD_OUTPUT_HANDLE);
-  start_info.hStdError = GetStdHandle (STD_ERROR_HANDLE);
-
-  status = CreateProcess (path, cmd_line, NULL, NULL, true, 0, NULL, NULL, &start_info, &proc_info);
-  if (status == false)
-    {
-      LPVOID lpMsgBuf;
-      if (FormatMessage
-	  (FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL,
-	   GetLastError (), MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR) & lpMsgBuf, 0, NULL))
-	{
-	  printf ("%s\n", (const char *) lpMsgBuf);
-	  LocalFree (lpMsgBuf);
-	}
-
-      return -1;
-    }
-
-  WaitForSingleObject (proc_info.hProcess, INFINITE);
-  CloseHandle (proc_info.hProcess);
-  CloseHandle (proc_info.hThread);
-  return 0;
-}
-#endif /* WINDOWS */
 
 static char *
 ldr_get_token (char *str, char **out_str, char start, char end)
@@ -581,70 +442,39 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   int error = NO_ERROR;
-  /* set to static to avoid copiler warning (clobbered by longjump) */
+  /* set to static to avoid compiler warning (clobbered by longjump) */
   static FILE *schema_file = NULL;
   static FILE *index_file = NULL;
-  static FILE *object_file = NULL;
   FILE *error_file = NULL;
-  int status = 0;
-  int errors = 0;
-  int objects = 0;
-  int defaults = 0;
-  int fails = 0;
 
-  int ldr_init_ret = NO_ERROR;
-  int lastcommit = 0;
   char *passwd;
-  /* set to static to avoid copiler warning (clobbered by longjump) */
-  static int interrupted = false;
+  int status = 0;
+  /* set to static to avoid compiler warning (clobbered by longjump) */
+  static bool interrupted = false;
   int au_save = 0;
   extern bool obt_Enable_autoincrement;
   char log_file_name[PATH_MAX];
   const char *msg_format;
-
-  LOADDB_INIT_DEBUG ();
   obt_Enable_autoincrement = false;
+  load_args args;
 
-  Volume = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
-  Input_file = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1);
-  User_name = utility_get_option_string_value (arg_map, LOAD_USER_S, 0);
-  Password = utility_get_option_string_value (arg_map, LOAD_PASSWORD_S, 0);
-  Syntax_check = utility_get_option_bool_value (arg_map, LOAD_CHECK_ONLY_S);
-  Load_only = utility_get_option_bool_value (arg_map, LOAD_LOAD_ONLY_S);
-  Estimated_size = utility_get_option_int_value (arg_map, LOAD_ESTIMATED_SIZE_S);
-  Verbose = utility_get_option_bool_value (arg_map, LOAD_VERBOSE_S);
-  Disable_statistics = utility_get_option_bool_value (arg_map, LOAD_NO_STATISTICS_S);
-  Periodic_commit = utility_get_option_int_value (arg_map, LOAD_PERIODIC_COMMIT_S);
-  Verbose_commit = Periodic_commit > 0;
-  No_oid_hint = utility_get_option_bool_value (arg_map, LOAD_NO_OID_S);
-  Schema_file = utility_get_option_string_value (arg_map, LOAD_SCHEMA_FILE_S, 0);
-  Index_file = utility_get_option_string_value (arg_map, LOAD_INDEX_FILE_S, 0);
-  Object_file = utility_get_option_string_value (arg_map, LOAD_DATA_FILE_S, 0);
-  Error_file = utility_get_option_string_value (arg_map, LOAD_ERROR_CONTROL_FILE_S, 0);
-  Ignore_logging = utility_get_option_bool_value (arg_map, LOAD_IGNORE_LOGGING_S);
-  Table_name = utility_get_option_string_value (arg_map, LOAD_TABLE_NAME_S, 0);
+  /* *INDENT-OFF* */
+  static std::ifstream object_file;
+  /* *INDENT-ON* */
 
-  Ignore_class_file = utility_get_option_string_value (arg_map, LOAD_IGNORE_CLASS_S, 0);
-  compare_Storage_order = utility_get_option_bool_value (arg_map, LOAD_COMPARE_STORAGE_ORDER_S);
+  get_loaddb_args (arg_map, &args);
 
-  Input_file = Input_file ? Input_file : "";
-  Schema_file = Schema_file ? Schema_file : "";
-  Index_file = Index_file ? Index_file : "";
-  Object_file = Object_file ? Object_file : "";
-  Error_file = Error_file ? Error_file : "";
-  Table_name = Table_name ? Table_name : "";
-
-  if (ldr_validate_object_file (stderr, arg->argv0))
+  if (ldr_validate_object_file (arg->argv0, &args) != NO_ERROR)
     {
       status = 1;
       goto error_return;
     }
 
   /* error message log file */
-  sprintf (log_file_name, "%s_%s.err", Volume, arg->command_name);
+  sprintf (log_file_name, "%s_%s.err", args.volume.c_str (), arg->command_name);
   er_init (log_file_name, ER_NEVER_EXIT);
 
-  if (Index_file[0] != '\0' && prm_get_integer_value (PRM_ID_SR_NBUFFERS) < LOAD_INDEX_MIN_SORT_BUFFER_PAGES)
+  if (!args.index_file.empty () && prm_get_integer_value (PRM_ID_SR_NBUFFERS) < LOAD_INDEX_MIN_SORT_BUFFER_PAGES)
     {
       sysprm_set_force (prm_get_name (PRM_ID_SR_NBUFFERS), LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING);
     }
@@ -652,7 +482,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   /* open loaddb log file */
-  sprintf (log_file_name, "%s_%s", Volume, LOADDB_LOG_FILENAME_SUFFIX);
+  sprintf (log_file_name, "%s_%s", args.volume.c_str (), LOADDB_LOG_FILENAME_SUFFIX);
   loaddb_log_file = fopen (log_file_name, "w+");
   if (loaddb_log_file == NULL)
     {
@@ -662,10 +492,10 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
     }
 
   /* login */
-  if (User_name != NULL || !dba_mode)
+  if (!args.user_name.empty () || !dba_mode)
     {
-      (void) db_login (User_name, Password);
-      error = db_restart (arg->command_name, true, Volume);
+      (void) db_login (args.user_name.c_str (), args.password.c_str ());
+      error = db_restart (arg->command_name, true, args.volume.c_str ());
       if (error != NO_ERROR)
 	{
 	  if (error == ER_AU_INVALID_PASSWORD)
@@ -677,8 +507,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 		{
 		  passwd = NULL;
 		}
-	      (void) db_login (User_name, passwd);
-	      error = db_restart (arg->command_name, true, Volume);
+	      (void) db_login (args.user_name.c_str (), passwd);
+	      error = db_restart (arg->command_name, true, args.volume.c_str ());
 	    }
 	}
     }
@@ -688,7 +518,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       AU_DISABLE_PASSWORDS ();
       db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
       (void) db_login ("DBA", NULL);
-      error = db_restart (arg->command_name, true, Volume);
+      error = db_restart (arg->command_name, true, args.volume.c_str ());
     }
 
   if (error != NO_ERROR)
@@ -701,7 +531,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	}
       else
 	{
-	  PRINT_AND_LOG_ERR_MSG ("Cannot restart database %s\n", Volume);
+	  PRINT_AND_LOG_ERR_MSG ("Cannot restart database %s\n", args.volume.c_str ());
 	}
       status = 3;
       goto error_return;
@@ -711,51 +541,53 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   db_disable_trigger ();
 
   /* check if schema/index/object files exist */
-  ldr_check_file_name_and_line_no ();
+  ldr_check_file_name_and_line_no (&args);
 
-  if (Schema_file[0] != 0)
+  if (!args.schema_file.empty ())
     {
-      schema_file = fopen (Schema_file, "r");
+      schema_file = fopen (args.schema_file.c_str (), "r");
       if (schema_file == NULL)
 	{
 	  msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_BAD_INFILE);
-	  print_log_msg (1, msg_format, Schema_file);
-	  util_log_write_errstr (msg_format, Schema_file);
+	  print_log_msg (1, msg_format, args.schema_file.c_str ());
+	  util_log_write_errstr (msg_format, args.schema_file.c_str ());
 	  status = 2;
 	  goto error_return;
 	}
     }
-  if (Index_file[0] != 0)
+  if (!args.index_file.empty ())
     {
-      index_file = fopen (Index_file, "r");
+      index_file = fopen (args.index_file.c_str (), "r");
       if (index_file == NULL)
 	{
 	  msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_BAD_INFILE);
-	  print_log_msg (1, msg_format, Index_file);
-	  util_log_write_errstr (msg_format, Index_file);
+	  print_log_msg (1, msg_format, args.index_file.c_str ());
+	  util_log_write_errstr (msg_format, args.index_file.c_str ());
 	  status = 2;
 	  goto error_return;
 	}
     }
-  if (Object_file[0] != 0)
+  if (!args.object_file.empty ())
     {
-      object_file = fopen_ex (Object_file, "rb");	/* keep out ^Z */
+      /* *INDENT-OFF* */
+      object_file.open (args.object_file, std::fstream::in | std::fstream::binary);
+      /* *INDENT-ON* */
 
-      if (object_file == NULL)
+      if (!object_file.is_open () || !object_file.good ())
 	{
 	  msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_BAD_INFILE);
-	  print_log_msg (1, msg_format, Object_file);
-	  util_log_write_errstr (msg_format, Object_file);
+	  print_log_msg (1, msg_format, args.object_file.c_str ());
+	  util_log_write_errstr (msg_format, args.object_file.c_str ());
 	  status = 2;
 	  goto error_return;
 	}
+
+      object_file.close ();
     }
 
-  if (Ignore_class_file)
+  if (!args.ignore_class_file.empty ())
     {
-      int retval;
-      retval = get_ignore_class_list (Ignore_class_file);
-
+      int retval = args.parse_ignore_class_file ();
       if (retval < 0)
 	{
 	  status = 2;
@@ -764,7 +596,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
     }
 
   /* Disallow syntax only and load only options together */
-  if (Load_only && Syntax_check)
+  if (args.load_only && args.syntax_check)
     {
       msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INCOMPATIBLE_ARGS);
       print_log_msg (1, msg_format, "--" LOAD_LOAD_ONLY_L, "--" LOAD_CHECK_ONLY_L);
@@ -773,9 +605,9 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       goto error_return;
     }
 
-  if (Error_file[0] != 0)
+  if (!args.error_file.empty ())
     {
-      if (Syntax_check)
+      if (args.syntax_check)
 	{
 	  msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INCOMPATIBLE_ARGS);
 	  print_log_msg (1, msg_format, "--" LOAD_ERROR_CONTROL_FILE_L, "--" LOAD_CHECK_ONLY_L);
@@ -783,28 +615,37 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  status = 1;		/* parsing error */
 	  goto error_return;
 	}
-      error_file = fopen_ex (Error_file, "rt");
+      error_file = fopen_ex (args.error_file.c_str (), "rt");
       if (error_file == NULL)
 	{
 	  msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_BAD_INFILE);
-	  print_log_msg (1, msg_format, Error_file);
-	  util_log_write_errstr (msg_format, Error_file);
+	  print_log_msg (1, msg_format, args.error_file.c_str ());
+	  util_log_write_errstr (msg_format, args.error_file.c_str ());
 	  status = 2;
 	  goto error_return;
 	}
       er_filter_fileset (error_file);
       fclose (error_file);
+      get_ignored_errors (args.m_ignored_errors);
     }
 
   /* check if no log option can be applied */
-  if (error || (Ignore_logging != 0 && locator_log_force_nologging () != NO_ERROR))
+  if (error || (args.ignore_logging != 0 && locator_log_force_nologging () != NO_ERROR))
     {
       /* couldn't log in */
       print_log_msg (1, "%s\n", db_error_string (3));
       util_log_write_errstr ("%s\n", db_error_string (3));
       status = 3;
+      db_end_session ();
       db_shutdown ();
       goto error_return;
+    }
+
+  if (args.load_only)
+    {
+      /* This is the default behavior. It is changed from the old one so we notify the user. */
+      print_log_msg (1, "\n--load-only is deprecated. To check the object file \
+                         for any syntax errors use --data-file-check-only.\n");
     }
 
   /* if schema file is specified, do schema loading */
@@ -822,15 +663,16 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  AU_DISABLE (au_save);
 	}
 
-      if (ldr_exec_query_from_file (Schema_file, schema_file, &schema_file_start_line, Periodic_commit) != 0)
+      if (ldr_exec_query_from_file (args.schema_file.c_str (), schema_file, &schema_file_start_line, &args) != 0)
 	{
 	  print_log_msg (1, "\nError occurred during schema loading." "\nAborting current transaction...");
 	  msg_format = "Error occurred during schema loading." "Aborting current transaction...\n";
 	  util_log_write_errstr (msg_format);
 	  status = 3;
+	  db_end_session ();
 	  db_shutdown ();
-	  print_log_msg (1, " done.\n\nRestart loaddb with '-%c %s:%d' option\n", LOAD_SCHEMA_FILE_S, Schema_file,
-			 schema_file_start_line);
+	  print_log_msg (1, " done.\n\nRestart loaddb with '-%c %s:%d' option\n", LOAD_SCHEMA_FILE_S,
+			 args.schema_file.c_str (), schema_file_start_line);
 	  goto error_return;
 	}
 
@@ -839,7 +681,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  AU_ENABLE (au_save);
 	}
 
-      print_log_msg (1, "Schema loading from %s finished.\n", Schema_file);
+      print_log_msg (1, "Schema loading from %s finished.\n", args.schema_file.c_str ());
 
       /* update catalog statistics */
       AU_DISABLE (au_save);
@@ -848,11 +690,12 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
       print_log_msg (1, "Statistics for Catalog classes have been updated.\n\n");
 
-      if (compare_Storage_order)
+      if (args.compare_storage_order)
 	{
 	  if (ldr_compare_storage_order (schema_file) != NO_ERROR)
 	    {
 	      status = 3;
+	      db_end_session ();
 	      db_shutdown ();
 	      print_log_msg (1, "\nAborting current transaction...\n");
 	      goto error_return;
@@ -864,192 +707,34 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       schema_file = NULL;
     }
 
+  if (args.syntax_check)
+    {
+      print_log_msg (1, "\nStart object syntax checking.\n");
+    }
+  else
+    {
+      print_log_msg (1, "\nStart object loading.\n");
+    }
+#if defined (SA_MODE)
+  ldr_sa_load (&args, &status, &interrupted);
+#else // !SA_MODE = CS_MODE
+  ldr_server_load (&args, &status, &interrupted);
+#endif // !SA_MODE = CS_MODE
 
   /* if index file is specified, do index creation */
-
-  if (object_file != NULL)
-    {
-#if defined (SA_MODE)
-      locator_Dont_check_foreign_key = true;
-#endif
-      print_log_msg (1, "\nStart object loading.\n");
-      ldr_init (Verbose);
-
-      /* set the flag to indicate what type of interrupts to raise If logging has been disabled set commit flag. If
-       * logging is enabled set abort flag. */
-
-      if (Ignore_logging)
-	{
-	  Interrupt_type = LDR_STOP_AND_COMMIT_INTERRUPT;
-	}
-      else
-	{
-	  Interrupt_type = LDR_STOP_AND_ABORT_INTERRUPT;
-	}
-
-      if (Periodic_commit)
-	{
-	  /* register the post commit function */
-	  ldr_register_post_commit_handler (&loaddb_report_num_of_commits, NULL);
-	}
-
-      /* Check if we need to perform syntax checking. */
-      if (!Load_only)
-	{
-	  print_log_msg ((int) Verbose,
-			 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CHECKING));
-	  if (Table_name[0] != '\0')
-	    {
-	      ldr_init_ret = ldr_init_class_spec (Table_name);
-	    }
-	  do_loader_parse (object_file);
-	  ldr_stats (&errors, &objects, &defaults, &lastcommit, &fails);
-	}
-      else
-	{
-	  errors = 0;
-	}
-
-      if (errors)
-	{
-	  print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_ERROR_COUNT),
-			 errors);
-	}
-      else if (ldr_init_ret == NO_ERROR && !Syntax_check)
-	{
-	  /* now do it for real if there were no errors and we aren't doing a simple syntax check */
-	  ldr_start (Periodic_commit);
-	  fclose (object_file);
-	  object_file = fopen_ex (Object_file, "rb");	/* keep out ^Z */
-	  if (object_file != NULL)
-	    {
-	      print_log_msg ((int) Verbose,
-			     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INSERTING));
-
-	      /* make sure signals are caught */
-	      util_arm_signal_handlers (signal_handler, signal_handler);
-
-	      /* register function to call and jmp environment to longjmp to after aborting or committing. */
-	      ldr_register_post_interrupt_handler (&loaddb_get_num_of_inserted_objects, &loaddb_jmp_buf);
-
-	      if (setjmp (loaddb_jmp_buf) != 0)
-		{
-
-		  /* We have had an interrupt, the transaction should have been already been aborted or committed by
-		   * the loader. If Total_objects_loaded is -1 an error occurred during rollback or commit. */
-		  if (Total_objects_loaded != -1)
-		    {
-		      print_log_msg (1,
-				     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
-						     LOADDB_MSG_OBJECT_COUNT), Total_objects_loaded);
-		    }
-		  ldr_stats (&errors, &objects, &defaults, &lastcommit, &fails);
-		  if (lastcommit > 0)
-		    {
-		      print_log_msg (1,
-				     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
-						     LOADDB_MSG_LAST_COMMITTED_LINE), lastcommit);
-		    }
-		  interrupted = true;
-		  status = 3;
-		}
-	      else
-		{
-		  if (Table_name[0] != '\0')
-		    {
-		      ldr_init_class_spec (Table_name);
-		    }
-		  do_loader_parse (object_file);
-		  ldr_stats (&errors, &objects, &defaults, &lastcommit, &fails);
-		  if (errors)
-		    {
-		      if (lastcommit > 0)
-			{
-			  print_log_msg (1,
-					 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
-							 LOADDB_MSG_LAST_COMMITTED_LINE), lastcommit);
-			}
-
-		      util_log_write_errstr ("%s\n", db_error_string (3));
-		      /*
-		       * don't allow the transaction to be committed at
-		       * this point, note that if we ever move to a scheme
-		       * where we write directly to the heap without the
-		       * transaction context, we will have to unwind the
-		       * changes made if errors are detected !
-		       */
-		      db_abort_transaction ();
-		    }
-		  else
-		    {
-		      if (objects || fails)
-			{
-			  print_log_msg (1,
-					 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
-							 LOADDB_MSG_INSERT_AND_FAIL_COUNT), objects, fails);
-			}
-
-		      if (defaults)
-			{
-			  print_log_msg (1,
-					 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
-							 LOADDB_MSG_DEFAULT_COUNT), defaults);
-			}
-		      print_log_msg ((int) Verbose,
-				     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
-						     LOADDB_MSG_COMMITTING));
-
-		      /* commit the transaction and then update statistics */
-		      if (!db_commit_transaction ())
-			{
-			  if (!Disable_statistics)
-			    {
-			      if (Verbose)
-				{
-				  print_log_msg (1,
-						 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
-								 LOADDB_MSG_UPDATING_STATISTICS));
-				}
-			      if (!ldr_update_statistics ())
-				{
-				  /*
-				   * would it be faster to update statistics
-				   * before the first commit and just have a
-				   * single commit ?
-				   */
-				  print_log_msg ((int) Verbose,
-						 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
-								 LOADDB_MSG_COMMITTING));
-				  (void) db_commit_transaction ();
-				}
-			    }
-			}
-		    }
-		}
-	    }
-	}
-
-      ldr_final ();
-      if (object_file != NULL)
-	{
-	  fclose (object_file);
-	  object_file = NULL;
-	}
-    }
-
-  /* create index */
   if (!interrupted && index_file != NULL)
     {
       print_log_msg (1, "\nStart index loading.\n");
-      if (ldr_exec_query_from_file (Index_file, index_file, &index_file_start_line, Periodic_commit) != 0)
+      if (ldr_exec_query_from_file (args.index_file.c_str (), index_file, &index_file_start_line, &args) != 0)
 	{
 	  print_log_msg (1, "\nError occurred during index loading." "\nAborting current transaction...");
 	  msg_format = "Error occurred during index loading." "Aborting current transaction...\n";
 	  util_log_write_errstr (msg_format);
 	  status = 3;
+	  db_end_session ();
 	  db_shutdown ();
-	  print_log_msg (1, " done.\n\nRestart loaddb with '-%c %s:%d' option\n", LOAD_INDEX_FILE_S, Index_file,
-			 index_file_start_line);
+	  print_log_msg (1, " done.\n\nRestart loaddb with '-%c %s:%d' option\n", LOAD_INDEX_FILE_S,
+			 args.index_file.c_str (), index_file_start_line);
 	  goto error_return;
 	}
 
@@ -1059,7 +744,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       sm_update_catalog_statistics (CT_INDEXKEY_NAME, STATS_WITH_FULLSCAN);
       AU_ENABLE (au_save);
 
-      print_log_msg (1, "Index loading from %s finished.\n", Index_file);
+      print_log_msg (1, "Index loading from %s finished.\n", args.index_file.c_str ());
       db_commit_transaction ();
     }
 
@@ -1069,10 +754,9 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       index_file = NULL;
     }
 
-  print_log_msg ((int) Verbose, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CLOSING));
+  print_log_msg ((int) args.verbose, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CLOSING));
+  (void) db_end_session ();
   (void) db_shutdown ();
-
-  free_ignoreclasslist ();
 
   fclose (loaddb_log_file);
 
@@ -1083,21 +767,18 @@ error_return:
     {
       fclose (schema_file);
     }
-  if (object_file != NULL)
+  if (object_file.is_open ())
     {
-      fclose (object_file);
+      object_file.close ();
     }
   if (index_file != NULL)
     {
       fclose (index_file);
     }
-
   if (loaddb_log_file != NULL)
     {
       fclose (loaddb_log_file);
     }
-
-  free_ignoreclasslist ();
 
   return status;
 }
@@ -1128,7 +809,6 @@ loaddb_user (UTIL_FUNCTION_ARG * arg)
   return loaddb_internal (arg, 0);
 }
 
-
 /*
  * ldr_exec_query_interrupt_handler - signal handler registered via
  * util_arm_signal_handlers
@@ -1151,7 +831,7 @@ ldr_exec_query_interrupt_handler (void)
  *    commit_period(in): commit period
  */
 static int
-ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start_line, int commit_period)
+ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start_line, load_args * args)
 {
   DB_SESSION *session = NULL;
   DB_QUERY_RESULT *res = NULL;
@@ -1197,7 +877,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 
   util_arm_signal_handlers (&ldr_exec_query_interrupt_handler, &ldr_exec_query_interrupt_handler);
 
-  while (1)
+  while (true)
     {
       if (interrupt_query)
 	{
@@ -1261,14 +941,15 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	  break;
 	}
 
-      if (stmt_type == CUBRID_STMT_COMMIT_WORK || (commit_period && (executed_cnt % commit_period == 0)))
+      if (stmt_type == CUBRID_STMT_COMMIT_WORK
+	  || (args->periodic_commit && (executed_cnt % args->periodic_commit == 0)))
 	{
 	  db_commit_transaction ();
-	  print_log_msg (Verbose_commit, "%8d statements executed. Commit transaction at line %d\n", executed_cnt,
+	  print_log_msg (args->verbose_commit, "%8d statements executed. Commit transaction at line %d\n", executed_cnt,
 			 parser_end_line_no);
 	  *start_line = parser_end_line_no + 1;
 	}
-      print_log_msg ((int) Verbose, "Total %8d statements executed.\r", executed_cnt);
+      print_log_msg ((int) args->verbose, "Total %8d statements executed.\r", executed_cnt);
       fflush (stdout);
     }
 
@@ -1287,103 +968,243 @@ end:
   return error;
 }
 
-static int
-get_ignore_class_list (const char *inputfile_name)
+static void
+get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
 {
-  int inc_unit = 128;
-  int list_size;
-  FILE *input_file = NULL;
-  char buffer[DB_MAX_IDENTIFIER_LENGTH], buffer_scan_format[16];
-  char class_name[DB_MAX_IDENTIFIER_LENGTH];
+  assert (arg_map != NULL && args != NULL);
 
-  if (ignore_class_list != NULL)
+  std::string empty;
+
+  char *volume = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  char *input_file = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1);
+  char *user_name = utility_get_option_string_value (arg_map, LOAD_USER_S, 0);
+  char *password = utility_get_option_string_value (arg_map, LOAD_PASSWORD_S, 0);
+  char *schema_file = utility_get_option_string_value (arg_map, LOAD_SCHEMA_FILE_S, 0);
+  char *index_file = utility_get_option_string_value (arg_map, LOAD_INDEX_FILE_S, 0);
+  char *object_file = utility_get_option_string_value (arg_map, LOAD_DATA_FILE_S, 0);
+  char *server_object_file = utility_get_option_string_value (arg_map, LOAD_SERVER_DATA_FILE_S, 0);
+  char *error_file = utility_get_option_string_value (arg_map, LOAD_ERROR_CONTROL_FILE_S, 0);
+  char *table_name = utility_get_option_string_value (arg_map, LOAD_TABLE_NAME_S, 0);
+  char *ignore_class_file = utility_get_option_string_value (arg_map, LOAD_IGNORE_CLASS_S, 0);
+
+  args->volume = volume ? volume : empty;
+  args->input_file = input_file ? input_file : empty;
+  args->user_name = user_name ? user_name : empty;
+  args->password = password ? password : empty;
+  args->syntax_check = utility_get_option_bool_value (arg_map, LOAD_CHECK_ONLY_S);
+  args->load_only = utility_get_option_bool_value (arg_map, LOAD_LOAD_ONLY_S);
+  args->estimated_size = utility_get_option_int_value (arg_map, LOAD_ESTIMATED_SIZE_S);
+  args->verbose = utility_get_option_bool_value (arg_map, LOAD_VERBOSE_S);
+  args->disable_statistics = utility_get_option_bool_value (arg_map, LOAD_NO_STATISTICS_S);
+  args->periodic_commit = utility_get_option_int_value (arg_map, LOAD_PERIODIC_COMMIT_S);
+  args->verbose_commit = args->periodic_commit > 0;
+
+  /* *INDENT-OFF* */
+  if (args->periodic_commit == 0)
     {
-      free_ignoreclasslist ();
+      // We set the periodic commit to a default value.
+      args->periodic_commit = load_args::PERIODIC_COMMIT_DEFAULT_VALUE;
     }
-
-  if (inputfile_name == NULL)
-    {
-      return 0;
-    }
-
-  input_file = fopen (inputfile_name, "r");
-  if (input_file == NULL)
-    {
-      perror (inputfile_name);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_FILEOPEN_ERROR, inputfile_name);
-      return 1;
-    }
-
-  ignore_class_list = (char **) malloc (sizeof (char *) * inc_unit);
-  if (ignore_class_list == NULL)
-    {
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
-      goto error;
-    }
-
-  memset (ignore_class_list, '\0', inc_unit);
-
-  list_size = inc_unit;
-  ignore_class_num = 0;
-
-  snprintf (buffer_scan_format, sizeof (buffer_scan_format), "%%%ds\n", (int) (sizeof (buffer) - 1));
-
-  while (fgets ((char *) buffer, DB_MAX_IDENTIFIER_LENGTH, input_file) != NULL)
-    {
-      if ((strchr (buffer, '\n') - buffer) >= 1)
-	{
-	  if (ignore_class_num >= list_size)
-	    {
-	      ignore_class_list = (char **) realloc (ignore_class_list, sizeof (char *) * (list_size + inc_unit));
-	      if (ignore_class_list == NULL)
-		{
-		  util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
-		  goto error;
-		}
-
-	      memset (ignore_class_list + list_size, '\0', inc_unit);
-	      list_size = list_size + inc_unit;
-	    }
-
-	  sscanf ((char *) buffer, buffer_scan_format, (char *) class_name);
-	  ignore_class_list[ignore_class_num] = strdup (class_name);
-	  if (ignore_class_list[ignore_class_num] == NULL)
-	    {
-	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
-	      goto error;
-	    }
-
-	  ignore_class_num++;
-	}
-    }
-
-  fclose (input_file);
-
-  return 0;
-
-error:
-  free_ignoreclasslist ();
-  fclose (input_file);
-
-  return -1;
+  /* *INDENT-ON* */
+  args->no_oid_hint = utility_get_option_bool_value (arg_map, LOAD_NO_OID_S);
+  args->schema_file = schema_file ? schema_file : empty;
+  args->index_file = index_file ? index_file : empty;
+  args->object_file = object_file ? object_file : empty;
+  args->server_object_file = server_object_file ? server_object_file : empty;
+  args->error_file = error_file ? error_file : empty;
+  args->ignore_logging = utility_get_option_bool_value (arg_map, LOAD_IGNORE_LOGGING_S);
+  args->compare_storage_order = utility_get_option_bool_value (arg_map, LOAD_COMPARE_STORAGE_ORDER_S);
+  args->table_name = table_name ? table_name : empty;
+  args->ignore_class_file = ignore_class_file ? ignore_class_file : empty;
 }
 
 static void
-free_ignoreclasslist (void)
+ldr_server_load (load_args * args, int *status, bool * interrupted)
 {
-  int i = 0;
+  register_signal_handlers ();
 
-  if (ignore_class_list != NULL)
+  int error_code = loaddb_init (*args);
+  if (error_code != NO_ERROR)
     {
-      for (i = 0; i < ignore_class_num; i++)
+      print_er_msg ();
+      *status = 3;
+      return;
+    }
+
+  error_code = load_object_file (args);
+  if (error_code != NO_ERROR)
+    {
+      print_er_msg ();
+      *status = 3;
+    }
+
+  stats stats;
+  int prev_rows_committed = 0;
+  do
+    {
+      if (load_interrupted)
 	{
-	  if (*(ignore_class_list + i) != NULL)
+	  *interrupted = true;
+	  *status = 3;
+	  break;
+	}
+
+      error_code = loaddb_fetch_stats (&stats);
+      if (error_code != NO_ERROR)
+	{
+	  print_er_msg ();
+	  *status = 3;
+	  break;
+	}
+
+      if (!stats.log_message.empty ())
+	{
+	  print_log_msg (args->verbose, stats.log_message.c_str ());
+	}
+
+      if (!stats.error_message.empty ())
+	{
+	  /* Skip if syntax check only is enabled since we do not want to stop on error. */
+	  if (!args->syntax_check)
 	    {
-	      free (*(ignore_class_list + i));
+	      *status = 3;
+	      fprintf (stderr, "%s", stats.error_message.c_str ());
 	    }
 	}
-      free (ignore_class_list);
-      ignore_class_list = NULL;
+      else
+	{
+	  int curr_rows_committed = stats.rows_committed;
+	  // log committed instances msg only there was a commit since last check
+	  if (curr_rows_committed > prev_rows_committed)
+	    {
+	      /* Don't print this during syntax checking */
+	      if (!args->syntax_check)
+		{
+		  char *committed_instances_msg = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
+								  LOADDB_MSG_COMMITTED_INSTANCES);
+		  char *dummy = "";
+		  print_log_msg (args->verbose_commit, committed_instances_msg, dummy, curr_rows_committed);
+		}
+
+	      prev_rows_committed = curr_rows_committed;
+	    }
+	}
+
+	/* *INDENT-OFF* */
+	std::this_thread::sleep_for (std::chrono::milliseconds (100));
+	/* *INDENT-ON* */
     }
-  ignore_class_num = 0;
+  while (!(stats.is_completed || stats.is_failed) && *status != 3);
+
+  // fetch latest stats before destroying the session
+  loaddb_fetch_stats (&stats);
+
+  if (load_interrupted)
+    {
+      print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SIG1));
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
+	       stats.current_line.load ());
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INTERRUPTED_ABORT));
+    }
+
+  if (args->syntax_check)
+    {
+      if (!stats.error_message.empty ())
+	{
+	  fprintf (stderr, "%s", stats.error_message.c_str ());
+	}
+
+      print_log_msg (1,
+		     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_OBJECTS_SYNTAX_CHECKED),
+		     stats.rows_committed, stats.rows_failed);
+    }
+  else
+    {
+      print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INSERT_AND_FAIL_COUNT),
+		     stats.rows_committed, stats.rows_failed);
+    }
+
+  error_code = loaddb_destroy ();
+  if (error_code != NO_ERROR)
+    {
+      print_er_msg ();
+      *status = 3;
+    }
+
+  if (load_interrupted)
+    {
+      print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LAST_COMMITTED_LINE),
+		     stats.last_committed_line);
+    }
+}
+
+static void
+register_signal_handlers ()
+{
+  /* *INDENT-OFF* */
+  SIG_HANDLER sig_handler = [] ()
+  {
+    load_interrupted = true;
+    loaddb_interrupt ();
+  };
+  /* *INDENT-ON* */
+
+  // register handlers for SIGINT and SIGQUIT signals
+  util_arm_signal_handlers (sig_handler, sig_handler);
+}
+
+static int
+load_object_file (load_args * args)
+{
+  int error_code = NO_ERROR;
+
+  // first try to load directly on server
+  if (!args->server_object_file.empty ())
+    {
+      error_code = loaddb_load_object_file ();
+      if (error_code == NO_ERROR)
+	{
+	  // load was performed successfully by the server
+	  return error_code;
+	}
+      else if (error_code == ER_FILE_UNKNOWN_FILE)
+	{
+	  if (args->object_file.empty ())
+	    {
+	      fprintf (stderr, "ERROR: file %s does not exists on the server machine\n",
+		       args->server_object_file.c_str ());
+	      return error_code;
+	    }
+
+	  // server data file does not exists on server file system, try to load client data file
+	  fprintf (stderr,
+		   "ERROR: file %s does not exists on the server machine, try to load %s from the client machine\n",
+		   args->server_object_file.c_str (), args->object_file.c_str ());
+	}
+      else
+	{
+	  // there was an error while loading server data file on server, therefore exit
+	  return error_code;
+	}
+    }
+
+  /* *INDENT-OFF* */
+  batch_handler b_handler = [] (const batch &batch) -> int
+    {
+      int ret = loaddb_load_batch (batch);
+      delete &batch;
+
+      return ret;
+    };
+  batch_handler c_handler = [] (const batch &batch) -> int
+    {
+      int ret = loaddb_install_class (batch);
+      delete &batch;
+
+      return ret;
+    };
+  /* *INDENT-ON* */
+
+  // here we are sure that object_file exists since it was validated by loaddb_internal function
+  return split (args->periodic_commit, args->object_file, c_handler, b_handler);
 }

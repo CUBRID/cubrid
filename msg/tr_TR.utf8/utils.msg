@@ -1,18 +1,18 @@
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
 $
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
+$   This program is free software; you can redistribute it and/or modify
+$   it under the terms of the GNU General Public License as published by
 $   the Free Software Foundation; either version 2 of the License, or
 $   (at your option) any later version.
 $
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
+$  This program is distributed in the hope that it will be useful,
+$  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+$  GNU General Public License for more details.
 $
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
+$  You should have received a copy of the GNU General Public License
+$  along with this program; if not, write to the Free Software
 $  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 $
 
@@ -422,31 +422,36 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Sınıf %2$s Derece %1$d zaten tanımlanmış\n
 46 Sınıf %2$s Derece %1$d zaten ayrılmıştır\n
 47 Özniteliği '%1$s 'EŞSİZ aykırı, NULL'a dönüştürülür\n
-48   %1$d örnekleri\n
+48 %1$s %2$d örnekleri\n
 49 Sınıf %1$s\n
 50 Şifre:
 51 \n*** Sınıf istatistikleri güncelleniyor ***\n
 52 %2$d hat yakınlarındaki %1$s (metin '%3$s' oldu)\n
-53 Sözcüksel hata
+53 Sözcüksel hata\n
 54 satır %1$d: \"%2$s\" içinde syntax hata
 55 eksik
 56 %1$s de
 57 Uyumsuz bağımsız değişkenleri, \"%1$s\", ve \"%2$s\"\n
-58 %1$d taahhüt örnekleri\n
+58 %1$s %2$d taahhüt örnekleri\n
 59 \nLoaddb olmayan-optimize edilmiş sürümü çağırılamaz.\n
 60 Hata ayrıştırma \"%1$s\", gibi %2$s tür.\n
+61 Object Reference is not supported in CS mode.\n
+62 Updated statistics for class %1$s.\n
 112   %1$d örnekleri\r
-113 Son kararlı hattı: %1$d
+113 Son kararlı hattı: %1$d\n
 114 hata-kontrol-dosyası
 115 yükleme sırasında bir hata(lar) kontrol etmek için giriş dosyası
 116 Toplam %1$8d nesne (ler) eklenen, %2$d nesne (ler) başarısız oldu.\n
 117 Başarısız yük.\n
 118 Sınıf adının uzunluğu en fazla %1$d bayttır.\n
+119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
 120 \
 loaddb: Veritabanına veri alma nesneler ve şemalar.\n\
-kullanım: %1$s loaddb [SEÇENEK] database-name\n\
+kullanım: %1$s loaddb [SEÇENEK] database-name[@host]\n\
 \n\
 geçerli seçenekler:\n\
+  -S, --SA-mode                 stand-alone modu yürütme\n\
+  -C, --CS-mode                 istemci-sunucu modunda yürütme\n\
   -u, --user=ID                 veritabanı erişimi için kullanıcı kimliği; varsayılan: "public"\n\
   -p, --password=PASS           kullanıcı şifresi; varsayılan: hiçbir\n\
       --data-file-check-only    yük olmadan veri dosyası için sözdizimi kontrol edin; varsayılan: yükleme kontrol ettikten sonra\n\
@@ -459,6 +464,8 @@ geçerli seçenekler:\n\
   -s, --schema-file=FILE[:LINE] FILE ile LINE şeması oluşturun\n\
   -i, --index-file=FILE[:LINE]  FILE ile LINE dizin oluşturun\n\
   -d, --data-file=FILE          FILE ile yük verileri\n\
+      --server-data-file=FILE   load data with FILE on server,\n\
+                                absolute path must be provided and the file must exist on server file system\n\
   -t, --table=TABLE             Veri belgeleri içi kaybolan düzeyindeki şeflerin forum adıdır\n\
       --error-control-file=FILE Yükleme sırasında bir hata (lar) kontrol etmek için FILE\n\
       --ignore-class-file=FILE  yük atlamak sınıf adları girdi dosyası\n
@@ -903,7 +910,7 @@ geçerli seçenekler:\n\
   -L, --log-path=PATH         Kopyalanan log yoğunlukları için dizin PATH\n\
   -m, --mode=MODE             çalışma modu, varsayılan: sync\n\
                               MODE: sync veya semisync veya async\n\
-  -S, --start-page-id=ID      ilk log sayfası kopyalamak\n 
+  -S, --start-page-id=ID      ilk log sayfası kopyalamak\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 DBA şifrenizi girin:
@@ -1033,7 +1040,7 @@ geçerli seçenekler:\n\
   -f, --force-only    derlemeleri veri tabanında yeni sistem konfigürasyonu ile aynı olacak şekilde günceller.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 %1$s şifre gir: 
+20 %1$s şifre gir:
 22 Tran index          User name      Host name      Process id      Program name\n
 23 -------------------------------------------------------------------------------\n
 24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n

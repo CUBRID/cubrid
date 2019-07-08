@@ -4253,7 +4253,6 @@ intl_check_euckr (const unsigned char *buf, int size, char **pos)
 #undef OUTPUT
 }
 
-#if !defined (SERVER_MODE)
 /*
  * intl_check_string - Checks if a string contains valid sequences in current codeset
  *
@@ -4288,6 +4287,7 @@ intl_check_string (const char *buf, int size, char **pos, const INTL_CODESET cod
   return INTL_UTF8_VALID;
 }
 
+#if !defined (SERVER_MODE)
 /*
  * intl_is_bom_magic - Returns 1 if the buffer contains BOM magic for UTF-8
  *

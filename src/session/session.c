@@ -141,6 +141,8 @@ struct session_state
   int ref_count;
   TZ_REGION session_tz_region;
   int private_lru_index;
+
+  load_session *load_session_p;
 };
 
 /* session state manipulation functions */
@@ -282,6 +284,7 @@ session_state_init (void *st)
   session_p->trace_format = QUERY_TRACE_TEXT;
   session_p->private_lru_index = -1;
   session_p->auto_commit = false;
+  session_p->load_session_p = NULL;
 
   return NO_ERROR;
 }
@@ -362,6 +365,18 @@ session_state_uninit (void *st)
     {
       free_and_init (session->plan_string);
     }
+
+#if defined (SERVER_MODE)
+  // on uninit abort and delete loaddb session
+  if (session->load_session_p != NULL)
+    {
+      session->load_session_p->interrupt ();
+      session->load_session_p->wait_for_completion ();
+
+      delete session->load_session_p;
+      session->load_session_p = NULL;
+    }
+#endif
 
   return NO_ERROR;
 }
@@ -3155,6 +3170,38 @@ session_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit)
     }
 
   state_p->auto_commit = auto_commit;
+
+  return NO_ERROR;
+}
+
+int
+session_set_load_session (THREAD_ENTRY * thread_p, load_session * load_session_p)
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  state_p->load_session_p = load_session_p;
+
+  return NO_ERROR;
+}
+
+int
+session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_session_ref_ptr))
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  load_session_ref_ptr = state_p->load_session_p;
 
   return NO_ERROR;
 }
