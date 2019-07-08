@@ -13711,17 +13711,13 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
                             const std::vector<RECDES> &recdes, int has_index, int op_type, HEAP_SCANCACHE * scan_cache,
                             int *force_count, int pruning_type, PRUNING_CONTEXT * pcontext,
                             FUNC_PRED_UNPACK_INFO * func_preds, UPDATE_INPLACE_STYLE force_in_place)
-// *INDENT-ON*
-
 {
   int error_code = NO_ERROR;
   size_t accumulated_records_size = 0;
   size_t heap_max_page_size;
   OID dummy_oid;
-  // *INDENT-OFF*
   std::vector<RECDES> recdes_array;
   std::vector<VPID> heap_pages_array;
-  // *INDENT-ON*
 
   // Early-out
   if (recdes.size () == 0)
@@ -13740,7 +13736,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
       // Loop until we insert all records.
 
       if (heap_is_big_length (recdes[i].length))
-	{
+        {
 	  // We insert other records normally.
 	  error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, (RECDES *) (&recdes[i]), has_index,
 					     op_type, scan_cache, force_count, pruning_type, pcontext, func_preds,
@@ -13750,9 +13746,9 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	      ASSERT_ERROR ();
 	      return error_code;
 	    }
-	}
+        }
       else
-	{
+        {
 	  // get records until we fit the size of a page.
 	  if ((recdes[i].length + accumulated_records_size) >= heap_max_page_size)
 	    {
@@ -13764,13 +13760,13 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	      // First alloc a new empty heap page.
 	      error_code = heap_alloc_new_page (thread_p, hfid, *class_oid, &home_hint_p, &new_page_vpid);
 	      if (error_code != NO_ERROR)
-		{
+	        {
 		  ASSERT_ERROR ();
 		  return error_code;
-		}
+	        }
 
 	      for (size_t j = 0; j < recdes_array.size (); j++)
-		{
+	        {
 		  error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, &recdes_array[j], has_index,
 						     op_type, scan_cache, force_count, pruning_type, pcontext,
 						     func_preds, force_in_place, &home_hint_p);
@@ -13782,7 +13778,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 
 		  // Safeguard. We should not have the page fixed here.
 		  assert (home_hint_p.pgptr == NULL);
-		}
+	        }
 
 	      // Add the new VPID to the VPID array.
 	      assert (!VPID_ISNULL (&new_page_vpid));
@@ -13797,24 +13793,30 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	  // Add this record to the recdes array and increase the accumulated size.
 	  recdes_array.push_back (recdes[i]);
 	  accumulated_records_size += recdes[i].length;
-	}
+        }
     }
 
   // We must check if we have records which did not fill an entire page.
   for (size_t i = 0; i < recdes_array.size (); i++)
     {
       error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, &recdes_array[i], has_index, op_type,
-					 scan_cache, force_count, pruning_type, pcontext, func_preds, force_in_place,
-					 NULL);
+				         scan_cache, force_count, pruning_type, pcontext, func_preds, force_in_place,
+				         NULL);
       if (error_code != NO_ERROR)
-	{
+        {
 	  ASSERT_ERROR ();
 	  return error_code;
-	}
+        }
     }
 
   // Now form a heap chain with the pages and add the chain to the current heap.
-  // TODO: this!
+  error_code = heap_append_pages_to_heap (thread_p, hfid, *class_oid, heap_pages_array);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
 
   return error_code;
 }
+// *INDENT-ON*
