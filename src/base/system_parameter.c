@@ -667,7 +667,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_LOG_CHKPT_DETAILED "detailed_checkpoint_logging"
 #define PRM_NAME_IB_TASK_MEMSIZE "index_load_task_memsize"
 #define PRM_NAME_STATS_ON "stats_on"
-#define PRM_NAME_DEBUG_SYSOP "debug_system_operation"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2244,10 +2243,6 @@ static unsigned int prm_ib_task_memsize_flag = 0;
 bool PRM_STATS_ON = false;
 static bool prm_stats_on_default = false;
 static unsigned int prm_stats_on_flag = 0;
-
-bool PRM_DEBUG_SYSOP = false;
-static bool prm_debug_sysop_default = false;
-static unsigned int prm_debug_sysop_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5767,17 +5762,6 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_stats_on_flag,
    (void *) &prm_stats_on_default,
    (void *) &PRM_STATS_ON,
-   (void *) NULL, (void *) NULL,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_DEBUG_SYSOP,
-   PRM_NAME_DEBUG_SYSOP,
-   (PRM_FOR_SERVER | PRM_HIDDEN),
-   PRM_BOOLEAN,
-   &prm_debug_sysop_flag,
-   (void *) &prm_debug_sysop_default,
-   (void *) &PRM_DEBUG_SYSOP,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

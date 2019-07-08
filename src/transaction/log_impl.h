@@ -340,9 +340,6 @@ struct log_topops_addresses
 				 * system action */
   LOG_LSA posp_lsa;		/* The first address of a postpone log record for top system operation. We add this
 				 * since it is reset during recovery to the last reference postpone address. */
-#if !defined(NDEBUG)
-  char *exec_stack;
-#endif
 };
 
 enum log_topops_type

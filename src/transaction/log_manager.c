@@ -81,9 +81,6 @@
 #endif /* defined (SA_MODE) */
 #include "db_value_printer.hpp"
 #include "mem_block.hpp"
-#if !defined (NDEBUG)
-#include "stack_dump.h"
-#endif /* NDEBUG */
 #include "string_buffer.hpp"
 #include "boot_sr.h"
 #include "thread_daemon.hpp"
@@ -3561,16 +3558,6 @@ log_sysop_start (THREAD_ENTRY * thread_p)
   /* NOTE if tdes->topops.last >= 0, there is an already defined top system operation. */
   tdes->topops.last++;
   LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa, &tdes->tail_lsa);
-#if !defined (NDEBUG)
-  if (prm_get_bool_value (PRM_ID_DEBUG_SYSOP))
-    {
-      tdes->topops.stack[tdes->topops.last].exec_stack = er_dump_call_stack_to_string ();
-    }
-  else
-    {
-      tdes->topops.stack[tdes->topops.last].exec_stack = NULL;
-    }
-#endif
   LSA_COPY (&tdes->topop_lsa, &tdes->tail_lsa);
 
   LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].posp_lsa);
@@ -3669,12 +3656,6 @@ log_sysop_end_begin (THREAD_ENTRY * thread_p, int *tran_index_out, LOG_TDES ** t
 STATIC_INLINE void
 log_sysop_end_unstack (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
-#if !defined(NDEBUG)
-  if (tdes->topops.stack[tdes->topops.last].exec_stack != NULL)
-    {
-      free_and_init (tdes->topops.stack[tdes->topops.last].exec_stack);
-    }
-#endif
   tdes->topops.last--;
   if (tdes->topops.last >= 0)
     {
