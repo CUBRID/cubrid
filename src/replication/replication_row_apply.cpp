@@ -269,7 +269,11 @@ namespace cubreplication
 	return error_code;
       }
 
-    // TODO: add early out for null pkey_btid?
+    if (BTID_IS_NULL (&pkey_btid))
+      {
+	assert (false);
+	return ER_OBJ_OBJECT_NOT_FOUND;
+      }
 
     if (xbtree_find_unique (&thread_ref, &pkey_btid, op_type,
 			    const_cast<db_value *> (&key_value) /* todo: fix xbtree_find_unique signature */,
