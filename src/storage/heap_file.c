@@ -11218,7 +11218,7 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, const DB_VALUE * attr_v
        * HA_CTX type must be added to locator_update_ functions.
        */
       logtb_get_tdes (thread_p)->replication_log_generator.add_attribute_change (attr_info->class_oid, *inst_oid,
-										 attrid, *attr_val);
+										 attrid, value->dbvalue);
     }
 
   return ret;
@@ -23594,7 +23594,7 @@ heap_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * heap_rv_update_chain_after_mvcc_op () - Redo update of page chain after
  *					   an MVCC operation (used for
  *					   operations that are not changing
- *					
+ *
  *
  * return	 : NO_ERROR
  * thread_p (in) : Thread entry.
@@ -23629,7 +23629,7 @@ heap_rv_remove_flags_from_offset (INT16 offset)
 /*
  * heap_should_try_update_stat () - checks if an heap update statistics is
  *				    indicated
- *					
+ *
  *
  * return	 : NO_ERROR
  * thread_p (in) : Thread entry.
@@ -23853,7 +23853,7 @@ heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
 /*
  * heap_get_visible_version_from_log () - Iterate through old versions of object until a visible object is found
- *				
+ *
  *   return: SCAN_CODE. Possible values:
  *	     - S_SUCCESS: for successful case when record was obtained.
  *	     - S_DOESNT_EXIT: NULL LSA was provided, otherwise a visible version should exist
