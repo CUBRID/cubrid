@@ -2258,11 +2258,13 @@ bool PRM_REPL_LOG_LOCAL_DEBUG = false;
 static bool prm_repl_log_local_debug_default = false;
 static unsigned int prm_repl_log_local_debug_flag = false;
 
+/* *INDENT-OFF* */
 int PRM_REPL_SEMISYNC_ACK_MODE = cubstream::REPL_SEMISYNC_ACK_ON_CONSUME;
 static int prm_repl_semisync_ack_mode_default = cubstream::REPL_SEMISYNC_ACK_ON_CONSUME;
 static int prm_repl_semisync_ack_mode_lower = cubstream::REPL_SEMISYNC_ACK_ON_CONSUME;
 static int prm_repl_semisync_ack_mode_upper = cubstream::REPL_SEMISYNC_ACK_ON_FLUSH;
 static unsigned int prm_repl_semisync_ack_mode_flag = 0;
+/* *INDENT-ON* */
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5987,10 +5989,12 @@ static KEYVAL ha_repl_filter_type_words[] = {
   {"exclude_table", REPL_FILTER_EXCLUDE_TBL}
 };
 
+/* *INDENT-OFF* */
 static KEYVAL ha_repl_semisync_ack_mode_words[] = {
   {"on_consume", cubstream::REPL_SEMISYNC_ACK_ON_CONSUME},
   {"on_flush", cubstream::REPL_SEMISYNC_ACK_ON_FLUSH}
 };
+/* *INDENT-ON* */
 
 static const char *compat_mode_values_PRM_ANSI_QUOTES[COMPAT_ORACLE + 2] = {
   NULL,				/* COMPAT_CUBRID */

@@ -82,8 +82,8 @@ namespace cubreplication
 
     instance->m_lc->set_stream (instance->m_stream);
 
-    if ((cubstream::REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE)
-	 == cubstream::REPL_SEMISYNC_ACK_ON_FLUSH)
+    if ((cubstream::REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) ==
+	cubstream::REPL_SEMISYNC_ACK_ON_FLUSH)
       {
 	// route produced stream positions to get validated as flushed on disk before sending them
 	instance->m_lc->set_ack_producer ([instance] (cubstream::stream_position ack_sp)
@@ -132,8 +132,8 @@ namespace cubreplication
 
     g_instance->m_ctrl_sender = sender;
 
-    if ((cubstream::REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE)
-	 == cubstream::REPL_SEMISYNC_ACK_ON_FLUSH)
+    if ((cubstream::REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) ==
+	cubstream::REPL_SEMISYNC_ACK_ON_FLUSH)
       {
 	g_instance->m_stream_file->set_sync_notifier ([sender] (const cubstream::stream_position & sp)
 	{
