@@ -95,7 +95,7 @@ namespace cubthread
       template <typename FuncExec, typename FuncRetire>
       callable_task (FuncExec fe, FuncRetire fr);
 
-      void execute (context_type &ctx) final
+      void execute (Context &ctx) final
       {
 	m_exec_f (ctx);
       }
