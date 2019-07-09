@@ -3653,9 +3653,7 @@ or_packed_json_schema_length (const char *json_schema)
   DB_VALUE val;
   int len;
 
-  // *INDENT-OFF*
-  db_make_string (&val, const_cast <char*>(json_schema));
-  // *INDENT-ON*
+  db_make_string (&val, json_schema);
 
   len = tp_String.get_disk_size_of_value (&val);
 

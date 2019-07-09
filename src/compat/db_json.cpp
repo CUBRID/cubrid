@@ -1982,7 +1982,7 @@ db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALU
     DB_VALUE str_val;
 
     db_make_null (&str_val);
-    int error_code = db_make_string (&str_val, (char *) json_str);
+    int error_code = db_make_string (&str_val, json_str);
     if (error_code)
       {
 	return error_code;

@@ -427,22 +427,22 @@ extern "C"
   extern int db_make_short (DB_VALUE * value, const DB_C_SHORT num);
   extern int db_make_bigint (DB_VALUE * value, const DB_BIGINT num);
   extern int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale);
-  extern int db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str, const int bit_str_bit_size);
-  extern int db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_str,
+  extern int db_make_bit (DB_VALUE * value, const int bit_length, DB_CONST_C_BIT bit_str, const int bit_str_bit_size);
+  extern int db_make_varbit (DB_VALUE * value, const int max_bit_length, DB_CONST_C_BIT bit_str,
 			     const int bit_str_bit_size);
-  extern int db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str, const int char_str_byte_size,
+  extern int db_make_char (DB_VALUE * value, const int char_length, DB_CONST_C_CHAR str, const int char_str_byte_size,
 			   const int codeset, const int collation_id);
-  extern int db_make_varchar (DB_VALUE * value, const int max_char_length, const DB_C_CHAR str,
+  extern int db_make_varchar (DB_VALUE * value, const int max_char_length, DB_CONST_C_CHAR str,
 			      const int char_str_byte_size, const int codeset, const int collation_id);
-  extern int db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str,
+  extern int db_make_nchar (DB_VALUE * value, const int nchar_length, DB_CONST_C_NCHAR str,
 			    const int nchar_str_byte_size, const int codeset, const int collation_id);
-  extern int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, const DB_C_NCHAR str,
+  extern int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, DB_CONST_C_NCHAR str,
 			       const int nchar_str_byte_size, const int codeset, const int collation_id);
   extern int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int size,
 				  unsigned char codeset, const int collation_id);
   extern int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle);
 
-  extern int db_make_string (DB_VALUE * value, char *str);
+  extern int db_make_string (DB_VALUE * value, const char *str);
   extern int db_make_string_copy (DB_VALUE * value, const char *str);
 
   extern int db_make_oid (DB_VALUE * value, const OID * oid);

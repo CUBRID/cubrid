@@ -2169,7 +2169,7 @@ static int
 ldr_str_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   /* todo: switch this to db_make_string_copy and avoid any possible leaks */
-  db_make_string (val, (char *) str);
+  db_make_string (val, str);
   return NO_ERROR;
 }
 
@@ -2330,7 +2330,7 @@ ldr_str_db_generic (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUT
   DB_VALUE val;
 
   /* todo: switch this to db_make_string_copy and avoid any possible leaks */
-  db_make_string (&val, (char *) str);
+  db_make_string (&val, str);
   return ldr_generic (context, &val);
 }
 
@@ -2514,8 +2514,7 @@ static int
 ldr_nstr_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
 
-  db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) (str), len, LANG_SYS_CODESET,
-		    LANG_SYS_COLLATION);
+  db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, str, len, LANG_SYS_CODESET, LANG_SYS_COLLATION);
   return NO_ERROR;
 }
 

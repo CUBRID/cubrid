@@ -247,7 +247,7 @@ extern int qstr_bit_to_bin (char *dest, int dest_size, char *src, int src_size);
 extern void qstr_bit_to_hex_coerce (char *buffer, int buffer_size, const char *src, int src_length, int pad_flag,
 				    int *copy_size, int *truncation);
 extern int db_get_string_length (const DB_VALUE * value);
-extern void qstr_make_typed_string (const DB_TYPE db_type, DB_VALUE * value, const int precision, const DB_C_CHAR src,
+extern void qstr_make_typed_string (const DB_TYPE db_type, DB_VALUE * value, const int precision, DB_CONST_C_CHAR src,
 				    const int s_unit, const int codeset, const int collation_id);
 extern int db_add_months (const DB_VALUE * src_date, const DB_VALUE * nmonth, DB_VALUE * result_date);
 extern int db_last_day (const DB_VALUE * src_date, DB_VALUE * result_day);

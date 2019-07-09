@@ -66,7 +66,7 @@ STATIC_INLINE int db_value_precision (const DB_VALUE * value) __attribute__ ((AL
 STATIC_INLINE int db_value_scale (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE JSON_DOC *db_get_json_document (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 
-STATIC_INLINE int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, char *str,
+STATIC_INLINE int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, const char *str,
 				   const int size) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE int db_make_null (DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -93,27 +93,27 @@ STATIC_INLINE int db_make_short (DB_VALUE * value, const DB_C_SHORT num) __attri
 STATIC_INLINE int db_make_bigint (DB_VALUE * value, const DB_BIGINT num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str,
+STATIC_INLINE int db_make_bit (DB_VALUE * value, const int bit_length, DB_CONST_C_BIT bit_str,
 			       const int bit_str_bit_size) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_str,
+STATIC_INLINE int db_make_varbit (DB_VALUE * value, const int max_bit_length, DB_CONST_C_BIT bit_str,
 				  const int bit_str_bit_size) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str,
+STATIC_INLINE int db_make_char (DB_VALUE * value, const int char_length, DB_CONST_C_CHAR str,
 				const int char_str_byte_size, const int codeset, const int collation_id)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_varchar (DB_VALUE * value, const int max_char_length, const DB_C_CHAR str,
+STATIC_INLINE int db_make_varchar (DB_VALUE * value, const int max_char_length, DB_CONST_C_CHAR str,
 				   const int char_str_byte_size, const int codeset, const int collation_id)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str,
+STATIC_INLINE int db_make_nchar (DB_VALUE * value, const int nchar_length, DB_CONST_C_NCHAR str,
 				 const int nchar_str_byte_size, const int codeset, const int collation_id)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, const DB_C_NCHAR str,
+STATIC_INLINE int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, DB_CONST_C_NCHAR str,
 				    const int nchar_str_byte_size, const int codeset, const int collation_id)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int size,
 				       unsigned char codeset, const int collation_id) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle) __attribute__ ((ALWAYS_INLINE));
 
-STATIC_INLINE int db_make_string (DB_VALUE * value, char *str) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int db_make_string (DB_VALUE * value, const char *str) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_string_copy (DB_VALUE * value, const char *str) __attribute__ ((ALWAYS_INLINE));
 
 // TODO: It is ugly but I would like to separate the existing usages of db_make_string_copy from those of const str.
@@ -997,7 +997,7 @@ db_get_json_document (const DB_VALUE * value)
  * size(in):
  */
 int
-db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, char *str, const int size)
+db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, const char *str, const int size)
 {
 #if defined (API_ACTIVE_CHECKS)
   CHECK_1ARG_ERROR (value);
@@ -1559,7 +1559,7 @@ db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, 
  * bit_str_bit_size(in):
  */
 int
-db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str, const int bit_str_bit_size)
+db_make_bit (DB_VALUE * value, const int bit_length, DB_CONST_C_BIT bit_str, const int bit_str_bit_size)
 {
   int error;
 
@@ -1586,7 +1586,7 @@ db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str, con
  * bit_str_bit_size(in):
  */
 int
-db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_str, const int bit_str_bit_size)
+db_make_varbit (DB_VALUE * value, const int max_bit_length, DB_CONST_C_BIT bit_str, const int bit_str_bit_size)
 {
   int error;
 
@@ -1614,8 +1614,8 @@ db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_s
  * char_str_byte_size(in):
  */
 int
-db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str,
-	      const int char_str_byte_size, const int codeset, const int collation_id)
+db_make_char (DB_VALUE * value, const int char_length, DB_CONST_C_CHAR str, const int char_str_byte_size,
+	      const int codeset, const int collation_id)
 {
   int error;
 
@@ -1641,8 +1641,8 @@ db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str,
  * char_str_byte_size(in):
  */
 int
-db_make_varchar (DB_VALUE * value, const int max_char_length,
-		 const DB_C_CHAR str, const int char_str_byte_size, const int codeset, const int collation_id)
+db_make_varchar (DB_VALUE * value, const int max_char_length, DB_CONST_C_CHAR str, const int char_str_byte_size,
+		 const int codeset, const int collation_id)
 {
   int error;
 
@@ -1668,8 +1668,8 @@ db_make_varchar (DB_VALUE * value, const int max_char_length,
  * nchar_str_byte_size(in):
  */
 int
-db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str,
-	       const int nchar_str_byte_size, const int codeset, const int collation_id)
+db_make_nchar (DB_VALUE * value, const int nchar_length, DB_CONST_C_NCHAR str, const int nchar_str_byte_size,
+	       const int codeset, const int collation_id)
 {
   int error;
 
@@ -1695,8 +1695,8 @@ db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str,
  * nchar_str_byte_size(in):
  */
 int
-db_make_varnchar (DB_VALUE * value, const int max_nchar_length,
-		  const DB_C_NCHAR str, const int nchar_str_byte_size, const int codeset, const int collation_id)
+db_make_varnchar (DB_VALUE * value, const int max_nchar_length, DB_CONST_C_NCHAR str, const int nchar_str_byte_size,
+		  const int codeset, const int collation_id)
 {
   int error;
 
@@ -1805,7 +1805,7 @@ db_make_oid (DB_VALUE * value, const OID * oid)
  * str(in):
  */
 int
-db_make_string (DB_VALUE * value, char *str)
+db_make_string (DB_VALUE * value, const char *str)
 {
   int error;
   int size;
@@ -1857,7 +1857,7 @@ db_make_string_copy (DB_VALUE * value, const char *str)
 
   if (copy_str == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen(str) + 1);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (str) + 1);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
