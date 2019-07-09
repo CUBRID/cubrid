@@ -194,10 +194,13 @@ namespace cubreplication
 	using tasks_map = std::unordered_map <MVCCID, copy_db_worker_task *>;
 	tasks_map repl_tasks;
 	tasks_map nonexecutable_repl_tasks;
+        bool is_heap_extract_phase = false;
+        bool is_replication_copy_end = false;
 
-	while (true)
+	while (!is_replication_copy_end)
 	  {
 	    bool should_stop = false;
+            bool is_control_se = false;
 	    m_lc.pop_entry (se, should_stop);
 
 	    if (should_stop)
@@ -212,9 +215,39 @@ namespace cubreplication
 		_er_log_debug (ARG_FILE_LINE, "copy_dispatch_daemon_task execute pop_entry:\n%s", sb.get_buffer ());
 	      }
 
+            /* during extract heap phase we may apply objects in parallel */
+            if (!is_heap_extract_phase)
+              {
+                m_lc.wait_for_tasks ();
+              }
 
+            if (se->is_start_of_extract_heap ())
+              {
+                is_heap_extract_phase = true;
+                is_control_se = true;
+              }
+            else if (se->is_end_of_extract_heap ())
+              {
+                is_heap_extract_phase = false;
+                is_control_se = true;
+              }
+            else if (se->is_end_of_replication_copy ())
+              {
+                assert (is_heap_extract_phase == false);
+                is_control_se = true;
+                is_replication_copy_end = true;
+              }
 
-		/* stream entry is deleted by applier task thread */
+            if (is_control_se)
+              {
+                delete se;
+              }
+            else
+              {
+                copy_db_worker_task *my_copy_db_worker_task = new copy_db_worker_task (se, m_lc);
+	        m_lc.execute_task (my_copy_db_worker_task);
+                /* stream entry is deleted by applier task thread */
+              }
 	  }
       }
 

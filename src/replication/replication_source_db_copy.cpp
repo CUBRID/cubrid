@@ -78,6 +78,27 @@ namespace cubreplication
     stream_entry.pack ();
   }
 
+  void source_copy_context::pack_and_add_start_of_extract_heap (void)
+  {
+    stream_entry stream_entry (m_stream, MVCCID_FIRST, stream_entry_header::START_OF_EXTRACT_HEAP);
+
+    stream_entry.pack ();
+  }
+
+  void source_copy_context::pack_and_add_end_of_extract_heap (void)
+  {
+    stream_entry stream_entry (m_stream, MVCCID_FIRST, stream_entry_header::END_OF_EXTRACT_HEAP);
+
+    stream_entry.pack ();
+  }
+
+  void source_copy_context::pack_and_add_end_of_copy (void)
+  {
+    stream_entry stream_entry (m_stream, MVCCID_FIRST, stream_entry_header::END_OF_REPLICATION_COPY);
+
+    stream_entry.pack ();
+  }
+
   int source_copy_context::transit_state (copy_stage new_state)
   {
     int error = NO_ERROR;
@@ -106,7 +127,6 @@ namespace cubreplication
     else if (new_state == SCHEMA_APPLY_TRIGGERS_INDEXES_FINISHED)
       {
 	pack_and_add_sbr (m_indexes);
-        /* TODO : add stream entry for FINISH */
       }
 
     m_state_cv.notify_one ();
@@ -214,6 +234,8 @@ namespace cubreplication
           {
             m_src_copy_ctxt.inc_error_cnt ();
           }
+
+        m_src_copy_ctxt.dec_extract_running_thread ();
       }
 
     private:
@@ -249,24 +271,31 @@ namespace cubreplication
         m_src_copy_ctx.wait_end_classes ();
 
         /* start heap copy : one thread task for each class */
-        cubthread::entry_workpool *heap_extract_workers_pool = cubthread::get_manager ()->create_worker_pool (EXTRACT_HEAP_WORKER_POOL_SIZE,
-			     EXTRACT_HEAP_WORKER_POOL_SIZE, "replication_extract_heap_workers", NULL, 1, 1);
+        cubthread::entry_workpool *heap_extract_workers_pool =
+          cubthread::get_manager ()->create_worker_pool (EXTRACT_HEAP_WORKER_POOL_SIZE, EXTRACT_HEAP_WORKER_POOL_SIZE,
+                                                         "replication_extract_heap_workers", NULL, 1, 1);
 
+        m_src_copy_ctx.pack_and_add_start_of_extract_heap ();
         const std::list<OID> *class_list = m_src_copy_ctx.peek_class_list ();
+        /* TODO[replication]: we may optimize this to have multiple threads for larger heaps */
         for (const OID class_oid : *class_list)
           {
             heap_extract_worker_task *task = new heap_extract_worker_task (m_src_copy_ctx, class_oid);
             cubthread::get_manager ()->push_task (heap_extract_workers_pool, task);
+            m_src_copy_ctx.inc_extract_running_thread ();
           }
+        
         /* wait for all threads to end */
+        while (m_src_copy_ctx.get_extract_running_thread () > 0)
+          {
+            thread_sleep (10);
+          }
 
-
+        m_src_copy_ctx.pack_and_add_end_of_extract_heap ();
         /* wait for indexes and triggers schema */
         m_src_copy_ctx.wait_end_triggers_indexes ();
 
-
-
-
+        m_src_copy_ctx.pack_and_add_end_of_copy ();
       };
 
     private:

@@ -46,7 +46,10 @@ namespace cubreplication
       COMMITTED,
       ABORTED,
       GROUP_COMMIT,
-      NEW_MASTER
+      NEW_MASTER,
+      START_OF_EXTRACT_HEAP,
+      END_OF_EXTRACT_HEAP,
+      END_OF_REPLICATION_COPY
     } TRAN_STATE;
 
     const static unsigned STATE_BITS = 3;
@@ -183,6 +186,21 @@ namespace cubreplication
       {
 	return m_header.tran_state < stream_entry_header::ACTIVE
 	       || m_header.tran_state > stream_entry_header::NEW_MASTER;
+      }
+
+      bool is_start_of_extract_heap (void)
+      {
+	return m_header.tran_state == stream_entry_header::START_OF_EXTRACT_HEAP;
+      }
+
+      bool is_end_of_extract_heap (void)
+      {
+	return m_header.tran_state == stream_entry_header::END_OF_EXTRACT_HEAP;
+      }
+
+      bool is_end_of_replication_copy (void)
+      {
+	return m_header.tran_state == stream_entry_header::END_OF_REPLICATION_COPY;
       }
 
       int pack_stream_entry_header ();

@@ -77,6 +77,9 @@ namespace cubreplication
 
       void pack_and_add_object (row_object &obj);
       void pack_and_add_sbr (sbr_repl_entry &sbr);
+      void pack_and_add_start_of_extract_heap ();
+      void pack_and_add_end_of_extract_heap ();
+      void pack_and_add_end_of_copy ();
 
       int transit_state (copy_stage new_state);
 
@@ -92,6 +95,9 @@ namespace cubreplication
 
       int get_tran_index (void);
       void inc_error_cnt ();
+      void inc_extract_running_thread () { ++m_running_extract_threads; }
+      void dec_extract_running_thread () { --m_running_extract_threads; }
+      int get_extract_running_thread () { return m_running_extract_threads; }
 
       const std::list<OID>* peek_class_list (void) const;
 
@@ -101,6 +107,7 @@ namespace cubreplication
     private:
       int m_tran_index;
       int m_error_cnt;
+      std::atomic<int>  m_running_extract_threads;
 
       cubstream::multi_thread_stream *m_stream;
       cubstream::stream_file *m_stream_file;
