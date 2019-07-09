@@ -24,7 +24,6 @@
 #ifndef _TRANSACTION_COMPLETE_MANAGER_HPP_
 #define _TRANSACTION_COMPLETE_MANAGER_HPP_
 
-#include "log_impl.h"
 #include "transaction_group.hpp"
 
 #include <cinttypes>
@@ -42,7 +41,7 @@ namespace cubtx
       static const id_type NULL_ID = 0;
       virtual ~complete_manager () = 0;
 
-      virtual LOG_TRAN_COMPLETE_MANAGER_TYPE get_manager_type ();
+      virtual int get_manager_type () const = 0;
 
       virtual id_type register_transaction (int tran_index, MVCCID mvccid, TRAN_STATE state) = 0;
       virtual void complete_mvcc (id_type id) = 0;

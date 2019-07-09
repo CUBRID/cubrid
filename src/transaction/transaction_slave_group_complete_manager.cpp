@@ -235,7 +235,7 @@ namespace cubtx
   //
   // get_manager_type - get manager type.
   //
-  LOG_TRAN_COMPLETE_MANAGER_TYPE slave_group_complete_manager::get_manager_type ()
+  int slave_group_complete_manager::get_manager_type () const
   {
     return LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE;
   }

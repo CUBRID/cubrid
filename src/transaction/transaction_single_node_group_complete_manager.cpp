@@ -96,7 +96,7 @@ namespace cubtx
   //
   // get_manager_type - get manager type.
   //
-  LOG_TRAN_COMPLETE_MANAGER_TYPE single_node_group_complete_manager::get_manager_type ()
+  int single_node_group_complete_manager::get_manager_type () const
   {
     return LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE;
   }
