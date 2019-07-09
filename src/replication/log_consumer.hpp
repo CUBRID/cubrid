@@ -155,6 +155,7 @@ namespace cubreplication
 	int started_task;
 	started_task = --m_started_tasks;
 
+        assert (started_task >= 0);
 	if (started_task == 0)
 	  {
 	    /* Notify all. Currently, there  is only one waiter, but may be added others, later. */
