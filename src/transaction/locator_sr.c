@@ -5662,7 +5662,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 			  er_log_debug (ARG_FILE_LINE, "locator_update_force: unknown oid ( %d|%d|%d )\n",
 					oid->pageid, oid->slotid, oid->volid);
 			}
-		      else if (error_code == NO_ERROR)
+		      else
 			{
 			  ASSERT_ERROR_AND_SET (error_code);
 			}
@@ -5820,17 +5820,19 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 	  /* make sure we use the correct class oid - we could be dealing with a classoid resulted from a unique btid
 	   * pruning */
+	  if (heap_get_class_oid (thread_p, oid, class_oid) != S_SUCCESS)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      goto error;
+	    }
+
 	  error_code = heap_get_hfid_from_class_oid (thread_p, class_oid, hfid);
-	  if (error_code != S_SUCCESS)
+	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      goto error;
 	    }
 
-	  if (heap_get_hfid_from_class_oid (thread_p, class_oid, hfid) != NO_ERROR)
-	    {
-	      goto error;
-	    }
 
 	  if (!OID_EQ (class_oid, &real_class_oid))
 	    {
