@@ -171,6 +171,11 @@ namespace cubreplication
 	return m_header.tran_state == stream_entry_header::COMMITTED;
       }
 
+      bool is_subtran_commit (void) const
+      {
+	return m_header.tran_state == stream_entry_header::SUBTRAN_COMMIT;
+      }
+
       bool is_tran_abort (void) const
       {
 	return m_header.tran_state == stream_entry_header::ABORTED;
