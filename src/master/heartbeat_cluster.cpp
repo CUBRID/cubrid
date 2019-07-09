@@ -105,7 +105,7 @@ namespace cubhb
 
   cluster::cluster (ha_server *server)
     : lock ()
-    , state (node_state ::UNKNOWN)
+    , state (node_state::UNKNOWN)
     , nodes ()
     , myself (NULL)
     , master (NULL)
