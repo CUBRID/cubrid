@@ -55,6 +55,8 @@ namespace cubtx
       /* stream_ack methods */
       void notify_stream_ack (const cubstream::stream_position stream_pos) override;
 
+      LOG_TRAN_COMPLETE_MANAGER_TYPE get_manager_type () override;
+
     protected:
       bool can_close_current_group () override;
       void on_register_transaction () override;

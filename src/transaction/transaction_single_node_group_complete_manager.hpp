@@ -51,6 +51,8 @@ namespace cubtx
 
       void notify_log_flush_lsa (const LOG_LSA *lsa) override;
 
+      LOG_TRAN_COMPLETE_MANAGER_TYPE get_manager_type () override;
+
     protected:
       bool can_close_current_group () override;
       void on_register_transaction () override;

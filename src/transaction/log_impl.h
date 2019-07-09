@@ -775,6 +775,11 @@ enum log_tran_complete_manager_type
 };
 typedef enum log_tran_complete_manager_type LOG_TRAN_COMPLETE_MANAGER_TYPE;
 
+#define LOG_TRAN_COMPLETE_NO_MANAGER_STR                 "no manager"
+#define LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE_STR        "single node"
+#define LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE_STR        "master node"
+#define LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE_STR         "slave"
+
 #if !defined(SERVER_MODE)
 #if !defined(LOG_TRAN_INDEX)
 #define LOG_TRAN_INDEX

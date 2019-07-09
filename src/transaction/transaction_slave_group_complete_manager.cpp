@@ -233,6 +233,14 @@ namespace cubtx
   }
 
   //
+  // get_manager_type - get manager type.
+  //
+  LOG_TRAN_COMPLETE_MANAGER_TYPE slave_group_complete_manager::get_manager_type ()
+  {
+    return LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE;
+  }
+
+  //
   // execute is thread main method.
   //
   void slave_group_complete_task::execute (cubthread::entry &thread_ref)

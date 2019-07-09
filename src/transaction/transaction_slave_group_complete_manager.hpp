@@ -56,6 +56,8 @@ namespace cubtx
       void set_close_info_for_current_group (cubstream::stream_position stream_position,
 					     int count_expected_transactions) override;
 
+      LOG_TRAN_COMPLETE_MANAGER_TYPE get_manager_type () override;
+
     protected:
       /* group_complete_manager methods */
       bool can_close_current_group () override;

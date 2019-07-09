@@ -94,6 +94,14 @@ namespace cubtx
   }
 
   //
+  // get_manager_type - get manager type.
+  //
+  LOG_TRAN_COMPLETE_MANAGER_TYPE single_node_group_complete_manager::get_manager_type ()
+  {
+    return LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE;
+  }
+
+  //
   // on_register_transaction - on register transaction specific to single node.
   //
   void single_node_group_complete_manager::on_register_transaction ()

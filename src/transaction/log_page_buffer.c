@@ -10196,6 +10196,28 @@ logpb_initialize_tran_complete_manager (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * logpb_complete_manager_string - complete manager string
+ */
+const char *
+logpb_complete_manager_string (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
+{
+  switch (manager_type)
+    {
+    case LOG_TRAN_COMPLETE_NO_MANAGER:
+      return LOG_TRAN_COMPLETE_NO_MANAGER_STR;
+    case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
+      return LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE_STR;
+    case LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE:
+      return LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE_STR;
+    case LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE:
+      return LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE_STR;
+    }
+
+  return "invalid";
+}
+
+
+/*
  * logpb_resets_tran_complete_manager - Resets transaction complete manager.
  *
  * return: nothing
@@ -10212,6 +10234,18 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
 #else
   const char *ha_server_state_string = "HA_NONE";
 #endif
+
+  if (log_Gl.m_tran_complete_mgr != NULL && log_Gl.m_tran_complete_mgr->get_manager_type () == manager_type)
+    {
+      /* Same manager, nothing to do. */
+      er_print_callstack (ARG_FILE_LINE, "logpb_resets_tran_complete_manager manager type = %s, ha_server_state = %s\n",
+			  logpb_complete_manager_string (manager_type), ha_server_state_string);
+      return;
+    }
+  else
+    {
+      /* TODO - atomic change manager. */
+    }
 
   switch (manager_type)
     {
