@@ -34,6 +34,10 @@ namespace cubreplication
   class log_consumer;
   class stream_entry;
 }
+namespace cubthread
+{
+  class entry;
+}
 
 namespace cubreplication
 {
@@ -50,6 +54,7 @@ namespace cubreplication
       class task;
       friend class task;
 
+      void execute (cubthread::entry &thread_ref);
       void finished_task ();
 
       log_consumer &m_lc;
