@@ -18,37 +18,32 @@
  */
 
 /*
- * communication_server_channel.hpp
+ * slave_control_channel.hpp - manages slave control channel entries
  */
 
-#ifndef _COMMUNICATION_SERVER_CHANNEL_HPP_
-#define _COMMUNICATION_SERVER_CHANNEL_HPP_
+#ifndef _SLAVE_CONTROL_CHANNEL_HPP_
+#define _SLAVE_CONTROL_CHANNEL_HPP_
 
-#include "communication_channel.hpp"
+#include <memory>
 
-#include <string>
+#include "cubstream.hpp"
 
 namespace cubcomm
 {
+  class channel;
+}
 
-  class server_channel : public channel
+namespace cubreplication
+{
+  class slave_control_channel
   {
     public:
-      server_channel (const char *server_name, int max_timeout_in_ms = -1);
-      ~server_channel () = default;
-
-      server_channel (const server_channel &) = delete;
-      server_channel &operator= (const server_channel &) = delete;
-
-      server_channel (server_channel &&comm);
-      server_channel &operator= (server_channel &&comm);
-
-      css_error_code connect (const char *hostname, int port, css_command_type cmd_type);
-
+      slave_control_channel (cubcomm::channel &&chn);
+      void send_ack (cubstream::stream_position sp);
     private:
-      std::string m_server_name;
+      std::unique_ptr<cubcomm::channel> m_chn;
   };
+}
 
-}; /* cubcomm namepace */
+#endif
 
-#endif /* _COMMUNICATION_SERVER_CHANNEL_HPP_ */

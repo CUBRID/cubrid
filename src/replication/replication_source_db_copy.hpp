@@ -27,7 +27,9 @@
 #define _REPLICATION_SOURCE_DB_COPY_HPP_
 
 #include "replication_object.hpp"
+#include <condition_variable>
 #include <list>
+#include <mutex>
 
 namespace cubstream
 {
@@ -85,8 +87,8 @@ namespace cubreplication
 
       static cubstream::multi_thread_stream *get_stream_for_copy ();
 
-      int wait_end_classes (void);
-      int wait_end_triggers_indexes (void);
+      void wait_end_classes (void);
+      void wait_end_triggers_indexes (void);
 
       int get_tran_index (void);
       void inc_error_cnt ();
@@ -94,7 +96,7 @@ namespace cubreplication
       const std::list<OID>* peek_class_list (void) const;
 
     private:
-      int wait_for_state (copy_stage desired_state);
+      void wait_for_state (const copy_stage &desired_state);
 
     private:
       int m_tran_index;

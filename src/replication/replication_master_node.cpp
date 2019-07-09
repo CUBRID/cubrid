@@ -26,6 +26,7 @@
 #include "replication_master_node.hpp"
 #include "log_impl.h"
 #include "replication_common.hpp"
+#include "master_control_channel.hpp"
 #include "replication_master_senders_manager.hpp"
 #include "transaction_master_group_complete_manager.hpp"
 #include "server_support.h"
@@ -44,7 +45,6 @@ namespace cubreplication
 
   void master_node::init (const char *name)
   {
-#if defined (SERVER_MODE)
     assert (g_instance == NULL);
     master_node *instance = master_node::get_instance (name);
 
@@ -64,30 +64,31 @@ namespace cubreplication
     replication_node::get_replication_file_path (replication_path);
     instance->m_stream_file = new cubstream::stream_file (*instance->m_stream, replication_path);
 
-    master_senders_manager::init (instance->m_stream);
+    master_senders_manager::init ();
 
     cubtx::master_group_complete_manager::init ();
 
+    instance->m_control_channel_manager = new master_ctrl (cubtx::master_group_complete_manager::get_instance ());
+
     er_log_debug_replication (ARG_FILE_LINE, "master_node:init replication_path:%s", replication_path.c_str ());
-#endif
   }
 
   void master_node::enable_active ()
   {
-#if defined (SERVER_MODE)
+    std::lock_guard<std::mutex> lg (g_enable_active_mtx);
     if (css_ha_server_state () == HA_SERVER_STATE_TO_BE_ACTIVE)
       {
 	/* this is the first slave connecting to this node */
 	cubthread::entry *thread_p = thread_get_thread_entry_info ();
 	css_change_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE, true, HA_CHANGE_MODE_IMMEDIATELY, true);
+
+	stream_entry fail_over_entry (g_instance->m_stream, MVCCID_FIRST, stream_entry_header::NEW_MASTER);
+	fail_over_entry.pack ();
       }
-#endif
   }
 
   void master_node::new_slave (int fd)
   {
-#if defined (SERVER_MODE)
-
     enable_active ();
 
     if (css_ha_server_state () != HA_SERVER_STATE_ACTIVE)
@@ -102,11 +103,28 @@ namespace cubreplication
     css_error_code rc = chn.accept (fd);
     assert (rc == NO_ERRORS);
 
-    master_senders_manager::add_stream_sender
-    (new cubstream::transfer_sender (std::move (chn), cubreplication::master_senders_manager::get_stream ()));
+    master_senders_manager::add_stream_sender (new cubstream::transfer_sender (std::move (chn), *g_instance->m_stream));
 
     er_log_debug_replication (ARG_FILE_LINE, "new_slave connected");
-#endif
+  }
+
+  void master_node::add_ctrl_chn (int fd)
+  {
+    if (css_ha_server_state () != HA_SERVER_STATE_ACTIVE)
+      {
+	er_log_debug_replication (ARG_FILE_LINE, "add_ctrl_chn invalid server state :%s",
+				  css_ha_server_state_string (css_ha_server_state ()));
+	return;
+      }
+
+    cubcomm::channel chn;
+
+    css_error_code rc = chn.accept (fd);
+    assert (rc == NO_ERRORS);
+
+    g_instance->m_control_channel_manager->add (std::move (chn));
+
+    er_log_debug_replication (ARG_FILE_LINE, "control channel added");
   }
 
   void master_node::new_slave_copy (int fd)
@@ -134,14 +152,20 @@ namespace cubreplication
 
   void master_node::final (void)
   {
-#if defined (SERVER_MODE)
+    if (g_instance == NULL)
+      {
+	return;
+      }
+
     master_senders_manager::final ();
+
+    delete g_instance->m_control_channel_manager;
+    g_instance->m_control_channel_manager = NULL;
 
     cubtx::master_group_complete_manager::final ();
 
     delete g_instance;
     g_instance = NULL;
-#endif
   }
 
   void master_node::update_senders_min_position (const cubstream::stream_position &pos)
@@ -157,4 +181,5 @@ namespace cubreplication
 
 
   master_node *master_node::g_instance = NULL;
+  std::mutex master_node::g_enable_active_mtx;
 } /* namespace cubreplication */

@@ -25,7 +25,9 @@
 
 #include "replication_object.hpp"
 
+#include "heap_file.h"
 #include "locator_sr.h"
+#include "log_manager.h"
 #include "mem_block.hpp"
 #include "memory_alloc.h"
 #include "object_primitive.h"
@@ -189,12 +191,9 @@ namespace cubreplication
 
     cubthread::entry *my_thread = thread_get_thread_entry_info ();
 
-    HL_HEAPID save_heapid;
-    save_heapid = db_change_private_heap (my_thread, 0);
-
+    HL_HEAPID save_heapid = db_change_private_heap (my_thread, 0);
     pr_clear_value (&m_key_value);
-
-    (void) db_change_private_heap (my_thread, save_heapid);
+    db_change_private_heap (my_thread, save_heapid);
   }
 
   int
@@ -234,10 +233,15 @@ namespace cubreplication
   void
   single_row_repl_entry::set_key_value (const DB_VALUE &db_val)
   {
-    HL_HEAPID save_heapid;
-    save_heapid = db_change_private_heap (NULL, 0);
+    HL_HEAPID save_heapid = db_change_private_heap (NULL, 0);
     pr_clone_value (&db_val, &m_key_value);
-    (void) db_change_private_heap (NULL, save_heapid);
+    db_change_private_heap (NULL, save_heapid);
+  }
+
+  void
+  single_row_repl_entry::set_class_name (const char *class_name)
+  {
+    m_class_name = class_name;
   }
 
   std::size_t
@@ -250,7 +254,10 @@ namespace cubreplication
     /* type of RBR entry */
     entry_size += serializator.get_packed_int_size (entry_size);
     entry_size += serializator.get_packed_string_size (m_class_name, entry_size);
+
+    HL_HEAPID save_heapid = db_change_private_heap (NULL, 0);
     entry_size += serializator.get_packed_db_value_size (m_key_value, entry_size);
+    db_change_private_heap (NULL, save_heapid);
 
     return entry_size;
   }
@@ -260,26 +267,26 @@ namespace cubreplication
   {
     serializator.pack_int ((int) m_type);
     serializator.pack_string (m_class_name);
+
+    HL_HEAPID save_heapid = db_change_private_heap (NULL, 0);
     serializator.pack_db_value (m_key_value);
+    db_change_private_heap (NULL, save_heapid);
   }
 
   void
   single_row_repl_entry::unpack (cubpacking::unpacker &deserializator)
   {
-    int int_val;
-    HL_HEAPID save_heapid;
-
-    save_heapid = db_change_private_heap (NULL, 0);
+    HL_HEAPID save_heapid = db_change_private_heap (NULL, 0);
 
     /* RBR type */
+    int int_val;
     deserializator.unpack_int (int_val);
     m_type = (repl_entry_type) int_val;
 
     deserializator.unpack_string (m_class_name);
-
     deserializator.unpack_db_value (m_key_value);
 
-    (void) db_change_private_heap (NULL, save_heapid);
+    db_change_private_heap (NULL, save_heapid);
   }
 
   void
@@ -405,30 +412,26 @@ namespace cubreplication
   changed_attrs_row_repl_entry::~changed_attrs_row_repl_entry ()
   {
     cubthread::entry *my_thread = thread_get_thread_entry_info ();
+    HL_HEAPID save_heapid = db_change_private_heap (my_thread, 0);
 
-    HL_HEAPID save_heapid;
-    save_heapid = db_change_private_heap (my_thread, 0);
-
-    for (std::vector <DB_VALUE>::iterator it = m_new_values.begin (); it != m_new_values.end (); it++)
+    for (std::vector<DB_VALUE>::iterator it = m_new_values.begin (); it != m_new_values.end (); ++it)
       {
 	pr_clear_value (& (*it));
       }
-    (void) db_change_private_heap (my_thread, save_heapid);
+    db_change_private_heap (my_thread, save_heapid);
   }
 
   void
   changed_attrs_row_repl_entry::copy_and_add_changed_value (const ATTR_ID att_id, const DB_VALUE &db_val)
   {
-    HL_HEAPID save_heapid;
-
     m_new_values.emplace_back ();
     DB_VALUE &last_new_value = m_new_values.back ();
 
     m_changed_attributes.push_back (att_id);
 
-    save_heapid = db_change_private_heap (NULL, 0);
+    HL_HEAPID save_heapid = db_change_private_heap (NULL, 0);
     pr_clone_value (&db_val, &last_new_value);
-    (void) db_change_private_heap (NULL, save_heapid);
+    db_change_private_heap (NULL, save_heapid);
   }
 
   int
@@ -450,6 +453,9 @@ namespace cubreplication
   void
   changed_attrs_row_repl_entry::pack (cubpacking::packer &serializator) const
   {
+    cubthread::entry &thread_ref = cubthread::get_entry ();
+    HL_HEAPID save_heapid = db_change_private_heap (&thread_ref, 0);
+
     serializator.pack_int (changed_attrs_row_repl_entry::PACKING_ID);
     single_row_repl_entry::pack (serializator);
     serializator.pack_int_vector (m_changed_attributes);
@@ -459,6 +465,8 @@ namespace cubreplication
       {
 	serializator.pack_db_value (m_new_values[i]);
       }
+
+    db_change_private_heap (&thread_ref, save_heapid);
   }
 
   void
@@ -470,9 +478,7 @@ namespace cubreplication
     OID_SET_NULL (&m_inst_oid);
 
 #if defined (SERVER_MODE)
-    HL_HEAPID save_heapid;
-
-    save_heapid = db_change_private_heap (NULL, 0);
+    HL_HEAPID save_heapid = db_change_private_heap (NULL, 0);
 #endif
     /* create id */
     deserializator.unpack_int (int_val);
@@ -491,7 +497,7 @@ namespace cubreplication
       }
 
 #if defined (SERVER_MODE)
-    (void) db_change_private_heap (NULL, save_heapid);
+    db_change_private_heap (NULL, save_heapid);
 #endif
   }
 
@@ -501,6 +507,9 @@ namespace cubreplication
     /* we assume that offset start has already MAX_ALIGNMENT */
 
     /* type of packed object */
+    cubthread::entry &thread_ref = cubthread::get_entry ();
+    HL_HEAPID save_heapid = db_change_private_heap (&thread_ref, 0);
+
     std::size_t entry_size = start_offset;
 
     entry_size += serializator.get_packed_int_size (0);
@@ -513,6 +522,8 @@ namespace cubreplication
       {
 	entry_size += serializator.get_packed_db_value_size (m_new_values[i], entry_size);
       }
+
+    db_change_private_heap (&thread_ref, save_heapid);
 
     return entry_size;
   }
@@ -636,7 +647,10 @@ namespace cubreplication
 
     (void) single_row_repl_entry::unpack (deserializator);
 
+    m_rec_des.resize_buffer ((size_t) DB_PAGESIZE);
     m_rec_des.unpack (deserializator);
+    // record may be resized by heap_update_adjust_recdes_header; make sure there is enough space.
+    heap_record_reserve_for_adjustments (m_rec_des);
   }
 
   std::size_t
@@ -859,6 +873,79 @@ namespace cubreplication
 
     m_rec_des_list.push_back (std::move (record));
     m_data_size += rec_size;
+  }
+
+  savepoint_object::savepoint_object (const char *savepoint_name, event_type event)
+    : m_savepoint_name (savepoint_name)
+    , m_event (event)
+  {
+  }
+
+  int
+  savepoint_object::apply ()
+  {
+    cubthread::entry &thread_ref = cubthread::get_entry ();
+    if (m_event == CREATE_SAVEPOINT)
+      {
+	if (log_append_savepoint (&thread_ref, m_savepoint_name.c_str ()) == NULL)
+	  {
+	    assert (false);
+	    return ER_FAILED;
+	  }
+      }
+    else
+      {
+	LOG_LSA savept_lsa;
+	if (log_abort_partial (&thread_ref, m_savepoint_name.c_str (), &savept_lsa) != TRAN_UNACTIVE_ABORTED)
+	  {
+	    assert (false);
+	    return ER_FAILED;
+	  }
+      }
+    return NO_ERROR;
+  }
+
+  void
+  savepoint_object::stringify (string_buffer &str)
+  {
+    if (m_event == CREATE_SAVEPOINT)
+      {
+	str ("create ");
+      }
+    else
+      {
+	str ("rollback to ");
+      }
+    str ("savepoint ");
+    str (m_savepoint_name.c_str ());
+  }
+
+  void
+  savepoint_object::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_int (PACKING_ID);
+    serializator.pack_string (m_savepoint_name);
+    serializator.pack_to_int (m_event);
+  }
+
+  void
+  savepoint_object::unpack (cubpacking::unpacker &deserializator)
+  {
+    int check_id;
+    deserializator.unpack_int (check_id);
+    assert (check_id == PACKING_ID);
+    deserializator.unpack_string (m_savepoint_name);
+    deserializator.unpack_from_int (m_event);
+  }
+
+  std::size_t
+  savepoint_object::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    size_t size = 0;
+    size += serializator.get_packed_int_size (start_offset + size);
+    size += serializator.get_packed_string_size (m_savepoint_name, start_offset + size);
+    size += serializator.get_packed_int_size (start_offset + size);
+    return size;
   }
 
 } /* namespace cubreplication */

@@ -235,6 +235,8 @@ static int css_process_new_connection_request (void);
 static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
 static void css_process_new_slave (SOCKET master_fd);
+static void css_process_add_ctrl_chn (SOCKET master_fd);
+static void css_process_repl_copy_db (SOCKET master_fd);
 
 static void css_push_server_task (CSS_CONN_ENTRY & conn_ref);
 static void css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool &, THREAD_ENTRY & stopper_thread_ref);
@@ -575,6 +577,12 @@ css_process_master_request (SOCKET master_fd)
       break;
     case SERVER_CONNECT_SLAVE_REPL:
       css_process_new_slave (master_fd);
+      break;
+    case SERVER_CONNECT_SLAVE_CONTROL_CHANNEL:
+      css_process_add_ctrl_chn (master_fd);
+      break;
+    case SERVER_CONNECT_SLAVE_COPY_DB:
+      css_process_repl_copy_db (master_fd);
       break;
 #endif
     default:
@@ -1352,7 +1360,7 @@ css_initialize_server_interfaces (int (*request_handler) (THREAD_ENTRY * thrd, u
 int
 css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_id)
 {
-  CSS_CONN_ENTRY *conn;
+  CSS_CONN_ENTRY *conn = NULL;
   int status = NO_ERROR;
 
   if (server_name == NULL || port_id <= 0)
@@ -1451,7 +1459,7 @@ shutdown:
   css_stop_all_workers (*thread_p, THREAD_STOP_WORKERS_EXCEPT_LOGWR);
 
   /* replication stops after workers */
-  if (!HA_DISABLED ())
+  if (!HA_DISABLED () && conn != NULL)
     {
       cubreplication::master_node::final ();
       cubreplication::slave_node::final ();
@@ -2708,6 +2716,52 @@ css_process_new_slave (SOCKET master_fd)
   cubreplication::master_node::new_slave (new_fd);
 }
 
+static void
+css_process_add_ctrl_chn (SOCKET master_fd)
+{
+  SOCKET new_fd;
+  unsigned short rid;
+
+  assert (ha_Server_state == HA_SERVER_STATE_ACTIVE);
+
+  /* receive new socket descriptor from the master */
+  new_fd = css_open_new_socket_from_master (master_fd, &rid);
+  if (IS_INVALID_SOCKET (new_fd))
+    {
+      assert (false);
+      return;
+    }
+
+  er_log_debug_replication (ARG_FILE_LINE, "css_process_add_ctrl_chn:"
+			    "add new control channel fd from master fd=%d, current_state=%d\n", new_fd,
+			    ha_Server_state);
+
+  cubreplication::master_node::add_ctrl_chn (new_fd);
+}
+
+static void
+css_process_repl_copy_db (SOCKET master_fd)
+{
+  SOCKET new_fd;
+  unsigned short rid;
+
+  assert (ha_Server_state == HA_SERVER_STATE_ACTIVE);
+
+  /* receive new socket descriptor from the master */
+  new_fd = css_open_new_socket_from_master (master_fd, &rid);
+  if (IS_INVALID_SOCKET (new_fd))
+    {
+      assert (false);
+      return;
+    }
+
+  er_log_debug_replication (ARG_FILE_LINE, "css_process_repl_copy_db:"
+			    "start replication copy db fd from master fd=%d, current_state=%d\n", new_fd,
+			    ha_Server_state);
+
+  cubreplication::master_node::new_slave_copy (new_fd);
+}
+
 const char *
 get_master_hostname ()
 {
@@ -2839,9 +2893,9 @@ css_server_task::execute (context_type &thread_ref)
 {
   thread_ref.conn_entry = &m_conn;
 
-  if (thread_ref.conn_entry->session_p != NULL)
+  if (thread_ref.get_session () != NULL)
     {
-      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.conn_entry->session_p);
+      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.get_session ());
     }
   else
     {
@@ -2855,8 +2909,7 @@ css_server_task::execute (context_type &thread_ref)
   pthread_mutex_lock (&thread_ref.tran_index_lock);
   (void) css_internal_request_handler (thread_ref, m_conn);
 
-  thread_ref.private_lru_index = -1;
-  thread_ref.conn_entry = NULL;
+  thread_ref.clear_conn_session ();
   thread_ref.m_status = cubthread::entry::status::TS_FREE;
 }
 
@@ -2864,9 +2917,9 @@ void
 css_server_external_task::execute (context_type &thread_ref)
 {
   thread_ref.conn_entry = m_conn;
-  if (thread_ref.conn_entry != NULL && thread_ref.conn_entry->session_p != NULL)
+  if (thread_ref.get_session () != NULL)
     {
-      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.conn_entry->session_p);
+      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.get_session ());
     }
   else
     {
@@ -2879,8 +2932,7 @@ css_server_external_task::execute (context_type &thread_ref)
 
   m_task->execute (thread_ref);
 
-  thread_ref.private_lru_index = -1;
-  thread_ref.conn_entry = NULL;
+  thread_ref.clear_conn_session ();
 }
 
 void
@@ -2893,7 +2945,7 @@ css_connection_task::execute (context_type & thread_ref)
   pthread_mutex_lock (&thread_ref.tran_index_lock);
   (void) css_connection_handler_thread (&thread_ref, &m_conn);
 
-  thread_ref.conn_entry = NULL;
+  thread_ref.clear_conn_session ();
 }
 
 //

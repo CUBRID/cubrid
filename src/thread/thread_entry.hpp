@@ -53,6 +53,10 @@ struct vacuum_worker;
 // from xasl_unpack_info.hpp
 struct xasl_unpack_info;
 
+struct session_state;
+
+typedef unsigned int SESSION_ID;
+
 // forward resource trackers
 namespace cubbase
 {
@@ -317,10 +321,16 @@ namespace cubthread
       }
       void claim_system_worker ();
       void retire_system_worker ();
+      void clear_conn_session ();
 
       void end_resource_tracks (void);
       void push_resource_tracks (void);
       void pop_resource_tracks (void);
+
+      void set_session (session_state *session_arg);
+      void set_session_id (SESSION_ID id);
+      session_state *get_session () const;
+      SESSION_ID get_session_id () const;
 
     private:
       void clear_resources (void);
@@ -338,6 +348,9 @@ namespace cubthread
       cubbase::pgbuf_tracker &m_pgbuf_tracker;
       cubsync::critical_section_tracker &m_csect_tracker;
       log_system_tdes *m_systdes;
+
+      session_state *m_session_p;
+      SESSION_ID m_session_id;
   };
 
 } // namespace cubthread

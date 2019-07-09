@@ -480,6 +480,12 @@ extern "C"
   /* session state id */
   typedef unsigned int SESSION_ID;
 
+  typedef enum
+  {
+    SESSION_WITH_CONNECTION = 0,
+    SESSION_WITHOUT_CONNECTION
+  } SESSION_MODE;
+
 /* uninitialized value for session id */
 #define DB_EMPTY_SESSION			0
 

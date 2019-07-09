@@ -71,8 +71,8 @@ namespace cubreplication
     /* connect to replication master node */
     cubcomm::server_channel srv_chn (m_my_identity->get_hostname ().c_str ());
 
-    error = srv_chn.connect_with_command (m_source_identity->get_hostname ().c_str (), m_source_identity->get_port (),
-                                          SERVER_CONNECT_SLAVE_COPY_DB);
+    error = srv_chn.connect (m_source_identity->get_hostname ().c_str (), m_source_identity->get_port (),
+                             COMMAND_SERVER_REQUEST_CONNECT_SLAVE_COPY_DB);
     if (error != css_error_code::NO_ERRORS)
       {
 	return error;

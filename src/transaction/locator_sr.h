@@ -136,6 +136,16 @@ extern int locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const LC_COPYAREA_OP
 				   const std::vector<DB_VALUE> &new_values, const RECDES *new_recdes_arg);
 /* *INDENT-ON* */
 
+extern int locator_repl_extract_schema (THREAD_ENTRY * thread_p, const char *db_user, const char *db_password,
+			                const char *ha_sys_prm_context);
 extern int locator_repl_start_tran (THREAD_ENTRY * thread_p, const boot_client_type client_type);
 extern int locator_repl_end_tran (THREAD_ENTRY * thread_p, bool commit);
+
+ // *INDENT-OFF*
+extern int locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
+				       const std::vector<RECDES> &recdes, int has_index, int op_type,
+				       HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type,
+				       PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
+				       UPDATE_INPLACE_STYLE force_in_place);
+// *INDENT-ON*
 #endif /* _LOCATOR_SR_H_ */

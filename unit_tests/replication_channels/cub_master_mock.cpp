@@ -69,8 +69,8 @@ namespace cub_master_mock
 		return;
 	      }
 
-	    if ((int) (unsigned short) ntohs (header.function_code) != SERVER_REQUEST_CONNECT_NEW_SLAVE
-                && (int) (unsigned short) ntohs (header.function_code) != SERVER_REQUEST_CONNECT_SLAVE_COPY_DB)
+	    if ((int) (unsigned short) ntohs (header.function_code) != COMMAND_SERVER_REQUEST_CONNECT_SLAVE
+                && (int) (unsigned short) ntohs (header.function_code) != COMMAND_SERVER_REQUEST_CONNECT_SLAVE_COPY_DB)
 	      {
 		assert (false);
 		return;
@@ -86,8 +86,7 @@ namespace cub_master_mock
 	      }
 
 	    cubreplication::master_senders_manager::add_stream_sender (
-		    new cubstream::transfer_sender (std::move (listener_chn),
-						    cubreplication::master_senders_manager::get_stream ()));
+		    new cubstream::transfer_sender (std::move (listener_chn), master::get_mock_stream ()));
 	  }
       }
   };

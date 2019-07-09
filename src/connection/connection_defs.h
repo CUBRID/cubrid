@@ -66,9 +66,11 @@ enum css_command_type
   SERVER_REQUEST = 3,		/* let new server attach */
   UNUSED_REQUEST = 4,		/* unused request - leave it for compatibility */
   SERVER_REQUEST_NEW = 5,	/* new-style server request */
-  SERVER_REQUEST_CONNECT_NEW_SLAVE = 6,	        /* slave server wants to connect to master server */
-  SERVER_REQUEST_CONNECT_SLAVE_COPY_DB = 7,	/* slave server wants to connect to master server and copy DB */
-  MAX_REQUEST
+  COMMAND_SERVER_REQUEST_CONNECT_SLAVE = 6,	        /* slave server wants to connect to master server */
+  COMMAND_SERVER_REQUEST_CONNECT_SLAVE_CONTROL = 7,	/* slave connects to a control channel */
+  COMMAND_SERVER_REQUEST_CONNECT_SLAVE_COPY_DB = 8,	/* slave server wants to connect to master server and copy DB */
+
+  CSS_COMMAND_CNT
 };
 typedef enum css_command_type CSS_COMMAND_TYPE;
 
@@ -153,7 +155,8 @@ enum css_server_request
   SERVER_GET_EOF = 13,
   SERVER_RECEIVE_MASTER_HOSTNAME = 14,
   SERVER_CONNECT_SLAVE_REPL = 15,
-  SERVER_CONNECT_SLAVE_COPY_DB = 16
+  SERVER_CONNECT_SLAVE_CONTROL_CHANNEL = 16,
+  SERVER_CONNECT_SLAVE_COPY_DB = 17
 };
 typedef enum css_server_request CSS_SERVER_REQUEST;
 
@@ -458,7 +461,6 @@ struct css_conn_entry
   CSS_LIST abort_queue;		/* list of aborted requests */
   CSS_LIST buffer_queue;	/* list of buffers queued for data */
   CSS_LIST error_queue;		/* list of (server) error messages */
-  struct session_state *session_p;	/* session object for current request */
 #else
   FILE *file;
   CSS_QUEUE_ENTRY *request_queue;	/* the header for unseen requests */
@@ -468,19 +470,33 @@ struct css_conn_entry
   CSS_QUEUE_ENTRY *error_queue;	/* queue of (server) error messages */
   void *cnxn;
 #endif
-  SESSION_ID session_id;
   CSS_CONN_ENTRY *next;
 
 #if defined __cplusplus
   // transaction ID manipulation
   void set_tran_index (int tran_index);
   int get_tran_index (void);
+  void set_session_id (SESSION_ID id);
+  SESSION_ID get_session_id () const;
+#if defined(SERVER_MODE)
+  void set_session (session_state * session_arg);
+  session_state *get_session (void) const;
+#endif				/* SERVER_MODE */
 
 private:
   // note - I want to protect this.
   int transaction_id;
+  SESSION_ID session_id;
+#if defined(SERVER_MODE)
+  session_state *session_p;	/* session object for current request */
+#endif				/* SERVER_MODE */
+
 #else				// not c++ = c
   int transaction_id;
+  SESSION_ID session_id;
+#if defined(SERVER_MODE)
+  struct session_state *session_p;	/* session object for current request */
+#endif				/* SERVER_MODE */
 #endif				// not c++ = c
 };
 

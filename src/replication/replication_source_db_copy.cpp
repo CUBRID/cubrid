@@ -32,9 +32,12 @@
 #include "replication_object.hpp"
 #include "scan_manager.h"
 #include "thread_entry_task.hpp"
+#include "thread_manager.hpp"
 
 namespace cubreplication
 {
+
+  int copy_class (cubthread::entry *thread_p, OID &class_oid);
 
   source_copy_context::source_copy_context ()
   {
@@ -111,18 +114,18 @@ namespace cubreplication
     return error;
   }
 
-  int source_copy_context::wait_for_state (copy_stage desired_state)
+  void source_copy_context::wait_for_state (const copy_stage &desired_state)
   {
     std::unique_lock<std::mutex> ulock_state (m_state_mutex);
-    m_state_cv.wait (ulock, [this] { return m_state == desired_state;});
+    m_state_cv.wait (ulock_state, [this, desired_state] { return m_state == desired_state;});
   }
 
-  int source_copy_context::wait_end_classes (void)
+  void source_copy_context::wait_end_classes (void)
   {
     wait_for_state (SCHEMA_CLASSES_LIST_FINISHED);
   }
 
-  int source_copy_context::wait_end_triggers_indexes (void)
+  void source_copy_context::wait_end_triggers_indexes (void)
   {
     wait_for_state (SCHEMA_APPLY_TRIGGERS_INDEXES_FINISHED);
   }
@@ -137,7 +140,7 @@ namespace cubreplication
     m_error_cnt++;
   }
 
-  const std::list<OID>* peek_class_list (void) const
+  const std::list<OID>* source_copy_context::peek_class_list (void) const
   {
     return &m_class_oid_list;
   }
@@ -162,11 +165,12 @@ namespace cubreplication
     cubpacking::unpacker unpacker (buffer, buf_size);
 
     int class_oid_cnt;
-    unpacker.unpack_int (class_oid_cnt);
+    unpacker.unpack_all (class_oid_cnt);
 
     for (int i = 0; i < class_oid_cnt; i++)
       {
-        OID &class_oid = m_class_oid_list.emplace_back ();
+        m_class_oid_list.emplace_back ();
+        OID &class_oid = m_class_oid_list.back ();
         unpacker.unpack_all (class_oid);
       }
   }
@@ -242,23 +246,23 @@ namespace cubreplication
 
         locator_repl_extract_schema (&thread_ref, "", "", "");
 
-        src_copy_ctx.wait_end_classes ();
+        m_src_copy_ctx.wait_end_classes ();
 
         /* start heap copy : one thread task for each class */
         cubthread::entry_workpool *heap_extract_workers_pool = cubthread::get_manager ()->create_worker_pool (EXTRACT_HEAP_WORKER_POOL_SIZE,
 			     EXTRACT_HEAP_WORKER_POOL_SIZE, "replication_extract_heap_workers", NULL, 1, 1);
 
-        const std::list<OID> *class_list = src_copy_ctx.peek_class_list ();
+        const std::list<OID> *class_list = m_src_copy_ctx.peek_class_list ();
         for (const OID class_oid : *class_list)
           {
-            heap_extract_worker_task *task = new heap_extract_worker_task (src_copy_ctx, class_oid);
+            heap_extract_worker_task *task = new heap_extract_worker_task (m_src_copy_ctx, class_oid);
             cubthread::get_manager ()->push_task (heap_extract_workers_pool, task);
           }
         /* wait for all threads to end */
 
 
         /* wait for indexes and triggers schema */
-        src_copy_ctx.wait_end_triggers_indexes ();
+        m_src_copy_ctx.wait_end_triggers_indexes ();
 
 
 

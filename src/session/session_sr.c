@@ -40,7 +40,7 @@ xsession_create_new (THREAD_ENTRY * thread_p, SESSION_ID * id)
 {
   assert (id != NULL);
 
-  return session_state_create (thread_p, id);
+  return session_state_create (thread_p, id, SESSION_WITH_CONNECTION);
 }
 
 /*

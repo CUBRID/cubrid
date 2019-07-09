@@ -541,9 +541,13 @@ struct log_tdes
   LOG_RCV_TDES rcv;
   const char *ha_sbr_statement;
   // *INDENT-OFF*
+#if defined (SERVER_MODE)
+  cubreplication::source_copy_context replication_copy_context;
+#endif
+
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
   cubreplication::log_generator replication_log_generator;
-  cubreplication::source_copy_context replication_copy_context;
+
 
   bool is_active_worker_transaction () const;
   bool is_system_transaction () const;
@@ -672,8 +676,10 @@ struct log_global
   LOG_GROUP_COMMIT_INFO group_commit_info;
   // *INDENT-OFF*
   cubtx::complete_manager *m_tran_complete_mgr;
-  cubstream::stream_position m_ack_stream_position;
+  std::atomic<cubstream::stream_position> m_ack_stream_position;
+  cubstream::stream_position m_active_start_position;
   // *INDENT-ON*
+  LOG_LSA m_min_active_lsa;
 
   /* remote log writer information */
   logwr_info *writer_info;

@@ -211,6 +211,8 @@ namespace cubreplication
 	if (repl_obj->compare_inst_oid (inst_oid))
 	  {
 	    repl_obj->set_key_value (key);
+	    /* subclasses, partitions : set new class name */
+	    repl_obj->set_class_name (class_name);
 
 	    /* Set the current transaction lsa. It may be rewritten later. */
 	    repl_obj->set_lsa_stamp (*p_lsa);
@@ -219,7 +221,8 @@ namespace cubreplication
 	    er_log_repl_obj (repl_obj, "log_generator::set_key_to_repl_object");
 
 	    // remove
-	    (void) m_pending_to_be_added.erase (repl_obj_it--);
+	    (void) m_pending_to_be_added.erase (repl_obj_it);
+	    repl_obj_it = m_pending_to_be_added.end ();
 
 	    found = true;
 
@@ -243,6 +246,18 @@ namespace cubreplication
       }
 
     free (class_name);
+  }
+
+  void
+  log_generator::add_create_savepoint (const char *savept_name)
+  {
+    append_repl_object (* (new savepoint_object (savept_name, savepoint_object::CREATE_SAVEPOINT)));
+  }
+
+  void
+  log_generator::add_rollback_to_savepoint (const char *savept_name)
+  {
+    append_repl_object (* (new savepoint_object (savept_name, savepoint_object::ROLLBACK_TO_SAVEPOINT)));
   }
 
   void
@@ -390,7 +405,7 @@ namespace cubreplication
     /* TODO[replication] : force a group commit :
      * move this to log_manager group commit when multi-threaded apply is enabled */
     cubstream::stream_position sp1;
-    cubstream::stream_position sp2;    
+    cubstream::stream_position sp2;
     pack_group_commit_entry (sp1, sp2);
   }
 
