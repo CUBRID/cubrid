@@ -167,6 +167,7 @@ static int hb_thread_initialize (void);
 static void hb_resource_cleanup (void);
 static void hb_resource_shutdown_all_ha_procs (void);
 static void hb_cluster_cleanup (void);
+static void hb_udp_server_cleanup ();
 static void hb_kill_process (pid_t *pids, int count);
 
 /* process command */
@@ -179,6 +180,7 @@ static int hb_help_sprint_nodes_info (char *buffer, int max_length);
 static int hb_help_sprint_jobs_info (HB_JOB *jobs, char *buffer, int max_length);
 static int hb_help_sprint_ping_host_info (char *buffer, int max_length);
 
+udp_server<cubhb::message_type> *hb_Udp_server = NULL;
 cubhb::cluster *hb_Cluster = NULL;
 HB_RESOURCE *hb_Resource = NULL;
 HB_JOB *cluster_Jobs = NULL;
@@ -3392,16 +3394,17 @@ hb_cluster_initialize ()
   if (hb_Cluster == NULL)
     {
       port_type udp_server_port = (port_type) prm_get_integer_value (PRM_ID_HA_PORT_ID);
-      udp_server<cubhb::message_type> *server = new udp_server<cubhb::message_type> (udp_server_port);
-      int error_code = server->start ();
+      hb_Udp_server = new udp_server<cubhb::message_type> (udp_server_port);
+      int error_code = hb_Udp_server->start ();
       if (error_code != NO_ERROR)
 	{
 	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
 
+	  hb_udp_server_cleanup ();
 	  return error_code;
 	}
 
-      hb_Cluster = new cubhb::cluster (server);
+      hb_Cluster = new cubhb::cluster (hb_Udp_server);
     }
 
   pthread_mutex_lock (&hb_Cluster->lock);
@@ -3410,6 +3413,8 @@ hb_cluster_initialize ()
 
   if (error_code != NO_ERROR)
     {
+      hb_udp_server_cleanup ();
+
       hb_Cluster->stop ();
       delete hb_Cluster;
       hb_Cluster = NULL;
@@ -3790,6 +3795,19 @@ hb_resource_shutdown_and_cleanup (void)
   hb_resource_cleanup ();
 }
 
+static void
+hb_udp_server_cleanup ()
+{
+  if (hb_Udp_server == NULL)
+    {
+      return;
+    }
+
+  hb_Udp_server->stop ();
+  delete hb_Udp_server;
+  hb_Udp_server = NULL;
+}
+
 /*
  * hb_cluster_cleanup() -
  *   return:
@@ -3798,6 +3816,8 @@ hb_resource_shutdown_and_cleanup (void)
 static void
 hb_cluster_cleanup (void)
 {
+  hb_udp_server_cleanup ();
+
   pthread_mutex_lock (&hb_Cluster->lock);
 
   hb_Cluster->state = cubhb::node_state::UNKNOWN;

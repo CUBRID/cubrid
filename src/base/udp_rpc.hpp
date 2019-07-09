@@ -282,10 +282,10 @@ udp_server<MsgId>::stop ()
       return;
     }
 
-  close_socket ();
-
   m_shutdown = true;
   m_thread.join ();
+
+  close_socket ();
 }
 
 template <typename MsgId>
