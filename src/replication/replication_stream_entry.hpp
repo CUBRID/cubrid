@@ -158,27 +158,27 @@ namespace cubreplication
 	m_header.tran_state = state;
       }
 
-      bool is_group_commit (void)
+      bool is_group_commit (void) const
       {
 	return m_header.tran_state == stream_entry_header::GROUP_COMMIT;
       }
 
-      bool is_new_master ()
+      bool is_new_master () const
       {
 	return m_header.tran_state == stream_entry_header::NEW_MASTER;
       }
 
-      bool is_tran_commit (void)
+      bool is_tran_commit (void) const
       {
 	return m_header.tran_state == stream_entry_header::COMMITTED;
       }
 
-      bool is_tran_abort (void)
+      bool is_tran_abort (void) const
       {
 	return m_header.tran_state == stream_entry_header::ABORTED;
       }
 
-      bool is_tran_state_undefined (void)
+      bool is_tran_state_undefined (void) const
       {
 	return m_header.tran_state < stream_entry_header::ACTIVE
 	       || m_header.tran_state > stream_entry_header::NEW_MASTER;

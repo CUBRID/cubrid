@@ -5400,6 +5400,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  error_code = log_add_to_modified_class_list (thread_p, old_classname, oid);
 	  if (error_code != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      goto error;
 	    }
 	}
@@ -5409,6 +5410,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  error_code = catcls_update_catalog_classes (thread_p, old_classname, recdes, oid, force_in_place);
 	  if (error_code != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      goto error;
 	    }
 	}
@@ -5492,6 +5494,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		  /*
 		   * An error occurred during the update of the catalog
 		   */
+		  ASSERT_ERROR ();
 		  goto error;
 		}
 	    }
@@ -5513,7 +5516,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		   * There is an error inserting the hash entry or catalog
 		   * information. The transaction must be aborted by the caller
 		   */
-		  error_code = ER_FAILED;
+		  ASSERT_ERROR_AND_SET (error_code);
 		  goto error;
 		}
 
@@ -5558,6 +5561,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      error_code = catcls_insert_catalog_classes (thread_p, recdes);
 	      if (error_code != NO_ERROR)
 		{
+		  ASSERT_ERROR ();
 		  goto error;
 		}
 	    }
@@ -5594,6 +5598,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  pcache = locator_get_partition_scancache (pcontext, &real_class_oid, &real_hfid, op_type, false);
 	  if (pcache == NULL)
 	    {
+	      assert (false);
 	      return ER_FAILED;
 	    }
 	  local_scan_cache = &pcache->scan_cache;
@@ -5659,7 +5664,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 			}
 		      else if (error_code == NO_ERROR)
 			{
-			  error_code = ER_FAILED;
+			  ASSERT_ERROR_AND_SET (error_code);
 			}
 
 		      goto error;
@@ -5697,6 +5702,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      if (or_mvcc_get_header (oldrecdes, &old_rec_header) != NO_ERROR
 		  || or_mvcc_get_header (recdes, &new_rec_header) != NO_ERROR)
 		{
+		  assert (false);
 		  goto error;
 		}
 
@@ -5732,6 +5738,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 	      if (or_mvcc_set_header (recdes, &new_rec_header) != NO_ERROR)
 		{
+		  assert (false);
 		  goto error;
 		}
 	    }
@@ -5786,6 +5793,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 				    oid->slotid, oid->volid);
 		    }
 
+		  ASSERT_ERROR ();
 		  error_code = ER_HEAP_UNKNOWN_OBJECT;
 		  goto error;
 		}
@@ -5806,14 +5814,16 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 				    &superclass_oid);
 	  if (error_code != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      goto error;
 	    }
 
 	  /* make sure we use the correct class oid - we could be dealing with a classoid resulted from a unique btid
 	   * pruning */
-	  if (heap_get_class_oid (thread_p, oid, class_oid) != S_SUCCESS)
+	  error_code = heap_get_hfid_from_class_oid (thread_p, class_oid, hfid);
+	  if (error_code != S_SUCCESS)
 	    {
-	      ASSERT_ERROR_AND_SET (error_code);
+	      ASSERT_ERROR ();
 	      goto error;
 	    }
 
@@ -5830,12 +5840,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      granted = lock_subclass (thread_p, &real_class_oid, &superclass_oid, IX_LOCK, LK_UNCOND_LOCK);
 	      if (granted != LK_GRANTED)
 		{
-		  assert (er_errid () != NO_ERROR);
-		  error_code = er_errid ();
-		  if (error_code == NO_ERROR)
-		    {
-		      error_code = ER_FAILED;
-		    }
+		  ASSERT_ERROR_AND_SET (error_code);
 		  goto error;
 		}
 
@@ -5865,6 +5870,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		   * There is an error updating the index... Quit... The
 		   * transaction must be aborted by the caller
 		   */
+		  ASSERT_ERROR ();
 		  goto error;
 		}
 	    }
@@ -5889,6 +5895,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 						 true, true, hfid, NULL);
 		  if (error_code != NO_ERROR)
 		    {
+		      ASSERT_ERROR ();
 		      goto error;
 		    }
 		}
@@ -5902,6 +5909,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 					   &cache_attr_copyarea);
 	      if (error_code != NO_ERROR)
 		{
+		  ASSERT_ERROR ();
 		  goto error;
 		}
 

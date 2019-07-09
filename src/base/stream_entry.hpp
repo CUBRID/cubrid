@@ -323,7 +323,7 @@ namespace cubstream
 	m_packable_entries.push_back (entry);
       };
 
-      PO *get_object_at (int pos)
+      PO *get_object_at (size_t pos)
       {
 	return m_packable_entries[pos];
       }
