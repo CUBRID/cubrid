@@ -3413,11 +3413,11 @@ hb_cluster_initialize ()
 
   if (error_code != NO_ERROR)
     {
-      hb_udp_server_cleanup ();
-
       hb_Cluster->stop ();
       delete hb_Cluster;
       hb_Cluster = NULL;
+
+      hb_udp_server_cleanup ();
     }
 
   return error_code;
@@ -3816,19 +3816,18 @@ hb_udp_server_cleanup ()
 static void
 hb_cluster_cleanup (void)
 {
-  hb_udp_server_cleanup ();
-
   pthread_mutex_lock (&hb_Cluster->lock);
 
   hb_Cluster->state = cubhb::node_state::UNKNOWN;
   hb_Cluster->send_heartbeat_to_all ();
-
   hb_Cluster->stop ();
 
   pthread_mutex_unlock (&hb_Cluster->lock);
 
   delete hb_Cluster;
   hb_Cluster = NULL;
+
+  hb_udp_server_cleanup ();
 }
 
 /*
