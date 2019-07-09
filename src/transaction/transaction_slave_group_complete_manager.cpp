@@ -53,7 +53,7 @@ namespace cubtx
     slave_group_complete_manager * p_gl_slave_group = get_instance ();
     p_gl_slave_group->m_latest_group_id = NULL_ID;
     p_gl_slave_group->m_latest_group_stream_position = 0;
-    p_gl_slave_group->m_has_latest_group_close_info = false;
+    p_gl_slave_group->m_has_latest_group_close_info.store (false);
 
     slave_group_complete_manager::gl_slave_group_complete_daemon = cubthread::get_manager ()->create_daemon ((looper),
 	new slave_group_complete_task (), "slave_group_complete_daemon");
@@ -103,7 +103,7 @@ namespace cubtx
       }
 
     /* Check whether close info for latest group were set. */
-    if (m_has_latest_group_close_info == false)
+    if (m_has_latest_group_close_info.load () == false)
       {
 	/* Can't close yet the current group. */
         if (!is_current_group_empty () && is_group_completed (m_latest_group_id))
@@ -138,7 +138,7 @@ namespace cubtx
     if (close_current_group ())
       {
 	/* The new group does not have group close info yet - stream position, count transactions. */
-	m_has_latest_group_close_info = false;
+	m_has_latest_group_close_info.store (false);
 	const tx_group &closed_group = get_latest_closed_group ();
 
 	/* TODO - Introduce parameter. For now complete group MVCC only here. Notify MVCC complete. */
@@ -177,7 +177,7 @@ namespace cubtx
     tx_group &closed_group = get_latest_closed_group ();
     /* TODO - consider parameter for MVCC complete here. */
     /* Add group commit log record and wakeup  log flush daemon. */
-    log_append_group_complete (thread_p, tdes, m_latest_group_stream_position, closed_group,
+    log_append_group_complete (thread_p, tdes, m_latest_group_stream_position.load (), closed_group,
 			       &closed_group_start_complete_lsa, &closed_group_end_complete_lsa, &has_postpone);
     log_wakeup_log_flush_daemon ();
     if (has_postpone)
@@ -219,11 +219,12 @@ namespace cubtx
   {
     bool has_group_enough_transactions;
     /* Can't set close info twice. */
-    assert (m_has_latest_group_close_info == false);
+    assert (m_has_latest_group_close_info.load () == false);
 
     m_latest_group_stream_position = stream_position;
-    m_latest_group_id = set_current_group_minimum_transactions (count_expected_transactions, has_group_enough_transactions);
-    m_has_latest_group_close_info = true;
+    m_latest_group_id = set_current_group_minimum_transactions (count_expected_transactions, has_group_enough_transactions);    
+    m_has_latest_group_close_info.store (true);
+    er_log_debug (ARG_FILE_LINE, "set_close_info_for_current_group sp=%llu, latest_group_id = %llu\n", stream_position, m_latest_group_id);
     if (has_group_enough_transactions)
       {
         /* Wakeup group complete thread, since we have all informations that allows group close. */
