@@ -1963,8 +1963,8 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 		    }
 
 		  /* Restore the BTID for future usages (needed for partition cases). */
-		  /* XASL comes from the client with the btid set to the root class of the partitions hierarchy. 
-		   * Scan begins and starts with the rootclass, then jumps to a partition and sets the btid in the 
+		  /* XASL comes from the client with the btid set to the root class of the partitions hierarchy.
+		   * Scan begins and starts with the rootclass, then jumps to a partition and sets the btid in the
 		   * XASL to the one of the partition. Execution ends and the next identical statement comes and uses
 		   * the XASL previously generated. However, the BTID was not cleared from the INDEX_INFO structure
 		   * so the execution will fail.
@@ -15299,7 +15299,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 			}
 
 		      /* set parent tuple position pseudocolumn value */
-		      db_make_bit (parent_pos_valp, DB_DEFAULT_PRECISION, (const DB_C_BIT) (&parent_pos),
+		      db_make_bit (parent_pos_valp, DB_DEFAULT_PRECISION, (DB_C_BIT) (&parent_pos),
 				   sizeof (parent_pos) * 8);
 
 		      parent_tuple_added = true;
@@ -16803,7 +16803,7 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID *
 	  if (level > 1)
 	    {
 	      /* set parent position pseudocolumn value */
-	      db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, (const DB_C_BIT) &pos_info_p->tpl_pos,
+	      db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, (DB_C_BIT) & pos_info_p->tpl_pos,
 			   sizeof (pos_info_p->tpl_pos) * 8);
 
 	      if (qfile_set_tuple_column_value (thread_p, list_id_p, s_id.curr_pgptr, &s_id.curr_vpid, tuple_rec.tpl,
@@ -16834,7 +16834,7 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID *
 
 	  qfile_save_current_scan_tuple_position (&prev_s_id, &pos_info_p->tpl_pos);
 
-	  db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, (const DB_C_BIT) &pos_info_p->tpl_pos,
+	  db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, (DB_C_BIT) & pos_info_p->tpl_pos,
 		       sizeof (pos_info_p->tpl_pos) * 8);
 
 	  if (qfile_set_tuple_column_value (thread_p, list_id_p, s_id.curr_pgptr, &s_id.curr_vpid, tuple_rec.tpl,
@@ -16869,7 +16869,7 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID *
 
 	  if (level > 1)
 	    {
-	      db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, (const DB_C_BIT) &pos_info_p->tpl_pos,
+	      db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, (DB_C_BIT) & pos_info_p->tpl_pos,
 			   sizeof (pos_info_p->tpl_pos) * 8);
 
 	      if (qfile_set_tuple_column_value (thread_p, list_id_p, s_id.curr_pgptr, &s_id.curr_vpid, tuple_rec.tpl,

@@ -357,7 +357,7 @@ namespace cubpacking
   void
   packer::pack_int_vector (const std::vector<int> &array)
   {
-    const int count = (const int) array.size ();
+    const int count = (int) array.size ();
 
     align (INT_ALIGNMENT);
     check_range (m_ptr, m_end_ptr, (OR_INT_SIZE * (count + 1)));

@@ -831,7 +831,7 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag, char *input_filen
       printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PASS2));
     }
   status =
-    do_reclaim_addresses ((const OID ** const) class_oids, num_classes, &num_classes_fully_compacted, verbose_flag,
+    do_reclaim_addresses ((const OID **) class_oids, num_classes, &num_classes_fully_compacted, verbose_flag,
 			  class_lock_timeout);
   if (status != NO_ERROR)
     {
