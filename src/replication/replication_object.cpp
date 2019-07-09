@@ -71,7 +71,7 @@ namespace cubreplication
     LSA_SET_NULL (&m_lsa_stamp);
   }
 
-  replication_object::replication_object (LOG_LSA &lsa_stamp)
+  replication_object::replication_object (const LOG_LSA &lsa_stamp)
   {
     LSA_COPY (&m_lsa_stamp, &lsa_stamp);
   }
@@ -172,7 +172,8 @@ namespace cubreplication
       }
   }
 
-  single_row_repl_entry::single_row_repl_entry (const repl_entry_type type, const char *class_name, LOG_LSA &lsa_stamp)
+  single_row_repl_entry::single_row_repl_entry (const repl_entry_type type, const char *class_name,
+      const LOG_LSA &lsa_stamp)
     : replication_object (lsa_stamp)
     , m_type (type)
     , m_class_name (class_name)
@@ -600,7 +601,7 @@ namespace cubreplication
   }
 
   changed_attrs_row_repl_entry::changed_attrs_row_repl_entry (repl_entry_type type, const char *class_name,
-      const OID &inst_oid, LOG_LSA &lsa_stamp)
+      const OID &inst_oid, const LOG_LSA &lsa_stamp)
     : single_row_repl_entry (type, class_name, lsa_stamp)
     , m_changed_attributes ()
     , m_new_values ()
@@ -703,7 +704,7 @@ namespace cubreplication
   }
 
   rec_des_row_repl_entry::rec_des_row_repl_entry (repl_entry_type type, const char *class_name, const RECDES &rec_des,
-      LOG_LSA &lsa_stamp)
+      const LOG_LSA &lsa_stamp)
     : single_row_repl_entry (type, class_name, lsa_stamp)
     , m_rec_des (rec_des, cubmem::STANDARD_BLOCK_ALLOCATOR)
   {

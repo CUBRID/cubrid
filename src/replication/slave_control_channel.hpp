@@ -26,12 +26,8 @@
 
 #include <memory>
 
+#include "communication_channel.hpp"
 #include "cubstream.hpp"
-
-namespace cubcomm
-{
-  class channel;
-}
 
 namespace cubreplication
 {
