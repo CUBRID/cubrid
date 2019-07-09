@@ -53,7 +53,7 @@
 #define COMPACT_CLASS_MAX_LOCK_TIMEOUT 10
 
 static int is_not_system_class (MOBJ class_);
-static int do_reclaim_addresses (const OID ** const class_oids, const int num_class_oids,
+static int do_reclaim_addresses (OID * const *class_oids, const int num_class_oids,
 				 int *const num_classes_fully_processed, const bool verbose,
 				 const int class_lock_timeout);
 static int do_reclaim_class_addresses (const OID class_oid, char **clas_name, bool * const any_class_can_be_referenced,
@@ -830,9 +830,8 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag, char *input_filen
     {
       printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PASS2));
     }
-  status =
-    do_reclaim_addresses ((const OID **) class_oids, num_classes, &num_classes_fully_compacted, verbose_flag,
-			  class_lock_timeout);
+  status = do_reclaim_addresses (class_oids, num_classes, &num_classes_fully_compacted, verbose_flag,
+				 class_lock_timeout);
   if (status != NO_ERROR)
     {
       goto error;
@@ -1142,7 +1141,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
 }
 
 static int
-do_reclaim_addresses (const OID ** const class_oids, const int num_class_oids, int *const num_classes_fully_processed,
+do_reclaim_addresses (OID * const *class_oids, const int num_class_oids, int *const num_classes_fully_processed,
 		      const bool verbose, const int class_lock_timeout)
 {
   bool any_class_can_be_referenced = false;
