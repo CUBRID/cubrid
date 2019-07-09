@@ -45,7 +45,6 @@ namespace cubreplication
     , m_master_identity ("")
     , m_transfer_receiver (NULL)
   {
-    apply_start_position ();
     m_stream = stream;
     m_stream_file = stream_file;
 
@@ -101,7 +100,6 @@ namespace cubreplication
     m_lc->set_ctrl_chn (new cubreplication::slave_control_channel (std::move (control_chn)));
 
     m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *m_stream, start_position);
-
     return NO_ERROR;
   }
 } /* namespace cubreplication */

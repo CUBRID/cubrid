@@ -37,12 +37,6 @@ namespace cubreplication
 
   }
 
-  int replication_node::apply_start_position ()
-  {
-    // todo: remove start stream position since this object is created only after stream & stream_files are created
-    return NO_ERROR;
-  }
-
   void replication_node::get_replication_file_path (std::string &path)
   {
     char buf_temp_path[PATH_MAX];

@@ -34,12 +34,9 @@
 
 namespace cubreplication
 {
-  std::mutex enable_active_mtx;
-
   master_node::master_node (const char *name, cubstream::multi_thread_stream *stream,
 			    cubstream::stream_file *stream_file)
     : replication_node (name)
-
   {
     m_stream = stream;
 
@@ -50,33 +47,13 @@ namespace cubreplication
     cubtx::master_group_complete_manager::init ();
 
     m_control_channel_manager = new master_ctrl (cubtx::master_group_complete_manager::get_instance ());
-  }
 
-  void master_node::enable_active ()
-  {
-    std::lock_guard<std::mutex> lg (enable_active_mtx);
-    if (css_ha_server_state () == HA_SERVER_STATE_TO_BE_ACTIVE)
-      {
-	/* this is the first slave connecting to this node */
-	cubthread::entry *thread_p = thread_get_thread_entry_info ();
-	css_change_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE, true, HA_CHANGE_MODE_IMMEDIATELY, true);
-
-	stream_entry fail_over_entry (m_stream, MVCCID_FIRST, stream_entry_header::NEW_MASTER);
-	fail_over_entry.pack ();
-      }
+    stream_entry fail_over_entry (m_stream, MVCCID_FIRST, stream_entry_header::NEW_MASTER);
+    fail_over_entry.pack ();
   }
 
   void master_node::new_slave (int fd)
   {
-    enable_active ();
-
-    if (css_ha_server_state () != HA_SERVER_STATE_ACTIVE)
-      {
-	er_log_debug_replication (ARG_FILE_LINE, "new_slave invalid server state :%s",
-				  css_ha_server_state_string (css_ha_server_state ()));
-	return;
-      }
-
     cubcomm::channel chn;
 
     css_error_code rc = chn.accept (fd);
@@ -89,13 +66,6 @@ namespace cubreplication
 
   void master_node::add_ctrl_chn (int fd)
   {
-    if (css_ha_server_state () != HA_SERVER_STATE_ACTIVE)
-      {
-	er_log_debug_replication (ARG_FILE_LINE, "add_ctrl_chn invalid server state :%s",
-				  css_ha_server_state_string (css_ha_server_state ()));
-	return;
-      }
-
     cubcomm::channel chn;
 
     css_error_code rc = chn.accept (fd);
