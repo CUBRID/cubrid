@@ -6016,33 +6016,30 @@ lock_check_timeout_expired_and_count_suspended_mapfunc (THREAD_ENTRY & thread_re
 //      (3) to detect and resolve a deadlock.
 //    It operates (1) and (2) for every 100ms and does (3) for every PRM_ID_LK_RUN_DEADLOCK_INTERVAL.
 //
-class deadlock_detect_task : public cubthread::entry_task
+void
+deadlock_detect_task_execute (cubthread::entry & thread_ref)
 {
-  public:
-    void execute (cubthread::entry & thread_ref) override
+  if (!BO_IS_SERVER_RESTARTED ())
     {
-      if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
-
-      if (lk_Gl.deadlock_and_timeout_detector == 0)
-	{
-	  // if none of the threads were suspended then just return
-	  return;
-	}
-
-      /* check if the lock-wait thread exists */
-      size_t lock_wait_count = 0;
-      thread_get_manager ()->map_entries (lock_check_timeout_expired_and_count_suspended_mapfunc, lock_wait_count);
-
-      if (lock_is_local_deadlock_detection_interval_up () && lock_wait_count >= 2)
-	{
-	  lock_detect_local_deadlock (&thread_ref);
-	}
+      // wait for boot to finish
+      return;
     }
-};
+
+  if (lk_Gl.deadlock_and_timeout_detector == 0)
+    {
+      // if none of the threads were suspended then just return
+      return;
+    }
+
+  /* check if the lock-wait thread exists */
+  size_t lock_wait_count = 0;
+  thread_get_manager ()->map_entries (lock_check_timeout_expired_and_count_suspended_mapfunc, lock_wait_count);
+
+  if (lock_is_local_deadlock_detection_interval_up () && lock_wait_count >= 2)
+    {
+      lock_detect_local_deadlock (&thread_ref);
+    }
+}
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
@@ -6055,7 +6052,7 @@ lock_deadlock_detect_daemon_init ()
   assert (lock_Deadlock_detect_daemon == NULL);
 
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (100));
-  deadlock_detect_task *daemon_task = new deadlock_detect_task ();
+  cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (deadlock_detect_task_execute);
 
   // create deadlock detect daemon thread
   lock_Deadlock_detect_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "lock_deadlock_detect");
