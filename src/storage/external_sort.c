@@ -52,6 +52,8 @@
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
 
+#include <functional>
+
 /* Estimate on number of pages in the multipage temporary file */
 #define SORT_MULTIPAGE_FILE_SIZE_ESTIMATE  20
 
@@ -1682,26 +1684,11 @@ px_sort_assign (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int px_id, cha
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
-class px_sort_myself_task : public cubthread::entry_task
+void
+px_sort_myself_execute (cubthread::entry &thread_ref, PX_TREE_NODE * px_node)
 {
-public:
-  px_sort_myself_task (void) = delete;
-
-  px_sort_myself_task (PX_TREE_NODE *node)
-  : m_px_node (node)
-  {
-  }
-
-  void
-  execute (context_type &thread_ref) override final
-  {
-    (void) px_sort_myself (&thread_ref, m_px_node);
-  }
-
-private:
-  PX_TREE_NODE *m_px_node;
-};
-// *INDENT-ON*
+  (void) px_sort_myself (&thread_ref, px_node);
+}
 
 /*
  * px_sort_communicate() -
@@ -1724,10 +1711,13 @@ px_sort_communicate (PX_TREE_NODE * px_node)
   assert_release (px_node->px_id < sort_param->px_array_size);
   assert_release (px_node->px_vector_size > 1);
 
-  css_push_external_task (css_get_current_conn_entry (), new px_sort_myself_task (px_node));
+  cubthread::entry_callable_task *task =
+    new cubthread::entry_callable_task (std::bind (px_sort_myself_execute, std::placeholders::_1, px_node));
+  css_push_external_task (css_get_current_conn_entry (), task);
 
   return NO_ERROR;
 }
+// *INDENT-ON*
 #endif /* SERVER_MODE */
 
 /*
