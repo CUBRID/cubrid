@@ -39,6 +39,8 @@ namespace cubreplication
   subtran_applier::subtran_applier (log_consumer &lc)
     : m_lc (lc)
     , m_tasks_mutex ()
+    , m_condvar ()
+    , m_waiting_for_tasks (false)
     , m_stream_entries ()
   {
   }
