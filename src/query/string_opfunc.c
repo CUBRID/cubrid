@@ -2134,7 +2134,7 @@ db_string_repeat (const DB_VALUE * src_string, const DB_VALUE * count, DB_VALUE 
 
       /* update size of string */
       qstr_make_typed_string (result_type, result, DB_VALUE_PRECISION (result), db_get_string (result),
-			      (const int) expected_size, db_get_string_codeset (src_string),
+			      (int) expected_size, db_get_string_codeset (src_string),
 			      db_get_string_collation (src_string));
       result->need_clear = true;
 
