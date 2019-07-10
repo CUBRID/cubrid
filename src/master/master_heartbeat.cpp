@@ -2165,18 +2165,7 @@ hb_resource_job_confirm_start (HB_JOB_ARG *arg)
 	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2, "Failed to restart process",
 			 error_string);
 
-	  hb_Resource->state = cubhb::node_state::SLAVE;
-	  current_master_hostname = "";
-
 	  error = hb_resource_job_queue (HB_RJOB_PROC_START, arg, HB_JOB_TIMER_WAIT_A_SECOND);
-	  if (error != NO_ERROR)
-	    {
-	      assert (false);
-	      free_and_init (arg);
-	    }
-
-	  error = hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL,
-					 prm_get_integer_value (PRM_ID_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS));
 	  if (error != NO_ERROR)
 	    {
 	      assert (false);
