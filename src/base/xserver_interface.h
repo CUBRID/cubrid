@@ -283,4 +283,6 @@ extern int xsession_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_com
 extern int xlocator_get_proxy_command (THREAD_ENTRY * thread_p, const char **proxy_command);
 extern int xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_t buf_size,
 				       const char *buffer);
+extern int xreplication_copy_slave (THREAD_ENTRY * thread_p, const char *source_hostname,
+                                    const bool start_replication_after_copy);
 #endif /* _XSERVER_INTERFACE_H_ */

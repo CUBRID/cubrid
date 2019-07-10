@@ -26,6 +26,7 @@
 #ifndef _REPLICATION_APPLY_DB_COPY_HPP_
 #define _REPLICATION_APPLY_DB_COPY_HPP_
 
+#include "cubstream.hpp"
 #include "thread_manager.hpp"
 #include <queue>
 
@@ -41,26 +42,6 @@ namespace cubreplication
   class node_definition;
   class copy_db_worker_task;
   class stream_entry;
-
-  class apply_copy_context
-  {
-    public:
-      apply_copy_context (node_definition *myself);
-
-      ~apply_copy_context () {}
-
-      void init (void);
-      int connect_to_source (node_definition *source_node);
-
-    private:
-      node_definition *m_source_identity;
-      node_definition *m_my_identity;
-
-      cubstream::multi_thread_stream *m_stream;
-      cubstream::stream_file *m_stream_file;
-      cubstream::transfer_receiver *m_transfer_receiver;
-  };
-
 
   /* TODO : this is copied from log_consumer : refactor */
   class copy_db_consumer
@@ -88,8 +69,7 @@ namespace cubreplication
       bool m_apply_task_ready;
 
       bool m_is_stopped;
-
-    private:
+      bool m_is_finished;
 
     public:
       copy_db_consumer () :
@@ -101,7 +81,9 @@ namespace cubreplication
 	m_use_daemons (false),
 	m_started_tasks (0),
 	m_apply_task_ready (false),
-	m_is_stopped (false)
+	m_is_stopped (false),
+        m_is_finished (false),
+        m_last_fetched_position (0)
       {
       };
 
@@ -144,6 +126,34 @@ namespace cubreplication
       }
 
       void set_stop (void);
+
+      void set_is_finished () { m_is_finished = true; }
+      
+      bool is_finished () { return m_is_finished; }
+
+      cubstream::stream_position m_last_fetched_position;
+  };
+
+  class apply_copy_context
+  {
+    public:
+      apply_copy_context (node_definition *myself, node_definition *source_node);
+
+      ~apply_copy_context ();
+
+      void init ();
+      int start_copy ();
+
+      void wait_replication_copy ();
+
+    private:
+      node_definition *m_source_identity;
+      node_definition *m_my_identity;
+
+      cubstream::multi_thread_stream *m_stream;
+      cubstream::stream_file *m_stream_file;
+      cubstream::transfer_receiver *m_transfer_receiver;
+      copy_db_consumer *m_copy_consumer;
   };
 
 } /* namespace cubreplication */

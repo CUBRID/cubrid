@@ -813,6 +813,19 @@ static GETOPT_LONG ua_Checksum_Option[] = {
   {0, 0, 0, 0}
 };
 
+static UTIL_ARG_MAP ua_Copyslave_Option_Map[] = {
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {COPYSLAVE_SOURCE_HOSTNAME_S, {ARG_STRING}, {0}},
+  {COPYSLAVE_START_REPLICATION_S, {ARG_BOOLEAN}, {0}},
+  {0, {0}, {0}}
+};
+
+static GETOPT_LONG ua_Copyslave_Option[] = {
+  {COPYSLAVE_SOURCE_HOSTNAME_L, 1, 0, COPYSLAVE_SOURCE_HOSTNAME_S},
+  {COPYSLAVE_START_REPLICATION_L, 0, 0, COPYSLAVE_START_REPLICATION_S},
+  {0, 0, 0, 0}
+};
+
 static UTIL_MAP ua_Utility_Map[] = {
   {CREATEDB, SA_ONLY, 2, UTIL_OPTION_CREATEDB, "createdb",
    ua_Create_Option, ua_Create_Option_Map},
@@ -892,6 +905,8 @@ static UTIL_MAP ua_Utility_Map[] = {
    ua_Vacuum_Option, ua_Vacuum_Option_Map},
   {CHECKSUMDB, CS_ONLY, 1, UTIL_OPTION_CHECKSUMDB, "checksumdb",
    ua_Checksum_Option, ua_Checksum_Option_Map},
+  {COPYSLAVE, CS_ONLY, 1, UTIL_OPTION_COPYSLAVE, "copyslave",
+   ua_Copyslave_Option, ua_Copyslave_Option_Map},
   {-1, -1, 0, 0, 0, 0, 0}
 };
 

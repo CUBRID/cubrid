@@ -26,13 +26,20 @@
 #include "replication_slave_node.hpp"
 #include "log_consumer.hpp"
 #include "multi_thread_stream.hpp"
+#include "replication_apply_db_copy.hpp"
 #include "replication_common.hpp"
-#include "slave_control_channel.hpp"
 #include "replication_stream_entry.hpp"
+#include "slave_control_channel.hpp"
 #include "stream_file.hpp"
 #include "stream_transfer_receiver.hpp"
 #include "system_parameter.h"
+#include "xserver_interface.h"
 
+
+int xreplication_copy_slave (THREAD_ENTRY * thread_p, const char *source_hostname, const bool start_replication_after_copy)
+{
+  return cubreplication::replication_copy_slave (*thread_p, source_hostname, start_replication_after_copy);
+}
 
 namespace cubreplication
 {
@@ -81,6 +88,51 @@ namespace cubreplication
     instance->m_lc->start_daemons ();
   }
 
+  int slave_node::setup_protocol (cubcomm::channel &chn)
+  {
+    UINT64 pos = 0, expected_magic;
+    std::size_t max_len = sizeof (UINT64);
+
+    if (chn.send ((char *) &replication_node::SETUP_REPLICATION_MAGIC, max_len) != css_error_code::NO_ERRORS)
+      {
+        return ER_FAILED;
+      }
+
+    if (chn.recv ((char *) &expected_magic, max_len) != css_error_code::NO_ERRORS)
+      {
+        return ER_FAILED;
+      }
+
+    if (expected_magic != replication_node::SETUP_REPLICATION_MAGIC)
+      {
+        er_log_debug_replication (ARG_FILE_LINE, "slave_node::setup_protocol error in setup protocol");
+        assert (false);
+        return ER_FAILED;
+      }
+
+    if (chn.recv ((char *) &pos, max_len) != css_error_code::NO_ERRORS)
+      {
+        return ER_FAILED;
+      }
+
+    m_source_available_pos = ntohi64 (pos);
+
+    er_log_debug_replication (ARG_FILE_LINE, "slave_node::setup_protocol available pos :%lld", m_source_available_pos);
+
+    return NO_ERROR:
+  }
+
+  bool slave_node::need_replication_copy (const cubstream::stream_position start_position) const
+  {
+    if (m_source_available_pos >= start_position
+        && m_source_available_pos - start_position < ACCEPTABLE_POS_DIFF_BEFORE_COPY)
+      {
+        return false;
+      }
+
+    return true;
+  }
+
   int slave_node::connect_to_master (const char *master_node_hostname, const int master_node_port_id)
   {
     int error = NO_ERROR;
@@ -98,6 +150,28 @@ namespace cubreplication
 	return error;
       }
 
+    error = g_instance->setup_protocol (srv_chn);
+    if (error != NO_ERROR)
+      {
+        return error;
+      }
+
+    /* TODO[replication] : last position to be retrieved from recovery module */
+    cubstream::stream_position start_position = log_Gl.m_active_start_position;
+
+    if (g_instance->need_replication_copy (start_position))
+      {
+        replication_copy_slave (master_node_hostname, true);
+      }
+    else
+      {
+        start_online_replication (start_position);
+      }
+
+    }
+
+  int slave_node::start_online_replication (const cubstream::stream_position start_position)
+    {
     cubcomm::server_channel control_chn (g_instance->m_identity.get_hostname ().c_str ());
     error = control_chn.connect (master_node_hostname, master_node_port_id, COMMAND_SERVER_REQUEST_CONNECT_SLAVE_CONTROL);
     if (error != css_error_code::NO_ERRORS)
@@ -106,8 +180,6 @@ namespace cubreplication
       }
     /* start transfer receiver */
     assert (g_instance->m_transfer_receiver == NULL);
-    /* TODO[replication] : last position to be retrieved from recovery module */
-    cubstream::stream_position start_position = 0;
 
     g_instance->m_lc->set_ctrl_chn (new cubreplication::slave_control_channel (std::move (control_chn)));
 
@@ -135,5 +207,18 @@ namespace cubreplication
     g_instance = NULL;
   }
 
+  int slave_node::replication_copy_slave (const char *source_hostname, const bool start_replication_after_copy)
+  {
+    node_definition source_node (source_hostname);
+    apply_copy_context my_apply_ctx (NULL, &source_node);
+
+    my_apply_ctx.start_copy ();
+
+    my_apply_ctx.wait_replication_copy ();
+
+    return NO_ERROR;
+  }
+
   slave_node *slave_node::g_instance = NULL;
+
 } /* namespace cubreplication */

@@ -691,6 +691,16 @@ namespace cubstream
       }
   }
 
+  stream_position multi_thread_stream::get_min_pos_for_slave (void) const
+  {
+    if (m_stream_file)
+      {
+        return m_stream_file->get_drop_position ();
+      }
+    
+    return m_last_committed_pos;
+  }
+
   void multi_thread_stream::wake_up_flusher (float fill_factor, const stream_position start_flush_pos,
       const size_t flush_amount)
   {

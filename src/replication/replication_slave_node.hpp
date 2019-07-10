@@ -34,6 +34,11 @@ namespace cubstream
   class transfer_receiver;
 }
 
+namespace cubcomm
+{
+  class channel;
+}
+
 namespace cubreplication
 {
   class log_consumer;
@@ -42,11 +47,17 @@ namespace cubreplication
   class slave_node : public replication_node
   {
     private:
+      /* difference in bytes (stream positions) between slave recovered (start) position and 
+       * source available position which is acceptable to start replication wihout replication copy db phase */
+      const static long long ACCEPTABLE_POS_DIFF_BEFORE_COPY = 100000;
+
       static slave_node *g_instance;
       log_consumer *m_lc;
 
       node_definition m_master_identity;
       cubstream::transfer_receiver *m_transfer_receiver;
+
+      cubstream::stream_position m_source_available_pos;
 
       slave_node (const char *name)
 	: replication_node (name)
@@ -54,6 +65,7 @@ namespace cubreplication
 	, m_master_identity ("")
 	, m_transfer_receiver (NULL)
       {
+         m_source_available_pos = std::numeric_limits<cubstream::stream_position>::max (); 
       }
 
       ~slave_node ();
@@ -64,8 +76,14 @@ namespace cubreplication
       static void init (const char *hostname);
       static int connect_to_master (const char *master_node_hostname, const int master_node_port_id);
       static void final (void);
+      
+      int setup_protocol (cubcomm::channel &chn);
+
+      bool need_replication_copy (const cubstream::stream_position start_position) const;
   };
 
+
+  int replication_copy_slave (cubthread::entry &entry, const char *source_hostname, const bool start_replication_after_copy);
 } /* namespace cubreplication */
 
 #endif /* _REPLICATION_SLAVE_NODE_HPP_ */

@@ -79,6 +79,8 @@ namespace cubreplication
   class replication_node
   {
     protected:
+      const static long long SETUP_REPLICATION_MAGIC = 0x19912882;
+
       cubstream::multi_thread_stream *m_stream;
       cubstream::stream_file *m_stream_file;
       cubstream::stream_position m_start_position;

@@ -24,6 +24,7 @@
 #ident "$Id$"
 
 #include "replication_master_node.hpp"
+#include "communication_channel.hpp"
 #include "log_impl.h"
 #include "replication_common.hpp"
 #include "master_control_channel.hpp"
@@ -73,6 +74,40 @@ namespace cubreplication
     er_log_debug_replication (ARG_FILE_LINE, "master_node:init replication_path:%s", replication_path.c_str ());
   }
 
+  int master_node::setup_protocol (cubcomm::channel &chn)
+  {
+    UINT64 pos = 0, expected_magic;
+    std::size_t max_len = sizeof (UINT64);
+    cubstream::stream_position available_pos;
+
+    if (chn.recv ((char *) &expected_magic, max_len) != css_error_code::NO_ERRORS)
+      {
+        return ER_FAILED;
+      }
+
+    if (expected_magic != replication_node::SETUP_REPLICATION_MAGIC)
+      {
+        er_log_debug_replication (ARG_FILE_LINE, "master_node::setup_protocol error in setup protocol");
+        assert (false);
+        return ER_FAILED;
+      }
+
+    if (chn.send ((char *) &replication_node::SETUP_REPLICATION_MAGIC, max_len) != css_error_code::NO_ERRORS)
+      {
+        return ER_FAILED;
+      }
+
+    available_pos = m_stream->get_min_pos_for_slave ();
+    pos = htoni64 (available_pos);
+    std::size_t max_len = sizeof (UINT64);
+    if (chn.send ((char *) &pos, max_len) !=  css_error_code::NO_ERRORS)
+      {
+        return ER_FAILED;
+      }
+
+    return NO_ERROR;
+  }
+
   void master_node::enable_active ()
   {
     std::lock_guard<std::mutex> lg (g_enable_active_mtx);
@@ -102,6 +137,8 @@ namespace cubreplication
 
     css_error_code rc = chn.accept (fd);
     assert (rc == NO_ERRORS);
+
+    g_instance->setup_protocol (chn);
 
     master_senders_manager::add_stream_sender (new cubstream::transfer_sender (std::move (chn), *g_instance->m_stream));
 

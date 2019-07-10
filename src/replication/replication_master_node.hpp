@@ -30,6 +30,11 @@
 
 #include <mutex>
 
+namespace cubcomm
+{
+  class channel;
+}
+
 namespace cubreplication
 {
   class master_ctrl;
@@ -55,6 +60,8 @@ namespace cubreplication
       static void add_ctrl_chn (int fd);
       static void new_slave_copy (int fd);
       static void final (void);
+
+      int setup_protocol (cubcomm::channel &chn);
 
       static void enable_active (void);
 

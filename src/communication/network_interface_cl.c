@@ -10045,3 +10045,53 @@ locator_send_proxy_buffer (const int type, const size_t buf_size, const char *bu
   return ER_FAILED;
 #endif /* !CS_MODE */
 }
+
+/*
+ * netcl_replication_copy_slave - starts replication copy DB
+ *   return: new state
+ */
+int
+netcl_replication_copy_slave (const char *source_hostname, bool start_replication_after_copy)
+{
+#if defined(CS_MODE)
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+  char *request;
+  char *ptr;
+  int len;
+  int request_size;
+  int status;
+
+  request_size = or_packed_string_length (source_hostname, &len)
+	     + OR_INT_SIZE;
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_string_with_length (request, source_hostname, len);
+  ptr = or_pack_int (ptr, (int) start_replication_after_copy);
+
+  req_error =
+    net_client_request (NET_SERVER_REPLICATION_COPY_SLAVE, request, request_size, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &status);
+    }
+  else
+    {
+      status = ER_FAILED;
+    }
+
+  return status;
+#else /* CS_MODE */
+  /* Cannot run in standalone mode */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "copyslave");
+  return ER_FAILED;
+#endif /* !CS_MODE */
+}

@@ -854,6 +854,11 @@ net_server_init (void)
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slogtb_does_active_user_exist;
   req_p->name = "NET_SERVER_AU_DOES_ACTIVE_USER_EXIST";
+
+  req_p = &net_Requests[NET_SERVER_REPLICATION_COPY_SLAVE];
+  req_p->action_attribute = CHECK_AUTHORIZATION;  // TODO : IN_TRANSACTION ?
+  req_p->processing_function = sreplication_copy_slave;
+  req_p->name = "NET_SERVER_REPLICATION_COPY_SLAVE";
 }
 
 #if defined(CUBRID_DEBUG)

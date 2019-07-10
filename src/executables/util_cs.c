@@ -3737,3 +3737,92 @@ error:
 
   return rc;
 }
+
+/*
+ * copyslave() - copy database from a source server into current server using replication mechanism
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+int
+copyslave (UTIL_FUNCTION_ARG * arg)
+{
+#if defined (CS_MODE)
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+  const char *database_name;
+  char *source_hostname;
+  int error;
+  bool start_replication_after_copy;
+  bool is_db_started = false;
+
+  if (utility_get_option_string_table_size (arg_map) != 1)
+    {
+      goto print_copyslave_usage;
+    }
+
+  database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (database_name == NULL)
+    {
+      goto print_copyslave_usage;
+    }
+
+  source_hostname = utility_get_option_string_value (arg_map, COPYSLAVE_SOURCE_HOSTNAME_S, 0);
+  start_replication_after_copy = utility_get_option_bool_value (arg_map, COPYSLAVE_START_REPLICATION_S);
+
+  if (check_database_name (database_name))
+    {
+      goto error_exit;
+    }
+
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  if (db_login ("DBA", NULL) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      goto error_exit;
+    }
+  error = db_restart (arg->command_name, TRUE, database_name);
+  if (error != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      goto error_exit;
+    }
+  is_db_started = true;
+
+  if (HA_DISABLED ())
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COPYSLAVE,
+					     COPYSLAVE_MSG_NOT_HA_MODE));
+      goto error_exit;
+    }
+
+  error = netcl_replication_copy_slave (source_hostname, start_replication_after_copy);
+  if (error != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      goto error_exit;      
+    }
+
+  (void) db_shutdown ();
+  return EXIT_SUCCESS;
+
+print_copyslave_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COPYSLAVE, COPYSLAVE_MSG_USAGE),
+	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
+error_exit:
+  if (is_db_started)
+    {
+      (void) db_shutdown ();
+    }
+  return EXIT_FAILURE;
+#else /* CS_MODE */
+  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COPYSLAVE,
+					 COPYSLAVE_MSG_NOT_IN_STANDALONE), basename (arg->argv0));
+  return EXIT_FAILURE;
+#endif /* !CS_MODE */
+}

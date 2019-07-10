@@ -28,6 +28,7 @@
 
 #include "replication_object.hpp"
 #include <condition_variable>
+#include <atomic>
 #include <list>
 #include <mutex>
 

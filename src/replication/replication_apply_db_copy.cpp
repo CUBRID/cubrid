@@ -38,9 +38,26 @@
 namespace cubreplication
 {
 
-  apply_copy_context::apply_copy_context (node_definition *myself)
+  apply_copy_context::apply_copy_context (node_definition *myself, node_definition *source_node)
   {
-    m_source_identity = myself;
+    m_my_identity = myself;
+    m_source_identity = source_node;
+    m_stream = NULL;
+  }
+
+  apply_copy_context::~apply_copy_context ()
+  {
+    delete m_transfer_receiver;
+    m_transfer_receiver = NULL;
+
+    m_copy_consumer->set_stop ();
+    delete m_copy_consumer;
+    m_copy_consumer = NULL;
+
+    delete m_stream_file;
+    m_stream_file = NULL;
+
+    delete m_stream;
     m_stream = NULL;
   }
 
@@ -50,7 +67,7 @@ namespace cubreplication
     INT64 buffer_size = 1 * 1024 * 1024;
     /* create stream */
     m_stream = new cubstream::multi_thread_stream (buffer_size, 2);
-    m_stream->set_name ("repl_copy_" + std::string (m_source_identity->get_hostname ().c_str ()) + "_replica");
+    m_stream->set_name ("repl_copy_" + std::string (m_source_identity->get_hostname ().c_str ()));
     m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
     m_stream->init (0);
 
@@ -58,9 +75,12 @@ namespace cubreplication
     std::string replication_path;
     replication_node::get_replication_file_path (replication_path);
     m_stream_file = new cubstream::stream_file (*m_stream, replication_path);
+
+    m_copy_consumer = new copy_db_consumer ();
+    m_copy_consumer->set_stream (m_stream);
   }
 
-  int apply_copy_context::connect_to_source (node_definition *source_node)
+  int apply_copy_context::start_copy ()
   {
     int error = NO_ERROR;
 
@@ -83,8 +103,21 @@ namespace cubreplication
     cubstream::stream_position start_position = 0;
     m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *m_stream, start_position);
 
+    m_copy_consumer->start_daemons ();
+
     return error;
   }
+
+  void apply_copy_context::wait_replication_copy ()
+  {
+     while (m_copy_consumer->is_finished ())
+       {
+          er_log_debug_replication (ARG_FILE_LINE, "wait_replication_copy: current stream_position:%lld\n",
+			            m_copy_consumer->m_last_fetched_position);
+          thread_sleep (1000);
+       }
+  }
+
 
   /* TODO : refactor with log_consumer:: consumer_daemon_task */
   class copy_db_consumer_daemon_task : public cubthread::entry_task
@@ -197,6 +230,8 @@ namespace cubreplication
         bool is_heap_extract_phase = false;
         bool is_replication_copy_end = false;
 
+        er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_daemon_task : start of replication copy");
+
 	while (!is_replication_copy_end)
 	  {
 	    bool should_stop = false;
@@ -205,8 +240,11 @@ namespace cubreplication
 
 	    if (should_stop)
 	      {
+                er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_daemon_task : detect should stop");
 		break;
 	      }
+
+            m_lc.m_last_fetched_position = se->get_stream_entry_start_position ();
 
 	    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
 	      {
@@ -225,17 +263,20 @@ namespace cubreplication
               {
                 is_heap_extract_phase = true;
                 is_control_se = true;
+                er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_daemon_task : receive of start of extract heap phase");
               }
             else if (se->is_end_of_extract_heap ())
               {
                 is_heap_extract_phase = false;
                 is_control_se = true;
+                er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_daemon_task : receive of end of extract heap phase");
               }
             else if (se->is_end_of_replication_copy ())
               {
                 assert (is_heap_extract_phase == false);
                 is_control_se = true;
                 is_replication_copy_end = true;
+                er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_daemon_task : receive of end of replication");
               }
 
             if (is_control_se)
@@ -249,6 +290,9 @@ namespace cubreplication
                 /* stream entry is deleted by applier task thread */
               }
 	  }
+
+        m_lc.set_is_finished ();
+        er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_daemon_task finished");
       }
 
     private:

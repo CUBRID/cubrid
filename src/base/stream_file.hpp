@@ -200,6 +200,11 @@ namespace cubstream
 	return m_append_position;
       }
 
+      stream_position get_drop_position (void)
+      {
+	return m_drop_position;
+      }
+
       void start_flush (const stream_position &start_position, const size_t amount_to_flush);
 
       void force_start_flush (void);

@@ -9805,3 +9805,32 @@ slocator_send_proxy_buffer (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   ptr = or_pack_int (reply, error_code);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
+
+/*
+ * sreplication_copy_slave -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+sreplication_copy_slave (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *source_hostname;
+  char *ptr;
+  int start_replication_after_copy;
+  int status;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_unpack_string (request, &source_hostname);
+  ptr = or_unpack_int (ptr, &start_replication_after_copy);
+  status = xreplication_copy_slave (thread_p, source_hostname, (bool) start_replication_after_copy);
+
+  (void) or_pack_int (reply, status);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
