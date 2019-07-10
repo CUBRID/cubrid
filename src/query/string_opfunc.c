@@ -2134,7 +2134,7 @@ db_string_repeat (const DB_VALUE * src_string, const DB_VALUE * count, DB_VALUE 
 
       /* update size of string */
       qstr_make_typed_string (result_type, result, DB_VALUE_PRECISION (result), db_get_string (result),
-			      (const int) expected_size, db_get_string_codeset (src_string),
+			      (int) expected_size, db_get_string_codeset (src_string),
 			      db_get_string_collation (src_string));
       result->need_clear = true;
 
@@ -4305,7 +4305,7 @@ regex_matches (const char *pattern, const char *str, int reg_flags, bool * match
   int error_status = NO_ERROR;
 
 #ifndef _USE_LIBREGEX_
-  /* *INDENT-OFF* */  
+  /* *INDENT-OFF* */
 
   // transform flags from cub_regex_t => std::regex_constants
   std::regex_constants::syntax_option_type std_reg_flags = std::regex::extended;
@@ -12609,7 +12609,7 @@ db_to_date (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
 	  goto exit;
 	}
 
-      db_make_char (&default_format, strlen (default_format_str), (const DB_C_CHAR) (default_format_str),
+      db_make_char (&default_format, strlen (default_format_str), (DB_C_CHAR) default_format_str,
 		    strlen (default_format_str), frmt_codeset, LANG_GET_BINARY_COLLATION (frmt_codeset));
       format_str = &default_format;
     }
@@ -13180,7 +13180,7 @@ db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto exit;
 	}
-      db_make_char (&default_format, strlen (default_format_str), (const DB_C_CHAR) (default_format_str),
+      db_make_char (&default_format, strlen (default_format_str), (DB_C_CHAR) default_format_str,
 		    strlen (default_format_str), frmt_codeset, LANG_GET_BINARY_COLLATION (frmt_codeset));
       format_str = &default_format;
     }
@@ -13763,7 +13763,7 @@ db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB
 	  goto exit;
 	}
 
-      db_make_char (&default_format, strlen (default_format_str), (const DB_C_CHAR) (default_format_str),
+      db_make_char (&default_format, strlen (default_format_str), (DB_C_CHAR) default_format_str,
 		    strlen (default_format_str), frmt_codeset, LANG_GET_BINARY_COLLATION (frmt_codeset));
       format_str = &default_format;
     }
@@ -14674,7 +14674,7 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_
 	  goto exit;
 	}
 
-      db_make_char (&default_format, strlen (default_format_str), (const DB_C_CHAR) (default_format_str),
+      db_make_char (&default_format, strlen (default_format_str), (DB_C_CHAR) default_format_str,
 		    strlen (default_format_str), frmt_codeset, LANG_GET_BINARY_COLLATION (frmt_codeset));
       format_str = &default_format;
     }
