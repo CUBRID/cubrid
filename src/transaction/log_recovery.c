@@ -5096,9 +5096,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
   if (!LSA_ISNULL (&log_Gl.m_min_active_lsa))
     {
-      bool found = false;
       LSA_COPY (&log_lsa, &log_Gl.m_min_active_lsa);
-      while (!LSA_ISNULL (&log_rec->forw_lsa))
+      while (!LSA_ISNULL (&log_lsa))
 	{
 	  if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
 	    {
@@ -5110,19 +5109,48 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
 
-	  while (!LSA_ISNULL (&log_rec->forw_lsa))
+	  while (!LSA_ISNULL (&log_lsa))
 	    {
-	      if (log_Gl.m_active_tran_ids.find (log_rec->trid) != log_Gl.m_active_tran_ids.end () &&
-		  (log_rec->type == LOG_MVCC_UNDOREDO_DATA || log_rec->type == LOG_MVCC_DIFF_UNDOREDO_DATA))
+	      if (log_Gl.m_active_tran_ids.find (log_rec->trid) != log_Gl.m_active_tran_ids.end ())
 		{
-		  data_header_size = sizeof (LOG_REC_MVCC_UNDOREDO);
-		  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
-		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, data_header_size, &log_lsa, log_pgptr);
-		  LOG_REC_MVCC_UNDOREDO *mvcc_undoredo =
-		    (LOG_REC_MVCC_UNDOREDO *) ((char *) log_pgptr->area + log_lsa.offset);
+		  switch (log_rec->type)
+		    {
+		    case LOG_MVCC_UNDOREDO_DATA:
+		    case LOG_MVCC_DIFF_UNDOREDO_DATA:
+		      {
+			LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
+			size_t rec_size = sizeof (LOG_REC_MVCC_UNDOREDO);
+			LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, rec_size, &log_lsa, log_pgptr);
+			LOG_REC_MVCC_UNDOREDO *mvcc_undoredo =
+			  (LOG_REC_MVCC_UNDOREDO *) ((char *) log_pgptr->area + log_lsa.offset);
+			log_Gl.m_active_mvcc_ids.insert (mvcc_undoredo->mvccid);
+			break;
+		      }
 
-		  // found start of filtered apply
-		  log_Gl.m_active_mvcc_ids.insert (mvcc_undoredo->mvccid);
+		    case LOG_MVCC_UNDO_DATA:
+		      {
+			LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
+			size_t rec_size = sizeof (LOG_REC_MVCC_UNDO);
+			LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, rec_size, &log_lsa, log_pgptr);
+			LOG_REC_MVCC_UNDO *mvcc_undo =
+			  (LOG_REC_MVCC_UNDO *) ((char *) log_pgptr->area + log_lsa.offset);
+			log_Gl.m_active_mvcc_ids.insert (mvcc_undo->mvccid);
+			break;
+		      }
+
+		    case LOG_MVCC_REDO_DATA:
+		      {
+			LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
+			size_t rec_size = sizeof (LOG_REC_MVCC_REDO);
+			LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, rec_size, &log_lsa, log_pgptr);
+			LOG_REC_MVCC_REDO *mvcc_redo =
+			  (LOG_REC_MVCC_REDO *) ((char *) log_pgptr->area + log_lsa.offset);
+			log_Gl.m_active_mvcc_ids.insert (mvcc_redo->mvccid);
+			break;
+		      }
+		    default:
+		      break;
+		    }
 		}
 
 	      if (log_lsa.pageid != log_rec->forw_lsa.pageid)
@@ -5141,8 +5169,9 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
       for (auto it = log_Gl.m_active_mvcc_ids.begin (); it != log_Gl.m_active_mvcc_ids.end (); ++it)
 	{
-	  _er_log_debug (ARG_FILE_LINE, "Master recovery: MVCCID found:" "%llu", (std::uint64_t) * it);
+	  _er_log_debug (ARG_FILE_LINE, "Master recovery: MVCCID found:" "%llu\n", (std::uint64_t) * it);
 	}
+      log_Gl.m_active_tran_ids.clear ();
     }
 
   log_zip_free (undo_unzip_ptr);
