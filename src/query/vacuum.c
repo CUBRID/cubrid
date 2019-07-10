@@ -697,24 +697,16 @@ class vacuum_master_context_manager : public cubthread::daemon_entry_manager
     }
 };
 
-// class vacuum_master_task
-//
-//  description:
-//    vacuum master task
-//
-class vacuum_master_task : public cubthread::entry_task
+void
+vacuum_master_execute (cubthread::entry & thread_ref)
 {
-  public:
-    void execute (cubthread::entry & thread_ref) final
+  if (!BO_IS_SERVER_RESTARTED ())
     {
-      if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
-      vacuum_process_vacuum_data (&thread_ref);
+      // wait for boot to finish
+      return;
     }
-};
+  vacuum_process_vacuum_data (&thread_ref);
+}
 
 // class vacuum_worker_context_manager
 //
@@ -1049,7 +1041,8 @@ vacuum_boot (THREAD_ENTRY * thread_p)
 
   // create vacuum master thread
   vacuum_Master_daemon =
-    thread_manager->create_daemon (looper, new vacuum_master_task (), "vacuum_master", vacuum_Master_context_manager);
+    thread_manager->create_daemon (looper, new cubthread::entry_callable_task (vacuum_master_execute), "vacuum_master",
+				   vacuum_Master_context_manager);
 #endif /* SERVER_MODE */
 
   vacuum_Is_booted = true;
