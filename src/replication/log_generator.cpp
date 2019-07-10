@@ -320,7 +320,7 @@ namespace cubreplication
   cubstream::stream_position
   log_generator::pack_stream_entry (void)
   {
-    cubstream::stream_position start_pos;
+    cubstream::stream_position end_pos;
 
     assert (m_stream_entry.get_stream () != NULL);
     assert (!m_stream_entry.is_tran_state_undefined ());
@@ -333,10 +333,10 @@ namespace cubreplication
       }
 
     m_stream_entry.pack ();
-    start_pos = m_stream_entry.get_stream_entry_start_position ();
+    end_pos = m_stream_entry.get_stream_entry_end_position ();
     m_stream_entry.reset ();
 
-    return start_pos;
+    return end_pos;
   }
 
   void

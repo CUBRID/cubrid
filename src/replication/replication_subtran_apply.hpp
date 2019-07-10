@@ -60,7 +60,7 @@ namespace cubreplication
       log_consumer &m_lc;
       std::mutex m_tasks_mutex;
       std::condition_variable m_condvar;
-      bool m_waiting_for_tasks;
+      bool m_is_running_tasks;
       std::list<stream_entry *> m_stream_entries;
   };
 } // namespace cubreplication

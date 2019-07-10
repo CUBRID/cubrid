@@ -40,7 +40,7 @@ namespace cubreplication
     : m_lc (lc)
     , m_tasks_mutex ()
     , m_condvar ()
-    , m_waiting_for_tasks (false)
+    , m_is_running_tasks (false)
     , m_stream_entries ()
   {
   }
@@ -60,13 +60,13 @@ namespace cubreplication
       }
 
     std::unique_lock<std::mutex> ulock (m_tasks_mutex);
-    m_waiting_for_tasks = true;
+    m_is_running_tasks = true;
 
     auto exec_f = std::bind (&subtran_applier::execute, this, std::placeholders::_1);
     cubthread::entry_callable_task *task = new cubthread::entry_callable_task (exec_f);
     m_lc.push_task (task);
 
-    m_condvar.wait (ulock, [this] { return !m_waiting_for_tasks; });
+    m_condvar.wait (ulock, [this] { return !m_is_running_tasks; });
 
     m_lc.end_one_task ();
   }
@@ -75,7 +75,7 @@ namespace cubreplication
   subtran_applier::finished_task ()
   {
     std::unique_lock<std::mutex> ulock (m_tasks_mutex);
-    m_waiting_for_tasks = false;
+    m_is_running_tasks = false;
     ulock.unlock ();
     m_condvar.notify_all ();
   }
