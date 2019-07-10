@@ -42,9 +42,9 @@ extern int lf_callback_vpid_copy (void *src, void *dest);
 /*
  * Address mark macros
  */
-#define ADDR_WITH_MARK(p)   ((void *) (((long long) p) | 0x1))
-#define ADDR_HAS_MARK(p)    (((long long) p) & 0x1)
-#define ADDR_STRIP_MARK(p)  ((void *) (((long long) p) & (~((long long) 0x1))))
+#define ADDR_WITH_MARK(p)   ((void * volatile) (((long long volatile) p) | 0x1))
+#define ADDR_HAS_MARK(p)    (((long long volatile)p) & 0x1)
+#define ADDR_STRIP_MARK(p)  ((void * volatile)(((long long volatile)p) & (~((long long)0x1))))
 /*
  * Entry descriptor
  */
