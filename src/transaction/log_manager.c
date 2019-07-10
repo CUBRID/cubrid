@@ -192,28 +192,6 @@ std::atomic<std::int64_t> log_Clock_msec = {0};
 // *INDENT-ON*
 #endif /* SERVER_MODE */
 
-// *INDENT-OFF*
-#if defined (SERVER_MODE)
-class log_abort_task : public cubthread::entry_task
-{
-public:
-  log_abort_task (void) = delete;
-
-  log_abort_task (log_tdes &tdes)
-  : m_tdes (tdes)
-  {
-  }
-
-  void execute (context_type &thread_ref) final override;
-
-  // retire deletes me
-
-private:
-  log_tdes &m_tdes;
-};
-#endif // SERVER_MODE
-// *INDENT-ON*
-
 static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_dbcreation);
 static int log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				const char *prefix_logname, DKNPAGES npages, INT64 * db_creation);
@@ -329,6 +307,12 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 				   int data_size, const char *data);
 
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
+
+#if defined(SERVER_MODE)
+// *INDENT-OFF
+static void log_abort_task_execute (cubthread::entry & thread_ref, LOG_TDES & tdes);
+// *INDENT-ON
+#endif // SERVER_MODE
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
@@ -1610,7 +1594,11 @@ loop:
 	    }
 	  else if (LOG_ISTRAN_ACTIVE (tdes) && abort_thread_running[i] == 0)
 	    {
-	      css_push_external_task (css_find_conn_by_tran_index (i), new log_abort_task (*tdes));
+              // *INDENT-OFF*
+              cubthread::entry_callable_task::exec_func_type exec_f =
+                std::bind (log_abort_task_execute, std::placeholders::_1, std::ref (*tdes));
+	      css_push_external_task (css_find_conn_by_tran_index (i), new cubthread::entry_callable_task (exec_f));
+              // *INDENT-ON*
 	      abort_thread_running[i] = 1;
 	      repeat_loop = true;
 	    }
@@ -10036,10 +10024,10 @@ log_get_clock_msec (void)
 
 // *INDENT-OFF*
 #if defined (SERVER_MODE)
-void
-log_abort_task::execute (context_type &thread_ref)
+static void
+log_abort_task_execute (cubthread::entry &thread_ref, LOG_TDES &tdes)
 {
-  (void) log_abort_by_tdes (&thread_ref, &m_tdes);
+  (void) log_abort_by_tdes (&thread_ref, &tdes);
 }
 #endif // SERVER_MODE
 // *INDENT-ON*
