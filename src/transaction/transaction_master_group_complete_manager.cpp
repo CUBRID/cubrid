@@ -86,6 +86,7 @@ namespace cubtx
 	do_complete (thread_p);
 	assert (log_Gl.m_ack_stream_position <= stream_pos);
 	log_Gl.m_ack_stream_position = stream_pos;
+	er_log_debug (ARG_FILE_LINE, "master_group_complete_manage::notify_stream_ack pos=%llu\n", stream_pos);
       }
   }
 
@@ -145,6 +146,11 @@ namespace cubtx
   //
   void master_group_complete_manager::do_prepare_complete (THREAD_ENTRY *thread_p)
   {
+    if (log_Gl.m_tran_complete_mgr->get_manager_type() != get_manager_type ())
+      {
+	return;
+      }
+
     if (close_current_group ())
       {
 	cubstream::stream_position closed_group_stream_start_position, closed_group_stream_end_position;
@@ -176,18 +182,21 @@ namespace cubtx
     LOG_TDES *tdes = logtb_get_tdes (&cubthread::get_entry ());
     bool has_postpone;
 
+    if (log_Gl.m_tran_complete_mgr->get_manager_type() != get_manager_type())
+      {
+	return;
+      }
+
     if (is_latest_closed_group_completed ())
       {
 	/* Latest closed group is already completed. */
 	return;
       }
 
-    if (!is_latest_closed_group_prepared_for_complete ())
+    while (!is_latest_closed_group_prepared_for_complete ())
       {
-	/* The user must call again do_complete since the data is not prepared for complete.
-	 * Another option may be to wait. Since rarely happens, we can use thread_sleep.
-	 */
-	return;
+	/* It happens rare. */
+	thread_sleep (10);
       }
 
     mark_latest_closed_group_complete_started ();
@@ -218,15 +227,13 @@ namespace cubtx
       {
 	gl_master_group_complete_daemon->wakeup ();
       }
-
-    /* TODO - er_log_debug (closed_group_start_complete_lsa, closed_group_end_complete_lsa) */
   }
 
   void master_group_complete_task::execute (cubthread::entry &thread_ref)
   {
     if (!BO_IS_SERVER_RESTARTED ())
       {
-        return;
+	return;
       }
 
     cubthread::entry *thread_p = &cubthread::get_entry ();

@@ -41,7 +41,7 @@ namespace cubtx
 
     on_register_transaction ();
 
-    er_log_debug (ARG_FILE_LINE, "group_complete_manager::register_transaction: (%d, %lld, %d)\n",
+    er_log_debug (ARG_FILE_LINE, "group_complete_manager::register_transaction: (%d, %llu, %d)\n",
 		  tran_index, (long long int) mvccid, (int) state);
 
     return m_current_group_id;
@@ -55,7 +55,8 @@ namespace cubtx
     if (group_id < m_latest_closed_group_id)
       {
 	/* Already advanced to next group. No need to acquire mutex. */
-	er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete_mvcc: (%lld)\n", group_id);
+	er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete_mvcc: (tran_index = %d, group_id = %llu)\n",
+		      LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
 	return;
       }
 
@@ -68,7 +69,8 @@ namespace cubtx
 	      {
 		/* Completed mvcc for group_id. No need to acquire mutex. */
 		assert (group_id <= m_latest_closed_group_id);
-		er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete_mvcc: (%lld)\n", group_id);
+		er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete_mvcc: (tran_index = %d, group_id = %llu)\n",
+			      LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
 		return;
 	      }
 	  }
@@ -78,7 +80,8 @@ namespace cubtx
 	/* TODO - consider stop and optimize next call */
 	m_group_complete_condvar.wait (ulock, [&] {return is_group_mvcc_completed (group_id);});
 
-	er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete_mvcc: (%lld)\n", group_id);
+	er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete_mvcc: (tran_index = %d, group_id = %llu)\n",
+		      LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
 	return;
       }
 #endif
@@ -88,7 +91,7 @@ namespace cubtx
     do_prepare_complete (thread_p);
     do_complete (thread_p);
     assert (is_group_mvcc_completed (group_id));
-    er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete_mvcc: (%lld)\n", group_id);
+    er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete_mvcc: (%llu)\n", group_id);
   }
 
   //
@@ -99,7 +102,8 @@ namespace cubtx
     if (group_id < m_latest_closed_group_id)
       {
 	/* Already advanced to next group. No need to acquire mutex. */
-	er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete_logging: (%lld)\n", group_id);
+	er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete_logging: (tran_index = %d, group_id = %llu)\n",
+		      LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
 	return;
       }
 
@@ -112,7 +116,8 @@ namespace cubtx
 	      {
 		/* Logging completed for group_id. No need to acquire mutex. */
 		assert (group_id <= m_latest_closed_group_id);
-		er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete_logging: (%lld)\n", group_id);
+		er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete_logging: (tran_index = %d, group_id = %llu)\n",
+			      LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
 		return;
 	      }
 	  }
@@ -120,7 +125,8 @@ namespace cubtx
 	if (!need_wait_for_complete ())
 	  {
 	    /* Async case. */
-	    er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete_logging: (%lld)\n", group_id);
+	    er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete_logging: (tran_index = %d, group_id = %llu)\n",
+			  LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
 	    return;
 	  }
 
@@ -129,7 +135,7 @@ namespace cubtx
 	/* TODO - consider stop and optimize next call */
 	m_group_complete_condvar.wait (ulock, [&] {return is_group_logged (group_id);});
 
-	er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete_logging: (%lld)\n", group_id);
+	er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete_logging: (%llu)\n", group_id);
 	return;
       }
 #endif
@@ -139,7 +145,7 @@ namespace cubtx
     do_prepare_complete (thread_p);
     do_complete (thread_p);
     assert (is_group_logged (group_id));
-    er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete_logging: (%lld)\n", group_id);
+    er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete_logging: (%llu)\n", group_id);
   }
 
   //
@@ -150,7 +156,8 @@ namespace cubtx
     if (group_id < m_latest_closed_group_id)
       {
 	/* Already advanced to next group. No need to acquire mutex. */
-	er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete: (%lld)\n", group_id);
+	er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete: (tran_index = %d, group_id = %llu)\n",
+		      LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
 	return;
       }
 
@@ -163,7 +170,8 @@ namespace cubtx
 	      {
 		/* Group_id complete. No need to acquire mutex. */
 		assert (group_id <= m_latest_closed_group_id);
-		er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete: (%lld)\n", group_id);
+		er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete: (tran_index = %d, group_id = %llu)\n",
+			      LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
 		return;
 	      }
 	  }
@@ -171,7 +179,8 @@ namespace cubtx
 	if (!need_wait_for_complete ())
 	  {
 	    /* Async case. */
-	    er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete: (%lld)\n", group_id);
+	    er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete: (tran_index = %d, group_id = %llu)\n",
+			  LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
 	    return;
 	  }
 
@@ -179,7 +188,8 @@ namespace cubtx
 	std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
 	/* TODO - consider stop and optimize next call */
 	m_group_complete_condvar.wait (ulock, [&] {return is_group_completed (group_id);});
-	er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete: (%lld)\n", group_id);
+	er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete: (tran_index = %d, group_id = %llu)\n",
+		      LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
 
 	return;
       }
@@ -190,7 +200,7 @@ namespace cubtx
     do_prepare_complete (thread_p);
     do_complete (thread_p);
     assert (is_group_completed (group_id));
-    er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete: (%lld)\n", group_id);
+    er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete: (%llu)\n", group_id);
   }
 
   //
@@ -262,7 +272,9 @@ namespace cubtx
 	/* Close the current group. */
 	m_latest_closed_group_id.store (m_current_group_id);
 	m_latest_closed_group_state = GROUP_CLOSED;
-	er_log_debug (ARG_FILE_LINE, "group_complete_manager::close_current_group: (%lld)\n", (long long) m_current_group_id);
+	er_log_debug (ARG_FILE_LINE, "group_complete_manager::close_current_group: (manager_type = %s, group = %llu)\n",
+		      logpb_complete_manager_string ((LOG_TRAN_COMPLETE_MANAGER_TYPE) get_manager_type ()),
+		      (unsigned long long) m_latest_closed_group_id);
 
 	/* Advance with the group - copy and reinit it. */
 	m_current_group.transfer_to (m_latest_closed_group);
@@ -305,6 +317,10 @@ namespace cubtx
   void group_complete_manager::notify_group_complete ()
   {
     m_latest_closed_group_state |= GROUP_COMPLETED;
+    er_log_debug (ARG_FILE_LINE,
+		  "group_complete_manager::notify_group_complete latest_group_id: (manager_type = %s, closed group = %llu)\n",
+		  logpb_complete_manager_string ((LOG_TRAN_COMPLETE_MANAGER_TYPE) get_manager_type ()),
+		  (unsigned long long) m_latest_closed_group_id);
 
 #if defined (SERVER_MODE)
     /* Notify threads waiting for complete. */

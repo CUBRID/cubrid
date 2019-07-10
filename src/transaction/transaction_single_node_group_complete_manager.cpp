@@ -208,6 +208,11 @@ namespace cubtx
     LOG_TDES *tdes;
     bool has_postpone;
 
+    if (log_Gl.m_tran_complete_mgr->get_manager_type () != get_manager_type ())
+      {
+        return;
+      }
+
     if (close_current_group ())
       {
 	cubstream::stream_position closed_group_stream_start_position = 0, closed_group_stream_end_position = 0;
@@ -246,6 +251,11 @@ namespace cubtx
   void single_node_group_complete_manager::do_complete (THREAD_ENTRY *thread_p)
   {
     LOG_TDES *tdes = logtb_get_tdes (&cubthread::get_entry ());
+
+    if (log_Gl.m_tran_complete_mgr->get_manager_type() != get_manager_type ())
+      {
+        return;
+      }
 
     if (is_latest_closed_group_completed ())
       {

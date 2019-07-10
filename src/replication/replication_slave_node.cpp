@@ -121,8 +121,6 @@ namespace cubreplication
 
     logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE);
 
-    assert (log_Gl.m_tran_complete_mgr == cubtx::slave_group_complete_manager::get_instance ());
-
     return NO_ERROR;
   }
 

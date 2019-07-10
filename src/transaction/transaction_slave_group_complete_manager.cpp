@@ -50,7 +50,7 @@ namespace cubtx
   void slave_group_complete_manager::init ()
   {
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
-    slave_group_complete_manager * p_gl_slave_group = get_instance ();
+    slave_group_complete_manager *p_gl_slave_group = get_instance ();
     p_gl_slave_group->m_latest_group_id = NULL_ID;
     p_gl_slave_group->m_latest_group_stream_position = 0;
     p_gl_slave_group->m_has_latest_group_close_info.store (false);
@@ -87,7 +87,7 @@ namespace cubtx
     if (get_current_group ().get_container ().size () >= count_min_group_transactions)
       {
 	gl_slave_group_complete_daemon->wakeup ();
-  }
+      }
   }
 
   //
@@ -106,15 +106,15 @@ namespace cubtx
     if (m_has_latest_group_close_info.load () == false)
       {
 	/* Can't close yet the current group. */
-        if (!is_current_group_empty () && is_group_completed (m_latest_group_id))
-        {
-          /* Something wrong happens. The latest group was closed, but, we have a transaction
-           * waiting for another group. Forces a group complete to not stuck the system.
-           */
-          _er_log_debug (ARG_FILE_LINE, "can_close_current_group: wrong transaction waiting beyond the latest group id (%llu)",
-            m_latest_group_id);
-          return true;
-        }
+	if (!is_current_group_empty () && is_group_completed (m_latest_group_id))
+	  {
+	    /* Something wrong happens. The latest group was closed, but, we have a transaction
+	     * waiting for another group. Forces a group complete to not stuck the system.
+	     */
+	    _er_log_debug (ARG_FILE_LINE, "can_close_current_group: wrong transaction waiting beyond the latest group id (%llu)",
+			   m_latest_group_id);
+	    return true;
+	  }
 
 	return false;
       }
@@ -134,6 +134,11 @@ namespace cubtx
   //
   void slave_group_complete_manager::do_prepare_complete (THREAD_ENTRY *thread_p)
   {
+    if (log_Gl.m_tran_complete_mgr->get_manager_type () != get_manager_type ())
+      {
+	return;
+      }
+
     /* TODO - consider whether stream position was saved on disk, when close the group */
     if (close_current_group ())
       {
@@ -157,6 +162,11 @@ namespace cubtx
     LOG_LSA closed_group_start_complete_lsa, closed_group_end_complete_lsa;
     LOG_TDES *tdes = logtb_get_tdes (&cubthread::get_entry ());
     bool has_postpone;
+
+    if (log_Gl.m_tran_complete_mgr->get_manager_type () != get_manager_type ())
+      {
+	return;
+      }
 
     if (is_latest_closed_group_completed ())
       {
@@ -191,8 +201,6 @@ namespace cubtx
 
     /* Finally, notify complete. TODO - consider notify log and complete together. Consider complete MVCC case 2. */
     notify_group_complete ();
-
-    /* TODO - er_log_debug (closed_group_start_complete_lsa, closed_group_start_complete_lsa) */
   }
 
   //
@@ -219,15 +227,18 @@ namespace cubtx
   {
     bool has_group_enough_transactions;
     /* Can't set close info twice. */
+#if 0
     assert (m_has_latest_group_close_info.load () == false);
+#endif
 
     m_latest_group_stream_position = stream_position;
-    m_latest_group_id = set_current_group_minimum_transactions (count_expected_transactions, has_group_enough_transactions);    
+    m_latest_group_id = set_current_group_minimum_transactions (count_expected_transactions, has_group_enough_transactions);
     m_has_latest_group_close_info.store (true);
-    er_log_debug (ARG_FILE_LINE, "set_close_info_for_current_group sp=%llu, latest_group_id = %llu\n", stream_position, m_latest_group_id);
+    er_log_debug (ARG_FILE_LINE, "set_close_info_for_current_group sp=%llu, latest_group_id = %llu\n", stream_position,
+		  m_latest_group_id);
     if (has_group_enough_transactions)
       {
-        /* Wakeup group complete thread, since we have all informations that allows group close. */
+	/* Wakeup group complete thread, since we have all informations that allows group close. */
 	gl_slave_group_complete_daemon->wakeup ();
       }
   }
@@ -247,11 +258,11 @@ namespace cubtx
   {
     if (!BO_IS_SERVER_RESTARTED ())
       {
-        return;
+	return;
       }
 
     cubthread::entry *thread_p = &cubthread::get_entry ();
-    slave_group_complete_manager * p_gl_slave_group = slave_group_complete_manager::get_instance ();
+    slave_group_complete_manager *p_gl_slave_group = slave_group_complete_manager::get_instance ();
     p_gl_slave_group->do_prepare_complete (thread_p);
     p_gl_slave_group->do_complete (thread_p);
   }

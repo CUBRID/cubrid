@@ -318,7 +318,7 @@ tran_commit (bool retain_lock)
   tran_free_oldest_system_savepoint ();
 #endif
 
-  if (!tran_was_latest_query_committed () && (db_Client_type != BOOT_CLIENT_DDL_PROXY))
+  if (!tran_was_latest_query_committed () && !db_is_ddl_proxy_client ())
     {
       /* Forward the commit the transaction manager in the server */
       state = tran_server_commit (retain_lock);
@@ -364,7 +364,7 @@ tran_commit (bool retain_lock)
 	  break;
 	}
     }
-  else if (tran_is_reset_required () && log_does_allow_replication ())
+  else if (tran_is_reset_required () && log_does_allow_replication () && !db_is_ddl_proxy_client ())
     {
       /*
        * fail-back action
@@ -460,7 +460,7 @@ tran_abort (void)
     }
   db_clear_client_query_result (query_end_notify_server, true);
 
-  if (!tran_was_latest_query_aborted ())
+  if (!tran_was_latest_query_aborted () && !db_is_ddl_proxy_client ())
     {
       /* Forward the abort the transaction manager in the server */
       state = tran_server_abort ();
