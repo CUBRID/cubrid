@@ -1684,7 +1684,7 @@ px_sort_assign (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int px_id, cha
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
-void
+static void
 px_sort_myself_execute (cubthread::entry &thread_ref, PX_TREE_NODE * px_node)
 {
   (void) px_sort_myself (&thread_ref, px_node);

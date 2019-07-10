@@ -697,7 +697,7 @@ class vacuum_master_context_manager : public cubthread::daemon_entry_manager
     }
 };
 
-void
+static void
 vacuum_master_execute (cubthread::entry & thread_ref)
 {
   if (!BO_IS_SERVER_RESTARTED ())
@@ -1027,7 +1027,6 @@ vacuum_boot (THREAD_ENTRY * thread_p)
   bool log_vacuum_worker_pool =
     cubthread::is_logging_configured (cubthread::LOG_WORKER_POOL_VACUUM)
     || flag<int>::is_flag_set (prm_get_integer_value (PRM_ID_ER_LOG_VACUUM), VACUUM_ER_LOG_WORKER);
-  /* *INDENT-ON* */
 
   // create thread pool
   vacuum_Worker_threads =
@@ -1043,6 +1042,8 @@ vacuum_boot (THREAD_ENTRY * thread_p)
   vacuum_Master_daemon =
     thread_manager->create_daemon (looper, new cubthread::entry_callable_task (vacuum_master_execute), "vacuum_master",
 				   vacuum_Master_context_manager);
+
+  /* *INDENT-ON* */
 #endif /* SERVER_MODE */
 
   vacuum_Is_booted = true;
