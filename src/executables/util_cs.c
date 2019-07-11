@@ -3595,7 +3595,7 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
     }
 
   AU_DISABLE_PASSWORDS ();
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  db_set_client_type (DB_CLIENT_TYPE_DDL_PROXY);
   db_login (args->user_name, NULL);
   rc = db_restart (program_name, false, args->db_name);
   if (rc != NO_ERROR)
