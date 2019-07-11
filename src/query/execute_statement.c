@@ -14646,7 +14646,7 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   REPL_INFO repl_info;
-  REPL_INFO_SBR repl_stmt = { 0, NULL, NULL, NULL, NULL, NULL, NULL };
+  REPL_INFO_SBR repl_stmt;
   PARSER_VARCHAR *name = NULL;
   static const char *unknown_name = "-";
   char stmt_separator;

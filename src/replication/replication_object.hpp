@@ -82,7 +82,7 @@ namespace cubreplication
     public:
       static const int PACKING_ID = 1;
 
-      sbr_repl_entry (const char *statement, const char *user, const char *sys_prm_ctx, LOG_LSA &lsa_stamp);
+      sbr_repl_entry (const char *statement, const char *user, const char *sys_prm_ctx, const LOG_LSA &lsa_stamp);
 
       sbr_repl_entry () = default;
       ~sbr_repl_entry () = default;

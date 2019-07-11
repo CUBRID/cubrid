@@ -302,7 +302,8 @@ namespace cubreplication
   }
 
   /////////////////////////////////
-  sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user, const char *sys_prm_ctx, LOG_LSA &lsa_stamp)
+  sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user, const char *sys_prm_ctx,
+				  const LOG_LSA &lsa_stamp)
     : replication_object (lsa_stamp)
     , m_statement (statement)
     , m_db_user (user)
