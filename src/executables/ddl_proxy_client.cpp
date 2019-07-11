@@ -92,15 +92,6 @@ main (int argc, char *argv[])
 	  arguments.user_name = strdup (optarg);
 	  break;
 
-	case DDL_PROXY_PASSWORD_S:
-	  if (arguments.passwd != NULL)
-	    {
-	      free ((void *) arguments.passwd);
-	    }
-	  arguments.passwd = strdup (optarg);
-	  util_hide_password (optarg);
-	  break;
-
 	case DDL_PROXY_OUTPUT_FILE_S:
 	  if (arguments.out_file_name != NULL)
 	    {
@@ -177,10 +168,6 @@ exit_on_end:
   if (arguments.user_name != NULL)
     {
       free ((void *) arguments.user_name);
-    }
-  if (arguments.passwd != NULL)
-    {
-      free ((void *) arguments.passwd);
     }
   if (arguments.out_file_name != NULL)
     {
