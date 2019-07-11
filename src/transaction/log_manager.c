@@ -309,9 +309,9 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
 
 #if defined(SERVER_MODE)
-// *INDENT-OFF
-static void log_abort_task_execute (cubthread::entry & thread_ref, LOG_TDES & tdes);
-// *INDENT-ON
+// *INDENT-OFF*
+static void log_abort_task_execute (cubthread::entry &thread_ref, LOG_TDES &tdes);
+// *INDENT-ON*
 #endif // SERVER_MODE
 
 #if defined(SERVER_MODE)
