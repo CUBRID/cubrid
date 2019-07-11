@@ -14832,53 +14832,6 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   repl_stmt.db_user = db_get_user_name ();
   assert_release (repl_stmt.db_user != NULL);
 
-  repl_stmt.db_password = NULL;
-  if (strcasecmp (repl_stmt.db_user, "DBA") != 0)
-    {
-      int save;
-
-      /* If we are here, no authorization required. */
-      AU_DISABLE (save);
-
-      /* Need to set the password. */
-      user = au_find_user (repl_stmt.db_user);
-      if (user == NULL)
-	{
-	  error = ER_AU_INVALID_USER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, repl_stmt.db_user);
-	  AU_ENABLE (save);
-	  goto end;
-	}
-
-      if (obj_get (user, "password", &value) != NO_ERROR)
-	{
-	  error = ER_AU_CORRUPTED;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	  AU_ENABLE (save);
-	  goto end;
-	}
-
-      if (!DB_IS_NULL (&value) && db_get_object (&value) != NULL)
-	{
-	  if (obj_get (db_get_object (&value), "password", &value))
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
-	      AU_ENABLE (save);
-	      goto end;
-	    }
-
-	  if (!DB_IS_NULL (&value) && IS_STRING (&value))
-	    {
-	      const char *name = db_get_string (&value);
-	      repl_stmt.db_password = ws_copy_string (name);
-	      pr_clear_value (&value);
-	    }
-	}
-
-      AU_ENABLE (save);
-    }
-
   if (pt_is_ddl_statement (statement) != 0)
     {
       repl_stmt.sys_prm_context = sysprm_print_parameters_for_ha_repl ();
@@ -14923,11 +14876,6 @@ end:
   if (repl_stmt.db_user != NULL)
     {
       db_string_free (repl_stmt.db_user);
-    }
-
-  if (repl_stmt.db_password != NULL)
-    {
-      db_string_free (repl_stmt.db_password);
     }
 
   if (repl_stmt.sys_prm_context)

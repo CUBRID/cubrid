@@ -64,9 +64,8 @@ namespace cubreplication
     p_lsa = logtb_find_current_tran_lsa (thread_p);
     assert (p_lsa != NULL);
 
-    sbr_repl_entry *repl_obj =
-	    new sbr_repl_entry (stmt_info.stmt_text, stmt_info.db_user, stmt_info.db_password,
-				stmt_info.sys_prm_context, *p_lsa);
+    sbr_repl_entry *repl_obj = new sbr_repl_entry (stmt_info.stmt_text, stmt_info.db_user, stmt_info.sys_prm_context,
+	*p_lsa);
     append_repl_object (*repl_obj);
   }
 
