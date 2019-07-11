@@ -84,6 +84,7 @@
 #include "tz_support.h"
 #include "perf_monitor.h"
 #include "fault_injection.h"
+#include "replication_common.hpp"
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
@@ -670,6 +671,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_REPL_LOG_GENERATOR_LOGGING "replication_log_generator_logging"
 #define PRM_NAME_REPL_LOG_LOCAL_DEBUG "replication_log_local_debug"
+
+#define PRM_NAME_REPL_SEMISYNC_ACK_MODE "semisync_replication_ack_mode"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2254,6 +2257,14 @@ static unsigned int prm_repl_log_generator_flag = 0;
 bool PRM_REPL_LOG_LOCAL_DEBUG = false;
 static bool prm_repl_log_local_debug_default = false;
 static unsigned int prm_repl_log_local_debug_flag = false;
+
+/* *INDENT-OFF* */
+int PRM_REPL_SEMISYNC_ACK_MODE = cubreplication::REPL_SEMISYNC_ACK_ON_CONSUME;
+static int prm_repl_semisync_ack_mode_default = cubreplication::REPL_SEMISYNC_ACK_ON_CONSUME;
+static int prm_repl_semisync_ack_mode_lower = cubreplication::REPL_SEMISYNC_ACK_ON_CONSUME;
+static int prm_repl_semisync_ack_mode_upper = cubreplication::REPL_SEMISYNC_ACK_ON_FLUSH;
+static unsigned int prm_repl_semisync_ack_mode_flag = 0;
+/* *INDENT-ON* */
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5799,6 +5810,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_REPL_SEMISYNC_ACK_MODE,
+   PRM_NAME_REPL_SEMISYNC_ACK_MODE,
+   (PRM_FOR_SERVER),
+   PRM_KEYWORD,
+   &prm_repl_semisync_ack_mode_flag,
+   (void *) &prm_repl_semisync_ack_mode_default,
+   (void *) &PRM_REPL_SEMISYNC_ACK_MODE,
+   (void *) &prm_repl_semisync_ack_mode_upper,
+   (void *) &prm_repl_semisync_ack_mode_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL}
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
@@ -5965,6 +5988,13 @@ static KEYVAL ha_repl_filter_type_words[] = {
   {"include_table", REPL_FILTER_INCLUDE_TBL},
   {"exclude_table", REPL_FILTER_EXCLUDE_TBL}
 };
+
+/* *INDENT-OFF* */
+static KEYVAL ha_repl_semisync_ack_mode_words[] = {
+  {"on_receive", cubreplication::REPL_SEMISYNC_ACK_ON_CONSUME},
+  {"on_flush", cubreplication::REPL_SEMISYNC_ACK_ON_FLUSH}
+};
+/* *INDENT-ON* */
 
 static const char *compat_mode_values_PRM_ANSI_QUOTES[COMPAT_ORACLE + 2] = {
   NULL,				/* COMPAT_CUBRID */
@@ -7903,6 +7933,12 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 	  keyvalp =
 	    prm_keyword (PRM_GET_INT (prm->value), NULL, ha_repl_filter_type_words, DIM (ha_repl_filter_type_words));
 	}
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_REPL_SEMISYNC_ACK_MODE) == 0)
+	{
+	  keyvalp =
+	    prm_keyword (PRM_GET_INT (prm_value), NULL, ha_repl_semisync_ack_mode_words,
+			 DIM (ha_repl_semisync_ack_mode_words));
+	}
       else
 	{
 	  assert (false);
@@ -8198,6 +8234,10 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_
       else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_REPL_FILTER_TYPE) == 0)
 	{
 	  keyvalp = prm_keyword (value.i, NULL, ha_repl_filter_type_words, DIM (ha_repl_filter_type_words));
+	}
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_REPL_SEMISYNC_ACK_MODE) == 0)
+	{
+	  keyvalp = prm_keyword (value.i, NULL, ha_repl_semisync_ack_mode_words, DIM (ha_repl_semisync_ack_mode_words));
 	}
       else
 	{
@@ -9401,6 +9441,10 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 	else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_REPL_FILTER_TYPE) == 0)
 	  {
 	    keyvalp = prm_keyword (-1, value, ha_repl_filter_type_words, DIM (ha_repl_filter_type_words));
+	  }
+	else if (intl_mbs_casecmp (prm->name, PRM_NAME_REPL_SEMISYNC_ACK_MODE) == 0)
+	  {
+	    keyvalp = prm_keyword (-1, value, ha_repl_semisync_ack_mode_words, DIM (ha_repl_semisync_ack_mode_words));
 	  }
 	else
 	  {
