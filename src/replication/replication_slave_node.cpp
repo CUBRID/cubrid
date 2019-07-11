@@ -173,7 +173,7 @@ namespace cubreplication
       {
 	g_instance->m_ctrl_sender->stop ();
 	cubthread::get_manager ()->destroy_daemon_without_entry (g_instance->m_ctrl_sender_daemon);
-	// g_instance->m_ctrl_sender cleared by daemon destroy
+	delete g_instance->m_ctrl_sender;
 	g_instance->m_ctrl_sender = NULL;
       }
 
