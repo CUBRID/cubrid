@@ -281,7 +281,8 @@ namespace cubpacking
   size_t
   packer::get_all_packed_size_starting_offset (size_t start_offset, Args &&... args)
   {
-    return get_all_packed_size_recursive (start_offset, std::forward<Args> (args)...);
+    size_t total_size = get_all_packed_size_recursive (start_offset, std::forward<Args> (args)...);
+    return total_size - start_offset;
   }
 
   template <typename T>
