@@ -54,6 +54,11 @@ namespace cubreplication
       }
   }
 
+  void slave_control_sender::retire ()
+  {
+    // customize destroy daemon to not dealloc resources
+  }
+
   void slave_control_sender::stop ()
   {
     std::unique_lock<std::mutex> ul (m_mtx);
