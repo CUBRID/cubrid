@@ -3750,6 +3750,7 @@ copyslave (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *database_name;
   char *source_hostname;
+  int source_port_id;
   int error;
   bool start_replication_after_copy;
   bool is_db_started = false;
@@ -3766,6 +3767,7 @@ copyslave (UTIL_FUNCTION_ARG * arg)
     }
 
   source_hostname = utility_get_option_string_value (arg_map, COPYSLAVE_SOURCE_HOSTNAME_S, 0);
+  source_port_id = utility_get_option_int_value (arg_map, COPYSLAVE_SOURCE_PORT_S);
   start_replication_after_copy = utility_get_option_bool_value (arg_map, COPYSLAVE_START_REPLICATION_S);
 
   if (check_database_name (database_name))
@@ -3799,7 +3801,7 @@ copyslave (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  error = netcl_replication_copy_slave (source_hostname, start_replication_after_copy);
+  error = netcl_replication_copy_slave (source_hostname, source_port_id, start_replication_after_copy);
   if (error != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));

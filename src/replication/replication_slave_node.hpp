@@ -75,15 +75,20 @@ namespace cubreplication
 
       static void init (const char *hostname);
       static int connect_to_master (const char *master_node_hostname, const int master_node_port_id);
+      static int start_online_replication (cubcomm::server_channel &srv_chn,
+                                           const cubstream::stream_position start_position);
       static void final (void);
       
       int setup_protocol (cubcomm::channel &chn);
 
       bool need_replication_copy (const cubstream::stream_position start_position) const;
+
+      int replication_copy_slave (cubthread::entry &entry, node_definition *source_node,
+                                  const bool start_replication_after_copy);
   };
 
 
-  int replication_copy_slave (cubthread::entry &entry, const char *source_hostname, const bool start_replication_after_copy);
+  
 } /* namespace cubreplication */
 
 #endif /* _REPLICATION_SLAVE_NODE_HPP_ */

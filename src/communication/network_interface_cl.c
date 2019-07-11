@@ -10051,7 +10051,7 @@ locator_send_proxy_buffer (const int type, const size_t buf_size, const char *bu
  *   return: new state
  */
 int
-netcl_replication_copy_slave (const char *source_hostname, bool start_replication_after_copy)
+netcl_replication_copy_slave (const char *source_hostname, const int port_id, bool start_replication_after_copy)
 {
 #if defined(CS_MODE)
   int req_error;

@@ -36,9 +36,12 @@
 #include "xserver_interface.h"
 
 
-int xreplication_copy_slave (THREAD_ENTRY * thread_p, const char *source_hostname, const bool start_replication_after_copy)
+int xreplication_copy_slave (THREAD_ENTRY * thread_p, const char *source_hostname, const int port_id, 
+                             const bool start_replication_after_copy)
 {
-  return cubreplication::replication_copy_slave (*thread_p, source_hostname, start_replication_after_copy);
+  cubreplication::node_definition source_node (source_hostname);
+  source_node.set_port (port_id);
+  return cubreplication::slave_node::get_instance (NULL)->replication_copy_slave (*thread_p, &source_node, start_replication_after_copy);
 }
 
 namespace cubreplication
@@ -119,7 +122,7 @@ namespace cubreplication
 
     er_log_debug_replication (ARG_FILE_LINE, "slave_node::setup_protocol available pos :%lld", m_source_available_pos);
 
-    return NO_ERROR:
+    return NO_ERROR;
   }
 
   bool slave_node::need_replication_copy (const cubstream::stream_position start_position) const
@@ -161,19 +164,23 @@ namespace cubreplication
 
     if (g_instance->need_replication_copy (start_position))
       {
-        replication_copy_slave (master_node_hostname, true);
+        error = g_instance->replication_copy_slave (cubthread::get_entry (), &g_instance->m_master_identity, true);
       }
     else
       {
-        start_online_replication (start_position);
+        error = start_online_replication (srv_chn, start_position);
       }
 
-    }
+    return error;
+  }
 
-  int slave_node::start_online_replication (const cubstream::stream_position start_position)
-    {
+  int slave_node::start_online_replication (cubcomm::server_channel &srv_chn, const cubstream::stream_position start_position)
+  {
+    int error;
+
     cubcomm::server_channel control_chn (g_instance->m_identity.get_hostname ().c_str ());
-    error = control_chn.connect (master_node_hostname, master_node_port_id, COMMAND_SERVER_REQUEST_CONNECT_SLAVE_CONTROL);
+    error = control_chn.connect (g_instance->m_identity.get_hostname ().c_str (), g_instance->m_identity.get_port (),
+                                 COMMAND_SERVER_REQUEST_CONNECT_SLAVE_CONTROL);
     if (error != css_error_code::NO_ERRORS)
       {
 	return error;
@@ -207,10 +214,11 @@ namespace cubreplication
     g_instance = NULL;
   }
 
-  int slave_node::replication_copy_slave (const char *source_hostname, const bool start_replication_after_copy)
+  int slave_node::replication_copy_slave (cubthread::entry &entry, node_definition *source_node,
+                                          const bool start_replication_after_copy)
   {
-    node_definition source_node (source_hostname);
-    apply_copy_context my_apply_ctx (NULL, &source_node);
+    /* TODO: my hostname */
+    apply_copy_context my_apply_ctx (&m_identity, source_node);
 
     my_apply_ctx.start_copy ();
 

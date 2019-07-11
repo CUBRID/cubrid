@@ -421,5 +421,6 @@ extern int locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * e
 
 extern int locator_get_proxy_command (const char **proxy_command);
 extern int locator_send_proxy_buffer (const int type, const size_t buf_size, const char *buffer);
-extern int netcl_replication_copy_slave (const char *source_hostname, bool start_replication_after_copy);
+extern int netcl_replication_copy_slave (const char *source_hostname, const int port_id,
+                                         bool start_replication_after_copy);
 #endif /* _NETWORK_INTERFACE_CL_H_ */

@@ -1577,7 +1577,9 @@ typedef struct _ha_config
 
 /* copyslave option list */
 #define COPYSLAVE_SOURCE_HOSTNAME_S             's'
-#define COPYSLAVE_SOURCE_HOSTNAME_L             "source-hostname-server"
+#define COPYSLAVE_SOURCE_HOSTNAME_L             "source-server-hostname"
+#define COPYSLAVE_SOURCE_PORT_S                 'p'
+#define COPYSLAVE_SOURCE_PORT_L                 "source-server-port"
 #define COPYSLAVE_START_REPLICATION_S           'r'
 #define COPYSLAVE_START_REPLICATION_L           "start-replication"
 
