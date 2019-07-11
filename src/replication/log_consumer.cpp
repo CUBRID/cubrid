@@ -30,6 +30,7 @@
 #include "replication_stream_entry.hpp"
 #include "communication_channel.hpp"
 #include "slave_control_channel.hpp"
+#include "stream_file.hpp"
 #include "string_buffer.hpp"
 #include "system_parameter.h"
 #include "thread_daemon.hpp"
@@ -59,9 +60,9 @@ namespace cubreplication
 	      {
 		se->unpack ();
 		assert (se->get_stream_entry_end_position () > se->get_stream_entry_start_position ());
-		m_lc.get_ctrl_chn ()->send_ack (se->get_stream_entry_end_position ());
-	      }
 
+		m_lc.ack_produce (se->get_stream_entry_end_position ());
+	      }
 	    m_lc.push_entry (se);
 	  }
       };
@@ -194,6 +195,7 @@ namespace cubreplication
 
 		/* wait for all started tasks to finish */
 		er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task wait for all working tasks to finish\n");
+		assert (se->get_stream_entry_start_position () < se->get_stream_entry_end_position ());
 
 		m_lc.wait_for_tasks ();
 
@@ -364,10 +366,6 @@ namespace cubreplication
       }
 
     entry = se;
-    if (m_ctrl_chn != NULL)
-      {
-	m_ctrl_chn->send_ack (entry->get_stream_entry_start_position ());
-      }
 
     return err;
   }

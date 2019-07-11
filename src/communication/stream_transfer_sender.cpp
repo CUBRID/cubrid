@@ -65,8 +65,8 @@ namespace cubstream
 	    UINT64 last_sent_position = 0;
 	    std::size_t max_len = sizeof (UINT64);
 
-	    assert (this_producer_channel.m_channel.is_connection_alive ());
-	    assert (sizeof (stream_position) == sizeof (UINT64));
+	    static_assert (sizeof (stream_position) == sizeof (UINT64),
+			   "stream position size differs from requested start stream position");
 
 	    rc = this_producer_channel.m_channel.recv ((char *) &last_sent_position, max_len);
 	    this_producer_channel.m_last_sent_position = htoni64 (last_sent_position);
@@ -81,6 +81,13 @@ namespace cubstream
 		this_producer_channel.m_channel.close_connection ();
 		return;
 	      }
+
+	    this_producer_channel.m_last_sent_position = last_sent_position;
+
+	    er_log_debug (ARG_FILE_LINE, "transfer_sender_task starting : last_sent_position:%llu, rc:%d\n",
+			  last_sent_position, rc);
+
+	    assert (max_len == sizeof (UINT64));
 
 	    m_first_loop = false;
 	  }

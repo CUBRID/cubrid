@@ -34,6 +34,9 @@
 #include "stream_transfer_receiver.hpp"
 #include "stream_file.hpp"
 #include "system_parameter.h"
+#include "thread_entry.hpp"
+#include "thread_looper.hpp"
+#include "thread_manager.hpp"
 
 
 namespace cubreplication
@@ -60,6 +63,9 @@ namespace cubreplication
     delete m_transfer_receiver;
     m_transfer_receiver = NULL;
 
+    m_ctrl_sender->stop ();
+    cubthread::get_manager ()->destroy_daemon_without_entry (m_ctrl_sender_daemon);
+
     delete m_lc;
     m_lc = NULL;
   }
@@ -81,25 +87,45 @@ namespace cubreplication
 	return error;
       }
 
+    // todo: make sure active start position is in hdr (we might have recovered it one, but then we close the system,
+    // second startup will not recover the active start position since it was not done during a crash)
+    cubstream::stream_position start_position = log_Gl.m_active_start_position;
+
+    m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *m_stream,
+	start_position);
+
     cubcomm::server_channel control_chn (m_identity.get_hostname ().c_str ());
     error = control_chn.connect (master_node_hostname, master_node_port_id, SERVER_REQUEST_CONNECT_NEW_SLAVE_CONTROL);
     if (error != css_error_code::NO_ERRORS)
       {
 	return error;
       }
-    /* start transfer receiver */
-    assert (m_transfer_receiver == NULL);
 
-    // todo: make sure active start position is in hdr (we might have recovered it one, but then we close the system,
-    // second startup will not recover the active start position since it was not done during a crash)
-    cubstream::stream_position start_position = log_Gl.m_active_start_position;
+    slave_control_sender *ctrl_sender = new slave_control_sender (std::move (slave_control_channel (std::move (
+		control_chn))));
 
-    _er_log_debug (ARG_FILE_LINE, "Connect to master requesting stream data starting from stream position: %llu \n",
-		   log_Gl.m_active_start_position);
+    m_ctrl_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
+			   ctrl_sender, "slave_control_sender");
 
-    m_lc->set_ctrl_chn (new cubreplication::slave_control_channel (std::move (control_chn)));
+    if ((REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) ==
+	REPL_SEMISYNC_ACK_ON_FLUSH)
+      {
+	m_stream_file->set_sync_notifier ([ctrl_sender] (const cubstream::stream_position & sp)
+	{
+	  // route produced stream positions to get validated as flushed on disk before sending them
+	  ctrl_sender->set_synced_position (sp);
+	});
+      }
+    else
+      {
+	m_lc->set_ack_producer ([ctrl_sender] (cubstream::stream_position sp)
+	{
+	  ctrl_sender->set_synced_position (sp);
+	});
+      }
 
-    m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *m_stream, start_position);
+    m_ctrl_sender = ctrl_sender;
+
     return NO_ERROR;
   }
 } /* namespace cubreplication */

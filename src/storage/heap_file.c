@@ -16364,7 +16364,7 @@ xheap_has_instance (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
  *   class_oid(in):
  */
 REPR_ID
-heap_get_class_repr_id (THREAD_ENTRY * thread_p, OID * class_oid)
+heap_get_class_repr_id (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
   OR_CLASSREP *rep = NULL;
   REPR_ID id;
