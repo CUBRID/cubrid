@@ -3824,10 +3824,10 @@ hb_cluster_cleanup (void)
 
   pthread_mutex_unlock (&hb_Cluster->lock);
 
+  hb_udp_server_cleanup ();
+
   delete hb_Cluster;
   hb_Cluster = NULL;
-
-  hb_udp_server_cleanup ();
 }
 
 /*
