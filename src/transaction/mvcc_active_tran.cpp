@@ -379,8 +379,6 @@ mvcc_active_tran::add_long_transaction (MVCCID mvccid)
   assert (m_long_tran_mvccids_length < long_tran_max_size ());
   assert (m_long_tran_mvccids[m_long_tran_mvccids_length - 1] < mvccid);
   m_long_tran_mvccids[m_long_tran_mvccids_length++] = mvccid;
-
-  check_valid ();
 }
 
 void
@@ -488,6 +486,8 @@ mvcc_active_tran::cleanup_migrate_to_long_transations ()
 	}
     }
   ltrim_area (delete_count);
+
+  check_valid ();
 }
 
 void
