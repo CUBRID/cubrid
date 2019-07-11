@@ -126,6 +126,8 @@ namespace cubreplication
       void add_attribute_change (const OID &class_oid, const OID &inst_oid, ATTR_ID col_id, const DB_VALUE &value);
       void add_create_savepoint (const char *savept_name);
       void add_rollback_to_savepoint (const char *savept_name);
+      void add_start_sysop (const LOG_LSA &lsa);
+      void add_end_sysop (const LOG_LSA &lsa);
 
       void remove_attribute_change (const OID &class_oid, const OID &inst_oid);
 
