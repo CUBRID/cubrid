@@ -5400,6 +5400,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  error_code = log_add_to_modified_class_list (thread_p, old_classname, oid);
 	  if (error_code != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      goto error;
 	    }
 	}
@@ -5409,6 +5410,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  error_code = catcls_update_catalog_classes (thread_p, old_classname, recdes, oid, force_in_place);
 	  if (error_code != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      goto error;
 	    }
 	}
@@ -5492,6 +5494,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		  /*
 		   * An error occurred during the update of the catalog
 		   */
+		  ASSERT_ERROR ();
 		  goto error;
 		}
 	    }
@@ -5513,7 +5516,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		   * There is an error inserting the hash entry or catalog
 		   * information. The transaction must be aborted by the caller
 		   */
-		  error_code = ER_FAILED;
+		  ASSERT_ERROR_AND_SET (error_code);
 		  goto error;
 		}
 
@@ -5558,6 +5561,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      error_code = catcls_insert_catalog_classes (thread_p, recdes);
 	      if (error_code != NO_ERROR)
 		{
+		  ASSERT_ERROR ();
 		  goto error;
 		}
 	    }
@@ -5594,6 +5598,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  pcache = locator_get_partition_scancache (pcontext, &real_class_oid, &real_hfid, op_type, false);
 	  if (pcache == NULL)
 	    {
+	      assert (false);
 	      return ER_FAILED;
 	    }
 	  local_scan_cache = &pcache->scan_cache;
@@ -5657,9 +5662,9 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 			  er_log_debug (ARG_FILE_LINE, "locator_update_force: unknown oid ( %d|%d|%d )\n",
 					oid->pageid, oid->slotid, oid->volid);
 			}
-		      else if (error_code == NO_ERROR)
+		      else
 			{
-			  error_code = ER_FAILED;
+			  ASSERT_ERROR_AND_SET (error_code);
 			}
 
 		      goto error;
@@ -5697,6 +5702,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      if (or_mvcc_get_header (oldrecdes, &old_rec_header) != NO_ERROR
 		  || or_mvcc_get_header (recdes, &new_rec_header) != NO_ERROR)
 		{
+		  assert (false);
 		  goto error;
 		}
 
@@ -5732,6 +5738,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 	      if (or_mvcc_set_header (recdes, &new_rec_header) != NO_ERROR)
 		{
+		  assert (false);
 		  goto error;
 		}
 	    }
@@ -5786,6 +5793,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 				    oid->slotid, oid->volid);
 		    }
 
+		  ASSERT_ERROR ();
 		  error_code = ER_HEAP_UNKNOWN_OBJECT;
 		  goto error;
 		}
@@ -5806,6 +5814,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 				    &superclass_oid);
 	  if (error_code != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      goto error;
 	    }
 
@@ -5817,10 +5826,13 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      goto error;
 	    }
 
-	  if (heap_get_hfid_from_class_oid (thread_p, class_oid, hfid) != NO_ERROR)
+	  error_code = heap_get_hfid_from_class_oid (thread_p, class_oid, hfid);
+	  if (error_code != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      goto error;
 	    }
+
 
 	  if (!OID_EQ (class_oid, &real_class_oid))
 	    {
@@ -5830,12 +5842,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      granted = lock_subclass (thread_p, &real_class_oid, &superclass_oid, IX_LOCK, LK_UNCOND_LOCK);
 	      if (granted != LK_GRANTED)
 		{
-		  assert (er_errid () != NO_ERROR);
-		  error_code = er_errid ();
-		  if (error_code == NO_ERROR)
-		    {
-		      error_code = ER_FAILED;
-		    }
+		  ASSERT_ERROR_AND_SET (error_code);
 		  goto error;
 		}
 
@@ -5865,6 +5872,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		   * There is an error updating the index... Quit... The
 		   * transaction must be aborted by the caller
 		   */
+		  ASSERT_ERROR ();
 		  goto error;
 		}
 	    }
@@ -5889,6 +5897,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 						 true, true, hfid, NULL);
 		  if (error_code != NO_ERROR)
 		    {
+		      ASSERT_ERROR ();
 		      goto error;
 		    }
 		}
@@ -5902,6 +5911,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 					   &cache_attr_copyarea);
 	      if (error_code != NO_ERROR)
 		{
+		  ASSERT_ERROR ();
 		  goto error;
 		}
 
@@ -14008,17 +14018,13 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
                             const std::vector<RECDES> &recdes, int has_index, int op_type, HEAP_SCANCACHE * scan_cache,
                             int *force_count, int pruning_type, PRUNING_CONTEXT * pcontext,
                             FUNC_PRED_UNPACK_INFO * func_preds, UPDATE_INPLACE_STYLE force_in_place)
-// *INDENT-ON*
-
 {
   int error_code = NO_ERROR;
   size_t accumulated_records_size = 0;
   size_t heap_max_page_size;
   OID dummy_oid;
-  // *INDENT-OFF*
   std::vector<RECDES> recdes_array;
   std::vector<VPID> heap_pages_array;
-  // *INDENT-ON*
 
   // Early-out
   if (recdes.size () == 0)
@@ -14037,7 +14043,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
       // Loop until we insert all records.
 
       if (heap_is_big_length (recdes[i].length))
-	{
+        {
 	  // We insert other records normally.
 	  error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, (RECDES *) (&recdes[i]), has_index,
 					     op_type, scan_cache, force_count, pruning_type, pcontext, func_preds,
@@ -14047,9 +14053,9 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	      ASSERT_ERROR ();
 	      return error_code;
 	    }
-	}
+        }
       else
-	{
+        {
 	  // get records until we fit the size of a page.
 	  if ((recdes[i].length + accumulated_records_size) >= heap_max_page_size)
 	    {
@@ -14061,13 +14067,13 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	      // First alloc a new empty heap page.
 	      error_code = heap_alloc_new_page (thread_p, hfid, *class_oid, &home_hint_p, &new_page_vpid);
 	      if (error_code != NO_ERROR)
-		{
+	        {
 		  ASSERT_ERROR ();
 		  return error_code;
-		}
+	        }
 
 	      for (size_t j = 0; j < recdes_array.size (); j++)
-		{
+	        {
 		  error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, &recdes_array[j], has_index,
 						     op_type, scan_cache, force_count, pruning_type, pcontext,
 						     func_preds, force_in_place, &home_hint_p);
@@ -14079,7 +14085,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 
 		  // Safeguard. We should not have the page fixed here.
 		  assert (home_hint_p.pgptr == NULL);
-		}
+	        }
 
 	      // Add the new VPID to the VPID array.
 	      assert (!VPID_ISNULL (&new_page_vpid));
@@ -14094,24 +14100,29 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	  // Add this record to the recdes array and increase the accumulated size.
 	  recdes_array.push_back (recdes[i]);
 	  accumulated_records_size += recdes[i].length;
-	}
+        }
     }
 
   // We must check if we have records which did not fill an entire page.
   for (size_t i = 0; i < recdes_array.size (); i++)
     {
       error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, &recdes_array[i], has_index, op_type,
-					 scan_cache, force_count, pruning_type, pcontext, func_preds, force_in_place,
-					 NULL);
+				         scan_cache, force_count, pruning_type, pcontext, func_preds, force_in_place,
+				         NULL);
       if (error_code != NO_ERROR)
-	{
+        {
 	  ASSERT_ERROR ();
 	  return error_code;
-	}
+        }
     }
 
   // Now form a heap chain with the pages and add the chain to the current heap.
-  // TODO: this!
+  error_code = heap_append_pages_to_heap (thread_p, hfid, *class_oid, heap_pages_array);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
 
   return error_code;
 }
