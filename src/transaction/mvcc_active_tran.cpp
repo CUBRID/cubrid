@@ -421,7 +421,6 @@ mvcc_active_tran::set_bitarea_mvccid (MVCCID mvccid)
     {
       // force cleanup_migrate_to_long_transations
       cleanup_migrate_to_long_transations ();
-      check_valid ();
       position = get_bit_offset (mvccid);
     }
   assert (position < BITAREA_MAX_BITS);   // is this a guaranteed?
@@ -455,7 +454,6 @@ mvcc_active_tran::set_bitarea_mvccid (MVCCID mvccid)
   if (m_bit_area_length > LONG_TRAN_THRESHOLD)
     {
       cleanup_migrate_to_long_transations ();
-      check_valid ();
     }
 }
 
