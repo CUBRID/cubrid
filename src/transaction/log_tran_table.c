@@ -1569,10 +1569,6 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     {
       tdes->replication_log_generator.clear_transaction ();
     }
-
-#if defined (SERVER_MODE)
-  assert (tdes->replication_copy_context != NULL);
-#endif
 }
 
 /*
