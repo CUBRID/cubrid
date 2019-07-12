@@ -1157,6 +1157,12 @@ parse_date (const char *buf, int buf_len, DB_DATE * date)
 	      ;
 	    }
 
+	  if (p == strend)
+	    {
+	      // reach the end
+	      break;
+	    }
+
 	  /* check date separator ('/' or '-'), if any */
 	  if (separator != '\0' && c != '\0' && c != separator)
 	    {
@@ -1390,7 +1396,12 @@ parse_mtime (const char *buf, int buf_len, unsigned int *mtime, bool * is_msec, 
 	{
 	  for (c = *p; p < strend && char_isspace (c); c = *++p)
 	    ;
-	  if (c == ':')
+
+	  // Don't break here when reaches the end of string,
+	  // since we have accepted incomplete time literals like time' ', time'01', time'01:23'.
+	  // It looks weird but no way to be backward compatible.
+
+	  if (p < strend && c == ':')
 	    {
 	      if (i == 2)
 		{
@@ -1398,7 +1409,7 @@ parse_mtime (const char *buf, int buf_len, unsigned int *mtime, bool * is_msec, 
 		}
 	      ++p;
 	    }
-	  else if (c == '.' && i == 2)
+	  else if (p < strend && c == '.' && i == 2)
 	    {
 	      ++p;
 	      if (is_msec != NULL)
