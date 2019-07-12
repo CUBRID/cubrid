@@ -110,7 +110,13 @@ namespace cubreplication
 
       bool m_is_stopped;
 
-    private:
+      /* fetch suspend flag : this is required in context of replication with copy phase : 
+       * while replication copy is running the fetch from online replication must be suspended
+       * (although the stream contents are received and stored on local slave node)
+       */
+      bool m_is_fetch_suspended;
+      std::condition_variable m_fetch_suspend_condition_variable;
+      std::mutex m_fetch_suspend_mutex;
 
     public:
       log_consumer () :
@@ -123,7 +129,8 @@ namespace cubreplication
 	m_use_daemons (false),
 	m_started_tasks (0),
 	m_apply_task_ready (false),
-	m_is_stopped (false)
+	m_is_stopped (false),
+        m_is_fetch_suspended (true)
       {
       };
 
@@ -176,6 +183,11 @@ namespace cubreplication
       }
 
       void set_stop (void);
+
+      void fetch_suspend ();
+      void fetch_resume ();
+      void wait_for_fetch_resume ();
+       
   };
 
 } /* namespace cubreplication */
