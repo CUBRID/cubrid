@@ -10228,23 +10228,66 @@ logpb_complete_manager_string (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
 void
 logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
 {
-
+  THREAD_ENTRY *thread_p;
+  LOG_TRAN_COMPLETE_MANAGER_TYPE old_manager_type;
 #if defined(SERVER_MODE)
   const char *ha_server_state_string = css_ha_server_state_string (css_ha_server_state ());
 #else
   const char *ha_server_state_string = "HA_NONE";
 #endif
 
-  if (log_Gl.m_tran_complete_mgr != NULL && log_Gl.m_tran_complete_mgr->get_manager_type () == manager_type)
+  /* TODO - use mutex */
+  /* TODO - remove old complete manager */
+  if (log_Gl.m_tran_complete_mgr != NULL)
+    {
+      old_manager_type = (LOG_TRAN_COMPLETE_MANAGER_TYPE) log_Gl.m_tran_complete_mgr->get_manager_type ();
+    }
+  else
+    {
+      old_manager_type = LOG_TRAN_COMPLETE_NO_MANAGER;
+    }
+
+  if (old_manager_type == manager_type)
     {
       /* Same manager, nothing to do. */
       er_print_callstack (ARG_FILE_LINE, "logpb_resets_tran_complete_manager manager type = %s, ha_server_state = %s\n",
 			  logpb_complete_manager_string (manager_type), ha_server_state_string);
       return;
     }
-  else
+
+  /* Temporary solution to atomic change the manager. */
+  thread_p = thread_get_thread_entry_info ();
+
+  if (lock_object (thread_p, oid_Root_class_oid, &oid_Null_oid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
     {
-      /* TODO - atomic change manager. */
+      assert (false);
+    }
+
+  /* There is no any modify transaction. Force complete old manager to avoid system hanging. */
+  switch (old_manager_type)
+    {
+    case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
+      cubtx::single_node_group_complete_manager::get_instance ()->do_prepare_complete (thread_p);
+      cubtx::single_node_group_complete_manager::get_instance ()->do_complete (thread_p);
+      break;
+
+#if defined(SERVER_MODE)
+    case LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE:
+      cubtx::master_group_complete_manager::get_instance ()->do_prepare_complete (thread_p);
+      cubtx::master_group_complete_manager::get_instance ()->do_complete (thread_p);
+      break;
+
+    case LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE:
+      cubtx::slave_group_complete_manager::get_instance ()->do_prepare_complete (thread_p);
+      cubtx::slave_group_complete_manager::get_instance ()->do_complete (thread_p);
+      break;
+#endif
+
+    case LOG_TRAN_COMPLETE_NO_MANAGER:
+      break;
+
+    default:
+      assert (false);
     }
 
   switch (manager_type)
@@ -10253,8 +10296,10 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
       /* Single node. Need to wait for log flush. */
       log_set_notify (true);
       log_Gl.m_tran_complete_mgr = cubtx::single_node_group_complete_manager::get_instance ();
-      er_print_callstack (ARG_FILE_LINE, "logpb_resets_tran_complete_manager single node, ha_server_state = %s\n",
-			  ha_server_state_string);
+      er_print_callstack (ARG_FILE_LINE, "logpb_resets_tran_complete_manager single node, ha_server_state = %s, "
+			  "old_manager=%s, new_manager = %s \n", ha_server_state_string,
+			  logpb_complete_manager_string (old_manager_type),
+			  logpb_complete_manager_string (manager_type));
       break;
 
 #if defined(SERVER_MODE)
@@ -10262,16 +10307,20 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
       /* Master with slaves. Need to wait for stream ack sent by slaves. */
       log_set_notify (false);
       log_Gl.m_tran_complete_mgr = cubtx::master_group_complete_manager::get_instance ();
-      er_print_callstack (ARG_FILE_LINE, "logpb_resets_tran_complete_manager master node, ha_server_state = %s\n",
-			  ha_server_state_string);
+      er_print_callstack (ARG_FILE_LINE, "logpb_resets_tran_complete_manager master node, ha_server_state = %s, "
+			  "old_manager=%s, new_manager = %s \n", ha_server_state_string,
+			  logpb_complete_manager_string (old_manager_type),
+			  logpb_complete_manager_string (manager_type));
       break;
 
     case LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE:
       /* Master with slaves. Need to wait for master stream. */
       log_set_notify (false);
       log_Gl.m_tran_complete_mgr = cubtx::slave_group_complete_manager::get_instance ();
-      er_print_callstack (ARG_FILE_LINE, "logpb_resets_tran_complete_manager slave node, ha_server_state = %s\n",
-			  ha_server_state_string);
+      er_print_callstack (ARG_FILE_LINE, "logpb_resets_tran_complete_manager slave node, ha_server_state = %s, "
+			  "old_manager=%s, new_manager = %s \n", ha_server_state_string,
+			  logpb_complete_manager_string (old_manager_type),
+			  logpb_complete_manager_string (manager_type));
       break;
 #endif
 
@@ -10286,6 +10335,9 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
     default:
       assert (false);
     }
+
+  /* Release the lock to allow to system to advance. */
+  lock_unlock_object (thread_p, oid_Root_class_oid, &oid_Null_oid, S_LOCK, true);
 }
 
 /*
