@@ -2206,6 +2206,9 @@ hb_resource_job_confirm_start (HB_JOB_ARG *arg)
       if (proc->type == HB_PTYPE_SERVER)
 	{
 	  proc->state = HB_PSTATE_REGISTERED_AND_STANDBY;
+
+	  // reconnect to master node
+	  hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL, HB_JOB_TIMER_IMMEDIATELY);
 	}
       else
 	{
@@ -2479,8 +2482,8 @@ hb_resource_job_send_master_hostname (HB_JOB_ARG *arg)
       return;
     }
 
-  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "send_master_hostname: process_state=%s, master_hostname=%s",
-		       hb_process_state_string (proc->type, proc->state), master_hostname.as_c_str ());
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "send_master_hostname: process_state=%s, pid=%d, master_hostname=%s",
+		       hb_process_state_string (proc->type, proc->state), proc->pid, master_hostname.as_c_str ());
 
   css_send_to_my_server_the_master_hostname (master_hostname.as_c_str (), proc);
 }
