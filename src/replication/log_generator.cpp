@@ -49,7 +49,9 @@ namespace cubreplication
   {
     std::ostringstream oss;
     oss << g_Savepoint_generated_name << "_";
-    oss << lsa.pageid << '|' << lsa.offset;
+    oss << (long long int) lsa.pageid;
+    oss << '|';
+    oss << (int) lsa.offset;
 
     f (oss.str ().c_str ());
   }
