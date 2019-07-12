@@ -503,18 +503,28 @@ session_free_prepared_statement (PREPARED_STATEMENT * stmt_p)
 
 // *INDENT-OFF*
 #if defined (SERVER_MODE)
-void
-session_control_daemon_execute (cubthread::entry & thread_ref)
+// class session_control_daemon_task
+//
+//  description:
+//    session control daemon task
+//
+class session_control_daemon_task : public cubthread::entry_task
 {
-  if (!BO_IS_SERVER_RESTARTED ())
+  public:
+    void execute (cubthread::entry & thread_ref) override
     {
-      // wait for boot to finish
-      return;
+      if (!BO_IS_SERVER_RESTARTED ())
+	{
+	  // wait for boot to finish
+	  return;
+	}
+
+      session_remove_expired_sessions (&thread_ref);
     }
+};
+#endif /* SERVER_MODE */
 
-  session_remove_expired_sessions (&thread_ref);
-}
-
+#if defined (SERVER_MODE)
 /*
  * session_control_daemon_init () - initialize session control daemon
  */
@@ -524,13 +534,14 @@ session_control_daemon_init ()
   assert (session_Control_daemon == NULL);
 
   cubthread::looper looper = cubthread::looper (std::chrono::seconds (60));
-  cubthread::entry_callable_task *daemon_task =
-    new cubthread::entry_callable_task (std::bind (session_control_daemon_execute, std::placeholders::_1));
+  session_control_daemon_task *daemon_task = new session_control_daemon_task ();
 
   // create session control daemon thread
   session_Control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "session_control");
 }
+#endif /* SERVER_MODE */
 
+#if defined (SERVER_MODE)
 /*
  * session_control_daemon_destroy () - destroy session control daemon
  */

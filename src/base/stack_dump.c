@@ -23,8 +23,6 @@
 
 #ident "$Id$"
 
-#include "printer.hpp"
-
 #if defined(x86_SOLARIS)
 
 #include <stdio.h>
@@ -128,14 +126,14 @@ read_safe (int fd, struct frame *fp, struct frame **savefp, uintptr_t * savepc)
 /*
  * log_stack_info -
  *   return:
- *   output(in/out):
+ *   logfile(in):
  *   pc(in):
  *   argc(in):
  *   argv(in):
  *   Pr(in):
  */
 static int
-log_stack_info (print_output & output, uintptr_t pc, ulong_t argc, long *argv, struct ps_prochandle *Pr)
+log_stack_info (FILE * logfile, uintptr_t pc, ulong_t argc, long *argv, struct ps_prochandle *Pr)
 {
   char buff[255];
   GElf_Sym sym;
@@ -154,26 +152,26 @@ log_stack_info (print_output & output, uintptr_t pc, ulong_t argc, long *argv, s
       start = pc;
     }
 
-  output ("%-17s(", buff);
+  fprintf (logfile, "%-17s(", buff);
 
   for (i = 0; i < argc; i++)
     {
-      output ((i + 1 == argc) ? "%lx" : "%lx, ", argv[i]);
+      fprintf (logfile, (i + 1 == argc) ? "%lx" : "%lx, ", argv[i]);
     }
 
-  output ((start != pc) ? ") + %lx\n" : ")\n", (long) (pc - start));
-  output.flush ();
+  fprintf (logfile, (start != pc) ? ") + %lx\n" : ")\n", (long) (pc - start));
+  fflush (logfile);
 
   return (0);
 }
 
 /*
- * er_dump_call_stack_internal - dump call stack
+ * er_dump_call_stack - dump call stack
  *   return: none
- *   output(in/put):
+ *   logfile(in):
  */
 void
-er_dump_call_stack_internal (print_output & output)
+er_dump_call_stack (FILE * outfp)
 {
   ucontext_t ucp;
   struct frame *fp, *savefp;
@@ -227,7 +225,7 @@ er_dump_call_stack_internal (print_output & output)
       argc = argcount (savepc);
       argv = (long *) ((char *) savefp + sizeof (struct frame));
 
-      log_stack_info (output, savepc, argc, argv, Pr);
+      log_stack_info (outfp, savepc, argc, argv, Pr);
       fp = savefp;
     }
 
@@ -255,12 +253,12 @@ static int er_resolve_function_name (const void *address, const char *lib_file_n
 #define BUFFER_SIZE     1024
 
 /*
- * er_dump_call_stack_internal - dump call stack
+ * er_dump_call_stack - dump call stack
  *   return:
- *   output(in/out):
+ *   outfp(in):
  */
 void
-er_dump_call_stack_internal (print_output & output)
+er_dump_call_stack (FILE * outfp)
 {
   ucontext_t ucp;
   size_t frame_pointer_addr, next_frame_pointer_addr;
@@ -311,7 +309,7 @@ er_dump_call_stack_internal (print_output & output)
 	    }
 	}
 
-      output ("%s(%p): %s", dl_info.dli_fname, func_addr_p, func_name_p);
+      fprintf (outfp, "%s(%p): %s", dl_info.dli_fname, func_addr_p, func_name_p);
 
       next_frame_pointer_addr = PEEK_DATA (frame_pointer_addr);
       nargs = (next_frame_pointer_addr - frame_pointer_addr - 8) / 4;
@@ -320,20 +318,20 @@ er_dump_call_stack_internal (print_output & output)
 	  nargs = MAXARGS;
 	}
 
-      output (" (");
+      fprintf (outfp, " (");
       if (nargs > 0)
 	{
 	  for (i = 1; i <= nargs; i++)
 	    {
 	      arg = PEEK_DATA (frame_pointer_addr + 4 * (i + 1));
-	      output ("%x", arg);
+	      fprintf (outfp, "%x", arg);
 	      if (i < nargs)
 		{
-		  output (", ");
+		  fprintf (outfp, ", ");
 		}
 	    }
 	}
-      output (")\n");
+      fprintf (outfp, ")\n");
 
       if (next_frame_pointer_addr == 0)
 	{
@@ -344,7 +342,7 @@ er_dump_call_stack_internal (print_output & output)
       frame_pointer_addr = next_frame_pointer_addr;
     }
 
-  output.flush ();
+  fflush (outfp);
 }
 
 #else /* __WORDSIZE == 32 */
@@ -363,12 +361,12 @@ er_dump_call_stack_internal (print_output & output)
 #define BUFFER_SIZE     1024
 
 /*
- * er_dump_call_stack_internal - dump call stack
+ * er_dump_call_stack - dump call stack
  *   return:
- *   output(in/out):
+ *   outfp(in):
  */
 void
-er_dump_call_stack_internal (print_output & output)
+er_dump_call_stack (FILE * outfp)
 {
   void *return_addr[MAX_TRACE];
   int i, trace_count;
@@ -411,10 +409,10 @@ er_dump_call_stack_internal (print_output & output)
 	    }
 	}
 
-      output ("%s(%p): %s\n", dl_info.dli_fname, func_addr_p, func_name_p);
+      fprintf (outfp, "%s(%p): %s\n", dl_info.dli_fname, func_addr_p, func_name_p);
     }
 
-  output.flush ();
+  fflush (outfp);
 }
 #endif /* __WORDSIZE == 32 */
 
@@ -486,31 +484,13 @@ er_resolve_function_name (const void *address, const char *lib_file_name_p, char
 #include "stack_dump.h"
 
 /*
- * er_dump_call_stack_internal - dump call stack
+ * er_dump_call_stack - dump call stack
  *   return:
- *   output(in/out):
+ *   outfp(in):
  */
-void
-er_dump_call_stack_internal (print_output & output)
-{
-  output ("call stack dump: NOT available in this platform\n");
-}
-#endif /* X86_SOLARIS, LINUX */
-
 void
 er_dump_call_stack (FILE * outfp)
 {
-  file_print_output output (outfp);
-  er_dump_call_stack_internal (output);
+  fprintf (outfp, "call stack dump: NOT available in this platform\n");
 }
-
-char *
-er_dump_call_stack_to_string (void)
-{
-  string_print_output output;
-  er_dump_call_stack_internal (output);
-  char *ptr = strdup (output.get_buffer ());
-  output.clear ();
-
-  return ptr;
-}
+#endif /* X86_SOLARIS, LINUX */

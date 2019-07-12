@@ -31,9 +31,14 @@
 
 #include "connection_defs.h"
 #include "connection_sr.h"
-#include "thread_entry.hpp"
-#include "thread_entry_task.hpp"
+#include "thread_compat.hpp"
 #include "master_heartbeat.hpp"
+
+// forward definitions
+namespace cubthread
+{
+  class entry_task;
+}				// namespace cubthread
 
 enum css_thread_stop_type
 {

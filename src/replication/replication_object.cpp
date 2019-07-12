@@ -27,12 +27,10 @@
 
 #include "heap_file.h"
 #include "locator_sr.h"
-#include "log_manager.h"
 #include "mem_block.hpp"
 #include "memory_alloc.h"
 #include "object_primitive.h"
 #include "object_representation.h"
-#include "replication_row_apply.hpp"
 #include "string_buffer.hpp"
 #include "thread_manager.hpp"
 #include "transaction_group.hpp"
@@ -72,7 +70,7 @@ namespace cubreplication
     LSA_SET_NULL (&m_lsa_stamp);
   }
 
-  replication_object::replication_object (const LOG_LSA &lsa_stamp)
+  replication_object::replication_object (LOG_LSA &lsa_stamp)
   {
     LSA_COPY (&m_lsa_stamp, &lsa_stamp);
   }
@@ -173,8 +171,7 @@ namespace cubreplication
       }
   }
 
-  single_row_repl_entry::single_row_repl_entry (const repl_entry_type type, const char *class_name,
-      const LOG_LSA &lsa_stamp)
+  single_row_repl_entry::single_row_repl_entry (const repl_entry_type type, const char *class_name, LOG_LSA &lsa_stamp)
     : replication_object (lsa_stamp)
     , m_type (type)
     , m_class_name (class_name)
@@ -204,12 +201,14 @@ namespace cubreplication
     int err = NO_ERROR;
 #if defined (SERVER_MODE)
     assert (m_type == REPL_DELETE);
-    err = row_apply_delete (m_class_name, m_key_value);
-    if (err != NO_ERROR)
-      {
-	ASSERT_ERROR ();
-	return err;
-      }
+
+    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type);
+    cubthread::entry &my_thread = cubthread::get_entry ();
+    std::vector <int> dummy_int_vector;
+    std::vector <DB_VALUE> dummy_val_vector;
+
+    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
+				  dummy_int_vector, dummy_val_vector, NULL);
 #endif
     return err;
   }
@@ -440,12 +439,11 @@ namespace cubreplication
     int err = NO_ERROR;
 
 #if defined (SERVER_MODE)
-    err = row_apply_update (m_class_name, m_key_value, m_changed_attributes, m_new_values);
-    if (err != NO_ERROR)
-      {
-	ASSERT_ERROR ();
-	return err;
-      }
+    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type);
+    cubthread::entry &my_thread = cubthread::get_entry ();
+
+    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
+				  m_changed_attributes, m_new_values, NULL);
 #endif
 
     return err;
@@ -601,7 +599,7 @@ namespace cubreplication
   }
 
   changed_attrs_row_repl_entry::changed_attrs_row_repl_entry (repl_entry_type type, const char *class_name,
-      const OID &inst_oid, const LOG_LSA &lsa_stamp)
+      const OID &inst_oid, LOG_LSA &lsa_stamp)
     : single_row_repl_entry (type, class_name, lsa_stamp)
     , m_changed_attributes ()
     , m_new_values ()
@@ -615,29 +613,16 @@ namespace cubreplication
     int err = NO_ERROR;
 
 #if defined (SERVER_MODE)
-    if (m_type == REPL_INSERT)
-      {
-	err = row_apply_insert (m_class_name, m_rec_des);
-	if (err != NO_ERROR)
-	  {
-	    ASSERT_ERROR ();
-	    return err;
-	  }
-      }
-    else if (m_type == REPL_UPDATE)
-      {
-	err = row_apply_update (m_class_name, m_key_value, m_rec_des);
-	if (err != NO_ERROR)
-	  {
-	    ASSERT_ERROR ();
-	    return err;
-	  }
-      }
-    else
-      {
-	assert (false);
-	err = ER_FAILED;
-      }
+    assert (m_type != REPL_DELETE);
+
+    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type);
+    cubthread::entry &my_thread = cubthread::get_entry ();
+
+    std::vector<int> dummy_int_vector;
+    std::vector<DB_VALUE> dummy_val_vector;
+
+    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
+				  dummy_int_vector, dummy_val_vector, &m_rec_des.get_recdes ());
 #endif
 
     return err;
@@ -717,7 +702,7 @@ namespace cubreplication
   }
 
   rec_des_row_repl_entry::rec_des_row_repl_entry (repl_entry_type type, const char *class_name, const RECDES &rec_des,
-      const LOG_LSA &lsa_stamp)
+      LOG_LSA &lsa_stamp)
     : single_row_repl_entry (type, class_name, lsa_stamp)
     , m_rec_des (rec_des, cubmem::STANDARD_BLOCK_ALLOCATOR)
   {
@@ -867,79 +852,6 @@ namespace cubreplication
 
     m_rec_des_list.push_back (std::move (record));
     m_data_size += rec_size;
-  }
-
-  savepoint_object::savepoint_object (const char *savepoint_name, event_type event)
-    : m_savepoint_name (savepoint_name)
-    , m_event (event)
-  {
-  }
-
-  int
-  savepoint_object::apply ()
-  {
-    cubthread::entry &thread_ref = cubthread::get_entry ();
-    if (m_event == CREATE_SAVEPOINT)
-      {
-	if (log_append_savepoint (&thread_ref, m_savepoint_name.c_str ()) == NULL)
-	  {
-	    assert (false);
-	    return ER_FAILED;
-	  }
-      }
-    else
-      {
-	LOG_LSA savept_lsa;
-	if (log_abort_partial (&thread_ref, m_savepoint_name.c_str (), &savept_lsa) != TRAN_UNACTIVE_ABORTED)
-	  {
-	    assert (false);
-	    return ER_FAILED;
-	  }
-      }
-    return NO_ERROR;
-  }
-
-  void
-  savepoint_object::stringify (string_buffer &str)
-  {
-    if (m_event == CREATE_SAVEPOINT)
-      {
-	str ("create ");
-      }
-    else
-      {
-	str ("rollback to ");
-      }
-    str ("savepoint ");
-    str (m_savepoint_name.c_str ());
-  }
-
-  void
-  savepoint_object::pack (cubpacking::packer &serializator) const
-  {
-    serializator.pack_int (PACKING_ID);
-    serializator.pack_string (m_savepoint_name);
-    serializator.pack_to_int (m_event);
-  }
-
-  void
-  savepoint_object::unpack (cubpacking::unpacker &deserializator)
-  {
-    int check_id;
-    deserializator.unpack_int (check_id);
-    assert (check_id == PACKING_ID);
-    deserializator.unpack_string (m_savepoint_name);
-    deserializator.unpack_from_int (m_event);
-  }
-
-  std::size_t
-  savepoint_object::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
-  {
-    size_t size = 0;
-    size += serializator.get_packed_int_size (start_offset + size);
-    size += serializator.get_packed_string_size (m_savepoint_name, start_offset + size);
-    size += serializator.get_packed_int_size (start_offset + size);
-    return size;
   }
 
 } /* namespace cubreplication */

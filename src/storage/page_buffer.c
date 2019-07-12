@@ -12539,7 +12539,7 @@ pgbuf_watcher_init_debug (PGBUF_WATCHER * watcher, const char *caller_file, cons
  *   vpid_p(in): virtual page id
  */
 bool
-pgbuf_is_page_fixed_by_thread (THREAD_ENTRY * thread_p, const VPID * vpid_p)
+pgbuf_is_page_fixed_by_thread (THREAD_ENTRY * thread_p, VPID * vpid_p)
 {
   int thrd_index;
   PGBUF_HOLDER_ANCHOR *thrd_holder_info;

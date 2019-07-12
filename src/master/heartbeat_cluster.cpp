@@ -105,7 +105,7 @@ namespace cubhb
 
   cluster::cluster (ha_server *server)
     : lock ()
-    , state (node_state::UNKNOWN)
+    , state (node_state ::UNKNOWN)
     , nodes ()
     , myself (NULL)
     , master (NULL)
@@ -255,6 +255,7 @@ namespace cubhb
     ping_hosts.clear ();
 
     delete m_hb_service;
+    delete m_server;
 
     pthread_mutex_destroy (&lock);
   }
@@ -330,6 +331,7 @@ namespace cubhb
     myself = NULL;
     shutdown = true;
     state = node_state::UNKNOWN;
+    m_server->stop ();
   }
 
   const cubbase::hostname_type &

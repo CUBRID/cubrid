@@ -33,15 +33,9 @@ namespace cubstream
   class transfer_receiver;
 }
 
-namespace cubthread
-{
-  class daemon;
-}
-
 namespace cubreplication
 {
   class log_consumer;
-  class slave_control_sender;
 
   class slave_node : public replication_node
   {
@@ -50,8 +44,6 @@ namespace cubreplication
 
       node_definition m_master_identity;
       cubstream::transfer_receiver *m_transfer_receiver;
-      cubthread::daemon *m_ctrl_sender_daemon;
-      slave_control_sender *m_ctrl_sender;
 
     public:
 

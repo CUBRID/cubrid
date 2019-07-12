@@ -349,7 +349,7 @@ namespace cubpacking
   }
 
   size_t
-  packer::get_packed_int_vector_size (size_t curr_offset, const size_t count)
+  packer::get_packed_int_vector_size (size_t curr_offset, const int count)
   {
     return DB_ALIGN (curr_offset, INT_ALIGNMENT) - curr_offset + (OR_INT_SIZE * (count + 1));
   }

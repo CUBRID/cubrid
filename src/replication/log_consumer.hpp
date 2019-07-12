@@ -52,6 +52,7 @@ namespace cubreplication
    */
   class stream_entry;
   class applier_worker_task;
+  class slave_control_channel;
 
   /*
    * log_consumer : class intended as singleton for slave server
@@ -86,6 +87,8 @@ namespace cubreplication
     private:
       std::queue<stream_entry *> m_stream_entries;
 
+      std::unique_ptr<slave_control_channel> m_ctrl_chn;
+
       cubstream::multi_thread_stream *m_stream;
 
       std::mutex m_queue_mutex;
@@ -107,11 +110,11 @@ namespace cubreplication
 
       bool m_is_stopped;
 
+    private:
+
     public:
-
-      std::function<void (cubstream::stream_position)> ack_produce;
-
       log_consumer () :
+	m_ctrl_chn (nullptr),
 	m_stream (NULL),
 	m_consumer_daemon (NULL),
 	m_dispatch_daemon (NULL),
@@ -120,11 +123,7 @@ namespace cubreplication
 	m_use_daemons (false),
 	m_started_tasks (0),
 	m_apply_task_ready (false),
-	m_is_stopped (false),
-	ack_produce ([] (cubstream::stream_position)
-      {
-	assert (false);
-      })
+	m_is_stopped (false)
       {
       };
 
@@ -154,9 +153,14 @@ namespace cubreplication
 	m_started_tasks--;
       }
 
-      void set_ack_producer (const std::function<void (cubstream::stream_position)> &ack_producer)
+      slave_control_channel *get_ctrl_chn ()
       {
-	ack_produce = ack_producer;
+	return m_ctrl_chn.get ();
+      }
+
+      void set_ctrl_chn (slave_control_channel *ctrl_chn)
+      {
+	m_ctrl_chn.reset (ctrl_chn);
       }
 
       int get_started_task (void)

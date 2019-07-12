@@ -521,7 +521,7 @@ CT_CLASS *ct_Classes[] = {
 };
 
 bool
-tf_is_catalog_class (const OID * class_oid)
+tf_is_catalog_class (OID * class_oid)
 {
   int c;
 

@@ -55,7 +55,7 @@ namespace cubreplication
   {
     public:
       replication_object ();
-      replication_object (const LOG_LSA &lsa_stamp);
+      replication_object (LOG_LSA &lsa_stamp);
       virtual int apply (void) = 0;
       // todo: const
       virtual void stringify (string_buffer &str) = 0;
@@ -117,7 +117,7 @@ namespace cubreplication
 
       void set_key_value (const DB_VALUE &db_val);
       void set_class_name (const char *class_name);
-      single_row_repl_entry (const repl_entry_type type, const char *class_name, const LOG_LSA &lsa_stamp);
+      single_row_repl_entry (const repl_entry_type type, const char *class_name, LOG_LSA &lsa_stamp);
       single_row_repl_entry () = default;
 
     protected:
@@ -141,8 +141,7 @@ namespace cubreplication
     public:
       static const int PACKING_ID = 3;
 
-      rec_des_row_repl_entry (repl_entry_type type, const char *class_name, const RECDES &rec_des,
-			      const LOG_LSA &lsa_stamp);
+      rec_des_row_repl_entry (repl_entry_type type, const char *class_name, const RECDES &rec_des, LOG_LSA &lsa_stamp);
 
       rec_des_row_repl_entry () = default;
       ~rec_des_row_repl_entry ();
@@ -166,7 +165,7 @@ namespace cubreplication
       static const int PACKING_ID = 4;
 
       changed_attrs_row_repl_entry (repl_entry_type type, const char *class_name, const OID &inst_oid,
-				    const LOG_LSA &lsa_stamp);
+				    LOG_LSA &lsa_stamp);
 
       changed_attrs_row_repl_entry () = default;
       ~changed_attrs_row_repl_entry ();
@@ -269,33 +268,6 @@ namespace cubreplication
       /* non-serialized data members: */
       /* total size of all record_descriptor buffers */
       std::size_t m_data_size;
-  };
-
-  class savepoint_object : public replication_object
-  {
-    public:
-      static const int PACKING_ID = 7;
-
-      enum event_type
-      {
-	CREATE_SAVEPOINT,
-	ROLLBACK_TO_SAVEPOINT
-      };
-
-      savepoint_object () = default;
-      savepoint_object (const char *savepoint_name, event_type event);
-      ~savepoint_object () = default;
-
-      int apply () override;
-      void stringify (string_buffer &str) final;
-
-      void pack (cubpacking::packer &serializator) const final;
-      void unpack (cubpacking::unpacker &deserializator) final;
-      std::size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const final;
-
-    private:
-      std::string m_savepoint_name;
-      event_type m_event;
   };
 
 } /* namespace cubreplication */

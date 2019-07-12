@@ -30,7 +30,6 @@
 
 // same module includes
 #include "thread_entry.hpp"
-#include "thread_entry_task.hpp"
 #include "thread_task.hpp"
 #include "thread_waiter.hpp"
 
@@ -51,6 +50,8 @@ namespace cubthread
   class worker_pool;
   class looper;
   class daemon;
+  class entry_task;
+  class entry_manager;
   class daemon_entry_manager;
 
   // alias for worker_pool<entry>

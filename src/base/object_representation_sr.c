@@ -4160,12 +4160,6 @@ or_replace_rep_id (RECDES * record, int repid)
   return NO_ERROR;
 }
 
-INT32
-or_get_repid_id_and_flags (const RECDES * record)
-{
-  return OR_GET_MVCC_REPID_AND_FLAG (record->data);
-}
-
 /*
  * or_mvcc_get_header () - Get mvcc record header from record data.
  *

@@ -237,7 +237,6 @@ extern int orc_superclasses_from_record (RECDES * record, int *array_size, OID *
 extern OR_CLASSREP **or_get_all_representation (RECDES * record, bool do_indexes, int *count);
 
 extern int or_replace_rep_id (RECDES * record, int repid);
-extern INT32 or_get_repid_id_and_flags (const RECDES * record);
 
 extern int or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header);
 extern int or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header);

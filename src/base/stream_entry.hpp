@@ -173,7 +173,6 @@ namespace cubstream
 	    PO *packable_entry = get_builder ()->create_object (object_id);
 	    if (packable_entry == NULL)
 	      {
-		assert (false);
 		error_code = ER_STREAM_UNPACKING_INV_OBJ_ID;
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_UNPACKING_INV_OBJ_ID, 1, object_id);
 		return error_code;
@@ -323,7 +322,7 @@ namespace cubstream
 	m_packable_entries.push_back (entry);
       };
 
-      PO *get_object_at (size_t pos)
+      PO *get_object_at (int pos)
       {
 	return m_packable_entries[pos];
       }

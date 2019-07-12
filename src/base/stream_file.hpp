@@ -28,7 +28,6 @@
 
 #include "multi_thread_stream.hpp"
 #include <map>
-#include <queue>
 
 namespace cubthread
 {
@@ -113,12 +112,7 @@ namespace cubstream
 
       stream_position m_req_start_flush_position;
 
-      /* notify on fsync data */
-      std::atomic<bool> m_notify_on_sync;
-      std::queue<int> m_sync_seq_nrs;
-      stream_position m_to_be_synced;
-      stream::notify_send_stream_pos_func_t m_sync_notifier;
-      stream::notify_func_t m_start_flush_handler;
+      cubstream::stream::notify_func_t m_start_flush_handler;
 
       cubthread::daemon *m_write_daemon;
       std::mutex m_flush_mutex;
@@ -150,7 +144,6 @@ namespace cubstream
 
       size_t read_buffer (const int vol_seqno, const size_t volume_offset, char *buf, const size_t amount);
       size_t write_buffer (const int vol_seqno, const size_t volume_offset, const char *buf, const size_t amount);
-      int fsync_writes ();
 
     public:
       stream_file () = delete;
@@ -158,8 +151,6 @@ namespace cubstream
       stream_file (multi_thread_stream &stream_arg, const std::string &path,
 		   const size_t file_size = DEFAULT_VOLUME_SIZE, const int print_digits = DEFAULT_FILENAME_DIGITS)
 	: m_stream (stream_arg)
-	, m_notify_on_sync (false)
-	, m_to_be_synced (std::numeric_limits<stream_position>::min ())
       {
 	init (path, 0, file_size, print_digits);
       };
@@ -204,29 +195,9 @@ namespace cubstream
 	  }
       }
 
-      void update_sync_position (stream_position to_be_synced)
-      {
-	m_to_be_synced = to_be_synced;
-      }
-
       stream_position get_last_flushed_position (void)
       {
 	return m_append_position;
-      }
-
-      void set_sync_notifier (const stream::notify_send_stream_pos_func_t &sync_done_notify)
-      {
-	m_sync_notifier = sync_done_notify;
-	m_notify_on_sync = true;
-      }
-
-      void remove_sync_notifier ()
-      {
-	m_sync_notifier = [] (const stream_position &)
-	{
-	  assert (false);
-	};
-	m_notify_on_sync = false;
       }
 
       void start_flush (const stream_position &start_position, const size_t amount_to_flush);

@@ -79,7 +79,7 @@ namespace cubpacking
 
       void pack_int_array (const int *array, const int count);
 
-      size_t get_packed_int_vector_size (size_t curr_offset, const size_t count);
+      size_t get_packed_int_vector_size (size_t curr_offset, const int count);
       void pack_int_vector (const std::vector<int> &array);
 
       size_t get_packed_db_value_size (const db_value &value, size_t curr_offset);

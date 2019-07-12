@@ -43,6 +43,9 @@ using socket_type = SOCKET;
 using ipv4_type = std::uint32_t;
 using port_type = std::uint16_t;
 
+// constants
+static const std::size_t BUFFER_SIZE = 4096;
+
 /**
  * Server to Server communication model:
  *
@@ -205,8 +208,6 @@ class udp_server
     void register_handler (MsgId msg_id, server_request_handler &handler);
 
   private:
-    static const std::size_t BUFFER_SIZE = 4096;
-
     using request_handlers_type = std::map<MsgId, server_request_handler>;
 
     std::thread m_thread;
@@ -282,10 +283,10 @@ udp_server<MsgId>::stop ()
       return;
     }
 
+  close_socket ();
+
   m_shutdown = true;
   m_thread.join ();
-
-  close_socket ();
 }
 
 template <typename MsgId>
