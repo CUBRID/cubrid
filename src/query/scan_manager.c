@@ -4904,7 +4904,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   HEAP_SCAN_ID *hsidp;
   FILTER_INFO data_filter;
-  RECDES recdes;
+  RECDES recdes = RECDES_INITIALIZER;
   SCAN_CODE sp_scan;
   DB_LOGICAL ev_res;
   OID current_oid, *p_current_oid = NULL;
@@ -5794,7 +5794,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
 {
   SCAN_CODE sp_scan;
   DB_LOGICAL ev_res;
-  RECDES recdes;
+  RECDES recdes = RECDES_INITIALIZER;
   INDX_INFO *indx_infop;
   BTID *btid;
   char *indx_name_p;

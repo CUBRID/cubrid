@@ -5337,9 +5337,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	  /* Dump MVCC info */
 	  if (is_virtual_directory_oid == false && heap_scancache_quick_start (&scan_cache) == NO_ERROR)
 	    {
-	      RECDES recdes;
-
-	      recdes.data = NULL;
+	      RECDES recdes = RECDES_INITIALIZER;
 
 	      if (heap_get_visible_version (thread_p, &res_ptr->key.oid, &res_ptr->key.class_oid, &recdes, &scan_cache,
 					    PEEK, NULL_CHN) == S_SUCCESS)
