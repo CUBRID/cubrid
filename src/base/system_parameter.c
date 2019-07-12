@@ -367,8 +367,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_MAX_PROCESS_DEREG_CONFIRM "ha_max_process_dereg_confirm"
 
-#define PRM_NAME_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF "ha_unacceptable_proc_restart_timediff"
-
 #define PRM_NAME_HA_CHANGEMODE_INTERVAL_IN_MSEC "ha_changemode_interval_in_msecs"
 
 #define PRM_NAME_HA_MAX_HEARTBEAT_GAP "ha_max_heartbeat_gap"
@@ -1485,10 +1483,6 @@ static unsigned int prm_ha_max_process_start_confirm_flag = 0;
 int PRM_HA_MAX_PROCESS_DEREG_CONFIRM = HB_DEFAULT_MAX_PROCESS_DEREG_CONFIRM;
 static int prm_ha_max_process_dereg_confirm_default = HB_DEFAULT_MAX_PROCESS_DEREG_CONFIRM;
 static unsigned int prm_ha_max_process_dereg_confirm_flag = 0;
-
-int PRM_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF = HB_DEFAULT_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS;
-static int prm_ha_unacceptable_proc_restart_timediff_default = HB_DEFAULT_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS;
-static unsigned int prm_ha_unacceptable_proc_restart_timediff_flag = 0;
 
 int PRM_HA_CHANGEMODE_INTERVAL_IN_MSECS = HB_DEFAULT_CHANGEMODE_INTERVAL_IN_MSECS;
 static int prm_ha_changemode_interval_in_msecs_default = HB_DEFAULT_CHANGEMODE_INTERVAL_IN_MSECS;
@@ -3794,17 +3788,6 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_ha_max_process_dereg_confirm_flag,
    (void *) &prm_ha_max_process_dereg_confirm_default,
    (void *) &PRM_HA_MAX_PROCESS_DEREG_CONFIRM,
-   (void *) NULL, (void *) NULL,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS,
-   PRM_NAME_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF,
-   (PRM_FOR_CLIENT | PRM_FOR_HA | PRM_TIME_UNIT),
-   PRM_INTEGER,
-   &prm_ha_unacceptable_proc_restart_timediff_flag,
-   (void *) &prm_ha_unacceptable_proc_restart_timediff_default,
-   (void *) &PRM_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
