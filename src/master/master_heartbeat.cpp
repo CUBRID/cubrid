@@ -1341,7 +1341,8 @@ hb_cluster_calc_score (void)
     }
 
   cubhb::node_entry *new_master = hb_Cluster->master;
-  if (old_master != NULL && new_master != NULL && old_master->get_hostname () != new_master->get_hostname ())
+  assert (new_master != NULL);
+  if (old_master == NULL || old_master->get_hostname () != new_master->get_hostname ())
     {
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_cluster_calc_score: set new master to '%s'",
 			   new_master->get_hostname ().as_c_str ());
@@ -2468,10 +2469,16 @@ hb_resource_job_send_master_hostname (HB_JOB_ARG *arg)
     }
   pthread_mutex_unlock (&hb_Resource->lock);
 
-  const cubbase::hostname_type &master_hostname = hb_find_host_name_of_master_server ();
-  if (proc == NULL || master_hostname.empty ())
+  if (proc == NULL)
     {
-      // retry if there is no cub_server process registered yet or master hostname is not yet known
+      // return, hb_resource_job_confirm_start will trigger this job when cub_server proc will register
+      return;
+    }
+
+  const cubbase::hostname_type &master_hostname = hb_find_host_name_of_master_server ();
+  if (master_hostname.empty ())
+    {
+      // retry if master hostname is not yet known
       hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL,
 			     prm_get_integer_value (PRM_ID_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS));
       return;
@@ -3463,16 +3470,6 @@ hb_resource_job_initialize ()
   pthread_mutex_unlock (&resource_Jobs->lock);
 
   error = hb_resource_job_queue (HB_RJOB_CHANGE_MODE, NULL,
-				 prm_get_integer_value (PRM_ID_HA_INIT_TIMER_IN_MSECS) +
-				 prm_get_integer_value (PRM_ID_HA_FAILOVER_WAIT_TIME_IN_MSECS));
-  if (error != NO_ERROR)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  /* TODO add other timers */
-  error = hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL,
 				 prm_get_integer_value (PRM_ID_HA_INIT_TIMER_IN_MSECS) +
 				 prm_get_integer_value (PRM_ID_HA_FAILOVER_WAIT_TIME_IN_MSECS));
   if (error != NO_ERROR)
