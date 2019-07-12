@@ -167,6 +167,7 @@ static int hb_thread_initialize (void);
 static void hb_resource_cleanup (void);
 static void hb_resource_shutdown_all_ha_procs (void);
 static void hb_cluster_cleanup (void);
+static void hb_udp_server_cleanup ();
 static void hb_kill_process (pid_t *pids, int count);
 
 /* process command */
@@ -179,6 +180,7 @@ static int hb_help_sprint_nodes_info (char *buffer, int max_length);
 static int hb_help_sprint_jobs_info (HB_JOB *jobs, char *buffer, int max_length);
 static int hb_help_sprint_ping_host_info (char *buffer, int max_length);
 
+udp_server<cubhb::message_type> *hb_Udp_server = NULL;
 cubhb::cluster *hb_Cluster = NULL;
 HB_RESOURCE *hb_Resource = NULL;
 HB_JOB *cluster_Jobs = NULL;
@@ -755,7 +757,7 @@ hb_cluster_job_calc_score (HB_JOB_ARG *arg)
   if ((hb_Cluster->state == cubhb::node_state::SLAVE)
       && (hb_Cluster->master && hb_Cluster->myself && hb_Cluster->master->priority == hb_Cluster->myself->priority))
     {
-      hb_Cluster->state = cubhb::node_state ::TO_BE_MASTER;
+      hb_Cluster->state = cubhb::node_state::TO_BE_MASTER;
       hb_Cluster->send_heartbeat_to_all ();
 
       pthread_mutex_unlock (&hb_Cluster->lock);
@@ -931,7 +933,7 @@ ping_check_cancel:
   if (hb_Cluster->state != cubhb::node_state::MASTER)
     {
       MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, "Failover cancelled by ping check");
-      hb_Cluster->state = cubhb::node_state ::SLAVE;
+      hb_Cluster->state = cubhb::node_state::SLAVE;
     }
   hb_Cluster->send_heartbeat_to_all ();
 
@@ -2674,7 +2676,7 @@ hb_proc_make_arg (char **arg, char *argv)
 void
 hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY *conn, SOCKET sfd)
 {
-  int error, rv;
+  int error;
   char error_string[LINE_MAX] = "";
   HB_PROC_ENTRY *proc;
   HB_JOB_ARG *job_arg;
@@ -2687,7 +2689,7 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY *conn, SOCKET sfd)
       return;
     }
 
-  rv = pthread_mutex_lock (&hb_Resource->lock);
+  pthread_mutex_lock (&hb_Resource->lock);
   proc = hb_return_proc_by_fd (sfd);
   if (proc == NULL)
     {
@@ -2733,21 +2735,17 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY *conn, SOCKET sfd)
 
   if (hb_Resource->state == cubhb::node_state::MASTER && proc->type == HB_PTYPE_SERVER && !hb_Cluster->is_isolated)
     {
-      if (HB_GET_ELAPSED_TIME (proc->ktime, proc->rtime) <
-	  prm_get_integer_value (PRM_ID_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS))
-	{
-	  /* demote the current node */
-	  hb_Resource->state = cubhb::node_state::SLAVE;
+      /* demote the current node */
+      hb_Resource->state = cubhb::node_state::SLAVE;
 
-	  snprintf (error_string, LINE_MAX, "(args:%s)", proc->args);
-	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
-			 "Process failure repeated within a short period of time. The current node will be demoted",
-			 error_string);
+      snprintf (error_string, LINE_MAX, "(args:%s)", proc->args);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+		     "Process failure repeated within a short period of time. The current node will be demoted",
+		     error_string);
 
-	  /* shutdown working server processes to change its role to slave */
-	  error = hb_resource_job_queue (HB_RJOB_DEMOTE_START_SHUTDOWN, NULL, HB_JOB_TIMER_IMMEDIATELY);
-	  assert (error == NO_ERROR);
-	}
+      /* shutdown working server processes to change its role to slave */
+      error = hb_resource_job_queue (HB_RJOB_DEMOTE_START_SHUTDOWN, NULL, HB_JOB_TIMER_IMMEDIATELY);
+      assert (error == NO_ERROR);
     }
 
   job_arg = (HB_JOB_ARG *) malloc (sizeof (HB_JOB_ARG));
@@ -3392,16 +3390,17 @@ hb_cluster_initialize ()
   if (hb_Cluster == NULL)
     {
       port_type udp_server_port = (port_type) prm_get_integer_value (PRM_ID_HA_PORT_ID);
-      udp_server<cubhb::message_type> *server = new udp_server<cubhb::message_type> (udp_server_port);
-      int error_code = server->start ();
+      hb_Udp_server = new udp_server<cubhb::message_type> (udp_server_port);
+      int error_code = hb_Udp_server->start ();
       if (error_code != NO_ERROR)
 	{
 	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
 
+	  hb_udp_server_cleanup ();
 	  return error_code;
 	}
 
-      hb_Cluster = new cubhb::cluster (server);
+      hb_Cluster = new cubhb::cluster (hb_Udp_server);
     }
 
   pthread_mutex_lock (&hb_Cluster->lock);
@@ -3413,6 +3412,8 @@ hb_cluster_initialize ()
       hb_Cluster->stop ();
       delete hb_Cluster;
       hb_Cluster = NULL;
+
+      hb_udp_server_cleanup ();
     }
 
   return error_code;
@@ -3790,6 +3791,19 @@ hb_resource_shutdown_and_cleanup (void)
   hb_resource_cleanup ();
 }
 
+static void
+hb_udp_server_cleanup ()
+{
+  if (hb_Udp_server == NULL)
+    {
+      return;
+    }
+
+  hb_Udp_server->stop ();
+  delete hb_Udp_server;
+  hb_Udp_server = NULL;
+}
+
 /*
  * hb_cluster_cleanup() -
  *   return:
@@ -3802,10 +3816,11 @@ hb_cluster_cleanup (void)
 
   hb_Cluster->state = cubhb::node_state::UNKNOWN;
   hb_Cluster->send_heartbeat_to_all ();
-
   hb_Cluster->stop ();
 
   pthread_mutex_unlock (&hb_Cluster->lock);
+
+  hb_udp_server_cleanup ();
 
   delete hb_Cluster;
   hb_Cluster = NULL;
