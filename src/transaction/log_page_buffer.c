@@ -10337,7 +10337,7 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
     }
 
   /* Release the lock to allow to system to advance. */
-  lock_unlock_object (thread_p, oid_Root_class_oid, &oid_Null_oid, S_LOCK, true);
+  lock_unlock_object_donot_move_to_non2pl (thread_p, oid_Root_class_oid, &oid_Null_oid, S_LOCK);
 }
 
 /*
