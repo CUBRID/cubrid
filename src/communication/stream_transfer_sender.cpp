@@ -66,6 +66,10 @@ namespace cubstream
 	    static_assert (sizeof (stream_position) == sizeof (UINT64),
 			   "stream position size differs from requested start stream position");
 
+	    if (!this_producer_channel.m_channel.is_connection_alive ())
+	      {
+		return;
+	      }
 	    rc = this_producer_channel.m_channel.recv ((char *) &last_sent_position, max_len);
 	    if (rc != NO_ERRORS)
 	      {
