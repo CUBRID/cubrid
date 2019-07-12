@@ -85,8 +85,8 @@ int send_class_list (DB_OBJLIST *classes)
 
   for (cl = classes; cl != NULL; cl = cl->next)
     {
-      OID *oid = ws_oid (cl->op);
-      packer.append_to_buffer_and_pack_all (blk, *oid);
+      OID oid = *ws_oid (cl->op);
+      packer.append_to_buffer_and_pack_all (blk, oid);
     }
 
   error = locator_send_proxy_buffer (NET_PROXY_BUF_TYPE_OID_LIST, blk.get_size (), blk.get_read_ptr ());
