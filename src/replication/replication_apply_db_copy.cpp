@@ -42,9 +42,21 @@ namespace cubreplication
   {
     m_my_identity = myself;
     m_source_identity = source_node;
-    m_stream = NULL;
+    m_transfer_receiver = NULL;
+    m_copy_consumer = NULL;
     m_online_repl_start_pos = 0;
-    init ();
+
+    INT64 buffer_size = 1 * 1024 * 1024;
+    /* create stream */
+    m_stream = new cubstream::multi_thread_stream (buffer_size, 2);
+    m_stream->set_name ("repl_copy_" + std::string (m_source_identity->get_hostname ().c_str ()));
+    m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
+    m_stream->init (0);
+
+    /* create stream file */
+    std::string replication_path;
+    replication_node::get_replication_file_path (replication_path);
+    m_stream_file = new cubstream::stream_file (*m_stream, replication_path);
   }
 
   apply_copy_context::~apply_copy_context ()
@@ -61,25 +73,6 @@ namespace cubreplication
 
     delete m_stream;
     m_stream = NULL;
-  }
-
-  void apply_copy_context::init (void)
-  {
-    int error = NO_ERROR;
-    INT64 buffer_size = 1 * 1024 * 1024;
-    /* create stream */
-    m_stream = new cubstream::multi_thread_stream (buffer_size, 2);
-    m_stream->set_name ("repl_copy_" + std::string (m_source_identity->get_hostname ().c_str ()));
-    m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
-    m_stream->init (0);
-
-    /* create stream file */
-    std::string replication_path;
-    replication_node::get_replication_file_path (replication_path);
-    m_stream_file = new cubstream::stream_file (*m_stream, replication_path);
-
-    m_copy_consumer = new copy_db_consumer ();
-    m_copy_consumer->set_stream (m_stream);
   }
 
   int apply_copy_context::setup_copy_protocol (cubcomm::channel &chn)
@@ -154,6 +147,9 @@ namespace cubreplication
     /* TODO[replication] : start position in case of resume of copy process */
     cubstream::stream_position start_position = 0;
     m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *m_stream, start_position);
+
+    m_copy_consumer = new copy_db_consumer ();
+    m_copy_consumer->set_stream (m_stream);
 
     m_copy_consumer->start_daemons ();
 

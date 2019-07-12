@@ -14342,7 +14342,7 @@ locator_repl_extract_schema (THREAD_ENTRY * thread_p, const char *db_user, const
       return error;
     }
 
-  _er_log_debug (ARG_FILE_LINE, "extract schema: tran_index:%d, exit_status:%d\n%s", tran_index, exit_status);
+  _er_log_debug (ARG_FILE_LINE, "extract schema: tran_index:%d, exit_status:%d\n", tran_index, exit_status);
 
   if (exit_status != 0)
     {

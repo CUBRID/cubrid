@@ -146,7 +146,6 @@ namespace cubreplication
 
       ~apply_copy_context ();
 
-      void init ();
       int execute_copy ();
 
       void wait_replication_copy ();
