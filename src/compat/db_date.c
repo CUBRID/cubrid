@@ -1156,8 +1156,13 @@ parse_date (const char *buf, int buf_len, DB_DATE * date)
 	      ;
 	    }
 
+	  if (p == strend)
+	    {
+	      break;
+	    }
+
 	  /* check date separator ('/' or '-'), if any */
-	  if (p == strend || (separator != '\0' && *p != '\0' && *p != separator))
+	  if (separator != '\0' && *p != '\0' && *p != separator)
 	    {
 	      return NULL;
 	    }
