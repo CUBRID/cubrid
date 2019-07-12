@@ -31,7 +31,9 @@
 #include "memory_hash.h"
 extern MHT_TABLE *fname_table;
 #endif
+#include <string>
 
 extern void er_dump_call_stack (FILE * outfp);
+extern char *er_dump_call_stack_to_string (void);
 
 #endif /* _STACK_DUMP_H_ */

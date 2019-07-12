@@ -55,6 +55,10 @@ struct repl_info
   char *info;
   int repl_info_type;
   bool need_replication;
+
+  // *INDENT-OFF*
+  repl_info () = default;
+  // *INDENT-ON*
 };
 
 typedef struct repl_info_sbr REPL_INFO_SBR;
@@ -67,6 +71,10 @@ struct repl_info_sbr
   char *db_password;
   char *sys_prm_context;
   char *savepoint_name;		/* Debug purpose, must be removed with PRM_ID_REPL_LOG_LOCAL_DEBUG */
+
+  // *INDENT-OFF*
+  repl_info_sbr () = default;
+  // *INDENT-ON*
 };
 
 #if defined(SERVER_MODE) || defined(SA_MODE)

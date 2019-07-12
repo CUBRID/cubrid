@@ -49,12 +49,6 @@ namespace cubreplication
       NEW_MASTER
     } TRAN_STATE;
 
-    const static unsigned STATE_BITS = 3;
-
-    const static unsigned int STATE_MASK = 0xe0000000;
-
-    const static unsigned int COUNT_VALUE_MASK = ~ (STATE_MASK);
-
     cubstream::stream_position prev_record;
     MVCCID mvccid;
     unsigned int count_replication_entries;
@@ -77,6 +71,7 @@ namespace cubreplication
 
       header_size += serializator.get_packed_bigint_size (header_size);
       header_size += serializator.get_packed_bigint_size (header_size);
+      header_size += serializator.get_packed_int_size (header_size);
       header_size += serializator.get_packed_int_size (header_size);
       header_size += serializator.get_packed_int_size (header_size);
 
@@ -158,35 +153,35 @@ namespace cubreplication
 	m_header.tran_state = state;
       }
 
-      bool is_group_commit (void)
+      bool is_group_commit (void) const
       {
 	return m_header.tran_state == stream_entry_header::GROUP_COMMIT;
       }
 
-      bool is_new_master ()
+      bool is_new_master () const
       {
 	return m_header.tran_state == stream_entry_header::NEW_MASTER;
       }
 
-      bool is_tran_commit (void)
+      bool is_tran_commit (void) const
       {
 	return m_header.tran_state == stream_entry_header::COMMITTED;
       }
 
-      bool is_tran_abort (void)
+      bool is_tran_abort (void) const
       {
 	return m_header.tran_state == stream_entry_header::ABORTED;
       }
 
-      bool is_tran_state_undefined (void)
+      bool is_tran_state_undefined (void) const
       {
 	return m_header.tran_state < stream_entry_header::ACTIVE
 	       || m_header.tran_state > stream_entry_header::NEW_MASTER;
       }
 
-      int pack_stream_entry_header ();
-      int unpack_stream_entry_header ();
-      int get_packable_entry_count_from_header (void);
+      int pack_stream_entry_header () override;
+      int unpack_stream_entry_header () override;
+      int get_packable_entry_count_from_header (void) override;
 
       void stringify (string_buffer &sb, const string_dump_mode mode = short_dump);
 

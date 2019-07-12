@@ -55,6 +55,8 @@ namespace cubstream
       typedef std::function<int (const stream_position &, char *, const size_t)> write_func_t;
       typedef std::function<void (const stream_position &, const size_t)> notify_func_t;
 
+      typedef std::function<void (const stream_position &)> notify_send_stream_pos_func_t;
+
     protected:
       /* callback functions: */
       /* called before old data content needs to be dropped : the drop position is an aggregate minimum of all

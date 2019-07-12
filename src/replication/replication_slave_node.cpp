@@ -25,6 +25,7 @@
 
 #include "replication_slave_node.hpp"
 #include "communication_server_channel.hpp"
+#include "log_applier.h"
 #include "log_consumer.hpp"
 #include "multi_thread_stream.hpp"
 #include "replication_common.hpp"
@@ -33,6 +34,9 @@
 #include "stream_transfer_receiver.hpp"
 #include "stream_file.hpp"
 #include "system_parameter.h"
+#include "thread_entry.hpp"
+#include "thread_looper.hpp"
+#include "thread_manager.hpp"
 
 
 namespace cubreplication
@@ -61,6 +65,16 @@ namespace cubreplication
 
     delete m_lc;
     m_lc = NULL;
+
+    m_stream_file->remove_sync_notifier ();
+
+    if (m_ctrl_sender != NULL)
+      {
+	m_ctrl_sender->stop ();
+	cubthread::get_manager ()->destroy_daemon_without_entry (m_ctrl_sender_daemon);
+	delete m_ctrl_sender;
+	m_ctrl_sender = NULL;
+      }
   }
 
   int slave_node::connect_to_master (const char *master_node_hostname, const int master_node_port_id)
@@ -68,6 +82,8 @@ namespace cubreplication
     int error = NO_ERROR;
     er_log_debug_replication (ARG_FILE_LINE, "slave_node::connect_to_master host:%s, port: %d\n",
 			      master_node_hostname, master_node_port_id);
+
+    assert (m_transfer_receiver != NULL);
 
     /* connect to replication master node */
     cubcomm::server_channel srv_chn (m_identity.get_hostname ().c_str ());
@@ -80,18 +96,50 @@ namespace cubreplication
 	return error;
       }
 
+    /* TODO[replication] : last position to be retrieved from recovery module */
+    cubstream::stream_position start_position = 0;
+
     cubcomm::server_channel control_chn (m_identity.get_hostname ().c_str ());
     error = control_chn.connect (master_node_hostname, master_node_port_id, SERVER_REQUEST_CONNECT_NEW_SLAVE_CONTROL);
     if (error != css_error_code::NO_ERRORS)
       {
 	return error;
       }
-    /* start transfer receiver */
-    assert (m_transfer_receiver == NULL);
-    /* TODO[replication] : last position to be retrieved from recovery module */
-    cubstream::stream_position start_position = 0;
 
-    m_lc->set_ctrl_chn (new cubreplication::slave_control_channel (std::move (control_chn)));
+    slave_control_sender *sender = new slave_control_sender (std::move (control_chn));
+    m_ctrl_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
+			   sender, "slave_control_sender");
+
+    m_ctrl_sender = sender;
+
+    cubstream::stream_file *sf = m_stream_file;
+
+    if ((REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) ==
+	REPL_SEMISYNC_ACK_ON_FLUSH)
+      {
+	// route produced stream positions to get validated as flushed on disk before sending them
+	m_lc->set_ack_producer ([sf] (cubstream::stream_position ack_sp)
+	{
+	  sf->update_sync_position (ack_sp);
+	});
+      }
+
+    if ((REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) ==
+	REPL_SEMISYNC_ACK_ON_FLUSH)
+      {
+	m_stream_file->set_sync_notifier ([sender] (const cubstream::stream_position & sp)
+	{
+	  // route produced stream positions to get validated as flushed on disk before sending them
+	  sender->set_synced_position (sp);
+	});
+      }
+    else
+      {
+	m_lc->set_ack_producer ([sender] (cubstream::stream_position sp)
+	{
+	  sender->set_synced_position (sp);
+	});
+      }
 
     m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *m_stream, start_position);
 
