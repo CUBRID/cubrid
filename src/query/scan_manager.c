@@ -5860,7 +5860,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
 {
   SCAN_CODE sp_scan;
   DB_LOGICAL ev_res;
-  RECDES recdes;
+  RECDES recdes = RECDES_INITIALIZER;
   indx_info *indx_infop;
   BTID *btid;
   char *indx_name_p;
