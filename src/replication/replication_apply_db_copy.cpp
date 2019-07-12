@@ -44,6 +44,7 @@ namespace cubreplication
     m_source_identity = source_node;
     m_stream = NULL;
     m_online_repl_start_pos = 0;
+    init ();
   }
 
   apply_copy_context::~apply_copy_context ()
