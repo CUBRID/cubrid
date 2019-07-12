@@ -7128,7 +7128,7 @@ dump_unicode_mapping (UNICODE_MAPPING * um, const int mode)
   next = cur_str;
   while (next < um->buffer + um->size)
     {
-      cp = intl_utf8_to_cp (cur_str, (const int) INTL_UTF8_MAX_CHAR_SIZE, &next);
+      cp = intl_utf8_to_cp (cur_str, (int) INTL_UTF8_MAX_CHAR_SIZE, &next);
       printf ("%04X ", cp);
       cur_str = next;
     }
