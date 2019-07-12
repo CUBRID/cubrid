@@ -72,6 +72,17 @@ record_descriptor::record_descriptor (const recdes &rec,
     }
 }
 
+record_descriptor::record_descriptor (record_descriptor &&other)
+{
+  m_recdes = other.m_recdes;
+  m_own_data = std::move (other.m_own_data);
+  m_data_source = other.m_data_source;
+
+  other.m_data_source = data_source::INVALID;
+  other.m_recdes.data = NULL;
+  other.m_recdes.type = REC_UNKNOWN;
+}
+
 record_descriptor::record_descriptor (const char *data, size_t size)
   : record_descriptor ()
 {
@@ -308,6 +319,9 @@ record_descriptor::pack (cubpacking::packer &packer) const
 void
 record_descriptor::unpack (cubpacking::unpacker &unpacker)
 {
+  // resize_buffer requires m_data_source to be set
+  m_data_source = data_source::COPIED;
+
   unpacker.unpack_short (m_recdes.type);
   unpacker.peek_unpack_buffer_length (m_recdes.length);
   resize_buffer (m_recdes.length);

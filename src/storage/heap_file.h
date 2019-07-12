@@ -34,6 +34,7 @@
 #include "config.h"
 #include "file_manager.h"
 #include "heap_attrinfo.h"
+#include "mem_block.hpp"
 #include "mvcc.h"
 #include "page_buffer.h"
 #include "perf_monitor.h"
@@ -133,26 +134,43 @@ struct heap_scancache_node_list
   HEAP_SCANCACHE_NODE_LIST *next;
 };
 
+// *INDENT-OFF*
 typedef struct heap_scancache HEAP_SCANCACHE;
 struct heap_scancache
 {				/* Define a scan over the whole heap file */
-  int debug_initpattern;	/* A pattern which indicates that the structure has been initialized */
-  HEAP_SCANCACHE_NODE node;	/* current scanned heap file information */
-  LOCK page_latch;		/* Indicates the latch/lock to be acquired on heap pages. Its value may be NULL_LOCK
+  public:
+    int debug_initpattern;	/* A pattern which indicates that the structure has been initialized */
+    HEAP_SCANCACHE_NODE node;	/* current scanned heap file information */
+    LOCK page_latch;		/* Indicates the latch/lock to be acquired on heap pages. Its value may be NULL_LOCK
 				 * when it is secure to skip lock on heap pages. For example, the class of the heap has
 				 * been locked with either S_LOCK, SIX_LOCK, or X_LOCK */
-  bool cache_last_fix_page;	/* Indicates if page buffers and memory are cached (left fixed) */
-  PGBUF_WATCHER page_watcher;
-  char *area;			/* Pointer to last left fixed memory allocated */
-  int area_size;		/* Size of allocated area */
-  int num_btids;		/* Total number of indexes defined on the scanning class */
-  multi_index_unique_stats *m_index_stats;	// does this really belong to scan cache??
-  FILE_TYPE file_type;		/* The file type of the heap file being scanned. Can be FILE_HEAP or
-				 * FILE_HEAP_REUSE_SLOTS */
-  MVCC_SNAPSHOT *mvcc_snapshot;	/* mvcc snapshot */
-  HEAP_SCANCACHE_NODE_LIST *partition_list;	/* list holding the heap file information for partition nodes involved
+    bool cache_last_fix_page;	/* Indicates if page buffers and memory are cached (left fixed) */
+    PGBUF_WATCHER page_watcher;
+    int num_btids;		/* Total number of indexes defined on the scanning class */
+    multi_index_unique_stats *m_index_stats;	// does this really belong to scan cache??
+    FILE_TYPE file_type;		/* The file type of the heap file being scanned. Can be FILE_HEAP or
+				         * FILE_HEAP_REUSE_SLOTS */
+    MVCC_SNAPSHOT *mvcc_snapshot;	/* mvcc snapshot */
+    HEAP_SCANCACHE_NODE_LIST *partition_list;	/* list holding the heap file information for partition nodes involved
 						 * in the scan */
+
+
+    void start_area ();
+    void end_area ();
+    void reserve_area (size_t size = 0);
+    void assign_recdes_to_area (RECDES & recdes, size_t size = 0);
+    bool is_recdes_assigned_to_area (const RECDES & recdes) const;
+    const cubmem::block_allocator &get_area_block_allocator ();
+
+    // todo - add constructor/destructor; should automatically call heap_scancache_end on destructor if started
+
+  private:
+
+    void alloc_area ();
+
+    cubmem::single_block_allocator * m_area;
 };
+// *INDENT-ON*
 
 typedef struct heap_scanrange HEAP_SCANRANGE;
 struct heap_scanrange
@@ -605,7 +623,7 @@ extern void heap_create_delete_context (HEAP_OPERATION_CONTEXT * context, HFID *
 					HEAP_SCANCACHE * scancache_p);
 extern void heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * oid_p, OID * class_oid_p,
 					RECDES * recdes_p, HEAP_SCANCACHE * scancache_p, UPDATE_INPLACE_STYLE in_place);
-extern int heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
+extern int heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, PGBUF_WATCHER * home_hint_p);
 extern int heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 extern int heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 
@@ -651,4 +669,14 @@ extern int heap_get_best_space_num_stats_entries (void);
 extern int heap_get_hfid_from_vfid (THREAD_ENTRY * thread_p, const VFID * vfid, HFID * hfid);
 extern int heap_scan_cache_allocate_area (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p, int size);
 extern bool heap_is_page_header (THREAD_ENTRY * thread_p, PAGE_PTR page);
+
+extern int heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, PGBUF_WATCHER * home_hint_p,
+				VPID * new_page_vpid);
+
+extern int heap_nonheader_page_capacity ();
+
+// *INDENT-OFF*
+extern int heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID &class_oid,
+                                      const std::vector<VPID> &heap_pages_array);
+// *INDENT-ON*
 #endif /* _HEAP_FILE_H_ */

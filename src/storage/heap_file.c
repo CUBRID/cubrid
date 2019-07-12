@@ -762,8 +762,6 @@ static SCAN_CODE heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 
 static SCAN_CODE heap_get_page_info (THREAD_ENTRY * thread_p, const OID * cls_oid, const HFID * hfid, const VPID * vpid,
 				     const PAGE_PTR pgptr, DB_VALUE ** page_info);
-static int heap_scancache_start_chain_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * new_scan_cache,
-					      HEAP_SCANCACHE * old_scan_cache, OID * next_row_version);
 static SCAN_CODE heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, bool ispeeking,
 					  OID * forward_oid, RECDES * recdes);
 static void heap_mvcc_log_insert (THREAD_ENTRY * thread_p, RECDES * p_recdes, LOG_DATA_ADDR * p_addr);
@@ -873,6 +871,23 @@ STATIC_INLINE int heap_copy_chain (THREAD_ENTRY * thread_p, PAGE_PTR page_heap, 
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int heap_get_last_vpid (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * last_vpid)
   __attribute__ ((ALWAYS_INLINE));
+
+// *INDENT-OFF*
+static void heap_scancache_block_allocate (cubmem::block &b, size_t size);
+static void heap_scancache_block_deallocate (cubmem::block &b);
+
+static const cubmem::block_allocator HEAP_SCANCACHE_BLOCK_ALLOCATOR =
+  { heap_scancache_block_allocate, heap_scancache_block_deallocate };
+// *INDENT-ON*
+
+static int heap_get_page_with_watcher (THREAD_ENTRY * thread_p, const VPID * page_vpid, PGBUF_WATCHER * pg_watcher);
+static int heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, const VPID * next_link,
+				 const VPID * prev_link, PGBUF_WATCHER * page_watcher, bool keep_page_fixed,
+				 bool is_page_watcher_inited);
+
+static int heap_update_and_log_header (THREAD_ENTRY * thread_p, const HFID * hfid,
+				       const PGBUF_WATCHER heap_header_watcher, HEAP_HDR_STATS * heap_hdr,
+				       const VPID new_last_vpid, const int new_num_pages);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -5882,7 +5897,7 @@ heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid
   heap_create_insert_context (&insert_context, (HFID *) hfid, class_oid, &recdes, NULL);
 
   /* insert */
-  rc = heap_insert_logical (thread_p, &insert_context);
+  rc = heap_insert_logical (thread_p, &insert_context, NULL);
   if (rc != NO_ERROR)
     {
       return rc;
@@ -6703,11 +6718,9 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 
   scan_cache->cache_last_fix_page = cache_last_fix_page;
   PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_HEAP_NORMAL, hfid);
-  scan_cache->area = NULL;
-  scan_cache->area_size = -1;
+  scan_cache->start_area ();
   scan_cache->num_btids = 0;
   scan_cache->m_index_stats = NULL;
-
   scan_cache->debug_initpattern = HEAP_DEBUG_SCANCACHE_INITPATTERN;
   scan_cache->mvcc_snapshot = mvcc_snapshot;
   scan_cache->partition_list = NULL;
@@ -6722,8 +6735,6 @@ exit_on_error:
   scan_cache->page_latch = NULL_LOCK;
   scan_cache->cache_last_fix_page = false;
   PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_RANK_UNDEFINED, PGBUF_ORDERED_NULL_HFID);
-  scan_cache->area = NULL;
-  scan_cache->area_size = 0;
   scan_cache->num_btids = 0;
   scan_cache->m_index_stats = NULL;
   scan_cache->file_type = FILE_UNKNOWN_TYPE;
@@ -7005,8 +7016,7 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
   OID_SET_NULL (&scan_cache->node.class_oid);
   scan_cache->page_latch = S_LOCK;
   scan_cache->cache_last_fix_page = true;
-  scan_cache->area = NULL;
-  scan_cache->area_size = 0;
+  scan_cache->start_area ();
   scan_cache->num_btids = 0;
   scan_cache->m_index_stats = NULL;
   scan_cache->file_type = FILE_UNKNOWN_TYPE;
@@ -7052,12 +7062,6 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
 	    }
 	}
 
-      /* Free memory */
-      if (scan_cache->area)
-	{
-	  db_private_free_and_init (thread_p, scan_cache->area);
-	}
-
       if (scan_cache->partition_list)
 	{
 	  HEAP_SCANCACHE_NODE_LIST *next_node = NULL;
@@ -7079,8 +7083,7 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
   OID_SET_NULL (&scan_cache->node.class_oid);
   scan_cache->page_latch = NULL_LOCK;
   assert (PGBUF_IS_CLEAN_WATCHER (&(scan_cache->page_watcher)));
-  scan_cache->area = NULL;
-  scan_cache->area_size = 0;
+  scan_cache->end_area ();
   scan_cache->file_type = FILE_UNKNOWN_TYPE;
   scan_cache->debug_initpattern = 0;
 
@@ -8200,7 +8203,7 @@ SCAN_CODE
 heap_scanrange_to_following (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_range, OID * start_oid)
 {
   SCAN_CODE scan;
-  RECDES recdes;
+  RECDES recdes = RECDES_INITIALIZER;
   INT16 slotid;
   VPID *vpid;
 
@@ -8311,7 +8314,7 @@ SCAN_CODE
 heap_scanrange_to_prior (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_range, OID * last_oid)
 {
   SCAN_CODE scan;
-  RECDES recdes;
+  RECDES recdes = RECDES_INITIALIZER;
   INT16 slotid;
 
   if (HEAP_DEBUG_ISVALID_SCANRANGE (scan_range) != DISK_VALID)
@@ -18353,23 +18356,8 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
     case REC_HOME:
       if (scan_cache != NULL && ispeeking == COPY && recdes->data == NULL)
 	{
-	  /* It is guaranteed that scan_cache is not NULL. */
-	  if (scan_cache->area == NULL)
-	    {
-	      /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better
-	       * estimates. */
-	      scan_cache->area_size = DB_PAGESIZE * 2;
-	      scan_cache->area = (char *) db_private_alloc (thread_p, scan_cache->area_size);
-	      if (scan_cache->area == NULL)
-		{
-		  scan_cache->area_size = -1;
-		  pgbuf_ordered_unfix (thread_p, page_watcher);
-		  return S_ERROR;
-		}
-	    }
-	  recdes->data = scan_cache->area;
-	  recdes->area_size = scan_cache->area_size;
-	  /* The allocated space is enough to save the instance. */
+	  scan_cache->assign_recdes_to_area (*recdes);
+	  /* The default allocated space is enough to save the instance. */
 	}
       if (scan_cache != NULL && scan_cache->cache_last_fix_page == true)
 	{
@@ -18415,34 +18403,13 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
       if (scan_cache != NULL && (ispeeking == PEEK || recdes->data == NULL))
 	{
 	  /* It is guaranteed that scan_cache is not NULL. */
-	  if (scan_cache->area == NULL)
-	    {
-	      /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better
-	       * estimates. We could call heap_ovf_get_length, but it may be better to just guess and realloc if
-	       * needed. We could also check the estimates for average object length, but again, it may be expensive
-	       * and may not be accurate for the object. */
-	      scan_cache->area_size = DB_PAGESIZE * 2;
-	      scan_cache->area = (char *) db_private_alloc (thread_p, scan_cache->area_size);
-	      if (scan_cache->area == NULL)
-		{
-		  scan_cache->area_size = -1;
-		  return S_ERROR;
-		}
-	    }
-	  recdes->data = scan_cache->area;
-	  recdes->area_size = scan_cache->area_size;
+	  scan_cache->assign_recdes_to_area (*recdes);
 
 	  while ((scan = heap_ovf_get (thread_p, &forward_oid, recdes, NULL_CHN, NULL)) == S_DOESNT_FIT)
 	    {
 	      /* The object did not fit into such an area, reallocate a new area */
-	      recdes->area_size = -recdes->length;
-	      recdes->data = (char *) db_private_realloc (thread_p, scan_cache->area, recdes->area_size);
-	      if (recdes->data == NULL)
-		{
-		  return S_ERROR;
-		}
-	      scan_cache->area_size = recdes->area_size;
-	      scan_cache->area = recdes->data;
+	      assert (recdes->length < 0);
+	      scan_cache->assign_recdes_to_area (*recdes, (size_t) (-recdes->length));
 	    }
 	  if (scan != S_SUCCESS)
 	    {
@@ -18614,62 +18581,6 @@ heap_prev_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_o
 }
 
 /*
- * heap_scancache_start_chain_update  () - start new scan cache for MVCC
- *					  chain update
- *   return: error code
- *   thread_p(in): thread entry
- *   new_scan_cache(in/out): the new scan cache
- *   old_scan_cache(in/out): the old scan cache
- *   next_row_version(in): next row version
- *
- * Note: This function start a new scan cache used to update
- *	MVCC chain. The old and new scan cache may share common data.
- */
-int
-heap_scancache_start_chain_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * new_scan_cache,
-				   HEAP_SCANCACHE * old_scan_cache, OID * next_row_version)
-{
-  assert (new_scan_cache != NULL);
-  assert (old_scan_cache != NULL);
-
-  /* update scan cache */
-
-  /* start a local cache that is suitable for our needs */
-  if (heap_scancache_start (thread_p, new_scan_cache, &old_scan_cache->node.hfid, &old_scan_cache->node.class_oid,
-			    true, false, NULL) != NO_ERROR)
-    {
-      /* TODO - er_set */
-      return ER_FAILED;
-    }
-
-  /* use current_scan_cache->area in order to alloc only once */
-  new_scan_cache->area = old_scan_cache->area;
-  new_scan_cache->area_size = old_scan_cache->area_size;
-  /* set pgptr if is the case */
-  if (old_scan_cache->page_watcher.pgptr != NULL)
-    {
-      /* handle this case, just to be sure */
-      VPID *vpidptr_incache;
-      VPID vpid;
-
-      vpid.volid = next_row_version->volid;
-      vpid.pageid = next_row_version->pageid;
-      vpidptr_incache = pgbuf_get_vpid_ptr (old_scan_cache->page_watcher.pgptr);
-      if (VPID_EQ (&vpid, vpidptr_incache))
-	{
-	  pgbuf_replace_watcher (thread_p, &old_scan_cache->page_watcher, &new_scan_cache->page_watcher);
-	}
-      else
-	{
-	  /* Free the previous scan page */
-	  pgbuf_ordered_unfix (thread_p, &old_scan_cache->page_watcher);
-	}
-    }
-
-  return NO_ERROR;
-}
-
-/*
  * heap_get_mvcc_rec_header_from_overflow () - Get record header from overflow
  *					       page.
  *
@@ -18754,42 +18665,18 @@ heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, b
   SCAN_CODE scan = S_SUCCESS;
 
   /* Try to reuse the previously allocated area No need to check the snapshot since was already checked */
-  if (scan_cache != NULL && (ispeeking == PEEK || recdes->data == NULL || recdes->data == scan_cache->area))
+  if (scan_cache != NULL
+      && (ispeeking == PEEK || recdes->data == NULL || scan_cache->is_recdes_assigned_to_area (*recdes)))
     {
-      if (scan_cache->area == NULL)
-	{
-	  /*
-	   * Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates.
-	   * We could call heap_ovf_get_length, but it may be better to just guess and realloc if needed.
-	   * We could also check the estimates for average object length, but again, it may be expensive and may not be
-	   * accurate for this object.
-	   */
-	  scan_cache->area_size = DB_PAGESIZE * 2;
-	  scan_cache->area = (char *) db_private_alloc (thread_p, scan_cache->area_size);
-	  if (scan_cache->area == NULL)
-	    {
-	      scan_cache->area_size = -1;
-	      return S_ERROR;
-	    }
-	}
-      recdes->data = scan_cache->area;
-      recdes->area_size = scan_cache->area_size;
+      scan_cache->assign_recdes_to_area (*recdes);
 
       while ((scan = heap_ovf_get (thread_p, forward_oid, recdes, NULL_CHN, NULL)) == S_DOESNT_FIT)
 	{
 	  /*
-	   * The object did not fit into such an area, reallocate a new
-	   * area
+	   * The object did not fit into such an area, reallocate a new area
 	   */
-
-	  recdes->area_size = -recdes->length;
-	  recdes->data = (char *) db_private_realloc (thread_p, scan_cache->area, recdes->area_size);
-	  if (recdes->data == NULL)
-	    {
-	      return S_ERROR;
-	    }
-	  scan_cache->area_size = recdes->area_size;
-	  scan_cache->area = recdes->data;
+	  assert (recdes->length < 0);
+	  scan_cache->assign_recdes_to_area (*recdes, (size_t) (-recdes->length));
 	}
       if (scan != S_SUCCESS)
 	{
@@ -22381,7 +22268,7 @@ heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID
  *         moment.
  */
 int
-heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
+heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, PGBUF_WATCHER * home_hint_p)
 {
   bool is_mvcc_op;
   int rc = NO_ERROR;
@@ -22456,7 +22343,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     }
 
   /* get insert location (includes locking) */
-  if (heap_get_insert_location_with_lock (thread_p, context, NULL) != NO_ERROR)
+  if (heap_get_insert_location_with_lock (thread_p, context, home_hint_p) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -24008,21 +23895,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 
   if (recdes->data == NULL)
     {
-      if (scan_cache->area == NULL)
-	{
-	  /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better
-	   * estimates. */
-	  scan_cache->area_size = DB_PAGESIZE * 2;
-	  scan_cache->area = (char *) db_private_alloc (thread_p, scan_cache->area_size);
-	  if (scan_cache->area == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, scan_cache->area_size);
-	      scan_cache->area_size = -1;
-	      return S_ERROR;
-	    }
-	}
-      recdes->data = scan_cache->area;
-      recdes->area_size = scan_cache->area_size;
+      scan_cache->assign_recdes_to_area (*recdes);
     }
 
   /* check visibility of old versions from log following prev_version_lsa links */
@@ -24042,18 +23915,11 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
       scan_code = log_get_undo_record (thread_p, log_page_p, process_lsa, recdes);
       if (scan_code != S_SUCCESS)
 	{
-	  if (scan_code == S_DOESNT_FIT && recdes->data == scan_cache->area)
+	  if (scan_code == S_DOESNT_FIT && scan_cache->is_recdes_assigned_to_area (*recdes))
 	    {
 	      /* expand record area and try again */
-	      recdes->data = (char *) db_private_realloc (thread_p, scan_cache->area, -recdes->length);
-	      if (recdes->data == NULL)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, -recdes->length);
-		  return S_ERROR;
-		}
-	      recdes->area_size = scan_cache->area_size = -recdes->length;
-	      scan_cache->area = recdes->data;
-
+	      assert (recdes->length < 0);
+	      scan_cache->assign_recdes_to_area (*recdes, (size_t) (-recdes->length));
 	      /* final try to get the undo record */
 	      continue;
 	    }
@@ -24597,30 +24463,7 @@ int
 heap_scan_cache_allocate_area (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p, int size)
 {
   assert (scan_cache_p != NULL && size > 0);
-  if (scan_cache_p->area == NULL)
-    {
-      /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates. */
-      scan_cache_p->area = (char *) db_private_alloc (thread_p, size);
-      if (scan_cache_p->area == NULL)
-	{
-	  scan_cache_p->area_size = -1;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      scan_cache_p->area_size = size;
-    }
-  else if (scan_cache_p->area_size < size)
-    {
-      scan_cache_p->area = (char *) db_private_realloc (thread_p, scan_cache_p->area, size);
-      if (scan_cache_p->area == NULL)
-	{
-	  scan_cache_p->area_size = -1;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      scan_cache_p->area_size = size;
-    }
-
+  scan_cache_p->reserve_area ((size_t) size);
   return NO_ERROR;
 }
 
@@ -24637,18 +24480,8 @@ static int
 heap_scan_cache_allocate_recdes_data (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p, RECDES * recdes_p,
 				      int size)
 {
-  int error_code;
-  assert (scan_cache_p != NULL && recdes_p != NULL);
-
-  error_code = heap_scan_cache_allocate_area (thread_p, scan_cache_p, size);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  recdes_p->data = scan_cache_p->area;
-  recdes_p->area_size = scan_cache_p->area_size;
-
+  assert (scan_cache_p != NULL && recdes_p != NULL && size >= 0);
+  scan_cache_p->assign_recdes_to_area (*recdes_p, (size_t) size);
   return NO_ERROR;
 }
 
@@ -24777,3 +24610,449 @@ heap_is_page_header (THREAD_ENTRY * thread_p, PAGE_PTR page)
     }
   return false;
 }
+
+//
+// C++ code
+//
+// *INDENT-OFF*
+static void
+heap_scancache_block_allocate (cubmem::block &b, size_t size)
+{
+  const size_t DEFAULT_MINSIZE = (size_t) DB_PAGESIZE * 2;
+
+  if (size <= DEFAULT_MINSIZE)
+    {
+      size = DEFAULT_MINSIZE;
+    }
+  else
+    {
+      size = DB_ALIGN (size, (size_t) DB_PAGESIZE);
+    }
+
+  if (b.ptr != NULL && b.dim >= size)
+    {
+      // no need to change
+      return;
+    }
+
+  if (b.ptr == NULL)
+    {
+      b.ptr = (char *) db_private_alloc (NULL, size);
+      assert (b.ptr != NULL);
+    }
+  else
+    {
+      b.ptr = (char *) db_private_realloc (NULL, b.ptr, size);
+      assert (b.ptr != NULL);
+    }
+  b.dim = size;
+}
+
+static void
+heap_scancache_block_deallocate (cubmem::block &b)
+{
+  db_private_free_and_init (NULL, b.ptr);
+  b.dim = 0;
+}
+
+//
+// heap_scancache
+//
+void
+heap_scancache::start_area ()
+{
+  m_area = NULL;    // start as null; it will be allocated when it is first needed
+}
+
+void
+heap_scancache::alloc_area ()
+{
+  if (m_area == NULL)
+    {
+      m_area = new cubmem::single_block_allocator (HEAP_SCANCACHE_BLOCK_ALLOCATOR);
+    }
+}
+
+void
+heap_scancache::end_area ()
+{
+  delete m_area;
+  m_area = NULL;
+}
+
+void
+heap_scancache::reserve_area (size_t size)
+{
+  alloc_area ();
+  m_area->reserve (size);
+}
+
+void
+heap_scancache::assign_recdes_to_area (RECDES & recdes, size_t size /* = 0 */)
+{
+  reserve_area (size);
+
+  recdes.data = m_area->get_ptr ();
+  recdes.area_size = (int) m_area->get_size ();
+}
+
+bool
+heap_scancache::is_recdes_assigned_to_area (const RECDES & recdes) const
+{
+  return m_area != NULL && recdes.data == m_area->get_ptr ();
+}
+
+const cubmem::block_allocator &
+heap_scancache::get_area_block_allocator ()
+{
+  alloc_area ();
+  return m_area->get_block_allocator ();
+}
+
+int
+heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, PGBUF_WATCHER * home_hint_p, VPID * new_page_vpid)
+{
+  int error_code = NO_ERROR;
+  HEAP_CHAIN new_page_chain;
+  PAGE_PTR page_ptr;
+
+   assert (hfid != NULL && home_hint_p != NULL && new_page_vpid != NULL);
+
+   PGBUF_INIT_WATCHER (home_hint_p, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+  // Init the heap page chain
+  new_page_chain.class_oid = class_oid;
+  VPID_SET_NULL (&new_page_chain.prev_vpid);
+  VPID_SET_NULL (&new_page_chain.next_vpid);
+  new_page_chain.max_mvccid = MVCCID_NULL;
+  new_page_chain.flags = 0;
+  HEAP_PAGE_SET_VACUUM_STATUS (&new_page_chain, HEAP_PAGE_VACUUM_NONE);
+
+   VPID_SET_NULL (new_page_vpid);
+
+  // Alloc a new page.
+  error_code = file_alloc (thread_p, &hfid->vfid, heap_vpid_init_new, &new_page_chain, new_page_vpid, &page_ptr);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  // Need to get the watcher to the new page.
+  pgbuf_attach_watcher (thread_p, page_ptr, PGBUF_LATCH_WRITE, hfid, home_hint_p);
+
+  // Make sure we have fixed the page.
+  assert (pgbuf_is_page_fixed_by_thread (thread_p, new_page_vpid));
+
+   return error_code;
+}
+
+int
+heap_nonheader_page_capacity ()
+{
+  return spage_max_record_size () - sizeof (HEAP_CHAIN);
+}
+
+/*
+ *  heap_append_pages_to_heap () - Append a list of pages to the given heap
+ *    return                  : Error_code
+ *    thread_p(in)            : Thread_context
+ *    hfid(in)                : Heap file to which we append the pages
+ *    class_oid(in)           : The class identifier.
+ *    heap_pages_array(in)    : Array containing VPIDs to append to the heap.
+ *
+ *  Note: This functions also logs any operations in the pages.
+ *
+ */
+int
+heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID &class_oid,
+                           const std::vector<VPID> &heap_pages_array)
+{
+  int error_code = NO_ERROR;
+  PGBUF_WATCHER page_watcher;
+  PGBUF_WATCHER heap_header_watcher;
+  PGBUF_WATCHER heap_last_page_watcher;
+  size_t array_size = heap_pages_array.size ();
+  VPID null_vpid;
+  VPID heap_hdr_vpid;
+  VPID heap_last_page_vpid;
+  HEAP_HDR_STATS *heap_hdr = NULL;
+
+  VPID_SET_NULL (&null_vpid);
+  VPID_SET_NULL (&heap_hdr_vpid);
+  VPID_SET_NULL (&heap_last_page_vpid);
+
+  PGBUF_INIT_WATCHER (&page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+  PGBUF_INIT_WATCHER (&heap_header_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
+  PGBUF_INIT_WATCHER (&heap_last_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+
+  // Early out
+  if (array_size == 0)
+    {
+      // Nothing to append.
+      return error_code;
+    }
+
+  // Safe-guards
+  assert (hfid != NULL);
+
+  // Check every page is allocated
+  for (size_t i = 0; i < array_size; i++)
+    {
+      error_code = pgbuf_is_valid_page (thread_p, &heap_pages_array[i], false, NULL, NULL);
+      if (error_code != NO_ERROR)
+        {
+          ASSERT_ERROR ();
+          return error_code;
+        }
+    }
+
+  // Start a system operation since we write in multiple pages.
+  log_sysop_start (thread_p);
+
+  /**********************************************************/
+  /*      Start by creating a heap chain from the pages.    */
+  /**********************************************************/
+
+  for (size_t i = 0; i < array_size; i++)
+    {  
+      VPID next_vpid, prev_vpid;
+
+      VPID_COPY (&prev_vpid, ((i == 0) ? (&null_vpid) : (&heap_pages_array[i - 1])));
+      VPID_COPY (&next_vpid, ((i == array_size - 1) ? (&null_vpid) : (&heap_pages_array[i + 1])));
+
+      error_code = heap_add_chain_links (thread_p, hfid, &heap_pages_array[i], &next_vpid, &prev_vpid,
+                                         &page_watcher, false, false);
+      if (error_code != NO_ERROR)
+        {
+          // This should never happen.
+          assert (false);
+          goto cleanup;
+        }
+    }
+
+  /**********************************************************/
+  /*        Now add the chain to the heap itself.           */
+  /**********************************************************/
+
+  // First get the heap header page.
+  error_code = heap_get_header_page (thread_p, hfid, &heap_hdr_vpid);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto cleanup;
+    }
+
+  // Now get a watcher for the heap header page.
+  error_code = heap_get_page_with_watcher (thread_p, &heap_hdr_vpid, &heap_header_watcher);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto cleanup;
+    }
+
+  // Get the heap header.
+  heap_hdr = heap_get_header_stats_ptr (thread_p, heap_header_watcher.pgptr);
+  if (heap_hdr == NULL)
+    {
+      assert (false);
+      error_code = ER_FAILED;
+      goto cleanup;
+    }
+
+  // Get the last page of the heap.
+  error_code = heap_get_last_page (thread_p, hfid, heap_hdr, NULL, &heap_last_page_vpid, &heap_last_page_watcher);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto cleanup;
+    }
+
+  // Add new links to the first page of the chain.
+  error_code = heap_add_chain_links (thread_p, hfid, &heap_pages_array[0], NULL, &heap_last_page_vpid,
+                                     &page_watcher, true, false);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto cleanup;
+    }
+
+  // Add new links to the last page of the heap.
+  error_code = heap_add_chain_links (thread_p, hfid, &heap_last_page_vpid, &heap_pages_array[0], NULL,
+                                     &heap_last_page_watcher, true, true);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto cleanup;
+    }
+
+  // Now update the last page of the heap header.
+
+  error_code = heap_update_and_log_header (thread_p, hfid, heap_header_watcher, heap_hdr, heap_pages_array[array_size - 1],
+                                           array_size);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto cleanup;
+    }
+
+cleanup:
+  // Check if we have errors to abort the sysop.
+  if (error_code != NO_ERROR)
+    {
+      // Safeguard
+      ASSERT_ERROR ();
+      log_sysop_abort (thread_p);
+    }
+  else
+    {
+      // Commit the sysop
+      log_sysop_commit (thread_p);
+    }
+
+   if (page_watcher.pgptr)
+    {
+      pgbuf_ordered_unfix_and_init (thread_p, page_watcher.pgptr, &page_watcher);
+    }
+
+  if (heap_last_page_watcher.pgptr)
+    {
+      pgbuf_ordered_unfix_and_init (thread_p, heap_last_page_watcher.pgptr, &heap_last_page_watcher);
+    }
+
+  if (heap_header_watcher.pgptr)
+    {
+      pgbuf_ordered_unfix_and_init (thread_p, heap_header_watcher.pgptr, &heap_header_watcher);
+    }
+
+  return error_code;
+}
+
+static int
+heap_get_page_with_watcher (THREAD_ENTRY * thread_p, const VPID *page_vpid, PGBUF_WATCHER * pg_watcher)
+{
+  int error_code = NO_ERROR;
+
+   // Safeguards.
+  assert (pg_watcher != NULL);
+  assert (page_vpid != NULL);
+
+  pg_watcher->pgptr = heap_scan_pb_lock_and_fetch (thread_p, page_vpid, OLD_PAGE, X_LOCK, NULL, pg_watcher);
+  if (pg_watcher->pgptr == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+   return error_code;
+}
+
+static int
+heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, const VPID * next_link,
+                      const VPID * prev_link, PGBUF_WATCHER * page_watcher, bool keep_page_fixed,
+                      bool is_page_watcher_inited)
+{
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+  int error_code = NO_ERROR;
+
+  // Init watcher if needed.
+  if (!is_page_watcher_inited)
+    {
+      PGBUF_INIT_WATCHER (page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+
+       // Get a watcher for this page.
+      error_code = heap_get_page_with_watcher (thread_p, vpid, page_watcher);
+      if (error_code != NO_ERROR)
+        {
+          ASSERT_ERROR ();          
+          return error_code;
+        }
+    }
+
+  // Make sure we fixed the page.
+  assert (pgbuf_is_page_fixed_by_thread (thread_p, vpid));
+
+  // Prepare the chain.
+  HEAP_CHAIN *chain, chain_prev;
+
+  // Get the chain from the current page.
+  chain = heap_get_chain_ptr (thread_p, page_watcher->pgptr);
+  if (chain == NULL)
+    {
+      // This should never happen
+      assert (false);
+      error_code = ER_FAILED;
+      return error_code;
+    }
+
+  // Save the old chain for logging.
+  chain_prev = *chain;
+
+  // Add the prev vpid to chain
+  if (prev_link != NULL)
+    {
+      VPID_COPY (&chain->prev_vpid, prev_link);
+    }
+
+  // Add the next vpid to chain
+  if (next_link != NULL)
+    {
+      VPID_COPY (&chain->next_vpid, next_link);
+    }
+
+  // Prepare logging
+  addr.vfid = &hfid->vfid;
+  addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
+  addr.pgptr = page_watcher->pgptr;
+
+  // Log the changes.
+  log_append_undoredo_data (thread_p, RVHF_CHAIN, &addr, sizeof (HEAP_CHAIN), sizeof (HEAP_CHAIN), &chain_prev,
+                            chain);
+
+  // Now set the page dirty.
+  pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
+
+   if (!keep_page_fixed)
+    {
+      // Unfix the current page.
+      pgbuf_ordered_unfix_and_init (thread_p, page_watcher->pgptr, page_watcher);
+
+      // And clean the watcher
+      PGBUF_CLEAR_WATCHER (page_watcher);
+    }
+
+   return NO_ERROR;
+}
+
+static
+int heap_update_and_log_header (THREAD_ENTRY * thread_p, const HFID * hfid, const PGBUF_WATCHER heap_header_watcher,
+                                HEAP_HDR_STATS * heap_hdr, const VPID new_last_vpid, const int new_num_pages)
+{
+  int error_code = NO_ERROR;
+  HEAP_HDR_STATS heap_hdr_prev;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+  
+  assert (!PGBUF_IS_CLEAN_WATCHER (&heap_header_watcher));
+  assert (heap_hdr != NULL);
+
+  // Save for logging.
+  heap_hdr_prev = *heap_hdr;
+
+  // Now add the info to the header.
+  heap_hdr->estimates.last_vpid = new_last_vpid;
+  heap_hdr->estimates.num_pages += new_num_pages;
+
+  // Log this change.
+  addr.pgptr = heap_header_watcher.pgptr;
+  addr.vfid = &hfid->vfid;
+  addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
+
+  log_append_undoredo_data (thread_p, RVHF_STATS, &addr, sizeof(HEAP_HDR_STATS), sizeof (HEAP_HDR_STATS), 
+                            &heap_hdr_prev, heap_hdr);
+
+  // Set the page as dirty.
+  pgbuf_set_dirty (thread_p, heap_header_watcher.pgptr, DONT_FREE);
+
+  return NO_ERROR;
+}
+
+// *INDENT-ON*
