@@ -3800,7 +3800,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS,
    PRM_NAME_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF,
-   (PRM_FOR_CLIENT | PRM_FOR_HA | PRM_TIME_UNIT),
+   (PRM_FOR_CLIENT | PRM_FOR_HA | PRM_TIME_UNIT | PRM_OBSOLETED),
    PRM_INTEGER,
    &prm_ha_unacceptable_proc_restart_timediff_flag,
    (void *) &prm_ha_unacceptable_proc_restart_timediff_default,
