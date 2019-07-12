@@ -1728,6 +1728,7 @@ extern "C"
   extern int restoreslave (UTIL_FUNCTION_ARG * arg_map);
   extern int vacuumdb (UTIL_FUNCTION_ARG * arg_map);
   extern int checksumdb (UTIL_FUNCTION_ARG * arg_map);
+  extern int copyslave (UTIL_FUNCTION_ARG * arg_map);
 
   extern void util_admin_usage (const char *argv0);
   extern void util_admin_version (const char *argv0);
