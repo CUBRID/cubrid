@@ -1394,22 +1394,7 @@ parse_mtime (const char *buf, int buf_len, unsigned int *mtime, bool * is_msec, 
 	  for (; p < strend && char_isspace (*p); ++p)
 	    ;
 
-	  if (p == strend)
-	    {
-	      /* This allows time' ' to be interpreted as 0 which means 12:00:00 AM. */
-	      ++i;
-
-	      /* This means time string format is not completed (like 0, 01:00) * This flag will be used by operate
-	       * like [select 1 + '1'] which should not be converted to time */
-	      if (is_explicit != NULL && i < 3)
-		{
-		  *is_explicit = false;
-		}
-
-	      break;
-	    }
-
-	  if (*p == ':')
+	  if (p < strend && *p == ':')
 	    {
 	      if (i == 2)
 		{
@@ -1417,7 +1402,7 @@ parse_mtime (const char *buf, int buf_len, unsigned int *mtime, bool * is_msec, 
 		}
 	      ++p;
 	    }
-	  else if (*p == '.' && i == 2)
+	  else if (p < strend && *p == '.' && i == 2)
 	    {
 	      ++p;
 	      if (is_msec != NULL)
@@ -1427,8 +1412,11 @@ parse_mtime (const char *buf, int buf_len, unsigned int *mtime, bool * is_msec, 
 	    }
 	  else
 	    {
+	      /* This allows time' ' to be interpreted as 0 which means 12:00:00 AM. */
 	      ++i;
 
+	      /* This means time string format is not completed (like 0, 01:00) * This flag will be used by operate
+	       * like [select 1 + '1'] which should not be converted to time */
 	      if (is_explicit != NULL && i < 3)
 		{
 		  *is_explicit = false;
