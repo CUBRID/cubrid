@@ -79,7 +79,7 @@ namespace cubpacking
 
       void pack_int_array (const int *array, const int count);
 
-      size_t get_packed_int_vector_size (size_t curr_offset, const int count);
+      size_t get_packed_int_vector_size (size_t curr_offset, const size_t count);
       void pack_int_vector (const std::vector<int> &array);
 
       size_t get_packed_db_value_size (const db_value &value, size_t curr_offset);
@@ -135,6 +135,8 @@ namespace cubpacking
       //
       template <typename ... Args>
       size_t get_all_packed_size (Args &&... args);
+      template <typename ... Args>
+      size_t get_all_packed_size_starting_offset (size_t start_offset, Args &&... args);
 
       // pack all arguments. equivalent to:
       //
@@ -273,6 +275,14 @@ namespace cubpacking
   packer::get_all_packed_size (Args &&... args)
   {
     return get_all_packed_size_recursive (0, std::forward<Args> (args)...);
+  }
+
+  template <typename ... Args>
+  size_t
+  packer::get_all_packed_size_starting_offset (size_t start_offset, Args &&... args)
+  {
+    size_t total_size = get_all_packed_size_recursive (start_offset, std::forward<Args> (args)...);
+    return total_size - start_offset;
   }
 
   template <typename T>
