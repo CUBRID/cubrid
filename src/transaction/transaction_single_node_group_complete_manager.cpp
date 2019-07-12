@@ -210,7 +210,7 @@ namespace cubtx
 
     if (log_Gl.m_tran_complete_mgr->get_manager_type () != get_manager_type ())
       {
-        return;
+	return;
       }
 
     if (close_current_group ())
@@ -252,9 +252,9 @@ namespace cubtx
   {
     LOG_TDES *tdes = logtb_get_tdes (&cubthread::get_entry ());
 
-    if (log_Gl.m_tran_complete_mgr->get_manager_type() != get_manager_type ())
+    if (log_Gl.m_tran_complete_mgr->get_manager_type () != get_manager_type ())
       {
-        return;
+	return;
       }
 
     if (is_latest_closed_group_completed ())

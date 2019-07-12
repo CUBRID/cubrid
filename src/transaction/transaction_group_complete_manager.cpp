@@ -41,8 +41,9 @@ namespace cubtx
 
     on_register_transaction ();
 
-    er_log_debug (ARG_FILE_LINE, "group_complete_manager::register_transaction: (%d, %llu, %d)\n",
-		  tran_index, (long long int) mvccid, (int) state);
+    er_log_debug (ARG_FILE_LINE, "group_complete_manager::register_transaction: (tran_index=%d, MVCCID=%llu, " \
+		  "tran_state=%d, current group size = %d)\n", tran_index, (long long int) mvccid, (int) state,
+		  m_current_group.get_container ().size ());
 
     return m_current_group_id;
   }
@@ -272,9 +273,10 @@ namespace cubtx
 	/* Close the current group. */
 	m_latest_closed_group_id.store (m_current_group_id);
 	m_latest_closed_group_state = GROUP_CLOSED;
-	er_log_debug (ARG_FILE_LINE, "group_complete_manager::close_current_group: (manager_type = %s, group = %llu)\n",
+	er_log_debug (ARG_FILE_LINE,
+		      "group_complete_manager::close_current_group: (manager_type = %s, group = %llu, group_size = %d)\n",
 		      logpb_complete_manager_string ((LOG_TRAN_COMPLETE_MANAGER_TYPE) get_manager_type ()),
-		      (unsigned long long) m_latest_closed_group_id);
+		      (unsigned long long) m_latest_closed_group_id, m_current_group.get_container ().size ());
 
 	/* Advance with the group - copy and reinit it. */
 	m_current_group.transfer_to (m_latest_closed_group);

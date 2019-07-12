@@ -399,9 +399,10 @@ namespace cubreplication
 	_er_log_debug (ARG_FILE_LINE, "log_consumer::execute_task:\n%s", sb.get_buffer ());
       }
 
-    cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
-
+    /* Increase m_started_task before starting the task. */
     m_started_tasks++;
+
+    cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
   }
 
   void log_consumer::wait_for_tasks ()

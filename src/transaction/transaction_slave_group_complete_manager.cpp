@@ -84,7 +84,8 @@ namespace cubtx
      * Currently, we wakeup GC thread when all expected transactions were added into current group.
      */
     unsigned int count_min_group_transactions = get_current_group_min_transactions ();
-    if (get_current_group ().get_container ().size () >= count_min_group_transactions)
+    assert (get_current_group ().get_container ().size () <= count_min_group_transactions);
+    if (get_current_group ().get_container ().size () == count_min_group_transactions)
       {
 	gl_slave_group_complete_daemon->wakeup ();
       }
@@ -126,6 +127,7 @@ namespace cubtx
 	return false;
       }
 
+    assert (get_current_group ().get_container ().size () == count_min_transactions);
     return true;
   }
 
@@ -234,8 +236,9 @@ namespace cubtx
     m_latest_group_stream_position = stream_position;
     m_latest_group_id = set_current_group_minimum_transactions (count_expected_transactions, has_group_enough_transactions);
     m_has_latest_group_close_info.store (true);
-    er_log_debug (ARG_FILE_LINE, "set_close_info_for_current_group sp=%llu, latest_group_id = %llu\n", stream_position,
-		  m_latest_group_id);
+    er_log_debug (ARG_FILE_LINE, "set_close_info_for_current_group sp=%llu, latest_group_id = %llu,"
+		  "count_expected_transaction = %d\n", stream_position, m_latest_group_id,
+		  count_expected_transactions);
     if (has_group_enough_transactions)
       {
 	/* Wakeup group complete thread, since we have all informations that allows group close. */

@@ -146,7 +146,7 @@ namespace cubtx
   //
   void master_group_complete_manager::do_prepare_complete (THREAD_ENTRY *thread_p)
   {
-    if (log_Gl.m_tran_complete_mgr->get_manager_type() != get_manager_type ())
+    if (log_Gl.m_tran_complete_mgr->get_manager_type () != get_manager_type ())
       {
 	return;
       }
@@ -182,7 +182,7 @@ namespace cubtx
     LOG_TDES *tdes = logtb_get_tdes (&cubthread::get_entry ());
     bool has_postpone;
 
-    if (log_Gl.m_tran_complete_mgr->get_manager_type() != get_manager_type())
+    if (log_Gl.m_tran_complete_mgr->get_manager_type () != get_manager_type ())
       {
 	return;
       }
