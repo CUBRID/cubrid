@@ -78,9 +78,12 @@ namespace cubreplication
   /* base class for collection of data and methods of a replication node (actually running) */
   class replication_node
   {
-    protected:
+    public:
       const static long long SETUP_REPLICATION_MAGIC = 0x19912882;
+      const static long long SETUP_COPY_REPLICATION_MAGIC = 0x36634554;
+      const static long long SETUP_COPY_END_REPLICATION_MAGIC = 0x28821771;
 
+    protected:
       cubstream::multi_thread_stream *m_stream;
       cubstream::stream_file *m_stream_file;
       cubstream::stream_position m_start_position;

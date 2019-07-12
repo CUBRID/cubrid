@@ -43,6 +43,7 @@ namespace cubreplication
     m_my_identity = myself;
     m_source_identity = source_node;
     m_stream = NULL;
+    m_online_repl_start_pos = 0;
   }
 
   apply_copy_context::~apply_copy_context ()
@@ -80,7 +81,54 @@ namespace cubreplication
     m_copy_consumer->set_stream (m_stream);
   }
 
-  int apply_copy_context::start_copy ()
+  int apply_copy_context::setup_copy_protocol (cubcomm::channel &chn)
+  {
+    UINT64 pos = 0, expected_magic;
+    std::size_t max_len = sizeof (UINT64);
+
+    if (chn.send ((char *) &replication_node::SETUP_COPY_REPLICATION_MAGIC, max_len) != css_error_code::NO_ERRORS)
+      {
+        return ER_FAILED;
+      }
+
+    if (chn.recv ((char *) &expected_magic, max_len) != css_error_code::NO_ERRORS)
+      {
+        return ER_FAILED;
+      }
+
+    if (expected_magic != replication_node::SETUP_COPY_REPLICATION_MAGIC)
+      {
+        er_log_debug_replication (ARG_FILE_LINE, "apply_copy_context::setup_copy_protocol error in setup protocol");
+        assert (false);
+        return ER_FAILED;
+      }
+
+    if (chn.recv ((char *) &pos, max_len) != css_error_code::NO_ERRORS)
+      {
+        return ER_FAILED;
+      }
+
+    m_online_repl_start_pos = ntohi64 (pos);
+
+    er_log_debug_replication (ARG_FILE_LINE, "apply_copy_context::setup_copy_protocol online replication start pos :%lld",
+                              m_online_repl_start_pos);
+
+    return NO_ERROR;
+  }
+
+  int apply_copy_context::send_master_receive_ack (cubcomm::channel &chn)
+  {
+    std::size_t max_len = sizeof (UINT64);
+
+    if (chn.send ((char *) &replication_node::SETUP_COPY_END_REPLICATION_MAGIC, max_len) != css_error_code::NO_ERRORS)
+      {
+        return ER_FAILED;
+      }
+
+    return NO_ERROR;
+  }
+
+  int apply_copy_context::execute_copy ()
   {
     int error = NO_ERROR;
 
@@ -97,6 +145,9 @@ namespace cubreplication
       {
 	return error;
       }
+
+    setup_copy_protocol (srv_chn);
+
     /* start transfer receiver */
     assert (m_transfer_receiver == NULL);
     /* TODO[replication] : start position in case of resume of copy process */
@@ -104,6 +155,11 @@ namespace cubreplication
     m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *m_stream, start_position);
 
     m_copy_consumer->start_daemons ();
+
+    wait_replication_copy ();
+
+    /* signal master node that connection may be closed */
+    send_master_receive_ack (srv_chn);
 
     return error;
   }

@@ -24,24 +24,76 @@
 #ident "$Id$"
 
 #include "replication_source_db_copy.hpp"
+#include "communication_channel.hpp"
 #include "heap_attrinfo.h"  /* for HEAP_CACHE_ATTRINFO */
 #include "heap_file.h"      /* heap_attrinfo_transform_to_disk */
 #include "locator_sr.h"     /* locator_ functions */
+#include "replication_common.hpp"
 #include "replication_master_node.hpp"
+#include "replication_master_senders_manager.hpp"
 #include "replication_node.hpp"
 #include "replication_object.hpp"
 #include "scan_manager.h"
+#include "stream_transfer_sender.hpp"
 #include "thread_entry_task.hpp"
-#include "thread_manager.hpp"
 
 namespace cubreplication
 {
 
   int copy_class (cubthread::entry *thread_p, OID &class_oid);
 
+  /* task executing the extraction of the rows from a single heap file */
+  class heap_extract_worker_task : public cubthread::entry_task
+  {
+    public:
+      heap_extract_worker_task (source_copy_context &src_copy_ctxt, const OID &class_oid)
+        :m_src_copy_ctxt (src_copy_ctxt)
+        ,m_class_oid (class_oid)
+      {
+      }
+
+      void execute (cubthread::entry &thread_ref) final
+      {
+        int error = NO_ERROR;
+
+        logtb_set_current_tran_index (&thread_ref, m_src_copy_ctxt.get_tran_index ());
+
+        error = copy_class (&thread_ref, m_class_oid);
+        if (error != NO_ERROR)
+          {
+            m_src_copy_ctxt.inc_error_cnt ();
+          }
+
+        m_src_copy_ctxt.dec_extract_running_thread ();
+      }
+
+    private:
+      std::vector<stream_entry *> m_repl_stream_entries;
+      source_copy_context &m_src_copy_ctxt;
+      OID m_class_oid;
+  };
+
   source_copy_context::source_copy_context ()
   {
     m_stream = NULL;
+    m_stream_file = NULL;
+    m_transfer_sender = NULL;
+    m_state = NOT_STARTED;
+    m_error_cnt = 0;
+
+    acquire_stream_for_copy ();
+
+    /* TODO : single global pool or a pool for each context ? */
+    m_heap_extract_workers_pool =
+      cubthread::get_manager ()->create_worker_pool (EXTRACT_HEAP_WORKER_POOL_SIZE, EXTRACT_HEAP_WORKER_POOL_SIZE,
+                                                     "replication_extract_heap_workers", NULL, 1, 1);
+  }
+
+  source_copy_context::~source_copy_context ()
+  {
+    cubthread::get_manager ()->destroy_worker_pool (m_heap_extract_workers_pool);
+    detach_stream_for_copy ();
+
     m_stream_file = NULL;
     m_transfer_sender = NULL;
     m_state = NOT_STARTED;
@@ -116,6 +168,7 @@ namespace cubreplication
 
     ulock_state.unlock ();
 
+    /* some of the new states require specific actions */
     if (new_state == SCHEMA_APPLY_CLASSES_FINISHED)
       {
 	pack_and_add_sbr (m_class_schema);
@@ -140,12 +193,12 @@ namespace cubreplication
     m_state_cv.wait (ulock_state, [this, desired_state] { return m_state == desired_state;});
   }
 
-  void source_copy_context::wait_end_classes (void)
+  void source_copy_context::wait_receive_class_list (void)
   {
     wait_for_state (SCHEMA_CLASSES_LIST_FINISHED);
   }
 
-  void source_copy_context::wait_end_triggers_indexes (void)
+  void source_copy_context::wait_send_triggers_indexes (void)
   {
     wait_for_state (SCHEMA_APPLY_TRIGGERS_INDEXES_FINISHED);
   }
@@ -158,11 +211,6 @@ namespace cubreplication
   void source_copy_context::inc_error_cnt (void)
   {
     m_error_cnt++;
-  }
-
-  const std::list<OID>* source_copy_context::peek_class_list (void) const
-  {
-    return &m_class_oid_list;
   }
 
   void source_copy_context::append_class_schema (const char *buffer, const size_t buf_size)
@@ -195,7 +243,13 @@ namespace cubreplication
       }
   }
 
-  cubstream::multi_thread_stream *source_copy_context::get_stream_for_copy ()
+  /*
+   * acquire_stream_for_copy : creates or reutilizes a stream for providing copy replication data 
+   *
+   * TODO[replication] : if a second slave asks for replication db copy in a short interval we may reuse an existing stream
+   * instead of start another copy process
+   */
+  cubstream::multi_thread_stream *source_copy_context::acquire_stream_for_copy ()
   {
     INT64 buffer_size = 1 * 1024 * 1024;
 
@@ -209,98 +263,124 @@ namespace cubreplication
     copy_db_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
     copy_db_stream->init (0);
 
+    m_stream = copy_db_stream;
+
     return copy_db_stream;
   }
 
-  /* task executing the extraction of the rows from a single heap file */
-  /* TODO[replication] : enhance for splitting into multiple ranges a heap file */
-  class heap_extract_worker_task : public cubthread::entry_task
+  void source_copy_context::detach_stream_for_copy ()
   {
-    public:
-      heap_extract_worker_task (source_copy_context &src_copy_ctxt, const OID &class_oid)
-        :m_src_copy_ctxt (src_copy_ctxt)
-        ,m_class_oid (class_oid)
+    delete m_stream;
+    m_stream = NULL;
+  }
+
+
+  void source_copy_context::execute_db_copy (cubthread::entry &thread_ref, int fd)
+  {
+    cubcomm::channel chn;
+
+    LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (&thread_ref);
+    assert (tdes != NULL);
+    if (tdes != NULL)
       {
+        m_tran_index = tdes->tran_index;
       }
 
-      void execute (cubthread::entry &thread_ref) final
+    css_error_code rc = chn.accept (fd);
+    assert (rc == NO_ERRORS);
+
+    setup_copy_protocol (chn);
+
+    master_senders_manager::add_stream_sender (new cubstream::transfer_sender (std::move (chn), *m_stream));
+
+    er_log_debug_replication (ARG_FILE_LINE, "new_slave_copy connected");
+
+    /* extraction process : schema phase 1 */
+    locator_repl_extract_schema (&thread_ref, "", "", "");
+
+    wait_receive_class_list ();
+
+    transit_state (HEAP_COPY);
+    /* extraction process : heap extract phase */
+    pack_and_add_start_of_extract_heap ();
+    /* TODO[replication]: we may optimize this to have multiple threads for larger heaps */
+    for (const OID class_oid : m_class_oid_list)
       {
-        int error = NO_ERROR;
-
-        logtb_set_current_tran_index (&thread_ref, m_src_copy_ctxt.get_tran_index ());
-
-        error = copy_class (&thread_ref, m_class_oid);
-        if (error != NO_ERROR)
-          {
-            m_src_copy_ctxt.inc_error_cnt ();
-          }
-
-        m_src_copy_ctxt.dec_extract_running_thread ();
+        heap_extract_worker_task *task = new heap_extract_worker_task (*this, class_oid);
+        inc_extract_running_thread ();
+        cubthread::get_manager ()->push_task (m_heap_extract_workers_pool, task);
       }
-
-    private:
-      std::vector<stream_entry *> m_repl_stream_entries;
-      source_copy_context &m_src_copy_ctxt;
-      OID m_class_oid;
-  };
-
-
-  /* daemon task of the daemon thread executing the entire process of schema and heaps contents on the source node 
-   * this is a single shot task (executed only one iteration by the daemon) */
-  class source_copy_daemon_task : public cubthread::entry_task
-  {
-    public:
-      const size_t EXTRACT_HEAP_WORKER_POOL_SIZE = 100;
-
-      source_copy_daemon_task (source_copy_context &src_copy_ctx):
-        m_src_copy_ctx (src_copy_ctx)
-      {
-      };
-
-      void execute (cubthread::entry &thread_ref) override
-      {
-        /* - create transaction 
-         * - start DDL proxy
-         * - scan heaps
-         * - terminate
-         */
-        locator_repl_start_tran (&thread_ref, BOOT_CLIENT_DDL_PROXY);
-
-        locator_repl_extract_schema (&thread_ref, "", "", "");
-
-        m_src_copy_ctx.wait_end_classes ();
-
-        /* start heap copy : one thread task for each class */
-        cubthread::entry_workpool *heap_extract_workers_pool =
-          cubthread::get_manager ()->create_worker_pool (EXTRACT_HEAP_WORKER_POOL_SIZE, EXTRACT_HEAP_WORKER_POOL_SIZE,
-                                                         "replication_extract_heap_workers", NULL, 1, 1);
-
-        m_src_copy_ctx.pack_and_add_start_of_extract_heap ();
-        const std::list<OID> *class_list = m_src_copy_ctx.peek_class_list ();
-        /* TODO[replication]: we may optimize this to have multiple threads for larger heaps */
-        for (const OID class_oid : *class_list)
-          {
-            heap_extract_worker_task *task = new heap_extract_worker_task (m_src_copy_ctx, class_oid);
-            cubthread::get_manager ()->push_task (heap_extract_workers_pool, task);
-            m_src_copy_ctx.inc_extract_running_thread ();
-          }
         
-        /* wait for all threads to end */
-        while (m_src_copy_ctx.get_extract_running_thread () > 0)
-          {
-            thread_sleep (10);
-          }
+    /* wait for all heap extract threads to end */
+    while (get_extract_running_thread () > 0)
+      {
+        thread_sleep (10);
+      }
+    transit_state (HEAP_COPY_FINISHED);
+    pack_and_add_end_of_extract_heap ();
 
-        m_src_copy_ctx.pack_and_add_end_of_extract_heap ();
-        /* wait for indexes and triggers schema */
-        m_src_copy_ctx.wait_end_triggers_indexes ();
+    transit_state (SCHEMA_APPLY_TRIGGERS_INDEXES);
+    /* wait for indexes and triggers schema */
+    wait_send_triggers_indexes ();
 
-        m_src_copy_ctx.pack_and_add_end_of_copy ();
-      };
+    pack_and_add_end_of_copy ();
+    wait_slave_receive_ack (chn);
+  }
 
-    private:
-      source_copy_context &m_src_copy_ctx;
-  };
+  int source_copy_context::setup_copy_protocol (cubcomm::channel &chn)
+  {
+    UINT64 pos = 0, expected_magic;
+    std::size_t max_len = sizeof (UINT64);
+    cubstream::stream_position online_repl_pos;
+
+    if (chn.recv ((char *) &expected_magic, max_len) != css_error_code::NO_ERRORS)
+      {
+        return ER_FAILED;
+      }
+
+    if (expected_magic != replication_node::SETUP_COPY_REPLICATION_MAGIC)
+      {
+        er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::setup_copy_protocol error in setup protocol");
+        assert (false);
+        return ER_FAILED;
+      }
+
+    if (chn.send ((char *) &replication_node::SETUP_COPY_REPLICATION_MAGIC, max_len) != css_error_code::NO_ERRORS)
+      {
+        return ER_FAILED;
+      }
+
+    /* TODO */
+    online_repl_pos = m_online_replication_start_pos;
+    pos = htoni64 (online_repl_pos);
+    if (chn.send ((char *) &pos, max_len) !=  css_error_code::NO_ERRORS)
+      {
+        return ER_FAILED;
+      }
+
+    return NO_ERROR;
+  }
+
+  int source_copy_context::wait_slave_receive_ack (cubcomm::channel &chn)
+  {
+    UINT64 pos = 0, expected_magic;
+    std::size_t max_len = sizeof (UINT64);
+
+    if (chn.recv ((char *) &expected_magic, max_len) != css_error_code::NO_ERRORS)
+      {
+        return ER_FAILED;
+      }
+
+    if (expected_magic != replication_node::SETUP_COPY_END_REPLICATION_MAGIC)
+      {
+        er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::setup_copy_protocol error in setup protocol");
+        assert (false);
+        return ER_FAILED;
+      }
+
+    return NO_ERROR;
+  }
+
 
   /* 
    * utility functions for source server extraction of database replication copy 
@@ -368,6 +448,7 @@ namespace cubreplication
     LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
     assert (tdes != NULL);
+    assert (tdes->replication_copy_context != NULL);
 
     error_code = heap_get_class_name (thread_p, &class_oid, &class_name);
     if (error_code != NO_ERROR)
@@ -423,13 +504,13 @@ namespace cubreplication
 	if (heap_objects.is_pack_needed ())
 	  {
 	    /* pack and add to stream */
-	    tdes->replication_copy_context.pack_and_add_object (heap_objects);
+	    tdes->replication_copy_context->pack_and_add_object (heap_objects);
 	    heap_objects.reset ();
 	  }
       }
     while (1);
 
-    tdes->replication_copy_context.pack_and_add_object (heap_objects);
+    tdes->replication_copy_context->pack_and_add_object (heap_objects);
 
 end:
     if (class_name != NULL)

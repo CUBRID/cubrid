@@ -13830,10 +13830,13 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
   assert (thread_p != NULL);
 
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  cubreplication::source_copy_context & repl_copy_ctxt = tdes->replication_copy_context;
+  cubreplication::source_copy_context & repl_copy_ctxt = *tdes->replication_copy_context;
 
   switch (type)
     {
+    /* schema of classes may be send with multiple requests/buffers;
+     * for last the last one, the client uses NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END
+     */
     case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES:
       repl_copy_ctxt.append_class_schema (buffer, buf_size);
       break;
@@ -13865,6 +13868,7 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
       repl_copy_ctxt.unpack_class_oid_list (buffer, buf_size);
       repl_copy_ctxt.transit_state (cubreplication::source_copy_context::SCHEMA_CLASSES_LIST_FINISHED);
       break;
+
     default:
       assert (false);
     }
@@ -14364,6 +14368,10 @@ locator_repl_start_tran (THREAD_ENTRY * thread_p, const boot_client_type client_
   else if (client_type == BOOT_CLIENT_DDL_PROXY)
     {
       applier_Client_credentials.program_name = "(dll_proxy)";
+    }
+  else if (client_type == BOOT_CLIENT_LOG_COPIER)
+    {
+      applier_Client_credentials.program_name = "(repl_db_copy)";
     }
   applier_Client_credentials.process_id = -1;
 

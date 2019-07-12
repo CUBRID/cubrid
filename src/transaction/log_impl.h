@@ -542,7 +542,7 @@ struct log_tdes
   const char *ha_sbr_statement;
   // *INDENT-OFF*
 #if defined (SERVER_MODE)
-  cubreplication::source_copy_context replication_copy_context;
+  cubreplication::source_copy_context *replication_copy_context;
 #endif
 
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
@@ -1014,6 +1014,9 @@ extern int xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
 extern bool logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern bool logtb_is_mvccid_committed (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern MVCC_SNAPSHOT *logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
+#if defined (SERVER_MODE)
+extern MVCC_SNAPSHOT *logtb_get_mvcc_snapshot_and_gc_position (THREAD_ENTRY * thread_p);
+#endif
 extern void logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed);
 extern void logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 

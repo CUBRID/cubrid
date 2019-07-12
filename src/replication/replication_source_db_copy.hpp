@@ -27,17 +27,24 @@
 #define _REPLICATION_SOURCE_DB_COPY_HPP_
 
 #include "replication_object.hpp"
+#include "cubstream.hpp"
+#include "thread_manager.hpp"
 #include <condition_variable>
 #include <atomic>
 #include <list>
 #include <mutex>
+
+namespace cubcomm
+{
+  class channel;
+}
 
 namespace cubstream
 {
   class multi_thread_stream;
   class stream_file;
   class transfer_sender;
-};
+}
 
 namespace cubreplication
 {
@@ -56,14 +63,16 @@ namespace cubreplication
   class source_copy_context
   {
     public:
+      const size_t EXTRACT_HEAP_WORKER_POOL_SIZE = 20;
+
       enum copy_stage
       {
 	NOT_STARTED = 0,
 	SCHEMA_APPLY_CLASSES,
 	SCHEMA_APPLY_CLASSES_FINISHED,
-        SCHEMA_CLASSES_LIST_FINISHED,
 	SCHEMA_TRIGGERS_RECEIVED,
 	SCHEMA_INDEXES_RECEIVED,
+        SCHEMA_CLASSES_LIST_FINISHED,
 	HEAP_COPY,
 	HEAP_COPY_FINISHED,
 	SCHEMA_APPLY_TRIGGERS_INDEXES,
@@ -72,7 +81,7 @@ namespace cubreplication
 
       source_copy_context ();
 
-      ~source_copy_context () = default;
+      ~source_copy_context ();
 
       void set_credentials (const char *user, const char *password);
 
@@ -89,10 +98,12 @@ namespace cubreplication
       void append_indexes_schema (const char *buffer, const size_t buf_size);
       void unpack_class_oid_list (const char *buffer, const size_t buf_size);
 
-      static cubstream::multi_thread_stream *get_stream_for_copy ();
+      void execute_db_copy (cubthread::entry &thread_ref, int fd);
+      int setup_copy_protocol (cubcomm::channel &chn);
+      int wait_slave_receive_ack (cubcomm::channel &chn);
 
-      void wait_end_classes (void);
-      void wait_end_triggers_indexes (void);
+      void wait_receive_class_list (void);
+      void wait_send_triggers_indexes (void);
 
       int get_tran_index (void);
       void inc_error_cnt ();
@@ -100,19 +111,26 @@ namespace cubreplication
       void dec_extract_running_thread () { --m_running_extract_threads; }
       int get_extract_running_thread () { return m_running_extract_threads; }
 
-      const std::list<OID>* peek_class_list (void) const;
+      cubstream::multi_thread_stream *get_stream () const { return m_stream; }
+      void set_online_replication_start_pos (const cubstream::stream_position &pos)
+        { m_online_replication_start_pos = pos; }
+
 
     private:
       void wait_for_state (const copy_stage &desired_state);
+      cubstream::multi_thread_stream *acquire_stream_for_copy ();
+      void detach_stream_for_copy ();
 
     private:
       int m_tran_index;
       int m_error_cnt;
-      std::atomic<int>  m_running_extract_threads;
+      std::atomic<int> m_running_extract_threads;
+      cubstream::stream_position m_online_replication_start_pos;
 
       cubstream::multi_thread_stream *m_stream;
       cubstream::stream_file *m_stream_file;
       cubstream::transfer_sender *m_transfer_sender;
+      cubthread::entry_workpool *m_heap_extract_workers_pool;
 
       sbr_repl_entry m_class_schema;
       sbr_repl_entry m_triggers;

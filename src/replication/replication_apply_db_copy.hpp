@@ -30,12 +30,17 @@
 #include "thread_manager.hpp"
 #include <queue>
 
+namespace cubcomm
+{
+  class channel;
+}
+
 namespace cubstream
 {
   class multi_thread_stream;
   class stream_file;
   class transfer_receiver;
-};
+}
 
 namespace cubreplication
 {
@@ -142,13 +147,19 @@ namespace cubreplication
       ~apply_copy_context ();
 
       void init ();
-      int start_copy ();
+      int execute_copy ();
 
       void wait_replication_copy ();
 
     private:
+
+      int setup_copy_protocol (cubcomm::channel &chn);
+      int send_master_receive_ack (cubcomm::channel &chn);
+
       node_definition *m_source_identity;
       node_definition *m_my_identity;
+
+      cubstream::stream_position m_online_repl_start_pos;
 
       cubstream::multi_thread_stream *m_stream;
       cubstream::stream_file *m_stream_file;

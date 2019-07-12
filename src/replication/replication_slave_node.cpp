@@ -85,6 +85,7 @@ namespace cubreplication
 
     assert (instance->m_lc == NULL);
     instance->m_lc = new log_consumer ();
+    instance->m_lc->fetch_suspend ();
 
     instance->m_lc->set_stream (instance->m_stream);
     /* start log_consumer daemons and apply thread pool */
@@ -120,7 +121,8 @@ namespace cubreplication
 
     m_source_available_pos = ntohi64 (pos);
 
-    er_log_debug_replication (ARG_FILE_LINE, "slave_node::setup_protocol available pos :%lld", m_source_available_pos);
+    er_log_debug_replication (ARG_FILE_LINE, "slave_node::setup_protocol available pos :%lld",
+                              m_source_available_pos);
 
     return NO_ERROR;
   }
@@ -193,6 +195,8 @@ namespace cubreplication
     g_instance->m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *g_instance->m_stream,
 	start_position);
 
+    g_instance->m_lc->fetch_resume ();
+
     return NO_ERROR;
   }
 
@@ -217,12 +221,9 @@ namespace cubreplication
   int slave_node::replication_copy_slave (cubthread::entry &entry, node_definition *source_node,
                                           const bool start_replication_after_copy)
   {
-    /* TODO: my hostname */
     apply_copy_context my_apply_ctx (&m_identity, source_node);
 
-    my_apply_ctx.start_copy ();
-
-    my_apply_ctx.wait_replication_copy ();
+    my_apply_ctx.execute_copy ();
 
     return NO_ERROR;
   }

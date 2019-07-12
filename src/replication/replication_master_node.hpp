@@ -27,6 +27,7 @@
 #define _REPLICATION_MASTER_NODE_HPP_
 
 #include "replication_node.hpp"
+#include "thread_manager.hpp"
 
 #include <mutex>
 
@@ -42,13 +43,15 @@ namespace cubreplication
   class master_node : public replication_node
   {
     private:
+      const static int NEW_SLAVE_THREADS = 5;
+
       static master_node *g_instance;
       static std::mutex g_enable_active_mtx;
 
-      master_node (const char *name)
-	: replication_node (name)
-      {
-      }
+      cubthread::entry_workpool *m_new_slave_workers_pool;
+
+      master_node (const char *name);
+      ~master_node ();
 
     public:
       master_ctrl *m_control_channel_manager;
@@ -59,6 +62,7 @@ namespace cubreplication
       static void new_slave (int fd);
       static void add_ctrl_chn (int fd);
       static void new_slave_copy (int fd);
+      static void new_slave_copy_task (cubthread::entry &thread_ref, int fd);
       static void final (void);
 
       int setup_protocol (cubcomm::channel &chn);

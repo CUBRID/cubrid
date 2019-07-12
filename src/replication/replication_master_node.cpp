@@ -25,16 +25,48 @@
 
 #include "replication_master_node.hpp"
 #include "communication_channel.hpp"
+#include "locator_sr.h"
 #include "log_impl.h"
-#include "replication_common.hpp"
 #include "master_control_channel.hpp"
+#include "replication_common.hpp"
 #include "replication_master_senders_manager.hpp"
 #include "transaction_master_group_complete_manager.hpp"
+#include "replication_source_db_copy.hpp"
 #include "server_support.h"
 #include "stream_file.hpp"
 
 namespace cubreplication
 {
+
+ class new_slave_worker_task : public cubthread::entry_task
+  {
+    public:
+      new_slave_worker_task (int fd)
+	: m_connection_fd (fd)
+      {
+      };
+
+      void execute (cubthread::entry &thread_ref) override
+      {
+        cubreplication::master_node::get_instance (NULL)->new_slave_copy_task (thread_ref, m_connection_fd);
+      };
+
+    private:
+      int m_connection_fd;
+  };
+
+  master_node::master_node (const char *name)
+	: replication_node (name)
+  {
+    m_new_slave_workers_pool = cubthread::get_manager ()->create_worker_pool (NEW_SLAVE_THREADS, NEW_SLAVE_THREADS,
+      "replication_new_slave_workers", NULL, 1, 1);
+  }
+
+  master_node::~master_node ()
+  {
+    cubthread::get_manager ()->destroy_worker_pool (m_new_slave_workers_pool);
+  }
+
   master_node *master_node::get_instance (const char *name)
   {
     if (g_instance == NULL)
@@ -123,6 +155,8 @@ namespace cubreplication
 
   void master_node::new_slave (int fd)
   {
+    /* TODO[replication] : this is processed on css_master_thread,
+     * maybe we should use a thread pool specifically for this tasks */
     enable_active ();
 
     if (css_ha_server_state () != HA_SERVER_STATE_ACTIVE)
@@ -163,26 +197,57 @@ namespace cubreplication
     er_log_debug_replication (ARG_FILE_LINE, "control channel added");
   }
 
+  /*
+   * new_slave_copy :
+   *
+   * This executes on context of css_master_thread, so we create a task and push it to a thread pool
+   */
   void master_node::new_slave_copy (int fd)
   {
 #if defined (SERVER_MODE)
+    cubthread::get_manager ()->push_task (master_node::get_instance (NULL)->m_new_slave_workers_pool,
+                                          new new_slave_worker_task (fd));
+#endif
+  }
+
+  /* 
+   * new_slave_copy_task :
+   *
+   * Actual task executing in the context of dedicated 'new slave' thread pool
+   */
+  void master_node::new_slave_copy_task (cubthread::entry &thread_ref, int fd)
+  {
+#if defined (SERVER_MODE)
+    int error = NO_ERROR;
 
     if (css_ha_server_state () != HA_SERVER_STATE_ACTIVE)
       {
-	er_log_debug_replication (ARG_FILE_LINE, "new_slave_copy invalid server state :%s",
+	er_log_debug_replication (ARG_FILE_LINE, "new_slave_copy_task invalid server state :%s",
 				  css_ha_server_state_string (css_ha_server_state ()));
 	return;
       }
 
-    cubstream::multi_thread_stream *copy_db_stream = source_copy_context::get_stream_for_copy ();
-    cubcomm::channel chn;
+    /* create a transaction for replication copy */
+    locator_repl_start_tran (&thread_ref, BOOT_CLIENT_LOG_COPIER);
 
-    css_error_code rc = chn.accept (fd);
-    assert (rc == NO_ERRORS);
+    LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (&thread_ref);
 
-    master_senders_manager::add_stream_sender (new cubstream::transfer_sender (std::move (chn), *copy_db_stream));
+    assert (tdes->replication_copy_context == NULL);
 
-    er_log_debug_replication (ARG_FILE_LINE, "new_slave_copy connected");
+    /* setup copy context */
+    source_copy_context *src_copy_ctxt = new source_copy_context ();
+    tdes->replication_copy_context = src_copy_ctxt;
+
+    /* acquire snapshot and last group stream position (both are stored on current TDES) */
+    logtb_get_mvcc_snapshot_and_gc_position (&thread_ref);
+
+    src_copy_ctxt->execute_db_copy (thread_ref, fd);
+
+    delete src_copy_ctxt;
+    tdes->replication_copy_context = NULL;
+
+    locator_repl_end_tran (&thread_ref, true);
+  
 #endif
   }
 

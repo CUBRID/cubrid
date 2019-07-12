@@ -114,11 +114,6 @@ int replication_schema_extract (const char *program_name)
   output_net_schema.set_buffer_type (NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END);
   output_net_schema.send_to_network ();
 
-  if (error == NO_ERROR)
-    {
-      error = send_class_list (copy_schema_context.classes);
-    }
-
   if (error == NO_ERROR && extract_triggers (copy_schema_context, output_net_trigger) != 0)
     {
       error = er_errid ();
@@ -134,6 +129,11 @@ int replication_schema_extract (const char *program_name)
     }
   output_net_index.set_buffer_type (NET_PROXY_BUF_TYPE_EXTRACT_INDEXES_END);
   output_net_index.send_to_network ();
+
+  if (error == NO_ERROR)
+    {
+      error = send_class_list (copy_schema_context.classes);
+    }
 
   copy_schema_context.clear_schema_workspace ();
 
