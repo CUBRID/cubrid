@@ -8203,7 +8203,7 @@ SCAN_CODE
 heap_scanrange_to_following (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_range, OID * start_oid)
 {
   SCAN_CODE scan;
-  RECDES recdes;
+  RECDES recdes = RECDES_INITIALIZER;
   INT16 slotid;
   VPID *vpid;
 
@@ -8314,7 +8314,7 @@ SCAN_CODE
 heap_scanrange_to_prior (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_range, OID * last_oid)
 {
   SCAN_CODE scan;
-  RECDES recdes;
+  RECDES recdes = RECDES_INITIALIZER;
   INT16 slotid;
 
   if (HEAP_DEBUG_ISVALID_SCANRANGE (scan_range) != DISK_VALID)

@@ -2668,7 +2668,7 @@ hb_proc_make_arg (char **arg, char *argv)
 void
 hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY *conn, SOCKET sfd)
 {
-  int error, rv;
+  int error;
   char error_string[LINE_MAX] = "";
   HB_PROC_ENTRY *proc;
   HB_JOB_ARG *job_arg;
@@ -2681,7 +2681,7 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY *conn, SOCKET sfd)
       return;
     }
 
-  rv = pthread_mutex_lock (&hb_Resource->lock);
+  pthread_mutex_lock (&hb_Resource->lock);
   proc = hb_return_proc_by_fd (sfd);
   if (proc == NULL)
     {
@@ -2727,21 +2727,17 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY *conn, SOCKET sfd)
 
   if (hb_Resource->state == cubhb::node_state::MASTER && proc->type == HB_PTYPE_SERVER && !hb_Cluster->is_isolated)
     {
-      if (HB_GET_ELAPSED_TIME (proc->ktime, proc->rtime) <
-	  prm_get_integer_value (PRM_ID_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS))
-	{
-	  /* demote the current node */
-	  hb_Resource->state = cubhb::node_state::SLAVE;
+      /* demote the current node */
+      hb_Resource->state = cubhb::node_state::SLAVE;
 
-	  snprintf (error_string, LINE_MAX, "(args:%s)", proc->args);
-	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
-			 "Process failure repeated within a short period of time. The current node will be demoted",
-			 error_string);
+      snprintf (error_string, LINE_MAX, "(args:%s)", proc->args);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+		     "Process failure repeated within a short period of time. The current node will be demoted",
+		     error_string);
 
-	  /* shutdown working server processes to change its role to slave */
-	  error = hb_resource_job_queue (HB_RJOB_DEMOTE_START_SHUTDOWN, NULL, HB_JOB_TIMER_IMMEDIATELY);
-	  assert (error == NO_ERROR);
-	}
+      /* shutdown working server processes to change its role to slave */
+      error = hb_resource_job_queue (HB_RJOB_DEMOTE_START_SHUTDOWN, NULL, HB_JOB_TIMER_IMMEDIATELY);
+      assert (error == NO_ERROR);
     }
 
   job_arg = (HB_JOB_ARG *) malloc (sizeof (HB_JOB_ARG));

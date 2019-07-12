@@ -15525,29 +15525,21 @@ pgbuf_get_page_flush_interval (bool & is_timed_wait, cubthread::delta_time & per
 
 // *INDENT-OFF*
 #if defined (SERVER_MODE)
-// class pgbuf_page_maintenance_daemon_task
-//
-//  description:
-//    page maintenance daemon task
-//
-class pgbuf_page_maintenance_daemon_task : public cubthread::entry_task
+static void
+pgbuf_page_maintenance_execute (cubthread::entry & thread_ref)
 {
-  public:
-    void execute (cubthread::entry & thread_ref) override
+  if (!BO_IS_SERVER_RESTARTED ())
     {
-      if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
-
-      /* page buffer maintenance thread adjust quota's based on thread activity. */
-      pgbuf_adjust_quotas (&thread_ref);
-
-      /* search lists and assign victims directly */
-      pgbuf_direct_victims_maintenance (&thread_ref);
+      // wait for boot to finish
+      return;
     }
-};
+
+  /* page buffer maintenance thread adjust quota's based on thread activity. */
+  pgbuf_adjust_quotas (&thread_ref);
+
+  /* search lists and assign victims directly */
+  pgbuf_direct_victims_maintenance (&thread_ref);
+}
 #endif /* SERVER_MODE */
 
 #if defined (SERVER_MODE)
@@ -15610,30 +15602,22 @@ class pgbuf_page_flush_daemon_task : public cubthread::entry_task
 #endif /* SERVER_MODE */
 
 #if defined (SERVER_MODE)
-// class pgbuf_page_post_flush_daemon_task
-//
-//  description:
-//    page post flush daemon task
-//
-class pgbuf_page_post_flush_daemon_task : public cubthread::entry_task
+static void
+pgbuf_page_post_flush_execute (cubthread::entry & thread_ref)
 {
-  public:
-    void execute (cubthread::entry & thread_ref) override
+  if (!BO_IS_SERVER_RESTARTED ())
     {
-      if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
-
-      /* assign flushed pages */
-      if (pgbuf_assign_flushed_pages (&thread_ref))
-	{
-	  /* reset daemon looper and be prepared to start over */
-	  pgbuf_Page_post_flush_daemon->reset_looper ();
-	}
+      // wait for boot to finish
+      return;
     }
-};
+
+  /* assign flushed pages */
+  if (pgbuf_assign_flushed_pages (&thread_ref))
+    {
+      /* reset daemon looper and be prepared to start over */
+      pgbuf_Page_post_flush_daemon->reset_looper ();
+    }
+}
 #endif /* SERVER_MODE */
 
 #if defined (SERVER_MODE)
@@ -15705,7 +15689,7 @@ pgbuf_page_maintenance_daemon_init ()
   assert (pgbuf_Page_maintenance_daemon == NULL);
 
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (100));
-  pgbuf_page_maintenance_daemon_task *daemon_task = new pgbuf_page_maintenance_daemon_task ();
+  cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (pgbuf_page_maintenance_execute);
 
   pgbuf_Page_maintenance_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
                                                                             "pgbuf_page_maintenance");
@@ -15744,7 +15728,7 @@ pgbuf_page_post_flush_daemon_init ()
     }};
 
   cubthread::looper looper = cubthread::looper (looper_interval);
-  pgbuf_page_post_flush_daemon_task *daemon_task = new pgbuf_page_post_flush_daemon_task ();
+  cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (pgbuf_page_post_flush_execute);
 
   pgbuf_Page_post_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
                                                                            "pgbuf_page_post_flush");

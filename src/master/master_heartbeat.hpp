@@ -195,7 +195,7 @@ struct HB_PROC_ENTRY
   char argv[HB_MAX_NUM_PROC_ARGV][HB_MAX_SZ_PROC_ARGV];
 
   struct timeval frtime;	/* first registered time */
-  struct timeval rtime;		/* registerd time */
+  struct timeval rtime;		/* registered time */
   struct timeval dtime;		/* deregistered time */
   struct timeval ktime;		/* shutdown time */
   struct timeval stime;		/* start time */

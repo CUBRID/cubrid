@@ -199,7 +199,7 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_n
   int ret = NO_ERROR;
   HEAP_SCANCACHE scan_cache;
   SCAN_CODE scan;
-  RECDES recdesc;
+  RECDES recdesc = RECDES_INITIALIZER;
   HEAP_CACHE_ATTRINFO attr_info, *attr_info_p = NULL;
   ATTR_ID attrid;
   DB_VALUE *cur_val;
@@ -502,7 +502,7 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
   int ret = NO_ERROR;
   HEAP_SCANCACHE scan_cache;
   SCAN_CODE scan;
-  RECDES recdesc;
+  RECDES recdesc = RECDES_INITIALIZER;
   HEAP_CACHE_ATTRINFO attr_info, *attr_info_p = NULL;
   DB_VALUE *val;
   DB_VALUE key_val;
@@ -606,7 +606,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   int ret = NO_ERROR;
   HEAP_SCANCACHE scan_cache;
   SCAN_CODE scan;
-  RECDES recdesc;
+  RECDES recdesc = RECDES_INITIALIZER;
   HEAP_CACHE_ATTRINFO attr_info, *attr_info_p = NULL;
   DB_VALUE *val = NULL;
   DB_VALUE cur_val;

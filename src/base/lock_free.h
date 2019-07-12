@@ -40,12 +40,6 @@ extern int lf_callback_vpid_copy (void *src, void *dest);
 #define VOLATILE_ACCESS(v,t)		(*((t volatile *) &(v)))
 
 /*
- * Address mark macros
- */
-#define ADDR_WITH_MARK(p)   ((void * volatile) (((long long volatile) p) | 0x1))
-#define ADDR_HAS_MARK(p)    (((long long volatile)p) & 0x1)
-#define ADDR_STRIP_MARK(p)  ((void * volatile)(((long long volatile)p) & (~((long long)0x1))))
-/*
  * Entry descriptor
  */
 typedef void *(*LF_ENTRY_ALLOC_FUNC) ();

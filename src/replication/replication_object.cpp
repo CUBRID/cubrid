@@ -517,7 +517,7 @@ namespace cubreplication
 
     entry_size = single_row_repl_entry::get_packed_size (serializator, entry_size);
 
-    entry_size += serializator.get_packed_int_vector_size (entry_size, (int) m_changed_attributes.size ());
+    entry_size += serializator.get_packed_int_vector_size (entry_size, m_changed_attributes.size ());
     entry_size += serializator.get_packed_int_size (entry_size);
     for (std::size_t i = 0; i < m_new_values.size (); i++)
       {
