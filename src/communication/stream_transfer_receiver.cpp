@@ -119,6 +119,7 @@ namespace cubstream
 
   transfer_receiver::~transfer_receiver ()
   {
+    m_channel.close_connection ();
     cubthread::get_manager ()->destroy_daemon_without_entry (m_receiver_daemon);
   }
 
