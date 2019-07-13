@@ -1121,7 +1121,6 @@ parse_date (const char *buf, int buf_len, DB_DATE * date)
   int month, day, year;
   int julian_date;
   unsigned int i;
-  int c;
   const char *p;
   int date_style = -1;
   int year_part, month_part, day_part;
@@ -1137,49 +1136,48 @@ parse_date (const char *buf, int buf_len, DB_DATE * date)
   for (i = 0, p = buf; i < DIM (part); i++)
     {
       /* skip leading space */
-      for (c = *p; p < strend && char_isspace (c); c = *++p)
+      for (; p < strend && char_isspace (*p); ++p)
 	{
 	  ;
 	}
 
       /* read found decimal field value */
-      for (c = *p; p < strend && char_isdigit (c); c = *++p)
+      for (; p < strend && char_isdigit (*p); ++p)
 	{
-	  part[i] = part[i] * 10 + (c - '0');
+	  part[i] = part[i] * 10 + (*p - '0');
 	  part_char_len[i]++;
 	}
 
       if (i < DIM (part) - 1)
 	{
 	  /* skip inter-field space */
-	  for (c = *p; p < strend && char_isspace (c); c = *++p)
+	  for (; p < strend && char_isspace (*p); ++p)
 	    {
 	      ;
 	    }
 
 	  if (p == strend)
 	    {
-	      // reach the end
 	      break;
 	    }
 
 	  /* check date separator ('/' or '-'), if any */
-	  if (separator != '\0' && c != '\0' && c != separator)
+	  if (separator != '\0' && *p != '\0' && *p != separator)
 	    {
 	      return NULL;
 	    }
 
 	  /* find and skip the separator */
-	  if (c == '/')
+	  if (*p == '/')
 	    {
+	      separator = *p;
 	      ++p;
-	      separator = c;
 	      date_style = MMDDYYYY;
 	    }
-	  else if (c == '-')
+	  else if (*p == '-')
 	    {
+	      separator = *p;
 	      ++p;
-	      separator = c;
 	      date_style = YYYYMMDD;
 	    }
 	  else
@@ -1190,7 +1188,7 @@ parse_date (const char *buf, int buf_len, DB_DATE * date)
     }
 
   /* skip trailing space */
-  for (c = *p; p < strend && char_isspace (c); c = *++p)
+  for (; p < strend && char_isspace (*p); ++p)
     {
       ;
     }
@@ -1356,7 +1354,6 @@ parse_mtime (const char *buf, int buf_len, unsigned int *mtime, bool * is_msec, 
 {
   int part[4] = { 0, 0, 0, 0 };
   unsigned int i;
-  int c;
   const char *p;
   double fraction = 100;
   const char *strend = buf + buf_len;
@@ -1378,30 +1375,26 @@ parse_mtime (const char *buf, int buf_len, unsigned int *mtime, bool * is_msec, 
 
   for (i = 0, p = buf; i < DIM (part); i++)
     {
-      for (c = *p; p < strend && char_isspace (c); c = *++p)
+      for (; p < strend && char_isspace (*p); ++p)
 	;
-      for (c = *p; p < strend && char_isdigit (c); c = *++p)
+      for (; p < strend && char_isdigit (*p); ++p)
 	{
 	  if (i != 3)
 	    {
-	      part[i] = part[i] * 10 + (c - '0');
+	      part[i] = part[i] * 10 + (*p - '0');
 	    }
 	  else
 	    {
-	      part[i] += (int) ((c - '0') * fraction + 0.5);
+	      part[i] += (int) (fraction * (*p - '0') + 0.5);
 	      fraction /= 10;
 	    }
 	}
       if (i < DIM (part) - 1)
 	{
-	  for (c = *p; p < strend && char_isspace (c); c = *++p)
+	  for (; p < strend && char_isspace (*p); ++p)
 	    ;
 
-	  // Don't break here when reaches the end of string,
-	  // since we have accepted incomplete time literals like time' ', time'01', time'01:23'.
-	  // It looks weird but no way to be backward compatible.
-
-	  if (p < strend && c == ':')
+	  if (p < strend && *p == ':')
 	    {
 	      if (i == 2)
 		{
@@ -1409,7 +1402,7 @@ parse_mtime (const char *buf, int buf_len, unsigned int *mtime, bool * is_msec, 
 		}
 	      ++p;
 	    }
-	  else if (p < strend && c == '.' && i == 2)
+	  else if (p < strend && *p == '.' && i == 2)
 	    {
 	      ++p;
 	      if (is_msec != NULL)
@@ -1434,7 +1427,7 @@ parse_mtime (const char *buf, int buf_len, unsigned int *mtime, bool * is_msec, 
 	}
     }
 
-  for (c = *p; p < strend && char_isspace (c); c = *++p)
+  for (; p < strend && char_isspace (*p); ++p)
     ;
   if (is_local_am_str (p, strend) && ((*(p + local_am_strlen) == ' ') || p + local_am_strlen == strend))
     {
