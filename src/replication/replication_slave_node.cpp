@@ -278,6 +278,14 @@ namespace cubreplication
     g_instance->m_lc->fetch_resume ();
     delete g_instance->m_lc;
     g_instance->m_lc = NULL;
+
+    if (g_instance->m_ctrl_sender != NULL)
+      {
+        g_instance->m_ctrl_sender->stop ();
+        cubthread::get_manager ()->destroy_daemon_without_entry (g_instance->m_ctrl_sender_daemon);
+        delete g_instance->m_ctrl_sender;
+        g_instance->m_ctrl_sender = NULL;
+      }
   }
 
   int slave_node::replication_copy_slave (cubthread::entry &entry, node_definition *source_node,
