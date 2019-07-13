@@ -24,6 +24,7 @@
 #ifndef _PACKER_HPP_
 #define _PACKER_HPP_
 
+#include "dbtype_def.h"
 #include "mem_block.hpp"
 
 #include <vector>
@@ -104,6 +105,11 @@ namespace cubpacking
       size_t get_packed_size_overloaded (const packable_object &po, size_t curr_offset);
       void pack_overloaded (const packable_object &po);
 
+      size_t get_packed_oid_size (const size_t curr_offset);
+      void pack_oid (const OID &oid);
+      size_t get_packed_size_overloaded (const OID &oid, size_t curr_offset);
+      void pack_overloaded (const OID &oid);
+
       // packer should gradually replace OR_BUF, but they will coexist for a while. there will be functionality
       // strictly dependent on or_buf, so packer will have to cede at least some of the packing to or_buf
       //
@@ -148,7 +154,12 @@ namespace cubpacking
 
       // compute size of all arguments, extend the buffer to required size and then pack all arguments
       template <typename ExtBlk, typename ... Args>
-      void set_buffer_and_pack_all (ExtBlk &eb, Args &... args);
+      void set_buffer_and_pack_all (ExtBlk &eb, Args &&... args);
+
+      // compute size of all arguments, extend the buffer by new required size
+      // and then pack all arguments and then end of previous end of buffer
+      template <typename ExtBlk, typename ... Args>
+      void append_to_buffer_and_pack_all (ExtBlk &eb, Args &&... args);
 
     private:
 
@@ -205,6 +216,9 @@ namespace cubpacking
 
       void peek_unpack_buffer_length (int &value);
       void unpack_buffer_with_length (char *stream, const size_t max_length);
+
+      void unpack_oid (OID &oid);
+      void unpack_overloaded (OID &oid);
 
       const char *get_curr_ptr (void);
       void align (const size_t req_alignment);
@@ -324,12 +338,41 @@ namespace cubpacking
 
   template <typename ExtBlk, typename ... Args>
   void
-  packer::set_buffer_and_pack_all (ExtBlk &eb, Args &... args)
+  packer::set_buffer_and_pack_all (ExtBlk &eb, Args &&... args)
   {
     size_t total_size = get_all_packed_size (std::forward<Args> (args)...);
     eb.extend_to (total_size);
 
     set_buffer (eb.get_ptr (), total_size);
+    pack_all (std::forward<Args> (args)...);
+  }
+
+
+  template <typename ExtBlk, typename ... Args>
+  void
+  packer::append_to_buffer_and_pack_all (ExtBlk &eb, Args &&... args)
+  {
+    if (get_buffer_start () != eb.get_ptr ())
+      {
+	/* first call */
+	return set_buffer_and_pack_all (eb, std::forward<Args> (args)...);
+      }
+
+    assert (get_curr_ptr () >= eb.get_ptr () && get_curr_ptr () < eb.get_ptr () + eb.get_size ());
+
+    size_t offset = get_curr_ptr () - get_buffer_start ();
+    assert (offset >= 0);
+
+    size_t available = eb.get_ptr () + eb.get_size () - get_curr_ptr ();
+
+    size_t total_size = get_all_packed_size (std::forward<Args> (args)...);
+
+    if (available < total_size)
+      {
+	eb.extend_by (total_size);
+      }
+    set_buffer (eb.get_ptr () + offset, total_size);
+
     pack_all (std::forward<Args> (args)...);
   }
 
