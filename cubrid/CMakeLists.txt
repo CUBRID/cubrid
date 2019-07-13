@@ -117,6 +117,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/pinning.cpp
   ${BASE_DIR}/perf_monitor.c
   ${BASE_DIR}/porting.c
+  ${BASE_DIR}/printer.cpp
   ${BASE_DIR}/process_util.c
   ${BASE_DIR}/release_string.c
   ${BASE_DIR}/resource_tracker.cpp
@@ -212,6 +213,7 @@ set (REPLICATION_HEADERS
   ${REPLICATION_DIR}/master_control_channel.hpp
   ${REPLICATION_DIR}/replication_node.hpp
   ${REPLICATION_DIR}/replication_object.hpp
+  ${REPLICATION_DIR}/replication_row_apply.hpp
   ${REPLICATION_DIR}/replication_slave_node.hpp
   ${REPLICATION_DIR}/replication_source_db_copy.hpp
   ${REPLICATION_DIR}/replication_stream_entry.hpp
@@ -275,6 +277,7 @@ set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/replication_master_node.cpp
   ${REPLICATION_DIR}/replication_master_senders_manager.cpp
   ${REPLICATION_DIR}/replication_node.cpp
+  ${REPLICATION_DIR}/replication_row_apply.cpp
   ${REPLICATION_DIR}/replication_slave_node.cpp
   ${REPLICATION_DIR}/replication_source_db_copy.cpp
   ${REPLICATION_DIR}/replication_stream_entry.cpp

@@ -32,6 +32,7 @@
 #include "memory_alloc.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "replication_row_apply.hpp"
 #include "string_buffer.hpp"
 #include "thread_manager.hpp"
 #include "transaction_group.hpp"
@@ -71,7 +72,7 @@ namespace cubreplication
     LSA_SET_NULL (&m_lsa_stamp);
   }
 
-  replication_object::replication_object (LOG_LSA &lsa_stamp)
+  replication_object::replication_object (const LOG_LSA &lsa_stamp)
   {
     LSA_COPY (&m_lsa_stamp, &lsa_stamp);
   }
@@ -172,7 +173,8 @@ namespace cubreplication
       }
   }
 
-  single_row_repl_entry::single_row_repl_entry (const repl_entry_type type, const char *class_name, LOG_LSA &lsa_stamp)
+  single_row_repl_entry::single_row_repl_entry (const repl_entry_type type, const char *class_name,
+      const LOG_LSA &lsa_stamp)
     : replication_object (lsa_stamp)
     , m_type (type)
     , m_class_name (class_name)
@@ -202,14 +204,12 @@ namespace cubreplication
     int err = NO_ERROR;
 #if defined (SERVER_MODE)
     assert (m_type == REPL_DELETE);
-
-    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type);
-    cubthread::entry &my_thread = cubthread::get_entry ();
-    std::vector <int> dummy_int_vector;
-    std::vector <DB_VALUE> dummy_val_vector;
-
-    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
-				  dummy_int_vector, dummy_val_vector, NULL);
+    err = row_apply_delete (m_class_name, m_key_value);
+    if (err != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	return err;
+      }
 #endif
     return err;
   }
@@ -440,11 +440,12 @@ namespace cubreplication
     int err = NO_ERROR;
 
 #if defined (SERVER_MODE)
-    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type);
-    cubthread::entry &my_thread = cubthread::get_entry ();
-
-    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
-				  m_changed_attributes, m_new_values, NULL);
+    err = row_apply_update (m_class_name, m_key_value, m_changed_attributes, m_new_values);
+    if (err != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	return err;
+      }
 #endif
 
     return err;
@@ -516,7 +517,7 @@ namespace cubreplication
 
     entry_size = single_row_repl_entry::get_packed_size (serializator, entry_size);
 
-    entry_size += serializator.get_packed_int_vector_size (entry_size, (int) m_changed_attributes.size ());
+    entry_size += serializator.get_packed_int_vector_size (entry_size, m_changed_attributes.size ());
     entry_size += serializator.get_packed_int_size (entry_size);
     for (std::size_t i = 0; i < m_new_values.size (); i++)
       {
@@ -600,7 +601,7 @@ namespace cubreplication
   }
 
   changed_attrs_row_repl_entry::changed_attrs_row_repl_entry (repl_entry_type type, const char *class_name,
-      const OID &inst_oid, LOG_LSA &lsa_stamp)
+      const OID &inst_oid, const LOG_LSA &lsa_stamp)
     : single_row_repl_entry (type, class_name, lsa_stamp)
     , m_changed_attributes ()
     , m_new_values ()
@@ -614,16 +615,29 @@ namespace cubreplication
     int err = NO_ERROR;
 
 #if defined (SERVER_MODE)
-    assert (m_type != REPL_DELETE);
-
-    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type);
-    cubthread::entry &my_thread = cubthread::get_entry ();
-
-    std::vector<int> dummy_int_vector;
-    std::vector<DB_VALUE> dummy_val_vector;
-
-    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
-				  dummy_int_vector, dummy_val_vector, &m_rec_des.get_recdes ());
+    if (m_type == REPL_INSERT)
+      {
+	err = row_apply_insert (m_class_name, m_rec_des);
+	if (err != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    return err;
+	  }
+      }
+    else if (m_type == REPL_UPDATE)
+      {
+	err = row_apply_update (m_class_name, m_key_value, m_rec_des);
+	if (err != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    return err;
+	  }
+      }
+    else
+      {
+	assert (false);
+	err = ER_FAILED;
+      }
 #endif
 
     return err;
@@ -703,7 +717,7 @@ namespace cubreplication
   }
 
   rec_des_row_repl_entry::rec_des_row_repl_entry (repl_entry_type type, const char *class_name, const RECDES &rec_des,
-      LOG_LSA &lsa_stamp)
+      const LOG_LSA &lsa_stamp)
     : single_row_repl_entry (type, class_name, lsa_stamp)
     , m_rec_des (rec_des, cubmem::STANDARD_BLOCK_ALLOCATOR)
   {
@@ -755,8 +769,7 @@ namespace cubreplication
       {
         const RECDES &recdes = record.get_recdes ();
         /* TODO[replication] : use optimized load into page */
-        err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), NULL,
-				      dummy_int_vector, dummy_val_vector, &recdes);
+        err = row_apply_insert (m_class_name, record);
         if (err)
           {
             return err;

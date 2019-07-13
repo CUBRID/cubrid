@@ -24,6 +24,7 @@
 #ident "$Id$"
 
 #include "replication_slave_node.hpp"
+#include "log_applier.h"
 #include "log_consumer.hpp"
 #include "multi_thread_stream.hpp"
 #include "replication_apply_db_copy.hpp"
@@ -33,6 +34,9 @@
 #include "stream_file.hpp"
 #include "stream_transfer_receiver.hpp"
 #include "system_parameter.h"
+#include "thread_entry.hpp"
+#include "thread_looper.hpp"
+#include "thread_manager.hpp"
 #include "xserver_interface.h"
 
 
@@ -106,6 +110,17 @@ namespace cubreplication
     instance->m_lc->fetch_suspend ();
 
     instance->m_lc->set_stream (instance->m_stream);
+
+    if ((REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) ==
+	REPL_SEMISYNC_ACK_ON_FLUSH)
+      {
+	// route produced stream positions to get validated as flushed on disk before sending them
+	instance->m_lc->set_ack_producer ([instance] (cubstream::stream_position ack_sp)
+	{
+	  instance->m_stream_file->update_sync_position (ack_sp);
+	});
+      }
+
     /* start log_consumer daemons and apply thread pool */
     instance->m_lc->start_daemons ();
   }
@@ -208,7 +223,30 @@ namespace cubreplication
     /* start transfer receiver */
     assert (g_instance->m_transfer_receiver == NULL);
 
-    g_instance->m_lc->set_ctrl_chn (new cubreplication::slave_control_channel (std::move (control_chn)));
+    cubreplication::slave_control_sender *sender = new slave_control_sender (std::move (
+		cubreplication::slave_control_channel (std::move (control_chn))));
+
+    g_instance->m_ctrl_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
+				       sender, "slave_control_sender");
+
+    g_instance->m_ctrl_sender = sender;
+
+    if ((REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) ==
+	REPL_SEMISYNC_ACK_ON_FLUSH)
+      {
+	g_instance->m_stream_file->set_sync_notifier ([sender] (const cubstream::stream_position & sp)
+	{
+	  // route produced stream positions to get validated as flushed on disk before sending them
+	  sender->set_synced_position (sp);
+	});
+      }
+    else
+      {
+	g_instance->m_lc->set_ack_producer ([sender] (cubstream::stream_position sp)
+	{
+	  sender->set_synced_position (sp);
+	});
+      }
 
     g_instance->m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *g_instance->m_stream,
 	start_position);

@@ -55,7 +55,7 @@ namespace cubreplication
   {
     public:
       replication_object ();
-      replication_object (LOG_LSA &lsa_stamp);
+      replication_object (const LOG_LSA &lsa_stamp);
       virtual int apply (void) = 0;
       // todo: const
       virtual void stringify (string_buffer &str) = 0;
@@ -117,7 +117,7 @@ namespace cubreplication
 
       void set_key_value (const DB_VALUE &db_val);
       void set_class_name (const char *class_name);
-      single_row_repl_entry (const repl_entry_type type, const char *class_name, LOG_LSA &lsa_stamp);
+      single_row_repl_entry (const repl_entry_type type, const char *class_name, const LOG_LSA &lsa_stamp);
       single_row_repl_entry () = default;
 
     protected:
@@ -141,7 +141,8 @@ namespace cubreplication
     public:
       static const int PACKING_ID = 3;
 
-      rec_des_row_repl_entry (repl_entry_type type, const char *class_name, const RECDES &rec_des, LOG_LSA &lsa_stamp);
+      rec_des_row_repl_entry (repl_entry_type type, const char *class_name, const RECDES &rec_des,
+			      const LOG_LSA &lsa_stamp);
 
       rec_des_row_repl_entry () = default;
       ~rec_des_row_repl_entry ();
@@ -165,7 +166,7 @@ namespace cubreplication
       static const int PACKING_ID = 4;
 
       changed_attrs_row_repl_entry (repl_entry_type type, const char *class_name, const OID &inst_oid,
-				    LOG_LSA &lsa_stamp);
+				    const LOG_LSA &lsa_stamp);
 
       changed_attrs_row_repl_entry () = default;
       ~changed_attrs_row_repl_entry ();

@@ -54,10 +54,10 @@ namespace cubreplication
       }
 
     master_server_stream_senders.clear ();
+
+    cubthread::entry_callable_task *task = new cubthread::entry_callable_task (master_senders_manager::execute);
     master_channels_supervisor_daemon = cubthread::get_manager ()->create_daemon (
-	cubthread::looper (std::chrono::milliseconds (SUPERVISOR_DAEMON_DELAY_MS)),
-	new master_senders_supervisor_task (),
-	"supervisor_daemon");
+	cubthread::looper (std::chrono::milliseconds (SUPERVISOR_DAEMON_DELAY_MS)), task, "supervisor_daemon");
     g_minimum_successful_stream_position = 0;
 
     error_code = rwlock_initialize (&master_senders_lock, "MASTER_SENDERS_LOCK");
@@ -147,11 +147,7 @@ namespace cubreplication
 #endif
   }
 
-  master_senders_manager::master_senders_supervisor_task::master_senders_supervisor_task ()
-  {
-  }
-
-  void master_senders_manager::master_senders_supervisor_task::execute (cubthread::entry &context)
+  void master_senders_manager::execute (cubthread::entry &context)
   {
 #if defined (SERVER_MODE)
     static unsigned int check_conn_delay_counter = 0;

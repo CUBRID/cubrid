@@ -111,6 +111,22 @@ extern PRUNING_SCAN_CACHE *locator_get_partition_scancache (PRUNING_CONTEXT * pc
 							    const HFID * hfid, int op_type, bool has_function_index);
 extern int xlocator_redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oids, OID * oid_list);
 
+// *INDENT-OFF*
+// basic insert operation:
+extern int locator_insert_record (THREAD_ENTRY & thread_ref, HEAP_SCANCACHE & scan_cache, RECDES & recdes,
+                                  OID & oid_inserted);
+extern int locator_prune_insert_record (THREAD_ENTRY & thread_ref, HEAP_SCANCACHE & scan_cache, RECDES & recdes,
+                                        LC_COPYAREA_OPERATION op_type, PRUNING_CONTEXT * pcontext, OID & oid_inserted);
+// basic delete operation:
+extern int locator_delete_record (THREAD_ENTRY & thread_ref, HEAP_SCANCACHE & scan_cache, const OID &oid);
+// basic update operation:
+extern int locator_update_record (THREAD_ENTRY & thread_ref, HEAP_SCANCACHE & scan_cache, const OID &oid,
+                                  RECDES & old_recdes, RECDES & new_recdes, bool disable_fk_check = false);
+extern int locator_prune_update_record (THREAD_ENTRY & thread_ref, HEAP_SCANCACHE & scan_cache, const OID &oid,
+                                        RECDES & old_recdes, RECDES & new_recdes, LC_COPYAREA_OPERATION op,
+                                        PRUNING_CONTEXT * pcontext, bool disable_fk_check = false);
+// *INDENT-ON*
+
 extern int locator_rv_redo_rename (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
 extern SCAN_CODE locator_lock_and_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
@@ -128,13 +144,6 @@ extern SCAN_OPERATION_TYPE locator_decide_operation_type (LOCK lock_mode, LC_FET
 extern LOCK locator_get_lock_mode_from_op_type (SCAN_OPERATION_TYPE op_type);
 extern int locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char *db_password,
 				   const char *ha_sys_prm_context, const char *statement);
-
-/* *INDENT-OFF* */
-extern int locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION rbr_operation,
-				   const char *class_name, DB_VALUE * key_value,
-				   const std::vector<int> &changed_att_ids,
-				   const std::vector<DB_VALUE> &new_values, const RECDES *new_recdes_arg);
-/* *INDENT-ON* */
 
 extern int locator_repl_extract_schema (THREAD_ENTRY * thread_p, const char *db_user, const char *db_password,
 			                const char *ha_sys_prm_context);

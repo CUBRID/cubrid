@@ -9481,8 +9481,8 @@ schksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread_p, unsigned
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
   OID class_oid;
-  REPL_INFO repl_info = { NULL, 0, false };
-  REPL_INFO_SBR repl_stmt = { 0, NULL, NULL, NULL, NULL };
+  REPL_INFO repl_info;
+  REPL_INFO_SBR repl_stmt;
 
   ptr = or_unpack_oid (request, &class_oid);
   ptr = or_unpack_int (ptr, &repl_info.repl_info_type);

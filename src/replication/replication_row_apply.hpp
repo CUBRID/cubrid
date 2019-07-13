@@ -17,25 +17,29 @@
  *
  */
 
-/*
- * replication_common.hpp
- */
+//
+// Applying row replication
+//
 
-#ident "$Id$"
+#ifndef _REPLICATION_ROW_APPLY_HPP_
+#define _REPLICATION_ROW_APPLY_HPP_
 
-#ifndef _REPLICATION_COMMON_HPP_
-#define _REPLICATION_COMMON_HPP_
+#include "dbtype_def.h"
 
-#include "error_manager.h"
-#define er_log_debug_replication(...) if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA)) _er_log_debug(__VA_ARGS__)
+#include <string>
+#include <vector>
+
+// forward declarations
+class record_descriptor;
 
 namespace cubreplication
 {
-  typedef enum
-  {
-    REPL_SEMISYNC_ACK_ON_CONSUME,
-    REPL_SEMISYNC_ACK_ON_FLUSH
-  } REPL_SEMISYNC_ACK_MODE;
-};
+  int row_apply_insert (const std::string &classname, const record_descriptor &record);
+  int row_apply_delete (const std::string &classname, const db_value &key_value);
+  int row_apply_update (const std::string &classname, const db_value &key_value, const record_descriptor &record);
+  int row_apply_update (const std::string &classname, const db_value &key_value,
+			const std::vector<int> &attr_ids, const std::vector<db_value> &attr_values);
 
-#endif /* _REPLICATION_COMMON_HPP_ */
+} // namespace cubreplication
+
+#endif // !_REPLICATION_ROW_APPLY_HPP_
