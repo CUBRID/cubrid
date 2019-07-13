@@ -10064,7 +10064,7 @@ netcl_replication_copy_slave (const char *source_hostname, const int port_id, bo
   int status;
 
   request_size = or_packed_string_length (source_hostname, &len)
-	     + OR_INT_SIZE;
+	     + 2 * OR_INT_SIZE;
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -10074,6 +10074,7 @@ netcl_replication_copy_slave (const char *source_hostname, const int port_id, bo
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   ptr = or_pack_string_with_length (request, source_hostname, len);
+  ptr = or_pack_int (ptr, (int) port_id);
   ptr = or_pack_int (ptr, (int) start_replication_after_copy);
 
   req_error =
