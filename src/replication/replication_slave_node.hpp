@@ -74,7 +74,8 @@ namespace cubreplication
 	, m_ctrl_sender_daemon (NULL)
 	, m_ctrl_sender (NULL)
       {
-         m_source_available_pos = std::numeric_limits<cubstream::stream_position>::max (); 
+         m_source_available_pos = std::numeric_limits<cubstream::stream_position>::max ();
+         is_copy_running = false;
       }
 
       ~slave_node ();
@@ -95,6 +96,9 @@ namespace cubreplication
 
       int replication_copy_slave (cubthread::entry &entry, node_definition *source_node,
                                   const bool start_replication_after_copy);
+
+      // TODO[replication] : remove this after merging with shared stream code:
+      bool is_copy_running;
   };
 
 

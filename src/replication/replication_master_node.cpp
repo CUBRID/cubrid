@@ -159,6 +159,8 @@ namespace cubreplication
      * maybe we should use a thread pool specifically for this tasks */
     enable_active ();
 
+    er_log_debug_replication (ARG_FILE_LINE, "new_slave");
+
     if (css_ha_server_state () != HA_SERVER_STATE_ACTIVE)
       {
 	er_log_debug_replication (ARG_FILE_LINE, "new_slave invalid server state :%s",
@@ -181,6 +183,8 @@ namespace cubreplication
 
   void master_node::add_ctrl_chn (int fd)
   {
+    er_log_debug_replication (ARG_FILE_LINE, "add_ctrl_chn");
+
     if (css_ha_server_state () != HA_SERVER_STATE_ACTIVE)
       {
 	er_log_debug_replication (ARG_FILE_LINE, "add_ctrl_chn invalid server state :%s",
@@ -206,6 +210,7 @@ namespace cubreplication
    */
   void master_node::new_slave_copy (int fd)
   {
+    er_log_debug_replication (ARG_FILE_LINE, "new_slave_copy");
 #if defined (SERVER_MODE)
     cubthread::get_manager ()->push_task (master_node::get_instance (NULL)->m_new_slave_workers_pool,
                                           new new_slave_worker_task (fd));
@@ -219,6 +224,7 @@ namespace cubreplication
    */
   void master_node::new_slave_copy_task (cubthread::entry &thread_ref, int fd)
   {
+    er_log_debug_replication (ARG_FILE_LINE, "new_slave_copy_task");
 #if defined (SERVER_MODE)
     int error = NO_ERROR;
 

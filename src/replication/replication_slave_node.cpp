@@ -47,6 +47,7 @@ int xreplication_copy_slave (THREAD_ENTRY * thread_p, const char *source_hostnam
   cubreplication::node_definition source_node (source_hostname);
   source_node.set_port (port_id);
   cubreplication::slave_node *slave_instance = cubreplication::slave_node::get_instance (NULL);
+  slave_instance->is_copy_running = true;
 
   er_log_debug_replication (ARG_FILE_LINE, "xreplication_copy_slave source_hostname:%s, port:%d,"
                             " start_replication_after_copy:%d",
@@ -65,6 +66,7 @@ int xreplication_copy_slave (THREAD_ENTRY * thread_p, const char *source_hostnam
       error = cubreplication::slave_node::connect_to_master (source_hostname, port_id);
     }
 
+  slave_instance->is_copy_running = false;
   return error;
 }
 
@@ -106,25 +108,6 @@ namespace cubreplication
     std::string replication_path;
     replication_node::get_replication_file_path (replication_path);
     instance->m_stream_file = new cubstream::stream_file (*instance->m_stream, replication_path);
-
-    assert (instance->m_lc == NULL);
-    instance->m_lc = new log_consumer ();
-    instance->m_lc->fetch_suspend ();
-
-    instance->m_lc->set_stream (instance->m_stream);
-
-    if ((REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) ==
-	REPL_SEMISYNC_ACK_ON_FLUSH)
-      {
-	// route produced stream positions to get validated as flushed on disk before sending them
-	instance->m_lc->set_ack_producer ([instance] (cubstream::stream_position ack_sp)
-	{
-	  instance->m_stream_file->update_sync_position (ack_sp);
-	});
-      }
-
-    /* start log_consumer daemons and apply thread pool */
-    instance->m_lc->start_daemons ();
   }
 
   int slave_node::setup_protocol (cubcomm::channel &chn)
@@ -179,6 +162,12 @@ namespace cubreplication
     er_log_debug_replication (ARG_FILE_LINE, "slave_node::connect_to_master host:%s, port: %d\n",
 			      master_node_hostname, master_node_port_id);
 
+    if (g_instance->is_copy_running)
+      {
+        er_log_debug_replication (ARG_FILE_LINE, "slave_node::connect_to_master COPY ALREADY RUNNING\n");
+        return error;
+      }
+
     /* connect to replication master node */
     cubcomm::server_channel srv_chn (g_instance->m_identity.get_hostname ().c_str ());
     srv_chn.set_channel_name (REPL_ONLINE_CHANNEL_NAME);
@@ -202,7 +191,9 @@ namespace cubreplication
 
     if (g_instance->need_replication_copy (start_position))
       {
+        g_instance->is_copy_running = true;
         error = g_instance->replication_copy_slave (cubthread::get_entry (), &g_instance->m_master_identity, true);
+        g_instance->is_copy_running = false;
       }
     else
       {
@@ -215,6 +206,26 @@ namespace cubreplication
   int slave_node::start_online_replication (cubcomm::server_channel &srv_chn, const cubstream::stream_position start_position)
   {
     int error;
+
+    assert (g_instance->m_lc == NULL);
+    assert (g_instance->m_stream != NULL);
+    g_instance->m_lc = new log_consumer ();
+    g_instance->m_lc->fetch_suspend ();
+
+    g_instance->m_lc->set_stream (g_instance->m_stream);
+
+    if ((REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) ==
+	REPL_SEMISYNC_ACK_ON_FLUSH)
+      {
+	// route produced stream positions to get validated as flushed on disk before sending them
+	g_instance->m_lc->set_ack_producer ([] (cubstream::stream_position ack_sp)
+	{
+	  g_instance->m_stream_file->update_sync_position (ack_sp);
+	});
+      }
+
+    /* start log_consumer daemons and apply thread pool */
+    g_instance->m_lc->start_daemons ();
 
     cubcomm::server_channel control_chn (g_instance->m_identity.get_hostname ().c_str ());
     control_chn.set_channel_name (REPL_CONTROL_CHANNEL_NAME);

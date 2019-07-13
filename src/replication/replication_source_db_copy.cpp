@@ -157,6 +157,9 @@ namespace cubreplication
 
     assert (new_state != m_state);
 
+    er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::transit_state curr_state:%d, new_state:%d",
+                              m_state, new_state);
+
     std::unique_lock<std::mutex>  ulock_state (m_state_mutex);
 
     if ((int) m_state != ((int) new_state - 1))
@@ -189,6 +192,7 @@ namespace cubreplication
 
   void source_copy_context::wait_for_state (const copy_stage &desired_state)
   {
+    er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_for_state %d", desired_state);
     std::unique_lock<std::mutex> ulock_state (m_state_mutex);
     m_state_cv.wait (ulock_state, [this, desired_state] { return m_state == desired_state;});
   }
@@ -358,6 +362,8 @@ namespace cubreplication
       {
         return ER_FAILED;
       }
+    er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::setup_copy_protocol online_repl_pos:%lld",
+                              online_repl_pos);
 
     return NO_ERROR;
   }
@@ -378,6 +384,7 @@ namespace cubreplication
         assert (false);
         return ER_FAILED;
       }
+    er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_slave_receive_ack OK");
 
     return NO_ERROR;
   }
