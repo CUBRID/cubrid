@@ -25,6 +25,7 @@
 
 #include "replication_apply_db_copy.hpp"
 #include "communication_server_channel.hpp"
+#include "log_impl.h"
 #include "replication_common.hpp"
 #include "replication_node.hpp"
 #include "replication_stream_entry.hpp"
@@ -157,6 +158,9 @@ namespace cubreplication
 
     /* signal master node that connection may be closed */
     send_master_receive_ack (srv_chn);
+
+    /* update position in log_Gl */
+    log_Gl.m_ack_stream_position = m_online_repl_start_pos;
 
     return error;
   }

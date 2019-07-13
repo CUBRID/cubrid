@@ -78,6 +78,7 @@ namespace cubreplication
       static int start_online_replication (cubcomm::server_channel &srv_chn,
                                            const cubstream::stream_position start_position);
       static void final (void);
+      static void stop_and_destroy_online_repl (void);
       
       int setup_protocol (cubcomm::channel &chn);
 

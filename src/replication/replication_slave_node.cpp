@@ -39,9 +39,27 @@
 int xreplication_copy_slave (THREAD_ENTRY * thread_p, const char *source_hostname, const int port_id, 
                              const bool start_replication_after_copy)
 {
+  int error = NO_ERROR;
   cubreplication::node_definition source_node (source_hostname);
   source_node.set_port (port_id);
-  return cubreplication::slave_node::get_instance (NULL)->replication_copy_slave (*thread_p, &source_node, start_replication_after_copy);
+
+  cubreplication::slave_node *slave_instance = cubreplication::slave_node::get_instance (NULL);
+
+  /* stop online replication */
+  cubreplication::slave_node::stop_and_destroy_online_repl ();
+
+  error = slave_instance->replication_copy_slave (*thread_p, &source_node, start_replication_after_copy);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (start_replication_after_copy)
+    {
+      error = cubreplication::slave_node::connect_to_master (source_hostname, port_id);
+    }
+
+  return error;
 }
 
 namespace cubreplication
@@ -162,7 +180,7 @@ namespace cubreplication
       }
 
     /* TODO[replication] : last position to be retrieved from recovery module */
-    cubstream::stream_position start_position = log_Gl.m_active_start_position;
+    cubstream::stream_position start_position = log_Gl.m_ack_stream_position;
 
     if (g_instance->need_replication_copy (start_position))
       {
@@ -207,15 +225,21 @@ namespace cubreplication
 	return;
       }
 
+    stop_and_destroy_online_repl ();
+
+    delete g_instance;
+    g_instance = NULL;
+  }
+
+  void slave_node::stop_and_destroy_online_repl (void)
+  {
     delete g_instance->m_transfer_receiver;
     g_instance->m_transfer_receiver = NULL;
 
     g_instance->m_lc->set_stop ();
+    g_instance->m_lc->fetch_resume ();
     delete g_instance->m_lc;
     g_instance->m_lc = NULL;
-
-    delete g_instance;
-    g_instance = NULL;
   }
 
   int slave_node::replication_copy_slave (cubthread::entry &entry, node_definition *source_node,
