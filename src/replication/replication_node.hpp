@@ -79,9 +79,9 @@ namespace cubreplication
   class replication_node
   {
     public:
-      const static long long SETUP_REPLICATION_MAGIC;
-      const static long long SETUP_COPY_REPLICATION_MAGIC;
-      const static long long SETUP_COPY_END_REPLICATION_MAGIC;
+      const static unsigned long long SETUP_REPLICATION_MAGIC;
+      const static unsigned long long SETUP_COPY_REPLICATION_MAGIC;
+      const static unsigned long long SETUP_COPY_END_REPLICATION_MAGIC;
 
     protected:
       cubstream::multi_thread_stream *m_stream;

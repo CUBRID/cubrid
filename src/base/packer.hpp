@@ -153,10 +153,10 @@ namespace cubpacking
       template <typename ExtBlk, typename ... Args>
       void set_buffer_and_pack_all (ExtBlk &eb, Args &&... args);
 
-      // compute size of all arguments, extend the buffer by new required size and then pack all arguments and then end of previous end of buffer
+      // compute size of all arguments, extend the buffer by new required size
+      // and then pack all arguments and then end of previous end of buffer
       template <typename ExtBlk, typename ... Args>
-      void
-      append_to_buffer_and_pack_all (ExtBlk &eb, Args &&... args);
+      void append_to_buffer_and_pack_all (ExtBlk &eb, Args &&... args);
 
     private:
 
