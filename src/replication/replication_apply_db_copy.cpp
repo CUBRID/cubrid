@@ -65,7 +65,10 @@ namespace cubreplication
     delete m_transfer_receiver;
     m_transfer_receiver = NULL;
 
-    m_copy_consumer->set_stop ();
+    if (m_copy_consumer)
+      {
+        m_copy_consumer->set_stop ();
+      }
     delete m_copy_consumer;
     m_copy_consumer = NULL;
 

@@ -207,6 +207,9 @@ namespace cubreplication
   {
     int error;
 
+    er_log_debug_replication (ARG_FILE_LINE, "slave_node::start_online_replication start_position: %lld\n",
+                              start_position);
+
     assert (g_instance->m_lc == NULL);
     assert (g_instance->m_stream != NULL);
     g_instance->m_lc = new log_consumer ();
@@ -288,13 +291,20 @@ namespace cubreplication
 
   void slave_node::stop_and_destroy_online_repl (void)
   {
+    er_log_debug_replication (ARG_FILE_LINE, "slave_node::stop_and_destroy_online_repl");
+
+    assert (g_instance != NULL);
+
     delete g_instance->m_transfer_receiver;
     g_instance->m_transfer_receiver = NULL;
 
-    g_instance->m_lc->set_stop ();
-    g_instance->m_lc->fetch_resume ();
-    delete g_instance->m_lc;
-    g_instance->m_lc = NULL;
+    if (g_instance->m_lc != NULL)
+      {
+        g_instance->m_lc->set_stop ();
+        g_instance->m_lc->fetch_resume ();
+        delete g_instance->m_lc;
+        g_instance->m_lc = NULL;
+      }
 
     if (g_instance->m_ctrl_sender != NULL)
       {
