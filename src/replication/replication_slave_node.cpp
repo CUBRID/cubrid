@@ -214,7 +214,8 @@ namespace cubreplication
     int error;
 
     cubcomm::server_channel control_chn (g_instance->m_identity.get_hostname ().c_str ());
-    error = control_chn.connect (g_instance->m_identity.get_hostname ().c_str (), g_instance->m_identity.get_port (),
+    error = control_chn.connect (g_instance->m_master_identity.get_hostname ().c_str (),
+                                 g_instance->m_master_identity.get_port (),
                                  COMMAND_SERVER_REQUEST_CONNECT_SLAVE_CONTROL);
     if (error != css_error_code::NO_ERRORS)
       {
