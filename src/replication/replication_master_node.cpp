@@ -167,6 +167,7 @@ namespace cubreplication
       }
 
     cubcomm::channel chn;
+    chn.set_channel_name (REPL_ONLINE_CHANNEL_NAME);
 
     css_error_code rc = chn.accept (fd);
     assert (rc == NO_ERRORS);
@@ -188,6 +189,7 @@ namespace cubreplication
       }
 
     cubcomm::channel chn;
+    chn.set_channel_name (REPL_CONTROL_CHANNEL_NAME);
 
     css_error_code rc = chn.accept (fd);
     assert (rc == NO_ERRORS);

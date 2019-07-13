@@ -46,9 +46,11 @@ int xreplication_copy_slave (THREAD_ENTRY * thread_p, const char *source_hostnam
   int error = NO_ERROR;
   cubreplication::node_definition source_node (source_hostname);
   source_node.set_port (port_id);
-
   cubreplication::slave_node *slave_instance = cubreplication::slave_node::get_instance (NULL);
 
+  er_log_debug_replication (ARG_FILE_LINE, "xreplication_copy_slave source_hostname:%s, port:%d,"
+                            " start_replication_after_copy:%d",
+                            source_hostname, port_id, start_replication_after_copy);
   /* stop online replication */
   cubreplication::slave_node::stop_and_destroy_online_repl ();
 
@@ -179,6 +181,7 @@ namespace cubreplication
 
     /* connect to replication master node */
     cubcomm::server_channel srv_chn (g_instance->m_identity.get_hostname ().c_str ());
+    srv_chn.set_channel_name (REPL_ONLINE_CHANNEL_NAME);
 
     g_instance->m_master_identity.set_hostname (master_node_hostname);
     g_instance->m_master_identity.set_port (master_node_port_id);
@@ -214,6 +217,7 @@ namespace cubreplication
     int error;
 
     cubcomm::server_channel control_chn (g_instance->m_identity.get_hostname ().c_str ());
+    srv_chn.set_channel_name (REPL_CONTROL_CHANNEL_NAME);
     error = control_chn.connect (g_instance->m_master_identity.get_hostname ().c_str (),
                                  g_instance->m_master_identity.get_port (),
                                  COMMAND_SERVER_REQUEST_CONNECT_SLAVE_CONTROL);

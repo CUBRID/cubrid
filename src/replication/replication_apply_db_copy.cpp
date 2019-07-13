@@ -133,6 +133,7 @@ namespace cubreplication
     assert (m_stream != NULL);
     /* connect to replication master node */
     cubcomm::server_channel srv_chn (m_my_identity->get_hostname ().c_str ());
+    srv_chn.set_channel_name (REPL_COPY_CHANNEL_NAME);
 
     error = srv_chn.connect (m_source_identity->get_hostname ().c_str (), m_source_identity->get_port (),
                              COMMAND_SERVER_REQUEST_CONNECT_SLAVE_COPY_DB);

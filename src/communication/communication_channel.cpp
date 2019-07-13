@@ -113,7 +113,15 @@ namespace cubcomm
     m_type = CHANNEL_TYPE::INITIATOR;
     m_socket = css_tcp_client_open (hostname, port);
 
-    return IS_INVALID_SOCKET (m_socket) ? REQUEST_REFUSED : NO_ERRORS;
+    if (IS_INVALID_SOCKET (m_socket))
+      {
+        return REQUEST_REFUSED;
+      }
+
+    m_hostname = hostname;
+    m_port = port;
+
+    return NO_ERRORS;
   }
 
   css_error_code channel::accept (SOCKET socket)
@@ -137,6 +145,9 @@ namespace cubcomm
 	m_socket = INVALID_SOCKET;
 	m_type = NO_TYPE;
       }
+
+    m_hostname = "";
+    m_port = -1;
   }
 
   int channel::get_max_timeout_in_ms ()
