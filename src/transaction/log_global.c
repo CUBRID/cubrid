@@ -73,6 +73,7 @@ log_global::log_global ()
      }
   , flush_notify_info ()
   , m_tran_complete_mgr (NULL)    // to be instantiated on boot
+  , reset_complete_manager_started (false)
   , m_ack_stream_position (std::numeric_limits<cubstream::stream_position>::min ())
   , m_active_start_position (std::numeric_limits<cubstream::stream_position>::min ())
   , m_min_active_lsa (NULL_LSA)

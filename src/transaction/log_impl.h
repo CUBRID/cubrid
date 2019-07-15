@@ -675,6 +675,7 @@ struct log_global
   cubtx::complete_manager *m_tran_complete_mgr;
   std::atomic<cubstream::stream_position> m_ack_stream_position;
   cubstream::stream_position m_active_start_position;
+  std::atomic<bool> reset_complete_manager_started;
   // *INDENT-ON*
   LOG_LSA m_min_active_lsa;
 

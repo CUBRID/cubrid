@@ -10232,11 +10232,17 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
   LOG_TRAN_COMPLETE_MANAGER_TYPE old_manager_type;
 #if defined(SERVER_MODE)
   const char *ha_server_state_string = css_ha_server_state_string (css_ha_server_state ());
+  bool expected = false;
+
+  /* Only one thread can change the complete manager. */
+  while (!log_Gl.reset_complete_manager_started.compare_exchange_weak (expected, true) && !expected)
+    {
+      thread_sleep (50);
+    }
 #else
   const char *ha_server_state_string = "HA_NONE";
 #endif
 
-  /* TODO - use mutex */
   /* TODO - remove old complete manager */
   if (log_Gl.m_tran_complete_mgr != NULL)
     {
@@ -10252,6 +10258,7 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
       /* Same manager, nothing to do. */
       er_print_callstack (ARG_FILE_LINE, "logpb_resets_tran_complete_manager ha_server_state = %s, manager type = %s\n",
 			  ha_server_state_string, logpb_complete_manager_string (manager_type));
+      log_Gl.reset_complete_manager_started = false;
       return;
     }
 
@@ -10338,6 +10345,8 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
 
   /* Release the lock to allow to system to advance. */
   lock_unlock_object_donot_move_to_non2pl (thread_p, oid_Root_class_oid, &oid_Null_oid, S_LOCK);
+
+  log_Gl.reset_complete_manager_started = false;
 }
 
 /*
