@@ -403,8 +403,9 @@ namespace cubreplication
    * class_oid (in):
    * class_hfid (in):
    */
-  static void
-  create_scan_for_replication_copy (cubthread::entry *thread_p, SCAN_ID &s_id, OID &class_oid, HFID &class_hfid)
+  static int
+  create_scan_for_replication_copy (cubthread::entry *thread_p, SCAN_ID &s_id, OID &class_oid, HFID &class_hfid,
+                                    HEAP_CACHE_ATTRINFO * cache_pred, HEAP_CACHE_ATTRINFO * cache_rest)
   {
     /* TODO : read lock is required by an assertion in heap_scan_pb_lock_and_fetch */
     const bool mvcc_select_lock_needed = true;
@@ -425,10 +426,10 @@ namespace cubreplication
 				 NULL, /* regu_list_rest */
 				 0, /* num_attrs_pred */
 				 NULL, /* attrids_pred */
-				 NULL, /* cache_pred */
+				 cache_pred, /* cache_pred */
 				 0, /* num_attrs_rest */
 				 NULL, /* attrids_rest*/
-				 NULL, /* cache_rest */
+				 cache_rest, /* cache_rest */
 				 scan_type,
 				 NULL, /* cache_recordinfo */
 				 NULL /* regu_list_recordinfo*/
@@ -437,7 +438,7 @@ namespace cubreplication
     if (error != NO_ERROR)
       {
 	ASSERT_ERROR ();
-	return;
+	return error;
       }
 
     error = scan_start_scan (thread_p, &s_id);
@@ -445,8 +446,10 @@ namespace cubreplication
     if (error != NO_ERROR)
       {
 	ASSERT_ERROR ();
-	return;
+	return error;
       }
+
+    return error;
   }
 
   /*
@@ -460,6 +463,8 @@ namespace cubreplication
     SCAN_ID s_id;
     SCAN_CODE sc_scan;
     HEAP_CACHE_ATTRINFO attr_info;
+    HEAP_CACHE_ATTRINFO dummy_cache_pred;
+    HEAP_CACHE_ATTRINFO dummy_cache_rest;
     HFID class_hfid;
     bool attr_info_inited = false;
     int error_code = NO_ERROR;
@@ -494,7 +499,16 @@ namespace cubreplication
 
     attr_info_inited = true;
 
-    create_scan_for_replication_copy (thread_p, s_id, class_oid, class_hfid);
+    /* TODO[replication] : we may use some filters on rows;
+     * for this reason we use a generic SCAN_ID which allows filter predicates instead of a low level heap scan
+     * for now, we just use dummy attribute caches which should be initialized to empty values by scan_start_scan */
+    error_code = create_scan_for_replication_copy (thread_p, s_id, class_oid, class_hfid,
+                                                   &dummy_cache_pred, &dummy_cache_rest);
+    if (error_code != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	goto end;
+      }
 
     do
       {
