@@ -557,7 +557,7 @@ struct log_tdes
   void unlock_topop ();
 
   void on_sysop_start ();
-  void on_sysop_end ();
+  void on_sysop_end (bool force_lsa_reset);
 #endif
   // *INDENT-ON*
 };

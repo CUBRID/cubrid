@@ -6060,10 +6060,10 @@ log_tdes::on_sysop_start ()
 }
 
 void
-log_tdes::on_sysop_end ()
+log_tdes::on_sysop_end (bool force_lsa_reset)
 {
   assert (is_allowed_sysop ());
-  if (is_system_worker_transaction() && topops.last < 0)
+  if (is_system_worker_transaction () && topops.last < 0)
     {
       // make sure this system operation cannot be linked
       assert (topops.last == -1);
@@ -6071,6 +6071,13 @@ log_tdes::on_sysop_end ()
       LSA_SET_NULL (&tail_lsa);
       LSA_SET_NULL (&undo_nxlsa);
       LSA_SET_NULL (&tail_topresult_lsa);
+    }
+  else if (force_lsa_reset)
+    {
+      /* COMMIT, ABORT cases when there is no other logging. */
+      LSA_SET_NULL (&head_lsa);
+      LSA_SET_NULL (&tail_lsa);
+      LSA_SET_NULL (&undo_nxlsa);
     }
 }
 

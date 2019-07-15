@@ -320,7 +320,8 @@ STATIC_INLINE void log_sysop_end_random_exit (THREAD_ENTRY * thread_p) __attribu
 STATIC_INLINE void log_sysop_end_begin (THREAD_ENTRY * thread_p, int *tran_index_out, LOG_TDES ** tdes_out)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void log_sysop_end_unstack (THREAD_ENTRY * thread_p, LOG_TDES * tdes) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool check_parent_modifications)
+  __attribute__ ((ALWAYS_INLINE));
 static void log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_record, int data_size,
 				       const char *data, bool is_rv_finish_postpone);
 STATIC_INLINE void log_sysop_get_tran_index_and_tdes (THREAD_ENTRY * thread_p, int *tran_index_out,
@@ -3671,11 +3672,21 @@ log_sysop_end_unstack (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
  * return	 : Void.
  * thread_p (in) : Thread entry.
  * tdes (in/out) : Transaction descriptor.
+ * check_parent_modifications (in): checks for parent modification
  */
 STATIC_INLINE void
-log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool check_parent_modifications)
 {
   int r = NO_ERROR;
+  bool force_lsa_reset = false;
+
+  if (check_parent_modifications)
+    {
+      /* Check whether we need to reset head, tail LSA. If parent has no modification,
+       * then, we have to reset head, tail LSA. This happens in ABORT, COMMIT cases.
+       */
+      force_lsa_reset = LSA_ISNULL (LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
+    }
 
   log_sysop_end_unstack (thread_p, tdes);
 
@@ -3696,7 +3707,7 @@ log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 		     (long long int) tdes->tail_topresult_lsa.pageid, (int) tdes->tail_topresult_lsa.offset,
 		     vacuum_get_worker_state (thread_p));
     }
-  tdes->on_sysop_end ();
+  tdes->on_sysop_end (force_lsa_reset);
 
   log_sysop_end_random_exit (thread_p);
 
@@ -3812,7 +3823,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
       LSA_COPY (&tdes->tail_topresult_lsa, &tdes->tail_lsa);
     }
 
-  log_sysop_end_final (thread_p, tdes);
+  log_sysop_end_final (thread_p, tdes, true);
 }
 
 /*
@@ -4003,7 +4014,7 @@ log_sysop_abort (THREAD_ENTRY * thread_p)
       tdes->state = save_state;
     }
 
-  log_sysop_end_final (thread_p, tdes);
+  log_sysop_end_final (thread_p, tdes, true);
 }
 
 /*
@@ -4052,7 +4063,7 @@ log_sysop_attach_to_outer (THREAD_ENTRY * thread_p)
 	}
     }
 
-  log_sysop_end_final (thread_p, tdes);
+  log_sysop_end_final (thread_p, tdes, false);
 }
 
 /*

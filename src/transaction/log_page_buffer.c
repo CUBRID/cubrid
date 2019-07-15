@@ -10250,8 +10250,8 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
   if (old_manager_type == manager_type)
     {
       /* Same manager, nothing to do. */
-      er_print_callstack (ARG_FILE_LINE, "logpb_resets_tran_complete_manager manager type = %s, ha_server_state = %s\n",
-			  logpb_complete_manager_string (manager_type), ha_server_state_string);
+      er_print_callstack (ARG_FILE_LINE, "logpb_resets_tran_complete_manager ha_server_state = %s, manager type = %s\n",
+			  ha_server_state_string, logpb_complete_manager_string (manager_type));
       return;
     }
 
