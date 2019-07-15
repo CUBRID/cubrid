@@ -76,15 +76,10 @@ namespace cubreplication
     protected:
       cubstream::multi_thread_stream *m_stream;
       cubstream::stream_file *m_stream_file;
-      cubstream::stream_position m_start_position;
       node_definition m_identity;
 
-      /* a replication node has stream start position : this is read from persistent storage */
-      virtual int apply_start_position (void);
-
       replication_node (const char *name)
-	: m_start_position (0),
-	  m_identity (name)
+	: m_identity (name)
       {
 	m_stream = NULL;
 	m_stream_file = NULL;
