@@ -109,8 +109,7 @@ namespace cubreplication
     m_ctrl_sender = sender;
     cubstream::stream_file *sf = m_stream_file;
 
-    if ((REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) ==
-	REPL_SEMISYNC_ACK_ON_FLUSH)
+    if ((REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) == REPL_SEMISYNC_ACK_ON_FLUSH)
       {
 	m_stream_file->set_sync_notifier ([sender] (const cubstream::stream_position & sp)
 	{
