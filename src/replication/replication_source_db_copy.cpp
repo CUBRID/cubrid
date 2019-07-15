@@ -434,7 +434,19 @@ namespace cubreplication
 				 NULL /* regu_list_recordinfo*/
 				);
 
-    assert (error == NO_ERROR);
+    if (error != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	return;
+      }
+
+    error = scan_start_scan (thread_p, &s_id);
+
+    if (error != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	return;
+      }
   }
 
   /*
