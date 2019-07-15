@@ -76,8 +76,8 @@ namespace cubreplication
   source_copy_context::source_copy_context ()
   {
     m_stream = NULL;
+    /* TODO[replication] : use file for replication copy stream */
     m_stream_file = NULL;
-    m_transfer_sender = NULL;
     m_state = NOT_STARTED;
     m_error_cnt = 0;
     m_is_stop = false;
@@ -96,6 +96,7 @@ namespace cubreplication
     detach_stream_for_copy ();
 
     m_stream_file = NULL;
+    delete m_transfer_sender;
     m_transfer_sender = NULL;
     m_state = NOT_STARTED;
     m_error_cnt = 0;
@@ -278,6 +279,7 @@ namespace cubreplication
 
   void source_copy_context::detach_stream_for_copy ()
   {
+    m_stream->set_stop ();
     delete m_stream;
     m_stream = NULL;
   }
@@ -303,7 +305,7 @@ namespace cubreplication
         return;
       }
 
-    master_senders_manager::add_stream_sender (new cubstream::transfer_sender (std::move (chn), *m_stream));
+    m_transfer_sender = new cubstream::transfer_sender (std::move (chn), *m_stream);
 
     er_log_debug_replication (ARG_FILE_LINE, "new_slave_copy connected");
 
