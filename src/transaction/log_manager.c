@@ -3823,7 +3823,8 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
       LSA_COPY (&tdes->tail_topresult_lsa, &tdes->tail_lsa);
     }
 
-  log_sysop_end_final (thread_p, tdes, true);
+  /* TODO - set check_parent_modifications = true. Currently disabled. */
+  log_sysop_end_final (thread_p, tdes, false);
 }
 
 /*
