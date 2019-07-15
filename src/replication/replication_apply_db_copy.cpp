@@ -171,7 +171,7 @@ namespace cubreplication
 
   void apply_copy_context::wait_replication_copy ()
   {
-     while (m_copy_consumer->is_finished ())
+     while (!m_copy_consumer->is_finished ())
        {
           er_log_debug_replication (ARG_FILE_LINE, "wait_replication_copy: current stream_position:%lld\n",
 			            m_copy_consumer->m_last_fetched_position);
