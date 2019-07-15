@@ -75,8 +75,8 @@ namespace cubreplication
         SCHEMA_CLASSES_LIST_FINISHED,
 	HEAP_COPY,
 	HEAP_COPY_FINISHED,
-	SCHEMA_APPLY_TRIGGERS_INDEXES,
-	SCHEMA_APPLY_TRIGGERS_INDEXES_FINISHED
+	SCHEMA_APPLY_TRIGGERS,
+	SCHEMA_APPLY_INDEXES
       };
 
       source_copy_context ();
@@ -89,7 +89,7 @@ namespace cubreplication
       void pack_and_add_end_of_extract_heap ();
       void pack_and_add_end_of_copy ();
 
-      int transit_state (copy_stage new_state);
+      int execute_and_transit_phase (copy_stage new_state);
 
       void append_class_schema (const char *buffer, const size_t buf_size);
       void append_triggers_schema (const char *buffer, const size_t buf_size);

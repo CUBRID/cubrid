@@ -151,14 +151,14 @@ namespace cubreplication
     stream_entry.pack ();
   }
 
-  int source_copy_context::transit_state (copy_stage new_state)
+  int source_copy_context::execute_and_transit_phase (copy_stage new_state)
   {
     int error = NO_ERROR;
 
     assert (new_state != m_state);
 
-    er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::transit_state curr_state:%d, new_state:%d",
-                              m_state, new_state);
+    er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::execute_and_transit_phase "
+                              "curr_state:%d, new_state:%d", m_state, new_state);
 
     std::unique_lock<std::mutex>  ulock_state (m_state_mutex);
 
@@ -176,11 +176,11 @@ namespace cubreplication
       {
 	pack_and_add_statement (m_class_schema);
       }
-    else if (new_state == SCHEMA_APPLY_TRIGGERS_INDEXES)
+    else if (new_state == SCHEMA_APPLY_TRIGGERS)
       {
 	pack_and_add_statement (m_triggers);
       }
-    else if (new_state == SCHEMA_APPLY_TRIGGERS_INDEXES_FINISHED)
+    else if (new_state == SCHEMA_APPLY_INDEXES)
       {
 	pack_and_add_statement (m_indexes);
       }
@@ -204,7 +204,7 @@ namespace cubreplication
 
   void source_copy_context::wait_send_triggers_indexes (void)
   {
-    wait_for_state (SCHEMA_APPLY_TRIGGERS_INDEXES_FINISHED);
+    wait_for_state (SCHEMA_APPLY_INDEXES);
   }
 
   int source_copy_context::get_tran_index (void)
@@ -303,7 +303,7 @@ namespace cubreplication
 
     wait_receive_class_list ();
 
-    transit_state (HEAP_COPY);
+    execute_and_transit_phase (HEAP_COPY);
     /* extraction process : heap extract phase */
     pack_and_add_start_of_extract_heap ();
     /* TODO[replication]: we may optimize this to have multiple threads for larger heaps */
@@ -319,10 +319,11 @@ namespace cubreplication
       {
         thread_sleep (10);
       }
-    transit_state (HEAP_COPY_FINISHED);
+    execute_and_transit_phase (HEAP_COPY_FINISHED);
     pack_and_add_end_of_extract_heap ();
 
-    transit_state (SCHEMA_APPLY_TRIGGERS_INDEXES);
+    execute_and_transit_phase (SCHEMA_APPLY_TRIGGERS);
+    execute_and_transit_phase (SCHEMA_APPLY_INDEXES);
     /* wait for indexes and triggers schema */
     wait_send_triggers_indexes ();
 

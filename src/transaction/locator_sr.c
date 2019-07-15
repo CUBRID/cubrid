@@ -13854,8 +13854,8 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
 
     case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END:
       repl_copy_ctxt.append_class_schema (buffer, buf_size);
-      repl_copy_ctxt.transit_state (cubreplication::source_copy_context::SCHEMA_APPLY_CLASSES);
-      repl_copy_ctxt.transit_state (cubreplication::source_copy_context::SCHEMA_APPLY_CLASSES_FINISHED);
+      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_APPLY_CLASSES);
+      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_APPLY_CLASSES_FINISHED);
       break;
 
     case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS:
@@ -13864,7 +13864,7 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
 
     case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS_END:
       repl_copy_ctxt.append_triggers_schema (buffer, buf_size);
-      repl_copy_ctxt.transit_state (cubreplication::source_copy_context::SCHEMA_TRIGGERS_RECEIVED);
+      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_TRIGGERS_RECEIVED);
       break;
 
     case NET_PROXY_BUF_TYPE_EXTRACT_INDEXES:
@@ -13873,12 +13873,12 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
 
     case NET_PROXY_BUF_TYPE_EXTRACT_INDEXES_END:
       repl_copy_ctxt.append_indexes_schema (buffer, buf_size);
-      repl_copy_ctxt.transit_state (cubreplication::source_copy_context::SCHEMA_INDEXES_RECEIVED);
+      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_INDEXES_RECEIVED);
       break;
 
     case NET_PROXY_BUF_TYPE_OID_LIST:
       repl_copy_ctxt.unpack_class_oid_list (buffer, buf_size);
-      repl_copy_ctxt.transit_state (cubreplication::source_copy_context::SCHEMA_CLASSES_LIST_FINISHED);
+      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_CLASSES_LIST_FINISHED);
       break;
 
     default:
