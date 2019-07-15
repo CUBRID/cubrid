@@ -691,8 +691,8 @@ configure_file(cmake/version.h.cmake version.h)
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   # Definitions for system
   add_definitions(-DGCC -DLINUX -D_GNU_SOURCE -DI386 -DX86)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused -Wno-unused-parameter")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused -Wno-format-truncation -Wno-format-overflow")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused -Wno-unused-parameter -Wno-format-truncation -Wno-format-overflow")
 
   if(SIZEOF_OFF64_T)
     add_definitions( -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64)
@@ -878,7 +878,7 @@ endif(USE_CUBRID_ENV)
 # For external library options
 include(ExternalProject)
 set_property(DIRECTORY PROPERTY EP_BASE "${CMAKE_BINARY_DIR}/external")
-set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external --enable-static --disable-shared --with-pic CFLAGS=${CMAKE_C_FLAGS} CXXFLAGS=${CMAKE_CXX_FLAGS})
+set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external --enable-static --disable-shared --with-pic CFLAGS=-w CXXFLAGS=-w)
 
 # WITH_LIBREGEX can have multiple values with different meanings
 # on Linux:
@@ -941,6 +941,7 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
     externalproject_add(${LIBEXPAT_TARGET}
       URL               ${WITH_LIBEXPAT_URL}
       TIMEOUT 300
+      DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook
       BUILD_COMMAND     make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
@@ -985,6 +986,7 @@ if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
     externalproject_add(${LIBJANSSON_TARGET}
       URL               ${WITH_LIBJANSSON_URL}
       TIMEOUT 300
+      DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
@@ -1060,6 +1062,7 @@ if(UNIX)
     externalproject_add(${LIBEDIT_TARGET}
       URL               ${WITH_LIBEDIT_URL}
       TIMEOUT 300
+      DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND "LDFLAGS=-L${CMAKE_CURRENT_BINARY_DIR}/external/lib" ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
@@ -1100,6 +1103,7 @@ if(WITH_LIBLZO STREQUAL "EXTERNAL")
     externalproject_add(${LIBLZO_TARGET}
       URL               ${WITH_LIBLZO_URL}
       TIMEOUT 300
+      DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
@@ -1138,6 +1142,7 @@ if(UNIX)
     externalproject_add(${LIBGPG_ERROR_TARGET}
       URL               ${WITH_LIBGPG_ERROR_URL}
       TIMEOUT 300
+      DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --enable-maintainer-mode --disable-doc --disable-tests
       BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
@@ -1185,6 +1190,7 @@ if(WITH_LIBGCRYPT STREQUAL "EXTERNAL")
     endif()
     externalproject_add(${LIBGCRYPT_TARGET}
       URL               ${WITH_LIBGCRYPT_URL}
+      DOWNLOAD_NO_PROGRESS 1
       TIMEOUT 300
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} CPPFLAGS=-I${CMAKE_CURRENT_BINARY_DIR}/external/include --enable-maintainer-mode ${WITH_LIBGPG_ERROR_PREFIX}
       BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
@@ -1237,12 +1243,13 @@ externalproject_add(${RAPIDJSON_TARGET}
   # tried URL but archive gets downloaded every time. URL_MD5 may help
   URL https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz
   TIMEOUT 300
+  DOWNLOAD_NO_PROGRESS 1
   # don't install
   INSTALL_COMMAND ""
   # don't build test, doc and examples
-  CMAKE_CACHE_ARGS -DRAPIDJSON_BUILD_TESTS:string=off
-                   -DRAPIDJSON_BUILD_DOC:string=off
-                   -DRAPIDJSON_BUILD_EXAMPLES:string=off
+  CMAKE_CACHE_ARGS -DRAPIDJSON_BUILD_TESTS:STRING=off
+                   -DRAPIDJSON_BUILD_DOC:STRING=off
+                   -DRAPIDJSON_BUILD_EXAMPLES:STRING=off
 )
 # add to include directories
 include_directories(${CMAKE_BINARY_DIR}/external/Source/rapidjson/include)

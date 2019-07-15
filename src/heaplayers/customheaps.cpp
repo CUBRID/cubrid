@@ -7,7 +7,15 @@
 
 #include "system.h"
 #include "obstackheap.h"
+
+#if defined (__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 #include "heaplayers.h"
+#if defined (__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 using namespace HL;
 
@@ -216,9 +224,9 @@ hl_kingsley_realloc (UINTPTR heap_id, void *ptr, size_t sz)
       memcpy (new_ptr, ptr, (old_sz > sz ? sz : old_sz));
 
       if (ptr)
-        {
-          th->free (ptr);
-        }
+	{
+	  th->free (ptr);
+	}
       return new_ptr;
     }
   return NULL;

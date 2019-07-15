@@ -67,11 +67,20 @@
 #include "string_opfunc.h"
 #include "system_parameter.h"
 
+// disable rapidjson compile warnings
+#if defined (__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wclass-memaccess"
+#pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
+#endif
 #include "rapidjson/error/en.h"
 #include "rapidjson/rapidjson.h"
 #include "rapidjson/schema.h"
 #include "rapidjson/stringbuffer.h"
 #include "rapidjson/writer.h"
+#if defined (__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 #include <sstream>
 #include <algorithm>

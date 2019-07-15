@@ -20,7 +20,16 @@
 #ifndef _DB_JSON_PRIVATE_ALLOCATOR_
 #define _DB_JSON_PRIVATE_ALLOCATOR_
 
+// disable rapidjson compile warnings
+#if defined (__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wclass-memaccess"
+#pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
+#endif
 #include "rapidjson/allocators.h"
+#if defined (__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 class JSON_PRIVATE_ALLOCATOR
 {

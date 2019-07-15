@@ -27,7 +27,16 @@
 #include "db_json_allocator.hpp"
 #include "db_json_types_internal.hpp"
 
+// disable rapidjson compile warnings
+#if defined (__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wclass-memaccess"
+#pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
+#endif
 #include "rapidjson/rapidjson.h"
+#if defined (__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 #include <string>
 #include <unordered_set>

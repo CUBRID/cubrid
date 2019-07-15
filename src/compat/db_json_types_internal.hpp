@@ -22,8 +22,17 @@
 
 #include "db_json_allocator.hpp"
 
+// disable rapidjson compile warnings
+#if defined (__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wclass-memaccess"
+#pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
+#endif
 #include "rapidjson/document.h"
 #include "rapidjson/encodings.h"
+#if defined (__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 #if defined GetObject
 /* stupid windows and their definitions; GetObject is defined as GetObjectW or GetObjectA */
