@@ -349,7 +349,7 @@ namespace cubpacking
   }
 
   size_t
-  packer::get_packed_int_vector_size (size_t curr_offset, const int count)
+  packer::get_packed_int_vector_size (size_t curr_offset, const size_t count)
   {
     return DB_ALIGN (curr_offset, INT_ALIGNMENT) - curr_offset + (OR_INT_SIZE * (count + 1));
   }
@@ -357,14 +357,14 @@ namespace cubpacking
   void
   packer::pack_int_vector (const std::vector<int> &array)
   {
-    const int count = (const int) array.size ();
+    const size_t count = array.size ();
 
     align (INT_ALIGNMENT);
     check_range (m_ptr, m_end_ptr, (OR_INT_SIZE * (count + 1)));
 
     OR_PUT_INT (m_ptr, count);
     m_ptr += OR_INT_SIZE;
-    for (int i = 0; i < count; i++)
+    for (size_t i = 0; i < count; ++i)
       {
 	OR_PUT_INT (m_ptr, array[i]);
 	m_ptr += OR_INT_SIZE;

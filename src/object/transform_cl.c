@@ -1467,7 +1467,7 @@ string_disk_size (const char *string)
       str_length = 0;
     }
 
-  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) string, str_length, LANG_SYS_CODESET,
+  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, (DB_C_NCHAR) string, str_length, LANG_SYS_CODESET,
 		    LANG_SYS_COLLATION);
   length = tp_VarNChar.get_disk_size_of_value (&value);
 
@@ -1554,7 +1554,7 @@ put_string (OR_BUF * buf, const char *string)
       str_length = 0;
     }
 
-  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) string, str_length, LANG_SYS_CODESET,
+  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, (DB_C_NCHAR) string, str_length, LANG_SYS_CODESET,
 		    LANG_SYS_COLLATION);
   tp_VarNChar.data_writeval (buf, &value);
   pr_clear_value (&value);

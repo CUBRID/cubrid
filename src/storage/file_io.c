@@ -2391,7 +2391,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
     }
 
   memset ((char *) malloc_io_page_p, 0, page_size);
-  (void) fileio_initialize_res (thread_p, malloc_io_page_p, page_size);
+  (void) fileio_initialize_res (thread_p, malloc_io_page_p, (PGLENGTH) page_size);
 
   vol_fd = fileio_create (thread_p, db_full_name_p, vol_label_p, vol_id, is_do_lock, is_do_sync);
   FI_TEST (thread_p, FI_TEST_FILE_IO_FORMAT, 0);
@@ -4106,7 +4106,7 @@ fileio_os_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, size_t co
     }
 
   /* write the page */
-  nbytes = write (vol_fd, io_page_p, count);
+  nbytes = write (vol_fd, io_page_p, (unsigned int) count);
 
   pthread_mutex_unlock (io_mutex);
 
@@ -4217,12 +4217,6 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID
   ssize_t nbytes_read;
   size_t nbytes_to_be_read;
 
-#if defined(WINDOWS) && defined(SERVER_MODE)
-  int rv;
-  pthread_mutex_t *io_mutex;
-  static pthread_mutex_t io_mutex_instance = PTHREAD_MUTEX_INITIALIZER;
-#endif /* WINDOWS && SERVER_MODE */
-
   assert (num_pages > 0);
 
   offset = FILEIO_GET_FILE_SIZE (page_size, page_id);
@@ -4309,12 +4303,6 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEI
   off_t offset;
   ssize_t nbytes_written;
   size_t nbytes_to_be_written;
-
-#if defined(WINDOWS) && defined(SERVER_MODE)
-  int rv;
-  pthread_mutex_t *io_mutex;
-  static pthread_mutex_t io_mutex_instance = PTHREAD_MUTEX_INITIALIZER;
-#endif /* WINDOWS && SERVER_MODE */
 
   assert (num_pages > 0);
 
@@ -8097,25 +8085,11 @@ exit_on_error:
 }
 
 // *INDENT-OFF*
-class fileio_read_backup_volume_task : public cubthread::entry_task
+static void
+fileio_read_backup_volume_execute (cubthread::entry &thread_ref, FILEIO_BACKUP_SESSION *back_session)
 {
-public:
-  fileio_read_backup_volume_task (void) = delete;
-
-  fileio_read_backup_volume_task (FILEIO_BACKUP_SESSION *session_p)
-  : m_backup_session (session_p)
-  {
-  }
-
-  void
-  execute (context_type &thread_ref) override final
-  {
-    fileio_read_backup_volume (&thread_ref, m_backup_session);
-  }
-
-private:
-  FILEIO_BACKUP_SESSION *m_backup_session;
-};
+  fileio_read_backup_volume (&thread_ref, back_session);
+}
 // *INDENT-ON*
 
 static int
@@ -8140,7 +8114,10 @@ fileio_start_backup_thread (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * ses
   conn_p = css_get_current_conn_entry ();
   for (i = 1; i <= thread_info_p->act_r_threads; i++)
     {
-      css_push_external_task (conn_p, new fileio_read_backup_volume_task (session_p));
+      // *INDENT-OFF
+      auto exec_f = std::bind (fileio_read_backup_volume_execute, std::placeholders::_1, session_p);
+      css_push_external_task (conn_p, new cubthread::entry_callable_task (exec_f));
+      // *INDENT-ON
     }
 
   /* work as write thread */
