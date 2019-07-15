@@ -31,11 +31,11 @@
 
 namespace cubreplication
 {
-  typedef enum
+  enum repl_semisync_ack_mode
   {
     REPL_SEMISYNC_ACK_ON_CONSUME,
     REPL_SEMISYNC_ACK_ON_FLUSH
-  } REPL_SEMISYNC_ACK_MODE;
-};
+  };
+}
 
 #endif /* _REPLICATION_COMMON_HPP_ */
