@@ -97,7 +97,7 @@ namespace cubreplication
 
       if (g_slave_node == NULL)
 	{
-	  g_slave_node = new cubreplication::slave_node (g_hostname.c_str (), g_stream, g_stream_file);
+	  g_slave_node = new slave_node (g_hostname.c_str (), g_stream, g_stream_file);
 	}
     }
 

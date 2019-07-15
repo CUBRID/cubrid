@@ -47,6 +47,8 @@ namespace cubreplication
     , m_lc (NULL)
     , m_master_identity ("")
     , m_transfer_receiver (NULL)
+    , m_ctrl_sender_daemon (NULL)
+    , m_ctrl_sender (NULL)
   {
     m_stream = stream;
     m_stream_file = stream_file;
@@ -60,26 +62,20 @@ namespace cubreplication
 
   slave_node::~slave_node ()
   {
-    delete m_transfer_receiver;
-    m_transfer_receiver = NULL;
+    disconnect_from_master ();
 
     delete m_lc;
     m_lc = NULL;
-
-    m_stream_file->remove_sync_notifier ();
-
-    if (m_ctrl_sender != NULL)
-      {
-	m_ctrl_sender->stop ();
-	cubthread::get_manager ()->destroy_daemon_without_entry (m_ctrl_sender_daemon);
-	delete m_ctrl_sender;
-	m_ctrl_sender = NULL;
-      }
   }
 
   int slave_node::connect_to_master (const char *master_node_hostname, const int master_node_port_id)
   {
-    int error = NO_ERROR;
+    if (!m_master_identity.get_hostname ().empty () && m_master_identity.get_hostname () != master_node_hostname)
+      {
+	// master was changed, disconnect from current master and try to connect to new one
+	disconnect_from_master ();
+      }
+
     er_log_debug_replication (ARG_FILE_LINE, "slave_node::connect_to_master host:%s, port: %d\n",
 			      master_node_hostname, master_node_port_id);
 
@@ -91,7 +87,7 @@ namespace cubreplication
 
     m_master_identity.set_hostname (master_node_hostname);
     m_master_identity.set_port (master_node_port_id);
-    error = srv_chn.connect (master_node_hostname, master_node_port_id, SERVER_REQUEST_CONNECT_NEW_SLAVE);
+    int error = srv_chn.connect (master_node_hostname, master_node_port_id, SERVER_REQUEST_CONNECT_NEW_SLAVE);
     if (error != css_error_code::NO_ERRORS)
       {
 	return error;
@@ -140,4 +136,21 @@ namespace cubreplication
 
     return NO_ERROR;
   }
+
+  void slave_node::disconnect_from_master ()
+  {
+    delete m_transfer_receiver;
+    m_transfer_receiver = NULL;
+
+    m_stream_file->remove_sync_notifier ();
+
+    if (m_ctrl_sender != NULL)
+      {
+	m_ctrl_sender->stop ();
+	cubthread::get_manager ()->destroy_daemon_without_entry (m_ctrl_sender_daemon);
+	delete m_ctrl_sender;
+	m_ctrl_sender = NULL;
+      }
+  }
+
 } /* namespace cubreplication */

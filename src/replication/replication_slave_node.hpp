@@ -59,6 +59,7 @@ namespace cubreplication
       ~slave_node ();
 
       int connect_to_master (const char *master_node_hostname, const int master_node_port_id);
+      void disconnect_from_master ();
   };
 
 } /* namespace cubreplication */
