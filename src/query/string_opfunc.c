@@ -19695,30 +19695,17 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
       _d = days[_m];
     }
 
-  if (_m == 0)
-    {
-      _y--;
-      days[2] = LEAP (_y) ? 29 : 28;
-      _m = 12;
-    }
-
   /* date */
-  if (_m < 0)
+  if (_m <= 0)
     {
       _y += (_m / 12);
-      if (_m % 12 == 0)
+      _m %= 12;
+      if (_m <= 0)
 	{
-	  _m = 1;
+	  _m += 12;
+	  _y--;
 	}
-      else
-	{
-	  _m %= 12;
-	  if (_m < 0)
-	    {
-	      _m += 12;
-	      _y--;
-	    }
-	}
+      days[2] = LEAP (_y) ? 29 : 28;
     }
 
   /* just years and/or months case */
@@ -19727,18 +19714,11 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
       if (_m <= 0)
 	{
 	  _y += (_m / 12);
-	  if (_m % 12 == 0)
+	  _m %= 12;
+	  if (_m <= 0)
 	    {
-	      _m = 1;
-	    }
-	  else
-	    {
-	      _m %= 12;
-	      if (_m <= 0)
-		{
-		  _m += 12;
-		  _y--;
-		}
+	      _m += 12;
+	      _y--;
 	    }
 	}
 
