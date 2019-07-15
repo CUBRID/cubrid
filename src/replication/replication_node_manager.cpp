@@ -68,6 +68,7 @@ namespace cubreplication
       delete g_master_node;
       g_master_node = NULL;
 
+      // stream and stream file are interdependent, therefore first stop the stream
       g_stream->stop ();
       delete g_stream_file;
       g_stream_file = NULL;
