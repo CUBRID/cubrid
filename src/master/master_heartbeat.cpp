@@ -2485,7 +2485,7 @@ hb_resource_job_send_master_hostname (HB_JOB_ARG *arg)
     }
   if (hb_Cluster->get_hostname () == master_hostname)
     {
-      // don't send master hostname to own cub_server process
+      // current node is the master node, there is no need to send the hostname to cub_server
       return;
     }
 
