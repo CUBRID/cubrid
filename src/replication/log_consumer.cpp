@@ -167,7 +167,7 @@ namespace cubreplication
 
       bool is_filtered_apply_segment (cubstream::stream_position stream_entry_end) const
       {
-	stream_entry_end <= m_filtered_apply_end;
+	return stream_entry_end <= m_filtered_apply_end;
       }
 
       void execute (cubthread::entry &thread_ref) override
