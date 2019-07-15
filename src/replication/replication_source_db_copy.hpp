@@ -100,8 +100,8 @@ namespace cubreplication
       int setup_copy_protocol (cubcomm::channel &chn);
       int wait_slave_receive_ack (cubcomm::channel &chn);
 
-      void wait_receive_class_list (void);
-      void wait_send_triggers_indexes (void);
+      int wait_receive_class_list (void);
+      int wait_send_triggers_indexes (void);
 
       int get_tran_index (void);
       void inc_error_cnt ();
@@ -113,9 +113,11 @@ namespace cubreplication
       void set_online_replication_start_pos (const cubstream::stream_position &pos)
         { m_online_replication_start_pos = pos; }
 
+      void stop ();
+
 
     private:
-      void wait_for_state (const copy_stage &desired_state);
+      int wait_for_state (const copy_stage &desired_state);
       cubstream::multi_thread_stream *acquire_stream_for_copy ();
       void detach_stream_for_copy ();
 
@@ -136,6 +138,7 @@ namespace cubreplication
       std::list<OID> m_class_oid_list;
 
       copy_stage m_state;
+      bool m_is_stop;
 
       std::mutex m_state_mutex;
 

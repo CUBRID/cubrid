@@ -80,6 +80,7 @@ namespace cubreplication
     m_transfer_sender = NULL;
     m_state = NOT_STARTED;
     m_error_cnt = 0;
+    m_is_stop = false;
 
     m_stream = acquire_stream_for_copy ();
 
@@ -190,21 +191,26 @@ namespace cubreplication
     return error;
   }
 
-  void source_copy_context::wait_for_state (const copy_stage &desired_state)
+  int source_copy_context::wait_for_state (const copy_stage &desired_state)
   {
     er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_for_state %d", desired_state);
     std::unique_lock<std::mutex> ulock_state (m_state_mutex);
-    m_state_cv.wait (ulock_state, [this, desired_state] { return m_state == desired_state;});
+    m_state_cv.wait (ulock_state, [this, desired_state] { return m_state == desired_state || m_is_stop;});
+    if (m_is_stop)
+      {
+        return ER_INTERRUPTED;
+      }
+    return NO_ERROR;
   }
 
-  void source_copy_context::wait_receive_class_list (void)
+  int source_copy_context::wait_receive_class_list (void)
   {
-    wait_for_state (SCHEMA_CLASSES_LIST_FINISHED);
+    return wait_for_state (SCHEMA_CLASSES_LIST_FINISHED);
   }
 
-  void source_copy_context::wait_send_triggers_indexes (void)
+  int source_copy_context::wait_send_triggers_indexes (void)
   {
-    wait_for_state (SCHEMA_APPLY_INDEXES);
+    return wait_for_state (SCHEMA_APPLY_INDEXES);
   }
 
   int source_copy_context::get_tran_index (void)
@@ -292,19 +298,25 @@ namespace cubreplication
     css_error_code rc = chn.accept (fd);
     assert (rc == NO_ERRORS);
 
-    setup_copy_protocol (chn);
+    if (setup_copy_protocol (chn) != NO_ERROR)
+      {
+        return;
+      }
 
     master_senders_manager::add_stream_sender (new cubstream::transfer_sender (std::move (chn), *m_stream));
 
     er_log_debug_replication (ARG_FILE_LINE, "new_slave_copy connected");
 
-    /* extraction process : schema phase 1 */
+    /* extraction process : schema phase : start the client process */
     locator_repl_extract_schema (&thread_ref, "", "", "");
 
-    wait_receive_class_list ();
+    if (wait_receive_class_list () == ER_INTERRUPTED)
+      {
+        return;
+      }
 
-    execute_and_transit_phase (HEAP_COPY);
     /* extraction process : heap extract phase */
+    execute_and_transit_phase (HEAP_COPY);
     pack_and_add_start_of_extract_heap ();
     /* TODO[replication]: we may optimize this to have multiple threads for larger heaps */
     for (const OID class_oid : m_class_oid_list)
@@ -317,6 +329,10 @@ namespace cubreplication
     /* wait for all heap extract threads to end */
     while (get_extract_running_thread () > 0)
       {
+        if (m_is_stop)
+          {
+            return;
+          }
         thread_sleep (10);
       }
     execute_and_transit_phase (HEAP_COPY_FINISHED);
@@ -325,10 +341,17 @@ namespace cubreplication
     execute_and_transit_phase (SCHEMA_APPLY_TRIGGERS);
     execute_and_transit_phase (SCHEMA_APPLY_INDEXES);
     /* wait for indexes and triggers schema */
-    wait_send_triggers_indexes ();
+    if (wait_send_triggers_indexes () == ER_INTERRUPTED)
+      {
+        return;
+      }
 
     pack_and_add_end_of_copy ();
-    wait_slave_receive_ack (chn);
+
+    if (wait_slave_receive_ack (chn) != NO_ERROR)
+      {
+        return;
+      }
   }
 
   int source_copy_context::setup_copy_protocol (cubcomm::channel &chn)
@@ -388,6 +411,11 @@ namespace cubreplication
     return NO_ERROR;
   }
 
+  void source_copy_context::stop ()
+    {
+      m_is_stop = true;
+      m_state_cv.notify_all();
+    }
 
   /* 
    * utility functions for source server extraction of database replication copy 
