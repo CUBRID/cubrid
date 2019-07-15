@@ -390,13 +390,17 @@ namespace cubhb
   cluster::cleanup_ui_nodes ()
   {
     std::chrono::system_clock::time_point now = std::chrono::system_clock::now ();
-    for (std::list<ui_node *>::iterator it = ui_nodes.begin (); it != ui_nodes.end (); ++it)
+    for (std::list<ui_node *>::iterator it = ui_nodes.begin (); it != ui_nodes.end ();)
       {
 	if ((now - (*it)->last_recv_time) > UI_NODE_CLEANUP_TIME_IN_MSECS)
 	  {
 	    ui_node *tmp_node = *it;
-	    ui_nodes.erase (it--);
+	    it = ui_nodes.erase (it);
 	    delete tmp_node;
+	  }
+	else
+	  {
+	    ++it;
 	  }
       }
   }
@@ -496,7 +500,8 @@ namespace cubhb
 
     if (is_state_changed)
       {
-	MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "peer node state has been changed.");
+	MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "peer node '%s' state has been changed",
+			     arg.get_orig_hostname ().as_c_str ());
 	hb_cluster_job_set_expire_and_reorder (HB_CJOB_CALC_SCORE, HB_JOB_TIMER_IMMEDIATELY);
       }
   }

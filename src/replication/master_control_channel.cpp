@@ -132,13 +132,16 @@ namespace cubreplication
   master_ctrl::check_alive ()
   {
     std::lock_guard<std::mutex> lg (m_mtx);
-    for (auto it =  m_ctrl_channel_readers.begin (); it !=  m_ctrl_channel_readers.end (); ++it)
+    for (auto it = m_ctrl_channel_readers.begin (); it != m_ctrl_channel_readers.end ();)
       {
 	if (!it->second->is_connection_alive ())
 	  {
 	    cubthread::get_manager ()->destroy_daemon (it->first);
-	    m_ctrl_channel_readers.erase (it);
-	    --it;
+	    it = m_ctrl_channel_readers.erase (it);
+	  }
+	else
+	  {
+	    ++it;
 	  }
       }
   }
