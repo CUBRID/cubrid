@@ -394,7 +394,7 @@ namespace cubreplication
     if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
       {
 	/* Reset stream entry. */
-	m_stream_entry.reset();
+	m_stream_entry.reset ();
 	return;
       }
 #endif

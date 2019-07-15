@@ -318,7 +318,7 @@ namespace cubreplication
     int err = NO_ERROR;
 #if defined (SERVER_MODE)
     cubthread::entry &my_thread = cubthread::get_entry ();
-    err = locator_repl_apply_sbr (&my_thread, m_db_user.c_str (), m_db_password.c_str(),
+    err = locator_repl_apply_sbr (&my_thread, m_db_user.c_str (), m_db_password.c_str (),
 				  m_sys_prm_context.empty () ? NULL : m_sys_prm_context.c_str (),
 				  m_statement.c_str ());
 #endif
@@ -707,8 +707,8 @@ namespace cubreplication
       }
 
     if (m_rec_des.get_size () != other_t->m_rec_des.get_size ()
-	|| m_rec_des.get_recdes().type != other_t->m_rec_des.get_recdes ().type
-	|| std::memcmp (m_rec_des.get_recdes ().data, other_t->m_rec_des.get_recdes().data, m_rec_des.get_size ()) != 0)
+	|| m_rec_des.get_recdes ().type != other_t->m_rec_des.get_recdes ().type
+	|| std::memcmp (m_rec_des.get_recdes ().data, other_t->m_rec_des.get_recdes ().data, m_rec_des.get_size ()) != 0)
       {
 	return false;
       }
@@ -839,7 +839,7 @@ namespace cubreplication
 	    return false;
 	  }
 
-	if (std::memcmp (m_rec_des_list[i].get_recdes ().data, other_t->m_rec_des_list[i].get_recdes().data,
+	if (std::memcmp (m_rec_des_list[i].get_recdes ().data, other_t->m_rec_des_list[i].get_recdes ().data,
 			 m_rec_des_list[i].get_size ()) != 0)
 	  {
 	    return false;
