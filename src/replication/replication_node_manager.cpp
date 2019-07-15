@@ -68,6 +68,7 @@ namespace cubreplication
       delete g_master_node;
       g_master_node = NULL;
 
+      g_stream->stop ();
       delete g_stream_file;
       g_stream_file = NULL;
       delete g_stream;
