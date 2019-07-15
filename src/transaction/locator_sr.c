@@ -13854,6 +13854,7 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
 
     case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END:
       repl_copy_ctxt.append_class_schema (buffer, buf_size);
+      repl_copy_ctxt.transit_state (cubreplication::source_copy_context::SCHEMA_APPLY_CLASSES);
       repl_copy_ctxt.transit_state (cubreplication::source_copy_context::SCHEMA_APPLY_CLASSES_FINISHED);
       break;
 
