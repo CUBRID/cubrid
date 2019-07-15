@@ -97,9 +97,18 @@ namespace cubreplication
 	return error;
       }
 
-    // todo: make sure active start position is in hdr (we might have recovered it one, but then we close the system,
-    // second startup will not recover the active start position since it was not done during a crash)
-    cubstream::stream_position start_position = log_Gl.m_active_start_position;
+    cubstream::stream_position start_position = 0;
+
+    if (log_Gl.m_active_start_position > 0)
+      {
+	// Fetch older stream positions to enter filtered apply
+	start_position = log_Gl.m_active_start_position;
+      }
+    else
+      {
+	// No Filtered apply
+	start_position = log_Gl.hdr.m_ack_stream_position;
+      }
 
     cubcomm::server_channel control_chn (m_identity.get_hostname ().c_str ());
     error = control_chn.connect (master_node_hostname, master_node_port_id, SERVER_REQUEST_CONNECT_NEW_SLAVE_CONTROL);
@@ -124,6 +133,7 @@ namespace cubreplication
 	{
 	  // route produced stream positions to get validated as flushed on disk before sending them
 	  ctrl_sender->set_synced_position (sp);
+	  log_Gl.hdr.m_ack_stream_position = sp;
 	});
 
 	m_lc->set_ack_producer ([sf] (cubstream::stream_position ack_sp)
@@ -136,6 +146,7 @@ namespace cubreplication
 	m_lc->set_ack_producer ([ctrl_sender] (cubstream::stream_position sp)
 	{
 	  ctrl_sender->set_synced_position (sp);
+	  log_Gl.hdr.m_ack_stream_position = sp;
 	});
       }
 

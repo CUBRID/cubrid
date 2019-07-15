@@ -161,7 +161,13 @@ namespace cubreplication
     public:
       dispatch_daemon_task (log_consumer &lc)
 	: m_lc (lc)
+	, m_filtered_apply_end (log_Gl.hdr.m_ack_stream_position)
       {
+      }
+
+      bool is_filtered_apply_segment (cubstream::stream_position stream_entry_end) const
+      {
+	stream_entry_end <= m_filtered_apply_end;
       }
 
       void execute (cubthread::entry &thread_ref) override
@@ -242,7 +248,7 @@ namespace cubreplication
 		MVCCID mvccid = se->get_mvccid ();
 
 		// apply only some selected mvccids until we reach last m_ack_stream_position, then continue normally
-		if (log_Gl.hdr.m_ack_stream_position != 0 && log_Gl.hdr.m_ack_stream_position >= se->get_stream_entry_end_position ())
+		if (is_filtered_apply_segment (se->get_stream_entry_end_position ()))
 		  {
 		    for (auto el : log_Gl.m_active_mvcc_ids)
 		      {
@@ -297,6 +303,7 @@ namespace cubreplication
       }
 
     private:
+      cubstream::stream_position m_filtered_apply_end;
       log_consumer &m_lc;
   };
 

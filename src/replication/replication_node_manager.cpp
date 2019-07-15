@@ -32,6 +32,7 @@
 namespace cubreplication
 {
   std::string g_hostname;
+  cubstream::stream_position g_start_position = 0;
 
   cubstream::multi_thread_stream *g_stream = NULL;
   cubstream::stream_file *g_stream_file = NULL;
@@ -45,12 +46,24 @@ namespace cubreplication
     {
       g_hostname = server_name;
 
+      g_start_position = 0;
+      if (log_Gl.m_active_start_position > 0)
+	{
+	  // Fetch older stream positions to enter filtered apply
+	  g_start_position = log_Gl.m_active_start_position;
+	}
+      else
+	{
+	  // No Filtered apply
+	  g_start_position = log_Gl.hdr.m_ack_stream_position;
+	}
+
       INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_BUFFER_SIZE);
       int num_max_appenders = log_Gl.trantable.num_total_indices + 1;
       g_stream = new cubstream::multi_thread_stream (buffer_size, num_max_appenders);
       g_stream->set_name ("repl" + g_hostname);
       g_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
-      g_stream->init (0);
+      g_stream->init (g_start_position);
 
       log_generator::set_global_stream (g_stream);
 
