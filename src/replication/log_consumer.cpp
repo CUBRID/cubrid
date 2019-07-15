@@ -378,6 +378,14 @@ namespace cubreplication
       }
   }
 
+  void log_consumer::start (void)
+  {
+    get_stream ()->start ();
+
+    std::unique_lock<std::mutex> ulock (m_queue_mutex);
+    m_is_stopped = false;
+  }
+
   void log_consumer::stop (void)
   {
     get_stream ()->stop ();

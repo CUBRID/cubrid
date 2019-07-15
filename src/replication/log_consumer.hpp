@@ -122,7 +122,7 @@ namespace cubreplication
 	m_use_daemons (false),
 	m_started_tasks (0),
 	m_apply_task_ready (false),
-	m_is_stopped (false),
+	m_is_stopped (true),
 	ack_produce ([] (cubstream::stream_position)
       {
 	assert (false);
@@ -173,6 +173,7 @@ namespace cubreplication
 	return m_is_stopped;
       }
 
+      void start (void);
       void stop (void);
   };
 

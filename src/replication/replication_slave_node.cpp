@@ -132,11 +132,16 @@ namespace cubreplication
 
     m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *m_stream, start_position);
 
+    // ready to start log consumer
+    m_lc->start ();
+
     return NO_ERROR;
   }
 
   void slave_node::disconnect_from_master ()
   {
+    m_lc->stop ();
+
     delete m_transfer_receiver;
     m_transfer_receiver = NULL;
 
