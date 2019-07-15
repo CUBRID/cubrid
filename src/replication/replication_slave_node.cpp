@@ -83,7 +83,8 @@ namespace cubreplication
     er_log_debug_replication (ARG_FILE_LINE, "slave_node::connect_to_master host:%s, port: %d\n",
 			      master_node_hostname, master_node_port_id);
 
-    assert (m_transfer_receiver != NULL);
+    // todo: remove after slave node is able to connect to a different master
+    assert (m_transfer_receiver == NULL);
 
     /* connect to replication master node */
     cubcomm::server_channel srv_chn (m_identity.get_hostname ().c_str ());
