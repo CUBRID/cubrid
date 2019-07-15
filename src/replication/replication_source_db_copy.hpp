@@ -83,10 +83,8 @@ namespace cubreplication
 
       ~source_copy_context ();
 
-      void set_credentials (const char *user, const char *password);
-
-      void pack_and_add_object (row_object &obj);
-      void pack_and_add_sbr (sbr_repl_entry &sbr);
+      void pack_and_add_object (row_object* &obj);
+      void pack_and_add_statement (const std::string &statement);
       void pack_and_add_start_of_extract_heap ();
       void pack_and_add_end_of_extract_heap ();
       void pack_and_add_end_of_copy ();
@@ -132,9 +130,9 @@ namespace cubreplication
       cubstream::transfer_sender *m_transfer_sender;
       cubthread::entry_workpool *m_heap_extract_workers_pool;
 
-      sbr_repl_entry m_class_schema;
-      sbr_repl_entry m_triggers;
-      sbr_repl_entry m_indexes;
+      std::string m_class_schema;
+      std::string m_triggers;
+      std::string m_indexes;
       std::list<OID> m_class_oid_list;
 
       copy_stage m_state;

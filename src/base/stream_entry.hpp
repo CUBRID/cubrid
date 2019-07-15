@@ -318,6 +318,9 @@ namespace cubstream
 	return total_size;
       };
 
+      /* TODO[replication] : refactor to get reference to pointer
+       * and invalidate pointer after push (entry is own and will be deleted by stream entry)
+       * or use r-value and std::move */
       void add_packable_entry (PO *entry)
       {
 	m_packable_entries.push_back (entry);

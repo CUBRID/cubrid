@@ -81,7 +81,7 @@ namespace cubreplication
     m_state = NOT_STARTED;
     m_error_cnt = 0;
 
-    acquire_stream_for_copy ();
+    m_stream = acquire_stream_for_copy ();
 
     /* TODO : single global pool or a pool for each context ? */
     m_heap_extract_workers_pool =
@@ -100,32 +100,32 @@ namespace cubreplication
     m_error_cnt = 0;
   }
 
-  void source_copy_context::set_credentials (const char *user, const char *password)
+  void source_copy_context::pack_and_add_object (row_object* &obj)
   {
-    m_class_schema.set_params ("", user, password, "");
-    m_triggers.set_params ("", user, password, "");
-    m_indexes.set_params ("", user, password, "");
-  }
-
-  void source_copy_context::pack_and_add_object (row_object &obj)
-  {
-    if (obj.get_rec_cnt () == 0)
+    if (obj->get_rec_cnt () == 0)
       {
+        delete obj;
+        obj = NULL;
 	return;
       }
 
     stream_entry stream_entry (m_stream, MVCCID_FIRST, stream_entry_header::ACTIVE);
 
-    stream_entry.add_packable_entry (&obj);
+    stream_entry.add_packable_entry (obj);
+    /* once packed, the object is owned by the stream entry */
+    obj = NULL;
 
     stream_entry.pack ();
   }
 
-  void source_copy_context::pack_and_add_sbr (sbr_repl_entry &sbr)
+  void source_copy_context::pack_and_add_statement (const std::string &str)
   {
     stream_entry stream_entry (m_stream, MVCCID_FIRST, stream_entry_header::ACTIVE);
-
-    stream_entry.add_packable_entry (&sbr);
+    LOG_LSA null_LSA;
+    LSA_SET_NULL (&null_LSA); 
+    
+    sbr_repl_entry *sbr = new sbr_repl_entry (str.c_str (), "dba", "", "", null_LSA);
+    stream_entry.add_packable_entry (sbr);
 
     stream_entry.pack ();
   }
@@ -174,15 +174,15 @@ namespace cubreplication
     /* some of the new states require specific actions */
     if (new_state == SCHEMA_APPLY_CLASSES_FINISHED)
       {
-	pack_and_add_sbr (m_class_schema);
+	pack_and_add_statement (m_class_schema);
       }
     else if (new_state == SCHEMA_APPLY_TRIGGERS_INDEXES)
       {
-	pack_and_add_sbr (m_triggers);
+	pack_and_add_statement (m_triggers);
       }
     else if (new_state == SCHEMA_APPLY_TRIGGERS_INDEXES_FINISHED)
       {
-	pack_and_add_sbr (m_indexes);
+	pack_and_add_statement (m_indexes);
       }
 
     m_state_cv.notify_one ();
@@ -219,17 +219,17 @@ namespace cubreplication
 
   void source_copy_context::append_class_schema (const char *buffer, const size_t buf_size)
   {
-    m_class_schema.append_statement (buffer, buf_size);
+    m_class_schema.append (buffer, buf_size);
   }
 
   void source_copy_context::append_triggers_schema (const char *buffer, const size_t buf_size)
   {
-    m_triggers.append_statement (buffer, buf_size);
+    m_triggers.append (buffer, buf_size);
   }
 
   void source_copy_context::append_indexes_schema (const char *buffer, const size_t buf_size)
   {
-    m_indexes.append_statement (buffer, buf_size);
+    m_indexes.append (buffer, buf_size);
   }
 
   void source_copy_context::unpack_class_oid_list (const char *buffer, const size_t buf_size)
@@ -266,8 +266,6 @@ namespace cubreplication
     copy_db_stream->set_name ("repl_copy_" + std::string (myself->get_hostname ().c_str ()));
     copy_db_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
     copy_db_stream->init (0);
-
-    m_stream = copy_db_stream;
 
     return copy_db_stream;
   }
@@ -465,7 +463,7 @@ namespace cubreplication
 	return error_code;
       }
 
-    row_object heap_objects (class_name);
+    row_object *heap_objects = new row_object (class_name);
 
     error_code = heap_get_hfid_from_class_oid (thread_p, &class_oid, &class_hfid);
     if (error_code != NO_ERROR)
@@ -507,13 +505,14 @@ namespace cubreplication
 	    ASSERT_ERROR ();
 	    goto end;
 	  }
-	heap_objects.move_record (std::move (record));
+	heap_objects->move_record (std::move (record));
 
-	if (heap_objects.is_pack_needed ())
+	if (heap_objects->is_pack_needed ())
 	  {
 	    /* pack and add to stream */
 	    tdes->replication_copy_context->pack_and_add_object (heap_objects);
-	    heap_objects.reset ();
+	    assert (heap_objects == NULL);
+            heap_objects = new row_object (class_name);
 	  }
       }
     while (1);
