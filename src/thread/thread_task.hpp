@@ -84,6 +84,7 @@ namespace cubthread
   class callable_task : public task<Context>
   {
     public:
+      using exec_func_type = std::function<void (Context &)>;
 
       callable_task () = delete;
 

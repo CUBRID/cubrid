@@ -63,11 +63,18 @@ namespace cubreplication
     delete m_transfer_receiver;
     m_transfer_receiver = NULL;
 
-    m_ctrl_sender->stop ();
-    cubthread::get_manager ()->destroy_daemon_without_entry (m_ctrl_sender_daemon);
-
     delete m_lc;
     m_lc = NULL;
+
+    m_stream_file->remove_sync_notifier ();
+
+    if (m_ctrl_sender != NULL)
+      {
+	m_ctrl_sender->stop ();
+	cubthread::get_manager ()->destroy_daemon_without_entry (m_ctrl_sender_daemon);
+	delete m_ctrl_sender;
+	m_ctrl_sender = NULL;
+      }
   }
 
   int slave_node::connect_to_master (const char *master_node_hostname, const int master_node_port_id)
@@ -75,6 +82,9 @@ namespace cubreplication
     int error = NO_ERROR;
     er_log_debug_replication (ARG_FILE_LINE, "slave_node::connect_to_master host:%s, port: %d\n",
 			      master_node_hostname, master_node_port_id);
+
+    // todo: remove after slave node is able to connect to a different master
+    assert (m_transfer_receiver == NULL);
 
     /* connect to replication master node */
     cubcomm::server_channel srv_chn (m_identity.get_hostname ().c_str ());
@@ -91,9 +101,6 @@ namespace cubreplication
     // second startup will not recover the active start position since it was not done during a crash)
     cubstream::stream_position start_position = log_Gl.m_active_start_position;
 
-    m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *m_stream,
-	start_position);
-
     cubcomm::server_channel control_chn (m_identity.get_hostname ().c_str ());
     error = control_chn.connect (master_node_hostname, master_node_port_id, SERVER_REQUEST_CONNECT_NEW_SLAVE_CONTROL);
     if (error != css_error_code::NO_ERRORS)
@@ -107,6 +114,9 @@ namespace cubreplication
     m_ctrl_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
 			   ctrl_sender, "slave_control_sender");
 
+    m_ctrl_sender = ctrl_sender;
+    cubstream::stream_file *sf = m_stream_file;
+
     if ((REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) ==
 	REPL_SEMISYNC_ACK_ON_FLUSH)
       {
@@ -114,6 +124,11 @@ namespace cubreplication
 	{
 	  // route produced stream positions to get validated as flushed on disk before sending them
 	  ctrl_sender->set_synced_position (sp);
+	});
+
+	m_lc->set_ack_producer ([sf] (cubstream::stream_position ack_sp)
+	{
+	  sf->update_sync_position (ack_sp);
 	});
       }
     else
@@ -124,7 +139,7 @@ namespace cubreplication
 	});
       }
 
-    m_ctrl_sender = ctrl_sender;
+    m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *m_stream, start_position);
 
     return NO_ERROR;
   }
