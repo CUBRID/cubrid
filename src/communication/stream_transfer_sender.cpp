@@ -75,8 +75,8 @@ namespace cubstream
 	    rc = this_producer_channel.m_channel.recv ((char *) &last_sent_position, max_len);
 	    this_producer_channel.m_last_sent_position = htoni64 (last_sent_position);
 
-	    er_log_debug (ARG_FILE_LINE, "transfer_sender_task starting : last_sent_position:%lld, rc:%d\n",
-			  last_sent_position, rc);
+	    er_log_debug (ARG_FILE_LINE, "transfer_sender_task starting : last_sent_position:%llu, rc:%d\n",
+			  this_producer_channel.m_last_sent_position, rc);
 
 	    assert (max_len == sizeof (UINT64));
 
@@ -85,13 +85,6 @@ namespace cubstream
 		this_producer_channel.m_channel.close_connection ();
 		return;
 	      }
-
-	    this_producer_channel.m_last_sent_position = last_sent_position;
-
-	    er_log_debug (ARG_FILE_LINE, "transfer_sender_task starting : last_sent_position:%llu, rc:%d\n",
-			  last_sent_position, rc);
-
-	    assert (max_len == sizeof (UINT64));
 
 	    m_first_loop = false;
 	  }

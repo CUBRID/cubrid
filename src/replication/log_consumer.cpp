@@ -250,6 +250,8 @@ namespace cubreplication
 		// apply only some selected mvccids until we reach last m_ack_stream_position, then continue normally
 		if (is_filtered_apply_segment (se->get_stream_entry_end_position ()))
 		  {
+		    _er_log_debug (ARG_FILE_LINE, "Filtered apply: Entered filtered apply segment, m_filtered_apply_end: %llu\n",
+				   m_filtered_apply_end);
 		    for (auto el : log_Gl.m_active_mvcc_ids)
 		      {
 			_er_log_debug (ARG_FILE_LINE, "Filtered apply: Active mvvcid: %llu\n", el);
