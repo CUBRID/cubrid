@@ -406,7 +406,8 @@ namespace cubreplication
   static void
   create_scan_for_replication_copy (cubthread::entry *thread_p, SCAN_ID &s_id, OID &class_oid, HFID &class_hfid)
   {
-    const bool mvcc_select_lock_needed = false;
+    /* TODO : read lock is required by an assertion in heap_scan_pb_lock_and_fetch */
+    const bool mvcc_select_lock_needed = true;
     SCAN_OPERATION_TYPE scan_op_type = S_SELECT;
     int fixed = true;
     int grouped = false;
