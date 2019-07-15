@@ -114,7 +114,7 @@ namespace cubreplication
 	return;
       }
 
-    stream_entry stream_entry (m_stream);
+    stream_entry stream_entry (m_stream, MVCCID_FIRST, stream_entry_header::ACTIVE);
 
     stream_entry.add_packable_entry (&obj);
 
@@ -123,7 +123,7 @@ namespace cubreplication
 
   void source_copy_context::pack_and_add_sbr (sbr_repl_entry &sbr)
   {
-    stream_entry stream_entry (m_stream);
+    stream_entry stream_entry (m_stream, MVCCID_FIRST, stream_entry_header::ACTIVE);
 
     stream_entry.add_packable_entry (&sbr);
 
