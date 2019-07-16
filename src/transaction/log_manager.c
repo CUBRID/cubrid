@@ -4817,6 +4817,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
        * Transaction updated data.
        */
 
+      tdes->replication_log_generator.on_transaction_commit ();
+
       if (!LSA_ISNULL (&tdes->posp_nxlsa))
 	{
 #if 0
@@ -4850,8 +4852,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
       if (is_local_tran)
 	{
 	  LOG_LSA commit_lsa;
-
-	  tdes->replication_log_generator.on_transaction_commit ();
 
 	  if (LSA_ISNULL (&tdes->posp_nxlsa))
 	    {
@@ -7909,7 +7909,8 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tx_group group;
   group.add (tdes->tran_index, 0, TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
 
-  log_append_group_complete (thread_p, tdes, 0, group, &commit_lsa, NULL);
+  log_append_group_complete (thread_p, tdes, tdes->replication_log_generator.get_last_end_position (), group,
+			     &commit_lsa, NULL);
 
   logpb_flush_pages (thread_p, &commit_lsa);
 
