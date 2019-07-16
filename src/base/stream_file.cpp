@@ -915,4 +915,10 @@ namespace cubstream
     target_position = m_target_flush_position;
     assert (target_position >= m_append_position);
   }
+
+  stream_position stream_file::get_min_available_pos (void) const
+  {
+    return m_drop_position;
+  }
+
 } /* namespace cubstream */

@@ -693,12 +693,19 @@ namespace cubstream
 
   stream_position multi_thread_stream::get_min_pos_for_slave (void) const
   {
+    stream_position pos;
+    /* TODO[replication] : fix this after flush on master is implemented */
     if (m_stream_file)
       {
-	return m_stream_file->get_drop_position ();
+	pos = m_stream_file->get_min_available_pos ();
       }
 
-    return m_last_committed_pos;
+    if (pos > m_last_committed_pos)
+      {
+	pos = 0;
+      }
+
+    return pos;
   }
 
   void multi_thread_stream::wake_up_flusher (float fill_factor, const stream_position start_flush_pos,

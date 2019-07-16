@@ -248,6 +248,8 @@ namespace cubstream
       {
 	m_is_stopped = true;
       }
+
+      stream_position get_min_available_pos (void) const;
   };
 
 } /*  namespace cubstream */
