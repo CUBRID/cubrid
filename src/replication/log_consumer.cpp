@@ -278,7 +278,7 @@ namespace cubreplication
 
   log_consumer::~log_consumer ()
   {
-    set_stop ();
+    stop ();
 
     if (m_use_daemons)
       {
@@ -290,6 +290,7 @@ namespace cubreplication
     delete m_subtran_applier; // must be deleted after worker pool
 
     assert (m_stream_entries.empty ());
+    get_stream ()->start ();
   }
 
   void log_consumer::push_entry (stream_entry *entry)
@@ -395,9 +396,9 @@ namespace cubreplication
       }
   }
 
-  void log_consumer::set_stop (void)
+  void log_consumer::stop (void)
   {
-    log_consumer::get_stream ()->set_stop ();
+    get_stream ()->stop ();
 
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
     m_is_stopped = true;

@@ -2061,28 +2061,20 @@ css_process_heartbeat_request (CSS_CONN_ENTRY * conn)
 }
 
 int
-css_send_to_my_server_the_master_hostname (const char *master_current_hostname, HB_PROC_ENTRY * proc,
-					   CSS_CONN_ENTRY * conn)
+css_send_to_my_server_the_master_hostname (const char *master_current_hostname, HB_PROC_ENTRY * proc)
 {
 #if !defined (WINDOWS)
-  int rc = NO_ERROR, rv;
   int master_hostname_length = master_current_hostname == NULL ? 0 : strlen (master_current_hostname);
   char master_hostname[sizeof (int) + CUB_MAXHOSTNAMELEN];
 
-  if (proc == NULL || conn == NULL || IS_INVALID_SOCKET (conn->fd))
+  if (proc == NULL || proc->conn == NULL || IS_INVALID_SOCKET (proc->conn->fd))
     {
       /* smth went terribly wrong */
       assert (false);
       return ER_FAILED;
     }
 
-  if (master_current_hostname == NULL || strlen (master_current_hostname) == 0)
-    {
-      proc->knows_master_hostname = false;
-      return NO_ERROR;
-    }
-
-  rc = css_send_heartbeat_request (conn, SERVER_RECEIVE_MASTER_HOSTNAME);
+  int rc = css_send_heartbeat_request (proc->conn, SERVER_RECEIVE_MASTER_HOSTNAME);
   if (rc != NO_ERRORS)
     {
       assert (false);
@@ -2094,14 +2086,12 @@ css_send_to_my_server_the_master_hostname (const char *master_current_hostname, 
   *((int *) master_hostname) = master_hostname_length;
   memcpy (master_hostname + sizeof (int), master_current_hostname, master_hostname_length);
 
-  rc = css_send_heartbeat_data (conn, master_hostname, sizeof (int) + master_hostname_length);
+  rc = css_send_heartbeat_data (proc->conn, master_hostname, sizeof (int) + master_hostname_length);
   if (rc != NO_ERRORS)
     {
       assert (false);
       return ER_FAILED;
     }
-
-  proc->knows_master_hostname = true;
 
   return NO_ERROR;
 #else

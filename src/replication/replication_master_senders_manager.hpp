@@ -62,13 +62,7 @@ namespace cubreplication
 
     private:
 
-      class master_senders_supervisor_task : public cubthread::entry_task
-      {
-	public:
-	  master_senders_supervisor_task ();
-
-	  void execute (cubthread::entry &context);
-      };
+      static void execute (cubthread::entry &context);
 
       friend class master_senders_supervisor_task;
 

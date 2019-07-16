@@ -179,7 +179,7 @@ namespace cubreplication
 	return m_is_stopped;
       }
 
-      void set_stop (void);
+      void stop (void);
 
       subtran_applier &get_subtran_applier ();
   };

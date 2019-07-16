@@ -74,6 +74,10 @@ namespace cubstream
 	    m_first_loop = false;
 	  }
 
+	if (!this_consumer_channel.m_channel.is_connection_alive ())
+	  {
+	    return;
+	  }
 	rc = this_consumer_channel.m_channel.recv (this_consumer_channel.m_buffer, max_len);
 	if (rc != NO_ERRORS)
 	  {

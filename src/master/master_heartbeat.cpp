@@ -193,8 +193,6 @@ static HB_DEACTIVATE_INFO hb_Deactivate_info = { NULL, 0, false };
 
 static bool hb_Is_activated = true;
 
-static cubbase::hostname_type current_master_hostname;
-
 /* cluster jobs */
 static HB_JOB_FUNC hb_cluster_jobs[] =
 {
@@ -1286,6 +1284,7 @@ hb_cluster_calc_score (void)
     }
 
   hb_Cluster->myself->state = hb_Cluster->state;
+  cubhb::node_entry *old_master = hb_Cluster->master;
 
   std::chrono::milliseconds calc_score_interval (prm_get_integer_value (PRM_ID_HA_CALC_SCORE_INTERVAL_IN_MSECS));
   std::chrono::system_clock::time_point now = std::chrono::system_clock::now ();
@@ -1298,6 +1297,13 @@ hb_cluster_calc_score (void)
       if (node->heartbeat_gap > prm_get_integer_value (PRM_ID_HA_MAX_HEARTBEAT_GAP)
 	  || (node->is_time_initialized () && ((now - node->last_recv_hbtime) > calc_score_interval)))
 	{
+	  if (node->state == cubhb::node_state::MASTER)
+	    {
+	      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+				   "hb_cluster_calc_score: set current master '%s' to unknown state (heartbeat_gap=%d)",
+				   node->get_hostname ().as_c_str (), node->heartbeat_gap);
+	    }
+
 	  node->heartbeat_gap = 0;
 	  node->state = cubhb::node_state::UNKNOWN;
 	  node->last_recv_hbtime = std::chrono::system_clock::time_point ();
@@ -1332,6 +1338,17 @@ hb_cluster_calc_score (void)
 	{
 	  num_master++;
 	}
+    }
+
+  cubhb::node_entry *new_master = hb_Cluster->master;
+  assert (new_master != NULL);
+  if (old_master == NULL || old_master->get_hostname () != new_master->get_hostname ())
+    {
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_cluster_calc_score: set new master to '%s'",
+			   new_master->get_hostname ().as_c_str ());
+
+      // trigger send master hostname job
+      hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL, HB_JOB_TIMER_IMMEDIATELY);
     }
 
   return num_master;
@@ -2190,6 +2207,9 @@ hb_resource_job_confirm_start (HB_JOB_ARG *arg)
       if (proc->type == HB_PTYPE_SERVER)
 	{
 	  proc->state = HB_PSTATE_REGISTERED_AND_STANDBY;
+
+	  // reconnect to master node
+	  hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL, HB_JOB_TIMER_IMMEDIATELY);
 	}
       else
 	{
@@ -2434,72 +2454,45 @@ hb_resource_job_shutdown (void)
 static void
 hb_resource_job_send_master_hostname (HB_JOB_ARG *arg)
 {
-  const cubbase::hostname_type &master_hostname = hb_find_host_name_of_master_server ();
-  int error, rv;
-  HB_PROC_ENTRY *proc = NULL;
-  CSS_CONN_ENTRY *conn = NULL;
+  // there are not args for this job, in case args is not NULL don't forget to free_and_init (arg)
+  assert (arg == NULL);
 
-  rv = pthread_mutex_lock (&hb_Resource->lock);
-  proc = hb_Resource->procs;
+  pthread_mutex_lock (&hb_Resource->lock);
+  HB_PROC_ENTRY *proc = hb_Resource->procs;
   while (proc)
     {
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "send_master_hostname type:%d, state:%d, knows_master_hostname:%d\n",
-			   proc->type, proc->state, proc->knows_master_hostname);
       if (proc->type == HB_PTYPE_SERVER && proc->state >= HB_PSTATE_REGISTERED)
 	{
-	  if (proc->knows_master_hostname)
-	    {
-	      pthread_mutex_unlock (&hb_Resource->lock);
-	      return;
-	    }
-
-	  conn = proc->conn;
 	  break;
 	}
       proc = proc->next;
     }
   pthread_mutex_unlock (&hb_Resource->lock);
 
-  if (proc != NULL)
+  if (proc == NULL)
     {
-      if (master_hostname.empty ())
-	{
-	  proc->knows_master_hostname = false;
-	  current_master_hostname = "";
-	  return;
-	}
-
-      if (current_master_hostname.empty ())
-	{
-	  current_master_hostname = master_hostname;
-	  proc->knows_master_hostname = false;
-	}
-      else if (current_master_hostname == master_hostname && proc->knows_master_hostname)
-	{
-	  return;
-	}
-      else if (current_master_hostname != master_hostname)
-	{
-	  proc->knows_master_hostname = false;
-	}
-
-      if (hb_Cluster->get_hostname () == current_master_hostname)
-	{
-	  return;
-	}
-
-      error = css_send_to_my_server_the_master_hostname (master_hostname.as_c_str (), proc, conn);
-      assert (error == NO_ERROR);
+      // return, hb_resource_job_confirm_start will trigger this job when cub_server proc will register
+      return;
     }
 
-  error = hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL,
-				 prm_get_integer_value (PRM_ID_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS));
-  assert (error == NO_ERROR);
-
-  if (arg)
+  const cubbase::hostname_type &master_hostname = hb_find_host_name_of_master_server ();
+  if (master_hostname.empty ())
     {
-      free_and_init (arg);
+      // retry if master hostname is not yet known
+      hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL,
+			     prm_get_integer_value (PRM_ID_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS));
+      return;
     }
+  if (hb_Cluster->get_hostname () == master_hostname)
+    {
+      // current node is the master node, there is no need to send the hostname to cub_server
+      return;
+    }
+
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "send_master_hostname: process_state=%s, pid=%d, master_hostname=%s",
+		       hb_process_state_string (proc->type, proc->state), proc->pid, master_hostname.as_c_str ());
+
+  css_send_to_my_server_the_master_hostname (master_hostname.as_c_str (), proc);
 }
 
 /*
@@ -2526,7 +2519,6 @@ hb_alloc_new_proc (void)
       p->prev = NULL;
       p->being_shutdown = false;
       p->server_hang = false;
-      p->knows_master_hostname = false;
       LSA_SET_NULL (&p->prev_eof);
       LSA_SET_NULL (&p->curr_eof);
 
@@ -2676,7 +2668,7 @@ hb_proc_make_arg (char **arg, char *argv)
 void
 hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY *conn, SOCKET sfd)
 {
-  int error, rv;
+  int error;
   char error_string[LINE_MAX] = "";
   HB_PROC_ENTRY *proc;
   HB_JOB_ARG *job_arg;
@@ -2689,7 +2681,7 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY *conn, SOCKET sfd)
       return;
     }
 
-  rv = pthread_mutex_lock (&hb_Resource->lock);
+  pthread_mutex_lock (&hb_Resource->lock);
   proc = hb_return_proc_by_fd (sfd);
   if (proc == NULL)
     {
@@ -2735,21 +2727,17 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY *conn, SOCKET sfd)
 
   if (hb_Resource->state == cubhb::node_state::MASTER && proc->type == HB_PTYPE_SERVER && !hb_Cluster->is_isolated)
     {
-      if (HB_GET_ELAPSED_TIME (proc->ktime, proc->rtime) <
-	  prm_get_integer_value (PRM_ID_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS))
-	{
-	  /* demote the current node */
-	  hb_Resource->state = cubhb::node_state::SLAVE;
+      /* demote the current node */
+      hb_Resource->state = cubhb::node_state::SLAVE;
 
-	  snprintf (error_string, LINE_MAX, "(args:%s)", proc->args);
-	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
-			 "Process failure repeated within a short period of time. The current node will be demoted",
-			 error_string);
+      snprintf (error_string, LINE_MAX, "(args:%s)", proc->args);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+		     "Process failure repeated within a short period of time. The current node will be demoted",
+		     error_string);
 
-	  /* shutdown working server processes to change its role to slave */
-	  error = hb_resource_job_queue (HB_RJOB_DEMOTE_START_SHUTDOWN, NULL, HB_JOB_TIMER_IMMEDIATELY);
-	  assert (error == NO_ERROR);
-	}
+      /* shutdown working server processes to change its role to slave */
+      error = hb_resource_job_queue (HB_RJOB_DEMOTE_START_SHUTDOWN, NULL, HB_JOB_TIMER_IMMEDIATELY);
+      assert (error == NO_ERROR);
     }
 
   job_arg = (HB_JOB_ARG *) malloc (sizeof (HB_JOB_ARG));
@@ -2973,15 +2961,12 @@ hb_resource_send_changemode (HB_PROC_ENTRY *proc)
     {
     case cubhb::node_state::MASTER:
       state = HA_SERVER_STATE_ACTIVE;
-      proc->knows_master_hostname = true;
       break;
     case cubhb::node_state::TO_BE_SLAVE:
       state = HA_SERVER_STATE_STANDBY;
-      proc->knows_master_hostname = false;
       break;
     case cubhb::node_state::SLAVE:
     default:
-      proc->knows_master_hostname = false;
       return ER_FAILED;
     }
 
@@ -3056,24 +3041,20 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY *conn)
     {
     case HA_SERVER_STATE_ACTIVE:
       proc->state = HB_PSTATE_REGISTERED_AND_ACTIVE;
-      proc->knows_master_hostname = true;
       break;
 
     case HA_SERVER_STATE_TO_BE_ACTIVE:
       proc->state = HB_PSTATE_REGISTERED_AND_TO_BE_ACTIVE;
-      proc->knows_master_hostname = true;
       break;
 
     case HA_SERVER_STATE_STANDBY:
       proc->state = HB_PSTATE_REGISTERED_AND_STANDBY;
       hb_Cluster->state = cubhb::node_state::SLAVE;
       hb_Resource->state = cubhb::node_state::SLAVE;
-      proc->knows_master_hostname = false;
       break;
 
     case HA_SERVER_STATE_TO_BE_STANDBY:
       proc->state = HB_PSTATE_REGISTERED_AND_TO_BE_STANDBY;
-      proc->knows_master_hostname = false;
       break;
 
     default:
@@ -3485,16 +3466,6 @@ hb_resource_job_initialize ()
   pthread_mutex_unlock (&resource_Jobs->lock);
 
   error = hb_resource_job_queue (HB_RJOB_CHANGE_MODE, NULL,
-				 prm_get_integer_value (PRM_ID_HA_INIT_TIMER_IN_MSECS) +
-				 prm_get_integer_value (PRM_ID_HA_FAILOVER_WAIT_TIME_IN_MSECS));
-  if (error != NO_ERROR)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  /* TODO add other timers */
-  error = hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL,
 				 prm_get_integer_value (PRM_ID_HA_INIT_TIMER_IN_MSECS) +
 				 prm_get_integer_value (PRM_ID_HA_FAILOVER_WAIT_TIME_IN_MSECS));
   if (error != NO_ERROR)
@@ -5321,7 +5292,7 @@ hb_find_host_name_of_master_server ()
 {
   static const cubbase::hostname_type empty_hostname;
 
-  int rv = pthread_mutex_lock (&hb_Cluster->lock);
+  pthread_mutex_lock (&hb_Cluster->lock);
   for (cubhb::node_entry *node : hb_Cluster->nodes)
     {
       if (node->state == cubhb::node_state::MASTER && hb_Cluster->master == node)

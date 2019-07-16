@@ -27,7 +27,6 @@
 #define _REPLICATION_SLAVE_NODE_HPP_
 
 #include "replication_node.hpp"
-#include "communication_server_channel.hpp"
 
 namespace cubstream
 {
@@ -47,7 +46,6 @@ namespace cubreplication
   class slave_node : public replication_node
   {
     private:
-      static slave_node *g_instance;
       log_consumer *m_lc;
 
       node_definition m_master_identity;
@@ -55,24 +53,12 @@ namespace cubreplication
       cubthread::daemon *m_ctrl_sender_daemon;
       slave_control_sender *m_ctrl_sender;
 
-      slave_node (const char *name)
-	: replication_node (name)
-	, m_lc (NULL)
-	, m_master_identity ("")
-	, m_transfer_receiver (NULL)
-	, m_ctrl_sender_daemon (NULL)
-	, m_ctrl_sender (NULL)
-      {
-      }
+    public:
 
+      slave_node (const char *hostname, cubstream::multi_thread_stream *stream, cubstream::stream_file *stream_file);
       ~slave_node ();
 
-    public:
-      static slave_node *get_instance (const char *name);
-
-      static void init (const char *hostname);
-      static int connect_to_master (const char *master_node_hostname, const int master_node_port_id);
-      static void final (void);
+      int connect_to_master (const char *master_node_hostname, const int master_node_port_id);
   };
 
 } /* namespace cubreplication */
