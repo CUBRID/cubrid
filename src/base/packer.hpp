@@ -369,7 +369,7 @@ namespace cubpacking
 
     if (available < total_size)
       {
-	eb.extend_by (total_size);
+	eb.extend_by (total_size - available);
       }
     set_buffer (eb.get_ptr () + offset, total_size);
 
