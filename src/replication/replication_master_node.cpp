@@ -236,7 +236,12 @@ namespace cubreplication
       }
 
     /* create a transaction for replication copy */
-    locator_repl_start_tran (&thread_ref, BOOT_CLIENT_LOG_COPIER);
+    error = locator_repl_start_tran (&thread_ref, BOOT_CLIENT_LOG_COPIER);
+    if (error != NO_ERROR)
+      {
+       assert (false);
+       return;
+      }
 
     LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (&thread_ref);
 

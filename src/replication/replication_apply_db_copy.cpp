@@ -25,6 +25,7 @@
 
 #include "replication_apply_db_copy.hpp"
 #include "communication_server_channel.hpp"
+#include "locator_sr.h"
 #include "log_impl.h"
 #include "replication_common.hpp"
 #include "replication_node.hpp"
@@ -290,16 +291,22 @@ namespace cubreplication
 	tasks_map nonexecutable_repl_tasks;
         bool is_heap_extract_phase = false;
         bool is_replication_copy_end = false;
+        bool is_stopped = false;
 
         er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_daemon_task : start of replication copy");
 
+        if (locator_repl_start_tran (&thread_ref, BOOT_CLIENT_LOG_APPLIER) != NO_ERROR)
+          {
+           assert (false);
+           return;
+          }
+
 	while (!is_replication_copy_end)
 	  {
-	    bool should_stop = false;
             bool is_control_se = false;
-	    m_lc.pop_entry (se, should_stop);
+	    m_lc.pop_entry (se, is_stopped);
 
-	    if (should_stop)
+	    if (is_stopped)
 	      {
                 er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_daemon_task : detect should stop");
 		break;
@@ -351,6 +358,8 @@ namespace cubreplication
                 /* stream entry is deleted by applier task thread */
               }
 	  }
+
+        locator_repl_end_tran (&thread_ref, is_stopped ? false : true); 
 
         m_lc.set_is_finished ();
         er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_daemon_task finished");
