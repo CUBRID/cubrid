@@ -400,7 +400,7 @@ namespace cubreplication
 
   void log_consumer::stop (void)
   {
-    /* wakeup fetch daemon to allow him time to detect it stopped */
+    /* wakeup fetch daemon to allow it time to detect it is stopped */
     fetch_resume ();
 
     get_stream ()->stop ();
