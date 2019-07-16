@@ -32,6 +32,7 @@
 #include "memory_alloc.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "replication_row_apply.hpp"
 #include "string_buffer.hpp"
 #include "thread_manager.hpp"
 #include "transaction_group.hpp"
@@ -203,14 +204,12 @@ namespace cubreplication
     int err = NO_ERROR;
 #if defined (SERVER_MODE)
     assert (m_type == REPL_DELETE);
-
-    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type);
-    cubthread::entry &my_thread = cubthread::get_entry ();
-    std::vector <int> dummy_int_vector;
-    std::vector <DB_VALUE> dummy_val_vector;
-
-    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
-				  dummy_int_vector, dummy_val_vector, NULL);
+    err = row_apply_delete (m_class_name, m_key_value);
+    if (err != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	return err;
+      }
 #endif
     return err;
   }
@@ -303,12 +302,11 @@ namespace cubreplication
   }
 
   /////////////////////////////////
-  sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user, const char *password,
-				  const char *sys_prm_ctx, LOG_LSA &lsa_stamp)
+  sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user, const char *sys_prm_ctx,
+				  const LOG_LSA &lsa_stamp)
     : replication_object (lsa_stamp)
     , m_statement (statement)
     , m_db_user (user)
-    , m_db_password (password ? password : "")
     , m_sys_prm_context (sys_prm_ctx ? sys_prm_ctx : "")
   {
   }
@@ -319,19 +317,17 @@ namespace cubreplication
     int err = NO_ERROR;
 #if defined (SERVER_MODE)
     cubthread::entry &my_thread = cubthread::get_entry ();
-    err = locator_repl_apply_sbr (&my_thread, m_db_user.c_str (), m_db_password.c_str(),
+    err = locator_repl_apply_sbr (&my_thread, m_db_user.c_str (),
 				  m_sys_prm_context.empty () ? NULL : m_sys_prm_context.c_str (),
 				  m_statement.c_str ());
 #endif
     return err;
   }
 
-  void sbr_repl_entry::set_params (const char *statement, const char *user, const char *password,
-				   const char *sys_prm_ctx)
+  void sbr_repl_entry::set_params (const char *statement, const char *user, const char *sys_prm_ctx)
   {
     m_statement = statement;
     m_db_user = user;
-    m_db_password = password;
     m_sys_prm_context = sys_prm_ctx;
   }
 
@@ -352,8 +348,6 @@ namespace cubreplication
       {
 	return false;
       }
-
-    assert (m_db_password == other_t->m_db_password);
     return true;
   }
 
@@ -375,7 +369,6 @@ namespace cubreplication
 
     entry_size += serializator.get_packed_string_size (m_statement, entry_size);
     entry_size += serializator.get_packed_string_size (m_db_user, entry_size);
-    entry_size += serializator.get_packed_string_size (m_db_password, entry_size);
     entry_size += serializator.get_packed_string_size (m_sys_prm_context, entry_size);
 
     return entry_size;
@@ -387,7 +380,6 @@ namespace cubreplication
     serializator.pack_int (sbr_repl_entry::PACKING_ID);
     serializator.pack_string (m_statement);
     serializator.pack_string (m_db_user);
-    serializator.pack_string (m_db_password);
     serializator.pack_string (m_sys_prm_context);
   }
 
@@ -399,7 +391,6 @@ namespace cubreplication
     deserializator.unpack_int (entry_type_not_used);
     deserializator.unpack_string (m_statement);
     deserializator.unpack_string (m_db_user);
-    deserializator.unpack_string (m_db_password);
     deserializator.unpack_string (m_sys_prm_context);
   }
 
@@ -441,11 +432,12 @@ namespace cubreplication
     int err = NO_ERROR;
 
 #if defined (SERVER_MODE)
-    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type);
-    cubthread::entry &my_thread = cubthread::get_entry ();
-
-    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
-				  m_changed_attributes, m_new_values, NULL);
+    err = row_apply_update (m_class_name, m_key_value, m_changed_attributes, m_new_values);
+    if (err != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	return err;
+      }
 #endif
 
     return err;
@@ -517,7 +509,7 @@ namespace cubreplication
 
     entry_size = single_row_repl_entry::get_packed_size (serializator, entry_size);
 
-    entry_size += serializator.get_packed_int_vector_size (entry_size, (int) m_changed_attributes.size ());
+    entry_size += serializator.get_packed_int_vector_size (entry_size, m_changed_attributes.size ());
     entry_size += serializator.get_packed_int_size (entry_size);
     for (std::size_t i = 0; i < m_new_values.size (); i++)
       {
@@ -615,16 +607,29 @@ namespace cubreplication
     int err = NO_ERROR;
 
 #if defined (SERVER_MODE)
-    assert (m_type != REPL_DELETE);
-
-    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type);
-    cubthread::entry &my_thread = cubthread::get_entry ();
-
-    std::vector<int> dummy_int_vector;
-    std::vector<DB_VALUE> dummy_val_vector;
-
-    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
-				  dummy_int_vector, dummy_val_vector, &m_rec_des.get_recdes ());
+    if (m_type == REPL_INSERT)
+      {
+	err = row_apply_insert (m_class_name, m_rec_des);
+	if (err != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    return err;
+	  }
+      }
+    else if (m_type == REPL_UPDATE)
+      {
+	err = row_apply_update (m_class_name, m_key_value, m_rec_des);
+	if (err != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    return err;
+	  }
+      }
+    else
+      {
+	assert (false);
+	err = ER_FAILED;
+      }
 #endif
 
     return err;

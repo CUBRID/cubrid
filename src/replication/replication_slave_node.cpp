@@ -24,61 +24,57 @@
 #ident "$Id$"
 
 #include "replication_slave_node.hpp"
+#include "communication_server_channel.hpp"
+#include "log_applier.h"
 #include "log_consumer.hpp"
 #include "multi_thread_stream.hpp"
 #include "replication_common.hpp"
-#include "slave_control_channel.hpp"
 #include "replication_stream_entry.hpp"
-#include "stream_file.hpp"
+#include "slave_control_channel.hpp"
 #include "stream_transfer_receiver.hpp"
+#include "stream_file.hpp"
 #include "system_parameter.h"
+#include "thread_entry.hpp"
+#include "thread_looper.hpp"
+#include "thread_manager.hpp"
 
 
 namespace cubreplication
 {
+  slave_node::slave_node (const char *hostname, cubstream::multi_thread_stream *stream,
+			  cubstream::stream_file *stream_file)
+    : replication_node (hostname)
+    , m_lc (NULL)
+    , m_master_identity ("")
+    , m_transfer_receiver (NULL)
+  {
+    m_stream = stream;
+    m_stream_file = stream_file;
+
+    m_lc = new log_consumer ();
+    m_lc->set_stream (m_stream);
+
+    /* start log_consumer daemons and apply thread pool */
+    m_lc->start_daemons ();
+  }
+
   slave_node::~slave_node ()
   {
+    delete m_transfer_receiver;
+    m_transfer_receiver = NULL;
+
     delete m_lc;
     m_lc = NULL;
-  }
 
-  slave_node *slave_node::get_instance (const char *name)
-  {
-    if (g_instance == NULL)
+    m_stream_file->remove_sync_notifier ();
+
+    if (m_ctrl_sender != NULL)
       {
-	g_instance = new slave_node (name);
+	m_ctrl_sender->stop ();
+	cubthread::get_manager ()->destroy_daemon_without_entry (m_ctrl_sender_daemon);
+	delete m_ctrl_sender;
+	m_ctrl_sender = NULL;
       }
-    return g_instance;
-  }
-
-  void slave_node::init (const char *hostname)
-  {
-    assert (g_instance == NULL);
-    slave_node *instance = slave_node::get_instance (hostname);
-
-    instance->apply_start_position ();
-
-    INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_CONSUMER_BUFFER_SIZE);
-
-    /* create stream :*/
-    /* consumer needs only one stream appender (the stream transfer receiver) */
-    assert (instance->m_stream == NULL);
-    instance->m_stream = new cubstream::multi_thread_stream (buffer_size, 2);
-    instance->m_stream->set_name ("repl" + std::string (hostname) + "_replica");
-    instance->m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
-    instance->m_stream->init (instance->m_start_position);
-
-    /* create stream file */
-    std::string replication_path;
-    replication_node::get_replication_file_path (replication_path);
-    instance->m_stream_file = new cubstream::stream_file (*instance->m_stream, replication_path);
-
-    assert (instance->m_lc == NULL);
-    instance->m_lc = new log_consumer ();
-
-    instance->m_lc->set_stream (instance->m_stream);
-    /* start log_consumer daemons and apply thread pool */
-    instance->m_lc->start_daemons ();
   }
 
   int slave_node::connect_to_master (const char *master_node_hostname, const int master_node_port_id)
@@ -87,53 +83,61 @@ namespace cubreplication
     er_log_debug_replication (ARG_FILE_LINE, "slave_node::connect_to_master host:%s, port: %d\n",
 			      master_node_hostname, master_node_port_id);
 
-    /* connect to replication master node */
-    cubcomm::server_channel srv_chn (g_instance->m_identity.get_hostname ().c_str ());
+    // todo: remove after slave node is able to connect to a different master
+    assert (m_transfer_receiver == NULL);
 
-    g_instance->m_master_identity.set_hostname (master_node_hostname);
-    g_instance->m_master_identity.set_port (master_node_port_id);
+    /* connect to replication master node */
+    cubcomm::server_channel srv_chn (m_identity.get_hostname ().c_str ());
+
+    m_master_identity.set_hostname (master_node_hostname);
+    m_master_identity.set_port (master_node_port_id);
     error = srv_chn.connect (master_node_hostname, master_node_port_id, SERVER_REQUEST_CONNECT_NEW_SLAVE);
     if (error != css_error_code::NO_ERRORS)
       {
 	return error;
       }
 
-    cubcomm::server_channel control_chn (g_instance->m_identity.get_hostname ().c_str ());
+    cubcomm::server_channel control_chn (m_identity.get_hostname ().c_str ());
     error = control_chn.connect (master_node_hostname, master_node_port_id, SERVER_REQUEST_CONNECT_NEW_SLAVE_CONTROL);
     if (error != css_error_code::NO_ERRORS)
       {
 	return error;
       }
-    /* start transfer receiver */
-    assert (g_instance->m_transfer_receiver == NULL);
+
     /* TODO[replication] : last position to be retrieved from recovery module */
     cubstream::stream_position start_position = 0;
 
-    g_instance->m_lc->set_ctrl_chn (new cubreplication::slave_control_channel (std::move (control_chn)));
+    slave_control_sender *sender = new slave_control_sender (std::move (control_chn));
+    m_ctrl_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
+			   sender, "slave_control_sender");
 
-    g_instance->m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *g_instance->m_stream,
-	start_position);
+    m_ctrl_sender = sender;
+    cubstream::stream_file *sf = m_stream_file;
+
+    if ((REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) ==
+	REPL_SEMISYNC_ACK_ON_FLUSH)
+      {
+	m_stream_file->set_sync_notifier ([sender] (const cubstream::stream_position & sp)
+	{
+	  // route produced stream positions to get validated as flushed on disk before sending them
+	  sender->set_synced_position (sp);
+	});
+
+	m_lc->set_ack_producer ([sf] (cubstream::stream_position ack_sp)
+	{
+	  sf->update_sync_position (ack_sp);
+	});
+      }
+    else
+      {
+	m_lc->set_ack_producer ([sender] (cubstream::stream_position sp)
+	{
+	  sender->set_synced_position (sp);
+	});
+      }
+
+    m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *m_stream, start_position);
 
     return NO_ERROR;
   }
-
-  void slave_node::final (void)
-  {
-    if (g_instance == NULL)
-      {
-	return;
-      }
-
-    delete g_instance->m_transfer_receiver;
-    g_instance->m_transfer_receiver = NULL;
-
-    g_instance->m_lc->set_stop ();
-    delete g_instance->m_lc;
-    g_instance->m_lc = NULL;
-
-    delete g_instance;
-    g_instance = NULL;
-  }
-
-  slave_node *slave_node::g_instance = NULL;
 } /* namespace cubreplication */

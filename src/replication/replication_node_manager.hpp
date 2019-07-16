@@ -18,24 +18,37 @@
  */
 
 /*
- * replication_common.hpp
+ * replication_node_manager.hpp
  */
 
-#ident "$Id$"
+#ifndef _REPLICATION_NODE_MANAGER_HPP_
+#define _REPLICATION_NODE_MANAGER_HPP_
 
-#ifndef _REPLICATION_COMMON_HPP_
-#define _REPLICATION_COMMON_HPP_
+#include "cubstream.hpp"
 
-#include "error_manager.h"
-#define er_log_debug_replication(...) if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA)) _er_log_debug(__VA_ARGS__)
+namespace cubstream
+{
+  class multi_thread_stream;
+  class stream_file;
+}
 
 namespace cubreplication
 {
-  typedef enum
-  {
-    REPL_SEMISYNC_ACK_ON_CONSUME,
-    REPL_SEMISYNC_ACK_ON_FLUSH
-  } REPL_SEMISYNC_ACK_MODE;
-};
+  class master_node;
+  class replication_node;
+  class slave_node;
 
-#endif /* _REPLICATION_COMMON_HPP_ */
+  namespace replication_node_manager
+  {
+    void init (const char *name);
+    void finalize ();
+
+    master_node *get_master_node ();
+    slave_node *get_slave_node ();
+
+    void commute_to_master_state ();
+    void commute_to_slave_state ();
+  };
+}
+
+#endif

@@ -161,12 +161,12 @@ namespace cubreplication
 	return m_header.tran_state == stream_entry_header::GROUP_COMMIT;
       }
 
-      bool is_new_master ()
+      bool is_new_master () const
       {
 	return m_header.tran_state == stream_entry_header::NEW_MASTER;
       }
 
-      bool is_tran_commit (void)
+      bool is_tran_commit (void) const
       {
 	return m_header.tran_state == stream_entry_header::COMMITTED;
       }

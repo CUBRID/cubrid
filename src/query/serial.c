@@ -250,7 +250,7 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_n
   int ret = NO_ERROR;
   HEAP_SCANCACHE scan_cache;
   SCAN_CODE scan;
-  RECDES recdesc;
+  RECDES recdesc = RECDES_INITIALIZER;
   HEAP_CACHE_ATTRINFO attr_info, *attr_info_p = NULL;
   ATTR_ID attrid;
   DB_VALUE *cur_val;

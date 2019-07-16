@@ -41,7 +41,7 @@ parser_block_allocator::alloc (cubmem::block &b, size_t size)
 {
   if (b.ptr == NULL || b.dim == 0)
     {
-      b.ptr = (char *) parser_alloc (m_parser, (const int) size);
+      b.ptr = (char *) parser_alloc (m_parser, (int) size);
       b.dim = size;
     }
   else if (size <= b.dim)
@@ -55,7 +55,7 @@ parser_block_allocator::alloc (cubmem::block &b, size_t size)
       for (new_size = b.dim; new_size < size; new_size *= 2)
 	;
 
-      char *new_ptr = (char *) parser_alloc (m_parser, (const int) new_size);
+      char *new_ptr = (char *) parser_alloc (m_parser, (int) new_size);
       std::memcpy (new_ptr, b.ptr, b.dim);
 
       // no freeing

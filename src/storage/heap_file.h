@@ -542,7 +542,7 @@ extern int heap_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, const HFID * 
 extern OR_CLASSREP *heap_classrepr_get (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * class_recdes,
 					REPR_ID reprid, int *idx_incache);
 extern int heap_classrepr_free (OR_CLASSREP * classrep, int *idx_incache);
-extern REPR_ID heap_get_class_repr_id (THREAD_ENTRY * thread_p, OID * class_oid);
+extern REPR_ID heap_get_class_repr_id (THREAD_ENTRY * thread_p, const OID * class_oid);
 extern int heap_classrepr_find_index_id (OR_CLASSREP * classrepr, const BTID * btid);
 extern int heap_attrinfo_set_uninitialized_global (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
 						   HEAP_CACHE_ATTRINFO * attr_info);
@@ -679,4 +679,9 @@ extern int heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_
 				VPID * new_page_vpid);
 
 extern int heap_nonheader_page_capacity ();
+
+// *INDENT-OFF*
+extern int heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID &class_oid,
+                                      const std::vector<VPID> &heap_pages_array);
+// *INDENT-ON*
 #endif /* _HEAP_FILE_H_ */

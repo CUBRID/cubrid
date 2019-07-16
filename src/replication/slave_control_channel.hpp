@@ -24,10 +24,13 @@
 #ifndef _SLAVE_CONTROL_CHANNEL_HPP_
 #define _SLAVE_CONTROL_CHANNEL_HPP_
 
+#include <condition_variable>
 #include <memory>
+#include <mutex>
 
 #include "communication_channel.hpp"
 #include "cubstream.hpp"
+#include "thread_task.hpp"
 
 namespace cubreplication
 {
@@ -38,6 +41,25 @@ namespace cubreplication
       void send_ack (cubstream::stream_position sp);
     private:
       std::unique_ptr<cubcomm::channel> m_chn;
+  };
+
+  class slave_control_sender : public cubthread::task_without_context
+  {
+    public:
+      slave_control_sender (slave_control_channel &&ctrl_chn);
+
+      void execute () override;
+      void retire () override;
+      void stop ();
+      void set_synced_position (const cubstream::stream_position &sp);
+
+    private:
+      slave_control_channel m_ctrl_chn;
+
+      std::mutex m_mtx;
+      std::condition_variable m_cv;
+      std::atomic<cubstream::stream_position> m_last_stream_pos;
+      bool m_stop;
   };
 }
 

@@ -18,7 +18,7 @@
  */
 
 //
-// generate replication for sub-transactions (changes of serial/click counter)
+// manage logging and replication for sub-transactions (changes of serial/click counter)
 //
 
 #include "replication_subtran_generate.hpp"

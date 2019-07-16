@@ -34,6 +34,10 @@ namespace cubreplication
   class log_consumer;
   class stream_entry;
 }
+namespace cubthread
+{
+  class entry;
+}
 
 namespace cubreplication
 {
@@ -50,12 +54,13 @@ namespace cubreplication
       class task;
       friend class task;
 
+      void execute (cubthread::entry &thread_ref);
       void finished_task ();
 
       log_consumer &m_lc;
       std::mutex m_tasks_mutex;
       std::condition_variable m_condvar;
-      bool m_waiting_for_tasks;
+      bool m_is_running_tasks;
       std::list<stream_entry *> m_stream_entries;
   };
 } // namespace cubreplication

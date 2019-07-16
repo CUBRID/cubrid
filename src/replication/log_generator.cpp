@@ -64,9 +64,8 @@ namespace cubreplication
     p_lsa = logtb_find_current_tran_lsa (thread_p);
     assert (p_lsa != NULL);
 
-    sbr_repl_entry *repl_obj =
-	    new sbr_repl_entry (stmt_info.stmt_text, stmt_info.db_user, stmt_info.db_password,
-				stmt_info.sys_prm_context, *p_lsa);
+    sbr_repl_entry *repl_obj = new sbr_repl_entry (stmt_info.stmt_text, stmt_info.db_user, stmt_info.sys_prm_context,
+	*p_lsa);
     append_repl_object (*repl_obj);
   }
 
@@ -320,7 +319,7 @@ namespace cubreplication
   cubstream::stream_position
   log_generator::pack_stream_entry (void)
   {
-    cubstream::stream_position start_pos;
+    cubstream::stream_position end_pos;
 
     assert (m_stream_entry.get_stream () != NULL);
     assert (!m_stream_entry.is_tran_state_undefined ());
@@ -333,10 +332,10 @@ namespace cubreplication
       }
 
     m_stream_entry.pack ();
-    start_pos = m_stream_entry.get_stream_entry_start_position ();
+    end_pos = m_stream_entry.get_stream_entry_end_position ();
     m_stream_entry.reset ();
 
-    return start_pos;
+    return end_pos;
   }
 
   void

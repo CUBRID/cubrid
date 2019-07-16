@@ -32,6 +32,7 @@
 #include "replication_stream_entry.hpp"
 #include "replication_subtran_apply.hpp"
 #include "slave_control_channel.hpp"
+#include "stream_file.hpp"
 #include "string_buffer.hpp"
 #include "system_parameter.h"
 #include "thread_daemon.hpp"
@@ -57,6 +58,13 @@ namespace cubreplication
 	int err = m_lc.fetch_stream_entry (se);
 	if (err == NO_ERROR)
 	  {
+	    if (se->is_group_commit ())
+	      {
+		se->unpack ();
+		assert (se->get_stream_entry_end_position () > se->get_stream_entry_start_position ());
+
+		m_lc.ack_produce (se->get_stream_entry_end_position ());
+	      }
 	    m_lc.push_entry (se);
 	  }
       };
@@ -189,6 +197,7 @@ namespace cubreplication
 
 		/* wait for all started tasks to finish */
 		er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task wait for all working tasks to finish\n");
+		assert (se->get_stream_entry_start_position () < se->get_stream_entry_end_position ());
 
 		m_lc.wait_for_tasks ();
 
@@ -269,7 +278,7 @@ namespace cubreplication
 
   log_consumer::~log_consumer ()
   {
-    set_stop ();
+    stop ();
 
     if (m_use_daemons)
       {
@@ -281,6 +290,7 @@ namespace cubreplication
     delete m_subtran_applier; // must be deleted after worker pool
 
     assert (m_stream_entries.empty ());
+    get_stream ()->start ();
   }
 
   void log_consumer::push_entry (stream_entry *entry)
@@ -334,7 +344,6 @@ namespace cubreplication
       }
 
     entry = se;
-    m_ctrl_chn->send_ack (entry->get_stream_entry_start_position ());
 
     return err;
   }
@@ -387,9 +396,9 @@ namespace cubreplication
       }
   }
 
-  void log_consumer::set_stop (void)
+  void log_consumer::stop (void)
   {
-    log_consumer::get_stream ()->set_stop ();
+    get_stream ()->stop ();
 
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
     m_is_stopped = true;
