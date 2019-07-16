@@ -119,6 +119,9 @@ namespace cubreplication
     er_log_debug_replication (ARG_FILE_LINE, "slave_node::connect_to_master host:%s, port: %d\n",
 			      master_node_hostname, master_node_port_id);
 
+    assert (m_transfer_receiver == NULL);
+    assert (m_lc == NULL);
+
     /* connect to replication master node */
     cubcomm::server_channel srv_chn (m_identity.get_hostname ().c_str ());
     srv_chn.set_channel_name (REPL_ONLINE_CHANNEL_NAME);
@@ -161,7 +164,6 @@ namespace cubreplication
     er_log_debug_replication (ARG_FILE_LINE, "slave_node::start_online_replication start_position: %lld\n",
 			      start_position);
 
-    assert (m_lc == NULL);
     assert (m_stream != NULL);
     m_lc = new log_consumer ();
     m_lc->fetch_suspend ();
@@ -190,9 +192,8 @@ namespace cubreplication
       {
 	return error;
       }
-    /* start transfer receiver */
-    assert (m_transfer_receiver == NULL);
 
+    /* start transfer receiver */
     cubreplication::slave_control_sender *sender = new slave_control_sender (std::move (
 		cubreplication::slave_control_channel (std::move (control_chn))));
 

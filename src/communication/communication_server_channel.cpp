@@ -72,7 +72,7 @@ namespace cubcomm
       }
 
     /* send request */
-    er_log_debug (ARG_FILE_LINE, "SERVER_REQUEST_CONNECT_NEW_SLAVE (type:%d) to %s, port:%d, server_name:%s,"
+    er_log_debug (ARG_FILE_LINE, "server_channel::connect (type:%d) to %s, port:%d, server_name:%s,"
 		  " server_name_size:%d\n",
 		  cmd_type, hostname, port, m_server_name.c_str (), m_server_name.size ());
 
