@@ -119,7 +119,7 @@ namespace cubstream
 					 std::placeholders::_3);
 
     m_receiver_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
-			new transfer_receiver_task (*this), "stream_transfer_receiver");
+			new transfer_receiver_task (*this), "stream_transfer_receiver");    
   }
 
   transfer_receiver::~transfer_receiver ()

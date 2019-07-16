@@ -158,7 +158,7 @@ namespace cubreplication
 
       bool is_group_commit (void) const
       {
-        return m_header.tran_state == stream_entry_header::COMMITTED;
+        return m_header.tran_state == stream_entry_header::GROUP_COMMIT;
       }
 
       bool is_new_master () const
