@@ -17,51 +17,52 @@
  *
  */
 
-/*
- * replication_slave_node.hpp
- */
+//
+// Replication apply sub-transactions (serial & click counter changes)
+//
 
-#ident "$Id$"
+#ifndef _REPLICATION_SUBTRAN_APPLY_HPP_
+#define _REPLICATION_SUBTRAN_APPLY_HPP_
 
-#ifndef _REPLICATION_SLAVE_NODE_HPP_
-#define _REPLICATION_SLAVE_NODE_HPP_
+#include <condition_variable>
+#include <list>
+#include <mutex>
 
-#include "replication_node.hpp"
-#include "slave_control_channel.hpp"
-
-namespace cubstream
+// forward declarations
+namespace cubreplication
 {
-  class transfer_receiver;
+  class log_consumer;
+  class stream_entry;
 }
-
 namespace cubthread
 {
-  class daemon;
+  class entry;
 }
 
 namespace cubreplication
 {
-  class log_consumer;
-  class slave_control_sender;
-
-  class slave_node : public replication_node
+  class subtran_applier
   {
-    private:
-      log_consumer *m_lc;
-
-      node_definition m_master_identity;
-      cubstream::transfer_receiver *m_transfer_receiver;
-      cubthread::daemon *m_ctrl_sender_daemon;
-      slave_control_sender *m_ctrl_sender;
-
     public:
+      subtran_applier () = delete;
+      subtran_applier (log_consumer &lc);
 
-      slave_node (const char *hostname, cubstream::multi_thread_stream *stream, cubstream::stream_file *stream_file);
-      ~slave_node ();
+      void insert_stream_entry (stream_entry *se);
+      void apply ();
 
-      int connect_to_master (const char *master_node_hostname, const int master_node_port_id);
+    private:
+      class task;
+      friend class task;
+
+      void execute (cubthread::entry &thread_ref);
+      void finished_task ();
+
+      log_consumer &m_lc;
+      std::mutex m_tasks_mutex;
+      std::condition_variable m_condvar;
+      bool m_is_running_tasks;
+      std::list<stream_entry *> m_stream_entries;
   };
+} // namespace cubreplication
 
-} /* namespace cubreplication */
-
-#endif /* _REPLICATION_SLAVE_NODE_HPP_ */
+#endif // !_REPLICATION_SUBTRAN_APPLY_HPP_

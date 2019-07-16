@@ -82,7 +82,6 @@ namespace cubreplication
 
       stream_entry m_stream_entry;
 
-      bool m_has_stream;
       bool m_is_row_replication_disabled;
       static cubstream::multi_thread_stream *s_stream;
 
@@ -96,7 +95,6 @@ namespace cubreplication
       log_generator (cubstream::multi_thread_stream *stream)
 	: m_pending_to_be_added ()
 	, m_stream_entry (stream)
-	, m_has_stream (false)
 	, m_is_row_replication_disabled (true)
       {
       };
@@ -111,6 +109,7 @@ namespace cubreplication
       void on_transaction_abort (void);
       // act when sysop is aborted
       void on_sysop_abort (LOG_LSA &start_lsa);
+      void on_subtran_commit ();
       // clear transaction data (e.g. logtb_clear_tdes)
       void clear_transaction (void);
 
@@ -124,6 +123,8 @@ namespace cubreplication
 			   const RECDES *optional_recdes);
       void update_lsastamp_for_changed_repl_object (const OID &inst_oid);
       void add_attribute_change (const OID &class_oid, const OID &inst_oid, ATTR_ID col_id, const DB_VALUE &value);
+      void add_create_savepoint (const char *savept_name);
+      void add_rollback_to_savepoint (const char *savept_name);
 
       void remove_attribute_change (const OID &class_oid, const OID &inst_oid);
 
@@ -131,7 +132,7 @@ namespace cubreplication
 
       stream_entry *get_stream_entry (void);
 
-      void pack_stream_entry (void);
+      cubstream::stream_position pack_stream_entry (void);
 
       void er_log_repl_obj (replication_object *obj, const char *message);
 
@@ -167,8 +168,9 @@ namespace cubreplication
       void set_stream (cubstream::multi_thread_stream *stream)
       {
 	m_stream_entry.set_stream (stream);
-	m_has_stream = true;
       }
+
+      void set_tran_repl_info (stream_entry_header::TRAN_STATE state);
 
       char *get_classname (const OID &class_oid);     // todo - optimize this step
 

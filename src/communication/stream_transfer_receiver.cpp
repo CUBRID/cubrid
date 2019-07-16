@@ -73,9 +73,14 @@ namespace cubstream
 
 	    m_first_loop = false;
 	  }
-
+	
 	while (true)
 	  {
+            if (!this_consumer_channel.m_channel.is_connection_alive ())
+              {
+                return;
+              }
+
 	    /* TODO - consider stop */
 	    recv_len = max_len;
 	    rc = this_consumer_channel.m_channel.recv (this_consumer_channel.m_buffer, recv_len);

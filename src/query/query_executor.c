@@ -8683,7 +8683,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   int current_op_type = SINGLE_ROW_UPDATE;
   PRUNING_CONTEXT *pcontext = NULL;
   DEL_LOB_INFO *del_lob_info_list = NULL;
-  RECDES recdes;
   MVCC_UPDDEL_REEV_DATA mvcc_upddel_reev_data;
   MVCC_REEV_DATA mvcc_reev_data;
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
@@ -9004,6 +9003,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		      SCAN_CODE scan_code;
 		      int error;
 		      int i;
+		      RECDES recdes = RECDES_INITIALIZER;
 
 		      /* read lob attributes */
 		      scan_code =
@@ -9580,7 +9580,6 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   UPDDEL_CLASS_INFO *query_class = NULL;
   UPDDEL_CLASS_INFO_INTERNAL *internal_classes = NULL, *internal_class = NULL;
   DEL_LOB_INFO *del_lob_info_list = NULL;
-  RECDES recdes;
   MVCC_REEV_DATA mvcc_reev_data;
   MVCC_UPDDEL_REEV_DATA mvcc_upddel_reev_data;
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
@@ -9833,6 +9832,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  SCAN_CODE scan_code;
 		  int error;
 		  int i;
+		  RECDES recdes = RECDES_INITIALIZER;
 
 		  /* read lob attributes */
 		  scan_code =
@@ -15344,7 +15344,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 			}
 
 		      /* set parent tuple position pseudocolumn value */
-		      db_make_bit (parent_pos_valp, DB_DEFAULT_PRECISION, (const DB_C_BIT) (&parent_pos),
+		      db_make_bit (parent_pos_valp, DB_DEFAULT_PRECISION, (DB_C_BIT) (&parent_pos),
 				   sizeof (parent_pos) * 8);
 
 		      parent_tuple_added = true;
@@ -16848,7 +16848,7 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID *
 	  if (level > 1)
 	    {
 	      /* set parent position pseudocolumn value */
-	      db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, (const DB_C_BIT) &pos_info_p->tpl_pos,
+	      db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, (DB_C_BIT) & pos_info_p->tpl_pos,
 			   sizeof (pos_info_p->tpl_pos) * 8);
 
 	      if (qfile_set_tuple_column_value (thread_p, list_id_p, s_id.curr_pgptr, &s_id.curr_vpid, tuple_rec.tpl,
@@ -16879,7 +16879,7 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID *
 
 	  qfile_save_current_scan_tuple_position (&prev_s_id, &pos_info_p->tpl_pos);
 
-	  db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, (const DB_C_BIT) &pos_info_p->tpl_pos,
+	  db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, (DB_C_BIT) & pos_info_p->tpl_pos,
 		       sizeof (pos_info_p->tpl_pos) * 8);
 
 	  if (qfile_set_tuple_column_value (thread_p, list_id_p, s_id.curr_pgptr, &s_id.curr_vpid, tuple_rec.tpl,
@@ -16914,7 +16914,7 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID *
 
 	  if (level > 1)
 	    {
-	      db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, (const DB_C_BIT) &pos_info_p->tpl_pos,
+	      db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, (DB_C_BIT) & pos_info_p->tpl_pos,
 			   sizeof (pos_info_p->tpl_pos) * 8);
 
 	      if (qfile_set_tuple_column_value (thread_p, list_id_p, s_id.curr_pgptr, &s_id.curr_vpid, tuple_rec.tpl,

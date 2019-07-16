@@ -40,11 +40,11 @@ namespace cubreplication
     m_state = NOT_STARTED;
   }
 
-  void copy_context::set_credentials (const char *user, const char *password)
+  void copy_context::set_credentials (const char *user)
   {
-    m_class_schema.set_params ("", user, password, "");
-    m_triggers.set_params ("", user, password, "");
-    m_indexes.set_params ("", user, password, "");
+    m_class_schema.set_params ("", user, "");
+    m_triggers.set_params ("", user, "");
+    m_indexes.set_params ("", user, "");
   }
 
   void copy_context::pack_and_add_object (row_object &obj)

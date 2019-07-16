@@ -31,6 +31,7 @@
 
 #include "locator_sr.h"
 #include "log_2pc.h"
+#include "log_generator.hpp"
 #include "log_lsa.hpp"
 #include "log_manager.h"
 #if defined(SERVER_MODE)
@@ -334,6 +335,7 @@ xtran_server_savepoint (THREAD_ENTRY * thread_p, const char *savept_name, LOG_LS
 {
   LOG_LSA *lsa;
   int error_code = NO_ERROR;
+  bool need_ha_replication = !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true;
 
   /*
    * Execute some few remaining actions before the start top nested action is
@@ -353,6 +355,12 @@ xtran_server_savepoint (THREAD_ENTRY * thread_p, const char *savept_name, LOG_LS
       if (error_code != NO_ERROR)
 	{
 	  LSA_SET_NULL (savept_lsa);
+	}
+      else if (need_ha_replication)
+	{
+	  LOG_TDES *tdes = logtb_get_tdes (thread_p);
+	  assert (tdes != NULL);
+	  tdes->replication_log_generator.add_create_savepoint (savept_name);
 	}
     }
 
@@ -382,8 +390,15 @@ TRAN_STATE
 xtran_server_partial_abort (THREAD_ENTRY * thread_p, const char *savept_name, LOG_LSA * savept_lsa)
 {
   TRAN_STATE state;
+  bool need_ha_replication = !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true;
 
   state = log_abort_partial (thread_p, savept_name, savept_lsa);
+  if (need_ha_replication && state == TRAN_UNACTIVE_ABORTED)
+    {
+      LOG_TDES *tdes = logtb_get_tdes (thread_p);
+      assert (tdes != NULL);
+      tdes->replication_log_generator.add_rollback_to_savepoint (savept_name);
+    }
 
   return state;
 }

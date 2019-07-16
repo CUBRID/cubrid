@@ -3589,8 +3589,15 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
       override_tran_index = atoi (args->tran_index);
       db_set_override_tran_index (override_tran_index);
     }
+  else
+    {
+      // todo: can we accept DDL proxy without tran_index? might it be dangerous?
+    }
 
-  rc = db_restart_ex (program_name, args->db_name, args->user_name, args->passwd, NULL, DB_CLIENT_TYPE_DDL_PROXY);
+  AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_DDL_PROXY);
+  db_login (args->user_name, NULL);
+  rc = db_restart (program_name, false, args->db_name);
   if (rc != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -3685,7 +3692,6 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
 	      au_enable (save);
 	      break;
 	    }
-
 
 	  num_of_rows = db_execute_statement (session, stmt_id, &result);
 	  if (num_of_rows < 0)
