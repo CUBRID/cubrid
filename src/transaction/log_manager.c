@@ -3747,6 +3747,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 {
   int tran_index;
   LOG_TDES *tdes = NULL;
+  bool check_parent_modifications = false;
 
   assert (log_record != NULL);
   assert (log_record->type != LOG_SYSOP_END_ABORT);
@@ -3799,6 +3800,8 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	  assert (log_record->type == LOG_SYSOP_END_COMMIT || log_record->type == LOG_SYSOP_END_COMMIT_REPLICATED);
 	  assert (tdes->state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE
 		  && (tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE || is_rv_finish_postpone));
+	  /* Check parent modification for sysop commit. */
+	  check_parent_modifications = true;
 	}
 
       if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_active_worker_transaction ()
@@ -3823,7 +3826,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
       LSA_COPY (&tdes->tail_topresult_lsa, &tdes->tail_lsa);
     }
 
-  log_sysop_end_final (thread_p, tdes, true);
+  log_sysop_end_final (thread_p, tdes, check_parent_modifications);
 }
 
 /*

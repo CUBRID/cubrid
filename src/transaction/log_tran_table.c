@@ -6063,21 +6063,31 @@ void
 log_tdes::on_sysop_end (bool force_lsa_reset)
 {
   assert (is_allowed_sysop ());
-  if (is_system_worker_transaction () && topops.last < 0)
+  if ((is_system_worker_transaction () && topops.last < 0) || force_lsa_reset)
     {
       // make sure this system operation cannot be linked
-      assert (topops.last == -1);
+      if (force_lsa_reset)
+        {
+          /* Needs atomic reset. Be sure that no postpone, since it requires tail_topresult_lsa. */
+          assert (LSA_ISNULL (&posp_nxlsa));
+          log_Gl.prior_info.prior_lsa_mutex.lock ();
+        }
+      else
+        {
+          assert (topops.last == -1);
+        }
+
       LSA_SET_NULL (&head_lsa);
       LSA_SET_NULL (&tail_lsa);
       LSA_SET_NULL (&undo_nxlsa);
       LSA_SET_NULL (&tail_topresult_lsa);
-    }
-  else if (force_lsa_reset)
-    {
-      /* COMMIT, ABORT cases when there is no other logging. */
-      LSA_SET_NULL (&head_lsa);
-      LSA_SET_NULL (&tail_lsa);
-      LSA_SET_NULL (&undo_nxlsa);
+
+      if (force_lsa_reset)
+        {
+          /* Needs atomic reset. */
+          er_log_debug (ARG_FILE_LINE, "log_tdes::on_sysop_end resets lsa on tran_index = %d\n", tran_index);
+          log_Gl.prior_info.prior_lsa_mutex.unlock ();
+        }
     }
 }
 
