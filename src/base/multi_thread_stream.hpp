@@ -255,6 +255,8 @@ namespace cubstream
 	return m_stream_file;
       }
 
+      stream_position get_min_pos_for_slave (void) const;
+
       void wake_up_flusher (float fill_factor, const stream_position start_flush_pos, const size_t flush_amount);
       void wait_for_flush_or_readers (const stream_position &last_commit_pos, const stream_position &last_append_pos);
       size_t wait_for_flush (const stream_position &req_pos, const size_t min_amount);

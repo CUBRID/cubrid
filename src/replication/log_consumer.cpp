@@ -334,6 +334,8 @@ namespace cubreplication
   {
     int err = NO_ERROR;
 
+    wait_for_fetch_resume ();
+
     stream_entry *se = new stream_entry (get_stream ());
 
     err = se->prepare ();
@@ -398,12 +400,42 @@ namespace cubreplication
 
   void log_consumer::stop (void)
   {
+    /* wakeup fetch daemon to allow him time to detect it stopped */
+    fetch_resume ();
+
     get_stream ()->stop ();
 
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
     m_is_stopped = true;
     ulock.unlock ();
     m_apply_task_cv.notify_one ();
+  }
+
+  void log_consumer::fetch_suspend (void)
+  {
+    std::unique_lock<std::mutex> ulock (m_fetch_suspend_mutex);
+    m_is_fetch_suspended = true;
+    ulock.unlock ();
+    m_fetch_suspend_condition_variable.notify_all ();
+  }
+
+  void log_consumer::fetch_resume (void)
+  {
+    std::unique_lock<std::mutex> ulock (m_fetch_suspend_mutex);
+    m_is_fetch_suspended = false;
+    ulock.unlock ();
+    m_fetch_suspend_condition_variable.notify_all ();
+  }
+
+  void log_consumer::wait_for_fetch_resume (void)
+  {
+    if (m_is_fetch_suspended == false)
+      {
+	return;
+      }
+
+    std::unique_lock<std::mutex> ulock (m_fetch_suspend_mutex);
+    m_fetch_suspend_condition_variable.wait (ulock, [this] { return !m_is_fetch_suspended;});
   }
 
   subtran_applier &log_consumer::get_subtran_applier ()

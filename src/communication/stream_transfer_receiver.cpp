@@ -112,12 +112,14 @@ namespace cubstream
 					 std::placeholders::_2,
 					 std::placeholders::_3);
 
+    std::string daemon_name = "stream_transfer_receiver_" + chn.get_channel_id ();
     m_receiver_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
-			new transfer_receiver_task (*this), "stream_transfer_receiver");
+			new transfer_receiver_task (*this), daemon_name.c_str ());
   }
 
   transfer_receiver::~transfer_receiver ()
   {
+    m_channel.close_connection ();
     cubthread::get_manager ()->destroy_daemon_without_entry (m_receiver_daemon);
   }
 

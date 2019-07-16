@@ -46,4 +46,8 @@ namespace cubreplication
     path.assign (temp_path);
   }
 
+  const unsigned long long replication_node::SETUP_REPLICATION_MAGIC = 0x19912882;
+  const unsigned long long replication_node::SETUP_COPY_REPLICATION_MAGIC = 0x36634554;
+  const unsigned long long replication_node::SETUP_COPY_END_REPLICATION_MAGIC = 0x28821771;
+
 } /* namespace cubreplication */

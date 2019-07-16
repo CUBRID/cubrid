@@ -52,12 +52,49 @@ namespace cubreplication
     fail_over_entry.pack ();
   }
 
+  int master_node::setup_protocol (cubcomm::channel &chn)
+  {
+    UINT64 pos = 0, expected_magic;
+    std::size_t max_len = sizeof (UINT64);
+    cubstream::stream_position available_pos;
+
+    if (chn.recv ((char *) &expected_magic, max_len) != css_error_code::NO_ERRORS)
+      {
+	return ER_FAILED;
+      }
+
+    if (expected_magic != replication_node::SETUP_REPLICATION_MAGIC)
+      {
+	er_log_debug_replication (ARG_FILE_LINE, "master_node::setup_protocol error in setup protocol");
+	assert (false);
+	return ER_FAILED;
+      }
+
+    if (chn.send ((char *) &replication_node::SETUP_REPLICATION_MAGIC, max_len) != css_error_code::NO_ERRORS)
+      {
+	return ER_FAILED;
+      }
+
+    available_pos = m_stream->get_min_pos_for_slave ();
+    pos = htoni64 (available_pos);
+    if (chn.send ((char *) &pos, max_len) !=  css_error_code::NO_ERRORS)
+      {
+	return ER_FAILED;
+      }
+
+    return NO_ERROR;
+  }
+
   void master_node::new_slave (int fd)
   {
     cubcomm::channel chn;
+    chn.set_channel_name (REPL_ONLINE_CHANNEL_NAME);
 
     css_error_code rc = chn.accept (fd);
+
     assert (rc == NO_ERRORS);
+
+    setup_protocol (chn);
 
     master_senders_manager::add_stream_sender (new cubstream::transfer_sender (std::move (chn), *m_stream));
 
@@ -66,7 +103,17 @@ namespace cubreplication
 
   void master_node::add_ctrl_chn (int fd)
   {
+    er_log_debug_replication (ARG_FILE_LINE, "add_ctrl_chn");
+
+    if (css_ha_server_state () != HA_SERVER_STATE_ACTIVE)
+      {
+	er_log_debug_replication (ARG_FILE_LINE, "add_ctrl_chn invalid server state :%s",
+				  css_ha_server_state_string (css_ha_server_state ()));
+	return;
+      }
+
     cubcomm::channel chn;
+    chn.set_channel_name (REPL_CONTROL_CHANNEL_NAME);
 
     css_error_code rc = chn.accept (fd);
     assert (rc == NO_ERRORS);
