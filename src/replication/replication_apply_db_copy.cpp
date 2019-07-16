@@ -210,14 +210,17 @@ namespace cubreplication
   class copy_db_worker_task : public cubthread::entry_task
   {
     public:
-      copy_db_worker_task (stream_entry *repl_stream_entry, copy_db_consumer &lc)
+      copy_db_worker_task (stream_entry *repl_stream_entry, copy_db_consumer &lc, int tran_index)
 	: m_lc (lc)
+        , m_tran_index (tran_index)
       {
 	add_repl_stream_entry (repl_stream_entry);
       }
 
       void execute (cubthread::entry &thread_ref) final
       {
+        LOG_SET_CURRENT_TRAN_INDEX (&thread_ref, m_tran_index);
+
 	for (stream_entry *curr_stream_entry : m_repl_stream_entries)
 	  {
 	    curr_stream_entry->unpack ();
@@ -271,6 +274,7 @@ namespace cubreplication
     private:
       std::vector<stream_entry *> m_repl_stream_entries;
       copy_db_consumer &m_lc;
+      int m_tran_index;
   };
 
 
@@ -300,6 +304,8 @@ namespace cubreplication
            assert (false);
            return;
           }
+
+        int tran_index = LOG_FIND_THREAD_TRAN_INDEX (&thread_ref);
 
 	while (!is_replication_copy_end)
 	  {
@@ -353,7 +359,7 @@ namespace cubreplication
               }
             else
               {
-                copy_db_worker_task *my_copy_db_worker_task = new copy_db_worker_task (se, m_lc);
+                copy_db_worker_task *my_copy_db_worker_task = new copy_db_worker_task (se, m_lc, tran_index);
 	        m_lc.execute_task (my_copy_db_worker_task);
                 /* stream entry is deleted by applier task thread */
               }
