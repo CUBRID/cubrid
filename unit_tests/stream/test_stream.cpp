@@ -1243,7 +1243,7 @@ namespace test_stream
     stream_context_manager::g_pause_unpacker = false;
     std::cout << "      Stopping packers" << std::endl;
 
-    stream_context_manager::g_stream->set_stop ();
+    stream_context_manager::g_stream->stop ();
     while (stream_context_manager::g_running_packers.any ()
 	   || stream_context_manager::g_running_readers.any ())
       {
@@ -1391,7 +1391,7 @@ namespace test_stream
     read_byte_count = OR_GET_INT (ptr);
     ptr += OR_INT_SIZE;
 
-    assert (byte_count == read_byte_count);
+    assert (byte_count == (size_t) read_byte_count);
 
     for (i = 0; i < (int) read_byte_count - OR_INT_SIZE; i++)
       {
@@ -1654,7 +1654,7 @@ namespace test_stream
     stream_context_manager::g_pause_unpacker = false;
     std::cout << "      Stopping packers" << std::endl;
 
-    stream_context_manager::g_stream->set_stop ();
+    stream_context_manager::g_stream->stop ();
     while (stream_context_manager::g_running_packers.any ()
 	   || stream_context_manager::g_running_readers.any ())
       {
@@ -1821,7 +1821,7 @@ namespace test_stream
     stream_context_manager::g_pause_unpacker = false;
     std::cout << "      Stopping packers" << std::endl;
 
-    stream_context_manager::g_stream->set_stop ();
+    stream_context_manager::g_stream->stop ();
     while (stream_context_manager::g_running_packers.any ()
 	   || stream_context_manager::g_running_readers.any ())
       {

@@ -117,8 +117,7 @@ namespace cubreplication
       std::function<void (cubstream::stream_position)> ack_produce;
 
       log_consumer ()
-	: m_ctrl_chn (nullptr)
-	, m_stream (NULL)
+	: m_stream (NULL)
 	, m_consumer_daemon (NULL)
 	, m_dispatch_daemon (NULL)
 	, m_applier_workers_pool (NULL)
