@@ -53,6 +53,7 @@ namespace cubreplication
   {
     m_stream = stream;
     m_stream_file = stream_file;
+    m_source_available_pos = 0;
   }
 
   slave_node::~slave_node ()
@@ -89,8 +90,7 @@ namespace cubreplication
 
     m_source_available_pos = ntohi64 (pos);
 
-    er_log_debug_replication (ARG_FILE_LINE, "slave_node::setup_protocol available pos :%lld",
-			      m_source_available_pos);
+    er_log_debug_replication (ARG_FILE_LINE, "slave_node::setup_protocol available pos :%lld", m_source_available_pos);
 
     return NO_ERROR;
   }
@@ -141,7 +141,7 @@ namespace cubreplication
       }
 
     /* TODO[replication] : last position to be retrieved from recovery module */
-    cubstream::stream_position start_position = log_Gl.m_ack_stream_position;
+    cubstream::stream_position start_position = 0;
 
     if (need_replication_copy (start_position))
       {
