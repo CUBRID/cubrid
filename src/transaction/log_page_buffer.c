@@ -10230,6 +10230,7 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
 {
   THREAD_ENTRY *thread_p;
   LOG_TRAN_COMPLETE_MANAGER_TYPE old_manager_type;
+  LOG_LSA smallest_lsa;
 #if defined(SERVER_MODE)
   const char *ha_server_state_string = css_ha_server_state_string (css_ha_server_state ());
   bool expected = false;
@@ -10269,6 +10270,22 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
     {
       assert (false);
     }
+
+#if defined(SERVER_MODE)
+  /* Wait for all transactions to finish. */
+  do
+    {
+      logtb_find_smallest_lsa (thread_p, &smallest_lsa);
+      if (LSA_ISNULL (&smallest_lsa))
+	{
+	  /* All transactions completed. */
+	  break;
+	}
+
+      thread_sleep (50);
+    }
+  while (true);
+#endif
 
   /* There is no any modify transaction. Force complete old manager to avoid system hanging. */
   switch (old_manager_type)
