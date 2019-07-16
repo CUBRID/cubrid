@@ -53,12 +53,6 @@ namespace cubreplication
   {
     m_stream = stream;
     m_stream_file = stream_file;
-
-    m_lc = new log_consumer ();
-    m_lc->set_stream (m_stream);
-
-    /* start log_consumer daemons and apply thread pool */
-    m_lc->start_daemons ();
   }
 
   slave_node::~slave_node ()
