@@ -5833,7 +5833,6 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      goto error;
 	    }
 
-
 	  if (!OID_EQ (class_oid, &real_class_oid))
 	    {
 	      /* If we have to move the record to another partition, we have to lock the target partition for insert.
@@ -6517,13 +6516,16 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 	  scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
 	  if (scan_cache.mvcc_snapshot == NULL)
 	    {
-	      error_code = er_errid ();
-	      if (error_code == NO_ERROR)
+	      if (thread_p->type != TT_REPL_SUBTRAN_APPLIER)
 		{
+		  assert (false);
 		  error_code = ER_FAILED;
+		  goto error;
 		}
-
-	      goto error;
+	      else
+		{
+		  // accept this for sub-transaction applier; it doesn't have and doesn't need snapshot
+		}
 	    }
 
 	  /* update */

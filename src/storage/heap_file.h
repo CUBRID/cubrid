@@ -468,6 +468,9 @@ extern int heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, H
 extern DB_VALUE *heap_attrinfo_access (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, const DB_VALUE * attr_val,
 			      HEAP_CACHE_ATTRINFO * attr_info);
+extern int heap_attrinfo_set_and_replicate (const OID * inst_oid, ATTR_ID attrid, const DB_VALUE * attr_val,
+					    HEAP_CACHE_ATTRINFO * attr_info,
+					    cubreplication::log_generator & repl_generator);
 extern SCAN_CODE heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 						  RECDES * old_recdes, record_descriptor * new_recdes);
 extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,

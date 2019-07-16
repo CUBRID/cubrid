@@ -217,6 +217,8 @@ set (REPLICATION_HEADERS
   ${REPLICATION_DIR}/replication_row_apply.hpp
   ${REPLICATION_DIR}/replication_slave_node.hpp
   ${REPLICATION_DIR}/replication_stream_entry.hpp
+  ${REPLICATION_DIR}/replication_subtran_apply.hpp
+  ${REPLICATION_DIR}/replication_subtran_generate.hpp
   )
 
 set(QUERY_SOURCES
@@ -282,6 +284,8 @@ set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/replication_row_apply.cpp
   ${REPLICATION_DIR}/replication_slave_node.cpp
   ${REPLICATION_DIR}/replication_stream_entry.cpp
+  ${REPLICATION_DIR}/replication_subtran_apply.cpp
+  ${REPLICATION_DIR}/replication_subtran_generate.cpp
   )
 
 set(JSP_SOURCES
