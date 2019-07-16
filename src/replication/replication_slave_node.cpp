@@ -90,7 +90,7 @@ namespace cubreplication
 
     m_source_available_pos = ntohi64 (pos);
 
-    er_log_debug_replication (ARG_FILE_LINE, "slave_node::setup_protocol available pos :%lld", m_source_available_pos);
+    er_log_debug_replication (ARG_FILE_LINE, "slave_node::setup_protocol available pos :%llu", m_source_available_pos);
 
     return NO_ERROR;
   }
@@ -161,7 +161,7 @@ namespace cubreplication
   {
     int error;
 
-    er_log_debug_replication (ARG_FILE_LINE, "slave_node::start_online_replication start_position: %lld\n",
+    er_log_debug_replication (ARG_FILE_LINE, "slave_node::start_online_replication start_position: %llu\n",
 			      start_position);
 
     assert (m_stream != NULL);

@@ -82,7 +82,7 @@ namespace cubreplication
 	return ER_FAILED;
       }
 
-    er_log_debug_replication (ARG_FILE_LINE, "master_node::setup_protocol available pos :%lld", available_pos);
+    er_log_debug_replication (ARG_FILE_LINE, "master_node::setup_protocol available pos :%llu", available_pos);
 
     return NO_ERROR;
   }
