@@ -48,6 +48,8 @@ namespace cubreplication
     , m_lc (NULL)
     , m_master_identity ("")
     , m_transfer_receiver (NULL)
+    , m_ctrl_sender_daemon (NULL)
+    , m_ctrl_sender (NULL)
   {
     m_stream = stream;
     m_stream_file = stream_file;
@@ -113,6 +115,13 @@ namespace cubreplication
   int slave_node::connect_to_master (const char *master_node_hostname, const int master_node_port_id)
   {
     int error = NO_ERROR;
+
+    if (!m_master_identity.get_hostname ().empty () && m_master_identity.get_hostname () != master_node_hostname)
+      {
+	// master was changed, disconnect from current master and try to connect to new one
+	disconnect_from_master ();
+      }
+
     er_log_debug_replication (ARG_FILE_LINE, "slave_node::connect_to_master host:%s, port: %d\n",
 			      master_node_hostname, master_node_port_id);
 
@@ -221,6 +230,12 @@ namespace cubreplication
     m_lc->fetch_resume ();
 
     return NO_ERROR;
+  }
+
+  void slave_node::disconnect_from_master ()
+  {
+    er_log_debug_replication (ARG_FILE_LINE, "slave_node::disconnect_from_master");
+    stop_and_destroy_online_repl ();
   }
 
   void slave_node::stop_and_destroy_online_repl (void)
