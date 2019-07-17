@@ -57,7 +57,7 @@ namespace cubreplication
   void ack_reader_task::execute (cubthread::entry &thread_ref)
   {
     while (true)
-      {       
+      {
 	if (!m_chn->is_connection_alive ())
 	  {
 	    return;
@@ -73,6 +73,7 @@ namespace cubreplication
 	    return;
 	  }
 
+	assert (m_stream_ack != NULL);
 	m_stream_ack->notify_stream_ack (ntohi64 (ack_sp));
       }
   }
@@ -116,6 +117,7 @@ namespace cubreplication
 	cubthread::get_manager ()->destroy_daemon (cr.first);
       }
 
+    m_ctrl_channel_readers.clear ();
     // we are not the ones responsible for deallocating this
     m_stream_ack = NULL;
   }
@@ -131,6 +133,34 @@ namespace cubreplication
     ack_reader_task *ack_reader = new ack_reader_task (moved_to_chn, m_stream_ack);
     m_ctrl_channel_readers.push_back (std::make_pair (cubthread::get_manager ()->create_daemon (dt,
 				      ack_reader, "control channel reader"), moved_to_chn));
+  }
+
+  void
+  master_ctrl::set_stream_ack (cubstream::stream_ack *ack)
+  {
+    if (ack == m_stream_ack)
+      {
+	return;
+      }
+
+    std::lock_guard<std::mutex> lg (m_mtx);
+
+    for (auto it = m_ctrl_channel_readers.begin (); it != m_ctrl_channel_readers.end ();)
+      {
+	if (!it->second->is_connection_alive())
+	  {
+	    cubthread::get_manager()->destroy_daemon (it->first);
+	    it = m_ctrl_channel_readers.erase (it);
+	  }
+	else
+	  {
+	    ++it;
+	  }
+      }
+
+    assert (m_ctrl_channel_readers.size () == 0);
+
+    m_stream_ack = ack;
   }
 
   void

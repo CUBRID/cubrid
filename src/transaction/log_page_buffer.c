@@ -102,6 +102,8 @@
 #include "thread_manager.hpp"
 #include "crypt_opfunc.h"
 #include "server_support.h"
+#include "replication_node_manager.hpp"
+#include "replication_master_node.hpp"
 #include "transaction_master_group_complete_manager.hpp"
 #include "transaction_single_node_group_complete_manager.hpp"
 #include "transaction_slave_group_complete_manager.hpp"
@@ -10310,7 +10312,10 @@ logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manage
       cubtx::master_group_complete_manager::init ();
       log_set_notify (false);
       log_Gl.m_tran_complete_mgr = cubtx::master_group_complete_manager::get_instance ();
-      er_print_callstack (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager master node, ha_server_state = %s, "
+      cubreplication::replication_node_manager::get_master_node ()->
+	set_stream_ack (cubtx::master_group_complete_manager::get_instance ());
+      er_print_callstack (ARG_FILE_LINE,
+			  "logpb_atomic_resets_tran_complete_manager master node, ha_server_state = %s, "
 			  "old_manager=%s, new_manager = %s \n", ha_server_state_string,
 			  logpb_complete_manager_string (old_manager_type),
 			  logpb_complete_manager_string (manager_type));
@@ -10359,6 +10364,7 @@ logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manage
 
       /* Finalize master complete manager */
       cubtx::master_group_complete_manager::final ();
+      cubreplication::replication_node_manager::get_master_node ()->set_stream_ack (NULL);
       er_log_debug (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager master group manager removed");
       break;
 

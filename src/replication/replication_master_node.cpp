@@ -36,7 +36,7 @@
 namespace cubreplication
 {
   master_node::master_node (const char *name, cubstream::multi_thread_stream *stream,
-			    cubstream::stream_file *stream_file)
+			    cubstream::stream_file *stream_file, bool new_slave)
     : replication_node (name)
   {
     m_stream = stream;
@@ -45,9 +45,13 @@ namespace cubreplication
 
     master_senders_manager::init ();
 
-    cubtx::master_group_complete_manager::init ();
+    if ((!new_slave) && (cubreplication::master_senders_manager::get_number_of_stream_senders () == 0))
+      {
+	/* Resets complete manager only if no slave connected. */
+	logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
+      }
 
-    m_control_channel_manager = new master_ctrl (cubtx::master_group_complete_manager::get_instance ());
+    m_control_channel_manager = new master_ctrl (NULL);
 
     stream_entry fail_over_entry (m_stream, MVCCID_FIRST, stream_entry_header::NEW_MASTER);
     fail_over_entry.pack ();
@@ -79,12 +83,12 @@ namespace cubreplication
 
   master_node::~master_node ()
   {
-    master_senders_manager::final ();
-
     delete m_control_channel_manager;
     m_control_channel_manager = NULL;
 
+    /* Complete manager after control manager/ */
     logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
+    master_senders_manager::final ();
   }
 
   void master_node::update_senders_min_position (const cubstream::stream_position &pos)
@@ -96,5 +100,10 @@ namespace cubreplication
     er_log_debug_replication (ARG_FILE_LINE, "master_node (stream:%s) update_senders_min_position: %llu,\n"
 			      " stream_read_pos:%llu, commit_pos:%llu", m_stream->name ().c_str (),
 			      pos, m_stream->get_curr_read_position (),m_stream->get_last_committed_pos ());
+  }
+
+  void master_node::set_stream_ack (cubstream::stream_ack *ack)
+  {
+    m_control_channel_manager->set_stream_ack (ack);
   }
 } /* namespace cubreplication */

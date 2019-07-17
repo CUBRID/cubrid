@@ -55,13 +55,14 @@ namespace cubreplication
     m_stream = stream;
     m_stream_file = stream_file;
 
+    /* Initialize slave group complete manager before starting daemons. */
+    logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE);
+
     m_lc = new log_consumer ();
     m_lc->set_stream (m_stream);
 
     /* start log_consumer daemons and apply thread pool */
     m_lc->start_daemons ();
-
-    cubtx::slave_group_complete_manager::init ();
   }
 
   slave_node::~slave_node ()

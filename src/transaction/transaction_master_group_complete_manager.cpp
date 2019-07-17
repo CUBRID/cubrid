@@ -53,11 +53,15 @@ namespace cubtx
   void master_group_complete_manager::init ()
   {
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
-    master_group_complete_manager *p_gl_master_group = get_instance ();
+    master_group_complete_manager *p_gl_master_group;
+
+    assert (gl_master_group == NULL);
+    p_gl_master_group = get_instance ();
     p_gl_master_group->m_latest_closed_group_start_stream_position = 0;
     p_gl_master_group->m_latest_closed_group_end_stream_position = 0;
 
-    master_group_complete_manager::gl_master_group_complete_daemon = cubthread::get_manager ()->create_daemon ((looper),
+    assert (gl_master_group_complete_daemon == NULL);
+    gl_master_group_complete_daemon = cubthread::get_manager ()->create_daemon ((looper),
 	new master_group_complete_task (), "master_group_complete_daemon");
   }
 

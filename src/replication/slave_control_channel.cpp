@@ -53,8 +53,8 @@ namespace cubreplication
     if (!m_stop)
       {
 	m_ctrl_chn.send_ack (m_last_stream_pos);
-        er_log_debug (ARG_FILE_LINE, "slave_control_sender::execute, send ack = %llu\n",
-          (unsigned long long) m_last_stream_pos);
+	er_log_debug (ARG_FILE_LINE, "slave_control_sender::execute, send ack = %llu\n",
+		      (unsigned long long) m_last_stream_pos);
       }
   }
 
@@ -66,6 +66,9 @@ namespace cubreplication
   void slave_control_sender::stop ()
   {
     std::unique_lock<std::mutex> ul (m_mtx);
+    m_ctrl_chn.send_ack (m_last_stream_pos);
+    er_log_debug (ARG_FILE_LINE, "slave_control_sender::stop, send ack = %llu\n",
+		  (unsigned long long) m_last_stream_pos);
     m_stop = true;
     m_cv.notify_one ();
   }

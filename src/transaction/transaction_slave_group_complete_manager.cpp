@@ -52,12 +52,16 @@ namespace cubtx
   void slave_group_complete_manager::init ()
   {
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
-    slave_group_complete_manager *p_gl_slave_group = get_instance ();
+    slave_group_complete_manager *p_gl_slave_group;
+
+    assert (gl_slave_group == NULL);
+    p_gl_slave_group = get_instance ();
     p_gl_slave_group->m_latest_group_id = NULL_ID;
     p_gl_slave_group->m_latest_group_stream_position = 0;
     p_gl_slave_group->m_has_latest_group_close_info.store (false);
 
-    slave_group_complete_manager::gl_slave_group_complete_daemon = cubthread::get_manager ()->create_daemon ((looper),
+    assert (gl_slave_group_complete_daemon == NULL);
+    gl_slave_group_complete_daemon = cubthread::get_manager ()->create_daemon ((looper),
 	new slave_group_complete_task (), "slave_group_complete_daemon");
   }
 
