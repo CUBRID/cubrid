@@ -406,7 +406,7 @@ namespace cubreplication
      * move this to log_manager group commit when multi-threaded apply is enabled */
     cubstream::stream_position stream_pos;
 
-    pack_group_commit_entry (stream_pos, gc_end_position);
+    pack_group_commit_entry (stream_pos, m_gc_end_position);
   }
 
   void
@@ -498,7 +498,8 @@ namespace cubreplication
   cubstream::stream_position
   log_generator::get_last_end_position () const
   {
-    return gc_end_position;
+    // todo: remove when complete manager is merged and a way to take last gc's end_position is available
+    return m_gc_end_position;
   }
 
   void

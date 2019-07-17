@@ -25,8 +25,8 @@
 
 #include "replication_slave_node.hpp"
 #include "communication_server_channel.hpp"
-#include "log_consumer.hpp"
 #include "log_impl.h"
+#include "log_consumer.hpp"
 #include "multi_thread_stream.hpp"
 #include "replication_common.hpp"
 #include "replication_stream_entry.hpp"
@@ -38,9 +38,24 @@
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
 
-
 namespace cubreplication
 {
+  cubstream::stream_position compute_starting_stream_position ()
+  {
+    cubstream::stream_position start_position = 0;
+
+    if (log_Gl.m_repl_rv.m_active_start_position > 0)
+      {
+	// Fetch older stream positions to enter filtered apply
+	start_position = log_Gl.m_repl_rv.m_active_start_position;
+      }
+    else
+      {
+	// No Filtered apply
+	start_position = log_Gl.hdr.m_ack_stream_position;
+      }
+  }
+
   slave_node::slave_node (const char *hostname, cubstream::multi_thread_stream *stream,
 			  cubstream::stream_file *stream_file)
     : replication_node (hostname)
@@ -97,19 +112,6 @@ namespace cubreplication
 	return error;
       }
 
-    cubstream::stream_position start_position = 0;
-
-    if (log_Gl.m_active_start_position > 0)
-      {
-	// Fetch older stream positions to enter filtered apply
-	start_position = log_Gl.m_active_start_position;
-      }
-    else
-      {
-	// No Filtered apply
-	start_position = log_Gl.hdr.m_ack_stream_position;
-      }
-
     cubcomm::server_channel control_chn (m_identity.get_hostname ().c_str ());
     error = control_chn.connect (master_node_hostname, master_node_port_id, SERVER_REQUEST_CONNECT_NEW_SLAVE_CONTROL);
     if (error != css_error_code::NO_ERRORS)
@@ -148,7 +150,8 @@ namespace cubreplication
 	});
       }
 
-    m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *m_stream, start_position);
+    m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *m_stream,
+	compute_starting_stream_position ());
 
     return NO_ERROR;
   }

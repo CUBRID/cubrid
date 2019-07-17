@@ -156,11 +156,6 @@ namespace cubstream
 	cubcomm::er_log_debug_buffer ("transfer_sender::read_action", ptr, byte_count);
 
 	m_last_sent_position += byte_count;
-
-	_er_log_debug (ARG_FILE_LINE, "m_ack_stream_position updated: (transfer sender sent)"
-		       "previous m_ack_stream_position=%llu, new m_ack_stream_position=%llu",
-		       (std::uint64_t) log_Gl.hdr.m_ack_stream_position, m_last_sent_position);
-
 	if (m_p_stream_ack)
 	  {
 	    m_p_stream_ack->notify_stream_ack (m_last_sent_position);

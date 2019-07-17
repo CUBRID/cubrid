@@ -84,7 +84,7 @@ namespace cubreplication
 
       bool m_has_stream;
       bool m_is_row_replication_disabled;
-      cubstream::stream_position gc_end_position;
+      cubstream::stream_position m_gc_end_position;
 
       static cubstream::multi_thread_stream *s_stream;
 
@@ -100,7 +100,7 @@ namespace cubreplication
 	, m_stream_entry (stream)
 	, m_has_stream (false)
 	, m_is_row_replication_disabled (true)
-	, gc_end_position (0)
+	, m_gc_end_position (0)
       {
       };
 

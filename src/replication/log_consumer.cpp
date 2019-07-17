@@ -82,9 +82,6 @@ namespace cubreplication
 
       void execute (cubthread::entry &thread_ref) final
       {
-	assert (!m_repl_stream_entries.empty () && m_repl_stream_entries.back ()->is_group_commit ());
-	cubstream::stream_position last_applied_ack = m_repl_stream_entries.back ()->get_stream_entry_end_position ();
-
 	(void) locator_repl_start_tran (&thread_ref);
 
 	for (stream_entry *curr_stream_entry : m_repl_stream_entries)
@@ -116,7 +113,7 @@ namespace cubreplication
 	  }
 
 	(void) locator_repl_end_tran (&thread_ref, true);
-	log_Gl.hdr.m_ack_stream_position = last_applied_ack;
+	log_Gl.hdr.m_ack_stream_position = m_gc_end_position;
 	m_lc.end_one_task ();
       }
 
@@ -146,6 +143,11 @@ namespace cubreplication
 	return m_repl_stream_entries.size ();
       }
 
+      void set_gc_end_position (cubstream::stream_position gc_end_position)
+      {
+	m_gc_end_position = gc_end_position;
+      }
+
       void stringify (string_buffer &sb)
       {
 	sb ("apply_task: stream_entries:%d\n", get_entries_cnt ());
@@ -157,6 +159,7 @@ namespace cubreplication
 
     private:
       std::vector<stream_entry *> m_repl_stream_entries;
+      cubstream::stream_position m_gc_end_position;
       log_consumer &m_lc;
   };
 
@@ -164,14 +167,29 @@ namespace cubreplication
   {
     public:
       dispatch_daemon_task (log_consumer &lc)
-	: m_lc (lc)
-	, m_filtered_apply_end (log_Gl.hdr.m_ack_stream_position)
+	: m_filtered_apply_end (log_Gl.hdr.m_ack_stream_position)
+	, m_lc (lc)
       {
       }
 
       bool is_filtered_apply_segment (cubstream::stream_position stream_entry_end) const
       {
 	return stream_entry_end <= m_filtered_apply_end;
+      }
+
+      bool filter_out_stream_entry (stream_entry *repl_stream_entry) const
+      {
+	if (is_filtered_apply_segment (repl_stream_entry->get_stream_entry_end_position ()))
+	  {
+	    MVCCID mvccid = repl_stream_entry->get_mvccid ();
+	    return log_Gl.m_repl_rv.m_active_mvcc_ids.find (mvccid) == log_Gl.m_repl_rv.m_active_mvcc_ids.end ();
+	  }
+
+	if (!log_Gl.m_repl_rv.m_active_mvcc_ids.empty ())
+	  {
+	    log_Gl.m_repl_rv.m_active_mvcc_ids.clear ();
+	  }
+	return false;
       }
 
       void execute (cubthread::entry &thread_ref) override
@@ -191,40 +209,10 @@ namespace cubreplication
 		break;
 	      }
 
-	    MVCCID mvccid = se->get_mvccid ();
-
-	    // apply only some selected mvccids until we reach last m_ack_stream_position, then continue normally
-	    if (is_filtered_apply_segment (se->get_stream_entry_end_position ()))
+	    if (filter_out_stream_entry (se))
 	      {
-		_er_log_debug (ARG_FILE_LINE, "Filtered apply: Entered filtered apply segment, m_filtered_apply_end: %llu\n",
-			       m_filtered_apply_end);
-		for (auto el : log_Gl.m_active_mvcc_ids)
-		  {
-		    _er_log_debug (ARG_FILE_LINE, "Filtered apply: Active mvvcid: %llu\n", el);
-		  }
-
-		if (log_Gl.m_active_mvcc_ids.find (mvccid) == log_Gl.m_active_mvcc_ids.end ())
-		  {
-		    _er_log_debug (ARG_FILE_LINE, "Filtered apply: \
-				       Ignoring stream entry with mvccid = %llu from %llu ending in %llu \n",
-				   mvccid,
-				   se->get_stream_entry_start_position (), se->get_stream_entry_end_position ());
-		    continue;
-		  }
-		else
-		  {
-		    _er_log_debug (ARG_FILE_LINE, "Filtered apply: \
-				       Applying stream entry with mvccid = %llu from %llu ending in %llu \n",
-				   mvccid,
-				   se->get_stream_entry_start_position (), se->get_stream_entry_end_position ());
-		  }
-	      }
-	    else
-	      {
-		if (!log_Gl.m_active_mvcc_ids.empty ())
-		  {
-		    log_Gl.m_active_mvcc_ids.clear ();
-		  }
+		delete se;
+		continue;
 	      }
 
 	    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
@@ -253,6 +241,8 @@ namespace cubreplication
 		    applier_worker_task *my_repl_applier_worker_task = it->second;
 		    if (my_repl_applier_worker_task->has_commit ())
 		      {
+			// todo: move log ack position assignment to slave gc manager after it is enabled
+			it->second->set_gc_end_position (se->get_stream_entry_end_position ());
 			m_lc.execute_task (it->second);
 		      }
 		    else if (my_repl_applier_worker_task->has_abort ())
@@ -285,6 +275,8 @@ namespace cubreplication
 	      }
 	    else
 	      {
+		MVCCID mvccid = se->get_mvccid ();
+
 		auto it = repl_tasks.find (mvccid);
 
 		if (it != repl_tasks.end ())

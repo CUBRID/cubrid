@@ -2892,7 +2892,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	  && !LSA_ISNULL (&crt_tdes->undo_nxlsa))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "HA recovery: found active at end of analysis: trid:%d \n", crt_tdes->trid);
-	  log_Gl.m_active_tran_ids.insert (crt_tdes->trid);
+	  log_Gl.m_repl_rv.m_active_tran_ids.insert (crt_tdes->trid);
 	  if (LSA_ISNULL (&log_Gl.m_min_active_lsa) || LSA_LT (&crt_tdes->head_lsa, &log_Gl.m_min_active_lsa))
 	    {
 	      LSA_COPY (&log_Gl.m_min_active_lsa, &crt_tdes->head_lsa);
@@ -5035,7 +5035,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   /* of last active transaction at the end of analysis) - we go backwards until we find a GC record */
   if (!LSA_ISNULL (&log_Gl.m_min_active_lsa))
     {
-      assert (log_Gl.m_active_start_position == 0);
+      assert (log_Gl.m_repl_rv.m_active_start_position == 0);
       bool found = false;
       LSA_COPY (&log_lsa, &log_Gl.m_min_active_lsa);
       while (!found)
@@ -5061,7 +5061,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		    (LOG_REC_GROUP_COMPLETE *) ((char *) log_pgptr->area + log_lsa.offset);
 
 		  // found start of filtered apply
-		  log_Gl.m_active_start_position = gc_rec->stream_pos;
+		  log_Gl.m_repl_rv.m_active_start_position = gc_rec->stream_pos;
 		  found = true;
 		  break;
 		}
@@ -5090,7 +5090,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
       _er_log_debug (ARG_FILE_LINE, "HA recovery: Finished recovery of min active stream position"
 		     "m_active_start_position=%llu, m_ack_stream_position=%llu",
-		     (std::uint64_t) log_Gl.m_active_start_position, (std::uint64_t) log_Gl.hdr.m_ack_stream_position);
+		     (std::uint64_t) log_Gl.m_repl_rv.m_active_start_position,
+		     (std::uint64_t) log_Gl.hdr.m_ack_stream_position);
     }
 
   if (!LSA_ISNULL (&log_Gl.m_min_active_lsa))
@@ -5110,7 +5111,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 	  while (!LSA_ISNULL (&log_lsa))
 	    {
-	      if (log_Gl.m_active_tran_ids.find (log_rec->trid) != log_Gl.m_active_tran_ids.end ())
+	      if (log_Gl.m_repl_rv.m_active_tran_ids.find (log_rec->trid) != log_Gl.m_repl_rv.m_active_tran_ids.end ())
 		{
 		  switch (log_rec->type)
 		    {
@@ -5122,7 +5123,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 			LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, rec_size, &log_lsa, log_pgptr);
 			LOG_REC_MVCC_UNDOREDO *mvcc_undoredo =
 			  (LOG_REC_MVCC_UNDOREDO *) ((char *) log_pgptr->area + log_lsa.offset);
-			log_Gl.m_active_mvcc_ids.insert (mvcc_undoredo->mvccid);
+			log_Gl.m_repl_rv.m_active_mvcc_ids.insert (mvcc_undoredo->mvccid);
 			break;
 		      }
 
@@ -5133,7 +5134,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 			LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, rec_size, &log_lsa, log_pgptr);
 			LOG_REC_MVCC_UNDO *mvcc_undo =
 			  (LOG_REC_MVCC_UNDO *) ((char *) log_pgptr->area + log_lsa.offset);
-			log_Gl.m_active_mvcc_ids.insert (mvcc_undo->mvccid);
+			log_Gl.m_repl_rv.m_active_mvcc_ids.insert (mvcc_undo->mvccid);
 			break;
 		      }
 
@@ -5144,7 +5145,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 			LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, rec_size, &log_lsa, log_pgptr);
 			LOG_REC_MVCC_REDO *mvcc_redo =
 			  (LOG_REC_MVCC_REDO *) ((char *) log_pgptr->area + log_lsa.offset);
-			log_Gl.m_active_mvcc_ids.insert (mvcc_redo->mvccid);
+			log_Gl.m_repl_rv.m_active_mvcc_ids.insert (mvcc_redo->mvccid);
 			break;
 		      }
 		    default:
@@ -5166,12 +5167,12 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	    }
 	}
 
-      for (auto it = log_Gl.m_active_mvcc_ids.begin (); it != log_Gl.m_active_mvcc_ids.end (); ++it)
+      for (auto it = log_Gl.m_repl_rv.m_active_mvcc_ids.begin (); it != log_Gl.m_repl_rv.m_active_mvcc_ids.end (); ++it)
 	{
 	  _er_log_debug (ARG_FILE_LINE, "HA recovery: active mvcc recovery: MVCCID found:" "%llu\n",
 			 (std::uint64_t) * it);
 	}
-      log_Gl.m_active_tran_ids.clear ();
+      log_Gl.m_repl_rv.m_active_tran_ids.clear ();
     }
 
   log_zip_free (undo_unzip_ptr);

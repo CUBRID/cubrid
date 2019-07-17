@@ -219,8 +219,9 @@ static void log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * 
 static void log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * eot_lsa,
 					  LOG_RECTYPE iscommitted, enum LOG_PRIOR_LSA_LOCK with_lock);
-static void log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, UINT64 stream_pos,
-						tx_group & group, LOG_LSA * commit_lsa, bool * has_postpone);
+static void log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+						cubstream::stream_position stream_pos, tx_group & group,
+						LOG_LSA * commit_lsa, bool * has_postpone);
 static void log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 					  LOG_LSA * lsa);
 static void log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
@@ -4476,8 +4477,8 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
 }
 
 static void
-log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, UINT64 stream_pos, tx_group & group,
-				    LOG_LSA * complete_lsa, bool * has_postpone)
+log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, cubstream::stream_position stream_pos,
+				    tx_group & group, LOG_LSA * complete_lsa, bool * has_postpone)
 {
   LOG_PRIOR_NODE *node;
   LOG_LSA lsa;
@@ -4548,8 +4549,8 @@ log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, UI
 }
 
 void
-log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, UINT64 stream_pos, tx_group & group,
-			   LOG_LSA * complete_lsa, bool * has_postpone)
+log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, cubstream::stream_position stream_pos,
+			   tx_group & group, LOG_LSA * complete_lsa, bool * has_postpone)
 {
   log_append_group_complete_internal (thread_p, tdes, stream_pos, group, complete_lsa, has_postpone);
 }
