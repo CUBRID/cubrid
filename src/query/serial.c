@@ -1399,15 +1399,15 @@ serial_heap_record::load ()
   else
     {
       if (er_errid () == ER_PB_BAD_PAGEID)
-	{
+        {
           error_code = ER_HEAP_UNKNOWN_OBJECT;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 3, OID_AS_ARGS (&m_serial_oid));
-	}
+        }
       else
-	{
+        {
           error_code = ER_QPROC_CANNOT_FETCH_SERIAL;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
-	}
+        }
     }
 
   if (error_code == NO_ERROR)
