@@ -10295,6 +10295,7 @@ logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manage
     {
     case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
       /* Single node. Need to wait for log flush. */
+      cubtx::single_node_group_complete_manager::init ();
       log_set_notify (true);
       log_Gl.m_tran_complete_mgr = cubtx::single_node_group_complete_manager::get_instance ();
       er_print_callstack (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager single node, ha_server_state = %s, "
@@ -10306,6 +10307,7 @@ logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manage
 #if defined(SERVER_MODE)
     case LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE:
       /* Master with slaves. Need to wait for stream ack sent by slaves. */
+      cubtx::master_group_complete_manager::init ();
       log_set_notify (false);
       log_Gl.m_tran_complete_mgr = cubtx::master_group_complete_manager::get_instance ();
       er_print_callstack (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager master node, ha_server_state = %s, "
@@ -10316,6 +10318,7 @@ logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manage
 
     case LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE:
       /* Master with slaves. Need to wait for master stream. */
+      cubtx::slave_group_complete_manager::init ();
       log_set_notify (false);
       log_Gl.m_tran_complete_mgr = cubtx::slave_group_complete_manager::get_instance ();
       er_print_callstack (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager slave node, ha_server_state = %s, "
