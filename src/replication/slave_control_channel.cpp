@@ -21,7 +21,9 @@
  * slave_control_channel.cpp - manages slave control channel entries
  */
 
+#include "error_manager.h"
 #include "slave_control_channel.hpp"
+#include "system_parameter.h"
 
 #include <atomic>
 #include <condition_variable>
@@ -51,6 +53,8 @@ namespace cubreplication
     if (!m_stop)
       {
 	m_ctrl_chn.send_ack (m_last_stream_pos);
+        er_log_debug (ARG_FILE_LINE, "slave_control_sender::execute, send ack = %llu\n",
+          (unsigned long long) m_last_stream_pos);
       }
   }
 

@@ -64,8 +64,7 @@ namespace cubreplication
 		se->unpack ();
 		assert (se->get_stream_entry_end_position () > se->get_stream_entry_start_position ());
 
-		m_lc.ack_produce (se->get_stream_entry_end_position ());
-		er_log_debug (ARG_FILE_LINE, "consumer_daemon_task::send ack = %llu\n", se->get_stream_entry_end_position ());
+		m_lc.ack_produce (se->get_stream_entry_end_position ());		
 	      }
 	    m_lc.push_entry (se);
 	  }
