@@ -1369,6 +1369,15 @@ serial_heap_record::load ()
 {
   int error_code = NO_ERROR;
 
+  // A successful load means -
+  //  1. started scan cache
+  //  2. read record and cached page in scan cache
+  //  3. started attrinfo and all values read
+  // Scan cache and attrinfo will be ended when object is destroyed.
+  //
+  // If failed, scan cache must be ended and attrinfo must be either not started or ended
+  //
+
   heap_scancache_quick_start_modify_with_class_oid (m_thread_p, &m_scancache, oid_Serial_class_oid);
 
   SCAN_CODE scan = heap_get_visible_version (m_thread_p, &m_serial_oid, oid_Serial_class_oid, &m_peek_recdes,
