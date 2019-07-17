@@ -41,6 +41,8 @@ namespace cubtx
     if (gl_master_group == NULL)
       {
 	gl_master_group = new master_group_complete_manager ();
+	er_log_debug (ARG_FILE_LINE, "master_group_complete_manager:get_instance created master " \
+		      "group complete manager\n");
       }
     return gl_master_group;
   }
@@ -146,11 +148,6 @@ namespace cubtx
   //
   void master_group_complete_manager::do_prepare_complete (THREAD_ENTRY *thread_p)
   {
-    if (log_Gl.m_tran_complete_mgr->get_manager_type () != get_manager_type ())
-      {
-	return;
-      }
-
     if (close_current_group ())
       {
 	cubstream::stream_position closed_group_stream_start_position, closed_group_stream_end_position;
@@ -181,11 +178,6 @@ namespace cubtx
     LOG_LSA closed_group_start_complete_lsa, closed_group_end_complete_lsa;
     LOG_TDES *tdes = logtb_get_tdes (&cubthread::get_entry ());
     bool has_postpone;
-
-    if (log_Gl.m_tran_complete_mgr->get_manager_type () != get_manager_type ())
-      {
-	return;
-      }
 
     if (is_latest_closed_group_completed ())
       {

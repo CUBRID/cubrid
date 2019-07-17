@@ -40,6 +40,8 @@ namespace cubtx
     if (gl_slave_group == NULL)
       {
 	gl_slave_group = new slave_group_complete_manager ();
+	er_log_debug (ARG_FILE_LINE, "slave_group_complete_manager:get_instance created slave " \
+		      "group complete manager\n");
       }
     return gl_slave_group;
   }
@@ -136,11 +138,6 @@ namespace cubtx
   //
   void slave_group_complete_manager::do_prepare_complete (THREAD_ENTRY *thread_p)
   {
-    if (log_Gl.m_tran_complete_mgr->get_manager_type () != get_manager_type ())
-      {
-	return;
-      }
-
     /* TODO - consider whether stream position was saved on disk, when close the group */
     if (close_current_group ())
       {
@@ -164,11 +161,6 @@ namespace cubtx
     LOG_LSA closed_group_start_complete_lsa, closed_group_end_complete_lsa;
     LOG_TDES *tdes = logtb_get_tdes (&cubthread::get_entry ());
     bool has_postpone;
-
-    if (log_Gl.m_tran_complete_mgr->get_manager_type () != get_manager_type ())
-      {
-	return;
-      }
 
     if (is_latest_closed_group_completed ())
       {
