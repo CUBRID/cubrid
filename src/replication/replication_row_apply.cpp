@@ -68,6 +68,9 @@ namespace cubreplication
     assert (!HFID_IS_NULL (&scan_cache.node.hfid));
 
     record_descriptor record_copy (record.get_recdes ());
+    // record may be resized by heap_update_adjust_recdes_header; make sure there is enough space.
+    heap_record_reserve_for_adjustments (record_copy);
+
     overwrite_last_reprid (thread_ref, scan_cache.node.class_oid, record_copy);
 
     OID oid_out = OID_INITIALIZER;
@@ -175,7 +178,6 @@ namespace cubreplication
 
     // copy new recdes
     record_descriptor generated_record;
-
     error_code = generate_updated_record (thread_ref, scan_cache.node.class_oid, old_recdes, generated_record,
 					  std::forward<Args> (args)...);
     if (error_code != NO_ERROR)
@@ -184,6 +186,9 @@ namespace cubreplication
 	heap_scancache_end_modify (&thread_ref, &scan_cache);
 	return ER_FAILED;
       }
+
+    // record may be resized by heap_update_adjust_recdes_header; make sure there is enough space.
+    heap_record_reserve_for_adjustments (generated_record);
 
     log_sysop_start (&thread_ref);
     RECDES new_recdes = generated_record.get_recdes ();
@@ -319,7 +324,6 @@ namespace cubreplication
 	  }
       }
 
-    record_descriptor new_record;
     if (heap_attrinfo_transform_to_disk (&thread_ref, &attr_info,
 					 const_cast<RECDES *> (&old_recdes) /* fix heap_attrinfo_transform_to_disk */,
 					 &generated_record) != S_SUCCESS)
