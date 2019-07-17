@@ -50,7 +50,7 @@ namespace cubreplication
     m_control_channel_manager = new master_ctrl (cubtx::master_group_complete_manager::get_instance ());
 
     stream_entry fail_over_entry (m_stream, MVCCID_FIRST, stream_entry_header::NEW_MASTER);
-	fail_over_entry.pack ();
+    fail_over_entry.pack ();
   }
 
   void master_node::new_slave (int fd)
@@ -84,7 +84,7 @@ namespace cubreplication
     delete m_control_channel_manager;
     m_control_channel_manager = NULL;
 
-    cubtx::master_group_complete_manager::final ();
+    logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
   }
 
   void master_node::update_senders_min_position (const cubstream::stream_position &pos)

@@ -79,72 +79,73 @@ namespace cubreplication
 	m_ctrl_sender->stop ();
 	cubthread::get_manager ()->destroy_daemon_without_entry (m_ctrl_sender_daemon);
 	delete m_ctrl_sender;
-	m_ctrl_sender = NULL;      
-    }    
+	m_ctrl_sender = NULL;
+      }
 
-    cubtx::slave_group_complete_manager::final ();
+    /* Switch to single complete manager to void crashes at commit. */
+    logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
   }
 
-  int slave_node::connect_to_master(const char *master_node_hostname, const int master_node_port_id)
+  int slave_node::connect_to_master (const char *master_node_hostname, const int master_node_port_id)
   {
     int error = NO_ERROR;
-    er_log_debug_replication(ARG_FILE_LINE, "slave_node::connect_to_master host:%s, port: %d\n",
-      master_node_hostname, master_node_port_id);
+    er_log_debug_replication (ARG_FILE_LINE, "slave_node::connect_to_master host:%s, port: %d\n",
+			      master_node_hostname, master_node_port_id);
 
     // todo: remove after slave node is able to connect to a different master
-    assert(m_transfer_receiver == NULL);
+    assert (m_transfer_receiver == NULL);
 
     /* connect to replication master node */
-    cubcomm::server_channel srv_chn(m_identity.get_hostname().c_str());
+    cubcomm::server_channel srv_chn (m_identity.get_hostname().c_str());
 
-    m_master_identity.set_hostname(master_node_hostname);
-    m_master_identity.set_port(master_node_port_id);
-    error = srv_chn.connect(master_node_hostname, master_node_port_id, SERVER_REQUEST_CONNECT_NEW_SLAVE);
+    m_master_identity.set_hostname (master_node_hostname);
+    m_master_identity.set_port (master_node_port_id);
+    error = srv_chn.connect (master_node_hostname, master_node_port_id, SERVER_REQUEST_CONNECT_NEW_SLAVE);
     if (error != css_error_code::NO_ERRORS)
-    {
-      return error;
-    }
+      {
+	return error;
+      }
 
-    cubcomm::server_channel control_chn(m_identity.get_hostname().c_str());
-    error = control_chn.connect(master_node_hostname, master_node_port_id, SERVER_REQUEST_CONNECT_NEW_SLAVE_CONTROL);
+    cubcomm::server_channel control_chn (m_identity.get_hostname().c_str());
+    error = control_chn.connect (master_node_hostname, master_node_port_id, SERVER_REQUEST_CONNECT_NEW_SLAVE_CONTROL);
     if (error != css_error_code::NO_ERRORS)
-    {
-      return error;
-    }    
+      {
+	return error;
+      }
 
     /* TODO[replication] : last position to be retrieved from recovery module */
     cubstream::stream_position start_position = 0;
 
-    slave_control_sender *sender = new slave_control_sender(std::move(control_chn));
-    m_ctrl_sender_daemon = cubthread::get_manager()->create_daemon_without_entry(cubthread::delta_time(0),
-      sender, "slave_control_sender");
+    slave_control_sender *sender = new slave_control_sender (std::move (control_chn));
+    m_ctrl_sender_daemon = cubthread::get_manager()->create_daemon_without_entry (cubthread::delta_time (0),
+			   sender, "slave_control_sender");
 
     m_ctrl_sender = sender;
     cubstream::stream_file *sf = m_stream_file;
 
-    if ((REPL_SEMISYNC_ACK_MODE)prm_get_integer_value(PRM_ID_REPL_SEMISYNC_ACK_MODE) ==
-      REPL_SEMISYNC_ACK_ON_FLUSH)
-    {
-      m_stream_file->set_sync_notifier([sender](const cubstream::stream_position & sp)
+    if ((REPL_SEMISYNC_ACK_MODE)prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) ==
+	REPL_SEMISYNC_ACK_ON_FLUSH)
       {
-        // route produced stream positions to get validated as flushed on disk before sending them
-        sender->set_synced_position(sp);
-      });
+	m_stream_file->set_sync_notifier ([sender] (const cubstream::stream_position & sp)
+	{
+	  // route produced stream positions to get validated as flushed on disk before sending them
+	  sender->set_synced_position (sp);
+	});
 
-      m_lc->set_ack_producer([sf](cubstream::stream_position ack_sp)
-      {
-        sf->update_sync_position(ack_sp);
-      });
-    }
+	m_lc->set_ack_producer ([sf] (cubstream::stream_position ack_sp)
+	{
+	  sf->update_sync_position (ack_sp);
+	});
+      }
     else
-    {
-      m_lc->set_ack_producer([sender](cubstream::stream_position sp)
       {
-        sender->set_synced_position(sp);
-      });
-    }
+	m_lc->set_ack_producer ([sender] (cubstream::stream_position sp)
+	{
+	  sender->set_synced_position (sp);
+	});
+      }
 
-    m_transfer_receiver = new cubstream::transfer_receiver(std::move(srv_chn), *m_stream, start_position);
+    m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *m_stream, start_position);
 
     return NO_ERROR;
 
