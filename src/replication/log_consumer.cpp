@@ -82,6 +82,9 @@ namespace cubreplication
 
       void execute (cubthread::entry &thread_ref) final
       {
+	assert (!m_repl_stream_entries.empty () && m_repl_stream_entries.back ()->is_group_commit ());
+	cubstream::stream_position last_applied_ack = m_repl_stream_entries.back ()->get_stream_entry_end_position ();
+
 	(void) locator_repl_start_tran (&thread_ref);
 
 	for (stream_entry *curr_stream_entry : m_repl_stream_entries)
@@ -113,6 +116,7 @@ namespace cubreplication
 	  }
 
 	(void) locator_repl_end_tran (&thread_ref, true);
+	log_Gl.hdr.m_ack_stream_position = last_applied_ack;
 	m_lc.end_one_task ();
       }
 
@@ -187,6 +191,42 @@ namespace cubreplication
 		break;
 	      }
 
+	    MVCCID mvccid = se->get_mvccid ();
+
+	    // apply only some selected mvccids until we reach last m_ack_stream_position, then continue normally
+	    if (is_filtered_apply_segment (se->get_stream_entry_end_position ()))
+	      {
+		_er_log_debug (ARG_FILE_LINE, "Filtered apply: Entered filtered apply segment, m_filtered_apply_end: %llu\n",
+			       m_filtered_apply_end);
+		for (auto el : log_Gl.m_active_mvcc_ids)
+		  {
+		    _er_log_debug (ARG_FILE_LINE, "Filtered apply: Active mvvcid: %llu\n", el);
+		  }
+
+		if (log_Gl.m_active_mvcc_ids.find (mvccid) == log_Gl.m_active_mvcc_ids.end ())
+		  {
+		    _er_log_debug (ARG_FILE_LINE, "Filtered apply: \
+				       Ignoring stream entry with mvccid = %llu from %llu ending in %llu \n",
+				   mvccid,
+				   se->get_stream_entry_start_position (), se->get_stream_entry_end_position ());
+		    continue;
+		  }
+		else
+		  {
+		    _er_log_debug (ARG_FILE_LINE, "Filtered apply: \
+				       Applying stream entry with mvccid = %llu from %llu ending in %llu \n",
+				   mvccid,
+				   se->get_stream_entry_start_position (), se->get_stream_entry_end_position ());
+		  }
+	      }
+	    else
+	      {
+		if (!log_Gl.m_active_mvcc_ids.empty ())
+		  {
+		    log_Gl.m_active_mvcc_ids.clear ();
+		  }
+	      }
+
 	    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
 	      {
 		string_buffer sb;
@@ -245,42 +285,6 @@ namespace cubreplication
 	      }
 	    else
 	      {
-		MVCCID mvccid = se->get_mvccid ();
-
-		// apply only some selected mvccids until we reach last m_ack_stream_position, then continue normally
-		if (is_filtered_apply_segment (se->get_stream_entry_end_position ()))
-		  {
-		    _er_log_debug (ARG_FILE_LINE, "Filtered apply: Entered filtered apply segment, m_filtered_apply_end: %llu\n",
-				   m_filtered_apply_end);
-		    for (auto el : log_Gl.m_active_mvcc_ids)
-		      {
-			_er_log_debug (ARG_FILE_LINE, "Filtered apply: Active mvvcid: %llu\n", el);
-		      }
-
-		    if (log_Gl.m_active_mvcc_ids.find (mvccid) == log_Gl.m_active_mvcc_ids.end ())
-		      {
-			_er_log_debug (ARG_FILE_LINE, "Filtered apply: \
-                                       Ignoring stream entry with mvccid = %llu from %llu ending in %llu \n",
-				       mvccid,
-				       se->get_stream_entry_start_position (), se->get_stream_entry_end_position ());
-			continue;
-		      }
-		    else
-		      {
-			_er_log_debug (ARG_FILE_LINE, "Filtered apply: \
-                                       Applying stream entry with mvccid = %llu from %llu ending in %llu \n",
-				       mvccid,
-				       se->get_stream_entry_start_position (), se->get_stream_entry_end_position ());
-		      }
-		  }
-		else
-		  {
-		    if (!log_Gl.m_active_mvcc_ids.empty ())
-		      {
-			log_Gl.m_active_mvcc_ids.clear ();
-		      }
-		  }
-
 		auto it = repl_tasks.find (mvccid);
 
 		if (it != repl_tasks.end ())

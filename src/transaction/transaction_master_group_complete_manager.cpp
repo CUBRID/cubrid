@@ -77,7 +77,7 @@ namespace cubtx
   //
   void master_group_complete_manager::notify_stream_ack (const cubstream::stream_position stream_pos)
   {
-    /* TODO - disable it temporary since it is not tested */
+    /* TODO - remove early return after complete manager is finished */
     log_Gl.hdr.m_ack_stream_position = stream_pos;
     return;
 

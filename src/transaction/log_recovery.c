@@ -2891,7 +2891,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
       if ((crt_tdes = LOG_FIND_TDES (i)) != NULL && crt_tdes->trid != NULL_TRANID
 	  && !LSA_ISNULL (&crt_tdes->undo_nxlsa))
 	{
-	  _er_log_debug (ARG_FILE_LINE, "found active at end of analysis: trid:%d \n", crt_tdes->trid);
+	  _er_log_debug (ARG_FILE_LINE, "HA recovery: found active at end of analysis: trid:%d \n", crt_tdes->trid);
 	  log_Gl.m_active_tran_ids.insert (crt_tdes->trid);
 	  if (LSA_ISNULL (&log_Gl.m_min_active_lsa) || LSA_LT (&crt_tdes->head_lsa, &log_Gl.m_min_active_lsa))
 	    {
@@ -5088,10 +5088,9 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	    }
 	}
 
-      _er_log_debug (ARG_FILE_LINE, "Successfully executed recovery of min active stream position"
+      _er_log_debug (ARG_FILE_LINE, "HA recovery: Finished recovery of min active stream position"
 		     "m_active_start_position=%llu, m_ack_stream_position=%llu",
 		     (std::uint64_t) log_Gl.m_active_start_position, (std::uint64_t) log_Gl.hdr.m_ack_stream_position);
-
     }
 
   if (!LSA_ISNULL (&log_Gl.m_min_active_lsa))
@@ -5169,7 +5168,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
       for (auto it = log_Gl.m_active_mvcc_ids.begin (); it != log_Gl.m_active_mvcc_ids.end (); ++it)
 	{
-	  _er_log_debug (ARG_FILE_LINE, "HA active mvcc recovery: MVCCID found:" "%llu\n", (std::uint64_t) * it);
+	  _er_log_debug (ARG_FILE_LINE, "HA recovery: active mvcc recovery: MVCCID found:" "%llu\n",
+			 (std::uint64_t) * it);
 	}
       log_Gl.m_active_tran_ids.clear ();
     }

@@ -160,7 +160,6 @@ namespace cubstream
 	_er_log_debug (ARG_FILE_LINE, "m_ack_stream_position updated: (transfer sender sent)"
 		       "previous m_ack_stream_position=%llu, new m_ack_stream_position=%llu",
 		       (std::uint64_t) log_Gl.hdr.m_ack_stream_position, m_last_sent_position);
-	log_Gl.hdr.m_ack_stream_position = m_last_sent_position;
 
 	if (m_p_stream_ack)
 	  {

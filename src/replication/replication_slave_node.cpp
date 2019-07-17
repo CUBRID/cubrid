@@ -133,7 +133,6 @@ namespace cubreplication
 	{
 	  // route produced stream positions to get validated as flushed on disk before sending them
 	  ctrl_sender->set_synced_position (sp);
-	  log_Gl.hdr.m_ack_stream_position = sp;
 	});
 
 	m_lc->set_ack_producer ([sf] (cubstream::stream_position ack_sp)
@@ -146,7 +145,6 @@ namespace cubreplication
 	m_lc->set_ack_producer ([ctrl_sender] (cubstream::stream_position sp)
 	{
 	  ctrl_sender->set_synced_position (sp);
-	  log_Gl.hdr.m_ack_stream_position = sp;
 	});
       }
 
