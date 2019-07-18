@@ -75,6 +75,7 @@
 #include "dbtype.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"
+#include "string_buffer.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -5777,7 +5778,7 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
   DB_DOMAIN *domain;
   char *name;
   int db_type;
-  char arg_str[128];
+  string_buffer arg_str;
   int num_args;
   T_BROKER_VERSION client_version = req_info->client_version;
 
@@ -5831,7 +5832,6 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
       add_res_data_short (net_buf, cas_type, 0, NULL);
 
       /* 3. arg domain */
-      arg_str[0] = '\0';
       num_args = db_method_arg_count (tmp_p);
       for (j = 1; j <= num_args; j++)
 	{
@@ -5847,10 +5847,9 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
 	    {
 	      cas_type = set_extended_cas_type (CCI_U_TYPE_UNKNOWN, (DB_TYPE) db_type);
 	    }
-
-	  sprintf (arg_str, "%s%d ", arg_str, cas_type);
+	  arg_str ("%d ", cas_type);
 	}
-      add_res_data_string (net_buf, arg_str, strlen (arg_str), 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
+      add_res_data_string (net_buf, arg_str.get_buffer (), arg_str.len (), 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       tuple_num++;
       cursor_pos++;

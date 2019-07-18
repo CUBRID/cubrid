@@ -162,7 +162,7 @@ static int get_cubrid_version (void);
 
 static char shard_db_password_env_str[MAX_BROKER_NUM][128];
 
-char admin_err_msg[ADMIN_ERR_MSG_SIZE];
+char admin_err_msg[BROKER_PATH_MAX * 2];
 
 #if !defined(WINDOWS) && !defined(LINUX)
 extern char **environ;
