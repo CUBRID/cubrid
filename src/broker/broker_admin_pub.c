@@ -79,7 +79,7 @@
 #define DB_EMPTY_SESSION        (0)
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
-#define ADMIN_ERR_MSG_SIZE	1024
+#define ADMIN_ERR_MSG_SIZE	BROKER_PATH_MAX * 2
 
 #define MAKE_VERSION(MAJOR, MINOR)	(((MAJOR) << 8) | (MINOR))
 
@@ -162,7 +162,7 @@ static int get_cubrid_version (void);
 
 static char shard_db_password_env_str[MAX_BROKER_NUM][128];
 
-char admin_err_msg[BROKER_PATH_MAX * 2];
+char admin_err_msg[ADMIN_ERR_MSG_SIZE];
 
 #if !defined(WINDOWS) && !defined(LINUX)
 extern char **environ;
