@@ -261,6 +261,7 @@ namespace cubload
     , m_db_values ()
     , m_scancache_started (false)
     , m_scancache ()
+    , m_recdes_collected ()
   {
     //
   }
@@ -364,11 +365,37 @@ namespace cubload
     int pruning_type = 0;
     int op_type = SINGLE_ROW_INSERT;
     bool is_syntax_check_only = m_session.get_args ().syntax_check;
+    int error_code = NO_ERROR;
 
     if (!is_syntax_check_only)
       {
+	// Create the record and add it to the array of collected records.
+	LC_COPYAREA *copyarea = NULL;
+	RECDES *old_recdes = NULL;
+	RECDES new_recdes;
+
+	copyarea = locator_allocate_copy_area_by_attr_info (m_thread_ref, &m_attrinfo, old_recdes, &new_recdes, -1,
+		   LOB_FLAG_INCLUDE_LOB);
+	if (copyarea == NULL)
+	  {
+	    m_error_handler.on_failure ();
+	    return;
+	  }
+
+	// Add the recdes to the collected array.
+	m_recdes_collected.push_back (new_recdes);
+
+	if (copyarea != NULL)
+	  {
+	    locator_free_copy_area (copyarea);
+	    copyarea = NULL;
+	    new_recdes.data = NULL;
+	    new_recdes.area_size = 0;
+	  }
+
 	// Skip loading if syntax check only is enabled.
-	int error_code = locator_attribute_info_force (m_thread_ref, &m_scancache.node.hfid, &oid, &m_attrinfo, NULL, 0,
+	/*
+	error_code = locator_attribute_info_force (m_thread_ref, &m_scancache.node.hfid, &oid, &m_attrinfo, NULL, 0,
 			 LC_FLUSH_INSERT, op_type, &m_scancache, &force_count, false,
 			 REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, NULL,
 			 UPDATE_INPLACE_NONE, NULL, false);
@@ -376,11 +403,37 @@ namespace cubload
 	  {
 	    m_error_handler.on_failure ();
 	    return;
-	  }
+	  }*/
       }
 
     m_session.stats_update_current_line (m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1);
     clear_db_values ();
+
+    // Check if we finished the batch so that we can issue the multi insert.
+    //if (m_session.
+  }
+
+  int
+  server_object_loader::execute_before_batch_end ()
+  {
+    int error_code = NO_ERROR;
+    OID oid;
+    int force_count = 0;
+    int pruning_type = 0;
+    int op_type = SINGLE_ROW_INSERT;
+
+    error_code = locator_multi_insert_force (m_thread_ref, &m_scancache.node.hfid, &m_scancache.node.class_oid,
+		 m_recdes_collected,
+		 true, op_type, &m_scancache, &force_count, pruning_type, NULL, NULL,
+		 UPDATE_INPLACE_NONE);
+    if (error_code != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	m_error_handler.on_failure ();
+	return error_code;
+      }
+
+    return error_code;
   }
 
   int

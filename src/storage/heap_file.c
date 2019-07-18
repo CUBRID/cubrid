@@ -19949,7 +19949,9 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	{
 	  return ER_SP_NOSPACE_IN_PAGE;
 	}
-      context->home_page_watcher_p = home_hint_p;
+
+      context->home_page_watcher = *home_hint_p;
+      context->home_page_watcher_p = &context->home_page_watcher;
     }
   assert (context->home_page_watcher_p->pgptr != NULL);
 

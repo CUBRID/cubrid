@@ -13727,6 +13727,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
     }
 
   *force_count = 0;
+  
 
   // Take into account the unfill factor of the heap file.
   heap_max_page_size = heap_nonheader_page_capacity () * (1.0f - prm_get_float_value (PRM_ID_HF_UNFILL_FACTOR));
@@ -13737,6 +13738,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 
       if (heap_is_big_length (recdes[i].length))
         {
+          scan_cache->cache_last_fix_page = false;
 	  // We insert other records normally.
 	  error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, (RECDES *) (&recdes[i]), has_index,
 					     op_type, scan_cache, force_count, pruning_type, pcontext, func_preds,
@@ -13756,7 +13758,8 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	      PGBUF_WATCHER home_hint_p;
 
 	      VPID_SET_NULL (&new_page_vpid);
-
+              scan_cache->cache_last_fix_page = true;
+              
 	      // First alloc a new empty heap page.
 	      error_code = heap_alloc_new_page (thread_p, hfid, *class_oid, &home_hint_p, &new_page_vpid);
 	      if (error_code != NO_ERROR)
@@ -13772,12 +13775,16 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 						     func_preds, force_in_place, &home_hint_p);
 		  if (error_code != NO_ERROR)
 		    {
+                      pgbuf_ordered_unfix_and_init (thread_p, home_hint_p.pgptr, &home_hint_p);
+                      assert (!pgbuf_is_page_fixed_by_thread (thread_p, &new_page_vpid));
+
 		      ASSERT_ERROR ();
 		      return error_code;
 		    }
 
-		  // Safeguard. We should not have the page fixed here.
-		  assert (home_hint_p.pgptr == NULL);
+                  PGBUF_CLEAR_WATCHER (&home_hint_p);
+                  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &home_hint_p);
+                  //PGBUF_CLEAR_WATCHER (&scan_cache->page_watcher);
 	        }
 
 	      // Add the new VPID to the VPID array.
@@ -13788,6 +13795,10 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	      recdes_array.clear ();
 	      accumulated_records_size = 0;
 
+              // Unfix the page.
+              pgbuf_ordered_unfix_and_init (thread_p, home_hint_p.pgptr, &home_hint_p);
+
+              assert (!pgbuf_is_page_fixed_by_thread (thread_p, &new_page_vpid));
 	    }
 
 	  // Add this record to the recdes array and increase the accumulated size.
@@ -13799,6 +13810,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
   // We must check if we have records which did not fill an entire page.
   for (size_t i = 0; i < recdes_array.size (); i++)
     {
+      scan_cache->cache_last_fix_page = false;
       error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, &recdes_array[i], has_index, op_type,
 				         scan_cache, force_count, pruning_type, pcontext, func_preds, force_in_place,
 				         NULL);
