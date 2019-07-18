@@ -691,21 +691,22 @@ namespace cubstream
       }
   }
 
-  stream_position multi_thread_stream::get_min_available_position (void) const
+  void multi_thread_stream::get_min_available_and_curr_position (stream_position &min_available,
+      stream_position &curr_position) const
   {
-    stream_position pos;
-    /* TODO[replication] : fix this after flush on master is implemented */
+    /* TODO[replication] : fix this after flush on master is implemented (we may need atomic get for both) */
+    min_available = 0;
     if (m_stream_file)
       {
-	pos = m_stream_file->get_min_available_pos ();
+	min_available = m_stream_file->get_min_available_pos ();
       }
 
-    if (pos > m_last_committed_pos)
+    if (min_available > m_last_committed_pos)
       {
-	pos = 0;
+	min_available = 0;
       }
 
-    return pos;
+    curr_position = m_last_committed_pos;
   }
 
   void multi_thread_stream::wake_up_flusher (float fill_factor, const stream_position start_flush_pos,

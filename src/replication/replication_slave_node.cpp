@@ -50,10 +50,11 @@ namespace cubreplication
     , m_transfer_receiver (NULL)
     , m_ctrl_sender_daemon (NULL)
     , m_ctrl_sender (NULL)
+    , m_source_min_available_pos (0)
+    , m_source_curr_pos (0)
   {
     m_stream = stream;
     m_stream_file = stream_file;
-    m_source_available_pos = 0;
   }
 
   slave_node::~slave_node ()
@@ -88,22 +89,36 @@ namespace cubreplication
 	return ER_FAILED;
       }
 
-    m_source_available_pos = ntohi64 (pos);
+    m_source_min_available_pos = ntohi64 (pos);
 
-    er_log_debug_replication (ARG_FILE_LINE, "slave_node::setup_protocol available pos :%llu", m_source_available_pos);
+    if (chn.recv ((char *) &pos, max_len) != css_error_code::NO_ERRORS)
+      {
+	return ER_FAILED;
+      }
+
+    m_source_curr_pos = ntohi64 (pos);
+
+    er_log_debug_replication (ARG_FILE_LINE, "slave_node::setup_protocol available min pos :%llu, curr_pos :%llu",
+			      m_source_min_available_pos, m_source_curr_pos);
 
     return NO_ERROR;
   }
 
   bool slave_node::need_replication_copy (const cubstream::stream_position start_position) const
   {
-    if (m_source_available_pos >= start_position
-	&& m_source_available_pos - start_position < ACCEPTABLE_POS_DIFF_BEFORE_COPY)
+    assert (m_source_min_available_pos <= m_source_curr_pos);
+
+    if (start_position > m_source_curr_pos || start_position < m_source_min_available_pos)
       {
-	return false;
+	return true;
       }
 
-    return true;
+    if (m_source_curr_pos - start_position > ACCEPTABLE_POS_DIFF_BEFORE_COPY)
+      {
+	return true;
+      }
+
+    return false;
   }
 
   int slave_node::connect_to_master (const char *master_node_hostname, const int master_node_port_id)

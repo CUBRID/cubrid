@@ -58,7 +58,8 @@ namespace cubreplication
       cubstream::transfer_receiver *m_transfer_receiver;
       cubthread::daemon *m_ctrl_sender_daemon;
       slave_control_sender *m_ctrl_sender;
-      cubstream::stream_position m_source_available_pos;
+      cubstream::stream_position m_source_min_available_pos;
+      cubstream::stream_position m_source_curr_pos;
 
     protected:
       int setup_protocol (cubcomm::channel &chn);
