@@ -54,6 +54,7 @@ namespace cubreplication
 	// No Filtered apply
 	start_position = log_Gl.hdr.m_ack_stream_position;
       }
+    return start_position;
   }
 
   slave_node::slave_node (const char *hostname, cubstream::multi_thread_stream *stream,

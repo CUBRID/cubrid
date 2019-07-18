@@ -45,14 +45,12 @@ namespace cubreplication
     {
       g_hostname = server_name;
 
-      cubstream::stream_position start_position = compute_starting_stream_position ();
-
       INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_BUFFER_SIZE);
       int num_max_appenders = log_Gl.trantable.num_total_indices + 1;
       g_stream = new cubstream::multi_thread_stream (buffer_size, num_max_appenders);
       g_stream->set_name ("repl" + g_hostname);
       g_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
-      g_stream->init (start_position);
+      g_stream->init (0);
 
       log_generator::set_global_stream (g_stream);
 
