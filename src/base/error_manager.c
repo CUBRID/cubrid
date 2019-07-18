@@ -639,7 +639,7 @@ er_set_access_log_filename (void)
     {
       strncpy (tmp, er_Msglog_filename, PATH_MAX);
       tmp[len - suffix_len] = '\0';
-      int ret = snprintf (er_Accesslog_filename_buff, PATH_MAX, "%s%s", tmp, ER_ACCESS_LOG_FILE_SUFFIX);
+      int ret = snprintf (er_Accesslog_filename_buff, PATH_MAX - 1, "%s%s", tmp, ER_ACCESS_LOG_FILE_SUFFIX);
       (void) ret;		// suppress format-truncate warning
       /* ex) server_log.err => server_log.access */
     }

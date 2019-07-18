@@ -377,7 +377,7 @@ execute_test_with_query (int conn_handle, char *query, int shard_flag)
       req = cci_prepare (conn_handle, query_with_hint, 0, &err_buf);
       if (req < 0)
 	{
-	  n = snprintf (tester_err_msg, sizeof (tester_err_msg), "ERROR CODE : %d\n%s\n\n", err_buf.err_code,
+	  n = snprintf (tester_err_msg, sizeof (tester_err_msg) - 1, "ERROR CODE : %d\n%s\n\n", err_buf.err_code,
 			err_buf.err_msg);
 	  ret = -1;
 	  err_num++;
@@ -387,7 +387,7 @@ execute_test_with_query (int conn_handle, char *query, int shard_flag)
       ret = cci_execute (req, 0, 0, &err_buf);
       if (ret < 0)
 	{
-	  n = snprintf (tester_err_msg, sizeof (tester_err_msg), "ERROR CODE : %d\n%s\n\n", err_buf.err_code,
+	  n = snprintf (tester_err_msg, sizeof (tester_err_msg) - 1, "ERROR CODE : %d\n%s\n\n", err_buf.err_code,
 			err_buf.err_msg);
 	  err_num++;
 	  goto end_tran;
@@ -400,7 +400,7 @@ execute_test_with_query (int conn_handle, char *query, int shard_flag)
 	  ret = cci_get_shard_id_with_req_handle (req, &shard_id, &err_buf);
 	  if (ret < 0)
 	    {
-	      n = snprintf (tester_err_msg, sizeof (tester_err_msg), "ERROR CODE : %d\n%s\n\n", err_buf.err_code,
+	      n = snprintf (tester_err_msg, sizeof (tester_err_msg) - 1, "ERROR CODE : %d\n%s\n\n", err_buf.err_code,
 			    err_buf.err_msg);
 	      err_num++;
 	      goto end_tran;
@@ -412,7 +412,7 @@ execute_test_with_query (int conn_handle, char *query, int shard_flag)
 	  col_info = cci_get_result_info (req, &cmd_type, &col_count);
 	  if (cmd_type == CUBRID_STMT_SELECT && col_info == NULL)
 	    {
-	      n = snprintf (tester_err_msg, sizeof (tester_err_msg), "ERROR CODE : %d\n%s\n\n", err_buf.err_code,
+	      n = snprintf (tester_err_msg, sizeof (tester_err_msg) - 1, "ERROR CODE : %d\n%s\n\n", err_buf.err_code,
 			    err_buf.err_msg);
 	      ret = -1;
 	      err_num++;

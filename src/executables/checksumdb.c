@@ -2115,7 +2115,7 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
       snprintf (chksum_result_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s", CHKSUM_DEFAULT_TABLE_NAME);
     }
 
-  ret = snprintf (chksum_schema_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s%s", chksum_result_Table_name,
+  ret = snprintf (chksum_schema_Table_name, SM_MAX_IDENTIFIER_LENGTH - 1, "%s%s", chksum_result_Table_name,
 		  CHKSUM_SCHEMA_TABLE_SUFFIX);
   (void) ret;			// suppress format-truncate warning
 

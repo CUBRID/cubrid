@@ -3274,12 +3274,12 @@ get_as_sql_log_filename (char *log_filename, int len, char *broker_name, T_APPL_
 
   if (br_shard_flag == ON)
     {
-      ret = snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d_%d_%d.sql.log", dirname, broker_name,
+      ret = snprintf (log_filename, BROKER_PATH_MAX - 1, "%s%s_%d_%d_%d.sql.log", dirname, broker_name,
 		      as_info_p->proxy_id + 1, as_info_p->shard_id, as_info_p->shard_cas_id + 1);
     }
   else
     {
-      ret = snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d.sql.log", dirname, broker_name, as_index + 1);
+      ret = snprintf (log_filename, BROKER_PATH_MAX - 1, "%s%s_%d.sql.log", dirname, broker_name, as_index + 1);
     }
 
   (void) ret;			// suppress format-truncate warning
@@ -3295,12 +3295,12 @@ get_as_slow_log_filename (char *log_filename, int len, char *broker_name, T_APPL
 
   if (br_shard_flag == ON)
     {
-      ret = snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d_%d_%d.slow.log", dirname, broker_name,
+      ret = snprintf (log_filename, BROKER_PATH_MAX - 1, "%s%s_%d_%d_%d.slow.log", dirname, broker_name,
 		      as_info_p->proxy_id + 1, as_info_p->shard_id, as_info_p->shard_cas_id + 1);
     }
   else
     {
-      ret = snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d.slow.log", dirname, broker_name, as_index + 1);
+      ret = snprintf (log_filename, BROKER_PATH_MAX - 1, "%s%s_%d.slow.log", dirname, broker_name, as_index + 1);
     }
 
   (void) ret;			// suppress format-truncate warning

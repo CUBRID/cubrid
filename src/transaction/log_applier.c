@@ -6155,7 +6155,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	{
 	  if (la_Info.db_lockf_vdes != NULL_VOLDES)
 	    {
-	      int ret = snprintf (buffer, sizeof (buffer), "the state of HA server (%s@%s) is changed to %s",
+	      int ret = snprintf (buffer, sizeof (buffer) - 1, "the state of HA server (%s@%s) is changed to %s",
 				  la_slave_db_name, la_peer_host,
 				  css_ha_server_state_string ((HA_SERVER_STATE) ha_server_state->state));
 	      (void) ret;	// suppress format-truncate warning
@@ -7637,7 +7637,7 @@ la_create_repl_filter (void)
       int ret;
       if (classname_len >= SM_MAX_IDENTIFIER_LENGTH)
 	{
-	  ret = snprintf (error_msg, LINE_MAX, "invalid table name %s", buffer);
+	  ret = snprintf (error_msg, LINE_MAX - 1, "invalid table name %s", buffer);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_REPL_FILTER_GENERIC, 1, error_msg);
 	  error = ER_HA_LA_REPL_FILTER_GENERIC;
 
@@ -7649,7 +7649,7 @@ la_create_repl_filter (void)
       class_ = locator_find_class (classname);
       if (class_ == NULL)
 	{
-	  ret = snprintf (error_msg, LINE_MAX, "cannot find table [%s] listed in %s", buffer, filter_file);
+	  ret = snprintf (error_msg, LINE_MAX - 1, "cannot find table [%s] listed in %s", buffer, filter_file);
 	  er_stack_push ();
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_REPL_FILTER_GENERIC, 1, error_msg);
 	  er_stack_pop ();

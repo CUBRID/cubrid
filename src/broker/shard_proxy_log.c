@@ -140,7 +140,7 @@ proxy_log_backup (void)
 
   assert (log_filepath[0] != '\0');
 
-  int ret = snprintf (backup_filepath, BROKER_PATH_MAX, "%s.bak", log_filepath);
+  int ret = snprintf (backup_filepath, BROKER_PATH_MAX - 1, "%s.bak", log_filepath);
   (void) ret;			// suppress format-truncate warning
 
   unlink (backup_filepath);

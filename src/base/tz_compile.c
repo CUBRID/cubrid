@@ -4819,7 +4819,7 @@ tzc_log_error (const TZ_RAW_CONTEXT * context, const int code, const char *msg1,
 
   if (context != NULL && !IS_EMPTY_STR (context->current_file) && context->current_line != -1)
     {
-      int ret = snprintf (err_msg_temp, sizeof (err_msg_temp), " (file %s, line %d)", context->current_file,
+      int ret = snprintf (err_msg_temp, sizeof (err_msg_temp) - 1, " (file %s, line %d)", context->current_file,
 			  context->current_line);
       (void) ret;		// suppress format-truncate warning
     }

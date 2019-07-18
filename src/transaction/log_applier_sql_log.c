@@ -553,7 +553,7 @@ sl_log_open (void)
   char cur_sql_log_path[PATH_MAX];
   FILE *fp;
 
-  int ret = snprintf (cur_sql_log_path, PATH_MAX, "%s.%d", sql_log_base_path, sl_Info.curr_file_id);
+  int ret = snprintf (cur_sql_log_path, PATH_MAX - 1, "%s.%d", sql_log_base_path, sl_Info.curr_file_id);
   (void) ret;			// suppress format-truncate warning
 
   fp = fopen (cur_sql_log_path, "r+");
@@ -587,7 +587,7 @@ sl_open_next_file (FILE * old_fp)
   sl_Info.curr_file_id++;
   sl_Info.last_inserted_sql_id = 0;
 
-  int ret = snprintf (new_file_path, PATH_MAX, "%s.%d", sql_log_base_path, sl_Info.curr_file_id);
+  int ret = snprintf (new_file_path, PATH_MAX - 1, "%s.%d", sql_log_base_path, sl_Info.curr_file_id);
   (void) ret;			// suppress format-truncate warning
 
   fclose (old_fp);

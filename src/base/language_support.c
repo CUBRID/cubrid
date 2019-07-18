@@ -6653,15 +6653,15 @@ lang_split_key_binary (const LANG_COLLATION * lang_coll, const bool is_desc, con
 #define GET_SYM_ADDR(lib, sym) dlsym(lib, sym)
 #endif
 
-#define SHLIB_GET_ADDR(v, SYM_NAME, SYM_TYPE, lh, LOC_NAME)				    \
-  do {											    \
-    int ret = snprintf (sym_name, LOC_LIB_SYMBOL_NAME_SIZE, "" SYM_NAME "_%s", LOC_NAME);   \
-    (void) ret; /* suppress format-truncate warning */					    \
-    v = (SYM_TYPE) GET_SYM_ADDR (lh, sym_name);						    \
-    if (v == NULL)									    \
-      {											    \
-	goto error_loading_symbol;							    \
-      }											    \
+#define SHLIB_GET_ADDR(v, SYM_NAME, SYM_TYPE, lh, LOC_NAME)					\
+  do {												\
+    int ret = snprintf (sym_name, LOC_LIB_SYMBOL_NAME_SIZE - 1, "" SYM_NAME "_%s", LOC_NAME);   \
+    (void) ret; /* suppress format-truncate warning */						\
+    v = (SYM_TYPE) GET_SYM_ADDR (lh, sym_name);							\
+    if (v == NULL)										\
+      {												\
+	goto error_loading_symbol;								\
+      }												\
   } while (0)
 
 #define SHLIB_GET_ADDR_W_REF(v, SYM_NAME, SYM_TYPE, lh, LOC_NAME)	    \

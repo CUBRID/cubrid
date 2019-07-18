@@ -560,9 +560,9 @@ conn_retry:
 
   int ret;
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  ret = snprintf (cas_db_name, MAX_HA_DBINFO_LENGTH, "%s", shm_appl->shard_conn_info[shm_shard_id].db_name);
+  ret = snprintf (cas_db_name, MAX_HA_DBINFO_LENGTH - 1, "%s", shm_appl->shard_conn_info[shm_shard_id].db_name);
 #else
-  ret = snprintf (cas_db_name, MAX_HA_DBINFO_LENGTH, "%s@%s", shm_appl->shard_conn_info[shm_shard_id].db_name,
+  ret = snprintf (cas_db_name, MAX_HA_DBINFO_LENGTH - 1, "%s@%s", shm_appl->shard_conn_info[shm_shard_id].db_name,
 		  shm_appl->shard_conn_info[shm_shard_id].db_host);
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
