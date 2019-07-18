@@ -145,24 +145,24 @@ regu_variable_node::clear_xasl_local ()
       assert (value.funcp != NULL);
       pr_clear_value (value.funcp->value);
 
-      if(value.funcp->tmp_obj != NULL)
-      {
-        switch (value.funcp->ftype)
-        {
-        case F_REGEXP_REPLACE:
-        {
-          delete value.funcp->tmp_obj->compiled_regex;
-        }
-        break;
-        default:
-          //any of union member may have been erased
-          assert(0);
-          break;
-        }
+      if (value.funcp->tmp_obj != NULL)
+	{
+	  switch (value.funcp->ftype)
+	    {
+	    case F_REGEXP_REPLACE:
+	    {
+	      delete value.funcp->tmp_obj->compiled_regex;
+	    }
+	    break;
+	    default:
+	      //any of union member may have been erased
+	      assert (0);
+	      break;
+	    }
 
-        delete value.funcp->tmp_obj;
-        value.funcp->tmp_obj = NULL;
-      }
+	  delete value.funcp->tmp_obj;
+	  value.funcp->tmp_obj = NULL;
+	}
 
       break;
 
