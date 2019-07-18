@@ -7,15 +7,7 @@
 
 #include "system.h"
 #include "obstackheap.h"
-
-#if defined (__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wcast-function-type"
-#endif
 #include "heaplayers.h"
-#if defined (__GNUC__)
-#pragma GCC diagnostic pop
-#endif
 
 using namespace HL;
 

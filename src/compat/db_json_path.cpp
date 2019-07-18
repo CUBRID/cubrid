@@ -19,25 +19,15 @@
 
 #include "db_json_path.hpp"
 
+#include "db_rapidjson.hpp"
 #include "memory_alloc.h"
 #include "string_opfunc.h"
 #include "system_parameter.h"
 
-// disable rapidjson compile warnings
-#if defined (__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wclass-memaccess"
-#pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
-#endif
-#include "rapidjson/pointer.h"
-#if defined (__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
 #include <cstdlib>
-#include <errno.h>
 #include <limits>
 #include <string>
 #include <unordered_set>

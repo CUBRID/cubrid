@@ -38,7 +38,11 @@
 #ifndef _HEAPLAYERS_H_
 #define _HEAPLAYERS_H_
 
-namespace HL {};
+#pragma GCC system_header
+
+namespace HL
+{
+};
 
 #include "hldefines.h"
 
@@ -72,14 +76,14 @@ namespace HL {};
 
 
 #include "util/sassert.h"
-// #include "utility.h"		// convenient wrappers to replace C++ new & delete operators
-#include "util/dynarray.h"		// an array that grows by doubling
+// #include "utility.h"         // convenient wrappers to replace C++ new & delete operators
+#include "util/dynarray.h"	// an array that grows by doubling
 #include "util/myhashmap.h"
 
 // Hiding machine dependencies.
 
 #include "util/cpuinfo.h"
-#include "util/timer.h"			// allows high-resolution timing across a wide range of platforms
+#include "util/timer.h"		// allows high-resolution timing across a wide range of platforms
 #include "util/guard.h"
 #include "util/fred.h"
 
@@ -88,7 +92,7 @@ namespace HL {};
 #include "spinlock.h"		// spin-then-yield
 
 #if defined(_WIN32)
-#include "util/winlock.h"		// critical-sections (i.e., for Windows only)
+#include "util/winlock.h"	// critical-sections (i.e., for Windows only)
 #include "util/recursivelock.h"	// a wrapper for recursive locking
 #endif
 
@@ -111,13 +115,13 @@ namespace HL {};
 // NB: All of these should be used for exactly one size class.
 
 #include "freelistheap.h"	// a free list. Never frees memory.
-#include "fifofreelist.h"   // a FIFO free list.
-#include "fifodlfreelist.h"  // a doubly-linked FIFO free list.
-#include "boundedfreelistheap.h"	// a free list with a bounded length. 
+#include "fifofreelist.h"	// a FIFO free list.
+#include "fifodlfreelist.h"	// a doubly-linked FIFO free list.
+#include "boundedfreelistheap.h"	// a free list with a bounded length.
 
 
 #include "nullheap.h"
-#include "coalesceheap.h" // A chunk heap with coalescing.
+#include "coalesceheap.h"	// A chunk heap with coalescing.
 #include "coalesceableheap.h"
 
 // Utility heap layers
@@ -125,10 +129,10 @@ namespace HL {};
 #include "sizethreadheap.h"	// Adds size(ptr) & thread(ptr) methods
 #include "lockedheap.h"		// Code-locks a heap
 #include "checkheap.h"		// Raises assertions if malloc'ed objects aren't right.
-// #include "exceptionheap.h"	// Raise an exception if a malloc fails.
+// #include "exceptionheap.h"   // Raise an exception if a malloc fails.
 
-#include "sanitycheckheap.h" // Check for multiple frees and mallocs of same locations.
-#include "ansiwrapper.h"     // Provide ANSI C like behavior for malloc (alignment, etc.)
+#include "sanitycheckheap.h"	// Check for multiple frees and mallocs of same locations.
+#include "ansiwrapper.h"	// Provide ANSI C like behavior for malloc (alignment, etc.)
 
 // Multi-threaded heaps
 //   hashes the thread id across a number of heaps
@@ -167,7 +171,7 @@ namespace HL {};
 #include "obstackheap.h"
 #include "sbrkheap.h"
 
-#include "xallocHeap.h" // 197.parser's heap
+#include "xallocHeap.h"		// 197.parser's heap
 
 #include "staticheap.h"
 

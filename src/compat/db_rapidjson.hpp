@@ -17,20 +17,25 @@
  *
  */
 
-#ifndef _DB_JSON_PRIVATE_ALLOCATOR_
-#define _DB_JSON_PRIVATE_ALLOCATOR_
+//
+// cubrid rapidjson header
+// include this header instead of specific rapid json header
+//
 
-#include "db_rapidjson.hpp"
+#ifndef _DB_RAPIDJSON_HPP_
+#define _DB_RAPIDJSON_HPP_
 
-class JSON_PRIVATE_ALLOCATOR
-{
-  public:
-    static const bool kNeedFree;
-    void *Malloc (size_t size);
-    void *Realloc (void *originalPtr, size_t originalSize, size_t newSize);
-    static void Free (void *ptr);
-};
+// disable rapidjson compile warnings
+#pragma GCC system_header
 
-typedef rapidjson::MemoryPoolAllocator <JSON_PRIVATE_ALLOCATOR> JSON_PRIVATE_MEMPOOL;
+#include "rapidjson/allocators.h"
+#include "rapidjson/document.h"
+#include "rapidjson/encodings.h"
+#include "rapidjson/error/en.h"
+#include "rapidjson/pointer.h"
+#include "rapidjson/rapidjson.h"
+#include "rapidjson/schema.h"
+#include "rapidjson/stringbuffer.h"
+#include "rapidjson/writer.h"
 
-#endif
+#endif /*_DB_RAPIDJSON_HPP_*/
