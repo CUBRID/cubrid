@@ -79,6 +79,9 @@ static bool tran_systems_initialized = false;
 #if defined (__GNUC__)
 #pragma GCC diagnostic ignored "-Wignored-qualifiers"
 #endif
+#if defined (WINDOWS)
+#pragma warning (disable : 4197)
+#endif
 
 static INT64 lf_hash_size = 0;
 
