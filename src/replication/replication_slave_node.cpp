@@ -109,6 +109,7 @@ namespace cubreplication
   int slave_node::connect_to_master (const char *master_node_hostname, const int master_node_port_id)
   {
     int error = NO_ERROR;
+    css_error_code comm_error_code = css_error_code::NO_ERRORS;
 
     if (!m_master_identity.get_hostname ().empty () && m_master_identity.get_hostname () != master_node_hostname)
       {
@@ -128,15 +129,19 @@ namespace cubreplication
 
     m_master_identity.set_hostname (master_node_hostname);
     m_master_identity.set_port (master_node_port_id);
-    error = srv_chn.connect (master_node_hostname, master_node_port_id, COMMAND_SERVER_REQUEST_CONNECT_SLAVE);
-    if (error != css_error_code::NO_ERRORS)
+    comm_error_code = srv_chn.connect (master_node_hostname, master_node_port_id,
+				       COMMAND_SERVER_REQUEST_CONNECT_SLAVE);
+    if (comm_error_code != css_error_code::NO_ERRORS)
       {
-	return error;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, srv_chn.get_channel_id ().c_str (),
+		comm_error_code);
+	return ER_REPLICATION_SETUP;
       }
 
     error = setup_protocol (srv_chn);
     if (error != NO_ERROR)
       {
+	ASSERT_ERROR ();
 	return error;
       }
 
@@ -146,7 +151,8 @@ namespace cubreplication
     if (need_replication_copy (start_position))
       {
 	/* TODO[replication] : replication copy */
-	assert (false);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, "", css_error_code::NO_ERRORS);
+	return ER_REPLICATION_SETUP;
       }
     else
       {
@@ -233,7 +239,7 @@ namespace cubreplication
     stop_and_destroy_online_repl ();
   }
 
-  void slave_node::stop_and_destroy_online_repl (void)
+  void slave_node::stop_and_destroy_online_repl ()
   {
     er_log_debug_replication (ARG_FILE_LINE, "slave_node::stop_and_destroy_online_repl");
 

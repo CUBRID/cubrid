@@ -691,7 +691,7 @@ namespace cubstream
       }
   }
 
-  stream_position multi_thread_stream::get_min_pos_for_slave (void) const
+  stream_position multi_thread_stream::get_min_available_position (void) const
   {
     stream_position pos;
     /* TODO[replication] : fix this after flush on master is implemented */

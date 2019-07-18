@@ -57,29 +57,39 @@ namespace cubreplication
     UINT64 pos = 0, expected_magic;
     std::size_t max_len = sizeof (UINT64);
     cubstream::stream_position available_pos;
+    css_error_code comm_error_code = css_error_code::NO_ERRORS;
 
-    if (chn.recv ((char *) &expected_magic, max_len) != css_error_code::NO_ERRORS)
+    comm_error_code = chn.recv ((char *) &expected_magic, max_len);
+    if (comm_error_code != css_error_code::NO_ERRORS)
       {
-	return ER_FAILED;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
+		comm_error_code);
+	return ER_REPLICATION_SETUP;
       }
 
     if (expected_magic != replication_node::SETUP_REPLICATION_MAGIC)
       {
-	er_log_debug_replication (ARG_FILE_LINE, "master_node::setup_protocol error in setup protocol");
-	assert (false);
-	return ER_FAILED;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
+		comm_error_code);
+	return ER_REPLICATION_SETUP;
       }
 
-    if (chn.send ((char *) &replication_node::SETUP_REPLICATION_MAGIC, max_len) != css_error_code::NO_ERRORS)
+    comm_error_code = chn.send ((char *) &replication_node::SETUP_REPLICATION_MAGIC, max_len);
+    if (comm_error_code != css_error_code::NO_ERRORS)
       {
-	return ER_FAILED;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
+		comm_error_code);
+	return ER_REPLICATION_SETUP;
       }
 
-    available_pos = m_stream->get_min_pos_for_slave ();
+    available_pos = m_stream->get_min_available_position ();
     pos = htoni64 (available_pos);
-    if (chn.send ((char *) &pos, max_len) !=  css_error_code::NO_ERRORS)
+    comm_error_code = chn.send ((char *) &pos, max_len);
+    if (comm_error_code != css_error_code::NO_ERRORS)
       {
-	return ER_FAILED;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
+		comm_error_code);
+	return ER_REPLICATION_SETUP;
       }
 
     er_log_debug_replication (ARG_FILE_LINE, "master_node::setup_protocol available pos :%llu", available_pos);
