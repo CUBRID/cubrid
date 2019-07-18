@@ -3801,7 +3801,11 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	  assert (tdes->state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE
 		  && (tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE || is_rv_finish_postpone));
 	  /* Check parent modification for sysop commit. */
-	  check_parent_modifications = true;
+	  if (tdes->is_active_worker_transaction () && !MVCCID_IS_VALID (tdes->mvccinfo.id))
+	    {
+	      /* Check parent modifications, if no click counter, serial. */
+	      check_parent_modifications = true;
+	    }
 	}
 
       if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_active_worker_transaction ()
