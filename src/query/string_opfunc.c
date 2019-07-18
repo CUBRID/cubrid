@@ -4609,14 +4609,14 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
       {
 	occurrence = args[4];
 	assert (occurrence != (DB_VALUE *) NULL);
-	is_any_null |= DB_IS_NULL (position);
+	is_any_null |= DB_IS_NULL (occurrence);
       }
 
     if (num_args == 6)
       {
 	match_type = args[5];
 	assert (match_type != (DB_VALUE *) NULL);
-	is_any_null |= DB_IS_NULL (position);
+	is_any_null |= DB_IS_NULL (match_type);
       }
 
     if (is_any_null)
