@@ -38,7 +38,9 @@
 #ifndef _HEAPLAYERS_H_
 #define _HEAPLAYERS_H_
 
+#if defined (__GNUC__)
 #pragma GCC system_header
+#endif
 
 namespace HL
 {

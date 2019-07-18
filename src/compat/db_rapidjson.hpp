@@ -26,7 +26,9 @@
 #define _DB_RAPIDJSON_HPP_
 
 // disable rapidjson compile warnings
+#if defined (__GNUC__)
 #pragma GCC system_header
+#endif
 
 #include "rapidjson/allocators.h"
 #include "rapidjson/document.h"
