@@ -6529,10 +6529,11 @@ get_last_error (T_CON_HANDLE * con_handle, T_CCI_ERROR * dest_err_buf)
   if (con_handle->err_buf.err_code != CCI_ER_NO_ERROR && con_handle->err_buf.err_msg[0] != '\0')
     {
       dest_err_buf->err_code = con_handle->err_buf.err_code;
-      snprintf (dest_err_buf->err_msg, sizeof (dest_err_buf->err_msg), "%s[%s-%d.%d.%d.%d:%d,%d,%d].",
-		con_handle->err_buf.err_msg, info_type, con_handle->ip_addr[0], con_handle->ip_addr[1],
-		con_handle->ip_addr[2], con_handle->ip_addr[3], con_handle->port, con_handle->cas_id,
-		con_handle->cas_pid);
+      int ret = snprintf (dest_err_buf->err_msg, sizeof (dest_err_buf->err_msg), "%s[%s-%d.%d.%d.%d:%d,%d,%d].",
+			  con_handle->err_buf.err_msg, info_type, con_handle->ip_addr[0], con_handle->ip_addr[1],
+			  con_handle->ip_addr[2], con_handle->ip_addr[3], con_handle->port, con_handle->cas_id,
+			  con_handle->cas_pid);
+      (void) ret;		// suppress format-truncate warning
     }
   else
     {

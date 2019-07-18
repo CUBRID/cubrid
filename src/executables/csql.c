@@ -2202,14 +2202,17 @@ csql_set_sys_param (const char *arg_str)
 
   if (strncmp (arg_str, "cost", 4) == 0 && sscanf (arg_str, "cost %127s %127s", plantype, val) == 2)
     {
+      int ret;
       if (qo_plan_set_cost_fn (plantype, val[0]))
 	{
-	  snprintf (ans, 128, "cost %s: %s", plantype, val);
+	  ret = snprintf (ans, 128, "cost %s: %s", plantype, val);
 	}
       else
 	{
-	  snprintf (ans, 128, "error: unknown cost parameter %s", plantype);
+	  ret = snprintf (ans, 128, "error: unknown cost parameter %s", plantype);
 	}
+
+      (void) ret;		// suppress format-truncate warning
     }
   else if (strncmp (arg_str, "level", 5) == 0 && sscanf (arg_str, "level %d", &level) == 1)
     {

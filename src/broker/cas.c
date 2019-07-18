@@ -558,12 +558,15 @@ conn_retry:
 
   gettimeofday (&cas_start_time, NULL);
 
+  int ret;
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  snprintf (cas_db_name, MAX_HA_DBINFO_LENGTH, "%s", shm_appl->shard_conn_info[shm_shard_id].db_name);
+  ret = snprintf (cas_db_name, MAX_HA_DBINFO_LENGTH, "%s", shm_appl->shard_conn_info[shm_shard_id].db_name);
 #else
-  snprintf (cas_db_name, MAX_HA_DBINFO_LENGTH, "%s@%s", shm_appl->shard_conn_info[shm_shard_id].db_name,
-	    shm_appl->shard_conn_info[shm_shard_id].db_host);
+  ret = snprintf (cas_db_name, MAX_HA_DBINFO_LENGTH, "%s@%s", shm_appl->shard_conn_info[shm_shard_id].db_name,
+		  shm_appl->shard_conn_info[shm_shard_id].db_host);
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
+
+  (void) ret;			// suppress format-truncate warning
 
   set_db_connection_info ();
 
