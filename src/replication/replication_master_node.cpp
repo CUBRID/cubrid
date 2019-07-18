@@ -101,7 +101,7 @@ namespace cubreplication
 	return ER_REPLICATION_SETUP;
       }
 
-    er_log_debug_replication (ARG_FILE_LINE, "master_node::setup_protocol min_available_pos :%llu, curr_pos%llu",
+    er_log_debug_replication (ARG_FILE_LINE, "master_node::setup_protocol min_available_pos :%llu, curr_pos:%llu",
 			      min_available_pos, curr_pos);
 
     return NO_ERROR;
