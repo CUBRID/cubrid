@@ -26,12 +26,14 @@
 #ifndef _REPLICATION_COMMON_HPP_
 #define _REPLICATION_COMMON_HPP_
 
+#include "error_manager.h"
+#include <string>
+
+#define er_log_debug_replication(...) if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA)) _er_log_debug(__VA_ARGS__)
+
 const std::string REPL_ONLINE_CHANNEL_NAME = "online_replication";
 const std::string REPL_COPY_CHANNEL_NAME = "copy_db_replication";
 const std::string REPL_CONTROL_CHANNEL_NAME = "control_replication";
-
-#include "error_manager.h"
-#define er_log_debug_replication(...) if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA)) _er_log_debug(__VA_ARGS__)
 
 namespace cubreplication
 {
