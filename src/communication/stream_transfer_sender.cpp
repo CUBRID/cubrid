@@ -73,18 +73,18 @@ namespace cubstream
 		return;
 	      }
 	    rc = this_producer_channel.m_channel.recv ((char *) &last_sent_position, max_len);
+	    if (rc != NO_ERRORS)
+	      {
+		this_producer_channel.m_channel.close_connection ();
+		return;
+	      }
+
 	    this_producer_channel.m_last_sent_position = htoni64 (last_sent_position);
 
 	    er_log_debug (ARG_FILE_LINE, "transfer_sender_task starting : last_sent_position:%llu, rc:%d\n",
 			  this_producer_channel.m_last_sent_position, rc);
 
 	    assert (max_len == sizeof (UINT64));
-
-	    if (rc != NO_ERRORS)
-	      {
-		this_producer_channel.m_channel.close_connection ();
-		return;
-	      }
 
 	    m_first_loop = false;
 	  }
@@ -156,6 +156,7 @@ namespace cubstream
 	cubcomm::er_log_debug_buffer ("transfer_sender::read_action", ptr, byte_count);
 
 	m_last_sent_position += byte_count;
+
 	if (m_p_stream_ack)
 	  {
 	    m_p_stream_ack->notify_stream_ack (m_last_sent_position);
