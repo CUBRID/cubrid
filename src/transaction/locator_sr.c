@@ -5833,7 +5833,6 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      goto error;
 	    }
 
-
 	  if (!OID_EQ (class_oid, &real_class_oid))
 	    {
 	      /* If we have to move the record to another partition, we have to lock the target partition for insert.
@@ -6517,13 +6516,16 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 	  scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
 	  if (scan_cache.mvcc_snapshot == NULL)
 	    {
-	      error_code = er_errid ();
-	      if (error_code == NO_ERROR)
+	      if (thread_p->type != TT_REPL_SUBTRAN_APPLIER)
 		{
+		  assert (false);
 		  error_code = ER_FAILED;
+		  goto error;
 		}
-
-	      goto error;
+	      else
+		{
+		  // accept this for sub-transaction applier; it doesn't have and doesn't need snapshot
+		}
 	    }
 
 	  /* update */
@@ -13880,8 +13882,8 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
 
 #if defined(SERVER_MODE)
 int
-locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char *db_password,
-			const char *ha_sys_prm_context, const char *statement)
+locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char *ha_sys_prm_context,
+			const char *statement)
 {
   char path[PATH_MAX];
   static const char *db_name = boot_db_name ();
@@ -13891,7 +13893,7 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
-  assert (db_user != NULL && db_password != NULL && statement != NULL && tdes != NULL);
+  assert (db_user != NULL && statement != NULL && tdes != NULL);
   sprintf (tran_index_str, "%d", tran_index);
 
   /* TODO - maybe we have to decide based on whole argv length rather than statement length. */
@@ -13913,12 +13915,10 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
   string_buffer db_name_buffer;
   db_name_buffer ("%s@%s", db_name, "localhost");
 
-  const char *ddl_argv[13] = {
+  const char *ddl_argv[11] = {
     path,
     "-u",
     db_user,
-    "-p",
-    db_password,
     db_name_buffer.get_buffer (),
     command_option,
     command,

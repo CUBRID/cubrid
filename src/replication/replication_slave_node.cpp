@@ -63,6 +63,8 @@ namespace cubreplication
     , m_lc (NULL)
     , m_master_identity ("")
     , m_transfer_receiver (NULL)
+    , m_ctrl_sender (NULL)
+    , m_ctrl_sender_daemon (NULL)
   {
     m_stream = stream;
     m_stream_file = stream_file;

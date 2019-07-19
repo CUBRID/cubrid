@@ -467,12 +467,13 @@ or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error)
 void
 or_set_repid (char *ptr, int repid)
 {
-  int *ptr_as_int = (int *) ptr;
+  int mvcc_repid_and_flag = OR_GET_MVCC_REPID_AND_FLAG (ptr);
 
   assert ((repid & (~OR_MVCC_REPID_MASK)) == 0);
 
   // current flags | repid
-  *ptr_as_int = (*ptr_as_int & (~OR_MVCC_REPID_MASK)) | repid;
+  mvcc_repid_and_flag = (mvcc_repid_and_flag & (~OR_MVCC_REPID_MASK)) | repid;
+  OR_PUT_INT (ptr, mvcc_repid_and_flag);
 }
 
 /*

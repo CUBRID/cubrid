@@ -24,11 +24,13 @@
 #ident "$Id$"
 
 #include "log_consumer.hpp"
+
+#include "communication_channel.hpp"
 #include "error_manager.h"
 #include "multi_thread_stream.hpp"
 #include "replication_common.hpp"
 #include "replication_stream_entry.hpp"
-#include "communication_channel.hpp"
+#include "replication_subtran_apply.hpp"
 #include "slave_control_channel.hpp"
 #include "stream_file.hpp"
 #include "string_buffer.hpp"
@@ -233,6 +235,9 @@ namespace cubreplication
 
 		m_lc.wait_for_tasks ();
 
+		// apply all sub-transaction first
+		m_lc.get_subtran_applier ().apply ();
+
 		for (tasks_map::iterator it = repl_tasks.begin ();
 		     it != repl_tasks.end ();
 		     it++)
@@ -272,6 +277,10 @@ namespace cubreplication
 	    else if (se->is_new_master ())
 	      {
 		repl_tasks.clear ();
+	      }
+	    else if (se->is_subtran_commit ())
+	      {
+		m_lc.get_subtran_applier ().insert_stream_entry (se);
 	      }
 	    else
 	      {
@@ -315,6 +324,8 @@ namespace cubreplication
 	cubthread::get_manager ()->destroy_daemon (m_dispatch_daemon);
 	cubthread::get_manager ()->destroy_worker_pool (m_applier_workers_pool);
       }
+
+    delete m_subtran_applier; // must be deleted after worker pool
 
     assert (m_stream_entries.empty ());
     get_stream ()->start ();
@@ -377,6 +388,8 @@ namespace cubreplication
 
   void log_consumer::start_daemons (void)
   {
+    m_subtran_applier = new subtran_applier (*this);
+
     er_log_debug_replication (ARG_FILE_LINE, "log_consumer::start_daemons\n");
     m_consumer_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
 			new consumer_daemon_task (*this),
@@ -394,6 +407,13 @@ namespace cubreplication
     m_use_daemons = true;
   }
 
+  void log_consumer::push_task (cubthread::entry_task *task)
+  {
+    cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
+
+    m_started_tasks++;
+  }
+
   void log_consumer::execute_task (applier_worker_task *task)
   {
     if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
@@ -403,9 +423,7 @@ namespace cubreplication
 	_er_log_debug (ARG_FILE_LINE, "log_consumer::execute_task:\n%s", sb.get_buffer ());
       }
 
-    cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
-
-    m_started_tasks++;
+    push_task (task);
   }
 
   void log_consumer::wait_for_tasks (void)
@@ -424,6 +442,11 @@ namespace cubreplication
     m_is_stopped = true;
     ulock.unlock ();
     m_apply_task_cv.notify_one ();
+  }
+
+  subtran_applier &log_consumer::get_subtran_applier ()
+  {
+    return *m_subtran_applier;
   }
 
 } /* namespace cubreplication */

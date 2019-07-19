@@ -46,7 +46,8 @@ namespace cubreplication
       COMMITTED,
       ABORTED,
       GROUP_COMMIT,
-      NEW_MASTER
+      NEW_MASTER,
+      SUBTRAN_COMMIT
     } TRAN_STATE;
 
     cubstream::stream_position prev_record;
@@ -79,6 +80,8 @@ namespace cubreplication
     }
 
     static const char *tran_state_string (TRAN_STATE state);
+
+    bool needs_mvccid () const;
   };
 
   class stream_entry : public cubstream::entry<replication_object>
@@ -168,6 +171,11 @@ namespace cubreplication
 	return m_header.tran_state == stream_entry_header::COMMITTED;
       }
 
+      bool is_subtran_commit (void) const
+      {
+	return m_header.tran_state == stream_entry_header::SUBTRAN_COMMIT;
+      }
+
       bool is_tran_abort (void) const
       {
 	return m_header.tran_state == stream_entry_header::ABORTED;
@@ -176,8 +184,10 @@ namespace cubreplication
       bool is_tran_state_undefined (void) const
       {
 	return m_header.tran_state < stream_entry_header::ACTIVE
-	       || m_header.tran_state > stream_entry_header::NEW_MASTER;
+	       || m_header.tran_state > stream_entry_header::SUBTRAN_COMMIT;
       }
+
+      bool check_mvccid_is_valid () const;
 
       int pack_stream_entry_header () override;
       int unpack_stream_entry_header () override;
