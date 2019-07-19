@@ -54,9 +54,6 @@ namespace cubreplication
     private:
       const static int NEW_SLAVE_THREADS = 5;
 
-      static master_node *g_instance;
-      static std::mutex g_enable_active_mtx;
-
       cubthread::entry_workpool *m_new_slave_workers_pool;
 
       master_ctrl *m_control_channel_manager;
