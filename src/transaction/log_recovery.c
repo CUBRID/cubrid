@@ -5088,7 +5088,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	    }
 	}
 
-      _er_log_debug (ARG_FILE_LINE, "HA recovery: Finished recovery of min active stream position"
+      _er_log_debug (ARG_FILE_LINE, "HA recovery: Finished recovery of min active stream position "
 		     "m_active_start_position=%llu, m_ack_stream_position=%llu",
 		     (std::uint64_t) log_Gl.m_repl_rv.m_active_start_position,
 		     (std::uint64_t) log_Gl.hdr.m_ack_stream_position);
@@ -5169,8 +5169,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
       for (auto it = log_Gl.m_repl_rv.m_active_mvcc_ids.begin (); it != log_Gl.m_repl_rv.m_active_mvcc_ids.end (); ++it)
 	{
-	  _er_log_debug (ARG_FILE_LINE, "HA recovery: active mvcc recovery: MVCCID found:" "%llu\n",
-			 (std::uint64_t) * it);
+	  _er_log_debug (ARG_FILE_LINE, "HA recovery: active mvcc recovery: MVCCID found: %llu\n",
+			 (std::uint64_t) (*it));
 	}
       log_Gl.m_repl_rv.m_active_tran_ids.clear ();
     }
