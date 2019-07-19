@@ -27,9 +27,8 @@
 #include <condition_variable>
 #include <mutex>
 
-namespace cubbase
+namespace cubsync
 {
-
   /*
    *
    * Usage :
@@ -77,6 +76,6 @@ namespace cubbase
       }
   };
 
-} // namespace cubbase
+} // namespace cubsync
 
 #endif // _SEMAPHORE_HPP_
