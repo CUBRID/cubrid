@@ -3600,7 +3600,7 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
   // ddl_proxy should not fire trigger action
   db_disable_trigger ();
 
-  if (args->sys_param != NULL)
+  if (args->sys_param != NULL && *args->sys_param != '\0')
     {
       er_stack_push ();
 
@@ -3712,6 +3712,8 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
       /* enable authorization back */
       au_enable (save);
     }
+
+  locator_all_flush ();
 
 error:
 
