@@ -105,7 +105,7 @@ namespace cubload
       bool m_attrinfo_started;
       heap_cache_attrinfo m_attrinfo;
       std::vector<db_value> m_db_values;
-      std::vector<RECDES> m_recdes_collected;
+      std::vector<recdes> m_recdes_collected;
 
       bool m_scancache_started;
       heap_scancache m_scancache;

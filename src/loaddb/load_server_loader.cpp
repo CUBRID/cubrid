@@ -259,9 +259,9 @@ namespace cubload
     , m_attrinfo_started (false)
     , m_attrinfo ()
     , m_db_values ()
+    , m_recdes_collected ()
     , m_scancache_started (false)
     , m_scancache ()
-    , m_recdes_collected ()
   {
     //
   }
@@ -360,22 +360,15 @@ namespace cubload
 	return;
       }
 
-    OID oid;
-    int force_count = 0;
-    int pruning_type = 0;
-    int op_type = SINGLE_ROW_INSERT;
     bool is_syntax_check_only = m_session.get_args ().syntax_check;
-    int error_code = NO_ERROR;
-
     if (!is_syntax_check_only)
       {
 	// Create the record and add it to the array of collected records.
-	LC_COPYAREA *copyarea = NULL;
-	RECDES *old_recdes = NULL;
-	RECDES new_recdes;
+	recdes new_recdes;
+	recdes *old_recdes = NULL;
 
-	copyarea = locator_allocate_copy_area_by_attr_info (m_thread_ref, &m_attrinfo, old_recdes, &new_recdes, -1,
-		   LOB_FLAG_INCLUDE_LOB);
+	lc_copy_area *copyarea = locator_allocate_copy_area_by_attr_info (m_thread_ref, &m_attrinfo, old_recdes,
+				 &new_recdes, -1, LOB_FLAG_INCLUDE_LOB);
 	if (copyarea == NULL)
 	  {
 	    m_error_handler.on_failure ();
@@ -396,22 +389,18 @@ namespace cubload
 
     m_session.stats_update_current_line (m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1);
     clear_db_values ();
-
   }
 
   int
   server_object_loader::execute_before_batch_end ()
   {
-    int error_code = NO_ERROR;
-    OID oid;
     int force_count = 0;
     int pruning_type = 0;
     int op_type = SINGLE_ROW_INSERT;
 
-    error_code = locator_multi_insert_force (m_thread_ref, &m_scancache.node.hfid, &m_scancache.node.class_oid,
-		 m_recdes_collected,
-		 true, op_type, &m_scancache, &force_count, pruning_type, NULL, NULL,
-		 UPDATE_INPLACE_NONE);
+    int error_code = locator_multi_insert_force (m_thread_ref, &m_scancache.node.hfid, &m_scancache.node.class_oid,
+		     m_recdes_collected, true, op_type, &m_scancache, &force_count, pruning_type, NULL, NULL,
+		     UPDATE_INPLACE_NONE);
     if (error_code != NO_ERROR)
       {
 	ASSERT_ERROR ();
