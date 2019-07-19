@@ -6190,17 +6190,10 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	{
 	  if (la_Info.db_lockf_vdes != NULL_VOLDES)
 	    {
-<<<<<<< HEAD
-	      snprintf (buffer, sizeof (buffer),
-			"the state of HA server (%s@%s) is changed to %s",
-			la_slave_db_name, la_peer_host,
-			css_ha_server_state_string ((HA_SERVER_STATE) ha_server_state->state));
-=======
 	      int ret = snprintf (buffer, sizeof (buffer) - 1, "the state of HA server (%s@%s) is changed to %s",
 				  la_slave_db_name, la_peer_host,
 				  css_ha_server_state_string ((HA_SERVER_STATE) ha_server_state->state));
 	      (void) ret;	// suppress format-truncate warning
->>>>>>> 6bc323e93fc5fe09db6965f5e341a9336c92eccd
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
 
 	      la_Info.is_role_changed = true;
