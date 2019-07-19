@@ -5087,7 +5087,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	    }
 	}
 
-      _er_log_debug (ARG_FILE_LINE, "HA recovery: Finished recovery of min active stream position"
+      _er_log_debug (ARG_FILE_LINE, "HA recovery: Finished recovery of min active stream position "
 		     "m_active_start_position=%llu, m_ack_stream_position=%llu",
 		     (std::uint64_t) log_Gl.m_repl_rv.m_active_start_position,
 		     (std::uint64_t) log_Gl.hdr.m_ack_stream_position);
