@@ -35,6 +35,11 @@
 
 #ident "$Id$"
 
+#if defined (WINDOWS)
+// suppress warning C4005: 'NO_ERROR': macro redefinition
+#include "winerror.h"
+#endif // MSVC
+
 #ifdef NO_ERROR
 #undef NO_ERROR
 #endif
