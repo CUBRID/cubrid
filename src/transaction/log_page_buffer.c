@@ -10192,7 +10192,7 @@ logpb_initialize_tran_complete_manager (THREAD_ENTRY * thread_p)
 {
   /* Initialize with single mode for recovery purpose. If non-HA, this mode remains. Otherwise, reset it later. */
   er_log_debug (ARG_FILE_LINE, "logpb_initialize_tran_complete_manager single node \n");
-  logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
+  logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
 }
 
 /*
@@ -10226,7 +10226,7 @@ logpb_complete_manager_string (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
  *      TODO - We need to consider atomic reset.
  */
 void
-logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
+logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
 {
   THREAD_ENTRY *thread_p;
   LOG_TRAN_COMPLETE_MANAGER_TYPE old_manager_type;
@@ -10257,7 +10257,8 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
   if (old_manager_type == manager_type)
     {
       /* Same manager, nothing to do. */
-      er_print_callstack (ARG_FILE_LINE, "logpb_resets_tran_complete_manager ha_server_state = %s, manager type = %s\n",
+      er_print_callstack (ARG_FILE_LINE,
+			  "logpb_atomic_resets_tran_complete_manager ha_server_state = %s, manager type = %s\n",
 			  ha_server_state_string, logpb_complete_manager_string (manager_type));
       log_Gl.reset_complete_manager_started = false;
       return;
@@ -10320,7 +10321,7 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
       /* Single node. Need to wait for log flush. */
       log_set_notify (true);
       log_Gl.m_tran_complete_mgr = cubtx::single_node_group_complete_manager::get_instance ();
-      er_print_callstack (ARG_FILE_LINE, "logpb_resets_tran_complete_manager single node, ha_server_state = %s, "
+      er_print_callstack (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager single node, ha_server_state = %s, "
 			  "old_manager=%s, new_manager = %s \n", ha_server_state_string,
 			  logpb_complete_manager_string (old_manager_type),
 			  logpb_complete_manager_string (manager_type));
@@ -10331,7 +10332,7 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
       /* Master with slaves. Need to wait for stream ack sent by slaves. */
       log_set_notify (false);
       log_Gl.m_tran_complete_mgr = cubtx::master_group_complete_manager::get_instance ();
-      er_print_callstack (ARG_FILE_LINE, "logpb_resets_tran_complete_manager master node, ha_server_state = %s, "
+      er_print_callstack (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager master node, ha_server_state = %s, "
 			  "old_manager=%s, new_manager = %s \n", ha_server_state_string,
 			  logpb_complete_manager_string (old_manager_type),
 			  logpb_complete_manager_string (manager_type));
@@ -10341,7 +10342,7 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
       /* Master with slaves. Need to wait for master stream. */
       log_set_notify (false);
       log_Gl.m_tran_complete_mgr = cubtx::slave_group_complete_manager::get_instance ();
-      er_print_callstack (ARG_FILE_LINE, "logpb_resets_tran_complete_manager slave node, ha_server_state = %s, "
+      er_print_callstack (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager slave node, ha_server_state = %s, "
 			  "old_manager=%s, new_manager = %s \n", ha_server_state_string,
 			  logpb_complete_manager_string (old_manager_type),
 			  logpb_complete_manager_string (manager_type));
@@ -10352,7 +10353,7 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
       /* No manager. */
       log_set_notify (false);
       log_Gl.m_tran_complete_mgr = NULL;
-      er_print_callstack (ARG_FILE_LINE, "logpb_resets_tran_complete_manager NULL, ha_server_state = %s\n",
+      er_print_callstack (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager NULL, ha_server_state = %s\n",
 			  ha_server_state_string);
       break;
 
@@ -10378,7 +10379,7 @@ logpb_finalize_tran_complete_manager (void)
 {
   /* Finalize complete manager. */
   er_log_debug (ARG_FILE_LINE, "logpb_finalize_tran_complete_manager \n");
-  logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_NO_MANAGER);
+  logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_NO_MANAGER);
   cubtx::single_node_group_complete_manager::final ();
 }
 

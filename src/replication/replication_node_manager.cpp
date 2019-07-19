@@ -89,11 +89,11 @@ namespace cubreplication
 
       if ((new_slave) || (cubreplication::master_senders_manager::get_number_of_stream_senders () > 0))
 	{
-	  logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE);
+	  logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE);
 	}
       else
 	{
-	  logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
+	  logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
 	}
     }
 
@@ -110,7 +110,7 @@ namespace cubreplication
 	  g_slave_node = new cubreplication::slave_node (g_hostname.c_str (), g_stream, g_stream_file);
 	}
 
-      logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE);
+      logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE);
     }
 
     master_node *get_master_node ()

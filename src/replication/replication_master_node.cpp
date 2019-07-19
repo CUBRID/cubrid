@@ -85,7 +85,7 @@ namespace cubreplication
     m_control_channel_manager = NULL;
 
     cubtx::master_group_complete_manager::final ();
-    logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
+    logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
   }
 
   void master_node::update_senders_min_position (const cubstream::stream_position &pos)

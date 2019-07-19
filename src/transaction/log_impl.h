@@ -908,6 +908,7 @@ extern void logpb_initialize_arv_page_info_table (void);
 extern void logpb_initialize_logging_statistics (void);
 extern void logpb_initialize_tran_complete_manager (THREAD_ENTRY * thread_p);
 extern const char *logpb_complete_manager_string (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type);
+extern void logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type);
 extern void logpb_finalize_tran_complete_manager (void);
 
 extern int logpb_background_archiving (THREAD_ENTRY * thread_p);
