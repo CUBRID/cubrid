@@ -35,6 +35,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+
+// disable gcrypt compile warnings
+#define GCRYPT_NO_MPI_MACROS
+#define GCRYPT_NO_DEPRECATED
 #include <gcrypt.h>
 #else
 #error "libgcrypt or rpc/des_crypt.h file required"

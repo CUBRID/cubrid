@@ -126,9 +126,10 @@ namespace cubstream
 	    std::bind (&transfer_sender::read_action, std::ref (*this), std::placeholders::_1,
 		       std::placeholders::_2);
 
+    std::string daemon_name = "stream_transfer_sender_" + chn.get_channel_id ();
     m_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (daemon_period,
 		      new transfer_sender_task (*this),
-		      "stream_transfer_sender");
+		      daemon_name.c_str ());
 
     m_p_stream_ack = cubtx::master_group_complete_manager::get_instance ();
   }

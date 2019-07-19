@@ -214,6 +214,11 @@ namespace cubstream
 	return m_append_position;
       }
 
+      stream_position get_drop_position (void)
+      {
+	return m_drop_position;
+      }
+
       void set_sync_notifier (const stream::notify_send_stream_pos_func_t &sync_done_notify)
       {
 	m_sync_notifier = sync_done_notify;
@@ -243,6 +248,8 @@ namespace cubstream
       {
 	m_is_stopped = true;
       }
+
+      stream_position get_min_available_pos (void) const;
   };
 
 } /*  namespace cubstream */
