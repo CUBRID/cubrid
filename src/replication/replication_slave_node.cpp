@@ -120,9 +120,9 @@ namespace cubreplication
 	return error;
       }
 
+    // Slave control sender is a looping daemon and sends acks using a slave_control_channel
     slave_control_sender *ctrl_sender = new slave_control_sender (std::move (slave_control_channel (std::move (
 		control_chn))));
-
     m_ctrl_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
 			   ctrl_sender, "slave_control_sender");
 

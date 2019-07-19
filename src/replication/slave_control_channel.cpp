@@ -35,6 +35,7 @@ namespace cubreplication
 {
   slave_control_sender::slave_control_sender (slave_control_channel &&ctrl_chn)
     : m_ctrl_chn (std::move (ctrl_chn))
+    , m_stop (false)
   {
   }
 
