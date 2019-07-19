@@ -66,17 +66,6 @@ namespace cubreplication
       cubstream::stream_position m_source_min_available_pos;
       cubstream::stream_position m_source_curr_pos;
 
-      slave_node (const char *name)
-	: replication_node (name)
-	, m_lc (NULL)
-	, m_master_identity ("")
-	, m_transfer_receiver (NULL)
-	, m_ctrl_sender_daemon (NULL)
-	, m_ctrl_sender (NULL)
-      {
-         m_source_min_available_pos = std::numeric_limits<cubstream::stream_position>::max ();
-         is_copy_running = false;
-      }
     protected:
       int setup_protocol (cubcomm::channel &chn);
 

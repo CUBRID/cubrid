@@ -81,13 +81,15 @@ namespace cubreplication
     , m_lc (NULL)
     , m_master_identity ("")
     , m_transfer_receiver (NULL)
-    , m_ctrl_sender (NULL)
     , m_ctrl_sender_daemon (NULL)
+    , m_ctrl_sender (NULL)
     , m_source_min_available_pos (0)
     , m_source_curr_pos (0)
   {
     m_stream = stream;
     m_stream_file = stream_file;
+    m_source_min_available_pos = std::numeric_limits<cubstream::stream_position>::max ();
+    is_copy_running = false;
   }
 
   slave_node::~slave_node ()
@@ -317,6 +319,16 @@ namespace cubreplication
 	m_lc->stop ();
 	delete m_lc;
 	m_lc = NULL;
+      }
+
+    m_stream_file->remove_sync_notifier ();
+
+    if (m_ctrl_sender != NULL)
+      {
+        m_ctrl_sender->stop ();
+        cubthread::get_manager ()->destroy_daemon_without_entry (m_ctrl_sender_daemon);
+        delete m_ctrl_sender;
+        m_ctrl_sender = NULL;
       }
   }
 

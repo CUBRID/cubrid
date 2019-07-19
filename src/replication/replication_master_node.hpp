@@ -59,7 +59,6 @@ namespace cubreplication
 
       cubthread::entry_workpool *m_new_slave_workers_pool;
 
-    public:
       master_ctrl *m_control_channel_manager;
 
     protected:
