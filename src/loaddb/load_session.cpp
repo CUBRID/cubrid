@@ -213,12 +213,12 @@ namespace cubload
 	else
 	  {
 
-	    server_object_loader *obj2 = dynamic_cast<server_object_loader *> (&driver->get_object_loader());
+	    server_object_loader *object_loader = dynamic_cast<server_object_loader *> (&driver->get_object_loader());
 
-	    obj2->init (m_batch.get_class_id());
-	    obj2->execute_before_batch_end();
+	    object_loader->init (m_batch.get_class_id ());
+	    object_loader->execute_before_batch_end ();
 
-	    obj2->destroy();
+	    object_loader->destroy ();
 
 	    // order batch commits, therefore wait until previous batch is committed
 	    m_session.wait_for_previous_batch (m_batch.get_id ());
