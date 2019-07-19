@@ -76,6 +76,35 @@ namespace cubsync
       }
   };
 
+
+  class event
+  {
+    private:
+      semaphore<bool> m_semaphore;
+
+    public:
+
+      event ():
+	m_semaphore (false)
+      {
+      }
+
+      void set ()
+      {
+	m_semaphore.signal (true);
+      }
+
+      void clear ()
+      {
+	m_semaphore.signal (false);
+      }
+
+      void wait ()
+      {
+	m_semaphore.wait (true);
+      }
+  };
+
 } // namespace cubsync
 
 #endif // _SEMAPHORE_HPP_
