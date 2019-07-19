@@ -366,7 +366,7 @@ else(BISON_FOUND)
       " and retry running cmake."
     )
   endif()
-endif(NOT BISON_FOUND)
+endif(BISON_FOUND)
 
 include(FindFLEX)
 find_package(FLEX 2.5.34 REQUIRED)
