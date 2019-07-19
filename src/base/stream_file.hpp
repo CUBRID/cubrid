@@ -225,6 +225,15 @@ namespace cubstream
 	m_notify_on_sync = true;
       }
 
+      void remove_sync_notifier ()
+      {
+	m_notify_on_sync = false;
+	m_sync_notifier = [] (const stream_position &)
+	{
+	  assert (false);
+	};
+      }
+
       void start_flush (const stream_position &start_position, const size_t amount_to_flush);
 
       void force_start_flush (void);
@@ -239,6 +248,8 @@ namespace cubstream
       {
 	m_is_stopped = true;
       }
+
+      stream_position get_min_available_pos (void) const;
   };
 
 } /*  namespace cubstream */

@@ -152,6 +152,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/process_util.h
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/string_buffer.hpp
+  ${BASE_DIR}/semaphore.hpp
   )
 
 set(EXECUTABLE_SOURCES
@@ -212,11 +213,14 @@ set (REPLICATION_HEADERS
   ${REPLICATION_DIR}/slave_control_channel.hpp
   ${REPLICATION_DIR}/master_control_channel.hpp
   ${REPLICATION_DIR}/replication_node.hpp
+  ${REPLICATION_DIR}/replication_node_manager.hpp
   ${REPLICATION_DIR}/replication_object.hpp
   ${REPLICATION_DIR}/replication_row_apply.hpp
   ${REPLICATION_DIR}/replication_slave_node.hpp
   ${REPLICATION_DIR}/replication_source_db_copy.hpp
   ${REPLICATION_DIR}/replication_stream_entry.hpp
+  ${REPLICATION_DIR}/replication_subtran_apply.hpp
+  ${REPLICATION_DIR}/replication_subtran_generate.hpp
   )
 
 set(QUERY_SOURCES
@@ -277,10 +281,13 @@ set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/replication_master_node.cpp
   ${REPLICATION_DIR}/replication_master_senders_manager.cpp
   ${REPLICATION_DIR}/replication_node.cpp
+  ${REPLICATION_DIR}/replication_node_manager.cpp
   ${REPLICATION_DIR}/replication_row_apply.cpp
   ${REPLICATION_DIR}/replication_slave_node.cpp
   ${REPLICATION_DIR}/replication_source_db_copy.cpp
   ${REPLICATION_DIR}/replication_stream_entry.cpp
+  ${REPLICATION_DIR}/replication_subtran_apply.cpp
+  ${REPLICATION_DIR}/replication_subtran_generate.cpp
   ${REPLICATION_DIR}/slave_control_channel.cpp
   )
 

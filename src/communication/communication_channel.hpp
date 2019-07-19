@@ -85,15 +85,20 @@ namespace cubcomm
       /* this is the command that the non overridden connect will send */
       int get_max_timeout_in_ms ();
 
-      void set_channel_name (const std::string &name) { m_channel_name = name; }
+      void set_channel_name (const std::string &name)
+      {
+	m_channel_name = name;
+      }
 
-      std::string get_channel_id () const { return m_channel_name + "_" + m_hostname + "_" + std::to_string (m_port); }
+      std::string get_channel_id () const
+      {
+	return m_channel_name + "_" + m_hostname + "_" + std::to_string (m_port);
+      }
 
     protected:
       const int m_max_timeout_in_ms;
       CHANNEL_TYPE m_type;
       SOCKET m_socket;
-
       std::string m_channel_name;
       std::string m_hostname;
       int m_port;

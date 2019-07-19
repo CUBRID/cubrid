@@ -66,7 +66,7 @@ enum css_command_type
   SERVER_REQUEST = 3,		/* let new server attach */
   UNUSED_REQUEST = 4,		/* unused request - leave it for compatibility */
   SERVER_REQUEST_NEW = 5,	/* new-style server request */
-  COMMAND_SERVER_REQUEST_CONNECT_SLAVE = 6,	        /* slave server wants to connect to master server */
+  COMMAND_SERVER_REQUEST_CONNECT_SLAVE = 6,	/* slave server wants to connect to master server */
   COMMAND_SERVER_REQUEST_CONNECT_SLAVE_CONTROL = 7,	/* slave connects to a control channel */
   COMMAND_SERVER_REQUEST_CONNECT_SLAVE_COPY_DB = 8,	/* slave server wants to connect to master server and copy DB */
 

@@ -108,11 +108,6 @@ namespace cubreplication
 	m_stream = stream;
       }
 
-      cubstream::multi_thread_stream *get_stream (void)
-      {
-	return m_stream;
-      }
-
       void end_one_task (void)
       {
 	m_started_tasks--;

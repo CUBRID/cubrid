@@ -1668,7 +1668,6 @@ extern "C"
   {
     const char *db_name;
     const char *user_name;
-    const char *passwd;
     const char *command;
     const char *request;
     const char *out_file_name;

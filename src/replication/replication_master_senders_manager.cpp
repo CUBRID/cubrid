@@ -23,6 +23,7 @@
  */
 
 #include "replication_master_senders_manager.hpp"
+#include "replication_node_manager.hpp"
 #include "replication_master_node.hpp"
 
 #include <utility>
@@ -202,7 +203,7 @@ namespace cubreplication
 
 	if (active_senders > 0)
 	  {
-	    cubreplication::master_node::update_senders_min_position (min_position_send);
+	    replication_node_manager::get_master_node ()->update_senders_min_position (min_position_send);
 	  }
       }
 

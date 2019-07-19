@@ -3293,6 +3293,12 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
       thread_p = thread_get_thread_entry_info ();
     }
 
+  // hack - disable locking for system workers of replication apply
+  if (thread_p->type == TT_REPL_SUBTRAN_APPLIER)
+    {
+      return LK_GRANTED;
+    }
+
   thrd_entry = thread_p;
 
   new_mode = group_mode = old_mode = NULL_LOCK;
@@ -7345,6 +7351,12 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, int tran_index,
   LK_ENTRY *entry_ptr;
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
   int rv;
+
+  if (thread_p->type == TT_REPL_SUBTRAN_APPLIER)
+    {
+      // hack to return true
+      return 1;
+    }
 
   if (oid == NULL)
     {

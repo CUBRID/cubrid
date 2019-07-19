@@ -210,7 +210,6 @@ struct HB_PROC_ENTRY
 
   bool being_shutdown;		/* whether the proc is being shut down */
   bool server_hang;
-  bool knows_master_hostname;
 };
 
 /* heartbeat resources */

@@ -430,7 +430,7 @@ namespace cubreplication
   {
     int err = NO_ERROR;
 
-    stream_entry *se = new stream_entry (get_stream ());
+    stream_entry *se = new stream_entry (m_stream);
 
     err = se->prepare ();
     if (err != NO_ERROR)
@@ -489,7 +489,7 @@ namespace cubreplication
 
   void copy_db_consumer::set_stop (void)
   {
-    copy_db_consumer::get_stream ()->set_stop ();
+    m_stream->stop ();
 
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
     m_is_stopped = true;

@@ -205,6 +205,7 @@ int
 xtran_server_start_topop (THREAD_ENTRY * thread_p, LOG_LSA * topop_lsa)
 {
   int error_code = NO_ERROR;
+  bool need_ha_replication = !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true;
 
   /*
    * Execute some few remaining actions before the start top nested action is
@@ -223,6 +224,11 @@ xtran_server_start_topop (THREAD_ENTRY * thread_p, LOG_LSA * topop_lsa)
       ASSERT_ERROR ();
       LSA_SET_NULL (topop_lsa);
       return error_code;
+    }
+  if (need_ha_replication)
+    {
+      assert (topop_lsa != NULL);
+      logtb_get_tdes (thread_p)->replication_log_generator.add_start_sysop (*topop_lsa);
     }
   return NO_ERROR;
 }
@@ -249,6 +255,7 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
   TRAN_STATE state;
   bool drop_transient_class = false;
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  bool need_ha_replication = !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true;
 
   assert (result == LOG_RESULT_TOPOP_ABORT || result == LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
 
@@ -283,7 +290,11 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
 	  log_sysop_abort (thread_p);
 	  state = TRAN_UNACTIVE_ABORTED;
 
-	  tdes->replication_log_generator.abort_pending_repl_objects ();
+	  if (need_ha_replication)
+	    {
+	      tdes->replication_log_generator.abort_pending_repl_objects ();
+	      tdes->replication_log_generator.add_end_sysop (*topop_lsa);
+	    }
 	}
       if (drop_transient_class)
 	{

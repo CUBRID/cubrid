@@ -24,11 +24,14 @@
 #ident "$Id$"
 
 #include "replication_slave_node.hpp"
+#include "communication_server_channel.hpp"
 #include "log_applier.h"
 #include "log_consumer.hpp"
+#include "log_impl.h"
 #include "multi_thread_stream.hpp"
 #include "replication_apply_db_copy.hpp"
 #include "replication_common.hpp"
+#include "replication_node_manager.hpp"
 #include "replication_stream_entry.hpp"
 #include "slave_control_channel.hpp"
 #include "stream_file.hpp"
@@ -46,14 +49,14 @@ int xreplication_copy_slave (THREAD_ENTRY * thread_p, const char *source_hostnam
   int error = NO_ERROR;
   cubreplication::node_definition source_node (source_hostname);
   source_node.set_port (port_id);
-  cubreplication::slave_node *slave_instance = cubreplication::slave_node::get_instance (NULL);
+  cubreplication::slave_node *slave_instance = cubreplication::replication_node_manager::get_slave_node ();
   slave_instance->is_copy_running = true;
 
   er_log_debug_replication (ARG_FILE_LINE, "xreplication_copy_slave source_hostname:%s, port:%d,"
                             " start_replication_after_copy:%d",
                             source_hostname, port_id, start_replication_after_copy);
   /* stop online replication */
-  cubreplication::slave_node::stop_and_destroy_online_repl ();
+  slave_instance->stop_and_destroy_online_repl ();
 
   error = slave_instance->replication_copy_slave (*thread_p, &source_node, start_replication_after_copy);
   if (error != NO_ERROR)
@@ -63,7 +66,7 @@ int xreplication_copy_slave (THREAD_ENTRY * thread_p, const char *source_hostnam
 
   if (start_replication_after_copy)
     {
-      error = cubreplication::slave_node::connect_to_master (source_hostname, port_id);
+      error = slave_instance->connect_to_master (source_hostname, port_id);
     }
 
   slave_instance->is_copy_running = false;
@@ -72,189 +75,210 @@ int xreplication_copy_slave (THREAD_ENTRY * thread_p, const char *source_hostnam
 
 namespace cubreplication
 {
+  slave_node::slave_node (const char *hostname, cubstream::multi_thread_stream *stream,
+			  cubstream::stream_file *stream_file)
+    : replication_node (hostname)
+    , m_lc (NULL)
+    , m_master_identity ("")
+    , m_transfer_receiver (NULL)
+    , m_ctrl_sender (NULL)
+    , m_ctrl_sender_daemon (NULL)
+    , m_source_min_available_pos (0)
+    , m_source_curr_pos (0)
+  {
+    m_stream = stream;
+    m_stream_file = stream_file;
+  }
+
   slave_node::~slave_node ()
   {
-    delete m_lc;
-    m_lc = NULL;
-  }
-
-  slave_node *slave_node::get_instance (const char *name)
-  {
-    if (g_instance == NULL)
-      {
-	g_instance = new slave_node (name);
-      }
-    return g_instance;
-  }
-
-  void slave_node::init (const char *hostname)
-  {
-    assert (g_instance == NULL);
-    slave_node *instance = slave_node::get_instance (hostname);
-
-    instance->apply_start_position ();
-
-    INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_CONSUMER_BUFFER_SIZE);
-
-    /* create stream :*/
-    /* consumer needs only one stream appender (the stream transfer receiver) */
-    assert (instance->m_stream == NULL);
-    instance->m_stream = new cubstream::multi_thread_stream (buffer_size, 2);
-    instance->m_stream->set_name ("repl" + std::string (hostname) + "_replica");
-    instance->m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
-    instance->m_stream->init (instance->m_start_position);
-
-    /* create stream file */
-    std::string replication_path;
-    replication_node::get_replication_file_path (replication_path);
-    instance->m_stream_file = new cubstream::stream_file (*instance->m_stream, replication_path);
+    stop_and_destroy_online_repl ();
   }
 
   int slave_node::setup_protocol (cubcomm::channel &chn)
   {
     UINT64 pos = 0, expected_magic;
     std::size_t max_len = sizeof (UINT64);
+    css_error_code comm_error_code;
 
-    if (chn.send ((char *) &replication_node::SETUP_REPLICATION_MAGIC, max_len) != css_error_code::NO_ERRORS)
+    comm_error_code = chn.send ((char *) &replication_node::SETUP_REPLICATION_MAGIC, max_len);
+    if (comm_error_code != css_error_code::NO_ERRORS)
       {
-        return ER_FAILED;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
+		comm_error_code);
+	return ER_REPLICATION_SETUP;
       }
 
-    if (chn.recv ((char *) &expected_magic, max_len) != css_error_code::NO_ERRORS)
+    comm_error_code = chn.recv ((char *) &expected_magic, max_len);
+    if (comm_error_code != css_error_code::NO_ERRORS)
       {
-        return ER_FAILED;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
+		comm_error_code);
+	return ER_REPLICATION_SETUP;
       }
 
     if (expected_magic != replication_node::SETUP_REPLICATION_MAGIC)
       {
-        er_log_debug_replication (ARG_FILE_LINE, "slave_node::setup_protocol error in setup protocol");
-        assert (false);
-        return ER_FAILED;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
+		comm_error_code);
+	return ER_REPLICATION_SETUP;
       }
 
-    if (chn.recv ((char *) &pos, max_len) != css_error_code::NO_ERRORS)
+    comm_error_code = chn.recv ((char *) &pos, max_len);
+    if (comm_error_code != css_error_code::NO_ERRORS)
       {
-        return ER_FAILED;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
+		comm_error_code);
+	return ER_REPLICATION_SETUP;
       }
+    m_source_min_available_pos = ntohi64 (pos);
 
-    m_source_available_pos = ntohi64 (pos);
+    comm_error_code = chn.recv ((char *) &pos, max_len);
+    if (comm_error_code != css_error_code::NO_ERRORS)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
+		comm_error_code);
+	return ER_REPLICATION_SETUP;
+      }
+    m_source_curr_pos = ntohi64 (pos);
 
-    er_log_debug_replication (ARG_FILE_LINE, "slave_node::setup_protocol available pos :%lld",
-                              m_source_available_pos);
+    er_log_debug_replication (ARG_FILE_LINE, "slave_node::setup_protocol available min pos:%llu, curr_pos:%llu",
+			      m_source_min_available_pos, m_source_curr_pos);
 
     return NO_ERROR;
   }
 
   bool slave_node::need_replication_copy (const cubstream::stream_position start_position) const
   {
-    if (m_source_available_pos >= start_position
-        && m_source_available_pos - start_position < ACCEPTABLE_POS_DIFF_BEFORE_COPY)
+    assert (m_source_min_available_pos <= m_source_curr_pos);
+
+    if (start_position > m_source_curr_pos || start_position < m_source_min_available_pos)
       {
-        return false;
+	return true;
       }
 
-    return true;
+    if (m_source_curr_pos - start_position > ACCEPTABLE_POS_DIFF_BEFORE_COPY)
+      {
+	return true;
+      }
+
+    return false;
   }
 
   int slave_node::connect_to_master (const char *master_node_hostname, const int master_node_port_id)
   {
     int error = NO_ERROR;
+    css_error_code comm_error_code = css_error_code::NO_ERRORS;
+
+    if (!m_master_identity.get_hostname ().empty () && m_master_identity.get_hostname () != master_node_hostname)
+      {
+	// master was changed, disconnect from current master and try to connect to new one
+	disconnect_from_master ();
+      }
+
     er_log_debug_replication (ARG_FILE_LINE, "slave_node::connect_to_master host:%s, port: %d\n",
 			      master_node_hostname, master_node_port_id);
 
-    if (g_instance->is_copy_running)
+    if (is_copy_running)
       {
         er_log_debug_replication (ARG_FILE_LINE, "slave_node::connect_to_master COPY ALREADY RUNNING\n");
         return error;
       }
 
+    assert (m_transfer_receiver == NULL);
+    assert (m_lc == NULL);
+
     /* connect to replication master node */
-    cubcomm::server_channel srv_chn (g_instance->m_identity.get_hostname ().c_str ());
+    cubcomm::server_channel srv_chn (m_identity.get_hostname ().c_str ());
     srv_chn.set_channel_name (REPL_ONLINE_CHANNEL_NAME);
 
-    g_instance->m_master_identity.set_hostname (master_node_hostname);
-    g_instance->m_master_identity.set_port (master_node_port_id);
-    error = srv_chn.connect (master_node_hostname, master_node_port_id, COMMAND_SERVER_REQUEST_CONNECT_SLAVE);
-    if (error != css_error_code::NO_ERRORS)
+    m_master_identity.set_hostname (master_node_hostname);
+    m_master_identity.set_port (master_node_port_id);
+    comm_error_code = srv_chn.connect (master_node_hostname, master_node_port_id,
+				       COMMAND_SERVER_REQUEST_CONNECT_SLAVE);
+    if (comm_error_code != css_error_code::NO_ERRORS)
       {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, srv_chn.get_channel_id ().c_str (),
+		comm_error_code);
+	return ER_REPLICATION_SETUP;
+      }
+
+    error = setup_protocol (srv_chn);
+    if (error != NO_ERROR)
+      {
+	ASSERT_ERROR ();
 	return error;
       }
 
-    error = g_instance->setup_protocol (srv_chn);
-    if (error != NO_ERROR)
-      {
-        return error;
-      }
 
     /* TODO[replication] : last position to be retrieved from recovery module */
-    cubstream::stream_position start_position = log_Gl.m_ack_stream_position;
+    cubstream::stream_position start_position = 0;
 
-    if (g_instance->need_replication_copy (start_position))
+    if (need_replication_copy (start_position))
       {
-        g_instance->is_copy_running = true;
-        error = g_instance->replication_copy_slave (cubthread::get_entry (), &g_instance->m_master_identity, true);
-        g_instance->is_copy_running = false;
+	/* TODO[replication] : replication copy */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, "", css_error_code::NO_ERRORS);
+	return ER_REPLICATION_SETUP;
       }
     else
       {
-        error = start_online_replication (srv_chn, start_position);
+	error = start_online_replication (srv_chn, start_position);
       }
 
     return error;
   }
 
-  int slave_node::start_online_replication (cubcomm::server_channel &srv_chn, const cubstream::stream_position start_position)
+  int slave_node::start_online_replication (cubcomm::server_channel &srv_chn,
+      const cubstream::stream_position start_position)
   {
     int error;
 
-    er_log_debug_replication (ARG_FILE_LINE, "slave_node::start_online_replication start_position: %lld\n",
-                              start_position);
+    er_log_debug_replication (ARG_FILE_LINE, "slave_node::start_online_replication start_position: %llu\n",
+			      start_position);
 
-    assert (g_instance->m_lc == NULL);
-    assert (g_instance->m_stream != NULL);
-    g_instance->m_lc = new log_consumer ();
-    g_instance->m_lc->fetch_suspend ();
+    assert (m_stream != NULL);
+    m_lc = new log_consumer ();
+    m_lc->fetch_suspend ();
 
-    g_instance->m_lc->set_stream (g_instance->m_stream);
+    m_lc->set_stream (m_stream);
 
     if ((REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) ==
 	REPL_SEMISYNC_ACK_ON_FLUSH)
       {
 	// route produced stream positions to get validated as flushed on disk before sending them
-	g_instance->m_lc->set_ack_producer ([] (cubstream::stream_position ack_sp)
+	m_lc->set_ack_producer ([this] (cubstream::stream_position ack_sp)
 	{
-	  g_instance->m_stream_file->update_sync_position (ack_sp);
+	  m_stream_file->update_sync_position (ack_sp);
 	});
       }
 
     /* start log_consumer daemons and apply thread pool */
-    g_instance->m_lc->start_daemons ();
+    m_lc->start_daemons ();
 
-    cubcomm::server_channel control_chn (g_instance->m_identity.get_hostname ().c_str ());
+    cubcomm::server_channel control_chn (m_identity.get_hostname ().c_str ());
     control_chn.set_channel_name (REPL_CONTROL_CHANNEL_NAME);
-    error = control_chn.connect (g_instance->m_master_identity.get_hostname ().c_str (),
-                                 g_instance->m_master_identity.get_port (),
-                                 COMMAND_SERVER_REQUEST_CONNECT_SLAVE_CONTROL);
+    error = control_chn.connect (m_master_identity.get_hostname ().c_str (),
+				 m_master_identity.get_port (),
+				 COMMAND_SERVER_REQUEST_CONNECT_SLAVE_CONTROL);
     if (error != css_error_code::NO_ERRORS)
       {
 	return error;
       }
-    /* start transfer receiver */
-    assert (g_instance->m_transfer_receiver == NULL);
 
+    /* start transfer receiver */
     cubreplication::slave_control_sender *sender = new slave_control_sender (std::move (
 		cubreplication::slave_control_channel (std::move (control_chn))));
 
     std::string ctrl_sender_daemon_name = "slave_control_sender_" + control_chn.get_channel_id ();
-    g_instance->m_ctrl_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
-				       sender, ctrl_sender_daemon_name.c_str ());
+    m_ctrl_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
+			   sender, ctrl_sender_daemon_name.c_str ());
 
-    g_instance->m_ctrl_sender = sender;
+    m_ctrl_sender = sender;
 
     if ((REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) ==
 	REPL_SEMISYNC_ACK_ON_FLUSH)
       {
-	g_instance->m_stream_file->set_sync_notifier ([sender] (const cubstream::stream_position & sp)
+	m_stream_file->set_sync_notifier ([sender] (const cubstream::stream_position &sp)
 	{
 	  // route produced stream positions to get validated as flushed on disk before sending them
 	  sender->set_synced_position (sp);
@@ -262,56 +286,37 @@ namespace cubreplication
       }
     else
       {
-	g_instance->m_lc->set_ack_producer ([sender] (cubstream::stream_position sp)
+	m_lc->set_ack_producer ([sender] (cubstream::stream_position sp)
 	{
 	  sender->set_synced_position (sp);
 	});
       }
 
-    g_instance->m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *g_instance->m_stream,
-	start_position);
+    m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *m_stream, start_position);
 
-    g_instance->m_lc->fetch_resume ();
+    m_lc->fetch_resume ();
 
     return NO_ERROR;
   }
 
-  void slave_node::final (void)
+  void slave_node::disconnect_from_master ()
   {
-    if (g_instance == NULL)
-      {
-	return;
-      }
-
+    er_log_debug_replication (ARG_FILE_LINE, "slave_node::disconnect_from_master");
     stop_and_destroy_online_repl ();
-
-    delete g_instance;
-    g_instance = NULL;
   }
 
-  void slave_node::stop_and_destroy_online_repl (void)
+  void slave_node::stop_and_destroy_online_repl ()
   {
     er_log_debug_replication (ARG_FILE_LINE, "slave_node::stop_and_destroy_online_repl");
 
-    assert (g_instance != NULL);
+    delete m_transfer_receiver;
+    m_transfer_receiver = NULL;
 
-    delete g_instance->m_transfer_receiver;
-    g_instance->m_transfer_receiver = NULL;
-
-    if (g_instance->m_lc != NULL)
+    if (m_lc != NULL)
       {
-        g_instance->m_lc->set_stop ();
-        g_instance->m_lc->fetch_resume ();
-        delete g_instance->m_lc;
-        g_instance->m_lc = NULL;
-      }
-
-    if (g_instance->m_ctrl_sender != NULL)
-      {
-        g_instance->m_ctrl_sender->stop ();
-        cubthread::get_manager ()->destroy_daemon_without_entry (g_instance->m_ctrl_sender_daemon);
-        delete g_instance->m_ctrl_sender;
-        g_instance->m_ctrl_sender = NULL;
+	m_lc->stop ();
+	delete m_lc;
+	m_lc = NULL;
       }
   }
 
@@ -324,7 +329,5 @@ namespace cubreplication
 
     return NO_ERROR;
   }
-
-  slave_node *slave_node::g_instance = NULL;
 
 } /* namespace cubreplication */

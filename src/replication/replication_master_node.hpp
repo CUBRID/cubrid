@@ -29,7 +29,16 @@
 #include "replication_node.hpp"
 #include "thread_manager.hpp"
 
-#include <mutex>
+namespace cubcomm
+{
+  class channel;
+}
+
+namespace cubstream
+{
+  class stream_file;
+  class multi_thread_stream;
+}
 
 namespace cubcomm
 {
@@ -50,26 +59,21 @@ namespace cubreplication
 
       cubthread::entry_workpool *m_new_slave_workers_pool;
 
-      master_node (const char *name);
-      ~master_node ();
-
     public:
       master_ctrl *m_control_channel_manager;
 
-      static master_node *get_instance (const char *name);
-
-      static void init (const char *name);
-      static void new_slave (int fd);
-      static void add_ctrl_chn (int fd);
-      static void new_slave_copy (int fd);
-      static void new_slave_copy_task (cubthread::entry &thread_ref, int fd);
-      static void final (void);
-
+    protected:
       int setup_protocol (cubcomm::channel &chn);
 
-      static void enable_active (void);
+    public:
+      master_node (const char *nam, cubstream::multi_thread_stream *stream, cubstream::stream_file *stream_file);
+      ~master_node ();
 
-      static void update_senders_min_position (const cubstream::stream_position &pos);
+      void new_slave_copy (int fd);
+      void new_slave_copy_task (cubthread::entry &thread_ref, int fd);
+      void new_slave (int fd);
+      void add_ctrl_chn (int fd);
+      void update_senders_min_position (const cubstream::stream_position &pos);
   };
 
 } /* namespace cubreplication */

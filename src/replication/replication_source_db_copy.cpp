@@ -32,6 +32,7 @@
 #include "replication_master_node.hpp"
 #include "replication_master_senders_manager.hpp"
 #include "replication_node.hpp"
+#include "replication_node_manager.hpp"
 #include "replication_object.hpp"
 #include "scan_manager.h"
 #include "stream_transfer_sender.hpp"
@@ -126,7 +127,7 @@ namespace cubreplication
     LOG_LSA null_LSA;
     LSA_SET_NULL (&null_LSA); 
     
-    sbr_repl_entry *sbr = new sbr_repl_entry (str.c_str (), "dba", "", "", null_LSA);
+    sbr_repl_entry *sbr = new sbr_repl_entry (str.c_str (), "dba", "", null_LSA);
     stream_entry.add_packable_entry (sbr);
 
     stream_entry.pack ();
@@ -269,7 +270,7 @@ namespace cubreplication
 
     /* TODO[replication] : max appenders in stream must be greater than number of parallel heap scanners */
     cubstream::multi_thread_stream *copy_db_stream = new cubstream::multi_thread_stream (buffer_size, 100);
-    const node_definition *myself = master_node::get_instance (NULL)->get_node_identity ();
+    const node_definition *myself = replication_node_manager::get_master_node ()->get_node_identity ();
     copy_db_stream->set_name ("repl_copy_" + std::string (myself->get_hostname ().c_str ()));
     copy_db_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
     copy_db_stream->init (0);
@@ -279,7 +280,7 @@ namespace cubreplication
 
   void source_copy_context::detach_stream_for_copy ()
   {
-    m_stream->set_stop ();
+    m_stream->stop ();
     delete m_stream;
     m_stream = NULL;
   }

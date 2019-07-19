@@ -30,14 +30,14 @@
 #include "master_control_channel.hpp"
 #include "replication_common.hpp"
 #include "replication_master_senders_manager.hpp"
-#include "transaction_master_group_complete_manager.hpp"
+#include "replication_node_manager.hpp"
 #include "replication_source_db_copy.hpp"
 #include "server_support.h"
 #include "stream_file.hpp"
+#include "transaction_master_group_complete_manager.hpp"
 
 namespace cubreplication
 {
-
  class new_slave_worker_task : public cubthread::entry_task
   {
     public:
@@ -48,135 +48,111 @@ namespace cubreplication
 
       void execute (cubthread::entry &thread_ref) override
       {
-        cubreplication::master_node::get_instance (NULL)->new_slave_copy_task (thread_ref, m_connection_fd);
+        replication_node_manager::get_master_node ()->new_slave_copy_task (thread_ref, m_connection_fd);
       };
 
     private:
       int m_connection_fd;
   };
 
-  master_node::master_node (const char *name)
-	: replication_node (name)
+  master_node::master_node (const char *name, cubstream::multi_thread_stream *stream,
+			    cubstream::stream_file *stream_file)
+    : replication_node (name)
   {
-    m_new_slave_workers_pool = cubthread::get_manager ()->create_worker_pool (NEW_SLAVE_THREADS, NEW_SLAVE_THREADS,
-      "replication_new_slave_workers", NULL, 1, 1);
-  }
+    m_stream = stream;
 
-  master_node::~master_node ()
-  {
-    cubthread::get_manager ()->destroy_worker_pool (m_new_slave_workers_pool);
-  }
-
-  master_node *master_node::get_instance (const char *name)
-  {
-    if (g_instance == NULL)
-      {
-	g_instance = new master_node (name);
-      }
-    return g_instance;
-  }
-
-  void master_node::init (const char *name)
-  {
-    assert (g_instance == NULL);
-    master_node *instance = master_node::get_instance (name);
-
-    instance->apply_start_position ();
-
-    INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_GENERATOR_BUFFER_SIZE);
-    int num_max_appenders = log_Gl.trantable.num_total_indices + 1;
-
-    instance->m_stream = new cubstream::multi_thread_stream (buffer_size, num_max_appenders);
-    instance->m_stream->set_name ("repl_" + std::string (name));
-    instance->m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
-    instance->m_stream->init (instance->m_start_position);
-    log_generator::set_global_stream (instance->m_stream);
-
-    /* create stream file */
-    std::string replication_path;
-    replication_node::get_replication_file_path (replication_path);
-    instance->m_stream_file = new cubstream::stream_file (*instance->m_stream, replication_path);
+    m_stream_file = stream_file;
 
     master_senders_manager::init ();
 
     cubtx::master_group_complete_manager::init ();
 
-    instance->m_control_channel_manager = new master_ctrl (cubtx::master_group_complete_manager::get_instance ());
+    m_control_channel_manager = new master_ctrl (cubtx::master_group_complete_manager::get_instance ());
 
-    er_log_debug_replication (ARG_FILE_LINE, "master_node:init replication_path:%s", replication_path.c_str ());
+    stream_entry fail_over_entry (m_stream, MVCCID_FIRST, stream_entry_header::NEW_MASTER);
+    fail_over_entry.pack ();
+  }
+
+  master_node::~master_node ()
+  {
+    cubthread::get_manager ()->destroy_worker_pool (m_new_slave_workers_pool);
+
+    master_senders_manager::final ();
+
+    delete m_control_channel_manager;
+    m_control_channel_manager = NULL;
+
+    cubtx::master_group_complete_manager::final ();
   }
 
   int master_node::setup_protocol (cubcomm::channel &chn)
   {
     UINT64 pos = 0, expected_magic;
     std::size_t max_len = sizeof (UINT64);
-    cubstream::stream_position available_pos;
+    cubstream::stream_position min_available_pos, curr_pos;
+    css_error_code comm_error_code = css_error_code::NO_ERRORS;
 
-    if (chn.recv ((char *) &expected_magic, max_len) != css_error_code::NO_ERRORS)
+    comm_error_code = chn.recv ((char *) &expected_magic, max_len);
+    if (comm_error_code != css_error_code::NO_ERRORS)
       {
-        return ER_FAILED;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
+		comm_error_code);
+	return ER_REPLICATION_SETUP;
       }
 
     if (expected_magic != replication_node::SETUP_REPLICATION_MAGIC)
       {
-        er_log_debug_replication (ARG_FILE_LINE, "master_node::setup_protocol error in setup protocol");
-        assert (false);
-        return ER_FAILED;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
+		comm_error_code);
+	return ER_REPLICATION_SETUP;
       }
 
-    if (chn.send ((char *) &replication_node::SETUP_REPLICATION_MAGIC, max_len) != css_error_code::NO_ERRORS)
+    comm_error_code = chn.send ((char *) &replication_node::SETUP_REPLICATION_MAGIC, max_len);
+    if (comm_error_code != css_error_code::NO_ERRORS)
       {
-        return ER_FAILED;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
+		comm_error_code);
+	return ER_REPLICATION_SETUP;
       }
 
-    available_pos = m_stream->get_min_pos_for_slave ();
-    pos = htoni64 (available_pos);
-    if (chn.send ((char *) &pos, max_len) !=  css_error_code::NO_ERRORS)
+    m_stream->get_min_available_and_curr_position (min_available_pos, curr_pos);
+
+    pos = htoni64 (min_available_pos);
+    comm_error_code = chn.send ((char *) &pos, max_len);
+    if (comm_error_code != css_error_code::NO_ERRORS)
       {
-        return ER_FAILED;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
+		comm_error_code);
+	return ER_REPLICATION_SETUP;
       }
+
+    pos = htoni64 (curr_pos);
+    comm_error_code = chn.send ((char *) &pos, max_len);
+    if (comm_error_code != css_error_code::NO_ERRORS)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
+		comm_error_code);
+	return ER_REPLICATION_SETUP;
+      }
+
+    er_log_debug_replication (ARG_FILE_LINE, "master_node::setup_protocol min_available_pos:%llu, curr_pos:%llu",
+			      min_available_pos, curr_pos);
 
     return NO_ERROR;
   }
 
-  void master_node::enable_active ()
-  {
-    std::lock_guard<std::mutex> lg (g_enable_active_mtx);
-    if (css_ha_server_state () == HA_SERVER_STATE_TO_BE_ACTIVE)
-      {
-	/* this is the first slave connecting to this node */
-	cubthread::entry *thread_p = thread_get_thread_entry_info ();
-	css_change_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE, true, HA_CHANGE_MODE_IMMEDIATELY, true);
-
-	stream_entry fail_over_entry (g_instance->m_stream, MVCCID_FIRST, stream_entry_header::NEW_MASTER);
-	fail_over_entry.pack ();
-      }
-  }
-
   void master_node::new_slave (int fd)
   {
-    /* TODO[replication] : this is processed on css_master_thread,
-     * maybe we should use a thread pool specifically for this tasks */
-    enable_active ();
-
-    er_log_debug_replication (ARG_FILE_LINE, "new_slave");
-
-    if (css_ha_server_state () != HA_SERVER_STATE_ACTIVE)
-      {
-	er_log_debug_replication (ARG_FILE_LINE, "new_slave invalid server state :%s",
-				  css_ha_server_state_string (css_ha_server_state ()));
-	return;
-      }
-
     cubcomm::channel chn;
     chn.set_channel_name (REPL_ONLINE_CHANNEL_NAME);
 
     css_error_code rc = chn.accept (fd);
+
     assert (rc == NO_ERRORS);
 
-    g_instance->setup_protocol (chn);
+    setup_protocol (chn);
 
-    master_senders_manager::add_stream_sender (new cubstream::transfer_sender (std::move (chn), *g_instance->m_stream));
+    master_senders_manager::add_stream_sender (new cubstream::transfer_sender (std::move (chn), *m_stream));
 
     er_log_debug_replication (ARG_FILE_LINE, "new_slave connected");
   }
@@ -198,7 +174,7 @@ namespace cubreplication
     css_error_code rc = chn.accept (fd);
     assert (rc == NO_ERRORS);
 
-    g_instance->m_control_channel_manager->add (std::move (chn));
+    m_control_channel_manager->add (std::move (chn));
 
     er_log_debug_replication (ARG_FILE_LINE, "control channel added");
   }
@@ -212,8 +188,7 @@ namespace cubreplication
   {
     er_log_debug_replication (ARG_FILE_LINE, "new_slave_copy");
 #if defined (SERVER_MODE)
-    cubthread::get_manager ()->push_task (master_node::get_instance (NULL)->m_new_slave_workers_pool,
-                                          new new_slave_worker_task (fd));
+    cubthread::get_manager ()->push_task (m_new_slave_workers_pool, new new_slave_worker_task (fd));
 #endif
   }
 
@@ -264,36 +239,14 @@ namespace cubreplication
 #endif
   }
 
-  void master_node::final (void)
-  {
-    if (g_instance == NULL)
-      {
-	return;
-      }
-
-    master_senders_manager::final ();
-
-    delete g_instance->m_control_channel_manager;
-    g_instance->m_control_channel_manager = NULL;
-
-    cubtx::master_group_complete_manager::final ();
-
-    delete g_instance;
-    g_instance = NULL;
-  }
-
   void master_node::update_senders_min_position (const cubstream::stream_position &pos)
   {
     /* TODO : we may choose to force flush of all data, even if was read by all senders */
-    g_instance->m_stream->set_last_recyclable_pos (pos);
-    g_instance->m_stream->reset_serial_data_read (pos);
+    m_stream->set_last_recyclable_pos (pos);
+    m_stream->reset_serial_data_read (pos);
 
     er_log_debug_replication (ARG_FILE_LINE, "master_node (stream:%s) update_senders_min_position: %llu,\n"
-			      " stream_read_pos:%llu, commit_pos:%llu", g_instance->m_stream->name ().c_str (),
-			      pos, g_instance->m_stream->get_curr_read_position (), g_instance->m_stream->get_last_committed_pos ());
+			      " stream_read_pos:%llu, commit_pos:%llu", m_stream->name ().c_str (),
+			      pos, m_stream->get_curr_read_position (),m_stream->get_last_committed_pos ());
   }
-
-
-  master_node *master_node::g_instance = NULL;
-  std::mutex master_node::g_enable_active_mtx;
 } /* namespace cubreplication */
