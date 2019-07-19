@@ -27,7 +27,6 @@
 #define _REPLICATION_SLAVE_NODE_HPP_
 
 #include "replication_node.hpp"
-#include "cubstream.hpp"
 #include "communication_server_channel.hpp"
 
 namespace cubstream
@@ -44,8 +43,6 @@ namespace cubreplication
 {
   class log_consumer;
   class slave_control_sender;
-
-  cubstream::stream_position compute_starting_stream_position ();
 
   class slave_node : public replication_node
   {

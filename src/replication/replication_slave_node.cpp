@@ -41,23 +41,6 @@
 
 namespace cubreplication
 {
-  cubstream::stream_position compute_starting_stream_position ()
-  {
-    cubstream::stream_position start_position = 0;
-
-    if (log_Gl.m_repl_rv.m_active_start_position > 0)
-      {
-	// Fetch older stream positions to enter filtered apply
-	start_position = log_Gl.m_repl_rv.m_active_start_position;
-      }
-    else
-      {
-	// No Filtered apply
-	start_position = log_Gl.hdr.m_ack_stream_position;
-      }
-    return start_position;
-  }
-
   slave_node::slave_node (const char *hostname, cubstream::multi_thread_stream *stream,
 			  cubstream::stream_file *stream_file)
     : replication_node (hostname)
@@ -269,7 +252,7 @@ namespace cubreplication
       }
 
     m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *m_stream,
-	compute_starting_stream_position ());
+	start_position);
 
     m_lc->fetch_resume ();
 

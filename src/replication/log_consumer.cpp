@@ -239,7 +239,6 @@ namespace cubreplication
 		    applier_worker_task *my_repl_applier_worker_task = it->second;
 		    if (my_repl_applier_worker_task->has_commit ())
 		      {
-			// todo: move log ack position assignment to slave gc manager after it is enabled
 			m_lc.execute_task (it->second);
 		      }
 		    else if (my_repl_applier_worker_task->has_abort ())
@@ -277,7 +276,6 @@ namespace cubreplication
 	    else
 	      {
 		MVCCID mvccid = se->get_mvccid ();
-
 		auto it = repl_tasks.find (mvccid);
 
 		if (it != repl_tasks.end ())
