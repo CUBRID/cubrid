@@ -73,7 +73,7 @@ namespace cubcomm
 
     /* send request */
     er_log_debug (ARG_FILE_LINE, "server_channel::connect (type:%d) to %s, port:%d, server_name:%s,"
-		  " server_name_size:%d\n",
+		  " server_name_size:%zu\n",
 		  cmd_type, hostname, port, m_server_name.c_str (), m_server_name.size ());
 
     rc = (css_error_code) css_send_request_with_socket (m_socket, cmd_type, &m_request_id,

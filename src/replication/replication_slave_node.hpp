@@ -47,7 +47,8 @@ namespace cubreplication
   class slave_node : public replication_node
   {
     private:
-      /* difference in bytes (stream positions) between slave recovered (start) position and
+      /* TODO[replication] : should this be a system parameter ?
+       * difference in bytes (stream positions) between slave recovered (start) position and
        * source available position which is acceptable to start replication wihout replication copy db phase */
       const static long long ACCEPTABLE_POS_DIFF_BEFORE_COPY = 100000;
 
@@ -57,24 +58,26 @@ namespace cubreplication
       cubstream::transfer_receiver *m_transfer_receiver;
       cubthread::daemon *m_ctrl_sender_daemon;
       slave_control_sender *m_ctrl_sender;
-      cubstream::stream_position m_source_available_pos;
+      cubstream::stream_position m_source_min_available_pos;
+      cubstream::stream_position m_source_curr_pos;
+
+    protected:
+      int setup_protocol (cubcomm::channel &chn);
+
+      bool need_replication_copy (const cubstream::stream_position start_position) const;
+
+      int start_online_replication (cubcomm::server_channel &srv_chn, const cubstream::stream_position start_position);
+
+      void disconnect_from_master ();
+
+      void stop_and_destroy_online_repl ();
 
     public:
 
       slave_node (const char *hostname, cubstream::multi_thread_stream *stream, cubstream::stream_file *stream_file);
       ~slave_node ();
 
-      int setup_protocol (cubcomm::channel &chn);
-
-      bool need_replication_copy (const cubstream::stream_position start_position) const;
-
       int connect_to_master (const char *master_node_hostname, const int master_node_port_id);
-
-      int start_online_replication (cubcomm::server_channel &srv_chn, const cubstream::stream_position start_position);
-
-      void disconnect_from_master ();
-
-      void stop_and_destroy_online_repl (void);
   };
 
 } /* namespace cubreplication */
