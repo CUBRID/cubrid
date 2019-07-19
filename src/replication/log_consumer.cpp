@@ -413,29 +413,17 @@ namespace cubreplication
 
   void log_consumer::fetch_suspend (void)
   {
-    std::unique_lock<std::mutex> ulock (m_fetch_suspend_mutex);
-    m_is_fetch_suspended = true;
-    ulock.unlock ();
-    m_fetch_suspend_condition_variable.notify_all ();
+    m_fetch_suspend.set ();
   }
 
   void log_consumer::fetch_resume (void)
   {
-    std::unique_lock<std::mutex> ulock (m_fetch_suspend_mutex);
-    m_is_fetch_suspended = false;
-    ulock.unlock ();
-    m_fetch_suspend_condition_variable.notify_all ();
+    m_fetch_suspend.clear ();
   }
 
   void log_consumer::wait_for_fetch_resume (void)
   {
-    if (m_is_fetch_suspended == false)
-      {
-	return;
-      }
-
-    std::unique_lock<std::mutex> ulock (m_fetch_suspend_mutex);
-    m_fetch_suspend_condition_variable.wait (ulock, [this] { return !m_is_fetch_suspended;});
+    m_fetch_suspend.wait ();
   }
 
   subtran_applier &log_consumer::get_subtran_applier ()

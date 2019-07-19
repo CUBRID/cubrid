@@ -27,6 +27,7 @@
 #define _LOG_CONSUMER_HPP_
 
 #include "cubstream.hpp"
+#include "semaphore.hpp"
 #include "slave_control_channel.hpp"
 #include "thread_manager.hpp"
 #include <chrono>
@@ -114,9 +115,7 @@ namespace cubreplication
        * while replication copy is running the fetch from online replication must be suspended
        * (although the stream contents are received and stored on local slave node)
        */
-      bool m_is_fetch_suspended;
-      std::condition_variable m_fetch_suspend_condition_variable;
-      std::mutex m_fetch_suspend_mutex;
+      cubsync::event_semaphore m_fetch_suspend;
 
     private:
 
@@ -135,7 +134,6 @@ namespace cubreplication
 	, m_started_tasks (0)
 	, m_apply_task_ready (false)
 	, m_is_stopped (false)
-	, m_is_fetch_suspended (true)
 	, ack_produce ([] (cubstream::stream_position)
       {
 	assert (false);
