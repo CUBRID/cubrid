@@ -138,9 +138,8 @@ set(WITH_LIBGPG_ERROR_URL "https://gnupg.org/ftp/gcrypt/libgpg-error/libgpg-erro
 # gcrypt library sources URL
 set(WITH_LIBGCRYPT_URL "https://gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.5.6.tar.bz2")
 
-# rapidjson library git properties
-set(WITH_RAPIDJSON_GIT_REPOSITORY "https://github.com/miloyip/rapidjson.git")
-set(WITH_RAPIDJSON_GIT_TAG "v1.1.0")
+# rapidjson library sources URL
+set(WITH_RAPIDJSON_URL "https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz")
 
 set(WITH_EXTERNAL_PREFIX "EXTERNAL" CACHE STRING "External library prefix (default: EXTERNAL)")
 set(WITH_BUNDLED_PREFIX "BUNDLED" CACHE STRING "Bundled library prefix (default: BUNDLED)")
@@ -880,7 +879,7 @@ endif(USE_CUBRID_ENV)
 # For external library options
 include(ExternalProject)
 set_property(DIRECTORY PROPERTY EP_BASE "${CMAKE_BINARY_DIR}/external")
-set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external --enable-static --disable-shared --with-pic CFLAGS=${CMAKE_C_FLAGS} CXXFLAGS=${CMAKE_CXX_FLAGS})
+set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external --enable-static --disable-shared --with-pic CFLAGS=-w CXXFLAGS=-w)
 
 # WITH_LIBREGEX can have multiple values with different meanings
 # on Linux:
@@ -941,11 +940,12 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
   list(APPEND EP_TARGETS ${LIBEXPAT_TARGET})
   if(UNIX)
     externalproject_add(${LIBEXPAT_TARGET}
-      URL               ${WITH_LIBEXPAT_URL}
-      TIMEOUT 300
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook
-      BUILD_COMMAND     make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      URL                  ${WITH_LIBEXPAT_URL}
+      TIMEOUT              300
+      DOWNLOAD_NO_PROGRESS 1
+      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook
+      BUILD_COMMAND        make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
     set(LIBEXPAT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libexpat.a)
     set(LIBEXPAT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/expat)
@@ -985,11 +985,12 @@ if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
   list(APPEND EP_TARGETS ${LIBJANSSON_TARGET})
   if(UNIX)
     externalproject_add(${LIBJANSSON_TARGET}
-      URL               ${WITH_LIBJANSSON_URL}
-      TIMEOUT 300
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      URL                  ${WITH_LIBJANSSON_URL}
+      TIMEOUT              300
+      DOWNLOAD_NO_PROGRESS 1
+      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS}
+      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
     set(LIBJANSSON_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libjansson.a)
     set(LIBJANSSON_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/jansson)
@@ -1060,11 +1061,12 @@ if(UNIX)
   if(WITH_LIBEDIT STREQUAL "EXTERNAL")
     set(LIBEDIT_TARGET libedit)
     externalproject_add(${LIBEDIT_TARGET}
-      URL               ${WITH_LIBEDIT_URL}
-      TIMEOUT 300
-      CONFIGURE_COMMAND "LDFLAGS=-L${CMAKE_CURRENT_BINARY_DIR}/external/lib" ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      URL                  ${WITH_LIBEDIT_URL}
+      TIMEOUT              300
+      DOWNLOAD_NO_PROGRESS 1
+      CONFIGURE_COMMAND    "LDFLAGS=-L${CMAKE_CURRENT_BINARY_DIR}/external/lib" ${DEFAULT_CONFIGURE_OPTS}
+      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
     if(TARGET ${LIBNCURSES_TARGET})
       add_dependencies(${LIBEDIT_TARGET} ${LIBNCURSES_TARGET})
@@ -1100,11 +1102,12 @@ if(WITH_LIBLZO STREQUAL "EXTERNAL")
     #compile LZO library given an internet url to a LZO archive
     #e.g. http://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz
     externalproject_add(${LIBLZO_TARGET}
-      URL               ${WITH_LIBLZO_URL}
-      TIMEOUT 300
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      URL                  ${WITH_LIBLZO_URL}
+      TIMEOUT              300
+      DOWNLOAD_NO_PROGRESS 1
+      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS}
+      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
     set(LIBLZO_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/liblzo2.a)
     set(LIBLZO_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
@@ -1138,11 +1141,12 @@ set(LIBGPG_ERROR_TARGET libgpg-error)
 if(UNIX)
   if(WITH_LIBGPG_ERROR STREQUAL "EXTERNAL")
     externalproject_add(${LIBGPG_ERROR_TARGET}
-      URL               ${WITH_LIBGPG_ERROR_URL}
-      TIMEOUT 300
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --enable-maintainer-mode --disable-doc --disable-tests
-      BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      URL                  ${WITH_LIBGPG_ERROR_URL}
+      TIMEOUT              300
+      DOWNLOAD_NO_PROGRESS 1
+      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} --enable-maintainer-mode --disable-doc --disable-tests
+      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
     set(LIBGPG_ERROR_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libgpg-error.a)
     set(LIBGPG_ERROR_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
@@ -1186,11 +1190,12 @@ if(WITH_LIBGCRYPT STREQUAL "EXTERNAL")
       set(WITH_LIBGPG_ERROR_PREFIX "--with-gpg-error-prefix=${CMAKE_CURRENT_BINARY_DIR}/external")
     endif()
     externalproject_add(${LIBGCRYPT_TARGET}
-      URL               ${WITH_LIBGCRYPT_URL}
-      TIMEOUT 300
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} CPPFLAGS=-I${CMAKE_CURRENT_BINARY_DIR}/external/include --enable-maintainer-mode ${WITH_LIBGPG_ERROR_PREFIX}
-      BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      URL                  ${WITH_LIBGCRYPT_URL}
+      TIMEOUT              300
+      DOWNLOAD_NO_PROGRESS 1
+      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} CPPFLAGS=-I${CMAKE_CURRENT_BINARY_DIR}/external/include --enable-maintainer-mode ${WITH_LIBGPG_ERROR_PREFIX}
+      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
 
     set(LIBGCRYPT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libgcrypt.a)
@@ -1237,14 +1242,15 @@ endif(WIN32)
 set(RAPIDJSON_TARGET rapidjson)
 externalproject_add(${RAPIDJSON_TARGET}
   # tried URL but archive gets downloaded every time. URL_MD5 may help
-  URL https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz
-  TIMEOUT 300
+  URL                  ${WITH_RAPIDJSON_URL}
+  TIMEOUT              300
+  DOWNLOAD_NO_PROGRESS 1
   # don't install
-  INSTALL_COMMAND ""
+  INSTALL_COMMAND      ""
   # don't build test, doc and examples
-  CMAKE_CACHE_ARGS -DRAPIDJSON_BUILD_TESTS:string=off
-                   -DRAPIDJSON_BUILD_DOC:string=off
-                   -DRAPIDJSON_BUILD_EXAMPLES:string=off
+  CMAKE_CACHE_ARGS     -DRAPIDJSON_BUILD_TESTS:STRING=off
+                       -DRAPIDJSON_BUILD_DOC:STRING=off
+                       -DRAPIDJSON_BUILD_EXAMPLES:STRING=off
 )
 # add to include directories
 include_directories(${CMAKE_BINARY_DIR}/external/Source/rapidjson/include)

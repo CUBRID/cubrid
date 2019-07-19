@@ -541,7 +541,7 @@ tzc_build_filepath (char *path, size_t size, const char *dir, const char *filena
  *			      the end of the string/line.
  * Returns:
  * str(in/out): string from where to remove the whitespaces described above.
- *			
+ *
  */
 static void
 trim_comments_whitespaces (char *str)
@@ -4062,7 +4062,7 @@ comp_func_raw_ds_rulesets (const void *arg1, const void *arg2)
 
 /*
  * get_day_of_week_for_raw_rule - Returns the day in which the ds_rule applies
- *			
+ *
  * Returns: the day
  * rule(in): daylight saving rule
  * year(in): year in which to apply rule
@@ -4819,8 +4819,9 @@ tzc_log_error (const TZ_RAW_CONTEXT * context, const int code, const char *msg1,
 
   if (context != NULL && !IS_EMPTY_STR (context->current_file) && context->current_line != -1)
     {
-      snprintf (err_msg_temp, sizeof (err_msg_temp), " (file %s, line %d)", context->current_file,
-		context->current_line);
+      int ret = snprintf (err_msg_temp, sizeof (err_msg_temp) - 1, " (file %s, line %d)", context->current_file,
+			  context->current_line);
+      (void) ret;		// suppress format-truncate warning
     }
   strcat (err_msg, err_msg_temp);
 
@@ -5002,7 +5003,7 @@ comp_func_tz_windows_zones (const void *arg1, const void *arg2)
 /*
  * xml_start_mapZone() - extracts from a mapZone tag the Windows timezone name
  *			 and IANA timezone name
- *			
+ *
  * Returns: 0 parser OK, non-zero value if parser NOK
  * data(in): user data
  * attr(in): array of pairs for XML attribute and value (strings) of current
@@ -5080,11 +5081,11 @@ xml_start_mapZone (void *data, const char **attr)
 /*
  * tzc_load_windows_iana_map() - loads the data from the file marked as
  *			        TZF_LIBC_IANA_ZONES_MAP
- *			
+ *
  * Returns: 0 (NO_ERROR) if success, error code or -1 otherwise
  * tz_data(out): timezone data structure to hold the loaded information
  * input_folder(in): folder containing IANA's timezone database
- *	
+ *
  */
 static int
 tzc_load_windows_iana_map (TZ_DATA * tz_data, const char *input_folder)
@@ -5351,7 +5352,7 @@ exit:
 /*
  * tz_data_partial_clone() - copies timezone data from tzd into
  *                           the three data structures
- *		
+ *
  * Returns: error or no error
  * timezone_names(in/out): timezone names without aliases
  * timezones(in/out): timezones
