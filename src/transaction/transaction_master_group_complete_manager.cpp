@@ -77,8 +77,7 @@ namespace cubtx
   //
   void master_group_complete_manager::notify_stream_ack (const cubstream::stream_position stream_pos)
   {
-    /* TODO - remove early return after complete manager is finished */
-    log_Gl.hdr.m_ack_stream_position = stream_pos;
+    /* TODO - disable it temporary since it is not tested */
     return;
 
     /* TODO - consider quorum. Consider multiple calls of same thread. */
@@ -86,8 +85,6 @@ namespace cubtx
       {
 	cubthread::entry *thread_p = &cubthread::get_entry ();
 	do_complete (thread_p);
-	assert (log_Gl.hdr.m_ack_stream_position <= stream_pos);
-	log_Gl.hdr.m_ack_stream_position = stream_pos;
       }
   }
 

@@ -4487,6 +4487,8 @@ log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, cu
   complete_lsa->pageid = NULL_LOG_PAGEID;
   complete_lsa->offset = NULL_LOG_OFFSET;
 
+  log_Gl.hdr.m_ack_stream_position = stream_pos;
+
   /* TODO - add and use group.has_postpone and get rid of has_postpone parameter */
   if (has_postpone)
     {

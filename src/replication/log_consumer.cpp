@@ -115,7 +115,6 @@ namespace cubreplication
 	  }
 
 	(void) locator_repl_end_tran (&thread_ref, true);
-	log_Gl.hdr.m_ack_stream_position = m_gc_end_position;
 	m_lc.end_one_task ();
       }
 
@@ -143,11 +142,6 @@ namespace cubreplication
       size_t get_entries_cnt (void)
       {
 	return m_repl_stream_entries.size ();
-      }
-
-      void set_gc_end_position (cubstream::stream_position gc_end_position)
-      {
-	m_gc_end_position = gc_end_position;
       }
 
       void stringify (string_buffer &sb)
@@ -184,7 +178,8 @@ namespace cubreplication
 	if (is_filtered_apply_segment (repl_stream_entry->get_stream_entry_end_position ()))
 	  {
 	    MVCCID mvccid = repl_stream_entry->get_mvccid ();
-	    return log_Gl.m_repl_rv.m_active_mvcc_ids.find (mvccid) == log_Gl.m_repl_rv.m_active_mvcc_ids.end ();
+	    return repl_stream_entry->is_group_commit ()
+		   || log_Gl.m_repl_rv.m_active_mvcc_ids.find (mvccid) == log_Gl.m_repl_rv.m_active_mvcc_ids.end ();
 	  }
 
 	if (!log_Gl.m_repl_rv.m_active_mvcc_ids.empty ())
@@ -238,16 +233,13 @@ namespace cubreplication
 		// apply all sub-transaction first
 		m_lc.get_subtran_applier ().apply ();
 
-		for (tasks_map::iterator it = repl_tasks.begin ();
-		     it != repl_tasks.end ();
-		     it++)
+		for (tasks_map::iterator it = repl_tasks.begin (); it != repl_tasks.end (); it++)
 		  {
 		    /* check last stream entry of task */
 		    applier_worker_task *my_repl_applier_worker_task = it->second;
 		    if (my_repl_applier_worker_task->has_commit ())
 		      {
 			// todo: move log ack position assignment to slave gc manager after it is enabled
-			it->second->set_gc_end_position (se->get_stream_entry_end_position ());
 			m_lc.execute_task (it->second);
 		      }
 		    else if (my_repl_applier_worker_task->has_abort ())
