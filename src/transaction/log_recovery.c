@@ -2888,11 +2888,9 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
   for (int i = 1; i < log_Gl.trantable.num_total_indices; ++i)
     {
       LOG_TDES *crt_tdes = NULL;
-      if ((crt_tdes = LOG_FIND_TDES (i)) != NULL && crt_tdes->trid != NULL_TRANID
-	  && !LSA_ISNULL (&crt_tdes->undo_nxlsa))
+      if ((crt_tdes = LOG_FIND_TDES (i)) != NULL && crt_tdes->trid != NULL_TRANID)
 	{
 	  _er_log_debug (ARG_FILE_LINE, "HA recovery: found active at end of analysis: trid:%d \n", crt_tdes->trid);
-	  log_Gl.m_repl_rv.m_active_tran_ids.insert (crt_tdes->trid);
 	  if (LSA_ISNULL (&log_Gl.m_min_active_lsa) || LSA_LT (&crt_tdes->head_lsa, &log_Gl.m_min_active_lsa))
 	    {
 	      LSA_COPY (&log_Gl.m_min_active_lsa, &crt_tdes->head_lsa);
@@ -4595,6 +4593,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	  && (tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED || tdes->state == TRAN_UNACTIVE_ABORTED)
 	  && LSA_ISNULL (&tdes->undo_nxlsa))
 	{
+	  // todo: also take into account mccids set during redo
 	  (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
 	  logtb_free_tran_index (thread_p, tran_index);
 	}
@@ -5094,85 +5093,9 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		     (std::uint64_t) log_Gl.hdr.m_ack_stream_position);
     }
 
-  if (!LSA_ISNULL (&log_Gl.m_min_active_lsa))
+  for (auto it = log_Gl.m_repl_rv.m_active_mvcc_ids.begin (); it != log_Gl.m_repl_rv.m_active_mvcc_ids.end (); ++it)
     {
-      LSA_COPY (&log_lsa, &log_Gl.m_min_active_lsa);
-      while (!LSA_ISNULL (&log_lsa))
-	{
-	  if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
-	    {
-	      log_zip_free (undo_unzip_ptr);
-
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_undo active start position recovery");
-	      return;
-	    }
-
-	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
-
-	  while (!LSA_ISNULL (&log_lsa))
-	    {
-	      if (log_Gl.m_repl_rv.m_active_tran_ids.find (log_rec->trid) != log_Gl.m_repl_rv.m_active_tran_ids.end ())
-		{
-		  switch (log_rec->type)
-		    {
-		    case LOG_MVCC_UNDOREDO_DATA:
-		    case LOG_MVCC_DIFF_UNDOREDO_DATA:
-		      {
-			LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
-			size_t rec_size = sizeof (LOG_REC_MVCC_UNDOREDO);
-			LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, rec_size, &log_lsa, log_pgptr);
-			LOG_REC_MVCC_UNDOREDO *mvcc_undoredo =
-			  (LOG_REC_MVCC_UNDOREDO *) ((char *) log_pgptr->area + log_lsa.offset);
-			log_Gl.m_repl_rv.m_active_mvcc_ids.insert (mvcc_undoredo->mvccid);
-			break;
-		      }
-
-		    case LOG_MVCC_UNDO_DATA:
-		      {
-			LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
-			size_t rec_size = sizeof (LOG_REC_MVCC_UNDO);
-			LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, rec_size, &log_lsa, log_pgptr);
-			LOG_REC_MVCC_UNDO *mvcc_undo =
-			  (LOG_REC_MVCC_UNDO *) ((char *) log_pgptr->area + log_lsa.offset);
-			log_Gl.m_repl_rv.m_active_mvcc_ids.insert (mvcc_undo->mvccid);
-			break;
-		      }
-
-		    case LOG_MVCC_REDO_DATA:
-		      {
-			LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
-			size_t rec_size = sizeof (LOG_REC_MVCC_REDO);
-			LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, rec_size, &log_lsa, log_pgptr);
-			LOG_REC_MVCC_REDO *mvcc_redo =
-			  (LOG_REC_MVCC_REDO *) ((char *) log_pgptr->area + log_lsa.offset);
-			log_Gl.m_repl_rv.m_active_mvcc_ids.insert (mvcc_redo->mvccid);
-			break;
-		      }
-		    default:
-		      break;
-		    }
-		}
-
-	      if (log_lsa.pageid != log_rec->forw_lsa.pageid)
-		{
-		  // page is different; we need to change the fetched log page
-		  LSA_COPY (&log_lsa, &log_rec->forw_lsa);
-		  break;
-		}
-	      else
-		{
-		  LSA_COPY (&log_lsa, &log_rec->forw_lsa);
-		  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
-		}
-	    }
-	}
-
-      for (auto it = log_Gl.m_repl_rv.m_active_mvcc_ids.begin (); it != log_Gl.m_repl_rv.m_active_mvcc_ids.end (); ++it)
-	{
-	  _er_log_debug (ARG_FILE_LINE, "HA recovery: active mvcc recovery: MVCCID found:" "%llu\n",
-			 (std::uint64_t) * it);
-	}
-      log_Gl.m_repl_rv.m_active_tran_ids.clear ();
+      _er_log_debug (ARG_FILE_LINE, "HA recovery: active mvcc recovery: MVCCID found:" "%llu\n", (std::uint64_t) * it);
     }
 
   log_zip_free (undo_unzip_ptr);
