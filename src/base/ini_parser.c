@@ -573,7 +573,7 @@ ini_parser_load (const char *ininame)
   char line[INI_BUFSIZ + 1];
   char section[INI_BUFSIZ + 1];
   char key[INI_BUFSIZ + 1];
-  char tmp[INI_BUFSIZ + 1];
+  char tmp[(INI_BUFSIZ + 1) * 2];
   char val[INI_BUFSIZ + 1];
 
   int last = 0;
