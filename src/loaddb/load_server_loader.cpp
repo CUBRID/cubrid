@@ -392,25 +392,11 @@ namespace cubload
 	    new_recdes.data = NULL;
 	    new_recdes.area_size = 0;
 	  }
-
-	// Skip loading if syntax check only is enabled.
-	/*
-	error_code = locator_attribute_info_force (m_thread_ref, &m_scancache.node.hfid, &oid, &m_attrinfo, NULL, 0,
-			 LC_FLUSH_INSERT, op_type, &m_scancache, &force_count, false,
-			 REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, NULL,
-			 UPDATE_INPLACE_NONE, NULL, false);
-	if (error_code != NO_ERROR)
-	  {
-	    m_error_handler.on_failure ();
-	    return;
-	  }*/
       }
 
     m_session.stats_update_current_line (m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1);
     clear_db_values ();
 
-    // Check if we finished the batch so that we can issue the multi insert.
-    //if (m_session.
   }
 
   int

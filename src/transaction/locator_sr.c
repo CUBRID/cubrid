@@ -13782,7 +13782,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 		      return error_code;
 		    }
 
-                  PGBUF_CLEAR_WATCHER (&home_hint_p);
+                  //PGBUF_CLEAR_WATCHER (&home_hint_p);
                   pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &home_hint_p);
                   //PGBUF_CLEAR_WATCHER (&scan_cache->page_watcher);
 	        }

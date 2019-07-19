@@ -213,15 +213,15 @@ namespace cubload
 	else
 	  {
 
-	    // order batch commits, therefore wait until previous batch is committed
-	    m_session.wait_for_previous_batch (m_batch.get_id ());
-
 	    server_object_loader *obj2 = dynamic_cast<server_object_loader *> (&driver->get_object_loader());
 
 	    obj2->init (m_batch.get_class_id());
 	    obj2->execute_before_batch_end();
 
 	    obj2->destroy();
+
+	    // order batch commits, therefore wait until previous batch is committed
+	    m_session.wait_for_previous_batch (m_batch.get_id ());
 
 	    xtran_server_commit (&thread_ref, false);
 	    std::string class_name = m_session.get_class_registry ().get_class_entry (m_batch.get_class_id ())->get_class_name ();
