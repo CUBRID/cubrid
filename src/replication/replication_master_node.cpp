@@ -77,7 +77,7 @@ namespace cubreplication
 
     available_pos = m_stream->get_min_pos_for_slave ();
     pos = htoni64 (available_pos);
-    if (chn.send ((char *) &pos, max_len) !=  css_error_code::NO_ERRORS)
+    if (chn.send ((char *) &pos, max_len) != css_error_code::NO_ERRORS)
       {
 	return ER_FAILED;
       }
