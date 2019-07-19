@@ -21,9 +21,7 @@
 #define _DB_JSON_TYPES_INTERNAL_HPP
 
 #include "db_json_allocator.hpp"
-
-#include "rapidjson/document.h"
-#include "rapidjson/encodings.h"
+#include "db_rapidjson.hpp"
 
 #if defined GetObject
 /* stupid windows and their definitions; GetObject is defined as GetObjectW or GetObjectA */

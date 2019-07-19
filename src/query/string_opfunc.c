@@ -6143,7 +6143,7 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
 	bool has_zone = false;
 	bool is_explicit_time = false;
 
-	error = db_string_to_datetimetz (db_get_string (left), &ldatetimetz, &has_zone);
+	error = db_string_to_datetimetz_ex (db_get_string (left), db_get_string_size (left), &ldatetimetz, &has_zone);
 	if (error == NO_ERROR && has_zone == true)
 	  {
 	    tz_id = ldatetimetz.tz_id;
@@ -19639,30 +19639,17 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
       _d = days[_m];
     }
 
-  if (_m == 0)
-    {
-      _y--;
-      days[2] = LEAP (_y) ? 29 : 28;
-      _m = 12;
-    }
-
   /* date */
-  if (_m < 0)
+  if (_m <= 0)
     {
       _y += (_m / 12);
-      if (_m % 12 == 0)
+      _m %= 12;
+      if (_m <= 0)
 	{
-	  _m = 1;
+	  _m += 12;
+	  _y--;
 	}
-      else
-	{
-	  _m %= 12;
-	  if (_m < 0)
-	    {
-	      _m += 12;
-	      _y--;
-	    }
-	}
+      days[2] = LEAP (_y) ? 29 : 28;
     }
 
   /* just years and/or months case */
@@ -19671,18 +19658,11 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
       if (_m <= 0)
 	{
 	  _y += (_m / 12);
-	  if (_m % 12 == 0)
+	  _m %= 12;
+	  if (_m <= 0)
 	    {
-	      _m = 1;
-	    }
-	  else
-	    {
-	      _m %= 12;
-	      if (_m <= 0)
-		{
-		  _m += 12;
-		  _y--;
-		}
+	      _m += 12;
+	      _y--;
 	    }
 	}
 

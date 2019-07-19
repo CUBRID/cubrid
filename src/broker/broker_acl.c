@@ -33,7 +33,7 @@
 #include "broker_util.h"
 #include "broker_filename.h"
 
-#define ADMIN_ERR_MSG_SIZE	1024
+#define ADMIN_ERR_MSG_SIZE	BROKER_PATH_MAX * 2
 #define ACCESS_FILE_DELIMITER ":"
 #define IP_FILE_DELIMITER ","
 

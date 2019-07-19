@@ -58,6 +58,7 @@
 
 #include "db_json_path.hpp"
 #include "db_json_types_internal.hpp"
+#include "db_rapidjson.hpp"
 #include "dbtype.h"
 #include "memory_alloc.h"
 #include "memory_private_allocator.hpp"
@@ -67,14 +68,8 @@
 #include "string_opfunc.h"
 #include "system_parameter.h"
 
-#include "rapidjson/error/en.h"
-#include "rapidjson/rapidjson.h"
-#include "rapidjson/schema.h"
-#include "rapidjson/stringbuffer.h"
-#include "rapidjson/writer.h"
-
-#include <sstream>
 #include <algorithm>
+#include <sstream>
 #include <stack>
 
 #define TODO_OPTIMIZE_JSON_BODY_STRING true

@@ -8683,7 +8683,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   int current_op_type = SINGLE_ROW_UPDATE;
   PRUNING_CONTEXT *pcontext = NULL;
   DEL_LOB_INFO *del_lob_info_list = NULL;
-  RECDES recdes;
   MVCC_UPDDEL_REEV_DATA mvcc_upddel_reev_data;
   MVCC_REEV_DATA mvcc_reev_data;
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
@@ -8990,6 +8989,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		      SCAN_CODE scan_code;
 		      int error;
 		      int i;
+		      RECDES recdes = RECDES_INITIALIZER;
 
 		      /* read lob attributes */
 		      scan_code =
@@ -9543,7 +9543,6 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   UPDDEL_CLASS_INFO *query_class = NULL;
   UPDDEL_CLASS_INFO_INTERNAL *internal_classes = NULL, *internal_class = NULL;
   DEL_LOB_INFO *del_lob_info_list = NULL;
-  RECDES recdes;
   MVCC_REEV_DATA mvcc_reev_data;
   MVCC_UPDDEL_REEV_DATA mvcc_upddel_reev_data;
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
@@ -9796,6 +9795,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  SCAN_CODE scan_code;
 		  int error;
 		  int i;
+		  RECDES recdes = RECDES_INITIALIZER;
 
 		  /* read lob attributes */
 		  scan_code =
