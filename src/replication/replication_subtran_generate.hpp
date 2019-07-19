@@ -17,25 +17,34 @@
  *
  */
 
-/*
- * replication_common.hpp
- */
+//
+// manage logging and replication for sub-transactions (changes of serial/click counter)
+//
 
-#ident "$Id$"
+#ifndef _REPLICATION_SUBTRAN_GENERATE_HPP_
+#define _REPLICATION_SUBTRAN_GENERATE_HPP_
 
-#ifndef _REPLICATION_COMMON_HPP_
-#define _REPLICATION_COMMON_HPP_
-
-#include "error_manager.h"
-#define er_log_debug_replication(...) if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA)) _er_log_debug(__VA_ARGS__)
+#include "log_generator.hpp"
 
 namespace cubreplication
 {
-  typedef enum
+  class subtran_generate
   {
-    REPL_SEMISYNC_ACK_ON_CONSUME,
-    REPL_SEMISYNC_ACK_ON_FLUSH
-  } REPL_SEMISYNC_ACK_MODE;
-};
+    public:
 
-#endif /* _REPLICATION_COMMON_HPP_ */
+      subtran_generate ();
+      ~subtran_generate ();
+
+      void start ();
+      void commit ();
+      void abort ();
+
+      log_generator &get_repl_generator ();
+
+    private:
+      log_generator m_generator;
+      bool m_started;
+  };
+} // namespace cubreplication
+
+#endif // !_REPLICATION_SUBTRAN_GENERATE_HPP_

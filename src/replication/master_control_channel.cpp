@@ -30,7 +30,9 @@
 
 #include "byte_order.h"
 #include "communication_channel.hpp"
+#include "error_manager.h"
 #include "stream_transfer_sender.hpp"
+#include "system_parameter.h"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
@@ -52,12 +54,13 @@ namespace cubreplication
     : m_chn (std::move (chn))
     , m_stream_ack (stream_ack)
   {
+    er_print_callstack (ARG_FILE_LINE, "ack_reader_task::ack_reader_task %p\n", stream_ack);
   }
 
   void ack_reader_task::execute (cubthread::entry &thread_ref)
   {
     while (true)
-      {       
+      {
 	if (!m_chn->is_connection_alive ())
 	  {
 	    return;
@@ -73,6 +76,8 @@ namespace cubreplication
 	    return;
 	  }
 
+	er_log_debug (ARG_FILE_LINE, "ack_reader_task::execute %llu\n", ack_sp);
+	assert (m_stream_ack != NULL);
 	m_stream_ack->notify_stream_ack (ntohi64 (ack_sp));
       }
   }
@@ -137,13 +142,16 @@ namespace cubreplication
   master_ctrl::check_alive ()
   {
     std::lock_guard<std::mutex> lg (m_mtx);
-    for (auto it =  m_ctrl_channel_readers.begin (); it !=  m_ctrl_channel_readers.end (); ++it)
+    for (auto it = m_ctrl_channel_readers.begin (); it != m_ctrl_channel_readers.end ();)
       {
 	if (!it->second->is_connection_alive ())
 	  {
 	    cubthread::get_manager ()->destroy_daemon (it->first);
-	    m_ctrl_channel_readers.erase (it);
-	    --it;
+	    it = m_ctrl_channel_readers.erase (it);
+	  }
+	else
+	  {
+	    ++it;
 	  }
       }
   }

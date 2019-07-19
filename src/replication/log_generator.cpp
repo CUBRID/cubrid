@@ -44,6 +44,14 @@ namespace cubreplication
   }
 
   void
+  log_generator::set_tran_repl_info (stream_entry_header::TRAN_STATE state)
+  {
+    assert (m_stream_entry.get_stream () != NULL);
+    m_stream_entry.set_state (state);
+    m_stream_entry.check_mvccid_is_valid ();
+  }
+
+  void
   log_generator::add_statement (repl_info_sbr &stmt_info)
   {
     LOG_LSA *p_lsa;
@@ -56,9 +64,8 @@ namespace cubreplication
     p_lsa = logtb_find_current_tran_lsa (thread_p);
     assert (p_lsa != NULL);
 
-    sbr_repl_entry *repl_obj =
-	    new sbr_repl_entry (stmt_info.stmt_text, stmt_info.db_user, stmt_info.db_password,
-				stmt_info.sys_prm_context, *p_lsa);
+    sbr_repl_entry *repl_obj = new sbr_repl_entry (stmt_info.stmt_text, stmt_info.db_user, stmt_info.sys_prm_context,
+	*p_lsa);
     append_repl_object (*repl_obj);
   }
 
@@ -241,6 +248,18 @@ namespace cubreplication
   }
 
   void
+  log_generator::add_create_savepoint (const char *savept_name)
+  {
+    append_repl_object (* (new savepoint_object (savept_name, savepoint_object::CREATE_SAVEPOINT)));
+  }
+
+  void
+  log_generator::add_rollback_to_savepoint (const char *savept_name)
+  {
+    append_repl_object (* (new savepoint_object (savept_name, savepoint_object::ROLLBACK_TO_SAVEPOINT)));
+  }
+
+  void
   log_generator::update_lsastamp_for_changed_repl_object (const OID &inst_oid)
   {
     if (is_row_replication_disabled ())
@@ -297,12 +316,13 @@ namespace cubreplication
     return &m_stream_entry;
   }
 
-  void
+  cubstream::stream_position
   log_generator::pack_stream_entry (void)
   {
-    assert (m_has_stream);
+    cubstream::stream_position end_pos;
+
+    assert (m_stream_entry.get_stream () != NULL);
     assert (!m_stream_entry.is_tran_state_undefined ());
-    assert (MVCCID_IS_VALID (m_stream_entry.get_mvccid ()));
 
     if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
       {
@@ -312,7 +332,10 @@ namespace cubreplication
       }
 
     m_stream_entry.pack ();
+    end_pos = m_stream_entry.get_stream_entry_end_position ();
     m_stream_entry.reset ();
+
+    return end_pos;
   }
 
   void
@@ -440,6 +463,13 @@ namespace cubreplication
   log_generator::on_sysop_abort (LOG_LSA &start_lsa)
   {
     m_stream_entry.destroy_objects_after_lsa (start_lsa);
+  }
+
+  void
+  log_generator::on_subtran_commit ()
+  {
+    assert (m_pending_to_be_added.size () == 0);
+    set_tran_repl_info (cubreplication::stream_entry_header::SUBTRAN_COMMIT);
   }
 
   void

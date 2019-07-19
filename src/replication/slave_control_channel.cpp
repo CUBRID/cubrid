@@ -21,15 +21,64 @@
  * slave_control_channel.cpp - manages slave control channel entries
  */
 
+#include "error_manager.h"
 #include "slave_control_channel.hpp"
+#include "system_parameter.h"
 
+#include <atomic>
+#include <condition_variable>
 #include <memory>
+#include <mutex>
 
 #include "byte_order.h"
 #include "communication_channel.hpp"
 
 namespace cubreplication
 {
+  slave_control_sender::slave_control_sender (slave_control_channel &&ctrl_chn)
+    : m_ctrl_chn (std::move (ctrl_chn))
+    , m_stop (false)
+    , m_last_stream_pos (0ULL)
+  {
+  }
+
+  void slave_control_sender::execute ()
+  {
+    std::unique_lock<std::mutex> ul (m_mtx);
+    if (m_stop)
+      {
+	return;
+      }
+
+    m_cv.wait (ul);
+
+    if (!m_stop)
+      {
+	m_ctrl_chn.send_ack (m_last_stream_pos);
+	er_log_debug (ARG_FILE_LINE, "slave_control_sender::execute, send ack = %llu\n",
+		      (unsigned long long) m_last_stream_pos);
+      }
+  }
+
+  void slave_control_sender::retire ()
+  {
+    // customize destroy daemon to not dealloc resources
+  }
+
+  void slave_control_sender::stop ()
+  {
+    std::unique_lock<std::mutex> ul (m_mtx);
+    m_stop = true;
+    m_cv.notify_one ();
+  }
+
+  void slave_control_sender::set_synced_position (const cubstream::stream_position &sp)
+  {
+    std::unique_lock<std::mutex> ul (m_mtx);
+    m_last_stream_pos = sp;
+    m_cv.notify_one ();
+  }
+
   slave_control_channel::slave_control_channel (cubcomm::channel &&chn)
     : m_chn (new cubcomm::channel (std::move (chn)))
   {

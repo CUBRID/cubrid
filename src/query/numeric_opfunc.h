@@ -46,7 +46,7 @@ typedef enum
 #define SECONDS_OF_ONE_DAY      86400	/* 24 * 60 * 60 */
 #define MILLISECONDS_OF_ONE_DAY 86400000	/* 24 * 60 * 60 * 1000 */
 
-#define db_locate_numeric(value) ((const DB_C_NUMERIC) ((value)->data.num.d.buf))
+#define db_locate_numeric(value) ((DB_C_NUMERIC) ((value)->data.num.d.buf))
 
 #if defined(SERVER_MODE)
 extern void numeric_init_power_value_string (void);

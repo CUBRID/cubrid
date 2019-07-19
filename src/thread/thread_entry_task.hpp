@@ -55,16 +55,8 @@ namespace cubthread
   //     2.2. pass it to a worker pool to be executed once
   //        see thread_manager.hpp, thread_daemon.hpp and thread_worker_pool.hpp for more details
   //
-  class entry_task : public task<entry>
-  {
-    public:
-
-      entry_task () = default;
-
-    private:
-      // disable copy constructor
-      entry_task (const entry_task &other);
-  };
+  using entry_task = task<entry>;
+  using entry_callable_task = callable_task<entry>;
 
   // cubthread::entry_manager
   //

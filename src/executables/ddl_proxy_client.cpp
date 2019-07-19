@@ -59,7 +59,6 @@ main (int argc, char *argv[])
   GETOPT_LONG possible_arguments[] =
   {
     {DDL_PROXY_USER_L, 1, 0, DDL_PROXY_USER_S},
-    {DDL_PROXY_PASSWORD_L, 1, 0, DDL_PROXY_PASSWORD_S},
     {DDL_PROXY_OUTPUT_FILE_L, 1, 0, DDL_PROXY_OUTPUT_FILE_S},
     {DDL_PROXY_COMMAND_L, 1, 0, DDL_PROXY_COMMAND_S},
     {DDL_PROXY_REQUEST_L, 1, 0, DDL_PROXY_REQUEST_S },
@@ -91,15 +90,6 @@ main (int argc, char *argv[])
 	      free ((void *) arguments.user_name);
 	    }
 	  arguments.user_name = strdup (optarg);
-	  break;
-
-	case DDL_PROXY_PASSWORD_S:
-	  if (arguments.passwd != NULL)
-	    {
-	      free ((void *) arguments.passwd);
-	    }
-	  arguments.passwd = strdup (optarg);
-	  util_hide_password (optarg);
 	  break;
 
 	case DDL_PROXY_OUTPUT_FILE_S:
@@ -178,10 +168,6 @@ exit_on_end:
   if (arguments.user_name != NULL)
     {
       free ((void *) arguments.user_name);
-    }
-  if (arguments.passwd != NULL)
-    {
-      free ((void *) arguments.passwd);
     }
   if (arguments.out_file_name != NULL)
     {

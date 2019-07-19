@@ -10218,7 +10218,7 @@ logpb_complete_manager_string (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
 
 
 /*
- * logpb_resets_tran_complete_manager - Resets transaction complete manager.
+ * logpb_atomic_resets_tran_complete_manager - Atomic resets transaction complete manager.
  *
  * return: nothing
  * manager_type(in) : manager type
@@ -10287,7 +10287,7 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
   while (true);
 #endif
 
-  /* There is no any modify transaction. Force complete old manager to avoid system hanging. */
+  /* Switch to new manager, before removing the previous one. */
   switch (old_manager_type)
     {
     case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
@@ -10349,7 +10349,7 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
 #endif
 
     case LOG_TRAN_COMPLETE_NO_MANAGER:
-      /* No manager. Temporary state. Will be reset later when HA state will be available. */
+      /* No manager. */
       log_set_notify (false);
       log_Gl.m_tran_complete_mgr = NULL;
       er_print_callstack (ARG_FILE_LINE, "logpb_resets_tran_complete_manager NULL, ha_server_state = %s\n",
@@ -10360,7 +10360,7 @@ logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
       assert (false);
     }
 
-  /* Release the lock to allow to system to advance. */
+  /* There is no any modify transaction. Force complete old manager to avoid system hanging. */
   lock_unlock_object_donot_move_to_non2pl (thread_p, oid_Root_class_oid, &oid_Null_oid, S_LOCK);
 
   log_Gl.reset_complete_manager_started = false;

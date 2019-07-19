@@ -40,6 +40,8 @@ namespace cubtx
     if (gl_slave_group == NULL)
       {
 	gl_slave_group = new slave_group_complete_manager ();
+	er_log_debug (ARG_FILE_LINE, "slave_group_complete_manager:get_instance created slave " \
+		      "group complete manager\n");
       }
     return gl_slave_group;
   }
@@ -140,7 +142,6 @@ namespace cubtx
       {
 	return;
       }
-
     /* TODO - consider whether stream position was saved on disk, when close the group */
     if (close_current_group ())
       {

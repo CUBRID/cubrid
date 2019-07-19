@@ -42,6 +42,8 @@ namespace cubtx
     if (gl_single_node_group == NULL)
       {
 	gl_single_node_group = new single_node_group_complete_manager ();
+	er_log_debug (ARG_FILE_LINE, "single_node_group_complete_manager:get_instance created single " \
+		      "group complete manager\n");
       }
     return gl_single_node_group;
   }

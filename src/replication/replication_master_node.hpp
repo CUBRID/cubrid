@@ -28,7 +28,11 @@
 
 #include "replication_node.hpp"
 
-#include <mutex>
+namespace cubstream
+{
+  class stream_file;
+  class multi_thread_stream;
+}
 
 namespace cubreplication
 {
@@ -37,27 +41,15 @@ namespace cubreplication
   class master_node : public replication_node
   {
     private:
-      static master_node *g_instance;
-      static std::mutex g_enable_active_mtx;
-
-      master_node (const char *name)
-	: replication_node (name)
-      {
-      }
-
-    public:
       master_ctrl *m_control_channel_manager;
 
-      static master_node *get_instance (const char *name);
+    public:
+      master_node (const char *nam, cubstream::multi_thread_stream *stream, cubstream::stream_file *stream_file);
+      ~master_node ();
 
-      static void init (const char *name);
-      static void new_slave (int fd);
-      static void add_ctrl_chn (int fd);
-      static void final (void);
-
-      static void enable_active (bool new_slave);
-
-      static void update_senders_min_position (const cubstream::stream_position &pos);
+      void new_slave (int fd);
+      void add_ctrl_chn (int fd);
+      void update_senders_min_position (const cubstream::stream_position &pos);
   };
 
 } /* namespace cubreplication */

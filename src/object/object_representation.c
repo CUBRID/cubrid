@@ -398,7 +398,7 @@ or_set_rep_id (RECDES * record, int repid)
  *    record(in): disk record
  */
 int
-or_chn (RECDES * record)
+or_chn (const RECDES * record)
 {
   if (record->length < OR_CHN_OFFSET + OR_CHN_SIZE)
     {
@@ -462,6 +462,18 @@ or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error)
       *error = NO_ERROR;
       return repid_and_flag_bits;
     }
+}
+
+void
+or_set_repid (char *ptr, int repid)
+{
+  int mvcc_repid_and_flag = OR_GET_MVCC_REPID_AND_FLAG (ptr);
+
+  assert ((repid & (~OR_MVCC_REPID_MASK)) == 0);
+
+  // current flags | repid
+  mvcc_repid_and_flag = (mvcc_repid_and_flag & (~OR_MVCC_REPID_MASK)) | repid;
+  OR_PUT_INT (ptr, mvcc_repid_and_flag);
 }
 
 /*

@@ -24,12 +24,15 @@
 #ident "$Id$"
 
 #include "log_consumer.hpp"
+
+#include "communication_channel.hpp"
 #include "error_manager.h"
 #include "multi_thread_stream.hpp"
 #include "replication_common.hpp"
 #include "replication_stream_entry.hpp"
-#include "communication_channel.hpp"
+#include "replication_subtran_apply.hpp"
 #include "slave_control_channel.hpp"
+#include "stream_file.hpp"
 #include "string_buffer.hpp"
 #include "system_parameter.h"
 #include "thread_daemon.hpp"
@@ -60,10 +63,10 @@ namespace cubreplication
 	      {
 		se->unpack ();
 		assert (se->get_stream_entry_end_position () > se->get_stream_entry_start_position ());
-		m_lc.get_ctrl_chn ()->send_ack (se->get_stream_entry_end_position ());
+
+		m_lc.ack_produce (se->get_stream_entry_end_position ());		
 		er_log_debug (ARG_FILE_LINE, "consumer_daemon_task::send ack = %llu\n", se->get_stream_entry_end_position ());
 	      }
-
 	    m_lc.push_entry (se);
 	  }
       };
@@ -192,6 +195,7 @@ namespace cubreplication
 		transactions_group = gc_entry->as_tx_group ();
 
 		er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task wait for all working tasks to finish\n");
+		assert (se->get_stream_entry_start_position () < se->get_stream_entry_end_position ());
 
 		m_prev_group_stream_position = m_curr_group_stream_position;
 		m_curr_group_stream_position = se->get_stream_entry_start_position ();
@@ -200,6 +204,8 @@ namespace cubreplication
 		// start wait for workers first, then wait for complete manager.
 		m_lc.wait_for_tasks ();
 
+		// apply all sub-transaction first
+		m_lc.get_subtran_applier ().apply ();
 		// We need to wait for previous group to complete. Otherwise, we mix transactions from previous and
 		// current groups.
 		m_p_dispatch_consumer->wait_for_complete_stream_position (m_prev_group_stream_position);
@@ -263,6 +269,10 @@ namespace cubreplication
 	      {
 		repl_tasks.clear ();
 	      }
+	    else if (se->is_subtran_commit ())
+	      {
+		m_lc.get_subtran_applier ().insert_stream_entry (se);
+	      }	    
 	    else if (se->get_packable_entry_count_from_header () > 0)
 	      {
 		MVCCID mvccid = se->get_mvccid ();
@@ -304,7 +314,7 @@ namespace cubreplication
 
   log_consumer::~log_consumer ()
   {
-    set_stop ();
+    stop ();
 
     if (m_use_daemons)
       {
@@ -313,7 +323,10 @@ namespace cubreplication
 	cubthread::get_manager ()->destroy_worker_pool (m_applier_workers_pool);
       }
 
+    delete m_subtran_applier; // must be deleted after worker pool
+
     assert (m_stream_entries.empty ());
+    get_stream ()->start ();
   }
 
   void log_consumer::push_entry (stream_entry *entry)
@@ -373,6 +386,8 @@ namespace cubreplication
 
   void log_consumer::start_daemons (void)
   {
+    m_subtran_applier = new subtran_applier (*this);
+
     er_log_debug_replication (ARG_FILE_LINE, "log_consumer::start_daemons\n");
     m_consumer_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
 			new consumer_daemon_task (*this),
@@ -390,6 +405,14 @@ namespace cubreplication
     m_use_daemons = true;
   }
 
+  void log_consumer::push_task (cubthread::entry_task *task)
+  {
+    /* Increase m_started_task before starting the task. */
+    m_started_tasks++;
+
+    cubthread::get_manager ()->push_task (m_applier_workers_pool, task);    
+  }
+
   void log_consumer::execute_task (applier_worker_task *task)
   {
     if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
@@ -398,11 +421,8 @@ namespace cubreplication
 	task->stringify (sb);
 	_er_log_debug (ARG_FILE_LINE, "log_consumer::execute_task:\n%s", sb.get_buffer ());
       }
-
-    /* Increase m_started_task before starting the task. */
-    m_started_tasks++;
-
-    cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
+    
+    push_task (task);
   }
 
   void log_consumer::wait_for_tasks ()
@@ -417,14 +437,19 @@ namespace cubreplication
     m_join_tasks_cv.wait (ulock, [this] {return m_started_tasks == 0;});
   }
 
-  void log_consumer::set_stop (void)
+  void log_consumer::stop (void)
   {
-    log_consumer::get_stream ()->set_stop ();
+    get_stream ()->stop ();
 
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
     m_is_stopped = true;
     ulock.unlock ();
     m_apply_task_cv.notify_one ();
+  }
+
+  subtran_applier &log_consumer::get_subtran_applier ()
+  {
+    return *m_subtran_applier;
   }
 
 } /* namespace cubreplication */

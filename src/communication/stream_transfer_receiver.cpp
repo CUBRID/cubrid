@@ -73,9 +73,14 @@ namespace cubstream
 
 	    m_first_loop = false;
 	  }
-
+	
 	while (true)
 	  {
+            if (!this_consumer_channel.m_channel.is_connection_alive ())
+              {
+                return;
+              }
+
 	    /* TODO - consider stop */
 	    recv_len = max_len;
 	    rc = this_consumer_channel.m_channel.recv (this_consumer_channel.m_buffer, recv_len);
@@ -114,7 +119,7 @@ namespace cubstream
 					 std::placeholders::_3);
 
     m_receiver_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
-			new transfer_receiver_task (*this), "stream_transfer_receiver");
+			new transfer_receiver_task (*this), "stream_transfer_receiver");    
   }
 
   transfer_receiver::~transfer_receiver ()
