@@ -13758,7 +13758,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 
 	      VPID_SET_NULL (&new_page_vpid);
               scan_cache->cache_last_fix_page = true;
-              
+
 	      // First alloc a new empty heap page.
 	      error_code = heap_alloc_new_page (thread_p, hfid, *class_oid, &home_hint_p, &new_page_vpid);
 	      if (error_code != NO_ERROR)
