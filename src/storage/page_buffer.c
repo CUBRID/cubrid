@@ -12524,7 +12524,8 @@ pgbuf_watcher_init_debug (PGBUF_WATCHER * watcher, const char *caller_file, cons
       char prev_init[256];
       strncpy (prev_init, watcher->init_at, sizeof (watcher->init_at) - 1);
       prev_init[sizeof (prev_init) - 1] = '\0';
-      snprintf (watcher->init_at, sizeof (watcher->init_at) - 1, "%s:%d %s", p, caller_line, prev_init);
+      int ret = snprintf (watcher->init_at, sizeof (watcher->init_at) - 1, "%s:%d %s", p, caller_line, prev_init);
+      (void) ret;		// suppress format-truncate warning
     }
   else
     {
