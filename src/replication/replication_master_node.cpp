@@ -83,6 +83,7 @@ namespace cubreplication
       }
 
     m_stream->get_min_available_and_curr_position (min_available_pos, curr_pos);
+
     pos = htoni64 (min_available_pos);
     comm_error_code = chn.send ((char *) &pos, max_len);
     if (comm_error_code != css_error_code::NO_ERRORS)
@@ -101,7 +102,7 @@ namespace cubreplication
 	return ER_REPLICATION_SETUP;
       }
 
-    er_log_debug_replication (ARG_FILE_LINE, "master_node::setup_protocol min_available_pos :%llu, curr_pos:%llu",
+    er_log_debug_replication (ARG_FILE_LINE, "master_node::setup_protocol min_available_pos:%llu, curr_pos:%llu",
 			      min_available_pos, curr_pos);
 
     return NO_ERROR;

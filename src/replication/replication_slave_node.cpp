@@ -88,17 +88,15 @@ namespace cubreplication
       {
 	return ER_FAILED;
       }
-
     m_source_min_available_pos = ntohi64 (pos);
 
     if (chn.recv ((char *) &pos, max_len) != css_error_code::NO_ERRORS)
       {
 	return ER_FAILED;
       }
-
     m_source_curr_pos = ntohi64 (pos);
 
-    er_log_debug_replication (ARG_FILE_LINE, "slave_node::setup_protocol available min pos :%llu, curr_pos :%llu",
+    er_log_debug_replication (ARG_FILE_LINE, "slave_node::setup_protocol available min pos:%llu, curr_pos:%llu",
 			      m_source_min_available_pos, m_source_curr_pos);
 
     return NO_ERROR;
@@ -227,7 +225,7 @@ namespace cubreplication
     if ((REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) ==
 	REPL_SEMISYNC_ACK_ON_FLUSH)
       {
-	m_stream_file->set_sync_notifier ([sender] (const cubstream::stream_position & sp)
+	m_stream_file->set_sync_notifier ([sender] (const cubstream::stream_position &sp)
 	{
 	  // route produced stream positions to get validated as flushed on disk before sending them
 	  sender->set_synced_position (sp);

@@ -398,11 +398,7 @@ namespace cubstream
     assert (vol_seqno >= 0);
 
     snprintf (filename, max_filename, "%s%c%s_%0*d",
-	      m_base_path.c_str (),
-	      PATH_SEPARATOR,
-	      m_base_filename.c_str (),
-	      m_filename_digits_seqno,
-	      vol_seqno);
+	      m_base_path.c_str (), PATH_SEPARATOR, m_base_filename.c_str (), m_filename_digits_seqno, vol_seqno);
     return NO_ERROR;
   }
 
