@@ -76,15 +76,14 @@ namespace cubsync
       }
   };
 
-
-  class event
+  class event_semaphore
   {
     private:
       semaphore<bool> m_semaphore;
 
     public:
 
-      event ():
+      event_semaphore ():
 	m_semaphore (false)
       {
       }
