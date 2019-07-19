@@ -55,14 +55,13 @@ namespace cubreplication
     m_stream = stream;
     m_stream_file = stream_file;
 
-    /* Initialize slave group complete manager before starting daemons. */
-    logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE);
-
     m_lc = new log_consumer ();
     m_lc->set_stream (m_stream);
 
     /* start log_consumer daemons and apply thread pool */
     m_lc->start_daemons ();
+
+    cubtx::slave_group_complete_manager::init ();
   }
 
   slave_node::~slave_node ()
@@ -85,6 +84,7 @@ namespace cubreplication
 
     /* Switch to single complete manager to void crashes at commit. */
     logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
+    cubtx::slave_group_complete_manager::final ();
   }
 
   int slave_node::connect_to_master (const char *master_node_hostname, const int master_node_port_id)

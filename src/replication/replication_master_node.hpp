@@ -32,7 +32,6 @@ namespace cubstream
 {
   class stream_file;
   class multi_thread_stream;
-  class stream_ack;
 }
 
 namespace cubreplication
@@ -45,14 +44,12 @@ namespace cubreplication
       master_ctrl *m_control_channel_manager;
 
     public:
-      master_node (const char *nam, cubstream::multi_thread_stream *stream, cubstream::stream_file *stream_file,
-		   bool new_slave);
+      master_node (const char *nam, cubstream::multi_thread_stream *stream, cubstream::stream_file *stream_file);
       ~master_node ();
 
       void new_slave (int fd);
       void add_ctrl_chn (int fd);
       void update_senders_min_position (const cubstream::stream_position &pos);
-      void set_stream_ack (cubstream::stream_ack *ack);
   };
 
 } /* namespace cubreplication */

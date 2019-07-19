@@ -235,8 +235,6 @@ namespace cubstream
 
       void stop (void)
       {
-        // TODO - wait for all remaining stream data to be applied before stoping consumer.
-        // The receiver was already stopped.
 	m_is_stopped = true;
 	m_serial_read_cv.notify_one ();
 	m_recyclable_pos_cv.notify_one ();

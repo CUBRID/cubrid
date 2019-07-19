@@ -75,7 +75,7 @@ namespace cubreplication
 
     rwlock_write_lock (&master_senders_lock);
     master_server_stream_senders.push_back (sender);
-    logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE);
+    logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE);
     rwlock_write_unlock (&master_senders_lock);
   }
 
@@ -186,7 +186,7 @@ namespace cubreplication
 
 	if (senders_deleted && active_senders == 0)
 	  {
-	    logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
+	    logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
 	  }
 
 	if (!have_write_lock)

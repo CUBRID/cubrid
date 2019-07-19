@@ -65,6 +65,7 @@ namespace cubreplication
 		assert (se->get_stream_entry_end_position () > se->get_stream_entry_start_position ());
 
 		m_lc.ack_produce (se->get_stream_entry_end_position ());		
+		er_log_debug (ARG_FILE_LINE, "consumer_daemon_task::send ack = %llu\n", se->get_stream_entry_end_position ());
 	      }
 	    m_lc.push_entry (se);
 	  }
@@ -406,9 +407,10 @@ namespace cubreplication
 
   void log_consumer::push_task (cubthread::entry_task *task)
   {
-    cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
-
+    /* Increase m_started_task before starting the task. */
     m_started_tasks++;
+
+    cubthread::get_manager ()->push_task (m_applier_workers_pool, task);    
   }
 
   void log_consumer::execute_task (applier_worker_task *task)
@@ -419,10 +421,8 @@ namespace cubreplication
 	task->stringify (sb);
 	_er_log_debug (ARG_FILE_LINE, "log_consumer::execute_task:\n%s", sb.get_buffer ());
       }
-    /* Increase m_started_task before starting the task. */
-    m_started_tasks++;
-
-    cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
+    
+    push_task (task);
   }
 
   void log_consumer::wait_for_tasks ()

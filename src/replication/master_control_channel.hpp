@@ -52,7 +52,6 @@ namespace cubreplication
       master_ctrl (cubstream::stream_ack *stream_ack);
       ~master_ctrl ();
       void add (cubcomm::channel &&chn);
-      void set_stream_ack (cubstream::stream_ack *ack);
 
     private:
       void check_alive ();

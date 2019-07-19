@@ -30,7 +30,9 @@
 
 #include "byte_order.h"
 #include "communication_channel.hpp"
+#include "error_manager.h"
 #include "stream_transfer_sender.hpp"
+#include "system_parameter.h"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
@@ -52,6 +54,7 @@ namespace cubreplication
     : m_chn (std::move (chn))
     , m_stream_ack (stream_ack)
   {
+    er_print_callstack (ARG_FILE_LINE, "ack_reader_task::ack_reader_task %p\n", stream_ack);
   }
 
   void ack_reader_task::execute (cubthread::entry &thread_ref)
@@ -73,6 +76,7 @@ namespace cubreplication
 	    return;
 	  }
 
+	er_log_debug (ARG_FILE_LINE, "ack_reader_task::execute %llu\n", ack_sp);
 	assert (m_stream_ack != NULL);
 	m_stream_ack->notify_stream_ack (ntohi64 (ack_sp));
       }
@@ -117,7 +121,6 @@ namespace cubreplication
 	cubthread::get_manager ()->destroy_daemon (cr.first);
       }
 
-    m_ctrl_channel_readers.clear ();
     // we are not the ones responsible for deallocating this
     m_stream_ack = NULL;
   }
@@ -133,34 +136,6 @@ namespace cubreplication
     ack_reader_task *ack_reader = new ack_reader_task (moved_to_chn, m_stream_ack);
     m_ctrl_channel_readers.push_back (std::make_pair (cubthread::get_manager ()->create_daemon (dt,
 				      ack_reader, "control channel reader"), moved_to_chn));
-  }
-
-  void
-  master_ctrl::set_stream_ack (cubstream::stream_ack *ack)
-  {
-    if (ack == m_stream_ack)
-      {
-	return;
-      }
-
-    std::lock_guard<std::mutex> lg (m_mtx);
-
-    for (auto it = m_ctrl_channel_readers.begin (); it != m_ctrl_channel_readers.end ();)
-      {
-	if (!it->second->is_connection_alive())
-	  {
-	    cubthread::get_manager()->destroy_daemon (it->first);
-	    it = m_ctrl_channel_readers.erase (it);
-	  }
-	else
-	  {
-	    ++it;
-	  }
-      }
-
-    assert (m_ctrl_channel_readers.size () == 0);
-
-    m_stream_ack = ack;
   }
 
   void

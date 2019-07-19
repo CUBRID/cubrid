@@ -1331,6 +1331,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       init_emergency = true;
     }
 
+  cubtx::single_node_group_complete_manager::init ();
   logpb_initialize_tran_complete_manager (thread_p);
 
   /*
