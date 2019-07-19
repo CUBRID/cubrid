@@ -334,6 +334,8 @@ namespace cubreplication
   {
     int err = NO_ERROR;
 
+    wait_for_fetch_resume ();
+
     stream_entry *se = new stream_entry (get_stream ());
 
     err = se->prepare ();
@@ -398,12 +400,30 @@ namespace cubreplication
 
   void log_consumer::stop (void)
   {
+    /* wakeup fetch daemon to allow it time to detect it is stopped */
+    fetch_resume ();
+
     get_stream ()->stop ();
 
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
     m_is_stopped = true;
     ulock.unlock ();
     m_apply_task_cv.notify_one ();
+  }
+
+  void log_consumer::fetch_suspend (void)
+  {
+    m_fetch_suspend.set ();
+  }
+
+  void log_consumer::fetch_resume (void)
+  {
+    m_fetch_suspend.clear ();
+  }
+
+  void log_consumer::wait_for_fetch_resume (void)
+  {
+    m_fetch_suspend.wait ();
   }
 
   subtran_applier &log_consumer::get_subtran_applier ()
