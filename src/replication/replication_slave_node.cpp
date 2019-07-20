@@ -73,6 +73,7 @@ int xreplication_copy_slave (THREAD_ENTRY * thread_p, const char *source_hostnam
   error = slave_instance->replication_copy_slave (*thread_p, &source_node, start_replication_after_copy);
   if (error != NO_ERROR)
     {
+      slave_instance->is_copy_running = false;
       return error;
     }
 
@@ -350,6 +351,8 @@ namespace cubreplication
     apply_copy_context my_apply_ctx (&m_identity, source_node);
 
     my_apply_ctx.execute_copy ();
+    
+    is_copy_running = false;
 
     return NO_ERROR;
   }
