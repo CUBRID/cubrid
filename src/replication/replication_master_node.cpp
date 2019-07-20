@@ -71,6 +71,9 @@ namespace cubreplication
 
     stream_entry fail_over_entry (m_stream, MVCCID_FIRST, stream_entry_header::NEW_MASTER);
     fail_over_entry.pack ();
+
+    m_new_slave_workers_pool = cubthread::get_manager ()->create_worker_pool (NEW_SLAVE_THREADS, NEW_SLAVE_THREADS,
+      "replication_new_slave_workers", NULL, 1, 1);
   }
 
   master_node::~master_node ()
@@ -190,6 +193,7 @@ namespace cubreplication
   {
     er_log_debug_replication (ARG_FILE_LINE, "new_slave_copy");
 #if defined (SERVER_MODE)
+    assert (m_new_slave_workers_pool != NULL);
     cubthread::get_manager ()->push_task (m_new_slave_workers_pool, new new_slave_worker_task (fd));
 #endif
   }

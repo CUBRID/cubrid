@@ -33,6 +33,7 @@
 #include "replication_common.hpp"
 #include "replication_node_manager.hpp"
 #include "replication_stream_entry.hpp"
+#include "server_support.h"
 #include "slave_control_channel.hpp"
 #include "stream_file.hpp"
 #include "stream_transfer_receiver.hpp"
@@ -47,6 +48,17 @@ int xreplication_copy_slave (THREAD_ENTRY * thread_p, const char *source_hostnam
                              const bool start_replication_after_copy)
 {
   int error = NO_ERROR;
+
+  /* don't automatically commute from 'active' role : needs user intervention to commute to standby */
+  if (css_ha_server_state () != HA_SERVER_STATE_STANDBY 
+      && css_ha_server_state () != HA_SERVER_STATE_MAINTENANCE)
+    {
+      /* TODO[replication] : set error */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, "xreplication_copy_slave", 0);
+      return ER_REPLICATION_SETUP;
+    }
+
+
   cubreplication::node_definition source_node (source_hostname);
   source_node.set_port (port_id);
   cubreplication::slave_node *slave_instance = cubreplication::replication_node_manager::get_slave_node ();
