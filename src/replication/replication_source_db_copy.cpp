@@ -311,7 +311,7 @@ namespace cubreplication
     er_log_debug_replication (ARG_FILE_LINE, "new_slave_copy connected");
 
     /* extraction process : schema phase : start the client process */
-    locator_repl_extract_schema (&thread_ref, "", "", "");
+    locator_repl_extract_schema (&thread_ref, "", "");
 
     if (wait_receive_class_list () == ER_INTERRUPTED)
       {

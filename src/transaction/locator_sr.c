@@ -13966,8 +13966,7 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
 }
 
 int
-locator_repl_extract_schema (THREAD_ENTRY * thread_p, const char *db_user, const char *db_password,
-			     const char *ha_sys_prm_context)
+locator_repl_extract_schema (THREAD_ENTRY * thread_p, const char *db_user, const char *ha_sys_prm_context)
 {
   char path[PATH_MAX];
   static const char *db_name = boot_db_name ();
@@ -13977,7 +13976,7 @@ locator_repl_extract_schema (THREAD_ENTRY * thread_p, const char *db_user, const
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
-  assert (db_user != NULL && db_password != NULL && tdes != NULL);
+  assert (db_user != NULL && tdes != NULL);
   sprintf (tran_index_str, "%d", tran_index);
 
    /* Uses command option. */
@@ -13988,8 +13987,6 @@ locator_repl_extract_schema (THREAD_ENTRY * thread_p, const char *db_user, const
     path,
     "-u",
     db_user,
-    "-p",
-    db_password,
     db_name,
     command_option,
     command,

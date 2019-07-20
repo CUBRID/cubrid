@@ -145,8 +145,7 @@ extern LOCK locator_get_lock_mode_from_op_type (SCAN_OPERATION_TYPE op_type);
 extern int locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char *ha_sys_prm_context,
 				   const char *statement);
 
-extern int locator_repl_extract_schema (THREAD_ENTRY * thread_p, const char *db_user, const char *db_password,
-			                const char *ha_sys_prm_context);
+extern int locator_repl_extract_schema (THREAD_ENTRY * thread_p, const char *db_user, const char *ha_sys_prm_context);
 extern int locator_repl_start_tran (THREAD_ENTRY * thread_p, const boot_client_type client_type);
 extern int locator_repl_end_tran (THREAD_ENTRY * thread_p, bool commit);
 
