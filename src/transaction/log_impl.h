@@ -60,7 +60,7 @@
 #include "transaction_complete_manager.hpp"
 #include "transaction_transient.hpp"
 #include "log_generator.hpp"
-#include "replication_db_copy.hpp"
+#include "replication_source_db_copy.hpp"
 
 #include <assert.h>
 #if defined(SOLARIS)
@@ -540,10 +540,14 @@ struct log_tdes
 
   LOG_RCV_TDES rcv;
   const char *ha_sbr_statement;
+
+#if defined (SERVER_MODE)
+  cubreplication::source_copy_context *replication_copy_context;
+#endif
+
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
   cubreplication::log_generator replication_log_generator;
-  cubreplication::copy_context replication_copy_context;
 
   bool is_active_worker_transaction () const;
   bool is_system_transaction () const;

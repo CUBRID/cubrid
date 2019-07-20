@@ -58,7 +58,6 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "process_util.h"
-#include "replication_db_copy.hpp"
 #include "replication_object.hpp"
 #include "session.h"
 #include "slotted_page.h"
@@ -13836,12 +13835,13 @@ xlocator_get_proxy_command (THREAD_ENTRY * thread_p, const char **proxy_command)
 int
 xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_t buf_size, const char *buffer)
 {
+#if defined(SERVER_MODE)
   LOG_TDES *tdes;
 
   assert (thread_p != NULL);
 
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  cubreplication::copy_context & repl_copy_ctxt = tdes->replication_copy_context;
+  cubreplication::source_copy_context& repl_copy_ctxt = *tdes->replication_copy_context;
 
   switch (type)
     {
@@ -13851,7 +13851,7 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
 
     case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END:
       repl_copy_ctxt.append_class_schema (buffer, buf_size);
-      repl_copy_ctxt.transit_state (cubreplication::copy_context::SCHEMA_APPLY_CLASSES_FINISHED);
+      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_APPLY_CLASSES_FINISHED);
       break;
 
     case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS:
@@ -13860,7 +13860,7 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
 
     case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS_END:
       repl_copy_ctxt.append_triggers_schema (buffer, buf_size);
-      repl_copy_ctxt.transit_state (cubreplication::copy_context::SCHEMA_TRIGGERS_RECEIVED);
+      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_TRIGGERS_RECEIVED);
       break;
 
     case NET_PROXY_BUF_TYPE_EXTRACT_INDEXES:
@@ -13869,7 +13869,7 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
 
     case NET_PROXY_BUF_TYPE_EXTRACT_INDEXES_END:
       repl_copy_ctxt.append_indexes_schema (buffer, buf_size);
-      repl_copy_ctxt.transit_state (cubreplication::copy_context::SCHEMA_INDEXES_RECEIVED);
+      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_INDEXES_RECEIVED);
       break;
 
     default:
@@ -13877,6 +13877,10 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
     }
 
   return NO_ERROR;
+#else /* SERVER_MODE*/
+  assert (false);
+  return ER_FAILED;
+#endif /* SERVER_MODE*/
 }
 
 
