@@ -84,7 +84,7 @@ namespace cubreplication
 
       void execute (cubthread::entry &thread_ref) final
       {
-	(void) locator_repl_start_tran (&thread_ref, BOOT_CLIENT_LOG_APPLIER);
+	(void) locator_repl_start_tran (&thread_ref, BOOT_PSEUDO_CLIENT_REPL_APPLIER);
 
 	for (stream_entry *curr_stream_entry : m_repl_stream_entries)
 	  {
@@ -400,6 +400,8 @@ namespace cubreplication
 
   void log_consumer::stop (void)
   {
+    er_log_debug_replication (ARG_FILE_LINE, "log_consumer::stop");
+
     /* wakeup fetch daemon to allow it time to detect it is stopped */
     fetch_resume ();
 

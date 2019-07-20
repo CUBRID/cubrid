@@ -25,6 +25,7 @@
 
 #include "log_impl.h"
 #include "multi_thread_stream.hpp"
+#include "replication_common.hpp"
 #include "replication_master_node.hpp"
 #include "replication_slave_node.hpp"
 #include "stream_file.hpp"
@@ -61,6 +62,8 @@ namespace cubreplication
 
     void finalize ()
     {
+      er_log_debug_replication (ARG_FILE_LINE, "replication_node_manager::finalize");
+
       g_hostname.clear ();
 
       delete g_slave_node;
@@ -78,6 +81,8 @@ namespace cubreplication
 
     void commute_to_master_state ()
     {
+      er_log_debug_replication (ARG_FILE_LINE, "replication_node_manager::commute_to_master_state");
+
       delete g_slave_node;
       g_slave_node = NULL;
 
@@ -89,6 +94,8 @@ namespace cubreplication
 
     void commute_to_slave_state ()
     {
+      er_log_debug_replication (ARG_FILE_LINE, "replication_node_manager::commute_to_slave_state");
+
       // todo: remove after master -> slave transitions is properly handled
       assert (g_master_node == NULL);
 

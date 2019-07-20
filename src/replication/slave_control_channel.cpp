@@ -30,6 +30,7 @@
 
 #include "byte_order.h"
 #include "communication_channel.hpp"
+#include "replication_common.hpp"
 
 namespace cubreplication
 {
@@ -61,6 +62,8 @@ namespace cubreplication
 
   void slave_control_sender::stop ()
   {
+    er_log_debug_replication (ARG_FILE_LINE, "slave_control_sender::stop");
+
     std::unique_lock<std::mutex> ul (m_mtx);
     m_stop = true;
     m_cv.notify_one ();

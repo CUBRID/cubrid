@@ -299,7 +299,7 @@ namespace cubreplication
 
         er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_daemon_task : start of replication copy");
 
-        if (locator_repl_start_tran (&thread_ref, BOOT_CLIENT_LOG_APPLIER) != NO_ERROR)
+        if (locator_repl_start_tran (&thread_ref, BOOT_PSEUDO_CLIENT_REPL_APPLIER) != NO_ERROR)
           {
            assert (false);
            return;

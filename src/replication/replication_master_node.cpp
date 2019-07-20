@@ -75,6 +75,8 @@ namespace cubreplication
 
   master_node::~master_node ()
   {
+    er_log_debug_replication (ARG_FILE_LINE, "master_node::~master_node");
+
     cubthread::get_manager ()->destroy_worker_pool (m_new_slave_workers_pool);
 
     master_senders_manager::final ();
@@ -211,7 +213,7 @@ namespace cubreplication
       }
 
     /* create a transaction for replication copy */
-    error = locator_repl_start_tran (&thread_ref, BOOT_CLIENT_LOG_COPIER);
+    error = locator_repl_start_tran (&thread_ref, BOOT_PSEUDO_CLIENT_REPL_COPIER);
     if (error != NO_ERROR)
       {
        assert (false);
