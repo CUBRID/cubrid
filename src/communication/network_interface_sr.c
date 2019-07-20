@@ -9828,7 +9828,7 @@ sreplication_copy_slave (THREAD_ENTRY * thread_p, unsigned int rid, char *reques
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  ptr = or_unpack_string (request, &source_hostname);
+  ptr = or_unpack_string_nocopy (request, &source_hostname);
   ptr = or_unpack_int (ptr, &port_id);
   ptr = or_unpack_int (ptr, &start_replication_after_copy);
   status = xreplication_copy_slave (thread_p, source_hostname, port_id, (bool) start_replication_after_copy);

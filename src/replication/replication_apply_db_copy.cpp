@@ -297,6 +297,12 @@ namespace cubreplication
         bool is_replication_copy_end = false;
         bool is_stopped = false;
 
+        if (m_lc.is_finished ())
+          {
+            er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_daemon_task : already finished");
+            return;
+          }
+
         er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_daemon_task : start of replication copy");
 
         if (locator_repl_start_tran (&thread_ref, BOOT_PSEUDO_CLIENT_REPL_APPLIER) != NO_ERROR)
@@ -452,7 +458,8 @@ namespace cubreplication
 			new copy_db_consumer_daemon_task (*this),
 			"repl_copy_db_prepare_stream_entry_daemon");
 
-    m_dispatch_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
+    m_dispatch_daemon = cubthread::get_manager ()->create_daemon (
+                        cubthread::delta_time (std::chrono::milliseconds(10)),
 			new copy_dispatch_daemon_task (*this),
 			"repl_copy_db_dispatch_stream_entry_daemon");
 
