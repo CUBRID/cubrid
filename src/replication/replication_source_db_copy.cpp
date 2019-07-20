@@ -76,15 +76,21 @@ namespace cubreplication
 
   source_copy_context::source_copy_context ()
   {
+    m_tran_index = -1;
+    m_error_cnt = 0;
+    m_running_extract_threads = 0;
+    m_online_replication_start_pos = 0;
+
     m_stream = NULL;
     /* TODO[replication] : use file for replication copy stream */
     m_stream_file = NULL;
+    m_transfer_sender = 0;
+    m_heap_extract_workers_pool = NULL;
     m_state = NOT_STARTED;
-    m_error_cnt = 0;
     m_is_stop = false;
 
-    m_stream = acquire_stream_for_copy ();
 
+    m_stream = acquire_stream_for_copy ();
     /* TODO : single global pool or a pool for each context ? */
     m_heap_extract_workers_pool =
       cubthread::get_manager ()->create_worker_pool (EXTRACT_HEAP_WORKER_POOL_SIZE, EXTRACT_HEAP_WORKER_POOL_SIZE,
@@ -263,13 +269,14 @@ namespace cubreplication
    */
   cubstream::multi_thread_stream *source_copy_context::acquire_stream_for_copy ()
   {
-    INT64 buffer_size = 1 * 1024 * 1024;
+    INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_BUFFER_SIZE);
 
     /* TODO[replication] : here, we create a new stream for each new slave copy, but as an optimization,
      * we should reuse a db copy stream which is recent enough (for slave doesn't matter) */
 
     /* TODO[replication] : max appenders in stream must be greater than number of parallel heap scanners */
-    cubstream::multi_thread_stream *copy_db_stream = new cubstream::multi_thread_stream (buffer_size, 100);
+    cubstream::multi_thread_stream *copy_db_stream =
+      new cubstream::multi_thread_stream (buffer_size, 10 + EXTRACT_HEAP_WORKER_POOL_SIZE);
     const node_definition *myself = replication_node_manager::get_master_node ()->get_node_identity ();
     copy_db_stream->set_name ("repl_copy_" + std::string (myself->get_hostname ().c_str ()));
     copy_db_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
