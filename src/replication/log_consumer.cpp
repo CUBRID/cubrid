@@ -84,7 +84,7 @@ namespace cubreplication
 
       void execute (cubthread::entry &thread_ref) final
       {
-	(void) locator_repl_start_tran (&thread_ref, BOOT_PSEUDO_CLIENT_REPL_APPLIER);
+	(void) locator_repl_start_tran (&thread_ref, BOOT_CLIENT_LOG_APPLIER);
 
 	for (stream_entry *curr_stream_entry : m_repl_stream_entries)
 	  {
