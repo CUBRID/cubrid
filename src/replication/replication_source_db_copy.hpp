@@ -96,7 +96,7 @@ namespace cubreplication
       void append_indexes_schema (const char *buffer, const size_t buf_size);
       void unpack_class_oid_list (const char *buffer, const size_t buf_size);
 
-      void execute_db_copy (cubthread::entry &thread_ref, int fd);
+      void execute_db_copy (cubthread::entry &thread_ref, SOCKET fd);
       int setup_copy_protocol (cubcomm::channel &chn);
       int wait_slave_receive_ack (cubcomm::channel &chn);
 

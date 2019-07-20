@@ -10045,7 +10045,7 @@ locator_send_proxy_buffer (const int type, const size_t buf_size, const char *bu
 }
 
 /*
- * netcl_replication_copy_slave - starts replication copy DB
+ * netcl_replication_copy_slave - interface function for copyslave admin tool; starts replication copy DB
  *   return: new state
  */
 int

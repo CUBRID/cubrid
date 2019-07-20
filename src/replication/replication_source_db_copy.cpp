@@ -286,7 +286,7 @@ namespace cubreplication
   }
 
 
-  void source_copy_context::execute_db_copy (cubthread::entry &thread_ref, int fd)
+  void source_copy_context::execute_db_copy (cubthread::entry &thread_ref, SOCKET fd)
   {
     cubcomm::channel chn;
     chn.set_channel_name (REPL_COPY_CHANNEL_NAME);

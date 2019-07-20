@@ -41,7 +41,7 @@ namespace cubreplication
  class new_slave_worker_task : public cubthread::entry_task
   {
     public:
-      new_slave_worker_task (int fd)
+      new_slave_worker_task (SOCKET fd)
 	: m_connection_fd (fd)
       {
       };
@@ -52,7 +52,7 @@ namespace cubreplication
       };
 
     private:
-      int m_connection_fd;
+      SOCKET m_connection_fd;
   };
 
   master_node::master_node (const char *name, cubstream::multi_thread_stream *stream,
@@ -141,7 +141,7 @@ namespace cubreplication
     return NO_ERROR;
   }
 
-  void master_node::new_slave (int fd)
+  void master_node::new_slave (SOCKET fd)
   {
     cubcomm::channel chn;
     chn.set_channel_name (REPL_ONLINE_CHANNEL_NAME);
@@ -157,7 +157,7 @@ namespace cubreplication
     er_log_debug_replication (ARG_FILE_LINE, "new_slave connected");
   }
 
-  void master_node::add_ctrl_chn (int fd)
+  void master_node::add_ctrl_chn (SOCKET fd)
   {
     er_log_debug_replication (ARG_FILE_LINE, "add_ctrl_chn");
 
@@ -184,7 +184,7 @@ namespace cubreplication
    *
    * This executes on context of css_master_thread, so we create a task and push it to a thread pool
    */
-  void master_node::new_slave_copy (int fd)
+  void master_node::new_slave_copy (SOCKET fd)
   {
     er_log_debug_replication (ARG_FILE_LINE, "new_slave_copy");
 #if defined (SERVER_MODE)
@@ -197,7 +197,7 @@ namespace cubreplication
    *
    * Actual task executing in the context of dedicated 'new slave' thread pool
    */
-  void master_node::new_slave_copy_task (cubthread::entry &thread_ref, int fd)
+  void master_node::new_slave_copy_task (cubthread::entry &thread_ref, SOCKET fd)
   {
     er_log_debug_replication (ARG_FILE_LINE, "new_slave_copy_task");
 #if defined (SERVER_MODE)

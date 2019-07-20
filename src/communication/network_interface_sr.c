@@ -9806,7 +9806,8 @@ slocator_send_proxy_buffer (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 }
 
 /*
- * sreplication_copy_slave -
+ * sreplication_copy_slave - server side interface function for copyslave admin tool;
+ *                           initiates copy db process
  *
  * return:
  *

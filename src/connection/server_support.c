@@ -2742,6 +2742,11 @@ css_process_add_ctrl_chn (SOCKET master_fd)
   cubreplication::replication_node_manager::get_master_node ()->add_ctrl_chn (new_fd);
 }
 
+/*
+ * css_process_repl_copy_db - cub_server side function for cub_master - cub_server communication protocol
+ *                            to establish connection between a to-be-standby (slave) cub_server and this
+ *                            cub_server
+ */
 static void
 css_process_repl_copy_db (SOCKET master_fd)
 {

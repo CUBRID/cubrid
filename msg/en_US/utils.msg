@@ -1177,3 +1177,15 @@ valid options:\n\
       --resume                  resume calculating checksum\n\
       --schema-only             check only schema consistency\n\
       --cont-on-error           continue on calculation error\n
+
+$set 57 MSGCAT_UTIL_SET_COPYSLAVE
+58 HA feature is not supported in this platform.\n
+59 copyslave cannot run as standalone mode.\n
+60 \
+copyslave: copies contents of a source database using replication stream mechanisms.\n\
+usage: %1$s copyslave [OPTION] database-name@hostname\n\
+\n\
+valid options:\n\
+  -s, --source-server-hostname=hostname			hostname of the source CUBRID server\n\
+  -p, --source-server-port=port					port of the source CUBRID server (default: equivalent value from locale $CUBRID/cubrid.conf)\n\
+  -r, --start-replication						to start on-line replication after the copy process is finished from the same source node\n

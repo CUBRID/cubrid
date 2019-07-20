@@ -65,10 +65,10 @@ namespace cubreplication
       master_node (const char *nam, cubstream::multi_thread_stream *stream, cubstream::stream_file *stream_file);
       ~master_node ();
 
-      void new_slave_copy (int fd);
-      void new_slave_copy_task (cubthread::entry &thread_ref, int fd);
-      void new_slave (int fd);
-      void add_ctrl_chn (int fd);
+      void new_slave_copy (SOCKET fd);
+      void new_slave_copy_task (cubthread::entry &thread_ref, SOCKET fd);
+      void new_slave (SOCKET fd);
+      void add_ctrl_chn (SOCKET fd);
       void update_senders_min_position (const cubstream::stream_position &pos);
   };
 

@@ -413,12 +413,12 @@ namespace cubreplication
 
   void log_consumer::fetch_suspend (void)
   {
-    m_fetch_suspend.set ();
+    m_fetch_suspend.clear ();
   }
 
   void log_consumer::fetch_resume (void)
   {
-    m_fetch_suspend.clear ();
+    m_fetch_suspend.set ();
   }
 
   void log_consumer::wait_for_fetch_resume (void)
