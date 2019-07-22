@@ -13768,21 +13768,21 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	        }
 
 	      for (size_t j = 0; j < recdes_array.size (); j++)
-	        {
+		{
 		  error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, &recdes_array[j], has_index,
 						     op_type, scan_cache, force_count, pruning_type, pcontext,
 						     func_preds, force_in_place, &home_hint_p);
 		  if (error_code != NO_ERROR)
 		    {
-                      pgbuf_ordered_unfix_and_init (thread_p, home_hint_p.pgptr, &home_hint_p);
-                      assert (!pgbuf_is_page_fixed_by_thread (thread_p, &new_page_vpid));
+		      pgbuf_ordered_unfix_and_init (thread_p, home_hint_p.pgptr, &home_hint_p);
+		      assert (!pgbuf_is_page_fixed_by_thread (thread_p, &new_page_vpid));
 
 		      ASSERT_ERROR ();
 		      return error_code;
 		    }
 
-                  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &home_hint_p);
-	        }
+		  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &home_hint_p);
+		}
 
 	      // Add the new VPID to the VPID array.
 	      assert (!VPID_ISNULL (&new_page_vpid));
@@ -13826,6 +13826,6 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
       return error_code;
     }
 
-  return error_code;
+  return NO_ERROR;
 }
 // *INDENT-ON*
