@@ -78,6 +78,8 @@ class record_descriptor : public cubpacking::packable_object
 
     record_descriptor (record_descriptor &&other);
 
+    void set_recdes (const recdes &rec);
+
     // peek record from page; changes into record data will not be permitted
     int peek (cubthread::entry *thread_p, PAGE_PTR page, PGSLOTID slotid);
 
@@ -120,7 +122,7 @@ class record_descriptor : public cubpacking::packable_object
 
     void pack (cubpacking::packer &packer) const override;
     void unpack (cubpacking::unpacker &unpacker) override;
-    std::size_t get_packed_size (cubpacking::packer &packer) const override;
+    std::size_t get_packed_size (cubpacking::packer &packer, std::size_t curr_offset) const override;
 
     //
     // manipulate record memory buffer
