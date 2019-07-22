@@ -4566,11 +4566,11 @@ cleanup:
  *      ER_REGEX_COMPILE_ERROR:
  *          An illegal regex pattern is specified.
  *
- *      ER_REGEX_EXECUTION_ERROR:
- *          An illegal regex pattern is specified.
+ *      ER_REGEX_EXEC_ERROR:
+ *          An regex pattern is too complex or insufficient memory while executing regex matching
  * 
- *      ER_OBJ_INVALID_ARGUMENTS:
- *          invalid function arguments exist
+ *      ER_QPROC_INVALID_PARAMETER:
+ *          Invalid parameter exists
  * 
  */
 // *INDENT-OFF*
@@ -4719,7 +4719,7 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 		    reg_flags |= std::regex_constants::icase;
 		    break;
 		  default:
-		    error_status = ER_OBJ_INVALID_ARGUMENTS;
+		    error_status = ER_QPROC_INVALID_PARAMETER;
 		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 		    goto exit;
 		    break;
@@ -4749,17 +4749,19 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	    prefix = std::move (src_string.substr (0, position_value));
 	    target = std::move (src_string.substr (position_value, src_length - position_value));
 	  }
-	else
-	  {
-	    error_status = ER_OBJ_INVALID_ARGUMENTS;
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	    goto exit;
-	  }
+  else if (position_value < 0)
+    {
+      error_status = ER_QPROC_INVALID_PARAMETER;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto exit;
+    }
       }
-    else
-      {
-	target = std::move (src_string);
-      }
+
+    // position is not specified or bigger than length of src_string
+    if (target.empty ())
+    {
+      target = std::move (src_string);
+    }
 
     try
       {
@@ -4803,7 +4805,9 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	  }
 	else
 	  {
-	    result_string = std::move (target);
+      error_status = ER_QPROC_INVALID_PARAMETER;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto exit;
 	  }
 
 	/* concatenate with prefix */
