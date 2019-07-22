@@ -49,7 +49,7 @@ namespace cublocale
     return codeset_str;
   }
 
-  std::locale get_locale (const std::string& charset, const std::string& lang)
+  std::locale get_locale (const std::string &charset, const std::string &lang)
   {
     try
       {
@@ -69,10 +69,10 @@ namespace cublocale
     bool success = false;
 
     if (in.empty ())
-	  {
-		// don't need to convert for empty string
-	    return true;
-	  }
+      {
+	// don't need to convert for empty string
+	return true;
+      }
 
     std::string utf8_str;
     if (codeset != INTL_CODESET_UTF8)
@@ -127,13 +127,13 @@ namespace cublocale
   {
     INTL_CODESET codeset = lang_coll->codeset;
     bool success = false;
-	
+
     if (in.empty ())
-	  {
-		// don't need to convert for empty string
-	    return true;
-	  }
-	  
+      {
+	// don't need to convert for empty string
+	return true;
+      }
+
     try
       {
 	std::string converted = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> {}.to_bytes (in);
