@@ -333,6 +333,4 @@ extern DISK_ISVALID vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY * thread_
 							  MVCC_REC_HEADER * rec_header, int btree_node_type);
 extern bool vacuum_is_mvccid_vacuumed (MVCCID id);
 extern int vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, INT16 rec_type);
-
-extern void vacuum_log_last_blockid (THREAD_ENTRY * thread_p);
 #endif /* _VACUUM_H_ */

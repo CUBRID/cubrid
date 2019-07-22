@@ -663,6 +663,8 @@ static void print_not_vacuumed_to_log (OID * oid, OID * class_oid, MVCC_REC_HEAD
 
 static bool vacuum_is_empty (void);
 
+static void vacuum_sa_reflect_last_blockid (THREAD_ENTRY * thread_p);
+
 #if !defined (NDEBUG)
 /* Debug function to verify vacuum data. */
 static void vacuum_verify_vacuum_data_debug (THREAD_ENTRY * thread_p);
@@ -998,7 +1000,7 @@ vacuum_finalize (THREAD_ENTRY * thread_p)
     }
 
 #if !defined(SERVER_MODE)	/* SA_MODE */
-  vacuum_log_last_blockid (thread_p);
+  vacuum_sa_reflect_last_blockid (thread_p);
 #endif
 
   /* Finalize vacuum data. */
@@ -7769,17 +7771,26 @@ vacuum_is_empty (void)
 }
 
 /*
- *  vacuum_log_last_blockid () - Logs the vacuum_Data.last_blockid similar to vacuum_empty_data_page
+ *  vacuum_sa_reflect_last_blockid () - Update vacuum last blockid on SA_MODE
  *
  *  thread_p(in) :- Thread context.
  */
-void
-vacuum_log_last_blockid (THREAD_ENTRY * thread_p)
+static void
+vacuum_sa_reflect_last_blockid (THREAD_ENTRY * thread_p)
 {
   VACUUM_DATA_PAGE *data_page = vacuum_Data.first_page;
 
   /* We should have only 1 page in vacuum_Data. */
   assert (vacuum_Data.first_page == vacuum_Data.last_page);
+
+  VACUUM_LOG_BLOCKID last_blockid = logpb_last_complete_blockid ();
+  if (last_blockid == VACUUM_NULL_LOG_BLOCKID)
+    {
+      return;
+    }
+
+  vacuum_Data.last_blockid = last_blockid;
+  logpb_hdr_set_vacuum_last_blockid (last_blockid);
 
   vacuum_data_initialize_new_page (thread_p, data_page);
   data_page->data->blockid = vacuum_Data.last_blockid;
