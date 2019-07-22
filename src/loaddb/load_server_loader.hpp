@@ -78,7 +78,7 @@ namespace cubload
       void start_line (int object_id) override;
       void process_line (constant_type *cons) override;
       void finish_line () override;
-      int execute_before_batch_end ();
+      void flush_records () override;
 
     private:
       int process_constant (constant_type *cons, const attribute &attr);
@@ -105,7 +105,7 @@ namespace cubload
       bool m_attrinfo_started;
       heap_cache_attrinfo m_attrinfo;
       std::vector<db_value> m_db_values;
-      std::vector<recdes> m_recdes_collected;
+      std::vector<record_descriptor> m_recdes_collected;
 
       bool m_scancache_started;
       heap_scancache m_scancache;

@@ -13708,7 +13708,7 @@ xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK
 // *INDENT-OFF*
 int
 locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
-                            const std::vector<RECDES> &recdes, int has_index, int op_type, HEAP_SCANCACHE * scan_cache,
+                            const std::vector<record_descriptor> &recdes, int has_index, int op_type, HEAP_SCANCACHE * scan_cache,
                             int *force_count, int pruning_type, PRUNING_CONTEXT * pcontext,
                             FUNC_PRED_UNPACK_INFO * func_preds, UPDATE_INPLACE_STYLE force_in_place)
 {
@@ -13718,6 +13718,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
   OID dummy_oid;
   std::vector<RECDES> recdes_array;
   std::vector<VPID> heap_pages_array;
+  RECDES local_record;
 
   // Early-out
   if (recdes.size () == 0)
@@ -13733,13 +13734,14 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 
   for (size_t i = 0; i < recdes.size (); i++)
     {
+      local_record = recdes[i].get_recdes();
       // Loop until we insert all records.
 
-      if (heap_is_big_length (recdes[i].length))
+      if (heap_is_big_length (local_record.length))
         {
           scan_cache->cache_last_fix_page = false;
 	  // We insert other records normally.
-	  error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, (RECDES *) (&recdes[i]), has_index,
+	  error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, &local_record, has_index,
 					     op_type, scan_cache, force_count, pruning_type, pcontext, func_preds,
 					     force_in_place, NULL);
 	  if (error_code != NO_ERROR)
@@ -13751,7 +13753,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
       else
         {
 	  // get records until we fit the size of a page.
-	  if ((recdes[i].length + accumulated_records_size) >= heap_max_page_size)
+	  if ((local_record.length + accumulated_records_size) >= heap_max_page_size)
 	    {
 	      VPID new_page_vpid;
 	      PGBUF_WATCHER home_hint_p;
@@ -13799,8 +13801,8 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	    }
 
 	  // Add this record to the recdes array and increase the accumulated size.
-	  recdes_array.push_back (recdes[i]);
-	  accumulated_records_size += recdes[i].length;
+	  recdes_array.push_back (local_record);
+	  accumulated_records_size += local_record.length;
         }
     }
 

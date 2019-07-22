@@ -35,6 +35,7 @@
 #include "string_opfunc.h"
 #include "thread_manager.hpp"
 #include "xserver_interface.h"
+#include "record_descriptor.hpp"
 
 namespace cubload
 {
@@ -294,6 +295,8 @@ namespace cubload
     stop_attrinfo ();
     stop_scancache ();
 
+    m_recdes_collected.clear ();
+
     m_clsid = NULL_CLASS_ID;
     m_class_entry = NULL;
     m_thread_ref = NULL;
@@ -364,39 +367,36 @@ namespace cubload
     if (!is_syntax_check_only)
       {
 	// Create the record and add it to the array of collected records.
-	recdes new_recdes;
-	recdes *old_recdes = NULL;
+	record_descriptor new_recdes;
+	RECDES *old_recdes = NULL;
 
-	lc_copy_area *copyarea = locator_allocate_copy_area_by_attr_info (m_thread_ref, &m_attrinfo, old_recdes,
-				 &new_recdes, -1, LOB_FLAG_INCLUDE_LOB);
-	if (copyarea == NULL)
+	if (heap_attrinfo_transform_to_disk (m_thread_ref, &m_attrinfo, old_recdes, &new_recdes) != S_SUCCESS)
 	  {
 	    m_error_handler.on_failure ();
 	    return;
 	  }
 
 	// Add the recdes to the collected array.
-	m_recdes_collected.push_back (new_recdes);
+	m_recdes_collected.push_back (std::move (new_recdes));
 
-	if (copyarea != NULL)
-	  {
-	    locator_free_copy_area (copyarea);
-	    copyarea = NULL;
-	    new_recdes.data = NULL;
-	    new_recdes.area_size = 0;
-	  }
       }
 
     m_session.stats_update_current_line (m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1);
     clear_db_values ();
   }
 
-  int
-  server_object_loader::execute_before_batch_end ()
+  void
+  server_object_loader::flush_records ()
   {
     int force_count = 0;
     int pruning_type = 0;
     int op_type = SINGLE_ROW_INSERT;
+
+    // First check if we have any errors set.
+    if (m_session.is_failed ())
+      {
+	return;
+      }
 
     int error_code = locator_multi_insert_force (m_thread_ref, &m_scancache.node.hfid, &m_scancache.node.class_oid,
 		     m_recdes_collected, true, op_type, &m_scancache, &force_count, pruning_type, NULL, NULL,
@@ -405,10 +405,10 @@ namespace cubload
       {
 	ASSERT_ERROR ();
 	m_error_handler.on_failure ();
-	return error_code;
+	return;
       }
 
-    return error_code;
+    return;
   }
 
   int

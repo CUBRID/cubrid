@@ -768,6 +768,12 @@ namespace cubload
       }
   }
 
+  void
+  sa_object_loader::flush_records()
+    {
+      ; // Do nothing.
+    }
+
   /*
    * sa_object_loader::start_line - Finishes off the previous instance and resets the
    *                                     context to deal with a new instance.

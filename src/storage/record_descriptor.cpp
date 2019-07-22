@@ -143,6 +143,8 @@ record_descriptor::resize_buffer (std::size_t required_size)
 {
   check_changes_are_permitted ();
 
+  assert (m_data_source == data_source::INVALID || is_mutable ());
+
   if (m_recdes.area_size > 0 && required_size <= (size_t) m_recdes.area_size)
     {
       // resize not required
@@ -153,6 +155,11 @@ record_descriptor::resize_buffer (std::size_t required_size)
 
   m_recdes.data = m_own_data.get_ptr ();
   m_recdes.area_size = (int) required_size;
+
+  if (m_data_source == data_source::INVALID)
+    {
+      m_data_source = data_source::NEW;
+    }
 }
 
 void
@@ -300,7 +307,7 @@ record_descriptor::insert_data (std::size_t offset, std::size_t new_size, const 
 void
 record_descriptor::check_changes_are_permitted (void) const
 {
-  assert (is_mutable ());
+  //assert (is_mutable ());
 }
 
 bool
