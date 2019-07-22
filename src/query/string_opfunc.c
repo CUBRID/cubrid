@@ -2134,7 +2134,7 @@ db_string_repeat (const DB_VALUE * src_string, const DB_VALUE * count, DB_VALUE 
 
       /* update size of string */
       qstr_make_typed_string (result_type, result, DB_VALUE_PRECISION (result), db_get_string (result),
-			      (const int) expected_size, db_get_string_codeset (src_string),
+			      (int) expected_size, db_get_string_codeset (src_string),
 			      db_get_string_collation (src_string));
       result->need_clear = true;
 
@@ -4305,7 +4305,7 @@ regex_matches (const char *pattern, const char *str, int reg_flags, bool * match
   int error_status = NO_ERROR;
 
 #ifndef _USE_LIBREGEX_
-  /* *INDENT-OFF* */  
+  /* *INDENT-OFF* */
 
   // transform flags from cub_regex_t => std::regex_constants
   std::regex_constants::syntax_option_type std_reg_flags = std::regex::extended;
@@ -6145,7 +6145,7 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
 	bool has_zone = false;
 	bool is_explicit_time = false;
 
-	error = db_string_to_datetimetz (db_get_string (left), &ldatetimetz, &has_zone);
+	error = db_string_to_datetimetz_ex (db_get_string (left), db_get_string_size (left), &ldatetimetz, &has_zone);
 	if (error == NO_ERROR && has_zone == true)
 	  {
 	    tz_id = ldatetimetz.tz_id;
@@ -12609,7 +12609,7 @@ db_to_date (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
 	  goto exit;
 	}
 
-      db_make_char (&default_format, strlen (default_format_str), (const DB_C_CHAR) (default_format_str),
+      db_make_char (&default_format, strlen (default_format_str), (DB_C_CHAR) default_format_str,
 		    strlen (default_format_str), frmt_codeset, LANG_GET_BINARY_COLLATION (frmt_codeset));
       format_str = &default_format;
     }
@@ -13180,7 +13180,7 @@ db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto exit;
 	}
-      db_make_char (&default_format, strlen (default_format_str), (const DB_C_CHAR) (default_format_str),
+      db_make_char (&default_format, strlen (default_format_str), (DB_C_CHAR) default_format_str,
 		    strlen (default_format_str), frmt_codeset, LANG_GET_BINARY_COLLATION (frmt_codeset));
       format_str = &default_format;
     }
@@ -13763,7 +13763,7 @@ db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB
 	  goto exit;
 	}
 
-      db_make_char (&default_format, strlen (default_format_str), (const DB_C_CHAR) (default_format_str),
+      db_make_char (&default_format, strlen (default_format_str), (DB_C_CHAR) default_format_str,
 		    strlen (default_format_str), frmt_codeset, LANG_GET_BINARY_COLLATION (frmt_codeset));
       format_str = &default_format;
     }
@@ -14674,7 +14674,7 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_
 	  goto exit;
 	}
 
-      db_make_char (&default_format, strlen (default_format_str), (const DB_C_CHAR) (default_format_str),
+      db_make_char (&default_format, strlen (default_format_str), (DB_C_CHAR) default_format_str,
 		    strlen (default_format_str), frmt_codeset, LANG_GET_BINARY_COLLATION (frmt_codeset));
       format_str = &default_format;
     }
@@ -19654,30 +19654,17 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
       _d = days[_m];
     }
 
-  if (_m == 0)
-    {
-      _y--;
-      days[2] = LEAP (_y) ? 29 : 28;
-      _m = 12;
-    }
-
   /* date */
-  if (_m < 0)
+  if (_m <= 0)
     {
       _y += (_m / 12);
-      if (_m % 12 == 0)
+      _m %= 12;
+      if (_m <= 0)
 	{
-	  _m = 1;
+	  _m += 12;
+	  _y--;
 	}
-      else
-	{
-	  _m %= 12;
-	  if (_m < 0)
-	    {
-	      _m += 12;
-	      _y--;
-	    }
-	}
+      days[2] = LEAP (_y) ? 29 : 28;
     }
 
   /* just years and/or months case */
@@ -19686,18 +19673,11 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
       if (_m <= 0)
 	{
 	  _y += (_m / 12);
-	  if (_m % 12 == 0)
+	  _m %= 12;
+	  if (_m <= 0)
 	    {
-	      _m = 1;
-	    }
-	  else
-	    {
-	      _m %= 12;
-	      if (_m <= 0)
-		{
-		  _m += 12;
-		  _y--;
-		}
+	      _m += 12;
+	      _y--;
 	    }
 	}
 

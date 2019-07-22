@@ -3191,8 +3191,9 @@ run_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index)
       putenv (proxy_id_env_str);
 
 #if !defined(WINDOWS)
-      snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d", shm_appl->broker_name, proxy_exe_name,
-		proxy_index + 1);
+      int ret = snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d", shm_appl->broker_name, proxy_exe_name,
+			  proxy_index + 1);
+      (void) ret;		// suppress format-truncate warning
 #endif /* !WINDOWS */
 
 #if defined(WINDOWS)
@@ -3266,35 +3267,41 @@ restart_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index
 static void
 get_as_sql_log_filename (char *log_filename, int len, char *broker_name, T_APPL_SERVER_INFO * as_info_p, int as_index)
 {
+  int ret;
   char dirname[BROKER_PATH_MAX];
 
   get_cubrid_file (FID_SQL_LOG_DIR, dirname, BROKER_PATH_MAX);
 
   if (br_shard_flag == ON)
     {
-      snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d_%d_%d.sql.log", dirname, broker_name, as_info_p->proxy_id + 1,
-		as_info_p->shard_id, as_info_p->shard_cas_id + 1);
+      ret = snprintf (log_filename, BROKER_PATH_MAX - 1, "%s%s_%d_%d_%d.sql.log", dirname, broker_name,
+		      as_info_p->proxy_id + 1, as_info_p->shard_id, as_info_p->shard_cas_id + 1);
     }
   else
     {
-      snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d.sql.log", dirname, broker_name, as_index + 1);
+      ret = snprintf (log_filename, BROKER_PATH_MAX - 1, "%s%s_%d.sql.log", dirname, broker_name, as_index + 1);
     }
+
+  (void) ret;			// suppress format-truncate warning
 }
 
 static void
 get_as_slow_log_filename (char *log_filename, int len, char *broker_name, T_APPL_SERVER_INFO * as_info_p, int as_index)
 {
+  int ret;
   char dirname[BROKER_PATH_MAX];
 
   get_cubrid_file (FID_SLOW_LOG_DIR, dirname, BROKER_PATH_MAX);
 
   if (br_shard_flag == ON)
     {
-      snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d_%d_%d.slow.log", dirname, broker_name, as_info_p->proxy_id + 1,
-		as_info_p->shard_id, as_info_p->shard_cas_id + 1);
+      ret = snprintf (log_filename, BROKER_PATH_MAX - 1, "%s%s_%d_%d_%d.slow.log", dirname, broker_name,
+		      as_info_p->proxy_id + 1, as_info_p->shard_id, as_info_p->shard_cas_id + 1);
     }
   else
     {
-      snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d.slow.log", dirname, broker_name, as_index + 1);
+      ret = snprintf (log_filename, BROKER_PATH_MAX - 1, "%s%s_%d.slow.log", dirname, broker_name, as_index + 1);
     }
+
+  (void) ret;			// suppress format-truncate warning
 }

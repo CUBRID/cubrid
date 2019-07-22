@@ -116,6 +116,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/pinning.cpp
   ${BASE_DIR}/perf_monitor.c
   ${BASE_DIR}/porting.c
+  ${BASE_DIR}/printer.cpp
   ${BASE_DIR}/process_util.c
   ${BASE_DIR}/release_string.c
   ${BASE_DIR}/resource_tracker.cpp
@@ -150,6 +151,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/process_util.h
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/string_buffer.hpp
+  ${BASE_DIR}/semaphore.hpp
   )
 
 set(EXECUTABLE_SOURCES

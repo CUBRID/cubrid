@@ -138,6 +138,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/porting_inline.hpp
   ${BASE_DIR}/printer.hpp
   ${BASE_DIR}/resource_tracker.hpp
+  ${BASE_DIR}/semaphore.hpp
 )
 
 set(HEAPLAYER_SOURCES

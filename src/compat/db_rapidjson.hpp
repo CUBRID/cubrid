@@ -17,23 +17,27 @@
  *
  */
 
+//
+// cubrid rapidjson header
+// include this header instead of specific rapid json header
+//
 
-/*
- * stack_dump.h - call stack dump
- */
+#ifndef _DB_RAPIDJSON_HPP_
+#define _DB_RAPIDJSON_HPP_
 
-#ifndef _STACK_DUMP_H_
-#define _STACK_DUMP_H_
-
-#ident "$Id$"
-
-#if defined(LINUX)
-#include "memory_hash.h"
-extern MHT_TABLE *fname_table;
+// disable rapidjson compile warnings
+#if defined (__GNUC__)
+#pragma GCC system_header
 #endif
-#include <string>
 
-extern void er_dump_call_stack (FILE * outfp);
-extern char *er_dump_call_stack_to_string (void);
+#include "rapidjson/allocators.h"
+#include "rapidjson/document.h"
+#include "rapidjson/encodings.h"
+#include "rapidjson/error/en.h"
+#include "rapidjson/pointer.h"
+#include "rapidjson/rapidjson.h"
+#include "rapidjson/schema.h"
+#include "rapidjson/stringbuffer.h"
+#include "rapidjson/writer.h"
 
-#endif /* _STACK_DUMP_H_ */
+#endif /*_DB_RAPIDJSON_HPP_*/

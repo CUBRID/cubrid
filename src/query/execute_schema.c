@@ -1533,8 +1533,8 @@ do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter
     }
 
   error_code =
-    create_or_drop_index_helper (parser, alter->info.alter.constraint_list->info.name.original, (const bool) is_reverse,
-				 (const bool) is_unique, NULL, NULL, NULL, NULL, -1, 0, NULL, NULL, obj,
+    create_or_drop_index_helper (parser, alter->info.alter.constraint_list->info.name.original, is_reverse,
+				 is_unique, NULL, NULL, NULL, NULL, -1, 0, NULL, NULL, obj,
 				 SM_NORMAL_INDEX, DO_INDEX_DROP);
   return error_code;
 }
@@ -3038,7 +3038,7 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
 
   error_code =
-    create_or_drop_index_helper (parser, index_name, (const bool) is_reverse, (const bool) is_unique,
+    create_or_drop_index_helper (parser, index_name, is_reverse, is_unique,
 				 statement->info.index.indexed_class, statement->info.index.column_names, NULL, NULL,
 				 statement->info.index.func_pos, statement->info.index.func_no_args,
 				 statement->info.index.function_expr, NULL, obj, statement->info.index.index_status,

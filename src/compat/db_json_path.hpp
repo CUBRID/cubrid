@@ -26,8 +26,7 @@
 
 #include "db_json_allocator.hpp"
 #include "db_json_types_internal.hpp"
-
-#include "rapidjson/rapidjson.h"
+#include "db_rapidjson.hpp"
 
 #include <string>
 #include <unordered_set>
