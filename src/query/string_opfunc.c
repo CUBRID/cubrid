@@ -4755,6 +4755,16 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
       goto exit;
     }
+  else
+    {
+      assert (error_status == NO_ERROR);
+      error_status = pr_clone_value ((DB_VALUE *) src, result);
+      qstr_make_typed_string ((src_type == DB_TYPE_NCHAR ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR), result,
+				      DB_VALUE_PRECISION (result), db_get_string (result), db_get_string_size (result),
+				      db_get_string_codeset (src), db_get_string_collation (src));
+      result->need_clear = true;
+      goto exit;
+    }
       }
 
     // position is not specified or bigger than length of src_string
