@@ -151,8 +151,6 @@ record_descriptor::resize_buffer (std::size_t required_size)
 {
   assert (m_data_source == data_source::INVALID || is_mutable ());
 
-  assert (m_data_source == data_source::INVALID || is_mutable ());
-
   if (m_recdes.area_size > 0 && required_size <= (size_t) m_recdes.area_size)
     {
       // resize not required
@@ -315,7 +313,7 @@ record_descriptor::insert_data (std::size_t offset, std::size_t new_size, const 
 void
 record_descriptor::check_changes_are_permitted (void) const
 {
-  //assert (is_mutable ());
+  assert (is_mutable ());
 }
 
 bool
