@@ -77,10 +77,10 @@ namespace cubstream
 		return;
 	      }
 
-	    this_producer_channel.m_last_sent_position = last_sent_position;
+	    this_producer_channel.m_last_sent_position = htoni64 (last_sent_position);
 
 	    er_log_debug (ARG_FILE_LINE, "transfer_sender_task starting : last_sent_position:%llu, rc:%d\n",
-			  last_sent_position, rc);
+			  this_producer_channel.m_last_sent_position, rc);
 
 	    assert (max_len == sizeof (UINT64));
 

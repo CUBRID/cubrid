@@ -26,6 +26,7 @@
 #include "config.h"
 
 #include <algorithm>
+#include <unordered_set>
 #include <stdio.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -1256,10 +1257,10 @@ log_rv_analysis_group_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * 
 
   // *INDENT-OFF*
   // get max between checkpoint's and group_complete's last_ack reads
-  log_Gl.m_ack_stream_position = std::max ((cubstream::stream_position) log_Gl.m_ack_stream_position.load (),
-					   group_complete.stream_pos);
+  log_Gl.hdr.m_ack_stream_position = std::max ((cubstream::stream_position) log_Gl.hdr.m_ack_stream_position,
+					       group_complete.stream_pos);
 
-  for (const auto & ti : group) 
+  for (const auto & ti : group)
     {
       if (ti.m_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
 	{
@@ -1818,8 +1819,8 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
 
   // get max between checkpoint's and group_complete's last_ack reads
   // *INDENT-OFF*
-  log_Gl.m_ack_stream_position = std::max ((cubstream::stream_position) log_Gl.m_ack_stream_position.load (),
-					   chkpt.last_ack_stream_position);
+  log_Gl.hdr.m_ack_stream_position = std::max ((cubstream::stream_position) log_Gl.hdr.m_ack_stream_position,
+					       chkpt.last_ack_stream_position);
   // *INDENT-ON*
 
   /* GET THE CHECKPOINT TRANSACTION INFORMATION */
@@ -2887,9 +2888,9 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
   for (int i = 1; i < log_Gl.trantable.num_total_indices; ++i)
     {
       LOG_TDES *crt_tdes = NULL;
-      if ((crt_tdes = LOG_FIND_TDES (i)) != NULL && crt_tdes->trid != NULL_TRANID
-	  && !LSA_ISNULL (&crt_tdes->undo_nxlsa))
+      if ((crt_tdes = LOG_FIND_TDES (i)) != NULL && crt_tdes->trid != NULL_TRANID)
 	{
+	  _er_log_debug (ARG_FILE_LINE, "HA recovery: found active at end of analysis: trid:%d \n", crt_tdes->trid);
 	  if (LSA_ISNULL (&log_Gl.m_min_active_lsa) || LSA_LT (&crt_tdes->head_lsa, &log_Gl.m_min_active_lsa))
 	    {
 	      LSA_COPY (&log_Gl.m_min_active_lsa, &crt_tdes->head_lsa);
@@ -4592,6 +4593,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	  && (tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED || tdes->state == TRAN_UNACTIVE_ABORTED)
 	  && LSA_ISNULL (&tdes->undo_nxlsa))
 	{
+	  // todo: also take into account mccids set during redo
 	  (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
 	  logtb_free_tran_index (thread_p, tran_index);
 	}
@@ -4892,7 +4894,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  else if (sysop_end->type == LOG_SYSOP_END_COMMIT_REPLICATED)
 		    {
 		      // commit only if replicated
-		      if (sysop_end->repl_stream_position < log_Gl.m_ack_stream_position)
+		      if (sysop_end->repl_stream_position < log_Gl.hdr.m_ack_stream_position)
 			{
 			  // it was replicated, so sysop is committed. jump to last parent
 			  prev_tranlsa = sysop_end->lastparent_lsa;
@@ -5032,7 +5034,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   /* of last active transaction at the end of analysis) - we go backwards until we find a GC record */
   if (!LSA_ISNULL (&log_Gl.m_min_active_lsa))
     {
-      assert (log_Gl.m_active_start_position == 0);
+      assert (log_Gl.m_repl_rv.m_active_start_position == 0);
       bool found = false;
       LSA_COPY (&log_lsa, &log_Gl.m_min_active_lsa);
       while (!found)
@@ -5052,12 +5054,13 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	      if (log_rec->type == LOG_GROUP_COMPLETE)
 		{
 		  data_header_size = sizeof (LOG_REC_GROUP_COMPLETE);
+		  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
 		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, data_header_size, &log_lsa, log_pgptr);
 		  LOG_REC_GROUP_COMPLETE *gc_rec =
 		    (LOG_REC_GROUP_COMPLETE *) ((char *) log_pgptr->area + log_lsa.offset);
 
 		  // found start of filtered apply
-		  log_Gl.m_active_start_position = gc_rec->stream_pos;
+		  log_Gl.m_repl_rv.m_active_start_position = gc_rec->stream_pos;
 		  found = true;
 		  break;
 		}
@@ -5084,7 +5087,15 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	    }
 	}
 
-      assert (log_Gl.m_active_start_position != 0);
+      _er_log_debug (ARG_FILE_LINE, "HA recovery: Finished recovery of min active stream position "
+		     "m_active_start_position=%llu, m_ack_stream_position=%llu",
+		     (std::uint64_t) log_Gl.m_repl_rv.m_active_start_position,
+		     (std::uint64_t) log_Gl.hdr.m_ack_stream_position);
+    }
+
+  for (auto it = log_Gl.m_repl_rv.m_active_mvcc_ids.begin (); it != log_Gl.m_repl_rv.m_active_mvcc_ids.end (); ++it)
+    {
+      _er_log_debug (ARG_FILE_LINE, "HA recovery: active mvcc recovery: MVCCID found:" "%llu\n", (std::uint64_t) * it);
     }
 
   log_zip_free (undo_unzip_ptr);

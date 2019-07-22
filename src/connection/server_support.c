@@ -2215,21 +2215,9 @@ css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p, int whence)
 static bool
 css_check_ha_log_applier_done (void)
 {
-  int i;
-
-  for (i = 0; i < ha_Server_num_of_hosts; i++)
-    {
-      if (ha_Log_applier_state[i].state != HA_LOG_APPLIER_STATE_DONE)
-	{
-	  break;
-	}
-    }
-  if (i == ha_Server_num_of_hosts
-      && (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE))
-    {
-      return true;
-    }
-  return false;
+  // Commuting to master_node already implies that the fetched data from stream is going to be applied
+  // todo [replication]: Improve to check whether there is unapplied stream data
+  return true;
 }
 
 /*

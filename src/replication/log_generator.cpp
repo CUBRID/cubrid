@@ -437,9 +437,9 @@ namespace cubreplication
 
     /* TODO[replication] : force a group commit :
      * move this to log_manager group commit when multi-threaded apply is enabled */
-    cubstream::stream_position sp1;
-    cubstream::stream_position sp2;
-    pack_group_commit_entry (sp1, sp2);
+    cubstream::stream_position stream_pos;
+
+    pack_group_commit_entry (stream_pos, m_gc_end_position);
   }
 
   void
@@ -533,6 +533,13 @@ namespace cubreplication
   log_generator::set_row_replication_disabled (bool disable_if_true)
   {
     m_is_row_replication_disabled = disable_if_true;
+  }
+
+  cubstream::stream_position
+  log_generator::get_last_end_position () const
+  {
+    // todo: remove when complete manager is merged and a way to take last gc's end_position is available
+    return m_gc_end_position;
   }
 
   void
