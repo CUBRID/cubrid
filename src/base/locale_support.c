@@ -3883,6 +3883,7 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
   unsigned int cp_unicode = 0;
   TXT_CONV_ITEM min_values = { 0xffff, 0xffff };
   TXT_CONV_ITEM max_values = { 0, 0 };
+  int ret;
 
   assert (ld != NULL);
 
@@ -3918,7 +3919,7 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
 
   if (fp == NULL)
     {
-      snprintf (err_msg, sizeof (err_msg) - 1, "Cannot open file %s", ld->txt_conv_prm.conv_file);
+      ret = snprintf (err_msg, sizeof (err_msg) - 1, "Cannot open file %s", ld->txt_conv_prm.conv_file);
       LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
       status = ER_LOC_GEN;
       goto error;
@@ -3953,8 +3954,8 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
       /* skip codepoints values above 0xFFFF */
       if (cp_text > 0xffff || (cp_text > 0xff && ld->txt_conv_prm.conv_type == TEXT_CONV_GENERIC_1BYTE))
 	{
-	  snprintf (err_msg, sizeof (err_msg) - 1, "Codepoint value too big" " in file :%s at line %d",
-		    ld->txt_conv_prm.conv_file, line_count);
+	  ret = snprintf (err_msg, sizeof (err_msg) - 1, "Codepoint value too big" " in file :%s at line %d",
+			  ld->txt_conv_prm.conv_file, line_count);
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 	  status = ER_LOC_GEN;
 	  goto error;
@@ -4001,8 +4002,8 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
 
       if (cp_unicode > 0xffff)
 	{
-	  snprintf (err_msg, sizeof (err_msg) - 1, "Codepoint value too big" " in file :%s at line %d",
-		    ld->txt_conv_prm.conv_file, line_count);
+	  ret = snprintf (err_msg, sizeof (err_msg) - 1, "Codepoint value too big" " in file :%s at line %d",
+			  ld->txt_conv_prm.conv_file, line_count);
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 	  status = ER_LOC_GEN;
 	  goto error;
@@ -4133,6 +4134,8 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
       status = ER_LOC_GEN;
       goto error;
     }
+
+  (void) ret;			// suppress format-truncate warning
 
   return status;
 
@@ -4577,8 +4580,9 @@ locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose)
       char msg[ERR_MSG_SIZE];
       const char *xml_err_text = (char *) XML_ErrorString (XML_GetErrorCode (ldml_parser.xml_parser));
 
-      snprintf (msg, sizeof (msg) - 1, "Error parsing file %s, " "line : %d, column : %d. Internal XML: %s",
-		ldml_parser.filepath, ldml_parser.xml_error_line, ldml_parser.xml_error_column, xml_err_text);
+      int ret = snprintf (msg, sizeof (msg) - 1, "Error parsing file %s, " "line : %d, column : %d. Internal XML: %s",
+			  ldml_parser.filepath, ldml_parser.xml_error_line, ldml_parser.xml_error_column, xml_err_text);
+      (void) ret;		// suppress format-truncate warning
 
       LOG_LOCALE_ERROR (msg, ER_LOC_GEN, true);
       er_status = ER_LOC_GEN;
@@ -5114,7 +5118,8 @@ locale_get_cfg_locales (LOCALE_FILE ** p_locale_files, int *p_num_locales, bool 
 	}
       else
 	{
-	  snprintf (msg, sizeof (msg) - 1, "Cannot open file %s", locale_cfg_file);
+	  int ret = snprintf (msg, sizeof (msg) - 1, "Cannot open file %s", locale_cfg_file);
+	  (void) ret;		// suppress format-truncate warning
 	  LOG_LOCALE_ERROR (msg, ER_LOC_GEN, true);
 	  err_status = ER_LOC_GEN;
 	  goto exit;
@@ -5409,7 +5414,8 @@ locale_prepare_C_file (void)
   fclose (fp);
   return 0;
 error:
-  snprintf (err_msg, sizeof (err_msg) - 1, "Error opening file %s for rewrite.", c_file_path);
+  int ret = snprintf (err_msg, sizeof (err_msg) - 1, "Error opening file %s for rewrite.", c_file_path);
+  (void) ret;			// suppress format-truncate warning
   LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
   return ER_GENERIC_ERROR;
 }
@@ -5484,7 +5490,8 @@ locale_save_to_C_file (LOCALE_FILE lf, LOCALE_DATA * ld)
   return 0;
 
 error:
-  snprintf (err_msg, sizeof (err_msg) - 1, "Error opening file %s for append.", c_file_path);
+  int ret = snprintf (err_msg, sizeof (err_msg) - 1, "Error opening file %s for append.", c_file_path);
+  (void) ret;			// suppress format-truncate warning
   LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
   return ER_GENERIC_ERROR;
 }
@@ -7128,7 +7135,7 @@ dump_unicode_mapping (UNICODE_MAPPING * um, const int mode)
   next = cur_str;
   while (next < um->buffer + um->size)
     {
-      cp = intl_utf8_to_cp (cur_str, (const int) INTL_UTF8_MAX_CHAR_SIZE, &next);
+      cp = intl_utf8_to_cp (cur_str, (int) INTL_UTF8_MAX_CHAR_SIZE, &next);
       printf ("%04X ", cp);
       cur_str = next;
     }
@@ -7965,6 +7972,7 @@ start_include_collation (void *data, const char **attr)
   context->ldml_file = strdup (include_file_path);
   context->line_no = 0;
 
+  int ret;
   if (new_pd == NULL)
     {
       char err_msg[ERR_MSG_SIZE] = { 0 };
@@ -7972,15 +7980,15 @@ start_include_collation (void *data, const char **attr)
       switch (pd->xml_error)
 	{
 	case XML_CUB_ERR_INCLUDE_LOOP:
-	  snprintf (err_msg, sizeof (err_msg) - 1, "Inclusion loop found for file %s.", include_file_path);
+	  ret = snprintf (err_msg, sizeof (err_msg) - 1, "Inclusion loop found for file %s.", include_file_path);
 	  break;
 	case XML_CUB_ERR_PARSER_INIT_FAIL:
-	  snprintf (err_msg, sizeof (err_msg) - 1, "Failed to initialize subparser for file path %s.",
-		    include_file_path);
+	  ret = snprintf (err_msg, sizeof (err_msg) - 1, "Failed to initialize subparser for file path %s.",
+			  include_file_path);
 	  break;
 	case XML_CUB_OUT_OF_MEMORY:
-	  snprintf (err_msg, sizeof (err_msg) - 1, "Memory exhausted when creating subparser for file %s.",
-		    include_file_path);
+	  ret = snprintf (err_msg, sizeof (err_msg) - 1, "Memory exhausted when creating subparser for file %s.",
+			  include_file_path);
 	  break;
 	}
       LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
@@ -7995,8 +8003,8 @@ start_include_collation (void *data, const char **attr)
     {
       char err_msg[ERR_MSG_SIZE] = { 0 };
 
-      snprintf (err_msg, sizeof (err_msg) - 1, "Included file %s does not exist or " "is not accessible.",
-		include_file_path);
+      ret = snprintf (err_msg, sizeof (err_msg) - 1, "Included file %s does not exist or " "is not accessible.",
+		      include_file_path);
       PRINT_DEBUG_START (data, attr, err_msg, -1);
       LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 
@@ -8007,13 +8015,14 @@ start_include_collation (void *data, const char **attr)
       char msg[ERR_MSG_SIZE] = { 0 };
       const char *xml_err_text = (char *) XML_ErrorString (XML_GetErrorCode (new_pd->xml_parser));
 
-      snprintf (msg, sizeof (msg) - 1, "Error parsing file %s, " "line: %d, column: %d. Internal XML: %s",
-		new_pd->filepath, new_pd->xml_error_line, new_pd->xml_error_column, xml_err_text);
+      ret = snprintf (msg, sizeof (msg) - 1, "Error parsing file %s, " "line: %d, column: %d. Internal XML: %s",
+		      new_pd->filepath, new_pd->xml_error_line, new_pd->xml_error_column, xml_err_text);
       LOG_LOCALE_ERROR (msg, ER_LOC_GEN, true);
 
       return -1;
     }
 
+  (void) ret;			// suppress format-truncate warning
   free (context->ldml_file);
   context->ldml_file = prev_ldml_file;
   context->line_no = prev_line_no;
