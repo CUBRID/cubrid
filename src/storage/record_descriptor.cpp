@@ -342,9 +342,9 @@ record_descriptor::unpack (cubpacking::unpacker &unpacker)
 }
 
 size_t
-record_descriptor::get_packed_size (cubpacking::packer &packer, std::size_t curr_offset) const
+record_descriptor::get_packed_size (cubpacking::packer &packer) const
 {
-  size_t entry_size = packer.get_packed_short_size (curr_offset);
+  size_t entry_size = packer.get_packed_short_size (0);
   entry_size += packer.get_packed_buffer_size (m_recdes.data, m_recdes.length, entry_size);
 
   return entry_size;

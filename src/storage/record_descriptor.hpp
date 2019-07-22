@@ -122,7 +122,7 @@ class record_descriptor : public cubpacking::packable_object
 
     void pack (cubpacking::packer &packer) const override;
     void unpack (cubpacking::unpacker &unpacker) override;
-    std::size_t get_packed_size (cubpacking::packer &packer, std::size_t curr_offset) const override;
+    std::size_t get_packed_size (cubpacking::packer &packer) const override;
 
     //
     // manipulate record memory buffer
