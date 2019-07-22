@@ -211,13 +211,12 @@ namespace cubload
 	  }
 	else
 	  {
-
 	    // order batch commits, therefore wait until previous batch is committed
 	    m_session.wait_for_previous_batch (m_batch.get_id ());
 
 	    xtran_server_commit (&thread_ref, false);
-	    std::string class_name = cls_entry->get_class_name ();
 
+	    std::string class_name = cls_entry->get_class_name ();
 	    if (m_session.get_args ().syntax_check)
 	      {
 		m_session.append_log_msg (LOADDB_MSG_INSTANCE_COUNT, class_name.c_str (), m_batch.get_rows_number ());
@@ -236,7 +235,6 @@ namespace cubload
 	      {
 		m_session.append_log_msg (LOADDB_MSG_UPDATED_CLASS_STATS, class_name.c_str ());
 	      }
-
 	  }
 
 	// free transaction index

@@ -769,7 +769,7 @@ namespace cubload
   }
 
   void
-  sa_object_loader::flush_records()
+  sa_object_loader::flush_records ()
     {
       ; // Do nothing.
     }

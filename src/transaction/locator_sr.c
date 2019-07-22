@@ -13734,7 +13734,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 
   for (size_t i = 0; i < recdes.size (); i++)
     {
-      local_record = recdes[i].get_recdes();
+      local_record = recdes[i].get_recdes ();
       // Loop until we insert all records.
 
       if (heap_is_big_length (local_record.length))

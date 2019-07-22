@@ -31,11 +31,11 @@
 #include "load_session.hpp"
 #include "locator_sr.h"
 #include "object_primitive.h"
+#include "record_descriptor.hpp"
 #include "set_object.h"
 #include "string_opfunc.h"
 #include "thread_manager.hpp"
 #include "xserver_interface.h"
-#include "record_descriptor.hpp"
 
 namespace cubload
 {
@@ -378,7 +378,6 @@ namespace cubload
 
 	// Add the recdes to the collected array.
 	m_recdes_collected.push_back (std::move (new_recdes));
-
       }
 
     m_session.stats_update_current_line (m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1);
@@ -405,10 +404,7 @@ namespace cubload
       {
 	ASSERT_ERROR ();
 	m_error_handler.on_failure ();
-	return;
       }
-
-    return;
   }
 
   int
