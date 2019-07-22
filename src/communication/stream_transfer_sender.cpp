@@ -33,8 +33,6 @@
 #include "stream_transfer_sender.hpp"
 #include "transaction_master_group_complete_manager.hpp"
 
-#include "log_impl.h"
-
 #include "system_parameter.h" /* for er_log_debug */
 #include "thread_manager.hpp"
 #include "thread_daemon.hpp"
