@@ -542,7 +542,9 @@ struct log_tdes
   const char *ha_sbr_statement;
 
 #if defined (SERVER_MODE)
+  // *INDENT-OFF*
   cubreplication::source_copy_context *replication_copy_context;
+  // *INDENT-ON*
 #endif
 
   // *INDENT-OFF*

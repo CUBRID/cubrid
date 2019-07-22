@@ -7568,8 +7568,8 @@ end:
 	    {
 	      /* Aborts and simulate apply replication RBR on master node. */
 	      error_code =
-		logtb_get_tdes (thread_p)->replication_log_generator.
-		abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
+		logtb_get_tdes (thread_p)->
+		replication_log_generator.abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
 	    }
 	  else
 	    {
@@ -13841,7 +13841,7 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
   assert (thread_p != NULL);
 
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  cubreplication::source_copy_context& repl_copy_ctxt = *tdes->replication_copy_context;
+  cubreplication::source_copy_context & repl_copy_ctxt = *tdes->replication_copy_context;
 
   switch (type)
     {
@@ -13877,10 +13877,10 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
     }
 
   return NO_ERROR;
-#else /* SERVER_MODE*/
+#else /* SERVER_MODE */
   assert (false);
   return ER_FAILED;
-#endif /* SERVER_MODE*/
+#endif /* SERVER_MODE */
 }
 
 

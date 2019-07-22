@@ -26,11 +26,12 @@
 #ifndef _REPLICATION_SOURCE_DB_COPY_HPP_
 #define _REPLICATION_SOURCE_DB_COPY_HPP_
 
-#include "replication_object.hpp"
 #include "cubstream.hpp"
+#include "replication_object.hpp"
 #include "thread_manager.hpp"
-#include <condition_variable>
+
 #include <atomic>
+#include <condition_variable>
 #include <list>
 #include <mutex>
 
@@ -105,6 +106,7 @@ namespace cubreplication
 
       int get_tran_index (void);
       void inc_error_cnt ();
+
       void inc_extract_running_thread ()
       {
 	++m_running_extract_threads;
@@ -128,7 +130,6 @@ namespace cubreplication
       }
 
       void stop ();
-
 
     private:
       int wait_for_state (const copy_stage &desired_state);
