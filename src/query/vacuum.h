@@ -299,8 +299,6 @@ extern DISK_ISVALID vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY * thread_
 extern bool vacuum_is_mvccid_vacuumed (MVCCID id);
 extern int vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, INT16 rec_type);
 
-extern void vacuum_log_last_blockid (THREAD_ENTRY * thread_p);
-
 extern int vacuum_rv_es_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 #if defined (SERVER_MODE)
 extern void vacuum_notify_es_deleted (THREAD_ENTRY * thread_p, const char *uri);
