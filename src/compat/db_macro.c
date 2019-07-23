@@ -6818,10 +6818,10 @@ db_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type)
 }
 
 /*
- db_value_is_corrupted(): Check whether the db_value is corrupted
+ * db_value_is_corrupted(): Check whether the db_value is corrupted
  *
- returns: true if corrupted, false otherwise.
- value(in): the value to check
+ * returns: true if corrupted, false otherwise.
+ * value(in): the value to check
  */
 bool
 db_value_is_corrupted (const DB_VALUE * value)
