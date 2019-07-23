@@ -1183,6 +1183,8 @@ STATIC_INLINE void db_set_compressed_string (DB_VALUE * value, char *compressed_
 					     int compressed_size, bool compressed_need_clear)
   __attribute__ ((ALWAYS_INLINE));
 
+extern bool db_value_is_corrupted (const DB_VALUE * value);
+
 int
 db_get_compressed_size (DB_VALUE * value)
 {

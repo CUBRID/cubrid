@@ -6816,3 +6816,75 @@ db_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type)
       return NULL;
     }
 }
+
+/*
+ db_value_is_corrupted(): Check whether the db_value is corrupted
+ *
+ returns: true if corrupted, false otherwise.
+ value(in): the value to check
+ */
+bool
+db_value_is_corrupted (const DB_VALUE * value)
+{
+  if (value == NULL || DB_IS_NULL (value))
+    {
+      return false;
+    }
+
+  switch (value->domain.general_info.type)
+    {
+    case DB_TYPE_NUMERIC:
+      if (IS_INVALID_PRECISION (value->domain.numeric_info.precision, DB_MAX_NUMERIC_PRECISION))
+	{
+	  return true;
+	}
+      break;
+
+    case DB_TYPE_BIT:
+      if (IS_INVALID_PRECISION (value->domain.char_info.length, DB_MAX_BIT_PRECISION))
+	{
+	  return true;
+	}
+      break;
+
+    case DB_TYPE_VARBIT:
+      if (IS_INVALID_PRECISION (value->domain.char_info.length, DB_MAX_VARBIT_PRECISION))
+	{
+	  return true;
+	}
+      break;
+
+    case DB_TYPE_CHAR:
+      if (IS_INVALID_PRECISION (value->domain.char_info.length, DB_MAX_CHAR_PRECISION))
+	{
+	  return true;
+	}
+      break;
+
+    case DB_TYPE_NCHAR:
+      if (IS_INVALID_PRECISION (value->domain.char_info.length, DB_MAX_NCHAR_PRECISION))
+	{
+	  return true;
+	}
+      break;
+
+    case DB_TYPE_VARCHAR:
+      if (IS_INVALID_PRECISION (value->domain.char_info.length, DB_MAX_VARCHAR_PRECISION))
+	{
+	  return true;
+	}
+      break;
+
+    case DB_TYPE_VARNCHAR:
+      if (IS_INVALID_PRECISION (value->domain.char_info.length, DB_MAX_VARNCHAR_PRECISION))
+	{
+	  return true;
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  return false;
+}
