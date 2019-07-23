@@ -2894,6 +2894,9 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
       thread_stop_active_daemons ();
 #endif
 
+#if defined (SA_MODE)
+      vacuum_sa_reflect_last_blockid (thread_p);
+#endif // SA_MODE
       log_final (thread_p);
 
       if (is_er_final == ER_ALL_FINAL)

@@ -663,6 +663,11 @@ static void print_not_vacuumed_to_log (OID * oid, OID * class_oid, MVCC_REC_HEAD
 
 static bool vacuum_is_empty (void);
 
+static void vacuum_data_load_first_and_last_page (THREAD_ENTRY * thread_p);
+static void vacuum_data_unload_first_and_last_page (THREAD_ENTRY * thread_p);
+
+static void vacuum_data_empty_update_last_blockid (THREAD_ENTRY * thread_p);
+
 #if !defined (NDEBUG)
 /* Debug function to verify vacuum data. */
 static void vacuum_verify_vacuum_data_debug (THREAD_ENTRY * thread_p);
@@ -997,13 +1002,12 @@ vacuum_finalize (THREAD_ENTRY * thread_p)
       vacuum_Job_queue = NULL;
     }
 
-#if !defined(SERVER_MODE)	/* SA_MODE */
-  vacuum_log_last_blockid (thread_p);
+#if !defined (SERVER_MODE)	/* SA_MODE */
+  vacuum_data_empty_update_last_blockid (thread_p);
 #endif
 
   /* Finalize vacuum data. */
-  vacuum_unfix_first_and_last_data_page (thread_p);
-  vacuum_Data.is_loaded = false;
+  vacuum_data_unload_first_and_last_page (thread_p);
   /* We should have unfixed all pages. Double-check. */
   pgbuf_unfix_all (thread_p);
 
@@ -2506,6 +2510,48 @@ vacuum_master_start (THREAD_ENTRY * thread_p)
 }
 #endif /* SERVER_MODE */
 
+static void
+vacuum_data_load_first_and_last_page (THREAD_ENTRY * thread_p)
+{
+  if (vacuum_Data.is_loaded)
+    {
+      return;
+    }
+  assert (vacuum_Data.first_page == NULL && vacuum_Data.last_page == NULL);
+  vacuum_Data.first_page = vacuum_fix_data_page (thread_p, &vacuum_Data_load.vpid_first);
+  if (vacuum_Data.first_page == NULL)
+    {
+      assert_release (false);
+      return;
+    }
+  if (VPID_EQ (&vacuum_Data_load.vpid_first, &vacuum_Data_load.vpid_last))
+    {
+      vacuum_Data.last_page = vacuum_Data.first_page;
+    }
+  else
+    {
+      vacuum_Data.last_page = vacuum_fix_data_page (thread_p, &vacuum_Data_load.vpid_last);
+      if (vacuum_Data.last_page == NULL)
+	{
+	  vacuum_unfix_first_and_last_data_page (thread_p);
+	  assert_release (false);
+	  return;
+	}
+    }
+  vacuum_Data.is_loaded = true;
+}
+
+static void
+vacuum_data_unload_first_and_last_page (THREAD_ENTRY * thread_p)
+{
+  if (!vacuum_Data.is_loaded)
+    {
+      return;
+    }
+  vacuum_unfix_first_and_last_data_page (thread_p);
+  vacuum_Data.is_loaded = false;
+}
+
 /*
  * vacuum_process_vacuum_data () - Start a new vacuum iteration that processes
  *				   vacuum data and identifies blocks candidate
@@ -2569,28 +2615,7 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
        * about vacuum data first and last page not being unfixed (and it will also unfix them).
        * So, we have to load the data here (vacuum master never commits).
        */
-      assert (vacuum_Data.first_page == NULL && vacuum_Data.last_page == NULL);
-      vacuum_Data.first_page = vacuum_fix_data_page (thread_p, &vacuum_Data_load.vpid_first);
-      if (vacuum_Data.first_page == NULL)
-	{
-	  assert_release (false);
-	  return;
-	}
-      if (VPID_EQ (&vacuum_Data_load.vpid_first, &vacuum_Data_load.vpid_last))
-	{
-	  vacuum_Data.last_page = vacuum_Data.first_page;
-	}
-      else
-	{
-	  vacuum_Data.last_page = vacuum_fix_data_page (thread_p, &vacuum_Data_load.vpid_last);
-	  if (vacuum_Data.last_page == NULL)
-	    {
-	      vacuum_unfix_first_and_last_data_page (thread_p);
-	      assert_release (false);
-	      return;
-	    }
-	}
-      vacuum_Data.is_loaded = true;
+      vacuum_data_load_first_and_last_page (thread_p);
 
       /* Initialize job cursor */
       VPID_COPY (&vacuum_Data.vpid_job_cursor, pgbuf_get_vpid_ptr ((PAGE_PTR) vacuum_Data.first_page));
@@ -4121,8 +4146,8 @@ end:
     {
       vacuum_unfix_data_page (thread_p, data_page);
     }
-  vacuum_unfix_first_and_last_data_page (thread_p);
-  vacuum_Data.is_loaded = false;
+
+  vacuum_data_unload_first_and_last_page (thread_p);
 
   return error_code;
 }
@@ -7769,14 +7794,46 @@ vacuum_is_empty (void)
 }
 
 /*
- *  vacuum_log_last_blockid () - Logs the vacuum_Data.last_blockid similar to vacuum_empty_data_page
+ *  vacuum_sa_reflect_last_blockid () - Update vacuum last blockid on SA_MODE
  *
  *  thread_p(in) :- Thread context.
  */
 void
-vacuum_log_last_blockid (THREAD_ENTRY * thread_p)
+vacuum_sa_reflect_last_blockid (THREAD_ENTRY * thread_p)
 {
+  if (VPID_ISNULL (&vacuum_Data_load.vpid_first))
+    {
+      // database is freshly created or boot was aborted without doing anything
+      return;
+    }
+
+  vacuum_data_load_first_and_last_page (thread_p);
+
+  VACUUM_LOG_BLOCKID last_blockid = logpb_last_complete_blockid ();
+
+  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
+		 "vacuum_sa_reflect_last_blockid: last_blockid=%lld, append_prev_pageid=%d\n",
+		 (long long int) last_blockid, (int) log_Gl.append.prev_lsa.pageid);
+  if (last_blockid == VACUUM_NULL_LOG_BLOCKID)
+    {
+      vacuum_data_unload_first_and_last_page (thread_p);
+      return;
+    }
+
+  vacuum_Data.last_blockid = last_blockid;
+  logpb_hdr_set_vacuum_last_blockid (last_blockid);
+  vacuum_data_empty_update_last_blockid (thread_p);
+
+  vacuum_data_unload_first_and_last_page (thread_p);
+}
+
+static void
+vacuum_data_empty_update_last_blockid (THREAD_ENTRY * thread_p)
+{
+  assert (vacuum_is_empty ());
+
   VACUUM_DATA_PAGE *data_page = vacuum_Data.first_page;
+  assert (data_page != NULL);
 
   /* We should have only 1 page in vacuum_Data. */
   assert (vacuum_Data.first_page == vacuum_Data.last_page);
@@ -7789,9 +7846,6 @@ vacuum_log_last_blockid (THREAD_ENTRY * thread_p)
   vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
-		 "Last page, vpid = %d|%d, is empty and was reset. %s",
-		 pgbuf_get_vpid_ptr ((PAGE_PTR) (data_page))->volid,
-		 pgbuf_get_vpid_ptr ((PAGE_PTR) (data_page))->pageid,
-		 vacuum_Data.first_page == vacuum_Data.last_page ?
-		 "This is also first page." : "This is different from first page.");
+		 "vacuum_data_empty_update_last_blockid: update last_blockid=%lld in page %d|%d at lsa %lld|%d",
+		 (long long int) vacuum_Data.last_blockid, PGBUF_PAGE_STATE_ARGS ((PAGE_PTR) (data_page)));
 }
