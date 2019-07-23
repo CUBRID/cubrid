@@ -17,31 +17,27 @@
  *
  */
 
-/*
- * replication_common.hpp
- */
+//
+// cubrid rapidjson header
+// include this header instead of specific rapid json header
+//
 
-#ident "$Id$"
+#ifndef _DB_RAPIDJSON_HPP_
+#define _DB_RAPIDJSON_HPP_
 
-#ifndef _REPLICATION_COMMON_HPP_
-#define _REPLICATION_COMMON_HPP_
+// disable rapidjson compile warnings
+#if defined (__GNUC__)
+#pragma GCC system_header
+#endif
 
-#include "error_manager.h"
-#include <string>
+#include "rapidjson/allocators.h"
+#include "rapidjson/document.h"
+#include "rapidjson/encodings.h"
+#include "rapidjson/error/en.h"
+#include "rapidjson/pointer.h"
+#include "rapidjson/rapidjson.h"
+#include "rapidjson/schema.h"
+#include "rapidjson/stringbuffer.h"
+#include "rapidjson/writer.h"
 
-#define er_log_debug_replication(...) if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA)) _er_log_debug(__VA_ARGS__)
-
-const std::string REPL_ONLINE_CHANNEL_NAME = "online_replication";
-const std::string REPL_COPY_CHANNEL_NAME = "copy_db_replication";
-const std::string REPL_CONTROL_CHANNEL_NAME = "control_replication";
-
-namespace cubreplication
-{
-  typedef enum
-  {
-    REPL_SEMISYNC_ACK_ON_CONSUME,
-    REPL_SEMISYNC_ACK_ON_FLUSH
-  } REPL_SEMISYNC_ACK_MODE;
-};
-
-#endif /* _REPLICATION_COMMON_HPP_ */
+#endif /*_DB_RAPIDJSON_HPP_*/

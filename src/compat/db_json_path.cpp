@@ -19,16 +19,15 @@
 
 #include "db_json_path.hpp"
 
+#include "db_rapidjson.hpp"
 #include "memory_alloc.h"
 #include "string_opfunc.h"
 #include "system_parameter.h"
 
-#include "rapidjson/pointer.h"
-
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
 #include <cstdlib>
-#include <errno.h>
 #include <limits>
 #include <string>
 #include <unordered_set>

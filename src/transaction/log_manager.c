@@ -4460,14 +4460,16 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
 }
 
 void
-log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, tx_group & group,
+log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, cubstream::stream_position stream_pos, tx_group & group,
 			   LOG_LSA * complete_start_lsa, LOG_LSA * complete_end_lsa, bool * has_postpone)
 {
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa, end_lsa;
 
   /* TODO - add and use group.has_postpone and get rid of has_postpone parameter */
-  /* TODO - complete_start_lsa can be used for debug purpose */
+  log_Gl.hdr.m_ack_stream_position = stream_pos;
+
+  /* TODO - add and use group.has_postpone and get rid of has_postpone parameter */
   if (has_postpone)
     {
       *has_postpone = false;
@@ -6341,10 +6343,10 @@ log_dump_record_group_complete (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA 
 
   time_t tmp_time = (time_t) group_complete->at_time;
   (void) ctime_r (&tmp_time, time_val);
-  fprintf (out_fp, ",\n     Group commit (group_sz = %lu, stream_pos = %lu) finish time at = %s\n",
+  fprintf (out_fp, ",\n     Group commit (group_sz = %lld, stream_pos = %llu) finish time at = %s\n",
 	   group_complete->redo_size, group_complete->stream_pos, time_val);
   fprintf (out_fp, "     Group: ");
-  int buf_size = group_complete->redo_size;
+  int buf_size = (int) group_complete->redo_size;
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*group_complete), log_lsa, log_page_p);
 
   // *INDENT-OFF*

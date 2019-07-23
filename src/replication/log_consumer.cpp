@@ -140,7 +140,7 @@ namespace cubreplication
       }
 
     private:
-      std::vector<stream_entry *> m_repl_stream_entries;
+      std::vector<stream_entry *> m_repl_stream_entries;      
       log_consumer &m_lc;
   };
 
@@ -148,11 +148,33 @@ namespace cubreplication
   {
     public:
       dispatch_daemon_task (log_consumer &lc)
-	: m_lc (lc)
+	: m_filtered_apply_end (log_Gl.hdr.m_ack_stream_position)
+	, m_lc (lc)
 	, m_prev_group_stream_position (0)
 	, m_curr_group_stream_position (0)
       {
 	m_p_dispatch_consumer = cubtx::slave_group_complete_manager::get_instance ();
+      }
+
+      bool is_filtered_apply_segment (cubstream::stream_position stream_entry_end) const
+      {
+	return stream_entry_end <= m_filtered_apply_end;
+      }
+
+      bool filter_out_stream_entry (stream_entry *repl_stream_entry) const
+      {
+	if (is_filtered_apply_segment (repl_stream_entry->get_stream_entry_end_position ()))
+	  {
+	    MVCCID mvccid = repl_stream_entry->get_mvccid ();
+	    return repl_stream_entry->is_group_commit ()
+		   || log_Gl.m_repl_rv.m_active_mvcc_ids.find (mvccid) == log_Gl.m_repl_rv.m_active_mvcc_ids.end ();
+	  }
+
+	if (!log_Gl.m_repl_rv.m_active_mvcc_ids.empty ())
+	  {
+	    log_Gl.m_repl_rv.m_active_mvcc_ids.clear ();
+	  }
+	return false;
       }
 
       void execute (cubthread::entry &thread_ref) override
@@ -172,6 +194,12 @@ namespace cubreplication
 	    if (should_stop)
 	      {
 		break;
+	      }
+
+	    if (filter_out_stream_entry (se))
+	      {
+		delete se;
+		continue;
 	      }
 
 	    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
@@ -198,7 +226,7 @@ namespace cubreplication
 		assert (se->get_stream_entry_start_position () < se->get_stream_entry_end_position ());
 
 		m_prev_group_stream_position = m_curr_group_stream_position;
-		m_curr_group_stream_position = se->get_stream_entry_start_position ();
+		m_curr_group_stream_position = se->get_stream_entry_end_position ();
 
 		// Noramlly, is enough to wait for group to complete. However, for safety reason, it is better to
 		// start wait for workers first, then wait for complete manager.
@@ -306,6 +334,7 @@ namespace cubreplication
       }
 
     private:
+      cubstream::stream_position m_filtered_apply_end;
       log_consumer &m_lc;
       cubstream::stream_position m_prev_group_stream_position;
       cubstream::stream_position m_curr_group_stream_position;
@@ -369,6 +398,8 @@ namespace cubreplication
   int log_consumer::fetch_stream_entry (stream_entry *&entry)
   {
     int err = NO_ERROR;
+
+    wait_for_fetch_resume ();
 
     stream_entry *se = new stream_entry (get_stream ());
 
@@ -439,12 +470,30 @@ namespace cubreplication
 
   void log_consumer::stop (void)
   {
+    /* wakeup fetch daemon to allow it time to detect it is stopped */
+    fetch_resume ();
+
     get_stream ()->stop ();
 
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
     m_is_stopped = true;
     ulock.unlock ();
     m_apply_task_cv.notify_one ();
+  }
+
+  void log_consumer::fetch_suspend (void)
+  {
+    m_fetch_suspend.clear ();
+  }
+
+  void log_consumer::fetch_resume (void)
+  {
+    m_fetch_suspend.set ();
+  }
+
+  void log_consumer::wait_for_fetch_resume (void)
+  {
+    m_fetch_suspend.wait ();
   }
 
   subtran_applier &log_consumer::get_subtran_applier ()

@@ -82,7 +82,8 @@ namespace cubreplication
 
       stream_entry m_stream_entry;
 
-      bool m_is_row_replication_disabled;
+      bool m_is_row_replication_disabled;      
+
       static cubstream::multi_thread_stream *s_stream;
 
     public:
@@ -95,7 +96,7 @@ namespace cubreplication
       log_generator (cubstream::multi_thread_stream *stream)
 	: m_pending_to_be_added ()
 	, m_stream_entry (stream)
-	, m_is_row_replication_disabled (true)
+	, m_is_row_replication_disabled (true)	
       {
       };
 
@@ -125,6 +126,8 @@ namespace cubreplication
       void add_attribute_change (const OID &class_oid, const OID &inst_oid, ATTR_ID col_id, const DB_VALUE &value);
       void add_create_savepoint (const char *savept_name);
       void add_rollback_to_savepoint (const char *savept_name);
+      void add_start_sysop (const LOG_LSA &lsa);
+      void add_end_sysop (const LOG_LSA &lsa);
 
       void remove_attribute_change (const OID &class_oid, const OID &inst_oid);
 
@@ -156,6 +159,7 @@ namespace cubreplication
 
       void set_row_replication_disabled (bool disable_if_true);
       bool is_row_replication_disabled (void);
+      cubstream::stream_position get_last_end_position () const;
       void apply_tran_mvccid (void);
 
 #if !defined(NDEBUG) && defined (SERVER_MODE)
