@@ -198,7 +198,6 @@ namespace cubreplication
 
     assert (m_stream != NULL);
     m_lc = new log_consumer ();
-    m_lc->fetch_suspend ();
 
     m_lc->set_stream (m_stream);
 
