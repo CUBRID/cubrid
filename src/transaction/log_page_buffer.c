@@ -8302,9 +8302,11 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
 
   bool print_backupdb_waiting_reason = false;
 
+  LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
+
   memset (&session, 0, sizeof (FILEIO_BACKUP_SESSION));
 
-  /* 
+  /*
    * Determine the absolute path that corresponds with the desired location.
    */
   if (allbackup_path == NULL)
@@ -8396,6 +8398,36 @@ loop:
   else
     {
       first_arv_needed = log_Gl.hdr.nxarv_num;
+    }
+
+  vacuum_first_pageid = vacuum_min_log_pageid_to_keep (thread_p);
+  vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First log pageid in vacuum data is %lld\n", vacuum_first_pageid);
+
+  if (vacuum_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (vacuum_first_pageid))
+    {
+      int min_arv_required_for_vacuum = logpb_get_archive_number (thread_p, vacuum_first_pageid);
+
+      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive number used for vacuum is %d\n",
+		     min_arv_required_for_vacuum);
+
+      if (min_arv_required_for_vacuum >= 0)
+	{
+	  if (first_arv_needed >= 0)
+	    {
+	      first_arv_needed = MIN (first_arv_needed, min_arv_required_for_vacuum);
+	    }
+	  else
+	    {
+	      first_arv_needed = min_arv_required_for_vacuum;
+	    }
+	}
+      else
+	{
+	  /* Page should be in archive. */
+	  assert (false);
+	}
+
+      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive needed for backup is %d\n", first_arv_needed);
     }
 
   /* Get the current checkpoint address */
