@@ -3786,7 +3786,7 @@ static int
 catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p, OID * class_oid_p, HFID * hfid_p, HEAP_SCANCACHE * scan_p)
 {
   HEAP_OPERATION_CONTEXT delete_context;
-  RECDES record;
+  RECDES record = RECDES_INITIALIZER;
   OR_VALUE *value_p = NULL;
   OR_VALUE *attrs;
   int i;
@@ -3796,7 +3796,6 @@ catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p, OID * class_oid_p,
   int error = NO_ERROR;
 
   assert (oid_p != NULL && class_oid_p != NULL && hfid_p != NULL && scan_p != NULL);
-  record.data = NULL;
 
 #if defined(SERVER_MODE)
   if (lock_object (thread_p, oid_p, class_oid_p, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
@@ -3883,7 +3882,7 @@ static int
 catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p, OID * class_oid_p, HFID * hfid_p,
 			HEAP_SCANCACHE * scan_p, UPDATE_INPLACE_STYLE force_in_place)
 {
-  RECDES record, old_record;
+  RECDES record = RECDES_INITIALIZER, old_record = RECDES_INITIALIZER;
   OR_VALUE *old_value_p = NULL;
   OR_VALUE *attrs, *old_attrs;
   OR_VALUE *subset_p, *attr_p;
@@ -3891,9 +3890,6 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
   int uflag = false;
   int i, j, k;
   int error = NO_ERROR;
-
-  record.data = NULL;
-  old_record.data = NULL;
 
   if (heap_get_visible_version (thread_p, oid_p, class_oid_p, &old_record, scan_p, COPY, NULL_CHN) != S_SUCCESS)
     {

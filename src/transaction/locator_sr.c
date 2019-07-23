@@ -3393,7 +3393,7 @@ locator_all_reference_lockset (THREAD_ENTRY * thread_p, OID * oid, int prune_lev
   int *stack = NULL;		/* The stack for the search */
   HEAP_SCANCACHE scan_cache;	/* Scan cache used for fetching purposes */
   SCAN_CODE scan;		/* Scan return value for an object */
-  RECDES peek_recdes;
+  RECDES peek_recdes = RECDES_INITIALIZER;
   void *new_ptr;
   int i, tmp_ref_num, number;
   MHT_TABLE *lc_ht_permoids = NULL;	/* Hash table of already found oids */
@@ -5321,7 +5321,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   char *old_classname = NULL;	/* Classname that may have been renamed */
 
   bool isold_object;		/* Make sure that this is an old object */
-  RECDES copy_recdes;
+  RECDES copy_recdes = RECDES_INITIALIZER;
   SCAN_CODE scan = S_SUCCESS;
 
   RECDES new_record;
@@ -6299,7 +6299,7 @@ locator_delete_lob_force (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, R
   HEAP_ATTRVALUE *value;
   bool attr_info_inited;
   HEAP_SCANCACHE scan_cache;
-  RECDES copy_recdes;
+  RECDES copy_recdes = RECDES_INITIALIZER;
   bool scan_cache_inited;
   bool found;
   int i;
@@ -6334,13 +6334,14 @@ locator_delete_lob_force (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, R
       if (recdes == NULL)
 	{
 	  SCAN_CODE scan;
+
 	  error_code = heap_scancache_quick_start (&scan_cache);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
 	    }
 	  scan_cache_inited = true;
-	  copy_recdes.data = NULL;
+
 	  scan = heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, &scan_cache, COPY, NULL_CHN);
 	  if (scan != S_SUCCESS)
 	    {
@@ -6839,7 +6840,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
   LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
   LC_COPYAREA_ONEOBJ *obj;	/* Describe on object in area */
   RECDES recdes;		/* Record descriptor for object */
-  RECDES old_recdes;
+  RECDES old_recdes = RECDES_INITIALIZER;
   RECDES reply_recdes;		/* Describe copy area for reply */
   int i;
   HEAP_SCANCACHE *force_scancache = NULL;
@@ -11799,7 +11800,7 @@ xlocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p, BTID * btid, O
 {
   int error = NO_ERROR;
   OID unique_oid;
-  RECDES recdes;
+  RECDES recdes = RECDES_INITIALIZER;
   HEAP_SCANCACHE scan;
 
   if (xbtree_find_unique (thread_p, btid, S_SELECT, key_value, class_oid, &unique_oid, true) == BTREE_KEY_FOUND)
@@ -13602,7 +13603,7 @@ locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP
   OID *cls_oid = NULL;
   const OID *oid_inst = NULL;
   MVCC_SCAN_REEV_DATA scan_reev;
-  RECDES temp_recdes, *recdesp = NULL;
+  RECDES temp_recdes = RECDES_INITIALIZER, *recdesp = NULL;
   HEAP_SCANCACHE local_scan_cache;
   bool scan_cache_inited = false;
   SCAN_CODE scan_code;
