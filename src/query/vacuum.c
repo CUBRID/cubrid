@@ -7822,6 +7822,7 @@ vacuum_sa_reflect_last_blockid (THREAD_ENTRY * thread_p)
 
   vacuum_Data.last_blockid = last_blockid;
   logpb_hdr_set_vacuum_last_blockid (last_blockid);
+  vacuum_data_empty_update_last_blockid (thread_p);
 
   vacuum_data_unload_first_and_last_page (thread_p);
 }
