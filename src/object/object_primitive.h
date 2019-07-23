@@ -295,12 +295,12 @@ extern int pr_share_value (DB_VALUE * src, DB_VALUE * dest);
 	{ \
 	  *(dst) = *(src); \
 	  (dst)->need_clear = false; \
-	  if (db_value_domain_type (src) == DB_TYPE_STRING || db_value_domain_type (src) == DB_TYPE_VARNCHAR) \
+	  if (!DB_IS_NULL (src) \
+	      && (db_value_domain_type (src) == DB_TYPE_STRING || db_value_domain_type (src) == DB_TYPE_VARNCHAR)) \
 	    { \
 	      (dst)->data.ch.info.compressed_need_clear = false; \
 	    } \
-	  if (pr_is_set_type (DB_VALUE_DOMAIN_TYPE(src)) \
-	      && !DB_IS_NULL(src)) \
+	  if (!DB_IS_NULL (src) && pr_is_set_type (DB_VALUE_DOMAIN_TYPE (src))) \
 	    { \
 	      (src)->data.set->ref_count++; \
 	    } \
