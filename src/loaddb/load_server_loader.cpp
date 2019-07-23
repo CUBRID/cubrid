@@ -367,7 +367,7 @@ namespace cubload
     if (!is_syntax_check_only)
       {
 	// Create the record and add it to the array of collected records.
-	record_descriptor new_recdes;
+	record_descriptor new_recdes (cubmem::STANDARD_BLOCK_ALLOCATOR);
 	RECDES *old_recdes = NULL;
 
 	if (heap_attrinfo_transform_to_disk (m_thread_ref, &m_attrinfo, old_recdes, &new_recdes) != S_SUCCESS)
@@ -394,6 +394,13 @@ namespace cubload
     // First check if we have any errors set.
     if (m_session.is_failed ())
       {
+	return;
+      }
+
+    if (m_session.get_args ().syntax_check)
+      {
+	// Safeguard as we do not need to insert any records during syntax check.
+	assert (m_recdes_collected.size () == 0);
 	return;
       }
 

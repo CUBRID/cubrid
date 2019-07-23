@@ -11594,7 +11594,7 @@ resize_and_start:
       /* Need to make sure that the bound array is not past the allocated buffer because OR_ENABLE_BOUND_BIT() will
        * just slam the bound bit without checking the length. */
 
-      if (ptr_varvals + mvcc_wasted_space >= buf->endptr)
+      if (ptr_varvals + mvcc_wasted_space > buf->endptr)
 	{
 	  // is it possible?
 	  expected_size += DB_PAGESIZE;
@@ -11769,7 +11769,7 @@ resize_and_start:
       new_recdes->set_record_length (ptr_varvals - buf->buffer);
 
       /* if not enough MVCC wasted space need to reallocate */
-      if (ptr_varvals + mvcc_wasted_space < buf->endptr)
+      if (ptr_varvals + mvcc_wasted_space <= buf->endptr)
 	{
 	  break;
 	}

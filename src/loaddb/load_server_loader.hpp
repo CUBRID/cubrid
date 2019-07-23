@@ -28,6 +28,7 @@
 #include "heap_attrinfo.h"
 #include "heap_file.h"
 #include "load_common.hpp"
+#include "memory_private_allocator.hpp"
 
 #include <vector>
 
