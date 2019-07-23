@@ -11800,7 +11800,7 @@ xlocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p, BTID * btid, O
 {
   int error = NO_ERROR;
   OID unique_oid;
-  RECDES recdes;
+  RECDES recdes = RECDES_INITIALIZER;
   HEAP_SCANCACHE scan;
 
   if (xbtree_find_unique (thread_p, btid, S_SELECT, key_value, class_oid, &unique_oid, true) == BTREE_KEY_FOUND)
