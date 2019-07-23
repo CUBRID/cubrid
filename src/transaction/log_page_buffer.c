@@ -7535,8 +7535,6 @@ loop:
   last_arv_needed = log_Gl.hdr.nxarv_num - 1;
   LOG_CS_EXIT (thread_p);
 
-  er_log_debug (ARG_FILE_LINE, "first archive is %d and last archive is %d\n", first_arv_needed, last_arv_needed);
-
   if (last_arv_needed >= first_arv_needed)
     {
       error_code = logpb_backup_needed_archive_logs (thread_p, &session, first_arv_needed, last_arv_needed);
