@@ -138,6 +138,7 @@ namespace cubreplication
 	assert (false);
       })
       {
+        fetch_suspend ();
       };
 
       ~log_consumer ();
