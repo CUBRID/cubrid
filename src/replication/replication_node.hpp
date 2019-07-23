@@ -64,15 +64,25 @@ namespace cubreplication
 	m_data_port = port;
       }
 
-      const std::string &get_hostname (void)
+      const std::string &get_hostname (void) const
       {
 	return m_hostname;
+      }
+
+      int get_port () const
+      {
+	return m_data_port;
       }
   };
 
   /* base class for collection of data and methods of a replication node (actually running) */
   class replication_node
   {
+    public:
+      const static unsigned long long SETUP_REPLICATION_MAGIC;
+      const static unsigned long long SETUP_COPY_REPLICATION_MAGIC;
+      const static unsigned long long SETUP_COPY_END_REPLICATION_MAGIC;
+
     protected:
       cubstream::multi_thread_stream *m_stream;
       cubstream::stream_file *m_stream_file;

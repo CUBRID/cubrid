@@ -84,8 +84,6 @@ namespace cubtx
       {
 	cubthread::entry *thread_p = &cubthread::get_entry ();
 	do_complete (thread_p);
-	assert (log_Gl.m_ack_stream_position <= stream_pos);
-	log_Gl.m_ack_stream_position = stream_pos;
 	er_log_debug (ARG_FILE_LINE, "master_group_complete_manage::notify_stream_ack pos=%llu\n", stream_pos);
       }
   }

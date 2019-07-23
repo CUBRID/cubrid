@@ -28,6 +28,11 @@
 
 #include "replication_node.hpp"
 
+namespace cubcomm
+{
+  class channel;
+}
+
 namespace cubstream
 {
   class stream_file;
@@ -42,6 +47,9 @@ namespace cubreplication
   {
     private:
       master_ctrl *m_control_channel_manager;
+
+    protected:
+      int setup_protocol (cubcomm::channel &chn);
 
     public:
       master_node (const char *nam, cubstream::multi_thread_stream *stream, cubstream::stream_file *stream_file);

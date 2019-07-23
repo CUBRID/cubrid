@@ -77,10 +77,10 @@ namespace cubstream
 		return;
 	      }
 
-	    this_producer_channel.m_last_sent_position = last_sent_position;
+	    this_producer_channel.m_last_sent_position = htoni64 (last_sent_position);
 
 	    er_log_debug (ARG_FILE_LINE, "transfer_sender_task starting : last_sent_position:%llu, rc:%d\n",
-			  last_sent_position, rc);
+			  this_producer_channel.m_last_sent_position, rc);
 
 	    assert (max_len == sizeof (UINT64));
 
@@ -124,9 +124,10 @@ namespace cubstream
 	    std::bind (&transfer_sender::read_action, std::ref (*this), std::placeholders::_1,
 		       std::placeholders::_2);
 
+    std::string daemon_name = "stream_transfer_sender_" + chn.get_channel_id ();
     m_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (daemon_period,
 		      new transfer_sender_task (*this),
-		      "stream_transfer_sender");    
+		      daemon_name.c_str ());
   }
 
   transfer_sender::~transfer_sender ()

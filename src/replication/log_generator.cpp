@@ -34,9 +34,27 @@
 #include "system_parameter.h"
 #include "thread_manager.hpp"
 
+#include <sstream>
+
 namespace cubreplication
 {
   static bool enable_log_generator_logging = true;
+  static const char *g_Savepoint_generated_name = "tran_sysop_savepoint";
+
+  // lsa_to_savept - function to generate consistent savepoint names to replicate transactions system operations start
+  //                 and end events
+  template <typename F>
+  void
+  lsa_to_savept (const LOG_LSA &lsa, F f)
+  {
+    std::ostringstream oss;
+    oss << g_Savepoint_generated_name << "_";
+    oss << (long long int) lsa.pageid;
+    oss << '|';
+    oss << (int) lsa.offset;
+
+    f (oss.str ().c_str ());
+  }
 
   log_generator::~log_generator ()
   {
@@ -257,6 +275,18 @@ namespace cubreplication
   log_generator::add_rollback_to_savepoint (const char *savept_name)
   {
     append_repl_object (* (new savepoint_object (savept_name, savepoint_object::ROLLBACK_TO_SAVEPOINT)));
+  }
+
+  void
+  log_generator::add_start_sysop (const LOG_LSA &lsa)
+  {
+    lsa_to_savept (std::cref (lsa), std::bind (&log_generator::add_create_savepoint, this, std::placeholders::_1));
+  }
+
+  void
+  log_generator::add_end_sysop (const LOG_LSA &lsa)
+  {
+    lsa_to_savept (std::cref (lsa), std::bind (&log_generator::add_rollback_to_savepoint, this, std::placeholders::_1));
   }
 
   void
@@ -503,7 +533,7 @@ namespace cubreplication
   log_generator::set_row_replication_disabled (bool disable_if_true)
   {
     m_is_row_replication_disabled = disable_if_true;
-  }
+  }  
 
   void
   log_generator::apply_tran_mvccid (void)
