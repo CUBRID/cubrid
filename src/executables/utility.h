@@ -1405,6 +1405,8 @@ typedef struct _ha_config
 #define DDL_PROXY_COMMAND_S 'c'
 #define DDL_PROXY_REQUEST_L "request"
 #define DDL_PROXY_REQUEST_S 'r'
+#define DDL_PROXY_EXTRACT_SCHEMA_L "extract-schema"
+#define DDL_PROXY_EXTRACT_SCHEMA_S 'e'
 #define DDL_PROXY_TRAN_INDEX_L "tran-index"
 #define DDL_PROXY_TRAN_INDEX_S 't'
 #define DDL_PROXY_SYS_PARAM_L "sys-param"
@@ -1668,10 +1670,11 @@ extern "C"
     const char *db_name;
     const char *user_name;
     const char *command;
-    const char *request;
     const char *out_file_name;
     const char *tran_index;
     const char *sys_param;
+    bool use_request;
+    bool do_extract_schema;
   } DDL_CLIENT_ARGUMENT;
 
   extern int compactdb (UTIL_FUNCTION_ARG * arg_map);

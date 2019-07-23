@@ -3626,7 +3626,7 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
     {
       command = args->command;
     }
-  else if (args->request != NULL && !strcasecmp (args->request, "true"))
+  else if (args->use_request)
     {
       if (db_get_proxy_command (&command) != NO_ERROR)
 	{
@@ -3640,7 +3640,7 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
       goto error;
     }
 
-  if (strcasecmp (command, ";extract-schema-to-net") == 0)
+  if (args->do_extract_schema == 0)
     {
       replication_schema_extract (program_name);
     }
