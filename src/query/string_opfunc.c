@@ -4690,7 +4690,16 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
 	goto exit;
       }
-
+    
+    if ((src_category != pattern_category)
+      || (pattern_category != repl_category)
+      || (src_category != repl_category))
+      {
+  error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_CODE_SETS, 0);
+  goto exit;
+      }
+    
     int coll_id_tmp = -1, coll_id = -1;
     LANG_RT_COMMON_COLL (db_get_string_collation (src), db_get_string_collation (pattern), coll_id_tmp);
     if (coll_id_tmp == -1)
