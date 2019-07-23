@@ -3622,25 +3622,7 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
       er_stack_pop ();
     }
 
-  if (args->command != NULL && strlen (args->command) > 0)
-    {
-      command = args->command;
-    }
-  else if (args->use_request)
-    {
-      if (db_get_proxy_command (&command) != NO_ERROR)
-	{
-	  ASSERT_ERROR_AND_SET (rc);
-	  goto error;
-	}
-    }
-
-  if (command == NULL)
-    {
-      goto error;
-    }
-
-  if (args->do_extract_schema == 0)
+  if (args->do_extract_schema)
     {
       replication_schema_extract (program_name);
     }
@@ -3648,6 +3630,24 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
     {
       int total_stmts, stmt_id, i, num_of_rows;
       DB_QUERY_RESULT *result = NULL;
+
+      if (args->command != NULL && strlen (args->command) > 0)
+        {
+          command = args->command;
+        }
+      else if (args->use_request)
+        {
+          if (db_get_proxy_command (&command) != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (rc);
+	      goto error;
+	    }
+        }
+
+      if (command == NULL)
+        {
+          goto error;
+        }
 
       /* For now, disable authorization. */
       save = au_disable ();
