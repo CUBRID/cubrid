@@ -7801,6 +7801,8 @@ vacuum_is_empty (void)
 void
 vacuum_sa_reflect_last_blockid (THREAD_ENTRY * thread_p)
 {
+  VACUUM_LOG_BLOCKID last_blockid;
+
   if (VPID_ISNULL (&vacuum_Data_load.vpid_first))
     {
       // database is freshly created or boot was aborted without doing anything
@@ -7809,7 +7811,7 @@ vacuum_sa_reflect_last_blockid (THREAD_ENTRY * thread_p)
 
   vacuum_data_load_first_and_last_page (thread_p);
 
-  VACUUM_LOG_BLOCKID last_blockid = logpb_last_complete_blockid ();
+  last_blockid = logpb_last_complete_blockid ();
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
 		 "vacuum_sa_reflect_last_blockid: last_blockid=%lld, append_prev_pageid=%d\n",
@@ -7830,9 +7832,11 @@ vacuum_sa_reflect_last_blockid (THREAD_ENTRY * thread_p)
 static void
 vacuum_data_empty_update_last_blockid (THREAD_ENTRY * thread_p)
 {
+  VACUUM_DATA_PAGE *data_page;
+
   assert (vacuum_is_empty ());
 
-  VACUUM_DATA_PAGE *data_page = vacuum_Data.first_page;
+  data_page = vacuum_Data.first_page;
   assert (data_page != NULL);
 
   /* We should have only 1 page in vacuum_Data. */
