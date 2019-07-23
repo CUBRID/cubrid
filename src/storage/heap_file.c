@@ -24750,7 +24750,7 @@ heap_nonheader_page_capacity ()
  */
 int
 heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID &class_oid,
-                           const std::vector<VPID> &heap_pages_array)
+			   const std::vector<VPID> &heap_pages_array)
 {
   int error_code = NO_ERROR;
   PGBUF_WATCHER page_watcher;
@@ -24786,10 +24786,10 @@ heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID
   for (size_t i = 0; i < array_size; i++)
     {
       if (pgbuf_is_valid_page (thread_p, &heap_pages_array[i], false, NULL, NULL) != DISK_VALID)
-        {
-          assert (false);
+	{
+	  assert (false);
 	  return ER_FAILED;
-        }
+	}
     }
 
   // Start a system operation since we write in multiple pages.
@@ -24807,13 +24807,13 @@ heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID
       VPID_COPY (&next_vpid, ((i == array_size - 1) ? (&null_vpid) : (&heap_pages_array[i + 1])));
 
       error_code = heap_add_chain_links (thread_p, hfid, &heap_pages_array[i], &next_vpid, &prev_vpid,
-                                         &page_watcher, false, false);
+					 &page_watcher, false, false);
       if (error_code != NO_ERROR)
-        {
-          // This should never happen.
-          assert (false);
-          goto cleanup;
-        }
+	{
+	  // This should never happen.
+	  assert (false);
+	  goto cleanup;
+	}
     }
 
   /**********************************************************/
@@ -24876,7 +24876,7 @@ heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID
 
   // Add new links to the first page of the chain.
   error_code = heap_add_chain_links (thread_p, hfid, &heap_pages_array[0], NULL, &heap_last_page_vpid,
-                                     &page_watcher, false, false);
+				     &page_watcher, false, false);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -24887,17 +24887,17 @@ heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID
   if (!skip_last_page_links)
     {
       error_code = heap_add_chain_links (thread_p, hfid, &heap_last_page_vpid, &heap_pages_array[0], NULL,
-                                         &heap_last_page_watcher, true, true);
+					 &heap_last_page_watcher, true, true);
       if (error_code != NO_ERROR)
-        {
-          ASSERT_ERROR ();
-          goto cleanup;
-        }
+	{
+	  ASSERT_ERROR ();
+	  goto cleanup;
+	}
     }
 
   // Now update the last page of the heap header.
   error_code = heap_update_and_log_header (thread_p, hfid, heap_header_watcher, heap_hdr, heap_header_next_vpid,
-                                           heap_pages_array[array_size - 1], array_size);
+					   heap_pages_array[array_size - 1], array_size);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -24957,8 +24957,8 @@ heap_get_page_with_watcher (THREAD_ENTRY * thread_p, const VPID *page_vpid, PGBU
 
 static int
 heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, const VPID * next_link,
-                      const VPID * prev_link, PGBUF_WATCHER * page_watcher, bool keep_page_fixed,
-                      bool is_page_watcher_inited)
+		      const VPID * prev_link, PGBUF_WATCHER * page_watcher, bool keep_page_fixed,
+		      bool is_page_watcher_inited)
 {
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
   int error_code = NO_ERROR;
@@ -24971,10 +24971,10 @@ heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * v
       // Get a watcher for this page.
       error_code = heap_get_page_with_watcher (thread_p, vpid, page_watcher);
       if (error_code != NO_ERROR)
-        {
-          ASSERT_ERROR ();
-          return error_code;
-        }
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
     }
 
   // Make sure we fixed the page.
@@ -25015,7 +25015,7 @@ heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * v
 
   // Log the changes.
   log_append_undoredo_data (thread_p, RVHF_CHAIN, &addr, sizeof (HEAP_CHAIN), sizeof (HEAP_CHAIN), &chain_prev,
-                            chain);
+			    chain);
 
   // Now set the page dirty.
   pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
@@ -25034,8 +25034,8 @@ heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * v
 
 static int
 heap_update_and_log_header (THREAD_ENTRY * thread_p, const HFID * hfid, const PGBUF_WATCHER heap_header_watcher,
-                            HEAP_HDR_STATS * heap_hdr, const VPID new_next_vpid, const VPID new_last_vpid,
-                            const int new_num_pages)
+			    HEAP_HDR_STATS * heap_hdr, const VPID new_next_vpid, const VPID new_last_vpid,
+			    const int new_num_pages)
 {
   HEAP_HDR_STATS heap_hdr_prev;
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
@@ -25057,7 +25057,7 @@ heap_update_and_log_header (THREAD_ENTRY * thread_p, const HFID * hfid, const PG
   addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
 
   log_append_undoredo_data (thread_p, RVHF_STATS, &addr, sizeof (HEAP_HDR_STATS), sizeof (HEAP_HDR_STATS),
-                            &heap_hdr_prev, heap_hdr);
+			    &heap_hdr_prev, heap_hdr);
 
   // Set the page as dirty.
   pgbuf_set_dirty (thread_p, heap_header_watcher.pgptr, DONT_FREE);
