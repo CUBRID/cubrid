@@ -77,6 +77,7 @@
 #include "double_write_buffer.h"
 #include "xasl_cache.h"
 #include "log_volids.hpp"
+#include "vacuum.h"
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
@@ -2933,6 +2934,9 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   pgbuf_daemons_destroy ();
 #endif
 
+#if defined (SA_MODE)
+  vacuum_sa_reflect_last_blockid (thread_p);
+#endif // SA_MODE
   log_final (thread_p);
 
   /* Since all pages were flushed, now it's safe to destroy DWB. */

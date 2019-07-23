@@ -305,4 +305,6 @@ extern void vacuum_notify_es_deleted (THREAD_ENTRY * thread_p, const char *uri);
 #endif /* SERVER_MODE */
 
 extern int vacuum_reset_data_after_copydb (THREAD_ENTRY * thread_p);
+
+extern void vacuum_sa_reflect_last_blockid (THREAD_ENTRY * thread_p);
 #endif /* _VACUUM_H_ */
