@@ -241,7 +241,7 @@ vacuum_is_process_log_for_vacuum (THREAD_ENTRY * thread_p)
 #define VACUUM_IS_THREAD_VACUUM_MASTER vacuum_is_thread_vacuum_master
 
 extern int vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * vacuum_data_vfid,
-			      VFID * dropped_files_vfid);
+			      VFID * dropped_files_vfid, bool is_restore);
 extern void vacuum_finalize (THREAD_ENTRY * thread_p);
 extern int vacuum_boot (THREAD_ENTRY * thread_p);
 extern void vacuum_stop (THREAD_ENTRY * thread_p);
