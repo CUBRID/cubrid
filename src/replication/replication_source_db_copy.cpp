@@ -109,7 +109,7 @@ namespace cubreplication
     m_error_cnt = 0;
   }
 
-  void source_copy_context::pack_and_add_object (row_object *&obj)
+  void source_copy_context::pack_and_add_object (multirow_object *&obj)
   {
     if (obj->get_rec_cnt () == 0)
       {
@@ -517,7 +517,10 @@ namespace cubreplication
 	return error_code;
       }
 
-    row_object *heap_objects = new row_object (class_name);
+    er_log_debug_replication (ARG_FILE_LINE, "copy_class  %s (%d|%d|%d) on thread:%p",
+			      class_name, OID_AS_ARGS (&class_oid), thread_p);
+
+    multirow_object *heap_objects = new multirow_object (class_name);
 
     error_code = heap_get_hfid_from_class_oid (thread_p, &class_oid, &class_hfid);
     if (error_code != NO_ERROR)
@@ -575,7 +578,7 @@ namespace cubreplication
 	    /* pack and add to stream */
 	    tdes->replication_copy_context->pack_and_add_object (heap_objects);
 	    assert (heap_objects == NULL);
-	    heap_objects = new row_object (class_name);
+	    heap_objects = new multirow_object (class_name);
 	  }
       }
 
