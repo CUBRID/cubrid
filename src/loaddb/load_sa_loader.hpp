@@ -55,6 +55,7 @@ namespace cubload
       void start_line (int object_id) override;
       void process_line (constant_type *cons) override;
       void finish_line () override;
+      void flush_records () override;
   };
 }
 /* *INDENT-ON* */

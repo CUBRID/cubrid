@@ -28,6 +28,7 @@
 #include "heap_attrinfo.h"
 #include "heap_file.h"
 #include "load_common.hpp"
+#include "memory_private_allocator.hpp"
 
 #include <vector>
 
@@ -78,6 +79,7 @@ namespace cubload
       void start_line (int object_id) override;
       void process_line (constant_type *cons) override;
       void finish_line () override;
+      void flush_records () override;
 
     private:
       int process_constant (constant_type *cons, const attribute &attr);
@@ -104,6 +106,7 @@ namespace cubload
       bool m_attrinfo_started;
       heap_cache_attrinfo m_attrinfo;
       std::vector<db_value> m_db_values;
+      std::vector<record_descriptor> m_recdes_collected;
 
       bool m_scancache_started;
       heap_scancache m_scancache;

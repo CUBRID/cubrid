@@ -189,6 +189,7 @@ loader_start :
   }
   loader_lines
   {
+    m_driver.get_object_loader ().flush_records ();    
     m_driver.get_object_loader ().destroy ();
   }
   ;

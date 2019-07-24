@@ -185,9 +185,8 @@ namespace cubload
 	  }
 
 	bool is_syntax_check_only = m_session.get_args ().syntax_check;
-	bool is_class_registered = m_session.get_class_registry ().get_class_entry (m_batch.get_class_id ()) != NULL;
-
-	if (!is_class_registered)
+	const class_entry *cls_entry = m_session.get_class_registry ().get_class_entry (m_batch.get_class_id ());
+	if (cls_entry == NULL)
 	  {
 	    m_session.notify_batch_done (m_batch.get_id ());
 	    if (!is_syntax_check_only)
@@ -216,15 +215,16 @@ namespace cubload
 	    m_session.wait_for_previous_batch (m_batch.get_id ());
 
 	    xtran_server_commit (&thread_ref, false);
-	    std::string class_name = m_session.get_class_registry ().get_class_entry (m_batch.get_class_id ())->get_class_name ();
 
+	    std::string class_name = cls_entry->get_class_name ();
 	    if (m_session.get_args ().syntax_check)
 	      {
 		m_session.append_log_msg (LOADDB_MSG_INSTANCE_COUNT, class_name.c_str (), m_batch.get_rows_number ());
 	      }
 	    else
 	      {
-		m_session.append_log_msg (LOADDB_MSG_COMMITTED_INSTANCES, class_name.c_str (), m_batch.get_rows_number ());
+		m_session.append_log_msg (LOADDB_MSG_COMMITTED_INSTANCES, class_name.c_str (),
+					  m_batch.get_rows_number ());
 	      }
 
 	    // update load statistics after commit
@@ -235,7 +235,6 @@ namespace cubload
 	      {
 		m_session.append_log_msg (LOADDB_MSG_UPDATED_CLASS_STATS, class_name.c_str ());
 	      }
-
 	  }
 
 	// free transaction index

@@ -31,6 +31,7 @@
 #include "load_session.hpp"
 #include "locator_sr.h"
 #include "object_primitive.h"
+#include "record_descriptor.hpp"
 #include "set_object.h"
 #include "string_opfunc.h"
 #include "thread_manager.hpp"
@@ -259,6 +260,7 @@ namespace cubload
     , m_attrinfo_started (false)
     , m_attrinfo ()
     , m_db_values ()
+    , m_recdes_collected ()
     , m_scancache_started (false)
     , m_scancache ()
   {
@@ -292,6 +294,8 @@ namespace cubload
   {
     stop_attrinfo ();
     stop_scancache ();
+
+    m_recdes_collected.clear ();
 
     m_clsid = NULL_CLASS_ID;
     m_class_entry = NULL;
@@ -359,28 +363,55 @@ namespace cubload
 	return;
       }
 
-    OID oid;
-    int force_count = 0;
-    int pruning_type = 0;
-    int op_type = SINGLE_ROW_INSERT;
     bool is_syntax_check_only = m_session.get_args ().syntax_check;
-
     if (!is_syntax_check_only)
       {
-	// Skip loading if syntax check only is enabled.
-	int error_code = locator_attribute_info_force (m_thread_ref, &m_scancache.node.hfid, &oid, &m_attrinfo, NULL, 0,
-			 LC_FLUSH_INSERT, op_type, &m_scancache, &force_count, false,
-			 REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, NULL,
-			 UPDATE_INPLACE_NONE, NULL, false);
-	if (error_code != NO_ERROR)
+	// Create the record and add it to the array of collected records.
+	record_descriptor new_recdes (cubmem::STANDARD_BLOCK_ALLOCATOR);
+	RECDES *old_recdes = NULL;
+
+	if (heap_attrinfo_transform_to_disk (m_thread_ref, &m_attrinfo, old_recdes, &new_recdes) != S_SUCCESS)
 	  {
 	    m_error_handler.on_failure ();
 	    return;
 	  }
+
+	// Add the recdes to the collected array.
+	m_recdes_collected.push_back (std::move (new_recdes));
       }
 
     m_session.stats_update_current_line (m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1);
     clear_db_values ();
+  }
+
+  void
+  server_object_loader::flush_records ()
+  {
+    int force_count = 0;
+    int pruning_type = 0;
+    int op_type = SINGLE_ROW_INSERT;
+
+    // First check if we have any errors set.
+    if (m_session.is_failed ())
+      {
+	return;
+      }
+
+    if (m_session.get_args ().syntax_check)
+      {
+	// Safeguard as we do not need to insert any records during syntax check.
+	assert (m_recdes_collected.size () == 0);
+	return;
+      }
+
+    int error_code = locator_multi_insert_force (m_thread_ref, &m_scancache.node.hfid, &m_scancache.node.class_oid,
+		     m_recdes_collected, true, op_type, &m_scancache, &force_count, pruning_type, NULL, NULL,
+		     UPDATE_INPLACE_NONE);
+    if (error_code != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	m_error_handler.on_failure ();
+      }
   }
 
   int
