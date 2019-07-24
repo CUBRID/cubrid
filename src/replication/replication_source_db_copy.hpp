@@ -83,13 +83,9 @@ namespace cubreplication
 
       ~source_copy_context ();
 
-      void pack_and_add_object (row_object* &obj);
-      void pack_and_add_statement (const std::string &statement);
-      void pack_and_add_start_of_extract_heap ();
-      void pack_and_add_end_of_extract_heap ();
-      void pack_and_add_end_of_copy ();
-
       int execute_and_transit_phase (copy_stage new_state);
+
+      void pack_and_add_object (row_object* &obj);
 
       void append_class_schema (const char *buffer, const size_t buf_size);
       void append_triggers_schema (const char *buffer, const size_t buf_size);
@@ -98,10 +94,6 @@ namespace cubreplication
 
       void execute_db_copy (cubthread::entry &thread_ref, SOCKET fd);
       int setup_copy_protocol (cubcomm::channel &chn);
-      int wait_slave_receive_ack (cubcomm::channel &chn);
-
-      int wait_receive_class_list (void);
-      int wait_send_triggers_indexes (void);
 
       int get_tran_index (void);
       void inc_error_cnt ();
@@ -120,6 +112,15 @@ namespace cubreplication
       int wait_for_state (const copy_stage &desired_state);
       cubstream::multi_thread_stream *acquire_stream_for_copy ();
       void detach_stream_for_copy ();
+
+      void pack_and_add_statement (const std::string &statement);
+      void pack_and_add_start_of_extract_heap ();
+      void pack_and_add_end_of_extract_heap ();
+      void pack_and_add_end_of_copy ();
+
+      int wait_slave_receive_ack (cubcomm::channel &chn);
+      int wait_receive_class_list (void);
+      int wait_send_triggers_indexes (void);
 
     private:
       int m_tran_index;
