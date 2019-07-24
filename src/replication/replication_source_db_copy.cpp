@@ -282,6 +282,9 @@ namespace cubreplication
     copy_db_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
     copy_db_stream->init (0);
 
+    /* TODO[replication] : global senders manager (same as stream) */
+    m_senders_manager = new stream_senders_manager (*copy_db_stream);
+
     return copy_db_stream;
   }
 
@@ -290,6 +293,9 @@ namespace cubreplication
     m_stream->stop ();
     delete m_stream;
     m_stream = NULL;
+
+    delete m_senders_manager;
+    m_senders_manager = NULL;
   }
 
   void source_copy_context::execute_db_copy (cubthread::entry &thread_ref, SOCKET fd)
@@ -313,6 +319,7 @@ namespace cubreplication
       }
 
     m_transfer_sender = new cubstream::transfer_sender (std::move (chn), *m_stream);
+    m_senders_manager->add_stream_sender (m_transfer_sender);
 
     er_log_debug_replication (ARG_FILE_LINE, "new_slave_copy connected");
 

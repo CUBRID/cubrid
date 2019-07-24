@@ -50,6 +50,7 @@ namespace cubstream
 namespace cubreplication
 {
   class multirow_object;
+  class stream_senders_manager;
 
   /*
    * source_copy_context : server side context stored on transaction description
@@ -146,6 +147,7 @@ namespace cubreplication
       cubstream::multi_thread_stream *m_stream;
       cubstream::stream_file *m_stream_file;
       cubstream::transfer_sender *m_transfer_sender;
+      stream_senders_manager *m_senders_manager;
       cubthread::entry_workpool *m_heap_extract_workers_pool;
 
       std::string m_class_schema;
