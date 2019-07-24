@@ -4729,6 +4729,7 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
 
       /* change first_page */
       vacuum_Data.first_page = *data_page;
+      vacuum_Data_load.vpid_first = save_first_page->next_page;
 
       /* Make sure the new first page is marked as dirty */
       vacuum_set_dirty_data_page (thread_p, vacuum_Data.first_page, DONT_FREE);
@@ -4747,10 +4748,12 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
 	   */
 	  save_first_page = vacuum_Data.first_page;
 	  vacuum_Data.first_page = vacuum_fix_data_page (thread_p, &save_first_vpid);
+	  vacuum_Data_load.vpid_first = save_first_vpid;
 	  vacuum_unfix_data_page (thread_p, save_first_page);
 	  *data_page = vacuum_Data.first_page;
 	  return;
 	}
+
       log_sysop_commit (thread_p);
 
       vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "Changed first VPID from %d|%d to %d|%d.",
