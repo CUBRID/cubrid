@@ -370,7 +370,9 @@ namespace cubpacking
       {
 	eb.extend_by (total_size - available);
       }
-    set_buffer (eb.get_ptr () + offset, total_size);
+    /* don't change m_start_ptr */
+    m_ptr = eb.get_ptr () + offset;
+    m_end_ptr = eb.get_ptr () + offset + total_size;
 
     pack_all (std::forward<Args> (args)...);
   }
