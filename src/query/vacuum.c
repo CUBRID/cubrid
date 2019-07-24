@@ -257,6 +257,7 @@ struct vacuum_data
   LOG_LSA recovery_lsa;		/* This is the LSA where recovery starts. It will be used to go backward in the log
 				 * if data on log blocks must be recovered.
 				 */
+  bool is_restoredb_session;
 
 #if defined (SA_MODE)
   bool is_vacuum_complete;
@@ -276,7 +277,8 @@ static VACUUM_DATA vacuum_Data = {
   false,			/* is_archive_removal_safe */
   VPID_INITIALIZER,		/* vpid_job_cursor */
   0,				/* blockid_job_cursor */
-  LSA_INITIALIZER		/* recovery_lsa */
+  LSA_INITIALIZER,		/* recovery_lsa */
+  false				/* is_restoredb_session */
 #if defined (SA_MODE)
     , false			/* is_vacuum_complete. */
 #endif /* SA_MODE */
@@ -727,7 +729,7 @@ xvacuum (THREAD_ENTRY * thread_p)
  */
 int
 vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * vacuum_data_vfid,
-		   VFID * dropped_files_vfid)
+		   VFID * dropped_files_vfid, bool is_restore)
 {
   int error_code = NO_ERROR;
   int i;
@@ -739,6 +741,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
 
   /* Initialize vacuum data */
   vacuum_Data.shutdown_requested = false;
+  vacuum_Data.is_restoredb_session = is_restore;
   /* Save vacuum data VFID. */
   VFID_COPY (&vacuum_Data.vacuum_data_file, vacuum_data_vfid);
   /* Save vacuum log block size in pages. */
@@ -7809,6 +7812,11 @@ vacuum_sa_reflect_last_blockid (THREAD_ENTRY * thread_p)
   if (VPID_ISNULL (&vacuum_Data_load.vpid_first))
     {
       // database is freshly created or boot was aborted without doing anything
+      return;
+    }
+  if (vacuum_Data.is_restoredb_session)
+    {
+      // restoredb doesn't vacuum; we cannot do this here
       return;
     }
 

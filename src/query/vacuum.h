@@ -272,7 +272,7 @@ extern void vacuum_set_worker_sa_mode (VACUUM_WORKER * worker);
 #endif /* SA_MODE */
 
 extern int vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * vacuum_data_vfid,
-			      VFID * dropped_files_vfid);
+			      VFID * dropped_files_vfid, bool is_restore);
 extern void vacuum_finalize (THREAD_ENTRY * thread_p);
 extern int xvacuum (THREAD_ENTRY * thread_p);
 extern MVCCID vacuum_get_global_oldest_active_mvccid (void);
