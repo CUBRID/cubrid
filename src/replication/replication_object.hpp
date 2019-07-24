@@ -223,7 +223,7 @@ namespace cubreplication
   };
 
   /* packs multiple records (record_descriptor/recdes) from heap to be copied into a new replicated server */
-  class row_object : public replication_object
+  class multirow_object : public replication_object
   {
     public:
       static const size_t DATA_PACK_THRESHOLD_SIZE = 16384;
@@ -231,11 +231,11 @@ namespace cubreplication
 
       static const int PACKING_ID = 6;
 
-      row_object (const char *class_name);
+      multirow_object (const char *class_name);
 
-      row_object () = default;
+      multirow_object () = default;
 
-      ~row_object ();
+      ~multirow_object ();
 
       void reset ();
 

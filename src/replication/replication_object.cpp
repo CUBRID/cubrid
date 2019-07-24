@@ -728,17 +728,17 @@ namespace cubreplication
   }
 
 
-  row_object::row_object (const char *class_name)
+  multirow_object::multirow_object (const char *class_name)
   {
     m_class_name = class_name;
     m_data_size = 0;
   }
 
-  row_object::~row_object ()
+  multirow_object::~multirow_object ()
   {
   }
 
-  void row_object::reset (void)
+  void multirow_object::reset (void)
   {
     m_data_size = 0;
 
@@ -746,7 +746,7 @@ namespace cubreplication
   }
 
 
-  int row_object::apply (void)
+  int multirow_object::apply (void)
   {
     int err = NO_ERROR;
 
@@ -771,9 +771,9 @@ namespace cubreplication
     return NO_ERROR;
   }
 
-  void row_object::pack (cubpacking::packer &serializator) const
+  void multirow_object::pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_int (row_object::PACKING_ID);
+    serializator.pack_int (multirow_object::PACKING_ID);
     serializator.pack_string (m_class_name);
     serializator.pack_int ((int) m_rec_des_list.size ());
 
@@ -783,7 +783,7 @@ namespace cubreplication
       }
   }
 
-  void row_object::unpack (cubpacking::unpacker &deserializator)
+  void multirow_object::unpack (cubpacking::unpacker &deserializator)
   {
     int entry_type_not_used;
 
@@ -802,7 +802,7 @@ namespace cubreplication
       }
   }
 
-  std::size_t row_object::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  std::size_t multirow_object::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
     std::size_t entry_size = start_offset;
 
@@ -819,9 +819,9 @@ namespace cubreplication
   }
 
 
-  bool row_object::is_equal (const cubpacking::packable_object *other)
+  bool multirow_object::is_equal (const cubpacking::packable_object *other)
   {
-    const row_object *other_t = dynamic_cast<const row_object *> (other);
+    const multirow_object *other_t = dynamic_cast<const multirow_object *> (other);
 
     if (other_t == NULL)
       {
@@ -859,9 +859,9 @@ namespace cubreplication
     return true;
   }
 
-  void row_object::stringify (string_buffer &str)
+  void multirow_object::stringify (string_buffer &str)
   {
-    str ("row_object::row_object table=%s records_cnt:%d\n", m_class_name.c_str (), m_rec_des_list.size ());
+    str ("multirow_object::multirow_object table=%s records_cnt:%d\n", m_class_name.c_str (), m_rec_des_list.size ());
     for (int i = 0; i < m_rec_des_list.size (); i++)
       {
 	size_t buf_size = m_rec_des_list[i].get_size ();
@@ -872,7 +872,7 @@ namespace cubreplication
       }
   }
 
-  void row_object::move_record (record_descriptor &&record)
+  void multirow_object::move_record (record_descriptor &&record)
   {
     size_t rec_size = record.get_recdes ().length;
 

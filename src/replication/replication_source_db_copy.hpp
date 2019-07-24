@@ -26,11 +26,12 @@
 #ifndef _REPLICATION_SOURCE_DB_COPY_HPP_
 #define _REPLICATION_SOURCE_DB_COPY_HPP_
 
-#include "replication_object.hpp"
 #include "cubstream.hpp"
+#include "replication_object.hpp"
 #include "thread_manager.hpp"
-#include <condition_variable>
+
 #include <atomic>
+#include <condition_variable>
 #include <list>
 #include <mutex>
 
@@ -48,17 +49,17 @@ namespace cubstream
 
 namespace cubreplication
 {
-  class row_object;
+  class multirow_object;
 
-  /* 
+  /*
    * source_copy_context : server side context stored on transaction description
-   * It holds objects required for 
+   * It holds objects required for
    *  - communication : stream (instance for db copy), stream transfer, stream file
    *  - storing of partial contructed objects (SBRs of schema)
    *
    * It centralizes the state of copy process on source server, required to drive the copy extraction process.
    * Depending on the state transition, it may append finalized SBRS objects to db copy stream.
-   * 
+   *
    */
   class source_copy_context
   {
@@ -72,7 +73,7 @@ namespace cubreplication
 	SCHEMA_APPLY_CLASSES_FINISHED,
 	SCHEMA_TRIGGERS_RECEIVED,
 	SCHEMA_INDEXES_RECEIVED,
-        SCHEMA_CLASSES_LIST_FINISHED,
+	SCHEMA_CLASSES_LIST_FINISHED,
 	HEAP_COPY,
 	HEAP_COPY_FINISHED,
 	SCHEMA_APPLY_TRIGGERS,
@@ -83,9 +84,9 @@ namespace cubreplication
 
       ~source_copy_context ();
 
-      int execute_and_transit_phase (copy_stage new_state);
+      void pack_and_add_object (multirow_object *&obj);
 
-      void pack_and_add_object (row_object* &obj);
+      int execute_and_transit_phase (copy_stage new_state);
 
       void append_class_schema (const char *buffer, const size_t buf_size);
       void append_triggers_schema (const char *buffer, const size_t buf_size);
@@ -97,16 +98,30 @@ namespace cubreplication
 
       int get_tran_index (void);
       void inc_error_cnt ();
-      void inc_extract_running_thread () { ++m_running_extract_threads; }
-      void dec_extract_running_thread () { --m_running_extract_threads; }
-      int get_extract_running_thread () { return m_running_extract_threads; }
 
-      cubstream::multi_thread_stream *get_stream () const { return m_stream; }
+      void inc_extract_running_thread ()
+      {
+	++m_running_extract_threads;
+      }
+      void dec_extract_running_thread ()
+      {
+	--m_running_extract_threads;
+      }
+      int get_extract_running_thread ()
+      {
+	return m_running_extract_threads;
+      }
+
+      cubstream::multi_thread_stream *get_stream () const
+      {
+	return m_stream;
+      }
       void set_online_replication_start_pos (const cubstream::stream_position &pos)
-        { m_online_replication_start_pos = pos; }
+      {
+	m_online_replication_start_pos = pos;
+      }
 
       void stop ();
-
 
     private:
       int wait_for_state (const copy_stage &desired_state);
