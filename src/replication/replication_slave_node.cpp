@@ -279,11 +279,11 @@ namespace cubreplication
 	return error;
       }
 
+    std::string ctrl_sender_daemon_name = "slave_control_sender_" + control_chn.get_channel_id ();
     /* start transfer receiver */
     cubreplication::slave_control_sender *sender = new slave_control_sender (std::move (
 		cubreplication::slave_control_channel (std::move (control_chn))));
 
-    std::string ctrl_sender_daemon_name = "slave_control_sender_" + control_chn.get_channel_id ();
     m_ctrl_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
 			   sender, ctrl_sender_daemon_name.c_str ());
 
