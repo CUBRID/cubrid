@@ -48,7 +48,7 @@ namespace cubreplication
     m_copy_consumer = NULL;
     m_online_repl_start_pos = 0;
 
-    INT64 buffer_size = 1 * 1024 * 1024;
+    INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_BUFFER_SIZE);
     /* create stream */
     m_stream = new cubstream::multi_thread_stream (buffer_size, 2);
     m_stream->set_name ("repl_copy_" + std::string (m_source_identity->get_hostname ().c_str ()));

@@ -520,6 +520,9 @@ namespace cubreplication
 	return error_code;
       }
 
+    er_log_debug_replication (ARG_FILE_LINE, "copy_class  %s (%d|%d|%d) on thread:%p" ,
+                              class_name, OID_AS_ARGS (&class_oid), thread_p);
+
     row_object *heap_objects = new row_object (class_name);
 
     error_code = heap_get_hfid_from_class_oid (thread_p, &class_oid, &class_hfid);
