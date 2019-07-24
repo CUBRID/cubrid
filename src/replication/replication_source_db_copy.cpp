@@ -48,8 +48,8 @@ namespace cubreplication
   {
     public:
       heap_extract_worker_task (source_copy_context &src_copy_ctxt, const OID &class_oid)
-	:m_src_copy_ctxt (src_copy_ctxt)
-	,m_class_oid (class_oid)
+	: m_src_copy_ctxt (src_copy_ctxt)
+	, m_class_oid (class_oid)
       {
       }
 
@@ -169,7 +169,7 @@ namespace cubreplication
     er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::execute_and_transit_phase "
 			      "curr_state:%d, new_state:%d", m_state, new_state);
 
-    std::unique_lock<std::mutex>  ulock_state (m_state_mutex);
+    std::unique_lock<std::mutex> ulock_state (m_state_mutex);
 
     if ((int) m_state != ((int) new_state - 1))
       {
@@ -291,7 +291,6 @@ namespace cubreplication
     delete m_stream;
     m_stream = NULL;
   }
-
 
   void source_copy_context::execute_db_copy (cubthread::entry &thread_ref, SOCKET fd)
   {
@@ -459,18 +458,18 @@ namespace cubreplication
 				 NULL, /* val_list */
 				 NULL, /* vd */
 				 &class_oid, &class_hfid,
-				 NULL, /* regu_variable_list_node*/
+				 NULL, /* regu_variable_list_node */
 				 NULL, /* pr */
 				 NULL, /* regu_list_rest */
 				 0, /* num_attrs_pred */
 				 NULL, /* attrids_pred */
 				 cache_pred, /* cache_pred */
 				 0, /* num_attrs_rest */
-				 NULL, /* attrids_rest*/
+				 NULL, /* attrids_rest */
 				 cache_rest, /* cache_rest */
 				 scan_type,
 				 NULL, /* cache_recordinfo */
-				 NULL /* regu_list_recordinfo*/
+				 NULL /* regu_list_recordinfo */
 				);
 
     if (error != NO_ERROR)
@@ -480,7 +479,6 @@ namespace cubreplication
       }
 
     error = scan_start_scan (thread_p, &s_id);
-
     if (error != NO_ERROR)
       {
 	ASSERT_ERROR ();
@@ -548,7 +546,7 @@ namespace cubreplication
 	goto end;
       }
 
-    do
+    while (1)
       {
 	sc_scan = scan_next_scan (thread_p, &s_id);
 	if (sc_scan == S_END)
@@ -580,7 +578,6 @@ namespace cubreplication
 	    heap_objects = new row_object (class_name);
 	  }
       }
-    while (1);
 
     tdes->replication_copy_context->pack_and_add_object (heap_objects);
 
