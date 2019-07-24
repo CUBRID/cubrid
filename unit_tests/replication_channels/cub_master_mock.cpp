@@ -22,6 +22,8 @@ namespace cub_master_mock
   static SOCKET listen_fd[2];
   static POLL_FD listen_poll_fd;
 
+   cubreplication::stream_senders_manager *cub_stream_senders = NULL;
+
   class cub_master_daemon_task : public cubthread::entry_task
   {
       /* this simulates a cub_master process */
@@ -85,7 +87,7 @@ namespace cub_master_mock
 		return;
 	      }
 
-	    cubreplication::master_senders_manager::add_stream_sender (
+	   cub_stream_senders->add_stream_sender (
 		    new cubstream::transfer_sender (std::move (listener_chn), master::get_mock_stream ()));
 	  }
       }
@@ -113,11 +115,14 @@ namespace cub_master_mock
 				cubthread::looper (std::chrono::seconds (0)), new cub_master_daemon_task (),
 				"cub_master_daemon");
 
+    cub_stream_senders = new cubreplication::stream_senders_manager (master::get_mock_stream ());
+
     return NO_ERROR;
   }
 
   int finish ()
   {
+    delete cub_stream_senders;
     cubthread::get_manager ()->destroy_daemon (cub_master_daemon);
 #if !defined (WINDOWS)
     return close (listen_poll_fd.fd);

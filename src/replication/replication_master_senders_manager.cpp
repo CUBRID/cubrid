@@ -23,106 +23,91 @@
  */
 
 #include "replication_master_senders_manager.hpp"
-#include "replication_node_manager.hpp"
-#include "replication_master_node.hpp"
+#include "replication_common.hpp"
 
 #include <utility>
 #include "thread_manager.hpp"
 #include "thread_daemon.hpp"
 
+/* TODO : rename file */
 namespace cubreplication
 {
 
-  std::vector<cubstream::transfer_sender *> master_senders_manager::master_server_stream_senders;
-  cubthread::daemon *master_senders_manager::master_channels_supervisor_daemon = NULL;
-  bool master_senders_manager::is_initialized = false;
-  std::mutex master_senders_manager::mutex_for_singleton;
-  cubstream::stream_position master_senders_manager::g_minimum_successful_stream_position;
-  SYNC_RWLOCK master_senders_manager::master_senders_lock;
+  const unsigned int stream_senders_manager::SUPERVISOR_DAEMON_DELAY_MS = 10;
+  const unsigned int stream_senders_manager::SUPERVISOR_DAEMON_CHECK_CONN_MS = 5000;
 
-  const unsigned int master_senders_manager::SUPERVISOR_DAEMON_DELAY_MS = 10;
-  const unsigned int master_senders_manager::SUPERVISOR_DAEMON_CHECK_CONN_MS = 5000;
+  stream_senders_manager::stream_senders_manager (cubstream::stream& supervised_stream):
+    m_stream (supervised_stream)
+    {
+      init ();
+    }
 
-  void master_senders_manager::init ()
+  stream_senders_manager::~stream_senders_manager ()
+    {
+      finalize ();
+    }
+
+  void stream_senders_manager::init ()
   {
 #if defined (SERVER_MODE)
     int error_code = NO_ERROR;
-    std::lock_guard<std::mutex> guard (mutex_for_singleton);
 
-    if (is_initialized)
-      {
-	return;
-      }
+    stream_senders.clear ();
 
-    master_server_stream_senders.clear ();
+    std::string daemon_name = "senders_supervisor_daemon_" + m_stream.name ();
+    auto exec_f = std::bind (&stream_senders_manager::execute, this, std::placeholders::_1);
+    cubthread::entry_callable_task *task = new cubthread::entry_callable_task (exec_f);
+    supervisor_daemon = cubthread::get_manager ()->create_daemon (
+	cubthread::looper (std::chrono::milliseconds (SUPERVISOR_DAEMON_DELAY_MS)), task, daemon_name.c_str ());
 
-    cubthread::entry_callable_task *task = new cubthread::entry_callable_task (master_senders_manager::execute);
-    master_channels_supervisor_daemon = cubthread::get_manager ()->create_daemon (
-	cubthread::looper (std::chrono::milliseconds (SUPERVISOR_DAEMON_DELAY_MS)), task, "supervisor_daemon");
-    g_minimum_successful_stream_position = 0;
-
-    error_code = rwlock_initialize (&master_senders_lock, "MASTER_SENDERS_LOCK");
+    error_code = rwlock_initialize (&senders_lock, "MASTER_SENDERS_LOCK");
     assert (error_code == NO_ERROR);
-
-    is_initialized = true;
 #endif
   }
 
-  void master_senders_manager::add_stream_sender (cubstream::transfer_sender *sender)
+  void stream_senders_manager::add_stream_sender (cubstream::transfer_sender *sender)
   {
-    assert (is_initialized);
-
-    rwlock_write_lock (&master_senders_lock);
-    master_server_stream_senders.push_back (sender);
-    rwlock_write_unlock (&master_senders_lock);
+    rwlock_write_lock (&senders_lock);
+    stream_senders.push_back (sender);
+    rwlock_write_unlock (&senders_lock);
   }
 
-  void master_senders_manager::final ()
+  void stream_senders_manager::finalize ()
   {
 #if defined (SERVER_MODE)
     int error_code = NO_ERROR;
-    std::lock_guard<std::mutex> guard (mutex_for_singleton);
 
-    if (!is_initialized)
+    if (supervisor_daemon != NULL)
       {
-	return;
+	cubthread::get_manager ()->destroy_daemon (supervisor_daemon);
+	supervisor_daemon = NULL;
       }
 
-    if (master_channels_supervisor_daemon != NULL)
-      {
-	cubthread::get_manager ()->destroy_daemon (master_channels_supervisor_daemon);
-	master_channels_supervisor_daemon = NULL;
-      }
-
-    rwlock_write_lock (&master_senders_lock);
-    for (cubstream::transfer_sender *sender : master_server_stream_senders)
+    rwlock_write_lock (&senders_lock);
+    for (cubstream::transfer_sender *sender : stream_senders)
       {
 	delete sender;
       }
-    master_server_stream_senders.clear ();
-    rwlock_write_unlock (&master_senders_lock);
+    stream_senders.clear ();
+    rwlock_write_unlock (&senders_lock);
 
-    error_code = rwlock_finalize (&master_senders_lock);
+    error_code = rwlock_finalize (&senders_lock);
     assert (error_code == NO_ERROR);
-
-    is_initialized = false;
 #endif
   }
 
-  std::size_t master_senders_manager::get_number_of_stream_senders ()
+  std::size_t stream_senders_manager::get_number_of_stream_senders ()
   {
     std::size_t length = 0;
 
-    assert (is_initialized);
-
-    rwlock_read_lock (&master_senders_lock);
-    length = master_server_stream_senders.size ();
-    rwlock_read_unlock (&master_senders_lock);
+    rwlock_read_lock (&senders_lock);
+    length = stream_senders.size ();
+    rwlock_read_unlock (&senders_lock);
 
     return length;
   }
 
-  void master_senders_manager::block_until_position_sent (cubstream::stream_position desired_position)
+  void stream_senders_manager::block_until_position_sent (cubstream::stream_position desired_position)
   {
 #if defined (SERVER_MODE)
     bool is_position_sent = false;
@@ -132,8 +117,8 @@ namespace cubreplication
       {
 	is_position_sent = true;
 
-	rwlock_read_lock (&master_senders_lock);
-	for (cubstream::transfer_sender *sender : master_server_stream_senders)
+	rwlock_read_lock (&senders_lock);
+	for (cubstream::transfer_sender *sender : stream_senders)
 	  {
 	    if (sender->get_last_sent_position () < desired_position)
 	      {
@@ -141,14 +126,14 @@ namespace cubreplication
 		sender->get_daemon ()->wakeup ();
 	      }
 	  }
-	rwlock_read_unlock (&master_senders_lock);
+	rwlock_read_unlock (&senders_lock);
 
 	std::this_thread::sleep_for (SLEEP_BETWEEN_SPINS);
       }
 #endif
   }
 
-  void master_senders_manager::execute (cubthread::entry &context)
+  void stream_senders_manager::execute (cubthread::entry &context)
   {
 #if defined (SERVER_MODE)
     static unsigned int check_conn_delay_counter = 0;
@@ -160,8 +145,8 @@ namespace cubreplication
       {
 	std::vector<cubstream::transfer_sender *>::iterator it;
 
-	rwlock_read_lock (&master_senders_lock);
-	for (it = master_server_stream_senders.begin (); it != master_server_stream_senders.end ();)
+	rwlock_read_lock (&senders_lock);
+	for (it = stream_senders.begin (); it != stream_senders.end ();)
 	  {
 	    cubstream::transfer_sender *sender = *it;
 
@@ -169,16 +154,16 @@ namespace cubreplication
 	      {
 		if (!have_write_lock)
 		  {
-		    rwlock_read_unlock (&master_senders_lock);
+		    rwlock_read_unlock (&senders_lock);
 
-		    rwlock_write_lock (&master_senders_lock);
-		    it = master_server_stream_senders.begin ();
+		    rwlock_write_lock (&senders_lock);
+		    it = stream_senders.begin ();
 
 		    have_write_lock = true;
 		  }
 		else
 		  {
-		    it = master_server_stream_senders.erase (it);
+		    it = stream_senders.erase (it);
 		    delete sender;
 		  }
 	      }
@@ -193,17 +178,24 @@ namespace cubreplication
 
 	if (!have_write_lock)
 	  {
-	    rwlock_read_unlock (&master_senders_lock);
+	    rwlock_read_unlock (&senders_lock);
 	  }
 	else
 	  {
-	    rwlock_write_unlock (&master_senders_lock);
+	    rwlock_write_unlock (&senders_lock);
 	  }
 	check_conn_delay_counter = 0;
 
 	if (active_senders > 0)
 	  {
-	    replication_node_manager::get_master_node ()->update_senders_min_position (min_position_send);
+            /* TODO : we may choose to force flush of all data, even if was read by all senders */
+            m_stream.set_last_recyclable_pos (min_position_send);
+            m_stream.reset_serial_data_read (min_position_send);
+
+            er_log_debug_replication (ARG_FILE_LINE, "senders_manager (stream:%s) update_senders_min_position: %llu,\n"
+			              " stream_read_pos:%llu, commit_pos:%llu", m_stream.name ().c_str (),
+			              min_position_send, m_stream.get_curr_read_position (),
+                                      m_stream.get_last_committed_pos ());
 	  }
       }
 

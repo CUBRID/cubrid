@@ -17,6 +17,8 @@
 
 static mock_stream master_mock_stream;
 
+ cubreplication::stream_senders_manager *cub_stream_senders = NULL;
+
 namespace master
 {
 
@@ -24,12 +26,13 @@ namespace master
   {
     master_mock_stream.init (0);
 
-    cubreplication::master_senders_manager::init ();
+    cub_stream_senders = new cubreplication::stream_senders_manager (master_mock_stream);
   }
 
   void finish ()
   {
-    cubreplication::master_senders_manager::final ();
+    delete cub_stream_senders;
+    cub_stream_senders = NULL;
   }
 
   mock_stream &

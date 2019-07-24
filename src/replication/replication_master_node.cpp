@@ -63,7 +63,7 @@ namespace cubreplication
 
     m_stream_file = stream_file;
 
-    master_senders_manager::init ();
+    m_senders_manager = new stream_senders_manager (*stream);
 
     cubtx::master_group_complete_manager::init ();
 
@@ -82,7 +82,8 @@ namespace cubreplication
 
     cubthread::get_manager ()->destroy_worker_pool (m_new_slave_workers_pool);
 
-    master_senders_manager::final ();
+    delete m_senders_manager;
+    m_senders_manager = NULL;
 
     delete m_control_channel_manager;
     m_control_channel_manager = NULL;
@@ -157,7 +158,7 @@ namespace cubreplication
 
     setup_protocol (chn);
 
-    master_senders_manager::add_stream_sender (new cubstream::transfer_sender (std::move (chn), *m_stream));
+    m_senders_manager->add_stream_sender (new cubstream::transfer_sender (std::move (chn), *m_stream));
 
     er_log_debug_replication (ARG_FILE_LINE, "new_slave connected");
   }
@@ -245,14 +246,4 @@ namespace cubreplication
 #endif
   }
 
-  void master_node::update_senders_min_position (const cubstream::stream_position &pos)
-  {
-    /* TODO : we may choose to force flush of all data, even if was read by all senders */
-    m_stream->set_last_recyclable_pos (pos);
-    m_stream->reset_serial_data_read (pos);
-
-    er_log_debug_replication (ARG_FILE_LINE, "master_node (stream:%s) update_senders_min_position: %llu,\n"
-			      " stream_read_pos:%llu, commit_pos:%llu", m_stream->name ().c_str (),
-			      pos, m_stream->get_curr_read_position (),m_stream->get_last_committed_pos ());
-  }
 } /* namespace cubreplication */

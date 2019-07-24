@@ -33,6 +33,8 @@ static int finish ();
 static int run ();
 static int init_thread_system ();
 
+cubreplication::stream_senders_manager *cub_stream_sender = NULL;
+
 static int init_thread_system ()
 {
   int error_code;
@@ -95,6 +97,8 @@ static int init ()
   /* let at least one slave connect */
   std::this_thread::sleep_for (std::chrono::milliseconds (500));
 
+  cub_stream_sender = new cubreplication::stream_senders_manager (master::get_mock_stream ());
+
   return NO_ERROR;
 }
 
@@ -102,6 +106,8 @@ static int finish ()
 {
   int rc = NO_ERROR;
 
+  delete cub_stream_sender;
+  cub_stream_sender = NULL;
   slave::destroy ();
   master::finish ();
   cub_master_mock::finish ();
@@ -125,7 +131,7 @@ static int run ()
   int cycles = 0;
   std::vector <slave_replication_channel_mock *> &slaves = slave::get_slaves ();
 
-  if (cubreplication::master_senders_manager::get_number_of_stream_senders () == 0)
+  if (cub_stream_sender->get_number_of_stream_senders () == 0)
     {
       return ER_FAILED;
     }

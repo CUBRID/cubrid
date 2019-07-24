@@ -48,6 +48,7 @@ namespace cubcomm
 namespace cubreplication
 {
   class master_ctrl;
+  class stream_senders_manager;
 
   class master_node : public replication_node
   {
@@ -57,6 +58,7 @@ namespace cubreplication
       cubthread::entry_workpool *m_new_slave_workers_pool;
 
       master_ctrl *m_control_channel_manager;
+      stream_senders_manager *m_senders_manager;
 
     protected:
       int setup_protocol (cubcomm::channel &chn);
@@ -69,7 +71,6 @@ namespace cubreplication
       void new_slave_copy_task (cubthread::entry &thread_ref, SOCKET fd);
       void new_slave (SOCKET fd);
       void add_ctrl_chn (SOCKET fd);
-      void update_senders_min_position (const cubstream::stream_position &pos);
   };
 
 } /* namespace cubreplication */
