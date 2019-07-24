@@ -126,7 +126,7 @@ namespace cubreplication
 
     private:
       int wait_for_state (const copy_stage &desired_state);
-      cubstream::multi_thread_stream *acquire_stream_for_copy ();
+      cubstream::multi_thread_stream *acquire_stream ();
       void detach_stream_for_copy ();
 
       void pack_and_add_statement (const std::string &statement);

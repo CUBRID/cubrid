@@ -90,7 +90,7 @@ namespace cubreplication
     m_is_stop = false;
 
 
-    m_stream = acquire_stream_for_copy ();
+    m_stream = acquire_stream ();
     /* TODO : single global pool or a pool for each context ? */
     m_heap_extract_workers_pool =
 	    cubthread::get_manager ()->create_worker_pool (EXTRACT_HEAP_WORKER_POOL_SIZE, EXTRACT_HEAP_WORKER_POOL_SIZE,
@@ -130,10 +130,8 @@ namespace cubreplication
   void source_copy_context::pack_and_add_statement (const std::string &str)
   {
     stream_entry stream_entry (m_stream, MVCCID_FIRST, stream_entry_header::ACTIVE);
-    LOG_LSA null_LSA;
-    LSA_SET_NULL (&null_LSA);
 
-    sbr_repl_entry *sbr = new sbr_repl_entry (str.c_str (), "dba", "", null_LSA);
+    sbr_repl_entry *sbr = new sbr_repl_entry (str.c_str (), "dba", "", NULL_LSA);
     stream_entry.add_packable_entry (sbr);
 
     stream_entry.pack ();
@@ -251,23 +249,23 @@ namespace cubreplication
     cubpacking::unpacker unpacker (buffer, buf_size);
 
     int class_oid_cnt;
-    unpacker.unpack_all (class_oid_cnt);
+    unpacker.unpack_int (class_oid_cnt);
 
     for (int i = 0; i < class_oid_cnt; i++)
       {
 	m_class_oid_list.emplace_back ();
 	OID &class_oid = m_class_oid_list.back ();
-	unpacker.unpack_all (class_oid);
+	unpacker.unpack_oid (class_oid);
       }
   }
 
   /*
-   * acquire_stream_for_copy : creates or reutilizes a stream for providing copy replication data
+   * acquire_stream : creates or reutilizes a stream for providing copy replication data
    *
-   * TODO[replication] : if a second slave asks for replication db copy in a short interval we may reuse an existing stream
-   * instead of start another copy process
+   * TODO[replication] : if a second slave asks for replication db copy in a short interval we may reuse
+   * an existing stream instead of start another copy process
    */
-  cubstream::multi_thread_stream *source_copy_context::acquire_stream_for_copy ()
+  cubstream::multi_thread_stream *source_copy_context::acquire_stream ()
   {
     INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_BUFFER_SIZE);
 
@@ -277,8 +275,8 @@ namespace cubreplication
     /* TODO[replication] : max appenders in stream must be greater than number of parallel heap scanners */
     cubstream::multi_thread_stream *copy_db_stream =
 	    new cubstream::multi_thread_stream (buffer_size, 10 + EXTRACT_HEAP_WORKER_POOL_SIZE);
-    const node_definition *myself = replication_node_manager::get_master_node ()->get_node_identity ();
-    copy_db_stream->set_name ("repl_copy_" + std::string (myself->get_hostname ().c_str ()));
+    const node_definition& myself = replication_node_manager::get_master_node ()->get_node_identity ();
+    copy_db_stream->set_name ("repl_copy_" + std::string (myself.get_hostname ().c_str ()));
     copy_db_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
     copy_db_stream->init (0);
 
@@ -290,12 +288,12 @@ namespace cubreplication
 
   void source_copy_context::detach_stream_for_copy ()
   {
+    delete m_senders_manager;
+    m_senders_manager = NULL;
+
     m_stream->stop ();
     delete m_stream;
     m_stream = NULL;
-
-    delete m_senders_manager;
-    m_senders_manager = NULL;
   }
 
   void source_copy_context::execute_db_copy (cubthread::entry &thread_ref, SOCKET fd)
