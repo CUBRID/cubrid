@@ -1535,7 +1535,7 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
 	  switch (regu_var->value.funcp->ftype)
 	    {
 	    case F_REGEXP_REPLACE:
-		case F_REGEXP_SUBSTR:
+	    case F_REGEXP_SUBSTR:
 	      {
 		delete regu_var->value.funcp->tmp_obj->compiled_regex;
 	      }
