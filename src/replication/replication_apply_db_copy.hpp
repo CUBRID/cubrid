@@ -60,6 +60,8 @@ namespace cubreplication
 
       cubthread::daemon *m_consumer_daemon;
 
+      cubthread::entry_workpool *m_dispatch_workers_pool;
+
       cubthread::entry_workpool *m_applier_workers_pool;
 
       int m_applier_worker_threads_count;

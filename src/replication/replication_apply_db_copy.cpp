@@ -367,6 +367,7 @@ namespace cubreplication
     if (m_use_daemons)
       {
 	cubthread::get_manager ()->destroy_daemon (m_consumer_daemon);
+        cubthread::get_manager ()->destroy_worker_pool (m_dispatch_workers_pool);
 	cubthread::get_manager ()->destroy_worker_pool (m_applier_workers_pool);
       }
 
@@ -436,7 +437,10 @@ namespace cubreplication
 			new copy_db_consumer_daemon_task (*this),
 			"repl_copy_db_prepare_stream_entry_daemon");
 
-    cubthread::get_manager ()->push_task (NULL, new copy_dispatch_task (*this));
+    m_dispatch_workers_pool = cubthread::get_manager ()->create_worker_pool (1, 1, "repl_copy_db_dispatch_pool", NULL,
+                                                                             1, 1);
+
+    cubthread::get_manager ()->push_task (m_dispatch_workers_pool, new copy_dispatch_task (*this));
 
     m_applier_workers_pool = cubthread::get_manager ()->create_worker_pool (m_applier_worker_threads_count,
 			     m_applier_worker_threads_count,
