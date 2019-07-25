@@ -4605,8 +4605,9 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
     DB_TYPE pattern_type = DB_VALUE_DOMAIN_TYPE (pattern);
     DB_TYPE repl_type = DB_VALUE_DOMAIN_TYPE (repl);
 
-    bool is_valid_data_type = (QSTR_IS_ANY_CHAR (src_type) && QSTR_IS_ANY_CHAR (pattern_type)
-			       && QSTR_IS_ANY_CHAR (repl_type));
+    bool is_valid_data_type = ((DB_IS_NULL (src) || QSTR_IS_ANY_CHAR (src_type))
+                   && (DB_IS_NULL (pattern) || QSTR_IS_ANY_CHAR (pattern_type))
+                   && (DB_IS_NULL (repl) || QSTR_IS_ANY_CHAR (repl_type)));
     bool is_any_null = (DB_IS_NULL (src) || DB_IS_NULL (pattern) || DB_IS_NULL (repl));
 
     /* get optional arguments and type checking */
