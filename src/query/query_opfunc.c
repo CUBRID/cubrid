@@ -216,8 +216,8 @@ static int qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_D
 static int qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
 			    OID * obj_oid_p, QFILE_TUPLE tuple);
 
-static int qdata_regexp_replace_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
-					  OID * obj_oid_p, QFILE_TUPLE tuple);
+static int qdata_regexp_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
+				  OID * obj_oid_p, QFILE_TUPLE tuple);
 
 static int qdata_convert_operands_to_value_and_call (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p,
 						     VAL_DESCR * val_desc_p, OID * obj_oid_p, QFILE_TUPLE tuple,
@@ -6885,7 +6885,8 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * function_
 						       db_evaluate_json_valid);
 
     case F_REGEXP_REPLACE:
-      return qdata_regexp_replace_function (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+    case F_REGEXP_SUBSTR:
+      return qdata_regexp_function (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
@@ -8467,7 +8468,7 @@ qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR 
 }
 
 /*
- * qdata_regexp_replace_function () - Evaluates regexp_replace() function.
+ * qdata_regexp_function () - Evaluates regexp related functions.
  *   return: NO_ERROR, or ER_FAILED code
  *   thread_p   : thread context
  *   funcp(in)  : function structure pointer
@@ -8476,8 +8477,8 @@ qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR 
  *   tpl(in)    : tuple
  */
 static int
-qdata_regexp_replace_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
-			       OID * obj_oid_p, QFILE_TUPLE tuple)
+qdata_regexp_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
+		       OID * obj_oid_p, QFILE_TUPLE tuple)
 {
   DB_VALUE *value;
   REGU_VARIABLE_LIST operand;
@@ -8516,6 +8517,22 @@ qdata_regexp_replace_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function
 
     assert (index == no_args);
 
+    // *INDENT-OFF*
+    std::function<int(DB_VALUE*, DB_VALUE*[], const int, std::wregex**, char**)> regexp_func;
+    switch (function_p->ftype)
+    {
+      case F_REGEXP_REPLACE:
+        regexp_func = db_string_regexp_replace;
+        break;
+      case F_REGEXP_SUBSTR:
+        regexp_func = db_string_regexp_substr;
+        break;
+      default:
+        assert (false);
+        break;
+    }
+    // *INDENT-ON*
+
     if (function_p->tmp_obj == NULL)
       {
 	function_p->tmp_obj = new function_tmp_obj;
@@ -8523,8 +8540,7 @@ qdata_regexp_replace_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function
       }
 
     COMPILED_REGEX *compiled_regex = function_p->tmp_obj->compiled_regex;
-    error_status =
-      db_string_regexp_replace (function_p->value, args, no_args, &compiled_regex->regex, &compiled_regex->pattern);
+    error_status = regexp_func (function_p->value, args, no_args, &compiled_regex->regex, &compiled_regex->pattern);
     if (error_status != NO_ERROR)
       {
 	goto exit;

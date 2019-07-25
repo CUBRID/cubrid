@@ -150,6 +150,7 @@ regu_variable_node::clear_xasl_local ()
 	  switch (value.funcp->ftype)
 	    {
 	    case F_REGEXP_REPLACE:
+      case F_REGEXP_SUBSTR:
 	    {
 	      delete value.funcp->tmp_obj->compiled_regex;
 	    }

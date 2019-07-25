@@ -6330,6 +6330,7 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	case F_INSERT_SUBSTRING:
 	case F_ELT:
 	case F_REGEXP_REPLACE:
+	case F_REGEXP_SUBSTR:
 	  result_type = pt_node_to_db_type (function);
 	  break;
 	case F_BENCHMARK:
