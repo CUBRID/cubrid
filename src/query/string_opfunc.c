@@ -4404,7 +4404,7 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
     pattern_type = DB_VALUE_DOMAIN_TYPE (pattern);
     case_sens_type = DB_VALUE_DOMAIN_TYPE (case_sensitive);
 
-    INTL_CODESET src_codeset = db_get_string_codeset (src);
+    INTL_CODESET src_codeset = db_get_string_codeset (src_string);
     INTL_CODESET pattern_codeset = db_get_string_codeset (pattern);
 
     if (!QSTR_IS_ANY_CHAR (src_type) || !QSTR_IS_ANY_CHAR (pattern_type))
