@@ -4660,6 +4660,16 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	rx_compiled_regex = *comp_regex;
       }
 
+    /* codeset compatible check */
+    if ((src_category != pattern_category)
+      || (pattern_category != repl_category)
+      || (src_category != repl_category))
+      {
+  error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_CODE_SETS, 0);
+  goto exit;
+      }
+      
     /* collation compatible check */
     int coll_id_tmp = -1, coll_id = -1;
     LANG_RT_COMMON_COLL (db_get_string_collation (src), db_get_string_collation (pattern), coll_id_tmp);
