@@ -85,9 +85,9 @@ namespace cubtx
     /* This function is called after adding a transaction to the current group.
      * Currently, we wakeup GC thread when all expected transactions were added into current group.
      */
-    unsigned int count_min_group_transactions = get_current_group_min_transactions ();
-    assert (get_current_group ().get_container ().size () <= count_min_group_transactions);
-    if (get_current_group ().get_container ().size () == count_min_group_transactions)
+    assert (m_has_latest_group_close_info.load () == false
+	    || get_current_group ().get_container ().size () <= get_current_group_min_transactions ());
+    if (get_current_group ().get_container ().size () == get_current_group_min_transactions ())
       {
 	gl_slave_group_complete_daemon->wakeup ();
       }
