@@ -115,18 +115,6 @@ namespace cubreplication
     return NO_ERROR;
   }
 
-  int apply_copy_context::send_master_receive_ack (cubcomm::channel &chn)
-  {
-    std::size_t max_len = sizeof (UINT64);
-
-    if (chn.send ((char *) &replication_node::SETUP_COPY_END_REPLICATION_MAGIC, max_len) != css_error_code::NO_ERRORS)
-      {
-        return ER_FAILED;
-      }
-
-    return NO_ERROR;
-  }
-
   int apply_copy_context::execute_copy ()
   {
     int error = NO_ERROR;
@@ -160,9 +148,6 @@ namespace cubreplication
     m_copy_consumer->start_daemons ();
 
     wait_replication_copy ();
-
-    /* signal master node that connection may be closed */
-    send_master_receive_ack (srv_chn);
 
     /* update position in log_Gl */
     log_Gl.m_ack_stream_position = m_online_repl_start_pos;

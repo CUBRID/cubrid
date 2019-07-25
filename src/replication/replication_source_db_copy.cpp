@@ -100,7 +100,7 @@ namespace cubreplication
   source_copy_context::~source_copy_context ()
   {
     cubthread::get_manager ()->destroy_worker_pool (m_heap_extract_workers_pool);
-    detach_stream_for_copy ();
+    release_stream ();
 
     m_stream_file = NULL;
     delete m_transfer_sender;
@@ -286,7 +286,7 @@ namespace cubreplication
     return copy_db_stream;
   }
 
-  void source_copy_context::detach_stream_for_copy ()
+  void source_copy_context::release_stream ()
   {
     delete m_senders_manager;
     m_senders_manager = NULL;
@@ -362,10 +362,7 @@ namespace cubreplication
 
     pack_and_add_end_of_copy ();
 
-    if (wait_slave_receive_ack (chn) != NO_ERROR)
-      {
-	return;
-      }
+    wait_slave_finished ();
   }
 
   int source_copy_context::setup_copy_protocol (cubcomm::channel &chn)
@@ -404,25 +401,23 @@ namespace cubreplication
     return NO_ERROR;
   }
 
-  int source_copy_context::wait_slave_receive_ack (cubcomm::channel &chn)
+  void source_copy_context::wait_slave_finished ()
   {
-    UINT64 pos = 0, expected_magic;
-    std::size_t max_len = sizeof (UINT64);
+    bool sender_alive = true;
 
-    if (chn.recv ((char *) &expected_magic, max_len) != css_error_code::NO_ERRORS)
+    assert (m_transfer_sender != NULL);
+    assert (m_senders_manager != NULL);
+
+    /* TODO : we could block with channel::wait_for, but the sender and channel
+     * may be destroyed by the senders_manager daemon and we cannot use the rwlock */
+    while (sender_alive)
       {
-	return ER_FAILED;
+        sender_alive = m_senders_manager->find_stream_sender (m_transfer_sender);
+        if (sender_alive)
+          {
+            thread_sleep (100);
+          }
       }
-
-    if (expected_magic != replication_node::SETUP_COPY_END_REPLICATION_MAGIC)
-      {
-	er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::setup_copy_protocol error in setup protocol");
-	assert (false);
-	return ER_FAILED;
-      }
-    er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_slave_receive_ack OK");
-
-    return NO_ERROR;
   }
 
   void source_copy_context::stop ()

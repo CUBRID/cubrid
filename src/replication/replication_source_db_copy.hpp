@@ -127,14 +127,14 @@ namespace cubreplication
     private:
       int wait_for_state (const copy_stage &desired_state);
       cubstream::multi_thread_stream *acquire_stream ();
-      void detach_stream_for_copy ();
+      void release_stream ();
 
       void pack_and_add_statement (const std::string &statement);
       void pack_and_add_start_of_extract_heap ();
       void pack_and_add_end_of_extract_heap ();
       void pack_and_add_end_of_copy ();
 
-      int wait_slave_receive_ack (cubcomm::channel &chn);
+      void wait_slave_finished (void);
       int wait_receive_class_list (void);
       int wait_send_triggers_indexes (void);
 
