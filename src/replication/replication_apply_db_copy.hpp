@@ -60,8 +60,6 @@ namespace cubreplication
 
       cubthread::daemon *m_consumer_daemon;
 
-      cubthread::daemon *m_dispatch_daemon;
-
       cubthread::entry_workpool *m_applier_workers_pool;
 
       int m_applier_worker_threads_count;
@@ -80,7 +78,6 @@ namespace cubreplication
       copy_db_consumer () :
 	m_stream (NULL),
 	m_consumer_daemon (NULL),
-	m_dispatch_daemon (NULL),
 	m_applier_workers_pool (NULL),
 	m_applier_worker_threads_count (100),
 	m_use_daemons (false),

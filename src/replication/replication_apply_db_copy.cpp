@@ -264,10 +264,10 @@ namespace cubreplication
 
 
   /* TODO : refactor with log_consumer:: dispatch_daemon_task */
-  class copy_dispatch_daemon_task : public cubthread::entry_task
+  class copy_dispatch_task : public cubthread::entry_task
   {
     public:
-      copy_dispatch_daemon_task (copy_db_consumer &lc)
+      copy_dispatch_task (copy_db_consumer &lc)
 	: m_lc (lc)
       {
       }
@@ -282,13 +282,7 @@ namespace cubreplication
         bool is_replication_copy_end = false;
         bool is_stopped = false;
 
-        if (m_lc.is_finished ())
-          {
-            er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_daemon_task : already finished");
-            return;
-          }
-
-        er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_daemon_task : start of replication copy");
+        er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : start of replication copy");
 
         if (locator_repl_start_tran (&thread_ref, BOOT_CLIENT_LOG_APPLIER) != NO_ERROR)
           {
@@ -305,7 +299,7 @@ namespace cubreplication
 
 	    if (is_stopped)
 	      {
-                er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_daemon_task : detect should stop");
+                er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : detect should stop");
 		break;
 	      }
 
@@ -315,7 +309,7 @@ namespace cubreplication
 	      {
 		string_buffer sb;
 		se->stringify (sb, stream_entry::short_dump);
-		_er_log_debug (ARG_FILE_LINE, "copy_dispatch_daemon_task execute pop_entry:\n%s", sb.get_buffer ());
+		_er_log_debug (ARG_FILE_LINE, "copy_dispatch_task execute pop_entry:\n%s", sb.get_buffer ());
 	      }
 
             /* during extract heap phase we may apply objects in parallel */
@@ -328,20 +322,20 @@ namespace cubreplication
               {
                 is_heap_extract_phase = true;
                 is_control_se = true;
-                er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_daemon_task : receive of start of extract heap phase");
+                er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : receive of start of extract heap phase");
               }
             else if (se->is_end_of_extract_heap ())
               {
                 is_heap_extract_phase = false;
                 is_control_se = true;
-                er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_daemon_task : receive of end of extract heap phase");
+                er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : receive of end of extract heap phase");
               }
             else if (se->is_end_of_replication_copy ())
               {
                 assert (is_heap_extract_phase == false);
                 is_control_se = true;
                 is_replication_copy_end = true;
-                er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_daemon_task : receive of end of replication");
+                er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : receive of end of replication");
               }
 
             if (is_control_se)
@@ -359,7 +353,7 @@ namespace cubreplication
         locator_repl_end_tran (&thread_ref, is_stopped ? false : true); 
 
         m_lc.set_is_finished ();
-        er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_daemon_task finished");
+        er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task finished");
       }
 
     private:
@@ -373,7 +367,6 @@ namespace cubreplication
     if (m_use_daemons)
       {
 	cubthread::get_manager ()->destroy_daemon (m_consumer_daemon);
-	cubthread::get_manager ()->destroy_daemon (m_dispatch_daemon);
 	cubthread::get_manager ()->destroy_worker_pool (m_applier_workers_pool);
       }
 
@@ -443,10 +436,7 @@ namespace cubreplication
 			new copy_db_consumer_daemon_task (*this),
 			"repl_copy_db_prepare_stream_entry_daemon");
 
-    m_dispatch_daemon = cubthread::get_manager ()->create_daemon (
-                        cubthread::delta_time (std::chrono::milliseconds(10)),
-			new copy_dispatch_daemon_task (*this),
-			"repl_copy_db_dispatch_stream_entry_daemon");
+    cubthread::get_manager ()->push_task (NULL, new copy_dispatch_task (*this));
 
     m_applier_workers_pool = cubthread::get_manager ()->create_worker_pool (m_applier_worker_threads_count,
 			     m_applier_worker_threads_count,
