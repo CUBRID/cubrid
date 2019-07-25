@@ -84,6 +84,8 @@ namespace cubcomm
     int copy_of_maxlen_in_recvlen_out = (int) maxlen_in_recvlen_out;
     int rc = NO_ERRORS;
 
+    assert (m_type != NO_TYPE);
+
     rc = css_net_recv (m_socket, buffer, &copy_of_maxlen_in_recvlen_out, m_max_timeout_in_ms);
     maxlen_in_recvlen_out = copy_of_maxlen_in_recvlen_out;
     return (css_error_code) rc;
@@ -94,6 +96,8 @@ namespace cubcomm
     int templen, vector_length = 2;
     int total_len = 0, rc = NO_ERRORS;
     struct iovec iov[2];
+
+    assert (m_type != NO_TYPE);
 
     css_set_io_vector (&iov[0], &iov[1], buffer, (int) length, &templen);
     total_len = (int) (sizeof (int) + length);
@@ -165,6 +169,8 @@ namespace cubcomm
       {
 	return -1;
       }
+
+    assert (m_type != NO_TYPE);
 
     poll_fd.fd = m_socket;
     poll_fd.events = events;
