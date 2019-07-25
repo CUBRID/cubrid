@@ -4404,6 +4404,9 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
     pattern_type = DB_VALUE_DOMAIN_TYPE (pattern);
     case_sens_type = DB_VALUE_DOMAIN_TYPE (case_sensitive);
 
+    INTL_CODESET src_codeset = db_get_string_codeset (src);
+    INTL_CODESET pattern_codeset = db_get_string_codeset (pattern);
+
     if (!QSTR_IS_ANY_CHAR (src_type) || !QSTR_IS_ANY_CHAR (pattern_type))
       {
 	error_status = ER_QSTR_INVALID_DATA_TYPE;
@@ -4412,7 +4415,7 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
 	goto cleanup;
       }
 
-    if (src_category != pattern_category)
+    if ((src_category != pattern_category) || (src_codeset != pattern_codeset))
       {
 	error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
