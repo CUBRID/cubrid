@@ -4728,6 +4728,9 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	goto exit;
       }
 
+    LANG_COLLATION *collation = lang_get_collation (coll_id);
+    assert (collation != NULL);
+
     /* check for recompile */
     std::string pattern_string (db_get_string (pattern), db_get_string_size (pattern));
     int pattern_length = pattern_string.size();
