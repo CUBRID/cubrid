@@ -4605,16 +4605,17 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
     DB_TYPE pattern_type = DB_VALUE_DOMAIN_TYPE (pattern);
     DB_TYPE repl_type = DB_VALUE_DOMAIN_TYPE (repl);
 
-    bool is_valid_data_type = (QSTR_IS_ANY_CHAR (src_type) && QSTR_IS_ANY_CHAR (pattern_type) && QSTR_IS_ANY_CHAR (repl_type));
+    bool is_valid_data_type = (QSTR_IS_ANY_CHAR (src_type) && QSTR_IS_ANY_CHAR (pattern_type)
+			       && QSTR_IS_ANY_CHAR (repl_type));
     bool is_any_null = (DB_IS_NULL (src) || DB_IS_NULL (pattern) || DB_IS_NULL (repl));
-    
+
     /* get optional arguments and type checking */
     if (num_args >= 4)
       {
 	position = args[3];
 	assert (position != (DB_VALUE *) NULL);
 	is_any_null = is_any_null || DB_IS_NULL (position);
-  is_valid_data_type = is_valid_data_type && (DB_IS_NULL (position) || is_integer(position));
+	is_valid_data_type = is_valid_data_type && (DB_IS_NULL (position) || is_integer (position));
       }
 
     if (num_args >= 5)
@@ -4622,7 +4623,7 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	occurrence = args[4];
 	assert (occurrence != (DB_VALUE *) NULL);
 	is_any_null = is_any_null || DB_IS_NULL (occurrence);
-  is_valid_data_type = is_valid_data_type && (DB_IS_NULL (occurrence) || is_integer(occurrence));
+	is_valid_data_type = is_valid_data_type && (DB_IS_NULL (occurrence) || is_integer (occurrence));
       }
 
     if (num_args == 6)
@@ -4630,9 +4631,10 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	match_type = args[5];
 	assert (match_type != (DB_VALUE *) NULL);
 	is_any_null = is_any_null || DB_IS_NULL (match_type);
-  is_valid_data_type = is_valid_data_type && (DB_IS_NULL (match_type) || QSTR_IS_ANY_CHAR (DB_VALUE_DOMAIN_TYPE (match_type)));
+	is_valid_data_type = is_valid_data_type && (DB_IS_NULL (match_type)
+			     || QSTR_IS_ANY_CHAR (DB_VALUE_DOMAIN_TYPE (match_type)));
       }
-    
+
     /* invalid data type exists */
     if (!is_valid_data_type)
       {
@@ -4662,14 +4664,14 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 
     /* codeset compatible check */
     if ((src_category != pattern_category)
-      || (pattern_category != repl_category)
-      || (src_category != repl_category))
+	|| (pattern_category != repl_category)
+	|| (src_category != repl_category))
       {
-  error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_CODE_SETS, 0);
-  goto exit;
+	error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_CODE_SETS, 0);
+	goto exit;
       }
-      
+
     /* collation compatible check */
     int coll_id_tmp = -1, coll_id = -1;
     LANG_RT_COMMON_COLL (db_get_string_collation (src), db_get_string_collation (pattern), coll_id_tmp);
@@ -4767,29 +4769,29 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	    prefix = std::move (src_string.substr (0, position_value));
 	    target = std::move (src_string.substr (position_value, src_length - position_value));
 	  }
-  else if (position_value < 0)
-    {
-      error_status = ER_QPROC_INVALID_PARAMETER;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-      goto exit;
-    }
-  else
-    {
-      assert (error_status == NO_ERROR);
-      error_status = pr_clone_value ((DB_VALUE *) src, result);
-      qstr_make_typed_string ((src_type == DB_TYPE_NCHAR ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR), result,
-				      DB_VALUE_PRECISION (result), db_get_string (result), db_get_string_size (result),
-				      db_get_string_codeset (src), db_get_string_collation (src));
-      result->need_clear = true;
-      goto exit;
-    }
+	else if (position_value < 0)
+	  {
+	    error_status = ER_QPROC_INVALID_PARAMETER;
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	    goto exit;
+	  }
+	else
+	  {
+	    assert (error_status == NO_ERROR);
+	    error_status = pr_clone_value ((DB_VALUE *) src, result);
+	    qstr_make_typed_string ((src_type == DB_TYPE_NCHAR ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR), result,
+				    DB_VALUE_PRECISION (result), db_get_string (result), db_get_string_size (result),
+				    db_get_string_codeset (src), db_get_string_collation (src));
+	    result->need_clear = true;
+	    goto exit;
+	  }
       }
 
     // position is not specified or bigger than length of src_string
     if (target.empty ())
-    {
-      target = std::move (src_string);
-    }
+      {
+	target = std::move (src_string);
+      }
 
     try
       {
@@ -4833,9 +4835,9 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	  }
 	else
 	  {
-      error_status = ER_QPROC_INVALID_PARAMETER;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-      goto exit;
+	    error_status = ER_QPROC_INVALID_PARAMETER;
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	    goto exit;
 	  }
 
 	/* concatenate with prefix */
@@ -4901,11 +4903,11 @@ exit:
     {
       db_make_null (result);
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
-      {
-        /* clear error and return NULL */
-        er_clear ();
-        return NO_ERROR;
-      }
+	{
+	  /* clear error and return NULL */
+	  er_clear ();
+	  return NO_ERROR;
+	}
     }
 
   return error_status;
