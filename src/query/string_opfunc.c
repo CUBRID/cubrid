@@ -4702,16 +4702,6 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 
     /* codeset compatible check */
     if ((src_category != pattern_category)
-<<<<<<< HEAD
-      || (pattern_category != repl_category)
-      || (src_category != repl_category))
-      {
-  error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_CODE_SETS, 0);
-  goto exit;
-      }
-    
-=======
 	|| (pattern_category != repl_category)
 	|| (src_category != repl_category))
       {
@@ -4720,7 +4710,6 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	goto exit;
       }
 
->>>>>>> CBRD-22783_regexp_replace_func
     /* collation compatible check */
     int coll_id_tmp = -1, coll_id = -1;
     LANG_RT_COMMON_COLL (db_get_string_collation (src), db_get_string_collation (pattern), coll_id_tmp);
@@ -4853,15 +4842,9 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 
     // position is not specified or bigger than length of src_string
     if (target.empty ())
-<<<<<<< HEAD
-    {
-      target = std::move (wsrc);
-    }
-=======
       {
-	target = std::move (src_string);
+	target = std::move (wsrc);
       }
->>>>>>> CBRD-22783_regexp_replace_func
 
     try
       {
