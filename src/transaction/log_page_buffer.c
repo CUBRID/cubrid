@@ -446,7 +446,8 @@ logpb_get_log_buffer (LOG_PAGE * log_pg)
       return &log_Pb.header_buffer;
     }
 
-  index = (int) ((char *) log_pg - (char *) log_Pb.pages_area) / LOG_PAGESIZE;
+  assert ((UINT64) ((char *) log_pg - (char *) log_Pb.pages_area) / LOG_PAGESIZE < INT_MAX);
+  index = (int) ((UINT64) ((char *) log_pg - (char *) log_Pb.pages_area) / LOG_PAGESIZE);
 
   /* Safe guard: index is valid. */
   assert (index >= 0 && index < log_Pb.num_buffers);
