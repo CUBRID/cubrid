@@ -6886,6 +6886,7 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * function_
 
     case F_REGEXP_REPLACE:
     case F_REGEXP_SUBSTR:
+    case F_REGEXP_INSTR:
       return qdata_regexp_function (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
     default:
@@ -8526,6 +8527,9 @@ qdata_regexp_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_
         break;
       case F_REGEXP_SUBSTR:
         regexp_func = db_string_regexp_substr;
+        break;
+      case F_REGEXP_INSTR:
+        regexp_func = db_string_regexp_instr;
         break;
       default:
         assert (false);

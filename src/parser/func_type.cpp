@@ -354,6 +354,16 @@ func_all_signatures sig_of_regexp_substr =
   {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_CHAR}, {}},
 };
 
+func_all_signatures sig_of_regexp_instr =
+{
+// all signatures: src, pattern [,position [,occurrence [,return_option [,match_type ]]]] -> INTEGER
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING}, {}},
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER}, {}},
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER}, {}},
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_TYPE_INTEGER}, {}},
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_CHAR}, {}},
+};
+
 func_all_signatures *
 get_signatures (FUNC_TYPE ft)
 {
@@ -487,6 +497,8 @@ get_signatures (FUNC_TYPE ft)
       return &sig_of_regexp_replace;
     case F_REGEXP_SUBSTR:
       return &sig_of_regexp_substr;
+    case F_REGEXP_INSTR:
+      return &sig_of_regexp_instr;
     default:
       assert (false);
       return nullptr;

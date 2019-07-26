@@ -3974,6 +3974,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    case F_JSON_VALID:
 	    case F_REGEXP_REPLACE:
 	    case F_REGEXP_SUBSTR:
+	    case F_REGEXP_INSTR:
 	      {
 		regu_variable_list_node *operand;
 
@@ -4182,6 +4183,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	case F_JSON_VALID:
 	case F_REGEXP_REPLACE:
 	case F_REGEXP_SUBSTR:
+	case F_REGEXP_INSTR:
 	  break;
 
 	default:

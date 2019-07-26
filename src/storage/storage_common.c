@@ -563,6 +563,8 @@ fcode_get_uppercase_name (FUNC_TYPE ftype)
       return "REGEXP_REPLACE";
     case F_REGEXP_SUBSTR:
       return "REGEXP_SUBSTR";
+    case F_REGEXP_INSTR:
+      return "REGEXP_INSTR";
     default:
       return "***UNKNOWN***";
     }
@@ -713,6 +715,8 @@ fcode_get_lowercase_name (FUNC_TYPE ftype)
       return "regexp_replace";
     case F_REGEXP_SUBSTR:
       return "regexp_substr";
+    case F_REGEXP_INSTR:
+      return "regexp_instr";
     default:
       return "unknown function";
     }
