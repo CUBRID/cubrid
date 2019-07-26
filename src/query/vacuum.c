@@ -659,6 +659,7 @@ static void vacuum_log_cleanup_dropped_files (THREAD_ENTRY * thread_p, PAGE_PTR 
 static void vacuum_dropped_files_set_next_page (THREAD_ENTRY * thread_p, VACUUM_DROPPED_FILES_PAGE * page_p,
 						VPID * next_page);
 static int vacuum_get_first_page_dropped_files (THREAD_ENTRY * thread_p, VPID * first_page_vpid);
+static void vacuum_notify_all_workers_dropped_file (const VFID * vfid_dropped, MVCCID mvccid);
 
 static bool is_not_vacuumed_and_lost (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header);
 static void print_not_vacuumed_to_log (OID * oid, OID * class_oid, MVCC_REC_HEADER * rec_header, int btree_node_type);
@@ -6175,15 +6176,68 @@ vacuum_rv_replace_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * pospone_ref_lsa (in) : Reference LSA for running postpone. NULL if this is
  *			  an undo for created heap files and indexes.
  */
+static void
+vacuum_notify_all_workers_dropped_file (const VFID * vfid_dropped, MVCCID mvccid)
+{
+#if defined (SERVER_MODE)
+  if (!LOG_ISRESTARTED ())
+    {
+      // workers are not running during recovery
+      return;
+    }
+
+  INT32 my_version, workers_min_version;
+
+  /* Before notifying vacuum workers there is one last thing we have to do. Running workers must also be notified of
+   * the VFID being dropped to cleanup their collected heap object arrays. Since must done one file at a time, so a
+   * mutex is used for protection, in case there are several transactions doing file drops. */
+  pthread_mutex_lock (&vacuum_Dropped_files_mutex);
+  assert (VFID_ISNULL (&vacuum_Last_dropped_vfid));
+  VFID_COPY (&vacuum_Last_dropped_vfid, vfid_dropped);
+
+  /* Increment dropped files version and save a version for current change. It is not important to keep the version
+   * synchronized with the changes. It is only used to make sure that all workers have seen current change. */
+  my_version = ++vacuum_Dropped_files_version;
+
+  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
+		 "Added dropped file - vfid=%d|%d, mvccid=%llu - "
+		 "Wait for all workers to see my_version=%d", VFID_AS_ARGS (vfid_dropped), mvccid, my_version);
+
+  /* Wait until all workers have been notified of this change */
+  for (workers_min_version = vacuum_get_worker_min_dropped_files_version ();
+       workers_min_version != -1 && workers_min_version < my_version;
+       workers_min_version = vacuum_get_worker_min_dropped_files_version ())
+    {
+      vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
+		     "not all workers saw my changes, workers min version=%d. Sleep and retry.", workers_min_version);
+
+      thread_sleep (1);
+    }
+
+  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES, "All workers have been notified, min_version=%d", workers_min_version);
+
+  VFID_SET_NULL (&vacuum_Last_dropped_vfid);
+  pthread_mutex_unlock (&vacuum_Dropped_files_mutex);
+#endif // SERVER_MODE
+}
+
+/*
+ * vacuum_rv_notify_dropped_file () - Add drop file used in recovery phase. Can be used in two ways: at run postpone phase
+ *				   for dropped heap files and indexes (if postpone_ref_lsa in not null); or at undo
+ *				   phase for created heap files and indexes.
+ *
+ * return		: Error code.
+ * thread_p (in)	: Thread entry.
+ * rcv (in)		: Recovery data.
+ * pospone_ref_lsa (in) : Reference LSA for running postpone. NULL if this is
+ *			  an undo for created heap files and indexes.
+ */
 int
 vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   int error = NO_ERROR;
   OID *class_oid;
   MVCCID mvccid;
-#if defined (SERVER_MODE)
-  INT32 my_version, workers_min_version;
-#endif
   VACUUM_DROPPED_FILES_RCV_DATA *rcv_data;
 
   /* Copy VFID from current log recovery data but set MVCCID at this point. We will use the log_Gl.hdr.mvcc_next_id as
@@ -6202,38 +6256,8 @@ vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       return error;
     }
 
-#if defined (SERVER_MODE)
-  /* Before notifying vacuum workers there is one last thing we have to do. Running workers must also be notified of
-   * the VFID being dropped to cleanup their collected heap object arrays. Since must done one file at a time, so a
-   * mutex is used for protection, in case there are several transactions doing file drops. */
-  pthread_mutex_lock (&vacuum_Dropped_files_mutex);
-  assert (VFID_ISNULL (&vacuum_Last_dropped_vfid));
-  VFID_COPY (&vacuum_Last_dropped_vfid, &rcv_data->vfid);
-
-  /* Increment dropped files version and save a version for current change. It is not important to keep the version
-   * synchronized with the changes. It is only used to make sure that all workers have seen current change. */
-  my_version = ++vacuum_Dropped_files_version;
-
-  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-		 "Added dropped file - vfid=%d|%d, mvccid=%llu - "
-		 "Wait for all workers to see my_version=%d", VFID_AS_ARGS (&rcv_data->vfid), mvccid, my_version);
-
-  /* Wait until all workers have been notified of this change */
-  for (workers_min_version = vacuum_get_worker_min_dropped_files_version ();
-       workers_min_version != -1 && workers_min_version < my_version;
-       workers_min_version = vacuum_get_worker_min_dropped_files_version ())
-    {
-      vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-		     "not all workers saw my changes, workers min version=%d. Sleep and retry.", workers_min_version);
-
-      thread_sleep (1);
-    }
-
-  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES, "All workers have been notified, min_version=%d", workers_min_version);
-
-  VFID_SET_NULL (&vacuum_Last_dropped_vfid);
-  pthread_mutex_unlock (&vacuum_Dropped_files_mutex);
-#endif /* SERVER_MODE */
+  // make sure vacuum workers will not access dropped file
+  vacuum_notify_all_workers_dropped_file (&rcv_data->vfid, mvccid);
 
   /* vacuum is notified of the file drop, it is safe to remove from cache */
   class_oid = &rcv_data->class_oid;
