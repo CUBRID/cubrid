@@ -14546,23 +14546,45 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, "distinct ");
 	}
 
-      if (!(parser->custom_print & PT_SUPPRESS_SELECT_LIST) || p->info.query.is_subquery == PT_IS_SUBQUERY)
+      if (PT_SELECT_INFO_IS_FLAGED (p, PT_SELECT_INFO_IS_UPD_DEL_QUERY))
 	{
-	  r1 = pt_print_bytes_l (parser, p->info.query.q.select.list);
-	  q = pt_append_varchar (parser, q, r1);
-	}
-      else
-	{
-	  temp = p->info.query.q.select.list;
-	  while (temp)
+	  /* print select list with column alias for system generated select of update query */
+	  for (temp = p->info.query.q.select.list; temp != NULL; temp = temp->next)
 	    {
-	      q = pt_append_nulstring (parser, q, "NA");
-	      if (temp->next)
+	      r1 = pt_print_bytes (parser, temp);
+	      q = pt_append_varchar (parser, q, r1);
+
+	      if (temp->alias_print != NULL)
+		{
+		  q = pt_append_nulstring (parser, q, " as [");
+		  q = pt_append_nulstring (parser, q, temp->alias_print);
+		  q = pt_append_nulstring (parser, q, "]");
+		}
+
+	      if (temp->next != NULL)
 		{
 		  q = pt_append_nulstring (parser, q, ",");
 		}
-	      temp = temp->next;
 	    }
+	}
+      else if ((parser->custom_print & PT_SUPPRESS_SELECT_LIST) != 0 && p->info.query.is_subquery != PT_IS_SUBQUERY)
+	{
+	  /* suppress select list: print NA */
+	  for (temp = p->info.query.q.select.list; temp != NULL; temp = temp->next)
+	    {
+	      q = pt_append_nulstring (parser, q, "NA");
+
+	      if (temp->next != NULL)
+		{
+		  q = pt_append_nulstring (parser, q, ",");
+		}
+	    }
+	}
+      else
+	{
+	  /* ordinary cases */
+	  r1 = pt_print_bytes_l (parser, p->info.query.q.select.list);
+	  q = pt_append_varchar (parser, q, r1);
 	}
 
       if (parser->custom_print & PT_PRINT_ALIAS)
