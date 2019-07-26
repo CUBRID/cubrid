@@ -1614,14 +1614,36 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
       tdes->topops.last = -1;
     }
 
-  if (LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.atomic_sysop_start_lsa))
+  // if this is the end of atomic system operation or system operation postpone phase, now it is time to reset it
+  //
+  // NOTE - we might actually be in both a system operation postpone phase and an atomic system operation, one nested
+  //        in the other. we need to check which is last and end sysop should belong to that.
+  //
+  // NOTE - I really hate this guessing state system and we really, really should consider a more deterministic way.
+  //        Logging ALL started system operations and replicating the system operation stack precisely would really
+  //        help us avoiding all these ambiguities.
+  //
+
+  // do we reset atomic sysop? next conditions must be met:
+  // 1. is there atomic system operation started?
+  // 2. is atomic system operation more recent than start postpone?
+  // 3. is atomic system operation equal or more recent to system operation last parent?
+  if (!LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa)	/* 1 */
+      && LSA_GT (&tdes->rcv.atomic_sysop_start_lsa, &tdes->rcv.sysop_start_postpone_lsa)	/* 2 */
+      && LSA_GT (&tdes->rcv.atomic_sysop_start_lsa, &sysop_end->lastparent_lsa) /* 3 */ )
     {
       /* reset tdes->rcv.atomic_sysop_start_lsa */
       LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
     }
-  if (LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.sysop_start_postpone_lsa))
+  // do we reset sysop start postpone? next conditions must be met:
+  // 1. is there system operation start postpone in progress?
+  // 2. is system operation start postpone more recent than atomic system operation?
+  // 3. is system operation start postpone more recent than system operation last parent?
+  if (!LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa)
+      && LSA_GT (&tdes->rcv.sysop_start_postpone_lsa, &tdes->rcv.atomic_sysop_start_lsa)
+      && LSA_GT (&tdes->rcv.sysop_start_postpone_lsa, &sysop_end->lastparent_lsa))
     {
-      /* reset tdes->rcv.atomic_sysop_start_lsa */
+      /* reset tdes->rcv.sysop_start_postpone_lsa */
       LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
     }
 
@@ -4144,6 +4166,11 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
 static void
 log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  LOG_PAGE *log_pgptr = NULL;
+  LOG_RECORD_HEADER *log_rec;
+  LOG_LSA prev_atomic_sysop_start_lsa;
+
   if (tdes == NULL || tdes->trid == NULL_TRANID)
     {
       /* Nothing to do */
@@ -4205,11 +4232,22 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 		    LSA_AS_ARGS (&tdes->rcv.atomic_sysop_start_lsa));
     }
 
+  /* Get transaction lsa that precede atomic_sysop_start_lsa. */
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+  if (logpb_fetch_page (thread_p, &tdes->rcv.atomic_sysop_start_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_abort_atomic_sysop");
+      return;
+    }
+  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &tdes->rcv.atomic_sysop_start_lsa);
+  LSA_COPY (&prev_atomic_sysop_start_lsa, &log_rec->prev_tranlsa);
+
   /* rollback. simulate a new system op */
   log_sysop_start (thread_p);
 
-  /* hack last parent to stop at tdes->rcv.atomic_sysop_start_lsa */
-  tdes->topops.stack[tdes->topops.last].lastparent_lsa = tdes->rcv.atomic_sysop_start_lsa;
+  /* hack last parent to stop at transaction lsa that precede atomic_sysop_start_lsa. */
+  LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa, &prev_atomic_sysop_start_lsa);
 
   /* rollback */
   log_sysop_abort (thread_p);
