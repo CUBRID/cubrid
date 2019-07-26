@@ -245,6 +245,8 @@ static void boot_shutdown_server_at_exit (void);
 static int boot_get_db_charset_from_header (THREAD_ENTRY * thread_p, const char *log_path, const char *log_prefix);
 STATIC_INLINE int boot_db_parm_update_heap (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 
+static int boot_after_copydb (THREAD_ENTRY * thread_p);
+
 /*
  * bo_server) -set server's status, UP or DOWN
  *   return: void
@@ -2435,6 +2437,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
    */
 
   log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, from_backup, r_args);
+
+  error_code = boot_after_copydb (thread_p);	// only does something if this is first boot after copydb
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
     {
@@ -5913,4 +5922,40 @@ boot_db_parm_update_heap (THREAD_ENTRY * thread_p)
     }
   heap_scancache_end (thread_p, &scan_cache);
   return error_code;
+}
+
+//
+// boot_after_copydb - do whatever checks and changes necessary on first boot of copied database.
+//                     copydb is quite rudimentary; it will just copy page by page as is, and then reset the LSA's.
+//                     some of database stuff may be contextual (e.g. stuff that depend on log like vacuum), and
+//                     here that stuff must be handled
+//
+static int
+boot_after_copydb (THREAD_ENTRY * thread_p)
+{
+  if (!log_Gl.hdr.was_copied)
+    {
+      // this is not after copydb
+      return NO_ERROR;
+    }
+
+  int error_code = vacuum_reset_data_after_copydb (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  // finished booting after copydb
+  log_Gl.hdr.was_copied = false;
+
+  // flush log and header to disk to make sure everything is saved
+  LOG_CS_ENTER (thread_p);
+  logpb_flush_pages_direct (thread_p);
+  logpb_flush_header (thread_p);
+  LOG_CS_EXIT (thread_p);
+
+  er_log_debug (ARG_FILE_LINE, "Complete boot_after_copydb \n");
+
+  return NO_ERROR;
 }

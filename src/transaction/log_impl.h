@@ -938,7 +938,7 @@ struct log_header
   int avg_nlocks;		/* Average number of object locks */
   DKNPAGES npages;		/* Number of pages in the active log portion. Does not include the log header page. */
   INT8 db_charset;
-  INT8 dummy2;			/* Dummy fields for 8byte align */
+  bool was_copied;		/* set to true for copied database; should be reset on first server start */
   INT8 dummy3;
   INT8 dummy4;
   LOG_PAGEID fpageid;		/* Logical pageid at physical location 1 in active log */
@@ -994,7 +994,12 @@ struct log_header
      0, 0, 0,					 \
      /* db_charset */				 \
      0,						 \
-     0, 0, 0, 0,				 \
+     /* was_copied */                            \
+     false,                                      \
+     /* dummy INT8 for align */                  \
+     0, 0,                                       \
+     /* fpageid */                               \
+     0,				                 \
      /* append_lsa */                            \
      {NULL_PAGEID, NULL_OFFSET},                 \
      /* chkpt_lsa */                             \
@@ -1058,7 +1063,12 @@ struct log_header
      0, 0, 0,					 \
      /* db_charset */				 \
      0,						 \
-     0, 0, 0, 0,				 \
+     /* was_copied */                            \
+     false,                                      \
+     /* dummy INT8 for align */                  \
+     0, 0,                                       \
+     /* fpageid */                               \
+     0,				                 \
      /* append_lsa */                            \
      {NULL_PAGEID, NULL_OFFSET},                 \
      /* chkpt_lsa */                             \

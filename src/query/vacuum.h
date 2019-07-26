@@ -335,4 +335,5 @@ extern bool vacuum_is_mvccid_vacuumed (MVCCID id);
 extern int vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, INT16 rec_type);
 
 extern void vacuum_sa_reflect_last_blockid (THREAD_ENTRY * thread_p);
+extern int vacuum_reset_data_after_copydb (THREAD_ENTRY * thread_p);
 #endif /* _VACUUM_H_ */
