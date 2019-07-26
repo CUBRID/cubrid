@@ -15450,6 +15450,12 @@ pt_apply_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, v
   p->info.query.into_list = g (parser, p->info.query.into_list, arg);
   p->info.query.order_by = g (parser, p->info.query.order_by, arg);
   p->info.query.orderby_for = g (parser, p->info.query.orderby_for, arg);
+  p->info.query.limit = g (parser, p->info.query.limit, arg);
+
+  // todo - there is a lot less stuff here than on pt_apply_select. I am not sure this is safe.
+  //        e.g. this is used for parser_copy_tree too. which should deep copy entire tree! otherwise we may have some
+  //        unpleasant effects.
+
   return p;
 }
 
@@ -16263,8 +16269,8 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 
       if ((p->info.value.print_collation == false
 	   && !(parser->custom_print & (PT_CHARSET_COLLATE_FULL | PT_CHARSET_COLLATE_USER_ONLY)))
-	  || (p->info.value.is_collate_allowed == false) || (prt_coll_id == LANG_SYS_COLLATION
-							     && (parser->custom_print & PT_SUPPRESS_CHARSET_PRINT))
+	  || (p->info.value.is_collate_allowed == false)
+	  || (prt_coll_id == LANG_SYS_COLLATION && (parser->custom_print & PT_SUPPRESS_CHARSET_PRINT))
 	  || (parser->custom_print & PT_CHARSET_COLLATE_USER_ONLY && PT_GET_COLLATION_MODIFIER (p) == -1))
 	{
 	  prt_coll_id = -1;
@@ -16275,10 +16281,8 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
       /* do not print charset introducer for NCHAR and VARNCHAR */
       if ((p->info.value.print_charset == false
 	   && !(parser->custom_print & (PT_CHARSET_COLLATE_FULL | PT_CHARSET_COLLATE_USER_ONLY)))
-	  || (p->type_enum != PT_TYPE_CHAR && p->type_enum != PT_TYPE_VARCHAR) || (prt_cs == LANG_SYS_CODESET
-										   && (parser->
-										       custom_print &
-										       PT_SUPPRESS_CHARSET_PRINT))
+	  || (p->type_enum != PT_TYPE_CHAR && p->type_enum != PT_TYPE_VARCHAR)
+	  || (prt_cs == LANG_SYS_CODESET && (parser->custom_print & PT_SUPPRESS_CHARSET_PRINT))
 	  || (parser->custom_print & PT_CHARSET_COLLATE_USER_ONLY && p->info.value.has_cs_introducer == false))
 	{
 	  prt_cs = INTL_CODESET_NONE;
@@ -18809,4 +18813,12 @@ pt_clean_tree_copy_info (PT_TREE_COPY_INFO * tree_copy_info)
       save_next = cte_info_it->next;
       free (cte_info_it);
     }
+}
+
+// pt_move_node - move PT_NODE pointer from source to destination. useful to automatically assign and unlink
+void
+pt_move_node (PT_NODE ** destp, PT_NODE ** srcp)
+{
+  *destp = *srcp;
+  *srcp = NULL;
 }
