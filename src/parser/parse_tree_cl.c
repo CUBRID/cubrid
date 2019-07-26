@@ -16269,8 +16269,8 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 
       if ((p->info.value.print_collation == false
 	   && !(parser->custom_print & (PT_CHARSET_COLLATE_FULL | PT_CHARSET_COLLATE_USER_ONLY)))
-	  || (p->info.value.is_collate_allowed == false) || (prt_coll_id == LANG_SYS_COLLATION
-							     && (parser->custom_print & PT_SUPPRESS_CHARSET_PRINT))
+	  || (p->info.value.is_collate_allowed == false)
+	  || (prt_coll_id == LANG_SYS_COLLATION && (parser->custom_print & PT_SUPPRESS_CHARSET_PRINT))
 	  || (parser->custom_print & PT_CHARSET_COLLATE_USER_ONLY && PT_GET_COLLATION_MODIFIER (p) == -1))
 	{
 	  prt_coll_id = -1;
@@ -16281,10 +16281,8 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
       /* do not print charset introducer for NCHAR and VARNCHAR */
       if ((p->info.value.print_charset == false
 	   && !(parser->custom_print & (PT_CHARSET_COLLATE_FULL | PT_CHARSET_COLLATE_USER_ONLY)))
-	  || (p->type_enum != PT_TYPE_CHAR && p->type_enum != PT_TYPE_VARCHAR) || (prt_cs == LANG_SYS_CODESET
-										   && (parser->
-										       custom_print &
-										       PT_SUPPRESS_CHARSET_PRINT))
+	  || (p->type_enum != PT_TYPE_CHAR && p->type_enum != PT_TYPE_VARCHAR)
+	  || (prt_cs == LANG_SYS_CODESET && (parser->custom_print & PT_SUPPRESS_CHARSET_PRINT))
 	  || (parser->custom_print & PT_CHARSET_COLLATE_USER_ONLY && p->info.value.has_cs_introducer == false))
 	{
 	  prt_cs = INTL_CODESET_NONE;
@@ -18819,8 +18817,8 @@ pt_clean_tree_copy_info (PT_TREE_COPY_INFO * tree_copy_info)
 
 // pt_move_node - move PT_NODE pointer from source to destination. useful to automatically assign and unlink
 void
-pt_move_node (REFPTR (PT_NODE, destp), REFPTR (PT_NODE, srcp))
+pt_move_node (PT_NODE ** destp, PT_NODE ** srcp)
 {
-  destp = srcp;
-  srcp = NULL;
+  *destp = *srcp;
+  *srcp = NULL;
 }

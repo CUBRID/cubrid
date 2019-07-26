@@ -642,7 +642,7 @@ extern "C"
 #endif
 
 #if defined __cplusplus
-extern void pt_move_node (REFPTR (PT_NODE, destp), REFPTR (PT_NODE, srcp));
+extern void pt_move_node (PT_NODE ** destp, PT_NODE ** srcp);
 #endif // c++
 
 #endif /* _PARSER_H_ */

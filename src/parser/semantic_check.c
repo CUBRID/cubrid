@@ -15907,19 +15907,19 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
 
       if (fold_as == STATEMENT_SET_FOLD_AS_ARG1)
 	{
-	  pt_move_node (active, union_node->info.query.q.union_.arg1);
+	  pt_move_node (&active, &union_node->info.query.q.union_.arg1);
 	}
       else
 	{
-	  pt_move_node (active, union_node->info.query.q.union_.arg2);
+	  pt_move_node (&active, &union_node->info.query.q.union_.arg2);
 	}
 
       /* to save union's orderby or limit clause to arg1 or arg2 */
-      pt_move_node (union_orderby, union_node->info.query.order_by);
-      pt_move_node (union_orderby_for, union_node->info.query.orderby_for);
-      pt_move_node (union_limit, union_node->info.query.limit);
+      pt_move_node (&union_orderby, &union_node->info.query.order_by);
+      pt_move_node (&union_orderby_for, &union_node->info.query.orderby_for);
+      pt_move_node (&union_limit, &union_node->info.query.limit);
       union_rewrite_limit = union_node->info.query.rewrite_limit;
-      pt_move_node (union_with_clause, union_node->info.query.with);
+      pt_move_node (&union_with_clause, &union_node->info.query.with);
 
       /* When active node has a limit or orderby_for clause and union node has a limit or ORDERBY clause, need a
        * derived table to keep both conflicting clauses. When a subquery has orderby clause without
