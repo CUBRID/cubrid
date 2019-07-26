@@ -1071,18 +1071,24 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
     case SERVER_IS_RECOVERING:
     case SERVER_CLIENTS_EXCEEDED:
     case SERVER_INACCESSIBLE_IP:
-      {
-	error_area = NULL;
-	if (css_receive_error (conn, rid, &error_area, &error_length))
-	  {
-	    if (error_area != NULL)
-	      {
-		er_set_area_error ((void *) error_area);
-		free_and_init (error_area);
-	      }
-	  }
-	break;
-      }
+      error_area = NULL;
+
+      /* TODO: We may need to change protocol to properly receive server error for the cases.
+       * Receiving error from server might not be completed because server disconnects the temporary connection.
+       */
+      css_err_code = css_receive_error (conn, rid, &error_area, &error_length);
+      if (css_err_code == NO_ERRORS && error_area != NULL)
+	{
+	  // properly received the server error
+	  er_set_area_error (error_area);
+	}
+
+      if (error_area != NULL)
+	{
+	  free_and_init (error_area);
+	}
+      break;
+
     case SERVER_NOT_FOUND:
     case SERVER_HANG:
     default:
