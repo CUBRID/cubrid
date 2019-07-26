@@ -8305,6 +8305,21 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
 
   LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
 
+#if defined (SERVER_MODE)
+  // check whether there is ongoing backup.
+  LOG_CS_ENTER (thread_p);
+  if (log_Gl.backup_in_progress == true)
+    {
+      LOG_CS_EXIT (thread_p);
+      error_code = ER_LOG_BKUP_DUPLICATE_REQUESTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+      return error_code;
+    }
+
+  log_Gl.backup_in_progress = true;
+  LOG_CS_EXIT (thread_p);
+#endif /* SERVER_MODE */
+
   memset (&session, 0, sizeof (FILEIO_BACKUP_SESSION));
 
   /*
@@ -8333,27 +8348,20 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
 
   /* 
    * Determine the first log archive that will be needed to insure
-   * consistency if we are forced to restore the database with nothing
-   * but this backup.
+   * consistency if we are forced to restore the database with nothing but this backup.
    * first_arv_needed may need to be based on what archive chkpt_lsa is in.
    */
-  LOG_CS_ENTER (thread_p);
-#if defined(SERVER_MODE)
-  if (log_Gl.backup_in_progress == true)
-    {
-      LOG_CS_EXIT (thread_p);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_BKUP_DUPLICATE_REQUESTS, 0);
-      error_code = ER_LOG_BKUP_DUPLICATE_REQUESTS;
-      goto error;
-    }
 
-  log_Gl.backup_in_progress = true;
-  LOG_CS_EXIT (thread_p);
-
+#if defined (SERVER_MODE)
   print_backupdb_waiting_reason = false;
   wait_checkpoint_begin_time = time (NULL);
 loop:
+#endif /* SERVER_MODE */
+
+  // actually, it is not really necessary for SA but just for code consistency.
   LOG_CS_ENTER (thread_p);
+
+#if defined (SERVER_MODE)
   /* check if checkpoint is in progress */
   if (log_Gl.run_nxchkpt_atpageid == NULL_PAGEID)
     {
