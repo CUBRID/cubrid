@@ -21580,6 +21580,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   int ls_flag = 0;
   QFILE_LIST_ID *t_list_id = NULL;
   int idx_incache = -1;
+  REPR_ID class_repr_id = NULL_REPRID;
   OR_CLASSREP *rep = NULL;
   OR_INDEX *index = NULL;
   OR_ATTRIBUTE *index_att = NULL;
@@ -21598,6 +21599,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   int non_unique;
   int cardinality;
   OID *class_oid = NULL;
+  OID dir_oid;
   int i, j, k;
   int error = NO_ERROR;
   int function_index_pos = -1;
@@ -21606,6 +21608,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   char *comment = NULL;
   int alloced_string = 0;
   HL_HEAPID save_heapid = 0;
+  CATALOG_ACCESS_INFO catalog_access_info = CATALOG_ACCESS_INFO_INITIALIZER;
 
   assert (xasl != NULL && xasl_state != NULL);
 
@@ -21622,17 +21625,51 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
       GOTO_EXIT_ON_ERROR;
     }
 
-  heap_scancache_quick_start_root_hfid (thread_p, &scan);
-
   assert (xasl_state != NULL);
   class_oid = &(xasl->spec_list->s.cls_node.cls_oid);
+
+  /* get class disk representation */
+  if (catalog_get_dir_oid_from_cache (thread_p, class_oid, &dir_oid) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      GOTO_EXIT_ON_ERROR;
+    }
+
+  catalog_access_info.class_oid = class_oid;
+  catalog_access_info.dir_oid = &dir_oid;
+  if (catalog_start_access_with_dir_oid (thread_p, &catalog_access_info, S_LOCK) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, error);
+      GOTO_EXIT_ON_ERROR;
+    }
+
+  error = catalog_get_last_representation_id (thread_p, class_oid, &class_repr_id);
+  if (error != NO_ERROR)
+    {
+      (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, error);
+      GOTO_EXIT_ON_ERROR;
+    }
+
+  disk_repr_p = catalog_get_representation (thread_p, class_oid, class_repr_id, &catalog_access_info);
+  if (disk_repr_p == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, error);
+      GOTO_EXIT_ON_ERROR;
+    }
+
+  (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, NO_ERROR);
+
+  /* read heap class record, get class representation */
+  heap_scancache_quick_start_root_hfid (thread_p, &scan);
 
   if (heap_get_class_record (thread_p, class_oid, &class_record, &scan, PEEK) != S_SUCCESS)
     {
       GOTO_EXIT_ON_ERROR;
     }
 
-  rep = heap_classrepr_get (thread_p, class_oid, &class_record, NULL_REPRID, &idx_incache);
+  rep = heap_classrepr_get (thread_p, class_oid, &class_record, class_repr_id, &idx_incache);
   if (rep == NULL)
     {
       GOTO_EXIT_ON_ERROR;
@@ -21652,12 +21689,6 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
     {
       out_values[i] = &(regu_var_p->value.value.dbval);
       pr_clear_value (out_values[i]);
-    }
-
-  disk_repr_p = catalog_get_representation (thread_p, class_oid, rep->id, NULL);
-  if (disk_repr_p == NULL)
-    {
-      GOTO_EXIT_ON_ERROR;
     }
 
   attr_names = (char **) malloc (rep->n_attributes * sizeof (char *));
