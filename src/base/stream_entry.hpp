@@ -184,7 +184,7 @@ namespace cubstream
 	    /* unpack one replication entry */
 	    add_packable_entry (packable_entry);
 	    packable_entry->unpack (*deserializator);
-	  }
+              }
 	deserializator->align (MAX_ALIGNMENT);
 
 	assert (deserializator->get_curr_ptr () - ptr == (int) data_size);
@@ -320,6 +320,15 @@ namespace cubstream
 
       void add_packable_entry (PO *entry)
       {
+#define MAX_PACKABLE_ENTRIES 1000
+        if (m_packable_entries.size () >= MAX_PACKABLE_ENTRIES
+            && !prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
+          {
+            /* Maybe is better to use a parameter here, instead MAX_PACKABLE_ENTRIES. */
+            pack ();
+            reset ();
+          }
+
 	m_packable_entries.push_back (entry);
       };
 
