@@ -5053,8 +5053,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 
 	      if (is_sysop)
 		{
-		  // not really expected, but...
-		  assert (false);
+		  // more than one page in one iteration, now that's a performance
 		  log_sysop_commit (thread_p);
 		}
 
@@ -5105,6 +5104,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	    {
 	      /* Page is empty. We don't want to add a new block that does not require vacuum. */
 	      assert (data_page->index_unvacuumed == 0);
+	      next_blockid = consumed_data.blockid - 1;	// for will increment it to consumed_data.blockid
 	      continue;
 	    }
 
