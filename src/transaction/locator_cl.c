@@ -385,24 +385,6 @@ locator_cache_lock (MOP mop, MOBJ ignore_notgiven_object, void *xcache_lock)
       ws_set_mop_fetched_with_current_snapshot (mop);
     }
 
-
-  if (cache_lock->isolation != TRAN_REPEATABLE_READ && cache_lock->isolation != TRAN_SERIALIZABLE && class_mop != NULL
-      && class_mop == sm_Root_class_mop)
-    {
-      /* 
-       * This is a class.
-       * Demote share locks to intention locks
-       */
-      if (lock == SIX_LOCK)
-	{
-	  lock = IX_LOCK;
-	}
-      else if (lock == S_LOCK)
-	{
-	  lock = IS_LOCK;
-	}
-    }
-
   ws_set_lock (mop, lock);
 }
 
@@ -593,22 +575,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
 
   if (found == true)
     {
-
-      if (TM_TRAN_ISOLATION () != TRAN_REPEATABLE_READ && TM_TRAN_ISOLATION () != TRAN_SERIALIZABLE && class_mop != NULL
-	  && class_mop == sm_Root_class_mop)
-	{
-	  /* Demote share locks to intention locks */
-	  if (lock == SIX_LOCK)
-	    {
-	      lock = IX_LOCK;
-	    }
-	  else if (lock == S_LOCK)
-	    {
-	      lock = IS_LOCK;
-	    }
-	}
-
-      /* TODO: Do we need to demote locks instance locks here to NULL_LOCK? */
+      // TODO: NULL_LOCK for inst locks on non-mvcc table??
       ws_set_lock (mop, lock);
     }
 }
@@ -1257,18 +1224,6 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock, LOCK re
 	  if (class_mop == sm_Root_class_mop)
 	    {
 	      lock = reqobj_class_lock;
-	      if (TM_TRAN_ISOLATION () != TRAN_REPEATABLE_READ && TM_TRAN_ISOLATION () != TRAN_SERIALIZABLE)
-		{
-		  /* Demote share locks to intention locks */
-		  if (lock == SIX_LOCK)
-		    {
-		      lock = IX_LOCK;
-		    }
-		  else if (lock == S_LOCK)
-		    {
-		      lock = IS_LOCK;
-		    }
-		}
 	    }
 	  else
 	    {
@@ -1685,22 +1640,6 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level, int quit_on_errors, in
       else
 	{
 	  /* The only way to find out if there was an error, is by looking to acquired lock */
-	  class_mop = ws_class_mop (mop);
-	  if (class_mop == sm_Root_class_mop)
-	    {
-	      if (TM_TRAN_ISOLATION () != TRAN_REPEATABLE_READ && TM_TRAN_ISOLATION () != TRAN_SERIALIZABLE)
-		{
-		  /* Demote share locks to intention locks */
-		  if (lock == SIX_LOCK)
-		    {
-		      lock = IX_LOCK;
-		    }
-		  else if (lock == S_LOCK)
-		    {
-		      lock = IS_LOCK;
-		    }
-		}
-	    }
 
 	  current_lock = ws_get_lock (mop);
 	  assert (lock >= NULL_LOCK && current_lock >= NULL_LOCK);
@@ -1870,19 +1809,6 @@ locator_lock_class_of_instance (MOP inst_mop, MOP * class_mop, LOCK lock)
 
   if (*class_mop != NULL)
     {
-      if (TM_TRAN_ISOLATION () != TRAN_REPEATABLE_READ && TM_TRAN_ISOLATION () != TRAN_SERIALIZABLE)
-	{
-	  /* Demote share locks to intention locks */
-	  if (lock == SIX_LOCK)
-	    {
-	      lock = IX_LOCK;
-	    }
-	  else if (lock == S_LOCK)
-	    {
-	      lock = IS_LOCK;
-	    }
-	}
-
       ws_set_lock (*class_mop, lock);
       ws_set_class (inst_mop, *class_mop);
     }
