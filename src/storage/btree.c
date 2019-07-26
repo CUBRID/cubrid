@@ -20414,7 +20414,8 @@ btree_index_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_
 
   class_name = db_get_string (arg_values[0]);
 
-  status = xlocator_find_class_oid (thread_p, class_name, &oid, NULL_LOCK);
+  // if you want consitent results, S_LOCK is required.
+  status = xlocator_find_class_oid (thread_p, class_name, &oid, ctx->is_all ? S_LOCK : SCH_S_LOCK);
   if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
     {
       error = ER_LC_UNKNOWN_CLASSNAME;
