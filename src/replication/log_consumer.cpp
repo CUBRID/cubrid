@@ -232,11 +232,12 @@ namespace cubreplication
 		// start wait for workers first, then wait for complete manager.
 		m_lc.wait_for_tasks ();
 
+                // We need to wait for previous group to complete. Otherwise, we mix transactions from previous and
+                // current groups.
+                m_p_dispatch_consumer->wait_for_complete_stream_position (m_prev_group_stream_position);
+
 		// apply all sub-transaction first
 		m_lc.get_subtran_applier ().apply ();
-		// We need to wait for previous group to complete. Otherwise, we mix transactions from previous and
-		// current groups.
-		m_p_dispatch_consumer->wait_for_complete_stream_position (m_prev_group_stream_position);
 
 		count_expected_transaction = 0;
 		for (tasks_map::iterator it = repl_tasks.begin (); it != repl_tasks.end (); it++)
