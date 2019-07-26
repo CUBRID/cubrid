@@ -1541,7 +1541,10 @@ boot_server_die_or_changed (void)
 #if defined(CS_MODE)
       css_terminate (true);
 #endif /* !CS_MODE */
-      er_log_debug (ARG_FILE_LINE, "boot_server_die_or_changed() terminated\n");
+      if (prm_get_bool_value (PRM_ID_TEST_MODE))
+	{
+	  er_print_callstack (ARG_FILE_LINE, "boot_server_die_or_changed() terminated\n");
+	}
     }
 }
 
