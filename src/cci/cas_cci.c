@@ -2082,7 +2082,7 @@ cci_set_cas_change_mode (int mapped_conn_id, int driver_mode, T_CCI_ERROR * err_
 {
   T_CON_HANDLE *con_handle = NULL;
   int error = CCI_ER_NO_ERROR;
-  int cas_mode;
+  int r, cas_mode;
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_set_cas_change_mode %d %d", mapped_conn_id, driver_mode));
@@ -2104,29 +2104,29 @@ cci_set_cas_change_mode (int mapped_conn_id, int driver_mode, T_CCI_ERROR * err_
       goto ret;
     }
 
-  cas_mode = qe_set_cas_change_mode (con_handle, cas_mode, &(con_handle->err_buf));
-  while (IS_OUT_TRAN (con_handle) && IS_ER_TO_RECONNECT (cas_mode, con_handle->err_buf.err_code))
+  r = qe_set_cas_change_mode (con_handle, cas_mode, &(con_handle->err_buf));
+  while (IS_OUT_TRAN (con_handle) && IS_ER_TO_RECONNECT (r, con_handle->err_buf.err_code))
     {
-      if (NEED_TO_RECONNECT (con_handle, cas_mode))
+      if (NEED_TO_RECONNECT (con_handle, r))
 	{
 	  /* Finally, reset_connect will return ER_TIMEOUT */
-	  cas_mode = reset_connect (con_handle, NULL, &(con_handle->err_buf));
-	  if (cas_mode != CCI_ER_NO_ERROR)
+	  r = reset_connect (con_handle, NULL, &(con_handle->err_buf));
+	  if (r != CCI_ER_NO_ERROR)
 	    {
 	      break;
 	    }
 	}
 
-      cas_mode = qe_set_cas_change_mode (con_handle, cas_mode, &(con_handle->err_buf));
+      r = qe_set_cas_change_mode (con_handle, cas_mode, &(con_handle->err_buf));
     }
 
-  if (cas_mode < 0)
+  if (r < 0)
     {
-      error = cas_mode;
+      error = r;
     }
   else
     {
-      driver_mode = convert_cas_mode_to_driver_mode (cas_mode);
+      driver_mode = convert_cas_mode_to_driver_mode (r);
       if (driver_mode == CCI_CAS_CHANGE_MODE_UNKNOWN)
 	{
 	  error = CCI_ER_COMMUNICATION;
