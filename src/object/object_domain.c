@@ -4843,7 +4843,7 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
   codeset = DB_GET_STRING_CODESET (src);
   end = p + size - 1;
 
-  if (*end)
+  if (0 < size && *end)
     {
       while (p <= end && char_isspace (*p))
 	{
