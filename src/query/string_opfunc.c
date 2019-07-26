@@ -5620,7 +5620,7 @@ db_string_regexp_instr (DB_VALUE *result, DB_VALUE *args[], int const num_args,
 	  }
 	else
 	  {
-	    db_make_null (result);
+	    db_make_int (result, 0);
 	    goto exit;
 	  }
       }
