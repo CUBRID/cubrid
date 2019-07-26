@@ -5568,7 +5568,7 @@ db_string_regexp_instr (DB_VALUE *result, DB_VALUE *args[], int const num_args,
 		    reg_flags |= std::regex_constants::icase;
 		    break;
 		  default:
-		    error_status = ER_OBJ_INVALID_ARGUMENTS;
+		    error_status = ER_QPROC_INVALID_PARAMETER;
 		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 		    goto exit;
 		    break;
