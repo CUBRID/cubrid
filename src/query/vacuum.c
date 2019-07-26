@@ -4095,37 +4095,27 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
   /* Get last_blockid. */
   if (vacuum_is_empty ())
     {
-      if (LSA_ISNULL (&vacuum_Data.recovery_lsa) && LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa))
+      VACUUM_LOG_BLOCKID log_blockid = logpb_last_complete_blockid ();
+
+      if (log_blockid < 0)
+	{
+	  // we can be here if log has not yet passed first block. one case may be soon after copydb.
+	  assert (log_blockid == VACUUM_NULL_LOG_BLOCKID);
+	  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+			 "vacuum_data_load_and_recover: do not update last_blockid; prev_lsa = %lld|%d",
+			 LSA_AS_ARGS (&log_Gl.append.prev_lsa));
+	}
+      else if (LSA_ISNULL (&vacuum_Data.recovery_lsa) && LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa))
 	{
 	  /* No recovery needed. This is used for 10.1 version to keep the functionality of the database.
 	   * In this case, we are updating the last_blockid of the vacuum to the last block that was logged.
 	   */
 
-	  VACUUM_LOG_BLOCKID log_blockid = logpb_last_complete_blockid ();
-	  if (log_blockid != VACUUM_NULL_LOG_BLOCKID)
-	    {
-	      vacuum_data_set_last_blockid (log_blockid);
+	  vacuum_data_set_last_blockid (log_blockid);
 
-	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
-			     "vacuum_data_load_and_recover: set last_blockid = %lld to logpb_last_complete_blockid ()",
-			     (long long int) vacuum_Data.last_blockid);
-	    }
-	  else
-	    {
-	      /* this is likely the first restart after database copy */
-	      assert (vacuum_Data.last_blockid == VACUUM_NULL_LOG_BLOCKID);
-	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY, "%s",
-			     "vacuum_data_load_and_recover: last blockid remains null");
-
-	      /* and this is a hack to removed "last_blockid from vacuum data page" */
-	      assert (vacuum_Data.first_page == vacuum_Data.last_page);
-	      vacuum_data_initialize_new_page (thread_p, vacuum_Data.first_page);
-	      vacuum_Data.first_page->data->blockid = VACUUM_NULL_LOG_BLOCKID;
-	      log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) vacuum_Data.first_page, 0,
-				     sizeof (vacuum_Data.first_page->data->blockid),
-				     &vacuum_Data.first_page->data->blockid);
-	      vacuum_set_dirty_data_page (thread_p, vacuum_Data.first_page, DONT_FREE);
-	    }
+	  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+			 "vacuum_data_load_and_recover: set last_blockid = %lld to logpb_last_complete_blockid ()",
+			 (long long int) vacuum_Data.last_blockid);
 	}
       else
 	{
@@ -7964,4 +7954,46 @@ vacuum_data_set_last_blockid (VACUUM_LOG_BLOCKID blockid)
 #endif // NDEBUG
 
   vacuum_Data.last_blockid = blockid;
+}
+
+int
+vacuum_reset_data_after_copydb (THREAD_ENTRY * thread_p)
+{
+  assert (vacuum_Data.first_page == NULL && vacuum_Data.last_page == NULL);
+  assert (!VFID_ISNULL (&vacuum_Data.vacuum_data_file));
+
+  int error_code = NO_ERROR;
+  FILE_DESCRIPTORS fdes;
+
+  error_code = file_descriptor_get (thread_p, &vacuum_Data.vacuum_data_file, &fdes);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  assert (!VPID_ISNULL (&fdes.vacuum_data.vpid_first));
+
+  vacuum_Data.first_page = vacuum_fix_data_page (thread_p, &fdes.vacuum_data.vpid_first);
+  if (vacuum_Data.first_page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  // there should be no data
+  assert (VPID_ISNULL (&vacuum_Data.first_page->next_page));
+  assert (vacuum_Data.first_page->index_free == 0);
+
+  vacuum_data_initialize_new_page (thread_p, vacuum_Data.first_page);
+  vacuum_Data.first_page->data->blockid = VACUUM_NULL_LOG_BLOCKID;
+  log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) vacuum_Data.first_page, 0,
+			 sizeof (vacuum_Data.first_page->data->blockid), &vacuum_Data.first_page->data->blockid);
+  vacuum_set_dirty_data_page (thread_p, vacuum_Data.first_page, DONT_FREE);
+
+  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "Reset vacuum data page %d|%d, lsa %lld|%d, after copydb",
+		 PGBUF_PAGE_STATE_ARGS ((PAGE_PTR) vacuum_Data.first_page));
+
+  vacuum_unfix_first_and_last_data_page (thread_p);
+
+  return NO_ERROR;
 }
