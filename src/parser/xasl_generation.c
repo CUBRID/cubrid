@@ -3772,6 +3772,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		      /* set the next argument pointer (the separator argument) to NULL in order to avoid impacting the 
 		       * regu vars generation. */
 		      tree->info.function.arg_list->next = NULL;
+		      pt_register_orphan_db_value (parser, aggregate_list->accumulator.value2);
 		    }
 		  else
 		    {
@@ -3801,6 +3802,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 					      DB_DEFAULT_PRECISION, buf, 1, TP_DOMAIN_CODESET (aggregate_list->domain),
 					      TP_DOMAIN_COLLATION (aggregate_list->domain));
 		      aggregate_list->accumulator.value2->need_clear = true;
+		      pt_register_orphan_db_value (parser, aggregate_list->accumulator.value2);
 		    }
 		  else
 		    {
