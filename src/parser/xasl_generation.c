@@ -12591,7 +12591,13 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 	   * After validation, the CTE XASL is added to the list */
 
 	  PT_NODE *non_recursive_part = node->info.cte.non_recursive_part;
-	  assert (PT_IS_QUERY (non_recursive_part));
+	  // non_recursive_part can become PT_VALUE during constant folding
+	  assert (PT_IS_QUERY (non_recursive_part) || PT_IS_VALUE_NODE (non_recursive_part));
+	  if (PT_IS_VALUE_NODE (non_recursive_part))
+	    {
+	      info->xasl = pt_append_xasl (xasl, info->xasl);
+	      break;
+	    }
 
 	  if (non_recursive_part->info.query.correlation_level == 0)
 	    {
