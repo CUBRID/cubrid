@@ -5406,7 +5406,7 @@ exit:
 // *INDENT-OFF*
 int
 db_string_regexp_instr (DB_VALUE *result, DB_VALUE *args[], int const num_args,
-			 std::wregex **comp_regex, char **comp_pattern)
+			std::wregex **comp_regex, char **comp_pattern)
 {
   int error_status = NO_ERROR;
 
@@ -5612,7 +5612,7 @@ db_string_regexp_instr (DB_VALUE *result, DB_VALUE *args[], int const num_args,
 	  {
 	    target = std::move (wsrc.substr (position_value, src_length - position_value));
 	  }
-  else if (position_value < 0)
+	else if (position_value < 0)
 	  {
 	    error_status = ER_QPROC_INVALID_PARAMETER;
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
@@ -5637,28 +5637,25 @@ db_string_regexp_instr (DB_VALUE *result, DB_VALUE *args[], int const num_args,
 
 	/* occurrence and return_opt option */
 	int occurrence_value = (occurrence != NULL) ? db_get_int (occurrence) : 1;
-  int return_opt_value = (return_opt != NULL) ? db_get_int (return_opt) : 0;
+	int return_opt_value = (return_opt != NULL) ? db_get_int (return_opt) : 0;
 	if (occurrence_value >= 1 && (return_opt_value == 0 || return_opt_value == 1))
 	  {
 	    auto reg_iter = std::wsregex_iterator (target.begin (), target.end (), *rx_compiled_regex);
 	    auto reg_end = std::wsregex_iterator ();
 
-      int instr = 0;
+	    int idx = 0;
 	    if (reg_iter != reg_end)
 	      {
-		auto last_iter = reg_iter;
-
 		std::size_t n = occurrence_value - 1;
 		do
 		  {
 		    if (n == 0)
 		      {
-      instr = reg_iter->position () + 1;
-      if (return_opt_value == 1)
-      {
-    instr += reg_iter->length ();
-      }
-			db_make_int (result, instr + position_value);
+			idx = reg_iter->position () + 1;
+			if (return_opt_value == 1)
+			  {
+			    idx += reg_iter->length ();
+			  }
 			break;
 		      }
 		    ++reg_iter;
@@ -5667,10 +5664,9 @@ db_string_regexp_instr (DB_VALUE *result, DB_VALUE *args[], int const num_args,
 		while (reg_iter != reg_end);
 	      }
 
-        if (instr == 0)
-	      {
-    db_make_int (result, 0);
-	      }
+	    /* if idx is zero, not found */
+	    int instr = (idx != 0) ? idx + position_value : 0;
+	    db_make_int (result, instr);
 	  }
 	else
 	  {
