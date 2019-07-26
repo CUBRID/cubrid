@@ -216,9 +216,9 @@ hl_kingsley_realloc (UINTPTR heap_id, void *ptr, size_t sz)
       memcpy (new_ptr, ptr, (old_sz > sz ? sz : old_sz));
 
       if (ptr)
-        {
-          th->free (ptr);
-        }
+	{
+	  th->free (ptr);
+	}
       return new_ptr;
     }
   return NULL;

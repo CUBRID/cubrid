@@ -1380,7 +1380,9 @@ user_login_sa (nvplist * out, char *_dbmt_error, char *dbname, char *dbuser, cha
 
   snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_ems_sa.", getpid ());
   (void) envvar_tmpdir_file (outfile, PATH_MAX, tmpfile);
-  snprintf (errfile, PATH_MAX - 1, "%s.err", outfile);
+  int ret = snprintf (errfile, PATH_MAX - 1, "%s.err", outfile);
+  (void) ret;			// suppress format-truncate warning
+
   unlink (outfile);
   unlink (errfile);
 
@@ -1526,9 +1528,11 @@ class_info_sa (const char *dbname, const char *uid, const char *passwd, char *cl
   char opcode[10];
   char tmpfile[100];
 
-  snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_class_info.", getpid ());
+  int ret = snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_class_info.", getpid ());
   (void) envvar_tmpdir_file (outfile, PATH_MAX, tmpfile);
-  snprintf (errfile, PATH_MAX - 1, "%s.err", outfile);
+  ret = snprintf (errfile, PATH_MAX - 1, "%s.err", outfile);
+  (void) ret;			// suppress format-truncate warning
+
   unlink (outfile);
   unlink (errfile);
 
@@ -2523,9 +2527,11 @@ trigger_info_sa (const char *dbname, const char *uid, const char *passwd, nvplis
   const char *argv[10];
   char tmpfile[100];
 
-  snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_trigger_info.", getpid ());
+  int ret = snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_trigger_info.", getpid ());
   (void) envvar_tmpdir_file (outfile, PATH_MAX, tmpfile);
-  snprintf (errfile, PATH_MAX - 1, "%s.err", outfile);
+  ret = snprintf (errfile, PATH_MAX - 1, "%s.err", outfile);
+  (void) ret;			// suppress format-truncate warning
+
   unlink (outfile);
   unlink (errfile);
 

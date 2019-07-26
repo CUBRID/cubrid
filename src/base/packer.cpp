@@ -748,6 +748,50 @@ namespace cubpacking
     po.unpack (*this);
   }
 
+  size_t
+  packer::get_packed_oid_size (const size_t curr_offset)
+  {
+    return DB_ALIGN (curr_offset + OR_OID_SIZE, INT_ALIGNMENT) - curr_offset;
+  }
+
+  void
+  packer::pack_oid (const OID &oid)
+  {
+    align (INT_ALIGNMENT);
+    check_range (m_ptr, m_end_ptr, OR_OID_SIZE);
+
+    OR_PUT_OID (m_ptr, &oid);
+    m_ptr += OR_OID_SIZE;
+  }
+
+  size_t
+  packer::get_packed_size_overloaded (const OID &oid, size_t curr_offset)
+  {
+    return get_packed_oid_size (curr_offset);
+  }
+
+  void
+  packer::pack_overloaded (const OID &oid)
+  {
+    pack_oid (oid);
+  }
+
+  void
+  unpacker::unpack_oid (OID &oid)
+  {
+    align (INT_ALIGNMENT);
+    check_range (m_ptr, m_end_ptr, OR_OID_SIZE);
+
+    OR_GET_OID (m_ptr, &oid);
+    m_ptr += OR_OID_SIZE;
+  }
+
+  void
+  unpacker::unpack_overloaded (OID &oid)
+  {
+    return unpack_oid (oid);
+  }
+
   const char *
   unpacker::get_curr_ptr (void)
   {

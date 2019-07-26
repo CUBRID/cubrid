@@ -34,9 +34,27 @@
 #include "system_parameter.h"
 #include "thread_manager.hpp"
 
+#include <sstream>
+
 namespace cubreplication
 {
   static bool enable_log_generator_logging = true;
+  static const char *g_Savepoint_generated_name = "tran_sysop_savepoint";
+
+  // lsa_to_savept - function to generate consistent savepoint names to replicate transactions system operations start
+  //                 and end events
+  template <typename F>
+  void
+  lsa_to_savept (const LOG_LSA &lsa, F f)
+  {
+    std::ostringstream oss;
+    oss << g_Savepoint_generated_name << "_";
+    oss << (long long int) lsa.pageid;
+    oss << '|';
+    oss << (int) lsa.offset;
+
+    f (oss.str ().c_str ());
+  }
 
   log_generator::~log_generator ()
   {
@@ -260,6 +278,18 @@ namespace cubreplication
   }
 
   void
+  log_generator::add_start_sysop (const LOG_LSA &lsa)
+  {
+    lsa_to_savept (std::cref (lsa), std::bind (&log_generator::add_create_savepoint, this, std::placeholders::_1));
+  }
+
+  void
+  log_generator::add_end_sysop (const LOG_LSA &lsa)
+  {
+    lsa_to_savept (std::cref (lsa), std::bind (&log_generator::add_rollback_to_savepoint, this, std::placeholders::_1));
+  }
+
+  void
   log_generator::update_lsastamp_for_changed_repl_object (const OID &inst_oid)
   {
     if (is_row_replication_disabled ())
@@ -407,9 +437,9 @@ namespace cubreplication
 
     /* TODO[replication] : force a group commit :
      * move this to log_manager group commit when multi-threaded apply is enabled */
-    cubstream::stream_position sp1;
-    cubstream::stream_position sp2;
-    pack_group_commit_entry (sp1, sp2);
+    cubstream::stream_position stream_pos;
+
+    pack_group_commit_entry (stream_pos, m_gc_end_position);
   }
 
   void
@@ -503,6 +533,13 @@ namespace cubreplication
   log_generator::set_row_replication_disabled (bool disable_if_true)
   {
     m_is_row_replication_disabled = disable_if_true;
+  }
+
+  cubstream::stream_position
+  log_generator::get_last_end_position () const
+  {
+    // todo: remove when complete manager is merged and a way to take last gc's end_position is available
+    return m_gc_end_position;
   }
 
   void

@@ -57,7 +57,7 @@ namespace cubreplication
       void check_alive ();
 
       cubthread::daemon *m_managing_daemon;
-      std::list<std::pair<cubthread::daemon *, const cubcomm::channel *>> m_ctrl_channel_readers;
+      std::list<std::pair<cubthread::daemon *, cubcomm::channel *>> m_ctrl_channel_readers;
       std::mutex m_mtx;
       cubstream::stream_ack *m_stream_ack;
 

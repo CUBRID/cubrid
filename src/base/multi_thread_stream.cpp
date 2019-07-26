@@ -691,6 +691,27 @@ namespace cubstream
       }
   }
 
+  void multi_thread_stream::get_min_available_and_curr_position (stream_position &min_available,
+      stream_position &curr_position) const
+  {
+    /*
+    * TODO[replication] : fix this after flush on master is implemented :
+     * - we may need atomic get for both
+     * - min_available to retun other then max when no previous writes were performed
+     */
+    min_available = 0;
+    if (m_stream_file)
+      {
+	min_available = m_stream_file->get_min_available_pos ();
+	if (min_available == std::numeric_limits<stream_position>::max ())
+	  {
+	    min_available = 0;
+	  }
+      }
+
+    curr_position = m_last_committed_pos;
+  }
+
   void multi_thread_stream::wake_up_flusher (float fill_factor, const stream_position start_flush_pos,
       const size_t flush_amount)
   {

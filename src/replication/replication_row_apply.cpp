@@ -61,13 +61,16 @@ namespace cubreplication
     int error_code = prepare_scan (thread_ref, classname, scan_cache);
     if (error_code != NO_ERROR)
       {
-	assert (false);
+	// todo - reactivate: assert (false);
 	return error_code;
       }
     assert (!OID_ISNULL (&scan_cache.node.class_oid));
     assert (!HFID_IS_NULL (&scan_cache.node.hfid));
 
     record_descriptor record_copy (record.get_recdes ());
+    // record may be resized by heap_update_adjust_recdes_header; make sure there is enough space.
+    heap_record_reserve_for_adjustments (record_copy);
+
     overwrite_last_reprid (thread_ref, scan_cache.node.class_oid, record_copy);
 
     OID oid_out = OID_INITIALIZER;
@@ -78,7 +81,7 @@ namespace cubreplication
     error_code = locator_insert_record (thread_ref, scan_cache, recdes_copy, oid_out);
     if (error_code != NO_ERROR)
       {
-	assert (false);
+	// todo - reactivate: assert (false);
 	log_sysop_abort (&thread_ref);
       }
     else
@@ -105,7 +108,7 @@ namespace cubreplication
     int error_code = prepare_scan (thread_ref, classname, scan_cache);
     if (error_code != NO_ERROR)
       {
-	assert (false);
+	// todo - reactivate: assert (false);
 	return error_code;
       }
     assert (!OID_ISNULL (&scan_cache.node.class_oid));
@@ -114,7 +117,7 @@ namespace cubreplication
     error_code = find_instance_oid (thread_ref, scan_cache.node.class_oid, key_value, scan_cache, S_DELETE, instance_oid);
     if (error_code != NO_ERROR)
       {
-	assert (false);
+	// todo - reactivate: assert (false);
 	heap_scancache_end_modify (&thread_ref, &scan_cache);
 	return error_code;
       }
@@ -123,7 +126,7 @@ namespace cubreplication
     error_code = locator_delete_record (thread_ref, scan_cache, instance_oid);
     if (error_code != NO_ERROR)
       {
-	assert (false);
+	// todo - reactivate: assert (false);
 	log_sysop_abort (&thread_ref);
       }
     else
@@ -150,7 +153,7 @@ namespace cubreplication
     int error_code = prepare_scan (thread_ref, classname, scan_cache);
     if (error_code != NO_ERROR)
       {
-	assert (false);
+	// todo - reactivate: assert (false);
 	return error_code;
       }
     assert (!OID_ISNULL (&scan_cache.node.class_oid));
@@ -159,7 +162,7 @@ namespace cubreplication
     error_code = find_instance_oid (thread_ref, scan_cache.node.class_oid, key_value, scan_cache, S_DELETE, instance_oid);
     if (error_code != NO_ERROR)
       {
-	assert (false);
+	// todo - reactivate: assert (false);
 	heap_scancache_end_modify (&thread_ref, &scan_cache);
 	return error_code;
       }
@@ -168,29 +171,31 @@ namespace cubreplication
     if (heap_get_visible_version (&thread_ref, &instance_oid, &scan_cache.node.class_oid, &old_recdes, &scan_cache,
 				  PEEK, NULL_CHN) != S_SUCCESS)
       {
-	assert (false);
+	// todo - reactivate: assert (false);
 	heap_scancache_end_modify (&thread_ref, &scan_cache);
 	return ER_FAILED;
       }
 
     // copy new recdes
     record_descriptor generated_record;
-
     error_code = generate_updated_record (thread_ref, scan_cache.node.class_oid, old_recdes, generated_record,
 					  std::forward<Args> (args)...);
     if (error_code != NO_ERROR)
       {
-	assert (false);
+	// todo - reactivate: assert (false);
 	heap_scancache_end_modify (&thread_ref, &scan_cache);
 	return ER_FAILED;
       }
+
+    // record may be resized by heap_update_adjust_recdes_header; make sure there is enough space.
+    heap_record_reserve_for_adjustments (generated_record);
 
     log_sysop_start (&thread_ref);
     RECDES new_recdes = generated_record.get_recdes ();
     error_code = locator_update_record (thread_ref, scan_cache, instance_oid, old_recdes, new_recdes, true);
     if (error_code != NO_ERROR)
       {
-	assert (false);
+	// todo - reactivate: assert (false);
 	log_sysop_abort (&thread_ref);
       }
     else
@@ -223,21 +228,21 @@ namespace cubreplication
 
     if (xlocator_find_class_oid (&thread_ref, classname.c_str (), &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
       {
-	assert (false);
+	// todo - reactivate: assert (false);
 	return ER_FAILED;
       }
 
     int error_code = heap_get_hfid_from_class_oid (&thread_ref, &class_oid, &hfid);
     if (error_code != NO_ERROR)
       {
-	assert (false); // can we expect errors? e.g. interrupt
+	// todo - reactivate: assert (false); // can we expect errors? e.g. interrupt
 	return error_code;
       }
 
     error_code = heap_scancache_start_modify (&thread_ref, &scan_cache, &hfid, &class_oid, SINGLE_ROW_MODIFY, NULL);
     if (error_code != NO_ERROR)
       {
-	assert (false);
+	// todo - reactivate: assert (false);
 	return error_code;
       }
 
@@ -250,7 +255,7 @@ namespace cubreplication
     int last_reprid = heap_get_class_repr_id (&thread_ref, &class_oid);
     if (last_reprid == 0)
       {
-	assert (false);
+	// todo - reactivate: assert (false);
 	return;
       }
 
@@ -265,13 +270,14 @@ namespace cubreplication
     int error_code = btree_get_pkey_btid (&thread_ref, &class_oid, &pkey_btid);
     if (error_code != NO_ERROR)
       {
-	assert (false);
+	// todo - reactivate: assert (false);
 	return error_code;
       }
 
     if (BTID_IS_NULL (&pkey_btid))
       {
-	assert (false);
+	// todo - reactivate: assert (false);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
 	return ER_OBJ_OBJECT_NOT_FOUND;
       }
 
@@ -279,7 +285,8 @@ namespace cubreplication
 			    const_cast<db_value *> (&key_value) /* todo: fix xbtree_find_unique signature */,
 			    &class_oid, &instance_oid, true) != BTREE_KEY_FOUND)
       {
-	assert (false);
+	// todo - reactivate: assert (false);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
 	return ER_OBJ_OBJECT_NOT_FOUND;
       }
     return NO_ERROR;
@@ -304,7 +311,7 @@ namespace cubreplication
     int error_code = heap_attrinfo_start (&thread_ref, &class_oid, -1, NULL, &attr_info);
     if (error_code != NO_ERROR)
       {
-	assert (false);
+	// todo - reactivate: assert (false);
 	return error_code;
       }
 
@@ -314,17 +321,16 @@ namespace cubreplication
 	error_code = heap_attrinfo_set (NULL, attr_ids[i], &attr_values[i], &attr_info);
 	if (error_code != NO_ERROR)
 	  {
-	    assert (false);
+	    // todo - reactivate: assert (false);
 	    return error_code;
 	  }
       }
 
-    record_descriptor new_record;
     if (heap_attrinfo_transform_to_disk (&thread_ref, &attr_info,
 					 const_cast<RECDES *> (&old_recdes) /* fix heap_attrinfo_transform_to_disk */,
 					 &generated_record) != S_SUCCESS)
       {
-	assert (false);
+	// todo - reactivate: assert (false);
 	error_code = ER_FAILED;
       }
 

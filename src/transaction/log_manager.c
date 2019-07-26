@@ -219,8 +219,9 @@ static void log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * 
 static void log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * eot_lsa,
 					  LOG_RECTYPE iscommitted, enum LOG_PRIOR_LSA_LOCK with_lock);
-static void log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos,
-						tx_group & group, LOG_LSA * commit_lsa, bool * has_postpone);
+static void log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+						cubstream::stream_position stream_pos, tx_group & group,
+						LOG_LSA * commit_lsa, bool * has_postpone);
 static void log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 					  LOG_LSA * lsa);
 static void log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
@@ -4476,8 +4477,8 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
 }
 
 static void
-log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, tx_group & group,
-				    LOG_LSA * complete_lsa, bool * has_postpone)
+log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, cubstream::stream_position stream_pos,
+				    tx_group & group, LOG_LSA * complete_lsa, bool * has_postpone)
 {
   LOG_PRIOR_NODE *node;
   LOG_LSA lsa;
@@ -4485,6 +4486,8 @@ log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, IN
   assert (complete_lsa != NULL);
   complete_lsa->pageid = NULL_LOG_PAGEID;
   complete_lsa->offset = NULL_LOG_OFFSET;
+
+  log_Gl.hdr.m_ack_stream_position = stream_pos;
 
   /* TODO - add and use group.has_postpone and get rid of has_postpone parameter */
   if (has_postpone)
@@ -4548,8 +4551,8 @@ log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, IN
 }
 
 void
-log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, INT64 stream_pos, tx_group & group,
-			   LOG_LSA * complete_lsa, bool * has_postpone)
+log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, cubstream::stream_position stream_pos,
+			   tx_group & group, LOG_LSA * complete_lsa, bool * has_postpone)
 {
   log_append_group_complete_internal (thread_p, tdes, stream_pos, group, complete_lsa, has_postpone);
 }
@@ -4817,6 +4820,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
        * Transaction updated data.
        */
 
+      tdes->replication_log_generator.on_transaction_commit ();
+
       if (!LSA_ISNULL (&tdes->posp_nxlsa))
 	{
 #if 0
@@ -4855,7 +4860,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	    {
 	      tx_group group;
 	      group.add (tdes->tran_index, 0, tdes->state);
-	      log_append_group_complete (thread_p, tdes, 0, group, &commit_lsa, NULL);
+	      log_append_group_complete (thread_p, tdes, tdes->replication_log_generator.get_last_end_position (),
+					 group, &commit_lsa, NULL);
 	    }
 	  else
 	    {
@@ -4863,7 +4869,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	      log_append_finish_postpone (thread_p, tdes, &commit_lsa);
 	    }
 
-	  tdes->replication_log_generator.on_transaction_commit ();
 #if 0
 	  /* TODO  - Activate the following code and rewrite all cases with group complete. */
 	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
@@ -7907,7 +7912,8 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tx_group group;
   group.add (tdes->tran_index, 0, TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
 
-  log_append_group_complete (thread_p, tdes, 0, group, &commit_lsa, NULL);
+  log_append_group_complete (thread_p, tdes, tdes->replication_log_generator.get_last_end_position (), group,
+			     &commit_lsa, NULL);
 
   logpb_flush_pages (thread_p, &commit_lsa);
 

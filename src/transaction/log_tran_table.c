@@ -1115,6 +1115,10 @@ logtb_rv_assign_mvccid_for_undo_recovery (THREAD_ENTRY * thread_p, MVCCID mvccid
   assert (MVCCID_IS_VALID (mvccid));
 
   tdes->mvccinfo.id = mvccid;
+  if (!HA_DISABLED ())
+    {
+      log_Gl.m_repl_rv.m_active_mvcc_ids.insert (mvccid);
+    }
 }
 
 /*

@@ -63,6 +63,7 @@
 #include "replication_db_copy.hpp"
 
 #include <assert.h>
+#include <unordered_set>
 #if defined(SOLARIS)
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
 #endif /* SOLARIS */
@@ -638,6 +639,22 @@ struct global_unique_stats_table
 
 #define GLOBAL_UNIQUE_STATS_HASH_SIZE 1000
 
+// *INDENT-OFF*
+namespace cubreplication
+{
+  struct replication_rv
+  {
+    replication_rv (cubstream::stream_position active_start_position)
+      : m_active_start_position (active_start_position)
+    {
+    }
+
+    cubstream::stream_position m_active_start_position;
+    std::unordered_set<MVCCID> m_active_mvcc_ids;
+  };
+}
+// *INDENT-ON*
+
 /* Global structure to trantable, log buffer pool, etc */
 typedef struct log_global LOG_GLOBAL;
 struct log_global
@@ -672,8 +689,7 @@ struct log_global
   LOG_GROUP_COMMIT_INFO group_commit_info;
   // *INDENT-OFF*
   cubtx::complete_manager *m_tran_complete_mgr;
-  std::atomic<cubstream::stream_position> m_ack_stream_position;
-  cubstream::stream_position m_active_start_position;
+  cubreplication::replication_rv m_repl_rv;
   // *INDENT-ON*
   LOG_LSA m_min_active_lsa;
 
