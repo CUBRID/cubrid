@@ -12241,18 +12241,25 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 
 	  if (*otemplate != NULL)
 	    {
+	      obt_retain_after_finish (*otemplate);
+
 	      obj = dbt_finish_object (*otemplate);
 	      if (obj == NULL)
 		{
-		  assert (er_errid () != NO_ERROR);
-		  error = er_errid ();
-		  /* On error, the template must be freed. */
+		  ASSERT_ERROR_AND_SET (error);
+
 		  dbt_abort_object (*otemplate);
 		  *otemplate = NULL;
 		}
 	      else
 		{
-		  if (parser->return_generated_keys && (*otemplate)->is_autoincrement_set > 0)
+		  bool include_new_obj;
+
+		  include_new_obj = (parser->return_generated_keys && (*otemplate)->is_autoincrement_set);
+
+		  obt_quit (*otemplate);	/* free template */
+
+		  if (include_new_obj == true)
 		    {
 		      db_make_object (&db_value, obj);
 		      error = set_put_element (seq, obj_count, &db_value);
@@ -12267,15 +12274,6 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 	      if (error >= NO_ERROR)
 		{
 		  error = mq_evaluate_check_option (parser, statement->info.insert.where, obj, class_);
-		}
-	    }
-
-	  if (error < NO_ERROR)
-	    {
-	      if (*otemplate != NULL)
-		{
-		  dbt_abort_object (*otemplate);
-		  *otemplate = NULL;
 		}
 	    }
 
@@ -12408,7 +12406,6 @@ cleanup:
 
       if (db_val != NULL)
 	{
-	  assert (DB_VALUE_DOMAIN_TYPE (db_val) == DB_TYPE_OBJECT);
 	  DB_MAKE_OBJECT (db_val, (DB_OBJECT *) NULL);
 	}
     }
@@ -12723,9 +12720,17 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 		  if (otemplate != NULL)
 		    {
 		      /* apply the object template */
-		      obj = dbt_finish_object (otemplate);
+		      bool include_new_obj;
 
-		      if (obj && parser->return_generated_keys && otemplate->is_autoincrement_set > 0)
+		      obt_retain_after_finish (otemplate);
+
+		      obj = dbt_finish_object (otemplate);	/* flush template */
+
+		      include_new_obj = (obj && parser->return_generated_keys && otemplate->is_autoincrement_set);
+
+		      obt_quit (otemplate);	/* free template */
+
+		      if (include_new_obj == true)
 			{
 			  db_make_object (&db_value, obj);
 			  error = set_put_element (seq, obj_count, &db_value);
