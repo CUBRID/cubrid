@@ -5933,13 +5933,15 @@ boot_db_parm_update_heap (THREAD_ENTRY * thread_p)
 static int
 boot_after_copydb (THREAD_ENTRY * thread_p)
 {
+  int error_code = NO_ERROR;
+
   if (!log_Gl.hdr.was_copied)
     {
       // this is not after copydb
       return NO_ERROR;
     }
 
-  int error_code = vacuum_reset_data_after_copydb (thread_p);
+  error_code = vacuum_reset_data_after_copydb (thread_p);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
