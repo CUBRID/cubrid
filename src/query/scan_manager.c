@@ -5828,6 +5828,15 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
 
       return S_DOESNT_EXIST;	/* not qualified, continue to the next tuple */
     }
+  else if (sp_scan == S_ERROR)
+    {
+      ASSERT_ERROR ();
+      return sp_scan;
+    }
+  else
+    {
+      assert (sp_scan == S_SUCCESS || sp_scan == S_SUCCESS_CHN_UPTODATE);
+    }
 
 
   /* evaluate the predicates to see if the object qualifies */
