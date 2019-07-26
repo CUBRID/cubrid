@@ -1859,7 +1859,7 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, D
       /* check for interrupts from user (i.e. Ctrl-C) */
       if ((page_id % FILEIO_CHECK_FOR_INTERRUPT_INTERVAL) == 0)
 	{
-	  if (pgbuf_is_log_check_for_interrupts (thread_p) == true)
+	  if (thread_get_check_interrupt (thread_p) && pgbuf_is_log_check_for_interrupts (thread_p))
 	    {
 	      return NULL;
 	    }
