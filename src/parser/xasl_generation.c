@@ -23367,7 +23367,8 @@ pt_substitute_analytic_references (PARSER_CONTEXT * parser, PT_NODE * node, PT_N
   else if (PT_IS_FUNCTION (node))
     {
       PT_NODE *prev = NULL;
-      for (PT_NODE * arg = node->info.function.arg_list; arg != NULL; arg = arg->next)
+      PT_NODE *arg;
+      for (arg = node->info.function.arg_list; arg != NULL; arg = arg->next)
 	{
 	  PT_NODE *save_next = arg->next;
 
