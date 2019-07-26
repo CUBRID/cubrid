@@ -708,7 +708,8 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  || function_type == F_JSON_SEARCH
 	  || function_type == F_JSON_SET
 	  || function_type == F_JSON_TYPE || function_type == F_JSON_UNQUOTE || function_type == F_JSON_VALID
-	  || function_type == F_REGEXP_REPLACE || function_type == F_REGEXP_SUBSTR || function_type == F_REGEXP_INSTR)
+	  || function_type == F_REGEXP_REPLACE || function_type == F_REGEXP_SUBSTR || function_type == F_REGEXP_INSTR
+    || function_type == F_REGEXP_COUNT)
 	{
 	  return true;
 	}

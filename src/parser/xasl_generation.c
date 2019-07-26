@@ -6332,6 +6332,7 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	case F_REGEXP_REPLACE:
 	case F_REGEXP_SUBSTR:
 	case F_REGEXP_INSTR:
+	case F_REGEXP_COUNT:
 	  result_type = pt_node_to_db_type (function);
 	  break;
 	case F_BENCHMARK:

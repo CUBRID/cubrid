@@ -364,6 +364,14 @@ func_all_signatures sig_of_regexp_instr =
   {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_CHAR}, {}},
 };
 
+func_all_signatures sig_of_regexp_count =
+{
+// all signatures: src, pattern [,position, [,match_type ]] -> INTEGER
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING}, {}},
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER}, {}},
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_GENERIC_TYPE_CHAR}, {}},
+};
+
 func_all_signatures *
 get_signatures (FUNC_TYPE ft)
 {
@@ -493,6 +501,8 @@ get_signatures (FUNC_TYPE ft)
       return &sig_of_json_arrayagg;
     case PT_JSON_OBJECTAGG:
       return &sig_of_json_objectagg;
+    case F_REGEXP_COUNT:
+      return &sig_of_regexp_count;
     case F_REGEXP_REPLACE:
       return &sig_of_regexp_replace;
     case F_REGEXP_SUBSTR:

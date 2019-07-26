@@ -252,6 +252,8 @@ extern int db_string_regexp_substr (DB_VALUE *result, DB_VALUE *args[], const in
 				     std::wregex **comp_regex, char **comp_pattern);
 extern int db_string_regexp_instr (DB_VALUE *result, DB_VALUE *args[], const int num_args,
 				     std::wregex **comp_regex, char **comp_pattern);
+extern int db_string_regexp_count (DB_VALUE *result, DB_VALUE *args[], const int num_args,
+				     std::wregex **comp_regex, char **comp_pattern);
 // *INDENT-ON*
 #endif
 

@@ -8531,6 +8531,9 @@ qdata_regexp_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_
       case F_REGEXP_INSTR:
         regexp_func = db_string_regexp_instr;
         break;
+      case F_REGEXP_COUNT:
+        regexp_func = db_string_regexp_count;
+        break;
       default:
         assert (false);
         break;

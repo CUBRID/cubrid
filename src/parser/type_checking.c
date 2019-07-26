@@ -12429,6 +12429,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case F_REGEXP_REPLACE:
     case F_REGEXP_SUBSTR:
     case F_REGEXP_INSTR:
+    case F_REGEXP_COUNT:
       return pt_eval_function_type_new (parser, node);
 
       // legacy functions are still managed by old checking function; all should be migrated though
@@ -19847,6 +19848,10 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
 
     case F_REGEXP_INSTR:
       error = db_string_regexp_instr (result, args, num_args, NULL, NULL);
+      break;
+
+    case F_REGEXP_COUNT:
+      error = db_string_regexp_count (result, args, num_args, NULL, NULL);
       break;
 
     default:
