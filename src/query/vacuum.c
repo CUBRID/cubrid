@@ -4031,6 +4031,7 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
   int i = 0;
   bool is_page_dirty;
   FILE_DESCRIPTORS fdes;
+  INT16 last_block_index;
 
   assert_release (!VFID_ISNULL (&vacuum_Data.vacuum_data_file));
 
@@ -4132,7 +4133,7 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
       /* Get last_blockid from last vacuum data entry. */
       assert (vacuum_Data.last_page->index_free > 0);
 
-      INT16 last_block_index = (vacuum_Data.last_page->index_free <= 0) ? 0 : vacuum_Data.last_page->index_free - 1;
+      last_block_index = (vacuum_Data.last_page->index_free <= 0) ? 0 : vacuum_Data.last_page->index_free - 1;
       vacuum_data_set_last_blockid (vacuum_Data.last_page->data[last_block_index].blockid);
 
       vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
@@ -6231,13 +6232,13 @@ static void
 vacuum_notify_all_workers_dropped_file (const VFID * vfid_dropped, MVCCID mvccid)
 {
 #if defined (SERVER_MODE)
+  INT32 my_version, workers_min_version;
+
   if (!LOG_ISRESTARTED ())
     {
       // workers are not running during recovery
       return;
     }
-
-  INT32 my_version, workers_min_version;
 
   /* Before notifying vacuum workers there is one last thing we have to do. Running workers must also be notified of
    * the VFID being dropped to cleanup their collected heap object arrays. Since must done one file at a time, so a
@@ -7959,11 +7960,11 @@ vacuum_data_set_last_blockid (VACUUM_LOG_BLOCKID blockid)
 int
 vacuum_reset_data_after_copydb (THREAD_ENTRY * thread_p)
 {
-  assert (vacuum_Data.first_page == NULL && vacuum_Data.last_page == NULL);
-  assert (!VFID_ISNULL (&vacuum_Data.vacuum_data_file));
-
   int error_code = NO_ERROR;
   FILE_DESCRIPTORS fdes;
+
+  assert (vacuum_Data.first_page == NULL && vacuum_Data.last_page == NULL);
+  assert (!VFID_ISNULL (&vacuum_Data.vacuum_data_file));
 
   error_code = file_descriptor_get (thread_p, &vacuum_Data.vacuum_data_file, &fdes);
   if (error_code != NO_ERROR)
