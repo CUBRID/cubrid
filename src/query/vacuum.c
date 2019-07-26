@@ -670,6 +670,7 @@ static void vacuum_data_load_first_and_last_page (THREAD_ENTRY * thread_p);
 static void vacuum_data_unload_first_and_last_page (THREAD_ENTRY * thread_p);
 
 static void vacuum_data_empty_update_last_blockid (THREAD_ENTRY * thread_p);
+static void vacuum_data_set_last_blockid (VACUUM_LOG_BLOCKID blockid);
 
 #if !defined (NDEBUG)
 /* Debug function to verify vacuum data. */
@@ -1183,7 +1184,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  /* Safe guard: this was possible if there was only one object to be vacuumed. */
 	  assert (n_heap_objects == 1);
 
-	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP, "Heap page %d|%d was deallocated during previous run\n",
+	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP, "Heap page %d|%d was deallocated during previous run",
 				 VPID_AS_ARGS (&helper.home_vpid));
 	  return NO_ERROR;
 	}
@@ -1196,7 +1197,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  assert (n_heap_objects == 1);
 
 	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP, "Heap page %d|%d was deallocated during previous run and reused as"
-				 " file table page\n", VPID_AS_ARGS (&helper.home_vpid));
+				 " file table page", VPID_AS_ARGS (&helper.home_vpid));
 
 	  pgbuf_unfix_and_init (thread_p, helper.home_page);
 	  return NO_ERROR;
@@ -4099,7 +4100,11 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
 	  /* No recovery needed. This is used for 10.1 version to keep the functionality of the database.
 	   * In this case, we are updating the last_blockid of the vacuum to the last block that was logged.
 	   */
-	  vacuum_Data.last_blockid = logpb_last_complete_blockid ();
+	  vacuum_data_set_last_blockid (logpb_last_complete_blockid ());
+
+	  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+			 "vacuum_data_load_and_recover: set last_blockid = %lld to logpb_last_complete_blockid ()",
+			 (long long int) vacuum_Data.last_blockid);
 	}
       else
 	{
@@ -4108,14 +4113,21 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
 	   * be outdated. Instead, SA_MODE updates log_Gl.hdr.vacuum_last_blockid before removing old archives.
 	   */
 	  VACUUM_LOG_BLOCKID hdr_last_blockid = logpb_hdr_get_vacuum_last_blockid ();
-	  vacuum_Data.last_blockid = MAX (hdr_last_blockid, vacuum_Data.last_page->data->blockid);
+	  vacuum_data_set_last_blockid (MAX (hdr_last_blockid, vacuum_Data.last_page->data->blockid));
 	}
     }
   else
     {
       /* Get last_blockid from last vacuum data entry. */
-      vacuum_Data.last_blockid =
-	VACUUM_BLOCKID_WITHOUT_FLAGS ((vacuum_Data.last_page->data + vacuum_Data.last_page->index_free - 1)->blockid);
+      assert (vacuum_Data.last_page->index_free > 0);
+
+      INT16 last_block_index = (vacuum_Data.last_page->index_free <= 0) ? 0 : vacuum_Data.last_page->index_free - 1;
+      vacuum_data_set_last_blockid (vacuum_Data.last_page->data[last_block_index].blockid);
+
+      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+		     "vacuum_data_load_and_recover: set last_blockid = %lld to last data blockid = %lld",
+		     (long long int) vacuum_Data.last_blockid,
+		     (long long int) vacuum_Data.last_page->data[last_block_index].blockid);
     }
 
   vacuum_Data.is_loaded = true;
@@ -4327,6 +4339,9 @@ vacuum_data_initialize_new_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * dat
   data_page->index_free = 0;
 
   pgbuf_set_page_ptype (thread_p, (PAGE_PTR) data_page, PAGE_VACUUM_DATA);
+
+  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "Initialized " PGBUF_PAGE_STATE_MSG ("vacuum data page"),
+		 PGBUF_PAGE_STATE_ARGS ((PAGE_PTR) data_page));
 }
 
 /*
@@ -4957,6 +4972,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
   VACUUM_DATA_ENTRY *save_page_free_data = NULL;
   VACUUM_LOG_BLOCKID next_blockid;
   PAGE_TYPE ptype = PAGE_VACUUM_DATA;
+  bool is_sysop = false;
   bool was_vacuum_data_empty = false;
 
   int error_code = NO_ERROR;
@@ -5006,6 +5022,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 					 (PGLENGTH) (save_page_free_data - data_page->data),
 					 CAST_BUFLEN (((char *) page_free_data)
 						      - (char *) save_page_free_data), save_page_free_data);
+
 		  vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
 		}
 	      else
@@ -5013,7 +5030,15 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 		  /* No changes in current page. */
 		}
 
+	      if (is_sysop)
+		{
+		  // not really expected, but...
+		  assert (false);
+		  log_sysop_commit (thread_p);
+		}
+
 	      log_sysop_start (thread_p);
+	      is_sysop = true;
 
 	      error_code = file_alloc (thread_p, &vacuum_Data.vacuum_data_file, file_init_page_type, &ptype, &next_vpid,
 				       (PAGE_PTR *) (&data_page));
@@ -5048,7 +5073,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	      vacuum_Data.last_page = data_page;
 	      vacuum_set_dirty_data_page (thread_p, save_last_page, FREE);
 
-	      log_sysop_commit (thread_p);
+	      // we cannot commit here. we should append some data blocks first.
 
 	      page_free_data = data_page->data + data_page->index_free;
 	      save_page_free_data = page_free_data;
@@ -5102,7 +5127,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
 			     "Block %lld has no MVCC ops and is skipped (marked as vacuumed).", next_blockid);
 	    }
-	  vacuum_Data.last_blockid = next_blockid;
+	  vacuum_data_set_last_blockid (next_blockid);
 
 	  if (data_page == vacuum_Data.last_page && data_page->index_free == 0
 	      && VPID_EQ (&vacuum_Data.vpid_job_cursor, pgbuf_get_vpid_ptr ((PAGE_PTR) vacuum_Data.last_page)))
@@ -5131,7 +5156,21 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 			     (PGLENGTH) (save_page_free_data - data_page->data),
 			     CAST_BUFLEN (((char *) page_free_data) - (char *) save_page_free_data),
 			     save_page_free_data);
+      if (is_sysop)
+	{
+	  log_sysop_commit (thread_p);
+	}
       vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
+    }
+  else
+    {
+      // no change
+      if (is_sysop)
+	{
+	  // invalid situation; don't leak sysop
+	  assert (false);
+	  log_sysop_commit (thread_p);
+	}
     }
 
   VACUUM_VERIFY_VACUUM_DATA (thread_p);
@@ -5270,7 +5309,8 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
   bool is_last_block = false;
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
-		 "vacuum_recover_lost_block_data, lsa = %lld|%d n", LSA_AS_ARGS (&vacuum_Data.recovery_lsa));
+		 "vacuum_recover_lost_block_data, lsa = %lld|%d, global_oldest_mvccid = %llu",
+		 LSA_AS_ARGS (&vacuum_Data.recovery_lsa), (unsigned long long int) vacuum_Global_oldest_active_mvccid);
   if (LSA_ISNULL (&vacuum_Data.recovery_lsa))
     {
       /* No recovery was done. */
@@ -7887,4 +7927,20 @@ vacuum_data_empty_update_last_blockid (THREAD_ENTRY * thread_p)
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
 		 "vacuum_data_empty_update_last_blockid: update last_blockid=%lld in page %d|%d at lsa %lld|%d",
 		 (long long int) vacuum_Data.last_blockid, PGBUF_PAGE_STATE_ARGS ((PAGE_PTR) (data_page)));
+}
+
+static void
+vacuum_data_set_last_blockid (VACUUM_LOG_BLOCKID blockid)
+{
+  // first, make sure we string flags
+  blockid = VACUUM_BLOCKID_WITHOUT_FLAGS (blockid);
+
+#if !defined (NDEBUG)
+  // sanity check - last_blockid should be less than last LSA's block
+  LOG_LSA log_lsa = log_Gl.prior_info.prior_lsa;
+  VACUUM_LOG_BLOCKID log_blockid = vacuum_get_log_blockid (log_lsa.pageid);
+  assert (blockid < log_blockid);
+#endif // NDEBUG
+
+  vacuum_Data.last_blockid = blockid;
 }
