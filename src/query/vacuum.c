@@ -4100,11 +4100,32 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
 	  /* No recovery needed. This is used for 10.1 version to keep the functionality of the database.
 	   * In this case, we are updating the last_blockid of the vacuum to the last block that was logged.
 	   */
-	  vacuum_data_set_last_blockid (logpb_last_complete_blockid ());
 
-	  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
-			 "vacuum_data_load_and_recover: set last_blockid = %lld to logpb_last_complete_blockid ()",
-			 (long long int) vacuum_Data.last_blockid);
+	  VACUUM_LOG_BLOCKID log_blockid = logpb_last_complete_blockid ();
+	  if (log_blockid != VACUUM_NULL_LOG_BLOCKID)
+	    {
+	      vacuum_data_set_last_blockid (log_blockid);
+
+	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+			     "vacuum_data_load_and_recover: set last_blockid = %lld to logpb_last_complete_blockid ()",
+			     (long long int) vacuum_Data.last_blockid);
+	    }
+	  else
+	    {
+	      /* this is likely the first restart after database copy */
+	      assert (vacuum_Data.last_blockid == VACUUM_NULL_LOG_BLOCKID);
+	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY, "%s",
+			     "vacuum_data_load_and_recover: last blockid remains null");
+
+	      /* and this is a hack to removed "last_blockid from vacuum data page" */
+	      assert (vacuum_Data.first_page == vacuum_Data.last_page);
+	      vacuum_data_initialize_new_page (thread_p, vacuum_Data.first_page);
+	      vacuum_Data.first_page->data->blockid = VACUUM_NULL_LOG_BLOCKID;
+	      log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) vacuum_Data.first_page, 0,
+				     sizeof (vacuum_Data.first_page->data->blockid),
+				     &vacuum_Data.first_page->data->blockid);
+	      vacuum_set_dirty_data_page (thread_p, vacuum_Data.first_page, DONT_FREE);
+	    }
 	}
       else
 	{
