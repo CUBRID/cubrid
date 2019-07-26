@@ -3975,7 +3975,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    case F_REGEXP_REPLACE:
 	    case F_REGEXP_SUBSTR:
 	    case F_REGEXP_INSTR:
-		case F_REGEXP_COUNT:
+	    case F_REGEXP_COUNT:
 	      {
 		regu_variable_list_node *operand;
 
