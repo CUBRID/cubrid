@@ -2329,11 +2329,6 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	{
 	  break;
 	}
-      if (state == HA_SERVER_STATE_TO_BE_ACTIVE)
-        {
-	  // db_disable_modifications should be set before fully transitioning to HA_SERVER_STATE_ACTIVE
-	  logtb_enable_update (thread_p);
-        }
 
       /* If log appliers have changed their state to done, go directly to active mode */
       if (!HA_DISABLED ())
@@ -2341,6 +2336,13 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  // currently this only guarantees that fetched data from stream is applied
 	  cubreplication::replication_node_manager::commute_to_master_state ();
 	}
+
+      if (state == HA_SERVER_STATE_TO_BE_ACTIVE)
+        {
+	  // db_disable_modifications should be set before fully transitioning to HA_SERVER_STATE_ACTIVE
+	  logtb_enable_update (thread_p);
+        }
+	
       er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "css_check_ha_log_applier_done ()\n");
       state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
       assert (state == HA_SERVER_STATE_ACTIVE);      
