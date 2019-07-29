@@ -271,6 +271,7 @@ set(REPLICATION_SOURCES
 )
 
 set(REPLICATION_HEADERS
+  ${REPLICATION_DIR}/ha_server_state.h
   ${REPLICATION_DIR}/replication_schema_extract.hpp
 )
 
