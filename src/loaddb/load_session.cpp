@@ -98,13 +98,15 @@ namespace cubload
   class loaddb_worker_context_manager : public cubthread::entry_manager
   {
     public:
-      loaddb_worker_context_manager (session &session, unsigned int pool_size)
-	: m_session (session)
-	, m_driver_pool (pool_size)
-	, m_conn_entry (*cubthread::get_entry ().conn_entry)
-	, m_interrupted (false)
+
+      static loaddb_worker_context_manager *get_manager (unsigned int pool_size)
       {
-	//
+	if (!m_manager)
+	  {
+	    m_manager = new loaddb_worker_context_manager (pool_size);
+	  }
+
+	return m_manager;
       }
 
       ~loaddb_worker_context_manager () override = default;
@@ -112,12 +114,12 @@ namespace cubload
       void on_create (cubthread::entry &context) override
       {
 	driver *driver = m_driver_pool.claim ();
-	init_driver (driver, m_session);
+	//init_driver (driver, m_session);
 
 	context.m_loaddb_driver = driver;
 
 	// save connection entry
-	context.conn_entry = &m_conn_entry;
+	//context.conn_entry = &m_conn_entry;
       }
 
       void on_retire (cubthread::entry &context) override
@@ -146,12 +148,40 @@ namespace cubload
 	m_interrupted = true;
       }
 
+      void attach_to_workerpool ()
+      {
+	m_sessions_started.fetch_add (1);
+      }
+
+      void detach_from_workerpool ()
+      {
+	m_sessions_started.fetch_sub (1);
+      }
+
+      int get_number_of_sessions ()
+      {
+	return m_sessions_started;
+      }
+
     private:
-      session &m_session;
+
+      loaddb_worker_context_manager (unsigned int pool_size)
+	: m_driver_pool (pool_size)
+	, m_interrupted (false)
+      {
+	//
+	m_sessions_started = 0;
+      }
+
+      static loaddb_worker_context_manager *m_manager;
       resource_shared_pool<driver> m_driver_pool;
-      css_conn_entry &m_conn_entry;
       bool m_interrupted;
+      std::atomic_int64_t m_sessions_started;
   };
+
+  // Needed for singleton.
+  //loaddb_worker_context_manager *loaddb_wp_context_manager = NULL;
+  loaddb_worker_context_manager *loaddb_worker_context_manager::m_manager = 0;
 
   /*
    * cubload::load_worker
@@ -200,6 +230,10 @@ namespace cubload
 				 TRAN_DEFAULT_ISOLATION_LEVEL ());
 
 	driver *driver = thread_ref.m_loaddb_driver;
+	if (!driver->is_initialized ())
+	  {
+	    init_driver (driver, m_session);
+	  }
 	bool parser_result = invoke_parser (driver, m_batch);
 
 	if (m_session.is_failed () || (!is_syntax_check_only && (!parser_result || er_has_error ())))
@@ -249,6 +283,10 @@ namespace cubload
       session &m_session;
   };
 
+  cubthread::entry_workpool *loaddb_worker_pool = NULL;
+  std::mutex loaddb_wp_mutex;
+  std::atomic_int64_t sessions_started = 0;
+
   session::session (load_args &args, SESSION_ID id)
     : m_commit_mutex ()
     , m_commit_cond_var ()
@@ -257,22 +295,32 @@ namespace cubload
     , m_args (args)
     , m_last_batch_id {NULL_BATCH_ID}
     , m_max_batch_id {NULL_BATCH_ID}
-    , m_worker_pool (NULL)
-    , m_wp_context_manager (NULL)
+    , m_worker_pool (loaddb_worker_pool)
+    , m_wp_context_manager ()
+    , m_loaddb_wp_mutex (loaddb_wp_mutex)
     , m_class_registry ()
     , m_stats ()
     , m_stats_mutex ()
     , m_driver (NULL)
   {
-    // start at least 2 loaddb threads
-    unsigned int pool_size = std::max<unsigned int> (2, std::thread::hardware_concurrency ());
+    m_loaddb_wp_mutex.lock ();
+    if (!m_wp_context_manager && !m_worker_pool)
+      {
+	unsigned int pool_size = std::max<unsigned int> (2, std::thread::hardware_concurrency ());
+	std::string worker_pool_name ("loaddb-workers");
+	//worker_pool_name.append (std::to_string (id));
+	m_wp_context_manager = m_wp_context_manager->get_manager (pool_size);
+	m_worker_pool = cubthread::get_manager ()->create_worker_pool (pool_size, pool_size, worker_pool_name.c_str (),
+			m_wp_context_manager, 1, false, true);
+      }
+    else
+      {
+	assert (m_worker_pool != NULL);
+	assert (m_wp_context_manager != NULL);
+      }
 
-    std::string worker_pool_name ("loaddb-workers_session-");
-    worker_pool_name.append (std::to_string (id));
-
-    m_wp_context_manager = new loaddb_worker_context_manager (*this, pool_size);
-    m_worker_pool = cubthread::get_manager ()->create_worker_pool (pool_size, pool_size, worker_pool_name.c_str (),
-		    m_wp_context_manager, 1, false, true);
+    m_wp_context_manager->attach_to_workerpool ();
+    m_loaddb_wp_mutex.unlock ();
 
     m_driver = new driver ();
     init_driver (m_driver, *this);
@@ -289,8 +337,20 @@ namespace cubload
   {
     delete m_driver;
 
-    cubthread::get_manager ()->destroy_worker_pool (m_worker_pool);
-    delete m_wp_context_manager;
+    m_loaddb_wp_mutex.lock ();
+
+    m_wp_context_manager->detach_from_workerpool ();
+
+    // Check if there are any sessions attached to the wp. We are under lock so we are the only ones doing this.
+    if (m_wp_context_manager->get_number_of_sessions () == 0)
+      {
+	// We are the last session so we can safely destroy the worker pool and the manager.
+	cubthread::get_manager ()->destroy_worker_pool (m_worker_pool);
+	delete m_wp_context_manager;
+      }
+
+    m_loaddb_wp_mutex.unlock ();
+
   }
 
   bool

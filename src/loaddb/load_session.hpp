@@ -151,6 +151,7 @@ namespace cubload
 
       cubthread::entry_workpool *m_worker_pool;
       loaddb_worker_context_manager *m_wp_context_manager;
+      std::mutex &m_loaddb_wp_mutex;
 
       class_registry m_class_registry;
 
