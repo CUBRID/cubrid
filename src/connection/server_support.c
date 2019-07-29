@@ -2329,7 +2329,6 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	{
 	  break;
 	}
-
       /* If log appliers have changed their state to done, go directly to active mode */
       if (!HA_DISABLED ())
 	{
