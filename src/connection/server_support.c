@@ -2338,7 +2338,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 
       if (state == HA_SERVER_STATE_TO_BE_ACTIVE)
         {
-	  // db_disable_modifications should be set before fully transitioning to HA_SERVER_STATE_ACTIVE
+	  // db_Disable_modifications flag should be set false before fully transitioning to HA_SERVER_STATE_ACTIVE
 	  logtb_enable_update (thread_p);
         }
 	
