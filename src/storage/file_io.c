@@ -792,7 +792,6 @@ fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, INT64 diff_usec, int *
 #else
   TOKEN_BUCKET *tb = fc_Token_bucket;
   int gen_tokens;
-  int overflow_tokens = 0, overflow_capacity = 0;
   int rv = NO_ERROR;
 
   assert (token_gen != NULL);
@@ -2604,7 +2603,7 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
 
   db_private_free (thread_p, io_page_p);
 
-  return NO_ERROR;
+  return error_code;
 }
 #endif /* not CS_MODE */
 
@@ -11146,7 +11145,7 @@ fileio_request_user_response (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TYPE
   int x;
   int result = 0;
   bool is_retry_in = true;
-  bool rc;
+  int rc;
   char format_string[32];
 
   /* we're pretending to jump to the client */
