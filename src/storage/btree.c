@@ -5418,7 +5418,6 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
   BTREE_ROOT_HEADER root_header_info, *root_header = NULL;
   VPID root_vpid;
   PAGE_PTR page_ptr = NULL;
-  unsigned short alignment;
 
   root_header = &root_header_info;
 
@@ -5444,13 +5443,6 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
       goto error;
     }
   pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
-
-  alignment = BTREE_MAX_ALIGN;
-  if (btree_initialize_new_page (thread_p, page_ptr, (void *) &alignment) != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto error;
-    }
 
   /* form the root header information */
   root_header->node.split_info.pivot = 0.0f;
