@@ -77,6 +77,7 @@
 #include "double_write_buffer.h"
 #include "xasl_cache.h"
 #include "log_volids.hpp"
+#include "vacuum.h"
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
@@ -2440,7 +2441,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       /* We need to load vacuum data and initialize vacuum routine before recovery. */
       error_code =
 	vacuum_initialize (thread_p, boot_Db_parm->vacuum_log_block_npages, &boot_Db_parm->vacuum_data_vfid,
-			   &boot_Db_parm->dropped_files_vfid);
+			   &boot_Db_parm->dropped_files_vfid, r_args != NULL && r_args->is_restore_from_backup);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -2933,6 +2934,9 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   pgbuf_daemons_destroy ();
 #endif
 
+#if defined (SA_MODE)
+  vacuum_sa_reflect_last_blockid (thread_p);
+#endif // SA_MODE
   log_final (thread_p);
 
   /* Since all pages were flushed, now it's safe to destroy DWB. */
@@ -5357,7 +5361,7 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
       /* We need initialize vacuum routine before recovery. */
       error_code =
 	vacuum_initialize (thread_p, boot_Db_parm->vacuum_log_block_npages, &boot_Db_parm->vacuum_data_vfid,
-			   &boot_Db_parm->dropped_files_vfid);
+			   &boot_Db_parm->dropped_files_vfid, false);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;

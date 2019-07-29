@@ -241,7 +241,7 @@ vacuum_is_process_log_for_vacuum (THREAD_ENTRY * thread_p)
 #define VACUUM_IS_THREAD_VACUUM_MASTER vacuum_is_thread_vacuum_master
 
 extern int vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * vacuum_data_vfid,
-			      VFID * dropped_files_vfid);
+			      VFID * dropped_files_vfid, bool is_restore);
 extern void vacuum_finalize (THREAD_ENTRY * thread_p);
 extern int vacuum_boot (THREAD_ENTRY * thread_p);
 extern void vacuum_stop (THREAD_ENTRY * thread_p);
@@ -299,12 +299,12 @@ extern DISK_ISVALID vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY * thread_
 extern bool vacuum_is_mvccid_vacuumed (MVCCID id);
 extern int vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, INT16 rec_type);
 
-extern void vacuum_log_last_blockid (THREAD_ENTRY * thread_p);
-
 extern int vacuum_rv_es_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 #if defined (SERVER_MODE)
 extern void vacuum_notify_es_deleted (THREAD_ENTRY * thread_p, const char *uri);
 #endif /* SERVER_MODE */
 
 extern int vacuum_reset_data_after_copydb (THREAD_ENTRY * thread_p);
+
+extern void vacuum_sa_reflect_last_blockid (THREAD_ENTRY * thread_p);
 #endif /* _VACUUM_H_ */
