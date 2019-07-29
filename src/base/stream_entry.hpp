@@ -320,15 +320,6 @@ namespace cubstream
 
       void add_packable_entry (PO *entry)
       {
-#define MAX_PACKABLE_ENTRIES 1000
-        if (m_packable_entries.size () >= MAX_PACKABLE_ENTRIES
-            && !prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
-          {
-            /* Maybe is better to use a parameter here, instead MAX_PACKABLE_ENTRIES. */
-            pack ();
-            reset ();
-          }
-
 	m_packable_entries.push_back (entry);
       };
 
