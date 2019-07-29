@@ -28,6 +28,8 @@
 #include "replication_master_node.hpp"
 #include "replication_slave_node.hpp"
 #include "stream_file.hpp"
+#include "thread_manager.hpp"
+#include "thread_task.hpp"
 
 namespace cubreplication
 {
@@ -38,6 +40,8 @@ namespace cubreplication
 
   cubreplication::master_node *g_master_node = NULL;
   cubreplication::slave_node *g_slave_node = NULL;
+
+  cubthread::entry_workpool *task_worker_pool = NULL;
 
   namespace replication_node_manager
   {
@@ -57,6 +61,11 @@ namespace cubreplication
       std::string replication_path;
       replication_node::get_replication_file_path (replication_path);
       g_stream_file = new cubstream::stream_file (*g_stream, replication_path);
+
+      task_worker_pool = cubthread::get_manager ()->create_worker_pool (1,
+			 10,
+			 "replication_apply_workers",
+			 NULL, 1, 1);
     }
 
     void finalize ()
@@ -74,31 +83,44 @@ namespace cubreplication
       g_stream_file = NULL;
       delete g_stream;
       g_stream = NULL;
+
+      cubthread::get_manager ()->destroy_worker_pool (task_worker_pool);
     }
 
     void commute_to_master_state ()
     {
-      delete g_slave_node;
-      g_slave_node = NULL;
+      cubthread::entry_task *promote_task = new cubthread::entry_callable_task ([] (cubthread::entry &context)
+      {
+	delete g_slave_node;
+	g_slave_node = NULL;
 
-      if (g_master_node == NULL)
-	{
-	  g_master_node = new master_node (g_hostname.c_str (), g_stream, g_stream_file);
-	}
+	if (g_master_node == NULL)
+	  {
+	    g_master_node = new master_node (g_hostname.c_str (), g_stream, g_stream_file);
+	  }
+      }, true);
+
+      cubthread::get_manager ()->push_task (task_worker_pool, promote_task);
     }
 
     void commute_to_slave_state ()
     {
-      // todo: remove after master -> slave transitions is properly handled
-      assert (g_master_node == NULL);
+      cubthread::entry_task *demote_task = new cubthread::entry_callable_task ([] (cubthread::entry &context)
+      {
+	// todo: remove after master -> slave transitions is properly handled
+	assert (g_master_node == NULL);
 
-      delete g_master_node;
-      g_master_node = NULL;
+	delete g_master_node;
+	g_master_node = NULL;
 
-      if (g_slave_node == NULL)
-	{
-	  g_slave_node = new cubreplication::slave_node (g_hostname.c_str (), g_stream, g_stream_file);
-	}
+	if (g_slave_node == NULL)
+	  {
+	    g_slave_node = new cubreplication::slave_node (g_hostname.c_str (), g_stream, g_stream_file);
+	  }
+      }, true);
+
+
+      cubthread::get_manager ()->push_task (task_worker_pool, demote_task);
     }
 
     master_node *get_master_node ()
