@@ -6887,6 +6887,7 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * function_
     case F_REGEXP_REPLACE:
     case F_REGEXP_SUBSTR:
     case F_REGEXP_INSTR:
+    case F_REGEXP_COUNT:
       return qdata_regexp_function (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
     default:

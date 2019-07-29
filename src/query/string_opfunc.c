@@ -5987,7 +5987,6 @@ db_string_regexp_count (DB_VALUE *result, DB_VALUE *args[], int const num_args,
 	    ++reg_iter;
 	  }
 	db_make_int (result, count);
-	result->need_clear = true;
       }
     catch (std::regex_error &e)
       {
