@@ -667,7 +667,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_LOG_CHKPT_DETAILED "detailed_checkpoint_logging"
 #define PRM_NAME_IB_TASK_MEMSIZE "index_load_task_memsize"
 #define PRM_NAME_STATS_ON "stats_on"
-#define PRM_NAME_LOADDB_WORKERS "loaddb_workers"
+#define PRM_NAME_LOADDB_WORKER_COUNT "loaddb_worker_count"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -5773,8 +5773,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_LOADDB_WORKERS,
-   PRM_NAME_LOADDB_WORKERS,
+  {PRM_ID_LOADDB_WORKER_COUNT,
+   PRM_NAME_LOADDB_WORKER_COUNT,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_INTEGER,
    &prm_loaddb_workers_flag,
