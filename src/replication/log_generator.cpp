@@ -136,6 +136,12 @@ namespace cubreplication
     /* Be sure that MVCCID is assigned, since MVCCID of m_stream_entry is needed at apply,
      * to diferentiate between 2 transactions in same group. Also, prevent the situation
      * when a transaction having replication objects is not added to group.
+     * TODO - One issue may be difference between HA vs non-HA. Thus, queries like
+     * "create serial" has MVCCID (not null) on HA, but no MVCCID (null) on non-HA. Probably,
+     * the execution is not affected, but is better to have not null MVCCID in
+     * both cases. May be also other cases. We have to identify and assign MVCCID to
+     * all such cases from beginning (before calling the current function). Then, we can simply
+     * replace the next logtb_get_current_mvccid call with assert.
      */
     logtb_get_current_mvccid (&cubthread::get_entry ());
 
