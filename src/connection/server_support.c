@@ -2329,15 +2329,16 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	{
 	  break;
 	}
-      if (!HA_DISABLED ())
-	{
-	  // currently this only guarantees that fetched data from stream is applied
-	  cubreplication::replication_node_manager::commute_to_master_state ();
-	}
 
       /* If log appliers have changed their state to done, go directly to active mode */
       if (css_check_ha_log_applier_done ())
 	{
+	  if (!HA_DISABLED () && state == HA_SERVER_STATE_TO_BE_ACTIVE)
+	    {
+	      // currently this only guarantees that fetched data from stream is applied
+	      cubreplication::replication_node_manager::commute_to_master_state ();
+	    }
+      
 	  if (state == HA_SERVER_STATE_TO_BE_ACTIVE)
 	    {
 	      // db_Disable_modifications flag should be set false before fully transitioning to HA_SERVER_STATE_ACTIVE
