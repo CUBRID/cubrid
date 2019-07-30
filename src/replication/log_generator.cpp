@@ -133,13 +133,14 @@ namespace cubreplication
   void
   log_generator::append_repl_object (replication_object &object)
   {
-#define MAX_PACKABLE_ENTRIES 1000
     m_stream_entry.add_packable_entry (&object);
 
     if (m_stream_entry.count_entries () >= MAX_PACKABLE_ENTRIES
         && !prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
       {
-        /* Maybe is better to use a parameter here, instead MAX_PACKABLE_ENTRIES. */
+        /* Maybe is better to use a parameter here, instead MAX_PACKABLE_ENTRIES.
+         * TODO - consider stream entry total size also.
+         */
         (void) pack_stream_entry ();
       }
 
