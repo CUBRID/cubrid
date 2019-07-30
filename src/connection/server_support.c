@@ -2324,29 +2324,29 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
   switch (state)
     {
     case HA_SERVER_STATE_ACTIVE:
-        state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
-        if (state == HA_SERVER_STATE_NA)
-  	  {
-  	    break;
-  	  }
-        if (!HA_DISABLED ())
-  	  {
-  	    // currently this only guarantees that fetched data from stream is applied
-  	    cubreplication::replication_node_manager::commute_to_master_state ();
-  	  }
-  
-        /* If log appliers have changed their state to done, go directly to active mode */
-	if (css_check_ha_log_applier_done ())
-          {
-	    if (state == HA_SERVER_STATE_TO_BE_ACTIVE)
-	      {
-	        // db_Disable_modifications flag should be set false before fully transitioning to HA_SERVER_STATE_ACTIVE
-	        logtb_enable_update (thread_p);
-	      }
-	    er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "css_check_ha_log_applier_done ()\n");
-            state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
-            assert (state == HA_SERVER_STATE_ACTIVE);
-          }
+      state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
+      if (state == HA_SERVER_STATE_NA)
+	{
+	  break;
+	}
+      if (!HA_DISABLED ())
+	{
+	  // currently this only guarantees that fetched data from stream is applied
+	  cubreplication::replication_node_manager::commute_to_master_state ();
+	}
+
+      /* If log appliers have changed their state to done, go directly to active mode */
+      if (css_check_ha_log_applier_done ())
+	{
+	  if (state == HA_SERVER_STATE_TO_BE_ACTIVE)
+	    {
+	      // db_Disable_modifications flag should be set false before fully transitioning to HA_SERVER_STATE_ACTIVE
+	      logtb_enable_update (thread_p);
+	    }
+	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "css_check_ha_log_applier_done ()\n");
+	  state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
+	  assert (state == HA_SERVER_STATE_ACTIVE);
+	}
       break;
 
     case HA_SERVER_STATE_STANDBY:
