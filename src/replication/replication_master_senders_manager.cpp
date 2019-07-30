@@ -94,6 +94,8 @@ namespace cubreplication
   void stream_senders_manager::finalize ()
   {
 #if defined (SERVER_MODE)
+    er_log_debug_replication(ARG_FILE_LINE, "stream_senders_manager::finalize ");
+
     int error_code = NO_ERROR;
 
     if (supervisor_daemon != NULL)

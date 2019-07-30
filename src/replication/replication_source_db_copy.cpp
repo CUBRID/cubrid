@@ -99,6 +99,8 @@ namespace cubreplication
 
   source_copy_context::~source_copy_context ()
   {
+    er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::source_copy_context ");
+
     cubthread::get_manager ()->destroy_worker_pool (m_heap_extract_workers_pool);
     release_stream ();
 
@@ -288,6 +290,7 @@ namespace cubreplication
 
   void source_copy_context::release_stream ()
   {
+    er_log_debug_replication(ARG_FILE_LINE, "source_copy_context::release_stream ");
     delete m_senders_manager;
     m_senders_manager = NULL;
 
