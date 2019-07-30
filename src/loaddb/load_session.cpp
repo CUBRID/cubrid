@@ -123,7 +123,7 @@ namespace cubload
 	    return;
 	  }
 
-	context.m_loaddb_driver->uninitialize ();
+	context.m_loaddb_driver->clear_driver ();
 
 	m_driver_pool.retire (*context.m_loaddb_driver);
 
@@ -162,7 +162,7 @@ namespace cubload
     private:
       resource_shared_pool<driver> m_driver_pool;
       bool m_interrupted;
-      std::atomic_int64_t m_sessions_started;
+      std::atomic<uint64_t> m_sessions_started;
   };
 
   /*
@@ -262,7 +262,7 @@ namespace cubload
 	// notify session that batch is done
 	m_session.notify_batch_done (m_batch.get_id ());
 
-	thread_ref.m_loaddb_driver->uninitialize ();
+	thread_ref.m_loaddb_driver->clear_driver ();
       }
 
     private:

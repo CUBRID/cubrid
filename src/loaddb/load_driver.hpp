@@ -79,7 +79,7 @@ namespace cubload
       void initialize (class_installer *cls_installer, object_loader *obj_loader, error_handler *error_handler);
       bool is_initialized ();
 
-      void uninitialize ();
+      void clear_driver ();
 
       // Parse functions
       int parse (std::istream &iss, int line_offset = 0);
