@@ -81,7 +81,6 @@ namespace cubload
 
       void uninitialize ();
 
-
       // Parse functions
       int parse (std::istream &iss, int line_offset = 0);
 
