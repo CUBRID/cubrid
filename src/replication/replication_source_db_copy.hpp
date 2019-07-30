@@ -134,7 +134,7 @@ namespace cubreplication
       void pack_and_add_end_of_extract_heap ();
       void pack_and_add_end_of_copy ();
 
-      void wait_slave_finished (void);
+      int wait_slave_finished (void);
       int wait_receive_class_list (void);
       int wait_send_triggers_indexes (void);
 

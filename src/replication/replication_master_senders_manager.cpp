@@ -72,6 +72,21 @@ namespace cubreplication
     rwlock_write_unlock (&senders_lock);
   }
 
+  void stream_senders_manager::stop_stream_sender (cubstream::transfer_sender *sender)
+  {
+    rwlock_write_lock (&senders_lock);
+    for (cubstream::transfer_sender *s : stream_senders)
+    {
+      if (sender == s)
+        {
+          s->get_channel ().close_connection ();
+          break;
+        }
+    }
+    rwlock_write_unlock (&senders_lock);
+  }
+
+
   bool stream_senders_manager::find_stream_sender (const cubstream::transfer_sender *sender)
   {
     std::vector<cubstream::transfer_sender *>::iterator it;

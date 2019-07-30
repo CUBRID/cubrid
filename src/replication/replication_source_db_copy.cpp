@@ -365,7 +365,7 @@ namespace cubreplication
 
     pack_and_add_end_of_copy ();
 
-    wait_slave_finished ();
+    (void) wait_slave_finished ();
   }
 
   int source_copy_context::setup_copy_protocol (cubcomm::channel &chn)
@@ -404,12 +404,36 @@ namespace cubreplication
     return NO_ERROR;
   }
 
-  void source_copy_context::wait_slave_finished ()
+  int source_copy_context::wait_slave_finished ()
   {
     bool sender_alive = true;
+    UINT64 expected_magic;
+    std::size_t max_len = sizeof(UINT64);
+    css_error_code comm_error_code = css_error_code::NO_ERRORS;
+
+    er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_slave_finished");
 
     assert (m_transfer_sender != NULL);
     assert (m_senders_manager != NULL);
+
+    comm_error_code = m_transfer_sender->get_channel ().recv ((char *) &expected_magic, max_len);
+    if (comm_error_code != css_error_code::NO_ERRORS)
+      {
+        er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2,
+                m_transfer_sender->get_channel ().get_channel_id().c_str (), comm_error_code);
+        return ER_REPLICATION_SETUP;
+      }
+
+    if (expected_magic != replication_node::SETUP_COPY_END_REPLICATION_MAGIC)
+      {
+        er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2,
+                m_transfer_sender->get_channel ().get_channel_id ().c_str (), comm_error_code);
+        return ER_REPLICATION_SETUP;
+      }
+
+    er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_slave_finished received end of replication");
+
+    m_senders_manager->stop_stream_sender (m_transfer_sender);
 
     /* TODO : we could block with channel::wait_for, but the sender and channel
      * may be destroyed by the senders_manager daemon and we cannot use the rwlock */
@@ -421,6 +445,8 @@ namespace cubreplication
             thread_sleep (100);
           }
       }
+
+    return NO_ERROR;
   }
 
   void source_copy_context::stop ()
