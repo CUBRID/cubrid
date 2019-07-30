@@ -2289,8 +2289,6 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state:" " set force from %s to state %s\n",
 			css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (state));
 
-	  ha_Server_state = state;
-
 	  if (state == HA_SERVER_STATE_ACTIVE)
 	    {
 	      er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: logtb_enable_update()\n");
@@ -2305,6 +2303,8 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	      assert (!HA_DISABLED ());
 	      cubreplication::replication_node_manager::commute_to_slave_state ();
 	    }
+	  
+	  ha_Server_state = state;
 
 	  /* append a dummy log record for LFT to wake LWTs up */
 	  log_append_ha_server_state (thread_p, state);
@@ -2329,21 +2329,24 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	{
 	  break;
 	}
+
       /* If log appliers have changed their state to done, go directly to active mode */
       if (css_check_ha_log_applier_done ())
 	{
+	  if (!HA_DISABLED () && state == HA_SERVER_STATE_TO_BE_ACTIVE)
+	    {
+	      // currently this only guarantees that fetched data from stream is applied
+	      cubreplication::replication_node_manager::commute_to_master_state ();
+	    }
+      
+	  if (state == HA_SERVER_STATE_TO_BE_ACTIVE)
+	    {
+	      // db_Disable_modifications flag should be set false before fully transitioning to HA_SERVER_STATE_ACTIVE
+	      logtb_enable_update (thread_p);
+	    }
 	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "css_check_ha_log_applier_done ()\n");
 	  state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
 	  assert (state == HA_SERVER_STATE_ACTIVE);
-	}
-      if (state == HA_SERVER_STATE_ACTIVE)
-	{
-	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_enable_update() \n");
-	  if (!HA_DISABLED ())
-	    {
-	      cubreplication::replication_node_manager::commute_to_master_state ();
-	    }
-	  logtb_enable_update (thread_p);
 	}
       break;
 
