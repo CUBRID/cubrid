@@ -84,7 +84,7 @@ namespace cubreplication
     m_stream = NULL;
     /* TODO[replication] : use file for replication copy stream */
     m_stream_file = NULL;
-    m_transfer_sender = 0;
+    m_transfer_sender = NULL;
     m_heap_extract_workers_pool = NULL;
     m_state = NOT_STARTED;
     m_is_stop = false;
@@ -106,8 +106,6 @@ namespace cubreplication
     release_stream ();
 
     m_stream_file = NULL;
-    delete m_transfer_sender;
-    m_transfer_sender = NULL;
     m_state = NOT_STARTED;
     m_error_cnt = 0;
   }

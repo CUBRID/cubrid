@@ -3652,6 +3652,7 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
       /* For now, disable authorization. */
       save = au_disable ();
 
+      er_log_debug (ARG_FILE_LINE, "Execute:\n%s", command);
       session = db_open_buffer (command);
       if (session == NULL)
 	{
@@ -3721,6 +3722,8 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
     }
 
   locator_all_flush ();
+
+  er_log_debug (ARG_FILE_LINE, "start_ddl_proxy_client rc:%d", rc);
 
 error:
 

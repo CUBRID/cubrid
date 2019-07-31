@@ -235,6 +235,7 @@ namespace cubreplication
 		int err = obj->apply ();
 		if (err != NO_ERROR)
 		  {
+                    assert (false);
 		    /* TODO[replication] : error handling */
 		  }
 	      }
