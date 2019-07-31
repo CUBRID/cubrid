@@ -57,6 +57,11 @@ namespace cubstream
 	css_error_code rc = NO_ERRORS;
 	stream_position last_reported_ready_pos = this_producer_channel.m_stream.get_last_committed_pos ();
 
+        if (!this_producer_channel.m_channel.is_connection_alive ())
+          {
+	    return;
+	  }
+
 	if (m_first_loop)
 	  {
 	    UINT64 last_sent_position = 0;
@@ -65,10 +70,6 @@ namespace cubstream
 	    static_assert (sizeof (stream_position) == sizeof (UINT64),
 			   "stream position size differs from requested start stream position");
 
-	    if (!this_producer_channel.m_channel.is_connection_alive ())
-	      {
-		return;
-	      }
 	    rc = this_producer_channel.m_channel.recv ((char *) &last_sent_position, max_len);
 	    if (rc != NO_ERRORS)
 	      {
@@ -107,7 +108,7 @@ namespace cubstream
 
         if (this_producer_channel.m_last_sent_position < this_producer_channel.m_stream.get_last_committed_pos ())
           {
-            /* end this iteration to prevent channel termination */
+            /* send all stream data before termination */
             return;
           }
 
