@@ -407,7 +407,7 @@ namespace cubreplication
       {
 	LOG_TDES *tdes = LOG_FIND_TDES (i);
 
-	log_generator *lg = &tdes->replication_log_generator;
+	log_generator *lg = &tdes->get_replication_generator ();
 
 	lg->set_stream (stream);
       }
@@ -586,7 +586,7 @@ namespace cubreplication
     replication_object *repl_obj;
     cubthread::entry *thread_p = &cubthread::get_entry ();
     LOG_TDES *tdes = logtb_get_tdes (&cubthread::get_entry ());
-    cubreplication::stream_entry *stream_entry = tdes->replication_log_generator.get_stream_entry ();
+    cubreplication::stream_entry *stream_entry = tdes->get_replication_generator ().get_stream_entry ();
 
     assert (stream_entry->count_entries () > 0);
 
@@ -606,7 +606,7 @@ namespace cubreplication
     log_sysop_abort (thread_p);
 
     /* Disable row replication, while we apply. */
-    logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
+    logtb_get_tdes (thread_p)->get_replication_generator ().set_row_replication_disabled (true);
 
     /* Simulate it again with apply . */
     for (unsigned int i = 0; i < local_stream_entry.count_entries (); i++)
@@ -628,7 +628,7 @@ namespace cubreplication
 	  }
       }
 
-    logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+    logtb_get_tdes (thread_p)->get_replication_generator ().set_row_replication_disabled (false);
 
     return err_code;
   }
@@ -643,7 +643,7 @@ namespace cubreplication
     replication_object *repl_obj;
     cubthread::entry *thread_p = &cubthread::get_entry ();
     LOG_TDES *tdes = logtb_get_tdes (&cubthread::get_entry ());
-    cubreplication::stream_entry *stream_entry = tdes->replication_log_generator.get_stream_entry ();
+    cubreplication::stream_entry *stream_entry = tdes->get_replication_generator ().get_stream_entry ();
     LOG_LSA filter_replication_lsa, savept_lsa;
 
     assert (stream_entry->count_entries () > 0);
