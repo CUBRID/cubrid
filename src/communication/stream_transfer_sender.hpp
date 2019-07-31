@@ -62,9 +62,11 @@ namespace cubstream
 	return m_sender_daemon;
       }
 
-      void set_termination () { m_is_termination_phase = true; }
+      void terminate_connection () { m_is_termination_phase = true; }
 
       bool is_termination_phase () { return m_is_termination_phase; }
+
+      void register_stream_ack (stream_ack *stream_ack) { m_p_stream_ack = stream_ack; }
 
     private:
 

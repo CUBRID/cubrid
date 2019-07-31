@@ -81,7 +81,7 @@ namespace cubreplication
         {
           er_log_debug_replication (ARG_FILE_LINE, "stream_senders_manager::stop_stream_sender for channel:%s",
                                     s->get_channel ().get_channel_id ().c_str ());
-          s->set_termination ();
+          s->terminate_connection ();
           break;
         }
     }

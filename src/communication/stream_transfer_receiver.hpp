@@ -52,9 +52,7 @@ namespace cubstream
 
       cubcomm::channel &get_channel () { return m_channel; }
 
-      void set_termination () { m_is_termination_phase = true; }
-
-      bool is_termination_phase () { return m_is_termination_phase; }
+      void terminate_connection ();
 
     private:
 
@@ -65,8 +63,6 @@ namespace cubstream
       cubstream::stream_position m_last_received_position;
       cubthread::daemon *m_receiver_daemon;
       char m_buffer[cubcomm::MTU];
-
-      bool m_is_termination_phase;
 
     protected:
       cubstream::stream::write_func_t m_write_action_function;

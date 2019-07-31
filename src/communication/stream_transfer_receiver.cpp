@@ -92,21 +92,6 @@ namespace cubstream
 	    this_consumer_channel.m_channel.close_connection ();
 	    return;
 	  }
-
-        if (this_consumer_channel.is_termination_phase ())
-          {
-            max_len = sizeof (cubstream::SETUP_TERMINATION_MAGIC);
-
-            cubcomm::er_log_debug_buffer ("transfer_receiver_task sending",
-                                          (char *) &cubstream::SETUP_TERMINATION_MAGIC, max_len);
-
-            (void) this_consumer_channel.m_channel.send ((char *) &cubstream::SETUP_TERMINATION_MAGIC, max_len);
-
-            cubcomm::er_log_debug_buffer ("transfer_receiver_task closing connection",
-                                          (char *) &cubstream::SETUP_TERMINATION_MAGIC, 0);
-            this_consumer_channel.m_channel.close_connection ();
-            return;
-          }
       }
 
     private:
@@ -119,8 +104,7 @@ namespace cubstream
 					stream_position received_from_position)
     : m_channel (std::move (chn)),
       m_stream (stream),
-      m_last_received_position (received_from_position),
-      m_is_termination_phase (false)
+      m_last_received_position (received_from_position)
   {
     m_write_action_function = std::bind (&transfer_receiver::write_action,
 					 std::ref (*this),
@@ -154,5 +138,9 @@ namespace cubstream
     return m_last_received_position;
   }
 
+  void transfer_receiver::terminate_connection (void)
+  {
+    m_channel.close_connection ();
+  }
 
 } // namespace cubstream

@@ -149,12 +149,13 @@ namespace cubreplication
 
     wait_replication_copy ();
 
-    m_transfer_receiver->set_termination ();
+    m_transfer_receiver->terminate_connection ();
 
     while (m_transfer_receiver->get_channel ().is_connection_alive ())
       {
         thread_sleep (10);
       }
+    er_log_debug_replication (ARG_FILE_LINE, "apply_copy_context::connection terminated");
 
     /* update position in log_Gl */
     log_Gl.m_ack_stream_position = m_online_repl_start_pos;

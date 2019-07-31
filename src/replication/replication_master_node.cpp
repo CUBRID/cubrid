@@ -158,7 +158,10 @@ namespace cubreplication
 
     setup_protocol (chn);
 
-    m_senders_manager->add_stream_sender (new cubstream::transfer_sender (std::move (chn), *m_stream));
+    cubstream::transfer_sender * sender = new cubstream::transfer_sender (std::move (chn), *m_stream);
+    sender->register_stream_ack (cubtx::master_group_complete_manager::get_instance ());
+
+    m_senders_manager->add_stream_sender (sender);
 
     er_log_debug_replication (ARG_FILE_LINE, "new_slave connected");
   }
