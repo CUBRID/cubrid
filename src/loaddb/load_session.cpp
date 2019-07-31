@@ -35,6 +35,11 @@
 
 namespace cubload
 {
+  static loaddb_worker_context_manager *g_loaddb_wp_context_manager;
+  static cubthread::entry_workpool *g_loaddb_worker_pool;
+  static std::mutex g_loaddb_wp_mutex;
+  static unsigned int g_loaddb_session_count = 0;
+
   void init_driver (driver *driver, session &session);
 
   bool invoke_parser (driver *driver, const batch &batch_);
@@ -42,11 +47,6 @@ namespace cubload
   void load_wp_register_session ();
 
   void load_wp_unregister_session ();
-
-  static loaddb_worker_context_manager *g_loaddb_wp_context_manager;
-  static cubthread::entry_workpool *g_loaddb_worker_pool;
-  static std::mutex g_loaddb_wp_mutex;
-  static unsigned int g_loaddb_session_count = 0;
 
 }
 
