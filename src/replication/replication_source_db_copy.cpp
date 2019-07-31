@@ -424,6 +424,8 @@ namespace cubreplication
           }
       }
 
+    er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_slave_finished OK");
+
     return NO_ERROR;
   }
 

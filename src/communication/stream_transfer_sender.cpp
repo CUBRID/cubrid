@@ -87,6 +87,31 @@ namespace cubstream
 	    m_first_loop = false;
 	  }
 
+        while (this_producer_channel.m_last_sent_position < last_reported_ready_pos)
+	  {
+	    std::size_t byte_count = std::min ((stream_position) cubcomm::MTU,
+					       last_reported_ready_pos - this_producer_channel.m_last_sent_position);
+	    int error_code = NO_ERROR;
+
+	    er_log_debug (ARG_FILE_LINE, "transfer_sender_task sending : pos: %lld, bytes: %d\n",
+			  this_producer_channel.m_last_sent_position, byte_count);
+
+	    error_code = this_producer_channel.m_stream.read (this_producer_channel.m_last_sent_position, byte_count,
+			 this_producer_channel.m_read_action_function);
+
+	    if (error_code != NO_ERROR)
+	      {
+		this_producer_channel.m_channel.close_connection ();
+		break;
+	      }
+	  }
+
+        if (this_producer_channel.m_last_sent_position < this_producer_channel.m_stream.get_last_committed_pos ())
+          {
+            /* end this iteration to prevent channel termination */
+            return;
+          }
+
         if (this_producer_channel.is_termination_phase ())
           {
             UINT64 expected_magic;
@@ -111,25 +136,6 @@ namespace cubstream
             this_producer_channel.m_channel.close_connection();
             return;
           }
-
-        while (this_producer_channel.m_last_sent_position < last_reported_ready_pos)
-	  {
-	    std::size_t byte_count = std::min ((stream_position) cubcomm::MTU,
-					       last_reported_ready_pos - this_producer_channel.m_last_sent_position);
-	    int error_code = NO_ERROR;
-
-	    er_log_debug (ARG_FILE_LINE, "transfer_sender_task sending : pos: %lld, bytes: %d\n",
-			  this_producer_channel.m_last_sent_position, byte_count);
-
-	    error_code = this_producer_channel.m_stream.read (this_producer_channel.m_last_sent_position, byte_count,
-			 this_producer_channel.m_read_action_function);
-
-	    if (error_code != NO_ERROR)
-	      {
-		this_producer_channel.m_channel.close_connection ();
-		break;
-	      }
-	  }
       }
 
     private:

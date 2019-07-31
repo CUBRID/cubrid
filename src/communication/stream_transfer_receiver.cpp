@@ -112,7 +112,8 @@ namespace cubstream
 					stream_position received_from_position)
     : m_channel (std::move (chn)),
       m_stream (stream),
-      m_last_received_position (received_from_position)
+      m_last_received_position (received_from_position),
+      m_is_termination_phase (false)
   {
     m_write_action_function = std::bind (&transfer_receiver::write_action,
 					 std::ref (*this),
