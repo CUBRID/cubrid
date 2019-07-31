@@ -39,7 +39,7 @@ namespace cubload
     //
   }
 
-  driver::~driver ()
+  void driver::clear ()
   {
     delete m_class_installer;
     m_class_installer = NULL;
@@ -52,6 +52,13 @@ namespace cubload
 
     delete m_error_handler;
     m_error_handler = NULL;
+
+    m_is_initialized = false;
+  }
+
+  driver::~driver ()
+  {
+    clear ();
   }
 
   void

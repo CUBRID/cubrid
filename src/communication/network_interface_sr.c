@@ -9723,10 +9723,7 @@ sloaddb_init (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
 
   args.unpack (unpacker);
 
-  SESSION_ID session_id;
-  session_get_session_id (thread_p, &session_id);
-
-  load_session *session = new load_session (args, session_id);
+  load_session *session = new load_session (args);
 
   int error_code = session_set_load_session (thread_p, session);
   if (error_code != NO_ERROR)

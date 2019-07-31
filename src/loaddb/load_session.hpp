@@ -72,7 +72,7 @@ namespace cubload
   class session
   {
     public:
-      session (load_args &args, SESSION_ID id);
+      session (load_args &args);
       ~session ();
 
       session (session &&other) = delete; // Move c-tor: deleted
