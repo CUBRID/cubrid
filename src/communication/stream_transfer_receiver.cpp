@@ -136,7 +136,7 @@ namespace cubstream
   transfer_receiver::~transfer_receiver ()
   {
     m_channel.close_connection ();
-    cubthread::get_manager ()->destroy_daemon_without_entry (m_receiver_daemon);
+    cubthread::get_manager ()->destroy_daemon (m_receiver_daemon);
   }
 
   int transfer_receiver::write_action (const stream_position pos, char *ptr, const size_t byte_count)
