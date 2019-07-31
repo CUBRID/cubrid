@@ -4874,7 +4874,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
     {
       /* No statistics to update. */
       assert (tdes->log_upd_stats.unique_stats_hash->nentries == 0);
-      tdes->get_replication_generator ().on_transaction_commit ();
       if (MVCCID_IS_VALID (tdes->mvccinfo.id))
 	{
 	  /* No need to wait for complete. */
