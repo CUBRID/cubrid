@@ -145,7 +145,7 @@ namespace cubreplication
      */
     if (m_stream_entry.count_entries () == 0)
       {
-        logtb_get_current_mvccid (&cubthread::get_entry ());
+	logtb_get_current_mvccid (&cubthread::get_entry ());
       }
 
     assert (MVCCID_IS_VALID ((logtb_get_tdes (&cubthread::get_entry ())->mvccinfo.id)));
@@ -155,12 +155,12 @@ namespace cubreplication
     er_log_repl_obj (&object, "log_generator::append_repl_object");
 
     if (m_stream_entry.count_entries () >= MAX_PACKABLE_ENTRIES
-        && !prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
+	&& !prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
       {
-        /* Maybe is better to use a parameter here, instead MAX_PACKABLE_ENTRIES.
-         * TODO - consider stream entry total size also.
-         */
-        (void) pack_stream_entry ();
+	/* Maybe is better to use a parameter here, instead MAX_PACKABLE_ENTRIES.
+	 * TODO - consider stream entry total size also.
+	 */
+	(void) pack_stream_entry ();
       }
   }
 
@@ -260,8 +260,8 @@ namespace cubreplication
 	    /* Set the current transaction lsa. It may be rewritten later. */
 	    repl_obj->set_lsa_stamp (*p_lsa);
 
-	    append_repl_object (*repl_obj);
 	    er_log_repl_obj (repl_obj, "log_generator::set_key_to_repl_object");
+	    append_repl_object (*repl_obj);
 
 	    // remove
 	    (void) m_pending_to_be_added.erase (repl_obj_it);
@@ -283,9 +283,8 @@ namespace cubreplication
 
 	entry->set_key_value (key);
 
-	append_repl_object (*entry);
-
 	er_log_repl_obj (entry, "log_generator::set_key_to_repl_object");
+	append_repl_object (*entry);
       }
 
     free (class_name);
@@ -562,7 +561,7 @@ namespace cubreplication
   log_generator::set_row_replication_disabled (bool disable_if_true)
   {
     m_is_row_replication_disabled = disable_if_true;
-  }  
+  }
 
   void
   log_generator::apply_tran_mvccid (void)
