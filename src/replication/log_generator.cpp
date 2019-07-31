@@ -143,9 +143,16 @@ namespace cubreplication
      * all such cases from beginning (before calling the current function). Then, we can simply
      * replace the next logtb_get_current_mvccid call with assert.
      */
-    logtb_get_current_mvccid (&cubthread::get_entry ());
+    if (m_stream_entry.count_entries () == 0)
+      {
+        logtb_get_current_mvccid (&cubthread::get_entry ());
+      }
+
+    assert (MVCCID_IS_VALID ((logtb_get_tdes (&cubthread::get_entry ())->mvccinfo.id)));
 
     m_stream_entry.add_packable_entry (&object);
+
+    er_log_repl_obj (&object, "log_generator::append_repl_object");
 
     if (m_stream_entry.count_entries () >= MAX_PACKABLE_ENTRIES
         && !prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
@@ -155,8 +162,6 @@ namespace cubreplication
          */
         (void) pack_stream_entry ();
       }
-
-    er_log_repl_obj (&object, "log_generator::append_repl_object");
   }
 
   /* in case inst_oid is not found, create a new entry and append it to pending,
