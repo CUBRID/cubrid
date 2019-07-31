@@ -2246,8 +2246,8 @@ static bool prm_stats_on_default = false;
 static unsigned int prm_stats_on_flag = 0;
 
 int PRM_LOADDB_WORKERS = 8;
-static int prm_loaddb_workers_default = 4;
-static int prm_loaddb_workers_upper = 32;
+static int prm_loaddb_workers_default = 8;
+static int prm_loaddb_workers_upper = 64;
 static int prm_loaddb_workers_lower = 2;
 static unsigned int prm_loaddb_workers_flag = 0;
 
