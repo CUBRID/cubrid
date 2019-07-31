@@ -228,7 +228,7 @@ namespace cubtx
 	if (!HA_DISABLED () && css_ha_server_state () == HA_SERVER_STATE_ACTIVE)
 	  {
 	    /* This is a single node that must generate stream group commits. */
-	    tdes->replication_log_generator.pack_group_commit_entry (closed_group,
+	    tdes->get_replication_generator ().pack_group_commit_entry (closed_group,
 		closed_group_stream_start_position, closed_group_stream_end_position);
 	  }
 

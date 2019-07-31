@@ -168,6 +168,7 @@ namespace cubreplication
 #endif
 
     private:
+      static const size_t MAX_PACKABLE_ENTRIES = 1000;
 
       void set_stream (cubstream::multi_thread_stream *stream)
       {

@@ -543,7 +543,7 @@ struct log_tdes
   const char *ha_sbr_statement;
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
-  cubreplication::log_generator replication_log_generator;
+  public:
   cubreplication::copy_context replication_copy_context;
 
   bool is_active_worker_transaction () const;
@@ -559,6 +559,11 @@ struct log_tdes
 
   void on_sysop_start ();
   void on_sysop_end (bool force_lsa_reset);
+
+    cubreplication::log_generator &get_replication_generator ();
+
+  private:
+    cubreplication::log_generator replication_log_generator;
 #endif
   // *INDENT-ON*
 };

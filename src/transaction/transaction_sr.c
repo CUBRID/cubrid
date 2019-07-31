@@ -228,7 +228,7 @@ xtran_server_start_topop (THREAD_ENTRY * thread_p, LOG_LSA * topop_lsa)
   if (need_ha_replication)
     {
       assert (topop_lsa != NULL);
-      logtb_get_tdes (thread_p)->replication_log_generator.add_start_sysop (*topop_lsa);
+      logtb_get_tdes (thread_p)->get_replication_generator ().add_start_sysop (*topop_lsa);
     }
   return NO_ERROR;
 }
@@ -292,8 +292,8 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
 
 	  if (need_ha_replication)
 	    {
-	      tdes->replication_log_generator.abort_pending_repl_objects ();
-	      tdes->replication_log_generator.add_end_sysop (*topop_lsa);
+	      tdes->get_replication_generator ().abort_pending_repl_objects ();
+	      tdes->get_replication_generator ().add_end_sysop (*topop_lsa);
 	    }
 	}
       if (drop_transient_class)
@@ -371,7 +371,7 @@ xtran_server_savepoint (THREAD_ENTRY * thread_p, const char *savept_name, LOG_LS
 	{
 	  LOG_TDES *tdes = logtb_get_tdes (thread_p);
 	  assert (tdes != NULL);
-	  tdes->replication_log_generator.add_create_savepoint (savept_name);
+	  tdes->get_replication_generator ().add_create_savepoint (savept_name);
 	}
     }
 
@@ -408,7 +408,7 @@ xtran_server_partial_abort (THREAD_ENTRY * thread_p, const char *savept_name, LO
     {
       LOG_TDES *tdes = logtb_get_tdes (thread_p);
       assert (tdes != NULL);
-      tdes->replication_log_generator.add_rollback_to_savepoint (savept_name);
+      tdes->get_replication_generator ().add_rollback_to_savepoint (savept_name);
     }
 
   return state;

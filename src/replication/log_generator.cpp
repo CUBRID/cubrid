@@ -133,7 +133,28 @@ namespace cubreplication
   void
   log_generator::append_repl_object (replication_object &object)
   {
+    /* Be sure that MVCCID is assigned, since MVCCID of m_stream_entry is needed at apply,
+     * to diferentiate between 2 transactions in same group. Also, prevent the situation
+     * when a transaction having replication objects is not added to group.
+     * TODO - One issue may be difference between HA vs non-HA. Thus, queries like
+     * "create serial" has MVCCID (not null) on HA, but no MVCCID (null) on non-HA. Probably,
+     * the execution is not affected, but is better to have not null MVCCID in
+     * both cases. May be also other cases. We have to identify and assign MVCCID to
+     * all such cases from beginning (before calling the current function). Then, we can simply
+     * replace the next logtb_get_current_mvccid call with assert.
+     */
+    logtb_get_current_mvccid (&cubthread::get_entry ());
+
     m_stream_entry.add_packable_entry (&object);
+
+    if (m_stream_entry.count_entries () >= MAX_PACKABLE_ENTRIES
+        && !prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
+      {
+        /* Maybe is better to use a parameter here, instead MAX_PACKABLE_ENTRIES.
+         * TODO - consider stream entry total size also.
+         */
+        (void) pack_stream_entry ();
+      }
 
     er_log_repl_obj (&object, "log_generator::append_repl_object");
   }
@@ -392,7 +413,7 @@ namespace cubreplication
       {
 	LOG_TDES *tdes = LOG_FIND_TDES (i);
 
-	log_generator *lg = &tdes->replication_log_generator;
+	log_generator *lg = &tdes->get_replication_generator ();
 
 	lg->set_stream (stream);
       }
@@ -439,6 +460,9 @@ namespace cubreplication
 #endif
 
     pack_stream_entry ();
+
+    /* Do not allow to reuse the current MVCCID. */
+    m_stream_entry.set_mvccid (MVCCID_NULL);
   }
 
   void
@@ -555,7 +579,7 @@ namespace cubreplication
     replication_object *repl_obj;
     cubthread::entry *thread_p = &cubthread::get_entry ();
     LOG_TDES *tdes = logtb_get_tdes (&cubthread::get_entry ());
-    cubreplication::stream_entry *stream_entry = tdes->replication_log_generator.get_stream_entry ();
+    cubreplication::stream_entry *stream_entry = tdes->get_replication_generator ().get_stream_entry ();
 
     assert (stream_entry->count_entries () > 0);
 
@@ -575,7 +599,7 @@ namespace cubreplication
     log_sysop_abort (thread_p);
 
     /* Disable row replication, while we apply. */
-    logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
+    logtb_get_tdes (thread_p)->get_replication_generator ().set_row_replication_disabled (true);
 
     /* Simulate it again with apply . */
     for (unsigned int i = 0; i < local_stream_entry.count_entries (); i++)
@@ -597,7 +621,7 @@ namespace cubreplication
 	  }
       }
 
-    logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+    logtb_get_tdes (thread_p)->get_replication_generator ().set_row_replication_disabled (false);
 
     return err_code;
   }
@@ -612,7 +636,7 @@ namespace cubreplication
     replication_object *repl_obj;
     cubthread::entry *thread_p = &cubthread::get_entry ();
     LOG_TDES *tdes = logtb_get_tdes (&cubthread::get_entry ());
-    cubreplication::stream_entry *stream_entry = tdes->replication_log_generator.get_stream_entry ();
+    cubreplication::stream_entry *stream_entry = tdes->get_replication_generator ().get_stream_entry ();
     LOG_LSA filter_replication_lsa, savept_lsa;
 
     assert (stream_entry->count_entries () > 0);

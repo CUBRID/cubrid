@@ -3802,7 +3802,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	  /* for the replication agent guarantee the order of transaction */
 	  /* for CC(Click Counter) : at here */
 	  log_append_repl_info (thread_p, tdes, false);
-	  tdes->replication_log_generator.on_sysop_commit (*LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
+	  tdes->get_replication_generator ().on_sysop_commit (*LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
 	}
 
       log_record->lastparent_lsa = *LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes);
@@ -3985,7 +3985,7 @@ log_sysop_abort (THREAD_ENTRY * thread_p)
       if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_active_worker_transaction ()
 	  && log_does_allow_replication () == true)
 	{
-	  tdes->replication_log_generator.on_sysop_abort (*LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
+	  tdes->get_replication_generator ().on_sysop_abort (*LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
 	}
 
       /* Abort changes in system op. */
@@ -4816,7 +4816,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	}
 
       /* Pack replication entries, if the case, before creating group. */
-      tdes->replication_log_generator.on_transaction_commit ();
+      tdes->get_replication_generator ().on_transaction_commit ();
       id_complete = log_Gl.m_tran_complete_mgr->register_transaction (tdes->tran_index, tdes->mvccinfo.id, tran_state);
       if (MVCCID_IS_VALID (tdes->mvccinfo.id))
 	{
@@ -4874,7 +4874,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
     {
       /* No statistics to update. */
       assert (tdes->log_upd_stats.unique_stats_hash->nentries == 0);
-      tdes->replication_log_generator.on_transaction_commit ();
+      tdes->get_replication_generator ().on_transaction_commit ();
       if (MVCCID_IS_VALID (tdes->mvccinfo.id))
 	{
 	  /* No need to wait for complete. */
@@ -4963,7 +4963,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran,
 	  tdes->first_save_entry = NULL;
 	}
 
-      tdes->replication_log_generator.on_transaction_abort ();
+      tdes->get_replication_generator ().on_transaction_abort ();
       id_complete = log_Gl.m_tran_complete_mgr->register_transaction (tdes->tran_index, tdes->mvccinfo.id, tdes->state);
       if (MVCCID_IS_VALID (tdes->mvccinfo.id))
 	{
@@ -5325,7 +5325,7 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA 
    */
   LSA_COPY (&tdes->savept_lsa, savept_lsa);
 
-  tdes->replication_log_generator.abort_pending_repl_objects ();
+  tdes->get_replication_generator ().abort_pending_repl_objects ();
 
   return TRAN_UNACTIVE_ABORTED;
 }
