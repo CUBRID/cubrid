@@ -30,7 +30,6 @@
 #include "thread_entry_task.hpp"
 #include "xserver_interface.h"
 
-
 #include <sstream>
 
 namespace cubload
