@@ -2296,7 +2296,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	      er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: logtb_enable_update ()\n");
 	      if (!HA_DISABLED ())
 		{
-		  cubreplication::replication_node_manager::commute_to_master_state (false);
+		  cubreplication::replication_node_manager::commute_to_master_state ();
 		}
 	      logtb_enable_update (thread_p);
 	    }
@@ -2338,7 +2338,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  if (!HA_DISABLED () && state == HA_SERVER_STATE_TO_BE_ACTIVE)
 	{
 	      // currently this only guarantees that fetched data from stream is applied
-	      cubreplication::replication_node_manager::commute_to_master_state (false);
+	      cubreplication::replication_node_manager::commute_to_master_state ();
 	    }
       
 	  if (state == HA_SERVER_STATE_TO_BE_ACTIVE)
@@ -2706,7 +2706,7 @@ css_process_new_slave (SOCKET master_fd)
   assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
 
   // todo: wait for ha_Server_state to become HA_SERVER_STATE_ACTIVE
-  cubreplication::replication_node_manager::commute_to_master_state (true);
+  cubreplication::replication_node_manager::commute_to_master_state ();
   cubreplication::replication_node_manager::get_master_node ()->new_slave (new_fd);
 }
 

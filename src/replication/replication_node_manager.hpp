@@ -46,7 +46,7 @@ namespace cubreplication
     master_node *get_master_node ();
     slave_node *get_slave_node ();
 
-    void commute_to_master_state (bool new_slave);
+    void commute_to_master_state ();
     void commute_to_slave_state ();
   };
 }

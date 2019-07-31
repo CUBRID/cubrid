@@ -44,10 +44,9 @@ namespace cubreplication
     m_stream_file = stream_file;
 
     master_senders_manager::init ();
-
-    cubtx::master_group_complete_manager::init ();
+    
     /* Resets complete manager only if no slave connected. */
-    m_control_channel_manager = new master_ctrl (cubtx::master_group_complete_manager::get_instance ());
+    m_control_channel_manager = new master_ctrl ();
 
     stream_entry fail_over_entry (m_stream, MVCCID_FIRST, stream_entry_header::NEW_MASTER);
     fail_over_entry.pack ();
@@ -120,7 +119,7 @@ namespace cubreplication
 
     setup_protocol (chn);
 
-    master_senders_manager::add_stream_sender (new cubstream::transfer_sender (std::move (chn), *m_stream));
+    master_senders_manager::add_stream_sender (new cubstream::transfer_sender (std::move (chn), *m_stream));    
 
     er_log_debug_replication (ARG_FILE_LINE, "new_slave connected");
   }
@@ -145,6 +144,15 @@ namespace cubreplication
     m_control_channel_manager->add (std::move (chn));
 
     er_log_debug_replication (ARG_FILE_LINE, "control channel added");
+  }
+
+  void
+  master_node::set_ctrl_channel_manager_stream_ack (cubstream::stream_ack *stream_ack)
+  {
+    if (m_control_channel_manager != NULL)
+    {
+      m_control_channel_manager->set_stream_ack(stream_ack);
+    }
   }
 
   master_node::~master_node ()

@@ -1331,7 +1331,6 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       init_emergency = true;
     }
 
-  cubtx::single_node_group_complete_manager::init ();
   logpb_initialize_tran_complete_manager (thread_p);
 
   /*
@@ -4460,8 +4459,9 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
 }
 
 void
-log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, cubstream::stream_position stream_pos, tx_group & group,
-			   LOG_LSA * complete_start_lsa, LOG_LSA * complete_end_lsa, bool * has_postpone)
+log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, cubstream::stream_position stream_pos,
+			   tx_group & group, LOG_LSA * complete_start_lsa, LOG_LSA * complete_end_lsa,
+			   bool * has_postpone)
 {
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa, end_lsa;

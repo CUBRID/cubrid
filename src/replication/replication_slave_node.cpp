@@ -59,7 +59,6 @@ namespace cubreplication
   {
     m_stream = stream;
     m_stream_file = stream_file;
-    cubtx::slave_group_complete_manager::init ();
   }
 
   slave_node::~slave_node ()
@@ -68,7 +67,6 @@ namespace cubreplication
 
     /* Switch to single complete manager to void crashes at commit. */
     logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
-    cubtx::slave_group_complete_manager::final ();
   }
 
   int slave_node::setup_protocol (cubcomm::channel &chn)
@@ -83,11 +81,11 @@ namespace cubreplication
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
 		comm_error_code);
 	return ER_REPLICATION_SETUP;
-  }
+      }
 
     comm_error_code = chn.recv ((char *) &expected_magic, max_len);
     if (comm_error_code != css_error_code::NO_ERRORS)
-  {
+      {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
 		comm_error_code);
 	return ER_REPLICATION_SETUP;
@@ -222,6 +220,9 @@ namespace cubreplication
 	});
       }
 
+    /* Reset complete manager before starting daemons. */
+    logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE);
+
     /* start log_consumer daemons and apply thread pool */
     m_lc->start_daemons ();
 
@@ -275,7 +276,7 @@ namespace cubreplication
   {
     er_log_debug_replication (ARG_FILE_LINE, "slave_node::disconnect_from_master");
     stop_and_destroy_online_repl ();
-} /* namespace cubreplication */
+  } /* namespace cubreplication */
 
   void slave_node::stop_and_destroy_online_repl ()
   {
