@@ -266,9 +266,9 @@ namespace cubload
   void load_wp_register_session ()
   {
     g_loaddb_wp_mutex.lock ();
+
     if (g_loaddb_session_count == 0)
       {
-
 	assert (g_loaddb_worker_pool == NULL);
 	assert (g_loaddb_wp_context_manager == NULL);
 
@@ -286,6 +286,7 @@ namespace cubload
       }
 
     g_loaddb_session_count++;
+
     g_loaddb_wp_mutex.unlock ();
   }
 
