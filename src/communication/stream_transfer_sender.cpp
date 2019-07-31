@@ -44,7 +44,7 @@
 namespace cubstream
 {
 
-  class transfer_sender_task : public cubthread::task_without_context
+  class transfer_sender_task : public cubthread::entry_task
   {
     public:
       transfer_sender_task (cubstream::transfer_sender &producer_channel)
@@ -53,7 +53,7 @@ namespace cubstream
       {
       }
 
-      void execute () override
+      void execute (cubthread::entry &thread_ref) override
       {
 	css_error_code rc = NO_ERRORS;
 	stream_position last_reported_ready_pos = this_producer_channel.m_stream.get_last_committed_pos ();
@@ -157,8 +157,7 @@ namespace cubstream
 		       std::placeholders::_2);
 
     std::string daemon_name = "stream_transfer_sender_" + chn.get_channel_id ();
-    m_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (daemon_period,
-		      new transfer_sender_task (*this),
+    m_sender_daemon = cubthread::get_manager ()->create_daemon (daemon_period, new transfer_sender_task (*this),
 		      daemon_name.c_str ());
 
     m_p_stream_ack = cubtx::master_group_complete_manager::get_instance ();

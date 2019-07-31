@@ -93,8 +93,9 @@ namespace cubreplication
     m_stream = acquire_stream ();
     /* TODO : single global pool or a pool for each context ? */
     m_heap_extract_workers_pool =
-	    cubthread::get_manager ()->create_worker_pool (EXTRACT_HEAP_WORKER_POOL_SIZE, EXTRACT_HEAP_WORKER_POOL_SIZE,
-		"replication_extract_heap_workers", NULL, 1, 1);
+	    cubthread::get_manager ()->create_worker_pool (EXTRACT_HEAP_WORKER_POOL_SIZE,
+                                                           EXTRACT_HEAP_WORKER_POOL_SIZE,
+                                                           "replication_extract_heap_workers", NULL, 1, 1);
   }
 
   source_copy_context::~source_copy_context ()
@@ -304,6 +305,7 @@ namespace cubreplication
     cubcomm::channel chn;
     chn.set_channel_name (REPL_COPY_CHANNEL_NAME);
 
+    /* TODO[replication] : handle stop from thread_manager (thread worker pool) */
     LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (&thread_ref);
     assert (tdes != NULL);
     if (tdes != NULL)

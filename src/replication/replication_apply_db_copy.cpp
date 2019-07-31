@@ -285,7 +285,7 @@ namespace cubreplication
 	using tasks_map = std::unordered_map <MVCCID, copy_db_worker_task *>;
 	tasks_map repl_tasks;
 	tasks_map nonexecutable_repl_tasks;
-        bool is_heap_extract_phase = false;
+        bool is_heap_apply_phase = false;
         bool is_replication_copy_end = false;
         bool is_stopped = false;
 
@@ -316,30 +316,30 @@ namespace cubreplication
 	      {
 		string_buffer sb;
 		se->stringify (sb, stream_entry::short_dump);
-		_er_log_debug (ARG_FILE_LINE, "copy_dispatch_task execute pop_entry:\n%s", sb.get_buffer ());
+		_er_log_debug (ARG_FILE_LINE, "copy_dispatch_task \n%s", sb.get_buffer ());
 	      }
 
-            /* during extract heap phase we may apply objects in parallel */
-            if (!is_heap_extract_phase)
+            /* during extract heap phase we may apply objects in parallel, otherwise we wait of all tasks to finish */
+            if (!is_heap_apply_phase)
               {
                 m_lc.wait_for_tasks ();
               }
 
             if (se->is_start_of_extract_heap ())
               {
-                is_heap_extract_phase = true;
+                is_heap_apply_phase = true;
                 is_control_se = true;
                 er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : receive of start of extract heap phase");
               }
             else if (se->is_end_of_extract_heap ())
               {
-                is_heap_extract_phase = false;
+                is_heap_apply_phase = false;
                 is_control_se = true;
                 er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : receive of end of extract heap phase");
               }
             else if (se->is_end_of_replication_copy ())
               {
-                assert (is_heap_extract_phase == false);
+                assert (is_heap_apply_phase == false);
                 is_control_se = true;
                 is_replication_copy_end = true;
                 er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : receive of end of replication");
@@ -356,6 +356,8 @@ namespace cubreplication
                 /* stream entry is deleted by applier task thread */
               }
 	  }
+
+        m_lc.wait_for_tasks ();
 
         locator_repl_end_tran (&thread_ref, is_stopped ? false : true); 
 
@@ -474,10 +476,12 @@ namespace cubreplication
 
   void copy_db_consumer::wait_for_tasks (void)
   {
-    while (m_started_tasks > 0)
+    er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : wait_for_tasks :%d", m_started_tasks.load ());
+    while (m_started_tasks.load () > 0)
       {
 	thread_sleep (1);
       }
+    er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : wait_for_tasks .. OK");
   }
 
   void copy_db_consumer::set_stop (void)
