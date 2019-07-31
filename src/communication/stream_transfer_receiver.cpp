@@ -92,6 +92,14 @@ namespace cubstream
 	    this_consumer_channel.m_channel.close_connection ();
 	    return;
 	  }
+
+        if (this_consumer_channel.is_termination_phase ())
+          {
+            max_len = sizeof (cubstream::SETUP_TERMINATION_MAGIC);
+            (void) this_consumer_channel.m_channel.send ((char *) &cubstream::SETUP_TERMINATION_MAGIC, max_len);
+            this_consumer_channel.m_channel.close_connection ();
+            return;
+          }
       }
 
     private:

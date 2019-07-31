@@ -276,7 +276,7 @@ namespace cubreplication
 
     /* TODO[replication] : max appenders in stream must be greater than number of parallel heap scanners */
     cubstream::multi_thread_stream *copy_db_stream =
-	    new cubstream::multi_thread_stream (buffer_size, 10 + EXTRACT_HEAP_WORKER_POOL_SIZE);
+	    new cubstream::multi_thread_stream (buffer_size, 10 + (int) EXTRACT_HEAP_WORKER_POOL_SIZE);
     const node_definition& myself = replication_node_manager::get_master_node ()->get_node_identity ();
     copy_db_stream->set_name ("repl_copy_" + std::string (myself.get_hostname ().c_str ()));
     copy_db_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
@@ -407,36 +407,14 @@ namespace cubreplication
   int source_copy_context::wait_slave_finished ()
   {
     bool sender_alive = true;
-    UINT64 expected_magic;
-    std::size_t max_len = sizeof(UINT64);
-    css_error_code comm_error_code = css_error_code::NO_ERRORS;
 
     er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_slave_finished");
 
     assert (m_transfer_sender != NULL);
     assert (m_senders_manager != NULL);
 
-    comm_error_code = m_transfer_sender->get_channel ().recv ((char *) &expected_magic, max_len);
-    if (comm_error_code != css_error_code::NO_ERRORS)
-      {
-        er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2,
-                m_transfer_sender->get_channel ().get_channel_id().c_str (), comm_error_code);
-        return ER_REPLICATION_SETUP;
-      }
-
-    if (expected_magic != replication_node::SETUP_COPY_END_REPLICATION_MAGIC)
-      {
-        er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2,
-                m_transfer_sender->get_channel ().get_channel_id ().c_str (), comm_error_code);
-        return ER_REPLICATION_SETUP;
-      }
-
-    er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_slave_finished received end of replication");
-
     m_senders_manager->stop_stream_sender (m_transfer_sender);
 
-    /* TODO : we could block with channel::wait_for, but the sender and channel
-     * may be destroyed by the senders_manager daemon and we cannot use the rwlock */
     while (sender_alive)
       {
         sender_alive = m_senders_manager->find_stream_sender (m_transfer_sender);

@@ -31,7 +31,7 @@
  */
 
 #include "stream_transfer_sender.hpp"
-#include "transaction_master_group_complete_manager.hpp"
+#include "transaction_master_group_complete_manager.hpp" // TODO : remove this dependency
 
 #include "system_parameter.h" /* for er_log_debug */
 #include "thread_manager.hpp"
@@ -87,7 +87,32 @@ namespace cubstream
 	    m_first_loop = false;
 	  }
 
-	while (this_producer_channel.m_last_sent_position < last_reported_ready_pos)
+        if (this_producer_channel.is_termination_phase ())
+          {
+            UINT64 expected_magic;
+            std::size_t max_len = sizeof (expected_magic);
+          
+            rc = this_producer_channel.m_channel.recv ((char *) &expected_magic, max_len);
+            if (rc != NO_ERRORS)
+              {
+                /* not handled as an error, the peer may have already closed the connection */
+                er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 3,
+                      this_producer_channel.m_channel.get_channel_id ().c_str (), rc, "Unexpected value");
+              }
+
+            if (expected_magic != cubstream::SETUP_TERMINATION_MAGIC)
+              {
+                er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 3,
+                        this_producer_channel.m_channel.get_channel_id ().c_str (), rc, "Unexpected value");
+                this_producer_channel.m_channel.close_connection();
+                return;
+              }
+
+            this_producer_channel.m_channel.close_connection();
+            return;
+          }
+
+        while (this_producer_channel.m_last_sent_position < last_reported_ready_pos)
 	  {
 	    std::size_t byte_count = std::min ((stream_position) cubcomm::MTU,
 					       last_reported_ready_pos - this_producer_channel.m_last_sent_position);
@@ -116,7 +141,8 @@ namespace cubstream
 				    cubstream::stream_position begin_sending_position)
     : m_channel (std::move (chn)),
       m_stream (stream),
-      m_last_sent_position (begin_sending_position)
+      m_last_sent_position (begin_sending_position),
+      m_is_termination_phase (false)
   {
     cubthread::delta_time daemon_period = std::chrono::milliseconds (10);
 

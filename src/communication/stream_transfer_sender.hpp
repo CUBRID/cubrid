@@ -62,6 +62,10 @@ namespace cubstream
 	return m_sender_daemon;
       }
 
+      void set_termination () { m_is_termination_phase = true; }
+
+      bool is_termination_phase () { return m_is_termination_phase; }
+
     private:
 
       friend class transfer_sender_task;
@@ -71,6 +75,8 @@ namespace cubstream
       stream_position m_last_sent_position;
       cubthread::daemon *m_sender_daemon;
       char m_buffer[cubcomm::MTU];
+
+      bool m_is_termination_phase;
 
       /* TO DO - move p_stream_ack in new receiver threads on master node. */
       stream_ack *m_p_stream_ack;

@@ -147,7 +147,6 @@ namespace cubreplication
     private:
 
       int setup_copy_protocol (cubcomm::channel &chn);
-      int send_master_replication_end(cubcomm::channel &chn);
 
       node_definition *m_source_identity;
       node_definition *m_my_identity;

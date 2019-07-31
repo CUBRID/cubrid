@@ -37,6 +37,9 @@ namespace cubstream
 
   typedef std::uint64_t stream_position;
 
+  /* constant used by stream_transfer_receiver - stream_transfer_sender to negotiate communication tear-down */
+  const unsigned long long SETUP_TERMINATION_MAGIC = 0x28821771ULL;
+
   /*
    * stream is a contiguous stream (flow) of bytes
    * at one time, a part of it has a storage support (buffer) which can be read or written

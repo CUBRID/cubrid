@@ -79,7 +79,9 @@ namespace cubreplication
     {
       if (sender == s)
         {
-          s->get_channel ().close_connection ();
+          er_log_debug_replication (ARG_FILE_LINE, "stream_senders_manager::stop_stream_sender for channel:%s",
+                                    s->get_channel ().get_channel_id ());
+          s->set_termination ();
           break;
         }
     }
