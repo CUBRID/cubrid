@@ -13937,14 +13937,18 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
     db_name_buffer.get_buffer (),
     "-t",
     tran_index_str,
-    (ha_sys_prm_context != NULL) ? "-s" : NULL,
-    ha_sys_prm_context,
     command_option,
     command,
+    (ha_sys_prm_context != NULL) ? "-s" : NULL,
+    ha_sys_prm_context,
     NULL
   };
 
   envvar_bindir_file (path, PATH_MAX, UTIL_DDL_PROXY_CLIENT);
+
+  _er_log_debug (ARG_FILE_LINE, "apply SBR: executing:\n%s %s %s %s %s %s %s %s %s %s %s",
+    ddl_argv[0], ddl_argv[1], ddl_argv[2], ddl_argv[3], ddl_argv[4], ddl_argv[5], ddl_argv[6],
+    ddl_argv[7], ddl_argv[8], ddl_argv[9], ddl_argv[10]);
 
   error = create_child_process (ddl_argv, 1, NULL, NULL, NULL, &exit_status);
   tdes->ha_sbr_statement = NULL;
@@ -13969,7 +13973,6 @@ int
 locator_repl_extract_schema (THREAD_ENTRY * thread_p, const char *db_user, const char *ha_sys_prm_context)
 {
   char path[PATH_MAX];
-  static const char *db_name = boot_db_name ();
   int error = NO_ERROR, exit_status;
   char tran_index_str[DB_BIGINT_PRECISION + 1] = { 0 };
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -13978,16 +13981,19 @@ locator_repl_extract_schema (THREAD_ENTRY * thread_p, const char *db_user, const
   assert (db_user != NULL && tdes != NULL);
   sprintf (tran_index_str, "%d", tran_index);
 
+  string_buffer db_name_buffer;
+  db_name_buffer ("%s@%s", boot_db_name (), "localhost");
+
   const char *ddl_argv[10] = {
     path,
     "-u",
     db_user,
-    db_name,
+    db_name_buffer.get_buffer (),
     "-t",
     tran_index_str,
+    "-e",
     (ha_sys_prm_context != NULL) ? "-s" : NULL,
     ha_sys_prm_context,
-    "-e",
     NULL
   };
 

@@ -3585,12 +3585,6 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
   const char *command = NULL;
   bool save;
 
-  er_log_debug (ARG_FILE_LINE, "start_ddl_proxy_client:\n"
-               " command: %s\n db_name:%s\n do_extract_schema:%d\n out_file_name:%s\n"
-               " sys_param:%s\n tran_index:%d\n user_name:%s\n use_request%d",
-               args->command, args->db_name, args->do_extract_schema, args->out_file_name,
-               args->sys_param, args->tran_index, args->user_name, args->use_request);
-
   if (args->tran_index != NULL)
     {
       override_tran_index = atoi (args->tran_index);
@@ -3610,6 +3604,12 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
       ASSERT_ERROR ();
       return rc;
     }
+
+  er_log_debug (ARG_FILE_LINE, "start_ddl_proxy_client:\n"
+               " command: %s\n db_name:%s\n do_extract_schema:%d\n out_file_name:%s\n"
+               " sys_param:%s\n tran_index:%s\n user_name:%s\n use_request:%d",
+               args->command, args->db_name, args->do_extract_schema, args->out_file_name,
+               args->sys_param, args->tran_index, args->user_name, args->use_request);
 
   // ddl_proxy should not fire trigger action
   db_disable_trigger ();
