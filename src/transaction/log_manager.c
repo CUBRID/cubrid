@@ -4815,7 +4815,10 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	  tran_state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
 	}
 
-      /* Pack replication entries, if the case, before creating group. */
+      /* Pack replication entries, if the case, before creating group. Currently, we may have rare cases, when
+       * transaction having NULL MVCCID is added in a group. Also, transactions having not null MVCCID, but
+       * having no stream entries. The slave must consider this cases and handle them properly.
+       */
       tdes->get_replication_generator ().on_transaction_commit ();
       id_complete = log_Gl.m_tran_complete_mgr->register_transaction (tdes->tran_index, tdes->mvccinfo.id, tran_state);
       if (MVCCID_IS_VALID (tdes->mvccinfo.id))

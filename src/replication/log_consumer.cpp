@@ -183,7 +183,7 @@ namespace cubreplication
 	using tasks_map = std::unordered_map<MVCCID, applier_worker_task *>;
 	tasks_map repl_tasks;
 	tasks_map nonexecutable_repl_tasks;
-	int count_expected_transaction;
+	int count_expected_transaction = 0;
 
 	assert (m_p_dispatch_consumer != NULL);
 	while (true)
@@ -225,20 +225,25 @@ namespace cubreplication
 		er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task wait for all working tasks to finish\n");
 		assert (se->get_stream_entry_start_position () < se->get_stream_entry_end_position ());
 
-		m_prev_group_stream_position = m_curr_group_stream_position;
-		m_curr_group_stream_position = se->get_stream_entry_end_position ();
+		if (count_expected_transaction > 0)
+		  {
+		    /* We have to wait for previous group. */
+		    m_prev_group_stream_position = m_curr_group_stream_position;
+		    m_curr_group_stream_position = se->get_stream_entry_end_position ();
 
-		// Noramlly, is enough to wait for group to complete. However, for safety reason, it is better to
-		// start wait for workers first, then wait for complete manager.
-		m_lc.wait_for_tasks ();
+		    // Noramlly, is enough to wait for group to complete. However, for safety reason, it is better to
+		    // start wait for workers first, then wait for complete manager.
+		    m_lc.wait_for_tasks ();
 
-		// We need to wait for previous group to complete. Otherwise, we mix transactions from previous and
-		// current groups.
-		m_p_dispatch_consumer->wait_for_complete_stream_position (m_prev_group_stream_position);
+		    // We need to wait for previous group to complete. Otherwise, we mix transactions from previous and
+		    // current groups.
+		    m_p_dispatch_consumer->wait_for_complete_stream_position (m_prev_group_stream_position);
+		  }
 
 		// apply all sub-transaction first
 		m_lc.get_subtran_applier ().apply ();
 
+		// apply the transaction in current group
 		count_expected_transaction = 0;
 		for (tasks_map::iterator it = repl_tasks.begin (); it != repl_tasks.end (); it++)
 		  {
@@ -291,8 +296,17 @@ namespace cubreplication
 		// The transactions started but can't complete yet since it waits for the current group complete.
 		// But the current group can't complete, since GC thread is waiting for close info.
 		// Now is safe to set close info.
-		m_p_dispatch_consumer->set_close_info_for_current_group (m_curr_group_stream_position,
-		    count_expected_transaction);
+		if (count_expected_transaction > 0)
+		  {
+		    /* We have committed transaction with replication entries. */
+		    m_p_dispatch_consumer->set_close_info_for_current_group (m_curr_group_stream_position,
+			count_expected_transaction);
+		  }
+		else
+		  {
+		    er_log_debug (ARG_FILE_LINE, "No replication entries in group having stream position (%llu, %llu)\n",
+				  se->get_stream_entry_start_position (), se->get_stream_entry_end_position ());
+		  }
 	      }
 	    else if (se->is_new_master ())
 	      {
