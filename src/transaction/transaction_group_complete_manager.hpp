@@ -57,7 +57,7 @@ namespace cubtx
       {
 
       }
-      ~group_complete_manager () override = default;
+      ~group_complete_manager () override;
 
       id_type register_transaction (int tran_index, MVCCID mvccid, TRAN_STATE state) override final;
 
