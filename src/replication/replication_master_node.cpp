@@ -119,7 +119,7 @@ namespace cubreplication
 
     setup_protocol (chn);
 
-    master_senders_manager::add_stream_sender (new cubstream::transfer_sender (std::move (chn), *m_stream));    
+    master_senders_manager::add_stream_sender (new cubstream::transfer_sender (std::move (chn), *m_stream));
 
     er_log_debug_replication (ARG_FILE_LINE, "new_slave connected");
   }
@@ -150,9 +150,9 @@ namespace cubreplication
   master_node::set_ctrl_channel_manager_stream_ack (cubstream::stream_ack *stream_ack)
   {
     if (m_control_channel_manager != NULL)
-    {
-      m_control_channel_manager->set_stream_ack(stream_ack);
-    }
+      {
+	m_control_channel_manager->set_stream_ack (stream_ack);
+      }
   }
 
   master_node::~master_node ()

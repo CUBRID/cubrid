@@ -64,7 +64,7 @@ namespace cubreplication
 		se->unpack ();
 		assert (se->get_stream_entry_end_position () > se->get_stream_entry_start_position ());
 
-		m_lc.ack_produce (se->get_stream_entry_end_position ());		
+		m_lc.ack_produce (se->get_stream_entry_end_position ());
 		er_log_debug (ARG_FILE_LINE, "consumer_daemon_task::send ack = %llu\n", se->get_stream_entry_end_position ());
 	      }
 	    m_lc.push_entry (se);
@@ -140,7 +140,7 @@ namespace cubreplication
       }
 
     private:
-      std::vector<stream_entry *> m_repl_stream_entries;      
+      std::vector<stream_entry *> m_repl_stream_entries;
       log_consumer &m_lc;
   };
 
@@ -232,9 +232,9 @@ namespace cubreplication
 		// start wait for workers first, then wait for complete manager.
 		m_lc.wait_for_tasks ();
 
-                // We need to wait for previous group to complete. Otherwise, we mix transactions from previous and
-                // current groups.
-                m_p_dispatch_consumer->wait_for_complete_stream_position (m_prev_group_stream_position);
+		// We need to wait for previous group to complete. Otherwise, we mix transactions from previous and
+		// current groups.
+		m_p_dispatch_consumer->wait_for_complete_stream_position (m_prev_group_stream_position);
 
 		// apply all sub-transaction first
 		m_lc.get_subtran_applier ().apply ();
@@ -301,7 +301,7 @@ namespace cubreplication
 	    else if (se->is_subtran_commit ())
 	      {
 		m_lc.get_subtran_applier ().insert_stream_entry (se);
-	      }	    
+	      }
 	    else if (se->get_packable_entry_count_from_header () > 0)
 	      {
 		MVCCID mvccid = se->get_mvccid ();
@@ -442,7 +442,7 @@ namespace cubreplication
     /* Increase m_started_task before starting the task. */
     m_started_tasks++;
 
-    cubthread::get_manager ()->push_task (m_applier_workers_pool, task);    
+    cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
   }
 
   void log_consumer::execute_task (applier_worker_task *task)
@@ -453,7 +453,7 @@ namespace cubreplication
 	task->stringify (sb);
 	_er_log_debug (ARG_FILE_LINE, "log_consumer::execute_task:\n%s", sb.get_buffer ());
       }
-    
+
     push_task (task);
   }
 

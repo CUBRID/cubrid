@@ -149,11 +149,11 @@ namespace cubreplication
     std::lock_guard<std::mutex> lg (m_mtx);
 
     /* Destroy existing channels, if were not already destroyed. */
-    er_log_debug (ARG_FILE_LINE, "master_ctrl::set_stream_ack close %d reader channels\n", m_ctrl_channel_readers.size());
-    for (auto it = m_ctrl_channel_readers.begin(); it != m_ctrl_channel_readers.end();)
+    er_log_debug (ARG_FILE_LINE, "master_ctrl::set_stream_ack close %d reader channels\n", m_ctrl_channel_readers.size ());
+    for (auto it = m_ctrl_channel_readers.begin (); it != m_ctrl_channel_readers.end (); )
       {
-	it->second->close_connection();
-	cubthread::get_manager()->destroy_daemon (it->first);
+	it->second->close_connection ();
+	cubthread::get_manager ()->destroy_daemon (it->first);
 	it = m_ctrl_channel_readers.erase (it);
       }
 
@@ -164,7 +164,8 @@ namespace cubreplication
   master_ctrl::check_alive ()
   {
     std::lock_guard<std::mutex> lg (m_mtx);
-    for (auto it = m_ctrl_channel_readers.begin (); it != m_ctrl_channel_readers.end ();)
+
+    for (auto it = m_ctrl_channel_readers.begin (); it != m_ctrl_channel_readers.end (); )
       {
 	if (!it->second->is_connection_alive ())
 	  {

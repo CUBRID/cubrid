@@ -34,7 +34,7 @@
 namespace cubreplication
 {
 
-   const char *
+  const char *
   stream_entry_header::tran_state_string (stream_entry_header::TRAN_STATE state)
   {
     switch (state)

@@ -145,6 +145,8 @@ namespace cubreplication
      */
     logtb_get_current_mvccid (&cubthread::get_entry ());
 
+    assert (MVCCID_IS_VALID (logtb_get_tdes (&cubthread::get_entry ())->mvccinfo.id));
+
     m_stream_entry.add_packable_entry (&object);
 
     er_log_repl_obj (&object, "log_generator::append_repl_object");
@@ -453,7 +455,7 @@ namespace cubreplication
     if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
       {
 	/* Reset stream entry. */
-	m_stream_entry.reset();
+	m_stream_entry.reset ();
 	return;
       }
 #endif

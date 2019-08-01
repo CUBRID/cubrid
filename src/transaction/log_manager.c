@@ -9770,21 +9770,21 @@ log_flush_daemon_get_stats (UINT64 * statsp)
 }
 #endif // SERVER_MODE
 
-// *INDENT-OFF*
 #if defined(SERVER_MODE)
 static void
 log_checkpoint_execute (cubthread::entry & thread_ref)
 {
-      if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
+  if (!BO_IS_SERVER_RESTARTED ())
+    {
+      // wait for boot to finish
+      return;
+    }
 
-      logpb_checkpoint (&thread_ref);
+  logpb_checkpoint (&thread_ref);
 }
 #endif /* SERVER_MODE */
 
+// *INDENT-OFF*
 #if defined(SERVER_MODE)
 // class log_remove_log_archive_daemon_task
 //
@@ -9881,147 +9881,148 @@ class log_remove_log_archive_daemon_task : public cubthread::entry_task
     }
 };
 #endif /* SERVER_MODE */
+// *INDENT-ON*
 
 #if defined(SERVER_MODE)
 static void
 log_clock_execute (cubthread::entry & thread_ref)
 {
-      if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
+  if (!BO_IS_SERVER_RESTARTED ())
+    {
+      // wait for boot to finish
+      return;
+    }
 
-      struct timeval now;
-      gettimeofday (&now, NULL);
+  struct timeval now;
+  gettimeofday (&now, NULL);
 
-      log_Clock_msec = (now.tv_sec * 1000LL) + (now.tv_usec / 1000LL);
+  log_Clock_msec = (now.tv_sec * 1000LL) + (now.tv_usec / 1000LL);
 }
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
 static void
-log_check_ha_delay_info_execute (cubthread::entry &thread_ref)
+log_check_ha_delay_info_execute (cubthread::entry & thread_ref)
 {
 #if defined(WINDOWS)
-      return;
+  return;
 #endif /* WINDOWS */
 
-      if (!BO_IS_SERVER_RESTARTED ())
+  if (!BO_IS_SERVER_RESTARTED ())
+    {
+      // wait for boot to finish
+      return;
+    }
+
+  time_t log_record_time = 0;
+  int error_code;
+  int delay_limit_in_secs;
+  int acceptable_delay_in_secs;
+  int curr_delay_in_secs;
+  HA_SERVER_STATE server_state;
+
+  csect_enter (&thread_ref, CSECT_HA_SERVER_STATE, INF_WAIT);
+
+  server_state = css_ha_server_state ();
+
+  if (server_state == HA_SERVER_STATE_ACTIVE || server_state == HA_SERVER_STATE_TO_BE_STANDBY)
+    {
+      css_unset_ha_repl_delayed ();
+      perfmon_set_stat (&thread_ref, PSTAT_HA_REPL_DELAY, 0, true);
+
+      log_append_ha_server_state (&thread_ref, server_state);
+
+      csect_exit (&thread_ref, CSECT_HA_SERVER_STATE);
+    }
+  else
+    {
+      csect_exit (&thread_ref, CSECT_HA_SERVER_STATE);
+
+      delay_limit_in_secs = prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_IN_SECS);
+      acceptable_delay_in_secs = delay_limit_in_secs - prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_DELTA_IN_SECS);
+
+      if (acceptable_delay_in_secs < 0)
 	{
-	  // wait for boot to finish
-	  return;
+	  acceptable_delay_in_secs = 0;
 	}
 
-      time_t log_record_time = 0;
-      int error_code;
-      int delay_limit_in_secs;
-      int acceptable_delay_in_secs;
-      int curr_delay_in_secs;
-      HA_SERVER_STATE server_state;
+      error_code = catcls_get_apply_info_log_record_time (&thread_ref, &log_record_time);
 
-      csect_enter (&thread_ref, CSECT_HA_SERVER_STATE, INF_WAIT);
-
-      server_state = css_ha_server_state ();
-
-      if (server_state == HA_SERVER_STATE_ACTIVE || server_state == HA_SERVER_STATE_TO_BE_STANDBY)
+      if (error_code == NO_ERROR && log_record_time > 0)
 	{
-	  css_unset_ha_repl_delayed ();
-	  perfmon_set_stat (&thread_ref, PSTAT_HA_REPL_DELAY, 0, true);
-
-	  log_append_ha_server_state (&thread_ref, server_state);
-
-	  csect_exit (&thread_ref, CSECT_HA_SERVER_STATE);
-	}
-      else
-	{
-	  csect_exit (&thread_ref, CSECT_HA_SERVER_STATE);
-
-	  delay_limit_in_secs = prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_IN_SECS);
-	  acceptable_delay_in_secs = delay_limit_in_secs - prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_DELTA_IN_SECS);
-
-	  if (acceptable_delay_in_secs < 0)
+	  curr_delay_in_secs = (int) (time (NULL) - log_record_time);
+	  if (curr_delay_in_secs > 0)
 	    {
-	      acceptable_delay_in_secs = 0;
+	      curr_delay_in_secs -= HA_DELAY_ERR_CORRECTION;
 	    }
 
-	  error_code = catcls_get_apply_info_log_record_time (&thread_ref, &log_record_time);
-
-	  if (error_code == NO_ERROR && log_record_time > 0)
+	  if (delay_limit_in_secs > 0)
 	    {
-	      curr_delay_in_secs = (int) (time (NULL) - log_record_time);
-	      if (curr_delay_in_secs > 0)
+	      if (curr_delay_in_secs > delay_limit_in_secs)
 		{
-		  curr_delay_in_secs -= HA_DELAY_ERR_CORRECTION;
-		}
-
-	      if (delay_limit_in_secs > 0)
-		{
-		  if (curr_delay_in_secs > delay_limit_in_secs)
+		  if (!css_is_ha_repl_delayed ())
 		    {
-		      if (!css_is_ha_repl_delayed ())
-			{
-			  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_DELAY_DETECTED, 2,
-				  curr_delay_in_secs, delay_limit_in_secs);
+		      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_DELAY_DETECTED, 2,
+			      curr_delay_in_secs, delay_limit_in_secs);
 
-			  css_set_ha_repl_delayed ();
-			}
-		    }
-		  else if (curr_delay_in_secs <= acceptable_delay_in_secs)
-		    {
-		      if (css_is_ha_repl_delayed ())
-			{
-			  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_DELAY_RESOLVED, 2,
-				  curr_delay_in_secs, acceptable_delay_in_secs);
-
-			  css_unset_ha_repl_delayed ();
-			}
+		      css_set_ha_repl_delayed ();
 		    }
 		}
+	      else if (curr_delay_in_secs <= acceptable_delay_in_secs)
+		{
+		  if (css_is_ha_repl_delayed ())
+		    {
+		      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_DELAY_RESOLVED, 2,
+			      curr_delay_in_secs, acceptable_delay_in_secs);
 
-	      perfmon_set_stat (&thread_ref, PSTAT_HA_REPL_DELAY, curr_delay_in_secs, true);
+		      css_unset_ha_repl_delayed ();
+		    }
+		}
 	    }
+
+	  perfmon_set_stat (&thread_ref, PSTAT_HA_REPL_DELAY, curr_delay_in_secs, true);
 	}
+    }
 }
 #endif /* SERVER_MODE */
 
 #if defined (SERVER_MODE)
 
-static log_flush_lsa * p_log_flush_lsa = NULL;
+static log_flush_lsa *p_log_flush_lsa = NULL;
 
 static void
 log_flush_execute (cubthread::entry & thread_ref)
 {
-      LOG_LSA nxio_lsa;
+  LOG_LSA nxio_lsa;
 
-      if (!BO_IS_SERVER_RESTARTED () || !log_Flush_has_been_requested)
-	{
-	  return;
-	}
+  if (!BO_IS_SERVER_RESTARTED () || !log_Flush_has_been_requested)
+    {
+      return;
+    }
 
-      // refresh log trace flush time
-      thread_ref.event_stats.trace_log_flush_time = prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
+  // refresh log trace flush time
+  thread_ref.event_stats.trace_log_flush_time = prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
 
-      LOG_CS_ENTER (&thread_ref);
-      logpb_flush_pages_direct (&thread_ref);
-      LOG_CS_EXIT (&thread_ref);
+  LOG_CS_ENTER (&thread_ref);
+  logpb_flush_pages_direct (&thread_ref);
+  LOG_CS_EXIT (&thread_ref);
 
-      log_Stat.gc_flush_count++;
+  log_Stat.gc_flush_count++;
 
-      /* Wakeup transaction waiting for group complete. */
-      if (p_log_flush_lsa != NULL)
-	{
-          nxio_lsa = log_Gl.append.get_nxio_lsa ();
-          p_log_flush_lsa->notify_log_flush_lsa (&nxio_lsa);
-	}
+  /* Wakeup transaction waiting for group complete. */
+  if (p_log_flush_lsa != NULL)
+    {
+      nxio_lsa = log_Gl.append.get_nxio_lsa ();
+      p_log_flush_lsa->notify_log_flush_lsa (&nxio_lsa);
+    }
 
-      /* Wakeup active transaction waiting for specific LSA - not waiting for group complete.
-       * A better way will be to use another object that implements log_flush_lsa interface.
-       */
-      std::unique_lock<std::mutex> ulock (log_Gl.flush_notify_info.m_mutex);
-      log_Gl.flush_notify_info.m_cond.notify_all ();
-      log_Flush_has_been_requested = false;
-      ulock.unlock ();
+  /* Wakeup active transaction waiting for specific LSA - not waiting for group complete.
+   * A better way will be to use another object that implements log_flush_lsa interface.
+   */
+  std::unique_lock < std::mutex > ulock (log_Gl.flush_notify_info.m_mutex);
+  log_Gl.flush_notify_info.m_cond.notify_all ();
+  log_Flush_has_been_requested = false;
+  ulock.unlock ();
 }
 
 #endif /* SERVER_MODE */
@@ -10046,6 +10047,7 @@ log_set_notify (bool need_log_notify)
 #endif /* SERVER_MODE */
 }
 
+// *INDENT-OFF*
 #if defined(SERVER_MODE)
 /*
  * log_checkpoint_daemon_init () - initialize checkpoint daemon

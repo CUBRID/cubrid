@@ -21,8 +21,8 @@
 // Manager of completed group on a HA slave node
 //
 
-#ifndef __TRANSACTION_SLAVE_GROUP_COMPLETE_MANAGER_HPP_
-#define __TRANSACTION_SLAVE_GROUP_COMPLETE_MANAGER_HPP_
+#ifndef _TRANSACTION_SLAVE_GROUP_COMPLETE_MANAGER_HPP_
+#define _TRANSACTION_SLAVE_GROUP_COMPLETE_MANAGER_HPP_
 
 #include "transaction_group_complete_manager.hpp"
 
@@ -86,4 +86,4 @@ namespace cubtx
   };
 }
 
-#endif // __TRANSACTION_SLAVE_GROUP_COMPLETE_MANAGER_HPP_
+#endif // _TRANSACTION_SLAVE_GROUP_COMPLETE_MANAGER_HPP_

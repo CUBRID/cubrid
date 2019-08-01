@@ -158,7 +158,7 @@ namespace cubreplication
     assert (m_lc == NULL);
 
     /* connect to replication master node */
-    cubcomm::server_channel srv_chn (m_identity.get_hostname().c_str());
+    cubcomm::server_channel srv_chn (m_identity.get_hostname ().c_str ());
     srv_chn.set_channel_name (REPL_ONLINE_CHANNEL_NAME);
 
     m_master_identity.set_hostname (master_node_hostname);
@@ -226,7 +226,7 @@ namespace cubreplication
     /* start log_consumer daemons and apply thread pool */
     m_lc->start_daemons ();
 
-    cubcomm::server_channel control_chn (m_identity.get_hostname().c_str());
+    cubcomm::server_channel control_chn (m_identity.get_hostname ().c_str ());
     control_chn.set_channel_name (REPL_CONTROL_CHANNEL_NAME);
     error = control_chn.connect (m_master_identity.get_hostname ().c_str (),
 				 m_master_identity.get_port (),
@@ -241,7 +241,7 @@ namespace cubreplication
 		cubreplication::slave_control_channel (std::move (control_chn))));
 
     std::string ctrl_sender_daemon_name = "slave_control_sender_" + control_chn.get_channel_id ();
-    m_ctrl_sender_daemon = cubthread::get_manager()->create_daemon_without_entry (cubthread::delta_time (0),
+    m_ctrl_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
 			   ctrl_sender, ctrl_sender_daemon_name.c_str ());
 
     m_ctrl_sender = ctrl_sender;

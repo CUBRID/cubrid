@@ -49,18 +49,17 @@ namespace cubtx
   void single_node_group_complete_manager::init ()
   {
     assert (gl_single_node_group == NULL);
-    er_log_debug (ARG_FILE_LINE, "single_node_group_complete_manager:init created single " \
-		  "group complete manager\n");
-    gl_single_node_group = new single_node_group_complete_manager();
+    er_log_debug (ARG_FILE_LINE, "single_node_group_complete_manager:init created single group complete manager\n");
+    gl_single_node_group = new single_node_group_complete_manager ();
 
     LSA_SET_NULL (&gl_single_node_group->m_latest_closed_group_start_log_lsa);
     LSA_SET_NULL (&gl_single_node_group->m_latest_closed_group_end_log_lsa);
 
 #if defined (SERVER_MODE)
     cubthread::looper looper = cubthread::looper (single_node_group_complete_manager::get_group_commit_interval);
-    single_node_group_complete_manager::gl_single_node_group_complete_daemon = cubthread::get_manager()->create_daemon ((
-		looper),
-	new single_node_group_complete_task(), "single_node_group_complete_daemon");
+    single_node_group_complete_manager::gl_single_node_group_complete_daemon =
+	    cubthread::get_manager ()->create_daemon ((looper), new single_node_group_complete_task (),
+		"single_node_group_complete_daemon");
 #endif
   }
 
