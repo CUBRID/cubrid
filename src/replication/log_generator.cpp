@@ -143,12 +143,7 @@ namespace cubreplication
      * all such cases from beginning (before calling the current function). Then, we can simply
      * replace the next logtb_get_current_mvccid call with assert.
      */
-    if (m_stream_entry.count_entries () == 0)
-      {
-	logtb_get_current_mvccid (&cubthread::get_entry ());
-      }
-
-    assert (MVCCID_IS_VALID ((logtb_get_tdes (&cubthread::get_entry ())->mvccinfo.id)));
+    logtb_get_current_mvccid (&cubthread::get_entry ());
 
     m_stream_entry.add_packable_entry (&object);
 
