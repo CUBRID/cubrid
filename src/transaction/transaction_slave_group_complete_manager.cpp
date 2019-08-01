@@ -47,9 +47,8 @@ namespace cubtx
   void slave_group_complete_manager::init ()
   {
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
-    gl_slave_group = new slave_group_complete_manager();
-    er_log_debug (ARG_FILE_LINE, "slave_group_complete_manager:init created slave " \
-		  "group complete manager\n");
+    gl_slave_group = new slave_group_complete_manager ();
+    er_log_debug (ARG_FILE_LINE, "slave_group_complete_manager:init created slave group complete manager\n");
     gl_slave_group->m_latest_group_id = NULL_ID;
     gl_slave_group->m_latest_group_stream_position = 0;
     gl_slave_group->m_has_latest_group_close_info.store (false);

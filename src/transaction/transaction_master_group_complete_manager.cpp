@@ -48,14 +48,13 @@ namespace cubtx
   void master_group_complete_manager::init ()
   {
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
-    gl_master_group = new master_group_complete_manager();
-    er_log_debug (ARG_FILE_LINE, "master_group_complete_manager:init created master " \
-		  "group complete manager\n");
+    gl_master_group = new master_group_complete_manager ();
+    er_log_debug (ARG_FILE_LINE, "master_group_complete_manager:init created master group complete manager\n");
     gl_master_group->m_latest_closed_group_start_stream_position = 0;
     gl_master_group->m_latest_closed_group_end_stream_position = 0;
 
-    master_group_complete_manager::gl_master_group_complete_daemon = cubthread::get_manager()->create_daemon ((looper),
-	new master_group_complete_task(), "master_group_complete_daemon");
+    master_group_complete_manager::gl_master_group_complete_daemon = cubthread::get_manager ()->create_daemon ((looper),
+	new master_group_complete_task (), "master_group_complete_daemon");
   }
 
   //
@@ -65,7 +64,7 @@ namespace cubtx
   {
     if (gl_master_group_complete_daemon != NULL)
       {
-	cubthread::get_manager()->destroy_daemon (gl_master_group_complete_daemon);
+	cubthread::get_manager ()->destroy_daemon (gl_master_group_complete_daemon);
 	gl_master_group_complete_daemon = NULL;
       }
 
@@ -154,8 +153,7 @@ namespace cubtx
 
 	/* Pack group commit that internally wakeups senders. Get stream position of group complete. */
 	logtb_get_tdes (thread_p)->get_replication_generator ().pack_group_commit_entry (closed_group,
-	    closed_group_stream_start_position,
-	    closed_group_stream_end_position);
+	    closed_group_stream_start_position, closed_group_stream_end_position);
 	m_latest_closed_group_start_stream_position = closed_group_stream_start_position;
 	m_latest_closed_group_end_stream_position = closed_group_stream_end_position;
 	mark_latest_closed_group_prepared_for_complete ();
