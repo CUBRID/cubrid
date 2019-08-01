@@ -13914,13 +13914,19 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
   assert (db_user != NULL && statement != NULL && tdes != NULL);
   sprintf (tran_index_str, "%d", tran_index);
 
+  if (*statement == '\0')
+    {
+      _er_log_debug (ARG_FILE_LINE, "locator_repl_apply_sbr : empty statement : nothing to do");
+      return error;
+    }
+
   /* TODO - maybe we have to decide based on whole argv length rather than statement length. */
   if (strlen (statement) <= HA_DDL_PROXY_MAX_STATEMENT_LENGTH && (strpbrk (statement, "\"\'\t") == NULL))
     {
       /* Uses command option. */
       command_option = "-c";
       command = statement;
-      ha_sys_param_option = "-s";
+      ha_sys_param_option = (ha_sys_prm_context != NULL) ? "-s" : NULL;
       ha_sys_param = ha_sys_prm_context;
     }
   else
