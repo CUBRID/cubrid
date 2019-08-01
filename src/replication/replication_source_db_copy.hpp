@@ -125,7 +125,7 @@ namespace cubreplication
       void stop ();
 
     private:
-      int wait_for_state (const copy_stage &desired_state);
+      int wait_for_state (cubthread::entry &thread_ref, const copy_stage &desired_state);
       cubstream::multi_thread_stream *acquire_stream ();
       void release_stream ();
 
@@ -134,9 +134,11 @@ namespace cubreplication
       void pack_and_add_end_of_extract_heap ();
       void pack_and_add_end_of_copy ();
 
-      int wait_slave_finished (void);
-      int wait_receive_class_list (void);
-      int wait_send_triggers_indexes (void);
+      int wait_slave_finished ();
+      int wait_receive_class_list (cubthread::entry &thread_ref);
+      int wait_send_triggers_indexes (cubthread::entry &thread_ref);
+
+      bool is_interrupted (cubthread::entry &thread_ref);
 
     private:
       int m_tran_index;

@@ -226,7 +226,6 @@ namespace cubreplication
 	return error;
       }
 
-
     /* TODO[replication] : last position to be retrieved from recovery module */
     cubstream::stream_position start_position = 0;
 

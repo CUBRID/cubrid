@@ -198,26 +198,33 @@ namespace cubreplication
     return error;
   }
 
-  int source_copy_context::wait_for_state (const copy_stage &desired_state)
+  int source_copy_context::wait_for_state (cubthread::entry &thread_ref, const copy_stage &desired_state)
   {
     er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_for_state %d", desired_state);
     std::unique_lock<std::mutex> ulock_state (m_state_mutex);
-    m_state_cv.wait (ulock_state, [this, desired_state] { return m_state == desired_state || m_is_stop;});
-    if (m_is_stop)
+    m_state_cv.wait (ulock_state, [this, desired_state, &thread_ref] 
+                                  { return m_state == desired_state || m_is_stop || thread_ref.shutdown; });
+    if (is_interrupted (thread_ref))
       {
 	return ER_INTERRUPTED;
       }
     return NO_ERROR;
   }
 
-  int source_copy_context::wait_receive_class_list (void)
+  int source_copy_context::wait_receive_class_list (cubthread::entry &thread_ref)
   {
-    return wait_for_state (SCHEMA_CLASSES_LIST_FINISHED);
+    return wait_for_state (thread_ref, SCHEMA_CLASSES_LIST_FINISHED);
   }
 
-  int source_copy_context::wait_send_triggers_indexes (void)
+  int source_copy_context::wait_send_triggers_indexes (cubthread::entry &thread_ref)
   {
-    return wait_for_state (SCHEMA_APPLY_INDEXES);
+    return wait_for_state (thread_ref, SCHEMA_APPLY_INDEXES);
+  }
+
+  
+  bool source_copy_context::is_interrupted (cubthread::entry &thread_ref)
+  {
+    return m_is_stop || thread_ref.shutdown == true;
   }
 
   int source_copy_context::get_tran_index (void)
@@ -327,7 +334,7 @@ namespace cubreplication
     /* extraction process : schema phase : start the client process */
     locator_repl_extract_schema (&thread_ref, "dba", "");
 
-    if (wait_receive_class_list () == ER_INTERRUPTED)
+    if (wait_receive_class_list (thread_ref) == ER_INTERRUPTED)
       {
 	return;
       }
@@ -346,7 +353,7 @@ namespace cubreplication
     /* wait for all heap extract threads to end */
     while (get_extract_running_thread () > 0)
       {
-	if (m_is_stop)
+	if (is_interrupted (thread_ref))
 	  {
 	    return;
 	  }
@@ -358,7 +365,7 @@ namespace cubreplication
     execute_and_transit_phase (SCHEMA_APPLY_TRIGGERS);
     execute_and_transit_phase (SCHEMA_APPLY_INDEXES);
     /* wait for indexes and triggers schema */
-    if (wait_send_triggers_indexes () == ER_INTERRUPTED)
+    if (wait_send_triggers_indexes (thread_ref) == ER_INTERRUPTED)
       {
 	return;
       }
