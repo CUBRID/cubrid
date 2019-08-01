@@ -540,6 +540,7 @@ struct log_tdes
 
   LOG_RCV_TDES rcv;
   const char *ha_sbr_statement;
+  const char *ha_sys_param;
   // *INDENT-OFF*
 #if defined (SERVER_MODE)
   cubreplication::source_copy_context *replication_copy_context;

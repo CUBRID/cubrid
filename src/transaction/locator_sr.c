@@ -13822,13 +13822,14 @@ xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK
 }
 
 int
-xlocator_get_proxy_command (THREAD_ENTRY * thread_p, const char **proxy_command)
+xlocator_get_proxy_command (THREAD_ENTRY * thread_p, const char **proxy_command, const char **proxy_sys_param)
 {
   LOG_TDES *tdes;
   assert (proxy_command != NULL);
 
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
   *proxy_command = tdes->ha_sbr_statement;
+  *proxy_sys_param = tdes->ha_sys_param;
 
   return NO_ERROR;
 }
@@ -13907,6 +13908,8 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
   const char *command_option = NULL, *command = NULL;
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  const char *ha_sys_param_option = NULL;
+  const char *ha_sys_param = NULL;
 
   assert (db_user != NULL && statement != NULL && tdes != NULL);
   sprintf (tran_index_str, "%d", tran_index);
@@ -13917,13 +13920,18 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
       /* Uses command option. */
       command_option = "-c";
       command = statement;
+      ha_sys_param_option = "-s";
+      ha_sys_param = ha_sys_prm_context;
     }
   else
     {
       /* Uses request option. */
       tdes->ha_sbr_statement = statement;
+      tdes->ha_sys_param = ha_sys_prm_context;
       command_option = "-r";
       command = NULL;
+      ha_sys_param_option = NULL;
+      ha_sys_param = NULL;
     }
 
   // connect explicitly to localhost
@@ -13939,8 +13947,8 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
     tran_index_str,
     command_option,
     command,
-    (ha_sys_prm_context != NULL) ? "-s" : NULL,
-    ha_sys_prm_context,
+    ha_sys_param_option,
+    ha_sys_param,
     NULL
   };
 

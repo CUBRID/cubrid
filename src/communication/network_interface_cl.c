@@ -9944,10 +9944,11 @@ locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * ex_lock)
  *
  * return : error code
  * proxy_command (out): proxy command
+ * proxy_sys_param (out): sys parameters for HA
  *
  */
 int
-locator_get_proxy_command (const char **proxy_command)
+locator_get_proxy_command (const char **proxy_command, const char **proxy_sys_param)
 {
 #if defined(CS_MODE)
   int error_code = ER_NET_CLIENT_DATA_RECEIVE;
@@ -9958,8 +9959,10 @@ locator_get_proxy_command (const char **proxy_command)
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply;
   char *local_proxy_command = NULL;
+  char *local_proxy_sys_param = NULL;
 
   assert (proxy_command != NULL);
+  assert (proxy_sys_param != NULL);
 
   reply = OR_ALIGNED_BUF_START (a_reply);
   req_error = net_client_request2 (NET_SERVER_LC_GET_PROXY_COMMAND, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
@@ -9968,7 +9971,7 @@ locator_get_proxy_command (const char **proxy_command)
     {
       ptr = or_unpack_int (reply, &area_size);
       ptr = or_unpack_int (ptr, &error_code);
-      or_unpack_string_nocopy (area, &local_proxy_command);
+      ptr = or_unpack_string_nocopy (area, &local_proxy_command);
       if (local_proxy_command != NULL)
 	{
 	  *proxy_command = strdup (local_proxy_command);
@@ -9979,6 +9982,19 @@ locator_get_proxy_command (const char **proxy_command)
 	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 	}
+      
+      ptr = or_unpack_string_nocopy (ptr, &local_proxy_sys_param);
+      if (local_proxy_sys_param != NULL)
+	{
+	  *proxy_sys_param = strdup (local_proxy_sys_param);
+	  if (*proxy_sys_param == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      (size_t) (strlen (local_proxy_sys_param) + 1));
+	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	}
+
       free_and_init (area);
     }
 
@@ -9987,7 +10003,7 @@ locator_get_proxy_command (const char **proxy_command)
   int error_code;
   THREAD_ENTRY *thread_p = enter_server ();
 
-  error_code = xlocator_get_proxy_command (thread_p, proxy_command);
+  error_code = xlocator_get_proxy_command (thread_p, proxy_command, proxy_sys_param);
 
   exit_server (*thread_p);
 

@@ -9734,12 +9734,13 @@ slocator_get_proxy_command (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 {
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  int area_size, strlen1;
+  int area_size, strlen1, strlen2;
   char *area = NULL, *p = NULL;
   const char *proxy_command = NULL;
+  const char *proxy_sys_param = NULL;
   int error_code;
 
-  error_code = xlocator_get_proxy_command (thread_p, &proxy_command);
+  error_code = xlocator_get_proxy_command (thread_p, &proxy_command, &proxy_sys_param);
   if (error_code != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -9748,7 +9749,8 @@ slocator_get_proxy_command (THREAD_ENTRY * thread_p, unsigned int rid, char *req
     }
   else
     {
-      area_size = or_packed_string_length (proxy_command, &strlen1);
+      area_size = or_packed_string_length (proxy_command, &strlen1)
+                  + or_packed_string_length (proxy_sys_param, &strlen2);
       area = (char *) db_private_alloc (thread_p, area_size);
       if (area == NULL)
 	{
@@ -9757,7 +9759,8 @@ slocator_get_proxy_command (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 	}
       else
 	{
-	  (void) or_pack_string_with_length (area, proxy_command, strlen1);
+	  p = or_pack_string_with_length (area, proxy_command, strlen1);
+          p = or_pack_string_with_length (p, proxy_sys_param, strlen2);
 	}
     }
 
