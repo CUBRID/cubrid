@@ -645,6 +645,7 @@ struct global_unique_stats_table
 #define GLOBAL_UNIQUE_STATS_HASH_SIZE 1000
 
 /* Global structure to trantable, log buffer pool, etc */
+// *INDENT-OFF*
 namespace cubreplication
 {
   struct replication_rv
