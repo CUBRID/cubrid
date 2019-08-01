@@ -2118,7 +2118,7 @@ css_transit_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE req_state)
     {
       if (table->cur_state == ha_Server_state && table->req_state == req_state)
 	{
-	  er_log_debug (ARG_FILE_LINE, "css_transit_ha_server_state: " "ha_Server_state (%s) -> (%s)\n",
+	  er_log_debug (ARG_FILE_LINE, "css_transit_ha_server_state: ha_Server_state (%s) -> (%s)\n",
 			css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (table->next_state));
 	  new_state = table->next_state;
 	  /* append a dummy log record for LFT to wake LWTs up */
@@ -2176,7 +2176,7 @@ css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p, int whence)
       if (whence == FROM_REGISTER_CLIENT)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_FROM_SERVER, 1,
-		  "Connection rejected. " "The server is changing to standby mode.");
+		  "Connection rejected. The server is changing to standby mode.");
 	  err = ERR_CSS_ERROR_FROM_SERVER;
 	}
       /*
@@ -2194,7 +2194,7 @@ css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p, int whence)
 	      assert (state == HA_SERVER_STATE_STANDBY);
 	      if (state == HA_SERVER_STATE_STANDBY)
 		{
-		  er_log_debug (ARG_FILE_LINE, "css_check_ha_server_state_for_client: " "logtb_disable_update() \n");
+		  er_log_debug (ARG_FILE_LINE, "css_check_ha_server_state_for_client: logtb_disable_update() \n");
 		  logtb_disable_update (thread_p);
 		}
 	    }
@@ -2261,7 +2261,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
   HA_SERVER_STATE orig_state;
   int i;
 
-  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: ha_Server_state %s " "state %s force %c heartbeat %c\n",
+  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: ha_Server_state %s state %s force %c heartbeat %c\n",
 		css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (state), (force ? 't' : 'f'),
 		(heartbeat ? 't' : 'f'));
 
@@ -2288,7 +2288,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
     {
       if (ha_Server_state != state)
 	{
-	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state:" " set force from %s to state %s\n",
+	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: set force from %s to state %s\n",
 			css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (state));
 
 	  if (state == HA_SERVER_STATE_ACTIVE)
@@ -2346,7 +2346,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	      // db_Disable_modifications flag should be set false before fully transitioning to HA_SERVER_STATE_ACTIVE
 	      logtb_enable_update (thread_p);
 	    }
-	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "css_check_ha_log_applier_done ()\n");
+	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: css_check_ha_log_applier_done ()\n");
 	  state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
 	  assert (state == HA_SERVER_STATE_ACTIVE);
 	}
@@ -2363,7 +2363,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  /* If all log appliers have done their recovering actions, go directly to standby mode */
 	  if (css_check_ha_log_applier_working ())
 	    {
-	      er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "css_check_ha_log_applier_working ()\n");
+	      er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: css_check_ha_log_applier_working ()\n");
 	      state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
 	      assert (state == HA_SERVER_STATE_STANDBY);
 	    }
@@ -2373,7 +2373,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  /* If there's no active clients (except me), go directly to standby mode */
 	  if (logtb_count_clients (thread_p) == 0)
 	    {
-	      er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_count_clients () = 0\n");
+	      er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: logtb_count_clients () = 0\n");
 	      state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
 	      assert (state == HA_SERVER_STATE_STANDBY);
 	    }
@@ -2384,7 +2384,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	}
       if (state == HA_SERVER_STATE_STANDBY)
 	{
-	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_disable_update () \n");
+	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: logtb_disable_update () \n");
 	  assert (!HA_DISABLED ());
 	  cubreplication::replication_node_manager::commute_to_slave_state ();
 	  logtb_disable_update (thread_p);
@@ -2400,7 +2400,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 
       if (state == HA_SERVER_STATE_MAINTENANCE)
 	{
-	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_enable_update () \n");
+	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: logtb_enable_update () \n");
 	  logtb_enable_update (thread_p);
 
 	  boot_server_status (BOOT_SERVER_MAINTENANCE);
@@ -2499,24 +2499,24 @@ css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE s
 
   if (css_check_ha_log_applier_done ())
     {
-      er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: " "css_check_ha_log_applier_done ()\n");
+      er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: css_check_ha_log_applier_done ()\n");
       server_state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
       assert (server_state == HA_SERVER_STATE_ACTIVE);
       if (server_state == HA_SERVER_STATE_ACTIVE)
 	{
-	  er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: " "logtb_enable_update () \n");
+	  er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: logtb_enable_update () \n");
 	  logtb_enable_update (thread_p);
 	}
     }
 
   if (css_check_ha_log_applier_working ())
     {
-      er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: " "css_check_ha_log_applier_working ()\n");
+      er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: css_check_ha_log_applier_working ()\n");
       server_state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
       assert (server_state == HA_SERVER_STATE_STANDBY);
       if (server_state == HA_SERVER_STATE_STANDBY)
 	{
-	  er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: " "logtb_disable_update () \n");
+	  er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: logtb_disable_update () \n");
 	  logtb_disable_update (thread_p);
 	}
     }

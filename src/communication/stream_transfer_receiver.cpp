@@ -47,7 +47,8 @@ namespace cubstream
       void execute () override
       {
 	css_error_code rc = NO_ERRORS;
-	std::size_t max_len = DB_ALIGN_BELOW (cubcomm::MTU, MAX_ALIGNMENT), recv_len;
+	std::size_t max_len = DB_ALIGN_BELOW (cubcomm::MTU, MAX_ALIGNMENT);
+	std::size_t recv_len;
 
 	if (m_first_loop)
 	  {
@@ -73,13 +74,13 @@ namespace cubstream
 
 	    m_first_loop = false;
 	  }
-	
+
 	while (true)
 	  {
-            if (!this_consumer_channel.m_channel.is_connection_alive ())
-              {
-                return;
-              }
+	    if (!this_consumer_channel.m_channel.is_connection_alive ())
+	      {
+		return;
+	      }
 
 	    /* TODO - consider stop */
 	    recv_len = max_len;

@@ -1260,7 +1260,7 @@ log_rv_analysis_group_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * 
   log_Gl.hdr.m_ack_stream_position = std::max ((cubstream::stream_position) log_Gl.hdr.m_ack_stream_position,
 					   group_complete.stream_pos);
 
-  for (const auto & ti : group) 
+  for (const auto & ti : group)
     {
       if (ti.m_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
 	{

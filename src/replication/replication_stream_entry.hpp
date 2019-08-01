@@ -62,7 +62,7 @@ namespace cubreplication
 	mvccid (MVCCID_NULL),
 	count_replication_entries (0),
 	data_size (0),
-        tran_state (UNDEFINED)
+	tran_state (UNDEFINED)
     {
     };
 
@@ -79,7 +79,6 @@ namespace cubreplication
       return header_size;
     }
     static const char *tran_state_string (TRAN_STATE state);
-
 
     bool needs_mvccid () const;
   };
@@ -112,13 +111,13 @@ namespace cubreplication
 
       stream_entry (cubstream::multi_thread_stream *stream_p,
 		    MVCCID arg_mvccid,
-                    stream_entry_header::TRAN_STATE state)
+		    stream_entry_header::TRAN_STATE state)
 	: entry (stream_p)
 	, m_serializator ()
 	, m_deserializator ()
       {
 	m_header.mvccid = arg_mvccid;
-        m_header.tran_state = state;
+	m_header.tran_state = state;
       };
 
       size_t get_packed_header_size () override
@@ -153,12 +152,12 @@ namespace cubreplication
 
       void set_state (stream_entry_header::TRAN_STATE state)
       {
-        m_header.tran_state = state;
+	m_header.tran_state = state;
       }
 
       bool is_group_commit (void) const
       {
-        return m_header.tran_state == stream_entry_header::GROUP_COMMIT;
+	return m_header.tran_state == stream_entry_header::GROUP_COMMIT;
       }
 
       bool is_new_master () const
