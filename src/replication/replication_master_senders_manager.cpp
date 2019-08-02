@@ -135,18 +135,18 @@ namespace cubreplication
 
   void master_senders_manager::remove_all_senders ()
   {
-    rwlock_read_lock( &master_senders_lock);
+    rwlock_read_lock ( &master_senders_lock);
 
     for (cubstream::transfer_sender *sender : master_server_stream_senders)
-    {
-      delete sender;
-    }
+      {
+	delete sender;
+      }
 
     master_server_stream_senders.clear();
 
-    logpb_atomic_resets_tran_complete_manager(LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
+    logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
 
-    rwlock_read_unlock(&master_senders_lock);
+    rwlock_read_unlock (&master_senders_lock);
   }
 
   void master_senders_manager::execute (cubthread::entry &context)
