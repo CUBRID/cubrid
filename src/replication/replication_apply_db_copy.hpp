@@ -131,6 +131,8 @@ namespace cubreplication
       bool is_finished () { return m_is_finished; }
 
       cubstream::stream_position m_last_fetched_position;
+
+      size_t get_entries_in_queue () { return m_stream_entries.size (); }
   };
 
   class apply_copy_context

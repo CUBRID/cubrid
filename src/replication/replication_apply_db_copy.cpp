@@ -167,8 +167,11 @@ namespace cubreplication
   {
      while (!m_copy_consumer->is_finished ())
        {
-          er_log_debug_replication (ARG_FILE_LINE, "wait_replication_copy: current stream_position:%lld\n",
-			            m_copy_consumer->m_last_fetched_position);
+          er_log_debug_replication (ARG_FILE_LINE, "wait_replication_copy: current stream_position:%lld\n"
+                                    "stream entries in queue:%d, running tasks:%d\n",
+			            m_copy_consumer->m_last_fetched_position,
+                                    m_copy_consumer->get_entries_in_queue (),
+                                    m_copy_consumer->get_started_task ());
           thread_sleep (1000);
        }
   }
