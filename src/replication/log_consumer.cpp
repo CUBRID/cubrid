@@ -155,7 +155,6 @@ namespace cubreplication
 
     private:
       std::vector<stream_entry *> m_repl_stream_entries;
-      cubstream::stream_position m_gc_end_position;
       log_consumer &m_lc;
   };
 
@@ -191,7 +190,6 @@ namespace cubreplication
 
       void execute (cubthread::entry &thread_ref) override
       {
-	stream_entry *se = NULL;
 	using tasks_map = std::unordered_map <MVCCID, applier_worker_task *>;
 	tasks_map repl_tasks;
 	tasks_map nonexecutable_repl_tasks;
@@ -199,7 +197,7 @@ namespace cubreplication
 	while (true)
 	  {
 	    bool should_stop = false;
-	    m_lc.pop_entry (se, should_stop);
+	    stream_entry *se = m_lc.pop_entry (should_stop);
 
 	    if (should_stop)
 	      {
@@ -330,32 +328,20 @@ namespace cubreplication
 	_er_log_debug (ARG_FILE_LINE, "log_consumer push_entry:\n%s", sb.get_buffer ());
       }
 
-    std::unique_lock<std::mutex> ulock (m_queue_mutex);
-    m_stream_entries.push (entry);
-    m_apply_task_ready = true;
-    ulock.unlock ();
-    m_apply_task_cv.notify_one ();
+    m_stream_entries.push_one (entry);
   }
 
-  void log_consumer::pop_entry (stream_entry *&entry, bool &should_stop)
+  stream_entry *log_consumer::pop_entry (bool &should_stop)
   {
-    std::unique_lock<std::mutex> ulock (m_queue_mutex);
-    if (m_stream_entries.empty ())
-      {
-	m_apply_task_ready = false;
-	m_apply_task_cv.wait (ulock, [this] { return m_is_stopped || m_apply_task_ready;});
-      }
-
-    if (m_is_stopped)
+    stream_entry *entry = m_stream_entries.wait_for_one ();
+    if (!m_stream_entries.notifications_enabled ())
       {
 	should_stop = true;
-	return;
+	return entry;
       }
 
-    assert (m_stream_entries.empty () == false);
-
-    entry = m_stream_entries.front ();
-    m_stream_entries.pop ();
+    assert (entry != NULL);
+    return entry;
   }
 
   int log_consumer::fetch_stream_entry (stream_entry *&entry)
@@ -433,10 +419,7 @@ namespace cubreplication
 
     get_stream ()->stop ();
 
-    std::unique_lock<std::mutex> ulock (m_queue_mutex);
-    m_is_stopped = true;
-    ulock.unlock ();
-    m_apply_task_cv.notify_one ();
+    m_stream_entries.release_waiters ();
   }
 
   void log_consumer::fetch_suspend (void)

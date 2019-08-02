@@ -35,6 +35,7 @@
 #include <cstddef>
 #include <memory>
 #include <queue>
+#include "concurrent_queue.hpp"
 
 namespace cubthread
 {
@@ -62,9 +63,7 @@ namespace cubreplication
    * Data members:
    *  - a pointer to slave stream (currently it also creates it, but future code should have a higher level
    *    object which aggregates both log_consumer and stream)
-   *  - a queue of replication stream entry objects; the queue is protected by a mutex
-   *  - m_apply_task_cv : condition variable used with m_queue_mutex to signal between consume daemon and
-   *    dispatch daemon (when first adds a new stream entry in the queue)
+   *  - a concurrent queue of replication stream entry objects;
    *  - m_is_stopped : flag to signal stopping of log_consumer; currently, the stopping is performed
    *    by destructor of log_consumer, but in future code, a higher level objects will handle stopping
    *    and destroy in separate steps;
@@ -87,11 +86,9 @@ namespace cubreplication
   class log_consumer
   {
     private:
-      std::queue<stream_entry *> m_stream_entries;
+      cubsync::concurrent_queue<stream_entry *> m_stream_entries;
 
       cubstream::multi_thread_stream *m_stream;
-
-      std::mutex m_queue_mutex;
 
       cubthread::daemon *m_consumer_daemon;
 
@@ -106,9 +103,6 @@ namespace cubreplication
 
       std::atomic<int> m_started_tasks;
 
-      std::condition_variable m_apply_task_cv;
-      bool m_apply_task_ready;
-
       bool m_is_stopped;
 
       /* fetch suspend flag : this is required in context of replication with copy phase :
@@ -116,8 +110,6 @@ namespace cubreplication
        * (although the stream contents are received and stored on local slave node)
        */
       cubsync::event_semaphore m_fetch_suspend;
-
-    private:
 
     public:
 
@@ -132,7 +124,6 @@ namespace cubreplication
 	, m_subtran_applier (NULL)
 	, m_use_daemons (false)
 	, m_started_tasks (0)
-	, m_apply_task_ready (false)
 	, m_is_stopped (false)
 	, ack_produce ([] (cubstream::stream_position)
       {
@@ -145,7 +136,7 @@ namespace cubreplication
 
       void push_entry (stream_entry *entry);
 
-      void pop_entry (stream_entry *&entry, bool &should_stop);
+      stream_entry *pop_entry (bool &should_stop);
 
       int fetch_stream_entry (stream_entry *&entry);
 
