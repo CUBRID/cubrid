@@ -155,7 +155,6 @@ namespace cubreplication
 
     private:
       std::vector<stream_entry *> m_repl_stream_entries;
-      cubstream::stream_position m_gc_end_position;
       log_consumer &m_lc;
   };
 

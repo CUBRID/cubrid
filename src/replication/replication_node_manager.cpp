@@ -43,6 +43,15 @@ namespace cubreplication
 
   cubthread::entry_workpool *task_worker_pool = NULL;
 
+  enum commuting_state
+  {
+    COMMUTE_TO_MASTER,
+    COMMUTE_TO_SLAVE,
+    IDLE
+  };
+
+  commuting_state current_state;
+
   namespace replication_node_manager
   {
     void init (const char *server_name)
@@ -89,15 +98,23 @@ namespace cubreplication
 
     void commute_to_master_state ()
     {
+      assert (current_state == IDLE);
+      current_state = COMMUTE_TO_MASTER;
+
       cubthread::entry_task *promote_task = new cubthread::entry_callable_task ([] (cubthread::entry &context)
       {
+	if (g_slave_node != NULL)
+	  {
+	    g_slave_node->finish_apply ();
+	  }
 	delete g_slave_node;
 	g_slave_node = NULL;
 
-	if (g_master_node == NULL)
-	  {
-	    g_master_node = new master_node (g_hostname.c_str (), g_stream, g_stream_file);
-	  }
+	assert (g_master_node == NULL);
+	g_master_node = new master_node (g_hostname.c_str (), g_stream, g_stream_file);
+
+	assert (current_state == COMMUTE_TO_MASTER);
+	current_state = IDLE;
       }, true);
 
       cubthread::get_manager ()->push_task (task_worker_pool, promote_task);
@@ -105,6 +122,9 @@ namespace cubreplication
 
     void commute_to_slave_state ()
     {
+      assert (current_state == IDLE);
+      current_state = COMMUTE_TO_SLAVE;
+
       cubthread::entry_task *demote_task = new cubthread::entry_callable_task ([] (cubthread::entry &context)
       {
 	// todo: remove after master -> slave transitions is properly handled
@@ -113,10 +133,11 @@ namespace cubreplication
 	delete g_master_node;
 	g_master_node = NULL;
 
-	if (g_slave_node == NULL)
-	  {
-	    g_slave_node = new cubreplication::slave_node (g_hostname.c_str (), g_stream, g_stream_file);
-	  }
+	assert (g_slave_node == NULL);
+	g_slave_node = new slave_node (g_hostname.c_str (), g_stream, g_stream_file);
+
+	assert (current_state == COMMUTE_TO_SLAVE);
+	current_state = IDLE;
       }, true);
 
       cubthread::get_manager ()->push_task (task_worker_pool, demote_task);
