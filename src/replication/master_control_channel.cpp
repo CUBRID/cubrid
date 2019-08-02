@@ -30,6 +30,7 @@
 
 #include "byte_order.h"
 #include "communication_channel.hpp"
+#include "replication_master_senders_manager.hpp"
 #include "error_manager.h"
 #include "stream_transfer_sender.hpp"
 #include "system_parameter.h"
@@ -163,6 +164,7 @@ namespace cubreplication
   void
   master_ctrl::check_alive ()
   {
+    bool reader_removed = false;
     std::lock_guard<std::mutex> lg (m_mtx);
 
     for (auto it = m_ctrl_channel_readers.begin (); it != m_ctrl_channel_readers.end (); )
@@ -171,11 +173,22 @@ namespace cubreplication
 	  {
 	    cubthread::get_manager ()->destroy_daemon (it->first);
 	    it = m_ctrl_channel_readers.erase (it);
+	    reader_removed = true;
 	  }
 	else
 	  {
 	    ++it;
 	  }
+      }
+
+    if (reader_removed && m_ctrl_channel_readers.size () == 0)
+      {
+	/* Removed all readers. We need to stop also senders that changes complete manager also.
+	 * When the slave readers close the socket, master senders does not detect immediately
+	 * and this cause serious performance issues.
+	 * We may improve the code that attomically stops revceivers/senders.
+	 */
+	cubreplication::master_senders_manager::remove_all_senders ();
       }
   }
 }
