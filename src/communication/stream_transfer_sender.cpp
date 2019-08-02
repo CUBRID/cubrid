@@ -32,7 +32,7 @@
  *   Termination :
  *    - some streams are infinite (they continuosly send data until socket becomes invalid) or finite
  *    - a finite stream require an explicit termination phase : 
- *      the user code of stream sender must use 'terminate_connection' of the sender object.
+ *      the user code of stream sender must use 'enter_termination_phase' of the sender object.
  *      this sets the sender into "receive" mode which expects the peer to either send something or 
  *      simply close the connection
  *    - the stream receiver also has a 'terminate_connection' method which needs to be explicitely
@@ -41,7 +41,7 @@
  *      is taken at logical level (user code of stream/sender/receiver) ;
  *      for a finite stream, a logical 'end' packet (stream entry) could be send from sender side to receiver side;
  *      after decoding of this packet (which is ussualy asynchronous with sender/receive threads), the user must call
- *      sender->terminate_connection; on receiver side, after decoding the logical 'end' packet, the user code calls
+ *      sender->enter_termination_phase; on receiver side, after decoding the logical 'end' packet, the user code calls
  *      receiver->terminate_connection (this will close the connection, which is detected by sender side, which in turn
  *      is unblocked)
 */
