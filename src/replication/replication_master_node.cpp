@@ -239,7 +239,7 @@ namespace cubreplication
     /* acquire snapshot and last group stream position (both are stored on current TDES) */
     logtb_get_mvcc_snapshot_and_gc_position (&thread_ref);
 
-    src_copy_ctxt->execute_db_copy (thread_ref, fd);
+    (void) src_copy_ctxt->execute_db_copy (thread_ref, fd);
 
     delete src_copy_ctxt;
     tdes->replication_copy_context = NULL;

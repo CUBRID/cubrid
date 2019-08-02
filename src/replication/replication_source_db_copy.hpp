@@ -67,18 +67,28 @@ namespace cubreplication
     public:
       const size_t EXTRACT_HEAP_WORKER_POOL_SIZE = 20;
 
+      /* State value mapped on replication copy phases:
+       * SCHEMA_EXTRACT_CLASSES .. SCHEMA_CLASSES_LIST_FINISHED : triggered by the client side 'dll_proxy' 
+       * in schema extract mode : this process extracts classes schema and list of class OIDs, triggers, indexes;
+       * a [push] request containing a buffer with associated information is performed from ddl_proxy to server.
+       *
+       * Once the state reaches SCHEMA_CLASSES_LIST_FINISHED state, the flow is taken over entirely by server side.
+       * It continues with heap copy, and once heap copy process ends, it sends triggers and indexes.
+       *
+       * The values follows the order of copy phase and should be kept in sync with overall process 
+       * of ddl_proxy and server source copy. */
       enum copy_stage
       {
 	NOT_STARTED = 0,
-	SCHEMA_APPLY_CLASSES,
-	SCHEMA_APPLY_CLASSES_FINISHED,
-	SCHEMA_TRIGGERS_RECEIVED,
-	SCHEMA_INDEXES_RECEIVED,
+	SCHEMA_EXTRACT_CLASSES,
+	SCHEMA_EXTRACT_CLASSES_FINISHED,
+	SCHEMA_EXTRACT_TRIGGERS,
+	SCHEMA_EXTRACT_INDEXES,
 	SCHEMA_CLASSES_LIST_FINISHED,
 	HEAP_COPY,
 	HEAP_COPY_FINISHED,
-	SCHEMA_APPLY_TRIGGERS,
-	SCHEMA_APPLY_INDEXES
+	SCHEMA_COPY_TRIGGERS,
+	SCHEMA_COPY_INDEXES
       };
 
       source_copy_context ();
@@ -94,7 +104,7 @@ namespace cubreplication
       void append_indexes_schema (const char *buffer, const size_t buf_size);
       void unpack_class_oid_list (const char *buffer, const size_t buf_size);
 
-      void execute_db_copy (cubthread::entry &thread_ref, SOCKET fd);
+      int execute_db_copy (cubthread::entry &thread_ref, SOCKET fd);
       int setup_copy_protocol (cubcomm::channel &chn);
 
       int get_tran_index (void);

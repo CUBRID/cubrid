@@ -172,27 +172,28 @@ namespace cubreplication
 
     if ((int) m_state != ((int) new_state - 1))
       {
-	return ER_FAILED;
+        er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	return ER_GENERIC_ERROR;
       }
 
     m_state = new_state;
 
-    ulock_state.unlock ();
-
     /* some of the new states require specific actions */
-    if (new_state == SCHEMA_APPLY_CLASSES_FINISHED)
+    if (new_state == SCHEMA_EXTRACT_CLASSES_FINISHED)
       {
 	pack_and_add_statement (m_class_schema);
       }
-    else if (new_state == SCHEMA_APPLY_TRIGGERS)
+    else if (new_state == SCHEMA_COPY_TRIGGERS)
       {
 	pack_and_add_statement (m_triggers);
       }
-    else if (new_state == SCHEMA_APPLY_INDEXES)
+    else if (new_state == SCHEMA_COPY_INDEXES)
       {
 	pack_and_add_statement (m_indexes);
       }
-
+    
+    /* unlock after adding indexes to stream to */
+    ulock_state.unlock ();
     m_state_cv.notify_one ();
 
     return error;
@@ -206,6 +207,7 @@ namespace cubreplication
                                   { return m_state == desired_state || m_is_stop || thread_ref.shutdown; });
     if (is_interrupted (thread_ref))
       {
+        er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 	return ER_INTERRUPTED;
       }
     return NO_ERROR;
@@ -218,7 +220,7 @@ namespace cubreplication
 
   int source_copy_context::wait_send_triggers_indexes (cubthread::entry &thread_ref)
   {
-    return wait_for_state (thread_ref, SCHEMA_APPLY_INDEXES);
+    return wait_for_state (thread_ref, SCHEMA_COPY_INDEXES);
   }
 
   
@@ -305,8 +307,33 @@ namespace cubreplication
     m_stream = NULL;
   }
 
-  void source_copy_context::execute_db_copy (cubthread::entry &thread_ref, SOCKET fd)
+  /*
+   * execute_db_copy - driving thread of the replication copy process on master (source) server
+   * thread_ref (in):
+   * fd (in): socket received from cub_master and used for replication copy process between a slave and this node
+   *
+   * Note:
+   *
+   * At most four threads are directly involved:
+   *
+   * 1. new_slave_copy_task : execute_db_copy thread (the driver of process):
+   *    communicates with 2 through state changes and source context variables (statement strings)
+   *    communicates with 3 through stream writes and 4 by triggering termination phase
+   *    it creates transaction context, spawns ddl_proxy in extract mode (which issues requests on thread 2),
+   *    it creates thread and objects required by 3 and 4.
+   *
+   * 2. xlocator_send_proxy_buffer (serving a request from ddl_proxy extract client)
+   *    communicates with 3 through stream writes
+   *    
+   * 3. stream transfer sender
+   *    reads stream contents and pushes to socket
+   *
+   * 4. stream senders manager
+   *    supervises thread 3, accepts termination command from thread 1
+   */
+  int source_copy_context::execute_db_copy (cubthread::entry &thread_ref, SOCKET fd)
   {
+    int error = NO_ERROR;
     cubcomm::channel chn;
     chn.set_channel_name (REPL_COPY_CHANNEL_NAME);
 
@@ -321,9 +348,10 @@ namespace cubreplication
     css_error_code rc = chn.accept (fd);
     assert (rc == NO_ERRORS);
 
-    if (setup_copy_protocol (chn) != NO_ERROR)
+    error = setup_copy_protocol (chn);
+    if (error != NO_ERROR)
       {
-	return;
+	return error;
       }
 
     m_transfer_sender = new cubstream::transfer_sender (std::move (chn), *m_stream);
@@ -332,11 +360,16 @@ namespace cubreplication
     er_log_debug_replication (ARG_FILE_LINE, "new_slave_copy connected");
 
     /* extraction process : schema phase : start the client process */
-    locator_repl_extract_schema (&thread_ref, "dba", "");
-
-    if (wait_receive_class_list (thread_ref) == ER_INTERRUPTED)
+    error = locator_repl_extract_schema (&thread_ref, "dba", "");
+    if (error != NO_ERROR)
       {
-	return;
+	return error;
+      }
+
+    error = wait_receive_class_list (thread_ref);
+    if (error != NO_ERROR)
+      {
+	return error;
       }
 
     /* extraction process : heap extract phase */
@@ -355,24 +388,29 @@ namespace cubreplication
       {
 	if (is_interrupted (thread_ref))
 	  {
-	    return;
+            error = ER_INTERRUPTED;
+            er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	    return error;
 	  }
 	thread_sleep (10);
       }
     execute_and_transit_phase (HEAP_COPY_FINISHED);
     pack_and_add_end_of_extract_heap ();
 
-    execute_and_transit_phase (SCHEMA_APPLY_TRIGGERS);
-    execute_and_transit_phase (SCHEMA_APPLY_INDEXES);
+    execute_and_transit_phase (SCHEMA_COPY_TRIGGERS);
+    execute_and_transit_phase (SCHEMA_COPY_INDEXES);
     /* wait for indexes and triggers schema */
-    if (wait_send_triggers_indexes (thread_ref) == ER_INTERRUPTED)
+    error = wait_send_triggers_indexes (thread_ref);
+    if (error != NO_ERROR)
       {
-	return;
+	return error;
       }
 
     pack_and_add_end_of_copy ();
 
-    (void) wait_slave_finished ();
+    error = wait_slave_finished ();
+
+    return error;
   }
 
   int source_copy_context::setup_copy_protocol (cubcomm::channel &chn)
@@ -438,6 +476,7 @@ namespace cubreplication
 
   void source_copy_context::stop ()
   {
+    std::unique_lock<std::mutex> ulock_state (m_state_mutex);
     m_is_stop = true;
     m_state_cv.notify_all();
   }

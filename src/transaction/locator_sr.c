@@ -13837,12 +13837,12 @@ xlocator_get_proxy_command (THREAD_ENTRY * thread_p, const char **proxy_command,
 int
 xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_t buf_size, const char *buffer)
 {
-  /* TODO[replication] : get rid of define */
 #if defined(SERVER_MODE)
   LOG_TDES *tdes;
 
   assert (thread_p != NULL);
 
+  /* TODO[replication] : protect access to tdes against deletion of replication_copy_context */
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
   cubreplication::source_copy_context & repl_copy_ctxt = *tdes->replication_copy_context;
 
@@ -13857,8 +13857,8 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
 
     case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END:
       repl_copy_ctxt.append_class_schema (buffer, buf_size);
-      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_APPLY_CLASSES);
-      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_APPLY_CLASSES_FINISHED);
+      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_CLASSES);
+      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_CLASSES_FINISHED);
       break;
 
     case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS:
@@ -13867,7 +13867,7 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
 
     case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS_END:
       repl_copy_ctxt.append_triggers_schema (buffer, buf_size);
-      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_TRIGGERS_RECEIVED);
+      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_TRIGGERS);
       break;
 
     case NET_PROXY_BUF_TYPE_EXTRACT_INDEXES:
@@ -13876,7 +13876,7 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
 
     case NET_PROXY_BUF_TYPE_EXTRACT_INDEXES_END:
       repl_copy_ctxt.append_indexes_schema (buffer, buf_size);
-      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_INDEXES_RECEIVED);
+      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_INDEXES);
       break;
 
     case NET_PROXY_BUF_TYPE_OID_LIST:
