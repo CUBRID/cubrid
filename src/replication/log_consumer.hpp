@@ -29,6 +29,7 @@
 #include "cubstream.hpp"
 #include "semaphore.hpp"
 #include "slave_control_channel.hpp"
+#include "stream_entry_fetcher.hpp"
 #include "thread_manager.hpp"
 #include <chrono>
 #include <condition_variable>
@@ -42,10 +43,17 @@ namespace cubthread
   class daemon;
 };
 
+namespace cubreplication
+{
+  class applier_worker_task;
+  class stream_entry;
+  class subtran_applier;
+}
+
 namespace cubstream
 {
   class multi_thread_stream;
-  class stream_entry_fetcher;
+  //class repl_stream_entry_fetcher;
 };
 
 namespace cubreplication
@@ -54,9 +62,6 @@ namespace cubreplication
    * main class for consuming log packing stream entries;
    * it should be created only as a global instance
    */
-  class applier_worker_task;
-  class stream_entry;
-  class subtran_applier;
 
   /*
    * log_consumer : class intended as singleton for slave server
@@ -89,7 +94,7 @@ namespace cubreplication
     private:
       cubstream::multi_thread_stream *m_stream;
 
-      cubstream::stream_entry_fetcher *m_entry_fetcher;
+      cubstream::repl_stream_entry_fetcher *m_entry_fetcher;
 
       cubthread::daemon *m_dispatch_daemon;
 
@@ -147,7 +152,7 @@ namespace cubreplication
 	return m_stream;
       }
 
-      cubstream::stream_entry_fetcher &get_stream_fetcher ()
+      cubstream::repl_stream_entry_fetcher &get_stream_fetcher ()
       {
 	return *m_entry_fetcher;
       }

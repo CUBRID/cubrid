@@ -24,33 +24,42 @@
 #ifndef _STREAM_ENTRY_FETCHER_HPP_
 #define _STREAM_ENTRY_FETCHER_HPP_
 
-#include "log_consumer.hpp"
 #include "replication_stream_entry.hpp"
 #include "concurrent_queue.hpp"
 
+namespace cubthread
+{
+  class daemon;
+}
+
 namespace cubstream
 {
-  using cubreplication::log_consumer;
   using cubreplication::stream_entry;
 
+  // todo: find a way to constrain T to be of type cubstream::entry<T>
+  template<typename T>
   class stream_entry_fetcher
   {
     public:
-      stream_entry_fetcher (const std::function<void (stream_entry *)> &on_fetch, cubstream::multi_thread_stream &stream);
+      stream_entry_fetcher (const std::function<void (T *)> &on_fetch, cubstream::multi_thread_stream &stream);
       ~stream_entry_fetcher ();
+      void produce ();
 
-      int fetch_stream_entry (stream_entry *&entry);
-      void push_entry (stream_entry *entry);
-      stream_entry *pop_entry (bool &should_stop);
+      T *pop_entry (bool &should_stop);
       void release_waiters ();
 
-      std::function<void (stream_entry *)> m_on_fetch;
-
     private:
-      cubsync::concurrent_queue<stream_entry *> m_stream_entries;
+      int fetch_stream_entry (T *&entry);
+      void push_entry (T *entry);
+      std::function<void (T *)> m_on_fetch;
+
+      cubsync::concurrent_queue<T *> m_stream_entries;
       cubthread::daemon *m_fetch_daemon;
       cubstream::multi_thread_stream &m_stream;
   };
+
+  template class stream_entry_fetcher<stream_entry>;
+  using repl_stream_entry_fetcher = stream_entry_fetcher<stream_entry>;
 }
 
 #endif // _STREAM_ENTRY_FETCHER_HPP_

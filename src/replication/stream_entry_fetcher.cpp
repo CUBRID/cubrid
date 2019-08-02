@@ -24,57 +24,66 @@
 #include "stream_entry_fetcher.hpp"
 #include "string_buffer.hpp"
 #include "thread_looper.hpp"
+#include "thread_manager.hpp"
 
 namespace cubstream
 {
+  template<typename T>
   class stream_entry_fetch_task : public cubthread::entry_task
   {
     public:
-      stream_entry_fetch_task (stream_entry_fetcher &fetcher)
+      stream_entry_fetch_task (stream_entry_fetcher<T> &fetcher)
 	: m_fetcher (fetcher)
       {
       };
 
       void execute (cubthread::entry &thread_ref) override
       {
-	stream_entry *se = NULL;
-
-	int err = m_fetcher.fetch_stream_entry (se);
-	if (err == NO_ERROR)
-	  {
-	    m_fetcher.m_on_fetch (se);
-
-	    m_fetcher.push_entry (se);
-	  }
+	m_fetcher.produce ();
       };
 
     private:
-      stream_entry_fetcher &m_fetcher;
+      stream_entry_fetcher<T> &m_fetcher;
   };
 
-  stream_entry_fetcher::stream_entry_fetcher (const std::function<void (stream_entry *)> &on_fetch,
+  template<typename T>
+  stream_entry_fetcher<T>::stream_entry_fetcher (const std::function<void (T *)> &on_fetch,
       multi_thread_stream &stream)
     : m_on_fetch (on_fetch)
     , m_stream (stream)
   {
     m_fetch_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
-		     new stream_entry_fetch_task (*this),
+		     new stream_entry_fetch_task<T> (*this),
 		     "prepare_stream_entry_daemon");
   }
 
-  stream_entry_fetcher::~stream_entry_fetcher ()
+  template<typename T>
+  stream_entry_fetcher<T>::~stream_entry_fetcher ()
   {
     cubthread::get_manager ()->destroy_daemon (m_fetch_daemon);
   }
 
-  int stream_entry_fetcher::fetch_stream_entry (stream_entry *&entry)
+  template<typename T>
+  void stream_entry_fetcher<T>::produce ()
+  {
+    T *se = NULL;
+    int err = fetch_stream_entry (se);
+    if (err == NO_ERROR)
+      {
+	m_on_fetch (se);
+	push_entry (se);
+      }
+  }
+
+  template<typename T>
+  int stream_entry_fetcher<T>::fetch_stream_entry (T *&entry)
   {
     int err = NO_ERROR;
 
     // todo: add wait for fetch resume
     // wait_for_fetch_resume ();
 
-    stream_entry *se = new stream_entry (&m_stream);
+    T *se = new T (&m_stream);
 
     err = se->prepare ();
     if (err != NO_ERROR)
@@ -88,7 +97,8 @@ namespace cubstream
     return err;
   }
 
-  void stream_entry_fetcher::push_entry (stream_entry *entry)
+  template<typename T>
+  void stream_entry_fetcher<T>::push_entry (T *entry)
   {
     if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
       {
@@ -100,9 +110,10 @@ namespace cubstream
     m_stream_entries.push_one (entry);
   }
 
-  stream_entry *stream_entry_fetcher::pop_entry (bool &should_stop)
+  template<typename T>
+  T *stream_entry_fetcher<T>::pop_entry (bool &should_stop)
   {
-    stream_entry *entry = m_stream_entries.wait_for_one ();
+    T *entry = m_stream_entries.wait_for_one ();
     if (!m_stream_entries.notifications_enabled ())
       {
 	should_stop = true;
@@ -113,7 +124,8 @@ namespace cubstream
     return entry;
   }
 
-  void stream_entry_fetcher::release_waiters ()
+  template<typename T>
+  void stream_entry_fetcher<T>::release_waiters ()
   {
     m_stream_entries.release_waiters ();
   }

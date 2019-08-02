@@ -296,7 +296,7 @@ namespace cubreplication
 
     er_log_debug_replication (ARG_FILE_LINE, "log_consumer::start_daemons\n");
 
-    m_entry_fetcher = new cubstream::stream_entry_fetcher ([this] (stream_entry * se)
+    auto on_fetch = [this] (stream_entry * se)
     {
       if (se->is_group_commit ())
 	{
@@ -305,7 +305,9 @@ namespace cubreplication
 	  // todo: find a way for log_consumer to get rid of ack_produce guy
 	  ack_produce (se->get_stream_entry_end_position ());
 	};
-    }, *get_stream ());
+    };
+
+    m_entry_fetcher = new cubstream::repl_stream_entry_fetcher (on_fetch, *get_stream ());
 
     m_dispatch_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
 			new dispatch_daemon_task (*this),
