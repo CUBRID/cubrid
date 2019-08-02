@@ -24,11 +24,10 @@
 #ifndef _CONCURRENT_QUEUE_HPP_
 #define _CONCURRENT_QUEUE_HPP_
 
-#include <queue>
-#include <mutex>
-#include <memory>
-#include <algorithm>
 #include <condition_variable>
+#include <memory>
+#include <mutex>
+#include <queue>
 
 namespace cubsync
 {

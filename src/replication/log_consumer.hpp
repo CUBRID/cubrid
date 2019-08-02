@@ -45,6 +45,7 @@ namespace cubthread
 namespace cubstream
 {
   class multi_thread_stream;
+  class stream_entry_fetcher;
 };
 
 namespace cubreplication
@@ -86,11 +87,9 @@ namespace cubreplication
   class log_consumer
   {
     private:
-      cubsync::concurrent_queue<stream_entry *> m_stream_entries;
-
       cubstream::multi_thread_stream *m_stream;
 
-      cubthread::daemon *m_consumer_daemon;
+      cubstream::stream_entry_fetcher *m_entry_fetcher;
 
       cubthread::daemon *m_dispatch_daemon;
 
@@ -117,7 +116,7 @@ namespace cubreplication
 
       log_consumer ()
 	: m_stream (NULL)
-	, m_consumer_daemon (NULL)
+	, m_entry_fetcher (NULL)
 	, m_dispatch_daemon (NULL)
 	, m_applier_workers_pool (NULL)
 	, m_applier_worker_threads_count (100)
@@ -134,12 +133,6 @@ namespace cubreplication
 
       ~log_consumer ();
 
-      void push_entry (stream_entry *entry);
-
-      stream_entry *pop_entry (bool &should_stop);
-
-      int fetch_stream_entry (stream_entry *&entry);
-
       void start_daemons (void);
       void execute_task (applier_worker_task *task);
       void push_task (cubthread::entry_task *task);
@@ -152,6 +145,11 @@ namespace cubreplication
       cubstream::multi_thread_stream *get_stream (void)
       {
 	return m_stream;
+      }
+
+      cubstream::stream_entry_fetcher &get_stream_fetcher ()
+      {
+	return *m_entry_fetcher;
       }
 
       void end_one_task (void)

@@ -27,52 +27,23 @@
 
 #include "communication_channel.hpp"
 #include "error_manager.h"
+#include "locator_sr.h"
 #include "multi_thread_stream.hpp"
 #include "replication_common.hpp"
 #include "replication_stream_entry.hpp"
 #include "replication_subtran_apply.hpp"
 #include "slave_control_channel.hpp"
+#include "stream_entry_fetcher.hpp"
 #include "stream_file.hpp"
 #include "string_buffer.hpp"
 #include "system_parameter.h"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_task.hpp"
-#include "locator_sr.h"
 #include <unordered_map>
 
 namespace cubreplication
 {
-  class consumer_daemon_task : public cubthread::entry_task
-  {
-    public:
-      consumer_daemon_task (log_consumer &lc)
-	: m_lc (lc)
-      {
-      };
-
-      void execute (cubthread::entry &thread_ref) override
-      {
-	stream_entry *se = NULL;
-
-	int err = m_lc.fetch_stream_entry (se);
-	if (err == NO_ERROR)
-	  {
-	    if (se->is_group_commit ())
-	      {
-		se->unpack ();
-		assert (se->get_stream_entry_end_position () > se->get_stream_entry_start_position ());
-
-		m_lc.ack_produce (se->get_stream_entry_end_position ());
-	      }
-	    m_lc.push_entry (se);
-	  }
-      };
-
-    private:
-      log_consumer &m_lc;
-  };
-
   class applier_worker_task : public cubthread::entry_task
   {
     public:
@@ -197,7 +168,7 @@ namespace cubreplication
 	while (true)
 	  {
 	    bool should_stop = false;
-	    stream_entry *se = m_lc.pop_entry (should_stop);
+	    stream_entry *se = m_lc.get_stream_fetcher ().pop_entry (should_stop);
 
 	    if (should_stop)
 	      {
@@ -308,60 +279,15 @@ namespace cubreplication
 
     if (m_use_daemons)
       {
-	cubthread::get_manager ()->destroy_daemon (m_consumer_daemon);
+	delete m_entry_fetcher;
+	m_entry_fetcher = NULL;
 	cubthread::get_manager ()->destroy_daemon (m_dispatch_daemon);
 	cubthread::get_manager ()->destroy_worker_pool (m_applier_workers_pool);
       }
 
     delete m_subtran_applier; // must be deleted after worker pool
 
-    assert (m_stream_entries.empty ());
     get_stream ()->start ();
-  }
-
-  void log_consumer::push_entry (stream_entry *entry)
-  {
-    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
-      {
-	string_buffer sb;
-	entry->stringify (sb, stream_entry::short_dump);
-	_er_log_debug (ARG_FILE_LINE, "log_consumer push_entry:\n%s", sb.get_buffer ());
-      }
-
-    m_stream_entries.push_one (entry);
-  }
-
-  stream_entry *log_consumer::pop_entry (bool &should_stop)
-  {
-    stream_entry *entry = m_stream_entries.wait_for_one ();
-    if (!m_stream_entries.notifications_enabled ())
-      {
-	should_stop = true;
-	return entry;
-      }
-
-    assert (entry != NULL);
-    return entry;
-  }
-
-  int log_consumer::fetch_stream_entry (stream_entry *&entry)
-  {
-    int err = NO_ERROR;
-
-    wait_for_fetch_resume ();
-
-    stream_entry *se = new stream_entry (get_stream ());
-
-    err = se->prepare ();
-    if (err != NO_ERROR)
-      {
-	delete se;
-	return err;
-      }
-
-    entry = se;
-
-    return err;
   }
 
   void log_consumer::start_daemons (void)
@@ -369,9 +295,17 @@ namespace cubreplication
     m_subtran_applier = new subtran_applier (*this);
 
     er_log_debug_replication (ARG_FILE_LINE, "log_consumer::start_daemons\n");
-    m_consumer_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
-			new consumer_daemon_task (*this),
-			"prepare_stream_entry_daemon");
+
+    m_entry_fetcher = new cubstream::stream_entry_fetcher ([this] (stream_entry * se)
+    {
+      if (se->is_group_commit ())
+	{
+	  se->unpack ();
+	  assert (se->get_stream_entry_end_position () > se->get_stream_entry_start_position ());
+	  // todo: find a way for log_consumer to get rid of ack_produce guy
+	  ack_produce (se->get_stream_entry_end_position ());
+	};
+    }, *get_stream ());
 
     m_dispatch_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
 			new dispatch_daemon_task (*this),
@@ -419,7 +353,7 @@ namespace cubreplication
 
     get_stream ()->stop ();
 
-    m_stream_entries.release_waiters ();
+    m_entry_fetcher->release_waiters ();
   }
 
   void log_consumer::fetch_suspend (void)
