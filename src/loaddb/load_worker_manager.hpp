@@ -31,6 +31,8 @@
 #include "thread_entry_task.hpp"
 #include "xserver_interface.h"
 
+using cubthread::entry_task;
+
 namespace cubload
 {
 
@@ -55,7 +57,7 @@ namespace cubload
       void stop_execution (cubthread::entry &context) override;
       void interrupt ();
 
-      void loaddb_worker_context_manager::push_task (cubthread::entry_task *task);
+      void push_task (entry_task *task);
 
     private:
       resource_shared_pool<driver> m_driver_pool;
