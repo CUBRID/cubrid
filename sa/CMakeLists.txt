@@ -129,6 +129,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/tz_support.c
   )
 set(BASE_HEADERS
+  ${BASE_DIR}/concurrent_queue.hpp
   ${BASE_DIR}/error_code.h
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
