@@ -9982,7 +9982,7 @@ locator_get_proxy_command (const char **proxy_command, const char **proxy_sys_pa
 	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 	}
-      
+
       ptr = or_unpack_string_nocopy (ptr, &local_proxy_sys_param);
       if (local_proxy_sys_param != NULL)
 	{
@@ -10077,8 +10077,7 @@ netcl_replication_copy_slave (const char *source_hostname, const int port_id, bo
   int request_size;
   int status;
 
-  request_size = or_packed_string_length (source_hostname, &len)
-	     + 2 * OR_INT_SIZE;
+  request_size = or_packed_string_length (source_hostname, &len) + 2 * OR_INT_SIZE;
   request = (char *) malloc (request_size);
   if (request == NULL)
     {

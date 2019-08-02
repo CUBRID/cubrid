@@ -7569,8 +7569,8 @@ end:
 	    {
 	      /* Aborts and simulate apply replication RBR on master node. */
 	      error_code =
-		logtb_get_tdes (thread_p)->replication_log_generator.
-		abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
+		logtb_get_tdes (thread_p)->
+		replication_log_generator.abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
 	    }
 	  else
 	    {
@@ -13848,9 +13848,9 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
 
   switch (type)
     {
-    /* schema of classes may be send with multiple requests/buffers;
-     * for last the last one, the client uses NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END
-     */
+      /* schema of classes may be send with multiple requests/buffers;
+       * for last the last one, the client uses NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END
+       */
     case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES:
       repl_copy_ctxt.append_class_schema (buffer, buf_size);
       break;
@@ -13889,10 +13889,10 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
     }
 
   return NO_ERROR;
-#else /* SERVER_MODE*/
+#else /* SERVER_MODE */
   assert (false);
   return ER_FAILED;
-#endif /* SERVER_MODE*/
+#endif /* SERVER_MODE */
 }
 
 
@@ -13961,8 +13961,8 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
   envvar_bindir_file (path, PATH_MAX, UTIL_DDL_PROXY_CLIENT);
 
   _er_log_debug (ARG_FILE_LINE, "apply SBR: executing:\n%s %s %s %s %s %s %s %s %s %s %s",
-    ddl_argv[0], ddl_argv[1], ddl_argv[2], ddl_argv[3], ddl_argv[4], ddl_argv[5], ddl_argv[6],
-    ddl_argv[7], ddl_argv[8], ddl_argv[9], ddl_argv[10]);
+		 ddl_argv[0], ddl_argv[1], ddl_argv[2], ddl_argv[3], ddl_argv[4], ddl_argv[5], ddl_argv[6],
+		 ddl_argv[7], ddl_argv[8], ddl_argv[9], ddl_argv[10]);
 
   error = create_child_process (ddl_argv, 1, NULL, NULL, NULL, &exit_status);
   tdes->ha_sbr_statement = NULL;
@@ -14038,7 +14038,7 @@ locator_repl_start_tran (THREAD_ENTRY * thread_p, const boot_client_type client_
   int error_code = NO_ERROR;
   BOOT_CLIENT_CREDENTIAL applier_Client_credentials;
   applier_Client_credentials.client_type = client_type;
-  
+
   if (client_type == BOOT_PSEUDO_CLIENT_REPL_APPLIER)
     {
       applier_Client_credentials.program_name = "(repl_applier)";
