@@ -9749,8 +9749,8 @@ slocator_get_proxy_command (THREAD_ENTRY * thread_p, unsigned int rid, char *req
     }
   else
     {
-      area_size = or_packed_string_length (proxy_command, &strlen1)
-                  + or_packed_string_length (proxy_sys_param, &strlen2);
+      area_size = (or_packed_string_length (proxy_command, &strlen1)
+		   + or_packed_string_length (proxy_sys_param, &strlen2));
       area = (char *) db_private_alloc (thread_p, area_size);
       if (area == NULL)
 	{
@@ -9760,7 +9760,7 @@ slocator_get_proxy_command (THREAD_ENTRY * thread_p, unsigned int rid, char *req
       else
 	{
 	  p = or_pack_string_with_length (area, proxy_command, strlen1);
-          p = or_pack_string_with_length (p, proxy_sys_param, strlen2);
+	  p = or_pack_string_with_length (p, proxy_sys_param, strlen2);
 	}
     }
 
