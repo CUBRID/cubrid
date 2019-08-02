@@ -83,11 +83,11 @@ namespace cubreplication
       }
   }
 
-  class control_channel_managing_task : public cubthread::task_without_context
+  class control_channel_managing_task : public cubthread::entry_task
   {
     public:
       control_channel_managing_task (master_ctrl &master_ctrl);
-      void execute () override;
+      void execute (cubthread::entry &thread_ref) override;
 
     private:
       master_ctrl &m_master_ctrl;
@@ -99,7 +99,7 @@ namespace cubreplication
 
   }
 
-  void control_channel_managing_task::execute ()
+  void control_channel_managing_task::execute (cubthread::entry &thread_ref)
   {
     m_master_ctrl.check_alive ();
   }
@@ -109,7 +109,7 @@ namespace cubreplication
   {
     cubthread::delta_time dt = std::chrono::seconds (10);
     control_channel_managing_task *ctrl_channels_manager = new control_channel_managing_task (*this);
-    m_managing_daemon = cubthread::get_manager ()->create_daemon_without_entry (dt, ctrl_channels_manager,
+    m_managing_daemon = cubthread::get_manager ()->create_daemon (dt, ctrl_channels_manager,
 			"control channels manager");
   }
 
