@@ -31,9 +31,9 @@
  *
  *   Termination :
  *    - some streams are infinite (they continuosly send data until socket becomes invalid) or finite
- *    - a finite stream require an explicit termination phase : 
+ *    - a finite stream require an explicit termination phase :
  *      the user code of stream sender must use 'enter_termination_phase' of the sender object.
- *      this sets the sender into "receive" mode which expects the peer to either send something or 
+ *      this sets the sender into "receive" mode which expects the peer to either send something or
  *      simply close the connection
  *    - the stream receiver also has a 'terminate_connection' method which needs to be explicitely
  *      called by the user code
@@ -73,8 +73,8 @@ namespace cubstream
 	css_error_code rc = NO_ERRORS;
 	stream_position last_reported_ready_pos = this_producer_channel.m_stream.get_last_committed_pos ();
 
-        if (!this_producer_channel.m_channel.is_connection_alive ())
-          {
+	if (!this_producer_channel.m_channel.is_connection_alive ())
+	  {
 	    return;
 	  }
 
@@ -103,7 +103,7 @@ namespace cubstream
 	    m_first_loop = false;
 	  }
 
-        while (this_producer_channel.m_last_sent_position < last_reported_ready_pos)
+	while (this_producer_channel.m_last_sent_position < last_reported_ready_pos)
 	  {
 	    std::size_t byte_count = std::min ((stream_position) cubcomm::MTU,
 					       last_reported_ready_pos - this_producer_channel.m_last_sent_position);
@@ -122,23 +122,23 @@ namespace cubstream
 	      }
 	  }
 
-        if (this_producer_channel.m_last_sent_position < this_producer_channel.m_stream.get_last_committed_pos ())
-          {
-            /* send all stream data before termination */
-            return;
-          }
+	if (this_producer_channel.m_last_sent_position < this_producer_channel.m_stream.get_last_committed_pos ())
+	  {
+	    /* send all stream data before termination */
+	    return;
+	  }
 
-        if (this_producer_channel.is_termination_phase ())
-          {
-            UINT64 expected_magic;
-            std::size_t max_len = sizeof (expected_magic);
-          
-            /* wait for connection closing, we don't care about received content */
-            (void) this_producer_channel.m_channel.recv ((char *) &expected_magic, max_len);
+	if (this_producer_channel.is_termination_phase ())
+	  {
+	    UINT64 expected_magic;
+	    std::size_t max_len = sizeof (expected_magic);
 
-            this_producer_channel.m_channel.close_connection ();
-            return;
-          }
+	    /* wait for connection closing, we don't care about received content */
+	    (void) this_producer_channel.m_channel.recv ((char *) &expected_magic, max_len);
+
+	    this_producer_channel.m_channel.close_connection ();
+	    return;
+	  }
       }
 
     private:

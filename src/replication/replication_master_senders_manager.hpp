@@ -49,7 +49,7 @@ namespace cubreplication
   class stream_senders_manager
   {
     public:
-      stream_senders_manager (cubstream::stream& supervised_stream);
+      stream_senders_manager (cubstream::stream &supervised_stream);
       ~stream_senders_manager ();
 
       void add_stream_sender (cubstream::transfer_sender *sender);
