@@ -8705,10 +8705,10 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 #if !defined(NDEBUG) && defined (SERVER_MODE)
   if (class_oid_cnt > 1
       && !LOG_CHECK_LOG_APPLIER (thread_p) && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
-      && !logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
+      && !logtb_get_tdes (thread_p)->get_replication_generator ().is_row_replication_disabled ())
     {
       /* Disable testing HA for multi update. */
-      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
+      logtb_get_tdes (thread_p)->get_replication_generator ().set_row_replication_disabled (true);
       disabled_row_replication = true;
     }
 #endif
@@ -9337,7 +9337,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	  if (disabled_row_replication)
 	    {
 	      /* Enable row replication. */
-	      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+	      logtb_get_tdes (thread_p)->get_replication_generator ().set_row_replication_disabled (false);
 	    }
 #endif
 	  return ER_FAILED;
@@ -9366,7 +9366,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   if (disabled_row_replication)
     {
       /* Enable row replication. */
-      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+      logtb_get_tdes (thread_p)->get_replication_generator ().set_row_replication_disabled (false);
     }
 
 #endif
@@ -9416,7 +9416,7 @@ exit_on_error:
   if (disabled_row_replication)
     {
       /* Enable row replication. */
-      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+      logtb_get_tdes (thread_p)->get_replication_generator ().set_row_replication_disabled (false);
     }
 #endif
 

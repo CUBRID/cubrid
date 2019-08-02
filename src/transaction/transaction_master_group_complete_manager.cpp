@@ -85,8 +85,6 @@ namespace cubtx
       {
 	cubthread::entry *thread_p = &cubthread::get_entry ();
 	do_complete (thread_p);
-	assert (log_Gl.m_ack_stream_position <= stream_pos);
-	log_Gl.m_ack_stream_position = stream_pos;
       }
   }
 
@@ -139,7 +137,7 @@ namespace cubtx
 	notify_group_mvcc_complete (closed_group);
 
 	/* Pack group commit that internally wakeups senders. Get stream position of group complete. */
-	logtb_get_tdes (thread_p)->replication_log_generator.pack_group_commit_entry (closed_group_stream_start_position,
+	logtb_get_tdes (thread_p)->get_replication_generator ().pack_group_commit_entry (closed_group_stream_start_position,
 	    closed_group_stream_end_position);
 	m_latest_closed_group_start_stream_position = closed_group_stream_start_position;
 	m_latest_closed_group_end_stream_position = closed_group_stream_end_position;

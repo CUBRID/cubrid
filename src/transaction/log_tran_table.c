@@ -1115,6 +1115,10 @@ logtb_rv_assign_mvccid_for_undo_recovery (THREAD_ENTRY * thread_p, MVCCID mvccid
   assert (MVCCID_IS_VALID (mvccid));
 
   tdes->mvccinfo.id = mvccid;
+  if (!HA_DISABLED ())
+    {
+      log_Gl.m_repl_rv.m_active_mvcc_ids.insert (mvccid);
+    }
 }
 
 /*
@@ -1567,7 +1571,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   /* TODO[replication] : replace this condition on merging with develop branch */
   if (thread_p != NULL && !VACUUM_IS_THREAD_VACUUM (thread_p))
     {
-      tdes->replication_log_generator.clear_transaction ();
+      tdes->get_replication_generator ().clear_transaction ();
     }
 }
 
@@ -2925,7 +2929,7 @@ logtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, int tran_index,
       tdes = LOG_FIND_TDES (tran_index);
       if (tdes != NULL && tdes->trid != NULL_TRANID)
 	{
-	  tdes->replication_log_generator.set_row_replication_disabled (set != 0);
+	  tdes->get_replication_generator ().set_row_replication_disabled (set != 0);
 	  return true;
 	}
     }
@@ -3919,7 +3923,7 @@ logtb_get_current_mvccid (THREAD_ENTRY * thread_p)
   if (MVCCID_IS_VALID (curr_mvcc_info->id) == false)
     {
       curr_mvcc_info->id = log_Gl.mvcc_table.get_new_mvccid ();
-      tdes->replication_log_generator.apply_tran_mvccid ();
+      tdes->get_replication_generator ().apply_tran_mvccid ();
     }
 
   if (!tdes->mvccinfo.sub_ids.empty ())
@@ -4009,7 +4013,7 @@ logtb_get_mvcc_snapshot_and_gc_position (THREAD_ENTRY * thread_p)
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   if (tdes != NULL && tdes->replication_copy_context != NULL)
     {
-      tdes->replication_copy_context->set_online_replication_start_pos (log_Gl.m_ack_stream_position);
+      tdes->replication_copy_context->set_online_replication_start_pos (log_Gl.hdr.m_ack_stream_position);
     }
   return logtb_get_mvcc_snapshot (thread_p);
 }
@@ -5524,7 +5528,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
       idx++;
 
       /* Suppress_replication */
-      db_make_int (&vals[idx], tdes->replication_log_generator.is_row_replication_disabled ()? 1 : 0);
+      db_make_int (&vals[idx], tdes->get_replication_generator ().is_row_replication_disabled ()? 1 : 0);
       idx++;
 
       /* Query_timeout */
@@ -6174,6 +6178,12 @@ log_tdes::on_sysop_end ()
       LSA_SET_NULL (&undo_nxlsa);
       LSA_SET_NULL (&tail_topresult_lsa);
     }
+}
+
+cubreplication::log_generator &
+log_tdes::get_replication_generator ()
+{
+  return replication_log_generator;
 }
 
 // *INDENT-ON*

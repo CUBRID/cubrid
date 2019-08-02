@@ -204,6 +204,7 @@ set(MONITOR_HEADERS
 )
 
 set (REPLICATION_HEADERS
+  ${REPLICATION_DIR}/ha_server_state.h
   ${REPLICATION_DIR}/log_generator.hpp
   ${REPLICATION_DIR}/log_consumer.hpp
   ${REPLICATION_DIR}/replication_apply_db_copy.hpp

@@ -26,6 +26,7 @@
 
 #include "client_credentials.hpp"
 #include "es_common.h"
+#include "ha_server_state.h"
 #include "porting.h"
 #include "storage_common.h"
 
@@ -105,25 +106,7 @@ struct boot_db_path_info
 /*
  * HA server state
  */
-enum ha_server_state
-{
-  HA_SERVER_STATE_NA = -1,	/* N/A */
-  HA_SERVER_STATE_IDLE = 0,	/* initial state */
-  HA_SERVER_STATE_ACTIVE = 1,
-  HA_SERVER_STATE_TO_BE_ACTIVE = 2,
-  HA_SERVER_STATE_STANDBY = 3,
-  HA_SERVER_STATE_TO_BE_STANDBY = 4,
-  HA_SERVER_STATE_MAINTENANCE = 5,	/* maintenance mode */
-  HA_SERVER_STATE_DEAD = 6	/* server is dead - virtual state; not exists */
-};
-typedef enum ha_server_state HA_SERVER_STATE;
-#define HA_SERVER_STATE_IDLE_STR                "idle"
-#define HA_SERVER_STATE_ACTIVE_STR              "active"
-#define HA_SERVER_STATE_TO_BE_ACTIVE_STR        "to-be-active"
-#define HA_SERVER_STATE_STANDBY_STR             "standby"
-#define HA_SERVER_STATE_TO_BE_STANDBY_STR       "to-be-standby"
-#define HA_SERVER_STATE_MAINTENANCE_STR         "maintenance"
-#define HA_SERVER_STATE_DEAD_STR                "dead"
+
 
 typedef struct boot_server_credential BOOT_SERVER_CREDENTIAL;
 struct boot_server_credential

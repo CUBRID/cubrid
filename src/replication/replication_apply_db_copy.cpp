@@ -158,7 +158,7 @@ namespace cubreplication
     er_log_debug_replication (ARG_FILE_LINE, "apply_copy_context::connection terminated");
 
     /* update position in log_Gl */
-    log_Gl.m_ack_stream_position = m_online_repl_start_pos;
+    log_Gl.hdr.m_ack_stream_position = m_online_repl_start_pos;
 
     return error;
   }

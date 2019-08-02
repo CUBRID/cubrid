@@ -277,6 +277,7 @@ namespace cubreplication
     if (BTID_IS_NULL (&pkey_btid))
       {
 	// todo - reactivate: assert (false);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
 	return ER_OBJ_OBJECT_NOT_FOUND;
       }
 
@@ -285,6 +286,7 @@ namespace cubreplication
 			    &class_oid, &instance_oid, true) != BTREE_KEY_FOUND)
       {
 	// todo - reactivate: assert (false);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
 	return ER_OBJ_OBJECT_NOT_FOUND;
       }
     return NO_ERROR;
