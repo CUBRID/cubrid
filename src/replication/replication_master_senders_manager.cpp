@@ -142,7 +142,7 @@ namespace cubreplication
 	delete sender;
       }
 
-    master_server_stream_senders.clear();
+    master_server_stream_senders.clear ();
 
     logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
 

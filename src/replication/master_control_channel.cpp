@@ -115,7 +115,7 @@ namespace cubreplication
 
   master_ctrl::~master_ctrl ()
   {
-    cubthread::get_manager ()->destroy_daemon_without_entry (m_managing_daemon);
+    cubthread::get_manager ()->destroy_daemon (m_managing_daemon);
 
     for (auto &cr : m_ctrl_channel_readers)
       {
