@@ -77,7 +77,7 @@ namespace cubreplication
       g_stream = NULL;
     }
 
-    void commute_to_master_state (bool new_slave)
+    void commute_to_master_state ()
     {
       delete g_slave_node;
       g_slave_node = NULL;
@@ -85,15 +85,6 @@ namespace cubreplication
       if (g_master_node == NULL)
 	{
 	  g_master_node = new master_node (g_hostname.c_str (), g_stream, g_stream_file);
-	}
-
-      if ((new_slave) || (cubreplication::master_senders_manager::get_number_of_stream_senders () > 0))
-	{
-	  logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE);
-	}
-      else
-	{
-	  logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
 	}
     }
 
@@ -109,8 +100,6 @@ namespace cubreplication
 	{
 	  g_slave_node = new cubreplication::slave_node (g_hostname.c_str (), g_stream, g_stream_file);
 	}
-
-      logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE);
     }
 
     master_node *get_master_node ()

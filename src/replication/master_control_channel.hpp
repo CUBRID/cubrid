@@ -49,9 +49,10 @@ namespace cubreplication
   class master_ctrl
   {
     public:
-      master_ctrl (cubstream::stream_ack *stream_ack);
+      master_ctrl ();
       ~master_ctrl ();
       void add (cubcomm::channel &&chn);
+      void set_stream_ack (cubstream::stream_ack *stream_ack);
 
     private:
       void check_alive ();

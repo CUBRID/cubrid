@@ -184,7 +184,7 @@ namespace cubstream
 	    /* unpack one replication entry */
 	    add_packable_entry (packable_entry);
 	    packable_entry->unpack (*deserializator);
-	  }
+              }
 	deserializator->align (MAX_ALIGNMENT);
 
 	assert (deserializator->get_curr_ptr () - ptr == (int) data_size);

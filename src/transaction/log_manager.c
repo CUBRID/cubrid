@@ -1331,7 +1331,6 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       init_emergency = true;
     }
 
-  cubtx::single_node_group_complete_manager::init ();
   logpb_initialize_tran_complete_manager (thread_p);
 
   /*
@@ -3802,7 +3801,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	  /* for the replication agent guarantee the order of transaction */
 	  /* for CC(Click Counter) : at here */
 	  log_append_repl_info (thread_p, tdes, false);
-	  tdes->replication_log_generator.on_sysop_commit (*LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
+	  tdes->get_replication_generator ().on_sysop_commit (*LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
 	}
 
       log_record->lastparent_lsa = *LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes);
@@ -3985,7 +3984,7 @@ log_sysop_abort (THREAD_ENTRY * thread_p)
       if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_active_worker_transaction ()
 	  && log_does_allow_replication () == true)
 	{
-	  tdes->replication_log_generator.on_sysop_abort (*LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
+	  tdes->get_replication_generator ().on_sysop_abort (*LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
 	}
 
       /* Abort changes in system op. */
@@ -4460,8 +4459,9 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
 }
 
 void
-log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, cubstream::stream_position stream_pos, tx_group & group,
-			   LOG_LSA * complete_start_lsa, LOG_LSA * complete_end_lsa, bool * has_postpone)
+log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, cubstream::stream_position stream_pos,
+			   tx_group & group, LOG_LSA * complete_start_lsa, LOG_LSA * complete_end_lsa,
+			   bool * has_postpone)
 {
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa, end_lsa;
@@ -4815,8 +4815,11 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	  tran_state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
 	}
 
-      /* Pack replication entries, if the case, before creating group. */
-      tdes->replication_log_generator.on_transaction_commit ();
+      /* Pack replication entries, if the case, before creating group. Currently, we may have rare cases, when
+       * transaction having NULL MVCCID is added in a group. Also, transactions having not null MVCCID, but
+       * having no stream entries. The slave must consider this cases and handle them properly.
+       */
+      tdes->get_replication_generator ().on_transaction_commit ();
       id_complete = log_Gl.m_tran_complete_mgr->register_transaction (tdes->tran_index, tdes->mvccinfo.id, tran_state);
       if (MVCCID_IS_VALID (tdes->mvccinfo.id))
 	{
@@ -4874,7 +4877,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
     {
       /* No statistics to update. */
       assert (tdes->log_upd_stats.unique_stats_hash->nentries == 0);
-      tdes->replication_log_generator.on_transaction_commit ();
       if (MVCCID_IS_VALID (tdes->mvccinfo.id))
 	{
 	  /* No need to wait for complete. */
@@ -4963,7 +4965,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran,
 	  tdes->first_save_entry = NULL;
 	}
 
-      tdes->replication_log_generator.on_transaction_abort ();
+      tdes->get_replication_generator ().on_transaction_abort ();
       id_complete = log_Gl.m_tran_complete_mgr->register_transaction (tdes->tran_index, tdes->mvccinfo.id, tdes->state);
       if (MVCCID_IS_VALID (tdes->mvccinfo.id))
 	{
@@ -5325,7 +5327,7 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA 
    */
   LSA_COPY (&tdes->savept_lsa, savept_lsa);
 
-  tdes->replication_log_generator.abort_pending_repl_objects ();
+  tdes->get_replication_generator ().abort_pending_repl_objects ();
 
   return TRAN_UNACTIVE_ABORTED;
 }
@@ -9771,21 +9773,21 @@ log_flush_daemon_get_stats (UINT64 * statsp)
 }
 #endif // SERVER_MODE
 
-// *INDENT-OFF*
 #if defined(SERVER_MODE)
 static void
 log_checkpoint_execute (cubthread::entry & thread_ref)
 {
-      if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
+  if (!BO_IS_SERVER_RESTARTED ())
+    {
+      // wait for boot to finish
+      return;
+    }
 
-      logpb_checkpoint (&thread_ref);
+  logpb_checkpoint (&thread_ref);
 }
 #endif /* SERVER_MODE */
 
+// *INDENT-OFF*
 #if defined(SERVER_MODE)
 // class log_remove_log_archive_daemon_task
 //
@@ -9882,147 +9884,148 @@ class log_remove_log_archive_daemon_task : public cubthread::entry_task
     }
 };
 #endif /* SERVER_MODE */
+// *INDENT-ON*
 
 #if defined(SERVER_MODE)
 static void
 log_clock_execute (cubthread::entry & thread_ref)
 {
-      if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
+  if (!BO_IS_SERVER_RESTARTED ())
+    {
+      // wait for boot to finish
+      return;
+    }
 
-      struct timeval now;
-      gettimeofday (&now, NULL);
+  struct timeval now;
+  gettimeofday (&now, NULL);
 
-      log_Clock_msec = (now.tv_sec * 1000LL) + (now.tv_usec / 1000LL);
+  log_Clock_msec = (now.tv_sec * 1000LL) + (now.tv_usec / 1000LL);
 }
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
 static void
-log_check_ha_delay_info_execute (cubthread::entry &thread_ref)
+log_check_ha_delay_info_execute (cubthread::entry & thread_ref)
 {
 #if defined(WINDOWS)
-      return;
+  return;
 #endif /* WINDOWS */
 
-      if (!BO_IS_SERVER_RESTARTED ())
+  if (!BO_IS_SERVER_RESTARTED ())
+    {
+      // wait for boot to finish
+      return;
+    }
+
+  time_t log_record_time = 0;
+  int error_code;
+  int delay_limit_in_secs;
+  int acceptable_delay_in_secs;
+  int curr_delay_in_secs;
+  HA_SERVER_STATE server_state;
+
+  csect_enter (&thread_ref, CSECT_HA_SERVER_STATE, INF_WAIT);
+
+  server_state = css_ha_server_state ();
+
+  if (server_state == HA_SERVER_STATE_ACTIVE || server_state == HA_SERVER_STATE_TO_BE_STANDBY)
+    {
+      css_unset_ha_repl_delayed ();
+      perfmon_set_stat (&thread_ref, PSTAT_HA_REPL_DELAY, 0, true);
+
+      log_append_ha_server_state (&thread_ref, server_state);
+
+      csect_exit (&thread_ref, CSECT_HA_SERVER_STATE);
+    }
+  else
+    {
+      csect_exit (&thread_ref, CSECT_HA_SERVER_STATE);
+
+      delay_limit_in_secs = prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_IN_SECS);
+      acceptable_delay_in_secs = delay_limit_in_secs - prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_DELTA_IN_SECS);
+
+      if (acceptable_delay_in_secs < 0)
 	{
-	  // wait for boot to finish
-	  return;
+	  acceptable_delay_in_secs = 0;
 	}
 
-      time_t log_record_time = 0;
-      int error_code;
-      int delay_limit_in_secs;
-      int acceptable_delay_in_secs;
-      int curr_delay_in_secs;
-      HA_SERVER_STATE server_state;
+      error_code = catcls_get_apply_info_log_record_time (&thread_ref, &log_record_time);
 
-      csect_enter (&thread_ref, CSECT_HA_SERVER_STATE, INF_WAIT);
-
-      server_state = css_ha_server_state ();
-
-      if (server_state == HA_SERVER_STATE_ACTIVE || server_state == HA_SERVER_STATE_TO_BE_STANDBY)
+      if (error_code == NO_ERROR && log_record_time > 0)
 	{
-	  css_unset_ha_repl_delayed ();
-	  perfmon_set_stat (&thread_ref, PSTAT_HA_REPL_DELAY, 0, true);
-
-	  log_append_ha_server_state (&thread_ref, server_state);
-
-	  csect_exit (&thread_ref, CSECT_HA_SERVER_STATE);
-	}
-      else
-	{
-	  csect_exit (&thread_ref, CSECT_HA_SERVER_STATE);
-
-	  delay_limit_in_secs = prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_IN_SECS);
-	  acceptable_delay_in_secs = delay_limit_in_secs - prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_DELTA_IN_SECS);
-
-	  if (acceptable_delay_in_secs < 0)
+	  curr_delay_in_secs = (int) (time (NULL) - log_record_time);
+	  if (curr_delay_in_secs > 0)
 	    {
-	      acceptable_delay_in_secs = 0;
+	      curr_delay_in_secs -= HA_DELAY_ERR_CORRECTION;
 	    }
 
-	  error_code = catcls_get_apply_info_log_record_time (&thread_ref, &log_record_time);
-
-	  if (error_code == NO_ERROR && log_record_time > 0)
+	  if (delay_limit_in_secs > 0)
 	    {
-	      curr_delay_in_secs = (int) (time (NULL) - log_record_time);
-	      if (curr_delay_in_secs > 0)
+	      if (curr_delay_in_secs > delay_limit_in_secs)
 		{
-		  curr_delay_in_secs -= HA_DELAY_ERR_CORRECTION;
-		}
-
-	      if (delay_limit_in_secs > 0)
-		{
-		  if (curr_delay_in_secs > delay_limit_in_secs)
+		  if (!css_is_ha_repl_delayed ())
 		    {
-		      if (!css_is_ha_repl_delayed ())
-			{
-			  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_DELAY_DETECTED, 2,
-				  curr_delay_in_secs, delay_limit_in_secs);
+		      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_DELAY_DETECTED, 2,
+			      curr_delay_in_secs, delay_limit_in_secs);
 
-			  css_set_ha_repl_delayed ();
-			}
-		    }
-		  else if (curr_delay_in_secs <= acceptable_delay_in_secs)
-		    {
-		      if (css_is_ha_repl_delayed ())
-			{
-			  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_DELAY_RESOLVED, 2,
-				  curr_delay_in_secs, acceptable_delay_in_secs);
-
-			  css_unset_ha_repl_delayed ();
-			}
+		      css_set_ha_repl_delayed ();
 		    }
 		}
+	      else if (curr_delay_in_secs <= acceptable_delay_in_secs)
+		{
+		  if (css_is_ha_repl_delayed ())
+		    {
+		      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_DELAY_RESOLVED, 2,
+			      curr_delay_in_secs, acceptable_delay_in_secs);
 
-	      perfmon_set_stat (&thread_ref, PSTAT_HA_REPL_DELAY, curr_delay_in_secs, true);
+		      css_unset_ha_repl_delayed ();
+		    }
+		}
 	    }
+
+	  perfmon_set_stat (&thread_ref, PSTAT_HA_REPL_DELAY, curr_delay_in_secs, true);
 	}
+    }
 }
 #endif /* SERVER_MODE */
 
 #if defined (SERVER_MODE)
 
-static log_flush_lsa * p_log_flush_lsa = NULL;
+static log_flush_lsa *p_log_flush_lsa = NULL;
 
 static void
 log_flush_execute (cubthread::entry & thread_ref)
 {
-      LOG_LSA nxio_lsa;
+  LOG_LSA nxio_lsa;
 
-      if (!BO_IS_SERVER_RESTARTED () || !log_Flush_has_been_requested)
-	{
-	  return;
-	}
+  if (!BO_IS_SERVER_RESTARTED () || !log_Flush_has_been_requested)
+    {
+      return;
+    }
 
-      // refresh log trace flush time
-      thread_ref.event_stats.trace_log_flush_time = prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
+  // refresh log trace flush time
+  thread_ref.event_stats.trace_log_flush_time = prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
 
-      LOG_CS_ENTER (&thread_ref);
-      logpb_flush_pages_direct (&thread_ref);
-      LOG_CS_EXIT (&thread_ref);
+  LOG_CS_ENTER (&thread_ref);
+  logpb_flush_pages_direct (&thread_ref);
+  LOG_CS_EXIT (&thread_ref);
 
-      log_Stat.gc_flush_count++;
+  log_Stat.gc_flush_count++;
 
-      /* Wakeup transaction waiting for group complete. */
-      if (p_log_flush_lsa != NULL)
-	{
-          nxio_lsa = log_Gl.append.get_nxio_lsa ();
-          p_log_flush_lsa->notify_log_flush_lsa (&nxio_lsa);
-	}
+  /* Wakeup transaction waiting for group complete. */
+  if (p_log_flush_lsa != NULL)
+    {
+      nxio_lsa = log_Gl.append.get_nxio_lsa ();
+      p_log_flush_lsa->notify_log_flush_lsa (&nxio_lsa);
+    }
 
-      /* Wakeup active transaction waiting for specific LSA - not waiting for group complete.
-       * A better way will be to use another object that implements log_flush_lsa interface.
-       */
-      std::unique_lock<std::mutex> ulock (log_Gl.flush_notify_info.m_mutex);
-      log_Gl.flush_notify_info.m_cond.notify_all ();
-      log_Flush_has_been_requested = false;
-      ulock.unlock ();
+  /* Wakeup active transaction waiting for specific LSA - not waiting for group complete.
+   * A better way will be to use another object that implements log_flush_lsa interface.
+   */
+  std::unique_lock < std::mutex > ulock (log_Gl.flush_notify_info.m_mutex);
+  log_Gl.flush_notify_info.m_cond.notify_all ();
+  log_Flush_has_been_requested = false;
+  ulock.unlock ();
 }
 
 #endif /* SERVER_MODE */
@@ -10047,6 +10050,7 @@ log_set_notify (bool need_log_notify)
 #endif /* SERVER_MODE */
 }
 
+// *INDENT-OFF*
 #if defined(SERVER_MODE)
 /*
  * log_checkpoint_daemon_init () - initialize checkpoint daemon

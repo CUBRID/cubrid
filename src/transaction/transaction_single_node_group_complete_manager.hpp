@@ -21,8 +21,8 @@
 // Manager of completed group on a single node
 //
 
-#ifndef _SINGLE_NODE_GROUP_COMPLETE_MANAGER_HPP_
-#define _SINGLE_NODE_GROUP_COMPLETE_MANAGER_HPP_
+#ifndef _TRANACTION_SINGLE_NODE_GROUP_COMPLETE_MANAGER_HPP_
+#define _TRANACTION_SINGLE_NODE_GROUP_COMPLETE_MANAGER_HPP_
 
 #include "log_manager.h"
 #include "thread_daemon.hpp"
@@ -80,4 +80,4 @@ namespace cubtx
       void execute (cubthread::entry &thread_ref) override;
   };
 }
-#endif // !_SINGLE_NODE_GROUP_COMPLETE_MANAGER_HPP_
+#endif // !_TRANACTION_SINGLE_NODE_GROUP_COMPLETE_MANAGER_HPP_

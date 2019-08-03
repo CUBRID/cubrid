@@ -59,7 +59,6 @@ namespace cubreplication
   {
     m_stream = stream;
     m_stream_file = stream_file;
-    cubtx::slave_group_complete_manager::init ();
   }
 
   slave_node::~slave_node ()
@@ -68,7 +67,6 @@ namespace cubreplication
 
     /* Switch to single complete manager to void crashes at commit. */
     logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
-    cubtx::slave_group_complete_manager::final ();
   }
 
   int slave_node::setup_protocol (cubcomm::channel &chn)
@@ -83,11 +81,11 @@ namespace cubreplication
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
 		comm_error_code);
 	return ER_REPLICATION_SETUP;
-  }
+      }
 
     comm_error_code = chn.recv ((char *) &expected_magic, max_len);
     if (comm_error_code != css_error_code::NO_ERRORS)
-  {
+      {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
 		comm_error_code);
 	return ER_REPLICATION_SETUP;
@@ -160,7 +158,7 @@ namespace cubreplication
     assert (m_lc == NULL);
 
     /* connect to replication master node */
-    cubcomm::server_channel srv_chn (m_identity.get_hostname().c_str());
+    cubcomm::server_channel srv_chn (m_identity.get_hostname ().c_str ());
     srv_chn.set_channel_name (REPL_ONLINE_CHANNEL_NAME);
 
     m_master_identity.set_hostname (master_node_hostname);
@@ -222,10 +220,13 @@ namespace cubreplication
 	});
       }
 
+    /* Reset complete manager before starting daemons. */
+    logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE);
+
     /* start log_consumer daemons and apply thread pool */
     m_lc->start_daemons ();
 
-    cubcomm::server_channel control_chn (m_identity.get_hostname().c_str());
+    cubcomm::server_channel control_chn (m_identity.get_hostname ().c_str ());
     control_chn.set_channel_name (REPL_CONTROL_CHANNEL_NAME);
     error = control_chn.connect (m_master_identity.get_hostname ().c_str (),
 				 m_master_identity.get_port (),
@@ -240,7 +241,7 @@ namespace cubreplication
 		cubreplication::slave_control_channel (std::move (control_chn))));
 
     std::string ctrl_sender_daemon_name = "slave_control_sender_" + control_chn.get_channel_id ();
-    m_ctrl_sender_daemon = cubthread::get_manager()->create_daemon_without_entry (cubthread::delta_time (0),
+    m_ctrl_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
 			   ctrl_sender, ctrl_sender_daemon_name.c_str ());
 
     m_ctrl_sender = ctrl_sender;
@@ -275,7 +276,7 @@ namespace cubreplication
   {
     er_log_debug_replication (ARG_FILE_LINE, "slave_node::disconnect_from_master");
     stop_and_destroy_online_repl ();
-} /* namespace cubreplication */
+  } /* namespace cubreplication */
 
   void slave_node::stop_and_destroy_online_repl ()
   {

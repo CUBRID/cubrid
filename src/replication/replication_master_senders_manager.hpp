@@ -58,6 +58,8 @@ namespace cubreplication
       static void final ();
       static void wakeup_transfer_senders (cubstream::stream_position desired_position);
 
+      static void remove_all_senders ();
+
       static cubstream::stream_position g_minimum_successful_stream_position;
 
     private:

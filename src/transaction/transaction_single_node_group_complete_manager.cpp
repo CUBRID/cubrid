@@ -39,12 +39,7 @@ namespace cubtx
   //
   single_node_group_complete_manager *single_node_group_complete_manager::get_instance ()
   {
-    if (gl_single_node_group == NULL)
-      {
-	gl_single_node_group = new single_node_group_complete_manager ();
-	er_log_debug (ARG_FILE_LINE, "single_node_group_complete_manager:get_instance created single " \
-		      "group complete manager\n");
-      }
+    assert (gl_single_node_group != NULL);
     return gl_single_node_group;
   }
 
@@ -53,15 +48,18 @@ namespace cubtx
   //
   void single_node_group_complete_manager::init ()
   {
-    single_node_group_complete_manager *p_gl_single_node_group = get_instance ();
-    LSA_SET_NULL (&p_gl_single_node_group->m_latest_closed_group_start_log_lsa);
-    LSA_SET_NULL (&p_gl_single_node_group->m_latest_closed_group_end_log_lsa);
+    assert (gl_single_node_group == NULL);
+    er_log_debug (ARG_FILE_LINE, "single_node_group_complete_manager:init created single group complete manager\n");
+    gl_single_node_group = new single_node_group_complete_manager ();
+
+    LSA_SET_NULL (&gl_single_node_group->m_latest_closed_group_start_log_lsa);
+    LSA_SET_NULL (&gl_single_node_group->m_latest_closed_group_end_log_lsa);
 
 #if defined (SERVER_MODE)
     cubthread::looper looper = cubthread::looper (single_node_group_complete_manager::get_group_commit_interval);
-    single_node_group_complete_manager::gl_single_node_group_complete_daemon = cubthread::get_manager ()->create_daemon ((
-		looper),
-	new single_node_group_complete_task (), "single_node_group_complete_daemon");
+    single_node_group_complete_manager::gl_single_node_group_complete_daemon =
+	    cubthread::get_manager ()->create_daemon ((looper), new single_node_group_complete_task (),
+		"single_node_group_complete_daemon");
 #endif
   }
 
@@ -210,11 +208,6 @@ namespace cubtx
     LOG_TDES *tdes;
     bool has_postpone;
 
-    if (log_Gl.m_tran_complete_mgr->get_manager_type () != get_manager_type ())
-      {
-	return;
-      }
-
     if (close_current_group ())
       {
 	cubstream::stream_position closed_group_stream_start_position = 0, closed_group_stream_end_position = 0;
@@ -228,7 +221,7 @@ namespace cubtx
 	if (!HA_DISABLED () && css_ha_server_state () == HA_SERVER_STATE_ACTIVE)
 	  {
 	    /* This is a single node that must generate stream group commits. */
-	    tdes->replication_log_generator.pack_group_commit_entry (closed_group,
+	    tdes->get_replication_generator ().pack_group_commit_entry (closed_group,
 		closed_group_stream_start_position, closed_group_stream_end_position);
 	  }
 
@@ -252,12 +245,7 @@ namespace cubtx
   //
   void single_node_group_complete_manager::do_complete (THREAD_ENTRY *thread_p)
   {
-    LOG_TDES *tdes = logtb_get_tdes (&cubthread::get_entry ());
-
-    if (log_Gl.m_tran_complete_mgr->get_manager_type () != get_manager_type ())
-      {
-	return;
-      }
+    LOG_TDES *tdes = logtb_get_tdes (thread_p);
 
     if (is_latest_closed_group_completed ())
       {

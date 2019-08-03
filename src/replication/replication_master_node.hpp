@@ -27,6 +27,7 @@
 #define _REPLICATION_MASTER_NODE_HPP_
 
 #include "replication_node.hpp"
+#include "stream_transfer_sender.hpp"
 
 namespace cubcomm
 {
@@ -57,6 +58,7 @@ namespace cubreplication
 
       void new_slave (int fd);
       void add_ctrl_chn (int fd);
+      void set_ctrl_channel_manager_stream_ack (cubstream::stream_ack *stream_ack);
       void update_senders_min_position (const cubstream::stream_position &pos);
   };
 

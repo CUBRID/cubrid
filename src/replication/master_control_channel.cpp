@@ -30,6 +30,7 @@
 
 #include "byte_order.h"
 #include "communication_channel.hpp"
+#include "replication_master_senders_manager.hpp"
 #include "error_manager.h"
 #include "stream_transfer_sender.hpp"
 #include "system_parameter.h"
@@ -76,17 +77,17 @@ namespace cubreplication
 	    return;
 	  }
 
-	er_log_debug (ARG_FILE_LINE, "ack_reader_task::execute %llu\n", ack_sp);
+	er_log_debug (ARG_FILE_LINE, "ack_reader_task::execute %llu\n", ntohi64 (ack_sp));
 	assert (m_stream_ack != NULL);
 	m_stream_ack->notify_stream_ack (ntohi64 (ack_sp));
       }
   }
 
-  class control_channel_managing_task : public cubthread::task_without_context
+  class control_channel_managing_task : public cubthread::entry_task
   {
     public:
       control_channel_managing_task (master_ctrl &master_ctrl);
-      void execute () override;
+      void execute (cubthread::entry &thread_ref) override;
 
     private:
       master_ctrl &m_master_ctrl;
@@ -98,23 +99,23 @@ namespace cubreplication
 
   }
 
-  void control_channel_managing_task::execute ()
+  void control_channel_managing_task::execute (cubthread::entry &thread_ref)
   {
     m_master_ctrl.check_alive ();
   }
 
-  master_ctrl::master_ctrl (cubstream::stream_ack *stream_ack)
-    : m_stream_ack (stream_ack)
+  master_ctrl::master_ctrl ()
+    : m_stream_ack (NULL)
   {
     cubthread::delta_time dt = std::chrono::seconds (10);
     control_channel_managing_task *ctrl_channels_manager = new control_channel_managing_task (*this);
-    m_managing_daemon = cubthread::get_manager ()->create_daemon_without_entry (dt, ctrl_channels_manager,
+    m_managing_daemon = cubthread::get_manager ()->create_daemon (dt, ctrl_channels_manager,
 			"control channels manager");
   }
 
   master_ctrl::~master_ctrl ()
   {
-    cubthread::get_manager ()->destroy_daemon_without_entry (m_managing_daemon);
+    cubthread::get_manager ()->destroy_daemon (m_managing_daemon);
 
     for (auto &cr : m_ctrl_channel_readers)
       {
@@ -134,6 +135,7 @@ namespace cubreplication
     // assure caller's param gets moved from
     cubcomm::channel *moved_to_chn = new cubcomm::channel (std::move (chn));
     cubthread::delta_time dt = cubthread::delta_time (0);
+    assert (m_stream_ack != NULL);
     ack_reader_task *ack_reader = new ack_reader_task (moved_to_chn, m_stream_ack);
     m_ctrl_channel_readers.push_back (std::make_pair (cubthread::get_manager ()->create_daemon (dt,
 				      ack_reader, "control channel reader"), moved_to_chn));
@@ -142,20 +144,51 @@ namespace cubreplication
   }
 
   void
+  master_ctrl::set_stream_ack (cubstream::stream_ack *stream_ack)
+  {
+    /* It is the caller responsibility to notify ack. */
+    std::lock_guard<std::mutex> lg (m_mtx);
+
+    /* Destroy existing channels, if were not already destroyed. */
+    er_log_debug (ARG_FILE_LINE, "master_ctrl::set_stream_ack close %d reader channels\n", m_ctrl_channel_readers.size ());
+    for (auto it = m_ctrl_channel_readers.begin (); it != m_ctrl_channel_readers.end (); )
+      {
+	it->second->close_connection ();
+	cubthread::get_manager ()->destroy_daemon (it->first);
+	it = m_ctrl_channel_readers.erase (it);
+      }
+
+    m_stream_ack = stream_ack;
+  }
+
+  void
   master_ctrl::check_alive ()
   {
+    bool reader_removed = false;
     std::lock_guard<std::mutex> lg (m_mtx);
-    for (auto it = m_ctrl_channel_readers.begin (); it != m_ctrl_channel_readers.end ();)
+
+    for (auto it = m_ctrl_channel_readers.begin (); it != m_ctrl_channel_readers.end (); )
       {
 	if (!it->second->is_connection_alive ())
 	  {
 	    cubthread::get_manager ()->destroy_daemon (it->first);
 	    it = m_ctrl_channel_readers.erase (it);
+	    reader_removed = true;
 	  }
 	else
 	  {
 	    ++it;
 	  }
+      }
+
+    if (reader_removed && m_ctrl_channel_readers.size () == 0)
+      {
+	/* Removed all readers. We need to stop also senders that changes complete manager also.
+	 * When the slave readers close the socket, master senders does not detect immediately
+	 * and this cause serious performance issues.
+	 * We may improve the code that attomically stops revceivers/senders.
+	 */
+	cubreplication::master_senders_manager::remove_all_senders ();
       }
   }
 }

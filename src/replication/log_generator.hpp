@@ -82,7 +82,7 @@ namespace cubreplication
 
       stream_entry m_stream_entry;
 
-      bool m_is_row_replication_disabled;      
+      bool m_is_row_replication_disabled;
 
       static cubstream::multi_thread_stream *s_stream;
 
@@ -96,7 +96,7 @@ namespace cubreplication
       log_generator (cubstream::multi_thread_stream *stream)
 	: m_pending_to_be_added ()
 	, m_stream_entry (stream)
-	, m_is_row_replication_disabled (true)	
+	, m_is_row_replication_disabled (true)
       {
       };
 
@@ -168,6 +168,7 @@ namespace cubreplication
 #endif
 
     private:
+      static const size_t MAX_PACKABLE_ENTRIES = 1000;
 
       void set_stream (cubstream::multi_thread_stream *stream)
       {

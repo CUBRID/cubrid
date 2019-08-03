@@ -543,22 +543,27 @@ struct log_tdes
   const char *ha_sbr_statement;
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
-  cubreplication::log_generator replication_log_generator;
-  cubreplication::copy_context replication_copy_context;
+  public:
+    cubreplication::copy_context replication_copy_context;
 
-  bool is_active_worker_transaction () const;
-  bool is_system_transaction () const;
-  bool is_system_main_transaction () const;
-  bool is_system_worker_transaction () const;
-  bool is_allowed_undo () const;
-  bool is_allowed_sysop () const;
-  bool is_under_sysop () const;
+    bool is_active_worker_transaction () const;
+    bool is_system_transaction () const;
+    bool is_system_main_transaction () const;
+    bool is_system_worker_transaction () const;
+    bool is_allowed_undo () const;
+    bool is_allowed_sysop () const;
+    bool is_under_sysop () const;
 
-  void lock_topop ();
-  void unlock_topop ();
+    void lock_topop ();
+    void unlock_topop ();
 
-  void on_sysop_start ();
-  void on_sysop_end (bool force_lsa_reset);
+    void on_sysop_start ();
+    void on_sysop_end (bool force_lsa_reset);
+
+    cubreplication::log_generator &get_replication_generator ();
+
+  private:
+    cubreplication::log_generator replication_log_generator;
 #endif
   // *INDENT-ON*
 };
@@ -640,6 +645,7 @@ struct global_unique_stats_table
 #define GLOBAL_UNIQUE_STATS_HASH_SIZE 1000
 
 /* Global structure to trantable, log buffer pool, etc */
+// *INDENT-OFF*
 namespace cubreplication
 {
   struct replication_rv

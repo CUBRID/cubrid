@@ -280,6 +280,7 @@ set(OBJECT_HEADERS
 )
 
 set (REPLICATION_HEADERS
+  ${REPLICATION_DIR}/ha_server_state.h
   ${REPLICATION_DIR}/log_generator.hpp
   ${REPLICATION_DIR}/replication_common.hpp
   ${REPLICATION_DIR}/replication_db_copy.hpp

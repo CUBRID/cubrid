@@ -38,10 +38,7 @@ namespace cubtx
   //
   master_group_complete_manager *master_group_complete_manager::get_instance ()
   {
-    if (gl_master_group == NULL)
-      {
-	gl_master_group = new master_group_complete_manager ();
-      }
+    assert (gl_master_group != NULL);
     return gl_master_group;
   }
 
@@ -51,9 +48,10 @@ namespace cubtx
   void master_group_complete_manager::init ()
   {
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
-    master_group_complete_manager *p_gl_master_group = get_instance ();
-    p_gl_master_group->m_latest_closed_group_start_stream_position = 0;
-    p_gl_master_group->m_latest_closed_group_end_stream_position = 0;
+    gl_master_group = new master_group_complete_manager ();
+    er_log_debug (ARG_FILE_LINE, "master_group_complete_manager:init created master group complete manager\n");
+    gl_master_group->m_latest_closed_group_start_stream_position = 0;
+    gl_master_group->m_latest_closed_group_end_stream_position = 0;
 
     master_group_complete_manager::gl_master_group_complete_daemon = cubthread::get_manager ()->create_daemon ((looper),
 	new master_group_complete_task (), "master_group_complete_daemon");
@@ -66,7 +64,7 @@ namespace cubtx
   {
     if (gl_master_group_complete_daemon != NULL)
       {
-	cubthread::get_manager()->destroy_daemon (gl_master_group_complete_daemon);
+	cubthread::get_manager ()->destroy_daemon (gl_master_group_complete_daemon);
 	gl_master_group_complete_daemon = NULL;
       }
 
@@ -144,11 +142,6 @@ namespace cubtx
   //
   void master_group_complete_manager::do_prepare_complete (THREAD_ENTRY *thread_p)
   {
-    if (log_Gl.m_tran_complete_mgr->get_manager_type () != get_manager_type ())
-      {
-	return;
-      }
-
     if (close_current_group ())
       {
 	cubstream::stream_position closed_group_stream_start_position, closed_group_stream_end_position;
@@ -159,9 +152,8 @@ namespace cubtx
 	notify_group_mvcc_complete (closed_group);
 
 	/* Pack group commit that internally wakeups senders. Get stream position of group complete. */
-	logtb_get_tdes (thread_p)->replication_log_generator.pack_group_commit_entry (closed_group,
-	    closed_group_stream_start_position,
-	    closed_group_stream_end_position);
+	logtb_get_tdes (thread_p)->get_replication_generator ().pack_group_commit_entry (closed_group,
+	    closed_group_stream_start_position, closed_group_stream_end_position);
 	m_latest_closed_group_start_stream_position = closed_group_stream_start_position;
 	m_latest_closed_group_end_stream_position = closed_group_stream_end_position;
 	mark_latest_closed_group_prepared_for_complete ();
@@ -177,13 +169,8 @@ namespace cubtx
   void master_group_complete_manager::do_complete (THREAD_ENTRY *thread_p)
   {
     LOG_LSA closed_group_start_complete_lsa, closed_group_end_complete_lsa;
-    LOG_TDES *tdes = logtb_get_tdes (&cubthread::get_entry ());
+    LOG_TDES *tdes = logtb_get_tdes (thread_p);
     bool has_postpone;
-
-    if (log_Gl.m_tran_complete_mgr->get_manager_type () != get_manager_type ())
-      {
-	return;
-      }
 
     if (is_latest_closed_group_completed ())
       {

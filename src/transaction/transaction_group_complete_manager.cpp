@@ -29,6 +29,11 @@
 
 namespace cubtx
 {
+  group_complete_manager::~group_complete_manager ()
+  {
+    assert (is_latest_closed_group_completed () && is_current_group_empty ());
+  }
+
   //
   // register_transaction register the transaction that must wait for complete.
   //

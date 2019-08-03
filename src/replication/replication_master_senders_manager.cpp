@@ -96,13 +96,7 @@ namespace cubreplication
 	master_channels_supervisor_daemon = NULL;
       }
 
-    rwlock_write_lock (&master_senders_lock);
-    for (cubstream::transfer_sender *sender : master_server_stream_senders)
-      {
-	delete sender;
-      }
-    master_server_stream_senders.clear ();
-    rwlock_write_unlock (&master_senders_lock);
+    remove_all_senders ();
 
     error_code = rwlock_finalize (&master_senders_lock);
     assert (error_code == NO_ERROR);
@@ -137,6 +131,22 @@ namespace cubreplication
       }
     rwlock_read_unlock (&master_senders_lock);
 #endif
+  }
+
+  void master_senders_manager::remove_all_senders ()
+  {
+    rwlock_read_lock ( &master_senders_lock);
+
+    for (cubstream::transfer_sender *sender : master_server_stream_senders)
+      {
+	delete sender;
+      }
+
+    master_server_stream_senders.clear ();
+
+    logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
+
+    rwlock_read_unlock (&master_senders_lock);
   }
 
   void master_senders_manager::execute (cubthread::entry &context)

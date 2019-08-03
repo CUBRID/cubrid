@@ -64,7 +64,7 @@ namespace cubreplication
 		se->unpack ();
 		assert (se->get_stream_entry_end_position () > se->get_stream_entry_start_position ());
 
-		m_lc.ack_produce (se->get_stream_entry_end_position ());		
+		m_lc.ack_produce (se->get_stream_entry_end_position ());
 		er_log_debug (ARG_FILE_LINE, "consumer_daemon_task::send ack = %llu\n", se->get_stream_entry_end_position ());
 	      }
 	    m_lc.push_entry (se);
@@ -140,7 +140,7 @@ namespace cubreplication
       }
 
     private:
-      std::vector<stream_entry *> m_repl_stream_entries;      
+      std::vector<stream_entry *> m_repl_stream_entries;
       log_consumer &m_lc;
   };
 
@@ -183,7 +183,7 @@ namespace cubreplication
 	using tasks_map = std::unordered_map<MVCCID, applier_worker_task *>;
 	tasks_map repl_tasks;
 	tasks_map nonexecutable_repl_tasks;
-	int count_expected_transaction;
+	int count_expected_transaction = 0;
 
 	assert (m_p_dispatch_consumer != NULL);
 	while (true)
@@ -225,19 +225,25 @@ namespace cubreplication
 		er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task wait for all working tasks to finish\n");
 		assert (se->get_stream_entry_start_position () < se->get_stream_entry_end_position ());
 
-		m_prev_group_stream_position = m_curr_group_stream_position;
-		m_curr_group_stream_position = se->get_stream_entry_end_position ();
+		if (count_expected_transaction > 0)
+		  {
+		    /* We have to wait for previous group. */
+		    m_prev_group_stream_position = m_curr_group_stream_position;
+		    m_curr_group_stream_position = se->get_stream_entry_end_position ();
 
-		// Noramlly, is enough to wait for group to complete. However, for safety reason, it is better to
-		// start wait for workers first, then wait for complete manager.
-		m_lc.wait_for_tasks ();
+		    // Noramlly, is enough to wait for group to complete. However, for safety reason, it is better to
+		    // start wait for workers first, then wait for complete manager.
+		    m_lc.wait_for_tasks ();
+
+		    // We need to wait for previous group to complete. Otherwise, we mix transactions from previous and
+		    // current groups.
+		    m_p_dispatch_consumer->wait_for_complete_stream_position (m_prev_group_stream_position);
+		  }
 
 		// apply all sub-transaction first
 		m_lc.get_subtran_applier ().apply ();
-		// We need to wait for previous group to complete. Otherwise, we mix transactions from previous and
-		// current groups.
-		m_p_dispatch_consumer->wait_for_complete_stream_position (m_prev_group_stream_position);
 
+		// apply the transaction in current group
 		count_expected_transaction = 0;
 		for (tasks_map::iterator it = repl_tasks.begin (); it != repl_tasks.end (); it++)
 		  {
@@ -290,8 +296,17 @@ namespace cubreplication
 		// The transactions started but can't complete yet since it waits for the current group complete.
 		// But the current group can't complete, since GC thread is waiting for close info.
 		// Now is safe to set close info.
-		m_p_dispatch_consumer->set_close_info_for_current_group (m_curr_group_stream_position,
-		    count_expected_transaction);
+		if (count_expected_transaction > 0)
+		  {
+		    /* We have committed transaction with replication entries. */
+		    m_p_dispatch_consumer->set_close_info_for_current_group (m_curr_group_stream_position,
+			count_expected_transaction);
+		  }
+		else
+		  {
+		    er_log_debug (ARG_FILE_LINE, "No replication entries in group having stream position (%llu, %llu)\n",
+				  se->get_stream_entry_start_position (), se->get_stream_entry_end_position ());
+		  }
 	      }
 	    else if (se->is_new_master ())
 	      {
@@ -300,7 +315,7 @@ namespace cubreplication
 	    else if (se->is_subtran_commit ())
 	      {
 		m_lc.get_subtran_applier ().insert_stream_entry (se);
-	      }	    
+	      }
 	    else if (se->get_packable_entry_count_from_header () > 0)
 	      {
 		MVCCID mvccid = se->get_mvccid ();
@@ -441,7 +456,7 @@ namespace cubreplication
     /* Increase m_started_task before starting the task. */
     m_started_tasks++;
 
-    cubthread::get_manager ()->push_task (m_applier_workers_pool, task);    
+    cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
   }
 
   void log_consumer::execute_task (applier_worker_task *task)
@@ -452,7 +467,7 @@ namespace cubreplication
 	task->stringify (sb);
 	_er_log_debug (ARG_FILE_LINE, "log_consumer::execute_task:\n%s", sb.get_buffer ());
       }
-    
+
     push_task (task);
   }
 
