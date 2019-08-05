@@ -197,7 +197,6 @@ namespace cubreplication
 
     assert (m_stream != NULL);
     m_lc = new log_consumer ();
-    m_lc->fetch_suspend ();
 
     m_lc->set_stream (m_stream);
 
@@ -225,8 +224,8 @@ namespace cubreplication
       }
 
     /* Slave control sender is responsible for sending acks through slave_control_channel */
-    cubreplication::slave_control_sender *ctrl_sender = new slave_control_sender (std::move (
-		cubreplication::slave_control_channel (std::move (control_chn))));
+    cubreplication::slave_control_sender *ctrl_sender = new slave_control_sender (cubreplication::slave_control_channel (
+		std::move (control_chn)));
 
     std::string ctrl_sender_daemon_name = "slave_control_sender_" + control_chn.get_channel_id ();
     m_ctrl_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
@@ -254,7 +253,7 @@ namespace cubreplication
     m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *m_stream,
 	start_position);
 
-    m_lc->fetch_resume ();
+    m_lc->get_stream_fetcher ().resume ();
 
     return NO_ERROR;
   }

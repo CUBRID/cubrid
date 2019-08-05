@@ -109,12 +109,6 @@ namespace cubreplication
 
       bool m_is_stopped;
 
-      /* fetch suspend flag : this is required in context of replication with copy phase :
-       * while replication copy is running the fetch from online replication must be suspended
-       * (although the stream contents are received and stored on local slave node)
-       */
-      cubsync::event_semaphore m_fetch_suspend;
-
     public:
 
       std::function<void (cubstream::stream_position)> ack_produce;
@@ -180,10 +174,6 @@ namespace cubreplication
       }
 
       void stop (void);
-
-      void fetch_suspend ();
-      void fetch_resume ();
-      void wait_for_fetch_resume ();
 
       subtran_applier &get_subtran_applier ();
   };

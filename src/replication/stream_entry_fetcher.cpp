@@ -28,39 +28,88 @@
 
 namespace cubstream
 {
-  template<typename T>
-  class stream_entry_fetch_task : public cubthread::entry_task
+  template <typename T>
+  stream_entry_fetch_task<T>::stream_entry_fetch_task (stream_entry_fetcher<T> &fetcher, bool defer_start)
+    : m_fetcher (fetcher)
+    , m_stop (false)
+    , m_suspended (defer_start)
   {
-    public:
-      stream_entry_fetch_task (stream_entry_fetcher<T> &fetcher)
-	: m_fetcher (fetcher)
-      {
-      };
-
-      void execute (cubthread::entry &thread_ref) override
-      {
-	m_fetcher.produce ();
-      };
-
-    private:
-      stream_entry_fetcher<T> &m_fetcher;
   };
 
-  template<typename T>
-  stream_entry_fetcher<T>::stream_entry_fetcher (const std::function<void (T *)> &on_fetch,
-      multi_thread_stream &stream)
-    : m_on_fetch (on_fetch)
-    , m_stream (stream)
+  template <typename T>
+  void stream_entry_fetch_task<T>::execute (cubthread::entry &thread_ref)
   {
+    if (m_suspended || m_stop)
+      {
+	std::unique_lock<std::mutex> ul (m_suspend_mtx);
+	m_suspend_cv.wait (ul, [this] ()
+	{
+	  // leave condition variable wait on resume or on stop
+	  return !m_suspended || m_stop;
+	}
+			  );
+	if (m_stop)
+	  {
+	    return;
+	  }
+      }
+
+    m_fetcher.produce ();
+  };
+
+  template <typename T>
+  void  stream_entry_fetch_task<T>::resume ()
+  {
+    std::lock_guard<std::mutex> lg (m_suspend_mtx);
+    m_suspended = false;
+    m_suspend_cv.notify_one ();
+  }
+
+  template <typename T>
+  void  stream_entry_fetch_task<T>::suspend ()
+  {
+    std::lock_guard<std::mutex> lg (m_suspend_mtx);
+    m_suspended = true;
+  }
+
+  template <typename T>
+  void  stream_entry_fetch_task<T>::stop ()
+  {
+    std::lock_guard<std::mutex> lg (m_suspend_mtx);
+    m_stop = true;
+    m_suspend_cv.notify_one ();
+  }
+
+  template<typename T>
+  stream_entry_fetcher<T>::stream_entry_fetcher (multi_thread_stream &stream, const std::function<void (T *)> &on_fetch,
+      bool defer_start)
+    : m_stream (stream)
+    , m_on_fetch (on_fetch)
+    , m_fetch_task (NULL)
+  {
+    m_fetch_task = new stream_entry_fetch_task<T> (*this, defer_start);
+
     m_fetch_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
-		     new stream_entry_fetch_task<T> (*this),
-		     "prepare_stream_entry_daemon");
+		     m_fetch_task, "prepare_stream_entry_daemon");
   }
 
   template<typename T>
   stream_entry_fetcher<T>::~stream_entry_fetcher ()
   {
+    m_fetch_task->stop ();
     cubthread::get_manager ()->destroy_daemon (m_fetch_daemon);
+  }
+
+  template<typename T>
+  void stream_entry_fetcher<T>::resume ()
+  {
+    m_fetch_task->resume();
+  }
+
+  template<typename T>
+  void stream_entry_fetcher<T>::suspend ()
+  {
+    m_fetch_task->suspend ();
   }
 
   template<typename T>
@@ -79,9 +128,6 @@ namespace cubstream
   int stream_entry_fetcher<T>::fetch_stream_entry (T *&entry)
   {
     int err = NO_ERROR;
-
-    // todo: add wait for fetch resume
-    // wait_for_fetch_resume ();
 
     T *se = new T (&m_stream);
 

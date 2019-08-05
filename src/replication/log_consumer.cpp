@@ -307,7 +307,12 @@ namespace cubreplication
 	};
     };
 
-    m_entry_fetcher = new cubstream::repl_stream_entry_fetcher (on_fetch, *get_stream ());
+    /* defer_fetch_start: this is required in context of replication with copy phase :
+     * while replication copy is running the fetch from online replication must be suspended
+     * (although the stream contents are received and stored on local slave node)
+     */
+    bool defer_fetch_start = true;
+    m_entry_fetcher = new cubstream::repl_stream_entry_fetcher (*get_stream (), on_fetch, defer_fetch_start);
 
     m_dispatch_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
 			new dispatch_daemon_task (*this),
@@ -350,27 +355,9 @@ namespace cubreplication
 
   void log_consumer::stop (void)
   {
-    /* wakeup fetch daemon to allow it time to detect it is stopped */
-    fetch_resume ();
-
     get_stream ()->stop ();
 
     m_entry_fetcher->release_waiters ();
-  }
-
-  void log_consumer::fetch_suspend (void)
-  {
-    m_fetch_suspend.clear ();
-  }
-
-  void log_consumer::fetch_resume (void)
-  {
-    m_fetch_suspend.set ();
-  }
-
-  void log_consumer::wait_for_fetch_resume (void)
-  {
-    m_fetch_suspend.wait ();
   }
 
   subtran_applier &log_consumer::get_subtran_applier ()

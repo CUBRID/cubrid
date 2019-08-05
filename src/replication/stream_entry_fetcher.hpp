@@ -26,6 +26,7 @@
 
 #include "replication_stream_entry.hpp"
 #include "concurrent_queue.hpp"
+#include "thread_entry_task.hpp"
 
 namespace cubthread
 {
@@ -36,13 +37,19 @@ namespace cubstream
 {
   using cubreplication::stream_entry;
 
+  template<typename T>
+  class stream_entry_fetch_task;
+
   // todo: find a way to constrain T to be of type cubstream::entry<T>
   template<typename T>
   class stream_entry_fetcher
   {
     public:
-      stream_entry_fetcher (const std::function<void (T *)> &on_fetch, cubstream::multi_thread_stream &stream);
+      stream_entry_fetcher (cubstream::multi_thread_stream &stream, const std::function<void (T *)> &on_fetch,
+			    bool defer_start = false);
       ~stream_entry_fetcher ();
+      void resume ();
+      void suspend ();
       void produce ();
 
       T *pop_entry (bool &should_stop);
@@ -51,14 +58,37 @@ namespace cubstream
     private:
       int fetch_stream_entry (T *&entry);
       void push_entry (T *entry);
+
+      cubstream::multi_thread_stream &m_stream;
       std::function<void (T *)> m_on_fetch;
 
       cubsync::concurrent_queue<T *> m_stream_entries;
+      stream_entry_fetch_task<T> *m_fetch_task;
       cubthread::daemon *m_fetch_daemon;
-      cubstream::multi_thread_stream &m_stream;
+  };
+
+  template<typename T>
+  class stream_entry_fetch_task : public cubthread::entry_task
+  {
+    public:
+      stream_entry_fetch_task (stream_entry_fetcher<T> &fetcher, bool defer_start = false);
+      void execute (cubthread::entry &thread_ref) override;
+
+      void resume ();
+      void suspend ();
+      void stop ();
+
+    private:
+      stream_entry_fetcher<T> &m_fetcher;
+      bool m_stop;
+      bool m_suspended;
+      std::condition_variable m_suspend_cv;
+      std::mutex m_suspend_mtx;
   };
 
   template class stream_entry_fetcher<stream_entry>;
+  template class stream_entry_fetch_task<stream_entry>;
+
   using repl_stream_entry_fetcher = stream_entry_fetcher<stream_entry>;
 }
 
