@@ -135,6 +135,7 @@ namespace cubreplication
       dispatch_daemon_task (log_consumer &lc)
 	: m_filtered_apply_end (log_Gl.hdr.m_ack_stream_position)
 	, m_lc (lc)
+	, m_stop (false)
       {
       }
 
@@ -165,12 +166,11 @@ namespace cubreplication
 	tasks_map repl_tasks;
 	tasks_map nonexecutable_repl_tasks;
 
-	while (true)
+	while (!m_stop)
 	  {
-	    bool should_stop = false;
-	    stream_entry *se = m_lc.get_stream_fetcher ().pop_entry (should_stop);
+	    stream_entry *se = m_lc.get_stream_fetcher ().pop_entry (m_stop);
 
-	    if (should_stop)
+	    if (m_stop)
 	      {
 		break;
 	      }
@@ -271,6 +271,7 @@ namespace cubreplication
     private:
       cubstream::stream_position m_filtered_apply_end;
       log_consumer &m_lc;
+      bool m_stop;
   };
 
   log_consumer::~log_consumer ()
