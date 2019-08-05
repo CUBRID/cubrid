@@ -10268,13 +10268,47 @@ logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manage
 
   thread_p = thread_get_thread_entry_info ();
 
+  /* TODO - we can have better solution to avoid locking root. */
   if (lock_object (thread_p, oid_Root_class_oid, &oid_Null_oid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
     {
       assert (false);
     }
 
+  /* Close the latest group, if is the case. */
+  switch (old_manager_type)
+    {
+    case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
+      cubtx::single_node_group_complete_manager::get_instance ()->do_prepare_complete (thread_p);
+      cubtx::single_node_group_complete_manager::get_instance ()->do_complete (thread_p);
+      er_log_debug (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager single group manager removed");
+      break;
+
 #if defined(SERVER_MODE)
-  /* Wait for all transactions to finish. */
+    case LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE:
+      /* Close ack readers. */
+      cubreplication::replication_node_manager::get_master_node ()->set_ctrl_channel_manager_stream_ack (NULL);
+
+      /* Close the latest group, if is the case. */
+      cubtx::master_group_complete_manager::get_instance ()->do_prepare_complete (thread_p);
+      cubtx::master_group_complete_manager::get_instance ()->do_complete (thread_p);
+      break;
+
+    case LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE:
+      /* Close the latest group, if is the case. */
+      cubtx::slave_group_complete_manager::get_instance ()->do_prepare_complete (thread_p);
+      cubtx::slave_group_complete_manager::get_instance ()->do_complete (thread_p);
+      break;
+#endif
+
+    case LOG_TRAN_COMPLETE_NO_MANAGER:
+      break;
+
+    default:
+      assert (false);
+    }
+
+#if defined(SERVER_MODE)
+  /* Wait for all transactions in last group to finish. */
   do
     {
       logtb_find_smallest_lsa (thread_p, &smallest_lsa);
@@ -10288,6 +10322,7 @@ logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manage
     }
   while (true);
 #endif
+
   switch (manager_type)
     {
 
@@ -10341,14 +10376,11 @@ logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manage
       assert (false);
     }
 
-  /* Switch to new manager, before removing the previous one. */
+
+  /* Finalize old complete manager */
   switch (old_manager_type)
     {
     case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
-      /* Close the latest group, if is the case. */
-      cubtx::single_node_group_complete_manager::get_instance ()->do_prepare_complete (thread_p);
-      cubtx::single_node_group_complete_manager::get_instance ()->do_complete (thread_p);
-
       /* Finalize single complete manager */
       cubtx::single_node_group_complete_manager::final ();
       er_log_debug (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager single group manager removed");
@@ -10356,13 +10388,6 @@ logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manage
 
 #if defined(SERVER_MODE)
     case LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE:
-      /* Close ack readers. */
-      cubreplication::replication_node_manager::get_master_node ()->set_ctrl_channel_manager_stream_ack (NULL);
-
-      /* Close the latest group, if is the case. */
-      cubtx::master_group_complete_manager::get_instance ()->do_prepare_complete (thread_p);
-      cubtx::master_group_complete_manager::get_instance ()->do_complete (thread_p);
-
       /* Finalize master complete manager */
       cubtx::master_group_complete_manager::final ();
       er_log_debug (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager master group manager removed");
@@ -10370,10 +10395,6 @@ logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manage
       break;
 
     case LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE:
-      /* Close the latest group, if is the case. */
-      cubtx::slave_group_complete_manager::get_instance ()->do_prepare_complete (thread_p);
-      cubtx::slave_group_complete_manager::get_instance ()->do_complete (thread_p);
-
       /* Finalize slave complete manager */
       cubtx::slave_group_complete_manager::final ();
       er_log_debug (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager slave group manager removed");

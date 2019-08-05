@@ -88,7 +88,7 @@ namespace cubtx
       void mark_latest_closed_group_prepared_for_complete ();
       bool is_latest_closed_group_prepared_for_complete ();
 
-      void mark_latest_closed_group_complete_started ();
+      bool starts_latest_closed_group_complete ();
       bool is_latest_closed_group_complete_started ();
 
       bool is_latest_closed_group_mvcc_completed ();

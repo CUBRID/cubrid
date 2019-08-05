@@ -184,7 +184,11 @@ namespace cubtx
 	thread_sleep (10);
       }
 
-    mark_latest_closed_group_complete_started ();
+    if (!starts_latest_closed_group_complete ())
+      {
+	/* Already started by others. */
+	return;
+      }
 
     tx_group &closed_group = get_latest_closed_group ();
 

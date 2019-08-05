@@ -155,7 +155,7 @@ namespace cubtx
   }
 
   //
-  // complete - complete transactions.
+  // is_any_unregistered_transaction - is there any unregistered transaction
   //
   void group_complete_manager::complete (id_type group_id)
   {
@@ -352,11 +352,27 @@ namespace cubtx
   }
 
   //
-  // mark_latest_closed_group_complete_started mark complete started for latest closed group.
-  //
-  void group_complete_manager::mark_latest_closed_group_complete_started ()
+  // starts_latest_closed_group_complete starts complete for latest closed group.
+  //  Note: This function returns true if current thread sets GROUP_COMPLETE_STARTED flag,
+  //    otherwise returns false.
+  bool group_complete_manager::starts_latest_closed_group_complete ()
   {
-    m_latest_closed_group_state |= GROUP_COMPLETE_STARTED;
+    int expected, desired;
+
+    do
+      {
+	expected = m_latest_closed_group_state.load ();
+	if ((expected & GROUP_COMPLETE_STARTED) == GROUP_COMPLETE_STARTED)
+	  {
+	    /* Set by others. */
+	    return false;
+	  }
+
+	desired = expected | GROUP_COMPLETE_STARTED;
+      }
+    while (!m_latest_closed_group_state.compare_exchange_weak (expected, desired));
+
+    return true;
   }
 
   //

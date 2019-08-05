@@ -165,15 +165,16 @@ namespace cubtx
 	return;
       }
 
-    if (!is_latest_closed_group_prepared_for_complete ())
+    while (!is_latest_closed_group_prepared_for_complete ())
       {
-	/* The user must call again do_complete since the data is not prepared for complete.
-	 * Another option may be to wait. Since rarely happens, we can use thread_sleep.
-	 */
-	return;
+	/* It happens rare. */
+	thread_sleep (10);
       }
 
-    mark_latest_closed_group_complete_started ();
+    if (!starts_latest_closed_group_complete ())
+      {
+	return;
+      }
 
     tx_group &closed_group = get_latest_closed_group ();
     /* TODO - consider parameter for MVCC complete here. */

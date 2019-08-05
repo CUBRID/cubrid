@@ -253,15 +253,17 @@ namespace cubtx
 	return;
       }
 
-    if (!is_latest_closed_group_prepared_for_complete ())
-      {
-	/* The user must call again do_complete since the data is not prepared for complete.
-	 * Another option may be to wait. Since rarely happens, we can use thread_sleep.
-	 */
-	return;
+    while (!is_latest_closed_group_prepared_for_complete ())
+      {	
+        /* It happens rare. */
+        thread_sleep (10);	
       }
 
-    mark_latest_closed_group_complete_started ();
+    if (!starts_latest_closed_group_complete ())
+      {
+        /* Already started by others. */
+        return;
+      }
 
     /* Finally, notify complete. */
     notify_group_complete ();
