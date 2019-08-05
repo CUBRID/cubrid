@@ -104,7 +104,7 @@ namespace cubsync
 	    return T ();
 	  }
 
-	if (!m_q.empty ())
+	if (m_q.empty ())
 	  {
 	    // other consumers took produced data. Compete for another round
 	    continue;
