@@ -39,14 +39,14 @@ namespace cubsync
       std::mutex m_qmtx;
       std::condition_variable m_cond_var;
 
-      bool m_release_waiters;
+      bool m_stopped;
 
     public:
       concurrent_queue ();
       bool empty () const;
 
       T try_pop_front ();
-      T wait_for_one ();
+      T pop_one ();
 
       void push_one (T &&element);
       void push_one (const T &element);
@@ -61,7 +61,7 @@ namespace cubsync
 {
   template<typename T>
   concurrent_queue<T>::concurrent_queue ()
-    : m_release_waiters (false)
+    : m_stopped (false)
   {
   }
 
@@ -78,7 +78,7 @@ namespace cubsync
     if (m_q.empty ())
       {
 	// For ptr T default constructor makes a NULL ptr
-	return T();
+	return T ();
       }
 
     T front = m_q.front ();
@@ -88,34 +88,44 @@ namespace cubsync
   }
 
   template<typename T>
-  T concurrent_queue<T>::wait_for_one ()
+  T concurrent_queue<T>::pop_one ()
   {
     std::unique_lock<std::mutex> ul (m_qmtx);
 
-    m_cond_var.wait (ul, [this] ()
-    {
-      return m_q.empty () || m_release_waiters;
-    });
-    if (m_release_waiters)
+    while (true)
       {
-	ul.unlock ();
-	return try_pop_front ();
+	m_cond_var.wait (ul, [this] ()
+	{
+	  return !m_q.empty () || m_stopped;
+	});
+	if (m_stopped)
+	  {
+	    // For ptr T default constructor makes a NULL ptr
+	    return T ();
+	  }
+
+	if (!m_q.empty ())
+	  {
+	    // other consumers took produced data. Compete for another round
+	    continue;
+	  }
+
+	T front = m_q.front ();
+	m_q.pop ();
+
+	return front;
       }
-
-    T front = m_q.front ();
-    m_q.pop ();
-
-    return front;
   }
 
   template<typename T>
   void concurrent_queue<T>::push_one (T &&element)
   {
-    std::lock_guard<std::mutex> lg (m_qmtx);
+    std::unique_lock<std::mutex> ul (m_qmtx);
     m_q.push (std::move (element));
 
-    if (!m_release_waiters)
+    if (!m_stopped)
       {
+	ul.unlock ();
 	m_cond_var.notify_all ();
       }
   }
@@ -123,32 +133,35 @@ namespace cubsync
   template<typename T>
   void concurrent_queue<T>::push_one (const T &element)
   {
-    std::lock_guard<std::mutex> lg (m_qmtx);
+    std::unique_lock<std::mutex> ul (m_qmtx);
     m_q.push (element);
-    m_cond_var.notify_all ();
+
+    if (!m_stopped)
+      {
+	ul.unlock ();
+	m_cond_var.notify_all ();
+      }
   }
 
   template<typename T>
   void concurrent_queue<T>::accept_waiters ()
   {
     std::unique_lock<std::mutex> ul (m_qmtx);
-    m_release_waiters = false;
+    m_stopped = false;
   }
 
   template<typename T>
   void concurrent_queue<T>::release_waiters ()
   {
     std::unique_lock<std::mutex> ul (m_qmtx);
-    m_release_waiters = true;
-    ul.unlock ();
-
+    m_stopped = true;
     m_cond_var.notify_all ();
   }
 
   template<typename T>
   bool concurrent_queue<T>::notifications_enabled () const
   {
-    return !m_release_waiters;
+    return !m_stopped;
   }
 }
 
