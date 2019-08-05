@@ -75,6 +75,7 @@ set (STREAM_HEADERS
   ${BASE_DIR}/multi_thread_stream.hpp
   ${BASE_DIR}/stream_entry.hpp
   ${BASE_DIR}/stream_file.hpp
+  ${BASE_DIR}/stream_entry_fetcher.hpp
   )
 
 set(BASE_SOURCES
@@ -222,7 +223,6 @@ set (REPLICATION_HEADERS
   ${REPLICATION_DIR}/replication_stream_entry.hpp
   ${REPLICATION_DIR}/replication_subtran_apply.hpp
   ${REPLICATION_DIR}/replication_subtran_generate.hpp
-  ${REPLICATION_DIR}/stream_entry_fetcher.hpp
   )
 
 set(QUERY_SOURCES
@@ -290,7 +290,6 @@ set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/replication_stream_entry.cpp
   ${REPLICATION_DIR}/replication_subtran_apply.cpp
   ${REPLICATION_DIR}/replication_subtran_generate.cpp
-  ${REPLICATION_DIR}/stream_entry_fetcher.cpp
   )
 
 set(JSP_SOURCES
