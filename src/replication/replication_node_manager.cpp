@@ -88,37 +88,15 @@ namespace cubreplication
       cubthread::get_manager ()->destroy_worker_pool (task_worker_pool);
     }
 
-    // todo: decide whether to make this generic
-    struct rref_capturing_callable
-    {
-	rref_capturing_callable (std::unique_lock<std::mutex> &&ul, const std::function<void (cubthread::entry &)> &f)
-	  : ul (new std::unique_lock<std::mutex> (std::move (ul)))
-	  , f (f)
-	{
-	}
-
-	rref_capturing_callable (const rref_capturing_callable &other) = default;
-
-	void operator() (cubthread::entry &context)
-	{
-	  f (context);
-	}
-
-      private:
-	std::shared_ptr<std::unique_lock<std::mutex>> ul;
-	std::function<void (cubthread::entry &)> f;
-    };
-
     void commute_to_master_state ()
     {
-      std::unique_lock <std::mutex> ul (commute_mtx, std::defer_lock);
-      if (!ul.try_lock ())
+      if (!commute_mtx.try_lock ())
 	{
 	  // Could not aquire lock, return error
 	  return;
 	}
 
-      cubthread::entry_task *promote_task = new cubthread::entry_callable_task (rref_capturing_callable (std::move (ul),[] (
+      cubthread::entry_task *promote_task = new cubthread::entry_callable_task ([] (
 		  cubthread::entry &context)
       {
 	if (g_slave_node != NULL)
@@ -130,21 +108,21 @@ namespace cubreplication
 
 	assert (g_master_node == NULL);
 	g_master_node = new master_node (g_hostname.c_str (), g_stream, g_stream_file);
-      }), true);
+	commute_mtx.unlock ();
+      }, true);
 
       cubthread::get_manager ()->push_task (task_worker_pool, promote_task);
     }
 
     void commute_to_slave_state ()
     {
-      std::unique_lock<std::mutex> ul (commute_mtx, std::defer_lock);
-      if (!ul.try_lock ())
+      if (!commute_mtx.try_lock ())
 	{
 	  // Could not aquire lock, return error
 	  return;
 	}
 
-      cubthread::entry_task *demote_task = new cubthread::entry_callable_task (rref_capturing_callable (std::move (ul), [] (
+      cubthread::entry_task *demote_task = new cubthread::entry_callable_task ([] (
 		  cubthread::entry &context)
       {
 	// todo: remove after master -> slave transitions is properly handled
@@ -155,7 +133,8 @@ namespace cubreplication
 
 	assert (g_slave_node == NULL);
 	g_slave_node = new slave_node (g_hostname.c_str (), g_stream, g_stream_file);
-      }), true);
+	commute_mtx.unlock ();
+      }, true);
 
       cubthread::get_manager ()->push_task (task_worker_pool, demote_task);
     }
