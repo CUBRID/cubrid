@@ -68,7 +68,7 @@ namespace cubreplication
 
     if (m_copy_consumer)
       {
-        m_copy_consumer->set_stop ();
+	m_copy_consumer->set_stop ();
       }
     delete m_copy_consumer;
     m_copy_consumer = NULL;
@@ -87,30 +87,30 @@ namespace cubreplication
 
     if (chn.send ((char *) &replication_node::SETUP_COPY_REPLICATION_MAGIC, max_len) != css_error_code::NO_ERRORS)
       {
-        return ER_FAILED;
+	return ER_FAILED;
       }
 
     if (chn.recv ((char *) &expected_magic, max_len) != css_error_code::NO_ERRORS)
       {
-        return ER_FAILED;
+	return ER_FAILED;
       }
 
     if (expected_magic != replication_node::SETUP_COPY_REPLICATION_MAGIC)
       {
-        er_log_debug_replication (ARG_FILE_LINE, "apply_copy_context::setup_copy_protocol error in setup protocol");
-        assert (false);
-        return ER_FAILED;
+	er_log_debug_replication (ARG_FILE_LINE, "apply_copy_context::setup_copy_protocol error in setup protocol");
+	assert (false);
+	return ER_FAILED;
       }
 
     if (chn.recv ((char *) &pos, max_len) != css_error_code::NO_ERRORS)
       {
-        return ER_FAILED;
+	return ER_FAILED;
       }
 
     m_online_repl_start_pos = ntohi64 (pos);
 
     er_log_debug_replication (ARG_FILE_LINE, "apply_copy_context::setup_copy_protocol online replication start pos :%lld",
-                              m_online_repl_start_pos);
+			      m_online_repl_start_pos);
 
     return NO_ERROR;
   }
@@ -128,7 +128,7 @@ namespace cubreplication
     srv_chn.set_channel_name (REPL_COPY_CHANNEL_NAME);
 
     error = srv_chn.connect (m_source_identity->get_hostname ().c_str (), m_source_identity->get_port (),
-                             COMMAND_SERVER_REQUEST_CONNECT_SLAVE_COPY_DB);
+			     COMMAND_SERVER_REQUEST_CONNECT_SLAVE_COPY_DB);
     if (error != css_error_code::NO_ERRORS)
       {
 	return error;
@@ -153,7 +153,7 @@ namespace cubreplication
 
     while (m_transfer_receiver->get_channel ().is_connection_alive ())
       {
-        thread_sleep (10);
+	thread_sleep (10);
       }
     er_log_debug_replication (ARG_FILE_LINE, "apply_copy_context::connection terminated");
 
@@ -165,15 +165,15 @@ namespace cubreplication
 
   void apply_copy_context::wait_replication_copy ()
   {
-     while (!m_copy_consumer->is_finished ())
-       {
-          er_log_debug_replication (ARG_FILE_LINE, "wait_replication_copy: current stream_position:%lld\n"
-                                    "stream entries in queue:%d, running tasks:%d\n",
-			            m_copy_consumer->m_last_fetched_position,
-                                    m_copy_consumer->get_entries_in_queue (),
-                                    m_copy_consumer->get_started_task ());
-          thread_sleep (1000);
-       }
+    while (!m_copy_consumer->is_finished ())
+      {
+	er_log_debug_replication (ARG_FILE_LINE, "wait_replication_copy: current stream_position:%lld\n"
+				  "stream entries in queue:%d, running tasks:%d\n",
+				  m_copy_consumer->m_last_fetched_position,
+				  m_copy_consumer->get_entries_in_queue (),
+				  m_copy_consumer->get_started_task ());
+	thread_sleep (1000);
+      }
   }
 
 
@@ -208,14 +208,14 @@ namespace cubreplication
     public:
       copy_db_worker_task (stream_entry *repl_stream_entry, copy_db_consumer &lc, int tran_index)
 	: m_lc (lc)
-        , m_tran_index (tran_index)
+	, m_tran_index (tran_index)
       {
 	add_repl_stream_entry (repl_stream_entry);
       }
 
       void execute (cubthread::entry &thread_ref) final
       {
-        LOG_SET_CURRENT_TRAN_INDEX (&thread_ref, m_tran_index);
+	LOG_SET_CURRENT_TRAN_INDEX (&thread_ref, m_tran_index);
 
 	for (stream_entry *curr_stream_entry : m_repl_stream_entries)
 	  {
@@ -238,7 +238,7 @@ namespace cubreplication
 		int err = obj->apply ();
 		if (err != NO_ERROR)
 		  {
-                    assert (false);
+		    assert (false);
 		    /* TODO[replication] : error handling */
 		  }
 	      }
@@ -254,7 +254,7 @@ namespace cubreplication
 	m_repl_stream_entries.push_back (repl_stream_entry);
       }
 
-       size_t get_entries_cnt (void)
+      size_t get_entries_cnt (void)
       {
 	return m_repl_stream_entries.size ();
       }
@@ -290,32 +290,32 @@ namespace cubreplication
 	using tasks_map = std::unordered_map <MVCCID, copy_db_worker_task *>;
 	tasks_map repl_tasks;
 	tasks_map nonexecutable_repl_tasks;
-        bool is_heap_apply_phase = false;
-        bool is_replication_copy_end = false;
-        bool is_stopped = false;
+	bool is_heap_apply_phase = false;
+	bool is_replication_copy_end = false;
+	bool is_stopped = false;
 
-        er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : start of replication copy");
+	er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : start of replication copy");
 
-        if (locator_repl_start_tran (&thread_ref, BOOT_CLIENT_LOG_APPLIER) != NO_ERROR)
-          {
-           assert (false);
-           return;
-          }
+	if (locator_repl_start_tran (&thread_ref, BOOT_CLIENT_LOG_APPLIER) != NO_ERROR)
+	  {
+	    assert (false);
+	    return;
+	  }
 
-        int tran_index = LOG_FIND_THREAD_TRAN_INDEX (&thread_ref);
+	int tran_index = LOG_FIND_THREAD_TRAN_INDEX (&thread_ref);
 
 	while (!is_replication_copy_end)
 	  {
-            bool is_control_se = false;
+	    bool is_control_se = false;
 	    m_lc.pop_entry (se, is_stopped);
 
 	    if (is_stopped)
 	      {
-                er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : detect should stop");
+		er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : detect should stop");
 		break;
 	      }
 
-            m_lc.m_last_fetched_position = se->get_stream_entry_start_position ();
+	    m_lc.m_last_fetched_position = se->get_stream_entry_start_position ();
 
 	    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
 	      {
@@ -324,50 +324,50 @@ namespace cubreplication
 		_er_log_debug (ARG_FILE_LINE, "copy_dispatch_task \n%s", sb.get_buffer ());
 	      }
 
-            /* during extract heap phase we may apply objects in parallel, otherwise we wait of all tasks to finish */
-            if (!is_heap_apply_phase)
-              {
-                m_lc.wait_for_tasks ();
-              }
+	    /* during extract heap phase we may apply objects in parallel, otherwise we wait of all tasks to finish */
+	    if (!is_heap_apply_phase)
+	      {
+		m_lc.wait_for_tasks ();
+	      }
 
-            if (se->is_start_of_extract_heap ())
-              {
-                is_heap_apply_phase = true;
-                is_control_se = true;
-                er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : receive of start of extract heap phase");
-              }
-            else if (se->is_end_of_extract_heap ())
-              {
-                is_heap_apply_phase = false;
-                is_control_se = true;
-                er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : receive of end of extract heap phase");
-              }
-            else if (se->is_end_of_replication_copy ())
-              {
-                assert (is_heap_apply_phase == false);
-                is_control_se = true;
-                is_replication_copy_end = true;
-                er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : receive of end of replication");
-              }
+	    if (se->is_start_of_extract_heap ())
+	      {
+		is_heap_apply_phase = true;
+		is_control_se = true;
+		er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : receive of start of extract heap phase");
+	      }
+	    else if (se->is_end_of_extract_heap ())
+	      {
+		is_heap_apply_phase = false;
+		is_control_se = true;
+		er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : receive of end of extract heap phase");
+	      }
+	    else if (se->is_end_of_replication_copy ())
+	      {
+		assert (is_heap_apply_phase == false);
+		is_control_se = true;
+		is_replication_copy_end = true;
+		er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : receive of end of replication");
+	      }
 
-            if (is_control_se)
-              {
-                delete se;
-              }
-            else
-              {
-                copy_db_worker_task *my_copy_db_worker_task = new copy_db_worker_task (se, m_lc, tran_index);
-	        m_lc.execute_task (my_copy_db_worker_task);
-                /* stream entry is deleted by applier task thread */
-              }
+	    if (is_control_se)
+	      {
+		delete se;
+	      }
+	    else
+	      {
+		copy_db_worker_task *my_copy_db_worker_task = new copy_db_worker_task (se, m_lc, tran_index);
+		m_lc.execute_task (my_copy_db_worker_task);
+		/* stream entry is deleted by applier task thread */
+	      }
 	  }
 
-        m_lc.wait_for_tasks ();
+	m_lc.wait_for_tasks ();
 
-        locator_repl_end_tran (&thread_ref, is_stopped ? false : true); 
+	locator_repl_end_tran (&thread_ref, is_stopped ? false : true);
 
-        m_lc.set_is_finished ();
-        er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task finished");
+	m_lc.set_is_finished ();
+	er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task finished");
       }
 
     private:
@@ -381,7 +381,7 @@ namespace cubreplication
     if (m_use_daemons)
       {
 	cubthread::get_manager ()->destroy_daemon (m_consumer_daemon);
-        cubthread::get_manager ()->destroy_worker_pool (m_dispatch_workers_pool);
+	cubthread::get_manager ()->destroy_worker_pool (m_dispatch_workers_pool);
 	cubthread::get_manager ()->destroy_worker_pool (m_applier_workers_pool);
       }
 
@@ -452,7 +452,7 @@ namespace cubreplication
 			"repl_copy_db_prepare_stream_entry_daemon");
 
     m_dispatch_workers_pool = cubthread::get_manager ()->create_worker_pool (1, 1, "repl_copy_db_dispatch_pool", NULL,
-                                                                             1, 1);
+			      1, 1);
 
     cubthread::get_manager ()->push_task (m_dispatch_workers_pool, new copy_dispatch_task (*this));
 
@@ -498,5 +498,5 @@ namespace cubreplication
     ulock.unlock ();
     m_apply_task_cv.notify_one ();
   }
-    
+
 } /* namespace cubreplication */

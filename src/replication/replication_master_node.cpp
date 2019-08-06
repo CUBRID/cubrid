@@ -38,7 +38,7 @@
 
 namespace cubreplication
 {
- class new_slave_worker_task : public cubthread::entry_task
+  class new_slave_worker_task : public cubthread::entry_task
   {
     public:
       new_slave_worker_task (SOCKET fd)
@@ -48,7 +48,7 @@ namespace cubreplication
 
       void execute (cubthread::entry &thread_ref) override
       {
-        replication_node_manager::get_master_node ()->new_slave_copy_task (thread_ref, m_connection_fd);
+	replication_node_manager::get_master_node ()->new_slave_copy_task (thread_ref, m_connection_fd);
       };
 
     private:
@@ -73,7 +73,7 @@ namespace cubreplication
     fail_over_entry.pack ();
 
     m_new_slave_workers_pool = cubthread::get_manager ()->create_worker_pool (NEW_SLAVE_THREADS, NEW_SLAVE_THREADS,
-      "replication_new_slave_workers", NULL, 1, 1);
+			       "replication_new_slave_workers", NULL, 1, 1);
   }
 
   master_node::~master_node ()
@@ -158,7 +158,7 @@ namespace cubreplication
 
     setup_protocol (chn);
 
-    cubstream::transfer_sender * sender = new cubstream::transfer_sender (std::move (chn), *m_stream);
+    cubstream::transfer_sender *sender = new cubstream::transfer_sender (std::move (chn), *m_stream);
     sender->register_stream_ack (cubtx::master_group_complete_manager::get_instance ());
 
     m_senders_manager->add_stream_sender (sender);
@@ -202,7 +202,7 @@ namespace cubreplication
 #endif
   }
 
-  /* 
+  /*
    * new_slave_copy_task :
    *
    * Actual task executing in the context of dedicated 'new slave' thread pool
@@ -224,8 +224,8 @@ namespace cubreplication
     error = locator_repl_start_tran (&thread_ref, BOOT_PSEUDO_CLIENT_REPL_COPIER);
     if (error != NO_ERROR)
       {
-       assert (false);
-       return;
+	assert (false);
+	return;
       }
 
     LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (&thread_ref);
@@ -245,7 +245,7 @@ namespace cubreplication
     tdes->replication_copy_context = NULL;
 
     locator_repl_end_tran (&thread_ref, true);
-  
+
 #endif
   }
 

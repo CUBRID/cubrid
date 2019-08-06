@@ -78,9 +78,9 @@ namespace cubreplication
     public:
 
       void stop_and_destroy_online_repl (void);
-      
+
       int replication_copy_slave (cubthread::entry &entry, node_definition *source_node,
-                                  const bool start_replication_after_copy);
+				  const bool start_replication_after_copy);
 
       // TODO[replication] : remove this after merging with shared stream code:
       bool is_copy_running;
@@ -93,7 +93,7 @@ namespace cubreplication
   };
 
 
-  
+
 } /* namespace cubreplication */
 
 #endif /* _REPLICATION_SLAVE_NODE_HPP_ */

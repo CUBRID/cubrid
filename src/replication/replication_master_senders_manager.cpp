@@ -36,8 +36,8 @@ namespace cubreplication
   const unsigned int stream_senders_manager::SUPERVISOR_DAEMON_DELAY_MS = 10;
   const unsigned int stream_senders_manager::SUPERVISOR_DAEMON_CHECK_CONN_MS = 5000;
 
-  stream_senders_manager::stream_senders_manager (cubstream::stream &supervised_stream):
-    m_stream (supervised_stream)
+  stream_senders_manager::stream_senders_manager (cubstream::stream &supervised_stream)
+    : m_stream (supervised_stream)
   {
     init ();
   }
@@ -58,7 +58,8 @@ namespace cubreplication
     auto exec_f = std::bind (&stream_senders_manager::execute, this, std::placeholders::_1);
     cubthread::entry_callable_task *task = new cubthread::entry_callable_task (exec_f);
     supervisor_daemon = cubthread::get_manager ()->create_daemon (
-				cubthread::looper (std::chrono::milliseconds (SUPERVISOR_DAEMON_DELAY_MS)), task, daemon_name.c_str ());
+				cubthread::looper (std::chrono::milliseconds (SUPERVISOR_DAEMON_DELAY_MS)), task,
+				daemon_name.c_str ());
 
     error_code = rwlock_initialize (&senders_lock, "MASTER_SENDERS_LOCK");
     assert (error_code == NO_ERROR);

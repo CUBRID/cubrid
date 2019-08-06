@@ -68,7 +68,7 @@ namespace cubreplication
       const size_t EXTRACT_HEAP_WORKER_POOL_SIZE = 20;
 
       /* State value mapped on replication copy phases:
-       * SCHEMA_EXTRACT_CLASSES .. SCHEMA_CLASSES_LIST_FINISHED : triggered by the client side 'dll_proxy' 
+       * SCHEMA_EXTRACT_CLASSES .. SCHEMA_CLASSES_LIST_FINISHED : triggered by the client side 'ddl_proxy' 
        * in schema extract mode : this process extracts classes schema and list of class OIDs, triggers, indexes;
        * a [push] request containing a buffer with associated information is performed from ddl_proxy to server.
        *
@@ -76,7 +76,8 @@ namespace cubreplication
        * It continues with heap copy, and once heap copy process ends, it sends triggers and indexes.
        *
        * The values follows the order of copy phase and should be kept in sync with overall process 
-       * of ddl_proxy and server source copy. */
+       * of ddl_proxy and server source copy.
+       */
       enum copy_stage
       {
 	NOT_STARTED = 0,

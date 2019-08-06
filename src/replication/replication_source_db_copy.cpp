@@ -94,8 +94,8 @@ namespace cubreplication
     /* TODO : single global pool or a pool for each context ? */
     m_heap_extract_workers_pool =
 	    cubthread::get_manager ()->create_worker_pool (EXTRACT_HEAP_WORKER_POOL_SIZE,
-                                                           EXTRACT_HEAP_WORKER_POOL_SIZE,
-                                                           "replication_extract_heap_workers", NULL, 1, 1);
+		EXTRACT_HEAP_WORKER_POOL_SIZE,
+		"replication_extract_heap_workers", NULL, 1, 1);
   }
 
   source_copy_context::~source_copy_context ()
@@ -172,7 +172,7 @@ namespace cubreplication
 
     if ((int) m_state != ((int) new_state - 1))
       {
-        er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	return ER_GENERIC_ERROR;
       }
 
@@ -191,7 +191,7 @@ namespace cubreplication
       {
 	pack_and_add_statement (m_indexes);
       }
-    
+
     /* unlock after adding indexes to stream to */
     ulock_state.unlock ();
     m_state_cv.notify_one ();
@@ -203,11 +203,11 @@ namespace cubreplication
   {
     er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_for_state %d", desired_state);
     std::unique_lock<std::mutex> ulock_state (m_state_mutex);
-    m_state_cv.wait (ulock_state, [this, desired_state, &thread_ref] 
-                                  { return m_state == desired_state || m_is_stop || thread_ref.shutdown; });
+    m_state_cv.wait (ulock_state, [this, desired_state, &thread_ref]
+    { return m_state == desired_state || m_is_stop || thread_ref.shutdown; });
     if (is_interrupted (thread_ref))
       {
-        er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 	return ER_INTERRUPTED;
       }
     return NO_ERROR;
@@ -223,7 +223,7 @@ namespace cubreplication
     return wait_for_state (thread_ref, SCHEMA_COPY_INDEXES);
   }
 
-  
+
   bool source_copy_context::is_interrupted (cubthread::entry &thread_ref)
   {
     return m_is_stop || thread_ref.shutdown == true;
@@ -285,7 +285,7 @@ namespace cubreplication
     /* TODO[replication] : max appenders in stream must be greater than number of parallel heap scanners */
     cubstream::multi_thread_stream *copy_db_stream =
 	    new cubstream::multi_thread_stream (buffer_size, 10 + (int) EXTRACT_HEAP_WORKER_POOL_SIZE);
-    const node_definition& myself = replication_node_manager::get_master_node ()->get_node_identity ();
+    const node_definition &myself = replication_node_manager::get_master_node ()->get_node_identity ();
     copy_db_stream->set_name ("repl_copy_" + std::string (myself.get_hostname ().c_str ()));
     copy_db_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
     copy_db_stream->init (0);
@@ -298,7 +298,7 @@ namespace cubreplication
 
   void source_copy_context::release_stream ()
   {
-    er_log_debug_replication(ARG_FILE_LINE, "source_copy_context::release_stream ");
+    er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::release_stream ");
     delete m_senders_manager;
     m_senders_manager = NULL;
 
@@ -324,7 +324,7 @@ namespace cubreplication
    *
    * 2. xlocator_send_proxy_buffer (serving a request from ddl_proxy extract client)
    *    communicates with 3 through stream writes
-   *    
+   *
    * 3. stream transfer sender
    *    reads stream contents and pushes to socket
    *
@@ -388,8 +388,8 @@ namespace cubreplication
       {
 	if (is_interrupted (thread_ref))
 	  {
-            error = ER_INTERRUPTED;
-            er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	    error = ER_INTERRUPTED;
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	    return error;
 	  }
 	thread_sleep (10);
@@ -462,11 +462,11 @@ namespace cubreplication
 
     while (sender_alive)
       {
-        sender_alive = m_senders_manager->find_stream_sender (m_transfer_sender);
-        if (sender_alive)
-          {
-            thread_sleep (100);
-          }
+	sender_alive = m_senders_manager->find_stream_sender (m_transfer_sender);
+	if (sender_alive)
+	  {
+	    thread_sleep (100);
+	  }
       }
 
     er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_slave_finished OK");

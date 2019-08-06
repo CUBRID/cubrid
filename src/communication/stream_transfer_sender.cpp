@@ -44,7 +44,7 @@
  *      sender->enter_termination_phase; on receiver side, after decoding the logical 'end' packet, the user code calls
  *      receiver->terminate_connection (this will close the connection, which is detected by sender side, which in turn
  *      is unblocked)
-*/
+ */
 
 #include "stream_transfer_sender.hpp"
 

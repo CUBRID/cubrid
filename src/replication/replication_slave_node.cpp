@@ -43,18 +43,18 @@
 #include "thread_manager.hpp"
 #include "xserver_interface.h"
 
-int xreplication_copy_slave (THREAD_ENTRY * thread_p, const char *source_hostname, const int port_id, 
-                             const bool start_replication_after_copy)
+int xreplication_copy_slave (THREAD_ENTRY *thread_p, const char *source_hostname, const int port_id,
+			     const bool start_replication_after_copy)
 {
   int error = NO_ERROR;
 
   /* don't automatically commute from 'active' role : needs user intervention to commute to standby */
-  if (css_ha_server_state () != HA_SERVER_STATE_STANDBY 
+  if (css_ha_server_state () != HA_SERVER_STATE_STANDBY
       && css_ha_server_state () != HA_SERVER_STATE_MAINTENANCE)
     {
       /* TODO[replication] : set error */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 3, "xreplication_copy_slave", 0,
-              "Unexpected server state");
+	      "Unexpected server state");
       return ER_STREAM_CONNECTION_SETUP;
     }
 
@@ -65,8 +65,8 @@ int xreplication_copy_slave (THREAD_ENTRY * thread_p, const char *source_hostnam
   slave_instance->is_copy_running = true;
 
   er_log_debug_replication (ARG_FILE_LINE, "xreplication_copy_slave source_hostname:%s, port:%d,"
-                            " start_replication_after_copy:%d",
-                            source_hostname, port_id, start_replication_after_copy);
+			    " start_replication_after_copy:%d",
+			    source_hostname, port_id, start_replication_after_copy);
   /* stop online replication */
   slave_instance->stop_and_destroy_online_repl ();
 
@@ -196,8 +196,8 @@ namespace cubreplication
 
     if (is_copy_running)
       {
-        er_log_debug_replication (ARG_FILE_LINE, "slave_node::connect_to_master COPY ALREADY RUNNING\n");
-        return error;
+	er_log_debug_replication (ARG_FILE_LINE, "slave_node::connect_to_master COPY ALREADY RUNNING\n");
+	return error;
       }
 
     assert (m_transfer_receiver == NULL);
@@ -232,7 +232,7 @@ namespace cubreplication
       {
 	/* TODO[replication] : replication copy */
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 3, "", css_error_code::NO_ERRORS,
-                "Unsupported feature");
+		"Unsupported feature");
 	return ER_STREAM_CONNECTION_SETUP;
       }
     else
@@ -338,20 +338,20 @@ namespace cubreplication
 
     if (m_ctrl_sender != NULL)
       {
-        m_ctrl_sender->stop ();
-        cubthread::get_manager ()->destroy_daemon_without_entry (m_ctrl_sender_daemon);
-        delete m_ctrl_sender;
-        m_ctrl_sender = NULL;
+	m_ctrl_sender->stop ();
+	cubthread::get_manager ()->destroy_daemon_without_entry (m_ctrl_sender_daemon);
+	delete m_ctrl_sender;
+	m_ctrl_sender = NULL;
       }
   }
 
   int slave_node::replication_copy_slave (cubthread::entry &entry, node_definition *source_node,
-                                          const bool start_replication_after_copy)
+					  const bool start_replication_after_copy)
   {
     apply_copy_context my_apply_ctx (&m_identity, source_node);
 
     my_apply_ctx.execute_copy ();
-    
+
     is_copy_running = false;
 
     return NO_ERROR;
