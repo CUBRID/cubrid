@@ -68,13 +68,11 @@ namespace cubreplication
 	m_supervisor_daemon = NULL;
       }
 
-    rwlock_write_lock (&senders_lock);
     for (cubstream::transfer_sender *sender : m_stream_senders)
       {
 	delete sender;
       }
     m_stream_senders.clear ();
-    rwlock_write_unlock (&senders_lock);
 
     error_code = rwlock_finalize (&senders_lock);
     assert (error_code == NO_ERROR);
