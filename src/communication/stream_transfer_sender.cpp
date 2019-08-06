@@ -30,12 +30,12 @@
  *   the stream will be sent automatically until m_last_committed_pos
  *
  *   Termination :
- *    - some streams are infinite (they continuosly send data until socket becomes invalid) or finite
+ *    - some streams are infinite (they continuously send data until socket becomes invalid) or finite
  *    - a finite stream require an explicit termination phase :
  *      the user code of stream sender must use 'enter_termination_phase' of the sender object.
  *      this sets the sender into "receive" mode which expects the peer to either send something or
  *      simply close the connection
- *    - the stream receiver also has a 'terminate_connection' method which needs to be explicitely
+ *    - the stream receiver also has a 'terminate_connection' method which needs to be explicitly
  *      called by the user code
  *    - since stream and sender/receiver view the contents as bytes, the 'decision' to terminate the connection
  *      is taken at logical level (user code of stream/sender/receiver) ;
