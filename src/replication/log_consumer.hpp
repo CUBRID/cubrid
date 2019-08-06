@@ -94,6 +94,10 @@ namespace cubreplication
     private:
       cubstream::multi_thread_stream *m_stream;
 
+      std::mutex m_fetcher_remove_mtx;
+
+      bool m_fetcher_queue_stop;
+
       cubstream::repl_stream_entry_fetcher *m_entry_fetcher;
 
       cubthread::daemon *m_dispatch_daemon;
@@ -107,14 +111,13 @@ namespace cubreplication
 
       std::atomic<int> m_started_tasks;
 
-      bool m_is_stopped;
-
     public:
 
       std::function<void (cubstream::stream_position)> ack_produce;
 
       log_consumer ()
 	: m_stream (NULL)
+	, m_fetcher_queue_stop (false)
 	, m_entry_fetcher (NULL)
 	, m_dispatch_daemon (NULL)
 	, m_applier_workers_pool (NULL)
@@ -122,7 +125,6 @@ namespace cubreplication
 	, m_subtran_applier (NULL)
 	, m_use_daemons (false)
 	, m_started_tasks (0)
-	, m_is_stopped (false)
 	, ack_produce ([] (cubstream::stream_position)
       {
 	assert (false);
@@ -148,7 +150,15 @@ namespace cubreplication
 
       cubstream::repl_stream_entry_fetcher &get_stream_fetcher ()
       {
+	assert (m_entry_fetcher != NULL);
 	return *m_entry_fetcher;
+      }
+
+      std::unique_lock<std::mutex> get_stream_fetcher_queue_stop (bool &fetcher_stop)
+      {
+	std::unique_lock<std::mutex> ul (m_fetcher_remove_mtx);
+	fetcher_stop = m_fetcher_queue_stop;
+	return ul;
       }
 
       void end_one_task (void)
@@ -167,11 +177,6 @@ namespace cubreplication
       }
 
       void wait_for_tasks (void);
-
-      bool is_stopping (void)
-      {
-	return m_is_stopped;
-      }
 
       void stop (void);
 

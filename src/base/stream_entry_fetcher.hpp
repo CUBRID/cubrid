@@ -146,14 +146,8 @@ namespace cubstream
   template<typename T>
   T *stream_entry_fetcher<T>::pop_entry (bool &should_stop)
   {
-    T *entry = m_stream_entries.pop_one ();
-    if (!m_stream_entries.notifications_enabled ())
-      {
-	should_stop = true;
-	return entry;
-      }
-
-    assert (entry != NULL);
+    T *entry = m_stream_entries.pop_one (should_stop);
+    assert (entry != NULL || should_stop);
     return entry;
   }
 

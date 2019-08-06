@@ -168,7 +168,10 @@ namespace cubreplication
 
 	while (!m_stop)
 	  {
+	    bool queue_stopped;
+	    std::unique_lock<std::mutex> ul = m_lc.get_stream_fetcher_queue_stop (queue_stopped);
 	    stream_entry *se = m_lc.get_stream_fetcher ().pop_entry (m_stop);
+	    ul.unlock ();
 
 	    if (m_stop)
 	      {
@@ -359,6 +362,8 @@ namespace cubreplication
     get_stream ()->stop ();
 
     m_entry_fetcher->release_waiters ();
+    std::lock_guard<std::mutex> lg (m_fetcher_remove_mtx);
+    m_fetcher_queue_stop = true;
   }
 
   subtran_applier &log_consumer::get_subtran_applier ()

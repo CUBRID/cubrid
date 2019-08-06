@@ -46,7 +46,7 @@ namespace cubsync
       bool empty () const;
 
       T try_pop_front ();
-      T pop_one ();
+      T pop_one (bool &is_stopped);
 
       void push_one (T &&element);
       void push_one (const T &element);
@@ -88,7 +88,7 @@ namespace cubsync
   }
 
   template<typename T>
-  T concurrent_queue<T>::pop_one ()
+  T concurrent_queue<T>::pop_one (bool &is_stopped)
   {
     std::unique_lock<std::mutex> ul (m_qmtx);
 
@@ -100,6 +100,7 @@ namespace cubsync
 	});
 	if (m_stopped)
 	  {
+	    is_stopped = true;
 	    // For ptr T default constructor makes a NULL ptr
 	    return T ();
 	  }
@@ -156,12 +157,6 @@ namespace cubsync
     std::unique_lock<std::mutex> ul (m_qmtx);
     m_stopped = true;
     m_cond_var.notify_all ();
-  }
-
-  template<typename T>
-  bool concurrent_queue<T>::notifications_enabled () const
-  {
-    return !m_stopped;
   }
 }
 
