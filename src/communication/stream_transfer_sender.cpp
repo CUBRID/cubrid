@@ -149,10 +149,11 @@ namespace cubstream
 
   transfer_sender::transfer_sender (cubcomm::channel &&chn, cubstream::stream &stream,
 				    cubstream::stream_position begin_sending_position)
-    : m_channel (std::move (chn)),
-      m_stream (stream),
-      m_last_sent_position (begin_sending_position),
-      m_is_termination_phase (false)
+    : m_channel (std::move (chn))
+    , m_stream (stream)
+    , m_last_sent_position (begin_sending_position)
+    , m_is_termination_phase (false)
+    , m_p_stream_ack (NULL)
   {
     cubthread::delta_time daemon_period = std::chrono::milliseconds (10);
 
@@ -168,6 +169,7 @@ namespace cubstream
   transfer_sender::~transfer_sender ()
   {
     cubthread::get_manager ()->destroy_daemon (m_sender_daemon);
+    m_sender_daemon = NULL;
   }
 
   cubcomm::channel &transfer_sender::get_channel ()

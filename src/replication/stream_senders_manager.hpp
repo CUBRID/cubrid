@@ -59,16 +59,13 @@ namespace cubreplication
       void block_until_position_sent (cubstream::stream_position desired_position);
 
     private:
-      void init ();
-      void finalize ();
-
       void execute (cubthread::entry &context);
 
       friend class master_senders_supervisor_task;
 
       cubstream::stream &m_stream;
-      std::vector<cubstream::transfer_sender *> stream_senders;
-      cubthread::daemon *supervisor_daemon;
+      std::vector<cubstream::transfer_sender *> m_stream_senders;
+      cubthread::daemon *m_supervisor_daemon;
 
       static const unsigned int SUPERVISOR_DAEMON_DELAY_MS;
       static const unsigned int SUPERVISOR_DAEMON_CHECK_CONN_MS;
