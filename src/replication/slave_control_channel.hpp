@@ -60,7 +60,10 @@ namespace cubreplication
       std::mutex m_mtx;
       std::condition_variable m_cv;
       std::atomic<cubstream::stream_position> m_last_stream_pos;
+      cubstream::stream_position m_last_sent_stream_pos;
       bool m_stop;
+
+      std::chrono::milliseconds m_max_wait_time_in_msec;
   };
 }
 
