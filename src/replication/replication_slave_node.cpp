@@ -47,8 +47,8 @@ namespace cubreplication
     , m_lc (NULL)
     , m_master_identity ("")
     , m_transfer_receiver (NULL)
-    , m_ctrl_sender (NULL)
     , m_ctrl_sender_daemon (NULL)
+    , m_ctrl_sender (NULL)
     , m_source_min_available_pos (0)
     , m_source_curr_pos (0)
   {
@@ -197,7 +197,6 @@ namespace cubreplication
 
     assert (m_stream != NULL);
     m_lc = new log_consumer ();
-    m_lc->fetch_suspend ();
 
     m_lc->set_stream (m_stream);
 
@@ -253,8 +252,6 @@ namespace cubreplication
 
     m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *m_stream,
 	start_position);
-
-    m_lc->fetch_resume ();
 
     return NO_ERROR;
   }
