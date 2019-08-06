@@ -88,6 +88,7 @@ namespace cubthread
 
       callable_task () = delete;
 
+      // todo: change all to F&& and init using std::forward<F> (f)
       // constructor with default retire (delete/do nothing)
       template <typename F>
       callable_task (F f, bool delete_on_retire = true);

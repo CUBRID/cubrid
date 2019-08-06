@@ -42,15 +42,7 @@ namespace cubreplication
   cubreplication::slave_node *g_slave_node = NULL;
 
   cubthread::entry_workpool *task_worker_pool = NULL;
-
-  enum commuting_state
-  {
-    COMMUTE_TO_MASTER,
-    COMMUTE_TO_SLAVE,
-    IDLE
-  };
-
-  commuting_state current_state;
+  std::mutex commute_mtx;
 
   namespace replication_node_manager
   {
@@ -86,7 +78,7 @@ namespace cubreplication
       delete g_master_node;
       g_master_node = NULL;
 
-      // stream and stream file are interdependent, therefore first stop the stream
+      // need to first stop the stream before destroying stream_file
       g_stream->stop ();
       delete g_stream_file;
       g_stream_file = NULL;
@@ -96,12 +88,38 @@ namespace cubreplication
       cubthread::get_manager ()->destroy_worker_pool (task_worker_pool);
     }
 
+    // todo: decide whether to make this generic
+    struct rref_capturing_callable
+    {
+	rref_capturing_callable (std::unique_lock<std::mutex> &&ul, const std::function<void (cubthread::entry &)> &f)
+	  : ul (new std::unique_lock<std::mutex> (std::move (ul)))
+	  , f (f)
+	{
+	}
+
+	rref_capturing_callable (const rref_capturing_callable &other) = default;
+
+	void operator() (cubthread::entry &context)
+	{
+	  f (context);
+	}
+
+      private:
+	std::shared_ptr<std::unique_lock<std::mutex>> ul;
+	std::function<void (cubthread::entry &)> f;
+    };
+
     void commute_to_master_state ()
     {
-      assert (current_state == IDLE);
-      current_state = COMMUTE_TO_MASTER;
+      std::unique_lock <std::mutex> ul (commute_mtx, std::defer_lock);
+      if (!ul.try_lock ())
+	{
+	  // Could not aquire lock, return error
+	  return;
+	}
 
-      cubthread::entry_task *promote_task = new cubthread::entry_callable_task ([] (cubthread::entry &context)
+      cubthread::entry_task *promote_task = new cubthread::entry_callable_task (rref_capturing_callable (std::move (ul),[] (
+		  cubthread::entry &context)
       {
 	if (g_slave_node != NULL)
 	  {
@@ -112,20 +130,22 @@ namespace cubreplication
 
 	assert (g_master_node == NULL);
 	g_master_node = new master_node (g_hostname.c_str (), g_stream, g_stream_file);
-
-	assert (current_state == COMMUTE_TO_MASTER);
-	current_state = IDLE;
-      }, true);
+      }), true);
 
       cubthread::get_manager ()->push_task (task_worker_pool, promote_task);
     }
 
     void commute_to_slave_state ()
     {
-      assert (current_state == IDLE);
-      current_state = COMMUTE_TO_SLAVE;
+      std::unique_lock<std::mutex> ul (commute_mtx, std::defer_lock);
+      if (!ul.try_lock ())
+	{
+	  // Could not aquire lock, return error
+	  return;
+	}
 
-      cubthread::entry_task *demote_task = new cubthread::entry_callable_task ([] (cubthread::entry &context)
+      cubthread::entry_task *demote_task = new cubthread::entry_callable_task (rref_capturing_callable (std::move (ul), [] (
+		  cubthread::entry &context)
       {
 	// todo: remove after master -> slave transitions is properly handled
 	assert (g_master_node == NULL);
@@ -135,10 +155,7 @@ namespace cubreplication
 
 	assert (g_slave_node == NULL);
 	g_slave_node = new slave_node (g_hostname.c_str (), g_stream, g_stream_file);
-
-	assert (current_state == COMMUTE_TO_SLAVE);
-	current_state = IDLE;
-      }, true);
+      }), true);
 
       cubthread::get_manager ()->push_task (task_worker_pool, demote_task);
     }
