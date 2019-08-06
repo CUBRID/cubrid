@@ -18,7 +18,7 @@
  */
 
 /*
- * stream_senders_manager.hpp - manages stream sender entries 
+ * stream_senders_manager.hpp - manages stream sender entries
  *                            - it maintains the minimum successful sent position
  */
 

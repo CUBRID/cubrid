@@ -64,11 +64,20 @@ namespace cubstream
 	return m_sender_daemon;
       }
 
-      void enter_termination_phase () { m_is_termination_phase.store (true); }
+      void enter_termination_phase ()
+      {
+	m_is_termination_phase.store (true);
+      }
 
-      bool is_termination_phase () { return m_is_termination_phase.load (); }
+      bool is_termination_phase ()
+      {
+	return m_is_termination_phase.load ();
+      }
 
-      void register_stream_ack (stream_ack *stream_ack) { m_p_stream_ack = stream_ack; }
+      void register_stream_ack (stream_ack *stream_ack)
+      {
+	m_p_stream_ack = stream_ack;
+      }
 
     private:
 

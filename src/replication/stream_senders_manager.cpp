@@ -18,7 +18,7 @@
  */
 
 /*
- * stream_senders_manager.cpp - 
+ * stream_senders_manager.cpp -
  */
 
 #include "stream_senders_manager.hpp"
@@ -28,7 +28,7 @@
 #include "thread_manager.hpp"
 #include "thread_daemon.hpp"
 
-/* TODO : I am not sure we will not need some other functionality specific to replication 
+/* TODO : I am not sure we will not need some other functionality specific to replication
  * keep this in replication namespace and folder until it is more clear */
 namespace cubreplication
 {
@@ -43,14 +43,12 @@ namespace cubreplication
 #if defined (SERVER_MODE)
     int error_code = NO_ERROR;
 
-    m_stream_senders.clear ();
-
     std::string daemon_name = "senders_supervisor_daemon_" + m_stream.name ();
     auto exec_f = std::bind (&stream_senders_manager::execute, this, std::placeholders::_1);
     cubthread::entry_callable_task *task = new cubthread::entry_callable_task (exec_f);
     m_supervisor_daemon =
-      cubthread::get_manager ()->create_daemon (
-      cubthread::looper (std::chrono::milliseconds (SUPERVISOR_DAEMON_DELAY_MS)), task, daemon_name.c_str ());
+	    cubthread::get_manager ()->create_daemon (
+		    cubthread::looper (std::chrono::milliseconds (SUPERVISOR_DAEMON_DELAY_MS)), task, daemon_name.c_str ());
 
     error_code = rwlock_initialize (&senders_lock, "MASTER_SENDERS_LOCK");
     assert (error_code == NO_ERROR);
