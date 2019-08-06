@@ -50,7 +50,7 @@ namespace cubreplication
 	    cubthread::get_manager ()->create_daemon (
 		    cubthread::looper (std::chrono::milliseconds (SUPERVISOR_DAEMON_DELAY_MS)), task, daemon_name.c_str ());
 
-    error_code = rwlock_initialize (&senders_lock, "MASTER_SENDERS_LOCK");
+    error_code = rwlock_initialize (&m_senders_lock, "MASTER_SENDERS_LOCK");
     assert (error_code == NO_ERROR);
 #endif
   }
@@ -74,21 +74,21 @@ namespace cubreplication
       }
     m_stream_senders.clear ();
 
-    error_code = rwlock_finalize (&senders_lock);
+    error_code = rwlock_finalize (&m_senders_lock);
     assert (error_code == NO_ERROR);
 #endif
   }
 
   void stream_senders_manager::add_stream_sender (cubstream::transfer_sender *sender)
   {
-    rwlock_write_lock (&senders_lock);
+    rwlock_write_lock (&m_senders_lock);
     m_stream_senders.push_back (sender);
-    rwlock_write_unlock (&senders_lock);
+    rwlock_write_unlock (&m_senders_lock);
   }
 
   void stream_senders_manager::stop_stream_sender (cubstream::transfer_sender *sender)
   {
-    rwlock_write_lock (&senders_lock);
+    rwlock_write_lock (&m_senders_lock);
     for (cubstream::transfer_sender *s : m_stream_senders)
       {
 	if (sender == s)
@@ -99,7 +99,7 @@ namespace cubreplication
 	    break;
 	  }
       }
-    rwlock_write_unlock (&senders_lock);
+    rwlock_write_unlock (&m_senders_lock);
   }
 
 
@@ -107,7 +107,7 @@ namespace cubreplication
   {
     bool found = false;
 
-    rwlock_read_lock (&senders_lock);
+    rwlock_read_lock (&m_senders_lock);
     for (cubstream::transfer_sender *s : m_stream_senders)
       {
 	if (sender == s)
@@ -116,7 +116,7 @@ namespace cubreplication
 	    break;
 	  }
       }
-    rwlock_read_unlock (&senders_lock);
+    rwlock_read_unlock (&m_senders_lock);
 
     return found;
   }
@@ -125,9 +125,9 @@ namespace cubreplication
   {
     std::size_t length = 0;
 
-    rwlock_read_lock (&senders_lock);
+    rwlock_read_lock (&m_senders_lock);
     length = m_stream_senders.size ();
-    rwlock_read_unlock (&senders_lock);
+    rwlock_read_unlock (&m_senders_lock);
 
     return length;
   }
@@ -142,7 +142,7 @@ namespace cubreplication
       {
 	is_position_sent = true;
 
-	rwlock_read_lock (&senders_lock);
+	rwlock_read_lock (&m_senders_lock);
 	for (cubstream::transfer_sender *sender : m_stream_senders)
 	  {
 	    if (sender->get_last_sent_position () < desired_position)
@@ -151,7 +151,7 @@ namespace cubreplication
 		sender->get_daemon ()->wakeup ();
 	      }
 	  }
-	rwlock_read_unlock (&senders_lock);
+	rwlock_read_unlock (&m_senders_lock);
 
 	std::this_thread::sleep_for (SLEEP_BETWEEN_SPINS);
       }
@@ -170,7 +170,7 @@ namespace cubreplication
       {
 	std::vector<cubstream::transfer_sender *>::iterator it;
 
-	rwlock_read_lock (&senders_lock);
+	rwlock_read_lock (&m_senders_lock);
 	for (it = m_stream_senders.begin (); it != m_stream_senders.end ();)
 	  {
 	    cubstream::transfer_sender *sender = *it;
@@ -179,9 +179,9 @@ namespace cubreplication
 	      {
 		if (!have_write_lock)
 		  {
-		    rwlock_read_unlock (&senders_lock);
+		    rwlock_read_unlock (&m_senders_lock);
 
-		    rwlock_write_lock (&senders_lock);
+		    rwlock_write_lock (&m_senders_lock);
 		    it = m_stream_senders.begin ();
 
 		    have_write_lock = true;
@@ -203,11 +203,11 @@ namespace cubreplication
 
 	if (!have_write_lock)
 	  {
-	    rwlock_read_unlock (&senders_lock);
+	    rwlock_read_unlock (&m_senders_lock);
 	  }
 	else
 	  {
-	    rwlock_write_unlock (&senders_lock);
+	    rwlock_write_unlock (&m_senders_lock);
 	  }
 	check_conn_delay_counter = 0;
 

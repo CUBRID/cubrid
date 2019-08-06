@@ -69,7 +69,7 @@ namespace cubreplication
 
       static const unsigned int SUPERVISOR_DAEMON_DELAY_MS;
       static const unsigned int SUPERVISOR_DAEMON_CHECK_CONN_MS;
-      SYNC_RWLOCK senders_lock;
+      SYNC_RWLOCK m_senders_lock;
   };
 
 } /* namespace cubreplication */
