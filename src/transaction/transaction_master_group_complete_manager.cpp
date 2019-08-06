@@ -47,7 +47,7 @@ namespace cubtx
   //
   void master_group_complete_manager::init ()
   {
-    cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
+    cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (50));
     gl_master_group = new master_group_complete_manager ();
     er_log_debug (ARG_FILE_LINE, "master_group_complete_manager:init created master group complete manager\n");
     gl_master_group->m_latest_closed_group_start_stream_position = 0;
