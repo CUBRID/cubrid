@@ -27,9 +27,9 @@
 #include "log_impl.h"
 #include "master_control_channel.hpp"
 #include "replication_common.hpp"
-#include "replication_master_senders_manager.hpp"
 #include "server_support.h"
 #include "stream_file.hpp"
+#include "stream_senders_manager.hpp"
 #include "transaction_master_group_complete_manager.hpp"
 
 namespace cubreplication
@@ -42,7 +42,7 @@ namespace cubreplication
 
     m_stream_file = stream_file;
 
-    master_senders_manager::init ();
+    m_senders_manager = new stream_senders_manager (*stream);
 
     cubtx::master_group_complete_manager::init ();
 
@@ -119,7 +119,10 @@ namespace cubreplication
 
     setup_protocol (chn);
 
-    master_senders_manager::add_stream_sender (new cubstream::transfer_sender (std::move (chn), *m_stream));
+    cubstream::transfer_sender *sender = new cubstream::transfer_sender (std::move (chn), *m_stream);
+    sender->register_stream_ack (cubtx::master_group_complete_manager::get_instance ());
+
+    m_senders_manager->add_stream_sender (sender);
 
     er_log_debug_replication (ARG_FILE_LINE, "new_slave connected");
   }
@@ -148,7 +151,8 @@ namespace cubreplication
 
   master_node::~master_node ()
   {
-    master_senders_manager::final ();
+    delete m_senders_manager;
+    m_senders_manager = NULL;
 
     delete m_control_channel_manager;
     m_control_channel_manager = NULL;

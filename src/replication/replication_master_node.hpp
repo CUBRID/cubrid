@@ -42,11 +42,13 @@ namespace cubstream
 namespace cubreplication
 {
   class master_ctrl;
+  class stream_senders_manager;
 
   class master_node : public replication_node
   {
     private:
       master_ctrl *m_control_channel_manager;
+      stream_senders_manager *m_senders_manager;
 
     protected:
       int setup_protocol (cubcomm::channel &chn);

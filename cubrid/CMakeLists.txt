@@ -209,7 +209,7 @@ set (REPLICATION_HEADERS
   ${REPLICATION_DIR}/log_consumer.hpp
   ${REPLICATION_DIR}/replication_common.hpp
   ${REPLICATION_DIR}/replication_master_node.hpp
-  ${REPLICATION_DIR}/replication_master_senders_manager.hpp
+  ${REPLICATION_DIR}/stream_senders_manager.hpp
   ${REPLICATION_DIR}/slave_control_channel.hpp
   ${REPLICATION_DIR}/master_control_channel.hpp
   ${REPLICATION_DIR}/replication_node.hpp
@@ -279,7 +279,7 @@ set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/master_control_channel.cpp
   ${REPLICATION_DIR}/replication_object.cpp
   ${REPLICATION_DIR}/replication_master_node.cpp
-  ${REPLICATION_DIR}/replication_master_senders_manager.cpp
+  ${REPLICATION_DIR}/stream_senders_manager.cpp
   ${REPLICATION_DIR}/replication_node.cpp
   ${REPLICATION_DIR}/replication_node_manager.cpp
   ${REPLICATION_DIR}/replication_row_apply.cpp
