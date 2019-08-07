@@ -35,37 +35,7 @@ using cubthread::entry_task;
 
 namespace cubload
 {
-
-  /*
-   * cubload::loaddb_worker_context_manager
-   *    extends cubthread::entry_manager
-   *
-   * description
-   *    Thread entry manager for loaddb worker pool. Main functionality of the entry manager is to keep a pool of
-   *    cubload::driver instances.
-   *      on_create - a driver instance is claimed from the pool and assigned on thread ref
-   *      on_retire - previously stored driver in thread ref, is retired to the pool
-   */
-  class loaddb_worker_context_manager : public cubthread::entry_manager
-  {
-    public:
-      loaddb_worker_context_manager (unsigned int pool_size);
-      ~loaddb_worker_context_manager () override = default;
-
-      void on_create (cubthread::entry &context) override;
-      void on_retire (cubthread::entry &context) override;
-      void stop_execution (cubthread::entry &context) override;
-
-      void interrupt ();
-
-    private:
-      resource_shared_pool<driver> m_driver_pool;
-      bool m_interrupted;
-  };
-
-
   void worker_manager_interrupt ();
-
 
   void worker_manager_push_task (entry_task *task);
 

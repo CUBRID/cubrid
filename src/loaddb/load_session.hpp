@@ -42,7 +42,6 @@ namespace cubload
 {
 
   class driver;
-  class loaddb_worker_context_manager;
 
   /*
    * cubload::session

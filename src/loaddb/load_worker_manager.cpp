@@ -25,26 +25,53 @@
 
 namespace cubload
 {
-  static loaddb_worker_context_manager *g_loaddb_wp_context_manager;
+  /*
+   * cubload::loaddb_worker_context_manager
+   *    extends cubthread::entry_manager
+   *
+   * description
+   *    Thread entry manager for loaddb worker pool. Main functionality of the entry manager is to keep a pool of
+   *    cubload::driver instances.
+   *      on_create - a driver instance is claimed from the pool and assigned on thread ref
+   *      on_retire - previously stored driver in thread ref, is retired to the pool
+   */
+  class worker_context_manager : public cubthread::entry_manager
+  {
+    public:
+      worker_context_manager (unsigned int pool_size);
+      ~worker_context_manager () override = default;
+
+      void on_create (cubthread::entry &context) override;
+      void on_retire (cubthread::entry &context) override;
+      void stop_execution (cubthread::entry &context) override;
+
+      void interrupt ();
+
+    private:
+      resource_shared_pool<driver> m_driver_pool;
+      bool m_interrupted;
+  };
+
+  static worker_context_manager *g_loaddb_wp_context_manager;
   static cubthread::entry_workpool *g_loaddb_worker_pool;
   static std::mutex g_loaddb_wp_mutex;
   static unsigned int g_loaddb_session_count = 0;
 
-  loaddb_worker_context_manager::loaddb_worker_context_manager (unsigned int pool_size)
+  worker_context_manager::worker_context_manager (unsigned int pool_size)
     : m_driver_pool (pool_size)
     , m_interrupted (false)
   {
     //
   }
 
-  void loaddb_worker_context_manager::on_create (cubthread::entry &context)
+  void worker_context_manager::on_create (cubthread::entry &context)
   {
     driver *driver = m_driver_pool.claim ();
 
     context.m_loaddb_driver = driver;
   }
 
-  void loaddb_worker_context_manager::on_retire (cubthread::entry &context)
+  void worker_context_manager::on_retire (cubthread::entry &context)
   {
     if (context.m_loaddb_driver == NULL)
       {
@@ -59,7 +86,7 @@ namespace cubload
     context.conn_entry = NULL;
   }
 
-  void loaddb_worker_context_manager::stop_execution (cubthread::entry &context)
+  void worker_context_manager::stop_execution (cubthread::entry &context)
   {
     if (m_interrupted)
       {
@@ -67,7 +94,7 @@ namespace cubload
       }
   }
 
-  void loaddb_worker_context_manager::interrupt ()
+  void worker_context_manager::interrupt ()
   {
     m_interrupted = true;
   }
@@ -98,7 +125,7 @@ namespace cubload
 
 	unsigned int pool_size = prm_get_integer_value (PRM_ID_LOADDB_WORKER_COUNT);
 
-	g_loaddb_wp_context_manager = new loaddb_worker_context_manager (pool_size);
+	g_loaddb_wp_context_manager = new worker_context_manager (pool_size);
 	g_loaddb_worker_pool = cubthread::get_manager ()->create_worker_pool (pool_size, pool_size, "loaddb-workers",
 			       g_loaddb_wp_context_manager, 1, false, true);
       }
