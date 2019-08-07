@@ -28,6 +28,8 @@
 #include "communication_channel.hpp"
 #include "cubstream.hpp"
 
+#include <atomic>     // for atomic_bool
+
 namespace cubthread
 {
   class daemon;
@@ -62,11 +64,20 @@ namespace cubstream
 	return m_sender_daemon;
       }
 
-      void enter_termination_phase () { m_is_termination_phase = true; }
+      void enter_termination_phase ()
+      {
+	m_is_termination_phase.store (true);
+      }
 
-      bool is_termination_phase () { return m_is_termination_phase; }
+      bool is_termination_phase ()
+      {
+	return m_is_termination_phase.load ();
+      }
 
-      void register_stream_ack (stream_ack *stream_ack) { m_p_stream_ack = stream_ack; }
+      void register_stream_ack (stream_ack *stream_ack)
+      {
+	m_p_stream_ack = stream_ack;
+      }
 
     private:
 
@@ -78,7 +89,7 @@ namespace cubstream
       cubthread::daemon *m_sender_daemon;
       char m_buffer[cubcomm::MTU];
 
-      bool m_is_termination_phase;
+      std::atomic_bool m_is_termination_phase;
 
       /* TO DO - move p_stream_ack in new receiver threads on master node. */
       stream_ack *m_p_stream_ack;

@@ -467,13 +467,19 @@ namespace cubreplication
 
   void copy_db_consumer::execute_task (copy_db_worker_task *task)
   {
+    /* TODO : there is no mechanism to wakeup when thread pool drops below a threshold of tasks */
+    while (m_started_tasks.load () > 10 * m_applier_worker_threads_count)
+    {
+      thread_sleep (10);
+    }
+
     if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
       {
 	string_buffer sb;
 	task->stringify (sb);
 	_er_log_debug (ARG_FILE_LINE, "copy_db_consumer::execute_task:\n%s", sb.get_buffer ());
       }
-
+    
     cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
 
     m_started_tasks++;

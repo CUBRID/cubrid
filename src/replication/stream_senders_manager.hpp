@@ -18,12 +18,12 @@
  */
 
 /*
- * replication_master_senders_manager.hpp - manages master replication channel entries; it is a singleton
- *                                        - it maintains the minimum successful sent position
+ * stream_senders_manager.hpp - manages stream sender entries
+ *                            - it maintains the minimum successful sent position
  */
 
-#ifndef _REPLICATION_MASTER_SENDERS_MANAGER_HPP_
-#define _REPLICATION_MASTER_SENDERS_MANAGER_HPP_
+#ifndef _STREAM_SENDERS_MANAGER_HPP_
+#define _STREAM_SENDERS_MANAGER_HPP_
 
 #include "critical_section.h"
 #include "cubstream.hpp"
@@ -59,22 +59,19 @@ namespace cubreplication
       void block_until_position_sent (cubstream::stream_position desired_position);
 
     private:
-      void init ();
-      void finalize ();
-
       void execute (cubthread::entry &context);
 
       friend class master_senders_supervisor_task;
 
       cubstream::stream &m_stream;
-      std::vector<cubstream::transfer_sender *> stream_senders;
-      cubthread::daemon *supervisor_daemon;
+      std::vector<cubstream::transfer_sender *> m_stream_senders;
+      cubthread::daemon *m_supervisor_daemon;
 
       static const unsigned int SUPERVISOR_DAEMON_DELAY_MS;
       static const unsigned int SUPERVISOR_DAEMON_CHECK_CONN_MS;
-      SYNC_RWLOCK senders_lock;
+      SYNC_RWLOCK m_senders_lock;
   };
 
 } /* namespace cubreplication */
 
-#endif /* _REPLICATION_MASTER_SENDERS_MANAGER_HPP_ */
+#endif /* _STREAM_SENDERS_MANAGER_HPP_ */

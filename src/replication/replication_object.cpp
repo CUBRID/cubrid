@@ -759,13 +759,13 @@ namespace cubreplication
 
     for (record_descriptor &record : m_rec_des_list)
       {
-        const RECDES &recdes = record.get_recdes ();
-        /* TODO[replication] : use optimized load into page */
-        err = row_apply_insert (m_class_name, record);
-        if (err)
-          {
-            return err;
-          }
+	const RECDES &recdes = record.get_recdes ();
+	/* TODO[replication] : use optimized load into page */
+	err = row_apply_insert (m_class_name, record);
+	if (err)
+	  {
+	    return err;
+	  }
       }
 #endif
     return NO_ERROR;
