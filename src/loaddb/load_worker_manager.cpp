@@ -72,12 +72,22 @@ namespace cubload
     m_interrupted = true;
   }
 
-  void loaddb_worker_context_manager:: push_task (cubthread::entry_task *task)
+  void
+  worker_manager_interrupt ()
   {
+    assert (g_loaddb_wp_context_manager != NULL);
+    g_loaddb_wp_context_manager->interrupt ();
+  }
+
+  void
+  worker_manager_push_task (cubthread::entry_task *task)
+  {
+    assert (g_loaddb_worker_pool != NULL);
     cubthread::get_manager ()->push_task (g_loaddb_worker_pool, task);
   }
 
-  void load_wp_register_session (loaddb_worker_context_manager *manager, cubthread::entry_workpool *worker_pool)
+  void
+  worker_manager_register_session ()
   {
     g_loaddb_wp_mutex.lock ();
 
@@ -98,15 +108,13 @@ namespace cubload
 	assert (g_loaddb_wp_context_manager != NULL);
       }
 
-    manager = g_loaddb_wp_context_manager;
-    worker_pool = g_loaddb_worker_pool;
-
     g_loaddb_session_count++;
 
     g_loaddb_wp_mutex.unlock ();
   }
 
-  void load_wp_unregister_session ()
+  void
+  worker_manager_unregister_session ()
   {
     g_loaddb_wp_mutex.lock ();
 
@@ -125,5 +133,4 @@ namespace cubload
 
     g_loaddb_wp_mutex.unlock ();
   }
-
 }

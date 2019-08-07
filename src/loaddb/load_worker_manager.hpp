@@ -55,14 +55,23 @@ namespace cubload
       void on_create (cubthread::entry &context) override;
       void on_retire (cubthread::entry &context) override;
       void stop_execution (cubthread::entry &context) override;
-      void interrupt ();
 
-      void push_task (entry_task *task);
+      void interrupt ();
 
     private:
       resource_shared_pool<driver> m_driver_pool;
       bool m_interrupted;
   };
+
+
+  void worker_manager_interrupt ();
+
+
+  void worker_manager_push_task (entry_task *task);
+
+  void worker_manager_register_session ();
+
+  void worker_manager_unregister_session ();
 }
 
 #endif

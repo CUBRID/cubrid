@@ -39,10 +39,6 @@ namespace cubload
 
   bool invoke_parser (driver *driver, const batch &batch_);
 
-  void load_wp_register_session (loaddb_worker_context_manager *manager, cubthread::entry_workpool *worker_pool);
-
-  void load_wp_unregister_session ();
-
 }
 
 namespace cubload
@@ -210,7 +206,7 @@ namespace cubload
     , m_stats_mutex ()
     , m_driver (NULL)
   {
-    load_wp_register_session (m_wp_context_manager, m_worker_pool);
+    worker_manager_register_session ();
 
     m_driver = new driver ();
     init_driver (m_driver, *this);
@@ -227,9 +223,7 @@ namespace cubload
   {
     delete m_driver;
 
-    load_wp_unregister_session ();
-    m_worker_pool = NULL;
-    m_wp_context_manager = NULL;
+    worker_manager_unregister_session ();
   }
 
   bool
@@ -319,7 +313,7 @@ namespace cubload
   void
   session::interrupt ()
   {
-    m_wp_context_manager->interrupt ();
+    worker_manager_interrupt ();
     fail ();
   }
 
@@ -448,7 +442,7 @@ namespace cubload
 	return ER_FAILED;
       }
 
-    m_wp_context_manager->push_task (new load_task (batch, *this, *thread_ref.conn_entry));
+    worker_manager_push_task (new load_task (batch, *this, *thread_ref.conn_entry));
 
     return NO_ERROR;
   }
