@@ -99,9 +99,9 @@ namespace cubreplication
 
       virtual ~replication_node ();
 
-      const node_definition *get_node_identity () const
+      const node_definition& get_node_identity () const
       {
-	return &m_identity;
+	return m_identity;
       }
 
       static void get_replication_file_path (std::string &path);

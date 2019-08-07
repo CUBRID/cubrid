@@ -24,6 +24,7 @@
 #ifndef _LOG_STORAGE_HPP_
 #define _LOG_STORAGE_HPP_
 
+#include "cubstream.hpp"
 #include "file_io.h"
 #include "log_lsa.hpp"
 #include "release_string.h"
@@ -153,6 +154,7 @@ struct log_header
   INT64 ha_promotion_time;
   INT64 db_restore_time;
   bool mark_will_del;
+  cubstream::stream_position m_ack_stream_position;
 
   log_header ()
     : magic {'0'}
@@ -198,6 +200,7 @@ struct log_header
   , ha_promotion_time (0)
   , db_restore_time (0)
   , mark_will_del (false)
+  , m_ack_stream_position (0)
   {
     //
   }

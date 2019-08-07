@@ -1570,7 +1570,7 @@
 #define ER_STREAM_FILE_INVALID_WRITE                -1218
 #define ER_STREAM_FILE_CANNOT_READ                  -1219
 #define ER_STREAM_FILE_CANNOT_WRITE                 -1220
-#define ER_REPLICATION_SETUP                        -1221
+#define ER_STREAM_CONNECTION_SETUP                  -1221
 #define ER_STREAM_RESERVED_6                        -1222
 #define ER_STREAM_RESERVED_7                        -1223
 #define ER_STREAM_RESERVED_8                        -1224

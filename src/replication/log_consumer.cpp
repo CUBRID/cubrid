@@ -155,6 +155,7 @@ namespace cubreplication
 
     private:
       std::vector<stream_entry *> m_repl_stream_entries;
+      cubstream::stream_position m_gc_end_position;
       log_consumer &m_lc;
   };
 
@@ -162,8 +163,30 @@ namespace cubreplication
   {
     public:
       dispatch_daemon_task (log_consumer &lc)
-	: m_lc (lc)
+	: m_filtered_apply_end (log_Gl.hdr.m_ack_stream_position)
+	, m_lc (lc)
       {
+      }
+
+      bool is_filtered_apply_segment (cubstream::stream_position stream_entry_end) const
+      {
+	return stream_entry_end <= m_filtered_apply_end;
+      }
+
+      bool filter_out_stream_entry (stream_entry *repl_stream_entry) const
+      {
+	if (is_filtered_apply_segment (repl_stream_entry->get_stream_entry_end_position ()))
+	  {
+	    MVCCID mvccid = repl_stream_entry->get_mvccid ();
+	    return repl_stream_entry->is_group_commit ()
+		   || log_Gl.m_repl_rv.m_active_mvcc_ids.find (mvccid) == log_Gl.m_repl_rv.m_active_mvcc_ids.end ();
+	  }
+
+	if (!log_Gl.m_repl_rv.m_active_mvcc_ids.empty ())
+	  {
+	    log_Gl.m_repl_rv.m_active_mvcc_ids.clear ();
+	  }
+	return false;
       }
 
       void execute (cubthread::entry &thread_ref) override
@@ -181,6 +204,12 @@ namespace cubreplication
 	    if (should_stop)
 	      {
 		break;
+	      }
+
+	    if (filter_out_stream_entry (se))
+	      {
+		delete se;
+		continue;
 	      }
 
 	    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
@@ -204,9 +233,7 @@ namespace cubreplication
 		// apply all sub-transaction first
 		m_lc.get_subtran_applier ().apply ();
 
-		for (tasks_map::iterator it = repl_tasks.begin ();
-		     it != repl_tasks.end ();
-		     it++)
+		for (tasks_map::iterator it = repl_tasks.begin (); it != repl_tasks.end (); it++)
 		  {
 		    /* check last stream entry of task */
 		    applier_worker_task *my_repl_applier_worker_task = it->second;
@@ -273,6 +300,7 @@ namespace cubreplication
       }
 
     private:
+      cubstream::stream_position m_filtered_apply_end;
       log_consumer &m_lc;
   };
 
@@ -413,12 +441,12 @@ namespace cubreplication
 
   void log_consumer::fetch_suspend (void)
   {
-    m_fetch_suspend.set ();
+    m_fetch_suspend.clear ();
   }
 
   void log_consumer::fetch_resume (void)
   {
-    m_fetch_suspend.clear ();
+    m_fetch_suspend.set ();
   }
 
   void log_consumer::wait_for_fetch_resume (void)

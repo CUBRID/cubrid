@@ -4423,11 +4423,12 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
 		      if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 			{
-			  if (!logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
+			  if (!logtb_get_tdes (thread_p)->get_replication_generator ().is_row_replication_disabled ())
 			    {
 			      /* Disable row replication: SM_FOREIGN_KEY_CASCADE constraint from slave will make sure
 			       * these changes are replicated */
-			      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
+			      logtb_get_tdes (thread_p)->get_replication_generator ().
+				set_row_replication_disabled (true);
 			      disabled_row_replication = true;
 			    }
 			}
@@ -4440,7 +4441,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		      if (disabled_row_replication)
 			{
 			  /* Enable row replication. */
-			  logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+			  logtb_get_tdes (thread_p)->get_replication_generator ().set_row_replication_disabled (false);
 			}
 
 		      if (error_code == ER_MVCC_NOT_SATISFIED_REEVALUATION)
@@ -5290,7 +5291,7 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
     {
       /* Remove attribute change since we moved, instead of doing update. At abort, all pending objects are removed. */
-      logtb_get_tdes (thread_p)->replication_log_generator.remove_attribute_change (*old_class_oid, *obj_oid);
+      logtb_get_tdes (thread_p)->get_replication_generator ().remove_attribute_change (*old_class_oid, *obj_oid);
     }
 
   COPY_OID (obj_oid, &new_obj_oid);
@@ -5944,7 +5945,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
       if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
 	  /* Update lsa to be sure that the object is part of current sys operation. */
-	  logtb_get_tdes (thread_p)->replication_log_generator.update_lsastamp_for_changed_repl_object (*oid);
+	  logtb_get_tdes (thread_p)->get_replication_generator ().update_lsastamp_for_changed_repl_object (*oid);
 	}
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -7020,10 +7021,10 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 
 #if !defined(NDEBUG) && defined (SERVER_MODE)
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
-      && !logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
+      && !logtb_get_tdes (thread_p)->get_replication_generator ().is_row_replication_disabled ())
     {
       /* TODO - Remove this code, test and fix. For now, disable testing HA. */
-      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
+      logtb_get_tdes (thread_p)->get_replication_generator ().set_row_replication_disabled (true);
       disabled_row_replication = true;
     }
 #endif
@@ -7203,7 +7204,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
   if (disabled_row_replication)
     {
       /* Enable row replication. */
-      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+      logtb_get_tdes (thread_p)->get_replication_generator ().set_row_replication_disabled (false);
     }
 #endif
 
@@ -7225,7 +7226,7 @@ error:
 #if !defined(NDEBUG) && defined (SERVER_MODE)
   if (disabled_row_replication)
     {
-      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+      logtb_get_tdes (thread_p)->get_replication_generator ().set_row_replication_disabled (false);
     }
 #endif
 
@@ -7393,7 +7394,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 
 #if !defined(NDEBUG) && defined (SERVER_MODE)
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
-      && !logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
+      && !logtb_get_tdes (thread_p)->get_replication_generator ().is_row_replication_disabled ())
     {
       /* Used for testing apply on master. */
       assert (log_does_allow_replication ());
@@ -7563,13 +7564,13 @@ end:
       if (error_code == NO_ERROR)
 	{
 	  cubreplication::stream_entry * stream_entry =
-	    logtb_get_tdes (thread_p)->replication_log_generator.get_stream_entry ();
+	    logtb_get_tdes (thread_p)->get_replication_generator ().get_stream_entry ();
 	  if (stream_entry->count_entries () > 0)
 	    {
 	      /* Aborts and simulate apply replication RBR on master node. */
 	      error_code =
-		logtb_get_tdes (thread_p)->
-		replication_log_generator.abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
+		logtb_get_tdes (thread_p)->get_replication_generator ().
+		abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
 	    }
 	  else
 	    {
@@ -7973,11 +7974,12 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	{
 	  if (is_insert)
 	    {
-	      logtb_get_tdes (thread_p)->replication_log_generator.add_insert_row (*key_dbvalue, *class_oid, *recdes);
+	      logtb_get_tdes (thread_p)->get_replication_generator ().add_insert_row (*key_dbvalue, *class_oid,
+										      *recdes);
 	    }
 	  else			// is delete
 	    {
-	      logtb_get_tdes (thread_p)->replication_log_generator.add_delete_row (*key_dbvalue, *class_oid);
+	      logtb_get_tdes (thread_p)->get_replication_generator ().add_delete_row (*key_dbvalue, *class_oid);
 	    }
 	}
       if (error_code != NO_ERROR)
@@ -8342,7 +8344,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
       if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
 	  /* Remove attribute change since we don't have primary key. At abort, all pending objects are removed. */
-	  logtb_get_tdes (thread_p)->replication_log_generator.remove_attribute_change (*class_oid, *oid);
+	  logtb_get_tdes (thread_p)->get_replication_generator ().remove_attribute_change (*class_oid, *oid);
 	}
 
       return NO_ERROR;
@@ -8814,7 +8816,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	      repl_old_key->data.midxkey.domain = key_domain;
 	    }
 
-	  tdes->replication_log_generator.add_update_row (*repl_old_key, *oid, *class_oid, new_recdes);
+	  tdes->get_replication_generator ().add_update_row (*repl_old_key, *oid, *class_oid, new_recdes);
 
 	  if (repl_old_key == &old_dbvalue)
 	    {
@@ -8823,7 +8825,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	}
       else
 	{
-	  tdes->replication_log_generator.add_update_row (*repl_old_key, *oid, *class_oid, new_recdes);
+	  tdes->get_replication_generator ().add_update_row (*repl_old_key, *oid, *class_oid, new_recdes);
 
 	  pr_free_ext_value (repl_old_key);
 	  repl_old_key = NULL;
@@ -8835,7 +8837,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
       if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
 	  /* Remove attribute change since we don't have primary key. At abort, all pending objects are removed. */
-	  logtb_get_tdes (thread_p)->replication_log_generator.remove_attribute_change (*class_oid, *oid);
+	  logtb_get_tdes (thread_p)->get_replication_generator ().remove_attribute_change (*class_oid, *oid);
 	}
 
       if (repl_info != NULL)
@@ -11727,7 +11729,7 @@ xrepl_statement (THREAD_ENTRY * thread_p, REPL_INFO * repl_info)
   switch (repl_info->repl_info_type)
     {
     case REPL_INFO_TYPE_SBR:
-      tdes->replication_log_generator.add_statement (*(REPL_INFO_SBR *) repl_info->info);
+      tdes->get_replication_generator ().add_statement (*(REPL_INFO_SBR *) repl_info->info);
 
 #if !defined(NDEBUG) && defined (SERVER_MODE)
       if (!LOG_CHECK_LOG_APPLIER (thread_p) && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
@@ -11737,7 +11739,7 @@ xrepl_statement (THREAD_ENTRY * thread_p, REPL_INFO * repl_info)
 	  if (savepoint_name != NULL)
 	    {
 	      err =
-		tdes->replication_log_generator.abort_partial_and_simulate_apply_sbr_repl_on_master (savepoint_name);
+		tdes->get_replication_generator ().abort_partial_and_simulate_apply_sbr_repl_on_master (savepoint_name);
 	    }
 	}
 #endif
@@ -12187,10 +12189,10 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
 
 #if !defined(NDEBUG) && defined (SERVER_MODE)
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
-      && !logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
+      && !logtb_get_tdes (thread_p)->get_replication_generator ().is_row_replication_disabled ())
     {
       /* TODO - Remove this code, test and fix. For now, disable testing HA. */
-      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
+      logtb_get_tdes (thread_p)->get_replication_generator ().set_row_replication_disabled (true);
       disabled_row_replication = true;
     }
 #endif
@@ -12337,7 +12339,7 @@ error_exit:
   if (disabled_row_replication)
     {
       /* Enable row replication. */
-      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+      logtb_get_tdes (thread_p)->get_replication_generator ().set_row_replication_disabled (false);
     }
 #endif
 
@@ -13840,18 +13842,23 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
 
   assert (thread_p != NULL);
 
+  /* TODO[replication] : protect access to tdes against deletion of replication_copy_context */
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
   cubreplication::source_copy_context & repl_copy_ctxt = *tdes->replication_copy_context;
 
   switch (type)
     {
+      /* schema of classes may be send with multiple requests/buffers;
+       * for last the last one, the client uses NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END
+       */
     case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES:
       repl_copy_ctxt.append_class_schema (buffer, buf_size);
       break;
 
     case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END:
       repl_copy_ctxt.append_class_schema (buffer, buf_size);
-      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_APPLY_CLASSES_FINISHED);
+      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_CLASSES);
+      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_CLASSES_FINISHED);
       break;
 
     case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS:
@@ -13860,7 +13867,7 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
 
     case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS_END:
       repl_copy_ctxt.append_triggers_schema (buffer, buf_size);
-      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_TRIGGERS_RECEIVED);
+      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_TRIGGERS);
       break;
 
     case NET_PROXY_BUF_TYPE_EXTRACT_INDEXES:
@@ -13869,7 +13876,7 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
 
     case NET_PROXY_BUF_TYPE_EXTRACT_INDEXES_END:
       repl_copy_ctxt.append_indexes_schema (buffer, buf_size);
-      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_INDEXES_RECEIVED);
+      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_INDEXES);
       break;
 
     default:

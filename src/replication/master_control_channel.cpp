@@ -108,6 +108,7 @@ namespace cubreplication
 
     for (auto &cr : m_ctrl_channel_readers)
       {
+	cr.second->close_connection ();
 	cubthread::get_manager ()->destroy_daemon (cr.first);
       }
 
@@ -126,6 +127,8 @@ namespace cubreplication
     ack_reader_task *ack_reader = new ack_reader_task (moved_to_chn, m_stream_ack);
     m_ctrl_channel_readers.push_back (std::make_pair (cubthread::get_manager ()->create_daemon (dt,
 				      ack_reader, "control channel reader"), moved_to_chn));
+
+    assert (m_managing_daemon != NULL);
   }
 
   void

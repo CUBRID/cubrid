@@ -62,24 +62,24 @@ namespace cubreplication
     comm_error_code = chn.recv ((char *) &expected_magic, max_len);
     if (comm_error_code != css_error_code::NO_ERRORS)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 2, chn.get_channel_id ().c_str (),
 		comm_error_code);
-	return ER_REPLICATION_SETUP;
+	return ER_STREAM_CONNECTION_SETUP;
       }
 
     if (expected_magic != replication_node::SETUP_REPLICATION_MAGIC)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 2, chn.get_channel_id ().c_str (),
 		comm_error_code);
-	return ER_REPLICATION_SETUP;
+	return ER_STREAM_CONNECTION_SETUP;
       }
 
     comm_error_code = chn.send ((char *) &replication_node::SETUP_REPLICATION_MAGIC, max_len);
     if (comm_error_code != css_error_code::NO_ERRORS)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 2, chn.get_channel_id ().c_str (),
 		comm_error_code);
-	return ER_REPLICATION_SETUP;
+	return ER_STREAM_CONNECTION_SETUP;
       }
 
     m_stream->get_min_available_and_curr_position (min_available_pos, curr_pos);
@@ -88,18 +88,18 @@ namespace cubreplication
     comm_error_code = chn.send ((char *) &pos, max_len);
     if (comm_error_code != css_error_code::NO_ERRORS)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 2, chn.get_channel_id ().c_str (),
 		comm_error_code);
-	return ER_REPLICATION_SETUP;
+	return ER_STREAM_CONNECTION_SETUP;
       }
 
     pos = htoni64 (curr_pos);
     comm_error_code = chn.send ((char *) &pos, max_len);
     if (comm_error_code != css_error_code::NO_ERRORS)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 2, chn.get_channel_id ().c_str (),
 		comm_error_code);
-	return ER_REPLICATION_SETUP;
+	return ER_STREAM_CONNECTION_SETUP;
       }
 
     er_log_debug_replication (ARG_FILE_LINE, "master_node::setup_protocol min_available_pos:%llu, curr_pos:%llu",
@@ -164,6 +164,6 @@ namespace cubreplication
 
     er_log_debug_replication (ARG_FILE_LINE, "master_node (stream:%s) update_senders_min_position: %llu,\n"
 			      " stream_read_pos:%llu, commit_pos:%llu", m_stream->name ().c_str (),
-			      pos, m_stream->get_curr_read_position (),m_stream->get_last_committed_pos ());
+			      pos, m_stream->get_curr_read_position (), m_stream->get_last_committed_pos ());
   }
 } /* namespace cubreplication */
