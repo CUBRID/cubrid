@@ -102,7 +102,6 @@ namespace cubreplication
     rwlock_write_unlock (&m_senders_lock);
   }
 
-
   bool stream_senders_manager::find_stream_sender (const cubstream::transfer_sender *sender)
   {
     bool found = false;

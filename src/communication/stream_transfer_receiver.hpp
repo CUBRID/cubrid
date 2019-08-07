@@ -50,7 +50,10 @@ namespace cubstream
       /* TODO[replication] : remove this method if not used */
       stream_position get_last_received_position ();
 
-      cubcomm::channel &get_channel () { return m_channel; }
+      cubcomm::channel &get_channel ()
+      {
+	return m_channel;
+      }
 
       void terminate_connection ();
 
