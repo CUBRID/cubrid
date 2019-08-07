@@ -27,7 +27,6 @@
 #include "load_server_loader.hpp"
 #include "load_worker_manager.hpp"
 #include "resource_shared_pool.hpp"
-#include "thread_entry_task.hpp"
 #include "xserver_interface.h"
 
 #include <sstream>

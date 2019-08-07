@@ -27,16 +27,14 @@
 #include "dbtype_def.h"
 #include "load_class_registry.hpp"
 #include "load_common.hpp"
-#include "thread_manager.hpp"
-#include "thread_worker_pool.hpp"
-#include "utility.h"
 #include "load_error_handler.hpp"
+#include "utility.h"
 
 #include <atomic>
 #include <condition_variable>
+#include <memory>
 #include <mutex>
 #include <string>
-#include <memory>
 
 namespace cubload
 {

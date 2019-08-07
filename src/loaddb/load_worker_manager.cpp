@@ -18,21 +18,20 @@
  */
 
 /*
- * load_manager.cpp - entry point for loaddb manager
+ * load_worker_manager.cpp - Thread manager of the loaddb session
  */
 
-#include "load_session.hpp"
+#include "load_worker_manager.hpp"
 
 #include "load_driver.hpp"
+#include "load_session.hpp"
 #include "resource_shared_pool.hpp"
 #include "xserver_interface.h"
-
-#include "load_worker_manager.hpp"
 
 namespace cubload
 {
   /*
-   * cubload::loaddb_worker_context_manager
+   * cubload::worker_context_manager
    *    extends cubthread::entry_manager
    *
    * description
@@ -44,7 +43,7 @@ namespace cubload
   class worker_context_manager : public cubthread::entry_manager
   {
     public:
-      worker_context_manager (unsigned int pool_size);
+      explicit worker_context_manager (unsigned int pool_size);
       ~worker_context_manager () override = default;
 
       void on_create (cubthread::entry &context) override;
@@ -58,10 +57,10 @@ namespace cubload
       bool m_interrupted;
   };
 
-  static worker_context_manager *g_wp_context_manager;
-  static cubthread::entry_workpool *g_worker_pool;
   static std::mutex g_wp_mutex;
   static unsigned int g_session_count = 0;
+  static cubthread::entry_workpool *g_worker_pool;
+  static worker_context_manager *g_wp_context_manager;
 
   worker_context_manager::worker_context_manager (unsigned int pool_size)
     : m_driver_pool (pool_size)

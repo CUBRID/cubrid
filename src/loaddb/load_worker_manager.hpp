@@ -18,25 +18,24 @@
  */
 
 /*
- * load_manager.hpp -
+ * load_worker_manager.hpp - Thread manager of the loaddb session
  */
 
-#ifndef _LOAD_MANAGER_HPP_
-#define _LOAD_MANAGER_HPP_
+#ifndef _LOAD_WORKER_MANAGER_HPP_
+#define _LOAD_WORKER_MANAGER_HPP_
 
-#include "thread_entry_task.hpp"
-
-using cubthread::entry_task;
+#include "thread_manager.hpp"
+#include "thread_worker_pool.hpp"
 
 namespace cubload
 {
   void worker_manager_interrupt ();
 
-  void worker_manager_push_task (entry_task *task);
+  void worker_manager_push_task (cubthread::entry_task *task);
 
   void worker_manager_register_session ();
 
   void worker_manager_unregister_session ();
 }
 
-#endif
+#endif /* _LOAD_WORKER_MANAGER_HPP_ */
