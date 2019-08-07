@@ -381,6 +381,7 @@ set(LOADDB_SOURCES
   ${LOADDB_DIR}/load_semantic_helper.cpp
   ${LOADDB_DIR}/load_server_loader.cpp
   ${LOADDB_DIR}/load_session.cpp
+  ${LOADDB_DIR}/load_worker_manager.cpp
   )
 
 set(LOADDB_HEADERS
@@ -393,6 +394,7 @@ set(LOADDB_HEADERS
   ${LOADDB_DIR}/load_semantic_helper.hpp
   ${LOADDB_DIR}/load_server_loader.hpp
   ${LOADDB_DIR}/load_session.hpp
+  ${LOADDB_DIR}/load_worker_manager.hpp
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)

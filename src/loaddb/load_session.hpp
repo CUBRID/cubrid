@@ -27,22 +27,19 @@
 #include "dbtype_def.h"
 #include "load_class_registry.hpp"
 #include "load_common.hpp"
-#include "thread_manager.hpp"
-#include "thread_worker_pool.hpp"
-#include "utility.h"
 #include "load_error_handler.hpp"
+#include "utility.h"
 
 #include <atomic>
 #include <condition_variable>
+#include <memory>
 #include <mutex>
 #include <string>
-#include <memory>
 
 namespace cubload
 {
 
   class driver;
-  class loaddb_worker_context_manager;
 
   /*
    * cubload::session
@@ -148,9 +145,6 @@ namespace cubload
       load_args m_args;
       std::atomic<batch_id> m_last_batch_id;
       std::atomic<batch_id> m_max_batch_id;
-
-      cubthread::entry_workpool *m_worker_pool;
-      loaddb_worker_context_manager *m_wp_context_manager;
 
       class_registry m_class_registry;
 
