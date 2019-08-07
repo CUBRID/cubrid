@@ -101,7 +101,7 @@ namespace cubreplication
       {
 	if (g_slave_node != NULL)
 	  {
-	    g_slave_node->finish_apply ();
+	    g_slave_node->finish_fetch_from_stream ();
 	  }
 	delete g_slave_node;
 	g_slave_node = NULL;
@@ -137,16 +137,6 @@ namespace cubreplication
       }, true);
 
       cubthread::get_manager ()->push_task (task_worker_pool, demote_task);
-    }
-
-    bool is_master_node ()
-    {
-      return g_master_node != NULL;
-    }
-
-    bool is_slave_node ()
-    {
-      return g_slave_node != NULL;
     }
 
     master_node *get_master_node ()

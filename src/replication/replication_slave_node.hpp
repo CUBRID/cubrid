@@ -79,7 +79,7 @@ namespace cubreplication
       slave_node (const char *hostname, cubstream::multi_thread_stream *stream, cubstream::stream_file *stream_file);
       ~slave_node ();
 
-      void finish_apply ();
+      void finish_fetch_from_stream ();
 
       int connect_to_master (const char *master_node_hostname, const int master_node_port_id);
   };
