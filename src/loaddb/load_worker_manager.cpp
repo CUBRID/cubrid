@@ -21,6 +21,12 @@
  * load_manager.cpp - entry point for loaddb manager
  */
 
+#include "load_session.hpp"
+
+#include "load_driver.hpp"
+#include "resource_shared_pool.hpp"
+#include "xserver_interface.h"
+
 #include "load_worker_manager.hpp"
 
 namespace cubload

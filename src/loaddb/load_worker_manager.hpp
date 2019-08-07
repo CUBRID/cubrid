@@ -24,12 +24,7 @@
 #ifndef _LOAD_MANAGER_HPP_
 #define _LOAD_MANAGER_HPP_
 
-#include "load_session.hpp"
-
-#include "load_driver.hpp"
-#include "resource_shared_pool.hpp"
 #include "thread_entry_task.hpp"
-#include "xserver_interface.h"
 
 using cubthread::entry_task;
 
