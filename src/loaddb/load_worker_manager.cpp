@@ -52,10 +52,10 @@ namespace cubload
       bool m_interrupted;
   };
 
-  static worker_context_manager *g_loaddb_wp_context_manager;
-  static cubthread::entry_workpool *g_loaddb_worker_pool;
-  static std::mutex g_loaddb_wp_mutex;
-  static unsigned int g_loaddb_session_count = 0;
+  static worker_context_manager *g_wp_context_manager;
+  static cubthread::entry_workpool *g_worker_pool;
+  static std::mutex g_wp_mutex;
+  static unsigned int g_session_count = 0;
 
   worker_context_manager::worker_context_manager (unsigned int pool_size)
     : m_driver_pool (pool_size)
@@ -102,62 +102,62 @@ namespace cubload
   void
   worker_manager_interrupt ()
   {
-    assert (g_loaddb_wp_context_manager != NULL);
-    g_loaddb_wp_context_manager->interrupt ();
+    assert (g_wp_context_manager != NULL);
+    g_wp_context_manager->interrupt ();
   }
 
   void
   worker_manager_push_task (cubthread::entry_task *task)
   {
-    assert (g_loaddb_worker_pool != NULL);
-    cubthread::get_manager ()->push_task (g_loaddb_worker_pool, task);
+    assert (g_worker_pool != NULL);
+    cubthread::get_manager ()->push_task (g_worker_pool, task);
   }
 
   void
   worker_manager_register_session ()
   {
-    g_loaddb_wp_mutex.lock ();
+    g_wp_mutex.lock ();
 
-    if (g_loaddb_session_count == 0)
+    if (g_session_count == 0)
       {
-	assert (g_loaddb_worker_pool == NULL);
-	assert (g_loaddb_wp_context_manager == NULL);
+	assert (g_worker_pool == NULL);
+	assert (g_wp_context_manager == NULL);
 
 	unsigned int pool_size = prm_get_integer_value (PRM_ID_LOADDB_WORKER_COUNT);
 
-	g_loaddb_wp_context_manager = new worker_context_manager (pool_size);
-	g_loaddb_worker_pool = cubthread::get_manager ()->create_worker_pool (pool_size, pool_size, "loaddb-workers",
-			       g_loaddb_wp_context_manager, 1, false, true);
+	g_wp_context_manager = new worker_context_manager (pool_size);
+	g_worker_pool = cubthread::get_manager ()->create_worker_pool (pool_size, pool_size, "loaddb-workers",
+			g_wp_context_manager, 1, false, true);
       }
     else
       {
-	assert (g_loaddb_worker_pool != NULL);
-	assert (g_loaddb_wp_context_manager != NULL);
+	assert (g_worker_pool != NULL);
+	assert (g_wp_context_manager != NULL);
       }
 
-    g_loaddb_session_count++;
+    g_session_count++;
 
-    g_loaddb_wp_mutex.unlock ();
+    g_wp_mutex.unlock ();
   }
 
   void
   worker_manager_unregister_session ()
   {
-    g_loaddb_wp_mutex.lock ();
+    g_wp_mutex.lock ();
 
-    g_loaddb_session_count--;
+    g_session_count--;
 
     // Check if there are any sessions attached to the wp. We are under lock so we are the only ones doing this.
-    if (g_loaddb_session_count == 0)
+    if (g_session_count == 0)
       {
 	// We are the last session so we can safely destroy the worker pool and the manager.
-	cubthread::get_manager ()->destroy_worker_pool (g_loaddb_worker_pool);
-	delete g_loaddb_wp_context_manager;
+	cubthread::get_manager ()->destroy_worker_pool (g_worker_pool);
+	delete g_wp_context_manager;
 
-	g_loaddb_worker_pool = NULL;
-	g_loaddb_wp_context_manager = NULL;
+	g_worker_pool = NULL;
+	g_wp_context_manager = NULL;
       }
 
-    g_loaddb_wp_mutex.unlock ();
+    g_wp_mutex.unlock ();
   }
 }
