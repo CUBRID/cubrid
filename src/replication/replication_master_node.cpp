@@ -62,23 +62,23 @@ namespace cubreplication
     comm_error_code = chn.recv ((char *) &expected_magic, max_len);
     if (comm_error_code != css_error_code::NO_ERRORS)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 2, chn.get_channel_id ().c_str (),
-		comm_error_code);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 3, chn.get_channel_id ().c_str (),
+		comm_error_code, "");
 	return ER_STREAM_CONNECTION_SETUP;
       }
 
     if (expected_magic != replication_node::SETUP_REPLICATION_MAGIC)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 2, chn.get_channel_id ().c_str (),
-		comm_error_code);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 3, chn.get_channel_id ().c_str (),
+		comm_error_code, "Unexpected value");
 	return ER_STREAM_CONNECTION_SETUP;
       }
 
     comm_error_code = chn.send ((char *) &replication_node::SETUP_REPLICATION_MAGIC, max_len);
     if (comm_error_code != css_error_code::NO_ERRORS)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 2, chn.get_channel_id ().c_str (),
-		comm_error_code);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 3, chn.get_channel_id ().c_str (),
+		comm_error_code, "");
 	return ER_STREAM_CONNECTION_SETUP;
       }
 
@@ -88,8 +88,8 @@ namespace cubreplication
     comm_error_code = chn.send ((char *) &pos, max_len);
     if (comm_error_code != css_error_code::NO_ERRORS)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 2, chn.get_channel_id ().c_str (),
-		comm_error_code);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 3, chn.get_channel_id ().c_str (),
+		comm_error_code, "");
 	return ER_STREAM_CONNECTION_SETUP;
       }
 
@@ -97,8 +97,8 @@ namespace cubreplication
     comm_error_code = chn.send ((char *) &pos, max_len);
     if (comm_error_code != css_error_code::NO_ERRORS)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 2, chn.get_channel_id ().c_str (),
-		comm_error_code);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 3, chn.get_channel_id ().c_str (),
+		comm_error_code, "");
 	return ER_STREAM_CONNECTION_SETUP;
       }
 
