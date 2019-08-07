@@ -25,14 +25,12 @@
 
 #include "log_consumer.hpp"
 
-#include "communication_channel.hpp"
 #include "error_manager.h"
 #include "locator_sr.h"
 #include "multi_thread_stream.hpp"
 #include "replication_common.hpp"
 #include "replication_stream_entry.hpp"
 #include "replication_subtran_apply.hpp"
-#include "slave_control_channel.hpp"
 #include "stream_entry_fetcher.hpp"
 #include "stream_file.hpp"
 #include "string_buffer.hpp"
@@ -137,7 +135,7 @@ namespace cubreplication
 	, m_entry_fetcher (entry_fetcher)
 	, m_lc (lc)
       {
-	m_entry_fetcher.set_on_fetch ([this] (stream_entry *se, bool & should_skip)
+	m_entry_fetcher.set_on_fetch_func ([this] (stream_entry *se, bool & should_skip)
 	{
 	  if (se->is_group_commit ())
 	    {
@@ -158,8 +156,8 @@ namespace cubreplication
 	while (true)
 	  {
 	    bool should_stop = false;
-	    bool should_skip = false;
-	    stream_entry *se = m_entry_fetcher.pop_entry (should_stop, should_skip);
+	    bool filter_out = false;
+	    stream_entry *se = m_entry_fetcher.pop_entry (should_stop, filter_out);
 
 	    if (should_stop)
 	      {
@@ -167,7 +165,7 @@ namespace cubreplication
 		break;
 	      }
 
-	    if (should_skip)
+	    if (filter_out)
 	      {
 		delete se;
 		continue;
@@ -307,10 +305,8 @@ namespace cubreplication
   {
     m_subtran_applier = new subtran_applier (*this);
 
-    cubstream::repl_stream_entry_fetcher entry_fetcher (*get_stream (), [] (stream_entry *, bool &) {});
-
     m_dispatch_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
-			new dispatch_daemon_task (*this, entry_fetcher),
+			new dispatch_daemon_task (*this, cubstream::repl_stream_entry_fetcher (*get_stream ())),
 			"apply_stream_entry_daemon");
 
     m_applier_workers_pool = cubthread::get_manager ()->create_worker_pool (m_applier_worker_threads_count,

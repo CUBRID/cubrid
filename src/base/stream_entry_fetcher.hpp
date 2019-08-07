@@ -25,6 +25,8 @@
 #define _STREAM_ENTRY_FETCHER_HPP_
 
 #include "multi_thread_stream.hpp"
+#include <cassert>
+#include <functional>
 
 namespace cubstream
 {
@@ -33,8 +35,8 @@ namespace cubstream
   class stream_entry_fetcher
   {
     public:
-      stream_entry_fetcher (cubstream::multi_thread_stream &stream, const std::function<void (T *, bool &)> &on_fetch);
-      void set_on_fetch (const std::function<void (T *, bool &)> &on_fetch);
+      stream_entry_fetcher (cubstream::multi_thread_stream &stream);
+      void set_on_fetch_func (const std::function<void (T *, bool &)> &on_fetch);
       T *pop_entry (bool &should_stop, bool &skip);
 
     private:
@@ -45,15 +47,17 @@ namespace cubstream
   };
 
   template<typename T>
-  stream_entry_fetcher<T>::stream_entry_fetcher (cubstream::multi_thread_stream &stream,
-      const std::function<void (T *, bool &)> &on_fetch)
+  stream_entry_fetcher<T>::stream_entry_fetcher (cubstream::multi_thread_stream &stream)
     : m_stream (stream)
-    , m_on_fetch (on_fetch)
+    , m_on_fetch ([] (T *, bool &)
+  {
+    assert (false);
+  })
   {
   }
 
   template<typename T>
-  void stream_entry_fetcher<T>::set_on_fetch (const std::function<void (T *, bool &)> &on_fetch)
+  void stream_entry_fetcher<T>::set_on_fetch_func (const std::function<void (T *, bool &)> &on_fetch)
   {
     m_on_fetch = on_fetch;
   }
