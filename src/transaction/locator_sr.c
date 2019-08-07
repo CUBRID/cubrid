@@ -4427,8 +4427,8 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 			    {
 			      /* Disable row replication: SM_FOREIGN_KEY_CASCADE constraint from slave will make sure
 			       * these changes are replicated */
-			      logtb_get_tdes (thread_p)->get_replication_generator ().
-				set_row_replication_disabled (true);
+			      logtb_get_tdes (thread_p)->
+				get_replication_generator ().set_row_replication_disabled (true);
 			      disabled_row_replication = true;
 			    }
 			}
@@ -7569,8 +7569,8 @@ end:
 	    {
 	      /* Aborts and simulate apply replication RBR on master node. */
 	      error_code =
-		logtb_get_tdes (thread_p)->get_replication_generator ().
-		abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
+		logtb_get_tdes (thread_p)->
+		get_replication_generator ().abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
 	    }
 	  else
 	    {

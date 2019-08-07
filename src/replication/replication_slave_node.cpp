@@ -177,7 +177,7 @@ namespace cubreplication
       {
 	/* TODO[replication] : replication copy */
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 3, "", css_error_code::NO_ERRORS,
-                "Unsupported feature");
+		"Unsupported feature");
 	return ER_STREAM_CONNECTION_SETUP;
       }
     else
