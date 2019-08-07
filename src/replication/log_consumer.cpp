@@ -134,6 +134,7 @@ namespace cubreplication
 	: m_filtered_apply_end (log_Gl.hdr.m_ack_stream_position)
 	, m_entry_fetcher (entry_fetcher)
 	, m_lc (lc)
+	, m_stop (false)
       {
 	m_entry_fetcher.set_on_fetch_func ([this] (stream_entry *se, bool & should_skip)
 	{
@@ -153,13 +154,12 @@ namespace cubreplication
 	tasks_map repl_tasks;
 	tasks_map nonexecutable_repl_tasks;
 
-	while (true)
+	while (!m_stop)
 	  {
-	    bool should_stop = false;
 	    bool filter_out = false;
-	    stream_entry *se = m_entry_fetcher.pop_entry (should_stop, filter_out);
+	    stream_entry *se = m_entry_fetcher.pop_entry (m_stop, filter_out);
 
-	    if (should_stop)
+	    if (m_stop)
 	      {
 		delete se;
 		break;
@@ -284,6 +284,7 @@ namespace cubreplication
       cubstream::stream_position m_filtered_apply_end;
       cubstream::repl_stream_entry_fetcher m_entry_fetcher;
       log_consumer &m_lc;
+      bool m_stop;
   };
 
   log_consumer::~log_consumer ()
