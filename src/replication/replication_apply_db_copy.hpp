@@ -86,8 +86,8 @@ namespace cubreplication
 	m_started_tasks (0),
 	m_apply_task_ready (false),
 	m_is_stopped (false),
-        m_is_finished (false),
-        m_last_fetched_position (0)
+	m_is_finished (false),
+	m_last_fetched_position (0)
       {
       };
 
@@ -126,13 +126,22 @@ namespace cubreplication
 
       void set_stop (void);
 
-      void set_is_finished () { m_is_finished = true; }
-      
-      bool is_finished () { return m_is_finished; }
+      void set_is_finished ()
+      {
+	m_is_finished = true;
+      }
+
+      bool is_finished ()
+      {
+	return m_is_finished;
+      }
 
       cubstream::stream_position m_last_fetched_position;
 
-      size_t get_entries_in_queue () { return m_stream_entries.size (); }
+      size_t get_entries_in_queue ()
+      {
+	return m_stream_entries.size ();
+      }
   };
 
   class apply_copy_context

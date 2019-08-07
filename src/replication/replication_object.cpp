@@ -762,7 +762,7 @@ namespace cubreplication
 	const RECDES &recdes = record.get_recdes ();
 	/* TODO[replication] : use optimized load into page */
 	err = row_apply_insert (m_class_name, record);
-	if (err)
+	if (err != NO_ERROR)
 	  {
 	    return err;
 	  }

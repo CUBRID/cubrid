@@ -76,7 +76,8 @@ namespace cubreplication
        * It continues with heap copy, and once heap copy process ends, it sends triggers and indexes.
        *
        * The values follows the order of copy phase and should be kept in sync with overall process
-       * of ddl_proxy and server source copy. */
+       * of ddl_proxy and server source copy.
+       */
       enum copy_stage
       {
 	NOT_STARTED = 0,

@@ -372,13 +372,13 @@ namespace test_packing
     cubpacking::packer packer;
 
     OID classes[10];
-    int cnt_classes = sizeof (classes) / sizeof (classes[0]); 
+    int cnt_classes = sizeof (classes) / sizeof (classes[0]);
 
     for (int i = 0; i < cnt_classes; i++)
       {
-        classes[i].volid = i;
-        classes[i].pageid= i + 100;
-        classes[i].slotid= i + 10;
+	classes[i].volid = i;
+	classes[i].pageid= i + 100;
+	classes[i].slotid= i + 10;
       }
 
     blk.extend_to (OR_INT_SIZE + cnt_classes * OR_OID_SIZE);
@@ -386,7 +386,7 @@ namespace test_packing
 
     for (int i = 0; i < cnt_classes; i++)
       {
-        packer.append_to_buffer_and_pack_all (blk, classes[i]);
+	packer.append_to_buffer_and_pack_all (blk, classes[i]);
       }
 
 
@@ -400,10 +400,10 @@ namespace test_packing
     assert (cnt_classes_unpack = cnt_classes);
     for (int i = 0; i < cnt_classes_unpack; i++)
       {
-        OID cl;
-        unpacker.unpack_all (cl);
+	OID cl;
+	unpacker.unpack_all (cl);
 
-        assert (OID_EQ (&cl, &classes[i]));
+	assert (OID_EQ (&cl, &classes[i]));
       }
 
     return 0;

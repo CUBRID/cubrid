@@ -48,7 +48,8 @@ namespace cubreplication
     cubthread::entry_callable_task *task = new cubthread::entry_callable_task (exec_f);
     m_supervisor_daemon =
 	    cubthread::get_manager ()->create_daemon (
-		    cubthread::looper (std::chrono::milliseconds (SUPERVISOR_DAEMON_DELAY_MS)), task, daemon_name.c_str ());
+		    cubthread::looper (std::chrono::milliseconds (SUPERVISOR_DAEMON_DELAY_MS)), task,
+                                       daemon_name.c_str ());
 
     error_code = rwlock_initialize (&m_senders_lock, "MASTER_SENDERS_LOCK");
     assert (error_code == NO_ERROR);
