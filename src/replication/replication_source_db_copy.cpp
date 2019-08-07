@@ -30,7 +30,7 @@
 #include "locator_sr.h"     /* locator_ functions */
 #include "replication_common.hpp"
 #include "replication_master_node.hpp"
-#include "replication_master_senders_manager.hpp"
+#include "stream_senders_manager.hpp"
 #include "replication_node.hpp"
 #include "replication_node_manager.hpp"
 #include "replication_object.hpp"
@@ -290,12 +290,17 @@ namespace cubreplication
     copy_db_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
     copy_db_stream->init (0);
 
+    /* TODO[replication] : global senders manager (same as stream) */
+    m_senders_manager = new stream_senders_manager (*copy_db_stream);
+
     return copy_db_stream;
   }
 
   void source_copy_context::release_stream ()
   {
     er_log_debug_replication(ARG_FILE_LINE, "source_copy_context::release_stream ");
+    delete m_senders_manager;
+    m_senders_manager = NULL;
 
     m_stream->stop ();
     delete m_stream;
@@ -350,6 +355,7 @@ namespace cubreplication
       }
 
     m_transfer_sender = new cubstream::transfer_sender (std::move (chn), *m_stream);
+    m_senders_manager->add_stream_sender (m_transfer_sender);
 
     er_log_debug_replication (ARG_FILE_LINE, "new_slave_copy connected");
 
@@ -440,7 +446,27 @@ namespace cubreplication
 
   int source_copy_context::wait_slave_finished ()
   {
-     return NO_ERROR;
+    bool sender_alive = true;
+
+    er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_slave_finished");
+
+    assert (m_transfer_sender != NULL);
+    assert (m_senders_manager != NULL);
+
+    m_senders_manager->stop_stream_sender (m_transfer_sender);
+
+    while (sender_alive)
+      {
+        sender_alive = m_senders_manager->find_stream_sender (m_transfer_sender);
+        if (sender_alive)
+          {
+            thread_sleep (100);
+          }
+      }
+
+    er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_slave_finished OK");
+
+    return NO_ERROR;
   }
 
   void source_copy_context::stop ()
