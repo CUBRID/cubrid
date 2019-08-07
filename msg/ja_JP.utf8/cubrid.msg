@@ -1287,7 +1287,7 @@ $ LOADDB
 1218 Invalid write to stream file %1$s at position %2$lld, amount %3$lld.
 1219 Cannot read from stream volume %1$s at offset %2$lld, amount %3$lld.
 1220 Cannot write to stream volume %1$s at offset %2$lld, amount %3$lld.
-1221 Replication connection setup failed for channel %1$s. Communication error code: %2$d.
+1221 Stream connection setup failed for channel %1$s. Communication error code: %2$d. %3$s
 1222 Reserved error for stream/replication.
 1223 Reserved error for stream/replication.
 1224 Reserved error for stream/replication.
