@@ -130,13 +130,13 @@ namespace cubreplication
   class dispatch_daemon_task : public cubthread::entry_task
   {
     public:
-      dispatch_daemon_task (log_consumer &lc, const cubstream::repl_stream_entry_fetcher &entry_fetcher)
+      dispatch_daemon_task (log_consumer &lc)
 	: m_filtered_apply_end (log_Gl.hdr.m_ack_stream_position)
-	, m_entry_fetcher (entry_fetcher)
+	, m_entry_fetcher (cubstream::repl_stream_entry_fetcher (*lc.get_stream ()))
 	, m_lc (lc)
 	, m_stop (false)
       {
-	m_entry_fetcher.set_on_fetch_func ([this] (stream_entry *se, bool & should_skip)
+	auto on_fetch_func = [this] (stream_entry *se, bool & should_skip)
 	{
 	  if (se->is_group_commit ())
 	    {
@@ -145,7 +145,9 @@ namespace cubreplication
 	      m_lc.ack_produce (se->get_stream_entry_end_position ());
 	    };
 	  should_skip = filter_out_stream_entry (se);
-	});
+	};
+
+	m_entry_fetcher.set_on_fetch_func (on_fetch_func);
       }
 
       void execute (cubthread::entry &thread_ref) override
@@ -307,7 +309,7 @@ namespace cubreplication
     m_subtran_applier = new subtran_applier (*this);
 
     m_dispatch_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
-			new dispatch_daemon_task (*this, cubstream::repl_stream_entry_fetcher (*get_stream ())),
+			new dispatch_daemon_task (*this),
 			"apply_stream_entry_daemon");
 
     m_applier_workers_pool = cubthread::get_manager ()->create_worker_pool (m_applier_worker_threads_count,
