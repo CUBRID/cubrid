@@ -2128,6 +2128,10 @@ mq_substitute_subquery_list_in_statement (PARSER_CONTEXT * parser, PT_NODE * sta
 	{
 	  result_list = parser_append_node (result, result_list);
 	}
+      else if (er_has_error () || pt_has_error (parser))
+	{
+	  return NULL;
+	}
 
       query_spec = query_spec->next;
     }
@@ -2474,14 +2478,10 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
 			    }
 			}
 		    }
-		  else
-		    {
-		      if (er_has_error () || pt_has_error (parser))
-			{
-			  return NULL;
-			}
 
-		      /* a virtual class with no subquery */
+		  if (er_has_error () || pt_has_error (parser))
+		    {
+		      return NULL;
 		    }
 		}
 	    }
