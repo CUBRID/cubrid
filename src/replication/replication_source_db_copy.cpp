@@ -203,8 +203,9 @@ namespace cubreplication
   {
     er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_for_state %d", desired_state);
     std::unique_lock<std::mutex> ulock_state (m_state_mutex);
-    m_state_cv.wait (ulock_state, [this, desired_state, &thread_ref]
-    { return m_state == desired_state || m_is_stop || thread_ref.shutdown; });
+    auto wait_lambda = [this, desired_state, &thread_ref]
+    { return m_state == desired_state || m_is_stop || thread_ref.shutdown; };
+    m_state_cv.wait (ulock_state, wait_lambda);
     if (is_interrupted (thread_ref))
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
@@ -473,6 +474,7 @@ namespace cubreplication
   {
     std::unique_lock<std::mutex> ulock_state (m_state_mutex);
     m_is_stop = true;
+    ulock_state.unlock ();
     m_state_cv.notify_all();
   }
 
