@@ -75,21 +75,18 @@ namespace cubreplication
   };
 
   source_copy_context::source_copy_context ()
+    : m_tran_index (-1)
+    , m_error_cnt (0)
+    , m_running_extract_threads (0)
+    , m_online_replication_start_pos (0)
+    , m_stream (NULL)
+    , m_stream_file (NULL)
+    , m_transfer_sender (NULL)
+    , m_heap_extract_workers_pool (NULL)
+    , m_state (NOT_STARTED)
+    , m_is_stop (false)
   {
-    m_tran_index = -1;
-    m_error_cnt = 0;
-    m_running_extract_threads = 0;
-    m_online_replication_start_pos = 0;
-
-    m_stream = NULL;
     /* TODO[replication] : use file for replication copy stream */
-    m_stream_file = NULL;
-    m_transfer_sender = NULL;
-    m_heap_extract_workers_pool = NULL;
-    m_state = NOT_STARTED;
-    m_is_stop = false;
-
-
     m_stream = acquire_stream ();
     /* TODO : single global pool or a pool for each context ? */
     m_heap_extract_workers_pool =
@@ -458,7 +455,7 @@ namespace cubreplication
 
     while (sender_alive)
       {
-	sender_alive = m_senders_manager->find_stream_sender (m_transfer_sender);
+	sender_alive = m_senders_manager->is_stream_sender_alive (m_transfer_sender);
 	if (sender_alive)
 	  {
 	    thread_sleep (100);
@@ -638,6 +635,11 @@ namespace cubreplication
     tdes->replication_copy_context->pack_and_add_object (heap_objects);
 
 end:
+    if (heap_objects != NULL)
+      {
+	delete heap_objects;
+	heap_objects = NULL;
+      }
     if (class_name != NULL)
       {
 	free_and_init (class_name);
