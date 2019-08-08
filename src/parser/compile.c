@@ -555,7 +555,8 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  locator_lockhint_classes (lcks.num_classes, (const char **) lcks.classes, lcks.locks, lcks.only_all,
 				    lcks.flags, true, lock_rr_tran)) != LC_CLASSNAME_EXIST)
     {
-      if (find_result == LC_CLASSNAME_ERROR && er_errid () == ER_LK_UNILATERALLY_ABORTED)
+      if (find_result == LC_CLASSNAME_ERROR
+	  && (er_errid () == ER_LK_UNILATERALLY_ABORTED || er_errid () == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED))
 	{
 	  /*
 	   * Transaction has been aborted, the dirty objects and cached
