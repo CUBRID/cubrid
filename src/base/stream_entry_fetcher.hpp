@@ -18,7 +18,7 @@
  */
 
 /*
- * entry_fetcher.hpp - Fetcher of stream entries from a stream
+ * stream_entry_fetcher.hpp - Fetcher of stream entries from a stream
  */
 
 #ifndef _STREAM_ENTRY_FETCHER_HPP_

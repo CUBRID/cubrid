@@ -65,17 +65,14 @@ namespace cubreplication
    *    object which aggregates both log_consumer and stream)
    *
    * Methods/daemons/threads:
-   *  - a daemon which "consumes" replication stream entries : create a new replication_stream_entry object,
-   *    prepares it (uses stream to receive and unpacks its header), and pushes to the queue
-   *  - a dispatch daemon which extracts replication stream entry frin stream and builds applier_worker_task
+   *  - a dispatch daemon which extracts replication stream entry from stream and builds applier_worker_task
    *    objects; each applier_worker_task contains a list of stream_entries belonging to the same transaction;
    *    when a group commit special stream entry is encoutered by dispatch daemon, all gathered commited
    *    applier_worker_task are pushed to a worker thread pool (m_applier_workers_pool);
    *    the remainder of applier_worker_task objects (not having coommit), are copied to next cycle (until next
    *    group commit) : see dispatch_daemon_task::execute;
-   *  - a thread pool for applying applier_worker_task; all replication stream entries are unpacked
-   *    (the consumer daemon task is unpacking only the header) and then each replication object from a stream entry
-   *    is applied
+   *  - a thread pool for applying applier_worker_task; all replication stream entries are unpacked and then
+   *    each replication object from a stream entry is applied
    */
   class log_consumer
   {
