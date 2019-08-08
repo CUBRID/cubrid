@@ -47,7 +47,7 @@ namespace cubreplication
 namespace cubstream
 {
   class multi_thread_stream;
-  using repl_stream_entry_fetcher = stream_entry_fetcher<cubreplication::stream_entry>;
+  using repl_stream_entry_fetcher = entry_fetcher<cubreplication::stream_entry>;
 };
 
 namespace cubreplication

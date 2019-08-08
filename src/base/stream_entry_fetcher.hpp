@@ -18,36 +18,51 @@
  */
 
 /*
- * stream_entry_fetcher.hpp - Fetcher of stream entries from a stream
+ * entry_fetcher.hpp - Fetcher of stream entries from a stream
  */
 
 #ifndef _STREAM_ENTRY_FETCHER_HPP_
 #define _STREAM_ENTRY_FETCHER_HPP_
 
 #include "multi_thread_stream.hpp"
+#include "replication_stream_entry.hpp"
 #include <cassert>
 #include <functional>
 
 namespace cubstream
 {
-  // todo: find a way to constrain T to be of type cubstream::entry<T>
-  template<typename T>
-  class stream_entry_fetcher
+  template <template <typename> class F>
+  struct conversion_tester
   {
-    public:
-      stream_entry_fetcher (cubstream::multi_thread_stream &stream);
-      void set_on_fetch_func (const std::function<void (T *, bool &)> &on_fetch);
-      T *pop_entry (bool &should_stop, bool &skip);
+    template <typename T>
+    conversion_tester (const F<T> &);
+  };
 
-    private:
-      int fetch_stream_entry (T *&entry);
-
-      cubstream::multi_thread_stream &m_stream;
-      std::function<void (T *, bool &)> m_on_fetch;
+  template <class From, template <typename> class To>
+  struct is_instance_of
+  {
+    static constexpr bool value = std::is_convertible<From,conversion_tester<To>>::value;
   };
 
   template<typename T>
-  stream_entry_fetcher<T>::stream_entry_fetcher (cubstream::multi_thread_stream &stream)
+  class entry_fetcher
+  {
+      static_assert (is_instance_of<T, cubstream::entry>::value, "T derived from or specialisation of cubstream::entry;");
+      using stream_entry_type = T;
+    public:
+      entry_fetcher (cubstream::multi_thread_stream &stream);
+      void set_on_fetch_func (const std::function<void (stream_entry_type *, bool &)> &on_fetch);
+      stream_entry_type *pop_entry (bool &should_stop, bool &skip);
+
+    private:
+      int fetch_stream_entry (stream_entry_type *&entry);
+
+      cubstream::multi_thread_stream &m_stream;
+      std::function<void (stream_entry_type *, bool &)> m_on_fetch;
+  };
+
+  template<typename T>
+  entry_fetcher<T>::entry_fetcher (cubstream::multi_thread_stream &stream)
     : m_stream (stream)
     , m_on_fetch ([] (T *, bool &)
   {
@@ -57,15 +72,15 @@ namespace cubstream
   }
 
   template<typename T>
-  void stream_entry_fetcher<T>::set_on_fetch_func (const std::function<void (T *, bool &)> &on_fetch)
+  void entry_fetcher<T>::set_on_fetch_func (const std::function<void (stream_entry_type *, bool &)> &on_fetch)
   {
     m_on_fetch = on_fetch;
   }
 
   template<typename T>
-  T *stream_entry_fetcher<T>::pop_entry (bool &should_stop, bool &skip)
+  T *entry_fetcher<T>::pop_entry (bool &should_stop, bool &skip)
   {
-    T *se = nullptr;
+    stream_entry_type *se = nullptr;
     int err = fetch_stream_entry (se);
     if (err == NO_ERROR)
       {
@@ -79,9 +94,9 @@ namespace cubstream
   }
 
   template<typename T>
-  int stream_entry_fetcher<T>::fetch_stream_entry (T *&entry)
+  int entry_fetcher<T>::fetch_stream_entry (stream_entry_type *&entry)
   {
-    T *se = new T (&m_stream);
+    stream_entry_type *se = new stream_entry_type (&m_stream);
 
     int err = se->prepare ();
     if (err != NO_ERROR)
