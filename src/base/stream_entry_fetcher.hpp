@@ -24,30 +24,19 @@
 #ifndef _STREAM_ENTRY_FETCHER_HPP_
 #define _STREAM_ENTRY_FETCHER_HPP_
 
+#include "generic_utils.hpp"
 #include "multi_thread_stream.hpp"
-#include "replication_stream_entry.hpp"
+#include "stream_entry.hpp"
 #include <cassert>
 #include <functional>
 
 namespace cubstream
 {
-  template <template <typename> class F>
-  struct conversion_tester
-  {
-    template <typename T>
-    conversion_tester (const F<T> &);
-  };
-
-  template <class From, template <typename> class To>
-  struct is_instance_of
-  {
-    static constexpr bool value = std::is_convertible<From,conversion_tester<To>>::value;
-  };
-
   template<typename T>
   class entry_fetcher
   {
-      static_assert (is_instance_of<T, cubstream::entry>::value, "T derived from or specialisation of cubstream::entry;");
+      static_assert (cubbase::is_instance_of<T, cubstream::entry>::value,
+		     "T derived from or specialisation of cubstream::entry;");
       using stream_entry_type = T;
     public:
       entry_fetcher (cubstream::multi_thread_stream &stream);
