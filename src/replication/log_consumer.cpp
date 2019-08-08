@@ -132,7 +132,7 @@ namespace cubreplication
     public:
       dispatch_daemon_task (log_consumer &lc)
 	: m_filtered_apply_end (log_Gl.hdr.m_ack_stream_position)
-	, m_entry_fetcher (cubstream::repl_stream_entry_fetcher (*lc.get_stream ()))
+	, m_entry_fetcher (*lc.get_stream ())
 	, m_lc (lc)
 	, m_stop (false)
       {
