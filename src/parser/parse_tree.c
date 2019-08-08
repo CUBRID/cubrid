@@ -1238,7 +1238,7 @@ parser_free_parser (PARSER_CONTEXT * parser)
 
   if (parser->error_buffer)
     {
-      free_and_init ((char *) parser->error_buffer);
+      free_and_init (parser->error_buffer);
     }
 
   if (parser->host_variables)
