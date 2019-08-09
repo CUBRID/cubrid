@@ -312,6 +312,15 @@ namespace cubreplication
 		/* stream entry is deleted by applier task thread */
 	      }
 	  }
+
+	// delete unapplied tasks
+	for (auto &repl_task : repl_tasks)
+	  {
+	    delete repl_task.second;
+	    repl_task.second = NULL;
+	  }
+	// wait for the applying tasks
+	m_lc.wait_for_tasks ();
       }
 
     private:
