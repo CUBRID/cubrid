@@ -25,6 +25,7 @@
 #define _LOAD_MANAGER_HPP_
 
 #include "thread_entry_task.hpp"
+#include "thread_worker_pool.hpp"
 
 using cubthread::entry_task;
 
@@ -37,6 +38,8 @@ namespace cubload
   void worker_manager_register_session ();
 
   void worker_manager_unregister_session ();
+
+  void worker_manager_end_task ();
 }
 
 #endif

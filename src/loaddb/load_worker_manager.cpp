@@ -58,10 +58,29 @@ namespace cubload
       bool m_interrupted;
   };
 
+  class blocking_manager
+  {
+    public:
+      blocking_manager (unsigned int pool_size);
+      ~blocking_manager ();
+
+      void push_task (cubthread::entry_task *task);
+      cubthread::entry_workpool *get_worker_pool ();
+      void end_task ();
+
+    private:
+      cubthread::entry_workpool *m_worker_pool;
+      unsigned int m_tasks_available;
+      unsigned int m_pool_size;
+      std::mutex m_mutex;
+      std::condition_variable m_cond_var;
+  };
+
   static worker_context_manager *g_wp_context_manager;
   static cubthread::entry_workpool *g_worker_pool;
   static std::mutex g_wp_mutex;
   static unsigned int g_session_count = 0;
+  static blocking_manager *g_blocking_manager;
 
   worker_context_manager::worker_context_manager (unsigned int pool_size)
     : m_driver_pool (pool_size)
@@ -100,6 +119,52 @@ namespace cubload
       }
   }
 
+  blocking_manager::blocking_manager (unsigned int pool_size)
+  {
+    m_pool_size = pool_size;
+    m_worker_pool = cubthread::get_manager ()->create_worker_pool (pool_size, pool_size, "loaddb-workers",
+		    g_wp_context_manager, 1, false, true);
+    m_tasks_available = pool_size;
+  }
+
+  blocking_manager::~blocking_manager ()
+  {
+    cubthread::get_manager ()->destroy_worker_pool (m_worker_pool);
+  }
+
+  void blocking_manager::push_task (cubthread::entry_task *task)
+  {
+    auto pred = [&] () -> bool {return (m_tasks_available > 0); };
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
+    m_cond_var.wait (ulock, pred);
+
+    // Make sure we have the lock.
+    assert (ulock.owns_lock ());
+    // Safeguard.
+    assert (m_tasks_available > 0);
+
+    m_tasks_available--;
+    cubthread::get_manager ()->push_task (g_worker_pool, task);
+  }
+
+  void blocking_manager::end_task ()
+  {
+    std::unique_lock<std::mutex> ulock (m_mutex);
+    m_tasks_available++;
+
+    // Safeguard
+    assert (m_tasks_available <= m_pool_size && m_tasks_available > 0);
+
+    ulock.unlock ();
+    m_cond_var.notify_all ();
+  }
+
+  cubthread::entry_workpool *blocking_manager::get_worker_pool ()
+  {
+    return m_worker_pool;
+  }
+
   void worker_context_manager::interrupt ()
   {
     m_interrupted = true;
@@ -116,7 +181,7 @@ namespace cubload
   worker_manager_push_task (cubthread::entry_task *task)
   {
     assert (g_worker_pool != NULL);
-    cubthread::get_manager ()->push_task (g_worker_pool, task);
+    g_blocking_manager->push_task (task);
   }
 
   void
@@ -132,8 +197,8 @@ namespace cubload
 	unsigned int pool_size = prm_get_integer_value (PRM_ID_LOADDB_WORKER_COUNT);
 
 	g_wp_context_manager = new worker_context_manager (pool_size);
-	g_worker_pool = cubthread::get_manager ()->create_worker_pool (pool_size, pool_size, "loaddb-workers",
-			g_wp_context_manager, 1, false, true);
+	g_blocking_manager = new blocking_manager (pool_size);
+	g_worker_pool = g_blocking_manager->get_worker_pool ();
       }
     else
       {
@@ -157,8 +222,16 @@ namespace cubload
     if (g_session_count == 0)
       {
 	// We are the last session so we can safely destroy the worker pool and the manager.
-	cubthread::get_manager ()->destroy_worker_pool (g_worker_pool);
-	delete g_wp_context_manager;
+	//cubthread::get_manager ()->destroy_worker_pool (g_worker_pool);
+
+	if (g_wp_context_manager != NULL)
+	  {
+	    delete g_wp_context_manager;
+	  }
+	if (g_blocking_manager != NULL)
+	  {
+	    delete g_blocking_manager;
+	  }
 
 	g_worker_pool = NULL;
 	g_wp_context_manager = NULL;
@@ -166,4 +239,11 @@ namespace cubload
 
     g_wp_mutex.unlock ();
   }
+
+  void
+  worker_manager_end_task ()
+  {
+    g_blocking_manager->end_task ();
+  }
+
 }
