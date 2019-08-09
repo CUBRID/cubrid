@@ -42,12 +42,22 @@ namespace cubreplication
   cubreplication::slave_node *g_slave_node = NULL;
 
   cubthread::entry_workpool *task_worker_pool = NULL;
-  std::mutex commute_mtx;
 
   namespace replication_node_manager
   {
+    enum commute_state
+    {
+      SLAVE,
+      TO_SLAVE,
+      NOT_INITED,
+      TO_MASTER,
+      MASTER
+    };
+    commute_state current_state;
+
     void init (const char *server_name)
     {
+      current_state = NOT_INITED;
       g_hostname = server_name;
 
       INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_BUFFER_SIZE);
@@ -90,11 +100,19 @@ namespace cubreplication
 
     void commute_to_master_state ()
     {
-      if (!commute_mtx.try_lock ())
+      if (current_state == TO_SLAVE)
 	{
-	  // Could not aquire lock, return error
+	  assert (false);
+	  // we do not support chaining conflicting commutations
+	  // todo: ERROR
 	  return;
 	}
+      if (current_state >= TO_MASTER)
+	{
+	  // already in or commuting to desired state
+	  return;
+	}
+      current_state = TO_MASTER;
 
       cubthread::entry_task *promote_task = new cubthread::entry_callable_task ([] (
 		  cubthread::entry &context)
@@ -108,7 +126,7 @@ namespace cubreplication
 
 	assert (g_master_node == NULL);
 	g_master_node = new master_node (g_hostname.c_str (), g_stream, g_stream_file);
-	commute_mtx.unlock ();
+	current_state = MASTER;
       }, true);
 
       cubthread::get_manager ()->push_task (task_worker_pool, promote_task);
@@ -116,11 +134,19 @@ namespace cubreplication
 
     void commute_to_slave_state ()
     {
-      if (!commute_mtx.try_lock ())
+      if (current_state == TO_MASTER)
 	{
-	  // Could not aquire lock, return error
+	  assert (false);
+	  // we do not support chaining conflicting commutations
+	  // todo: ERROR
 	  return;
 	}
+      if (current_state <= TO_SLAVE)
+	{
+	  // already in or commuting to desired state
+	  return;
+	}
+      current_state = TO_SLAVE;
 
       cubthread::entry_task *demote_task = new cubthread::entry_callable_task ([] (
 		  cubthread::entry &context)
@@ -133,7 +159,7 @@ namespace cubreplication
 
 	assert (g_slave_node == NULL);
 	g_slave_node = new slave_node (g_hostname.c_str (), g_stream, g_stream_file);
-	commute_mtx.unlock ();
+	current_state = SLAVE;
       }, true);
 
       cubthread::get_manager ()->push_task (task_worker_pool, demote_task);
