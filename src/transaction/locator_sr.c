@@ -58,8 +58,8 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "process_util.h"
-#include "replication_source_db_copy.hpp"
 #include "replication_object.hpp"
+#include "replication_source_db_copy.hpp"
 #include "session.h"
 #include "slotted_page.h"
 #include "string_buffer.hpp"
