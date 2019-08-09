@@ -30,7 +30,8 @@
 
 #include "byte_order.h"
 #include "communication_channel.hpp"
-#include "replication_master_senders_manager.hpp"
+#include "replication_node_manager.hpp"
+#include "replication_master_node.hpp"
 #include "error_manager.h"
 #include "stream_transfer_sender.hpp"
 #include "system_parameter.h"
@@ -188,7 +189,7 @@ namespace cubreplication
 	 * and this cause serious performance issues.
 	 * We may improve the code that attomically stops revceivers/senders.
 	 */
-	cubreplication::master_senders_manager::remove_all_senders ();
+        cubreplication::replication_node_manager::get_master_node ()->remove_all_senders ();
       }
   }
 }

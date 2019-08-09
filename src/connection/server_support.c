@@ -34,7 +34,6 @@
 #include "replication_node_manager.hpp"
 #include "replication_slave_node.hpp"
 #include "session.h"
-#include "replication_master_senders_manager.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"

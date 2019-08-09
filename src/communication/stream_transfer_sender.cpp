@@ -28,10 +28,25 @@
  *   on one machine will exist a transfer_sender instance and on the other a transfer_receiver.
  *   the instances are created using consumer/producer streams and connected communication channels.
  *   the stream will be sent automatically until m_last_committed_pos
+ *
+ *   Termination :
+ *    - some streams are infinite (they continuously send data until socket becomes invalid) or finite
+ *    - a finite stream require an explicit termination phase :
+ *      the user code of stream sender must use 'enter_termination_phase' of the sender object.
+ *      this sets the sender into "receive" mode which expects the peer to either send something or
+ *      simply close the connection
+ *    - the stream receiver also has a 'terminate_connection' method which needs to be explicitly
+ *      called by the user code
+ *    - since stream and sender/receiver view the contents as bytes, the 'decision' to terminate the connection
+ *      is taken at logical level (user code of stream/sender/receiver) ;
+ *      for a finite stream, a logical 'end' packet (stream entry) could be send from sender side to receiver side;
+ *      after decoding of this packet (which is ussualy asynchronous with sender/receive threads), the user must call
+ *      sender->enter_termination_phase; on receiver side, after decoding the logical 'end' packet, the user code calls
+ *      receiver->terminate_connection (this will close the connection, which is detected by sender side, which in turn
+ *      is unblocked)
  */
 
 #include "stream_transfer_sender.hpp"
-#include "transaction_master_group_complete_manager.hpp"
 
 #include "system_parameter.h" /* for er_log_debug */
 #include "thread_manager.hpp"
@@ -39,12 +54,13 @@
 #include "thread_entry_task.hpp"
 
 #include <algorithm>          /* for std::min */
+#include <byte_order.h>       /* for htoni64 */
 
 
 namespace cubstream
 {
 
-  class transfer_sender_task : public cubthread::task_without_context
+  class transfer_sender_task : public cubthread::entry_task
   {
     public:
       transfer_sender_task (cubstream::transfer_sender &producer_channel)
@@ -53,10 +69,15 @@ namespace cubstream
       {
       }
 
-      void execute () override
+      void execute (cubthread::entry &thread_ref) override
       {
 	css_error_code rc = NO_ERRORS;
 	stream_position last_reported_ready_pos = this_producer_channel.m_stream.get_last_committed_pos ();
+
+	if (!this_producer_channel.m_channel.is_connection_alive ())
+	  {
+	    return;
+	  }
 
 	if (m_first_loop)
 	  {
@@ -66,10 +87,6 @@ namespace cubstream
 	    static_assert (sizeof (stream_position) == sizeof (UINT64),
 			   "stream position size differs from requested start stream position");
 
-	    if (!this_producer_channel.m_channel.is_connection_alive ())
-	      {
-		return;
-	      }
 	    rc = this_producer_channel.m_channel.recv ((char *) &last_sent_position, max_len);
 	    if (rc != NO_ERRORS)
 	      {
@@ -105,6 +122,24 @@ namespace cubstream
 		break;
 	      }
 	  }
+
+	if (this_producer_channel.m_last_sent_position < this_producer_channel.m_stream.get_last_committed_pos ())
+	  {
+	    /* send all stream data before termination */
+	    return;
+	  }
+
+	if (this_producer_channel.is_termination_phase ())
+	  {
+	    UINT64 expected_magic;
+	    std::size_t max_len = sizeof (expected_magic);
+
+	    /* wait for connection closing, we don't care about received content */
+	    (void) this_producer_channel.m_channel.recv ((char *) &expected_magic, max_len);
+
+	    this_producer_channel.m_channel.close_connection ();
+	    return;
+	  }
       }
 
     private:
@@ -114,9 +149,10 @@ namespace cubstream
 
   transfer_sender::transfer_sender (cubcomm::channel &&chn, cubstream::stream &stream,
 				    cubstream::stream_position begin_sending_position)
-    : m_channel (std::move (chn)),
-      m_stream (stream),
-      m_last_sent_position (begin_sending_position)
+    : m_channel (std::move (chn))
+    , m_stream (stream)
+    , m_last_sent_position (begin_sending_position)
+    , m_is_termination_phase (false)
   {
     cubthread::delta_time daemon_period = std::chrono::milliseconds (10);
 
@@ -125,14 +161,14 @@ namespace cubstream
 		       std::placeholders::_2);
 
     std::string daemon_name = "stream_transfer_sender_" + chn.get_channel_id ();
-    m_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (daemon_period,
-		      new transfer_sender_task (*this),
+    m_sender_daemon = cubthread::get_manager ()->create_daemon (daemon_period, new transfer_sender_task (*this),
 		      daemon_name.c_str ());
   }
 
   transfer_sender::~transfer_sender ()
   {
-    cubthread::get_manager ()->destroy_daemon_without_entry (m_sender_daemon);
+    cubthread::get_manager ()->destroy_daemon (m_sender_daemon);
+    m_sender_daemon = NULL;
   }
 
   cubcomm::channel &transfer_sender::get_channel ()

@@ -60,7 +60,7 @@
 #include "transaction_complete_manager.hpp"
 #include "transaction_transient.hpp"
 #include "log_generator.hpp"
-#include "replication_db_copy.hpp"
+#include "replication_source_db_copy.hpp"
 
 #include <assert.h>
 #include <unordered_set>
@@ -541,11 +541,14 @@ struct log_tdes
 
   LOG_RCV_TDES rcv;
   const char *ha_sbr_statement;
+
   // *INDENT-OFF*
+#if defined (SERVER_MODE)
+  cubreplication::source_copy_context *replication_copy_context;
+#endif
+
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
   public:
-    cubreplication::copy_context replication_copy_context;
-
     bool is_active_worker_transaction () const;
     bool is_system_transaction () const;
     bool is_system_main_transaction () const;

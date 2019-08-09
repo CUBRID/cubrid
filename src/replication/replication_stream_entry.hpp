@@ -47,7 +47,10 @@ namespace cubreplication
       ABORTED,
       GROUP_COMMIT,
       NEW_MASTER,
-      SUBTRAN_COMMIT
+      SUBTRAN_COMMIT,
+      START_OF_EXTRACT_HEAP,
+      END_OF_EXTRACT_HEAP,
+      END_OF_REPLICATION_COPY
     } TRAN_STATE;
 
     cubstream::stream_position prev_record;

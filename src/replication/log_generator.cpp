@@ -145,6 +145,7 @@ namespace cubreplication
      */
     logtb_get_current_mvccid (&cubthread::get_entry ());
 
+    er_log_repl_obj (&object, "log_generator::append_repl_object");
     m_stream_entry.add_packable_entry (&object);
 
     er_log_repl_obj (&object, "log_generator::append_repl_object");
@@ -256,6 +257,7 @@ namespace cubreplication
 	    repl_obj->set_lsa_stamp (*p_lsa);
 
 	    er_log_repl_obj (repl_obj, "log_generator::set_key_to_repl_object");
+
 	    append_repl_object (*repl_obj);
 
 	    // remove
@@ -279,6 +281,7 @@ namespace cubreplication
 	entry->set_key_value (key);
 
 	er_log_repl_obj (entry, "log_generator::set_key_to_repl_object");
+
 	append_repl_object (*entry);
       }
 

@@ -23,9 +23,10 @@
 
 #include "boot_sr.h"
 #include "log_manager.h"
-#include "replication_master_senders_manager.hpp"
 #include "thread_manager.hpp"
 #include "transaction_master_group_complete_manager.hpp"
+#include "replication_master_node.hpp"
+#include "replication_node_manager.hpp"
 
 namespace cubtx
 {
@@ -112,7 +113,8 @@ namespace cubtx
 	     && is_latest_closed_group_prepared_for_complete ())
       {
 	/* Wakeup senders, just to be sure. */
-	cubreplication::master_senders_manager::wakeup_transfer_senders (m_latest_closed_group_end_stream_position);
+	cubreplication::replication_node_manager::get_master_node ()-> wakeup_transfer_senders (
+		m_latest_closed_group_end_stream_position);
       }
 #endif
   }
@@ -159,7 +161,7 @@ namespace cubtx
 	mark_latest_closed_group_prepared_for_complete ();
 
 	/* Wakeup senders, just to be sure. */
-	cubreplication::master_senders_manager::wakeup_transfer_senders (closed_group_stream_end_position);
+	cubreplication::replication_node_manager::get_master_node()->wakeup_transfer_senders (closed_group_stream_end_position);
       }
   }
 
