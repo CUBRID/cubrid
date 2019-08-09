@@ -75,21 +75,18 @@ namespace cubreplication
   };
 
   source_copy_context::source_copy_context ()
+    : m_tran_index (-1)
+    , m_error_cnt (0)
+    , m_running_extract_threads (0)
+    , m_online_replication_start_pos (0)
+    , m_stream (NULL)
+    , m_stream_file (NULL)
+    , m_transfer_sender (NULL)
+    , m_heap_extract_workers_pool (NULL)
+    , m_state (NOT_STARTED)
+    , m_is_stop (false)
   {
-    m_tran_index = -1;
-    m_error_cnt = 0;
-    m_running_extract_threads = 0;
-    m_online_replication_start_pos = 0;
-
-    m_stream = NULL;
     /* TODO[replication] : use file for replication copy stream */
-    m_stream_file = NULL;
-    m_transfer_sender = NULL;
-    m_heap_extract_workers_pool = NULL;
-    m_state = NOT_STARTED;
-    m_is_stop = false;
-
-
     m_stream = acquire_stream ();
     /* TODO : single global pool or a pool for each context ? */
     m_heap_extract_workers_pool =
@@ -155,7 +152,7 @@ namespace cubreplication
   void source_copy_context::pack_and_add_end_of_copy (void)
   {
     stream_entry stream_entry (m_stream, MVCCID_FIRST, stream_entry_header::END_OF_REPLICATION_COPY);
-
+    /* TODO[replication] : add relevant information to slave (in case of error) */
     stream_entry.pack ();
   }
 
@@ -203,8 +200,9 @@ namespace cubreplication
   {
     er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_for_state %d", desired_state);
     std::unique_lock<std::mutex> ulock_state (m_state_mutex);
-    m_state_cv.wait (ulock_state, [this, desired_state, &thread_ref]
-    { return m_state == desired_state || m_is_stop || thread_ref.shutdown; });
+    auto wait_lambda = [this, desired_state, &thread_ref]
+    { return m_state == desired_state || m_is_stop || thread_ref.shutdown; };
+    m_state_cv.wait (ulock_state, wait_lambda);
     if (is_interrupted (thread_ref))
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
@@ -363,17 +361,21 @@ namespace cubreplication
     error = locator_repl_extract_schema (&thread_ref, "dba", "");
     if (error != NO_ERROR)
       {
-	return error;
+	goto error;
       }
 
     error = wait_receive_class_list (thread_ref);
     if (error != NO_ERROR)
       {
-	return error;
+	goto error;
       }
 
     /* extraction process : heap extract phase */
-    execute_and_transit_phase (HEAP_COPY);
+    error = execute_and_transit_phase (HEAP_COPY);
+    if (error != NO_ERROR)
+      {
+	goto error;
+      }
     pack_and_add_start_of_extract_heap ();
     /* TODO[replication]: we may optimize this to have multiple threads for larger heaps */
     for (const OID class_oid : m_class_oid_list)
@@ -390,22 +392,36 @@ namespace cubreplication
 	  {
 	    error = ER_INTERRUPTED;
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	    return error;
+	    goto error;
 	  }
 	thread_sleep (10);
       }
-    execute_and_transit_phase (HEAP_COPY_FINISHED);
+    error = execute_and_transit_phase (HEAP_COPY_FINISHED);
+    if (error != NO_ERROR)
+      {
+	goto error;
+      }
     pack_and_add_end_of_extract_heap ();
 
-    execute_and_transit_phase (SCHEMA_COPY_TRIGGERS);
-    execute_and_transit_phase (SCHEMA_COPY_INDEXES);
+    error = execute_and_transit_phase (SCHEMA_COPY_TRIGGERS);
+    if (error != NO_ERROR)
+      {
+	goto error;
+      }
+
+    error = execute_and_transit_phase (SCHEMA_COPY_INDEXES);
+    if (error != NO_ERROR)
+      {
+	goto error;
+      }
     /* wait for indexes and triggers schema */
     error = wait_send_triggers_indexes (thread_ref);
     if (error != NO_ERROR)
       {
-	return error;
+	goto error;
       }
 
+error:
     pack_and_add_end_of_copy ();
 
     error = wait_slave_finished ();
@@ -462,7 +478,7 @@ namespace cubreplication
 
     while (sender_alive)
       {
-	sender_alive = m_senders_manager->find_stream_sender (m_transfer_sender);
+	sender_alive = m_senders_manager->is_stream_sender_alive (m_transfer_sender);
 	if (sender_alive)
 	  {
 	    thread_sleep (100);
@@ -478,6 +494,7 @@ namespace cubreplication
   {
     std::unique_lock<std::mutex> ulock_state (m_state_mutex);
     m_is_stop = true;
+    ulock_state.unlock ();
     m_state_cv.notify_all();
   }
 
@@ -641,6 +658,11 @@ namespace cubreplication
     tdes->replication_copy_context->pack_and_add_object (heap_objects);
 
 end:
+    if (heap_objects != NULL)
+      {
+	delete heap_objects;
+	heap_objects = NULL;
+      }
     if (class_name != NULL)
       {
 	free_and_init (class_name);
