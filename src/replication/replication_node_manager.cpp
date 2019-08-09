@@ -22,7 +22,6 @@
  */
 
 #include "replication_node_manager.hpp"
-#include "replication_master_senders_manager.hpp"
 
 #include "log_impl.h"
 #include "multi_thread_stream.hpp"
