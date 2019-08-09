@@ -13854,30 +13854,30 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
        * for last the last one, the client uses NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END
        */
     case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES:
-      repl_copy_ctxt.append_class_schema (buffer, buf_size);
+      repl_copy_ctxt.append_class_schema (NULL, 0, buffer, buf_size);
       break;
 
     case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END:
-      repl_copy_ctxt.append_class_schema (buffer, buf_size);
+      repl_copy_ctxt.append_class_schema (NULL, 0, buffer, buf_size);
       repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_CLASSES);
       repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_CLASSES_FINISHED);
       break;
 
-    case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS:
-      repl_copy_ctxt.append_triggers_schema (buffer, buf_size);
+    case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGER:
+      repl_copy_ctxt.append_trigger_schema (NULL, 0, buffer, buf_size);
       break;
 
     case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS_END:
-      repl_copy_ctxt.append_triggers_schema (buffer, buf_size);
+      repl_copy_ctxt.append_trigger_schema (NULL, 0, buffer, buf_size);
       repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_TRIGGERS);
       break;
 
-    case NET_PROXY_BUF_TYPE_EXTRACT_INDEXES:
-      repl_copy_ctxt.append_indexes_schema (buffer, buf_size);
+    case NET_PROXY_BUF_TYPE_EXTRACT_INDEX:
+      repl_copy_ctxt.append_index_schema (NULL, 0, buffer, buf_size);
       break;
 
     case NET_PROXY_BUF_TYPE_EXTRACT_INDEXES_END:
-      repl_copy_ctxt.append_indexes_schema (buffer, buf_size);
+      repl_copy_ctxt.append_index_schema (NULL, 0, buffer, buf_size);
       repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_INDEXES);
       break;
 
@@ -14047,7 +14047,7 @@ locator_repl_start_tran (THREAD_ENTRY * thread_p, const boot_client_type client_
     }
   else if (client_type == BOOT_CLIENT_DDL_PROXY)
     {
-      applier_Client_credentials.program_name = "(dll_proxy)";
+      applier_Client_credentials.program_name = "(ddl_proxy)";
     }
   else if (client_type == BOOT_PSEUDO_CLIENT_REPL_COPIER)
     {
@@ -14055,8 +14055,6 @@ locator_repl_start_tran (THREAD_ENTRY * thread_p, const boot_client_type client_
     }
   applier_Client_credentials.process_id = -1;
 
-  /* TODO : configurable lock wait for replication
-   * zero time is not correct, since applier transaction may attempt to latch pages being currently vacuumed */
   int client_lock_wait = TRAN_LOCK_INFINITE_WAIT;
   TRAN_ISOLATION client_isolation = TRAN_DEFAULT_ISOLATION;
 

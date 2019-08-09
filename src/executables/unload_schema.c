@@ -1064,6 +1064,7 @@ emit_indexes (print_output & output_ctx, DB_OBJLIST * classes, int has_indexes,
       if (db_is_vclass (cl->op) <= 0)
 	{
 	  emit_index_def (output_ctx, cl->op);
+          output_ctx.end_item (db_get_class_name (cl->op));
 	}
     }
 

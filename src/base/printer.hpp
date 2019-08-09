@@ -47,6 +47,8 @@ class print_output
 
     virtual int flush (void) = 0;
 
+    virtual void end_item (const char *item) { }
+
     string_buffer *grab_string_buffer (void)
     {
       return &m_sb;

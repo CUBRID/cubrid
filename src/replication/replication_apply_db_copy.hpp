@@ -51,6 +51,16 @@ namespace cubreplication
   /* TODO : this is copied from log_consumer : refactor */
   class copy_db_consumer
   {
+    public:
+      enum apply_phase
+      {
+	CLASS_SCHEMA,
+	CLASS_HEAP,
+        TRIGGER,
+        INDEX,
+        END
+      };
+
     private:
       std::queue<stream_entry *> m_stream_entries;
 

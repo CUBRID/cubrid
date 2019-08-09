@@ -46,6 +46,12 @@ namespace cubreplication
     return 0;
   }
 
+  void net_print_output::end_item (const char *item)
+  {
+     m_id = item;
+    (void) send_to_network ();
+  }
+
   int net_print_output::send_to_network ()
   {
     int res = (int) m_sb.len ();
@@ -104,8 +110,8 @@ int replication_schema_extract (const char *program_name)
   copy_schema_context.exec_name = program_name;
 
   cubreplication::net_print_output output_net_schema (NET_PROXY_BUF_TYPE_EXTRACT_CLASSES);
-  cubreplication::net_print_output output_net_trigger (NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS);
-  cubreplication::net_print_output output_net_index (NET_PROXY_BUF_TYPE_EXTRACT_INDEXES);
+  cubreplication::net_print_output output_net_trigger (NET_PROXY_BUF_TYPE_EXTRACT_TRIGGER);
+  cubreplication::net_print_output output_net_index (NET_PROXY_BUF_TYPE_EXTRACT_INDEX);
 
   if (extract_classes (copy_schema_context, output_net_schema) != 0)
     {

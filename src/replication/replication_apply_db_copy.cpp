@@ -206,16 +206,20 @@ namespace cubreplication
   class copy_db_worker_task : public cubthread::entry_task
   {
     public:
-      copy_db_worker_task (stream_entry *repl_stream_entry, copy_db_consumer &lc, int tran_index)
+      copy_db_worker_task (stream_entry *repl_stream_entry, copy_db_consumer &lc, copy_db_consumer::apply_phase phase)
 	: m_lc (lc)
-	, m_tran_index (tran_index)
+        , m_phase (phase)
       {
 	add_repl_stream_entry (repl_stream_entry);
       }
 
       void execute (cubthread::entry &thread_ref) final
       {
-	LOG_SET_CURRENT_TRAN_INDEX (&thread_ref, m_tran_index);
+	if (locator_repl_start_tran (&thread_ref, BOOT_CLIENT_LOG_APPLIER) != NO_ERROR)
+	  {
+	    assert (false);
+	    return;
+	  }
 
 	for (stream_entry *curr_stream_entry : m_repl_stream_entries)
 	  {
@@ -241,12 +245,16 @@ namespace cubreplication
 		    assert (false);
 		    /* TODO[replication] : error handling */
 		  }
+
+                  /* TODO[replication] : add to revert list class or trigger */
 	      }
 
 	    delete curr_stream_entry;
 
 	    m_lc.end_one_task ();
 	  }
+
+	locator_repl_end_tran (&thread_ref, true);
       }
 
       void add_repl_stream_entry (stream_entry *repl_stream_entry)
@@ -271,7 +279,7 @@ namespace cubreplication
     private:
       std::vector<stream_entry *> m_repl_stream_entries;
       copy_db_consumer &m_lc;
-      int m_tran_index;
+      copy_db_consumer::apply_phase m_phase;
   };
 
 
@@ -290,21 +298,13 @@ namespace cubreplication
 	using tasks_map = std::unordered_map <MVCCID, copy_db_worker_task *>;
 	tasks_map repl_tasks;
 	tasks_map nonexecutable_repl_tasks;
-	bool is_heap_apply_phase = false;
-	bool is_replication_copy_end = false;
+        copy_db_consumer::apply_phase phase = copy_db_consumer::apply_phase::CLASS_SCHEMA;
 	bool is_stopped = false;
 
 	er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : start of replication copy");
 
-	if (locator_repl_start_tran (&thread_ref, BOOT_CLIENT_LOG_APPLIER) != NO_ERROR)
-	  {
-	    assert (false);
-	    return;
-	  }
-
-	int tran_index = LOG_FIND_THREAD_TRAN_INDEX (&thread_ref);
-
-	while (!is_replication_copy_end)
+        /* TODO[replication] : parallel apply of indexes */
+	while (phase != copy_db_consumer::apply_phase::END)
 	  {
 	    bool is_control_se = false;
 	    m_lc.pop_entry (se, is_stopped);
@@ -325,28 +325,28 @@ namespace cubreplication
 	      }
 
 	    /* during extract heap phase we may apply objects in parallel, otherwise we wait of all tasks to finish */
-	    if (!is_heap_apply_phase)
+	    if (phase != copy_db_consumer::apply_phase::CLASS_HEAP)
 	      {
 		m_lc.wait_for_tasks ();
 	      }
 
 	    if (se->is_start_of_extract_heap ())
 	      {
-		is_heap_apply_phase = true;
+		phase = copy_db_consumer::apply_phase::CLASS_HEAP;
 		is_control_se = true;
 		er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : receive of start of extract heap phase");
 	      }
 	    else if (se->is_end_of_extract_heap ())
 	      {
-		is_heap_apply_phase = false;
+		phase = copy_db_consumer::apply_phase::TRIGGER;
 		is_control_se = true;
 		er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : receive of end of extract heap phase");
 	      }
 	    else if (se->is_end_of_replication_copy ())
 	      {
-		assert (is_heap_apply_phase == false);
+		assert (phase != copy_db_consumer::apply_phase::CLASS_HEAP);
 		is_control_se = true;
-		is_replication_copy_end = true;
+		phase = copy_db_consumer::apply_phase::END;
 		er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : receive of end of replication");
 	      }
 
@@ -356,15 +356,13 @@ namespace cubreplication
 	      }
 	    else
 	      {
-		copy_db_worker_task *my_copy_db_worker_task = new copy_db_worker_task (se, m_lc, tran_index);
+		copy_db_worker_task *my_copy_db_worker_task = new copy_db_worker_task (se, m_lc, phase);
 		m_lc.execute_task (my_copy_db_worker_task);
 		/* stream entry is deleted by applier task thread */
 	      }
 	  }
 
 	m_lc.wait_for_tasks ();
-
-	locator_repl_end_tran (&thread_ref, is_stopped ? false : true);
 
 	m_lc.set_is_finished ();
 	er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task finished");

@@ -75,6 +75,7 @@ namespace cubreplication
   class sbr_repl_entry : public replication_object
   {
     private:
+      std::string m_id;     // internal identifier (maybe class name, trigger name depending on context
       std::string m_statement;
       std::string m_db_user;
       std::string m_sys_prm_context;
@@ -82,14 +83,15 @@ namespace cubreplication
     public:
       static const int PACKING_ID = 1;
 
-      sbr_repl_entry (const char *statement, const char *user, const char *sys_prm_ctx, const LOG_LSA &lsa_stamp);
+      sbr_repl_entry (const char *id, const char *statement, const char *user, const char *sys_prm_ctx,
+                      const LOG_LSA &lsa_stamp);
 
       sbr_repl_entry () = default;
       ~sbr_repl_entry () = default;
 
       int apply () override;
 
-      void set_params (const char *statement, const char *user, const char *sys_prm_ctx);
+      void set_params (const char *id, const char *statement, const char *user, const char *sys_prm_ctx);
 
       void append_statement (const char *buffer, const size_t buf_size);
 

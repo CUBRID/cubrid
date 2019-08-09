@@ -38,6 +38,7 @@ namespace cubreplication
       int m_buffer_type;
       size_t m_flush_size;
       int m_send_error_cnt;
+      std::string m_id;
 
     public:
       const static size_t DEFAULT_FLUSH_SIZE = 4096;
@@ -47,6 +48,8 @@ namespace cubreplication
       ~net_print_output () {}
 
       int flush (void);
+
+      void end_item (const char *item) final;
 
       int send_to_network ();
 

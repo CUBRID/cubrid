@@ -302,9 +302,10 @@ namespace cubreplication
   }
 
   /////////////////////////////////
-  sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user, const char *sys_prm_ctx,
+  sbr_repl_entry::sbr_repl_entry (const char *id, const char *statement, const char *user, const char *sys_prm_ctx,
 				  const LOG_LSA &lsa_stamp)
     : replication_object (lsa_stamp)
+    , m_id (id)
     , m_statement (statement)
     , m_db_user (user)
     , m_sys_prm_context (sys_prm_ctx ? sys_prm_ctx : "")
@@ -324,8 +325,9 @@ namespace cubreplication
     return err;
   }
 
-  void sbr_repl_entry::set_params (const char *statement, const char *user, const char *sys_prm_ctx)
+  void sbr_repl_entry::set_params (const char *id, const char *statement, const char *user, const char *sys_prm_ctx)
   {
+    m_id = id;
     m_statement = statement;
     m_db_user = user;
     m_sys_prm_context = sys_prm_ctx;
@@ -342,6 +344,7 @@ namespace cubreplication
     const sbr_repl_entry *other_t = dynamic_cast<const sbr_repl_entry *> (other);
 
     if (other_t == NULL
+        || m_id != other_t->m_id
 	|| m_statement != other_t->m_statement
 	|| m_db_user != other_t->m_db_user
 	|| m_sys_prm_context != other_t->m_sys_prm_context)
@@ -367,6 +370,7 @@ namespace cubreplication
 
     entry_size += serializator.get_packed_int_size (0);
 
+    entry_size += serializator.get_packed_string_size (m_id, entry_size);
     entry_size += serializator.get_packed_string_size (m_statement, entry_size);
     entry_size += serializator.get_packed_string_size (m_db_user, entry_size);
     entry_size += serializator.get_packed_string_size (m_sys_prm_context, entry_size);
@@ -378,6 +382,7 @@ namespace cubreplication
   sbr_repl_entry::pack (cubpacking::packer &serializator) const
   {
     serializator.pack_int (sbr_repl_entry::PACKING_ID);
+    serializator.pack_string (m_id);
     serializator.pack_string (m_statement);
     serializator.pack_string (m_db_user);
     serializator.pack_string (m_sys_prm_context);
@@ -389,6 +394,7 @@ namespace cubreplication
     int entry_type_not_used;
 
     deserializator.unpack_int (entry_type_not_used);
+    deserializator.unpack_string (m_id);
     deserializator.unpack_string (m_statement);
     deserializator.unpack_string (m_db_user);
     deserializator.unpack_string (m_sys_prm_context);
@@ -397,8 +403,8 @@ namespace cubreplication
   void
   sbr_repl_entry::stringify (string_buffer &str)
   {
-    str ("sbr_repl_entry: statement=%s\nUSER=%s\nSYS_PRM=%s\n",
-	 m_statement.c_str (), m_db_user.c_str (), m_sys_prm_context.c_str ());
+    str ("sbr_repl_entry: id=%s\nstatement=%s\nUSER=%s\nSYS_PRM=%s\n",
+	 m_id.c_str (), m_statement.c_str (), m_db_user.c_str (), m_sys_prm_context.c_str ());
   }
 
   changed_attrs_row_repl_entry::~changed_attrs_row_repl_entry ()

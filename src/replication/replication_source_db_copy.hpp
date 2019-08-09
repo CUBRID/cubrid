@@ -34,6 +34,7 @@
 #include <condition_variable>
 #include <list>
 #include <mutex>
+#include <vector>
 
 namespace cubcomm
 {
@@ -65,6 +66,9 @@ namespace cubreplication
   class source_copy_context
   {
     public:
+      using string_pair = std::pair <std::string, std::string>;
+      using statement_list = std::vector<string_pair>;
+
       const size_t EXTRACT_HEAP_WORKER_POOL_SIZE = 20;
 
       /* State value mapped on replication copy phases:
@@ -100,9 +104,9 @@ namespace cubreplication
 
       int execute_and_transit_phase (copy_stage new_state);
 
-      void append_class_schema (const char *buffer, const size_t buf_size);
-      void append_triggers_schema (const char *buffer, const size_t buf_size);
-      void append_indexes_schema (const char *buffer, const size_t buf_size);
+      void append_class_schema (const char *id, const size_t id_size, const char *buffer, const size_t buf_size);
+      void append_trigger_schema (const char *id, const size_t id_size, const char *buffer, const size_t buf_size);
+      void append_index_schema (const char *id, const size_t id_size, const char *buffer, const size_t buf_size);
       void unpack_class_oid_list (const char *buffer, const size_t buf_size);
 
       int execute_db_copy (cubthread::entry &thread_ref, SOCKET fd);
@@ -140,7 +144,7 @@ namespace cubreplication
       cubstream::multi_thread_stream *acquire_stream ();
       void release_stream ();
 
-      void pack_and_add_statement (const std::string &statement);
+      void pack_and_add_statements (const statement_list &statements);
       void pack_and_add_start_of_extract_heap ();
       void pack_and_add_end_of_extract_heap ();
       void pack_and_add_end_of_copy ();
@@ -163,9 +167,9 @@ namespace cubreplication
       stream_senders_manager *m_senders_manager;
       cubthread::entry_workpool *m_heap_extract_workers_pool;
 
-      std::string m_class_schema;
-      std::string m_triggers;
-      std::string m_indexes;
+      statement_list m_classes;
+      statement_list m_triggers;
+      statement_list m_indexes;
       std::list<OID> m_class_oid_list;
 
       copy_stage m_state;
