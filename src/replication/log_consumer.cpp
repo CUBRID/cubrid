@@ -82,6 +82,15 @@ namespace cubreplication
 	add_repl_stream_entry (repl_stream_entry);
       }
 
+      ~applier_worker_task ()
+      {
+	for (stream_entry *&se : m_repl_stream_entries)
+	  {
+	    delete se;
+	    se = NULL;
+	  }
+      }
+
       void execute (cubthread::entry &thread_ref) final
       {
 	(void) locator_repl_start_tran (&thread_ref);
@@ -245,6 +254,8 @@ namespace cubreplication
 			/* TODO[replication] : when on-fly apply is active, we need to abort the transaction;
 			 * for now, we are sure that no change has been made on slave on behalf of this task,
 			 * just drop the task */
+			delete it->second;
+			it->second = NULL;
 		      }
 		    else
 		      {
@@ -266,6 +277,11 @@ namespace cubreplication
 	      }
 	    else if (se->is_new_master ())
 	      {
+		for (auto &repl_task : repl_tasks)
+		  {
+		    delete repl_task.second;
+		    repl_task.second = NULL;
+		  }
 		repl_tasks.clear ();
 	      }
 	    else if (se->is_subtran_commit ())
