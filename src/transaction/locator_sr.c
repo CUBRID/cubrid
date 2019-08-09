@@ -58,7 +58,6 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "process_util.h"
-#include "replication_db_copy.hpp"
 #include "replication_object.hpp"
 #include "session.h"
 #include "slotted_page.h"
@@ -4428,8 +4427,8 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 			    {
 			      /* Disable row replication: SM_FOREIGN_KEY_CASCADE constraint from slave will make sure
 			       * these changes are replicated */
-			      logtb_get_tdes (thread_p)->get_replication_generator ().
-				set_row_replication_disabled (true);
+			      logtb_get_tdes (thread_p)->
+				get_replication_generator ().set_row_replication_disabled (true);
 			      disabled_row_replication = true;
 			    }
 			}
@@ -7570,8 +7569,8 @@ end:
 	    {
 	      /* Aborts and simulate apply replication RBR on master node. */
 	      error_code =
-		logtb_get_tdes (thread_p)->get_replication_generator ().
-		abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
+		logtb_get_tdes (thread_p)->
+		get_replication_generator ().abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
 	    }
 	  else
 	    {
@@ -13838,22 +13837,28 @@ xlocator_get_proxy_command (THREAD_ENTRY * thread_p, const char **proxy_command)
 int
 xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_t buf_size, const char *buffer)
 {
+#if defined(SERVER_MODE)
   LOG_TDES *tdes;
 
   assert (thread_p != NULL);
 
+  /* TODO[replication] : protect access to tdes against deletion of replication_copy_context */
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  cubreplication::copy_context & repl_copy_ctxt = tdes->replication_copy_context;
+  cubreplication::source_copy_context & repl_copy_ctxt = *tdes->replication_copy_context;
 
   switch (type)
     {
+      /* schema of classes may be send with multiple requests/buffers;
+       * for last the last one, the client uses NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END
+       */
     case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES:
       repl_copy_ctxt.append_class_schema (buffer, buf_size);
       break;
 
     case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END:
       repl_copy_ctxt.append_class_schema (buffer, buf_size);
-      repl_copy_ctxt.transit_state (cubreplication::copy_context::SCHEMA_APPLY_CLASSES_FINISHED);
+      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_CLASSES);
+      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_CLASSES_FINISHED);
       break;
 
     case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS:
@@ -13862,7 +13867,7 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
 
     case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS_END:
       repl_copy_ctxt.append_triggers_schema (buffer, buf_size);
-      repl_copy_ctxt.transit_state (cubreplication::copy_context::SCHEMA_TRIGGERS_RECEIVED);
+      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_TRIGGERS);
       break;
 
     case NET_PROXY_BUF_TYPE_EXTRACT_INDEXES:
@@ -13871,7 +13876,7 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
 
     case NET_PROXY_BUF_TYPE_EXTRACT_INDEXES_END:
       repl_copy_ctxt.append_indexes_schema (buffer, buf_size);
-      repl_copy_ctxt.transit_state (cubreplication::copy_context::SCHEMA_INDEXES_RECEIVED);
+      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_INDEXES);
       break;
 
     default:
@@ -13879,6 +13884,10 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
     }
 
   return NO_ERROR;
+#else /* SERVER_MODE */
+  assert (false);
+  return ER_FAILED;
+#endif /* SERVER_MODE */
 }
 
 
