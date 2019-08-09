@@ -152,7 +152,7 @@ namespace cubreplication
   void source_copy_context::pack_and_add_end_of_copy (void)
   {
     stream_entry stream_entry (m_stream, MVCCID_FIRST, stream_entry_header::END_OF_REPLICATION_COPY);
-
+    /* TODO[replication] : add relevant information to slave (in case of error) */
     stream_entry.pack ();
   }
 
@@ -362,11 +362,15 @@ namespace cubreplication
     error = wait_receive_class_list (thread_ref);
     if (error != NO_ERROR)
       {
-	return error;
+	goto error;
       }
 
     /* extraction process : heap extract phase */
-    execute_and_transit_phase (HEAP_COPY);
+    error = execute_and_transit_phase (HEAP_COPY);
+    if (error != NO_ERROR)
+      {
+	goto error;
+      }
     pack_and_add_start_of_extract_heap ();
     /* TODO[replication]: we may optimize this to have multiple threads for larger heaps */
     for (const OID class_oid : m_class_oid_list)
@@ -383,22 +387,36 @@ namespace cubreplication
 	  {
 	    error = ER_INTERRUPTED;
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	    return error;
+	    goto error;
 	  }
 	thread_sleep (10);
       }
-    execute_and_transit_phase (HEAP_COPY_FINISHED);
+    error = execute_and_transit_phase (HEAP_COPY_FINISHED);
+    if (error != NO_ERROR)
+      {
+	goto error;
+      }
     pack_and_add_end_of_extract_heap ();
 
-    execute_and_transit_phase (SCHEMA_COPY_TRIGGERS);
-    execute_and_transit_phase (SCHEMA_COPY_INDEXES);
+    error = execute_and_transit_phase (SCHEMA_COPY_TRIGGERS);
+    if (error != NO_ERROR)
+      {
+	goto error;
+      }
+
+    error = execute_and_transit_phase (SCHEMA_COPY_INDEXES);
+    if (error != NO_ERROR)
+      {
+	goto error;
+      }
     /* wait for indexes and triggers schema */
     error = wait_send_triggers_indexes (thread_ref);
     if (error != NO_ERROR)
       {
-	return error;
+	goto error;
       }
 
+error:
     pack_and_add_end_of_copy ();
 
     error = wait_slave_finished ();
