@@ -224,13 +224,14 @@ namespace cubload
 	// We are the last session so we can safely destroy the worker pool and the manager.
 	//cubthread::get_manager ()->destroy_worker_pool (g_worker_pool);
 
-	if (g_wp_context_manager != NULL)
-	  {
-	    delete g_wp_context_manager;
-	  }
 	if (g_blocking_manager != NULL)
 	  {
 	    delete g_blocking_manager;
+	  }
+
+	if (g_wp_context_manager != NULL)
+	  {
+	    delete g_wp_context_manager;
 	  }
 
 	g_worker_pool = NULL;
