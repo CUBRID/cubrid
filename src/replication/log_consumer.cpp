@@ -156,6 +156,8 @@ namespace cubreplication
 	tasks_map repl_tasks;
 	tasks_map nonexecutable_repl_tasks;
 
+	m_lc.wait_for_fetch_resume ();
+
 	while (!m_stop)
 	  {
 	    bool filter_out = false;
@@ -349,7 +351,25 @@ namespace cubreplication
 
   void log_consumer::stop (void)
   {
+    /* wakeup fetch daemon to allow it time to detect it is stopped */
+    fetch_resume ();
+
     get_stream ()->stop ();
+  }
+
+  void log_consumer::fetch_suspend (void)
+  {
+    m_fetch_suspend.clear ();
+  }
+
+  void log_consumer::fetch_resume (void)
+  {
+    m_fetch_suspend.set ();
+  }
+
+  void log_consumer::wait_for_fetch_resume (void)
+  {
+    m_fetch_suspend.wait ();
   }
 
   subtran_applier &log_consumer::get_subtran_applier ()
