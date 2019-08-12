@@ -346,27 +346,6 @@ namespace cubthread
 
 } // namespace cubthread
 
-namespace cubthread
-{
-  class blocking_manager
-  {
-    public:
-      blocking_manager (cubthread::entry_manager *manager, unsigned int pool_size, char *worker_pool_name);
-      ~blocking_manager ();
-
-      void push_task (cubthread::entry_task *task);
-      cubthread::entry_workpool *get_worker_pool ();
-      void end_task ();
-
-    private:
-      cubthread::entry_workpool *m_worker_pool;
-      unsigned int m_tasks_available;
-      unsigned int m_pool_size;
-      std::mutex m_mutex;
-      std::condition_variable m_cond_var;
-  };
-} // namespace cubthread
-
 //////////////////////////////////////////////////////////////////////////
 // alias functions to be used in C legacy code
 //

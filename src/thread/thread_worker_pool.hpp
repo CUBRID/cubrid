@@ -1460,4 +1460,90 @@ namespace cubthread
 
 } // namespace cubthread
 
+
+namespace cubthread
+{
+  template <typename Context>
+  class worker_pool_task_capper
+  {
+      using context_type = Context;
+      using task_type = task<Context>;
+      using worker_pool_type = worker_pool<Context>;
+
+    public:
+      worker_pool_task_capper (context_manager<Context> *manager, unsigned int pool_size, char *worker_pool_name);
+      ~worker_pool_task_capper ();
+
+      void push_task (task<Context> *task);
+      cubthread::worker_pool<Context> *get_worker_pool ();
+      void end_task ();
+
+    private:
+      cubthread::worker_pool<Context> *m_worker_pool;
+      unsigned int m_tasks_available;
+      unsigned int m_pool_size;
+      std::mutex m_mutex;
+      std::condition_variable m_cond_var;
+  };
+} // namespace cubthread
+
+namespace cubthread
+{
+  //////////////////////////////////////////////////////////////////////////
+  // Blocking manager
+  //////////////////////////////////////////////////////////////////////////
+  template <typename Context>
+  worker_pool_task_capper<Context>::worker_pool_task_capper (context_manager<Context> *manager, unsigned int pool_size,
+      char *worker_pool_name)
+  {
+    m_pool_size = pool_size;
+    m_worker_pool = cubthread::get_manager ()->create_worker_pool (pool_size, pool_size, worker_pool_name,
+		    manager, 1, false, true);
+    m_tasks_available = pool_size;
+  }
+
+  template <typename Context>
+  worker_pool_task_capper<Context>::~worker_pool_task_capper ()
+  {
+    cubthread::get_manager ()->destroy_worker_pool (m_worker_pool);
+  }
+
+  template <typename Context>
+  void
+  worker_pool_task_capper<Context>::push_task (task<Context> *task)
+  {
+    auto pred = [&] () -> bool {return (m_tasks_available > 0); };
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
+    m_cond_var.wait (ulock, pred);
+
+    // Make sure we have the lock.
+    assert (ulock.owns_lock ());
+    // Safeguard.
+    assert (m_tasks_available > 0);
+
+    m_tasks_available--;
+    cubthread::get_manager ()->push_task (m_worker_pool, task);
+  }
+
+  template <typename Context>
+  void worker_pool_task_capper<Context>::end_task ()
+  {
+    std::unique_lock<std::mutex> ulock (m_mutex);
+    m_tasks_available++;
+
+    // Safeguard
+    assert (m_tasks_available <= m_pool_size && m_tasks_available > 0);
+
+    ulock.unlock ();
+    m_cond_var.notify_all ();
+  }
+  template <typename Context>
+  cubthread::worker_pool<Context> *worker_pool_task_capper<Context>::get_worker_pool ()
+  {
+    return m_worker_pool;
+  }
+
+}
+
 #endif // _THREAD_WORKER_POOL_HPP_
