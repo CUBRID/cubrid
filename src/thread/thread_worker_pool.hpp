@@ -1474,7 +1474,7 @@ namespace cubthread
       worker_pool_task_capper (worker_pool<Context> *worker_pool);
       ~worker_pool_task_capper ();
 
-      void push_task (task<Context> *task);
+      void push_task (context_manager<Context> *manager, task<Context> *task);
       cubthread::worker_pool<Context> *get_worker_pool ();
       void end_task ();
 
@@ -1507,7 +1507,7 @@ namespace cubthread
 
   template <typename Context>
   void
-  worker_pool_task_capper<Context>::push_task (task<Context> *task)
+  worker_pool_task_capper<Context>::push_task (context_manager<Context> *manager, task<Context> *task)
   {
     auto pred = [&] () -> bool {return (m_tasks_available > 0); };
     std::unique_lock<std::mutex> ulock (m_mutex);
@@ -1520,7 +1520,8 @@ namespace cubthread
     assert (m_tasks_available > 0);
 
     m_tasks_available--;
-    thread_get_manager ()->push_task (m_worker_pool, task);
+    manager->push_task (task);
+    //thread_get_manager ()->push_task (m_worker_pool, task);
   }
 
   template <typename Context>
