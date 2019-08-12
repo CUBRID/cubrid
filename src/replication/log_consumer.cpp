@@ -292,7 +292,7 @@ namespace cubreplication
       }
 
       cubstream::stream_position m_filtered_apply_end;
-      cubstream::repl_stream_entry_fetcher m_entry_fetcher;
+      cubstream::stream_entry_fetcher m_entry_fetcher;
       log_consumer &m_lc;
       bool m_stop;
   };
