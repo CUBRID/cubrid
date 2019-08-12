@@ -14943,7 +14943,7 @@ do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
 
 	  if (error != NO_ERROR)
 	    {
-	      goto error_exit;
+	      return error;
 	    }
 	}
       else
@@ -14960,12 +14960,4 @@ do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
     }
 
   return NO_ERROR;
-
-error_exit:
-  if (index_save_info != NULL)
-    {
-      sm_free_constraint_info (&index_save_info);
-    }
-
-  return error;
 }
