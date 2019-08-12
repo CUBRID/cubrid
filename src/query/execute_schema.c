@@ -373,7 +373,7 @@ static SM_PARTITION *pt_node_to_partition_info (PARSER_CONTEXT * parser, PT_NODE
 						char *class_name, char *partition_name, DB_VALUE * minval);
 static int do_save_all_indexes (MOP classmop, SM_CONSTRAINT_INFO ** saved_index_info_listpp);
 static int do_drop_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info);
-static int do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info);
+static int do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO ** index_save_info);
 
 static int do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement);
 
@@ -4680,7 +4680,7 @@ do_redistribute_partitions_data (const char *classname, const char *keyname, cha
 
       if (alter_op != PT_REORG_PARTITION)
 	{
-	  error = do_recreate_saved_indexes (class_mop, index_save_info);
+	  error = do_recreate_saved_indexes (class_mop, &index_save_info);
 	}
     }
 
@@ -14985,15 +14985,16 @@ do_drop_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
  *				  info list
  *   return: error
  *   classmop (in)   :
- *   index_save_info :
+ *   index_save_info (in/out):
  */
 static int
-do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
+do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO ** index_save_info)
 {
   int error = NO_ERROR;
   SM_CONSTRAINT_INFO *saved = NULL;
 
-  for (saved = index_save_info; saved != NULL; saved = saved->next)
+  assert (index_save_info != NULL);
+  for (saved = *index_save_info; saved != NULL; saved = saved->next)
     {
       if (SM_IS_CONSTRAINT_INDEX_FAMILY ((SM_CONSTRAINT_TYPE) saved->constraint_type))
 	{
@@ -15011,9 +15012,9 @@ do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
   return NO_ERROR;
 
 error_exit:
-  if (index_save_info != NULL)
+  if (*index_save_info != NULL)
     {
-      sm_free_constraint_info (&index_save_info);
+      sm_free_constraint_info (index_save_info);
     }
 
   return error;
