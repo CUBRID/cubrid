@@ -65,6 +65,7 @@ namespace cubstream
     m_is_stopped = false;
 
     m_fetch_all_requested = false;
+    m_fetch_all_finished = false;
 
     m_stream_file = NULL;
 
@@ -507,26 +508,20 @@ namespace cubstream
 
     std::unique_lock<std::mutex> local_lock (m_buffer_mutex);
     m_serial_read_wait_pos = m_read_position + amount;
-    if (m_fetch_all_requested)
-      {
-	m_serial_read_cv.wait (local_lock,
-			       [&] ()
-	{
-	  return m_is_stopped || m_fetch_all_requested || m_last_committed_pos >= m_serial_read_wait_pos;
-	});
-      }
+    m_serial_read_cv.wait (local_lock, [this] ()
+    {
+      return m_is_stopped || m_fetch_all_requested || m_last_committed_pos >= m_serial_read_wait_pos;
+    });
     m_serial_read_wait_pos = std::numeric_limits<stream_position>::max ();
     local_lock.unlock ();
 
-    if (m_fetch_all_requested)
+    if (m_fetch_all_requested && m_read_position + amount <= m_last_committed_pos)
       {
-	if (m_read_position + amount <= m_last_committed_pos)
-	  {
-	    // todo: Nothing to read anymore.. Should suspend?
-	    std::lock_guard<std::mutex> lg (m_fetch_notify_mtx);
-	    m_fetch_finished_cv.notify_one ();
-	    return NO_ERROR;
-	  }
+	// todo: Nothing to read anymore.. Should suspend?
+	std::lock_guard<std::mutex> lg (m_fetch_notify_mtx);
+	m_fetch_all_finished = true;
+	m_fetch_finished_cv.notify_one ();
+	return NO_ERROR;
       }
 
     if (m_is_stopped)
@@ -783,7 +778,10 @@ namespace cubstream
   {
     std::unique_lock<std::mutex> ul (m_fetch_notify_mtx);
     m_fetch_all_requested = true;
-    m_fetch_finished_cv.wait (ul);
+    m_fetch_finished_cv.wait (ul, [this]()
+    {
+      return m_fetch_all_finished;
+    });
   }
 
   void multi_thread_stream::set_last_recyclable_pos (const stream_position &pos)

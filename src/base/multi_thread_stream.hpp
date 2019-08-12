@@ -156,6 +156,7 @@ namespace cubstream
       std::condition_variable m_fetch_finished_cv;
       std::mutex m_fetch_notify_mtx;
       bool m_fetch_all_requested;
+      bool m_fetch_all_finished;
 
       stream_file *m_stream_file;
 
