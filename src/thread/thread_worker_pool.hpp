@@ -1471,7 +1471,7 @@ namespace cubthread
       using worker_pool_type = worker_pool<Context>;
 
     public:
-      worker_pool_task_capper (context_manager<Context> *manager, unsigned int pool_size, char *worker_pool_name);
+      worker_pool_task_capper (worker_pool<Context> *worker_pool);
       ~worker_pool_task_capper ();
 
       void push_task (task<Context> *task);
@@ -1490,22 +1490,19 @@ namespace cubthread
 namespace cubthread
 {
   //////////////////////////////////////////////////////////////////////////
-  // Blocking manager
+  // worker_pool_task_capper template implementation
   //////////////////////////////////////////////////////////////////////////
   template <typename Context>
-  worker_pool_task_capper<Context>::worker_pool_task_capper (context_manager<Context> *manager, unsigned int pool_size,
-      char *worker_pool_name)
+  worker_pool_task_capper<Context>::worker_pool_task_capper (worker_pool<Context> *worker_pool)
   {
-    m_pool_size = pool_size;
-    m_worker_pool = cubthread::get_manager ()->create_worker_pool (pool_size, pool_size, worker_pool_name,
-		    manager, 1, false, true);
-    m_tasks_available = pool_size;
+    m_worker_pool = worker_pool;
+    m_tasks_available = worker_pool.get_max_count ();
   }
 
   template <typename Context>
   worker_pool_task_capper<Context>::~worker_pool_task_capper ()
   {
-    cubthread::get_manager ()->destroy_worker_pool (m_worker_pool);
+    //
   }
 
   template <typename Context>
@@ -1523,7 +1520,7 @@ namespace cubthread
     assert (m_tasks_available > 0);
 
     m_tasks_available--;
-    cubthread::get_manager ()->push_task (m_worker_pool, task);
+    thread_get_manager ()->push_task (m_worker_pool, task);
   }
 
   template <typename Context>
@@ -1538,6 +1535,7 @@ namespace cubthread
     ulock.unlock ();
     m_cond_var.notify_all ();
   }
+
   template <typename Context>
   cubthread::worker_pool<Context> *worker_pool_task_capper<Context>::get_worker_pool ()
   {
