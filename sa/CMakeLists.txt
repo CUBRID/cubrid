@@ -134,7 +134,6 @@ set(BASE_HEADERS
   ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
-  ${BASE_DIR}/generic_utils.hpp
   ${BASE_DIR}/mem_block.hpp
   ${BASE_DIR}/memory_private_allocator.cpp
   ${BASE_DIR}/msgcat_set_log.hpp
@@ -148,6 +147,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/printer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/semaphore.hpp
+  ${BASE_DIR}/type_traits_utils.hpp
 )
 
 set(HEAPLAYER_SOURCES

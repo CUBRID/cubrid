@@ -18,11 +18,11 @@
  */
 
 /*
- * generic_utils.hpp - Utilities for generic programming usage
+ * type_traits_utils.hpp - Utilities for type traits information
  */
 
-#ifndef _GENERIC_UTILS_HPP_
-#define _GENERIC_UTILS_HPP_
+#ifndef _TYPE_TRAITS_UTILS_HPP_
+#define _TYPE_TRAITS_UTILS_HPP_
 
 #include <type_traits>
 
@@ -31,6 +31,11 @@ namespace cubbase
   template <template <typename> class G>
   struct conversion_tester
   {
+    // Non-explicit constructors enable implicit conversion from the type of the constructor's argument to
+    // constructor's class type. Here, concretely, we enable implicit conversions from G<T> to conversion_tester<G>
+    // thus accepting from the point of view of is_instance_of<From, To<typnemae>> any From that is either of the form:
+    // From : To<Something> or From = To<Something> (conditions necessary to have aforementioned conversions
+    // avilable and implicitly std::is_convertible<From,conversion_tester<To>>::value true)
     template <typename T>
     conversion_tester (const G<T> &);
   };
@@ -43,4 +48,4 @@ namespace cubbase
   };
 }
 
-#endif //_GENERIC_UTILS_HPP_
+#endif // _TYPE_TRAITS_UTILS_HPP_

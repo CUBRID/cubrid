@@ -24,7 +24,7 @@
 #ifndef _STREAM_ENTRY_FETCHER_HPP_
 #define _STREAM_ENTRY_FETCHER_HPP_
 
-#include "generic_utils.hpp"
+#include "type_traits_utils.hpp"
 #include "multi_thread_stream.hpp"
 #include "stream_entry.hpp"
 #include <cassert>
