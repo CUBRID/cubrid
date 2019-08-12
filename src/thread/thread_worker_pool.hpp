@@ -1466,6 +1466,7 @@ namespace cubthread
   template <typename Context>
   class worker_pool_task_capper
   {
+    private:
       using context_type = Context;
       using task_type = task<Context>;
       using worker_pool_type = worker_pool<Context>;
@@ -1481,7 +1482,7 @@ namespace cubthread
     private:
       cubthread::worker_pool<Context> *m_worker_pool;
       unsigned int m_tasks_available;
-      unsigned int m_pool_size;
+      unsigned int m_max_tasks;
       std::mutex m_mutex;
       std::condition_variable m_cond_var;
   };
@@ -1496,7 +1497,7 @@ namespace cubthread
   worker_pool_task_capper<Context>::worker_pool_task_capper (worker_pool<Context> *worker_pool)
   {
     m_worker_pool = worker_pool;
-    m_tasks_available = worker_pool.get_max_count ();
+    m_tasks_available = m_max_tasks = worker_pool.get_max_count ();
   }
 
   template <typename Context>
@@ -1530,7 +1531,7 @@ namespace cubthread
     m_tasks_available++;
 
     // Safeguard
-    assert (m_tasks_available <= m_pool_size && m_tasks_available > 0);
+    assert (m_tasks_available <= m_max_tasks && m_tasks_available > 0);
 
     ulock.unlock ();
     m_cond_var.notify_all ();
