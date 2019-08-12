@@ -92,9 +92,9 @@ namespace cubreplication
       std::atomic<int> m_started_tasks;
 
       /* fetch suspend flag : this is required in context of replication with copy phase :
-      * while replication copy is running the fetch from online replication must be suspended
-      * (although the stream contents are received and stored on local slave node)
-      */
+       * while replication copy is running the fetch from online replication must be suspended
+       * (although the stream contents are received and stored on local slave node)
+       */
       cubsync::event_semaphore m_fetch_suspend;
 
     public:
