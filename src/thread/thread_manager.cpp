@@ -439,6 +439,56 @@ namespace cubthread
   }
 
   //////////////////////////////////////////////////////////////////////////
+  // Blocking manager
+  //////////////////////////////////////////////////////////////////////////
+  blocking_manager::blocking_manager (cubthread::entry_manager *manager, unsigned int pool_size,
+				      char *worker_pool_name)
+  {
+    m_pool_size = pool_size;
+    m_worker_pool = cubthread::get_manager ()->create_worker_pool (pool_size, pool_size, worker_pool_name,
+		    manager, 1, false, true);
+    m_tasks_available = pool_size;
+  }
+
+  blocking_manager::~blocking_manager ()
+  {
+    cubthread::get_manager ()->destroy_worker_pool (m_worker_pool);
+  }
+
+  void blocking_manager::push_task (cubthread::entry_task *task)
+  {
+    auto pred = [&] () -> bool {return (m_tasks_available > 0); };
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
+    m_cond_var.wait (ulock, pred);
+
+    // Make sure we have the lock.
+    assert (ulock.owns_lock ());
+    // Safeguard.
+    assert (m_tasks_available > 0);
+
+    m_tasks_available--;
+    cubthread::get_manager ()->push_task (m_worker_pool, task);
+  }
+
+  void blocking_manager::end_task ()
+  {
+    std::unique_lock<std::mutex> ulock (m_mutex);
+    m_tasks_available++;
+
+    // Safeguard
+    assert (m_tasks_available <= m_pool_size && m_tasks_available > 0);
+
+    ulock.unlock ();
+    m_cond_var.notify_all ();
+  }
+
+  cubthread::entry_workpool *blocking_manager::get_worker_pool ()
+  {
+    return m_worker_pool;
+  }
+
+  //////////////////////////////////////////////////////////////////////////
   // Global thread interface
   //////////////////////////////////////////////////////////////////////////
 
