@@ -36,20 +36,12 @@
 namespace cubthread
 {
   class daemon;
-};
-
-namespace cubreplication
-{
-  class applier_worker_task;
-  class stream_entry;
-  class subtran_applier;
 }
 
 namespace cubstream
 {
   class multi_thread_stream;
-  using stream_entry_fetcher = entry_fetcher<cubreplication::stream_entry>;
-};
+}
 
 namespace cubreplication
 {
@@ -57,6 +49,10 @@ namespace cubreplication
    * main class for consuming log packing stream entries;
    * it should be created only as a global instance
    */
+  class applier_worker_task;
+  class stream_entry;
+  class subtran_applier;
+  using stream_entry_fetcher = cubstream::entry_fetcher<stream_entry>;
 
   /*
    * log_consumer : class intended as singleton for slave server
