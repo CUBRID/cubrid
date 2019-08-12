@@ -35,66 +35,29 @@ namespace cubstream
   template<typename T>
   class entry_fetcher
   {
+    private:
       static_assert (cubbase::is_instance_of<T, cubstream::entry>::value,
-		     "T derived from or specialisation of cubstream::entry;");
+		     "T needs to be derived from or be a specialisation of cubstream::entry");
       using stream_entry_type = T;
     public:
       entry_fetcher (cubstream::multi_thread_stream &stream);
-      void set_on_fetch_func (const std::function<void (stream_entry_type *, bool &)> &on_fetch);
-      stream_entry_type *pop_entry (bool &should_stop, bool &skip);
+      int fetch_entry (stream_entry_type *&se);
 
     private:
-      int fetch_stream_entry (stream_entry_type *&entry);
-
       cubstream::multi_thread_stream &m_stream;
-      std::function<void (stream_entry_type *, bool &)> m_on_fetch;
   };
 
   template<typename T>
   entry_fetcher<T>::entry_fetcher (cubstream::multi_thread_stream &stream)
     : m_stream (stream)
-    , m_on_fetch ([] (T *, bool &)
-  {
-    assert (false);
-  })
   {
   }
 
   template<typename T>
-  void entry_fetcher<T>::set_on_fetch_func (const std::function<void (stream_entry_type *, bool &)> &on_fetch)
+  int entry_fetcher<T>::fetch_entry (stream_entry_type *&se)
   {
-    m_on_fetch = on_fetch;
-  }
-
-  template<typename T>
-  T *entry_fetcher<T>::pop_entry (bool &should_stop, bool &skip)
-  {
-    stream_entry_type *se = nullptr;
-    int err = fetch_stream_entry (se);
-    if (err == NO_ERROR)
-      {
-	m_on_fetch (se, skip);
-      }
-    else
-      {
-	should_stop = true;
-      }
-    return se;
-  }
-
-  template<typename T>
-  int entry_fetcher<T>::fetch_stream_entry (stream_entry_type *&entry)
-  {
-    stream_entry_type *se = new stream_entry_type (&m_stream);
-
+    se = new stream_entry_type (&m_stream);
     int err = se->prepare ();
-    if (err != NO_ERROR)
-      {
-	delete se;
-	return err;
-      }
-
-    entry = se;
     return err;
   }
 };

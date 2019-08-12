@@ -136,18 +136,6 @@ namespace cubreplication
 	, m_lc (lc)
 	, m_stop (false)
       {
-	auto on_fetch_func = [this] (stream_entry *se, bool & should_skip)
-	{
-	  if (se->is_group_commit ())
-	    {
-	      se->unpack ();
-	      assert (se->get_stream_entry_end_position () > se->get_stream_entry_start_position ());
-	      m_lc.ack_produce (se->get_stream_entry_end_position ());
-	    };
-	  should_skip = filter_out_stream_entry (se);
-	};
-
-	m_entry_fetcher.set_on_fetch_func (on_fetch_func);
       }
 
       void execute (cubthread::entry &thread_ref) override
@@ -160,20 +148,38 @@ namespace cubreplication
 
 	while (!m_stop)
 	  {
-	    bool filter_out = false;
-	    stream_entry *se = m_entry_fetcher.pop_entry (m_stop, filter_out);
-
-	    if (m_stop)
+	    stream_entry *se = NULL;
+	    int err = m_entry_fetcher.fetch_entry (se);
+	    if (err != NO_ERROR)
 	      {
-		delete se;
-		break;
+		if (ER_STREAM_NO_MORE_DATA)
+		  {
+		    ASSERT_ERROR ();
+		    m_stop = true;
+		    delete se;
+		    break;
+		  }
+		else
+		  {
+		    ASSERT_ERROR ();
+		    // should not happen
+		    assert (false);
+		    break;
+		  }
 	      }
 
-	    if (filter_out)
+	    if (filter_out_stream_entry (se))
 	      {
 		delete se;
 		continue;
 	      }
+
+	    if (se->is_group_commit ())
+	      {
+		se->unpack ();
+		assert (se->get_stream_entry_end_position () > se->get_stream_entry_start_position ());
+		m_lc.ack_produce (se->get_stream_entry_end_position ());
+	      };
 
 	    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
 	      {
