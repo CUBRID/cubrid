@@ -1521,7 +1521,6 @@ namespace cubthread
 
     m_tasks_available--;
     manager->push_task (task);
-    //thread_get_manager ()->push_task (m_worker_pool, task);
   }
 
   template <typename Context>
