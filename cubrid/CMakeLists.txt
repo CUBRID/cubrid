@@ -74,6 +74,7 @@ set (STREAM_HEADERS
   ${BASE_DIR}/cubstream.hpp
   ${BASE_DIR}/multi_thread_stream.hpp
   ${BASE_DIR}/stream_entry.hpp
+  ${BASE_DIR}/stream_entry_fetcher.hpp
   ${BASE_DIR}/stream_file.hpp
   )
 
@@ -153,6 +154,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/semaphore.hpp
+  ${BASE_DIR}/type_traits_utils.hpp
   )
 
 set(EXECUTABLE_SOURCES

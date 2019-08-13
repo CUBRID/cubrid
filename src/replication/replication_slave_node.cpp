@@ -47,8 +47,8 @@ namespace cubreplication
     , m_lc (NULL)
     , m_master_identity ("")
     , m_transfer_receiver (NULL)
-    , m_ctrl_sender (NULL)
     , m_ctrl_sender_daemon (NULL)
+    , m_ctrl_sender (NULL)
     , m_source_min_available_pos (0)
     , m_source_curr_pos (0)
   {
