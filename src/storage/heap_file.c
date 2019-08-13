@@ -24792,9 +24792,6 @@ heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID
 	}
     }
 
-  // Start a system operation since we write in multiple pages.
-  log_sysop_start (thread_p);
-
   /**********************************************************/
   /*      Start by creating a heap chain from the pages.    */
   /**********************************************************/
@@ -24905,18 +24902,6 @@ heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID
     }
 
 cleanup:
-  // Check if we have errors to abort the sysop.
-  if (error_code != NO_ERROR)
-    {
-      // Safeguard
-      ASSERT_ERROR ();
-      log_sysop_abort (thread_p);
-    }
-  else
-    {
-      // Commit the sysop
-      log_sysop_commit (thread_p);
-    }
 
    if (page_watcher.pgptr)
     {
