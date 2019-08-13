@@ -1332,6 +1332,7 @@ net_server_start (const char *server_name)
     }
 
   cubthread::finalize ();
+  cubthread::global_workpool::finalize ();
   er_final (ER_ALL_FINAL);
   csect_finalize_static_critical_sections ();
   (void) sync_finalize_sync_stats ();
