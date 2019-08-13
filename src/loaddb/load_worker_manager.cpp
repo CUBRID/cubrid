@@ -26,6 +26,7 @@
 #include "load_driver.hpp"
 #include "load_session.hpp"
 #include "resource_shared_pool.hpp"
+#include "thread_worker_pool.hpp"
 #include "xserver_interface.h"
 
 namespace cubload
@@ -61,6 +62,7 @@ namespace cubload
   static unsigned int g_session_count = 0;
   static cubthread::entry_workpool *g_worker_pool;
   static worker_context_manager *g_wp_context_manager;
+  static cubthread::worker_pool_task_capper<cubthread::entry> *g_wp_task_capper;
 
   worker_context_manager::worker_context_manager (unsigned int pool_size)
     : m_driver_pool (pool_size)
@@ -115,7 +117,7 @@ namespace cubload
   worker_manager_push_task (cubthread::entry_task *task)
   {
     assert (g_worker_pool != NULL);
-    cubthread::get_manager ()->push_task (g_worker_pool, task);
+    g_wp_task_capper->push_task (task);
   }
 
   void
@@ -133,6 +135,8 @@ namespace cubload
 	g_wp_context_manager = new worker_context_manager (pool_size);
 	g_worker_pool = cubthread::get_manager ()->create_worker_pool (pool_size, pool_size, "loaddb-workers",
 			g_wp_context_manager, 1, false, true);
+
+	g_wp_task_capper = new cubthread::worker_pool_task_capper<cubthread::entry> (g_worker_pool);
       }
     else
       {
@@ -159,10 +163,19 @@ namespace cubload
 	cubthread::get_manager ()->destroy_worker_pool (g_worker_pool);
 	delete g_wp_context_manager;
 
+	delete g_wp_task_capper;
+
 	g_worker_pool = NULL;
 	g_wp_context_manager = NULL;
+	g_wp_task_capper = NULL;
       }
 
     g_wp_mutex.unlock ();
+  }
+
+  void
+  worker_manager_complete_task ()
+  {
+    g_wp_task_capper->end_task ();
   }
 }
