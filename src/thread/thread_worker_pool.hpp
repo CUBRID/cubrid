@@ -1494,10 +1494,10 @@ namespace cubthread
   // worker_pool_task_capper template implementation
   //////////////////////////////////////////////////////////////////////////
   template <typename Context>
-  worker_pool_task_capper<Context>::worker_pool_task_capper (worker_pool<Context> *worker_pool_)
+  worker_pool_task_capper<Context>::worker_pool_task_capper (worker_pool<Context> *wp)
   {
-    m_worker_pool = worker_pool_;
-    m_tasks_available = m_max_tasks = worker_pool_->get_max_count ();
+    m_worker_pool = wp;
+    m_tasks_available = m_max_tasks = wp->get_max_count ();
   }
 
   template <typename Context>
