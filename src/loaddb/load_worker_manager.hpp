@@ -36,6 +36,8 @@ namespace cubload
   void worker_manager_register_session ();
 
   void worker_manager_unregister_session ();
+
+  void worker_manager_complete_task ();
 }
 
 #endif /* _LOAD_WORKER_MANAGER_HPP_ */
