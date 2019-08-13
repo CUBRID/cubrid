@@ -64,7 +64,7 @@ namespace cubreplication
       {
 	(void) locator_repl_start_tran (&thread_ref);
 
-	for (stream_entry *curr_stream_entry : m_repl_stream_entries)
+	for (stream_entry *&curr_stream_entry : m_repl_stream_entries)
 	  {
 	    curr_stream_entry->unpack ();
 
@@ -90,6 +90,7 @@ namespace cubreplication
 	      }
 
 	    delete curr_stream_entry;
+	    curr_stream_entry = NULL;
 	  }
 
 	(void) locator_repl_end_tran (&thread_ref, true);
@@ -173,6 +174,8 @@ namespace cubreplication
 		    ASSERT_ERROR ();
 		    // should not happen
 		    assert (false);
+		    m_stop = true;
+		    delete se;
 		    break;
 		  }
 	      }
