@@ -61,6 +61,7 @@
 #include "porting_inline.hpp"
 #include "set_object.h"
 #include "util_func.h"
+#include "internal_task_worker_pool.hpp"
 #include "intl_support.h"
 #include "serial.h"
 #include "server_interface.h"
@@ -1710,6 +1711,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
       ASSERT_ERROR ();
       goto exit_on_error;
     }
+  cubthread::global_workpool::initialize ();
   /* *INDENT-ON* */
 
   /*
@@ -2301,6 +2303,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     {
       goto error;
     }
+  cubthread::global_workpool::initialize ();
   /* *INDENT-ON* */
 
   pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
@@ -4489,6 +4492,7 @@ xboot_delete (const char *db_name, bool force_delete, BOOT_SERVER_SHUTDOWN_MODE 
       ASSERT_ERROR ();
       return error_code;
     }
+  cubthread::global_workpool::initialize ();
   /* *INDENT-ON* */
 
   error_code = perfmon_initialize (1);	/* 1 transaction for SA_MDOE */
@@ -5165,6 +5169,7 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
       ASSERT_ERROR ();
       goto error_exit;
     }
+  cubthread::global_workpool::initialize ();
   /* *INDENT-ON* */
 
   /*
