@@ -10308,13 +10308,13 @@ logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manage
   /* Close the latest group, if is the case. */
   switch (old_manager_type)
     {
+#if defined(SERVER_MODE)
     case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
       cubtx::single_node_group_complete_manager::get_instance ()->do_prepare_complete (thread_p);
       cubtx::single_node_group_complete_manager::get_instance ()->do_complete (thread_p);
       er_log_debug (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager single group manager removed");
       break;
 
-#if defined(SERVER_MODE)
     case LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE:
       /* Close ack readers. */
       cubreplication::replication_node_manager::get_master_node ()->set_ctrl_channel_manager_stream_ack (NULL);
