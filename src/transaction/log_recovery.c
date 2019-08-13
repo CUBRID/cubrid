@@ -2891,10 +2891,24 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
       if ((crt_tdes = LOG_FIND_TDES (i)) != NULL && crt_tdes->trid != NULL_TRANID)
 	{
 	  _er_log_debug (ARG_FILE_LINE, "HA recovery: found active at end of analysis: trid:%d \n", crt_tdes->trid);
-	  if (LSA_ISNULL (&log_Gl.m_min_active_lsa) || LSA_LT (&crt_tdes->head_lsa, &log_Gl.m_min_active_lsa))
+
+	  /* The transaction has not null LSA if tdes->head_lsa is not null or
+	   * tdes->head_lsa is null and tdes->tail_lsa is not null.
+	   */
+	  assert (!LSA_ISNULL (&crt_tdes->head_lsa) || !LSA_ISNULL (&crt_tdes->tail_lsa));
+	  if (!LSA_ISNULL (&tdes->head_lsa))
 	    {
-	      LSA_COPY (&log_Gl.m_min_active_lsa, &crt_tdes->head_lsa);
-	      assert (!LSA_ISNULL (&crt_tdes->head_lsa));
+	      if (LSA_ISNULL (&log_Gl.m_min_active_lsa) || LSA_LT (&crt_tdes->head_lsa, &log_Gl.m_min_active_lsa))
+		{
+		  LSA_COPY (&log_Gl.m_min_active_lsa, &crt_tdes->head_lsa);
+		}
+	    }
+	  else if (!LSA_ISNULL (&tdes->tail_lsa))
+	    {
+	      if (LSA_ISNULL (&log_Gl.m_min_active_lsa) || LSA_LT (&crt_tdes->tail_lsa, &log_Gl.m_min_active_lsa))
+		{
+		  LSA_COPY (&log_Gl.m_min_active_lsa, &crt_tdes->tail_lsa);
+		}
 	    }
 	}
     }
