@@ -2804,7 +2804,6 @@ error:
 #if defined (SA_MODE)
   cubthread::finalize ();
 #endif /* SA_MODE */
-  cubthread::global_workpool::finalize ();
 
   return error_code;
 }
