@@ -29,9 +29,6 @@
 
 namespace cubthread
 {
-  template <typename Context>
-  class worker_pool_task_capper;
-
   namespace global_workpool
   {
     void initialize ();
