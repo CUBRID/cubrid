@@ -129,17 +129,17 @@ namespace cubreplication
 	return s_header_size;
       }
 
-      size_t get_data_packed_size (void);
-      void set_header_data_size (const size_t &data_size);
+      size_t get_data_packed_size (void) override;
+      void set_header_data_size (const size_t &data_size) override;
 
-      cubstream::entry<replication_object>::packable_factory *get_builder ();
+      cubstream::entry<replication_object>::packable_factory *get_builder () override;
 
-      cubpacking::packer *get_packer ()
+      cubpacking::packer *get_packer () override
       {
 	return &m_serializator;
       }
 
-      cubpacking::unpacker *get_unpacker ()
+      cubpacking::unpacker *get_unpacker () override
       {
 	return &m_deserializator;
       }
@@ -198,7 +198,7 @@ namespace cubreplication
 
       void stringify (string_buffer &sb, const string_dump_mode mode = short_dump);
 
-      bool is_equal (const cubstream::entry<replication_object> *other);
+      bool is_equal (const cubstream::entry<replication_object> *other) override;
       static size_t compute_header_size (void);
       void move_replication_objects_after_lsa_to_stream (LOG_LSA &lsa, stream_entry &entry);
       void destroy_objects_after_lsa (LOG_LSA &start_lsa);
