@@ -60,7 +60,7 @@
 #include "transaction_complete_manager.hpp"
 #include "transaction_transient.hpp"
 #include "log_generator.hpp"
-#include "replication_db_copy.hpp"
+#include "replication_source_db_copy.hpp"
 
 #include <assert.h>
 #include <unordered_set>
@@ -541,24 +541,32 @@ struct log_tdes
 
   LOG_RCV_TDES rcv;
   const char *ha_sbr_statement;
+
   // *INDENT-OFF*
+#if defined (SERVER_MODE)
+  cubreplication::source_copy_context *replication_copy_context;
+#endif
+
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
-  cubreplication::log_generator replication_log_generator;
-  cubreplication::copy_context replication_copy_context;
+  public:
+    bool is_active_worker_transaction () const;
+    bool is_system_transaction () const;
+    bool is_system_main_transaction () const;
+    bool is_system_worker_transaction () const;
+    bool is_allowed_undo () const;
+    bool is_allowed_sysop () const;
+    bool is_under_sysop () const;
 
-  bool is_active_worker_transaction () const;
-  bool is_system_transaction () const;
-  bool is_system_main_transaction () const;
-  bool is_system_worker_transaction () const;
-  bool is_allowed_undo () const;
-  bool is_allowed_sysop () const;
-  bool is_under_sysop () const;
+    void lock_topop ();
+    void unlock_topop ();
 
-  void lock_topop ();
-  void unlock_topop ();
+    void on_sysop_start ();
+    void on_sysop_end ();
 
-  void on_sysop_start ();
-  void on_sysop_end ();
+    cubreplication::log_generator &get_replication_generator ();
+
+  private:
+    cubreplication::log_generator replication_log_generator;
 #endif
   // *INDENT-ON*
 };

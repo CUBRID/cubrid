@@ -11139,7 +11139,7 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, const DB_VALUE * attr_v
 {
   // todo - find a more elegant way to manage replication context
   return heap_attrinfo_set_internal (inst_oid, attrid, attr_val, attr_info,
-				     logtb_get_tdes (thread_get_thread_entry_info ())->replication_log_generator);
+				     logtb_get_tdes (thread_get_thread_entry_info ())->get_replication_generator ());
 }
 
 int

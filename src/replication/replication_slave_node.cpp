@@ -47,8 +47,8 @@ namespace cubreplication
     , m_lc (NULL)
     , m_master_identity ("")
     , m_transfer_receiver (NULL)
-    , m_ctrl_sender (NULL)
     , m_ctrl_sender_daemon (NULL)
+    , m_ctrl_sender (NULL)
     , m_source_min_available_pos (0)
     , m_source_curr_pos (0)
   {
@@ -70,41 +70,41 @@ namespace cubreplication
     comm_error_code = chn.send ((char *) &replication_node::SETUP_REPLICATION_MAGIC, max_len);
     if (comm_error_code != css_error_code::NO_ERRORS)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
-		comm_error_code);
-	return ER_REPLICATION_SETUP;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 3, chn.get_channel_id ().c_str (),
+		comm_error_code, "");
+	return ER_STREAM_CONNECTION_SETUP;
       }
 
     comm_error_code = chn.recv ((char *) &expected_magic, max_len);
     if (comm_error_code != css_error_code::NO_ERRORS)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
-		comm_error_code);
-	return ER_REPLICATION_SETUP;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 3, chn.get_channel_id ().c_str (),
+		comm_error_code, "");
+	return ER_STREAM_CONNECTION_SETUP;
       }
 
     if (expected_magic != replication_node::SETUP_REPLICATION_MAGIC)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
-		comm_error_code);
-	return ER_REPLICATION_SETUP;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 3, chn.get_channel_id ().c_str (),
+		comm_error_code, "Unexpected value");
+	return ER_STREAM_CONNECTION_SETUP;
       }
 
     comm_error_code = chn.recv ((char *) &pos, max_len);
     if (comm_error_code != css_error_code::NO_ERRORS)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
-		comm_error_code);
-	return ER_REPLICATION_SETUP;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 3, chn.get_channel_id ().c_str (),
+		comm_error_code, "");
+	return ER_STREAM_CONNECTION_SETUP;
       }
     m_source_min_available_pos = ntohi64 (pos);
 
     comm_error_code = chn.recv ((char *) &pos, max_len);
     if (comm_error_code != css_error_code::NO_ERRORS)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, chn.get_channel_id ().c_str (),
-		comm_error_code);
-	return ER_REPLICATION_SETUP;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 3, chn.get_channel_id ().c_str (),
+		comm_error_code, "");
+	return ER_STREAM_CONNECTION_SETUP;
       }
     m_source_curr_pos = ntohi64 (pos);
 
@@ -158,9 +158,9 @@ namespace cubreplication
 				       COMMAND_SERVER_REQUEST_CONNECT_SLAVE);
     if (comm_error_code != css_error_code::NO_ERRORS)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, srv_chn.get_channel_id ().c_str (),
-		comm_error_code);
-	return ER_REPLICATION_SETUP;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 3, srv_chn.get_channel_id ().c_str (),
+		comm_error_code, "");
+	return ER_STREAM_CONNECTION_SETUP;
       }
 
     error = setup_protocol (srv_chn);
@@ -176,8 +176,9 @@ namespace cubreplication
     if (need_replication_copy (start_position))
       {
 	/* TODO[replication] : replication copy */
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLICATION_SETUP, 2, "", css_error_code::NO_ERRORS);
-	return ER_REPLICATION_SETUP;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 3, "", css_error_code::NO_ERRORS,
+		"Unsupported feature");
+	return ER_STREAM_CONNECTION_SETUP;
       }
     else
       {
@@ -197,7 +198,6 @@ namespace cubreplication
 
     assert (m_stream != NULL);
     m_lc = new log_consumer ();
-    m_lc->fetch_suspend ();
 
     m_lc->set_stream (m_stream);
 
@@ -224,11 +224,11 @@ namespace cubreplication
 	return error;
       }
 
+    std::string ctrl_sender_daemon_name = "slave_control_sender_" + control_chn.get_channel_id ();
     /* Slave control sender is responsible for sending acks through slave_control_channel */
     cubreplication::slave_control_sender *ctrl_sender = new slave_control_sender (std::move (
 		cubreplication::slave_control_channel (std::move (control_chn))));
 
-    std::string ctrl_sender_daemon_name = "slave_control_sender_" + control_chn.get_channel_id ();
     m_ctrl_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
 			   ctrl_sender, ctrl_sender_daemon_name.c_str ());
 

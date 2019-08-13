@@ -239,6 +239,7 @@ namespace cubstream
     ptr = get_data_from_pos (to_read_pos, amount, actual_read_bytes, read_context);
     if (ptr == NULL)
       {
+	// TODO: stream should never return errors
 	ASSERT_ERROR_AND_SET (err);
 	return err;
       }

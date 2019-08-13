@@ -3784,7 +3784,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	  /* for the replication agent guarantee the order of transaction */
 	  /* for CC(Click Counter) : at here */
 	  log_append_repl_info (thread_p, tdes, false);
-	  tdes->replication_log_generator.on_sysop_commit (*LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
+	  tdes->get_replication_generator ().on_sysop_commit (*LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
 	}
 
       log_record->lastparent_lsa = *LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes);
@@ -3967,7 +3967,7 @@ log_sysop_abort (THREAD_ENTRY * thread_p)
       if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_active_worker_transaction ()
 	  && log_does_allow_replication () == true)
 	{
-	  tdes->replication_log_generator.on_sysop_abort (*LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
+	  tdes->get_replication_generator ().on_sysop_abort (*LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
 	}
 
       /* Abort changes in system op. */
@@ -4820,7 +4820,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
        * Transaction updated data.
        */
 
-      tdes->replication_log_generator.on_transaction_commit ();
+      tdes->get_replication_generator ().on_transaction_commit ();
 
       if (!LSA_ISNULL (&tdes->posp_nxlsa))
 	{
@@ -4829,7 +4829,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	    {
 	      /* Need to finish transaction befor waiting for log. */
-	      tdes->replication_log_generator.on_transaction_commit ();
+	      tdes->get_replication_generator ().on_transaction_commit ();
 	      id = log_Gl.m_tran_complete_mgr->register_transaction (tdes->tran_index, tdes->mvccinfo.id, tdes->state);
 	      /* Wait for postpone logging, before running postpone. */
 	      log_Gl.m_tran_complete_mgr->wait_for_logging (id);
@@ -4860,7 +4860,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	    {
 	      tx_group group;
 	      group.add (tdes->tran_index, 0, tdes->state);
-	      log_append_group_complete (thread_p, tdes, tdes->replication_log_generator.get_last_end_position (),
+	      log_append_group_complete (thread_p, tdes, tdes->get_replication_generator ().get_last_end_position (),
 					 group, &commit_lsa, NULL);
 	    }
 	  else
@@ -4985,7 +4985,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 	{
 	  assert (MVCCID_IS_VALID (tdes->mvccinfo.id));
 	  /* Need to finish transaction befor waiting for log. */
-	  tdes->replication_log_generator.on_transaction_abort ();
+	  tdes->get_replication_generator ().on_transaction_abort ();
 	  id = log_Gl.m_tran_complete_mgr->register_transaction (tdes->tran_index, tdes->mvccinfo.id, tdes->state);
 	  /* For consistency, we must complete MVCCID before unlock. Maybe we will consider atomicity here. */
 	  log_Gl.m_tran_complete_mgr->wait_for_complete_mvcc (id);
@@ -5025,7 +5025,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
   tx_lob_locator_clear (thread_p, tdes, false, NULL);
 
   /* TODO - remove the next call */
-  tdes->replication_log_generator.on_transaction_abort ();
+  tdes->get_replication_generator ().on_transaction_abort ();
 
   return tdes->state;
 }
@@ -5332,7 +5332,7 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA 
    */
   LSA_COPY (&tdes->savept_lsa, savept_lsa);
 
-  tdes->replication_log_generator.abort_pending_repl_objects ();
+  tdes->get_replication_generator ().abort_pending_repl_objects ();
 
   return TRAN_UNACTIVE_ABORTED;
 }
@@ -7912,7 +7912,7 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tx_group group;
   group.add (tdes->tran_index, 0, TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
 
-  log_append_group_complete (thread_p, tdes, tdes->replication_log_generator.get_last_end_position (), group,
+  log_append_group_complete (thread_p, tdes, tdes->get_replication_generator ().get_last_end_position (), group,
 			     &commit_lsa, NULL);
 
   logpb_flush_pages (thread_p, &commit_lsa);

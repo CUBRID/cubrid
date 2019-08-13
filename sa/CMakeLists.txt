@@ -147,6 +147,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/printer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/semaphore.hpp
+  ${BASE_DIR}/type_traits_utils.hpp
 )
 
 set(HEAPLAYER_SOURCES
@@ -283,7 +284,6 @@ set (REPLICATION_HEADERS
   ${REPLICATION_DIR}/ha_server_state.h
   ${REPLICATION_DIR}/log_generator.hpp
   ${REPLICATION_DIR}/replication_common.hpp
-  ${REPLICATION_DIR}/replication_db_copy.hpp
   ${REPLICATION_DIR}/replication_object.hpp
   ${REPLICATION_DIR}/replication_schema_extract.hpp
   ${REPLICATION_DIR}/replication_stream_entry.hpp
@@ -291,7 +291,6 @@ set (REPLICATION_HEADERS
 
 set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/log_generator.cpp
-  ${REPLICATION_DIR}/replication_db_copy.cpp
   ${REPLICATION_DIR}/replication_object.cpp
   ${REPLICATION_DIR}/replication_schema_extract.cpp
   ${REPLICATION_DIR}/replication_stream_entry.cpp
