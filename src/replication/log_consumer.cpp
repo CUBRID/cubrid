@@ -152,7 +152,7 @@ namespace cubreplication
 	    int err = m_entry_fetcher.fetch_entry (se);
 	    if (err != NO_ERROR)
 	      {
-		if (ER_STREAM_NO_MORE_DATA)
+		if (err == ER_STREAM_NO_MORE_DATA)
 		  {
 		    ASSERT_ERROR ();
 		    m_stop = true;
@@ -179,7 +179,7 @@ namespace cubreplication
 		se->unpack ();
 		assert (se->get_stream_entry_end_position () > se->get_stream_entry_start_position ());
 		m_lc.ack_produce (se->get_stream_entry_end_position ());
-	      };
+	      }
 
 	    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
 	      {
