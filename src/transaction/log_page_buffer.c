@@ -10329,13 +10329,13 @@ logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manage
       cubtx::slave_group_complete_manager::get_instance ()->do_prepare_complete (thread_p);
       cubtx::slave_group_complete_manager::get_instance ()->do_complete (thread_p);
       break;
-#endif
 
     case LOG_TRAN_COMPLETE_NO_MANAGER:
       break;
 
     default:
       assert (false);
+#endif
     }
 
 #if defined(SERVER_MODE)
