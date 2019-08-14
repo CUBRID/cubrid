@@ -4182,25 +4182,10 @@ logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 	{
 	  tdes = log_Gl.trantable.all_tdes[i];
 
-	  if (tdes != NULL && tdes->trid != NULL_TRANID)
+	  if (tdes != NULL && tdes->trid != NULL_TRANID && !LSA_ISNULL (&tdes->head_lsa)
+	      && (min_lsa == NULL || LSA_LT (&tdes->head_lsa, min_lsa)))
 	    {
-	      /* The transaction has not null LSA if tdes->head_lsa is not null or
-	       * tdes->head_lsa is null and tdes->tail_lsa is not null.
-	       */
-	      if (!LSA_ISNULL (&tdes->head_lsa))
-		{
-		  if (min_lsa == NULL || LSA_LT (&tdes->head_lsa, min_lsa))
-		    {
-		      min_lsa = &tdes->head_lsa;
-		    }
-		}
-	      else if (!LSA_ISNULL (&tdes->tail_lsa))
-		{
-		  if (min_lsa == NULL || LSA_LT (&tdes->tail_lsa, min_lsa))
-		    {
-		      min_lsa = &tdes->tail_lsa;
-		    }
-		}
+	      min_lsa = &tdes->head_lsa;
 	    }
 	}
     }
