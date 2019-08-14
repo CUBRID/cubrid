@@ -5259,6 +5259,11 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
 
   LOG_RESET_PREV_LSA (last_lsa);
 
+  log_Gl.hdr.mvcc_op_log_lsa.set_null ();
+
+  // set a flag that active log was reset; some operations may be affected
+  log_Gl.hdr.was_active_log_reset = true;
+
   logpb_flush_header (thread_p);
   logpb_decache_archive_info (thread_p);
 
