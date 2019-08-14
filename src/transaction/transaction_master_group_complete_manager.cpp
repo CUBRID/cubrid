@@ -21,9 +21,12 @@
 // Manager of completed group on a HA master node
 //
 
+#include "boot_sr.h"
 #include "log_manager.h"
 #include "thread_manager.hpp"
 #include "transaction_master_group_complete_manager.hpp"
+#include "replication_master_node.hpp"
+#include "replication_node_manager.hpp"
 
 namespace cubtx
 {
@@ -36,10 +39,7 @@ namespace cubtx
   //
   master_group_complete_manager *master_group_complete_manager::get_instance ()
   {
-    if (gl_master_group == NULL)
-      {
-	gl_master_group = new master_group_complete_manager ();
-      }
+    assert (gl_master_group != NULL);
     return gl_master_group;
   }
 
@@ -49,7 +49,8 @@ namespace cubtx
   void master_group_complete_manager::init ()
   {
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
-    gl_master_group = get_instance ();
+    gl_master_group = new master_group_complete_manager ();
+    er_log_debug (ARG_FILE_LINE, "master_group_complete_manager:init created master group complete manager\n");
     gl_master_group->m_latest_closed_group_start_stream_position = 0;
     gl_master_group->m_latest_closed_group_end_stream_position = 0;
 
@@ -64,7 +65,7 @@ namespace cubtx
   {
     if (gl_master_group_complete_daemon != NULL)
       {
-	cubthread::get_manager()->destroy_daemon (gl_master_group_complete_daemon);
+	cubthread::get_manager ()->destroy_daemon (gl_master_group_complete_daemon);
 	gl_master_group_complete_daemon = NULL;
       }
 
@@ -77,15 +78,21 @@ namespace cubtx
   //
   void master_group_complete_manager::notify_stream_ack (const cubstream::stream_position stream_pos)
   {
-    /* TODO - disable it temporary since it is not tested */
-    return;
-
     /* TODO - consider quorum. Consider multiple calls of same thread. */
     if (stream_pos >= m_latest_closed_group_end_stream_position)
       {
 	cubthread::entry *thread_p = &cubthread::get_entry ();
 	do_complete (thread_p);
+	er_log_debug (ARG_FILE_LINE, "master_group_complete_manage::notify_stream_ack pos=%llu\n", stream_pos);
       }
+  }
+
+  //
+  // get_manager_type - get manager type.
+  //
+  int master_group_complete_manager::get_manager_type () const
+  {
+    return LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE;
   }
 
   //
@@ -93,13 +100,23 @@ namespace cubtx
   //
   void master_group_complete_manager::on_register_transaction ()
   {
-    /* This function is called after adding a transaction to the current group.
-     * Currently, we wakeup GC thread when first transaction is added into current group.
-     */
-    if (get_current_group ().get_container ().size () == 1)
+    /* This function is called after adding a transaction to the current group. */
+    assert (get_current_group ().get_container ().size () >= 1);
+
+#if defined (SERVER_MODE)
+    if (is_latest_closed_group_completed ())
       {
+	/* This means that GC thread didn't start yet group close. */
 	gl_master_group_complete_daemon->wakeup ();
       }
+    else if (!is_latest_closed_group_complete_started ()
+	     && is_latest_closed_group_prepared_for_complete ())
+      {
+	/* Wakeup senders, just to be sure. */
+	cubreplication::replication_node_manager::get_master_node ()-> wakeup_transfer_senders (
+		m_latest_closed_group_end_stream_position);
+      }
+#endif
   }
 
   //
@@ -125,22 +142,27 @@ namespace cubtx
   //
   // prepare_complete prepares group complete. Always should be called before do_complete.
   //
-  void master_group_complete_manager::prepare_complete (THREAD_ENTRY *thread_p)
+  void master_group_complete_manager::do_prepare_complete (THREAD_ENTRY *thread_p)
   {
     if (close_current_group ())
       {
-	cubstream::stream_position closed_group_stream_start_position, closed_group_stream_end_position;
+	cubstream::stream_position closed_group_stream_start_position = 0ULL, closed_group_stream_end_position = 0ULL;
 	const tx_group &closed_group = get_latest_closed_group ();
 
 	/* TODO - Introduce parameter. For now complete group MVCC only here. Notify MVCC complete. */
-	log_Gl.mvcc_table.complete_group_mvcc (closed_group);
+	log_Gl.mvcc_table.complete_group_mvcc (thread_p, closed_group);
 	notify_group_mvcc_complete (closed_group);
 
 	/* Pack group commit that internally wakeups senders. Get stream position of group complete. */
-	logtb_get_tdes (thread_p)->get_replication_generator ().pack_group_commit_entry (closed_group_stream_start_position,
-	    closed_group_stream_end_position);
+	/* TODO - fix pack_group_commit_entry */
+	logtb_get_tdes (thread_p)->get_replication_generator ().pack_group_commit_entry (
+		closed_group_stream_start_position, closed_group_stream_end_position);
 	m_latest_closed_group_start_stream_position = closed_group_stream_start_position;
 	m_latest_closed_group_end_stream_position = closed_group_stream_end_position;
+	mark_latest_closed_group_prepared_for_complete ();
+
+	/* TODO Wakeup senders, just to be sure. */
+	//cubreplication::replication_node_manager::get_master_node()->wakeup_transfer_senders (closed_group_stream_end_position);
       }
   }
 
@@ -149,8 +171,8 @@ namespace cubtx
   //
   void master_group_complete_manager::do_complete (THREAD_ENTRY *thread_p)
   {
-    LOG_LSA closed_group_commit_lsa;
-    LOG_TDES *tdes = logtb_get_tdes (&cubthread::get_entry ());
+    LOG_LSA closed_group_start_complete_lsa, closed_group_end_complete_lsa;
+    LOG_TDES *tdes = logtb_get_tdes (thread_p);
     bool has_postpone;
 
     if (is_latest_closed_group_completed ())
@@ -159,14 +181,27 @@ namespace cubtx
 	return;
       }
 
+    while (!is_latest_closed_group_prepared_for_complete ())
+      {
+	/* It happens rare. */
+	thread_sleep (10);
+      }
+
+    if (!starts_latest_closed_group_complete ())
+      {
+	/* Already started by others. */
+	return;
+      }
+
     tx_group &closed_group = get_latest_closed_group ();
 
     /* TODO - consider parameter for MVCC complete here. */
     /* Add group commit log record and wakeup  log flush daemon. */
-    log_append_group_complete (thread_p, tdes, m_latest_closed_group_start_stream_position, closed_group,
-			       &closed_group_commit_lsa, &has_postpone);
-
-    log_wakeup_log_flush_daemon ();
+    /* TODO - fix append group complete */
+    log_append_group_complete (thread_p, tdes, m_latest_closed_group_start_stream_position,
+			       closed_group, &closed_group_start_complete_lsa, NULL);
+    //log_append_group_complete (thread_p, tdes, m_latest_closed_group_start_stream_position, closed_group,
+    //		       &closed_group_start_complete_lsa, &closed_group_end_complete_lsa, &has_postpone);
 
     if (has_postpone)
       {
@@ -189,11 +224,13 @@ namespace cubtx
 
   void master_group_complete_task::execute (cubthread::entry &thread_ref)
   {
-    /* TODO - disable it temporary since it is not tested */
-    return;
+    if (!BO_IS_SERVER_RESTARTED ())
+      {
+	return;
+      }
 
-    cubthread::entry *thread_p = &cubthread::get_entry();
-    master_group_complete_manager::get_instance ()->prepare_complete (thread_p);
+    cubthread::entry *thread_p = &cubthread::get_entry ();
+    master_group_complete_manager::get_instance ()->do_prepare_complete (thread_p);
   }
 
   master_group_complete_manager *master_group_complete_manager::gl_master_group = NULL;

@@ -382,5 +382,4 @@ namespace cubreplication
   {
     return *m_subtran_applier;
   }
-
 } /* namespace cubreplication */

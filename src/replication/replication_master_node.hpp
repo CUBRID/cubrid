@@ -58,6 +58,7 @@ namespace cubreplication
       ~master_node ();
 
       void new_slave (int fd);
+      void wakeup_transfer_senders (cubstream::stream_position desired_position);
       void add_ctrl_chn (int fd);
       void update_senders_min_position (const cubstream::stream_position &pos);
   };

@@ -10253,6 +10253,9 @@ logpb_initialize_logging_statistics (void)
 void
 logpb_initialize_tran_complete_manager (void)
 {
+/*
+ * logpb_complete_manager_string - complete manager string
+ */
 #if defined(SERVER_MODE)
   if (!log_does_allow_replication ())
     {
@@ -10266,6 +10269,24 @@ logpb_initialize_tran_complete_manager (void)
 #else
   /* TODO - SA mode */
 #endif
+}
+
+const char *
+logpb_complete_manager_string (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
+{
+  switch (manager_type)
+    {
+    case LOG_TRAN_COMPLETE_NO_MANAGER:
+      return LOG_TRAN_COMPLETE_NO_MANAGER_STR;
+    case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
+      return LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE_STR;
+    case LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE:
+      return LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE_STR;
+    case LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE:
+      return LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE_STR;
+    }
+
+  return "invalid";
 }
 
 /*
