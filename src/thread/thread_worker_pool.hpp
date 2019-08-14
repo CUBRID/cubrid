@@ -522,6 +522,9 @@ namespace cubthread
   // dump worker pool statistics to error log
   void wp_er_log_stats (const char *header, cubperf::stat_value *statsp);
 
+  bool wp_is_thread_always_alive_forced ();
+  void wp_set_force_thread_always_alive ();
+
   /************************************************************************/
   /* Template/inline implementation                                       */
   /************************************************************************/
@@ -574,6 +577,13 @@ namespace cubthread
     for (; it < m_core_count; it++)
       {
 	m_core_array[it].init_pool_and_workers (*this, quotient);
+      }
+
+    if (wp_is_thread_always_alive_forced ())
+      {
+	// override pooling/wait time options to keep threads always alive
+	m_pool_threads = true;
+	m_wait_for_task_time.set_infinite_wait ();
       }
   }
 
