@@ -1904,8 +1904,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
   // some archived pages may be still in active log; check if they can be fetched from active.
   if (logpb_is_page_in_archive (pageid) && (LOG_ISRESTARTED () == false	// don't do it during recovery
 					    || log_Gl.hdr.was_active_log_reset	// don't do it if log was just reset
-					    || (pageid + LOGPB_ACTIVE_NPAGES) <= log_Gl.hdr.append_lsa.pageid)	// is in active log?
-    )
+					    || (pageid + LOGPB_ACTIVE_NPAGES) <= log_Gl.hdr.append_lsa.pageid))	// is in active log?
     {
       if (logpb_fetch_from_archive (thread_p, pageid, log_pgptr, NULL, NULL, true) == NULL)
 	{
