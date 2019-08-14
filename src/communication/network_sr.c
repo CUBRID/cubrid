@@ -1230,7 +1230,7 @@ net_server_start (const char *server_name)
     }
 
   cubthread::initialize (thread_p);
-  cubthread::global_workpool::initialize ();
+  cubthread::internal_tasks_workpool::initialize ();
   assert (thread_p == thread_get_thread_entry_info ());
 
 #if defined(WINDOWS)
@@ -1332,7 +1332,7 @@ net_server_start (const char *server_name)
     }
 
   cubthread::finalize ();
-  cubthread::global_workpool::finalize ();
+  cubthread::internal_tasks_workpool::finalize ();
   er_final (ER_ALL_FINAL);
   csect_finalize_static_critical_sections ();
   (void) sync_finalize_sync_stats ();

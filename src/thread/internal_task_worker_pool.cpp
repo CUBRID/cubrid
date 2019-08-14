@@ -22,15 +22,18 @@
  */
 
 #include "internal_task_worker_pool.hpp"
-#include "thread_manager.hpp"
-#include "thread_task.hpp"
 #include "thread_worker_pool.hpp"
 
 namespace cubthread
 {
-  worker_pool_task_capper<cubthread::entry> *instance = NULL;
+  constexpr size_t WORKER_COUNT = 2;
+  constexpr size_t TASK_COUNT = 10;
+  constexpr size_t CORE_COUNT = 1;
+  constexpr bool ENABLE_LOGGING = true;
 
-  namespace global_workpool
+  entry_workpool *instance = NULL;
+
+  namespace internal_tasks_workpool
   {
     void initialize ()
     {
@@ -39,13 +42,11 @@ namespace cubthread
 	  return;
 	}
 
-      cubthread::entry_workpool *task_worker_pool = cubthread::get_manager ()->create_worker_pool (2,
-	  10, "internal_task_work_pool", NULL, 1, true);
-
-      instance = new worker_pool_task_capper<cubthread::entry> (task_worker_pool);
+      instance = cubthread::get_manager ()->create_worker_pool (WORKER_COUNT,
+		 TASK_COUNT, "internal_task_work_pool", NULL, CORE_COUNT, ENABLE_LOGGING);
     }
 
-    worker_pool_task_capper<cubthread::entry> *get_instance ()
+    entry_workpool *get_instance ()
     {
       assert (instance != NULL);
       return instance;

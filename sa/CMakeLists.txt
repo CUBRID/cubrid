@@ -316,14 +316,12 @@ set(JSP_SOURCES
 
 set(THREAD_SOURCES
   ${THREAD_DIR}/critical_section_tracker.cpp
-  ${THREAD_DIR}/internal_task_worker_pool.cpp
   ${THREAD_DIR}/thread_entry.cpp
   ${THREAD_DIR}/thread_entry_task.cpp
   ${THREAD_DIR}/thread_manager.cpp
   )
 set(THREAD_HEADERS
   ${THREAD_DIR}/critical_section_tracker.hpp
-  ${THREAD_DIR}/internal_task_worker_pool.hpp
   ${THREAD_DIR}/thread_compat.hpp
   ${THREAD_DIR}/thread_entry.hpp
   ${THREAD_DIR}/thread_manager.hpp

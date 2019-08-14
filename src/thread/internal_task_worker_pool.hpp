@@ -24,16 +24,15 @@
 #ifndef _INTERNAL_TASK_WORKER_POOL_HPP_
 #define _INTERNAL_TASK_WORKER_POOL_HPP_
 
-#include "thread_entry.hpp"
-#include "thread_worker_pool.hpp"
+#include "thread_manager.hpp"
 
 namespace cubthread
 {
-  namespace global_workpool
+  namespace internal_tasks_workpool
   {
     void initialize ();
     void finalize ();
-    worker_pool_task_capper<cubthread::entry> *get_instance ();
+    entry_workpool *get_instance ();
   }
 }
 
