@@ -18,44 +18,22 @@
  */
 
 /*
- * internal_tasks_worker_pool.cpp
+ * internal_tasks_worker_pool.hpp
  */
 
-#include "internal_task_worker_pool.hpp"
-#include "thread_worker_pool.hpp"
+#ifndef _INTERNAL_TASKS_WORKER_POOL_HPP_
+#define _INTERNAL_TASKS_WORKER_POOL_HPP_
+
+#include "thread_manager.hpp"
 
 namespace cubthread
 {
-  constexpr size_t WORKER_COUNT = 2;
-  constexpr size_t TASK_COUNT = 10;
-  constexpr size_t CORE_COUNT = 1;
-  constexpr bool ENABLE_LOGGING = true;
-
-  entry_workpool *instance = NULL;
-
-  namespace internal_tasks_workpool
+  namespace internal_tasks_worker_pool
   {
-    void initialize ()
-    {
-      if (instance != NULL)
-	{
-	  return;
-	}
-
-      instance = cubthread::get_manager ()->create_worker_pool (WORKER_COUNT,
-		 TASK_COUNT, "internal_task_work_pool", NULL, CORE_COUNT, ENABLE_LOGGING);
-    }
-
-    entry_workpool *get_instance ()
-    {
-      assert (instance != NULL);
-      return instance;
-    }
-
-    void finalize ()
-    {
-      delete instance;
-      instance = NULL;
-    }
+    void initialize ();
+    void finalize ();
+    entry_workpool *get_instance ();
   }
 }
+
+#endif // _INTERNAL_TASKS_WORKER_POOL_HPP_
