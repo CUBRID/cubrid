@@ -668,6 +668,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_IB_TASK_MEMSIZE "index_load_task_memsize"
 #define PRM_NAME_STATS_ON "stats_on"
 #define PRM_NAME_LOADDB_WORKER_COUNT "loaddb_worker_count"
+#define PRM_NAME_PERF_TEST_MODE "perf_test_mode"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2250,6 +2251,10 @@ static int prm_loaddb_workers_default = 8;
 static int prm_loaddb_workers_upper = 64;
 static int prm_loaddb_workers_lower = 2;
 static unsigned int prm_loaddb_workers_flag = 0;
+
+bool PRM_PERF_TEST_MODE = false;
+static bool prm_perf_test_mode_default = false;
+static unsigned int prm_perf_test_mode_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5781,6 +5786,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_loaddb_workers_default,
    (void *) &PRM_LOADDB_WORKERS,
    (void *) &prm_loaddb_workers_upper, (void *) &prm_loaddb_workers_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PERF_TEST_MODE,
+   PRM_NAME_PERF_TEST_MODE,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_perf_test_mode_flag,
+   (void *) &prm_perf_test_mode_default,
+   (void *) &PRM_PERF_TEST_MODE,
+   (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
