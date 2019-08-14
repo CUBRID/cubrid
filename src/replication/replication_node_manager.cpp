@@ -23,6 +23,7 @@
 
 #include "replication_node_manager.hpp"
 
+#include "internal_tasks_worker_pool.hpp"
 #include "log_impl.h"
 #include "multi_thread_stream.hpp"
 #include "replication_master_node.hpp"
@@ -40,8 +41,6 @@ namespace cubreplication
 
   cubreplication::master_node *g_master_node = NULL;
   cubreplication::slave_node *g_slave_node = NULL;
-
-  cubthread::entry_workpool *task_worker_pool = NULL;
 
   namespace replication_node_manager
   {
@@ -72,11 +71,6 @@ namespace cubreplication
       std::string replication_path;
       replication_node::get_replication_file_path (replication_path);
       g_stream_file = new cubstream::stream_file (*g_stream, replication_path);
-
-      task_worker_pool = cubthread::get_manager ()->create_worker_pool (1,
-			 10,
-			 "replication_apply_workers",
-			 NULL, 1, 1);
     }
 
     void finalize ()
@@ -94,8 +88,6 @@ namespace cubreplication
       g_stream_file = NULL;
       delete g_stream;
       g_stream = NULL;
-
-      cubthread::get_manager ()->destroy_worker_pool (task_worker_pool);
     }
 
     void commute_to_master_state ()
@@ -129,7 +121,8 @@ namespace cubreplication
 	current_state = MASTER;
       }, true);
 
-      cubthread::get_manager ()->push_task (task_worker_pool, promote_task);
+      auto wp = cubthread::internal_tasks_worker_pool::get_instance ();
+      cubthread::get_manager ()->push_task (wp, promote_task);
     }
 
     void commute_to_slave_state ()
@@ -162,7 +155,8 @@ namespace cubreplication
 	current_state = SLAVE;
       }, true);
 
-      cubthread::get_manager ()->push_task (task_worker_pool, demote_task);
+      auto wp = cubthread::internal_tasks_worker_pool::get_instance ();
+      cubthread::get_manager ()->push_task (wp, demote_task);
     }
 
     master_node *get_master_node ()
