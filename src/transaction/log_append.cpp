@@ -1570,6 +1570,10 @@ prior_lsa_start_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *
        */
       if (LSA_ISNULL (&tdes->head_lsa))
 	{
+          /* We may have NULL head LSA and not NULL tail LSA, if the transaction
+           * has only one log record. Maybe we will change to have head LSA = tail LSA
+           * when appends first log record of the transaction.
+           */
 	  LSA_COPY (&tdes->head_lsa, &tdes->tail_lsa);
 	}
 
