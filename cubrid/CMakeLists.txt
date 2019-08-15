@@ -214,6 +214,7 @@ set (REPLICATION_HEADERS
   ${REPLICATION_DIR}/stream_senders_manager.hpp
   ${REPLICATION_DIR}/slave_control_channel.hpp
   ${REPLICATION_DIR}/master_control_channel.hpp
+  ${REPLICATION_DIR}/replication_apply_transaction.hpp
   ${REPLICATION_DIR}/replication_node.hpp
   ${REPLICATION_DIR}/replication_node_manager.hpp
   ${REPLICATION_DIR}/replication_object.hpp
@@ -282,6 +283,7 @@ set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/replication_object.cpp
   ${REPLICATION_DIR}/replication_master_node.cpp
   ${REPLICATION_DIR}/stream_senders_manager.cpp
+  ${REPLICATION_DIR}/replication_apply_transaction.cpp
   ${REPLICATION_DIR}/replication_node.cpp
   ${REPLICATION_DIR}/replication_node_manager.cpp
   ${REPLICATION_DIR}/replication_row_apply.cpp
