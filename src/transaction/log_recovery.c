@@ -5088,6 +5088,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
   const char *catmsg;
   char *catmsg_dup;
   int ret = NO_ERROR;
+  bool did_create_new_append_page = false;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
   assert (last_lsa != NULL);
@@ -5212,6 +5213,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_resetlog");
 	  return;
 	}
+      did_create_new_append_page = true;
       if (logpb_flush_page (thread_p, append_pgptr) != NO_ERROR)
 	{
 	  logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "log_recovery_resetlog");
@@ -5238,10 +5240,13 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
 
   if (is_new_append_page == true)
     {
-      if (logpb_fetch_start_append_page_new (thread_p) == NULL)
+      if (!did_create_new_append_page)
 	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_resetlog");
-	  return;
+	  if (logpb_fetch_start_append_page_new (thread_p) == NULL)
+	    {
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_resetlog");
+	      return;
+	    }
 	}
     }
   else
