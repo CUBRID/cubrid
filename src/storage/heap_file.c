@@ -7320,9 +7320,6 @@ heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, b
   int try_count = 0;
   int try_max = 1;
   int ret;
-#if defined (SA_MODE)
-  bool is_system_class = false;
-#endif /* SA_MODE */
 
   assert (context->oid_p != NULL);
 
@@ -7488,11 +7485,7 @@ try_again:
 #if defined(SA_MODE)
       /* Accessing a REC_MARKDELETED record from a system class can happen in SA mode, when no MVCC operations have
        * been performed on the system class. */
-      if (oid_is_system_class (context->class_oid_p, &is_system_class) != NO_ERROR)
-	{
-	  goto error;
-	}
-      if (is_system_class == true)
+      if (oid_is_system_class (context->class_oid_p))
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid_p->volid,
 		  context->oid_p->pageid, context->oid_p->slotid);
