@@ -4984,6 +4984,22 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
   if (vacuum_Block_data_buffer->is_empty ())
     {
       /* empty */
+      if (vacuum_is_empty ())
+	{
+	  const size_t LOG_BLOCK_TRAILING_DIFF = 2;
+	  LOG_LSA log_lsa = log_Gl.prior_info.prior_lsa;
+	  VACUUM_LOG_BLOCKID log_blockid = vacuum_get_log_blockid (log_lsa.pageid);
+	  if (log_blockid > vacuum_Data.get_last_blockid () + LOG_BLOCK_TRAILING_DIFF)
+	    {
+	      // don't let vacuum data go too far back
+	      vacuum_Data.set_last_blockid (log_blockid - LOG_BLOCK_TRAILING_DIFF);
+	      vacuum_Data.first_page->data->blockid = vacuum_Data.get_last_blockid ();
+	      log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) vacuum_Data.first_page, 0,
+				     sizeof (vacuum_Data.first_page->data->blockid),
+				     &vacuum_Data.first_page->data->blockid);
+	      vacuum_update_keep_from_log_pageid (thread_p);
+	    }
+	}
       return NO_ERROR;
     }
 
