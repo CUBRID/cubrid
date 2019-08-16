@@ -2347,6 +2347,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	      log_set_ha_promotion_time (thread_p, ((INT64) time (0)));
 	    }
 	}
+	// todo: try to early out now 
     }
 
   switch (state)

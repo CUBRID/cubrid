@@ -48,7 +48,6 @@ namespace cubthread
 
     entry_workpool *get_instance ()
     {
-      assert (instance != NULL);
       return instance;
     }
 
