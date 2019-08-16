@@ -2891,7 +2891,11 @@ partition_prune_spec (THREAD_ENTRY * thread_p, VAL_DESCR * vd, ACCESS_SPEC_TYPE 
     }
 
   partition_clear_pruning_context (&pinfo);
-  spec->pruned = true;
+
+  if (error == NO_ERROR)
+    {
+      spec->pruned = true;
+    }
 
   return error;
 }
