@@ -5692,7 +5692,8 @@ vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p)
 
   if (vacuum_is_empty ())
     {
-      if (LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa))
+      LOG_LSA last_mvcc_lsa = log_Gl.hdr.mvcc_op_log_lsa;
+      if (last_mvcc_lsa.is_null () || vacuum_get_log_blockid (last_mvcc_lsa.pageid) <= vacuum_Data.get_last_blockid ())
 	{
 	  /* safe to remove all archives */
 	  keep_from_blockid = VACUUM_NULL_LOG_BLOCKID;
