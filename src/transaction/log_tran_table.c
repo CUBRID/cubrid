@@ -4277,6 +4277,7 @@ logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
       if (i != LOG_SYSTEM_TRAN_INDEX)
 	{
 	  tdes = log_Gl.trantable.all_tdes[i];
+
 	  if (tdes != NULL && tdes->trid != NULL_TRANID && !LSA_ISNULL (&tdes->head_lsa)
 	      && (min_lsa == NULL || LSA_LT (&tdes->head_lsa, min_lsa)))
 	    {

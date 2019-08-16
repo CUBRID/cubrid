@@ -1560,10 +1560,13 @@ prior_lsa_start_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *
       // lose the link to previous record
       LSA_SET_NULL (&node->log_header.prev_tranlsa);
       LSA_SET_NULL (&tdes->head_lsa);
+      LSA_SET_NULL (&tdes->tail_lsa);
     }
   else
     {
       LSA_COPY (&node->log_header.prev_tranlsa, &tdes->tail_lsa);
+
+      LSA_COPY (&tdes->tail_lsa, &log_Gl.prior_info.prior_lsa);
 
       /*
        * Is this the first log record of transaction ?
@@ -1575,10 +1578,10 @@ prior_lsa_start_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *
 
       LSA_COPY (&tdes->undo_nxlsa, &log_Gl.prior_info.prior_lsa);
     }
+
   /*
    * Remember the address of new append record
    */
-  LSA_COPY (&tdes->tail_lsa, &log_Gl.prior_info.prior_lsa);
   LSA_COPY (&node->log_header.back_lsa, &log_Gl.prior_info.prev_lsa);
   LSA_SET_NULL (&node->log_header.forw_lsa);
 
