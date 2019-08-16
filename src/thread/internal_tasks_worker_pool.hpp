@@ -34,6 +34,12 @@ namespace cubthread
     void finalize ();
     entry_workpool *get_instance ();
   }
+
+  template<typename Context>
+  struct chaining_task
+  {
+
+  };
 }
 
 #endif // _INTERNAL_TASKS_WORKER_POOL_HPP_

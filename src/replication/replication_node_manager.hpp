@@ -32,6 +32,11 @@ namespace cubstream
   class stream_file;
 }
 
+namespace cubthread
+{
+  class entry;
+}
+
 namespace cubreplication
 {
   class master_node;
@@ -46,8 +51,13 @@ namespace cubreplication
     master_node *get_master_node ();
     slave_node *get_slave_node ();
 
-    void commute_to_master_state ();
-    void commute_to_slave_state ();
+    void commute_to_master_state (const std::function<void (void)> &ha_transitions);
+    void commute_to_slave_state (const std::function<void (void)> &ha_transitions);
+
+    void wait_commute (const std::function<bool (void)> &ha_predicate);
+
+    void inc_tasks ();
+    void dec_tasks ();
   };
 }
 

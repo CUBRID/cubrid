@@ -28,6 +28,7 @@
 #include "multi_thread_stream.hpp"
 #include "replication_master_node.hpp"
 #include "replication_slave_node.hpp"
+#include "server_support.h"
 #include "stream_file.hpp"
 #include "thread_manager.hpp"
 #include "thread_task.hpp"
@@ -42,21 +43,22 @@ namespace cubreplication
   cubreplication::master_node *g_master_node = NULL;
   cubreplication::slave_node *g_slave_node = NULL;
 
+  std::mutex g_tasks_running_mtx;
+  std::condition_variable g_tasks_running_cv;
+  size_t g_tasks_running;
+
+  std::condition_variable g_commute_cv;
+  std::mutex g_commute_mtx;
+
   namespace replication_node_manager
   {
-    enum commute_state
-    {
-      SLAVE,
-      TO_SLAVE,
-      NOT_INITED,
-      TO_MASTER,
-      MASTER
-    };
-    commute_state current_state;
+
+
+    static void wait_tasks ();
 
     void init (const char *server_name)
     {
-      current_state = NOT_INITED;
+      g_tasks_running = 0;
       g_hostname = server_name;
 
       INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_BUFFER_SIZE);
@@ -75,6 +77,8 @@ namespace cubreplication
 
     void finalize ()
     {
+      wait_tasks ();
+
       g_hostname.clear ();
 
       delete g_slave_node;
@@ -82,7 +86,7 @@ namespace cubreplication
       delete g_master_node;
       g_master_node = NULL;
 
-      // need to first stop the stream before destroying stream_file
+      // we need to first stop the stream before destroying stream_file
       g_stream->stop ();
       delete g_stream_file;
       g_stream_file = NULL;
@@ -90,23 +94,11 @@ namespace cubreplication
       g_stream = NULL;
     }
 
-    void commute_to_master_state ()
+    void commute_to_master_state (const std::function<void (void)> &ha_transitions)
     {
-      if (current_state == TO_SLAVE)
-	{
-	  assert (false);
-	  // we do not support chaining conflicting commutations
-	  // todo: ERROR
-	  return;
-	}
-      if (current_state >= TO_MASTER)
-	{
-	  // already in or commuting to desired state
-	  return;
-	}
-      current_state = TO_MASTER;
+      inc_tasks ();
 
-      cubthread::entry_task *promote_task = new cubthread::entry_callable_task ([] (
+      cubthread::entry_task *promote_task = new cubthread::entry_callable_task ([&ha_transitions] (
 		  cubthread::entry &context)
       {
 	if (g_slave_node != NULL)
@@ -118,30 +110,22 @@ namespace cubreplication
 
 	assert (g_master_node == NULL);
 	g_master_node = new master_node (g_hostname.c_str (), g_stream, g_stream_file);
-	current_state = MASTER;
+
+	ha_transitions ();
+
+	g_commute_cv.notify_all ();
       }, true);
 
       auto wp = cubthread::internal_tasks_worker_pool::get_instance ();
       cubthread::get_manager ()->push_task (wp, promote_task);
     }
 
-    void commute_to_slave_state ()
+    void commute_to_slave_state (const std::function<void (void)> &ha_transitions)
     {
-      if (current_state == TO_MASTER)
-	{
-	  assert (false);
-	  // we do not support chaining conflicting commutations
-	  // todo: ERROR
-	  return;
-	}
-      if (current_state <= TO_SLAVE)
-	{
-	  // already in or commuting to desired state
-	  return;
-	}
-      current_state = TO_SLAVE;
 
-      cubthread::entry_task *demote_task = new cubthread::entry_callable_task ([] (
+      inc_tasks ();
+
+      cubthread::entry_task *demote_task = new cubthread::entry_callable_task ([&ha_transitions] (
 		  cubthread::entry &context)
       {
 	// todo: remove after master -> slave transitions is properly handled
@@ -151,8 +135,9 @@ namespace cubreplication
 	g_master_node = NULL;
 
 	assert (g_slave_node == NULL);
-	g_slave_node = new slave_node (g_hostname.c_str (), g_stream, g_stream_file);
-	current_state = SLAVE;
+
+	ha_transitions ();
+	g_commute_cv.notify_all ();
       }, true);
 
       auto wp = cubthread::internal_tasks_worker_pool::get_instance ();
@@ -169,6 +154,38 @@ namespace cubreplication
     {
       assert (g_slave_node != NULL);
       return g_slave_node;
+    }
+
+    void wait_commute (const std::function<bool (void)> &ha_predicate)
+    {
+      std::unique_lock<std::mutex> ul (g_commute_mtx);
+      g_commute_cv.wait (ul, ha_predicate);
+    }
+
+    void inc_tasks ()
+    {
+      std::lock_guard<std::mutex> lg (g_tasks_running_mtx);
+      ++g_tasks_running;
+    }
+
+    void dec_tasks ()
+    {
+      std::lock_guard<std::mutex> lg (g_tasks_running_mtx);
+      assert (g_tasks_running > 0);
+      --g_tasks_running;
+      if (g_tasks_running == 0)
+	{
+	  g_tasks_running_cv.notify_all ();
+	}
+    }
+
+    static void wait_tasks ()
+    {
+      std::unique_lock<std::mutex> ul (g_tasks_running_mtx);
+      g_tasks_running_cv.wait (ul, [] ()
+      {
+	return g_tasks_running == 0;
+      });
     }
   }
 }
