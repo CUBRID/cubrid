@@ -2268,7 +2268,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 
   csect_enter (thread_p, CSECT_HA_SERVER_STATE, INF_WAIT);
 
-  // Return early if we are in the state we want to be in or if we already are transitioning to the requested state 
+  // Return early if we are in the state we want to be in or if we already are transitioning to the requested state
   if (state == ha_Server_state
       || (!force && ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE && state == HA_SERVER_STATE_ACTIVE)
       || (!force && ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY && state == HA_SERVER_STATE_STANDBY))
@@ -2300,7 +2300,11 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	      if (!HA_DISABLED ())
 		{
 		  // todo: force interruptions
-		  cubreplication::replication_node_manager::commute_to_master_state ([state, thread_p] () {logtb_enable_update (thread_p); ha_Server_state = state;});
+		  cubreplication::replication_node_manager::commute_to_master_state ([state, thread_p] ()
+										     {
+										       logtb_enable_update (thread_p);
+										       ha_Server_state = state;
+										     });
 		  cubreplication::replication_node_manager::wait_commute ([state] () {return ha_Server_state == state;});
 		}
 	      else {
@@ -2311,12 +2315,17 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  else if (state == HA_SERVER_STATE_STANDBY)
 	    {
 	      assert (!HA_DISABLED ());
-	      cubreplication::replication_node_manager::commute_to_slave_state ([state, thread_p](){logtb_disable_update (thread_p); ha_Server_state = state;});
+	      cubreplication::replication_node_manager::commute_to_slave_state ([state, thread_p] ()
+										{
+										  logtb_disable_update (thread_p);
+										  ha_Server_state = state;
+										});
 	      cubreplication::replication_node_manager::wait_commute ([state] () {return ha_Server_state == state;});
 	    }
-	  else {
+	  else 
+	    {
 	      ha_Server_state = state;    
-	  }
+	    }
 
 	  /* append a dummy log record for LFT to wake LWTs up */
 	  log_append_ha_server_state (thread_p, state);
@@ -2343,11 +2352,12 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	}
 	  if (!HA_DISABLED () && state == HA_SERVER_STATE_TO_BE_ACTIVE)
 	    {
-		cubreplication::replication_node_manager::commute_to_master_state ([thread_p](){
-		      								 logtb_enable_update (thread_p);
-	  									 auto state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
-										 assert (state == HA_SERVER_STATE_ACTIVE); 
-										  });
+		cubreplication::replication_node_manager::commute_to_master_state ([thread_p] ()
+										   {
+		      								     logtb_enable_update (thread_p);
+	  									     auto state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
+										     assert (state == HA_SERVER_STATE_ACTIVE); 
+										   });
 	    }
 
 	  if (HA_DISABLED ())
@@ -2373,32 +2383,34 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 
       if (state == HA_SERVER_STATE_STANDBY)
 	{
-	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: logtb_disable_update() \n");
 	  assert (!HA_DISABLED ());
-	  cubreplication::replication_node_manager::commute_to_slave_state([orig_state, state, thread_p] () mutable {
-		        if (orig_state == HA_SERVER_STATE_IDLE)
-	{
-	  /* If all log appliers have done their recovering actions, go directly to standby mode */
-	  if (css_check_ha_log_applier_working ())
-	    {
-	      er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: css_check_ha_log_applier_working ()\n");
-	      logtb_disable_update (thread_p);
-	      state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
-	      assert (state == HA_SERVER_STATE_STANDBY);
-	    }
-	}
-      else
-	{
-	  /* If there's no active clients (except me), go directly to standby mode */
-	  if (logtb_count_clients (thread_p) == 0)
-	    {
-	      er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: logtb_count_clients () = 0\n");
-	      logtb_disable_update (thread_p);
-	      state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
-	      assert (state == HA_SERVER_STATE_STANDBY);
-	    }
-	}
-	  });
+	  auto ha_transitions = [orig_state, state, thread_p] () mutable
+				{
+				  if (orig_state == HA_SERVER_STATE_IDLE)
+				    {
+				      /* If all log appliers have done their recovering actions, go directly to standby mode */
+				      if (css_check_ha_log_applier_working ())
+					{
+					  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: css_check_ha_log_applier_working ()\n");
+					  logtb_disable_update (thread_p);
+					  state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
+					  assert (state == HA_SERVER_STATE_STANDBY);
+					}
+				    }
+				  else
+				    {
+				      /* If there's no active clients (except me), go directly to standby mode */
+				      if (logtb_count_clients (thread_p) == 0)
+					{
+					  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: logtb_count_clients () = 0\n");
+					  logtb_disable_update (thread_p);
+					  state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
+					  assert (state == HA_SERVER_STATE_STANDBY);
+					}
+				    }
+	  			};
+
+	  cubreplication::replication_node_manager::commute_to_slave_state (ha_transitions);
 	}
       break;
 
@@ -2717,19 +2729,22 @@ css_process_new_slave (SOCKET master_fd)
   cubreplication::replication_node_manager::inc_tasks ();
   cubthread::entry_task * demote_task = new cubthread::entry_callable_task ([new_fd] (cubthread::entry & context)
 									    {
-									    cubreplication::replication_node_manager::
-									    wait_commute ([]()
-											  {
-											  return ha_Server_state ==
-											  HA_SERVER_STATE_ACTIVE;
-											  }
+									    cubreplication::
+									    replication_node_manager::wait_commute ([]()
+														    {
+														    return
+														    ha_Server_state
+														    ==
+														    HA_SERVER_STATE_ACTIVE;}
 									    );
 									    assert (ha_Server_state ==
 										    HA_SERVER_STATE_ACTIVE);
-									    cubreplication::replication_node_manager::
-									    get_master_node ()->new_slave (new_fd);
-									    cubreplication::replication_node_manager::
-									    dec_tasks ();}
+									    cubreplication::
+									    replication_node_manager::get_master_node
+									    ()->new_slave (new_fd);
+									    cubreplication::
+									    replication_node_manager::dec_tasks ();
+									    }
 									    , true);
 
   auto wp = cubthread::internal_tasks_worker_pool::get_instance ();
@@ -2757,19 +2772,22 @@ css_process_add_ctrl_chn (SOCKET master_fd)
   cubreplication::replication_node_manager::inc_tasks ();
   cubthread::entry_task * demote_task = new cubthread::entry_callable_task ([new_fd] (cubthread::entry & context)
 									    {
-									    cubreplication::replication_node_manager::
-									    wait_commute ([]()
-											  {
-											  return ha_Server_state ==
-											  HA_SERVER_STATE_ACTIVE;
-											  }
+									    cubreplication::
+									    replication_node_manager::wait_commute ([]()
+														    {
+														    return
+														    ha_Server_state
+														    ==
+														    HA_SERVER_STATE_ACTIVE;}
 									    );
 									    assert (ha_Server_state ==
 										    HA_SERVER_STATE_ACTIVE);
-									    cubreplication::replication_node_manager::
-									    get_master_node ()->add_ctrl_chn (new_fd);
-									    cubreplication::replication_node_manager::
-									    dec_tasks ();}
+									    cubreplication::
+									    replication_node_manager::get_master_node
+									    ()->add_ctrl_chn (new_fd);
+									    cubreplication::
+									    replication_node_manager::dec_tasks ();
+									    }
 									    , true);
 
   auto wp = cubthread::internal_tasks_worker_pool::get_instance ();
