@@ -52,8 +52,6 @@ namespace cubreplication
 
   namespace replication_node_manager
   {
-
-
     static void wait_tasks ();
 
     void init (const char *server_name)

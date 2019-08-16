@@ -32,11 +32,6 @@ namespace cubstream
   class stream_file;
 }
 
-namespace cubthread
-{
-  class entry;
-}
-
 namespace cubreplication
 {
   class master_node;

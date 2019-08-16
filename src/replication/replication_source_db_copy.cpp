@@ -283,10 +283,10 @@ namespace cubreplication
     /* TODO[replication] : max appenders in stream must be greater than number of parallel heap scanners */
     cubstream::multi_thread_stream *copy_db_stream =
 	    new cubstream::multi_thread_stream (buffer_size, 10 + (int) EXTRACT_HEAP_WORKER_POOL_SIZE);
-    //const node_definition &myself = replication_node_manager::get_master_node ()->get_node_identity ();
-    //copy_db_stream->set_name ("repl_copy_" + std::string (myself.get_hostname ().c_str ()));
-    //copy_db_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
-    //copy_db_stream->init (0);
+    const node_definition &myself = replication_node_manager::get_master_node ()->get_node_identity ();
+    copy_db_stream->set_name ("repl_copy_" + std::string (myself.get_hostname ().c_str ()));
+    copy_db_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
+    copy_db_stream->init (0);
 
     /* TODO[replication] : global senders manager (same as stream) */
     m_senders_manager = new stream_senders_manager (*copy_db_stream);
