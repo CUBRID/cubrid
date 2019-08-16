@@ -7320,9 +7320,6 @@ heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, b
   int try_count = 0;
   int try_max = 1;
   int ret;
-#if defined (SA_MODE)
-  bool is_system_class = false;
-#endif /* SA_MODE */
 
   assert (context->oid_p != NULL);
 
