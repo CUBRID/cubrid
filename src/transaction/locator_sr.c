@@ -7623,7 +7623,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
 #if defined(SERVER_MODE)
-  if (!mvcc_is_mvcc_disabled_class (class_oid))
+  if (!mvcc_is_mvcc_disabled_class (class_oid) && !has_BU_lock)
     {
       /* Use MVCC if it's not disabled for current class */
       use_mvcc = true;
