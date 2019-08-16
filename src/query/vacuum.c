@@ -4998,6 +4998,8 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 				     sizeof (vacuum_Data.first_page->data->blockid),
 				     &vacuum_Data.first_page->data->blockid);
 	      vacuum_update_keep_from_log_pageid (thread_p);
+	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "update last_blockid to %lld",
+			     (long long int) vacuum_Data.get_last_blockid ());
 	    }
 	}
       return NO_ERROR;
