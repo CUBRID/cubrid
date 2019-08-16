@@ -50,6 +50,8 @@ static int db_json_path_is_token_valid_array_index (const std::string &str,
 static bool db_json_path_is_token_valid_quoted_object_key (const std::string &path, std::size_t &token_begin);
 static bool db_json_path_quote_and_validate_unquoted_object_key (std::string &path, std::size_t &token_begin);
 static bool db_json_path_is_token_valid_unquoted_object_key (const std::string &path, std::size_t &token_begin);
+static bool db_json_path_is_valid_identifier_start_char (unsigned char ch);
+static bool db_json_path_is_valid_identifier_char (unsigned char ch);
 static void db_json_remove_leading_zeros_index (std::string &index);
 static bool db_json_iszero (const unsigned char &ch);
 
@@ -137,6 +139,28 @@ db_string_unquote (const std::string &path)
   return std::move (res);
 }
 
+static bool
+db_json_path_is_valid_identifier_start_char (unsigned char ch)
+{
+  // todo: As per SQL Standard accept Ecmascript Identifier start:
+  // \UnicodeEscapedSequence
+  // Any char in Unicode categories: Titlecase letter (Lt), Modifier letter (Lm), Other letter (Lo), Letter number (Nl)
+
+  return ch == '_' || std::isalpha (ch);
+}
+
+static bool
+db_json_path_is_valid_identifier_char (unsigned char ch)
+{
+  // todo: As per SQL Standard accept Ecmascript Identifier:
+  // \UnicodeEscapedSequence
+  // Any char in Unicode categories: Connector punctuation (Pc), Non-spacing mark (Mn),
+  // Combining spacing mark (Mc), Decimal number (Nd), Titlecase letter (Lt), Modifier letter (Lm), Other letter (Lo)
+  // Letter number (Nl)
+
+  return ch == '_' || std::isalnum (ch);
+}
+
 /*
  * db_json_path_is_token_valid_unquoted_object_key () - Check if an unquoted object_key is valid
  *
@@ -154,15 +178,22 @@ db_json_path_is_token_valid_unquoted_object_key (const std::string &path, std::s
     }
   std::size_t i = token_begin;
 
-  // todo: this needs change. Besides alphanumerics, object keys can be valid ECMAScript identifiers as defined in
+  // todo: this needs change. SQL standard specifies that object key format must obbey JavaScript rules of an Identifier (6.10.1).
+  // Besides alphanumerics, object keys can be valid ECMAScript identifiers as defined in
   // http://www.ecma-international.org/ecma-262/5.1/#sec-7.6
-  if (i < path.length () && !std::isalpha (static_cast<unsigned char> (path[i])))
+
+  // Defined syntax (approx.):
+  // IdentifierName -> IdentifierStart | (IdentifierName IdentifierPart)
+  // IdentifierStart -> $ ( note: this is the ONLY specified forbidden by SQL Standard) | _ | \UnicodeEscapeSequence
+  // IdentifierPart -> IdentifierStart | InicodeCombinigMark | UnicodeDigit | UnicodeConnectorPunctuation | <ZWNJ> | <ZWJ>
+
+  if (i < path.length () && !db_json_path_is_valid_identifier_start_char (static_cast<unsigned char> (path[i])))
     {
       return false;
     }
 
   ++i;
-  for (; i < path.length () && std::isalnum (static_cast<unsigned char> (path[i])); ++i);
+  for (; i < path.length () && db_json_path_is_valid_identifier_char (static_cast<unsigned char> (path[i])); ++i);
 
   token_begin = i;
 

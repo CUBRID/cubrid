@@ -218,5 +218,5 @@ extern void oid_set_cached_class_oid (const int cache_id, const OID * oid);
 extern const char *oid_get_cached_class_name (const int cache_id);
 extern bool oid_is_cached_class_oid (const OID * class_oid);
 extern OID *oid_get_rep_read_tran_oid (void);
-extern int oid_is_system_class (const OID * class_oid, bool * is_system_class_p);
+extern bool oid_is_system_class (const OID * class_oid);
 #endif /* _OID_H_ */
