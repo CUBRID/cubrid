@@ -34,23 +34,24 @@
 #else
 #include "xserver_interface.h"
 #endif
-#include "memory_alloc.h"
-#include "system_parameter.h"
-#include "network.h"
 #include "boot_sr.h"
-#include "network_interface_sr.h"
-#include "query_list.h"
+#include "connection_error.h"
+#include "connection_sr.h"
 #include "critical_section.h"
+#include "event_log.h"
+#include "internal_tasks_worker_pool.hpp"
+#include "log_impl.h"
+#include "memory_alloc.h"
+#include "message_catalog.h"
+#include "network.h"
+#include "network_interface_sr.h"
+#include "perf_monitor.h"
+#include "query_list.h"
 #include "release_string.h"
 #include "server_support.h"
-#include "connection_sr.h"
-#include "connection_error.h"
-#include "message_catalog.h"
-#include "log_impl.h"
-#include "perf_monitor.h"
-#include "event_log.h"
-#include "util_func.h"
+#include "system_parameter.h"
 #include "tz_support.h"
+#include "util_func.h"
 #if !defined(WINDOWS)
 #include "tcp.h"
 #else /* WINDOWS */
@@ -1238,6 +1239,7 @@ net_server_start (const char *server_name)
     }
 
   cubthread::initialize (thread_p);
+  cubthread::internal_tasks_worker_pool::initialize ();
   assert (thread_p == thread_get_thread_entry_info ());
 
 #if defined(WINDOWS)
@@ -1339,6 +1341,7 @@ net_server_start (const char *server_name)
     }
 
   cubthread::finalize ();
+  cubthread::internal_tasks_worker_pool::finalize ();
   er_final (ER_ALL_FINAL);
   csect_finalize_static_critical_sections ();
   (void) sync_finalize_sync_stats ();

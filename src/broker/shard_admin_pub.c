@@ -68,7 +68,7 @@
 #include "shard_metadata.h"
 #include "shard_admin_pub.h"
 
-#define ADMIN_ERR_MSG_SIZE	1024
+#define ADMIN_ERR_MSG_SIZE	BROKER_PATH_MAX * 2
 
 char admin_err_msg[ADMIN_ERR_MSG_SIZE];
 
