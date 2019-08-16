@@ -19306,6 +19306,7 @@ heap_clear_operation_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p)
   OID_SET_NULL (&context->res_oid);
   context->is_logical_old = false;
   context->is_redistribute_insert_with_delid = false;
+  context->is_bulk_op = false;
 
   context->time_track = NULL;
 }
@@ -19588,7 +19589,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   /* In case of partitions, it is possible to have OR_MVCC_FLAG_VALID_PREV_VERSION flag. */
   use_optimization = (is_mvcc_class && (insert_context->update_in_place == UPDATE_INPLACE_NONE)
 		      && (!(mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION))
-		      && !heap_is_big_length (record_size + OR_MVCCID_SIZE));
+		      && !heap_is_big_length (record_size + OR_MVCCID_SIZE)) && !insert_context->is_bulk_op;
 #endif
 
   if (use_optimization)
@@ -19633,7 +19634,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   if (insert_context->update_in_place != UPDATE_INPLACE_OLD_MVCCID)
     {
 #if defined (SERVER_MODE)
-      if (is_mvcc_class)
+      if (is_mvcc_class && !insert_context->is_bulk_op)
 	{
 	  /* get MVCC id */
 	  mvcc_id = logtb_get_current_mvccid (thread_p);
@@ -22283,7 +22284,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
    * Determine type of operation
    */
 #if defined (SERVER_MODE)
-  if (is_mvcc_class && context->recdes_p->type != REC_ASSIGN_ADDRESS)
+  if (is_mvcc_class && context->recdes_p->type != REC_ASSIGN_ADDRESS && !context->is_bulk_op)
     {
       is_mvcc_op = true;
     }
@@ -22324,6 +22325,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
    * Locking
    */
   /* make sure we have IX_LOCK on class see [NOTE-1] */
+  // todo - this should probably be disabled in case of bulk insert
   if (lock_object (thread_p, &context->class_oid, oid_Root_class_oid, IX_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
     {
       return ER_FAILED;

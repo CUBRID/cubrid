@@ -3813,7 +3813,7 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
 
   /* for replication */
   if (locator_add_or_remove_index (thread_p, &record, oid_p, class_oid_p, true, SINGLE_ROW_INSERT, scan_p, false, false,
-				   hfid_p, NULL) != NO_ERROR)
+				   hfid_p, NULL, false) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -3905,7 +3905,7 @@ catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p, OID * class_oid_p,
 
   /* for replication */
   if (locator_add_or_remove_index (thread_p, &record, oid_p, class_oid_p, false, SINGLE_ROW_DELETE, scan_p, false,
-				   false, hfid_p, NULL) != NO_ERROR)
+				   false, hfid_p, NULL, false) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
