@@ -21,9 +21,21 @@
 // management of transaction used by replication apply system
 //
 
-#ifndef _REPLICATION_APPLY_TRANSACTION_HPP_
-#define _REPLICATION_APPLY_TRANSACTION_HPP_
+#ifndef _REPLICATION_APPLIER_TRANSACTION_HPP_
+#define _REPLICATION_APPLIER_TRANSACTION_HPP_
 
+#include "storage_common.h"
 
+// forward definitions
+namespace cubthread
+{
+  class entry;
+}
 
-#endif // _REPLICATION_APPLY_TRANSACTION_HPP_
+namespace cubreplication
+{
+  int get_applier_transaction (cubthread::entry &thread_r, MVCCID mvccid);
+  int end_applier_transaction (cubthread::entry &thread_r, MVCCID mvccid, bool commit);
+} // namespace cubreplication
+
+#endif // _REPLICATION_APPLIER_TRANSACTION_HPP_
