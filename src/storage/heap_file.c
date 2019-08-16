@@ -2492,6 +2492,7 @@ search_begin:
     {
       /* now, we have already cache_entry for class_oid. if it contains repr info for reprid, return it. else load
        * classrepr info for it */
+      assert (!cache_entry->force_decache);
 
       if (reprid == NULL_REPRID)
 	{

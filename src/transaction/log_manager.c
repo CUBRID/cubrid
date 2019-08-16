@@ -4968,7 +4968,6 @@ log_rollback_classrepr_cache (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
       if (LSA_GT (&t->m_last_modified_lsa, upto_lsa))
 	{
 	  (void) heap_classrepr_decache (thread_p, &t->m_class_oid);
-	  LSA_SET_NULL (&t->m_last_modified_lsa);
 	}
     }
 }
