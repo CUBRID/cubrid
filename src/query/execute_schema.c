@@ -1129,11 +1129,11 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 
 	case PT_FILE_RENAME:
 	  old_name =
-	    (char *) alter->info.alter.alter_clause.rename.old_name->info.file_path.string->info.value.data_value.str->
-	    bytes;
+	    (char *) alter->info.alter.alter_clause.rename.old_name->info.file_path.string->info.value.data_value.
+	    str->bytes;
 	  new_name =
-	    (char *) alter->info.alter.alter_clause.rename.new_name->info.file_path.string->info.value.data_value.str->
-	    bytes;
+	    (char *) alter->info.alter.alter_clause.rename.new_name->info.file_path.string->info.value.data_value.
+	    str->bytes;
 	  error = dbt_rename_method_file (ctemplate, old_name, new_name);
 	  break;
 
@@ -6903,8 +6903,8 @@ get_attr_name (PT_NODE * attribute)
 {
   /* First try the derived name and then the original name. For example: create view a_view as select a av1, a av2, b
    * bv from a_tbl; */
-  return attribute->info.attr_def.attr_name->alias_print ? attribute->info.attr_def.attr_name->alias_print : attribute->
-    info.attr_def.attr_name->info.name.original;
+  return attribute->info.attr_def.attr_name->alias_print ? attribute->info.attr_def.attr_name->
+    alias_print : attribute->info.attr_def.attr_name->info.name.original;
 }
 
 /*
@@ -14943,7 +14943,7 @@ do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
 
 	  if (error != NO_ERROR)
 	    {
-	      goto error_exit;
+	      return error;
 	    }
 	}
       else
@@ -14954,18 +14954,10 @@ do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
 			  saved->comment);
 	  if (error != NO_ERROR)
 	    {
-	      goto error_exit;
+	      return error;
 	    }
 	}
     }
 
   return NO_ERROR;
-
-error_exit:
-  if (index_save_info != NULL)
-    {
-      sm_free_constraint_info (&index_save_info);
-    }
-
-  return error;
 }
