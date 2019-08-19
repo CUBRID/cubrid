@@ -5680,8 +5680,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
   LOG_CS_ENTER (thread_p);
 
   // Removing archive should care copied log for HA as well as PRM_ID_FORCE_REMOVE_LOG_ARCHIVES.
-  if ((ha_mode != HA_MODE_OFF && ha_mode != HA_MODE_REPLICA)
-      || !prm_get_bool_value (PRM_ID_FORCE_REMOVE_LOG_ARCHIVES))
+  if ((ha_mode != HA_MODE_OFF && ha_mode != HA_MODE_REPLICA) || !prm_get_bool_value (PRM_ID_FORCE_REMOVE_LOG_ARCHIVES))
     {
 #if defined(SERVER_MODE)
       min_copied_pageid = logwr_get_min_copied_fpageid ();
