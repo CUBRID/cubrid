@@ -13836,11 +13836,24 @@ xlocator_get_proxy_command (THREAD_ENTRY * thread_p, const char **proxy_command,
   return NO_ERROR;
 }
 
+/*
+ * xlocator_send_proxy_buffer - receives a proxy buffer to server
+ *
+ * return : error code
+ * thread_p (in):
+ * type (in): type of buffer
+ * id (in): identification of buffer (optional, may be null)
+ * buf_size (in): size of buffer
+ * buffer (in): buffer
+ *
+ */
 int
-xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_t buf_size, const char *buffer)
+xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const char *id, const size_t buf_size,
+			    const char *buffer)
 {
 #if defined(SERVER_MODE)
   LOG_TDES *tdes;
+  size_t id_size = (id != NULL) ? strlen (id) : 0;
 
   assert (thread_p != NULL);
 
@@ -13854,30 +13867,34 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
        * for last the last one, the client uses NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END
        */
     case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES:
+      /* force all classes into the same SBR : id = NULL */
       repl_copy_ctxt.append_class_schema (NULL, 0, buffer, buf_size);
       break;
 
     case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END:
+      /* force all classes into the same SBR : id = NULL */
       repl_copy_ctxt.append_class_schema (NULL, 0, buffer, buf_size);
       repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_CLASSES);
       repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_CLASSES_FINISHED);
       break;
 
     case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGER:
+      /* force all triggers into the same SBR : id = NULL */
       repl_copy_ctxt.append_trigger_schema (NULL, 0, buffer, buf_size);
       break;
 
     case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS_END:
+      /* force all triggers into the same SBR : id = NULL */
       repl_copy_ctxt.append_trigger_schema (NULL, 0, buffer, buf_size);
       repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_TRIGGERS);
       break;
 
     case NET_PROXY_BUF_TYPE_EXTRACT_INDEX:
-      repl_copy_ctxt.append_index_schema (NULL, 0, buffer, buf_size);
+      repl_copy_ctxt.append_index_schema (id, id_size, buffer, buf_size);
       break;
 
     case NET_PROXY_BUF_TYPE_EXTRACT_INDEXES_END:
-      repl_copy_ctxt.append_index_schema (NULL, 0, buffer, buf_size);
+      repl_copy_ctxt.append_index_schema (id, id_size, buffer, buf_size);
       repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_INDEXES);
       break;
 

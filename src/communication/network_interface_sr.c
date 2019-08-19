@@ -9793,12 +9793,14 @@ slocator_send_proxy_buffer (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   int type;
   int buf_size;
   char *buffer_start;
+  char *id = NULL;
 
   ptr = or_unpack_int (request, &type);
+  ptr = or_unpack_string_nocopy (ptr, &id);
   ptr = or_unpack_int (ptr, &buf_size);
   buffer_start = ptr;
 
-  error_code = xlocator_send_proxy_buffer (thread_p, type, buf_size, buffer_start);
+  error_code = xlocator_send_proxy_buffer (thread_p, type, id, buf_size, buffer_start);
   if (error_code != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);

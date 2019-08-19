@@ -10015,11 +10015,14 @@ locator_get_proxy_command (const char **proxy_command, const char **proxy_sys_pa
  * locator_send_proxy_buffer - Sends a buffer to server
  *
  * return : error code
+ * type (in): type of buffer
+ * id (in): identification of buffer (optional, may be null)
+ * buf_size (in): size of buffer
  * buffer (in): buffer
  *
  */
 int
-locator_send_proxy_buffer (const int type, const size_t buf_size, const char *buffer)
+locator_send_proxy_buffer (const int type, const char *id, const size_t buf_size, const char *buffer)
 {
 #if defined(CS_MODE)
   int req_error;
@@ -10029,10 +10032,11 @@ locator_send_proxy_buffer (const int type, const size_t buf_size, const char *bu
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
   int server_error;
+  int id_len;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = OR_INT_SIZE + OR_INT_SIZE + buf_size;
+  request_size = OR_INT_SIZE + OR_INT_SIZE + buf_size + or_packed_string_length (id, &id_len);
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -10041,6 +10045,7 @@ locator_send_proxy_buffer (const int type, const size_t buf_size, const char *bu
     }
 
   ptr = or_pack_int (request, type);
+  ptr = or_pack_string_with_length (request, id, id_len);
   ptr = or_pack_int (ptr, buf_size);
   memcpy (ptr, buffer, buf_size);
   ptr += buf_size;

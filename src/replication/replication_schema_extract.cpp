@@ -48,7 +48,7 @@ namespace cubreplication
 
   void net_print_output::end_item (const char *item)
   {
-     m_id = item;
+    m_id = item;
     (void) send_to_network ();
   }
 
@@ -57,7 +57,7 @@ namespace cubreplication
     int res = (int) m_sb.len ();
     int error;
 
-    error = locator_send_proxy_buffer (m_buffer_type, m_sb.len (), m_sb.get_buffer ());
+    error = locator_send_proxy_buffer (m_buffer_type, m_id.c_str (), m_sb.len (), m_sb.get_buffer ());
     if (error != NO_ERROR)
       {
 	m_send_error_cnt++;
@@ -95,7 +95,7 @@ int send_class_list (DB_OBJLIST *classes)
       packer.append_to_buffer_and_pack_all (blk, oid);
     }
 
-  error = locator_send_proxy_buffer (NET_PROXY_BUF_TYPE_OID_LIST, blk.get_size (), blk.get_read_ptr ());
+  error = locator_send_proxy_buffer (NET_PROXY_BUF_TYPE_OID_LIST, NULL, blk.get_size (), blk.get_read_ptr ());
 
   return error;
 }
