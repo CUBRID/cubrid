@@ -106,8 +106,10 @@ namespace cubreplication
 	delete g_slave_node;
 	g_slave_node = NULL;
 
-	assert (g_master_node == NULL);
-	g_master_node = new master_node (g_hostname.c_str (), g_stream, g_stream_file);
+	if (g_master_node == NULL)
+	  {
+	    g_master_node = new master_node (g_hostname.c_str (), g_stream, g_stream_file);
+	  }
 
 	ha_transitions ();
 	g_commute_cv.notify_all ();

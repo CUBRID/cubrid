@@ -2334,20 +2334,21 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	      ha_Server_state = state;    
 	    }
 
+	  // TODO: investigate the need for log_append
 	  /* append a dummy log record for LFT to wake LWTs up */
 	  log_append_ha_server_state (thread_p, state);
-	  if (!HA_DISABLED ())
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_SERVER_HA_MODE_CHANGE, 2,
-		      css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (state));
-	    }
 
 	  if (ha_Server_state == HA_SERVER_STATE_ACTIVE)
 	    {
 	      log_set_ha_promotion_time (thread_p, ((INT64) time (0)));
 	    }
 	}
-	// todo: try to early out now 
+      if (state == HA_SERVER_STATE_ACTIVE || state == HA_SERVER_STATE_STANDBY)
+	{
+          // desired state was enforced
+	  assert (ha_Server_state == state);    	
+	}
+      return NO_ERROR;
     }
 
   switch (state)
@@ -2524,6 +2525,7 @@ css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE s
       table->state = state;
     }
 
+  // TODO: remove log_applier stuff
   if (css_check_ha_log_applier_done ())
     {
       er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: " "css_check_ha_log_applier_done()\n");

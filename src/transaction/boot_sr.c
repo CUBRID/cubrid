@@ -3140,10 +3140,6 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 	      return NULL_TRAN_INDEX;
 	    }
 	}
-      if (client_credential->client_type == BOOT_CLIENT_LOG_APPLIER)
-	{
-	  css_notify_ha_log_applier_state (thread_p, HA_LOG_APPLIER_STATE_UNREGISTERED);
-	}
 #endif /* SERVER_MODE */
 
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CLIENT_CONNECTED, 4,
@@ -3203,11 +3199,6 @@ xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index)
 	  return NO_ERROR;
 	}
 
-      /* check if the client was a log applier */
-      if (tdes->client.client_type == BOOT_CLIENT_LOG_APPLIER)
-	{
-	  css_notify_ha_log_applier_state (thread_p, HA_LOG_APPLIER_STATE_UNREGISTERED);
-	}
       /* Check the server's state for HA action for this client */
       if (BOOT_NORMAL_CLIENT_TYPE (tdes->client.client_type))
 	{
