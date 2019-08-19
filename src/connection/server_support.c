@@ -2735,13 +2735,13 @@ css_process_new_slave (SOCKET master_fd)
 
   // *INDENT-OFF*
   cubreplication::replication_node_manager::inc_tasks ();
+  assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
   cubthread::entry_task * new_slave_task = new cubthread::entry_callable_task ([new_fd] (cubthread::entry & context)
   {
     cubreplication::replication_node_manager::wait_commute ([] ()
     {
       return ha_Server_state == HA_SERVER_STATE_ACTIVE;
     });
-    assert (ha_Server_state == HA_SERVER_STATE_ACTIVE);
     cubreplication::replication_node_manager::get_master_node ()->new_slave (new_fd);
     cubreplication::replication_node_manager::dec_tasks ();
   }, true);
@@ -2771,6 +2771,7 @@ css_process_add_ctrl_chn (SOCKET master_fd)
 
   // *INDENT-OFF*
   cubreplication::replication_node_manager::inc_tasks ();
+  assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
   cubthread::entry_task * add_ctrl_task = new cubthread::entry_callable_task ([new_fd] (cubthread::entry & context)
   {
     cubreplication::replication_node_manager::wait_commute ([] ()
