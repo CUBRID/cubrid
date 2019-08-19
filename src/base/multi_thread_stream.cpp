@@ -779,7 +779,7 @@ namespace cubstream
   {
     std::unique_lock<std::mutex> ul (m_fetch_notify_mtx);
     m_fetch_all_requested = true;
-    m_fetch_finished_cv.wait (ul, [this]()
+    m_fetch_finished_cv.wait (ul, [this] ()
     {
       return m_fetch_all_finished;
     });

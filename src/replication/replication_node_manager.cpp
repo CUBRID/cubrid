@@ -43,20 +43,20 @@ namespace cubreplication
   cubreplication::master_node *g_master_node = NULL;
   cubreplication::slave_node *g_slave_node = NULL;
 
-  std::mutex g_tasks_running_mtx;
-  std::condition_variable g_tasks_running_cv;
-  size_t g_tasks_running;
+  std::mutex g_ha_tasks_running_mtx;
+  std::condition_variable g_ha_tasks_running_cv;
+  size_t g_ha_tasks_running;
 
   std::condition_variable g_commute_cv;
   std::mutex g_commute_mtx;
 
   namespace replication_node_manager
   {
-    static void wait_tasks ();
+    static void wait_ha_tasks ();
 
     void init (const char *server_name)
     {
-      g_tasks_running = 0;
+      g_ha_tasks_running = 0;
       g_hostname = server_name;
 
       INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_BUFFER_SIZE);
@@ -75,7 +75,7 @@ namespace cubreplication
 
     void finalize ()
     {
-      wait_tasks ();
+      wait_ha_tasks ();
 
       g_hostname.clear ();
 
@@ -166,27 +166,27 @@ namespace cubreplication
 
     void inc_tasks ()
     {
-      std::lock_guard<std::mutex> lg (g_tasks_running_mtx);
-      ++g_tasks_running;
+      std::lock_guard<std::mutex> lg (g_ha_tasks_running_mtx);
+      ++g_ha_tasks_running;
     }
 
     void dec_tasks ()
     {
-      std::lock_guard<std::mutex> lg (g_tasks_running_mtx);
-      assert (g_tasks_running > 0);
-      --g_tasks_running;
-      if (g_tasks_running == 0)
+      std::lock_guard<std::mutex> lg (g_ha_tasks_running_mtx);
+      assert (g_ha_tasks_running > 0);
+      --g_ha_tasks_running;
+      if (g_ha_tasks_running == 0)
 	{
-	  g_tasks_running_cv.notify_all ();
+	  g_ha_tasks_running_cv.notify_all ();
 	}
     }
 
-    static void wait_tasks ()
+    static void wait_ha_tasks ()
     {
-      std::unique_lock<std::mutex> ul (g_tasks_running_mtx);
-      g_tasks_running_cv.wait (ul, [] ()
+      std::unique_lock<std::mutex> ul (g_ha_tasks_running_mtx);
+      g_ha_tasks_running_cv.wait (ul, [] ()
       {
-	return g_tasks_running == 0;
+	return g_ha_tasks_running == 0;
       });
     }
   }
