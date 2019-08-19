@@ -92,11 +92,11 @@ namespace cubreplication
       g_stream = NULL;
     }
 
-    void commute_to_master_state (const std::function<void (void)> &ha_transitions)
+    void commute_to_master_state (cubthread::entry *thread_p, bool force)
     {
       inc_tasks ();
 
-      cubthread::entry_task *promote_task = new cubthread::entry_callable_task ([&ha_transitions] (
+      cubthread::entry_task *promote_task = new cubthread::entry_callable_task ([thread_p, force] (
 		  cubthread::entry &context)
       {
 	if (g_slave_node != NULL)
@@ -111,7 +111,7 @@ namespace cubreplication
 	    g_master_node = new master_node (g_hostname.c_str (), g_stream, g_stream_file);
 	  }
 
-	ha_transitions ();
+	css_finish_transit (thread_p, force, HA_SERVER_STATE_ACTIVE);
 	g_commute_cv.notify_all ();
       }, true);
 
@@ -119,12 +119,11 @@ namespace cubreplication
       cubthread::get_manager ()->push_task (wp, promote_task);
     }
 
-    void commute_to_slave_state (const std::function<void (void)> &ha_transitions)
+    void commute_to_slave_state (cubthread::entry *thread_p, bool force)
     {
-
       inc_tasks ();
 
-      cubthread::entry_task *demote_task = new cubthread::entry_callable_task ([&ha_transitions] (
+      cubthread::entry_task *demote_task = new cubthread::entry_callable_task ([thread_p, force] (
 		  cubthread::entry &context)
       {
 	// todo: remove after master -> slave transitions is properly handled
@@ -138,7 +137,7 @@ namespace cubreplication
 	    g_slave_node = new slave_node (g_hostname.c_str (), g_stream, g_stream_file);
 	  }
 
-	ha_transitions ();
+	css_finish_transit (thread_p, force, HA_SERVER_STATE_STANDBY);
 	g_commute_cv.notify_all ();
       }, true);
 
@@ -158,10 +157,13 @@ namespace cubreplication
       return g_slave_node;
     }
 
-    void wait_commute (const std::function<bool (void)> &ha_predicate)
+    void wait_commute (HA_SERVER_STATE &ha_state, HA_SERVER_STATE req_state)
     {
       std::unique_lock<std::mutex> ul (g_commute_mtx);
-      g_commute_cv.wait (ul, ha_predicate);
+      g_commute_cv.wait (ul, [req_state, &ha_state] ()
+      {
+	return ha_state == req_state;
+      });
     }
 
     void inc_tasks ()

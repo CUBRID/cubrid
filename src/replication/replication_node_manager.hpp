@@ -25,11 +25,17 @@
 #define _REPLICATION_NODE_MANAGER_HPP_
 
 #include "cubstream.hpp"
+#include "server_support.h"
 
 namespace cubstream
 {
   class multi_thread_stream;
   class stream_file;
+}
+
+namespace cubthread
+{
+  class entry;
 }
 
 namespace cubreplication
@@ -46,10 +52,10 @@ namespace cubreplication
     master_node *get_master_node ();
     slave_node *get_slave_node ();
 
-    void commute_to_master_state (const std::function<void (void)> &ha_transitions);
-    void commute_to_slave_state (const std::function<void (void)> &ha_transitions);
+    void commute_to_master_state (cubthread::entry *thread_p, bool force);
+    void commute_to_slave_state (cubthread::entry *thread_p, bool force);
 
-    void wait_commute (const std::function<bool (void)> &ha_predicate);
+    void wait_commute (HA_SERVER_STATE &ha_state, HA_SERVER_STATE req_state);
 
     void inc_tasks ();
     void dec_tasks ();

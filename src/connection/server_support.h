@@ -86,6 +86,7 @@ extern void css_unset_ha_repl_delayed (void);
 extern int css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p, int whence);
 extern int css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool force, int timeout,
 				       bool heartbeat);
+extern void css_finish_transit (THREAD_ENTRY * thread_p, bool force, HA_SERVER_STATE req_state);
 extern int css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE state);
 
 extern int css_process_master_hostname (void);
