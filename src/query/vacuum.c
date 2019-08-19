@@ -2822,10 +2822,11 @@ restart:
       ASSERT_ERROR ();
       return;
     }
-  data_index =
-    (int) (data_page->index_unvacuumed
-	   + (INT16) (vacuum_Data.blockid_job_cursor
-		      - VACUUM_BLOCKID_WITHOUT_FLAGS (data_page->data[data_page->index_unvacuumed].blockid)));
+  INT64 job_offset =
+    vacuum_Data.blockid_job_cursor
+    - VACUUM_BLOCKID_WITHOUT_FLAGS (data_page->data[data_page->index_unvacuumed].blockid);
+  assert (job_offset >= 0);
+  data_index = (int) (data_page->index_unvacuumed + job_offset);
 
   vacuum_er_log (VACUUM_ER_LOG_MASTER, "Start searching jobs in page %d|%d from index %d.",
 		 vacuum_Data.vpid_job_cursor.volid, vacuum_Data.vpid_job_cursor.pageid, data_index);
@@ -5000,6 +5001,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	      vacuum_update_keep_from_log_pageid (thread_p);
 	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "update last_blockid to %lld",
 			     (long long int) vacuum_Data.get_last_blockid ());
+	      vacuum_Data.blockid_job_cursor = vacuum_Data.get_last_blockid () + 1;
 	    }
 	}
       return NO_ERROR;
