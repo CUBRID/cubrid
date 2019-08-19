@@ -2358,23 +2358,23 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	{
 	  break;
 	}
-	  if (!HA_DISABLED () && state == HA_SERVER_STATE_TO_BE_ACTIVE)
-	    {
-	      cubreplication::replication_node_manager::commute_to_master_state ([thread_p] ()
-	      {
-		logtb_enable_update (thread_p);
-	  	auto state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
-		assert (state == HA_SERVER_STATE_ACTIVE); 
-	      });
-	    }
+      if (!HA_DISABLED () && state == HA_SERVER_STATE_TO_BE_ACTIVE)
+	{
+	  cubreplication::replication_node_manager::commute_to_master_state ([thread_p] ()
+	  {
+	    logtb_enable_update (thread_p);
+	    auto state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
+	    assert (state == HA_SERVER_STATE_ACTIVE); 
+	  });
+	}
 
-	  if (HA_DISABLED ())
-	    {
-	      assert (state == HA_SERVER_STATE_TO_BE_ACTIVE);
+      if (HA_DISABLED ())
+	{
+	  assert (state == HA_SERVER_STATE_TO_BE_ACTIVE);
 
-	      logtb_enable_update (thread_p);
-	      state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
-	    }
+	  logtb_enable_update (thread_p);
+	  state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
+	}
       break;
 
     case HA_SERVER_STATE_STANDBY:
@@ -2396,18 +2396,14 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  {
 	    if (orig_state == HA_SERVER_STATE_IDLE)
 	      {
-		/* If all log appliers have done their recovering actions, go directly to standby mode */
-		if (css_check_ha_log_applier_working ())
-		  {
-		    er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: css_check_ha_log_applier_working ()\n");
-		    logtb_disable_update (thread_p);
-		    state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
-		    assert (state == HA_SERVER_STATE_STANDBY);
-		  }
+		logtb_disable_update (thread_p);
+		state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
+		assert (state == HA_SERVER_STATE_STANDBY);
 	      }
 	    else
 	      {
-		/* If there's no active clients (except me), go directly to standby mode */
+		// TODO: downgrading to standby
+		/* If there's no active clients, go directly to standby mode */
 		if (logtb_count_clients (thread_p) == 0)
 		  {
 		    er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: logtb_count_clients () = 0\n");
