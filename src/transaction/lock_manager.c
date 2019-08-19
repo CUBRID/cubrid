@@ -70,7 +70,7 @@
 
 #include <array>
 
-extern LOCK_COMPATIBILITY lock_Comp[11][11];
+extern LOCK_COMPATIBILITY lock_Comp[12][12];
 
 #if defined (SERVER_MODE)
 /* object lock hash function */

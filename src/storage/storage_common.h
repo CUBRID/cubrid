@@ -390,10 +390,11 @@ typedef enum
   SIX_LOCK = 7,			/* Shared and intention exclusive lock */
   U_LOCK = 8,			/* Update lock */
   X_LOCK = 9,			/* Exclusive lock */
-  SCH_M_LOCK = 10		/* Schema Modification Lock */
+  SCH_M_LOCK = 10,		/* Schema Modification Lock */
+  BU_LOCK = 11			/* Bulk Update Lock */
 } LOCK;
 
-extern LOCK lock_Conv[11][11];
+extern LOCK lock_Conv[12][12];
 
 #define LOCK_TO_LOCKMODE_STRING(lock) 			\
   (((lock) ==NULL_LOCK) ? "NULL_LOCK" :			\
@@ -404,7 +405,8 @@ extern LOCK lock_Conv[11][11];
    ((lock) ==   U_LOCK) ? "   U_LOCK" :			\
    ((lock) ==  SCH_S_LOCK) ? "  SCH_S_LOCK" :		\
    ((lock) ==  SCH_M_LOCK) ? "  SCH_M_LOCK" :		\
-   ((lock) ==   X_LOCK) ? "   X_LOCK" : "UNKNOWN")
+   ((lock) ==   X_LOCK) ? "   X_LOCK" :                 \
+   ((lock) ==  BU_LOCK) ?  " BU_LOCK" : "UNKNOWN")
 
 /* CLASSNAME TO OID RETURN VALUES */
 
