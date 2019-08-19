@@ -2348,6 +2348,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
           // desired state was enforced
 	  assert (ha_Server_state == state);    	
 	}
+      csect_exit (thread_p, CSECT_HA_SERVER_STATE);
       return NO_ERROR;
     }
 
