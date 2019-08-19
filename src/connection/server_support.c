@@ -2393,30 +2393,30 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	{
 	  assert (!HA_DISABLED ());
 	  auto ha_transitions = [orig_state, state, thread_p] () mutable
-				{
-				  if (orig_state == HA_SERVER_STATE_IDLE)
-				    {
-				      /* If all log appliers have done their recovering actions, go directly to standby mode */
-				      if (css_check_ha_log_applier_working ())
-					{
-					  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: css_check_ha_log_applier_working ()\n");
-					  logtb_disable_update (thread_p);
-					  state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
-					  assert (state == HA_SERVER_STATE_STANDBY);
-					}
-				    }
-				  else
-				    {
-				      /* If there's no active clients (except me), go directly to standby mode */
-				      if (logtb_count_clients (thread_p) == 0)
-					{
-					  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: logtb_count_clients () = 0\n");
-					  logtb_disable_update (thread_p);
-					  state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
-					  assert (state == HA_SERVER_STATE_STANDBY);
-					}
-				    }
-	  			};
+	  {
+	    if (orig_state == HA_SERVER_STATE_IDLE)
+	      {
+		/* If all log appliers have done their recovering actions, go directly to standby mode */
+		if (css_check_ha_log_applier_working ())
+		  {
+		    er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: css_check_ha_log_applier_working ()\n");
+		    logtb_disable_update (thread_p);
+		    state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
+		    assert (state == HA_SERVER_STATE_STANDBY);
+		  }
+	      }
+	    else
+	      {
+		/* If there's no active clients (except me), go directly to standby mode */
+		if (logtb_count_clients (thread_p) == 0)
+		  {
+		    er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: logtb_count_clients () = 0\n");
+		    logtb_disable_update (thread_p);
+		    state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
+		    assert (state == HA_SERVER_STATE_STANDBY);
+		  }
+	      }
+	  };
 
 	  cubreplication::replication_node_manager::commute_to_slave_state (ha_transitions);
 	}
@@ -2736,7 +2736,7 @@ css_process_new_slave (SOCKET master_fd)
 
   // *INDENT-OFF*
   cubreplication::replication_node_manager::inc_tasks ();
-  cubthread::entry_task * demote_task = new cubthread::entry_callable_task ([new_fd] (cubthread::entry & context)
+  cubthread::entry_task * new_slave_task = new cubthread::entry_callable_task ([new_fd] (cubthread::entry & context)
   {
     cubreplication::replication_node_manager::wait_commute ([] ()
     {
@@ -2748,7 +2748,7 @@ css_process_new_slave (SOCKET master_fd)
   }, true);
 
   auto wp = cubthread::internal_tasks_worker_pool::get_instance ();
-  cubthread::get_manager ()->push_task (wp, demote_task);
+  cubthread::get_manager ()->push_task (wp, new_slave_task);
   // *INDENT-ON*
 }
 
@@ -2772,7 +2772,7 @@ css_process_add_ctrl_chn (SOCKET master_fd)
 
   // *INDENT-OFF*
   cubreplication::replication_node_manager::inc_tasks ();
-  cubthread::entry_task * demote_task = new cubthread::entry_callable_task ([new_fd] (cubthread::entry & context)
+  cubthread::entry_task * add_ctrl_task = new cubthread::entry_callable_task ([new_fd] (cubthread::entry & context)
   {
     cubreplication::replication_node_manager::wait_commute ([] ()
     {
@@ -2784,7 +2784,7 @@ css_process_add_ctrl_chn (SOCKET master_fd)
   }, true);
 
   auto wp = cubthread::internal_tasks_worker_pool::get_instance ();
-  cubthread::get_manager ()->push_task (wp, demote_task);
+  cubthread::get_manager ()->push_task (wp, add_ctrl_task);
   // *INDENT-ON*
 }
 
