@@ -23,14 +23,17 @@
 #include "log_impl.h"
 
 #include <map>
+#include <mutex>
 
 namespace cubreplication
 {
   static std::map<MVCCID, log_tdes *> g_apply_tran_map;
+  static std::mutex g_sync_tran_map;
 
   int
   get_applier_transaction (cubthread::entry &thread_r, MVCCID mvccid)
   {
+    std::unique_lock<std::mutex> ulock (g_sync_tran_map);
     auto it = g_apply_tran_map.find (mvccid);
     if (it != g_apply_tran_map.end ())
       {
@@ -38,6 +41,7 @@ namespace cubreplication
 	thread_r.tran_index = it->second->tran_index;
 	return NO_ERROR;
       }
+    ulock.unlock ();
 
     int error_code = locator_repl_start_tran (&thread_r);
     if (error_code != NO_ERROR)
@@ -52,18 +56,22 @@ namespace cubreplication
 	assert (false);
 	return ER_FAILED;
       }
+
+    ulock.lock ();
     g_apply_tran_map.insert ({ mvccid, log_Gl.trantable.all_tdes[tran_index] });
     return NO_ERROR;
   }
 
-  int
+  void
   end_applier_transaction (cubthread::entry &thread_r, MVCCID mvccid, bool commit)
   {
+    std::unique_lock<std::mutex> ulock (g_sync_tran_map);
     if (g_apply_tran_map.erase (mvccid) != 1)
       {
 	// should erase exactly one element
 	assert (false);
       }
+    ulock.unlock ();
     return locator_repl_end_tran (&thread_r, commit);
   }
 } // namespace cubreplication

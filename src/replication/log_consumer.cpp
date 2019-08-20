@@ -28,6 +28,7 @@
 #include "error_manager.h"
 #include "locator_sr.h"
 #include "multi_thread_stream.hpp"
+#include "replication_applier_transaction.hpp"
 #include "replication_common.hpp"
 #include "replication_stream_entry.hpp"
 #include "replication_subtran_apply.hpp"
@@ -53,7 +54,13 @@ namespace cubreplication
 
       void execute (cubthread::entry &thread_ref) final
       {
-	(void) locator_repl_start_tran (&thread_ref);
+	MVCCID mvccid = m_repl_stream_entries.at (0)->get_mvccid ();
+	assert (MVCCID_IS_VALID (mvccid));
+	if (get_applier_transaction (thread_ref, mvccid) != NO_ERROR)
+	  {
+	    // todo: what happens here?
+	    return;
+	  }
 
 	for (stream_entry *curr_stream_entry : m_repl_stream_entries)
 	  {
@@ -83,7 +90,9 @@ namespace cubreplication
 	    delete curr_stream_entry;
 	  }
 
-	(void) locator_repl_end_tran (&thread_ref, true);
+	/* TODO[replication] : error handling - abort transaction when interrupted or other errors */
+	// TODO[replication] : do not call end_applier_transaction here if apply is changed to on the fly
+	end_applier_transaction (thread_ref, mvccid, true);
 	m_lc.end_one_task ();
       }
 

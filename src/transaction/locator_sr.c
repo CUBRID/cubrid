@@ -13997,7 +13997,7 @@ locator_repl_start_tran (THREAD_ENTRY * thread_p)
   return error_code;
 }
 
-int
+void
 locator_repl_end_tran (THREAD_ENTRY * thread_p, bool commit)
 {
   int saved_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -14018,8 +14018,6 @@ locator_repl_end_tran (THREAD_ENTRY * thread_p, bool commit)
   logtb_set_current_tran_index (thread_p, saved_tran_index);
 
   (void) session_state_destroy (thread_p, thread_p->get_session_id ());
-
-  return NO_ERROR;
 }
 
 #endif /* SERVER_MODE */

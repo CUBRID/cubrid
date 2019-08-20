@@ -146,7 +146,7 @@ extern int locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user,
 				   const char *statement);
 
 extern int locator_repl_start_tran (THREAD_ENTRY * thread_p);
-extern int locator_repl_end_tran (THREAD_ENTRY * thread_p, bool commit);
+extern void locator_repl_end_tran (THREAD_ENTRY * thread_p, bool commit);
 
  // *INDENT-OFF*
 extern int locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,

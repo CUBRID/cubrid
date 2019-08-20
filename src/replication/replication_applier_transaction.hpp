@@ -35,7 +35,7 @@ namespace cubthread
 namespace cubreplication
 {
   int get_applier_transaction (cubthread::entry &thread_r, MVCCID mvccid);
-  int end_applier_transaction (cubthread::entry &thread_r, MVCCID mvccid, bool commit);
+  void end_applier_transaction (cubthread::entry &thread_r, MVCCID mvccid, bool commit);
 } // namespace cubreplication
 
 #endif // _REPLICATION_APPLIER_TRANSACTION_HPP_
