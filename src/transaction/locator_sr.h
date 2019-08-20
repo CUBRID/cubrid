@@ -102,7 +102,7 @@ extern int locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid
 				 bool need_locking);
 extern int locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes, OID * inst_oid, OID * class_oid,
 					int is_insert, int op_type, HEAP_SCANCACHE * scan_cache, bool datayn,
-					bool replyn, HFID * hfid, FUNC_PRED_UNPACK_INFO * func_preds);
+					bool replyn, HFID * hfid, FUNC_PRED_UNPACK_INFO * func_preds, bool has_BU_lock);
 extern int locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old_recdes, ATTR_ID * att_id,
 				 int n_att_id, OID * oid, OID * class_oid, int op_type,
 				 HEAP_SCANCACHE * scan_cache, REPL_INFO * repl_info);

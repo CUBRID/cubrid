@@ -308,6 +308,8 @@ struct heap_operation_context
   bool is_logical_old;		/* true if initial record was not REC_ASSIGN_ADDRESS */
   bool is_redistribute_insert_with_delid;	/* true if the insert is due to a partition redistribute data operation
 						 * and has a valid delid */
+  bool is_bulk_op;		// note - currently for insert only
+  // side-effect - disables MVCC operations
 
   /* Performance stat dump. */
   PERF_UTIME_TRACKER *time_track;
