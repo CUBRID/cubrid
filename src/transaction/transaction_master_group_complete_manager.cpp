@@ -36,10 +36,6 @@ namespace cubtx
   //
   master_group_complete_manager *master_group_complete_manager::get_instance ()
   {
-    if (gl_master_group == NULL)
-      {
-	gl_master_group = new master_group_complete_manager ();
-      }
     return gl_master_group;
   }
 
@@ -49,7 +45,7 @@ namespace cubtx
   void master_group_complete_manager::init ()
   {
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
-    gl_master_group = get_instance ();
+    gl_master_group = new master_group_complete_manager ();
     gl_master_group->m_latest_closed_group_start_stream_position = 0;
     gl_master_group->m_latest_closed_group_end_stream_position = 0;
 
@@ -89,6 +85,14 @@ namespace cubtx
   }
 
   //
+  // get_manager_type - get manager type.
+  //
+  int master_group_complete_manager::get_manager_type () const
+  {
+    return LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE;
+  }
+
+  //
   // on_register_transaction - on register transaction specific to master node.
   //
   void master_group_complete_manager::on_register_transaction ()
@@ -125,7 +129,7 @@ namespace cubtx
   //
   // prepare_complete prepares group complete. Always should be called before do_complete.
   //
-  void master_group_complete_manager::prepare_complete (THREAD_ENTRY *thread_p)
+  void master_group_complete_manager::do_prepare_complete (THREAD_ENTRY *thread_p)
   {
     if (close_current_group ())
       {
@@ -133,7 +137,7 @@ namespace cubtx
 	const tx_group &closed_group = get_latest_closed_group ();
 
 	/* TODO - Introduce parameter. For now complete group MVCC only here. Notify MVCC complete. */
-	log_Gl.mvcc_table.complete_group_mvcc (closed_group);
+	log_Gl.mvcc_table.complete_group_mvcc (thread_p, closed_group);
 	notify_group_mvcc_complete (closed_group);
 
 	/* Pack group commit that internally wakeups senders. Get stream position of group complete. */
@@ -193,7 +197,7 @@ namespace cubtx
     return;
 
     cubthread::entry *thread_p = &cubthread::get_entry();
-    master_group_complete_manager::get_instance ()->prepare_complete (thread_p);
+    master_group_complete_manager::get_instance ()->do_prepare_complete (thread_p);
   }
 
   master_group_complete_manager *master_group_complete_manager::gl_master_group = NULL;

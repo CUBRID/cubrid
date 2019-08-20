@@ -155,6 +155,17 @@ namespace cubreplication
       subtran_applier &get_subtran_applier ();
   };
 
+  //
+  // dispatch_consumer is the common interface used by dispatch to control group creation.
+  //
+  class dispatch_consumer
+  {
+    public:
+      virtual void wait_for_complete_stream_position (cubstream::stream_position stream_position) = 0;
+      virtual void set_close_info_for_current_group (cubstream::stream_position stream_position,
+	  int count_expected_transactions) = 0;
+  };
+
 } /* namespace cubreplication */
 
 #endif /* _LOG_CONSUMER_HPP_ */
