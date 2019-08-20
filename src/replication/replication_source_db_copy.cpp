@@ -245,7 +245,8 @@ namespace cubreplication
   void source_copy_context::append_schema_item (statement_list &container, const char *id, const size_t id_size,
                                                 const char *buffer, const size_t buf_size)
   {
-    auto it = container.find (id);
+    assert (id != NULL || id_size == 0);
+    auto it = container.find (std::string (id, id_size));
     if (it != container.end ())
       {
         it->second.append (buffer, buf_size);
