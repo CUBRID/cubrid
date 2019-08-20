@@ -54,6 +54,7 @@
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
+#include "string_buffer.hpp"
 
 #define LOGWR_THREAD_SUSPEND_TIMEOUT 	10
 
@@ -1081,7 +1082,6 @@ logwr_flush_header_page (void)
   LOG_PAGEID logical_pageid;
   LOG_PHY_PAGEID phy_pageid;
   int nbytes;
-  char buffer[1024];
 
   if (logwr_Gl.loghdr_pgptr == NULL)
     {
@@ -1124,11 +1124,12 @@ logwr_flush_header_page (void)
 
   if (prev_ha_server_state != logwr_Gl.hdr.ha_server_state)
     {
-      sprintf (buffer, "change the state of HA server (%s@%s) from '%s' to '%s'", logwr_Gl.db_name,
-	       (logwr_Gl.hostname != NULL) ? logwr_Gl.hostname : "unknown",
-	       css_ha_server_state_string ((HA_SERVER_STATE) prev_ha_server_state),
-	       css_ha_server_state_string ((HA_SERVER_STATE) logwr_Gl.hdr.ha_server_state));
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
+      string_buffer error_msg;
+      error_msg ("change the state of HA server (%s@%s) from '%s' to '%s'", logwr_Gl.db_name,
+		 (logwr_Gl.hostname != NULL) ? logwr_Gl.hostname : "unknown",
+		 css_ha_server_state_string ((HA_SERVER_STATE) prev_ha_server_state),
+		 css_ha_server_state_string ((HA_SERVER_STATE) logwr_Gl.hdr.ha_server_state));
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, error_msg.get_buffer ());
     }
   prev_ha_server_state = logwr_Gl.hdr.ha_server_state;
 
@@ -1630,8 +1631,8 @@ logwr_reinit_copylog (void)
 #if !defined(WINDOWS)
   DIR *dirp;
   struct dirent *dp;
-  char log_archive_path[PATH_MAX];
-  char archive_log_prefix[PATH_MAX];
+  char log_archive_path[2 * PATH_MAX];
+  char archive_log_prefix[2 * PATH_MAX];
   int archive_log_prefix_len;
   BACKGROUND_ARCHIVING_INFO *bg_arv_info = NULL;
 

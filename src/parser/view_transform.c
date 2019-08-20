@@ -2128,7 +2128,7 @@ mq_substitute_subquery_list_in_statement (PARSER_CONTEXT * parser, PT_NODE * sta
 	{
 	  result_list = parser_append_node (result, result_list);
 	}
-      else if (er_has_error () || pt_has_error (parser))
+      else if (er_errid_if_has_error () != NO_ERROR || pt_has_error (parser))
 	{
 	  return NULL;
 	}
@@ -2479,7 +2479,7 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
 			}
 		    }
 
-		  if (er_has_error () || pt_has_error (parser))
+		  if (er_errid_if_has_error () != NO_ERROR || pt_has_error (parser))
 		    {
 		      return NULL;
 		    }
