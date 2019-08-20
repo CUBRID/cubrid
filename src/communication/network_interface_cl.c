@@ -10045,7 +10045,7 @@ locator_send_proxy_buffer (const int type, const char *id, const size_t buf_size
     }
 
   ptr = or_pack_int (request, type);
-  ptr = or_pack_string_with_length (request, id, id_len);
+  ptr = or_pack_string_with_length (ptr, id, id_len);
   ptr = or_pack_int (ptr, buf_size);
   memcpy (ptr, buffer, buf_size);
   ptr += buf_size;
