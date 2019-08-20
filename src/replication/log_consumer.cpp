@@ -52,6 +52,15 @@ namespace cubreplication
 	add_repl_stream_entry (repl_stream_entry);
       }
 
+      ~applier_worker_task ()
+      {
+	for (stream_entry *&se : m_repl_stream_entries)
+	  {
+	    delete se;
+	    se = NULL;
+	  }
+      }
+
       void execute (cubthread::entry &thread_ref) final
       {
 	MVCCID mvccid = m_repl_stream_entries.at (0)->get_mvccid ();
@@ -62,7 +71,7 @@ namespace cubreplication
 	    return;
 	  }
 
-	for (stream_entry *curr_stream_entry : m_repl_stream_entries)
+	for (stream_entry *&curr_stream_entry : m_repl_stream_entries)
 	  {
 	    curr_stream_entry->unpack ();
 
@@ -88,7 +97,10 @@ namespace cubreplication
 	      }
 
 	    delete curr_stream_entry;
+	    curr_stream_entry = NULL;
 	  }
+
+	m_repl_stream_entries.clear ();
 
 	/* TODO[replication] : error handling - abort transaction when interrupted or other errors */
 	// TODO[replication] : do not call end_applier_transaction here if apply is changed to on the fly
@@ -224,6 +236,8 @@ namespace cubreplication
 			/* TODO[replication] : when on-fly apply is active, we need to abort the transaction;
 			 * for now, we are sure that no change has been made on slave on behalf of this task,
 			 * just drop the task */
+			delete it->second;
+			it->second = NULL;
 		      }
 		    else
 		      {
@@ -245,6 +259,11 @@ namespace cubreplication
 	      }
 	    else if (se->is_new_master ())
 	      {
+		for (auto &repl_task : repl_tasks)
+		  {
+		    delete repl_task.second;
+		    repl_task.second = NULL;
+		  }
 		repl_tasks.clear ();
 	      }
 	    else if (se->is_subtran_commit ())
@@ -275,6 +294,15 @@ namespace cubreplication
 		/* stream entry is deleted by applier task thread */
 	      }
 	  }
+
+	// delete unapplied tasks
+	for (auto &repl_task : repl_tasks)
+	  {
+	    delete repl_task.second;
+	    repl_task.second = NULL;
+	  }
+	// wait for the applying tasks
+	m_lc.wait_for_tasks ();
       }
 
     private:
