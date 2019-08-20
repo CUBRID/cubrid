@@ -86,6 +86,21 @@ namespace cubreplication
     rwlock_write_unlock (&m_senders_lock);
   }
 
+  void stream_senders_manager::wakeup_transfer_senders (cubstream::stream_position desired_position)
+  {
+#if defined (SERVER_MODE)
+    rwlock_read_lock (&m_senders_lock);
+    for (cubstream::transfer_sender *sender : m_stream_senders)
+      {
+	if (sender->get_last_sent_position() < desired_position)
+	  {
+	    sender->get_daemon()->wakeup();
+	  }
+      }
+    rwlock_read_unlock (&m_senders_lock);
+#endif
+  }
+
   void stream_senders_manager::stop_stream_sender (cubstream::transfer_sender *sender)
   {
     rwlock_write_lock (&m_senders_lock);

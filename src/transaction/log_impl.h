@@ -789,6 +789,20 @@ enum log_cs_access_mode
 { LOG_CS_FORCE_USE, LOG_CS_SAFE_READER };
 typedef enum log_cs_access_mode LOG_CS_ACCESS_MODE;
 
+enum log_tran_complete_manager_type
+{
+  LOG_TRAN_COMPLETE_NO_MANAGER,
+  LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE,
+  LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE,
+  LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE,
+};
+typedef enum log_tran_complete_manager_type LOG_TRAN_COMPLETE_MANAGER_TYPE;
+
+#define LOG_TRAN_COMPLETE_NO_MANAGER_STR                 "no manager"
+#define LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE_STR        "single node"
+#define LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE_STR        "master node"
+#define LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE_STR         "slave"
+
 #if !defined(SERVER_MODE)
 #if !defined(LOG_TRAN_INDEX)
 #define LOG_TRAN_INDEX
@@ -915,6 +929,7 @@ extern int logpb_check_and_reset_temp_lsa (THREAD_ENTRY * thread_p, VOLID volid)
 extern void logpb_initialize_arv_page_info_table (void);
 extern void logpb_initialize_logging_statistics (void);
 extern void logpb_initialize_tran_complete_manager (void);
+extern const char *logpb_complete_manager_string (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type);
 extern int logpb_background_archiving (THREAD_ENTRY * thread_p);
 extern void xlogpb_dump_stat (FILE * outfp);
 
