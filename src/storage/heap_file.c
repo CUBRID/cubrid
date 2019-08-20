@@ -19589,7 +19589,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   /* In case of partitions, it is possible to have OR_MVCC_FLAG_VALID_PREV_VERSION flag. */
   use_optimization = (is_mvcc_class && (insert_context->update_in_place == UPDATE_INPLACE_NONE)
 		      && (!(mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION))
-		      && !heap_is_big_length (record_size + OR_MVCCID_SIZE)) && !insert_context->is_bulk_op;
+		      && !heap_is_big_length (record_size + OR_MVCCID_SIZE) && !insert_context->is_bulk_op);
 #endif
 
   if (use_optimization)

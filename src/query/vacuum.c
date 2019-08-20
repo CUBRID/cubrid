@@ -2822,9 +2822,9 @@ restart:
       ASSERT_ERROR ();
       return;
     }
-  INT64 job_offset =
-    vacuum_Data.blockid_job_cursor
-    - VACUUM_BLOCKID_WITHOUT_FLAGS (data_page->data[data_page->index_unvacuumed].blockid);
+
+  INT64 job_offset = (vacuum_Data.blockid_job_cursor
+		      - VACUUM_BLOCKID_WITHOUT_FLAGS (data_page->data[data_page->index_unvacuumed].blockid));
   assert (job_offset >= 0);
   data_index = (int) (data_page->index_unvacuumed + job_offset);
 
@@ -4990,6 +4990,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	  const size_t LOG_BLOCK_TRAILING_DIFF = 2;
 	  LOG_LSA log_lsa = log_Gl.prior_info.prior_lsa;
 	  VACUUM_LOG_BLOCKID log_blockid = vacuum_get_log_blockid (log_lsa.pageid);
+
 	  if (log_blockid > vacuum_Data.get_last_blockid () + LOG_BLOCK_TRAILING_DIFF)
 	    {
 	      // don't let vacuum data go too far back
