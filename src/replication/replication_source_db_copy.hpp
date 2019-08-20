@@ -34,7 +34,7 @@
 #include <condition_variable>
 #include <list>
 #include <mutex>
-#include <vector>
+#include <unordered_map>
 
 namespace cubcomm
 {
@@ -66,8 +66,7 @@ namespace cubreplication
   class source_copy_context
   {
     public:
-      using string_pair = std::pair <std::string, std::string>;
-      using statement_list = std::vector<string_pair>;
+      using statement_list = std::unordered_map<std::string, std::string>;
 
       const size_t EXTRACT_HEAP_WORKER_POOL_SIZE = 20;
 
@@ -148,6 +147,10 @@ namespace cubreplication
       void pack_and_add_start_of_extract_heap ();
       void pack_and_add_end_of_extract_heap ();
       void pack_and_add_end_of_copy ();
+
+      void append_schema_item (statement_list &container, const char *id, const size_t id_size, const char *buffer,
+                               const size_t buf_size);
+
 
       int wait_slave_finished ();
       int wait_receive_class_list (cubthread::entry &thread_ref);

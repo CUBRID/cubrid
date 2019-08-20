@@ -242,23 +242,36 @@ namespace cubreplication
     m_error_cnt++;
   }
 
+  void source_copy_context::append_schema_item (statement_list &container, const char *id, const size_t id_size,
+                                                const char *buffer, const size_t buf_size)
+  {
+    auto it = container.find (id);
+    if (it != container.end ())
+      {
+        it->second.append (buffer, buf_size);
+      }
+    else
+      {
+        container.insert (std::make_pair (std::string (id, id_size), std::string (buffer, buf_size)));
+      }
+  }
+
   void source_copy_context::append_class_schema (const char *id, const size_t id_size,
                                                  const char *buffer, const size_t buf_size)
   {
-    m_classes.emplace_back (make_pair (std::string (id, id_size), std::string (buffer, buf_size)));
+    append_schema_item (m_classes, id, id_size, buffer, buf_size);
   }
 
   void source_copy_context::append_trigger_schema (const char *id, const size_t id_size,
                                                    const char *buffer, const size_t buf_size)
   {
-    
-    m_triggers.emplace_back (make_pair (std::string (id, id_size), std::string (buffer, buf_size)));
+    append_schema_item (m_triggers, id, id_size, buffer, buf_size);
   }
 
   void source_copy_context::append_index_schema (const char *id, const size_t id_size,
                                                  const char *buffer, const size_t buf_size)
   {
-    m_indexes.emplace_back (make_pair (std::string (id, id_size), std::string (buffer, buf_size)));
+    append_schema_item (m_indexes, id, id_size, buffer, buf_size);
   }
 
   void source_copy_context::unpack_class_oid_list (const char *buffer, const size_t buf_size)
