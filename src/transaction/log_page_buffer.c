@@ -7028,8 +7028,6 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   char time_val[CTIME_MAX];
   LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
 
-  LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
-
 #if defined (SERVER_MODE)
   // check whether there is ongoing backup.
   LOG_CS_ENTER (thread_p);
