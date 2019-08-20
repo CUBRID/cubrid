@@ -18,33 +18,30 @@
  */
 
 //
-// Manager of completed group on a HA master node
+// Manager of completed group on a single node
 //
 
-#ifndef _MASTER_GROUP_COMPLETE_MANAGER_HPP_
-#define _MASTER_GROUP_COMPLETE_MANAGER_HPP_
+#ifndef _TRANACTION_SINGLE_NODE_GROUP_COMPLETE_MANAGER_HPP_
+#define _TRANACTION_SINGLE_NODE_GROUP_COMPLETE_MANAGER_HPP_
 
-#include "transaction_group_complete_manager.hpp"
-#include "stream_transfer_sender.hpp"
-
-#include "cubstream.hpp"
+#include "log_manager.h"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
-
+#include "transaction_group_complete_manager.hpp"
 
 namespace cubtx
 {
   //
-  // master_group_complete_manager is a manager for group commits on master node
+  // single_node_group_complete_manager is a manager for group commits on single node
   //    Implements complete_manager interface used by transaction threads.
   //    Implements stream_ack interface used by stream senders.
   //
-  class master_group_complete_manager : public group_complete_manager, public cubstream::stream_ack
+  class single_node_group_complete_manager : public group_complete_manager, public log_flush_lsa
   {
     public:
-      ~master_group_complete_manager () override;
+      ~single_node_group_complete_manager () override;
 
-      static master_group_complete_manager *get_instance ();
+      static single_node_group_complete_manager *get_instance ();
       static void init ();
       static void final ();
 
@@ -52,8 +49,7 @@ namespace cubtx
       void do_prepare_complete (THREAD_ENTRY *thread_p) override;
       void do_complete (THREAD_ENTRY *thread_p) override;
 
-      /* stream_ack methods */
-      void notify_stream_ack (const cubstream::stream_position stream_pos) override;
+      void notify_log_flush_lsa (const LOG_LSA *lsa) override;
 
       int get_manager_type () const override;
 
@@ -62,20 +58,26 @@ namespace cubtx
       void on_register_transaction () override;
 
     private:
-      static master_group_complete_manager *gl_master_group;
-      static cubthread::daemon *gl_master_group_complete_daemon;
-      std::atomic<cubstream::stream_position> m_latest_closed_group_start_stream_position;
-      std::atomic<cubstream::stream_position> m_latest_closed_group_end_stream_position;
+#if defined (SERVER_MODE)
+      bool can_wakeup_group_complete_daemon (bool inc_gc_request_count);
+#endif
+      static void get_group_commit_interval (bool &is_timed_wait, cubthread::delta_time &period);
+
+      static single_node_group_complete_manager *gl_single_node_group;
+      static cubthread::daemon *gl_single_node_group_complete_daemon;
+
+      LOG_LSA m_latest_closed_group_start_log_lsa;
+      LOG_LSA m_latest_closed_group_end_log_lsa;
   };
 
   //
-  // master_group_complete_task is class for master group complete daemon
+  // single_node_group_complete_task is class for master group complete daemon
   //
-  class master_group_complete_task : public cubthread::entry_task
+  class single_node_group_complete_task : public cubthread::entry_task
   {
     public:
       /* entry_task methods */
       void execute (cubthread::entry &thread_ref) override;
   };
 }
-#endif // !_MASTER_GROUP_COMPLETE_MANAGER_HPP_
+#endif // !_TRANACTION_SINGLE_NODE_GROUP_COMPLETE_MANAGER_HPP_

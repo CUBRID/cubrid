@@ -30,6 +30,7 @@
 
 #include "mvcc_active_tran.hpp"
 #include "storage_common.h"
+#include "thread_entry.hpp"
 
 #include <atomic>
 #include <mutex>
@@ -84,7 +85,7 @@ struct mvcctable
     void complete_sub_mvcc (MVCCID mvccid);
     MVCCID get_new_mvccid ();
     void get_two_new_mvccid (MVCCID &first, MVCCID &second);
-    void complete_group_mvcc (const tx_group &group);
+    void complete_group_mvcc (THREAD_ENTRY *thread_p, const tx_group &group);
 
     bool is_active (MVCCID mvccid) const;
     MVCCID compute_oldest_active_mvccid () const;
