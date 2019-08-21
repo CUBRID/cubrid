@@ -90,7 +90,7 @@ namespace cubreplication
 	  {
 	    curr_stream_entry->unpack ();
 
-	    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+	    if (is_debug_detailed_dump_enabled ())
 	      {
 		string_buffer sb;
 		curr_stream_entry->stringify (sb, stream_entry::detailed_dump);
@@ -212,7 +212,7 @@ namespace cubreplication
 		continue;
 	      }
 
-	    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+	    if (is_debug_short_dump_enabled ())
 	      {
 		string_buffer sb;
 		se->stringify (sb, stream_entry::short_dump);
@@ -323,7 +323,7 @@ namespace cubreplication
 
   void log_consumer::push_entry (stream_entry *entry)
   {
-    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+    if (is_debug_short_dump_enabled ())
       {
 	string_buffer sb;
 	entry->stringify (sb, stream_entry::short_dump);
@@ -408,7 +408,7 @@ namespace cubreplication
 
   void log_consumer::execute_task (applier_worker_task *task)
   {
-    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+    if (is_debug_detailed_dump_enabled ())
       {
 	string_buffer sb;
 	task->stringify (sb);

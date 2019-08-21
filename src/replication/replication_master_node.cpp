@@ -150,6 +150,7 @@ namespace cubreplication
   {
     cubcomm::channel chn;
     chn.set_channel_name (REPL_ONLINE_CHANNEL_NAME);
+    chn.set_debug_dump_data (is_debug_communication_data_dump_enabled ());
 
     css_error_code rc = chn.accept (fd);
 
@@ -178,6 +179,7 @@ namespace cubreplication
 
     cubcomm::channel chn;
     chn.set_channel_name (REPL_CONTROL_CHANNEL_NAME);
+    chn.set_debug_dump_data (is_debug_communication_data_dump_enabled ());
 
     css_error_code rc = chn.accept (fd);
     assert (rc == NO_ERRORS);

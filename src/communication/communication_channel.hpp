@@ -95,6 +95,12 @@ namespace cubcomm
 	return m_channel_name + "_" + m_hostname + "_" + std::to_string (m_port);
       }
 
+      void set_debug_dump_data (bool is_enabled)
+      {
+        m_dump_data = is_enabled;
+      }
+
+      void er_log_debug_buffer (const char *msg, const char *buf, const size_t buf_size);
     protected:
       const int m_max_timeout_in_ms;
       CHANNEL_TYPE m_type;
@@ -102,9 +108,11 @@ namespace cubcomm
       std::string m_channel_name;
       std::string m_hostname;
       int m_port;
+
+      bool m_dump_data;
   };
 
-  void er_log_debug_buffer (const char *msg, const char *buf, const size_t buf_size);
+
 } /* cubcomm namespace */
 
 #endif /* _COMMUNICATION_CHANNEL_HPP_ */

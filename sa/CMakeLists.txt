@@ -294,6 +294,7 @@ set (REPLICATION_HEADERS
 
 set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/log_generator.cpp
+  ${REPLICATION_DIR}/replication_common.cpp
   ${REPLICATION_DIR}/replication_object.cpp
   ${REPLICATION_DIR}/replication_schema_extract.cpp
   ${REPLICATION_DIR}/replication_stream_entry.cpp

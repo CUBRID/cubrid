@@ -278,6 +278,7 @@ set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/log_generator.cpp
   ${REPLICATION_DIR}/master_control_channel.cpp
   ${REPLICATION_DIR}/replication_apply_db_copy.cpp
+  ${REPLICATION_DIR}/replication_common.cpp
   ${REPLICATION_DIR}/replication_object.cpp
   ${REPLICATION_DIR}/replication_master_node.cpp
   ${REPLICATION_DIR}/stream_senders_manager.cpp

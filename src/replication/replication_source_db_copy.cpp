@@ -357,6 +357,7 @@ namespace cubreplication
     int error = NO_ERROR;
     cubcomm::channel chn;
     chn.set_channel_name (REPL_COPY_CHANNEL_NAME);
+    chn.set_debug_dump_data (is_debug_communication_data_dump_enabled ());
 
     m_start_time = std::chrono::system_clock::now ();
 
@@ -515,8 +516,8 @@ error:
       }
 
     execution_time = std::chrono::system_clock::now () - m_start_time;
-    _er_log_debug (ARG_FILE_LINE, "source_copy_context::wait_slave_finished OK (time since start:%.6f)",
-		   execution_time.count ());
+    er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_slave_finished OK (time since start:%.6f)",
+			      execution_time.count ());
 
     return NO_ERROR;
   }

@@ -206,6 +206,7 @@ namespace cubreplication
     /* connect to replication master node */
     cubcomm::server_channel srv_chn (m_identity.get_hostname ().c_str ());
     srv_chn.set_channel_name (REPL_ONLINE_CHANNEL_NAME);
+    srv_chn.set_debug_dump_data (is_debug_communication_data_dump_enabled ());
 
     m_master_identity.set_hostname (master_node_hostname);
     m_master_identity.set_port (master_node_port_id);
@@ -271,6 +272,7 @@ namespace cubreplication
 
     cubcomm::server_channel control_chn (m_identity.get_hostname ().c_str ());
     control_chn.set_channel_name (REPL_CONTROL_CHANNEL_NAME);
+    control_chn.set_debug_dump_data (is_debug_communication_data_dump_enabled ());
     error = control_chn.connect (m_master_identity.get_hostname ().c_str (),
 				 m_master_identity.get_port (),
 				 COMMAND_SERVER_REQUEST_CONNECT_SLAVE_CONTROL);

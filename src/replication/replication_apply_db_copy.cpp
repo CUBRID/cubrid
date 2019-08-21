@@ -128,6 +128,7 @@ namespace cubreplication
     /* connect to replication master node */
     cubcomm::server_channel srv_chn (m_my_identity->get_hostname ().c_str ());
     srv_chn.set_channel_name (REPL_COPY_CHANNEL_NAME);
+    srv_chn.set_debug_dump_data (is_debug_communication_data_dump_enabled ());
 
     error = srv_chn.connect (m_source_identity->get_hostname ().c_str (), m_source_identity->get_port (),
 			     COMMAND_SERVER_REQUEST_CONNECT_SLAVE_COPY_DB);
@@ -159,8 +160,8 @@ namespace cubreplication
       }
 
     std::chrono::duration<double> execution_time = std::chrono::system_clock::now () - m_start_time;
-    _er_log_debug (ARG_FILE_LINE, "apply_copy_context::connection terminated (time since start:%.6f)",
-		   execution_time.count ());
+    er_log_debug_replication (ARG_FILE_LINE, "apply_copy_context::connection terminated (time since start:%.6f)",
+			      execution_time.count ());
 
     /* update position in log_Gl */
     log_Gl.hdr.m_ack_stream_position = m_online_repl_start_pos;
@@ -234,7 +235,7 @@ namespace cubreplication
 	  {
 	    curr_stream_entry->unpack ();
 
-	    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+	    if (is_debug_detailed_dump_enabled ())
 	      {
 		string_buffer sb;
 		curr_stream_entry->stringify (sb, stream_entry::detailed_dump);
@@ -326,7 +327,7 @@ namespace cubreplication
 
 	    m_lc.m_last_fetched_position = se->get_stream_entry_start_position ();
 
-	    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+	    if (is_debug_short_dump_enabled ())
 	      {
 		string_buffer sb;
 		se->stringify (sb, stream_entry::short_dump);
@@ -397,7 +398,7 @@ namespace cubreplication
 
   void copy_db_consumer::push_entry (stream_entry *entry)
   {
-    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+    if (is_debug_short_dump_enabled ())
       {
 	string_buffer sb;
 	entry->stringify (sb, stream_entry::short_dump);
@@ -480,7 +481,7 @@ namespace cubreplication
 	thread_sleep (10);
       }
 
-    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+    if (is_debug_detailed_dump_enabled ())
       {
 	string_buffer sb;
 	task->stringify (sb);

@@ -187,7 +187,7 @@ namespace cubstream
   {
     if (m_channel.send (ptr, byte_count) == NO_ERRORS)
       {
-	cubcomm::er_log_debug_buffer ("transfer_sender::read_action", ptr, byte_count);
+	m_channel.er_log_debug_buffer ("transfer_sender::read_action", ptr, byte_count);
 
 	m_last_sent_position += byte_count;
 

@@ -46,7 +46,8 @@ namespace cubcomm
   channel::channel (int max_timeout_in_ms)
     : m_max_timeout_in_ms (max_timeout_in_ms),
       m_type (CHANNEL_TYPE::NO_TYPE),
-      m_socket (INVALID_SOCKET)
+      m_socket (INVALID_SOCKET),
+      m_dump_data (false)
   {
   }
 
@@ -54,6 +55,7 @@ namespace cubcomm
     : m_max_timeout_in_ms (comm.m_max_timeout_in_ms)
   {
     m_type = comm.m_type;
+    m_dump_data = comm.m_dump_data;
     comm.m_type = NO_TYPE;
 
     m_socket = comm.m_socket;
@@ -192,9 +194,9 @@ namespace cubcomm
     return m_socket;
   }
 
-  void er_log_debug_buffer (const char *msg, const char *buf, const size_t buf_size)
+  void channel::er_log_debug_buffer (const char *msg, const char *buf, const size_t buf_size)
   {
-    if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
+    if (m_dump_data)
       {
 	string_buffer in;
 	string_buffer out;

@@ -2218,8 +2218,8 @@ bool PRM_DEBUG_AUTOCOMMIT = false;
 static bool prm_debug_autocommit_default = false;
 static unsigned int prm_debug_autocommit_flag = 0;
 
-bool PRM_DEBUG_REPLICATION_DATA = true;
-static bool prm_debug_replication_data_default = false;
+int PRM_DEBUG_REPLICATION_DATA = true;
+static int prm_debug_replication_data_default = false;
 static unsigned int prm_debug_replication_data_flag = 0;
 
 bool PRM_TRACK_REQUESTS = false;
@@ -5708,7 +5708,7 @@ static SYSPRM_PARAM prm_Def[] = {
   {PRM_ID_DEBUG_REPLICATION_DATA,
    PRM_NAME_DEBUG_REPLICATION_DATA,
    (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
-   PRM_BOOLEAN,
+   PRM_INTEGER,
    &prm_debug_replication_data_flag,
    (void *) &prm_debug_replication_data_default,
    (void *) &PRM_DEBUG_REPLICATION_DATA,
