@@ -675,25 +675,23 @@ namespace cubload
 	return;
       }
 
-    // *INDENT-OFF*
     if (m_scancache.m_index_stats != NULL)
       {
-        for (const auto &it : m_scancache.m_index_stats->get_map ())
+	for (const auto &it : m_scancache.m_index_stats->get_map ())
 	  {
-            if (!it.second.is_unique ())
+	    if (!it.second.is_unique ())
 	      {
-	        break;
+		break;
 	      }
 
 	    int error = logtb_tran_update_unique_stats (thread_get_thread_entry_info (), it.first, it.second, true);
 	    if (error != NO_ERROR)
 	      {
-                ASSERT_ERROR ();
-	        m_error_handler.on_failure ();
+		ASSERT_ERROR ();
+		m_error_handler.on_failure ();
 	      }
 	  }
       }
-    // *INDENT-ON*
 
     heap_scancache_end_modify (m_thread_ref, &m_scancache);
     m_scancache_started = false;
