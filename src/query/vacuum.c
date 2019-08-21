@@ -2822,10 +2822,11 @@ restart:
       ASSERT_ERROR ();
       return;
     }
-  data_index =
-    (int) (data_page->index_unvacuumed
-	   + (INT16) (vacuum_Data.blockid_job_cursor
-		      - VACUUM_BLOCKID_WITHOUT_FLAGS (data_page->data[data_page->index_unvacuumed].blockid)));
+
+  INT64 job_offset = (vacuum_Data.blockid_job_cursor
+		      - VACUUM_BLOCKID_WITHOUT_FLAGS (data_page->data[data_page->index_unvacuumed].blockid));
+  assert (job_offset >= 0);
+  data_index = (int) (data_page->index_unvacuumed + job_offset);
 
   vacuum_er_log (VACUUM_ER_LOG_MASTER, "Start searching jobs in page %d|%d from index %d.",
 		 vacuum_Data.vpid_job_cursor.volid, vacuum_Data.vpid_job_cursor.pageid, data_index);
@@ -4984,6 +4985,26 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
   if (vacuum_Block_data_buffer->is_empty ())
     {
       /* empty */
+      if (vacuum_is_empty ())
+	{
+	  const VACUUM_LOG_BLOCKID LOG_BLOCK_TRAILING_DIFF = 2;
+	  LOG_LSA log_lsa = log_Gl.prior_info.prior_lsa;
+	  VACUUM_LOG_BLOCKID log_blockid = vacuum_get_log_blockid (log_lsa.pageid);
+
+	  if (log_blockid > vacuum_Data.get_last_blockid () + LOG_BLOCK_TRAILING_DIFF)
+	    {
+	      // don't let vacuum data go too far back
+	      vacuum_Data.set_last_blockid (log_blockid - LOG_BLOCK_TRAILING_DIFF);
+	      vacuum_Data.first_page->data->blockid = vacuum_Data.get_last_blockid ();
+	      log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) vacuum_Data.first_page, 0,
+				     sizeof (vacuum_Data.first_page->data->blockid),
+				     &vacuum_Data.first_page->data->blockid);
+	      vacuum_update_keep_from_log_pageid (thread_p);
+	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "update last_blockid to %lld",
+			     (long long int) vacuum_Data.get_last_blockid ());
+	      vacuum_Data.blockid_job_cursor = vacuum_Data.get_last_blockid () + 1;
+	    }
+	}
       return NO_ERROR;
     }
 
@@ -5674,7 +5695,8 @@ vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p)
 
   if (vacuum_is_empty ())
     {
-      if (LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa))
+      LOG_LSA last_mvcc_lsa = log_Gl.hdr.mvcc_op_log_lsa;
+      if (last_mvcc_lsa.is_null () || vacuum_get_log_blockid (last_mvcc_lsa.pageid) <= vacuum_Data.get_last_blockid ())
 	{
 	  /* safe to remove all archives */
 	  keep_from_blockid = VACUUM_NULL_LOG_BLOCKID;
