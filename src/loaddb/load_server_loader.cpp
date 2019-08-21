@@ -682,7 +682,11 @@ namespace cubload
 	  {
             if (!it.second.is_unique ())
 	      {
-	        break;
+	        // We need to throw an error here and abort the load.
+                BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_get_thread_entry_info (), NULL, NULL,
+                                                  &m_class_entry->get_class_oid (), &it.first, NULL);
+                m_error_handler.on_failure ();
+                break;
 	      }
 
 	    int error = logtb_tran_update_unique_stats (thread_get_thread_entry_info (), it.first, it.second, true);
