@@ -52,6 +52,9 @@ namespace cubreplication
   class copy_db_consumer
   {
     public:
+      /* TODO : thread requires a TDES, do we need to increase the number of TDES to account of this ? */
+      static const int MAX_APPLIER_THREADS = 50;
+
       enum apply_phase
       {
 	CLASS_SCHEMA,
@@ -91,7 +94,7 @@ namespace cubreplication
 	m_stream (NULL),
 	m_consumer_daemon (NULL),
 	m_applier_workers_pool (NULL),
-	m_applier_worker_threads_count (100),
+	m_applier_worker_threads_count (MAX_APPLIER_THREADS),
 	m_use_daemons (false),
 	m_started_tasks (0),
 	m_apply_task_ready (false),
