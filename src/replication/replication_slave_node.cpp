@@ -275,9 +275,10 @@ namespace cubreplication
   {
     // this forces transefer_receiver to stream::commit_append all data it has received
     destroy_transfer_receiver ();
+    m_stream->fetch_all ();
     // Need to wait for a notification signifying that everything was fetched before calling
     // m_stream->stop ()
-    m_stream->wait_for_fetch_all ();
+    m_lc->wait_dispatch_applied_all ();
   }
 
   void slave_node::stop_and_destroy_online_repl ()

@@ -516,13 +516,10 @@ namespace cubstream
     m_serial_read_wait_pos = std::numeric_limits<stream_position>::max ();
     local_lock.unlock ();
 
-    if (m_fetch_all_requested && m_read_position + amount <= m_last_committed_pos)
+    if (m_fetch_all_requested && m_read_position + amount > m_last_committed_pos)
       {
-	// todo: Nothing to read anymore.. Should suspend?
-	std::lock_guard<std::mutex> lg (m_fetch_notify_mtx);
+	// inform dispatcher that it read last entry commited to stream
 	m_fetch_all_finished = true;
-	m_fetch_finished_cv.notify_one ();
-	return NO_ERROR;
       }
 
     if (m_is_stopped)
@@ -775,14 +772,9 @@ namespace cubstream
     return bytes_available_file;
   }
 
-  void multi_thread_stream::wait_for_fetch_all ()
+  void multi_thread_stream::fetch_all ()
   {
-    std::unique_lock<std::mutex> ul (m_fetch_notify_mtx);
     m_fetch_all_requested = true;
-    m_fetch_finished_cv.wait (ul, [this] ()
-    {
-      return m_fetch_all_finished;
-    });
   }
 
   void multi_thread_stream::set_last_recyclable_pos (const stream_position &pos)
