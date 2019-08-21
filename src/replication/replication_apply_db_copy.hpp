@@ -28,6 +28,8 @@
 
 #include "cubstream.hpp"
 #include "thread_manager.hpp"
+
+#include <chrono>
 #include <queue>
 
 namespace cubcomm
@@ -59,9 +61,9 @@ namespace cubreplication
       {
 	CLASS_SCHEMA,
 	CLASS_HEAP,
-        TRIGGER,
-        INDEX,
-        END
+	TRIGGER,
+	INDEX,
+	END
       };
 
     private:
@@ -181,6 +183,8 @@ namespace cubreplication
       cubstream::stream_file *m_stream_file;
       cubstream::transfer_receiver *m_transfer_receiver;
       copy_db_consumer *m_copy_consumer;
+
+      std::chrono::system_clock::time_point m_start_time;
   };
 
 } /* namespace cubreplication */

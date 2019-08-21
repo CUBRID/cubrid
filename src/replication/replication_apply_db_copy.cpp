@@ -119,6 +119,8 @@ namespace cubreplication
   {
     int error = NO_ERROR;
 
+    m_start_time = std::chrono::system_clock::now ();
+
     er_log_debug_replication (ARG_FILE_LINE, "apply_copy_context::connect_to_source host:%s, port: %d\n",
 			      m_source_identity->get_hostname ().c_str (), m_source_identity->get_port ());
 
@@ -155,7 +157,10 @@ namespace cubreplication
       {
 	thread_sleep (10);
       }
-    er_log_debug_replication (ARG_FILE_LINE, "apply_copy_context::connection terminated");
+
+    std::chrono::duration<double> execution_time = std::chrono::system_clock::now () - m_start_time;
+    _er_log_debug (ARG_FILE_LINE, "apply_copy_context::connection terminated (time since start:%.6f)",
+		   execution_time.count ());
 
     /* update position in log_Gl */
     log_Gl.hdr.m_ack_stream_position = m_online_repl_start_pos;
@@ -167,11 +172,15 @@ namespace cubreplication
   {
     while (!m_copy_consumer->is_finished ())
       {
+	std::chrono::duration<double> execution_time = std::chrono::system_clock::now () - m_start_time;
+
 	er_log_debug_replication (ARG_FILE_LINE, "wait_replication_copy: current stream_position:%lld\n"
-				  "stream entries in queue:%d, running tasks:%d\n",
+				  "stream entries in queue:%d, running tasks:%d\n"
+				  "time since start:%.6f\n",
 				  m_copy_consumer->m_last_fetched_position,
 				  m_copy_consumer->get_entries_in_queue (),
-				  m_copy_consumer->get_started_task ());
+				  m_copy_consumer->get_started_task (),
+				  execution_time.count ());
 	thread_sleep (1000);
       }
   }
@@ -208,7 +217,7 @@ namespace cubreplication
     public:
       copy_db_worker_task (stream_entry *repl_stream_entry, copy_db_consumer &lc, copy_db_consumer::apply_phase phase)
 	: m_lc (lc)
-        , m_phase (phase)
+	, m_phase (phase)
       {
 	add_repl_stream_entry (repl_stream_entry);
       }
@@ -246,7 +255,7 @@ namespace cubreplication
 		    /* TODO[replication] : error handling */
 		  }
 
-                  /* TODO[replication] : add to revert list class or trigger */
+		/* TODO[replication] : add to revert list class or trigger */
 	      }
 
 	    delete curr_stream_entry;
@@ -298,12 +307,12 @@ namespace cubreplication
 	using tasks_map = std::unordered_map <MVCCID, copy_db_worker_task *>;
 	tasks_map repl_tasks;
 	tasks_map nonexecutable_repl_tasks;
-        copy_db_consumer::apply_phase phase = copy_db_consumer::apply_phase::CLASS_SCHEMA;
+	copy_db_consumer::apply_phase phase = copy_db_consumer::apply_phase::CLASS_SCHEMA;
 	bool is_stopped = false;
 
 	er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : start of replication copy");
 
-        /* TODO[replication] : parallel apply of indexes */
+	/* TODO[replication] : parallel apply of indexes */
 	while (phase != copy_db_consumer::apply_phase::END)
 	  {
 	    bool is_control_se = false;
@@ -467,9 +476,9 @@ namespace cubreplication
   {
     /* TODO : there is no mechanism to wakeup when thread pool drops below a threshold of tasks */
     while (m_started_tasks.load () > 10 * m_applier_worker_threads_count)
-    {
-      thread_sleep (10);
-    }
+      {
+	thread_sleep (10);
+      }
 
     if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
       {
@@ -477,7 +486,7 @@ namespace cubreplication
 	task->stringify (sb);
 	_er_log_debug (ARG_FILE_LINE, "copy_db_consumer::execute_task:\n%s", sb.get_buffer ());
       }
-    
+
     cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
 
     m_started_tasks++;

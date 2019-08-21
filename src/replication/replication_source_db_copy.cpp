@@ -131,10 +131,10 @@ namespace cubreplication
 
     for (auto stmt : statements)
       {
-        const std::string &id = stmt.first;
-        const std::string &str = stmt.second;
-        sbr_repl_entry *sbr = new sbr_repl_entry (id.c_str (), str.c_str (), "dba", "", NULL_LSA);
-        stream_entry.add_packable_entry (sbr);
+	const std::string &id = stmt.first;
+	const std::string &str = stmt.second;
+	sbr_repl_entry *sbr = new sbr_repl_entry (id.c_str (), str.c_str (), "dba", "", NULL_LSA);
+	stream_entry.add_packable_entry (sbr);
       }
 
     stream_entry.pack ();
@@ -243,34 +243,34 @@ namespace cubreplication
   }
 
   void source_copy_context::append_schema_item (statement_list &container, const char *id, const size_t id_size,
-                                                const char *buffer, const size_t buf_size)
+      const char *buffer, const size_t buf_size)
   {
     assert (id != NULL || id_size == 0);
     auto it = container.find (std::string (id, id_size));
     if (it != container.end ())
       {
-        it->second.append (buffer, buf_size);
+	it->second.append (buffer, buf_size);
       }
     else
       {
-        container.insert (std::make_pair (std::string (id, id_size), std::string (buffer, buf_size)));
+	container.insert (std::make_pair (std::string (id, id_size), std::string (buffer, buf_size)));
       }
   }
 
   void source_copy_context::append_class_schema (const char *id, const size_t id_size,
-                                                 const char *buffer, const size_t buf_size)
+      const char *buffer, const size_t buf_size)
   {
     append_schema_item (m_classes, id, id_size, buffer, buf_size);
   }
 
   void source_copy_context::append_trigger_schema (const char *id, const size_t id_size,
-                                                   const char *buffer, const size_t buf_size)
+      const char *buffer, const size_t buf_size)
   {
     append_schema_item (m_triggers, id, id_size, buffer, buf_size);
   }
 
   void source_copy_context::append_index_schema (const char *id, const size_t id_size,
-                                                 const char *buffer, const size_t buf_size)
+      const char *buffer, const size_t buf_size)
   {
     append_schema_item (m_indexes, id, id_size, buffer, buf_size);
   }
@@ -358,6 +358,8 @@ namespace cubreplication
     cubcomm::channel chn;
     chn.set_channel_name (REPL_COPY_CHANNEL_NAME);
 
+    m_start_time = std::chrono::system_clock::now ();
+
     /* TODO[replication] : handle stop from thread_manager (thread worker pool) */
     LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (&thread_ref);
     assert (tdes != NULL);
@@ -375,10 +377,12 @@ namespace cubreplication
 	return error;
       }
 
+
     m_transfer_sender = new cubstream::transfer_sender (std::move (chn), *m_stream);
     m_senders_manager->add_stream_sender (m_transfer_sender);
 
-    er_log_debug_replication (ARG_FILE_LINE, "new_slave_copy connected");
+    std::chrono::duration<double> execution_time = std::chrono::system_clock::now () - m_start_time;
+    er_log_debug_replication (ARG_FILE_LINE, "new_slave_copy connected  (time since start:%.6f)", execution_time.count ());
 
     /* extraction process : schema phase : start the client process */
     error = locator_repl_extract_schema (&thread_ref, "dba", "");
@@ -492,7 +496,9 @@ error:
   {
     bool sender_alive = true;
 
-    er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_slave_finished");
+    std::chrono::duration<double> execution_time = std::chrono::system_clock::now () - m_start_time;
+    er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_slave_finished (time since start:%.6f)",
+			      execution_time.count ());
 
     assert (m_transfer_sender != NULL);
     assert (m_senders_manager != NULL);
@@ -508,7 +514,9 @@ error:
 	  }
       }
 
-    er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_slave_finished OK");
+    execution_time = std::chrono::system_clock::now () - m_start_time;
+    _er_log_debug (ARG_FILE_LINE, "source_copy_context::wait_slave_finished OK (time since start:%.6f)",
+		   execution_time.count ());
 
     return NO_ERROR;
   }

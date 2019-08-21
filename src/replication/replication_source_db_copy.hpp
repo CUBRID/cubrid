@@ -32,6 +32,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <chrono>
 #include <list>
 #include <mutex>
 #include <unordered_map>
@@ -149,7 +150,7 @@ namespace cubreplication
       void pack_and_add_end_of_copy ();
 
       void append_schema_item (statement_list &container, const char *id, const size_t id_size, const char *buffer,
-                               const size_t buf_size);
+			       const size_t buf_size);
 
 
       int wait_slave_finished ();
@@ -181,6 +182,8 @@ namespace cubreplication
       std::mutex m_state_mutex;
 
       std::condition_variable m_state_cv;
+
+      std::chrono::system_clock::time_point m_start_time;
   };
 
 } /* namespace cubreplication */
