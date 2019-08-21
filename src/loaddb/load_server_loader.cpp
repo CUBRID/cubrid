@@ -389,7 +389,7 @@ namespace cubload
   {
     int force_count = 0;
     int pruning_type = 0;
-    int op_type = SINGLE_ROW_INSERT;
+    int op_type = MULTI_ROW_INSERT;
 
     // First check if we have any errors set.
     if (m_session.is_failed ())
@@ -657,7 +657,7 @@ namespace cubload
 	return;
       }
 
-    error_code = heap_scancache_start_modify (m_thread_ref, &m_scancache, &hfid, &class_oid, SINGLE_ROW_INSERT, NULL);
+    error_code = heap_scancache_start_modify (m_thread_ref, &m_scancache, &hfid, &class_oid, MULTI_ROW_INSERT, NULL);
     if (error_code != NO_ERROR)
       {
 	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
