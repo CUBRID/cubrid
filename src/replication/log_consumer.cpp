@@ -359,7 +359,7 @@ namespace cubreplication
     m_use_daemons = true;
   }
 
-  void log_consumer::wait_dispatch_applied_all ()
+  void log_consumer::wait_dispatcher_applied_all ()
   {
     std::unique_lock<std::mutex> ul (m_dispatch_finished_mtx);
     m_dispatch_finished_cv.wait (ul, [this] ()

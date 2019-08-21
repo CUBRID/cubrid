@@ -772,7 +772,7 @@ namespace cubstream
     return bytes_available_file;
   }
 
-  void multi_thread_stream::fetch_all ()
+  void multi_thread_stream::prepare_fetch_all ()
   {
     m_fetch_all_requested = true;
   }

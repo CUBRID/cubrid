@@ -109,6 +109,7 @@ namespace cubreplication
 	, m_subtran_applier (NULL)
 	, m_use_daemons (false)
 	, m_started_tasks (0)
+	, m_dispatch_finished (false)
 	, ack_produce ([] (cubstream::stream_position)
       {
 	assert (false);
@@ -121,7 +122,7 @@ namespace cubreplication
 
       void start_daemons (void);
 
-      void wait_dispatch_applied_all ();
+      void wait_dispatcher_applied_all ();
       void set_dispatcher_finished ();
       void execute_task (applier_worker_task *task);
       void push_task (cubthread::entry_task *task);
