@@ -24738,7 +24738,7 @@ heap_nonheader_page_capacity ()
 }
 
 /*
- *  heap_append_pages_to_heap () - Append a list of pages to the given heap
+ *  heap_postpone_append_pages_to_heap () - Append a list of pages to the given heap
  *    return                  : Error_code
  *    thread_p(in)            : Thread_context
  *    hfid(in)                : Heap file to which we append the pages
@@ -24749,20 +24749,46 @@ heap_nonheader_page_capacity ()
  *
  */
 int
-heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID &class_oid,
-			   const std::vector<VPID> &heap_pages_array)
+heap_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   int error_code = NO_ERROR;
   PGBUF_WATCHER page_watcher;
   PGBUF_WATCHER heap_header_watcher;
   PGBUF_WATCHER heap_last_page_watcher;
-  size_t array_size = heap_pages_array.size ();
   VPID null_vpid;
   VPID heap_hdr_vpid;
   VPID heap_last_page_vpid;
   HEAP_HDR_STATS *heap_hdr = NULL;
   bool skip_last_page_links = false;
   VPID heap_header_next_vpid;
+  size_t offset = 0, array_size = 0;
+  std::vector <VPID> heap_pages_array;
+  OID * class_oid;
+  HFID * hfid;
+
+  /* recovery data: HFID, OID, array_size (int), array_of_VPID(array_size) */
+  hfid = (HFID *) (recv->data + offset);
+  offset += sizeof(*hfid);
+
+  class_oid = (OID *) (recv->data + offset);
+  offset += sizeof(*class_oid);
+
+  array_size = (size_t) (recv->data + offset);
+  offset += sizeof (offset);
+
+  for (size_t i = 0; i < array_size; i++)
+    {
+      VPID *vpid = (VPID *) (recv->data + offset);
+      offset += sizeof (*vpid);
+
+        heap_pages_array.push_back (*vpid);
+    }
+
+  assert (offset == recv->length);
+
+  /* const HFID * hfid, const OID &class_oid, const std::vector<VPID> &heap_pages_array*/
+
+  array_size = heap_pages_array.size();
 
   VPID_SET_NULL (&null_vpid);
   VPID_SET_NULL (&heap_hdr_vpid);
@@ -24793,7 +24819,7 @@ heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID
     }
 
   // Start a system operation since we write in multiple pages.
-  log_sysop_start (thread_p);
+  log_sysop_start_atomic (thread_p);
 
   /**********************************************************/
   /*      Start by creating a heap chain from the pages.    */
@@ -24915,7 +24941,7 @@ cleanup:
   else
     {
       // Commit the sysop
-      log_sysop_commit (thread_p);
+      log_sysop_end_logical_run_postpone (thread_p, &recv->reference_lsa);
     }
 
    if (page_watcher.pgptr)

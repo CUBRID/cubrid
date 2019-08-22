@@ -676,7 +676,6 @@ extern int heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_
 extern int heap_nonheader_page_capacity ();
 
 // *INDENT-OFF*
-extern int heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID &class_oid,
-                                      const std::vector<VPID> &heap_pages_array);
+extern int heap_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 // *INDENT-ON*
 #endif /* _HEAP_FILE_H_ */

@@ -13821,13 +13821,44 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	}
     }
 
-  // Now form a heap chain with the pages and add the chain to the current heap.
-  error_code = heap_append_pages_to_heap (thread_p, hfid, *class_oid, heap_pages_array);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
+  // This append needs to be run on postpone after the commit.
+  // First create the log data required.
+  size_t array_size = heap_pages_array.size ();
+  size_t log_data_size = sizeof (HFID) + sizeof (OID) + sizeof (size_t) + array_size * sizeof (VPID);
+  char *log_data_buffer = (char *) db_private_alloc (NULL, log_data_size + MAX_ALIGNMENT);
+  char *log_data = PTR_ALIGN (log_data_buffer, MAX_ALIGNMENT);
+  LOG_DATA_ADDR log_addr = LOG_DATA_ADDR_INITIALIZER;
+
+   // Now populate the log data needed.
+  size_t offset = 0;
+
+   // HFID
+  HFID_COPY ((HFID *) (log_data + offset), hfid);
+  offset += sizeof (HFID);
+
+   // class_oid
+  COPY_OID ((OID *) (log_data + offset), class_oid);
+  offset += sizeof (OID);
+
+   // array_size
+  memcpy ((log_data + offset), &array_size, sizeof (size_t));
+  offset += sizeof (size_t);
+
+   // The array of VPID.
+  for (size_t i = 0; i < array_size; i++)
+    {	    {
+      ASSERT_ERROR ();	      VPID_COPY ((VPID *) (log_data + offset), &heap_pages_array[i]);
+      return error_code;	      offset += sizeof (VPID);
     }
+
+   assert (offset == log_data_size);
+
+  log_append_postpone (thread_p, RVHF_HEAP_ADD_CHAIN, &log_addr, log_data_size, log_data);
+
+  if (log_data_buffer)
+    {
+      db_private_free_and_init (NULL, log_data_buffer);      
+    }	    }
 
   return NO_ERROR;
 }
