@@ -13834,11 +13834,24 @@ xlocator_get_proxy_command (THREAD_ENTRY * thread_p, const char **proxy_command)
   return NO_ERROR;
 }
 
+/*
+ * xlocator_send_proxy_buffer - receives a proxy buffer to server
+ *
+ * return : error code
+ * thread_p (in):
+ * type (in): type of buffer
+ * id (in): identification of buffer (optional, may be null)
+ * buf_size (in): size of buffer
+ * buffer (in): buffer
+ *
+ */
 int
-xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_t buf_size, const char *buffer)
+xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const char *id, const size_t buf_size,
+			    const char *buffer)
 {
 #if defined(SERVER_MODE)
   LOG_TDES *tdes;
+  size_t id_size = (id != NULL) ? strlen (id) : 0;
 
   assert (thread_p != NULL);
 
@@ -13852,31 +13865,40 @@ xlocator_send_proxy_buffer (THREAD_ENTRY * thread_p, const int type, const size_
        * for last the last one, the client uses NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END
        */
     case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES:
-      repl_copy_ctxt.append_class_schema (buffer, buf_size);
+      /* force all classes into the same SBR : id = NULL */
+      repl_copy_ctxt.append_class_schema (NULL, 0, buffer, buf_size);
       break;
 
     case NET_PROXY_BUF_TYPE_EXTRACT_CLASSES_END:
-      repl_copy_ctxt.append_class_schema (buffer, buf_size);
+      /* force all classes into the same SBR : id = NULL */
+      repl_copy_ctxt.append_class_schema (NULL, 0, buffer, buf_size);
       repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_CLASSES);
       repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_CLASSES_FINISHED);
       break;
 
-    case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS:
-      repl_copy_ctxt.append_triggers_schema (buffer, buf_size);
+    case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGER:
+      /* force all triggers into the same SBR : id = NULL */
+      repl_copy_ctxt.append_trigger_schema (NULL, 0, buffer, buf_size);
       break;
 
     case NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS_END:
-      repl_copy_ctxt.append_triggers_schema (buffer, buf_size);
+      /* force all triggers into the same SBR : id = NULL */
+      repl_copy_ctxt.append_trigger_schema (NULL, 0, buffer, buf_size);
       repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_TRIGGERS);
       break;
 
-    case NET_PROXY_BUF_TYPE_EXTRACT_INDEXES:
-      repl_copy_ctxt.append_indexes_schema (buffer, buf_size);
+    case NET_PROXY_BUF_TYPE_EXTRACT_INDEX:
+      repl_copy_ctxt.append_index_schema (id, id_size, buffer, buf_size);
       break;
 
     case NET_PROXY_BUF_TYPE_EXTRACT_INDEXES_END:
-      repl_copy_ctxt.append_indexes_schema (buffer, buf_size);
+      repl_copy_ctxt.append_index_schema (id, id_size, buffer, buf_size);
       repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_EXTRACT_INDEXES);
+      break;
+
+    case NET_PROXY_BUF_TYPE_OID_LIST:
+      repl_copy_ctxt.unpack_class_oid_list (buffer, buf_size);
+      repl_copy_ctxt.execute_and_transit_phase (cubreplication::source_copy_context::SCHEMA_CLASSES_LIST_FINISHED);
       break;
 
     default:
@@ -13962,17 +13984,75 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
 }
 
 int
-locator_repl_start_tran (THREAD_ENTRY * thread_p)
+locator_repl_extract_schema (THREAD_ENTRY * thread_p, const char *db_user, const char *ha_sys_prm_context)
+{
+  char path[PATH_MAX];
+  int error = NO_ERROR, exit_status;
+  char tran_index_str[DB_BIGINT_PRECISION + 1] = { 0 };
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+  assert (db_user != NULL && tdes != NULL);
+  sprintf (tran_index_str, "%d", tran_index);
+
+  string_buffer db_name_buffer;
+  db_name_buffer ("%s@%s", boot_db_name (), "localhost");
+
+  const char *ddl_argv[10] = {
+    path,
+    "-u",
+    db_user,
+    db_name_buffer.get_buffer (),
+    "-t",
+    tran_index_str,
+    "-e",
+    (ha_sys_prm_context != NULL) ? "-s" : NULL,
+    ha_sys_prm_context,
+    NULL
+  };
+
+  envvar_bindir_file (path, PATH_MAX, UTIL_DDL_PROXY_CLIENT);
+
+  error = create_child_process (ddl_argv, 1, NULL, NULL, NULL, &exit_status);
+  tdes->ha_sbr_statement = NULL;
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  _er_log_debug (ARG_FILE_LINE, "extract schema: tran_index:%d, exit_status:%d\n", tran_index, exit_status);
+
+  if (exit_status != 0)
+    {
+      /* TODO : get error from ddl_proxy & set error */
+      error = ER_FAILED;
+    }
+
+  return error;
+}
+
+int
+locator_repl_start_tran (THREAD_ENTRY * thread_p, const boot_client_type client_type)
 {
   /* TODO */
   int error_code = NO_ERROR;
   BOOT_CLIENT_CREDENTIAL applier_Client_credentials;
-  applier_Client_credentials.client_type = BOOT_CLIENT_LOG_APPLIER;
-  applier_Client_credentials.program_name = "(repl_applier)";
+  applier_Client_credentials.client_type = client_type;
+
+  if (client_type == BOOT_PSEUDO_CLIENT_REPL_APPLIER)
+    {
+      applier_Client_credentials.program_name = "(repl_applier)";
+    }
+  else if (client_type == BOOT_CLIENT_DDL_PROXY)
+    {
+      applier_Client_credentials.program_name = "(ddl_proxy)";
+    }
+  else if (client_type == BOOT_PSEUDO_CLIENT_REPL_COPIER)
+    {
+      applier_Client_credentials.program_name = "(repl_db_copy)";
+    }
   applier_Client_credentials.process_id = -1;
 
-  /* TODO : configurable lock wait for replication
-   * zero time is not correct, since applier transaction may attempt to latch pages being currently vacuumed */
   int client_lock_wait = TRAN_LOCK_INFINITE_WAIT;
   TRAN_ISOLATION client_isolation = TRAN_DEFAULT_ISOLATION;
 
@@ -14005,12 +14085,12 @@ locator_repl_end_tran (THREAD_ENTRY * thread_p, bool commit)
   if (commit)
     {
       xtran_server_commit (thread_p, false);
-      _er_log_debug (ARG_FILE_LINE, "replication_apply : tran_index :%d committed", saved_tran_index);
+      _er_log_debug (ARG_FILE_LINE, "locator_repl_end_tran : tran_index :%d committed", saved_tran_index);
     }
   else
     {
       xtran_server_abort (thread_p);
-      _er_log_debug (ARG_FILE_LINE, "replication_apply : tran_index :%d aborted", saved_tran_index);
+      _er_log_debug (ARG_FILE_LINE, "locator_repl_end_tran : tran_index :%d aborted", saved_tran_index);
     }
 
   logtb_release_tran_index (thread_p, saved_tran_index);
