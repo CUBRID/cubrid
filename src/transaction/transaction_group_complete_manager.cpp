@@ -280,7 +280,7 @@ namespace cubtx
 	m_latest_closed_group_state = GROUP_CLOSED;
 	er_log_debug (ARG_FILE_LINE,
 		      "group_complete_manager::close_current_group: (manager_type = %s, group = %llu, group_size = %d)\n",
-		      logpb_complete_manager_string ((LOG_TRAN_COMPLETE_MANAGER_TYPE) get_manager_type ()),
+		      logpb_complete_manager_string ((log_tran_complete_manager_type) get_manager_type ()),
 		      (unsigned long long) m_latest_closed_group_id, m_current_group.get_container ().size ());
 
 	/* Advance with the group - copy and reinit it. */
@@ -326,7 +326,7 @@ namespace cubtx
     m_latest_closed_group_state |= GROUP_COMPLETED;
     er_log_debug (ARG_FILE_LINE,
 		  "group_complete_manager::notify_group_complete latest_group_id: (manager_type = %s, closed group = %llu)\n",
-		  logpb_complete_manager_string ((LOG_TRAN_COMPLETE_MANAGER_TYPE) get_manager_type ()),
+		  logpb_complete_manager_string ((log_tran_complete_manager_type) get_manager_type ()),
 		  (unsigned long long) m_latest_closed_group_id);
 
 #if defined (SERVER_MODE)

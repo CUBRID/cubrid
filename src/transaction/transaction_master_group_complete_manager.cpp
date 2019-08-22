@@ -100,7 +100,7 @@ namespace cubtx
   //
   void master_group_complete_manager::on_register_transaction ()
   {
-    /* This function is called after adding a transaction to the current group. */
+    /* This function is called under m_group_mutex protection after adding a transaction to the current group. */
     assert (get_current_group ().get_container ().size () >= 1);
 
 #if defined (SERVER_MODE)
@@ -161,8 +161,8 @@ namespace cubtx
 	m_latest_closed_group_end_stream_position = closed_group_stream_end_position;
 	mark_latest_closed_group_prepared_for_complete ();
 
-	/* TODO Wakeup senders, just to be sure. */
-	//cubreplication::replication_node_manager::get_master_node()->wakeup_transfer_senders (closed_group_stream_end_position);
+	/* Wakeup senders, just to be sure. */
+	cubreplication::replication_node_manager::get_master_node()->wakeup_transfer_senders (closed_group_stream_end_position);
       }
   }
 
@@ -173,7 +173,7 @@ namespace cubtx
   {
     LOG_LSA closed_group_start_complete_lsa, closed_group_end_complete_lsa;
     LOG_TDES *tdes = logtb_get_tdes (thread_p);
-    bool has_postpone;
+    bool has_postpone, need_complete_group;
 
     if (is_latest_closed_group_completed ())
       {
@@ -187,7 +187,8 @@ namespace cubtx
 	thread_sleep (10);
       }
 
-    if (!starts_latest_closed_group_complete ())
+    need_complete_group = starts_latest_closed_group_complete ();
+    if (!need_complete_group)
       {
 	/* Already started by others. */
 	return;
@@ -197,12 +198,9 @@ namespace cubtx
 
     /* TODO - consider parameter for MVCC complete here. */
     /* Add group commit log record and wakeup  log flush daemon. */
-    /* TODO - fix append group complete */
     log_append_group_complete (thread_p, tdes, m_latest_closed_group_start_stream_position,
 			       closed_group, &closed_group_start_complete_lsa, NULL);
-    //log_append_group_complete (thread_p, tdes, m_latest_closed_group_start_stream_position, closed_group,
-    //		       &closed_group_start_complete_lsa, &closed_group_end_complete_lsa, &has_postpone);
-
+    
     if (has_postpone)
       {
 	/* Notify group postpone. For consistency, we need preserve the order: log GC with postpone first and then

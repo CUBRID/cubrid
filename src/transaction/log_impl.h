@@ -796,12 +796,6 @@ enum log_tran_complete_manager_type
   LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE,
   LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE,
 };
-typedef enum log_tran_complete_manager_type LOG_TRAN_COMPLETE_MANAGER_TYPE;
-
-#define LOG_TRAN_COMPLETE_NO_MANAGER_STR                 "no manager"
-#define LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE_STR        "single node"
-#define LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE_STR        "master node"
-#define LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE_STR         "slave"
 
 #if !defined(SERVER_MODE)
 #if !defined(LOG_TRAN_INDEX)
@@ -928,8 +922,10 @@ extern void logpb_fatal_error_exit_immediately_wo_flush (THREAD_ENTRY * thread_p
 extern int logpb_check_and_reset_temp_lsa (THREAD_ENTRY * thread_p, VOLID volid);
 extern void logpb_initialize_arv_page_info_table (void);
 extern void logpb_initialize_logging_statistics (void);
+
+/* TODO - considers moving complete manager functions as methods in complete manager classes */
 extern void logpb_initialize_tran_complete_manager (void);
-extern const char *logpb_complete_manager_string (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type);
+extern const char *logpb_complete_manager_string (log_tran_complete_manager_type manager_type);
 extern int logpb_background_archiving (THREAD_ENTRY * thread_p);
 extern void xlogpb_dump_stat (FILE * outfp);
 

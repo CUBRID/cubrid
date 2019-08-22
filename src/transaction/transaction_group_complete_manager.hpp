@@ -88,6 +88,7 @@ namespace cubtx
       void mark_latest_closed_group_prepared_for_complete ();
       bool is_latest_closed_group_prepared_for_complete ();
 
+      /* TODO - consider a better name than latest_closed */
       bool starts_latest_closed_group_complete ();
       bool is_latest_closed_group_complete_started ();
 
