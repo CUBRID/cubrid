@@ -144,7 +144,8 @@ namespace cubthread
 	ss << statsp[index] << std::endl;
       }
 
-    _er_log_debug (ARG_FILE_LINE, ss.str ().c_str ());
+    std::string str = ss.str ();
+    _er_log_debug (ARG_FILE_LINE, str.c_str ());
   }
 
 } // namespace cubthread
