@@ -3583,6 +3583,7 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
   int override_tran_index = NULL_TRAN_INDEX;
   char sql_log_err[LINE_MAX];
   const char *command = NULL;
+  const char *sys_param = NULL;
   bool save;
 
   if (args->tran_index != NULL)
@@ -3605,42 +3606,53 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
       return rc;
     }
 
+  er_log_debug (ARG_FILE_LINE, "start_ddl_proxy_client:\n"
+		" command: %s\n db_name:%s\n do_extract_schema:%d\n out_file_name:%s\n"
+		" sys_param:%s\n tran_index:%s\n user_name:%s\n use_request:%d",
+		args->command, args->db_name, args->do_extract_schema, args->out_file_name,
+		args->sys_param, args->tran_index, args->user_name, args->use_request);
+
   // ddl_proxy should not fire trigger action
   db_disable_trigger ();
 
-  if (args->sys_param != NULL)
+  sys_param = (args->sys_param != NULL && *args->sys_param != '\0') ? args->sys_param : NULL;
+
+  if (!args->do_extract_schema)
+    {
+      if (args->command != NULL && strlen (args->command) > 0)
+	{
+	  command = args->command;
+	}
+      else if (args->use_request)
+	{
+	  if (db_get_proxy_command (&command, &sys_param) != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (rc);
+	      goto error;
+	    }
+	}
+
+      if (command == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  if (sys_param)
     {
       er_stack_push ();
 
-      int error = db_set_system_parameters_for_ha_repl (args->sys_param);
+      int error = db_set_system_parameters_for_ha_repl (sys_param);
       if (error != NO_ERROR)
 	{
-	  snprintf (sql_log_err, sizeof (sql_log_err), "failed to change sys prm: %s", args->sys_param);
+	  snprintf (sql_log_err, sizeof (sql_log_err), "failed to change sys prm: %s", sys_param);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, sql_log_err);
 	}
 
       er_stack_pop ();
     }
 
-  if (args->command != NULL && strlen (args->command) > 0)
-    {
-      command = args->command;
-    }
-  else if (args->request != NULL && !strcasecmp (args->request, "true"))
-    {
-      if (db_get_proxy_command (&command) != NO_ERROR)
-	{
-	  ASSERT_ERROR_AND_SET (rc);
-	  goto error;
-	}
-    }
-
-  if (command == NULL)
-    {
-      goto error;
-    }
-
-  if (strcasecmp (command, ";extract-schema-to-net") == 0)
+  if (args->do_extract_schema)
     {
       replication_schema_extract (program_name);
     }
@@ -3652,6 +3664,7 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
       /* For now, disable authorization. */
       save = au_disable ();
 
+      er_log_debug (ARG_FILE_LINE, "Execute:\n%s\n%s", command, sys_param);
       session = db_open_buffer (command);
       if (session == NULL)
 	{
@@ -3719,6 +3732,10 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
       /* enable authorization back */
       au_enable (save);
     }
+
+  locator_all_flush ();
+
+  er_log_debug (ARG_FILE_LINE, "start_ddl_proxy_client rc:%d", rc);
 
 error:
 

@@ -13823,13 +13823,14 @@ xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK
 }
 
 int
-xlocator_get_proxy_command (THREAD_ENTRY * thread_p, const char **proxy_command)
+xlocator_get_proxy_command (THREAD_ENTRY * thread_p, const char **proxy_command, const char **proxy_sys_param)
 {
   LOG_TDES *tdes;
   assert (proxy_command != NULL);
 
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
   *proxy_command = tdes->ha_sbr_statement;
+  *proxy_sys_param = tdes->ha_sys_param;
 
   return NO_ERROR;
 }
@@ -13925,9 +13926,17 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
   const char *command_option = NULL, *command = NULL;
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  const char *ha_sys_param_option = NULL;
+  const char *ha_sys_param = NULL;
 
   assert (db_user != NULL && statement != NULL && tdes != NULL);
   sprintf (tran_index_str, "%d", tran_index);
+
+  if (*statement == '\0')
+    {
+      _er_log_debug (ARG_FILE_LINE, "locator_repl_apply_sbr : empty statement : nothing to do");
+      return error;
+    }
 
   /* TODO - maybe we have to decide based on whole argv length rather than statement length. */
   if (strlen (statement) <= HA_DDL_PROXY_MAX_STATEMENT_LENGTH && (strpbrk (statement, "\"\'\t") == NULL))
@@ -13935,13 +13944,18 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
       /* Uses command option. */
       command_option = "-c";
       command = statement;
+      ha_sys_param_option = (ha_sys_prm_context != NULL) ? "-s" : NULL;
+      ha_sys_param = ha_sys_prm_context;
     }
   else
     {
       /* Uses request option. */
       tdes->ha_sbr_statement = statement;
+      tdes->ha_sys_param = ha_sys_prm_context;
       command_option = "-r";
-      command = "true";
+      command = NULL;
+      ha_sys_param_option = NULL;
+      ha_sys_param = NULL;
     }
 
   // connect explicitly to localhost
@@ -13953,16 +13967,20 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
     "-u",
     db_user,
     db_name_buffer.get_buffer (),
-    command_option,
-    command,
     "-t",
     tran_index_str,
-    (ha_sys_prm_context != NULL) ? "-s" : NULL,
-    ha_sys_prm_context,
+    command_option,
+    command,
+    ha_sys_param_option,
+    ha_sys_param,
     NULL
   };
 
   envvar_bindir_file (path, PATH_MAX, UTIL_DDL_PROXY_CLIENT);
+
+  _er_log_debug (ARG_FILE_LINE, "apply SBR: executing:\n%s %s %s %s %s %s %s %s %s %s %s",
+		 ddl_argv[0], ddl_argv[1], ddl_argv[2], ddl_argv[3], ddl_argv[4], ddl_argv[5], ddl_argv[6],
+		 ddl_argv[7], ddl_argv[8], ddl_argv[9], ddl_argv[10]);
 
   error = create_child_process (ddl_argv, 1, NULL, NULL, NULL, &exit_status);
   tdes->ha_sbr_statement = NULL;

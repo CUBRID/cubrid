@@ -2768,12 +2768,13 @@ db_set_system_parameters_for_ha_repl (const char *data)
  *
  * return    : error code
  * proxy_command (out) : proxy command
+ * proxy_sys_param (out) : proxy system parameters context
  *
  */
 int
-db_get_proxy_command (const char **proxy_command)
+db_get_proxy_command (const char **proxy_command, const char **proxy_sys_param)
 {
-  return locator_get_proxy_command (proxy_command);
+  return locator_get_proxy_command (proxy_command, proxy_sys_param);
 }
 
 /*

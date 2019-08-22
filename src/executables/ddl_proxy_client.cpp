@@ -61,7 +61,8 @@ main (int argc, char *argv[])
     {DDL_PROXY_USER_L, 1, 0, DDL_PROXY_USER_S},
     {DDL_PROXY_OUTPUT_FILE_L, 1, 0, DDL_PROXY_OUTPUT_FILE_S},
     {DDL_PROXY_COMMAND_L, 1, 0, DDL_PROXY_COMMAND_S},
-    {DDL_PROXY_REQUEST_L, 1, 0, DDL_PROXY_REQUEST_S },
+    {DDL_PROXY_REQUEST_L, 0, 0, DDL_PROXY_REQUEST_S },
+    {DDL_PROXY_EXTRACT_SCHEMA_L, 0, 0, DDL_PROXY_EXTRACT_SCHEMA_S},
     {DDL_PROXY_TRAN_INDEX_L, 1, 0, DDL_PROXY_TRAN_INDEX_S},
     {DDL_PROXY_SYS_PARAM_L, 1, 0, DDL_PROXY_SYS_PARAM_S},
     {VERSION_L, 0, 0, VERSION_S},
@@ -101,6 +102,11 @@ main (int argc, char *argv[])
 	  break;
 
 	case DDL_PROXY_COMMAND_S:
+          if (arguments.do_extract_schema)
+            {
+              // TODO : incompatible args : print usage
+              goto exit_on_end;
+            }
 	  if (arguments.command != NULL)
 	    {
 	      free ((void *) arguments.command);
@@ -109,11 +115,21 @@ main (int argc, char *argv[])
 	  break;
 
 	case DDL_PROXY_REQUEST_S:
-	  if (arguments.request != NULL)
-	    {
-	      free ((void *) arguments.request);
-	    }
-	  arguments.request = strdup (optarg);
+          if (arguments.do_extract_schema)
+            {
+              // TODO : incompatible args : print usage
+              goto exit_on_end;
+            }
+	  arguments.use_request = true;
+	  break;
+
+	case DDL_PROXY_EXTRACT_SCHEMA_S:
+          if (arguments.use_request || arguments.command != NULL)
+            {
+              // TODO : incompatible args : print usage
+              goto exit_on_end;
+            }
+	  arguments.do_extract_schema = true;
 	  break;
 
 	case DDL_PROXY_TRAN_INDEX_S:
@@ -176,10 +192,6 @@ exit_on_end:
   if (arguments.command != NULL)
     {
       free ((void *) arguments.command);
-    }
-  if (arguments.request != NULL)
-    {
-      free ((void *) arguments.request);
     }
   if (arguments.tran_index != NULL)
     {
