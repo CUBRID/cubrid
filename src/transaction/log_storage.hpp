@@ -153,6 +153,7 @@ struct log_header
   INT64 ha_promotion_time;
   INT64 db_restore_time;
   bool mark_will_del;
+  bool does_block_need_vacuum;
 
   log_header ()
     : magic {'0'}
@@ -198,6 +199,7 @@ struct log_header
   , ha_promotion_time (0)
   , db_restore_time (0)
   , mark_will_del (false)
+  , does_block_need_vacuum (false)
   {
     //
   }
