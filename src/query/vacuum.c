@@ -1129,7 +1129,7 @@ vacuum_finalize (THREAD_ENTRY * thread_p)
 
   if (vacuum_Block_data_buffer != NULL)
     {
-      if (vacuum_consume_buffer_log_blocks (thread_p) != NO_ERROR)
+      if (vacuum_Data.is_loaded && vacuum_consume_buffer_log_blocks (thread_p) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert (0);
