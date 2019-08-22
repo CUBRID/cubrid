@@ -102,11 +102,11 @@ main (int argc, char *argv[])
 	  break;
 
 	case DDL_PROXY_COMMAND_S:
-          if (arguments.do_extract_schema)
-            {
-              // TODO : incompatible args : print usage
-              goto exit_on_end;
-            }
+	  if (arguments.do_extract_schema)
+	    {
+	      // TODO : incompatible args : print usage
+	      goto exit_on_end;
+	    }
 	  if (arguments.command != NULL)
 	    {
 	      free ((void *) arguments.command);
@@ -115,20 +115,20 @@ main (int argc, char *argv[])
 	  break;
 
 	case DDL_PROXY_REQUEST_S:
-          if (arguments.do_extract_schema)
-            {
-              // TODO : incompatible args : print usage
-              goto exit_on_end;
-            }
+	  if (arguments.do_extract_schema)
+	    {
+	      // TODO : incompatible args : print usage
+	      goto exit_on_end;
+	    }
 	  arguments.use_request = true;
 	  break;
 
 	case DDL_PROXY_EXTRACT_SCHEMA_S:
-          if (arguments.use_request || arguments.command != NULL)
-            {
-              // TODO : incompatible args : print usage
-              goto exit_on_end;
-            }
+	  if (arguments.use_request || arguments.command != NULL)
+	    {
+	      // TODO : incompatible args : print usage
+	      goto exit_on_end;
+	    }
 	  arguments.do_extract_schema = true;
 	  break;
 
