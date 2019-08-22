@@ -116,7 +116,7 @@ namespace cubreplication
 	g_commute_cv.notify_all ();
       };
 
-      cubthread::entry_task *promote_task = new cubthread::entry_callable_task (promote_func, true);
+      cubthread::entry_task *promote_task = new cubthread::entry_callable_task (promote_func);
 
       auto wp = cubthread::internal_tasks_worker_pool::get_instance ();
       cubthread::get_manager ()->push_task (wp, promote_task);
@@ -145,7 +145,7 @@ namespace cubreplication
 	g_commute_cv.notify_all ();
       };
 
-      cubthread::entry_task *demote_task = new cubthread::entry_callable_task (demote_func, true);
+      cubthread::entry_task *demote_task = new cubthread::entry_callable_task (demote_func);
 
       auto wp = cubthread::internal_tasks_worker_pool::get_instance ();
       cubthread::get_manager ()->push_task (wp, demote_task);
