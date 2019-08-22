@@ -94,6 +94,7 @@ namespace cubreplication
 
     void commute_to_master_state (cubthread::entry *thread_p, bool force)
     {
+      wait_ha_tasks ();
       inc_tasks ();
 
       cubthread::entry_task *promote_task = new cubthread::entry_callable_task ([thread_p, force] (
@@ -122,6 +123,7 @@ namespace cubreplication
 
     void commute_to_slave_state (cubthread::entry *thread_p, bool force)
     {
+      wait_ha_tasks ();
       inc_tasks ();
 
       cubthread::entry_task *demote_task = new cubthread::entry_callable_task ([thread_p, force] (
