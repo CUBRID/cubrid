@@ -24773,7 +24773,7 @@ heap_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   class_oid = (OID *) (recv->data + offset);
   offset += sizeof(*class_oid);
 
-  array_size = (size_t) (recv->data + offset);
+  array_size = *(size_t*) (recv->data + offset);
   offset += sizeof (offset);
 
   for (size_t i = 0; i < array_size; i++)
@@ -24781,14 +24781,13 @@ heap_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
       VPID *vpid = (VPID *) (recv->data + offset);
       offset += sizeof (*vpid);
 
-        heap_pages_array.push_back (*vpid);
+      heap_pages_array.push_back (*vpid);
     }
 
   assert (offset == recv->length);
+  assert (array_size == heap_pages_array.size ());
 
-  /* const HFID * hfid, const OID &class_oid, const std::vector<VPID> &heap_pages_array*/
-
-  array_size = heap_pages_array.size();
+  
 
   VPID_SET_NULL (&null_vpid);
   VPID_SET_NULL (&heap_hdr_vpid);

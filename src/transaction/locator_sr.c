@@ -13829,36 +13829,36 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
   char *log_data = PTR_ALIGN (log_data_buffer, MAX_ALIGNMENT);
   LOG_DATA_ADDR log_addr = LOG_DATA_ADDR_INITIALIZER;
 
-   // Now populate the log data needed.
+  // Now populate the log data needed.
   size_t offset = 0;
 
-   // HFID
+  // HFID
   HFID_COPY ((HFID *) (log_data + offset), hfid);
   offset += sizeof (HFID);
 
-   // class_oid
+  // class_oid
   COPY_OID ((OID *) (log_data + offset), class_oid);
   offset += sizeof (OID);
 
-   // array_size
+  // array_size
   memcpy ((log_data + offset), &array_size, sizeof (size_t));
   offset += sizeof (size_t);
 
-   // The array of VPID.
+  // The array of VPID.
   for (size_t i = 0; i < array_size; i++)
-    {	    {
-      ASSERT_ERROR ();	      VPID_COPY ((VPID *) (log_data + offset), &heap_pages_array[i]);
-      return error_code;	      offset += sizeof (VPID);
+    {
+      VPID_COPY ((VPID *) (log_data + offset), &heap_pages_array[i]);
+      offset += sizeof (VPID);
     }
 
-   assert (offset == log_data_size);
+  assert (offset == log_data_size);
 
   log_append_postpone (thread_p, RVHF_HEAP_ADD_CHAIN, &log_addr, log_data_size, log_data);
 
   if (log_data_buffer)
     {
       db_private_free_and_init (NULL, log_data_buffer);      
-    }	    }
+    }
 
   return NO_ERROR;
 }
