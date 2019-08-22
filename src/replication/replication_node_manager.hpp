@@ -52,8 +52,8 @@ namespace cubreplication
     master_node *get_master_node ();
     slave_node *get_slave_node ();
 
-    void commute_to_master_state (cubthread::entry *thread_p, bool force);
-    void commute_to_slave_state (cubthread::entry *thread_p, bool force);
+    void start_commute_to_master_state (cubthread::entry *thread_p, bool force);
+    void start_commute_to_slave_state (cubthread::entry *thread_p, bool force);
 
     void wait_commute (HA_SERVER_STATE &ha_state, HA_SERVER_STATE req_state);
 

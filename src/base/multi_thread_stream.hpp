@@ -262,7 +262,7 @@ namespace cubstream
       void wake_up_flusher (float fill_factor, const stream_position start_flush_pos, const size_t flush_amount);
       void wait_for_flush_or_readers (const stream_position &last_commit_pos, const stream_position &last_append_pos);
       size_t wait_for_flush (const stream_position &req_pos, const size_t min_amount);
-      void prepare_fetch_all ();
+      void set_fetch_all_requested ();
       void set_last_recyclable_pos (const stream_position &pos);
   };
 

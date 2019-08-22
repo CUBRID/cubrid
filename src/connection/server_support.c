@@ -2333,7 +2333,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	      if (!HA_DISABLED ())
 		{
 		  // todo: force interruptions
-		  cubreplication::replication_node_manager::commute_to_master_state (thread_p, true);
+		  cubreplication::replication_node_manager::start_commute_to_master_state (thread_p, true);
 		  cubreplication::replication_node_manager::wait_commute (ha_Server_state, HA_SERVER_STATE_ACTIVE);
 		}
 	      else
@@ -2345,7 +2345,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  else if (state == HA_SERVER_STATE_STANDBY)
 	    {
 	      assert (!HA_DISABLED ());
-	      cubreplication::replication_node_manager::commute_to_slave_state (thread_p, true);
+	      cubreplication::replication_node_manager::start_commute_to_slave_state (thread_p, true);
 	      cubreplication::replication_node_manager::wait_commute (ha_Server_state, HA_SERVER_STATE_STANDBY);
 	    }
 	  else 
@@ -2381,7 +2381,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	}
       if (!HA_DISABLED () && state == HA_SERVER_STATE_TO_BE_ACTIVE)
 	{
-	  cubreplication::replication_node_manager::commute_to_master_state (thread_p, false);
+	  cubreplication::replication_node_manager::start_commute_to_master_state (thread_p, false);
 	}
 
       if (HA_DISABLED ())
@@ -2408,7 +2408,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
       if (state == HA_SERVER_STATE_STANDBY)
 	{
 	  assert (!HA_DISABLED ());
-	  cubreplication::replication_node_manager::commute_to_slave_state (thread_p, false);
+	  cubreplication::replication_node_manager::start_commute_to_slave_state (thread_p, false);
 	}
       break;
 

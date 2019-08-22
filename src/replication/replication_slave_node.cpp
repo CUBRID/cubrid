@@ -278,9 +278,9 @@ namespace cubreplication
 
     if (m_lc != NULL)
       {
-	m_stream->prepare_fetch_all ();
+	m_stream->set_fetch_all_requested ();
 	// Need to wait for a notification signifying that everything was fetched before calling
-	// m_stream->stop ()
+	// multi_thread_stream::stop method
 	m_lc->wait_dispatcher_applied_all ();
       }
   }

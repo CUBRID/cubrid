@@ -92,7 +92,7 @@ namespace cubreplication
       g_stream = NULL;
     }
 
-    void commute_to_master_state (cubthread::entry *thread_p, bool force)
+    void start_commute_to_master_state (cubthread::entry *thread_p, bool force)
     {
       wait_ha_tasks ();
       inc_ha_tasks ();
@@ -122,7 +122,7 @@ namespace cubreplication
       cubthread::get_manager ()->push_task (wp, promote_task);
     }
 
-    void commute_to_slave_state (cubthread::entry *thread_p, bool force)
+    void start_commute_to_slave_state (cubthread::entry *thread_p, bool force)
     {
       wait_ha_tasks ();
       inc_ha_tasks ();
