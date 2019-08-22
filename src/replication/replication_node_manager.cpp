@@ -102,7 +102,7 @@ namespace cubreplication
       {
 	if (g_slave_node != NULL)
 	  {
-	    g_slave_node->finish_fetch_from_stream ();
+	    g_slave_node->wait_fetch_completed ();
 	  }
 	delete g_slave_node;
 	g_slave_node = NULL;

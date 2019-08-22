@@ -271,7 +271,7 @@ namespace cubreplication
     m_transfer_receiver = NULL;
   }
 
-  void slave_node::finish_fetch_from_stream ()
+  void slave_node::wait_fetch_completed ()
   {
     // this forces transefer_receiver to stream::commit_append all data it has received
     destroy_transfer_receiver ();
