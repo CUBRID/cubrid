@@ -13733,9 +13733,6 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
   // Take into account the unfill factor of the heap file.
   heap_max_page_size = heap_nonheader_page_capacity () * (1.0f - prm_get_float_value (PRM_ID_HF_UNFILL_FACTOR));
 
-  // Start a system operation since we write in multiple pages.
-  log_sysop_start (thread_p);
-
   for (size_t i = 0; i < recdes.size (); i++)
     {
       local_record = recdes[i].get_recdes ();
@@ -13751,7 +13748,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
-              goto cleanup;
+	      return error_code;
 	    }
 	}
       else
@@ -13770,7 +13767,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
-                  goto cleanup;
+		  return error_code;
 		}
 
 	      for (size_t j = 0; j < recdes_array.size (); j++)
@@ -13784,7 +13781,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 		      assert (!pgbuf_is_page_fixed_by_thread (thread_p, &new_page_vpid));
 
 		      ASSERT_ERROR ();
-                      goto cleanup;
+		      return error_code;
 		    }
 
 		  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &home_hint_p);
@@ -13820,7 +13817,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-          goto cleanup;
+	  return error_code;
 	}
     }
 
@@ -13829,23 +13826,9 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      goto cleanup;
+      return error_code;
     }
 
-cleanup:
-  // Check if we have errors to abort the sysop.
-  if (error_code != NO_ERROR)
-    {
-      // Safeguard
-      ASSERT_ERROR ();
-      log_sysop_abort (thread_p);
-    }
-  else
-    {
-      // Commit the sysop
-      log_sysop_commit (thread_p);
-    }
-
-  return error_code;
+  return NO_ERROR;
 }
 // *INDENT-ON*
