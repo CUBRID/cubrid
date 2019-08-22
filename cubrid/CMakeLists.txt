@@ -42,6 +42,7 @@ set (COMPAT_HEADERS
 set(THREAD_SOURCES
   ${THREAD_DIR}/critical_section.c
   ${THREAD_DIR}/critical_section_tracker.cpp
+  ${THREAD_DIR}/internal_tasks_worker_pool.cpp
   ${THREAD_DIR}/thread_daemon.cpp
   ${THREAD_DIR}/thread_entry.cpp
   ${THREAD_DIR}/thread_entry_task.cpp
@@ -52,6 +53,7 @@ set(THREAD_SOURCES
   )
 set(THREAD_HEADERS
   ${THREAD_DIR}/critical_section_tracker.hpp
+  ${THREAD_DIR}/internal_tasks_worker_pool.hpp
   ${THREAD_DIR}/thread_compat.hpp
   ${THREAD_DIR}/thread_daemon.hpp
   ${THREAD_DIR}/thread_entry.hpp
@@ -74,6 +76,7 @@ set (STREAM_HEADERS
   ${BASE_DIR}/cubstream.hpp
   ${BASE_DIR}/multi_thread_stream.hpp
   ${BASE_DIR}/stream_entry.hpp
+  ${BASE_DIR}/stream_entry_fetcher.hpp
   ${BASE_DIR}/stream_file.hpp
   )
 
@@ -153,6 +156,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/semaphore.hpp
+  ${BASE_DIR}/type_traits_utils.hpp
   )
 
 set(EXECUTABLE_SOURCES

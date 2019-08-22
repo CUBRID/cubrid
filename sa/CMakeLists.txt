@@ -147,6 +147,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/printer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/semaphore.hpp
+  ${BASE_DIR}/type_traits_utils.hpp
 )
 
 set(HEAPLAYER_SOURCES
