@@ -132,6 +132,8 @@ namespace cubload
 	    return;
 	  }
 
+	int line_no;
+
 	logtb_assign_tran_index (&thread_ref, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
 				 TRAN_DEFAULT_ISOLATION_LEVEL ());
 
@@ -141,6 +143,15 @@ namespace cubload
 	init_driver (driver, m_session);
 
 	bool parser_result = invoke_parser (driver, m_batch);
+
+	// Get the class name.
+	std::string class_name = cls_entry->get_class_name ();
+
+	// We need this to update the stats.
+	line_no = driver->get_scanner ().lineno ();
+
+	// We don't need anything from the driver anymore.
+	driver->clear ();
 
 	if (m_session.is_failed () || (!is_syntax_check_only && (!parser_result || er_has_error ())))
 	  {
@@ -156,7 +167,6 @@ namespace cubload
 
 	    xtran_server_commit (&thread_ref, false);
 
-	    std::string class_name = cls_entry->get_class_name ();
 	    if (m_session.get_args ().syntax_check)
 	      {
 		m_session.append_log_msg (LOADDB_MSG_INSTANCE_COUNT, class_name.c_str (), m_batch.get_rows_number ());
@@ -169,7 +179,7 @@ namespace cubload
 
 	    // update load statistics after commit
 	    m_session.stats_update_rows_committed (m_batch.get_rows_number ());
-	    m_session.stats_update_last_committed_line (driver->get_scanner ().lineno () + 1);
+	    m_session.stats_update_last_committed_line (line_no + 1);
 
 	    if (!m_session.get_args ().syntax_check)
 	      {
@@ -179,8 +189,6 @@ namespace cubload
 
 	// free transaction index
 	logtb_free_tran_index (&thread_ref, thread_ref.tran_index);
-
-	driver->clear ();
 
 	// notify session that batch is done
 	m_session.notify_batch_done (m_batch.get_id ());
