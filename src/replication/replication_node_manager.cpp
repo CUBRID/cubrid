@@ -112,6 +112,7 @@ namespace cubreplication
 	  }
 
 	css_finish_transit (thread_p, force, HA_SERVER_STATE_ACTIVE);
+	dec_tasks ();
 	g_commute_cv.notify_all ();
       }, true);
 
@@ -138,6 +139,7 @@ namespace cubreplication
 	  }
 
 	css_finish_transit (thread_p, force, HA_SERVER_STATE_STANDBY);
+	dec_tasks ();
 	g_commute_cv.notify_all ();
       }, true);
 
