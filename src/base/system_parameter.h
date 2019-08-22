@@ -436,9 +436,10 @@ enum param_id
   PRM_ID_STATS_ON,
   PRM_ID_LOADDB_WORKER_COUNT,
   PRM_ID_PERF_TEST_MODE,
+  PRM_ID_REPR_CACHE_LOG,
 
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_PERF_TEST_MODE
+  PRM_LAST_ID = PRM_ID_REPR_CACHE_LOG
 };
 typedef enum param_id PARAM_ID;
 

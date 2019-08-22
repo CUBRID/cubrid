@@ -4987,7 +4987,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
       /* empty */
       if (vacuum_is_empty ())
 	{
-	  const size_t LOG_BLOCK_TRAILING_DIFF = 2;
+	  const VACUUM_LOG_BLOCKID LOG_BLOCK_TRAILING_DIFF = 2;
 	  LOG_LSA log_lsa = log_Gl.prior_info.prior_lsa;
 	  VACUUM_LOG_BLOCKID log_blockid = vacuum_get_log_blockid (log_lsa.pageid);
 
