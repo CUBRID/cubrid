@@ -65,7 +65,6 @@ namespace cubstream
     m_is_stopped = false;
 
     m_fetch_all_requested = false;
-    m_fetch_all_finished = false;
 
     m_stream_file = NULL;
 
@@ -516,13 +515,7 @@ namespace cubstream
     m_serial_read_wait_pos = std::numeric_limits<stream_position>::max ();
     local_lock.unlock ();
 
-    if (m_fetch_all_requested && m_read_position + amount > m_last_committed_pos)
-      {
-	// inform dispatcher that it read last entry commited to stream
-	m_fetch_all_finished = true;
-      }
-
-    if (m_is_stopped)
+    if (m_is_stopped || (m_fetch_all_requested && m_read_position + amount > m_last_committed_pos))
       {
 	err = ER_STREAM_NO_MORE_DATA;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (),

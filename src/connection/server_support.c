@@ -2703,11 +2703,10 @@ xacl_reload (THREAD_ENTRY * thread_p)
 static void
 css_process_new_slave (SOCKET master_fd)
 {
-  SOCKET new_fd;
   unsigned short rid;
 
   /* receive new socket descriptor from the master */
-  new_fd = css_open_new_socket_from_master (master_fd, &rid);
+  SOCKET new_fd = css_open_new_socket_from_master (master_fd, &rid);
   if (IS_INVALID_SOCKET (new_fd))
     {
       assert (false);
@@ -2724,7 +2723,7 @@ css_process_new_slave (SOCKET master_fd)
     cubreplication::replication_node_manager::wait_commute (ha_Server_state, HA_SERVER_STATE_ACTIVE);
     cubreplication::replication_node_manager::get_master_node ()->new_slave (new_fd);
     cubreplication::replication_node_manager::dec_tasks ();
-  }, true);
+  });
 
   auto wp = cubthread::internal_tasks_worker_pool::get_instance ();
   cubthread::get_manager ()->push_task (wp, new_slave_task);
@@ -2734,11 +2733,10 @@ css_process_new_slave (SOCKET master_fd)
 static void
 css_process_add_ctrl_chn (SOCKET master_fd)
 {
-  SOCKET new_fd;
   unsigned short rid;
 
   /* receive new socket descriptor from the master */
-  new_fd = css_open_new_socket_from_master (master_fd, &rid);
+  SOCKET new_fd = css_open_new_socket_from_master (master_fd, &rid);
   if (IS_INVALID_SOCKET (new_fd))
     {
       assert (false);
@@ -2757,7 +2755,7 @@ css_process_add_ctrl_chn (SOCKET master_fd)
     cubreplication::replication_node_manager::wait_commute (ha_Server_state, HA_SERVER_STATE_ACTIVE);
     cubreplication::replication_node_manager::get_master_node ()->add_ctrl_chn (new_fd);
     cubreplication::replication_node_manager::dec_tasks ();
-  }, true);
+  });
 
   auto wp = cubthread::internal_tasks_worker_pool::get_instance ();
   cubthread::get_manager ()->push_task (wp, add_ctrl_task);

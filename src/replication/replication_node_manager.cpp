@@ -97,8 +97,7 @@ namespace cubreplication
       wait_ha_tasks ();
       inc_tasks ();
 
-      cubthread::entry_task *promote_task = new cubthread::entry_callable_task ([thread_p, force] (
-		  cubthread::entry &context)
+      auto promote_func = [thread_p, force] (cubthread::entry &context)
       {
 	if (g_slave_node != NULL)
 	  {
@@ -115,7 +114,9 @@ namespace cubreplication
 	css_finish_transit (thread_p, force, HA_SERVER_STATE_ACTIVE);
 	dec_tasks ();
 	g_commute_cv.notify_all ();
-      }, true);
+      };
+
+      cubthread::entry_task *promote_task = new cubthread::entry_callable_task (promote_func, true);
 
       auto wp = cubthread::internal_tasks_worker_pool::get_instance ();
       cubthread::get_manager ()->push_task (wp, promote_task);
@@ -126,8 +127,7 @@ namespace cubreplication
       wait_ha_tasks ();
       inc_tasks ();
 
-      cubthread::entry_task *demote_task = new cubthread::entry_callable_task ([thread_p, force] (
-		  cubthread::entry &context)
+      auto demote_func = [thread_p, force] (cubthread::entry &context)
       {
 	// todo: remove after master -> slave transitions is properly handled
 	assert (g_master_node == NULL);
@@ -143,7 +143,9 @@ namespace cubreplication
 	css_finish_transit (thread_p, force, HA_SERVER_STATE_STANDBY);
 	dec_tasks ();
 	g_commute_cv.notify_all ();
-      }, true);
+      };
+
+      cubthread::entry_task *demote_task = new cubthread::entry_callable_task (demote_func, true);
 
       auto wp = cubthread::internal_tasks_worker_pool::get_instance ();
       cubthread::get_manager ()->push_task (wp, demote_task);
