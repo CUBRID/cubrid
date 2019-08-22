@@ -4494,7 +4494,7 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * h
        */
 
       /* NOW check the PREVIOUS page */
-
+      /* Get the chain record */
       if (spage_get_record (thread_p, prev_pg_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS)
 	{
 	  /* Look like a system error. Unable to obtain header record */
@@ -4507,16 +4507,14 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * h
       /* Modify the chain of the previous page in memory */
       chain.next_vpid = rm_chain->next_vpid;
 
-      /* Get the chain record */
-      recdes.area_size = recdes.length = sizeof (chain);
-      recdes.type = REC_HOME;
-      recdes.data = (char *) &chain;
-
       /* Log the desired changes.. and then change the header */
       addr.pgptr = prev_pg_watcher.pgptr;
       log_append_undoredo_data (thread_p, RVHF_CHAIN, &addr, sizeof (chain), sizeof (chain), recdes.data, &chain);
 
       /* Now change the record */
+      recdes.area_size = recdes.length = sizeof (chain);
+      recdes.type = REC_HOME;
+      recdes.data = (char *) &chain;
 
       sp_success = spage_update (thread_p, prev_pg_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes);
       if (sp_success != SP_SUCCESS)
