@@ -95,7 +95,7 @@ namespace cubreplication
     void commute_to_master_state (cubthread::entry *thread_p, bool force)
     {
       wait_ha_tasks ();
-      inc_tasks ();
+      inc_ha_tasks ();
 
       auto promote_func = [thread_p, force] (cubthread::entry &context)
       {
@@ -112,7 +112,7 @@ namespace cubreplication
 	  }
 
 	css_finish_transit (thread_p, force, HA_SERVER_STATE_ACTIVE);
-	dec_tasks ();
+	dec_ha_tasks ();
 	g_commute_cv.notify_all ();
       };
 
@@ -125,7 +125,7 @@ namespace cubreplication
     void commute_to_slave_state (cubthread::entry *thread_p, bool force)
     {
       wait_ha_tasks ();
-      inc_tasks ();
+      inc_ha_tasks ();
 
       auto demote_func = [thread_p, force] (cubthread::entry &context)
       {
@@ -141,7 +141,7 @@ namespace cubreplication
 	  }
 
 	css_finish_transit (thread_p, force, HA_SERVER_STATE_STANDBY);
-	dec_tasks ();
+	dec_ha_tasks ();
 	g_commute_cv.notify_all ();
       };
 
@@ -172,13 +172,13 @@ namespace cubreplication
       });
     }
 
-    void inc_tasks ()
+    void inc_ha_tasks ()
     {
       std::lock_guard<std::mutex> lg (g_ha_tasks_running_mtx);
       ++g_ha_tasks_running;
     }
 
-    void dec_tasks ()
+    void dec_ha_tasks ()
     {
       std::lock_guard<std::mutex> lg (g_ha_tasks_running_mtx);
       assert (g_ha_tasks_running > 0);

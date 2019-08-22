@@ -57,8 +57,8 @@ namespace cubreplication
 
     void wait_commute (HA_SERVER_STATE &ha_state, HA_SERVER_STATE req_state);
 
-    void inc_tasks ();
-    void dec_tasks ();
+    void inc_ha_tasks ();
+    void dec_ha_tasks ();
   };
 }
 
