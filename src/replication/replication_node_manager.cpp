@@ -52,7 +52,8 @@ namespace cubreplication
 
   namespace replication_node_manager
   {
-    static void wait_ha_tasks ();
+    static std::unique_lock<std::mutex> wait_ha_tasks ();
+    static void inc_ha_tasks_without_lock ();
 
     void init (const char *server_name)
     {
@@ -75,7 +76,7 @@ namespace cubreplication
 
     void finalize ()
     {
-      wait_ha_tasks ();
+      (void) wait_ha_tasks ();
 
       g_hostname.clear ();
 
@@ -94,8 +95,9 @@ namespace cubreplication
 
     void start_commute_to_master_state (cubthread::entry *thread_p, bool force)
     {
-      wait_ha_tasks ();
-      inc_ha_tasks ();
+      std::unique_lock<std::mutex> ul = wait_ha_tasks ();
+      inc_ha_tasks_without_lock ();
+      ul.unlock ();
 
       auto promote_func = [thread_p, force] (cubthread::entry &context)
       {
@@ -124,8 +126,9 @@ namespace cubreplication
 
     void start_commute_to_slave_state (cubthread::entry *thread_p, bool force)
     {
-      wait_ha_tasks ();
+      std::unique_lock<std::mutex> ul = wait_ha_tasks ();
       inc_ha_tasks ();
+      ul.unlock ();
 
       auto demote_func = [thread_p, force] (cubthread::entry &context)
       {
@@ -172,10 +175,15 @@ namespace cubreplication
       });
     }
 
+    static void inc_ha_tasks_without_lock ()
+    {
+      ++g_ha_tasks_running;
+    }
+
     void inc_ha_tasks ()
     {
       std::lock_guard<std::mutex> lg (g_ha_tasks_running_mtx);
-      ++g_ha_tasks_running;
+      inc_ha_tasks_without_lock ();
     }
 
     void dec_ha_tasks ()
@@ -189,13 +197,15 @@ namespace cubreplication
 	}
     }
 
-    static void wait_ha_tasks ()
+    static std::unique_lock<std::mutex> wait_ha_tasks ()
     {
       std::unique_lock<std::mutex> ul (g_ha_tasks_running_mtx);
       g_ha_tasks_running_cv.wait (ul, [] ()
       {
 	return g_ha_tasks_running == 0;
       });
+      // we need to keep mutex locked sometimes after return
+      return ul;
     }
   }
 }
