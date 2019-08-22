@@ -154,7 +154,6 @@ namespace cubstream
       std::condition_variable m_serial_read_cv;
       bool m_is_stopped;
       bool m_fetch_all_requested;
-      bool m_fetch_all_finished;
 
       stream_file *m_stream_file;
 
