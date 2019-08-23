@@ -53,7 +53,7 @@ namespace cubtx
 
     return m_current_group_id;
   }
-  
+
   void group_complete_manager::complete_mvcc (id_type group_id)
   {
     if (group_id < m_latest_closed_group_id)
@@ -101,9 +101,6 @@ namespace cubtx
     er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete_mvcc: (%llu)\n", group_id);
   }
 
-  //
-  // complete_logging - complete transactions logging.
-  //
   void group_complete_manager::complete_logging (id_type group_id)
   {
     if (group_id < m_latest_closed_group_id)
@@ -158,9 +155,6 @@ namespace cubtx
     er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete_logging: (%llu)\n", group_id);
   }
 
-  //
-  // is_any_unregistered_transaction - is there any unregistered transaction
-  //
   void group_complete_manager::complete (id_type group_id)
   {
     if (group_id < m_latest_closed_group_id)
@@ -226,9 +220,6 @@ namespace cubtx
   }
 
 #if defined(SERVER_MODE)
-  //
-  // need_wait_for_complete check whether needs wait for complete
-  //
   bool group_complete_manager::need_wait_for_complete ()
   {
     bool need_wait;
@@ -247,9 +238,6 @@ namespace cubtx
   }
 #endif
 
-  //
-  // close_current_group close the current group. Next comming transactions will be added into the next group.
-  //
   bool group_complete_manager::close_current_group ()
   {
     std::unique_lock<std::mutex> ulock (m_group_mutex);

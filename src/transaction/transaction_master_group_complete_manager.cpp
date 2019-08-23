@@ -51,7 +51,8 @@ namespace cubtx
   {
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
     gl_master_group = new master_group_complete_manager ();
-    er_log_group_complete_debug (ARG_FILE_LINE, "master_group_complete_manager:init created master group complete manager\n");
+    er_log_group_complete_debug (ARG_FILE_LINE,
+				 "master_group_complete_manager:init created master group complete manager\n");
     gl_master_group->m_latest_closed_group_start_stream_position = 0;
     gl_master_group->m_latest_closed_group_end_stream_position = 0;
 
@@ -200,7 +201,7 @@ namespace cubtx
     /* Add group commit log record and wakeup  log flush daemon. */
     log_append_group_complete (thread_p, tdes, m_latest_closed_group_start_stream_position,
 			       closed_group, &closed_group_start_complete_lsa, NULL);
-    
+
     if (has_postpone)
       {
 	/* Notify group postpone. For consistency, we need preserve the order: log GC with postpone first and then
