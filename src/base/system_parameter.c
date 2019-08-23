@@ -674,6 +674,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_REPL_SEMISYNC_ACK_MODE "semisync_replication_ack_mode"
 
+#define PRM_NAME_GROUP_COMPLETE_DEBUG "group_complete_debug"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2264,6 +2266,10 @@ static int prm_repl_semisync_ack_mode_lower = cubreplication::REPL_SEMISYNC_ACK_
 static int prm_repl_semisync_ack_mode_upper = cubreplication::REPL_SEMISYNC_ACK_ON_FLUSH;
 static unsigned int prm_repl_semisync_ack_mode_flag = 0;
 /* *INDENT-ON* */
+
+bool PRM_GROUP_COMPLETE_DEBUG = false;
+static bool prm_group_complete_debug_default = true;	/* TODO - false, after stabilizing group complete issues. */
+static unsigned int prm_group_complete_debug_flag = false;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5820,7 +5826,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_repl_semisync_ack_mode_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_GROUP_COMPLETE_DEBUG,
+   PRM_NAME_GROUP_COMPLETE_DEBUG,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_group_complete_debug_flag,
+   (void *) &prm_group_complete_debug_default,
+   (void *) &PRM_GROUP_COMPLETE_DEBUG,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))

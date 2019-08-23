@@ -48,7 +48,7 @@ namespace cubtx
   {
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
     gl_slave_group = new slave_group_complete_manager ();
-    er_log_debug (ARG_FILE_LINE, "slave_group_complete_manager:init created slave group complete manager\n");
+    er_log_group_complete_debug (ARG_FILE_LINE, "slave_group_complete_manager:init created slave group complete manager\n");
     gl_slave_group->m_latest_group_id = NULL_ID;
     gl_slave_group->m_latest_group_stream_position = 0;
     gl_slave_group->m_has_latest_group_close_info.store (false);
@@ -111,8 +111,9 @@ namespace cubtx
 	    /* Something wrong happens. The latest group was closed, but, we have a transaction
 	     * waiting for another group. Forces a group complete to not stuck the system.
 	     */
-	    _er_log_debug (ARG_FILE_LINE, "can_close_current_group: wrong transaction waiting beyond the latest group id (%llu)",
-			   m_latest_group_id);
+	    er_log_group_complete_debug (ARG_FILE_LINE,
+					 "can_close_current_group: wrong transaction waiting beyond the latest group id (%llu)",
+					 m_latest_group_id);
 	    return true;
 	  }
 
@@ -226,9 +227,9 @@ namespace cubtx
     m_latest_group_stream_position = stream_position;
     m_latest_group_id = set_current_group_minimum_transactions (count_expected_transactions, has_group_enough_transactions);
     m_has_latest_group_close_info.store (true);
-    er_log_debug (ARG_FILE_LINE, "set_close_info_for_current_group sp=%llu, latest_group_id = %llu,"
-		  "count_expected_transaction = %d\n", stream_position, m_latest_group_id,
-		  count_expected_transactions);
+    er_log_group_complete_debug (ARG_FILE_LINE, "set_close_info_for_current_group sp=%llu, latest_group_id = %llu,"
+				 "count_expected_transaction = %d\n", stream_position, m_latest_group_id,
+				 count_expected_transactions);
     if (has_group_enough_transactions)
       {
 	/* Wakeup group complete thread, since we have all informations that allows group close. */
