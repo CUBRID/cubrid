@@ -83,7 +83,7 @@ namespace cubtx
 
 	/* Waits for MVCC complete event on specified group_id, even in async case. */
 	std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
-	/* TODO - consider stop and optimize next call */
+	/* TODO - consider whether is better to use stop and wait with timeout */
 	m_group_complete_condvar.wait (ulock, [&] {return is_group_mvcc_completed (group_id);});
 
 	er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete_mvcc: (tran_index = %d, group_id = %llu)\n",
@@ -138,7 +138,7 @@ namespace cubtx
 
 	/* Waits on group logged event on specified group_id */
 	std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
-	/* TODO - consider stop and optimize next call */
+	/* TODO - consider whether is better to use stop and wait with timeout */
 	m_group_complete_condvar.wait (ulock, [&] {return is_group_logged (group_id);});
 
 	er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete_logging: (%llu)\n", group_id);
@@ -192,7 +192,7 @@ namespace cubtx
 
 	/* Waits for complete event on specified group_id. */
 	std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
-	/* TODO - consider stop and optimize next call */
+	/* TODO - consider whether is better to use stop and wait with timeout */
 	m_group_complete_condvar.wait (ulock, [&] {return is_group_completed (group_id);});
 	er_log_debug (ARG_FILE_LINE, "group_complete_manager::complete: (tran_index = %d, group_id = %llu)\n",
 		      LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
@@ -242,29 +242,6 @@ namespace cubtx
     return need_wait;
   }
 #endif
-
-  //
-  // set_current_group_minimum_transactions set minimum number of transactions for current group.
-  //
-  complete_manager::id_type group_complete_manager::set_current_group_minimum_transactions (
-	  unsigned int count_minimum_transactions,
-	  bool &has_group_enough_transactions)
-  {
-    assert (count_minimum_transactions >= 0);
-    std::unique_lock<std::mutex> ulock (m_group_mutex);
-    m_current_group_min_transactions = count_minimum_transactions;
-
-    if (m_current_group_min_transactions <= m_current_group.get_container ().size ())
-      {
-	has_group_enough_transactions = true;
-      }
-    else
-      {
-	has_group_enough_transactions = false;
-      }
-
-    return m_current_group_id;
-  }
 
   //
   // close_current_group close the current group. Next comming transactions will be added into the next group.

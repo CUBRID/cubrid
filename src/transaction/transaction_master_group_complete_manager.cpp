@@ -154,7 +154,6 @@ namespace cubtx
 	notify_group_mvcc_complete (closed_group);
 
 	/* Pack group commit that internally wakeups senders. Get stream position of group complete. */
-	/* TODO - fix pack_group_commit_entry */
 	logtb_get_tdes (thread_p)->get_replication_generator ().pack_group_commit_entry (
 		closed_group_stream_start_position, closed_group_stream_end_position);
 	m_latest_closed_group_start_stream_position = closed_group_stream_start_position;

@@ -68,9 +68,6 @@ namespace cubtx
       void complete_logging (id_type group_id) override final;
 
     protected:
-      id_type set_current_group_minimum_transactions (unsigned int count_minimum_transactions,
-	  bool &has_group_enough_transactions);
-
       bool close_current_group ();
 
       virtual void on_register_transaction () = 0;
