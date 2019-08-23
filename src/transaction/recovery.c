@@ -816,7 +816,7 @@ struct rvfun RV_fun[] = {
   {RVHF_HEAP_ADD_CHAIN,
    "RVHF_HEAP_ADD_CHAIN",
    NULL,
-   heap_postpone_append_pages_to_heap,
+   heap_rv_postpone_append_pages_to_heap,
    NULL,
    NULL},
 

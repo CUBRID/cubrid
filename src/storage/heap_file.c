@@ -24738,7 +24738,7 @@ heap_nonheader_page_capacity ()
 }
 
 /*
- *  heap_postpone_append_pages_to_heap () - Append a list of pages to the given heap
+ *  heap_rv_postpone_append_pages_to_heap () - Append a list of pages to the given heap
  *    return                  : Error_code
  *    thread_p(in)            : Thread_context
  *    hfid(in)                : Heap file to which we append the pages
@@ -24749,7 +24749,7 @@ heap_nonheader_page_capacity ()
  *
  */
 int
-heap_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   int error_code = NO_ERROR;
   PGBUF_WATCHER page_watcher;
@@ -24761,41 +24761,47 @@ heap_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   HEAP_HDR_STATS *heap_hdr = NULL;
   bool skip_last_page_links = false;
   VPID heap_header_next_vpid;
-  size_t offset = 0, array_size = 0;
+  size_t offset = 0;
+  int array_size = 0;
   std::vector <VPID> heap_pages_array;
-  OID * class_oid;
-  HFID * hfid;
+  OID class_oid;
+  HFID hfid;
 
   /* recovery data: HFID, OID, array_size (int), array_of_VPID(array_size) */
-  hfid = (HFID *) (recv->data + offset);
-  offset += sizeof(*hfid);
+  HFID_SET_NULL (&hfid);
+  OID_SET_NULL (&class_oid);
+  
+  OR_GET_HFID ((recv->data + offset), &hfid);
+  offset += DB_ALIGN (OR_HFID_SIZE, PTR_ALIGNMENT);
 
-  class_oid = (OID *) (recv->data + offset);
-  offset += sizeof(*class_oid);
+  OR_GET_OID ((recv->data + offset), &class_oid);
+  offset += OR_OID_SIZE;
 
-  array_size = *(size_t*) (recv->data + offset);
-  offset += sizeof (offset);
+  array_size = OR_GET_INT ((recv->data + offset));
+  offset += OR_INT_SIZE;
 
   for (size_t i = 0; i < array_size; i++)
     {
-      VPID *vpid = (VPID *) (recv->data + offset);
-      offset += sizeof (*vpid);
+      VPID vpid;
 
-      heap_pages_array.push_back (*vpid);
+      VPID_SET_NULL (&vpid);
+
+      OR_GET_VPID ((recv->data + offset), &vpid);
+      offset += DISK_VPID_ALIGNED_SIZE;
+
+      heap_pages_array.push_back (vpid);
     }
 
   assert (offset == recv->length);
   assert (array_size == heap_pages_array.size ());
 
-  
-
   VPID_SET_NULL (&null_vpid);
   VPID_SET_NULL (&heap_hdr_vpid);
   VPID_SET_NULL (&heap_last_page_vpid);
 
-  PGBUF_INIT_WATCHER (&page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
-  PGBUF_INIT_WATCHER (&heap_header_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
-  PGBUF_INIT_WATCHER (&heap_last_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+  PGBUF_INIT_WATCHER (&page_watcher, PGBUF_ORDERED_HEAP_NORMAL, &hfid);
+  PGBUF_INIT_WATCHER (&heap_header_watcher, PGBUF_ORDERED_HEAP_HDR, &hfid);
+  PGBUF_INIT_WATCHER (&heap_last_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, &hfid);
 
   // Early out
   if (array_size == 0)
@@ -24805,7 +24811,7 @@ heap_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
     }
 
   // Safe-guards
-  assert (hfid != NULL);
+  assert (!HFID_IS_NULL (&hfid));
 
   // Check every page is allocated
   for (size_t i = 0; i < array_size; i++)
@@ -24831,7 +24837,7 @@ heap_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
       VPID_COPY (&prev_vpid, ((i == 0) ? (&null_vpid) : (&heap_pages_array[i - 1])));
       VPID_COPY (&next_vpid, ((i == array_size - 1) ? (&null_vpid) : (&heap_pages_array[i + 1])));
 
-      error_code = heap_add_chain_links (thread_p, hfid, &heap_pages_array[i], &next_vpid, &prev_vpid,
+      error_code = heap_add_chain_links (thread_p, &hfid, &heap_pages_array[i], &next_vpid, &prev_vpid,
 					 &page_watcher, false, false);
       if (error_code != NO_ERROR)
 	{
@@ -24846,7 +24852,7 @@ heap_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   /**********************************************************/
 
   // First get the heap header page.
-  error_code = heap_get_header_page (thread_p, hfid, &heap_hdr_vpid);
+  error_code = heap_get_header_page (thread_p, &hfid, &heap_hdr_vpid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -24874,7 +24880,7 @@ heap_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   heap_header_next_vpid = heap_hdr->next_vpid;
 
   // Get the last page of the heap.
-  error_code = heap_get_last_page (thread_p, hfid, heap_hdr, NULL, &heap_last_page_vpid, &heap_last_page_watcher);
+  error_code = heap_get_last_page (thread_p, &hfid, heap_hdr, NULL, &heap_last_page_vpid, &heap_last_page_watcher);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -24900,7 +24906,7 @@ heap_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
     }
 
   // Add new links to the first page of the chain.
-  error_code = heap_add_chain_links (thread_p, hfid, &heap_pages_array[0], NULL, &heap_last_page_vpid,
+  error_code = heap_add_chain_links (thread_p, &hfid, &heap_pages_array[0], NULL, &heap_last_page_vpid,
 				     &page_watcher, false, false);
   if (error_code != NO_ERROR)
     {
@@ -24911,7 +24917,7 @@ heap_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   // Add new links to the last page of the heap.
   if (!skip_last_page_links)
     {
-      error_code = heap_add_chain_links (thread_p, hfid, &heap_last_page_vpid, &heap_pages_array[0], NULL,
+      error_code = heap_add_chain_links (thread_p, &hfid, &heap_last_page_vpid, &heap_pages_array[0], NULL,
 					 &heap_last_page_watcher, true, true);
       if (error_code != NO_ERROR)
 	{
@@ -24921,7 +24927,7 @@ heap_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
     }
 
   // Now update the last page of the heap header.
-  error_code = heap_update_and_log_header (thread_p, hfid, heap_header_watcher, heap_hdr, heap_header_next_vpid,
+  error_code = heap_update_and_log_header (thread_p, &hfid, heap_header_watcher, heap_hdr, heap_header_next_vpid,
 					   heap_pages_array[array_size - 1], array_size);
   if (error_code != NO_ERROR)
     {
@@ -25096,41 +25102,43 @@ heap_log_postpone_heap_append (THREAD_ENTRY * thread_p, const HFID * hfid, const
 {
   // This append needs to be run on postpone after the commit.
   // First create the log data required.
-  size_t array_size = heap_pages_array.size ();
-  size_t log_data_size = sizeof (HFID) + sizeof (OID) + sizeof (size_t) + array_size * sizeof (VPID);
-  char *log_data_buffer = (char *) db_private_alloc (NULL, log_data_size + MAX_ALIGNMENT);
-  char *log_data = PTR_ALIGN (log_data_buffer, MAX_ALIGNMENT);
+  int array_size = heap_pages_array.size ();
+  int log_data_size = DB_ALIGN (OR_HFID_SIZE, PTR_ALIGNMENT) + OR_OID_SIZE + sizeof (int) +
+                      array_size * DISK_VPID_ALIGNED_SIZE;
+  char *log_data = (char *) db_private_alloc (NULL, log_data_size + MAX_ALIGNMENT);
   LOG_DATA_ADDR log_addr = LOG_DATA_ADDR_INITIALIZER;
+  char *ptr = log_data;
 
   // Now populate the log data needed.
-  size_t offset = 0;
 
   // HFID
-  HFID_COPY ((HFID *) (log_data + offset), hfid);
-  offset += sizeof (HFID);
+  OR_PUT_HFID (ptr, hfid);
+  ptr += OR_HFID_SIZE;
+  ptr = PTR_ALIGN (ptr, PTR_ALIGNMENT);
 
   // class_oid
-  COPY_OID ((OID *) (log_data + offset), class_oid);
-  offset += sizeof (OID);
+  OR_PUT_OID (ptr, class_oid);
+  ptr += OR_OID_SIZE;
+  ptr = PTR_ALIGN (ptr, PTR_ALIGNMENT);
 
   // array_size
-  memcpy ((log_data + offset), &array_size, sizeof (size_t));
-  offset += sizeof (size_t);
+  OR_PUT_INT (ptr, array_size);
+  ptr += OR_INT_SIZE;
 
   // The array of VPID.
   for (size_t i = 0; i < array_size; i++)
     {
-      VPID_COPY ((VPID *) (log_data + offset), &heap_pages_array[i]);
-      offset += sizeof (VPID);
+      OR_PUT_VPID_ALIGNED (ptr, &heap_pages_array[i]);
+      ptr += DISK_VPID_ALIGNED_SIZE;
     }
 
-  assert (offset == log_data_size);
+  assert ((ptr - log_data) ==  log_data_size);
 
   log_append_postpone (thread_p, RVHF_HEAP_ADD_CHAIN, &log_addr, log_data_size, log_data);
 
-  if (log_data_buffer)
+  if (log_data)
     {
-      db_private_free_and_init (NULL, log_data_buffer);      
+      db_private_free_and_init (NULL, log_data);
     }
 }
 
