@@ -515,6 +515,7 @@ namespace cubstream
     m_serial_read_wait_pos = std::numeric_limits<stream_position>::max ();
     local_lock.unlock ();
 
+    // On m_fetch_all_requested + all is read trigger same stopping operation as we do for m_is_stopped
     if (m_is_stopped || (m_fetch_all_requested && m_read_position + amount > m_last_committed_pos))
       {
 	err = ER_STREAM_NO_MORE_DATA;
