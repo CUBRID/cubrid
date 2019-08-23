@@ -31,6 +31,7 @@
 #include "replication_node.hpp"
 #include "replication_stream_entry.hpp"
 #include "stream_transfer_receiver.hpp"
+#include "stream_entry_fetcher.hpp"
 #include "stream_file.hpp"
 #include "string_buffer.hpp"
 #include "thread_entry_task.hpp"
@@ -39,6 +40,7 @@
 
 namespace cubreplication
 {
+  using stream_entry_fetcher = cubstream::entry_fetcher<stream_entry>;
 
   apply_copy_context::apply_copy_context (node_definition *myself, node_definition *source_node)
   {
@@ -176,48 +178,22 @@ namespace cubreplication
 	std::chrono::duration<double> execution_time = std::chrono::system_clock::now () - m_start_time;
 
 	er_log_debug_replication (ARG_FILE_LINE, "wait_replication_copy: current stream_position:%lld\n"
-				  "stream entries in queue:%d, running tasks:%d\n"
+				  "running tasks:%d\n"
 				  "time since start:%.6f\n",
 				  m_copy_consumer->m_last_fetched_position,
-				  m_copy_consumer->get_entries_in_queue (),
 				  m_copy_consumer->get_started_task (),
 				  execution_time.count ());
 	thread_sleep (1000);
       }
   }
 
-
-  /* TODO : refactor with log_consumer:: consumer_daemon_task */
-  class copy_db_consumer_daemon_task : public cubthread::entry_task
-  {
-    public:
-      copy_db_consumer_daemon_task (copy_db_consumer &lc)
-	: m_lc (lc)
-      {
-      };
-
-      void execute (cubthread::entry &thread_ref) override
-      {
-	stream_entry *se = NULL;
-
-	int err = m_lc.fetch_stream_entry (se);
-	if (err == NO_ERROR)
-	  {
-	    m_lc.push_entry (se);
-	  }
-      };
-
-    private:
-      copy_db_consumer &m_lc;
-  };
-
-
   /* TODO : refactor with log_consumer:: applier_worker_task */
   class copy_db_worker_task : public cubthread::entry_task
   {
     public:
-      copy_db_worker_task (stream_entry *repl_stream_entry, copy_db_consumer &lc, copy_db_consumer::apply_phase phase)
-	: m_lc (lc)
+      copy_db_worker_task (stream_entry *repl_stream_entry, copy_db_consumer &copy_consumer,
+                           copy_db_consumer::apply_phase phase)
+	: m_copy_consumer (copy_consumer)
 	, m_phase (phase)
       {
 	add_repl_stream_entry (repl_stream_entry);
@@ -255,13 +231,11 @@ namespace cubreplication
 		    assert (false);
 		    /* TODO[replication] : error handling */
 		  }
-
-		/* TODO[replication] : add to revert list class or trigger */
 	      }
 
 	    delete curr_stream_entry;
 
-	    m_lc.end_one_task ();
+	    m_copy_consumer.end_one_task ();
 	  }
 
 	locator_repl_end_tran (&thread_ref, true);
@@ -288,7 +262,7 @@ namespace cubreplication
 
     private:
       std::vector<stream_entry *> m_repl_stream_entries;
-      copy_db_consumer &m_lc;
+      copy_db_consumer &m_copy_consumer;
       copy_db_consumer::apply_phase m_phase;
   };
 
@@ -297,19 +271,18 @@ namespace cubreplication
   class copy_dispatch_task : public cubthread::entry_task
   {
     public:
-      copy_dispatch_task (copy_db_consumer &lc)
-	: m_lc (lc)
+      copy_dispatch_task (copy_db_consumer &copy_consumer)
+	: m_copy_consumer (copy_consumer)
+        , m_entry_fetcher (*copy_consumer.get_stream ())
       {
       }
 
       void execute (cubthread::entry &thread_ref) override
       {
-	stream_entry *se = NULL;
 	using tasks_map = std::unordered_map <MVCCID, copy_db_worker_task *>;
 	tasks_map repl_tasks;
 	tasks_map nonexecutable_repl_tasks;
 	copy_db_consumer::apply_phase phase = copy_db_consumer::apply_phase::CLASS_SCHEMA;
-	bool is_stopped = false;
 
 	er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : start of replication copy");
 
@@ -317,15 +290,28 @@ namespace cubreplication
 	while (phase != copy_db_consumer::apply_phase::END)
 	  {
 	    bool is_control_se = false;
-	    m_lc.pop_entry (se, is_stopped);
-
-	    if (is_stopped)
+            stream_entry *se = NULL;
+	    int err = m_entry_fetcher.fetch_entry (se);
+	    if (err != NO_ERROR)
 	      {
-		er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : detect should stop");
-		break;
+		if (err == ER_STREAM_NO_MORE_DATA)
+		  {
+		    ASSERT_ERROR ();
+                    // TODO : handle this 
+		    //m_stop = true;
+		    delete se;
+		    break;
+		  }
+		else
+		  {
+		    ASSERT_ERROR ();
+		    // should not happen
+		    assert (false);
+		    break;
+		  }
 	      }
 
-	    m_lc.m_last_fetched_position = se->get_stream_entry_start_position ();
+	    m_copy_consumer.m_last_fetched_position = se->get_stream_entry_start_position ();
 
 	    if (is_debug_short_dump_enabled ())
 	      {
@@ -337,7 +323,7 @@ namespace cubreplication
 	    /* during extract heap phase we may apply objects in parallel, otherwise we wait of all tasks to finish */
 	    if (phase != copy_db_consumer::apply_phase::CLASS_HEAP)
 	      {
-		m_lc.wait_for_tasks ();
+		m_copy_consumer.wait_for_tasks ();
 	      }
 
 	    if (se->is_start_of_extract_heap ())
@@ -366,20 +352,21 @@ namespace cubreplication
 	      }
 	    else
 	      {
-		copy_db_worker_task *my_copy_db_worker_task = new copy_db_worker_task (se, m_lc, phase);
-		m_lc.execute_task (my_copy_db_worker_task);
+		copy_db_worker_task *my_copy_db_worker_task = new copy_db_worker_task (se, m_copy_consumer, phase);
+		m_copy_consumer.execute_task (my_copy_db_worker_task);
 		/* stream entry is deleted by applier task thread */
 	      }
 	  }
 
-	m_lc.wait_for_tasks ();
+	m_copy_consumer.wait_for_tasks ();
 
-	m_lc.set_is_finished ();
+	m_copy_consumer.set_is_finished ();
 	er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task finished");
       }
 
     private:
-      copy_db_consumer &m_lc;
+      copy_db_consumer &m_copy_consumer;
+      stream_entry_fetcher m_entry_fetcher;
   };
 
   copy_db_consumer::~copy_db_consumer ()
@@ -388,76 +375,15 @@ namespace cubreplication
 
     if (m_use_daemons)
       {
-	cubthread::get_manager ()->destroy_daemon (m_consumer_daemon);
 	cubthread::get_manager ()->destroy_worker_pool (m_dispatch_workers_pool);
 	cubthread::get_manager ()->destroy_worker_pool (m_applier_workers_pool);
       }
-
-    assert (m_stream_entries.empty ());
-  }
-
-  void copy_db_consumer::push_entry (stream_entry *entry)
-  {
-    if (is_debug_short_dump_enabled ())
-      {
-	string_buffer sb;
-	entry->stringify (sb, stream_entry::short_dump);
-	_er_log_debug (ARG_FILE_LINE, "copy_db_consumer push_entry:\n%s", sb.get_buffer ());
-      }
-
-    std::unique_lock<std::mutex> ulock (m_queue_mutex);
-    m_stream_entries.push (entry);
-    m_apply_task_ready = true;
-    ulock.unlock ();
-    m_apply_task_cv.notify_one ();
-  }
-
-  void copy_db_consumer::pop_entry (stream_entry *&entry, bool &should_stop)
-  {
-    std::unique_lock<std::mutex> ulock (m_queue_mutex);
-    if (m_stream_entries.empty ())
-      {
-	m_apply_task_ready = false;
-	m_apply_task_cv.wait (ulock, [this] { return m_is_stopped || m_apply_task_ready;});
-      }
-
-    if (m_is_stopped)
-      {
-	should_stop = true;
-	return;
-      }
-
-    assert (m_stream_entries.empty () == false);
-
-    entry = m_stream_entries.front ();
-    m_stream_entries.pop ();
-  }
-
-  int copy_db_consumer::fetch_stream_entry (stream_entry *&entry)
-  {
-    int err = NO_ERROR;
-
-    stream_entry *se = new stream_entry (m_stream);
-
-    err = se->prepare ();
-    if (err != NO_ERROR)
-      {
-	delete se;
-	return err;
-      }
-
-    entry = se;
-
-    return err;
   }
 
   void copy_db_consumer::start_daemons (void)
   {
 #if defined (SERVER_MODE)
     er_log_debug_replication (ARG_FILE_LINE, "copy_db_consumer::start_daemons\n");
-    m_consumer_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
-			new copy_db_consumer_daemon_task (*this),
-			"repl_copy_db_prepare_stream_entry_daemon");
 
     m_dispatch_workers_pool = cubthread::get_manager ()->create_worker_pool (1, 1, "repl_copy_db_dispatch_pool", NULL,
 			      1, 1);
@@ -495,22 +421,17 @@ namespace cubreplication
 
   void copy_db_consumer::wait_for_tasks (void)
   {
-    er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : wait_for_tasks :%d", m_started_tasks.load ());
+    er_log_debug_replication (ARG_FILE_LINE, "copy_db_consumer : wait_for_tasks :%d", m_started_tasks.load ());
     while (m_started_tasks.load () > 0)
       {
 	thread_sleep (1);
       }
-    er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : wait_for_tasks .. OK");
+    er_log_debug_replication (ARG_FILE_LINE, "copy_db_consumer : wait_for_tasks .. OK");
   }
 
   void copy_db_consumer::set_stop (void)
   {
     m_stream->stop ();
-
-    std::unique_lock<std::mutex> ulock (m_queue_mutex);
-    m_is_stopped = true;
-    ulock.unlock ();
-    m_apply_task_cv.notify_one ();
   }
 
 } /* namespace cubreplication */

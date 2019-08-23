@@ -67,13 +67,8 @@ namespace cubreplication
       };
 
     private:
-      std::queue<stream_entry *> m_stream_entries;
 
       cubstream::multi_thread_stream *m_stream;
-
-      std::mutex m_queue_mutex;
-
-      cubthread::daemon *m_consumer_daemon;
 
       cubthread::entry_workpool *m_dispatch_workers_pool;
 
@@ -85,21 +80,16 @@ namespace cubreplication
 
       std::atomic<int> m_started_tasks;
 
-      std::condition_variable m_apply_task_cv;
-      bool m_apply_task_ready;
-
       bool m_is_stopped;
       bool m_is_finished;
 
     public:
       copy_db_consumer () :
 	m_stream (NULL),
-	m_consumer_daemon (NULL),
 	m_applier_workers_pool (NULL),
 	m_applier_worker_threads_count (MAX_APPLIER_THREADS),
 	m_use_daemons (false),
 	m_started_tasks (0),
-	m_apply_task_ready (false),
 	m_is_stopped (false),
 	m_is_finished (false),
 	m_last_fetched_position (0)
@@ -108,18 +98,17 @@ namespace cubreplication
 
       ~copy_db_consumer ();
 
-      void push_entry (stream_entry *entry);
-
-      void pop_entry (stream_entry *&entry, bool &should_stop);
-
-      int fetch_stream_entry (stream_entry *&entry);
-
       void start_daemons (void);
       void execute_task (copy_db_worker_task *task);
 
       void set_stream (cubstream::multi_thread_stream *stream)
       {
 	m_stream = stream;
+      }
+
+      cubstream::multi_thread_stream *get_stream (void)
+      {
+	return m_stream;
       }
 
       void end_one_task (void)
@@ -152,11 +141,6 @@ namespace cubreplication
       }
 
       cubstream::stream_position m_last_fetched_position;
-
-      size_t get_entries_in_queue ()
-      {
-	return m_stream_entries.size ();
-      }
   };
 
   class apply_copy_context

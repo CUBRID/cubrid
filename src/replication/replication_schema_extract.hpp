@@ -24,10 +24,7 @@
 #ifndef _REPLICATION_SCHEMA_EXTRACT_HPP_
 #define _REPLICATION_SCHEMA_EXTRACT_HPP_
 
-#include "dbtype_def.h"
-#include "mem_block.hpp"
 #include "printer.hpp"
-#include <list>
 
 namespace cubreplication
 {
@@ -49,7 +46,7 @@ namespace cubreplication
 
       int flush (void);
 
-      void end_item (const char *item) final;
+      void set_id (const char *id) final;
 
       int send_to_network ();
 

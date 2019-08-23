@@ -46,10 +46,14 @@ namespace cubreplication
     return 0;
   }
 
-  void net_print_output::end_item (const char *item)
+  void net_print_output::set_id (const char *item)
   {
+    // first flush any previous contents
+    if (m_sb.len () > 0)
+      {
+        (void) send_to_network ();
+      }
     m_id = item;
-    (void) send_to_network ();
   }
 
   int net_print_output::send_to_network ()
