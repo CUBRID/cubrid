@@ -29,6 +29,8 @@
 #include <condition_variable>
 #include <mutex>
 
+#define er_log_group_complete_debug(...) if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA)) _er_log_debug(__VA_ARGS__)
+
 namespace cubtx
 {
   /* Group state. */

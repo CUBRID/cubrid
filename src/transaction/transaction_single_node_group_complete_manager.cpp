@@ -49,7 +49,8 @@ namespace cubtx
   void single_node_group_complete_manager::init ()
   {
     assert (gl_single_node_group == NULL);
-    er_log_debug (ARG_FILE_LINE, "single_node_group_complete_manager:init created single group complete manager\n");
+    er_log_group_complete_debug (ARG_FILE_LINE,
+				 "single_node_group_complete_manager:init created single group complete manager\n");
     gl_single_node_group = new single_node_group_complete_manager ();
 
     LSA_SET_NULL (&gl_single_node_group->m_latest_closed_group_start_log_lsa);
@@ -226,11 +227,8 @@ namespace cubtx
 		closed_group_stream_end_position);
 	  }
 
-	/* TODO - fix append group complete call */
 	log_append_group_complete (thread_p, tdes, 0,
 				   closed_group, &closed_group_start_complete_lsa, NULL);
-	//log_append_group_complete (thread_p, tdes, 0, closed_group, &closed_group_start_complete_lsa,
-	//&closed_group_end_complete_lsa, &has_postpone);
 
 	LSA_COPY (&m_latest_closed_group_start_log_lsa, &closed_group_start_complete_lsa);
 	LSA_COPY (&m_latest_closed_group_end_log_lsa, &closed_group_end_complete_lsa);
@@ -241,7 +239,10 @@ namespace cubtx
 	    notify_group_logged ();
 	  }
 
-	/* TODO - er_log_debug (closed_group_start_complete_lsa, closed_group_end_complete_lsa) */
+	er_log_group_complete_debug (ARG_FILE_LINE, "closed_group_start_complete_lsa =(%llu, %llu), "
+				     "closed_group_end_complete_lsa = (%lld, %d)\n",
+				     LSA_AS_ARGS (&closed_group_start_complete_lsa),
+				     LSA_AS_ARGS (&closed_group_end_complete_lsa));
       }
   }
 
