@@ -41,6 +41,7 @@ namespace cubtx
   {
     assert (gl_master_group != NULL);
     return gl_master_group;
+
   }
 
   //
@@ -50,7 +51,7 @@ namespace cubtx
   {
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
     gl_master_group = new master_group_complete_manager ();
-    er_log_debug (ARG_FILE_LINE, "master_group_complete_manager:init created master group complete manager\n");
+    er_log_group_complete_debug (ARG_FILE_LINE, "master_group_complete_manager:init created master group complete manager\n");
     gl_master_group->m_latest_closed_group_start_stream_position = 0;
     gl_master_group->m_latest_closed_group_end_stream_position = 0;
 
@@ -83,7 +84,7 @@ namespace cubtx
       {
 	cubthread::entry *thread_p = &cubthread::get_entry ();
 	do_complete (thread_p);
-	er_log_debug (ARG_FILE_LINE, "master_group_complete_manage::notify_stream_ack pos=%llu\n", stream_pos);
+	er_log_group_complete_debug (ARG_FILE_LINE, "master_group_complete_manage::notify_stream_ack pos=%llu\n", stream_pos);
       }
   }
 
