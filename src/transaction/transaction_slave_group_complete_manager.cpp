@@ -48,7 +48,7 @@ namespace cubtx
   {
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
     gl_slave_group = new slave_group_complete_manager ();
-    er_log_debug (ARG_FILE_LINE, "slave_group_complete_manager:init created slave group complete manager\n");
+    er_log_group_complete_debug (ARG_FILE_LINE, "slave_group_complete_manager:init created slave group complete manager\n");
     gl_slave_group->m_latest_group_id = NULL_ID;
     gl_slave_group->m_latest_group_stream_position = 0;
     gl_slave_group->m_has_latest_group_close_info.store (false);
@@ -155,9 +155,9 @@ namespace cubtx
   //
   void slave_group_complete_manager::do_complete (THREAD_ENTRY *thread_p)
   {
-    LOG_LSA closed_group_start_complete_lsa, closed_group_end_complete_lsa;
+    LOG_LSA closed_group_start_complete_lsa;
     LOG_TDES *tdes = logtb_get_tdes (thread_p);
-    bool has_postpone;
+    bool has_postpone = false;
 
     if (is_latest_closed_group_completed ())
       {
@@ -179,12 +179,9 @@ namespace cubtx
     tx_group &closed_group = get_latest_closed_group ();
     /* TODO - consider parameter for MVCC complete here. */
     /* Add group commit log record and wakeup  log flush daemon. */
-
-    /* TODO - fix append group complete */
+    
     log_append_group_complete (thread_p, tdes, m_latest_group_stream_position,
-			       closed_group, &closed_group_start_complete_lsa, NULL);
-    //log_append_group_complete (thread_p, tdes, m_latest_group_stream_position.load (), closed_group,
-    //&closed_group_start_complete_lsa, &closed_group_end_complete_lsa, &has_postpone);
+			       closed_group, &closed_group_start_complete_lsa, NULL);    
 
     log_wakeup_log_flush_daemon ();
     if (has_postpone)
@@ -231,7 +228,7 @@ namespace cubtx
     m_latest_group_stream_position = stream_position;
     m_latest_group_id = set_current_group_minimum_transactions (count_expected_transactions, has_group_enough_transactions);
     m_has_latest_group_close_info.store (true);
-    er_log_debug (ARG_FILE_LINE, "set_close_info_for_current_group sp=%llu, latest_group_id = %llu,"
+    er_log_group_complete_debug (ARG_FILE_LINE, "set_close_info_for_current_group sp=%llu, latest_group_id = %llu,"
 		  "count_expected_transaction = %d\n", stream_position, m_latest_group_id,
 		  count_expected_transactions);
     if (has_group_enough_transactions)
