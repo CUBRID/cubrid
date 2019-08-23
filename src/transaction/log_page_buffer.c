@@ -10300,22 +10300,26 @@ logpb_initialize_tran_complete_manager (void)
 #endif
 }
 
+/*
+ * logpb_complete_manager_string - complete manager string
+ */
 const char *
-logpb_complete_manager_string (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
+logpb_complete_manager_string (log_tran_complete_manager_type manager_type)
 {
   switch (manager_type)
     {
     case LOG_TRAN_COMPLETE_NO_MANAGER:
-      return LOG_TRAN_COMPLETE_NO_MANAGER_STR;
+      return "no manager";
     case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
-      return LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE_STR;
+      return "single node";
     case LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE:
-      return LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE_STR;
+      return "master node";
     case LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE:
-      return LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE_STR;
+      return "slave";
     }
 
-  return "invalid";
+  assert (false);
+  return NULL;
 }
 
 /*

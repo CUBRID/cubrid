@@ -104,9 +104,6 @@ namespace cubtx
     er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete_mvcc: (%llu)\n", group_id);
   }
 
-  //
-  // complete_logging - complete transactions logging.
-  //
   void group_complete_manager::complete_logging (id_type group_id)
   {
     if (group_id < m_latest_closed_group_id)
@@ -161,9 +158,6 @@ namespace cubtx
     er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete_logging: (%llu)\n", group_id);
   }
 
-  //
-  // is_any_unregistered_transaction - is there any unregistered transaction
-  //
   void group_complete_manager::complete (id_type group_id)
   {
     if (group_id < m_latest_closed_group_id)
@@ -229,9 +223,6 @@ namespace cubtx
   }
 
 #if defined(SERVER_MODE)
-  //
-  // need_wait_for_complete check whether needs wait for complete
-  //
   bool group_complete_manager::need_wait_for_complete ()
   {
     bool need_wait;
@@ -273,9 +264,6 @@ namespace cubtx
     return m_current_group_id;
   }
 
-  //
-  // close_current_group close the current group. Next comming transactions will be added into the next group.
-  //
   bool group_complete_manager::close_current_group ()
   {
     std::unique_lock<std::mutex> ulock (m_group_mutex);
@@ -287,7 +275,7 @@ namespace cubtx
 	m_latest_closed_group_state = GROUP_CLOSED;
 	er_log_group_complete_debug (ARG_FILE_LINE,
 				     "group_complete_manager::close_current_group: (manager_type = %s, group = %llu, group_size = %d)\n",
-				     logpb_complete_manager_string ((LOG_TRAN_COMPLETE_MANAGER_TYPE) get_manager_type ()),
+				     logpb_complete_manager_string ((log_tran_complete_manager_type) get_manager_type ()),
 				     (unsigned long long) m_latest_closed_group_id, m_current_group.get_container ().size ());
 
 	/* Advance with the group - copy and reinit it. */
@@ -333,7 +321,7 @@ namespace cubtx
     m_latest_closed_group_state |= GROUP_COMPLETED;
     er_log_group_complete_debug (ARG_FILE_LINE,
 				 "group_complete_manager::notify_group_complete latest_group_id: (manager_type = %s, closed group = %llu)\n",
-				 logpb_complete_manager_string ((LOG_TRAN_COMPLETE_MANAGER_TYPE) get_manager_type ()),
+				 logpb_complete_manager_string ((log_tran_complete_manager_type) get_manager_type ()),
 				 (unsigned long long) m_latest_closed_group_id);
 
 #if defined (SERVER_MODE)
