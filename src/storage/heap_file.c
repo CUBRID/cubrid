@@ -25134,7 +25134,7 @@ heap_log_postpone_heap_append (THREAD_ENTRY * thread_p, const HFID * hfid, const
 
   assert ((ptr - log_data) ==  log_data_size);
 
-  log_append_postpone (thread_p, RVHF_HEAP_ADD_CHAIN, &log_addr, log_data_size, log_data);
+  log_append_postpone (thread_p, RVHF_APPEND_PAGES_TO_HEAP, &log_addr, log_data_size, log_data);
 
   if (log_data)
     {
