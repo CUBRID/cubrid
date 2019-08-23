@@ -13822,7 +13822,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
     }
 
   // Log the postpone operation
-  heap_log_postpone_heap_append (thread_p, hfid, class_oid, heap_pages_array);
+  heap_log_postpone_heap_append_pages (thread_p, hfid, class_oid, heap_pages_array);
 
   return NO_ERROR;
 }

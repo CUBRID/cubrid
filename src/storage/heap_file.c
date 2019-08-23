@@ -24738,7 +24738,7 @@ heap_nonheader_page_capacity ()
 }
 
 /*
- *  heap_rv_postpone_append_pages_to_heap () - Append a list of pages to the given heap
+ * heap_rv_postpone_append_pages_to_heap () - Append a list of pages to the given heap
  *    return                  : Error_code
  *    thread_p(in)            : Thread_context
  *    hfid(in)                : Heap file to which we append the pages
@@ -25097,14 +25097,14 @@ heap_update_and_log_header (THREAD_ENTRY * thread_p, const HFID * hfid, const PG
 }
 
 void
-heap_log_postpone_heap_append (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid,
+heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid,
                                const std::vector <VPID> heap_pages_array)
 {
   // This append needs to be run on postpone after the commit.
   // First create the log data required.
   int array_size = heap_pages_array.size ();
-  int log_data_size = DB_ALIGN (OR_HFID_SIZE, PTR_ALIGNMENT) + OR_OID_SIZE + sizeof (int) +
-                      array_size * DISK_VPID_ALIGNED_SIZE;
+  int log_data_size = (DB_ALIGN (OR_HFID_SIZE, PTR_ALIGNMENT) + OR_OID_SIZE + sizeof (int)
+                       + array_size * DISK_VPID_ALIGNED_SIZE);
   char *log_data = (char *) db_private_alloc (NULL, log_data_size + MAX_ALIGNMENT);
   LOG_DATA_ADDR log_addr = LOG_DATA_ADDR_INITIALIZER;
   char *ptr = log_data;
