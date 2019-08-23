@@ -5326,7 +5326,6 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
   MVCCID mvccid;
   VACUUM_LOG_BLOCKID crt_blockid;
   LOG_LSA mvcc_op_log_lsa = LSA_INITIALIZER;
-  bool is_last_block = false;
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
 		 "vacuum_recover_lost_block_data, lsa = %lld|%d, global_oldest_mvccid = %llu",
@@ -5437,12 +5436,12 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
       LSA_COPY (&mvcc_op_log_lsa, &log_Gl.hdr.mvcc_op_log_lsa);
     }
   assert (!LSA_ISNULL (&mvcc_op_log_lsa));
+  log_Gl.hdr.mvcc_op_log_lsa = mvcc_op_log_lsa;
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
 		 "vacuum_recover_lost_block_data, start recovering from %lld|%d ", LSA_AS_ARGS (&mvcc_op_log_lsa));
 
   /* Start recovering blocks. */
-  is_last_block = true;
   crt_blockid = vacuum_get_log_blockid (mvcc_op_log_lsa.pageid);
   LSA_COPY (&log_lsa, &mvcc_op_log_lsa);
 
@@ -5497,13 +5496,12 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 	    }
 	  LSA_COPY (&log_lsa, &vacuum_info.prev_mvcc_op_log_lsa);
 	}
-      if (is_last_block)
+
+      if (data.blockid == vacuum_get_log_blockid (log_Gl.prior_info.prior_lsa.pageid))
 	{
-	  /* This block is cached in log_Gl.hdr and will be produced later. */
 	  log_Gl.hdr.last_block_oldest_mvccid = data.oldest_mvccid;
 	  log_Gl.hdr.last_block_newest_mvccid = data.newest_mvccid;
-	  LSA_COPY (&log_Gl.hdr.mvcc_op_log_lsa, &data.start_lsa);
-	  is_last_block = false;
+	  log_Gl.hdr.does_block_need_vacuum = true;
 
 	  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
 			 "Restore log global cached info: \n\t mvcc_op_log_lsa = %lld|%d \n"
