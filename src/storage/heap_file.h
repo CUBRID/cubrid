@@ -125,6 +125,7 @@ struct heap_scancache_node
 {
   HFID hfid;			/* Heap file of scan */
   OID class_oid;		/* Class oid of scanned instances */
+  const char *classname;
 };
 
 typedef struct heap_scancache_node_list HEAP_SCANCACHE_NODE_LIST;

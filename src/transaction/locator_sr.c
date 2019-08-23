@@ -7611,7 +7611,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 /* #endif */
 
 #if defined(ENABLE_SYSTEMTAP)
-  char *classname = NULL;
+  char *classname = scan_cache->node.classname;
 #endif /* ENABLE_SYSTEMTAP */
 
   assert_release (class_oid != NULL);
@@ -7663,11 +7663,16 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
     }
 
 #if defined(ENABLE_SYSTEMTAP)
-  if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR || classname == NULL)
+  if (classname)
     {
-      ASSERT_ERROR_AND_SET (error_code);
-      goto error;
+      if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR || classname == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto error;
+	}
     }
+
+  assert (classname != NULL);
 #endif /* ENABLE_SYSTEMTAP */
 
   for (i = 0; i < num_btids; i++)

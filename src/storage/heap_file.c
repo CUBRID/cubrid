@@ -6742,6 +6742,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 
   scan_cache->page_latch = S_LOCK;
 
+  scan_cache->node.classname = NULL;
   scan_cache->cache_last_fix_page = cache_last_fix_page;
   PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_HEAP_NORMAL, hfid);
   scan_cache->start_area ();
@@ -6758,6 +6759,7 @@ exit_on_error:
   HFID_SET_NULL (&scan_cache->node.hfid);
   scan_cache->node.hfid.vfid.volid = NULL_VOLID;
   OID_SET_NULL (&scan_cache->node.class_oid);
+  scan_cache->node.classname = NULL;
   scan_cache->page_latch = NULL_LOCK;
   scan_cache->cache_last_fix_page = false;
   PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_RANK_UNDEFINED, PGBUF_ORDERED_NULL_HFID);
@@ -6966,6 +6968,7 @@ heap_scancache_reset_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
 	}
     }
   scan_cache->page_latch = X_LOCK;
+  scan_cache->node.classname = NULL;
 
   return ret;
 }
@@ -7040,6 +7043,7 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
       PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_HEAP_NORMAL, hfid);
     }
   OID_SET_NULL (&scan_cache->node.class_oid);
+  scan_cache->node.classname = NULL;
   scan_cache->page_latch = S_LOCK;
   scan_cache->cache_last_fix_page = true;
   scan_cache->start_area ();
@@ -7106,6 +7110,7 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
 
   HFID_SET_NULL (&scan_cache->node.hfid);
   scan_cache->node.hfid.vfid.volid = NULL_VOLID;
+  scan_cache->node.classname = NULL;
   OID_SET_NULL (&scan_cache->node.class_oid);
   scan_cache->page_latch = NULL_LOCK;
   assert (PGBUF_IS_CLEAN_WATCHER (&(scan_cache->page_watcher)));
