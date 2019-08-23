@@ -5442,7 +5442,6 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 		 "vacuum_recover_lost_block_data, start recovering from %lld|%d ", LSA_AS_ARGS (&mvcc_op_log_lsa));
 
   /* Start recovering blocks. */
-  is_last_block = true;
   crt_blockid = vacuum_get_log_blockid (mvcc_op_log_lsa.pageid);
   LSA_COPY (&log_lsa, &mvcc_op_log_lsa);
 
