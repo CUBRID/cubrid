@@ -13833,13 +13833,8 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	}
     }
 
-  // Now form a heap chain with the pages and add the chain to the current heap.
-  error_code = heap_append_pages_to_heap (thread_p, hfid, *class_oid, heap_pages_array);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
-    }
+  // Log the postpone operation
+  heap_log_postpone_heap_append_pages (thread_p, hfid, class_oid, heap_pages_array);
 
   return NO_ERROR;
 }
