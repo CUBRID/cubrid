@@ -111,7 +111,7 @@ namespace cubtx
 	    /* Something wrong happens. The latest group was closed, but, we have a transaction
 	     * waiting for another group. Forces a group complete to not stuck the system.
 	     */
-	    _er_log_debug (ARG_FILE_LINE, "can_close_current_group: wrong transaction waiting beyond the latest group id (%llu)",
+            er_log_group_complete_debug (ARG_FILE_LINE, "can_close_current_group: wrong transaction waiting beyond the latest group id (%llu)",
 			   m_latest_group_id);
 	    return true;
 	  }
