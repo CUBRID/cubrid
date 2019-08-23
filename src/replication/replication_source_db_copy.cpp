@@ -129,7 +129,7 @@ namespace cubreplication
   {
     stream_entry stream_entry (m_stream, MVCCID_FIRST, stream_entry_header::ACTIVE);
 
-    for (auto stmt : statements)
+    for (auto const &stmt : statements)
       {
 	const std::string &id = stmt.first;
 	const std::string &str = stmt.second;
