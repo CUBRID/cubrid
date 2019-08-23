@@ -86,7 +86,6 @@ namespace cubtx
   {
     assert (lsa != NULL);
 
-    /* TODO - use m_latest_closed_group_stream_start_position, m_latest_closed_group_stream_end_position */
     if (LSA_GE (lsa, &m_latest_closed_group_end_log_lsa))
       {
 	cubthread::entry *thread_p = &cubthread::get_entry ();
@@ -222,7 +221,6 @@ namespace cubtx
 	if (!HA_DISABLED () && css_ha_server_state () == HA_SERVER_STATE_ACTIVE)
 	  {
 	    /* This is a single node that must generate stream group commits. */
-	    /* TODO - fix pack_group_commit_entry call */
 	    tdes->get_replication_generator ().pack_group_commit_entry (closed_group_stream_start_position,
 		closed_group_stream_end_position);
 	  }
