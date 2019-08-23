@@ -7603,6 +7603,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
   bool use_mvcc = false;
   MVCCID mvccid;
   MVCC_REC_HEADER *p_mvcc_rec_header = NULL;
+  bool classname_was_alloced = false;
 
 /* temporary disable standalone optimization (non-mvcc insert/delete style).
  * Must be activated when dynamic heap is introduced */
@@ -7663,13 +7664,14 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
     }
 
 #if defined(ENABLE_SYSTEMTAP)
-  if (classname)
+  if (classname != NULL)
     {
       if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR || classname == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto error;
 	}
+      classname_was_alloced = true;
     }
 
   assert (classname != NULL);
@@ -7921,7 +7923,7 @@ error:
     }
 
 #if defined(ENABLE_SYSTEMTAP)
-  if (classname != NULL)
+  if (classname != NULL && classname_was_alloced)
     {
       free_and_init (classname);
     }
