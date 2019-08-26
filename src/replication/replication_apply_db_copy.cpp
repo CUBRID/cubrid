@@ -191,10 +191,8 @@ namespace cubreplication
   class copy_db_worker_task : public cubthread::entry_task
   {
     public:
-      copy_db_worker_task (stream_entry *repl_stream_entry, copy_db_consumer &copy_consumer,
-                           copy_db_consumer::apply_phase phase)
+      copy_db_worker_task (stream_entry *repl_stream_entry, copy_db_consumer &copy_consumer)
 	: m_copy_consumer (copy_consumer)
-	, m_phase (phase)
       {
 	add_repl_stream_entry (repl_stream_entry);
       }
@@ -263,7 +261,6 @@ namespace cubreplication
     private:
       std::vector<stream_entry *> m_repl_stream_entries;
       copy_db_consumer &m_copy_consumer;
-      copy_db_consumer::apply_phase m_phase;
   };
 
 
@@ -279,9 +276,6 @@ namespace cubreplication
 
       void execute (cubthread::entry &thread_ref) override
       {
-	using tasks_map = std::unordered_map <MVCCID, copy_db_worker_task *>;
-	tasks_map repl_tasks;
-	tasks_map nonexecutable_repl_tasks;
 	copy_db_consumer::apply_phase phase = copy_db_consumer::apply_phase::CLASS_SCHEMA;
 
 	er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : start of replication copy");
@@ -352,7 +346,7 @@ namespace cubreplication
 	      }
 	    else
 	      {
-		copy_db_worker_task *my_copy_db_worker_task = new copy_db_worker_task (se, m_copy_consumer, phase);
+		copy_db_worker_task *my_copy_db_worker_task = new copy_db_worker_task (se, m_copy_consumer);
 		m_copy_consumer.execute_task (my_copy_db_worker_task);
 		/* stream entry is deleted by applier task thread */
 	      }
@@ -373,11 +367,8 @@ namespace cubreplication
   {
     set_stop ();
 
-    if (m_use_daemons)
-      {
-	cubthread::get_manager ()->destroy_worker_pool (m_dispatch_workers_pool);
-	cubthread::get_manager ()->destroy_worker_pool (m_applier_workers_pool);
-      }
+    cubthread::get_manager ()->destroy_worker_pool (m_dispatch_workers_pool);
+    cubthread::get_manager ()->destroy_worker_pool (m_applier_workers_pool);
   }
 
   void copy_db_consumer::start_daemons (void)
@@ -394,8 +385,6 @@ namespace cubreplication
 			     m_applier_worker_threads_count,
 			     "repl_copy_db_apply_workers",
 			     NULL, 1, 1);
-
-    m_use_daemons = true;
 #endif /* defined (SERVER_MODE) */
   }
 

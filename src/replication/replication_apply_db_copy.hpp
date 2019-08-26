@@ -76,8 +76,6 @@ namespace cubreplication
 
       int m_applier_worker_threads_count;
 
-      bool m_use_daemons;
-
       std::atomic<int> m_started_tasks;
 
       bool m_is_stopped;
@@ -88,7 +86,6 @@ namespace cubreplication
 	m_stream (NULL),
 	m_applier_workers_pool (NULL),
 	m_applier_worker_threads_count (MAX_APPLIER_THREADS),
-	m_use_daemons (false),
 	m_started_tasks (0),
 	m_is_stopped (false),
 	m_is_finished (false),
