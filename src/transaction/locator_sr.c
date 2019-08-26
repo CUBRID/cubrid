@@ -7664,7 +7664,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
     }
 
 #if defined(ENABLE_SYSTEMTAP)
-  if (classname != NULL)
+  if (classname == NULL)
     {
       if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR || classname == NULL)
 	{
