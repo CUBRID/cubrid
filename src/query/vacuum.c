@@ -2823,8 +2823,9 @@ restart:
       return;
     }
 
-  INT64 job_offset = (vacuum_Data.blockid_job_cursor
-		      - VACUUM_BLOCKID_WITHOUT_FLAGS (data_page->data[data_page->index_unvacuumed].blockid));
+  INT64 job_offset = data_page->index_unvacuumed
+    + (vacuum_Data.blockid_job_cursor
+       - VACUUM_BLOCKID_WITHOUT_FLAGS (data_page->data[data_page->index_unvacuumed].blockid));
   assert (job_offset >= 0);
   data_index = (int) (data_page->index_unvacuumed + job_offset);
 
