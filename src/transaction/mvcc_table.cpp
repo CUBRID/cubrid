@@ -558,6 +558,7 @@ mvcctable::complete_group_mvcc (cubthread::entry *thread_p, const tx_group &grou
   // set inactive MVCCID's
   for (const tx_group::node_info &tran_info : group.get_container ())
     {
+      /* TODO - investigate separately NULL MVCCID case. */
       if (!MVCCID_IS_VALID (tran_info.m_mvccid))
 	{
 	  continue;

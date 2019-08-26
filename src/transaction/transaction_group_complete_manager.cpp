@@ -54,9 +54,6 @@ namespace cubtx
     return m_current_group_id;
   }
 
-  //
-  // complete_mvcc complete transactions MVCC.
-  //
   void group_complete_manager::complete_mvcc (id_type group_id)
   {
     if (group_id < m_latest_closed_group_id)
@@ -86,7 +83,7 @@ namespace cubtx
 
 	/* Waits for MVCC complete event on specified group_id, even in async case. */
 	std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
-	/* TODO - consider stop and optimize next call */
+	/* TODO - consider whether is better to use stop and wait with timeout */
 	m_group_complete_condvar.wait (ulock, [&] {return is_group_mvcc_completed (group_id);});
 
 	er_log_group_complete_debug (ARG_FILE_LINE,
@@ -96,10 +93,7 @@ namespace cubtx
       }
 #endif
 
-    /* I'm the only thread. All completes are done by me. */
-    cubthread::entry *thread_p = &cubthread::get_entry ();
-    do_prepare_complete (thread_p);
-    do_complete (thread_p);
+    execute_all ();
     assert (is_group_mvcc_completed (group_id));
     er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete_mvcc: (%llu)\n", group_id);
   }
@@ -142,7 +136,7 @@ namespace cubtx
 
 	/* Waits on group logged event on specified group_id */
 	std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
-	/* TODO - consider stop and optimize next call */
+	/* TODO - consider whether is better to use stop and wait with timeout */
 	m_group_complete_condvar.wait (ulock, [&] {return is_group_logged (group_id);});
 
 	er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete_logging: (%llu)\n", group_id);
@@ -150,10 +144,7 @@ namespace cubtx
       }
 #endif
 
-    /* I'm the only thread. All completes are done by me. */
-    cubthread::entry *thread_p = &cubthread::get_entry ();
-    do_prepare_complete (thread_p);
-    do_complete (thread_p);
+    execute_all ();
     assert (is_group_logged (group_id));
     er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete_logging: (%llu)\n", group_id);
   }
@@ -193,7 +184,7 @@ namespace cubtx
 
 	/* Waits for complete event on specified group_id. */
 	std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
-	/* TODO - consider stop and optimize next call */
+	/* TODO - consider whether is better to use stop and wait with timeout */
 	m_group_complete_condvar.wait (ulock, [&] {return is_group_completed (group_id);});
 	er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete: (tran_index = %d, group_id = %llu)\n",
 				     LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
@@ -202,10 +193,7 @@ namespace cubtx
       }
 #endif
 
-    /* I'm the only thread. All completes are done by me. */
-    cubthread::entry *thread_p = &cubthread::get_entry ();
-    do_prepare_complete (thread_p);
-    do_complete (thread_p);
+    execute_all ();
     assert (is_group_completed (group_id));
     er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete: (%llu)\n", group_id);
   }
@@ -240,6 +228,17 @@ namespace cubtx
     return need_wait;
   }
 #endif
+
+  //
+  // execute_all - All completes are done by me.
+  //
+  void group_complete_manager::execute_all ()
+  {
+    /* I'm the only thread - SA, recovery. */
+    cubthread::entry *thread_p = &cubthread::get_entry();
+    do_prepare_complete (thread_p);
+    do_complete (thread_p);
+  }
 
   //
   // set_current_group_minimum_transactions set minimum number of transactions for current group.

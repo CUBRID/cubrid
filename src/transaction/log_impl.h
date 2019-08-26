@@ -922,6 +922,7 @@ extern void logpb_fatal_error_exit_immediately_wo_flush (THREAD_ENTRY * thread_p
 extern int logpb_check_and_reset_temp_lsa (THREAD_ENTRY * thread_p, VOLID volid);
 extern void logpb_initialize_arv_page_info_table (void);
 extern void logpb_initialize_logging_statistics (void);
+
 /* TODO - considers moving complete manager functions as methods in complete manager classes */
 extern void logpb_initialize_tran_complete_manager (void);
 extern const char *logpb_complete_manager_string (log_tran_complete_manager_type manager_type);
