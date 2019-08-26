@@ -833,6 +833,7 @@ css_process_master_hostname ()
       return ER_FAILED;
     }
 
+  /* Already received hearbeat slave...*/
   error = css_receive_heartbeat_data (css_Master_conn, ha_Server_master_hostname, hostname_length);
   if (error != NO_ERRORS)
     {
@@ -844,7 +845,7 @@ css_process_master_hostname ()
 
   er_log_debug_replication (ARG_FILE_LINE, "css_process_master_hostname css_Master_server_name:%s,"
     " ha_Server_master_hostname:%s\n", css_Master_server_name, ha_Server_master_hostname);
-
+  
   error = cubreplication::replication_node_manager::get_slave_node ()
 			  ->connect_to_master (ha_Server_master_hostname, css_Master_port_id);
   if (error != NO_ERROR)

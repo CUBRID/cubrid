@@ -46,23 +46,22 @@ namespace cubtx
 
     on_register_transaction ();
 
-    er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::register_transaction: (tran_index=%d, MVCCID=%llu, " \
-		  "tran_state=%d, current group size = %d)\n", tran_index, (long long int) mvccid, (int) state,
-		  m_current_group.get_container ().size ());
+    er_log_group_complete_debug (ARG_FILE_LINE,
+				 "group_complete_manager::register_transaction: (tran_index=%d, MVCCID=%llu, " \
+				 "tran_state=%d, current group size = %d)\n", tran_index, (long long int) mvccid, (int) state,
+				 m_current_group.get_container ().size ());
 
     return m_current_group_id;
   }
 
-  //
-  // complete_mvcc complete transactions MVCC.
-  //
   void group_complete_manager::complete_mvcc (id_type group_id)
   {
     if (group_id < m_latest_closed_group_id)
       {
 	/* Already advanced to next group. No need to acquire mutex. */
-	er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete_mvcc: (tran_index = %d, group_id = %llu)\n",
-		      LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
+	er_log_group_complete_debug (ARG_FILE_LINE,
+				     "group_complete_manager::complete_mvcc: (tran_index = %d, group_id = %llu)\n",
+				     LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
 	return;
       }
 
@@ -75,41 +74,38 @@ namespace cubtx
 	      {
 		/* Completed mvcc for group_id. No need to acquire mutex. */
 		assert (group_id <= m_latest_closed_group_id);
-		er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete_mvcc: (tran_index = %d, group_id = %llu)\n",
-			      LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
+		er_log_group_complete_debug (ARG_FILE_LINE,
+					     "group_complete_manager::complete_mvcc: (tran_index = %d, group_id = %llu)\n",
+					     LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
 		return;
 	      }
 	  }
 
 	/* Waits for MVCC complete event on specified group_id, even in async case. */
 	std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
-	/* TODO - consider stop and optimize next call */
+	/* TODO - consider whether is better to use stop and wait with timeout */
 	m_group_complete_condvar.wait (ulock, [&] {return is_group_mvcc_completed (group_id);});
 
-	er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete_mvcc: (tran_index = %d, group_id = %llu)\n",
-		      LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
+	er_log_group_complete_debug (ARG_FILE_LINE,
+				     "group_complete_manager::complete_mvcc: (tran_index = %d, group_id = %llu)\n",
+				     LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
 	return;
       }
 #endif
 
-    /* I'm the only thread. All completes are done by me. */
-    cubthread::entry *thread_p = &cubthread::get_entry ();
-    do_prepare_complete (thread_p);
-    do_complete (thread_p);
+    execute_all ();
     assert (is_group_mvcc_completed (group_id));
     er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete_mvcc: (%llu)\n", group_id);
   }
 
-  //
-  // complete_logging - complete transactions logging.
-  //
   void group_complete_manager::complete_logging (id_type group_id)
   {
     if (group_id < m_latest_closed_group_id)
       {
 	/* Already advanced to next group. No need to acquire mutex. */
-	er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete_logging: (tran_index = %d, group_id = %llu)\n",
-		      LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
+	er_log_group_complete_debug (ARG_FILE_LINE,
+				     "group_complete_manager::complete_logging: (tran_index = %d, group_id = %llu)\n",
+				     LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
 	return;
       }
 
@@ -122,8 +118,9 @@ namespace cubtx
 	      {
 		/* Logging completed for group_id. No need to acquire mutex. */
 		assert (group_id <= m_latest_closed_group_id);
-		er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete_logging: (tran_index = %d, group_id = %llu)\n",
-			      LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
+		er_log_group_complete_debug (ARG_FILE_LINE,
+					     "group_complete_manager::complete_logging: (tran_index = %d, group_id = %llu)\n",
+					     LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
 		return;
 	      }
 	  }
@@ -131,14 +128,15 @@ namespace cubtx
 	if (!need_wait_for_complete ())
 	  {
 	    /* Async case. */
-	    er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete_logging: (tran_index = %d, group_id = %llu)\n",
-			  LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
+	    er_log_group_complete_debug (ARG_FILE_LINE,
+					 "group_complete_manager::complete_logging: (tran_index = %d, group_id = %llu)\n",
+					 LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
 	    return;
 	  }
 
 	/* Waits on group logged event on specified group_id */
 	std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
-	/* TODO - consider stop and optimize next call */
+	/* TODO - consider whether is better to use stop and wait with timeout */
 	m_group_complete_condvar.wait (ulock, [&] {return is_group_logged (group_id);});
 
 	er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete_logging: (%llu)\n", group_id);
@@ -146,24 +144,18 @@ namespace cubtx
       }
 #endif
 
-    /* I'm the only thread. All completes are done by me. */
-    cubthread::entry *thread_p = &cubthread::get_entry ();
-    do_prepare_complete (thread_p);
-    do_complete (thread_p);
+    execute_all ();
     assert (is_group_logged (group_id));
     er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete_logging: (%llu)\n", group_id);
   }
 
-  //
-  // is_any_unregistered_transaction - is there any unregistered transaction
-  //
   void group_complete_manager::complete (id_type group_id)
   {
     if (group_id < m_latest_closed_group_id)
       {
 	/* Already advanced to next group. No need to acquire mutex. */
 	er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete: (tran_index = %d, group_id = %llu)\n",
-		      LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
+				     LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
 	return;
       }
 
@@ -177,7 +169,7 @@ namespace cubtx
 		/* Group_id complete. No need to acquire mutex. */
 		assert (group_id <= m_latest_closed_group_id);
 		er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete: (tran_index = %d, group_id = %llu)\n",
-			      LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
+					     LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
 		return;
 	      }
 	  }
@@ -186,25 +178,22 @@ namespace cubtx
 	  {
 	    /* Async case. */
 	    er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete: (tran_index = %d, group_id = %llu)\n",
-			  LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
+					 LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
 	    return;
 	  }
 
 	/* Waits for complete event on specified group_id. */
 	std::unique_lock<std::mutex> ulock (m_group_complete_mutex);
-	/* TODO - consider stop and optimize next call */
+	/* TODO - consider whether is better to use stop and wait with timeout */
 	m_group_complete_condvar.wait (ulock, [&] {return is_group_completed (group_id);});
 	er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete: (tran_index = %d, group_id = %llu)\n",
-		      LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
+				     LOG_FIND_THREAD_TRAN_INDEX (&cubthread::get_entry ()), group_id);
 
 	return;
       }
 #endif
 
-    /* I'm the only thread. All completes are done by me. */
-    cubthread::entry *thread_p = &cubthread::get_entry ();
-    do_prepare_complete (thread_p);
-    do_complete (thread_p);
+    execute_all ();
     assert (is_group_completed (group_id));
     er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete: (%llu)\n", group_id);
   }
@@ -222,9 +211,6 @@ namespace cubtx
   }
 
 #if defined(SERVER_MODE)
-  //
-  // need_wait_for_complete check whether needs wait for complete
-  //
   bool group_complete_manager::need_wait_for_complete ()
   {
     bool need_wait;
@@ -242,6 +228,17 @@ namespace cubtx
     return need_wait;
   }
 #endif
+
+  //
+  // execute_all - All completes are done by me.
+  //
+  void group_complete_manager::execute_all ()
+  {
+    /* I'm the only thread - SA, recovery. */
+    cubthread::entry *thread_p = &cubthread::get_entry();
+    do_prepare_complete (thread_p);
+    do_complete (thread_p);
+  }
 
   //
   // set_current_group_minimum_transactions set minimum number of transactions for current group.
@@ -266,9 +263,6 @@ namespace cubtx
     return m_current_group_id;
   }
 
-  //
-  // close_current_group close the current group. Next comming transactions will be added into the next group.
-  //
   bool group_complete_manager::close_current_group ()
   {
     std::unique_lock<std::mutex> ulock (m_group_mutex);
@@ -279,9 +273,9 @@ namespace cubtx
 	m_latest_closed_group_id.store (m_current_group_id);
 	m_latest_closed_group_state = GROUP_CLOSED;
 	er_log_group_complete_debug (ARG_FILE_LINE,
-		      "group_complete_manager::close_current_group: (manager_type = %s, group = %llu, group_size = %d)\n",
-		      logpb_complete_manager_string ((LOG_TRAN_COMPLETE_MANAGER_TYPE) get_manager_type ()),
-		      (unsigned long long) m_latest_closed_group_id, m_current_group.get_container ().size ());
+				     "group_complete_manager::close_current_group: (manager_type = %s, group = %llu, group_size = %d)\n",
+				     logpb_complete_manager_string ((log_tran_complete_manager_type) get_manager_type ()),
+				     (unsigned long long) m_latest_closed_group_id, m_current_group.get_container ().size ());
 
 	/* Advance with the group - copy and reinit it. */
 	m_current_group.transfer_to (m_latest_closed_group);
@@ -325,9 +319,9 @@ namespace cubtx
   {
     m_latest_closed_group_state |= GROUP_COMPLETED;
     er_log_group_complete_debug (ARG_FILE_LINE,
-		  "group_complete_manager::notify_group_complete latest_group_id: (manager_type = %s, closed group = %llu)\n",
-		  logpb_complete_manager_string ((LOG_TRAN_COMPLETE_MANAGER_TYPE) get_manager_type ()),
-		  (unsigned long long) m_latest_closed_group_id);
+				 "group_complete_manager::notify_group_complete latest_group_id: (manager_type = %s, closed group = %llu)\n",
+				 logpb_complete_manager_string ((log_tran_complete_manager_type) get_manager_type ()),
+				 (unsigned long long) m_latest_closed_group_id);
 
 #if defined (SERVER_MODE)
     /* Notify threads waiting for complete. */

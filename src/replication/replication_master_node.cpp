@@ -127,6 +127,11 @@ namespace cubreplication
     er_log_debug_replication (ARG_FILE_LINE, "new_slave connected");
   }
 
+  void master_node::wakeup_transfer_senders (cubstream::stream_position desired_position)
+  {
+    m_senders_manager->wakeup_transfer_senders (desired_position);
+  }
+
   void master_node::add_ctrl_chn (int fd)
   {
     er_log_debug_replication (ARG_FILE_LINE, "add_ctrl_chn");
