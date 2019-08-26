@@ -22193,6 +22193,7 @@ heap_create_insert_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID
   context->recdes_p = recdes_p;
   context->scan_cache_p = scancache_p;
   context->type = HEAP_OPERATION_INSERT;
+  context->skip_logging = false;
 }
 
 /*
@@ -22217,6 +22218,7 @@ heap_create_delete_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID
   COPY_OID (&context->class_oid, class_oid_p);
   context->scan_cache_p = scancache_p;
   context->type = HEAP_OPERATION_DELETE;
+  context->skip_logging = false;
 }
 
 /*
@@ -22246,6 +22248,7 @@ heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID
   context->scan_cache_p = scancache_p;
   context->type = HEAP_OPERATION_UPDATE;
   context->update_in_place = in_place;
+  context->skip_logging = false;
 }
 
 /*
@@ -22374,8 +22377,11 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
   /*
    * Operation logging
    */
-  heap_log_insert_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->res_oid,
-			    context->recdes_p, is_mvcc_op, context->is_redistribute_insert_with_delid);
+  if (!context->skip_logging)
+    {
+      heap_log_insert_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->res_oid,
+				context->recdes_p, is_mvcc_op, context->is_redistribute_insert_with_delid);
+    }
 
   HEAP_PERF_TRACK_LOGGING (thread_p, context);
 

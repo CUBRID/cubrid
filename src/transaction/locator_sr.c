@@ -4962,6 +4962,10 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   context.update_in_place = force_in_place;
   context.is_bulk_op = has_BU_lock;
 
+  /* TODO: Fix this!! */
+  /* This is a hack for now. We skipp logging if we have multi insert enabled. */
+  context.skip_logging = has_BU_lock;
+
   if (force_in_place == UPDATE_INPLACE_OLD_MVCCID)
     {
       REPR_ID rep;
@@ -13797,6 +13801,15 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 		    }
 
 		  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &home_hint_p);
+
+                  // Now log the whole page.
+                  LOG_DATA_ADDR log_addr = LOG_DATA_ADDR_INITIALIZER;
+
+                  /* log the whole page for redo purposes. */
+                  log_addr.vfid = &hfid->vfid;
+                  log_addr.pgptr = home_hint_p.pgptr;
+                  log_addr.offset = -1;		/* irrelevant */
+                  log_append_redo_data (thread_p, RVBT_COPYPAGE, &log_addr, DB_PAGESIZE, home_hint_p.pgptr);
 		}
 
 	      // Add the new VPID to the VPID array.

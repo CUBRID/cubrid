@@ -313,6 +313,10 @@ struct heap_operation_context
 
   /* Performance stat dump. */
   PERF_UTIME_TRACKER *time_track;
+
+  /* skip logging */
+  bool skip_logging;
+
 };
 
 enum
