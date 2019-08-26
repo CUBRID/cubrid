@@ -188,11 +188,13 @@ namespace cubreplication
 
     void dec_ha_tasks ()
     {
-      std::lock_guard<std::mutex> lg (g_ha_tasks_running_mtx);
+      std::unique_lock<std::mutex> ul (g_ha_tasks_running_mtx);
       assert (g_ha_tasks_running > 0);
       --g_ha_tasks_running;
+
       if (g_ha_tasks_running == 0)
 	{
+	  ul.unlock ();
 	  g_ha_tasks_running_cv.notify_all ();
 	}
     }
