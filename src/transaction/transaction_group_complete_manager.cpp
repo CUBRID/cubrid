@@ -93,10 +93,7 @@ namespace cubtx
       }
 #endif
 
-    /* I'm the only thread. All completes are done by me. */
-    cubthread::entry *thread_p = &cubthread::get_entry ();
-    do_prepare_complete (thread_p);
-    do_complete (thread_p);
+    execute_all ();
     assert (is_group_mvcc_completed (group_id));
     er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete_mvcc: (%llu)\n", group_id);
   }
@@ -147,10 +144,7 @@ namespace cubtx
       }
 #endif
 
-    /* I'm the only thread. All completes are done by me. */
-    cubthread::entry *thread_p = &cubthread::get_entry ();
-    do_prepare_complete (thread_p);
-    do_complete (thread_p);
+    execute_all ();
     assert (is_group_logged (group_id));
     er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete_logging: (%llu)\n", group_id);
   }
@@ -199,10 +193,7 @@ namespace cubtx
       }
 #endif
 
-    /* I'm the only thread. All completes are done by me. */
-    cubthread::entry *thread_p = &cubthread::get_entry ();
-    do_prepare_complete (thread_p);
-    do_complete (thread_p);
+    execute_all ();
     assert (is_group_completed (group_id));
     er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete: (%llu)\n", group_id);
   }
@@ -238,6 +229,17 @@ namespace cubtx
   }
 #endif
 
+  //
+  // execute_all - All completes are done by me.
+  //
+  void group_complete_manager::execute_all ()
+  {
+    /* I'm the only thread - SA, recovery. */
+    cubthread::entry *thread_p = &cubthread::get_entry();
+    do_prepare_complete (thread_p);
+    do_complete (thread_p);
+  }
+
   bool group_complete_manager::close_current_group ()
   {
     std::unique_lock<std::mutex> ulock (m_group_mutex);
@@ -268,10 +270,8 @@ namespace cubtx
   {
     m_latest_closed_group_state |= GROUP_MVCC_COMPLETED;
 
-#if defined (SERVER_MODE)
     /* Notify threads waiting for MVCC complete. */
     notify_all ();
-#endif
   }
 
   //
@@ -281,10 +281,8 @@ namespace cubtx
   {
     m_latest_closed_group_state |= GROUP_LOGGED;
 
-#if defined (SERVER_MODE)
     /* Notify threads waiting for logging. */
     notify_all ();
-#endif
   }
 
   //
@@ -298,10 +296,8 @@ namespace cubtx
 				 logpb_complete_manager_string ((log_tran_complete_manager_type) get_manager_type ()),
 				 (unsigned long long) m_latest_closed_group_id);
 
-#if defined (SERVER_MODE)
     /* Notify threads waiting for complete. */
     notify_all ();
-#endif
   }
 
   //
