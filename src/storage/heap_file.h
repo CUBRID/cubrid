@@ -309,14 +309,11 @@ struct heap_operation_context
   bool is_redistribute_insert_with_delid;	/* true if the insert is due to a partition redistribute data operation
 						 * and has a valid delid */
   bool is_bulk_op;		// note - currently for insert only
+  bool use_bulk_logging;	// note - currently for bulk insert only
   // side-effect - disables MVCC operations
 
   /* Performance stat dump. */
   PERF_UTIME_TRACKER *time_track;
-
-  /* skip logging */
-  bool skip_logging;
-
 };
 
 enum
