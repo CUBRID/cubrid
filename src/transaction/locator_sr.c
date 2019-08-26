@@ -4963,8 +4963,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   context.is_bulk_op = has_BU_lock;
 
   /* TODO: Fix this!! */
-  /* This is a hack for now. We skipp logging if we have multi insert enabled. */
-  context.skip_logging = has_BU_lock;
+  /* This is a hack for now. We skipp logging if we have multi insert enabled and we insert in a preallocated page. */
+  context.skip_logging = (has_BU_lock && scan_cache->cache_last_fix_page);
 
   if (force_in_place == UPDATE_INPLACE_OLD_MVCCID)
     {
