@@ -311,6 +311,8 @@ struct heap_operation_context
   bool is_bulk_op;		// note - currently for insert only
   // side-effect - disables MVCC operations
 
+  bool use_bulk_logging;	// note - currently for bulk insert only
+
   /* Performance stat dump. */
   PERF_UTIME_TRACKER *time_track;
 };
