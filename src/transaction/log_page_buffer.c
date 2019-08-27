@@ -10221,34 +10221,12 @@ logpb_initialize_logging_statistics (void)
  *
  */
 void
-logpb_initialize_tran_complete_manager (THREAD_ENTRY * thread_p)
+logpb_initialize_tran_complete_manager ()
 {
   /* Initialize with single mode for recovery purpose. If non-HA, this mode remains. Otherwise, reset it later. */
   er_log_debug (ARG_FILE_LINE, "logpb_initialize_tran_complete_manager single node \n");
   logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
 }
-
-/*
- * logpb_complete_manager_string - complete manager string
- */
-const char *
-logpb_complete_manager_string (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
-{
-  switch (manager_type)
-    {
-    case LOG_TRAN_COMPLETE_NO_MANAGER:
-      return LOG_TRAN_COMPLETE_NO_MANAGER_STR;
-    case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
-      return LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE_STR;
-    case LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE:
-      return LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE_STR;
-    case LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE:
-      return LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE_STR;
-    }
-
-  return "invalid";
-}
-
 
 /*
  * logpb_atomic_resets_tran_complete_manager - Atomic resets transaction complete manager.
@@ -10259,10 +10237,10 @@ logpb_complete_manager_string (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
  *      TODO - We need to consider atomic reset.
  */
 void
-logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
+logpb_atomic_resets_tran_complete_manager (log_tran_complete_manager_type manager_type)
 {
   THREAD_ENTRY *thread_p;
-  LOG_TRAN_COMPLETE_MANAGER_TYPE old_manager_type;
+  log_tran_complete_manager_type old_manager_type;
   LOG_LSA smallest_lsa;
 #if defined(SERVER_MODE)
   const char *ha_server_state_string = css_ha_server_state_string (css_ha_server_state ());
@@ -10280,7 +10258,7 @@ logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manage
   /* TODO - remove old complete manager */
   if (log_Gl.m_tran_complete_mgr != NULL)
     {
-      old_manager_type = (LOG_TRAN_COMPLETE_MANAGER_TYPE) log_Gl.m_tran_complete_mgr->get_manager_type ();
+      old_manager_type = (log_tran_complete_manager_type) log_Gl.m_tran_complete_mgr->get_manager_type ();
     }
   else
     {
@@ -10457,6 +10435,28 @@ logpb_finalize_tran_complete_manager (void)
   /* Finalize complete manager. */
   er_log_debug (ARG_FILE_LINE, "logpb_finalize_tran_complete_manager \n");
   logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_NO_MANAGER);
+}
+
+/*
+ * logpb_complete_manager_string - complete manager string
+ */
+const char *
+logpb_complete_manager_string (log_tran_complete_manager_type manager_type)
+{
+  switch (manager_type)
+    {
+    case LOG_TRAN_COMPLETE_NO_MANAGER:
+      return "no manager";
+    case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
+      return "single node";
+    case LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE:
+      return "master node";
+    case LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE:
+      return "slave";
+    }
+
+  assert (false);
+  return NULL;
 }
 
 /*

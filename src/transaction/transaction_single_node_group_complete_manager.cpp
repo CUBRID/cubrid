@@ -49,7 +49,8 @@ namespace cubtx
   void single_node_group_complete_manager::init ()
   {
     assert (gl_single_node_group == NULL);
-    er_log_group_complete_debug (ARG_FILE_LINE, "single_node_group_complete_manager:init created single group complete manager\n");
+    er_log_group_complete_debug (ARG_FILE_LINE,
+				 "single_node_group_complete_manager:init created single group complete manager\n");
     gl_single_node_group = new single_node_group_complete_manager ();
 
     LSA_SET_NULL (&gl_single_node_group->m_latest_closed_group_start_log_lsa);
@@ -236,10 +237,10 @@ namespace cubtx
 	    notify_group_logged ();
 	  }
 
-        er_log_group_complete_debug (ARG_FILE_LINE, "closed_group_start_complete_lsa =(%llu, %llu), "
-          "closed_group_end_complete_lsa = (%lld, %d)\n",
-          LSA_AS_ARGS (&closed_group_start_complete_lsa),
-          LSA_AS_ARGS (&closed_group_end_complete_lsa));
+	er_log_group_complete_debug (ARG_FILE_LINE, "closed_group_start_complete_lsa =(%llu, %llu), "
+				     "closed_group_end_complete_lsa = (%lld, %d)\n",
+				     LSA_AS_ARGS (&closed_group_start_complete_lsa),
+				     LSA_AS_ARGS (&closed_group_end_complete_lsa));
       }
   }
 
@@ -257,15 +258,15 @@ namespace cubtx
       }
 
     while (!is_latest_closed_group_prepared_for_complete ())
-      {	
-        /* It happens rare. */
-        thread_sleep (10);	
+      {
+	/* It happens rare. */
+	thread_sleep (10);
       }
 
     if (!starts_latest_closed_group_complete ())
       {
-        /* Already started by others. */
-        return;
+	/* Already started by others. */
+	return;
       }
 
     /* Finally, notify complete. */

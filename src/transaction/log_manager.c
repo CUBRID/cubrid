@@ -1331,7 +1331,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       init_emergency = true;
     }
 
-  logpb_initialize_tran_complete_manager (thread_p);
+  logpb_initialize_tran_complete_manager ();
 
   /*
    * Was the database system shut down or was it involved in a crash ?

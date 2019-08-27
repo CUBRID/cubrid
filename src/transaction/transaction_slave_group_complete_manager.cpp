@@ -158,7 +158,7 @@ namespace cubtx
   {
     LOG_LSA closed_group_start_complete_lsa, closed_group_end_complete_lsa;
     LOG_TDES *tdes = logtb_get_tdes (thread_p);
-    bool has_postpone;
+    bool has_postpone = false;
 
     if (is_latest_closed_group_completed ())
       {

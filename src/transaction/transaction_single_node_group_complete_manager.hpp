@@ -61,7 +61,7 @@ namespace cubtx
 #if defined (SERVER_MODE)
       bool can_wakeup_group_complete_daemon (bool inc_gc_request_count);
 #endif
-      static void get_group_commit_interval (bool & is_timed_wait, cubthread::delta_time & period);
+      static void get_group_commit_interval (bool &is_timed_wait, cubthread::delta_time &period);
 
       static single_node_group_complete_manager *gl_single_node_group;
       static cubthread::daemon *gl_single_node_group_complete_daemon;

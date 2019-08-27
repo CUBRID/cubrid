@@ -29,7 +29,7 @@
 #include <condition_variable>
 #include <mutex>
 
-#define er_log_group_complete_debug(...) if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA)) _er_log_debug(__VA_ARGS__)
+#define er_log_group_complete_debug(...) if (prm_get_bool_value (PRM_ID_GROUP_COMPLETE_DEBUG)) _er_log_debug(__VA_ARGS__)
 
 namespace cubtx
 {
@@ -39,9 +39,10 @@ namespace cubtx
     GROUP_CLOSED = 0x01, /* Group closed. No other transaction can be included in a closed group. */
     GROUP_MVCC_COMPLETED = 0x02, /* MVCC completed. */
     GROUP_LOGGED = 0x04, /* Group log added. */
-    GROUP_PREPARED_FOR_COMPLETE = 0x08,  /* Group prepared for complete. */
-    GROUP_COMPLETE_STARTED = 0x10,  /* Group complete started. */
-    GROUP_COMPLETED = 0x20  /* Group completed. */
+    GROUP_PREPARED_FOR_COMPLETE = 0x08,  /* Group prepared for complete. Set only for closed group. */
+    GROUP_COMPLETE_STARTED = 0x10,  /* Group complete started. Set only for prepared group. */
+    GROUP_COMPLETED = 0x20,  /* Group completed. Set only for complete started group. */
+    GROUP_ALL_STATES = GROUP_CLOSED | GROUP_MVCC_COMPLETED | GROUP_LOGGED | GROUP_PREPARED_FOR_COMPLETE | GROUP_COMPLETE_STARTED | GROUP_COMPLETED
   };
 
   //
@@ -54,8 +55,7 @@ namespace cubtx
 	: m_current_group_id (1)
 	, m_current_group_min_transactions (0)
 	, m_latest_closed_group_id (0)
-	, m_latest_closed_group_state (GROUP_CLOSED | GROUP_MVCC_COMPLETED | GROUP_LOGGED | GROUP_PREPARED_FOR_COMPLETE
-				       | GROUP_COMPLETE_STARTED | GROUP_COMPLETED)
+	, m_latest_closed_group_state (GROUP_ALL_STATES)
       {
 
       }
@@ -90,6 +90,7 @@ namespace cubtx
       void mark_latest_closed_group_prepared_for_complete ();
       bool is_latest_closed_group_prepared_for_complete ();
 
+      /* TODO - consider a better name than latest_closed */
       bool starts_latest_closed_group_complete ();
       bool is_latest_closed_group_complete_started ();
 
@@ -110,6 +111,7 @@ namespace cubtx
       bool is_group_logged (id_type group_id);
 
       void notify_all ();
+      void execute_all ();
 
 #if defined(SERVER_MODE)
       bool need_wait_for_complete ();
