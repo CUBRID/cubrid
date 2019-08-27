@@ -52,8 +52,11 @@
 
 #include <assert.h>
 #include <cinttypes>
+#include <forward_list>
+#include <mutex>
+#include <stack>
 #include <stdlib.h>
-#include <string.h>
+#include <string>
 
 #define BTREE_HEALTH_CHECK
 
@@ -1254,13 +1257,60 @@ struct btree_helper
 #define BTREE_HELPER_INITIALIZER \
   { BTREE_INSERT_HELPER_INITIALIZER, BTREE_DELETE_HELPER_INITIALIZER }
 
+//
+// C++ structures
+//
+// *INDENT-OFF*
+class btid_int_cache
+{
+  public:
+    btid_int_cache ();
+    ~btid_int_cache ();
+
+    void remove (const btid &btid_arg);
+    bool claim (const btid &btid_arg, btid_int &output);
+    void retire (const btid &btid_arg, btid_int &&btid_int_arg);
+
+  private:
+    static const size_t HASH_SIZE = 1024;
+    static const size_t BTID_INT_MAX_COPIES = 1024;
+
+    struct entry
+    {
+      BTID m_btid;
+      std::stack<btid_int> m_stack;
+      std::mutex m_btid_int_mutex;
+
+      entry ();
+      entry& operator= (entry &&other);
+      entry& operator= (const entry &&other) = delete;
+    };
+
+    struct bucket
+    {
+      std::forward_list<entry> m_entries;
+
+      entry *find_entry (const btid &btid_arg);
+    };
+
+    static size_t get_hash (const btid &btid_arg);
+    static std::string HASH_LOCK_NAME;
+
+    bucket m_hash[HASH_SIZE];
+    SYNC_RWLOCK m_hash_lock;
+};
+
+btid_int_cache btree_Btid_int_cache;
+// *INDENT-ON*
+
 /*
  * Static functions
  */
 
 STATIC_INLINE PAGE_PTR btree_fix_root_with_info (THREAD_ENTRY * thread_p, BTID * btid, PGBUF_LATCH_MODE latch_mode,
 						 VPID * root_vpid_p, BTREE_ROOT_HEADER ** root_header_p,
-						 BTID_INT * btid_int_p) __attribute__ ((ALWAYS_INLINE));
+						 BTID_INT * btid_int_p, bool use_cache = false)
+  __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE bool btree_is_fence_key (PAGE_PTR leaf_page, PGSLOTID slotid) __attribute__ ((ALWAYS_INLINE));
 
@@ -1795,11 +1845,12 @@ static bool btree_is_single_object_key (THREAD_ENTRY * thread_p, BTID_INT * btid
  */
 STATIC_INLINE PAGE_PTR
 btree_fix_root_with_info (THREAD_ENTRY * thread_p, BTID * btid, PGBUF_LATCH_MODE latch_mode, VPID * root_vpid_p,
-			  BTREE_ROOT_HEADER ** root_header_p, BTID_INT * btid_int_p)
+			  BTREE_ROOT_HEADER ** root_header_p, BTID_INT * btid_int_p, bool use_cache)
 {
   PAGE_PTR root_page = NULL;
   VPID vpid;
   BTREE_ROOT_HEADER *root_header = NULL;
+  bool found_in_cache = false;
 
   /* Assert expected arguments. */
   assert (btid != NULL);
@@ -1811,6 +1862,11 @@ btree_fix_root_with_info (THREAD_ENTRY * thread_p, BTID * btid, PGBUF_LATCH_MODE
     }
   root_vpid_p->pageid = btid->root_pageid;
   root_vpid_p->volid = btid->vfid.volid;
+
+  if (btid_int_p != NULL && use_cache)
+    {
+      found_in_cache = btree_Btid_int_cache.claim (*btid, *btid_int_p);
+    }
 
   /* Fix root page. */
   root_page = pgbuf_fix (thread_p, root_vpid_p, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
@@ -1838,13 +1894,21 @@ btree_fix_root_with_info (THREAD_ENTRY * thread_p, BTID * btid, PGBUF_LATCH_MODE
 
   if (btid_int_p != NULL)
     {
-      /* Get b-tree info. */
-      btid_int_p->sys_btid = btid;
-      if (btree_glean_root_header_info (thread_p, root_header, btid_int_p) != NO_ERROR)
+      if (found_in_cache)
 	{
-	  assert (false);
-	  pgbuf_unfix (thread_p, root_page);
-	  return NULL;
+	  // make sure cached info is not outdated
+	  btid_int_p->ovfid = root_header->ovfid;
+	}
+      else
+	{
+	  /* Get b-tree info. */
+	  btid_int_p->sys_btid = btid;
+	  if (btree_glean_root_header_info (thread_p, root_header, btid_int_p) != NO_ERROR)
+	    {
+	      assert (false);
+	      pgbuf_unfix (thread_p, root_page);
+	      return NULL;
+	    }
 	}
     }
 
@@ -5633,6 +5697,8 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
   VFID ovfid;
   int unique_pk;
   int ret = NO_ERROR;
+
+  btree_Btid_int_cache.remove (*btid);
 
   P_vpid.volid = btid->vfid.volid;	/* read the root page */
   P_vpid.pageid = btid->root_pageid;
@@ -15023,7 +15089,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
     {
       root_vpid.pageid = btid->root_pageid;
       root_vpid.volid = btid->vfid.volid;
-      root_page = btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, NULL, &bts->btid_int);
+      root_page = btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, NULL, &bts->btid_int, false);
       if (root_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
@@ -22577,6 +22643,11 @@ end:
       /* Unfix leaf page. */
       pgbuf_unfix (thread_p, crt_page);
     }
+
+  if (btid_int == &local_btid_int)
+    {
+      btree_Btid_int_cache.retire (*btid, std::move (local_btid_int));
+    }
   return NO_ERROR;
 
 error:
@@ -22627,7 +22698,7 @@ btree_get_root_with_key (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_i
   assert (search_key != NULL);
 
   /* Get root page and BTID_INT. */
-  *root_page = btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, &root_header, btid_int);
+  *root_page = btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, &root_header, btid_int, false);
   if (*root_page == NULL)
     {
       /* Error! */
@@ -26138,6 +26209,8 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
 			unique_stat_info->get_null_count ());
     }
 
+  btree_Btid_int_cache.retire (*btid, std::move (btid_int));
+
   return NO_ERROR;
 }
 
@@ -26188,7 +26261,8 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
     {
       /* Fix root and get header/b-tree info to do some additional operations on b-tree. */
       *root_page =
-	btree_fix_root_with_info (thread_p, btid, insert_helper->nonleaf_latch_mode, NULL, &root_header, btid_int);
+	btree_fix_root_with_info (thread_p, btid, insert_helper->nonleaf_latch_mode, NULL, &root_header, btid_int,
+				  true);
       if (*root_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
@@ -26198,7 +26272,8 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
   else
     {
       /* Just fix root page. */
-      *root_page = btree_fix_root_with_info (thread_p, btid, insert_helper->nonleaf_latch_mode, NULL, NULL, NULL);
+      *root_page = btree_fix_root_with_info (thread_p, btid, insert_helper->nonleaf_latch_mode, NULL, &root_header,
+					     NULL);
       if (*root_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
@@ -26208,6 +26283,9 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
       /* Reset other flags relevant for traversal. */
       insert_helper->is_crt_node_write_latched = false;
       insert_helper->need_update_max_key_len = false;
+
+      // make sure btid_int is not outdated
+      btid_int->ovfid = root_header->ovfid;
       return NO_ERROR;
     }
   assert (*root_page != NULL);
@@ -26347,12 +26425,14 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 	{
 	  /* Unfix and re-fix root page. */
 	  pgbuf_unfix_and_init (thread_p, *root_page);
-	  *root_page = btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_WRITE, NULL, &root_header, btid_int);
+	  *root_page = btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_WRITE, NULL, &root_header, NULL, false);
 	  if (*root_page == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
 	      goto error;
 	    }
+	  // make sure btid_int is not outdated
+	  btid_int->ovfid = root_header->ovfid;
 	}
       else if (error_code != NO_ERROR)
 	{
@@ -29661,6 +29741,8 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
       delete_helper.unique_stats_info->delete_row ();
     }
 
+  btree_Btid_int_cache.retire (*btid, std::move (btree_info));
+
   return NO_ERROR;
 }
 
@@ -29711,12 +29793,16 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
   else
     {
       /* Just fix root page. */
-      *root_page = btree_fix_root_with_info (thread_p, btid, delete_helper->nonleaf_latch_mode, NULL, NULL, NULL);
+      BTREE_ROOT_HEADER *root_header = NULL;
+      *root_page = btree_fix_root_with_info (thread_p, btid, delete_helper->nonleaf_latch_mode, NULL, &root_header,
+					     NULL);
       if (*root_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
 	}
+      assert (root_header != NULL);
+      btid_int->ovfid = root_header->ovfid;
       return NO_ERROR;
     }
   /* Root page fixed. */
@@ -33268,6 +33354,7 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * 
 	  root_function = btree_fix_root_for_insert;
 	  advance_function = btree_split_node_and_advance;
 	  key_function = btree_key_online_index_tran_insert_DF;
+	  btree_Btid_int_cache.retire (*btid, std::move (btid_int));
 	  break;		// Fall through.
 	}
       else
@@ -33297,6 +33384,8 @@ end:
     {
       db_private_free (thread_p, helper.delete_helper.printed_key);
     }
+
+  btree_Btid_int_cache.retire (*btid, std::move (btid_int));
 
   return error_code;
 }
@@ -35057,3 +35146,160 @@ btree_is_single_object_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_
   assert (offset_after_key == record->length);
   return true;
 }
+
+//
+// C++ structures
+//
+// *INDENT-OFF*
+
+//
+// btid_int_cache::entry
+//
+btid_int_cache::entry::entry ()
+{
+  BTID_SET_NULL (&m_btid);
+}
+
+//
+// btid_int_cache::bucket
+//
+btid_int_cache::entry *
+btid_int_cache::bucket::find_entry (const btid &btid_arg)
+{
+  for (entry &it : m_entries)
+    {
+      if (BTID_IS_EQUAL (&it.m_btid, &btid_arg))
+        {
+          return &it;
+        }
+    }
+  return NULL;
+}
+
+//
+// btid_int_cache
+//
+std::string btid_int_cache::HASH_LOCK_NAME = "btid_int_cache";
+
+btid_int_cache::btid_int_cache ()
+{
+  rwlock_initialize (&m_hash_lock, HASH_LOCK_NAME.c_str ());
+}
+
+btid_int_cache::~btid_int_cache ()
+{
+  rwlock_finalize (&m_hash_lock);
+}
+
+size_t
+btid_int_cache::get_hash (const btid &btid_arg)
+{
+  size_t value = (size_t) btid_arg.root_pageid;
+  return value % HASH_SIZE;
+}
+
+void
+btid_int_cache::remove (const btid &btid_arg)
+{
+  rwlock_write_lock (&m_hash_lock);
+
+  bucket &bck = m_hash[get_hash (btid_arg)];
+  auto remove_pred = [&btid_arg] (const entry & value) -> bool
+    {
+      return BTID_IS_EQUAL (&btid_arg, &value.m_btid);
+    };
+  bck.m_entries.remove_if (remove_pred);
+
+  std::forward_list<entry>::const_iterator prev = bck.m_entries.before_begin ();
+  std::forward_list<entry>::iterator crt = bck.m_entries.begin ();
+  entry local_entry;
+  for (; crt != bck.m_entries.end (); prev++, crt++)
+    {
+      if (BTID_IS_EQUAL (&btid_arg, &crt->m_btid))
+        {
+          local_entry = std::move (*crt);
+          local_entry.m_btid_int_mutex.lock ();
+          break;
+        }
+    }
+  rwlock_write_unlock (&m_hash_lock);
+
+  // if found, resources are destroyed with local_entry
+}
+
+bool
+btid_int_cache::claim (const btid &btid_arg, btid_int &output)
+{
+  rwlock_read_lock (&m_hash_lock);
+
+  bucket &bck = m_hash[get_hash (btid_arg)];
+  entry *entp = NULL;
+  
+  if (entp == NULL)
+    {
+      // need to add a new one
+      rwlock_read_unlock (&m_hash_lock);
+      return false;
+    }
+
+  std::unique_lock<std::mutex> ulock (entp->m_btid_int_mutex);
+  bool found_in_cache = false;
+  if (!entp->m_stack.empty ())
+    {
+      output = std::move (entp->m_stack.top ());
+      entp->m_stack.pop ();
+      found_in_cache = true;
+    }
+  rwlock_read_unlock (&m_hash_lock);
+  return found_in_cache;
+}
+
+void 
+btid_int_cache::retire (const btid &btid_arg, btid_int &&btid_int_arg)
+{
+  // the order of operation is: lock hash, find entry, unlock hash, add to entry (or not)
+
+  rwlock_read_lock (&m_hash_lock);
+
+  bucket &bck = m_hash[get_hash (btid_arg)];
+  entry *entp = bck.find_entry (btid_arg);
+  if (entp == NULL)
+    {
+      // entry is not in hash; try to add
+      // needs write lock to add new entry
+      rwlock_read_unlock (&m_hash_lock);
+      rwlock_write_lock (&m_hash_lock);
+
+      // check again
+      entp = bck.find_entry (btid_arg);
+      if (entp == NULL)
+        {
+          // add new entry
+          bck.m_entries.emplace_front ();
+          entp = &bck.m_entries.front ();
+          entp->m_btid = btid_arg;
+        }
+      else
+        {
+          // somebody else added the entry
+        }
+      entp->m_btid_int_mutex.lock ();
+      rwlock_write_unlock (&m_hash_lock);
+    }
+  else
+    {
+      entp->m_btid_int_mutex.lock ();
+      rwlock_read_unlock (&m_hash_lock);
+    }
+  assert (BTID_IS_EQUAL (&btid_arg, &entp->m_btid));
+  if (entp->m_stack.size () < BTID_INT_MAX_COPIES)
+    {
+      entp->m_stack.emplace (std::move (btid_int_arg));
+    }
+  else
+    {
+      btid_int (std::move (btid_int_arg));    // content gets destroyed
+    }
+  entp->m_btid_int_mutex.unlock ();
+}
+// *INDENT-ON*

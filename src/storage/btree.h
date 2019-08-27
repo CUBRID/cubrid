@@ -130,6 +130,15 @@ struct btid_int
   int copy_buf_len;		/* index key copy_buf length info; derived from INDX_SCAN_ID.copy_buf_len */
   int rev_level;
   OID topclass_oid;		/* class oid for which index is created */
+
+  // *INDENT-OFF*
+  btid_int ();
+  btid_int (btid_int &&other);
+  btid_int (const btid_int &other) = delete;
+
+  btid_int &operator= (btid_int &&other);
+  btid_int &operator= (const btid_int &other) = delete;
+  // *INDENT-ON*
 };
 
 /* key range structure */
