@@ -13803,13 +13803,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 		  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &home_hint_p);
 
                   // Now log the whole page.
-                  LOG_DATA_ADDR log_addr = LOG_DATA_ADDR_INITIALIZER;
-
-                  /* log the whole page for redo purposes. */
-                  log_addr.vfid = &hfid->vfid;
-                  log_addr.pgptr = home_hint_p.pgptr;
-                  log_addr.offset = -1;		/* irrelevant */
-                  log_append_redo_data (thread_p, RVBT_COPYPAGE, &log_addr, DB_PAGESIZE, home_hint_p.pgptr);
+                  pgbuf_log_new_page (thread_p, home_hint_p.pgptr, DB_PAGESIZE, PAGE_HEAP);
 		}
 
 	      // Add the new VPID to the VPID array.
