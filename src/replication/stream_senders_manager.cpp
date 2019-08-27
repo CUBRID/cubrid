@@ -41,7 +41,6 @@ namespace cubreplication
     : m_stream (supervised_stream)
     , m_supervisor_daemon (NULL)
   {
-#if defined (SERVER_MODE)
     int error_code = NO_ERROR;
 
     std::string daemon_name = "senders_supervisor_daemon_" + m_stream.name ();
@@ -53,12 +52,10 @@ namespace cubreplication
 
     error_code = rwlock_initialize (&m_senders_lock, "MASTER_SENDERS_LOCK");
     assert (error_code == NO_ERROR);
-#endif
   }
 
   stream_senders_manager::~stream_senders_manager ()
   {
-#if defined (SERVER_MODE)
     er_log_debug_replication (ARG_FILE_LINE, "stream_senders_manager::finalize");
 
     int error_code = NO_ERROR;
@@ -73,7 +70,6 @@ namespace cubreplication
 
     error_code = rwlock_finalize (&m_senders_lock);
     assert (error_code == NO_ERROR);
-#endif
   }
 
   void stream_senders_manager::add_stream_sender (cubstream::transfer_sender *sender)
@@ -162,7 +158,6 @@ namespace cubreplication
 
   void stream_senders_manager::execute (cubthread::entry &context)
   {
-#if defined (SERVER_MODE)
     static unsigned int check_conn_delay_counter = 0;
     bool have_write_lock = false;
     int active_senders = 0;
@@ -234,7 +229,6 @@ namespace cubreplication
       }
 
     check_conn_delay_counter++;
-#endif
   }
 
 } /* namespace cubreplication */
