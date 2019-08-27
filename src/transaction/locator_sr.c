@@ -7612,7 +7612,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 /* #endif */
 
 #if defined(ENABLE_SYSTEMTAP)
-  char *classname = scan_cache->node.classname;
+  const char *classname = scan_cache->node.classname;
 #endif /* ENABLE_SYSTEMTAP */
 
   assert_release (class_oid != NULL);
@@ -7666,11 +7666,14 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 #if defined(ENABLE_SYSTEMTAP)
   if (classname == NULL)
     {
-      if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR || classname == NULL)
+      char *heap_class_name = NULL;
+      if (heap_get_class_name (thread_p, class_oid, &heap_class_name) != NO_ERROR || heap_class_name == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto error;
 	}
+
+      classname = heap_class_name;
       classname_was_alloced = true;
     }
 

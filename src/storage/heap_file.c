@@ -24798,7 +24798,7 @@ heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   /* recovery data: HFID, OID, array_size (int), array_of_VPID(array_size) */
   HFID_SET_NULL (&hfid);
   OID_SET_NULL (&class_oid);
-  
+
   OR_GET_HFID ((recv->data + offset), &hfid);
   offset += DB_ALIGN (OR_HFID_SIZE, PTR_ALIGNMENT);
 
