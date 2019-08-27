@@ -7606,6 +7606,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
   bool use_mvcc = false;
   MVCCID mvccid;
   MVCC_REC_HEADER *p_mvcc_rec_header = NULL;
+  bool classname_was_alloced = false;
 
 /* temporary disable standalone optimization (non-mvcc insert/delete style).
  * Must be activated when dynamic heap is introduced */
@@ -7614,7 +7615,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 /* #endif */
 
 #if defined(ENABLE_SYSTEMTAP)
-  char *classname = NULL;
+  const char *classname = scan_cache->node.classname;
 #endif /* ENABLE_SYSTEMTAP */
 
   assert_release (class_oid != NULL);
@@ -7666,11 +7667,20 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
     }
 
 #if defined(ENABLE_SYSTEMTAP)
-  if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR || classname == NULL)
+  if (classname == NULL)
     {
-      ASSERT_ERROR_AND_SET (error_code);
-      goto error;
+      char *heap_class_name = NULL;
+      if (heap_get_class_name (thread_p, class_oid, &heap_class_name) != NO_ERROR || heap_class_name == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto error;
+	}
+
+      classname = heap_class_name;
+      classname_was_alloced = true;
     }
+
+  assert (classname != NULL);
 #endif /* ENABLE_SYSTEMTAP */
 
   for (i = 0; i < num_btids; i++)
@@ -7919,7 +7929,7 @@ error:
     }
 
 #if defined(ENABLE_SYSTEMTAP)
-  if (classname != NULL)
+  if (classname != NULL && classname_was_alloced)
     {
       free_and_init (classname);
     }
