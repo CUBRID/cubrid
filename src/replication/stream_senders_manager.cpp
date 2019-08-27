@@ -91,9 +91,9 @@ namespace cubreplication
     rwlock_read_lock (&m_senders_lock);
     for (cubstream::transfer_sender *sender : m_stream_senders)
       {
-	if (sender->get_last_sent_position() < desired_position)
+	if (sender->get_last_sent_position () < desired_position)
 	  {
-	    sender->get_daemon()->wakeup();
+	    sender->get_daemon ()->wakeup ();
 	  }
       }
     rwlock_read_unlock (&m_senders_lock);

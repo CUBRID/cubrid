@@ -27,6 +27,8 @@
 #include "thread_manager.hpp"
 #include "transaction_group_complete_manager.hpp"
 
+#include <cassert>
+
 namespace cubtx
 {
   group_complete_manager::~group_complete_manager ()
@@ -235,7 +237,7 @@ namespace cubtx
   void group_complete_manager::execute_all ()
   {
     /* I'm the only thread - SA, recovery. */
-    cubthread::entry *thread_p = &cubthread::get_entry();
+    cubthread::entry *thread_p = &cubthread::get_entry ();
     do_prepare_complete (thread_p);
     do_complete (thread_p);
   }
@@ -309,7 +311,7 @@ namespace cubtx
   }
 
   //
-  // is_latest_closed_group_prepared_for_complete checks whether the latest closed group is preapared for complete.
+  // is_latest_closed_group_prepared_for_complete checks whether the latest closed group is prepared for complete.
   //
   bool group_complete_manager::is_latest_closed_group_prepared_for_complete ()
   {
@@ -428,7 +430,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed group - check whether MVCC was completed.*/
+	/* Current closed group - check whether MVCC was completed. */
 	return is_latest_closed_group_mvcc_completed ();
       }
   }
@@ -451,7 +453,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed group - check whether the group was logged.*/
+	/* Current closed group - check whether the group was logged. */
 	return is_latest_closed_group_logged ();
       }
   }
@@ -474,7 +476,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed group - check whether the group was completed.*/
+	/* Current closed group - check whether the group was completed. */
 	return is_latest_closed_group_completed ();
       }
   }
