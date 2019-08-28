@@ -176,6 +176,8 @@ namespace cubreplication
 		    ASSERT_ERROR ();
 		    // should not happen
 		    assert (false);
+		    m_stop = true;
+		    delete se;
 		    break;
 		  }
 	      }
@@ -294,6 +296,7 @@ namespace cubreplication
 	  }
 	// wait for the applying tasks
 	m_lc.wait_for_tasks ();
+	m_lc.set_dispatcher_finished ();
       }
 
     private:
@@ -354,6 +357,21 @@ namespace cubreplication
 			     NULL, 1, 1);
 
     m_use_daemons = true;
+  }
+
+  void log_consumer::wait_dispatcher_applied_all ()
+  {
+    std::unique_lock<std::mutex> ul (m_dispatch_finished_mtx);
+    m_dispatch_finished_cv.wait (ul, [this] ()
+    {
+      return m_dispatch_finished;
+    });
+  }
+
+  void log_consumer::set_dispatcher_finished ()
+  {
+    m_dispatch_finished = true;
+    m_dispatch_finished_cv.notify_one ();
   }
 
   void log_consumer::push_task (cubthread::entry_task *task)
