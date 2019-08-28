@@ -19,14 +19,6 @@
 
 #include "ha_server_state.hpp"
 
-const char *HA_SERVER_STATE_IDLE_STR                = "idle";
-const char *HA_SERVER_STATE_ACTIVE_STR              = "active";
-const char *HA_SERVER_STATE_TO_BE_ACTIVE_STR        = "to-be-active";
-const char *HA_SERVER_STATE_STANDBY_STR             = "standby";
-const char *HA_SERVER_STATE_TO_BE_STANDBY_STR       = "to-be-standby";
-const char *HA_SERVER_STATE_MAINTENANCE_STR         = "maintenance";
-const char *HA_SERVER_STATE_DEAD_STR                = "dead";
-
 namespace ha_operations
 {
   static SERVER_STATE server_state = SERVER_STATE_IDLE;
@@ -59,3 +51,14 @@ namespace ha_operations
       }
   }
 }
+
+const char *HA_SERVER_STATE_IDLE_STR                = "idle";
+const char *HA_SERVER_STATE_ACTIVE_STR              = "active";
+const char *HA_SERVER_STATE_TO_BE_ACTIVE_STR        = "to-be-active";
+const char *HA_SERVER_STATE_STANDBY_STR             = "standby";
+const char *HA_SERVER_STATE_TO_BE_STANDBY_STR       = "to-be-standby";
+const char *HA_SERVER_STATE_MAINTENANCE_STR         = "maintenance";
+const char *HA_SERVER_STATE_DEAD_STR                = "dead";
+
+decltype (&ha_operations::get_server_state) css_ha_server_state = &ha_operations::get_server_state;
+decltype (&ha_operations::server_state_string) css_ha_server_state_string = &ha_operations::server_state_string;

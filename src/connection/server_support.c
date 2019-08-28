@@ -841,7 +841,7 @@ css_process_master_hostname ()
   ha_Server_master_hostname[hostname_length] = '\0';
 
   assert (hostname_length > 0
-	  && (ha_operations::get_server_state() == HA_SERVER_STATE_TO_BE_STANDBY || ha_operations::get_server_state() == HA_SERVER_STATE_STANDBY));
+	  && (css_ha_server_state () == HA_SERVER_STATE_TO_BE_STANDBY || css_ha_server_state () == HA_SERVER_STATE_STANDBY));
 
   er_log_debug_replication (ARG_FILE_LINE, "css_process_master_hostname css_Master_server_name:%s,"
     " ha_Server_master_hostname:%s\n", css_Master_server_name, ha_Server_master_hostname);
@@ -849,7 +849,7 @@ css_process_master_hostname ()
   cubreplication::replication_node_manager::inc_ha_tasks ();
   cubthread::entry_task *connect_to_master_task = new cubthread::entry_callable_task ([] (cubthread::entry &context)
   {
-    cubreplication::replication_node_manager::wait_commute (ha_operations::get_server_state(), HA_SERVER_STATE_STANDBY);
+    cubreplication::replication_node_manager::wait_commute (css_ha_server_state (), HA_SERVER_STATE_STANDBY);
     int error = cubreplication::replication_node_manager::get_slave_node ()
 				->connect_to_master (ha_Server_master_hostname, css_Master_port_id);
     cubreplication::replication_node_manager::dec_ha_tasks ();

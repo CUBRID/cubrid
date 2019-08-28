@@ -30,6 +30,7 @@
 
 namespace ha_operations
 {
+
   int change_server_state (cubthread::entry *thread_p, SERVER_STATE state, bool force, int timeout, bool heartbeat)
   {
     HA_SERVER_STATE orig_state;
@@ -217,11 +218,10 @@ namespace ha_operations
     return (state != HA_SERVER_STATE_NA) ? NO_ERROR : ER_FAILED;
   }
 
-
   /*
-   * css_transit_ha_server_state - request to transit the current HA server
-   *                               state to the required state
-   *   return: new state changed if successful or HA_SERVER_STATE_NA
+   * transit_server_state - request to transit the current HA server
+   *                        state to the required state
+   *   return: new state changed if successful or SERVER_STATE_NA
    *   req_state(in): the state for the server to transit
    *
    */
@@ -238,13 +238,8 @@ namespace ha_operations
     {
       /* idle -> active */
       {HA_SERVER_STATE_IDLE, HA_SERVER_STATE_ACTIVE, HA_SERVER_STATE_ACTIVE},
-#if 0
       /* idle -> to-be-standby */
       {HA_SERVER_STATE_IDLE, HA_SERVER_STATE_STANDBY, HA_SERVER_STATE_TO_BE_STANDBY},
-#else
-      /* idle -> standby */
-      {HA_SERVER_STATE_IDLE, HA_SERVER_STATE_STANDBY, HA_SERVER_STATE_STANDBY},
-#endif
       /* idle -> maintenance */
       {HA_SERVER_STATE_IDLE, HA_SERVER_STATE_MAINTENANCE, HA_SERVER_STATE_MAINTENANCE},
       /* active -> active */
@@ -307,7 +302,9 @@ namespace ha_operations
     csect_exit (thread_p, CSECT_HA_SERVER_STATE);
     return new_state;
   }
-  void finish_transit (cubthread::entry *thread_p, bool force, SERVER_STATE req_state)
+
+  void
+  finish_transit (cubthread::entry *thread_p, bool force, SERVER_STATE req_state)
   {
     assert (req_state == HA_SERVER_STATE_ACTIVE || req_state == HA_SERVER_STATE_STANDBY);
 
@@ -329,7 +326,9 @@ namespace ha_operations
 	HA_SERVER_STATE state = css_transit_ha_server_state (thread_p, req_state);
 	assert (state == req_state);
       }
-
   }
 }
 
+decltype (&ha_operations::change_server_state) css_change_ha_server_state = &ha_operations::change_server_state;
+decltype (&ha_operations::finish_transit) css_finish_transit = &ha_operations::finish_transit;
+decltype (&ha_operations::transit_server_state) css_transit_ha_server_state = &ha_operations::transit_server_state;

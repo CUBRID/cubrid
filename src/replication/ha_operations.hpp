@@ -30,8 +30,8 @@ namespace ha_operations
   void finish_transit (cubthread::entry *thread_p, bool force, SERVER_STATE req_state);
 }
 
-static auto css_change_ha_server_state = ha_operations::change_server_state;
-static auto css_finish_transit = ha_operations::finish_transit;
-static auto css_transit_ha_server_state = ha_operations::transit_server_state;
+extern decltype (&ha_operations::change_server_state) css_change_ha_server_state;
+extern decltype (&ha_operations::finish_transit) css_finish_transit;
+extern decltype (&ha_operations::transit_server_state) css_transit_ha_server_state;
 
 #endif // !_HA_OPERATIONS_HPP_
