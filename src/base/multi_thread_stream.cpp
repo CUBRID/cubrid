@@ -769,6 +769,7 @@ namespace cubstream
   void multi_thread_stream::set_fetch_all_requested ()
   {
     m_fetch_all_requested = true;
+    m_serial_read_cv.notify_one ();
   }
 
   void multi_thread_stream::set_last_recyclable_pos (const stream_position &pos)
