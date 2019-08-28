@@ -10319,7 +10319,7 @@ logpb_complete_manager_string (log_tran_complete_manager_type manager_type)
     }
 
   assert (false);
-  return NULL;
+  return "unknown";
 }
 
 /*
