@@ -3638,18 +3638,16 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
 	}
     }
 
-  if (sys_param)
+  if (sys_param != NULL)
     {
-      er_stack_push ();
-
       int error = db_set_system_parameters_for_ha_repl (sys_param);
       if (error != NO_ERROR)
 	{
 	  snprintf (sql_log_err, sizeof (sql_log_err), "failed to change sys prm: %s", sys_param);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, sql_log_err);
+	  ASSERT_ERROR_AND_SET (rc);
+	  goto error;
 	}
-
-      er_stack_pop ();
     }
 
   if (args->do_extract_schema)
