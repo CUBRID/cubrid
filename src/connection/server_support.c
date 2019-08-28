@@ -87,7 +87,6 @@
 #include "heartbeat.h"
 #endif
 #include "dbtype.h"
-
 #include "ha_operations.hpp"
 #include "ha_server_state.hpp"
 

@@ -268,8 +268,8 @@ set(OBJECT_HEADERS
 )
 
 set(REPLICATION_SOURCES
-  ${REPLICATION_DIR}/replication_schema_extract.cpp
   ${REPLICATION_DIR}/ha_server_state.cpp
+  ${REPLICATION_DIR}/replication_schema_extract.cpp
 )
 
 set(REPLICATION_HEADERS
