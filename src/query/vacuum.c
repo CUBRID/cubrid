@@ -5419,7 +5419,9 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
       LSA_COPY (&mvcc_op_log_lsa, &log_Gl.hdr.mvcc_op_log_lsa);
     }
   assert (!LSA_ISNULL (&mvcc_op_log_lsa));
-  log_Gl.hdr.mvcc_op_log_lsa.set_null ();
+
+  // reset header; info will be restored if last block is not consumed.
+  logpb_vacuum_reset_log_header_cache (thread_p, log_Gl.hdr);
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
 		 "vacuum_recover_lost_block_data, start recovering from %lld|%d ", LSA_AS_ARGS (&mvcc_op_log_lsa));
