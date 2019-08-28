@@ -48,7 +48,6 @@ log_postpone_cache::clear ()
 void
 log_postpone_cache::insert (log_lsa &lsa)
 {
-#if defined (SERVER_MODE)
   assert (!lsa.is_null ());
   assert (m_cache_status != LOG_POSTPONE_CACHE_NO);
 
@@ -64,7 +63,6 @@ log_postpone_cache::insert (log_lsa &lsa)
 
   /* Now that all needed data is saved, increment cached entries counter. */
   m_cache_entries_cursor++;
-#endif /* SERVER_MODE */
 }
 
 /**
@@ -78,7 +76,6 @@ log_postpone_cache::insert (log_lsa &lsa)
 void
 log_postpone_cache::redo_data (char *data_header, char *rcv_data, int rcv_data_length)
 {
-#if defined (SERVER_MODE)
   assert (data_header != NULL);
   assert (rcv_data_length == 0 || rcv_data != NULL);
 
@@ -141,7 +138,6 @@ log_postpone_cache::redo_data (char *data_header, char *rcv_data, int rcv_data_l
 
   /* LSA will be saved later. */
   new_entry->m_lsa.set_null ();
-#endif /* SERVER_MODE */
 }
 
 /**
@@ -154,7 +150,6 @@ log_postpone_cache::redo_data (char *data_header, char *rcv_data, int rcv_data_l
 bool
 log_postpone_cache::do_postpone (cubthread::entry &thread_ref, log_lsa *start_postpone_lsa)
 {
-#if defined (SERVER_MODE)
   assert (start_postpone_lsa != NULL && !start_postpone_lsa->is_null ());
   assert (m_cache_status != LOG_POSTPONE_CACHE_NO);
 
@@ -212,7 +207,4 @@ log_postpone_cache::do_postpone (cubthread::entry &thread_ref, log_lsa *start_po
     }
 
   return true;
-#else /* !SERVER_MODE */
-  return false;
-#endif /* !SERVER_MODE */
 }
