@@ -2748,15 +2748,8 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
       return;
     }
 
-  /* Cache postpone log record. Redo data must be saved before calling prior_lsa_next_record, which may free this
-   * prior node. */
-  tdes->m_log_postpone_cache.redo_data (node->data_header, node->rdata, node->rlength);
-
-  LOG_LSA start_lsa = prior_lsa_next_record (thread_p, node, tdes);
-
-  /* Cache postpone log record. An entry for this postpone log record was already created and we also need to save
-   * its LSA. */
-  tdes->m_log_postpone_cache.insert (start_lsa);
+  // Cache postpone log record
+  tdes->m_log_postpone_cache.insert (*thread_p, *node, *tdes);
 
   /* Set address early in case there is a crash, because of skip_head */
   if (tdes->topops.last >= 0)

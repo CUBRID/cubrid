@@ -37,57 +37,28 @@ log_postpone_cache::clear ()
 }
 
 /**
- * Save LSA of postpone operations
- *
- * @param lsa - log postpone LSA
- * @return void
- *
- * NOTE: This saves LSA after a new entry and its redo data have already been added.
- *       They couldn't both be added in the same step.
- */
-void
-log_postpone_cache::insert (log_lsa &lsa)
-{
-  assert (!lsa.is_null ());
-  assert (m_cache_status != LOG_POSTPONE_CACHE_NO);
-
-  if (m_cache_status == LOG_POSTPONE_CACHE_OVERFLOW)
-    {
-      return;
-    }
-
-  assert (m_cache_entries_cursor < MAX_CACHE_ENTRIES);
-
-  cache_entry *new_entry = &m_cache_entries[m_cache_entries_cursor];
-  new_entry->m_lsa = lsa;
-
-  /* Now that all needed data is saved, increment cached entries counter. */
-  m_cache_entries_cursor++;
-}
-
-/**
  * Cache redo data for log postpone
  *
- * @param data_header - recovery data header (LOG_REC_REDO)
- * @param rcv_data - recovery redo data
- * @param rcv_data_length - recovery data size
+ * @param thread_ref - thread entry
+ * @param node - log prior node
+ * @param tdes - transaction descriptor
  * @return void
  */
 void
-log_postpone_cache::redo_data (char *data_header, char *rcv_data, int rcv_data_length)
+log_postpone_cache::insert (cubthread::entry &thread_ref, log_prior_node &node, log_tdes &tdes)
 {
-  assert (data_header != NULL);
-  assert (rcv_data_length == 0 || rcv_data != NULL);
+  assert (node.data_header != NULL);
+  assert (node.rlength == 0 || node.rdata != NULL);
 
   if (m_cache_status == LOG_POSTPONE_CACHE_OVERFLOW)
     {
-      /* Cannot cache postpones. */
+      // Cannot cache postpones
       return;
     }
 
   if (m_cache_status == LOG_POSTPONE_CACHE_NO)
     {
-      /* Initialize data to cache postpones. */
+      // Initialize data to cache postpones
       m_cache_entries_cursor = 0;
       m_redo_data_ptr = m_redo_data_buf;
       m_cache_status = LOG_POSTPONE_CACHE_YES;
@@ -101,43 +72,51 @@ log_postpone_cache::redo_data (char *data_header, char *rcv_data, int rcv_data_l
 
   if (m_cache_entries_cursor == MAX_CACHE_ENTRIES)
     {
-      /* Could not store all postpone records. */
+      // Could not store all postpone records
       m_cache_status = LOG_POSTPONE_CACHE_OVERFLOW;
       return;
     }
 
-  /* Check if recovery data fits in preallocated buffer. */
+  // Check if recovery data fits in preallocated buffer
   std::size_t total_data_size = m_redo_data_ptr - m_redo_data_buf;
   total_data_size += sizeof (log_rec_redo);
-  total_data_size += rcv_data_length;
+  total_data_size += node.rlength;
   total_data_size += 2 * MAX_ALIGNMENT;
   if (total_data_size > REDO_DATA_SIZE)
     {
-      /* Cannot store all recovery data. */
+      // Cannot store all recovery data
       m_cache_status = LOG_POSTPONE_CACHE_OVERFLOW;
       return;
     }
 
-  /* Cache a new postpone log record entry. */
+  // Cache a new postpone log record entry
   cache_entry *new_entry = &m_cache_entries[m_cache_entries_cursor];
   new_entry->m_redo_data = m_redo_data_ptr;
 
-  /* Cache log_rec_redo from data_header */
-  memcpy (m_redo_data_ptr, data_header, sizeof (log_rec_redo));
+  // Cache log_rec_redo from data_header
+  memcpy (m_redo_data_ptr, node.data_header, sizeof (log_rec_redo));
   m_redo_data_ptr += sizeof (log_rec_redo);
   m_redo_data_ptr = PTR_ALIGN (m_redo_data_ptr, MAX_ALIGNMENT);
 
-  /* Cache recovery data. */
-  assert (((log_rec_redo *) data_header)->length == rcv_data_length);
-  if (rcv_data_length > 0)
+  // Cache recovery data
+  assert (((log_rec_redo *) node.data_header)->length == node.rlength);
+  if (node.rlength > 0)
     {
-      memcpy (m_redo_data_ptr, rcv_data, rcv_data_length);
-      m_redo_data_ptr += rcv_data_length;
+      memcpy (m_redo_data_ptr, node.rdata, node.rlength);
+      m_redo_data_ptr += node.rlength;
       m_redo_data_ptr = PTR_ALIGN (m_redo_data_ptr, MAX_ALIGNMENT);
     }
 
-  /* LSA will be saved later. */
-  new_entry->m_lsa.set_null ();
+  // Redo data must be saved before calling prior_lsa_next_record, which may free this prior node
+  log_lsa start_lsa = prior_lsa_next_record (&thread_ref, &node, &tdes);
+
+  assert (!start_lsa.is_null ());
+  assert (m_cache_status != LOG_POSTPONE_CACHE_NO);
+
+  new_entry->m_lsa = start_lsa;
+
+  // Now that all needed data is saved, increment cached entries counter
+  m_cache_entries_cursor++;
 }
 
 /**
@@ -155,19 +134,19 @@ log_postpone_cache::do_postpone (cubthread::entry &thread_ref, log_lsa *start_po
 
   if (m_cache_status == LOG_POSTPONE_CACHE_OVERFLOW)
     {
-      /* Cache is not usable. */
+      // Cache is not usable
       m_cache_status = LOG_POSTPONE_CACHE_NO;
       return false;
     }
 
-  /* First cached postpone entry at start_postpone_lsa. */
+  // First cached postpone entry at start_postpone_lsa
   int start_index = -1;
-  for (std::size_t i = 0; i < m_cache_entries_cursor; i++)
+  for (std::size_t i = 0; i < m_cache_entries_cursor; ++i)
     {
       cache_entry *entry = &m_cache_entries[i];
       if (entry->m_lsa == *start_postpone_lsa)
 	{
-	  /* Found start lsa. */
+	  // Found start lsa
 	  start_index = i;
 	  break;
 	}
@@ -175,34 +154,34 @@ log_postpone_cache::do_postpone (cubthread::entry &thread_ref, log_lsa *start_po
 
   if (start_index < 0)
     {
-      /* Start LSA was not found. Unexpected situation. */
+      // Start LSA was not found. Unexpected situation
       assert (false);
       return false;
     }
 
-  /* Run all postpones after start_index. */
-  for (std::size_t i = start_index; i < m_cache_entries_cursor; i++)
+  // Run all postpones after start_index
+  for (std::size_t i = start_index; i < m_cache_entries_cursor; ++i)
     {
       cache_entry *entry = &m_cache_entries[i];
 
-      /* Get redo data header. */
+      // Get redo data header
       log_rec_redo *redo = (log_rec_redo *) entry->m_redo_data;
 
-      /* Get recovery data. */
+      // Get recovery data
       char *rcv_data = entry->m_redo_data + sizeof (log_rec_redo);
       rcv_data = PTR_ALIGN (rcv_data, MAX_ALIGNMENT);
       (void) log_execute_run_postpone (&thread_ref, &entry->m_lsa, redo, rcv_data);
     }
 
-  /* Finished running postpones. */
+  // Finished running postpones
   if (start_index == 0)
     {
-      /* All postpone entries were run. */
+      // All postpone entries were run
       m_cache_status = LOG_POSTPONE_CACHE_NO;
     }
   else
     {
-      /* Only some postpone entries were run. Update the number of entries which should be run on next commit. */
+      // Only some postpone entries were run. Update the number of entries which should be run on next commit
       m_cache_entries_cursor = start_index;
     }
 

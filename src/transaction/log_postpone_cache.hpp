@@ -26,9 +26,17 @@
 
 #include "log_lsa.hpp"
 #include "storage_common.h"
-#include "thread_entry.hpp"
 
 #include <array>
+
+// forward declarations
+struct log_tdes;
+struct log_prior_node;
+
+namespace cubthread
+{
+  class entry;
+}
 
 /**
  * Caches postpones to avoid reading them from log after commit top operation with postpone.
@@ -60,8 +68,7 @@ class log_postpone_cache
 
     void clear ();
 
-    void insert (log_lsa &lsa);
-    void redo_data (char *data_header, char *rcv_data, int rcv_data_length);
+    void insert (cubthread::entry &thread_ref, log_prior_node &node, log_tdes &tdes);
     bool do_postpone (cubthread::entry &thread_ref, log_lsa *start_postpone_lsa);
 
   private:
