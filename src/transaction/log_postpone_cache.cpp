@@ -200,6 +200,7 @@ log_postpone_cache::do_postpone (cubthread::entry &thread_ref, const log_lsa &st
     {
       // Only some postpone entries were run. Update the number of entries which should be run on next commit
       m_cache_entries_cursor = start_index;
+      m_redo_data_ptr = m_cache_entries[start_index].m_redo_data;
     }
 
   return true;
