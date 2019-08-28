@@ -246,7 +246,8 @@ namespace cubreplication
       const char *buffer, const size_t buf_size)
   {
     assert (id != NULL || id_size == 0);
-    auto it = container.find (std::string (id, id_size));
+    std::string id_str (id, id_size);
+    auto it = container.find (id_str);
     if (it != container.end ())
       {
 	it->second.append (buffer, buf_size);

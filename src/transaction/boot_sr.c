@@ -5794,8 +5794,6 @@ boot_client_type_to_string (BOOT_CLIENT_TYPE type)
       return "ADMIN_CSQL_WOS";
     case BOOT_CLIENT_DDL_PROXY:
       return "DDL_PROXY";
-    case BOOT_PSEUDO_CLIENT_REPL_APPLIER:
-      return "PSEUDO_CLIENT_REPL_APPLIER";
     case BOOT_PSEUDO_CLIENT_REPL_COPIER:
       return "PSEUDO_CLIENT_REPL_COPIER";
     case BOOT_CLIENT_UNKNOWN:

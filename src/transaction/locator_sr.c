@@ -58,6 +58,7 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "process_util.h"
+#include "replication_common.hpp"
 #include "replication_object.hpp"
 #include "replication_source_db_copy.hpp"
 #include "session.h"
@@ -13935,7 +13936,7 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
 
   if (*statement == '\0')
     {
-      _er_log_debug (ARG_FILE_LINE, "locator_repl_apply_sbr : empty statement : nothing to do");
+      er_log_debug_replication (ARG_FILE_LINE, "locator_repl_apply_sbr : empty statement : nothing to do");
       return error;
     }
 
@@ -13979,9 +13980,9 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
 
   envvar_bindir_file (path, PATH_MAX, UTIL_DDL_PROXY_CLIENT);
 
-  _er_log_debug (ARG_FILE_LINE, "apply SBR: executing:\n%s %s %s %s %s %s %s %s %s %s %s",
-		 ddl_argv[0], ddl_argv[1], ddl_argv[2], ddl_argv[3], ddl_argv[4], ddl_argv[5], ddl_argv[6],
-		 ddl_argv[7], ddl_argv[8], ddl_argv[9], ddl_argv[10]);
+  er_log_debug_replication (ARG_FILE_LINE, "apply SBR: executing:\n%s %s %s %s %s %s %s %s %s %s %s\n",
+			    ddl_argv[0], ddl_argv[1], ddl_argv[2], ddl_argv[3], ddl_argv[4], ddl_argv[5], ddl_argv[6],
+			    ddl_argv[7], ddl_argv[8], ddl_argv[9], ddl_argv[10]);
 
   error = create_child_process (ddl_argv, 1, NULL, NULL, NULL, &exit_status);
   tdes->ha_sbr_statement = NULL;
@@ -13990,8 +13991,8 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
       return error;
     }
 
-  _er_log_debug (ARG_FILE_LINE, "apply SBR: tran_index:%d, exit_status:%d, stmt:\n%s", tran_index, exit_status,
-		 statement);
+  er_log_debug_replication (ARG_FILE_LINE, "apply SBR: tran_index:%d, exit_status:%d, stmt:\n%s\n", tran_index,
+			    exit_status, statement);
 
   if (exit_status != 0)
     {
@@ -14039,7 +14040,7 @@ locator_repl_extract_schema (THREAD_ENTRY * thread_p, const char *db_user, const
       return error;
     }
 
-  _er_log_debug (ARG_FILE_LINE, "extract schema: tran_index:%d, exit_status:%d\n", tran_index, exit_status);
+  er_log_debug_replication (ARG_FILE_LINE, "extract schema: tran_index:%d, exit_status:%d\n", tran_index, exit_status);
 
   if (exit_status != 0)
     {
@@ -14058,11 +14059,7 @@ locator_repl_start_tran (THREAD_ENTRY * thread_p, const boot_client_type client_
   BOOT_CLIENT_CREDENTIAL applier_Client_credentials;
   applier_Client_credentials.client_type = client_type;
 
-  if (client_type == BOOT_PSEUDO_CLIENT_REPL_APPLIER)
-    {
-      applier_Client_credentials.program_name = "(repl_applier)";
-    }
-  else if (client_type == BOOT_CLIENT_DDL_PROXY)
+  if (client_type == BOOT_CLIENT_DDL_PROXY)
     {
       applier_Client_credentials.program_name = "(ddl_proxy)";
     }
@@ -14104,12 +14101,12 @@ locator_repl_end_tran (THREAD_ENTRY * thread_p, bool commit)
   if (commit)
     {
       xtran_server_commit (thread_p, false);
-      _er_log_debug (ARG_FILE_LINE, "locator_repl_end_tran : tran_index :%d committed", saved_tran_index);
+      er_log_debug_replication (ARG_FILE_LINE, "locator_repl_end_tran : tran_index :%d committed", saved_tran_index);
     }
   else
     {
       xtran_server_abort (thread_p);
-      _er_log_debug (ARG_FILE_LINE, "locator_repl_end_tran : tran_index :%d aborted", saved_tran_index);
+      er_log_debug_replication (ARG_FILE_LINE, "locator_repl_end_tran : tran_index :%d aborted", saved_tran_index);
     }
 
   logtb_release_tran_index (thread_p, saved_tran_index);
