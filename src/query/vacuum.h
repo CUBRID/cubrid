@@ -102,22 +102,6 @@ struct vacuum_heap_object
   OID oid;			/* Object OID. */
 };
 
-enum vacuum_cache_postpone_status
-{
-  VACUUM_CACHE_POSTPONE_NO,
-  VACUUM_CACHE_POSTPONE_YES,
-  VACUUM_CACHE_POSTPONE_OVERFLOW
-};
-typedef enum vacuum_cache_postpone_status VACUUM_CACHE_POSTPONE_STATUS;
-
-typedef struct vacuum_cache_postpone_entry VACUUM_CACHE_POSTPONE_ENTRY;
-struct vacuum_cache_postpone_entry
-{
-  LOG_LSA lsa;
-  char *redo_data;
-};
-#define VACUUM_CACHE_POSTPONE_ENTRIES_MAX_COUNT 10
-
 /* VACUUM_WORKER - Vacuum worker information */
 typedef struct vacuum_worker VACUUM_WORKER;
 struct vacuum_worker
