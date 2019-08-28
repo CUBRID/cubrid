@@ -42,7 +42,9 @@ namespace cubtx
     GROUP_PREPARED_FOR_COMPLETE = 0x08,  /* Group prepared for complete. Set only for closed group. */
     GROUP_COMPLETE_STARTED = 0x10,  /* Group complete started. Set only for prepared group. */
     GROUP_COMPLETED = 0x20,  /* Group completed. Set only for complete started group. */
-    GROUP_ALL_STATES = GROUP_CLOSED | GROUP_MVCC_COMPLETED | GROUP_LOGGED | GROUP_PREPARED_FOR_COMPLETE | GROUP_COMPLETE_STARTED | GROUP_COMPLETED
+
+    GROUP_ALL_STATES = (GROUP_CLOSED | GROUP_MVCC_COMPLETED | GROUP_LOGGED | GROUP_PREPARED_FOR_COMPLETE
+			| GROUP_COMPLETE_STARTED | GROUP_COMPLETED)
   };
 
   //
