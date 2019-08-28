@@ -7694,6 +7694,7 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   if (tdes->m_log_postpone_cache.do_postpone (*thread_p, &tdes->posp_nxlsa))
     {
+      // do postpone from cache first
       return;
     }
 
