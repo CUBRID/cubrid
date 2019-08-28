@@ -88,8 +88,9 @@
 #endif
 #include "dbtype.h"
 
-#include "ha_server_state.hpp"
 #include "ha_operations.hpp"
+#include "ha_server_state.hpp"
+
 #define CSS_WAIT_COUNT 5	/* # of retry to connect to master */
 #define CSS_GOING_DOWN_IMMEDIATELY "Server going down immediately"
 
@@ -114,7 +115,6 @@ static char ip_file_real_path[PATH_MAX];
 static int (*css_Server_request_handler) (THREAD_ENTRY *, unsigned int, int, int, char *);
 
 /* server's state for HA feature */
-//static HA_SERVER_STATE ha_Server_state = HA_SERVER_STATE_IDLE;
 static bool ha_Repl_delay_detected = false;
 
 static int ha_Server_num_of_hosts = 0;
@@ -734,7 +734,7 @@ css_process_get_server_ha_mode_request (SOCKET master_fd)
     }
   else
     {
-      response = htonl (ha_operations::get_server_state ());
+      response = htonl (css_ha_server_state ());
     }
 
   r = send (master_fd, (char *) &response, sizeof (int), 0);
@@ -1128,7 +1128,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	    }
 
 	  /* check server's HA state */
-	  if (ha_operations::get_server_state () == HA_SERVER_STATE_TO_BE_STANDBY && conn->in_transaction == false
+	  if (css_ha_server_state () == HA_SERVER_STATE_TO_BE_STANDBY && conn->in_transaction == false
 	      && css_count_transaction_worker_threads (thread_p, conn->get_tran_index (), conn->client_id) == 0)
 	    {
 	      status = REQUEST_REFUSED;
@@ -2036,16 +2036,6 @@ css_get_ha_num_of_hosts (void)
   return ha_Server_num_of_hosts;
 }
 
-/*
- * css_ha_server_state - return the current HA server state
- *   return: one of HA_SERVER_STATE
- */
-HA_SERVER_STATE
-css_ha_server_state (void)
-{
-  return ha_operations::get_server_state ();
-}
-
 bool
 css_is_ha_repl_delayed (void)
 {
@@ -2080,7 +2070,7 @@ css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p, int whence)
 
   /* csect_enter (thread_p, CSECT_HA_SERVER_STATE, INF_WAIT); */
 
-  switch (ha_operations::get_server_state ())
+  switch (css_ha_server_state ())
     {
     case HA_SERVER_STATE_TO_BE_ACTIVE:
       /* Server accepts clients even though it is in a to-be-active state */
@@ -2157,8 +2147,7 @@ css_check_ha_log_applier_working (void)
 	}
     }
   if (i == ha_Server_num_of_hosts
-      && (ha_operations::get_server_state () == HA_SERVER_STATE_TO_BE_STANDBY
-	  || ha_operations::get_server_state () == HA_SERVER_STATE_STANDBY))
+      && (css_ha_server_state () == HA_SERVER_STATE_TO_BE_STANDBY || css_ha_server_state () == HA_SERVER_STATE_STANDBY))
     {
       return true;
     }
@@ -2415,16 +2404,16 @@ css_process_new_slave (SOCKET master_fd)
     }
   er_log_debug_replication (ARG_FILE_LINE, "css_process_new_slave:"
 			    "received new slave fd from master fd=%d, current_state=%d\n", new_fd,
-			    ha_operations::get_server_state ());
+			    css_ha_server_state ());
 
   // *INDENT-OFF*
   cubreplication::replication_node_manager::inc_ha_tasks ();
 
-  assert (ha_operations::get_server_state() == HA_SERVER_STATE_TO_BE_ACTIVE || ha_operations::get_server_state() == HA_SERVER_STATE_ACTIVE);
+  assert (css_ha_server_state () == HA_SERVER_STATE_TO_BE_ACTIVE || css_ha_server_state () == HA_SERVER_STATE_ACTIVE);
 
   cubthread::entry_task *new_slave_task = new cubthread::entry_callable_task ([new_fd] (cubthread::entry &context)
   {
-    cubreplication::replication_node_manager::wait_commute (ha_operations::get_server_state(), HA_SERVER_STATE_ACTIVE);
+    cubreplication::replication_node_manager::wait_commute (css_ha_server_state (), HA_SERVER_STATE_ACTIVE);
     cubreplication::replication_node_manager::get_master_node ()->new_slave (new_fd);
     cubreplication::replication_node_manager::dec_ha_tasks ();
   });
@@ -2449,16 +2438,16 @@ css_process_add_ctrl_chn (SOCKET master_fd)
 
   er_log_debug_replication (ARG_FILE_LINE, "css_process_add_ctrl_chn:"
 			    "add new control channel fd from master fd=%d, current_state=%d\n", new_fd,
-			    ha_operations::get_server_state ());
+			    css_ha_server_state ());
 
   // *INDENT-OFF*
   cubreplication::replication_node_manager::inc_ha_tasks ();
 
-  assert (ha_operations::get_server_state() == HA_SERVER_STATE_TO_BE_ACTIVE || ha_operations::get_server_state() == HA_SERVER_STATE_ACTIVE);
+  assert (css_ha_server_state () == HA_SERVER_STATE_TO_BE_ACTIVE || css_ha_server_state () == HA_SERVER_STATE_ACTIVE);
 
   cubthread::entry_task *add_ctrl_task = new cubthread::entry_callable_task ([new_fd] (cubthread::entry &context)
   {
-    cubreplication::replication_node_manager::wait_commute (ha_operations::get_server_state(), HA_SERVER_STATE_ACTIVE);
+    cubreplication::replication_node_manager::wait_commute (css_ha_server_state (), HA_SERVER_STATE_ACTIVE);
     cubreplication::replication_node_manager::get_master_node ()->add_ctrl_chn (new_fd);
     cubreplication::replication_node_manager::dec_ha_tasks ();
   });

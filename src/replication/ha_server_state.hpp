@@ -57,4 +57,7 @@ const HA_SERVER_STATE HA_SERVER_STATE_TO_BE_STANDBY = ha_operations::SERVER_STAT
 const HA_SERVER_STATE HA_SERVER_STATE_MAINTENANCE = ha_operations::SERVER_STATE_MAINTENANCE;
 const HA_SERVER_STATE HA_SERVER_STATE_DEAD = ha_operations::SERVER_STATE_DEAD;
 
+static auto css_ha_server_state = ha_operations::get_server_state;
+static auto css_ha_server_state_string = ha_operations::server_state_string;
+
 #endif // !_HA_SERVER_STATE_HPP_
