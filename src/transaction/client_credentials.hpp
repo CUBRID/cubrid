@@ -48,9 +48,8 @@ enum boot_client_type
   BOOT_CLIENT_RO_BROKER_REPLICA_ONLY = 12,
   BOOT_CLIENT_SO_BROKER_REPLICA_ONLY = 13,
   BOOT_CLIENT_ADMIN_CSQL_WOS = 14,	/* admin csql that can write on standby */
-  BOOT_CLIENT_DDL_PROXY = 15,           /* DDL proxy (used for applying replication or
-                                         * extracting schema (in replication context) */
-  BOOT_PSEUDO_CLIENT_REPL_COPIER = 16   /* virtual client created by source replication copy process */
+  BOOT_CLIENT_DDL_PROXY = 15           /* DDL proxy (used for applying replication or
+                                        * extracting schema (in replication context) */
 };
 typedef enum boot_client_type BOOT_CLIENT_TYPE;
 
