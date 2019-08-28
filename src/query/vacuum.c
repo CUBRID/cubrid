@@ -2675,7 +2675,7 @@ vacuum_check_data_buffer (void)
 #if defined (SERVER_MODE)
   return vacuum_Block_data_buffer->is_half_full ();
 #else // not SERVER_MODE = SA_MODE
-  return false;
+  return !vacuum_Block_data_buffer->is_empty ();
 #endif // not SERVER_MODE = SA_MODE
 }
 
@@ -2792,9 +2792,10 @@ restart:
   /* Remove vacuumed entries */
   vacuum_data_mark_finished (thread_p);
 
-#if defined (SERVER_MODE)
   /* Append newly logged blocks at the end of the vacuum data table */
   (void) vacuum_consume_buffer_log_blocks (thread_p);
+
+#if defined (SERVER_MODE)
   pgbuf_flush_if_requested (thread_p, (PAGE_PTR) vacuum_Data.first_page);
   pgbuf_flush_if_requested (thread_p, (PAGE_PTR) vacuum_Data.last_page);
 #endif /* SERVER_MODE */
