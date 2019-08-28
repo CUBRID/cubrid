@@ -111,8 +111,9 @@ namespace cubtx
 	    /* Something wrong happens. The latest group was closed, but, we have a transaction
 	     * waiting for another group. Forces a group complete to not stuck the system.
 	     */
-            er_log_group_complete_debug (ARG_FILE_LINE, "can_close_current_group: wrong transaction waiting beyond the latest group id (%llu)",
-			   m_latest_group_id);
+	    er_log_group_complete_debug (ARG_FILE_LINE,
+					 "can_close_current_group: wrong transaction waiting beyond the latest group id (%llu)",
+					 m_latest_group_id);
 	    return true;
 	  }
 
@@ -179,9 +180,9 @@ namespace cubtx
     tx_group &closed_group = get_latest_closed_group ();
     /* TODO - consider parameter for MVCC complete here. */
     /* Add group commit log record and wakeup  log flush daemon. */
-    
+
     log_append_group_complete (thread_p, tdes, m_latest_group_stream_position,
-			       closed_group, &closed_group_start_complete_lsa, NULL);    
+			       closed_group, &closed_group_start_complete_lsa, NULL);
 
     log_wakeup_log_flush_daemon ();
     if (has_postpone)
@@ -229,8 +230,8 @@ namespace cubtx
     m_latest_group_id = set_current_group_minimum_transactions (count_expected_transactions, has_group_enough_transactions);
     m_has_latest_group_close_info.store (true);
     er_log_group_complete_debug (ARG_FILE_LINE, "set_close_info_for_current_group sp=%llu, latest_group_id = %llu,"
-		  "count_expected_transaction = %d\n", stream_position, m_latest_group_id,
-		  count_expected_transactions);
+				 "count_expected_transaction = %d\n", stream_position, m_latest_group_id,
+				 count_expected_transactions);
     if (has_group_enough_transactions)
       {
 	/* Wakeup group complete thread, since we have all informations that allows group close. */
