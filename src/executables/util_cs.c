@@ -3744,6 +3744,11 @@ error:
       free_and_init (command);
     }
 
+  if (sys_param != NULL && command != args->sys_param)
+    {
+      free_and_init (sys_param);
+    }
+
   if (session != NULL)
     {
       db_close_session (session);
