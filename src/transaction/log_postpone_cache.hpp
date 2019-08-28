@@ -66,7 +66,7 @@ class log_postpone_cache
 
   private:
     static const std::size_t REDO_DATA_SIZE = IO_MAX_PAGE_SIZE;
-    static const std::size_t MAX_CACHE_ENTRIES = 10;
+    static const std::size_t MAX_CACHE_ENTRIES = 512;
 
     class cache_entry
     {
