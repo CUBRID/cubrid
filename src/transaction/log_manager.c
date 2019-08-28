@@ -2660,7 +2660,6 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
   int tran_index;
   int error_code = NO_ERROR;
   LOG_PRIOR_NODE *node;
-  LOG_LSA start_lsa = LSA_INITIALIZER;
 
 #if defined(CUBRID_DEBUG)
   if (addr->pgptr == NULL)
@@ -2748,22 +2747,16 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
     {
       return;
     }
-  if (VACUUM_IS_THREAD_VACUUM (thread_p))
-    {
-      /* Cache postpone log record. Redo data must be saved before calling prior_lsa_next_record, which may free this
-       * prior node. */
-      vacuum_cache_log_postpone_redo_data (thread_p, node->data_header, node->rdata, node->rlength);
-      // todo - extend to all transactions
-    }
 
-  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
-  if (VACUUM_IS_THREAD_VACUUM (thread_p))
-    {
-      /* Cache postpone log record. An entry for this postpone log record was already created and we also need to save
-       * its LSA. */
-      vacuum_cache_log_postpone_lsa (thread_p, &start_lsa);
-      // todo - extend to all transactions
-    }
+  /* Cache postpone log record. Redo data must be saved before calling prior_lsa_next_record, which may free this
+   * prior node. */
+  tdes->m_log_postpone_cache.redo_data (node->data_header, node->rdata, node->rlength);
+
+  LOG_LSA start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+
+  /* Cache postpone log record. An entry for this postpone log record was already created and we also need to save
+   * its LSA. */
+  tdes->m_log_postpone_cache.insert (start_lsa);
 
   /* Set address early in case there is a crash, because of skip_head */
   if (tdes->topops.last >= 0)
@@ -7740,11 +7733,9 @@ log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_E
   sysop_start_postpone.posp_lsa = *LOG_TDES_LAST_SYSOP_POSP_LSA (tdes);
   log_append_sysop_start_postpone (thread_p, tdes, &sysop_start_postpone, data_size, data);
 
-  if (VACUUM_IS_THREAD_VACUUM (thread_p)
-      && vacuum_do_postpone_from_cache (thread_p, LOG_TDES_LAST_SYSOP_POSP_LSA (tdes)))
+  if (tdes->m_log_postpone_cache.do_postpone (*thread_p, LOG_TDES_LAST_SYSOP_POSP_LSA (tdes)))
     {
       /* Do postpone was run from cached postpone entries. */
-      // todo - extend optimization for all transactions
       tdes->state = save_state;
       return;
     }
