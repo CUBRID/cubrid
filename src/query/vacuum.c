@@ -579,6 +579,8 @@ static void vacuum_data_mark_finished (THREAD_ENTRY * thread_p);
 static void vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_page,
 				    VACUUM_DATA_PAGE ** data_page);
 static void vacuum_data_initialize_new_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * data_page);
+static void vacuum_init_data_page_with_last_blockid (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * data_page,
+						     VACUUM_LOG_BLOCKID blockid);
 static int vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p);
 
 static int vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * block_data,
@@ -4285,10 +4287,6 @@ vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, VFID * vacuum_data_
       assert_release (false);
       return ER_FAILED;
     }
-  vacuum_data_initialize_new_page (thread_p, data_page);
-  data_page->data->blockid = 0;
-  log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) data_page, 0,
-			 sizeof (data_page->data->blockid), &data_page->data->blockid);
 
   /* save in file descriptors to load when database is restarted */
   fdes.vacuum_data.vpid_first = first_page_vpid;
@@ -4299,8 +4297,7 @@ vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, VFID * vacuum_data_
       return error_code;
     }
 
-  /* Set dirty page and free */
-  vacuum_set_dirty_data_page (thread_p, data_page, FREE);
+  vacuum_init_data_page_with_last_blockid (thread_p, data_page, 0);
 
   return NO_ERROR;
 }
@@ -4676,13 +4673,7 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
     {
       /* Case 1. */
       /* Reset page. */
-      vacuum_data_initialize_new_page (thread_p, *data_page);
-      /* Even when vacuum data becomes empty, we need to save last_blockid to recover it after server crash or shutdown.
-       */
-      (*data_page)->data->blockid = vacuum_Data.get_last_blockid ();
-      log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) (*data_page), 0,
-			     sizeof ((*data_page)->data->blockid), &(*data_page)->data->blockid);
-      vacuum_set_dirty_data_page (thread_p, *data_page, DONT_FREE);
+      vacuum_init_data_page_with_last_blockid (thread_p, *data_page, vacuum_Data.get_last_blockid ());
 
       vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
 		     "Last page, vpid = %d|%d, is empty and was reset. %s",
@@ -4995,10 +4986,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	    {
 	      // don't let vacuum data go too far back
 	      vacuum_Data.set_last_blockid (log_blockid - LOG_BLOCK_TRAILING_DIFF);
-	      vacuum_Data.first_page->data->blockid = vacuum_Data.get_last_blockid ();
-	      log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) vacuum_Data.first_page, 0,
-				     sizeof (vacuum_Data.first_page->data->blockid),
-				     &vacuum_Data.first_page->data->blockid);
+	      vacuum_data_empty_update_last_blockid (thread_p);
 	      vacuum_update_keep_from_log_pageid (thread_p);
 	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "update last_blockid to %lld",
 			     (long long int) vacuum_Data.get_last_blockid ());
@@ -5075,13 +5063,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 		  log_sysop_abort (thread_p);
 		  return ER_FAILED;
 		}
-	      vacuum_data_initialize_new_page (thread_p, data_page);
-	      /* Set vacuum_Data.last_blockid to first entry blockid. */
-	      data_page->data->blockid = vacuum_Data.get_last_blockid ();
-	      log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) data_page, 0,
-				     sizeof (data_page->data->blockid), &data_page->data->blockid);
-
-	      vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
+	      vacuum_init_data_page_with_last_blockid (thread_p, data_page, vacuum_Data.get_last_blockid ());
 
 	      /* Change link in last page. */
 	      VPID_COPY (&vacuum_Data.last_page->next_page, &next_vpid);
@@ -7904,17 +7886,11 @@ vacuum_data_empty_update_last_blockid (THREAD_ENTRY * thread_p)
   /* We should have only 1 page in vacuum_Data. */
   assert (vacuum_Data.first_page == vacuum_Data.last_page);
 
-  vacuum_data_initialize_new_page (thread_p, data_page);
-  data_page->data->blockid = vacuum_Data.get_last_blockid ();
-
-  VACUUM_LOG_BLOCKID last_blockid = vacuum_Data.get_last_blockid ();
-  log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) (data_page), 0,
-			 sizeof (last_blockid), &last_blockid);
-  vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
+  vacuum_init_data_page_with_last_blockid (thread_p, vacuum_Data.first_page, vacuum_Data.get_last_blockid ());
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
 		 "vacuum_data_empty_update_last_blockid: update last_blockid=%lld in page %d|%d at lsa %lld|%d",
-		 (long long int) last_blockid, PGBUF_PAGE_STATE_ARGS ((PAGE_PTR) (data_page)));
+		 (long long int) vacuum_Data.get_last_blockid (), PGBUF_PAGE_STATE_ARGS ((PAGE_PTR) (data_page)));
 }
 
 /*
@@ -8095,11 +8071,7 @@ vacuum_reset_data_after_copydb (THREAD_ENTRY * thread_p)
   assert (VPID_ISNULL (&vacuum_Data.first_page->next_page));
   assert (vacuum_Data.first_page->index_free == 0);
 
-  vacuum_data_initialize_new_page (thread_p, vacuum_Data.first_page);
-  vacuum_Data.first_page->data->blockid = VACUUM_NULL_LOG_BLOCKID;
-  log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) vacuum_Data.first_page, 0,
-			 sizeof (vacuum_Data.first_page->data->blockid), &vacuum_Data.first_page->data->blockid);
-  vacuum_set_dirty_data_page (thread_p, vacuum_Data.first_page, DONT_FREE);
+  vacuum_init_data_page_with_last_blockid (thread_p, vacuum_Data.first_page, VACUUM_NULL_LOG_BLOCKID);
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "Reset vacuum data page %d|%d, lsa %lld|%d, after copydb",
 		 PGBUF_PAGE_STATE_ARGS ((PAGE_PTR) vacuum_Data.first_page));
@@ -8130,5 +8102,16 @@ vacuum_data::set_last_blockid (VACUUM_LOG_BLOCKID blockid)
 #endif // NDEBUG
 
   m_last_blockid = blockid;
+}
+
+static void
+vacuum_init_data_page_with_last_blockid (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * data_page,
+                                         VACUUM_LOG_BLOCKID blockid)
+{
+  vacuum_data_initialize_new_page (thread_p, data_page);
+  data_page->data->blockid = blockid;
+  log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) data_page, 0,
+                         sizeof (data_page->data->blockid), &data_page->data->blockid);
+  vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
 }
 // *INDENT-ON*
