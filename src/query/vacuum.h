@@ -122,8 +122,6 @@ struct vacuum_worker
   // page buffer private lru list
   int private_lru_index;
 
-  log_postpone_cache m_log_postpone_cache;
-
   char *prefetch_log_buffer;	/* buffer for prefetching log pages */
   LOG_PAGEID prefetch_first_pageid;	/* first prefetched log pageid */
   LOG_PAGEID prefetch_last_pageid;	/* last prefetch log pageid */

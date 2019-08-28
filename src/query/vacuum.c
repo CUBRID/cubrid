@@ -3482,9 +3482,6 @@ vacuum_finalize_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker_info)
     {
       free_and_init (worker_info->undo_data_buffer);
     }
-
-  worker_info->m_log_postpone_cache.clear ();
-
   if (worker_info->prefetch_log_buffer != NULL)
     {
       free_and_init (worker_info->prefetch_log_buffer);
