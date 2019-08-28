@@ -28,8 +28,6 @@
 #include "object_representation.h"
 #include "log_manager.h"
 
-const std::size_t log_postpone_cache::REDO_DATA_SIZE = IO_PAGESIZE;
-
 void
 log_postpone_cache::clear ()
 {
