@@ -53,7 +53,9 @@ namespace cubreplication
       {
 	(void) send_to_network ();
       }
-    m_id = item;
+
+    assert (item != NULL);
+    m_id = (item != NULL) ? item : "";
   }
 
   int net_print_output::send_to_network ()
