@@ -205,8 +205,8 @@ namespace cubtx
   }
 
   //
-  // notify_all notifies all waiting transactions. When a thread is waked up, it will
-  //      check again waiting condition.
+  // notify_all notifies all waiting transactions. When a thread is waked up, it will check again waiting condition.
+  //
   void group_complete_manager::notify_all ()
   {
 #if defined (SERVER_MODE)
@@ -295,29 +295,25 @@ namespace cubtx
   }
 
   //
-  // notify_group_mvcc_complete notify all threads waiting for group mvcc complete event.
+  // notify_group_mvcc_complete notifies all threads waiting for group mvcc complete event.
   //
   void group_complete_manager::notify_group_mvcc_complete (const tx_group &closed_group)
   {
     m_latest_closed_group_state |= GROUP_MVCC_COMPLETED;
 
-#if defined (SERVER_MODE)
     /* Notify threads waiting for MVCC complete. */
     notify_all ();
-#endif
   }
 
   //
-  // notify_group_logged notify all threads waiting for group logged event.
+  // notify_group_logged notifies all threads waiting for group logged event.
   //
   void group_complete_manager::notify_group_logged ()
   {
     m_latest_closed_group_state |= GROUP_LOGGED;
 
-#if defined (SERVER_MODE)
     /* Notify threads waiting for logging. */
     notify_all ();
-#endif
   }
 
   //
@@ -326,10 +322,6 @@ namespace cubtx
   void group_complete_manager::notify_group_complete ()
   {
     m_latest_closed_group_state |= GROUP_COMPLETED;
-    er_log_group_complete_debug (ARG_FILE_LINE,
-				 "group_complete_manager::notify_group_complete latest_group_id: (manager_type = %s, closed group = %llu)\n",
-				 logpb_complete_manager_string ((log_tran_complete_manager_type) get_manager_type ()),
-				 (unsigned long long) m_latest_closed_group_id);
 
     er_log_group_complete_debug (ARG_FILE_LINE,
 				 "group_complete_manager::notify_group_complete latest_group_id: "
@@ -428,7 +420,7 @@ namespace cubtx
   }
 
   //
-  // get_latest_closed_group get latest closed group.
+  // get_latest_closed_group gets latest closed group.
   //
   tx_group &group_complete_manager::get_latest_closed_group ()
   {
@@ -436,7 +428,7 @@ namespace cubtx
   }
 
   //
-  // get_current_group get current group.
+  // get_current_group gets current group.
   //
   const tx_group &group_complete_manager::get_current_group ()
   {

@@ -37,8 +37,8 @@ namespace cubtx
   enum GROUP_STATE
   {
     GROUP_CLOSED = 0x01, /* Group closed. No other transaction can be included in a closed group. */
-    GROUP_MVCC_COMPLETED = 0x02, /* MVCC completed. */
-    GROUP_LOGGED = 0x04, /* Group log added. */
+    GROUP_MVCC_COMPLETED = 0x02, /* MVCC completed. Set only for closed group. */
+    GROUP_LOGGED = 0x04, /* Group log added. Set only for closed group. */
     GROUP_PREPARED_FOR_COMPLETE = 0x08,  /* Group prepared for complete. Set only for closed group. */
     GROUP_COMPLETE_STARTED = 0x10,  /* Group complete started. Set only for prepared group. */
     GROUP_COMPLETED = 0x20,  /* Group completed. Set only for complete started group. */

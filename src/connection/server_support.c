@@ -833,7 +833,6 @@ css_process_master_hostname ()
       return ER_FAILED;
     }
 
-  /* Already received hearbeat slave...*/
   error = css_receive_heartbeat_data (css_Master_conn, ha_Server_master_hostname, hostname_length);
   if (error != NO_ERRORS)
     {
@@ -2258,7 +2257,7 @@ void
 css_finish_transit (THREAD_ENTRY * thread_p, bool force, HA_SERVER_STATE req_state)
 {
   assert (req_state == HA_SERVER_STATE_ACTIVE || req_state == HA_SERVER_STATE_STANDBY);
-// *INDENT-OFF*
+
   if (req_state == HA_SERVER_STATE_ACTIVE)
     {
       logtb_enable_update (thread_p);
@@ -2267,7 +2266,7 @@ css_finish_transit (THREAD_ENTRY * thread_p, bool force, HA_SERVER_STATE req_sta
     {
       logtb_disable_update (thread_p);
     }
-/*
+
   if (force)
     {
       ha_Server_state = req_state;
@@ -2278,13 +2277,13 @@ css_finish_transit (THREAD_ENTRY * thread_p, bool force, HA_SERVER_STATE req_sta
       assert (state == req_state);
     }
 }
+
+// *INDENT-OFF*
+/*
  * css_change_ha_server_state - change the server's HA state
  *   return: NO_ERROR or ER_FAILED
  *   state(in): new state for server to be
  *   force(in): force to change
- *   timeout(in): timeout (standby to maintenance)
- *   heartbeat(in): from heartbeat master
- */
  *   timeout(in): timeout (standby to maintenance)
  *   heartbeat(in): from heartbeat master
  */

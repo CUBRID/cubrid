@@ -41,11 +41,10 @@ namespace cubtx
   {
     assert (gl_master_group != NULL);
     return gl_master_group;
-
   }
 
   //
-  // init initialize master group commit
+  // init initializes master group complete
   //
   void master_group_complete_manager::init ()
   {
@@ -61,7 +60,7 @@ namespace cubtx
   }
 
   //
-  // final finalizes master group commit
+  // final finalizes master group complete
   //
   void master_group_complete_manager::final ()
   {
@@ -80,7 +79,7 @@ namespace cubtx
   //
   void master_group_complete_manager::notify_stream_ack (const cubstream::stream_position stream_pos)
   {
-    /* TODO - disable it temporary since it is not tested */
+    /* TODO - consider quorum. Consider multiple calls of same thread. */
     if (stream_pos >= m_latest_closed_group_end_stream_position)
       {
 	cubthread::entry *thread_p = &cubthread::get_entry ();
@@ -123,7 +122,7 @@ namespace cubtx
   }
 
   //
-  // can_close_current_group check whether the current group can be closed.
+  // can_close_current_group checks whether the current group can be closed.
   //
   bool master_group_complete_manager::can_close_current_group ()
   {
