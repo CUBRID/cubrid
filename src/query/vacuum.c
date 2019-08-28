@@ -8110,8 +8110,7 @@ vacuum_init_data_page_with_last_blockid (THREAD_ENTRY * thread_p, VACUUM_DATA_PA
 {
   vacuum_data_initialize_new_page (thread_p, data_page);
   data_page->data->blockid = blockid;
-  log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) data_page, 0,
-                         sizeof (data_page->data->blockid), &data_page->data->blockid);
+  log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) data_page, 0, sizeof (blockid), &blockid);
   vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
 }
 // *INDENT-ON*
