@@ -7698,6 +7698,12 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   assert (tdes->topops.last < 0);
 
   log_append_commit_postpone (thread_p, tdes, &tdes->posp_nxlsa);
+
+  if (tdes->m_log_postpone_cache.do_postpone (*thread_p, &tdes->posp_nxlsa))
+    {
+      return;
+    }
+
   log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
 }
 
