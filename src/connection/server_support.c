@@ -840,14 +840,14 @@ css_process_master_hostname ()
     }
   ha_Server_master_hostname[hostname_length] = '\0';
 
-  assert (hostname_length > 0 && (ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY
-          || ha_Server_state == HA_SERVER_STATE_STANDBY));
+  assert (hostname_length > 0
+	  && (ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY || ha_Server_state == HA_SERVER_STATE_STANDBY));
 
   er_log_debug_replication (ARG_FILE_LINE, "css_process_master_hostname css_Master_server_name:%s,"
     " ha_Server_master_hostname:%s\n", css_Master_server_name, ha_Server_master_hostname);
   
   cubreplication::replication_node_manager::inc_ha_tasks ();
-  cubthread::entry_task * connect_to_master_task = new cubthread::entry_callable_task ([] (cubthread::entry &context)
+  cubthread::entry_task *connect_to_master_task = new cubthread::entry_callable_task ([] (cubthread::entry &context)
   {
     cubreplication::replication_node_manager::wait_commute (ha_Server_state, HA_SERVER_STATE_STANDBY);
     int error = cubreplication::replication_node_manager::get_slave_node ()
@@ -856,7 +856,6 @@ css_process_master_hostname ()
     assert (error == NO_ERROR);
     // TODO: proper error handling
   });
-
 
   auto wp = cubthread::internal_tasks_worker_pool::get_instance ();
   cubthread::get_manager ()->push_task (wp, connect_to_master_task);
@@ -2258,6 +2257,7 @@ void
 css_finish_transit (THREAD_ENTRY * thread_p, bool force, HA_SERVER_STATE req_state)
 {
   assert (req_state == HA_SERVER_STATE_ACTIVE || req_state == HA_SERVER_STATE_STANDBY);
+
   if (req_state == HA_SERVER_STATE_ACTIVE)
     {
       logtb_enable_update (thread_p);
@@ -2310,7 +2310,8 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
       return NO_ERROR;
     }
 
-  if (heartbeat == false && !(ha_Server_state == HA_SERVER_STATE_STANDBY && state == HA_SERVER_STATE_MAINTENANCE)
+  if (heartbeat == false
+      && !(ha_Server_state == HA_SERVER_STATE_STANDBY && state == HA_SERVER_STATE_MAINTENANCE)
       && !(ha_Server_state == HA_SERVER_STATE_MAINTENANCE && state == HA_SERVER_STATE_STANDBY)
       && !(force && ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE && state == HA_SERVER_STATE_ACTIVE))
     {
@@ -2362,11 +2363,13 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	      log_set_ha_promotion_time (thread_p, ((INT64) time (0)));
 	    }
 	}
+
       if (state == HA_SERVER_STATE_ACTIVE || state == HA_SERVER_STATE_STANDBY)
 	{
           // desired state was enforced
 	  assert (ha_Server_state == state);    	
 	}
+
       csect_exit (thread_p, CSECT_HA_SERVER_STATE);
       return NO_ERROR;
     }
@@ -2726,8 +2729,10 @@ css_process_new_slave (SOCKET master_fd)
 
   // *INDENT-OFF*
   cubreplication::replication_node_manager::inc_ha_tasks ();
+
   assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
-  cubthread::entry_task * new_slave_task = new cubthread::entry_callable_task ([new_fd] (cubthread::entry & context)
+
+  cubthread::entry_task *new_slave_task = new cubthread::entry_callable_task ([new_fd] (cubthread::entry &context)
   {
     cubreplication::replication_node_manager::wait_commute (ha_Server_state, HA_SERVER_STATE_ACTIVE);
     cubreplication::replication_node_manager::get_master_node ()->new_slave (new_fd);
@@ -2758,8 +2763,10 @@ css_process_add_ctrl_chn (SOCKET master_fd)
 
   // *INDENT-OFF*
   cubreplication::replication_node_manager::inc_ha_tasks ();
+
   assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
-  cubthread::entry_task * add_ctrl_task = new cubthread::entry_callable_task ([new_fd] (cubthread::entry & context)
+
+  cubthread::entry_task *add_ctrl_task = new cubthread::entry_callable_task ([new_fd] (cubthread::entry &context)
   {
     cubreplication::replication_node_manager::wait_commute (ha_Server_state, HA_SERVER_STATE_ACTIVE);
     cubreplication::replication_node_manager::get_master_node ()->add_ctrl_chn (new_fd);
