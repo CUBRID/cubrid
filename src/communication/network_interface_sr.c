@@ -82,6 +82,7 @@
 #include "xasl_cache.h"
 #include "elo.h"
 #include "transaction_transient.hpp"
+#include "ha_operations.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
