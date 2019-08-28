@@ -4298,6 +4298,7 @@ vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, VFID * vacuum_data_
     }
 
   vacuum_init_data_page_with_last_blockid (thread_p, data_page, 0);
+  vacuum_unfix_data_page (thread_p, data_page);
 
   return NO_ERROR;
 }
