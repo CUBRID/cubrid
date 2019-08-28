@@ -1335,7 +1335,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 
   LSA_COPY (&start_lsa, &node->start_lsa);
 
-  if (log_Gl.hdr.does_block_need_vacuum)
+  if (LOG_ISRESTARTED () && log_Gl.hdr.does_block_need_vacuum)
     {
       assert (!LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa));
       if (vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid) != vacuum_get_log_blockid (start_lsa.pageid))
