@@ -46,10 +46,14 @@ namespace cubreplication
     return 0;
   }
 
-  void net_print_output::end_item (const char *item)
+  void net_print_output::set_id (const char *item)
   {
+    // first flush any previous contents
+    if (m_sb.len () > 0)
+      {
+        (void) send_to_network ();
+      }
     m_id = item;
-    (void) send_to_network ();
   }
 
   int net_print_output::send_to_network ()
@@ -109,6 +113,13 @@ int replication_schema_extract (const char *program_name)
   copy_schema_context.storage_order = FOLLOW_ATTRIBUTE_ORDER;
   copy_schema_context.exec_name = program_name;
 
+  /* 
+   * The net_print_output objects handle a part of schema:
+   * output_net_schema : classes, users, methods
+   * output_net_trigger : triggers
+   * output_net_index : indexes
+   * The 'id' parameters is used only by output_net_index
+   */
   cubreplication::net_print_output output_net_schema (NET_PROXY_BUF_TYPE_EXTRACT_CLASSES);
   cubreplication::net_print_output output_net_trigger (NET_PROXY_BUF_TYPE_EXTRACT_TRIGGER);
   cubreplication::net_print_output output_net_index (NET_PROXY_BUF_TYPE_EXTRACT_INDEX);
@@ -136,6 +147,9 @@ int replication_schema_extract (const char *program_name)
   output_net_index.set_buffer_type (NET_PROXY_BUF_TYPE_EXTRACT_INDEXES_END);
   output_net_index.send_to_network ();
 
+  /* 
+   * send list of OIDs of extracted classes
+   */
   if (error == NO_ERROR)
     {
       error = send_class_list (copy_schema_context.classes);

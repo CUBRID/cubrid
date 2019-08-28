@@ -46,7 +46,7 @@ namespace cubreplication
 
       int flush (void);
 
-      void end_item (const char *item) final;
+      void set_id (const char *id) final;
 
       int send_to_network ();
 
