@@ -117,27 +117,32 @@ struct leaf_rec
 typedef struct btid_int BTID_INT;
 struct btid_int
 {				/* Internal btree block */
-  BTID *sys_btid;
-  int unique_pk;		/* if it is an unique index, is PK */
-  int part_key_desc;		/* the last partial-key domain is desc */
-  TP_DOMAIN *key_type;
-  TP_DOMAIN *nonleaf_key_type;	/* With prefix keys, the domain of the non leaf keys might be different.  It will be
-				 * different when the domain of index is one of the fixed character types.  In that
-				 * case, the domain of the non leaf keys will be the varying counterpart to the index
-				 * domain. */
-  VFID ovfid;
-  char *copy_buf;		/* index key copy_buf pointer info; derived from INDX_SCAN_ID.copy_buf */
-  int copy_buf_len;		/* index key copy_buf length info; derived from INDX_SCAN_ID.copy_buf_len */
-  int rev_level;
-  OID topclass_oid;		/* class oid for which index is created */
-
   // *INDENT-OFF*
-  btid_int ();
-  btid_int (btid_int &&other);
-  btid_int (const btid_int &other) = delete;
+  public:
+    BTID *sys_btid;
+    int unique_pk;		/* if it is an unique index, is PK */
+    int part_key_desc;		/* the last partial-key domain is desc */
+    TP_DOMAIN *key_type;
+    TP_DOMAIN *nonleaf_key_type;	/* With prefix keys, the domain of the non leaf keys might be different.  It will be
+				   * different when the domain of index is one of the fixed character types.  In that
+				   * case, the domain of the non leaf keys will be the varying counterpart to the index
+				   * domain. */
+    VFID ovfid;
+    char *copy_buf;		/* index key copy_buf pointer info; derived from INDX_SCAN_ID.copy_buf */
+    int copy_buf_len;		/* index key copy_buf length info; derived from INDX_SCAN_ID.copy_buf_len */
+    int rev_level;
+    OID topclass_oid;		/* class oid for which index is created */
 
-  btid_int &operator= (btid_int &&other);
-  btid_int &operator= (const btid_int &other) = delete;
+    btid_int ();
+    btid_int (btid_int &&other);
+    btid_int (const btid_int &other);
+
+    btid_int &operator= (btid_int &&other);
+    btid_int &operator= (const btid_int &other);
+
+  private:
+    void move_from (btid_int &&other);
+    void copy_from (const btid_int &other);
   // *INDENT-ON*
 };
 

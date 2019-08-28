@@ -57,6 +57,7 @@
 #include <stack>
 #include <stdlib.h>
 #include <string>
+#include <utility>
 
 #define BTREE_HEALTH_CHECK
 
@@ -35153,11 +35154,118 @@ btree_is_single_object_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_
 // *INDENT-OFF*
 
 //
+// btid_int
+//
+btid_int::btid_int ()
+  : sys_btid (NULL)
+  , unique_pk (0)
+  , part_key_desc (0)
+  , key_type (NULL)
+  , nonleaf_key_type (NULL)
+  , ovfid ()
+  , copy_buf (NULL)
+  , copy_buf_len (0)
+  , rev_level (0)
+  , topclass_oid (oid_Null_oid)
+{
+  VFID_SET_NULL (&ovfid);
+}
+
+btid_int::btid_int (btid_int &&other)
+  : btid_int ()
+{
+  move_from (std::forward<btid_int &&> (other));
+}
+
+btid_int::btid_int (const btid_int &other)
+{
+  copy_from (std::cref (other));
+}
+
+btid_int &
+btid_int::operator= (btid_int &&other)
+{
+  if (this != &other)
+    {
+      this->~btid_int ();
+      move_from (std::forward<btid_int &&> (other));
+    }
+  return *this;
+}
+
+btid_int &
+btid_int::operator= (const btid_int &other)
+{
+  if (this != &other)
+    {
+      this->~btid_int ();
+      copy_from (std::cref (other));
+    }
+  return *this;
+}
+
+void
+btid_int::move_from (btid_int &&other)
+{
+  sys_btid = other.sys_btid;
+  other.sys_btid = NULL;
+
+  unique_pk = other.unique_pk;
+  part_key_desc = other.part_key_desc;
+
+  key_type = other.key_type;
+  other.key_type = NULL;
+  nonleaf_key_type = other.nonleaf_key_type;
+  other.nonleaf_key_type = NULL;
+
+  ovfid = other.ovfid;
+  VFID_SET_NULL (&other.ovfid);
+
+  copy_buf = other.copy_buf;
+  other.copy_buf = NULL;
+  copy_buf_len = other.copy_buf_len;
+
+  rev_level = other.rev_level;
+  topclass_oid = other.topclass_oid;
+  OID_SET_NULL (&other.topclass_oid);
+}
+
+void
+btid_int::copy_from (const btid_int &other)
+{
+  sys_btid = other.sys_btid;
+  unique_pk = other.unique_pk;
+  part_key_desc = other.part_key_desc;
+  key_type = other.key_type;
+  nonleaf_key_type = other.nonleaf_key_type;
+  ovfid = other.ovfid;
+  copy_buf = other.copy_buf;
+  copy_buf_len = other.copy_buf_len;
+  rev_level = other.rev_level;
+  topclass_oid = other.topclass_oid;
+}
+
+//
 // btid_int_cache::entry
 //
 btid_int_cache::entry::entry ()
 {
   BTID_SET_NULL (&m_btid);
+}
+
+btid_int_cache::entry &
+btid_int_cache::entry::operator= (entry &&other)
+{
+  if (this != &other)
+    {
+      std::unique_lock<std::mutex> left_lock (m_btid_int_mutex, std::defer_lock);
+      std::unique_lock<std::mutex> right_lock (other.m_btid_int_mutex, std::defer_lock);
+      std::lock (left_lock, right_lock);
+
+      m_btid = other.m_btid;
+      m_stack = std::move (other.m_stack);
+    }
+  return *this;
 }
 
 //
@@ -35218,7 +35326,7 @@ btid_int_cache::remove (const btid &btid_arg)
       if (BTID_IS_EQUAL (&btid_arg, &crt->m_btid))
         {
           local_entry = std::move (*crt);
-          local_entry.m_btid_int_mutex.lock ();
+          bck.m_entries.erase_after (prev);
           break;
         }
     }
