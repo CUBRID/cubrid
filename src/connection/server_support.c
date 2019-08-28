@@ -840,8 +840,10 @@ css_process_master_hostname ()
     }
   ha_Server_master_hostname[hostname_length] = '\0';
 
+  HA_SERVER_STATE ha_state = css_ha_server_state ();
+
   assert (hostname_length > 0
-	  && (css_ha_server_state () == HA_SERVER_STATE_TO_BE_STANDBY || css_ha_server_state () == HA_SERVER_STATE_STANDBY));
+	  && (ha_state == HA_SERVER_STATE_TO_BE_STANDBY || ha_state == HA_SERVER_STATE_STANDBY));
 
   er_log_debug_replication (ARG_FILE_LINE, "css_process_master_hostname css_Master_server_name:%s,"
     " ha_Server_master_hostname:%s\n", css_Master_server_name, ha_Server_master_hostname);
@@ -2146,8 +2148,9 @@ css_check_ha_log_applier_working (void)
 	  break;
 	}
     }
-  if (i == ha_Server_num_of_hosts
-      && (css_ha_server_state () == HA_SERVER_STATE_TO_BE_STANDBY || css_ha_server_state () == HA_SERVER_STATE_STANDBY))
+  HA_SERVER_STATE ha_state = css_ha_server_state ();
+
+  if (i == ha_Server_num_of_hosts && (ha_state == HA_SERVER_STATE_TO_BE_STANDBY || ha_state == HA_SERVER_STATE_STANDBY))
     {
       return true;
     }
