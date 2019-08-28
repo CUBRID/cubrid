@@ -68,8 +68,9 @@ class log_postpone_cache
 
     void clear ();
 
-    void insert (cubthread::entry &thread_ref, log_prior_node &node, log_tdes &tdes);
-    bool do_postpone (cubthread::entry &thread_ref, log_lsa *start_postpone_lsa);
+    void add_redo_data (const log_prior_node &node);
+    void add_lsa (const log_lsa &lsa);
+    bool do_postpone (cubthread::entry &thread_ref, const log_lsa &start_postpone_lsa);
 
   private:
     static const std::size_t REDO_DATA_SIZE = IO_MAX_PAGE_SIZE;

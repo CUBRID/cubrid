@@ -39,13 +39,11 @@ log_postpone_cache::clear ()
 /**
  * Cache redo data for log postpone
  *
- * @param thread_ref - thread entry
  * @param node - log prior node
- * @param tdes - transaction descriptor
  * @return void
  */
 void
-log_postpone_cache::insert (cubthread::entry &thread_ref, log_prior_node &node, log_tdes &tdes)
+log_postpone_cache::add_redo_data (const log_prior_node &node)
 {
   assert (node.data_header != NULL);
   assert (node.rlength == 0 || node.rdata != NULL);
@@ -92,6 +90,7 @@ log_postpone_cache::insert (cubthread::entry &thread_ref, log_prior_node &node, 
   // Cache a new postpone log record entry
   cache_entry *new_entry = &m_cache_entries[m_cache_entries_cursor];
   new_entry->m_redo_data = m_redo_data_ptr;
+  new_entry->m_lsa.set_null ();
 
   // Cache log_rec_redo from data_header
   memcpy (m_redo_data_ptr, node.data_header, sizeof (log_rec_redo));
@@ -106,16 +105,34 @@ log_postpone_cache::insert (cubthread::entry &thread_ref, log_prior_node &node, 
       m_redo_data_ptr += node.rlength;
       m_redo_data_ptr = PTR_ALIGN (m_redo_data_ptr, MAX_ALIGNMENT);
     }
+}
 
-  // Redo data must be saved before calling prior_lsa_next_record, which may free this prior node
-  log_lsa start_lsa = prior_lsa_next_record (&thread_ref, &node, &tdes);
-
-  assert (!start_lsa.is_null ());
+/**
+ * Save LSA of postpone operations
+ *
+ * @param lsa - log postpone LSA
+ * @return void
+ *
+ * NOTE: This saves LSA after a new entry and its redo data have already been added.
+ *       They couldn't both be added in the same step.
+ */
+void
+log_postpone_cache::add_lsa (const log_lsa &lsa)
+{
+  assert (!lsa.is_null ());
   assert (m_cache_status != LOG_POSTPONE_CACHE_NO);
 
-  new_entry->m_lsa = start_lsa;
+  if (m_cache_status == LOG_POSTPONE_CACHE_OVERFLOW)
+    {
+      return;
+    }
 
-  // Now that all needed data is saved, increment cached entries counter
+  assert (m_cache_entries_cursor < MAX_CACHE_ENTRIES);
+
+  cache_entry *new_entry = &m_cache_entries[m_cache_entries_cursor];
+  new_entry->m_lsa = lsa;
+
+  /* Now that all needed data is saved, increment cached entries counter. */
   m_cache_entries_cursor++;
 }
 
@@ -127,9 +144,9 @@ log_postpone_cache::insert (cubthread::entry &thread_ref, log_prior_node &node, 
  * @return - true if postpone was run from cached entries, false otherwise
  */
 bool
-log_postpone_cache::do_postpone (cubthread::entry &thread_ref, log_lsa *start_postpone_lsa)
+log_postpone_cache::do_postpone (cubthread::entry &thread_ref, const log_lsa &start_postpone_lsa)
 {
-  assert (start_postpone_lsa != NULL && !start_postpone_lsa->is_null ());
+  assert (!start_postpone_lsa.is_null ());
   assert (m_cache_status != LOG_POSTPONE_CACHE_NO);
 
   if (m_cache_status == LOG_POSTPONE_CACHE_OVERFLOW)
@@ -144,7 +161,7 @@ log_postpone_cache::do_postpone (cubthread::entry &thread_ref, log_lsa *start_po
   for (std::size_t i = 0; i < m_cache_entries_cursor; ++i)
     {
       cache_entry *entry = &m_cache_entries[i];
-      if (entry->m_lsa == *start_postpone_lsa)
+      if (entry->m_lsa == start_postpone_lsa)
 	{
 	  // Found start lsa
 	  start_index = i;
