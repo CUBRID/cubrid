@@ -73,12 +73,12 @@ namespace ha_operations
   {
     if (get_server_state () != req_state)
       {
-	er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: set force from %s to state %s\n",
+	er_log_debug (ARG_FILE_LINE, "change_server_state: set force from %s to state %s\n",
 		      server_state_string (get_server_state ()), server_state_string (req_state));
 
 	if (req_state == SERVER_STATE_ACTIVE)
 	  {
-	    er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: logtb_enable_update()\n");
+	    er_log_debug (ARG_FILE_LINE, "change_server_state: logtb_enable_update()\n");
 	    if (!HA_DISABLED ())
 	      {
 		// todo: force interruptions
@@ -125,7 +125,7 @@ namespace ha_operations
 
     if (state == SERVER_STATE_MAINTENANCE)
       {
-	er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: logtb_enable_update() \n");
+	er_log_debug (ARG_FILE_LINE, "change_server_state: logtb_enable_update() \n");
 	logtb_enable_update (thread_p);
 
 	boot_server_status (BOOT_SERVER_MAINTENANCE);
@@ -170,7 +170,7 @@ namespace ha_operations
   int
   change_server_state (cubthread::entry *thread_p, SERVER_STATE state, bool force, int timeout, bool heartbeat)
   {
-    er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: ha_Server_state %s state %s force %c heartbeat %c\n",
+    er_log_debug (ARG_FILE_LINE, "change_server_state: ha_Server_state %s state %s force %c heartbeat %c\n",
 		  server_state_string (get_server_state ()), server_state_string (state), (force ? 't' : 'f'),
 		  (heartbeat ? 't' : 'f'));
 
@@ -290,7 +290,7 @@ namespace ha_operations
       {
 	if (entry.cur_state == get_server_state () && entry.req_state == req_state)
 	  {
-	    er_log_debug (ARG_FILE_LINE, "css_transit_ha_server_state: ha_Server_state (%s) -> (%s)\n",
+	    er_log_debug (ARG_FILE_LINE, "transit_server_state: ha_Server_state (%s) -> (%s)\n",
 			  server_state_string (get_server_state ()), server_state_string (entry.next_state));
 	    new_state = entry.next_state;
 	    if (!HA_DISABLED ())
@@ -318,9 +318,9 @@ namespace ha_operations
   void
   finish_transit (cubthread::entry *thread_p, bool force, SERVER_STATE req_state)
   {
-    assert (req_state == HA_SERVER_STATE_ACTIVE || req_state == HA_SERVER_STATE_STANDBY);
+    assert (req_state == SERVER_STATE_ACTIVE || req_state == SERVER_STATE_STANDBY);
 
-    if (req_state == HA_SERVER_STATE_ACTIVE)
+    if (req_state == SERVER_STATE_ACTIVE)
       {
 	logtb_enable_update (thread_p);
       }
@@ -335,7 +335,7 @@ namespace ha_operations
       }
     else
       {
-	HA_SERVER_STATE state = css_transit_ha_server_state (thread_p, req_state);
+	SERVER_STATE state = css_transit_ha_server_state (thread_p, req_state);
 	assert (state == req_state);
       }
   }
