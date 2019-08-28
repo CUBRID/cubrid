@@ -189,7 +189,7 @@ LOCK lock_Conv[12][12] = {
     /* U */ NA_LOCK, /* X */ NA_LOCK, /* SCH-M */ NA_LOCK},
 
   /* NULL */
-  { /* N/A */ NA_LOCK, /* NON2PL */ NA_LOCK, /* NULL */ NA_LOCK, /* SCH-S */ SCH_S_LOCK,
+  { /* N/A */ NA_LOCK, /* NON2PL */ NA_LOCK, /* NULL */ NULL_LOCK, /* SCH-S */ SCH_S_LOCK,
     /* IS */ IS_LOCK, /* S */ S_LOCK, /* IX */ IX_LOCK, /* BU */ BU_LOCK, /* SIX */ SIX_LOCK,
     /* U */ U_LOCK, /* X */ X_LOCK, /* SCH-M */ SCH_M_LOCK},
 
