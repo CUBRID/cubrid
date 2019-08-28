@@ -25134,6 +25134,11 @@ void
 heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid,
                                const std::vector <VPID> heap_pages_array)
 {
+  if (heap_pages_array.empty ())
+    {
+      return;
+    }
+
   // This append needs to be run on postpone after the commit.
   // First create the log data required.
   int array_size = heap_pages_array.size ();
