@@ -41,11 +41,10 @@ namespace cubtx
   {
     assert (gl_master_group != NULL);
     return gl_master_group;
-
   }
 
   //
-  // init initialize master group commit
+  // init initializes master group complete
   //
   void master_group_complete_manager::init ()
   {
@@ -61,7 +60,7 @@ namespace cubtx
   }
 
   //
-  // final finalizes master group commit
+  // final finalizes master group complete
   //
   void master_group_complete_manager::final ()
   {
@@ -80,12 +79,13 @@ namespace cubtx
   //
   void master_group_complete_manager::notify_stream_ack (const cubstream::stream_position stream_pos)
   {
-    /* TODO - disable it temporary since it is not tested */
+    /* TODO - consider quorum. Consider multiple calls of same thread. */
     if (stream_pos >= m_latest_closed_group_end_stream_position)
       {
 	cubthread::entry *thread_p = &cubthread::get_entry ();
 	do_complete (thread_p);
-	er_log_group_complete_debug (ARG_FILE_LINE, "master_group_complete_manage::notify_stream_ack pos=%llu\n", stream_pos);
+	er_log_group_complete_debug (ARG_FILE_LINE, "master_group_complete_manager::notify_stream_ack pos=%llu\n",
+				     stream_pos);
       }
   }
 
@@ -103,7 +103,7 @@ namespace cubtx
   void master_group_complete_manager::on_register_transaction ()
   {
     /* This function is called under m_group_mutex protection after adding a transaction to the current group. */
-    assert(get_current_group().get_container().size() >= 1);
+    assert (get_current_group ().get_container ().size () >= 1);
 
 #if defined (SERVER_MODE)
     if (is_latest_closed_group_completed ())
@@ -115,14 +115,14 @@ namespace cubtx
 	     && is_latest_closed_group_prepared_for_complete ())
       {
 	/* Wakeup senders, just to be sure. */
-	cubreplication::replication_node_manager::get_master_node ()-> wakeup_transfer_senders (
+	cubreplication::replication_node_manager::get_master_node ()->wakeup_transfer_senders (
 		m_latest_closed_group_end_stream_position);
       }
 #endif
   }
 
   //
-  // can_close_current_group check whether the current group can be closed.
+  // can_close_current_group checks whether the current group can be closed.
   //
   bool master_group_complete_manager::can_close_current_group ()
   {
@@ -148,7 +148,8 @@ namespace cubtx
   {
     if (close_current_group ())
       {
-	cubstream::stream_position closed_group_stream_start_position = 0ULL, closed_group_stream_end_position = 0ULL;
+	cubstream::stream_position closed_group_stream_start_position = 0ULL;
+	cubstream::stream_position closed_group_stream_end_position = 0ULL;
 	const tx_group &closed_group = get_latest_closed_group ();
 
 	/* TODO - Introduce parameter. For now complete group MVCC only here. Notify MVCC complete. */
@@ -158,12 +159,14 @@ namespace cubtx
 	/* Pack group commit that internally wakeups senders. Get stream position of group complete. */
 	logtb_get_tdes (thread_p)->get_replication_generator ().pack_group_commit_entry (
 		closed_group_stream_start_position, closed_group_stream_end_position);
+
 	m_latest_closed_group_start_stream_position = closed_group_stream_start_position;
 	m_latest_closed_group_end_stream_position = closed_group_stream_end_position;
+
 	mark_latest_closed_group_prepared_for_complete ();
 
 	/* Wakeup senders, just to be sure. */
-	cubreplication::replication_node_manager::get_master_node()->wakeup_transfer_senders (closed_group_stream_end_position);
+	cubreplication::replication_node_manager::get_master_node ()->wakeup_transfer_senders (closed_group_stream_end_position);
       }
   }
 
