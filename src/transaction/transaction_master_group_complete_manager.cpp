@@ -128,7 +128,7 @@ namespace cubtx
   {
     if (!is_latest_closed_group_completed ())
       {
-	/* Can't advance to the next group since the current group was not committed yet. */
+	/* Can't advance to the next group since the current group was not completed yet. */
 	return false;
       }
 
@@ -202,7 +202,7 @@ namespace cubtx
     tx_group &closed_group = get_latest_closed_group ();
 
     /* TODO - consider parameter for MVCC complete here. */
-    /* Add group commit log record and wakeup  log flush daemon. */
+    /* Add group complete log record and wakeup  log flush daemon. */
     log_append_group_complete (thread_p, tdes, m_latest_closed_group_start_stream_position,
 			       closed_group, &closed_group_start_complete_lsa, NULL);
 
