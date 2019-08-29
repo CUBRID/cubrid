@@ -122,8 +122,8 @@ namespace cubpacking
       const char *get_buffer_end (void);
       bool is_ended (void);
 
-      size_t get_packed_buffer_size (const char *stream, const size_t length, const size_t curr_offset) const;
-      void pack_buffer_with_length (const char *stream, const size_t length);
+      std::size_t get_packed_buffer_size (const char *stream, const std::size_t length, const std::size_t curr_offset) const;
+      void pack_buffer_with_length (const char *stream, const std::size_t length);
 
       // template function to pack object as int type
       template <typename T>
@@ -215,7 +215,7 @@ namespace cubpacking
       void unpack_overloaded (packable_object &po);
 
       void peek_unpack_buffer_length (int &value);
-      void unpack_buffer_with_length (char *stream, const size_t max_length);
+      void unpack_buffer_with_length (char *stream, const std::size_t max_length);
 
       void unpack_oid (OID &oid);
       void unpack_overloaded (OID &oid);
@@ -371,7 +371,9 @@ namespace cubpacking
       {
 	eb.extend_by (total_size - available);
       }
-    set_buffer (eb.get_ptr () + offset, total_size);
+    /* don't change m_start_ptr */
+    m_ptr = eb.get_ptr () + offset;
+    m_end_ptr = eb.get_ptr () + offset + total_size;
 
     pack_all (std::forward<Args> (args)...);
   }
