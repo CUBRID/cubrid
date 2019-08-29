@@ -128,7 +128,7 @@ namespace cubtx
   {
     if (!is_latest_closed_group_completed ())
       {
-	/* Can't advance to the next group since the current group was not completed yet. */
+	/* Can't advance to the next group since the current group was not committed yet. */
 	return false;
       }
 
