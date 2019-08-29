@@ -23,6 +23,7 @@
 
 #include "replication_node_manager.hpp"
 
+#include "ha_operations.hpp"
 #include "internal_tasks_worker_pool.hpp"
 #include "log_impl.h"
 #include "multi_thread_stream.hpp"

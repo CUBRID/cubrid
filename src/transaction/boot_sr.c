@@ -81,6 +81,7 @@
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
+#include "ha_operations.hpp"
 #include "replication_node_manager.hpp"
 #include "server_support.h"
 #endif /* SERVER_MODE */

@@ -26,7 +26,7 @@
 
 #include "client_credentials.hpp"
 #include "es_common.h"
-#include "ha_server_state.h"
+#include "ha_server_state.hpp"
 #include "porting.h"
 #include "storage_common.h"
 
