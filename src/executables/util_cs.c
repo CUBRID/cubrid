@@ -3731,8 +3731,6 @@ start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT * args)
       au_enable (save);
     }
 
-  locator_all_flush ();
-
   er_log_debug (ARG_FILE_LINE, "start_ddl_proxy_client rc:%d", rc);
 
 error:
