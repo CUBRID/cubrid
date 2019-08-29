@@ -50,15 +50,14 @@ extern const char *HA_SERVER_STATE_MAINTENANCE_STR;
 extern const char *HA_SERVER_STATE_DEAD_STR;
 
 // Cannot add external linkage, extern const causes compile errors when using aliases as switch-cases
-// TODO : find a way to make extern const happen or use #defines
-constexpr HA_SERVER_STATE HA_SERVER_STATE_NA = ha_operations::SERVER_STATE_NA;
-constexpr HA_SERVER_STATE HA_SERVER_STATE_IDLE = ha_operations::SERVER_STATE_IDLE;
-constexpr HA_SERVER_STATE HA_SERVER_STATE_ACTIVE = ha_operations::SERVER_STATE_ACTIVE;
-constexpr HA_SERVER_STATE HA_SERVER_STATE_TO_BE_ACTIVE = ha_operations::SERVER_STATE_TO_BE_ACTIVE;
-constexpr HA_SERVER_STATE HA_SERVER_STATE_STANDBY = ha_operations::SERVER_STATE_STANDBY;
-constexpr HA_SERVER_STATE HA_SERVER_STATE_TO_BE_STANDBY = ha_operations::SERVER_STATE_TO_BE_STANDBY;
-constexpr HA_SERVER_STATE HA_SERVER_STATE_MAINTENANCE = ha_operations::SERVER_STATE_MAINTENANCE;
-constexpr HA_SERVER_STATE HA_SERVER_STATE_DEAD = ha_operations::SERVER_STATE_DEAD;
+const HA_SERVER_STATE HA_SERVER_STATE_NA = ha_operations::SERVER_STATE_NA;
+const HA_SERVER_STATE HA_SERVER_STATE_IDLE = ha_operations::SERVER_STATE_IDLE;
+const HA_SERVER_STATE HA_SERVER_STATE_ACTIVE = ha_operations::SERVER_STATE_ACTIVE;
+const HA_SERVER_STATE HA_SERVER_STATE_TO_BE_ACTIVE = ha_operations::SERVER_STATE_TO_BE_ACTIVE;
+const HA_SERVER_STATE HA_SERVER_STATE_STANDBY = ha_operations::SERVER_STATE_STANDBY;
+const HA_SERVER_STATE HA_SERVER_STATE_TO_BE_STANDBY = ha_operations::SERVER_STATE_TO_BE_STANDBY;
+const HA_SERVER_STATE HA_SERVER_STATE_MAINTENANCE = ha_operations::SERVER_STATE_MAINTENANCE;
+const HA_SERVER_STATE HA_SERVER_STATE_DEAD = ha_operations::SERVER_STATE_DEAD;
 
 extern decltype (&ha_operations::get_server_state) css_ha_server_state;
 extern decltype (&ha_operations::server_state_string) css_ha_server_state_string;
