@@ -41,6 +41,7 @@ struct log_lsa
   inline log_lsa () = default;
   inline log_lsa (std::int64_t log_pageid, std::int16_t log_offset);
   inline log_lsa (const log_lsa &olsa) = default;
+  inline log_lsa &operator= (const log_lsa &olsa) = default;
 
   inline bool is_null () const;
   inline void set_null ();

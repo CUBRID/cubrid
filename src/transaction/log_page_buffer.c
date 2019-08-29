@@ -10740,6 +10740,7 @@ logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghd
   LSA_SET_NULL (&loghdr->mvcc_op_log_lsa);
   loghdr->last_block_oldest_mvccid = MVCCID_NULL;
   loghdr->last_block_newest_mvccid = MVCCID_NULL;
+  loghdr->does_block_need_vacuum = false;
 }
 
 /*
