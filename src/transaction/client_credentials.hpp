@@ -30,8 +30,7 @@
 
 #include <string>
 
-typedef enum db_client_type boot_client_type;
-
+/* BOOT_CLIENT_TYPE : needed for legacy code */
 typedef enum db_client_type BOOT_CLIENT_TYPE;
 
 const size_t LOG_USERNAME_MAX = DB_MAX_USER_LENGTH + 1;
@@ -40,7 +39,7 @@ typedef struct clientids CLIENTIDS;
 struct clientids : public cubpacking::packable_object
 {
   public:
-    boot_client_type client_type;
+    db_client_type client_type;
     std::string client_info;
     std::string db_user;
     std::string program_name;
@@ -57,7 +56,7 @@ struct clientids : public cubpacking::packable_object
     const char *get_login_name () const;
     const char *get_host_name () const;
 
-    void set_ids (boot_client_type type, const char *client_info, const char *db_user, const char *program_name,
+    void set_ids (db_client_type type, const char *client_info, const char *db_user, const char *program_name,
 		  const char *login_name, const char *host_name, int process_id);
     void set_ids (const clientids &other);
     void set_user (const char *db_user);

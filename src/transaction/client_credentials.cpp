@@ -79,7 +79,7 @@ clientids::get_host_name () const
 }
 
 void
-clientids::set_ids (boot_client_type type_arg, const char *client_info_arg, const char *db_user_arg,
+clientids::set_ids (db_client_type type_arg, const char *client_info_arg, const char *db_user_arg,
 		    const char *program_name_arg, const char *login_name_arg, const char *host_name_arg,
 		    int process_id_arg)
 {
@@ -189,7 +189,7 @@ clientids::unpack (cubpacking::unpacker &deserializator)
 {
   int read_int;
   deserializator.unpack_all (CLIENTID_PACKER_ARGS (read_int));
-  client_type = static_cast<boot_client_type> (read_int);
+  client_type = static_cast<db_client_type> (read_int);
 }
 
 //
