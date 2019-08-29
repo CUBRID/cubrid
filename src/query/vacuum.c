@@ -5420,7 +5420,9 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
       LSA_COPY (&mvcc_op_log_lsa, &log_Gl.hdr.mvcc_op_log_lsa);
     }
   assert (!LSA_ISNULL (&mvcc_op_log_lsa));
-  log_Gl.hdr.mvcc_op_log_lsa = mvcc_op_log_lsa;
+
+  // reset header; info will be restored if last block is not consumed.
+  logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
 		 "vacuum_recover_lost_block_data, start recovering from %lld|%d ", LSA_AS_ARGS (&mvcc_op_log_lsa));
@@ -5486,6 +5488,7 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 	  log_Gl.hdr.last_block_oldest_mvccid = data.oldest_mvccid;
 	  log_Gl.hdr.last_block_newest_mvccid = data.newest_mvccid;
 	  log_Gl.hdr.does_block_need_vacuum = true;
+	  log_Gl.hdr.mvcc_op_log_lsa = mvcc_op_log_lsa;
 
 	  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
 			 "Restore log global cached info: \n\t mvcc_op_log_lsa = %lld|%d \n"
