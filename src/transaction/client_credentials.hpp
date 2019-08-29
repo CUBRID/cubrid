@@ -25,31 +25,14 @@
 #define _CLIENT_CREDENTIALS_HPP_
 
 #include "dbtype_def.h"
+#include "db_client_type.hpp"
 #include "packable_object.hpp"
 
 #include <string>
 
-/* this enumeration should be matched with DB_CLIENT_TYPE_XXX in db.h */
-enum boot_client_type
-{
-  BOOT_CLIENT_UNKNOWN = -1,
-  BOOT_CLIENT_SYSTEM_INTERNAL = 0,
-  BOOT_CLIENT_DEFAULT = 1,
-  BOOT_CLIENT_CSQL = 2,
-  BOOT_CLIENT_READ_ONLY_CSQL = 3,
-  BOOT_CLIENT_BROKER = 4,
-  BOOT_CLIENT_READ_ONLY_BROKER = 5,
-  BOOT_CLIENT_SLAVE_ONLY_BROKER = 6,
-  BOOT_CLIENT_ADMIN_UTILITY = 7,
-  BOOT_CLIENT_ADMIN_CSQL = 8,
-  BOOT_CLIENT_LOG_COPIER = 9,
-  BOOT_CLIENT_LOG_APPLIER = 10,
-  BOOT_CLIENT_RW_BROKER_REPLICA_ONLY = 11,
-  BOOT_CLIENT_RO_BROKER_REPLICA_ONLY = 12,
-  BOOT_CLIENT_SO_BROKER_REPLICA_ONLY = 13,
-  BOOT_CLIENT_ADMIN_CSQL_WOS = 14,	/* admin csql that can write on standby */
-};
-typedef enum boot_client_type BOOT_CLIENT_TYPE;
+typedef enum db_client_type boot_client_type;
+
+typedef enum db_client_type BOOT_CLIENT_TYPE;
 
 const size_t LOG_USERNAME_MAX = DB_MAX_USER_LENGTH + 1;
 

@@ -34,7 +34,7 @@ const char *
 clientids::UNKNOWN_ID = "(unknown)";
 
 clientids::clientids ()
-  : client_type (BOOT_CLIENT_UNKNOWN)
+  : client_type (DB_CLIENT_UNKNOWN)
   , client_info {}
   , db_user {}
   , program_name {}
@@ -143,7 +143,7 @@ void
 clientids::set_system_internal ()
 {
   reset ();
-  client_type = BOOT_CLIENT_SYSTEM_INTERNAL;
+  client_type = DB_CLIENT_SYSTEM_INTERNAL;
 }
 
 void
@@ -162,7 +162,7 @@ clientids::reset ()
   login_name.clear ();
   host_name.clear ();
   process_id = 0;
-  client_type = BOOT_CLIENT_UNKNOWN;
+  client_type = DB_CLIENT_UNKNOWN;
 }
 
 //

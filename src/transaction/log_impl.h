@@ -243,7 +243,7 @@ const int LOG_SYSTEM_WORKER_INCR_TRANID = -1;
 #if defined (SERVER_MODE)
 #define LOG_CHECK_LOG_APPLIER(thread_p) \
   (thread_p != NULL \
-   && logtb_find_client_type (thread_p->tran_index) == BOOT_CLIENT_LOG_APPLIER)
+   && logtb_find_client_type (thread_p->tran_index) == DB_CLIENT_TYPE_LOG_APPLIER)
 #else
 #define LOG_CHECK_LOG_APPLIER(thread_p) (0)
 #endif /* !SERVER_MODE */
