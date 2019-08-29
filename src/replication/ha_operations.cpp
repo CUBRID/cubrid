@@ -199,7 +199,7 @@ namespace ha_operations
 	handle_force_change_state (thread_p, state);
 	if (get_server_state () == SERVER_STATE_ACTIVE)
 	  {
-	    // todo: why is this called on each non-force transition to ACTIVE (check no-force case)?
+	    // spawn threads be able to handle a potential flood after fail-over
 	    css_start_all_threads ();
 	  }
 	return NO_ERROR;
