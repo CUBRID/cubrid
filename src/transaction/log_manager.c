@@ -2736,8 +2736,8 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
    */
 
   if (LSA_ISNULL (&tdes->tail_lsa)
-      || (log_is_in_crash_recovery () && (crash_lsa = log_get_crash_point_lsa ()) != NULL
-	  && LSA_LE (&tdes->tail_lsa, crash_lsa)))
+      || (log_is_in_crash_recovery ()
+	  && (crash_lsa = log_get_crash_point_lsa ()) != NULL && LSA_LE (&tdes->tail_lsa, crash_lsa)))
     {
       log_append_empty_record (thread_p, LOG_DUMMY_HEAD_POSTPONE, addr);
     }
@@ -2833,9 +2833,8 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
     }
   else
     {
-      node =
-	prior_lsa_alloc_and_copy_data (thread_p, LOG_RUN_POSTPONE, RV_NOT_DEFINED, NULL, length, (char *) data, 0,
-				       NULL);
+      node = prior_lsa_alloc_and_copy_data (thread_p, LOG_RUN_POSTPONE, RV_NOT_DEFINED, NULL, length, (char *) data,
+					    0, NULL);
       if (node == NULL)
 	{
 	  return;
