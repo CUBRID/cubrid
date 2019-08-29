@@ -160,8 +160,7 @@ log_postpone_cache::do_postpone (cubthread::entry &thread_ref, const log_lsa &st
   int start_index = -1;
   for (std::size_t i = 0; i < m_cache_entries_cursor; ++i)
     {
-      cache_entry *entry = &m_cache_entries[i];
-      if (entry->m_lsa == start_postpone_lsa)
+      if (m_cache_entries[i].m_lsa == start_postpone_lsa)
 	{
 	  // Found start lsa
 	  start_index = i;

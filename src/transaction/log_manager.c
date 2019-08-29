@@ -7736,7 +7736,7 @@ log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_E
   sysop_start_postpone.posp_lsa = *LOG_TDES_LAST_SYSOP_POSP_LSA (tdes);
   log_append_sysop_start_postpone (thread_p, tdes, &sysop_start_postpone, data_size, data);
 
-  if (tdes->m_log_postpone_cache.do_postpone (*thread_p, LOG_TDES_LAST_SYSOP (tdes)->posp_lsa))
+  if (tdes->m_log_postpone_cache.do_postpone (*thread_p, *(LOG_TDES_LAST_SYSOP_POSP_LSA (tdes))))
     {
       /* Do postpone was run from cached postpone entries. */
       tdes->state = save_state;
