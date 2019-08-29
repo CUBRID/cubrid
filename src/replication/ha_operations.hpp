@@ -25,9 +25,9 @@
 
 namespace ha_operations
 {
-  int change_server_state (cubthread::entry *thread_p, SERVER_STATE state, bool force, int timeout, bool heartbeat);
-  SERVER_STATE transit_server_state (cubthread::entry *thread_p, SERVER_STATE req_state);
-  void finish_transit (cubthread::entry *thread_p, bool force, SERVER_STATE req_state);
+  int change_server_state (cubthread::entry *thread_p, server_state state, bool force, int timeout, bool heartbeat);
+  server_state transit_server_state (cubthread::entry *thread_p, server_state req_state);
+  void finish_transit (cubthread::entry *thread_p, bool force, server_state req_state);
 }
 
 extern decltype (&ha_operations::change_server_state) css_change_ha_server_state;

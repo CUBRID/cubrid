@@ -21,14 +21,14 @@
 
 namespace ha_operations
 {
-  static SERVER_STATE server_state = SERVER_STATE_IDLE;
+  static server_state g_server_state = SERVER_STATE_IDLE;
 
-  SERVER_STATE &get_server_state ()
+  server_state &get_server_state ()
   {
-    return server_state;
+    return g_server_state;
   }
 
-  const char *server_state_string (SERVER_STATE state)
+  const char *server_state_string (server_state state)
   {
     switch (state)
       {

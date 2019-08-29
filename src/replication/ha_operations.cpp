@@ -32,12 +32,12 @@ namespace ha_operations
 {
   struct server_state_transition_entry
   {
-    SERVER_STATE cur_state;
-    SERVER_STATE req_state;
-    SERVER_STATE next_state;
+    server_state cur_state;
+    server_state req_state;
+    server_state next_state;
   };
 
-  std::vector<server_state_transition_entry> server_state_transition_table =
+  std::vector<server_state_transition_entry> g_server_state_transition_table =
   {
     /* idle -> active */
     {SERVER_STATE_IDLE, SERVER_STATE_ACTIVE, SERVER_STATE_ACTIVE},
@@ -63,13 +63,13 @@ namespace ha_operations
     {SERVER_STATE_MAINTENANCE, SERVER_STATE_STANDBY, SERVER_STATE_TO_BE_STANDBY}
   };
 
-  std::recursive_mutex state_mtx;
+  std::recursive_mutex g_state_mtx;
 
-  static void handle_force_change_state (cubthread::entry *thread_p, SERVER_STATE req_state);
-  static SERVER_STATE handle_maintenance_change_state (cubthread::entry *thread_p, SERVER_STATE state, int timeout);
+  static void handle_force_change_state (cubthread::entry *thread_p, server_state req_state);
+  static server_state handle_maintenance_change_state (cubthread::entry *thread_p, server_state state, int timeout);
 
   static void
-  handle_force_change_state (cubthread::entry *thread_p, SERVER_STATE req_state)
+  handle_force_change_state (cubthread::entry *thread_p, server_state req_state)
   {
     if (get_server_state () != req_state)
       {
@@ -114,8 +114,8 @@ namespace ha_operations
       }
   }
 
-  static SERVER_STATE
-  handle_maintenance_change_state (cubthread::entry *thread_p, SERVER_STATE state, int timeout)
+  static server_state
+  handle_maintenance_change_state (cubthread::entry *thread_p, server_state state, int timeout)
   {
     state = transit_server_state (thread_p, SERVER_STATE_MAINTENANCE);
     if (state == SERVER_STATE_NA)
@@ -168,7 +168,7 @@ namespace ha_operations
   }
 
   int
-  change_server_state (cubthread::entry *thread_p, SERVER_STATE state, bool force, int timeout, bool heartbeat)
+  change_server_state (cubthread::entry *thread_p, server_state state, bool force, int timeout, bool heartbeat)
   {
     er_log_debug (ARG_FILE_LINE, "change_server_state: ha_Server_state %s state %s force %c heartbeat %c\n",
 		  server_state_string (get_server_state ()), server_state_string (state), (force ? 't' : 'f'),
@@ -176,7 +176,7 @@ namespace ha_operations
 
     assert (state >= SERVER_STATE_IDLE && state <= SERVER_STATE_DEAD);
 
-    std::lock_guard<std::recursive_mutex> lg (state_mtx);
+    std::lock_guard<std::recursive_mutex> lg (g_state_mtx);
 
     // Return early if we are in the state we want to be in or if we already are transitioning to the requested state
     if (state == get_server_state ()
@@ -233,7 +233,7 @@ namespace ha_operations
 
       case SERVER_STATE_STANDBY:
       {
-	SERVER_STATE orig_state = get_server_state ();
+	server_state orig_state = get_server_state ();
 	// Phase 1: transit to SERVER_STATE_TO_BE_STANDBY
 	state = transit_server_state (thread_p, SERVER_STATE_STANDBY);
 	if (state == SERVER_STATE_NA)
@@ -274,19 +274,19 @@ namespace ha_operations
    *   req_state(in): the state for the server to transit
    *
    */
-  SERVER_STATE
-  transit_server_state (cubthread::entry *thread_p, SERVER_STATE req_state)
+  server_state
+  transit_server_state (cubthread::entry *thread_p, server_state req_state)
   {
-    SERVER_STATE new_state = SERVER_STATE_NA;
+    server_state new_state = SERVER_STATE_NA;
 
     if (get_server_state () == req_state)
       {
 	return req_state;
       }
 
-    std::lock_guard<std::recursive_mutex> lg (state_mtx);
+    std::lock_guard<std::recursive_mutex> lg (g_state_mtx);
 
-    for (auto entry : server_state_transition_table)
+    for (auto entry : g_server_state_transition_table)
       {
 	if (entry.cur_state == get_server_state () && entry.req_state == req_state)
 	  {
@@ -316,7 +316,7 @@ namespace ha_operations
   }
 
   void
-  finish_transit (cubthread::entry *thread_p, bool force, SERVER_STATE req_state)
+  finish_transit (cubthread::entry *thread_p, bool force, server_state req_state)
   {
     assert (req_state == SERVER_STATE_ACTIVE || req_state == SERVER_STATE_STANDBY);
 
@@ -335,7 +335,7 @@ namespace ha_operations
       }
     else
       {
-	SERVER_STATE state = css_transit_ha_server_state (thread_p, req_state);
+	server_state state = css_transit_ha_server_state (thread_p, req_state);
 	assert (state == req_state);
       }
   }

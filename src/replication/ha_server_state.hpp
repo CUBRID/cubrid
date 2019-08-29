@@ -22,7 +22,7 @@
 
 namespace ha_operations
 {
-  enum SERVER_STATE
+  enum server_state
   {
     SERVER_STATE_NA = -1,	/* N/A */
     SERVER_STATE_IDLE = 0,	/* initial state */
@@ -34,12 +34,13 @@ namespace ha_operations
     SERVER_STATE_DEAD = 6	/* server is dead - virtual state; not exists */
   };
 
-  SERVER_STATE &get_server_state ();
-  const char *server_state_string (SERVER_STATE state);
+  server_state &get_server_state ();
+  const char *server_state_string (server_state state);
 }
 
-using HA_SERVER_STATE = ha_operations::SERVER_STATE;
+using HA_SERVER_STATE = ha_operations::server_state;
 
+// TODO: hide these and use server_state_string () to get access
 extern const char *HA_SERVER_STATE_IDLE_STR;
 extern const char *HA_SERVER_STATE_ACTIVE_STR;
 extern const char *HA_SERVER_STATE_TO_BE_ACTIVE_STR;
