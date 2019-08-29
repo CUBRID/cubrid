@@ -38,7 +38,7 @@ namespace cubtx
   //    Implements group complete_manager interface used by transaction threads.
   //    Implements dispatch_consumer interface used by dispatch thread.
   //
-  class slave_group_complete_manager : public group_complete_manager, public cubreplication::dispatch_consumer
+  class slave_group_complete_manager : public group_complete_manager, public group_completion
   {
     public:
       ~slave_group_complete_manager () override;
@@ -51,8 +51,8 @@ namespace cubtx
       void do_prepare_complete (THREAD_ENTRY *thread_p) override;
       void do_complete (THREAD_ENTRY *thread_p) override;
 
-      /* dispatch complete methods */
-      void wait_for_complete_stream_position (cubstream::stream_position stream_position) override;
+      /* group_completion methods */
+      void complete_upto_stream_position (cubstream::stream_position stream_position) override;
       void set_close_info_for_current_group (cubstream::stream_position stream_position,
 					     int count_expected_transactions) override;
 
@@ -64,7 +64,7 @@ namespace cubtx
       void on_register_transaction () override;
 
     private:
-      static slave_group_complete_manager *gl_slave_group;
+      static slave_group_complete_manager *gl_slave_gcm;
       static cubthread::daemon *gl_slave_group_complete_daemon;
 
       /* Latest recorded stream position and corresponding id. */
@@ -73,16 +73,6 @@ namespace cubtx
 
       /* m_has_latest_group_close_info - true, if stream position and count expected transactions were set. */
       std::atomic<bool> m_has_latest_group_close_info;
-  };
-
-  //
-  // slave_group_complete_task is class for slave group complete daemon
-  //
-  class slave_group_complete_task : public cubthread::entry_task
-  {
-    public:
-      /* entry_task methods */
-      void execute (cubthread::entry &thread_ref) override;
   };
 }
 

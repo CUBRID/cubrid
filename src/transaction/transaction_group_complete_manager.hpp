@@ -48,6 +48,17 @@ namespace cubtx
   };
 
   //
+  // group completion is the common interface used to control group creation.
+  //
+  class group_completion
+  {
+    public:
+      virtual void complete_upto_stream_position (cubstream::stream_position stream_position) = 0;
+      virtual void set_close_info_for_current_group (cubstream::stream_position stream_position,
+	  int count_expected_transactions) = 0;
+  };
+
+  //
   // group_complete_manager is the common interface used by complete managers based on grouping the commits
   //
   class group_complete_manager : public complete_manager
@@ -72,7 +83,7 @@ namespace cubtx
       void complete_logging (id_type group_id) override final;
 
     protected:
-      id_type set_current_group_minimum_transactions (unsigned int count_minimum_transactions,
+      id_type set_current_group_minimum_transactions (const unsigned int count_minimum_transactions,
 	  bool &has_group_enough_transactions);
 
       bool close_current_group ();

@@ -249,7 +249,7 @@ namespace cubtx
   // set_current_group_minimum_transactions set minimum number of transactions for current group.
   //
   complete_manager::id_type group_complete_manager::set_current_group_minimum_transactions (
-	  unsigned int count_minimum_transactions,
+	  const unsigned int count_minimum_transactions,
 	  bool &has_group_enough_transactions)
   {
     assert (count_minimum_transactions >= 0);
@@ -461,7 +461,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed group - check whether MVCC was completed.*/
+	/* Current closed group - check whether MVCC was completed. */
 	return is_latest_closed_group_mvcc_completed ();
       }
   }
@@ -484,7 +484,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed group - check whether the group was logged.*/
+	/* Current closed group - check whether the group was logged. */
 	return is_latest_closed_group_logged ();
       }
   }
@@ -507,7 +507,7 @@ namespace cubtx
       }
     else
       {
-	/* Current closed group - check whether the group was completed.*/
+	/* Current closed group - check whether the group was completed. */
 	return is_latest_closed_group_completed ();
       }
   }

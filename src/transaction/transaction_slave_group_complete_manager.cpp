@@ -28,6 +28,29 @@
 
 namespace cubtx
 {
+  //
+  // slave_group_complete_task is class for slave group complete daemon
+  //
+  class slave_group_complete_task : public cubthread::entry_task
+  {
+    public:
+      //
+      // execute is thread main method.
+      //
+      void execute (cubthread::entry &thread_ref) override
+      {
+	if (!BO_IS_SERVER_RESTARTED ())
+	  {
+	    return;
+	  }
+
+	cubthread::entry *thread_p = &cubthread::get_entry ();
+	slave_group_complete_manager *p_gl_slave_group = slave_group_complete_manager::get_instance ();
+	p_gl_slave_group->do_prepare_complete (thread_p);
+	p_gl_slave_group->do_complete (thread_p);
+      }
+  };
+
   slave_group_complete_manager::~slave_group_complete_manager ()
   {
   }
@@ -37,8 +60,8 @@ namespace cubtx
   //
   slave_group_complete_manager *slave_group_complete_manager::get_instance ()
   {
-    assert (gl_slave_group != NULL);
-    return gl_slave_group;
+    assert (gl_slave_gcm != NULL);
+    return gl_slave_gcm;
   }
 
   //
@@ -46,12 +69,13 @@ namespace cubtx
   //
   void slave_group_complete_manager::init ()
   {
+    assert (gl_slave_gcm == NULL);
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
-    gl_slave_group = new slave_group_complete_manager ();
+    gl_slave_gcm = new slave_group_complete_manager ();
     er_log_group_complete_debug (ARG_FILE_LINE, "slave_group_complete_manager:init created slave group complete manager\n");
-    gl_slave_group->m_latest_group_id = NULL_ID;
-    gl_slave_group->m_latest_group_stream_position = 0;
-    gl_slave_group->m_has_latest_group_close_info.store (false);
+    gl_slave_gcm->m_latest_group_id = NULL_ID;
+    gl_slave_gcm->m_latest_group_stream_position = 0;
+    gl_slave_gcm->m_has_latest_group_close_info.store (false);
 
     slave_group_complete_manager::gl_slave_group_complete_daemon = cubthread::get_manager ()->create_daemon ((looper),
 	new slave_group_complete_task (), "slave_group_complete_daemon");
@@ -68,8 +92,8 @@ namespace cubtx
 	gl_slave_group_complete_daemon = NULL;
       }
 
-    delete gl_slave_group;
-    gl_slave_group = NULL;
+    delete gl_slave_gcm;
+    gl_slave_gcm = NULL;
   }
 
   //
@@ -199,9 +223,9 @@ namespace cubtx
   }
 
   //
-  // wait_for_complete_stream_position - waits for complete stream position
+  // complete_upto_stream_position - complete up to stream position
   //
-  void slave_group_complete_manager::wait_for_complete_stream_position (cubstream::stream_position stream_position)
+  void slave_group_complete_manager::complete_upto_stream_position (cubstream::stream_position stream_position)
   {
     if (stream_position <= m_latest_group_stream_position)
       {
@@ -221,10 +245,7 @@ namespace cubtx
       int count_expected_transactions)
   {
     bool has_group_enough_transactions;
-    /* Can't set close info twice. */
-#if 0
-    assert (m_has_latest_group_close_info.load () == false);
-#endif
+    /* TODO - Can we set close info twice? */
 
     m_latest_group_stream_position = stream_position;
     m_latest_group_id = set_current_group_minimum_transactions (count_expected_transactions, has_group_enough_transactions);
@@ -247,22 +268,6 @@ namespace cubtx
     return LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE;
   }
 
-  //
-  // execute is thread main method.
-  //
-  void slave_group_complete_task::execute (cubthread::entry &thread_ref)
-  {
-    if (!BO_IS_SERVER_RESTARTED ())
-      {
-	return;
-      }
-
-    cubthread::entry *thread_p = &cubthread::get_entry ();
-    slave_group_complete_manager *p_gl_slave_group = slave_group_complete_manager::get_instance ();
-    p_gl_slave_group->do_prepare_complete (thread_p);
-    p_gl_slave_group->do_complete (thread_p);
-  }
-
-  slave_group_complete_manager *slave_group_complete_manager::gl_slave_group = NULL;
+  slave_group_complete_manager *slave_group_complete_manager::gl_slave_gcm = NULL;
   cubthread::daemon *slave_group_complete_manager::gl_slave_group_complete_daemon = NULL;
 }
