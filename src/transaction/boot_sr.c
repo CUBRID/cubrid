@@ -81,6 +81,7 @@
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
+#include "ha_operations.hpp"
 #include "replication_node_manager.hpp"
 #include "server_support.h"
 #endif /* SERVER_MODE */
@@ -2719,7 +2720,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
   /* set server's starting mode for HA according to the 'ha_mode' parameter */
-  css_change_ha_server_state (thread_p, (HA_SERVER_STATE) prm_get_integer_value (PRM_ID_HA_SERVER_STATE), false,
+  css_change_ha_server_state (thread_p, (HA_SERVER_STATE) prm_get_integer_value (PRM_ID_HA_SERVER_STATE), true,
 			      HA_CHANGE_MODE_IMMEDIATELY, true);
 #endif
 
@@ -3140,10 +3141,6 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 	      return NULL_TRAN_INDEX;
 	    }
 	}
-      if (client_credential->client_type == BOOT_CLIENT_LOG_APPLIER)
-	{
-	  css_notify_ha_log_applier_state (thread_p, HA_LOG_APPLIER_STATE_UNREGISTERED);
-	}
 #endif /* SERVER_MODE */
 
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CLIENT_CONNECTED, 4,
@@ -3203,11 +3200,6 @@ xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index)
 	  return NO_ERROR;
 	}
 
-      /* check if the client was a log applier */
-      if (tdes->client.client_type == BOOT_CLIENT_LOG_APPLIER)
-	{
-	  css_notify_ha_log_applier_state (thread_p, HA_LOG_APPLIER_STATE_UNREGISTERED);
-	}
       /* Check the server's state for HA action for this client */
       if (BOOT_NORMAL_CLIENT_TYPE (tdes->client.client_type))
 	{

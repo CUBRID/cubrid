@@ -93,6 +93,10 @@ namespace cubreplication
        */
       cubsync::event_semaphore m_fetch_suspend;
 
+      bool m_dispatch_finished;
+      std::condition_variable m_dispatch_finished_cv;
+      std::mutex m_dispatch_finished_mtx;
+
     public:
 
       std::function<void (cubstream::stream_position)> ack_produce;
@@ -105,6 +109,7 @@ namespace cubreplication
 	, m_subtran_applier (NULL)
 	, m_use_daemons (false)
 	, m_started_tasks (0)
+	, m_dispatch_finished (false)
 	, ack_produce ([] (cubstream::stream_position)
       {
 	assert (false);
@@ -116,6 +121,9 @@ namespace cubreplication
       ~log_consumer ();
 
       void start_daemons (void);
+
+      void wait_dispatcher_applied_all ();
+      void set_dispatcher_finished ();
       void execute_task (applier_worker_task *task);
       void push_task (cubthread::entry_task *task);
 

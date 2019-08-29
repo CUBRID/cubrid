@@ -208,7 +208,8 @@ set(MONITOR_HEADERS
 )
 
 set (REPLICATION_HEADERS
-  ${REPLICATION_DIR}/ha_server_state.h
+  ${REPLICATION_DIR}/ha_operations.hpp
+  ${REPLICATION_DIR}/ha_server_state.hpp
   ${REPLICATION_DIR}/log_generator.hpp
   ${REPLICATION_DIR}/log_consumer.hpp
   ${REPLICATION_DIR}/replication_common.hpp
@@ -277,6 +278,8 @@ set(OBJECT_HEADERS
 )
   
 set(REPLICATION_SOURCES
+  ${REPLICATION_DIR}/ha_operations.cpp
+  ${REPLICATION_DIR}/ha_server_state.cpp
   ${REPLICATION_DIR}/log_consumer.cpp
   ${REPLICATION_DIR}/log_generator.cpp
   ${REPLICATION_DIR}/slave_control_channel.cpp

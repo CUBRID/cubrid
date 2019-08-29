@@ -10307,19 +10307,19 @@ const char *
 logpb_complete_manager_string (log_tran_complete_manager_type manager_type)
 {
   switch (manager_type)
-  {
-  case LOG_TRAN_COMPLETE_NO_MANAGER:
-    return "no manager";
-  case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
-    return "single node";
-  case LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE:
-    return "master node";
-  case LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE:
-    return "slave";
-  }
+    {
+    case LOG_TRAN_COMPLETE_NO_MANAGER:
+      return "no manager";
+    case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
+      return "single node";
+    case LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE:
+      return "master node";
+    case LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE:
+      return "slave";
+    }
 
   assert (false);
-  return NULL;
+  return "unknown";
 }
 
 /*

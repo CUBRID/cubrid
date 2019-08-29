@@ -17,44 +17,21 @@
  *
  */
 
-/*
- * internal_tasks_worker_pool.cpp
- */
+#ifndef _HA_OPERATIONS_HPP_
+#define _HA_OPERATIONS_HPP_
 
-#include "internal_tasks_worker_pool.hpp"
-#include "thread_worker_pool.hpp"
+#include "ha_server_state.hpp"
+#include "thread_entry.hpp"
 
-namespace cubthread
+namespace ha_operations
 {
-  constexpr size_t WORKER_COUNT = 2;
-  constexpr size_t TASK_COUNT = 10;
-  constexpr size_t CORE_COUNT = 1;
-  constexpr bool ENABLE_LOGGING = true;
-
-  entry_workpool *instance = NULL;
-
-  namespace internal_tasks_worker_pool
-  {
-    void initialize ()
-    {
-      if (instance != NULL)
-	{
-	  return;
-	}
-
-      instance = cubthread::get_manager ()->create_worker_pool (WORKER_COUNT,
-		 TASK_COUNT, "internal_tasks_worker_pool", NULL, CORE_COUNT, ENABLE_LOGGING);
-    }
-
-    entry_workpool *get_instance ()
-    {
-      return instance;
-    }
-
-    void finalize ()
-    {
-      delete instance;
-      instance = NULL;
-    }
-  }
+  int change_server_state (cubthread::entry *thread_p, server_state state, bool force, int timeout, bool heartbeat);
+  server_state transit_server_state (cubthread::entry *thread_p, server_state req_state);
+  void finish_transit (cubthread::entry *thread_p, bool force, server_state req_state);
 }
+
+extern decltype (&ha_operations::change_server_state) css_change_ha_server_state;
+extern decltype (&ha_operations::finish_transit) css_finish_transit;
+extern decltype (&ha_operations::transit_server_state) css_transit_ha_server_state;
+
+#endif // !_HA_OPERATIONS_HPP_

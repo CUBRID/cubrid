@@ -62,6 +62,5 @@ extern unsigned int css_receive_data_from_server (unsigned int eid, char **buffe
 extern unsigned int css_receive_data_from_server_with_timeout (unsigned int eid, char **buffer, int *size, int timeout);
 extern void css_terminate (bool server_error);
 extern void css_cleanup_client_queues (char *host_name);
-extern HA_SERVER_STATE css_ha_server_state (void);
 
 #endif /* _CLIENT_SUPPORT_H_ */
