@@ -543,6 +543,7 @@ struct log_tdes
 
   LOG_RCV_TDES rcv;
   const char *ha_sbr_statement;
+  const char *ha_sys_param;
 
   log_postpone_cache m_log_postpone_cache;
 

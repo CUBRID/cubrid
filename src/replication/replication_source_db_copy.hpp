@@ -34,6 +34,7 @@
 #include <condition_variable>
 #include <list>
 #include <mutex>
+#include <unordered_map>
 
 namespace cubcomm
 {
@@ -65,6 +66,8 @@ namespace cubreplication
   class source_copy_context
   {
     public:
+      using statement_list = std::unordered_map<std::string, std::string>;
+
       const size_t EXTRACT_HEAP_WORKER_POOL_SIZE = 20;
 
       /* State value mapped on replication copy phases:
@@ -76,7 +79,8 @@ namespace cubreplication
        * It continues with heap copy, and once heap copy process ends, it sends triggers and indexes.
        *
        * The values follows the order of copy phase and should be kept in sync with overall process
-       * of ddl_proxy and server source copy. */
+       * of ddl_proxy and server source copy.
+       */
       enum copy_stage
       {
 	NOT_STARTED = 0,
@@ -99,9 +103,9 @@ namespace cubreplication
 
       int execute_and_transit_phase (copy_stage new_state);
 
-      void append_class_schema (const char *buffer, const size_t buf_size);
-      void append_triggers_schema (const char *buffer, const size_t buf_size);
-      void append_indexes_schema (const char *buffer, const size_t buf_size);
+      void append_class_schema (const char *id, const size_t id_size, const char *buffer, const size_t buf_size);
+      void append_trigger_schema (const char *id, const size_t id_size, const char *buffer, const size_t buf_size);
+      void append_index_schema (const char *id, const size_t id_size, const char *buffer, const size_t buf_size);
       void unpack_class_oid_list (const char *buffer, const size_t buf_size);
 
       int execute_db_copy (cubthread::entry &thread_ref, SOCKET fd);
@@ -139,10 +143,14 @@ namespace cubreplication
       cubstream::multi_thread_stream *acquire_stream ();
       void release_stream ();
 
-      void pack_and_add_statement (const std::string &statement);
+      void pack_and_add_statements (const statement_list &statements);
       void pack_and_add_start_of_extract_heap ();
       void pack_and_add_end_of_extract_heap ();
       void pack_and_add_end_of_copy ();
+
+      void append_schema_item (statement_list &container, const char *id, const size_t id_size, const char *buffer,
+			       const size_t buf_size);
+
 
       int wait_slave_finished ();
       int wait_receive_class_list (cubthread::entry &thread_ref);
@@ -162,9 +170,9 @@ namespace cubreplication
       stream_senders_manager *m_senders_manager;
       cubthread::entry_workpool *m_heap_extract_workers_pool;
 
-      std::string m_class_schema;
-      std::string m_triggers;
-      std::string m_indexes;
+      statement_list m_classes;
+      statement_list m_triggers;
+      statement_list m_indexes;
       std::list<OID> m_class_oid_list;
 
       copy_stage m_state;
