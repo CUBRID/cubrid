@@ -66,6 +66,8 @@ namespace cubreplication
       cubstream::stream_position m_source_min_available_pos;
       cubstream::stream_position m_source_curr_pos;
 
+      void destroy_transfer_receiver ();
+
     protected:
       int setup_protocol (cubcomm::channel &chn);
 
@@ -87,6 +89,8 @@ namespace cubreplication
 
       slave_node (const char *hostname, cubstream::multi_thread_stream *stream, cubstream::stream_file *stream_file);
       ~slave_node ();
+
+      void wait_fetch_completed ();
 
       int connect_to_master (const char *master_node_hostname, const int master_node_port_id);
 

@@ -3170,7 +3170,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
 	  writer_info->trace_last_writer = true;
 	  writer_info->last_writer_elapsed_time = 0;
-	  writer_info->last_writer_client_info.client_type = BOOT_CLIENT_UNKNOWN;
+	  writer_info->last_writer_client_info.client_type = DB_CLIENT_TYPE_UNKNOWN;
 	}
 
       entry = writer_info->writer_list;
@@ -10301,6 +10301,28 @@ logpb_initialize_tran_complete_manager (void)
 }
 
 /*
+ * logpb_complete_manager_string - complete manager string
+ */
+const char *
+logpb_complete_manager_string (log_tran_complete_manager_type manager_type)
+{
+  switch (manager_type)
+    {
+    case LOG_TRAN_COMPLETE_NO_MANAGER:
+      return "no manager";
+    case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
+      return "single node";
+    case LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE:
+      return "master node";
+    case LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE:
+      return "slave";
+    }
+
+  assert (false);
+  return "unknown";
+}
+
+/*
  * logpb_background_archiving -
  *
  * return:
@@ -10768,6 +10790,7 @@ logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghd
   LSA_SET_NULL (&loghdr->mvcc_op_log_lsa);
   loghdr->last_block_oldest_mvccid = MVCCID_NULL;
   loghdr->last_block_newest_mvccid = MVCCID_NULL;
+  loghdr->does_block_need_vacuum = false;
 }
 
 /*

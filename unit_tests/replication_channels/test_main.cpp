@@ -3,7 +3,7 @@
 #include "master_replication_channel_mock.hpp"
 #include "slave_replication_channel_mock.hpp"
 
-#include "replication_master_senders_manager.hpp"
+#include "stream_senders_manager.hpp"
 #include "thread_manager.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_entry.hpp"

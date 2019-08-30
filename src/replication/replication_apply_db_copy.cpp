@@ -199,7 +199,7 @@ namespace cubreplication
 
       void execute (cubthread::entry &thread_ref) final
       {
-	if (locator_repl_start_tran (&thread_ref, BOOT_CLIENT_LOG_APPLIER) != NO_ERROR)
+	if (locator_repl_start_tran (&thread_ref, DB_CLIENT_TYPE_LOG_APPLIER) != NO_ERROR)
 	  {
 	    assert (false);
 	    return;

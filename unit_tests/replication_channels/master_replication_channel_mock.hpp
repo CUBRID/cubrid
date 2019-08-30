@@ -3,7 +3,7 @@
 
 #define SERVER_MODE
 #include "mock_stream.hpp"
-#include "replication_master_senders_manager.hpp"
+#include "stream_senders_manager.hpp"
 
 #include <memory>
 

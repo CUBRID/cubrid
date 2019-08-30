@@ -1,7 +1,7 @@
 #include "master_replication_channel_mock.hpp"
 
 #define SERVER_MODE
-#include "replication_master_senders_manager.hpp"
+#include "stream_senders_manager.hpp"
 #if !defined (WINDOWS)
 #include "tcp.h"
 #include <sys/poll.h>

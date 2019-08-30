@@ -23,12 +23,17 @@
 
 #include "replication_node_manager.hpp"
 
+#include "ha_operations.hpp"
+#include "internal_tasks_worker_pool.hpp"
 #include "log_impl.h"
 #include "multi_thread_stream.hpp"
 #include "replication_common.hpp"
 #include "replication_master_node.hpp"
 #include "replication_slave_node.hpp"
+#include "server_support.h"
 #include "stream_file.hpp"
+#include "thread_manager.hpp"
+#include "thread_task.hpp"
 
 namespace cubreplication
 {
@@ -40,10 +45,21 @@ namespace cubreplication
   cubreplication::master_node *g_master_node = NULL;
   cubreplication::slave_node *g_slave_node = NULL;
 
+  std::mutex g_ha_tasks_running_mtx;
+  std::condition_variable g_ha_tasks_running_cv;
+  size_t g_ha_tasks_running;
+
+  std::condition_variable g_commute_cv;
+  std::mutex g_commute_mtx;
+
   namespace replication_node_manager
   {
+    static std::unique_lock<std::mutex> wait_ha_tasks ();
+    static void inc_ha_tasks_without_lock ();
+
     void init (const char *server_name)
     {
+      g_ha_tasks_running = 0;
       g_hostname = server_name;
 
       INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_BUFFER_SIZE);
@@ -64,6 +80,8 @@ namespace cubreplication
     {
       er_log_debug_replication (ARG_FILE_LINE, "replication_node_manager::finalize");
 
+      (void) wait_ha_tasks ();
+
       g_hostname.clear ();
 
       delete g_slave_node;
@@ -71,7 +89,7 @@ namespace cubreplication
       delete g_master_node;
       g_master_node = NULL;
 
-      // stream and stream file are interdependent, therefore first stop the stream
+      // we need to first stop the stream before destroying stream_file
       g_stream->stop ();
       delete g_stream_file;
       g_stream_file = NULL;
@@ -79,33 +97,69 @@ namespace cubreplication
       g_stream = NULL;
     }
 
-    void commute_to_master_state ()
+    void start_commute_to_master_state (cubthread::entry *thread_p, bool force)
     {
       er_log_debug_replication (ARG_FILE_LINE, "replication_node_manager::commute_to_master_state");
 
-      delete g_slave_node;
-      g_slave_node = NULL;
+      std::unique_lock<std::mutex> ul = wait_ha_tasks ();
+      inc_ha_tasks_without_lock ();
+      ul.unlock ();
 
-      if (g_master_node == NULL)
-	{
-	  g_master_node = new master_node (g_hostname.c_str (), g_stream, g_stream_file);
-	}
+      auto promote_func = [thread_p, force] (cubthread::entry &context)
+      {
+	if (g_slave_node != NULL)
+	  {
+	    g_slave_node->wait_fetch_completed ();
+	  }
+	delete g_slave_node;
+	g_slave_node = NULL;
+
+	if (g_master_node == NULL)
+	  {
+	    g_master_node = new master_node (g_hostname.c_str (), g_stream, g_stream_file);
+	  }
+
+	css_finish_transit (thread_p, force, HA_SERVER_STATE_ACTIVE);
+	dec_ha_tasks ();
+	g_commute_cv.notify_all ();
+      };
+
+      cubthread::entry_task *promote_task = new cubthread::entry_callable_task (promote_func);
+
+      auto wp = cubthread::internal_tasks_worker_pool::get_instance ();
+      cubthread::get_manager ()->push_task (wp, promote_task);
     }
 
-    void commute_to_slave_state ()
+    void start_commute_to_slave_state (cubthread::entry *thread_p, bool force)
     {
       er_log_debug_replication (ARG_FILE_LINE, "replication_node_manager::commute_to_slave_state");
 
-      // todo: remove after master -> slave transitions is properly handled
-      assert (g_master_node == NULL);
+      std::unique_lock<std::mutex> ul = wait_ha_tasks ();
+      inc_ha_tasks_without_lock ();
+      ul.unlock ();
 
-      delete g_master_node;
-      g_master_node = NULL;
+      auto demote_func = [thread_p, force] (cubthread::entry &context)
+      {
+	// todo: remove after master -> slave transitions is properly handled
+	assert (g_master_node == NULL);
 
-      if (g_slave_node == NULL)
-	{
-	  g_slave_node = new cubreplication::slave_node (g_hostname.c_str (), g_stream, g_stream_file);
-	}
+	delete g_master_node;
+	g_master_node = NULL;
+
+	if (g_slave_node == NULL)
+	  {
+	    g_slave_node = new slave_node (g_hostname.c_str (), g_stream, g_stream_file);
+	  }
+
+	css_finish_transit (thread_p, force, HA_SERVER_STATE_STANDBY);
+	dec_ha_tasks ();
+	g_commute_cv.notify_all ();
+      };
+
+      cubthread::entry_task *demote_task = new cubthread::entry_callable_task (demote_func);
+
+      auto wp = cubthread::internal_tasks_worker_pool::get_instance ();
+      cubthread::get_manager ()->push_task (wp, demote_task);
     }
 
     master_node *get_master_node ()
@@ -118,6 +172,50 @@ namespace cubreplication
     {
       assert (g_slave_node != NULL);
       return g_slave_node;
+    }
+
+    void wait_commute (HA_SERVER_STATE &ha_state, HA_SERVER_STATE req_state)
+    {
+      std::unique_lock<std::mutex> ul (g_commute_mtx);
+      g_commute_cv.wait (ul, [req_state, &ha_state] ()
+      {
+	return ha_state == req_state;
+      });
+    }
+
+    static void inc_ha_tasks_without_lock ()
+    {
+      ++g_ha_tasks_running;
+    }
+
+    void inc_ha_tasks ()
+    {
+      std::lock_guard<std::mutex> lg (g_ha_tasks_running_mtx);
+      inc_ha_tasks_without_lock ();
+    }
+
+    void dec_ha_tasks ()
+    {
+      std::unique_lock<std::mutex> ul (g_ha_tasks_running_mtx);
+      assert (g_ha_tasks_running > 0);
+      --g_ha_tasks_running;
+
+      if (g_ha_tasks_running == 0)
+	{
+	  ul.unlock ();
+	  g_ha_tasks_running_cv.notify_all ();
+	}
+    }
+
+    static std::unique_lock<std::mutex> wait_ha_tasks ()
+    {
+      std::unique_lock<std::mutex> ul (g_ha_tasks_running_mtx);
+      g_ha_tasks_running_cv.wait (ul, [] ()
+      {
+	return g_ha_tasks_running == 0;
+      });
+      // we need to keep mutex locked sometimes after return
+      return ul;
     }
   }
 }

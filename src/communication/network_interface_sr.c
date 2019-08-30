@@ -81,6 +81,7 @@
 #include "xasl.h"
 #include "xasl_cache.h"
 #include "elo.h"
+#include "ha_operations.hpp"
 #include "transaction_transient.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)

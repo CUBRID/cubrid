@@ -166,6 +166,11 @@ namespace cubreplication
     er_log_debug_replication (ARG_FILE_LINE, "new_slave connected");
   }
 
+  void master_node::wakeup_transfer_senders (cubstream::stream_position desired_position)
+  {
+    m_senders_manager->wakeup_transfer_senders (desired_position);
+  }
+
   void master_node::add_ctrl_chn (SOCKET fd)
   {
     er_log_debug_replication (ARG_FILE_LINE, "add_ctrl_chn");
@@ -222,7 +227,7 @@ namespace cubreplication
       }
 
     /* create a transaction for replication copy */
-    error = locator_repl_start_tran (&thread_ref, BOOT_PSEUDO_CLIENT_REPL_COPIER);
+    error = locator_repl_start_tran (&thread_ref, DB_CLIENT_TYPE_DDL_PROXY);
     if (error != NO_ERROR)
       {
 	assert (false);
