@@ -200,6 +200,7 @@ namespace cubreplication
 		se->unpack ();
 		assert (se->get_stream_entry_end_position () > se->get_stream_entry_start_position ());
 		m_lc.ack_produce (se->get_stream_entry_end_position ());
+		log_Gl.hdr.m_ack_stream_position = se->get_stream_entry_end_position ();
 	      }
 
 	    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
