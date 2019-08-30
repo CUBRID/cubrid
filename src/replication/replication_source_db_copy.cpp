@@ -248,6 +248,7 @@ namespace cubreplication
     assert (id != NULL || id_size == 0);
     std::string id_str (id, id_size);
     auto it = container.find (id_str);
+
     if (it != container.end ())
       {
 	it->second.append (buffer, buf_size);
