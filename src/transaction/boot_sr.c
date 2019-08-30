@@ -5739,7 +5739,7 @@ boot_client_type_to_string (BOOT_CLIENT_TYPE type)
 {
   switch (type)
     {
-    case DB_CLIENT_SYSTEM_INTERNAL:
+    case DB_CLIENT_TYPE_SYSTEM_INTERNAL:
       return "SYSTEM_INTERNAL";
     case DB_CLIENT_TYPE_DEFAULT:
       return "DEFAULT";
@@ -5769,7 +5769,7 @@ boot_client_type_to_string (BOOT_CLIENT_TYPE type)
       return "SO_BROKER_REPLICA_ONLY";
     case DB_CLIENT_TYPE_ADMIN_CSQL_WOS:
       return "ADMIN_CSQL_WOS";
-    case DB_CLIENT_UNKNOWN:
+    case DB_CLIENT_TYPE_UNKNOWN:
     default:
       return "UNKNOWN";
     }
