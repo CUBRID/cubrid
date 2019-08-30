@@ -134,7 +134,7 @@ namespace cubstream
   void transfer_receiver::wait_disconnect ()
   {
     std::unique_lock<std::mutex> ul (m_sender_disconnect_mtx);
-    m_sender_disconnect_cv.wait (ul, [this] {return m_channel.is_connection_alive ();});
+    m_sender_disconnect_cv.wait (ul, [this] {return !m_channel.is_connection_alive ();});
   }
 
   void transfer_receiver::terminate_connection ()
