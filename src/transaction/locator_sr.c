@@ -14056,8 +14056,7 @@ locator_repl_start_tran (THREAD_ENTRY * thread_p)
   /* TODO */
   int error_code = NO_ERROR;
   BOOT_CLIENT_CREDENTIAL applier_Client_credentials;
-
-  applier_Client_credentials.client_type = BOOT_CLIENT_LOG_APPLIER;
+  applier_Client_credentials.client_type = DB_CLIENT_TYPE_LOG_APPLIER;
   applier_Client_credentials.program_name = "(repl_applier)";
   applier_Client_credentials.process_id = -1;
 

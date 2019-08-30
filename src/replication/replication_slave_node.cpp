@@ -265,12 +265,31 @@ namespace cubreplication
     stop_and_destroy_online_repl ();
   }
 
+  void slave_node::destroy_transfer_receiver ()
+  {
+    delete m_transfer_receiver;
+    m_transfer_receiver = NULL;
+  }
+
+  void slave_node::wait_fetch_completed ()
+  {
+    // this forces transfer_receiver to stream::commit_append all data it has received
+    destroy_transfer_receiver ();
+
+    if (m_lc != NULL)
+      {
+	m_stream->set_fetch_all_requested ();
+	// Need to wait for a notification signifying that everything was fetched before calling
+	// multi_thread_stream::stop method
+	m_lc->wait_dispatcher_applied_all ();
+      }
+  }
+
   void slave_node::stop_and_destroy_online_repl ()
   {
     er_log_debug_replication (ARG_FILE_LINE, "slave_node::stop_and_destroy_online_repl");
 
-    delete m_transfer_receiver;
-    m_transfer_receiver = NULL;
+    destroy_transfer_receiver ();
 
     if (m_lc != NULL)
       {

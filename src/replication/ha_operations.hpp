@@ -17,15 +17,21 @@
  *
  */
 
-/*
- * db_admin.h -  Definitions for client side
- */
+#ifndef _HA_OPERATIONS_HPP_
+#define _HA_OPERATIONS_HPP_
 
-#ifndef _DB_ADMIN_H_
-#define _DB_ADMIN_H_
+#include "ha_server_state.hpp"
+#include "thread_entry.hpp"
 
-#if !defined(SERVER_MODE)
-#include "db_client_type.hpp"
-#endif
+namespace ha_operations
+{
+  int change_server_state (cubthread::entry *thread_p, server_state state, bool force, int timeout, bool heartbeat);
+  server_state transit_server_state (cubthread::entry *thread_p, server_state req_state);
+  void finish_transit (cubthread::entry *thread_p, bool force, server_state req_state);
+}
 
-#endif /* _DB_ADMIN_H */
+extern decltype (&ha_operations::change_server_state) css_change_ha_server_state;
+extern decltype (&ha_operations::finish_transit) css_finish_transit;
+extern decltype (&ha_operations::transit_server_state) css_transit_ha_server_state;
+
+#endif // !_HA_OPERATIONS_HPP_

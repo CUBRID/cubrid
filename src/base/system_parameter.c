@@ -668,11 +668,14 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_IB_TASK_MEMSIZE "index_load_task_memsize"
 #define PRM_NAME_STATS_ON "stats_on"
 #define PRM_NAME_PERF_TEST_MODE "perf_test_mode"
+#define PRM_NAME_REPR_CACHE_LOG "er_log_repr_cache"
 
 #define PRM_NAME_REPL_LOG_GENERATOR_LOGGING "replication_log_generator_logging"
 #define PRM_NAME_REPL_LOG_LOCAL_DEBUG "replication_log_local_debug"
 
 #define PRM_NAME_REPL_SEMISYNC_ACK_MODE "semisync_replication_ack_mode"
+
+#define PRM_NAME_GROUP_COMPLETE_DEBUG "group_complete_debug"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2249,6 +2252,10 @@ bool PRM_PERF_TEST_MODE = false;
 static bool prm_perf_test_mode_default = false;
 static unsigned int prm_perf_test_mode_flag = 0;
 
+bool PRM_REPR_CACHE_LOG = false;
+static bool prm_repr_cache_log_default = false;
+static unsigned int prm_repr_cache_log_flag = 0;
+
 bool PRM_REPL_LOG_GENERATOR_LOGGING = false;
 static bool prm_repl_log_generator_default = false;
 static unsigned int prm_repl_log_generator_flag = 0;
@@ -2264,6 +2271,10 @@ static int prm_repl_semisync_ack_mode_lower = cubreplication::REPL_SEMISYNC_ACK_
 static int prm_repl_semisync_ack_mode_upper = cubreplication::REPL_SEMISYNC_ACK_ON_FLUSH;
 static unsigned int prm_repl_semisync_ack_mode_flag = 0;
 /* *INDENT-ON* */
+
+bool PRM_GROUP_COMPLETE_DEBUG = false;
+static bool prm_group_complete_debug_default = true;	/* TODO - false, after stabilizing group complete issues. */
+static unsigned int prm_group_complete_debug_flag = false;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5787,6 +5798,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_REPR_CACHE_LOG,
+   PRM_NAME_REPR_CACHE_LOG,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_repr_cache_log_flag,
+   (void *) &prm_repr_cache_log_default,
+   (void *) &PRM_REPR_CACHE_LOG,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_REPL_LOG_GENERATOR_LOGGING,
    PRM_NAME_REPL_LOG_GENERATOR_LOGGING,
    (PRM_FOR_SERVER | PRM_HIDDEN),
@@ -5818,6 +5840,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_REPL_SEMISYNC_ACK_MODE,
    (void *) &prm_repl_semisync_ack_mode_upper,
    (void *) &prm_repl_semisync_ack_mode_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_GROUP_COMPLETE_DEBUG,
+   PRM_NAME_GROUP_COMPLETE_DEBUG,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_group_complete_debug_flag,
+   (void *) &prm_group_complete_debug_default,
+   (void *) &PRM_GROUP_COMPLETE_DEBUG,
+   (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}

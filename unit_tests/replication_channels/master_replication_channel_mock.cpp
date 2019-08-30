@@ -1,7 +1,7 @@
 #include "master_replication_channel_mock.hpp"
 
 #define SERVER_MODE
-#include "replication_master_senders_manager.hpp"
+#include "stream_senders_manager.hpp"
 #if !defined (WINDOWS)
 #include "tcp.h"
 #include <sys/poll.h>
@@ -17,6 +17,8 @@
 
 static mock_stream master_mock_stream;
 
+cubreplication::stream_senders_manager *cub_stream_senders = NULL;
+
 namespace master
 {
 
@@ -24,12 +26,13 @@ namespace master
   {
     master_mock_stream.init (0);
 
-    cubreplication::master_senders_manager::init ();
+    cub_stream_senders = new cubreplication::stream_senders_manager (master_mock_stream);
   }
 
   void finish ()
   {
-    cubreplication::master_senders_manager::final ();
+    delete cub_stream_senders;
+    cub_stream_senders = NULL;
   }
 
   mock_stream &
