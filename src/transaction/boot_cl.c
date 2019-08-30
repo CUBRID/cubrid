@@ -1043,7 +1043,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	  break;
 	}
       else if (BOOT_REPLICA_ONLY_BROKER_CLIENT_TYPE (client_credential->client_type)
-	       || client_credential->client_type == BOOT_CLIENT_SLAVE_ONLY_BROKER)
+	       || client_credential->client_type == DB_CLIENT_TYPE_SLAVE_ONLY_BROKER)
 
 	{
 	  check_capabilities = true;
