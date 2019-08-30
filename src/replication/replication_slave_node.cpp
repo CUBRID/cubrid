@@ -226,8 +226,8 @@ namespace cubreplication
 
     std::string ctrl_sender_daemon_name = "slave_control_sender_" + control_chn.get_channel_id ();
     /* Slave control sender is responsible for sending acks through slave_control_channel */
-    cubreplication::slave_control_sender *ctrl_sender = new slave_control_sender (std::move (
-		cubreplication::slave_control_channel (std::move (control_chn))));
+    cubreplication::slave_control_sender *ctrl_sender = new slave_control_sender (
+	    cubreplication::slave_control_channel (std::move (control_chn)));
 
     m_ctrl_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
 			   ctrl_sender, ctrl_sender_daemon_name.c_str ());
@@ -273,8 +273,11 @@ namespace cubreplication
 
   void slave_node::wait_fetch_completed ()
   {
-    // this forces transfer_receiver to stream::commit_append all data it has received
-    destroy_transfer_receiver ();
+    if (m_transfer_receiver != NULL)
+      {
+	m_transfer_receiver->wait_disconnect ();
+	destroy_transfer_receiver ();
+      }
 
     if (m_lc != NULL)
       {

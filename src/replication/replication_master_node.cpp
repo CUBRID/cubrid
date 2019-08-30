@@ -156,6 +156,9 @@ namespace cubreplication
 
   master_node::~master_node ()
   {
+    stream_entry end_of_stream_entry (m_stream, MVCCID_FIRST, stream_entry_header::END_OF_STREAM_DATA);
+    end_of_stream_entry.pack ();
+
     delete m_senders_manager;
     m_senders_manager = NULL;
 

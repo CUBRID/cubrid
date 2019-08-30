@@ -81,6 +81,10 @@ namespace cubreplication
 
       g_hostname.clear ();
 
+      if (g_slave_node != NULL)
+	{
+	  g_slave_node->wait_fetch_completed ();
+	}
       delete g_slave_node;
       g_slave_node = NULL;
       delete g_master_node;

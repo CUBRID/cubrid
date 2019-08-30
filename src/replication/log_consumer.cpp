@@ -188,6 +188,13 @@ namespace cubreplication
 		continue;
 	      }
 
+	    if (se->is_tran_state_end_of_stream ())
+	      {
+		m_stop = true;
+		delete se;
+		break;
+	      }
+
 	    if (se->is_group_commit ())
 	      {
 		se->unpack ();

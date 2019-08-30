@@ -28,6 +28,9 @@
 #include "communication_channel.hpp"
 #include "cubstream.hpp"
 
+#include <condition_variable>
+#include <mutex>
+
 namespace cubthread
 {
   class daemon;
@@ -45,19 +48,17 @@ namespace cubstream
 			 stream_position received_from_position = 0);
       virtual ~transfer_receiver ();
 
-      int write_action (const stream_position pos, char *ptr, const size_t byte_count);
-
-      /* TODO[replication] : remove this method if not used */
-      stream_position get_last_received_position ();
+      void wait_disconnect ();
 
       cubcomm::channel &get_channel ()
       {
 	return m_channel;
       }
 
-      void terminate_connection ();
-
     private:
+
+      int write_action (const stream_position pos, char *ptr, const size_t byte_count);
+      void terminate_connection ();
 
       friend class transfer_receiver_task;
 
@@ -65,6 +66,10 @@ namespace cubstream
       cubstream::stream &m_stream;
       cubstream::stream_position m_last_received_position;
       cubthread::daemon *m_receiver_daemon;
+
+      std::mutex m_sender_disconnect_mtx;
+      std::condition_variable m_sender_disconnect_cv;
+
       char m_buffer[cubcomm::MTU];
 
     protected:
