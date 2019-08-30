@@ -125,12 +125,17 @@ namespace cubreplication
     stream_entry.pack ();
   }
 
-  void source_copy_context::pack_and_add_statement (const std::string &str)
+  void source_copy_context::pack_and_add_statements (const statement_list &statements)
   {
     stream_entry stream_entry (m_stream, MVCCID_FIRST, stream_entry_header::ACTIVE);
 
-    sbr_repl_entry *sbr = new sbr_repl_entry (str.c_str (), "dba", "", NULL_LSA);
-    stream_entry.add_packable_entry (sbr);
+    for (const auto &stmt : statements)
+      {
+	const std::string &id = stmt.first;
+	const std::string &str = stmt.second;
+	sbr_repl_entry *sbr = new sbr_repl_entry (id.c_str (), str.c_str (), "dba", "", NULL_LSA);
+	stream_entry.add_packable_entry (sbr);
+      }
 
     stream_entry.pack ();
   }
@@ -178,15 +183,15 @@ namespace cubreplication
     /* some of the new states require specific actions */
     if (new_state == SCHEMA_EXTRACT_CLASSES_FINISHED)
       {
-	pack_and_add_statement (m_class_schema);
+	pack_and_add_statements (m_classes);
       }
     else if (new_state == SCHEMA_COPY_TRIGGERS)
       {
-	pack_and_add_statement (m_triggers);
+	pack_and_add_statements (m_triggers);
       }
     else if (new_state == SCHEMA_COPY_INDEXES)
       {
-	pack_and_add_statement (m_indexes);
+	pack_and_add_statements (m_indexes);
       }
 
     /* unlock after adding indexes to stream to */
@@ -237,19 +242,37 @@ namespace cubreplication
     m_error_cnt++;
   }
 
-  void source_copy_context::append_class_schema (const char *buffer, const size_t buf_size)
+  void source_copy_context::append_schema_item (statement_list &container, const char *id, const size_t id_size,
+      const char *buffer, const size_t buf_size)
   {
-    m_class_schema.append (buffer, buf_size);
+    assert (id != NULL || id_size == 0);
+    auto it = container.find (std::string (id, id_size));
+    if (it != container.end ())
+      {
+	it->second.append (buffer, buf_size);
+      }
+    else
+      {
+	container.insert (std::make_pair (std::string (id, id_size), std::string (buffer, buf_size)));
+      }
   }
 
-  void source_copy_context::append_triggers_schema (const char *buffer, const size_t buf_size)
+  void source_copy_context::append_class_schema (const char *id, const size_t id_size,
+      const char *buffer, const size_t buf_size)
   {
-    m_triggers.append (buffer, buf_size);
+    append_schema_item (m_classes, id, id_size, buffer, buf_size);
   }
 
-  void source_copy_context::append_indexes_schema (const char *buffer, const size_t buf_size)
+  void source_copy_context::append_trigger_schema (const char *id, const size_t id_size,
+      const char *buffer, const size_t buf_size)
   {
-    m_indexes.append (buffer, buf_size);
+    append_schema_item (m_triggers, id, id_size, buffer, buf_size);
+  }
+
+  void source_copy_context::append_index_schema (const char *id, const size_t id_size,
+      const char *buffer, const size_t buf_size)
+  {
+    append_schema_item (m_indexes, id, id_size, buffer, buf_size);
   }
 
   void source_copy_context::unpack_class_oid_list (const char *buffer, const size_t buf_size)
@@ -357,7 +380,12 @@ namespace cubreplication
 
     er_log_debug_replication (ARG_FILE_LINE, "new_slave_copy connected");
 
-    /* TODO : next PR : extraction process : schema phase : start the client process */
+    /* extraction process : schema phase : start the client process */
+    error = locator_repl_extract_schema (&thread_ref, "dba", "");
+    if (error != NO_ERROR)
+      {
+	goto error;
+      }
 
     error = wait_receive_class_list (thread_ref);
     if (error != NO_ERROR)
