@@ -82,8 +82,9 @@ namespace cubstream
 
 	while (curr_pos < end_pos)
 	  {
-	    if (m_stream_file.is_stopped ())
+	    if (m_stream_file.is_stop_requested ())
 	      {
+                m_stream_file.set_daemon_is_stopped ();
 		return;
 	      }
 
@@ -105,7 +106,6 @@ namespace cubstream
 
 	    curr_pos += amount_to_copy;
 	    m_stream.set_last_recyclable_pos (curr_pos);
-
 	  }
       }
 
@@ -151,7 +151,7 @@ namespace cubstream
 				       std::placeholders::_2);
     m_stream.set_filled_stream_handler (m_start_flush_handler);
 
-    m_is_stopped = false;
+    m_is_stop_request = false;
 
     m_base_path = path;
 
@@ -162,14 +162,14 @@ namespace cubstream
 #endif
   }
 
-  void stream_file::finalize (void)
+  void stream_file::stop (void)
   {
     std::map<int,int>::iterator it;
 
-    m_is_stopped = true;
-
+    m_is_stop_request = true;
     force_start_flush ();
 
+    m_writer_stop.wait ();
     cubthread::get_manager ()->destroy_daemon (m_write_daemon);
 
     std::unique_lock<std::mutex> ulock (m_file_descriptor_mutex);
@@ -903,7 +903,7 @@ namespace cubstream
   {
     std::unique_lock<std::mutex> ulock (m_flush_mutex);
     /* check again against m_append_position : it may change after the previous loop of flush daemon  */
-    m_flush_cv.wait (ulock, [&] { return m_is_stopped ||
+    m_flush_cv.wait (ulock, [&] { return m_is_stop_request ||
 					 (m_append_position < m_target_flush_position);
 				});
 

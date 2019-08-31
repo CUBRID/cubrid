@@ -858,7 +858,7 @@ css_process_master_hostname ()
     int error = cubreplication::replication_node_manager::get_slave_node ()
 				->connect_to_master (ha_Server_master_hostname, css_Master_port_id);
     cubreplication::replication_node_manager::dec_ha_tasks ();
-    assert (error == NO_ERROR);
+    //assert (error == NO_ERROR);
     // TODO: proper error handling
   });
 

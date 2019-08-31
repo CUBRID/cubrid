@@ -208,7 +208,7 @@ namespace cubreplication
 		assert (se->get_data_packed_size () == 0);
 
 		/* wait for all started tasks to finish */
-		er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task wait for all working tasks to finish\n");
+		er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task wait for all tasks to finish\n");
 		assert (se->get_stream_entry_start_position () < se->get_stream_entry_end_position ());
 
 		m_lc.wait_for_tasks ();
@@ -339,7 +339,7 @@ namespace cubreplication
   {
     m_dispatch_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
 			new dispatch_daemon_task (*this),
-			"apply_stream_entry_daemon");
+			"repl_online_dispatch_daemon");
   }
 
   void log_consumer::stop_dispatcher (void)

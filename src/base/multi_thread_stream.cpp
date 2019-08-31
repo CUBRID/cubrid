@@ -78,6 +78,17 @@ namespace cubstream
     /* assert (m_append_position - m_read_position == 0); */
   }
 
+  void multi_thread_stream::stop ()
+  {
+    if (m_stream_file)
+      {
+        m_stream_file->stop ();
+      }
+    m_is_stopped = true;
+    m_serial_read_cv.notify_one ();
+    m_recyclable_pos_cv.notify_one ();
+  }
+
   int multi_thread_stream::init (const stream_position &start_position)
   {
     stream::init (start_position);
