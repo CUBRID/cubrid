@@ -34,14 +34,14 @@
 namespace cubstream
 {
   class multi_thread_stream;
-  
+
   /*
    * stream_entry_consumer : abtract class for "consuming" stream entries with a thread pool
    *
    * Requires a multi_thread_stream
    * It does not include the dispatcher functionality, it requires the implementation of start and stop of dispatcher
    *
-   * Usage : 
+   * Usage :
    *  - implement consumer derived from stream_entry_consumer
    *  - required : implement start_dispatcher, stop_dispatcher (it must include a stream_fetcher mechanism)
    *  - optional : implement on_task_execution; this is executed before execute_task method
@@ -55,7 +55,7 @@ namespace cubstream
       cubthread::entry_workpool *m_applier_workers_pool;
 
     protected:
-      
+
       size_t m_applier_worker_threads_count;
       std::atomic<int> m_started_tasks;
 
@@ -73,7 +73,7 @@ namespace cubstream
       void stop ();
 
       virtual void start_dispatcher (void) = 0;
-      
+
       virtual void stop_dispatcher (void) = 0;
 
       void end_one_task (void)
@@ -85,7 +85,7 @@ namespace cubstream
       {
 	return m_started_tasks;
       }
-   
+
       void wait_for_tasks (void);
 
       virtual void on_task_execution () {}
@@ -93,24 +93,24 @@ namespace cubstream
       template <typename Task>
       void execute_task (Task *task, bool detailed_dump = false)
       {
-        on_task_execution ();
+	on_task_execution ();
 
-        if (detailed_dump)
-          {
+	if (detailed_dump)
+	  {
 	    string_buffer sb;
 	    task->stringify (sb);
 	    _er_log_debug (ARG_FILE_LINE, "%s::execute_task:\n%s", m_name.c_str (), sb.get_buffer ());
-          }
+	  }
 
-        push_task (task);
+	push_task (task);
       }
 
       template <typename Task>
       void push_task (Task *task)
       {
-        cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
+	cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
 
-        m_started_tasks++;
+	m_started_tasks++;
       }
   };
 

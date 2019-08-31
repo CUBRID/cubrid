@@ -267,7 +267,7 @@ namespace cubreplication
     public:
       copy_dispatch_task (copy_db_consumer &copy_consumer)
 	: m_copy_consumer (copy_consumer)
-        , m_entry_fetcher (*copy_consumer.get_stream ())
+	, m_entry_fetcher (*copy_consumer.get_stream ())
       {
       }
 
@@ -280,7 +280,7 @@ namespace cubreplication
 	while (phase != copy_db_consumer::apply_phase::END)
 	  {
 	    bool is_control_se = false;
-            stream_entry *se = NULL;
+	    stream_entry *se = NULL;
 	    int err = m_entry_fetcher.fetch_entry (se);
 	    if (err != NO_ERROR)
 	      {
