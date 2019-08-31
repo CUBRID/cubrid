@@ -375,7 +375,7 @@ namespace cubreplication
     assert (m_stream_entry.get_stream () != NULL);
     assert (!m_stream_entry.is_tran_state_undefined ());
 
-    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+    if (is_debug_detailed_dump_enabled ())
       {
 	string_buffer sb;
 	m_stream_entry.stringify (sb, stream_entry::detailed_dump);
