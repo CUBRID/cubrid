@@ -70,7 +70,7 @@ namespace cubreplication
 
     if (m_copy_consumer)
       {
-	m_copy_consumer->set_stop ();
+	m_copy_consumer->stop ();
       }
     delete m_copy_consumer;
     m_copy_consumer = NULL;
@@ -147,10 +147,9 @@ namespace cubreplication
     cubstream::stream_position start_position = 0;
     m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *m_stream, start_position);
 
-    m_copy_consumer = new copy_db_consumer ();
-    m_copy_consumer->set_stream (m_stream);
+    m_copy_consumer = new copy_db_consumer ("copy_consumer", m_stream, copy_db_consumer::MAX_APPLIER_THREADS);
 
-    m_copy_consumer->start_daemons ();
+    m_copy_consumer->start ();
 
     wait_replication_copy ();
 
@@ -232,9 +231,9 @@ namespace cubreplication
 	      }
 
 	    delete curr_stream_entry;
-
-	    m_copy_consumer.end_one_task ();
 	  }
+
+	m_copy_consumer.end_one_task ();
 
 	locator_repl_end_tran (&thread_ref, true);
       }
@@ -264,7 +263,6 @@ namespace cubreplication
   };
 
 
-  /* TODO : refactor with log_consumer:: dispatch_daemon_task */
   class copy_dispatch_task : public cubthread::entry_task
   {
     public:
@@ -280,7 +278,6 @@ namespace cubreplication
 
 	er_log_debug_replication (ARG_FILE_LINE, "copy_dispatch_task : start of replication copy");
 
-	/* TODO[replication] : parallel apply of indexes */
 	while (phase != copy_db_consumer::apply_phase::END)
 	  {
 	    bool is_control_se = false;
@@ -291,8 +288,6 @@ namespace cubreplication
 		if (err == ER_STREAM_NO_MORE_DATA)
 		  {
 		    ASSERT_ERROR ();
-                    // TODO : handle this 
-		    //m_stop = true;
 		    delete se;
 		    break;
 		  }
@@ -347,7 +342,7 @@ namespace cubreplication
 	    else
 	      {
 		copy_db_worker_task *my_copy_db_worker_task = new copy_db_worker_task (se, m_copy_consumer);
-		m_copy_consumer.execute_task (my_copy_db_worker_task);
+		m_copy_consumer.execute_task (my_copy_db_worker_task, is_debug_detailed_dump_enabled ());
 		/* stream entry is deleted by applier task thread */
 	      }
 	  }
@@ -365,62 +360,33 @@ namespace cubreplication
 
   copy_db_consumer::~copy_db_consumer ()
   {
-    set_stop ();
-
-    cubthread::get_manager ()->destroy_worker_pool (m_dispatch_workers_pool);
-    cubthread::get_manager ()->destroy_worker_pool (m_applier_workers_pool);
+    stop ();
   }
 
-  void copy_db_consumer::start_daemons (void)
+  void copy_db_consumer::start_dispatcher (void)
   {
 #if defined (SERVER_MODE)
-    er_log_debug_replication (ARG_FILE_LINE, "copy_db_consumer::start_daemons\n");
+    er_log_debug_replication (ARG_FILE_LINE, "copy_db_consumer::start_dispatcher\n");
 
     m_dispatch_workers_pool = cubthread::get_manager ()->create_worker_pool (1, 1, "repl_copy_db_dispatch_pool", NULL,
 			      1, 1);
 
     cubthread::get_manager ()->push_task (m_dispatch_workers_pool, new copy_dispatch_task (*this));
-
-    m_applier_workers_pool = cubthread::get_manager ()->create_worker_pool (m_applier_worker_threads_count,
-			     m_applier_worker_threads_count,
-			     "repl_copy_db_apply_workers",
-			     NULL, 1, 1);
 #endif /* defined (SERVER_MODE) */
   }
 
-  void copy_db_consumer::execute_task (copy_db_worker_task *task)
+  void copy_db_consumer::stop_dispatcher (void)
   {
-    /* TODO : there is no mechanism to wakeup when thread pool drops below a threshold of tasks */
-    while (m_started_tasks.load () > 10 * m_applier_worker_threads_count)
+    cubthread::get_manager ()->destroy_worker_pool (m_dispatch_workers_pool);
+  }
+
+  void copy_db_consumer::on_task_execution (void)
+  {
+    /* throtle tasks pushing */
+    while (m_started_tasks.load () > 2 * m_applier_worker_threads_count)
       {
 	thread_sleep (10);
       }
-
-    if (is_debug_detailed_dump_enabled ())
-      {
-	string_buffer sb;
-	task->stringify (sb);
-	_er_log_debug (ARG_FILE_LINE, "copy_db_consumer::execute_task:\n%s", sb.get_buffer ());
-      }
-
-    cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
-
-    m_started_tasks++;
-  }
-
-  void copy_db_consumer::wait_for_tasks (void)
-  {
-    er_log_debug_replication (ARG_FILE_LINE, "copy_db_consumer : wait_for_tasks :%d", m_started_tasks.load ());
-    while (m_started_tasks.load () > 0)
-      {
-	thread_sleep (1);
-      }
-    er_log_debug_replication (ARG_FILE_LINE, "copy_db_consumer : wait_for_tasks .. OK");
-  }
-
-  void copy_db_consumer::set_stop (void)
-  {
-    m_stream->stop ();
   }
 
 } /* namespace cubreplication */

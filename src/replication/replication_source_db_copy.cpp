@@ -380,7 +380,6 @@ namespace cubreplication
 	return error;
       }
 
-
     m_transfer_sender = new cubstream::transfer_sender (std::move (chn), *m_stream);
     m_senders_manager->add_stream_sender (m_transfer_sender);
 

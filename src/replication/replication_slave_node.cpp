@@ -52,7 +52,6 @@ int xreplication_copy_slave (THREAD_ENTRY *thread_p, const char *source_hostname
   if (css_ha_server_state () != HA_SERVER_STATE_STANDBY
       && css_ha_server_state () != HA_SERVER_STATE_MAINTENANCE)
     {
-      /* TODO[replication] : set error */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_CONNECTION_SETUP, 3, "xreplication_copy_slave", 0,
 	      "Unexpected server state");
       return ER_STREAM_CONNECTION_SETUP;
@@ -62,7 +61,7 @@ int xreplication_copy_slave (THREAD_ENTRY *thread_p, const char *source_hostname
   cubreplication::node_definition source_node (source_hostname);
   source_node.set_port (port_id);
   cubreplication::slave_node *slave_instance = cubreplication::replication_node_manager::get_slave_node ();
-  slave_instance->is_copy_running = true;
+  slave_instance->m_is_copy_running = true;
 
   er_log_debug_replication (ARG_FILE_LINE, "xreplication_copy_slave source_hostname:%s, port:%d,"
 			    " start_replication_after_copy:%d",
@@ -73,7 +72,7 @@ int xreplication_copy_slave (THREAD_ENTRY *thread_p, const char *source_hostname
   error = slave_instance->replication_copy_slave (*thread_p, &source_node, start_replication_after_copy);
   if (error != NO_ERROR)
     {
-      slave_instance->is_copy_running = false;
+      slave_instance->m_is_copy_running = false;
       return error;
     }
 
@@ -82,7 +81,7 @@ int xreplication_copy_slave (THREAD_ENTRY *thread_p, const char *source_hostname
       error = slave_instance->connect_to_master (source_hostname, port_id);
     }
 
-  slave_instance->is_copy_running = false;
+  slave_instance->m_is_copy_running = false;
   return error;
 }
 
@@ -102,7 +101,7 @@ namespace cubreplication
     m_stream = stream;
     m_stream_file = stream_file;
     m_source_min_available_pos = std::numeric_limits<cubstream::stream_position>::max ();
-    is_copy_running = false;
+    m_is_copy_running = false;
   }
 
   slave_node::~slave_node ()
@@ -194,7 +193,7 @@ namespace cubreplication
     er_log_debug_replication (ARG_FILE_LINE, "slave_node::connect_to_master host:%s, port: %d\n",
 			      master_node_hostname, master_node_port_id);
 
-    if (is_copy_running)
+    if (m_is_copy_running)
       {
 	er_log_debug_replication (ARG_FILE_LINE, "slave_node::connect_to_master COPY ALREADY RUNNING\n");
 	return error;
@@ -226,8 +225,7 @@ namespace cubreplication
 	return error;
       }
 
-    /* TODO[replication] : last position to be retrieved from recovery module */
-    cubstream::stream_position start_position = 0;
+    cubstream::stream_position start_position = log_Gl.hdr.m_ack_stream_position;
 
     if (need_replication_copy (start_position))
       {
@@ -253,9 +251,7 @@ namespace cubreplication
 			      start_position);
 
     assert (m_stream != NULL);
-    m_lc = new log_consumer ();
-
-    m_lc->set_stream (m_stream);
+    m_lc = new log_consumer ("online_repl_consumer", m_stream, log_consumer::MAX_APPLIER_THREADS);
 
     if ((REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) ==
 	REPL_SEMISYNC_ACK_ON_FLUSH)
@@ -268,7 +264,7 @@ namespace cubreplication
       }
 
     /* start log_consumer daemons and apply thread pool */
-    m_lc->start_daemons ();
+    m_lc->start ();
 
     cubcomm::server_channel control_chn (m_identity.get_hostname ().c_str ());
     control_chn.set_channel_name (REPL_CONTROL_CHANNEL_NAME);
@@ -373,7 +369,7 @@ namespace cubreplication
 
     my_apply_ctx.execute_copy ();
 
-    is_copy_running = false;
+    m_is_copy_running = false;
 
     return NO_ERROR;
   }

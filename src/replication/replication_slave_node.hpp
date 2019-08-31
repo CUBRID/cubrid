@@ -85,7 +85,7 @@ namespace cubreplication
 				  const bool start_replication_after_copy);
 
       // TODO[replication] : remove this after merging with shared stream code:
-      bool is_copy_running;
+      bool m_is_copy_running;
 
       slave_node (const char *hostname, cubstream::multi_thread_stream *stream, cubstream::stream_file *stream_file);
       ~slave_node ();

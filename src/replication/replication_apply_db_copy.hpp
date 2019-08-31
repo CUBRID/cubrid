@@ -27,6 +27,7 @@
 #define _REPLICATION_APPLY_DB_COPY_HPP_
 
 #include "cubstream.hpp"
+#include "stream_entry_consumer.hpp"
 #include "thread_manager.hpp"
 
 #include <chrono>
@@ -51,7 +52,7 @@ namespace cubreplication
   class stream_entry;
 
   /* TODO : this is copied from log_consumer : refactor */
-  class copy_db_consumer
+  class copy_db_consumer : public cubstream::stream_entry_consumer
   {
     public:
       /* TODO : thread requires a TDES, do we need to increase the number of TDES to account of this ? */
@@ -68,64 +69,31 @@ namespace cubreplication
 
     private:
 
-      cubstream::multi_thread_stream *m_stream;
-
       cubthread::entry_workpool *m_dispatch_workers_pool;
-
-      cubthread::entry_workpool *m_applier_workers_pool;
-
-      int m_applier_worker_threads_count;
-
-      std::atomic<int> m_started_tasks;
 
       bool m_is_stopped;
       bool m_is_finished;
 
     public:
-      copy_db_consumer () :
-	m_stream (NULL),
-	m_applier_workers_pool (NULL),
-	m_applier_worker_threads_count (MAX_APPLIER_THREADS),
-	m_started_tasks (0),
-	m_is_stopped (false),
-	m_is_finished (false),
-	m_last_fetched_position (0)
+      copy_db_consumer (const char *name, cubstream::multi_thread_stream *stream, size_t applier_threads)
+	: cubstream::stream_entry_consumer (name, stream, applier_threads)
+	, m_is_stopped (false)
+	, m_is_finished (false)
+	, m_last_fetched_position (0)
       {
       };
 
       ~copy_db_consumer ();
 
-      void start_daemons (void);
-      void execute_task (copy_db_worker_task *task);
+      void start_dispatcher (void) override;
+      void stop_dispatcher (void) override;
 
-      void set_stream (cubstream::multi_thread_stream *stream)
-      {
-	m_stream = stream;
-      }
-
-      cubstream::multi_thread_stream *get_stream (void)
-      {
-	return m_stream;
-      }
-
-      void end_one_task (void)
-      {
-	m_started_tasks--;
-      }
-
-      int get_started_task (void)
-      {
-	return m_started_tasks;
-      }
-
-      void wait_for_tasks (void);
+      void on_task_execution (void) override;
 
       bool is_stopping (void)
       {
 	return m_is_stopped;
       }
-
-      void set_stop (void);
 
       void set_is_finished ()
       {

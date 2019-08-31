@@ -222,7 +222,7 @@ namespace cubreplication
 		    applier_worker_task *my_repl_applier_worker_task = it->second;
 		    if (my_repl_applier_worker_task->has_commit ())
 		      {
-			m_lc.execute_task (it->second);
+			m_lc.execute_task (it->second, is_debug_detailed_dump_enabled ());
 		      }
 		    else if (my_repl_applier_worker_task->has_abort ())
 		      {
@@ -332,31 +332,24 @@ namespace cubreplication
   {
     stop ();
 
-    if (m_use_daemons)
-      {
-	cubthread::get_manager ()->destroy_daemon (m_dispatch_daemon);
-	cubthread::get_manager ()->destroy_worker_pool (m_applier_workers_pool);
-      }
-
-    delete m_subtran_applier; // must be deleted after worker pool
-
     get_stream ()->start ();
   }
 
-  void log_consumer::start_daemons (void)
+  void log_consumer::start_dispatcher (void)
   {
-    m_subtran_applier = new subtran_applier (*this);
-
     m_dispatch_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
 			new dispatch_daemon_task (*this),
 			"apply_stream_entry_daemon");
+  }
 
-    m_applier_workers_pool = cubthread::get_manager ()->create_worker_pool (m_applier_worker_threads_count,
-			     m_applier_worker_threads_count,
-			     "replication_apply_workers",
-			     NULL, 1, 1);
+  void log_consumer::stop_dispatcher (void)
+  {
+    /* wakeup fetch daemon to allow it time to detect it is stopped */
+    fetch_resume ();
 
-    m_use_daemons = true;
+    get_stream ()->stop ();
+
+    cubthread::get_manager ()->destroy_daemon (m_dispatch_daemon);
   }
 
   void log_consumer::wait_dispatcher_applied_all ()
@@ -372,43 +365,6 @@ namespace cubreplication
   {
     m_dispatch_finished = true;
     m_dispatch_finished_cv.notify_one ();
-  }
-
-  void log_consumer::push_task (cubthread::entry_task *task)
-  {
-    cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
-
-    m_started_tasks++;
-  }
-
-  void log_consumer::execute_task (applier_worker_task *task)
-  {
-    if (is_debug_detailed_dump_enabled ())
-      {
-	string_buffer sb;
-	task->stringify (sb);
-	_er_log_debug (ARG_FILE_LINE, "log_consumer::execute_task:\n%s", sb.get_buffer ());
-      }
-
-    push_task (task);
-  }
-
-  void log_consumer::wait_for_tasks (void)
-  {
-    while (m_started_tasks > 0)
-      {
-	thread_sleep (1);
-      }
-  }
-
-  void log_consumer::stop (void)
-  {
-    er_log_debug_replication (ARG_FILE_LINE, "log_consumer::stop");
-
-    /* wakeup fetch daemon to allow it time to detect it is stopped */
-    fetch_resume ();
-
-    get_stream ()->stop ();
   }
 
   void log_consumer::fetch_suspend (void)
@@ -428,7 +384,7 @@ namespace cubreplication
 
   subtran_applier &log_consumer::get_subtran_applier ()
   {
-    return *m_subtran_applier;
+    return m_subtran_applier;
   }
 
 } /* namespace cubreplication */
