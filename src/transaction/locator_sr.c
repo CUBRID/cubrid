@@ -4429,8 +4429,8 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 			    {
 			      /* Disable row replication: SM_FOREIGN_KEY_CASCADE constraint from slave will make sure
 			       * these changes are replicated */
-			      logtb_get_tdes (thread_p)->
-				get_replication_generator ().set_row_replication_disabled (true);
+			      logtb_get_tdes (thread_p)->get_replication_generator ().
+				set_row_replication_disabled (true);
 			      disabled_row_replication = true;
 			    }
 			}
@@ -7571,8 +7571,8 @@ end:
 	    {
 	      /* Aborts and simulate apply replication RBR on master node. */
 	      error_code =
-		logtb_get_tdes (thread_p)->
-		get_replication_generator ().abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
+		logtb_get_tdes (thread_p)->get_replication_generator ().
+		abort_sysop_and_simulate_apply_repl_rbr_on_master (filter_replication_lsa);
 	    }
 	  else
 	    {
@@ -14057,7 +14057,7 @@ locator_repl_start_tran (THREAD_ENTRY * thread_p)
   /* TODO */
   int error_code = NO_ERROR;
   BOOT_CLIENT_CREDENTIAL applier_Client_credentials;
-  applier_Client_credentials.client_type = DB_CLIENT_TYPE_LOG_APPLIER;;
+  applier_Client_credentials.client_type = DB_CLIENT_TYPE_LOG_APPLIER;
   applier_Client_credentials.program_name = "(repl_applier)";
   applier_Client_credentials.process_id = -1;
 
