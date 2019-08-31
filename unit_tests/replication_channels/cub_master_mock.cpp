@@ -71,7 +71,8 @@ namespace cub_master_mock
 		return;
 	      }
 
-	    if ((int) (unsigned short) ntohs (header.function_code) != COMMAND_SERVER_REQUEST_CONNECT_SLAVE)
+	    if ((int) (unsigned short) ntohs (header.function_code) != COMMAND_SERVER_REQUEST_CONNECT_SLAVE
+		&& (int) (unsigned short) ntohs (header.function_code) != COMMAND_SERVER_REQUEST_CONNECT_SLAVE_COPY_DB)
 	      {
 		assert (false);
 		return;

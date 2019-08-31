@@ -88,7 +88,8 @@ typedef enum
   MSGCAT_UTIL_SET_RESTORESLAVE = 53,
   MSGCAT_UTIL_SET_DELVOLDB = 54,
   MSGCAT_UTIL_SET_VACUUMDB = 55,
-  MSGCAT_UTIL_SET_CHECKSUMDB = 56
+  MSGCAT_UTIL_SET_CHECKSUMDB = 56,
+  MSGCAT_UTIL_SET_COPYSLAVE = 57
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -680,6 +681,16 @@ typedef enum
   CHECKSUMDB_MSG_USAGE = 60
 } MSGCAT_CHECKSUMDB_MSG;
 
+/* Message id in the set MSGCAT_UTIL_SET_COPYSLAVE */
+typedef enum
+{
+  COPYSLAVE_MSG_NOT_HA_MODE = 24,
+  COPYSLAVE_MSG_HA_NOT_SUPPORT = 58,
+  COPYSLAVE_MSG_NOT_IN_STANDALONE = 59,
+  COPYSLAVE_MSG_USAGE = 60
+} MSGCAT_COPYSLAVE_MSG;
+
+
 typedef void *DSO_HANDLE;
 
 typedef enum
@@ -727,7 +738,8 @@ typedef enum
   RESTORESLAVE,
   VACUUMDB,
   CHECKSUMDB,
-  LOGFILEDUMP,
+  COPYSLAVE,
+  LOGFILEDUMP
 } UTIL_INDEX;
 
 typedef enum
@@ -930,6 +942,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_RESTORESLAVE                "restoreslave"
 #define UTIL_OPTION_VACUUMDB			"vacuumdb"
 #define UTIL_OPTION_CHECKSUMDB			"checksumdb"
+#define UTIL_OPTION_COPYSLAVE			"copyslave"
 
 /* createdb option list */
 #define CREATE_PAGES_S                          'p'
@@ -1563,6 +1576,14 @@ typedef struct _ha_config
 #define CHECKSUM_SCHEMA_ONLY_S			14002
 #define CHECKSUM_SCHEMA_ONLY_L			"schema-only"
 
+/* copyslave option list */
+#define COPYSLAVE_SOURCE_HOSTNAME_S             's'
+#define COPYSLAVE_SOURCE_HOSTNAME_L             "source-server-hostname"
+#define COPYSLAVE_SOURCE_PORT_S                 'p'
+#define COPYSLAVE_SOURCE_PORT_L                 "source-server-port"
+#define COPYSLAVE_START_REPLICATION_S           'r'
+#define COPYSLAVE_START_REPLICATION_L           "start-replication"
+
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
 #define LIB_UTIL_SA_NAME                "cubridsa.dll"
@@ -1708,6 +1729,7 @@ extern "C"
   extern int restoreslave (UTIL_FUNCTION_ARG * arg_map);
   extern int vacuumdb (UTIL_FUNCTION_ARG * arg_map);
   extern int checksumdb (UTIL_FUNCTION_ARG * arg_map);
+  extern int copyslave (UTIL_FUNCTION_ARG * arg_map);
 
   extern void util_admin_usage (const char *argv0);
   extern void util_admin_version (const char *argv0);

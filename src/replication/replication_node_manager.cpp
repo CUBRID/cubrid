@@ -27,6 +27,7 @@
 #include "internal_tasks_worker_pool.hpp"
 #include "log_impl.h"
 #include "multi_thread_stream.hpp"
+#include "replication_common.hpp"
 #include "replication_master_node.hpp"
 #include "replication_slave_node.hpp"
 #include "server_support.h"
@@ -77,6 +78,8 @@ namespace cubreplication
 
     void finalize ()
     {
+      er_log_debug_replication (ARG_FILE_LINE, "replication_node_manager::finalize");
+
       (void) wait_ha_tasks ();
 
       g_hostname.clear ();
@@ -96,6 +99,8 @@ namespace cubreplication
 
     void start_commute_to_master_state (cubthread::entry *thread_p, bool force)
     {
+      er_log_debug_replication (ARG_FILE_LINE, "replication_node_manager::commute_to_master_state");
+
       std::unique_lock<std::mutex> ul = wait_ha_tasks ();
       inc_ha_tasks_without_lock ();
       ul.unlock ();
@@ -127,6 +132,8 @@ namespace cubreplication
 
     void start_commute_to_slave_state (cubthread::entry *thread_p, bool force)
     {
+      er_log_debug_replication (ARG_FILE_LINE, "replication_node_manager::commute_to_slave_state");
+
       std::unique_lock<std::mutex> ul = wait_ha_tasks ();
       inc_ha_tasks_without_lock ();
       ul.unlock ();

@@ -154,6 +154,7 @@ namespace cubreplication
 	return m_header.mvccid;
       }
 
+      /* TODO[replication]: change as set_type */
       void set_state (stream_entry_header::TRAN_STATE state)
       {
 	m_header.tran_state = state;
@@ -191,6 +192,21 @@ namespace cubreplication
       }
 
       bool check_mvccid_is_valid () const;
+
+      bool is_start_of_extract_heap (void)
+      {
+	return m_header.tran_state == stream_entry_header::START_OF_EXTRACT_HEAP;
+      }
+
+      bool is_end_of_extract_heap (void)
+      {
+	return m_header.tran_state == stream_entry_header::END_OF_EXTRACT_HEAP;
+      }
+
+      bool is_end_of_replication_copy (void)
+      {
+	return m_header.tran_state == stream_entry_header::END_OF_REPLICATION_COPY;
+      }
 
       int pack_stream_entry_header () override;
       int unpack_stream_entry_header () override;

@@ -769,6 +769,9 @@ css_process_new_connection (SOCKET fd)
 	case COMMAND_SERVER_REQUEST_CONNECT_SLAVE_CONTROL:
 	  css_send_to_existing_server (conn, rid, SERVER_CONNECT_SLAVE_CONTROL_CHANNEL);
 	  break;
+	case COMMAND_SERVER_REQUEST_CONNECT_SLAVE_COPY_DB:
+	  css_send_to_existing_server (conn, rid, SERVER_CONNECT_SLAVE_COPY_DB);
+	  break;
 	default:
 	  css_free_conn (conn);
 	  break;

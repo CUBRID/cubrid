@@ -32,6 +32,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <chrono>
 #include <list>
 #include <mutex>
 #include <unordered_map>
@@ -181,6 +182,8 @@ namespace cubreplication
       std::mutex m_state_mutex;
 
       std::condition_variable m_state_cv;
+
+      std::chrono::system_clock::time_point m_start_time;
   };
 
 } /* namespace cubreplication */

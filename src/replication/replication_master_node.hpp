@@ -27,6 +27,7 @@
 #define _REPLICATION_MASTER_NODE_HPP_
 
 #include "replication_node.hpp"
+#include "thread_manager.hpp"
 
 namespace cubcomm
 {
@@ -39,6 +40,11 @@ namespace cubstream
   class multi_thread_stream;
 }
 
+namespace cubcomm
+{
+  class channel;
+}
+
 namespace cubreplication
 {
   class master_ctrl;
@@ -47,6 +53,10 @@ namespace cubreplication
   class master_node : public replication_node
   {
     private:
+      const static int NEW_SLAVE_THREADS = 5;
+
+      cubthread::entry_workpool *m_new_slave_workers_pool;
+
       master_ctrl *m_control_channel_manager;
       stream_senders_manager *m_senders_manager;
 
@@ -57,10 +67,11 @@ namespace cubreplication
       master_node (const char *nam, cubstream::multi_thread_stream *stream, cubstream::stream_file *stream_file);
       ~master_node ();
 
-      void new_slave (int fd);
+      void new_slave (SOCKET fd);
       void wakeup_transfer_senders (cubstream::stream_position desired_position);
-      void add_ctrl_chn (int fd);
-      void update_senders_min_position (const cubstream::stream_position &pos);
+      void add_ctrl_chn (SOCKET fd);
+      void new_slave_copy (SOCKET fd);
+      void new_slave_copy_task (cubthread::entry &thread_ref, SOCKET fd);
   };
 
 } /* namespace cubreplication */

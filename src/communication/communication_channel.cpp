@@ -46,7 +46,8 @@ namespace cubcomm
   channel::channel (int max_timeout_in_ms)
     : m_max_timeout_in_ms (max_timeout_in_ms),
       m_type (CHANNEL_TYPE::NO_TYPE),
-      m_socket (INVALID_SOCKET)
+      m_socket (INVALID_SOCKET),
+      m_dump_data (false)
   {
   }
 
@@ -54,6 +55,7 @@ namespace cubcomm
     : m_max_timeout_in_ms (comm.m_max_timeout_in_ms)
   {
     m_type = comm.m_type;
+    m_dump_data = comm.m_dump_data;
     comm.m_type = NO_TYPE;
 
     m_socket = comm.m_socket;
@@ -84,6 +86,8 @@ namespace cubcomm
     int copy_of_maxlen_in_recvlen_out = (int) maxlen_in_recvlen_out;
     int rc = NO_ERRORS;
 
+    assert (m_type != NO_TYPE);
+
     rc = css_net_recv (m_socket, buffer, &copy_of_maxlen_in_recvlen_out, m_max_timeout_in_ms);
     maxlen_in_recvlen_out = copy_of_maxlen_in_recvlen_out;
     return (css_error_code) rc;
@@ -94,6 +98,8 @@ namespace cubcomm
     int templen, vector_length = 2;
     int total_len = 0, rc = NO_ERRORS;
     struct iovec iov[2];
+
+    assert (m_type != NO_TYPE);
 
     css_set_io_vector (&iov[0], &iov[1], buffer, (int) length, &templen);
     total_len = (int) (sizeof (int) + length);
@@ -115,7 +121,7 @@ namespace cubcomm
 
     if (IS_INVALID_SOCKET (m_socket))
       {
-	return REQUEST_REFUSED;
+        return REQUEST_REFUSED;
       }
 
     m_hostname = hostname;
@@ -166,6 +172,8 @@ namespace cubcomm
 	return -1;
       }
 
+    assert (m_type != NO_TYPE);
+
     poll_fd.fd = m_socket;
     poll_fd.events = events;
     poll_fd.revents = 0;
@@ -186,9 +194,9 @@ namespace cubcomm
     return m_socket;
   }
 
-  void er_log_debug_buffer (const char *msg, const char *buf, const size_t buf_size)
+  void channel::er_log_debug_buffer (const char *msg, const char *buf, const size_t buf_size)
   {
-    if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
+    if (m_dump_data)
       {
 	string_buffer in;
 	string_buffer out;

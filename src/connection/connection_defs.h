@@ -68,6 +68,7 @@ enum css_command_type
   SERVER_REQUEST_NEW = 5,	/* new-style server request */
   COMMAND_SERVER_REQUEST_CONNECT_SLAVE = 6,	/* slave server wants to connect to master server */
   COMMAND_SERVER_REQUEST_CONNECT_SLAVE_CONTROL = 7,	/* slave connects to a control channel */
+  COMMAND_SERVER_REQUEST_CONNECT_SLAVE_COPY_DB = 8,	/* slave server wants to connect to master server and copy DB */
 
   CSS_COMMAND_CNT
 };
@@ -154,7 +155,8 @@ enum css_server_request
   SERVER_GET_EOF = 13,
   SERVER_RECEIVE_MASTER_HOSTNAME = 14,
   SERVER_CONNECT_SLAVE_REPL = 15,
-  SERVER_CONNECT_SLAVE_CONTROL_CHANNEL = 16
+  SERVER_CONNECT_SLAVE_CONTROL_CHANNEL = 16,
+  SERVER_CONNECT_SLAVE_COPY_DB = 17
 };
 typedef enum css_server_request CSS_SERVER_REQUEST;
 

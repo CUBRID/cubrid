@@ -18,36 +18,35 @@
  */
 
 /*
- * replication_common.hpp
+ * replication_common.cpp
  */
 
-#ident "$Id$"
-
-#ifndef _REPLICATION_COMMON_HPP_
-#define _REPLICATION_COMMON_HPP_
-
-#include "error_manager.h"
-#include "system_parameter.h"
-#include <string>
-
-#define er_log_debug_replication(...) if (cubreplication::is_debug_process_enabled ()) _er_log_debug(__VA_ARGS__)
+#include "replication_common.hpp"
 
 namespace cubreplication
 {
-  typedef enum
+  const int REPL_DEBUG_PROCESS = 0x001;
+  const int REPL_DEBUG_SHORT_DUMP = 0x002;
+  const int REPL_DEBUG_DETAILED_DUMP = 0x004;
+  const int REPL_DEBUG_COMMUNICATION_DATA_DUMP = 0x010;
+
+  bool is_debug_process_enabled ()
   {
-    REPL_SEMISYNC_ACK_ON_CONSUME,
-    REPL_SEMISYNC_ACK_ON_FLUSH
-  } REPL_SEMISYNC_ACK_MODE;
+    return prm_get_integer_value (PRM_ID_DEBUG_REPLICATION_DATA) & REPL_DEBUG_PROCESS;
+  }
 
-  const std::string REPL_ONLINE_CHANNEL_NAME = "online_replication";
-  const std::string REPL_COPY_CHANNEL_NAME = "copy_db_replication";
-  const std::string REPL_CONTROL_CHANNEL_NAME = "control_replication";
+  bool is_debug_short_dump_enabled ()
+  {
+    return prm_get_integer_value (PRM_ID_DEBUG_REPLICATION_DATA) & REPL_DEBUG_SHORT_DUMP;
+  }
 
-  bool is_debug_process_enabled ();
-  bool is_debug_short_dump_enabled ();
-  bool is_debug_detailed_dump_enabled ();
-  bool is_debug_communication_data_dump_enabled ();
-};
+  bool is_debug_detailed_dump_enabled ()
+  {
+    return prm_get_integer_value (PRM_ID_DEBUG_REPLICATION_DATA) & REPL_DEBUG_DETAILED_DUMP;
+  }
 
-#endif /* _REPLICATION_COMMON_HPP_ */
+  bool is_debug_communication_data_dump_enabled ()
+  {
+    return prm_get_integer_value (PRM_ID_DEBUG_REPLICATION_DATA) & REPL_DEBUG_COMMUNICATION_DATA_DUMP;
+  }
+}

@@ -1663,6 +1663,10 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
 
   tdes->ha_sbr_statement = NULL;
+
+#if defined (SERVER_MODE)
+  tdes->replication_copy_context = NULL;
+#endif
 }
 
 /*
@@ -3995,6 +3999,27 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
   return &tdes->mvccinfo.snapshot;
 
 }
+
+#if defined (SERVER_MODE)
+/*
+ * logtb_get_mvcc_snapshot_and_gc_position  - get MVCC snapshot and start position of last group commmit
+ *
+ * return: MVCC snapshot
+ *
+ *   thread_p(in): thread entry
+ */
+MVCC_SNAPSHOT *
+logtb_get_mvcc_snapshot_and_gc_position (THREAD_ENTRY * thread_p)
+{
+  /* TODO[replication] : need to get atomically position and snapshot */
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  if (tdes != NULL && tdes->replication_copy_context != NULL)
+    {
+      tdes->replication_copy_context->set_online_replication_start_pos (log_Gl.hdr.m_ack_stream_position);
+    }
+  return logtb_get_mvcc_snapshot (thread_p);
+}
+#endif
 
 /*
  * logtb_complete_mvcc () - Called at commit or rollback, completes MVCC info

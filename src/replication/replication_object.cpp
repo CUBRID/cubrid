@@ -754,7 +754,26 @@ namespace cubreplication
 
   int multirow_object::apply (void)
   {
-    /* TODO[replication] */
+    int err = NO_ERROR;
+
+#if defined (SERVER_MODE)
+    LC_COPYAREA_OPERATION op = LC_FLUSH_INSERT;
+    cubthread::entry &my_thread = cubthread::get_entry ();
+
+    std::vector<int> dummy_int_vector;
+    std::vector<DB_VALUE> dummy_val_vector;
+
+    for (record_descriptor &record : m_rec_des_list)
+      {
+	const RECDES &recdes = record.get_recdes ();
+	/* TODO[replication] : use optimized load into page */
+	err = row_apply_insert (m_class_name, record);
+	if (err != NO_ERROR)
+	  {
+	    return err;
+	  }
+      }
+#endif
     return NO_ERROR;
   }
 

@@ -27,8 +27,10 @@
 #define _LOG_CONSUMER_HPP_
 
 #include "cubstream.hpp"
+#include "replication_subtran_apply.hpp"
 #include "semaphore.hpp"
 #include "stream_entry_fetcher.hpp"
+#include "stream_entry_consumer.hpp"
 #include "thread_manager.hpp"
 #include <cstddef>
 #include <memory>
@@ -51,7 +53,6 @@ namespace cubreplication
    */
   class applier_worker_task;
   class stream_entry;
-  class subtran_applier;
   using stream_entry_fetcher = cubstream::entry_fetcher<stream_entry>;
 
   /*
@@ -71,21 +72,15 @@ namespace cubreplication
    *  - a thread pool for applying applier_worker_task; all replication stream entries are unpacked and then
    *    each replication object from a stream entry is applied
    */
-  class log_consumer
+  class log_consumer : public cubstream::stream_entry_consumer
   {
-    private:
-      cubstream::multi_thread_stream *m_stream;
+    public:
+      static const int MAX_APPLIER_THREADS = 100;
 
+    private:
       cubthread::daemon *m_dispatch_daemon;
 
-      cubthread::entry_workpool *m_applier_workers_pool;
-      int m_applier_worker_threads_count;
-
-      cubreplication::subtran_applier *m_subtran_applier;
-
-      bool m_use_daemons;
-
-      std::atomic<int> m_started_tasks;
+      cubreplication::subtran_applier m_subtran_applier;
 
       /* fetch suspend flag : this is required in context of replication with copy phase :
        * while replication copy is running the fetch from online replication must be suspended
@@ -101,14 +96,10 @@ namespace cubreplication
 
       std::function<void (cubstream::stream_position)> ack_produce;
 
-      log_consumer ()
-	: m_stream (NULL)
+      log_consumer (const char *name, cubstream::multi_thread_stream *stream, size_t applier_threads)
+        : cubstream::stream_entry_consumer (name, stream, applier_threads)
 	, m_dispatch_daemon (NULL)
-	, m_applier_workers_pool (NULL)
-	, m_applier_worker_threads_count (100)
-	, m_subtran_applier (NULL)
-	, m_use_daemons (false)
-	, m_started_tasks (0)
+	, m_subtran_applier (*this)
 	, m_dispatch_finished (false)
 	, ack_produce ([] (cubstream::stream_position)
       {
@@ -120,41 +111,16 @@ namespace cubreplication
 
       ~log_consumer ();
 
-      void start_daemons (void);
+      void start_dispatcher (void);
+      void stop_dispatcher ();
 
       void wait_dispatcher_applied_all ();
       void set_dispatcher_finished ();
-      void execute_task (applier_worker_task *task);
-      void push_task (cubthread::entry_task *task);
-
-      void set_stream (cubstream::multi_thread_stream *stream)
-      {
-	m_stream = stream;
-      }
-
-      cubstream::multi_thread_stream *get_stream (void)
-      {
-	return m_stream;
-      }
-
-      void end_one_task (void)
-      {
-	m_started_tasks--;
-      }
 
       void set_ack_producer (const std::function<void (cubstream::stream_position)> &ack_producer)
       {
 	ack_produce = ack_producer;
       }
-
-      int get_started_task (void)
-      {
-	return m_started_tasks;
-      }
-
-      void wait_for_tasks (void);
-
-      void stop (void);
 
       void fetch_suspend ();
       void fetch_resume ();

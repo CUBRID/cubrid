@@ -239,6 +239,7 @@ static int css_process_new_connection_request (void);
 static bool css_check_ha_log_applier_working (void);
 static void css_process_new_slave (SOCKET master_fd);
 static void css_process_add_ctrl_chn (SOCKET master_fd);
+static void css_process_repl_copy_db (SOCKET master_fd);
 
 static void css_push_server_task (CSS_CONN_ENTRY & conn_ref);
 static void css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool &, THREAD_ENTRY & stopper_thread_ref);
@@ -581,6 +582,9 @@ css_process_master_request (SOCKET master_fd)
     case SERVER_CONNECT_SLAVE_CONTROL_CHANNEL:
       css_process_add_ctrl_chn (master_fd);
       break;
+    case SERVER_CONNECT_SLAVE_COPY_DB:
+      css_process_repl_copy_db (master_fd);
+      break;
 #endif
     default:
       /* master do not respond */
@@ -854,7 +858,7 @@ css_process_master_hostname ()
     int error = cubreplication::replication_node_manager::get_slave_node ()
 				->connect_to_master (ha_Server_master_hostname, css_Master_port_id);
     cubreplication::replication_node_manager::dec_ha_tasks ();
-    assert (error == NO_ERROR);
+    //assert (error == NO_ERROR);
     // TODO: proper error handling
   });
 
@@ -2457,6 +2461,35 @@ css_process_add_ctrl_chn (SOCKET master_fd)
   auto wp = cubthread::internal_tasks_worker_pool::get_instance ();
   cubthread::get_manager ()->push_task (wp, add_ctrl_task);
   // *INDENT-ON*
+}
+
+/*
+ * css_process_repl_copy_db - cub_server side function for cub_master - cub_server communication protocol
+ *                            to establish connection between a to-be-standby (slave) cub_server and this
+ *                            cub_server
+ */
+static void
+css_process_repl_copy_db (SOCKET master_fd)
+{
+  SOCKET new_fd;
+  unsigned short rid;
+
+  assert (css_ha_server_state () == HA_SERVER_STATE_ACTIVE);
+
+  /* receive new socket descriptor from the master */
+  new_fd = css_open_new_socket_from_master (master_fd, &rid);
+  if (IS_INVALID_SOCKET (new_fd))
+    {
+      assert (false);
+      return;
+    }
+
+  er_log_debug_replication (ARG_FILE_LINE, "css_process_repl_copy_db:"
+			    "start replication copy db fd from master fd=%d, current_state=%d\n", new_fd,
+			    css_ha_server_state ());
+
+  /* TODO[replication] : use ha tasks or create a thread on-fly in worker pool */
+  cubreplication::replication_node_manager::get_master_node ()->new_slave_copy (new_fd);
 }
 
 const char *

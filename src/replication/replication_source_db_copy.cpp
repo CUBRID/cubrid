@@ -246,7 +246,9 @@ namespace cubreplication
       const char *buffer, const size_t buf_size)
   {
     assert (id != NULL || id_size == 0);
-    auto it = container.find (std::string (id, id_size));
+    std::string id_str (id, id_size);
+    auto it = container.find (id_str);
+
     if (it != container.end ())
       {
 	it->second.append (buffer, buf_size);
@@ -357,6 +359,9 @@ namespace cubreplication
     int error = NO_ERROR;
     cubcomm::channel chn;
     chn.set_channel_name (REPL_COPY_CHANNEL_NAME);
+    chn.set_debug_dump_data (is_debug_communication_data_dump_enabled ());
+
+    m_start_time = std::chrono::system_clock::now ();
 
     /* TODO[replication] : handle stop from thread_manager (thread worker pool) */
     LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (&thread_ref);
@@ -378,7 +383,8 @@ namespace cubreplication
     m_transfer_sender = new cubstream::transfer_sender (std::move (chn), *m_stream);
     m_senders_manager->add_stream_sender (m_transfer_sender);
 
-    er_log_debug_replication (ARG_FILE_LINE, "new_slave_copy connected");
+    std::chrono::duration<double> execution_time = std::chrono::system_clock::now () - m_start_time;
+    er_log_debug_replication (ARG_FILE_LINE, "new_slave_copy connected  (time since start:%.6f)", execution_time.count ());
 
     /* extraction process : schema phase : start the client process */
     error = locator_repl_extract_schema (&thread_ref, "dba", "");
@@ -492,7 +498,9 @@ error:
   {
     bool sender_alive = true;
 
-    er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_slave_finished");
+    std::chrono::duration<double> execution_time = std::chrono::system_clock::now () - m_start_time;
+    er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_slave_finished (time since start:%.6f)",
+			      execution_time.count ());
 
     assert (m_transfer_sender != NULL);
     assert (m_senders_manager != NULL);
@@ -508,7 +516,9 @@ error:
 	  }
       }
 
-    er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_slave_finished OK");
+    execution_time = std::chrono::system_clock::now () - m_start_time;
+    er_log_debug_replication (ARG_FILE_LINE, "source_copy_context::wait_slave_finished OK (time since start:%.6f)",
+			      execution_time.count ());
 
     return NO_ERROR;
   }

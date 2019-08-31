@@ -27,6 +27,7 @@
 #define _STREAM_FILE_HPP_
 
 #include "multi_thread_stream.hpp"
+#include "semaphore.hpp"
 #include <map>
 #include <queue>
 
@@ -124,7 +125,7 @@ namespace cubstream
       std::mutex m_flush_mutex;
       std::condition_variable m_flush_cv;
 
-      bool m_is_stopped;
+      bool m_is_stop_request;   // used with m_flush_mutex
 
       static const int FILE_CREATE_FLAG;
 
@@ -166,7 +167,7 @@ namespace cubstream
 
       ~stream_file ()
       {
-	finalize ();
+	stop ();
       };
 
       void init (const std::string &path,
@@ -178,7 +179,8 @@ namespace cubstream
       {
 	m_strict_append_mode = mode;
       }
-      void finalize ();
+      
+      void stop ();
 
       int write (const stream_position &pos, const char *buf, const size_t amount);
 
@@ -240,13 +242,9 @@ namespace cubstream
 
       void wait_flush_signal (stream_position &start_position, stream_position &target_position);
 
-      bool is_stopped (void)
+      bool is_stop_requested (void)
       {
-	return m_is_stopped;
-      }
-      void stop_daemon (void)
-      {
-	m_is_stopped = true;
+	return m_is_stop_request;
       }
 
       stream_position get_min_available_pos (void) const;

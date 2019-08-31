@@ -85,7 +85,8 @@ namespace cubstream
 	    return;
 	  }
 
-	cubcomm::er_log_debug_buffer ("transfer_receiver_task receiving", this_consumer_channel.m_buffer, max_len);
+	this_consumer_channel.m_channel.er_log_debug_buffer ("transfer_receiver_task receiving",
+	    this_consumer_channel.m_buffer, max_len);
 
 	if (this_consumer_channel.m_stream.write (max_len, this_consumer_channel.m_write_action_function))
 	  {

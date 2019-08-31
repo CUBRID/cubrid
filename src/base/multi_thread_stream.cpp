@@ -28,6 +28,7 @@
 
 #include "error_code.h"
 #include "error_manager.h"
+#include "replication_common.hpp" // TODO[replication] : remove this when stream flush is improved
 #include "system_parameter.h"
 
 #include <algorithm>  /* for std::min */
@@ -77,11 +78,22 @@ namespace cubstream
     /* assert (m_append_position - m_read_position == 0); */
   }
 
+  void multi_thread_stream::stop ()
+  {
+    if (m_stream_file)
+      {
+        m_stream_file->stop ();
+      }
+    m_is_stopped = true;
+    m_serial_read_cv.notify_one ();
+    m_recyclable_pos_cv.notify_one ();
+  }
+
   int multi_thread_stream::init (const stream_position &start_position)
   {
     stream::init (start_position);
     m_oldest_buffered_position = start_position;
-    m_flush_on_commit = prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA);
+    m_flush_on_commit = cubreplication::is_debug_process_enabled ();  // TODO : remove replication_common header
     return NO_ERROR;
   }
 

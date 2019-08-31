@@ -34,6 +34,11 @@ namespace cubstream
   class transfer_receiver;
 }
 
+namespace cubcomm
+{
+  class channel;
+}
+
 namespace cubthread
 {
   class daemon;
@@ -72,9 +77,15 @@ namespace cubreplication
 
       void disconnect_from_master ();
 
-      void stop_and_destroy_online_repl ();
-
     public:
+
+      void stop_and_destroy_online_repl (void);
+
+      int replication_copy_slave (cubthread::entry &entry, node_definition *source_node,
+				  const bool start_replication_after_copy);
+
+      // TODO[replication] : remove this after merging with shared stream code:
+      bool m_is_copy_running;
 
       slave_node (const char *hostname, cubstream::multi_thread_stream *stream, cubstream::stream_file *stream_file);
       ~slave_node ();
@@ -82,7 +93,10 @@ namespace cubreplication
       void wait_fetch_completed ();
 
       int connect_to_master (const char *master_node_hostname, const int master_node_port_id);
+
   };
+
+
 
 } /* namespace cubreplication */
 
