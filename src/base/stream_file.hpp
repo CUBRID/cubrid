@@ -125,7 +125,6 @@ namespace cubstream
       std::mutex m_flush_mutex;
       std::condition_variable m_flush_cv;
 
-      cubsync::event_semaphore m_writer_stop;
       bool m_is_stop_request;   // used with m_flush_mutex
 
       static const int FILE_CREATE_FLAG;
@@ -246,15 +245,6 @@ namespace cubstream
       bool is_stop_requested (void)
       {
 	return m_is_stop_request;
-      }
-      void stop_daemon (void)
-      {
-	m_is_stop_request = true;
-      }
-
-      void set_daemon_is_stopped (void)
-      {
-        m_writer_stop.set ();
       }
 
       stream_position get_min_available_pos (void) const;

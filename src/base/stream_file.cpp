@@ -84,7 +84,6 @@ namespace cubstream
 	  {
 	    if (m_stream_file.is_stop_requested ())
 	      {
-                m_stream_file.set_daemon_is_stopped ();
 		return;
 	      }
 
@@ -169,7 +168,6 @@ namespace cubstream
     m_is_stop_request = true;
     force_start_flush ();
 
-    m_writer_stop.wait ();
     cubthread::get_manager ()->destroy_daemon (m_write_daemon);
 
     std::unique_lock<std::mutex> ulock (m_file_descriptor_mutex);
