@@ -1315,7 +1315,7 @@ namespace test_stream
 
     cubstream::stream_file *my_stream_file =
 	    new cubstream::stream_file (*my_stream, "test_stream_folder", file_size, 2);
-    my_stream_file->stop_daemon ();
+    my_stream_file->stop ();
 
     cubstream::stream::write_func_t writer_func;
     writer_func = std::bind (&write_action, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
