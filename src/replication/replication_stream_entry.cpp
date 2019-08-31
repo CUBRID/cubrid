@@ -120,8 +120,6 @@ namespace cubreplication
   stream_entry::pack_stream_entry_header ()
   {
     cubpacking::packer *serializator = get_packer ();
-    unsigned int count_and_flags;
-    unsigned int state_flags;
 
     assert (check_mvccid_is_valid ());
 
@@ -141,10 +139,8 @@ namespace cubreplication
   stream_entry::unpack_stream_entry_header ()
   {
     cubpacking::unpacker *serializator = get_unpacker ();
-    unsigned int count_and_flags;
-    unsigned int state_flags;
 
-    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+    if (is_debug_detailed_dump_enabled ())
       {
 	string_buffer sb, sb_hex;
 	size_t buf_size = serializator->get_buffer_end () - serializator->get_buffer_start ();
