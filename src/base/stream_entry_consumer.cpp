@@ -31,6 +31,7 @@ namespace cubstream
     : m_name (name ? name : "")
     , m_stream (stream)
     , m_applier_worker_threads_count (applier_threads)
+    , m_started_tasks (0)
     {
     }
 
