@@ -33,6 +33,7 @@
 #endif // not SERVER/SA modes
 
 #include "boot.h"
+#include "btree_unique.hpp"
 #include "client_credentials.hpp"
 #include "config.h"
 #include "connection_globals.h"
@@ -46,7 +47,9 @@
 #include "log_archives.hpp"
 #include "log_comm.h"
 #include "log_common_impl.h"
+#include "log_generator.hpp"
 #include "log_lsa.hpp"
+#include "log_postpone_cache.hpp"
 #include "log_storage.hpp"
 #include "mvcc.h"
 #include "mvcc_table.hpp"
@@ -56,7 +59,6 @@
 #include "storage_common.h"
 #include "thread_entry.hpp"
 #include "transaction_transient.hpp"
-#include "log_generator.hpp"
 
 #include <assert.h>
 #if defined(SOLARIS)
@@ -242,7 +244,7 @@ const int LOG_SYSTEM_WORKER_INCR_TRANID = -1;
 #if defined (SERVER_MODE)
 #define LOG_CHECK_LOG_APPLIER(thread_p) \
   (thread_p != NULL \
-   && logtb_find_client_type (thread_p->tran_index) == BOOT_CLIENT_LOG_APPLIER)
+   && logtb_find_client_type (thread_p->tran_index) == DB_CLIENT_TYPE_LOG_APPLIER)
 #else
 #define LOG_CHECK_LOG_APPLIER(thread_p) (0)
 #endif /* !SERVER_MODE */
@@ -496,8 +498,7 @@ struct log_tdes
 				 * this site is a participant. */
   int num_unique_btrees;	/* # of unique btrees contained in unique_stat_info array */
   int max_unique_btrees;	/* size of unique_stat_info array */
-  BTREE_UNIQUE_STATS *tran_unique_stats;	/* Store local statistical info for multiple row update performed by
-						 * client. */
+  multi_index_unique_stats m_multiupd_stats;
 #if defined(_AIX)
   sig_atomic_t interrupt;
 #else				/* _AIX */
@@ -545,6 +546,8 @@ struct log_tdes
   bool is_user_active;
 
   LOG_RCV_TDES rcv;
+
+  log_postpone_cache m_log_postpone_cache;
 
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
@@ -997,7 +1000,7 @@ extern MVCCID logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p);
 extern LOG_PAGEID logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p);
 extern int logpb_find_oldest_available_arv_num (THREAD_ENTRY * thread_p);
 
-extern int logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info);
+extern void logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info);
 
 extern MVCCID logtb_find_current_mvccid (THREAD_ENTRY * thread_p);
 extern MVCCID logtb_get_current_mvccid (THREAD_ENTRY * thread_p);
@@ -1011,9 +1014,17 @@ extern void logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool 
 extern void logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 
 extern LOG_TRAN_CLASS_COS *logtb_tran_find_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid, bool create);
-extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int n_keys, int n_oids, int n_nulls,
-					   bool write_to_log);
-extern int logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int n_keys, int n_oids,
+extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int n_keys, int n_oids,
+					   int n_nulls, bool write_to_log);
+
+// *INDENT-OFF*
+extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID &btid, const btree_unique_stats &ustats,
+                                           bool write_to_log);
+extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const multi_index_unique_stats &multi_stats,
+                                           bool write_to_log);
+// *INDENT-ON*
+
+extern int logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int n_keys, int n_oids,
 						int n_nulls);
 extern LOG_TRAN_BTID_UNIQUE_STATS *logtb_tran_find_btid_stats (THREAD_ENTRY * thread_p, const BTID * btid, bool create);
 extern int logtb_tran_prepare_count_optim_classes (THREAD_ENTRY * thread_p, const char **classes,

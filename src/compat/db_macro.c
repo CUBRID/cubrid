@@ -85,7 +85,6 @@ static int valcnv_Max_set_elements = 10;
 int db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 #else
 int db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
-int db_Client_type = DB_CLIENT_TYPE_DEFAULT;
 #endif
 int db_Disable_modifications = 0;
 
@@ -830,7 +829,7 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
       break;
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
-      db_make_bit (value, 1, (const DB_C_BIT) "0", 1);
+      db_make_bit (value, 1, (DB_C_BIT) "0", 1);
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:

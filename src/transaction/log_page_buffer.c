@@ -3169,7 +3169,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
 	  writer_info->trace_last_writer = true;
 	  writer_info->last_writer_elapsed_time = 0;
-	  writer_info->last_writer_client_info.client_type = BOOT_CLIENT_UNKNOWN;
+	  writer_info->last_writer_client_info.client_type = DB_CLIENT_TYPE_UNKNOWN;
 	}
 
       entry = writer_info->writer_list;
@@ -7085,6 +7085,8 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   time_t tmp_time;
   char time_val[CTIME_MAX];
 
+  LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
+
 #if defined (SERVER_MODE)
   // check whether there is ongoing backup.
   LOG_CS_ENTER (thread_p);
@@ -7187,6 +7189,36 @@ loop:
   else
     {
       first_arv_needed = log_Gl.hdr.nxarv_num;
+    }
+
+  vacuum_first_pageid = vacuum_min_log_pageid_to_keep (thread_p);
+  vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First log pageid in vacuum data is %lld\n", vacuum_first_pageid);
+
+  if (vacuum_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (vacuum_first_pageid))
+    {
+      int min_arv_required_for_vacuum = logpb_get_archive_number (thread_p, vacuum_first_pageid);
+
+      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive number used for vacuum is %d\n",
+		     min_arv_required_for_vacuum);
+
+      if (min_arv_required_for_vacuum >= 0)
+	{
+	  if (first_arv_needed >= 0)
+	    {
+	      first_arv_needed = MIN (first_arv_needed, min_arv_required_for_vacuum);
+	    }
+	  else
+	    {
+	      first_arv_needed = min_arv_required_for_vacuum;
+	    }
+	}
+      else
+	{
+	  /* Page should be in archive. */
+	  assert (false);
+	}
+
+      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive needed for backup is %d\n", first_arv_needed);
     }
 
   /* Get the current checkpoint address */
@@ -10708,6 +10740,7 @@ logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghd
   LSA_SET_NULL (&loghdr->mvcc_op_log_lsa);
   loghdr->last_block_oldest_mvccid = MVCCID_NULL;
   loghdr->last_block_newest_mvccid = MVCCID_NULL;
+  loghdr->does_block_need_vacuum = false;
 }
 
 /*

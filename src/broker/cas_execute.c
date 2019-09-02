@@ -489,12 +489,12 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	{
 	  if (shm_appl->replica_only_flag)
 	    {
-	      client_type = 12;	/* DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY in db.h */
+	      client_type = DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY;
 	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: read_replica_only_broker");
 	    }
 	  else
 	    {
-	      client_type = 5;	/* DB_CLIENT_TYPE_READ_ONLY_BROKER in db.h */
+	      client_type = DB_CLIENT_TYPE_READ_ONLY_BROKER;
 	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: read_only_broker");
 	    }
 	}
@@ -502,12 +502,12 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	{
 	  if (shm_appl->replica_only_flag)
 	    {
-	      client_type = 13;	/* DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY in db.h */
+	      client_type = DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY;
 	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: slave_replica_only_broker");
 	    }
 	  else
 	    {
-	      client_type = 6;	/* DB_CLIENT_TYPE_SLAVE_ONLY_BROKER in db.h */
+	      client_type = DB_CLIENT_TYPE_SLAVE_ONLY_BROKER;
 	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: slave_only_broker");
 	    }
 	}
@@ -515,12 +515,12 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	{
 	  if (shm_appl->replica_only_flag)
 	    {
-	      client_type = 11;	/* DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY */
+	      client_type = DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY;
 	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: read_write_replica_only_broker");
 	    }
 	  else
 	    {
-	      client_type = 4;	/* DB_CLIENT_TYPE_BROKER in db.h */
+	      client_type = DB_CLIENT_TYPE_BROKER;
 	    }
 	}
 
@@ -5777,7 +5777,7 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
   DB_DOMAIN *domain;
   char *name;
   int db_type;
-  char arg_str[128];
+  std::string arg_str;
   int num_args;
   T_BROKER_VERSION client_version = req_info->client_version;
 
@@ -5831,7 +5831,6 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
       add_res_data_short (net_buf, cas_type, 0, NULL);
 
       /* 3. arg domain */
-      arg_str[0] = '\0';
       num_args = db_method_arg_count (tmp_p);
       for (j = 1; j <= num_args; j++)
 	{
@@ -5847,10 +5846,10 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
 	    {
 	      cas_type = set_extended_cas_type (CCI_U_TYPE_UNKNOWN, (DB_TYPE) db_type);
 	    }
-
-	  sprintf (arg_str, "%s%d ", arg_str, cas_type);
+	  arg_str.push_back (cas_type);
+	  arg_str.push_back (' ');
 	}
-      add_res_data_string (net_buf, arg_str, strlen (arg_str), 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
+      add_res_data_string (net_buf, arg_str.c_str (), arg_str.size (), 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       tuple_num++;
       cursor_pos++;

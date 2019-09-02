@@ -32,8 +32,9 @@
 #include "disk_manager.h"
 #include "log_impl.h"
 #include "log_lsa.hpp"
-#include "recovery.h"
+#include "log_postpone_cache.hpp"
 #include "porting_inline.hpp"
+#include "recovery.h"
 #include "storage_common.h"
 #include "system_parameter.h"
 #include "thread_entry.hpp"
@@ -101,22 +102,6 @@ struct vacuum_heap_object
   OID oid;			/* Object OID. */
 };
 
-enum vacuum_cache_postpone_status
-{
-  VACUUM_CACHE_POSTPONE_NO,
-  VACUUM_CACHE_POSTPONE_YES,
-  VACUUM_CACHE_POSTPONE_OVERFLOW
-};
-typedef enum vacuum_cache_postpone_status VACUUM_CACHE_POSTPONE_STATUS;
-
-typedef struct vacuum_cache_postpone_entry VACUUM_CACHE_POSTPONE_ENTRY;
-struct vacuum_cache_postpone_entry
-{
-  LOG_LSA lsa;
-  char *redo_data;
-};
-#define VACUUM_CACHE_POSTPONE_ENTRIES_MAX_COUNT 10
-
 /* VACUUM_WORKER - Vacuum worker information */
 typedef struct vacuum_worker VACUUM_WORKER;
 struct vacuum_worker
@@ -136,14 +121,6 @@ struct vacuum_worker
 
   // page buffer private lru list
   int private_lru_index;
-
-  /* Caches postpones to avoid reading them from log after commit top operation with postpone. Otherwise, log critical
-   * section may be required which will slow the access on merged index nodes. */
-  VACUUM_CACHE_POSTPONE_STATUS postpone_cache_status;
-  char *postpone_redo_data_buffer;
-  char *postpone_redo_data_ptr;
-  VACUUM_CACHE_POSTPONE_ENTRY postpone_cached_entries[VACUUM_CACHE_POSTPONE_ENTRIES_MAX_COUNT];
-  int postpone_cached_entries_count;
 
   char *prefetch_log_buffer;	/* buffer for prefetching log pages */
   LOG_PAGEID prefetch_first_pageid;	/* first prefetched log pageid */
@@ -241,7 +218,7 @@ vacuum_is_process_log_for_vacuum (THREAD_ENTRY * thread_p)
 #define VACUUM_IS_THREAD_VACUUM_MASTER vacuum_is_thread_vacuum_master
 
 extern int vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * vacuum_data_vfid,
-			      VFID * dropped_files_vfid);
+			      VFID * dropped_files_vfid, bool is_restore);
 extern void vacuum_finalize (THREAD_ENTRY * thread_p);
 extern int vacuum_boot (THREAD_ENTRY * thread_p);
 extern void vacuum_stop (THREAD_ENTRY * thread_p);
@@ -266,11 +243,6 @@ extern int vacuum_rv_undoredo_data_set_link (THREAD_ENTRY * thread_p, LOG_RCV * 
 extern void vacuum_rv_undoredo_data_set_link_dump (FILE * fp, int length, void *data);
 extern int vacuum_rv_redo_append_data (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void vacuum_rv_redo_append_data_dump (FILE * fp, int length, void *data);
-
-extern void vacuum_cache_log_postpone_redo_data (THREAD_ENTRY * thread_p, char *data_header, char *rcv_data,
-						 int rcv_data_length);
-extern void vacuum_cache_log_postpone_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa);
-extern bool vacuum_do_postpone_from_cache (THREAD_ENTRY * thread_p, LOG_LSA * start_postpone_lsa);
 extern int vacuum_rv_redo_start_job (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
 extern int vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, int n_heap_objects,
@@ -299,12 +271,12 @@ extern DISK_ISVALID vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY * thread_
 extern bool vacuum_is_mvccid_vacuumed (MVCCID id);
 extern int vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, INT16 rec_type);
 
-extern void vacuum_log_last_blockid (THREAD_ENTRY * thread_p);
-
 extern int vacuum_rv_es_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 #if defined (SERVER_MODE)
 extern void vacuum_notify_es_deleted (THREAD_ENTRY * thread_p, const char *uri);
 #endif /* SERVER_MODE */
 
 extern int vacuum_reset_data_after_copydb (THREAD_ENTRY * thread_p);
+
+extern void vacuum_sa_reflect_last_blockid (THREAD_ENTRY * thread_p);
 #endif /* _VACUUM_H_ */

@@ -67,7 +67,8 @@ sql_log2_init (char *br_name, int index, int sql_log_value, bool log_reuse_flag)
 	       index + 1, (int) time (NULL), log_count++);
     }
   get_cubrid_file (FID_SQL_LOG_DIR, dirname, BROKER_PATH_MAX);
-  snprintf (filename, sizeof (filename) - 1, "%s%s", dirname, sql_log2_file);
+  int ret = snprintf (filename, sizeof (filename) - 1, "%s%s", dirname, sql_log2_file);
+  (void) ret;			// suppress format-truncate warning
 
   sql_log2_fp = fopen (filename, "a");
   if (sql_log2_fp == NULL)

@@ -387,24 +387,26 @@ typedef enum
   IS_LOCK = 4,			/* Intention Shared lock */
   S_LOCK = 5,			/* Shared lock */
   IX_LOCK = 6,			/* Intention exclusive lock */
-  SIX_LOCK = 7,			/* Shared and intention exclusive lock */
-  U_LOCK = 8,			/* Update lock */
-  X_LOCK = 9,			/* Exclusive lock */
-  SCH_M_LOCK = 10		/* Schema Modification Lock */
+  BU_LOCK = 7,			/* Bulk Update Lock */
+  SIX_LOCK = 8,			/* Shared and intention exclusive lock */
+  U_LOCK = 9,			/* Update lock */
+  X_LOCK = 10,			/* Exclusive lock */
+  SCH_M_LOCK = 11		/* Schema Modification Lock */
 } LOCK;
 
-extern LOCK lock_Conv[11][11];
+extern LOCK lock_Conv[12][12];
 
-#define LOCK_TO_LOCKMODE_STRING(lock) 			\
-  (((lock) ==NULL_LOCK) ? "NULL_LOCK" :			\
-   ((lock) ==  IS_LOCK) ? "  IS_LOCK" :			\
-   ((lock) ==   S_LOCK) ? "   S_LOCK" :			\
-   ((lock) ==  IX_LOCK) ? "  IX_LOCK" :			\
-   ((lock) == SIX_LOCK) ? " SIX_LOCK" :			\
-   ((lock) ==   U_LOCK) ? "   U_LOCK" :			\
-   ((lock) ==  SCH_S_LOCK) ? "  SCH_S_LOCK" :		\
-   ((lock) ==  SCH_M_LOCK) ? "  SCH_M_LOCK" :		\
-   ((lock) ==   X_LOCK) ? "   X_LOCK" : "UNKNOWN")
+#define LOCK_TO_LOCKMODE_STRING(lock) \
+  (((lock) == NULL_LOCK)  ? "  NULL_LOCK" : \
+   ((lock) == IS_LOCK)    ? "    IS_LOCK" : \
+   ((lock) == S_LOCK)     ? "     S_LOCK" : \
+   ((lock) == IX_LOCK)    ? "    IX_LOCK" : \
+   ((lock) == SIX_LOCK)   ? "   SIX_LOCK" : \
+   ((lock) == U_LOCK)     ? "     U_LOCK" : \
+   ((lock) == BU_LOCK)    ? "    BU_LOCK" : \
+   ((lock) == SCH_S_LOCK) ? " SCH_S_LOCK" : \
+   ((lock) == SCH_M_LOCK) ? " SCH_M_LOCK" : \
+   ((lock) == X_LOCK)     ? "     X_LOCK" : "UNKNOWN")
 
 /* CLASSNAME TO OID RETURN VALUES */
 
@@ -454,18 +456,6 @@ typedef enum
 #define CUBRID_MAGIC_LOG_INFO                   "CUBRID/LogInfo"
 #define CUBRID_MAGIC_DATABASE_BACKUP            "CUBRID/Backup_v2"
 #define CUBRID_MAGIC_DATABASE_BACKUP_OLD        "CUBRID/Backup"
-
-/* B+tree local statististical information for Uniqueness enforcement */
-typedef struct btree_unique_stats BTREE_UNIQUE_STATS;
-struct btree_unique_stats
-{
-  BTID btid;
-  int num_nulls;
-  int num_keys;
-  int num_oids;
-};
-
-#define UNIQUE_STAT_INFO_INCREMENT   10
 
 /*
  * Typedefs related to the scan data structures

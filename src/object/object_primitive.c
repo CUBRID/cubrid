@@ -10319,14 +10319,14 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   char *src_str, *new_, *new_compressed_buf;
 
   assert (!db_value_is_corrupted (src));
-  if (src == NULL || (DB_IS_NULL (src) && db_value_precision (src) == 0))
+  if (src == NULL || DB_IS_NULL (src))
     {
       error = db_value_domain_init (dest, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, 0);
     }
-  else if (DB_IS_NULL (src) || (src_str = db_get_string (src)) == NULL)
+  else if ((src_str = db_get_string (src)) == NULL)
     {
       error = db_value_domain_init (dest, DB_TYPE_VARCHAR, db_value_precision (src), 0);
-      if (!DB_IS_NULL (src) && src->data.ch.info.is_max_string)
+      if (src->data.ch.info.is_max_string)
 	{
 	  dest->data.ch.info.is_max_string = true;
 	  dest->domain.general_info.is_null = 0;
@@ -10343,16 +10343,17 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
       src_precision = db_value_precision (src);
       src_length = db_get_string_size (src);
       if (src_length < 0)
-	src_length = strlen (src_str);
+	{
+	  src_length = strlen (src_str);
+	}
 
       assert (src->data.ch.info.is_max_string == false);
 
       /* should we be paying attention to this? it is extremely dangerous */
       if (!copy)
 	{
-	  error =
-	    db_make_varchar (dest, src_precision, src_str, src_length, db_get_string_codeset (src),
-			     db_get_string_collation (src));
+	  error = db_make_varchar (dest, src_precision, src_str, src_length, db_get_string_codeset (src),
+				   db_get_string_collation (src));
 	  dest->data.ch.medium.compressed_buf = src->data.ch.medium.compressed_buf;
 	  dest->data.ch.info.compressed_need_clear = false;
 	}
@@ -12282,13 +12283,9 @@ mr_setval_nchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   char *src_string, *new_;
 
   assert (!db_value_is_corrupted (src));
-  if (src == NULL || (DB_IS_NULL (src) && db_value_precision (src) == 0))
+  if (src == NULL || DB_IS_NULL (src))
     {
-      db_value_domain_init (dest, DB_TYPE_NCHAR, TP_FLOATING_PRECISION_VALUE, 0);
-    }
-  else if (DB_IS_NULL (src))
-    {
-      db_value_domain_init (dest, DB_TYPE_NCHAR, db_value_precision (src), 0);
+      db_value_domain_init (dest, DB_TYPE_NCHAR, DB_DEFAULT_PRECISION, 0);
     }
   else
     {
@@ -13163,11 +13160,11 @@ mr_setval_varnchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   char *src_str, *new_;
 
   assert (!db_value_is_corrupted (src));
-  if (src == NULL || (DB_IS_NULL (src) && db_get_string (src) == 0))
+  if (src == NULL || DB_IS_NULL (src))
     {
       error = db_value_domain_init (dest, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, 0);
     }
-  else if (DB_IS_NULL (src) || (src_str = db_get_string (src)) == NULL)
+  else if ((src_str = db_get_string (src)) == NULL)
     {
       error = db_value_domain_init (dest, DB_TYPE_VARNCHAR, db_value_precision (src), 0);
     }
@@ -13204,6 +13201,31 @@ mr_setval_varnchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 				db_get_string_collation (src));
 	      dest->need_clear = true;
 	    }
+
+	  if (src->data.ch.medium.compressed_buf == NULL)
+	    {
+	      dest->data.ch.medium.compressed_buf = NULL;
+	      dest->data.ch.info.compressed_need_clear = false;
+	    }
+	  else
+	    {
+	      char *new_compressed_buf = (char *) db_private_alloc (NULL, src->data.ch.medium.compressed_size + 1);
+	      if (new_compressed_buf == NULL)
+		{
+		  db_value_domain_init (dest, DB_TYPE_VARNCHAR, src_precision, 0);
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		}
+	      else
+		{
+		  memcpy (new_compressed_buf, src->data.ch.medium.compressed_buf, src->data.ch.medium.compressed_size);
+		  new_compressed_buf[src->data.ch.medium.compressed_size] = '\0';
+		  dest->data.ch.medium.compressed_buf = new_compressed_buf;
+		  dest->data.ch.info.compressed_need_clear = true;
+		}
+	    }
+
+	  dest->data.ch.medium.compressed_size = src->data.ch.medium.compressed_size;
 	}
     }
 
@@ -14237,13 +14259,9 @@ mr_setval_bit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   char *src_string, *new_;
 
   assert (!db_value_is_corrupted (src));
-  if (src == NULL || (DB_IS_NULL (src) && db_value_precision (src) == 0))
+  if (src == NULL || DB_IS_NULL (src))
     {
-      db_value_domain_init (dest, DB_TYPE_BIT, TP_FLOATING_PRECISION_VALUE, 0);
-    }
-  else if (DB_IS_NULL (src))
-    {
-      db_value_domain_init (dest, DB_TYPE_BIT, db_value_precision (src), 0);
+      db_value_domain_init (dest, DB_TYPE_BIT, DB_DEFAULT_PRECISION, 0);
     }
   else
     {
@@ -15054,11 +15072,11 @@ mr_setval_varbit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   char *src_str, *new_;
 
   assert (!db_value_is_corrupted (src));
-  if (src == NULL || (DB_IS_NULL (src) && db_value_precision (src) == 0))
+  if (src == NULL || DB_IS_NULL (src))
     {
       error = db_value_domain_init (dest, DB_TYPE_VARBIT, DB_DEFAULT_PRECISION, 0);
     }
-  else if (DB_IS_NULL (src) || (src_str = db_get_string (src)) == NULL)
+  else if ((src_str = db_get_string (src)) == NULL)
     {
       error = db_value_domain_init (dest, DB_TYPE_VARBIT, db_value_precision (src), 0);
     }

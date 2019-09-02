@@ -253,7 +253,8 @@ struct btree_node
 
 /* Recovery routines */
 extern void btree_rv_nodehdr_dump (FILE * fp, int length, void *data);
-extern void btree_rv_mvcc_save_increments (BTID * btid, int key_delta, int oid_delta, int null_delta, RECDES * recdes);
+extern void btree_rv_mvcc_save_increments (const BTID * btid, int key_delta, int oid_delta, int null_delta,
+					   RECDES * recdes);
 
 extern bool btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value);
 extern void btree_init_temp_key_value (bool * clear_flag, DB_VALUE * key_value);
