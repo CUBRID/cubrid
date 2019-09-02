@@ -24,9 +24,6 @@
 #ifndef _TRANACTION_SINGLE_NODE_GROUP_COMPLETE_MANAGER_HPP_
 #define _TRANACTION_SINGLE_NODE_GROUP_COMPLETE_MANAGER_HPP_
 
-#include "log_manager.h"
-#include "thread_daemon.hpp"
-#include "thread_entry_task.hpp"
 #include "transaction_group_complete_manager.hpp"
 
 namespace cubtx
@@ -39,11 +36,8 @@ namespace cubtx
   class single_node_group_complete_manager : public group_complete_manager, public log_flush_lsa
   {
     public:
+      single_node_group_complete_manager ();
       ~single_node_group_complete_manager () override;
-
-      static single_node_group_complete_manager *get_instance ();
-      static void init ();
-      static void final ();
 
       /* group_complete_manager methods */
       void do_prepare_complete (THREAD_ENTRY *thread_p) override;
@@ -61,23 +55,13 @@ namespace cubtx
 #if defined (SERVER_MODE)
       bool can_wakeup_group_complete_daemon (bool inc_gc_request_count);
 #endif
-      static void get_group_commit_interval (bool &is_timed_wait, cubthread::delta_time &period);
-
-      static single_node_group_complete_manager *gl_single_node_group;
-      static cubthread::daemon *gl_single_node_group_complete_daemon;
 
       LOG_LSA m_latest_closed_group_start_log_lsa;
       LOG_LSA m_latest_closed_group_end_log_lsa;
   };
 
-  //
-  // single_node_group_complete_task is class for master group complete daemon
-  //
-  class single_node_group_complete_task : public cubthread::entry_task
-  {
-    public:
-      /* entry_task methods */
-      void execute (cubthread::entry &thread_ref) override;
-  };
+  void initialize_single_node_gcm ();
+  void finalize_single_node_gcm ();
+  single_node_group_complete_manager *get_single_node_gcm_instance ();
 }
 #endif // !_TRANACTION_SINGLE_NODE_GROUP_COMPLETE_MANAGER_HPP_
