@@ -872,28 +872,17 @@ xvacuum (THREAD_ENTRY * thread_p)
   bool save_check_interrupt;
   bool dummy_continue_check_interrupt;
 
+  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
+    {
+      return NO_ERROR;
+    }
+
   int error_code = NO_ERROR;
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_STAND_ALONE_VACUUM_START, 0);
   er_log_debug (ARG_FILE_LINE, "Stand-alone vacuum start.\n");
 
   PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
-
-  if (vacuum_Global_oldest_active_blockers_counter == 0)
-    {
-      local_oldest_active_mvccid = logtb_get_oldest_active_mvccid (thread_p);
-
-      /* check again, maybe concurrent thread has modified the counter value */
-      if (vacuum_Global_oldest_active_blockers_counter == 0)
-	{
-	  ATOMIC_STORE_64 (&vacuum_Global_oldest_active_mvccid, local_oldest_active_mvccid);
-	}
-    }
-
-  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
-    {
-      return NO_ERROR;
-    }
 
   if (!vacuum_Data.is_loaded)
     {
