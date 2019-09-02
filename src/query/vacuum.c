@@ -362,7 +362,6 @@ private:
     VACUUM_LOG_BLOCKID m_last_blockid;	/* Block id for last vacuum data entry... This entry is actually the id of last
 					 * added block which may not even be in vacuum data (being already vacuumed).
 					 */
-  vacuum_job_cursor m_job_cursor;
 };
 static VACUUM_DATA vacuum_Data;
 
