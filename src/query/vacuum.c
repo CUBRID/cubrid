@@ -913,12 +913,6 @@ restart:
   /* Update oldest MVCCID. */
   vacuum_update_oldest_unvacuumed_mvccid (thread_p);
 
-  if (vacuum_Data.shutdown_requested)
-    {
-      /* Stop generating other jobs. */
-      return NO_ERROR;
-    }
-
   /* Search for blocks ready to be vacuumed and generate jobs. */
 
   data_page = vacuum_fix_data_page (thread_p, &vacuum_Data.vpid_job_cursor);
