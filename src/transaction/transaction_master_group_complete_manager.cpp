@@ -27,6 +27,8 @@
 #include "transaction_master_group_complete_manager.hpp"
 #include "replication_master_node.hpp"
 #include "replication_node_manager.hpp"
+#include "thread_daemon.hpp"
+#include "thread_entry_task.hpp"
 
 namespace cubtx
 {
@@ -40,7 +42,16 @@ namespace cubtx
   {
     public:
       /* entry_task methods */
-      void execute (cubthread::entry &thread_ref) override;
+      void execute (cubthread::entry &thread_ref) override
+      {
+        if (!BO_IS_SERVER_RESTARTED ())
+        {
+          return;
+        }
+
+        cubthread::entry *thread_p = &cubthread::get_entry ();
+        get_master_gcm_instance ()->do_prepare_complete (thread_p);
+      }
   };
 
   master_group_complete_manager::master_group_complete_manager ()
@@ -202,17 +213,6 @@ namespace cubtx
       {
 	gl_master_gcm_daemon->wakeup ();
       }
-  }
-
-  void master_group_complete_task::execute (cubthread::entry &thread_ref)
-  {
-    if (!BO_IS_SERVER_RESTARTED ())
-      {
-	return;
-      }
-
-    cubthread::entry *thread_p = &cubthread::get_entry ();
-    get_master_gcm_instance ()->do_prepare_complete (thread_p);
   }
 
   //

@@ -24,13 +24,9 @@
 #ifndef _MASTER_GROUP_COMPLETE_MANAGER_HPP_
 #define _MASTER_GROUP_COMPLETE_MANAGER_HPP_
 
-#include "transaction_group_complete_manager.hpp"
-#include "stream_transfer_sender.hpp"
-
 #include "cubstream.hpp"
-#include "thread_daemon.hpp"
-#include "thread_entry_task.hpp"
-
+#include "stream_transfer_sender.hpp"
+#include "transaction_group_complete_manager.hpp"
 
 namespace cubtx
 {
