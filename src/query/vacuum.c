@@ -256,8 +256,9 @@ class vacuum_job_cursor
 
     bool is_valid () const;
 
-    void set_blockid (VACUUM_LOG_BLOCKID blockid);
     void increment_blockid ();
+    void set_on_vacuum_data_start ();
+    void readjust_to_vacuum_data_changes ();
 
     VACUUM_LOG_BLOCKID get_blockid () const;
     VPID get_page_vpid () const;
@@ -266,8 +267,10 @@ class vacuum_job_cursor
     vacuum_data_entry &get_current_entry () const;
 
   private:
-    void reload_page_and_index ();
-    void search_page_and_index ();
+    void change_blockid (VACUUM_LOG_BLOCKID blockid);      // reset m_blockid to argument
+    void unload ();
+    void reload ();
+    void search ();
 
     VACUUM_LOG_BLOCKID m_blockid;
     VACUUM_DATA_PAGE *m_page;
@@ -348,8 +351,6 @@ struct vacuum_data
   VACUUM_LOG_BLOCKID get_last_blockid () const;
   VACUUM_LOG_BLOCKID get_first_blockid () const;
   void set_last_blockid (VACUUM_LOG_BLOCKID blockid);
-
-  void set_cursor_on_first_position (vacuum_job_cursor & cursor) const;
 
 private:
     VACUUM_LOG_BLOCKID m_last_blockid;	/* Block id for last vacuum data entry... This entry is actually the id of last
@@ -961,6 +962,7 @@ restart:
   vacuum_update_oldest_unvacuumed_mvccid (thread_p);
 
   /* Search for blocks ready to be vacuumed and generate jobs. */
+  cursor.readjust_to_vacuum_data_changes ();
 
   // --> remove code
   data_page = vacuum_fix_data_page (thread_p, &vacuum_Data.vpid_job_cursor);
@@ -3058,6 +3060,8 @@ restart:
 
   /* Update oldest MVCCID. */
   vacuum_update_oldest_unvacuumed_mvccid (thread_p);
+
+  m_cursor.readjust_to_vacuum_data_changes ();
 
   if (vacuum_Data.shutdown_requested)
     {
@@ -8132,12 +8136,6 @@ vacuum_data::set_last_blockid (VACUUM_LOG_BLOCKID blockid)
   m_last_blockid = blockid;
 }
 
-void
-vacuum_data::set_cursor_on_first_position (vacuum_job_cursor &cursor) const
-{
-  cursor.set_blockid (get_first_blockid ());
-}
-
 //
 // vacuum_data_page
 //
@@ -8231,21 +8229,67 @@ vacuum_job_cursor::get_current_entry () const
 }
 
 void
-vacuum_job_cursor::set_blockid (VACUUM_LOG_BLOCKID blockid)
+vacuum_job_cursor::change_blockid (VACUUM_LOG_BLOCKID blockid)
 {
   // can only increment
   assert (m_blockid <= blockid);
   m_blockid = blockid;
+
+  // make sure m_page/m_index point to right blockid
+  if (m_blockid > vacuum_Data.get_last_blockid ())
+    {
+      // cursor consumed all data
+      assert (m_blockid == vacuum_Data.get_last_blockid () + 1);
+      unload ();
+    }
+  else
+    {
+      assert (m_blockid >= vacuum_Data.get_first_blockid ());
+      reload ();
+    }
 }
 
 void
 vacuum_job_cursor::increment_blockid ()
 {
-  ++m_blockid;
+  change_blockid (m_blockid);
 }
 
 void
-vacuum_job_cursor::reload_page_and_index ()
+vacuum_job_cursor::set_on_vacuum_data_start ()
+{
+  change_blockid (vacuum_Data.get_first_blockid ());
+}
+
+void
+vacuum_job_cursor::readjust_to_vacuum_data_changes ()
+{
+  if (vacuum_Data.is_empty ())
+    {
+      // it doesn't matter
+      return;
+    }
+  VACUUM_LOG_BLOCKID first_blockid = vacuum_Data.get_first_blockid ();
+  if (m_blockid < first_blockid)
+    {
+      // cursor was left behind
+      change_blockid (first_blockid);
+      assert (is_valid ());
+    }
+}
+
+void
+vacuum_job_cursor::unload ()
+{
+  if (m_page != NULL)
+    {
+      vacuum_unfix_data_page (&cubthread::get_entry (), m_page);
+    }
+  m_index = vacuum_data_page::INDEX_NOT_FOUND;
+}
+
+void
+vacuum_job_cursor::reload ()
 {
   if (m_page != NULL)
     {
@@ -8254,7 +8298,7 @@ vacuum_job_cursor::reload_page_and_index ()
       if (m_index == vacuum_data_page::INDEX_NOT_FOUND)
         {
           // not in page
-          vacuum_unfix_data_page (&cubthread::get_entry (), m_page);
+          unload ();
         }
       else
         {
@@ -8263,11 +8307,11 @@ vacuum_job_cursor::reload_page_and_index ()
         }
     }
   // must search for blockid
-  search_page_and_index ();
+  search ();
 }
 
 void
-vacuum_job_cursor::search_page_and_index ()
+vacuum_job_cursor::search ()
 {
   assert (m_page == NULL);
 
