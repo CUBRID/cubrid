@@ -344,7 +344,7 @@ namespace cubtx
   //
   // is_latest_closed_group_prepared_for_complete checks whether the latest closed group is prepared for complete.
   //
-  bool group_complete_manager::is_latest_closed_group_prepared_for_complete ()
+  bool group_complete_manager::is_latest_closed_group_prepared_for_complete () const
   {
     return ((m_latest_closed_group_state & GROUP_PREPARED_FOR_COMPLETE) == GROUP_PREPARED_FOR_COMPLETE);
   }
@@ -376,7 +376,7 @@ namespace cubtx
   //
   // is_latest_closed_group_prepared_for_complete checks whether complete started for latest closed group.
   //
-  bool group_complete_manager::is_latest_closed_group_complete_started ()
+  bool group_complete_manager::is_latest_closed_group_complete_started () const
   {
     return ((m_latest_closed_group_state & GROUP_COMPLETE_STARTED) == GROUP_COMPLETE_STARTED);
   }
@@ -384,7 +384,7 @@ namespace cubtx
   //
   // is_latest_closed_group_mvcc_completed checks whether the latest closed group has mvcc completed.
   //
-  bool group_complete_manager::is_latest_closed_group_mvcc_completed ()
+  bool group_complete_manager::is_latest_closed_group_mvcc_completed () const
   {
     return ((m_latest_closed_group_state & GROUP_MVCC_COMPLETED) == GROUP_MVCC_COMPLETED);
   }
@@ -392,7 +392,7 @@ namespace cubtx
   //
   // is_latest_closed_group_logged checks whether the latest closed group is logged.
   //
-  bool group_complete_manager::is_latest_closed_group_logged ()
+  bool group_complete_manager::is_latest_closed_group_logged () const
   {
     return ((m_latest_closed_group_state & GROUP_LOGGED) == GROUP_LOGGED);
   }
@@ -400,7 +400,7 @@ namespace cubtx
   //
   // is_latest_closed_group_completed checks whether the latest closed group is completed.
   //
-  bool group_complete_manager::is_latest_closed_group_completed ()
+  bool group_complete_manager::is_latest_closed_group_completed () const
   {
     return ((m_latest_closed_group_state & GROUP_COMPLETED) == GROUP_COMPLETED);
   }
@@ -409,7 +409,7 @@ namespace cubtx
   // is_current_group_empty checks whether the current group is empty.
   //  Note: This function must be called under m_group_mutex protection
   //
-  bool group_complete_manager::is_current_group_empty ()
+  bool group_complete_manager::is_current_group_empty () const
   {
     if (m_current_group.get_container ().empty ())
       {
@@ -430,7 +430,7 @@ namespace cubtx
   //
   // get_current_group gets current group.
   //
-  const tx_group &group_complete_manager::get_current_group ()
+  const tx_group &group_complete_manager::get_current_group () const
   {
     return m_current_group;
   }
@@ -438,7 +438,7 @@ namespace cubtx
   //
   // get_current_group gets current group.
   //
-  int group_complete_manager::get_current_group_min_transactions ()
+  unsigned int group_complete_manager::get_current_group_min_transactions () const
   {
     return m_current_group_min_transactions;
   }
@@ -470,7 +470,7 @@ namespace cubtx
   // is_group_logged checks whether the group is logged.
   //  Note: This function must be called under m_group_mutex protection
   //
-  bool group_complete_manager::is_group_logged (id_type group_id)
+  bool group_complete_manager::is_group_logged (id_type group_id) const
   {
     if (group_id < m_latest_closed_group_id)
       {
@@ -493,7 +493,7 @@ namespace cubtx
   // is_group_completed checks whether the group is completed.
   //  Note: This function must be called under m_group_mutex protection
   //
-  bool group_complete_manager::is_group_completed (id_type group_id)
+  bool group_complete_manager::is_group_completed (id_type group_id) const
   {
     if (group_id < m_latest_closed_group_id)
       {

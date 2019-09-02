@@ -76,9 +76,9 @@ namespace cubtx
      * Currently, we wakeup GC thread when all expected transactions were added into current group.
      */
     assert (m_has_latest_group_close_info.load () == false
-	    || get_current_group ().get_container ().size () <= get_current_group_min_transactions ());
+	    || get_current_group ().get_container ().size () <= (size_t) get_current_group_min_transactions ());
     if (m_has_latest_group_close_info.load () == true
-	&& get_current_group ().get_container ().size () == get_current_group_min_transactions ())
+	&& get_current_group ().get_container ().size () == (size_t) get_current_group_min_transactions ())
       {
 	gl_slave_gcm_daemon->wakeup ();
       }
@@ -106,8 +106,8 @@ namespace cubtx
 	     * waiting for another group. Forces a group complete to not stuck the system.
 	     */
 	    er_log_group_complete_debug (ARG_FILE_LINE,
-					 "can_close_current_group: wrong transaction waiting beyond the latest group id (%llu)",
-					 m_latest_group_id);
+					 "can_close_current_group: wrong transaction waiting beyond the latest "
+					 "group id (%llu)", m_latest_group_id);
 	    return true;
 	  }
 
@@ -116,12 +116,12 @@ namespace cubtx
 
     /* Check whether all expected transactions already registered. */
     unsigned int count_min_transactions = get_current_group_min_transactions ();
-    if (get_current_group ().get_container ().size () < count_min_transactions)
+    if (get_current_group ().get_container ().size () < (size_t) count_min_transactions)
       {
 	return false;
       }
 
-    assert (get_current_group ().get_container ().size () == count_min_transactions);
+    assert (get_current_group ().get_container ().size () == (size_t) count_min_transactions);
     return true;
   }
 
@@ -197,15 +197,8 @@ namespace cubtx
   //
   void slave_group_complete_manager::complete_upto_stream_position (cubstream::stream_position stream_position)
   {
-    if (stream_position <= m_latest_group_stream_position)
-      {
-	/* I have the id of latest group */
-	complete (m_latest_group_id);
-	return;
-      }
-
-    /* We should not be here, since we close the groups one by one. */
-    assert (false);
+    assert (stream_position <= m_latest_group_stream_position);
+    complete (m_latest_group_id);
   }
 
   //
