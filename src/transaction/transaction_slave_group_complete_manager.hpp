@@ -61,6 +61,7 @@ namespace cubtx
 
     private:
       /* Latest recorded stream position and corresponding id. */
+      unsigned int m_current_group_expected_transactions;
       id_type m_latest_group_id;
       std::atomic<cubstream::stream_position> m_latest_group_stream_position;
 
@@ -68,9 +69,9 @@ namespace cubtx
       std::atomic<bool> m_has_latest_group_close_info;
   };
 
-  void initialize ();
-  void finalize ();
-  slave_group_complete_manager *get_gcm_instance ();
+  void initialize_slave_gcm ();
+  void finalize_slave_gcm ();
+  slave_group_complete_manager *get_slave_gcm_instance ();
 }
 
 #endif // _TRANSACTION_SLAVE_GROUP_COMPLETE_MANAGER_HPP_

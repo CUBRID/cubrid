@@ -49,7 +49,7 @@ namespace cubtx
 	  }
 
 	cubthread::entry *thread_p = &cubthread::get_entry ();
-	slave_group_complete_manager *p_gl_slave_group = get_gcm_instance ();
+	slave_group_complete_manager *p_gl_slave_group = get_slave_gcm_instance ();
 	p_gl_slave_group->do_prepare_complete (thread_p);
 	p_gl_slave_group->do_complete (thread_p);
       }
@@ -57,6 +57,7 @@ namespace cubtx
 
   slave_group_complete_manager::slave_group_complete_manager ()
   {
+    m_current_group_expected_transactions = 0;
     m_latest_group_id = NULL_ID;
     m_latest_group_stream_position = 0;
     m_has_latest_group_close_info.store (false);
@@ -76,9 +77,9 @@ namespace cubtx
      * Currently, we wakeup GC thread when all expected transactions were added into current group.
      */
     assert (m_has_latest_group_close_info.load () == false
-	    || get_current_group ().get_container ().size () <= (size_t) get_current_group_min_transactions ());
+	    || get_current_group ().get_container ().size () <= (size_t) m_current_group_expected_transactions);
     if (m_has_latest_group_close_info.load () == true
-	&& get_current_group ().get_container ().size () == (size_t) get_current_group_min_transactions ())
+	&& get_current_group ().get_container ().size () == (size_t) m_current_group_expected_transactions)
       {
 	gl_slave_gcm_daemon->wakeup ();
       }
@@ -115,13 +116,12 @@ namespace cubtx
       }
 
     /* Check whether all expected transactions already registered. */
-    unsigned int count_min_transactions = get_current_group_min_transactions ();
-    if (get_current_group ().get_container ().size () < (size_t) count_min_transactions)
+    if (get_current_group ().get_container ().size () < (size_t) m_current_group_expected_transactions)
       {
 	return false;
       }
 
-    assert (get_current_group ().get_container ().size () == (size_t) count_min_transactions);
+    assert (get_current_group ().get_container ().size () == (size_t) m_current_group_expected_transactions);
     return true;
   }
 
@@ -207,11 +207,12 @@ namespace cubtx
   void slave_group_complete_manager::set_close_info_for_current_group (cubstream::stream_position stream_position,
       int count_expected_transactions)
   {
-    bool has_group_enough_transactions;
+    bool has_group_enough_transactions = false;
     /* TODO - Can we set close info twice? */
 
     m_latest_group_stream_position = stream_position;
-    m_latest_group_id = set_current_group_minimum_transactions (count_expected_transactions, has_group_enough_transactions);
+    m_current_group_expected_transactions = count_expected_transactions;
+    has_group_enough_transactions = has_transactions_in_current_group (count_expected_transactions, m_latest_group_id);
     m_has_latest_group_close_info.store (true);
     er_log_group_complete_debug (ARG_FILE_LINE, "set_close_info_for_current_group sp=%llu, latest_group_id = %llu,"
 				 "count_expected_transaction = %d\n", stream_position, m_latest_group_id,
@@ -231,7 +232,7 @@ namespace cubtx
     return LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE;
   }
 
-  void initialize ()
+  void initialize_slave_gcm ()
   {
     /* Creates slave group complete manager object. */
     assert (gl_slave_gcm == NULL);
@@ -244,7 +245,7 @@ namespace cubtx
 			  new slave_group_complete_task (), "slave_group_complete_daemon");
   }
 
-  void finalize ()
+  void finalize_slave_gcm ()
   {
     if (gl_slave_gcm_daemon != NULL)
       {
@@ -256,7 +257,7 @@ namespace cubtx
     gl_slave_gcm = NULL;
   }
 
-  slave_group_complete_manager *get_gcm_instance ()
+  slave_group_complete_manager *get_slave_gcm_instance ()
   {
     assert (gl_slave_gcm != NULL);
     return gl_slave_gcm;

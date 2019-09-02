@@ -246,26 +246,15 @@ namespace cubtx
   }
 
   //
-  // set_current_group_minimum_transactions set minimum number of transactions for current group.
+  // has_transactions_in_current_group check whether the current group has specified number of transactions.
   //
-  complete_manager::id_type group_complete_manager::set_current_group_minimum_transactions (
-	  const unsigned int count_minimum_transactions,
-	  bool &has_group_enough_transactions)
+  bool group_complete_manager::has_transactions_in_current_group (const unsigned int count_transactions,
+      complete_manager::id_type &current_group_id)
   {
-    assert (count_minimum_transactions >= 0);
     std::unique_lock<std::mutex> ulock (m_group_mutex);
-    m_current_group_min_transactions = count_minimum_transactions;
 
-    if (m_current_group_min_transactions <= m_current_group.get_container ().size ())
-      {
-	has_group_enough_transactions = true;
-      }
-    else
-      {
-	has_group_enough_transactions = false;
-      }
-
-    return m_current_group_id;
+    current_group_id = m_current_group_id;
+    return count_transactions == m_current_group.get_container ().size ();
   }
 
   bool group_complete_manager::close_current_group ()
@@ -433,14 +422,6 @@ namespace cubtx
   const tx_group &group_complete_manager::get_current_group () const
   {
     return m_current_group;
-  }
-
-  //
-  // get_current_group gets current group.
-  //
-  unsigned int group_complete_manager::get_current_group_min_transactions () const
-  {
-    return m_current_group_min_transactions;
   }
 
   //

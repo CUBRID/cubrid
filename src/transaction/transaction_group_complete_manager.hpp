@@ -66,7 +66,6 @@ namespace cubtx
     public:
       group_complete_manager ()
 	: m_current_group_id (1)
-	, m_current_group_min_transactions (0)
 	, m_latest_closed_group_id (0)
 	, m_latest_closed_group_state (GROUP_ALL_STATES)
       {
@@ -83,8 +82,7 @@ namespace cubtx
       void complete_logging (id_type group_id) override final;
 
     protected:
-      id_type set_current_group_minimum_transactions (const unsigned int count_minimum_transactions,
-	  bool &has_group_enough_transactions);
+      bool has_transactions_in_current_group (const unsigned int count_transactions, id_type &current_group_id);
 
       bool close_current_group ();
 
@@ -115,7 +113,6 @@ namespace cubtx
 
       tx_group &get_latest_closed_group ();
       const tx_group &get_current_group () const;
-      unsigned int get_current_group_min_transactions () const;
 
       bool is_group_completed (id_type group_id) const;
 
@@ -133,7 +130,6 @@ namespace cubtx
       /* Current group info - TODO Maybe better to use a structure here. */
       std::atomic<id_type> m_current_group_id;   // is also the group identifier
       tx_group m_current_group;
-      unsigned int m_current_group_min_transactions;
       std::mutex m_group_mutex;
 
       /* Latest closed group info - TODO Maybe better to use a structure here. */
