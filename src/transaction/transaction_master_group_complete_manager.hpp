@@ -42,11 +42,8 @@ namespace cubtx
   class master_group_complete_manager : public group_complete_manager, public cubstream::stream_ack
   {
     public:
+      master_group_complete_manager ();
       ~master_group_complete_manager () override;
-
-      static master_group_complete_manager *get_instance ();
-      static void init ();
-      static void final ();
 
       /* group_complete_manager methods */
       void do_prepare_complete (THREAD_ENTRY *thread_p) override;
@@ -62,20 +59,12 @@ namespace cubtx
       void on_register_transaction () override;
 
     private:
-      static master_group_complete_manager *gl_master_group;
-      static cubthread::daemon *gl_master_group_complete_daemon;
       std::atomic<cubstream::stream_position> m_latest_closed_group_start_stream_position;
       std::atomic<cubstream::stream_position> m_latest_closed_group_end_stream_position;
   };
 
-  //
-  // master_group_complete_task is class for master group complete daemon
-  //
-  class master_group_complete_task : public cubthread::entry_task
-  {
-    public:
-      /* entry_task methods */
-      void execute (cubthread::entry &thread_ref) override;
-  };
+  void initialize_master_gcm ();
+  void finalize_master_gcm ();
+  master_group_complete_manager *get_master_gcm_instance ();
 }
 #endif // !_MASTER_GROUP_COMPLETE_MANAGER_HPP_
