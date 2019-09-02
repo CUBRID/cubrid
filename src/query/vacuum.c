@@ -944,7 +944,6 @@ xvacuum (THREAD_ENTRY * thread_p)
       cursor.set_on_vacuum_data_start ();
     }
 
-  /* Server-mode will restart if block data buffer or finished job queue are getting filled. */
   /* Stand-alone mode will restart if finished job queue is full. */
 restart:
 
@@ -2983,7 +2982,6 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
     }
 
   /* Server-mode will restart if block data buffer or finished job queue are getting filled. */
-  /* Stand-alone mode will restart if finished job queue is full. */
 restart:
 
   /* Remove vacuumed entries */
@@ -3067,7 +3065,6 @@ restart:
 	}
 
       vacuum_push_task (thread_p, *entry);
-
       if (vacuum_check_data_buffer () || vacuum_check_finished_queue ())
 	{
           m_cursor.unload ();
