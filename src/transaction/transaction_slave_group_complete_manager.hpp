@@ -29,7 +29,6 @@
 #include "cubstream.hpp"
 #include "log_consumer.hpp"
 #include "thread_daemon.hpp"
-#include "thread_entry_task.hpp"
 
 namespace cubtx
 {
@@ -41,11 +40,8 @@ namespace cubtx
   class slave_group_complete_manager : public group_complete_manager, public group_completion
   {
     public:
+      slave_group_complete_manager ();
       ~slave_group_complete_manager () override;
-
-      static slave_group_complete_manager *get_instance ();
-      static void init ();
-      static void final ();
 
       /* group complete methods */
       void do_prepare_complete (THREAD_ENTRY *thread_p) override;
@@ -64,9 +60,6 @@ namespace cubtx
       void on_register_transaction () override;
 
     private:
-      static slave_group_complete_manager *gl_slave_gcm;
-      static cubthread::daemon *gl_slave_group_complete_daemon;
-
       /* Latest recorded stream position and corresponding id. */
       id_type m_latest_group_id;
       std::atomic<cubstream::stream_position> m_latest_group_stream_position;
@@ -74,6 +67,10 @@ namespace cubtx
       /* m_has_latest_group_close_info - true, if stream position and count expected transactions were set. */
       std::atomic<bool> m_has_latest_group_close_info;
   };
+
+  void initialize ();
+  void finalize ();
+  slave_group_complete_manager *get_gcm_instance ();
 }
 
 #endif // _TRANSACTION_SLAVE_GROUP_COMPLETE_MANAGER_HPP_

@@ -128,7 +128,7 @@ namespace cubtx
   {
     if (!is_latest_closed_group_completed ())
       {
-	/* Can't advance to the next group since the current group was not committed yet. */
+	/* Can't advance to the next group since the current group was not completed yet. */
 	return false;
       }
 
@@ -166,7 +166,8 @@ namespace cubtx
 	mark_latest_closed_group_prepared_for_complete ();
 
 	/* Wakeup senders, just to be sure. */
-	cubreplication::replication_node_manager::get_master_node ()->wakeup_transfer_senders (closed_group_stream_end_position);
+	cubreplication::replication_node_manager::get_master_node ()->wakeup_transfer_senders (
+		closed_group_stream_end_position);
       }
   }
 

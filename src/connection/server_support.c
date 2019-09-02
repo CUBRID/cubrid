@@ -2355,7 +2355,6 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	    }
 
 	  /* append a dummy log record for LFT to wake LWTs up */
-	  /* append a dummy log record for LFT to wake LWTs up */
 	  log_append_ha_server_state (thread_p, state);
 
 	  if (ha_Server_state == HA_SERVER_STATE_ACTIVE)
@@ -2741,7 +2740,6 @@ css_process_new_slave (SOCKET master_fd)
 
   auto wp = cubthread::internal_tasks_worker_pool::get_instance ();
   cubthread::get_manager ()->push_task (wp, new_slave_task);
-  // todo: wait for ha_Server_state to become HA_SERVER_STATE_ACTIVE
 }
 
 static void

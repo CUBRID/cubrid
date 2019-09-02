@@ -23,11 +23,15 @@
 
 #include "boot_sr.h"
 #include "log_manager.h"
+#include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
 #include "transaction_slave_group_complete_manager.hpp"
 
 namespace cubtx
 {
+  slave_group_complete_manager *gl_slave_gcm = NULL;
+  cubthread::daemon *gl_slave_gcm_daemon = NULL;
+
   //
   // slave_group_complete_task is class for slave group complete daemon
   //
@@ -45,55 +49,21 @@ namespace cubtx
 	  }
 
 	cubthread::entry *thread_p = &cubthread::get_entry ();
-	slave_group_complete_manager *p_gl_slave_group = slave_group_complete_manager::get_instance ();
+	slave_group_complete_manager *p_gl_slave_group = get_gcm_instance ();
 	p_gl_slave_group->do_prepare_complete (thread_p);
 	p_gl_slave_group->do_complete (thread_p);
       }
   };
 
+  slave_group_complete_manager::slave_group_complete_manager ()
+  {
+    m_latest_group_id = NULL_ID;
+    m_latest_group_stream_position = 0;
+    m_has_latest_group_close_info.store (false);
+  }
+
   slave_group_complete_manager::~slave_group_complete_manager ()
   {
-  }
-
-  //
-  // get global slave instance
-  //
-  slave_group_complete_manager *slave_group_complete_manager::get_instance ()
-  {
-    assert (gl_slave_gcm != NULL);
-    return gl_slave_gcm;
-  }
-
-  //
-  // init initialize slave group commit
-  //
-  void slave_group_complete_manager::init ()
-  {
-    assert (gl_slave_gcm == NULL);
-    cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
-    gl_slave_gcm = new slave_group_complete_manager ();
-    er_log_group_complete_debug (ARG_FILE_LINE, "slave_group_complete_manager:init created slave group complete manager\n");
-    gl_slave_gcm->m_latest_group_id = NULL_ID;
-    gl_slave_gcm->m_latest_group_stream_position = 0;
-    gl_slave_gcm->m_has_latest_group_close_info.store (false);
-
-    slave_group_complete_manager::gl_slave_group_complete_daemon = cubthread::get_manager ()->create_daemon ((looper),
-	new slave_group_complete_task (), "slave_group_complete_daemon");
-  }
-
-  //
-  // final finalizes slave group commit
-  //
-  void slave_group_complete_manager::final ()
-  {
-    if (gl_slave_group_complete_daemon != NULL)
-      {
-	cubthread::get_manager ()->destroy_daemon (gl_slave_group_complete_daemon);
-	gl_slave_group_complete_daemon = NULL;
-      }
-
-    delete gl_slave_gcm;
-    gl_slave_gcm = NULL;
   }
 
   //
@@ -110,7 +80,7 @@ namespace cubtx
     if (m_has_latest_group_close_info.load () == true
 	&& get_current_group ().get_container ().size () == get_current_group_min_transactions ())
       {
-	gl_slave_group_complete_daemon->wakeup ();
+	gl_slave_gcm_daemon->wakeup ();
       }
   }
 
@@ -256,7 +226,7 @@ namespace cubtx
     if (has_group_enough_transactions)
       {
 	/* Wakeup group complete thread, since we have all informations that allows group close. */
-	gl_slave_group_complete_daemon->wakeup ();
+	gl_slave_gcm_daemon->wakeup ();
       }
   }
 
@@ -268,6 +238,34 @@ namespace cubtx
     return LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE;
   }
 
-  slave_group_complete_manager *slave_group_complete_manager::gl_slave_gcm = NULL;
-  cubthread::daemon *slave_group_complete_manager::gl_slave_group_complete_daemon = NULL;
+  void initialize ()
+  {
+    /* Creates slave group complete manager object. */
+    assert (gl_slave_gcm == NULL);
+    cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
+    gl_slave_gcm = new slave_group_complete_manager ();
+    er_log_group_complete_debug (ARG_FILE_LINE, "slave_group_complete_manager:init created slave group complete manager\n");
+
+    /* Creates a daemon thread that executes complete on slave gcm. */
+    gl_slave_gcm_daemon = cubthread::get_manager()->create_daemon ((looper),
+			  new slave_group_complete_task (), "slave_group_complete_daemon");
+  }
+
+  void finalize ()
+  {
+    if (gl_slave_gcm_daemon != NULL)
+      {
+	cubthread::get_manager ()->destroy_daemon (gl_slave_gcm_daemon);
+	gl_slave_gcm_daemon = NULL;
+      }
+
+    delete gl_slave_gcm;
+    gl_slave_gcm = NULL;
+  }
+
+  slave_group_complete_manager *get_gcm_instance ()
+  {
+    assert (gl_slave_gcm != NULL);
+    return gl_slave_gcm;
+  }
 }
