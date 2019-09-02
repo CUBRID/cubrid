@@ -239,6 +239,20 @@ struct vacuum_data_page
       vacuum_Data.first_page = NULL; \
     } while (0)
 
+// *INDENT-OFF*
+class vacuum_job_cursor
+{
+  public:
+    vacuum_job_cursor ();
+
+    void set_blockid (VACUUM_LOG_BLOCKID blockid);
+    void increment_blockid ();
+
+  private:
+    VACUUM_LOG_BLOCKID m_blockid;
+};
+// *INDENT-ON*
+
 /* Vacuum data.
  *
  * Stores data required for vacuum. It is also stored on disk in the first
@@ -299,6 +313,7 @@ struct vacuum_data
     , is_vacuum_complete (false)
 #endif // SA_MODE
     , m_last_blockid (VACUUM_NULL_LOG_BLOCKID)
+    , m_job_cursor ()
   {
   }
   /* *INDENT-ON* */
@@ -310,6 +325,7 @@ private:
     VACUUM_LOG_BLOCKID m_last_blockid;	/* Block id for last vacuum data entry... This entry is actually the id of last
 					 * added block which may not even be in vacuum data (being already vacuumed).
 					 */
+  vacuum_job_cursor m_job_cursor;
 };
 static VACUUM_DATA vacuum_Data;
 
@@ -4698,6 +4714,7 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 		  vacuum_Data.blockid_job_cursor =
 		    VACUUM_BLOCKID_WITHOUT_FLAGS (data_page->data[data_page->index_unvacuumed].blockid);
 		}
+	      // todo ??
 	    }
 	}
 
@@ -7992,7 +8009,24 @@ vacuum_reset_data_after_copydb (THREAD_ENTRY * thread_p)
   return NO_ERROR;
 }
 
+static void
+vacuum_init_data_page_with_last_blockid (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * data_page,
+					 VACUUM_LOG_BLOCKID blockid)
+{
+  vacuum_data_initialize_new_page (thread_p, data_page);
+  data_page->data->blockid = blockid;
+  log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) data_page, 0, sizeof (blockid), &blockid);
+  vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
+}
+
 // *INDENT-OFF*
+//
+// C++
+//
+
+//
+// vacuum_data
+//
 VACUUM_LOG_BLOCKID
 vacuum_data::get_last_blockid (void)
 {
@@ -8015,13 +8049,20 @@ vacuum_data::set_last_blockid (VACUUM_LOG_BLOCKID blockid)
   m_last_blockid = blockid;
 }
 
-static void
-vacuum_init_data_page_with_last_blockid (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * data_page,
-                                         VACUUM_LOG_BLOCKID blockid)
+//
+// vacuum_job_cursor
+//
+vacuum_job_cursor::vacuum_job_cursor ()
+  : m_blockid (VACUUM_NULL_LOG_BLOCKID)
 {
-  vacuum_data_initialize_new_page (thread_p, data_page);
-  data_page->data->blockid = blockid;
-  log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) data_page, 0, sizeof (blockid), &blockid);
-  vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
 }
+
+void
+vacuum_job_cursor::set_blockid (VACUUM_LOG_BLOCKID blockid)
+{
+  // can only increment
+  assert (m_blockid <= blockid);
+  m_blockid = blockid;
+}
+
 // *INDENT-ON*
