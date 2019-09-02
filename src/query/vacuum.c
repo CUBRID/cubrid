@@ -2951,6 +2951,11 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
   VPID next_vpid;
   PERF_UTIME_TRACKER perf_tracker;
 
+  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
+    {
+      return;
+    }
+
   int error_code = NO_ERROR;
 
   PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
@@ -2964,11 +2969,6 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
 	{
 	  ATOMIC_STORE_64 (&vacuum_Global_oldest_active_mvccid, local_oldest_active_mvccid);
 	}
-    }
-
-  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
-    {
-      return;
     }
 
   if (!vacuum_Data.is_loaded)
