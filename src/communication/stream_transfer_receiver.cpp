@@ -128,7 +128,7 @@ namespace cubstream
     std::memcpy (ptr, m_buffer, byte_count);
     m_last_received_position += byte_count;
 
-    return byte_count;
+    return NO_ERROR;
   }
 
   void transfer_receiver::wait_disconnect ()
