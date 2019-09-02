@@ -898,7 +898,6 @@ xvacuum (THREAD_ENTRY * thread_p)
       vacuum_Data.blockid_job_cursor = VACUUM_BLOCKID_WITHOUT_FLAGS (vacuum_Data.first_page->data[0].blockid);
     }
 
-  /* Server-mode will restart if block data buffer or finished job queue are getting filled. */
   /* Stand-alone mode will restart if finished job queue is full. */
 restart:
 
@@ -2986,7 +2985,6 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
     }
 
   /* Server-mode will restart if block data buffer or finished job queue are getting filled. */
-  /* Stand-alone mode will restart if finished job queue is full. */
 restart:
 
   assert (data_page == NULL);
