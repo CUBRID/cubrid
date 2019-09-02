@@ -3169,7 +3169,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
 	  writer_info->trace_last_writer = true;
 	  writer_info->last_writer_elapsed_time = 0;
-	  writer_info->last_writer_client_info.client_type = BOOT_CLIENT_UNKNOWN;
+	  writer_info->last_writer_client_info.client_type = DB_CLIENT_TYPE_UNKNOWN;
 	}
 
       entry = writer_info->writer_list;

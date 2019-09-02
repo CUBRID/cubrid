@@ -85,7 +85,6 @@ static int valcnv_Max_set_elements = 10;
 int db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 #else
 int db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
-int db_Client_type = DB_CLIENT_TYPE_DEFAULT;
 #endif
 int db_Disable_modifications = 0;
 
