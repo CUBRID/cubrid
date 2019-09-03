@@ -291,7 +291,7 @@ class vacuum_job_cursor
   };
 #define vacuum_job_cursor_print_format "vacuum_job_cursor(%d, %d|%d|%d)"
 #define vacuum_job_cursor_print_args(cursor) \
-  (long long int) cursor.get_blockid (), VPID_AS_ARGS (&cursor.get_page_vpid ()), (int) cursor.get_index ()
+  (long long int) (cursor).get_blockid (), VPID_AS_ARGS (&(cursor).get_page_vpid ()), (int) (cursor).get_index ()
 // *INDENT-ON*
 
 /* Vacuum data.
@@ -8102,6 +8102,8 @@ void
 vacuum_job_cursor::increment_blockid ()
 {
   change_blockid (m_blockid + 1);
+  vacuum_er_log (VACUUM_ER_LOG_JOBS, "incremented " vacuum_job_cursor_print_format,
+                 vacuum_job_cursor_print_args (*this));
 }
 
 void
@@ -8122,6 +8124,8 @@ vacuum_job_cursor::readjust_to_vacuum_data_changes ()
   if (m_blockid < first_blockid)
     {
       // cursor was left behind
+      vacuum_er_log (VACUUM_ER_LOG_JOBS, "readjust cursor blockid from %lld to %lld",
+                     (long long int) m_blockid, (long long int) first_blockid);
       m_blockid = first_blockid;
     }
 }
@@ -8129,6 +8133,7 @@ vacuum_job_cursor::readjust_to_vacuum_data_changes ()
 void
 vacuum_job_cursor::unload ()
 {
+  vacuum_er_log (VACUUM_ER_LOG_JOBS, "unload " vacuum_job_cursor_print_format, vacuum_job_cursor_print_args (*this));
   if (m_page != NULL)
     {
       vacuum_unfix_data_page (&cubthread::get_entry (), m_page);
@@ -8142,6 +8147,7 @@ vacuum_job_cursor::load ()
   assert (!is_loaded ());   // would not be optimal if already loaded
 
   search ();
+  vacuum_er_log (VACUUM_ER_LOG_JOBS, "load " vacuum_job_cursor_print_format, vacuum_job_cursor_print_args (*this));
 }
 
 void
