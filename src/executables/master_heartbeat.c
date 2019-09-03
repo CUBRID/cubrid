@@ -238,6 +238,8 @@ static int hb_help_sprint_nodes_info (char *buffer, int max_length);
 static int hb_help_sprint_jobs_info (HB_JOB * jobs, char *buffer, int max_length);
 static int hb_help_sprint_ping_host_info (char *buffer, int max_length);
 
+static bool is_process_registered (HB_PROC_STATE state);
+
 HB_CLUSTER *hb_Cluster = NULL;
 HB_RESOURCE *hb_Resource = NULL;
 HB_JOB *cluster_Jobs = NULL;
@@ -3616,13 +3618,15 @@ hb_resource_job_send_master_hostname (HB_JOB_ARG * arg)
 	  proc->knows_master_hostname = false;
 	}
 
-      error = css_send_to_my_server_the_master_hostname (hostname, proc, conn);
-      assert (error == NO_ERROR);
+      if (is_process_registered ((HB_PROC_STATE) proc->state))
+	{
+	  error = css_send_to_my_server_the_master_hostname (hostname, proc, conn);
+	  assert (error == NO_ERROR);
+	}
     }
 
-  error =
-    hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL,
-			   prm_get_integer_value (PRM_ID_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS));
+  error = hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL,
+				 prm_get_integer_value (PRM_ID_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS));
   assert (error == NO_ERROR);
 
   if (arg)
@@ -6856,4 +6860,24 @@ hb_find_host_name_of_master_server ()
   pthread_mutex_unlock (&hb_Cluster->lock);
 
   return NULL;
+}
+
+static bool
+is_process_registered (HB_PROC_STATE state)
+{
+  switch (state)
+    {
+    case HB_PSTATE_UNKNOWN:
+    case HB_PSTATE_DEAD:
+    case HB_PSTATE_DEREGISTERED:
+    case HB_PSTATE_STARTED:
+    case HB_PSTATE_MAX:
+    case HB_PSTATE_NOT_REGISTERED:
+      return false;
+    case HB_PSTATE_REGISTERED:
+    case HB_PSTATE_REGISTERED_AND_TO_BE_STANDBY:
+    case HB_PSTATE_REGISTERED_AND_ACTIVE:
+    case HB_PSTATE_REGISTERED_AND_TO_BE_ACTIVE:
+      return true;
+    }
 }
