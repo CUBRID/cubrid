@@ -23,7 +23,6 @@
 
 #include "log_postpone_cache.hpp"
 
-#include "log_record.hpp"
 #include "memory_alloc.h"
 #include "object_representation.h"
 #include "log_manager.h"
