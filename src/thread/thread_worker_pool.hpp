@@ -1507,7 +1507,7 @@ namespace cubthread
   worker_pool_task_capper<Context>::worker_pool_task_capper (worker_pool<Context> *worker_pool)
   {
     m_worker_pool = worker_pool;
-    m_tasks_available = m_max_tasks = worker_pool.get_max_count ();
+    m_tasks_available = m_max_tasks = worker_pool->get_max_count ();
   }
 
   template <typename Context>

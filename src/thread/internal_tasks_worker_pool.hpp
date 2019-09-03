@@ -18,14 +18,22 @@
  */
 
 /*
- * db_admin.h -  Definitions for client side
+ * internal_tasks_worker_pool.hpp
  */
 
-#ifndef _DB_ADMIN_H_
-#define _DB_ADMIN_H_
+#ifndef _INTERNAL_TASKS_WORKER_POOL_HPP_
+#define _INTERNAL_TASKS_WORKER_POOL_HPP_
 
-#if !defined(SERVER_MODE)
-#include "db_client_type.hpp"
-#endif
+#include "thread_manager.hpp"
 
-#endif /* _DB_ADMIN_H */
+namespace cubthread
+{
+  namespace internal_tasks_worker_pool
+  {
+    void initialize ();
+    void finalize ();
+    entry_workpool *get_instance ();
+  }
+}
+
+#endif // _INTERNAL_TASKS_WORKER_POOL_HPP_

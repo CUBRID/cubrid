@@ -18,14 +18,44 @@
  */
 
 /*
- * db_admin.h -  Definitions for client side
+ * internal_tasks_worker_pool.cpp
  */
 
-#ifndef _DB_ADMIN_H_
-#define _DB_ADMIN_H_
+#include "internal_tasks_worker_pool.hpp"
+#include "thread_worker_pool.hpp"
 
-#if !defined(SERVER_MODE)
-#include "db_client_type.hpp"
-#endif
+namespace cubthread
+{
+  constexpr size_t WORKER_COUNT = 2;
+  constexpr size_t TASK_COUNT = 10;
+  constexpr size_t CORE_COUNT = 1;
+  constexpr bool ENABLE_LOGGING = true;
 
-#endif /* _DB_ADMIN_H */
+  entry_workpool *instance = NULL;
+
+  namespace internal_tasks_worker_pool
+  {
+    void initialize ()
+    {
+      if (instance != NULL)
+	{
+	  return;
+	}
+
+      instance = cubthread::get_manager ()->create_worker_pool (WORKER_COUNT,
+		 TASK_COUNT, "internal_tasks_worker_pool", NULL, CORE_COUNT, ENABLE_LOGGING);
+    }
+
+    entry_workpool *get_instance ()
+    {
+      assert (instance != NULL);
+      return instance;
+    }
+
+    void finalize ()
+    {
+      delete instance;
+      instance = NULL;
+    }
+  }
+}

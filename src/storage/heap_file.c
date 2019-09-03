@@ -69,6 +69,7 @@
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #include "db_value_printer.hpp"
 #include "log_append.hpp"
+#include "string_buffer.hpp"
 
 #include <set>
 
@@ -1330,7 +1331,31 @@ heap_is_reusable_oid (const FILE_TYPE file_type)
   return false;
 }
 
-/* TODO: STL::list for _cache.area */
+//
+// heap class representation cache
+// todo: move out of heap
+// todo: STL::list for _cache.area
+//
+
+// *INDENT-OFF*
+template <typename ErF, typename ... Args>
+void
+heap_classrepr_logging_template (const char *filename, const int line, ErF && er_f, const char *msg, Args &&... args)
+{
+  cubthread::entry *thread_p = &cubthread::get_entry ();
+  string_buffer er_input_str;
+  er_input_str ("HEAP_CLASSREPR[tran=%d,thrd=%d]: %s\n", msg);
+  er_f (filename, line, er_input_str.get_buffer (), thread_p->tran_index, thread_p->index,
+        std::forward<Args> (args)...);
+}
+#define heap_classrepr_log_er(msg, ...) \
+  if (prm_get_bool_value (PRM_ID_REPR_CACHE_LOG)) \
+    heap_classrepr_logging_template (ARG_FILE_LINE, _er_log_debug, msg, __VA_ARGS__)
+#define heap_classrepr_log_stack(msg, ...) \
+  if (prm_get_bool_value (PRM_ID_REPR_CACHE_LOG)) \
+    heap_classrepr_logging_template (ARG_FILE_LINE, er_print_callstack, msg, __VA_ARGS__)
+// *INDENT-ON*
+
 /*
  * heap_classrepr_initialize_cache () - Initialize the class representation cache
  *   return: NO_ERROR
@@ -1648,6 +1673,8 @@ heap_classrepr_decache_guessed_last (const OID * class_oid)
   int rv;
   int ret = NO_ERROR;
 
+  heap_classrepr_log_er ("heap_classrepr_decache_guessed_last %d|%d|%d\n", OID_AS_ARGS (class_oid));
+
   if (class_oid != NULL)
     {
       hash_anchor = &heap_Classrepr->hash_table[REPR_HASH (class_oid)];
@@ -1670,7 +1697,7 @@ heap_classrepr_decache_guessed_last (const OID * class_oid)
 		  ret = ER_CSS_PTHREAD_MUTEX_LOCK;
 		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 0);
 		  pthread_mutex_unlock (&hash_anchor->hash_mutex);
-		  goto exit_on_error;
+		  return ret;
 		}
 
 	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
@@ -1690,7 +1717,7 @@ heap_classrepr_decache_guessed_last (const OID * class_oid)
       if (cache_entry == NULL)
 	{
 	  pthread_mutex_unlock (&hash_anchor->hash_mutex);
-	  goto exit_on_error;
+	  return NO_ERROR;
 	}
 
       /* hash anchor lock has been released */
@@ -1718,7 +1745,7 @@ heap_classrepr_decache_guessed_last (const OID * class_oid)
 	  pthread_mutex_unlock (&hash_anchor->hash_mutex);
 	  pthread_mutex_unlock (&cache_entry->mutex);
 
-	  goto exit_on_error;
+	  return NO_ERROR;
 	}
 
       if (prev_entry == NULL)
@@ -1746,6 +1773,7 @@ heap_classrepr_decache_guessed_last (const OID * class_oid)
       cache_entry->prev = NULL;
       cache_entry->next = NULL;
 
+      int save_fcnt = cache_entry->fcnt;
       if (cache_entry->fcnt == 0)
 	{
 	  /* move cache_entry to free_list */
@@ -1757,13 +1785,11 @@ heap_classrepr_decache_guessed_last (const OID * class_oid)
 	}
 
       pthread_mutex_unlock (&cache_entry->mutex);
+
+      heap_classrepr_log_er ("heap_classrepr_decache_guessed_last %d|%d|%d cache_entry=%p fcnt=%d",
+			     OID_AS_ARGS (class_oid), cache_entry, save_fcnt);
     }
-
   return ret;
-
-exit_on_error:
-
-  return (ret == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -2492,11 +2518,15 @@ search_begin:
 #ifdef SERVER_MODE
       (void) heap_classrepr_unlock_class (hash_anchor, class_oid, false);
 #endif
+
+      heap_classrepr_log_stack ("heap_classrepr_get %d|%d|%d add repr %p to cache_entry %p", OID_AS_ARGS (class_oid),
+				repr, cache_entry);
     }
   else
     {
       /* now, we have already cache_entry for class_oid. if it contains repr info for reprid, return it. else load
        * classrepr info for it */
+      assert (!cache_entry->force_decache);
 
       if (reprid == NULL_REPRID)
 	{
@@ -4464,7 +4494,7 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * h
        */
 
       /* NOW check the PREVIOUS page */
-
+      /* Get the chain record */
       if (spage_get_record (thread_p, prev_pg_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS)
 	{
 	  /* Look like a system error. Unable to obtain header record */
@@ -4477,16 +4507,14 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * h
       /* Modify the chain of the previous page in memory */
       chain.next_vpid = rm_chain->next_vpid;
 
-      /* Get the chain record */
-      recdes.area_size = recdes.length = sizeof (chain);
-      recdes.type = REC_HOME;
-      recdes.data = (char *) &chain;
-
       /* Log the desired changes.. and then change the header */
       addr.pgptr = prev_pg_watcher.pgptr;
       log_append_undoredo_data (thread_p, RVHF_CHAIN, &addr, sizeof (chain), sizeof (chain), recdes.data, &chain);
 
       /* Now change the record */
+      recdes.area_size = recdes.length = sizeof (chain);
+      recdes.type = REC_HOME;
+      recdes.data = (char *) &chain;
 
       sp_success = spage_update (thread_p, prev_pg_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes);
       if (sp_success != SP_SUCCESS)
@@ -7320,9 +7348,6 @@ heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, b
   int try_count = 0;
   int try_max = 1;
   int ret;
-#if defined (SA_MODE)
-  bool is_system_class = false;
-#endif /* SA_MODE */
 
   assert (context->oid_p != NULL);
 
@@ -7488,11 +7513,7 @@ try_again:
 #if defined(SA_MODE)
       /* Accessing a REC_MARKDELETED record from a system class can happen in SA mode, when no MVCC operations have
        * been performed on the system class. */
-      if (oid_is_system_class (context->class_oid_p, &is_system_class) != NO_ERROR)
-	{
-	  goto error;
-	}
-      if (is_system_class == true)
+      if (oid_is_system_class (context->class_oid_p))
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid_p->volid,
 		  context->oid_p->pageid, context->oid_p->slotid);
