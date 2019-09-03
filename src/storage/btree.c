@@ -35286,7 +35286,7 @@ btid_int_cache::bucket::find_entry (const btid &btid_arg)
 //
 // btid_int_cache
 //
-#define BTID_INT_HASH_RWLOCK_NAME "btid_int_cache";
+static const char *BTID_INT_HASH_RWLOCK_NAME = "btid_int_cache";
 
 btid_int_cache::btid_int_cache ()
 {
