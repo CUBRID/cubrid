@@ -287,6 +287,7 @@ class vacuum_job_cursor
     VACUUM_LOG_BLOCKID m_blockid;
     VACUUM_DATA_PAGE *m_page;
     INT16 m_index;
+    VPID m_saved_page_vpid;
   };
 #define vacuum_job_cursor_print_format "vacuum_job_cursor(%d, %d|%d|%d)"
 #define vacuum_job_cursor_print_args(cursor) \
@@ -8021,6 +8022,7 @@ vacuum_job_cursor::vacuum_job_cursor ()
   : m_blockid (VACUUM_NULL_LOG_BLOCKID)
   , m_page (NULL)
   , m_index (vacuum_data_page::INDEX_NOT_FOUND)
+  , m_saved_page_vpid { NULL_PAGEID, NULL_VOLID }
 {
 }
 
@@ -8129,6 +8131,7 @@ vacuum_job_cursor::unload ()
 {
   if (m_page != NULL)
     {
+      pgbuf_get_vpid ((PAGE_PTR) m_page, &m_saved_page_vpid);
       vacuum_unfix_data_page (&cubthread::get_entry (), m_page);
     }
   m_index = vacuum_data_page::INDEX_NOT_FOUND;
@@ -8138,6 +8141,21 @@ void
 vacuum_job_cursor::load ()
 {
   assert (!is_loaded ());   // would not be optimal if already loaded
+
+  if (!VPID_ISNULL (&m_saved_page_vpid))
+    {
+      m_page = vacuum_fix_data_page (&cubthread::get_entry (), &m_saved_page_vpid);
+      m_index = m_page->get_index_of_blockid (m_blockid);
+      if (m_index != vacuum_data_page::INDEX_NOT_FOUND)
+        {
+          return;
+        }
+      else
+        {
+          unload ();
+        }
+    }
+
   search ();
 }
 
