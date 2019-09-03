@@ -47,7 +47,9 @@
 #include "log_archives.hpp"
 #include "log_comm.h"
 #include "log_common_impl.h"
+#include "log_generator.hpp"
 #include "log_lsa.hpp"
+#include "log_postpone_cache.hpp"
 #include "log_storage.hpp"
 #include "mvcc.h"
 #include "mvcc_table.hpp"
@@ -57,7 +59,6 @@
 #include "storage_common.h"
 #include "thread_entry.hpp"
 #include "transaction_transient.hpp"
-#include "log_generator.hpp"
 
 #include <assert.h>
 #if defined(SOLARIS)
@@ -243,7 +244,7 @@ const int LOG_SYSTEM_WORKER_INCR_TRANID = -1;
 #if defined (SERVER_MODE)
 #define LOG_CHECK_LOG_APPLIER(thread_p) \
   (thread_p != NULL \
-   && logtb_find_client_type (thread_p->tran_index) == BOOT_CLIENT_LOG_APPLIER)
+   && logtb_find_client_type (thread_p->tran_index) == DB_CLIENT_TYPE_LOG_APPLIER)
 #else
 #define LOG_CHECK_LOG_APPLIER(thread_p) (0)
 #endif /* !SERVER_MODE */
@@ -545,6 +546,8 @@ struct log_tdes
   bool is_user_active;
 
   LOG_RCV_TDES rcv;
+
+  log_postpone_cache m_log_postpone_cache;
 
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))

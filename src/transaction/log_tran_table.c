@@ -877,6 +877,7 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CRED
   tdes->num_transient_classnames = 0;
   tdes->first_save_entry = NULL;
   tdes->lob_locator_root.init ();
+  tdes->m_log_postpone_cache.clear ();
 }
 
 /*
@@ -1562,6 +1563,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->num_exec_queries = 0;
   tdes->suppress_replication = 0;
+  tdes->m_log_postpone_cache.clear ();
 
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
 
