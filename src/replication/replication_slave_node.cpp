@@ -279,7 +279,7 @@ namespace cubreplication
     m_transfer_receiver = NULL;
   }
 
-  void slave_node::wait_fetch_completed ()
+  void slave_node::wait_fetch_completed (bool wait_disconnect)
   {
     if (m_transfer_receiver != NULL)
       {

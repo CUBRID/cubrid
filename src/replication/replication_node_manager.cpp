@@ -82,7 +82,7 @@ namespace cubreplication
 
       if (g_slave_node != NULL)
 	{
-	  g_slave_node->wait_fetch_completed ();
+	  g_slave_node->wait_fetch_completed (false);
 	}
       delete g_slave_node;
       g_slave_node = NULL;
@@ -97,17 +97,17 @@ namespace cubreplication
       g_stream = NULL;
     }
 
-    void start_commute_to_master_state (cubthread::entry *thread_p, bool force)
+    void start_commute_to_master_state (cubthread::entry *thread_p, bool force, bool from_heartbeat)
     {
       std::unique_lock<std::mutex> ul = wait_ha_tasks ();
       inc_ha_tasks_without_lock ();
       ul.unlock ();
 
-      auto promote_func = [thread_p, force] (cubthread::entry &context)
+      auto promote_func = [thread_p, force, from_heartbeat] (cubthread::entry &context)
       {
 	if (g_slave_node != NULL)
 	  {
-	    g_slave_node->wait_fetch_completed ();
+	    g_slave_node->wait_fetch_completed (from_heartbeat);
 	  }
 	delete g_slave_node;
 	g_slave_node = NULL;

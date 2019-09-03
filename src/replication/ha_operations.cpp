@@ -65,11 +65,11 @@ namespace ha_operations
 
   std::recursive_mutex g_state_mtx;
 
-  static void handle_force_change_state (cubthread::entry *thread_p, server_state req_state);
+  static void handle_force_change_state (cubthread::entry *thread_p, server_state req_state, bool from_heartbeat);
   static server_state handle_maintenance_change_state (cubthread::entry *thread_p, server_state state, int timeout);
 
   static void
-  handle_force_change_state (cubthread::entry *thread_p, server_state req_state)
+  handle_force_change_state (cubthread::entry *thread_p, server_state req_state, bool from_heartbeat)
   {
     if (get_server_state () != req_state)
       {
@@ -82,7 +82,7 @@ namespace ha_operations
 	    if (!HA_DISABLED ())
 	      {
 		// todo: force interruptions
-		cubreplication::replication_node_manager::start_commute_to_master_state (thread_p, true);
+		cubreplication::replication_node_manager::start_commute_to_master_state (thread_p, true, from_heartbeat);
 		cubreplication::replication_node_manager::wait_commute (get_server_state (), SERVER_STATE_ACTIVE);
 	      }
 	    else
@@ -196,7 +196,7 @@ namespace ha_operations
     if (force)
       {
 	// Do transitions in 1 phase
-	handle_force_change_state (thread_p, state);
+	handle_force_change_state (thread_p, state, heartbeat);
 	if (get_server_state () == SERVER_STATE_ACTIVE)
 	  {
 	    // spawn threads be able to handle a potential flood after fail-over
@@ -218,7 +218,7 @@ namespace ha_operations
 	if (!HA_DISABLED () && state == SERVER_STATE_TO_BE_ACTIVE)
 	  {
 	    // Phase 2: task will transit to SERVER_STATE_ACTIVE
-	    cubreplication::replication_node_manager::start_commute_to_master_state (thread_p, false);
+	    cubreplication::replication_node_manager::start_commute_to_master_state (thread_p, false, heartbeat);
 	  }
 
 	if (HA_DISABLED ())
