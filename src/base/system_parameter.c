@@ -668,6 +668,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_IB_TASK_MEMSIZE "index_load_task_memsize"
 #define PRM_NAME_STATS_ON "stats_on"
 #define PRM_NAME_PERF_TEST_MODE "perf_test_mode"
+#define PRM_NAME_REPR_CACHE_LOG "er_log_repr_cache"
 
 #define PRM_NAME_REPL_LOG_GENERATOR_LOGGING "replication_log_generator_logging"
 #define PRM_NAME_REPL_LOG_LOCAL_DEBUG "replication_log_local_debug"
@@ -2250,6 +2251,10 @@ static unsigned int prm_stats_on_flag = 0;
 bool PRM_PERF_TEST_MODE = false;
 static bool prm_perf_test_mode_default = false;
 static unsigned int prm_perf_test_mode_flag = 0;
+
+bool PRM_REPR_CACHE_LOG = false;
+static bool prm_repr_cache_log_default = false;
+static unsigned int prm_repr_cache_log_flag = 0;
 
 bool PRM_REPL_LOG_GENERATOR_LOGGING = false;
 static bool prm_repl_log_generator_default = false;
@@ -5789,6 +5794,17 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_perf_test_mode_flag,
    (void *) &prm_perf_test_mode_default,
    (void *) &PRM_PERF_TEST_MODE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_REPR_CACHE_LOG,
+   PRM_NAME_REPR_CACHE_LOG,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_repr_cache_log_flag,
+   (void *) &prm_repr_cache_log_default,
+   (void *) &PRM_REPR_CACHE_LOG,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

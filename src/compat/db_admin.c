@@ -114,6 +114,8 @@ static int db_Override_tran_index = NULL_TRAN_INDEX;
 static DB_HOST_STATUS *db_add_host_status (char *hostname, int status);
 static DB_HOST_STATUS *db_find_host_status (char *hostname);
 
+static int db_Client_type = DB_CLIENT_TYPE_DEFAULT;
+
 static void install_static_methods (void);
 static int fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose, int quit_on_error);
 #if !defined(WINDOWS)
@@ -254,7 +256,7 @@ db_init (const char *program, int print_version, const char *dbname, const char 
       desired_log_page_size = desired_pagesize;
     }
 
-  client_credential.client_type = BOOT_CLIENT_ADMIN_UTILITY;
+  client_credential.client_type = DB_CLIENT_TYPE_ADMIN_UTILITY;
   client_credential.db_name = dbname;
   client_credential.program_name = program;
   client_credential.process_id = -1;
@@ -891,7 +893,7 @@ db_restart (const char *program, int print_version, const char *volume)
       client_credential.process_id = -1;
       client_credential.preferred_hosts = db_Preferred_hosts;
       client_credential.connect_order = db_Connect_order;
-      if (db_Client_type == BOOT_CLIENT_DDL_PROXY)
+      if (db_Client_type == DB_CLIENT_TYPE_DDL_PROXY)
 	{
 	  client_credential.desired_tran_index = db_get_override_tran_index ();
 	}
@@ -2768,12 +2770,13 @@ db_set_system_parameters_for_ha_repl (const char *data)
  *
  * return    : error code
  * proxy_command (out) : proxy command
+ * proxy_sys_param (out) : proxy system parameters context
  *
  */
 int
-db_get_proxy_command (const char **proxy_command)
+db_get_proxy_command (const char **proxy_command, const char **proxy_sys_param)
 {
-  return locator_get_proxy_command (proxy_command);
+  return locator_get_proxy_command (proxy_command, proxy_sys_param);
 }
 
 /*

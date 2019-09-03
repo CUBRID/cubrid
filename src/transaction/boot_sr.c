@@ -81,6 +81,7 @@
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
+#include "ha_operations.hpp"
 #include "replication_node_manager.hpp"
 #include "server_support.h"
 #endif /* SERVER_MODE */
@@ -3016,7 +3017,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 
 #if defined(SA_MODE)
   if (client_credential != NULL && !client_credential->program_name.empty ()
-      && client_credential->client_type == BOOT_CLIENT_ADMIN_UTILITY)
+      && client_credential->client_type == DB_CLIENT_TYPE_ADMIN_UTILITY)
     {
       auto const sep_index = client_credential->program_name.find_last_of (PATH_SEPARATOR);
       if (sep_index != client_credential->program_name.npos)
@@ -3068,7 +3069,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
       client_credential->db_user = db_user_upper;
     }
 
-  if (client_credential->client_type == BOOT_CLIENT_DDL_PROXY)
+  if (client_credential->client_type == DB_CLIENT_TYPE_DDL_PROXY)
     {
       /* DDL proxy client has already a transaction */
       tran_index = client_credential->desired_tran_index;
@@ -5753,39 +5754,39 @@ boot_client_type_to_string (BOOT_CLIENT_TYPE type)
 {
   switch (type)
     {
-    case BOOT_CLIENT_SYSTEM_INTERNAL:
+    case DB_CLIENT_TYPE_SYSTEM_INTERNAL:
       return "SYSTEM_INTERNAL";
-    case BOOT_CLIENT_DEFAULT:
+    case DB_CLIENT_TYPE_DEFAULT:
       return "DEFAULT";
-    case BOOT_CLIENT_CSQL:
+    case DB_CLIENT_TYPE_CSQL:
       return "CSQL";
-    case BOOT_CLIENT_READ_ONLY_CSQL:
+    case DB_CLIENT_TYPE_READ_ONLY_CSQL:
       return "READ_ONLY_CSQL";
-    case BOOT_CLIENT_BROKER:
+    case DB_CLIENT_TYPE_BROKER:
       return "BROKER";
-    case BOOT_CLIENT_READ_ONLY_BROKER:
+    case DB_CLIENT_TYPE_READ_ONLY_BROKER:
       return "READ_ONLY_BROKER";
-    case BOOT_CLIENT_SLAVE_ONLY_BROKER:
+    case DB_CLIENT_TYPE_SLAVE_ONLY_BROKER:
       return "SLAVE_ONLY_BROKER";
-    case BOOT_CLIENT_ADMIN_UTILITY:
+    case DB_CLIENT_TYPE_ADMIN_UTILITY:
       return "ADMIN_UTILITY";
-    case BOOT_CLIENT_ADMIN_CSQL:
+    case DB_CLIENT_TYPE_ADMIN_CSQL:
       return "ADMIN_CSQL";
-    case BOOT_CLIENT_LOG_COPIER:
+    case DB_CLIENT_TYPE_LOG_COPIER:
       return "LOG_COPIER";
-    case BOOT_CLIENT_LOG_APPLIER:
+    case DB_CLIENT_TYPE_LOG_APPLIER:
       return "LOG_APPLIER";
-    case BOOT_CLIENT_RW_BROKER_REPLICA_ONLY:
+    case DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY:
       return "RW_BROKER_REPLICA_ONLY";
-    case BOOT_CLIENT_RO_BROKER_REPLICA_ONLY:
+    case DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY:
       return "RO_BROKER_REPLICA_ONLY";
-    case BOOT_CLIENT_SO_BROKER_REPLICA_ONLY:
+    case DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY:
       return "SO_BROKER_REPLICA_ONLY";
-    case BOOT_CLIENT_ADMIN_CSQL_WOS:
+    case DB_CLIENT_TYPE_ADMIN_CSQL_WOS:
       return "ADMIN_CSQL_WOS";
-    case BOOT_CLIENT_DDL_PROXY:
+    case DB_CLIENT_TYPE_DDL_PROXY:
       return "DDL_PROXY";
-    case BOOT_CLIENT_UNKNOWN:
+    case DB_CLIENT_TYPE_UNKNOWN:
     default:
       return "UNKNOWN";
     }

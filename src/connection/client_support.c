@@ -683,13 +683,3 @@ css_cleanup_client_queues (char *host_name)
       css_remove_all_unexpected_packets (entry->conn);
     }
 }
-
-/*
- * css_ha_server_state - return the current HA server state
- *   return: one of HA_SERVER_STATE
- */
-HA_SERVER_STATE
-css_ha_server_state (void)
-{
-  return boot_change_ha_mode (HA_SERVER_STATE_NA, false, 0);
-}

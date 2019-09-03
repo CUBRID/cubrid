@@ -2136,34 +2136,6 @@ css_register_check_server_alive_fn (CSS_CHECK_SERVER_ALIVE_FN callback_fn)
 #endif /* !SERVER_MODE */
 
 /*
- * css_ha_server_state_string
- */
-const char *
-css_ha_server_state_string (HA_SERVER_STATE state)
-{
-  switch (state)
-    {
-    case HA_SERVER_STATE_NA:
-      return "na";
-    case HA_SERVER_STATE_IDLE:
-      return HA_SERVER_STATE_IDLE_STR;
-    case HA_SERVER_STATE_ACTIVE:
-      return HA_SERVER_STATE_ACTIVE_STR;
-    case HA_SERVER_STATE_TO_BE_ACTIVE:
-      return HA_SERVER_STATE_TO_BE_ACTIVE_STR;
-    case HA_SERVER_STATE_STANDBY:
-      return HA_SERVER_STATE_STANDBY_STR;
-    case HA_SERVER_STATE_TO_BE_STANDBY:
-      return HA_SERVER_STATE_TO_BE_STANDBY_STR;
-    case HA_SERVER_STATE_MAINTENANCE:
-      return HA_SERVER_STATE_MAINTENANCE_STR;
-    case HA_SERVER_STATE_DEAD:
-      return HA_SERVER_STATE_DEAD_STR;
-    }
-  return "invalid";
-}
-
-/*
  * css_ha_applier_state_string
  */
 const char *
