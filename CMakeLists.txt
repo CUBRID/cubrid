@@ -199,7 +199,16 @@ else(VERSION_MATCHES_LENGTH GREATER 3)
         ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
     else(GIT_VERSION VERSION_GREATER 1.7.6)
-      # TODO: Below wc command could be failed on Windows platform
+      # If you have trouble with execute_process on Windows, it is likely an issue caused by git installation.
+      # <git-installation-directory>/bin has two files, bash.exe and sh.exe, that messes up CMake's execute_process
+      #
+      # There are two possible fixes for this issue:
+      # 1. Add <git-installation-directory>/usr/bin to %PATH% environment variable
+      # 2. Remove <git-installation-directory>/bin from %PATH% environment variable
+      # You may prefer the first option if you want to use git command in command prompt.
+      #
+      # If both fixes fail, just replace execute_process(...) with set (commit_count 0). It is not a critical step to generate the project.
+      # Also you may send us a message at https://www.cubrid.org/contact
       execute_process(COMMAND ${GIT_EXECUTABLE} log --oneline
         COMMAND wc -l
         OUTPUT_VARIABLE commit_count RESULT_VARIABLE git_result

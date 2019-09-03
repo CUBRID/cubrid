@@ -571,7 +571,9 @@ bool vacuum_Is_booted = false;
   (unsigned long long) (data)->newest_mvccid
 
 /* Vacuum static functions. */
+#if defined (SERVER_MODE)
 static void vacuum_process_vacuum_data (THREAD_ENTRY * thread_p);
+#endif // SERVER_MODE
 static void vacuum_update_oldest_unvacuumed_mvccid (THREAD_ENTRY * thread_p);
 static void vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p);
 static int vacuum_compare_blockids (const void *ptr1, const void *ptr2);
@@ -647,6 +649,11 @@ static void vacuum_data_unload_first_and_last_page (THREAD_ENTRY * thread_p);
 
 static void vacuum_data_empty_update_last_blockid (THREAD_ENTRY * thread_p);
 
+static void vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry,
+			      bool is_partial_block = false);
+static bool vacuum_check_finished_queue (void);
+static bool vacuum_check_data_buffer (void);
+
 #if !defined (NDEBUG)
 /* Debug function to verify vacuum data. */
 static void vacuum_verify_vacuum_data_debug (THREAD_ENTRY * thread_p);
@@ -706,6 +713,7 @@ class vacuum_master_context_manager : public cubthread::daemon_entry_manager
     }
 };
 
+#if defined (SERVER_MODE)
 static void
 vacuum_master_execute (cubthread::entry & thread_ref)
 {
@@ -716,6 +724,7 @@ vacuum_master_execute (cubthread::entry & thread_ref)
     }
   vacuum_process_vacuum_data (&thread_ref);
 }
+#endif // SERVER_MODE
 
 // class vacuum_worker_context_manager
 //
@@ -852,7 +861,225 @@ xvacuum (THREAD_ENTRY * thread_p)
   vacuum_convert_thread_to_master (thread_p, save_type);
 
   /* Process vacuum data and run vacuum . */
-  vacuum_process_vacuum_data (thread_p);
+  int data_index;
+  VACUUM_DATA_ENTRY *entry = NULL;
+  MVCCID local_oldest_active_mvccid;
+  VACUUM_DATA_PAGE *data_page = NULL;
+  VPID next_vpid;
+  PERF_UTIME_TRACKER perf_tracker;
+
+  VACUUM_DATA_ENTRY vacuum_data_entry;
+  bool save_check_interrupt;
+  bool dummy_continue_check_interrupt;
+
+  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
+    {
+      return NO_ERROR;
+    }
+
+  int error_code = NO_ERROR;
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_STAND_ALONE_VACUUM_START, 0);
+  er_log_debug (ARG_FILE_LINE, "Stand-alone vacuum start.\n");
+
+  PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
+
+  if (!vacuum_Data.is_loaded)
+    {
+      /* Load vacuum data. */
+      /* This was initially in boot_restart_server. However, the "commit" of boot_restart_server will complain
+       * about vacuum data first and last page not being unfixed (and it will also unfix them).
+       * So, we have to load the data here (vacuum master never commits).
+       */
+      vacuum_data_load_first_and_last_page (thread_p);
+
+      /* Initialize job cursor */
+      VPID_COPY (&vacuum_Data.vpid_job_cursor, pgbuf_get_vpid_ptr ((PAGE_PTR) vacuum_Data.first_page));
+      vacuum_Data.blockid_job_cursor = VACUUM_BLOCKID_WITHOUT_FLAGS (vacuum_Data.first_page->data[0].blockid);
+    }
+
+  /* Stand-alone mode will restart if finished job queue is full. */
+restart:
+
+  assert (data_page == NULL);
+
+  /* Remove vacuumed entries */
+  vacuum_data_mark_finished (thread_p);
+
+  /* Append newly logged blocks at the end of the vacuum data table */
+  (void) vacuum_consume_buffer_log_blocks (thread_p);
+
+  /* Update oldest MVCCID. */
+  vacuum_update_oldest_unvacuumed_mvccid (thread_p);
+
+  /* Search for blocks ready to be vacuumed and generate jobs. */
+
+  data_page = vacuum_fix_data_page (thread_p, &vacuum_Data.vpid_job_cursor);
+  if (data_page == NULL)
+    {
+      ASSERT_ERROR ();
+      return ER_FAILED;
+    }
+
+  INT64 job_offset = (vacuum_Data.blockid_job_cursor
+		      - VACUUM_BLOCKID_WITHOUT_FLAGS (data_page->data[data_page->index_unvacuumed].blockid));
+  data_index = (int) (data_page->index_unvacuumed + job_offset);
+  assert (data_index >= 0);
+
+  vacuum_er_log (VACUUM_ER_LOG_MASTER, "Start searching jobs in page %d|%d from index %d.",
+		 vacuum_Data.vpid_job_cursor.volid, vacuum_Data.vpid_job_cursor.pageid, data_index);
+
+  while (true)
+    {
+      assert (data_index >= 0);
+      if (data_index >= data_page->index_free)
+	{
+	  /* Move to next page. */
+	  /* todo: This assert needs review!!! */
+	  /* assert (data_index == data_page->index_free); */
+	  VPID_COPY (&next_vpid, &data_page->next_page);
+	  vacuum_unfix_data_page (thread_p, data_page);
+	  if (VPID_ISNULL (&next_vpid))
+	    {
+	      /* No next page. */
+	      break;
+	    }
+	  data_page = vacuum_fix_data_page (thread_p, &next_vpid);
+	  data_index = data_page->index_unvacuumed;
+
+	  /* Update job cursor */
+	  vacuum_Data.vpid_job_cursor = next_vpid;
+	  vacuum_Data.blockid_job_cursor =
+	    VACUUM_BLOCKID_WITHOUT_FLAGS (data_page->data[data_page->index_unvacuumed].blockid);
+	  continue;
+	}
+      entry = data_page->data + data_index;
+
+      if (!VACUUM_BLOCK_STATUS_IS_AVAILABLE (entry->blockid))
+	{
+	  assert (VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid));
+	  /* Continue to other blocks. */
+	  data_index++;
+	  vacuum_Data.blockid_job_cursor++;
+	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
+			 "Job for blockid = %lld %s. Skip.",
+			 (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid),
+			 VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid) ? "was executed" : "is in progress");
+	  continue;
+	}
+
+      VACUUM_BLOCK_STATUS_SET_IN_PROGRESS (entry->blockid);
+      vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
+      if (!VACUUM_BLOCK_IS_INTERRUPTED (entry->blockid))
+	{
+	  /* Log that a new job is starting. After recovery, the system will then know this job was partially executed.
+	   * Logging the start of a job already interrupted is not necessary. We do it here rather than when vacuum job
+	   * is really started to avoid locking vacuum data again (logging vacuum data cannot be done without locking).
+	   */
+	  log_append_redo_data2 (thread_p, RVVAC_START_JOB, NULL, (PAGE_PTR) data_page, data_index, 0, NULL);
+	  vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
+	}
+
+      // job will be executed immediately
+      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_VAC_MASTER);
+      vacuum_push_task (thread_p, *entry);
+      PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
+
+      // need to check for interrupts
+      if (logtb_is_interrupted (thread_p, true, &dummy_continue_check_interrupt))
+	{
+	  /* wrap up all executed jobs and stop */
+	  vacuum_data_mark_finished (thread_p);
+	  return NO_ERROR;
+	}
+
+      if (vacuum_check_data_buffer () || vacuum_check_finished_queue ())
+	{
+	  vacuum_unfix_data_page (thread_p, data_page);
+	  goto restart;
+	}
+
+      /* Increment block index. */
+      data_index++;
+      vacuum_Data.blockid_job_cursor++;
+    }
+
+  if (data_page != NULL)
+    {
+      vacuum_unfix_data_page (thread_p, data_page);
+    }
+#if !defined (NDEBUG)
+  vacuum_verify_vacuum_data_page_fix_count (thread_p);
+#endif /* !NDEBUG */
+
+  /* Complete vacuum for SA_MODE. This means also vacuuming based on last block being logged. */
+
+  assert (vacuum_Block_data_buffer->is_empty ());
+
+  /* Remove all vacuumed entries. */
+  vacuum_data_mark_finished (thread_p);
+
+  // TODO: a new block may have been generated by vacuum_data_mark_finished and it is only consumed at the end,
+  // although it is vacuumed below
+
+  assert (vacuum_Finished_job_queue->is_empty ());
+  assert (vacuum_Data.first_page == vacuum_Data.last_page);
+  assert (vacuum_Data.first_page->index_unvacuumed == 0);
+  assert (vacuum_Data.first_page->index_free == 0);
+
+  /* Can we generate another block on information cached in log header? */
+  if (vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid) > vacuum_Data.get_last_blockid ())
+    {
+      /* Execute vacuum based on the block not generated yet. */
+      /* We don't want to interrupt next operation. */
+      save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
+
+      /* Create vacuum data entry for the job. */
+      vacuum_data_entry.blockid = vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid);
+      LSA_COPY (&vacuum_data_entry.start_lsa, &log_Gl.hdr.mvcc_op_log_lsa);
+      vacuum_data_entry.oldest_mvccid = log_Gl.hdr.last_block_oldest_mvccid;
+      vacuum_data_entry.newest_mvccid = log_Gl.hdr.last_block_newest_mvccid;
+      VACUUM_BLOCK_STATUS_SET_IN_PROGRESS (vacuum_data_entry.blockid);
+
+      /* Update vacuum_Data as if it would contain only this entry. Do not update last_blockid since it may be
+       * generated again. */
+      vacuum_Data.oldest_unvacuumed_mvccid = vacuum_data_entry.oldest_mvccid;
+
+      /* We do not log here. We could have a problem if the server crashes, because same vacuum tasks may be
+       * re-executed. The worst that can happen is to hit an assert in debug mode. Instead of doing a voodoo fix here,
+       * it is better to live with the bug. */
+
+      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_VAC_MASTER);
+
+      vacuum_push_task (thread_p, vacuum_data_entry, true);
+
+      PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
+      (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
+    }
+
+  /* All vacuum complete. */
+  vacuum_Data.oldest_unvacuumed_mvccid = log_Gl.hdr.mvcc_next_id;
+
+  log_append_redo_data2 (thread_p, RVVAC_COMPLETE, NULL, (PAGE_PTR) vacuum_Data.first_page, 0,
+			 sizeof (log_Gl.hdr.mvcc_next_id), &log_Gl.hdr.mvcc_next_id);
+  vacuum_set_dirty_data_page (thread_p, vacuum_Data.first_page, DONT_FREE);
+  logpb_force_flush_pages (thread_p);
+
+  /* Cleanup dropped files. */
+  vacuum_cleanup_dropped_files (thread_p);
+
+  /* Reset log header information saved for vacuum. */
+  logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_STAND_ALONE_VACUUM_END, 0);
+  er_log_debug (ARG_FILE_LINE, "Stand-alone vacuum end.\n");
+
+  /* Vacuum structures no longer needed. */
+  vacuum_finalize (thread_p);
+
+  vacuum_Data.is_vacuum_complete = true;
+
+  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_VAC_MASTER);
 
   vacuum_restore_thread (thread_p, save_type);
 
@@ -2619,8 +2846,8 @@ vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, MVC
   perfmon_add_stat (thread_p, PSTAT_VAC_NUM_TO_VACUUM_LOG_PAGES, vacuum_Data.log_block_npages);
 }
 
-void
-vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry, bool is_partial_block = false)
+static void
+vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry, bool is_partial_block)
 {
 #if defined (SA_MODE)
   // we need a smarter thread manager that can do this automatically
@@ -2705,6 +2932,7 @@ vacuum_data_unload_first_and_last_page (THREAD_ENTRY * thread_p)
   vacuum_Data.is_loaded = false;
 }
 
+#if defined (SERVER_MODE)
 /*
  * vacuum_process_vacuum_data () - Start a new vacuum iteration that processes vacuum data and identifies blocks
  *				   candidate to assign as jobs for vacuum workers.
@@ -2722,18 +2950,12 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
   VPID next_vpid;
   PERF_UTIME_TRACKER perf_tracker;
 
-#if defined (SA_MODE)
-  VACUUM_DATA_ENTRY vacuum_data_entry;
-  bool save_check_interrupt;
-  bool dummy_continue_check_interrupt;
-#endif /* SA_MODE */
+  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
+    {
+      return;
+    }
 
   int error_code = NO_ERROR;
-
-#if defined (SA_MODE)
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_STAND_ALONE_VACUUM_START, 0);
-  er_log_debug (ARG_FILE_LINE, "Stand-alone vacuum start.\n");
-#endif
 
   PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
 
@@ -2746,11 +2968,6 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
 	{
 	  ATOMIC_STORE_64 (&vacuum_Global_oldest_active_mvccid, local_oldest_active_mvccid);
 	}
-    }
-
-  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
-    {
-      return;
     }
 
   if (!vacuum_Data.is_loaded)
@@ -2768,7 +2985,6 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
     }
 
   /* Server-mode will restart if block data buffer or finished job queue are getting filled. */
-  /* Stand-alone mode will restart if finished job queue is full. */
 restart:
 
   assert (data_page == NULL);
@@ -2779,10 +2995,8 @@ restart:
   /* Append newly logged blocks at the end of the vacuum data table */
   (void) vacuum_consume_buffer_log_blocks (thread_p);
 
-#if defined (SERVER_MODE)
   pgbuf_flush_if_requested (thread_p, (PAGE_PTR) vacuum_Data.first_page);
   pgbuf_flush_if_requested (thread_p, (PAGE_PTR) vacuum_Data.last_page);
-#endif /* SERVER_MODE */
 
   /* Update oldest MVCCID. */
   vacuum_update_oldest_unvacuumed_mvccid (thread_p);
@@ -2793,13 +3007,11 @@ restart:
       return;
     }
 
-#if defined (SERVER_MODE)
   /* How many jobs can we generate? */
   if (cubthread::get_manager ()->is_pool_full (vacuum_Worker_threads))
     {
       return;
     }
-#endif /* SERVER_MODE */
 
   /* Search for blocks ready to be vacuumed and generate jobs. */
 
@@ -2844,7 +3056,6 @@ restart:
 	}
       entry = data_page->data + data_index;
 
-#if defined (SERVER_MODE)
       if (!MVCC_ID_PRECEDES (entry->newest_mvccid, vacuum_Global_oldest_active_mvccid)
 	  || (entry->start_lsa.pageid + 1 >= log_Gl.append.prev_lsa.pageid))
 	{
@@ -2865,16 +3076,11 @@ restart:
 	  /* todo: remember this as starting point for next iteration of generating jobs */
 	  break;
 	}
-#endif // SERVER_MODE
 
       if (!VACUUM_BLOCK_STATUS_IS_AVAILABLE (entry->blockid))
 	{
-#if defined (SERVER_MODE)
 	  assert (VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid)
 		  || VACUUM_BLOCK_STATUS_IS_IN_PROGRESS (entry->blockid));
-#else // not SERVER_MODE = SA_MODE
-	  assert (VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid));
-#endif // not SERVER_MODE = SA_MODE
 	  /* Continue to other blocks. */
 	  data_index++;
 	  vacuum_Data.blockid_job_cursor++;
@@ -2897,24 +3103,7 @@ restart:
 	  vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
 	}
 
-#if defined (SA_MODE)
-      // job will be executed immediately
-      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_VAC_MASTER);
-#endif // SA_MODE
       vacuum_push_task (thread_p, *entry);
-#if defined (SA_MODE)
-      PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
-#endif // SA_MODE
-
-#if defined (SA_MODE)
-      // need to check for interrupts
-      if (logtb_is_interrupted (thread_p, true, &dummy_continue_check_interrupt))
-	{
-	  /* wrap up all executed jobs and stop */
-	  vacuum_data_mark_finished (thread_p);
-	  return;
-	}
-#endif // SA_MODE
 
       if (vacuum_check_data_buffer () || vacuum_check_finished_queue ())
 	{
@@ -2935,74 +3124,9 @@ restart:
   vacuum_verify_vacuum_data_page_fix_count (thread_p);
 #endif /* !NDEBUG */
 
-#if defined (SA_MODE)
-  /* Complete vacuum for SA_MODE. This means also vacuuming based on last block being logged. */
-
-  assert (vacuum_Block_data_buffer->is_empty ());
-
-  /* Remove all vacuumed entries. */
-  vacuum_data_mark_finished (thread_p);
-
-  assert (vacuum_Finished_job_queue->is_empty ());
-  assert (vacuum_Data.first_page == vacuum_Data.last_page);
-  assert (vacuum_Data.first_page->index_unvacuumed == 0);
-  assert (vacuum_Data.first_page->index_free == 0);
-
-  /* Can we generate another block on information cached in log header? */
-  if (vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid) > vacuum_Data.get_last_blockid ())
-    {
-      /* Execute vacuum based on the block not generated yet. */
-      /* We don't want to interrupt next operation. */
-      save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
-
-      /* Create vacuum data entry for the job. */
-      vacuum_data_entry.blockid = vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid);
-      LSA_COPY (&vacuum_data_entry.start_lsa, &log_Gl.hdr.mvcc_op_log_lsa);
-      vacuum_data_entry.oldest_mvccid = log_Gl.hdr.last_block_oldest_mvccid;
-      vacuum_data_entry.newest_mvccid = log_Gl.hdr.last_block_newest_mvccid;
-      VACUUM_BLOCK_STATUS_SET_IN_PROGRESS (vacuum_data_entry.blockid);
-
-      /* Update vacuum_Data as if it would contain only this entry. Do not update last_blockid since it may be
-       * generated again. */
-      vacuum_Data.oldest_unvacuumed_mvccid = vacuum_data_entry.oldest_mvccid;
-
-      /* We do not log here. We could have a problem if the server crashes, because same vacuum tasks may be
-       * re-executed. The worst that can happen is to hit an assert in debug mode. Instead of doing a voodoo fix here,
-       * it is better to live with the bug. */
-
-      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_VAC_MASTER);
-
-      vacuum_push_task (thread_p, vacuum_data_entry, true);
-
-      PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
-      (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
-    }
-
-  /* All vacuum complete. */
-  vacuum_Data.oldest_unvacuumed_mvccid = log_Gl.hdr.mvcc_next_id;
-
-  log_append_redo_data2 (thread_p, RVVAC_COMPLETE, NULL, (PAGE_PTR) vacuum_Data.first_page, 0,
-			 sizeof (log_Gl.hdr.mvcc_next_id), &log_Gl.hdr.mvcc_next_id);
-  vacuum_set_dirty_data_page (thread_p, vacuum_Data.first_page, DONT_FREE);
-  logpb_force_flush_pages (thread_p);
-
-  /* Cleanup dropped files. */
-  vacuum_cleanup_dropped_files (thread_p);
-
-  /* Reset log header information saved for vacuum. */
-  logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
-
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_STAND_ALONE_VACUUM_END, 0);
-  er_log_debug (ARG_FILE_LINE, "Stand-alone vacuum end.\n");
-
-  /* Vacuum structures no longer needed. */
-  vacuum_finalize (thread_p);
-
-  vacuum_Data.is_vacuum_complete = true;
-#endif /* SA_MODE */
-
   PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_VAC_MASTER);
 }
+#endif // SERVER_MODE
 
 /*
  * vacuum_rv_redo_vacuum_complete () - Redo recovery of vacuum complete.
