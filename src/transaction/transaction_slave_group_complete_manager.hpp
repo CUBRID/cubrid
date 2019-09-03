@@ -24,11 +24,11 @@
 #ifndef _TRANSACTION_SLAVE_GROUP_COMPLETE_MANAGER_HPP_
 #define _TRANSACTION_SLAVE_GROUP_COMPLETE_MANAGER_HPP_
 
-#include "transaction_group_complete_manager.hpp"
-
 #include "cubstream.hpp"
 #include "log_consumer.hpp"
 #include "thread_daemon.hpp"
+#include "transaction_group_complete_manager.hpp"
+#include "transaction_group_completion.hpp"
 
 namespace cubtx
 {
