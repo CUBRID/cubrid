@@ -972,11 +972,11 @@ restart:
       if (!VACUUM_BLOCK_STATUS_IS_AVAILABLE (entry->blockid))
 	{
 	  assert (VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid));
-	  cursor.increment_blockid ();
 	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
 			 "Job for blockid = %lld %s. Skip.",
 			 (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid),
 			 VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid) ? "was executed" : "is in progress");
+	  cursor.increment_blockid ();
 	  continue;
 	}
 
@@ -998,10 +998,13 @@ restart:
       vacuum_push_task (thread_p, *entry);
       PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
 
+      cursor.increment_blockid ();	// advance to next
+
       // need to check for interrupts
       if (logtb_is_interrupted (thread_p, true, &dummy_continue_check_interrupt))
 	{
 	  /* wrap up all executed jobs and stop */
+	  cursor.unload ();
 	  vacuum_data_mark_finished (thread_p);
 	  return NO_ERROR;
 	}
@@ -1011,8 +1014,6 @@ restart:
 	  cursor.unload ();
 	  goto restart;
 	}
-
-      cursor.increment_blockid ();
     }
 
   cursor.unload ();
@@ -3043,11 +3044,11 @@ restart:
 	{
 	  assert (VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid)
 		  || VACUUM_BLOCK_STATUS_IS_IN_PROGRESS (entry->blockid));
-          m_cursor.increment_blockid ();
 	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
 			 "Job for blockid = %lld %s. Skip.",
 			 (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid),
 			 VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid) ? "was executed" : "is in progress");
+          m_cursor.increment_blockid ();
 	  continue;
 	}
 
@@ -3065,13 +3066,13 @@ restart:
 	}
 
       vacuum_push_task (thread_p, *entry);
+      m_cursor.increment_blockid ();
+
       if (vacuum_check_data_buffer () || vacuum_check_finished_queue ())
 	{
           m_cursor.unload ();
 	  goto restart;
 	}
-
-      m_cursor.increment_blockid ();
     }
 
   m_cursor.unload ();
@@ -8101,7 +8102,7 @@ vacuum_job_cursor::change_blockid (VACUUM_LOG_BLOCKID blockid)
 void
 vacuum_job_cursor::increment_blockid ()
 {
-  change_blockid (m_blockid);
+  change_blockid (m_blockid + 1);
 }
 
 void
