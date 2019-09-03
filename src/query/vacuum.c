@@ -271,7 +271,7 @@ class vacuum_job_cursor
     void readjust_to_vacuum_data_changes ();
 
     VACUUM_LOG_BLOCKID get_blockid () const;
-    VPID get_page_vpid () const;
+    const VPID &get_page_vpid () const;
     vacuum_data_page *get_page () const;
     INT16 get_index () const;
 
@@ -8051,7 +8051,7 @@ vacuum_job_cursor::get_blockid () const
   return m_blockid;
 }
 
-VPID
+const VPID &
 vacuum_job_cursor::get_page_vpid () const
 {
   return m_page != NULL ? *pgbuf_get_vpid_ptr ((PAGE_PTR) m_page) : vpid_Null_vpid;
