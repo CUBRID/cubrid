@@ -35340,7 +35340,7 @@ btid_int_cache::claim (const btid &btid_arg, btid_int &output)
   rwlock_read_lock (&m_hash_lock);
 
   bucket &bck = m_hash[get_hash (btid_arg)];
-  entry *entp = NULL;
+  entry *entp = bck.find_entry (btid_arg);
   
   if (entp == NULL)
     {
