@@ -204,7 +204,7 @@ namespace cubtx
     er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete: (%llu)\n", group_id);
   }
 
-  /* I'm the only thread. All completes are done by me. */
+  //
   // notify_all notifies all waiting transactions. When a thread is waked up, it will check again waiting condition.
   //
   void group_complete_manager::notify_all ()
@@ -246,26 +246,15 @@ namespace cubtx
   }
 
   //
-  // set_current_group_minimum_transactions set minimum number of transactions for current group.
+  // has_transactions_in_current_group check whether the current group has specified number of transactions.
   //
-  complete_manager::id_type group_complete_manager::set_current_group_minimum_transactions (
-	  unsigned int count_minimum_transactions,
-	  bool &has_group_enough_transactions)
+  bool group_complete_manager::has_transactions_in_current_group (const unsigned int count_transactions,
+      complete_manager::id_type &current_group_id)
   {
-    assert (count_minimum_transactions >= 0);
     std::unique_lock<std::mutex> ulock (m_group_mutex);
-    m_current_group_min_transactions = count_minimum_transactions;
 
-    if (m_current_group_min_transactions <= m_current_group.get_container ().size ())
-      {
-	has_group_enough_transactions = true;
-      }
-    else
-      {
-	has_group_enough_transactions = false;
-      }
-
-    return m_current_group_id;
+    current_group_id = m_current_group_id;
+    return count_transactions == m_current_group.get_container ().size ();
   }
 
   bool group_complete_manager::close_current_group ()
@@ -344,7 +333,7 @@ namespace cubtx
   //
   // is_latest_closed_group_prepared_for_complete checks whether the latest closed group is prepared for complete.
   //
-  bool group_complete_manager::is_latest_closed_group_prepared_for_complete ()
+  bool group_complete_manager::is_latest_closed_group_prepared_for_complete () const
   {
     return ((m_latest_closed_group_state & GROUP_PREPARED_FOR_COMPLETE) == GROUP_PREPARED_FOR_COMPLETE);
   }
@@ -376,7 +365,7 @@ namespace cubtx
   //
   // is_latest_closed_group_prepared_for_complete checks whether complete started for latest closed group.
   //
-  bool group_complete_manager::is_latest_closed_group_complete_started ()
+  bool group_complete_manager::is_latest_closed_group_complete_started () const
   {
     return ((m_latest_closed_group_state & GROUP_COMPLETE_STARTED) == GROUP_COMPLETE_STARTED);
   }
@@ -384,7 +373,7 @@ namespace cubtx
   //
   // is_latest_closed_group_mvcc_completed checks whether the latest closed group has mvcc completed.
   //
-  bool group_complete_manager::is_latest_closed_group_mvcc_completed ()
+  bool group_complete_manager::is_latest_closed_group_mvcc_completed () const
   {
     return ((m_latest_closed_group_state & GROUP_MVCC_COMPLETED) == GROUP_MVCC_COMPLETED);
   }
@@ -392,7 +381,7 @@ namespace cubtx
   //
   // is_latest_closed_group_logged checks whether the latest closed group is logged.
   //
-  bool group_complete_manager::is_latest_closed_group_logged ()
+  bool group_complete_manager::is_latest_closed_group_logged () const
   {
     return ((m_latest_closed_group_state & GROUP_LOGGED) == GROUP_LOGGED);
   }
@@ -400,7 +389,7 @@ namespace cubtx
   //
   // is_latest_closed_group_completed checks whether the latest closed group is completed.
   //
-  bool group_complete_manager::is_latest_closed_group_completed ()
+  bool group_complete_manager::is_latest_closed_group_completed () const
   {
     return ((m_latest_closed_group_state & GROUP_COMPLETED) == GROUP_COMPLETED);
   }
@@ -409,7 +398,7 @@ namespace cubtx
   // is_current_group_empty checks whether the current group is empty.
   //  Note: This function must be called under m_group_mutex protection
   //
-  bool group_complete_manager::is_current_group_empty ()
+  bool group_complete_manager::is_current_group_empty () const
   {
     if (m_current_group.get_container ().empty ())
       {
@@ -430,7 +419,7 @@ namespace cubtx
   //
   // get_current_group gets current group.
   //
-  const tx_group &group_complete_manager::get_current_group ()
+  const tx_group &group_complete_manager::get_current_group () const
   {
     return m_current_group;
   }
@@ -438,14 +427,6 @@ namespace cubtx
   //
   // get_current_group gets current group.
   //
-  int group_complete_manager::get_current_group_min_transactions ()
-  {
-    return m_current_group_min_transactions;
-  }
-
-  //
-  // is_group_mvcc_completed checks whether the group has MVCC completed.
-  //  Note: This function must be called under m_group_mutex protection
   //
   bool group_complete_manager::is_group_mvcc_completed (id_type group_id)
   {
@@ -470,7 +451,7 @@ namespace cubtx
   // is_group_logged checks whether the group is logged.
   //  Note: This function must be called under m_group_mutex protection
   //
-  bool group_complete_manager::is_group_logged (id_type group_id)
+  bool group_complete_manager::is_group_logged (id_type group_id) const
   {
     if (group_id < m_latest_closed_group_id)
       {
@@ -493,7 +474,7 @@ namespace cubtx
   // is_group_completed checks whether the group is completed.
   //  Note: This function must be called under m_group_mutex protection
   //
-  bool group_complete_manager::is_group_completed (id_type group_id)
+  bool group_complete_manager::is_group_completed (id_type group_id) const
   {
     if (group_id < m_latest_closed_group_id)
       {

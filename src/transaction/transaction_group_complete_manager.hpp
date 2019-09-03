@@ -55,7 +55,6 @@ namespace cubtx
     public:
       group_complete_manager ()
 	: m_current_group_id (1)
-	, m_current_group_min_transactions (0)
 	, m_latest_closed_group_id (0)
 	, m_latest_closed_group_state (GROUP_ALL_STATES)
       {
@@ -72,8 +71,7 @@ namespace cubtx
       void complete_logging (id_type group_id) override final;
 
     protected:
-      id_type set_current_group_minimum_transactions (unsigned int count_minimum_transactions,
-	  bool &has_group_enough_transactions);
+      bool has_transactions_in_current_group (const unsigned int count_transactions, id_type &current_group_id);
 
       bool close_current_group ();
 
@@ -90,27 +88,26 @@ namespace cubtx
       void notify_group_complete ();
 
       void mark_latest_closed_group_prepared_for_complete ();
-      bool is_latest_closed_group_prepared_for_complete ();
+      bool is_latest_closed_group_prepared_for_complete () const;
 
       /* TODO - consider a better name than latest_closed */
       bool starts_latest_closed_group_complete ();
-      bool is_latest_closed_group_complete_started ();
+      bool is_latest_closed_group_complete_started () const;
 
-      bool is_latest_closed_group_mvcc_completed ();
-      bool is_latest_closed_group_logged ();
-      bool is_latest_closed_group_completed ();
+      bool is_latest_closed_group_mvcc_completed () const;
+      bool is_latest_closed_group_logged () const;
+      bool is_latest_closed_group_completed () const;
 
-      bool is_current_group_empty ();
+      bool is_current_group_empty () const;
 
       tx_group &get_latest_closed_group ();
-      const tx_group &get_current_group ();
-      int get_current_group_min_transactions ();
+      const tx_group &get_current_group () const;
 
-      bool is_group_completed (id_type group_id);
+      bool is_group_completed (id_type group_id) const;
 
     private:
       bool is_group_mvcc_completed (id_type group_id);
-      bool is_group_logged (id_type group_id);
+      bool is_group_logged (id_type group_id) const;
 
       void notify_all ();
       void execute_all ();
@@ -122,7 +119,6 @@ namespace cubtx
       /* Current group info - TODO Maybe better to use a structure here. */
       std::atomic<id_type> m_current_group_id;   // is also the group identifier
       tx_group m_current_group;
-      unsigned int m_current_group_min_transactions;
       std::mutex m_group_mutex;
 
       /* Latest closed group info - TODO Maybe better to use a structure here. */

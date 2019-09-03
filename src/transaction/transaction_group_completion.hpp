@@ -17,15 +17,24 @@
  *
  */
 
-/*
- * db_admin.h -  Definitions for client side
- */
+//
+// Interface used to control group creation.
+//
 
-#ifndef _DB_ADMIN_H_
-#define _DB_ADMIN_H_
+#ifndef _TRANSACTION_GROUP_COMPLETION_HPP_
+#define _TRANSACTION_GROUP_COMPLETION_HPP_
 
-#if !defined(SERVER_MODE)
-#include "db_client_type.hpp"
-#endif
+#include "cubstream.hpp"
 
-#endif /* _DB_ADMIN_H */
+//
+// group completion is the common interface used to control group creation.
+//
+class group_completion
+{
+public:
+  virtual void complete_upto_stream_position (cubstream::stream_position stream_position) = 0;
+  virtual void set_close_info_for_current_group (cubstream::stream_position stream_position,
+    int count_expected_transactions) = 0;
+};
+
+#endif // !_TRANSACTION_GROUP_COMPLETION_HPP_

@@ -46,12 +46,24 @@ namespace cubreplication
     return 0;
   }
 
+  void net_print_output::set_id (const char *item)
+  {
+    // first flush any previous contents
+    if (m_sb.len () > 0)
+      {
+	(void) send_to_network ();
+      }
+
+    assert (item != NULL);
+    m_id = (item != NULL) ? item : "";
+  }
+
   int net_print_output::send_to_network ()
   {
-    int res = m_sb.len ();
+    int res = (int) m_sb.len ();
     int error;
 
-    error = locator_send_proxy_buffer (m_buffer_type, m_sb.len (), m_sb.get_buffer ());
+    error = locator_send_proxy_buffer (m_buffer_type, m_id.c_str (), m_sb.len (), m_sb.get_buffer ());
     if (error != NO_ERROR)
       {
 	m_send_error_cnt++;
@@ -66,6 +78,31 @@ namespace cubreplication
 } /* namespace cubreplication */
 
 
+int send_class_list (DB_OBJLIST *classes)
+{
+  DB_OBJLIST *cl;
+  int cnt_classes = 0;
+
+  cubmem::extensible_block blk;
+  cubpacking::packer packer;
+
+  for (cl = classes; cl != NULL; cl = cl->next)
+    {
+      ++cnt_classes;
+    }
+
+  blk.extend_to (OR_INT_SIZE + cnt_classes * OR_OID_SIZE);
+  packer.set_buffer_and_pack_all (blk, cnt_classes);
+
+  for (cl = classes; cl != NULL; cl = cl->next)
+    {
+      OID oid = *ws_oid (cl->op);
+      packer.append_to_buffer_and_pack_all (blk, oid);
+    }
+
+  return locator_send_proxy_buffer (NET_PROXY_BUF_TYPE_OID_LIST, NULL, blk.get_size (), blk.get_read_ptr ());
+}
+
 int replication_schema_extract (const char *program_name)
 {
   int error = NO_ERROR;
@@ -75,9 +112,16 @@ int replication_schema_extract (const char *program_name)
   copy_schema_context.storage_order = FOLLOW_ATTRIBUTE_ORDER;
   copy_schema_context.exec_name = program_name;
 
+  /*
+   * The net_print_output objects handle a part of schema:
+   * output_net_schema : classes, users, methods
+   * output_net_trigger : triggers
+   * output_net_index : indexes
+   * The 'id' parameters is used only by output_net_index
+   */
   cubreplication::net_print_output output_net_schema (NET_PROXY_BUF_TYPE_EXTRACT_CLASSES);
-  cubreplication::net_print_output output_net_trigger (NET_PROXY_BUF_TYPE_EXTRACT_TRIGGERS);
-  cubreplication::net_print_output output_net_index (NET_PROXY_BUF_TYPE_EXTRACT_INDEXES);
+  cubreplication::net_print_output output_net_trigger (NET_PROXY_BUF_TYPE_EXTRACT_TRIGGER);
+  cubreplication::net_print_output output_net_index (NET_PROXY_BUF_TYPE_EXTRACT_INDEX);
 
   if (extract_classes (copy_schema_context, output_net_schema) != 0)
     {
@@ -101,6 +145,14 @@ int replication_schema_extract (const char *program_name)
     }
   output_net_index.set_buffer_type (NET_PROXY_BUF_TYPE_EXTRACT_INDEXES_END);
   output_net_index.send_to_network ();
+
+  /*
+   * send list of OIDs of extracted classes
+   */
+  if (error == NO_ERROR)
+    {
+      error = send_class_list (copy_schema_context.classes);
+    }
 
   copy_schema_context.clear_schema_workspace ();
 

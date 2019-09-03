@@ -180,6 +180,8 @@ static int hb_help_sprint_nodes_info (char *buffer, int max_length);
 static int hb_help_sprint_jobs_info (HB_JOB *jobs, char *buffer, int max_length);
 static int hb_help_sprint_ping_host_info (char *buffer, int max_length);
 
+static bool is_process_registered (HB_PROC_STATE state);
+
 udp_server<cubhb::message_type> *hb_Udp_server = NULL;
 cubhb::cluster *hb_Cluster = NULL;
 HB_RESOURCE *hb_Resource = NULL;
@@ -2489,10 +2491,18 @@ hb_resource_job_send_master_hostname (HB_JOB_ARG *arg)
       return;
     }
 
-  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "send_master_hostname: process_state=%s, pid=%d, master_hostname=%s",
-		       hb_process_state_string (proc->type, proc->state), proc->pid, master_hostname.as_c_str ());
-
-  css_send_to_my_server_the_master_hostname (master_hostname.as_c_str (), proc);
+  if (is_process_registered ((HB_PROC_STATE) proc->state))
+    {
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "send_master_hostname: process_state=%s, pid=%d, master_hostname=%s",
+			   hb_process_state_string (proc->type, proc->state), proc->pid, master_hostname.as_c_str ());
+      css_send_to_my_server_the_master_hostname (master_hostname.as_c_str (), proc);
+    }
+  else
+    {
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+			   "send_master_hostname, process not registered: process_state=%s, pid=%d, master_hostname=%s",
+			   hb_process_state_string (proc->type, proc->state), proc->pid, master_hostname.as_c_str ());
+    }
 }
 
 /*
@@ -5307,4 +5317,24 @@ hb_find_host_name_of_master_server ()
   pthread_mutex_unlock (&hb_Cluster->lock);
 
   return empty_hostname;
+}
+
+static bool
+is_process_registered (HB_PROC_STATE state)
+{
+  switch (state)
+    {
+    case HB_PSTATE_UNKNOWN:
+    case HB_PSTATE_DEAD:
+    case HB_PSTATE_DEREGISTERED:
+    case HB_PSTATE_STARTED:
+    case HB_PSTATE_MAX:
+    case HB_PSTATE_NOT_REGISTERED:
+      return false;
+    case HB_PSTATE_REGISTERED:
+    case HB_PSTATE_REGISTERED_AND_TO_BE_STANDBY:
+    case HB_PSTATE_REGISTERED_AND_ACTIVE:
+    case HB_PSTATE_REGISTERED_AND_TO_BE_ACTIVE:
+      return true;
+    }
 }

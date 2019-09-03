@@ -3170,7 +3170,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
 	  writer_info->trace_last_writer = true;
 	  writer_info->last_writer_elapsed_time = 0;
-	  writer_info->last_writer_client_info.client_type = BOOT_CLIENT_UNKNOWN;
+	  writer_info->last_writer_client_info.client_type = DB_CLIENT_TYPE_UNKNOWN;
 	}
 
       entry = writer_info->writer_list;
@@ -10293,7 +10293,7 @@ logpb_initialize_tran_complete_manager (void)
   else
     {
       /* TODO - slave. For now consider only master. */
-      log_Gl.m_tran_complete_mgr = cubtx::master_group_complete_manager::get_instance ();
+      log_Gl.m_tran_complete_mgr = cubtx::get_master_gcm_instance ();
     }
 #else
   /* TODO - SA mode */
@@ -10790,6 +10790,7 @@ logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghd
   LSA_SET_NULL (&loghdr->mvcc_op_log_lsa);
   loghdr->last_block_oldest_mvccid = MVCCID_NULL;
   loghdr->last_block_newest_mvccid = MVCCID_NULL;
+  loghdr->does_block_need_vacuum = false;
 }
 
 /*
