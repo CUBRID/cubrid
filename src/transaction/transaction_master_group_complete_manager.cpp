@@ -27,51 +27,41 @@
 #include "transaction_master_group_complete_manager.hpp"
 #include "replication_master_node.hpp"
 #include "replication_node_manager.hpp"
+#include "thread_daemon.hpp"
+#include "thread_entry_task.hpp"
 
 namespace cubtx
 {
+  master_group_complete_manager *gl_master_gcm = NULL;
+  cubthread::daemon *gl_master_gcm_daemon = NULL;
+
+  //
+  // master_group_complete_task is class for master group complete daemon
+  //
+  class master_group_complete_task : public cubthread::entry_task
+  {
+    public:
+      /* entry_task methods */
+      void execute (cubthread::entry &thread_ref) override
+      {
+        if (!BO_IS_SERVER_RESTARTED ())
+        {
+          return;
+        }
+
+        cubthread::entry *thread_p = &cubthread::get_entry ();
+        get_master_gcm_instance ()->do_prepare_complete (thread_p);
+      }
+  };
+
+  master_group_complete_manager::master_group_complete_manager ()
+  {
+    m_latest_closed_group_start_stream_position = 0;
+    m_latest_closed_group_end_stream_position = 0;
+  }
+
   master_group_complete_manager::~master_group_complete_manager ()
   {
-  }
-
-  //
-  // get global master instance
-  //
-  master_group_complete_manager *master_group_complete_manager::get_instance ()
-  {
-    assert (gl_master_group != NULL);
-    return gl_master_group;
-  }
-
-  //
-  // init initializes master group complete
-  //
-  void master_group_complete_manager::init ()
-  {
-    cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
-    gl_master_group = new master_group_complete_manager ();
-    er_log_group_complete_debug (ARG_FILE_LINE,
-				 "master_group_complete_manager:init created master group complete manager\n");
-    gl_master_group->m_latest_closed_group_start_stream_position = 0;
-    gl_master_group->m_latest_closed_group_end_stream_position = 0;
-
-    master_group_complete_manager::gl_master_group_complete_daemon = cubthread::get_manager ()->create_daemon ((looper),
-	new master_group_complete_task (), "master_group_complete_daemon");
-  }
-
-  //
-  // final finalizes master group complete
-  //
-  void master_group_complete_manager::final ()
-  {
-    if (gl_master_group_complete_daemon != NULL)
-      {
-	cubthread::get_manager ()->destroy_daemon (gl_master_group_complete_daemon);
-	gl_master_group_complete_daemon = NULL;
-      }
-
-    delete gl_master_group;
-    gl_master_group = NULL;
   }
 
   //
@@ -109,7 +99,7 @@ namespace cubtx
     if (is_latest_closed_group_completed ())
       {
 	/* This means that GC thread didn't start yet group close. */
-	gl_master_group_complete_daemon->wakeup ();
+	gl_master_gcm_daemon->wakeup ();
       }
     else if (!is_latest_closed_group_complete_started ()
 	     && is_latest_closed_group_prepared_for_complete ())
@@ -166,7 +156,8 @@ namespace cubtx
 	mark_latest_closed_group_prepared_for_complete ();
 
 	/* Wakeup senders, just to be sure. */
-	cubreplication::replication_node_manager::get_master_node ()->wakeup_transfer_senders (closed_group_stream_end_position);
+	cubreplication::replication_node_manager::get_master_node ()->wakeup_transfer_senders (
+		closed_group_stream_end_position);
       }
   }
 
@@ -177,7 +168,7 @@ namespace cubtx
   {
     LOG_LSA closed_group_start_complete_lsa, closed_group_end_complete_lsa;
     LOG_TDES *tdes = logtb_get_tdes (thread_p);
-    bool has_postpone, need_complete_group;
+    bool has_postpone = false, need_complete_group;
 
     if (is_latest_closed_group_completed ())
       {
@@ -218,24 +209,45 @@ namespace cubtx
     notify_group_complete ();
 
     /* wakeup GC thread */
-    if (gl_master_group_complete_daemon != NULL)
+    if (gl_master_gcm_daemon != NULL)
       {
-	gl_master_group_complete_daemon->wakeup ();
+	gl_master_gcm_daemon->wakeup ();
       }
   }
 
-  void master_group_complete_task::execute (cubthread::entry &thread_ref)
+  //
+  // init initializes master group complete
+  //
+  void initialize_master_gcm ()
   {
-    if (!BO_IS_SERVER_RESTARTED ())
-      {
-	return;
-      }
+    cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
+    gl_master_gcm = new master_group_complete_manager ();
+    er_log_group_complete_debug (ARG_FILE_LINE,
+				 "master_group_complete_manager:init created master group complete manager\n");
 
-    cubthread::entry *thread_p = &cubthread::get_entry ();
-    master_group_complete_manager::get_instance ()->do_prepare_complete (thread_p);
+    gl_master_gcm_daemon = cubthread::get_manager ()->create_daemon ((looper),
+			   new master_group_complete_task (), "master_group_complete_daemon");
   }
 
-  master_group_complete_manager *master_group_complete_manager::gl_master_group = NULL;
-  cubthread::daemon *master_group_complete_manager::gl_master_group_complete_daemon = NULL;
+  //
+  // final finalizes master group complete
+  //
+  void finalize_master_gcm ()
+  {
+    if (gl_master_gcm_daemon != NULL)
+      {
+	cubthread::get_manager ()->destroy_daemon (gl_master_gcm_daemon);
+	gl_master_gcm_daemon = NULL;
+      }
+
+    delete gl_master_gcm;
+    gl_master_gcm = NULL;
+  }
+
+  master_group_complete_manager *get_master_gcm_instance ()
+  {
+    assert (gl_master_gcm != NULL);
+    return gl_master_gcm;
+  }
 }
 

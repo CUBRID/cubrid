@@ -246,5 +246,4 @@ void LOG_CS_PROMOTE (THREAD_ENTRY * thread_p);
 
 bool LOG_CS_OWN (THREAD_ENTRY * thread_p);
 bool LOG_CS_OWN_WRITE_MODE (THREAD_ENTRY * thread_p);
-
 #endif /* _LOG_MANAGER_H_ */
