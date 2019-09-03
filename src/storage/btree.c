@@ -1295,7 +1295,6 @@ class btid_int_cache
     };
 
     static size_t get_hash (const btid &btid_arg);
-    static std::string HASH_LOCK_NAME;
 
     bucket m_hash[HASH_SIZE];
     SYNC_RWLOCK m_hash_lock;
@@ -35287,11 +35286,11 @@ btid_int_cache::bucket::find_entry (const btid &btid_arg)
 //
 // btid_int_cache
 //
-std::string btid_int_cache::HASH_LOCK_NAME = "btid_int_cache";
+#define BTID_INT_HASH_RWLOCK_NAME "btid_int_cache";
 
 btid_int_cache::btid_int_cache ()
 {
-  rwlock_initialize (&m_hash_lock, HASH_LOCK_NAME.c_str ());
+  rwlock_initialize (&m_hash_lock, BTID_INT_HASH_RWLOCK_NAME);
 }
 
 btid_int_cache::~btid_int_cache ()
