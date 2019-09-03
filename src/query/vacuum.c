@@ -257,41 +257,51 @@ vacuum_set_dirty_data_page_dont_free (cubthread::entry * thread_p, vacuum_data_p
     } while (0)
 
 // *INDENT-OFF*
+
+//
+// vacuum_job_cursor is a class that helps tracking job generation progress. its main indicative of progress is the
+//    blockid; however, after removing/adding log blocks to vacuum data this blockid can be relocated to a different
+//    page. it is cursor's job to maintain the correct position of blocks.
+//
 class vacuum_job_cursor
 {
   public:
     vacuum_job_cursor ();
     ~vacuum_job_cursor ();
 
-    bool is_valid () const;
-    bool is_loaded () const;
+    bool is_valid () const;       // return true if cursor valid (get_current_entry can be called)
+    bool is_loaded () const;      // return true if cursor page/index are loaded
 
-    void increment_blockid ();
-    void set_on_vacuum_data_start ();
-    void readjust_to_vacuum_data_changes ();
+    void increment_blockid ();                  // increment cursor blockid
+    void set_on_vacuum_data_start ();           // set cursor blockid to first block in vacuum data
+    void readjust_to_vacuum_data_changes ();    // readjust cursor blockid after changes to vacuum data
 
+    // getters
     VACUUM_LOG_BLOCKID get_blockid () const;
     const VPID &get_page_vpid () const;
     vacuum_data_page *get_page () const;
     INT16 get_index () const;
 
-    vacuum_data_entry &get_current_entry () const;
-    void unload ();
-    void load ();
+    vacuum_data_entry &get_current_entry () const;    // get current entry; cursor must be valid
+    void unload ();                                   // unload page/index
+    void load ();                                     // load page/index
 
   private:
-    void change_blockid (VACUUM_LOG_BLOCKID blockid);      // reset m_blockid to argument
-    void reload ();
-    void search ();
+    void change_blockid (VACUUM_LOG_BLOCKID blockid);       // reset m_blockid to argument
+    void reload ();                                         // reload; if a page is loaded and if it contains current
+                                                            // blockid, current configuration is kept
+    void search ();                                         // search page/index of cursor blockid
 
-    VACUUM_LOG_BLOCKID m_blockid;
-    VACUUM_DATA_PAGE *m_page;
-    INT16 m_index;
-    VPID m_saved_page_vpid;
+    VACUUM_LOG_BLOCKID m_blockid;     // current cursor blockid
+    VACUUM_DATA_PAGE *m_page;         // loaded page of blockid or null
+    INT16 m_index;                    // loaded index of blockid or INDEX_NOT_FOUND
   };
+
+// helper macros for printing vacuum_job_cursor
 #define vacuum_job_cursor_print_format "vacuum_job_cursor(%d, %d|%d|%d)"
 #define vacuum_job_cursor_print_args(cursor) \
   (long long int) (cursor).get_blockid (), VPID_AS_ARGS (&(cursor).get_page_vpid ()), (int) (cursor).get_index ()
+
 // *INDENT-ON*
 
 /* Vacuum data.
@@ -352,12 +362,13 @@ struct vacuum_data
   }
   /* *INDENT-ON* */
 
-  bool is_empty () const;
-  bool has_one_page () const;
+  bool is_empty () const;	// returns true if vacuum data has no blocks
+  bool has_one_page () const;	// returns true if vacuum data has one page only
 
-  VACUUM_LOG_BLOCKID get_last_blockid () const;
-  VACUUM_LOG_BLOCKID get_first_blockid () const;
-  void set_last_blockid (VACUUM_LOG_BLOCKID blockid);
+  VACUUM_LOG_BLOCKID get_last_blockid () const;	// get last blockid of vacuum data
+  VACUUM_LOG_BLOCKID get_first_blockid () const;	// get first blockid of vacuum data; if vacuum data is empty
+  // same as last blockid
+  void set_last_blockid (VACUUM_LOG_BLOCKID blockid);	// set new value for last blockid of vacuum data
 
 private:
     VACUUM_LOG_BLOCKID m_last_blockid;	/* Block id for last vacuum data entry... This entry is actually the id of last
