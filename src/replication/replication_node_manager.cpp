@@ -70,8 +70,7 @@ namespace cubreplication
 
       log_generator::set_global_stream (g_stream);
 
-      std::string replication_path;
-      replication_node::get_replication_file_path (replication_path);
+      std::string replication_path = replication_node::get_replication_file_path ();
       g_stream_file = new cubstream::stream_file (*g_stream, replication_path);
     }
 

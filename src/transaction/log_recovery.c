@@ -5035,9 +5035,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   if (!LSA_ISNULL (&log_Gl.m_min_active_lsa))
     {
       assert (log_Gl.m_repl_rv.m_active_start_position == 0);
-      bool found = false;
       LSA_COPY (&log_lsa, &log_Gl.m_min_active_lsa);
-      while (!found)
+      while (true)
 	{
 	  if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
 	    {
@@ -5061,7 +5060,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		  // found start of filtered apply
 		  log_Gl.m_repl_rv.m_active_start_position = gc_rec->stream_pos;
-		  found = true;
 		  break;
 		}
 

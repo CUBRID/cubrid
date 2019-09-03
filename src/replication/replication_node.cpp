@@ -37,13 +37,12 @@ namespace cubreplication
 
   }
 
-  void replication_node::get_replication_file_path (std::string &path)
+  std::string replication_node::get_replication_file_path ()
   {
     char buf_temp_path[PATH_MAX];
-    char *temp_path;
 
-    temp_path = fileio_get_directory_path (buf_temp_path, boot_db_full_name ());
-    path.assign (temp_path);
+    char *temp_path = fileio_get_directory_path (buf_temp_path, boot_db_full_name ());
+    return std::string (temp_path);
   }
 
   const unsigned long long replication_node::SETUP_REPLICATION_MAGIC = 0x19912882ULL;
