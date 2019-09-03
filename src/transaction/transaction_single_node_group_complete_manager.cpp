@@ -97,7 +97,7 @@ namespace cubtx
     if (is_latest_closed_group_completed ())
       {
 	/* We can move the next calls outside of mutex. */
-	if (can_wakeup_group_complete_daemon (true)
+	if (can_wakeup_group_complete_daemon (USE_STATS)
 	    || pgbuf_has_perm_pages_fixed (&cubthread::get_entry ()))
 	  {
 	    /* This means that GC thread didn't start yet group close. */
@@ -117,7 +117,7 @@ namespace cubtx
   //
   // can_wakeup_group_complete_daemon - true, if can wakeup group complete daemon
   //
-  bool single_node_group_complete_manager::can_wakeup_group_complete_daemon (bool inc_gc_request_count)
+  bool single_node_group_complete_manager::can_wakeup_group_complete_daemon (STATS_STATE stats_state)
   {
     bool can_wakeup_GC;
 
@@ -131,7 +131,7 @@ namespace cubtx
 	/* group commit */
 	can_wakeup_GC = false;
 
-	if (inc_gc_request_count)
+	if (stats_state == USE_STATS)
 	  {
 	    log_Stat.gc_commit_request_count++;
 	  }
@@ -187,7 +187,7 @@ namespace cubtx
 		closed_group_stream_end_position);
 	  }
 
-	log_append_group_complete (thread_p, tdes, 0,
+	log_append_group_complete (thread_p, tdes, closed_group_stream_start_position,
 				   closed_group, &closed_group_start_complete_lsa, NULL);
 
 	LSA_COPY (&m_latest_closed_group_start_log_lsa, &closed_group_start_complete_lsa);
@@ -236,7 +236,7 @@ namespace cubtx
 
 #if defined (SERVER_MODE)
     /* wakeup GC thread */
-    if (gl_single_node_gcm_daemon != NULL && can_wakeup_group_complete_daemon (false))
+    if (gl_single_node_gcm_daemon != NULL && can_wakeup_group_complete_daemon (DONT_USE_STATS))
       {
 	gl_single_node_gcm_daemon->wakeup ();
       }

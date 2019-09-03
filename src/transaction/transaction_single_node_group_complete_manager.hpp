@@ -28,10 +28,16 @@
 
 namespace cubtx
 {
+  enum STATS_STATE
+  {
+    DONT_USE_STATS,
+    USE_STATS
+  };
+
   //
   // single_node_group_complete_manager is a manager for group commits on single node
   //    Implements complete_manager interface used by transaction threads.
-  //    Implements stream_ack interface used by stream senders.
+  //    Implements log_flush_lsa interface used by log flusher.
   //
   class single_node_group_complete_manager : public group_complete_manager, public log_flush_lsa
   {
@@ -53,7 +59,7 @@ namespace cubtx
 
     private:
 #if defined (SERVER_MODE)
-      bool can_wakeup_group_complete_daemon (bool inc_gc_request_count);
+      bool can_wakeup_group_complete_daemon (STATS_STATE stats_state);
 #endif
 
       LOG_LSA m_latest_closed_group_start_log_lsa;
