@@ -329,7 +329,6 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/transaction_master_group_complete_manager.cpp
   ${TRANSACTION_DIR}/transaction_slave_group_complete_manager.cpp
   ${TRANSACTION_DIR}/transaction_group_complete_manager.cpp
-  ${TRANSACTION_DIR}/transaction_group_completion.hpp
   ${TRANSACTION_DIR}/transaction_complete_manager.cpp
   ${TRANSACTION_DIR}/transaction_group.cpp
   ${TRANSACTION_DIR}/transaction_sr.c
@@ -354,6 +353,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/transaction_master_group_complete_manager.hpp
   ${TRANSACTION_DIR}/transaction_slave_group_complete_manager.hpp
   ${TRANSACTION_DIR}/transaction_group_complete_manager.hpp
+  ${TRANSACTION_DIR}/transaction_group_completion.hpp
   ${TRANSACTION_DIR}/transaction_complete_manager.hpp
   ${TRANSACTION_DIR}/transaction_global.hpp
   ${TRANSACTION_DIR}/transaction_group.hpp
