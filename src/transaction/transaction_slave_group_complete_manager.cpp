@@ -241,7 +241,7 @@ namespace cubtx
     er_log_group_complete_debug (ARG_FILE_LINE, "slave_group_complete_manager:init created slave group complete manager\n");
 
     /* Creates a daemon thread that executes complete on slave gcm. */
-    gl_slave_gcm_daemon = cubthread::get_manager()->create_daemon ((looper),
+    gl_slave_gcm_daemon = cubthread::get_manager ()->create_daemon ((looper),
 			  new slave_group_complete_task (), "slave_group_complete_daemon");
   }
 
@@ -263,3 +263,4 @@ namespace cubtx
     return gl_slave_gcm;
   }
 }
+

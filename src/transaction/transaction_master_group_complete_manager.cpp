@@ -225,8 +225,8 @@ namespace cubtx
     er_log_group_complete_debug (ARG_FILE_LINE,
 				 "master_group_complete_manager:init created master group complete manager\n");
 
-    gl_master_gcm_daemon = cubthread::get_manager()->create_daemon ((looper),
-			   new master_group_complete_task(), "master_group_complete_daemon");
+    gl_master_gcm_daemon = cubthread::get_manager ()->create_daemon ((looper),
+			   new master_group_complete_task (), "master_group_complete_daemon");
   }
 
   //
@@ -236,7 +236,7 @@ namespace cubtx
   {
     if (gl_master_gcm_daemon != NULL)
       {
-	cubthread::get_manager()->destroy_daemon (gl_master_gcm_daemon);
+	cubthread::get_manager ()->destroy_daemon (gl_master_gcm_daemon);
 	gl_master_gcm_daemon = NULL;
       }
 
@@ -246,8 +246,8 @@ namespace cubtx
 
   master_group_complete_manager *get_master_gcm_instance ()
   {
-    return gl_master_gcm;
     assert (gl_master_gcm != NULL);
+    return gl_master_gcm;
   }
 }
 
