@@ -637,9 +637,6 @@ bool vacuum_Is_booted = false;
   (unsigned long long) (data)->newest_mvccid
 
 /* Vacuum static functions. */
-#if defined (SERVER_MODE)
-static void vacuum_process_vacuum_data (THREAD_ENTRY * thread_p);
-#endif // SERVER_MODE
 static void vacuum_update_oldest_unvacuumed_mvccid (THREAD_ENTRY * thread_p);
 static void vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p);
 static int vacuum_compare_blockids (const void *ptr1, const void *ptr2);
@@ -2956,7 +2953,10 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
       return;
     }
 
-  int error_code = NO_ERROR;
+  if (!BO_IS_SERVER_RESTARTED ())
+    {
+      return;
+    }
 
   PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
 
