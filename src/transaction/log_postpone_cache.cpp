@@ -131,7 +131,6 @@ log_postpone_cache::do_postpone (cubthread::entry &thread_ref, const log_lsa &st
   if (start_index < 0)
     {
       // Start LSA was not found. Unexpected situation
-      assert (false);
       return false;
     }
 
