@@ -6696,32 +6696,11 @@ au_login (const char *name, const char *password, bool ignore_dba_privilege)
 	}
       else
 	{
-	  if (IS_ENCODED_DES (password))
-	    {
-	      strcpy (Au_user_password_des_oldstyle, password);
-	      strcpy (Au_user_password_sha1, "");
-	      strcpy (Au_user_password_sha2_512, "");
-	    }
-	  else if (IS_ENCODED_SHA1 (password))
-	    {
-	      strcpy (Au_user_password_des_oldstyle, "");
-	      strcpy (Au_user_password_sha1, password);
-	      strcpy (Au_user_password_sha2_512, "");
-	    }
-	  else if (IS_ENCODED_SHA2_512 (password))
-	    {
-	      strcpy (Au_user_password_des_oldstyle, "");
-	      strcpy (Au_user_password_sha1, "");
-	      strcpy (Au_user_password_sha2_512, password);
-	    }
-	  else
-	    {
-	      /* store the password encrypted(DES and SHA1 both) so we don't have buffers lying around with the obvious
-	       * passwords in it. */
-	      encrypt_password (password, 1, Au_user_password_des_oldstyle);
-	      encrypt_password_sha1 (password, 1, Au_user_password_sha1);
-	      encrypt_password_sha2_512 (password, Au_user_password_sha2_512);
-	    }
+	  /* store the password encrypted(DES and SHA1 both) so we don't have buffers lying around with the obvious
+	   * passwords in it. */
+	  encrypt_password (password, 1, Au_user_password_des_oldstyle);
+	  encrypt_password_sha1 (password, 1, Au_user_password_sha1);
+	  encrypt_password_sha2_512 (password, Au_user_password_sha2_512);
 	}
     }
   else
