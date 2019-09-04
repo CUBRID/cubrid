@@ -4849,7 +4849,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	    {
 	      tx_group group;
 	      group.add (tdes->tran_index, 0, tdes->state);
-	      // todo: fix log end position as slave
+	      // todo: fix log end stream position when slave
 	      log_append_group_complete (thread_p, tdes, tdes->get_replication_generator ().get_last_end_position (),
 					 group, &commit_lsa, NULL);
 	    }
