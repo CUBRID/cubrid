@@ -425,8 +425,7 @@ namespace cubtx
   }
 
   //
-  // get_current_group gets current group.
-  //
+  // is_group_mvcc_completed checks whether a group was completed.
   //
   bool group_complete_manager::is_group_mvcc_completed (id_type group_id)
   {
