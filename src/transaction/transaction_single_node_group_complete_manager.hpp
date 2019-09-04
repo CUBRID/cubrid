@@ -21,8 +21,8 @@
 // Manager of completed group on a single node
 //
 
-#ifndef _TRANACTION_SINGLE_NODE_GROUP_COMPLETE_MANAGER_HPP_
-#define _TRANACTION_SINGLE_NODE_GROUP_COMPLETE_MANAGER_HPP_
+#ifndef _TRANSACTION_SINGLE_NODE_GROUP_COMPLETE_MANAGER_HPP_
+#define _TRANSACTION_SINGLE_NODE_GROUP_COMPLETE_MANAGER_HPP_
 
 #include "transaction_group_complete_manager.hpp"
 
@@ -70,4 +70,4 @@ namespace cubtx
   void finalize_single_node_gcm ();
   single_node_group_complete_manager *get_single_node_gcm_instance ();
 }
-#endif // !_TRANACTION_SINGLE_NODE_GROUP_COMPLETE_MANAGER_HPP_
+#endif // !_TRANSACTION_SINGLE_NODE_GROUP_COMPLETE_MANAGER_HPP_

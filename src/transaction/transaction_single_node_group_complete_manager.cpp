@@ -172,7 +172,8 @@ namespace cubtx
 
     if (close_current_group ())
       {
-	cubstream::stream_position closed_group_stream_start_position = 0, closed_group_stream_end_position = 0;
+	cubstream::stream_position closed_group_stream_start_position = 0;
+	cubstream::stream_position closed_group_stream_end_position = 0;
 	tx_group &closed_group = get_latest_closed_group ();
 	tdes = logtb_get_tdes (thread_p);
 
@@ -192,14 +193,17 @@ namespace cubtx
 
 	LSA_COPY (&m_latest_closed_group_start_log_lsa, &closed_group_start_complete_lsa);
 	LSA_COPY (&m_latest_closed_group_end_log_lsa, &closed_group_end_complete_lsa);
+
 	mark_latest_closed_group_prepared_for_complete ();
+
 	log_wakeup_log_flush_daemon ();
+
 	if (has_postpone)
 	  {
 	    notify_group_logged ();
 	  }
 
-	er_log_group_complete_debug (ARG_FILE_LINE, "closed_group_start_complete_lsa =(%llu, %llu), "
+	er_log_group_complete_debug (ARG_FILE_LINE, "closed_group_start_complete_lsa =(%lld, %d), "
 				     "closed_group_end_complete_lsa = (%lld, %d)\n",
 				     LSA_AS_ARGS (&closed_group_start_complete_lsa),
 				     LSA_AS_ARGS (&closed_group_end_complete_lsa));
@@ -290,7 +294,7 @@ namespace cubtx
   {
     if (gl_single_node_gcm_daemon != NULL)
       {
-	cubthread::get_manager()->destroy_daemon (gl_single_node_gcm_daemon);
+	cubthread::get_manager ()->destroy_daemon (gl_single_node_gcm_daemon);
 	gl_single_node_gcm_daemon = NULL;
       }
 
