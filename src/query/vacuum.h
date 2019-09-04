@@ -256,6 +256,7 @@ extern int vacuum_create_file_for_dropped_files (THREAD_ENTRY * thread_p, VFID *
 extern int vacuum_load_dropped_files_from_disk (THREAD_ENTRY * thread_p);
 extern int vacuum_is_file_dropped (THREAD_ENTRY * thread_p, bool * is_file_dropped, VFID * vfid, MVCCID mvccid);
 extern int vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int vacuum_notify_dropped_file (THREAD_ENTRY * thread_p, const VFID * vfid, const OID * class_oid);
 extern void vacuum_log_add_dropped_file (THREAD_ENTRY * thread_p, const VFID * vfid, const OID * class_oid,
 					 bool postpone_or_undo);
 extern int vacuum_rv_redo_add_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
@@ -263,6 +264,8 @@ extern int vacuum_rv_undo_add_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * r
 extern int vacuum_rv_replace_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int vacuum_rv_redo_cleanup_dropped_files (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int vacuum_rv_set_next_page_dropped_files (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+
+extern size_t vacuum_rv_data_sizeof_dropped_file_logging ();
 
 extern DISK_ISVALID vacuum_check_not_vacuumed_recdes (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
 						      RECDES * recdes, int btree_node_type);
@@ -279,4 +282,5 @@ extern void vacuum_notify_es_deleted (THREAD_ENTRY * thread_p, const char *uri);
 extern int vacuum_reset_data_after_copydb (THREAD_ENTRY * thread_p);
 
 extern void vacuum_sa_reflect_last_blockid (THREAD_ENTRY * thread_p);
+
 #endif /* _VACUUM_H_ */

@@ -23075,12 +23075,13 @@ heap_finalize_hfid_table (void)
  *   class_oid (in) : the class OID for which the entry will be deleted
  */
 int
-heap_delete_hfid_from_cache (THREAD_ENTRY * thread_p, OID * class_oid)
+heap_delete_hfid_from_cache (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_HFID_TABLE);
   int error = NO_ERROR;
+  OID class_oid_copy = *class_oid;
 
-  error = lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, class_oid, NULL);
+  error = lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, &class_oid_copy, NULL);
   if (error != NO_ERROR)
     {
       return error;

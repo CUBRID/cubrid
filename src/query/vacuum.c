@@ -626,7 +626,7 @@ static int vacuum_compare_dropped_files (const void *a, const void *b);
 #if defined (SERVER_MODE)
 static int vacuum_compare_dropped_files_version (INT32 version_a, INT32 version_b);
 #endif // SERVER_MODE
-static int vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid);
+static int vacuum_add_dropped_file (THREAD_ENTRY * thread_p, const VFID * vfid, MVCCID mvccid);
 static int vacuum_cleanup_dropped_files (THREAD_ENTRY * thread_p);
 static int vacuum_find_dropped_file (THREAD_ENTRY * thread_p, bool * is_file_dropped, VFID * vfid, MVCCID mvccid);
 static void vacuum_log_cleanup_dropped_files (THREAD_ENTRY * thread_p, PAGE_PTR page_p, INT16 * indexes,
@@ -5841,7 +5841,7 @@ vacuum_compare_dropped_files (const void *a, const void *b)
  * mvccid (in)	 : MVCCID.
  */
 static int
-vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
+vacuum_add_dropped_file (THREAD_ENTRY * thread_p, const VFID * vfid, MVCCID mvccid)
 {
   MVCCID save_mvccid = MVCCID_NULL;
   VPID vpid = VPID_INITIALIZER, prev_vpid = VPID_INITIALIZER;
@@ -6369,6 +6369,30 @@ vacuum_notify_all_workers_dropped_file (const VFID & vfid_dropped, MVCCID mvccid
 #endif // SERVER_MODE
 }
 
+int
+vacuum_notify_dropped_file (THREAD_ENTRY * thread_p, const VFID * vfid, const OID * class_oid)
+{
+  MVCCID mvccid = ATOMIC_LOAD_64 (&log_Gl.hdr.mvcc_next_id);
+
+  int error = vacuum_add_dropped_file (thread_p, vfid, mvccid);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  // make sure vacuum workers will not access dropped file
+  vacuum_notify_all_workers_dropped_file (*vfid, mvccid);
+
+  /* vacuum is notified of the file drop, it is safe to remove from cache */
+  if (class_oid != NULL && !OID_ISNULL (class_oid))
+    {
+      (void) heap_delete_hfid_from_cache (thread_p, class_oid);
+    }
+
+  /* Success */
+  return NO_ERROR;
+}
+
 /*
  * vacuum_rv_notify_dropped_file () - Add drop file used in recovery phase. Can be used in two ways: at run postpone phase
  *				   for dropped heap files and indexes (if postpone_ref_lsa in not null); or at undo
@@ -6383,39 +6407,10 @@ vacuum_notify_all_workers_dropped_file (const VFID & vfid_dropped, MVCCID mvccid
 int
 vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  int error = NO_ERROR;
-  OID *class_oid;
-  MVCCID mvccid;
-  VACUUM_DROPPED_FILES_RCV_DATA *rcv_data;
-
-  /* Copy VFID from current log recovery data but set MVCCID at this point. We will use the log_Gl.hdr.mvcc_next_id as
-   * borderline to distinguish this file from newer files. 1. All changes on this file must be done by transaction that
-   * have already committed which means their MVCCID will be less than current log_Gl.hdr.mvcc_next_id. 2. All changes
-   * on a new file that reused VFID must be done by transaction that start after this call, which means their MVCCID's
-   * will be at least equal to current log_Gl.hdr.mvcc_next_id. */
-
-  mvccid = ATOMIC_LOAD_64 (&log_Gl.hdr.mvcc_next_id);
-
   /* Add dropped file to current list */
-  rcv_data = (VACUUM_DROPPED_FILES_RCV_DATA *) rcv->data;
-  error = vacuum_add_dropped_file (thread_p, &rcv_data->vfid, mvccid);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  // make sure vacuum workers will not access dropped file
-  vacuum_notify_all_workers_dropped_file (rcv_data->vfid, mvccid);
-
-  /* vacuum is notified of the file drop, it is safe to remove from cache */
-  class_oid = &rcv_data->class_oid;
-  if (!OID_ISNULL (class_oid))
-    {
-      (void) heap_delete_hfid_from_cache (thread_p, class_oid);
-    }
-
-  /* Success */
-  return NO_ERROR;
+  VACUUM_DROPPED_FILES_RCV_DATA *rcv_data = (VACUUM_DROPPED_FILES_RCV_DATA *) rcv->data;
+  assert (sizeof (*rcv_data) == (size_t) rcv->length);
+  return vacuum_notify_dropped_file (thread_p, &rcv_data->vfid, &rcv_data->class_oid);
 }
 
 /*

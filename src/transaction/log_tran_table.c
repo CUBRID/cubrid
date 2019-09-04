@@ -4823,7 +4823,7 @@ logtb_finalize_global_unique_stats_table (THREAD_ENTRY * thread_p)
  *          HEADER. THIS CAN CAUSE A DEADLOCK BETWEEN THE LATCH AND THE MUTEX !!!
  */
 static GLOBAL_UNIQUE_STATS *
-logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid, bool load_at_creation)
+logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, const BTID * btid, bool load_at_creation)
 {
   int error_code = NO_ERROR;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_GLOBAL_UNIQUE_STATS);
@@ -4841,7 +4841,9 @@ logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid, bool 
   }
 #endif
 
-  error_code = lf_hash_find (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, btid, (void **) &stats);
+  BTID key_copy = *btid;
+
+  error_code = lf_hash_find (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, &key_copy, (void **) &stats);
   if (error_code != NO_ERROR)
     {
       return NULL;
@@ -4857,7 +4859,8 @@ logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid, bool 
 	    }
 	}
       error_code =
-	lf_hash_find_or_insert (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, btid, (void **) &stats, NULL);
+	lf_hash_find_or_insert (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, &key_copy, (void **) &stats,
+				NULL);
       if (error_code != NO_ERROR || stats == NULL)
 	{
 	  return NULL;
@@ -4887,7 +4890,7 @@ logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid, bool 
  *		     of keys for the given btid
  */
 int
-logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int *num_oids, int *num_nulls, int *num_keys)
+logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int *num_oids, int *num_nulls, int *num_keys)
 {
   int error_code = NO_ERROR;
   GLOBAL_UNIQUE_STATS *stats = NULL;
@@ -4922,7 +4925,7 @@ logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int *num_oi
  *   num_keys (in) : the new number of keys
  */
 int
-logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid, int num_oids, int num_nulls,
+logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, const BTID * btid, int num_oids, int num_nulls,
 					    int num_keys)
 {
   int error_code = NO_ERROR;
@@ -4972,7 +4975,7 @@ logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid
  *   log (in) : true if we need to log the changes
  */
 int
-logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid, int oid_delta, int null_delta,
+logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, const BTID * btid, int oid_delta, int null_delta,
 					   int key_delta, bool log)
 {
   int error_code = NO_ERROR;
@@ -5072,7 +5075,7 @@ logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid,
  *   btid (in) : the btree id for which the statistics entry will be deleted
  */
 int
-logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid)
+logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid)
 {
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_GLOBAL_UNIQUE_STATS);
   int error = NO_ERROR;
@@ -5088,7 +5091,8 @@ logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid)
   }
 #endif
 
-  error = lf_hash_delete (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, btid, NULL);
+  BTID key_copy = *btid;
+  error = lf_hash_delete (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, &key_copy, NULL);
   if (error != NO_ERROR)
     {
       return error;

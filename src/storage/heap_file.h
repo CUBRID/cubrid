@@ -634,7 +634,7 @@ extern int heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT 
 
 extern int heap_initialize_hfid_table (void);
 extern void heap_finalize_hfid_table (void);
-extern int heap_delete_hfid_from_cache (THREAD_ENTRY * thread_p, OID * class_oid);
+extern int heap_delete_hfid_from_cache (THREAD_ENTRY * thread_p, const OID * class_oid);
 
 extern void heap_page_set_vacuum_status_none (THREAD_ENTRY * thread_p, PAGE_PTR heap_page);
 extern MVCCID heap_page_get_max_mvccid (THREAD_ENTRY * thread_p, PAGE_PTR heap_page);

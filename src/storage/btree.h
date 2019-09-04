@@ -562,7 +562,7 @@ extern void btree_scan_clear_key (BTREE_SCAN * btree_scan);
 
 extern bool btree_is_unique_type (BTREE_TYPE type);
 extern int xbtree_get_unique_pk (THREAD_ENTRY * thread_p, BTID * btid);
-extern int btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid, int *oid_cnt, int *null_cnt,
+extern int btree_get_unique_statistics (THREAD_ENTRY * thread_p, const BTID * btid, int *oid_cnt, int *null_cnt,
 					int *key_cnt);
 extern int btree_get_unique_statistics_for_count (THREAD_ENTRY * thread_p, BTID * btid, int *oid_cnt, int *null_cnt,
 						  int *key_cnt);
@@ -735,6 +735,8 @@ extern unsigned int btree_hash_btid (void *btid, int hash_size);
 
 extern int btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, BTID * btid);
 extern int btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
+extern void btree_log_add_index (THREAD_ENTRY * thread_p, const BTID & btid, int unique_pk);
+extern int btree_rv_undo_add_index (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 
 extern int btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, VPID * pg_vpid,
 			     INT16 * slot_id, PAGE_PTR * leaf_page_out, bool * found_p);

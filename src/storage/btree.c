@@ -5558,6 +5558,19 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
   return ER_FAILED;
 }
 
+void
+btree_log_add_index (THREAD_ENTRY * thread_p, const BTID & btid, int unique_pk)
+{
+  const size_t RVDATA_SIZE = sizeof (btid) + sizeof (unique_pk);
+  cubmem::stack_block < RVDATA_SIZE > buffer;
+
+  std::memcpy (buffer.get_ptr (), &btid, sizeof (btid));
+  std::memcpy (buffer.get_ptr () + sizeof (btid), &unique_pk, sizeof (unique_pk));
+
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+  log_append_undo_data (thread_p, RVBT_ADD_INDEX, &addr, RVDATA_SIZE, buffer.get_read_ptr ());
+}
+
 /*
  * xbtree_add_index () - ADD (create) a new B+tree INDEX
  *   return: BTID * (btid on success and NULL on failure)
@@ -5657,12 +5670,7 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
   page_ptr = NULL;
 
   log_sysop_attach_to_outer (thread_p);
-  vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
-  if (unique_pk)
-    {
-      /* drop statistics if aborted */
-      log_append_undo_data2 (thread_p, RVBT_REMOVE_UNIQUE_STATS, NULL, NULL, NULL_OFFSET, sizeof (BTID), btid);
-    }
+  btree_log_add_index (thread_p, *btid, unique_pk);
 
   return btid;
 
@@ -6199,7 +6207,7 @@ btree_get_unique_statistics_for_count (THREAD_ENTRY * thread_p, BTID * btid, int
  * the btree is not a unique btree, all the stats will be -1.
  */
 int
-btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid, int *oid_cnt, int *null_cnt, int *key_cnt)
+btree_get_unique_statistics (THREAD_ENTRY * thread_p, const BTID * btid, int *oid_cnt, int *null_cnt, int *key_cnt)
 {
   VPID root_vpid;
   PAGE_PTR root = NULL;
@@ -29250,6 +29258,39 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
   return NO_ERROR;
 }
 
+static int
+btree_undo_add_unique_stats (THREAD_ENTRY * thread_p, const BTID & btid, bool with_redo)
+{
+  int ret = logtb_delete_global_unique_stats (thread_p, &btid);
+  if (ret != NO_ERROR)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = logtb_tran_find_btid_stats (thread_p, &btid, false);
+  if (unique_stats != NULL)
+    {
+      unique_stats->deleted = true;
+    }
+
+  if (with_redo)
+    {
+      /* logical run postpone or logical compensate. this will end with an end system op log record that it is only
+       * executed once. however, if the server crashes, we will have to drop these statistics again.
+       * we'll do it by adding a redo log. this redo log record should be executed again and again until we successfully
+       * finish recovery and a new checkpoint is created after it. if server crashes again during recovery, the
+       * statistics may again show up in the memory. so we are only safe when checkpoint passed this point.
+       */
+      LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+      /* should be system op */
+      assert (log_check_system_op_is_started (thread_p));
+
+      /* append a new RVBT_REMOVE_UNIQUE_STATS redo log record */
+      addr.offset = 0;
+      log_append_redo_data (thread_p, RVBT_REMOVE_UNIQUE_STATS, &addr, sizeof (btid), &btid);
+    }
+}
+
 /*
  * btree_rv_remove_unique_stats () -
  *   return: int
@@ -29261,51 +29302,27 @@ int
 btree_rv_remove_unique_stats (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   BTID btid;
-  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats;
-  int ret = NO_ERROR;
+  bool with_redo;
 
   assert (recv->length == sizeof (btid));
 
-  /* unpack the index btid */
-  btid = *(BTID *) recv->data;
-  ret = logtb_delete_global_unique_stats (thread_p, &btid);
-  if (ret != NO_ERROR)
-    {
-      assert_release (false);
-      return ER_FAILED;
-    }
-  unique_stats = logtb_tran_find_btid_stats (thread_p, &btid, false);
-  if (unique_stats != NULL)
-    {
-      unique_stats->deleted = true;
-    }
-
   if (recv->offset < 0)
     {
-      /* logical run postpone or logical compensate. this will end with an end system op log record that it is only
-       * executed once. however, if the server crashes, we will have to drop these statistics again.
-       * we'll do it by adding a redo log. this redo log record should be executed again and again until we successfully
-       * finish recovery and a new checkpoint is created after it. if server crashes again during recovery, the
-       * statistics may again show up in the memory. so we are only safe when checkpoint passed this point.
+      /* see comment in btree_undo_add_unique_stats.
        * the solution was a little hack-ish: we use offset value to separate the logical operation execution and redo
        * execution. another approach is to create two different recovery indexes and functions.
        */
-      LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
-      /* should be system op */
-      assert (log_check_system_op_is_started (thread_p));
       assert (recv->offset == -1);
-
-      /* append a new RVBT_REMOVE_UNIQUE_STATS redo log record */
-      addr.offset = 0;
-      log_append_redo_data (thread_p, RVBT_REMOVE_UNIQUE_STATS, &addr, sizeof (btid), &btid);
+      with_redo = true;
     }
   else
     {
-      /* simple redo. just set page dirty. */
+      /* simple redo */
       assert (recv->offset == 0);
+      with_redo = false;
     }
 
-  return NO_ERROR;
+  return btree_undo_add_unique_stats (thread_p, btid, with_redo);
 }
 
 /*
@@ -32917,6 +32934,27 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
   btid->root_pageid = vpid_root.pageid;
 
   log_sysop_commit (thread_p);
+  return NO_ERROR;
+}
+
+int
+btree_rv_undo_add_index (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+{
+  size_t data_offset = 0;
+
+  const BTID *btid = (const BTID *) recv->data + data_offset;
+  data_offset += sizeof (*btid);
+
+  int unique_pk = *(int *) recv->data + data_offset;
+  data_offset += sizeof (unique_pk);
+
+  assert ((size_t) recv->length == data_offset);
+
+  btree_Btid_int_cache.remove (*btid);
+  btree_undo_add_unique_stats (thread_p, *btid, true);
+  vacuum_notify_dropped_file (thread_p, &btid->vfid, NULL);
+
+  // file was already destroyed
   return NO_ERROR;
 }
 

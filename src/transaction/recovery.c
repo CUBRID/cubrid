@@ -819,7 +819,12 @@ struct rvfun RV_fun[] = {
    heap_rv_postpone_append_pages_to_heap,
    NULL,
    NULL},
-
+  {RVBT_ADD_INDEX,
+   "RVBT_ADD_INDEX",
+   NULL,
+   btree_rv_undo_add_index,
+   NULL,
+   NULL},
 };
 
 /*

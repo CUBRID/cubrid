@@ -1034,13 +1034,13 @@ extern int logtb_find_log_records_count (int tran_index);
 
 extern int logtb_initialize_global_unique_stats_table (THREAD_ENTRY * thread_p);
 extern void logtb_finalize_global_unique_stats_table (THREAD_ENTRY * thread_p);
-extern int logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int *num_oids, int *num_nulls,
+extern int logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int *num_oids, int *num_nulls,
 					  int *num_keys);
-extern int logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid, int num_oids,
+extern int logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, const BTID * btid, int num_oids,
 						       int num_nulls, int num_keys);
-extern int logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid, int oid_delta,
+extern int logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, const BTID * btid, int oid_delta,
 						      int null_delta, int key_delta, bool log);
-extern int logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid);
+extern int logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid);
 extern int logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p);
 extern int logtb_tran_update_all_global_unique_stats (THREAD_ENTRY * thread_p);
 
