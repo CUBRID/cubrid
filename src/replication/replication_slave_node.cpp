@@ -170,16 +170,8 @@ namespace cubreplication
 	return error;
       }
 
+    /* TODO[replication] : last position to be retrieved from recovery module */
     cubstream::stream_position start_position = 0;
-    if (log_Gl.m_repl_rv.m_active_start_position == 0)
-      {
-	// there was no recovery done
-	start_position = log_Gl.hdr.m_ack_stream_position;
-      }
-    else
-      {
-	start_position = log_Gl.m_repl_rv.m_active_start_position;
-      }
 
     if (need_replication_copy (start_position))
       {
@@ -284,8 +276,8 @@ namespace cubreplication
     if (m_transfer_receiver != NULL)
       {
 	m_transfer_receiver->wait_disconnect ();
-	destroy_transfer_receiver ();
       }
+    destroy_transfer_receiver ();
 
     if (m_lc != NULL)
       {
