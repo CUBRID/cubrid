@@ -162,7 +162,6 @@ namespace cubreplication
 
       subtran_applier &get_subtran_applier ();
   };
-
 } /* namespace cubreplication */
 
 #endif /* _LOG_CONSUMER_HPP_ */

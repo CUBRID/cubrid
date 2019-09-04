@@ -44,9 +44,9 @@ namespace cubreplication
 
     m_senders_manager = new stream_senders_manager (*stream);
 
-    cubtx::master_group_complete_manager::init ();
+    cubtx::initialize_master_gcm ();
 
-    m_control_channel_manager = new master_ctrl (cubtx::master_group_complete_manager::get_instance ());
+    m_control_channel_manager = new master_ctrl (cubtx::get_master_gcm_instance ());
 
     stream_entry fail_over_entry (m_stream, MVCCID_FIRST, stream_entry_header::NEW_MASTER);
     fail_over_entry.pack ();
@@ -120,7 +120,7 @@ namespace cubreplication
     setup_protocol (chn);
 
     cubstream::transfer_sender *sender = new cubstream::transfer_sender (std::move (chn), *m_stream);
-    sender->register_stream_ack (cubtx::master_group_complete_manager::get_instance ());
+    sender->register_stream_ack (cubtx::get_master_gcm_instance ());
 
     m_senders_manager->add_stream_sender (sender);
 
@@ -165,7 +165,7 @@ namespace cubreplication
     delete m_control_channel_manager;
     m_control_channel_manager = NULL;
 
-    cubtx::master_group_complete_manager::final ();
+    cubtx::finalize_master_gcm ();
   }
 
   void master_node::update_senders_min_position (const cubstream::stream_position &pos)
