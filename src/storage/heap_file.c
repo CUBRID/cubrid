@@ -843,8 +843,10 @@ static int heap_hfid_table_entry_init (void *unique_stat);
 static int heap_hfid_table_entry_key_copy (void *src, void *dest);
 static unsigned int heap_hfid_table_entry_key_hash (void *key, int hash_table_size);
 static int heap_hfid_table_entry_key_compare (void *k1, void *k2);
-static int heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid, FILE_TYPE * ftype_out);
-static int heap_get_hfid_from_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid);
+static int heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid, FILE_TYPE * ftype_out,
+				bool get_classname, char *classname_out);
+static int heap_get_hfid_from_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid,
+					    bool get_classname, char *classname_out);
 
 static void heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, PAGE_PTR heap_page, MVCCID mvccid);
 static void heap_page_rv_chain_update (THREAD_ENTRY * thread_p, PAGE_PTR heap_page, MVCCID mvccid,
@@ -16614,27 +16616,6 @@ heap_attrinfo_set_uninitialized_global (THREAD_ENTRY * thread_p, OID * inst_oid,
 }
 
 /*
- * heap_get_hfid_from_class_oid () - get HFID from class oid
- *   return: error_code
- *   class_oid(in): class oid
- *   hfid(out):  the resulting hfid
- */
-int
-heap_get_hfid_from_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid)
-{
-  int error_code = NO_ERROR;
-
-  error_code = heap_hfid_cache_get (thread_p, class_oid, hfid, NULL);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
-    }
-
-  return error_code;
-}
-
-/*
  * heap_get_hfid_and_file_type_from_class_oid () - get HFID and file type for class.
  *
  * return          : error code
@@ -16685,7 +16666,7 @@ heap_compact_pages (THREAD_ENTRY * thread_p, OID * class_oid)
       return ER_FAILED;
     }
 
-  ret = heap_get_hfid_from_class_oid (thread_p, class_oid, &hfid);
+  ret = heap_get_hfid_and_file_type_from_class_oid (thread_p, class_oid, &hfid, NULL);
   if (ret != NO_ERROR || HFID_IS_NULL (&hfid))
     {
       lock_unlock_object (thread_p, class_oid, oid_Root_class_oid, IS_LOCK, true);
@@ -17634,7 +17615,7 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
 	  goto cleanup;
 	}
 
-      error = heap_get_hfid_from_class_oid (thread_p, &class_oid, &ctx->hfids[0]);
+      error = heap_get_hfid_and_file_type_from_class_oid (thread_p, &class_oid, &ctx->hfids[0], NULL);
       if (error != NO_ERROR)
 	{
 	  goto cleanup;
@@ -19177,7 +19158,7 @@ heap_scancache_quick_start_with_class_oid (THREAD_ENTRY * thread_p, HEAP_SCANCAC
 {
   HFID class_hfid;
 
-  heap_get_hfid_from_class_oid (thread_p, class_oid, &class_hfid);
+  heap_get_hfid_and_file_type_from_class_oid (thread_p, class_oid, &class_hfid, NULL);
   (void) heap_scancache_quick_start_with_class_hfid (thread_p, scan_cache, &class_hfid);
   scan_cache->page_latch = S_LOCK;
 
@@ -19227,7 +19208,7 @@ heap_scancache_quick_start_modify_with_class_oid (THREAD_ENTRY * thread_p, HEAP_
 {
   HFID class_hfid;
 
-  heap_get_hfid_from_class_oid (thread_p, class_oid, &class_hfid);
+  heap_get_hfid_and_file_type_from_class_oid (thread_p, class_oid, &class_hfid, NULL);
   (void) heap_scancache_quick_start_internal (scan_cache, &class_hfid);
   scan_cache->page_latch = X_LOCK;
 
@@ -22836,9 +22817,12 @@ exit:
  *   return: error_code
  *   class_oid(in): class oid
  *   hfid(out):  the resulting hfid
+ *
+ *  NOTE!! : classname must be freed by the caller.
  */
 static int
-heap_get_hfid_from_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid)
+heap_get_hfid_from_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid, bool get_classname,
+				 char *classname)
 {
   int error_code = NO_ERROR;
   RECDES recdes;
@@ -22858,6 +22842,11 @@ heap_get_hfid_from_class_record (THREAD_ENTRY * thread_p, const OID * class_oid,
     }
 
   or_class_hfid (&recdes, hfid);
+
+  if (get_classname)
+    {
+      classname = strdup (or_class_name (&recdes));
+    }
 
   error_code = heap_scancache_end (thread_p, &scan_cache);
   if (error_code != NO_ERROR)
@@ -23261,7 +23250,8 @@ heap_insert_hfid_for_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, 
  *	retrieved from the class record.
  */
 static int
-heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out, FILE_TYPE * ftype_out)
+heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out, FILE_TYPE * ftype_out,
+		     bool get_classname, char *classname_out)
 {
   int error_code = NO_ERROR;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_HFID_TABLE);
@@ -23297,7 +23287,7 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
       /* this is either a newly inserted entry or one with incomplete information that is currently being filled by
        * another transaction. We need to retrieve the HFID from the class record. We do not care that we are
        * overwriting the information, since it must be always the same (the HFID never changes for the same class OID). */
-      error_code = heap_get_hfid_from_class_record (thread_p, class_oid, &hfid_local);
+      error_code = heap_get_hfid_from_class_record (thread_p, class_oid, &hfid_local, get_classname, classname_out);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -23305,6 +23295,7 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 	  return error_code;
 	}
       entry->hfid = hfid_local;
+      entry->classname = classname_out;
     }
   assert (entry->hfid.hpgid != NULL_PAGEID && entry->hfid.vfid.fileid != NULL_FILEID
 	  && entry->hfid.vfid.volid != NULL_VOLID);
@@ -23690,7 +23681,7 @@ heap_scancache_add_partition_node (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * sca
 
   assert (scan_cache != NULL);
 
-  if (heap_get_hfid_from_class_oid (thread_p, partition_oid, &hfid) != NO_ERROR)
+  if (heap_get_hfid_and_file_type_from_class_oid (thread_p, partition_oid, &hfid, NULL) != NO_ERROR)
     {
       return ER_FAILED;
     }

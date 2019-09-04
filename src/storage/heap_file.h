@@ -571,7 +571,6 @@ extern void heap_rv_dump_reuse_page (FILE * fp, int ignore_length, void *data);
 extern int heap_rv_mark_deleted_on_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_mark_deleted_on_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
-extern int heap_get_hfid_from_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid);
 extern int heap_get_hfid_and_file_type_from_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out,
 						       FILE_TYPE * ftype_out);
 extern int heap_insert_hfid_for_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid,

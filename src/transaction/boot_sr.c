@@ -3432,7 +3432,7 @@ xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag, OID * oid, BTID * 
 	}
     }
 
-  if (heap_get_hfid_from_class_oid (thread_p, oid, &hfid) != NO_ERROR || HFID_IS_NULL (&hfid))
+  if (heap_get_hfid_and_file_type_from_class_oid (thread_p, oid, &hfid, NULL) != NO_ERROR || HFID_IS_NULL (&hfid))
     {
       return DISK_ERROR;
     }
