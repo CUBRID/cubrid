@@ -93,7 +93,7 @@ namespace cubload
   server_class_installer::locate_class (const char *class_name, OID &class_oid)
   {
     cubthread::entry &thread_ref = cubthread::get_entry ();
-    return xlocator_find_class_oid (&thread_ref, class_name, &class_oid, IX_LOCK);
+    return xlocator_find_class_oid (&thread_ref, class_name, &class_oid, BU_LOCK);
   }
 
   void
@@ -286,7 +286,7 @@ namespace cubload
     start_attrinfo (class_oid);
 
     // lock class when batch starts, it will be unlocked on transaction commit/abort, see load_worker::execute
-    lock_object (m_thread_ref, &class_oid, oid_Root_class_oid, IX_LOCK, LK_UNCOND_LOCK);
+    lock_object (m_thread_ref, &class_oid, oid_Root_class_oid, BU_LOCK, LK_UNCOND_LOCK);
   }
 
   void

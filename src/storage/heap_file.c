@@ -22350,14 +22350,22 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
       goto error;
     }
 
-  /*
-   * Locking
-   */
-  /* make sure we have IX_LOCK on class see [NOTE-1] */
-  // todo - this should probably be disabled in case of bulk insert
-  if (lock_object (thread_p, &context->class_oid, oid_Root_class_oid, IX_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+  if (context->is_bulk_op)
     {
-      return ER_FAILED;
+      // In case of bulk insert we need to skip the IX lock on class and make sure that we have BU_LOCK acquired.
+      assert (lock_has_lock_on_object (&context->class_oid, oid_Root_class_oid,
+				       LOG_FIND_THREAD_TRAN_INDEX (thread_p), BU_LOCK));
+    }
+  else
+    {
+      /*
+       * Locking
+       */
+      /* make sure we have IX_LOCK on class see [NOTE-1] */
+      if (lock_object (thread_p, &context->class_oid, oid_Root_class_oid, IX_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+	{
+	  return ER_FAILED;
+	}
     }
 
   /* get insert location (includes locking) */
