@@ -1133,7 +1133,6 @@ extern bool logtb_get_check_interrupt (THREAD_ENTRY * thread_p);
 extern int logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 
 extern LOG_TDES *logtb_get_system_tdes (THREAD_ENTRY * thread_p = NULL);
-extern void logpb_resets_tran_complete_manager (log_tran_complete_manager_type manager_type);
 
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation

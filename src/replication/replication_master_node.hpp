@@ -59,6 +59,7 @@ namespace cubreplication
       ~master_node ();
 
       void new_slave (int fd);
+      void remove_all_senders ();
       void wakeup_transfer_senders (cubstream::stream_position desired_position);
       void add_ctrl_chn (int fd);
       void set_ctrl_channel_manager_stream_ack (cubstream::stream_ack *stream_ack);

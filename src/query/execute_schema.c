@@ -14985,7 +14985,7 @@ do_drop_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
  *				  info list
  *   return: error
  *   classmop (in)   :
- *   index_save_info :
+ *   index_save_info (in):
  */
 static int
 do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)

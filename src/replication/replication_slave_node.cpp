@@ -74,7 +74,7 @@ namespace cubreplication
     UINT64 pos = 0, expected_magic;
     std::size_t max_len = sizeof (UINT64);
     css_error_code comm_error_code;
-    /* start log_consumer daemons and apply thread pool */
+
     comm_error_code = chn.send ((char *) &replication_node::SETUP_REPLICATION_MAGIC, max_len);
     if (comm_error_code != css_error_code::NO_ERRORS)
       {

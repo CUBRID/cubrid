@@ -22,7 +22,6 @@
  */
 
 #include "replication_node_manager.hpp"
-#include "stream_senders_manager.hpp"
 
 #include "ha_operations.hpp"
 #include "internal_tasks_worker_pool.hpp"

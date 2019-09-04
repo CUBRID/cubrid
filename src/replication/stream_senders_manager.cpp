@@ -21,6 +21,7 @@
  * stream_senders_manager.cpp -
  */
 
+#include "log_impl.h"
 #include "stream_senders_manager.hpp"
 #include "replication_common.hpp"
 

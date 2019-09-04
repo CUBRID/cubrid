@@ -148,7 +148,10 @@ namespace cubreplication
 	assert (started_task >= 0);
 	if (started_task == 0)
 	  {
-	    /* Notify all. Currently, there  is only one waiter, but may be added others, later. */
+	    /* Notify all. Currently, there  is only one waiter, but may be added others, later.
+	     * For safety reason, it is better to notify with mutex acquired in this case.
+	     * The alternative is to use wait with timeout.
+	     */
 	    std::unique_lock<std::mutex> ulock (m_join_tasks_mutex);
 	    m_join_tasks_cv.notify_all ();
 	  }
@@ -161,7 +164,7 @@ namespace cubreplication
 
 
       void stop (void);
-      void wait_for_tasks ();
+      void wait_for_tasks (void);
 
       void fetch_suspend ();
       void fetch_resume ();

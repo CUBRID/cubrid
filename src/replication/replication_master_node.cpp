@@ -31,6 +31,7 @@
 #include "server_support.h"
 #include "stream_file.hpp"
 #include "stream_senders_manager.hpp"
+#include "stream_transfer_sender.hpp"
 #include "transaction_master_group_complete_manager.hpp"
 
 namespace cubreplication
@@ -123,6 +124,11 @@ namespace cubreplication
     m_senders_manager->add_stream_sender (sender);
 
     er_log_debug_replication (ARG_FILE_LINE, "new_slave connected");
+  }
+
+  void master_node::remove_all_senders ()
+  {
+    m_senders_manager->remove_all_senders ();
   }
 
   void master_node::wakeup_transfer_senders (cubstream::stream_position desired_position)

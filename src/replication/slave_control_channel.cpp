@@ -39,6 +39,8 @@ namespace cubreplication
     : m_ctrl_chn (std::move (ctrl_chn))
     , m_stop (false)
     , m_last_stream_pos (0ULL)
+    , m_last_sent_stream_pos (0ULL)
+    , m_max_wait_time_in_msec (100)
   {
   }
 
@@ -50,13 +52,15 @@ namespace cubreplication
 	return;
       }
 
-    m_cv.wait (ul);
+    m_cv.wait_for (ul, m_max_wait_time_in_msec);
 
-    if (!m_stop)
+    if (!m_stop && m_last_sent_stream_pos != m_last_stream_pos)
       {
+	assert (m_last_sent_stream_pos <= m_last_stream_pos);
 	m_ctrl_chn.send_ack (m_last_stream_pos);
 	er_log_debug (ARG_FILE_LINE, "slave_control_sender::execute, send ack = %llu\n",
 		      (unsigned long long) m_last_stream_pos);
+	m_last_sent_stream_pos = m_last_stream_pos;
       }
   }
 

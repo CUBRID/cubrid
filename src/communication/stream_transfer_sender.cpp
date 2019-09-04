@@ -152,7 +152,7 @@ namespace cubstream
     : m_channel (std::move (chn))
     , m_stream (stream)
     , m_last_sent_position (begin_sending_position)
-    , m_is_termination_phase (false)    
+    , m_is_termination_phase (false)
   {
     cubthread::delta_time daemon_period = std::chrono::milliseconds (10);
 
