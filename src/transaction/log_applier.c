@@ -6826,7 +6826,7 @@ la_init (const char *log_path, const int max_mem_size)
 
   la_recdes_pool.is_initialized = false;
 
-  if (db_get_client_type () == BOOT_CLIENT_LOG_APPLIER)
+  if (db_get_client_type () == DB_CLIENT_TYPE_LOG_APPLIER)
     {
       ws_init_repl_objs ();
     }
@@ -6933,7 +6933,7 @@ la_shutdown (void)
       free_and_init (la_Info.act_log.hdr_page);
     }
 
-  if (db_get_client_type () == BOOT_CLIENT_LOG_APPLIER)
+  if (db_get_client_type () == DB_CLIENT_TYPE_LOG_APPLIER)
     {
       ws_clear_all_repl_objs ();
     }

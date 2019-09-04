@@ -476,11 +476,11 @@ mvcctable::complete_sub_mvcc (MVCCID mvccid)
 }
 
 void
-mvcctable::complete_group_mvcc (THREAD_ENTRY *thread_p, const tx_group &group)
+mvcctable::complete_group_mvcc (cubthread::entry *thread_p, const tx_group &group)
 {
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
-  UINT64 tran_complete_time;
+  UINT64 group_mvcc_complete_time;
   bool is_perf_tracking = false;
 
   if (group.get_container ().empty ())
@@ -505,6 +505,7 @@ mvcctable::complete_group_mvcc (THREAD_ENTRY *thread_p, const tx_group &group)
   // set inactive MVCCID's
   for (const tx_group::node_info &tran_info : group.get_container ())
     {
+      /* TODO - investigate separately NULL MVCCID case. */
       if (!MVCCID_IS_VALID (tran_info.m_mvccid))
 	{
 	  continue;
@@ -544,10 +545,10 @@ mvcctable::complete_group_mvcc (THREAD_ENTRY *thread_p, const tx_group &group)
     {
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      tran_complete_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-      if (tran_complete_time > 0)
+      group_mvcc_complete_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+      if (group_mvcc_complete_time > 0)
 	{
-	  perfmon_add_stat (thread_p, PSTAT_LOG_TRAN_COMPLETE_TIME_COUNTERS, tran_complete_time);
+	  perfmon_add_stat (thread_p, PSTAT_LOG_TRAN_GROUP_COMPLETE_MVCC_TIME_COUNTERS, group_mvcc_complete_time);
 	}
     }
 }

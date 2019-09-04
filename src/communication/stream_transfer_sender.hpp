@@ -28,6 +28,8 @@
 #include "communication_channel.hpp"
 #include "cubstream.hpp"
 
+#include <atomic>     // for atomic_bool
+
 namespace cubthread
 {
   class daemon;
@@ -62,6 +64,16 @@ namespace cubstream
 	return m_sender_daemon;
       }
 
+      void enter_termination_phase ()
+      {
+	m_is_termination_phase.store (true);
+      }
+
+      bool is_termination_phase ()
+      {
+	return m_is_termination_phase.load ();
+      }
+
     private:
 
       friend class transfer_sender_task;
@@ -71,6 +83,8 @@ namespace cubstream
       stream_position m_last_sent_position;
       cubthread::daemon *m_sender_daemon;
       char m_buffer[cubcomm::MTU];
+
+      std::atomic_bool m_is_termination_phase;
 
     protected:
       cubstream::stream::read_func_t m_read_action_function;

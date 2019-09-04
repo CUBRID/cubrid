@@ -25,67 +25,52 @@
 #include "page_buffer.h"
 #include "log_manager.h"
 #include "server_support.h"
+#include "thread_daemon.hpp"
+#include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
 #include "transaction_single_node_group_complete_manager.hpp"
 
 namespace cubtx
 {
+  single_node_group_complete_manager *gl_single_node_gcm = NULL;
+  cubthread::daemon *gl_single_node_gcm_daemon = NULL;
+
+  //
+  // single_node_group_complete_task is class for master group complete daemon
+  //
+  class single_node_group_complete_task : public cubthread::entry_task
+  {
+    public:
+      /* entry_task methods */
+      void execute (cubthread::entry &thread_ref) override
+      {
+	if (!BO_IS_SERVER_RESTARTED ())
+	  {
+	    return;
+	  }
+
+	cubthread::entry *thread_p = &cubthread::get_entry ();
+	get_single_node_gcm_instance ()->do_prepare_complete (thread_p);
+      }
+  };
+
+  single_node_group_complete_manager::single_node_group_complete_manager ()
+  {
+    LSA_SET_NULL (&gl_single_node_gcm->m_latest_closed_group_start_log_lsa);
+    LSA_SET_NULL (&gl_single_node_gcm->m_latest_closed_group_end_log_lsa);
+  }
+
   single_node_group_complete_manager::~single_node_group_complete_manager ()
   {
   }
 
   //
-  // get global single node instance
-  //
-  single_node_group_complete_manager *single_node_group_complete_manager::get_instance ()
-  {
-    assert (gl_single_node_group != NULL);
-    return gl_single_node_group;
-  }
-
-  //
-  // init initialize single node group commit
-  //
-  void single_node_group_complete_manager::init ()
-  {
-    assert (gl_single_node_group == NULL);
-    er_log_debug (ARG_FILE_LINE, "single_node_group_complete_manager:init created single group complete manager\n");
-    gl_single_node_group = new single_node_group_complete_manager ();
-
-    LSA_SET_NULL (&gl_single_node_group->m_latest_closed_group_start_log_lsa);
-    LSA_SET_NULL (&gl_single_node_group->m_latest_closed_group_end_log_lsa);
-
-#if defined (SERVER_MODE)
-    cubthread::looper looper = cubthread::looper (single_node_group_complete_manager::get_group_commit_interval);
-    single_node_group_complete_manager::gl_single_node_group_complete_daemon =
-	    cubthread::get_manager ()->create_daemon ((looper), new single_node_group_complete_task (),
-		"single_node_group_complete_daemon");
-#endif
-  }
-
-  //
-  // final finalizes single node group commit
-  //
-  void single_node_group_complete_manager::final ()
-  {
-    if (gl_single_node_group_complete_daemon != NULL)
-      {
-	cubthread::get_manager ()->destroy_daemon (gl_single_node_group_complete_daemon);
-	gl_single_node_group_complete_daemon = NULL;
-      }
-
-    delete gl_single_node_group;
-    gl_single_node_group = NULL;
-  }
-
-  //
-  // notify_log_flush notifies single node group commit.
+  // notify_log_flush notifies single node group complete.
   //
   void single_node_group_complete_manager::notify_log_flush_lsa (const LOG_LSA *lsa)
   {
     assert (lsa != NULL);
 
-    /* TODO - use m_latest_closed_group_stream_start_position, m_latest_closed_group_stream_end_position */
     if (LSA_GE (lsa, &m_latest_closed_group_end_log_lsa))
       {
 	cubthread::entry *thread_p = &cubthread::get_entry ();
@@ -112,11 +97,11 @@ namespace cubtx
     if (is_latest_closed_group_completed ())
       {
 	/* We can move the next calls outside of mutex. */
-	if (can_wakeup_group_complete_daemon (true)
+	if (can_wakeup_group_complete_daemon (USE_STATS)
 	    || pgbuf_has_perm_pages_fixed (&cubthread::get_entry ()))
 	  {
 	    /* This means that GC thread didn't start yet group close. */
-	    gl_single_node_group_complete_daemon->wakeup ();
+	    gl_single_node_gcm_daemon->wakeup ();
 	  }
       }
     else if (!is_latest_closed_group_complete_started ()
@@ -132,7 +117,7 @@ namespace cubtx
   //
   // can_wakeup_group_complete_daemon - true, if can wakeup group complete daemon
   //
-  bool single_node_group_complete_manager::can_wakeup_group_complete_daemon (bool inc_gc_request_count)
+  bool single_node_group_complete_manager::can_wakeup_group_complete_daemon (STATS_STATE stats_state)
   {
     bool can_wakeup_GC;
 
@@ -146,7 +131,7 @@ namespace cubtx
 	/* group commit */
 	can_wakeup_GC = false;
 
-	if (inc_gc_request_count)
+	if (stats_state == USE_STATS)
 	  {
 	    log_Stat.gc_commit_request_count++;
 	  }
@@ -163,7 +148,7 @@ namespace cubtx
   {
     if (!is_latest_closed_group_completed ())
       {
-	/* Can't advance to the next group since the current group was not committed yet. */
+	/* Can't advance to the next group since the current group was not completed yet. */
 	return false;
       }
 
@@ -177,29 +162,6 @@ namespace cubtx
   }
 
   //
-  // get_group_commit_interval () - setup flush daemon period based on system parameter
-  //
-  void single_node_group_complete_manager::get_group_commit_interval (bool &is_timed_wait, cubthread::delta_time &period)
-  {
-    is_timed_wait = true;
-
-    /* TODO - 0 when gc close is forced */
-    const int MAX_WAIT_TIME_MSEC = 1000;
-    int log_group_commit_interval_msec = prm_get_integer_value (PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS);
-
-    assert (log_group_commit_interval_msec >= 0);
-
-    if (log_group_commit_interval_msec == 0)
-      {
-	period = std::chrono::milliseconds (MAX_WAIT_TIME_MSEC);
-      }
-    else
-      {
-	period = std::chrono::milliseconds (log_group_commit_interval_msec);
-      }
-  }
-
-  //
   // prepare_complete prepares group complete. Always should be called before do_complete.
   //
   void single_node_group_complete_manager::do_prepare_complete (THREAD_ENTRY *thread_p)
@@ -210,7 +172,8 @@ namespace cubtx
 
     if (close_current_group ())
       {
-	cubstream::stream_position closed_group_stream_start_position = 0, closed_group_stream_end_position = 0;
+	cubstream::stream_position closed_group_stream_start_position = 0;
+	cubstream::stream_position closed_group_stream_end_position = 0;
 	tx_group &closed_group = get_latest_closed_group ();
 	tdes = logtb_get_tdes (thread_p);
 
@@ -225,18 +188,26 @@ namespace cubtx
 		closed_group_stream_start_position, closed_group_stream_end_position);
 	  }
 
-	log_append_group_complete (thread_p, tdes, 0, closed_group, &closed_group_start_complete_lsa,
+	log_append_group_complete (thread_p, tdes, closed_group_stream_start_position,
+				   closed_group, &closed_group_start_complete_lsa,
 				   &closed_group_end_complete_lsa, &has_postpone);
+
 	LSA_COPY (&m_latest_closed_group_start_log_lsa, &closed_group_start_complete_lsa);
 	LSA_COPY (&m_latest_closed_group_end_log_lsa, &closed_group_end_complete_lsa);
+
 	mark_latest_closed_group_prepared_for_complete ();
+
 	log_wakeup_log_flush_daemon ();
+
 	if (has_postpone)
 	  {
 	    notify_group_logged ();
 	  }
 
-	/* TODO - er_log_debug (closed_group_start_complete_lsa, closed_group_end_complete_lsa) */
+	er_log_group_complete_debug (ARG_FILE_LINE, "closed_group_start_complete_lsa =(%lld, %d), "
+				     "closed_group_end_complete_lsa = (%lld, %d)\n",
+				     LSA_AS_ARGS (&closed_group_start_complete_lsa),
+				     LSA_AS_ARGS (&closed_group_end_complete_lsa));
       }
   }
 
@@ -253,40 +224,91 @@ namespace cubtx
 	return;
       }
 
-    if (!is_latest_closed_group_prepared_for_complete ())
+    while (!is_latest_closed_group_prepared_for_complete ())
       {
-	/* The user must call again do_complete since the data is not prepared for complete.
-	 * Another option may be to wait. Since rarely happens, we can use thread_sleep.
-	 */
-	return;
+	/* It happens rare. */
+	thread_sleep (10);
       }
 
-    mark_latest_closed_group_complete_started ();
+    if (!starts_latest_closed_group_complete ())
+      {
+	/* Already started by others. */
+	return;
+      }
 
     /* Finally, notify complete. */
     notify_group_complete ();
 
 #if defined (SERVER_MODE)
     /* wakeup GC thread */
-    if (gl_single_node_group_complete_daemon != NULL
-	&& can_wakeup_group_complete_daemon (false))
+    if (gl_single_node_gcm_daemon != NULL && can_wakeup_group_complete_daemon (DONT_USE_STATS))
       {
-	gl_single_node_group_complete_daemon->wakeup ();
+	gl_single_node_gcm_daemon->wakeup ();
       }
 #endif
   }
 
-  void single_node_group_complete_task::execute (cubthread::entry &thread_ref)
+  //
+  // get_group_complete_interval () - setup group complete period based on system parameter
+  //
+  static void get_group_complete_interval (bool &is_timed_wait, cubthread::delta_time &period)
   {
-    if (!BO_IS_SERVER_RESTARTED ())
-      {
-	return;
-      }
+    is_timed_wait = true;
 
-    cubthread::entry *thread_p = &cubthread::get_entry ();
-    single_node_group_complete_manager::get_instance ()->do_prepare_complete (thread_p);
+    /* TODO - 0 when gc close is forced */
+    const int MAX_WAIT_TIME_MSEC = 1000;
+    int log_group_complete_interval_msec = prm_get_integer_value (PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS);
+
+    assert (log_group_complete_interval_msec >= 0);
+
+    if (log_group_complete_interval_msec == 0)
+      {
+	period = std::chrono::milliseconds (MAX_WAIT_TIME_MSEC);
+      }
+    else
+      {
+	period = std::chrono::milliseconds (log_group_complete_interval_msec);
+      }
   }
 
-  single_node_group_complete_manager *single_node_group_complete_manager::gl_single_node_group = NULL;
-  cubthread::daemon *single_node_group_complete_manager::gl_single_node_group_complete_daemon = NULL;
+  //
+  // initialize_single_node_gcm initializes single node group complete
+  //
+  void initialize_single_node_gcm ()
+  {
+    assert (gl_single_node_gcm == NULL);
+    er_log_group_complete_debug (ARG_FILE_LINE,
+				 "single_node_group_complete_manager:init created single group complete manager\n");
+    gl_single_node_gcm = new single_node_group_complete_manager ();
+
+#if defined (SERVER_MODE)
+    cubthread::looper looper = cubthread::looper (get_group_complete_interval);
+    gl_single_node_gcm_daemon = cubthread::get_manager ()->create_daemon ((looper), new single_node_group_complete_task (),
+				"single_node_group_complete_daemon");
+#endif
+  }
+
+  //
+  // finalize_single_node_gcm finalizes single node group complete
+  //
+  void finalize_single_node_gcm ()
+  {
+    if (gl_single_node_gcm_daemon != NULL)
+      {
+	cubthread::get_manager ()->destroy_daemon (gl_single_node_gcm_daemon);
+	gl_single_node_gcm_daemon = NULL;
+      }
+
+    delete gl_single_node_gcm;
+    gl_single_node_gcm = NULL;
+  }
+
+  //
+  // get_single_node_gcm_instance gets global single node instance
+  //
+  single_node_group_complete_manager *get_single_node_gcm_instance ()
+  {
+    assert (gl_single_node_gcm != NULL);
+    return gl_single_node_gcm;
+  }
 }

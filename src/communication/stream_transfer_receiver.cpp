@@ -35,7 +35,7 @@
 namespace cubstream
 {
 
-  class transfer_receiver_task : public cubthread::task_without_context
+  class transfer_receiver_task : public cubthread::entry_task
   {
     public:
       transfer_receiver_task (cubstream::transfer_receiver &consumer_channel)
@@ -44,7 +44,7 @@ namespace cubstream
       {
       }
 
-      void execute () override
+      void execute (cubthread::entry &thread_ref) override
       {
 	css_error_code rc = NO_ERRORS;
 	std::size_t max_len = DB_ALIGN_BELOW (cubcomm::MTU, MAX_ALIGNMENT);
@@ -120,14 +120,14 @@ namespace cubstream
 					 std::placeholders::_3);
 
     std::string daemon_name = "stream_transfer_receiver_" + chn.get_channel_id ();
-    m_receiver_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
+    m_receiver_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
 			new transfer_receiver_task (*this), daemon_name.c_str ());
   }
 
   transfer_receiver::~transfer_receiver ()
   {
     m_channel.close_connection ();
-    cubthread::get_manager ()->destroy_daemon_without_entry (m_receiver_daemon);
+    cubthread::get_manager ()->destroy_daemon (m_receiver_daemon);
   }
 
   int transfer_receiver::write_action (const stream_position pos, char *ptr, const size_t byte_count)
@@ -145,5 +145,9 @@ namespace cubstream
     return m_last_received_position;
   }
 
+  void transfer_receiver::terminate_connection (void)
+  {
+    m_channel.close_connection ();
+  }
 
 } // namespace cubstream

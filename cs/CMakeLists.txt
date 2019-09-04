@@ -155,6 +155,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/semaphore.hpp
+  ${BASE_DIR}/type_traits_utils.hpp
   )
 
 set(HEAPLAYER_SOURCES
@@ -267,11 +268,12 @@ set(OBJECT_HEADERS
 )
 
 set(REPLICATION_SOURCES
+  ${REPLICATION_DIR}/ha_server_state.cpp
   ${REPLICATION_DIR}/replication_schema_extract.cpp
 )
 
 set(REPLICATION_HEADERS
-  ${REPLICATION_DIR}/ha_server_state.h
+  ${REPLICATION_DIR}/ha_server_state.hpp
   ${REPLICATION_DIR}/replication_schema_extract.hpp
 )
 

@@ -82,8 +82,8 @@ namespace cubreplication
     p_lsa = logtb_find_current_tran_lsa (thread_p);
     assert (p_lsa != NULL);
 
-    sbr_repl_entry *repl_obj = new sbr_repl_entry (stmt_info.stmt_text, stmt_info.db_user, stmt_info.sys_prm_context,
-	*p_lsa);
+    sbr_repl_entry *repl_obj = new sbr_repl_entry ("", stmt_info.stmt_text, stmt_info.db_user,
+	stmt_info.sys_prm_context, *p_lsa);
     append_repl_object (*repl_obj);
   }
 
@@ -145,9 +145,8 @@ namespace cubreplication
      */
     logtb_get_current_mvccid (&cubthread::get_entry ());
 
-    m_stream_entry.add_packable_entry (&object);
-
     er_log_repl_obj (&object, "log_generator::append_repl_object");
+    m_stream_entry.add_packable_entry (&object);
 
     if (m_stream_entry.count_entries () >= MAX_PACKABLE_ENTRIES
 	&& !prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
@@ -256,6 +255,7 @@ namespace cubreplication
 	    repl_obj->set_lsa_stamp (*p_lsa);
 
 	    er_log_repl_obj (repl_obj, "log_generator::set_key_to_repl_object");
+
 	    append_repl_object (*repl_obj);
 
 	    // remove
@@ -279,6 +279,7 @@ namespace cubreplication
 	entry->set_key_value (key);
 
 	er_log_repl_obj (entry, "log_generator::set_key_to_repl_object");
+
 	append_repl_object (*entry);
       }
 

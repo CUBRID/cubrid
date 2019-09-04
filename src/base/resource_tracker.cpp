@@ -23,6 +23,8 @@
 
 #include "resource_tracker.hpp"
 
+#include "error_manager.h"
+
 namespace cubbase
 {
   resource_tracker_item::resource_tracker_item (const char *fn_arg, int l_arg, unsigned reuse)
@@ -68,6 +70,12 @@ namespace cubbase
   restrack_is_assert_suppressed (void)
   {
     return Restrack_suppress_assert;
+  }
+
+  void
+  restrack_log (const std::string &str)
+  {
+    _er_log_debug (ARG_FILE_LINE, str.c_str ());
   }
 
 } // namespace cubbase

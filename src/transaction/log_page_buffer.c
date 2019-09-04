@@ -3168,7 +3168,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
 	  writer_info->trace_last_writer = true;
 	  writer_info->last_writer_elapsed_time = 0;
-	  writer_info->last_writer_client_info.client_type = BOOT_CLIENT_UNKNOWN;
+	  writer_info->last_writer_client_info.client_type = DB_CLIENT_TYPE_UNKNOWN;
 	}
 
       entry = writer_info->writer_list;
@@ -7027,6 +7027,8 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   time_t tmp_time;
   char time_val[CTIME_MAX];
 
+  LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
+
 #if defined (SERVER_MODE)
   // check whether there is ongoing backup.
   LOG_CS_ENTER (thread_p);
@@ -7129,6 +7131,36 @@ loop:
   else
     {
       first_arv_needed = log_Gl.hdr.nxarv_num;
+    }
+
+  vacuum_first_pageid = vacuum_min_log_pageid_to_keep (thread_p);
+  vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First log pageid in vacuum data is %lld\n", vacuum_first_pageid);
+
+  if (vacuum_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (vacuum_first_pageid))
+    {
+      int min_arv_required_for_vacuum = logpb_get_archive_number (thread_p, vacuum_first_pageid);
+
+      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive number used for vacuum is %d\n",
+		     min_arv_required_for_vacuum);
+
+      if (min_arv_required_for_vacuum >= 0)
+	{
+	  if (first_arv_needed >= 0)
+	    {
+	      first_arv_needed = MIN (first_arv_needed, min_arv_required_for_vacuum);
+	    }
+	  else
+	    {
+	      first_arv_needed = min_arv_required_for_vacuum;
+	    }
+	}
+      else
+	{
+  /* Get the current checkpoint address */
+	  assert (false);
+	}
+
+      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive needed for backup is %d\n", first_arv_needed);
     }
 
   /* Get the current checkpoint address */
@@ -10190,34 +10222,12 @@ logpb_initialize_logging_statistics (void)
  *
  */
 void
-logpb_initialize_tran_complete_manager (THREAD_ENTRY * thread_p)
+logpb_initialize_tran_complete_manager ()
 {
   /* Initialize with single mode for recovery purpose. If non-HA, this mode remains. Otherwise, reset it later. */
   er_log_debug (ARG_FILE_LINE, "logpb_initialize_tran_complete_manager single node \n");
   logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
 }
-
-/*
- * logpb_complete_manager_string - complete manager string
- */
-const char *
-logpb_complete_manager_string (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
-{
-  switch (manager_type)
-    {
-    case LOG_TRAN_COMPLETE_NO_MANAGER:
-      return LOG_TRAN_COMPLETE_NO_MANAGER_STR;
-    case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
-      return LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE_STR;
-    case LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE:
-      return LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE_STR;
-    case LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE:
-      return LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE_STR;
-    }
-
-  return "invalid";
-}
-
 
 /*
  * logpb_atomic_resets_tran_complete_manager - Atomic resets transaction complete manager.
@@ -10228,10 +10238,10 @@ logpb_complete_manager_string (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
  *      TODO - We need to consider atomic reset.
  */
 void
-logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type)
+logpb_atomic_resets_tran_complete_manager (log_tran_complete_manager_type manager_type)
 {
   THREAD_ENTRY *thread_p;
-  LOG_TRAN_COMPLETE_MANAGER_TYPE old_manager_type;
+  log_tran_complete_manager_type old_manager_type;
   LOG_LSA smallest_lsa;
 #if defined(SERVER_MODE)
   const char *ha_server_state_string = css_ha_server_state_string (css_ha_server_state ());
@@ -10249,7 +10259,7 @@ logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manage
   /* TODO - remove old complete manager */
   if (log_Gl.m_tran_complete_mgr != NULL)
     {
-      old_manager_type = (LOG_TRAN_COMPLETE_MANAGER_TYPE) log_Gl.m_tran_complete_mgr->get_manager_type ();
+      old_manager_type = (log_tran_complete_manager_type) log_Gl.m_tran_complete_mgr->get_manager_type ();
     }
   else
     {
@@ -10290,12 +10300,11 @@ logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manage
 #endif
   switch (manager_type)
     {
-
     case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
       /* Single node. Need to wait for log flush. */
-      cubtx::single_node_group_complete_manager::init ();
+      cubtx::initialize_single_node_gcm ();
       log_set_notify (true);
-      log_Gl.m_tran_complete_mgr = cubtx::single_node_group_complete_manager::get_instance ();
+      log_Gl.m_tran_complete_mgr = cubtx::get_single_node_gcm_instance ();
       er_print_callstack (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager single node, ha_server_state = %s, "
 			  "old_manager=%s, new_manager = %s \n", ha_server_state_string,
 			  logpb_complete_manager_string (old_manager_type),
@@ -10305,11 +10314,11 @@ logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manage
 #if defined(SERVER_MODE)
     case LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE:
       /* Master with slaves. Need to wait for stream ack sent by slaves. */
-      cubtx::master_group_complete_manager::init ();
+      cubtx::initialize_master_gcm ();
       log_set_notify (false);
-      log_Gl.m_tran_complete_mgr = cubtx::master_group_complete_manager::get_instance ();
+      log_Gl.m_tran_complete_mgr = cubtx::get_master_gcm_instance ();
       cubreplication::replication_node_manager::get_master_node ()->
-	set_ctrl_channel_manager_stream_ack (cubtx::master_group_complete_manager::get_instance ());
+	set_ctrl_channel_manager_stream_ack (cubtx::get_master_gcm_instance ());
       er_print_callstack (ARG_FILE_LINE,
 			  "logpb_atomic_resets_tran_complete_manager master node, ha_server_state = %s, "
 			  "old_manager=%s, new_manager = %s \n", ha_server_state_string,
@@ -10319,9 +10328,9 @@ logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manage
 
     case LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE:
       /* Master with slaves. Need to wait for master stream. */
-      cubtx::slave_group_complete_manager::init ();
+      cubtx::initialize_slave_gcm ();
       log_set_notify (false);
-      log_Gl.m_tran_complete_mgr = cubtx::slave_group_complete_manager::get_instance ();
+      log_Gl.m_tran_complete_mgr = cubtx::get_slave_gcm_instance ();
       er_print_callstack (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager slave node, ha_server_state = %s, "
 			  "old_manager=%s, new_manager = %s \n", ha_server_state_string,
 			  logpb_complete_manager_string (old_manager_type),
@@ -10346,11 +10355,11 @@ logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manage
     {
     case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
       /* Close the latest group, if is the case. */
-      cubtx::single_node_group_complete_manager::get_instance ()->do_prepare_complete (thread_p);
-      cubtx::single_node_group_complete_manager::get_instance ()->do_complete (thread_p);
+      cubtx::get_single_node_gcm_instance ()->do_prepare_complete (thread_p);
+      cubtx::get_single_node_gcm_instance ()->do_complete (thread_p);
 
       /* Finalize single complete manager */
-      cubtx::single_node_group_complete_manager::final ();
+      cubtx::finalize_single_node_gcm ();
       er_log_debug (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager single group manager removed");
       break;
 
@@ -10360,22 +10369,22 @@ logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manage
       cubreplication::replication_node_manager::get_master_node ()->set_ctrl_channel_manager_stream_ack (NULL);
 
       /* Close the latest group, if is the case. */
-      cubtx::master_group_complete_manager::get_instance ()->do_prepare_complete (thread_p);
-      cubtx::master_group_complete_manager::get_instance ()->do_complete (thread_p);
+      cubtx::get_master_gcm_instance ()->do_prepare_complete (thread_p);
+      cubtx::get_master_gcm_instance ()->do_complete (thread_p);
 
       /* Finalize master complete manager */
-      cubtx::master_group_complete_manager::final ();
+      cubtx::finalize_master_gcm ();
       er_log_debug (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager master group manager removed");
 
       break;
 
     case LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE:
       /* Close the latest group, if is the case. */
-      cubtx::slave_group_complete_manager::get_instance ()->do_prepare_complete (thread_p);
-      cubtx::slave_group_complete_manager::get_instance ()->do_complete (thread_p);
+      cubtx::get_slave_gcm_instance ()->do_prepare_complete (thread_p);
+      cubtx::get_slave_gcm_instance ()->do_complete (thread_p);
 
       /* Finalize slave complete manager */
-      cubtx::slave_group_complete_manager::final ();
+      cubtx::finalize_slave_gcm ();
       er_log_debug (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager slave group manager removed");
       break;
 #endif
@@ -10400,11 +10409,33 @@ logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manage
  * NOTE:
  */
 void
-logpb_finalize_tran_complete_manager (void)
+logpb_finalize_tran_complete_manager(void)
 {
   /* Finalize complete manager. */
-  er_log_debug (ARG_FILE_LINE, "logpb_finalize_tran_complete_manager \n");
-  logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_NO_MANAGER);
+  er_log_debug(ARG_FILE_LINE, "logpb_finalize_tran_complete_manager \n");
+  logpb_atomic_resets_tran_complete_manager(LOG_TRAN_COMPLETE_NO_MANAGER);
+}
+
+/*
+ * logpb_complete_manager_string - complete manager string
+ */
+const char *
+logpb_complete_manager_string (log_tran_complete_manager_type manager_type)
+{
+  switch (manager_type)
+    {
+    case LOG_TRAN_COMPLETE_NO_MANAGER:
+      return "no manager";
+    case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
+      return "single node";
+    case LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE:
+      return "master node";
+    case LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE:
+      return "slave";
+    }
+
+  assert (false);
+  return "unknown";
 }
 
 /*
@@ -10875,6 +10906,7 @@ logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghd
   LSA_SET_NULL (&loghdr->mvcc_op_log_lsa);
   loghdr->last_block_oldest_mvccid = MVCCID_NULL;
   loghdr->last_block_newest_mvccid = MVCCID_NULL;
+  loghdr->does_block_need_vacuum = false;
 }
 
 /*

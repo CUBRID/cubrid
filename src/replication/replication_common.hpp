@@ -27,6 +27,7 @@
 #define _REPLICATION_COMMON_HPP_
 
 #include "error_manager.h"
+#include "system_parameter.h"
 #include <string>
 
 #define er_log_debug_replication(...) if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA)) _er_log_debug(__VA_ARGS__)

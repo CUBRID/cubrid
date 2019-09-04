@@ -102,7 +102,6 @@ extern int css_local_host_name (CSS_CONN_ENTRY * conn, char *hostname, size_t na
 
 extern int css_peer_host_name (CSS_CONN_ENTRY * conn, char *hostname, size_t namelen);
 #endif
-extern const char *css_ha_server_state_string (HA_SERVER_STATE state);
 extern const char *css_ha_applier_state_string (HA_LOG_APPLIER_STATE state);
 extern const char *css_ha_mode_string (HA_MODE mode);
 

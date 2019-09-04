@@ -47,7 +47,9 @@
 #include "log_archives.hpp"
 #include "log_comm.h"
 #include "log_common_impl.h"
+#include "log_generator.hpp"
 #include "log_lsa.hpp"
+#include "log_postpone_cache.hpp"
 #include "log_storage.hpp"
 #include "mvcc.h"
 #include "mvcc_table.hpp"
@@ -60,7 +62,7 @@
 #include "transaction_complete_manager.hpp"
 #include "transaction_transient.hpp"
 #include "log_generator.hpp"
-#include "replication_db_copy.hpp"
+#include "replication_source_db_copy.hpp"
 
 #include <assert.h>
 #include <unordered_set>
@@ -253,7 +255,7 @@ const int LOG_SYSTEM_WORKER_INCR_TRANID = -1;
 #if defined (SERVER_MODE)
 #define LOG_CHECK_LOG_APPLIER(thread_p) \
   (thread_p != NULL \
-   && logtb_find_client_type (thread_p->tran_index) == BOOT_CLIENT_LOG_APPLIER)
+   && logtb_find_client_type (thread_p->tran_index) == DB_CLIENT_TYPE_LOG_APPLIER)
 #else
 #define LOG_CHECK_LOG_APPLIER(thread_p) (0)
 #endif /* !SERVER_MODE */
@@ -541,11 +543,17 @@ struct log_tdes
 
   LOG_RCV_TDES rcv;
   const char *ha_sbr_statement;
+  const char *ha_sys_param;
+
+  log_postpone_cache m_log_postpone_cache;
+
   // *INDENT-OFF*
+#if defined (SERVER_MODE)
+  cubreplication::source_copy_context *replication_copy_context;
+#endif
+
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
   public:
-    cubreplication::copy_context replication_copy_context;
-
     bool is_active_worker_transaction () const;
     bool is_system_transaction () const;
     bool is_system_main_transaction () const;
@@ -796,12 +804,6 @@ enum log_tran_complete_manager_type
   LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE,
   LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE,
 };
-typedef enum log_tran_complete_manager_type LOG_TRAN_COMPLETE_MANAGER_TYPE;
-
-#define LOG_TRAN_COMPLETE_NO_MANAGER_STR                 "no manager"
-#define LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE_STR        "single node"
-#define LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE_STR        "master node"
-#define LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE_STR         "slave"
 
 #if !defined(SERVER_MODE)
 #if !defined(LOG_TRAN_INDEX)
@@ -928,11 +930,14 @@ extern void logpb_fatal_error_exit_immediately_wo_flush (THREAD_ENTRY * thread_p
 extern int logpb_check_and_reset_temp_lsa (THREAD_ENTRY * thread_p, VOLID volid);
 extern void logpb_initialize_arv_page_info_table (void);
 extern void logpb_initialize_logging_statistics (void);
-extern void logpb_initialize_tran_complete_manager (THREAD_ENTRY * thread_p);
-extern const char *logpb_complete_manager_string (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type);
-extern void logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type);
+
+/* TODO - considers moving complete manager functions as methods in complete manager classes */
+extern void logpb_initialize_tran_complete_manager (void);
+extern const char *logpb_complete_manager_string (log_tran_complete_manager_type manager_type);
+extern void logpb_atomic_resets_tran_complete_manager (log_tran_complete_manager_type manager_type);
 extern void logpb_finalize_tran_complete_manager (void);
 
+extern const char *logpb_complete_manager_string (log_tran_complete_manager_type manager_type);
 extern int logpb_background_archiving (THREAD_ENTRY * thread_p);
 extern void xlogpb_dump_stat (FILE * outfp);
 
@@ -1128,7 +1133,7 @@ extern bool logtb_get_check_interrupt (THREAD_ENTRY * thread_p);
 extern int logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 
 extern LOG_TDES *logtb_get_system_tdes (THREAD_ENTRY * thread_p = NULL);
-extern void logpb_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_TYPE manager_type);
+extern void logpb_resets_tran_complete_manager (log_tran_complete_manager_type manager_type);
 
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation

@@ -309,9 +309,10 @@ namespace cubreplication
   }
 
   /////////////////////////////////
-  sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user, const char *sys_prm_ctx,
+  sbr_repl_entry::sbr_repl_entry (const char *id, const char *statement, const char *user, const char *sys_prm_ctx,
 				  const LOG_LSA &lsa_stamp)
     : replication_object (lsa_stamp)
+    , m_id (id)
     , m_statement (statement)
     , m_db_user (user)
     , m_sys_prm_context (sys_prm_ctx ? sys_prm_ctx : "")
@@ -331,8 +332,9 @@ namespace cubreplication
     return err;
   }
 
-  void sbr_repl_entry::set_params (const char *statement, const char *user, const char *sys_prm_ctx)
+  void sbr_repl_entry::set_params (const char *id, const char *statement, const char *user, const char *sys_prm_ctx)
   {
+    m_id = id;
     m_statement = statement;
     m_db_user = user;
     m_sys_prm_context = sys_prm_ctx;
@@ -349,6 +351,7 @@ namespace cubreplication
     const sbr_repl_entry *other_t = dynamic_cast<const sbr_repl_entry *> (other);
 
     if (other_t == NULL
+	|| m_id != other_t->m_id
 	|| m_statement != other_t->m_statement
 	|| m_db_user != other_t->m_db_user
 	|| m_sys_prm_context != other_t->m_sys_prm_context)
@@ -374,6 +377,7 @@ namespace cubreplication
 
     entry_size += serializator.get_packed_int_size (0);
 
+    entry_size += serializator.get_packed_string_size (m_id, entry_size);
     entry_size += serializator.get_packed_string_size (m_statement, entry_size);
     entry_size += serializator.get_packed_string_size (m_db_user, entry_size);
     entry_size += serializator.get_packed_string_size (m_sys_prm_context, entry_size);
@@ -385,6 +389,7 @@ namespace cubreplication
   sbr_repl_entry::pack (cubpacking::packer &serializator) const
   {
     serializator.pack_int (sbr_repl_entry::PACKING_ID);
+    serializator.pack_string (m_id);
     serializator.pack_string (m_statement);
     serializator.pack_string (m_db_user);
     serializator.pack_string (m_sys_prm_context);
@@ -396,6 +401,7 @@ namespace cubreplication
     int entry_type_not_used;
 
     deserializator.unpack_int (entry_type_not_used);
+    deserializator.unpack_string (m_id);
     deserializator.unpack_string (m_statement);
     deserializator.unpack_string (m_db_user);
     deserializator.unpack_string (m_sys_prm_context);
@@ -404,8 +410,8 @@ namespace cubreplication
   void
   sbr_repl_entry::stringify (string_buffer &str)
   {
-    str ("sbr_repl_entry: statement=%s\nUSER=%s\nSYS_PRM=%s\n",
-	 m_statement.c_str (), m_db_user.c_str (), m_sys_prm_context.c_str ());
+    str ("sbr_repl_entry: id=%s\nstatement=%s\nUSER=%s\nSYS_PRM=%s\n",
+	 m_id.c_str (), m_statement.c_str (), m_db_user.c_str (), m_sys_prm_context.c_str ());
   }
 
   changed_attrs_row_repl_entry::~changed_attrs_row_repl_entry ()
@@ -735,17 +741,17 @@ namespace cubreplication
   }
 
 
-  row_object::row_object (const char *class_name)
+  multirow_object::multirow_object (const char *class_name)
   {
     m_class_name = class_name;
     m_data_size = 0;
   }
 
-  row_object::~row_object ()
+  multirow_object::~multirow_object ()
   {
   }
 
-  void row_object::reset (void)
+  void multirow_object::reset (void)
   {
     m_data_size = 0;
 
@@ -753,15 +759,15 @@ namespace cubreplication
   }
 
 
-  int row_object::apply (void)
+  int multirow_object::apply (void)
   {
     /* TODO[replication] */
     return NO_ERROR;
   }
 
-  void row_object::pack (cubpacking::packer &serializator) const
+  void multirow_object::pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_int (row_object::PACKING_ID);
+    serializator.pack_int (multirow_object::PACKING_ID);
     serializator.pack_string (m_class_name);
     serializator.pack_int ((int) m_rec_des_list.size ());
 
@@ -771,7 +777,7 @@ namespace cubreplication
       }
   }
 
-  void row_object::unpack (cubpacking::unpacker &deserializator)
+  void multirow_object::unpack (cubpacking::unpacker &deserializator)
   {
     int entry_type_not_used;
 
@@ -790,7 +796,7 @@ namespace cubreplication
       }
   }
 
-  std::size_t row_object::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  std::size_t multirow_object::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
     std::size_t entry_size = start_offset;
 
@@ -807,9 +813,9 @@ namespace cubreplication
   }
 
 
-  bool row_object::is_equal (const cubpacking::packable_object *other)
+  bool multirow_object::is_equal (const cubpacking::packable_object *other)
   {
-    const row_object *other_t = dynamic_cast<const row_object *> (other);
+    const multirow_object *other_t = dynamic_cast<const multirow_object *> (other);
 
     if (other_t == NULL)
       {
@@ -847,9 +853,9 @@ namespace cubreplication
     return true;
   }
 
-  void row_object::stringify (string_buffer &str)
+  void multirow_object::stringify (string_buffer &str)
   {
-    str ("row_object::row_object table=%s records_cnt:%d\n", m_class_name.c_str (), m_rec_des_list.size ());
+    str ("multirow_object::multirow_object table=%s records_cnt:%d\n", m_class_name.c_str (), m_rec_des_list.size ());
     for (int i = 0; i < m_rec_des_list.size (); i++)
       {
 	size_t buf_size = m_rec_des_list[i].get_size ();
@@ -860,7 +866,7 @@ namespace cubreplication
       }
   }
 
-  void row_object::move_record (record_descriptor &&record)
+  void multirow_object::move_record (record_descriptor &&record)
   {
     size_t rec_size = record.get_recdes ().length;
 

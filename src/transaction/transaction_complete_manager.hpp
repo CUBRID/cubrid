@@ -41,6 +41,7 @@ namespace cubtx
       static const id_type NULL_ID = 0;
       virtual ~complete_manager () = 0;
 
+      /* TODO - consider log_tran_complete_manager_type as return type */
       virtual int get_manager_type () const = 0;
 
       virtual id_type register_transaction (int tran_index, MVCCID mvccid, TRAN_STATE state) = 0;

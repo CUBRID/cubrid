@@ -64,6 +64,8 @@ namespace cubstream
 
     m_is_stopped = false;
 
+    m_fetch_all_requested = false;
+
     m_stream_file = NULL;
 
     m_flush_on_commit = false;
@@ -236,6 +238,7 @@ namespace cubstream
     ptr = get_data_from_pos (to_read_pos, amount, actual_read_bytes, read_context);
     if (ptr == NULL)
       {
+	// TODO: stream should never return errors
 	ASSERT_ERROR_AND_SET (err);
 	return err;
       }
@@ -505,12 +508,15 @@ namespace cubstream
 
     std::unique_lock<std::mutex> local_lock (m_buffer_mutex);
     m_serial_read_wait_pos = m_read_position + amount;
-    m_serial_read_cv.wait (local_lock,
-			   [&] { return m_is_stopped || m_last_committed_pos >= m_serial_read_wait_pos; });
+    m_serial_read_cv.wait (local_lock, [this] ()
+    {
+      return m_is_stopped || m_fetch_all_requested || m_last_committed_pos >= m_serial_read_wait_pos;
+    });
     m_serial_read_wait_pos = std::numeric_limits<stream_position>::max ();
     local_lock.unlock ();
 
-    if (m_is_stopped)
+    // On m_fetch_all_requested + all is read trigger same stopping operation as we do for m_is_stopped
+    if (m_is_stopped || (m_fetch_all_requested && m_read_position + amount > m_last_committed_pos))
       {
 	err = ER_STREAM_NO_MORE_DATA;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (),
@@ -758,6 +764,12 @@ namespace cubstream
     while (bytes_available_file < min_bytes_to_read_from_file);
 
     return bytes_available_file;
+  }
+
+  void multi_thread_stream::set_fetch_all_requested ()
+  {
+    m_fetch_all_requested = true;
+    m_serial_read_cv.notify_one ();
   }
 
   void multi_thread_stream::set_last_recyclable_pos (const stream_position &pos)

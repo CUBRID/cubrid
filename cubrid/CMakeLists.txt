@@ -42,6 +42,7 @@ set (COMPAT_HEADERS
 set(THREAD_SOURCES
   ${THREAD_DIR}/critical_section.c
   ${THREAD_DIR}/critical_section_tracker.cpp
+  ${THREAD_DIR}/internal_tasks_worker_pool.cpp
   ${THREAD_DIR}/thread_daemon.cpp
   ${THREAD_DIR}/thread_entry.cpp
   ${THREAD_DIR}/thread_entry_task.cpp
@@ -52,6 +53,7 @@ set(THREAD_SOURCES
   )
 set(THREAD_HEADERS
   ${THREAD_DIR}/critical_section_tracker.hpp
+  ${THREAD_DIR}/internal_tasks_worker_pool.hpp
   ${THREAD_DIR}/thread_compat.hpp
   ${THREAD_DIR}/thread_daemon.hpp
   ${THREAD_DIR}/thread_entry.hpp
@@ -74,6 +76,7 @@ set (STREAM_HEADERS
   ${BASE_DIR}/cubstream.hpp
   ${BASE_DIR}/multi_thread_stream.hpp
   ${BASE_DIR}/stream_entry.hpp
+  ${BASE_DIR}/stream_entry_fetcher.hpp
   ${BASE_DIR}/stream_file.hpp
   )
 
@@ -87,7 +90,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/condition_handler.c
   ${BASE_DIR}/databases_file.c
   ${BASE_DIR}/dtoa.c
-  ${BASE_DIR}/dynamic_array.c	
+  ${BASE_DIR}/dynamic_array.c
   ${BASE_DIR}/encryption.c
   ${BASE_DIR}/environment_variable.c
   ${BASE_DIR}/error_context.cpp
@@ -153,6 +156,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/semaphore.hpp
+  ${BASE_DIR}/type_traits_utils.hpp
   )
 
 set(EXECUTABLE_SOURCES
@@ -204,13 +208,13 @@ set(MONITOR_HEADERS
 )
 
 set (REPLICATION_HEADERS
-  ${REPLICATION_DIR}/ha_server_state.h
+  ${REPLICATION_DIR}/ha_operations.hpp
+  ${REPLICATION_DIR}/ha_server_state.hpp
   ${REPLICATION_DIR}/log_generator.hpp
   ${REPLICATION_DIR}/log_consumer.hpp
   ${REPLICATION_DIR}/replication_common.hpp
-  ${REPLICATION_DIR}/replication_db_copy.hpp
   ${REPLICATION_DIR}/replication_master_node.hpp
-  ${REPLICATION_DIR}/replication_master_senders_manager.hpp
+  ${REPLICATION_DIR}/stream_senders_manager.hpp
   ${REPLICATION_DIR}/slave_control_channel.hpp
   ${REPLICATION_DIR}/master_control_channel.hpp
   ${REPLICATION_DIR}/replication_node.hpp
@@ -218,6 +222,7 @@ set (REPLICATION_HEADERS
   ${REPLICATION_DIR}/replication_object.hpp
   ${REPLICATION_DIR}/replication_row_apply.hpp
   ${REPLICATION_DIR}/replication_slave_node.hpp
+  ${REPLICATION_DIR}/replication_source_db_copy.hpp
   ${REPLICATION_DIR}/replication_stream_entry.hpp
   ${REPLICATION_DIR}/replication_subtran_apply.hpp
   ${REPLICATION_DIR}/replication_subtran_generate.hpp
@@ -271,20 +276,22 @@ set(OBJECT_SOURCES
 set(OBJECT_HEADERS
   ${OBJECT_DIR}/lob_locator.hpp
 )
-  
+
 set(REPLICATION_SOURCES
+  ${REPLICATION_DIR}/ha_operations.cpp
+  ${REPLICATION_DIR}/ha_server_state.cpp
   ${REPLICATION_DIR}/log_consumer.cpp
   ${REPLICATION_DIR}/log_generator.cpp
   ${REPLICATION_DIR}/slave_control_channel.cpp
   ${REPLICATION_DIR}/master_control_channel.cpp
-  ${REPLICATION_DIR}/replication_db_copy.cpp
   ${REPLICATION_DIR}/replication_object.cpp
   ${REPLICATION_DIR}/replication_master_node.cpp
-  ${REPLICATION_DIR}/replication_master_senders_manager.cpp
+  ${REPLICATION_DIR}/stream_senders_manager.cpp
   ${REPLICATION_DIR}/replication_node.cpp
   ${REPLICATION_DIR}/replication_node_manager.cpp
   ${REPLICATION_DIR}/replication_row_apply.cpp
   ${REPLICATION_DIR}/replication_slave_node.cpp
+  ${REPLICATION_DIR}/replication_source_db_copy.cpp
   ${REPLICATION_DIR}/replication_stream_entry.cpp
   ${REPLICATION_DIR}/replication_subtran_apply.cpp
   ${REPLICATION_DIR}/replication_subtran_generate.cpp
@@ -309,6 +316,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_lsa.cpp
   ${TRANSACTION_DIR}/log_manager.c
   ${TRANSACTION_DIR}/log_page_buffer.c
+  ${TRANSACTION_DIR}/log_postpone_cache.cpp
   ${TRANSACTION_DIR}/log_recovery.c
   ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
@@ -335,6 +343,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_archives.hpp
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
+  ${TRANSACTION_DIR}/log_postpone_cache.hpp
   ${TRANSACTION_DIR}/log_record.hpp
   ${TRANSACTION_DIR}/log_storage.hpp
   ${TRANSACTION_DIR}/log_system_tran.hpp
@@ -346,7 +355,9 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/transaction_slave_group_complete_manager.hpp
   ${TRANSACTION_DIR}/transaction_single_node_group_complete_manager.hpp
   ${TRANSACTION_DIR}/transaction_group_complete_manager.hpp
+  ${TRANSACTION_DIR}/transaction_group_completion.hpp
   ${TRANSACTION_DIR}/transaction_complete_manager.hpp
+  ${TRANSACTION_DIR}/transaction_group_completion.hpp
   ${TRANSACTION_DIR}/transaction_global.hpp
   ${TRANSACTION_DIR}/transaction_group.hpp
   ${TRANSACTION_DIR}/transaction_transient.hpp
@@ -469,7 +480,7 @@ set (CUBRID_LIB_SOURCES
   ${OBJECT_SOURCES}
   ${PROBES_OBJECT}
   ${QUERY_SOURCES}
-  ${REPLICATION_SOURCES}  
+  ${REPLICATION_SOURCES}
   ${SESSION_SOURCES}
   ${STORAGE_SOURCES}
   ${STREAM_SOURCES}
@@ -534,7 +545,7 @@ if(AT_LEAST_ONE_UNIT_TEST)
     ${CUBRID_LIB_HEADERS}
     )
 
-  target_compile_definitions(cubrid-win-lib PRIVATE 
+  target_compile_definitions(cubrid-win-lib PRIVATE
     SERVER_MODE
     ${COMMON_DEFS}
     )
@@ -568,7 +579,7 @@ install(TARGETS cubrid
 
 install(FILES
   ${COMPAT_DIR}/dbi_compat.h
-  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   RENAME dbi.h
   )
 install(FILES
@@ -578,12 +589,12 @@ install(FILES
   ${COMPAT_DIR}/db_date.h
   ${COMPAT_DIR}/db_elo.h
   ${COMPAT_DIR}/cache_time.h
-  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   )
 install(FILES
   ${BASE_DIR}/error_code.h
-  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
-  )  
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
+  )
 
 # install pdb files for debugging on windows
 if(WIN32)

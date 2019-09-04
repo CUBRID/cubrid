@@ -75,6 +75,7 @@ namespace cubreplication
   class sbr_repl_entry : public replication_object
   {
     private:
+      std::string m_id;     // internal identifier (maybe class name, trigger name depending on context
       std::string m_statement;
       std::string m_db_user;
       std::string m_sys_prm_context;
@@ -82,14 +83,15 @@ namespace cubreplication
     public:
       static const int PACKING_ID = 1;
 
-      sbr_repl_entry (const char *statement, const char *user, const char *sys_prm_ctx, const LOG_LSA &lsa_stamp);
+      sbr_repl_entry (const char *id, const char *statement, const char *user, const char *sys_prm_ctx,
+		      const LOG_LSA &lsa_stamp);
 
       sbr_repl_entry () = default;
       ~sbr_repl_entry () = default;
 
       int apply () override;
 
-      void set_params (const char *statement, const char *user, const char *sys_prm_ctx);
+      void set_params (const char *id, const char *statement, const char *user, const char *sys_prm_ctx);
 
       void append_statement (const char *buffer, const size_t buf_size);
 
@@ -223,7 +225,7 @@ namespace cubreplication
   };
 
   /* packs multiple records (record_descriptor/recdes) from heap to be copied into a new replicated server */
-  class row_object : public replication_object
+  class multirow_object : public replication_object
   {
     public:
       static const size_t DATA_PACK_THRESHOLD_SIZE = 16384;
@@ -231,11 +233,11 @@ namespace cubreplication
 
       static const int PACKING_ID = 6;
 
-      row_object (const char *class_name);
+      multirow_object (const char *class_name);
 
-      row_object () = default;
+      multirow_object () = default;
 
-      ~row_object ();
+      ~multirow_object ();
 
       void reset ();
 

@@ -1331,7 +1331,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       init_emergency = true;
     }
 
-  logpb_initialize_tran_complete_manager (thread_p);
+  logpb_initialize_tran_complete_manager ();
 
   /*
    * Was the database system shut down or was it involved in a crash ?
@@ -2648,7 +2648,6 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
   int tran_index;
   int error_code = NO_ERROR;
   LOG_PRIOR_NODE *node;
-  LOG_LSA start_lsa = LSA_INITIALIZER;
 
 #if defined(CUBRID_DEBUG)
   if (addr->pgptr == NULL)
@@ -2725,8 +2724,8 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
    */
 
   if (LSA_ISNULL (&tdes->tail_lsa)
-      || (log_is_in_crash_recovery () && (crash_lsa = log_get_crash_point_lsa ()) != NULL
-	  && LSA_LE (&tdes->tail_lsa, crash_lsa)))
+      || (log_is_in_crash_recovery ()
+	  && (crash_lsa = log_get_crash_point_lsa ()) != NULL && LSA_LE (&tdes->tail_lsa, crash_lsa)))
     {
       log_append_empty_record (thread_p, LOG_DUMMY_HEAD_POSTPONE, addr);
     }
@@ -2736,24 +2735,15 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
     {
       return;
     }
-  if (VACUUM_IS_THREAD_VACUUM (thread_p))
-    {
-      /* Cache postpone log record. Redo data must be saved before calling prior_lsa_next_record, which may free this
-       * prior node. */
-      vacuum_cache_log_postpone_redo_data (thread_p, node->data_header, node->rdata, node->rlength);
-      // todo - extend to all transactions
-    }
 
-  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
-  if (VACUUM_IS_THREAD_VACUUM (thread_p))
-    {
-      /* Cache postpone log record. An entry for this postpone log record was already created and we also need to save
-       * its LSA. */
-      vacuum_cache_log_postpone_lsa (thread_p, &start_lsa);
-      // todo - extend to all transactions
-    }
+  // redo data must be saved before calling prior_lsa_next_record, which may free this prior node
+  tdes->m_log_postpone_cache.add_redo_data (*node);
 
-  /* Set address early in case there is a crash, because of skip_head */
+  // an entry for this postpone log record was already created and we also need to save its LSA
+  LOG_LSA start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+  tdes->m_log_postpone_cache.add_lsa (start_lsa);
+
+      // todo - extend to all transactions
   if (tdes->topops.last >= 0)
     {
       if (LSA_ISNULL (&tdes->topops.stack[tdes->topops.last].posp_lsa))
@@ -2831,9 +2821,8 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
     }
   else
     {
-      node =
-	prior_lsa_alloc_and_copy_data (thread_p, LOG_RUN_POSTPONE, RV_NOT_DEFINED, NULL, length, (char *) data, 0,
-				       NULL);
+      node = prior_lsa_alloc_and_copy_data (thread_p, LOG_RUN_POSTPONE, RV_NOT_DEFINED, NULL, length, (char *) data,
+					    0, NULL);
       if (node == NULL)
 	{
 	  return;
@@ -4835,7 +4824,10 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	{
 	  log_Gl.m_tran_complete_mgr->complete_logging (id_complete);
 	  assert (tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
-	  log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
+          if (!tdes->m_log_postpone_cache.do_postpone (*thread_p, tdes->posp_nxlsa))
+            {
+              log_do_postpone(thread_p, tdes, &tdes->posp_nxlsa);
+            }
 
 	  /* No need to wait for flush here, since the transaction is committed */
 	  log_append_finish_postpone (thread_p, tdes);
@@ -7933,11 +7925,9 @@ log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_E
   sysop_start_postpone.posp_lsa = *LOG_TDES_LAST_SYSOP_POSP_LSA (tdes);
   log_append_sysop_start_postpone (thread_p, tdes, &sysop_start_postpone, data_size, data);
 
-  if (VACUUM_IS_THREAD_VACUUM (thread_p)
-      && vacuum_do_postpone_from_cache (thread_p, LOG_TDES_LAST_SYSOP_POSP_LSA (tdes)))
+  if (tdes->m_log_postpone_cache.do_postpone (*thread_p, *(LOG_TDES_LAST_SYSOP_POSP_LSA (tdes))))
     {
       /* Do postpone was run from cached postpone entries. */
-      // todo - extend optimization for all transactions
       tdes->state = save_state;
       return;
     }
@@ -10041,7 +10031,7 @@ log_set_notify (bool need_log_notify)
 #if defined (SERVER_MODE)
   if (need_log_notify)
     {
-      p_log_flush_lsa = cubtx::single_node_group_complete_manager::get_instance ();
+      p_log_flush_lsa = cubtx::get_single_node_gcm_instance ();
     }
   else
     {

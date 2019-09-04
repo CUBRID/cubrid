@@ -81,6 +81,7 @@
 #include "xasl.h"
 #include "xasl_cache.h"
 #include "elo.h"
+#include "ha_operations.hpp"
 #include "transaction_transient.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -9734,12 +9735,13 @@ slocator_get_proxy_command (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 {
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  int area_size, strlen1;
+  int area_size, strlen1, strlen2;
   char *area = NULL, *p = NULL;
   const char *proxy_command = NULL;
+  const char *proxy_sys_param = NULL;
   int error_code;
 
-  error_code = xlocator_get_proxy_command (thread_p, &proxy_command);
+  error_code = xlocator_get_proxy_command (thread_p, &proxy_command, &proxy_sys_param);
   if (error_code != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -9748,7 +9750,8 @@ slocator_get_proxy_command (THREAD_ENTRY * thread_p, unsigned int rid, char *req
     }
   else
     {
-      area_size = or_packed_string_length (proxy_command, &strlen1);
+      area_size = (or_packed_string_length (proxy_command, &strlen1)
+		   + or_packed_string_length (proxy_sys_param, &strlen2));
       area = (char *) db_private_alloc (thread_p, area_size);
       if (area == NULL)
 	{
@@ -9757,7 +9760,8 @@ slocator_get_proxy_command (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 	}
       else
 	{
-	  (void) or_pack_string_with_length (area, proxy_command, strlen1);
+	  p = or_pack_string_with_length (area, proxy_command, strlen1);
+	  p = or_pack_string_with_length (p, proxy_sys_param, strlen2);
 	}
     }
 
@@ -9790,12 +9794,14 @@ slocator_send_proxy_buffer (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   int type;
   int buf_size;
   char *buffer_start;
+  char *id = NULL;
 
   ptr = or_unpack_int (request, &type);
+  ptr = or_unpack_string_nocopy (ptr, &id);
   ptr = or_unpack_int (ptr, &buf_size);
   buffer_start = ptr;
 
-  error_code = xlocator_send_proxy_buffer (thread_p, type, buf_size, buffer_start);
+  error_code = xlocator_send_proxy_buffer (thread_p, type, id, buf_size, buffer_start);
   if (error_code != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);

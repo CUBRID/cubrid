@@ -77,9 +77,11 @@
 #include "double_write_buffer.h"
 #include "xasl_cache.h"
 #include "log_volids.hpp"
+#include "vacuum.h"
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
+#include "ha_operations.hpp"
 #include "replication_node_manager.hpp"
 #include "server_support.h"
 #endif /* SERVER_MODE */
@@ -2441,7 +2443,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       /* We need to load vacuum data and initialize vacuum routine before recovery. */
       error_code =
 	vacuum_initialize (thread_p, boot_Db_parm->vacuum_log_block_npages, &boot_Db_parm->vacuum_data_vfid,
-			   &boot_Db_parm->dropped_files_vfid);
+			   &boot_Db_parm->dropped_files_vfid, r_args != NULL && r_args->is_restore_from_backup);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -2718,7 +2720,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
   /* set server's starting mode for HA according to the 'ha_mode' parameter */
-  css_change_ha_server_state (thread_p, (HA_SERVER_STATE) prm_get_integer_value (PRM_ID_HA_SERVER_STATE), false,
+  css_change_ha_server_state (thread_p, (HA_SERVER_STATE) prm_get_integer_value (PRM_ID_HA_SERVER_STATE), true,
 			      HA_CHANGE_MODE_IMMEDIATELY, true);
 #endif
 
@@ -2939,6 +2941,9 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   pgbuf_daemons_destroy ();
 #endif
 
+#if defined (SA_MODE)
+  vacuum_sa_reflect_last_blockid (thread_p);
+#endif // SA_MODE
   log_final (thread_p);
 
   /* Since all pages were flushed, now it's safe to destroy DWB. */
@@ -3012,7 +3017,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 
 #if defined(SA_MODE)
   if (client_credential != NULL && !client_credential->program_name.empty ()
-      && client_credential->client_type == BOOT_CLIENT_ADMIN_UTILITY)
+      && client_credential->client_type == DB_CLIENT_TYPE_ADMIN_UTILITY)
     {
       auto const sep_index = client_credential->program_name.find_last_of (PATH_SEPARATOR);
       if (sep_index != client_credential->program_name.npos)
@@ -3064,7 +3069,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
       client_credential->db_user = db_user_upper;
     }
 
-  if (client_credential->client_type == BOOT_CLIENT_DDL_PROXY)
+  if (client_credential->client_type == DB_CLIENT_TYPE_DDL_PROXY)
     {
       /* DDL proxy client has already a transaction */
       tran_index = client_credential->desired_tran_index;
@@ -3136,10 +3141,6 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 	      return NULL_TRAN_INDEX;
 	    }
 	}
-      if (client_credential->client_type == BOOT_CLIENT_LOG_APPLIER)
-	{
-	  css_notify_ha_log_applier_state (thread_p, HA_LOG_APPLIER_STATE_UNREGISTERED);
-	}
 #endif /* SERVER_MODE */
 
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CLIENT_CONNECTED, 4,
@@ -3199,11 +3200,6 @@ xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index)
 	  return NO_ERROR;
 	}
 
-      /* check if the client was a log applier */
-      if (tdes->client.client_type == BOOT_CLIENT_LOG_APPLIER)
-	{
-	  css_notify_ha_log_applier_state (thread_p, HA_LOG_APPLIER_STATE_UNREGISTERED);
-	}
       /* Check the server's state for HA action for this client */
       if (BOOT_NORMAL_CLIENT_TYPE (tdes->client.client_type))
 	{
@@ -5380,7 +5376,7 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
       /* We need initialize vacuum routine before recovery. */
       error_code =
 	vacuum_initialize (thread_p, boot_Db_parm->vacuum_log_block_npages, &boot_Db_parm->vacuum_data_vfid,
-			   &boot_Db_parm->dropped_files_vfid);
+			   &boot_Db_parm->dropped_files_vfid, false);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -5758,39 +5754,39 @@ boot_client_type_to_string (BOOT_CLIENT_TYPE type)
 {
   switch (type)
     {
-    case BOOT_CLIENT_SYSTEM_INTERNAL:
+    case DB_CLIENT_TYPE_SYSTEM_INTERNAL:
       return "SYSTEM_INTERNAL";
-    case BOOT_CLIENT_DEFAULT:
+    case DB_CLIENT_TYPE_DEFAULT:
       return "DEFAULT";
-    case BOOT_CLIENT_CSQL:
+    case DB_CLIENT_TYPE_CSQL:
       return "CSQL";
-    case BOOT_CLIENT_READ_ONLY_CSQL:
+    case DB_CLIENT_TYPE_READ_ONLY_CSQL:
       return "READ_ONLY_CSQL";
-    case BOOT_CLIENT_BROKER:
+    case DB_CLIENT_TYPE_BROKER:
       return "BROKER";
-    case BOOT_CLIENT_READ_ONLY_BROKER:
+    case DB_CLIENT_TYPE_READ_ONLY_BROKER:
       return "READ_ONLY_BROKER";
-    case BOOT_CLIENT_SLAVE_ONLY_BROKER:
+    case DB_CLIENT_TYPE_SLAVE_ONLY_BROKER:
       return "SLAVE_ONLY_BROKER";
-    case BOOT_CLIENT_ADMIN_UTILITY:
+    case DB_CLIENT_TYPE_ADMIN_UTILITY:
       return "ADMIN_UTILITY";
-    case BOOT_CLIENT_ADMIN_CSQL:
+    case DB_CLIENT_TYPE_ADMIN_CSQL:
       return "ADMIN_CSQL";
-    case BOOT_CLIENT_LOG_COPIER:
+    case DB_CLIENT_TYPE_LOG_COPIER:
       return "LOG_COPIER";
-    case BOOT_CLIENT_LOG_APPLIER:
+    case DB_CLIENT_TYPE_LOG_APPLIER:
       return "LOG_APPLIER";
-    case BOOT_CLIENT_RW_BROKER_REPLICA_ONLY:
+    case DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY:
       return "RW_BROKER_REPLICA_ONLY";
-    case BOOT_CLIENT_RO_BROKER_REPLICA_ONLY:
+    case DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY:
       return "RO_BROKER_REPLICA_ONLY";
-    case BOOT_CLIENT_SO_BROKER_REPLICA_ONLY:
+    case DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY:
       return "SO_BROKER_REPLICA_ONLY";
-    case BOOT_CLIENT_ADMIN_CSQL_WOS:
+    case DB_CLIENT_TYPE_ADMIN_CSQL_WOS:
       return "ADMIN_CSQL_WOS";
-    case BOOT_CLIENT_DDL_PROXY:
+    case DB_CLIENT_TYPE_DDL_PROXY:
       return "DDL_PROXY";
-    case BOOT_CLIENT_UNKNOWN:
+    case DB_CLIENT_TYPE_UNKNOWN:
     default:
       return "UNKNOWN";
     }

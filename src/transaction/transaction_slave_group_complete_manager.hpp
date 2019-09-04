@@ -24,35 +24,31 @@
 #ifndef _TRANSACTION_SLAVE_GROUP_COMPLETE_MANAGER_HPP_
 #define _TRANSACTION_SLAVE_GROUP_COMPLETE_MANAGER_HPP_
 
-#include "transaction_group_complete_manager.hpp"
-
 #include "cubstream.hpp"
 #include "log_consumer.hpp"
 #include "thread_daemon.hpp"
-#include "thread_entry_task.hpp"
+#include "transaction_group_complete_manager.hpp"
+#include "transaction_group_completion.hpp"
 
 namespace cubtx
 {
   //
   // slave_group_complete_manager is a manager for group commits on slave node
   //    Implements group complete_manager interface used by transaction threads.
-  //    Implements dispatch_consumer interface used by dispatch thread.
+  //    Implements group_completion interface used by log consumer thread.
   //
-  class slave_group_complete_manager : public group_complete_manager, public cubreplication::dispatch_consumer
+  class slave_group_complete_manager : public group_complete_manager, public group_completion
   {
     public:
+      slave_group_complete_manager ();
       ~slave_group_complete_manager () override;
 
-      static slave_group_complete_manager *get_instance ();
-      static void init ();
-      static void final ();
-
-      /* group complete methods */
+      /* group completion methods */
       void do_prepare_complete (THREAD_ENTRY *thread_p) override;
       void do_complete (THREAD_ENTRY *thread_p) override;
 
-      /* dispatch complete methods */
-      void wait_for_complete_stream_position (cubstream::stream_position stream_position) override;
+      /* group_completion methods */
+      void complete_upto_stream_position (cubstream::stream_position stream_position) override;
       void set_close_info_for_current_group (cubstream::stream_position stream_position,
 					     int count_expected_transactions) override;
 
@@ -64,10 +60,8 @@ namespace cubtx
       void on_register_transaction () override;
 
     private:
-      static slave_group_complete_manager *gl_slave_group;
-      static cubthread::daemon *gl_slave_group_complete_daemon;
-
       /* Latest recorded stream position and corresponding id. */
+      unsigned int m_current_group_expected_transactions;
       id_type m_latest_group_id;
       std::atomic<cubstream::stream_position> m_latest_group_stream_position;
 
@@ -75,15 +69,9 @@ namespace cubtx
       std::atomic<bool> m_has_latest_group_close_info;
   };
 
-  //
-  // slave_group_complete_task is class for slave group complete daemon
-  //
-  class slave_group_complete_task : public cubthread::entry_task
-  {
-    public:
-      /* entry_task methods */
-      void execute (cubthread::entry &thread_ref) override;
-  };
+  void initialize_slave_gcm ();
+  void finalize_slave_gcm ();
+  slave_group_complete_manager *get_slave_gcm_instance ();
 }
 
 #endif // _TRANSACTION_SLAVE_GROUP_COMPLETE_MANAGER_HPP_
