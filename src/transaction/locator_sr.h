@@ -133,6 +133,5 @@ extern int locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID
 				       HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type,
 				       PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
 				       UPDATE_INPLACE_STYLE force_in_place);
-extern bool locator_is_BU_locked (const OID & class_oid);
 // *INDENT-ON*
 #endif /* _LOCATOR_SR_H_ */

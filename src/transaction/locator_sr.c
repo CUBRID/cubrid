@@ -13723,26 +13723,6 @@ xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK
   return lock_demote_class_lock (thread_p, class_oid, lock, ex_lock);
 }
 
-bool
-locator_is_BU_locked (const OID & class_oid)
-{
-  // hack - only if I am a LOADDB worker
-  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);;
-  LK_ENTRY *lock_class_entry = NULL;
-  bool result = false;
-
-#ifdef SERVER_MODE
-  lock_class_entry = lock_get_class_lock (thread_p, &class_oid, tran_index);
-  if (lock_class_entry && lock_class_entry->granted_mode == BU_LOCK)
-    {
-      result = true;
-    }
-#endif
-
-  return result;
-}
-
 // *INDENT-OFF*
 int
 locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
@@ -13757,7 +13737,8 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
   std::vector<RECDES> recdes_array;
   std::vector<VPID> heap_pages_array;
   RECDES local_record;
-  bool has_BU_lock = locator_is_BU_locked (*class_oid);
+  bool has_BU_lock = lock_has_lock_on_object (class_oid, oid_Root_class_oid,
+                                              LOG_FIND_THREAD_TRAN_INDEX (thread_p), BU_LOCK);
 
   // Early-out
   if (recdes.size () == 0)
