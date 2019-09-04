@@ -13723,11 +13723,24 @@ xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK
   return lock_demote_class_lock (thread_p, class_oid, lock, ex_lock);
 }
 
-static bool
+bool
 locator_is_BU_locked (const OID & class_oid)
 {
   // hack - only if I am a LOADDB worker
-  return cubthread::get_entry ().type == TT_LOADDB;
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);;
+  LK_ENTRY *lock_class_entry = NULL;
+  bool result = false;
+
+#ifdef SERVER_MODE
+  lock_class_entry = lock_get_class_lock (thread_p, &class_oid, tran_index);
+  if (lock_class_entry && lock_class_entry->granted_mode == BU_LOCK)
+    {
+      result = true;
+    }
+#endif
+
+  return result;
 }
 
 // *INDENT-OFF*
