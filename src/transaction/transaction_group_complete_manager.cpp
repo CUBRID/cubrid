@@ -425,8 +425,7 @@ namespace cubtx
   }
 
   //
-  // is_group_mvcc_completed checks whether the group has MVCC completed.
-  //  Note: This function must be called under m_group_mutex protection
+  // is_group_mvcc_completed checks whether a group was completed.
   //
   bool group_complete_manager::is_group_mvcc_completed (id_type group_id)
   {
