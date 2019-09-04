@@ -82,7 +82,7 @@ namespace ha_operations
 	    if (!HA_DISABLED ())
 	      {
 		// todo: force interruptions
-		cubreplication::replication_node_manager::start_commute_to_master_state (thread_p, true, from_heartbeat);
+		cubreplication::replication_node_manager::start_commute_to_master_state (thread_p, true);
 		cubreplication::replication_node_manager::wait_commute (get_server_state (), SERVER_STATE_ACTIVE);
 	      }
 	    else
@@ -218,7 +218,7 @@ namespace ha_operations
 	if (!HA_DISABLED () && state == SERVER_STATE_TO_BE_ACTIVE)
 	  {
 	    // Phase 2: task will transit to SERVER_STATE_ACTIVE
-	    cubreplication::replication_node_manager::start_commute_to_master_state (thread_p, false, heartbeat);
+	    cubreplication::replication_node_manager::start_commute_to_master_state (thread_p, false);
 	  }
 
 	if (HA_DISABLED ())
