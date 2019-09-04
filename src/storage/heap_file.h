@@ -202,6 +202,7 @@ struct heap_hfid_table_entry
 
   HFID hfid;			/* value - HFID */
   FILE_TYPE ftype;		/* value - FILE_HEAP or FILE_HEAP_REUSE_SLOTS */
+  char *classname;		/* Also cache the classname. */
 };
 
 // forward declaration

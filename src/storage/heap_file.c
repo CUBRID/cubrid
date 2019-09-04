@@ -22890,6 +22890,14 @@ heap_hfid_table_entry_free (void *entry)
 {
   if (entry != NULL)
     {
+      HEAP_HFID_TABLE_ENTRY *entry_p = (HEAP_HFID_TABLE_ENTRY *) entry;
+      if (entry_p != NULL)
+	{
+	  // Clear the classname.
+	  free (entry_p->classname);
+	  entry_p->classname = NULL;
+	}
+
       free (entry);
       return NO_ERROR;
     }
@@ -22920,6 +22928,7 @@ heap_hfid_table_entry_init (void *entry)
   entry_p->hfid.vfid.volid = NULL_VOLID;
   entry_p->hfid.hpgid = NULL_PAGEID;
   entry_p->ftype = FILE_UNKNOWN_TYPE;
+  entry_p->classname = NULL;
 
   return NO_ERROR;
 }
@@ -23271,7 +23280,7 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 
 
   if (entry->hfid.hpgid == NULL_PAGEID || entry->hfid.vfid.fileid == NULL_FILEID
-      || entry->hfid.vfid.volid == NULL_VOLID)
+      || entry->hfid.vfid.volid == NULL_VOLID || entry->classname == NULL)
     {
       HFID hfid_local = HFID_INITIALIZER;
 
