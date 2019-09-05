@@ -568,6 +568,7 @@ namespace cubreplication
   void
   log_generator::apply_tran_mvccid (void)
   {
+    cubthread::entry *thread_p = &cubthread::get_entry ();
     int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
     LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
 
