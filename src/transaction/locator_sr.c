@@ -29,6 +29,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <assert.h>
+#include <cstring>  // for std::memcpy
 
 #include "locator_sr.h"
 
