@@ -170,8 +170,15 @@ namespace cubreplication
 	return error;
       }
 
-    /* TODO[replication] : last position to be retrieved from recovery module */
     cubstream::stream_position start_position = 0;
+    if (log_Gl.m_repl_rv.m_active_start_position != 0)
+      {
+	start_position = log_Gl.m_repl_rv.m_active_start_position;
+      }
+    else
+      {
+	start_position = log_Gl.hdr.m_ack_stream_position;
+      }
 
     if (need_replication_copy (start_position))
       {

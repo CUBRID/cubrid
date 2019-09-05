@@ -190,6 +190,8 @@ namespace cubreplication
 
 	    if (se->is_tran_state_end_of_stream ())
 	      {
+		// make sure end of stream stream_entry is not read twice
+		log_Gl.hdr.m_ack_stream_position = se->get_stream_entry_end_position ();
 		m_stop = true;
 		delete se;
 		break;
