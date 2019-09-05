@@ -104,7 +104,7 @@ namespace cubreplication
 	return m_identity;
       }
 
-      static void get_replication_file_path (std::string &path);
+      static std::string get_replication_file_path ();
   };
 
 } /* namespace cubreplication */

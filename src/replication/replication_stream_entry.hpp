@@ -50,7 +50,8 @@ namespace cubreplication
       SUBTRAN_COMMIT,
       START_OF_EXTRACT_HEAP,
       END_OF_EXTRACT_HEAP,
-      END_OF_REPLICATION_COPY
+      END_OF_REPLICATION_COPY,
+      END_OF_STREAM_DATA
     } TRAN_STATE;
 
     cubstream::stream_position prev_record;
@@ -188,6 +189,11 @@ namespace cubreplication
       {
 	return m_header.tran_state < stream_entry_header::ACTIVE
 	       || m_header.tran_state > stream_entry_header::SUBTRAN_COMMIT;
+      }
+
+      bool is_tran_state_end_of_stream () const
+      {
+	return m_header.tran_state == stream_entry_header::END_OF_STREAM_DATA;
       }
 
       bool check_mvccid_is_valid () const;

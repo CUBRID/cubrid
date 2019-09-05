@@ -65,7 +65,7 @@ namespace cubcomm
     assert (!is_connection_alive ());
     this->~channel ();
 
-    new (this) channel (std::forward <channel> (comm));
+    new (this) channel (std::move (comm));
     return *this;
   }
 

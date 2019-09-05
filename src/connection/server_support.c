@@ -851,11 +851,10 @@ css_process_master_hostname ()
   cubthread::entry_task *connect_to_master_task = new cubthread::entry_callable_task ([] (cubthread::entry &context)
   {
     cubreplication::replication_node_manager::wait_commute (css_ha_server_state (), HA_SERVER_STATE_STANDBY);
-    int error = cubreplication::replication_node_manager::get_slave_node ()
-				->connect_to_master (ha_Server_master_hostname, css_Master_port_id);
-    cubreplication::replication_node_manager::dec_ha_tasks ();
-    assert (error == NO_ERROR);
+    cubreplication::replication_node_manager::get_slave_node ()
+		    ->connect_to_master (ha_Server_master_hostname, css_Master_port_id);
     // TODO: proper error handling
+    cubreplication::replication_node_manager::dec_ha_tasks ();
   });
 
   auto wp = cubthread::internal_tasks_worker_pool::get_instance ();

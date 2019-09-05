@@ -65,11 +65,11 @@ namespace ha_operations
 
   std::recursive_mutex g_state_mtx;
 
-  static void handle_force_change_state (cubthread::entry *thread_p, server_state req_state);
+  static void handle_force_change_state (cubthread::entry *thread_p, server_state req_state, bool from_heartbeat);
   static server_state handle_maintenance_change_state (cubthread::entry *thread_p, server_state state, int timeout);
 
   static void
-  handle_force_change_state (cubthread::entry *thread_p, server_state req_state)
+  handle_force_change_state (cubthread::entry *thread_p, server_state req_state, bool from_heartbeat)
   {
     if (get_server_state () != req_state)
       {
@@ -196,7 +196,7 @@ namespace ha_operations
     if (force)
       {
 	// Do transitions in 1 phase
-	handle_force_change_state (thread_p, state);
+	handle_force_change_state (thread_p, state, heartbeat);
 	if (get_server_state () == SERVER_STATE_ACTIVE)
 	  {
 	    // spawn threads be able to handle a potential flood after fail-over
