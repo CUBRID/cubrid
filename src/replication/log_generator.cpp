@@ -83,7 +83,7 @@ namespace cubreplication
     assert (p_lsa != NULL);
 
     sbr_repl_entry *repl_obj = new sbr_repl_entry ("", stmt_info.stmt_text, stmt_info.db_user,
-        stmt_info.sys_prm_context, *p_lsa);
+	stmt_info.sys_prm_context, *p_lsa);
     append_repl_object (*repl_obj);
   }
 
@@ -320,7 +320,6 @@ namespace cubreplication
 
     replication_object *repl_obj;
     cubthread::entry *thread_p = &cubthread::get_entry ();
-    bool found = false;
     int count_entries = (int) m_stream_entry.count_entries ();
     LOG_LSA *p_lsa = logtb_find_current_tran_lsa (thread_p);
     assert (p_lsa != NULL);
@@ -569,7 +568,6 @@ namespace cubreplication
   void
   log_generator::apply_tran_mvccid (void)
   {
-    cubthread::entry *thread_p = &cubthread::get_entry ();
     int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
     LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
 
