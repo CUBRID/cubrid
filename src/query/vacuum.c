@@ -2892,7 +2892,7 @@ vacuum_push_task (const VACUUM_DATA_ENTRY & data_entry)
     }
   cubthread::get_manager ()->push_task (vacuum_Worker_threads, new vacuum_worker_task (data_entry));
 }
-#endif //
+#endif // SERVER_MODE
 
 static bool
 vacuum_check_finished_queue (void)
