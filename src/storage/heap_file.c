@@ -19985,7 +19985,14 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
   else
     {
       /* instance */
-      lock = X_LOCK;
+      if (context->is_bulk_op)
+	{
+	  lock = NULL_LOCK;
+	}
+      else
+	{
+	  lock = X_LOCK;
+	}
     }
 
   /* retrieve number of slots in page */
@@ -20002,6 +20009,12 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	}
 
       context->res_oid.slotid = slot_id;
+
+      if (lock == NULL_LOCK)
+	{
+	  /* immediately return without locking it */
+	  return NO_ERROR;
+	}
 
       /* lock the object to be inserted conditionally */
       lk_result = lock_object (thread_p, &context->res_oid, &context->class_oid, lock, LK_COND_LOCK);
