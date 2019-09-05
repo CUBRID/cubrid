@@ -147,9 +147,8 @@ bool
 log_postpone_cache::do_postpone (cubthread::entry &thread_ref, const log_lsa &start_postpone_lsa)
 {
   assert (!start_postpone_lsa.is_null ());
-  assert (m_cache_status != LOG_POSTPONE_CACHE_NO);
 
-  if (m_cache_status == LOG_POSTPONE_CACHE_OVERFLOW)
+  if (m_cache_status == LOG_POSTPONE_CACHE_OVERFLOW || m_cache_status == LOG_POSTPONE_CACHE_NO)
     {
       // Cache is not usable
       m_cache_status = LOG_POSTPONE_CACHE_NO;
