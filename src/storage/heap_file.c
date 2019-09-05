@@ -6704,7 +6704,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 
       ret =
 	heap_get_hfid_and_file_type_from_class_oid (thread_p, class_oid, &scan_cache->node.hfid,
-						    &scan_cache->file_type);
+						    &scan_cache->file_type, false, NULL);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -6936,7 +6936,7 @@ heap_scancache_reset_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
 	{
 	  ret =
 	    heap_get_hfid_and_file_type_from_class_oid (thread_p, class_oid, &scan_cache->node.hfid,
-							&scan_cache->file_type);
+							&scan_cache->file_type, false, NULL);
 	  if (ret != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -16626,11 +16626,11 @@ heap_attrinfo_set_uninitialized_global (THREAD_ENTRY * thread_p, OID * inst_oid,
  */
 int
 heap_get_hfid_and_file_type_from_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out,
-					    FILE_TYPE * ftype_out)
+					    FILE_TYPE * ftype_out, bool get_classname, char *classname_out)
 {
   int error_code = NO_ERROR;
 
-  error_code = heap_hfid_cache_get (thread_p, class_oid, hfid_out, ftype_out);
+  error_code = heap_hfid_cache_get (thread_p, class_oid, hfid_out, ftype_out, get_classname, classname_out);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -16666,7 +16666,7 @@ heap_compact_pages (THREAD_ENTRY * thread_p, OID * class_oid)
       return ER_FAILED;
     }
 
-  ret = heap_get_hfid_and_file_type_from_class_oid (thread_p, class_oid, &hfid, NULL);
+  ret = heap_get_hfid_and_file_type_from_class_oid (thread_p, class_oid, &hfid, NULL, false, NULL);
   if (ret != NO_ERROR || HFID_IS_NULL (&hfid))
     {
       lock_unlock_object (thread_p, class_oid, oid_Root_class_oid, IS_LOCK, true);
@@ -17615,7 +17615,7 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
 	  goto cleanup;
 	}
 
-      error = heap_get_hfid_and_file_type_from_class_oid (thread_p, &class_oid, &ctx->hfids[0], NULL);
+      error = heap_get_hfid_and_file_type_from_class_oid (thread_p, &class_oid, &ctx->hfids[0], NULL, false, NULL);
       if (error != NO_ERROR)
 	{
 	  goto cleanup;
@@ -19158,7 +19158,7 @@ heap_scancache_quick_start_with_class_oid (THREAD_ENTRY * thread_p, HEAP_SCANCAC
 {
   HFID class_hfid;
 
-  heap_get_hfid_and_file_type_from_class_oid (thread_p, class_oid, &class_hfid, NULL);
+  heap_get_hfid_and_file_type_from_class_oid (thread_p, class_oid, &class_hfid, NULL, false, NULL);
   (void) heap_scancache_quick_start_with_class_hfid (thread_p, scan_cache, &class_hfid);
   scan_cache->page_latch = S_LOCK;
 
@@ -19208,7 +19208,7 @@ heap_scancache_quick_start_modify_with_class_oid (THREAD_ENTRY * thread_p, HEAP_
 {
   HFID class_hfid;
 
-  heap_get_hfid_and_file_type_from_class_oid (thread_p, class_oid, &class_hfid, NULL);
+  heap_get_hfid_and_file_type_from_class_oid (thread_p, class_oid, &class_hfid, NULL, false, NULL);
   (void) heap_scancache_quick_start_internal (scan_cache, &class_hfid);
   scan_cache->page_latch = X_LOCK;
 
@@ -19397,7 +19397,8 @@ heap_get_file_type (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     }
   else
     {
-      if (heap_get_hfid_and_file_type_from_class_oid (thread_p, &context->class_oid, NULL, &file_type) != NO_ERROR)
+      if (heap_get_hfid_and_file_type_from_class_oid (thread_p, &context->class_oid, NULL, &file_type, false, NULL) !=
+	  NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return FILE_UNKNOWN_TYPE;
@@ -23681,7 +23682,7 @@ heap_scancache_add_partition_node (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * sca
 
   assert (scan_cache != NULL);
 
-  if (heap_get_hfid_and_file_type_from_class_oid (thread_p, partition_oid, &hfid, NULL) != NO_ERROR)
+  if (heap_get_hfid_and_file_type_from_class_oid (thread_p, partition_oid, &hfid, NULL, false, NULL) != NO_ERROR)
     {
       return ER_FAILED;
     }
