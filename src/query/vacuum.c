@@ -808,11 +808,11 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
       delete m_pool;
     }
 
-    VACUUM_WORKER *claim ()
+    VACUUM_WORKER *claim_worker ()
     {
       return m_pool->claim ();
     }
-    void retire (VACUUM_WORKER & worker)
+    void retire_worker (VACUUM_WORKER & worker)
     {
       return m_pool->retire (worker);
     }
@@ -906,7 +906,7 @@ vacuum_sa_run_job (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY & data_entry, bool
 {
   PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_VAC_MASTER);
 
-  VACUUM_WORKER *worker_p = vacuum_Worker_context_manager->claim ();
+  VACUUM_WORKER *worker_p = vacuum_Worker_context_manager->claim_worker ();
   thread_type save_type = thread_type::TT_NONE;
   vacuum_convert_thread_to_worker (thread_p, worker_p, save_type);
   assert (save_type == thread_type::TT_VACUUM_MASTER);
@@ -915,7 +915,7 @@ vacuum_sa_run_job (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY & data_entry, bool
 
   vacuum_convert_thread_to_master (thread_p, save_type);
   assert (save_type == thread_type::TT_VACUUM_WORKER);
-  vacuum_Worker_context_manager->retire (*worker_p);
+  vacuum_Worker_context_manager->retire_worker (*worker_p);
 
   PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
 }
