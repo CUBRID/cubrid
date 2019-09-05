@@ -295,10 +295,10 @@ class vacuum_job_cursor
     VACUUM_LOG_BLOCKID m_blockid;     // current cursor blockid
     VACUUM_DATA_PAGE *m_page;         // loaded page of blockid or null
     INT16 m_index;                    // loaded index of blockid or INDEX_NOT_FOUND
-  };
+};
 
 // helper macros for printing vacuum_job_cursor
-#define vacuum_job_cursor_print_format "vacuum_job_cursor(%d, %d|%d|%d)"
+#define vacuum_job_cursor_print_format "vacuum_job_cursor(%lld, %d|%d|%d)"
 #define vacuum_job_cursor_print_args(cursor) \
   (long long int) (cursor).get_blockid (), VPID_AS_ARGS (&(cursor).get_page_vpid ()), (int) (cursor).get_index ()
 
@@ -919,7 +919,7 @@ xvacuum (THREAD_ENTRY * thread_p)
   /* Assign worker and allocate required resources. */
   vacuum_convert_thread_to_master (thread_p, save_type);
 
-  /* Process vacuum data and run vacuum . */
+  /* Process vacuum data and run vacuum. */
   vacuum_job_cursor cursor;
   VACUUM_DATA_ENTRY *entry = NULL;
   PERF_UTIME_TRACKER perf_tracker;
@@ -1025,6 +1025,7 @@ restart:
     }
 
   cursor.unload ();
+
 #if !defined (NDEBUG)
   vacuum_verify_vacuum_data_page_fix_count (thread_p);
 #endif /* !NDEBUG */
@@ -3087,6 +3088,7 @@ restart:
     }
 
   m_cursor.unload ();
+
 #if !defined (NDEBUG)
   vacuum_verify_vacuum_data_page_fix_count (thread_p);
 #endif /* !NDEBUG */
@@ -8085,6 +8087,7 @@ vacuum_data_entry &
 vacuum_job_cursor::get_current_entry () const
 {
   assert (is_valid ());
+
   return m_page->data[m_index];
 }
 
@@ -8093,6 +8096,7 @@ vacuum_job_cursor::change_blockid (VACUUM_LOG_BLOCKID blockid)
 {
   // can only increment
   assert (m_blockid <= blockid);
+
   m_blockid = blockid;
 
   // make sure m_page/m_index point to right blockid
@@ -8131,6 +8135,7 @@ vacuum_job_cursor::readjust_to_vacuum_data_changes ()
       // it doesn't matter
       return;
     }
+
   VACUUM_LOG_BLOCKID first_blockid = vacuum_Data.get_first_blockid ();
   if (m_blockid < first_blockid)
     {
@@ -8190,6 +8195,7 @@ vacuum_job_cursor::search ()
 
   vacuum_data_page *data_page = vacuum_Data.first_page;
   assert (data_page != NULL);
+
   while (true)
     {
       m_index = data_page->get_index_of_blockid (m_blockid);
@@ -8198,6 +8204,7 @@ vacuum_job_cursor::search ()
           m_page = data_page;
           return;
         }
+
       // advance to next page
       VPID next_vpid = data_page->next_page;
       vacuum_unfix_data_page (&cubthread::get_entry (), data_page);
