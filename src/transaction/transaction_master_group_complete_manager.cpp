@@ -23,6 +23,7 @@
 
 #include "boot_sr.h"
 #include "log_manager.h"
+#include "stream_senders_manager.hpp"
 #include "thread_manager.hpp"
 #include "transaction_master_group_complete_manager.hpp"
 #include "replication_master_node.hpp"
@@ -36,7 +37,7 @@ namespace cubtx
   cubthread::daemon *gl_master_gcm_daemon = NULL;
 
   //
-  // master_group_complete_task is class for master group complete daemon
+  // get global master instance
   //
   class master_group_complete_task : public cubthread::entry_task
   {
@@ -44,13 +45,13 @@ namespace cubtx
       /* entry_task methods */
       void execute (cubthread::entry &thread_ref) override
       {
-        if (!BO_IS_SERVER_RESTARTED ())
-        {
-          return;
-        }
+	if (!BO_IS_SERVER_RESTARTED ())
+	  {
+	    return;
+	  }
 
-        cubthread::entry *thread_p = &cubthread::get_entry ();
-        get_master_gcm_instance ()->do_prepare_complete (thread_p);
+	cubthread::entry *thread_p = &cubthread::get_entry ();
+	get_master_gcm_instance ()->do_prepare_complete (thread_p);
       }
   };
 
@@ -112,13 +113,13 @@ namespace cubtx
   }
 
   //
-  // can_close_current_group checks whether the current group can be closed.
+  // can_close_current_group check whether the current group can be closed.
   //
   bool master_group_complete_manager::can_close_current_group ()
   {
     if (!is_latest_closed_group_completed ())
       {
-	/* Can't advance to the next group since the current group was not completed yet. */
+	/* Can't advance to the next group since the current group was not committed yet. */
 	return false;
       }
 
@@ -147,8 +148,8 @@ namespace cubtx
 	notify_group_mvcc_complete (closed_group);
 
 	/* Pack group commit that internally wakeups senders. Get stream position of group complete. */
-	logtb_get_tdes (thread_p)->get_replication_generator ().pack_group_commit_entry (
-		closed_group_stream_start_position, closed_group_stream_end_position);
+	logtb_get_tdes (thread_p)->get_replication_generator ().pack_group_commit_entry (closed_group,
+	    closed_group_stream_start_position, closed_group_stream_end_position);
 
 	m_latest_closed_group_start_stream_position = closed_group_stream_start_position;
 	m_latest_closed_group_end_stream_position = closed_group_stream_end_position;
@@ -192,9 +193,10 @@ namespace cubtx
     tx_group &closed_group = get_latest_closed_group ();
 
     /* TODO - consider parameter for MVCC complete here. */
-    /* Add group complete log record and wakeup  log flush daemon. */
+    /* Add group commit log record and wakeup  log flush daemon. */
     log_append_group_complete (thread_p, tdes, m_latest_closed_group_start_stream_position,
-			       closed_group, &closed_group_start_complete_lsa, NULL);
+			       closed_group, &closed_group_start_complete_lsa, &closed_group_end_complete_lsa,
+			       &has_postpone);
 
     if (has_postpone)
       {

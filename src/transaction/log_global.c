@@ -71,9 +71,10 @@ log_global::log_global ()
                 , PTHREAD_MUTEX_INITIALIZER
 #endif /* SERVER_MODE */
      }
-  , group_commit_info LOG_GROUP_COMMIT_INFO_INITIALIZER
+  , flush_notify_info ()
   , m_tran_complete_mgr (NULL)    // to be instantiated on boot
   , m_repl_rv (std::numeric_limits<cubstream::stream_position>::min ())
+  , reset_complete_manager_started (false)
   , m_min_active_lsa (NULL_LSA)
   , writer_info (new logwr_info ())
   , bg_archive_info ()

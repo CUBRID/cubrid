@@ -83,7 +83,7 @@ namespace cubreplication
     assert (p_lsa != NULL);
 
     sbr_repl_entry *repl_obj = new sbr_repl_entry ("", stmt_info.stmt_text, stmt_info.db_user,
-        stmt_info.sys_prm_context, *p_lsa);
+	stmt_info.sys_prm_context, *p_lsa);
     append_repl_object (*repl_obj);
   }
 
@@ -390,12 +390,18 @@ namespace cubreplication
   }
 
   void
-  log_generator::pack_group_commit_entry (cubstream::stream_position &stream_start_pos,
+  log_generator::pack_group_commit_entry (const tx_group &group,
+					  cubstream::stream_position &stream_start_pos,
 					  cubstream::stream_position &stream_end_pos)
   {
     /* use non-NULL MVCCID to prevent assertion fail on stream packer */
     static stream_entry gc_stream_entry (s_stream, MVCCID_FIRST, stream_entry_header::GROUP_COMMIT);
+
+    repl_gc_info *gc_entry = new repl_gc_info (group);
+    gc_stream_entry.add_packable_entry (gc_entry);
     gc_stream_entry.pack ();
+    gc_stream_entry.reset ();
+
     stream_start_pos = gc_stream_entry.get_stream_entry_start_position ();
     stream_end_pos = gc_stream_entry.get_stream_entry_end_position ();
   }
@@ -437,7 +443,7 @@ namespace cubreplication
   }
 
   void
-  log_generator::on_transaction_finish (stream_entry_header::TRAN_STATE state)
+  log_generator::on_transaction_finish ()
   {
     if (is_replication_disabled () || !MVCCID_IS_VALID (m_stream_entry.get_mvccid ()))
       {
@@ -448,19 +454,12 @@ namespace cubreplication
     if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
       {
 	/* Reset stream entry. */
-	m_stream_entry.reset();
+	m_stream_entry.reset ();
 	return;
       }
 #endif
 
-    set_tran_repl_info (state);
     pack_stream_entry ();
-
-    /* TODO[replication] : force a group commit :
-     * move this to log_manager group commit when multi-threaded apply is enabled */
-    cubstream::stream_position stream_pos;
-
-    pack_group_commit_entry (stream_pos, m_gc_end_position);
 
     /* Do not allow to reuse the current MVCCID. */
     m_stream_entry.set_mvccid (MVCCID_NULL);
@@ -470,7 +469,7 @@ namespace cubreplication
   log_generator::on_transaction_commit (void)
   {
     assert (m_pending_to_be_added.size () == 0);
-    on_transaction_finish (stream_entry_header::TRAN_STATE::COMMITTED);
+    on_transaction_finish ();
   }
 
   void log_generator::on_sysop_commit (LOG_LSA &start_lsa)
@@ -483,6 +482,7 @@ namespace cubreplication
     cubreplication::stream_entry local_stream_entry (m_stream_entry.get_stream ());
 
     m_stream_entry.move_replication_objects_after_lsa_to_stream (start_lsa, local_stream_entry);
+
 #if !defined (NDEBUG)
     if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
       {
@@ -510,7 +510,7 @@ namespace cubreplication
   void
   log_generator::on_transaction_abort (void)
   {
-    on_transaction_finish (stream_entry_header::TRAN_STATE::ABORTED);
+    on_transaction_finish ();
   }
 
   void
@@ -557,13 +557,6 @@ namespace cubreplication
   log_generator::set_row_replication_disabled (bool disable_if_true)
   {
     m_is_row_replication_disabled = disable_if_true;
-  }
-
-  cubstream::stream_position
-  log_generator::get_last_end_position () const
-  {
-    // todo: remove when complete manager is merged and a way to take last gc's end_position is available
-    return m_gc_end_position;
   }
 
   void

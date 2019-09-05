@@ -204,8 +204,8 @@ namespace cubtx
     er_log_group_complete_debug (ARG_FILE_LINE, "group_complete_manager::complete: (%llu)\n", group_id);
   }
 
-  //
   // notify_all notifies all waiting transactions. When a thread is waked up, it will check again waiting condition.
+  //
   //
   void group_complete_manager::notify_all ()
   {

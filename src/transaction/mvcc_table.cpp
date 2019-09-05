@@ -450,62 +450,9 @@ mvcctable::next_tran_status_finish (mvcc_trans_status &next_trans_status, size_t
 }
 
 void
-mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
-{
-  assert (MVCCID_IS_VALID (mvccid));
-
-  // only one can change status at a time
-  std::unique_lock<std::mutex> ulock (m_active_trans_mutex);
-
-  mvcc_trans_status::version_type next_version;
-  size_t next_index;
-  mvcc_trans_status &next_status = next_trans_status_start (next_version, next_index);
-
-  // todo - until we activate count optimization (if ever), should we move this outside mutex?
-  if (committed && logtb_tran_update_all_global_unique_stats (thread_get_thread_entry_info ()) != NO_ERROR)
-    {
-      assert (false);
-    }
-
-  // update current trans status
-  m_current_trans_status.m_active_mvccs.set_inactive_mvccid (mvccid);
-  m_current_trans_status.m_last_completed_mvccid = mvccid;
-  m_current_trans_status.m_event_type = committed ? mvcc_trans_status::COMMIT : mvcc_trans_status::ROLLBACK;
-
-  // finish next trans status
-  next_tran_status_finish (next_status, next_index);
-
-  update_tran_oldest_active (tran_index, mvccid, committed);
-
-  ulock.unlock ();
-
-  // update lowest active in current transactions status. can be done outside lock
-  // this doesn't have to be 100% accurate; it is used as indicative by vacuum to clean up the database. however, it
-  // shouldn't be left too much behind, or vacuum can't advance
-  // so we try to limit recalculation when mvccid matches current global_lowest_active; since we are not locked, it is
-  // not guaranteed to be always updated; therefore we add the second condition to go below trans status
-  // bit area starting MVCCID; the recalculation will happen on each iteration if there are long transactions.
-  MVCCID global_lowest_active = compute_oldest_active_mvccid ();
-  if (global_lowest_active == mvccid
-      || MVCC_ID_PRECEDES (mvccid, next_status.m_active_mvccs.get_bit_area_start_mvccid ()))
-    {
-      MVCCID new_lowest_active = next_status.m_active_mvccs.compute_lowest_active_mvccid ();
-#if !defined (NDEBUG)
-      oldest_active_add_event (new_lowest_active, (int) next_index, oldest_active_event::GET_LOWEST_ACTIVE,
-			       oldest_active_event::COMPLETE_MVCC);
-#endif // !NDEBUG
-      // we need to recheck version to validate result
-      if (next_status.m_version.load () == next_version)
-	{
-	  // advance
-	  advance_oldest_active (new_lowest_active);
-	}
-    }
-}
-
-void
 mvcctable::complete_sub_mvcc (MVCCID mvccid)
 {
+  /* TODO - use complete group and get rid of this method */
   assert (MVCCID_IS_VALID (mvccid));
 
   // only one can change status at a time

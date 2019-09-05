@@ -38,6 +38,7 @@
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_task.hpp"
+#include "transaction_slave_group_complete_manager.hpp"
 #include <unordered_map>
 
 namespace cubreplication
@@ -104,22 +105,6 @@ namespace cubreplication
 	m_repl_stream_entries.push_back (repl_stream_entry);
       }
 
-      bool has_commit (void)
-      {
-	assert (get_entries_cnt () > 0);
-	stream_entry *se = m_repl_stream_entries.back ();
-
-	return se->is_tran_commit ();
-      }
-
-      bool has_abort (void)
-      {
-	assert (get_entries_cnt () > 0);
-	stream_entry *se = m_repl_stream_entries.back ();
-
-	return se->is_tran_abort ();
-      }
-
       size_t get_entries_cnt (void)
       {
 	return m_repl_stream_entries.size ();
@@ -147,17 +132,22 @@ namespace cubreplication
 	, m_entry_fetcher (*lc.get_stream ())
 	, m_lc (lc)
 	, m_stop (false)
+	, m_prev_group_stream_position (0)
+	, m_curr_group_stream_position (0)
       {
+	m_p_dispatch_consumer = cubtx::get_slave_gcm_instance ();
       }
 
       void execute (cubthread::entry &thread_ref) override
       {
-	using tasks_map = std::unordered_map <MVCCID, applier_worker_task *>;
+	using tasks_map = std::unordered_map<MVCCID, applier_worker_task *>;
 	tasks_map repl_tasks;
 	tasks_map nonexecutable_repl_tasks;
+	int count_expected_transaction = 0;
 
 	m_lc.wait_for_fetch_resume ();
 
+	assert (m_p_dispatch_consumer != NULL);
 	while (!m_stop)
 	  {
 	    stream_entry *se = NULL;
@@ -205,26 +195,62 @@ namespace cubreplication
 	    /* TODO[replication] : on-the-fly applier & multi-threaded applier */
 	    if (se->is_group_commit ())
 	      {
-		assert (se->get_data_packed_size () == 0);
+		applier_worker_task *my_repl_applier_worker_task;
+		const repl_gc_info *gc_entry;
+		tx_group transactions_group;
+		TRAN_STATE tran_state;
 
-		/* wait for all started tasks to finish */
+		assert (se->count_entries () == 1);
+		assert (se->get_stream_entry_start_position () < se->get_stream_entry_end_position ());
+		gc_entry = dynamic_cast <const repl_gc_info *> (se->get_object_at (0));
+		transactions_group = gc_entry->as_tx_group ();
+
 		er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task wait for all working tasks to finish\n");
 		assert (se->get_stream_entry_start_position () < se->get_stream_entry_end_position ());
 
-		m_lc.wait_for_tasks ();
+		if (count_expected_transaction > 0)
+		  {
+		    /* We have to wait for previous group. */
+		    m_prev_group_stream_position = m_curr_group_stream_position;
+		    m_curr_group_stream_position = se->get_stream_entry_end_position ();
+
+		    // Noramlly, is enough to wait for group to complete. However, for safety reason, it is better to
+		    // start wait for workers first, then wait for complete manager.
+		    m_lc.wait_for_tasks ();
+
+		    // We need to wait for previous group to complete. Otherwise, we mix transactions from previous and
+		    // current groups.
+		    m_p_dispatch_consumer->complete_upto_stream_position (m_prev_group_stream_position);
+		  }
 
 		// apply all sub-transaction first
 		m_lc.get_subtran_applier ().apply ();
 
+		// apply the transaction in current group
+		count_expected_transaction = 0;
 		for (tasks_map::iterator it = repl_tasks.begin (); it != repl_tasks.end (); it++)
 		  {
+		    tran_state = TRAN_ACTIVE;
+		    /* Get transaction state. Would be better to include it in a method in tx_group. */
+		    for (const tx_group::node_info &transaction_info : transactions_group.get_container ())
+		      {
+			if (transaction_info.m_mvccid == it->first)
+			  {
+			    tran_state = transaction_info.m_tran_state;
+			    break;
+			  }
+		      }
+
 		    /* check last stream entry of task */
-		    applier_worker_task *my_repl_applier_worker_task = it->second;
-		    if (my_repl_applier_worker_task->has_commit ())
+		    my_repl_applier_worker_task = it->second;
+
+		    /* We don't need to check all commit/abort states, but is not wrong. */
+		    if (LOG_ISTRAN_STATE_COMMIT (tran_state))
 		      {
 			m_lc.execute_task (it->second);
+			count_expected_transaction++;
 		      }
-		    else if (my_repl_applier_worker_task->has_abort ())
+		    else if (LOG_ISTRAN_STATE_ABORT (tran_state))
 		      {
 			/* TODO[replication] : when on-fly apply is active, we need to abort the transaction;
 			 * for now, we are sure that no change has been made on slave on behalf of this task,
@@ -239,7 +265,9 @@ namespace cubreplication
 			nonexecutable_repl_tasks.insert (std::make_pair (it->first, it->second));
 		      }
 		  }
+
 		repl_tasks.clear ();
+
 		if (nonexecutable_repl_tasks.size () > 0)
 		  {
 		    repl_tasks = nonexecutable_repl_tasks;
@@ -249,6 +277,21 @@ namespace cubreplication
 		/* delete the group commit stream entry */
 		assert (se->is_group_commit ());
 		delete se;
+
+		// The transactions started but can't complete yet since it waits for the current group complete.
+		// But the current group can't complete, since GC thread is waiting for close info.
+		// Now is safe to set close info.
+		if (count_expected_transaction > 0)
+		  {
+		    /* We have committed transaction with replication entries. */
+		    m_p_dispatch_consumer->set_close_info_for_current_group (m_curr_group_stream_position,
+			count_expected_transaction);
+		  }
+		else
+		  {
+		    er_log_debug (ARG_FILE_LINE, "No replication entries in group having stream position (%llu, %llu)\n",
+				  se->get_stream_entry_start_position (), se->get_stream_entry_end_position ());
+		  }
 	      }
 	    else if (se->is_new_master ())
 	      {
@@ -263,7 +306,7 @@ namespace cubreplication
 	      {
 		m_lc.get_subtran_applier ().insert_stream_entry (se);
 	      }
-	    else
+	    else if (se->get_packable_entry_count_from_header () > 0)
 	      {
 		MVCCID mvccid = se->get_mvccid ();
 		auto it = repl_tasks.find (mvccid);
@@ -286,6 +329,12 @@ namespace cubreplication
 
 		/* stream entry is deleted by applier task thread */
 	      }
+	    else
+	      {
+		/* Skip entry without data, to avoid commit issues. Readers do not wait for group complete. */
+		assert (se->get_packable_entry_count_from_header () == 0);
+		delete se;
+	      }
 	  }
 
 	// delete unapplied tasks
@@ -300,7 +349,6 @@ namespace cubreplication
       }
 
     private:
-
       bool is_filtered_apply_segment (cubstream::stream_position stream_entry_end) const
       {
 	return stream_entry_end <= m_filtered_apply_end;
@@ -326,6 +374,9 @@ namespace cubreplication
       stream_entry_fetcher m_entry_fetcher;
       log_consumer &m_lc;
       bool m_stop;
+      cubstream::stream_position m_prev_group_stream_position;
+      cubstream::stream_position m_curr_group_stream_position;
+      group_completion *m_p_dispatch_consumer;
   };
 
   log_consumer::~log_consumer ()
@@ -376,9 +427,10 @@ namespace cubreplication
 
   void log_consumer::push_task (cubthread::entry_task *task)
   {
-    cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
-
+    /* Increase m_started_task before starting the task. */
     m_started_tasks++;
+
+    cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
   }
 
   void log_consumer::execute_task (applier_worker_task *task)
@@ -395,10 +447,14 @@ namespace cubreplication
 
   void log_consumer::wait_for_tasks (void)
   {
-    while (m_started_tasks > 0)
+    /* First, check without mutex. */
+    if (m_started_tasks == 0)
       {
-	thread_sleep (1);
+	return;
       }
+
+    std::unique_lock<std::mutex> ulock (m_join_tasks_mutex);
+    m_join_tasks_cv.wait (ulock, [this] {return m_started_tasks == 0;});
   }
 
   void log_consumer::stop (void)

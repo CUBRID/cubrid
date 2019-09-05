@@ -48,6 +48,7 @@ namespace cubstream
       {
 	css_error_code rc = NO_ERRORS;
 	std::size_t max_len = DB_ALIGN_BELOW (cubcomm::MTU, MAX_ALIGNMENT);
+	std::size_t recv_len;
 
 	if (m_first_loop)
 	  {
@@ -74,23 +75,29 @@ namespace cubstream
 	    m_first_loop = false;
 	  }
 
-	if (!this_consumer_channel.m_channel.is_connection_alive ())
+	while (true)
 	  {
-	    return;
-	  }
-	rc = this_consumer_channel.m_channel.recv (this_consumer_channel.m_buffer, max_len);
-	if (rc != NO_ERRORS)
-	  {
-	    this_consumer_channel.m_channel.close_connection ();
-	    return;
-	  }
+	    if (!this_consumer_channel.m_channel.is_connection_alive ())
+	      {
+		return;
+	      }
 
-	cubcomm::er_log_debug_buffer ("transfer_receiver_task receiving", this_consumer_channel.m_buffer, max_len);
+	    /* TODO - consider stop */
+	    recv_len = max_len;
+	    rc = this_consumer_channel.m_channel.recv (this_consumer_channel.m_buffer, recv_len);
+	    if (rc != NO_ERRORS)
+	      {
+		this_consumer_channel.m_channel.close_connection ();
+		return;
+	      }
 
-	if (this_consumer_channel.m_stream.write (max_len, this_consumer_channel.m_write_action_function))
-	  {
-	    this_consumer_channel.m_channel.close_connection ();
-	    return;
+	    cubcomm::er_log_debug_buffer ("transfer_receiver_task receiving", this_consumer_channel.m_buffer, recv_len);
+
+	    if (this_consumer_channel.m_stream.write (recv_len, this_consumer_channel.m_write_action_function))
+	      {
+		this_consumer_channel.m_channel.close_connection ();
+		return;
+	      }
 	  }
       }
 

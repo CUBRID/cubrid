@@ -21,10 +21,12 @@
  * stream_senders_manager.cpp -
  */
 
+#include "log_impl.h"
 #include "stream_senders_manager.hpp"
 #include "replication_common.hpp"
 
 #include <utility>
+#include "log_impl.h"
 #include "thread_manager.hpp"
 #include "thread_daemon.hpp"
 
@@ -65,11 +67,7 @@ namespace cubreplication
 	m_supervisor_daemon = NULL;
       }
 
-    for (cubstream::transfer_sender *sender : m_stream_senders)
-      {
-	delete sender;
-      }
-    m_stream_senders.clear ();
+    remove_all_senders ();
 
     error_code = rwlock_finalize (&m_senders_lock);
     assert (error_code == NO_ERROR);
@@ -79,7 +77,26 @@ namespace cubreplication
   {
     rwlock_write_lock (&m_senders_lock);
     m_stream_senders.push_back (sender);
+    /* TODO - use lambda instead next call */
+    logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE);
     rwlock_write_unlock (&m_senders_lock);
+  }
+
+  void stream_senders_manager::remove_all_senders ()
+  {
+    rwlock_read_lock (&m_senders_lock);
+
+    for (cubstream::transfer_sender *sender : m_stream_senders)
+      {
+	delete sender;
+      }
+
+    m_stream_senders.clear ();
+
+    /* TODO - use lambda instead next call */
+    logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
+
+    rwlock_read_unlock (&m_senders_lock);
   }
 
   void stream_senders_manager::wakeup_transfer_senders (cubstream::stream_position desired_position)
@@ -140,35 +157,12 @@ namespace cubreplication
     return length;
   }
 
-  void stream_senders_manager::block_until_position_sent (cubstream::stream_position desired_position)
-  {
-    bool is_position_sent = false;
-    const std::chrono::microseconds SLEEP_BETWEEN_SPINS (20);
-
-    while (!is_position_sent)
-      {
-	is_position_sent = true;
-
-	rwlock_read_lock (&m_senders_lock);
-	for (cubstream::transfer_sender *sender : m_stream_senders)
-	  {
-	    if (sender->get_last_sent_position () < desired_position)
-	      {
-		is_position_sent = false;
-		sender->get_daemon ()->wakeup ();
-	      }
-	  }
-	rwlock_read_unlock (&m_senders_lock);
-
-	std::this_thread::sleep_for (SLEEP_BETWEEN_SPINS);
-      }
-  }
-
   void stream_senders_manager::execute (cubthread::entry &context)
   {
     static unsigned int check_conn_delay_counter = 0;
     bool have_write_lock = false;
     int active_senders = 0;
+    bool senders_deleted = false;
     cubstream::stream_position min_position_send = std::numeric_limits<cubstream::stream_position>::max ();
 
     if (check_conn_delay_counter > SUPERVISOR_DAEMON_CHECK_CONN_MS / SUPERVISOR_DAEMON_DELAY_MS)
@@ -195,6 +189,7 @@ namespace cubreplication
 		  {
 		    it = m_stream_senders.erase (it);
 		    delete sender;
+		    senders_deleted = true;
 		  }
 	      }
 	    else
@@ -204,6 +199,12 @@ namespace cubreplication
 		active_senders++;
 		++it;
 	      }
+	  }
+
+	if (senders_deleted && active_senders == 0)
+	  {
+	    /* TODO - use lambda instead next call */
+	    logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
 	  }
 
 	if (!have_write_lock)

@@ -18,8 +18,8 @@
  */
 
 /*
- * stream_senders_manager.hpp - manages stream sender entries
- *                            - it maintains the minimum successful sent position
+ * replication_master_senders_manager.hpp - manages master replication channel entries; it is a singleton
+ *                                        - it maintains the minimum successful sent position
  */
 
 #ifndef _STREAM_SENDERS_MANAGER_HPP_
@@ -53,11 +53,11 @@ namespace cubreplication
       ~stream_senders_manager ();
 
       void add_stream_sender (cubstream::transfer_sender *sender);
-      void stop_stream_sender (cubstream::transfer_sender *sender);
+      void remove_all_senders ();
+      void stop_stream_sender (cubstream::transfer_sender *sender);      
       void wakeup_transfer_senders (cubstream::stream_position desired_position);
       bool is_stream_sender_alive (const cubstream::transfer_sender *sender);
       std::size_t get_number_of_stream_senders ();
-      void block_until_position_sent (cubstream::stream_position desired_position);
 
     private:
       void execute (cubthread::entry &context);
@@ -75,4 +75,4 @@ namespace cubreplication
 
 } /* namespace cubreplication */
 
-#endif /* _STREAM_SENDERS_MANAGER_HPP_ */
+#endif /* _REPLICATION_MASTER_SENDERS_MANAGER_HPP_ */

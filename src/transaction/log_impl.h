@@ -188,18 +188,24 @@ struct logwr_info;
 #define LOG_ISTRAN_ACTIVE(tdes) \
   ((tdes)->state == TRAN_ACTIVE && LOG_ISRESTARTED ())
 
+#define LOG_ISTRAN_STATE_COMMIT(state) \
+  ((state) == TRAN_UNACTIVE_COMMITTED \
+   || (state) == TRAN_UNACTIVE_WILL_COMMIT \
+   || (state) == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE \
+   || (state) == TRAN_UNACTIVE_2PC_COMMIT_DECISION \
+   || (state) == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
+
 #define LOG_ISTRAN_COMMITTED(tdes) \
-  ((tdes)->state == TRAN_UNACTIVE_COMMITTED \
-   || (tdes)->state == TRAN_UNACTIVE_WILL_COMMIT \
-   || (tdes)->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE \
-   || (tdes)->state == TRAN_UNACTIVE_2PC_COMMIT_DECISION \
-   || (tdes)->state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
+  (LOG_ISTRAN_STATE_COMMIT ((tdes)->state))
+
+#define LOG_ISTRAN_STATE_ABORT(state) \
+  ((state) == TRAN_UNACTIVE_ABORTED \
+   || (state) == TRAN_UNACTIVE_UNILATERALLY_ABORTED \
+   || (state) == TRAN_UNACTIVE_2PC_ABORT_DECISION \
+   || (state) == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
 
 #define LOG_ISTRAN_ABORTED(tdes) \
-  ((tdes)->state == TRAN_UNACTIVE_ABORTED \
-   || (tdes)->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED \
-   || (tdes)->state == TRAN_UNACTIVE_2PC_ABORT_DECISION \
-   || (tdes)->state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
+  (LOG_ISTRAN_STATE_ABORT ((tdes)->state))
 
 #define LOG_ISTRAN_LOOSE_ENDS(tdes) \
   ((tdes)->state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS \
@@ -326,18 +332,12 @@ struct log_flush_info
 #endif				/* SERVER_MODE */
 };
 
-typedef struct log_group_commit_info LOG_GROUP_COMMIT_INFO;
-struct log_group_commit_info
+typedef struct log_flush_notify_info LOG_FLUSH_NOTIFY_INFO;
+struct log_flush_notify_info
 {
-  /* group commit waiters count */
-  pthread_mutex_t gc_mutex;
-  pthread_cond_t gc_cond;
+  std::mutex m_mutex;
+  std::condition_variable m_cond;
 };
-
-#define LOG_GROUP_COMMIT_INFO_INITIALIZER \
-  { PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER }
-
-
 
 typedef struct log_topops_addresses LOG_TOPOPS_ADDRESSES;
 struct log_topops_addresses
@@ -566,7 +566,7 @@ struct log_tdes
     void unlock_topop ();
 
     void on_sysop_start ();
-    void on_sysop_end ();
+    void on_sysop_end (bool force_lsa_reset);
 
     cubreplication::log_generator &get_replication_generator ();
 
@@ -652,6 +652,7 @@ struct global_unique_stats_table
 
 #define GLOBAL_UNIQUE_STATS_HASH_SIZE 1000
 
+/* Global structure to trantable, log buffer pool, etc */
 // *INDENT-OFF*
 namespace cubreplication
 {
@@ -698,11 +699,13 @@ struct log_global
   /* Flush information for dirty log pages */
   LOG_FLUSH_INFO flush_info;
 
-  /* group commit information */
-  LOG_GROUP_COMMIT_INFO group_commit_info;
+  /* flush notify information */
+  LOG_FLUSH_NOTIFY_INFO flush_notify_info;
+
   // *INDENT-OFF*
   cubtx::complete_manager *m_tran_complete_mgr;
   cubreplication::replication_rv m_repl_rv;
+  std::atomic<bool> reset_complete_manager_started;
   // *INDENT-ON*
   LOG_LSA m_min_active_lsa;
 
@@ -931,6 +934,10 @@ extern void logpb_initialize_logging_statistics (void);
 /* TODO - considers moving complete manager functions as methods in complete manager classes */
 extern void logpb_initialize_tran_complete_manager (void);
 extern const char *logpb_complete_manager_string (log_tran_complete_manager_type manager_type);
+extern void logpb_atomic_resets_tran_complete_manager (log_tran_complete_manager_type manager_type);
+extern void logpb_finalize_tran_complete_manager (void);
+
+extern const char *logpb_complete_manager_string (log_tran_complete_manager_type manager_type);
 extern int logpb_background_archiving (THREAD_ENTRY * thread_p);
 extern void xlogpb_dump_stat (FILE * outfp);
 
@@ -1050,7 +1057,7 @@ extern int xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
 extern bool logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern bool logtb_is_mvccid_committed (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern MVCC_SNAPSHOT *logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
-extern void logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed);
+extern void logtb_reset_mvcc_and_related_states (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 extern void logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 
 extern LOG_TRAN_CLASS_COS *logtb_tran_find_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid, bool create);

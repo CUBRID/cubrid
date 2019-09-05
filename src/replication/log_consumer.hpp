@@ -87,6 +87,9 @@ namespace cubreplication
 
       std::atomic<int> m_started_tasks;
 
+      std::mutex m_join_tasks_mutex;
+      std::condition_variable m_join_tasks_cv;
+
       /* fetch suspend flag : this is required in context of replication with copy phase :
        * while replication copy is running the fetch from online replication must be suspended
        * (although the stream contents are received and stored on local slave node)
@@ -139,7 +142,19 @@ namespace cubreplication
 
       void end_one_task (void)
       {
-	m_started_tasks--;
+	int started_task;
+	started_task = --m_started_tasks;
+
+	assert (started_task >= 0);
+	if (started_task == 0)
+	  {
+	    /* Notify all. Currently, there  is only one waiter, but may be added others, later.
+	     * For safety reason, it is better to notify with mutex acquired in this case.
+	     * The alternative is to use wait with timeout.
+	     */
+	    std::unique_lock<std::mutex> ulock (m_join_tasks_mutex);
+	    m_join_tasks_cv.notify_all ();
+	  }
       }
 
       void set_ack_producer (const std::function<void (cubstream::stream_position)> &ack_producer)
@@ -147,14 +162,9 @@ namespace cubreplication
 	ack_produce = ack_producer;
       }
 
-      int get_started_task (void)
-      {
-	return m_started_tasks;
-      }
-
-      void wait_for_tasks (void);
 
       void stop (void);
+      void wait_for_tasks (void);
 
       void fetch_suspend ();
       void fetch_resume ();

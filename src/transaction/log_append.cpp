@@ -1185,9 +1185,7 @@ prior_lsa_gen_group_complete_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *nod
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) node->data_header_length);
       return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  assert (redo_length > 0);
+    }  
 
   return prior_lsa_copy_redo_data_to_node (node, redo_length, redo_data);
 }

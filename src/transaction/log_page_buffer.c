@@ -101,7 +101,12 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "crypt_opfunc.h"
+#include "server_support.h"
+#include "replication_node_manager.hpp"
+#include "replication_master_node.hpp"
 #include "transaction_master_group_complete_manager.hpp"
+#include "transaction_single_node_group_complete_manager.hpp"
+#include "transaction_slave_group_complete_manager.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -541,7 +546,6 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
 {
   int error_code = NO_ERROR;
   int i;
-  LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
   LOGWR_INFO *writer_info = log_Gl.writer_info;
   size_t size;
 
@@ -622,9 +626,6 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   logpb_Initialized = true;
   pthread_mutex_init (&log_Gl.chkpt_lsa_lock, NULL);
 
-  pthread_cond_init (&group_commit_info->gc_cond, NULL);
-  pthread_mutex_init (&group_commit_info->gc_mutex, NULL);
-
   pthread_mutex_init (&writer_info->wr_list_mutex, NULL);
 
   pthread_cond_init (&writer_info->flush_start_cond, NULL);
@@ -691,9 +692,6 @@ logpb_finalize_pool (THREAD_ENTRY * thread_p)
   logpb_finalize_flush_info ();
 
   pthread_mutex_destroy (&log_Gl.chkpt_lsa_lock);
-
-  pthread_mutex_destroy (&log_Gl.group_commit_info.gc_mutex);
-  pthread_cond_destroy (&log_Gl.group_commit_info.gc_cond);
 
   logpb_finalize_writer_info ();
 
@@ -3664,15 +3662,9 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
   logpb_flush_pages_direct (thread_p);
   LOG_CS_EXIT (thread_p);
 #else /* SERVER_MODE */
-  int rv;
-  struct timeval start_time = { 0, 0 };
-  struct timeval tmp_timeval = { 0, 0 };
-  struct timespec to = { 0, 0 };
-  int max_wait_time_in_msec = 1000;
-  bool need_wakeup_LFT, need_wait;
-  bool async_commit, group_commit;
+  std::chrono::milliseconds max_wait_time_in_msec (1000);
   LOG_LSA nxio_lsa;
-  LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
+  LOG_FLUSH_NOTIFY_INFO *flush_notify_info = &log_Gl.flush_notify_info;
 
   assert (flush_lsa != NULL && !LSA_ISNULL (flush_lsa));
 
@@ -3695,79 +3687,26 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
       return;
     }
 
-  async_commit = prm_get_bool_value (PRM_ID_LOG_ASYNC_COMMIT);
-  group_commit = LOG_IS_GROUP_COMMIT_ACTIVE ();
+  nxio_lsa = log_Gl.append.get_nxio_lsa ();
 
-  if (async_commit == false)
+  while (LSA_LT (&nxio_lsa, flush_lsa))
     {
-      need_wait = true;
-      if (group_commit == false)
-	{
-	  /* Default case: synchorous & non-group commit */
-	  need_wakeup_LFT = true;
-	}
-      else
-	{
-	  /* synchronous & group commit */
-	  need_wakeup_LFT = false;
-	  log_Stat.gc_commit_request_count++;
-	}
-    }
-  else
-    {
-      need_wait = false;
-      log_Stat.async_commit_request_count++;
+      // *INDENT-OFF*
+      std::unique_lock<std::mutex> ulock (flush_notify_info->m_mutex);
+      // *INDENT-ON*
 
-      if (group_commit == false)
-	{
-	  /* asynchorous & non-group commit */
-	  need_wakeup_LFT = true;
-	}
-      else
-	{
-	  /* asynchorous & group commit */
-	  need_wakeup_LFT = false;
-	  log_Stat.gc_commit_request_count++;
-	}
-    }
-
-  if (need_wakeup_LFT == true && need_wait == false)
-    {
-      log_wakeup_log_flush_daemon ();
-    }
-  else if (need_wait == true)
-    {
       nxio_lsa = log_Gl.append.get_nxio_lsa ();
-
-      if (need_wakeup_LFT == false && pgbuf_has_perm_pages_fixed (thread_p))
+      if (LSA_GE (&nxio_lsa, flush_lsa))
 	{
-	  need_wakeup_LFT = true;
+	  ulock.unlock ();
+	  break;
 	}
 
-      while (LSA_LT (&nxio_lsa, flush_lsa))
-	{
-	  gettimeofday (&start_time, NULL);
-	  (void) timeval_add_msec (&tmp_timeval, &start_time, max_wait_time_in_msec);
-	  (void) timeval_to_timespec (&to, &tmp_timeval);
+      log_wakeup_log_flush_daemon ();
+      flush_notify_info->m_cond.wait_for (ulock, max_wait_time_in_msec);
+      ulock.unlock ();
 
-	  rv = pthread_mutex_lock (&group_commit_info->gc_mutex);
-	  nxio_lsa = log_Gl.append.get_nxio_lsa ();
-	  if (LSA_GE (&nxio_lsa, flush_lsa))
-	    {
-	      pthread_mutex_unlock (&group_commit_info->gc_mutex);
-	      break;
-	    }
-
-	  if (need_wakeup_LFT == true)
-	    {
-	      log_wakeup_log_flush_daemon ();
-	    }
-	  (void) pthread_cond_timedwait (&group_commit_info->gc_cond, &group_commit_info->gc_mutex, &to);
-	  pthread_mutex_unlock (&group_commit_info->gc_mutex);
-
-	  need_wakeup_LFT = true;
-	  nxio_lsa = log_Gl.append.get_nxio_lsa ();
-	}
+      nxio_lsa = log_Gl.append.get_nxio_lsa ();
     }
 #endif /* SERVER_MODE */
 }
@@ -7087,7 +7026,6 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   const char *str_tmp;
   time_t tmp_time;
   char time_val[CTIME_MAX];
-
   LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
 
 #if defined (SERVER_MODE)
@@ -7217,7 +7155,7 @@ loop:
 	}
       else
 	{
-	  /* Page should be in archive. */
+  /* Get the current checkpoint address */
 	  assert (false);
 	}
 
@@ -10279,25 +10217,238 @@ logpb_initialize_logging_statistics (void)
  * logpb_initialize_tran_complete_manager - Initialize transaction complete manager
  *
  * return: nothing
+ * thread_p(in): thread entry
+ *
+ */
+void
+logpb_initialize_tran_complete_manager ()
+{
+  /* Initialize with single mode for recovery purpose. If non-HA, this mode remains. Otherwise, reset it later. */
+  er_log_debug (ARG_FILE_LINE, "logpb_initialize_tran_complete_manager single node \n");
+  logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
+}
+
+/*
+ * logpb_atomic_resets_tran_complete_manager - Atomic resets transaction complete manager.
+ *
+ * return: nothing
+ * manager_type(in) : manager type
+ *    Note: This function does not deallocate the old complete manager here. Just activate it.
+ *      TODO - We need to consider atomic reset.
+ */
+void
+logpb_atomic_resets_tran_complete_manager (log_tran_complete_manager_type manager_type)
+{
+  THREAD_ENTRY *thread_p;
+  log_tran_complete_manager_type old_manager_type;
+  LOG_LSA smallest_lsa;
+#if defined(SERVER_MODE)
+  const char *ha_server_state_string = css_ha_server_state_string (css_ha_server_state ());
+  bool expected = false;
+
+  /* Only one thread can change the complete manager. */
+  while (!log_Gl.reset_complete_manager_started.compare_exchange_weak (expected, true) && !expected)
+    {
+      thread_sleep (50);
+    }
+#else
+  const char *ha_server_state_string = "HA_NONE";
+#endif
+
+  /* TODO - remove old complete manager */
+  if (log_Gl.m_tran_complete_mgr != NULL)
+    {
+      old_manager_type = (log_tran_complete_manager_type) log_Gl.m_tran_complete_mgr->get_manager_type ();
+    }
+  else
+    {
+      old_manager_type = LOG_TRAN_COMPLETE_NO_MANAGER;
+    }
+
+  if (old_manager_type == manager_type)
+    {
+      /* Same manager, nothing to do. */
+      er_log_debug (ARG_FILE_LINE,
+		    "logpb_atomic_resets_tran_complete_manager ha_server_state = %s, manager type = %s\n",
+		    ha_server_state_string, logpb_complete_manager_string (manager_type));
+      log_Gl.reset_complete_manager_started = false;
+      return;
+    }
+
+  thread_p = thread_get_thread_entry_info ();
+
+  /* TODO - we can have better solution to avoid locking root. */
+  if (lock_object (thread_p, oid_Root_class_oid, &oid_Null_oid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      assert (false);
+    }
+
+  /* Close the latest group, if is the case. */
+  switch (old_manager_type)
+    {
+#if defined(SERVER_MODE)
+    case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
+      cubtx::get_single_node_gcm_instance ()->do_prepare_complete (thread_p);
+      cubtx::get_single_node_gcm_instance ()->do_complete (thread_p);
+      er_log_debug (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager single group manager removed");
+      break;
+
+    case LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE:
+  /* Wait for all transactions to finish. */
+      cubreplication::replication_node_manager::get_master_node ()->set_ctrl_channel_manager_stream_ack (NULL);
+
+      /* Close the latest group, if is the case. */
+      cubtx::get_master_gcm_instance ()->do_prepare_complete (thread_p);
+      cubtx::get_master_gcm_instance ()->do_complete (thread_p);
+      break;
+
+    case LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE:
+      /* Close the latest group, if is the case. */
+      cubtx::get_slave_gcm_instance ()->do_prepare_complete (thread_p);
+      cubtx::get_slave_gcm_instance ()->do_complete (thread_p);
+      break;
+
+    case LOG_TRAN_COMPLETE_NO_MANAGER:
+      break;
+
+    default:
+      assert (false);
+#endif
+    }
+
+#if defined(SERVER_MODE)
+  /* Wait for all transactions in last group to finish. */
+  do
+    {
+      logtb_find_smallest_lsa (thread_p, &smallest_lsa);
+      if (LSA_ISNULL (&smallest_lsa))
+	{
+	  /* All transactions completed. */
+	  break;
+	}
+
+      thread_sleep (50);
+    }
+  while (true);
+#endif
+
+  switch (manager_type)
+    {
+    case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
+      /* Single node. Need to wait for log flush. */
+      cubtx::initialize_single_node_gcm ();
+      log_set_notify (true);
+      log_Gl.m_tran_complete_mgr = cubtx::get_single_node_gcm_instance ();
+      er_print_callstack (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager single node, ha_server_state = %s, "
+			  "old_manager=%s, new_manager = %s \n", ha_server_state_string,
+			  logpb_complete_manager_string (old_manager_type),
+			  logpb_complete_manager_string (manager_type));
+      break;
+
+#if defined(SERVER_MODE)
+    case LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE:
+      /* Master with slaves. Need to wait for stream ack sent by slaves. */
+      cubtx::initialize_master_gcm ();
+      log_set_notify (false);
+      log_Gl.m_tran_complete_mgr = cubtx::get_master_gcm_instance ();
+      cubreplication::replication_node_manager::get_master_node ()->
+	set_ctrl_channel_manager_stream_ack (cubtx::get_master_gcm_instance ());
+      er_print_callstack (ARG_FILE_LINE,
+			  "logpb_atomic_resets_tran_complete_manager master node, ha_server_state = %s, "
+			  "old_manager=%s, new_manager = %s \n", ha_server_state_string,
+			  logpb_complete_manager_string (old_manager_type),
+			  logpb_complete_manager_string (manager_type));
+      break;
+
+    case LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE:
+      /* Master with slaves. Need to wait for master stream. */
+      cubtx::initialize_slave_gcm ();
+      log_set_notify (false);
+      log_Gl.m_tran_complete_mgr = cubtx::get_slave_gcm_instance ();
+      er_print_callstack (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager slave node, ha_server_state = %s, "
+			  "old_manager=%s, new_manager = %s \n", ha_server_state_string,
+			  logpb_complete_manager_string (old_manager_type),
+			  logpb_complete_manager_string (manager_type));
+      break;
+#endif
+
+    case LOG_TRAN_COMPLETE_NO_MANAGER:
+      /* No manager. */
+      log_set_notify (false);
+      log_Gl.m_tran_complete_mgr = NULL;
+      er_print_callstack (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager NULL, ha_server_state = %s\n",
+			  ha_server_state_string);
+      break;
+
+    default:
+      assert (false);
+    }
+
+
+  /* Switch to new manager, before removing the previous one. */
+  switch (old_manager_type)
+    {
+    case LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE:
+      /* Close the latest group, if is the case. */
+      cubtx::get_single_node_gcm_instance ()->do_prepare_complete (thread_p);
+      cubtx::get_single_node_gcm_instance ()->do_complete (thread_p);
+
+      /* Finalize single complete manager */
+      cubtx::finalize_single_node_gcm ();
+      er_log_debug (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager single group manager removed");
+      break;
+
+#if defined(SERVER_MODE)
+    case LOG_TRAN_COMPLETE_MANAGER_MASTER_NODE:
+      /* Close ack readers. */
+      cubreplication::replication_node_manager::get_master_node ()->set_ctrl_channel_manager_stream_ack (NULL);
+
+      /* Close the latest group, if is the case. */
+      cubtx::get_master_gcm_instance ()->do_prepare_complete (thread_p);
+      cubtx::get_master_gcm_instance ()->do_complete (thread_p);
+
+      /* Finalize master complete manager */
+      cubtx::finalize_master_gcm ();
+      er_log_debug (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager master group manager removed");
+
+      break;
+
+    case LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE:
+      /* Close the latest group, if is the case. */
+      cubtx::get_slave_gcm_instance ()->do_prepare_complete (thread_p);
+      cubtx::get_slave_gcm_instance ()->do_complete (thread_p);
+
+      /* Finalize slave complete manager */
+      cubtx::finalize_slave_gcm ();
+      er_log_debug (ARG_FILE_LINE, "logpb_atomic_resets_tran_complete_manager slave group manager removed");
+      break;
+#endif
+
+    case LOG_TRAN_COMPLETE_NO_MANAGER:
+      break;
+
+    default:
+      assert (false);
+    }
+
+  lock_unlock_object_donot_move_to_non2pl (thread_p, oid_Root_class_oid, &oid_Null_oid, S_LOCK);
+
+  log_Gl.reset_complete_manager_started = false;
+}
+
+/*
+ * logpb_finalize_tran_complete_manager - Finalize transaction complete manager
+ *
+ * return: nothing
  *
  * NOTE:
  */
 void
-logpb_initialize_tran_complete_manager (void)
+logpb_finalize_tran_complete_manager(void)
 {
-#if defined(SERVER_MODE)
-  if (!log_does_allow_replication ())
-    {
-      /* TODO - HA disabled, server mode */
-    }
-  else
-    {
-      /* TODO - slave. For now consider only master. */
-      log_Gl.m_tran_complete_mgr = cubtx::get_master_gcm_instance ();
-    }
-#else
-  /* TODO - SA mode */
-#endif
+  /* Finalize complete manager. */
+  er_log_debug(ARG_FILE_LINE, "logpb_finalize_tran_complete_manager \n");
+  logpb_atomic_resets_tran_complete_manager(LOG_TRAN_COMPLETE_NO_MANAGER);
 }
 
 /*

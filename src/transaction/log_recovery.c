@@ -1258,7 +1258,7 @@ log_rv_analysis_group_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * 
   // *INDENT-OFF*
   // get max between checkpoint's and group_complete's last_ack reads
   log_Gl.hdr.m_ack_stream_position = std::max ((cubstream::stream_position) log_Gl.hdr.m_ack_stream_position,
-					       group_complete.stream_pos);
+					   group_complete.stream_pos);
 
   for (const auto & ti : group)
     {
@@ -1820,7 +1820,7 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
   // get max between checkpoint's and group_complete's last_ack reads
   // *INDENT-OFF*
   log_Gl.hdr.m_ack_stream_position = std::max ((cubstream::stream_position) log_Gl.hdr.m_ack_stream_position,
-					       chkpt.last_ack_stream_position);
+					   chkpt.last_ack_stream_position);
   // *INDENT-ON*
 
   /* GET THE CHECKPOINT TRANSACTION INFORMATION */
@@ -2891,6 +2891,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
       if ((crt_tdes = LOG_FIND_TDES (i)) != NULL && crt_tdes->trid != NULL_TRANID)
 	{
 	  _er_log_debug (ARG_FILE_LINE, "HA recovery: found active at end of analysis: trid:%d \n", crt_tdes->trid);
+
 	  if (LSA_ISNULL (&log_Gl.m_min_active_lsa) || LSA_LT (&crt_tdes->head_lsa, &log_Gl.m_min_active_lsa))
 	    {
 	      LSA_COPY (&log_Gl.m_min_active_lsa, &crt_tdes->head_lsa);
@@ -4176,7 +4177,7 @@ log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, 
   if (LSA_ISNULL (&last_parent_lsa))
     {
       /* no run postpones before system op. stop at start postpone. */
-      assert (LSA_EQ (&iter_lsa, postpone_start_lsa));
+      assert (LSA_LE (&iter_lsa, postpone_start_lsa));
       last_parent_lsa = *postpone_start_lsa;
     }
 
@@ -4321,10 +4322,13 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   if (tdes->state == TRAN_UNACTIVE_WILL_COMMIT || tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
     {
+      /* There is a small chance to have tdes->state = TRAN_UNACTIVE_WILL_COMMIT and NULL tdes->rcv.tran_start_postpone_lsa
+       * The scenario: transaction without postpone wants to commit and waits for group complete and log flush,
+       * checkpoint executed, log flushed, system crash.
+       */
       LSA_SET_NULL (&first_postpone_to_apply);
 
       assert (tdes->is_active_worker_transaction ());
-      assert (!LSA_ISNULL (&tdes->rcv.tran_start_postpone_lsa));
 
       /*
        * The transaction was the one that was committing
@@ -4347,9 +4351,12 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
       if (tdes->coord == NULL)
 	{
-	  LOG_LSA finish_lsa;
-	  assert (!LSA_ISNULL (&tdes->posp_nxlsa));
-	  log_append_finish_postpone (thread_p, tdes, &finish_lsa);
+	  /* We may have tdes->state = TRAN_UNACTIVE_WILL_COMMIT and null tdes->posp_nxlsa. */
+	  if (!LSA_ISNULL (&tdes->posp_nxlsa))
+	    {
+	      log_append_finish_postpone (thread_p, tdes);
+	    }
+
 	  logtb_free_tran_index (thread_p, tdes->tran_index);
 	}
     }
@@ -4358,7 +4365,7 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       if (tdes->coord == NULL)
 	{
 	  // add 1-tran gc without postpone
-	  (void) log_complete (thread_p, tdes, LOG_COMMIT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
+	  (void) log_complete (thread_p, tdes, LOG_COMMIT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG, NULL);
 	  logtb_free_tran_index (thread_p, tdes->tran_index);
 	}
     }
@@ -4594,7 +4601,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	  && LSA_ISNULL (&tdes->undo_nxlsa))
 	{
 	  // todo: also take into account mccids set during redo
-	  (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
+	  (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG, NULL);
 	  logtb_free_tran_index (thread_p, tran_index);
 	}
     }
@@ -4952,7 +4959,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		    }
 		  else
 		    {
-		      (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
+		      (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG,
+					   NULL);
 		      logtb_free_tran_index (thread_p, tran_index);
 		    }
 		  tdes = NULL;
@@ -4987,7 +4995,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		    }
 		  else
 		    {
-		      (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
+		      (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG,
+					   NULL);
 		      logtb_free_tran_index (thread_p, tran_index);
 		    }
 		  tdes = NULL;
@@ -5012,7 +5021,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		      else
 			{
 			  (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID,
-					       LOG_NEED_TO_WRITE_EOT_LOG);
+					       LOG_NEED_TO_WRITE_EOT_LOG, NULL);
 			  logtb_free_tran_index (thread_p, tran_index);
 			  tdes = NULL;
 			}

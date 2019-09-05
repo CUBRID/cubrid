@@ -26,10 +26,12 @@
 #include "replication_master_node.hpp"
 #include "log_impl.h"
 #include "master_control_channel.hpp"
+#include "log_manager.h"
 #include "replication_common.hpp"
 #include "server_support.h"
 #include "stream_file.hpp"
 #include "stream_senders_manager.hpp"
+#include "stream_transfer_sender.hpp"
 #include "transaction_master_group_complete_manager.hpp"
 
 namespace cubreplication
@@ -44,9 +46,7 @@ namespace cubreplication
 
     m_senders_manager = new stream_senders_manager (*stream);
 
-    cubtx::initialize_master_gcm ();
-
-    m_control_channel_manager = new master_ctrl (cubtx::get_master_gcm_instance ());
+    m_control_channel_manager = new master_ctrl ();
 
     stream_entry fail_over_entry (m_stream, MVCCID_FIRST, stream_entry_header::NEW_MASTER);
     fail_over_entry.pack ();
@@ -120,11 +120,15 @@ namespace cubreplication
     setup_protocol (chn);
 
     cubstream::transfer_sender *sender = new cubstream::transfer_sender (std::move (chn), *m_stream);
-    sender->register_stream_ack (cubtx::get_master_gcm_instance ());
 
     m_senders_manager->add_stream_sender (sender);
 
     er_log_debug_replication (ARG_FILE_LINE, "new_slave connected");
+  }
+
+  void master_node::remove_all_senders ()
+  {
+    m_senders_manager->remove_all_senders ();
   }
 
   void master_node::wakeup_transfer_senders (cubstream::stream_position desired_position)
@@ -154,6 +158,15 @@ namespace cubreplication
     er_log_debug_replication (ARG_FILE_LINE, "control channel added");
   }
 
+  void
+  master_node::set_ctrl_channel_manager_stream_ack (cubstream::stream_ack *stream_ack)
+  {
+    if (m_control_channel_manager != NULL)
+      {
+	m_control_channel_manager->set_stream_ack (stream_ack);
+      }
+  }
+
   master_node::~master_node ()
   {
     delete m_senders_manager;
@@ -162,6 +175,7 @@ namespace cubreplication
     delete m_control_channel_manager;
     m_control_channel_manager = NULL;
 
+    logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
     cubtx::finalize_master_gcm ();
   }
 
@@ -175,4 +189,4 @@ namespace cubreplication
 			      " stream_read_pos:%llu, commit_pos:%llu", m_stream->name ().c_str (),
 			      pos, m_stream->get_curr_read_position (), m_stream->get_last_committed_pos ());
   }
-} /* namespace cubreplication */
+}

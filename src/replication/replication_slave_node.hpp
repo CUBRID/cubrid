@@ -28,6 +28,7 @@
 
 #include "replication_node.hpp"
 #include "communication_server_channel.hpp"
+#include "slave_control_channel.hpp"
 
 namespace cubstream
 {

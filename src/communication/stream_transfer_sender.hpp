@@ -74,11 +74,6 @@ namespace cubstream
 	return m_is_termination_phase.load ();
       }
 
-      void register_stream_ack (stream_ack *stream_ack)
-      {
-	m_p_stream_ack = stream_ack;
-      }
-
     private:
 
       friend class transfer_sender_task;
@@ -90,9 +85,6 @@ namespace cubstream
       char m_buffer[cubcomm::MTU];
 
       std::atomic_bool m_is_termination_phase;
-
-      /* TO DO - move p_stream_ack in new receiver threads on master node. */
-      stream_ack *m_p_stream_ack;
 
     protected:
       cubstream::stream::read_func_t m_read_action_function;

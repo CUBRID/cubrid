@@ -81,7 +81,6 @@ namespace cubreplication
 
       return header_size;
     }
-
     static const char *tran_state_string (TRAN_STATE state);
 
     bool needs_mvccid () const;

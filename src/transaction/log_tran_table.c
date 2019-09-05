@@ -3997,87 +3997,21 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logtb_complete_mvcc () - Called at commit or rollback, completes MVCC info
- *			    for current transaction.
+ * logtb_reset_mvcc_and_related_states () - Reset MVCC and related states
  *
  * return	  : Void.
  * thread_p (in)  : Thread entry.
  * tdes (in)	  : Transaction descriptor.
- * committed (in) : True if transaction was committed false if it was aborted.
+ *
+ *  Note : This function reset MVCC and clear related states - update stats and count optimization.
+ *      Clearing update stats and count optimization may be moved outside.
  */
 void
-logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
+logtb_reset_mvcc_and_related_states (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
-  MVCC_INFO *curr_mvcc_info = NULL;
   mvcctable *mvcc_table = &log_Gl.mvcc_table;
   MVCC_SNAPSHOT *p_mvcc_snapshot = NULL;
-  MVCCID mvccid;
-  int tran_index;
-  TSC_TICKS start_tick, end_tick;
-  TSCTIMEVAL tv_diff;
-  UINT64 tran_complete_time;
-  bool is_perf_tracking = false;
-
-  assert (tdes != NULL);
-
-  is_perf_tracking = perfmon_is_perf_tracking ();
-  if (is_perf_tracking)
-    {
-      tsc_getticks (&start_tick);
-    }
-
-  curr_mvcc_info = &tdes->mvccinfo;
-  mvccid = curr_mvcc_info->id;
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-  if (MVCCID_IS_VALID (mvccid))
-    {
-      mvcc_table->complete_mvcc (tran_index, mvccid, committed);
-    }
-  else
-    {
-#if defined(SA_MODE)
-      if (committed && logtb_tran_update_all_global_unique_stats (thread_p) != NO_ERROR)
-	{
-	  assert (false);
-	}
-#else	/* !SA_MODE */	       /* SERVER_MODE */
-      if (committed)
-	{
-	  /* There is one unique index that can be modified with no MVCCID being generated: db_serial primary key. This
-	   * could happen in a transaction that only does a create serial and commits. Next code makes sure serial
-	   * index statistics are reflected. */
-	  BTID serial_index_btid = BTID_INITIALIZER;
-	  LOG_TRAN_BTID_UNIQUE_STATS *serial_unique_stats = NULL;
-
-	  /* Get serial index BTID. */
-	  serial_get_index_btid (&serial_index_btid);
-	  assert (!BTID_IS_NULL (&serial_index_btid));
-
-	  /* Get statistics for serial unique index. */
-	  serial_unique_stats = logtb_tran_find_btid_stats (thread_p, &serial_index_btid, false);
-	  if (serial_unique_stats != NULL)
-	    {
-	      /* Reflect serial unique statistics. */
-	      if (logtb_update_global_unique_stats_by_delta (thread_p, &serial_index_btid,
-							     serial_unique_stats->tran_stats.num_oids,
-							     serial_unique_stats->tran_stats.num_nulls,
-							     serial_unique_stats->tran_stats.num_keys,
-							     true) != NO_ERROR)
-		{
-		  /* No errors are permitted here. */
-		  assert (false);
-
-		  /* Fall through to do everything we would do in case of no error. */
-		}
-	    }
-	}
-#endif /* SERVER_MODE */
-
-      /* atomic set transaction lowest active MVCCID */
-      log_Gl.mvcc_table.reset_transaction_lowest_active (tran_index);
-    }
+  MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
 
   curr_mvcc_info->recent_snapshot_lowest_active_mvccid = MVCCID_NULL;
 
@@ -4090,17 +4024,6 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
   curr_mvcc_info->reset ();
 
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
-
-  if (is_perf_tracking)
-    {
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      tran_complete_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-      if (tran_complete_time > 0)
-	{
-	  perfmon_add_stat (thread_p, PSTAT_LOG_TRAN_COMPLETE_TIME_COUNTERS, tran_complete_time);
-	}
-    }
 }
 
 /*
@@ -6144,17 +6067,34 @@ log_tdes::on_sysop_start ()
 }
 
 void
-log_tdes::on_sysop_end ()
+log_tdes::on_sysop_end (bool force_lsa_reset)
 {
   assert (is_allowed_sysop ());
-  if (is_system_worker_transaction() && topops.last < 0)
+  if ((is_system_worker_transaction () && topops.last < 0) || force_lsa_reset)
     {
       // make sure this system operation cannot be linked
-      assert (topops.last == -1);
+      if (force_lsa_reset)
+        {
+          /* Needs atomic reset. Be sure that no postpone, since it requires tail_topresult_lsa. */
+          assert (LSA_ISNULL (&posp_nxlsa));
+          log_Gl.prior_info.prior_lsa_mutex.lock ();
+        }
+      else
+        {
+          assert (topops.last == -1);
+        }
+
       LSA_SET_NULL (&head_lsa);
       LSA_SET_NULL (&tail_lsa);
       LSA_SET_NULL (&undo_nxlsa);
       LSA_SET_NULL (&tail_topresult_lsa);
+
+      if (force_lsa_reset)
+        {
+          /* Needs atomic reset. */
+          er_log_debug (ARG_FILE_LINE, "log_tdes::on_sysop_end resets lsa on tran_index = %d\n", tran_index);
+          log_Gl.prior_info.prior_lsa_mutex.unlock ();
+        }
     }
 }
 

@@ -184,12 +184,13 @@ namespace cubtx
 	if (!HA_DISABLED () && css_ha_server_state () == HA_SERVER_STATE_ACTIVE)
 	  {
 	    /* This is a single node that must generate stream group commits. */
-	    tdes->get_replication_generator ().pack_group_commit_entry (closed_group_stream_start_position,
-		closed_group_stream_end_position);
+	    tdes->get_replication_generator ().pack_group_commit_entry (closed_group,
+		closed_group_stream_start_position, closed_group_stream_end_position);
 	  }
 
 	log_append_group_complete (thread_p, tdes, closed_group_stream_start_position,
-				   closed_group, &closed_group_start_complete_lsa, NULL);
+				   closed_group, &closed_group_start_complete_lsa,
+				   &closed_group_end_complete_lsa, &has_postpone);
 
 	LSA_COPY (&m_latest_closed_group_start_log_lsa, &closed_group_start_complete_lsa);
 	LSA_COPY (&m_latest_closed_group_end_log_lsa, &closed_group_end_complete_lsa);

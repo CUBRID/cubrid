@@ -153,7 +153,6 @@ namespace cubstream
     , m_stream (stream)
     , m_last_sent_position (begin_sending_position)
     , m_is_termination_phase (false)
-    , m_p_stream_ack (NULL)
   {
     cubthread::delta_time daemon_period = std::chrono::milliseconds (10);
 
@@ -191,10 +190,6 @@ namespace cubstream
 
 	m_last_sent_position += byte_count;
 
-	if (m_p_stream_ack)
-	  {
-	    m_p_stream_ack->notify_stream_ack (m_last_sent_position);
-	  }
 	return NO_ERROR;
       }
 

@@ -83,7 +83,6 @@ namespace cubreplication
       stream_entry m_stream_entry;
 
       bool m_is_row_replication_disabled;
-      cubstream::stream_position m_gc_end_position;
 
       static cubstream::multi_thread_stream *s_stream;
 
@@ -98,7 +97,6 @@ namespace cubreplication
 	: m_pending_to_be_added ()
 	, m_stream_entry (stream)
 	, m_is_row_replication_disabled (true)
-	, m_gc_end_position (0)
       {
       };
 
@@ -143,7 +141,8 @@ namespace cubreplication
 
       void check_commit_end_tran (void);
 
-      static void pack_group_commit_entry (cubstream::stream_position &stream_start_pos,
+      static void pack_group_commit_entry (const tx_group &group,
+					   cubstream::stream_position &stream_start_pos,
 					   cubstream::stream_position &stream_end_pos);
 
       static cubstream::multi_thread_stream *get_global_stream (void)
@@ -181,7 +180,7 @@ namespace cubreplication
       char *get_classname (const OID &class_oid);     // todo - optimize this step
 
       // common point for transaction commit/abort; replication entries are logged
-      void on_transaction_finish (stream_entry_header::TRAN_STATE state);
+      void on_transaction_finish ();
 
       void append_repl_object (replication_object &object);
 

@@ -26,6 +26,8 @@
 #include "replication_slave_node.hpp"
 #include "communication_server_channel.hpp"
 #include "log_impl.h"
+#include "log_applier.h"
+#include "log_manager.h"
 #include "log_consumer.hpp"
 #include "log_impl.h"
 #include "multi_thread_stream.hpp"
@@ -38,6 +40,9 @@
 #include "thread_entry.hpp"
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
+
+#include "transaction_slave_group_complete_manager.hpp"
+
 
 namespace cubreplication
 {
@@ -59,6 +64,9 @@ namespace cubreplication
   slave_node::~slave_node ()
   {
     stop_and_destroy_online_repl ();
+
+    /* Switch to single complete manager to void crashes at commit. */
+    logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SINGLE_NODE);
   }
 
   int slave_node::setup_protocol (cubcomm::channel &chn)
@@ -106,6 +114,7 @@ namespace cubreplication
 		comm_error_code, "");
 	return ER_STREAM_CONNECTION_SETUP;
       }
+
     m_source_curr_pos = ntohi64 (pos);
 
     er_log_debug_replication (ARG_FILE_LINE, "slave_node::setup_protocol available min pos:%llu, curr_pos:%llu",
@@ -211,6 +220,9 @@ namespace cubreplication
 	});
       }
 
+    /* Reset complete manager before starting daemons. */
+    logpb_atomic_resets_tran_complete_manager (LOG_TRAN_COMPLETE_MANAGER_SLAVE_NODE);
+
     /* start log_consumer daemons and apply thread pool */
     m_lc->start_daemons ();
 
@@ -225,7 +237,7 @@ namespace cubreplication
       }
 
     std::string ctrl_sender_daemon_name = "slave_control_sender_" + control_chn.get_channel_id ();
-    /* Slave control sender is responsible for sending acks through slave_control_channel */
+    /* TODO[replication] : last position to be retrieved from recovery module */
     cubreplication::slave_control_sender *ctrl_sender = new slave_control_sender (std::move (
 		cubreplication::slave_control_channel (std::move (control_chn))));
 
@@ -234,7 +246,7 @@ namespace cubreplication
 
     m_ctrl_sender = ctrl_sender;
 
-    if ((REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) ==
+    if ((REPL_SEMISYNC_ACK_MODE)prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) ==
 	REPL_SEMISYNC_ACK_ON_FLUSH)
       {
 	m_stream_file->set_sync_notifier ([ctrl_sender] (const cubstream::stream_position & sp)
@@ -257,13 +269,14 @@ namespace cubreplication
     m_lc->fetch_resume ();
 
     return NO_ERROR;
+
   }
 
   void slave_node::disconnect_from_master ()
   {
     er_log_debug_replication (ARG_FILE_LINE, "slave_node::disconnect_from_master");
     stop_and_destroy_online_repl ();
-  }
+  } /* namespace cubreplication */
 
   void slave_node::destroy_transfer_receiver ()
   {
