@@ -191,6 +191,7 @@ namespace cubreplication
 	    if (se->is_tran_state_end_of_stream ())
 	      {
 		// make sure end of stream stream_entry is not read twice
+		m_lc.wait_for_tasks (); // Wait for log_appends done by appliers so as to not confuse stream positions
 		log_Gl.hdr.m_ack_stream_position = se->get_stream_entry_end_position ();
 		m_stop = true;
 		delete se;
@@ -220,7 +221,8 @@ namespace cubreplication
 		er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task wait for all working tasks to finish\n");
 		assert (se->get_stream_entry_start_position () < se->get_stream_entry_end_position ());
 
-		m_lc.wait_for_tasks ();
+		m_lc.wait_for_tasks (); // Wait for log_appends done by appliers so as to not confuse stream positions
+		log_Gl.hdr.m_ack_stream_position = se->get_stream_entry_end_position ();
 
 		// apply all sub-transaction first
 		m_lc.get_subtran_applier ().apply ();
