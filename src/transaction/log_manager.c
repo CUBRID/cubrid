@@ -195,7 +195,7 @@ std::atomic<std::int64_t> log_Clock_msec = {0};
 #endif /* SERVER_MODE */
 
 // *INDENT-OFF*
-static cubstream::stream_position group_complete_stream_position (LOG_TDES * tdes);
+static cubstream::stream_position log_get_group_complete_stream_position (LOG_TDES * tdes);
 // *INDENT-ON*
 
 static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_dbcreation);
@@ -4470,7 +4470,7 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
 }
 
 // *INDENT-OFF*
-static cubstream::stream_position group_complete_stream_position (LOG_TDES * tdes)
+static cubstream::stream_position log_get_group_complete_stream_position (LOG_TDES * tdes)
 {
   HA_SERVER_STATE state = css_ha_server_state ();
   if (state == HA_SERVER_STATE_ACTIVE || state == HA_SERVER_STATE_TO_BE_STANDBY)
@@ -4868,7 +4868,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	      tx_group group;
 	      group.add (tdes->tran_index, 0, tdes->state);
 	      // todo: fix log end stream position when slave
-	      log_append_group_complete (thread_p, tdes, group_complete_stream_position (tdes),
+	      log_append_group_complete (thread_p, tdes, log_get_group_complete_stream_position (tdes),
 					 group, &commit_lsa, NULL);
 	    }
 	  else
@@ -5407,8 +5407,8 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 		{
 		  tx_group group;
 		  group.add (tdes->tran_index, 0, TRAN_UNACTIVE_COMMITTED);
-		  log_append_group_complete (thread_p, tdes, group_complete_stream_position (tdes), group, &commit_lsa,
-					     NULL);
+		  log_append_group_complete (thread_p, tdes, log_get_group_complete_stream_position (tdes), group,
+					     &commit_lsa, NULL);
 		}
 
 	      log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT, &commit_lsa);
@@ -5419,8 +5419,8 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 
 	      tx_group group;
 	      group.add (tdes->tran_index, 0, TRAN_UNACTIVE_ABORTED);
-	      log_append_group_complete (thread_p, tdes, group_complete_stream_position (tdes), group, &abort_lsa,
-					 NULL);
+	      log_append_group_complete (thread_p, tdes, log_get_group_complete_stream_position (tdes), group,
+					 &abort_lsa, NULL);
 
 	      log_change_tran_as_completed (thread_p, tdes, LOG_ABORT, &abort_lsa);
 	    }
@@ -7922,7 +7922,7 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tx_group group;
   group.add (tdes->tran_index, 0, TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
 
-  log_append_group_complete (thread_p, tdes, group_complete_stream_position (tdes), group, &commit_lsa, NULL);
+  log_append_group_complete (thread_p, tdes, log_get_group_complete_stream_position (tdes), group, &commit_lsa, NULL);
 
   logpb_flush_pages (thread_p, &commit_lsa);
 
