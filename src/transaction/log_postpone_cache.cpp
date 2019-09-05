@@ -31,6 +31,7 @@ void
 log_postpone_cache::reset ()
 {
   m_cursor = 0;
+  m_is_redo_data_buf_full = false;
 }
 
 /**
@@ -52,20 +53,41 @@ log_postpone_cache::add_redo_data (const log_prior_node &node)
       return;
     }
 
+  // Check if recovery data fits in preallocated buffer
+  std::size_t redo_data_size = sizeof (log_rec_redo) + node.rlength + (2 * MAX_ALIGNMENT);
+  std::size_t total_size = redo_data_size + m_redo_data_buf.get_size ();
+  if (total_size > REDO_DATA_MAX_SIZE)
+    {
+      // Cannot store all recovery data
+      m_is_redo_data_buf_full = true;
+      return;
+    }
+  else
+    {
+      m_redo_data_buf.extend_to (total_size);
+    }
+
   // Cache a new postpone log record entry
-  cache_entry *new_entry = &m_cache_entries[m_cursor];
-  new_entry->m_lsa.set_null ();
+  cache_entry &new_entry = m_cache_entries[m_cursor];
+  new_entry.m_offset = m_redo_data_offset;
+  new_entry.m_lsa.set_null ();
 
   // Cache log_rec_redo from data_header
-  memcpy (new_entry->m_data_header, node.data_header, sizeof (log_rec_redo));
+  char *redo_data_ptr = m_redo_data_buf.get_ptr () + m_redo_data_offset;
+  memcpy (redo_data_ptr, node.data_header, sizeof (log_rec_redo));
+  redo_data_ptr += sizeof (log_rec_redo);
+  redo_data_ptr = PTR_ALIGN (redo_data_ptr, MAX_ALIGNMENT);
 
   // Cache recovery data
   assert (((log_rec_redo *) node.data_header)->length == node.rlength);
   if (node.rlength > 0)
     {
-      new_entry->m_redo_data.extend_to (node.rlength);
-      memcpy (new_entry->m_redo_data.get_ptr (), node.rdata, node.rlength);
+      memcpy (redo_data_ptr, node.rdata, node.rlength);
+      redo_data_ptr += node.rlength;
+      redo_data_ptr = PTR_ALIGN (redo_data_ptr, MAX_ALIGNMENT);
     }
+
+  m_redo_data_offset = redo_data_ptr - m_redo_data_buf.get_ptr ();
 }
 
 /**
@@ -89,8 +111,7 @@ log_postpone_cache::add_lsa (const log_lsa &lsa)
 
   assert (m_cursor < MAX_CACHE_ENTRIES);
 
-  cache_entry *new_entry = &m_cache_entries[m_cursor];
-  new_entry->m_lsa = lsa;
+  m_cache_entries[m_cursor].m_lsa = lsa;
 
   /* Now that all needed data is saved, increment cached entries counter. */
   m_cursor++;
@@ -136,17 +157,22 @@ log_postpone_cache::do_postpone (cubthread::entry &thread_ref, const log_lsa &st
   // Run all postpones after start_index
   for (std::size_t i = start_index; i < m_cursor; ++i)
     {
-      cache_entry *entry = &m_cache_entries[i];
+      cache_entry &entry = m_cache_entries[i];
 
       // Get redo data header
-      log_rec_redo *redo = (log_rec_redo *) entry->m_data_header;
+      char *redo_data = m_redo_data_buf.get_ptr () + entry.m_offset;
+      log_rec_redo *redo = (log_rec_redo *) redo_data;
 
       // Get recovery data
-      (void) log_execute_run_postpone (&thread_ref, &entry->m_lsa, redo, entry->m_redo_data.get_ptr ());
+      char *rcv_data = redo_data + sizeof (log_rec_redo);
+      rcv_data = PTR_ALIGN (rcv_data, MAX_ALIGNMENT);
+      (void) log_execute_run_postpone (&thread_ref, &entry.m_lsa, redo, rcv_data);
     }
 
   // Finished running postpones, update the number of entries which should be run on next commit
   m_cursor = start_index;
+  m_is_redo_data_buf_full = false;
+  m_redo_data_offset = m_cache_entries[start_index].m_offset;
 
   return true;
 }
@@ -154,5 +180,5 @@ log_postpone_cache::do_postpone (cubthread::entry &thread_ref, const log_lsa &st
 bool
 log_postpone_cache::is_full () const
 {
-  return m_cursor == MAX_CACHE_ENTRIES;
+  return m_cursor == MAX_CACHE_ENTRIES || m_is_redo_data_buf_full;
 }

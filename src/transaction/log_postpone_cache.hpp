@@ -48,7 +48,10 @@ class log_postpone_cache
 {
   public:
     log_postpone_cache ()
-      : m_cursor (0)
+      : m_redo_data_buf ()
+      , m_redo_data_offset (0)
+      , m_is_redo_data_buf_full (false)
+      , m_cursor (0)
       , m_cache_entries ()
     {
     }
@@ -69,22 +72,26 @@ class log_postpone_cache
 
   private:
     static const std::size_t MAX_CACHE_ENTRIES = 512;
+    // on average redo data size for an entry is 48 bytes
+    static const std::size_t REDO_DATA_MAX_SIZE = 48 * MAX_CACHE_ENTRIES;
 
     class cache_entry
     {
       public:
 	cache_entry ()
 	  : m_lsa ()
-	  , m_data_header {}
-	  , m_redo_data ()
+	  , m_offset (0)
 	{
 	  m_lsa.set_null ();
 	}
 
 	log_lsa m_lsa;
-	char m_data_header[sizeof (log_rec_redo)];
-	cubmem::extensible_block m_redo_data;
+	std::size_t m_offset;
     };
+
+    cubmem::extensible_block m_redo_data_buf;
+    std::size_t m_redo_data_offset;
+    bool m_is_redo_data_buf_full;
 
     std::size_t m_cursor;
     std::array<cache_entry, MAX_CACHE_ENTRIES> m_cache_entries;
