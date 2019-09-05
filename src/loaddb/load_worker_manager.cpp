@@ -179,4 +179,11 @@ namespace cubload
   {
     g_wp_task_capper->end_task ();
   }
-}
+
+  void
+  worker_manager_get_stats (UINT64 *stats_out)
+  {
+    g_wp_mutex.lock ();
+    g_worker_pool->get_stats (stats_out);
+  }
+} // namespace cubload
