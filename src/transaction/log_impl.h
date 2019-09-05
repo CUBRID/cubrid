@@ -551,7 +551,6 @@ struct log_tdes
 
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
-  cubreplication::log_generator replication_log_generator;
 
   bool is_active_worker_transaction () const;
   bool is_system_transaction () const;
