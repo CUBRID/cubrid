@@ -183,11 +183,10 @@ namespace cubload
   void
   worker_manager_get_stats (UINT64 *stats_out)
   {
+    std::unique_lock<std::mutex> ulock (g_wp_mutex);
     if (g_worker_pool != NULL)
       {
-	g_wp_mutex.lock ();
 	g_worker_pool->get_stats (stats_out);
-	g_wp_mutex.unlock ();
       }
   }
 } // namespace cubload
