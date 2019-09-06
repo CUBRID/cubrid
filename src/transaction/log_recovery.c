@@ -2443,6 +2443,11 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		    }
 		}
 	      assert (!prev_lsa.is_null ());
+	      if (logpb_fetch_page (thread_p, &prev_lsa, LOG_CS_FORCE_USE, log_page_p) != NO_ERROR)
+		{
+		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "reset log is impossible");
+		  return;
+		}
 	      log_recovery_resetlog (thread_p, &prev_lsa, false, &prev_prev_lsa);
 	      *did_incom_recovery = true;
 
