@@ -63,6 +63,8 @@ namespace cubstream
 
       stream_entry_consumer (const char *name, multi_thread_stream *stream, size_t applier_threads);
 
+      virtual ~stream_entry_consumer () = 0;
+
       cubstream::multi_thread_stream *get_stream (void)
       {
 	return m_stream;

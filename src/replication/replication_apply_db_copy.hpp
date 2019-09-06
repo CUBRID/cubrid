@@ -83,7 +83,7 @@ namespace cubreplication
       {
       };
 
-      ~copy_db_consumer ();
+      ~copy_db_consumer () override;
 
       void start_dispatcher (void) override;
       void stop_dispatcher (void) override;

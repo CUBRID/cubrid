@@ -109,7 +109,7 @@ namespace cubreplication
 	fetch_suspend ();
       };
 
-      ~log_consumer ();
+      ~log_consumer () override;
 
       void start_dispatcher (void);
       void stop_dispatcher ();

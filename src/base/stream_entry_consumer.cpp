@@ -35,6 +35,10 @@ namespace cubstream
   {
   }
 
+  stream_entry_consumer::~stream_entry_consumer ()
+  {
+  }
+
   void stream_entry_consumer::start (void)
   {
     std::string pool_name = m_name + std::string ("_worker_thread_pool");
