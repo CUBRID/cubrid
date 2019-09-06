@@ -24,7 +24,6 @@
 #include "load_server_loader.hpp"
 
 #include "btree.h"
-#include "dbtype.h"
 #include "load_class_registry.hpp"
 #include "load_db_value_converter.hpp"
 #include "load_driver.hpp"
