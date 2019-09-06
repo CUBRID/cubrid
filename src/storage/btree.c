@@ -9064,7 +9064,7 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR l
   BTREE_NODE_HEADER *header = NULL;	/* Node header. */
   LOG_LSA prev_lsa;
   char leaf_record_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
-  RECDES leaf_record;
+  RECDES leaf_record = RECDES_INITIALIZER;
 
   assert (delete_helper->is_system_op_started == false);
   assert (delete_helper->purpose != BTREE_OP_INSERT_MVCC_DELID
@@ -9098,14 +9098,17 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR l
       goto exit_on_error;
     }
 
-  /* Before deleting the slot, we will need the record data for undo logging. */
-  leaf_record.area_size = DB_PAGESIZE;
-  leaf_record.data = PTR_ALIGN (leaf_record_buffer, BTREE_MAX_ALIGN);
-  if (spage_get_record (thread_p, leaf_pg, search_key->slotid, &leaf_record, COPY) != S_SUCCESS)
+  if (delete_helper->is_system_op_started)
     {
-      assert_release (false);
-      ret = ER_FAILED;
-      goto exit_on_error;
+      /* Before deleting the slot, we will need the record data for undo logging. */
+      leaf_record.area_size = DB_PAGESIZE;
+      leaf_record.data = PTR_ALIGN (leaf_record_buffer, BTREE_MAX_ALIGN);
+      if (spage_get_record (thread_p, leaf_pg, search_key->slotid, &leaf_record, COPY) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  ret = ER_FAILED;
+	  goto exit_on_error;
+	}
     }
 
   /* now delete the btree slot */
