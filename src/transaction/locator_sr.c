@@ -4870,6 +4870,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   HEAP_SCANCACHE *local_scan_cache = NULL;
   FUNC_PRED_UNPACK_INFO *local_func_preds = NULL;
   HEAP_OPERATION_CONTEXT context;
+  bool dont_check_fk = has_BU_lock;	// Temporary hack to skip fk check during bulk loading.
 
   assert (class_oid != NULL);
   assert (!OID_ISNULL (class_oid));
@@ -5107,7 +5108,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	}
 
       /* check the foreign key constraints */
-      if (has_index && !locator_Dont_check_foreign_key)
+      if (has_index && (!locator_Dont_check_foreign_key && !dont_check_fk))
 	{
 	  error_code =
 	    locator_check_foreign_key (thread_p, &real_hfid, &real_class_oid, oid, recdes, &new_recdes, &is_cached,
