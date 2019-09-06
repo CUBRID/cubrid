@@ -413,7 +413,7 @@ namespace cubload
 
     int error_code = locator_multi_insert_force (m_thread_ref, &m_scancache.node.hfid, &m_scancache.node.class_oid,
 		     m_recdes_collected, true, op_type, &m_scancache, &force_count, pruning_type, NULL, NULL,
-		     UPDATE_INPLACE_NONE);
+		     UPDATE_INPLACE_NONE, true);
     if (error_code != NO_ERROR)
       {
 	ASSERT_ERROR ();
