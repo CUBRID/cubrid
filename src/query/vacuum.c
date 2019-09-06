@@ -710,8 +710,13 @@ static void vacuum_data_unload_first_and_last_page (THREAD_ENTRY * thread_p);
 
 static void vacuum_data_empty_update_last_blockid (THREAD_ENTRY * thread_p);
 
-static void vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry,
-			      bool is_partial_block = false);
+#if defined (SERVER_MODE)
+static void vacuum_push_task (const VACUUM_DATA_ENTRY & data_entry);
+#endif // SERVER_MODE
+#if defined (SA_MODE)
+static void vacuum_sa_run_job (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY & data_entry, bool is_partial,
+			       PERF_UTIME_TRACKER & perf_tracker);
+#endif // SA_MODE
 static bool vacuum_check_finished_queue (void);
 static bool vacuum_check_data_buffer (void);
 
@@ -803,12 +808,16 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
       delete m_pool;
     }
 
+    VACUUM_WORKER *claim_worker ()
+    {
+      return m_pool->claim ();
+    }
+    void retire_worker (VACUUM_WORKER & worker)
+    {
+      return m_pool->retire (worker);
+    }
+
   private:
-#if defined (SA_MODE)
-    // find a proper way to do this; SA_MODE claim vacuum worker
-    friend void vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry,
-                                  bool is_partial_block);
-#endif // SA_MODE
 
     void on_create (cubthread::entry & context) final
     {
@@ -862,26 +871,22 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
 class vacuum_worker_task : public cubthread::entry_task
 {
   public:
-    vacuum_worker_task (const VACUUM_DATA_ENTRY & entry_ref, bool is_partial_block)
+    vacuum_worker_task (const VACUUM_DATA_ENTRY & entry_ref)
       : m_data (entry_ref)
-      , m_partial_block (is_partial_block)
     {
     }
 
     void execute (cubthread::entry & thread_ref) final
     {
-#if defined (SERVER_MODE)
       // safe-guard - check interrupt is always false
       assert (!thread_ref.check_interrupt);
-#endif // SERVER_MODE
-      vacuum_process_log_block (&thread_ref, &m_data, m_partial_block);
+      vacuum_process_log_block (&thread_ref, &m_data, false);
     }
 
   private:
     vacuum_worker_task ();
 
     VACUUM_DATA_ENTRY m_data;
-    bool m_partial_block;
 };
 
 // vacuum master globals
@@ -893,6 +898,28 @@ static cubthread::entry_workpool *vacuum_Worker_threads = NULL;              // 
 static vacuum_worker_context_manager *vacuum_Worker_context_manager = NULL;  // context manager
 
 /* *INDENT-ON* */
+
+#if defined (SA_MODE)
+static void
+vacuum_sa_run_job (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY & data_entry, bool is_partial,
+		   PERF_UTIME_TRACKER & perf_tracker)
+{
+  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_VAC_MASTER);
+
+  VACUUM_WORKER *worker_p = vacuum_Worker_context_manager->claim_worker ();
+  thread_type save_type = thread_type::TT_NONE;
+  vacuum_convert_thread_to_worker (thread_p, worker_p, save_type);
+  assert (save_type == thread_type::TT_VACUUM_MASTER);
+
+  vacuum_process_log_block (thread_p, &data_entry, is_partial);
+
+  vacuum_convert_thread_to_master (thread_p, save_type);
+  assert (save_type == thread_type::TT_VACUUM_WORKER);
+  vacuum_Worker_context_manager->retire_worker (*worker_p);
+
+  PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
+}
+#endif // SA_MODE
 
 /*
  * xvacuum () - Vacuumes database
@@ -924,8 +951,6 @@ xvacuum (THREAD_ENTRY * thread_p)
   VACUUM_DATA_ENTRY *entry = NULL;
   PERF_UTIME_TRACKER perf_tracker;
 
-  VACUUM_DATA_ENTRY vacuum_data_entry;
-  bool save_check_interrupt;
   bool dummy_continue_check_interrupt;
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
@@ -1002,10 +1027,7 @@ restart:
 	}
 
       // job will be executed immediately
-      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_VAC_MASTER);
-      vacuum_push_task (thread_p, *entry);
-      PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
-
+      vacuum_sa_run_job (thread_p, *entry, false, perf_tracker);
       cursor.increment_blockid ();	// advance to next
 
       // need to check for interrupts
@@ -1050,28 +1072,24 @@ restart:
     {
       /* Execute vacuum based on the block not generated yet. */
       /* We don't want to interrupt next operation. */
-      save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
+      VACUUM_DATA_ENTRY data_entry;
+      bool save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
 
       /* Create vacuum data entry for the job. */
-      vacuum_data_entry.blockid = vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid);
-      LSA_COPY (&vacuum_data_entry.start_lsa, &log_Gl.hdr.mvcc_op_log_lsa);
-      vacuum_data_entry.oldest_mvccid = log_Gl.hdr.last_block_oldest_mvccid;
-      vacuum_data_entry.newest_mvccid = log_Gl.hdr.last_block_newest_mvccid;
-      VACUUM_BLOCK_STATUS_SET_IN_PROGRESS (vacuum_data_entry.blockid);
+      data_entry.blockid = vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid);
+      LSA_COPY (&data_entry.start_lsa, &log_Gl.hdr.mvcc_op_log_lsa);
+      data_entry.oldest_mvccid = log_Gl.hdr.last_block_oldest_mvccid;
+      data_entry.newest_mvccid = log_Gl.hdr.last_block_newest_mvccid;
+      VACUUM_BLOCK_STATUS_SET_IN_PROGRESS (data_entry.blockid);
 
       /* Update vacuum_Data as if it would contain only this entry. Do not update last_blockid since it may be
        * generated again. */
-      vacuum_Data.oldest_unvacuumed_mvccid = vacuum_data_entry.oldest_mvccid;
+      vacuum_Data.oldest_unvacuumed_mvccid = data_entry.oldest_mvccid;
 
       /* We do not log here. We could have a problem if the server crashes, because same vacuum tasks may be
        * re-executed. The worst that can happen is to hit an assert in debug mode. Instead of doing a voodoo fix here,
        * it is better to live with the bug. */
-
-      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_VAC_MASTER);
-
-      vacuum_push_task (thread_p, vacuum_data_entry, true);
-
-      PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
+      vacuum_sa_run_job (thread_p, data_entry, false, perf_tracker);
       (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
     }
 
@@ -2863,29 +2881,18 @@ vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, MVC
   perfmon_add_stat (thread_p, PSTAT_VAC_NUM_TO_VACUUM_LOG_PAGES, vacuum_Data.log_block_npages);
 }
 
+#if defined (SERVER_MODE)
 static void
-vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry, bool is_partial_block)
+vacuum_push_task (const VACUUM_DATA_ENTRY & data_entry)
 {
-#if defined (SA_MODE)
-  // we need a smarter thread manager that can do this automatically
-  VACUUM_WORKER *worker_p = vacuum_Worker_context_manager->m_pool->claim ();
-  thread_type save_type = thread_type::TT_NONE;
-  vacuum_convert_thread_to_worker (thread_p, worker_p, save_type);
-  assert (save_type == thread_type::TT_VACUUM_MASTER);
-#endif // SA_MODE
-  (void) thread_p;		// not used
   if (vacuum_Data.shutdown_requested)
     {
       // stop pushing tasks; worker pool may be stopped already
       return;
     }
-  cubthread::get_manager ()->push_task (vacuum_Worker_threads, new vacuum_worker_task (data_entry, is_partial_block));
-#if defined (SA_MODE)
-  vacuum_convert_thread_to_master (thread_p, save_type);
-  assert (save_type == thread_type::TT_VACUUM_WORKER);
-  vacuum_Worker_context_manager->m_pool->retire (*worker_p);
-#endif // SA_MODE
+  cubthread::get_manager ()->push_task (vacuum_Worker_threads, new vacuum_worker_task (data_entry));
 }
+#endif // SERVER_MODE
 
 static bool
 vacuum_check_finished_queue (void)
@@ -3077,7 +3084,7 @@ restart:
 	  vacuum_set_dirty_data_page_dont_free (thread_p, m_cursor.get_page ());
 	}
 
-      vacuum_push_task (thread_p, *entry);
+      vacuum_push_task (*entry);
       m_cursor.increment_blockid ();
 
       if (vacuum_check_data_buffer () || vacuum_check_finished_queue ())
