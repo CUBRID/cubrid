@@ -23209,6 +23209,7 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
   HEAP_HFID_TABLE_ENTRY *entry = NULL;
   HFID hfid_local = HFID_INITIALIZER;
   char *classname_local;
+  int inserted = 0;
 
   assert (hfid != NULL && !HFID_IS_NULL (hfid));
   assert (ftype == FILE_HEAP || ftype == FILE_HEAP_REUSE_SLOTS);
@@ -23220,13 +23221,14 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
     }
 
   error_code =
-    lf_hash_find_or_insert (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry, NULL);
+    lf_hash_find_or_insert (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry, &inserted);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
   assert (entry != NULL);
   assert (entry->hfid.hpgid == NULL_PAGEID);
+  assert ((inserted == 1) || entry->classname != NULL);
 
   HFID_COPY (&entry->hfid, hfid);
   if (classname_in != NULL)
@@ -23283,17 +23285,20 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_HFID_TABLE);
   HEAP_HFID_TABLE_ENTRY *entry = NULL;
   char *classname_local = NULL;
+  int inserted = 0;
 
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
 
   error_code =
-    lf_hash_find_or_insert (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry, NULL);
+    lf_hash_find_or_insert (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry, &inserted);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       return error_code;
     }
   assert (entry != NULL);
+
+  assert ((inserted == 1) || entry->classname != NULL);
 
 
   if (entry->hfid.hpgid == NULL_PAGEID || entry->hfid.vfid.fileid == NULL_FILEID
