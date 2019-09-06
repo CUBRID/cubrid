@@ -370,6 +370,8 @@ struct vacuum_data
   // same as last blockid
   void set_last_blockid (VACUUM_LOG_BLOCKID blockid);	// set new value for last blockid of vacuum data
 
+  void update ();
+
 private:
     VACUUM_LOG_BLOCKID m_last_blockid;	/* Block id for last vacuum data entry... This entry is actually the id of last
 					 * added block which may not even be in vacuum data (being already vacuumed).
@@ -953,11 +955,6 @@ xvacuum (THREAD_ENTRY * thread_p)
 
   bool dummy_continue_check_interrupt;
 
-  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
-    {
-      return NO_ERROR;
-    }
-
   int error_code = NO_ERROR;
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_STAND_ALONE_VACUUM_START, 0);
@@ -982,14 +979,7 @@ restart:
 
   assert (!cursor.is_loaded ());
 
-  /* Remove vacuumed entries */
-  vacuum_data_mark_finished (thread_p);
-
-  /* Append newly logged blocks at the end of the vacuum data table */
-  (void) vacuum_consume_buffer_log_blocks (thread_p);
-
-  /* Update oldest MVCCID. */
-  vacuum_update_oldest_unvacuumed_mvccid (thread_p);
+  vacuum_Data.update ();
 
   /* Search for blocks ready to be vacuumed and generate jobs. */
   cursor.readjust_to_vacuum_data_changes ();
@@ -3003,18 +2993,13 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
 
   /* Server-mode will restart if block data buffer or finished job queue are getting filled. */
 restart:
+  assert (!m_cursor.is_loaded ());
 
-  /* Remove vacuumed entries */
-  vacuum_data_mark_finished (thread_p);
+  vacuum_Data.update ();
 
-  /* Append newly logged blocks at the end of the vacuum data table */
-  (void) vacuum_consume_buffer_log_blocks (thread_p);
 
   pgbuf_flush_if_requested (thread_p, (PAGE_PTR) vacuum_Data.first_page);
   pgbuf_flush_if_requested (thread_p, (PAGE_PTR) vacuum_Data.last_page);
-
-  /* Update oldest MVCCID. */
-  vacuum_update_oldest_unvacuumed_mvccid (thread_p);
 
   if (vacuum_Data.shutdown_requested)
     {
@@ -7989,6 +7974,21 @@ vacuum_data::set_last_blockid (VACUUM_LOG_BLOCKID blockid)
 #endif // NDEBUG
 
   m_last_blockid = blockid;
+}
+
+void
+vacuum_data::update ()
+{
+  cubthread::entry *thread_p = &cubthread::get_entry ();
+
+  // first remove vacuumed blocks
+  vacuum_data_mark_finished (thread_p);
+
+  // then consume new generated blocks
+  vacuum_consume_buffer_log_blocks (thread_p);
+
+  // update oldest MVCCID
+  vacuum_update_oldest_unvacuumed_mvccid (thread_p);
 }
 
 //
