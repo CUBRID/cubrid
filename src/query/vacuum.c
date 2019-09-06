@@ -294,6 +294,8 @@ class vacuum_job_cursor
     INT16 get_index () const;
 
     vacuum_data_entry &get_current_entry () const;    // get current entry; cursor must be valid
+    void start_job_on_current_entry (cubthread::entry * thread_p);
+
     void unload ();                                   // unload page/index
     void load ();                                     // load page/index
 
@@ -1012,19 +1014,7 @@ restart:
 	  cursor.increment_blockid ();
 	  continue;
 	}
-
-      entry->set_job_in_progress ();
-      vacuum_set_dirty_data_page_dont_free (thread_p, cursor.get_page ());
-      if (!entry->was_interrupted ())
-	{
-	  /* Log that a new job is starting. After recovery, the system will then know this job was partially executed.
-	   * Logging the start of a job already interrupted is not necessary. We do it here rather than when vacuum job
-	   * is really started to avoid locking vacuum data again (logging vacuum data cannot be done without locking).
-	   */
-	  log_append_redo_data2 (thread_p, RVVAC_START_JOB, NULL, (PAGE_PTR) cursor.get_page (), cursor.get_index (), 0,
-				 NULL);
-	  vacuum_set_dirty_data_page_dont_free (thread_p, cursor.get_page ());
-	}
+      cursor.start_job_on_current_entry (thread_p);
 
       // job will be executed immediately
       vacuum_sa_run_job (thread_p, *entry, false, perf_tracker);
@@ -3064,18 +3054,7 @@ restart:
 	  continue;
 	}
 
-      entry->set_job_in_progress ();
-      vacuum_set_dirty_data_page_dont_free (thread_p, m_cursor.get_page ());
-      if (!entry->was_interrupted ())
-	{
-	  /* Log that a new job is starting. After recovery, the system will then know this job was partially executed.
-	   * Logging the start of a job already interrupted is not necessary. We do it here rather than when vacuum job
-	   * is really started to avoid locking vacuum data again (logging vacuum data cannot be done without locking).
-	   */
-	  log_append_redo_data2 (thread_p, RVVAC_START_JOB, NULL, (PAGE_PTR) m_cursor.get_page (),
-                                 (PGLENGTH) m_cursor.get_index (), 0, NULL);
-	  vacuum_set_dirty_data_page_dont_free (thread_p, m_cursor.get_page ());
-	}
+      m_cursor.start_job_on_current_entry (thread_p);
 
       vacuum_push_task (*entry);
       m_cursor.increment_blockid ();
@@ -8142,6 +8121,22 @@ vacuum_job_cursor::get_current_entry () const
   assert (is_valid ());
 
   return m_page->data[m_index];
+}
+
+void
+vacuum_job_cursor::start_job_on_current_entry (cubthread::entry * thread_p)
+{
+  get_current_entry ().set_job_in_progress ();
+  if (!get_current_entry ().was_interrupted ())
+    {
+      /* Log that a new job is starting. After recovery, the system will then know this job was partially executed.
+       * Logging the start of a job already interrupted is not necessary. We do it here rather than when vacuum job
+       * is really started to avoid locking vacuum data again (logging vacuum data cannot be done without locking).
+       */
+      LOG_DATA_ADDR addr { NULL, (PAGE_PTR) m_page, (PGLENGTH) m_index };
+      log_append_redo_data (thread_p, RVVAC_START_JOB, &addr, 0, NULL);
+    }
+  vacuum_set_dirty_data_page_dont_free (thread_p, m_page);
 }
 
 void
