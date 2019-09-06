@@ -97,7 +97,7 @@ namespace cubreplication
       std::function<void (cubstream::stream_position)> ack_produce;
 
       log_consumer (const char *name, cubstream::multi_thread_stream *stream, size_t applier_threads)
-        : cubstream::stream_entry_consumer (name, stream, applier_threads)
+	: cubstream::stream_entry_consumer (name, stream, applier_threads)
 	, m_dispatch_daemon (NULL)
 	, m_subtran_applier (*this)
 	, m_dispatch_finished (false)
@@ -109,7 +109,7 @@ namespace cubreplication
 	fetch_suspend ();
       };
 
-      ~log_consumer ();
+      ~log_consumer () override;
 
       void start_dispatcher (void);
       void stop_dispatcher ();

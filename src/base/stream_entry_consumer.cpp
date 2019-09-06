@@ -32,8 +32,12 @@ namespace cubstream
     , m_stream (stream)
     , m_applier_worker_threads_count (applier_threads)
     , m_started_tasks (0)
-    {
-    }
+  {
+  }
+
+  stream_entry_consumer::~stream_entry_consumer ()
+  {
+  }
 
   void stream_entry_consumer::start (void)
   {
