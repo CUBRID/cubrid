@@ -2407,7 +2407,7 @@ vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER 
   assert (!OID_ISNULL (&class_oid));
 
   /* Get HFID for class OID. */
-  error_code = heap_get_hfid_and_file_type_from_class_oid (thread_p, &class_oid, &helper->hfid, &ftype, NULL);
+  error_code = heap_get_class_info (thread_p, &class_oid, &helper->hfid, &ftype, NULL);
   if (error_code == ER_HEAP_UNKNOWN_OBJECT)
     {
       FILE_DESCRIPTORS file_descriptor;
