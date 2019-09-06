@@ -1014,6 +1014,7 @@ restart:
 	  cursor.increment_blockid ();
 	  continue;
 	}
+
       cursor.start_job_on_current_entry (thread_p);
 
       // job will be executed immediately
