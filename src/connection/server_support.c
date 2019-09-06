@@ -27,15 +27,11 @@
 
 #include "config.h"
 #include "log_append.hpp"
-#include "multi_thread_stream.hpp"
 #include "session.h"
 #include "thread_entry_task.hpp"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
-#include "stream_transfer_receiver.hpp"
-#include "replication_master_senders_manager.hpp"
-#include "communication_server_channel.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -234,7 +230,6 @@ static int css_process_new_connection_request (void);
 
 static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
-static void css_process_new_slave (SOCKET master_fd);
 
 static void css_push_server_task (CSS_CONN_ENTRY & conn_ref);
 static void css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool &, THREAD_ENTRY & stopper_thread_ref);
@@ -570,12 +565,6 @@ css_process_master_request (SOCKET master_fd)
     case SERVER_GET_EOF:
       css_process_get_eof_request (master_fd);
       break;
-    case SERVER_RECEIVE_MASTER_HOSTNAME:
-      css_process_master_hostname ();
-      break;
-    case SERVER_CONNECT_NEW_SLAVE:
-      css_process_new_slave (master_fd);
-      break;
 #endif
     default:
       /* master do not respond */
@@ -804,57 +793,6 @@ css_process_get_eof_request (SOCKET master_fd)
   css_send_heartbeat_data (css_Master_conn, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 #endif
 }
-
-// *INDENT-OFF*
-int
-css_process_master_hostname ()
-{
-  int hostname_length, error;
-  cubcomm::server_channel chn (css_Master_server_name);
-
-  error = css_receive_heartbeat_data (css_Master_conn, (char *) &hostname_length, sizeof (int));
-  if (error != NO_ERRORS)
-    {
-      return error;
-    }
-
-  if (hostname_length == 0)
-    {
-      return NO_ERRORS;
-    }
-  else if (hostname_length < 0)
-    {
-      return ER_FAILED;
-    }
-
-  error = css_receive_heartbeat_data (css_Master_conn, ha_Server_master_hostname, hostname_length);
-  if (error != NO_ERRORS)
-    {
-      return error;
-    }
-  ha_Server_master_hostname[hostname_length] = '\0';
-
-  assert (hostname_length > 0 && ha_Server_state == HA_SERVER_STATE_STANDBY);
-
-#if 0
-  /* TODO[arnia] deactivate for now this new replication
-   * code and reactivate it later, when merging with razvan
-   */
-  //create slave replication channel and connect to hostname
-  error = chn.connect (ha_Server_master_hostname, css_Master_port_id);
-  if (error != NO_ERRORS)
-    {
-      assert (false);
-      return error;
-    }
-#endif
-
-  er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n",
-		ha_Server_master_hostname);
-
-  return NO_ERRORS;
-}
-// *INDENT-ON*
 
 /*
  * css_close_connection_to_master() -
@@ -2666,40 +2604,6 @@ xacl_reload (THREAD_ENTRY * thread_p)
   return css_set_accessible_ip_info ();
 }
 #endif
-
-static void
-css_process_new_slave (SOCKET master_fd)
-{
-
-  SOCKET new_fd;
-  unsigned short rid;
-  cubcomm::channel chn;
-
-  /* receive new socket descriptor from the master */
-  new_fd = css_open_new_socket_from_master (master_fd, &rid);
-  if (IS_INVALID_SOCKET (new_fd))
-    {
-      assert (false);
-      return;
-    }
-  er_log_debug (ARG_FILE_LINE, "css_process_new_slave:" "received new slave fd from master fd=%d, current_state=%d\n",
-		new_fd, ha_Server_state);
-
-  assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
-
-#if 0
-  /* TODO[arnia] deactivate for now this new replication
-   * code and reactivate it later, when merging with razvan
-   */
-  css_error_code rc = chn.accept (new_fd);
-  assert (rc == NO_ERRORS);
-
-  // *INDENT-OFF*
-  cubreplication::master_senders_manager::add_stream_sender
-    (new cubstream::transfer_sender (std::move (chn), cubreplication::master_senders_manager::get_stream ()));
-  // *INDENT-ON*
-#endif
-}
 
 const char *
 get_master_hostname ()
