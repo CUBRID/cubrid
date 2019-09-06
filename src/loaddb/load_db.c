@@ -51,7 +51,8 @@ int interrupt_query = false;
 bool load_interrupted = false;
 
 static int ldr_validate_object_file (const char *argv0, load_args * args);
-static int ldr_check_file_name_and_line_no (std::string & file_name);
+static int ldr_get_start_line_no (std::string & file_name);
+static FILE *ldr_check_file (std::string & file_name, int &error_code);
 static int loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode);
 static void ldr_exec_query_interrupt_handler (void);
 static int ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start_line, load_args * args);
@@ -162,21 +163,40 @@ ldr_validate_object_file (const char *argv0, load_args * args)
   return NO_ERROR;
 }
 
+static FILE *
+ldr_check_file (std::string & file_name, int &error_code)
+{
+  FILE *file_p = NULL;
+  error_code = NO_ERROR;
+
+  if (!file_name.empty ())
+    {
+      file_p = fopen (file_name.c_str (), "r");
+      if (file_p == NULL)
+	{
+	  const char *msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_BAD_INFILE);
+	  print_log_msg (1, msg_format, file_name.c_str ());
+	  util_log_write_errstr (msg_format, file_name.c_str ());
+	  error_code = ER_FAILED;
+	}
+    }
+
+  return file_p;
+}
+
 /*
  * ldr_check_file_name_and_line_no - parse schema file option
  *    return: void
  */
 static int
-ldr_check_file_name_and_line_no (std::string & file_name)
+ldr_get_start_line_no (std::string & file_name)
 {
   if (!file_name.empty ())
     {
-      /* *INDENT-OFF* */
-      char *p = strchr (const_cast<char *> (file_name.c_str ()), ':');
-      /* *INDENT-ON* */
+      const char *p = strchr (file_name.c_str (), ':');
       if (p != NULL)
 	{
-	  char *q;
+	  const char *q;
 	  for (q = p + 1; *q; q++)
 	    {
 	      if (!char_isdigit (*q))
@@ -417,10 +437,11 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   int error = NO_ERROR;
   /* set to static to avoid compiler warning (clobbered by longjump) */
-  static FILE *schema_file = NULL;
-  static FILE *index_file = NULL;
-  static FILE *trigger_file = NULL;
+  FILE *schema_file = NULL;
+  FILE *index_file = NULL;
+  FILE *trigger_file = NULL;
   FILE *error_file = NULL;
+  FILE *object_file = NULL;
 
   char *passwd;
   int status = 0;
@@ -433,10 +454,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   obt_Enable_autoincrement = false;
   load_args args;
   int schema_file_start_line = 1, index_file_start_line = 1, trigger_file_start_line = 1;
-
-  /* *INDENT-OFF* */
-  static std::ifstream object_file;
-  /* *INDENT-ON* */
 
   get_loaddb_args (arg_map, &args);
 
@@ -516,63 +533,38 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   /* disable trigger actions to be fired */
   db_disable_trigger ();
 
-  schema_file_start_line = ldr_check_file_name_and_line_no (args.schema_file);
-  index_file_start_line = ldr_check_file_name_and_line_no (args.index_file);
-  trigger_file_start_line = ldr_check_file_name_and_line_no (args.trigger_file);
+  schema_file_start_line = ldr_get_start_line_no (args.schema_file);
+  index_file_start_line = ldr_get_start_line_no (args.index_file);
+  trigger_file_start_line = ldr_get_start_line_no (args.trigger_file);
 
   /* check if schema/index/object files exist */
-  if (!args.schema_file.empty ())
+  schema_file = ldr_check_file (args.schema_file, error);
+  if (error != NO_ERROR && schema_file == NULL)
     {
-      schema_file = fopen (args.schema_file.c_str (), "r");
-      if (schema_file == NULL)
-	{
-	  msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_BAD_INFILE);
-	  print_log_msg (1, msg_format, args.schema_file.c_str ());
-	  util_log_write_errstr (msg_format, args.schema_file.c_str ());
-	  status = 2;
-	  goto error_return;
-	}
+      status = 2;
+      goto error_return;
     }
-  if (!args.index_file.empty ())
+  index_file = ldr_check_file (args.index_file, error);
+  if (error != NO_ERROR && index_file == NULL)
     {
-      index_file = fopen (args.index_file.c_str (), "r");
-      if (index_file == NULL)
-	{
-	  msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_BAD_INFILE);
-	  print_log_msg (1, msg_format, args.index_file.c_str ());
-	  util_log_write_errstr (msg_format, args.index_file.c_str ());
-	  status = 2;
-	  goto error_return;
-	}
+      status = 2;
+      goto error_return;
     }
-  if (!args.trigger_file.empty ())
+  trigger_file = ldr_check_file (args.trigger_file, error);
+  if (error != NO_ERROR && trigger_file == NULL)
     {
-      trigger_file = fopen (args.trigger_file.c_str (), "r");
-      if (trigger_file == NULL)
-	{
-	  msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_BAD_INFILE);
-	  print_log_msg (1, msg_format, args.trigger_file.c_str ());
-	  util_log_write_errstr (msg_format, args.trigger_file.c_str ());
-	  status = 2;
-	  goto error_return;
-	}
+      status = 2;
+      goto error_return;
     }
-  if (!args.object_file.empty ())
+  object_file = ldr_check_file (args.object_file, error);
+  if (error != NO_ERROR && object_file == NULL)
     {
-      /* *INDENT-OFF* */
-      object_file.open (args.object_file, std::fstream::in | std::fstream::binary);
-      /* *INDENT-ON* */
-
-      if (!object_file.is_open () || !object_file.good ())
-	{
-	  msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_BAD_INFILE);
-	  print_log_msg (1, msg_format, args.object_file.c_str ());
-	  util_log_write_errstr (msg_format, args.object_file.c_str ());
-	  status = 2;
-	  goto error_return;
-	}
-
-      object_file.close ();
+      status = 2;
+      goto error_return;
+    }
+  else
+    {
+      fclose (object_file);
     }
 
   if (!args.ignore_class_file.empty ())
@@ -787,10 +779,6 @@ error_return:
   if (schema_file != NULL)
     {
       fclose (schema_file);
-    }
-  if (object_file.is_open ())
-    {
-      object_file.close ();
     }
   if (index_file != NULL)
     {
@@ -1109,7 +1097,7 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
 		{
 		  char *committed_instances_msg = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
 								  LOADDB_MSG_COMMITTED_INSTANCES);
-		  char *dummy = "";
+		  const char *dummy = "";
 		  print_log_msg (args->verbose_commit, committed_instances_msg, dummy, curr_rows_committed);
 		}
 
