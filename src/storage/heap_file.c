@@ -846,7 +846,7 @@ static int heap_hfid_table_entry_key_compare (void *k1, void *k2);
 static int heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid, FILE_TYPE * ftype_out,
 				char **classname_out);
 static int heap_get_class_info_from_record (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid,
-					    bool get_classname, char **classname_out);
+					    char **classname_out);
 
 static void heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, PAGE_PTR heap_page, MVCCID mvccid);
 static void heap_page_rv_chain_update (THREAD_ENTRY * thread_p, PAGE_PTR heap_page, MVCCID mvccid,
@@ -22818,8 +22818,7 @@ exit:
  *  NOTE!! : classname must be freed by the caller.
  */
 static int
-heap_get_class_info_from_record (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid, bool get_classname,
-				 char **classname)
+heap_get_class_info_from_record (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid, char **classname)
 {
   int error_code = NO_ERROR;
   RECDES recdes;
@@ -22840,7 +22839,7 @@ heap_get_class_info_from_record (THREAD_ENTRY * thread_p, const OID * class_oid,
 
   or_class_hfid (&recdes, hfid);
 
-  if (get_classname)
+  if (classname != NULL)
     {
       *classname = strdup (or_class_name (&recdes));
     }
@@ -23232,6 +23231,8 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
   assert (entry != NULL);
   assert (entry->hfid.hpgid == NULL_PAGEID);
 
+  assert (inserted != 0);
+
   HFID_COPY (&entry->hfid, hfid);
   if (classname_in != NULL)
     {
@@ -23239,7 +23240,7 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
     }
   else
     {
-      error_code = heap_get_class_info_from_record (thread_p, class_oid, &hfid_local, true, &classname_local);
+      error_code = heap_get_class_info_from_record (thread_p, class_oid, &hfid_local, &classname_local);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -23292,6 +23293,10 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
     }
   assert (entry != NULL);
 
+  /*  Here we check only the classname because this is the last field to be populated by other possible concurrent
+   *  inserters. This means that if this field is already set by someone else, then the entry data is already
+   *  mature so we don't need to add data again. 
+   */
   if (entry->classname == NULL)
     {
       HFID hfid_local = HFID_INITIALIZER;
@@ -23309,7 +23314,7 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
       /* this is either a newly inserted entry or one with incomplete information that is currently being filled by
        * another transaction. We need to retrieve the HFID from the class record. We do not care that we are
        * overwriting the information, since it must be always the same (the HFID never changes for the same class OID). */
-      error_code = heap_get_class_info_from_record (thread_p, class_oid, &hfid_local, true, &classname_local);
+      error_code = heap_get_class_info_from_record (thread_p, class_oid, &hfid_local, &classname_local);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

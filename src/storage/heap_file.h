@@ -202,7 +202,9 @@ struct heap_hfid_table_entry
 
   HFID hfid;			/* value - HFID */
   FILE_TYPE ftype;		/* value - FILE_HEAP or FILE_HEAP_REUSE_SLOTS */
-    std::atomic < char *>classname;	/* Also cache the classname. */
+// *INDENT-OFF*
+  std::atomic<char*> classname;	/* Also cache the classname. */
+// *INDENT-ON*
 };
 
 // forward declaration
