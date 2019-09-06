@@ -16623,11 +16623,11 @@ heap_attrinfo_set_uninitialized_global (THREAD_ENTRY * thread_p, OID * inst_oid,
  */
 int
 heap_get_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out,
-		     FILE_TYPE * ftype_out, char *classname_out)
+		     FILE_TYPE * ftype_out, char **classname_out)
 {
   int error_code = NO_ERROR;
 
-  error_code = heap_hfid_cache_get (thread_p, class_oid, hfid_out, ftype_out, &classname_out);
+  error_code = heap_hfid_cache_get (thread_p, class_oid, hfid_out, ftype_out, classname_out);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -22879,8 +22879,11 @@ heap_hfid_table_entry_free (void *entry)
       HEAP_HFID_TABLE_ENTRY *entry_p = (HEAP_HFID_TABLE_ENTRY *) entry;
 
       // Clear the classname.
-      free (entry_p->classname);
-      entry_p->classname = NULL;
+      if (entry_p->classname != NULL)
+	{
+	  free (entry_p->classname);
+	  entry_p->classname = NULL;
+	}
 
       free (entry);
       return NO_ERROR;
@@ -23228,7 +23231,6 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
     }
   assert (entry != NULL);
   assert (entry->hfid.hpgid == NULL_PAGEID);
-  assert ((inserted == 1) || entry->classname != NULL);
 
   HFID_COPY (&entry->hfid, hfid);
   if (classname_in != NULL)
@@ -23246,18 +23248,10 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
 	}
     }
 
-  // Now add the classname to hash
-  char *crt_classname = NULL;
-  do
-    {
-      crt_classname = entry->classname.load ();
-      if (crt_classname != NULL)
-	{
-	  // someone else inserted the classname
-	  break;
-	}
-    }
-  while (!entry->classname.compare_exchange_strong (crt_classname, classname_local));
+  /* This section does not fall under any race conditions since this function is called only on heap creation
+   * or on boot which makes the assignment of the classname thread-safe.
+   */
+  entry->classname = classname_local;
 
   entry->ftype = ftype;
   lf_tran_end_with_mb (t_entry);
@@ -23298,11 +23292,7 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
     }
   assert (entry != NULL);
 
-  assert ((inserted == 1) || entry->classname != NULL);
-
-
-  if (entry->hfid.hpgid == NULL_PAGEID || entry->hfid.vfid.fileid == NULL_FILEID
-      || entry->hfid.vfid.volid == NULL_VOLID || entry->classname == NULL)
+  if (entry->classname == NULL)
     {
       HFID hfid_local = HFID_INITIALIZER;
 
@@ -23328,17 +23318,13 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 	}
       entry->hfid = hfid_local;
 
-      char *crt_classname = NULL;
-      do
+      char *dummy_null = NULL;
+
+      if (!entry->classname.compare_exchange_strong (dummy_null, classname_local))
 	{
-	  crt_classname = entry->classname.load ();
-	  if (crt_classname != NULL)
-	    {
-	      // someone else inserted the classname
-	      break;;
-	    }
+	  // somebody else has set it
+	  free (classname_local);
 	}
-      while (!entry->classname.compare_exchange_strong (crt_classname, classname_local));
     }
 
   assert (entry->hfid.hpgid != NULL_PAGEID && entry->hfid.vfid.fileid != NULL_FILEID
