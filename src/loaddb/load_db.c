@@ -191,6 +191,7 @@ ldr_check_file_name_and_line_no (std::string & file_name)
 	}
     }
 
+  // default start from line no 1
   return 1;
 }
 
