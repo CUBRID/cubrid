@@ -1221,6 +1221,8 @@ typedef struct _ha_config
 #define LOAD_IGNORE_LOGGING_L                   "no-logging"
 #define LOAD_DATA_FILE_S                        'd'
 #define LOAD_DATA_FILE_L                        "data-file"
+#define LOAD_TRIGGER_FILE_S                     11813
+#define LOAD_TRIGGER_FILE_L                     "trigger-file"
 #define LOAD_SERVER_DATA_FILE_S                 11814
 #define LOAD_SERVER_DATA_FILE_L                 "server-data-file"
 #define LOAD_ERROR_CONTROL_FILE_S               'e'

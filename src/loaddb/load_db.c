@@ -45,16 +45,13 @@
 
 using namespace cubload;
 
-static int schema_file_start_line = 1;
-static int index_file_start_line = 1;
-
 static FILE *loaddb_log_file;
 
 int interrupt_query = false;
 bool load_interrupted = false;
 
 static int ldr_validate_object_file (const char *argv0, load_args * args);
-static int ldr_check_file_name_and_line_no (load_args * args);
+static int ldr_check_file_name_and_line_no (std::string & file_name);
 static int loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode);
 static void ldr_exec_query_interrupt_handler (void);
 static int ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start_line, load_args * args);
@@ -170,17 +167,16 @@ ldr_validate_object_file (const char *argv0, load_args * args)
  *    return: void
  */
 static int
-ldr_check_file_name_and_line_no (load_args * args)
+ldr_check_file_name_and_line_no (std::string & file_name)
 {
-  char *p, *q;
-
-  if (!args->schema_file.empty ())
+  if (!file_name.empty ())
     {
       /* *INDENT-OFF* */
-      p = strchr (const_cast<char *> (args->schema_file.c_str ()), ':');
+      char *p = strchr (const_cast<char *> (file_name.c_str ()), ':');
       /* *INDENT-ON* */
       if (p != NULL)
 	{
+	  char *q;
 	  for (q = p + 1; *q; q++)
 	    {
 	      if (!char_isdigit (*q))
@@ -190,35 +186,12 @@ ldr_check_file_name_and_line_no (load_args * args)
 	    }
 	  if (*q == 0)
 	    {
-	      schema_file_start_line = atoi (p + 1);
-	      *p = 0;
+	      return atoi (p + 1);
 	    }
 	}
     }
 
-  if (!args->index_file.empty ())
-    {
-      /* *INDENT-OFF* */
-      p = strchr (const_cast<char *> (args->index_file.c_str ()), ':');
-      /* *INDENT-ON* */
-      if (p != NULL)
-	{
-	  for (q = p + 1; *q; q++)
-	    {
-	      if (!char_isdigit (*q))
-		{
-		  break;
-		}
-	    }
-	  if (*q == 0)
-	    {
-	      index_file_start_line = atoi (p + 1);
-	      *p = 0;
-	    }
-	}
-    }
-
-  return 0;
+  return 1;
 }
 
 static char *
@@ -445,6 +418,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   /* set to static to avoid compiler warning (clobbered by longjump) */
   static FILE *schema_file = NULL;
   static FILE *index_file = NULL;
+  static FILE *trigger_file = NULL;
   FILE *error_file = NULL;
 
   char *passwd;
@@ -457,6 +431,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   const char *msg_format;
   obt_Enable_autoincrement = false;
   load_args args;
+  int schema_file_start_line = 1, index_file_start_line = 1, trigger_file_start_line = 1;
 
   /* *INDENT-OFF* */
   static std::ifstream object_file;
@@ -540,9 +515,11 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   /* disable trigger actions to be fired */
   db_disable_trigger ();
 
-  /* check if schema/index/object files exist */
-  ldr_check_file_name_and_line_no (&args);
+  schema_file_start_line = ldr_check_file_name_and_line_no (args.schema_file);
+  index_file_start_line = ldr_check_file_name_and_line_no (args.index_file);
+  trigger_file_start_line = ldr_check_file_name_and_line_no (args.trigger_file);
 
+  /* check if schema/index/object files exist */
   if (!args.schema_file.empty ())
     {
       schema_file = fopen (args.schema_file.c_str (), "r");
@@ -563,6 +540,18 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_BAD_INFILE);
 	  print_log_msg (1, msg_format, args.index_file.c_str ());
 	  util_log_write_errstr (msg_format, args.index_file.c_str ());
+	  status = 2;
+	  goto error_return;
+	}
+    }
+  if (!args.trigger_file.empty ())
+    {
+      trigger_file = fopen (args.trigger_file.c_str (), "r");
+      if (trigger_file == NULL)
+	{
+	  msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_BAD_INFILE);
+	  print_log_msg (1, msg_format, args.trigger_file.c_str ());
+	  util_log_write_errstr (msg_format, args.trigger_file.c_str ());
 	  status = 2;
 	  goto error_return;
 	}
@@ -748,10 +737,41 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       db_commit_transaction ();
     }
 
+  if (trigger_file != NULL)
+    {
+      print_log_msg (1, "\nStart trigger loading.\n");
+
+      if (ldr_exec_query_from_file (args.trigger_file.c_str (), trigger_file, &trigger_file_start_line, &args) != 0)
+	{
+	  print_log_msg (1, "\nError occurred during trigger loading." "\nAborting current transaction...");
+	  msg_format = "Error occurred during trigger loading." "Aborting current transaction...\n";
+	  util_log_write_errstr (msg_format);
+	  status = 3;
+	  db_end_session ();
+	  db_shutdown ();
+	  print_log_msg (1, " done.\n\nRestart loaddb with '--%s %s:%d' option\n", LOAD_TRIGGER_FILE_L,
+			 args.trigger_file.c_str (), trigger_file_start_line);
+	  goto error_return;
+	}
+
+      /* update catalog statistics */
+      AU_DISABLE (au_save);
+      sm_update_catalog_statistics (CT_TRIGGER_NAME, STATS_WITH_FULLSCAN);
+      AU_ENABLE (au_save);
+
+      print_log_msg (1, "Trigger loading from %s finished.\n", args.trigger_file.c_str ());
+      db_commit_transaction ();
+    }
+
   if (index_file != NULL)
     {
       fclose (index_file);
       index_file = NULL;
+    }
+  if (trigger_file != NULL)
+    {
+      fclose (trigger_file);
+      trigger_file = NULL;
     }
 
   print_log_msg ((int) args.verbose, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CLOSING));
@@ -774,6 +794,10 @@ error_return:
   if (index_file != NULL)
     {
       fclose (index_file);
+    }
+  if (trigger_file != NULL)
+    {
+      fclose (trigger_file);
     }
   if (loaddb_log_file != NULL)
     {
@@ -981,6 +1005,7 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   char *password = utility_get_option_string_value (arg_map, LOAD_PASSWORD_S, 0);
   char *schema_file = utility_get_option_string_value (arg_map, LOAD_SCHEMA_FILE_S, 0);
   char *index_file = utility_get_option_string_value (arg_map, LOAD_INDEX_FILE_S, 0);
+  char *trigger_file = utility_get_option_string_value (arg_map, LOAD_TRIGGER_FILE_S, 0);
   char *object_file = utility_get_option_string_value (arg_map, LOAD_DATA_FILE_S, 0);
   char *server_object_file = utility_get_option_string_value (arg_map, LOAD_SERVER_DATA_FILE_S, 0);
   char *error_file = utility_get_option_string_value (arg_map, LOAD_ERROR_CONTROL_FILE_S, 0);
@@ -1009,6 +1034,7 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   args->no_oid_hint = utility_get_option_bool_value (arg_map, LOAD_NO_OID_S);
   args->schema_file = schema_file ? schema_file : empty;
   args->index_file = index_file ? index_file : empty;
+  args->trigger_file = trigger_file ? trigger_file : empty;
   args->object_file = object_file ? object_file : empty;
   args->server_object_file = server_object_file ? server_object_file : empty;
   args->error_file = error_file ? error_file : empty;

@@ -450,25 +450,26 @@ loaddb: Import von Objekten und Schemas in die Datenbank.\n\
 Anwendung: %1$s loaddb [OPTION] Datenbanknamen[@host]\n\
 \n\
 gültige Optionen:\n\
-  -S, --SA-mode                   Stand-Alone-Ausführung\n\
-  -C, --CS-mode                   Client-Server-Ausführung\n\
-  -u, --user=ID                   Benutzer ID für Datenbankzugang; Standard: "public"\n\
-  -p, --password=PASSWORT         Benutzerpasswort; Standard: keinen\n\
-      --data-file-check-only      Syntaxprüfung für Daten ohne Ladung; Standard: Ladung nach Prüfung\n\
-  -l, --load-only                 Daten ohne Syntaxprüfung laden; Standard: Ladung nach Prüfung\n\
-      --estimated-size=ANZAHL     abgeschätzte Anzahl von Instanzen; Standard: 5000\n\
-  -v, --verbose                   ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
-  -c, --periodic-commit=ANZAHL    Einfügungsanzahl für periodische Festschreibung; Standard: keine Festschreibung während der Ladung\n\
-      --no-oid                    OID nicht anwenden\n\
-      --no-statistics             Statistiken während Ladung nicht aktualisieren\n\
-  -s, --schema-file=DATEI[:ZEILE] Schema ab ZEILE mit DATEI erstellen\n\
-  -i, --index-file=DATEI[:ZEILE]  Index ab ZEILE mit DATEI erstellen\n\
-  -d, --data-file=DATEI           DATEI laden\n\
-      --server-data-file=FILE     load data with FILE on server,\n\
-                                  absolute path must be provided and the file must exist on server file system\n\
-  -t, --table=TABLE               Name der Tabelle, die für das fehlende Klassenheader in der Datei ersetzt wird\n\
-      --error-control-file=DATEI  DATEI für Fehlerkontrolle während Ladung\n\
-      --ignore-class-file=DATEI   Eingangsdatei für Klassenamen, die nicht geladen werden\n
+  -S, --SA-mode                    Stand-Alone-Ausführung\n\
+  -C, --CS-mode                    Client-Server-Ausführung\n\
+  -u, --user=ID                    Benutzer ID für Datenbankzugang; Standard: "public"\n\
+  -p, --password=PASSWORT          Benutzerpasswort; Standard: keinen\n\
+      --data-file-check-only       Syntaxprüfung für Daten ohne Ladung; Standard: Ladung nach Prüfung\n\
+  -l, --load-only                  Daten ohne Syntaxprüfung laden; Standard: Ladung nach Prüfung\n\
+      --estimated-size=ANZAHL      abgeschätzte Anzahl von Instanzen; Standard: 5000\n\
+  -v, --verbose                    ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
+  -c, --periodic-commit=ANZAHL     Einfügungsanzahl für periodische Festschreibung; Standard: keine Festschreibung während der Ladung\n\
+      --no-oid                     OID nicht anwenden\n\
+      --no-statistics              Statistiken während Ladung nicht aktualisieren\n\
+  -s, --schema-file=DATEI[:ZEILE]  Schema ab ZEILE mit DATEI erstellen\n\
+  -i, --index-file=DATEI[:ZEILE]   Index ab ZEILE mit DATEI erstellen\n\
+      --trigger-file=DATEI[:ZEILE] Trigger ab ZEILE mit DATEI erstellen\n\
+  -d, --data-file=DATEI            DATEI laden\n\
+      --server-data-file=FILE      load data with FILE on server,\n\
+                                   absolute path must be provided and the file must exist on server file system\n\
+  -t, --table=TABLE                Name der Tabelle, die für das fehlende Klassenheader in der Datei ersetzt wird\n\
+      --error-control-file=DATEI   DATEI für Fehlerkontrolle während Ladung\n\
+      --ignore-class-file=DATEI    Eingangsdatei für Klassenamen, die nicht geladen werden\n
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 Cached-Seiten-Anzahl ungültig.\n
