@@ -184,10 +184,6 @@ ldr_check_file (std::string & file_name, int &error_code)
   return file_p;
 }
 
-/*
- * ldr_check_file_name_and_line_no - parse schema file option
- *    return: void
- */
 static int
 ldr_get_start_line_no (std::string & file_name)
 {
