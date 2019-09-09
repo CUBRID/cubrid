@@ -729,7 +729,7 @@ static void vacuum_data_empty_update_last_blockid (THREAD_ENTRY * thread_p);
 static void vacuum_push_task (const VACUUM_DATA_ENTRY & data_entry);
 #endif // SERVER_MODE
 #if defined (SA_MODE)
-static void vacuum_sa_run_job (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY & data_entry, bool is_partial,
+static void vacuum_sa_run_job (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry, bool is_partial,
 			       PERF_UTIME_TRACKER & perf_tracker);
 #endif // SA_MODE
 static bool vacuum_check_finished_queue (void);
@@ -916,7 +916,7 @@ static vacuum_worker_context_manager *vacuum_Worker_context_manager = NULL;  // 
 
 #if defined (SA_MODE)
 static void
-vacuum_sa_run_job (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY & data_entry, bool is_partial,
+vacuum_sa_run_job (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry, bool is_partial,
 		   PERF_UTIME_TRACKER & perf_tracker)
 {
   PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_VAC_MASTER);
@@ -926,7 +926,8 @@ vacuum_sa_run_job (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY & data_entry, bool
   vacuum_convert_thread_to_worker (thread_p, worker_p, save_type);
   assert (save_type == thread_type::TT_VACUUM_MASTER);
 
-  vacuum_process_log_block (thread_p, &data_entry, is_partial);
+  VACUUM_DATA_ENTRY copy_data_entry = data_entry;
+  vacuum_process_log_block (thread_p, &copy_data_entry, is_partial);
 
   vacuum_convert_thread_to_master (thread_p, save_type);
   assert (save_type == thread_type::TT_VACUUM_WORKER);
