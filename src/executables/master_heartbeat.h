@@ -85,7 +85,6 @@ enum HB_RESOURCE_JOB
   HB_RJOB_DEMOTE_CONFIRM_SHUTDOWN = 6,
   HB_RJOB_CLEANUP_ALL = 7,
   HB_RJOB_CONFIRM_CLEANUP_ALL = 8,
-  HB_RJOB_SEND_MASTER_HOSTNAME = 9,
   HB_RJOB_MAX
 };
 
@@ -425,6 +424,5 @@ extern void hb_disable_er_log (int reason, const char *msg_fmt, ...);
 
 extern int hb_return_proc_state_by_fd (int sfd);
 extern bool hb_is_hang_process (int sfd);
-extern char *hb_find_host_name_of_master_server ();
 
 #endif /* _MASTER_HEARTBEAT_H_ */
