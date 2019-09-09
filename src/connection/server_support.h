@@ -33,7 +33,6 @@
 #include "connection_sr.h"
 #include "thread_entry.hpp"
 #include "thread_entry_task.hpp"
-#include "master_heartbeat.h"
 
 enum css_thread_stop_type
 {
@@ -87,8 +86,6 @@ extern int css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p, int wh
 extern int css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool force, int timeout,
 				       bool heartbeat);
 extern int css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE state);
-
-extern const char *get_master_hostname ();
 
 extern void css_push_external_task (CSS_CONN_ENTRY * conn, cubthread::entry_task * task);
 extern void css_get_thread_stats (UINT64 * stats_out);
