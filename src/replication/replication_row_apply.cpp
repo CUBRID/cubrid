@@ -232,7 +232,7 @@ namespace cubreplication
 	return ER_FAILED;
       }
 
-    int error_code = heap_get_hfid_from_class_oid (&thread_ref, &class_oid, &hfid);
+    int error_code = heap_get_class_info (&thread_ref, &class_oid, &hfid, NULL, NULL);
     if (error_code != NO_ERROR)
       {
 	// todo - reactivate: assert (false); // can we expect errors? e.g. interrupt

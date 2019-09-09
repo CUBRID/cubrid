@@ -618,7 +618,7 @@ error:
 
     multirow_object *heap_objects = new multirow_object (class_name);
 
-    error_code = heap_get_hfid_from_class_oid (thread_p, &class_oid, &class_hfid);
+    error_code = heap_get_class_info (thread_p, &class_oid, &class_hfid, NULL, NULL);
     if (error_code != NO_ERROR)
       {
 	ASSERT_ERROR ();
