@@ -2383,7 +2383,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
   /* we need to manually add root class HFID to cache */
   error_code =
-    heap_insert_hfid_for_class_oid (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP);
+    heap_cache_class_info (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP,
+			   boot_Db_parm->rootclass_name);
   if (error_code != NO_ERROR)
     {
       assert_release (false);
@@ -3432,7 +3433,7 @@ xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag, OID * oid, BTID * 
 	}
     }
 
-  if (heap_get_hfid_from_class_oid (thread_p, oid, &hfid) != NO_ERROR || HFID_IS_NULL (&hfid))
+  if (heap_get_class_info (thread_p, oid, &hfid, NULL, NULL) != NO_ERROR || HFID_IS_NULL (&hfid))
     {
       return DISK_ERROR;
     }
@@ -4833,7 +4834,8 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   oid_set_root (&boot_Db_parm->rootclass_oid);
   /* we need to manually add root class HFID to cache */
   error_code =
-    heap_insert_hfid_for_class_oid (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP);
+    heap_cache_class_info (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP,
+			   boot_Db_parm->rootclass_name);
   if (error_code != NO_ERROR)
     {
       assert_release (false);
