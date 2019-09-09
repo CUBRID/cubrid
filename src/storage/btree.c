@@ -9064,7 +9064,7 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR l
   BTREE_NODE_HEADER *header = NULL;	/* Node header. */
   LOG_LSA prev_lsa;
   char leaf_record_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
-  RECDES leaf_record;
+  RECDES leaf_record = RECDES_INITIALIZER;
 
   assert (delete_helper->is_system_op_started == false);
   assert (delete_helper->purpose != BTREE_OP_INSERT_MVCC_DELID
