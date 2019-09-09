@@ -91,10 +91,28 @@
 typedef struct vacuum_data_entry VACUUM_DATA_ENTRY;
 struct vacuum_data_entry
 {
+  // *INDENT-OFF*
   VACUUM_LOG_BLOCKID blockid;
   LOG_LSA start_lsa;
   MVCCID oldest_mvccid;
   MVCCID newest_mvccid;
+
+  vacuum_data_entry ();
+  vacuum_data_entry (const log_lsa & lsa, MVCCID oldest, MVCCID newest);
+  vacuum_data_entry (const log_header & hdr);
+
+  VACUUM_LOG_BLOCKID get_blockid () const;
+
+  bool is_available () const;
+  bool is_vacuumed () const;
+  bool is_job_in_progress () const;
+  bool was_interrupted () const;
+
+  void set_vacuumed ();
+  void set_job_in_progress ();
+  void set_interrupted ();
+
+  // *INDENT-ON*
 };
 
 /* One flag is required for entries currently being vacuumed. In order to
@@ -283,6 +301,10 @@ class vacuum_job_cursor
     INT16 get_index () const;
 
     vacuum_data_entry &get_current_entry () const;    // get current entry; cursor must be valid
+                                                      // todo: change return type to const
+    void start_job_on_current_entry (cubthread::entry * thread_p);
+
+    void force_data_update ();
     void unload ();                                   // unload page/index
     void load ();                                     // load page/index
 
@@ -716,7 +738,7 @@ static void vacuum_data_empty_update_last_blockid (THREAD_ENTRY * thread_p);
 static void vacuum_push_task (const VACUUM_DATA_ENTRY & data_entry);
 #endif // SERVER_MODE
 #if defined (SA_MODE)
-static void vacuum_sa_run_job (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY & data_entry, bool is_partial,
+static void vacuum_sa_run_job (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry, bool is_partial,
 			       PERF_UTIME_TRACKER & perf_tracker);
 #endif // SA_MODE
 static bool vacuum_check_finished_queue (void);
@@ -903,7 +925,7 @@ static vacuum_worker_context_manager *vacuum_Worker_context_manager = NULL;  // 
 
 #if defined (SA_MODE)
 static void
-vacuum_sa_run_job (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY & data_entry, bool is_partial,
+vacuum_sa_run_job (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry, bool is_partial,
 		   PERF_UTIME_TRACKER & perf_tracker)
 {
   PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_VAC_MASTER);
@@ -913,7 +935,8 @@ vacuum_sa_run_job (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY & data_entry, bool
   vacuum_convert_thread_to_worker (thread_p, worker_p, save_type);
   assert (save_type == thread_type::TT_VACUUM_MASTER);
 
-  vacuum_process_log_block (thread_p, &data_entry, is_partial);
+  VACUUM_DATA_ENTRY copy_data_entry = data_entry;
+  vacuum_process_log_block (thread_p, &copy_data_entry, is_partial);
 
   vacuum_convert_thread_to_master (thread_p, save_type);
   assert (save_type == thread_type::TT_VACUUM_WORKER);
@@ -950,7 +973,6 @@ xvacuum (THREAD_ENTRY * thread_p)
 
   /* Process vacuum data and run vacuum. */
   vacuum_job_cursor cursor;
-  VACUUM_DATA_ENTRY *entry = NULL;
   PERF_UTIME_TRACKER perf_tracker;
 
   bool dummy_continue_check_interrupt;
@@ -962,124 +984,67 @@ xvacuum (THREAD_ENTRY * thread_p)
 
   PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
 
-  if (!vacuum_Data.is_loaded)
-    {
-      /* Load vacuum data. */
-      /* This was initially in boot_restart_server. However, the "commit" of boot_restart_server will complain
-       * about vacuum data first and last page not being unfixed (and it will also unfix them).
-       * So, we have to load the data here (vacuum master never commits).
-       */
-      vacuum_data_load_first_and_last_page (thread_p);
+  vacuum_data_load_first_and_last_page (thread_p);
 
-      cursor.set_on_vacuum_data_start ();
-    }
-
-  /* Stand-alone mode will restart if finished job queue is full. */
-restart:
-
-  assert (!cursor.is_loaded ());
-
-  vacuum_Data.update ();
-
-  /* Search for blocks ready to be vacuumed and generate jobs. */
-  cursor.readjust_to_vacuum_data_changes ();
+  cursor.set_on_vacuum_data_start ();
   cursor.load ();
-
   vacuum_er_log (VACUUM_ER_LOG_MASTER, "Start searching jobs at " vacuum_job_cursor_print_format,
 		 vacuum_job_cursor_print_args (cursor));
 
+  // consume all vacuum data blocks
   while (cursor.is_valid ())
     {
-      entry = &cursor.get_current_entry ();
-
-      if (!VACUUM_BLOCK_STATUS_IS_AVAILABLE (entry->blockid))
+      if (!cursor.get_current_entry ().is_available ())
 	{
-	  assert (VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid));
+	  assert (cursor.get_current_entry ().is_vacuumed ());
 	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
 			 "Job for blockid = %lld %s. Skip.",
-			 (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid),
-			 VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid) ? "was executed" : "is in progress");
+			 (long long int) cursor.get_current_entry ().get_blockid (),
+			 cursor.get_current_entry ().is_vacuumed ()? "was executed" : "is in progress");
 	  cursor.increment_blockid ();
 	  continue;
 	}
 
-      VACUUM_BLOCK_STATUS_SET_IN_PROGRESS (entry->blockid);
-      vacuum_set_dirty_data_page_dont_free (thread_p, cursor.get_page ());
-      if (!VACUUM_BLOCK_IS_INTERRUPTED (entry->blockid))
-	{
-	  /* Log that a new job is starting. After recovery, the system will then know this job was partially executed.
-	   * Logging the start of a job already interrupted is not necessary. We do it here rather than when vacuum job
-	   * is really started to avoid locking vacuum data again (logging vacuum data cannot be done without locking).
-	   */
-	  log_append_redo_data2 (thread_p, RVVAC_START_JOB, NULL, (PAGE_PTR) cursor.get_page (), cursor.get_index (), 0,
-				 NULL);
-	  vacuum_set_dirty_data_page_dont_free (thread_p, cursor.get_page ());
-	}
+      cursor.start_job_on_current_entry (thread_p);
 
       // job will be executed immediately
-      vacuum_sa_run_job (thread_p, *entry, false, perf_tracker);
-      cursor.increment_blockid ();	// advance to next
+      vacuum_sa_run_job (thread_p, cursor.get_current_entry (), false, perf_tracker);
+      cursor.increment_blockid ();
 
-      // need to check for interrupts
       if (logtb_is_interrupted (thread_p, true, &dummy_continue_check_interrupt))
 	{
-	  /* wrap up all executed jobs and stop */
 	  cursor.unload ();
-	  vacuum_data_mark_finished (thread_p);
+	  vacuum_Data.update ();
 	  return NO_ERROR;
 	}
 
-      if (vacuum_check_data_buffer () || vacuum_check_finished_queue ())
+      if (!vacuum_Block_data_buffer->is_empty ()	// there is a new block
+	  || vacuum_Finished_job_queue->is_full ()	// finished queue is full and must be consumed
+	  || !cursor.is_valid ()	// cursor is at the end; we might still get another block by vacuum data update
+	)
 	{
-	  cursor.unload ();
-	  goto restart;
+	  // force an update; cursor must not be loaded
+	  cursor.force_data_update ();
 	}
     }
 
-  cursor.unload ();
-
+  assert (!cursor.is_loaded ());
+  assert (vacuum_Data.is_empty ());
 #if !defined (NDEBUG)
   vacuum_verify_vacuum_data_page_fix_count (thread_p);
 #endif /* !NDEBUG */
 
   /* Complete vacuum for SA_MODE. This means also vacuuming based on last block being logged. */
-
-  assert (vacuum_Block_data_buffer->is_empty ());
-
-  /* Remove all vacuumed entries. */
-  vacuum_data_mark_finished (thread_p);
-
-  // TODO: a new block may have been generated by vacuum_data_mark_finished and it is only consumed at the end,
-  // although it is vacuumed below
-
-  assert (vacuum_Finished_job_queue->is_empty ());
-  assert (vacuum_Data.first_page == vacuum_Data.last_page);
-  assert (vacuum_Data.first_page->index_unvacuumed == 0);
-  assert (vacuum_Data.first_page->index_free == 0);
-
-  /* Can we generate another block on information cached in log header? */
-  if (vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid) > vacuum_Data.get_last_blockid ())
+  if (log_Gl.hdr.does_block_need_vacuum)
     {
-      /* Execute vacuum based on the block not generated yet. */
-      /* We don't want to interrupt next operation. */
-      VACUUM_DATA_ENTRY data_entry;
+      // *INDENT-OFF*
+      vacuum_data_entry partial_entry { log_Gl.hdr };
+      // *INDENT-ON*
+      log_Gl.hdr.does_block_need_vacuum = false;
+
+      // can't be interrupted
       bool save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
-
-      /* Create vacuum data entry for the job. */
-      data_entry.blockid = vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid);
-      LSA_COPY (&data_entry.start_lsa, &log_Gl.hdr.mvcc_op_log_lsa);
-      data_entry.oldest_mvccid = log_Gl.hdr.last_block_oldest_mvccid;
-      data_entry.newest_mvccid = log_Gl.hdr.last_block_newest_mvccid;
-      VACUUM_BLOCK_STATUS_SET_IN_PROGRESS (data_entry.blockid);
-
-      /* Update vacuum_Data as if it would contain only this entry. Do not update last_blockid since it may be
-       * generated again. */
-      vacuum_Data.oldest_unvacuumed_mvccid = data_entry.oldest_mvccid;
-
-      /* We do not log here. We could have a problem if the server crashes, because same vacuum tasks may be
-       * re-executed. The worst that can happen is to hit an assert in debug mode. Instead of doing a voodoo fix here,
-       * it is better to live with the bug. */
-      vacuum_sa_run_job (thread_p, data_entry, false, perf_tracker);
+      vacuum_sa_run_job (thread_p, partial_entry, true, perf_tracker);
       (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
     }
 
@@ -1570,8 +1535,9 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  /* Safe guard: this was possible if there was only one object to be vacuumed. */
 	  assert (n_heap_objects == 1);
 
-	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP, "Heap page %d|%d was deallocated during previous run and reused as"
-				 " file table page", VPID_AS_ARGS (&helper.home_vpid));
+	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+				 "Heap page %d|%d was deallocated during previous run and reused as file table page",
+				 VPID_AS_ARGS (&helper.home_vpid));
 
 	  pgbuf_unfix_and_init (thread_p, helper.home_page);
 	  return NO_ERROR;
@@ -2432,7 +2398,7 @@ vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER 
   assert (!OID_ISNULL (&class_oid));
 
   /* Get HFID for class OID. */
-  error_code = heap_get_hfid_and_file_type_from_class_oid (thread_p, &class_oid, &helper->hfid, &ftype);
+  error_code = heap_get_class_info (thread_p, &class_oid, &helper->hfid, &ftype, NULL);
   if (error_code == ER_HEAP_UNKNOWN_OBJECT)
     {
       FILE_DESCRIPTORS file_descriptor;
@@ -3044,30 +3010,17 @@ restart:
 	  break;
 	}
 
-      if (!VACUUM_BLOCK_STATUS_IS_AVAILABLE (entry->blockid))
+      if (!entry->is_available ())
 	{
-	  assert (VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid)
-		  || VACUUM_BLOCK_STATUS_IS_IN_PROGRESS (entry->blockid));
+	  assert (entry->is_vacuumed () || entry->is_job_in_progress ());
 	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
-			 "Job for blockid = %lld %s. Skip.",
-			 (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid),
-			 VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid) ? "was executed" : "is in progress");
+			 "Job for blockid = %lld %s. Skip.", (long long int) entry->get_blockid (),
+			 entry->is_vacuumed () ? "was executed" : "is in progress");
           m_cursor.increment_blockid ();
 	  continue;
 	}
 
-      VACUUM_BLOCK_STATUS_SET_IN_PROGRESS (entry->blockid);
-      vacuum_set_dirty_data_page_dont_free (thread_p, m_cursor.get_page ());
-      if (!VACUUM_BLOCK_IS_INTERRUPTED (entry->blockid))
-	{
-	  /* Log that a new job is starting. After recovery, the system will then know this job was partially executed.
-	   * Logging the start of a job already interrupted is not necessary. We do it here rather than when vacuum job
-	   * is really started to avoid locking vacuum data again (logging vacuum data cannot be done without locking).
-	   */
-	  log_append_redo_data2 (thread_p, RVVAC_START_JOB, NULL, (PAGE_PTR) m_cursor.get_page (),
-                                 (PGLENGTH) m_cursor.get_index (), 0, NULL);
-	  vacuum_set_dirty_data_page_dont_free (thread_p, m_cursor.get_page ());
-	}
+      m_cursor.start_job_on_current_entry (thread_p);
 
       vacuum_push_task (*entry);
       m_cursor.increment_blockid ();
@@ -3133,7 +3086,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
   VACUUM_WORKER *worker = vacuum_get_vacuum_worker (thread_p);
   LOG_LSA log_lsa;
   LOG_LSA rcv_lsa;
-  LOG_PAGEID first_block_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (VACUUM_BLOCKID_WITHOUT_FLAGS (data->blockid));
+  LOG_PAGEID first_block_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (data->get_blockid ());
   int error_code = NO_ERROR;
   LOG_DATA log_record_data;
   char *undo_data = NULL;
@@ -3182,8 +3135,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
   btid_int.sys_btid = &sys_btid;
 
   /* Check starting lsa is not null and that it really belong to this block */
-  assert (!LSA_ISNULL (&data->start_lsa)
-	  && (VACUUM_BLOCKID_WITHOUT_FLAGS (data->blockid) == vacuum_get_log_blockid (data->start_lsa.pageid)));
+  assert (!LSA_ISNULL (&data->start_lsa) && (data->get_blockid () == vacuum_get_log_blockid (data->start_lsa.pageid)));
 
   /* Fetch the page where start_lsa is located */
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
@@ -3213,7 +3165,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
   /* set was_interrupted flag to tell vacuum_heap_page that some safe-guard have to behave differently. interruptions
    * are usually marked in blockid, however sa_mode_partial_block can also be interrupted and will no flag is set in
    * blockid. */
-  was_interrupted = VACUUM_BLOCK_IS_INTERRUPTED (data->blockid) || sa_mode_partial_block;
+  was_interrupted = data->was_interrupted () || sa_mode_partial_block;
 
   /* Follow the linked records starting with start_lsa */
   for (LSA_COPY (&log_lsa, &data->start_lsa); !LSA_ISNULL (&log_lsa) && log_lsa.pageid >= first_block_pageid;
@@ -3598,12 +3550,10 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
   if (is_vacuum_complete)
     {
       /* Set status as vacuumed. Vacuum master will remove it from table */
-      VACUUM_BLOCK_STATUS_SET_VACUUMED (data->blockid);
-      VACUUM_BLOCK_CLEAR_INTERRUPTED (data->blockid);
+      data->set_vacuumed ();
 
       vacuum_er_log (VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_JOBS,
-		     "Processing log block %lld is complete. Notify master.",
-		     (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (data->blockid));
+		     "Processing log block %lld is complete. Notify master.", (long long int) data->get_blockid ());
     }
   else
     {
@@ -3624,22 +3574,19 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 #endif /* !SERVER_MODE */
 
       /* Vacuum will have to be re-run */
-      VACUUM_BLOCK_STATUS_SET_AVAILABLE (data->blockid);
-      /* Job was not fully executed. */
-      VACUUM_BLOCK_SET_INTERRUPTED (data->blockid);
+      data->set_interrupted ();
+
       /* Copy new block data */
       /* The only relevant information is in fact the updated start_lsa if it has changed. */
       if (error_level == VACUUM_ER_LOG_ERROR)
 	{
 	  vacuum_er_log_error (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_JOBS,
-			       "Processing log block %lld is interrupted!",
-			       VACUUM_BLOCKID_WITHOUT_FLAGS (data->blockid));
+			       "Processing log block %lld is interrupted!", (long long int) data->get_blockid ());
 	}
       else
 	{
 	  vacuum_er_log_warning (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_JOBS,
-				 "Processing log block %lld is interrupted!",
-				 VACUUM_BLOCKID_WITHOUT_FLAGS (data->blockid));
+				 "Processing log block %lld is interrupted!", (long long int) data->get_blockid ());
 	}
     }
 
@@ -4095,11 +4042,10 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
 	  for (i = data_page->index_unvacuumed; i < data_page->index_free; i++)
 	    {
 	      entry = &data_page->data[i];
-	      if (VACUUM_BLOCK_STATUS_IS_IN_PROGRESS (entry->blockid))
+	      if (entry->is_job_in_progress ())
 		{
 		  /* Reset in progress flag, mark the job as interrupted and update last_blockid. */
-		  VACUUM_BLOCK_STATUS_SET_AVAILABLE (entry->blockid);
-		  VACUUM_BLOCK_SET_INTERRUPTED (entry->blockid);
+		  entry->set_interrupted ();
 		  is_page_dirty = true;
 		}
 	    }
@@ -4537,9 +4483,9 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
   page_start_index = 0;
   assert (data_page->index_unvacuumed >= 0);
   page_unvacuumed_data = data_page->data + data_page->index_unvacuumed;
-  page_unvacuumed_blockid = VACUUM_BLOCKID_WITHOUT_FLAGS (page_unvacuumed_data->blockid);
+  page_unvacuumed_blockid = page_unvacuumed_data->get_blockid ();
   page_free_blockid = page_unvacuumed_blockid + (data_page->index_free - data_page->index_unvacuumed);
-  assert (page_free_blockid == VACUUM_BLOCKID_WITHOUT_FLAGS (data_page->data[data_page->index_free - 1].blockid) + 1);
+  assert (page_free_blockid == data_page->data[data_page->index_free - 1].get_blockid () + 1);
   while (true)
     {
       /* Loop until all blocks from current pages are marked. */
@@ -4548,26 +4494,23 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 	{
 	  /* Update status for block. */
 	  data = page_unvacuumed_data + (blockid - page_unvacuumed_blockid);
-	  assert (VACUUM_BLOCKID_WITHOUT_FLAGS (data->blockid) == blockid);
-	  assert (VACUUM_BLOCK_STATUS_IS_IN_PROGRESS (data->blockid));
+	  assert (data->get_blockid () == blockid);
+	  assert (data->is_job_in_progress ());
 	  if (VACUUM_BLOCK_STATUS_IS_VACUUMED (finished_blocks[index]))
 	    {
 	      /* Block has been vacuumed. */
-	      VACUUM_BLOCK_STATUS_SET_VACUUMED (data->blockid);
+	      data->set_vacuumed ();
 
 	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_JOBS,
-			     "Mark block %lld as vacuumed.",
-			     (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (data->blockid));
+			     "Mark block %lld as vacuumed.", (long long int) data->get_blockid ());
 	    }
 	  else
 	    {
 	      /* Block was not completely vacuumed. Job was interrupted. */
-	      VACUUM_BLOCK_STATUS_SET_AVAILABLE (data->blockid);
-	      VACUUM_BLOCK_SET_INTERRUPTED (data->blockid);
+	      data->set_interrupted ();
 
 	      vacuum_er_log_warning (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_JOBS,
-				     "Mark block %lld as interrupted.",
-				     (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (data->blockid));
+				     "Mark block %lld as interrupted.", (long long int) data->get_blockid ());
 	    }
 	  index++;
 	}
@@ -4583,8 +4526,7 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 	  /* Some blocks in page were changed. */
 
 	  /* Update index_unvacuumed. */
-	  while (data_page->index_unvacuumed < data_page->index_free
-		 && VACUUM_BLOCK_STATUS_IS_VACUUMED (page_unvacuumed_data->blockid))
+	  while (data_page->index_unvacuumed < data_page->index_free && page_unvacuumed_data->is_vacuumed ())
 	    {
 	      page_unvacuumed_data++;
 	      data_page->index_unvacuumed++;
@@ -4622,7 +4564,7 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 		  page_start_index = index;
 		  assert (data_page->index_unvacuumed >= 0);
 		  page_unvacuumed_data = data_page->data + data_page->index_unvacuumed;
-		  page_unvacuumed_blockid = VACUUM_BLOCKID_WITHOUT_FLAGS (page_unvacuumed_data->blockid);
+		  page_unvacuumed_blockid = page_unvacuumed_data->get_blockid ();
 		  page_free_blockid = page_unvacuumed_blockid + (data_page->index_free - data_page->index_unvacuumed);
 		  continue;
 		}
@@ -4682,7 +4624,7 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
       page_start_index = index;
       assert (data_page->index_unvacuumed >= 0);
       page_unvacuumed_data = data_page->data + data_page->index_unvacuumed;
-      page_unvacuumed_blockid = VACUUM_BLOCKID_WITHOUT_FLAGS (page_unvacuumed_data->blockid);
+      page_unvacuumed_blockid = page_unvacuumed_data->get_blockid ();
       page_free_blockid = page_unvacuumed_blockid + (data_page->index_free - data_page->index_unvacuumed);
     }
   assert (prev_data_page == NULL);
@@ -4872,7 +4814,7 @@ vacuum_rv_redo_data_finished (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   assert (data_page != NULL);
 
-  page_unvacuumed_blockid = VACUUM_BLOCKID_WITHOUT_FLAGS (data_page->data[data_page->index_unvacuumed].blockid);
+  page_unvacuumed_blockid = data_page->data[data_page->index_unvacuumed].get_blockid ();
 
   if (rcv_data_ptr != NULL)
     {
@@ -4888,12 +4830,11 @@ vacuum_rv_redo_data_finished (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
 	  if (VACUUM_BLOCK_STATUS_IS_VACUUMED (blockid_with_flags))
 	    {
-	      VACUUM_BLOCK_STATUS_SET_VACUUMED (data_page->data[data_index].blockid);
+	      data_page->data[data_index].set_vacuumed ();
 	    }
 	  else
 	    {
-	      VACUUM_BLOCK_STATUS_SET_AVAILABLE (data_page->data[data_index].blockid);
-	      VACUUM_BLOCK_SET_INTERRUPTED (data_page->data[data_index].blockid);
+	      data_page->data[data_index].set_interrupted ();
 	    }
 
 	  rcv_data_ptr += sizeof (VACUUM_LOG_BLOCKID);
@@ -4902,7 +4843,7 @@ vacuum_rv_redo_data_finished (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
 
   while (data_page->index_unvacuumed < data_page->index_free
-	 && VACUUM_BLOCK_STATUS_IS_VACUUMED (data_page->data[data_page->index_unvacuumed].blockid))
+	 && data_page->data[data_page->index_unvacuumed].is_vacuumed ())
     {
       data_page->index_unvacuumed++;
     }
@@ -5122,7 +5063,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	  if (next_blockid == consumed_data.blockid)
 	    {
 	      /* Copy block information from consumed data. */
-	      VACUUM_BLOCK_STATUS_SET_AVAILABLE (page_free_data->blockid);
+	      assert (page_free_data->is_available ());	// starts as available
 	      LSA_COPY (&page_free_data->start_lsa, &consumed_data.start_lsa);
 	      page_free_data->newest_mvccid = consumed_data.newest_mvccid;
 	      page_free_data->oldest_mvccid = consumed_data.oldest_mvccid;
@@ -5135,14 +5076,13 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	      if (data_page->index_free > 0)
 		{
 		  assert ((page_free_data - 1)->oldest_mvccid <= page_free_data->oldest_mvccid);
-		  assert (VACUUM_BLOCKID_WITHOUT_FLAGS ((page_free_data - 1)->blockid) + 1
-			  == VACUUM_BLOCKID_WITHOUT_FLAGS (page_free_data->blockid));
+		  assert ((page_free_data - 1)->get_blockid () + 1 == page_free_data->get_blockid ());
 		}
 #endif /* !NDEBUG */
 
 	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
 			     "Add block %lld, start_lsa=%lld|%d, oldest_mvccid=%llu, newest_mvccid=%llu. Hdr last blockid = %lld\n",
-			     (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (page_free_data->blockid),
+			     (long long int) page_free_data->get_blockid (),
 			     (long long int) page_free_data->start_lsa.pageid, (int) page_free_data->start_lsa.offset,
 			     (unsigned long long int) page_free_data->oldest_mvccid,
 			     (unsigned long long int) page_free_data->newest_mvccid,
@@ -5151,7 +5091,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	  else
 	    {
 	      /* Mark the blocks with no MVCC operations as already vacuumed. */
-	      VACUUM_BLOCK_STATUS_SET_VACUUMED (page_free_data->blockid);
+	      page_free_data->set_vacuumed ();
 	      LSA_SET_NULL (&page_free_data->start_lsa);
 	      page_free_data->oldest_mvccid = MVCCID_NULL;
 	      page_free_data->newest_mvccid = MVCCID_NULL;
@@ -5611,7 +5551,7 @@ vacuum_rv_redo_start_job (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   assert (rcv->offset >= 0 && rcv->offset < vacuum_Data.page_data_max_count);
 
   /* Start job is marked by in progress flag in blockid. */
-  VACUUM_BLOCK_STATUS_SET_IN_PROGRESS (data_page->data[rcv->offset].blockid);
+  data_page->data[rcv->offset].set_job_in_progress ();
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
@@ -5647,7 +5587,7 @@ vacuum_update_oldest_unvacuumed_mvccid (THREAD_ENTRY * thread_p)
        * oldest MVCCID's equal or greater.
        */
       VACUUM_DATA_ENTRY *data_entry = &vacuum_Data.first_page->data[vacuum_Data.first_page->index_unvacuumed];
-      assert (!VACUUM_BLOCK_STATUS_IS_VACUUMED (data_entry->blockid));
+      assert (!data_entry->is_vacuumed ());
       oldest_mvccid = data_entry->oldest_mvccid;
     }
   else
@@ -5716,8 +5656,7 @@ vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p)
     }
   else
     {
-      keep_from_blockid = vacuum_Data.first_page->data[vacuum_Data.first_page->index_unvacuumed].blockid;
-      keep_from_blockid = VACUUM_BLOCKID_WITHOUT_FLAGS (keep_from_blockid);
+      keep_from_blockid = vacuum_Data.first_page->data[vacuum_Data.first_page->index_unvacuumed].get_blockid ();
       vacuum_Data.keep_from_log_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (keep_from_blockid);
     }
 
@@ -7003,7 +6942,7 @@ vacuum_verify_vacuum_data_debug (THREAD_ENTRY * thread_p)
 	  /* Check page entries. */
 	  entry = &data_page->data[i];
 
-	  if (VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid))
+	  if (entry->is_vacuumed ())
 	    {
 	      assert (i != data_page->index_unvacuumed);
 	      if (found_in_progress && !LSA_ISNULL (&data_page->data[i].start_lsa))
@@ -7013,23 +6952,21 @@ vacuum_verify_vacuum_data_debug (THREAD_ENTRY * thread_p)
 	      continue;
 	    }
 
-	  assert (VACUUM_BLOCK_STATUS_IS_AVAILABLE (entry->blockid)
-		  || VACUUM_BLOCK_STATUS_IS_IN_PROGRESS (entry->blockid));
+	  assert (entry->is_available () || entry->is_job_in_progress ());
 	  assert (entry->oldest_mvccid <= vacuum_Global_oldest_active_mvccid);
 	  assert (vacuum_Data.oldest_unvacuumed_mvccid <= entry->oldest_mvccid);
-	  assert (VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid) <= vacuum_Data.get_last_blockid ());
-	  assert (vacuum_get_log_blockid (entry->start_lsa.pageid) == VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid));
+	  assert (entry->get_blockid () <= vacuum_Data.get_last_blockid ());
+	  assert (vacuum_get_log_blockid (entry->start_lsa.pageid) == entry->get_blockid ());
 	  assert (last_unvacuumed == NULL || !MVCC_ID_PRECEDES (entry->oldest_mvccid, last_unvacuumed->oldest_mvccid));
 
 	  if (i > data_page->index_unvacuumed)
 	    {
-	      assert (VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid)
-		      == VACUUM_BLOCKID_WITHOUT_FLAGS ((entry - 1)->blockid + 1));
+	      assert (entry->get_blockid () == ((entry - 1)->get_blockid () + 1));
 	    }
 
 	  last_unvacuumed = entry;
 
-	  if (VACUUM_BLOCK_STATUS_IS_IN_PROGRESS (entry->blockid))
+	  if (entry->is_job_in_progress ())
 	    {
 	      found_in_progress = true;
 	      in_progress_distance++;
@@ -7092,7 +7029,7 @@ vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * e
 
   assert (entry != NULL);
 
-  worker->prefetch_first_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid));
+  worker->prefetch_first_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (entry->get_blockid ());
   worker->prefetch_last_pageid = worker->prefetch_first_pageid + VACUUM_PREFETCH_LOG_BLOCK_BUFFER_PAGES - 1;
 
   for (log_pageid = worker->prefetch_first_pageid, log_page = (LOG_PAGE *) worker->prefetch_log_buffer;
@@ -7992,6 +7929,78 @@ vacuum_data::update ()
 }
 
 //
+// vacuum_data_entry
+//
+vacuum_data_entry::vacuum_data_entry ()
+  : vacuum_data_entry (NULL_LSA, MVCCID_NULL, MVCCID_NULL)
+{
+}
+
+vacuum_data_entry::vacuum_data_entry (const log_lsa &lsa, MVCCID oldest, MVCCID newest)
+  : blockid (VACUUM_NULL_LOG_BLOCKID)
+  , start_lsa (lsa)
+  , oldest_mvccid (oldest)
+  , newest_mvccid (newest)
+{
+  blockid = vacuum_get_log_blockid (start_lsa.pageid);
+}
+
+vacuum_data_entry::vacuum_data_entry (const log_header &hdr)
+  : vacuum_data_entry (hdr.mvcc_op_log_lsa, hdr.last_block_oldest_mvccid, hdr.last_block_newest_mvccid)
+{
+}
+
+VACUUM_LOG_BLOCKID
+vacuum_data_entry::get_blockid () const
+{
+  return VACUUM_BLOCKID_WITHOUT_FLAGS (blockid);
+}
+
+bool
+vacuum_data_entry::is_available () const
+{
+  return VACUUM_BLOCK_STATUS_IS_AVAILABLE (blockid);
+}
+
+bool
+vacuum_data_entry::is_vacuumed () const
+{
+  return VACUUM_BLOCK_STATUS_IS_VACUUMED (blockid);
+}
+
+bool
+vacuum_data_entry::is_job_in_progress () const
+{
+  return VACUUM_BLOCK_STATUS_IS_IN_PROGRESS (blockid);
+}
+
+bool
+vacuum_data_entry::was_interrupted () const
+{
+  return VACUUM_BLOCK_IS_INTERRUPTED (blockid);
+}
+
+void
+vacuum_data_entry::set_vacuumed ()
+{
+  VACUUM_BLOCK_STATUS_SET_VACUUMED (blockid);
+  VACUUM_BLOCK_CLEAR_INTERRUPTED (blockid);
+}
+
+void
+vacuum_data_entry::set_job_in_progress ()
+{
+  VACUUM_BLOCK_STATUS_SET_IN_PROGRESS (blockid);
+}
+
+void
+vacuum_data_entry::set_interrupted ()
+{
+  VACUUM_BLOCK_STATUS_SET_AVAILABLE (blockid);
+  VACUUM_BLOCK_SET_INTERRUPTED (blockid);
+}
+
+//
 // vacuum_data_page
 //
 bool
@@ -8014,18 +8023,18 @@ vacuum_data_page::get_index_of_blockid (VACUUM_LOG_BLOCKID blockid) const
       return INDEX_NOT_FOUND;
     }
 
-  VACUUM_LOG_BLOCKID first_blockid = VACUUM_BLOCKID_WITHOUT_FLAGS (data[index_unvacuumed].blockid);
+  VACUUM_LOG_BLOCKID first_blockid = data[index_unvacuumed].get_blockid ();
   if (first_blockid > blockid)
     {
       return INDEX_NOT_FOUND;
     }
-  VACUUM_LOG_BLOCKID last_blockid = VACUUM_BLOCKID_WITHOUT_FLAGS (data[index_free - 1].blockid);
+  VACUUM_LOG_BLOCKID last_blockid = data[index_free - 1].get_blockid ();
   if (last_blockid < blockid)
     {
       return INDEX_NOT_FOUND;
     }
   INT16 index_of_blockid = (INT16) (blockid - first_blockid) + index_unvacuumed;
-  assert (VACUUM_BLOCKID_WITHOUT_FLAGS (data[index_of_blockid].blockid) == blockid);
+  assert (data[index_of_blockid].get_blockid () == blockid);
   return index_of_blockid;
 }
 
@@ -8033,7 +8042,7 @@ VACUUM_LOG_BLOCKID
 vacuum_data_page::get_first_blockid () const
 {
   assert (!is_empty ());
-  return VACUUM_BLOCKID_WITHOUT_FLAGS (data[index_unvacuumed].blockid);
+  return data[index_unvacuumed].get_blockid ();
 }
 
 //
@@ -8096,6 +8105,31 @@ vacuum_job_cursor::get_current_entry () const
   assert (is_valid ());
 
   return m_page->data[m_index];
+}
+
+void
+vacuum_job_cursor::start_job_on_current_entry (cubthread::entry * thread_p)
+{
+  get_current_entry ().set_job_in_progress ();
+  if (!get_current_entry ().was_interrupted ())
+    {
+      /* Log that a new job is starting. After recovery, the system will then know this job was partially executed.
+       * Logging the start of a job already interrupted is not necessary. We do it here rather than when vacuum job
+       * is really started to avoid locking vacuum data again (logging vacuum data cannot be done without locking).
+       */
+      LOG_DATA_ADDR addr { NULL, (PAGE_PTR) m_page, (PGLENGTH) m_index };
+      log_append_redo_data (thread_p, RVVAC_START_JOB, &addr, 0, NULL);
+    }
+  vacuum_set_dirty_data_page_dont_free (thread_p, m_page);
+}
+
+void
+vacuum_job_cursor::force_data_update ()
+{
+  unload ();   // can't be loaded while updating
+  vacuum_Data.update ();
+  readjust_to_vacuum_data_changes ();
+  load ();
 }
 
 void

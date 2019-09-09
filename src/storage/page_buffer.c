@@ -12077,7 +12077,7 @@ pgbuf_get_groupid_and_unfix (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAG
     }
   else
     {
-      er_status = heap_get_hfid_from_class_oid (thread_p, &cls_oid, &hfid);
+      er_status = heap_get_class_info (thread_p, &cls_oid, &hfid, NULL, NULL);
     }
 
   if (er_status == NO_ERROR)
