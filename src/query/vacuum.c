@@ -91,14 +91,15 @@
 typedef struct vacuum_data_entry VACUUM_DATA_ENTRY;
 struct vacuum_data_entry
 {
+  // *INDENT-OFF*
   VACUUM_LOG_BLOCKID blockid;
   LOG_LSA start_lsa;
   MVCCID oldest_mvccid;
   MVCCID newest_mvccid;
 
-    vacuum_data_entry ();
-    vacuum_data_entry (const log_lsa & lsa, MVCCID oldest, MVCCID newest);
-    vacuum_data_entry (const log_header & hdr);
+  vacuum_data_entry ();
+  vacuum_data_entry (const log_lsa & lsa, MVCCID oldest, MVCCID newest);
+  vacuum_data_entry (const log_header & hdr);
 
   VACUUM_LOG_BLOCKID get_blockid () const;
 
@@ -110,6 +111,8 @@ struct vacuum_data_entry
   void set_vacuumed ();
   void set_job_in_progress ();
   void set_interrupted ();
+
+  // *INDENT-ON*
 };
 
 /* One flag is required for entries currently being vacuumed. In order to
