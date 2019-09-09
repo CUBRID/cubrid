@@ -1080,7 +1080,7 @@ restart:
       /* We do not log here. We could have a problem if the server crashes, because same vacuum tasks may be
        * re-executed. The worst that can happen is to hit an assert in debug mode. Instead of doing a voodoo fix here,
        * it is better to live with the bug. */
-      vacuum_sa_run_job (thread_p, data_entry, false, perf_tracker);
+      vacuum_sa_run_job (thread_p, data_entry, true, perf_tracker);
       (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
     }
 
