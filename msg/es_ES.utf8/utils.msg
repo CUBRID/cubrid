@@ -450,25 +450,26 @@ loaddb: Importar objetos y esquemas en la base de datos.\n\
 uso: %1$s loaddb [OPTION] database-name[@host]\n\
 \n\
 opciones validas:\n\
-  -S, --SA-mode                 modo de ejecucion independiente\n\
-  -C, --CS-mode                 modo de ejecucion cliente-servidor\n\
-  -u, --user=ID                 ID de utilizador para acceso a la base de datos; estandar: "public"\n\
-  -p, --password=PASS           contrasena de utilizador; estandar: ninguna\n\
-      --data-file-check-only    verificar sintaxis para archivo de datos sin cargar; estandar: cargar despues de verificar\n\
-  -l, --load-only               cargar archivo de datos sin verificar sintaxis; estandar: cargar despues de verificar\n\
-      --estimated-size=NUMBER   NUMERO estimado de instancias; estandar: 5000\n\
-  -v, --verbose                 habilitar mensajes de estado verbose; estandar: inhabilitado\n\
-  -c, --periodic-commit=COUNT   insertar COUNT al cometer periodicamente; estandar: no cometer mientras cargando\n\
-      --no-oid                  no utilizar OID\n\
-      --no-statistics           no actualizar las estadisticas mientras cargando\n\
-  -s, --schema-file=FILE[:LINE] crear esquema de la LINEA con ARCHIVO\n\
-  -i, --index-file=FILE[:LINE]  crear indice de la LINEA CON ARCHIVO\n\
-  -d, --data-file=FILE          cargar datos con ARCHIVO\n\
-      --server-data-file=FILE   load data with FILE on server,\n\
-                                absolute path must be provided and the file must exist on server file system\n\
-  -t, --table=TABLE             nombre de tabla que es sustituido por falta de encabezamiento de clase en archivo de datos\n\
-      --error-control-file=FILE ARCHIVO para controlar error(es) al cargar\n\
-      --ignore-class-file=FILE  archivo de entrada de nombres de clase que saltan carga\n
+  -S, --SA-mode                  modo de ejecucion independiente\n\
+  -C, --CS-mode                  modo de ejecucion cliente-servidor\n\
+  -u, --user=ID                  ID de utilizador para acceso a la base de datos; estandar: "public"\n\
+  -p, --password=PASS            contrasena de utilizador; estandar: ninguna\n\
+      --data-file-check-only     verificar sintaxis para archivo de datos sin cargar; estandar: cargar despues de verificar\n\
+  -l, --load-only                cargar archivo de datos sin verificar sintaxis; estandar: cargar despues de verificar\n\
+      --estimated-size=NUMBER    NUMERO estimado de instancias; estandar: 5000\n\
+  -v, --verbose                  habilitar mensajes de estado verbose; estandar: inhabilitado\n\
+  -c, --periodic-commit=COUNT    insertar COUNT al cometer periodicamente; estandar: no cometer mientras cargando\n\
+      --no-oid                   no utilizar OID\n\
+      --no-statistics            no actualizar las estadisticas mientras cargando\n\
+  -s, --schema-file=FILE[:LINE]  crear esquema de la LINEA con ARCHIVO\n\
+  -i, --index-file=FILE[:LINE]   crear indice de la LINEA CON ARCHIVO\n\
+      --trigger-file=FILE[:LINE] crear trigger de la LINEA CON ARCHIVO\n\
+  -d, --data-file=FILE           cargar datos con ARCHIVO\n\
+      --server-data-file=FILE    load data with FILE on server,\n\
+                                 absolute path must be provided and the file must exist on server file system\n\
+  -t, --table=TABLE              nombre de tabla que es sustituido por falta de encabezamiento de clase en archivo de datos\n\
+      --error-control-file=FILE  ARCHIVO para controlar error(es) al cargar\n\
+      --ignore-class-file=FILE   archivo de entrada de nombres de clase que saltan carga\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB

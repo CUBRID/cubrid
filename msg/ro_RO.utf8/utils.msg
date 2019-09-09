@@ -478,6 +478,7 @@ opţiuni valide:\n\
       --no-statistics               nu se vor actualiza statisticile în timpul încărcării\n\
   -s, --schema-file=FIŞIER[:LINIE]  creează schema de la linia, respectiv din fişierul specificat\n\
   -i, --index-file=FIŞIER[:LINIE]   creează index de la linia, respectiv din fişierul specificat\n\
+      --trigger-file=FIŞIER[:LINIE] creează trigger de la linia, respectiv din fişierul specificat\n\
   -d, --data-file=FIŞIER            incarcă datele din FIŞIER\n\
       --server-data-file=FILE       incarcă datele din FIŞIER pe server,\n\
                                     trebuie specificată calea absolută a fişierului\n\

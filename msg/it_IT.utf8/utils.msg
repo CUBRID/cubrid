@@ -450,25 +450,26 @@ loaddb: Importare oggetti e gli schemi al database.\n\
 uso: %1$s loaddb [OPZIONE] nome-database[@host]\n\
 \n\
 opzioni valide:\n\
-  -S, --SA-mode                 modalità di esecuzione autonoma\n\
-  -C, --CS-mode                 modalità di esecuzione client-server\n\
-  -u, --user=ID                 user ID per l'accesso al database; predefinito: "public"\n\
-  -p, --password=PASS           password utente; predefinito: nessuno\n\
-      --data-file-check-only    controllare la sintassi per il file di dati senza carico; predefinito: dopo il controllo di carico\n\
-  -l, --load-only               caricare file di dati senza controllo della sintassi; predefinito: dopo il controllo di carico\n\
-      --estimated-size=NUMBERO  Stima del NUMERO di instanze; predefinito: 5000\n\
-  -v, --verbose                 attivare i messaggi dettagliati di stato; predefinito: non attivo\n\
-  -c, --periodic-commit=COUNT   inserimento COUNT per periodico commit; predefinito: no commit durante il caricamento\n\
-      --no-oid                  non usare OID\n\
-      --no-statistics           non aggiornare le statistiche durante il caricamento\n\
-  -s, --schema-file=FILE[:LINE] creare schema da LINE con FILE\n\
-  -i, --index-file=FILE[:LINE]  creare un indice da LINE con FILE\n\
-  -d, --data-file=FILE          dati di carico con FILE\n\
-      --server-data-file=FILE   load data with FILE on server,\n\
-                                absolute path must be provided and the file must exist on server file system\n\
-  -t, --table=TABLE             nome della tabella che viene sostituito con manca intestazione di classe nel file di dati\n\
-      --error-control-file=FILE FILE per il controllo di errore (s) durante il carico\n\
-      --ignore-class-file=FILE  ifile di input di nomi di classe che saltino carico\n
+  -S, --SA-mode                  modalità di esecuzione autonoma\n\
+  -C, --CS-mode                  modalità di esecuzione client-server\n\
+  -u, --user=ID                  user ID per l'accesso al database; predefinito: "public"\n\
+  -p, --password=PASS            password utente; predefinito: nessuno\n\
+      --data-file-check-only     controllare la sintassi per il file di dati senza carico; predefinito: dopo il controllo di carico\n\
+  -l, --load-only                caricare file di dati senza controllo della sintassi; predefinito: dopo il controllo di carico\n\
+      --estimated-size=NUMBERO   Stima del NUMERO di instanze; predefinito: 5000\n\
+  -v, --verbose                  attivare i messaggi dettagliati di stato; predefinito: non attivo\n\
+  -c, --periodic-commit=COUNT    inserimento COUNT per periodico commit; predefinito: no commit durante il caricamento\n\
+      --no-oid                   non usare OID\n\
+      --no-statistics            non aggiornare le statistiche durante il caricamento\n\
+  -s, --schema-file=FILE[:LINE]  creare schema da LINE con FILE\n\
+  -i, --index-file=FILE[:LINE]   creare un indice da LINE con FILE\n\
+      --trigger-file=FILE[:LINE] creare un trigger da LINE con FILE\n\
+  -d, --data-file=FILE           dati di carico con FILE\n\
+      --server-data-file=FILE    load data with FILE on server,\n\
+                                 absolute path must be provided and the file must exist on server file system\n\
+  -t, --table=TABLE              nome della tabella che viene sostituito con manca intestazione di classe nel file di dati\n\
+      --error-control-file=FILE  FILE per il controllo di errore (s) durante il carico\n\
+      --ignore-class-file=FILE   ifile di input di nomi di classe che saltino carico\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB

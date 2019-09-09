@@ -450,25 +450,26 @@ loaddb: データベースにオブジェクトやスキーマロード\n\
 使い方: %1$s loaddb [オプション] データベース名[@ホスト]\n\
 \n\
 オプション:\n\
-  -S, --SA-mode                 独立モードで実行\n\
-  -C, --CS-mode                 クライアントーサーバモードで実行\n\
-  -u, --user=ID                 データベースアクセスに関するユーザー名; デフォルト: 「public」\n\
-  -p, --password=PASS           ユーザーパスワード; デフォルト: なし\n\
-      --data-file-check-only    文法チェックだけを実行; デフォルト: 文法チェックの後、ロード\n\
-  -l, --load-only               文法チェックなしでロード; デフォルト: 文法チェックの後、ロード\n\
-      --estimated-size=NUMBER   インスタンスの予測数; デフォルト: 5000\n\
-  -v, --verbose                 多様な進行情報を出力; デフォルト: 出力しない\n\
-  -c, --periodic-commit=COUNT   周期的なコミットに関するカウント; デフォルト: ロード中にコミットしない\n\
-      --no-oid                  OIDを未使用\n\
-      --no-statistics           ロードの後、スタティスティックス情報を更新しない。\n\
-  -s, --schema-file=FILE[:LINE] ファイル[:ライン]情報でスキーマ生成\n\
-  -i, --index-file=FILE[:LINE]  ファイル[:ライン]情報でインデックス生成\n\
-  -d, --data-file=FILE          ロードするデータファイル\n\
-      --server-data-file=FILE   load data with FILE on server,\n\
-                                absolute path must be provided and the file must exist on server file system\n\
-  -t, --table=TABLE             データをロードするテーブル名; データファイルにテーブル情報がない場合使う\n\
-      --error-control-file=FILE ロード中に発生するエラーに関するコントロールファイル\n\
-      --ignore-class-file=FILE  ロードしないクラス名が入っているファイル\n
+  -S, --SA-mode                  独立モードで実行\n\
+  -C, --CS-mode                  クライアントーサーバモードで実行\n\
+  -u, --user=ID                  データベースアクセスに関するユーザー名; デフォルト: 「public」\n\
+  -p, --password=PASS            ユーザーパスワード; デフォルト: なし\n\
+      --data-file-check-only     文法チェックだけを実行; デフォルト: 文法チェックの後、ロード\n\
+  -l, --load-only                文法チェックなしでロード; デフォルト: 文法チェックの後、ロード\n\
+      --estimated-size=NUMBER    インスタンスの予測数; デフォルト: 5000\n\
+  -v, --verbose                  多様な進行情報を出力; デフォルト: 出力しない\n\
+  -c, --periodic-commit=COUNT    周期的なコミットに関するカウント; デフォルト: ロード中にコミットしない\n\
+      --no-oid                   OIDを未使用\n\
+      --no-statistics            ロードの後、スタティスティックス情報を更新しない。\n\
+  -s, --schema-file=FILE[:LINE]  ファイル[:ライン]情報でスキーマ生成\n\
+  -i, --index-file=FILE[:LINE]   ファイル[:ライン]情報でインデックス生成\n\
+      --trigger-file=FILE[:LINE] create trigger from LINE with FILE\n\
+  -d, --data-file=FILE           ロードするデータファイル\n\
+      --server-data-file=FILE    load data with FILE on server,\n\
+                                 absolute path must be provided and the file must exist on server file system\n\
+  -t, --table=TABLE              データをロードするテーブル名; データファイルにテーブル情報がない場合使う\n\
+      --error-control-file=FILE  ロード中に発生するエラーに関するコントロールファイル\n\
+      --ignore-class-file=FILE   ロードしないクラス名が入っているファイル\n
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 cached-pagesが正しくありません。\n

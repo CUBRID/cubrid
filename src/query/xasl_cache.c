@@ -28,6 +28,7 @@
 #include "binaryheap.h"
 #include "compile_context.h"
 #include "config.h"
+#include "system_parameter.h"
 #include "list_file.h"
 #include "perf_monitor.h"
 #include "query_executor.h"

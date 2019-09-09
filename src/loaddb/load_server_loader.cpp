@@ -24,6 +24,7 @@
 #include "load_server_loader.hpp"
 
 #include "btree.h"
+#include "dbtype.h"
 #include "load_class_registry.hpp"
 #include "load_db_value_converter.hpp"
 #include "load_driver.hpp"
@@ -36,6 +37,8 @@
 #include "string_opfunc.h"
 #include "thread_manager.hpp"
 #include "xserver_interface.h"
+
+#include <cstring>
 
 namespace cubload
 {
@@ -412,7 +415,7 @@ namespace cubload
 
     int error_code = locator_multi_insert_force (m_thread_ref, &m_scancache.node.hfid, &m_scancache.node.class_oid,
 		     m_recdes_collected, true, op_type, &m_scancache, &force_count, pruning_type, NULL, NULL,
-		     UPDATE_INPLACE_NONE);
+		     UPDATE_INPLACE_NONE, true);
     if (error_code != NO_ERROR)
       {
 	ASSERT_ERROR ();

@@ -451,25 +451,26 @@ loaddb: Import objects and schemas to the database.\n\
 usage: %1$s loaddb [OPTION] database-name[@host]\n\
 \n\
 valid options:\n\
-  -S, --SA-mode                 stand-alone mode execution\n\
-  -C, --CS-mode                 client-server mode execution\n\
-  -u, --user=ID                 user ID for database access; default: "public"\n\
-  -p, --password=PASS           user password; default: none\n\
-      --data-file-check-only    check syntax for data file without load; default: loading after checking\n\
-  -l, --load-only               load data file without checking syntax; default: loading after checking\n\
-      --estimated-size=NUMBER   estimated NUMBER of instances; default: 5000\n\
-  -v, --verbose                 enable verbose status messages; default: disabled\n\
-  -c, --periodic-commit=COUNT   insertion COUNT for periodic commit; default: no commit during loading\n\
-      --no-oid                  don't use OID\n\
-      --no-statistics           do not update the statistics while loading\n\
-  -s, --schema-file=FILE[:LINE] create schema from LINE with FILE\n\
-  -i, --index-file=FILE[:LINE]  create index from LINE with FILE\n\
-  -d, --data-file=FILE          load data with FILE\n\
-      --server-data-file=FILE   load data with FILE on server,\n\
-                                absolute path must be provided and the file must exist on server file system\n\
-  -t, --table=TABLE             table name that is substituted for missing class header in data file\n\
-      --error-control-file=FILE FILE to control error(s) during loading\n\
-      --ignore-class-file=FILE  input file of class names that skip load\n
+  -S, --SA-mode                  stand-alone mode execution\n\
+  -C, --CS-mode                  client-server mode execution\n\
+  -u, --user=ID                  user ID for database access; default: "public"\n\
+  -p, --password=PASS            user password; default: none\n\
+      --data-file-check-only     check syntax for data file without load; default: loading after checking\n\
+  -l, --load-only                load data file without checking syntax; default: loading after checking\n\
+      --estimated-size=NUMBER    estimated NUMBER of instances; default: 5000\n\
+  -v, --verbose                  enable verbose status messages; default: disabled\n\
+  -c, --periodic-commit=COUNT    insertion COUNT for periodic commit; default: no commit during loading\n\
+      --no-oid                   don't use OID\n\
+      --no-statistics            do not update the statistics while loading\n\
+  -s, --schema-file=FILE[:LINE]  create schema from LINE with FILE\n\
+  -i, --index-file=FILE[:LINE]   create index from LINE with FILE\n\
+      --trigger-file=FILE[:LINE] create trigger from LINE with FILE\n\
+  -d, --data-file=FILE           load data with FILE\n\
+      --server-data-file=FILE    load data with FILE on server,\n\
+                                 absolute path must be provided and the file must exist on server file system\n\
+  -t, --table=TABLE              table name that is substituted for missing class header in data file\n\
+      --error-control-file=FILE  FILE to control error(s) during loading\n\
+      --ignore-class-file=FILE   input file of class names that skip load\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB

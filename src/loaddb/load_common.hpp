@@ -104,6 +104,7 @@ namespace cubload
     bool no_oid_hint;
     std::string schema_file;
     std::string index_file;
+    std::string trigger_file;
     std::string object_file;
     std::string server_object_file;
     std::string error_file;
