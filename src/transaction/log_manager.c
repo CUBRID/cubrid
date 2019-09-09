@@ -8958,13 +8958,13 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
       goto exit_on_error;
     }
 
-  if (header->last_block_oldest_mvccid == MVCCID_NULL)
+  if (header->last_block_oldest_visible_mvccid == MVCCID_NULL)
     {
       db_make_null (out_values[idx]);
     }
   else
     {
-      db_make_bigint (out_values[idx], header->last_block_oldest_mvccid);
+      db_make_bigint (out_values[idx], header->last_block_oldest_visible_mvccid);
     }
   idx++;
 
