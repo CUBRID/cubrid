@@ -7901,7 +7901,7 @@ vacuum_data::set_oldest_unvacuumed_on_boot ()
 void
 vacuum_data::upgrade_oldest_unvacuumed (MVCCID mvccid)
 {
-  assert (MVCC_ID_PRECEDES (oldest_unvacuumed_mvccid, mvccid));
+  assert (oldest_unvacuumed_mvccid <= mvccid);
   oldest_unvacuumed_mvccid = mvccid;
 }
 
