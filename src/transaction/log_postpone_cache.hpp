@@ -25,6 +25,8 @@
 #define _LOG_POSTPONE_CACHE_HPP_
 
 #include "log_lsa.hpp"
+#include "log_record.hpp"
+#include "mem_block.hpp"
 #include "storage_common.h"
 
 #include <array>
@@ -46,13 +48,12 @@ class log_postpone_cache
 {
   public:
     log_postpone_cache ()
-      : m_redo_data_buf (NULL)
-      , m_redo_data_ptr (NULL)
-      , m_cache_status (LOG_POSTPONE_CACHE_NO)
-      , m_cache_entries_cursor (0)
+      : m_redo_data_buf ()
+      , m_redo_data_offset (0)
+      , m_is_redo_data_buf_full (false)
+      , m_cursor (0)
       , m_cache_entries ()
     {
-      m_redo_data_buf = new char[REDO_DATA_SIZE];
     }
 
     log_postpone_cache (log_postpone_cache &&other) = delete;
@@ -61,49 +62,41 @@ class log_postpone_cache
     log_postpone_cache &operator= (log_postpone_cache &&other) = delete;
     log_postpone_cache &operator= (const log_postpone_cache &other) = delete;
 
-    ~log_postpone_cache ()
-    {
-      delete [] m_redo_data_buf;
-    }
+    ~log_postpone_cache () = default;
 
-    void clear ();
+    void reset ();
 
     void add_redo_data (const log_prior_node &node);
     void add_lsa (const log_lsa &lsa);
     bool do_postpone (cubthread::entry &thread_ref, const log_lsa &start_postpone_lsa);
 
   private:
-    static const std::size_t REDO_DATA_SIZE = IO_MAX_PAGE_SIZE;
     static const std::size_t MAX_CACHE_ENTRIES = 512;
+    // on average redo data size for an entry is 48 bytes
+    static const std::size_t REDO_DATA_MAX_SIZE = 48 * MAX_CACHE_ENTRIES;
 
     class cache_entry
     {
       public:
 	cache_entry ()
 	  : m_lsa ()
-	  , m_redo_data (NULL)
+	  , m_offset (0)
 	{
 	  m_lsa.set_null ();
 	}
 
 	log_lsa m_lsa;
-	char *m_redo_data;
+	std::size_t m_offset;
     };
 
-    enum cache_status
-    {
-      LOG_POSTPONE_CACHE_NO,
-      LOG_POSTPONE_CACHE_YES,
-      LOG_POSTPONE_CACHE_OVERFLOW
-    };
+    cubmem::extensible_block m_redo_data_buf;
+    std::size_t m_redo_data_offset;
+    bool m_is_redo_data_buf_full;
 
-    char *m_redo_data_buf;
-    char *m_redo_data_ptr;
-
-    cache_status m_cache_status;
-
-    std::size_t m_cache_entries_cursor;
+    std::size_t m_cursor;
     std::array<cache_entry, MAX_CACHE_ENTRIES> m_cache_entries;
+
+    bool is_full () const;
 };
 
 #endif /* _LOG_POSTPONE_CACHE_HPP_ */
