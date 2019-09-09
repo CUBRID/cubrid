@@ -12074,7 +12074,7 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
   scancache_inited = true;
 
   tdes->lock_global_oldest_visible_mvccid ();
-  threshold_mvccid = logtb_get_oldest_active_mvccid (thread_p);
+  threshold_mvccid = log_Gl.mvcc_table.get_global_oldest_visible ();
 
   /* VACUUM all cleanable heap objects before upgrading the domain */
   error = heap_vacuum_all_objects (thread_p, &upd_scancache, threshold_mvccid);
@@ -12642,7 +12642,7 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
   recdes.data = NULL;
 
   tdes->lock_global_oldest_visible_mvccid ();
-  threshold_mvccid = logtb_get_oldest_active_mvccid (thread_p);
+  threshold_mvccid = log_Gl.mvcc_table.get_global_oldest_visible (thread_p);
 
   for (i = 0; i < no_oids; i++)
     {

@@ -84,7 +84,7 @@ class mvcctable
     void get_two_new_mvccid (MVCCID &first, MVCCID &second);
 
     bool is_active (MVCCID mvccid) const;
-    MVCCID compute_oldest_active_mvccid () const;
+    MVCCID get_global_oldest_active () const;
 
     void reset_start_mvccid ();     // not thread safe
 
@@ -100,8 +100,8 @@ class mvcctable
     static const size_t HISTORY_INDEX_MASK = HISTORY_MAX_SIZE - 1;
 
     /* lowest active MVCCIDs - array of size NUM_TOTAL_TRAN_INDICES */
-    lowest_active_mvccid_type *m_transaction_lowest_active_mvccids;
-    size_t m_transaction_lowest_active_mvccids_size;
+    lowest_active_mvccid_type *m_transaction_lowest_visible_mvccids;
+    size_t m_transaction_lowest_visible_mvccids_size;
     /* lowest active MVCCID */
     lowest_active_mvccid_type m_current_status_lowest_active_mvccid;
 
@@ -123,6 +123,7 @@ class mvcctable
     mvcc_trans_status &next_trans_status_start (mvcc_trans_status::version_type &next_version, size_t &next_index);
     void next_tran_status_finish (mvcc_trans_status &next_trans_status, size_t next_index);
     void advance_oldest_active (MVCCID next_oldest_active);
+    MVCCID compute_oldest_visible_mvccid () const;
 };
 
 #endif // !_MVCC_TABLE_H_
