@@ -169,6 +169,8 @@ mvcctable::mvcctable ()
   , m_trans_status_history (NULL)
   , m_new_mvccid_lock ()
   , m_active_trans_mutex ()
+  , m_oldest_visible (MVCCID_NULL)
+  , m_ov_lock_count (0)
 {
 }
 
@@ -592,4 +594,36 @@ mvcctable::reset_start_mvccid ()
   m_trans_status_history[m_trans_status_history_position].m_active_mvccs.reset_start_mvccid (log_Gl.hdr.mvcc_next_id);
 
   m_current_status_lowest_active_mvccid.store (log_Gl.hdr.mvcc_next_id);
+}
+
+MVCCID
+mvcctable::get_oldest_visible () const
+{
+  return m_oldest_visible.load ();
+}
+
+void
+mvcctable::update_oldest_visible ()
+{
+  if (m_ov_lock_count == 0)
+    {
+      MVCCID oldest_visible = compute_oldest_active_mvccid ();
+      if (m_ov_lock_count == 0)
+	{
+	  m_oldest_visible.store (m_ov_lock_count);
+	}
+    }
+}
+
+void
+mvcctable::lock_oldest_visible ()
+{
+  ++m_ov_lock_count;
+}
+
+void
+mvcctable::unlock_oldest_visible ()
+{
+  assert (m_ov_lock_count > 0);
+  --m_ov_lock_count;
 }
