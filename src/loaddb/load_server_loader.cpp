@@ -141,7 +141,7 @@ namespace cubload
 	return;
       }
 
-    heap_scancache_quick_start_with_class_oid (&thread_ref, &scancache, &class_oid);
+    heap_scancache_quick_start_root_hfid (&thread_ref, &scancache);
     SCAN_CODE scan_code = heap_get_class_record (&thread_ref, &class_oid, &recdes, &scancache, PEEK);
     if (scan_code != S_SUCCESS)
       {
