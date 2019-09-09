@@ -564,6 +564,9 @@ struct log_tdes
 
   void on_sysop_start ();
   void on_sysop_end ();
+
+  void lock_global_oldest_visible_mvccid ();
+  void unlock_global_oldest_visible_mvccid ();
 #endif
   // *INDENT-ON*
 };

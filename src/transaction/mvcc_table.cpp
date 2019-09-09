@@ -597,13 +597,13 @@ mvcctable::reset_start_mvccid ()
 }
 
 MVCCID
-mvcctable::get_oldest_visible () const
+mvcctable::get_global_oldest_visible () const
 {
   return m_oldest_visible.load ();
 }
 
 void
-mvcctable::update_oldest_visible ()
+mvcctable::update_global_oldest_visible ()
 {
   if (m_ov_lock_count == 0)
     {
@@ -616,14 +616,20 @@ mvcctable::update_oldest_visible ()
 }
 
 void
-mvcctable::lock_oldest_visible ()
+mvcctable::lock_global_oldest_visible ()
 {
   ++m_ov_lock_count;
 }
 
 void
-mvcctable::unlock_oldest_visible ()
+mvcctable::unlock_global_oldest_visible ()
 {
   assert (m_ov_lock_count > 0);
   --m_ov_lock_count;
+}
+
+bool
+mvcctable::is_global_oldest_visible_locked () const
+{
+  return m_ov_lock_count != 0;
 }

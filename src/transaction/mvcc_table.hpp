@@ -88,10 +88,11 @@ class mvcctable
 
     void reset_start_mvccid ();     // not thread safe
 
-    MVCCID get_oldest_visible () const;
-    void update_oldest_visible ();
-    void lock_oldest_visible ();
-    void unlock_oldest_visible ();
+    MVCCID get_global_oldest_visible () const;
+    void update_global_oldest_visible ();
+    void lock_global_oldest_visible ();
+    void unlock_global_oldest_visible ();
+    bool is_global_oldest_visible_locked () const;
 
   private:
 

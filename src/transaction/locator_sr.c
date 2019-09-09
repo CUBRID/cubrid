@@ -12075,16 +12075,7 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
     }
   scancache_inited = true;
 
-  if (tdes->block_global_oldest_active_until_commit == false)
-    {
-      /* do not allow to advance with vacuum_Global_oldest_active_mvccid */
-      ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 1);
-      tdes->block_global_oldest_active_until_commit = true;
-    }
-  else
-    {
-      assert (vacuum_Global_oldest_active_blockers_counter > 0);
-    }
+  tdes->lock_global_oldest_visible_mvccid ();
 
   /* Can't use vacuum_Global_oldest_active_mvccid here. That's because we want to avoid scenarios where VACUUM compute
    * oldest active mvccid, but didn't set yet vacuum_Global_oldest_active_mvccid, current transaction uses the old
@@ -12680,16 +12671,7 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 	}
       is_part_scancache_started = true;
 
-      if (tdes->block_global_oldest_active_until_commit == false)
-	{
-	  /* do not allow to advance with vacuum_Global_oldest_active_mvccid */
-	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 1);
-	  tdes->block_global_oldest_active_until_commit = true;
-	}
-      else
-	{
-	  assert (vacuum_Global_oldest_active_blockers_counter > 0);
-	}
+      tdes->lock_global_oldest_visible_mvccid ();
 
       if (threshold_mvccid == MVCCID_NULL)
 	{

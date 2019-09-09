@@ -6200,4 +6200,28 @@ log_tdes::on_sysop_end ()
     }
 }
 
+void
+log_tdes::lock_global_oldest_visible_mvccid ()
+{
+  if (!block_global_oldest_active_until_commit)
+    {
+      log_Gl.mvcc_table.lock_global_oldest_visible ();
+      block_global_oldest_active_until_commit = true;
+    }
+}
+
+void
+log_tdes::unlock_global_oldest_visible_mvccid ()
+{
+  if (block_global_oldest_active_until_commit)
+    {
+      log_Gl.mvcc_table.unlock_global_oldest_visible ();
+      block_global_oldest_active_until_commit = false;
+    }
+  else
+    {
+      assert (log_Gl.mvcc_table.is_global_oldest_visible_locked ());
+    }
+}
+
 // *INDENT-ON*
