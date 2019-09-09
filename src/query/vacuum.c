@@ -427,12 +427,6 @@ VACUUM_WORKER vacuum_Master;
  * Considered as threshold by vacuum workers.
  */
 MVCCID vacuum_Global_oldest_active_mvccid;
-/* When transactions run some complex operations on heap files (upgrade domain, reorganize partitions), concurrent
- * access with vacuum workers can create problems. They avoid it by blocking vacuum_Global_oldest_active_mvccid updates
- * and by running vacuum manually.
- * This is a counter that tracks blocking transactions.
- */
-INT32 vacuum_Global_oldest_active_blockers_counter;
 /* vacuum_Save_log_hdr_oldest_mvccid is used to estimate oldest unvacuumed MVCCID in the corner-case of empty vacuum
  * data. When vacuum data is not empty, oldest MVCCID of first block not yet vacuumed is used.
  * However, when vacuum data is not empty, the oldest MVCCID can be either the oldest MVCCID of first block in
@@ -446,7 +440,7 @@ INT32 vacuum_Global_oldest_active_blockers_counter;
  * So, if vacuum data is empty, this block is in either situation #1 or #2, which is exactly the MVCCID required by
  * vacuum master to estimate the oldest unvacuumed MVCCID.
  */
-MVCCID vacuum_Save_log_hdr_oldest_mvccid = MVCCID_NULL;
+MVCCID vacuum_Save_oldest_visible_mvccid = MVCCID_NULL;
 
 /* A lock-free buffer used for communication between logger transactions and
  * auto-vacuum master. It is advisable to avoid synchronizing running
@@ -1181,8 +1175,6 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
       vacuum_Workers[i].prefetch_last_pageid = NULL_PAGEID;
       vacuum_Workers[i].allocated_resources = false;
     }
-
-  vacuum_Global_oldest_active_blockers_counter = 0;
 
   return NO_ERROR;
 
@@ -2934,16 +2926,7 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
 
   PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
 
-  if (vacuum_Global_oldest_active_blockers_counter == 0)
-    {
-      local_oldest_active_mvccid = logtb_get_oldest_active_mvccid (thread_p);
-
-      /* check again, maybe concurrent thread has modified the counter value */
-      if (vacuum_Global_oldest_active_blockers_counter == 0)
-	{
-	  ATOMIC_STORE_64 (&vacuum_Global_oldest_active_mvccid, local_oldest_active_mvccid);
-	}
-    }
+  local_oldest_active_mvccid = log_Gl.mvcc_table.update_global_oldest_visible ();
 
   if (!vacuum_Data.is_loaded)
     {
@@ -2990,7 +2973,7 @@ restart:
     {
       entry = &m_cursor.get_current_entry ();
 
-      if (!MVCC_ID_PRECEDES (entry->newest_mvccid, vacuum_Global_oldest_active_mvccid)
+      if (!MVCC_ID_PRECEDES (entry->newest_mvccid, local_oldest_active_mvccid)
 	  || (entry->start_lsa.pageid + 1 >= log_Gl.append.prev_lsa.pageid))
 	{
 	  /* Newest MVCCID in block is not old enough. Or
@@ -3001,9 +2984,9 @@ restart:
 	   */
 	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
 			 "Cannot generate job for " VACUUM_LOG_DATA_ENTRY_MSG ("entry") ". "
-			 "vacuum_Global_oldest_active_mvccid = %llu, log_Gl.append.prev_lsa.pageid = %d.",
+			 "global oldest visible mvccid = %llu, log_Gl.append.prev_lsa.pageid = %d.",
 			 VACUUM_LOG_DATA_ENTRY_AS_ARGS (entry),
-			 (unsigned long long int) vacuum_Global_oldest_active_mvccid,
+			 (unsigned long long int) local_oldest_active_mvccid,
 			 (long long int) log_Gl.append.prev_lsa.pageid);
 
 	  /* todo: remember this as starting point for next iteration of generating jobs */
@@ -3099,7 +3082,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
   OID class_oid, oid;
   BTREE_OBJECT_INFO old_version;
   BTREE_OBJECT_INFO new_version;
-  MVCCID threshold_mvccid = vacuum_Global_oldest_active_mvccid;
+  MVCCID threshold_mvccid = log_Gl.mvcc_table.get_global_oldest_visible ();
   BTREE_MVCC_INFO mvcc_info;
   MVCCID mvccid;
   LOG_VACUUM_INFO log_vacuum;
@@ -4126,7 +4109,7 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
   vacuum_Data.is_loaded = true;
 
   /* get global oldest active MVCCID. */
-  vacuum_Global_oldest_active_mvccid = logtb_get_oldest_active_mvccid (thread_p);
+  (void) log_Gl.mvcc_table.update_global_oldest_visible ();
 
   error_code = vacuum_recover_lost_block_data (thread_p);
   if (error_code != NO_ERROR)
@@ -4941,9 +4924,10 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
   /* Save oldest MVCCID of block cached in log_Gl.hdr to be used by vacuum_update_oldest_unvacuumed_mvccid.
    * See description for vacuum_Save_log_hdr_oldest_mvccid.
    */
-  vacuum_Save_log_hdr_oldest_mvccid =
-    LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa) ?
-    vacuum_Global_oldest_active_mvccid : ATOMIC_INC_64 (&log_Gl.hdr.last_block_oldest_mvccid, 0);
+  MVCCID last_block_oldest_mvccid = log_Gl.hdr.last_block_oldest_mvccid;
+  MVCCID oldest_visible_mvccid = log_Gl.mvcc_table.get_global_oldest_visible ();
+  vacuum_Save_oldest_visible_mvccid =
+    last_block_oldest_mvccid != MVCCID_NULL ? last_block_oldest_mvccid : oldest_visible_mvccid;
 
   if (vacuum_Block_data_buffer->is_empty ())
     {
@@ -5067,9 +5051,10 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	      LSA_COPY (&page_free_data->start_lsa, &consumed_data.start_lsa);
 	      page_free_data->newest_mvccid = consumed_data.newest_mvccid;
 	      page_free_data->oldest_mvccid = consumed_data.oldest_mvccid;
-	      if (MVCC_ID_PRECEDES (vacuum_Global_oldest_active_mvccid, page_free_data->oldest_mvccid))
+	      if (MVCC_ID_PRECEDES (oldest_visible_mvccid, page_free_data->oldest_mvccid))
 		{
-		  page_free_data->oldest_mvccid = vacuum_Global_oldest_active_mvccid;
+		  // ??
+		  page_free_data->oldest_mvccid = oldest_visible_mvccid;
 		}
 #if !defined (NDEBUG)
 	      /* Check that oldest_mvccid is not decreasing. */
@@ -5272,8 +5257,9 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
   LOG_LSA mvcc_op_log_lsa = LSA_INITIALIZER;
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
-		 "vacuum_recover_lost_block_data, lsa = %lld|%d, global_oldest_mvccid = %llu",
-		 LSA_AS_ARGS (&vacuum_Data.recovery_lsa), (unsigned long long int) vacuum_Global_oldest_active_mvccid);
+		 "vacuum_recover_lost_block_data, lsa = %lld|%d, global_oldest_visible_mvccid = %llu",
+		 LSA_AS_ARGS (&vacuum_Data.recovery_lsa),
+		 (unsigned long long int) log_Gl.mvcc_table.get_global_oldest_visible ());
   if (LSA_ISNULL (&vacuum_Data.recovery_lsa))
     {
       /* No recovery was done. */
@@ -5580,7 +5566,7 @@ vacuum_update_oldest_unvacuumed_mvccid (THREAD_ENTRY * thread_p)
    *     is set to vacuum_Save_log_hdr_oldest_mvccid (see its description for details).
    */
 
-  if (vacuum_Data.first_page->index_unvacuumed < vacuum_Data.first_page->index_free)
+  if (!vacuum_Data.is_empty ())
     {
       /* Use oldest MVCCID in vacuum data. */
       /* Considering #1, it is enough to check the first block oldest MVCCID. All subsequent blocks should have their
@@ -5596,7 +5582,7 @@ vacuum_update_oldest_unvacuumed_mvccid (THREAD_ENTRY * thread_p)
       /* If page is empty and has next page, it should have been removed. */
       assert (VPID_ISNULL (&vacuum_Data.first_page->next_page));
       /* Use vacuum_Save_log_hdr_oldest_mvccid (see its description). */
-      oldest_mvccid = vacuum_Save_log_hdr_oldest_mvccid;
+      oldest_mvccid = vacuum_Save_oldest_visible_mvccid;
 #else /* not SERVER_MODE = SA_MODE */
       /* if vacuum data is empty in SA_MODE, then everything has been vacuumed! set oldest not vacuumed to
        * log_Gl.hdr.mvcc_next_id */
@@ -6953,7 +6939,7 @@ vacuum_verify_vacuum_data_debug (THREAD_ENTRY * thread_p)
 	    }
 
 	  assert (entry->is_available () || entry->is_job_in_progress ());
-	  assert (entry->oldest_mvccid <= vacuum_Global_oldest_active_mvccid);
+	  assert (entry->oldest_mvccid <= log_Gl.mvcc_table.get_global_oldest_visible ());
 	  assert (vacuum_Data.oldest_unvacuumed_mvccid <= entry->oldest_mvccid);
 	  assert (entry->get_blockid () <= vacuum_Data.get_last_blockid ());
 	  assert (vacuum_get_log_blockid (entry->start_lsa.pageid) == entry->get_blockid ());
@@ -7439,17 +7425,6 @@ vacuum_notify_server_shutdown (void)
   vacuum_Data.shutdown_requested = true;
 }
 
-/*
- * vacuum_get_global_oldest_active_mvccid () - Get global oldest active MVCCID.
- *
- * return : Global oldest active MVCCID.
- */
-MVCCID
-vacuum_get_global_oldest_active_mvccid (void)
-{
-  return vacuum_Global_oldest_active_mvccid;
-}
-
 #if !defined (NDEBUG)
 /*
  * vacuum_data_check_page_fix () - Check fix counts on vacuum data pages are not off.
@@ -7542,7 +7517,7 @@ vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, 
     }
   else
     {
-      can_vacuum = mvcc_satisfies_vacuum (thread_p, &rec_header, vacuum_Global_oldest_active_mvccid);
+      can_vacuum = mvcc_satisfies_vacuum (thread_p, &rec_header, log_Gl.mvcc_table.get_global_oldest_visible ());
     }
 
   /* it is impossible to restore a record that should be removed by vacuum */

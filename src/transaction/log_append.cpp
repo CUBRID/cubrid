@@ -1344,7 +1344,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 		  == vacuum_get_log_blockid (start_lsa.pageid) - 1);
 	  vacuum_produce_log_block_data (thread_p, &log_Gl.hdr.mvcc_op_log_lsa, log_Gl.hdr.last_block_oldest_mvccid,
 					 log_Gl.hdr.last_block_newest_mvccid);
-	  log_Gl.hdr.last_block_oldest_mvccid = vacuum_get_global_oldest_active_mvccid ();
+	  log_Gl.hdr.last_block_oldest_mvccid = MVCCID_NULL;
 	  log_Gl.hdr.last_block_newest_mvccid = MVCCID_NULL;
 	  log_Gl.hdr.does_block_need_vacuum = false;
 	}
@@ -1400,7 +1400,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 	}
       if (log_Gl.hdr.last_block_oldest_mvccid == MVCCID_NULL)
 	{
-	  log_Gl.hdr.last_block_oldest_mvccid = vacuum_get_global_oldest_active_mvccid ();
+	  log_Gl.hdr.last_block_oldest_mvccid = log_Gl.mvcc_table.get_global_oldest_visible ();
 	}
       assert (!MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.last_block_oldest_mvccid));
 

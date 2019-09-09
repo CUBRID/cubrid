@@ -565,6 +565,8 @@ struct log_tdes
   void on_sysop_start ();
   void on_sysop_end ();
 
+  // lock global oldest visible mvccid to current value; required for heavy operations that need to do their own
+  // vacuuming, like upgrade domain / reorganize partitions
   void lock_global_oldest_visible_mvccid ();
   void unlock_global_oldest_visible_mvccid ();
 #endif
