@@ -659,7 +659,7 @@ namespace cubload
   {
     hfid hfid;
 
-    int error_code = heap_get_hfid_from_class_oid (m_thread_ref, &class_oid, &hfid);
+    int error_code = heap_get_class_info (m_thread_ref, &class_oid, &hfid, NULL, NULL);
     if (error_code != NO_ERROR)
       {
 	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
