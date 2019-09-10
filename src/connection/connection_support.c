@@ -2698,7 +2698,7 @@ css_make_access_status_exist_user (THREAD_ENTRY * thread_p, OID * class_oid, LAS
   heap_scancache_end (thread_p, &scan_cache);
   scan_cache_inited = false;
 
-  error = heap_get_hfid_from_class_oid (thread_p, class_oid, &hfid);
+  error = heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL);
   if (error != NO_ERROR)
     {
       goto end;

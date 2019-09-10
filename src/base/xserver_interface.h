@@ -39,6 +39,7 @@
 #include "config.h"
 #include "error_manager.h"
 #include "file_io.h"
+#include "intl_support.h"
 #include "locator.h"
 #include "log_comm.h"
 #include "log_lsa.hpp"

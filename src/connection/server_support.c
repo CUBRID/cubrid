@@ -846,7 +846,7 @@ css_process_master_hostname ()
 
   er_log_debug_replication (ARG_FILE_LINE, "css_process_master_hostname css_Master_server_name:%s,"
     " ha_Server_master_hostname:%s\n", css_Master_server_name, ha_Server_master_hostname);
-  
+
   cubreplication::replication_node_manager::inc_ha_tasks ();
   cubthread::entry_task *connect_to_master_task = new cubthread::entry_callable_task ([] (cubthread::entry &context)
   {

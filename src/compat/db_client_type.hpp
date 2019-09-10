@@ -44,8 +44,8 @@ enum db_client_type
   DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY = 13,
   DB_CLIENT_TYPE_ADMIN_CSQL_WOS = 14,	/* admin csql that can write on standby */
   DB_CLIENT_TYPE_DDL_PROXY = 15,
-  
+
   DB_CLIENT_TYPE_MAX
-};  
+};
 
 #endif /* _DB_CLIENT_TYPE_HPP */
