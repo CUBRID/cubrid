@@ -3834,7 +3834,7 @@ xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logtb_get_oldest_active_mvccid () - Get oldest MVCCID that was running
+ * logtb_get_oldest_visible_mvccid () - Get oldest MVCCID that was running
  *				       when any active transaction started.
  *
  * return	 : MVCCID for oldest active transaction.
@@ -3848,7 +3848,7 @@ xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
  *	      transaction, this function return highest_completed_mvccid + 1.
  */
 MVCCID
-logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
+logtb_get_oldest_visible_mvccid (THREAD_ENTRY * thread_p)
 {
   MVCCID lowest_active_mvccid = 0;
   TSC_TICKS start_tick, end_tick;
@@ -3862,7 +3862,7 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
       tsc_getticks (&start_tick);
     }
 
-  lowest_active_mvccid = log_Gl.mvcc_table.compute_oldest_active_mvccid ();
+  lowest_active_mvccid = log_Gl.mvcc_table.compute_oldest_visible_mvccid ();
 
   if (is_perf_tracking)
     {
@@ -3881,7 +3881,7 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
 #if !defined (NDEBUG)
   {
     /* Safe guard: vacuum_Global_oldest_active_mvccid can never become smaller. */
-    MVCCID crt_oldest = vacuum_get_global_oldest_active_mvccid ();
+    MVCCID crt_oldest = vacuum_get_global_oldest_visible_mvccid ();
     assert (!MVCC_ID_PRECEDES (lowest_active_mvccid, crt_oldest));
   }
 #endif /* !NDEBUG */

@@ -223,7 +223,7 @@ extern void vacuum_finalize (THREAD_ENTRY * thread_p);
 extern int vacuum_boot (THREAD_ENTRY * thread_p);
 extern void vacuum_stop (THREAD_ENTRY * thread_p);
 extern int xvacuum (THREAD_ENTRY * thread_p);
-extern MVCCID vacuum_get_global_oldest_active_mvccid (void);
+extern MVCCID vacuum_get_global_oldest_visible_mvccid (void);
 
 extern int vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, VFID * vacuum_data_vfid);
 extern int vacuum_data_load_and_recover (THREAD_ENTRY * thread_p);
