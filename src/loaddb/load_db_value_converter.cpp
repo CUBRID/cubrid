@@ -136,10 +136,10 @@ namespace cubload
     setters_[DB_TYPE_DOUBLE][LDR_DOUBLE] = &to_db_double;
     setters_[DB_TYPE_DOUBLE][LDR_FLOAT] = &to_db_double;
 
-    setters_[DB_TYPE_NUMERIC][LDR_INT] = &to_db_numeric;
+    setters_[DB_TYPE_NUMERIC][LDR_INT] = &to_db_int;
     setters_[DB_TYPE_NUMERIC][LDR_NUMERIC] = &to_db_numeric;
-    setters_[DB_TYPE_NUMERIC][LDR_DOUBLE] = &to_db_numeric;
-    setters_[DB_TYPE_NUMERIC][LDR_FLOAT] = &to_db_numeric;
+    setters_[DB_TYPE_NUMERIC][LDR_DOUBLE] = &to_db_double;
+    setters_[DB_TYPE_NUMERIC][LDR_FLOAT] = &to_db_double;
 
     setters_[DB_TYPE_BIT][LDR_BSTR] = &to_db_varbit_from_bin_str;
     setters_[DB_TYPE_BIT][LDR_XSTR] = &to_db_varbit_from_hex_str;
