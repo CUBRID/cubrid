@@ -19836,8 +19836,8 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
       break;
 
     case F_REGEXP_REPLACE:
-      error = db_string_regexp_replace(result, args, num_args, NULL, NULL);
-	  break;
+      error = db_string_regexp_replace (result, args, num_args, NULL, NULL);
+      break;
 
     default:
       /* a supported function doesn't have const folding code */
