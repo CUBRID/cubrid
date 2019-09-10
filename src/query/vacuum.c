@@ -2778,7 +2778,7 @@ vacuum_produce_log_block_data (THREAD_ENTRY * thread_p)
 
   // reset info for next block
   log_Gl.hdr.does_block_need_vacuum = false;
-  log_Gl.hdr.last_block_newest_mvccid = MVCCID_NULL;
+  log_Gl.hdr.newest_block_mvccid = MVCCID_NULL;
 
   if (vacuum_Block_data_buffer == NULL)
     {
@@ -7833,7 +7833,7 @@ vacuum_data::update ()
   if (!vacuum_Data.is_empty ())
     {
       // trivial case
-      upgrade_oldest_unvacuumed (get_first_entry ().oldest_mvccid);
+      upgrade_oldest_unvacuumed (get_first_entry ().oldest_visible_mvccid);
       updated_oldest_unvacuumed = true;
     }
   else
@@ -7855,7 +7855,7 @@ vacuum_data::update ()
   if (!updated_oldest_unvacuumed)
     {
       // buffer was not empty, we can trivially update to first entry oldest mvccid
-      upgrade_oldest_unvacuumed (get_first_entry ().oldest_mvccid);
+      upgrade_oldest_unvacuumed (get_first_entry ().oldest_visible_mvccid);
     }
 }
 
@@ -7877,7 +7877,7 @@ vacuum_data::set_oldest_unvacuumed_on_boot ()
   else
     {
       // set on first block oldest mvccid
-      oldest_unvacuumed_mvccid = first_page->data[0].oldest_mvccid;
+      oldest_unvacuumed_mvccid = first_page->data[0].oldest_visible_mvccid;
     }
 }
 
