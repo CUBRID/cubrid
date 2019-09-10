@@ -237,8 +237,6 @@ static int hb_help_sprint_nodes_info (char *buffer, int max_length);
 static int hb_help_sprint_jobs_info (HB_JOB * jobs, char *buffer, int max_length);
 static int hb_help_sprint_ping_host_info (char *buffer, int max_length);
 
-static bool is_process_registered (HB_PROC_STATE state);
-
 HB_CLUSTER *hb_Cluster = NULL;
 HB_RESOURCE *hb_Resource = NULL;
 HB_JOB *cluster_Jobs = NULL;
@@ -250,7 +248,6 @@ static char hb_Nolog_event_msg[LINE_MAX] = "";
 static HB_DEACTIVATE_INFO hb_Deactivate_info = { NULL, 0, false };
 
 static bool hb_Is_activated = true;
-static char *current_master_hostname = NULL;
 
 /* cluster jobs */
 static HB_JOB_FUNC hb_cluster_jobs[] = {
@@ -4748,16 +4745,6 @@ hb_resource_job_initialize ()
       return ER_FAILED;
     }
 
-  /* TODO add other timers */
-  error =
-    hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL, prm_get_integer_value (PRM_ID_HA_INIT_TIMER_IN_MSECS) +
-			   prm_get_integer_value (PRM_ID_HA_FAILOVER_WAIT_TIME_IN_MSECS));
-  if (error != NO_ERROR)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
   return NO_ERROR;
 }
 
@@ -6762,44 +6749,4 @@ hb_is_hang_process (int sfd)
   pthread_mutex_unlock (&hb_Resource->lock);
 
   return false;
-}
-
-char *
-hb_find_host_name_of_master_server ()
-{
-  HB_NODE_ENTRY *node;
-
-  int rv = pthread_mutex_lock (&hb_Cluster->lock);
-  for (node = hb_Cluster->nodes; node; node = node->next)
-    {
-      if (node->state == HB_NSTATE_MASTER && hb_Cluster->master == node)
-	{
-	  assert (are_hostnames_equal (node->host_name, hb_Cluster->master->host_name));
-	  pthread_mutex_unlock (&hb_Cluster->lock);
-	  return node->host_name;
-	}
-    }
-  pthread_mutex_unlock (&hb_Cluster->lock);
-
-  return NULL;
-}
-
-static bool
-is_process_registered (HB_PROC_STATE state)
-{
-  switch (state)
-    {
-    case HB_PSTATE_UNKNOWN:
-    case HB_PSTATE_DEAD:
-    case HB_PSTATE_DEREGISTERED:
-    case HB_PSTATE_STARTED:
-    case HB_PSTATE_MAX:
-    case HB_PSTATE_NOT_REGISTERED:
-      return false;
-    case HB_PSTATE_REGISTERED:
-    case HB_PSTATE_REGISTERED_AND_TO_BE_STANDBY:
-    case HB_PSTATE_REGISTERED_AND_ACTIVE:
-    case HB_PSTATE_REGISTERED_AND_TO_BE_ACTIVE:
-      return true;
-    }
 }

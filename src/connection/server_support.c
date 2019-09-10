@@ -109,7 +109,6 @@ static HA_SERVER_STATE ha_Server_state = HA_SERVER_STATE_IDLE;
 static bool ha_Repl_delay_detected = false;
 
 static int ha_Server_num_of_hosts = 0;
-static char ha_Server_master_hostname[CUB_MAXHOSTNAMELEN];
 
 #define HA_LOG_APPLIER_STATE_TABLE_MAX  5
 typedef struct ha_log_applier_state_table HA_LOG_APPLIER_STATE_TABLE;
@@ -2604,12 +2603,6 @@ xacl_reload (THREAD_ENTRY * thread_p)
   return css_set_accessible_ip_info ();
 }
 #endif
-
-const char *
-get_master_hostname ()
-{
-  return ha_Server_master_hostname;
-}
 
 /*
  * css_get_client_id() - returns the unique client identifier
