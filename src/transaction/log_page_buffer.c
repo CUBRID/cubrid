@@ -1627,7 +1627,8 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
  *              If not, read log page from log.
  */
 int
-logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE access_mode, LOG_PAGE * log_pgptr)
+logpb_fetch_page (THREAD_ENTRY * thread_p, const LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE access_mode,
+		  LOG_PAGE * log_pgptr)
 {
   LOG_LSA append_lsa, append_prev_lsa;
   int rv;

@@ -113,8 +113,8 @@ static void log_recovery_undo (THREAD_ENTRY * thread_p);
 static void log_recovery_notpartof_archives (THREAD_ENTRY * thread_p, int start_arv_num, const char *info_reason);
 static bool log_unformat_ahead_volumes (THREAD_ENTRY * thread_p, VOLID volid, VOLID * start_volid);
 static void log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p);
-static void log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool is_new_append_page,
-				   LOG_LSA * last_lsa);
+static void log_recovery_resetlog (THREAD_ENTRY * thread_p, const LOG_LSA * new_append_lsa,
+				   const LOG_LSA * new_prev_lsa);
 static int log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LOG_LSA * start_postpone_lsa,
 					     LOG_TDES * tdes);
 
@@ -1395,7 +1395,7 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_ls
        * holding a page.
        */
       log_lsa->pageid = NULL_PAGEID;
-      log_recovery_resetlog (thread_p, &record_header_lsa, false, prev_lsa);
+      log_recovery_resetlog (thread_p, &record_header_lsa, prev_lsa);
       *did_incom_recovery = true;
 
       return NO_ERROR;
@@ -2448,7 +2448,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "reset log is impossible");
 		  return;
 		}
-	      log_recovery_resetlog (thread_p, &prev_lsa, false, &prev_prev_lsa);
+	      log_recovery_resetlog (thread_p, &prev_lsa, &prev_prev_lsa);
 	      *did_incom_recovery = true;
 
 	      log_Gl.mvcc_table.reset_start_mvccid ();
@@ -5080,17 +5080,8 @@ log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p)
 
 }
 
-/*
- * log_recovery_resetlog -
- *
- * return:
- *
- *   new_appendlsa(in):
- *
- * NOTE:
- */
 static void
-log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool is_new_append_page, LOG_LSA * last_lsa)
+log_recovery_resetlog (THREAD_ENTRY * thread_p, const LOG_LSA * new_append_lsa, const LOG_LSA * new_prev_lsa)
 {
   char newappend_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *aligned_newappend_pgbuf;
@@ -5101,7 +5092,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
   int ret = NO_ERROR;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
-  assert (last_lsa != NULL);
+  assert (new_prev_lsa != NULL);
 
   aligned_newappend_pgbuf = PTR_ALIGN (newappend_pgbuf, MAX_ALIGNMENT);
 
@@ -5128,7 +5119,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
 	   * transfered to the new location. This is needed since we may not
 	   * start at location zero.
 	   *
-	   * We need to destroy any log archive createded after this point
+	   * We need to destroy any log archive created after this point
 	   */
 
 	  newappend_pgptr = (LOG_PAGE *) aligned_newappend_pgbuf;
@@ -5247,28 +5238,17 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
    * Then, free the page, same for the header page.
    */
 
-  if (is_new_append_page == true)
+  if (logpb_fetch_start_append_page (thread_p) == NO_ERROR)
     {
-      if (logpb_fetch_start_append_page_new (thread_p) == NULL)
+      if (newappend_pgptr != NULL && log_Gl.append.log_pgptr != NULL)
 	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_resetlog");
-	  return;
+	  memcpy ((char *) log_Gl.append.log_pgptr, (char *) newappend_pgptr, LOG_PAGESIZE);
+	  logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
 	}
-    }
-  else
-    {
-      if (logpb_fetch_start_append_page (thread_p) == NO_ERROR)
-	{
-	  if (newappend_pgptr != NULL && log_Gl.append.log_pgptr != NULL)
-	    {
-	      memcpy ((char *) log_Gl.append.log_pgptr, (char *) newappend_pgptr, LOG_PAGESIZE);
-	      logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
-	    }
-	  logpb_flush_pages_direct (thread_p);
-	}
+      logpb_flush_pages_direct (thread_p);
     }
 
-  LOG_RESET_PREV_LSA (last_lsa);
+  LOG_RESET_PREV_LSA (new_prev_lsa);
 
   logpb_flush_header (thread_p);
   logpb_decache_archive_info (thread_p);
