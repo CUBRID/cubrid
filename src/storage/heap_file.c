@@ -22862,6 +22862,14 @@ static void *
 heap_hfid_table_entry_alloc (void)
 {
   HEAP_HFID_TABLE_ENTRY *new_entry = (HEAP_HFID_TABLE_ENTRY *) malloc (sizeof (HEAP_HFID_TABLE_ENTRY));
+
+  if (new_entry == NULL)
+    {
+      return NULL;
+    }
+
+  new_entry->classname = NULL;
+
   return (void *) new_entry;
 }
 
