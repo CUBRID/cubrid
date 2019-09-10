@@ -306,7 +306,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->session_id = DB_EMPTY_SESSION;
 #if defined(SERVER_MODE)
   conn->session_p = NULL;
-  conn->client_type = BOOT_CLIENT_UNKNOWN;
+  conn->client_type = DB_CLIENT_TYPE_UNKNOWN;
 #endif
 
   err = css_initialize_list (&conn->request_queue, 0);
@@ -838,7 +838,7 @@ css_decrement_num_conn (BOOT_CLIENT_TYPE client_type)
 {
   int i;
 
-  if (client_type == BOOT_CLIENT_UNKNOWN)
+  if (client_type == DB_CLIENT_TYPE_UNKNOWN)
     {
       return;
     }

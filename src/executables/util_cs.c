@@ -284,7 +284,8 @@ backupdb (UTIL_FUNCTION_ARG * arg)
       /* resolve relative path */
       if (getcwd (dirname, PATH_MAX) != NULL)
 	{
-	  snprintf (verbose_file_realpath, PATH_MAX - 1, "%s/%s", dirname, backup_verbose_file);
+	  int ret = snprintf (verbose_file_realpath, PATH_MAX - 1, "%s/%s", dirname, backup_verbose_file);
+	  (void) ret;		// suppress format-truncate warning
 	  backup_verbose_file = verbose_file_realpath;
 	}
     }

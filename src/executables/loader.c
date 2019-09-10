@@ -2514,8 +2514,7 @@ static int
 ldr_nstr_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
 
-  db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) (str), len, LANG_SYS_CODESET,
-		    LANG_SYS_COLLATION);
+  db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, (DB_C_NCHAR) str, len, LANG_SYS_CODESET, LANG_SYS_COLLATION);
   return NO_ERROR;
 }
 

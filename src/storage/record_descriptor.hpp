@@ -78,6 +78,8 @@ class record_descriptor : public cubpacking::packable_object
 
     record_descriptor (record_descriptor &&other);
 
+    void set_recdes (const recdes &rec);
+
     // peek record from page; changes into record data will not be permitted
     int peek (cubthread::entry *thread_p, PAGE_PTR page, PGSLOTID slotid);
 

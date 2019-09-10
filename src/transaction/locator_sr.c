@@ -3379,7 +3379,7 @@ locator_all_reference_lockset (THREAD_ENTRY * thread_p, OID * oid, int prune_lev
   int *stack = NULL;		/* The stack for the search */
   HEAP_SCANCACHE scan_cache;	/* Scan cache used for fetching purposes */
   SCAN_CODE scan;		/* Scan return value for an object */
-  RECDES peek_recdes;
+  RECDES peek_recdes = RECDES_INITIALIZER;
   void *new_ptr;
   int i, tmp_ref_num, number;
   MHT_TABLE *lc_ht_permoids = NULL;	/* Hash table of already found oids */
@@ -5307,7 +5307,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   char *old_classname = NULL;	/* Classname that may have been renamed */
 
   bool isold_object;		/* Make sure that this is an old object */
-  RECDES copy_recdes;
+  RECDES copy_recdes = RECDES_INITIALIZER;
   SCAN_CODE scan = S_SUCCESS;
 
   RECDES new_record;
@@ -6285,7 +6285,7 @@ locator_delete_lob_force (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, R
   HEAP_ATTRVALUE *value;
   bool attr_info_inited;
   HEAP_SCANCACHE scan_cache;
-  RECDES copy_recdes;
+  RECDES copy_recdes = RECDES_INITIALIZER;
   bool scan_cache_inited;
   bool found;
   int i;
@@ -6320,13 +6320,14 @@ locator_delete_lob_force (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, R
       if (recdes == NULL)
 	{
 	  SCAN_CODE scan;
+
 	  error_code = heap_scancache_quick_start (&scan_cache);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
 	    }
 	  scan_cache_inited = true;
-	  copy_recdes.data = NULL;
+
 	  scan = heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, &scan_cache, COPY, NULL_CHN);
 	  if (scan != S_SUCCESS)
 	    {
@@ -6753,7 +6754,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
   LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
   LC_COPYAREA_ONEOBJ *obj;	/* Describe on object in area */
   RECDES recdes;		/* Record descriptor for object */
-  RECDES old_recdes;
+  RECDES old_recdes = RECDES_INITIALIZER;
   RECDES reply_recdes;		/* Describe copy area for reply */
   int i;
   HEAP_SCANCACHE *force_scancache = NULL;
@@ -13506,7 +13507,7 @@ locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP
   OID *cls_oid = NULL;
   const OID *oid_inst = NULL;
   MVCC_SCAN_REEV_DATA scan_reev;
-  RECDES temp_recdes, *recdesp = NULL;
+  RECDES temp_recdes = RECDES_INITIALIZER, *recdesp = NULL;
   HEAP_SCANCACHE local_scan_cache;
   bool scan_cache_inited = false;
   SCAN_CODE scan_code;
@@ -13711,17 +13712,13 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
                             const std::vector<RECDES> &recdes, int has_index, int op_type, HEAP_SCANCACHE * scan_cache,
                             int *force_count, int pruning_type, PRUNING_CONTEXT * pcontext,
                             FUNC_PRED_UNPACK_INFO * func_preds, UPDATE_INPLACE_STYLE force_in_place)
-// *INDENT-ON*
-
 {
   int error_code = NO_ERROR;
   size_t accumulated_records_size = 0;
   size_t heap_max_page_size;
   OID dummy_oid;
-  // *INDENT-OFF*
   std::vector<RECDES> recdes_array;
   std::vector<VPID> heap_pages_array;
-  // *INDENT-ON*
 
   // Early-out
   if (recdes.size () == 0)
@@ -13740,7 +13737,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
       // Loop until we insert all records.
 
       if (heap_is_big_length (recdes[i].length))
-	{
+        {
 	  // We insert other records normally.
 	  error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, (RECDES *) (&recdes[i]), has_index,
 					     op_type, scan_cache, force_count, pruning_type, pcontext, func_preds,
@@ -13750,9 +13747,9 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	      ASSERT_ERROR ();
 	      return error_code;
 	    }
-	}
+        }
       else
-	{
+        {
 	  // get records until we fit the size of a page.
 	  if ((recdes[i].length + accumulated_records_size) >= heap_max_page_size)
 	    {
@@ -13764,13 +13761,13 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	      // First alloc a new empty heap page.
 	      error_code = heap_alloc_new_page (thread_p, hfid, *class_oid, &home_hint_p, &new_page_vpid);
 	      if (error_code != NO_ERROR)
-		{
+	        {
 		  ASSERT_ERROR ();
 		  return error_code;
-		}
+	        }
 
 	      for (size_t j = 0; j < recdes_array.size (); j++)
-		{
+	        {
 		  error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, &recdes_array[j], has_index,
 						     op_type, scan_cache, force_count, pruning_type, pcontext,
 						     func_preds, force_in_place, &home_hint_p);
@@ -13782,7 +13779,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 
 		  // Safeguard. We should not have the page fixed here.
 		  assert (home_hint_p.pgptr == NULL);
-		}
+	        }
 
 	      // Add the new VPID to the VPID array.
 	      assert (!VPID_ISNULL (&new_page_vpid));
@@ -13797,24 +13794,30 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	  // Add this record to the recdes array and increase the accumulated size.
 	  recdes_array.push_back (recdes[i]);
 	  accumulated_records_size += recdes[i].length;
-	}
+        }
     }
 
   // We must check if we have records which did not fill an entire page.
   for (size_t i = 0; i < recdes_array.size (); i++)
     {
       error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, &recdes_array[i], has_index, op_type,
-					 scan_cache, force_count, pruning_type, pcontext, func_preds, force_in_place,
-					 NULL);
+				         scan_cache, force_count, pruning_type, pcontext, func_preds, force_in_place,
+				         NULL);
       if (error_code != NO_ERROR)
-	{
+        {
 	  ASSERT_ERROR ();
 	  return error_code;
-	}
+        }
     }
 
   // Now form a heap chain with the pages and add the chain to the current heap.
-  // TODO: this!
+  error_code = heap_append_pages_to_heap (thread_p, hfid, *class_oid, heap_pages_array);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
 
   return error_code;
 }
+// *INDENT-ON*

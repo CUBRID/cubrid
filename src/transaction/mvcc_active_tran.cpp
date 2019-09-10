@@ -379,8 +379,6 @@ mvcc_active_tran::add_long_transaction (MVCCID mvccid)
   assert (m_long_tran_mvccids_length < long_tran_max_size ());
   assert (m_long_tran_mvccids[m_long_tran_mvccids_length - 1] < mvccid);
   m_long_tran_mvccids[m_long_tran_mvccids_length++] = mvccid;
-
-  check_valid ();
 }
 
 void
@@ -423,7 +421,6 @@ mvcc_active_tran::set_bitarea_mvccid (MVCCID mvccid)
     {
       // force cleanup_migrate_to_long_transations
       cleanup_migrate_to_long_transations ();
-      check_valid ();
       position = get_bit_offset (mvccid);
     }
   assert (position < BITAREA_MAX_BITS);   // is this a guaranteed?
@@ -457,7 +454,6 @@ mvcc_active_tran::set_bitarea_mvccid (MVCCID mvccid)
   if (m_bit_area_length > LONG_TRAN_THRESHOLD)
     {
       cleanup_migrate_to_long_transations ();
-      check_valid ();
     }
 }
 
@@ -488,6 +484,8 @@ mvcc_active_tran::cleanup_migrate_to_long_transations ()
 	}
     }
   ltrim_area (delete_count);
+
+  check_valid ();
 }
 
 void

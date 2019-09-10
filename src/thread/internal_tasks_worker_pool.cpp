@@ -17,23 +17,45 @@
  *
  */
 
-
 /*
- * stack_dump.h - call stack dump
+ * internal_tasks_worker_pool.cpp
  */
 
-#ifndef _STACK_DUMP_H_
-#define _STACK_DUMP_H_
+#include "internal_tasks_worker_pool.hpp"
+#include "thread_worker_pool.hpp"
 
-#ident "$Id$"
+namespace cubthread
+{
+  constexpr size_t WORKER_COUNT = 2;
+  constexpr size_t TASK_COUNT = 10;
+  constexpr size_t CORE_COUNT = 1;
+  constexpr bool ENABLE_LOGGING = true;
 
-#if defined(LINUX)
-#include "memory_hash.h"
-extern MHT_TABLE *fname_table;
-#endif
-#include <string>
+  entry_workpool *instance = NULL;
 
-extern void er_dump_call_stack (FILE * outfp);
-extern char *er_dump_call_stack_to_string (void);
+  namespace internal_tasks_worker_pool
+  {
+    void initialize ()
+    {
+      if (instance != NULL)
+	{
+	  return;
+	}
 
-#endif /* _STACK_DUMP_H_ */
+      instance = cubthread::get_manager ()->create_worker_pool (WORKER_COUNT,
+		 TASK_COUNT, "internal_tasks_worker_pool", NULL, CORE_COUNT, ENABLE_LOGGING);
+    }
+
+    entry_workpool *get_instance ()
+    {
+      assert (instance != NULL);
+      return instance;
+    }
+
+    void finalize ()
+    {
+      delete instance;
+      instance = NULL;
+    }
+  }
+}

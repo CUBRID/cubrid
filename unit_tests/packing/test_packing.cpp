@@ -152,7 +152,7 @@ namespace test_packing
     entry_size += serializator.get_packed_short_size (entry_size);
     entry_size += serializator.get_packed_bigint_size (entry_size);
     entry_size += serializator.get_packed_int_vector_size (entry_size, sizeof (int_a) / sizeof (int_a[0]));
-    entry_size += serializator.get_packed_int_vector_size (entry_size, (int) int_v.size ());
+    entry_size += serializator.get_packed_int_vector_size (entry_size, int_v.size ());
     for (size_t i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
 	entry_size += serializator.get_packed_db_value_size (values[i], entry_size);
@@ -365,6 +365,49 @@ namespace test_packing
     return res;
   }
 
+
+  int test_pack_oid_list (void)
+  {
+    cubmem::extensible_block blk;
+    cubpacking::packer packer;
+
+    OID classes[10];
+    int cnt_classes = sizeof (classes) / sizeof (classes[0]);
+
+    for (int i = 0; i < cnt_classes; i++)
+      {
+	classes[i].volid = i;
+	classes[i].pageid= i + 100;
+	classes[i].slotid= i + 10;
+      }
+
+    blk.extend_to (OR_INT_SIZE + cnt_classes * OR_OID_SIZE);
+    packer.set_buffer_and_pack_all (blk, cnt_classes);
+
+    for (int i = 0; i < cnt_classes; i++)
+      {
+	packer.append_to_buffer_and_pack_all (blk, classes[i]);
+      }
+
+
+    OID classes_unpacked[10];
+
+    cubpacking::unpacker unpacker (blk.get_ptr (), blk.get_size ());
+
+    int cnt_classes_unpack;
+    unpacker.unpack_all (cnt_classes_unpack);
+
+    assert (cnt_classes_unpack = cnt_classes);
+    for (int i = 0; i < cnt_classes_unpack; i++)
+      {
+	OID cl;
+	unpacker.unpack_all (cl);
+
+	assert (OID_EQ (&cl, &classes[i]));
+      }
+
+    return 0;
+  }
   int test_packing_all (void)
   {
     po1 po_pack_1;
@@ -412,6 +455,8 @@ namespace test_packing
 	assert (false);
 	return ER_FAILED;
       }
+
+    test_pack_oid_list ();
 
     return NO_ERROR;
   }

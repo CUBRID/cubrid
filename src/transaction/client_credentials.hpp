@@ -25,31 +25,13 @@
 #define _CLIENT_CREDENTIALS_HPP_
 
 #include "dbtype_def.h"
+#include "db_client_type.hpp"
 #include "packable_object.hpp"
 
 #include <string>
 
-/* this enumeration should be matched with DB_CLIENT_TYPE_XXX in db.h */
-enum boot_client_type
-{
-  BOOT_CLIENT_UNKNOWN = -1,
-  BOOT_CLIENT_SYSTEM_INTERNAL = 0,
-  BOOT_CLIENT_DEFAULT = 1,
-  BOOT_CLIENT_CSQL = 2,
-  BOOT_CLIENT_READ_ONLY_CSQL = 3,
-  BOOT_CLIENT_BROKER = 4,
-  BOOT_CLIENT_READ_ONLY_BROKER = 5,
-  BOOT_CLIENT_SLAVE_ONLY_BROKER = 6,
-  BOOT_CLIENT_ADMIN_UTILITY = 7,
-  BOOT_CLIENT_ADMIN_CSQL = 8,
-  BOOT_CLIENT_LOG_COPIER = 9,
-  BOOT_CLIENT_LOG_APPLIER = 10,
-  BOOT_CLIENT_RW_BROKER_REPLICA_ONLY = 11,
-  BOOT_CLIENT_RO_BROKER_REPLICA_ONLY = 12,
-  BOOT_CLIENT_SO_BROKER_REPLICA_ONLY = 13,
-  BOOT_CLIENT_ADMIN_CSQL_WOS = 14,	/* admin csql that can write on standby */
-};
-typedef enum boot_client_type BOOT_CLIENT_TYPE;
+/* BOOT_CLIENT_TYPE : needed for legacy code */
+typedef enum db_client_type BOOT_CLIENT_TYPE;
 
 const size_t LOG_USERNAME_MAX = DB_MAX_USER_LENGTH + 1;
 
@@ -57,7 +39,7 @@ typedef struct clientids CLIENTIDS;
 struct clientids : public cubpacking::packable_object
 {
   public:
-    boot_client_type client_type;
+    db_client_type client_type;
     std::string client_info;
     std::string db_user;
     std::string program_name;
@@ -74,7 +56,7 @@ struct clientids : public cubpacking::packable_object
     const char *get_login_name () const;
     const char *get_host_name () const;
 
-    void set_ids (boot_client_type type, const char *client_info, const char *db_user, const char *program_name,
+    void set_ids (db_client_type type, const char *client_info, const char *db_user, const char *program_name,
 		  const char *login_name, const char *host_name, int process_id);
     void set_ids (const clientids &other);
     void set_user (const char *db_user);

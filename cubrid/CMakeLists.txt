@@ -42,6 +42,7 @@ set (COMPAT_HEADERS
 set(THREAD_SOURCES
   ${THREAD_DIR}/critical_section.c
   ${THREAD_DIR}/critical_section_tracker.cpp
+  ${THREAD_DIR}/internal_tasks_worker_pool.cpp
   ${THREAD_DIR}/thread_daemon.cpp
   ${THREAD_DIR}/thread_entry.cpp
   ${THREAD_DIR}/thread_entry_task.cpp
@@ -52,6 +53,7 @@ set(THREAD_SOURCES
   )
 set(THREAD_HEADERS
   ${THREAD_DIR}/critical_section_tracker.hpp
+  ${THREAD_DIR}/internal_tasks_worker_pool.hpp
   ${THREAD_DIR}/thread_compat.hpp
   ${THREAD_DIR}/thread_daemon.hpp
   ${THREAD_DIR}/thread_entry.hpp
@@ -86,7 +88,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/condition_handler.c
   ${BASE_DIR}/databases_file.c
   ${BASE_DIR}/dtoa.c
-  ${BASE_DIR}/dynamic_array.c	
+  ${BASE_DIR}/dynamic_array.c
   ${BASE_DIR}/encryption.c
   ${BASE_DIR}/environment_variable.c
   ${BASE_DIR}/error_context.cpp
@@ -116,6 +118,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/pinning.cpp
   ${BASE_DIR}/perf_monitor.c
   ${BASE_DIR}/porting.c
+  ${BASE_DIR}/printer.cpp
   ${BASE_DIR}/process_util.c
   ${BASE_DIR}/release_string.c
   ${BASE_DIR}/resource_tracker.cpp
@@ -150,6 +153,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/process_util.h
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/string_buffer.hpp
+  ${BASE_DIR}/semaphore.hpp
   )
 
 set(EXECUTABLE_SOURCES
@@ -256,12 +260,12 @@ set(OBJECT_SOURCES
 set(OBJECT_HEADERS
   ${OBJECT_DIR}/lob_locator.hpp
 )
-  
+
 set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/log_consumer.cpp
   ${REPLICATION_DIR}/log_generator.cpp
   ${REPLICATION_DIR}/replication_object.cpp
-  ${REPLICATION_DIR}/replication_master_senders_manager.cpp  
+  ${REPLICATION_DIR}/replication_master_senders_manager.cpp
   ${REPLICATION_DIR}/replication_stream_entry.cpp
   )
 
@@ -284,6 +288,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_lsa.cpp
   ${TRANSACTION_DIR}/log_manager.c
   ${TRANSACTION_DIR}/log_page_buffer.c
+  ${TRANSACTION_DIR}/log_postpone_cache.cpp
   ${TRANSACTION_DIR}/log_recovery.c
   ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
@@ -304,6 +309,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_archives.hpp
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
+  ${TRANSACTION_DIR}/log_postpone_cache.hpp
   ${TRANSACTION_DIR}/log_record.hpp
   ${TRANSACTION_DIR}/log_storage.hpp
   ${TRANSACTION_DIR}/log_system_tran.hpp
@@ -432,7 +438,7 @@ set (CUBRID_LIB_SOURCES
   ${OBJECT_SOURCES}
   ${PROBES_OBJECT}
   ${QUERY_SOURCES}
-  ${REPLICATION_SOURCES}  
+  ${REPLICATION_SOURCES}
   ${SESSION_SOURCES}
   ${STORAGE_SOURCES}
   ${STREAM_SOURCES}
@@ -497,7 +503,7 @@ if(AT_LEAST_ONE_UNIT_TEST)
     ${CUBRID_LIB_HEADERS}
     )
 
-  target_compile_definitions(cubrid-win-lib PRIVATE 
+  target_compile_definitions(cubrid-win-lib PRIVATE
     SERVER_MODE
     ${COMMON_DEFS}
     )
@@ -531,7 +537,7 @@ install(TARGETS cubrid
 
 install(FILES
   ${COMPAT_DIR}/dbi_compat.h
-  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   RENAME dbi.h
   )
 install(FILES
@@ -541,12 +547,12 @@ install(FILES
   ${COMPAT_DIR}/db_date.h
   ${COMPAT_DIR}/db_elo.h
   ${COMPAT_DIR}/cache_time.h
-  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   )
 install(FILES
   ${BASE_DIR}/error_code.h
-  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
-  )  
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
+  )
 
 # install pdb files for debugging on windows
 if(WIN32)

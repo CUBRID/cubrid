@@ -17,23 +17,23 @@
  *
  */
 
-
 /*
- * stack_dump.h - call stack dump
+ * internal_tasks_worker_pool.hpp
  */
 
-#ifndef _STACK_DUMP_H_
-#define _STACK_DUMP_H_
+#ifndef _INTERNAL_TASKS_WORKER_POOL_HPP_
+#define _INTERNAL_TASKS_WORKER_POOL_HPP_
 
-#ident "$Id$"
+#include "thread_manager.hpp"
 
-#if defined(LINUX)
-#include "memory_hash.h"
-extern MHT_TABLE *fname_table;
-#endif
-#include <string>
+namespace cubthread
+{
+  namespace internal_tasks_worker_pool
+  {
+    void initialize ();
+    void finalize ();
+    entry_workpool *get_instance ();
+  }
+}
 
-extern void er_dump_call_stack (FILE * outfp);
-extern char *er_dump_call_stack_to_string (void);
-
-#endif /* _STACK_DUMP_H_ */
+#endif // _INTERNAL_TASKS_WORKER_POOL_HPP_

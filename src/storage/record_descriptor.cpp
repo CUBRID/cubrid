@@ -58,18 +58,7 @@ record_descriptor::record_descriptor (const recdes &rec,
 				      const cubmem::block_allocator &alloc /* = cubmem::PRIVATE_BLOCK_ALLOCATOR */)
   : record_descriptor (alloc)
 {
-  m_recdes.type = rec.type;
-  if (rec.length != 0)
-    {
-      // copy content from argument
-      m_recdes.area_size = rec.length;
-      m_recdes.length = m_recdes.area_size;
-      m_own_data.extend_to ((size_t) m_recdes.area_size);
-      m_recdes.data = m_own_data.get_ptr ();
-      std::memcpy (m_recdes.data, rec.data, m_recdes.length);
-
-      m_data_source = data_source::COPIED;  // we assume this is a copied record
-    }
+  set_recdes (rec);
 }
 
 record_descriptor::record_descriptor (record_descriptor &&other)
@@ -91,6 +80,25 @@ record_descriptor::record_descriptor (const char *data, size_t size)
 
 record_descriptor::~record_descriptor (void)
 {
+}
+
+void
+record_descriptor::set_recdes (const recdes &rec)
+{
+  assert (m_data_source == data_source::INVALID);
+
+  m_recdes.type = rec.type;
+  if (rec.length != 0)
+    {
+      // copy content from argument
+      m_recdes.area_size = rec.length;
+      m_recdes.length = m_recdes.area_size;
+      m_own_data.extend_to ((size_t) m_recdes.area_size);
+      m_recdes.data = m_own_data.get_ptr ();
+      std::memcpy (m_recdes.data, rec.data, m_recdes.length);
+
+      m_data_source = data_source::COPIED;  // we assume this is a copied record
+    }
 }
 
 int
@@ -141,7 +149,7 @@ record_descriptor::get (cubthread::entry *thread_p, PAGE_PTR page, PGSLOTID slot
 void
 record_descriptor::resize_buffer (std::size_t required_size)
 {
-  check_changes_are_permitted ();
+  assert (m_data_source == data_source::INVALID || is_mutable ());
 
   if (m_recdes.area_size > 0 && required_size <= (size_t) m_recdes.area_size)
     {
@@ -153,6 +161,11 @@ record_descriptor::resize_buffer (std::size_t required_size)
 
   m_recdes.data = m_own_data.get_ptr ();
   m_recdes.area_size = (int) required_size;
+
+  if (m_data_source == data_source::INVALID)
+    {
+      m_data_source = data_source::NEW;
+    }
 }
 
 void

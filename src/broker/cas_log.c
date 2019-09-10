@@ -886,7 +886,8 @@ cas_log_query_plan_file (int id)
   static char plan_file_name[BROKER_PATH_MAX];
   char dirname[BROKER_PATH_MAX];
   get_cubrid_file (FID_CAS_TMP_DIR, dirname, BROKER_PATH_MAX);
-  snprintf (plan_file_name, BROKER_PATH_MAX - 1, "%s/%d.%d.plan", dirname, (int) getpid (), id);
+  int ret = snprintf (plan_file_name, BROKER_PATH_MAX - 1, "%s/%d.%d.plan", dirname, (int) getpid (), id);
+  (void) ret;			// suppress format-truncate warning
   return plan_file_name;
 #else /* LIBCAS_FOR_JSP */
   return NULL;

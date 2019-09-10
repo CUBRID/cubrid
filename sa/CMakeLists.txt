@@ -26,7 +26,7 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/csql_result.c
   ${EXECUTABLES_DIR}/csql_support.c
   ${EXECUTABLES_DIR}/csql_result_format.c
-  ${EXECUTABLES_DIR}/extract_schema.cpp  
+  ${EXECUTABLES_DIR}/extract_schema.cpp
   ${EXECUTABLES_DIR}/util_sa.c
   ${EXECUTABLES_DIR}/util_cs.c
   ${EXECUTABLES_DIR}/util_common.c
@@ -146,6 +146,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/porting_inline.hpp
   ${BASE_DIR}/printer.hpp
   ${BASE_DIR}/resource_tracker.hpp
+  ${BASE_DIR}/semaphore.hpp
 )
 
 set(HEAPLAYER_SOURCES
@@ -290,7 +291,7 @@ set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/log_consumer.cpp
   ${REPLICATION_DIR}/log_generator.cpp
   ${REPLICATION_DIR}/replication_object.cpp
-  ${REPLICATION_DIR}/replication_master_senders_manager.cpp  
+  ${REPLICATION_DIR}/replication_master_senders_manager.cpp
   ${REPLICATION_DIR}/replication_stream_entry.cpp
   )
 
@@ -343,6 +344,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_lsa.cpp
   ${TRANSACTION_DIR}/log_manager.c
   ${TRANSACTION_DIR}/log_page_buffer.c
+  ${TRANSACTION_DIR}/log_postpone_cache.cpp
   ${TRANSACTION_DIR}/log_recovery.c
   ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
@@ -364,6 +366,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_archives.hpp
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
+  ${TRANSACTION_DIR}/log_postpone_cache.hpp
   ${TRANSACTION_DIR}/log_record.hpp
   ${TRANSACTION_DIR}/log_storage.hpp
   ${TRANSACTION_DIR}/log_system_tran.hpp
@@ -497,7 +500,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${REPLICATION_SOURCES}
-  ${STREAM_SOURCES}  
+  ${STREAM_SOURCES}
   ${JSP_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
@@ -547,7 +550,7 @@ add_library(cubridsa SHARED
   ${PROBES_OBJECT}
   ${REPLICATION_HEADERS}
   ${REPLICATION_SOURCES}
-  ${STREAM_HEADERS}  
+  ${STREAM_HEADERS}
   ${STREAM_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_HEADERS}

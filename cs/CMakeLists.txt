@@ -154,6 +154,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/printer.hpp
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/resource_tracker.hpp
+  ${BASE_DIR}/semaphore.hpp
   )
 
 set(HEAPLAYER_SOURCES

@@ -192,28 +192,6 @@ std::atomic<std::int64_t> log_Clock_msec = {0};
 // *INDENT-ON*
 #endif /* SERVER_MODE */
 
-// *INDENT-OFF*
-#if defined (SERVER_MODE)
-class log_abort_task : public cubthread::entry_task
-{
-public:
-  log_abort_task (void) = delete;
-
-  log_abort_task (log_tdes &tdes)
-  : m_tdes (tdes)
-  {
-  }
-
-  void execute (context_type &thread_ref) final override;
-
-  // retire deletes me
-
-private:
-  log_tdes &m_tdes;
-};
-#endif // SERVER_MODE
-// *INDENT-ON*
-
 static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_dbcreation);
 static int log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				const char *prefix_logname, DKNPAGES npages, INT64 * db_creation);
@@ -329,6 +307,12 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 				   int data_size, const char *data);
 
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
+
+#if defined(SERVER_MODE)
+// *INDENT-OFF*
+static void log_abort_task_execute (cubthread::entry &thread_ref, LOG_TDES &tdes);
+// *INDENT-ON*
+#endif // SERVER_MODE
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
@@ -1610,7 +1594,11 @@ loop:
 	    }
 	  else if (LOG_ISTRAN_ACTIVE (tdes) && abort_thread_running[i] == 0)
 	    {
-	      css_push_external_task (css_find_conn_by_tran_index (i), new log_abort_task (*tdes));
+              // *INDENT-OFF*
+              cubthread::entry_callable_task::exec_func_type exec_f =
+                std::bind (log_abort_task_execute, std::placeholders::_1, std::ref (*tdes));
+	      css_push_external_task (css_find_conn_by_tran_index (i), new cubthread::entry_callable_task (exec_f));
+              // *INDENT-ON*
 	      abort_thread_running[i] = 1;
 	      repeat_loop = true;
 	    }
@@ -2672,7 +2660,6 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
   int tran_index;
   int error_code = NO_ERROR;
   LOG_PRIOR_NODE *node;
-  LOG_LSA start_lsa = LSA_INITIALIZER;
 
 #if defined(CUBRID_DEBUG)
   if (addr->pgptr == NULL)
@@ -2749,8 +2736,8 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
    */
 
   if (LSA_ISNULL (&tdes->tail_lsa)
-      || (log_is_in_crash_recovery () && (crash_lsa = log_get_crash_point_lsa ()) != NULL
-	  && LSA_LE (&tdes->tail_lsa, crash_lsa)))
+      || (log_is_in_crash_recovery ()
+	  && (crash_lsa = log_get_crash_point_lsa ()) != NULL && LSA_LE (&tdes->tail_lsa, crash_lsa)))
     {
       log_append_empty_record (thread_p, LOG_DUMMY_HEAD_POSTPONE, addr);
     }
@@ -2760,22 +2747,13 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
     {
       return;
     }
-  if (VACUUM_IS_THREAD_VACUUM (thread_p))
-    {
-      /* Cache postpone log record. Redo data must be saved before calling prior_lsa_next_record, which may free this
-       * prior node. */
-      vacuum_cache_log_postpone_redo_data (thread_p, node->data_header, node->rdata, node->rlength);
-      // todo - extend to all transactions
-    }
 
-  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
-  if (VACUUM_IS_THREAD_VACUUM (thread_p))
-    {
-      /* Cache postpone log record. An entry for this postpone log record was already created and we also need to save
-       * its LSA. */
-      vacuum_cache_log_postpone_lsa (thread_p, &start_lsa);
-      // todo - extend to all transactions
-    }
+  // redo data must be saved before calling prior_lsa_next_record, which may free this prior node
+  tdes->m_log_postpone_cache.add_redo_data (*node);
+
+  // an entry for this postpone log record was already created and we also need to save its LSA
+  LOG_LSA start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+  tdes->m_log_postpone_cache.add_lsa (start_lsa);
 
   /* Set address early in case there is a crash, because of skip_head */
   if (tdes->topops.last >= 0)
@@ -2855,9 +2833,8 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
     }
   else
     {
-      node =
-	prior_lsa_alloc_and_copy_data (thread_p, LOG_RUN_POSTPONE, RV_NOT_DEFINED, NULL, length, (char *) data, 0,
-				       NULL);
+      node = prior_lsa_alloc_and_copy_data (thread_p, LOG_RUN_POSTPONE, RV_NOT_DEFINED, NULL, length, (char *) data,
+					    0, NULL);
       if (node == NULL)
 	{
 	  return;
@@ -7717,6 +7694,13 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   assert (tdes->topops.last < 0);
 
   log_append_commit_postpone (thread_p, tdes, &tdes->posp_nxlsa);
+
+  if (tdes->m_log_postpone_cache.do_postpone (*thread_p, tdes->posp_nxlsa))
+    {
+      // do postpone from cache first
+      return;
+    }
+
   log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
 }
 
@@ -7752,11 +7736,9 @@ log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_E
   sysop_start_postpone.posp_lsa = *LOG_TDES_LAST_SYSOP_POSP_LSA (tdes);
   log_append_sysop_start_postpone (thread_p, tdes, &sysop_start_postpone, data_size, data);
 
-  if (VACUUM_IS_THREAD_VACUUM (thread_p)
-      && vacuum_do_postpone_from_cache (thread_p, LOG_TDES_LAST_SYSOP_POSP_LSA (tdes)))
+  if (tdes->m_log_postpone_cache.do_postpone (*thread_p, *(LOG_TDES_LAST_SYSOP_POSP_LSA (tdes))))
     {
       /* Do postpone was run from cached postpone entries. */
-      // todo - extend optimization for all transactions
       tdes->state = save_state;
       return;
     }
@@ -9625,25 +9607,17 @@ log_flush_daemon_get_stats (UINT64 * statsp)
 
 // *INDENT-OFF*
 #if defined(SERVER_MODE)
-// class log_checkpoint_daemon_task
-//
-//  description:
-//    log checkpoint daemon task
-//
-class log_checkpoint_daemon_task : public cubthread::entry_task
+static void
+log_checkpoint_execute (cubthread::entry & thread_ref)
 {
-  public:
-    void execute (cubthread::entry & thread_ref) override
+  if (!BO_IS_SERVER_RESTARTED ())
     {
-      if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
-
-      logpb_checkpoint (&thread_ref);
+      // wait for boot to finish
+      return;
     }
-};
+
+  logpb_checkpoint (&thread_ref);
+}
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
@@ -9744,155 +9718,131 @@ class log_remove_log_archive_daemon_task : public cubthread::entry_task
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
-// class log_clock_daemon_task
-//
-//  description:
-//    log clock daemon task
-//
-class log_clock_daemon_task : public cubthread::entry_task
+static void
+log_clock_execute (cubthread::entry & thread_ref)
 {
-  public:
-    void execute (cubthread::entry & thread_ref) override
+  if (!BO_IS_SERVER_RESTARTED ())
     {
-      if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
-
-      struct timeval now;
-      gettimeofday (&now, NULL);
-
-      log_Clock_msec = (now.tv_sec * 1000LL) + (now.tv_usec / 1000LL);
+      // wait for boot to finish
+      return;
     }
-};
+
+  struct timeval now;
+  gettimeofday (&now, NULL);
+
+  log_Clock_msec = (now.tv_sec * 1000LL) + (now.tv_usec / 1000LL);
+}
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
-// class log_check_ha_delay_info_daemon_task
-//
-//  description:
-//    log check ha delay info daemon_task
-//
-class log_check_ha_delay_info_daemon_task : public cubthread::entry_task
+static void
+log_check_ha_delay_info_execute (cubthread::entry &thread_ref)
 {
-  public:
-    void execute (cubthread::entry &thread_ref) override
-    {
 #if defined(WINDOWS)
-      return;
+  return;
 #endif /* WINDOWS */
 
-      if (!BO_IS_SERVER_RESTARTED ())
+  if (!BO_IS_SERVER_RESTARTED ())
+    {
+      // wait for boot to finish
+      return;
+    }
+
+  time_t log_record_time = 0;
+  int error_code;
+  int delay_limit_in_secs;
+  int acceptable_delay_in_secs;
+  int curr_delay_in_secs;
+  HA_SERVER_STATE server_state;
+
+  csect_enter (&thread_ref, CSECT_HA_SERVER_STATE, INF_WAIT);
+
+  server_state = css_ha_server_state ();
+
+  if (server_state == HA_SERVER_STATE_ACTIVE || server_state == HA_SERVER_STATE_TO_BE_STANDBY)
+    {
+      css_unset_ha_repl_delayed ();
+      perfmon_set_stat (&thread_ref, PSTAT_HA_REPL_DELAY, 0, true);
+
+      log_append_ha_server_state (&thread_ref, server_state);
+
+      csect_exit (&thread_ref, CSECT_HA_SERVER_STATE);
+    }
+  else
+    {
+      csect_exit (&thread_ref, CSECT_HA_SERVER_STATE);
+
+      delay_limit_in_secs = prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_IN_SECS);
+      acceptable_delay_in_secs = delay_limit_in_secs - prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_DELTA_IN_SECS);
+
+      if (acceptable_delay_in_secs < 0)
 	{
-	  // wait for boot to finish
-	  return;
+	  acceptable_delay_in_secs = 0;
 	}
 
-      time_t log_record_time = 0;
-      int error_code;
-      int delay_limit_in_secs;
-      int acceptable_delay_in_secs;
-      int curr_delay_in_secs;
-      HA_SERVER_STATE server_state;
+      error_code = catcls_get_apply_info_log_record_time (&thread_ref, &log_record_time);
 
-      csect_enter (&thread_ref, CSECT_HA_SERVER_STATE, INF_WAIT);
-
-      server_state = css_ha_server_state ();
-
-      if (server_state == HA_SERVER_STATE_ACTIVE || server_state == HA_SERVER_STATE_TO_BE_STANDBY)
+      if (error_code == NO_ERROR && log_record_time > 0)
 	{
-	  css_unset_ha_repl_delayed ();
-	  perfmon_set_stat (&thread_ref, PSTAT_HA_REPL_DELAY, 0, true);
-
-	  log_append_ha_server_state (&thread_ref, server_state);
-
-	  csect_exit (&thread_ref, CSECT_HA_SERVER_STATE);
-	}
-      else
-	{
-	  csect_exit (&thread_ref, CSECT_HA_SERVER_STATE);
-
-	  delay_limit_in_secs = prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_IN_SECS);
-	  acceptable_delay_in_secs = delay_limit_in_secs - prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_DELTA_IN_SECS);
-
-	  if (acceptable_delay_in_secs < 0)
+	  curr_delay_in_secs = (int) (time (NULL) - log_record_time);
+	  if (curr_delay_in_secs > 0)
 	    {
-	      acceptable_delay_in_secs = 0;
+	      curr_delay_in_secs -= HA_DELAY_ERR_CORRECTION;
 	    }
 
-	  error_code = catcls_get_apply_info_log_record_time (&thread_ref, &log_record_time);
-
-	  if (error_code == NO_ERROR && log_record_time > 0)
+	  if (delay_limit_in_secs > 0)
 	    {
-	      curr_delay_in_secs = (int) (time (NULL) - log_record_time);
-	      if (curr_delay_in_secs > 0)
+	      if (curr_delay_in_secs > delay_limit_in_secs)
 		{
-		  curr_delay_in_secs -= HA_DELAY_ERR_CORRECTION;
-		}
-
-	      if (delay_limit_in_secs > 0)
-		{
-		  if (curr_delay_in_secs > delay_limit_in_secs)
+		  if (!css_is_ha_repl_delayed ())
 		    {
-		      if (!css_is_ha_repl_delayed ())
-			{
-			  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_DELAY_DETECTED, 2,
-				  curr_delay_in_secs, delay_limit_in_secs);
+		      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_DELAY_DETECTED, 2,
+			      curr_delay_in_secs, delay_limit_in_secs);
 
-			  css_set_ha_repl_delayed ();
-			}
-		    }
-		  else if (curr_delay_in_secs <= acceptable_delay_in_secs)
-		    {
-		      if (css_is_ha_repl_delayed ())
-			{
-			  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_DELAY_RESOLVED, 2,
-				  curr_delay_in_secs, acceptable_delay_in_secs);
-
-			  css_unset_ha_repl_delayed ();
-			}
+		      css_set_ha_repl_delayed ();
 		    }
 		}
+	      else if (curr_delay_in_secs <= acceptable_delay_in_secs)
+		{
+		  if (css_is_ha_repl_delayed ())
+		    {
+		      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_DELAY_RESOLVED, 2,
+			      curr_delay_in_secs, acceptable_delay_in_secs);
 
-	      perfmon_set_stat (&thread_ref, PSTAT_HA_REPL_DELAY, curr_delay_in_secs, true);
+		      css_unset_ha_repl_delayed ();
+		    }
+		}
 	    }
+
+	  perfmon_set_stat (&thread_ref, PSTAT_HA_REPL_DELAY, curr_delay_in_secs, true);
 	}
     }
-};
+}
 #endif /* SERVER_MODE */
 
-#if defined (SERVER_MODE)
-// class log_flush_daemon_task
-//
-//  description:
-//    log flush daemon task
-//
-class log_flush_daemon_task : public cubthread::entry_task
+#if defined(SERVER_MODE)
+static void
+log_flush_execute (cubthread::entry & thread_ref)
 {
-  public:
-    void execute (cubthread::entry & thread_ref) override
+  if (!BO_IS_SERVER_RESTARTED () || !log_Flush_has_been_requested)
     {
-      if (!BO_IS_SERVER_RESTARTED () || !log_Flush_has_been_requested)
-	{
-	  return;
-	}
-
-      // refresh log trace flush time
-      thread_ref.event_stats.trace_log_flush_time = prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
-
-      LOG_CS_ENTER (&thread_ref);
-      logpb_flush_pages_direct (&thread_ref);
-      LOG_CS_EXIT (&thread_ref);
-
-      log_Stat.gc_flush_count++;
-
-      pthread_mutex_lock (&log_Gl.group_commit_info.gc_mutex);
-      pthread_cond_broadcast (&log_Gl.group_commit_info.gc_cond);
-      log_Flush_has_been_requested = false;
-      pthread_mutex_unlock (&log_Gl.group_commit_info.gc_mutex);
+      return;
     }
-};
+
+  // refresh log trace flush time
+  thread_ref.event_stats.trace_log_flush_time = prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
+
+  LOG_CS_ENTER (&thread_ref);
+  logpb_flush_pages_direct (&thread_ref);
+  LOG_CS_EXIT (&thread_ref);
+
+  log_Stat.gc_flush_count++;
+
+  pthread_mutex_lock (&log_Gl.group_commit_info.gc_mutex);
+  pthread_cond_broadcast (&log_Gl.group_commit_info.gc_cond);
+  log_Flush_has_been_requested = false;
+  pthread_mutex_unlock (&log_Gl.group_commit_info.gc_mutex);
+}
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
@@ -9905,7 +9855,7 @@ log_checkpoint_daemon_init ()
   assert (log_Checkpoint_daemon == NULL);
 
   cubthread::looper looper = cubthread::looper (log_get_checkpoint_interval);
-  log_checkpoint_daemon_task *daemon_task = new log_checkpoint_daemon_task ();
+  cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (log_checkpoint_execute);
 
   // create checkpoint daemon thread
   log_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log_checkpoint");
@@ -9946,7 +9896,9 @@ log_clock_daemon_init ()
   assert (log_Clock_daemon == NULL);
 
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (200));
-  log_Clock_daemon = cubthread::get_manager ()->create_daemon (looper, new log_clock_daemon_task (), "log_clock");
+  log_Clock_daemon =
+    cubthread::get_manager ()->create_daemon (looper, new cubthread::entry_callable_task (log_clock_execute),
+                                              "log_clock");
 }
 #endif /* SERVER_MODE */
 
@@ -9960,7 +9912,7 @@ log_check_ha_delay_info_daemon_init ()
   assert (log_Check_ha_delay_info_daemon == NULL);
 
   cubthread::looper looper = cubthread::looper (std::chrono::seconds (1));
-  log_check_ha_delay_info_daemon_task *daemon_task = new log_check_ha_delay_info_daemon_task ();
+  cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (log_check_ha_delay_info_execute);
 
   log_Check_ha_delay_info_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
                                                                              "log_check_ha_delay_info");
@@ -9977,7 +9929,7 @@ log_flush_daemon_init ()
   assert (log_Flush_daemon == NULL);
 
   cubthread::looper looper = cubthread::looper (log_get_log_group_commit_interval);
-  log_flush_daemon_task *daemon_task = new log_flush_daemon_task ();
+  cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (log_flush_execute);
 
   log_Flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log_flush");
 }
@@ -10036,10 +9988,10 @@ log_get_clock_msec (void)
 
 // *INDENT-OFF*
 #if defined (SERVER_MODE)
-void
-log_abort_task::execute (context_type &thread_ref)
+static void
+log_abort_task_execute (cubthread::entry &thread_ref, LOG_TDES &tdes)
 {
-  (void) log_abort_by_tdes (&thread_ref, &m_tdes);
+  (void) log_abort_by_tdes (&thread_ref, &tdes);
 }
 #endif // SERVER_MODE
 // *INDENT-ON*
