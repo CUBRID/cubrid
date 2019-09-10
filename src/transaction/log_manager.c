@@ -8958,23 +8958,23 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
       goto exit_on_error;
     }
 
-  if (header->last_block_oldest_visible_mvccid == MVCCID_NULL)
+  if (header->oldest_visible_mvccid == MVCCID_NULL)
     {
       db_make_null (out_values[idx]);
     }
   else
     {
-      db_make_bigint (out_values[idx], header->last_block_oldest_visible_mvccid);
+      db_make_bigint (out_values[idx], header->oldest_visible_mvccid);
     }
   idx++;
 
-  if (header->last_block_newest_mvccid == MVCCID_NULL)
+  if (header->newest_block_mvccid == MVCCID_NULL)
     {
       db_make_null (out_values[idx]);
     }
   else
     {
-      db_make_bigint (out_values[idx], header->last_block_newest_mvccid);
+      db_make_bigint (out_values[idx], header->newest_block_mvccid);
     }
   idx++;
 

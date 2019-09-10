@@ -146,9 +146,10 @@ struct log_header
 
   LOG_LSA smallest_lsa_at_last_chkpt;
 
-  LOG_LSA mvcc_op_log_lsa;	/* Used to link log entries for mvcc operations. Vacuum will then process these entries */
-  MVCCID last_block_oldest_visible_mvccid;	/* Used to find the oldest MVCCID in a block of log data. */
-  MVCCID last_block_newest_mvccid;	/* Used to find the newest MVCCID in a block of log data. */
+  // next fields track MVCC info relevant for vacuum
+  LOG_LSA mvcc_op_log_lsa;	/* LSA of last MVCC operation log record */
+  MVCCID oldest_visible_mvccid;	/* oldest visible MVCCID */
+  MVCCID newest_block_mvccid;	/* newest MVCCID for current block */
 
   INT64 ha_promotion_time;
   INT64 db_restore_time;
@@ -194,8 +195,8 @@ struct log_header
   , eof_lsa (NULL_LSA)
   , smallest_lsa_at_last_chkpt (NULL_LSA)
   , mvcc_op_log_lsa (NULL_LSA)
-  , last_block_oldest_visible_mvccid (MVCCID_NULL)
-  , last_block_newest_mvccid (MVCCID_NULL)
+  , oldest_visible_mvccid (MVCCID_FIRST)
+  , newest_block_mvccid (MVCCID_NULL)
   , ha_promotion_time (0)
   , db_restore_time (0)
   , mark_will_del (false)

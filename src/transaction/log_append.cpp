@@ -1316,21 +1316,21 @@ prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid)
   if (!log_Gl.hdr.does_block_need_vacuum)
     {
       // first mvcc record for this block
-      log_Gl.hdr.last_block_newest_mvccid = mvccid;
-      log_Gl.hdr.last_block_oldest_visible_mvccid = log_Gl.mvcc_table.get_global_oldest_visible ();
+      log_Gl.hdr.oldest_visible_mvccid = vacuum_get_global_oldest_active_mvccid ();
+      log_Gl.hdr.newest_block_mvccid = mvccid;
     }
   else
     {
       // sanity checks
-      assert (MVCCID_IS_VALID (log_Gl.hdr.last_block_oldest_visible_mvccid));
-      assert (MVCCID_IS_VALID (log_Gl.hdr.last_block_newest_mvccid));
-      assert (log_Gl.hdr.last_block_oldest_visible_mvccid <= mvccid);
+      assert (MVCCID_IS_VALID (log_Gl.hdr.oldest_visible_mvccid));
+      assert (MVCCID_IS_VALID (log_Gl.hdr.newest_block_mvccid));
+      assert (log_Gl.hdr.oldest_visible_mvccid <= mvccid);
       assert (!log_Gl.hdr.mvcc_op_log_lsa.is_null ());
       assert (vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid) == vacuum_get_log_blockid (record_lsa.pageid));
 
-      if (log_Gl.hdr.last_block_newest_mvccid < mvccid)
+      if (log_Gl.hdr.newest_block_mvccid < mvccid)
 	{
-	  log_Gl.hdr.last_block_newest_mvccid = mvccid;
+	  log_Gl.hdr.newest_block_mvccid = mvccid;
 	}
     }
   log_Gl.hdr.mvcc_op_log_lsa = record_lsa;
