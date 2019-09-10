@@ -2780,7 +2780,7 @@ vacuum_produce_log_block_data (THREAD_ENTRY * thread_p)
 
   // reset info for next block
   log_Gl.hdr.does_block_need_vacuum = false;
-  log_Gl.hdr.last_block_newest_mvccid = MVCCID_NULL;
+  log_Gl.hdr.newest_block_mvccid = MVCCID_NULL;
 
   if (vacuum_Block_data_buffer == NULL)
     {
@@ -7854,7 +7854,7 @@ vacuum_data::update ()
   if (!vacuum_Data.is_empty ())
     {
       // trivial case
-      upgrade_oldest_unvacuumed (get_first_entry ().oldest_mvccid);
+      upgrade_oldest_unvacuumed (get_first_entry ().oldest_visible_mvccid);
       updated_oldest_unvacuumed = true;
     }
   else
@@ -7863,7 +7863,7 @@ vacuum_data::update ()
       // note: the safe order of operations is to first read current block, and then check the buffer.
       //       if buffer is checked first, then thread is preempted, then it reads current log block, a block can be
       //       missed.
-      MVCCID hdr_oldest_visible = log_Gl.hdr.last_block_oldest_mvccid;
+      MVCCID hdr_oldest_visible = log_Gl.hdr.oldest_visible_mvccid;
       if (vacuum_Block_data_buffer->is_empty ())
         {
           upgrade_oldest_unvacuumed (hdr_oldest_visible);
@@ -7876,7 +7876,7 @@ vacuum_data::update ()
   if (!updated_oldest_unvacuumed)
     {
       // buffer was not empty, we can trivially update to first entry oldest mvccid
-      upgrade_oldest_unvacuumed (get_first_entry ().oldest_mvccid);
+      upgrade_oldest_unvacuumed (get_first_entry ().oldest_visible_mvccid);
     }
 }
 
@@ -7888,7 +7888,7 @@ vacuum_data::set_oldest_unvacuumed_on_boot ()
     {
       if (log_Gl.hdr.does_block_need_vacuum)
         {
-          oldest_unvacuumed_mvccid = log_Gl.hdr.last_block_oldest_mvccid;
+          oldest_unvacuumed_mvccid = log_Gl.hdr.oldest_visible_mvccid;
         }
       else
         {
@@ -7898,7 +7898,7 @@ vacuum_data::set_oldest_unvacuumed_on_boot ()
   else
     {
       // set on first block oldest mvccid
-      oldest_unvacuumed_mvccid = first_page->data[0].oldest_mvccid;
+      oldest_unvacuumed_mvccid = first_page->data[0].oldest_visible_mvccid;
     }
 }
 

@@ -1316,7 +1316,7 @@ prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid)
   if (!log_Gl.hdr.does_block_need_vacuum)
     {
       // first mvcc record for this block
-      log_Gl.hdr.oldest_visible_mvccid = vacuum_get_global_oldest_active_mvccid ();
+      log_Gl.hdr.oldest_visible_mvccid = vacuum_get_global_oldest_visible_mvccid ();
       log_Gl.hdr.newest_block_mvccid = mvccid;
     }
   else
