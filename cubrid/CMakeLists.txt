@@ -65,19 +65,6 @@ set(THREAD_HEADERS
   ${THREAD_DIR}/thread_worker_pool.hpp
   )
 
-set(STREAM_SOURCES
-  ${BASE_DIR}/cubstream.cpp
-  ${BASE_DIR}/multi_thread_stream.cpp
-  )
-set (STREAM_HEADERS
-  ${BASE_DIR}/bip_buffer.hpp
-  ${BASE_DIR}/collapsable_circular_queue.hpp
-  ${BASE_DIR}/cubstream.hpp
-  ${BASE_DIR}/multi_thread_stream.hpp
-  ${BASE_DIR}/stream_entry.hpp
-  ${BASE_DIR}/stream_io.hpp
-  )
-
 set(BASE_SOURCES
   ${BASE_DIR}/adjustable_array.c
   ${BASE_DIR}/area_alloc.c
@@ -176,17 +163,6 @@ set(CONNECTION_SOURCES
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_sr.c
   ${COMMUNICATION_DIR}/network_sr.c
-  ${COMMUNICATION_DIR}/communication_channel.cpp
-  ${COMMUNICATION_DIR}/communication_server_channel.cpp
-  ${COMMUNICATION_DIR}/stream_transfer_receiver.cpp
-  ${COMMUNICATION_DIR}/stream_transfer_sender.cpp
-  )
-
-set(COMMUNICATION_HEADERS
-  ${COMMUNICATION_DIR}/communication_channel.hpp
-  ${COMMUNICATION_DIR}/communication_server_channel.hpp
-  ${COMMUNICATION_DIR}/stream_transfer_receiver.hpp
-  ${COMMUNICATION_DIR}/stream_transfer_sender.hpp
   )
 
 set(MONITOR_SOURCES
@@ -203,14 +179,6 @@ set(MONITOR_HEADERS
   ${MONITOR_DIR}/monitor_statistic.hpp
   ${MONITOR_DIR}/monitor_transaction.hpp
 )
-
-set (REPLICATION_HEADERS
-  ${REPLICATION_DIR}/log_generator.hpp
-  ${REPLICATION_DIR}/log_consumer.hpp
-  ${REPLICATION_DIR}/replication_master_senders_manager.hpp
-  ${REPLICATION_DIR}/replication_object.hpp
-  ${REPLICATION_DIR}/replication_stream_entry.hpp
-  )
 
 set(QUERY_SOURCES
   ${QUERY_DIR}/arithmetic.c
@@ -260,14 +228,6 @@ set(OBJECT_SOURCES
 set(OBJECT_HEADERS
   ${OBJECT_DIR}/lob_locator.hpp
 )
-
-set(REPLICATION_SOURCES
-  ${REPLICATION_DIR}/log_consumer.cpp
-  ${REPLICATION_DIR}/log_generator.cpp
-  ${REPLICATION_DIR}/replication_object.cpp
-  ${REPLICATION_DIR}/replication_master_senders_manager.cpp
-  ${REPLICATION_DIR}/replication_stream_entry.cpp
-  )
 
 set(JSP_SOURCES
   ${JSP_DIR}/jsp_sr.c
@@ -410,7 +370,6 @@ SET_SOURCE_FILES_PROPERTIES(
   ${PARSER_SOURCES}
   ${PROBES_OBJECT}
   ${QUERY_SOURCES}
-  ${REPLICATION_SOURCES}
   ${SESSION_SOURCES}
   ${STORAGE_SOURCES}
   ${THREAD_SOURCES}
@@ -438,10 +397,8 @@ set (CUBRID_LIB_SOURCES
   ${OBJECT_SOURCES}
   ${PROBES_OBJECT}
   ${QUERY_SOURCES}
-  ${REPLICATION_SOURCES}
   ${SESSION_SOURCES}
   ${STORAGE_SOURCES}
-  ${STREAM_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
   ${XASL_SOURCES}
@@ -449,14 +406,11 @@ set (CUBRID_LIB_SOURCES
 
 set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}
-  ${COMMUNICATION_HEADERS}
   ${COMPAT_HEADERS}
   ${MONITOR_HEADERS}
   ${OBJECT_HEADERS}
   ${QUERY_HEADERS}
-  ${REPLICATION_HEADERS}
   ${STORAGE_HEADERS}
-  ${STREAM_HEADERS}
   ${THREAD_HEADERS}
   ${TRANSACTION_HEADERS}
   ${XASL_HEADERS}

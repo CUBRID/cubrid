@@ -54,6 +54,7 @@
 #include "porting.h"
 #include "porting_inline.hpp"
 #include "connection_defs.h"
+#include "language_support.h"
 #include "log_append.hpp"
 #include "log_impl.h"
 #include "log_lsa.hpp"
