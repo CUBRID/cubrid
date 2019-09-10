@@ -1902,9 +1902,22 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
       assert (LOG_CS_OWN (thread_p));
     }
 
-  if (logpb_is_page_in_archive (pageid)
-      && (LOG_ISRESTARTED () == false || (pageid + LOGPB_ACTIVE_NPAGES) <= log_Gl.hdr.append_lsa.pageid))
+  // some archived pages may be still in active log; check if they can be fetched from active.
+  bool fetch_from_archive = logpb_is_page_in_archive (pageid);
+  if (fetch_from_archive)
     {
+      bool is_archive_page_in_active_log = (pageid + LOGPB_ACTIVE_NPAGES) > log_Gl.hdr.append_lsa.pageid;
+      bool dont_fetch_archive_from_active = !LOG_ISRESTARTED () || log_Gl.hdr.was_active_log_reset;
+
+      if (is_archive_page_in_active_log && !dont_fetch_archive_from_active)
+	{
+	  // can fetch from active
+	  fetch_from_archive = false;
+	}
+    }
+  if (fetch_from_archive)
+    {
+      // fetch from archive
       if (logpb_fetch_from_archive (thread_p, pageid, log_pgptr, NULL, NULL, true) == NULL)
 	{
 #if defined (SERVER_MODE)
@@ -1919,6 +1932,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
     }
   else
     {
+      // fetch from active
       LOG_PHY_PAGEID phy_pageid;
 
       /*
@@ -5499,6 +5513,8 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   log_Gl.hdr.nxarv_num++;
   log_Gl.hdr.nxarv_pageid = last_pageid + 1;
   log_Gl.hdr.nxarv_phy_pageid = logpb_to_physical_pageid (log_Gl.hdr.nxarv_pageid);
+
+  log_Gl.hdr.was_active_log_reset = false;
 
   logpb_log
     ("In logpb_archive_active_log, new values from log_Gl.hdr.nxarv_pageid = %lld and log_Gl.hdr.nxarv_phy_pageid = %lld\n",
