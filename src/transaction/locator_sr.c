@@ -12642,7 +12642,7 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
   recdes.data = NULL;
 
   tdes->lock_global_oldest_visible_mvccid ();
-  threshold_mvccid = log_Gl.mvcc_table.get_global_oldest_visible (thread_p);
+  threshold_mvccid = log_Gl.mvcc_table.get_global_oldest_visible ();
 
   for (i = 0; i < no_oids; i++)
     {

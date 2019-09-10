@@ -35,6 +35,7 @@
 #include "log_lsa.hpp"
 #include "log_impl.h"
 #include "mvcc.h"
+#include "mvcc_table.hpp"
 #include "object_representation_sr.h"
 #include "overflow_file.h"
 #include "page_buffer.h"
@@ -2889,7 +2890,7 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
 {
   THREAD_ENTRY *thread_p = &thread_ref;
   VACUUM_DATA_ENTRY *entry = NULL;
-  MVCCID local_oldest_active_mvccid;
+  MVCCID local_oldest_visible_mvccid;
   PERF_UTIME_TRACKER perf_tracker;
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
@@ -2904,7 +2905,7 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
 
   PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
 
-  local_oldest_active_mvccid = log_Gl.mvcc_table.update_global_oldest_visible ();
+  local_oldest_visible_mvccid = log_Gl.mvcc_table.update_global_oldest_visible ();
 
   if (!vacuum_Data.is_loaded)
     {
@@ -2951,7 +2952,7 @@ restart:
     {
       entry = &m_cursor.get_current_entry ();
 
-      if (!MVCC_ID_PRECEDES (entry->newest_mvccid, vacuum_Global_oldest_active_mvccid)
+      if (!MVCC_ID_PRECEDES (entry->newest_mvccid, log_Gl.mvcc_table.get_global_oldest_visible ())
 	  || (entry->start_lsa.pageid + 1 >= log_Gl.append.prev_lsa.pageid))
 	{
 	  /* Newest MVCCID in block is not old enough. Or
@@ -2964,7 +2965,7 @@ restart:
 			 "Cannot generate job for " VACUUM_LOG_DATA_ENTRY_MSG ("entry") ". "
 			 "global oldest visible mvccid = %llu, log_Gl.append.prev_lsa.pageid = %d.",
 			 VACUUM_LOG_DATA_ENTRY_AS_ARGS (entry),
-			 (unsigned long long int) local_oldest_active_mvccid,
+			 (unsigned long long int) local_oldest_visible_mvccid,
 			 (long long int) log_Gl.append.prev_lsa.pageid);
 
 	  /* todo: remember this as starting point for next iteration of generating jobs */
@@ -5021,7 +5022,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	      LSA_COPY (&page_free_data->start_lsa, &consumed_data.start_lsa);
 	      page_free_data->newest_mvccid = consumed_data.newest_mvccid;
 	      page_free_data->oldest_visible_mvccid = consumed_data.oldest_visible_mvccid;
-	      // assert (oldest_visible_mvccid >= page_free_data->oldest_visible_mvccid);
+	      assert (log_Gl.mvcc_table.get_global_oldest_visible () >= page_free_data->oldest_visible_mvccid);
 #if !defined (NDEBUG)
 	      /* Check that oldest_mvccid is not decreasing. */
 	      if (data_page->index_free > 0)
@@ -6848,7 +6849,7 @@ vacuum_verify_vacuum_data_debug (THREAD_ENTRY * thread_p)
 	    }
 
 	  assert (entry->is_available () || entry->is_job_in_progress ());
-	  assert (entry->oldest_mvccid <= log_Gl.mvcc_table.get_global_oldest_visible ());
+	  assert (entry->oldest_visible_mvccid <= log_Gl.mvcc_table.get_global_oldest_visible ());
 	  assert (vacuum_Data.oldest_unvacuumed_mvccid <= entry->oldest_visible_mvccid);
 	  assert (entry->get_blockid () <= vacuum_Data.get_last_blockid ());
 	  assert (vacuum_get_log_blockid (entry->start_lsa.pageid) == entry->get_blockid ());
