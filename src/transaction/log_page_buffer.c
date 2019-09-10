@@ -10396,9 +10396,9 @@ logpb_dump_log_header (FILE * outfp)
 
   fprintf (outfp, "\tMVCC op lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.hdr.mvcc_op_log_lsa));
 
-  fprintf (outfp, "\tLast block oldest MVCCID : (%lld)\n", (long long int) log_Gl.hdr.last_block_oldest_mvccid);
+  fprintf (outfp, "\tLast block oldest MVCCID : (%lld)\n", (long long int) log_Gl.hdr.oldest_visible_mvccid);
 
-  fprintf (outfp, "\tLast block newest MVCCID : (%lld)\n", (long long int) log_Gl.hdr.last_block_newest_mvccid);
+  fprintf (outfp, "\tLast block newest MVCCID : (%lld)\n", (long long int) log_Gl.hdr.newest_block_mvccid);
 }
 
 /*
@@ -10739,8 +10739,8 @@ logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghd
 {
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "Reset vacuum info in loghdr (%p)", loghdr);
   LSA_SET_NULL (&loghdr->mvcc_op_log_lsa);
-  loghdr->last_block_oldest_mvccid = MVCCID_NULL;
-  loghdr->last_block_newest_mvccid = MVCCID_NULL;
+  loghdr->oldest_visible_mvccid = MVCCID_NULL;
+  loghdr->newest_block_mvccid = MVCCID_NULL;
   loghdr->does_block_need_vacuum = false;
 }
 
