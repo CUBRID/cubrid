@@ -301,8 +301,7 @@ class vacuum_job_cursor
     vacuum_data_page *get_page () const;
     INT16 get_index () const;
 
-    vacuum_data_entry &get_current_entry () const;    // get current entry; cursor must be valid
-                                                      // todo: change return type to const
+    const vacuum_data_entry &get_current_entry () const;    // get current entry; cursor must be valid
     void start_job_on_current_entry () const;
 
     void force_data_update ();
@@ -8068,7 +8067,7 @@ vacuum_job_cursor::get_index () const
   return m_index;
 }
 
-vacuum_data_entry &
+const vacuum_data_entry &
 vacuum_job_cursor::get_current_entry () const
 {
   assert (is_valid ());
