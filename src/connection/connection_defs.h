@@ -66,10 +66,8 @@ enum css_command_type
   SERVER_REQUEST = 3,		/* let new server attach */
   UNUSED_REQUEST = 4,		/* unused request - leave it for compatibility */
   SERVER_REQUEST_NEW = 5,	/* new-style server request */
-  SERVER_REQUEST_CONNECT_NEW_SLAVE = 6,	/* slave server wants to connect to master server */
   MAX_REQUEST
 };
-typedef enum css_command_type CSS_COMMAND_TYPE;
 
 /*
  * These are the responses from the master to a server
