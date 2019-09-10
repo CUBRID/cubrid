@@ -18,35 +18,44 @@
  */
 
 /*
- * cubstream.cpp
+ * internal_tasks_worker_pool.cpp
  */
 
-#ident "$Id$"
+#include "internal_tasks_worker_pool.hpp"
+#include "thread_worker_pool.hpp"
 
-#include "cubstream.hpp"
-#include "error_code.h"
-#include <algorithm>
-
-namespace cubstream
+namespace cubthread
 {
+  constexpr size_t WORKER_COUNT = 2;
+  constexpr size_t TASK_COUNT = 10;
+  constexpr size_t CORE_COUNT = 1;
+  constexpr bool ENABLE_LOGGING = true;
 
-  stream::stream ()
+  entry_workpool *instance = NULL;
+
+  namespace internal_tasks_worker_pool
   {
-    m_last_committed_pos = 0;
-    m_last_notified_committed_pos = 0;
-    m_read_position = 0;
-    m_last_dropable_pos = 0;
-    m_serial_read_wait_pos = 0;
+    void initialize ()
+    {
+      if (instance != NULL)
+	{
+	  return;
+	}
 
-    init (0);
+      instance = cubthread::get_manager ()->create_worker_pool (WORKER_COUNT,
+		 TASK_COUNT, "internal_tasks_worker_pool", NULL, CORE_COUNT, ENABLE_LOGGING);
+    }
+
+    entry_workpool *get_instance ()
+    {
+      assert (instance != NULL);
+      return instance;
+    }
+
+    void finalize ()
+    {
+      delete instance;
+      instance = NULL;
+    }
   }
-
-  int stream::init (const stream_position &start_position)
-  {
-    m_append_position = start_position;
-    m_read_position = start_position;
-
-    return NO_ERROR;
-  }
-
-} /* namespace cubstream */
+}

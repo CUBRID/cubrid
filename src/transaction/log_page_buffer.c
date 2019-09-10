@@ -54,6 +54,7 @@
 #include "porting.h"
 #include "porting_inline.hpp"
 #include "connection_defs.h"
+#include "language_support.h"
 #include "log_append.hpp"
 #include "log_impl.h"
 #include "log_lsa.hpp"
@@ -1901,9 +1902,22 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
       assert (LOG_CS_OWN (thread_p));
     }
 
-  if (logpb_is_page_in_archive (pageid)
-      && (LOG_ISRESTARTED () == false || (pageid + LOGPB_ACTIVE_NPAGES) <= log_Gl.hdr.append_lsa.pageid))
+  // some archived pages may be still in active log; check if they can be fetched from active.
+  bool fetch_from_archive = logpb_is_page_in_archive (pageid);
+  if (fetch_from_archive)
     {
+      bool is_archive_page_in_active_log = (pageid + LOGPB_ACTIVE_NPAGES) > log_Gl.hdr.append_lsa.pageid;
+      bool dont_fetch_archive_from_active = !LOG_ISRESTARTED () || log_Gl.hdr.was_active_log_reset;
+
+      if (is_archive_page_in_active_log && !dont_fetch_archive_from_active)
+	{
+	  // can fetch from active
+	  fetch_from_archive = false;
+	}
+    }
+  if (fetch_from_archive)
+    {
+      // fetch from archive
       if (logpb_fetch_from_archive (thread_p, pageid, log_pgptr, NULL, NULL, true) == NULL)
 	{
 #if defined (SERVER_MODE)
@@ -1918,6 +1932,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
     }
   else
     {
+      // fetch from active
       LOG_PHY_PAGEID phy_pageid;
 
       /*
@@ -3169,7 +3184,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
 	  writer_info->trace_last_writer = true;
 	  writer_info->last_writer_elapsed_time = 0;
-	  writer_info->last_writer_client_info.client_type = BOOT_CLIENT_UNKNOWN;
+	  writer_info->last_writer_client_info.client_type = DB_CLIENT_TYPE_UNKNOWN;
 	}
 
       entry = writer_info->writer_list;
@@ -5499,6 +5514,8 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   log_Gl.hdr.nxarv_pageid = last_pageid + 1;
   log_Gl.hdr.nxarv_phy_pageid = logpb_to_physical_pageid (log_Gl.hdr.nxarv_pageid);
 
+  log_Gl.hdr.was_active_log_reset = false;
+
   logpb_log
     ("In logpb_archive_active_log, new values from log_Gl.hdr.nxarv_pageid = %lld and log_Gl.hdr.nxarv_phy_pageid = %lld\n",
      (long long int) log_Gl.hdr.nxarv_pageid, (long long int) log_Gl.hdr.nxarv_phy_pageid);
@@ -7085,6 +7102,8 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   time_t tmp_time;
   char time_val[CTIME_MAX];
 
+  LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
+
 #if defined (SERVER_MODE)
   // check whether there is ongoing backup.
   LOG_CS_ENTER (thread_p);
@@ -7187,6 +7206,36 @@ loop:
   else
     {
       first_arv_needed = log_Gl.hdr.nxarv_num;
+    }
+
+  vacuum_first_pageid = vacuum_min_log_pageid_to_keep (thread_p);
+  vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First log pageid in vacuum data is %lld\n", vacuum_first_pageid);
+
+  if (vacuum_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (vacuum_first_pageid))
+    {
+      int min_arv_required_for_vacuum = logpb_get_archive_number (thread_p, vacuum_first_pageid);
+
+      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive number used for vacuum is %d\n",
+		     min_arv_required_for_vacuum);
+
+      if (min_arv_required_for_vacuum >= 0)
+	{
+	  if (first_arv_needed >= 0)
+	    {
+	      first_arv_needed = MIN (first_arv_needed, min_arv_required_for_vacuum);
+	    }
+	  else
+	    {
+	      first_arv_needed = min_arv_required_for_vacuum;
+	    }
+	}
+      else
+	{
+	  /* Page should be in archive. */
+	  assert (false);
+	}
+
+      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive needed for backup is %d\n", first_arv_needed);
     }
 
   /* Get the current checkpoint address */
@@ -10363,9 +10412,9 @@ logpb_dump_log_header (FILE * outfp)
 
   fprintf (outfp, "\tMVCC op lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.hdr.mvcc_op_log_lsa));
 
-  fprintf (outfp, "\tLast block oldest MVCCID : (%lld)\n", (long long int) log_Gl.hdr.last_block_oldest_mvccid);
+  fprintf (outfp, "\tLast block oldest MVCCID : (%lld)\n", (long long int) log_Gl.hdr.oldest_visible_mvccid);
 
-  fprintf (outfp, "\tLast block newest MVCCID : (%lld)\n", (long long int) log_Gl.hdr.last_block_newest_mvccid);
+  fprintf (outfp, "\tLast block newest MVCCID : (%lld)\n", (long long int) log_Gl.hdr.newest_block_mvccid);
 }
 
 /*
@@ -10706,8 +10755,9 @@ logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghd
 {
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "Reset vacuum info in loghdr (%p)", loghdr);
   LSA_SET_NULL (&loghdr->mvcc_op_log_lsa);
-  loghdr->last_block_oldest_mvccid = MVCCID_NULL;
-  loghdr->last_block_newest_mvccid = MVCCID_NULL;
+  loghdr->oldest_visible_mvccid = MVCCID_NULL;
+  loghdr->newest_block_mvccid = MVCCID_NULL;
+  loghdr->does_block_need_vacuum = false;
 }
 
 /*

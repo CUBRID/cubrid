@@ -26,7 +26,7 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/csql_result.c
   ${EXECUTABLES_DIR}/csql_support.c
   ${EXECUTABLES_DIR}/csql_result_format.c
-  ${EXECUTABLES_DIR}/extract_schema.cpp  
+  ${EXECUTABLES_DIR}/extract_schema.cpp
   ${EXECUTABLES_DIR}/util_sa.c
   ${EXECUTABLES_DIR}/util_cs.c
   ${EXECUTABLES_DIR}/util_common.c
@@ -279,36 +279,6 @@ set(OBJECT_HEADERS
   ${OBJECT_DIR}/lob_locator.hpp
 )
 
-set (REPLICATION_HEADERS
-  ${REPLICATION_DIR}/log_generator.hpp
-  ${REPLICATION_DIR}/log_consumer.hpp
-  ${REPLICATION_DIR}/replication_master_senders_manager.hpp
-  ${REPLICATION_DIR}/replication_object.hpp
-  ${REPLICATION_DIR}/replication_stream_entry.hpp
-  )
-
-set(REPLICATION_SOURCES
-  ${REPLICATION_DIR}/log_consumer.cpp
-  ${REPLICATION_DIR}/log_generator.cpp
-  ${REPLICATION_DIR}/replication_object.cpp
-  ${REPLICATION_DIR}/replication_master_senders_manager.cpp  
-  ${REPLICATION_DIR}/replication_stream_entry.cpp
-  )
-
-set(STREAM_SOURCES
-  ${BASE_DIR}/cubstream.cpp
-  ${BASE_DIR}/multi_thread_stream.cpp
-  )
-
-set (STREAM_HEADERS
-  ${BASE_DIR}/bip_buffer.hpp
-  ${BASE_DIR}/collapsable_circular_queue.hpp
-  ${BASE_DIR}/cubstream.hpp
-  ${BASE_DIR}/multi_thread_stream.hpp
-  ${BASE_DIR}/stream_entry.hpp
-  ${BASE_DIR}/stream_io.hpp
-  )
-
 set(JSP_SOURCES
   ${JSP_DIR}/jsp_cl.c
   ${JSP_DIR}/jsp_sr.c
@@ -344,6 +314,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_lsa.cpp
   ${TRANSACTION_DIR}/log_manager.c
   ${TRANSACTION_DIR}/log_page_buffer.c
+  ${TRANSACTION_DIR}/log_postpone_cache.cpp
   ${TRANSACTION_DIR}/log_recovery.c
   ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
@@ -365,6 +336,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_archives.hpp
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
+  ${TRANSACTION_DIR}/log_postpone_cache.hpp
   ${TRANSACTION_DIR}/log_record.hpp
   ${TRANSACTION_DIR}/log_storage.hpp
   ${TRANSACTION_DIR}/log_system_tran.hpp
@@ -497,8 +469,6 @@ SET_SOURCE_FILES_PROPERTIES(
   ${OPTIMIZER_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
-  ${REPLICATION_SOURCES}
-  ${STREAM_SOURCES}  
   ${JSP_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
@@ -546,10 +516,6 @@ add_library(cubridsa SHARED
   ${PARSER_HEADERS}
   ${PARSER_SOURCES}
   ${PROBES_OBJECT}
-  ${REPLICATION_HEADERS}
-  ${REPLICATION_SOURCES}
-  ${STREAM_HEADERS}  
-  ${STREAM_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_HEADERS}
   ${TRANSACTION_SOURCES}

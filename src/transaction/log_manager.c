@@ -179,7 +179,7 @@ static const int LOG_REC_UNDO_MAX_ATTEMPTS = 3;
 /* true: Skip logging, false: Don't skip logging */
 static bool log_No_logging = false;
 
-extern INT32 vacuum_Global_oldest_active_blockers_counter;
+extern INT32 vacuum_Global_oldest_visible_blockers_counter;
 
 #define LOG_TDES_LAST_SYSOP(tdes) (&(tdes)->topops.stack[(tdes)->topops.last])
 #define LOG_TDES_LAST_SYSOP_PARENT_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->lastparent_lsa)
@@ -2660,7 +2660,6 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
   int tran_index;
   int error_code = NO_ERROR;
   LOG_PRIOR_NODE *node;
-  LOG_LSA start_lsa = LSA_INITIALIZER;
 
 #if defined(CUBRID_DEBUG)
   if (addr->pgptr == NULL)
@@ -2737,8 +2736,8 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
    */
 
   if (LSA_ISNULL (&tdes->tail_lsa)
-      || (log_is_in_crash_recovery () && (crash_lsa = log_get_crash_point_lsa ()) != NULL
-	  && LSA_LE (&tdes->tail_lsa, crash_lsa)))
+      || (log_is_in_crash_recovery ()
+	  && (crash_lsa = log_get_crash_point_lsa ()) != NULL && LSA_LE (&tdes->tail_lsa, crash_lsa)))
     {
       log_append_empty_record (thread_p, LOG_DUMMY_HEAD_POSTPONE, addr);
     }
@@ -2748,22 +2747,13 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
     {
       return;
     }
-  if (VACUUM_IS_THREAD_VACUUM (thread_p))
-    {
-      /* Cache postpone log record. Redo data must be saved before calling prior_lsa_next_record, which may free this
-       * prior node. */
-      vacuum_cache_log_postpone_redo_data (thread_p, node->data_header, node->rdata, node->rlength);
-      // todo - extend to all transactions
-    }
 
-  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
-  if (VACUUM_IS_THREAD_VACUUM (thread_p))
-    {
-      /* Cache postpone log record. An entry for this postpone log record was already created and we also need to save
-       * its LSA. */
-      vacuum_cache_log_postpone_lsa (thread_p, &start_lsa);
-      // todo - extend to all transactions
-    }
+  // redo data must be saved before calling prior_lsa_next_record, which may free this prior node
+  tdes->m_log_postpone_cache.add_redo_data (*node);
+
+  // an entry for this postpone log record was already created and we also need to save its LSA
+  LOG_LSA start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+  tdes->m_log_postpone_cache.add_lsa (start_lsa);
 
   /* Set address early in case there is a crash, because of skip_head */
   if (tdes->topops.last >= 0)
@@ -2843,9 +2833,8 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
     }
   else
     {
-      node =
-	prior_lsa_alloc_and_copy_data (thread_p, LOG_RUN_POSTPONE, RV_NOT_DEFINED, NULL, length, (char *) data, 0,
-				       NULL);
+      node = prior_lsa_alloc_and_copy_data (thread_p, LOG_RUN_POSTPONE, RV_NOT_DEFINED, NULL, length, (char *) data,
+					    0, NULL);
       if (node == NULL)
 	{
 	  return;
@@ -5295,9 +5284,9 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
       /* Unblock global oldest active update. */
       if (tdes->block_global_oldest_active_until_commit)
 	{
-	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, -1);
+	  ATOMIC_INC_32 (&vacuum_Global_oldest_visible_blockers_counter, -1);
 	  tdes->block_global_oldest_active_until_commit = false;
-	  assert (vacuum_Global_oldest_active_blockers_counter >= 0);
+	  assert (vacuum_Global_oldest_visible_blockers_counter >= 0);
 	}
 
       if (iscommitted == LOG_COMMIT)
@@ -5584,9 +5573,9 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
       /* Unblock global oldest active update. */
       if (tdes->block_global_oldest_active_until_commit)
 	{
-	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, -1);
+	  ATOMIC_INC_32 (&vacuum_Global_oldest_visible_blockers_counter, -1);
 	  tdes->block_global_oldest_active_until_commit = false;
-	  assert (vacuum_Global_oldest_active_blockers_counter >= 0);
+	  assert (vacuum_Global_oldest_visible_blockers_counter >= 0);
 	}
 
       if (iscommitted == LOG_COMMIT)
@@ -7705,6 +7694,13 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   assert (tdes->topops.last < 0);
 
   log_append_commit_postpone (thread_p, tdes, &tdes->posp_nxlsa);
+
+  if (tdes->m_log_postpone_cache.do_postpone (*thread_p, tdes->posp_nxlsa))
+    {
+      // do postpone from cache first
+      return;
+    }
+
   log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
 }
 
@@ -7740,11 +7736,9 @@ log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_E
   sysop_start_postpone.posp_lsa = *LOG_TDES_LAST_SYSOP_POSP_LSA (tdes);
   log_append_sysop_start_postpone (thread_p, tdes, &sysop_start_postpone, data_size, data);
 
-  if (VACUUM_IS_THREAD_VACUUM (thread_p)
-      && vacuum_do_postpone_from_cache (thread_p, LOG_TDES_LAST_SYSOP_POSP_LSA (tdes)))
+  if (tdes->m_log_postpone_cache.do_postpone (*thread_p, *(LOG_TDES_LAST_SYSOP_POSP_LSA (tdes))))
     {
       /* Do postpone was run from cached postpone entries. */
-      // todo - extend optimization for all transactions
       tdes->state = save_state;
       return;
     }
@@ -8976,23 +8970,23 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
       goto exit_on_error;
     }
 
-  if (header->last_block_oldest_mvccid == MVCCID_NULL)
+  if (header->oldest_visible_mvccid == MVCCID_NULL)
     {
       db_make_null (out_values[idx]);
     }
   else
     {
-      db_make_bigint (out_values[idx], header->last_block_oldest_mvccid);
+      db_make_bigint (out_values[idx], header->oldest_visible_mvccid);
     }
   idx++;
 
-  if (header->last_block_newest_mvccid == MVCCID_NULL)
+  if (header->newest_block_mvccid == MVCCID_NULL)
     {
       db_make_null (out_values[idx]);
     }
   else
     {
-      db_make_bigint (out_values[idx], header->last_block_newest_mvccid);
+      db_make_bigint (out_values[idx], header->newest_block_mvccid);
     }
   idx++;
 

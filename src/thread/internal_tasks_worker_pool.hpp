@@ -18,25 +18,22 @@
  */
 
 /*
- * stream_io.hpp
+ * internal_tasks_worker_pool.hpp
  */
 
-#ifndef _STREAM_IO_HPP_
-#define _STREAM_IO_HPP_
+#ifndef _INTERNAL_TASKS_WORKER_POOL_HPP_
+#define _INTERNAL_TASKS_WORKER_POOL_HPP_
 
-#ident "$Id$"
+#include "thread_manager.hpp"
 
-namespace cubstream
+namespace cubthread
 {
-
-  class stream_io
+  namespace internal_tasks_worker_pool
   {
-    public:
-      virtual int write (const stream_position &pos, const char *buf, const size_t amount) = 0;
+    void initialize ();
+    void finalize ();
+    entry_workpool *get_instance ();
+  }
+}
 
-      virtual int read (const stream_position &pos, const char *buf, const size_t amount) = 0;
-  };
-
-} /*  namespace cubstream */
-
-#endif /* _STREAM_IO_HPP_ */
+#endif // _INTERNAL_TASKS_WORKER_POOL_HPP_

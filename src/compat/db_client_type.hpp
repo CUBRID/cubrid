@@ -17,39 +17,34 @@
  *
  */
 
-#include "test_stream.hpp"
+/*
+ * db_client_type.hpp -  Definitions for client types
+ */
 
-#include <iostream>
+#ifndef _DB_CLIENT_TYPE_HPP
+#define _DB_CLIENT_TYPE_HPP
 
-template <typename Func, typename ... Args>
-int
-test_module (int &global_error, Func &&f, Args &&... args)
+enum db_client_type
 {
-  std::cout << std::endl;
-  std::cout << "  start testing module ";
+  DB_CLIENT_TYPE_UNKNOWN = -1,
+  DB_CLIENT_TYPE_SYSTEM_INTERNAL = 0,
 
-  int err = f (std::forward <Args> (args)...);
-  if (err == 0)
-    {
-      std::cout << "  test completed successfully" << std::endl;
-    }
-  else
-    {
-      std::cout << "  test failed" << std::endl;
-      global_error = global_error == 0 ? err : global_error;
-    }
-  return err;
-}
+  DB_CLIENT_TYPE_DEFAULT = 1,
+  DB_CLIENT_TYPE_CSQL = 2,
+  DB_CLIENT_TYPE_READ_ONLY_CSQL = 3,
+  DB_CLIENT_TYPE_BROKER = 4,
+  DB_CLIENT_TYPE_READ_ONLY_BROKER = 5,
+  DB_CLIENT_TYPE_SLAVE_ONLY_BROKER = 6,
+  DB_CLIENT_TYPE_ADMIN_UTILITY = 7,
+  DB_CLIENT_TYPE_ADMIN_CSQL = 8,
+  DB_CLIENT_TYPE_LOG_COPIER = 9,
+  DB_CLIENT_TYPE_LOG_APPLIER = 10,
+  DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY = 11,
+  DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY = 12,
+  DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY = 13,
+  DB_CLIENT_TYPE_ADMIN_CSQL_WOS = 14,	/* admin csql that can write on standby */
 
-int main ()
-{
-  int global_error = 0;
+  DB_CLIENT_TYPE_MAX
+};
 
-  test_module (global_error, test_stream::test_stream1);
-  test_module (global_error, test_stream::test_stream2);
-  test_module (global_error, test_stream::test_stream3);
-  test_module (global_error, test_stream::test_stream_mt);
-  /* add more tests here */
-
-  return global_error;
-}
+#endif /* _DB_CLIENT_TYPE_HPP */

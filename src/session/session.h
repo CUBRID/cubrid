@@ -30,6 +30,7 @@
 #include "dbtype_def.h"
 #include "query_list.h"
 #include "query_manager.h"
+#include "system_parameter.h"
 #include "thread_compat.hpp"
 #include "tz_support.h"
 

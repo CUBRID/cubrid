@@ -483,6 +483,14 @@ namespace cubthread
     my_entry = Main_entry_p;
 
     assert (my_entry == thread_get_thread_entry_info ());
+
+#if defined (SERVER_MODE)
+    if (prm_get_bool_value (PRM_ID_PERF_TEST_MODE))
+      {
+	// perf tool needs threads to be always alive to work
+	wp_set_force_thread_always_alive ();
+      }
+#endif // SERVER_MODE
   }
 
   void

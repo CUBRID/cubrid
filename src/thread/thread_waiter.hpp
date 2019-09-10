@@ -127,6 +127,9 @@ namespace cubthread
       m_duration = duration;
       m_infinite = false;
     }
+
+    void set_infinite_wait ();
+    void set_duration (const D &duration);
   };
   using wait_seconds = wait_duration<std::chrono::seconds>;
 
@@ -171,6 +174,22 @@ namespace cubthread
 	return condvar.wait_for (lock, duration.m_duration, pred);
       }
   }
+
+  template <class D>
+  void
+  wait_duration<D>::set_infinite_wait ()
+  {
+    m_infinite = true;
+  }
+
+  template <class D>
+  void
+  wait_duration<D>::set_duration (const D &duration)
+  {
+    m_duration = duration;
+    m_infinite = false;
+  }
+
 } // namespace cubthread
 
 #endif // _THREAD_WAITER_HPP_

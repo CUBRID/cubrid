@@ -729,7 +729,7 @@ xtran_should_connection_reset (THREAD_ENTRY * thread_p, bool has_updated)
 	{
 	  thread_p->conn_entry->reset_on_commit = false;
 	}
-      else if (client_type == BOOT_CLIENT_BROKER)
+      else if (client_type == DB_CLIENT_TYPE_BROKER)
 	{
 	  should_conn_reset = true;
 	  er_log_debug (ARG_FILE_LINE,
@@ -755,7 +755,7 @@ xtran_should_connection_reset (THREAD_ENTRY * thread_p, bool has_updated)
 	  thread_p->conn_entry->reset_on_commit = false;
 	}
     }
-  else if (ha_state == HA_SERVER_STATE_ACTIVE && client_type == BOOT_CLIENT_SLAVE_ONLY_BROKER)
+  else if (ha_state == HA_SERVER_STATE_ACTIVE && client_type == DB_CLIENT_TYPE_SLAVE_ONLY_BROKER)
     {
       should_conn_reset = true;
       er_log_debug (ARG_FILE_LINE,

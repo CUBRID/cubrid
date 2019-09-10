@@ -48,6 +48,7 @@
 #include "log_comm.h"
 #include "log_common_impl.h"
 #include "log_lsa.hpp"
+#include "log_postpone_cache.hpp"
 #include "log_storage.hpp"
 #include "mvcc.h"
 #include "mvcc_table.hpp"
@@ -57,7 +58,6 @@
 #include "storage_common.h"
 #include "thread_entry.hpp"
 #include "transaction_transient.hpp"
-#include "log_generator.hpp"
 
 #include <assert.h>
 #if defined(SOLARIS)
@@ -243,7 +243,7 @@ const int LOG_SYSTEM_WORKER_INCR_TRANID = -1;
 #if defined (SERVER_MODE)
 #define LOG_CHECK_LOG_APPLIER(thread_p) \
   (thread_p != NULL \
-   && logtb_find_client_type (thread_p->tran_index) == BOOT_CLIENT_LOG_APPLIER)
+   && logtb_find_client_type (thread_p->tran_index) == DB_CLIENT_TYPE_LOG_APPLIER)
 #else
 #define LOG_CHECK_LOG_APPLIER(thread_p) (0)
 #endif /* !SERVER_MODE */
@@ -546,9 +546,10 @@ struct log_tdes
 
   LOG_RCV_TDES rcv;
 
+  log_postpone_cache m_log_postpone_cache;
+
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
-  cubreplication::log_generator replication_log_generator;
 
   bool is_active_worker_transaction () const;
   bool is_system_transaction () const;
@@ -992,7 +993,7 @@ extern char *logpb_backup_level_info_to_string (char *buf, int buf_size, const L
 extern const char *tran_abort_reason_to_string (TRAN_ABORT_REASON val);
 extern int logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt,
 					 void **ctx);
-extern MVCCID logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p);
+extern MVCCID logtb_get_oldest_visible_mvccid (THREAD_ENTRY * thread_p);
 
 extern LOG_PAGEID logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p);
 extern int logpb_find_oldest_available_arv_num (THREAD_ENTRY * thread_p);

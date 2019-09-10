@@ -2358,7 +2358,10 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
   LOG_LSA lsa;			/* LSA of log record to analyse */
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_page_p = NULL;	/* Log page pointer where LSA is located */
-  LOG_LSA log_lsa, prev_lsa, first_corrupted_rec_lsa;
+  LOG_LSA log_lsa;
+  LOG_LSA prev_lsa;
+  LOG_LSA prev_prev_lsa;
+  LOG_LSA first_corrupted_rec_lsa;
   LOG_RECTYPE log_rtype;	/* Log record type */
   LOG_RECORD_HEADER *log_rec = NULL;	/* Pointer to log record */
   LOG_REC_CHKPT *tmp_chkpt;	/* Temp Checkpoint log record */
@@ -2398,6 +2401,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
   LSA_COPY (start_redo_lsa, &lsa);
   LSA_COPY (end_redo_lsa, &lsa);
   LSA_COPY (&prev_lsa, &lsa);
+  prev_prev_lsa.set_null ();
   *did_incom_recovery = false;
 
   log_page_p = (LOG_PAGE *) aligned_log_pgbuf;
@@ -2438,7 +2442,13 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		      LSA_COPY (&last_log_tdes->undo_nxlsa, &log_rec->prev_tranlsa);
 		    }
 		}
-	      log_recovery_resetlog (thread_p, &lsa, true, end_redo_lsa);
+	      assert (!prev_lsa.is_null ());
+	      if (logpb_fetch_page (thread_p, &prev_lsa, LOG_CS_FORCE_USE, log_page_p) != NO_ERROR)
+		{
+		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "reset log is impossible");
+		  return;
+		}
+	      log_recovery_resetlog (thread_p, &prev_lsa, false, &prev_prev_lsa);
 	      *did_incom_recovery = true;
 
 	      log_Gl.mvcc_table.reset_start_mvccid ();
@@ -2751,6 +2761,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	    }
 
 	  LSA_COPY (&prev_lsa, end_redo_lsa);
+	  prev_prev_lsa = prev_lsa;
 
 	  /*
 	   * We can fix the lsa.pageid in the case of log_records without forward
@@ -5088,6 +5099,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
   const char *catmsg;
   char *catmsg_dup;
   int ret = NO_ERROR;
+  bool did_create_new_append_page = false;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
   assert (last_lsa != NULL);
@@ -5212,6 +5224,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_resetlog");
 	  return;
 	}
+      did_create_new_append_page = true;
       if (logpb_flush_page (thread_p, append_pgptr) != NO_ERROR)
 	{
 	  logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "log_recovery_resetlog");
@@ -5238,10 +5251,13 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
 
   if (is_new_append_page == true)
     {
-      if (logpb_fetch_start_append_page_new (thread_p) == NULL)
+      if (!did_create_new_append_page)
 	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_resetlog");
-	  return;
+	  if (logpb_fetch_start_append_page_new (thread_p) == NULL)
+	    {
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_resetlog");
+	      return;
+	    }
 	}
     }
   else
@@ -5258,6 +5274,11 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
     }
 
   LOG_RESET_PREV_LSA (last_lsa);
+
+  log_Gl.hdr.mvcc_op_log_lsa.set_null ();
+
+  // set a flag that active log was reset; some operations may be affected
+  log_Gl.hdr.was_active_log_reset = true;
 
   logpb_flush_header (thread_p);
   logpb_decache_archive_info (thread_p);

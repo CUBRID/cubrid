@@ -65,8 +65,9 @@ namespace cubthread
 
     // todo: here we should do more operations to clear thread entry before being reused
     context.unregister_id ();
-    context.tran_index = -1;
+    context.tran_index = NULL_TRAN_INDEX;
     context.check_interrupt = true;
+    context.private_lru_index = -1;
 #if defined (SERVER_MODE)
     context.m_status = entry::status::TS_FREE;
     context.resume_status = THREAD_RESUME_NONE;
@@ -82,6 +83,7 @@ namespace cubthread
     context.end_resource_tracks ();
     std::memset (&context.event_stats, 0, sizeof (context.event_stats));  // clear even stats
     context.tran_index = NULL_TRAN_INDEX;    // clear transaction ID
+    context.private_lru_index = -1;
 #if defined (SERVER_MODE)
     context.resume_status = THREAD_RESUME_NONE;
     context.shutdown = false;
