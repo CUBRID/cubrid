@@ -33,6 +33,16 @@ namespace lockfree
   static int lf_bitmap_get_entry (LF_BITMAP *bitmap);
   static void lf_bitmap_free_entry (LF_BITMAP *bitmap, int entry_idx);
 
+  bitmap::bitmap ()
+    : bitfield (NULL)
+    , entry_count (0)
+    , entry_count_in_use { 0 }
+    , style (chunking_style::ONE_CHUNK)
+    , usage_threshold (FULL_USAGE_RATIO)
+    , start_idx { 0 }
+  {
+  }
+
   bitmap::~bitmap ()
   {
     destroy ();

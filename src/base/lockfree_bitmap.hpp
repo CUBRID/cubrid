@@ -41,7 +41,7 @@ namespace lockfree
 	LIST_OF_CHUNKS
       };
 
-      bitmap () = default;
+      bitmap ();
       ~bitmap ();
 
       void init (chunking_style style, int entries_count, float usage_ratio);
