@@ -994,29 +994,29 @@ xvacuum (THREAD_ENTRY * thread_p)
   // consume all vacuum data blocks
   while (cursor.is_valid ())
     {
-      if (!cursor.get_current_entry ().is_available ())
-	{
-	  assert (cursor.get_current_entry ().is_vacuumed ());
-	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
-			 "Job for blockid = %lld %s. Skip.",
-			 (long long int) cursor.get_current_entry ().get_blockid (),
-			 cursor.get_current_entry ().is_vacuumed ()? "was executed" : "is in progress");
-	  cursor.increment_blockid ();
-	  continue;
-	}
-
-      cursor.start_job_on_current_entry (thread_p);
-
-      // job will be executed immediately
-      vacuum_sa_run_job (thread_p, cursor.get_current_entry (), false, perf_tracker);
-      cursor.increment_blockid ();
-
       if (logtb_is_interrupted (thread_p, true, &dummy_continue_check_interrupt))
 	{
 	  cursor.unload ();
 	  vacuum_Data.update ();
 	  return NO_ERROR;
 	}
+
+      if (cursor.get_current_entry ().is_available ())
+	{
+	  cursor.start_job_on_current_entry (thread_p);
+	  // job will be executed immediately
+	  vacuum_sa_run_job (thread_p, cursor.get_current_entry (), false, perf_tracker);
+	}
+      else
+	{
+	  // skip
+	  assert (cursor.get_current_entry ().is_vacuumed ());
+	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
+			 "Job for blockid = %lld %s. Skip.",
+			 (long long int) cursor.get_current_entry ().get_blockid (),
+			 cursor.get_current_entry ().is_vacuumed ()? "was executed" : "is in progress");
+	}
+      cursor.increment_blockid ();
 
       if (!vacuum_Block_data_buffer->is_empty ()	// there is a new block
 	  || vacuum_Finished_job_queue->is_full ()	// finished queue is full and must be consumed
