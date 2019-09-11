@@ -17062,9 +17062,9 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 		case DB_TYPE_NCHAR:
 		case DB_TYPE_VARNCHAR:
 		  {
-		    char *str = db_get_string (&(value->dbvalue));
-		    char *str_end = str + db_get_string_length (&(value->dbvalue));
-		    char *p = NULL;
+		    const char *str = db_get_string (&(value->dbvalue));
+		    const char *str_end = str + db_get_string_length (&(value->dbvalue));
+		    const char *p = NULL;
 
 		    /* get the sign in the source string; look directly into the buffer string, no copy */
 		    p = str;
@@ -17540,7 +17540,7 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
 				 void **ptr)
 {
   int error = NO_ERROR;
-  char *class_name = NULL;
+  const char *class_name = NULL;
   DB_CLASS_PARTITION_TYPE partition_type = DB_NOT_PARTITIONED_CLASS;
   OID class_oid;
   LC_FIND_CLASSNAME status;
@@ -17710,7 +17710,7 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
   idx = 0;
 
   /* Class_name */
-  error = db_make_string_copy (out_values[idx], class_name);
+  error = db_make_string (out_values[idx], class_name);
   idx++;
   if (error != NO_ERROR)
     {
@@ -17719,7 +17719,7 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
 
   /* Class_oid */
   oid_to_string (buf, sizeof (buf), &heap_hdr->class_oid);
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -17738,7 +17738,7 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
 
   /* Overflow_vfid */
   vfid_to_string (buf, sizeof (buf), &heap_hdr->ovf_vfid);
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -17747,7 +17747,7 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
 
   /* Next_vpid */
   vpid_to_string (buf, sizeof (buf), &heap_hdr->next_vpid);
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -17799,7 +17799,7 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
 	}
     }
 
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -17838,7 +17838,7 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
 	}
     }
 
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -17846,7 +17846,7 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
     }
 
   vpid_to_string (buf, sizeof (buf), &heap_hdr->estimates.last_vpid);
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -17854,7 +17854,7 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
     }
 
   vpid_to_string (buf, sizeof (buf), &heap_hdr->estimates.full_search_vpid);
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -17961,7 +17961,7 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
 
   idx = 0;
 
-  error = db_make_string_copy (out_values[idx], classname);
+  error = db_make_string (out_values[idx], classname);
   idx++;
   if (error != NO_ERROR)
     {
@@ -17969,7 +17969,7 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
     }
 
   oid_to_string (class_oid_str, sizeof (class_oid_str), &fdes.heap.class_oid);
-  error = db_make_string_copy (out_values[idx], class_oid_str);
+  error = db_make_string (out_values[idx], class_oid_str);
   idx++;
   if (error != NO_ERROR)
     {
@@ -23303,7 +23303,7 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 
   /*  Here we check only the classname because this is the last field to be populated by other possible concurrent
    *  inserters. This means that if this field is already set by someone else, then the entry data is already
-   *  mature so we don't need to add data again. 
+   *  mature so we don't need to add data again.
    */
   if (entry->classname == NULL)
     {
@@ -23658,7 +23658,7 @@ heap_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * heap_rv_update_chain_after_mvcc_op () - Redo update of page chain after
  *					   an MVCC operation (used for
  *					   operations that are not changing
- *					
+ *
  *
  * return	 : NO_ERROR
  * thread_p (in) : Thread entry.
@@ -23693,7 +23693,7 @@ heap_rv_remove_flags_from_offset (INT16 offset)
 /*
  * heap_should_try_update_stat () - checks if an heap update statistics is
  *				    indicated
- *					
+ *
  *
  * return	 : NO_ERROR
  * thread_p (in) : Thread entry.
@@ -23917,7 +23917,7 @@ heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
 /*
  * heap_get_visible_version_from_log () - Iterate through old versions of object until a visible object is found
- *				
+ *
  *   return: SCAN_CODE. Possible values:
  *	     - S_SUCCESS: for successful case when record was obtained.
  *	     - S_DOESNT_EXIT: NULL LSA was provided, otherwise a visible version should exist
@@ -24883,7 +24883,7 @@ heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID
   /**********************************************************/
 
   for (size_t i = 0; i < array_size; i++)
-    {  
+    {
       VPID next_vpid, prev_vpid;
 
       VPID_COPY (&prev_vpid, ((i == 0) ? (&null_vpid) : (&heap_pages_array[i - 1])));
@@ -25032,7 +25032,7 @@ heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * v
       error_code = heap_get_page_with_watcher (thread_p, vpid, page_watcher);
       if (error_code != NO_ERROR)
         {
-          ASSERT_ERROR ();          
+          ASSERT_ERROR ();
           return error_code;
         }
     }
@@ -25099,7 +25099,7 @@ int heap_update_and_log_header (THREAD_ENTRY * thread_p, const HFID * hfid, cons
   int error_code = NO_ERROR;
   HEAP_HDR_STATS heap_hdr_prev;
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
-  
+
   assert (!PGBUF_IS_CLEAN_WATCHER (&heap_header_watcher));
   assert (heap_hdr != NULL);
 
@@ -25115,7 +25115,7 @@ int heap_update_and_log_header (THREAD_ENTRY * thread_p, const HFID * hfid, cons
   addr.vfid = &hfid->vfid;
   addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
 
-  log_append_undoredo_data (thread_p, RVHF_STATS, &addr, sizeof(HEAP_HDR_STATS), sizeof (HEAP_HDR_STATS), 
+  log_append_undoredo_data (thread_p, RVHF_STATS, &addr, sizeof(HEAP_HDR_STATS), sizeof (HEAP_HDR_STATS),
                             &heap_hdr_prev, heap_hdr);
 
   // Set the page as dirty.

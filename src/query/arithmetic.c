@@ -4348,7 +4348,7 @@ db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
       break;
 
     default:
-      db_make_string_by_const_str (result, type_name);
+      db_make_string (result, type_name);
     }
 
   return NO_ERROR;

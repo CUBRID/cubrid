@@ -12039,7 +12039,7 @@ static int
 pt_check_and_coerce_to_time (PARSER_CONTEXT * parser, PT_NODE * src)
 {
   DB_VALUE *db_src = NULL;
-  char *cp;
+  const char *cp;
   DB_TYPE dbtype;
   int cp_len;
 
@@ -12081,7 +12081,7 @@ static int
 pt_check_and_coerce_to_date (PARSER_CONTEXT * parser, PT_NODE * src)
 {
   DB_VALUE *db_src = NULL;
-  char *str = NULL;
+  const char *str = NULL;
   int str_len;
 
   assert (src != NULL);
@@ -17723,7 +17723,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       {
 	const char *username = au_user_name ();
 
-	error = db_make_string_by_const_str (result, username);
+	error = db_make_string (result, username);
 	db_string_free ((char *) username);
 	if (error < 0)
 	  {

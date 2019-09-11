@@ -243,7 +243,7 @@ void db_value_printer::describe_data (const db_value *value)
   DB_SET      *set = 0;
   db_elo      *elo = 0;
   DB_MIDXKEY *midxkey;
-  char *src, *pos, *end;
+  const char *src, *pos, *end;
   double d;
   char line[1025];
   char *json_body = NULL;

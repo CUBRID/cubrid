@@ -259,7 +259,7 @@ static int parse_for_next_int (char **ch, char *output);
 #endif
 static int db_str_to_millisec (const char *str);
 static void copy_and_shift_values (int shift, int n, DB_BIGINT * first, ...);
-static DB_BIGINT get_single_unit_value (char *expr, DB_BIGINT int_val);
+static DB_BIGINT get_single_unit_value (const char *expr, DB_BIGINT int_val);
 static int db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const DB_VALUE * expr,
 					  const int unit, int is_add);
 static int db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const DB_VALUE * db_days,
@@ -550,7 +550,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
   else
     {
       int size1, size2, result_size, pad_size = 0;
-      unsigned char *string1, *string2, *key = NULL, pad[2], *t;
+      unsigned char *string1, *string2, *result, *key = NULL, pad[2], *t;
       INTL_CODESET codeset;
       int num_bits = -1;
       int collation_id;
@@ -682,7 +682,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
 
       assert (key != NULL);
 
-      char *result = (char *) db_private_alloc (NULL, result_size + 1);
+      result = (unsigned char *) db_private_alloc (NULL, result_size + 1);
       if (result)
 	{
 	  if (result_size)
@@ -691,10 +691,8 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
 	    }
 	  result[result_size] = 0;
 	  db_value_domain_init (db_result, result_type, precision, 0);
-	  // *INDENT-OFF*
-	  error_status = db_make_db_char (db_result, codeset, collation_id, const_cast<const char *> (result),
+	  error_status = db_make_db_char (db_result, codeset, collation_id, (char *) result,
 					  (result_type == DB_TYPE_VARBIT ? num_bits : result_size));
-	  // *INDENT-ON*
 	  db_result->need_clear = true;
 	}
       else
@@ -1457,7 +1455,7 @@ db_string_instr (const DB_VALUE * src_string, const DB_VALUE * sub_string, const
 	  int sub_str_len;
 	  int offset = db_get_int (start_pos);
 	  INTL_CODESET codeset = (INTL_CODESET) db_get_string_codeset (src_string);
-	  char *search_from, *src_buf, *sub_str;
+	  const char *search_from, *src_buf, *sub_str;
 	  int coll_id;
 	  int sub_str_size = db_get_string_size (sub_string);
 	  int from_byte_offset;
@@ -1704,9 +1702,9 @@ db_string_position (const DB_VALUE * sub_string, const DB_VALUE * src_string, DB
 
       if (QSTR_IS_CHAR (src_type) || QSTR_IS_NATIONAL_CHAR (src_type))
 	{
-	  char *src_str = db_get_string (src_string);
+	  const char *src_str = db_get_string (src_string);
 	  int src_size = db_get_string_size (src_string);
-	  char *sub_str = db_get_string (sub_string);
+	  const char *sub_str = db_get_string (sub_string);
 	  int sub_size = db_get_string_size (sub_string);
 	  int coll_id;
 
@@ -4175,8 +4173,8 @@ db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_
   int error_status = NO_ERROR;
   DB_TYPE src_type = DB_TYPE_UNKNOWN;
   DB_TYPE pattern_type = DB_TYPE_UNKNOWN;
-  char *src_char_string_p = NULL;
-  char *pattern_char_string_p = NULL;
+  const char *src_char_string_p = NULL;
+  const char *pattern_char_string_p = NULL;
   char const *esc_char_p = NULL;
   int src_length = 0, pattern_length = 0;
   int coll_id;
@@ -6749,7 +6747,7 @@ qstr_bin_to_hex (char *dest, int dest_size, const char *src, int src_size)
  */
 
 int
-qstr_hex_to_bin (char *dest, int dest_size, char *src, int src_size)
+qstr_hex_to_bin (char *dest, int dest_size, const char *src, int src_size)
 {
   int i, copy_size, src_index, required_size;
 
@@ -6817,7 +6815,7 @@ qstr_hex_to_bin (char *dest, int dest_size, char *src, int src_size)
  */
 
 int
-qstr_bit_to_bin (char *dest, int dest_size, char *src, int src_size)
+qstr_bit_to_bin (char *dest, int dest_size, const char *src, int src_size)
 {
   int dest_byte, copy_size, src_index, required_size;
 
@@ -10958,8 +10956,9 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
   DB_DATETIME *dt_p;
   DB_DATE db_date;
   DB_TYPE res_type, format_type;
-  char *res, *res2, *format_s;
-  char *strend;
+  const char *format_s;
+  char *res, *res2;
+  const char *strend;
   int format_s_len;
   int error_status = NO_ERROR, len;
   int h, mi, s, ms, year, month, day;
@@ -19226,7 +19225,7 @@ db_format (const DB_VALUE * value, const DB_VALUE * decimals, const DB_VALUE * n
 	    return error;
 	  }
 
-	c = db_get_string (&trimmed_val);
+	c = db_get_string_copy (&trimmed_val);
 	if (c == NULL)
 	  {
 	    goto invalid_argument_error;
@@ -19764,7 +19763,8 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
   DB_TIMESTAMP db_timestamp, *ts_p = NULL;
   int is_dt = -1, is_d = -1, is_t = -1, is_timest = -1, is_timezone = -1, is_local_timezone = -1;
   DB_TYPE res_type;
-  char *date_s = NULL, res_s[64];
+  const char *date_s = NULL;
+  char res_s[64];
   int y, m, d, h, mi, s, ms;
   int ret;
   char *res_final;
@@ -20336,7 +20336,7 @@ copy_and_shift_values (int shift, int n, DB_BIGINT * first, ...)
  *   int_val (in) : input as integer
  */
 static DB_BIGINT
-get_single_unit_value (char *expr, DB_BIGINT int_val)
+get_single_unit_value (const char *expr, DB_BIGINT int_val)
 {
   DB_BIGINT v = 0;
 
@@ -20374,7 +20374,8 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
   int sign = 0;
   int type = 0;			/* 1 -> time, 2 -> date, 3 -> both */
   DB_TYPE res_type, expr_type;
-  char *date_s = NULL, *expr_s, res_s[64], millisec_s[64];
+  const char *date_s = NULL, *expr_s;
+  char res_s[64], millisec_s[64];
   int error_status = NO_ERROR;
   DB_BIGINT millisec, seconds, minutes, hours;
   DB_BIGINT days, weeks, months, quarters, years;
@@ -21333,9 +21334,10 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
   DB_TIME db_time;
   DB_TIMESTAMP *ts_p;
   DB_TYPE res_type, format_type;
-  char *res, *res2, *format_s;
+  const char *format_s = NULL;
+  char *res, *res2;
   int format_s_len;
-  char *strend;
+  const char *strend;
   int error_status = NO_ERROR, len;
   int y, m, d, h, mi, s, ms;
   int days[13] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
@@ -22038,7 +22040,8 @@ int
 db_str_to_date (const DB_VALUE * str, const DB_VALUE * format, const DB_VALUE * date_lang, DB_VALUE * result,
 		TP_DOMAIN * domain)
 {
-  char *sstr = NULL, *format_s = NULL, *format2_s = NULL;
+  const char *format2_s = NULL;
+  char *sstr = NULL, *format_s = NULL;
   int i, j, k, error_status = NO_ERROR;
   int type, len1, len2, h24 = 0, _v, _x;
   DB_TYPE res_type;
@@ -23925,7 +23928,7 @@ db_char_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
   DB_TYPE src_type;
   int error_status = NO_ERROR;
   DB_ELO *elo;
-  char *src_str;
+  const char *src_str;
   int src_size;
 
   assert (src_value != NULL && result_value != NULL);
@@ -24111,7 +24114,7 @@ db_char_to_clob (const DB_VALUE * src_value, DB_VALUE * result_value)
   DB_TYPE src_type;
   int error_status = NO_ERROR;
   DB_ELO *elo;
-  char *src_str;
+  const char *src_str;
   int src_size;
 
   assert (src_value != NULL && result_value != NULL);
@@ -24335,7 +24338,7 @@ db_get_datetime_from_dbvalue (const DB_VALUE * src_date, int *year, int *month, 
       {
 	DB_DATETIME db_datetime;
 	int str_len;
-	char *strp;
+	const char *strp;
 
 	strp = db_get_string (src_date);
 	str_len = db_get_string_size (src_date);
@@ -24478,7 +24481,7 @@ db_get_time_from_dbvalue (const DB_VALUE * src_date, int *hour, int *minute, int
       {
 	DB_TIME db_time;
 	int str_len;
-	char *strp;
+	const char *strp;
 
 	strp = db_get_string (src_date);
 	str_len = db_get_string_size (src_date);
@@ -25353,9 +25356,9 @@ static int
 db_check_or_create_null_term_string (const DB_VALUE * str_val, char *pre_alloc_buf, int pre_alloc_buf_size,
 				     bool ignore_prec_spaces, bool ignore_trail_spaces, char **str_out, bool * do_alloc)
 {
-  char *val_buf;
+  const char *val_buf;
   char *new_buf;
-  char *val_buf_end = NULL, *val_buf_end_non_space = NULL;
+  const char *val_buf_end = NULL, *val_buf_end_non_space = NULL;
   int val_size;
 
   assert (pre_alloc_buf != NULL);
@@ -25809,7 +25812,8 @@ db_hex (const DB_VALUE * param, DB_VALUE * result)
 
   /* other variables */
   DB_TYPE param_type = DB_TYPE_UNKNOWN;
-  char *str = NULL, *hexval = NULL;
+  const char *str = NULL;
+  char *hexval = NULL;
   int str_size = 0, hexval_len = 0, i = 0, error_code = NO_ERROR;
 
   /* check parameters for NULL values */
@@ -26043,7 +26047,7 @@ db_ascii (const DB_VALUE * param, DB_VALUE * result)
 {
   /* other variables */
   DB_TYPE param_type = DB_TYPE_UNKNOWN;
-  char *str = NULL;
+  const char *str = NULL;
   int str_size = 0, error_code = NO_ERROR;
 
   /* check parameters for NULL values */
@@ -27072,12 +27076,12 @@ db_get_cs_coll_info (DB_VALUE * result, const DB_VALUE * val, const int mode)
 
       if (mode == 0)
 	{
-	  db_make_string_by_const_str (result, lang_charset_cubrid_name ((INTL_CODESET) cs));
+	  db_make_string (result, lang_charset_cubrid_name ((INTL_CODESET) cs));
 	}
       else
 	{
 	  assert (mode == 1);
-	  db_make_string_by_const_str (result, lang_get_collation_name (coll));
+	  db_make_string (result, lang_get_collation_name (coll));
 	}
     }
 
@@ -27467,7 +27471,7 @@ db_string_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval_p, DB
       {
 	DB_UTIME utime_s;
 	DB_DATETIME datetime_s;
-	char *str_date = db_get_string (dbval_p);
+	const char *str_date = db_get_string (dbval_p);
 	int str_date_len = db_get_string_size (dbval_p);
 
 	switch (extr_operand)
@@ -27557,7 +27561,7 @@ db_new_time (DB_VALUE * time_val, DB_VALUE * tz_source, DB_VALUE * tz_dest, DB_V
   int error = NO_ERROR, len_source, len_dest;
   DB_DATETIME *datetime = NULL;
   DB_TIME *time = NULL;
-  char *t_source, *t_dest;
+  const char *t_source, *t_dest;
 
   /*
    *  Assert that DB_VALUE structures have been allocated.
@@ -27719,7 +27723,7 @@ db_tz_offset (const DB_VALUE * src_str, DB_VALUE * result_str, DB_DATETIME * dat
 int
 db_from_tz (DB_VALUE * time_val, DB_VALUE * tz, DB_VALUE * time_val_with_tz)
 {
-  char *timezone;
+  const char *timezone_p;
   int len_timezone, error = NO_ERROR;
   DB_DATETIME *datetime = NULL;
 
@@ -27736,12 +27740,12 @@ db_from_tz (DB_VALUE * time_val, DB_VALUE * tz, DB_VALUE * time_val_with_tz)
       return NO_ERROR;
     }
 
-  timezone = db_get_string (tz);
+  timezone_p = db_get_string (tz);
   len_timezone = db_get_string_size (tz);
 
   if (len_timezone < 0)
     {
-      len_timezone = strlen (timezone);
+      len_timezone = strlen (timezone_p);
     }
 
   switch (DB_VALUE_TYPE (time_val))
@@ -27752,7 +27756,7 @@ db_from_tz (DB_VALUE * time_val, DB_VALUE * tz, DB_VALUE * time_val_with_tz)
 	TZ_REGION region;
 
 	datetime = db_get_datetime (time_val);
-	error = tz_str_to_region (timezone, len_timezone, &region);
+	error = tz_str_to_region (timezone_p, len_timezone, &region);
 	if (error != NO_ERROR)
 	  {
 	    return error;

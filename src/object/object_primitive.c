@@ -916,9 +916,9 @@ static int mr_index_writeval_enumeration (OR_BUF * buf, DB_VALUE * value);
 static int mr_index_readval_enumeration (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 					 char *copy_buf, int copy_buf_len);
 
-static int pr_write_compressed_string_to_buffer (OR_BUF * buf, char *compressed_string, int compressed_length,
+static int pr_write_compressed_string_to_buffer (OR_BUF * buf, const char *compressed_string, int compressed_length,
 						 int decompressed_length, int alignment);
-static int pr_write_uncompressed_string_to_buffer (OR_BUF * buf, char *string, int size, int align);
+static int pr_write_uncompressed_string_to_buffer (OR_BUF * buf, const char *string, int size, int align);
 
 static void mr_initmem_json (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
@@ -9968,7 +9968,8 @@ static int
 mr_setmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 {
   int error = NO_ERROR;
-  char *src, *cur, *new_, **mem;
+  const char *src;
+  char *cur, *new_, **mem;
   int src_precision, src_length, new_length;
 
   /* get the current memory contents */
@@ -10316,7 +10317,8 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   int error = NO_ERROR;
   int src_precision, src_length;
-  char *src_str, *new_, *new_compressed_buf;
+  const char *src_str;
+  char *new_, *new_compressed_buf;
 
   assert (!db_value_is_corrupted (src));
   if (src == NULL || DB_IS_NULL (src))
@@ -10531,7 +10533,8 @@ static int
 mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
 {
   int src_length, compressed_size;
-  char *str, *compressed_string;
+  const char *str;
+  char *compressed_string;
   int rc = NO_ERROR;
   char *string;
   int size;
@@ -11216,7 +11219,8 @@ static int
 mr_setmem_char (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 {
   int error = NO_ERROR;
-  char *src, *mem;
+  const char *src;
+  char *mem;
   int src_precision, src_length, mem_length, pad;
 
   assert (!IS_FLOATING_PRECISION (domain->precision));
@@ -11443,7 +11447,8 @@ mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   int error = NO_ERROR;
   int src_precision, src_length;
-  char *src_string, *new_;
+  const char *src_string;
+  char *new_;
 
   assert (!db_value_is_corrupted (src));
   if (DB_IS_NULL (src))
@@ -11512,7 +11517,7 @@ static int
 mr_data_lengthval_char (DB_VALUE * value, int disk)
 {
   int packed_length, src_precision;
-  char *src;
+  const char *src;
 
   src = db_get_string (value);
   if (src == NULL)
@@ -11574,7 +11579,7 @@ static int
 mr_writeval_char_internal (OR_BUF * buf, DB_VALUE * value, int align)
 {
   int src_precision, src_length, packed_length, pad;
-  char *src;
+  const char *src;
   int rc = NO_ERROR;
 
   src = db_get_string (value);
@@ -12052,7 +12057,8 @@ static int
 mr_setmem_nchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 {
   int error = NO_ERROR;
-  char *src, *mem;
+  const char *src;
+  char *mem;
   int src_precision, src_length, mem_length, pad;
 
   if (value == NULL)
@@ -12280,7 +12286,8 @@ mr_setval_nchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   int error = NO_ERROR;
   int src_precision, src_length;
-  char *src_string, *new_;
+  const char *src_string;
+  char *new_;
 
   assert (!db_value_is_corrupted (src));
   if (src == NULL || DB_IS_NULL (src))
@@ -12344,7 +12351,7 @@ static int
 mr_data_lengthval_nchar (DB_VALUE * value, int disk)
 {
   int packed_length, src_precision;
-  char *src;
+  const char *src;
   INTL_CODESET src_codeset = (INTL_CODESET) db_get_string_codeset (value);
 
   src = db_get_string (value);
@@ -12431,7 +12438,7 @@ static int
 mr_writeval_nchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 {
   int src_precision, src_size, packed_size, pad;
-  char *src;
+  const char *src;
   INTL_CODESET src_codeset;
   int pad_charsize;
   char pad_char[2];
@@ -12928,7 +12935,8 @@ static int
 mr_setmem_varnchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 {
   int error = NO_ERROR;
-  char *src, *cur, *new_, **mem;
+  const char *src;
+  char *cur, *new_, **mem;
   int src_precision, src_length, new_length;
 
   /* get the current memory contents */
@@ -13157,7 +13165,8 @@ mr_setval_varnchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   int error = NO_ERROR;
   int src_precision, src_length;
-  char *src_str, *new_;
+  const char *src_str;
+  char *new_;
 
   assert (!db_value_is_corrupted (src));
   if (src == NULL || DB_IS_NULL (src))
@@ -13369,7 +13378,8 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 {
   int src_size, size, compressed_size;
   INTL_CODESET src_codeset;
-  char *str, *string, *compressed_string;
+  const char *str;
+  char *string, *compressed_string;
   int rc = NO_ERROR;
 
   if (value != NULL && (str = db_get_string (value)) != NULL)
@@ -14076,7 +14086,8 @@ static int
 mr_setmem_bit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 {
   int error = NO_ERROR;
-  char *src, *mem;
+  const char *src;
+  char *mem;
   int src_precision, src_length, mem_length, pad;
 
   if (value == NULL)
@@ -14334,7 +14345,7 @@ static int
 mr_data_lengthval_bit (DB_VALUE * value, int disk)
 {
   int packed_length, src_precision;
-  char *src;
+  const char *src;
 
   src = db_get_string (value);
   if (src == NULL)
@@ -14391,7 +14402,7 @@ static int
 mr_writeval_bit_internal (OR_BUF * buf, DB_VALUE * value, int align)
 {
   int src_precision, src_length, packed_length, pad;
-  char *src;
+  const char *src;
   int rc = NO_ERROR;
 
   src = db_get_string (value);
@@ -14789,7 +14800,8 @@ static int
 mr_setmem_varbit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 {
   int error = NO_ERROR;
-  char *src, *cur, *new_, **mem;
+  const char *src;
+  char *cur, *new_, **mem;
   int src_precision, src_length, src_length_bits, new_length;
 
   /* get the current memory contents */
@@ -15069,7 +15081,8 @@ mr_setval_varbit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   int error = NO_ERROR;
   int src_precision, src_length, src_bit_length;
-  char *src_str, *new_;
+  const char *src_str;
+  char *new_;
 
   assert (!db_value_is_corrupted (src));
   if (src == NULL || DB_IS_NULL (src))
@@ -15179,7 +15192,7 @@ static int
 mr_writeval_varbit_internal (OR_BUF * buf, DB_VALUE * value, int align)
 {
   int src_bit_length;
-  char *str;
+  const char *str;
   int rc = NO_ERROR;
 
   if (value != NULL && (str = db_get_string (value)) != NULL)
@@ -15874,7 +15887,8 @@ cleanup:
 int
 pr_get_size_and_write_string_to_buffer (struct or_buf *buf, char *val_p, DB_VALUE * value, int *val_size, int align)
 {
-  char *compressed_string = NULL, *string = NULL, *str = NULL;
+  const char *string = NULL, *str = NULL;
+  char *compressed_string = NULL;
   int rc = NO_ERROR, str_length = 0, length = 0;
   lzo_uint compression_length = 0;
   lzo_bytep wrkmem = NULL;
@@ -16022,7 +16036,7 @@ cleanup:
  */
 
 static int
-pr_write_compressed_string_to_buffer (OR_BUF * buf, char *compressed_string, int compressed_length,
+pr_write_compressed_string_to_buffer (OR_BUF * buf, const char *compressed_string, int compressed_length,
 				      int decompressed_length, int align)
 {
   int storage_length = 0;
@@ -16098,7 +16112,7 @@ pr_write_compressed_string_to_buffer (OR_BUF * buf, char *compressed_string, int
  */
 
 static int
-pr_write_uncompressed_string_to_buffer (OR_BUF * buf, char *string, int size, int align)
+pr_write_uncompressed_string_to_buffer (OR_BUF * buf, const char *string, int size, int align)
 {
   int rc = NO_ERROR;
 
@@ -16146,7 +16160,7 @@ pr_write_uncompressed_string_to_buffer (OR_BUF * buf, char *string, int size, in
  *
  */
 int
-pr_data_compress_string (char *string, int str_length, char *compressed_string, int *compressed_length)
+pr_data_compress_string (const char *string, int str_length, char *compressed_string, int *compressed_length)
 {
   int rc = NO_ERROR;
   lzo_voidp wrkmem = NULL;
@@ -16274,7 +16288,8 @@ int
 pr_do_db_value_string_compression (DB_VALUE * value)
 {
   DB_TYPE db_type;
-  char *compressed_string, *string;
+  const char *string;
+  char *compressed_string;
   int rc = NO_ERROR;
   int src_size = 0, compressed_size;
 

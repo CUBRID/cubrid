@@ -2168,7 +2168,6 @@ error_exit:
 static int
 ldr_str_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
-  /* todo: switch this to db_make_string_copy and avoid any possible leaks */
   db_make_string (val, str);
   return NO_ERROR;
 }
@@ -2329,7 +2328,6 @@ ldr_str_db_generic (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUT
 {
   DB_VALUE val;
 
-  /* todo: switch this to db_make_string_copy and avoid any possible leaks */
   db_make_string (&val, str);
   return ldr_generic (context, &val);
 }

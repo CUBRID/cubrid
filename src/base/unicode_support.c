@@ -1275,13 +1275,14 @@ unicode_compose_string (const char *str_in, const int size_in, char *str_out, in
  *  Note : Input string is assumed UTF-8 character set.
  */
 bool
-unicode_string_need_decompose (char *str_in, const int size_in, int *decomp_size, const UNICODE_NORMALIZATION * norm)
+unicode_string_need_decompose (const char *str_in, const int size_in, int *decomp_size,
+			       const UNICODE_NORMALIZATION * norm)
 {
   int bytes_read, decomp_index, decomposed_size = 0;
   unsigned int cp;
-  char *src_cursor;
-  char *src_end;
-  char *next;
+  const char *src_cursor;
+  const char *src_end;
+  const char *next;
   bool can_decompose;
 
   if (!prm_get_bool_value (PRM_ID_UNICODE_OUTPUT_NORMALIZATION) || norm == NULL)
@@ -1359,14 +1360,14 @@ no_decompose_cnt:
  * norm(in) : the unicode context in which the normalization is performed
  */
 void
-unicode_decompose_string (char *str_in, const int size_in, char *str_out, int *size_out,
+unicode_decompose_string (const char *str_in, const int size_in, char *str_out, int *size_out,
 			  const UNICODE_NORMALIZATION * norm)
 {
   int bytes_read, decomp_index;
   unsigned int cp;
-  char *src_cursor;
-  char *src_end;
-  char *next;
+  const char *src_cursor;
+  const char *src_end;
+  const char *next;
   char *dest_cursor;
 
   assert (prm_get_bool_value (PRM_ID_UNICODE_OUTPUT_NORMALIZATION) && norm != NULL);

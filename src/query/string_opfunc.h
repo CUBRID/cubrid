@@ -242,8 +242,8 @@ extern int db_string_convert (const DB_VALUE * src_string, DB_VALUE * dest_strin
 #endif
 extern unsigned char *qstr_pad_string (unsigned char *s, int length, INTL_CODESET codeset);
 extern int qstr_bin_to_hex (char *dest, int dest_size, const char *src, int src_size);
-extern int qstr_hex_to_bin (char *dest, int dest_size, char *src, int src_size);
-extern int qstr_bit_to_bin (char *dest, int dest_size, char *src, int src_size);
+extern int qstr_hex_to_bin (char *dest, int dest_size, const char *src, int src_size);
+extern int qstr_bit_to_bin (char *dest, int dest_size, const char *src, int src_size);
 extern void qstr_bit_to_hex_coerce (char *buffer, int buffer_size, const char *src, int src_length, int pad_flag,
 				    int *copy_size, int *truncation);
 extern int db_get_string_length (const DB_VALUE * value);

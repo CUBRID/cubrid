@@ -372,7 +372,8 @@ extern "C"
   extern int db_get_int (const DB_VALUE * value);
   extern DB_C_SHORT db_get_short (const DB_VALUE * value);
   extern DB_BIGINT db_get_bigint (const DB_VALUE * value);
-  extern DB_C_CHAR db_get_string (const DB_VALUE * value);
+  extern DB_CONST_C_CHAR db_get_string (const DB_VALUE * value);
+  extern DB_C_CHAR db_get_string_copy (DB_VALUE * value);
   extern DB_C_FLOAT db_get_float (const DB_VALUE * value);
   extern DB_C_DOUBLE db_get_double (const DB_VALUE * value);
   extern DB_OBJECT *db_get_object (const DB_VALUE * value);
@@ -438,12 +439,11 @@ extern "C"
 			    const int nchar_str_byte_size, const int codeset, const int collation_id);
   extern int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, DB_CONST_C_NCHAR str,
 			       const int nchar_str_byte_size, const int codeset, const int collation_id);
-  extern int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int size,
+  extern int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_CONST_C_CHAR str, int size,
 				  unsigned char codeset, const int collation_id);
   extern int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle);
 
   extern int db_make_string (DB_VALUE * value, const char *str);
-  extern int db_make_string_copy (DB_VALUE * value, const char *str);
 
   extern int db_make_oid (DB_VALUE * value, const OID * oid);
 

@@ -8784,7 +8784,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   db_make_int (out_values[idx], LOG_DBLOG_ACTIVE_VOLID);
   idx++;
 
-  error = db_make_string_copy (out_values[idx], header->magic);
+  error = db_make_string (out_values[idx], header->magic);
   idx++;
 
   if (error != NO_ERROR)
@@ -8804,12 +8804,12 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
       goto exit_on_error;
     }
 
-  error = db_make_string_copy (out_values[idx], header->db_release);
+  error = db_make_string (out_values[idx], header->db_release);
   idx++;
 
   snprintf (buf, sizeof (buf), "%g", header->db_compatibility);
   buf[sizeof (buf) - 1] = 0;
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -8844,7 +8844,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   idx++;
 
   lsa_to_string (buf, sizeof (buf), &header->append_lsa);
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -8852,7 +8852,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
     }
 
   lsa_to_string (buf, sizeof (buf), &header->chkpt_lsa);
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -8875,7 +8875,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   idx++;
 
   lsa_to_string (buf, sizeof (buf), &header->bkup_level0_lsa);
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -8883,7 +8883,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
     }
 
   lsa_to_string (buf, sizeof (buf), &header->bkup_level1_lsa);
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -8891,14 +8891,14 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
     }
 
   lsa_to_string (buf, sizeof (buf), &header->bkup_level2_lsa);
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
       goto exit_on_error;
     }
 
-  error = db_make_string_copy (out_values[idx], header->prefix_name);
+  error = db_make_string (out_values[idx], header->prefix_name);
   idx++;
   if (error != NO_ERROR)
     {
@@ -8908,11 +8908,11 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   db_make_int (out_values[idx], header->has_logging_been_skipped);
   idx++;
 
-  db_make_string_by_const_str (out_values[idx], "LOG_PSTATUS_OBSOLETE");
+  db_make_string (out_values[idx], "LOG_PSTATUS_OBSOLETE");
   idx++;
 
   logpb_backup_level_info_to_string (buf, sizeof (buf), header->bkinfo + FILEIO_BACKUP_FULL_LEVEL);
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -8920,7 +8920,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
     }
 
   logpb_backup_level_info_to_string (buf, sizeof (buf), header->bkinfo + FILEIO_BACKUP_BIG_INCREMENT_LEVEL);
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -8928,7 +8928,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
     }
 
   logpb_backup_level_info_to_string (buf, sizeof (buf), header->bkinfo + FILEIO_BACKUP_SMALL_INCREMENT_LEVEL);
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -8936,15 +8936,15 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
     }
 
   str = css_ha_server_state_string ((HA_SERVER_STATE) header->ha_server_state);
-  db_make_string_by_const_str (out_values[idx], str);
+  db_make_string (out_values[idx], str);
   idx++;
 
   str = logwr_log_ha_filestat_to_string ((LOG_HA_FILESTAT) header->ha_file_status);
-  db_make_string_by_const_str (out_values[idx], str);
+  db_make_string (out_values[idx], str);
   idx++;
 
   lsa_to_string (buf, sizeof (buf), &header->eof_lsa);
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -8952,7 +8952,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
     }
 
   lsa_to_string (buf, sizeof (buf), &header->smallest_lsa_at_last_chkpt);
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -8963,7 +8963,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   idx++;
 
   lsa_to_string (buf, sizeof (buf), &header->mvcc_op_log_lsa);
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -9122,7 +9122,7 @@ log_archive_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE 
   db_make_int (out_values[idx], LOG_DBLOG_ARCHIVE_VOLID);
   idx++;
 
-  error = db_make_string_copy (out_values[idx], header->magic);
+  error = db_make_string (out_values[idx], header->magic);
   idx++;
 
   if (error != NO_ERROR)

@@ -1934,7 +1934,7 @@ _op_get_constraint_info (nvplist * out, DB_CONSTRAINT * con)
 
       while (end == 0)
 	{
-	  char *db_string_p = NULL;
+	  const char *db_string_p = NULL;
 
 	  db_query_get_tuple_value (result, 0, &val);
 	  db_string_p = db_get_string (&val);
@@ -2255,6 +2255,7 @@ _op_get_value_string (DB_VALUE * value)
 #if !defined (NUMERIC_MAX_STRING_SIZE)
 #define NUMERIC_MAX_STRING_SIZE (80 + 1)
 #endif
+  const char *db_varchar = NULL;
   char *result, *return_result, *db_string_p;
   DB_TYPE type;
   DB_DATE *date_v;
@@ -2289,10 +2290,10 @@ _op_get_value_string (DB_VALUE * value)
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-      db_string_p = db_get_string (value);
-      if (db_string_p != NULL)
+      db_varchar = db_get_string (value);
+      if (db_varchar != NULL)
 	{
-	  snprintf (result, result_size, "%s", db_string_p);
+	  snprintf (result, result_size, "%s", db_varchar);
 	}
       break;
     case DB_TYPE_NCHAR:

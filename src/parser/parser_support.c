@@ -9656,7 +9656,7 @@ pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NO
 	      if (PT_IS_CHAR_STRING_TYPE (pt_default_expr->info.expr.arg2->type_enum))
 		{
 		  db_value_default_expr_format = pt_value_to_db (parser, pt_default_expr->info.expr.arg2);
-		  default_expr->default_expr_format = db_get_string (db_value_default_expr_format);
+		  default_expr->default_expr_format = db_get_string_copy (db_value_default_expr_format);
 		}
 	    }
 	}

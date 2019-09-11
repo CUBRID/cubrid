@@ -959,7 +959,8 @@ db_string_truncate (DB_VALUE * value, const int precision)
 {
   int error = NO_ERROR;
   DB_VALUE src_value;
-  char *string = NULL, *val_str;
+  char *string = NULL;
+  const char *val_str;
   int length;
   int byte_size;
 
@@ -1977,7 +1978,7 @@ transfer_bit_string (char *buf, int *xflen, int *outlen, const int buflen, const
   DB_DATA_STATUS data_status;
   DB_TYPE db_type;
   int error_code;
-  char *tmp_val_str;
+  const char *tmp_val_str;
 
   if (c_type == DB_TYPE_C_BIT)
     {
@@ -4475,7 +4476,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
   OID *oid_p;
   DB_SET *set_p;
   DB_ELO *elo_p;
-  char *src_p, *end_p, *p;
+  const char *src_p, *end_p, *p;
   ptrdiff_t len;
 
   DB_MONETARY *money_p;
@@ -4985,7 +4986,7 @@ db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest)
     case DB_JSON_STRING:
       {
 	const char *str = db_json_get_string_from_document (doc);
-	int error_code = db_make_string_by_const_str (dest, str);
+	int error_code = db_make_string (dest, str);
 	if (error_code != NO_ERROR)
 	  {
 	    ASSERT_ERROR ();

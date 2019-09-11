@@ -665,7 +665,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
     }
 
   /* name */
-  db_make_string_by_const_str (&value, serial_name);
+  db_make_string (&value, serial_name);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
@@ -729,7 +729,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
     }
 
   /* comment */
-  db_make_string_by_const_str (&value, comment);
+  db_make_string (&value, comment);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_COMMENT, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
@@ -740,7 +740,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
   /* class name */
   if (class_name)
     {
-      db_make_string_by_const_str (&value, class_name);
+      db_make_string (&value, class_name);
       error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CLASS_NAME, &value);
       pr_clear_value (&value);
       if (error != NO_ERROR)
@@ -752,7 +752,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
   /* att name */
   if (att_name)
     {
-      db_make_string_by_const_str (&value, att_name);
+      db_make_string (&value, att_name);
       error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATT_NAME, &value);
       pr_clear_value (&value);
       if (error != NO_ERROR)
@@ -875,7 +875,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
 
   /* class name */
   pr_clear_value (&value);
-  db_make_string_by_const_str (&value, class_name);
+  db_make_string (&value, class_name);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CLASS_NAME, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
@@ -884,7 +884,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
     }
 
   /* att name */
-  db_make_string_by_const_str (&value, att_name);
+  db_make_string (&value, att_name);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATT_NAME, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
@@ -2786,7 +2786,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       assert (statement->info.serial.comment->node_type == PT_VALUE);
       comment = (char *) PT_VALUE_GET_BYTES (statement->info.serial.comment);
-      db_make_string_by_const_str (&value, comment);
+      db_make_string (&value, comment);
       error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_COMMENT, &value);
       pr_clear_value (&value);
       if (error < 0)
@@ -4386,7 +4386,7 @@ static int map_iso_levels (PARSER_CONTEXT * parser, PT_NODE * statement, DB_TRAN
 static int set_iso_level (PARSER_CONTEXT * parser, DB_TRAN_ISOLATION * tran_isolation, bool * async_ws,
 			  PT_NODE * statement, const DB_VALUE * level);
 static int check_timeout_value (PARSER_CONTEXT * parser, PT_NODE * statement, DB_VALUE * val);
-static char *get_savepoint_name_from_db_value (DB_VALUE * val);
+static const char *get_savepoint_name_from_db_value (DB_VALUE * val);
 
 /*
  * do_attach() - Attaches to named (distributed 2pc) transaction
@@ -4836,7 +4836,7 @@ do_set_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   PT_NODE *p1, *p2;
   DB_VALUE val1, val2;
-  char *plan, *cost;
+  const char *plan, *cost;
 
   db_make_null (&val1);
   db_make_null (&val2);
@@ -5115,7 +5115,7 @@ check_timeout_value (PARSER_CONTEXT * parser, PT_NODE * statement, DB_VALUE * va
  *       type string, a NULL termination will be assumed since the
  *       name came from a parse tree.
  */
-static char *
+static const char *
 get_savepoint_name_from_db_value (DB_VALUE * val)
 {
   if (DB_VALUE_TYPE (val) != DB_TYPE_CHAR && DB_VALUE_TYPE (val) != DB_TYPE_VARCHAR
@@ -6509,8 +6509,8 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 		  db_make_null (&returnval);
 
-		  db_make_string_by_const_str (&trigger_name_val, trigger_name->info.name.original);
-		  db_make_string_by_const_str (&user_val, trigger_owner_name);
+		  db_make_string (&trigger_name_val, trigger_name->info.name.original);
+		  db_make_string (&user_val, trigger_owner_name);
 
 		  au_change_trigger_owner_method (t->op, &returnval, &trigger_name_val, &user_val);
 
@@ -13833,7 +13833,7 @@ dbmeth_class_name (DB_OBJECT * self, DB_VALUE * result)
    * course, this gives the responsibility for freeing the cloned
    * string to someone else; is anybody accepting it?
    */
-  db_make_string_by_const_str (result, cname);
+  db_make_string (result, cname);
 }
 
 /*

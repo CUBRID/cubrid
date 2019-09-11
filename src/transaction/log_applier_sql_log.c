@@ -437,7 +437,7 @@ sl_write_delete_sql (char *class_name, MOBJ mclass, DB_VALUE * key)
 }
 
 int
-sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *stmt_text, char *ha_sys_prm)
+sl_write_statement_sql (char *class_name, char *db_user, int item_type, const char *stmt_text, char *ha_sys_prm)
 {
   int error = NO_ERROR;
   char default_ha_prm[LINE_MAX];

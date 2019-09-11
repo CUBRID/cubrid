@@ -824,7 +824,7 @@ chksum_get_prev_checksum_results (void)
     {
       int pos;
       int out_val_idx;
-      char *db_string_p = NULL;
+      const char *db_string_p = NULL;
 
       pos = db_query_first_tuple (query_result);
       while (pos == DB_CURSOR_SUCCESS)

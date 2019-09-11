@@ -16137,13 +16137,11 @@ btree_get_next_key_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_SCAN * bts,
 
   /* Get overflow key and overflow oids */
   pr_clear_value (key_info[BTREE_KEY_INFO_OVERFLOW_KEY]);
-  db_make_string_by_const_str (key_info[BTREE_KEY_INFO_OVERFLOW_KEY],
-			       btree_leaf_is_flaged (&bts->key_record,
-						     BTREE_LEAF_RECORD_OVERFLOW_KEY) ? "true" : "false");
+  db_make_string (key_info[BTREE_KEY_INFO_OVERFLOW_KEY],
+		  btree_leaf_is_flaged (&bts->key_record, BTREE_LEAF_RECORD_OVERFLOW_KEY) ? "true" : "false");
   pr_clear_value (key_info[BTREE_KEY_INFO_OVERFLOW_OIDS]);
-  db_make_string_by_const_str (key_info[BTREE_KEY_INFO_OVERFLOW_OIDS],
-			       btree_leaf_is_flaged (&bts->key_record,
-						     BTREE_LEAF_RECORD_OVERFLOW_OIDS) ? "true" : "false");
+  db_make_string (key_info[BTREE_KEY_INFO_OVERFLOW_OIDS],
+		  btree_leaf_is_flaged (&bts->key_record, BTREE_LEAF_RECORD_OVERFLOW_OIDS) ? "true" : "false");
 
   /* Get OIDs count -> For now ignore the overflow OIDs */
   db_make_int (key_info[BTREE_KEY_INFO_OID_COUNT],
@@ -17841,7 +17839,7 @@ btree_rv_keyval_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 /*
  * btree_rv_remove_marked_for_delete () - Part of run postpone to remove an object which was previously marked
  *					  for delete.
- *				
+ *
  *
  * return	 : Error code.
  * thread_p (in) : Thread entry.
@@ -20161,8 +20159,7 @@ btree_get_next_node_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_NODE_SCAN 
 
   /* Get node type */
   pr_clear_value (node_info[BTREE_NODE_INFO_NODE_TYPE]);
-  db_make_string_by_const_str (node_info[BTREE_NODE_INFO_NODE_TYPE],
-			       (node_type == BTREE_NON_LEAF_NODE) ? "non-leaf" : "leaf");
+  db_make_string (node_info[BTREE_NODE_INFO_NODE_TYPE], (node_type == BTREE_NON_LEAF_NODE) ? "non-leaf" : "leaf");
 
   /* Get key count */
   db_make_int (node_info[BTREE_NODE_INFO_KEY_COUNT], key_cnt);
@@ -20445,7 +20442,7 @@ btree_index_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_
   OR_PARTITION *parts = NULL;
   int parts_count = 0;
   DB_CLASS_PARTITION_TYPE partition_type;
-  char *class_name = NULL;
+  const char *class_name = NULL;
 
   *ptr = NULL;
   ctx = (SHOW_INDEX_SCAN_CTX *) db_private_alloc (thread_p, sizeof (SHOW_INDEX_SCAN_CTX));
@@ -20758,14 +20755,14 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_value
     }
 
   /* scan index header into out_values */
-  error = db_make_string_copy (out_values[idx], class_name);
+  error = db_make_string (out_values[idx], class_name);
   idx++;
   if (error != NO_ERROR)
     {
       goto error;
     }
 
-  error = db_make_string_copy (out_values[idx], index_p->btname);
+  error = db_make_string (out_values[idx], index_p->btname);
   idx++;
   if (error != NO_ERROR)
     {
@@ -20773,7 +20770,7 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_value
     }
 
   (void) btid_to_string (buf, sizeof (buf), btid_p);
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -20811,7 +20808,7 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_value
     {
       oid_to_string (buf, sizeof (buf), &root_header->topclass_oid);
     }
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -20822,7 +20819,7 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_value
   idx++;
 
   (void) vfid_to_string (buf, sizeof (buf), &root_header->ovfid);
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -20832,7 +20829,7 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_value
   or_init (&or_buf, root_header->packed_key_domain, -1);
   key_type = or_get_domain (&or_buf, NULL, NULL);
   (void) key_type_to_string (buf, sizeof (buf), key_type);
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -20861,7 +20858,7 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_value
       goto error;
     }
 
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -22077,14 +22074,14 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
     }
 
   /* scan index capacity into out_values */
-  error = db_make_string_copy (out_values[idx], class_name);
+  error = db_make_string (out_values[idx], class_name);
   idx++;
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
 
-  error = db_make_string_copy (out_values[idx], index_p->btname);
+  error = db_make_string (out_values[idx], index_p->btname);
   idx++;
   if (error != NO_ERROR)
     {
@@ -22092,7 +22089,7 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
     }
 
   (void) btid_to_string (buf, sizeof (buf), btid_p);
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -22127,7 +22124,7 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
   idx++;
 
   (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.tot_space));
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -22135,7 +22132,7 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
     }
 
   (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.tot_used_space));
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -22143,7 +22140,7 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
     }
 
   (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.tot_free_space));
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -22154,7 +22151,7 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
   idx++;
 
   (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.avg_pg_free_sp));
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {

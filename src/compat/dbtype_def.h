@@ -997,6 +997,7 @@ extern "C"
       unsigned char compressed_need_clear;
       int size;
       char *buf;
+      const char *cbuf;
       int compressed_size;
       char *compressed_buf;
     } medium;

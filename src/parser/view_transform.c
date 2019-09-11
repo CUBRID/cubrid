@@ -5682,7 +5682,7 @@ mq_set_non_updatable_oid (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * vir
 	  select_list->type_enum = PT_TYPE_OBJECT;
 
 	  /* set vclass_name as literal string */
-	  db_make_string_by_const_str (&vid, db_get_class_name (virt_entity->info.name.db_object));
+	  db_make_string (&vid, db_get_class_name (virt_entity->info.name.db_object));
 	  select_list->info.function.arg_list = pt_dbval_to_value (parser, &vid);
 	  select_list->info.function.function_type = F_SEQUENCE;
 

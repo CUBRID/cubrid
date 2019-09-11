@@ -2439,7 +2439,7 @@ db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
       string_buffer sb;
       object_printer printer (sb);
       printer.describe_class (class_op);
-      db_make_string_copy (result, sb.get_buffer ());
+      db_make_string (result, sb.get_buffer ());
     }
   else
     {

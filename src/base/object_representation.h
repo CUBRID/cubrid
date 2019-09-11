@@ -1417,8 +1417,8 @@ extern int or_put_binary (OR_BUF * buf, DB_BINARY * binary);
 #endif
 extern int or_put_data (OR_BUF * buf, const char *data, int length);
 extern int or_put_oid (OR_BUF * buf, const OID * oid);
-extern int or_put_varbit (OR_BUF * buf, char *string, int bitlen);
-extern int or_packed_put_varbit (OR_BUF * buf, char *string, int bitlen);
+extern int or_put_varbit (OR_BUF * buf, const char *string, int bitlen);
+extern int or_packed_put_varbit (OR_BUF * buf, const char *string, int bitlen);
 extern int or_put_varchar (OR_BUF * buf, char *string, int charlen);
 extern int or_packed_put_varchar (OR_BUF * buf, char *string, int charlen);
 extern int or_put_align32 (OR_BUF * buf);

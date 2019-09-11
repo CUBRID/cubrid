@@ -5281,11 +5281,11 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
       idx++;
 
       /* State */
-      db_make_string_by_const_str (&vals[idx], log_state_short_string (tdes->state));
+      db_make_string (&vals[idx], log_state_short_string (tdes->state));
       idx++;
 
       /* isolation */
-      db_make_string_by_const_str (&vals[idx], log_isolation_string (tdes->isolation));
+      db_make_string (&vals[idx], log_isolation_string (tdes->isolation));
       idx++;
 
       /* Wait_msecs */
@@ -5294,7 +5294,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 
       /* Head_lsa */
       lsa_to_string (buf, sizeof (buf), &tdes->head_lsa);
-      error = db_make_string_copy (&vals[idx], buf);
+      error = db_make_string (&vals[idx], buf);
       idx++;
       if (error != NO_ERROR)
 	{
@@ -5303,7 +5303,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 
       /* Tail_lsa */
       lsa_to_string (buf, sizeof (buf), &tdes->tail_lsa);
-      error = db_make_string_copy (&vals[idx], buf);
+      error = db_make_string (&vals[idx], buf);
       idx++;
       if (error != NO_ERROR)
 	{
@@ -5312,7 +5312,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 
       /* Undo_next_lsa */
       lsa_to_string (buf, sizeof (buf), &tdes->undo_nxlsa);
-      error = db_make_string_copy (&vals[idx], buf);
+      error = db_make_string (&vals[idx], buf);
       idx++;
       if (error != NO_ERROR)
 	{
@@ -5321,7 +5321,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 
       /* Postpone_next_lsa */
       lsa_to_string (buf, sizeof (buf), &tdes->posp_nxlsa);
-      error = db_make_string_copy (&vals[idx], buf);
+      error = db_make_string (&vals[idx], buf);
       idx++;
       if (error != NO_ERROR)
 	{
@@ -5330,7 +5330,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 
       /* Savepoint_lsa */
       lsa_to_string (buf, sizeof (buf), &tdes->savept_lsa);
-      error = db_make_string_copy (&vals[idx], buf);
+      error = db_make_string (&vals[idx], buf);
       idx++;
       if (error != NO_ERROR)
 	{
@@ -5339,7 +5339,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 
       /* Topop_lsa */
       lsa_to_string (buf, sizeof (buf), &tdes->topop_lsa);
-      error = db_make_string_copy (&vals[idx], buf);
+      error = db_make_string (&vals[idx], buf);
       idx++;
       if (error != NO_ERROR)
 	{
@@ -5348,7 +5348,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 
       /* Tail_top_result_lsa */
       lsa_to_string (buf, sizeof (buf), &tdes->tail_topresult_lsa);
-      error = db_make_string_copy (&vals[idx], buf);
+      error = db_make_string (&vals[idx], buf);
       idx++;
       if (error != NO_ERROR)
 	{
@@ -5361,7 +5361,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 
       /* Client_type */
       str = boot_client_type_to_string ((BOOT_CLIENT_TYPE) tdes->client.client_type);
-      error = db_make_string_copy (&vals[idx], str);
+      error = db_make_string (&vals[idx], str);
       idx++;
       if (error != NO_ERROR)
 	{
@@ -5369,7 +5369,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 	}
 
       /* Client_info */
-      error = db_make_string_copy (&vals[idx], tdes->client.get_client_info ());
+      error = db_make_string (&vals[idx], tdes->client.get_client_info ());
       idx++;
       if (error != NO_ERROR)
 	{
@@ -5377,7 +5377,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 	}
 
       /* Client_db_user */
-      error = db_make_string_copy (&vals[idx], tdes->client.get_db_user ());
+      error = db_make_string (&vals[idx], tdes->client.get_db_user ());
       idx++;
       if (error != NO_ERROR)
 	{
@@ -5385,7 +5385,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 	}
 
       /* Client_program */
-      error = db_make_string_copy (&vals[idx], tdes->client.get_program_name ());
+      error = db_make_string (&vals[idx], tdes->client.get_program_name ());
       idx++;
       if (error != NO_ERROR)
 	{
@@ -5393,7 +5393,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 	}
 
       /* Client_login_user */
-      error = db_make_string_copy (&vals[idx], tdes->client.get_login_name ());
+      error = db_make_string (&vals[idx], tdes->client.get_login_name ());
       idx++;
       if (error != NO_ERROR)
 	{
@@ -5401,7 +5401,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 	}
 
       /* Client_host */
-      error = db_make_string_copy (&vals[idx], tdes->client.get_host_name ());
+      error = db_make_string (&vals[idx], tdes->client.get_host_name ());
       idx++;
       if (error != NO_ERROR)
 	{
@@ -5445,7 +5445,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
       else
 	{
 	  snprintf (buf, sizeof (buf), "0x%08" PRIx64, (UINT64) ptr_val);
-	  error = db_make_string_copy (&vals[idx], buf);
+	  error = db_make_string (&vals[idx], buf);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -5467,7 +5467,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 
       /* Repl_insert_lsa */
       lsa_to_string (buf, sizeof (buf), &tdes->repl_insert_lsa);
-      error = db_make_string_copy (&vals[idx], buf);
+      error = db_make_string (&vals[idx], buf);
       idx++;
       if (error != NO_ERROR)
 	{
@@ -5476,7 +5476,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 
       /* Repl_update_lsa */
       lsa_to_string (buf, sizeof (buf), &tdes->repl_update_lsa);
-      error = db_make_string_copy (&vals[idx], buf);
+      error = db_make_string (&vals[idx], buf);
       idx++;
       if (error != NO_ERROR)
 	{
@@ -5492,7 +5492,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
       else
 	{
 	  snprintf (buf, sizeof (buf), "0x%08" PRIx64, (UINT64) ptr_val);
-	  error = db_make_string_copy (&vals[idx], buf);
+	  error = db_make_string (&vals[idx], buf);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -5543,7 +5543,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
       else
 	{
 	  snprintf (buf, sizeof (buf), "0x%08" PRIx64, (UINT64) ptr_val);
-	  error = db_make_string_copy (&vals[idx], buf);
+	  error = db_make_string (&vals[idx], buf);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -5614,7 +5614,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 	{
 	  snprintf (buf, sizeof (buf), "sha1 = %08x | %08x | %08x | %08x | %08x, time_stored = %d sec %d usec",
 		    SHA1_AS_ARGS (&xasl_val.sha1), CACHE_TIME_AS_ARGS (&xasl_val.time_stored));
-	  error = db_make_string_copy (&vals[idx], buf);
+	  error = db_make_string (&vals[idx], buf);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -5628,7 +5628,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 
       /* Abort_reason */
       str = tran_abort_reason_to_string (tdes->tran_abort_reason);
-      db_make_string_by_const_str (&vals[idx], str);
+      db_make_string (&vals[idx], str);
       idx++;
 
       assert (idx == num_cols);

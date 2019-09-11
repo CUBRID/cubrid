@@ -543,22 +543,22 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
   idx++;
 
   /* Type */
-  db_make_string_by_const_str (&vals[idx], thread_type_to_string (thrd->type));
+  db_make_string (&vals[idx], thread_type_to_string (thrd->type));
   idx++;
 
   /* Status */
-  db_make_string_by_const_str (&vals[idx], thread_status_to_string (thrd->m_status));
+  db_make_string (&vals[idx], thread_status_to_string (thrd->m_status));
   idx++;
 
   /* Resume_status */
-  db_make_string_by_const_str (&vals[idx], thread_resume_status_to_string (thrd->resume_status));
+  db_make_string (&vals[idx], thread_resume_status_to_string (thrd->resume_status));
   idx++;
 
   /* Net_request */
   ival = thrd->net_request_index;
   if (ival != -1)
     {
-      db_make_string_by_const_str (&vals[idx], net_server_request_name (ival));
+      db_make_string (&vals[idx], net_server_request_name (ival));
     }
   else
     {
@@ -619,7 +619,7 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
       ermsg = er_get_ermsg_from_area_error (area);
       ermsg[255] = '\0';	/* truncate msg */
 
-      error = db_make_string_copy (&vals[idx], ermsg);
+      error = db_make_string (&vals[idx], ermsg);
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -641,7 +641,7 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
   if (private_heap_id != 0)
     {
       snprintf (buffer, buf_len, "0x%08" PRIx64, (UINT64) private_heap_id);
-      error = db_make_string_copy (&vals[idx], buffer);
+      error = db_make_string (&vals[idx], buffer);
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -663,7 +663,7 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
   if (query_entry != NULL)
     {
       snprintf (buffer, buf_len, "0x%08" PRIx64, (UINT64) query_entry);
-      error = db_make_string_copy (&vals[idx], buffer);
+      error = db_make_string (&vals[idx], buffer);
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -703,7 +703,7 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
       strncpy (buffer, LOCK_TO_LOCKMODE_STRING (lockwait->blocked_mode), buf_len);
       buffer[buf_len - 1] = '\0';
       trim (buffer);
-      error = db_make_string_copy (&vals[idx], buffer);
+      error = db_make_string (&vals[idx], buffer);
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -731,7 +731,7 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
       idx++;
 
       /* Lockwait_state */
-      db_make_string_by_const_str (&vals[idx], lock_wait_state_to_string (thrd->lockwait_state));
+      db_make_string (&vals[idx], lock_wait_state_to_string (thrd->lockwait_state));
       idx++;
     }
   else

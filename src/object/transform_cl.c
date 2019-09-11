@@ -143,7 +143,7 @@ static OR_VARINFO *read_var_table (OR_BUF * buf, int nvars);
 static OR_VARINFO *read_var_table_internal (OR_BUF * buf, int nvars, int offset_size);
 static void free_var_table (OR_VARINFO * vars);
 static int string_disk_size (const char *string);
-static char *get_string (OR_BUF * buf, int length);
+static const char *get_string (OR_BUF * buf, int length);
 static void put_string (OR_BUF * buf, const char *string);
 static int object_set_size (DB_OBJLIST * list);
 static int put_object_set (OR_BUF * buf, DB_OBJLIST * list);
@@ -1499,11 +1499,11 @@ string_disk_size (const char *string)
  *
  *    A jmp_buf has previously been established.
  */
-static char *
+static const char *
 get_string (OR_BUF * buf, int length)
 {
   DB_VALUE value;
-  char *string = NULL;
+  const char *string = NULL;
   DB_DOMAIN my_domain;
 
   /*
@@ -2099,7 +2099,7 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
 
   if (domain->json_validator)
     {
-      db_make_string_by_const_str (&schema_value, db_json_get_schema_raw_from_validator (domain->json_validator));
+      db_make_string (&schema_value, db_json_get_schema_raw_from_validator (domain->json_validator));
       tp_String.data_writeval (buf, &schema_value);
       pr_clear_value (&schema_value);
     }
@@ -3094,7 +3094,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 		{
 		  DB_SEQ *def_expr_seq;
 		  DB_VALUE def_expr_op, def_expr_type, def_expr_format;
-		  char *def_expr_format_str;
+		  const char *def_expr_format_str;
 
 		  assert (set_size (db_get_set (&value)) == 3);
 

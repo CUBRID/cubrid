@@ -87,7 +87,7 @@ static char *unpack_str_array (char *buffer, char ***string_array, int count);
 static int or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align);
 static int or_varbit_length_internal (int bitlen, int align);
 static int or_varchar_length_internal (int charlen, int align);
-static int or_put_varbit_internal (OR_BUF * buf, char *string, int bitlen, int align);
+static int or_put_varbit_internal (OR_BUF * buf, const char *string, int bitlen, int align);
 static int or_packed_json_schema_length (const char *json_schema);
 static int or_packed_json_validator_length (JSON_VALIDATOR * json_validator);
 static char *or_unpack_var_table_internal (char *ptr, int nvars, OR_VARINFO * vars, int offset_size);
@@ -108,7 +108,7 @@ classobj_get_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue)
   int error;
   int found, max, i;
   DB_VALUE value;
-  char *tmp_str;
+  const char *tmp_str;
 
   error = NO_ERROR;
   found = 0;
@@ -1174,7 +1174,7 @@ or_varbit_length_internal (int bitlen, int align)
  *    bitlen(in): length of varbit
  */
 int
-or_packed_put_varbit (OR_BUF * buf, char *string, int bitlen)
+or_packed_put_varbit (OR_BUF * buf, const char *string, int bitlen)
 {
   return or_put_varbit_internal (buf, string, bitlen, INT_ALIGNMENT);
 }
@@ -1187,13 +1187,13 @@ or_packed_put_varbit (OR_BUF * buf, char *string, int bitlen)
  *    bitlen(in): length of varbit
  */
 int
-or_put_varbit (OR_BUF * buf, char *string, int bitlen)
+or_put_varbit (OR_BUF * buf, const char *string, int bitlen)
 {
   return or_put_varbit_internal (buf, string, bitlen, CHAR_ALIGNMENT);
 }
 
 static int
-or_put_varbit_internal (OR_BUF * buf, char *string, int bitlen, int align)
+or_put_varbit_internal (OR_BUF * buf, const char *string, int bitlen, int align)
 {
   int net_bitlen;
   int bytelen;
@@ -7172,7 +7172,7 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
   DB_ENUM_ELEMENT *enum_vals = NULL, *db_enum = NULL;
   int idx = 0, count = 0, error = NO_ERROR;
   DB_VALUE value;
-  char *enum_str = NULL, *value_str;
+  const char *enum_str = NULL, *value_str;
   int str_size = 0;
   LANG_COLLATION *lc;
 
@@ -7222,8 +7222,8 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
 
       DB_GET_ENUM_ELEM_DBCHAR (db_enum).info = value.data.ch.info;
       str_size = db_get_string_size (&value);
-      enum_str = (char *) malloc (str_size + 1);
-      if (enum_str == NULL)
+      char *enum_str_tmp = (char *) malloc (str_size + 1);
+      if (enum_str_tmp == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  (size_t) (db_get_string_size (&value) + 1));
@@ -7234,13 +7234,15 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
       value_str = db_get_string (&value);
       if (value_str)
 	{
-	  memcpy (enum_str, value_str, str_size);
+	  memcpy (enum_str_tmp, value_str, str_size);
 	}
       else
 	{
 	  assert_release (str_size == 0);
 	}
-      enum_str[str_size] = 0;
+      enum_str_tmp[str_size] = 0;
+
+      enum_str = enum_str_tmp;
 
       DB_SET_ENUM_ELEM_STRING (db_enum, enum_str);
       DB_SET_ENUM_ELEM_STRING_SIZE (db_enum, str_size);
@@ -8150,7 +8152,7 @@ or_put_json_schema (OR_BUF * buf, const char *schema)
     }
   else
     {
-      db_make_string_by_const_str (&schema_raw, schema);
+      db_make_string (&schema_raw, schema);
     }
 
   rc = tp_String.data_writeval (buf, &schema_raw);

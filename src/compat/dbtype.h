@@ -114,7 +114,7 @@
 #define DB_SET_ENUM_ELEM_SHORT(elem, sv) \
       ((elem)->short_val = (sv))
 #define DB_SET_ENUM_ELEM_STRING(elem, str) \
-      ((elem)->str_val.medium.buf = (str),  \
+      ((elem)->str_val.medium.cbuf = (str),  \
        (elem)->str_val.info.style = MEDIUM_STRING)
 #define DB_SET_ENUM_ELEM_STRING_SIZE(elem, sz) \
       ((elem)->str_val.medium.size = (sz))

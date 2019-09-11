@@ -1108,7 +1108,7 @@ trigger_to_object (TR_TRIGGER * trigger)
 	  goto error;
 	}
 
-      db_make_string_copy (&value, trigger->action->source);
+      db_make_string (&value, trigger->action->source);
       err = dbt_put_internal (obt_p, TR_ATT_ACTION, &value);
       if (err != NO_ERROR)
 	{
@@ -1123,7 +1123,7 @@ trigger_to_object (TR_TRIGGER * trigger)
       pr_clear_value (&value);
     }
 
-  db_make_string_copy (&value, trigger->comment);
+  db_make_string (&value, trigger->comment);
   err = dbt_put_internal (obt_p, TR_ATT_COMMENT, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -1174,7 +1174,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
   int save;
   MOBJ obj;
   SM_CLASS *class_;
-  char *tmp;
+  const char *tmp;
 
   AU_DISABLE (save);
 
@@ -3079,7 +3079,7 @@ trigger_table_add (const char *name, DB_OBJECT * trigger)
     }
   max = set_size (table);
 
-  db_make_string_copy (&value, name);
+  db_make_string (&value, name);
   error = set_put_element (table, max, &value);
   pr_clear_value (&value);
   if (error == NO_ERROR)
@@ -3287,7 +3287,7 @@ trigger_table_rename (DB_OBJECT * trigger_object, const char *newname)
   else
     {
       /* the name is the kept in the element immediately preceeding this one */
-      db_make_string_copy (&value, newname);
+      db_make_string (&value, newname);
       error = set_put_element (table, found - 1, &value);
       pr_clear_value (&value);
     }
@@ -7071,7 +7071,7 @@ tr_set_comment (DB_OBJECT * trigger_object, const char *comment, bool call_from_
 	}
       else
 	{
-	  db_make_string_copy (&value, comment);
+	  db_make_string (&value, comment);
 	  if (db_put_internal (trigger_object, TR_ATT_COMMENT, &value))
 	    {
 	      error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;

@@ -479,7 +479,7 @@ int
 sc_set_current_schema (MOP user)
 {
   int error = ER_FAILED;
-  char *wsp_user_name;
+  const char *wsp_user_name;
 
   Current_Schema.name[0] = '\0';
   Current_Schema.owner = user;
@@ -2694,7 +2694,7 @@ sm_rename_class (MOP op, const char *new_name)
 		  if (att->auto_increment != NULL)
 		    {
 		      DB_VALUE name_val;
-		      char *class_name;
+		      const char *class_name;
 
 		      if (db_get (att->auto_increment, "class_name", &name_val) != NO_ERROR)
 			{
@@ -3144,7 +3144,7 @@ sm_partitioned_class_type (DB_OBJECT * classop, int *partition_type, char *keyat
       pcnt = psize.data.i;
       if (keyattr)
 	{
-	  char *p = NULL;
+	  const char *p = NULL;
 
 	  keyattr[0] = 0;
 	  if (DB_IS_NULL (&attrname) || (p = db_get_string (&attrname)) == NULL)
@@ -13050,7 +13050,7 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
       if (att->auto_increment != NULL)
 	{
 	  DB_VALUE name_val;
-	  char *class_name;
+	  const char *class_name;
 
 	  error = db_get (att->auto_increment, "class_name", &name_val);
 	  if (error == NO_ERROR)

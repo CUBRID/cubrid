@@ -2973,7 +2973,7 @@ disk_volume_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** o
 
   snprintf (buf, sizeof (buf), "MAGIC SYMBOL = %s at disk location = %lld", vhdr->magic,
 	    offsetof (FILEIO_PAGE, page) + (long long) offsetof (DISK_VOLUME_HEADER, magic));
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -2983,10 +2983,10 @@ disk_volume_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** o
   db_make_int (out_values[idx], vhdr->iopagesize);
   idx++;
 
-  db_make_string_by_const_str (out_values[idx], disk_purpose_to_string (vhdr->purpose));
+  db_make_string (out_values[idx], disk_purpose_to_string (vhdr->purpose));
   idx++;
 
-  db_make_string_by_const_str (out_values[idx], disk_type_to_string (vhdr->type));
+  db_make_string (out_values[idx], disk_type_to_string (vhdr->type));
   idx++;
 
   db_make_int (out_values[idx], vhdr->sect_npgs);
@@ -3022,21 +3022,21 @@ disk_volume_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** o
   idx++;
 
   lsa_to_string (buf, sizeof (buf), &vhdr->chkpt_lsa);
-  error = db_make_string_copy (out_values[idx], buf);
+  error = db_make_string (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
       goto exit;
     }
 
-  error = db_make_string_copy (out_values[idx], hfid_to_string (buf, sizeof (buf), &vhdr->boot_hfid));
+  error = db_make_string (out_values[idx], hfid_to_string (buf, sizeof (buf), &vhdr->boot_hfid));
   idx++;
   if (error != NO_ERROR)
     {
       goto exit;
     }
 
-  error = db_make_string_copy (out_values[idx], (char *) (vhdr->var_fields + vhdr->offset_to_vol_fullname));
+  error = db_make_string (out_values[idx], (char *) (vhdr->var_fields + vhdr->offset_to_vol_fullname));
   idx++;
   if (error != NO_ERROR)
     {
@@ -3046,14 +3046,14 @@ disk_volume_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** o
   db_make_int (out_values[idx], vhdr->next_volid);
   idx++;
 
-  error = db_make_string_copy (out_values[idx], (char *) (vhdr->var_fields + vhdr->offset_to_next_vol_fullname));
+  error = db_make_string (out_values[idx], (char *) (vhdr->var_fields + vhdr->offset_to_next_vol_fullname));
   idx++;
   if (error != NO_ERROR)
     {
       goto exit;
     }
 
-  error = db_make_string_copy (out_values[idx], (char *) (vhdr->var_fields + vhdr->offset_to_vol_remarks));
+  error = db_make_string (out_values[idx], (char *) (vhdr->var_fields + vhdr->offset_to_vol_remarks));
   idx++;
   if (error != NO_ERROR)
     {

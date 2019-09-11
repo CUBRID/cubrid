@@ -102,7 +102,7 @@ typedef struct db_arg_list
 
 typedef struct
 {
-  char *name;
+  const char *name;
   DB_VALUE *returnval;
   DB_ARG_LIST *args;
   int arg_count;
@@ -707,7 +707,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* change the comment */
   if (sp_comment != NULL)
     {
-      db_make_string_by_const_str (&user_val, comment_str);
+      db_make_string (&user_val, comment_str);
       err = obj_set (sp_mop, SP_ATTR_COMMENT, &user_val);
       if (err < 0)
 	{
@@ -834,7 +834,7 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char 
       goto error;
     }
 
-  db_make_string_by_const_str (&value, sp_name);
+  db_make_string (&value, sp_name);
   err = dbt_put_internal (obt_p, SP_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -842,7 +842,7 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char 
       goto error;
     }
 
-  db_make_string_by_const_str (&value, arg_name);
+  db_make_string (&value, arg_name);
   err = dbt_put_internal (obt_p, SP_ATTR_ARG_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -871,7 +871,7 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char 
       goto error;
     }
 
-  db_make_string_by_const_str (&value, arg_comment);
+  db_make_string (&value, arg_comment);
   err = dbt_put_internal (obt_p, SP_ATTR_ARG_COMMENT, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -1081,7 +1081,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
       goto error;
     }
 
-  db_make_string_by_const_str (&value, java_method);
+  db_make_string (&value, java_method);
   err = dbt_put_internal (obt_p, SP_ATTR_TARGET, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -1097,7 +1097,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
       goto error;
     }
 
-  db_make_string_by_const_str (&value, comment);
+  db_make_string (&value, comment);
   err = dbt_put_internal (obt_p, SP_ATTR_COMMENT, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -1696,8 +1696,8 @@ jsp_pack_numeric_argument (char *buffer, DB_VALUE * value)
 static char *
 jsp_pack_string_argument (char *buffer, DB_VALUE * value)
 {
-  char *v;
-  char *ptr;
+  const char *v;
+  char *ptr, *decomposed = NULL;
   int v_size;
   int decomp_size;
   bool was_decomposed = false;
@@ -1710,7 +1710,6 @@ jsp_pack_string_argument (char *buffer, DB_VALUE * value)
   if (v_size > 0 && db_get_string_codeset (value) == INTL_CODESET_UTF8
       && unicode_string_need_decompose (v, v_size, &decomp_size, lang_get_generic_unicode_norm ()))
     {
-      char *decomposed;
       int alloc_size = decomp_size + 1;
 
       decomposed = (char *) db_private_alloc (NULL, alloc_size);
@@ -1735,7 +1734,7 @@ jsp_pack_string_argument (char *buffer, DB_VALUE * value)
 
   if (was_decomposed)
     {
-      db_private_free (NULL, v);
+      db_private_free (NULL, decomposed);
     }
 
   return ptr;

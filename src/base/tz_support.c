@@ -452,7 +452,7 @@ tz_timestamp_encode_leap_sec_adj (const int year_century, const int year, const 
 
 /*
  * tz_timestamp_decode_sec() - extracts from a UNIX timestamp the year, month, day, hour, minute and second
- *		
+ *
  */
 void
 tz_timestamp_decode_sec (int timestamp, int *yearp, int *monthsp, int *dayp, int *hoursp, int *minutesp, int *secondsp)
@@ -1474,7 +1474,7 @@ exit:
 
 /*
  * tz_create_datetimetz_from_ses () - creates a datetime with timezone from a datetime using session timezone
- *			
+ *
  * Return: error code
  * dt(in): decoded local datetime value (as appears in the user string)
  * dt_tz(out): object containing datetime value (adjusted to UTC) and timezone info
@@ -1505,7 +1505,7 @@ exit:
 
 /*
  * tz_conv_tz_time_w_zone_name() - Converts the time_source from timezone source zone into timezone dest_zone
- *				
+ *
  *
  * Return: error code
  * time_source(in): object containing source time value
@@ -2578,7 +2578,7 @@ tz_offset (const bool src_is_utc, const TZ_TIME_TYPE until_time_type, const int 
 /*
  * get_date_diff_from_ds_rule  () - Returns the date difference between a source date and the date when applying
  *				    a daylight saving rule using from_year or to_year
- *				
+ *
  * Returns: error or no error
  * src_julian_date(in): input source date
  * src_time_sec(in): input source time
@@ -2625,7 +2625,7 @@ exit:
 /*
  * get_closest_ds_rule() - Returns the id of the closest daylight saving rule in the ds_ruleset relative to to_year
  *			   or from_year
- *				
+ *
  * Returns: the id of the rule or -1 in case of error
  * src_julian_date(in): input source date
  * src_time_sec(in): input source time
@@ -2670,7 +2670,7 @@ get_closest_ds_rule (const int src_julian_date, const int src_time_sec, const TZ
 /*
  * get_saving_time_from_offset_rule() - Computes the daylight saving time for the last day when the input offset
  *					rule applies
- *								
+ *
  * Returns: error or no error
  * offset_rule(in): input offset rule
  * tzd(in): timezone data
@@ -2721,7 +2721,7 @@ exit:
 
 /*
  * is_in_overlap_interval() - Verifies if a specific date is in the overlap interval between two offset rules
- *															
+ *
  * Returns: true or false
  * time_type(in): time reference
  * offset_rule_diff(in): time difference between the date and the time when the first offset rule ends
@@ -2755,8 +2755,8 @@ is_in_overlap_interval (const TZ_TIME_TYPE time_type, const full_date_t offset_r
 
 /*
  * get_year_to_apply_rule() - Computes the year in which to apply a daylight saving rule given the source year
- *			
- *															
+ *
+ *
  * Returns: the year in which to apply the daylight saving rule
  * src_year(in): source year
  * ds_rule(in): daylight saving rule
@@ -3834,7 +3834,7 @@ tz_conv_tz_datetime_w_region (const DB_DATETIME * src_dt, const TZ_REGION * src_
 
 /*
  * tz_conv_tz_datetime_w_zone_name () - Converts a source DATETIME from one timezone to another
- *				
+ *
  * Return: error code
  * src_dt(in): object containing source datetime value
  * source_zone(in): source timezone string
@@ -4043,7 +4043,7 @@ tz_explain_tz_id (const TZ_ID * tz_id, char *tzr, const int tzr_size, char *tzds
 /*
  * tz_create_datetimetz_from_offset () - creates a datetime with timezone info from a timezone hour offset and a
  *					 a timezone minute offset
- *			
+ *
  *
  * Return: error or no error
  * dt (in): local datetime value
@@ -4083,7 +4083,7 @@ tz_create_datetimetz_from_offset (const DB_DATETIME * dt, const int tzh, const i
 /*
  * tz_create_timestamptz_from_offset () - creates a timestamp with timezone info from a timezone hour and
  *					  a timezone minute offset
- *			
+ *
  * Return: error code
  * date(in): local date value
  * time(in): local time value
@@ -4187,7 +4187,7 @@ tz_get_best_match_zone (const char *name, int *size)
 /*
  * tz_create_datetimetz_from_zoneid_and_tzd () - creates a datetime with timezone info from a datetime, a zone id
  *					         and daylight saving time info
- *			
+ *
  *
  * Return: error or no error
  * dt(in): local datetime value
@@ -4255,7 +4255,7 @@ tz_create_datetimetz_from_zoneid_and_tzd (const DB_DATETIME * dt, TZ_REGION * de
 /*
  * tz_create_timestamptz_from_zoneid_and_tzd () - creates a timestamp with timezone info from a datetime, a zone id
  *					          and daylight saving time info
- *			
+ *
  * Return: error or no error
  * date(in): local date value
  * time(in): local time value
@@ -4736,7 +4736,7 @@ tz_timezones_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg
 	  goto exit_on_error;
 	}
       /* Geographic timezone name */
-      db_make_string_by_const_str (&vals[0], tzd->names[i].name);
+      db_make_string (&vals[0], tzd->names[i].name);
     }
 
   *ptr = ctx;
@@ -4821,7 +4821,7 @@ tz_full_timezones_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE *
 	  goto exit_on_error;
 	}
       /* Geographic timezone name */
-      db_make_string_by_const_str (&vals[idx++], tzd->names[i].name);
+      db_make_string (&vals[idx++], tzd->names[i].name);
 
       /* First get the zone id */
       zone_id = i;
@@ -4841,7 +4841,7 @@ tz_full_timezones_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE *
 
       /* Timezone offset */
       tz_print_tz_offset (gmt_offset, zone_off_rule.gmt_off);
-      db_make_string_copy (&vals[idx++], gmt_offset);
+      db_make_string (&vals[idx++], gmt_offset);
 
       dst_name = zone_off_rule.std_format;
       if (zone_off_rule.ds_type == DS_TYPE_RULESET_ID)
@@ -4884,8 +4884,8 @@ tz_full_timezones_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE *
       if (dst_name != NULL)
 	{
 	  tz_print_tz_offset (dst_offset, dst_save_time);
-	  db_make_string_copy (&vals[idx++], dst_offset);
-	  db_make_string_copy (&vals[idx++], dst_name);
+	  db_make_string (&vals[idx++], dst_offset);
+	  db_make_string (&vals[idx++], dst_name);
 	}
       else
 	{
@@ -4948,7 +4948,7 @@ error_exit:
 
 /*
  * tz_check_geographic_tz() - verifies if the encoded timezone information contains geographic or offset info
- *			
+ *
  * tzd(in) : timezone data
  * Returns: error if geographic timezone, NO_ERROR if offset timezone
  */
@@ -4992,7 +4992,7 @@ tz_check_session_has_geographic_tz (void)
  * return: error code
  *
  * Note: This is called during database creation;
- *	
+ *
  */
 int
 put_timezone_checksum (char *checksum)
@@ -5013,7 +5013,7 @@ put_timezone_checksum (char *checksum)
 
 /*
  * check_timezone_compat - checks compatibility between a client timezone checksum and a server timezone checksum
- *			
+ *
  * Returns : error code
  * client_checksum(in): client checksum
  * server_checksum(in): server checksum
@@ -5041,7 +5041,7 @@ check_timezone_compat (const char *client_checksum, const char *server_checksum,
 /*
  * tz_tzid_convert_region_to_offset - if the timezone encoded in tz_id is of region type the function converts
  *                                    it to an offset type
- *				      				
+ *
  * Returns :
  * tz_id(in): timezone id
  */
@@ -5074,7 +5074,7 @@ tz_tzid_convert_region_to_offset (TZ_ID * tz_id)
 
 /*
  * tz_create_datetimetz_from_utc () - Creates a datetimetz from an UTC time and a timezone region
- *			
+ *
  * Return: error code
  * src_dt(in): datetime value in UTC reference
  * dest_region(in): timezone region for dest_dt_tz
@@ -5103,7 +5103,7 @@ tz_create_datetimetz_from_utc (const DB_DATETIME * src_dt, const TZ_REGION * des
 /*
  * tz_create_datetimetz_from_parts() - creates a datetimetz from month, day, year, hour, minutes, seconds and
  *				      milliseconds
- *	
+ *
  *  Returns error or no error
  *  m(in): month
  *  d(in): day
@@ -5149,7 +5149,7 @@ tz_create_datetimetz_from_parts (const int m, const int d, const int y, const in
 
 /*
  * set_new_zone_id() - Sets the new timezone id for the new timezone library using the old timezone library
- *				
+ *
  *  Returns error or no error
  *  tz_info (in/out): pointer to tz_info
  *
@@ -5178,7 +5178,7 @@ set_new_zone_id (TZ_DECODE_INFO * tz_info)
 
 /*
  * conv_tz() - Converts a tz type from one time library to another
- *				
+ *
  *  Returns error or no error
  *  p_out (out): pointer to output timezone data type
  *  p_in (in): pointer to input timezone data type

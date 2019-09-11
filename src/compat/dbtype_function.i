@@ -30,7 +30,8 @@
 STATIC_INLINE int db_get_int (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_SHORT db_get_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_BIGINT db_get_bigint (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_C_CHAR db_get_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_CONST_C_CHAR db_get_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_C_CHAR db_get_string_copy (DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_FLOAT db_get_float (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_DOUBLE db_get_double (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_OBJECT *db_get_object (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -109,16 +110,11 @@ STATIC_INLINE int db_make_nchar (DB_VALUE * value, const int nchar_length, DB_CO
 STATIC_INLINE int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, DB_CONST_C_NCHAR str,
 				    const int nchar_str_byte_size, const int codeset, const int collation_id)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int size,
+STATIC_INLINE int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_CONST_C_CHAR str, int size,
 				       unsigned char codeset, const int collation_id) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE int db_make_string (DB_VALUE * value, const char *str) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_string_copy (DB_VALUE * value, const char *str) __attribute__ ((ALWAYS_INLINE));
-
-// TODO: It is ugly but I would like to separate the existing usages of db_make_string_copy from those of const str.
-// In some day, we may need a way to make db_value without copying const str. Hope this helps for future refactoring.
-#define db_make_string_by_const_str db_make_string_copy
 
 STATIC_INLINE int db_make_oid (DB_VALUE * value, const OID * oid) __attribute__ ((ALWAYS_INLINE));
 
@@ -204,8 +200,44 @@ db_get_bigint (const DB_VALUE * value)
  * return :
  * value(in):
  */
-char *
+const char *
 db_get_string (const DB_VALUE * value)
+{
+  const char *str = NULL;
+
+#if defined (API_ACTIVE_CHECKS)
+  CHECK_1ARG_NULL (value);
+#endif
+
+  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
+    {
+      return NULL;
+    }
+
+  switch (value->data.ch.info.style)
+    {
+    case SMALL_STRING:
+      str = (char *) value->data.ch.sm.buf;
+      break;
+    case MEDIUM_STRING:
+      str = value->data.ch.medium.cbuf;
+      break;
+    case LARGE_STRING:
+      /* Currently not implemented */
+      str = NULL;
+      break;
+    }
+
+  return str;
+}
+
+/*
+ * db_get_string() -
+ * return :
+ * value(in):
+ */
+char *
+db_get_string_copy (DB_VALUE * value)
 {
   char *str = NULL;
 
@@ -224,7 +256,25 @@ db_get_string (const DB_VALUE * value)
       str = (char *) value->data.ch.sm.buf;
       break;
     case MEDIUM_STRING:
-      str = value->data.ch.medium.buf;
+      {
+	char *buf = value->data.ch.medium.buf;
+	const char *cbuf = value->data.ch.medium.cbuf;
+	if (buf == NULL && cbuf != NULL)
+	  {
+	    buf = db_private_strdup (NULL, cbuf);
+	    if (buf == NULL)
+	      {
+		size_t cbuf_len = strlen (cbuf);
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, cbuf_len + 1);
+		return NULL;
+	      }
+
+	    value->need_clear = true;
+	  }
+
+	value->data.ch.medium.buf = buf;
+	str = buf;
+      }
       break;
     case LARGE_STRING:
       /* Currently not implemented */
@@ -1008,7 +1058,8 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
   value->data.ch.info.compressed_need_clear = false;
   value->data.ch.medium.codeset = codeset;
   value->data.ch.medium.size = size;
-  value->data.ch.medium.buf = (char *) str;
+  value->data.ch.medium.buf = NULL;
+  value->data.ch.medium.cbuf = str;
   value->data.ch.medium.compressed_buf = NULL;
   value->data.ch.medium.compressed_size = 0;
   value->domain.general_info.is_null = ((void *) str != NULL) ? 0 : 1;
@@ -1724,7 +1775,7 @@ db_make_varnchar (DB_VALUE * value, const int max_nchar_length, DB_CONST_C_NCHAR
  * collation_id(in):
  */
 int
-db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str,
+db_make_enumeration (DB_VALUE * value, unsigned short index, DB_CONST_C_CHAR str,
 		     int size, unsigned char codeset, const int collation_id)
 {
 #if defined (API_ACTIVE_CHECKS)
@@ -1741,7 +1792,8 @@ db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str,
   value->data.ch.medium.compressed_buf = NULL;
   value->data.ch.medium.compressed_size = 0;
   value->data.enumeration.str_val.medium.size = size;
-  value->data.enumeration.str_val.medium.buf = str;
+  value->data.enumeration.str_val.medium.cbuf = str;
+  value->data.enumeration.str_val.medium.buf = NULL;
   value->domain.general_info.is_null = 0;
   value->need_clear = false;
 
@@ -1827,50 +1879,6 @@ db_make_string (DB_VALUE * value, const char *str)
 	}
       error = db_make_db_char (value, LANG_SYS_CODESET, LANG_SYS_COLLATION, str, size);
     }
-  return error;
-}
-
-/*
- * db_make_string_copy() - alloc buffer and copy str into the buffer.
- *                         need_clear will set as true.
- * return :
- * value(out) :
- * str(in):
- */
-int
-db_make_string_copy (DB_VALUE * value, const char *str)
-{
-  int error;
-  char *copy_str;
-
-#if defined (API_ACTIVE_CHECKS)
-  CHECK_1ARG_ERROR (value);
-#endif
-
-  if (str == NULL)
-    {
-      db_make_null (value);
-      return NO_ERROR;
-    }
-
-  copy_str = db_private_strdup (NULL, str);
-
-  if (copy_str == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (str) + 1);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  error = db_make_string (value, copy_str);
-
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  /* Set need_clear to true. */
-  value->need_clear = true;
-
   return error;
 }
 

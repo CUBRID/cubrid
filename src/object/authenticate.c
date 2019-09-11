@@ -1543,7 +1543,7 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
       return er_errid ();
     }
 
-  db_make_string_by_const_str (&class_name_val, sm_get_ch_name (class_mop));
+  db_make_string (&class_name_val, sm_get_ch_name (class_mop));
   db_class_inst = obj_find_unique (db_class, "class_name", &class_name_val, AU_FETCH_READ);
   if (db_class_inst == NULL)
     {
@@ -1646,13 +1646,13 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_CLASS, 0);
       goto exit;
     }
-  db_make_string_by_const_str (&val[INDEX_FOR_CLASS_NAME], class_name);
+  db_make_string (&val[INDEX_FOR_CLASS_NAME], class_name);
 
   for (type = DB_AUTH_SELECT, i = 0; type != auth_type; type = (DB_AUTH) (type << 1), i++)
     {
       ;
     }
-  db_make_string_by_const_str (&val[INDEX_FOR_AUTH_TYPE], type_set[i]);
+  db_make_string (&val[INDEX_FOR_AUTH_TYPE], type_set[i]);
 
   session = db_open_buffer (sql_query);
   if (session == NULL)
@@ -2047,7 +2047,7 @@ au_delete_auth_of_dropping_table (const char *class_name)
       goto release;
     }
 
-  db_make_string_by_const_str (&val, class_name);
+  db_make_string (&val, class_name);
   error = db_push_values (session, 1, &val);
   if (error != NO_ERROR)
     {
@@ -2252,7 +2252,7 @@ au_add_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name, DB_VAL
   int error;
   int exists;
   MOP user;
-  char *tmp;
+  const char *tmp;
 
   if (name != NULL && IS_STRING (name) && !DB_IS_NULL (name) && ((tmp = db_get_string (name)) != NULL))
     {
@@ -2836,7 +2836,7 @@ au_set_user_comment (MOP user, const char *comment)
 	}
       else
 	{
-	  db_make_string_by_const_str (&value, comment);
+	  db_make_string (&value, comment);
 	  error = obj_set (user, "comment", &value);
 	  pr_clear_value (&value);
 	}
@@ -5170,7 +5170,7 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
   int error = NO_ERROR;
   int is_partition = DB_NOT_PARTITIONED_CLASS, i, savepoint_owner = 0;
   MOP *sub_partitions = NULL;
-  char *class_name = NULL, *owner_name = NULL;
+  const char *class_name = NULL, *owner_name = NULL;
   SM_CLASS *clsobj;
 
   db_make_null (returnval);
@@ -5342,7 +5342,7 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * serial,
   MOP user = NULL, serial_object = NULL;
   MOP serial_class_mop;
   DB_IDENTIFIER serial_obj_id;
-  char *serial_name, *owner_name;
+  const char *serial_name, *owner_name;
   int error = NO_ERROR;
 
   db_make_null (returnval);
@@ -6901,14 +6901,13 @@ au_start (void)
  *   return: user name string
  *   obj(in): user object
  */
-char *
+const char *
 au_get_user_name (MOP obj)
 {
   DB_VALUE value;
   int error;
-  char *name;
+  const char *name = NULL;
 
-  name = NULL;
   error = obj_get (obj, "name", &value);
   if (error == NO_ERROR)
     {
@@ -6936,7 +6935,7 @@ au_export_users (print_output & output_ctx)
   DB_VALUE value, gvalue;
   MOP user, pwd;
   int g, gcard;
-  char *uname, *str, *gname, *comment;
+  const char *uname, *str, *gname, *comment;
   char passbuf[AU_MAX_PASSWORD_BUF];
   char *query;
   size_t query_size;
@@ -7484,7 +7483,7 @@ static void
 issue_grant_statement (print_output & output_ctx, CLASS_AUTH * auth, CLASS_GRANT * grant, int authbits)
 {
   const char *gtype, *classname;
-  char *username;
+  const char *username;
   int typebit;
 
   typebit = authbits & AU_TYPE_MASK;
@@ -7646,7 +7645,7 @@ au_export_grants (print_output & output_ctx, MOP class_mop)
   CLASS_AUTH cl_auth;
   CLASS_USER *u;
   int statements, ecount;
-  char *uname;
+  const char *uname;
 
   cl_auth.class_mop = class_mop;
   cl_auth.owner = au_get_class_owner (class_mop);
