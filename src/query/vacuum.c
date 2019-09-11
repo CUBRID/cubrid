@@ -97,7 +97,7 @@ struct vacuum_data_entry
   MVCCID oldest_visible_mvccid;     // oldest visible MVCCID while block was logged
   MVCCID newest_mvccid;             // newest MVCCID in log block
 
-  vacuum_data_entry ();
+  vacuum_data_entry () = default;
   vacuum_data_entry (const log_lsa & lsa, MVCCID oldest, MVCCID newest);
   vacuum_data_entry (const log_header & hdr);
 
@@ -7935,11 +7935,6 @@ vacuum_data::update ()
 //
 // vacuum_data_entry
 //
-vacuum_data_entry::vacuum_data_entry ()
-  : vacuum_data_entry (NULL_LSA, MVCCID_NULL, MVCCID_NULL)
-{
-}
-
 vacuum_data_entry::vacuum_data_entry (const log_lsa &lsa, MVCCID oldest, MVCCID newest)
   : blockid (VACUUM_NULL_LOG_BLOCKID)
   , start_lsa (lsa)
