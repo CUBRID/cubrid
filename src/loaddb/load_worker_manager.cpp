@@ -134,7 +134,7 @@ namespace cubload
 	unsigned int pool_size = prm_get_integer_value (PRM_ID_LOADDB_WORKER_COUNT);
 
 	g_wp_context_manager = new worker_context_manager (pool_size);
-	g_worker_pool = cubthread::get_manager ()->create_worker_pool (pool_size, pool_size, "loaddb-workers",
+	g_worker_pool = cubthread::get_manager ()->create_worker_pool (pool_size, 2 * pool_size, "loaddb-workers",
 			g_wp_context_manager, 1, false, true);
 
 	g_wp_task_capper = new cubthread::worker_pool_task_capper<cubthread::entry> (g_worker_pool);
