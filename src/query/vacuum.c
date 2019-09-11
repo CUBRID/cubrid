@@ -8078,9 +8078,11 @@ vacuum_job_cursor::get_current_entry () const
 void
 vacuum_job_cursor::start_job_on_current_entry () const
 {
+  assert (is_valid ());
   cubthread::entry * thread_p = &cubthread::get_entry ();
-  get_current_entry ().set_job_in_progress ();
-  if (!get_current_entry ().was_interrupted ())
+  vacuum_data_entry &entry = m_page->data[m_index];
+  entry.set_job_in_progress ();
+  if (!entry.was_interrupted ())
     {
       /* Log that a new job is starting. After recovery, the system will then know this job was partially executed.
        * Logging the start of a job already interrupted is not necessary. We do it here rather than when vacuum job
