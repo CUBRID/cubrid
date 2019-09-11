@@ -127,6 +127,7 @@ namespace lockfree
   {
     assert (bitmap != NULL);
     delete [] bitmap->bitfield;
+    bitmap->bitfield = NULL;
     bitmap->entry_count = 0;
     bitmap->entry_count_in_use = 0;
     bitmap->style = LF_BITMAP_ONE_CHUNK;
