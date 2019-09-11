@@ -19,7 +19,8 @@
 
 #include "lockfree_transaction.hpp"
 
+#include <bitset>
+
 namespace lockfree
 {
-
 } // namespace lockfree

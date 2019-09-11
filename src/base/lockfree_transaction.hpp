@@ -21,14 +21,54 @@
 // lockfree_transaction.hpp - memory transactioning system for lock-free structures; makes memory accessed by preempted
 //                            threads are not reclaimed until it is safe
 //
+// operations on a lock-free structure must use these transactions. items of lock-free structures may be removed and
+// reclaimed only after all concurrent transactions are finished.
+//
+// transactional terminology is used to better explain how the system works. each lock-free structure has its own
+// transaction table, each table has an array of transaction descriptors. every thread that may access the lock-free
+// structure has its own descriptor. to make things easier, a thread is assigned a transaction index, which will
+// reserve a descriptor on every table of every lock-structure.
+//
+// there are two types of transactions: read and write. every write transaction generates a new transaction id. read
+// transactions use current transaction id.
+//
+// item template:
+//  T *get_local_next ();
+//  T *get_next ();
+//  lockfree::tran::id get_del_tranid ();
+//  void init ();
+//  void uninit ();
+//
 
 #ifndef _LOCKFREE_TRANSACTION_HPP_
 #define _LOCKFREE_TRANSACTION_HPP_
 
+#include <cinttypes>
+
 namespace lockfree
 {
-  class tran_entry;
-  class tran_system;
+  namespace tran
+  {
+    using index = size_t;
+    using id = std::uint64_t;
+
+    // T is item template
+    template<T>
+    class descriptor;
+    {
+public:
+
+private:
+    };
+
+    template<T>
+    class table
+    {
+      public:
+
+      private:
+    };
+  }
 } // namespace lockfree
 
 #endif // _LOCKFREE_TRANSACTION_HPP_
