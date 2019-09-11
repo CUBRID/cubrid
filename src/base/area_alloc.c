@@ -80,6 +80,11 @@ pthread_mutex_t area_List_lock = PTHREAD_MUTEX_INITIALIZER;
 #define LF_AREA_BITMAP_USAGE_RATIO LF_BITMAP_FULL_USAGE_RATIO
 #endif
 
+/*
+ * Volatile access to a variable
+ */
+#define VOLATILE_ACCESS(v,t)		(*((t volatile *) &(v)))
+
 static void area_info (AREA * area, FILE * fp);
 static AREA_BLOCK *area_alloc_block (AREA * area);
 static AREA_BLOCKSET_LIST *area_alloc_blockset (AREA * area);
@@ -124,7 +129,6 @@ area_final (void)
     }
   area_List = NULL;
 
-  Set_Ref_Area = Set_Obj_Area = NULL;
   pthread_mutex_destroy (&area_List_lock);
 }
 

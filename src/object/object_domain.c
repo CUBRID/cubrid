@@ -58,6 +58,7 @@
 #endif /* !defined (SERVER_MODE) */
 
 #include "dbtype.h"
+#include "error_manager.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

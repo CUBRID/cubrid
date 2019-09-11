@@ -35,7 +35,6 @@
 #include "object_representation.h"
 #include "object_domain.h"	/* for TP_DOMAIN */
 #include "locator.h"		/* for LC_OIDSET */
-#include "area_alloc.h"
 
 #if !defined (SERVER_MODE)
 #include "parser.h"		/* for PT_OP_TYPE */
@@ -109,10 +108,6 @@ struct setobj
   /* set if we can't guarantee that there are no temporary OID's in here */
   unsigned may_have_temporary_oids:1;
 };
-
-/* Creation */
-extern AREA *Set_Ref_Area;	/* Area for allocation of set reference structures */
-extern AREA *Set_Obj_Area;	/* Area for allocation of set object structures */
 
 extern DB_COLLECTION *set_create (DB_TYPE type, int initial_size);
 extern int set_area_init (void);
