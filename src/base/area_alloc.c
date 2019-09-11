@@ -118,7 +118,6 @@ area_final (void)
     }
   area_List = NULL;
 
-  Set_Ref_Area = Set_Obj_Area = NULL;
   pthread_mutex_destroy (&area_List_lock);
 }
 
