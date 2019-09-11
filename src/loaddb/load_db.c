@@ -558,7 +558,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       status = 2;
       goto error_return;
     }
-  else
+  else if (object_file != NULL)
     {
       fclose (object_file);
     }
