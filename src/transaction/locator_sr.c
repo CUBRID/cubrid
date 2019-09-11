@@ -29,6 +29,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <assert.h>
+#include <cstring>		// for std::memcpy
 
 #include "locator_sr.h"
 
@@ -114,7 +115,7 @@ struct locator_return_nxobj
   int area_offset;		/* Relative offset to recdes->data in the communication area */
 };
 
-extern INT32 vacuum_Global_oldest_active_blockers_counter;
+extern INT32 vacuum_Global_oldest_visible_blockers_counter;
 
 bool locator_Dont_check_foreign_key = false;
 
@@ -153,7 +154,7 @@ static int locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * cla
 				 int has_index, int op_type, HEAP_SCANCACHE * scan_cache, int *force_count,
 				 int pruning_type, PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
 				 UPDATE_INPLACE_STYLE force_in_place, PGBUF_WATCHER * home_hint_p, bool has_BU_lock,
-				 bool use_bulk_logging = false);
+				 bool dont_check_fk, bool use_bulk_logging = false);
 static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * ikdrecdes,
 				 RECDES * recdes, int has_index, ATTR_ID * att_id, int n_att_id, int op_type,
 				 HEAP_SCANCACHE * scan_cache, int *force_count, bool not_check_fk,
@@ -4262,7 +4263,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	  /* We might check for foreign key and schema consistency problems here but we rely on the schema manager to
 	   * prevent inconsistency; see do_check_fk_constraints() for details */
 
-	  error_code = heap_get_hfid_from_class_oid (thread_p, &fkref->self_oid, &hfid);
+	  error_code = heap_get_class_info (thread_p, &fkref->self_oid, &hfid, NULL, NULL);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error3;
@@ -4607,7 +4608,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	  /* We might check for foreign key and schema consistency problems here but we rely on the schema manager to
 	   * prevent inconsistency; see do_check_fk_constraints() for details */
 
-	  error_code = heap_get_hfid_from_class_oid (thread_p, &fkref->self_oid, &hfid);
+	  error_code = heap_get_class_info (thread_p, &fkref->self_oid, &hfid, NULL, NULL);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error3;
@@ -4854,7 +4855,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		      int op_type, HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type,
 		      PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
 		      UPDATE_INPLACE_STYLE force_in_place, PGBUF_WATCHER * home_hint_p, bool has_BU_lock,
-		      bool use_bulk_logging)
+		      bool dont_check_fk, bool use_bulk_logging)
 {
 #if 0				/* TODO - dead code; do not delete me */
   OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
@@ -5106,7 +5107,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	}
 
       /* check the foreign key constraints */
-      if (has_index && !locator_Dont_check_foreign_key)
+      if (has_index && (!locator_Dont_check_foreign_key && !dont_check_fk))
 	{
 	  error_code =
 	    locator_check_foreign_key (thread_p, &real_hfid, &real_class_oid, oid, recdes, &new_recdes, &is_cached,
@@ -5228,7 +5229,7 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
       error =
 	locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, recdes, has_index, op_type,
 			      insert_cache, force_count, context->pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, NULL,
-			      false);
+			      false, false);
     }
   else
     {
@@ -5245,7 +5246,7 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
       error =
 	locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, recdes, has_index, op_type,
 			      &insert_cache, force_count, DB_NOT_PARTITIONED_CLASS, NULL, NULL, UPDATE_INPLACE_NONE,
-			      NULL, false);
+			      NULL, false, false);
       heap_scancache_end (thread_p, &insert_cache);
     }
 
@@ -5786,7 +5787,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      goto error;
 	    }
 
-	  if (heap_get_hfid_from_class_oid (thread_p, class_oid, hfid) != NO_ERROR)
+	  if (heap_get_class_info (thread_p, class_oid, hfid, NULL, NULL) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -6801,7 +6802,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 
       LC_REPL_RECDES_FOR_ONEOBJ (force_area, obj, packed_key_value_len, &recdes);
 
-      error_code = heap_get_hfid_from_class_oid (thread_p, &obj->class_oid, &obj->hfid);
+      error_code = heap_get_class_info (thread_p, &obj->class_oid, &obj->hfid, NULL, NULL);
       if (error_code != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -6846,7 +6847,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	      error_code =
 		locator_insert_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, &recdes, has_index,
 				      SINGLE_ROW_INSERT, force_scancache, &force_count, pruning_type, NULL, NULL,
-				      UPDATE_INPLACE_NONE, NULL, false);
+				      UPDATE_INPLACE_NONE, NULL, false, false);
 
 	      if (error_code == NO_ERROR)
 		{
@@ -7040,7 +7041,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	  error_code =
 	    locator_insert_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, &recdes, has_index,
 				  SINGLE_ROW_INSERT, force_scancache, &force_count, pruning_type, NULL, NULL,
-				  UPDATE_INPLACE_NONE, NULL, false);
+				  UPDATE_INPLACE_NONE, NULL, false, false);
 
 	  if (error_code == NO_ERROR)
 	    {
@@ -7412,7 +7413,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	{
 	  error_code =
 	    locator_insert_force (thread_p, &class_hfid, &class_oid, oid, &new_recdes, true, op_type, scan_cache,
-				  force_count, pruning_type, pcontext, func_preds, UPDATE_INPLACE_NONE, NULL, false);
+				  force_count, pruning_type, pcontext, func_preds, UPDATE_INPLACE_NONE, NULL, false,
+				  false);
 	}
       else
 	{
@@ -12078,7 +12080,7 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
   nobjects = 0;
   nfetched = -1;
 
-  error = heap_get_hfid_from_class_oid (thread_p, class_oid, &hfid);
+  error = heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -12094,19 +12096,19 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
   if (tdes->block_global_oldest_active_until_commit == false)
     {
       /* do not allow to advance with vacuum_Global_oldest_active_mvccid */
-      ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 1);
+      ATOMIC_INC_32 (&vacuum_Global_oldest_visible_blockers_counter, 1);
       tdes->block_global_oldest_active_until_commit = true;
     }
   else
     {
-      assert (vacuum_Global_oldest_active_blockers_counter > 0);
+      assert (vacuum_Global_oldest_visible_blockers_counter > 0);
     }
 
   /* Can't use vacuum_Global_oldest_active_mvccid here. That's because we want to avoid scenarios where VACUUM compute
    * oldest active mvccid, but didn't set yet vacuum_Global_oldest_active_mvccid, current transaction uses the old
    * value of vacuum_Global_oldest_active_mvccid, then VACUUM uses updated value of vacuum_Global_oldest_active_mvccid.
    * In such scenario, VACUUM can remove heap records that can't be removed by the current thread. */
-  threshold_mvccid = logtb_get_oldest_active_mvccid (thread_p);
+  threshold_mvccid = logtb_get_oldest_visible_mvccid (thread_p);
 
   /* VACUUM all cleanable heap objects before upgrading the domain */
   error = heap_vacuum_all_objects (thread_p, &upd_scancache, threshold_mvccid);
@@ -12647,7 +12649,7 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 
   PGBUF_INIT_WATCHER (&old_page_watcher, PGBUF_ORDERED_RANK_UNDEFINED, PGBUF_ORDERED_NULL_HFID);
 
-  error = heap_get_hfid_from_class_oid (thread_p, class_oid, &class_hfid);
+  error = heap_get_class_info (thread_p, class_oid, &class_hfid, NULL, NULL);
   if (error != NO_ERROR || HFID_IS_NULL (&class_hfid))
     {
       error = ER_FAILED;
@@ -12680,7 +12682,7 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 	  goto exit;
 	}
 
-      error = heap_get_hfid_from_class_oid (thread_p, &oid_list[i], &hfid);
+      error = heap_get_class_info (thread_p, &oid_list[i], &hfid, NULL, NULL);
       if (error != NO_ERROR || HFID_IS_NULL (&hfid))
 	{
 	  error = ER_FAILED;
@@ -12699,12 +12701,12 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
       if (tdes->block_global_oldest_active_until_commit == false)
 	{
 	  /* do not allow to advance with vacuum_Global_oldest_active_mvccid */
-	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 1);
+	  ATOMIC_INC_32 (&vacuum_Global_oldest_visible_blockers_counter, 1);
 	  tdes->block_global_oldest_active_until_commit = true;
 	}
       else
 	{
-	  assert (vacuum_Global_oldest_active_blockers_counter > 0);
+	  assert (vacuum_Global_oldest_visible_blockers_counter > 0);
 	}
 
       if (threshold_mvccid == MVCCID_NULL)
@@ -12714,7 +12716,7 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 	   * uses the old value of vacuum_Global_oldest_active_mvccid, then VACUUM uses updated value of
 	   * vacuum_Global_oldest_active_mvccid.
 	   * In such scenario, VACUUM can remove heap records that can't be removed by the current thread. */
-	  threshold_mvccid = logtb_get_oldest_active_mvccid (thread_p);
+	  threshold_mvccid = logtb_get_oldest_visible_mvccid (thread_p);
 	}
 
       /* VACUUM all cleanable heap objects before upgrading the domain */
@@ -12805,7 +12807,7 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 	      error =
 		locator_insert_force (thread_p, &class_hfid, &cls_oid, &oid, &recdes, true, SINGLE_ROW_INSERT,
 				      &parent_scan_cache, &force_count, DB_PARTITIONED_CLASS, &pcontext, NULL,
-				      UPDATE_INPLACE_OLD_MVCCID, NULL, false);
+				      UPDATE_INPLACE_OLD_MVCCID, NULL, false, false);
 	      if (error != NO_ERROR)
 		{
 		  goto exit;
@@ -13728,7 +13730,7 @@ int
 locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 			    const std::vector<record_descriptor> &recdes, int has_index, int op_type,
 			    HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type, PRUNING_CONTEXT * pcontext,
-			    FUNC_PRED_UNPACK_INFO * func_preds, UPDATE_INPLACE_STYLE force_in_place)
+			    FUNC_PRED_UNPACK_INFO * func_preds, UPDATE_INPLACE_STYLE force_in_place, bool dont_check_fk)
 {
   int error_code = NO_ERROR;
   size_t accumulated_records_size = 0;
@@ -13763,7 +13765,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	  // We insert other records normally.
 	  error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, &local_record, has_index,
 					     op_type, scan_cache, force_count, pruning_type, pcontext, func_preds,
-					     force_in_place, NULL, has_BU_lock, false);
+					     force_in_place, NULL, has_BU_lock, dont_check_fk, false);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -13793,7 +13795,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 		{
 		  error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, &recdes_array[j], has_index,
 						     op_type, scan_cache, force_count, pruning_type, pcontext,
-						     func_preds, force_in_place, &home_hint_p, has_BU_lock, true);
+						     func_preds, force_in_place, &home_hint_p, has_BU_lock, dont_check_fk, true);
 		  if (error_code != NO_ERROR)
 		    {
 		      pgbuf_ordered_unfix_and_init (thread_p, home_hint_p.pgptr, &home_hint_p);
@@ -13835,7 +13837,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
       scan_cache->cache_last_fix_page = false;
       error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, &recdes_array[i], has_index, op_type,
 					 scan_cache, force_count, pruning_type, pcontext, func_preds, force_in_place,
-					 NULL, has_BU_lock, false);
+					 NULL, has_BU_lock, dont_check_fk, false);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

@@ -29,6 +29,7 @@
 #include "string_buffer.hpp"
 #include "vacuum.h"
 
+#include <cstring>  // for std::strcpy
 //
 // TODO: Create a "transaction transient" abstract interface and split this into multiple files
 //

@@ -24,6 +24,7 @@
 #include "load_server_loader.hpp"
 
 #include "btree.h"
+#include "dbtype.h"
 #include "load_class_registry.hpp"
 #include "load_db_value_converter.hpp"
 #include "load_driver.hpp"
@@ -36,6 +37,8 @@
 #include "string_opfunc.h"
 #include "thread_manager.hpp"
 #include "xserver_interface.h"
+
+#include <cstring>
 
 namespace cubload
 {
@@ -138,7 +141,7 @@ namespace cubload
 	return;
       }
 
-    heap_scancache_quick_start_with_class_oid (&thread_ref, &scancache, &class_oid);
+    heap_scancache_quick_start_root_hfid (&thread_ref, &scancache);
     SCAN_CODE scan_code = heap_get_class_record (&thread_ref, &class_oid, &recdes, &scancache, PEEK);
     if (scan_code != S_SUCCESS)
       {
@@ -412,7 +415,7 @@ namespace cubload
 
     int error_code = locator_multi_insert_force (m_thread_ref, &m_scancache.node.hfid, &m_scancache.node.class_oid,
 		     m_recdes_collected, true, op_type, &m_scancache, &force_count, pruning_type, NULL, NULL,
-		     UPDATE_INPLACE_NONE);
+		     UPDATE_INPLACE_NONE, true);
     if (error_code != NO_ERROR)
       {
 	ASSERT_ERROR ();
@@ -656,7 +659,7 @@ namespace cubload
   {
     hfid hfid;
 
-    int error_code = heap_get_hfid_from_class_oid (m_thread_ref, &class_oid, &hfid);
+    int error_code = heap_get_class_info (m_thread_ref, &class_oid, &hfid, NULL, NULL);
     if (error_code != NO_ERROR)
       {
 	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
