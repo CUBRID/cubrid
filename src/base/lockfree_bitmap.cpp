@@ -49,9 +49,9 @@ namespace lockfree
   }
 
   void
-  bitmap::init (chunking_style style, int entries_count, float usage_ratio)
+  bitmap::init (chunking_style style_arg, int entries_count_arg, float usage_ratio_arg)
   {
-    lf_bitmap_init (this, style, entry_count, usage_ratio);
+    lf_bitmap_init (this, style_arg, entries_count_arg, usage_ratio_arg);
   }
 
   void
