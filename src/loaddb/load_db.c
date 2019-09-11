@@ -187,28 +187,32 @@ ldr_check_file (std::string & file_name, int &error_code)
 static int
 ldr_get_start_line_no (std::string & file_name)
 {
+  // default start from line no 1
+  int line_no = 1;
+
   if (!file_name.empty ())
     {
-      const char *p = strchr (file_name.c_str (), ':');
-      if (p != NULL)
+      std::string::size_type p = file_name.find (':');
+      if (p != std::string::npos)
 	{
-	  const char *q;
-	  for (q = p + 1; *q; q++)
+	  std::string::size_type q = p + 1;
+	  for (; q != std::string::npos; ++q)
 	    {
-	      if (!char_isdigit (*q))
+	      if (!char_isdigit (file_name[q]))
 		{
 		  break;
 		}
 	    }
-	  if (*q == 0)
+	  if (file_name[q] == 0)
 	    {
-	      return atoi (p + 1);
+	      line_no = std::stoi (file_name.substr (p + 1));
+	      // remove line no from file name
+	      file_name.resize (p);
 	    }
 	}
     }
 
-  // default start from line no 1
-  return 1;
+  return line_no;
 }
 
 static char *
