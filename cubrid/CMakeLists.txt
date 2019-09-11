@@ -89,6 +89,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/language_support.c
   ${BASE_DIR}/locale_support.c
   ${BASE_DIR}/lock_free.c
+  ${BASE_DIR}/lockfree_transaction.cpp
   ${BASE_DIR}/md5.c
   ${BASE_DIR}/mem_block.cpp
   ${BASE_DIR}/memory_alloc.c
@@ -126,6 +127,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
+  ${BASE_DIR}/lockfree_transaction.hpp
   ${BASE_DIR}/mem_block.hpp
   ${BASE_DIR}/memory_reference_store.hpp
   ${BASE_DIR}/memory_private_allocator.hpp
