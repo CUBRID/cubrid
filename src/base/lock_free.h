@@ -173,7 +173,7 @@ struct lf_tran_system
 };
 
 #define LF_TRAN_SYSTEM_INITIALIZER \
-  { NULL, 0, {NULL, 0, 0, LF_BITMAP_ONE_CHUNK, 1.0f, 0}, 0, 0, 100, 0, NULL }
+  { NULL, 0, {}, 0, 0, 100, 0, NULL }
 
 #define LF_TRAN_CLEANUP_NECESSARY(e) ((e)->tran_system->min_active_transaction_id > (e)->last_cleanup_id)
 
