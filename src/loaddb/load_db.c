@@ -205,7 +205,15 @@ ldr_get_start_line_no (std::string & file_name)
 	    }
 	  if (file_name[q] == 0)
 	    {
-	      line_no = std::stoi (file_name.substr (p + 1));
+	      try
+	      {
+		line_no = std::stoi (file_name.substr (p + 1));
+	      }
+	      catch (...)
+	      {
+		// parse failed, fallback to default value
+	      }
+
 	      // remove line no from file name
 	      file_name.resize (p);
 	    }
