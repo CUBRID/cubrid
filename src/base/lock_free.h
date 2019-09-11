@@ -145,51 +145,6 @@ struct lf_tran_entry
 
 #define LF_TRAN_ENTRY_INITIALIZER     { 0, LF_NULL_TRANSACTION_ID, NULL, NULL, NULL, -1, false }
 
-enum lf_bitmap_style
-{
-  LF_BITMAP_ONE_CHUNK = 0,
-  LF_BITMAP_LIST_OF_CHUNKS
-};
-typedef enum lf_bitmap_style LF_BITMAP_STYLE;
-
-typedef struct lf_bitmap LF_BITMAP;
-struct lf_bitmap
-{
-  /* bitfield for entries array */
-  unsigned int *bitfield;
-
-  /* capacity count */
-  int entry_count;
-
-  /* current used count */
-  int entry_count_in_use;
-
-  /* style */
-  LF_BITMAP_STYLE style;
-
-  /* threshold for usage */
-  float usage_threshold;
-
-  /* the start chunk index for round-robin */
-  unsigned int start_idx;
-};
-
-#define LF_BITMAP_FULL_USAGE_RATIO (1.0f)
-#define LF_BITMAP_95PERCENTILE_USAGE_RATIO (0.95f)
-
-#if defined (SERVER_MODE)
-#define LF_AREA_BITMAP_USAGE_RATIO LF_BITMAP_95PERCENTILE_USAGE_RATIO
-#else
-#define LF_AREA_BITMAP_USAGE_RATIO LF_BITMAP_FULL_USAGE_RATIO
-#endif
-
-#define LF_BITMAP_IS_FULL(bitmap)                              \
-  (((float)VOLATILE_ACCESS((bitmap)->entry_count_in_use, int)) \
-        / (bitmap)->entry_count >= (bitmap)->usage_threshold)
-
-#define LF_BITMAP_COUNT_ALIGN(count) \
-    (((count) + (LF_BITFIELD_WORD_SIZE) - 1) & ~((LF_BITFIELD_WORD_SIZE) - 1))
-
 struct lf_tran_system
 {
   /* pointer array to thread dtran entries */
@@ -226,7 +181,7 @@ extern int lf_tran_system_init (LF_TRAN_SYSTEM * sys, int max_threads);
 extern void lf_tran_system_destroy (LF_TRAN_SYSTEM * sys);
 
 extern LF_TRAN_ENTRY *lf_tran_request_entry (LF_TRAN_SYSTEM * sys);
-extern int lf_tran_return_entry (LF_TRAN_ENTRY * entry);
+extern void lf_tran_return_entry (LF_TRAN_ENTRY * entry);
 extern void lf_tran_destroy_entry (LF_TRAN_ENTRY * entry);
 extern void lf_tran_compute_minimum_transaction_id (LF_TRAN_SYSTEM * sys);
 
@@ -393,12 +348,6 @@ struct lf_hash_table_iterator
 extern void lf_hash_create_iterator (LF_HASH_TABLE_ITERATOR * iterator, LF_TRAN_ENTRY * tran_entry,
 				     LF_HASH_TABLE * table);
 extern void *lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it);
-
-/* lock free bitmap */
-extern int lf_bitmap_init (LF_BITMAP * bitmap, LF_BITMAP_STYLE style, int entries_cnt, float usage_threshold);
-extern void lf_bitmap_destroy (LF_BITMAP * bitmap);
-extern int lf_bitmap_get_entry (LF_BITMAP * bitmap);
-extern int lf_bitmap_free_entry (LF_BITMAP * bitmap, int entry_idx);
 
 #if defined (UNITTEST_LF)
 extern void lf_reset_counters (void);
