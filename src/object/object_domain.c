@@ -35,6 +35,7 @@
 #include <errno.h>
 #include <assert.h>
 
+#include "area_alloc.h"
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "numeric_opfunc.h"
