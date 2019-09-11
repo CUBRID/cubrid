@@ -257,10 +257,7 @@ test_freelist_proc (void *param)
       lf_tran_end_with_mb (te);
     }
 
-  if (lf_tran_return_entry (te) != NO_ERROR)
-    {
-      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
-    }
+  lf_tran_return_entry (te);
 
   pthread_exit (NO_ERROR);
 
@@ -306,10 +303,7 @@ test_freelist_proc_local_tran (void *param)
 	}
     }
 
-  if (lf_tran_return_entry (te) != NO_ERROR)
-    {
-      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
-    }
+  lf_tran_return_entry (te);
 
   pthread_exit (NO_ERROR);
 
