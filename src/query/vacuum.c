@@ -7873,6 +7873,7 @@ vacuum_data::set_oldest_unvacuumed_on_boot ()
       else
         {
           oldest_unvacuumed_mvccid = log_Gl.hdr.mvcc_next_id;
+          log_Gl.hdr.oldest_visible_mvccid = log_Gl.hdr.mvcc_next_id;
         }
     }
   else
