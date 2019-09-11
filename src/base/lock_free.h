@@ -24,8 +24,9 @@
 #ifndef _LOCK_FREE_H_
 #define _LOCK_FREE_H_
 
-#include "porting.h"
 #include "dbtype_def.h"
+#include "lockfree_bitmap.hpp"
+#include "porting.h"
 
 /*
  * Some common hash, copy and compare functions
@@ -108,7 +109,6 @@ struct lf_entry_descriptor
  * Lock free transaction based memory garbage collector
  */
 #define LF_NULL_TRANSACTION_ID	      ULONG_MAX
-#define LF_BITFIELD_WORD_SIZE    (int) (sizeof (unsigned int) * 8)
 
 typedef struct lf_tran_system LF_TRAN_SYSTEM;
 typedef struct lf_tran_entry LF_TRAN_ENTRY;
