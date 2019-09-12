@@ -226,7 +226,7 @@ extern int lf_tran_system_init (LF_TRAN_SYSTEM * sys, int max_threads);
 extern void lf_tran_system_destroy (LF_TRAN_SYSTEM * sys);
 
 extern LF_TRAN_ENTRY *lf_tran_request_entry (LF_TRAN_SYSTEM * sys);
-extern int lf_tran_return_entry (LF_TRAN_ENTRY * entry);
+extern void lf_tran_return_entry (LF_TRAN_ENTRY * entry);
 extern void lf_tran_destroy_entry (LF_TRAN_ENTRY * entry);
 extern void lf_tran_compute_minimum_transaction_id (LF_TRAN_SYSTEM * sys);
 
@@ -398,7 +398,7 @@ extern void *lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it);
 extern int lf_bitmap_init (LF_BITMAP * bitmap, LF_BITMAP_STYLE style, int entries_cnt, float usage_threshold);
 extern void lf_bitmap_destroy (LF_BITMAP * bitmap);
 extern int lf_bitmap_get_entry (LF_BITMAP * bitmap);
-extern int lf_bitmap_free_entry (LF_BITMAP * bitmap, int entry_idx);
+extern void lf_bitmap_free_entry (LF_BITMAP * bitmap, int entry_idx);
 
 #if defined (UNITTEST_LF)
 extern void lf_reset_counters (void);

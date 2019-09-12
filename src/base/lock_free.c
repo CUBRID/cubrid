@@ -314,11 +314,10 @@ lf_tran_request_entry (LF_TRAN_SYSTEM * sys)
  *
  * NOTE: Only entries requested from this system should be returned.
  */
-int
+void
 lf_tran_return_entry (LF_TRAN_ENTRY * entry)
 {
   LF_TRAN_SYSTEM *sys;
-  int error = NO_ERROR;
 
   assert (entry != NULL);
   assert (entry->entry_idx >= 0);
@@ -329,17 +328,10 @@ lf_tran_return_entry (LF_TRAN_ENTRY * entry)
   sys = entry->tran_system;
 
   /* clear bitfield so slot may be reused */
-  error = lf_bitmap_free_entry (&sys->lf_bitmap, entry->entry_idx);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
+  lf_bitmap_free_entry (&sys->lf_bitmap, entry->entry_idx);
 
   /* decrement use counter */
   ATOMIC_INC_32 (&sys->used_entry_count, -1);
-
-  /* all ok */
-  return NO_ERROR;
 }
 
 /*
@@ -2678,7 +2670,7 @@ restart:			/* wait-free process */
  *
  * NOTE: Only entries requested from this system should be returned.
  */
-int
+void
 lf_bitmap_free_entry (LF_BITMAP * bitmap, int entry_idx)
 {
   unsigned int mask, inverse_mask, curr;
@@ -2701,10 +2693,8 @@ lf_bitmap_free_entry (LF_BITMAP * bitmap, int entry_idx)
 
       if (!(curr & inverse_mask))
 	{
-	  /* free unused memory or double free */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LF_BITMAP_INVALID_FREE, 0);
 	  assert (false);
-	  return ER_LF_BITMAP_INVALID_FREE;
+	  return;
 	}
     }
   while (!ATOMIC_CAS_32 (&bitmap->bitfield[pos], curr, curr & mask));
@@ -2717,8 +2707,6 @@ lf_bitmap_free_entry (LF_BITMAP * bitmap, int entry_idx)
 #if !defined (SERVER_MODE)
   bitmap->start_idx = pos;	/* hint for a free slot */
 #endif
-
-  return NO_ERROR;
 }
 
 #if defined (UNITTEST_LF)
