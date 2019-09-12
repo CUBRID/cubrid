@@ -118,6 +118,12 @@ namespace cubload
 	return;
       }
 
+    // Check if we have to ignore this class.
+    if (is_class_ignored (class_name))
+      {
+	return;
+      }
+
     if (locate_class (class_name, class_oid) != LC_CLASSNAME_EXIST)
       {
 	if (is_syntax_check_only)
@@ -252,6 +258,17 @@ namespace cubload
 	break;
       }
     assert (*n_attributes >= 0);
+  }
+
+  bool
+  server_class_installer::is_class_ignored (const char *classname)
+  {
+    std::vector<std::string> classes_ignored = m_session.get_args ().ignore_classes;
+    std::string class_name (classname);
+
+    auto result = std::find (classes_ignored.begin (), classes_ignored.end (), class_name);
+
+    return (result != classes_ignored.end ());
   }
 
   server_object_loader::server_object_loader (session &session, error_handler &error_handler)
