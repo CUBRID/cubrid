@@ -2471,7 +2471,6 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
   return it->curr;
 }
 
-return ER_LF_BITMAP_INVALID_FREE;
 #if defined (UNITTEST_LF)
 /*
  * lf_reset_counters () - Reset all counters.
