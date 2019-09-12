@@ -74,6 +74,17 @@ static AREA *area_List = NULL;
 pthread_mutex_t area_List_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
+#if defined (SERVER_MODE)
+#define LF_AREA_BITMAP_USAGE_RATIO LF_BITMAP_95PERCENTILE_USAGE_RATIO
+#else
+#define LF_AREA_BITMAP_USAGE_RATIO LF_BITMAP_FULL_USAGE_RATIO
+#endif
+
+/*
+ * Volatile access to a variable
+ */
+#define VOLATILE_ACCESS(v,t)		(*((t volatile *) &(v)))
+
 static void area_info (AREA * area, FILE * fp);
 static AREA_BLOCK *area_alloc_block (AREA * area);
 static AREA_BLOCKSET_LIST *area_alloc_blockset (AREA * area);
@@ -297,21 +308,12 @@ area_alloc_block (AREA * area)
       return NULL;
     }
 
-  if (lf_bitmap_init (&new_block->bitmap, LF_BITMAP_LIST_OF_CHUNKS, (int) area->alloc_count, LF_AREA_BITMAP_USAGE_RATIO)
-      != NO_ERROR)
-    {
-      goto error;
-    }
+  new_block->bitmap.init (LF_BITMAP_LIST_OF_CHUNKS, (int) area->alloc_count, LF_AREA_BITMAP_USAGE_RATIO);
   assert ((int) area->alloc_count == new_block->bitmap.entry_count);
 
   new_block->data = ((char *) new_block) + sizeof (AREA_BLOCK);
 
   return new_block;
-
-error:
-  free_and_init (new_block);
-
-  return NULL;
 }
 
 /*
@@ -371,7 +373,7 @@ area_alloc (AREA * area)
 
   /* Step 1: find a free entry from the hint block */
   hint_block = VOLATILE_ACCESS (area->hint_block, AREA_BLOCK *);
-  entry_idx = lf_bitmap_get_entry (&hint_block->bitmap);
+  entry_idx = hint_block->bitmap.get_entry ();
   if (entry_idx != -1)
     {
       block = hint_block;
@@ -387,7 +389,7 @@ area_alloc (AREA * area)
 	{
 	  block = VOLATILE_ACCESS (blockset->items[i], AREA_BLOCK *);
 
-	  entry_idx = lf_bitmap_get_entry (&block->bitmap);
+	  entry_idx = block->bitmap.get_entry ();
 	  if (entry_idx != -1)
 	    {
 	      /* change the hint block */
@@ -411,7 +413,7 @@ area_alloc (AREA * area)
     {
       /* someone may change the hint block */
       block = area->hint_block;
-      entry_idx = lf_bitmap_get_entry (&block->bitmap);
+      entry_idx = block->bitmap.get_entry ();
       if (entry_idx != -1)
 	{
 	  pthread_mutex_unlock (&area->area_mutex);
@@ -428,12 +430,12 @@ area_alloc (AREA * area)
     }
 
   /* alloc free entry from this new block */
-  entry_idx = lf_bitmap_get_entry (&block->bitmap);
+  entry_idx = block->bitmap.get_entry ();
   assert (entry_idx != -1);
 
   if (area_insert_block (area, block) != NO_ERROR)
     {
-      lf_bitmap_destroy (&block->bitmap);
+      block->bitmap.destroy ();
       free_and_init (block);
 
       pthread_mutex_unlock (&area->area_mutex);
@@ -512,7 +514,7 @@ area_free (AREA * area, void *ptr)
 {
   AREA_BLOCK *block, *hint_block;
   char *entry_ptr;
-  int error, entry_idx;
+  int entry_idx;
   int offset = -1;
 #if !defined (NDEBUG)
   int *prefix;
@@ -564,7 +566,7 @@ area_free (AREA * area, void *ptr)
 
   assert (entry_idx >= 0 && entry_idx < (int) area->alloc_count);
 
-  lf_bitmap_free_entry (&block->bitmap, entry_idx);
+  block->bitmap.free_entry (entry_idx);
 
   /* change hint block if needed */
   hint_block = VOLATILE_ACCESS (area->hint_block, AREA_BLOCK *);
@@ -607,7 +609,7 @@ area_flush (AREA * area)
 	{
 	  block = blockset->items[i];
 
-	  lf_bitmap_destroy (&block->bitmap);
+	  block->bitmap.destroy ();
 	  free_and_init (block);
 	  blockset->items[i] = NULL;
 	}
