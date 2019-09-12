@@ -568,8 +568,12 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       int retval = args.parse_ignore_class_file ();
       if (retval < 0)
 	{
-	  status = 2;
-	  goto error_return;
+	  if (retval != ER_FILE_UNKNOWN_FILE)
+	    {
+	      // To keep compatibility we need to continue even though the ignore-classes file does not exist.            
+	      status = 2;
+	      goto error_return;
+	    }
 	}
     }
 
