@@ -28,10 +28,12 @@ namespace lockfree
   namespace tran
   {
     bitmap g_Tranmap;
+    size_t g_Tran_max_count;
 
     void
     initialize_system (size_t max_tran_count)
     {
+      g_Tran_max_count = max_tran_count;
       g_Tranmap.init (bitmap::ONE_CHUNK, static_cast<int> (max_tran_count), bitmap::FULL_USAGE_RATIO);
     }
 
@@ -63,6 +65,12 @@ namespace lockfree
 	}
       g_Tranmap.free_entry (static_cast<int> (idx));
       idx = INVALID_INDEX;
+    }
+
+    size_t
+    get_max_transaction_count ()
+    {
+      return g_Tran_max_count;
     }
   } // namespace tran
 } // namespace lockfree

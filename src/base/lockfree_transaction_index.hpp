@@ -38,6 +38,8 @@ namespace lockfree
 
     void initialize_system (size_t max_tran_count);
     void finalize_system ();
+    size_t get_max_transaction_count ();
+
     index assign_index ();
     void free_index (index &idx);
   }
