@@ -138,6 +138,7 @@ namespace cubthread
 		       PGBUF_TRACK_RES_NAME, PGBUF_TRACK_MAX_AMOUNT))
     , m_csect_tracker (*new cubsync::critical_section_tracker (ENABLE_TRACKERS))
     , m_systdes (NULL)
+    , m_lf_tran_index (lockfree::tran::INVALID_INDEX)
   {
     if (pthread_mutex_init (&tran_index_lock, NULL) != 0)
       {
@@ -209,6 +210,7 @@ namespace cubthread
     tran_entries[THREAD_TS_XCACHE] = lf_tran_request_entry (&xcache_Ts);
     tran_entries[THREAD_TS_FPCACHE] = lf_tran_request_entry (&fpcache_Ts);
     tran_entries[THREAD_TS_DWB_SLOTS] = lf_tran_request_entry (&dwb_slots_Ts);
+    m_lf_tran_index = lockfree::tran::assign_index ();
   }
 
   void
@@ -326,6 +328,7 @@ namespace cubthread
 	    tran_entries[i] = NULL;
 	  }
       }
+    lockfree::tran::free_index (m_lf_tran_index);
   }
 
   void

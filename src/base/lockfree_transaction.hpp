@@ -51,8 +51,8 @@ namespace lockfree
   {
     using id = std::uint64_t;
     // T is item template
-    template<typename T> class desc {};
-    template<typename T> class table {};
+    template<class T> class desc {};
+    template<class T> class table {};
   }
 } // namespace lockfree
 

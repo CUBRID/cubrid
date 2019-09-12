@@ -37,14 +37,9 @@ namespace lockfree
     static const index INVALID_INDEX = std::numeric_limits<index>::max ();
 
     void initialize_system (size_t max_tran_count);
-    void free_system ();
+    void finalize_system ();
     index assign_index ();
     void free_index (index &idx);
-
-    using id = std::uint64_t;
-    // T is item template
-    template<typename T> class desc {};
-    template<typename T> class table {};
   }
 } // namespace lockfree
 
