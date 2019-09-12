@@ -17,15 +17,35 @@
  *
  */
 
-#include "lockfree_transaction.hpp"
+//
+// lockfree_transaction_index.hpp - lock-free transaction index management. see lockfree_transaction.hpp
+//    description comment for more details
+//
 
-#include "lockfree_bitmap.hpp"
+#ifndef _LOCKFREE_TRANSACTION_INDEX_HPP_
+#define _LOCKFREE_TRANSACTION_INDEX_HPP_
 
-#include <cassert>
+#include <cstdint>
+#include <limits>
 
 namespace lockfree
 {
   namespace tran
   {
-  } // namespace tran
+    // transaction index
+    using index = size_t;
+    static const index INVALID_INDEX = std::numeric_limits<index>::max ();
+
+    void initialize_system (size_t max_tran_count);
+    void free_system ();
+    index assign_index ();
+    void free_index (index &idx);
+
+    using id = std::uint64_t;
+    // T is item template
+    template<typename T> class desc {};
+    template<typename T> class table {};
+  }
 } // namespace lockfree
+
+#endif // _LOCKFREE_TRANSACTION_INDEX_HPP_

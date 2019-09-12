@@ -43,22 +43,12 @@
 #ifndef _LOCKFREE_TRANSACTION_HPP_
 #define _LOCKFREE_TRANSACTION_HPP_
 
-#include <cstdint>
-#include <limits>
+#include "lockfree_transaction_index.hpp"
 
 namespace lockfree
 {
   namespace tran
   {
-    // transaction index
-    using index = size_t;
-    static const index INVALID_INDEX = std::numeric_limits<index>::max ();
-
-    void initialize_system (size_t max_tran_count);
-    void free_system ();
-    index assign_index ();
-    void free_index (index &idx);
-
     using id = std::uint64_t;
     // T is item template
     template<typename T> class desc {};

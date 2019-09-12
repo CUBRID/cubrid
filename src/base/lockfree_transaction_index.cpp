@@ -17,7 +17,7 @@
  *
  */
 
-#include "lockfree_transaction.hpp"
+#include "lockfree_transaction_index.hpp"
 
 #include "lockfree_bitmap.hpp"
 
@@ -27,5 +27,42 @@ namespace lockfree
 {
   namespace tran
   {
+    bitmap g_Tranmap;
+
+    void
+    initialize_system (size_t max_tran_count)
+    {
+      g_Tranmap.init (bitmap::ONE_CHUNK, static_cast<int> (max_tran_count), bitmap::FULL_USAGE_RATIO);
+    }
+
+    void
+    finalize_system ()
+    {
+      g_Tranmap.destroy ();
+    }
+
+    index
+    assign_index ()
+    {
+      int ret = g_Tranmap.get_entry ();
+      if (ret < 0)
+	{
+	  assert (false);
+	  return INVALID_INDEX;
+	}
+      return static_cast<index> (ret);
+    }
+
+    void
+    free_index (index &idx)
+    {
+      if (idx == INVALID_INDEX)
+	{
+	  assert (false);
+	  return;
+	}
+      g_Tranmap.free_entry (static_cast<int> (idx));
+      idx = INVALID_INDEX;
+    }
   } // namespace tran
 } // namespace lockfree
