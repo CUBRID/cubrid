@@ -256,7 +256,11 @@ restart:			/* wait-free process */
 	/* clear slot */
 	curr = bitmap->bitfield[pos].load ();
 
-	assert ((curr & inverse_mask) != 0);
+	if (! (curr & inverse_mask))
+	  {
+	    assert (false);
+	    return;
+	  }
       }
     while (!bitmap->bitfield[pos].compare_exchange_strong (curr, curr & mask));
 
