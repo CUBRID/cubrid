@@ -634,8 +634,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   if (args.load_only)
     {
       /* This is the default behavior. It is changed from the old one so we notify the user. */
-      print_log_msg (1, "\n--load-only is deprecated. To check the object file \
-                         for any syntax errors use --data-file-check-only.\n");
+      print_log_msg (1, "\n--load-only is deprecated. To check the object file for any syntax errors");
+      print_log_msg (1, " use --data-file-check-only.\n");
     }
 
   /* if schema file is specified, do schema loading */
