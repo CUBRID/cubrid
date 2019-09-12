@@ -324,7 +324,7 @@ lf_tran_return_entry (LF_TRAN_ENTRY * entry)
   sys = entry->tran_system;
 
   /* clear bitfield so slot may be reused */
-  sys->lf_bitmap.free_entry (entry->entry_idx);
+  lf_bitmap_free_entry (&sys->lf_bitmap, entry->entry_idx);
 
   /* decrement use counter */
   ATOMIC_INC_32 (&sys->used_entry_count, -1);
@@ -2471,6 +2471,7 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
   return it->curr;
 }
 
+return ER_LF_BITMAP_INVALID_FREE;
 #if defined (UNITTEST_LF)
 /*
  * lf_reset_counters () - Reset all counters.
