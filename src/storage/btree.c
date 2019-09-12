@@ -35085,7 +35085,5 @@ btree_check_locking_for_insert_unique (THREAD_ENTRY * thread_p, const BTREE_INSE
       return true;
     }
 
-
-
   return false;
 }
