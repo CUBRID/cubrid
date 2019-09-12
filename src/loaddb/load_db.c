@@ -697,19 +697,23 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       schema_file = NULL;
     }
 
-  if (args.syntax_check)
+  if (!args.object_file.empty ())
     {
-      print_log_msg (1, "\nStart object syntax checking.\n");
-    }
-  else
-    {
-      print_log_msg (1, "\nStart object loading.\n");
-    }
+      if (args.syntax_check)
+	{
+	  print_log_msg (1, "\nStart object syntax checking.\n");
+	}
+      else
+	{
+	  print_log_msg (1, "\nStart object loading.\n");
+	}
+
 #if defined (SA_MODE)
-  ldr_sa_load (&args, &status, &interrupted);
+      ldr_sa_load (&args, &status, &interrupted);
 #else // !SA_MODE = CS_MODE
-  ldr_server_load (&args, &status, &interrupted);
+      ldr_server_load (&args, &status, &interrupted);
 #endif // !SA_MODE = CS_MODE
+    }
 
   /* if index file is specified, do index creation */
   if (!interrupted && index_file != NULL)
