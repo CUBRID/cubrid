@@ -35062,11 +35062,18 @@ btree_has_correct_locks (THREAD_ENTRY * thread_p, const BTREE_INSERT_HELPER * in
   int has_class_lock, has_instance_lock;
   int tran_index = logtb_get_current_tran_index ();
 
+  /*  The insert operation in index has to check if the object is currently inserting is locked by the transaction.
+   *  However, after the introduction of the BU_LOCK this is no longer valid. For this case, the inserter should
+   *  make sure that he has a BU_LOCK on the class he is inserting into.
+   */
+
   has_instance_lock = lock_has_lock_on_object (BTREE_INSERT_OID (insert_helper), BTREE_INSERT_CLASS_OID (insert_helper),
 					       tran_index, X_LOCK);
   has_class_lock = lock_has_lock_on_object (BTREE_INSERT_CLASS_OID (insert_helper), oid_Root_class_oid,
 					    tran_index, BU_LOCK);
 
+  // Now in order to correctly insert into the b-tree the transaction should either have and X_LOCK on the object,
+  // or a BU_LOCK on the class.
   if (has_instance_lock > 0 || has_class_lock > 0)
     {
       return true;
