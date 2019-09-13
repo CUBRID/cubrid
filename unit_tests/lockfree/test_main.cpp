@@ -19,9 +19,38 @@
 
 #include "test_cqueue_functional.hpp"
 
+#include <string>
+#include <vector>
+
 int
-main (int, char **)
+main (int argc, char **argv)
 {
-  int err = test_lockfree::test_cqueue_functional ();
-  return 0;
+  size_t opt = 0;
+  std::vector<std::string> option_map =
+  {
+    "all",
+    "cqueue",
+    "freelist"
+  };
+  if (argc == 1)
+    {
+      for (size_t i = 0; i < option_map.size (); i++)
+	{
+	  if (option_map[i] == argv[0])
+	    {
+	      opt = i;
+	    }
+	}
+    }
+  int err = 0;
+  if (opt == 0 || opt == 1)
+    {
+      err = err | test_lockfree::test_cqueue_functional ();
+    }
+  if (opt == 0 || opt == 2)
+    {
+      // todo: lockfree
+    }
+
+  return err;
 }
