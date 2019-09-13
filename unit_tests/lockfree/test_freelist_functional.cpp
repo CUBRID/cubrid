@@ -137,8 +137,6 @@ namespace test_lockfree
 	  }
       }
 
-    lffl.retire_list (my_list);
-
     f_on_finish (my_list);
   }
 
