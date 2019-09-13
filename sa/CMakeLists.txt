@@ -136,6 +136,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
   ${BASE_DIR}/lockfree_bitmap.hpp
+  ${BASE_DIR}/lockfree_freelist.hpp
   ${BASE_DIR}/mem_block.hpp
   ${BASE_DIR}/memory_private_allocator.cpp
   ${BASE_DIR}/msgcat_set_log.hpp
