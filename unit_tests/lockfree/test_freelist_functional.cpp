@@ -31,7 +31,7 @@
 
 using namespace lockfree;
 
-namespace test_freelist
+namespace test_lockfree
 {
   struct my_item
   {
