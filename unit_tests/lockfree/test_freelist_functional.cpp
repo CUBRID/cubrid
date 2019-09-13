@@ -19,6 +19,9 @@
 
 #include "test_freelist_functional.hpp"
 
+#include "test_output.hpp"
+#include "test_debug.hpp"
+
 #include "lockfree_freelist.hpp"
 
 #include <cassert>
@@ -57,6 +60,10 @@ namespace test_lockfree
       void init (my_item &t);
       void uninit (my_item &t);
 
+      size_t get_alloc_count () const;
+      size_t get_init_count () const;
+      size_t get_uninit_count () const;
+
     private:
       std::atomic<size_t> m_alloc_count;
       std::atomic<size_t> m_init_count;
@@ -64,7 +71,7 @@ namespace test_lockfree
   };
 
   static void run_job (my_freelist &lffl, size_t ops, size_t claim_weight, size_t retire_weight,
-		       size_t retire_all_weight, const std::function<void()> &f_on_finish);
+		       size_t retire_all_weight, const std::function<void (my_item *list)> &f_on_finish);
   static int run_test (size_t thread_count, size_t ops_per_thread, size_t claim_weight, size_t retire_weight,
 		       size_t retire_all_weight);
 
@@ -73,14 +80,25 @@ namespace test_lockfree
   {
     std::srand (std::time (nullptr));
 
+    test_common::sync_cout ("start test_freelist_functional\n");
+
     int err = run_test (4, 1000, 60, 39, 1);
+
+    if (err == 0)
+      {
+	test_common::sync_cout ("success test_freelist_functional\n");
+      }
+    else
+      {
+	test_common::sync_cout ("failed test_freelist_functional\n");
+      }
 
     return err;
   }
 
   void
   run_job (my_freelist &lffl, size_t ops, size_t claim_weight, size_t retire_weight, size_t retire_all_weight,
-	   const std::function<void()> &f_on_finish)
+	   const std::function<void (my_item *list)> &f_on_finish)
   {
     size_t random_var;
     size_t total_weight = claim_weight + retire_weight + retire_all_weight;
@@ -121,7 +139,7 @@ namespace test_lockfree
 
     lffl.retire_list (my_list);
 
-    f_on_finish ();
+    f_on_finish (my_list);
   }
 
   int
@@ -131,7 +149,6 @@ namespace test_lockfree
     my_factory l_factory;
     my_freelist l_freelist { l_factory, thread_count * 10, 1 };
 
-
     size_t l_finished_count = 0;
     auto l_finish_pred = [&thread_count, &l_finished_count] ()
     {
@@ -139,11 +156,25 @@ namespace test_lockfree
     };
     std::mutex l_finish_mutex;
     std::condition_variable l_finish_condvar;
-    auto l_finish_func = [&l_finished_count, &l_finish_mutex, &l_finish_condvar, &l_finish_pred] ()
+    my_item *l_remaining_head = NULL;
+    my_item *l_remaining_tail;
+
+    auto l_finish_func = [&] (my_item *list)
     {
       size_t count;
       std::unique_lock<std::mutex> ulock (l_finish_mutex);
       count = ++l_finished_count;
+      if (l_remaining_head == NULL)
+	{
+	  l_remaining_head = list;
+	}
+      if (l_remaining_tail != NULL)
+	{
+	  l_remaining_tail->get_freelist_link ().store (list);
+	}
+      for (l_remaining_tail = list; l_remaining_tail->get_freelist_link() != NULL;
+	   l_remaining_tail = l_remaining_head->get_freelist_link())
+	;
       ulock.unlock ();
       if (l_finish_pred ())
 	{
@@ -163,6 +194,23 @@ namespace test_lockfree
 
     std::unique_lock<std::mutex> ulock (l_finish_mutex);
     l_finish_condvar.wait (ulock, l_finish_pred);
+
+    // do checks
+    test_common::custom_assert (l_freelist.get_alloc_count () == l_factory.get_alloc_count ());
+
+    size_t list_count = 0;
+    for (my_item *iter = l_remaining_head; iter != NULL; iter = iter->get_freelist_link ())
+      {
+	list_count++;
+      }
+
+    size_t used_count = l_freelist.get_alloc_count () - l_freelist.get_available_count ();
+    test_common::custom_assert (used_count == list_count);
+    test_common::custom_assert (used_count == l_factory.get_init_count () - l_factory.get_uninit_count ());
+
+    l_freelist.retire_list (l_remaining_head);
+
+    test_common::custom_assert (l_freelist.get_alloc_count () == l_freelist.get_available_count ());
 
     return 0;
   }
@@ -208,5 +256,23 @@ namespace test_lockfree
       }
     m_uninit_count++;
     t.m_claimed = false;
+  }
+
+  size_t
+  my_factory::get_alloc_count () const
+  {
+    return m_alloc_count;
+  }
+
+  size_t
+  my_factory::get_init_count () const
+  {
+    return m_init_count;
+  }
+
+  size_t
+  my_factory::get_uninit_count () const
+  {
+    return m_uninit_count;
   }
 }
