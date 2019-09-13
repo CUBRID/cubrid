@@ -54,7 +54,7 @@ namespace test_lockfree
   class my_factory : public my_freelist::factory
   {
     public:
-      my_factory () = default;
+      my_factory ();
 
       my_item *alloc () override;
       void init (my_item &t);
@@ -225,6 +225,13 @@ namespace test_lockfree
   //
   // my_factory
   //
+  my_factory::my_factory ()
+    : m_alloc_count { 0 }
+    , m_init_count { 0 }
+    , m_uninit_count { 0 }
+  {
+  }
+
   my_item *
   my_factory::alloc ()
   {
