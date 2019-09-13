@@ -74,7 +74,7 @@ namespace lockfree
   // freelist
   //
   template <class T>
-  freelist<T>::freelist (factory &freelist_factory, size_t block_size, size_t initial_block_count)
+  freelist<T>::freelist (size_t block_size, size_t initial_block_count)
     : m_block_size (block_size)
     , m_available_list { NULL }
     , m_available_count { 0 }
@@ -176,7 +176,6 @@ namespace lockfree
     size_t list_size = 1;
     for (tail = head; tail->get_freelist_link () != NULL; tail = tail->get_freelist_link ())
       {
-	m_factory.uninit (*tail);
 	++list_size;
       }
     assert (tail != NULL);
