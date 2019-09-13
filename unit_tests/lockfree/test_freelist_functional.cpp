@@ -126,16 +126,21 @@ namespace test_lockfree
     my_factory l_factory;
     my_freelist l_freelist { l_factory, thread_count * 10, 1 };
 
+
     size_t l_finished_count = 0;
+    auto l_finish_pred = [&thread_count, &l_finished_count] ()
+    {
+      return thread_count == l_finished_count;
+    };
     std::mutex l_finish_mutex;
     std::condition_variable l_finish_condvar;
-    std::function<void ()> l_finish_func = [&thread_count, &l_finished_count, &l_finish_mutex, &l_finish_condvar] ()
+    auto l_finish_func = [&l_finished_count, &l_finish_mutex, &l_finish_condvar, &l_finish_pred] ()
     {
       size_t count;
       std::unique_lock<std::mutex> ulock (l_finish_mutex);
       count = ++l_finished_count;
       ulock.unlock ();
-      if (count == thread_count)
+      if (l_finish_pred ())
 	{
 	  l_finish_condvar.notify_all ();
 	}
@@ -152,10 +157,9 @@ namespace test_lockfree
       }
 
     std::unique_lock<std::mutex> ulock (l_finish_mutex);
-    l_finish_condvar.wait (ulock, [&thread_count, &l_finished_count] ()
-    {
-      return thread_count == l_finished_count;
-    });
+    l_finish_condvar.wait (ulock, l_finish_pred);
+
+    return 0;
   }
 
   //
