@@ -66,7 +66,7 @@ namespace lockfree
       std::atomic<size_t> m_available_count;
       std::atomic<size_t> m_alloc_count;
 
-      T *alloc_block ();
+      void alloc_block ();
       T *pop ();
       void push (T *head, T *tail);
   };
@@ -97,7 +97,7 @@ namespace lockfree
   }
 
   template <class T>
-  T *
+  void
   freelist<T>::alloc_block ()
   {
     T *block_head = NULL;
