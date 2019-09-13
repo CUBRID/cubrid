@@ -46,7 +46,7 @@ namespace lockfree
       };
 
       freelist () = delete;
-      freelist (factory<T> &freelist_factory, size_t block_size, size_t initial_block_count = 1);
+      freelist (factory &freelist_factory, size_t block_size, size_t initial_block_count = 1);
       ~freelist ();
 
       T *claim ();
@@ -56,7 +56,7 @@ namespace lockfree
       void retire_list (T *head);
 
     private:
-      factory<T> &m_factory;
+      factory &m_factory;
 
       size_t m_block_size;
 
@@ -78,7 +78,7 @@ namespace lockfree
   // freelist
   //
   template <class T>
-  freelist<T>::freelist (factory<T> &freelist_factory, size_t block_size, size_t initial_block_count)
+  freelist<T>::freelist (factory &freelist_factory, size_t block_size, size_t initial_block_count)
     : m_factory (freelist_factory)
     , m_block_size (block_size)
     , m_available_count (block_size * initial_block_count)
