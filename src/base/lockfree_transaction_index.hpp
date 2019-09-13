@@ -25,6 +25,7 @@
 #ifndef _LOCKFREE_TRANSACTION_INDEX_HPP_
 #define _LOCKFREE_TRANSACTION_INDEX_HPP_
 
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 
