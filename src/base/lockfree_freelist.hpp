@@ -90,7 +90,7 @@ namespace lockfree
     : m_factory (freelist_factory)
     , m_block_size (block_size)
     , m_available_list { NULL }
-    , m_available_count (block_size * initial_block_count)
+    , m_available_count { 0 }
     , m_alloc_count { 0 }
   {
     for (size_t i = 0; i < initial_block_count; i++)
