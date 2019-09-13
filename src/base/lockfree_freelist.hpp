@@ -211,7 +211,7 @@ namespace lockfree
 	avail_head = m_available_list;
 	tail->get_freelist_link () = avail_head;
       }
-    while (m_available_list.compare_exchange_strong (avail_head, head));
+    while (!m_available_list.compare_exchange_strong (avail_head, head));
   }
 
   //
