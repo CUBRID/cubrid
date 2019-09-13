@@ -53,6 +53,8 @@
 #include "xasl.h"
 #include "xasl_unpack_info.hpp"
 
+#include <algorithm>
+
 typedef struct sort_args SORT_ARGS;
 struct sort_args
 {				/* Collection of information required for "sr_index_sort" */
@@ -175,17 +177,14 @@ class index_builder_loader_context : public cubthread::entry_manager
     void on_recycle (context_type & context) override;
 };
 
-struct index_builder_key_oid
-{
-  DB_VALUE m_key;
-  OID m_oid;
-};
+
+typedef KEY_OID index_builder_key_oid;
 
 class index_builder_loader_task: public cubthread::entry_task
 {
   private:
     BTID m_btid;
-    std::vector<index_builder_key_oid> m_keys_oids;
+    btree_insert_list m_insert_list;
     OID m_class_oid;
     int m_unique_pk;
     index_builder_loader_context & m_load_context; // Loader context.
@@ -5043,11 +5042,11 @@ index_builder_loader_task::~index_builder_loader_task ()
 index_builder_loader_task::batch_key_status
 index_builder_loader_task::add_key (const DB_VALUE *key, const OID &oid)
 {
-  m_keys_oids.emplace_back ();
+  m_insert_list.m_keys_oids.emplace_back ();
 
-  m_keys_oids.back ().m_oid = oid;
+  m_insert_list.m_keys_oids.back ().m_oid = oid;
 
-  db_value &last_key = m_keys_oids.back ().m_key;
+  db_value &last_key = m_insert_list.m_keys_oids.back ().m_key;
   db_make_null (&last_key);
   
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
@@ -5070,13 +5069,13 @@ index_builder_loader_task::add_key (const DB_VALUE *key, const OID &oid)
 bool
 index_builder_loader_task::has_keys () const
 {
-  return !m_keys_oids.empty ();
+  return !m_insert_list.m_keys_oids.empty ();
 }
 
 void
 index_builder_loader_task::clear_keys ()
 {
-  for (auto &key_oid : m_keys_oids)
+  for (auto &key_oid : m_insert_list.m_keys_oids)
     {
       pr_clear_value (&key_oid.m_key);
     }
@@ -5094,9 +5093,37 @@ index_builder_loader_task::execute (cubthread::entry &thread_ref)
       return;
     }
 
-  for (auto &key_oid : m_keys_oids)
+  /* initialize sorted list with the same order as unsorted */
+  for (auto &key_oid : m_insert_list.m_keys_oids)
     {
-      ret = btree_online_index_dispatcher (&thread_ref, &m_btid, &key_oid.m_key, &m_class_oid, &key_oid.m_oid,
+      m_insert_list.m_sorted_keys_oids.push_back (&key_oid);
+    }
+
+  auto compare_fn = [&] (index_builder_key_oid *a, index_builder_key_oid *b) {
+        return btree_compare_key (&a->m_key, &b->m_key, const_cast<TP_DOMAIN *>(m_load_context.m_key_type), 1, 1, NULL); 
+    };
+
+  std::sort (m_insert_list.m_sorted_keys_oids.begin (), m_insert_list.m_sorted_keys_oids.end (), compare_fn);
+
+  /* set 'equal with previous key' bitmap */
+  for (int i = 0; i < m_insert_list.m_sorted_keys_oids.size (); i++)
+    {
+      if (i == 0)
+        {
+          assert (m_insert_list.m_same_key_map[i] == 0);
+          continue;
+        }
+
+      if (btree_compare_key (&m_insert_list.m_sorted_keys_oids[i]->m_key, &m_insert_list.m_sorted_keys_oids[i - 1]->m_key, 
+                             const_cast<TP_DOMAIN *>(m_load_context.m_key_type), 1, 1, NULL) == 0)
+        {
+          m_insert_list.m_same_key_map[i].set ();
+        }
+    }
+
+  while (m_insert_list.m_curr_pos < m_insert_list.m_sorted_keys_oids.size ())
+    {
+      ret = btree_online_index_dispatcher (&thread_ref, &m_btid, &m_class_oid, &m_insert_list,
 					   m_unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
 
       if (ret != NO_ERROR)

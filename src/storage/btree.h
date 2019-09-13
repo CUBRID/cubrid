@@ -44,6 +44,8 @@
 #include "statistics.h"
 #include "storage_common.h"
 
+#include <bitset>
+
 // forward definition
 struct key_val_range;
 class btree_unique_stats;
@@ -532,6 +534,42 @@ struct btree_object_info
 #define BTREE_OBJECT_INFO_INITIALIZER \
   { OID_INITIALIZER, OID_INITIALIZER, BTREE_MVCC_INFO_INITIALIZER }
 
+typedef struct key_oid KEY_OID;
+struct key_oid
+{
+  DB_VALUE m_key;
+  OID m_oid;
+};
+
+struct btree_insert_list
+{
+  const size_t BITSET_SIZE = 1024 * 1024;
+
+  std::vector<key_oid> m_keys_oids;
+  std::vector<key_oid*> m_sorted_keys_oids;
+  std::bitset<BITSET_SIZE> m_same_key_map;
+  int m_curr_pos;
+  bool m_use_sorted_bulk_insert;
+
+  insert_list ()
+  : m_curr_pos (0)
+  : m_use_sorted_bulk_insert (false)
+  {}
+
+  DB_VALUE *get_key ()
+  {
+    if (m_use_sorted_bulk_insert)
+      {
+        return &m_sorted_keys_oids[m_curr_pos]->m_key;
+      }
+    else
+      {
+        return &m_keys_oids[0].m_key;
+      }
+  }
+};
+
+
 /* BTREE_RANGE_SCAN_PROCESS_KEY_FUNC -
  * btree_range_scan internal function that is called for each key that passes
  * range/filter checks.
@@ -740,8 +778,9 @@ extern PERF_PAGE_TYPE btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, P
 
 extern void btree_dump_key (FILE * fp, const DB_VALUE * key);
 
-extern int btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * cls_oid,
-					  OID * oid, int unique, BTREE_OP_PURPOSE purpose, LOG_LSA * undo_nxlsa);
+extern int btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, OID * cls_oid,
+					  btree_insert_list *insert_list, int unique, BTREE_OP_PURPOSE purpose,
+                                          LOG_LSA * undo_nxlsa);
 
 extern int btree_rv_keyval_undo_online_index_tran_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int btree_rv_keyval_undo_online_index_tran_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv);

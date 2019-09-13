@@ -724,6 +724,8 @@ struct btree_insert_helper
   char *printed_key;		/* Printed key. */
   SHA1Hash printed_key_sha1;	/* SHA1 of printed key - useful for very large keys */
 
+  btree_insert_list *insert_list;
+
   /* Recovery data. */
   LOG_DATA_ADDR leaf_addr;
   LOG_RCVINDEX rcvindex;
@@ -33151,7 +33153,7 @@ btree_online_index_set_normal_state (MVCCID & state)
 // purpose (in)   : function purpose
 //
 int
-btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid,
+btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid, btree_insert_list *insert_list,
 			       int unique, BTREE_OP_PURPOSE purpose, LOG_LSA * undo_nxlsa)
 {
   int error_code = NO_ERROR;
@@ -33164,8 +33166,12 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * 
   BTREE_HELPER helper;
   BTID_INT btid_int;
 
+  DB_VALUE *key = insert_list->get_key ();
+
   helper.insert_helper = BTREE_INSERT_HELPER_INITIALIZER;
   helper.delete_helper = BTREE_DELETE_HELPER_INITIALIZER;
+
+  helper.insert_helper.insert_list = insert_list;
 
   /* Safe guards */
   assert (oid != NULL);
@@ -33299,6 +33305,27 @@ end:
     }
 
   return error_code;
+}
+
+/*
+ * btree_key_online_index_IB_insert_list () - BTREE_PROCESS_KEY_FUNCTION used for inserting a new object in b-tree during
+ *                                       online index loading.
+ *
+ * return         : Error code.
+ * thread_p (in)   : Thread entry.
+ * btid_int (in)   : B-tree info.
+ * key (int)       : Key info
+ * leaf_page (in)  : Pointer to the leaf page.
+ * search_key (in) : Search helper
+ * restart (in/out): Restart
+ * args (in/out)   : BTREE_INSERT_HELPER *.
+ */
+int
+btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
+                                       PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key, bool * restart,
+                                       void *other_args)
+{
+  BTREE_HELPER *helper = (BTREE_HELPER *) other_args;
 }
 
 /*
