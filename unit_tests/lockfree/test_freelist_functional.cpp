@@ -171,7 +171,7 @@ namespace test_lockfree
 	  l_remaining_tail->get_freelist_link ().store (list);
 	}
       for (l_remaining_tail = list; l_remaining_tail->get_freelist_link() != NULL;
-	   l_remaining_tail = l_remaining_head->get_freelist_link())
+	   l_remaining_tail = l_remaining_tail->get_freelist_link())
 	;
       ulock.unlock ();
       if (l_finish_pred ())
