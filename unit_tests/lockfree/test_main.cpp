@@ -18,6 +18,7 @@
  */
 
 #include "test_cqueue_functional.hpp"
+#include "test_freelist_functional.hpp"
 
 #include <string>
 #include <vector>
@@ -49,7 +50,7 @@ main (int argc, char **argv)
     }
   if (opt == 0 || opt == 2)
     {
-      // todo: lockfree
+      err = err | test_lockfree::test_freelist_functional ();
     }
 
   return err;

@@ -22,7 +22,7 @@
 
 namespace test_lockfree
 {
-  int test_freelist_function ();
+  int test_freelist_functional ();
 }
 
 #endif // !_TEST_FREELIST_FUNCTIONAL_HPP_
