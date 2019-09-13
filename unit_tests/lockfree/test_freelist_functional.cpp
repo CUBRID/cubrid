@@ -85,7 +85,7 @@ namespace test_lockfree
     size_t random_var;
     size_t total_weight = claim_weight + retire_weight + retire_all_weight;
 
-    my_item *my_list;
+    my_item *my_list = NULL;
 
     while (ops-- > 0)
       {
@@ -115,6 +115,8 @@ namespace test_lockfree
 	    my_list = NULL;
 	  }
       }
+
+    lffl.retire_list (my_list);
 
     f_on_finish ();
   }
