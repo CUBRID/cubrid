@@ -38,7 +38,6 @@ namespace test_lockfree
 {
   struct my_item
   {
-    std::atomic<bool> m_claimed;
     freelist<my_item>::atomic_link_type m_link;
 
     my_item ();
@@ -135,24 +134,27 @@ namespace test_lockfree
     std::mutex l_finish_mutex;
     std::condition_variable l_finish_condvar;
     my_item *l_remaining_head = NULL;
-    my_item *l_remaining_tail;
+    my_item *l_remaining_tail = NULL;
 
     auto l_finish_func = [&] (my_item *list)
     {
       size_t count;
       std::unique_lock<std::mutex> ulock (l_finish_mutex);
       count = ++l_finished_count;
-      if (l_remaining_head == NULL)
+      if (list != NULL)
 	{
-	  l_remaining_head = list;
+	  if (l_remaining_head == NULL)
+	    {
+	      l_remaining_head = list;
+	    }
+	  if (l_remaining_tail != NULL)
+	    {
+	      l_remaining_tail->get_freelist_link ().store (list);
+	    }
+	  for (l_remaining_tail = list; l_remaining_tail->get_freelist_link() != NULL;
+	       l_remaining_tail = l_remaining_tail->get_freelist_link())
+	    ;
 	}
-      if (l_remaining_tail != NULL)
-	{
-	  l_remaining_tail->get_freelist_link ().store (list);
-	}
-      for (l_remaining_tail = list; l_remaining_tail->get_freelist_link() != NULL;
-	   l_remaining_tail = l_remaining_tail->get_freelist_link())
-	;
       ulock.unlock ();
       if (l_finish_pred ())
 	{
@@ -194,8 +196,7 @@ namespace test_lockfree
   // my_item
   //
   my_item::my_item ()
-    : m_claimed (false)
-    , m_link (NULL)
+    : m_link (NULL)
   {
   }
 }
