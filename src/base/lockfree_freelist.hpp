@@ -72,6 +72,11 @@ namespace lockfree
   };
 } // namespace lockfree
 
+//
+// implementation
+//
+#include <cassert>
+
 namespace lockfree
 {
   //
@@ -81,8 +86,9 @@ namespace lockfree
   freelist<T>::freelist (factory &freelist_factory, size_t block_size, size_t initial_block_count)
     : m_factory (freelist_factory)
     , m_block_size (block_size)
-    , m_available_count (block_size * initial_block_count)
     , m_available_list { NULL }
+    , m_available_count (block_size * initial_block_count)
+    , m_alloc_count { 0 }
   {
     for (size_t i = 0; i < initial_block_count; i++)
       {
@@ -134,7 +140,7 @@ namespace lockfree
 	alloc_block ();
       }
     assert (t != NULL);
-    m_factory->init (*t);
+    m_factory.init (*t);
     m_available_count--;
     return t;
   }
@@ -182,11 +188,11 @@ namespace lockfree
     size_t list_size = 1;
     for (tail = head; tail->get_freelist_link () != NULL; tail = tail->get_freelist_link ())
       {
-	m_factory->uninit (*tail);
+	m_factory.uninit (*tail);
 	++list_size;
       }
     assert (tail != NULL);
-    m_factory->uninit (*tail);
+    m_factory.uninit (*tail);
     push (head, tail);
     m_available_count += list_size;
   }
