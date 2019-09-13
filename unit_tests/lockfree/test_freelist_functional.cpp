@@ -153,6 +153,8 @@ namespace test_lockfree
     dump_all_percentage (desc_str, claim_weight, retire_weight, retire_all_weight);
     desc_str ("\n");
 
+    test_common::sync_cout (desc_str.get_buffer ());
+
     size_t l_finished_count = 0;
     auto l_finish_pred = [&thread_count, &l_finished_count] ()
     {
