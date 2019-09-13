@@ -33,11 +33,11 @@ main (int argc, char **argv)
     "cqueue",
     "freelist"
   };
-  if (argc == 1)
+  if (argc == 2)
     {
       for (size_t i = 0; i < option_map.size (); i++)
 	{
-	  if (option_map[i] == argv[0])
+	  if (option_map[i] == argv[1])
 	    {
 	      opt = i;
 	    }
