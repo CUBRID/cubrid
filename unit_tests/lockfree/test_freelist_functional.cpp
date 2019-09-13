@@ -103,11 +103,14 @@ namespace test_lockfree
 	  }
 	else if (random_var < claim_weight + retire_weight)
 	  {
-	    my_item *t = my_list;
-	    my_list = t->m_link;
-	    t->m_link = NULL;
+	    if (my_list != NULL)
+	      {
+		my_item *t = my_list;
+		my_list = t->m_link;
+		t->m_link = NULL;
 
-	    lffl.retire (*t);
+		lffl.retire (*t);
+	      }
 	  }
 	else
 	  {
