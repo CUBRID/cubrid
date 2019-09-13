@@ -23,6 +23,7 @@
 #include "test_debug.hpp"
 
 #include "lockfree_freelist.hpp"
+#include "string_buffer.hpp"
 
 #include <cassert>
 #include <condition_variable>
@@ -63,6 +64,7 @@ namespace test_lockfree
     test_common::sync_cout ("start test_freelist_functional\n");
 
     int err = run_test (4, 1000, 60, 39, 1);
+    err = err | run_test (64, 1000, 60, 39, 1);
 
     if (err == 0)
       {
@@ -120,11 +122,36 @@ namespace test_lockfree
     f_on_finish (my_list);
   }
 
+  void
+  dump_percentage (string_buffer &buf, size_t part, size_t total)
+  {
+    double percentage = (double) part * 100 / total;
+    buf ("2.2%lf", percentage);
+  }
+
+  void
+  dump_all_percentage (string_buffer &buf, size_t claim_weight, size_t retire_weight,
+		       size_t retire_all_weight)
+  {
+    size_t total_weight = claim_weight + retire_weight + retire_all_weight;
+    buf ("claim = ");
+    dump_percentage (buf, claim_weight, total_weight);
+    buf (", retire = ");
+    dump_percentage (buf, retire_weight, total_weight);
+    buf (", retire_all = ");
+    dump_percentage (buf, retire_all_weight, total_weight);
+  }
+
   int
   run_test (size_t thread_count, size_t ops_per_thread, size_t claim_weight, size_t retire_weight,
 	    size_t retire_all_weight)
   {
     my_freelist l_freelist { thread_count * 10, 1 };
+    size_t total_weight = claim_weight + retire_weight + retire_all_weight;
+    string_buffer desc_str;
+    desc_str ("run_test: threads = %zu, ops = %zu", thread_count, ops_per_thread);
+    dump_all_percentage (desc_str, claim_weight, retire_weight, retire_all_weight);
+    desc_str ("\n");
 
     size_t l_finished_count = 0;
     auto l_finish_pred = [&thread_count, &l_finished_count] ()
