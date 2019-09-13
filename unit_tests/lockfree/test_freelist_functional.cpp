@@ -51,25 +51,6 @@ namespace test_lockfree
 
   using my_freelist = freelist<my_item>;
 
-  class my_factory : public my_freelist::factory
-  {
-    public:
-      my_factory ();
-
-      my_item *alloc () override;
-      void init (my_item &t);
-      void uninit (my_item &t);
-
-      size_t get_alloc_count () const;
-      size_t get_init_count () const;
-      size_t get_uninit_count () const;
-
-    private:
-      std::atomic<size_t> m_alloc_count;
-      std::atomic<size_t> m_init_count;
-      std::atomic<size_t> m_uninit_count;
-  };
-
   static void run_job (my_freelist &lffl, size_t ops, size_t claim_weight, size_t retire_weight,
 		       size_t retire_all_weight, const std::function<void (my_item *list)> &f_on_finish);
   static int run_test (size_t thread_count, size_t ops_per_thread, size_t claim_weight, size_t retire_weight,
@@ -144,8 +125,7 @@ namespace test_lockfree
   run_test (size_t thread_count, size_t ops_per_thread, size_t claim_weight, size_t retire_weight,
 	    size_t retire_all_weight)
   {
-    my_factory l_factory;
-    my_freelist l_freelist { l_factory, thread_count * 10, 1 };
+    my_freelist l_freelist { thread_count * 10, 1 };
 
     size_t l_finished_count = 0;
     auto l_finish_pred = [&thread_count, &l_finished_count] ()
@@ -194,8 +174,6 @@ namespace test_lockfree
     l_finish_condvar.wait (ulock, l_finish_pred);
 
     // do checks
-    test_common::custom_assert (l_freelist.get_alloc_count () == l_factory.get_alloc_count ());
-
     size_t list_count = 0;
     for (my_item *iter = l_remaining_head; iter != NULL; iter = iter->get_freelist_link ())
       {
@@ -204,7 +182,6 @@ namespace test_lockfree
 
     size_t used_count = l_freelist.get_alloc_count () - l_freelist.get_available_count ();
     test_common::custom_assert (used_count == list_count);
-    test_common::custom_assert (used_count == l_factory.get_init_count () - l_factory.get_uninit_count ());
 
     l_freelist.retire_list (l_remaining_head);
 
@@ -220,64 +197,5 @@ namespace test_lockfree
     : m_claimed (false)
     , m_link (NULL)
   {
-  }
-
-  //
-  // my_factory
-  //
-  my_factory::my_factory ()
-    : m_alloc_count { 0 }
-    , m_init_count { 0 }
-    , m_uninit_count { 0 }
-  {
-  }
-
-  my_item *
-  my_factory::alloc ()
-  {
-    m_alloc_count++;
-    return new my_item ();
-  }
-
-  void
-  my_factory::init (my_item &t)
-  {
-    if (t.m_claimed.exchange (true))
-      {
-	// was claimed error
-	abort ();
-      }
-    m_init_count++;
-    t.m_claimed = true;
-  }
-
-  void
-  my_factory::uninit (my_item &t)
-  {
-    if (!t.m_claimed.exchange (false))
-      {
-	// was not claimed error
-	abort ();
-      }
-    m_uninit_count++;
-    t.m_claimed = false;
-  }
-
-  size_t
-  my_factory::get_alloc_count () const
-  {
-    return m_alloc_count;
-  }
-
-  size_t
-  my_factory::get_init_count () const
-  {
-    return m_init_count;
-  }
-
-  size_t
-  my_factory::get_uninit_count () const
-  {
-    return m_uninit_count;
   }
 }

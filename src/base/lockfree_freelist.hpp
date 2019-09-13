@@ -34,19 +34,8 @@ namespace lockfree
     public:
       using atomic_link_type = std::atomic<T *>;
 
-      class factory
-      {
-	public:
-	  factory () = default;
-	  virtual ~factory () = default;
-
-	  virtual T *alloc ();
-	  virtual void init (T &t);
-	  virtual void uninit (T &t);
-      };
-
       freelist () = delete;
-      freelist (factory &freelist_factory, size_t block_size, size_t initial_block_count = 1);
+      freelist (size_t block_size, size_t initial_block_count = 1);
       ~freelist ();
 
       T *claim ();
@@ -59,7 +48,6 @@ namespace lockfree
       size_t get_available_count () const;
 
     private:
-      factory &m_factory;
 
       size_t m_block_size;
 
@@ -87,8 +75,7 @@ namespace lockfree
   //
   template <class T>
   freelist<T>::freelist (factory &freelist_factory, size_t block_size, size_t initial_block_count)
-    : m_factory (freelist_factory)
-    , m_block_size (block_size)
+    : m_block_size (block_size)
     , m_available_list { NULL }
     , m_available_count { 0 }
     , m_alloc_count { 0 }
@@ -108,7 +95,7 @@ namespace lockfree
     T *t;
     for (size_t i = 0; i < m_block_size; i++)
       {
-	t = m_factory.alloc ();
+	t = new T ();
 	if (block_tail == NULL)
 	  {
 	    block_tail = t;
@@ -143,7 +130,6 @@ namespace lockfree
 	alloc_block ();
       }
     assert (t != NULL);
-    m_factory.init (*t);
     m_available_count--;
     return t;
   }
@@ -173,7 +159,6 @@ namespace lockfree
   void
   freelist<T>::retire (T &t)
   {
-    m_factory.uninit (t);
     push (&t, &t);
     m_available_count++;
   }
@@ -195,7 +180,6 @@ namespace lockfree
 	++list_size;
       }
     assert (tail != NULL);
-    m_factory.uninit (*tail);
     push (head, tail);
     m_available_count += list_size;
   }
@@ -229,28 +213,6 @@ namespace lockfree
   freelist<T>::get_available_count () const
   {
     return m_available_count;
-  }
-
-  //
-  // freelist::factory
-  //
-  template<class T>
-  T *
-  freelist<T>::factory::alloc ()
-  {
-    return new T ();
-  }
-
-  template<class T>
-  void
-  freelist<T>::factory::init (T &t)
-  {
-  }
-
-  template<class T>
-  void
-  freelist<T>::factory::uninit (T &t)
-  {
   }
 } // namespace lockfree
 
