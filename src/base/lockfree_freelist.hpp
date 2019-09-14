@@ -376,7 +376,6 @@ namespace lockfree
 	++list_count;
       }
     assert (list_count == m_available_count);
-    m_available_list = 0;
 #endif // DEBUG
   }
 } // namespace lockfree
