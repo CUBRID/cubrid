@@ -149,6 +149,9 @@ namespace test_lockfree
   run_test (size_t thread_count, size_t ops_per_thread, size_t claim_weight, size_t retire_weight,
 	    size_t retire_all_weight)
   {
+    g_item_alloc_count = 0;
+    g_item_dealloc_count = 0;
+
     my_freelist l_freelist { thread_count * 10, 1 };
     size_t total_weight = claim_weight + retire_weight + retire_all_weight;
     string_buffer desc_str;
@@ -193,9 +196,6 @@ namespace test_lockfree
 	  l_finish_condvar.notify_all ();
 	}
     };
-
-    g_item_alloc_count = 0;
-    g_item_dealloc_count = 0;
 
     for (size_t i = 0; i < thread_count; i++)
       {
