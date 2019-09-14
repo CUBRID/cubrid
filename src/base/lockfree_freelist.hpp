@@ -49,6 +49,7 @@ namespace lockfree
       size_t get_alloc_count () const;
       size_t get_available_count () const;
       size_t get_backbuffer_count () const;
+      size_t get_forced_allocation_count () const;
 
     private:
 
@@ -65,6 +66,7 @@ namespace lockfree
       std::atomic<size_t> m_available_count;
       std::atomic<size_t> m_alloc_count;
       std::atomic<size_t> m_bb_count;
+      std::atomic<size_t> m_forced_alloc_count;
 
       void swap_backbuffer ();
       void alloc_backbuffer ();
@@ -94,6 +96,7 @@ namespace lockfree
     , m_available_count { 0 }
     , m_alloc_count { 0 }
     , m_bb_count { 0 }
+    , m_forced_alloc_count { 0 }
   {
     assert (block_size > 1);
     // minimum two blocks
@@ -165,6 +168,7 @@ namespace lockfree
     // push directly to available
     push (new_head, new_tail, m_available_list);
     m_available_count += m_block_size;
+    ++m_forced_alloc_count;
   }
 
   template <class T>
@@ -221,11 +225,18 @@ namespace lockfree
   {
     T *t;
     size_t count = 0;
-    for (t = pop (); t == NULL; t = pop (), ++count)
+    for (t = pop (); t == NULL && count < 100; t = pop (), ++count)
       {
 	// if it loops many times, it is probably because the back-buffer allocator was preempted for a very long time.
 	// force allocations
-	swap_backbuffer (count >= 100);
+	swap_backbuffer ();
+      }
+    // if swapping backbuffer didn't work (probably back-buffer allocator was preempted for a long time), force
+    // allocating directly into available list
+    while (t == NULL)
+      {
+	force_alloc_block ();
+	t = pop ();
       }
     assert (t != NULL);
     m_available_count--;
@@ -319,6 +330,13 @@ namespace lockfree
   freelist<T>::get_backbuffer_count () const
   {
     return m_bb_count;
+  }
+
+  template <class T>
+  size_t
+  freelist<T>::get_forced_allocation_count () const
+  {
+    return m_forced_alloc_count;
   }
 } // namespace lockfree
 

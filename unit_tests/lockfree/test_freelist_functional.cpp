@@ -231,6 +231,7 @@ namespace test_lockfree
     test_common::custom_assert (l_freelist.get_alloc_count ()
 				== l_freelist.get_available_count () + l_freelist.get_backbuffer_count ());
     test_common::custom_assert (l_freelist.get_backbuffer_count () == BLOCK_SIZE);
+    test_common::custom_assert (l_freelist.get_forced_allocation_count () == 0); // not sure we can really expect this
 
     l_freelist.clear ();
     test_common::custom_assert (g_item_dealloc_count == g_item_alloc_count);
