@@ -152,7 +152,10 @@ namespace test_lockfree
     g_item_alloc_count = 0;
     g_item_dealloc_count = 0;
 
-    my_freelist l_freelist { thread_count * 10, 1 };
+    const size_t BLOCK_SIZE = thread_count * 10;
+    const size_t START_BLOCK_COUNT = 2;
+
+    my_freelist l_freelist { BLOCK_SIZE, START_BLOCK_COUNT };
     size_t total_weight = claim_weight + retire_weight + retire_all_weight;
     string_buffer desc_str;
     desc_str ("run_test: threads = %zu, ops = %zu, ", thread_count, ops_per_thread);
@@ -219,12 +222,15 @@ namespace test_lockfree
 	list_count++;
       }
 
-    size_t used_count = l_freelist.get_alloc_count () - l_freelist.get_available_count ();
+    size_t used_count =
+	    l_freelist.get_alloc_count () - l_freelist.get_available_count () - l_freelist.get_backbuffer_count ();
     test_common::custom_assert (used_count == list_count);
 
     l_freelist.retire_list (l_remaining_head);
 
-    test_common::custom_assert (l_freelist.get_alloc_count () == l_freelist.get_available_count ());
+    test_common::custom_assert (l_freelist.get_alloc_count ()
+				== l_freelist.get_available_count () + l_freelist.get_backbuffer_count ());
+    test_common::custom_assert (l_freelist.get_backbuffer_count () == BLOCK_SIZE);
 
     l_freelist.clear ();
     test_common::custom_assert (g_item_dealloc_count == g_item_alloc_count);
