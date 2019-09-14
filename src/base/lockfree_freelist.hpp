@@ -44,7 +44,7 @@ namespace lockfree
       void retire (T &t);
       void retire_list (T *head);
 
-      void clear ();
+      void clear ();                    // not thread safe!
 
       size_t get_alloc_count () const;
       size_t get_available_count () const;
@@ -71,9 +71,14 @@ namespace lockfree
       void swap_backbuffer ();
       void alloc_backbuffer ();
       void force_alloc_block ();
+
       void alloc_list (T *&head, T *&tail);
-      T *pop ();
-      void push (T *head, T *tail, atomic_link_type &dest);
+      void dealloc_list (T *head);
+
+      T *pop_from_available ();
+      void push_to_list (T *head, T *tail, atomic_link_type &dest);
+
+      void final_sanity_checks ();
   };
 } // namespace lockfree
 
@@ -133,7 +138,7 @@ namespace lockfree
     T *bb_tail = m_backbuffer_tail.exchange (NULL);
     assert (bb_tail != NULL);
 
-    push (bb_head, bb_tail, m_available_list);
+    push_to_list (bb_head, bb_tail, m_available_list);
     m_available_count += m_bb_count.exchange (0);
 
     alloc_backbuffer ();
@@ -153,7 +158,7 @@ namespace lockfree
     m_backbuffer_tail.compare_exchange_strong (dummy_null, new_bb_tail);
 
     // update backbuffer head
-    push (new_bb_head, new_bb_tail, m_backbuffer_head);
+    push_to_list (new_bb_head, new_bb_tail, m_backbuffer_head);
     m_bb_count += m_block_size;
   }
 
@@ -166,7 +171,7 @@ namespace lockfree
     alloc_list (new_head, new_tail);
 
     // push directly to available
-    push (new_head, new_tail, m_available_list);
+    push_to_list (new_head, new_tail, m_available_list);
     m_available_count += m_block_size;
     ++m_forced_alloc_count;
   }
@@ -191,6 +196,19 @@ namespace lockfree
   }
 
   template <class T>
+  void
+  freelist<T>::dealloc_list (T *head)
+  {
+    // free all
+    T *save_next = NULL;
+    for (T *t = head; t != NULL; t = save_next)
+      {
+	save_next = t->get_freelist_link ().load ();
+	delete t;
+      }
+  }
+
+  template <class T>
   freelist<T>::~freelist ()
   {
     clear ();
@@ -200,7 +218,18 @@ namespace lockfree
   void
   freelist<T>::clear ()
   {
-    // pull list
+    final_sanity_checks ();
+
+    // move back-buffer to available
+    dealloc_list (m_backbuffer_head.load ());
+    dealloc_list (m_available_list.load ());
+  }
+
+  template <class T>
+  void
+  freelist::clear_available_list ()
+  {
+    // pull available list
     T *rhead = NULL;
     T *rhead_copy;
     do
@@ -209,14 +238,7 @@ namespace lockfree
 	rhead_copy = rhead;
       }
     while (!m_available_list.compare_exchange_strong (rhead_copy, NULL));
-
-    // free all
-    T *save_next = NULL;
-    for (T *t = rhead; t != NULL; t = save_next)
-      {
-	save_next = t->get_freelist_link ().load ();
-	delete t;
-      }
+    dealloc_list (rhead);
   }
 
   template <class T>
@@ -225,7 +247,7 @@ namespace lockfree
   {
     T *t;
     size_t count = 0;
-    for (t = pop (); t == NULL && count < 100; t = pop (), ++count)
+    for (t = pop_from_available (); t == NULL && count < 100; t = pop_from_available (), ++count)
       {
 	// if it loops many times, it is probably because the back-buffer allocator was preempted for a very long time.
 	// force allocations
@@ -236,7 +258,7 @@ namespace lockfree
     while (t == NULL)
       {
 	force_alloc_block ();
-	t = pop ();
+	t = pop_from_available ();
       }
     assert (t != NULL);
     m_available_count--;
@@ -245,7 +267,7 @@ namespace lockfree
 
   template <class T>
   T *
-  freelist<T>::pop ()
+  freelist<T>::pop_from_available ()
   {
     T *rhead = NULL;
     T *rhead_copy = NULL;
@@ -270,7 +292,7 @@ namespace lockfree
   void
   freelist<T>::retire (T &t)
   {
-    push (&t, &t, m_available_list);
+    push_to_list (&t, &t, m_available_list);
     m_available_count++;
   }
 
@@ -290,13 +312,13 @@ namespace lockfree
 	++list_size;
       }
     assert (tail != NULL);
-    push (head, tail, m_available_list);
+    push_to_list (head, tail, m_available_list);
     m_available_count += list_size;
   }
 
   template<class T>
   void
-  freelist<T>::push (T *head, T *tail, atomic_link_type &dest)
+  freelist<T>::push_to_list (T *head, T *tail, atomic_link_type &dest)
   {
     T *avail_head;
     assert (head != NULL);
@@ -337,6 +359,35 @@ namespace lockfree
   freelist<T>::get_forced_allocation_count () const
   {
     return m_forced_alloc_count;
+  }
+
+  template <class T>
+  void
+  freelist<T>::final_sanity_checks () const
+  {
+#if !defined (NDEBUG)
+    // check back-buffer
+    size_t list_count = 0;
+    T *save_last = NULL;
+    for (T *iter = m_backbuffer_head; iter != NULL; iter = iter->get_freelist_link ())
+      {
+	++list_count;
+	save_last = iter;
+      }
+    assert (list_count == m_bb_count);
+    assert (list_count == m_block_size);
+    assert (save_last == m_backbuffer_tail);
+
+    // check available
+    list_count = 0;
+    for (T *iter = m_available_list; iter != NULL; iter = iter->get_freelist_link ())
+      {
+	++list_count;
+      }
+    assert (list_count == m_available_count);
+
+    assert (m_available_count + m_bb_count == m_alloc_count);
+#endif // DEBUG
   }
 } // namespace lockfree
 
