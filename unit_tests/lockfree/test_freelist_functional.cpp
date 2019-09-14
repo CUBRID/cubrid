@@ -149,7 +149,7 @@ namespace test_lockfree
     my_freelist l_freelist { thread_count * 10, 1 };
     size_t total_weight = claim_weight + retire_weight + retire_all_weight;
     string_buffer desc_str;
-    desc_str ("run_test: threads = %zu, ops = %zu", thread_count, ops_per_thread);
+    desc_str ("run_test: threads = %zu, ops = %zu, ", thread_count, ops_per_thread);
     dump_all_percentage (desc_str, claim_weight, retire_weight, retire_all_weight);
     desc_str ("\n");
 
