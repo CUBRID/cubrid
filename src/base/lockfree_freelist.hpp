@@ -78,7 +78,7 @@ namespace lockfree
       T *pop_from_available ();
       void push_to_list (T *head, T *tail, atomic_link_type &dest);
 
-      void final_sanity_checks ();
+      void final_sanity_checks () const;
   };
 } // namespace lockfree
 
@@ -223,22 +223,6 @@ namespace lockfree
     // move back-buffer to available
     dealloc_list (m_backbuffer_head.load ());
     dealloc_list (m_available_list.load ());
-  }
-
-  template <class T>
-  void
-  freelist::clear_available_list ()
-  {
-    // pull available list
-    T *rhead = NULL;
-    T *rhead_copy;
-    do
-      {
-	rhead = m_available_list;
-	rhead_copy = rhead;
-      }
-    while (!m_available_list.compare_exchange_strong (rhead_copy, NULL));
-    dealloc_list (rhead);
   }
 
   template <class T>
