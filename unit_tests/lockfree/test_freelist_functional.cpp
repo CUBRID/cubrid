@@ -42,9 +42,15 @@ namespace test_lockfree
   struct my_item
   {
     freelist<my_item>::atomic_link_type m_link;
+    std::thread::id m_owner_id;
 
     my_item ();
     ~my_item ();
+
+    void set_owner ();
+    void reset_owner ();
+
+    static void reset_list_owner (my_item *head);
 
     freelist<my_item>::atomic_link_type &get_freelist_link ()
     {
@@ -101,6 +107,7 @@ namespace test_lockfree
 		// claim error
 		abort ();
 	      }
+	    t->set_owner ();
 	    t->get_freelist_link ().store (my_list);
 	    my_list = t;
 	  }
@@ -111,12 +118,14 @@ namespace test_lockfree
 		my_item *t = my_list;
 		my_list = t->m_link;
 		t->m_link = NULL;
+		t->reset_owner ();
 
 		lffl.retire (*t);
 	      }
 	  }
 	else
 	  {
+	    my_item::reset_list_owner (my_list);
 	    lffl.retire_list (my_list);
 	    my_list = NULL;
 	  }
@@ -129,7 +138,7 @@ namespace test_lockfree
   dump_percentage (string_buffer &buf, size_t part, size_t total)
   {
     double percentage = (double) part * 100 / total;
-    buf ("2.2%lf", percentage);
+    buf ("%2.2lf", percentage);
   }
 
   void
@@ -152,88 +161,91 @@ namespace test_lockfree
     g_item_alloc_count = 0;
     g_item_dealloc_count = 0;
 
-    const size_t BLOCK_SIZE = thread_count * 10;
-    const size_t START_BLOCK_COUNT = 2;
-
-    my_freelist l_freelist { BLOCK_SIZE, START_BLOCK_COUNT };
     size_t total_weight = claim_weight + retire_weight + retire_all_weight;
     string_buffer desc_str;
     desc_str ("run_test: threads = %zu, ops = %zu, ", thread_count, ops_per_thread);
     dump_all_percentage (desc_str, claim_weight, retire_weight, retire_all_weight);
     desc_str ("\n");
 
-    test_common::sync_cout (desc_str.get_buffer ());
-
-    size_t l_finished_count = 0;
-    auto l_finish_pred = [&thread_count, &l_finished_count] ()
     {
-      return thread_count == l_finished_count;
-    };
-    std::mutex l_finish_mutex;
-    std::condition_variable l_finish_condvar;
-    my_item *l_remaining_head = NULL;
-    my_item *l_remaining_tail = NULL;
+      const size_t BLOCK_SIZE = thread_count * 10;
+      const size_t START_BLOCK_COUNT = 2;
 
-    auto l_finish_func = [&] (my_item *list)
-    {
-      size_t count;
+      my_freelist l_freelist { BLOCK_SIZE, START_BLOCK_COUNT };
+
+      test_common::sync_cout (desc_str.get_buffer ());
+
+      size_t l_finished_count = 0;
+      auto l_finish_pred = [&thread_count, &l_finished_count] ()
+      {
+	return thread_count == l_finished_count;
+      };
+      std::mutex l_finish_mutex;
+      std::condition_variable l_finish_condvar;
+      my_item *l_remaining_head = NULL;
+      my_item *l_remaining_tail = NULL;
+
+      auto l_finish_func = [&] (my_item *list)
+      {
+	size_t count;
+	std::unique_lock<std::mutex> ulock (l_finish_mutex);
+	count = ++l_finished_count;
+	if (list != NULL)
+	  {
+	    if (l_remaining_head == NULL)
+	      {
+		l_remaining_head = list;
+	      }
+	    if (l_remaining_tail != NULL)
+	      {
+		l_remaining_tail->get_freelist_link ().store (list);
+	      }
+	    for (l_remaining_tail = list; l_remaining_tail->get_freelist_link() != NULL;
+		 l_remaining_tail = l_remaining_tail->get_freelist_link())
+	      ;
+	  }
+	ulock.unlock ();
+	if (l_finish_pred ())
+	  {
+	    l_finish_condvar.notify_all ();
+	  }
+      };
+
+      for (size_t i = 0; i < thread_count; i++)
+	{
+	  std::thread thr
+	  {
+	    run_job, std::ref (l_freelist), ops_per_thread, claim_weight, retire_weight, retire_all_weight,
+	    l_finish_func
+	  };
+	  thr.detach ();
+	}
+
       std::unique_lock<std::mutex> ulock (l_finish_mutex);
-      count = ++l_finished_count;
-      if (list != NULL)
+      l_finish_condvar.wait (ulock, l_finish_pred);
+
+      // do checks
+      assert (g_item_alloc_count == l_freelist.get_alloc_count ());
+
+      size_t list_count = 0;
+      for (my_item *iter = l_remaining_head; iter != NULL; iter = iter->get_freelist_link ())
 	{
-	  if (l_remaining_head == NULL)
-	    {
-	      l_remaining_head = list;
-	    }
-	  if (l_remaining_tail != NULL)
-	    {
-	      l_remaining_tail->get_freelist_link ().store (list);
-	    }
-	  for (l_remaining_tail = list; l_remaining_tail->get_freelist_link() != NULL;
-	       l_remaining_tail = l_remaining_tail->get_freelist_link())
-	    ;
+	  list_count++;
 	}
-      ulock.unlock ();
-      if (l_finish_pred ())
-	{
-	  l_finish_condvar.notify_all ();
-	}
-    };
 
-    for (size_t i = 0; i < thread_count; i++)
-      {
-	std::thread thr
-	{
-	  run_job, std::ref (l_freelist), ops_per_thread, claim_weight, retire_weight, retire_all_weight,
-	  l_finish_func
-	};
-	thr.detach ();
-      }
+      size_t used_count =
+	      l_freelist.get_alloc_count () - l_freelist.get_available_count () - l_freelist.get_backbuffer_count ();
+      test_common::custom_assert (used_count == list_count);
 
-    std::unique_lock<std::mutex> ulock (l_finish_mutex);
-    l_finish_condvar.wait (ulock, l_finish_pred);
+      l_freelist.retire_list (l_remaining_head);
 
-    // do checks
-    assert (g_item_alloc_count == l_freelist.get_alloc_count ());
+      test_common::custom_assert (l_freelist.get_alloc_count ()
+				  == l_freelist.get_available_count () + l_freelist.get_backbuffer_count ());
+      test_common::custom_assert (l_freelist.get_backbuffer_count () == BLOCK_SIZE);
+      test_common::custom_assert (l_freelist.get_forced_allocation_count () == 0); // not sure we can really expect it
+    }
 
-    size_t list_count = 0;
-    for (my_item *iter = l_remaining_head; iter != NULL; iter = iter->get_freelist_link ())
-      {
-	list_count++;
-      }
-
-    size_t used_count =
-	    l_freelist.get_alloc_count () - l_freelist.get_available_count () - l_freelist.get_backbuffer_count ();
-    test_common::custom_assert (used_count == list_count);
-
-    l_freelist.retire_list (l_remaining_head);
-
-    test_common::custom_assert (l_freelist.get_alloc_count ()
-				== l_freelist.get_available_count () + l_freelist.get_backbuffer_count ());
-    test_common::custom_assert (l_freelist.get_backbuffer_count () == BLOCK_SIZE);
-    test_common::custom_assert (l_freelist.get_forced_allocation_count () == 0); // not sure we can really expect this
-
-    l_freelist.~my_freelist ();
+    // check all have been deallocated
     test_common::custom_assert (g_item_dealloc_count == g_item_alloc_count);
 
     return 0;
@@ -244,6 +256,7 @@ namespace test_lockfree
   //
   my_item::my_item ()
     : m_link (NULL)
+    , m_owner_id ()
   {
     ++g_item_alloc_count;
   }
@@ -251,5 +264,29 @@ namespace test_lockfree
   my_item::~my_item ()
   {
     ++g_item_dealloc_count;
+    test_common::custom_assert (m_owner_id == std::thread::id ());
+  }
+
+  void
+  my_item::set_owner ()
+  {
+    test_common::custom_assert (m_owner_id == std::thread::id ());
+    m_owner_id = std::this_thread::get_id ();
+  }
+
+  void
+  my_item::reset_owner ()
+  {
+    test_common::custom_assert (m_owner_id == std::this_thread::get_id ());
+    m_owner_id = std::thread::id ();
+  }
+
+  void
+  my_item::reset_list_owner (my_item *head)
+  {
+    for (my_item *iter = head; iter != nullptr; iter = iter->get_freelist_link ())
+      {
+	iter->reset_owner ();
+      }
   }
 }

@@ -270,6 +270,12 @@ namespace lockfree
 	  }
 	next = rhead->get_freelist_link ().load ();
 	rhead_copy = rhead;
+	// todo: this is a dangerous preemption point; if I am preempted here, and thread 2 comes and does:
+	//   - second thread gets same rhead and successfully moves m_available_list to next
+	//   - third thread gets next and successfully moves m_available_list to next->next
+	//   - second thread retires rhead. m_available_list becomes rhead and its next becomes next->next
+	//   - I wake up, compare exchange m_available_list successfully because it is rhead again, but next will
+	//     become the item third thread already claimed.
       }
     while (!m_available_list.compare_exchange_strong (rhead_copy, next));
 
