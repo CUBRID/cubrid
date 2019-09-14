@@ -54,14 +54,18 @@ namespace lockfree
       size_t m_block_size;
 
       atomic_link_type m_available_list;
+      atomic_link_type m_backbuffer_head;
+      atomic_link_type m_backbuffer_tail;
 
       // statistics:
       std::atomic<size_t> m_available_count;
       std::atomic<size_t> m_alloc_count;
+      std::atomic<size_t> m_bb_count;
 
       void alloc_block ();
+      void alloc_backbuffer ();
       T *pop ();
-      void push (T *head, T *tail);
+      void push (T *head, T *tail, atomic_link_type &dest);
   };
 } // namespace lockfree
 
@@ -79,9 +83,15 @@ namespace lockfree
   freelist<T>::freelist (size_t block_size, size_t initial_block_count)
     : m_block_size (block_size)
     , m_available_list { NULL }
+    , m_backbuffer_head { NULL }
+    , m_backbuffer_tail { NULL }
     , m_available_count { 0 }
     , m_alloc_count { 0 }
+    , m_bb_count { 0 }
   {
+    assert (block_size > 0);
+    // minimum two blocks
+
     for (size_t i = 0; i < initial_block_count; i++)
       {
 	alloc_block ();
@@ -92,9 +102,38 @@ namespace lockfree
   void
   freelist<T>::alloc_block ()
   {
+    T *bb_head = m_backbuffer_head;
+    if (bb_head == NULL)
+      {
+	// somebody already allocated block
+	return;
+      }
+    T *bb_head_copy = bb_head; // make sure a copy is passed to compare exchange
+    if (!m_backbuffer_head.compare_exchange_strong (bb_head_copy, NULL))
+      {
+	// somebody already changed it
+	return;
+      }
+
+    T *bb_tail = m_backbuffer_tail.exchange (NULL);
+    assert (bb_tail != NULL);
+
+    push (bb_head, bb_tail, m_available_list);
+
+    m_available_count += m_bb_count;
+    m_bb_count = 0;
+
+    alloc_backbuffer ();
+  }
+
+  template <class T>
+  void
+  freelist<T>::alloc_backbuffer ()
+  {
     T *block_head = NULL;
     T *block_tail = NULL;
     T *t;
+
     for (size_t i = 0; i < m_block_size; i++)
       {
 	t = new T ();
@@ -105,9 +144,11 @@ namespace lockfree
 	t->get_freelist_link ().store (block_head);
 	block_head = t;
       }
-    push (block_head, block_tail);
+    T *dummy_null = NULL;
+    m_backbuffer_tail.compare_exchange_strong (dummy_null, block_tail);
+    push (block_head, block_tail, m_backbuffer_head);
 
-    m_available_count += m_block_size;
+    m_bb_count += m_block_size;
     m_alloc_count += m_block_size;
   }
 
@@ -123,11 +164,13 @@ namespace lockfree
   {
     // pull list
     T *rhead = NULL;
+    T *rhead_copy;
     do
       {
 	rhead = m_available_list;
+	rhead_copy = rhead;
       }
-    while (!m_available_list.compare_exchange_strong (rhead, NULL));
+    while (!m_available_list.compare_exchange_strong (rhead_copy, NULL));
 
     // free all
     T *save_next = NULL;
@@ -157,6 +200,7 @@ namespace lockfree
   freelist<T>::pop ()
   {
     T *rhead = NULL;
+    T *rhead_copy = NULL;
     T *next;
     do
       {
@@ -166,8 +210,9 @@ namespace lockfree
 	    return NULL;
 	  }
 	next = rhead->get_freelist_link ().load ();
+	rhead_copy = rhead;
       }
-    while (!m_available_list.compare_exchange_strong (rhead, next));
+    while (!m_available_list.compare_exchange_strong (rhead_copy, next));
 
     rhead->get_freelist_link ().store (NULL);
     return rhead;
@@ -203,7 +248,7 @@ namespace lockfree
 
   template<class T>
   void
-  freelist<T>::push (T *head, T *tail)
+  freelist<T>::push (T *head, T *tail, atomic_link_type &dest)
   {
     T *avail_head;
     assert (head != NULL);
@@ -212,10 +257,10 @@ namespace lockfree
 
     do
       {
-	avail_head = m_available_list;
+	avail_head = dest;
 	tail->get_freelist_link () = avail_head;
       }
-    while (!m_available_list.compare_exchange_strong (avail_head, head));
+    while (!dest.compare_exchange_strong (avail_head, head));
   }
 
   template<class T>
