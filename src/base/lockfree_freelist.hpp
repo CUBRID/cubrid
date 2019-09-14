@@ -234,6 +234,7 @@ namespace lockfree
   T *
   freelist<T>::claim ()
   {
+    // todo: make sure transaction is open here
     T *t;
     size_t count = 0;
     for (t = pop_from_available (); t == NULL && count < 100; t = pop_from_available (), ++count)
@@ -287,6 +288,7 @@ namespace lockfree
   void
   freelist<T>::retire (T &t)
   {
+    // make sure transaction is open here and transaction ID was incremented
     push_to_list (&t, &t, m_available_list);
     m_available_count++;
   }
@@ -295,6 +297,7 @@ namespace lockfree
   void
   freelist<T>::retire_list (T *head)
   {
+    // make sure transaction is open here and transaction ID was incremented
     if (head == NULL)
       {
 	return;
