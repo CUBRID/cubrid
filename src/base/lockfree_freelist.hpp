@@ -44,8 +44,6 @@ namespace lockfree
       void retire (T &t);
       void retire_list (T *head);
 
-      void clear ();                    // not thread safe!
-
       size_t get_alloc_count () const;
       size_t get_available_count () const;
       size_t get_backbuffer_count () const;
@@ -78,6 +76,7 @@ namespace lockfree
       T *pop_from_available ();
       void push_to_list (T *head, T *tail, atomic_link_type &dest);
 
+      void clear ();                    // not thread safe!
       void final_sanity_checks () const;
   };
 } // namespace lockfree
@@ -222,7 +221,13 @@ namespace lockfree
 
     // move back-buffer to available
     dealloc_list (m_backbuffer_head.load ());
+    m_backbuffer_head = NULL;
+    m_backbuffer_tail = NULL;
+
     dealloc_list (m_available_list.load ());
+    m_available_list = NULL;
+
+    m_available_count = m_bb_count = m_alloc_count = 0;
   }
 
   template <class T>
@@ -350,6 +355,8 @@ namespace lockfree
   freelist<T>::final_sanity_checks () const
   {
 #if !defined (NDEBUG)
+    assert (m_available_count + m_bb_count == m_alloc_count);
+
     // check back-buffer
     size_t list_count = 0;
     T *save_last = NULL;
@@ -369,8 +376,7 @@ namespace lockfree
 	++list_count;
       }
     assert (list_count == m_available_count);
-
-    assert (m_available_count + m_bb_count == m_alloc_count);
+    m_available_list = 0;
 #endif // DEBUG
   }
 } // namespace lockfree
