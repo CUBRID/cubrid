@@ -850,7 +850,7 @@ extern LOG_PAGE *logpb_create_header_page (THREAD_ENTRY * thread_p);
 extern void logpb_fetch_header (THREAD_ENTRY * thread_p, LOG_HEADER * hdr);
 extern void logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_PAGE * log_pgptr);
 extern void logpb_flush_header (THREAD_ENTRY * thread_p);
-extern int logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE access_mode,
+extern int logpb_fetch_page (THREAD_ENTRY * thread_p, const LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE access_mode,
 			     LOG_PAGE * log_pgptr);
 extern int logpb_copy_page_from_log_buffer (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
 extern int logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
@@ -1035,7 +1035,7 @@ extern char *logpb_backup_level_info_to_string (char *buf, int buf_size, const L
 extern const char *tran_abort_reason_to_string (TRAN_ABORT_REASON val);
 extern int logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt,
 					 void **ctx);
-extern MVCCID logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p);
+extern MVCCID logtb_get_oldest_visible_mvccid (THREAD_ENTRY * thread_p);
 
 extern LOG_PAGEID logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p);
 extern int logpb_find_oldest_available_arv_num (THREAD_ENTRY * thread_p);

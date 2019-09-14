@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include <assert.h>
 
+#include "area_alloc.h"
 #if !defined (SERVER_MODE)
 #include "authenticate.h"
 #endif // not SERVER_MODE

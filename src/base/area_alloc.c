@@ -118,7 +118,6 @@ area_final (void)
     }
   area_List = NULL;
 
-  Set_Ref_Area = Set_Obj_Area = NULL;
   pthread_mutex_destroy (&area_List_lock);
 }
 
@@ -565,11 +564,7 @@ area_free (AREA * area, void *ptr)
 
   assert (entry_idx >= 0 && entry_idx < (int) area->alloc_count);
 
-  error = lf_bitmap_free_entry (&block->bitmap, entry_idx);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
+  lf_bitmap_free_entry (&block->bitmap, entry_idx);
 
   /* change hint block if needed */
   hint_block = VOLATILE_ACCESS (area->hint_block, AREA_BLOCK *);

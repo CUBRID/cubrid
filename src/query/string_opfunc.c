@@ -52,6 +52,7 @@
 #include "object_primitive.h"
 #include "dbtype.h"
 #include "elo.h"
+#include "es_common.h"
 #include "db_elo.h"
 #include <algorithm>
 #include <regex>

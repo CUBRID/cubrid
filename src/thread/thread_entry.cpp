@@ -387,10 +387,7 @@ namespace cubthread
       {
 	if (tran_entries[i] != NULL)
 	  {
-	    if (lf_tran_return_entry (tran_entries[i]) != NO_ERROR)
-	      {
-		assert (false);
-	      }
+	    lf_tran_return_entry (tran_entries[i]);
 	    tran_entries[i] = NULL;
 	  }
       }

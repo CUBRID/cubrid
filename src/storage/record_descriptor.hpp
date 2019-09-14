@@ -68,10 +68,7 @@ class record_descriptor : public cubpacking::packable_object
     record_descriptor (const cubmem::block_allocator &alloc = cubmem::PRIVATE_BLOCK_ALLOCATOR);
     ~record_descriptor (void);
 
-    // based on an buffers
-    template <size_t S>
-    record_descriptor (cubmem::stack_block<S> &membuf);
-    record_descriptor (const char *data, size_t size);
+    record_descriptor (const char *data, std::size_t size);
 
     // based on recdes
     record_descriptor (const recdes &rec, const cubmem::block_allocator &alloc = cubmem::PRIVATE_BLOCK_ALLOCATOR);
@@ -97,11 +94,11 @@ class record_descriptor : public cubpacking::packable_object
     char *get_data_for_modify (void);
 
     // setters
-    void set_data (const char *data, size_t size);      // set record data to byte array
+    void set_data (const char *data, std::size_t size);      // set record data to byte array
     template <typename T>
     void set_data_to_object (const T &t);               // set record data to object
 
-    void set_record_length (size_t length);
+    void set_record_length (std::size_t length);
     void set_type (std::int16_t type);
 
     //
@@ -131,10 +128,10 @@ class record_descriptor : public cubpacking::packable_object
     // resize record buffer
     void resize_buffer (std::size_t size);
     // set external buffer; record type is set to new automatically
-    void set_external_buffer (char *buf, size_t buf_size);
-    template <size_t S>
+    void set_external_buffer (char *buf, std::size_t buf_size);
+    template <std::size_t S>
     void set_external_buffer (cubmem::stack_block<S> &membuf);
-    void release_buffer (char *&data, size_t &size);
+    void release_buffer (char *&data, std::size_t &size);
 
   private:
 
@@ -164,7 +161,7 @@ class record_descriptor : public cubpacking::packable_object
 // template/inline
 //////////////////////////////////////////////////////////////////////////
 
-template <size_t S>
+template <std::size_t S>
 void
 record_descriptor::set_external_buffer (cubmem::stack_block<S> &membuf)
 {
