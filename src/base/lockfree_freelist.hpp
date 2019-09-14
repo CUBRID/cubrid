@@ -44,6 +44,8 @@ namespace lockfree
       void retire (T &t);
       void retire_list (T *head);
 
+      void clear ();
+
       size_t get_alloc_count () const;
       size_t get_available_count () const;
 
@@ -112,8 +114,24 @@ namespace lockfree
   template <class T>
   freelist<T>::~freelist ()
   {
+    clear ();
+  }
+
+  template <class T>
+  void
+  freelist<T>::clear ()
+  {
+    // pull list
+    T *rhead = NULL;
+    do
+      {
+	rhead = m_available_list;
+      }
+    while (!m_available_list.compare_exchange_strong (rhead, NULL));
+
+    // free all
     T *save_next = NULL;
-    for (T *t = m_available_list; t != NULL; t = save_next)
+    for (T *t = rhead; t != NULL; t = save_next)
       {
 	save_next = t->get_freelist_link ().load ();
 	delete t;

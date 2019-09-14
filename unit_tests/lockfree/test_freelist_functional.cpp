@@ -37,11 +37,14 @@ using namespace lockfree;
 
 namespace test_lockfree
 {
+  std::atomic<size_t> g_item_alloc_count;
+  std::atomic<size_t> g_item_dealloc_count;
   struct my_item
   {
     freelist<my_item>::atomic_link_type m_link;
 
     my_item ();
+    ~my_item ();
 
     freelist<my_item>::atomic_link_type &get_freelist_link ()
     {
@@ -191,6 +194,9 @@ namespace test_lockfree
 	}
     };
 
+    g_item_alloc_count = 0;
+    g_item_dealloc_count = 0;
+
     for (size_t i = 0; i < thread_count; i++)
       {
 	std::thread thr
@@ -205,6 +211,8 @@ namespace test_lockfree
     l_finish_condvar.wait (ulock, l_finish_pred);
 
     // do checks
+    assert (g_item_alloc_count == l_freelist.get_alloc_count ());
+
     size_t list_count = 0;
     for (my_item *iter = l_remaining_head; iter != NULL; iter = iter->get_freelist_link ())
       {
@@ -218,6 +226,9 @@ namespace test_lockfree
 
     test_common::custom_assert (l_freelist.get_alloc_count () == l_freelist.get_available_count ());
 
+    l_freelist.clear ();
+    test_common::custom_assert (g_item_dealloc_count == g_item_alloc_count);
+
     return 0;
   }
 
@@ -227,5 +238,11 @@ namespace test_lockfree
   my_item::my_item ()
     : m_link (NULL)
   {
+    ++g_item_alloc_count;
+  }
+
+  my_item::~my_item ()
+  {
+    ++g_item_dealloc_count;
   }
 }
