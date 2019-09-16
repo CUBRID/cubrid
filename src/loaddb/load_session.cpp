@@ -223,8 +223,11 @@ namespace cubload
     if (!m_args.table_name.empty ())
       {
 	// just set class id to 1 since only one table can be specified as command line argument
+	cubthread::entry &thread_ref = cubthread::get_entry ();
+	thread_ref.m_loaddb_driver = m_driver;
 	m_driver->get_class_installer ().set_class_id (FIRST_CLASS_ID);
 	m_driver->get_class_installer ().install_class (m_args.table_name.c_str ());
+	thread_ref.m_loaddb_driver = NULL;
       }
   }
 
