@@ -269,7 +269,7 @@ PSTAT_METADATA pstat_Metadata[] = {
                                   "Num_btree_online_inserts_reject_no_more_keys"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_ONLINE_NUM_REJECT_NO_SPACE, "Num_btree_online_inserts_reject_no_space"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_ONLINE_NUM_REJECT_KET_NOT_IN_RANGE,
-                                  "Num_btree_online_inserts_reject_key_not_in_rage"),
+                                  "Num_btree_online_inserts_reject_key_not_in_range"),
 
   /* Execution statistics for the query manager */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_SELECTS, "Num_query_selects"),

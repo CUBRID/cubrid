@@ -5082,7 +5082,7 @@ index_builder_loader_task::execute (cubthread::entry &thread_ref)
       m_insert_list.m_sorted_keys_oids.push_back (&key_oid);
     }
 
-  auto compare_fn = [&] (index_builder_key_oid *&a, index_builder_key_oid *&b)
+  auto compare_fn = [&] (index_builder_key_oid *a, index_builder_key_oid *b)
     {
       DB_VALUE_COMPARE_RESULT result;
       result = btree_compare_key (&a->m_key, &b->m_key, const_cast<TP_DOMAIN *>(m_load_context.m_key_type), 1, 1, NULL);

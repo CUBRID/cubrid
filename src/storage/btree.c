@@ -33396,7 +33396,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
           perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KET_NOT_IN_RANGE);
           break;
         }
-      if (search_key->result != BTREE_KEY_BETWEEN)
+      if (search_key->result != BTREE_KEY_BETWEEN && search_key->result != BTREE_KEY_FOUND)
         {
           perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KET_NOT_IN_RANGE);
           break;
