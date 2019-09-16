@@ -5042,26 +5042,9 @@ index_builder_loader_task::~index_builder_loader_task ()
 index_builder_loader_task::batch_key_status
 index_builder_loader_task::add_key (const DB_VALUE *key, const OID &oid)
 {
-  m_insert_list.m_keys_oids.emplace_back ();
+  size_t entry_size = m_insert_list.add_key (m_load_context.m_key_type, key, oid);
 
-  m_insert_list.m_keys_oids.back ().m_oid = oid;
-
-  db_value &last_key = m_insert_list.m_keys_oids.back ().m_key;
-  db_make_null (&last_key);
-  
-  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-
-  /* Switch to global heapID. */
-  HL_HEAPID prev_id = db_change_private_heap (thread_p, 0);
-
-  qdata_copy_db_value (&last_key, key);
-  m_memsize += m_load_context.m_key_type->type->get_disk_size_of_value (&last_key);
-
-  /* reset back to previous heapID. */
-  db_change_private_heap (thread_p, prev_id);
-
-  m_memsize += OR_OID_SIZE;
-  m_memsize = DB_ALIGN (m_memsize, BTREE_MAX_ALIGN);
+  m_memsize += entry_size;
 
   return (m_memsize > (size_t) prm_get_bigint_value (PRM_ID_IB_TASK_MEMSIZE)) ? BATCH_FULL : BATCH_CONTINUE;
 }
@@ -5099,27 +5082,12 @@ index_builder_loader_task::execute (cubthread::entry &thread_ref)
       m_insert_list.m_sorted_keys_oids.push_back (&key_oid);
     }
 
-  auto compare_fn = [&] (index_builder_key_oid *a, index_builder_key_oid *b) {
-        return btree_compare_key (&a->m_key, &b->m_key, const_cast<TP_DOMAIN *>(m_load_context.m_key_type), 1, 1, NULL); 
+  auto compare_fn = [&] (index_builder_key_oid *a, index_builder_key_oid *b)
+    {
+      return btree_compare_key (&a->m_key, &b->m_key, const_cast<TP_DOMAIN *>(m_load_context.m_key_type), 1, 1, NULL); 
     };
 
   std::sort (m_insert_list.m_sorted_keys_oids.begin (), m_insert_list.m_sorted_keys_oids.end (), compare_fn);
-
-  /* set 'equal with previous key' bitmap */
-  for (int i = 0; i < m_insert_list.m_sorted_keys_oids.size (); i++)
-    {
-      if (i == 0)
-        {
-          assert (m_insert_list.m_same_key_map[i] == 0);
-          continue;
-        }
-
-      if (btree_compare_key (&m_insert_list.m_sorted_keys_oids[i]->m_key, &m_insert_list.m_sorted_keys_oids[i - 1]->m_key, 
-                             const_cast<TP_DOMAIN *>(m_load_context.m_key_type), 1, 1, NULL) == 0)
-        {
-          m_insert_list.m_same_key_map[i].set ();
-        }
-    }
 
   while (m_insert_list.m_curr_pos < m_insert_list.m_sorted_keys_oids.size ())
     {
@@ -5136,7 +5104,6 @@ index_builder_loader_task::execute (cubthread::entry &thread_ref)
 	  break;
 	}
 
-      cubmem::switch_to_global_allocator_and_call (pr_clear_value, &key_oid.m_key);
       key_count++;
     }
 

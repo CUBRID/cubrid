@@ -543,30 +543,46 @@ struct key_oid
 
 struct btree_insert_list
 {
-  const size_t BITSET_SIZE = 1024 * 1024;
-
   std::vector<key_oid> m_keys_oids;
   std::vector<key_oid*> m_sorted_keys_oids;
-  std::bitset<BITSET_SIZE> m_same_key_map;
+
+  DB_VALUE *m_curr_key;
+  OID *m_curr_oid;
   int m_curr_pos;
   bool m_use_sorted_bulk_insert;
 
-  insert_list ()
-  : m_curr_pos (0)
-  : m_use_sorted_bulk_insert (false)
-  {}
+  btree_insert_list ()
+  : m_curr_key (NULL)
+  , m_curr_oid (NULL)
+  , m_curr_pos (0)
+  , m_use_sorted_bulk_insert (false)
+  {
+  }
+
+  btree_insert_list (DB_VALUE *key, OID *oid)
+  : btree_insert_list ()
+  {
+    m_curr_key = key;
+    m_curr_oid = oid;
+  }
+
+  ~btree_insert_list ();
+
+  int next_key ();
+
+  OID *get_oid ()
+  {
+    return m_curr_oid;
+  }
 
   DB_VALUE *get_key ()
   {
-    if (m_use_sorted_bulk_insert)
-      {
-        return &m_sorted_keys_oids[m_curr_pos]->m_key;
-      }
-    else
-      {
-        return &m_keys_oids[0].m_key;
-      }
+    return m_curr_key;
   }
+
+  size_t btree_insert_list::add_key (const TP_DOMAIN *key_type, const DB_VALUE *key, const OID &oid);
+
+  #undef BITSET_SIZE
 };
 
 

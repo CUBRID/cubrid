@@ -43,6 +43,7 @@
 #include "partition_sr.h"
 #include "porting_inline.hpp"
 #include "query_executor.h"
+#include "query_opfunc.h"
 #include "object_primitive.h"
 #include "perf_monitor.h"
 #include "regu_var.hpp"
@@ -767,6 +768,7 @@ struct btree_insert_helper
     false /* is_null */, \
     NULL /* printed_key */, \
     SHA1_HASH_INITIALIZER /* printed_key_sha1 */, \
+    NULL                 /* insert list */, \
     LOG_DATA_ADDR_INITIALIZER /* leaf_addr */, \
     RV_NOT_DEFINED /* rcvindex */, \
     NULL /* rv_keyval_data */, \
@@ -799,6 +801,7 @@ struct btree_insert_helper
     false /* is_null */, \
     NULL /* printed_key */, \
     SHA1_HASH_INITIALIZER /* printed_key_sha1 */, \
+    NULL                 /* insert list */, \
     LOG_DATA_ADDR_INITIALIZER /* leaf_addr */, \
     RV_NOT_DEFINED /* rcvindex */, \
     NULL /* rv_keyval_data */, \
@@ -1584,6 +1587,9 @@ static int btree_get_max_new_data_size (THREAD_ENTRY * thread_p, BTID_INT * btid
 static int btree_key_insert_new_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 					PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key, bool * restart,
 					void *other_args);
+static int btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
+                                                  PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key,
+                                                  bool * restart, void *other_args);
 static int btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 					     PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key, bool * restart,
 					     void *other_args);
@@ -33167,6 +33173,7 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, OID * class
   BTID_INT btid_int;
 
   DB_VALUE *key = insert_list->get_key ();
+  OID *oid = insert_list->get_oid ();
 
   helper.insert_helper = BTREE_INSERT_HELPER_INITIALIZER;
   helper.delete_helper = BTREE_DELETE_HELPER_INITIALIZER;
@@ -33235,7 +33242,7 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, OID * class
       helper.insert_helper.purpose = purpose;
       root_function = btree_fix_root_for_insert;
       advance_function = btree_split_node_and_advance;
-      key_function = btree_key_online_index_IB_insert;
+      key_function = btree_key_online_index_IB_insert_list;
       break;
 
     case BTREE_OP_ONLINE_INDEX_TRAN_INSERT:
@@ -33326,6 +33333,79 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
                                        void *other_args)
 {
   BTREE_HELPER *helper = (BTREE_HELPER *) other_args;
+  btree_insert_list *insert_list = helper->insert_helper.insert_list;
+  DB_VALUE *curr_key;
+  int error_code = NO_ERROR;
+  bool first_insert = true;
+
+  curr_key = key;
+  
+
+  while (1)
+    {
+      error_code = btree_key_online_index_IB_insert (thread_p, btid_int, curr_key, leaf_page, search_key, restart,
+                                                     other_args);
+      if (error_code != NO_ERROR)
+        {
+          break;
+        }
+
+      if (helper->insert_helper.purpose != BTREE_OP_ONLINE_INDEX_IB_INSERT)
+        {
+          assert (insert_list->m_keys_oids.size () == 1);
+          break;
+        }
+
+      perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_INSERTS);
+      if (!first_insert)
+        {
+          perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_INSERTS_SAME_PAGE_HOLD);
+        }
+
+      if (insert_list->next_key () != NO_ERROR)
+        {
+          /* no more keys in list */
+          perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_NO_MORE_KEYS);
+          break;
+        }
+
+      /* prepare next pair key, oid */
+      COPY_OID (BTREE_INSERT_OID (&helper->insert_helper), insert_list->get_oid ());
+      curr_key = insert_list->get_key ();
+
+      /* TODO : check if new item fits in page */
+      int node_level = btree_get_node_level (thread_p, *leaf_page);
+      BTREE_NODE_TYPE node_type = (node_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
+  
+      int key_len = btree_get_disk_size_of_key (curr_key);
+      /* TODO : check if previous inserted key is same as this */
+      bool key_alread_in_page = false;
+      size_t new_ent_size = btree_get_max_new_data_size (thread_p, btid_int, *leaf_page, node_type, key_len,
+                                                         &helper->insert_helper, key_alread_in_page);
+      if (new_ent_size > spage_get_free_space_without_saving (thread_p, *leaf_page, NULL))
+        {
+          /* no more space in page */
+          perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_NO_SPACE);
+          break;
+        }
+
+      /* check if key checks key range of this page */
+      error_code = btree_leaf_is_key_between_min_max (thread_p, btid_int, *leaf_page, curr_key, search_key);
+      if (error_code != NO_ERROR)
+        {
+          perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KET_NOT_IN_RANGE);
+          break;
+        }
+      if (search_key->result != BTREE_KEY_BETWEEN)
+        {
+          perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KET_NOT_IN_RANGE);
+          break;
+        }
+
+      first_insert = false;
+    }
+
+  return error_code;
 }
 
 /*
@@ -34820,7 +34900,8 @@ btree_rv_keyval_undo_online_index_tran_delete (THREAD_ENTRY * thread_p, LOG_RCV 
   assert (!OID_ISNULL (&oid));
 
   /* Insert object and all its info. */
-  error_code = btree_online_index_dispatcher (thread_p, btid.sys_btid, &key, &cls_oid, &oid, btid.unique_pk,
+  btree_insert_list one_item_list (&key, &oid);
+  error_code = btree_online_index_dispatcher (thread_p, btid.sys_btid, &cls_oid, &one_item_list, btid.unique_pk,
 					      BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE, &recv->reference_lsa);
   if (error_code != NO_ERROR)
     {
@@ -34870,7 +34951,8 @@ btree_rv_keyval_undo_online_index_tran_insert (THREAD_ENTRY * thread_p, LOG_RCV 
   assert (!OID_ISNULL (&oid));
 
   /* Undo insert: just delete object and all its information. */
-  err = btree_online_index_dispatcher (thread_p, btid.sys_btid, &key, &cls_oid, &oid, btid.unique_pk,
+  btree_insert_list one_item_list (&key, &oid);
+  err = btree_online_index_dispatcher (thread_p, btid.sys_btid, &cls_oid, &one_item_list, btid.unique_pk,
 				       BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT, &recv->reference_lsa);
   if (err != NO_ERROR)
     {
@@ -35083,4 +35165,59 @@ btree_is_single_object_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_
     }
   assert (offset_after_key == record->length);
   return true;
+}
+
+size_t
+btree_insert_list::add_key (const TP_DOMAIN *key_type, const DB_VALUE *key, const OID &oid)
+{
+  size_t memsize = 0;
+  m_keys_oids.emplace_back ();
+
+  m_keys_oids.back ().m_oid = oid;
+
+  db_value &last_key = m_keys_oids.back ().m_key;
+  db_make_null (&last_key);
+  
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+
+  /* Switch to global heapID. */
+  HL_HEAPID prev_id = db_change_private_heap (thread_p, 0);
+
+  qdata_copy_db_value (&last_key, key);
+  memsize += key_type->type->get_disk_size_of_value (&last_key);
+
+  /* reset back to previous heapID. */
+  db_change_private_heap (thread_p, prev_id);
+
+  memsize += OR_OID_SIZE;
+  memsize = DB_ALIGN (memsize, BTREE_MAX_ALIGN);
+
+  return memsize;
+}
+
+int btree_insert_list::next_key ()
+{
+  if (++m_curr_pos < m_sorted_keys_oids.size ())
+    {
+      m_curr_oid = &m_sorted_keys_oids[m_curr_pos]->m_oid;
+      m_curr_key = &m_sorted_keys_oids[m_curr_pos]->m_key;
+
+      return NO_ERROR;
+    }
+
+  return ER_FAILED;
+}
+
+btree_insert_list::~btree_insert_list ()
+{
+  HL_HEAPID save_id;
+
+  save_id = db_change_private_heap (NULL, 0);
+
+  for (auto key_oid : m_keys_oids)
+    {
+      pr_clear_value (&key_oid.m_key);
+    }
+
+  (void) db_change_private_heap (NULL, save_id);
 }
