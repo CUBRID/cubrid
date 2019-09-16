@@ -580,7 +580,7 @@ struct btree_insert_list
     return m_curr_key;
   }
 
-  size_t btree_insert_list::add_key (const TP_DOMAIN *key_type, const DB_VALUE *key, const OID &oid);
+  size_t add_key (const TP_DOMAIN *key_type, const DB_VALUE *key, const OID &oid);
 
   #undef BITSET_SIZE
 };

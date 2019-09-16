@@ -35197,7 +35197,19 @@ btree_insert_list::add_key (const TP_DOMAIN *key_type, const DB_VALUE *key, cons
 
 int btree_insert_list::next_key ()
 {
-  if (++m_curr_pos < m_sorted_keys_oids.size ())
+  if (m_curr_key == NULL)
+    {
+      assert (m_curr_oid == NULL);
+
+      assert (m_sorted_keys_oids.size () > 0);
+
+      m_curr_pos = 0;
+      m_curr_oid = &m_sorted_keys_oids[m_curr_pos]->m_oid;
+      m_curr_key = &m_sorted_keys_oids[m_curr_pos]->m_key;
+
+      return NO_ERROR;
+    }
+  else if (++m_curr_pos < m_sorted_keys_oids.size ())
     {
       m_curr_oid = &m_sorted_keys_oids[m_curr_pos]->m_oid;
       m_curr_key = &m_sorted_keys_oids[m_curr_pos]->m_key;
