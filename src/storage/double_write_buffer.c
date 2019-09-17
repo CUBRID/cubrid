@@ -4036,27 +4036,21 @@ class dwb_flush_block_daemon_task: public cubthread::entry_task
 //  description:
 //    dwb flush block helper daemon task
 //
-class dwb_flush_block_helper_daemon_task: public cubthread::entry_task
+void
+dwb_flush_block_helper_execute (cubthread::entry &thread_ref)
 {
-  private:
-    PERF_UTIME_TRACKER m_perf_track;
-
-  public:
-    void execute (cubthread::entry &thread_ref) override
+  if (!BO_IS_SERVER_RESTARTED ())
     {
-      if (!BO_IS_SERVER_RESTARTED ())
-        {
-	  // wait for boot to finish
-	  return;
-        }
-
-      /* flush pages as long as necessary */
-      if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true)
-        {
-	  dwb_flush_block_helper (&thread_ref);
-        }
+      // wait for boot to finish
+      return;
     }
-};
+
+  /* flush pages as long as necessary */
+  if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true)
+    {
+      dwb_flush_block_helper (&thread_ref);
+    }
+}
 
 /*
  * dwb_flush_block_daemon_init () - initialize DWB flush block daemon thread
@@ -4077,7 +4071,7 @@ void
 dwb_flush_block_helper_daemon_init ()
 {
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
-  dwb_flush_block_helper_daemon_task *daemon_task = new dwb_flush_block_helper_daemon_task ();
+  cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (dwb_flush_block_helper_execute);
 
   dwb_flush_block_helper_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
 }

@@ -830,7 +830,7 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
       break;
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
-      db_make_bit (value, 1, (const DB_C_BIT) "0", 1);
+      db_make_bit (value, 1, (DB_C_BIT) "0", 1);
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:

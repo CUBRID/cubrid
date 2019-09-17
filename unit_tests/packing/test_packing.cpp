@@ -152,7 +152,7 @@ namespace test_packing
     entry_size += serializator.get_packed_short_size (entry_size);
     entry_size += serializator.get_packed_bigint_size (entry_size);
     entry_size += serializator.get_packed_int_vector_size (entry_size, sizeof (int_a) / sizeof (int_a[0]));
-    entry_size += serializator.get_packed_int_vector_size (entry_size, (int) int_v.size ());
+    entry_size += serializator.get_packed_int_vector_size (entry_size, int_v.size ());
     for (size_t i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
 	entry_size += serializator.get_packed_db_value_size (values[i], entry_size);

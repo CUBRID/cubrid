@@ -1460,4 +1460,89 @@ namespace cubthread
 
 } // namespace cubthread
 
+
+namespace cubthread
+{
+  template <typename Context>
+  class worker_pool_task_capper
+  {
+    private:
+      using context_type = Context;
+      using task_type = task<Context>;
+      using worker_pool_type = worker_pool<Context>;
+
+    public:
+      worker_pool_task_capper (worker_pool<Context> *worker_pool);
+      ~worker_pool_task_capper ();
+
+      void push_task (context_manager<Context> *manager, task<Context> *task);
+      cubthread::worker_pool<Context> *get_worker_pool ();
+      void end_task ();
+
+    private:
+      cubthread::worker_pool<Context> *m_worker_pool;
+      unsigned int m_tasks_available;
+      unsigned int m_max_tasks;
+      std::mutex m_mutex;
+      std::condition_variable m_cond_var;
+  };
+} // namespace cubthread
+
+namespace cubthread
+{
+  //////////////////////////////////////////////////////////////////////////
+  // worker_pool_task_capper template implementation
+  //////////////////////////////////////////////////////////////////////////
+  template <typename Context>
+  worker_pool_task_capper<Context>::worker_pool_task_capper (worker_pool<Context> *worker_pool)
+  {
+    m_worker_pool = worker_pool;
+    m_tasks_available = m_max_tasks = worker_pool.get_max_count ();
+  }
+
+  template <typename Context>
+  worker_pool_task_capper<Context>::~worker_pool_task_capper ()
+  {
+    //
+  }
+
+  template <typename Context>
+  void
+  worker_pool_task_capper<Context>::push_task (context_manager<Context> *manager, task<Context> *task)
+  {
+    auto pred = [&] () -> bool {return (m_tasks_available > 0); };
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
+    m_cond_var.wait (ulock, pred);
+
+    // Make sure we have the lock.
+    assert (ulock.owns_lock ());
+    // Safeguard.
+    assert (m_tasks_available > 0);
+
+    m_tasks_available--;
+    manager->push_task (task);
+  }
+
+  template <typename Context>
+  void worker_pool_task_capper<Context>::end_task ()
+  {
+    std::unique_lock<std::mutex> ulock (m_mutex);
+    m_tasks_available++;
+
+    // Safeguard
+    assert (m_tasks_available <= m_max_tasks && m_tasks_available > 0);
+
+    ulock.unlock ();
+    m_cond_var.notify_all ();
+  }
+
+  template <typename Context>
+  cubthread::worker_pool<Context> *worker_pool_task_capper<Context>::get_worker_pool ()
+  {
+    return m_worker_pool;
+  }
+
+}
+
 #endif // _THREAD_WORKER_POOL_HPP_

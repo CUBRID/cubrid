@@ -8461,6 +8461,12 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       select = node->info.create_entity.create_select;
       if (select != NULL)
 	{
+	  if (select->info.query.with != NULL)
+	    {
+	      // run semantic check only for CREATE ... AS WITH ...
+	      select = pt_semantic_check (parser, select);
+	    }
+
 	  if (pt_has_parameters (parser, select))
 	    {
 	      PT_ERRORmf (parser, select, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VARIABLE_NOT_ALLOWED, 0);
@@ -15557,7 +15563,7 @@ pt_get_select_list_coll_compat (PARSER_CONTEXT * parser, PT_NODE * query, SEMAN_
  * pt_apply_union_select_list_collation () - scans a UNION parse tree and
  *		sets for each node with collation the collation corresponding
  *		of the column in 'cinfo' array
- *				
+ *
  *   return:  union compatibility status
  *   parser(in): the parser context
  *   query(in): query node

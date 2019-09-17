@@ -18293,11 +18293,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		if (arg1->domain.general_info.type == DB_TYPE_NCHAR
 		    || arg1->domain.general_info.type == DB_TYPE_VARNCHAR)
 		  {
-		    db_make_nchar (esc_char, 1, (const DB_C_NCHAR) slash_str, 1, arg1_cs, arg1_coll);
+		    db_make_nchar (esc_char, 1, (DB_C_NCHAR) slash_str, 1, arg1_cs, arg1_coll);
 		  }
 		else
 		  {
-		    db_make_char (esc_char, 1, (const DB_C_CHAR) slash_str, 1, arg1_cs, arg1_coll);
+		    db_make_char (esc_char, 1, (DB_C_CHAR) slash_str, 1, arg1_cs, arg1_coll);
 		  }
 
 		esc_char->need_clear = false;

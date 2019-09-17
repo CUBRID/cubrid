@@ -131,7 +131,7 @@ namespace cubreplication
     /* type of packed object + type of RBR entry */
     entry_size += 2 * serializator.get_packed_int_size (entry_size);
 
-    entry_size += serializator.get_packed_int_vector_size (entry_size, (int) changed_attributes.size ());
+    entry_size += serializator.get_packed_int_vector_size (entry_size, changed_attributes.size ());
 
     entry_size += serializator.get_packed_small_string_size (m_class_name, entry_size);
 
