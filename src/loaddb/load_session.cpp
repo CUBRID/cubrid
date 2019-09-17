@@ -208,8 +208,6 @@ namespace cubload
   session::session (load_args &args)
     : m_commit_mutex ()
     , m_commit_cond_var ()
-    , m_completion_mutex ()
-    , m_completion_cond_var ()
     , m_args (args)
     , m_last_batch_id {NULL_BATCH_ID}
     , m_max_batch_id {NULL_BATCH_ID}
@@ -271,8 +269,8 @@ namespace cubload
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_completion_mutex);
-    m_completion_cond_var.wait (ulock, pred);
+    std::unique_lock<std::mutex> ulock (m_commit_mutex);
+    m_commit_cond_var.wait (ulock, pred);
   }
 
   void
@@ -280,7 +278,9 @@ namespace cubload
   {
     if (!is_failed ())
       {
+	m_commit_mutex.lock ();
 	m_last_batch_id = id;
+	m_commit_mutex.unlock ();
       }
 
     notify_waiting_threads ();
@@ -416,7 +416,6 @@ namespace cubload
   session::notify_waiting_threads ()
   {
     m_commit_cond_var.notify_all ();
-    m_completion_cond_var.notify_one ();
   }
 
   int
