@@ -121,7 +121,7 @@ namespace cubload
 	thread_ref.conn_entry = &m_conn_entry;
 	driver *driver = thread_ref.m_loaddb_driver;
 
-	assert (driver && !driver->is_initialized ());
+	assert (driver != NULL && !driver->is_initialized ());
 	init_driver (driver, m_session);
 
 	bool is_syntax_check_only = m_session.get_args ().syntax_check;
