@@ -81,7 +81,6 @@ namespace lockfree
   static void
   lf_bitmap_init (LF_BITMAP *bitmap, LF_BITMAP_STYLE style, int entries_cnt, float usage_threshold)
   {
-    size_t bitfield_size;
     int chunk_count;
     unsigned int mask, chunk;
     int i;
