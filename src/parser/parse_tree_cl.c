@@ -18275,6 +18275,7 @@ pt_function_is_allowed_as_function_index (const PT_NODE * func)
   // TODO: expose get_signatures () of func_type.cpp & filter out funcs returning PT_TYPE_JSON
   switch (func->info.function.function_type)
     {
+    case F_BENCHMARK:
     case F_JSON_OBJECT:
     case F_JSON_ARRAY:
     case F_JSON_MERGE:
