@@ -56,21 +56,14 @@ namespace lockfree
 	~system ();
 
 	index assign_index ();
-	void free_index ();
+	void free_index (index idx);
+	size_t get_max_transaction_count () const;
 
       private:
 	size_t m_max_tran_per_table;
-	std::mutex m_trantbl_lock;
-	size_t m_trantbl_count;       // todo - track tables?
-	bitmap *m_assigned_trans;
+	std::mutex m_tran_idx_lock;
+	bitmap *m_tran_idx_map;
     };
-
-    void initialize_system (size_t max_tran_count);
-    void finalize_system ();
-    size_t get_max_transaction_count ();
-
-    index assign_index ();
-    void free_index (index &idx);
   }
 } // namespace lockfree
 

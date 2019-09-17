@@ -40,8 +40,17 @@
 #include <mutex>
 #include <vector>
 
+// forward definitions
 template <typename T>
 class resource_shared_pool;
+
+namespace lockfree
+{
+  namespace tran
+  {
+    class system;
+  }
+}
 
 namespace cubthread
 {
@@ -109,6 +118,7 @@ namespace cubthread
 
       void alloc_entries (void);
       void init_entries (bool with_lock_free = false);
+      void init_lockfree_system ();
 
       //////////////////////////////////////////////////////////////////////////
       // worker pool management
@@ -249,6 +259,9 @@ namespace cubthread
       std::size_t m_available_entries_count;
       entry_manager *m_entry_manager;
       daemon_entry_manager *m_daemon_entry_manager;
+
+      // lock-free transaction system
+      lockfree::tran::system *m_lf_tran_sys;
   };
 
   //////////////////////////////////////////////////////////////////////////

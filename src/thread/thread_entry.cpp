@@ -211,7 +211,6 @@ namespace cubthread
     tran_entries[THREAD_TS_XCACHE] = lf_tran_request_entry (&xcache_Ts);
     tran_entries[THREAD_TS_FPCACHE] = lf_tran_request_entry (&fpcache_Ts);
     tran_entries[THREAD_TS_DWB_SLOTS] = lf_tran_request_entry (&dwb_slots_Ts);
-    m_lf_tran_index = lockfree::tran::assign_index ();
   }
 
   void
@@ -398,6 +397,20 @@ namespace cubthread
     delete m_systdes;
     m_systdes = NULL;
     tran_index = NULL_TRAN_INDEX;
+  }
+
+  void
+  entry::assign_lf_tran_index (lockfree::tran::index idx)
+  {
+    m_lf_tran_index = idx;
+  }
+
+  lockfree::tran::index
+  entry::pull_lf_tran_index ()
+  {
+    lockfree::tran::index ret = m_lf_tran_index;
+    m_lf_tran_index = lockfree::tran::INVALID_INDEX;
+    return ret;
   }
 
 } // namespace cubthread

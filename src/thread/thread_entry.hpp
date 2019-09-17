@@ -323,6 +323,9 @@ namespace cubthread
       void push_resource_tracks (void);
       void pop_resource_tracks (void);
 
+      void assign_lf_tran_index (lockfree::tran::index idx);
+      lockfree::tran::index pull_lf_tran_index ();
+
     private:
       void clear_resources (void);
 
