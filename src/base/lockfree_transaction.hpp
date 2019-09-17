@@ -36,6 +36,7 @@
 #ifndef _LOCKFREE_TRANSACTION_HPP_
 #define _LOCKFREE_TRANSACTION_HPP_
 
+#include "lockfree_transaction_def.hpp"
 #include "lockfree_transaction_index.hpp"
 
 #include <atomic>
@@ -46,7 +47,6 @@ namespace lockfree
 {
   namespace tran
   {
-    using id = std::uint64_t;
     static const id INVALID_TRANID = std::numeric_limits<id>::max ();
 
     class descriptor
@@ -73,7 +73,7 @@ namespace lockfree
 
 	descriptor &get_entry (const index &tran_index);
 
-	id get_min_active_tranid ();
+	id get_min_active_tranid () const;
 
       private:
 	/* number of transactions between computing min_active_transaction_id */
@@ -88,7 +88,7 @@ namespace lockfree
 	std::atomic<id> m_global_tranid;      /* global delete ID for all delete operations */
 	std::atomic<id> m_min_active_tranid;  /* minimum curr_delete_id of all used LF_DTRAN_ENTRY entries */
     };
-  }
-}
+  } // namespace tran
+} // namespace lockfree
 
 #endif // _LOCKFREE_TRANSACTION_HPP_

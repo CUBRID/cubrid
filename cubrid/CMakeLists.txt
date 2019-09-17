@@ -131,6 +131,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/fileline_location.hpp
   ${BASE_DIR}/lockfree_bitmap.hpp
   ${BASE_DIR}/lockfree_transaction.hpp
+  ${BASE_DIR}/lockfree_transaction_def.hpp
   ${BASE_DIR}/lockfree_transaction_index.hpp
   ${BASE_DIR}/mem_block.hpp
   ${BASE_DIR}/memory_reference_store.hpp
