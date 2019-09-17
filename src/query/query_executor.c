@@ -18517,13 +18517,13 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	  continue;
 	}
 
-      bool skipped_evaluation = false;
+      DB_VALUE benchmark_dummy_dbval;
+      db_make_double (&benchmark_dummy_dbval, 0);
       if (agg_p->operands->value.type == TYPE_FUNC && agg_p->operands->value.value.funcp != NULL
 	  && agg_p->operands->value.value.funcp->ftype == F_BENCHMARK)
 	{
-	  agg_p->accumulator_domain.value_dom = agg_p->domain;
-	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
-	  skipped_evaluation = true;
+	  // In case we have a benchmark function we want ot avoid the usual superflous function evaluation
+	  dbval = &benchmark_dummy_dbval;
 	}
       else
 	{
@@ -18536,7 +18536,7 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	}
 
       /* handle NULL value */
-      if (!skipped_evaluation && (dbval == NULL || DB_IS_NULL (dbval)))
+      if (dbval == NULL || DB_IS_NULL (dbval))
 	{
 	  if (agg_p->opr_dbtype == DB_TYPE_VARIABLE || agg_p->accumulator_domain.value_dom == NULL
 	      || agg_p->accumulator_domain.value2_dom == NULL)
@@ -18550,9 +18550,7 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	}
 
       /* update variable domain of function */
-      if (!skipped_evaluation
-	  && (agg_p->opr_dbtype == DB_TYPE_VARIABLE
-	      || TP_DOMAIN_COLLATION_FLAG (agg_p->domain) != TP_DOMAIN_COLL_NORMAL))
+      if (agg_p->opr_dbtype == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (agg_p->domain) != TP_DOMAIN_COLL_NORMAL)
 	{
 	  if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (dbval))
 	      && (agg_p->function == PT_SUM || agg_p->function == PT_AVG))
@@ -18587,11 +18585,6 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 
 	    case PT_AVG:
 	    case PT_SUM:
-	      if (skipped_evaluation)
-		{
-		  break;
-		}
-
 	      if (TP_IS_NUMERIC_TYPE (DB_VALUE_TYPE (dbval)))
 		{
 		  if (TP_DOMAIN_TYPE (agg_p->domain) == DB_TYPE_NUMERIC)
@@ -18667,9 +18660,8 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		  break;
 
 		default:
-		  assert (!skipped_evaluation
-			  && (agg_p->operands->value.type == TYPE_CONSTANT || agg_p->operands->value.type == TYPE_DBVAL
-			      || agg_p->operands->value.type == TYPE_INARITH));
+		  assert (agg_p->operands->value.type == TYPE_CONSTANT || agg_p->operands->value.type == TYPE_DBVAL
+			  || agg_p->operands->value.type == TYPE_INARITH);
 
 		  /* try to cast dbval to double, datetime then time */
 		  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
