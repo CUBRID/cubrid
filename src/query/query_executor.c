@@ -18517,14 +18517,26 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	  continue;
 	}
 
-      /* fetch function operand */
-      if (fetch_peek_dbval (thread_p, &agg_p->operands->value, &xasl_state->vd, NULL, NULL, NULL, &dbval) != NO_ERROR)
+      bool skipped_evaluation = false;
+      if (agg_p->operands->value.type == TYPE_FUNC && agg_p->operands->value.value.funcp != NULL
+	  && agg_p->operands->value.value.funcp->ftype == F_BENCHMARK)
 	{
-	  return ER_FAILED;
+	  agg_p->accumulator_domain.value_dom = agg_p->domain;
+	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+	  skipped_evaluation = true;
+	}
+      else
+	{
+	  /* fetch function operand */
+	  if (fetch_peek_dbval (thread_p, &agg_p->operands->value, &xasl_state->vd, NULL, NULL, NULL, &dbval) !=
+	      NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
 	}
 
       /* handle NULL value */
-      if (dbval == NULL || DB_IS_NULL (dbval))
+      if (!skipped_evaluation && (dbval == NULL || DB_IS_NULL (dbval)))
 	{
 	  if (agg_p->opr_dbtype == DB_TYPE_VARIABLE || agg_p->accumulator_domain.value_dom == NULL
 	      || agg_p->accumulator_domain.value2_dom == NULL)
@@ -18538,7 +18550,9 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	}
 
       /* update variable domain of function */
-      if (agg_p->opr_dbtype == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (agg_p->domain) != TP_DOMAIN_COLL_NORMAL)
+      if (!skipped_evaluation
+	  && (agg_p->opr_dbtype == DB_TYPE_VARIABLE
+	      || TP_DOMAIN_COLLATION_FLAG (agg_p->domain) != TP_DOMAIN_COLL_NORMAL))
 	{
 	  if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (dbval))
 	      && (agg_p->function == PT_SUM || agg_p->function == PT_AVG))
@@ -18573,6 +18587,11 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 
 	    case PT_AVG:
 	    case PT_SUM:
+	      if (skipped_evaluation)
+		{
+		  break;
+		}
+
 	      if (TP_IS_NUMERIC_TYPE (DB_VALUE_TYPE (dbval)))
 		{
 		  if (TP_DOMAIN_TYPE (agg_p->domain) == DB_TYPE_NUMERIC)
@@ -18648,8 +18667,9 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		  break;
 
 		default:
-		  assert (agg_p->operands->value.type == TYPE_CONSTANT || agg_p->operands->value.type == TYPE_DBVAL
-			  || agg_p->operands->value.type == TYPE_INARITH);
+		  assert (!skipped_evaluation
+			  && (agg_p->operands->value.type == TYPE_CONSTANT || agg_p->operands->value.type == TYPE_DBVAL
+			      || agg_p->operands->value.type == TYPE_INARITH));
 
 		  /* try to cast dbval to double, datetime then time */
 		  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
