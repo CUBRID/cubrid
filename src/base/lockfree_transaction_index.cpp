@@ -30,7 +30,6 @@ namespace lockfree
     bitmap g_Tranmap;
     size_t g_Tran_max_count;
 
-    void
     system::system (size_t max_tran_count)
       : m_max_tran_per_table (max_tran_count)
       , m_tran_idx_lock {}
@@ -40,7 +39,6 @@ namespace lockfree
 				   bitmap::FULL_USAGE_RATIO);
     }
 
-    void
     system::~system ()
     {
       delete m_tran_idx_map;
@@ -50,7 +48,7 @@ namespace lockfree
     system::assign_index ()
     {
       std::unique_lock<std::mutex> ulock (m_tran_idx_lock);
-      int ret = m_tran_idx_map.get_entry ();
+      int ret = m_tran_idx_map->get_entry ();
       if (ret < 0)
 	{
 	  assert (false);
@@ -68,7 +66,7 @@ namespace lockfree
 	  assert (false);
 	  return;
 	}
-      m_tran_idx_map.free_entry (static_cast<int> (idx));
+      m_tran_idx_map->free_entry (static_cast<int> (idx));
     }
 
     size_t
