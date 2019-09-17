@@ -30,12 +30,40 @@
 #include "lockfree_transaction_def.hpp"
 
 #include <limits>
+#include <mutex>
+
+// forward definitions
+namespace lockfree
+{
+  class bitmap;
+  namespace tran
+  {
+    class table;
+  }
+}
 
 namespace lockfree
 {
   namespace tran
   {
     static const index INVALID_INDEX = std::numeric_limits<index>::max ();
+
+    class system
+    {
+      public:
+	system () = delete;
+	system (size_t max_tran_count);
+	~system ();
+
+	index assign_index ();
+	void free_index ();
+
+      private:
+	size_t m_max_tran_per_table;
+	std::mutex m_trantbl_lock;
+	size_t m_trantbl_count;       // todo - track tables?
+	bitmap *m_assigned_trans;
+    };
 
     void initialize_system (size_t max_tran_count);
     void finalize_system ();

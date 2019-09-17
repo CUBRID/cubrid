@@ -31,8 +31,9 @@ namespace lockfree
     //
     // table
     //
-    table::table ()
-      : m_all (new descriptor[get_max_transaction_count ()])
+    table::table (system &sys)
+      : m_sys (sys)
+      , m_all (new descriptor[m_sys.get_max_transaction_count ()])
       , m_global_tranid { 0 }
       , m_min_active_tranid { 0 }
     {

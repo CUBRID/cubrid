@@ -29,7 +29,7 @@
 #endif // not SERVER_MODE and not SA_MODE
 
 #include "error_context.hpp"
-#include "lockfree_transaction_index.hpp"
+#include "lockfree_transaction_def.hpp"
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID
 

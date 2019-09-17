@@ -43,6 +43,15 @@
 #include <limits>
 #include <mutex>
 
+// forward definitions
+namespace lockfree
+{
+  namespace tran
+  {
+    class system;
+  }
+}
+
 namespace lockfree
 {
   namespace tran
@@ -62,7 +71,7 @@ namespace lockfree
     class table
     {
       public:
-	table ();
+	table (system &sys);
 	~table ();
 
 	void start_tran (const index &tran_index, bool increment_id);
@@ -84,6 +93,7 @@ namespace lockfree
 
 	void compute_min_active_tranid ();
 
+	system &m_sys;
 	descriptor *m_all;
 	std::atomic<id> m_global_tranid;      /* global delete ID for all delete operations */
 	std::atomic<id> m_min_active_tranid;  /* minimum curr_delete_id of all used LF_DTRAN_ENTRY entries */

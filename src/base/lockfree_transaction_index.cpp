@@ -31,22 +31,27 @@ namespace lockfree
     size_t g_Tran_max_count;
 
     void
-    initialize_system (size_t max_tran_count)
+    system::system (size_t max_tran_count)
+      : m_max_tran_per_table (max_tran_count)
+      , m_trantbl_lock {}
+      , m_trantbl_count (0)
+      , m_assigned_trans (NULL)
     {
-      g_Tran_max_count = max_tran_count;
-      g_Tranmap.init (bitmap::ONE_CHUNK, static_cast<int> (max_tran_count), bitmap::FULL_USAGE_RATIO);
+      m_assigned_trans = new bitmap (bitmap::chunking_style::ONE_CHUNK, static_cast<int> (max_tran_count),
+				     bitmap::FULL_USAGE_RATIO);
     }
 
     void
-    finalize_system ()
+    system::~system ()
     {
-      g_Tranmap.destroy ();
+      delete m_assigned_trans;
     }
 
     index
-    assign_index ()
+    system::assign_index ()
     {
-      int ret = g_Tranmap.get_entry ();
+      std::unique_lock<std::mutex> ulock (m_trantbl_lock);
+      int ret = m_assigned_trans.get_entry ();
       if (ret < 0)
 	{
 	  assert (false);
@@ -56,14 +61,15 @@ namespace lockfree
     }
 
     void
-    free_index (index &idx)
+    sysmtem::free_index (index &idx)
     {
+      std::unique_lock<std::mutex> ulock (m_trantbl_lock);
       if (idx == INVALID_INDEX)
 	{
 	  assert (false);
 	  return;
 	}
-      g_Tranmap.free_entry (static_cast<int> (idx));
+      m_assigned_trans.free_entry (static_cast<int> (idx));
       idx = INVALID_INDEX;
     }
 
