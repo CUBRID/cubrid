@@ -119,28 +119,31 @@ namespace cubload
 	  }
 
 	thread_ref.conn_entry = &m_conn_entry;
+	driver *driver = thread_ref.m_loaddb_driver;
+
+	assert (driver && !driver->is_initialized ());
+	init_driver (driver, m_session);
 
 	bool is_syntax_check_only = m_session.get_args ().syntax_check;
 	const class_entry *cls_entry = m_session.get_class_registry ().get_class_entry (m_batch.get_class_id ());
 	if (cls_entry == NULL)
 	  {
-	    m_session.notify_batch_done (m_batch.get_id ());
 	    if (!is_syntax_check_only)
 	      {
-		assert (false);
+		driver->get_error_handler ().on_failure_with_line (LOADDB_MSG_TABLE_IS_MISSING);
 	      }
+	    else
+	      {
+		driver->get_error_handler ().on_error_with_line (LOADDB_MSG_TABLE_IS_MISSING);
+	      }
+
+	    driver->clear ();
+	    m_session.notify_batch_done (m_batch.get_id ());
 	    return;
 	  }
 
-	int line_no;
-
 	logtb_assign_tran_index (&thread_ref, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
 				 TRAN_DEFAULT_ISOLATION_LEVEL ());
-
-	driver *driver = thread_ref.m_loaddb_driver;
-
-	assert (driver && !driver->is_initialized ());
-	init_driver (driver, m_session);
 
 	bool parser_result = invoke_parser (driver, m_batch);
 
@@ -148,7 +151,7 @@ namespace cubload
 	std::string class_name = cls_entry->get_class_name ();
 
 	// We need this to update the stats.
-	line_no = driver->get_scanner ().lineno ();
+	int line_no = driver->get_scanner ().lineno ();
 
 	// We don't need anything from the driver anymore.
 	driver->clear ();
