@@ -37,6 +37,7 @@
 #include "error_manager.h"
 #include "log_impl.h"
 #include "lock_free.h"
+#include "lockfree_transaction_index.hpp"
 #include "resource_shared_pool.hpp"
 #include "system_parameter.h"
 
@@ -509,6 +510,8 @@ namespace cubthread
 
     delete Manager;
     Manager = NULL;
+
+    lockfree::tran::finalize_system ();
   }
 
   int
@@ -535,6 +538,7 @@ namespace cubthread
 	ASSERT_ERROR ();
 	return error_code;
       }
+    lockfree::tran::initialize_system (get_max_thread_count ());
 
     if (with_lock_free)
       {

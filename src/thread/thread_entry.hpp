@@ -29,6 +29,7 @@
 #endif // not SERVER_MODE and not SA_MODE
 
 #include "error_context.hpp"
+#include "lockfree_transaction_index.hpp"
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID
 
@@ -338,6 +339,8 @@ namespace cubthread
       cubbase::pgbuf_tracker &m_pgbuf_tracker;
       cubsync::critical_section_tracker &m_csect_tracker;
       log_system_tdes *m_systdes;
+
+      lockfree::tran::index m_lf_tran_index;
   };
 
 } // namespace cubthread
