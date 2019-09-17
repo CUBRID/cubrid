@@ -71,9 +71,9 @@ db_json_iszero (const unsigned char &ch)
 /*
  * db_json_path_is_token_valid_quoted_object_key () - Check if a quoted object_key is valid
  *
- * return                  : true/false
- * path (in)               : path to be checked
- * token_begin (in/out)    : beginning offset of the token, is replaced with beginning of the next token or path.length ()
+ * return               : true/false
+ * path (in)            : path to be checked
+ * token_begin (in/out) : beginning offset of the token, is replaced with beginning of the next token or path.length ()
  */
 static bool
 db_json_path_is_token_valid_quoted_object_key (const std::string &path, std::size_t &token_begin)
@@ -202,14 +202,16 @@ db_json_path_is_token_valid_unquoted_object_key (const std::string &path, std::s
     }
   std::size_t i = token_begin;
 
-  // todo: this needs change. SQL standard specifies that object key format must obbey JavaScript rules of an Identifier (6.10.1).
+  // todo: this needs change. SQL standard specifies that object key format must obey
+  // JavaScript rules of an Identifier (6.10.1).
   // Besides alphanumerics, object keys can be valid ECMAScript identifiers as defined in
   // http://www.ecma-international.org/ecma-262/5.1/#sec-7.6
 
   // Defined syntax (approx.):
   // IdentifierName -> IdentifierStart | (IdentifierName IdentifierPart)
   // IdentifierStart -> $ ( note: this is the ONLY specified forbidden by SQL Standard) | _ | \UnicodeEscapeSequence
-  // IdentifierPart -> IdentifierStart | InicodeCombinigMark | UnicodeDigit | UnicodeConnectorPunctuation | <ZWNJ> | <ZWJ>
+  // IdentifierPart -> IdentifierStart | InicodeCombinigMark | UnicodeDigit | UnicodeConnectorPunctuation | <ZWNJ>
+  // | <ZWJ>
 
   if (i < path.length () && !db_json_path_is_valid_identifier_start_char (static_cast<unsigned char> (path[i])))
     {
@@ -771,8 +773,8 @@ JSON_PATH::set (JSON_VALUE &jd, const JSON_VALUE &jv, JSON_PRIVATE_MEMPOOL &allo
 	  if (m == val->MemberEnd ())
 	    {
 	      // insert dummy
-	      val->AddMember (JSON_VALUE (encoded_key.c_str (), (rapidjson::SizeType) encoded_key.length (), allocator),
-			      JSON_VALUE ().SetNull (), allocator);
+	      val->AddMember (JSON_VALUE (encoded_key.c_str (), (rapidjson::SizeType) encoded_key.length (), allocator)
+			      , JSON_VALUE ().SetNull (), allocator);
 
 	      val = & (--val->MemberEnd ())->value; // Assume AddMember() appends at the end
 	    }
@@ -825,8 +827,8 @@ JSON_PATH::get (const JSON_DOC &jd) const
 	    {
 	      return NULL;
 	    }
-	  JSON_VALUE::ConstMemberIterator m = val->FindMember (db_json_encode_rapidjson_str ("\"" + tkn.get_object_key () +
-					      "\"").c_str ());
+	  JSON_VALUE::ConstMemberIterator m = val->FindMember (db_json_encode_rapidjson_str ("\""
+					      + tkn.get_object_key () + "\"").c_str ());
 	  if (m == val->MemberEnd ())
 	    {
 	      return NULL;
