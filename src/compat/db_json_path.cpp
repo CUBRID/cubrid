@@ -80,7 +80,6 @@ db_json_path_is_token_valid_quoted_object_key (const std::string &path, std::siz
 {
   std::size_t i = token_begin + 1;
   bool unescaped_backslash = false;
-  std::size_t backslash_nr = 0;
   // stop at unescaped '"'; note that there should be an odd nr of backslashes before '"' for it to be escaped
   for (; i < path.length () && (path[i] != '"' || unescaped_backslash); ++i)
     {
@@ -161,7 +160,7 @@ db_string_unquote (const std::string &path)
 	  res += path[i];
 	}
     }
-  return std::move (res);
+  return res;
 }
 
 static bool
@@ -598,7 +597,7 @@ JSON_PATH::push_array_index (unsigned long idx)
 void
 JSON_PATH::push_array_index_wildcard ()
 {
-  m_path_tokens.emplace_back (PATH_TOKEN::token_type::array_index_wildcard, std::move (std::string ("*")));
+  m_path_tokens.emplace_back (PATH_TOKEN::token_type::array_index_wildcard, std::string ("*"));
 }
 
 void
@@ -610,13 +609,13 @@ JSON_PATH::push_object_key (std::string &&object_key)
 void
 JSON_PATH::push_object_key_wildcard ()
 {
-  m_path_tokens.emplace_back (PATH_TOKEN::token_type::object_key_wildcard, std::move (std::string ("*")));
+  m_path_tokens.emplace_back (PATH_TOKEN::token_type::object_key_wildcard, std::string ("*"));
 }
 
 void
 JSON_PATH::push_double_wildcard ()
 {
-  m_path_tokens.emplace_back (PATH_TOKEN::token_type::double_wildcard, std::move (std::string ("**")));
+  m_path_tokens.emplace_back (PATH_TOKEN::token_type::double_wildcard, std::string ("**"));
 }
 
 void
@@ -900,8 +899,8 @@ JSON_PATH::extract_from_subtree (const JSON_PATH &path, size_t tkn_array_offset,
 	{
 	case PATH_TOKEN::token_type::object_key:
 	{
-	  JSON_VALUE::ConstMemberIterator m = jv.FindMember (db_json_encode_rapidjson_str ("\"" + crt_tkn.get_object_key () +
-					      "\"").c_str ());
+	  JSON_VALUE::ConstMemberIterator m = jv.FindMember (db_json_encode_rapidjson_str ("\"" +
+					      crt_tkn.get_object_key () + "\"").c_str ());
 	  if (m == jv.MemberEnd ())
 	    {
 	      return;
@@ -934,8 +933,8 @@ JSON_PATH::extract_from_subtree (const JSON_PATH &path, size_t tkn_array_offset,
 std::vector<const JSON_VALUE *>
 JSON_PATH::extract (const JSON_DOC &jd) const
 {
-  std::unordered_set <const JSON_VALUE *> vals_hash_set;
-  std::vector <const JSON_VALUE *> res;
+  std::unordered_set<const JSON_VALUE *> vals_hash_set;
+  std::vector<const JSON_VALUE *> res;
 
   extract_from_subtree (*this, 0, db_json_doc_to_value (jd), vals_hash_set, res);
 
