@@ -18291,6 +18291,18 @@ pt_function_is_allowed_as_function_index (const PT_NODE * func)
     case F_JSON_SEARCH:
     case F_JSON_EXTRACT:
       return false;
+    case F_INSERT_SUBSTRING:
+    case F_ELT:
+    case F_JSON_CONTAINS:
+    case F_JSON_CONTAINS_PATH:
+    case F_JSON_DEPTH:
+    case F_JSON_LENGTH:
+    case F_JSON_TYPE:
+    case F_JSON_VALID:
+    case F_JSON_PRETTY:
+    case F_JSON_QUOTE:
+    case F_JSON_UNQUOTE:
+      return true;
     default:
       return true;
     }
