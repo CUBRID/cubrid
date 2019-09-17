@@ -102,9 +102,8 @@ namespace lockfree
 
     /* initialize bitfield */
     chunk_count = CEIL_PTVDIV (entries_cnt, LF_BITFIELD_WORD_SIZE);
-    bitfield_size = (chunk_count * sizeof (unsigned int));
-    bitmap->bitfield = new std::atomic<unsigned int>[bitfield_size] ();
-    for (size_t it = 0; it < bitfield_size; it++)
+    bitmap->bitfield = new std::atomic<unsigned int>[chunk_count] ();
+    for (size_t it = 0; it < chunk_count; it++)
       {
 	bitmap->bitfield[it] = 0;
       }
