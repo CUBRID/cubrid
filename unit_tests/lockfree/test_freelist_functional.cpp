@@ -88,11 +88,11 @@ namespace test_lockfree
   }
 
   void
-  run_job (my_freelist &lffl, size_t ops, size_t claim_weight, size_t retire_weight, size_t retire_all_weight,
+  run_job (my_freelist &lffl, size_t ops, size_t claim_weight, size_t retire_weight,
 	   const std::function<void (my_item *list)> &f_on_finish)
   {
     size_t random_var;
-    size_t total_weight = claim_weight + retire_weight + retire_all_weight;
+    size_t total_weight = claim_weight + retire_weight;
 
     my_item *my_list = NULL;
 
@@ -125,9 +125,7 @@ namespace test_lockfree
 	  }
 	else
 	  {
-	    my_item::reset_list_owner (my_list);
-	    lffl.retire_list (my_list);
-	    my_list = NULL;
+	    test_common::custom_assert (false);   // not possible
 	  }
       }
 
@@ -237,7 +235,13 @@ namespace test_lockfree
 	      l_freelist.get_alloc_count () - l_freelist.get_available_count () - l_freelist.get_backbuffer_count ();
       test_common::custom_assert (used_count == list_count);
 
-      l_freelist.retire_list (l_remaining_head);
+      for (l_remaining_head; l_remaining_head != NULL;)
+	{
+	  my_item *to_retire = l_remaining_head;
+	  l_remaining_head = l_remaining_head->get_freelist_link ();
+	  to_retire->get_freelist_link () = NULL;
+	  l_freelist.retire (*to_retire);
+	}
 
       test_common::custom_assert (l_freelist.get_alloc_count ()
 				  == l_freelist.get_available_count () + l_freelist.get_backbuffer_count ());

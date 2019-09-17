@@ -42,7 +42,6 @@ namespace lockfree
 
       // make sure what you retire is no longer accessible
       void retire (T &t);
-      void retire_list (T *head);
 
       size_t get_alloc_count () const;
       size_t get_available_count () const;
@@ -291,27 +290,6 @@ namespace lockfree
     // make sure transaction is open here and transaction ID was incremented
     push_to_list (&t, &t, m_available_list);
     m_available_count++;
-  }
-
-  template<class T>
-  void
-  freelist<T>::retire_list (T *head)
-  {
-    // make sure transaction is open here and transaction ID was incremented
-    if (head == NULL)
-      {
-	return;
-      }
-
-    T *tail;
-    size_t list_size = 1;
-    for (tail = head; tail->get_freelist_link () != NULL; tail = tail->get_freelist_link ())
-      {
-	++list_size;
-      }
-    assert (tail != NULL);
-    push_to_list (head, tail, m_available_list);
-    m_available_count += list_size;
   }
 
   template<class T>
