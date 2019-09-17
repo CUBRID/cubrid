@@ -140,7 +140,7 @@ static PARSER_VARCHAR *pt_append_quoted_string (const PARSER_CONTEXT * parser, P
 static PARSER_VARCHAR *pt_append_string_prefix (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buf,
 						const PT_NODE * value);
 static bool pt_is_nested_expr (const PT_NODE * node);
-static bool pt_function_is_not_allowed_as_function_index (const PT_NODE * func);
+static bool pt_function_is_allowed_as_function_index (const PT_NODE * func);
 static bool pt_expr_is_allowed_as_function_index (const PT_NODE * expr);
 
 static void pt_init_apply_f (void);
@@ -18247,11 +18247,6 @@ pt_is_nested_expr (const PT_NODE * node)
   /* the given operator is not PT_FUNCTION_HOLDER */
 
   func = node->info.expr.arg1;
-  if (pt_function_is_not_allowed_as_function_index (func))
-    {
-      return false;
-    }
-
   for (arg = func->info.function.arg_list; arg != NULL; arg = arg->next)
     {
       PT_NODE *save_arg = arg;
@@ -18266,14 +18261,14 @@ pt_is_nested_expr (const PT_NODE * node)
 }
 
 /*
- *   pt_function_is_not_allowed_as_function_index () : checks if the given function
- *						       is NOT allowed in the structure of a
- *						       function index
+ *   pt_function_is_allowed_as_function_index () : checks if the given function
+ *						   is NOT allowed in the structure of a
+ *						   function index
  *   return:
  *   func(in): parse tree node function
  */
 static bool
-pt_function_is_not_allowed_as_function_index (const PT_NODE * func)
+pt_function_is_allowed_as_function_index (const PT_NODE * func)
 {
   assert (func != NULL && func->node_type == PT_FUNCTION);
 
@@ -18498,6 +18493,20 @@ pt_is_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool report_
 	  PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
 	}
       return false;
+    }
+
+  if (expr->info.expr.op == PT_FUNCTION_HOLDER)
+    {
+      PT_NODE *func = expr->info.expr.arg1;
+      if (!pt_function_is_allowed_as_function_index (func))
+	{
+	  if (report_error)
+	    {
+	      PT_ERRORmf (parser, expr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_INDEX,
+			  fcode_get_uppercase_name (func->info.function.function_type));
+	    }
+	  return false;
+	}
     }
   return true;
 }
