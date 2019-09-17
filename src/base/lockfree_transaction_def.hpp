@@ -20,6 +20,7 @@
 #ifndef _LOCKFREE_TRANSACTION_DEF_HPP_
 #define _LOCKFREE_TRANSACTION_DEF_HPP_
 
+#include <cstddef>
 #include <cstdint>
 
 namespace lockfree
