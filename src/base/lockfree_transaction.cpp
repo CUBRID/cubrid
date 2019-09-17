@@ -80,7 +80,7 @@ namespace lockfree
     descriptor &
     table::get_entry (const index &tran_index)
     {
-      assert (tran_index <= sys.get_max_transaction_count ());
+      assert (tran_index <= m_sys.get_max_transaction_count ());
       return m_all[tran_index];
     }
 
@@ -106,7 +106,7 @@ namespace lockfree
       // note: all transactions are actually claimed from boot. this code is optimized for this case. if we ever
       //       change how transactions are requested, this must be updated too
       id minvalue = INVALID_TRANID;  // nothing is bigger than INVALID_TRANID
-      for (size_t it = 0; it < sys.get_max_transaction_count (); it++)
+      for (size_t it = 0; it < m_sys.get_max_transaction_count (); it++)
 	{
 	  if (minvalue > m_all[it].transaction_id)
 	    {
