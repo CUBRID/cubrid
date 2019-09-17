@@ -118,6 +118,8 @@ area_final (void)
     }
   area_List = NULL;
 
+  set_area_reset ();
+
   pthread_mutex_destroy (&area_List_lock);
 }
 
