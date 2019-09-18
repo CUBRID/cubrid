@@ -328,7 +328,6 @@ namespace cubthread
 	    tran_entries[i] = NULL;
 	  }
       }
-    lockfree::tran::free_index (m_lf_tran_index);
   }
 
   void
