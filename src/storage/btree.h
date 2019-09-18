@@ -541,6 +541,7 @@ struct key_oid
   OID m_oid;
 };
 
+// *INDENT-OFF*
 struct page_key_boundary
 {
   DB_VALUE m_left_key;
@@ -598,10 +599,8 @@ struct btree_insert_list
   size_t add_key (const TP_DOMAIN *key_type, const DB_VALUE *key, const OID &oid);
 
   void reset_boundary_keys ();
-
-  #undef BITSET_SIZE
 };
-
+// *INDENT-ON*
 
 /* BTREE_RANGE_SCAN_PROCESS_KEY_FUNC -
  * btree_range_scan internal function that is called for each key that passes

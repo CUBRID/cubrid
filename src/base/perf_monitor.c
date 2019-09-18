@@ -264,12 +264,12 @@ PSTAT_METADATA pstat_Metadata[] = {
 
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_ONLINE_NUM_INSERTS, "Num_btree_online_inserts"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_ONLINE_NUM_INSERTS_SAME_PAGE_HOLD,
-                                  "Num_btree_online_inserts_same_page_hold"),
+				  "Num_btree_online_inserts_same_page_hold"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_ONLINE_NUM_REJECT_NO_MORE_KEYS,
-                                  "Num_btree_online_inserts_reject_no_more_keys"),
+				  "Num_btree_online_inserts_reject_no_more_keys"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_ONLINE_NUM_REJECT_NO_SPACE, "Num_btree_online_inserts_reject_no_space"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_ONLINE_NUM_REJECT_KET_NOT_IN_RANGE,
-                                  "Num_btree_online_inserts_reject_key_not_in_range"),
+				  "Num_btree_online_inserts_reject_key_not_in_range"),
 
   /* Execution statistics for the query manager */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_SELECTS, "Num_query_selects"),

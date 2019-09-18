@@ -7748,7 +7748,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	      if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 		{
 		  /* Online index is currently loading. */
-                  btree_insert_list one_item_list (key_dbvalue, inst_oid);
+		  btree_insert_list one_item_list (key_dbvalue, inst_oid);
 		  error_code =
 		    btree_online_index_dispatcher (thread_p, &btid, class_oid, &one_item_list, unique_pk,
 						   BTREE_OP_ONLINE_INDEX_TRAN_INSERT, NULL);
@@ -7774,7 +7774,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 		  if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 		    {
 		      /* Online index is currently loading. */
-                      btree_insert_list one_item_list (key_dbvalue, inst_oid);
+		      btree_insert_list one_item_list (key_dbvalue, inst_oid);
 		      error_code =
 			btree_online_index_dispatcher (thread_p, &btid, class_oid, &one_item_list,
 						       unique_pk, BTREE_OP_ONLINE_INDEX_TRAN_DELETE, NULL);
@@ -8454,7 +8454,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 		{
 		  if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 		    {
-                      btree_insert_list one_item_list (old_key, oid);
+		      btree_insert_list one_item_list (old_key, oid);
 		      error_code =
 			btree_online_index_dispatcher (thread_p, &index->btid, class_oid, &one_item_list, unique_pk,
 						       BTREE_OP_ONLINE_INDEX_TRAN_DELETE, NULL);
@@ -8507,7 +8507,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 		      if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 			{
 			  /* Online index loading on current index. */
-                          btree_insert_list one_item_list (new_key, oid);
+			  btree_insert_list one_item_list (new_key, oid);
 			  error_code =
 			    btree_online_index_dispatcher (thread_p, &index->btid, class_oid, &one_item_list,
 							   unique_pk, BTREE_OP_ONLINE_INDEX_TRAN_INSERT, NULL);
@@ -8533,7 +8533,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 			  /* This translates into a delete of the old key and an insert of the new key. */
 
 			  /* Delete old key. */
-                          btree_insert_list old_item_list (old_key, oid);
+			  btree_insert_list old_item_list (old_key, oid);
 			  error_code =
 			    btree_online_index_dispatcher (thread_p, &index->btid, class_oid, &old_item_list,
 							   unique_pk, BTREE_OP_ONLINE_INDEX_TRAN_DELETE, NULL);
@@ -8543,7 +8543,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 			    }
 
 			  /* Insert new key. */
-                          btree_insert_list new_item_list (new_key, oid);
+			  btree_insert_list new_item_list (new_key, oid);
 			  error_code =
 			    btree_online_index_dispatcher (thread_p, &index->btid, class_oid, &new_item_list,
 							   unique_pk, BTREE_OP_ONLINE_INDEX_TRAN_INSERT, NULL);
