@@ -424,18 +424,6 @@ VACUUM_WORKER vacuum_Master;
 /*
  * Vacuum worker/job related structures.
  */
-
-/* Oldest MVCCID considered active by a running transaction.
- * Considered as threshold by vacuum workers.
- */
-MVCCID vacuum_Global_oldest_visible_mvccid;
-/* When transactions run some complex operations on heap files (upgrade domain, reorganize partitions), concurrent
- * access with vacuum workers can create problems. They avoid it by blocking vacuum_Global_oldest_visible_mvccid updates
- * and by running vacuum manually.
- * This is a counter that tracks blocking transactions.
- */
-INT32 vacuum_Global_oldest_visible_blockers_counter;
-
 /* A lock-free buffer used for communication between logger transactions and
  * auto-vacuum master. It is advisable to avoid synchronizing running
  * transactions with vacuum threads and for this reason the block data is not
