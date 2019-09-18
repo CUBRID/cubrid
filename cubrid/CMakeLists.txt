@@ -133,6 +133,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/lockfree_bitmap.hpp
   ${BASE_DIR}/lockfree_transaction_def.hpp
   ${BASE_DIR}/lockfree_transaction_descriptor.hpp
+  ${BASE_DIR}/lockfree_transaction_hazard_pointer.hpp
   ${BASE_DIR}/lockfree_transaction_table.hpp
   ${BASE_DIR}/lockfree_transaction_system.hpp
   ${BASE_DIR}/mem_block.hpp
