@@ -27,9 +27,6 @@ namespace lockfree
 {
   namespace tran
   {
-    bitmap g_Tranmap;
-    size_t g_Tran_max_count;
-
     system::system (size_t max_tran_count)
       : m_max_tran_per_table (max_tran_count)
       , m_tran_idx_lock {}
