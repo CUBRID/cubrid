@@ -38,20 +38,10 @@
 #ifndef _LOCKFREE_TRANSACTION_SYSTEM_HPP_
 #define _LOCKFREE_TRANSACTION_SYSTEM_HPP_
 
+#include "lockfree_bitmap.hpp"
 #include "lockfree_transaction_def.hpp"
 
 #include <limits>
-#include <mutex>
-
-// forward definitions
-namespace lockfree
-{
-  class bitmap;
-  namespace tran
-  {
-    class table;
-  }
-}
 
 namespace lockfree
 {
@@ -64,7 +54,7 @@ namespace lockfree
       public:
 	system () = delete;
 	system (size_t max_tran_count);
-	~system ();
+	~system () = default;
 
 	index assign_index ();
 	void free_index (index idx);
@@ -72,8 +62,7 @@ namespace lockfree
 
       private:
 	size_t m_max_tran_per_table;
-	std::mutex m_tran_idx_lock;
-	bitmap *m_tran_idx_map;
+	bitmap m_tran_idx_map;
     };
   }
 } // namespace lockfree
