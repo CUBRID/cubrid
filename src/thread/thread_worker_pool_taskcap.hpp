@@ -38,15 +38,16 @@ namespace cubthread
 
     public:
       worker_pool_task_capper (worker_pool<Context> *worker_pool);
-      ~worker_pool_task_capper ();
+      ~worker_pool_task_capper () = default;
 
       void push_task (task<Context> *task);
       cubthread::worker_pool<Context> *get_worker_pool ();
-      void end_task ();
 
     private:
       // forward declaration
       class capped_task;
+
+      void end_task ();
 
       cubthread::worker_pool<Context> *m_worker_pool;
       size_t m_tasks_available;
@@ -77,16 +78,10 @@ namespace cubthread
   // worker_pool_task_capper template implementation
   //////////////////////////////////////////////////////////////////////////
   template <typename Context>
-  worker_pool_task_capper<Context>::worker_pool_task_capper (worker_pool<Context> *wp)
+  worker_pool_task_capper<Context>::worker_pool_task_capper (worker_pool<Context> *worker_pool)
   {
-    m_worker_pool = wp;
-    m_tasks_available = m_max_tasks = wp->get_max_count ();
-  }
-
-  template <typename Context>
-  worker_pool_task_capper<Context>::~worker_pool_task_capper ()
-  {
-    //
+    m_worker_pool = worker_pool;
+    m_tasks_available = m_max_tasks = worker_pool->get_max_count ();
   }
 
   template <typename Context>
