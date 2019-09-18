@@ -541,6 +541,18 @@ struct key_oid
   OID m_oid;
 };
 
+struct page_key_boundary
+{
+  DB_VALUE m_left_key;
+  DB_VALUE m_right_key;
+
+  bool m_is_inf_left_key;
+  bool m_is_inf_right_key;
+
+  page_key_boundary ();
+  ~page_key_boundary ();
+};
+
 struct btree_insert_list
 {
   std::vector<key_oid> m_keys_oids;
@@ -549,6 +561,9 @@ struct btree_insert_list
   DB_VALUE *m_curr_key;
   OID *m_curr_oid;
   int m_curr_pos;
+
+  page_key_boundary m_boundaries;
+
   bool m_use_sorted_bulk_insert;
 
   btree_insert_list ()
@@ -581,6 +596,8 @@ struct btree_insert_list
   }
 
   size_t add_key (const TP_DOMAIN *key_type, const DB_VALUE *key, const OID &oid);
+
+  void reset_boundary_keys ();
 
   #undef BITSET_SIZE
 };

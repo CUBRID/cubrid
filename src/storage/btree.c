@@ -1304,7 +1304,7 @@ static int btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTI
 						    bool * clear_key, int *offset, int copy);
 static PAGE_PTR btree_get_new_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, VPID * near_vpid);
 static int btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, DB_VALUE * key,
-				      INT16 * slot_id, VPID * child_vpid);
+				      INT16 * slot_id, VPID * child_vpid, page_key_boundary *page_bounds);
 static int btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, DB_VALUE * key,
 				   BTREE_SEARCH_KEY_HELPER * search_key);
 static int btree_leaf_is_key_between_min_max (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR leaf,
@@ -4983,7 +4983,7 @@ btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
  */
 static int
 btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, DB_VALUE * key, INT16 * slot_id,
-			   VPID * child_vpid)
+			   VPID * child_vpid, page_key_boundary *page_bounds)
 {
   int key_cnt, offset;
   int c;
@@ -5069,10 +5069,9 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 
       c = btree_compare_key (key, &temp_key, btid->key_type, 1, 1, &start_col);
 
-      btree_clear_key_value (&clear_key, &temp_key);
-
       if (c == DB_UNK)
 	{
+          btree_clear_key_value (&clear_key, &temp_key);
 	  return ER_FAILED;
 	}
 
@@ -5082,6 +5081,50 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 	  *slot_id = middle;
 	  *child_vpid = non_leaf_rec.pnt;
 
+          if (page_bounds != NULL)
+            { 
+                if (!page_bounds->m_is_inf_right_key)
+                  {
+                    pr_clear_value (&page_bounds->m_right_key);
+                  }
+                else
+                  {
+                    assert (DB_IS_NULL (&page_bounds->m_right_key));
+                  }
+
+              pr_clone_value (&temp_key, &page_bounds->m_right_key);
+              page_bounds->m_is_inf_right_key = false;
+
+              btree_clear_key_value (&clear_key, &temp_key);
+
+              if (middle > 0)
+                {
+
+                  if (!page_bounds->m_is_inf_left_key)
+                    {
+                      pr_clear_value (&page_bounds->m_left_key);
+                    }
+                  else
+                    {
+                      assert (DB_IS_NULL (&page_bounds->m_left_key));
+                    }
+
+                  if (spage_get_record (thread_p, page_ptr, middle - 1, &rec, PEEK) != S_SUCCESS)
+	            {
+	              return ER_FAILED;
+	            }
+                  if (btree_read_record_without_decompression (thread_p, btid, &rec, &temp_key, &non_leaf_rec, BTREE_NON_LEAF_NODE,
+						               &clear_key, &offset, PEEK_KEY_VALUE) != NO_ERROR)
+	            {
+	              return ER_FAILED;
+	            }
+
+                  pr_clone_value (&temp_key, &page_bounds->m_left_key);
+                  page_bounds->m_is_inf_left_key = false;
+                }
+            }  
+
+          btree_clear_key_value (&clear_key, &temp_key);
 	  return NO_ERROR;
 	}
       else if (c < 0)
@@ -5102,6 +5145,7 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
       assert (middle - 1 > 0);
       if (spage_get_record (thread_p, page_ptr, middle - 1, &rec, PEEK) != S_SUCCESS)
 	{
+          btree_clear_key_value (&clear_key, &temp_key);
 	  return ER_FAILED;
 	}
 
@@ -5109,13 +5153,96 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 
       *slot_id = middle - 1;
       *child_vpid = non_leaf_rec.pnt;
+
+      if (page_bounds != NULL)
+        { 
+          if (!page_bounds->m_is_inf_right_key)
+            {
+              pr_clear_value (&page_bounds->m_right_key);
+            }
+          else
+            {
+              assert (DB_IS_NULL (&page_bounds->m_right_key));
+            }
+
+          pr_clone_value (&temp_key, &page_bounds->m_right_key);
+          page_bounds->m_is_inf_right_key = false;
+
+          btree_clear_key_value (&clear_key, &temp_key);
+
+
+          if (!page_bounds->m_is_inf_left_key)
+            {
+              pr_clear_value (&page_bounds->m_left_key);
+            }
+          else
+            {
+              assert (DB_IS_NULL (&page_bounds->m_left_key));
+            }
+
+              if (btree_read_record_without_decompression (thread_p, btid, &rec, &temp_key, &non_leaf_rec, BTREE_NON_LEAF_NODE,
+						           &clear_key, &offset, PEEK_KEY_VALUE) != NO_ERROR)
+	        {
+	          return ER_FAILED;
+	        }
+
+              pr_clone_value (&temp_key, &page_bounds->m_left_key);
+              page_bounds->m_is_inf_left_key = false;
+        }
+
     }
   else
     {
       /* child page is the one pointed by the middle record */
       *slot_id = middle;
       *child_vpid = non_leaf_rec.pnt;
+
+      if (page_bounds != NULL)
+        { 
+            if (!page_bounds->m_is_inf_left_key)
+              {
+                pr_clear_value (&page_bounds->m_left_key);
+              }
+            else
+              {
+                assert (DB_IS_NULL (&page_bounds->m_left_key));
+              }
+
+          pr_clone_value (&temp_key, &page_bounds->m_left_key);
+          page_bounds->m_is_inf_left_key = false;
+
+          btree_clear_key_value (&clear_key, &temp_key);
+
+          if (middle + 1 < key_cnt)
+            {
+              if (!page_bounds->m_is_inf_right_key)
+                {
+                  pr_clear_value (&page_bounds->m_right_key);
+                }
+              else
+                {
+                  assert (DB_IS_NULL (&page_bounds->m_right_key));
+                }
+
+              if (spage_get_record (thread_p, page_ptr, middle + 1, &rec, PEEK) != S_SUCCESS)
+	        {
+	          return ER_FAILED;
+	        }
+
+              if (btree_read_record_without_decompression (thread_p, btid, &rec, &temp_key, &non_leaf_rec, BTREE_NON_LEAF_NODE,
+						           &clear_key, &offset, PEEK_KEY_VALUE) != NO_ERROR)
+	        {
+	          return ER_FAILED;
+	        }
+
+              pr_clone_value (&temp_key, &page_bounds->m_right_key);
+              page_bounds->m_is_inf_right_key = false;
+            }
+        }
+
     }
+
+  btree_clear_key_value (&clear_key, &temp_key);
 
   return NO_ERROR;
 }
@@ -22726,7 +22853,7 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
     {
       /* Non-leaf page. */
       *is_leaf = false;
-      error_code = btree_search_nonleaf_page (thread_p, btid_int, *crt_page, key, &search_key->slotid, &child_vpid);
+      error_code = btree_search_nonleaf_page (thread_p, btid_int, *crt_page, key, &search_key->slotid, &child_vpid, NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -26844,7 +26971,8 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 
   /* Find and fix the child to advance to. Use write latch if the child is leaf or if it is already known that it will
    * require an update of max key length. */
-  error_code = btree_search_nonleaf_page (thread_p, btid_int, *crt_page, key, &child_slotid, &child_vpid);
+  error_code = btree_search_nonleaf_page (thread_p, btid_int, *crt_page, key, &child_slotid, &child_vpid,
+                                          &insert_helper->insert_list->m_boundaries);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -30185,7 +30313,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	}
       /* Root was not merged. */
       /* Advance to one of the children. */
-      error_code = btree_search_nonleaf_page (thread_p, btid_int, *crt_page, key, &search_key->slotid, &child_vpid);
+      error_code = btree_search_nonleaf_page (thread_p, btid_int, *crt_page, key, &search_key->slotid, &child_vpid, NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -30223,7 +30351,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
   assert (right_page == NULL);
 
   /* Choose the node to advance to. Then check whether it can be merged with any of its neighbors. */
-  error_code = btree_search_nonleaf_page (thread_p, btid_int, *crt_page, key, &search_key->slotid, &child_vpid);
+  error_code = btree_search_nonleaf_page (thread_p, btid_int, *crt_page, key, &search_key->slotid, &child_vpid, NULL);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -33396,7 +33524,46 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
           perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KET_NOT_IN_RANGE);
           break;
         }
+      /* TODO : this should be a case of early continue */
       if (search_key->result != BTREE_KEY_BETWEEN && search_key->result != BTREE_KEY_FOUND)
+        {
+          perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KET_NOT_IN_RANGE);
+          first_insert = false;
+          continue;
+        }
+
+      /* compare with boundary keys : NULL keys means INF bound, no check is required */
+      if (!insert_list->m_boundaries.m_is_inf_left_key)
+        {
+          int c;
+          c = btree_compare_key (&insert_list->m_boundaries.m_left_key, curr_key, btid_int->key_type, 1, 1, NULL);
+          if (c != DB_LT && c != DB_EQ)
+            {
+              perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KET_NOT_IN_RANGE);
+              break;
+            }
+        }
+
+      if (!insert_list->m_boundaries.m_is_inf_right_key)
+        {
+          int c;
+          c = btree_compare_key (curr_key, &insert_list->m_boundaries.m_right_key, btid_int->key_type, 1, 1, NULL);
+          if (c != DB_LT)
+            {
+              perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KET_NOT_IN_RANGE);
+              break;
+            }
+        }
+
+      error_code = btree_search_leaf_page (thread_p, btid_int, *leaf_page, curr_key, search_key);
+      if (error_code != NO_ERROR)
+        {
+          perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KET_NOT_IN_RANGE);
+          break;
+        }
+
+      if (search_key->result != BTREE_KEY_BETWEEN && search_key->result != BTREE_KEY_FOUND
+           && search_key->result != BTREE_KEY_BIGGER && search_key->result != BTREE_KEY_SMALLER)
         {
           perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KET_NOT_IN_RANGE);
           break;
@@ -33404,6 +33571,8 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 
       first_insert = false;
     }
+
+  insert_list->reset_boundary_keys ();
 
   return error_code;
 }
@@ -35167,6 +35336,21 @@ btree_is_single_object_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_
   return true;
 }
 
+
+page_key_boundary::page_key_boundary ()
+  : m_is_inf_left_key (true)
+  , m_is_inf_right_key (true)
+  {
+    db_make_null (&m_left_key);
+    db_make_null (&m_right_key);
+  }
+
+page_key_boundary::~page_key_boundary ()
+  {
+    pr_clear_value (&m_left_key);
+    pr_clear_value (&m_right_key);
+  }
+
 size_t
 btree_insert_list::add_key (const TP_DOMAIN *key_type, const DB_VALUE *key, const OID &oid)
 {
@@ -35232,4 +35416,21 @@ btree_insert_list::~btree_insert_list ()
     }
 
   (void) db_change_private_heap (NULL, save_id);
+
+  reset_boundary_keys ();
+}
+
+void btree_insert_list::reset_boundary_keys ()
+{
+  if (!m_boundaries.m_is_inf_left_key)
+    {
+      pr_clear_value (&m_boundaries.m_left_key);
+      m_boundaries.m_is_inf_left_key = true;
+    }
+
+  if (!m_boundaries.m_is_inf_right_key)
+    {
+      pr_clear_value (&m_boundaries.m_right_key);
+      m_boundaries.m_is_inf_right_key = true;
+    }  
 }
