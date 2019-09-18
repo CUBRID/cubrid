@@ -219,6 +219,20 @@ namespace cubload
 	const attribute *attr = new attribute (attr_name_, attr_index, attr_repr);
 
 	attributes.push_back (attr);
+	attr_map.erase (attr_name_);
+      }
+
+    // check missing non null attributes
+    for (const std::pair<const std::string, or_attribute *> &attr : attr_map)
+      {
+	if (attr.second->is_notnull)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, attr.first.c_str ());
+	    heap_scancache_end (&thread_ref, &scancache);
+	    heap_attrinfo_end (&thread_ref, &attrinfo);
+	    m_error_handler.on_failure ();
+	    return;
+	  }
       }
 
     m_session.get_class_registry ().register_class (class_name, m_clsid, class_oid, attributes);
