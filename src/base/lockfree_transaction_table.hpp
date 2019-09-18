@@ -51,6 +51,7 @@ namespace lockfree
   namespace tran
   {
     class system;
+    class descriptor;
   }
 }
 
@@ -60,15 +61,7 @@ namespace lockfree
   {
     static const id INVALID_TRANID = std::numeric_limits<id>::max ();
 
-    class descriptor
-    {
-      public:
-	// todo: make private
-	id last_cleanup_id;   /* last ID for which a cleanup of retired_list was performed */
-	id transaction_id;    /* id of current transaction */
 
-	bool did_incr;        /* Was transaction ID incremented? */
-    };
 
     class table
     {

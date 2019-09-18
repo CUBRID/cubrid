@@ -20,11 +20,21 @@
 #ifndef _LOCKFREE_TRANSACTION_DESCRIPTOR_HPP_
 #define _LOCKFREE_TRANSACTION_DESCRIPTOR_HPP_
 
+#include "lockfree_transaction_def.hpp"
+
 namespace lockfree
 {
   namespace tran
   {
+    class descriptor
+    {
+      public:
+	// todo: make private
+	id last_cleanup_id;   /* last ID for which a cleanup of retired_list was performed */
+	id transaction_id;    /* id of current transaction */
 
+	bool did_incr;        /* Was transaction ID incremented? */
+    };
   } // namespace tran
 } // namespace lockfree
 
