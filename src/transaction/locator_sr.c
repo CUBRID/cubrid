@@ -13798,10 +13798,21 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 						     func_preds, force_in_place, &home_hint_p, has_BU_lock, dont_check_fk, true);
 		  if (error_code != NO_ERROR)
 		    {
-		      pgbuf_ordered_unfix_and_init (thread_p, home_hint_p.pgptr, &home_hint_p);
-		      assert (!pgbuf_is_page_fixed_by_thread (thread_p, &new_page_vpid));
+                      ASSERT_ERROR ();
 
-		      ASSERT_ERROR ();
+                      if (home_hint_p.pgptr)
+                        {
+                          pgbuf_ordered_unfix_and_init (thread_p, home_hint_p.pgptr, &home_hint_p);
+                        }
+
+                      if (scan_cache->page_watcher.pgptr)
+                        {
+                          pgbuf_ordered_unfix_and_init (thread_p, scan_cache->page_watcher.pgptr,
+                                                        &scan_cache->page_watcher);
+                        }
+		      
+		      assert (!pgbuf_is_page_fixed_by_thread (thread_p, &new_page_vpid));
+		      
 		      return error_code;
 		    }
 
