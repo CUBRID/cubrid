@@ -151,11 +151,9 @@ namespace cubload
   }
 
   size_t
-  batch::get_packed_size (cubpacking::packer &serializator) const
+  batch::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = 0;
-
-    size += serializator.get_packed_int_size (size); // m_id
+    size_t size = serializator.get_packed_int_size (start_offset); // m_id
     size += serializator.get_packed_int_size (size); // m_clsid
     size += serializator.get_packed_string_size (m_content, size);
     size += serializator.get_packed_int_size (size); // m_line_offset
@@ -275,11 +273,9 @@ namespace cubload
   }
 
   size_t
-  load_args::get_packed_size (cubpacking::packer &serializator) const
+  load_args::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = 0;
-
-    size += serializator.get_packed_string_size (volume, size);
+    size_t size = serializator.get_packed_string_size (volume, start_offset);
     size += serializator.get_packed_string_size (input_file, size);
     size += serializator.get_packed_string_size (user_name, size);
     size += serializator.get_packed_string_size (password, size);
@@ -526,11 +522,9 @@ namespace cubload
   }
 
   size_t
-  stats::get_packed_size (cubpacking::packer &serializator) const
+  stats::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = 0;
-
-    size += serializator.get_packed_int_size (size); // rows_committed
+    size_t size = serializator.get_packed_int_size (start_offset); // rows_committed
     size += serializator.get_packed_int_size (size); // current_line
     size += serializator.get_packed_int_size (size); // last_committed_line
     size += serializator.get_packed_int_size (size); // rows_failed

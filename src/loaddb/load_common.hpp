@@ -65,7 +65,7 @@ namespace cubload
 
       void pack (cubpacking::packer &serializator) const override;
       void unpack (cubpacking::unpacker &deserializator) override;
-      size_t get_packed_size (cubpacking::packer &serializator) const override;
+      size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
     private:
       batch_id m_id;
@@ -86,7 +86,7 @@ namespace cubload
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator) const override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
     int parse_ignore_class_file ();
 
@@ -273,7 +273,7 @@ namespace cubload
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator) const override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
   };
 
   /*
