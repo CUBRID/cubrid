@@ -1782,8 +1782,7 @@ static inline bool btree_is_online_index_loading (BTREE_OP_PURPOSE purpose);
 static bool btree_is_single_object_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_NODE_TYPE node_type,
 					RECDES * record, int offset_after_key);
 
-static bool btree_check_locking_for_unique_operation (THREAD_ENTRY * thread_p, const OID * class_oid,
-						      const OID * instance_oid);
+static bool btree_check_locking_for_insert_unique (THREAD_ENTRY * thread_p, const BTREE_INSERT_HELPER * insert_helper);
 
 /*
  * btree_fix_root_with_info () - Fix b-tree root page and output its VPID, header and b-tree info if requested.
@@ -27344,9 +27343,7 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
   assert (insert_helper->is_system_op_started == false);
 #if defined (SERVER_MODE)
   assert ((btree_is_online_index_loading (insert_helper->purpose)) || !BTREE_IS_UNIQUE (btid_int->unique_pk)
-	  || log_is_in_crash_recovery ()
-	  || btree_check_locking_for_unique_operation (thread_p, BTREE_INSERT_CLASS_OID (insert_helper),
-						       BTREE_INSERT_OID (insert_helper)));
+	  || log_is_in_crash_recovery () || btree_check_locking_for_insert_unique (thread_p, insert_helper));
 #endif /* SERVER_MODE */
 
   /* Insert new key. */
@@ -27609,9 +27606,7 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
   assert (insert_helper->rv_redo_data != NULL && insert_helper->rv_redo_data_ptr != NULL);
   assert (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT);
 #if defined (SERVER_MODE)
-  assert (log_is_in_crash_recovery ()
-	  || btree_check_locking_for_unique_operation (thread_p, BTREE_INSERT_CLASS_OID (insert_helper),
-						       BTREE_INSERT_OID (insert_helper)));
+  assert (log_is_in_crash_recovery () || btree_check_locking_for_insert_unique (thread_p, insert_helper));
 #endif /* SERVER_MODE */
 
   /* Insert object in the beginning of leaf record if unique constraint is not violated. Step 1: Protect key by
@@ -30604,8 +30599,8 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 		  logtb_find_current_mvccid (thread_p)))
 	  /* Cannot check if class OID is NULL. Get it in debug mode. */
 	  || OID_ISNULL (BTREE_DELETE_CLASS_OID (delete_helper))
-	  || btree_check_locking_for_unique_operation (thread_p, BTREE_DELETE_CLASS_OID (delete_helper),
-						       BTREE_DELETE_OID (delete_helper)));
+	  || lock_has_lock_on_object (BTREE_DELETE_OID (delete_helper), BTREE_DELETE_CLASS_OID (delete_helper),
+				      logtb_get_current_tran_index (), X_LOCK) > 0);
 #endif /* SERVER_MODE */
 
   /* Safe guard: if the index is unique and we want to physically delete the object and if operation type is not
@@ -35062,7 +35057,7 @@ btree_is_single_object_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_
 }
 
 static bool
-btree_check_locking_for_unique_operation (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * instance_oid)
+btree_check_locking_for_insert_unique (THREAD_ENTRY * thread_p, const BTREE_INSERT_HELPER * insert_helper)
 {
   int has_class_bu_lock;
   int has_instance_lock;
@@ -35076,13 +35071,15 @@ btree_check_locking_for_unique_operation (THREAD_ENTRY * thread_p, const OID * c
    *  or a BU_LOCK on the class.
    */
 
-  has_class_bu_lock = lock_has_lock_on_object (class_oid, oid_Root_class_oid, tran_index, BU_LOCK);
+  has_class_bu_lock = lock_has_lock_on_object (BTREE_INSERT_CLASS_OID (insert_helper), oid_Root_class_oid,
+					       tran_index, BU_LOCK);
   if (has_class_bu_lock > 0)
     {
       return true;
     }
 
-  has_instance_lock = lock_has_lock_on_object (instance_oid, class_oid, tran_index, X_LOCK);
+  has_instance_lock = lock_has_lock_on_object (BTREE_INSERT_OID (insert_helper), BTREE_INSERT_CLASS_OID (insert_helper),
+					       tran_index, X_LOCK);
   if (has_instance_lock > 0)
     {
       return true;
