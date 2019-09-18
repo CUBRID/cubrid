@@ -19,8 +19,6 @@
 
 #include "lockfree_transaction_index.hpp"
 
-#include "lockfree_bitmap.hpp"
-
 #include <cassert>
 
 namespace lockfree
@@ -29,23 +27,16 @@ namespace lockfree
   {
     system::system (size_t max_tran_count)
       : m_max_tran_per_table (max_tran_count)
-      , m_tran_idx_lock {}
-      , m_tran_idx_map (new bitmap ())
+      , m_tran_idx_map ()
     {
-      m_tran_idx_map->init (bitmap::chunking_style::ONE_CHUNK, static_cast<int> (max_tran_count),
-			    bitmap::FULL_USAGE_RATIO);
-    }
-
-    system::~system ()
-    {
-      delete m_tran_idx_map;
+      m_tran_idx_map.init (bitmap::chunking_style::ONE_CHUNK, static_cast<int> (max_tran_count),
+			   bitmap::FULL_USAGE_RATIO);
     }
 
     index
     system::assign_index ()
     {
-      std::unique_lock<std::mutex> ulock (m_tran_idx_lock);
-      int ret = m_tran_idx_map->get_entry ();
+      int ret = m_tran_idx_map.get_entry ();
       if (ret < 0)
 	{
 	  assert (false);
@@ -57,13 +48,12 @@ namespace lockfree
     void
     system::free_index (index idx)
     {
-      std::unique_lock<std::mutex> ulock (m_tran_idx_lock);
       if (idx == INVALID_INDEX)
 	{
 	  assert (false);
 	  return;
 	}
-      m_tran_idx_map->free_entry (static_cast<int> (idx));
+      m_tran_idx_map.free_entry (static_cast<int> (idx));
     }
 
     size_t
