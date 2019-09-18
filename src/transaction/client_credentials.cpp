@@ -173,7 +173,7 @@ clientids::reset ()
   client_type_as_int, client_info, db_user, program_name, login_name, host_name, process_id
 
 size_t
-clientids::get_packed_size (cubpacking::packer &serializator) const
+clientids::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
 {
   return serializator.get_all_packed_size (CLIENTID_PACKER_ARGS (static_cast<int> (client_type)));
 }
@@ -229,7 +229,7 @@ boot_client_credential::get_db_password () const
   db_name, db_password
 
 size_t
-boot_client_credential::get_packed_size (cubpacking::packer &serializator) const
+boot_client_credential::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
 {
   return clientids::get_packed_size (serializator) + serializator.get_all_packed_size (BOOTCLCRED_PACKER_ARGS);
 }

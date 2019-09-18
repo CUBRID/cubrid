@@ -19,6 +19,7 @@ def replace_whitespaces(str):
     res = res.replace (';', '')
     res = res.replace('\t', '')
     res = res.replace('\n', '')
+    res = res.replace('/', '')
     return res
 
 def parse_sar(filepath, date_MMDDYY, has_multiple_inputs = 0):
@@ -200,6 +201,7 @@ def parse_statdump(filepath, has_multiple_inputs = 0, stats_filter_list = []):
                      'Time_data_page_lock_acquire_time:',
                      'Time_data_page_hold_acquire_time:',
                      'Time_data_page_fix_acquire_time:',
+                     'Time_data_page_unfix_time:',
                      'Num_mvcc_snapshot_ext:',
                      'Time_obj_lock_acquire_time:']
     data = []
@@ -336,7 +338,7 @@ def parse_statdump(filepath, has_multiple_inputs = 0, stats_filter_list = []):
     print ('Keys:', ref_dict.keys ().__len__ ())
     print ('Rows:' + str (len (data)) + ' ; ' + str (row_cnt))
 
-    return data, ref_dict
+    return data, ref_dict, local_timezone
 
 def extend_data(data, ref_dict, add_row_id = 0):
     data_adj = []
@@ -387,7 +389,12 @@ def plot_two_graphs(time_array, k1,k2,array1,array2, text_string):
     plt.legend(loc='lower left', title=text_string, bbox_to_anchor=(0.0, 1.01), ncol=1, borderaxespad=0, frameon=False,
            fontsize='xx-small')
 
-    filename = k1 + k2 + '.png'
+    if (platform.system () in 'Windows'):
+        filename = k1 + k2;
+        filename = filename[:200] + '.png'
+    else:
+        filename = k1 + k2 + '.png'
+
     filename = replace_whitespaces (filename)
 
     if (graph_mode == 1 or graph_mode == 2):
@@ -423,6 +430,9 @@ def merge_data (data1, data2, merge_key):
             rowid1 = rowid1 + 1
         else:
             rowid2 = rowid2 + 1
+
+    if len (data1) == 0:
+        merged_data = data2
 
     print ("Merged data rows cnt : " + str (len (merged_data)))
     print ("Merged data columns cnt  : " + str(len(merged_data[0].keys ())))
@@ -728,6 +738,11 @@ def stack_graphs (data, prefix_list, suffix_list):
         filename = replace_whitespaces(filename)
 
         filename = filename.replace ('.', '')
+
+        if (platform.system() in 'Windows'):
+            filename = filename[:200]
+
+
         filename = filename + '.png'
 
         plt.savefig (filename, format='png', dpi=PLOT_DPI)
@@ -790,6 +805,7 @@ def main(argv):
    stats_filter_list = []
    PLOT_DPI = 800
    merge_mode = 'noscale'
+   statdump_local_timezone = ''
 
    try:
       opts, args = getopt.getopt(argv,"hi:m:p",["ifile=","mode=","sim1-key=", "sim1-th=", "sim2-th=", "sar-file=", "iostat-file=", "iostat-device=", "graph-mode=", "prefix=", "stats-filter-file=", "auto-scale="])
@@ -854,8 +870,10 @@ def main(argv):
        merge_mode = 'autoscale'
 
    is_first_input_file = 1
+   date_MMDDYY=''
+   data = []
    for inputfile in inputfile_list:
-      stat_data, columns = parse_statdump (inputfile, has_multiple_inputs, stats_filter_list)
+      stat_data, columns, statdump_local_timezone = parse_statdump (inputfile, has_multiple_inputs, stats_filter_list)
 
       first_row = stat_data[0]
       first_time_value = first_row[TIME_COL]

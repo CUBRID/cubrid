@@ -140,7 +140,8 @@ static PARSER_VARCHAR *pt_append_quoted_string (const PARSER_CONTEXT * parser, P
 static PARSER_VARCHAR *pt_append_string_prefix (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buf,
 						const PT_NODE * value);
 static bool pt_is_nested_expr (const PT_NODE * node);
-static bool pt_is_allowed_as_function_index (const PT_NODE * expr);
+static bool pt_function_is_allowed_as_function_index (const PT_NODE * func);
+static bool pt_expr_is_allowed_as_function_index (const PT_NODE * expr);
 
 static void pt_init_apply_f (void);
 static void pt_init_init_f (void);
@@ -18260,16 +18261,62 @@ pt_is_nested_expr (const PT_NODE * node)
 }
 
 /*
- *   pt_is_allowed_as_function_index () : checks if the given operator
- *					  is allowed in the structure of a
- *					  function index
+ *   pt_function_is_allowed_as_function_index () : checks if the given function
+ *						   is allowed in the structure of a function index
+ *   return:
+ *   func(in): parse tree node function
+ */
+static bool
+pt_function_is_allowed_as_function_index (const PT_NODE * func)
+{
+  assert (func != NULL && func->node_type == PT_FUNCTION);
+
+  // TODO: expose get_signatures () of func_type.cpp & filter out funcs returning PT_TYPE_JSON
+  switch (func->info.function.function_type)
+    {
+    case F_BENCHMARK:
+    case F_JSON_OBJECT:
+    case F_JSON_ARRAY:
+    case F_JSON_MERGE:
+    case F_JSON_MERGE_PATCH:
+    case F_JSON_INSERT:
+    case F_JSON_REMOVE:
+    case F_JSON_ARRAY_APPEND:
+    case F_JSON_GET_ALL_PATHS:
+    case F_JSON_REPLACE:
+    case F_JSON_SET:
+    case F_JSON_KEYS:
+    case F_JSON_ARRAY_INSERT:
+    case F_JSON_SEARCH:
+    case F_JSON_EXTRACT:
+      return false;
+    case F_INSERT_SUBSTRING:
+    case F_ELT:
+    case F_JSON_CONTAINS:
+    case F_JSON_CONTAINS_PATH:
+    case F_JSON_DEPTH:
+    case F_JSON_LENGTH:
+    case F_JSON_TYPE:
+    case F_JSON_VALID:
+    case F_JSON_PRETTY:
+    case F_JSON_QUOTE:
+    case F_JSON_UNQUOTE:
+      return true;
+    default:
+      return true;
+    }
+}
+
+/*
+ *   pt_expr_is_allowed_as_function_index () : checks if the given operator
+ *					       is allowed in the structure of a function index
  *   return:
  *   expr(in): expression parse tree node
  */
 static bool
-pt_is_allowed_as_function_index (const PT_NODE * expr)
+pt_expr_is_allowed_as_function_index (const PT_NODE * expr)
 {
-  assert (expr != NULL);
+  assert (expr != NULL && expr->node_type == PT_EXPR);
 
   switch (expr->info.expr.op)
     {
@@ -18432,7 +18479,7 @@ pt_is_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool report_
 	}
       return false;
     }
-  if (!pt_is_allowed_as_function_index (expr))
+  if (!pt_expr_is_allowed_as_function_index (expr))
     {
       if (report_error)
 	{
@@ -18456,6 +18503,20 @@ pt_is_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool report_
 	  PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
 	}
       return false;
+    }
+
+  if (expr->info.expr.op == PT_FUNCTION_HOLDER)
+    {
+      PT_NODE *func = expr->info.expr.arg1;
+      if (!pt_function_is_allowed_as_function_index (func))
+	{
+	  if (report_error)
+	    {
+	      PT_ERRORmf (parser, expr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_INDEX,
+			  fcode_get_uppercase_name (func->info.function.function_type));
+	    }
+	  return false;
+	}
     }
   return true;
 }
