@@ -91,7 +91,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/lock_free.c
   ${BASE_DIR}/lockfree_bitmap.cpp
   ${BASE_DIR}/lockfree_transaction.cpp
-  ${BASE_DIR}/lockfree_transaction_index.cpp
+  ${BASE_DIR}/lockfree_transaction_system.cpp
   ${BASE_DIR}/md5.c
   ${BASE_DIR}/mem_block.cpp
   ${BASE_DIR}/memory_alloc.c
@@ -132,7 +132,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/lockfree_bitmap.hpp
   ${BASE_DIR}/lockfree_transaction.hpp
   ${BASE_DIR}/lockfree_transaction_def.hpp
-  ${BASE_DIR}/lockfree_transaction_index.hpp
+  ${BASE_DIR}/lockfree_transaction_system.hpp
   ${BASE_DIR}/mem_block.hpp
   ${BASE_DIR}/memory_reference_store.hpp
   ${BASE_DIR}/memory_private_allocator.hpp
