@@ -41,8 +41,8 @@ namespace lockfree
 
       // todo transport
 
-      hzp.set_delete_id (m_id);
-      hzp.set_hazard_link (m_retired_head);
+      hzp.m_delete_id = m_id;
+      hzp.m_hazard_next = m_retired_head;
     }
 
     void

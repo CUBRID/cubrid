@@ -35,6 +35,14 @@ namespace lockfree
 {
   namespace tran
   {
+    class descriptor;
+  } // namespace tran
+} // namespace lockfree
+
+namespace lockfree
+{
+  namespace tran
+  {
     class hazard_pointer
     {
       public:
@@ -47,27 +55,12 @@ namespace lockfree
 	  delete this;
 	}
 
-	id get_delete_id ()
-	{
-	  return m_delete_id;
-	}
-	void set_delete_id (id trid)
-	{
-	  m_delete_id = trid;
-	}
-	void set_hazard_link (hazard_pointer *next)
-	{
-	  m_hazard_next = next;
-	}
-	hazard_pointer *get_hazard_next ()
-	{
-	  return m_hazard_next;
-	}
-
       protected:
 	hazard_pointer *m_hazard_next;    // may be reused by derived classes
 
       private:
+	friend descriptor;
+
 	id m_delete_id;
     };
   } // namespace tran
