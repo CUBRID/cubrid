@@ -29,11 +29,47 @@
 #ifndef _LOCKFREE_TRANSACTION_HAZARD_POINTER_HPP_
 #define _LOCKFREE_TRANSACTION_HAZARD_POINTER_HPP_
 
+#include "lockfree_transaction_def.hpp"
+
 namespace lockfree
 {
   namespace tran
   {
-    class hazard_pointer;
+    class hazard_pointer
+    {
+      public:
+	hazard_pointer () = default;
+	virtual ~hazard_pointer () = 0;   // to force abstract class
+
+	virtual void on_retire ()
+	{
+	  // default is to delete itself
+	  delete this;
+	}
+
+	id get_delete_id ()
+	{
+	  return m_delete_id;
+	}
+	void set_delete_id (id trid)
+	{
+	  m_delete_id = trid;
+	}
+	void set_hazard_link (hazard_pointer *next)
+	{
+	  m_hazard_next = next;
+	}
+	hazard_pointer *get_hazard_next ()
+	{
+	  return m_hazard_next;
+	}
+
+      protected:
+	hazard_pointer *m_hazard_next;    // may be reused by derived classes
+
+      private:
+	id m_delete_id;
+    };
   } // namespace tran
 } // namespace lockfree
 

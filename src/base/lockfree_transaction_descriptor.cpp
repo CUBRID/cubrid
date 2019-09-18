@@ -18,3 +18,62 @@
  */
 
 #include "lockfree_transaction_descriptor.hpp"
+
+#include "lockfree_transaction_table.hpp"
+
+#include <cassert>
+
+namespace lockfree
+{
+  namespace tran
+  {
+    void
+    descriptor::set_table (table &tbl)
+    {
+      m_table = &tbl;
+    }
+
+    void
+    descriptor::retire_hazard_pointer (hazard_pointer &hzp)
+    {
+      bool should_end = !is_tran_started ();
+      start_and_increment_id ();
+
+      // todo transport
+
+      hzp.set_delete_id (m_id);
+      hzp.set_hazard_link (m_retired_head);
+    }
+
+    void
+    descriptor::start ()
+    {
+      if (!is_tran_started ())
+	{
+	  m_id = m_table->get_current_global_tranid ();
+	}
+    }
+
+    void
+    descriptor::start_and_increment_id ()
+    {
+      if (!m_did_incr)
+	{
+	  m_id = m_table->get_new_global_tranid ();
+	}
+      assert (m_id != INVALID_TRANID);
+    }
+
+    bool
+    descriptor::is_tran_started ()
+    {
+      return m_id != INVALID_TRANID;
+    }
+
+    void
+    descriptor::end ()
+    {
+
+    }
+  } // namespace tran
+} // namespace lockfree

@@ -21,6 +21,16 @@
 #define _LOCKFREE_TRANSACTION_DESCRIPTOR_HPP_
 
 #include "lockfree_transaction_def.hpp"
+#include "lockfree_transaction_hazard_pointer.hpp"
+
+// forward definition
+namespace lockfree
+{
+  namespace tran
+  {
+    class table;
+  } // namespace tran
+} // namespace lockfree
 
 namespace lockfree
 {
@@ -29,11 +39,31 @@ namespace lockfree
     class descriptor
     {
       public:
+	descriptor () = default;
+	~descriptor () = default;
+
+	void retire_hazard_pointer (hazard_pointer &hzp);
+
+	void set_table (table &tbl);
+
+	void start ();
+	void start_and_increment_id ();
+	void end ();
+
+	bool is_tran_started ();
+
 	// todo: make private
 	id last_cleanup_id;   /* last ID for which a cleanup of retired_list was performed */
 	id transaction_id;    /* id of current transaction */
 
 	bool did_incr;        /* Was transaction ID incremented? */
+
+      private:
+	table *m_table;
+	id m_id;
+	id m_transport_id;
+	hazard_pointer *m_retired_head;
+	bool m_did_incr;
     };
   } // namespace tran
 } // namespace lockfree
