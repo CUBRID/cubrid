@@ -148,4 +148,4 @@ namespace cubthread
   }
 }
 
-#endif _THREAD_WORKER_POOL_TASKCAP_HPP_
+#endif // !_THREAD_WORKER_POOL_TASKCAP_HPP_
