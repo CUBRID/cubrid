@@ -27,6 +27,7 @@
 #include "load_session.hpp"
 #include "resource_shared_pool.hpp"
 #include "thread_worker_pool.hpp"
+#include "thread_worker_pool_taskcap.hpp"
 #include "xserver_interface.h"
 
 namespace cubload
