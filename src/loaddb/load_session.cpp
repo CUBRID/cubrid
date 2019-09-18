@@ -195,8 +195,6 @@ namespace cubload
 
 	// notify session that batch is done
 	m_session.notify_batch_done (m_batch.get_id ());
-
-	worker_manager_complete_task ();
       }
 
     private:
