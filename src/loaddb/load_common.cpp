@@ -151,7 +151,7 @@ namespace cubload
   }
 
   size_t
-  batch::get_packed_size (cubpacking::packer &serializator) const
+  batch::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
     size_t size = 0;
 
@@ -275,7 +275,7 @@ namespace cubload
   }
 
   size_t
-  load_args::get_packed_size (cubpacking::packer &serializator) const
+  load_args::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
     size_t size = 0;
 
@@ -526,7 +526,7 @@ namespace cubload
   }
 
   size_t
-  stats::get_packed_size (cubpacking::packer &serializator) const
+  stats::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
     size_t size = 0;
 
