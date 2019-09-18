@@ -7884,22 +7884,20 @@ void
 vacuum_data::set_oldest_unvacuumed_on_boot ()
 {
   // no thread safety needs to be considered here
+  if (!log_Gl.hdr.does_block_need_vacuum)
+    {
+      // log_Gl.hdr.oldest_visible_mvccid may not remain uninitialized
+      log_Gl.hdr.oldest_visible_mvccid = log_Gl.hdr.mvcc_next_id;
+    }
   if (vacuum_Data.is_empty ())
     {
-      if (log_Gl.hdr.does_block_need_vacuum)
-        {
-          oldest_unvacuumed_mvccid = log_Gl.hdr.oldest_visible_mvccid;
-        }
-      else
-        {
-          oldest_unvacuumed_mvccid = log_Gl.hdr.mvcc_next_id;
-          log_Gl.hdr.oldest_visible_mvccid = log_Gl.hdr.mvcc_next_id;
-        }
+      oldest_unvacuumed_mvccid = log_Gl.hdr.oldest_visible_mvccid;
     }
   else
     {
       // set on first block oldest mvccid
       oldest_unvacuumed_mvccid = first_page->data[0].oldest_visible_mvccid;
+      assert (oldest_unvacuumed_mvccid <= log_Gl.hdr.oldest_visible_mvccid);
     }
 }
 
