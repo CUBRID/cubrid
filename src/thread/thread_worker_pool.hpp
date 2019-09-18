@@ -1490,11 +1490,29 @@ namespace cubthread
       void end_task ();
 
     private:
+      // forward declaration
+      class capped_task;
+
       cubthread::worker_pool<Context> *m_worker_pool;
-      unsigned int m_tasks_available;
-      unsigned int m_max_tasks;
+      size_t m_tasks_available;
+      size_t m_max_tasks;
       std::mutex m_mutex;
       std::condition_variable m_cond_var;
+  };
+
+  template <typename Context>
+  class worker_pool_task_capper<Context>::capped_task : public worker_pool_task_capper::task_type
+  {
+    public:
+      capped_task () = delete;
+      capped_task (worker_pool_task_capper &capper, task_type *task);
+      ~capped_task ();
+
+      void execute (context_type &ctx) override final;
+
+    private:
+      worker_pool_task_capper &m_capper;
+      task_type *m_nested_task;
   };
 } // namespace cubthread
 
@@ -1531,7 +1549,7 @@ namespace cubthread
     assert (m_tasks_available > 0);
 
     m_tasks_available--;
-    m_worker_pool->execute (task);
+    m_worker_pool->execute (new capped_task (*this, task));
   }
 
   template <typename Context>
@@ -1548,11 +1566,31 @@ namespace cubthread
   }
 
   template <typename Context>
-  cubthread::worker_pool<Context> *worker_pool_task_capper<Context>::get_worker_pool ()
+  worker_pool<Context> *worker_pool_task_capper<Context>::get_worker_pool ()
   {
     return m_worker_pool;
   }
 
+  template <typename Context>
+  worker_pool_task_capper<Context>::capped_task::capped_task (worker_pool_task_capper &capper, task_type *task)
+    : m_capper (capper)
+    , m_nested_task (task)
+  {
+  }
+
+  template <typename Context>
+  worker_pool_task_capper<Context>::capped_task::~capped_task ()
+  {
+    m_nested_task->retire ();
+  }
+
+  template <typename Context>
+  void
+  worker_pool_task_capper<Context>::capped_task::execute (context_type &ctx)
+  {
+    m_nested_task->execute (ctx);
+    m_capper.end_task ();
+  }
 }
 
 #endif // _THREAD_WORKER_POOL_HPP_

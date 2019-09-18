@@ -175,12 +175,6 @@ namespace cubload
   }
 
   void
-  worker_manager_complete_task ()
-  {
-    g_wp_task_capper->end_task ();
-  }
-
-  void
   worker_manager_get_stats (UINT64 *stats_out)
   {
     std::unique_lock<std::mutex> ulock (g_wp_mutex);
