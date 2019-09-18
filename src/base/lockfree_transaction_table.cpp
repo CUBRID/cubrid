@@ -17,7 +17,7 @@
  *
  */
 
-#include "lockfree_transaction.hpp"
+#include "lockfree_transaction_table.hpp"
 
 #include "lockfree_transaction_system.hpp"
 #include "lockfree_bitmap.hpp"

@@ -20,8 +20,19 @@
 //
 // lockfree_transaction_system.hpp - lock-free transaction index management
 //
-// Any user of lock-free transactions should acquire an index first. This will allow access to all lock-free transaction
-// tables, existing or that will be created in the future.
+//    The lock-free transaction system is a solution to the ABA problem (https://en.wikipedia.org/wiki/ABA_problem)
+//
+//    The basic principle of the system is to use incremental transaction id's to determine when a hazard pointer was
+//    last accessed and if it is safe to "delete" it.
+//
+//    The system has two key components:
+//        1. transaction indexes, one for each different thread that may use a lock-free structure in this system
+//        2. transaction tables, one for each lock-free structure part of this system
+//
+//    For any thread trying to access or modify any of the lock-free structures part of transaction system, there will
+//    be a transaction descriptor.
+//    The transaction descriptor is used to monitor the thread activity on the lock-free structure and to collect
+//    deleted hazard pointers until they no thread accesses it.
 //
 
 #ifndef _LOCKFREE_TRANSACTION_SYSTEM_HPP_
