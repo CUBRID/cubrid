@@ -18262,8 +18262,7 @@ pt_is_nested_expr (const PT_NODE * node)
 
 /*
  *   pt_function_is_allowed_as_function_index () : checks if the given function
- *						   is NOT allowed in the structure of a
- *						   function index
+ *						   is allowed in the structure of a function index
  *   return:
  *   func(in): parse tree node function
  */
@@ -18310,8 +18309,7 @@ pt_function_is_allowed_as_function_index (const PT_NODE * func)
 
 /*
  *   pt_expr_is_allowed_as_function_index () : checks if the given operator
- *					       is allowed in the structure of a
- *					       function index
+ *					       is allowed in the structure of a function index
  *   return:
  *   expr(in): expression parse tree node
  */
