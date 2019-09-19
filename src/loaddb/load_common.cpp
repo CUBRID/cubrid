@@ -603,6 +603,11 @@ namespace cubload
 	// strip trailing whitespace
 	rtrim (line);
 
+	if (line.empty ())
+	  {
+	    continue;
+	  }
+
 	// it is a line containing row data so append it
 	batch_buffer.append (line);
 
