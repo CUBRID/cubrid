@@ -954,13 +954,16 @@ namespace cubload
     size_t str_len = strlen (str);
     int error_code = NO_ERROR;
 
-    db_make_int (val, 0);
-
-    /* Let try take the fastest path here, if we know that number we are getting fits into a long, use strtol, else we
-     * need to convert it to a double and coerce it, checking for overflow. Note if integers with leading zeros are
-     * entered this can take the slower route. */
+    /*
+     * Watch out for really long digit strings that really are being
+     * assigned into a DB_TYPE_NUMERIC attribute; they can hold more than a
+     * standard integer can, and calling atol() on that string will lose
+     * data.
+     * Is there some better way to test for this condition?
+     */
     if (str_len < MAX_DIGITS_FOR_INT || (str_len == MAX_DIGITS_FOR_INT && (str[0] == '0' || str[0] == '1')))
       {
+	db_make_int (val, 0);
 	error_code = parse_int (&val->data.i, str, 10);
 	if (error_code != NO_ERROR)
 	  {
@@ -989,18 +992,16 @@ namespace cubload
 	    error_code = db_value_domain_init (val, DB_TYPE_NUMERIC, str_len, 0);
 	    if (error_code != NO_ERROR)
 	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_BIGINT));
-		return ER_IT_DATA_OVERFLOW;
+		ASSERT_ERROR ();
+		return error_code;
 	      }
 
 	    error_code = db_value_put (val, DB_TYPE_C_CHAR, (char *) str, str_len);
 	    if (error_code != NO_ERROR)
 	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_BIGINT));
-		return ER_IT_DATA_OVERFLOW;
+		ASSERT_ERROR ();
+		return error_code;
 	      }
-
-	    return error_code;
 	  }
 	else
 	  {
