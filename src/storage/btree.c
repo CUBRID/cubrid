@@ -35398,7 +35398,7 @@ int btree_insert_list::next_key ()
 
       return NO_ERROR;
     }
-  else if (++m_curr_pos < m_sorted_keys_oids.size ())
+  else if (++m_curr_pos < (int) m_sorted_keys_oids.size ())
     {
       m_curr_oid = &m_sorted_keys_oids[m_curr_pos]->m_oid;
       m_curr_key = &m_sorted_keys_oids[m_curr_pos]->m_key;

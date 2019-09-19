@@ -5022,8 +5022,8 @@ index_builder_loader_context::on_recycle (context_type &context)
 
 index_builder_loader_task::index_builder_loader_task (const BTID *btid, const OID *class_oid, int unique_pk,
 						      index_builder_loader_context &load_context)
-  : m_insert_list (load_context.m_key_type)
-  , m_load_context (load_context)
+  : m_load_context (load_context)
+  , m_insert_list (load_context.m_key_type)
 {
   BTID_COPY (&m_btid, btid);
   COPY_OID (&m_class_oid, class_oid);
@@ -5076,7 +5076,7 @@ index_builder_loader_task::execute (cubthread::entry &thread_ref)
 
   m_insert_list.prepare_list ();
 
-  while (m_insert_list.m_curr_pos < m_insert_list.m_sorted_keys_oids.size ())
+  while (m_insert_list.m_curr_pos < (int) m_insert_list.m_sorted_keys_oids.size ())
     {
       ret = btree_online_index_dispatcher (&thread_ref, &m_btid, &m_class_oid, &m_insert_list,
 					   m_unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
