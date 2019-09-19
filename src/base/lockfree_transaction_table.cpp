@@ -80,11 +80,13 @@ namespace lockfree
       id minvalue = INVALID_TRANID;  // nothing is bigger than INVALID_TRANID
       for (size_t it = 0; it < m_sys.get_max_transaction_count (); it++)
 	{
-	  if (minvalue > m_all[it].transaction_id)
+	  id tranid = m_all[it].get_transaction_id ();
+	  if (minvalue > tranid)
 	    {
-	      minvalue = m_all[it].transaction_id;
+	      minvalue = tranid;
 	    }
 	}
+      assert (m_min_active_tranid <= minvalue);
       m_min_active_tranid.store (minvalue);
     }
 

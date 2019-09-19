@@ -53,24 +53,20 @@ namespace lockfree
 
 	void set_table (table &tbl);
 
-	void start ();
-	void start_and_increment_id ();
-	void end ();
+	void start_tran ();
+	void start_tran_and_increment_id ();
+	void end_tran ();
 
 	bool is_tran_started ();
 
-	// todo: make private
-	id last_cleanup_id;   /* last ID for which a cleanup of retired_list was performed */
-	id transaction_id;    /* id of current transaction */
-
-	bool did_incr;        /* Was transaction ID incremented? */
+	id get_transaction_id () const;
 
       private:
-	void transport ();
+	void cleanup ();
 
 	table *m_table;
-	id m_id;
-	id m_transport_id;
+	id m_tranid;
+	id m_cleanupid;
 	hazard_pointer *m_retired_head;
 	hazard_pointer *m_retired_tail;
 	bool m_did_incr;

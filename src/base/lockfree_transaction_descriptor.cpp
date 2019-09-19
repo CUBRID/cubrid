@@ -40,9 +40,9 @@ namespace lockfree
       bool should_end = !is_tran_started ();
       start_and_increment_id ();
 
-      transport ();
+      cleanup ();
 
-      hzp.m_delete_id = m_id;
+      hzp.m_delete_id = m_tranid;
       hzp.m_hazard_next = NULL;
       // add to tail to keep delete ids ordered
       if (m_retired_tail == NULL)
@@ -54,6 +54,11 @@ namespace lockfree
 	{
 	  m_retired_tail->m_hazard_next = &hzp;
 	}
+
+      if (should_end)
+	{
+	  end ();
+	}
     }
 
     void
@@ -61,7 +66,7 @@ namespace lockfree
     {
       if (!is_tran_started ())
 	{
-	  m_id = m_table->get_current_global_tranid ();
+	  m_tranid = m_table->get_current_global_tranid ();
 	}
     }
 
@@ -70,29 +75,36 @@ namespace lockfree
     {
       if (!m_did_incr)
 	{
-	  m_id = m_table->get_new_global_tranid ();
+	  m_tranid = m_table->get_new_global_tranid ();
 	}
-      assert (m_id != INVALID_TRANID);
+      assert (m_tranid != INVALID_TRANID);
     }
 
     bool
     descriptor::is_tran_started ()
     {
-      return m_id != INVALID_TRANID;
+      return m_tranid != INVALID_TRANID;
     }
 
     void
     descriptor::end ()
     {
-      m_id = INVALID_TRANID;
+      assert (is_tran_started ());
+      m_tranid = INVALID_TRANID;
       m_did_incr = false;
     }
 
+    id
+    descriptor::get_transaction_id () const
+    {
+      return m_tranid;
+    }
+
     void
-    descriptor::transport ()
+    descriptor::cleanup ()
     {
       id min_tran_id = m_table->get_min_active_tranid ();
-      if (min_tran_id <= m_transport_id)
+      if (min_tran_id <= m_cleanupid)
 	{
 	  // nothing changed
 	  return;
@@ -112,7 +124,7 @@ namespace lockfree
 	  m_retired_tail = NULL;
 	}
 
-      m_transport_id = min_tran_id;
+      m_cleanupid = min_tran_id;
     }
   } // namespace tran
 } // namespace lockfree
