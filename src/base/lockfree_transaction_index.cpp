@@ -19,32 +19,24 @@
 
 #include "lockfree_transaction_index.hpp"
 
-#include "lockfree_bitmap.hpp"
-
 #include <cassert>
 
 namespace lockfree
 {
   namespace tran
   {
-    bitmap g_Tranmap;
-
-    void
-    initialize_system (size_t max_tran_count)
+    system::system (size_t max_tran_count)
+      : m_max_tran_per_table (max_tran_count)
+      , m_tran_idx_map ()
     {
-      g_Tranmap.init (bitmap::ONE_CHUNK, static_cast<int> (max_tran_count), bitmap::FULL_USAGE_RATIO);
-    }
-
-    void
-    finalize_system ()
-    {
-      g_Tranmap.destroy ();
+      m_tran_idx_map.init (bitmap::chunking_style::ONE_CHUNK, static_cast<int> (max_tran_count),
+			   bitmap::FULL_USAGE_RATIO);
     }
 
     index
-    assign_index ()
+    system::assign_index ()
     {
-      int ret = g_Tranmap.get_entry ();
+      int ret = m_tran_idx_map.get_entry ();
       if (ret < 0)
 	{
 	  assert (false);
@@ -54,15 +46,20 @@ namespace lockfree
     }
 
     void
-    free_index (index &idx)
+    system::free_index (index idx)
     {
       if (idx == INVALID_INDEX)
 	{
 	  assert (false);
 	  return;
 	}
-      g_Tranmap.free_entry (static_cast<int> (idx));
-      idx = INVALID_INDEX;
+      m_tran_idx_map.free_entry (static_cast<int> (idx));
+    }
+
+    size_t
+    system::get_max_transaction_count () const
+    {
+      return m_max_tran_per_table;
     }
   } // namespace tran
 } // namespace lockfree

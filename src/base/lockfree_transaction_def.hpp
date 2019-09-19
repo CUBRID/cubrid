@@ -17,43 +17,21 @@
  *
  */
 
-//
-// lockfree_transaction_index.hpp - lock-free transaction index management
-//
-// Any user of lock-free transactions should acquire an index first. This will allow access to all lock-free transaction
-// tables, existing or that will be created in the future.
-//
+#ifndef _LOCKFREE_TRANSACTION_DEF_HPP_
+#define _LOCKFREE_TRANSACTION_DEF_HPP_
 
-#ifndef _LOCKFREE_TRANSACTION_INDEX_HPP_
-#define _LOCKFREE_TRANSACTION_INDEX_HPP_
-
-#include "lockfree_bitmap.hpp"
-#include "lockfree_transaction_def.hpp"
-
-#include <limits>
+#include <cstddef>
+#include <cstdint>
 
 namespace lockfree
 {
   namespace tran
   {
-    static const index INVALID_INDEX = std::numeric_limits<index>::max ();
+    // transaction index
+    using index = size_t;
 
-    class system
-    {
-      public:
-	system () = delete;
-	system (size_t max_tran_count);
-	~system () = default;
-
-	index assign_index ();
-	void free_index (index idx);
-	size_t get_max_transaction_count () const;
-
-      private:
-	size_t m_max_tran_per_table;
-	bitmap m_tran_idx_map;
-    };
+    // transaction id
+    using id = std::uint64_t;
   }
-} // namespace lockfree
-
-#endif // _LOCKFREE_TRANSACTION_INDEX_HPP_
+}
+#endif // !_LOCKFREE_TRANSACTION_DEF_HPP_
