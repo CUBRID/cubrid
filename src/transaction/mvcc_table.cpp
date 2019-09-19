@@ -418,10 +418,6 @@ mvcctable::compute_oldest_visible_mvccid () const
     }
 
   assert (MVCCID_IS_NORMAL (lowest_active_mvccid));
-#if !defined (NDEBUG)
-  MVCCID crt_oldest = m_oldest_visible.load ();
-  assert (!MVCC_ID_PRECEDES (lowest_active_mvccid, crt_oldest));
-#endif // !NDEBUG
 
   return lowest_active_mvccid;
 }
@@ -532,7 +528,7 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
   // so we try to limit recalculation when mvccid matches current global_lowest_active; since we are not locked, it is
   // not guaranteed to be always updated; therefore we add the second condition to go below trans status
   // bit area starting MVCCID; the recalculation will happen on each iteration if there are long transactions.
-  MVCCID global_lowest_active = compute_oldest_visible_mvccid ();
+  MVCCID global_lowest_active = m_current_status_lowest_active_mvccid;
   if (global_lowest_active == mvccid
       || MVCC_ID_PRECEDES (mvccid, next_status.m_active_mvccs.get_bit_area_start_mvccid ()))
     {
@@ -634,6 +630,7 @@ mvcctable::update_global_oldest_visible ()
       MVCCID oldest_visible = compute_oldest_visible_mvccid ();
       if (m_ov_lock_count == 0)
 	{
+	  assert (m_oldest_visible.load () <= oldest_visible);
 	  m_oldest_visible.store (oldest_visible);
 	}
     }
