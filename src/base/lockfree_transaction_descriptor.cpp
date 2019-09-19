@@ -28,6 +28,15 @@ namespace lockfree
 {
   namespace tran
   {
+    descriptor::~descriptor ()
+    {
+      assert (!is_tran_started ());
+      while (m_retired_head != NULL)
+	{
+	  delete_retired_head ();
+	}
+    }
+
     void
     descriptor::set_table (table &tbl)
     {
@@ -38,7 +47,7 @@ namespace lockfree
     descriptor::retire_hazard_pointer (hazard_pointer &hzp)
     {
       bool should_end = !is_tran_started ();
-      start_and_increment_id ();
+      start_tran_and_increment_id ();
 
       cleanup ();
 
@@ -57,12 +66,12 @@ namespace lockfree
 
       if (should_end)
 	{
-	  end ();
+	  end_tran ();
 	}
     }
 
     void
-    descriptor::start ()
+    descriptor::start_tran ()
     {
       if (!is_tran_started ())
 	{
@@ -71,7 +80,7 @@ namespace lockfree
     }
 
     void
-    descriptor::start_and_increment_id ()
+    descriptor::start_tran_and_increment_id ()
     {
       if (!m_did_incr)
 	{
@@ -87,7 +96,7 @@ namespace lockfree
     }
 
     void
-    descriptor::end ()
+    descriptor::end_tran ()
     {
       assert (is_tran_started ());
       m_tranid = INVALID_TRANID;
@@ -111,13 +120,7 @@ namespace lockfree
 	}
       while (m_retired_head != NULL && m_retired_head->m_delete_id < min_tran_id)
 	{
-	  // unlink
-	  hazard_pointer *next = m_retired_head;
-	  m_retired_head->m_hazard_next = NULL;
-	  // delete
-	  m_retired_head->on_delete ();
-	  // advance
-	  m_retired_head = next;
+	  delete_retired_head ();
 	}
       if (m_retired_head == NULL)
 	{
@@ -125,6 +128,21 @@ namespace lockfree
 	}
 
       m_cleanupid = min_tran_id;
+    }
+
+    void
+    descriptor::delete_retired_head ()
+    {
+      assert (m_retired_head != NULL);
+      hazard_pointer *hzp = m_retired_head;
+      m_retired_head = m_retired_head->m_hazard_next;
+      if (m_retired_head == NULL)
+	{
+	  m_retired_tail = NULL;
+	}
+
+      hzp->m_hazard_next = NULL;
+      hzp->on_delete ();
     }
   } // namespace tran
 } // namespace lockfree

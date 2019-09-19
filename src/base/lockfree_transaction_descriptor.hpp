@@ -47,7 +47,7 @@ namespace lockfree
     {
       public:
 	descriptor () = default;
-	~descriptor () = default;
+	~descriptor ();
 
 	void retire_hazard_pointer (hazard_pointer &hzp);
 
@@ -63,6 +63,7 @@ namespace lockfree
 
       private:
 	void cleanup ();
+	void delete_hazard_head ();
 
 	table *m_table;
 	id m_tranid;
