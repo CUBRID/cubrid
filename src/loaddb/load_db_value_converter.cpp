@@ -948,7 +948,7 @@ namespace cubload
     return ER_FAILED;
   }
 
-  static int
+  int
   to_int_generic (const char *str, const attribute *attr, db_value *val)
   {
     size_t str_len = strlen (str);
