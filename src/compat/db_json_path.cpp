@@ -50,23 +50,13 @@ static void db_json_trim_leading_spaces (std::string &path_string);
 static JSON_PATH_TYPE db_json_get_path_type (std::string &path_string);
 static bool db_json_isspace (const unsigned char &ch);
 static std::size_t skip_whitespaces (const std::string &path, std::size_t token_begin);
-static int db_json_path_is_token_valid_array_index (const std::string &str,
-    bool allow_wildcards, unsigned long &index, std::size_t start = 0, std::size_t end = 0);
+static int db_json_path_is_token_valid_array_index (const std::string &str, bool allow_wildcards, unsigned long &index,
+    std::size_t start = 0, std::size_t end = 0);
 static bool db_json_path_is_token_valid_quoted_object_key (const std::string &path, std::size_t &token_begin);
-static std::string db_json_decode_rapidjson_str (const char *json_val_char);
-static std::string db_json_encode_rapidjson_str (const std::string &json_val_char);
 static bool db_json_path_quote_and_validate_unquoted_object_key (std::string &path, std::size_t &token_begin);
 static bool db_json_path_is_token_valid_unquoted_object_key (const std::string &path, std::size_t &token_begin);
 static bool db_json_path_is_valid_identifier_start_char (unsigned char ch);
 static bool db_json_path_is_valid_identifier_char (unsigned char ch);
-static void db_json_remove_leading_zeros_index (std::string &index);
-static bool db_json_iszero (const unsigned char &ch);
-
-static bool
-db_json_iszero (const unsigned char &ch)
-{
-  return ch == '0';
-}
 
 /*
  * db_json_path_is_token_valid_quoted_object_key () - Check if a quoted object_key is valid
@@ -102,33 +92,6 @@ db_json_path_is_token_valid_quoted_object_key (const std::string &path, std::siz
   return true;
 }
 
-static std::string
-db_json_decode_rapidjson_str (const char *json_val_char)
-{
-  typedef rapidjson::GenericStringBuffer<JSON_ENCODING> normalized_sb;
-  const JSON_VALUE cjv (json_val_char, strlen (json_val_char));
-  normalized_sb buffer;
-  rapidjson::Writer<normalized_sb> json_default_writer (buffer);
-
-  cjv.Accept (json_default_writer);
-  buffer.Clear ();
-
-  return buffer.GetString ();
-}
-
-static std::string
-db_json_encode_rapidjson_str (const std::string &json_val_char)
-{
-  // we'd need to have our own rapidjson::GenericReader::ParseStringToStream implementation
-  // currently, we need to pass a strigified version of the object_key to rapidjson::GenericDocument::Parse
-  JSON_DOC_STORE jd;
-  jd.create_mutable_reference ();
-  jd.get_mutable ()->Parse (json_val_char.c_str (), json_val_char.length ());
-  // might have a parsing error?
-
-  return jd.get_immutable ()->IsString () ? jd.get_immutable ()->GetString () : "";
-}
-
 /*
  * db_json_path_is_token_valid_unquoted_object_key () - Validate and quote an object_key
  *
@@ -140,27 +103,6 @@ static bool
 db_json_path_quote_and_validate_unquoted_object_key (std::string &path, std::size_t &token_begin)
 {
   return db_json_path_is_token_valid_unquoted_object_key (path, token_begin);
-}
-
-// todo: remove this guy
-std::string
-db_string_unquote (const std::string &path)
-{
-  std::string res;
-  assert (path.length () >= 2 && path[0] == '"' && path[path.length () - 1] == '"');
-  for (size_t i = 1; i < path.length () - 1; ++i)
-    {
-      if (path[i] == '\\')
-	{
-	  res += path[i + 1];
-	  ++i;
-	}
-      else
-	{
-	  res += path[i];
-	}
-    }
-  return res;
 }
 
 static bool
@@ -657,32 +599,9 @@ JSON_PATH::dump_json_path () const
 	  res += "[*]";
 	  break;
 	case PATH_TOKEN::object_key:
-	{
 	  res += '.';
-	  const std::string &raw_object_key = tkn.get_object_key ();
-
-	  if (raw_object_key.length () == 0)
-	    {
-	      res += "\"\"";
-	      break;
-	    }
-
-	  size_t escaped_size;
-	  char *escaped;
-	  if (needs_escaping (raw_object_key))
-	    {
-	      res += "\"";
-	      (void) db_string_escape_str (raw_object_key.c_str (), raw_object_key.length (), &escaped, &escaped_size);
-	      res += escaped;
-	      db_private_free (NULL, escaped);
-	      res += "\"";
-	    }
-	  else
-	    {
-	      res += raw_object_key;
-	    }
+	  res += tkn.get_object_key ();
 	  break;
-	}
 	case PATH_TOKEN::object_key_wildcard:
 	  res += ".*";
 	  break;
@@ -690,7 +609,7 @@ JSON_PATH::dump_json_path () const
 	  res += "**";
 	  break;
 	default:
-	  // assert (false);
+	  assert (false);
 	  break;
 	}
     }
@@ -768,7 +687,7 @@ JSON_PATH::set (JSON_VALUE &jd, const JSON_VALUE &jv, JSON_PRIVATE_MEMPOOL &allo
 	}
       else if (val->IsObject ())
 	{
-	  std::string encoded_key = db_json_encode_rapidjson_str ("\"" + tkn.get_object_key () + "\"").c_str ();
+	  std::string encoded_key = db_json_json_string_as_utf8 (tkn.get_object_key ());
 	  JSON_VALUE::MemberIterator m = val->FindMember (encoded_key.c_str ());
 	  if (m == val->MemberEnd ())
 	    {
@@ -827,8 +746,7 @@ JSON_PATH::get (const JSON_DOC &jd) const
 	    {
 	      return NULL;
 	    }
-	  JSON_VALUE::ConstMemberIterator m = val->FindMember (db_json_encode_rapidjson_str ("\""
-					      + tkn.get_object_key () + "\"").c_str ());
+	  JSON_VALUE::ConstMemberIterator m = val->FindMember (db_json_json_string_as_utf8 (tkn.get_object_key ()).c_str ());
 	  if (m == val->MemberEnd ())
 	    {
 	      return NULL;
@@ -901,8 +819,7 @@ JSON_PATH::extract_from_subtree (const JSON_PATH &path, size_t tkn_array_offset,
 	{
 	case PATH_TOKEN::token_type::object_key:
 	{
-	  JSON_VALUE::ConstMemberIterator m = jv.FindMember (db_json_encode_rapidjson_str ("\"" +
-					      crt_tkn.get_object_key () + "\"").c_str ());
+	  JSON_VALUE::ConstMemberIterator m = jv.FindMember (db_json_json_string_as_utf8 (crt_tkn.get_object_key ()).c_str ());
 	  if (m == jv.MemberEnd ())
 	    {
 	      return;
@@ -974,7 +891,7 @@ JSON_PATH::erase (JSON_DOC &jd) const
 	{
 	  return false;
 	}
-      return value->EraseMember (db_json_encode_rapidjson_str ("\"" + tkn.get_object_key () + "\"").c_str ());
+      return value->EraseMember (db_json_json_string_as_utf8 (tkn.get_object_key ()).c_str ());
     }
 
   return false;

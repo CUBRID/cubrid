@@ -1952,7 +1952,13 @@ db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALU
 	}
     }
 
-  const map_func_type &f_search = [&json_paths, &paths, pattern, esc_char, find_all] (const JSON_VALUE &jv,
+  const std::string encoded_pattern = db_json_json_string_as_utf8 (std::string ("\"") + db_get_string (
+      pattern) + std::string ("\""));
+
+  DB_VALUE encoded_pattern_dbval;
+  db_make_string (&encoded_pattern_dbval, const_cast<char *> (encoded_pattern.c_str ()));
+
+  const map_func_type &f_search = [&json_paths, &paths, &encoded_pattern_dbval, esc_char, find_all] (const JSON_VALUE &jv,
 				  const JSON_PATH &crt_path, bool &stop) -> int
   {
     if (!jv.IsString ())
@@ -1971,7 +1977,7 @@ db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALU
       }
 
     int match;
-    error_code = db_string_like (&str_val, pattern, esc_char, &match);
+    error_code = db_string_like (&str_val, &encoded_pattern_dbval, esc_char, &match);
     if (error_code != NO_ERROR || !match)
       {
 	return error_code;
@@ -2665,7 +2671,7 @@ db_json_get_bool_from_value (const JSON_VALUE *doc)
   if (doc == NULL)
     {
       assert (false);
-      return NULL;
+      return false;
     }
 
   assert (db_json_get_type_of_value (doc) == DB_JSON_BOOL);
@@ -2850,6 +2856,27 @@ db_json_pretty_func (const JSON_DOC &doc, char *&result_str)
   doc.Accept (json_pretty_writer);
 
   result_str = db_private_strdup (NULL, json_pretty_writer.ToString ().c_str ());
+}
+
+std::string
+db_json_json_string_as_utf8 (std::string raw_json_string)
+{
+  // TODO: Modify this process to also escape what needs to be escaped
+  if (raw_json_string.length () < 2 || raw_json_string[0] != '"' || raw_json_string.back () != '"')
+    {
+      raw_json_string = "\"" + raw_json_string + "\"";
+    }
+
+  JSON_DOC *doc = nullptr;
+  if (db_json_get_json_from_str (raw_json_string.c_str (), doc, raw_json_string.length ()) != NO_ERROR)
+    {
+      return "";
+    }
+
+  std::string res = doc->IsString () ? doc->GetString () : "";
+  delete doc;
+
+  return res;
 }
 
 /*
