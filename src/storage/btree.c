@@ -33474,6 +33474,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 
   curr_key = key;
 
+  assert (insert_list->m_key_type == btid_int->key_type);
 
   while (1)
     {
@@ -33507,14 +33508,16 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
       COPY_OID (BTREE_INSERT_OID (&helper->insert_helper), insert_list->get_oid ());
       curr_key = insert_list->get_key ();
 
-      /* TODO : check if new item fits in page */
+      /* check if new item fits in page */
       int node_level = btree_get_node_level (thread_p, *leaf_page);
       BTREE_NODE_TYPE node_type = (node_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
+      assert (node_type == BTREE_LEAF_NODE);
 
       int key_len = btree_get_disk_size_of_key (curr_key);
-      /* TODO : check if previous inserted key is same as this */
+      /* assuming the key does not exist in page (an existing key requires less space,
+       * we may miss adding one more record; this is a less expensive check, we accept the 'loss' */
       bool key_alread_in_page = false;
-      size_t new_ent_size = btree_get_max_new_data_size (thread_p, btid_int, *leaf_page, node_type, key_len,
+      int new_ent_size = btree_get_max_new_data_size (thread_p, btid_int, *leaf_page, node_type, key_len,
 							 &helper->insert_helper, key_alread_in_page);
       if (new_ent_size > spage_get_free_space_without_saving (thread_p, *leaf_page, NULL))
 	{
@@ -35445,7 +35448,7 @@ void btree_insert_list::prepare_list (void)
       m_sorted_keys_oids.push_back (&key_oid);
     }
 
-  auto compare_fn = [&] (key_oid *&a, key_oid *b)
+  auto compare_fn = [&] (key_oid *&a, key_oid *&b)
     {
       DB_VALUE_COMPARE_RESULT result;
       result = btree_compare_key (&a->m_key, &b->m_key, const_cast<TP_DOMAIN *>(m_key_type), 1, 1, NULL);
