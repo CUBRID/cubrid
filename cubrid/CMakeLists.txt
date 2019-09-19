@@ -131,6 +131,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
   ${BASE_DIR}/lockfree_bitmap.hpp
+  ${BASE_DIR}/lockfree_freelist.hpp
   ${BASE_DIR}/lockfree_transaction_def.hpp
   ${BASE_DIR}/lockfree_transaction_descriptor.hpp
   ${BASE_DIR}/lockfree_transaction_hazard_pointer.hpp

@@ -201,6 +201,12 @@ set_area_final (void)
     }
 }
 
+void
+set_area_reset ()
+{
+  Set_Ref_Area = Set_Obj_Area = NULL;
+}
+
 /* VALUE BLOCK RESOURCE */
 
 /* SET STRUCTURE ALLOCATION/DEALLOCATION */
