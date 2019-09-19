@@ -125,7 +125,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/lock_free.c
   ${BASE_DIR}/lockfree_bitmap.cpp
   ${BASE_DIR}/lockfree_transaction.cpp
-  ${BASE_DIR}/lockfree_transaction_index.cpp
+  ${BASE_DIR}/lockfree_transaction_system.cpp
   ${BASE_DIR}/fileline_location.cpp
   ${BASE_DIR}/resource_tracker.cpp
   ${BASE_DIR}/tz_compile.c
@@ -141,7 +141,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/lockfree_freelist.hpp
   ${BASE_DIR}/lockfree_transaction.hpp
   ${BASE_DIR}/lockfree_transaction_def.hpp
-  ${BASE_DIR}/lockfree_transaction_index.hpp
+  ${BASE_DIR}/lockfree_transaction_system.hpp
   ${BASE_DIR}/mem_block.hpp
   ${BASE_DIR}/memory_private_allocator.cpp
   ${BASE_DIR}/msgcat_set_log.hpp

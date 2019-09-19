@@ -37,7 +37,7 @@
 #include "error_manager.h"
 #include "log_impl.h"
 #include "lock_free.h"
-#include "lockfree_transaction_index.hpp"
+#include "lockfree_transaction_system.hpp"
 #include "resource_shared_pool.hpp"
 #include "system_parameter.h"
 

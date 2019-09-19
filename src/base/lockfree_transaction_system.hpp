@@ -18,14 +18,14 @@
  */
 
 //
-// lockfree_transaction_index.hpp - lock-free transaction index management
+// lockfree_transaction_system.hpp - lock-free transaction index management
 //
 // Any user of lock-free transactions should acquire an index first. This will allow access to all lock-free transaction
 // tables, existing or that will be created in the future.
 //
 
-#ifndef _LOCKFREE_TRANSACTION_INDEX_HPP_
-#define _LOCKFREE_TRANSACTION_INDEX_HPP_
+#ifndef _LOCKFREE_TRANSACTION_SYSTEM_HPP_
+#define _LOCKFREE_TRANSACTION_SYSTEM_HPP_
 
 #include "lockfree_bitmap.hpp"
 #include "lockfree_transaction_def.hpp"
@@ -56,4 +56,4 @@ namespace lockfree
   }
 } // namespace lockfree
 
-#endif // _LOCKFREE_TRANSACTION_INDEX_HPP_
+#endif // _LOCKFREE_TRANSACTION_SYSTEM_HPP_

@@ -30,7 +30,7 @@
 #include "fault_injection.h"
 #include "list_file.h"
 #include "lock_free.h"
-#include "lockfree_transaction_index.hpp"
+#include "lockfree_transaction_system.hpp"
 #include "log_compress.h"
 #include "log_system_tran.hpp"
 #include "memory_alloc.h"
