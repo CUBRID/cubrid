@@ -1005,7 +1005,7 @@ namespace cubload
 	  }
 	else
 	  {
-	    val->data.bigint = tmp_bigint;
+	    db_make_bigint (val, tmp_bigint);
 	  }
       }
 
