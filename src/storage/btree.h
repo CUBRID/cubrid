@@ -812,8 +812,8 @@ extern PERF_PAGE_TYPE btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, P
 extern void btree_dump_key (FILE * fp, const DB_VALUE * key);
 
 extern int btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, OID * cls_oid,
-					  btree_insert_list *insert_list, int unique, BTREE_OP_PURPOSE purpose,
-                                          LOG_LSA * undo_nxlsa);
+					  btree_insert_list * insert_list, int unique, BTREE_OP_PURPOSE purpose,
+					  LOG_LSA * undo_nxlsa);
 
 extern int btree_rv_keyval_undo_online_index_tran_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int btree_rv_keyval_undo_online_index_tran_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv);
