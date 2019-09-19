@@ -39,7 +39,6 @@
 #define _LOCKFREE_TRANSACTION_TABLE_HPP_
 
 #include "lockfree_transaction_def.hpp"
-#include "lockfree_transaction_system.hpp"
 
 #include <atomic>
 #include <limits>
