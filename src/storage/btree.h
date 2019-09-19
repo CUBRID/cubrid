@@ -534,7 +534,6 @@ struct btree_object_info
 #define BTREE_OBJECT_INFO_INITIALIZER \
   { OID_INITIALIZER, OID_INITIALIZER, BTREE_MVCC_INFO_INITIALIZER }
 
-typedef struct key_oid KEY_OID;
 struct key_oid
 {
   DB_VALUE m_key;
@@ -563,24 +562,24 @@ struct btree_insert_list
   OID *m_curr_oid;
   int m_curr_pos;
 
+  const TP_DOMAIN* m_key_type;
+
   page_key_boundary m_boundaries;
 
   bool m_use_sorted_bulk_insert;
 
-  btree_insert_list ()
+  btree_insert_list  () = delete;
+
+  btree_insert_list (const TP_DOMAIN* &key_type)
   : m_curr_key (NULL)
   , m_curr_oid (NULL)
   , m_curr_pos (0)
+  , m_key_type (key_type)
   , m_use_sorted_bulk_insert (false)
   {
   }
 
-  btree_insert_list (DB_VALUE *key, OID *oid)
-  : btree_insert_list ()
-  {
-    m_curr_key = key;
-    m_curr_oid = oid;
-  }
+  btree_insert_list (DB_VALUE *key, OID *oid);
 
   ~btree_insert_list ();
 
@@ -596,9 +595,11 @@ struct btree_insert_list
     return m_curr_key;
   }
 
-  size_t add_key (const TP_DOMAIN *key_type, const DB_VALUE *key, const OID &oid);
+  size_t add_key (const DB_VALUE *key, const OID &oid);
 
   void reset_boundary_keys ();
+
+  void prepare_list (void);
 };
 // *INDENT-ON*
 

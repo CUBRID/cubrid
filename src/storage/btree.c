@@ -33502,7 +33502,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	  break;
 	}
 
-      /* prepare next pair key, oid */
+      /* prepare next pair (key, oid) */
       COPY_OID (BTREE_INSERT_OID (&helper->insert_helper), insert_list->get_oid ());
       curr_key = insert_list->get_key ();
 
@@ -33520,21 +33520,6 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	  /* no more space in page */
 	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_NO_SPACE);
 	  break;
-	}
-
-      /* check if key checks key range of this page */
-      error_code = btree_leaf_is_key_between_min_max (thread_p, btid_int, *leaf_page, curr_key, search_key);
-      if (error_code != NO_ERROR)
-	{
-	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KET_NOT_IN_RANGE);
-	  break;
-	}
-      /* TODO : this should be a case of early continue */
-      if (search_key->result != BTREE_KEY_BETWEEN && search_key->result != BTREE_KEY_FOUND)
-	{
-	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KET_NOT_IN_RANGE);
-	  first_insert = false;
-	  continue;
 	}
 
       /* compare with boundary keys : NULL keys means INF bound, no check is required */
@@ -35356,8 +35341,17 @@ page_key_boundary::~page_key_boundary ()
   pr_clear_value (&m_right_key);
 }
 
+btree_insert_list::btree_insert_list (DB_VALUE *key, OID *oid)
+  : m_curr_pos (0)
+  , m_key_type (&tp_Null_domain)
+  , m_use_sorted_bulk_insert (false)
+{
+  m_curr_key = key;
+  m_curr_oid = oid;
+}
+
 size_t
-btree_insert_list::add_key (const TP_DOMAIN *key_type, const DB_VALUE *key, const OID &oid)
+btree_insert_list::add_key (const DB_VALUE *key, const OID &oid)
 {
   size_t memsize = 0;
   m_keys_oids.emplace_back ();
@@ -35373,7 +35367,7 @@ btree_insert_list::add_key (const TP_DOMAIN *key_type, const DB_VALUE *key, cons
   HL_HEAPID prev_id = db_change_private_heap (thread_p, 0);
 
   qdata_copy_db_value (&last_key, key);
-  memsize += key_type->type->get_disk_size_of_value (&last_key);
+  memsize += m_key_type->type->get_disk_size_of_value (&last_key);
 
   /* reset back to previous heapID. */
   db_change_private_heap (thread_p, prev_id);
@@ -35386,6 +35380,8 @@ btree_insert_list::add_key (const TP_DOMAIN *key_type, const DB_VALUE *key, cons
 
 int btree_insert_list::next_key ()
 {
+  assert (m_use_sorted_bulk_insert);
+
   if (m_curr_key == NULL)
     {
       assert (m_curr_oid == NULL);
@@ -35438,5 +35434,26 @@ void btree_insert_list::reset_boundary_keys ()
       pr_clear_value (&m_boundaries.m_right_key);
       m_boundaries.m_is_inf_right_key = true;
     }
+}
+
+void btree_insert_list::prepare_list (void)
+{
+  /* initialize sorted list with the same order as unsorted */
+  for (auto &key_oid : m_keys_oids)
+    {
+      m_sorted_keys_oids.push_back (&key_oid);
+    }
+
+  auto compare_fn = [&] (key_oid *&a, key_oid *b)
+    {
+      DB_VALUE_COMPARE_RESULT result;
+      result = btree_compare_key (&a->m_key, &b->m_key, const_cast<TP_DOMAIN *>(m_key_type), 1, 1, NULL);
+
+      return (result == DB_LT) ? true : false;
+    };
+
+  std::sort (m_sorted_keys_oids.begin (), m_sorted_keys_oids.end (), compare_fn);
+  m_use_sorted_bulk_insert = true;
+  next_key ();  
 }
 // *INDENT-ON*

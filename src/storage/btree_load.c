@@ -177,17 +177,14 @@ class index_builder_loader_context : public cubthread::entry_manager
     void on_recycle (context_type & context) override;
 };
 
-
-typedef KEY_OID index_builder_key_oid;
-
 class index_builder_loader_task: public cubthread::entry_task
 {
   private:
     BTID m_btid;
-    btree_insert_list m_insert_list;
     OID m_class_oid;
     int m_unique_pk;
     index_builder_loader_context & m_load_context; // Loader context.
+    btree_insert_list m_insert_list;
     size_t m_memsize;
 
   public:
@@ -197,6 +194,8 @@ class index_builder_loader_task: public cubthread::entry_task
       BATCH_CONTINUE,
       BATCH_FULL
     };
+
+    index_builder_loader_task () = delete;
 
     index_builder_loader_task (const BTID * btid, const OID * class_oid, int unique_pk,
                                index_builder_loader_context & load_context);
@@ -5025,7 +5024,8 @@ index_builder_loader_context::on_recycle (context_type &context)
 
 index_builder_loader_task::index_builder_loader_task (const BTID *btid, const OID *class_oid, int unique_pk,
 						      index_builder_loader_context &load_context)
-  : m_load_context (load_context)
+  : m_insert_list (load_context.m_key_type)
+  , m_load_context (load_context)
 {
   BTID_COPY (&m_btid, btid);
   COPY_OID (&m_class_oid, class_oid);
@@ -5042,7 +5042,7 @@ index_builder_loader_task::~index_builder_loader_task ()
 index_builder_loader_task::batch_key_status
 index_builder_loader_task::add_key (const DB_VALUE *key, const OID &oid)
 {
-  size_t entry_size = m_insert_list.add_key (m_load_context.m_key_type, key, oid);
+  size_t entry_size = m_insert_list.add_key (key, oid);
 
   m_memsize += entry_size;
 
@@ -5076,22 +5076,7 @@ index_builder_loader_task::execute (cubthread::entry &thread_ref)
       return;
     }
 
-  /* initialize sorted list with the same order as unsorted */
-  for (auto &key_oid : m_insert_list.m_keys_oids)
-    {
-      m_insert_list.m_sorted_keys_oids.push_back (&key_oid);
-    }
-
-  auto compare_fn = [&] (index_builder_key_oid *a, index_builder_key_oid *b)
-    {
-      DB_VALUE_COMPARE_RESULT result;
-      result = btree_compare_key (&a->m_key, &b->m_key, const_cast<TP_DOMAIN *>(m_load_context.m_key_type), 1, 1, NULL);
-
-      return (result == DB_LT) ? true : false;
-    };
-
-  std::sort (m_insert_list.m_sorted_keys_oids.begin (), m_insert_list.m_sorted_keys_oids.end (), compare_fn);
-  m_insert_list.next_key ();
+  m_insert_list.prepare_list ();
 
   while (m_insert_list.m_curr_pos < m_insert_list.m_sorted_keys_oids.size ())
     {
