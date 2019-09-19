@@ -7840,40 +7840,15 @@ vacuum_data::update ()
 
   // For 3rd part, when vacuum data is not empty, the operation is trivial - just set to first block data oldest mvccid.
   // (the algorithm ensures that entries oldest mvccid is always ascending)
-  // When vacuum data is empty, we also need to consider the current log block and vacuum_Block_data_buffer. Current
-  // block can be read from log_Gl.hdr, but vacuum_Block_data_buffer is not easy to inspect due to lock-free concurrent
-  // operations.
-  // The trick is to check buffer before consuming it. If it not empty, vacuum data will not be empty after consume and
-  // unvacuumed oldest mvccid can be trivially set to first block data oldest mvccid. If it is empty, use current log
-  // block oldest mvccid.
+  // When vacuum data is empty, just don't update oldest_unvacuumed
 
   // first remove vacuumed blocks
   vacuum_data_mark_finished (thread_p);
 
-  // try to update before consuming buffer
-  if (!vacuum_Data.is_empty ())
-    {
-      // trivial case
-      upgrade_oldest_unvacuumed (get_first_entry ().oldest_visible_mvccid);
-      updated_oldest_unvacuumed = true;
-    }
-  else
-    {
-      // if buffer is empty, should set to current log block oldest mvccid.
-      // note: the safe order of operations is to first read current block, and then check the buffer.
-      //       if buffer is checked first, then thread is preempted, then it reads current log block, a block can be
-      //       missed.
-      MVCCID hdr_oldest_visible = log_Gl.hdr.oldest_visible_mvccid;
-      if (vacuum_Block_data_buffer->is_empty ())
-        {
-          upgrade_oldest_unvacuumed (hdr_oldest_visible);
-          updated_oldest_unvacuumed = true;
-        }
-    }
-
   // then consume new generated blocks
   vacuum_consume_buffer_log_blocks (thread_p);
-  if (!updated_oldest_unvacuumed)
+
+  if (!vacuum_Data.is_empty ())
     {
       // buffer was not empty, we can trivially update to first entry oldest mvccid
       upgrade_oldest_unvacuumed (get_first_entry ().oldest_visible_mvccid);
