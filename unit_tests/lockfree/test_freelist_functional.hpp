@@ -17,41 +17,12 @@
  *
  */
 
-#include "test_cqueue_functional.hpp"
-#include "test_freelist_functional.hpp"
+#ifndef _TEST_FREELIST_FUNCTIONAL_HPP_
+#define _TEST_FREELIST_FUNCTIONAL_HPP_
 
-#include <string>
-#include <vector>
-
-int
-main (int argc, char **argv)
+namespace test_lockfree
 {
-  size_t opt = 0;
-  std::vector<std::string> option_map =
-  {
-    "all",
-    "cqueue",
-    "freelist"
-  };
-  if (argc == 2)
-    {
-      for (size_t i = 0; i < option_map.size (); i++)
-	{
-	  if (option_map[i] == argv[1])
-	    {
-	      opt = i;
-	    }
-	}
-    }
-  int err = 0;
-  if (opt == 0 || opt == 1)
-    {
-      err = err | test_lockfree::test_cqueue_functional ();
-    }
-  if (opt == 0 || opt == 2)
-    {
-      err = err | test_lockfree::test_freelist_functional ();
-    }
-
-  return err;
+  int test_freelist_functional ();
 }
+
+#endif // !_TEST_FREELIST_FUNCTIONAL_HPP_
