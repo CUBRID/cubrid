@@ -39,10 +39,20 @@ namespace lockfree
       bool should_end = !is_tran_started ();
       start_and_increment_id ();
 
-      // todo transport
+      transport ();
 
       hzp.m_delete_id = m_id;
-      hzp.m_hazard_next = m_retired_head;
+      hzp.m_hazard_next = NULL;
+      // add to tail to keep delete ids ordered
+      if (m_retired_tail == NULL)
+	{
+	  assert (m_retired_head == NULL);
+	  m_retired_head = m_retired_tail = &hzp;
+	}
+      else
+	{
+	  m_retired_tail->m_hazard_next = &hzp;
+	}
     }
 
     void
@@ -73,7 +83,35 @@ namespace lockfree
     void
     descriptor::end ()
     {
+      m_id = INVALID_TRANID;
+      m_did_incr = false;
+    }
 
+    void
+    descriptor::transport ()
+    {
+      id min_tran_id = m_table->get_min_active_tranid ();
+      if (min_tran_id <= m_transport_id)
+	{
+	  // nothing changed
+	  return;
+	}
+      while (m_retired_head != NULL && m_retired_head->m_delete_id < min_tran_id)
+	{
+	  // unlink
+	  hazard_pointer *next = m_retired_head;
+	  m_retired_head->m_hazard_next = NULL;
+	  // delete
+	  m_retired_head->on_delete ();
+	  // advance
+	  m_retired_head = next;
+	}
+      if (m_retired_head == NULL)
+	{
+	  m_retired_tail = NULL;
+	}
+
+      m_transport_id = min_tran_id;
     }
   } // namespace tran
 } // namespace lockfree

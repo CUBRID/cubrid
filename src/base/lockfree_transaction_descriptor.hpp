@@ -59,10 +59,13 @@ namespace lockfree
 	bool did_incr;        /* Was transaction ID incremented? */
 
       private:
+	void transport ();
+
 	table *m_table;
 	id m_id;
 	id m_transport_id;
 	hazard_pointer *m_retired_head;
+	hazard_pointer *m_retired_tail;
 	bool m_did_incr;
     };
   } // namespace tran

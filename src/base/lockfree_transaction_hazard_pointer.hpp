@@ -49,7 +49,7 @@ namespace lockfree
 	hazard_pointer () = default;
 	virtual ~hazard_pointer () = 0;   // to force abstract class
 
-	virtual void on_retire ()
+	virtual void on_delete ()
 	{
 	  // default is to delete itself
 	  delete this;
