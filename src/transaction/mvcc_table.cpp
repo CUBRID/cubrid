@@ -411,21 +411,14 @@ mvcctable::compute_oldest_visible_mvccid () const
   if (perf.is_perf_tracking)
     {
       PERF_UTIME_TRACKER_TIME (&threadr, &perf, PSTAT_LOG_OLDEST_MVCC_TIME_COUNTERS);
-    }
-  if (retry_count > 0)
-    {
-      perfmon_add_stat (&cubthread::get_entry (), PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS, retry_count);
+      if (retry_count > 0)
+	{
+	  perfmon_add_stat (&cubthread::get_entry (), PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS, retry_count);
+	}
     }
 
   assert (MVCCID_IS_NORMAL (lowest_active_mvccid));
-
   return lowest_active_mvccid;
-}
-
-MVCCID
-mvcctable::get_global_oldest_active () const
-{
-  return m_current_status_lowest_active_mvccid.load ();
 }
 
 bool
