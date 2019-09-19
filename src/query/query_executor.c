@@ -18517,10 +18517,22 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	  continue;
 	}
 
-      /* fetch function operand */
-      if (fetch_peek_dbval (thread_p, &agg_p->operands->value, &xasl_state->vd, NULL, NULL, NULL, &dbval) != NO_ERROR)
+      DB_VALUE benchmark_dummy_dbval;
+      db_make_double (&benchmark_dummy_dbval, 0);
+      if (agg_p->operands->value.type == TYPE_FUNC && agg_p->operands->value.value.funcp != NULL
+	  && agg_p->operands->value.value.funcp->ftype == F_BENCHMARK)
 	{
-	  return ER_FAILED;
+	  // In case we have a benchmark function we want ot avoid the usual superflous function evaluation
+	  dbval = &benchmark_dummy_dbval;
+	}
+      else
+	{
+	  /* fetch function operand */
+	  if (fetch_peek_dbval (thread_p, &agg_p->operands->value, &xasl_state->vd, NULL, NULL, NULL, &dbval) !=
+	      NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
 	}
 
       /* handle NULL value */
