@@ -29,7 +29,7 @@ namespace cubload
 {
 
   // attribute
-  attribute::attribute (std::string &name, std::size_t index, or_attribute *repr)
+  attribute::attribute (const std::string &name, std::size_t index, or_attribute *repr)
     : m_name (name)
     , m_index (index)
     , m_repr (repr)

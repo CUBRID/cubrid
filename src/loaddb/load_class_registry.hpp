@@ -39,7 +39,7 @@ namespace cubload
   {
     public:
       attribute () = delete; // Not DefaultConstructible
-      attribute (std::string &name, std::size_t index, or_attribute *repr);
+      attribute (const std::string &name, std::size_t index, or_attribute *repr);
 
       attribute (attribute &&other) = delete; // Not MoveConstructible
       attribute (const attribute &copy) = delete; // Not CopyConstructible
