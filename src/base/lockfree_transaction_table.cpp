@@ -17,10 +17,11 @@
  *
  */
 
-#include "lockfree_transaction.hpp"
+#include "lockfree_transaction_table.hpp"
 
-#include "lockfree_transaction_system.hpp"
 #include "lockfree_bitmap.hpp"
+#include "lockfree_transaction_descriptor.hpp"
+#include "lockfree_transaction_system.hpp"
 
 #include <cassert>
 
@@ -114,6 +115,12 @@ namespace lockfree
 	    }
 	}
       m_min_active_tranid.store (minvalue);
+    }
+
+    id
+    table::get_min_active_tranid () const
+    {
+      return m_min_active_tranid;
     }
   } // namespace tran
 } // namespace lockfree

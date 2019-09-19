@@ -18,28 +18,29 @@
  */
 
 //
-// lockfree_transaction.hpp - memory transactioning system for lock-free structures; makes memory accessed by preempted
-//                            threads are not reclaimed until it is safe
+// lockfree_transaction_table.hpp
 //
-// operations on a lock-free structure must use these transactions. items of lock-free structures may be removed and
-// reclaimed only after all concurrent transactions are finished.
+//    Lock-free transaction table is part of lock-free transaction system (also see lockfree_transaction_system.hpp).
 //
-// transactional terminology is used to better explain how the system works. each lock-free structure has its own
-// transaction table, each table has an array of transaction descriptors. every thread that may access the lock-free
-// structure has its own descriptor. to make things easier, a thread is assigned a transaction index, which will
-// reserve a descriptor on every table of every lock-structure.
+//    Each lock-free structure working with hazard pointers needs a transaction table. The table contains a descriptor
+//    for each thread that wants to access the lock-free structures.
 //
-// there are two types of transactions: read and write. every write transaction generates a new transaction id. read
-// transactions use current transaction id.
+//    The table must be part of a system (which dictates how many transactions are possible). It maintains two
+//    important cursors: the global transaction ID and the minimum active transaction ID.
+//
+//    Whenever a transaction starts, it is assigned the global transaction ID. Whenever a hazard pointer is deleted,
+//    the global ID is incremented.
+//
+//    The minimum active transaction ID is computed by checking all transaction descriptors. Only when the minimum
+//    active transaction ID exceeds the ID of a deleted hazard pointer, it is safe to remove the pointer.
 //
 
-#ifndef _LOCKFREE_TRANSACTION_HPP_
-#define _LOCKFREE_TRANSACTION_HPP_
+#ifndef _LOCKFREE_TRANSACTION_TABLE_HPP_
+#define _LOCKFREE_TRANSACTION_TABLE_HPP_
 
 #include "lockfree_transaction_def.hpp"
 
 #include <atomic>
-#include <limits>
 #include <mutex>
 
 // forward definitions
@@ -48,6 +49,7 @@ namespace lockfree
   namespace tran
   {
     class system;
+    class descriptor;
   }
 }
 
@@ -55,18 +57,6 @@ namespace lockfree
 {
   namespace tran
   {
-    static const id INVALID_TRANID = std::numeric_limits<id>::max ();
-
-    class descriptor
-    {
-      public:
-	// todo: make private
-	id last_cleanup_id;   /* last ID for which a cleanup of retired_list was performed */
-	id transaction_id;    /* id of current transaction */
-
-	bool did_incr;        /* Was transaction ID incremented? */
-    };
-
     class table
     {
       public:
@@ -100,4 +90,4 @@ namespace lockfree
   } // namespace tran
 } // namespace lockfree
 
-#endif // _LOCKFREE_TRANSACTION_HPP_
+#endif // _LOCKFREE_TRANSACTION_TABLE_HPP_
