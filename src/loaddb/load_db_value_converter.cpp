@@ -975,7 +975,6 @@ namespace cubload
 	if (error_code != NO_ERROR)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_BIGINT));
-	    \
 	    return ER_IT_DATA_OVERFLOW;
 	  }
       }
