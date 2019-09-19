@@ -165,7 +165,18 @@ namespace cubload
       {
 	char *attr_name = NULL;
 	int free_attr_name = 0;
-	or_attribute *attr_repr = &or_attributes[attr_index];
+	or_attribute *attr_repr = NULL;
+
+	for (std::size_t i = 0; i < (std::size_t) n_attributes; ++i)
+	  {
+	    if (or_attributes[i].def_order == attr_index)
+	      {
+		attr_repr = &or_attributes[i];
+		break;
+	      }
+	  }
+
+	assert (attr_repr != NULL);
 
 	error_code = or_get_attrname (&recdes, attr_repr->id, &attr_name, &free_attr_name);
 	if (error_code != NO_ERROR)
