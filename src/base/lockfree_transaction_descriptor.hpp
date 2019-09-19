@@ -20,6 +20,13 @@
 #ifndef _LOCKFREE_TRANSACTION_DESCRIPTOR_HPP_
 #define _LOCKFREE_TRANSACTION_DESCRIPTOR_HPP_
 
+//
+// lock-free transaction descriptor
+//
+//    Monitors the activity of a thread on a lock-free data structure and manages retired hazard pointers that are not
+//    yet ready to be deleted
+//
+
 #include "lockfree_transaction_def.hpp"
 
 namespace lockfree
