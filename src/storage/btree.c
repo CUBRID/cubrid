@@ -35448,7 +35448,7 @@ void btree_insert_list::prepare_list (void)
       m_sorted_keys_oids.push_back (&key_oid);
     }
 
-  auto compare_fn = [&] (key_oid *&a, key_oid *&b)
+  auto compare_fn = [&] (key_oid *a, key_oid *b)
     {
       DB_VALUE_COMPARE_RESULT result;
       result = btree_compare_key (&a->m_key, &b->m_key, const_cast<TP_DOMAIN *>(m_key_type), 1, 1, NULL);
