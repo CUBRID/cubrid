@@ -53,8 +53,6 @@
 #include "xasl.h"
 #include "xasl_unpack_info.hpp"
 
-#include <algorithm>
-
 typedef struct sort_args SORT_ARGS;
 struct sort_args
 {				/* Collection of information required for "sr_index_sort" */

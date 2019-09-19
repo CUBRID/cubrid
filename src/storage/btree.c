@@ -52,6 +52,7 @@
 #include "thread_manager.hpp"
 
 #include <assert.h>
+#include <algorithm>
 #include <cinttypes>
 #include <stdlib.h>
 #include <string.h>
