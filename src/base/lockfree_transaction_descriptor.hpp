@@ -67,7 +67,7 @@ namespace lockfree
 
       private:
 	void cleanup ();
-	void delete_hazard_head ();
+	void delete_retired_head ();
 
 	table *m_table;
 	id m_tranid;
