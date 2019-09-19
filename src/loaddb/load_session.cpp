@@ -138,7 +138,7 @@ namespace cubload
 	      }
 
 	    driver->clear ();
-	    m_session.notify_batch_done (m_batch.get_id ());
+	    m_session.notify_waiting_threads ();
 	    return;
 	  }
 
@@ -161,40 +161,15 @@ namespace cubload
 	    // if a batch transaction was aborted and syntax only is not enabled then abort entire loaddb session
 	    m_session.fail ();
 
-	    xtran_server_abort (&thread_ref);
+	    m_session.abort (thread_ref, m_batch);
 	  }
 	else
 	  {
-	    // order batch commits, therefore wait until previous batch is committed
-	    m_session.wait_for_previous_batch (m_batch.get_id ());
-
-	    xtran_server_commit (&thread_ref, false);
-
-	    if (m_session.get_args ().syntax_check)
-	      {
-		m_session.append_log_msg (LOADDB_MSG_INSTANCE_COUNT, class_name.c_str (), m_batch.get_rows_number ());
-	      }
-	    else
-	      {
-		m_session.append_log_msg (LOADDB_MSG_COMMITTED_INSTANCES, class_name.c_str (),
-					  m_batch.get_rows_number ());
-	      }
-
-	    // update load statistics after commit
-	    m_session.stats_update_rows_committed (m_batch.get_rows_number ());
-	    m_session.stats_update_last_committed_line (line_no + 1);
-
-	    if (!m_session.get_args ().syntax_check)
-	      {
-		m_session.append_log_msg (LOADDB_MSG_UPDATED_CLASS_STATS, class_name.c_str ());
-	      }
+	    m_session.commit (thread_ref, m_batch, line_no, class_name);
 	  }
 
-	// free transaction index
-	logtb_free_tran_index (&thread_ref, thread_ref.tran_index);
-
 	// notify session that batch is done
-	m_session.notify_batch_done (m_batch.get_id ());
+	m_session.notify_waiting_threads ();
       }
 
     private:
@@ -244,20 +219,6 @@ namespace cubload
   }
 
   void
-  session::wait_for_previous_batch (const batch_id id)
-  {
-    auto pred = [this, &id] () -> bool { return is_failed () || id == (m_last_batch_id + 1); };
-
-    if (id == FIRST_BATCH_ID || pred ())
-      {
-	return;
-      }
-
-    std::unique_lock<std::mutex> ulock (m_commit_mutex);
-    m_commit_cond_var.wait (ulock, pred);
-  }
-
-  void
   session::wait_for_completion ()
   {
     auto pred = [this] () -> bool { return is_failed () || is_completed (); };
@@ -269,19 +230,6 @@ namespace cubload
 
     std::unique_lock<std::mutex> ulock (m_commit_mutex);
     m_commit_cond_var.wait (ulock, pred);
-  }
-
-  void
-  session::notify_batch_done (batch_id id)
-  {
-    if (!is_failed ())
-      {
-	m_commit_mutex.lock ();
-	m_last_batch_id = id;
-	m_commit_mutex.unlock ();
-      }
-
-    notify_waiting_threads ();
   }
 
   void
@@ -328,6 +276,77 @@ namespace cubload
   {
     worker_manager_interrupt ();
     fail ();
+  }
+
+  void
+  session::commit (cubthread::entry &thread_ref, const batch &b, int line_no, const std::string &class_name)
+  {
+    std::unique_lock<std::mutex> ulock (m_commit_mutex);
+    m_commit_map.insert (std::make_pair (b.get_id (), thread_ref.tran_index));
+
+    if (b.get_id () != (m_last_batch_id + 1))
+      {
+	return;
+      }
+
+    int save_tran_index = thread_ref.tran_index;
+    for (auto it = m_commit_map.begin (); it != m_commit_map.end (); )
+      {
+	if (it->first != (m_last_batch_id + 1) && m_last_batch_id != NULL_BATCH_ID)
+	  {
+	    // there is a gap
+	    break;
+	  }
+
+	thread_ref.tran_index = it->second;
+	xtran_server_commit (&thread_ref, false);
+
+	// free transaction index
+	logtb_free_tran_index (&thread_ref, thread_ref.tran_index);
+
+	m_last_batch_id = it->first;
+	it = m_commit_map.erase (it);
+
+	if (m_args.syntax_check)
+	  {
+	    append_log_msg (LOADDB_MSG_INSTANCE_COUNT, class_name.c_str (), b.get_rows_number ());
+	  }
+	else
+	  {
+	    append_log_msg (LOADDB_MSG_COMMITTED_INSTANCES, class_name.c_str (), b.get_rows_number ());
+	  }
+
+	// update load statistics after commit
+	stats_update_rows_committed (b.get_rows_number ());
+	stats_update_last_committed_line (line_no + 1);
+
+	if (!m_args.syntax_check)
+	  {
+	    append_log_msg (LOADDB_MSG_UPDATED_CLASS_STATS, class_name.c_str ());
+	  }
+      }
+    thread_ref.tran_index = save_tran_index;
+  }
+
+  void
+  session::abort (cubthread::entry &thread_ref, const batch &b)
+  {
+    std::unique_lock<std::mutex> ulock (m_commit_mutex);
+    m_commit_map.insert (std::make_pair (b.get_id (), thread_ref.tran_index));
+
+    int save_tran_index = thread_ref.tran_index;
+    for (auto it = m_commit_map.begin (); it != m_commit_map.end (); )
+      {
+	thread_ref.tran_index = it->second;
+	xtran_server_abort (&thread_ref);
+
+	// free transaction index
+	logtb_free_tran_index (&thread_ref, thread_ref.tran_index);
+
+	it = m_commit_map.erase (it);
+      }
+
+    thread_ref.tran_index = save_tran_index;
   }
 
   void
@@ -449,7 +468,6 @@ namespace cubload
     if (batch.get_content ().empty ())
       {
 	// nothing to do, just notify that batch processing is done
-	notify_batch_done (batch.get_id ());
 	assert (false);
 	return ER_FAILED;
       }

@@ -32,6 +32,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -105,8 +106,7 @@ namespace cubload
       int load_file (cubthread::entry &thread_ref);
 
       void wait_for_completion ();
-      void wait_for_previous_batch (batch_id id);
-      void notify_batch_done (batch_id id);
+      void notify_waiting_threads ();
 
       void on_error (std::string &err_msg);
 
@@ -114,6 +114,9 @@ namespace cubload
       bool is_failed ();
 
       void interrupt ();
+
+      void commit (cubthread::entry &thread_ref, const batch &b, int line_no, const std::string &class_name);
+      void abort (cubthread::entry &thread_ref, const batch &b);
 
       void fetch_stats (stats &stats_);
 
@@ -130,7 +133,6 @@ namespace cubload
       void append_log_msg (MSGCAT_LOADDB_MSG msg_id, Args &&... args);
 
     private:
-      void notify_waiting_threads ();
       bool is_completed ();
 
       template<typename T>
@@ -138,6 +140,8 @@ namespace cubload
 
       std::mutex m_commit_mutex;
       std::condition_variable m_commit_cond_var;
+
+      std::map<batch_id, int> m_commit_map;
 
       load_args m_args;
       batch_id m_last_batch_id;
