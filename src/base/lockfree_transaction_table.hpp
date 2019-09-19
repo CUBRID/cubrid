@@ -41,7 +41,6 @@
 #include "lockfree_transaction_def.hpp"
 
 #include <atomic>
-#include <limits>
 #include <mutex>
 
 // forward definitions
@@ -58,8 +57,6 @@ namespace lockfree
 {
   namespace tran
   {
-    static const id INVALID_TRANID = std::numeric_limits<id>::max ();
-
     class table
     {
       public:

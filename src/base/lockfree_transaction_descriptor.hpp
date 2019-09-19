@@ -29,6 +29,8 @@
 
 #include "lockfree_transaction_def.hpp"
 
+#include <limits>
+
 // forward definition
 namespace lockfree
 {
@@ -43,6 +45,8 @@ namespace lockfree
 {
   namespace tran
   {
+    static const id INVALID_TRANID = std::numeric_limits<id>::max ();
+
     class descriptor
     {
       public:
