@@ -3153,7 +3153,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
       dbvalue_ptr =
 	heap_attrinfo_generate_key (thread_p, sort_args->n_attrs, &sort_args->attr_ids[attr_offset], prefix_lengthp,
 				    &sort_args->attr_info, &sort_args->in_recdes, &dbvalue, aligned_midxkey_buf,
-				    sort_args->func_index_info);
+				    sort_args->func_index_info, NULL);
       if (dbvalue_ptr == NULL)
 	{
 	  return SORT_ERROR_OCCURRED;
@@ -4920,7 +4920,8 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 
       /* Generate the key. */
       p_dbvalue = heap_attrinfo_generate_key (thread_p, n_attrs, &attrids[attr_offset], p_prefix_length, attr_info,
-					      &cur_record, &dbvalue, aligned_midxkey_buf, p_func_idx_info);
+					      &cur_record, &dbvalue, aligned_midxkey_buf, p_func_idx_info,
+                                              const_cast <TP_DOMAIN *>(key_type));
       if (p_dbvalue == NULL)
 	{
 	  ret = ER_FAILED;

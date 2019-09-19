@@ -11705,7 +11705,7 @@ xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
 
       key_val =
 	heap_attrinfo_generate_key (thread_p, n_attrs, attr_ids, NULL, &attr_info, &copy_recdes, &tmpval,
-				    aligned_midxkey_buf, NULL);
+				    aligned_midxkey_buf, NULL, NULL);
       if (key_val == NULL)
 	{
 	  error_code = ER_FAILED;
