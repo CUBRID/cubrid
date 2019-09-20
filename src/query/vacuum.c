@@ -780,14 +780,14 @@ class vacuum_master_task : public cubthread::entry_task
     void execute (cubthread::entry &thread_ref) final;
 
   private:
-    bool should_interrupt_iteration () const;
-    bool is_cursor_entry_ready_to_vacuum () const;
-    bool is_cursor_entry_available () const;
-    void start_job_on_cursor_entry () const;
-    bool should_force_data_update () const;
+    bool should_interrupt_iteration () const;         // conditions to interrupt an iteration and go to sleep
+    bool is_cursor_entry_ready_to_vacuum () const;    // check if conditions to vacuum cursor entry are met
+    bool is_cursor_entry_available () const;          // check if cursor entry is available and can generate a new job
+    void start_job_on_cursor_entry () const;          // start job on cursor entry
+    bool should_force_data_update () const;           // conditions to force a vacuum data update
 
-    vacuum_job_cursor m_cursor;
-    MVCCID m_oldest_visible_mvccid;
+    vacuum_job_cursor m_cursor;                       // cursor that iterates through vacuum data entries
+    MVCCID m_oldest_visible_mvccid;                   // saved oldest visible mvccid (recomputed on each iteration)
 };
 
 // class vacuum_worker_context_manager
@@ -2888,7 +2888,7 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
     {
       if (!is_cursor_entry_ready_to_vacuum ())
         {
-          // stop this iteration; maybe next time it will be ready
+          // next entries cannot be ready if current entry is not ready; stop this iteration
           break;
         }
 
@@ -2967,6 +2967,7 @@ vacuum_master_task::is_cursor_entry_available () const
     }
   else
     {
+      // already vacuumed or entry job is in progress
       assert (entry.is_vacuumed () || entry.is_job_in_progress ());
       vacuum_er_log (VACUUM_ER_LOG_JOBS,
                      "Job for blockid = %lld %s. Skip.", (long long int) entry.get_blockid (),
@@ -2987,12 +2988,12 @@ vacuum_master_task::should_force_data_update () const
 {
   if (vacuum_Finished_job_queue->is_half_full ())
     {
-      // don't wait until is full
+      // don't wait until it's full
       return true;
     }
   if (vacuum_Block_data_buffer->is_half_full ())
     {
-      // don't wait until is full
+      // don't wait until it's full
       return true;
     }
 
