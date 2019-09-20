@@ -5008,6 +5008,9 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
       btree_log_if_enabled ("btree_search_nonleaf_page: null page/key pointer. Operation Ignored.");
       return ER_FAILED;
     }
+
+    VPID curr_vpid;
+    pgbuf_get_vpid (page_ptr, &curr_vpid);
 #endif
 
   key_cnt = btree_node_number_of_keys (thread_p, page_ptr);
@@ -5034,6 +5037,10 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 
       *slot_id = 1;
       *child_vpid = non_leaf_rec.pnt;
+
+#if !defined (NDEBUG)
+      page_bounds->add_trace (advance_page_trace (advance_page_trace::advance_case::ONE_KEY, key_cnt, curr_vpid, page_ptr, *slot_id, *child_vpid));
+#endif
 
       return NO_ERROR;
     }
@@ -5124,6 +5131,10 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 		  pr_clone_value (&temp_key, &page_bounds->m_left_key);
 		  page_bounds->m_is_inf_left_key = false;
 		}
+
+#if !defined (NDEBUG)
+      page_bounds->add_trace (advance_page_trace (advance_page_trace::advance_case::EQ_KEY, key_cnt, curr_vpid, page_ptr, *slot_id, *child_vpid));
+#endif
 	    }
 
 	  btree_clear_key_value (&clear_key, &temp_key);
@@ -5191,6 +5202,10 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 
 	  pr_clone_value (&temp_key, &page_bounds->m_left_key);
 	  page_bounds->m_is_inf_left_key = false;
+
+#if !defined (NDEBUG)
+      page_bounds->add_trace (advance_page_trace (advance_page_trace::advance_case::LT_KEY, key_cnt, curr_vpid, page_ptr, *slot_id, *child_vpid));
+#endif
 	}
 
     }
@@ -5242,6 +5257,10 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 	      pr_clone_value (&temp_key, &page_bounds->m_right_key);
 	      page_bounds->m_is_inf_right_key = false;
 	    }
+
+#if !defined (NDEBUG)
+      page_bounds->add_trace (advance_page_trace (advance_page_trace::advance_case::GT_KEY, key_cnt, curr_vpid, page_ptr, *slot_id, *child_vpid));
+#endif
 	}
 
     }
@@ -35438,6 +35457,10 @@ void btree_insert_list::reset_boundary_keys ()
       pr_clear_value (&m_boundaries.m_right_key);
       m_boundaries.m_is_inf_right_key = true;
     }
+
+#if !defined (NDEBUG)
+  m_boundaries.m_trace.clear ();
+#endif
 }
 
 void btree_insert_list::prepare_list (void)
