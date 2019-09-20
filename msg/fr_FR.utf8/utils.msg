@@ -457,8 +457,8 @@ options valids:\n\
   -C, --CS-mode                      exécution en mode client-serveur\n\
   -u, --user=ID                      ID d'utilisateur pour l'accès à la base de données, par défaut: "public"\n\
   -p, --password=MOT-DE-PASSE        MOT DE PASSE d'utilisateur; par défaut: aucun\n\
-      --data-file-check-only         vérifie la syntaxe pour le fichier de données sans chargement; par défaut: chargement après vérification\n\
-  -l, --load-only                    charge le fichier de données sans vérification de la syntaxe; par défaut: chargement après vérification\n\
+      --data-file-check-only         check syntax for data file without load; default: disabled\n\
+  -l, --load-only                    load data file without prior syntax checking; SA_MODE only\n\
       --estimated-size=NOMBRE        estimation du NOMBRE des instances; par défaut: 5000\n\
   -v, --verbose                      activer les messages verbeux d'état; par défaut: désactivé\n\
   -c, --periodic-commit=COMPTE       COMPTE d'insertion pour la validation périodique; par défaut: aucune validation pendant le chargement\n\

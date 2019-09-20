@@ -455,8 +455,8 @@ loaddb: 데이터베이스에 객체 및 스키마 적재\n\
   -C, --CS-mode                  클라이언트 서버 모드 실행\n\
   -u, --user=ID                  데이터베이스 접근에 관한 사용자 이름; 기본값: "public"\n\
   -p, --password=PASS            사용자 패스워드; 기본값: 없음\n\
-      --data-file-check-only     문법 체크만 수행; 기본값: 문법 체크 이후 적재\n\
-  -l, --load-only                문법 체크하지 않고 적재; 기본값: 문법 체크 이후 적재\n\
+      --data-file-check-only     check syntax for data file without load; default: disabled\n\
+  -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
       --estimated-size=NUMBER    인스턴스의 대략적인 개수; 기본값: 5000\n\
   -v, --verbose                  많은 상태 정보를 출력; 기본값: 출력하지 않음\n\
   -c, --periodic-commit=COUNT    주기적인 커밋에 대한 카운트; 기본값: 적재 중 커밋하지 않음\n\
