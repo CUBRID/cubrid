@@ -4559,7 +4559,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_INTL_CHECK_INPUT_STRING,
    PRM_NAME_INTL_CHECK_INPUT_STRING,
-   (PRM_FOR_CLIENT | PRM_TEST_CHANGE),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_TEST_CHANGE),
    PRM_BOOLEAN,
    &prm_intl_check_input_string_flag,
    (void *) &prm_intl_check_input_string_default,
@@ -6469,9 +6469,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
 #endif
 
   intl_Mbs_support = prm_get_bool_value (PRM_ID_INTL_MBS_SUPPORT);
-#if !defined (SERVER_MODE)
   intl_String_validation = prm_get_bool_value (PRM_ID_INTL_CHECK_INPUT_STRING);
-#endif
 
   /* count the number of session parameters */
   num_session_parameters = 0;
