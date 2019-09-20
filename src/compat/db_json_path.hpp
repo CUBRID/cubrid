@@ -32,6 +32,9 @@
 #include <unordered_set>
 #include <vector>
 
+int db_json_path_unquote_object_keys (std::string &sql_path);
+
+
 struct PATH_TOKEN
 {
   enum token_type

@@ -6290,9 +6290,22 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
   JSON_DOC *result_json = nullptr;
   if (paths.size () == 1)
     {
-      std::string path = "\"" + paths[0].dump_json_path () + "\"";
-      
-      error_code = db_json_get_json_from_str (path.c_str (), result_json, path.length ());
+      std::string path = paths[0].dump_json_path ();
+      error_code = db_json_path_unquote_object_keys_external (path);
+      if (error_code)
+      {
+	return error_code;
+      }
+
+      char *escaped;
+      size_t escaped_size;
+      error_code = db_string_escape_str (path.c_str (), path.size (), &escaped, &escaped_size);
+      cubmem::private_unique_ptr<char> escaped_unqique_ptr (escaped, NULL);
+      if (error_code)
+	{
+	  return error_code;
+	}
+      error_code = db_json_get_json_from_str (escaped, result_json, escaped_size);
       if (error_code != NO_ERROR)
 	{
           ASSERT_ERROR ();
@@ -6306,10 +6319,25 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
   result_json_owner.create_mutable_reference ();
   for (std::size_t i = 0; i < paths.size (); ++i)
     {
-      std::string path = "\"" + paths[i].dump_json_path () + "\"";
+      std::string path = paths[i].dump_json_path ();
+
+      error_code = db_json_path_unquote_object_keys_external (path);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+
+      char *escaped;
+      size_t escaped_size;
+      error_code = db_string_escape_str (path.c_str (), path.size (), &escaped, &escaped_size);
+      cubmem::private_unique_ptr<char> escaped_unqique_ptr (escaped, NULL);
+      if (error_code)
+	{
+	  return error_code;
+	}
 
       JSON_DOC *json_array_elem = nullptr;
-      error_code = db_json_get_json_from_str (path.c_str (), json_array_elem, path.length ());
+      error_code = db_json_get_json_from_str (escaped, json_array_elem, escaped_size);
       json_array_elem_owner.set_mutable_reference (json_array_elem);
       if (error_code != NO_ERROR)
 	{

@@ -1952,8 +1952,7 @@ db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALU
 	}
     }
 
-  const std::string encoded_pattern = db_json_json_string_as_utf8 (std::string ("\"") + db_get_string (
-      pattern) + std::string ("\""));
+  const std::string encoded_pattern = db_json_json_string_as_utf8 (db_get_string (pattern));
 
   DB_VALUE encoded_pattern_dbval;
   db_make_string (&encoded_pattern_dbval, const_cast<char *> (encoded_pattern.c_str ()));
@@ -2736,6 +2735,12 @@ db_json_normalize_path_string (const char *pointer_path, std::string &output)
   return NO_ERROR;
 }
 
+int
+db_json_path_unquote_object_keys_external (std::string &sql_path)
+{
+  return db_json_path_unquote_object_keys (sql_path);
+}
+
 /*
  * db_json_path_contains_wildcard () - Check whether a given sql_path contains wildcards
  *
@@ -2864,7 +2869,13 @@ db_json_json_string_as_utf8 (std::string raw_json_string)
   // TODO: Modify this process to also escape what needs to be escaped
   if (raw_json_string.length () < 2 || raw_json_string[0] != '"' || raw_json_string.back () != '"')
     {
-      raw_json_string = "\"" + raw_json_string + "\"";
+      char *quoted_str;
+      size_t quoted_sz;
+
+      db_string_escape_str (raw_json_string.c_str (), raw_json_string.length (), &quoted_str, &quoted_sz);
+
+      raw_json_string = quoted_str;
+      db_private_free (NULL, quoted_str);
     }
 
   JSON_DOC *doc = nullptr;
