@@ -17,27 +17,25 @@
  *
  */
 
-#ifndef _LOCKFREE_TRANSACTION_DESCRIPTOR_HPP_
-#define _LOCKFREE_TRANSACTION_DESCRIPTOR_HPP_
+//
+// lock-free transaction hazard pointer
+//
+//    Hazard pointers (https://en.wikipedia.org/wiki/Hazard_pointer) are pointers to memory used by lock-free data
+//    structures. When hazard pointers are "deleted", they are passed to the lock-free transaction system that can
+//    determine when it's safe to delete the pointer without impacting concurrent transaction reading the pointed
+//    memory
+//
 
-//
-// lock-free transaction descriptor
-//
-//    Monitors the activity of a thread on a lock-free data structure and manages retired hazard pointers that are not
-//    yet ready to be deleted
-//
+#ifndef _LOCKFREE_TRANSACTION_HAZARD_POINTER_HPP_
+#define _LOCKFREE_TRANSACTION_HAZARD_POINTER_HPP_
 
 #include "lockfree_transaction_def.hpp"
 
-#include <limits>
-
-// forward definition
 namespace lockfree
 {
   namespace tran
   {
-    class hazard_pointer;
-    class table;
+    class descriptor;
   } // namespace tran
 } // namespace lockfree
 
@@ -45,38 +43,27 @@ namespace lockfree
 {
   namespace tran
   {
-    static const id INVALID_TRANID = std::numeric_limits<id>::max ();
-
-    class descriptor
+    class hazard_pointer
     {
       public:
-	descriptor () = default;
-	~descriptor ();
+	hazard_pointer () = default;
+	virtual ~hazard_pointer () = 0;   // to force abstract class
 
-	void delete_hazard_pointer (hazard_pointer &hzp);
+	virtual void on_delete ()
+	{
+	  // default is to delete itself
+	  delete this;
+	}
 
-	void set_table (table &tbl);
-
-	void start_tran ();
-	void start_tran_and_increment_id ();
-	void end_tran ();
-
-	bool is_tran_started ();
-
-	id get_transaction_id () const;
+      protected:
+	hazard_pointer *m_hazard_next;    // may be reused by derived classes
 
       private:
-	void cleanup ();
-	void remove_deleted_head ();
+	friend descriptor;
 
-	table *m_table;
-	id m_tranid;
-	id m_cleanupid;
-	hazard_pointer *m_deleted_head;
-	hazard_pointer *m_deleted_tail;
-	bool m_did_incr;
+	id m_delete_id;
     };
   } // namespace tran
 } // namespace lockfree
 
-#endif // !_LOCKFREE_TRANSACTION_DESCRIPTOR_HPP_
+#endif // !_LOCKFREE_TRANSACTION_HAZARD_POINTER_HPP_

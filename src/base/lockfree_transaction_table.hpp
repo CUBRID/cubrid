@@ -63,22 +63,15 @@ namespace lockfree
 	table (system &sys);
 	~table ();
 
-	void start_tran (const index &tran_index, bool increment_id);
-	void start_tran (descriptor &tdes, bool increment_id);
+	descriptor &get_descriptor (const index &tran_index);
 
-	void end_tran (const index &tran_index);
-	void end_tran (descriptor &tdes);
-
-	descriptor &get_entry (const index &tran_index);
-
+	id get_current_global_tranid () const;
+	id get_new_global_tranid ();
 	id get_min_active_tranid () const;
 
       private:
 	/* number of transactions between computing min_active_transaction_id */
 	static const id MATI_REFRESH_INTERVAL = 100;
-
-	void get_new_global_tranid (id &out);
-	void get_current_global_tranid (id &out) const;
 
 	void compute_min_active_tranid ();
 
