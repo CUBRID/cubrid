@@ -53,7 +53,7 @@ namespace lockfree
 	descriptor () = default;
 	~descriptor ();
 
-	void retire_hazard_pointer (hazard_pointer &hzp);
+	void delete_hazard_pointer (hazard_pointer &hzp);
 
 	void set_table (table &tbl);
 
@@ -67,13 +67,13 @@ namespace lockfree
 
       private:
 	void cleanup ();
-	void delete_retired_head ();
+	void remove_deleted_head ();
 
 	table *m_table;
 	id m_tranid;
 	id m_cleanupid;
-	hazard_pointer *m_retired_head;
-	hazard_pointer *m_retired_tail;
+	hazard_pointer *m_deleted_head;
+	hazard_pointer *m_deleted_tail;
 	bool m_did_incr;
     };
   } // namespace tran
