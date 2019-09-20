@@ -200,6 +200,7 @@ namespace lockfree
     for (size_t i = 0; i < m_block_size; i++)
       {
 	hzn = new hazard_node ();
+	hzn->set_owner (*this);
 	if (tail == NULL)
 	  {
 	    tail = hzn;
