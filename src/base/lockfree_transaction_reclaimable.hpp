@@ -20,11 +20,15 @@
 //
 // lock-free transaction reclaimable nodes
 //
-//    lock-free data structures needs to be tagged with a reclaimable node (by either derivation or composition).
+//    Lock-free data structures needs to be tagged with a reclaimable node (by either derivation or composition).
+//    When node is to be removed from structure, it is retired, collected by thread's transaction descriptor and
+//    safely reclaimed later.
+//
+//    See lockfree_transaction_system.hpp description for an overview of the lock-free transaction implementation.
 //
 
-#ifndef _LOCKFREE_TRANSACTION_HAZARD_POINTER_HPP_
-#define _LOCKFREE_TRANSACTION_HAZARD_POINTER_HPP_
+#ifndef _LOCKFREE_TRANSACTION_RECLAIMABLE_HPP_
+#define _LOCKFREE_TRANSACTION_RECLAIMABLE_HPP_
 
 #include "lockfree_transaction_def.hpp"
 
@@ -46,6 +50,7 @@ namespace lockfree
 	reclaimable_node () = default;
 	virtual ~reclaimable_node () = 0;   // to force abstract class
 
+	// override reclaim to change what happens with the reclaimable node
 	virtual void reclaim ()
 	{
 	  // default is to delete itself
@@ -64,4 +69,4 @@ namespace lockfree
   } // namespace tran
 } // namespace lockfree
 
-#endif // !_LOCKFREE_TRANSACTION_HAZARD_POINTER_HPP_
+#endif // !_LOCKFREE_TRANSACTION_RECLAIMABLE_HPP_

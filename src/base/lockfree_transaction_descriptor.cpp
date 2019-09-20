@@ -19,7 +19,7 @@
 
 #include "lockfree_transaction_descriptor.hpp"
 
-#include "lockfree_transaction_hazard_pointer.hpp"
+#include "lockfree_transaction_reclaimable.hpp"
 #include "lockfree_transaction_table.hpp"
 
 #include <cassert>
