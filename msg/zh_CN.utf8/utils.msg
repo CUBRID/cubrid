@@ -455,8 +455,8 @@ loaddb: 将对象和结构导入到数据库.\n\
   -C, --CS-mode                  客户端-服务器模式执行\n\
   -u, --user=ID                  用于访问数据库的用户ID; 默认: "public"\n\
   -p, --password=PASS            用户密码; 默认: 空\n\
-      --data-file-check-only     对数据文件进行语法检测而不加载; 默认: 检测之后加载\n\
-  -l, --load-only                加载数据文件而不检测语法; 默认: 检测之后加载\n\
+      --data-file-check-only     check syntax for data file without load; default: disabled\n\
+  -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
       --estimated-size=NUMBER    用NUMBER作为估计的实例数目; 默认: 5000\n\
   -v, --verbose                  开启详细状态信息; 默认: 关闭\n\
   -c, --periodic-commit=COUNT    每插入COUNT个实例进行周期性的提交; 默认: 在读取时不提交\n\

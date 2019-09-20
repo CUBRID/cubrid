@@ -631,12 +631,14 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       goto error_return;
     }
 
+#if defined(CS_MODE)
   if (args.load_only)
     {
       /* This is the default behavior. It is changed from the old one so we notify the user. */
-      print_log_msg (1, "\n--load-only is deprecated. To check the object file for any syntax errors");
-      print_log_msg (1, " use --data-file-check-only.\n");
+      print_log_msg (1, "\n--load-only parameter is not supported on Client-Server mode. ");
+      print_log_msg (1, "The default behavior of loaddb is loading without checking the file.\n");
     }
+#endif
 
   /* if schema file is specified, do schema loading */
   if (schema_file != NULL)
