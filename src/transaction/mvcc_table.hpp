@@ -84,7 +84,6 @@ class mvcctable
     void get_two_new_mvccid (MVCCID &first, MVCCID &second);
 
     bool is_active (MVCCID mvccid) const;
-    MVCCID get_global_oldest_active () const;
 
     void reset_start_mvccid ();     // not thread safe
 

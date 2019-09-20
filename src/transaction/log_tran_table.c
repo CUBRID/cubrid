@@ -6159,12 +6159,9 @@ log_tdes::unlock_global_oldest_visible_mvccid ()
 {
   if (block_global_oldest_active_until_commit)
     {
+      assert (log_Gl.mvcc_table.is_global_oldest_visible_locked ());
       log_Gl.mvcc_table.unlock_global_oldest_visible ();
       block_global_oldest_active_until_commit = false;
-    }
-  else
-    {
-      assert (log_Gl.mvcc_table.is_global_oldest_visible_locked ());
     }
 }
 

@@ -72,7 +72,7 @@ namespace test_packing
 
       bool is_equal (const packable_object *other);
 
-      size_t get_packed_size (cubpacking::packer &serializator) const;
+      size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const override;
 
       void generate_obj (void);
   };

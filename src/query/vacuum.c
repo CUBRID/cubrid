@@ -423,18 +423,6 @@ VACUUM_WORKER vacuum_Master;
 /*
  * Vacuum worker/job related structures.
  */
-
-/* Oldest MVCCID considered active by a running transaction.
- * Considered as threshold by vacuum workers.
- */
-MVCCID vacuum_Global_oldest_visible_mvccid;
-/* When transactions run some complex operations on heap files (upgrade domain, reorganize partitions), concurrent
- * access with vacuum workers can create problems. They avoid it by blocking vacuum_Global_oldest_visible_mvccid updates
- * and by running vacuum manually.
- * This is a counter that tracks blocking transactions.
- */
-INT32 vacuum_Global_oldest_visible_blockers_counter;
-
 /* A lock-free buffer used for communication between logger transactions and
  * auto-vacuum master. It is advisable to avoid synchronizing running
  * transactions with vacuum threads and for this reason the block data is not
@@ -982,29 +970,29 @@ xvacuum (THREAD_ENTRY * thread_p)
   // consume all vacuum data blocks
   while (cursor.is_valid ())
     {
-      if (!cursor.get_current_entry ().is_available ())
-	{
-	  assert (cursor.get_current_entry ().is_vacuumed ());
-	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
-			 "Job for blockid = %lld %s. Skip.",
-			 (long long int) cursor.get_current_entry ().get_blockid (),
-			 cursor.get_current_entry ().is_vacuumed ()? "was executed" : "is in progress");
-	  cursor.increment_blockid ();
-	  continue;
-	}
-
-      cursor.start_job_on_current_entry ();
-
-      // job will be executed immediately
-      vacuum_sa_run_job (thread_p, cursor.get_current_entry (), false, perf_tracker);
-      cursor.increment_blockid ();
-
       if (logtb_is_interrupted (thread_p, true, &dummy_continue_check_interrupt))
 	{
 	  cursor.unload ();
 	  vacuum_Data.update ();
 	  return NO_ERROR;
 	}
+
+      if (cursor.get_current_entry ().is_available ())
+	{
+	  cursor.start_job_on_current_entry ();
+	  // job will be executed immediately
+	  vacuum_sa_run_job (thread_p, cursor.get_current_entry (), false, perf_tracker);
+	}
+      else
+	{
+	  // skip
+	  assert (cursor.get_current_entry ().is_vacuumed ());
+	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
+			 "Job for blockid = %lld %s. Skip.",
+			 (long long int) cursor.get_current_entry ().get_blockid (),
+			 cursor.get_current_entry ().is_vacuumed ()? "was executed" : "is in progress");
+	}
+      cursor.increment_blockid ();
 
       if (!vacuum_Block_data_buffer->is_empty ()	// there is a new block
 	  || vacuum_Finished_job_queue->is_full ()	// finished queue is full and must be consumed
@@ -7828,40 +7816,15 @@ vacuum_data::update ()
 
   // For 3rd part, when vacuum data is not empty, the operation is trivial - just set to first block data oldest mvccid.
   // (the algorithm ensures that entries oldest mvccid is always ascending)
-  // When vacuum data is empty, we also need to consider the current log block and vacuum_Block_data_buffer. Current
-  // block can be read from log_Gl.hdr, but vacuum_Block_data_buffer is not easy to inspect due to lock-free concurrent
-  // operations.
-  // The trick is to check buffer before consuming it. If it not empty, vacuum data will not be empty after consume and
-  // unvacuumed oldest mvccid can be trivially set to first block data oldest mvccid. If it is empty, use current log
-  // block oldest mvccid.
+  // When vacuum data is empty, just don't update oldest_unvacuumed
 
   // first remove vacuumed blocks
   vacuum_data_mark_finished (thread_p);
 
-  // try to update before consuming buffer
-  if (!vacuum_Data.is_empty ())
-    {
-      // trivial case
-      upgrade_oldest_unvacuumed (get_first_entry ().oldest_visible_mvccid);
-      updated_oldest_unvacuumed = true;
-    }
-  else
-    {
-      // if buffer is empty, should set to current log block oldest mvccid.
-      // note: the safe order of operations is to first read current block, and then check the buffer.
-      //       if buffer is checked first, then thread is preempted, then it reads current log block, a block can be
-      //       missed.
-      MVCCID hdr_oldest_visible = log_Gl.hdr.oldest_visible_mvccid;
-      if (vacuum_Block_data_buffer->is_empty ())
-        {
-          upgrade_oldest_unvacuumed (hdr_oldest_visible);
-          updated_oldest_unvacuumed = true;
-        }
-    }
-
   // then consume new generated blocks
   vacuum_consume_buffer_log_blocks (thread_p);
-  if (!updated_oldest_unvacuumed)
+
+  if (!vacuum_Data.is_empty ())
     {
       // buffer was not empty, we can trivially update to first entry oldest mvccid
       upgrade_oldest_unvacuumed (get_first_entry ().oldest_visible_mvccid);
@@ -7872,22 +7835,20 @@ void
 vacuum_data::set_oldest_unvacuumed_on_boot ()
 {
   // no thread safety needs to be considered here
+  if (!log_Gl.hdr.does_block_need_vacuum)
+    {
+      // log_Gl.hdr.oldest_visible_mvccid may not remain uninitialized
+      log_Gl.hdr.oldest_visible_mvccid = log_Gl.hdr.mvcc_next_id;
+    }
   if (vacuum_Data.is_empty ())
     {
-      if (log_Gl.hdr.does_block_need_vacuum)
-        {
-          oldest_unvacuumed_mvccid = log_Gl.hdr.oldest_visible_mvccid;
-        }
-      else
-        {
-          oldest_unvacuumed_mvccid = log_Gl.hdr.mvcc_next_id;
-          log_Gl.hdr.oldest_visible_mvccid = log_Gl.hdr.mvcc_next_id;
-        }
+      oldest_unvacuumed_mvccid = log_Gl.hdr.oldest_visible_mvccid;
     }
   else
     {
       // set on first block oldest mvccid
       oldest_unvacuumed_mvccid = first_page->data[0].oldest_visible_mvccid;
+      assert (oldest_unvacuumed_mvccid <= log_Gl.hdr.oldest_visible_mvccid);
     }
 }
 
