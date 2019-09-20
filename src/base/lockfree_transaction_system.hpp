@@ -20,19 +20,28 @@
 //
 // lockfree_transaction_system.hpp - lock-free transaction index management
 //
-//    The lock-free transaction system is a solution to the ABA problem (https://en.wikipedia.org/wiki/ABA_problem)
+//    The lock-free transaction system solves problems posed by dynamic memory management of nodes in lock-free data
+//    structures, like the ABA problem of compare-and-swap primitive. The solution defers node reclamation as long as
+//    concurrent reads are possible.
+//    https://en.wikipedia.org/w/index.php?title=ABA_problem&action=edit&section=5
 //
-//    The basic principle of the system is to use incremental transaction id's to determine when a hazard pointer was
-//    last accessed and if it is safe to "delete" it.
+//    The basic principle of the system is to mark lock-free data structure access and retired nodes with transaction
+//    id's. Each retirement marks retired node and increments the global transaction ID. Each node access (read or
+//    write) fetches current global id. When all current transactions are either inactive or their ids are greater
+//    than retired node id's, it can be deduced that no concurrent transaction is accessing the retired node, thus
+//    making it safe to reclaim.
 //
 //    The system has two key components:
 //        1. transaction indexes, one for each different thread that may use a lock-free structure in this system
-//        2. transaction tables, one for each lock-free structure part of this system
+//        2. transaction tables, one for each lock-free structure part of this system. a table is an array of
+//           transaction descriptors (the database transactional terminology was borrowed for familiarity).
 //
-//    For any thread trying to access or modify any of the lock-free structures part of transaction system, there will
-//    be a transaction descriptor.
-//    The transaction descriptor is used to monitor the thread activity on the lock-free structure and to collect
-//    deleted hazard pointers until they no thread accesses it.
+//    The system dictates transaction tables the number of descriptors they need and assigns thread the index of its
+//    descriptor in each table (present or future).
+//
+//    Each descriptor monitors the activity of a thread on a lock-free structure, by saving the global transaction
+//    id while the thread accesses the structure. Additionally, it maintains a list of the nodes this thread retires
+//    until it is safe to reclaim them.
 //
 
 #ifndef _LOCKFREE_TRANSACTION_SYSTEM_HPP_

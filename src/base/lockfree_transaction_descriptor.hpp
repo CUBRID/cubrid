@@ -23,8 +23,10 @@
 //
 // lock-free transaction descriptor
 //
-//    Monitors the activity of a thread on a lock-free data structure and manages retired hazard pointers that are not
-//    yet ready to be deleted
+//    Monitors the activity of a thread on a lock-free data structure and manages retired nodes that are not yet ready
+//    to be deleted.
+//
+//    See lockfree_transaction_system.hpp description for an overview of the lock-free transaction implementation.
 //
 
 #include "lockfree_transaction_def.hpp"
@@ -36,7 +38,7 @@ namespace lockfree
 {
   namespace tran
   {
-    class hazard_pointer;
+    class reclaimable_node;
     class table;
   } // namespace tran
 } // namespace lockfree
@@ -53,7 +55,8 @@ namespace lockfree
 	descriptor () = default;
 	~descriptor ();
 
-	void delete_hazard_pointer (hazard_pointer &hzp);
+	// retire a lock-free data structure entry
+	void retire_node (reclaimable_node &hzp);
 
 	void set_table (table &tbl);
 
@@ -66,14 +69,14 @@ namespace lockfree
 	id get_transaction_id () const;
 
       private:
-	void cleanup ();
-	void remove_deleted_head ();
+	void reclaim_retired_list ();
+	void reclaim_retired_head ();
 
 	table *m_table;
 	id m_tranid;
 	id m_cleanupid;
-	hazard_pointer *m_deleted_head;
-	hazard_pointer *m_deleted_tail;
+	reclaimable_node *m_retired_head;
+	reclaimable_node *m_retired_tail;
 	bool m_did_incr;
     };
   } // namespace tran
