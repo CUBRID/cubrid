@@ -3834,62 +3834,6 @@ xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logtb_get_oldest_visible_mvccid () - Get oldest MVCCID that was running
- *				       when any active transaction started.
- *
- * return	 : MVCCID for oldest active transaction.
- * thread_p (in) : Thread entry.
- *
- * Note:  The returned MVCCID is used as threshold by vacuum. The rows deleted
- *	      by transaction having MVCCIDs >= logtb_get_lowest_active_mvccid
- *	      will not be physical removed by vacuum. That's because that rows
- *	      may still be visible to active transactions, even if deleting
- *	      transaction has commit meanwhile. If there is no active
- *	      transaction, this function return highest_completed_mvccid + 1.
- */
-MVCCID
-logtb_get_oldest_visible_mvccid (THREAD_ENTRY * thread_p)
-{
-  MVCCID lowest_active_mvccid = 0;
-  TSC_TICKS start_tick, end_tick;
-  TSCTIMEVAL tv_diff;
-  UINT64 oldest_time, retry_cnt = 0;
-  bool is_perf_tracking = false;
-
-  is_perf_tracking = perfmon_is_perf_tracking ();
-  if (is_perf_tracking)
-    {
-      tsc_getticks (&start_tick);
-    }
-
-  lowest_active_mvccid = log_Gl.mvcc_table.compute_oldest_visible_mvccid ();
-
-  if (is_perf_tracking)
-    {
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-      if (oldest_time > 0)
-	{
-	  perfmon_add_stat (thread_p, PSTAT_LOG_OLDEST_MVCC_TIME_COUNTERS, oldest_time);
-	}
-      if (retry_cnt > 1)
-	{
-	  perfmon_add_stat (thread_p, PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS, retry_cnt - 1);
-	}
-    }
-#if !defined (NDEBUG)
-  {
-    /* Safe guard: vacuum_Global_oldest_active_mvccid can never become smaller. */
-    MVCCID crt_oldest = vacuum_get_global_oldest_visible_mvccid ();
-    assert (!MVCC_ID_PRECEDES (lowest_active_mvccid, crt_oldest));
-  }
-#endif /* !NDEBUG */
-
-  return lowest_active_mvccid;
-}
-
-/*
  * logtb_find_current_mvccid - find current transaction MVCC id
  *
  * return: MVCCID
@@ -6197,6 +6141,27 @@ log_tdes::on_sysop_end ()
       LSA_SET_NULL (&tail_lsa);
       LSA_SET_NULL (&undo_nxlsa);
       LSA_SET_NULL (&tail_topresult_lsa);
+    }
+}
+
+void
+log_tdes::lock_global_oldest_visible_mvccid ()
+{
+  if (!block_global_oldest_active_until_commit)
+    {
+      log_Gl.mvcc_table.lock_global_oldest_visible ();
+      block_global_oldest_active_until_commit = true;
+    }
+}
+
+void
+log_tdes::unlock_global_oldest_visible_mvccid ()
+{
+  if (block_global_oldest_active_until_commit)
+    {
+      assert (log_Gl.mvcc_table.is_global_oldest_visible_locked ());
+      log_Gl.mvcc_table.unlock_global_oldest_visible ();
+      block_global_oldest_active_until_commit = false;
     }
 }
 
