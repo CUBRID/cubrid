@@ -41,7 +41,23 @@
 //
 //    Each descriptor monitors the activity of a thread on a lock-free structure, by saving the global transaction
 //    id while the thread accesses the structure. Additionally, it maintains a list of the nodes this thread retires
-//    until it is safe to reclaim them.
+//    until it is safe to reclaim them
+//
+//    Glossary explained [term will be met throught lockfree::tran implementation]
+//
+//      - node:
+//          lock-free data structure element that retired & reclaimed
+//      - retire:
+//          the action of removing a node from lock-free data structure; no new access from concurrent threads is
+//          expected on a retired node
+//      - reclaim:
+//          the action of safe reclamation of node resources when no access from concurrent threads is possible
+//      - transaction system:
+//          group of transaction indexes and table; an index is valid throughout all tables in same system
+//      - transaction table:
+//          the set of transaction descriptors and global transaction ID equivalent for a lock-free data structure
+//      - transaction descriptor
+//          an entry of a transaction table that can be accessed by one thread only
 //
 
 #ifndef _LOCKFREE_TRANSACTION_SYSTEM_HPP_
