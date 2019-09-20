@@ -55,7 +55,9 @@ namespace lockfree
 	descriptor () = default;
 	~descriptor ();
 
-	// retire a lock-free data structure entry
+	// retire a lock-free data structure node
+	// !! NOTE: it is callers responsibility to make sure no new thread can access the node once retired.
+	//          transaction system can only safe-guard against concurrent access that started prior retirement.
 	void retire_node (reclaimable_node &hzp);
 
 	void set_table (table &tbl);
@@ -74,7 +76,7 @@ namespace lockfree
 
 	table *m_table;
 	id m_tranid;
-	id m_cleanupid;
+	id m_last_reclaim_minid;
 	reclaimable_node *m_retired_head;
 	reclaimable_node *m_retired_tail;
 	bool m_did_incr;
