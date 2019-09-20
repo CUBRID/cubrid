@@ -5009,8 +5009,8 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
       return ER_FAILED;
     }
 
-    VPID curr_vpid;
-    pgbuf_get_vpid (page_ptr, &curr_vpid);
+  VPID curr_vpid;
+  pgbuf_get_vpid (page_ptr, &curr_vpid);
 #endif
 
   key_cnt = btree_node_number_of_keys (thread_p, page_ptr);
@@ -5039,7 +5039,9 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
       *child_vpid = non_leaf_rec.pnt;
 
 #if !defined (NDEBUG)
-      page_bounds->add_trace (advance_page_trace (advance_page_trace::advance_case::ONE_KEY, key_cnt, curr_vpid, page_ptr, *slot_id, *child_vpid));
+      page_bounds->
+	add_trace (advance_page_trace
+		   (advance_page_trace::advance_case::ONE_KEY, key_cnt, curr_vpid, page_ptr, *slot_id, *child_vpid));
 #endif
 
       return NO_ERROR;
@@ -5133,7 +5135,10 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 		}
 
 #if !defined (NDEBUG)
-      page_bounds->add_trace (advance_page_trace (advance_page_trace::advance_case::EQ_KEY, key_cnt, curr_vpid, page_ptr, *slot_id, *child_vpid));
+	      page_bounds->
+		add_trace (advance_page_trace
+			   (advance_page_trace::advance_case::EQ_KEY, key_cnt, curr_vpid, page_ptr, *slot_id,
+			    *child_vpid));
 #endif
 	    }
 
@@ -5204,7 +5209,9 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 	  page_bounds->m_is_inf_left_key = false;
 
 #if !defined (NDEBUG)
-      page_bounds->add_trace (advance_page_trace (advance_page_trace::advance_case::LT_KEY, key_cnt, curr_vpid, page_ptr, *slot_id, *child_vpid));
+	  page_bounds->
+	    add_trace (advance_page_trace
+		       (advance_page_trace::advance_case::LT_KEY, key_cnt, curr_vpid, page_ptr, *slot_id, *child_vpid));
 #endif
 	}
 
@@ -5259,7 +5266,9 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 	    }
 
 #if !defined (NDEBUG)
-      page_bounds->add_trace (advance_page_trace (advance_page_trace::advance_case::GT_KEY, key_cnt, curr_vpid, page_ptr, *slot_id, *child_vpid));
+	  page_bounds->
+	    add_trace (advance_page_trace
+		       (advance_page_trace::advance_case::GT_KEY, key_cnt, curr_vpid, page_ptr, *slot_id, *child_vpid));
 #endif
 	}
 
@@ -33537,7 +33546,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
        * we may miss adding one more record; this is a less expensive check, we accept the 'loss' */
       bool key_alread_in_page = false;
       int new_ent_size = btree_get_max_new_data_size (thread_p, btid_int, *leaf_page, node_type, key_len,
-							 &helper->insert_helper, key_alread_in_page);
+						      &helper->insert_helper, key_alread_in_page);
       if (new_ent_size > spage_get_free_space_without_saving (thread_p, *leaf_page, NULL))
 	{
 	  /* no more space in page */
