@@ -588,7 +588,7 @@ struct page_key_boundary
 
 #if !defined (NDEBUG)
   std::vector <advance_page_trace> m_trace;
-  void add_trace (advance_page_trace &trace_point)
+  void add_trace (advance_page_trace &&trace_point)
     {
       m_trace.push_back (trace_point);
     }
