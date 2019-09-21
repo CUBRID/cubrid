@@ -33503,6 +33503,9 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 
   assert (insert_list->m_key_type == btid_int->key_type);
 
+  PERF_UTIME_TRACKER time_insert_same_leaf = PERF_UTIME_TRACKER_INITIALIZER;
+  PERF_UTIME_TRACKER_START (thread_p, &time_insert_same_leaf);
+
   while (1)
     {
       error_code = btree_key_online_index_IB_insert (thread_p, btid_int, curr_key, leaf_page, search_key, restart,
@@ -33560,7 +33563,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	  c = btree_compare_key (&insert_list->m_boundaries.m_left_key, curr_key, btid_int->key_type, 1, 1, NULL);
 	  if (c != DB_LT && c != DB_EQ)
 	    {
-	      perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KET_NOT_IN_RANGE);
+	      perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE1);
 	      break;
 	    }
 	}
@@ -33571,7 +33574,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	  c = btree_compare_key (curr_key, &insert_list->m_boundaries.m_right_key, btid_int->key_type, 1, 1, NULL);
 	  if (c != DB_LT)
 	    {
-	      perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KET_NOT_IN_RANGE);
+	      perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE2);
 	      break;
 	    }
 	}
@@ -33585,21 +33588,30 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
       if (search_key->result == BTREE_ERROR_OCCURRED || search_key->result == BTREE_KEY_SMALLER
 	  || search_key->result == BTREE_KEY_BIGGER)
 	{
-	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KET_NOT_IN_RANGE);
+	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE3);
+
+          BTREE_NODE_HEADER *node_header = btree_get_node_header (thread_p, *leaf_page);
+          if (search_key->result == BTREE_KEY_SMALLER && VPID_ISNULL (&node_header->prev_vpid))
+            {
+              perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_FALSE_FAILED_RANGE1);
+            }
+          else if (search_key->result == BTREE_KEY_BIGGER && VPID_ISNULL (&node_header->next_vpid))
+            {
+              perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_FALSE_FAILED_RANGE2);
+            }
 	  break;
 	}
 
       error_code = btree_search_leaf_page (thread_p, btid_int, *leaf_page, curr_key, search_key);
       if (error_code != NO_ERROR)
 	{
-	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KET_NOT_IN_RANGE);
 	  break;
 	}
 
       if (search_key->result != BTREE_KEY_BETWEEN && search_key->result != BTREE_KEY_FOUND
 	  && search_key->result != BTREE_KEY_BIGGER && search_key->result != BTREE_KEY_SMALLER)
 	{
-	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KET_NOT_IN_RANGE);
+	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE4);
 	  break;
 	}
 
@@ -33607,6 +33619,8 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
     }
 
   insert_list->reset_boundary_keys ();
+
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_insert_same_leaf, PSTAT_BT_ONLINE_INSERT_SAME_LEAF);
 
   return error_code;
 }

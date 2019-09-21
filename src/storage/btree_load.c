@@ -4845,6 +4845,10 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   load_context.m_tasks_executed = 0UL;
   load_context.m_key_type = key_type;
 
+  PERF_UTIME_TRACKER time_online_index = PERF_UTIME_TRACKER_INITIALIZER;
+
+  PERF_UTIME_TRACKER_START (thread_p, &time_online_index);
+
   /* Start extracting from heap. */
   for (;;)
     {
@@ -4992,6 +4996,8 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       while (load_context.m_tasks_executed != tasks_started);
     }
 
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_online_index, PSTAT_BT_ONLINE);
+
   thread_get_manager ()->destroy_worker_pool (ib_workpool);
 
   return ret;
@@ -5075,7 +5081,15 @@ index_builder_loader_task::execute (cubthread::entry &thread_ref)
       return;
     }
 
+  PERF_UTIME_TRACKER time_insert_task = PERF_UTIME_TRACKER_INITIALIZER;
+  PERF_UTIME_TRACKER_START (&thread_ref, &time_insert_task);
+
+  PERF_UTIME_TRACKER time_prepare_task = PERF_UTIME_TRACKER_INITIALIZER;
+  PERF_UTIME_TRACKER_START (&thread_ref, &time_prepare_task);
+
   m_insert_list.prepare_list ();
+
+  PERF_UTIME_TRACKER_TIME (&thread_ref, &time_prepare_task, PSTAT_BT_ONLINE_PREPARE_TASK);
 
   while (m_insert_list.m_curr_pos < (int) m_insert_list.m_sorted_keys_oids.size ())
     {
@@ -5094,6 +5108,8 @@ index_builder_loader_task::execute (cubthread::entry &thread_ref)
 
       key_count++;
     }
+
+  PERF_UTIME_TRACKER_TIME (&thread_ref, &time_prepare_task, PSTAT_BT_ONLINE_INSERT_TASK);
 
   /* Increment tasks executed. */
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
