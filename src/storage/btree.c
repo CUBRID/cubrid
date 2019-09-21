@@ -33525,7 +33525,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_INSERTS_SAME_PAGE_HOLD);
 	}
 
-      if (insert_list->next_key () != NO_ERROR)
+      if (insert_list->next_key () != btree_insert_list::KEY_AVAILABLE)
 	{
 	  /* no more keys in list */
 	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_NO_MORE_KEYS);
@@ -35437,17 +35437,17 @@ int btree_insert_list::next_key ()
       m_curr_oid = &m_sorted_keys_oids[m_curr_pos]->m_oid;
       m_curr_key = &m_sorted_keys_oids[m_curr_pos]->m_key;
 
-      return NO_ERROR;
+      return KEY_AVAILABLE;
     }
   else if (++m_curr_pos < (int) m_sorted_keys_oids.size ())
     {
       m_curr_oid = &m_sorted_keys_oids[m_curr_pos]->m_oid;
       m_curr_key = &m_sorted_keys_oids[m_curr_pos]->m_key;
 
-      return NO_ERROR;
+      return KEY_AVAILABLE;
     }
 
-  return ER_FAILED;
+  return KEY_NOT_AVAILABLE;
 }
 
 btree_insert_list::~btree_insert_list ()
@@ -35503,6 +35503,7 @@ void btree_insert_list::prepare_list (void)
 
   std::sort (m_sorted_keys_oids.begin (), m_sorted_keys_oids.end (), compare_fn);
   m_use_sorted_bulk_insert = true;
-  next_key ();  
+  int status = next_key ();
+  assert (status == KEY_AVAILABLE);
 }
 // *INDENT-ON*

@@ -597,6 +597,12 @@ struct page_key_boundary
 
 struct btree_insert_list
 {
+  enum
+    {
+      KEY_AVAILABLE = 0,
+      KEY_NOT_AVAILABLE
+    };
+
   std::vector<key_oid> m_keys_oids;
   std::vector<key_oid*> m_sorted_keys_oids;
 
