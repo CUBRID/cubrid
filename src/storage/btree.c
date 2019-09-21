@@ -33538,16 +33538,11 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
       COPY_OID (BTREE_INSERT_OID (&helper->insert_helper), insert_list->get_oid ());
       curr_key = insert_list->get_key ();
 
-      /* check if new item fits in page */
-      int node_level = btree_get_node_level (thread_p, *leaf_page);
-      BTREE_NODE_TYPE node_type = (node_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
-      assert (node_type == BTREE_LEAF_NODE);
-
       int key_len = btree_get_disk_size_of_key (curr_key);
       /* assuming the key does not exist in page (an existing key requires less space,
        * we may miss adding one more record; this is a less expensive check, we accept the 'loss' */
       bool key_alread_in_page = false;
-      int new_ent_size = btree_get_max_new_data_size (thread_p, btid_int, *leaf_page, node_type, key_len,
+      int new_ent_size = btree_get_max_new_data_size (thread_p, btid_int, *leaf_page, BTREE_LEAF_NODE, key_len,
 						      &helper->insert_helper, key_alread_in_page);
       if (new_ent_size > spage_get_free_space_without_saving (thread_p, *leaf_page, NULL))
 	{
@@ -33588,8 +33583,6 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
       if (search_key->result == BTREE_ERROR_OCCURRED || search_key->result == BTREE_KEY_SMALLER
 	  || search_key->result == BTREE_KEY_BIGGER)
 	{
-	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE3);
-
 	  BTREE_NODE_HEADER *node_header = btree_get_node_header (thread_p, *leaf_page);
 	  if (search_key->result == BTREE_KEY_SMALLER && VPID_ISNULL (&node_header->prev_vpid))
 	    {
@@ -33599,7 +33592,11 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	    {
 	      perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_FALSE_FAILED_RANGE2);
 	    }
-	  break;
+          else
+            {
+              perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE3);
+              break;
+            }
 	}
 
       error_code = btree_search_leaf_page (thread_p, btid_int, *leaf_page, curr_key, search_key);
