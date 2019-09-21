@@ -278,7 +278,7 @@ PSTAT_METADATA pstat_Metadata[] = {
 				  "Num_btree_online_inserts_reject_key_not_in_range4"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_ONLINE_NUM_REJECT_KEY_FALSE_FAILED_RANGE1,
 				  "Num_btree_online_inserts_reject_key_false_failed_range1"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_ONLINE_NUM_REJECT_KEY_FALSE_FAILED_RANGE1,
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_ONLINE_NUM_REJECT_KEY_FALSE_FAILED_RANGE2,
 				  "Num_btree_online_inserts_reject_key_false_failed_range2"),
 
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_BT_ONLINE, "btree_online"),
