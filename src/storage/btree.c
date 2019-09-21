@@ -5039,9 +5039,9 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
       *child_vpid = non_leaf_rec.pnt;
 
 #if !defined (NDEBUG)
-      page_bounds->
-	add_trace (advance_page_trace
-		   (advance_page_trace::advance_case::ONE_KEY, key_cnt, curr_vpid, page_ptr, *slot_id, *child_vpid));
+      page_bounds->add_trace (advance_page_trace
+			      (advance_page_trace::advance_case::ONE_KEY, key_cnt, curr_vpid, page_ptr, *slot_id,
+			       *child_vpid));
 #endif
 
       return NO_ERROR;
@@ -5135,10 +5135,9 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 		}
 
 #if !defined (NDEBUG)
-	      page_bounds->
-		add_trace (advance_page_trace
-			   (advance_page_trace::advance_case::EQ_KEY, key_cnt, curr_vpid, page_ptr, *slot_id,
-			    *child_vpid));
+	      page_bounds->add_trace (advance_page_trace
+				      (advance_page_trace::advance_case::EQ_KEY, key_cnt, curr_vpid, page_ptr, *slot_id,
+				       *child_vpid));
 #endif
 	    }
 
@@ -5209,9 +5208,9 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 	  page_bounds->m_is_inf_left_key = false;
 
 #if !defined (NDEBUG)
-	  page_bounds->
-	    add_trace (advance_page_trace
-		       (advance_page_trace::advance_case::LT_KEY, key_cnt, curr_vpid, page_ptr, *slot_id, *child_vpid));
+	  page_bounds->add_trace (advance_page_trace
+				  (advance_page_trace::advance_case::LT_KEY, key_cnt, curr_vpid, page_ptr, *slot_id,
+				   *child_vpid));
 #endif
 	}
 
@@ -5266,9 +5265,9 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 	    }
 
 #if !defined (NDEBUG)
-	  page_bounds->
-	    add_trace (advance_page_trace
-		       (advance_page_trace::advance_case::GT_KEY, key_cnt, curr_vpid, page_ptr, *slot_id, *child_vpid));
+	  page_bounds->add_trace (advance_page_trace
+				  (advance_page_trace::advance_case::GT_KEY, key_cnt, curr_vpid, page_ptr, *slot_id,
+				   *child_vpid));
 #endif
 	}
 
@@ -33580,15 +33579,15 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
       error_code = btree_leaf_is_key_between_min_max (thread_p, btid_int, *leaf_page, curr_key, search_key);
       if (error_code != NO_ERROR)
 	{
-          break;
-        }
-      
+	  break;
+	}
+
       if (search_key->result == BTREE_ERROR_OCCURRED || search_key->result == BTREE_KEY_SMALLER
-          || search_key->result == BTREE_KEY_BIGGER)
-        {
+	  || search_key->result == BTREE_KEY_BIGGER)
+	{
 	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KET_NOT_IN_RANGE);
-	  break;          
-        }
+	  break;
+	}
 
       error_code = btree_search_leaf_page (thread_p, btid_int, *leaf_page, curr_key, search_key);
       if (error_code != NO_ERROR)
