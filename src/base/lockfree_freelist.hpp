@@ -21,6 +21,7 @@
 #define _LOCKFREE_FREELIST_HPP_
 
 #include "lockfree_transaction_def.hpp"
+#include "lockfree_transaction_reclaimable.hpp"
 
 #include <atomic>
 #include <cstddef>
@@ -31,14 +32,14 @@ namespace lockfree
   class freelist
   {
     public:
-      class hazard_node;
+      class free_node;
 
       freelist () = delete;
       freelist (size_t block_size, size_t initial_block_count = 1);
       ~freelist ();
 
-      hazard_node *claim (tran::index tran_index);
-      void retire (tran::index tran_index, hazard_node &hzn);
+      free_node *claim (tran::index tran_index);
+      void retire (tran::index tran_index, free_node &node);
 
       size_t get_alloc_count () const;
       size_t get_available_count () const;
@@ -48,12 +49,12 @@ namespace lockfree
     private:
       size_t m_block_size;
 
-      std::atomic<hazard_node *> m_available_list;      // list of available entries
+      std::atomic<free_node *> m_available_list;      // list of available entries
 
       // backbuffer head & tail; when available list is consumed, it is quickly replaced with back-buffer; without
       // backbuffer, multiple threads can race to allocate multiple blocks at once
-      std::atomic<hazard_node *> m_backbuffer_head;
-      std::atomic<hazard_node *> m_backbuffer_tail;
+      std::atomic<free_node *> m_backbuffer_head;
+      std::atomic<free_node *> m_backbuffer_tail;
 
       // statistics:
       std::atomic<size_t> m_available_count;
@@ -65,22 +66,22 @@ namespace lockfree
       void alloc_backbuffer ();
       void force_alloc_block ();
 
-      void alloc_list (hazard_node *&head, hazard_node *&tail);
-      void dealloc_list (hazard_node *head);
+      void alloc_list (free_node *&head, free_node *&tail);
+      void dealloc_list (free_node *head);
 
-      hazard_node *pop_from_available ();
-      void push_to_list (hazard_node &head, hazard_node &tail, std::atomic<hazard_node *> dest);
+      free_node *pop_from_available ();
+      void push_to_list (free_node &head, free_node &tail, std::atomic<free_node *> dest);
 
       void clear ();                    // not thread safe!
       void final_sanity_checks () const;
   };
 
   template <class T>
-  class freelist<T>::hazard_node : public hazard_pointer
+  class freelist<T>::free_node : public tran::reclaimable_node
   {
     public:
-      hazard_node ();
-      ~hazard_node () = default;
+      free_node ();
+      ~free_node () = default;
 
       virtual void on_reclaim ();
 
@@ -88,9 +89,9 @@ namespace lockfree
 
       void set_owner (freelist &m_freelist);
 
-      void set_freelist_next (hazard_node *next);
+      void set_freelist_next (free_node *next);
       void reset_freelist_next (void);
-      hazard_node *get_freelist_next ();
+      free_node *get_freelist_next ();
 
       freelist *m_owner;
       T m_t;
@@ -137,20 +138,20 @@ namespace lockfree
   void
   freelist<T>::swap_backbuffer ()
   {
-    hazard_node *bb_head = m_backbuffer_head;
+    free_node *bb_head = m_backbuffer_head;
     if (bb_head == NULL)
       {
 	// somebody already allocated block
 	return;
       }
-    hazard_node *bb_head_copy = bb_head; // make sure a copy is passed to compare exchange
+    free_node *bb_head_copy = bb_head; // make sure a copy is passed to compare exchange
     if (!m_backbuffer_head.compare_exchange_strong (bb_head_copy, NULL))
       {
 	// somebody already changing it
 	return;
       }
 
-    hazard_node *bb_tail = m_backbuffer_tail.exchange (NULL);
+    free_node *bb_tail = m_backbuffer_tail.exchange (NULL);
     assert (bb_tail != NULL);
 
     push_to_list (*bb_head, *bb_tail, m_available_list);
@@ -163,13 +164,13 @@ namespace lockfree
   void
   freelist<T>::alloc_backbuffer ()
   {
-    hazard_node *new_bb_head = NULL;
-    hazard_node *new_bb_tail = NULL;
+    free_node *new_bb_head = NULL;
+    free_node *new_bb_tail = NULL;
 
     alloc_list (new_bb_head, new_bb_tail);
 
     // update backbuffer tail
-    hazard_node *dummy_null = NULL;
+    free_node *dummy_null = NULL;
     m_backbuffer_tail.compare_exchange_strong (dummy_null, new_bb_tail);
 
     // update backbuffer head
@@ -181,8 +182,8 @@ namespace lockfree
   void
   freelist<T>::force_alloc_block ()
   {
-    hazard_node *new_head = NULL;
-    hazard_node *new_tail = NULL;
+    free_node *new_head = NULL;
+    free_node *new_tail = NULL;
     alloc_list (new_head, new_tail);
 
     // push directly to available
@@ -193,34 +194,34 @@ namespace lockfree
 
   template <class T>
   void
-  freelist<T>::alloc_list (hazard_node *&head, hazard_node *&tail)
+  freelist<T>::alloc_list (free_node *&head, free_node *&tail)
   {
     head = tail = NULL;
-    hazard_node *hzn;
+    free_node *node;
     for (size_t i = 0; i < m_block_size; i++)
       {
-	hzn = new hazard_node ();
-	hzn->set_owner (*this);
+	node = new free_node ();
+	node->set_owner (*this);
 	if (tail == NULL)
 	  {
-	    tail = hzn;
+	    tail = node;
 	  }
-	hzn->set_freelist_next (head);
-	head = hzn;
+	node->set_freelist_next (head);
+	head = node;
       }
     m_alloc_count += m_block_size;
   }
 
   template <class T>
   void
-  freelist<T>::dealloc_list (hazard_node *head)
+  freelist<T>::dealloc_list (free_node *head)
   {
     // free all
-    hazard_node *save_next = NULL;
-    for (hazard_node *hzn = head; hzn != NULL; hzn = save_next)
+    free_node *save_next = NULL;
+    for (free_node *node = head; node != NULL; node = save_next)
       {
-	save_next = hzn->get_freelist_next ();
-	delete hzn;
+	save_next = node->get_freelist_next ();
+	delete node;
       }
   }
 
@@ -248,14 +249,14 @@ namespace lockfree
   }
 
   template<class T>
-  typename freelist<T>::hazard_node *
+  typename freelist<T>::free_node *
   freelist<T>::claim (tran::index tran_index)
   {
     // todo: make sure transaction is open here
-    hazard_node *hazard_node;
+    free_node *node;
     size_t count = 0;
-    for (hazard_node = pop_from_available (); hazard_node == NULL && count < 100;
-	 hazard_node = pop_from_available (), ++count)
+    for (free_node = pop_from_available (); free_node == NULL && count < 100;
+	 free_node = pop_from_available (), ++count)
       {
 	// if it loops many times, it is probably because the back-buffer allocator was preempted for a very long time.
 	// force allocations
@@ -263,23 +264,23 @@ namespace lockfree
       }
     // if swapping backbuffer didn't work (probably back-buffer allocator was preempted for a long time), force
     // allocating directly into available list
-    while (hazard_node == NULL)
+    while (node == NULL)
       {
 	force_alloc_block ();
-	hazard_node = pop_from_available ();
+	node = pop_from_available ();
       }
-    assert (hazard_node != NULL);
+    assert (node != NULL);
     m_available_count--;
-    return hazard_node;
+    return node;
   }
 
   template<class T>
-  typename freelist<T>::hazard_node *
+  typename freelist<T>::free_node *
   freelist<T>::pop_from_available ()
   {
-    hazard_node *rhead = NULL;
-    hazard_node *rhead_copy = NULL;
-    hazard_node *next;
+    free_node *rhead = NULL;
+    free_node *rhead_copy = NULL;
+    free_node *next;
     do
       {
 	rhead = m_available_list;
@@ -304,18 +305,19 @@ namespace lockfree
 
   template<class T>
   void
-  freelist<T>::retire (tran::index tran_index, hazard_node &t)
+  freelist<T>::retire (tran::index tran_index, free_node &node)
   {
     // make sure transaction is open here and transaction ID was incremented
-    push_to_list (&t, &t, m_available_list);
+    assert (node.get_freelist_next () == NULL);
+    push_to_list (&node, &node, m_available_list);
     m_available_count++;
   }
 
   template<class T>
   void
-  freelist<T>::push_to_list (hazard_node &head, hazard_node &tail, std::atomic<hazard_node *> dest)
+  freelist<T>::push_to_list (free_node &head, free_node &tail, std::atomic<free_node *> dest)
   {
-    hazard_node *rhead;
+    free_node *rhead;
     assert (tail.get_freelist_next () == NULL);
 
     do
@@ -363,8 +365,8 @@ namespace lockfree
 
     // check back-buffer
     size_t list_count = 0;
-    hazard_node *save_last = NULL;
-    for (hazard_node *iter = m_backbuffer_head; iter != NULL; iter = iter->get_freelist_next ())
+    free_node *save_last = NULL;
+    for (free_node *iter = m_backbuffer_head; iter != NULL; iter = iter->get_freelist_next ())
       {
 	++list_count;
 	save_last = iter;
@@ -375,7 +377,7 @@ namespace lockfree
 
     // check available
     list_count = 0;
-    for (hazard_node *iter = m_available_list; iter != NULL; iter = iter->get_freelist_next ())
+    for (free_node *iter = m_available_list; iter != NULL; iter = iter->get_freelist_next ())
       {
 	++list_count;
       }
@@ -387,8 +389,8 @@ namespace lockfree
   // freelist::handle
   //
   template<class T>
-  freelist<T>::hazard_node::hazard_node ()
-    : hazard_pointer ()
+  freelist<T>::free_node::free_node ()
+    : tran::reclaimable_node ()
     , m_owner (NULL)
     , m_t {}
   {
@@ -396,38 +398,38 @@ namespace lockfree
 
   template<class T>
   void
-  freelist<T>::hazard_node::on_reclaim ()
+  freelist<T>::free_node::on_reclaim ()
   {
     // do nothing by default
   }
 
   template<class T>
   void
-  freelist<T>::hazard_node::set_owner (freelist &fl)
+  freelist<T>::free_node::set_owner (freelist &fl)
   {
     m_owner = &fl;
   }
 
   template<class T>
   void
-  freelist<T>::hazard_node::set_freelist_next (hazard_node *next)
+  freelist<T>::free_node::set_freelist_next (free_node *next)
   {
-    m_hazard_next = next;
+    m_retired_next = next;
   }
 
   template<class T>
   void
-  freelist<T>::hazard_node::reset_freelist_next ()
+  freelist<T>::free_node::reset_freelist_next ()
   {
-    m_hazard_next = NULL;
+    m_retired_next = NULL;
   }
 
   template<class T>
-  typename freelist<T>::hazard_node *
-  freelist<T>::hazard_node::get_freelist_next ()
+  typename freelist<T>::free_node *
+  freelist<T>::free_node::get_freelist_next ()
   {
-    assert (dynamic_cast<hazard_node *> (m_hazard_next) != NULL);
-    return static_cast<hazard_node *> (m_hazard_next);
+    assert (dynamic_cast<free_node *> (m_retired_next) != NULL);
+    return static_cast<free_node *> (m_retired_next);
   }
 } // namespace lockfree
 
