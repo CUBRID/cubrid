@@ -36,7 +36,7 @@
 //        2. transaction tables, one for each lock-free structure part of this system. a table is an array of
 //           transaction descriptors (the database transactional terminology was borrowed for familiarity).
 //
-//    The system dictates transaction tables the number of descriptors they need and assigns thread the index of its
+//    The system dictates to transaction tables the number of descriptors they need and assigns thread the index of its
 //    descriptor in each table (present or future).
 //
 //    Each descriptor monitors the activity of a thread on a lock-free structure, by saving the global transaction
