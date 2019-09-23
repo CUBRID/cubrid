@@ -455,8 +455,8 @@ loaddb: データベースにオブジェクトやスキーマロード\n\
   -C, --CS-mode                  クライアントーサーバモードで実行\n\
   -u, --user=ID                  データベースアクセスに関するユーザー名; デフォルト: 「public」\n\
   -p, --password=PASS            ユーザーパスワード; デフォルト: なし\n\
-      --data-file-check-only     文法チェックだけを実行; デフォルト: 文法チェックの後、ロード\n\
-  -l, --load-only                文法チェックなしでロード; デフォルト: 文法チェックの後、ロード\n\
+      --data-file-check-only     check syntax for data file without load; default: disabled\n\
+  -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
       --estimated-size=NUMBER    インスタンスの予測数; デフォルト: 5000\n\
   -v, --verbose                  多様な進行情報を出力; デフォルト: 出力しない\n\
   -c, --periodic-commit=COUNT    周期的なコミットに関するカウント; デフォルト: ロード中にコミットしない\n\
