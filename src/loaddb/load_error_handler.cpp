@@ -37,7 +37,8 @@ namespace cubload
 
 #if defined (SERVER_MODE)
   error_handler::error_handler (session &session)
-    : m_session (session)
+    : m_session (session),
+      m_current_line_has_error (false)
   {
     m_syntax_check = m_session.get_args ().syntax_check;
   }
@@ -137,12 +138,25 @@ namespace cubload
     // Clear the error if it is filtered
     if (is_filtered)
       {
-	er_clearid ();
+	er_clear ();
+	set_error_on_current_line (true);
       }
 
     return is_filtered;
 #endif
     return false;
+  }
+
+  bool
+  error_handler::current_line_has_error ()
+  {
+    return m_current_line_has_error;
+  }
+
+  void
+  error_handler::set_error_on_current_line (bool has_error)
+  {
+    m_current_line_has_error = has_error;
   }
 
 } // namespace cubload

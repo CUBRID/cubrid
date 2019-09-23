@@ -631,12 +631,14 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       goto error_return;
     }
 
+#if defined(CS_MODE)
   if (args.load_only)
     {
       /* This is the default behavior. It is changed from the old one so we notify the user. */
-      print_log_msg (1, "\n--load-only is deprecated. To check the object file for any syntax errors");
-      print_log_msg (1, " use --data-file-check-only.\n");
+      print_log_msg (1, "\n--load-only parameter is not supported on Client-Server mode. ");
+      print_log_msg (1, "The default behavior of loaddb is loading without checking the file.\n");
     }
+#endif
 
   /* if schema file is specified, do schema loading */
   if (schema_file != NULL)
@@ -713,10 +715,18 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 #else // !SA_MODE = CS_MODE
       ldr_server_load (&args, &status, &interrupted);
 #endif // !SA_MODE = CS_MODE
+
+      if (interrupted || status != 0)
+	{
+	  // failed
+	  db_end_session ();
+	  db_shutdown ();
+	  goto error_return;
+	}
     }
 
   /* if index file is specified, do index creation */
-  if (!interrupted && index_file != NULL)
+  if (index_file != NULL)
     {
       print_log_msg (1, "\nStart index loading.\n");
       if (ldr_exec_query_from_file (args.index_file.c_str (), index_file, &index_file_start_line, &args) != 0)

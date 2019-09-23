@@ -153,10 +153,13 @@ namespace cubload
 	// We need this to update the stats.
 	int line_no = driver->get_scanner ().lineno ();
 
+	// Get the inserted lines
+	int lines_inserted = driver->get_lines_inserted ();
+
 	// We don't need anything from the driver anymore.
 	driver->clear ();
 
-	m_session.push_commit (m_batch.get_id (), thread_ref.tran_index, line_no, m_batch.get_rows_number (),
+	m_session.push_commit (m_batch.get_id (), thread_ref.tran_index, line_no, lines_inserted,
 			       m_batch.get_class_id ());
 
 	if (m_session.is_failed () || (!is_syntax_check_only && (!parser_result || er_has_error ())))

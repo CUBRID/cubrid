@@ -455,8 +455,8 @@ opzioni valide:\n\
   -C, --CS-mode                  modalità di esecuzione client-server\n\
   -u, --user=ID                  user ID per l'accesso al database; predefinito: "public"\n\
   -p, --password=PASS            password utente; predefinito: nessuno\n\
-      --data-file-check-only     controllare la sintassi per il file di dati senza carico; predefinito: dopo il controllo di carico\n\
-  -l, --load-only                caricare file di dati senza controllo della sintassi; predefinito: dopo il controllo di carico\n\
+      --data-file-check-only     check syntax for data file without load; default: disabled\n\
+  -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
       --estimated-size=NUMBERO   Stima del NUMERO di instanze; predefinito: 5000\n\
   -v, --verbose                  attivare i messaggi dettagliati di stato; predefinito: non attivo\n\
   -c, --periodic-commit=COUNT    inserimento COUNT per periodico commit; predefinito: no commit durante il caricamento\n\

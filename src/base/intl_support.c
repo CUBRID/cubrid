@@ -4268,6 +4268,8 @@ intl_check_string (const char *buf, int size, char **pos, const INTL_CODESET cod
 {
   if (!intl_String_validation)
     {
+      // this function is currently used either in client-modes or for loaddb. if it will be used in other server-mode
+      // contexts, that can impact the result of queries, global variable should be replaced with a session parameter.
       return INTL_UTF8_VALID;
     }
 
