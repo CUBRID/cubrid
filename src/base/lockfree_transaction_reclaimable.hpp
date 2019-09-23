@@ -18,16 +18,17 @@
  */
 
 //
-// lock-free transaction hazard pointer
+// lock-free transaction reclaimable nodes
 //
-//    Hazard pointers (https://en.wikipedia.org/wiki/Hazard_pointer) are pointers to memory used by lock-free data
-//    structures. When hazard pointers are "deleted", they are passed to the lock-free transaction system that can
-//    determine when it's safe to delete the pointer without impacting concurrent transaction reading the pointed
-//    memory
+//    Lock-free data structures needs to be tagged with a reclaimable node (by either derivation or composition).
+//    When node is to be removed from structure, it is retired, collected by thread's transaction descriptor and
+//    safely reclaimed later.
+//
+//    See lockfree_transaction_system.hpp description for an overview of the lock-free transaction implementation.
 //
 
-#ifndef _LOCKFREE_TRANSACTION_HAZARD_POINTER_HPP_
-#define _LOCKFREE_TRANSACTION_HAZARD_POINTER_HPP_
+#ifndef _LOCKFREE_TRANSACTION_RECLAIMABLE_HPP_
+#define _LOCKFREE_TRANSACTION_RECLAIMABLE_HPP_
 
 #include "lockfree_transaction_def.hpp"
 
@@ -43,27 +44,29 @@ namespace lockfree
 {
   namespace tran
   {
-    class hazard_pointer
+    class reclaimable_node
     {
       public:
-	hazard_pointer () = default;
-	virtual ~hazard_pointer () = 0;   // to force abstract class
+	reclaimable_node () = default;
+	virtual ~reclaimable_node () = 0;   // to force abstract class
 
-	virtual void on_delete ()
+	// override reclaim to change what happens with the reclaimable node
+	virtual void reclaim ()
 	{
 	  // default is to delete itself
 	  delete this;
 	}
 
       protected:
-	hazard_pointer *m_hazard_next;    // may be reused by derived classes
+	reclaimable_node *m_retired_next;     // link to next retired node
+	// may be repurposed by derived classes
 
       private:
-	friend descriptor;
+	friend descriptor;                    // descriptor can access next and transaction id
 
-	id m_delete_id;
+	id m_retire_tranid;
     };
   } // namespace tran
 } // namespace lockfree
 
-#endif // !_LOCKFREE_TRANSACTION_HAZARD_POINTER_HPP_
+#endif // !_LOCKFREE_TRANSACTION_RECLAIMABLE_HPP_

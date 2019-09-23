@@ -19,7 +19,7 @@
 
 #include "lockfree_transaction_descriptor.hpp"
 
-#include "lockfree_transaction_hazard_pointer.hpp"
+#include "lockfree_transaction_reclaimable.hpp"
 #include "lockfree_transaction_table.hpp"
 
 #include <cassert>
@@ -31,9 +31,9 @@ namespace lockfree
     descriptor::~descriptor ()
     {
       assert (!is_tran_started ());
-      while (m_deleted_head != NULL)
+      while (m_retired_head != NULL)
 	{
-	  remove_deleted_head ();
+	  reclaim_retired_head ();
 	}
     }
 
@@ -44,24 +44,25 @@ namespace lockfree
     }
 
     void
-    descriptor::delete_hazard_pointer (hazard_pointer &hzp)
+    descriptor::retire_node (reclaimable_node &node)
     {
       bool should_end = !is_tran_started ();
       start_tran_and_increment_id ();
 
-      cleanup ();
+      reclaim_retired_list ();
 
-      hzp.m_delete_id = m_tranid;
-      hzp.m_hazard_next = NULL;
+      node.m_retire_tranid = m_tranid;
+      node.m_retired_next = NULL;
       // add to tail to keep delete ids ordered
-      if (m_deleted_tail == NULL)
+      if (m_retired_tail == NULL)
 	{
-	  assert (m_deleted_head == NULL);
-	  m_deleted_head = m_deleted_tail = &hzp;
+	  assert (m_retired_head == NULL);
+	  m_retired_head = m_retired_tail = &node;
 	}
       else
 	{
-	  m_deleted_tail->m_hazard_next = &hzp;
+	  m_retired_tail->m_retired_next = &node;
+	  m_retired_tail = &node;
 	}
 
       if (should_end)
@@ -110,39 +111,39 @@ namespace lockfree
     }
 
     void
-    descriptor::cleanup ()
+    descriptor::reclaim_retired_list ()
     {
       id min_tran_id = m_table->get_min_active_tranid ();
-      if (min_tran_id <= m_cleanupid)
+      if (min_tran_id <= m_last_reclaim_minid)
 	{
 	  // nothing changed
 	  return;
 	}
-      while (m_deleted_head != NULL && m_deleted_head->m_delete_id < min_tran_id)
+      while (m_retired_head != NULL && m_retired_head->m_retire_tranid < min_tran_id)
 	{
-	  remove_deleted_head ();
+	  reclaim_retired_head ();
 	}
-      if (m_deleted_head == NULL)
+      if (m_retired_head == NULL)
 	{
-	  m_deleted_tail = NULL;
+	  m_retired_tail = NULL;
 	}
 
-      m_cleanupid = min_tran_id;
+      m_last_reclaim_minid = min_tran_id;
     }
 
     void
-    descriptor::remove_deleted_head ()
+    descriptor::reclaim_retired_head ()
     {
-      assert (m_deleted_head != NULL);
-      hazard_pointer *hzp = m_deleted_head;
-      m_deleted_head = m_deleted_head->m_hazard_next;
-      if (m_deleted_head == NULL)
+      assert (m_retired_head != NULL);
+      reclaimable_node *nodep = m_retired_head;
+      m_retired_head = m_retired_head->m_retired_next;
+      if (m_retired_head == NULL)
 	{
-	  m_deleted_tail = NULL;
+	  m_retired_tail = NULL;
 	}
 
-      hzp->m_hazard_next = NULL;
-      hzp->on_delete ();
+      nodep->m_retired_next = NULL;
+      nodep->reclaim ();
     }
   } // namespace tran
 } // namespace lockfree

@@ -20,19 +20,17 @@
 //
 // lockfree_transaction_table.hpp
 //
-//    Lock-free transaction table is part of lock-free transaction system (also see lockfree_transaction_system.hpp).
+//    Each lock-free data structure needs a transaction table to safely reclaim retired nodes. The table must be part
+//    of a system (which dictates how many transactions are possible). It maintains two important cursors: the global
+//    transaction ID and the minimum active transaction ID.
 //
-//    Each lock-free structure working with hazard pointers needs a transaction table. The table contains a descriptor
-//    for each thread that wants to access the lock-free structures.
+//    Whenever a transaction starts, it is assigned the global transaction ID. Whenever a node is retired, the global
+//    ID is incremented.
 //
-//    The table must be part of a system (which dictates how many transactions are possible). It maintains two
-//    important cursors: the global transaction ID and the minimum active transaction ID.
-//
-//    Whenever a transaction starts, it is assigned the global transaction ID. Whenever a hazard pointer is deleted,
-//    the global ID is incremented.
-//
-//    The minimum active transaction ID is computed by checking all transaction descriptors. Only when the minimum
+//    The minimum active transaction ID is computed by checking all table transaction descriptors. Only when the minimum
 //    active transaction ID exceeds the ID of a deleted hazard pointer, it is safe to remove the pointer.
+//
+//    See lockfree_transaction_system.hpp description for an overview of the lock-free transaction implementation.
 //
 
 #ifndef _LOCKFREE_TRANSACTION_TABLE_HPP_
