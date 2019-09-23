@@ -1965,7 +1965,15 @@ db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALU
 	}
     }
 
-  const std::string encoded_pattern = db_json_json_string_as_utf8 (db_get_string (pattern));
+  std::string raw_json_string = db_get_string (pattern);
+
+  char *quoted_str;
+  size_t quoted_sz;
+  db_string_escape_str (raw_json_string.c_str (), raw_json_string.length (), &quoted_str, &quoted_sz);
+  raw_json_string = quoted_str;
+  db_private_free (NULL, quoted_str);
+
+  const std::string encoded_pattern = db_json_json_string_as_utf8 (raw_json_string);
 
   DB_VALUE encoded_pattern_dbval;
   db_make_string (&encoded_pattern_dbval, const_cast<char *> (encoded_pattern.c_str ()));
