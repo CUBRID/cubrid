@@ -2887,16 +2887,7 @@ db_json_pretty_func (const JSON_DOC &doc, char *&result_str)
 std::string
 db_json_json_string_as_utf8 (std::string raw_json_string)
 {
-  if (raw_json_string.length () < 2 || raw_json_string[0] != '"' || raw_json_string.back () != '"')
-    {
-      char *quoted_str;
-      size_t quoted_sz;
-
-      db_string_escape_str (raw_json_string.c_str (), raw_json_string.length (), &quoted_str, &quoted_sz);
-
-      raw_json_string = quoted_str;
-      db_private_free (NULL, quoted_str);
-    }
+  assert (raw_json_string.length () >= 2 && raw_json_string[0] == '"');
 
   JSON_DOC *doc = nullptr;
   if (db_json_get_json_from_str (raw_json_string.c_str (), doc, raw_json_string.length ()) != NO_ERROR)
