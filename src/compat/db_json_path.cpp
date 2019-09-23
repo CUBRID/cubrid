@@ -836,8 +836,8 @@ JSON_PATH::set (JSON_VALUE &jd, const JSON_VALUE &jv, JSON_PRIVATE_MEMPOOL &allo
 	  if (m == val->MemberEnd ())
 	    {
 	      // insert dummy
-	      val->AddMember (JSON_VALUE (encoded_key.c_str (), (rapidjson::SizeType) encoded_key.length (), allocator)
-			      , JSON_VALUE ().SetNull (), allocator);
+	      unsigned int len = (rapidjson::SizeType) encoded_key.length ();
+	      val->AddMember (JSON_VALUE (encoded_key.c_str (), len, allocator), JSON_VALUE ().SetNull (), allocator);
 
 	      val = & (--val->MemberEnd ())->value; // Assume AddMember() appends at the end
 	    }
