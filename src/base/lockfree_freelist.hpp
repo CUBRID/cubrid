@@ -95,7 +95,7 @@ namespace lockfree
   };
 
   template <class T>
-  class freelist<T>::free_node : private tran::reclaimable_node
+  class freelist<T>::free_node : public tran::reclaimable_node
   {
     public:
       free_node ();
@@ -103,13 +103,15 @@ namespace lockfree
 
       T &get_data ();
 
+      void reclaim () final override;
+
     protected:
       virtual void on_reclaim ();
 
     private:
       friend freelist;
 
-      void reclaim () final override;
+
 
       void set_owner (freelist &m_freelist);
 
@@ -460,7 +462,6 @@ namespace lockfree
   typename freelist<T>::free_node *
   freelist<T>::free_node::get_freelist_next ()
   {
-    assert (dynamic_cast<free_node *> (m_retired_next) != NULL);
     return static_cast<free_node *> (m_retired_next);
   }
 

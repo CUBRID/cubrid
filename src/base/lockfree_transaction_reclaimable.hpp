@@ -47,7 +47,11 @@ namespace lockfree
     class reclaimable_node
     {
       public:
-	reclaimable_node () = default;
+	reclaimable_node ()
+	  : m_retired_next (NULL)
+	  , m_retire_tranid (0)
+	{
+	}
 	virtual ~reclaimable_node () = default;
 
 	// override reclaim to change what happens with the reclaimable node
