@@ -88,6 +88,14 @@ namespace cubload
 
     for (int i = 0; i < NUM_DB_TYPES; i++)
       {
+	for (int j = 0; j < NUM_LDR_TYPES; j++)
+	  {
+	    setters_[i][j] = &mismatch;
+	  }
+      }
+
+    for (int i = 0; i < NUM_DB_TYPES; i++)
+      {
 	setters_[i][LDR_NULL] = &to_db_null;
       }
 
@@ -180,11 +188,6 @@ namespace cubload
   get_conv_func (const data_type ldr_type, const DB_TYPE db_type)
   {
     conv_func &c_func = setters[db_type][ldr_type];
-    if (c_func == NULL)
-      {
-	c_func = &mismatch;
-      }
-
     return c_func;
   }
 

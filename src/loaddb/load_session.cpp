@@ -153,6 +153,9 @@ namespace cubload
 	// We need this to update the stats.
 	int line_no = driver->get_scanner ().lineno ();
 
+	// Get the inserted lines
+	int lines_inserted = driver->get_lines_inserted ();
+
 	// We don't need anything from the driver anymore.
 	driver->clear ();
 
@@ -181,7 +184,7 @@ namespace cubload
 	      }
 
 	    // update load statistics after commit
-	    m_session.stats_update_rows_committed (m_batch.get_rows_number ());
+	    m_session.stats_update_rows_committed (lines_inserted);
 	    m_session.stats_update_last_committed_line (line_no + 1);
 
 	    if (!m_session.get_args ().syntax_check)

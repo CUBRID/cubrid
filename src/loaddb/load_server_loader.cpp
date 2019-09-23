@@ -410,7 +410,16 @@ namespace cubload
 	  }
 
 	// Add the recdes to the collected array.
-	m_recdes_collected.push_back (std::move (new_recdes));
+	if (!m_error_handler.current_line_has_error ())
+	  {
+	    m_recdes_collected.push_back (std::move (new_recdes));
+	    m_thread_ref->m_loaddb_driver->increment_lines_inserted ();
+	  }
+	else
+	  {
+	    // Don't insert the record since we had an error.
+	    m_error_handler.set_error_on_current_line (false);
+	  }
       }
 
     m_session.stats_update_current_line (m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1);
