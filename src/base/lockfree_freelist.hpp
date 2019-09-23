@@ -27,6 +27,10 @@
 
 #include <atomic>
 #include <cstddef>
+#if !defined (NDEBUG)
+#include <shared_mutex>
+#include <set>
+#endif // DEBUG
 
 namespace lockfree
 {
@@ -80,6 +84,11 @@ namespace lockfree
       std::atomic<size_t> m_bb_count;
       std::atomic<size_t> m_forced_alloc_count;
 
+#if !defined (NDEBUG)
+      std::shared_mutex m_lock_all_nodes;
+      std::set<free_node *> m_all_nodes;
+#endif // DEBUG
+
       void swap_backbuffer ();
       void alloc_backbuffer ();
       void force_alloc_block ();
@@ -92,6 +101,7 @@ namespace lockfree
 
       void clear_free_nodes ();                    // not thread safe!
       void final_sanity_checks () const;
+      void check_my_pointer (free_node *node);
   };
 
   template <class T>
@@ -236,6 +246,11 @@ namespace lockfree
 	  }
 	node->set_freelist_next (head);
 	head = node;
+
+#if !defined (NDEBUG)
+	std::unique_lock<std::shared_mutex> ulock (m_lock_all_nodes);
+	m_all_nodes.insert (node);
+#endif // DEBUG
       }
     m_alloc_count += m_block_size;
   }
@@ -249,6 +264,13 @@ namespace lockfree
     for (free_node *node = head; node != NULL; node = save_next)
       {
 	save_next = node->get_freelist_next ();
+#if !defined (NDEBUG)
+	std::unique_lock<std::shared_mutex> ulock (m_lock_all_nodes);
+	if (m_all_nodes.erase (node) != 1)
+	  {
+	    assert (false);
+	  }
+#endif // DEBUG
 	delete node;
       }
   }
@@ -300,6 +322,7 @@ namespace lockfree
       }
     assert (node != NULL);
     m_available_count--;
+    check_my_pointer (node);
     return node;
   }
 
@@ -337,6 +360,7 @@ namespace lockfree
   freelist<T>::retire (tran::index tran_index, free_node &node)
   {
     assert (node.get_freelist_next () == NULL);
+    check_my_pointer (&node);
     m_trantable->get_descriptor (tran_index).retire_node (node);
   }
 
@@ -423,6 +447,19 @@ namespace lockfree
 	++list_count;
       }
     assert (list_count == m_available_count);
+#endif // DEBUG
+  }
+
+  template<class T>
+  void
+  freelist<T>::check_my_pointer (free_node *node)
+  {
+#if !defined (NDEBUG)
+    std::shared_lock<std::shared_mutex> ulock (m_lock_all_nodes);
+    if (m_all_nodes.find (node) == m_all_nodes.cend ())
+      {
+	assert (false);
+      }
 #endif // DEBUG
   }
 
