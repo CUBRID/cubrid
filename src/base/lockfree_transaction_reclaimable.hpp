@@ -48,7 +48,7 @@ namespace lockfree
     {
       public:
 	reclaimable_node () = default;
-	virtual ~reclaimable_node () = 0;   // to force abstract class
+	virtual ~reclaimable_node () = default;
 
 	// override reclaim to change what happens with the reclaimable node
 	virtual void reclaim ()

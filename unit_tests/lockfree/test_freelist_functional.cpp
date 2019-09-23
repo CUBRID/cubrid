@@ -23,6 +23,7 @@
 #include "test_debug.hpp"
 
 #include "lockfree_freelist.hpp"
+#include "lockfree_transaction_system.hpp"
 #include "string_buffer.hpp"
 
 #include <cassert>
@@ -32,17 +33,16 @@
 #include <functional>
 #include <mutex>
 #include <thread>
+#include <vector>
 
 using namespace lockfree;
 
 namespace test_lockfree
 {
-#if 0  // temporary disable
   std::atomic<size_t> g_item_alloc_count;
   std::atomic<size_t> g_item_dealloc_count;
   struct my_item
   {
-    freelist<my_item>::atomic_link_type m_link;
     std::thread::id m_owner_id;
 
     my_item ();
@@ -50,26 +50,22 @@ namespace test_lockfree
 
     void set_owner ();
     void reset_owner ();
-
-    static void reset_list_owner (my_item *head);
-
-    freelist<my_item>::atomic_link_type &get_freelist_link ()
-    {
-      return m_link;
-    }
   };
 
   using my_freelist = freelist<my_item>;
+  using my_node = freelist<my_item>::free_node;
+  using my_node_container = std::vector<my_node *>;
 
+  using my_end_job_function = std::function<void (my_node_container &)>;
   static void run_job (my_freelist &lffl, size_t ops, size_t claim_weight, size_t retire_weight,
-		       size_t retire_all_weight, const std::function<void (my_item *list)> &f_on_finish);
+		       size_t retire_all_weight, const my_end_job_function &f_on_finish);
   static int run_test (size_t thread_count, size_t ops_per_thread, size_t claim_weight, size_t retire_weight,
 		       size_t retire_all_weight);
 
   int
   test_freelist_functional ()
   {
-    std::srand (std::time (nullptr));
+    std::srand (static_cast<unsigned int> (std::time (nullptr)));
 
     test_common::sync_cout ("start test_freelist_functional\n");
 
@@ -89,46 +85,54 @@ namespace test_lockfree
   }
 
   void
-  run_job (my_freelist &lffl, size_t ops, size_t claim_weight, size_t retire_weight,
-	   const std::function<void (my_item *list)> &f_on_finish)
+  run_job (my_freelist &lffl, size_t ops, size_t claim_weight, size_t retire_weight, size_t retire_all_weight,
+	   const my_end_job_function &f_on_finish)
   {
     size_t random_var;
     size_t total_weight = claim_weight + retire_weight;
 
-    my_item *my_list = NULL;
+    my_node_container my_list;
+    tran::index my_index = lffl.get_transaction_system ().assign_index ();
 
     while (ops-- > 0)
       {
 	random_var = std::rand () % total_weight;
 	if (random_var < claim_weight)
 	  {
-	    my_item *t = lffl.claim ();
+	    my_node *t = lffl.claim (my_index);
 	    if (t == NULL)
 	      {
 		// claim error
-		abort ();
+		test_common::custom_assert (false);
 	      }
-	    t->set_owner ();
-	    t->get_freelist_link ().store (my_list);
-	    my_list = t;
+	    t->get_data ().set_owner ();
+	    my_list.push_back (t);
+	    lffl.get_transaction_table ().end_tran (my_index);
 	  }
 	else if (random_var < claim_weight + retire_weight)
 	  {
-	    if (my_list != NULL)
+	    if (!my_list.empty ())
 	      {
-		my_item *t = my_list;
-		my_list = t->m_link;
-		t->m_link = NULL;
-		t->reset_owner ();
-
-		lffl.retire (*t);
+		my_node *t = my_list.back ();
+		my_list.pop_back ();
+		t->get_data ().reset_owner ();
+		lffl.retire (my_index, *t);
 	      }
 	  }
 	else
 	  {
-	    test_common::custom_assert (false);   // not possible
+	    lffl.get_transaction_table ().start_tran (my_index);
+	    for (auto &it : my_list)
+	      {
+		it->get_data ().reset_owner ();
+		lffl.retire (my_index, *it);
+	      }
+	    my_list.clear ();
+	    lffl.get_transaction_table ().end_tran (my_index);
 	  }
       }
+
+    lffl.get_transaction_system ().free_index (my_index);
 
     f_on_finish (my_list);
   }
@@ -170,7 +174,10 @@ namespace test_lockfree
       const size_t BLOCK_SIZE = thread_count * 10;
       const size_t START_BLOCK_COUNT = 2;
 
-      my_freelist l_freelist { BLOCK_SIZE, START_BLOCK_COUNT };
+      const size_t LOCKFREE_MAX_TRANS = 1 + thread_count;
+
+      lockfree::tran::system l_lfsys { LOCKFREE_MAX_TRANS };
+      my_freelist l_freelist { l_lfsys, BLOCK_SIZE, START_BLOCK_COUNT };
 
       test_common::sync_cout (desc_str.get_buffer ());
 
@@ -181,28 +188,18 @@ namespace test_lockfree
       };
       std::mutex l_finish_mutex;
       std::condition_variable l_finish_condvar;
-      my_item *l_remaining_head = NULL;
-      my_item *l_remaining_tail = NULL;
+      my_node_container l_remaining_nodes;
 
-      auto l_finish_func = [&] (my_item *list)
+      auto l_finish_func = [&] (my_node_container &job_list)
       {
 	size_t count;
 	std::unique_lock<std::mutex> ulock (l_finish_mutex);
 	count = ++l_finished_count;
-	if (list != NULL)
+	for (auto &it : job_list)
 	  {
-	    if (l_remaining_head == NULL)
-	      {
-		l_remaining_head = list;
-	      }
-	    if (l_remaining_tail != NULL)
-	      {
-		l_remaining_tail->get_freelist_link ().store (list);
-	      }
-	    for (l_remaining_tail = list; l_remaining_tail->get_freelist_link() != NULL;
-		 l_remaining_tail = l_remaining_tail->get_freelist_link())
-	      ;
+	    l_remaining_nodes.push_back (it);
 	  }
+	job_list.clear ();
 	ulock.unlock ();
 	if (l_finish_pred ())
 	  {
@@ -226,23 +223,18 @@ namespace test_lockfree
       // do checks
       assert (g_item_alloc_count == l_freelist.get_alloc_count ());
 
-      size_t list_count = 0;
-      for (my_item *iter = l_remaining_head; iter != NULL; iter = iter->get_freelist_link ())
-	{
-	  list_count++;
-	}
+      size_t list_count = l_remaining_nodes.size ();
 
       size_t used_count =
 	      l_freelist.get_alloc_count () - l_freelist.get_available_count () - l_freelist.get_backbuffer_count ();
       test_common::custom_assert (used_count == list_count);
 
-      for (l_remaining_head; l_remaining_head != NULL;)
+      tran::index my_index = l_lfsys.assign_index ();
+      for (auto &it : l_remaining_nodes)
 	{
-	  my_item *to_retire = l_remaining_head;
-	  l_remaining_head = l_remaining_head->get_freelist_link ();
-	  to_retire->get_freelist_link () = NULL;
-	  l_freelist.retire (*to_retire);
+	  l_freelist.retire (my_index, *it);
 	}
+      l_lfsys.free_index (my_index);
 
       test_common::custom_assert (l_freelist.get_alloc_count ()
 				  == l_freelist.get_available_count () + l_freelist.get_backbuffer_count ());
@@ -260,8 +252,7 @@ namespace test_lockfree
   // my_item
   //
   my_item::my_item ()
-    : m_link (NULL)
-    , m_owner_id ()
+    : m_owner_id ()
   {
     ++g_item_alloc_count;
   }
@@ -285,21 +276,5 @@ namespace test_lockfree
     test_common::custom_assert (m_owner_id == std::this_thread::get_id ());
     m_owner_id = std::thread::id ();
   }
-
-  void
-  my_item::reset_list_owner (my_item *head)
-  {
-    for (my_item *iter = head; iter != nullptr; iter = iter->get_freelist_link ())
-      {
-	iter->reset_owner ();
-      }
-  }
-#else
-  int
-  test_freelist_functional ()
-  {
-    return 0;
-  }
-#endif // temporary disable
 }
 

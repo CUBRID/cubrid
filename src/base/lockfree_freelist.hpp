@@ -88,25 +88,28 @@ namespace lockfree
       void dealloc_list (free_node *head);
 
       free_node *pop_from_available ();
-      void push_to_list (free_node &head, free_node &tail, std::atomic<free_node *> dest);
+      void push_to_list (free_node &head, free_node &tail, std::atomic<free_node *> &dest);
 
       void clear_free_nodes ();                    // not thread safe!
       void final_sanity_checks () const;
   };
 
   template <class T>
-  class freelist<T>::free_node : public tran::reclaimable_node
+  class freelist<T>::free_node : private tran::reclaimable_node
   {
     public:
       free_node ();
       ~free_node () = default;
 
-      void reclaim () final override;
+      T &get_data ();
 
     protected:
       virtual void on_reclaim ();
 
     private:
+      friend freelist;
+
+      void reclaim () final override;
 
       void set_owner (freelist &m_freelist);
 
@@ -280,8 +283,7 @@ namespace lockfree
 
     free_node *node;
     size_t count = 0;
-    for (free_node = pop_from_available (); free_node == NULL && count < 100;
-	 free_node = pop_from_available (), ++count)
+    for (node = pop_from_available (); node == NULL && count < 100; node = pop_from_available (), ++count)
       {
 	// if it loops many times, it is probably because the back-buffer allocator was preempted for a very long time.
 	// force allocations
@@ -313,7 +315,7 @@ namespace lockfree
 	  {
 	    return NULL;
 	  }
-	next = rhead->get_freelist_next ().load ();
+	next = rhead->get_freelist_next ();
 	rhead_copy = rhead;
 	// todo: this is a dangerous preemption point; if I am preempted here, and thread 2 comes and does:
 	//   - second thread gets same rhead and successfully moves m_available_list to next
@@ -322,9 +324,9 @@ namespace lockfree
 	//   - I wake up, compare exchange m_available_list successfully because it is rhead again, but next will
 	//     become the item third thread already claimed.
       }
-    while (!m_available_list.compare_exchange_strong (rhead_copy, next));
+    while (!m_available_list.compare_exchange_weak (rhead_copy, next));
 
-    rhead->get_freelist_next ().store (NULL);
+    rhead->reset_freelist_next ();
     return rhead;
   }
 
@@ -338,7 +340,7 @@ namespace lockfree
 
   template<class T>
   void
-  freelist<T>::push_to_list (free_node &head, free_node &tail, std::atomic<free_node *> dest)
+  freelist<T>::push_to_list (free_node &head, free_node &tail, std::atomic<free_node *> &dest)
   {
     free_node *rhead;
     assert (tail.get_freelist_next () == NULL);
@@ -348,7 +350,7 @@ namespace lockfree
 	rhead = dest;
 	tail.set_freelist_next (rhead);
       }
-    while (!dest.compare_exchange_strong (rhead, head));
+    while (!dest.compare_exchange_weak (rhead, &head));
   }
 
   template<class T>
@@ -379,18 +381,18 @@ namespace lockfree
     return m_forced_alloc_count;
   }
 
-  template<class t>
+  template<class T>
   tran::system &
   freelist<T>::get_transaction_system ()
   {
     return m_transys;
   }
 
-  template<class t>
-  tran::system &
+  template<class T>
+  tran::table &
   freelist<T>::get_transaction_table ()
   {
-    return m_trantable;
+    return *m_trantable;
   }
 
   template<class T>
@@ -477,6 +479,13 @@ namespace lockfree
   freelist<T>::free_node::on_reclaim ()
   {
     // by default empty
+  }
+
+  template<class T>
+  T &
+  freelist<T>::free_node::get_data ()
+  {
+    return m_t;
   }
 } // namespace lockfree
 
