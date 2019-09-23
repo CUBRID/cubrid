@@ -59,7 +59,7 @@ namespace lockfree
       size_t get_forced_allocation_count () const;
 
     private:
-      table *m_trantable;
+      tran::table *m_trantable;
 
       size_t m_block_size;
 
@@ -412,13 +412,6 @@ namespace lockfree
     , m_owner (NULL)
     , m_t {}
   {
-  }
-
-  template<class T>
-  void
-  freelist<T>::free_node::on_reclaim ()
-  {
-    // do nothing by default
   }
 
   template<class T>
