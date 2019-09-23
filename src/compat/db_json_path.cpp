@@ -25,12 +25,6 @@
 #include "string_opfunc.h"
 #include "system_parameter.h"
 
-#include "rapidjson/encodings.h"
-#include "rapidjson/error/en.h"
-#include "rapidjson/reader.h"
-#include "rapidjson/pointer.h"
-#include "rapidjson/writer.h"
-
 #include <algorithm>
 #include <cctype>
 #include <cerrno>

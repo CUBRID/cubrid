@@ -6357,6 +6357,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
           ASSERT_ERROR ();
 	  return error_code;
 	}
+
       db_json_add_element_to_array (result_json_owner.get_mutable (), json_array_elem_owner.get_immutable ());
     }
 

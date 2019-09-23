@@ -32,9 +32,6 @@
 #include <unordered_set>
 #include <vector>
 
-int db_json_path_unquote_object_keys (std::string &sql_path);
-
-
 struct PATH_TOKEN
 {
   enum token_type
@@ -119,4 +116,6 @@ class JSON_PATH
 
     token_containter_type m_path_tokens;
 };
+
+int db_json_path_unquote_object_keys (std::string &sql_path);
 #endif /* _DB_JSON_HPP_ */
