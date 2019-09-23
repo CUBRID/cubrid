@@ -21,10 +21,20 @@
 #define _LOCKFREE_FREELIST_HPP_
 
 #include "lockfree_transaction_def.hpp"
+#include "lockfree_transaction_descriptor.hpp"
 #include "lockfree_transaction_reclaimable.hpp"
+#include "lockfree_transaction_table.hpp"
 
 #include <atomic>
 #include <cstddef>
+
+namespace lockfree
+{
+  namespace tran
+  {
+    class system;
+  }
+}
 
 namespace lockfree
 {
@@ -35,10 +45,12 @@ namespace lockfree
       class free_node;
 
       freelist () = delete;
-      freelist (size_t block_size, size_t initial_block_count = 1);
+      freelist (tran::system &transys, size_t block_size, size_t initial_block_count = 1);
       ~freelist ();
 
-      free_node *claim (tran::index tran_index);
+      free_node *claim (tran::index tran_index);                // claim a free node
+      // note: transaction will remain started!
+
       void retire (tran::index tran_index, free_node &node);
 
       size_t get_alloc_count () const;
@@ -47,6 +59,8 @@ namespace lockfree
       size_t get_forced_allocation_count () const;
 
     private:
+      table *m_trantable;
+
       size_t m_block_size;
 
       std::atomic<free_node *> m_available_list;      // list of available entries
@@ -72,7 +86,7 @@ namespace lockfree
       free_node *pop_from_available ();
       void push_to_list (free_node &head, free_node &tail, std::atomic<free_node *> dest);
 
-      void clear ();                    // not thread safe!
+      void clear_free_nodes ();                    // not thread safe!
       void final_sanity_checks () const;
   };
 
@@ -83,6 +97,9 @@ namespace lockfree
       free_node ();
       ~free_node () = default;
 
+      void reclaim () final override;
+
+    protected:
       virtual void on_reclaim ();
 
     private:
@@ -109,8 +126,9 @@ namespace lockfree
   // freelist
   //
   template <class T>
-  freelist<T>::freelist (size_t block_size, size_t initial_block_count)
-    : m_block_size (block_size)
+  freelist<T>::freelist (tran::system &transys, size_t block_size, size_t initial_block_count)
+    : m_trantable (new tran::table (transys))
+    , m_block_size (block_size)
     , m_available_list { NULL }
     , m_backbuffer_head { NULL }
     , m_backbuffer_tail { NULL }
@@ -228,12 +246,13 @@ namespace lockfree
   template <class T>
   freelist<T>::~freelist ()
   {
-    clear ();
+    clear_free_nodes ();
+    delete m_trantable;
   }
 
   template <class T>
   void
-  freelist<T>::clear ()
+  freelist<T>::clear_free_nodes ()
   {
     final_sanity_checks ();
 
@@ -252,7 +271,8 @@ namespace lockfree
   typename freelist<T>::free_node *
   freelist<T>::claim (tran::index tran_index)
   {
-    // todo: make sure transaction is open here
+    m_trantable->get_descriptor (tran_index).start_tran ();
+
     free_node *node;
     size_t count = 0;
     for (free_node = pop_from_available (); free_node == NULL && count < 100;
@@ -307,10 +327,8 @@ namespace lockfree
   void
   freelist<T>::retire (tran::index tran_index, free_node &node)
   {
-    // make sure transaction is open here and transaction ID was incremented
     assert (node.get_freelist_next () == NULL);
-    push_to_list (&node, &node, m_available_list);
-    m_available_count++;
+    m_trantable->get_descriptor (tran_index).retire_node (node);
   }
 
   template<class T>
@@ -430,6 +448,23 @@ namespace lockfree
   {
     assert (dynamic_cast<free_node *> (m_retired_next) != NULL);
     return static_cast<free_node *> (m_retired_next);
+  }
+
+  template<class T>
+  void
+  freelist<T>::free_node::reclaim ()
+  {
+    on_reclaim ();
+
+    m_retired_next = NULL;
+    m_owner->push_to_list (*this, *this, m_owner->m_available_list);
+  }
+
+  template<class T>
+  void
+  freelist<T>::free_node::on_reclaim ()
+  {
+    // by default empty
   }
 } // namespace lockfree
 
