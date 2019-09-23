@@ -70,8 +70,9 @@ namespace lockfree
 
 	id get_transaction_id () const;
 
-      private:
 	void reclaim_retired_list ();
+
+      private:
 	void reclaim_retired_head ();
 
 	table *m_table;

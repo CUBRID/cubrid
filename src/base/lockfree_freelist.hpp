@@ -304,6 +304,7 @@ namespace lockfree
   freelist<T>::claim (tran::index tran_index)
   {
     m_trantable->get_descriptor (tran_index).start_tran ();
+    m_trantable->get_descriptor (tran_index).reclaim_retired_list ();
 
     free_node *node;
     size_t count = 0;
