@@ -2887,7 +2887,6 @@ db_json_pretty_func (const JSON_DOC &doc, char *&result_str)
 std::string
 db_json_json_string_as_utf8 (std::string raw_json_string)
 {
-  // TODO: Modify this process to also escape what needs to be escaped
   if (raw_json_string.length () < 2 || raw_json_string[0] != '"' || raw_json_string.back () != '"')
     {
       char *quoted_str;
