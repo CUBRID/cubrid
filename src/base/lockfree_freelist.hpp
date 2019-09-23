@@ -58,7 +58,11 @@ namespace lockfree
       size_t get_backbuffer_count () const;
       size_t get_forced_allocation_count () const;
 
+      tran::system &get_transaction_system ();
+      tran::table &get_transaction_table ();
+
     private:
+      tran::system &m_transys;
       tran::table *m_trantable;
 
       size_t m_block_size;
@@ -127,7 +131,8 @@ namespace lockfree
   //
   template <class T>
   freelist<T>::freelist (tran::system &transys, size_t block_size, size_t initial_block_count)
-    : m_trantable (new tran::table (transys))
+    : m_transys (transys)
+    , m_trantable (new tran::table (transys))
     , m_block_size (block_size)
     , m_available_list { NULL }
     , m_backbuffer_head { NULL }
@@ -372,6 +377,20 @@ namespace lockfree
   freelist<T>::get_forced_allocation_count () const
   {
     return m_forced_alloc_count;
+  }
+
+  template<class t>
+  tran::system &
+  freelist<T>::get_transaction_system ()
+  {
+    return m_transys;
+  }
+
+  template<class t>
+  tran::system &
+  freelist<T>::get_transaction_table ()
+  {
+    return m_trantable;
   }
 
   template<class T>
