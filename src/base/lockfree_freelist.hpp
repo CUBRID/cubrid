@@ -288,7 +288,7 @@ namespace lockfree
 	  {
 	    return NULL;
 	  }
-	next = rhead->get_freelist_link ().load ();
+	next = rhead->get_freelist_next ().load ();
 	rhead_copy = rhead;
 	// todo: this is a dangerous preemption point; if I am preempted here, and thread 2 comes and does:
 	//   - second thread gets same rhead and successfully moves m_available_list to next
@@ -299,7 +299,7 @@ namespace lockfree
       }
     while (!m_available_list.compare_exchange_strong (rhead_copy, next));
 
-    rhead->get_freelist_link ().store (NULL);
+    rhead->get_freelist_next ().store (NULL);
     return rhead;
   }
 
