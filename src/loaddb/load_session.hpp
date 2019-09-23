@@ -115,8 +115,9 @@ namespace cubload
 
       void interrupt ();
 
-      void commit (cubthread::entry &thread_ref, const batch &b, int line_no, const std::string &class_name);
-      void abort (cubthread::entry &thread_ref, const batch &b);
+      void push_commit (batch_id b_id, int tran_index, int batch_line_no, int batch_rows, class_id cls_id);
+      void commit (cubthread::entry &thread_ref, batch_id b_id);
+      void abort (cubthread::entry &thread_ref);
 
       void fetch_stats (stats &stats_);
 
@@ -133,6 +134,24 @@ namespace cubload
       void append_log_msg (MSGCAT_LOADDB_MSG msg_id, Args &&... args);
 
     private:
+      struct commit_entry
+      {
+	commit_entry (int tran_index, int batch_line_no, int batch_rows, class_id cls_id)
+	  : m_tran_index (tran_index)
+	  , m_batch_line_no (batch_line_no)
+	  , m_batch_rows (batch_rows)
+	  , m_class_id (cls_id)
+	{
+	}
+
+	int m_tran_index;
+	int m_batch_line_no;
+	int m_batch_rows;
+	class_id m_class_id;
+      };
+
+      void post_commit (const commit_entry &ce);
+
       bool is_completed ();
 
       template<typename T>
@@ -141,7 +160,7 @@ namespace cubload
       std::mutex m_commit_mutex;
       std::condition_variable m_commit_cond_var;
 
-      std::map<batch_id, int> m_commit_map;
+      std::map<batch_id, commit_entry> m_commit_map;
 
       load_args m_args;
       batch_id m_last_batch_id;

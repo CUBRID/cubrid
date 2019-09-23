@@ -156,16 +156,18 @@ namespace cubload
 	// We don't need anything from the driver anymore.
 	driver->clear ();
 
+	m_session.push_commit (m_batch.get_id (), thread_ref.tran_index, line_no, m_batch.get_rows_number (),
+			       m_batch.get_class_id ());
+
 	if (m_session.is_failed () || (!is_syntax_check_only && (!parser_result || er_has_error ())))
 	  {
 	    // if a batch transaction was aborted and syntax only is not enabled then abort entire loaddb session
 	    m_session.fail ();
-
-	    m_session.abort (thread_ref, m_batch);
+	    m_session.abort (thread_ref);
 	  }
 	else
 	  {
-	    m_session.commit (thread_ref, m_batch, line_no, class_name);
+	    m_session.commit (thread_ref, m_batch.get_id ());
 	  }
 
 	// notify session that batch is done
@@ -181,6 +183,7 @@ namespace cubload
   session::session (load_args &args)
     : m_commit_mutex ()
     , m_commit_cond_var ()
+    , m_commit_map ()
     , m_args (args)
     , m_last_batch_id {NULL_BATCH_ID}
     , m_max_batch_id {NULL_BATCH_ID}
@@ -279,12 +282,17 @@ namespace cubload
   }
 
   void
-  session::commit (cubthread::entry &thread_ref, const batch &b, int line_no, const std::string &class_name)
+  session::push_commit (batch_id b_id, int tran_index, int batch_line_no, int batch_rows, class_id cls_id)
   {
     std::unique_lock<std::mutex> ulock (m_commit_mutex);
-    m_commit_map.insert (std::make_pair (b.get_id (), thread_ref.tran_index));
+    m_commit_map.insert (std::make_pair (b_id, commit_entry (tran_index, batch_line_no, batch_rows, cls_id)));
+  }
 
-    if (b.get_id () != (m_last_batch_id + 1))
+  void
+  session::commit (cubthread::entry &thread_ref, batch_id batch_id_)
+  {
+    std::unique_lock<std::mutex> ulock (m_commit_mutex);
+    if (batch_id_ != (m_last_batch_id + 1))
       {
 	return;
       }
@@ -298,46 +306,54 @@ namespace cubload
 	    break;
 	  }
 
-	thread_ref.tran_index = it->second;
+	thread_ref.tran_index = it->second.m_tran_index;
 	xtran_server_commit (&thread_ref, false);
+
+	m_last_batch_id = it->first;
 
 	// free transaction index
 	logtb_free_tran_index (&thread_ref, thread_ref.tran_index);
 
-	m_last_batch_id = it->first;
+	post_commit (it->second);
+
 	it = m_commit_map.erase (it);
-
-	if (m_args.syntax_check)
-	  {
-	    append_log_msg (LOADDB_MSG_INSTANCE_COUNT, class_name.c_str (), b.get_rows_number ());
-	  }
-	else
-	  {
-	    append_log_msg (LOADDB_MSG_COMMITTED_INSTANCES, class_name.c_str (), b.get_rows_number ());
-	  }
-
-	// update load statistics after commit
-	stats_update_rows_committed (b.get_rows_number ());
-	stats_update_last_committed_line (line_no + 1);
-
-	if (!m_args.syntax_check)
-	  {
-	    append_log_msg (LOADDB_MSG_UPDATED_CLASS_STATS, class_name.c_str ());
-	  }
       }
     thread_ref.tran_index = save_tran_index;
   }
 
   void
-  session::abort (cubthread::entry &thread_ref, const batch &b)
+  session::post_commit (const commit_entry &ce)
+  {
+    const class_entry *cls_entry = get_class_registry ().get_class_entry (ce.m_class_id);
+    assert (cls_entry != NULL);
+
+    if (m_args.syntax_check)
+      {
+	append_log_msg (LOADDB_MSG_INSTANCE_COUNT, cls_entry->get_class_name (), ce.m_batch_rows);
+      }
+    else
+      {
+	append_log_msg (LOADDB_MSG_COMMITTED_INSTANCES, cls_entry->get_class_name (), ce.m_batch_rows);
+      }
+
+    // update load statistics after commit
+    stats_update_rows_committed (ce.m_batch_rows);
+    stats_update_last_committed_line (ce.m_batch_line_no + 1);
+
+    if (!m_args.syntax_check)
+      {
+	append_log_msg (LOADDB_MSG_UPDATED_CLASS_STATS, cls_entry->get_class_name ());
+      }
+  }
+
+  void
+  session::abort (cubthread::entry &thread_ref)
   {
     std::unique_lock<std::mutex> ulock (m_commit_mutex);
-    m_commit_map.insert (std::make_pair (b.get_id (), thread_ref.tran_index));
-
     int save_tran_index = thread_ref.tran_index;
     for (auto it = m_commit_map.begin (); it != m_commit_map.end (); )
       {
-	thread_ref.tran_index = it->second;
+	thread_ref.tran_index = it->second.m_tran_index;
 	xtran_server_abort (&thread_ref);
 
 	// free transaction index
