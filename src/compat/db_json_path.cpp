@@ -1181,7 +1181,12 @@ JSON_PATH::from_json_pointer (const std::string &pointer_path)
       else
 	{
 	  // object_key
-	  push_object_key (std::move (rapid_token.name));
+	  char *escaped;
+	  size_t escaped_size;
+	  db_string_escape_str (rapid_token.name, rapid_token.length, &escaped, &escaped_size);
+
+	  push_object_key (escaped);
+	  db_private_free (NULL, escaped);
 	}
     }
 
