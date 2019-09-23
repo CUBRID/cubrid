@@ -2972,6 +2972,7 @@ vacuum_master_task::is_cursor_entry_available () const
       vacuum_er_log (VACUUM_ER_LOG_JOBS,
                      "Job for blockid = %lld %s. Skip.", (long long int) entry.get_blockid (),
                      entry.is_vacuumed () ? "was executed" : "is in progress");
+      return false;
     }
 }
 
