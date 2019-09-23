@@ -70,6 +70,9 @@ namespace cubload
       template<typename... Args>
       static std::string format_log_msg (MSGCAT_LOADDB_MSG msg_id, Args &&... args);
 
+      bool current_line_has_error ();
+      void set_error_on_current_line (bool has_error);
+
     private:
       int get_lineno ();
 
@@ -81,6 +84,8 @@ namespace cubload
 
       void log_error_message (std::string &err_msg, bool fail);
       bool is_last_error_filtered ();
+
+      bool m_current_line_has_error;
 
 #if defined (SERVER_MODE)
       session &m_session;

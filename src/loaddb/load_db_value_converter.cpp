@@ -88,6 +88,11 @@ namespace cubload
 
     for (int i = 0; i < NUM_DB_TYPES; i++)
       {
+	for (int j = 0; j < NUM_LDR_TYPES; j++)
+	  {
+	    setters_[i][j] = NULL;
+	  }
+
 	setters_[i][LDR_NULL] = &to_db_null;
       }
 
