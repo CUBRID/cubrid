@@ -6257,10 +6257,23 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
     }
 
   DB_VALUE *pattern = args[2];
-  DB_VALUE *esc_char = nullptr;
+  const DB_VALUE *esc_char = nullptr;
+  const char * slash_str = "\\";
+  DB_VALUE default_slash_str_dbval;
+  
   if (num_args >= 4)
     {
       esc_char = args[3];
+    }
+  else
+    {
+      // No escape char arg provided
+      if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false)
+      {
+	 // This is equivalent to compat_mode=mysql. In this mode '\\' is default escape character for LIKE pattern
+	 db_make_string (&default_slash_str_dbval, const_cast<char *> (slash_str));
+	 esc_char = &default_slash_str_dbval;
+      }
     }
 
   std::vector<std::string> starting_paths;
