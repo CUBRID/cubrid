@@ -114,7 +114,7 @@ namespace lockfree
     descriptor::reclaim_retired_list ()
     {
       id min_tran_id = m_table->get_min_active_tranid ();
-      if (min_tran_id <= m_cleanupid)
+      if (min_tran_id <= m_last_reclaim_minid)
 	{
 	  // nothing changed
 	  return;
@@ -128,7 +128,7 @@ namespace lockfree
 	  m_retired_tail = NULL;
 	}
 
-      m_cleanupid = min_tran_id;
+      m_last_reclaim_minid = min_tran_id;
     }
 
     void
