@@ -110,7 +110,17 @@ db_json_path_is_token_valid_quoted_object_key (const std::string &path, std::siz
 static bool
 db_json_path_quote_and_validate_unquoted_object_key (std::string &path, std::size_t &token_begin)
 {
-  return db_json_path_is_token_valid_unquoted_object_key (path, token_begin);
+  std::size_t i = token_begin;
+  bool validation_result = db_json_path_is_token_valid_unquoted_object_key (path, i);
+  if (validation_result)
+    {
+      // we normalize object_keys by quoting them - e.g. $.objectkey we represent as $."objectkey"
+      path.insert (token_begin, "\"");
+      path.insert (i + 1, "\"");
+
+      token_begin = skip_whitespaces (path, i + 2 /* we inserted 2 quotation marks */);
+    }
+  return validation_result;
 }
 
 static bool
