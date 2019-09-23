@@ -63,6 +63,9 @@ namespace lockfree
 
 	descriptor &get_descriptor (const index &tran_index);
 
+	void start_tran (const index &tran_index);
+	void end_tran (const index &tran_index);
+
 	id get_current_global_tranid () const;
 	id get_new_global_tranid ();
 	id get_min_active_tranid () const;

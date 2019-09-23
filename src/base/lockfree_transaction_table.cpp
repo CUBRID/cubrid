@@ -55,6 +55,18 @@ namespace lockfree
       return m_all[tran_index];
     }
 
+    void
+    table::start_tran (const index &tran_index)
+    {
+      get_descriptor (tran_index).start_tran ();
+    }
+
+    void
+    table::end_tran (const index &tran_index)
+    {
+      get_descriptor (tran_index).end_tran ();
+    }
+
     id
     table::get_new_global_tranid ()
     {
