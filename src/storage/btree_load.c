@@ -5092,8 +5092,8 @@ index_builder_loader_task::execute (cubthread::entry &thread_ref)
 
   while (m_insert_list.m_curr_pos < (int) m_insert_list.m_sorted_keys_oids.size ())
     {
-      ret = btree_online_index_dispatcher (&thread_ref, &m_btid, &m_class_oid, &m_insert_list,
-					   m_unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
+      ret = btree_online_index_list_dispatcher (&thread_ref, &m_btid, &m_class_oid, &m_insert_list,
+					        m_unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
 
       if (ret != NO_ERROR)
 	{

@@ -33320,8 +33320,30 @@ btree_online_index_set_normal_state (MVCCID & state)
 // purpose (in)   : function purpose
 //
 int
-btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid, btree_insert_list * insert_list,
-			       int unique, BTREE_OP_PURPOSE purpose, LOG_LSA * undo_nxlsa)
+btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * cls_oid,
+		               OID * oid, int unique, BTREE_OP_PURPOSE purpose, LOG_LSA * undo_nxlsa)
+{
+  btree_insert_list one_item_list (key, oid);
+
+  return btree_online_index_list_dispatcher (thread_p, btid, cls_oid, &one_item_list, unique, purpose, undo_nxlsa);
+}
+
+//
+// btree_online_index_list_dispatcher () - dispatch online index operation with list mode
+//
+// return         : error code
+// thread_p (in)  : thread entry
+// btid_int (in)  : b-tree info
+// class_oid (in) : class OID
+// insert_list (in) : list of pairs key, OID
+// unique (in)    :
+// purpose (in)   : function purpose
+// undo_nxlsa (in): 
+//
+int
+btree_online_index_list_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid,
+                                    btree_insert_list * insert_list, int unique, BTREE_OP_PURPOSE purpose,
+                                    LOG_LSA * undo_nxlsa)
 {
   int error_code = NO_ERROR;
   /* Search key helper which will point to where data should inserted. */
@@ -35114,8 +35136,7 @@ btree_rv_keyval_undo_online_index_tran_delete (THREAD_ENTRY * thread_p, LOG_RCV 
   assert (!OID_ISNULL (&oid));
 
   /* Insert object and all its info. */
-  btree_insert_list one_item_list (&key, &oid);
-  error_code = btree_online_index_dispatcher (thread_p, btid.sys_btid, &cls_oid, &one_item_list, btid.unique_pk,
+  error_code = btree_online_index_dispatcher (thread_p, btid.sys_btid, &key, &cls_oid, &oid, btid.unique_pk,
 					      BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE, &recv->reference_lsa);
   if (error_code != NO_ERROR)
     {
@@ -35165,8 +35186,7 @@ btree_rv_keyval_undo_online_index_tran_insert (THREAD_ENTRY * thread_p, LOG_RCV 
   assert (!OID_ISNULL (&oid));
 
   /* Undo insert: just delete object and all its information. */
-  btree_insert_list one_item_list (&key, &oid);
-  err = btree_online_index_dispatcher (thread_p, btid.sys_btid, &cls_oid, &one_item_list, btid.unique_pk,
+  err = btree_online_index_dispatcher (thread_p, btid.sys_btid, &key, &cls_oid, &oid, btid.unique_pk,
 				       BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT, &recv->reference_lsa);
   if (err != NO_ERROR)
     {
