@@ -250,7 +250,6 @@ namespace test_lockfree
 	      + l_freelist.get_transaction_table ().get_current_retire_count ();
       test_common::custom_assert (alloc_count == l_freelist.get_alloc_count ());
       test_common::custom_assert (l_freelist.get_backbuffer_count () == BLOCK_SIZE);
-      test_common::custom_assert (l_freelist.get_forced_allocation_count () == 0); // not sure we can really expect it
     }
 
     // check all have been deallocated
