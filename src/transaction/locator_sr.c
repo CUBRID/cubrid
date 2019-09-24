@@ -150,11 +150,6 @@ static int locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEO
 static int locator_repl_get_key_value (DB_VALUE * key_value, LC_COPYAREA * force_area, LC_COPYAREA_ONEOBJ * obj);
 static void locator_repl_add_error_to_copyarea (LC_COPYAREA ** copy_area, RECDES * recdes, LC_COPYAREA_ONEOBJ * obj,
 						DB_VALUE * key_value, int err_code, const char *err_msg);
-static int locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * recdes,
-				 int has_index, int op_type, HEAP_SCANCACHE * scan_cache, int *force_count,
-				 int pruning_type, PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
-				 UPDATE_INPLACE_STYLE force_in_place, PGBUF_WATCHER * home_hint_p, bool has_BU_lock,
-				 bool dont_check_fk, bool use_bulk_logging = false);
 static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * ikdrecdes,
 				 RECDES * recdes, int has_index, ATTR_ID * att_id, int n_att_id, int op_type,
 				 HEAP_SCANCACHE * scan_cache, int *force_count, bool not_check_fk,
@@ -4850,7 +4845,7 @@ error3:
  * Note: The given object is inserted on this heap and all appropriate
  *              index entries are inserted.
  */
-static int
+int
 locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * recdes, int has_index,
 		      int op_type, HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type,
 		      PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
@@ -13730,7 +13725,7 @@ int
 locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 			    const std::vector<record_descriptor> &recdes, int has_index, int op_type,
 			    HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type, PRUNING_CONTEXT * pcontext,
-			    FUNC_PRED_UNPACK_INFO * func_preds, UPDATE_INPLACE_STYLE force_in_place, bool dont_check_fk, int *records_inserted)
+			    FUNC_PRED_UNPACK_INFO * func_preds, UPDATE_INPLACE_STYLE force_in_place, bool dont_check_fk)
 {
   int error_code = NO_ERROR;
   size_t accumulated_records_size = 0;
@@ -13771,7 +13766,6 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	      ASSERT_ERROR ();
 	      return error_code;
 	    }
-          *records_inserted = *records_inserted + 1;
 	}
       else
 	{
@@ -13818,7 +13812,6 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 		    }
 
 		  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &home_hint_p);
-                  *records_inserted = *records_inserted + 1;
 		}
 
 	      // Now log the whole page.
@@ -13856,15 +13849,23 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	  ASSERT_ERROR ();
 	  return error_code;
 	}
-
-      *records_inserted = *records_inserted + 1;
     }
 
   // Log the postpone operation
   heap_log_postpone_heap_append_pages (thread_p, hfid, class_oid, heap_pages_array);
 
-  assert (*records_inserted == recdes_array.size ());
-
   return NO_ERROR;
+}
+
+bool
+has_errors_filtered_for_insert (std::vector<int> error_filter_array)
+{
+  if (std::find (error_filter_array.begin(), error_filter_array.end(), ER_BTREE_UNIQUE_FAILED)
+                 != error_filter_array.end ())
+  {
+    return true;
+  }
+
+  return false;
 }
 // *INDENT-ON*

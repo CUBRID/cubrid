@@ -432,6 +432,10 @@ namespace cubload
     int pruning_type = 0;
     int op_type = MULTI_ROW_INSERT;
     int records_inserted = 0;
+    bool insert_errors_filtered = false;
+    OID dummy_oid;
+    bool has_BU_lock = lock_has_lock_on_object (&m_scancache.node.class_oid, oid_Root_class_oid,
+		       LOG_FIND_THREAD_TRAN_INDEX (m_thread_ref), BU_LOCK);
 
     // First check if we have any errors set.
     if (m_session.is_failed ())
@@ -452,16 +456,65 @@ namespace cubload
 	m_scancache.node.classname = m_class_entry->get_class_name ();
       }
 
-    int error_code = locator_multi_insert_force (m_thread_ref, &m_scancache.node.hfid, &m_scancache.node.class_oid,
-		     m_recdes_collected, true, op_type, &m_scancache, &force_count, pruning_type, NULL, NULL,
-		     UPDATE_INPLACE_NONE, true, &records_inserted);
-    if (error_code != NO_ERROR)
+    if (m_recdes_collected.size () == 0)
       {
-	ASSERT_ERROR ();
-	m_error_handler.on_failure ();
+	// Nothing to flush.
+	return;
       }
 
-    m_thread_ref->m_loaddb_driver->increment_lines_inserted (records_inserted);
+    insert_errors_filtered = has_errors_filtered_for_insert (m_session.get_args().m_ignored_errors);
+
+    if (insert_errors_filtered)
+      {
+	// In case of possible errors filtered for insert we disable the unique optimization
+	for (size_t i = 0; i < m_recdes_collected.size (); i++)
+	  {
+	    log_sysop_start (m_thread_ref);
+	    RECDES local_record = m_recdes_collected[i].get_recdes ();
+	    int error_code = locator_insert_force (m_thread_ref, &m_scancache.node.hfid, &m_scancache.node.class_oid,
+						   &dummy_oid, &local_record, true, op_type, &m_scancache, &force_count,
+						   pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, NULL, has_BU_lock,
+						   true, false);
+	    if (error_code != NO_ERROR)
+	      {
+		ASSERT_ERROR ();
+		m_error_handler.on_failure ();
+		log_sysop_abort (m_thread_ref);
+
+		if (er_has_error ())
+		  {
+		    // Error was not filtered, we abort everything.
+		    return;
+		  }
+
+		// Error was filtered so we can continue.
+		continue;
+	      }
+
+	    // We attach to outer and we continue.
+	    log_sysop_attach_to_outer (m_thread_ref);
+	    m_thread_ref->m_loaddb_driver->increment_lines_inserted (1);
+	  }
+      }
+    else
+      {
+	log_sysop_start (m_thread_ref);
+	int error_code = locator_multi_insert_force (m_thread_ref, &m_scancache.node.hfid, &m_scancache.node.class_oid,
+			 m_recdes_collected, true, op_type, &m_scancache, &force_count, pruning_type, NULL, NULL,
+			 UPDATE_INPLACE_NONE, true);
+	if (error_code != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    m_error_handler.on_failure ();
+	    log_sysop_abort (m_thread_ref);
+	    return;
+	  }
+	else
+	  {
+	    log_sysop_attach_to_outer (m_thread_ref);
+	    m_thread_ref->m_loaddb_driver->increment_lines_inserted (m_recdes_collected.size ());
+	  }
+      }
   }
 
   int
