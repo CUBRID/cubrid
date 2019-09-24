@@ -753,7 +753,7 @@ JSON_PATH::dump_json_path () const
 	  res += "**";
 	  break;
 	default:
-	  //assert (false);
+	  assert (false);
 	  break;
 	}
     }
@@ -890,7 +890,8 @@ JSON_PATH::get (const JSON_DOC &jd) const
 	    {
 	      return NULL;
 	    }
-	  JSON_VALUE::ConstMemberIterator m = val->FindMember (db_json_json_string_as_utf8 (tkn.get_object_key ()).c_str ());
+	  std::string encoded_key = db_json_json_string_as_utf8 (tkn.get_object_key ());
+	  JSON_VALUE::ConstMemberIterator m = val->FindMember (encoded_key.c_str ());
 	  if (m == val->MemberEnd ())
 	    {
 	      return NULL;
@@ -963,7 +964,8 @@ JSON_PATH::extract_from_subtree (const JSON_PATH &path, size_t tkn_array_offset,
 	{
 	case PATH_TOKEN::token_type::object_key:
 	{
-	  JSON_VALUE::ConstMemberIterator m = jv.FindMember (db_json_json_string_as_utf8 (crt_tkn.get_object_key ()).c_str ());
+	  std::string encoded_key = db_json_json_string_as_utf8 (crt_tkn.get_object_key ());
+	  JSON_VALUE::ConstMemberIterator m = jv.FindMember (encoded_key.c_str ());
 	  if (m == jv.MemberEnd ())
 	    {
 	      return;
@@ -1035,7 +1037,8 @@ JSON_PATH::erase (JSON_DOC &jd) const
 	{
 	  return false;
 	}
-      return value->EraseMember (db_json_json_string_as_utf8 (tkn.get_object_key ()).c_str ());
+      std::string encoded_key = db_json_json_string_as_utf8 (tkn.get_object_key ());
+      return value->EraseMember (encoded_key.c_str ());
     }
 
   return false;
