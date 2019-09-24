@@ -28,6 +28,16 @@ namespace lockfree
 {
   namespace tran
   {
+    descriptor::descriptor ()
+      : m_table (NULL)
+      , m_tranid (INVALID_TRANID)
+      , m_last_reclaim_minid (0)
+      , m_retired_head (NULL)
+      , m_retired_tail (NULL)
+      , m_did_incr (false)
+    {
+    }
+
     descriptor::~descriptor ()
     {
       assert (!is_tran_started ());

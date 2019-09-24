@@ -52,7 +52,7 @@ namespace lockfree
     class descriptor
     {
       public:
-	descriptor () = default;
+	descriptor ();
 	~descriptor ();
 
 	// retire a lock-free data structure node
