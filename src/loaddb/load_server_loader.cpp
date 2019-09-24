@@ -413,7 +413,6 @@ namespace cubload
 	if (!m_error_handler.current_line_has_error ())
 	  {
 	    m_recdes_collected.push_back (std::move (new_recdes));
-	    m_thread_ref->m_loaddb_driver->increment_lines_inserted ();
 	  }
 	else
 	  {
@@ -432,6 +431,7 @@ namespace cubload
     int force_count = 0;
     int pruning_type = 0;
     int op_type = MULTI_ROW_INSERT;
+    int records_inserted = 0;
 
     // First check if we have any errors set.
     if (m_session.is_failed ())
@@ -454,12 +454,14 @@ namespace cubload
 
     int error_code = locator_multi_insert_force (m_thread_ref, &m_scancache.node.hfid, &m_scancache.node.class_oid,
 		     m_recdes_collected, true, op_type, &m_scancache, &force_count, pruning_type, NULL, NULL,
-		     UPDATE_INPLACE_NONE, true);
+		     UPDATE_INPLACE_NONE, true, &records_inserted);
     if (error_code != NO_ERROR)
       {
 	ASSERT_ERROR ();
 	m_error_handler.on_failure ();
       }
+
+    m_thread_ref->m_loaddb_driver->increment_lines_inserted (records_inserted);
   }
 
   int

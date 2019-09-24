@@ -13730,7 +13730,7 @@ int
 locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 			    const std::vector<record_descriptor> &recdes, int has_index, int op_type,
 			    HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type, PRUNING_CONTEXT * pcontext,
-			    FUNC_PRED_UNPACK_INFO * func_preds, UPDATE_INPLACE_STYLE force_in_place, bool dont_check_fk)
+			    FUNC_PRED_UNPACK_INFO * func_preds, UPDATE_INPLACE_STYLE force_in_place, bool dont_check_fk, int *records_inserted)
 {
   int error_code = NO_ERROR;
   size_t accumulated_records_size = 0;
@@ -13771,6 +13771,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	      ASSERT_ERROR ();
 	      return error_code;
 	    }
+          *records_inserted = *records_inserted + 1;
 	}
       else
 	{
@@ -13817,6 +13818,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 		    }
 
 		  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &home_hint_p);
+                  *records_inserted = *records_inserted + 1;
 		}
 
 	      // Now log the whole page.
@@ -13854,10 +13856,14 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	  ASSERT_ERROR ();
 	  return error_code;
 	}
+
+      *records_inserted = *records_inserted + 1;
     }
 
   // Log the postpone operation
   heap_log_postpone_heap_append_pages (thread_p, hfid, class_oid, heap_pages_array);
+
+  assert (*records_inserted == recdes_array.size ());
 
   return NO_ERROR;
 }
