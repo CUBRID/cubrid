@@ -46,6 +46,7 @@ namespace lockfree
 
     table::~table ()
     {
+      delete [] m_all;
     }
 
     descriptor &
@@ -98,7 +99,6 @@ namespace lockfree
 	      minvalue = tranid;
 	    }
 	}
-      assert (m_min_active_tranid <= minvalue);
       m_min_active_tranid.store (minvalue);
     }
 
@@ -106,6 +106,39 @@ namespace lockfree
     table::get_min_active_tranid () const
     {
       return m_min_active_tranid;
+    }
+
+    size_t
+    table::get_total_retire_count () const
+    {
+      size_t total = 0;
+      for (size_t idx = 0; idx < m_sys.get_max_transaction_count (); idx++)
+	{
+	  total += m_all[idx].get_total_retire_count ();
+	}
+      return total;
+    }
+
+    size_t
+    table::get_total_reclaim_count () const
+    {
+      size_t total = 0;
+      for (size_t idx = 0; idx < m_sys.get_max_transaction_count (); idx++)
+	{
+	  total += m_all[idx].get_total_reclaim_count ();
+	}
+      return total;
+    }
+
+    size_t
+    table::get_current_retire_count () const
+    {
+      size_t total = 0;
+      for (size_t idx = 0; idx < m_sys.get_max_transaction_count (); idx++)
+	{
+	  total += m_all[idx].get_current_retire_count ();
+	}
+      return total;
     }
   } // namespace tran
 } // namespace lockfree

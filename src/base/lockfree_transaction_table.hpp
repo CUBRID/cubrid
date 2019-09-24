@@ -70,6 +70,10 @@ namespace lockfree
 	id get_new_global_tranid ();
 	id get_min_active_tranid () const;
 
+	size_t get_total_retire_count () const;
+	size_t get_total_reclaim_count () const;
+	size_t get_current_retire_count () const;
+
       private:
 	/* number of transactions between computing min_active_transaction_id */
 	static const id MATI_REFRESH_INTERVAL = 100;

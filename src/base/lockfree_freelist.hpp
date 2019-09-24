@@ -84,7 +84,7 @@ namespace lockfree
       std::atomic<size_t> m_bb_count;
       std::atomic<size_t> m_forced_alloc_count;
 
-#if !defined (NDEBUG)
+#if 0 // !defined (NDEBUG)
       std::shared_mutex m_lock_all_nodes;
       std::set<free_node *> m_all_nodes;
 #endif // DEBUG
@@ -156,6 +156,10 @@ namespace lockfree
     , m_alloc_count { 0 }
     , m_bb_count { 0 }
     , m_forced_alloc_count { 0 }
+#if 0 // !defined (NDEBUG)
+    , m_lock_all_nodes {}
+    , m_all_nodes {}
+#endif
   {
     assert (block_size > 1);
     // minimum two blocks
@@ -192,8 +196,8 @@ namespace lockfree
     free_node *bb_tail = m_backbuffer_tail.exchange (NULL);
     assert (bb_tail != NULL);
 
-    push_to_list (*bb_head, *bb_tail, m_available_list);
     m_available_count += m_bb_count.exchange (0);
+    push_to_list (*bb_head, *bb_tail, m_available_list);
 
     alloc_backbuffer ();
   }
@@ -225,9 +229,9 @@ namespace lockfree
     alloc_list (new_head, new_tail);
 
     // push directly to available
-    push_to_list (*new_head, *new_tail, m_available_list);
     m_available_count += m_block_size;
     ++m_forced_alloc_count;
+    push_to_list (*new_head, *new_tail, m_available_list);
   }
 
   template <class T>
@@ -247,7 +251,7 @@ namespace lockfree
 	node->set_freelist_next (head);
 	head = node;
 
-#if !defined (NDEBUG)
+#if 0 // !defined (NDEBUG)
 	std::unique_lock<std::shared_mutex> ulock (m_lock_all_nodes);
 	m_all_nodes.insert (node);
 #endif // DEBUG
@@ -264,7 +268,7 @@ namespace lockfree
     for (free_node *node = head; node != NULL; node = save_next)
       {
 	save_next = node->get_freelist_next ();
-#if !defined (NDEBUG)
+#if 0 // !defined (NDEBUG)
 	std::unique_lock<std::shared_mutex> ulock (m_lock_all_nodes);
 	if (m_all_nodes.erase (node) != 1)
 	  {
@@ -278,8 +282,8 @@ namespace lockfree
   template <class T>
   freelist<T>::~freelist ()
   {
-    clear_free_nodes ();
     delete m_trantable;
+    clear_free_nodes ();
   }
 
   template <class T>
@@ -322,7 +326,11 @@ namespace lockfree
 	node = pop_from_available ();
       }
     assert (node != NULL);
-    m_available_count--;
+    if (m_available_count-- == 0)
+      {
+	// this is broken
+	assert (false);
+      }
     check_my_pointer (node);
     return node;
   }
@@ -455,7 +463,7 @@ namespace lockfree
   void
   freelist<T>::check_my_pointer (free_node *node)
   {
-#if !defined (NDEBUG)
+#if 0 // !defined (NDEBUG)
     std::shared_lock<std::shared_mutex> ulock (m_lock_all_nodes);
     if (m_all_nodes.find (node) == m_all_nodes.cend ())
       {
@@ -510,6 +518,7 @@ namespace lockfree
     on_reclaim ();
 
     m_retired_next = NULL;
+    ++m_owner->m_available_count;
     m_owner->push_to_list (*this, *this, m_owner->m_available_list);
   }
 

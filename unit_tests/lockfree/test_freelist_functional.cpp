@@ -89,7 +89,7 @@ namespace test_lockfree
 	   const my_end_job_function &f_on_finish)
   {
     size_t random_var;
-    size_t total_weight = claim_weight + retire_weight;
+    size_t total_weight = claim_weight + retire_weight + retire_all_weight;
 
     my_node_container my_list;
     tran::index my_index = lffl.get_transaction_system ().assign_index ();
@@ -131,6 +131,13 @@ namespace test_lockfree
 	    lffl.get_transaction_table ().end_tran (my_index);
 	  }
       }
+
+    lffl.get_transaction_table ().start_tran (my_index);
+    for (auto &it : my_list)
+      {
+	it->get_data ().reset_owner ();
+      }
+    lffl.get_transaction_table ().end_tran (my_index);
 
     lffl.get_transaction_system ().free_index (my_index);
 
@@ -221,13 +228,14 @@ namespace test_lockfree
       l_finish_condvar.wait (ulock, l_finish_pred);
 
       // do checks
-      assert (g_item_alloc_count == l_freelist.get_alloc_count ());
+      test_common::custom_assert (g_item_alloc_count == l_freelist.get_alloc_count ());
 
-      size_t list_count = l_remaining_nodes.size ();
-
-      size_t used_count =
-	      l_freelist.get_alloc_count () - l_freelist.get_available_count () - l_freelist.get_backbuffer_count ();
-      test_common::custom_assert (used_count == list_count);
+      size_t alloc_count =
+	      l_remaining_nodes.size ()
+	      + l_freelist.get_available_count ()
+	      + l_freelist.get_backbuffer_count ()
+	      + l_freelist.get_transaction_table ().get_current_retire_count ();
+      test_common::custom_assert (alloc_count == l_freelist.get_alloc_count ());
 
       tran::index my_index = l_lfsys.assign_index ();
       for (auto &it : l_remaining_nodes)
@@ -236,8 +244,11 @@ namespace test_lockfree
 	}
       l_lfsys.free_index (my_index);
 
-      test_common::custom_assert (l_freelist.get_alloc_count ()
-				  == l_freelist.get_available_count () + l_freelist.get_backbuffer_count ());
+      alloc_count =
+	      l_freelist.get_available_count ()
+	      + l_freelist.get_backbuffer_count ()
+	      + l_freelist.get_transaction_table ().get_current_retire_count ();
+      test_common::custom_assert (alloc_count == l_freelist.get_alloc_count ());
       test_common::custom_assert (l_freelist.get_backbuffer_count () == BLOCK_SIZE);
       test_common::custom_assert (l_freelist.get_forced_allocation_count () == 0); // not sure we can really expect it
     }

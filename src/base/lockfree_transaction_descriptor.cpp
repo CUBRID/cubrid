@@ -35,6 +35,8 @@ namespace lockfree
       , m_retired_head (NULL)
       , m_retired_tail (NULL)
       , m_did_incr (false)
+      , m_retire_count (0)
+      , m_reclaim_count (0)
     {
     }
 
@@ -74,6 +76,7 @@ namespace lockfree
 	  m_retired_tail->m_retired_next = &node;
 	  m_retired_tail = &node;
 	}
+      ++m_retire_count;
 
       if (should_end)
 	{
@@ -154,6 +157,25 @@ namespace lockfree
 
       nodep->m_retired_next = NULL;
       nodep->reclaim ();
+      ++m_reclaim_count;
+    }
+
+    size_t
+    descriptor::get_total_retire_count () const
+    {
+      return m_retire_count;
+    }
+
+    size_t
+    descriptor::get_total_reclaim_count () const
+    {
+      return m_reclaim_count;
+    }
+
+    size_t
+    descriptor::get_current_retire_count () const
+    {
+      return m_retire_count - m_reclaim_count;
     }
   } // namespace tran
 } // namespace lockfree
