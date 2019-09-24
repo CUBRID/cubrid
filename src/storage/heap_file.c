@@ -12459,6 +12459,10 @@ error:
  *   midxkey(in):
  *   att_ids(in):
  *   attrinfo(in):
+ *   func_res(out):
+ *   func_col_id(in):
+ *   func_attr_index_start(in):
+ *   midxkey_domain(in):
  */
 static DB_MIDXKEY *
 heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY * midxkey, int *att_ids,
@@ -12555,6 +12559,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
  *   return: Pointer to DB_VALUE containing the key.
  *   n_atts(in): Size of attribute ID array.
  *   att_ids(in): Array of attribute ID's
+ *   atts_prefix_length (in): array of attributes prefix index length
  *   attr_info(in): Pointer to attribute information structure.  This
  *                  structure contains the BTID's, the attributes and their
  *                  values.
@@ -12562,7 +12567,9 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
  *   db_valuep(in): Pointer to a DB_VALUE.  This db_valuep will be used to
  *                  contain the set key in the case of multi-column B-trees.
  *                  It is ignored for single-column B-trees.
- *   buf(in):
+ *   buf(in): Buffer of midxkey value encoding
+ *   func_index_info(in): function index definition, if key is based on function index
+ *   midxkey_domain(in): domain of midxkey
  *
  * Note: Return a key for the specified attribute ID's
  *

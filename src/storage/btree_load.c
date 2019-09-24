@@ -254,7 +254,7 @@ static int online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, H
 				 int n_classes, int *attrids, int n_attrs, FUNCTION_INDEX_INFO func_idx_info,
 				 PRED_EXPR_WITH_CONTEXT * filter_pred, int *attrs_prefix_length,
 				 HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scancache, int unique_pk,
-				 int ib_thread_count, const TP_DOMAIN * key_type);
+				 int ib_thread_count, TP_DOMAIN * key_type);
 static bool btree_is_worker_pool_logging_true ();
 
 /*
@@ -4801,7 +4801,7 @@ static int
 online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids, OID * class_oids, int n_classes,
 		      int *attrids, int n_attrs, FUNCTION_INDEX_INFO func_idx_info,
 		      PRED_EXPR_WITH_CONTEXT * filter_pred, int *attrs_prefix_length, HEAP_CACHE_ATTRINFO * attr_info,
-		      HEAP_SCANCACHE * scancache, int unique_pk, int ib_thread_count, const TP_DOMAIN * key_type)
+		      HEAP_SCANCACHE * scancache, int unique_pk, int ib_thread_count, TP_DOMAIN * key_type)
 {
   int ret = NO_ERROR, eval_res;
   OID cur_oid;
@@ -4922,10 +4922,9 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	  p_prefix_length = &(attrs_prefix_length[0]);
 	}
 
-      /* Generate the key. */
+      /* Generate the key : provide key_type domain - needed for compares during sort */
       p_dbvalue = heap_attrinfo_generate_key (thread_p, n_attrs, &attrids[attr_offset], p_prefix_length, attr_info,
-					      &cur_record, &dbvalue, aligned_midxkey_buf, p_func_idx_info,
-                                              const_cast <TP_DOMAIN *>(key_type));
+					      &cur_record, &dbvalue, aligned_midxkey_buf, p_func_idx_info, key_type);
       if (p_dbvalue == NULL)
 	{
 	  ret = ER_FAILED;
