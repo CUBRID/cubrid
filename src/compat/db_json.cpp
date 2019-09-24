@@ -2892,6 +2892,7 @@ db_json_json_string_as_utf8 (std::string raw_json_string)
   JSON_DOC *doc = nullptr;
   if (db_json_get_json_from_str (raw_json_string.c_str (), doc, raw_json_string.length ()) != NO_ERROR)
     {
+      assert (false);
       return "";
     }
 
