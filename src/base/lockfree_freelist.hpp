@@ -27,10 +27,6 @@
 
 #include <atomic>
 #include <cstddef>
-#if !defined (NDEBUG)
-#include <shared_mutex>
-#include <set>
-#endif // DEBUG
 
 namespace lockfree
 {
