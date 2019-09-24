@@ -12383,7 +12383,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   REGU_VARLIST_LIST outptr = NULL;
   REGU_VARIABLE *varptr = NULL;
   DB_VALUE *rightvalp = NULL, *thirdvalp = NULL;
-  bool sysop_started = false;
+  bool subtransaction_started = false;
   OID last_cached_class_oid;
   int tran_index;
   int err = NO_ERROR;
@@ -12608,20 +12608,20 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	}
     }
 
+  log_sysop_start (thread_p);
   if (lock_is_instant_lock_mode (tran_index))
     {
       /* in this function, several instances can be updated, so it need to be atomic */
-      log_sysop_start (thread_p);
-      sysop_started = true;
-
       if (need_ha_replication)
 	{
 	  repl_start_flush_mark (thread_p);
 	}
 
+      /* Subtransaction case. Locks and MVCCID are acquired/released by subtransaction. */
       tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
       assert (tdes != NULL);
       logtb_get_new_subtransaction_mvccid (thread_p, &tdes->mvccinfo);
+      subtransaction_started = true;
     }
 
   for (selupd = list; selupd; selupd = selupd->next)
@@ -12651,22 +12651,35 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
       scan_cache_inited = false;
     }
 
-  if (sysop_started)
+  if (subtransaction_started && need_ha_replication)
     {
-      assert (lock_is_instant_lock_mode (tran_index));
-      if (need_ha_replication)
-	{
-	  repl_end_flush_mark (thread_p, false);
-	}
+      /* Ends previously started marker. */
+      repl_end_flush_mark (thread_p, false);
+    }
+
+  /* Here we need to check instant lock mode, since it may be reseted by qexec_execute_increment. */
+  if (lock_is_instant_lock_mode (tran_index))
+    {
+      /* Subtransaction case. */
+      assert (subtransaction_started);
       log_sysop_commit (thread_p);
+    }
+  else
+    {
+      /* Transaction case. */
+      log_sysop_attach_to_outer (thread_p);
     }
 
 exit:
-  if (sysop_started)
+  /* Release subtransaction resources. */
+  if (subtransaction_started)
     {
+      /* Release subtransaction MVCCID. */
       logtb_complete_sub_mvcc (thread_p, tdes);
+
+      /* Release instant locks, if not already released. */
+      lock_stop_instant_lock_mode (thread_p, tran_index, true);
     }
-  lock_stop_instant_lock_mode (thread_p, tran_index, true);
 
   if (err != NO_ERROR)
     {
@@ -12690,14 +12703,12 @@ exit_on_error:
       scan_cache_inited = false;
     }
 
-  if (sysop_started)
+  if (subtransaction_started && need_ha_replication)
     {
-      if (need_ha_replication)
-	{
-	  repl_end_flush_mark (thread_p, true);
-	}
-      log_sysop_abort (thread_p);
+      /* Ends previously started marker. */
+      repl_end_flush_mark (thread_p, true);
     }
+  log_sysop_abort (thread_p);
 
   /* clear some kinds of error code; it's click counter! */
   ASSERT_ERROR_AND_SET (err);
