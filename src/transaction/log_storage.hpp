@@ -196,7 +196,7 @@ struct log_header
   , eof_lsa (NULL_LSA)
   , smallest_lsa_at_last_chkpt (NULL_LSA)
   , mvcc_op_log_lsa (NULL_LSA)
-  , oldest_visible_mvccid (MVCCID_NULL)
+  , oldest_visible_mvccid (MVCCID_FIRST)
   , newest_block_mvccid (MVCCID_NULL)
   , ha_promotion_time (0)
   , db_restore_time (0)

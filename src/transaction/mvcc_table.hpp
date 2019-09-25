@@ -62,7 +62,7 @@ struct mvcc_trans_status
   void finalize ();
 };
 
-struct mvcctable
+class mvcctable
 {
   public:
     using lowest_active_mvccid_type = std::atomic<MVCCID>;
@@ -84,9 +84,14 @@ struct mvcctable
     void get_two_new_mvccid (MVCCID &first, MVCCID &second);
 
     bool is_active (MVCCID mvccid) const;
-    MVCCID compute_oldest_visible_mvccid () const;
 
     void reset_start_mvccid ();     // not thread safe
+
+    MVCCID get_global_oldest_visible () const;
+    MVCCID update_global_oldest_visible ();
+    void lock_global_oldest_visible ();
+    void unlock_global_oldest_visible ();
+    bool is_global_oldest_visible_locked () const;
 
   private:
 
@@ -111,9 +116,13 @@ struct mvcctable
     /* protect against current transaction status modifications */
     std::mutex m_active_trans_mutex;
 
+    std::atomic<MVCCID> m_oldest_visible;
+    std::atomic<size_t> m_ov_lock_count;
+
     mvcc_trans_status &next_trans_status_start (mvcc_trans_status::version_type &next_version, size_t &next_index);
     void next_tran_status_finish (mvcc_trans_status &next_trans_status, size_t next_index);
     void advance_oldest_active (MVCCID next_oldest_active);
+    MVCCID compute_oldest_visible_mvccid () const;
 };
 
 #endif // !_MVCC_TABLE_H_

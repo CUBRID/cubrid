@@ -72,7 +72,7 @@ class JSON_PATH
 
     std::string dump_json_path () const;
     int parse (const char *path);
-    const JSON_PATH get_parent () const;
+    JSON_PATH get_parent () const;
 
     JSON_VALUE *get (JSON_DOC &jd) const;
     const JSON_VALUE *get (const JSON_DOC &jd) const;

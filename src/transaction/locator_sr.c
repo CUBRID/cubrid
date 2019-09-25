@@ -115,8 +115,6 @@ struct locator_return_nxobj
   int area_offset;		/* Relative offset to recdes->data in the communication area */
 };
 
-extern INT32 vacuum_Global_oldest_visible_blockers_counter;
-
 bool locator_Dont_check_foreign_key = false;
 
 static MHT_TABLE *locator_Mht_classnames = NULL;
@@ -12093,22 +12091,8 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
     }
   scancache_inited = true;
 
-  if (tdes->block_global_oldest_active_until_commit == false)
-    {
-      /* do not allow to advance with vacuum_Global_oldest_active_mvccid */
-      ATOMIC_INC_32 (&vacuum_Global_oldest_visible_blockers_counter, 1);
-      tdes->block_global_oldest_active_until_commit = true;
-    }
-  else
-    {
-      assert (vacuum_Global_oldest_visible_blockers_counter > 0);
-    }
-
-  /* Can't use vacuum_Global_oldest_active_mvccid here. That's because we want to avoid scenarios where VACUUM compute
-   * oldest active mvccid, but didn't set yet vacuum_Global_oldest_active_mvccid, current transaction uses the old
-   * value of vacuum_Global_oldest_active_mvccid, then VACUUM uses updated value of vacuum_Global_oldest_active_mvccid.
-   * In such scenario, VACUUM can remove heap records that can't be removed by the current thread. */
-  threshold_mvccid = logtb_get_oldest_visible_mvccid (thread_p);
+  tdes->lock_global_oldest_visible_mvccid ();
+  threshold_mvccid = log_Gl.mvcc_table.get_global_oldest_visible ();
 
   /* VACUUM all cleanable heap objects before upgrading the domain */
   error = heap_vacuum_all_objects (thread_p, &upd_scancache, threshold_mvccid);
@@ -12675,6 +12659,9 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 
   recdes.data = NULL;
 
+  tdes->lock_global_oldest_visible_mvccid ();
+  threshold_mvccid = log_Gl.mvcc_table.get_global_oldest_visible ();
+
   for (i = 0; i < no_oids; i++)
     {
       if (OID_ISNULL (&oid_list[i]))
@@ -12697,27 +12684,6 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 	  goto exit;
 	}
       is_part_scancache_started = true;
-
-      if (tdes->block_global_oldest_active_until_commit == false)
-	{
-	  /* do not allow to advance with vacuum_Global_oldest_active_mvccid */
-	  ATOMIC_INC_32 (&vacuum_Global_oldest_visible_blockers_counter, 1);
-	  tdes->block_global_oldest_active_until_commit = true;
-	}
-      else
-	{
-	  assert (vacuum_Global_oldest_visible_blockers_counter > 0);
-	}
-
-      if (threshold_mvccid == MVCCID_NULL)
-	{
-	  /* Can't use vacuum_Global_oldest_active_mvccid here. That's because we want to avoid scenarios where VACUUM
-	   * compute oldest active mvccid, but didn't set yet vacuum_Global_oldest_active_mvccid, current transaction
-	   * uses the old value of vacuum_Global_oldest_active_mvccid, then VACUUM uses updated value of
-	   * vacuum_Global_oldest_active_mvccid.
-	   * In such scenario, VACUUM can remove heap records that can't be removed by the current thread. */
-	  threshold_mvccid = logtb_get_oldest_visible_mvccid (thread_p);
-	}
 
       /* VACUUM all cleanable heap objects before upgrading the domain */
       error = heap_vacuum_all_objects (thread_p, &scan_cache, threshold_mvccid);

@@ -179,8 +179,6 @@ static const int LOG_REC_UNDO_MAX_ATTEMPTS = 3;
 /* true: Skip logging, false: Don't skip logging */
 static bool log_No_logging = false;
 
-extern INT32 vacuum_Global_oldest_visible_blockers_counter;
-
 #define LOG_TDES_LAST_SYSOP(tdes) (&(tdes)->topops.stack[(tdes)->topops.last])
 #define LOG_TDES_LAST_SYSOP_PARENT_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->lastparent_lsa)
 #define LOG_TDES_LAST_SYSOP_POSP_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->posp_lsa)
@@ -5282,12 +5280,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 	}
 
       /* Unblock global oldest active update. */
-      if (tdes->block_global_oldest_active_until_commit)
-	{
-	  ATOMIC_INC_32 (&vacuum_Global_oldest_visible_blockers_counter, -1);
-	  tdes->block_global_oldest_active_until_commit = false;
-	  assert (vacuum_Global_oldest_visible_blockers_counter >= 0);
-	}
+      tdes->unlock_global_oldest_visible_mvccid ();
 
       if (iscommitted == LOG_COMMIT)
 	{
@@ -5571,12 +5564,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
       lock_unlock_all (thread_p);
 
       /* Unblock global oldest active update. */
-      if (tdes->block_global_oldest_active_until_commit)
-	{
-	  ATOMIC_INC_32 (&vacuum_Global_oldest_visible_blockers_counter, -1);
-	  tdes->block_global_oldest_active_until_commit = false;
-	  assert (vacuum_Global_oldest_visible_blockers_counter >= 0);
-	}
+      tdes->unlock_global_oldest_visible_mvccid ();
 
       if (iscommitted == LOG_COMMIT)
 	{

@@ -84,7 +84,7 @@ struct sort_args
   PR_EVAL_FNC filter_eval_func;
   FUNCTION_INDEX_INFO *func_index_info;
 
-  MVCCID lowest_active_mvccid;
+  MVCCID oldest_visible_mvccid;
 };
 
 typedef struct btree_page BTREE_PAGE;
@@ -166,6 +166,7 @@ class index_builder_loader_context : public cubthread::entry_manager
     std::atomic<std::uint64_t> m_tasks_executed;
     int m_error_code;
     const TP_DOMAIN* m_key_type;
+    css_conn_entry *m_conn;
 
     index_builder_loader_context () = default;
 
@@ -789,7 +790,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   btid_int.nonleaf_key_type = btree_generate_prefix_domain (&btid_int);
 
   /* Initialize the fields of sorting argument structures */
-  sort_args->lowest_active_mvccid = logtb_get_oldest_visible_mvccid (thread_p);
+  sort_args->oldest_visible_mvccid = log_Gl.mvcc_table.get_global_oldest_visible ();
   sort_args->unique_pk = unique_pk;
   sort_args->not_null_flag = not_null_flag;
   sort_args->hfids = hfids;
@@ -3098,12 +3099,12 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	{
 	  return SORT_ERROR_OCCURRED;
 	}
-      if (MVCC_IS_HEADER_DELID_VALID (&mvcc_header) && MVCC_GET_DELID (&mvcc_header) < sort_args->lowest_active_mvccid)
+      if (MVCC_IS_HEADER_DELID_VALID (&mvcc_header) && MVCC_GET_DELID (&mvcc_header) < sort_args->oldest_visible_mvccid)
 	{
 	  continue;
 	}
       if (MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (&mvcc_header)
-	  && MVCC_GET_INSID (&mvcc_header) < sort_args->lowest_active_mvccid)
+	  && MVCC_GET_INSID (&mvcc_header) < sort_args->oldest_visible_mvccid)
 	{
 	  /* Insert MVCCID is now visible to everyone. Clear it to avoid unnecessary vacuuming. */
 	  MVCC_CLEAR_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_INSID);
@@ -4848,6 +4849,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   load_context.m_error_code = NO_ERROR;
   load_context.m_tasks_executed = 0UL;
   load_context.m_key_type = key_type;
+  load_context.m_conn = thread_p->conn_entry;
 
   /* Start extracting from heap. */
   for (;;)
@@ -5010,12 +5012,14 @@ void
 index_builder_loader_context::on_create (context_type &context)
 {
   context.claim_system_worker ();
+  context.conn_entry = m_conn;
 }
 
 void
 index_builder_loader_context::on_retire (context_type &context)
 {
   context.retire_system_worker ();
+  context.conn_entry = NULL;
 }
 
 void
