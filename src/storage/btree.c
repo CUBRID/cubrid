@@ -5011,6 +5011,10 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 
   VPID curr_vpid;
   pgbuf_get_vpid (page_ptr, &curr_vpid);
+
+  BTREE_NODE_HEADER *header = NULL;
+    
+  header = btree_get_node_header (thread_p, page_ptr);
 #endif
 
   key_cnt = btree_node_number_of_keys (thread_p, page_ptr);
@@ -5041,7 +5045,7 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 #if !defined (NDEBUG)
       page_bounds->add_trace (advance_page_trace
 			      (advance_page_trace::advance_case::ONE_KEY, key_cnt, curr_vpid, page_ptr, *slot_id,
-			       *child_vpid));
+			       *child_vpid, header->max_key_len));
 #endif
 
       return NO_ERROR;
@@ -5137,7 +5141,7 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 #if !defined (NDEBUG)
 	      page_bounds->add_trace (advance_page_trace
 				      (advance_page_trace::advance_case::EQ_KEY, key_cnt, curr_vpid, page_ptr, *slot_id,
-				       *child_vpid));
+				       *child_vpid, header->max_key_len));
 #endif
 	    }
 
@@ -5210,7 +5214,7 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 #if !defined (NDEBUG)
 	  page_bounds->add_trace (advance_page_trace
 				  (advance_page_trace::advance_case::LT_KEY, key_cnt, curr_vpid, page_ptr, *slot_id,
-				   *child_vpid));
+				   *child_vpid, header->max_key_len));
 #endif
 	}
 
@@ -5267,7 +5271,7 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 #if !defined (NDEBUG)
 	  page_bounds->add_trace (advance_page_trace
 				  (advance_page_trace::advance_case::GT_KEY, key_cnt, curr_vpid, page_ptr, *slot_id,
-				   *child_vpid));
+				   *child_vpid, header->max_key_len));
 #endif
 	}
 
@@ -33561,6 +33565,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
       curr_key = insert_list->get_key ();
 
       int key_len = btree_get_disk_size_of_key (curr_key);
+
       /* assuming the key does not exist in page (an existing key requires less space,
        * we may miss adding one more record; this is a less expensive check, we accept the 'loss' */
       bool key_alread_in_page = false;

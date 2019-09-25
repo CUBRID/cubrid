@@ -562,14 +562,17 @@ struct advance_page_trace
   INT16 m_slot_id;
   VPID m_child_vpid;
 
+  int m_max_key_len;
+
   advance_page_trace (advance_case c, int key_cnt, VPID curr_vpid, PAGE_PTR curr_page_ptr, INT16 slot_id,
-                      VPID child_vpid)
+                      VPID child_vpid, int max_key_len)
     : m_adv_case (c)
     , m_key_cnt (key_cnt)
     , m_curr_page_vpid (curr_vpid)
     , m_curr_page_ptr (curr_page_ptr)
     , m_slot_id (slot_id)
     , m_child_vpid (child_vpid)
+    , m_max_key_len (max_key_len)
     {
     }
 };
