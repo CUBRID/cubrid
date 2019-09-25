@@ -137,7 +137,7 @@ namespace cubload
     assert (attrinfo.num_values != -1);
     if (error_code != NO_ERROR)
       {
-	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL, er_msg ());
 	return;
       }
 
@@ -147,7 +147,7 @@ namespace cubload
       {
 	heap_scancache_end (&thread_ref, &scancache);
 	heap_attrinfo_end (&thread_ref, &attrinfo);
-	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL, er_msg ());
 	return;
       }
 
@@ -183,7 +183,7 @@ namespace cubload
 	  {
 	    heap_scancache_end (&thread_ref, &scancache);
 	    heap_attrinfo_end (&thread_ref, &attrinfo);
-	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL, er_msg ());
 	    return;
 	  }
 
@@ -218,9 +218,10 @@ namespace cubload
 	auto found = attr_map.find (attr_name_);
 	if (found == attr_map.end ())
 	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_ATTRIBUTE_NOT_FOUND, 1, attr_name_.c_str ());
 	    heap_scancache_end (&thread_ref, &scancache);
 	    heap_attrinfo_end (&thread_ref, &attrinfo);
-	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	    m_error_handler.on_failure ();
 	    return;
 	  }
 
