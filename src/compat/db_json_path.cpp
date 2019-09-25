@@ -752,6 +752,10 @@ JSON_PATH::dump_json_path () const
 	case PATH_TOKEN::double_wildcard:
 	  res += "**";
 	  break;
+	case PATH_TOKEN::array_end_index:
+	// this case is valid and possible in case of ER_JSON_PATH_DOES_NOT_EXIST
+	// we don't have the JSON in this context and cannot replace '-' with last index
+	// for json_pointer -> json_path conversion so we leave empty suffix
 	default:
 	  assert (false);
 	  break;
