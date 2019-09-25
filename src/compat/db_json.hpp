@@ -61,12 +61,12 @@ enum DB_JSON_TYPE
   DB_JSON_BOOL,
 };
 
-struct JSON_FUNCTION_ARGS_MAPPER
+struct JSON_FUNCTION_ARGS_PREPROCESSOR
 {
   public:
     int init (DB_VALUE *const *args, int argc);
-    ~JSON_FUNCTION_ARGS_MAPPER ();
-    std::vector<DB_VALUE *> m_args;
+    ~JSON_FUNCTION_ARGS_PREPROCESSOR ();
+    std::vector<DB_VALUE *> m_preprocessed_args;
   private:
     std::list<DB_VALUE> m_owned_dbvals;
 };

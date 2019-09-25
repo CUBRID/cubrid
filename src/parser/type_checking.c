@@ -19720,11 +19720,11 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
     }
 
   DB_VALUE **args = in_args;
-  JSON_FUNCTION_ARGS_MAPPER json_args_mapper;
+  JSON_FUNCTION_ARGS_PREPROCESSOR json_args_mapper;
   if (pt_is_json_function (fcode))
     {
       json_args_mapper.init (in_args, num_args);
-      args = json_args_mapper.m_args.data ();
+      args = json_args_mapper.m_preprocessed_args.data ();
     }
 
   /* init array vars */

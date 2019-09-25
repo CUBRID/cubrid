@@ -95,7 +95,7 @@ const INTL_CODESET json_string_codeset = INTL_CODESET_UTF8;
 const int json_string_collation = LANG_COLL_UTF8_BINARY;
 
 int
-JSON_FUNCTION_ARGS_MAPPER::init (DB_VALUE *const *args, int argc)
+JSON_FUNCTION_ARGS_PREPROCESSOR::init (DB_VALUE *const *args, int argc)
 {
   int error_code = NO_ERROR;
   for (int i = 0; i < argc; ++i)
@@ -110,12 +110,12 @@ JSON_FUNCTION_ARGS_MAPPER::init (DB_VALUE *const *args, int argc)
 	      ASSERT_ERROR ();
 	      return error_code;
 	    }
-	  m_args.push_back (&m_owned_dbvals.back ());
+	  m_preprocessed_args.push_back (&m_owned_dbvals.back ());
 	}
     }
 }
 
-JSON_FUNCTION_ARGS_MAPPER::~JSON_FUNCTION_ARGS_MAPPER ()
+JSON_FUNCTION_ARGS_PREPROCESSOR::~JSON_FUNCTION_ARGS_PREPROCESSOR ()
 {
   for (DB_VALUE &dbval : m_owned_dbvals)
     {
