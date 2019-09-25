@@ -109,13 +109,6 @@ namespace cubload
   }
 
   void
-  worker_manager_interrupt ()
-  {
-    assert (g_wp_context_manager != NULL);
-    g_wp_context_manager->interrupt ();
-  }
-
-  void
   worker_manager_push_task (cubthread::entry_task *task)
   {
     assert (g_worker_pool != NULL);
