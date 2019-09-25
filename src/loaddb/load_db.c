@@ -1179,7 +1179,7 @@ static void
 register_signal_handlers ()
 {
   /* *INDENT-OFF* */
-  SIG_HANDLER sig_handler = [] ()
+  static SIG_HANDLER sig_handler = [] ()
   {
     load_interrupted = true;
     loaddb_interrupt ();

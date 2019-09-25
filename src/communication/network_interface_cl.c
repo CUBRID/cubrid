@@ -10088,18 +10088,7 @@ int
 loaddb_interrupt ()
 {
 #if defined(CS_MODE)
-  int rc = ER_FAILED;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  int req_error =
-    net_client_request (NET_SERVER_LD_INTERRUPT, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
-    {
-      or_unpack_int (reply, &rc);
-    }
-
-  return rc;
+  return net_client_request_no_reply (NET_SERVER_LD_INTERRUPT, NULL, 0);
 #else /* CS_MODE */
   return NO_ERROR;
 #endif /* !CS_MODE */
