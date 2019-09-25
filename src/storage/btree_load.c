@@ -3132,6 +3132,12 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
       if (sort_args->func_index_info && sort_args->func_index_info->expr)
 	{
+	  if (snapshot_dirty_satisfied != SNAPSHOT_SATISFIED)
+	    {
+	      /* Check snapshot before key generation. Key generation may leads to errors when a function is involved. */
+	      continue;
+	    }
+
 	  if (heap_attrinfo_read_dbvalues (thread_p, &sort_args->cur_oid, &sort_args->in_recdes, NULL,
 					   sort_args->func_index_info->expr->cache_attrinfo) != NO_ERROR)
 	    {
