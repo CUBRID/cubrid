@@ -2918,16 +2918,18 @@ vacuum_master_task::should_interrupt_iteration () const
   if (vacuum_Data.shutdown_requested)
     {
       // stop on shutdown
-      vacuum_er_log (VACUUM_ER_LOG_MASTER, "Interrupt iteration: shutdown");
+      vacuum_er_log (VACUUM_ER_LOG_MASTER, "%s", "Interrupt iteration: shutdown");
       return true;
     }
 
   if (cubthread::get_manager ()->is_pool_full (vacuum_Worker_threads))
     {
       // stop if worker pool is full
-      vacuum_er_log (VACUUM_ER_LOG_MASTER, "Interrupt iteration: full worker pool");
+      vacuum_er_log (VACUUM_ER_LOG_MASTER, "%s", "Interrupt iteration: full worker pool");
       return true;
     }
+
+  return false;
 }
 
 bool
