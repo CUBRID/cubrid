@@ -91,6 +91,9 @@ typedef rapidjson::GenericArray<true, JSON_VALUE>::ConstValueIterator JSON_VALUE
 
 typedef std::function<int (const JSON_VALUE &, const JSON_PATH &, bool &)> map_func_type;
 
+const INTL_CODESET json_string_codeset = INTL_CODESET_UTF8;
+const int json_string_collation = LANG_COLL_UTF8_BINARY;
+
 namespace cubmem
 {
   template <>
@@ -2754,6 +2757,11 @@ db_json_normalize_path_string (const char *pointer_path, std::string &output)
   output = jp.dump_json_path ();
 
   return NO_ERROR;
+}
+
+int db_json_convert_string_dbval (const DB_VALUE *src_string, DB_VALUE *dest_string)
+{
+  return db_string_convert_to (src_string, dest_string, json_string_codeset, json_string_collation);
 }
 
 int

@@ -6469,6 +6469,33 @@ error_return:
   return error;
 }
 
+
+extern int
+db_string_convert_to (const DB_VALUE * src_str_dbval, DB_VALUE * dest_str_dbval, INTL_CODESET dest_codeset,
+		      int dest_col)
+{
+  assert (src_str_dbval != NULL && dest_str_dbval != NULL);
+
+  DB_TYPE src_str_type = (DB_TYPE) src_str_dbval->domain.general_info.type;
+
+  int dest_precision = QSTR_VALUE_PRECISION (src_str_dbval);
+
+  db_value_domain_init (dest_str_dbval, src_str_type, dest_precision, 0);
+  db_string_put_cs_and_collation (dest_str_dbval, dest_codeset, dest_col);
+
+  DB_DATA_STATUS data_status;
+  int error_code = db_char_string_coerce (src_str_dbval, dest_str_dbval, &data_status);
+  if (error_code != NO_ERROR)
+    {
+      pr_clear_value (dest_str_dbval);
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  assert (data_status == DATA_STATUS_OK);
+
+  return NO_ERROR;
+}
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * db_string_convert () -
