@@ -137,7 +137,7 @@ namespace cubload
     assert (attrinfo.num_values != -1);
     if (error_code != NO_ERROR)
       {
-	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL, er_msg ());
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	return;
       }
 
@@ -147,7 +147,7 @@ namespace cubload
       {
 	heap_scancache_end (&thread_ref, &scancache);
 	heap_attrinfo_end (&thread_ref, &attrinfo);
-	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL, er_msg ());
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	return;
       }
 
@@ -183,7 +183,7 @@ namespace cubload
 	  {
 	    heap_scancache_end (&thread_ref, &scancache);
 	    heap_attrinfo_end (&thread_ref, &attrinfo);
-	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL, er_msg ());
+	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	    return;
 	  }
 
