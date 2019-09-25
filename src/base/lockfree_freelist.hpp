@@ -112,8 +112,6 @@ namespace lockfree
     private:
       friend freelist;
 
-
-
       void set_owner (freelist &m_freelist);
 
       void set_freelist_next (free_node *next);
