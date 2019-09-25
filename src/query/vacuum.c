@@ -2864,6 +2864,7 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
   PERF_UTIME_TRACKER_START (&thread_ref, &perf_tracker);
 
   m_oldest_visible_mvccid = log_Gl.mvcc_table.update_global_oldest_visible ();
+  vacuum_er_log (VACUUM_ER_LOG_MASTER, "update oldest_visible = %lld", (long long int) m_oldest_visible_mvccid);
 
   if (!vacuum_Data.is_loaded)
     {
@@ -2882,7 +2883,7 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
 
   vacuum_Data.update ();
   m_cursor.load ();
-  vacuum_er_log (VACUUM_ER_LOG_MASTER, "Start searching jobs at " vacuum_job_cursor_print_format,
+  vacuum_er_log (VACUUM_ER_LOG_MASTER | VACUUM_ER_LOG_JOBS, "Start searching jobs at " vacuum_job_cursor_print_format,
                  vacuum_job_cursor_print_args (m_cursor));
   for (; m_cursor.is_valid () && !should_interrupt_iteration (); m_cursor.increment_blockid ())
     {
@@ -2917,14 +2918,18 @@ vacuum_master_task::should_interrupt_iteration () const
   if (vacuum_Data.shutdown_requested)
     {
       // stop on shutdown
+      vacuum_er_log (VACUUM_ER_LOG_MASTER, "%s", "Interrupt iteration: shutdown");
       return true;
     }
 
   if (cubthread::get_manager ()->is_pool_full (vacuum_Worker_threads))
     {
       // stop if worker pool is full
+      vacuum_er_log (VACUUM_ER_LOG_MASTER, "%s", "Interrupt iteration: full worker pool");
       return true;
     }
+
+  return false;
 }
 
 bool

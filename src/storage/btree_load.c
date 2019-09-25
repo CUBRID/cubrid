@@ -166,6 +166,7 @@ class index_builder_loader_context : public cubthread::entry_manager
     std::atomic<std::uint64_t> m_tasks_executed;
     int m_error_code;
     const TP_DOMAIN* m_key_type;
+    css_conn_entry *m_conn;
 
     index_builder_loader_context () = default;
 
@@ -4848,6 +4849,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   load_context.m_error_code = NO_ERROR;
   load_context.m_tasks_executed = 0UL;
   load_context.m_key_type = key_type;
+  load_context.m_conn = thread_p->conn_entry;
 
   /* Start extracting from heap. */
   for (;;)
@@ -5010,12 +5012,14 @@ void
 index_builder_loader_context::on_create (context_type &context)
 {
   context.claim_system_worker ();
+  context.conn_entry = m_conn;
 }
 
 void
 index_builder_loader_context::on_retire (context_type &context)
 {
   context.retire_system_worker ();
+  context.conn_entry = NULL;
 }
 
 void
