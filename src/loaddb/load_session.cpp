@@ -315,6 +315,7 @@ namespace cubload
     m_commit_mutex.lock ();
     auto ret = m_tran_indexes.insert (tran_index);
     assert (ret.second);    // it means it was inserted
+    m_commit_mutex.unlock ();
   }
 
   void
