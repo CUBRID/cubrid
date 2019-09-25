@@ -41,6 +41,7 @@ typedef void JSON_ITERATOR;
 #endif
 
 #if defined (__cplusplus)
+#include <list>
 #include <vector>
 
 /*
@@ -58,6 +59,16 @@ enum DB_JSON_TYPE
   DB_JSON_OBJECT,
   DB_JSON_ARRAY,
   DB_JSON_BOOL,
+};
+
+struct JSON_FUNCTION_ARGS_MAPPER
+{
+  public:
+    int init (DB_VALUE *const *args, int argc);
+    ~JSON_FUNCTION_ARGS_MAPPER ();
+    std::vector<DB_VALUE *> m_args;
+  private:
+    std::list<DB_VALUE> m_owned_dbvals;
 };
 
 using JSON_DOC_STORE = cubmem::reference_store<JSON_DOC>;

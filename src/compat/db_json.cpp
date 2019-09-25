@@ -94,6 +94,35 @@ typedef std::function<int (const JSON_VALUE &, const JSON_PATH &, bool &)> map_f
 const INTL_CODESET json_string_codeset = INTL_CODESET_UTF8;
 const int json_string_collation = LANG_COLL_UTF8_BINARY;
 
+int
+JSON_FUNCTION_ARGS_MAPPER::init (DB_VALUE *const *args, int argc)
+{
+  int error_code = NO_ERROR;
+  for (int i = 0; i < argc; ++i)
+    {
+      if (DB_IS_STRING (args[i]))
+	{
+	  m_owned_dbvals.push_back ({});
+	  error_code = db_json_convert_string_dbval (args[i], &m_owned_dbvals.back ());
+	  if (error_code != NO_ERROR)
+	    {
+	      m_owned_dbvals.pop_back ();
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	  m_args.push_back (&m_owned_dbvals.back ());
+	}
+    }
+}
+
+JSON_FUNCTION_ARGS_MAPPER::~JSON_FUNCTION_ARGS_MAPPER ()
+{
+  for (DB_VALUE &dbval : m_owned_dbvals)
+    {
+      pr_clear_value (&dbval);
+    }
+}
+
 namespace cubmem
 {
   template <>
