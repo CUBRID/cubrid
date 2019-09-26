@@ -46,6 +46,7 @@ set(THREAD_SOURCES
   ${THREAD_DIR}/thread_daemon.cpp
   ${THREAD_DIR}/thread_entry.cpp
   ${THREAD_DIR}/thread_entry_task.cpp
+  ${THREAD_DIR}/thread_lockfree_hash_map.cpp
   ${THREAD_DIR}/thread_looper.cpp
   ${THREAD_DIR}/thread_manager.cpp
   ${THREAD_DIR}/thread_waiter.cpp
@@ -58,9 +59,10 @@ set(THREAD_HEADERS
   ${THREAD_DIR}/thread_daemon.hpp
   ${THREAD_DIR}/thread_entry.hpp
   ${THREAD_DIR}/thread_entry_task.hpp
-  ${THREAD_DIR}/thread_task.hpp
+  ${THREAD_DIR}/thread_lockfree_hash_map.hpp
   ${THREAD_DIR}/thread_looper.hpp
   ${THREAD_DIR}/thread_manager.hpp
+  ${THREAD_DIR}/thread_task.hpp
   ${THREAD_DIR}/thread_waiter.hpp
   ${THREAD_DIR}/thread_worker_pool.hpp
   ${THREAD_DIR}/thread_worker_pool_taskcap.hpp
