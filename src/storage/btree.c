@@ -5481,6 +5481,7 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
   INT16 left = 0, right = 0, middle = 0;
   DB_VALUE temp_key;
   RECDES rec;
+  bool is_record_read = false;
   LEAF_REC leaf_pnt;
   int error = NO_ERROR;
 
@@ -5571,6 +5572,8 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
 	  return error;
 	}
 
+      is_record_read = true;
+
       if (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY)
 	{
 	  start_col = MIN (left_start_col, right_start_col);
@@ -5639,7 +5642,7 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
 
   if (c < 0)
     {
-      if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
+      if (is_record_read && btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
 	{
 	  search_key->has_fence_key = btree_search_key_helper::HAS_FENCE_KEY;
 	}
@@ -5661,7 +5664,7 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
     }
   else
     {
-      if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
+      if (is_record_read && btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
 	{
 	  search_key->has_fence_key = btree_search_key_helper::HAS_FENCE_KEY;
 	}
