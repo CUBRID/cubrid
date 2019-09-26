@@ -362,7 +362,7 @@ class lf_hash_table_cpp
     lf_hash_table_cpp ();
 
     void init (lf_tran_system &transys, int hash_size, int freelist_block_count, int freelist_block_size,
-               lf_entry_descriptor &edes, int entry_idx);
+               lf_entry_descriptor &edes);
     void destroy ();
 
     T *find (lf_tran_entry *t_entry, Key &key);
@@ -383,7 +383,6 @@ class lf_hash_table_cpp
 
     lf_freelist m_freelist;
     lf_hash_table m_hash;
-    int m_entry_idx;
 };
 
 //
@@ -394,14 +393,13 @@ template <class Key, class T>
 lf_hash_table_cpp<Key, T>::lf_hash_table_cpp ()
   : m_freelist LF_FREELIST_INITIALIZER
   , m_hash LF_HASH_TABLE_INITIALIZER
-  , m_entry_idx (-1)
 {
 }
 
 template <class Key, class T>
 void
 lf_hash_table_cpp<Key, T>::init (lf_tran_system &transys, int hash_size, int freelist_block_count,
-    int freelist_block_size, lf_entry_descriptor &edesc, int entry_idx)
+                                 int freelist_block_size, lf_entry_descriptor &edesc)
 {
   if (lf_freelist_init (&m_freelist, freelist_block_count, freelist_block_size, &edesc, &transys) != NO_ERROR)
     {
@@ -413,7 +411,6 @@ lf_hash_table_cpp<Key, T>::init (lf_tran_system &transys, int hash_size, int fre
       assert (false);
       return;
     }
-  m_entry_idx = entry_idx;
 }
 
 template <class Key, class T>
