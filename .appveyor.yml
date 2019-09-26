@@ -10,7 +10,18 @@ matrix:
 
 install:
   - cinst ant -i
-  - cinst winflexbison -i
+
+  # cinst is an executable from chocolatey (a package manager for Windows) used to install packages
+  # Chocolatey automatically shims executables in package folders that are not explicitly ignored, putting them into
+  # the "$($env:ChocolateyInstall)\bin" folder. Therefore FindFLEX (cmake function) finds the shim executable and not
+  # the original one. In order to make cmake happy we need to exclude win_flex.exe & win_bison.exe from shimming.
+  # For more details please see: https://chocolatey.org/docs/features-shim#i-need-to-exclude-a-file-from-shimming
+  - ps: Set-Variable -Name "winflexbison3_install_dir" -Value $env:ChocolateyInstall\lib\winflexbison3\tools
+  - ps: New-Item -ItemType Directory -Force -Path $winflexbison3_install_dir | Out-Null
+  - ps: New-Item -Path $winflexbison3_install_dir -Name win_flex.exe.ignore -type file -force | Out-Null
+  - ps: New-Item -Path $winflexbison3_install_dir -Name win_bison.exe.ignore -type file -force | Out-Null
+  - ps: $env:Path += ";$winflexbison3_install_dir"
+  - cinst winflexbison3 -i
 
 build_script:
   - cmake -E make_directory build

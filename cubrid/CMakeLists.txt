@@ -63,6 +63,7 @@ set(THREAD_HEADERS
   ${THREAD_DIR}/thread_manager.hpp
   ${THREAD_DIR}/thread_waiter.hpp
   ${THREAD_DIR}/thread_worker_pool.hpp
+  ${THREAD_DIR}/thread_worker_pool_taskcap.hpp
   )
 
 set(BASE_SOURCES
@@ -345,6 +346,33 @@ set(XASL_HEADERS
   ${XASL_DIR}/xasl_stream.hpp
   )
 
+set(LOADDB_SOURCES
+  ${BISON_loader_grammar_OUTPUT_SOURCE}
+  ${FLEX_loader_lexer_OUTPUTS}
+  ${LOADDB_DIR}/load_class_registry.cpp
+  ${LOADDB_DIR}/load_common.cpp
+  ${LOADDB_DIR}/load_db_value_converter.cpp
+  ${LOADDB_DIR}/load_driver.cpp
+  ${LOADDB_DIR}/load_error_handler.cpp
+  ${LOADDB_DIR}/load_semantic_helper.cpp
+  ${LOADDB_DIR}/load_server_loader.cpp
+  ${LOADDB_DIR}/load_session.cpp
+  ${LOADDB_DIR}/load_worker_manager.cpp
+  )
+
+set(LOADDB_HEADERS
+  ${BISON_loader_grammar_OUTPUT_HEADER}
+  ${LOADDB_DIR}/load_class_registry.hpp
+  ${LOADDB_DIR}/load_common.hpp
+  ${LOADDB_DIR}/load_db_value_converter.hpp
+  ${LOADDB_DIR}/load_driver.hpp
+  ${LOADDB_DIR}/load_error_handler.hpp
+  ${LOADDB_DIR}/load_semantic_helper.hpp
+  ${LOADDB_DIR}/load_server_loader.hpp
+  ${LOADDB_DIR}/load_session.hpp
+  ${LOADDB_DIR}/load_worker_manager.hpp
+  )
+
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
 if(UNIX)
   list(APPEND BASE_SOURCES ${BASE_DIR}/cubrid_getopt_long.c)
@@ -358,6 +386,8 @@ else(UNIX)
 endif(UNIX)
 
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
+set_source_files_properties(${BISON_loader_grammar_OUTPUTS} PROPERTIES GENERATED true)
+set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED true)
 
 if(UNIX)
   set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
@@ -376,6 +406,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
   ${JSP_SOURCES}
+  ${LOADDB_SOURCES}
   ${MONITOR_SOURCES}
   ${OBJECT_SOURCES}
   ${PARSER_SOURCES}
@@ -404,6 +435,7 @@ set (CUBRID_LIB_SOURCES
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
   ${JSP_SOURCES}
+  ${LOADDB_SOURCES}
   ${MONITOR_SOURCES}
   ${OBJECT_SOURCES}
   ${PROBES_OBJECT}
@@ -425,6 +457,7 @@ set (CUBRID_LIB_HEADERS
   ${THREAD_HEADERS}
   ${TRANSACTION_HEADERS}
   ${XASL_HEADERS}
+  ${LOADDB_HEADERS}
   )
 
 add_library(cubrid SHARED
@@ -443,20 +476,26 @@ if(NOT USE_CUBRID_ENV)
 endif(NOT USE_CUBRID_ENV)
 if(WIN32)
   set_source_files_properties(${HEAPLAYERS_DIR}/customheaps.cpp PROPERTIES COMPILE_FLAGS -Od)
+  set_source_files_properties(
+    ${LOADER_GRAMMAR_OUTPUT}
+    ${LOADER_LEXER_OUTPUT}
+    PROPERTIES COMPILE_FLAGS /WX-
+  )
   if(TARGET_PLATFORM_BITS EQUAL 32)
     target_compile_definitions(cubrid PRIVATE _USE_32BIT_TIME_T)
   endif(TARGET_PLATFORM_BITS EQUAL 32)
   target_link_libraries(cubrid LINK_PRIVATE ws2_32 ${JVM_LIBS})
   set_target_properties(cubrid PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/libcubrid/libcubrid.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)
-target_include_directories(cubrid PRIVATE ${CMAKE_SOURCE_DIR}/src/heaplayers/util ${JAVA_INC} ${EP_INCLUDES})
+target_include_directories(cubrid PRIVATE ${CMAKE_SOURCE_DIR}/src/heaplayers/util ${JAVA_INC} ${EP_INCLUDES} ${FLEX_INCLUDE_DIRS})
 if(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubrid LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
 else(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
-add_dependencies(cubrid ${EP_TARGETS})
+
+add_dependencies(cubrid ${EP_TARGETS} gen_loader_grammar gen_loader_lexer)
 
 if(AT_LEAST_ONE_UNIT_TEST)
   if (WIN32)

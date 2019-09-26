@@ -17,8 +17,6 @@
 #
 
 set(EXECUTABLE_SOURCES
-  ${BISON_loader_grammar_OUTPUTS}
-  ${FLEX_loader_lexer_OUTPUTS}
   ${EXECUTABLES_DIR}/compactdb_cl.c
   ${EXECUTABLES_DIR}/csql.c
   ${EXECUTABLES_DIR}/csql_result.c
@@ -27,10 +25,6 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/csql_support.c
   ${EXECUTABLES_DIR}/extract_schema.cpp
   ${EXECUTABLES_DIR}/file_hash.c
-  ${EXECUTABLES_DIR}/load_object.c
-  ${EXECUTABLES_DIR}/loaddb.c
-  ${EXECUTABLES_DIR}/loader.c
-  ${EXECUTABLES_DIR}/loader_object_table.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/unloaddb.c
@@ -303,7 +297,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/es.c
   ${STORAGE_DIR}/es_posix.c
   )
-  
+
 set(XASL_SOURCES
   ${XASL_DIR}/access_json_table.cpp
   ${XASL_DIR}/xasl_analytic.cpp
@@ -320,6 +314,18 @@ set(XASL_HEADERS
   ${XASL_DIR}/xasl_unpack_info.hpp
   ${XASL_DIR}/xasl_predicate.hpp
   ${XASL_DIR}/xasl_stream.hpp
+  )
+
+
+set(LOADDB_SOURCES
+  ${LOADDB_DIR}/load_common.cpp
+  ${LOADDB_DIR}/load_db.c
+  ${LOADDB_DIR}/load_object.c
+  )
+
+set(LOADDB_HEADERS
+  ${LOADDB_DIR}/load_common.hpp
+  ${LOADDB_DIR}/load_object.h
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
@@ -361,10 +367,6 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/csql_session.c
   ${EXECUTABLES_DIR}/csql_support.c
   ${EXECUTABLES_DIR}/file_hash.c
-  ${EXECUTABLES_DIR}/load_object.c
-  ${EXECUTABLES_DIR}/loaddb.c
-  ${EXECUTABLES_DIR}/loader.c
-  ${EXECUTABLES_DIR}/loader_object_table.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/unloaddb.c
@@ -403,14 +405,13 @@ SET_SOURCE_FILES_PROPERTIES(
   ${ES_SOURCES}
   ${PROBES_OBJECT}
   ${XASL_SOURCES}
+  ${LOADDB_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 SET_SOURCE_FILES_PROPERTIES(
   ${BASE_DIR}/md5.c
   ${CSQL_GRAMMAR_OUTPUT}
-  ${LOADER_GRAMMAR_OUTPUT}
   ${CSQL_LEXER_OUTPUT}
-  ${LOADER_LEXER_OUTPUT}
   ${ESQL_GRAMMAR_OUTPUT}
   ${ESQL_LEXER_OUTPUT}
   ${COMPAT_SOURCES_C}
@@ -443,6 +444,8 @@ add_library(cubridcs SHARED
   ${STORAGE_SOURCES}
   ${XASL_HEADERS}
   ${XASL_SOURCES}
+  ${LOADDB_SOURCES}
+  ${LOADDB_HEADERS}
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
@@ -469,7 +472,7 @@ if(WIN32)
   target_link_libraries(cubridcs LINK_PRIVATE ws2_32)
   set_target_properties(cubridcs PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/cubridcs/cubridcs.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)
-target_include_directories(cubridcs PRIVATE ${CMAKE_SOURCE_DIR}/src/heaplayers/util ${EP_INCLUDES})
+target_include_directories(cubridcs PRIVATE ${CMAKE_SOURCE_DIR}/src/heaplayers/util ${FLEX_INCLUDE_DIRS} ${EP_INCLUDES})
 if(UNIX)
   target_link_libraries(cubridcs LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubridcs LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
@@ -478,7 +481,6 @@ else(UNIX)
 endif(UNIX)
 
 add_dependencies(cubridcs gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
-
 add_dependencies(cubridcs ${EP_TARGETS})
 
 if(ENABLE_SYSTEMTAP)
@@ -490,7 +492,6 @@ install(TARGETS cubridcs
   RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Library
   LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
   )
-
 
 # install pdb files for debugging on windows
 if(WIN32)

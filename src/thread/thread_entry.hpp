@@ -70,6 +70,10 @@ namespace cubsync
 {
   class critical_section_tracker;
 }
+namespace cubload
+{
+  class driver;
+}
 
 // for lock-free - FIXME
 enum
@@ -121,6 +125,7 @@ enum thread_type
   TT_SERVER,
   TT_WORKER,
   TT_DAEMON,
+  TT_LOADDB,
   TT_VACUUM_MASTER,
   TT_VACUUM_WORKER,
   TT_NONE
@@ -274,6 +279,8 @@ namespace cubthread
       int count_private_allocators;
 #endif
       int m_qlist_count;
+
+      cubload::driver *m_loaddb_driver;
 
       thread_id_t get_id ();
       pthread_t get_posix_id ();

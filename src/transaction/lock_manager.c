@@ -2920,6 +2920,12 @@ lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, LK_TRAN_LO
 {
   LK_ENTRY *superclass_entry = NULL;
 
+  if (class_entry->granted_mode == BU_LOCK)
+    {
+      // disallow lock escalation for bulk updates
+      return false;
+    }
+
   if (tran_lock->lock_escalation_on == true)
     {
       /* An another thread of current transaction is doing lock escalation. Therefore, the current thread gives up

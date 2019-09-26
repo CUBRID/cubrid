@@ -17,28 +17,17 @@
  *
  */
 
-
 /*
- * loader_disk.h: loader transformer disk access module
+ * test_loaddb.hpp - implementation for loaddb parse tests
  */
 
-#ifndef _LOADER_DISK_H_
-#define _LOADER_DISK_H_
+#ifndef _TEST_LOADDB_PASRE_HPP_
+#define _TEST_LOADDB_PASRE_HPP_
 
-#ident "$Id$"
+namespace test_loaddb
+{
+  void test_parse_with_multiple_threads ();
+  void test_parse_reusing_driver ();
+}; // namespace test_loaddb
 
-#include "load_object.h"
-
-/* Module control */
-extern int disk_init (void);
-extern void disk_final (void);
-
-/* Instance operations */
-extern int disk_reserve_instance (MOP classop, OID * oid);
-extern int disk_insert_instance (MOP classop, DESC_OBJ * obj, OID * oid);
-extern int disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern int disk_insert_instance_using_mobj (MOP classop, MOBJ classobj, MOBJ obj, OID * oid);
-extern int disk_update_instance_using_mobj (MOP classop, MOBJ classobj, MOBJ obj, OID * oid);
-#endif
-#endif /* _LOADER_DISK_H_ */
+#endif //_TEST_LOADDB_PASRE_HPP_

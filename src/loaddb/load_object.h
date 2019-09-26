@@ -17,18 +17,16 @@
  *
  */
 
-
 /*
- *      load_object.h: simplified object definitions
+ * load_object.h: simplified object definitions
  */
 
 #ifndef _LOAD_OBJECT_H_
 #define _LOAD_OBJECT_H_
 
-#ident "$Id$"
-
 #include "dbtype_def.h"
 #include "class_object.h"
+#include <vector>
 
 class print_output;
 
@@ -89,5 +87,9 @@ extern int desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value);
 extern void desc_value_print (print_output & output_ctx, DB_VALUE * value);
 extern int er_filter_fileset (FILE * ef);
 extern int er_filter_errid (bool ignore_warning);
+
+/* *INDENT-OFF* */
+extern void get_ignored_errors (std::vector<int> &vec);
+/* *INDENT-ON* */
 
 #endif /* _LOAD_OBJECT_H_ */

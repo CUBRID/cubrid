@@ -84,7 +84,7 @@ struct sort_args
   PR_EVAL_FNC filter_eval_func;
   FUNCTION_INDEX_INFO *func_index_info;
 
-  MVCCID lowest_active_mvccid;
+  MVCCID oldest_visible_mvccid;
 };
 
 typedef struct btree_page BTREE_PAGE;
@@ -166,6 +166,7 @@ class index_builder_loader_context : public cubthread::entry_manager
     std::atomic<std::uint64_t> m_tasks_executed;
     int m_error_code;
     const TP_DOMAIN* m_key_type;
+    css_conn_entry *m_conn;
 
     index_builder_loader_context () = default;
 
@@ -191,6 +192,10 @@ class index_builder_loader_task: public cubthread::entry_task
     index_builder_loader_context & m_load_context; // Loader context.
     size_t m_memsize;
 
+    std::atomic<int> &m_num_keys;
+    std::atomic<int> &m_num_oids;
+    std::atomic<int> &m_num_nulls;
+
   public:
     enum batch_key_status
     {
@@ -200,7 +205,8 @@ class index_builder_loader_task: public cubthread::entry_task
     };
 
     index_builder_loader_task (const BTID * btid, const OID * class_oid, int unique_pk,
-                               index_builder_loader_context & load_context);
+                               index_builder_loader_context & load_context, std::atomic<int> &num_keys,
+			       std::atomic<int> &num_oids, std::atomic<int> &num_nulls);
     ~index_builder_loader_task ();
     
     // add key to key set and return true if task is ready for execution, false otherwise
@@ -789,7 +795,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   btid_int.nonleaf_key_type = btree_generate_prefix_domain (&btid_int);
 
   /* Initialize the fields of sorting argument structures */
-  sort_args->lowest_active_mvccid = logtb_get_oldest_visible_mvccid (thread_p);
+  sort_args->oldest_visible_mvccid = log_Gl.mvcc_table.get_global_oldest_visible ();
   sort_args->unique_pk = unique_pk;
   sort_args->not_null_flag = not_null_flag;
   sort_args->hfids = hfids;
@@ -3098,12 +3104,12 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	{
 	  return SORT_ERROR_OCCURRED;
 	}
-      if (MVCC_IS_HEADER_DELID_VALID (&mvcc_header) && MVCC_GET_DELID (&mvcc_header) < sort_args->lowest_active_mvccid)
+      if (MVCC_IS_HEADER_DELID_VALID (&mvcc_header) && MVCC_GET_DELID (&mvcc_header) < sort_args->oldest_visible_mvccid)
 	{
 	  continue;
 	}
       if (MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (&mvcc_header)
-	  && MVCC_GET_INSID (&mvcc_header) < sort_args->lowest_active_mvccid)
+	  && MVCC_GET_INSID (&mvcc_header) < sort_args->oldest_visible_mvccid)
 	{
 	  /* Insert MVCCID is now visible to everyone. Clear it to avoid unnecessary vacuuming. */
 	  MVCC_CLEAR_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_INSID);
@@ -3132,6 +3138,12 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
       if (sort_args->func_index_info && sort_args->func_index_info->expr)
 	{
+	  if (snapshot_dirty_satisfied != SNAPSHOT_SATISFIED)
+	    {
+	      /* Check snapshot before key generation. Key generation may leads to errors when a function is involved. */
+	      continue;
+	    }
+
 	  if (heap_attrinfo_read_dbvalues (thread_p, &sort_args->cur_oid, &sort_args->in_recdes, NULL,
 					   sort_args->func_index_info->expr->cache_attrinfo) != NO_ERROR)
 	    {
@@ -4822,6 +4834,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
   index_builder_loader_context load_context;
   bool is_parallel = ib_thread_count > 0;
+  std::atomic<int> num_keys = {0}, num_oids = {0}, num_nulls = {0};
 
   std::unique_ptr<index_builder_loader_task> load_task = NULL;
 
@@ -4848,6 +4861,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   load_context.m_error_code = NO_ERROR;
   load_context.m_tasks_executed = 0UL;
   load_context.m_key_type = key_type;
+  load_context.m_conn = thread_p->conn_entry;
 
   /* Start extracting from heap. */
   for (;;)
@@ -4936,7 +4950,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
         {
           // create a new task
 	  load_task.reset (new index_builder_loader_task (btid_int->sys_btid, &class_oids[cur_class], unique_pk,
-							  load_context));
+							  load_context, num_keys, num_oids, num_nulls));
         }
       if (load_task->add_key (p_dbvalue, cur_oid) == index_builder_loader_task::BATCH_FULL)
         {
@@ -4997,6 +5011,8 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 
   thread_get_manager ()->destroy_worker_pool (ib_workpool);
 
+  logtb_tran_update_btid_unique_stats (thread_p, btid_int->sys_btid, num_keys, num_oids, num_nulls);
+
   return ret;
 }
 
@@ -5010,12 +5026,14 @@ void
 index_builder_loader_context::on_create (context_type &context)
 {
   context.claim_system_worker ();
+  context.conn_entry = m_conn;
 }
 
 void
 index_builder_loader_context::on_retire (context_type &context)
 {
   context.retire_system_worker ();
+  context.conn_entry = NULL;
 }
 
 void
@@ -5025,8 +5043,12 @@ index_builder_loader_context::on_recycle (context_type &context)
 }
 
 index_builder_loader_task::index_builder_loader_task (const BTID *btid, const OID *class_oid, int unique_pk,
-						      index_builder_loader_context &load_context)
-  : m_load_context (load_context)
+						      index_builder_loader_context &load_context, std::atomic<int> &num_keys,
+						      std::atomic<int> &num_oids, std::atomic<int> &num_nulls)
+  : m_load_context (load_context),
+    m_num_keys (num_keys),
+    m_num_oids (num_oids),
+    m_num_nulls (num_nulls)
 {
   BTID_COPY (&m_btid, btid);
   COPY_OID (&m_class_oid, class_oid);
@@ -5087,6 +5109,7 @@ index_builder_loader_task::execute (cubthread::entry &thread_ref)
 {
   int ret = NO_ERROR;
   size_t key_count = 0;
+  LOG_TRAN_BTID_UNIQUE_STATS *p_unique_stats;
 
   /* Check for possible errors set by the other threads. */
   if (m_load_context.m_has_error)
@@ -5111,6 +5134,19 @@ index_builder_loader_task::execute (cubthread::entry &thread_ref)
 
       cubmem::switch_to_global_allocator_and_call (pr_clear_value, &key_oid.m_key);
       key_count++;
+    }
+
+  p_unique_stats = logtb_tran_find_btid_stats (&thread_ref, &m_btid, false);
+  if (p_unique_stats != NULL)
+    {
+      /* Cumulates and resets statistics */
+      m_num_keys += p_unique_stats->tran_stats.num_keys;
+      m_num_oids += p_unique_stats->tran_stats.num_oids;
+      m_num_nulls += p_unique_stats->tran_stats.num_nulls;
+
+      p_unique_stats->tran_stats.num_keys = 0;
+      p_unique_stats->tran_stats.num_oids = 0;
+      p_unique_stats->tran_stats.num_nulls = 0;
     }
 
   /* Increment tasks executed. */

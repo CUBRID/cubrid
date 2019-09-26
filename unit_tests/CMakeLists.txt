@@ -34,7 +34,7 @@ option (UNIT_TEST_THREAD "Unit testing: thread module")
 option (UNIT_TEST_PACKING "Unit testing: packing")
 option (UNIT_TEST_RESOURCE_TRACKER "Unit testing: resource tracker")
 option (UNIT_TEST_MONITOR "Unit testing: monitor")
-
+option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
 
 message("  unit_tests/...")
 
@@ -78,7 +78,16 @@ if (UNIT_TESTS OR UNIT_TEST_RESOURCE_TRACKER)
   add_subdirectory(resource_tracker)
 endif(UNIT_TESTS OR UNIT_TEST_RESOURCE_TRACKER)
 
+if (UNIT_TESTS OR UNIT_TEST_STREAM)
+  message("    stream")
+  add_subdirectory(stream)
+endif(UNIT_TESTS OR UNIT_TEST_STREAM)
+
 if (UNIT_TESTS OR UNIT_TEST_MONITOR)
   message("    monitor")
   add_subdirectory(monitor)
 endif(UNIT_TESTS OR UNIT_TEST_MONITOR)
+if (UNIT_TESTS OR UNIT_TEST_REPLICATION)
+  message("    replication")
+  add_subdirectory(replication)
+endif(UNIT_TESTS OR UNIT_TEST_REPLICATION)

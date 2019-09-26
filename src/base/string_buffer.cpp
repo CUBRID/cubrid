@@ -44,7 +44,7 @@ void string_buffer::add_bytes (size_t len, const char *bytes)
  */
 void
 string_buffer::hex_dump (const string_buffer &in, const size_t max_to_dump,
-                         const size_t line_size, const bool print_ascii)
+			 const size_t line_size, const bool print_ascii)
 {
   const char *buf = in.get_buffer ();
   size_t buf_len = std::min (max_to_dump, in.len ());
