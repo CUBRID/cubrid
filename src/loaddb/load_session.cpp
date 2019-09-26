@@ -490,6 +490,11 @@ namespace cubload
   int
   session::load_batch (cubthread::entry &thread_ref, const batch &batch)
   {
+    if (is_failed ())
+      {
+	return ER_FAILED;
+      }
+
     update_atomic_value_with_max (m_max_batch_id, batch.get_id ());
 
     if (batch.get_content ().empty ())
