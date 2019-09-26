@@ -52,7 +52,7 @@ namespace lockfree
     class descriptor
     {
       public:
-	descriptor () = default;
+	descriptor ();
 	~descriptor ();
 
 	// retire a lock-free data structure node
@@ -70,8 +70,13 @@ namespace lockfree
 
 	id get_transaction_id () const;
 
-      private:
 	void reclaim_retired_list ();
+
+	size_t get_total_retire_count () const;
+	size_t get_total_reclaim_count () const;
+	size_t get_current_retire_count () const;
+
+      private:
 	void reclaim_retired_head ();
 
 	table *m_table;
@@ -80,6 +85,10 @@ namespace lockfree
 	reclaimable_node *m_retired_head;
 	reclaimable_node *m_retired_tail;
 	bool m_did_incr;
+
+	// stats
+	size_t m_retire_count;
+	size_t m_reclaim_count;
     };
   } // namespace tran
 } // namespace lockfree

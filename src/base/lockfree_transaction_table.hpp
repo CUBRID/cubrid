@@ -63,9 +63,16 @@ namespace lockfree
 
 	descriptor &get_descriptor (const index &tran_index);
 
+	void start_tran (const index &tran_index);
+	void end_tran (const index &tran_index);
+
 	id get_current_global_tranid () const;
 	id get_new_global_tranid ();
 	id get_min_active_tranid () const;
+
+	size_t get_total_retire_count () const;
+	size_t get_total_reclaim_count () const;
+	size_t get_current_retire_count () const;
 
       private:
 	/* number of transactions between computing min_active_transaction_id */
