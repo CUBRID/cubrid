@@ -34,6 +34,7 @@
 #include <condition_variable>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 
 namespace cubload
@@ -107,12 +108,13 @@ namespace cubload
       void wait_for_completion ();
       void wait_for_previous_batch (batch_id id);
       void notify_batch_done (batch_id id);
+      void notify_batch_done_and_register_tran_end (batch_id id, int tran_index);
+      void register_tran_start (int tran_index);
 
       void on_error (std::string &err_msg);
 
-      void fail ();
+      void fail (bool has_lock = false);
       bool is_failed ();
-
       void interrupt ();
 
       void fetch_stats (stats &stats_);
@@ -138,6 +140,7 @@ namespace cubload
 
       std::mutex m_commit_mutex;
       std::condition_variable m_commit_cond_var;
+      std::set<int> m_tran_indexes;
 
       load_args m_args;
       batch_id m_last_batch_id;

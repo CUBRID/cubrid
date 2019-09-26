@@ -892,7 +892,7 @@ net_client_request_no_reply (int request, char *argbuf, int argsize)
 
   error = NO_ERROR;
 
-  assert (request == NET_SERVER_LOG_SET_INTERRUPT);
+  assert (request == NET_SERVER_LOG_SET_INTERRUPT || request == NET_SERVER_LD_INTERRUPT);
 
   if (net_Server_name[0] == '\0')
     {
