@@ -606,6 +606,14 @@ struct btree_insert_list
       KEY_NOT_AVAILABLE
     };
 
+
+  int m_debug_consecutive_inserts;
+  BTREE_SEARCH m_debug_last_min_max_search_result;
+  PGSLOTID m_debug_last_min_max_slotid;
+
+  BTREE_SEARCH m_debug_last_search_search_result;
+  PGSLOTID m_debug_last_search_slotid;
+
   std::vector<key_oid> m_keys_oids;
   std::vector<key_oid*> m_sorted_keys_oids;
 

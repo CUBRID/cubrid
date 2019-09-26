@@ -33534,6 +33534,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
   PERF_UTIME_TRACKER time_insert_same_leaf = PERF_UTIME_TRACKER_INITIALIZER;
   PERF_UTIME_TRACKER_START (thread_p, &time_insert_same_leaf);
 
+  insert_list->m_debug_consecutive_inserts = 0;
   while (1)
     {
       error_code = btree_key_online_index_IB_insert (thread_p, btid_int, curr_key, leaf_page, search_key, restart,
@@ -33542,6 +33543,8 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	{
 	  break;
 	}
+
+      insert_list->m_debug_consecutive_inserts++;
 
       DISK_ISVALID valid = btree_check_page_key (thread_p, NULL, btid_int, NULL, *leaf_page, NULL);
       assert (valid == DISK_VALID);
@@ -33611,6 +33614,8 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	{
 	  break;
 	}
+      insert_list->m_debug_last_min_max_search_result = search_key->result;
+      insert_list->m_debug_last_min_max_slotid = search_key->slotid;
 
       if (search_key->result == BTREE_ERROR_OCCURRED || search_key->result == BTREE_KEY_SMALLER
 	  || search_key->result == BTREE_KEY_BIGGER)
@@ -33636,6 +33641,8 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	{
 	  break;
 	}
+      insert_list->m_debug_last_search_search_result = search_key->result;
+      insert_list->m_debug_last_search_slotid = search_key->slotid;
 
       if (search_key->result != BTREE_KEY_BETWEEN && search_key->result != BTREE_KEY_FOUND
 	  && search_key->result != BTREE_KEY_BIGGER && search_key->result != BTREE_KEY_SMALLER)
