@@ -1256,13 +1256,17 @@ vacuum_stop (THREAD_ENTRY * thread_p)
 #if defined (SERVER_MODE)
       vacuum_Worker_threads->er_log_stats ();
 #endif // SERVER_MODE
-      thread_manager->destroy_worker_pool (vacuum_Worker_threads);
+      vacuum_Worker_threads->stop_execution ();
     }
 
   // stop master daemon
   if (vacuum_Master_daemon != NULL)
     {
       thread_manager->destroy_daemon (vacuum_Master_daemon);
+    }
+  if (vacuum_Worker_threads != NULL)
+    {
+      thread_manager->destroy_worker_pool (vacuum_Worker_threads);
     }
 
   delete vacuum_Master_context_manager;
