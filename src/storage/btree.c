@@ -5564,7 +5564,7 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
       if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
 	{
 	  search_key->has_fence_key = btree_search_key_helper::HAS_FENCE_KEY;
-        }
+	}
 
       error =
 	btree_read_record_without_decompression (thread_p, btid, &rec, &temp_key, &leaf_pnt, BTREE_LEAF_NODE,
