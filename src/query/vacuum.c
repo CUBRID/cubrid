@@ -1255,8 +1255,8 @@ vacuum_stop (THREAD_ENTRY * thread_p)
     {
 #if defined (SERVER_MODE)
       vacuum_Worker_threads->er_log_stats ();
-#endif // SERVER_MODE
       vacuum_Worker_threads->stop_execution ();
+#endif // SERVER_MODE
     }
 
   // stop master daemon
