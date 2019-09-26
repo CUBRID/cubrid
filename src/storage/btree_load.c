@@ -4827,7 +4827,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
   index_builder_loader_context load_context;
   bool is_parallel = ib_thread_count > 0;
-  std::atomic<int> num_keys = 0, num_oids = 0, num_nulls = 0;
+  std::atomic<int> num_keys = {0}, num_oids = {0}, num_nulls = {0};
 
   std::unique_ptr<index_builder_loader_task> load_task = NULL;
 
