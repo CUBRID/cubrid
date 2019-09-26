@@ -298,13 +298,12 @@ namespace lockfree
 	force_alloc_block ();
 	node = pop_from_available ();
       }
+
     assert (node != NULL);
-    if (m_available_count-- == 0)
-      {
-	// this is broken
-	assert (false);
-      }
+    assert (m_available_count > 0);
+    m_available_count--;
     check_my_pointer (node);
+
     return node;
   }
 
