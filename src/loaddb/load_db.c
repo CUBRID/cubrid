@@ -187,28 +187,40 @@ ldr_check_file (std::string & file_name, int &error_code)
 static int
 ldr_get_start_line_no (std::string & file_name)
 {
+  // default start from line no 1
+  int line_no = 1;
+
   if (!file_name.empty ())
     {
-      const char *p = strchr (file_name.c_str (), ':');
-      if (p != NULL)
+      std::string::size_type p = file_name.find (':');
+      if (p != std::string::npos)
 	{
-	  const char *q;
-	  for (q = p + 1; *q; q++)
+	  std::string::size_type q = p + 1;
+	  for (; q != std::string::npos; ++q)
 	    {
-	      if (!char_isdigit (*q))
+	      if (!char_isdigit (file_name[q]))
 		{
 		  break;
 		}
 	    }
-	  if (*q == 0)
+	  if (file_name[q] == 0)
 	    {
-	      return atoi (p + 1);
+	      try
+	      {
+		line_no = std::stoi (file_name.substr (p + 1));
+	      }
+	      catch (...)
+	      {
+		// parse failed, fallback to default value
+	      }
+
+	      // remove line no from file name
+	      file_name.resize (p);
 	    }
 	}
     }
 
-  // default start from line no 1
-  return 1;
+  return line_no;
 }
 
 static char *
@@ -623,12 +635,14 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       goto error_return;
     }
 
+#if defined(CS_MODE)
   if (args.load_only)
     {
       /* This is the default behavior. It is changed from the old one so we notify the user. */
-      print_log_msg (1, "\n--load-only is deprecated. To check the object file \
-                         for any syntax errors use --data-file-check-only.\n");
+      print_log_msg (1, "\n--load-only parameter is not supported on Client-Server mode. ");
+      print_log_msg (1, "The default behavior of loaddb is loading without checking the file.\n");
     }
+#endif
 
   /* if schema file is specified, do schema loading */
   if (schema_file != NULL)
@@ -689,22 +703,34 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       schema_file = NULL;
     }
 
-  if (args.syntax_check)
+  if (!args.object_file.empty ())
     {
-      print_log_msg (1, "\nStart object syntax checking.\n");
-    }
-  else
-    {
-      print_log_msg (1, "\nStart object loading.\n");
-    }
+      if (args.syntax_check)
+	{
+	  print_log_msg (1, "\nStart object syntax checking.\n");
+	}
+      else
+	{
+	  print_log_msg (1, "\nStart object loading.\n");
+	}
+
 #if defined (SA_MODE)
-  ldr_sa_load (&args, &status, &interrupted);
+      ldr_sa_load (&args, &status, &interrupted);
 #else // !SA_MODE = CS_MODE
-  ldr_server_load (&args, &status, &interrupted);
+      ldr_server_load (&args, &status, &interrupted);
 #endif // !SA_MODE = CS_MODE
 
+      if (interrupted || status != 0)
+	{
+	  // failed
+	  db_end_session ();
+	  db_shutdown ();
+	  goto error_return;
+	}
+    }
+
   /* if index file is specified, do index creation */
-  if (!interrupted && index_file != NULL)
+  if (index_file != NULL)
     {
       print_log_msg (1, "\nStart index loading.\n");
       if (ldr_exec_query_from_file (args.index_file.c_str (), index_file, &index_file_start_line, &args) != 0)

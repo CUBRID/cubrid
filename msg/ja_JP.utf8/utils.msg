@@ -445,8 +445,10 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 117 Load failed.\n
 118 Maximum length of class name is %1$d bytes.\n
 119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
-120 Class %1$s is ignored. \n
-121 \
+120 data file does not contain '%%class' specifier or '--table' option is missing\n
+121 Class %1$s is ignored. \n
+122 \
+
 loaddb: データベースにオブジェクトやスキーマロード\n\
 使い方: %1$s loaddb [オプション] データベース名[@ホスト]\n\
 \n\
@@ -455,8 +457,8 @@ loaddb: データベースにオブジェクトやスキーマロード\n\
   -C, --CS-mode                  クライアントーサーバモードで実行\n\
   -u, --user=ID                  データベースアクセスに関するユーザー名; デフォルト: 「public」\n\
   -p, --password=PASS            ユーザーパスワード; デフォルト: なし\n\
-      --data-file-check-only     文法チェックだけを実行; デフォルト: 文法チェックの後、ロード\n\
-  -l, --load-only                文法チェックなしでロード; デフォルト: 文法チェックの後、ロード\n\
+      --data-file-check-only     check syntax for data file without load; default: disabled\n\
+  -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
       --estimated-size=NUMBER    インスタンスの予測数; デフォルト: 5000\n\
   -v, --verbose                  多様な進行情報を出力; デフォルト: 出力しない\n\
   -c, --periodic-commit=COUNT    周期的なコミットに関するカウント; デフォルト: ロード中にコミットしない\n\

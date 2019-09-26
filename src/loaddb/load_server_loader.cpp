@@ -180,7 +180,18 @@ namespace cubload
       {
 	char *attr_name = NULL;
 	int free_attr_name = 0;
-	or_attribute *attr_repr = &or_attributes[attr_index];
+	or_attribute *attr_repr = NULL;
+
+	for (std::size_t i = 0; i < (std::size_t) n_attributes; ++i)
+	  {
+	    if (or_attributes[i].def_order == attr_index)
+	      {
+		attr_repr = &or_attributes[i];
+		break;
+	      }
+	  }
+
+	assert (attr_repr != NULL);
 
 	error_code = or_get_attrname (&recdes, attr_repr->id, &attr_name, &free_attr_name);
 	if (error_code != NO_ERROR)
@@ -222,9 +233,10 @@ namespace cubload
 	auto found = attr_map.find (attr_name_);
 	if (found == attr_map.end ())
 	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_ATTRIBUTE_NOT_FOUND, 1, attr_name_.c_str ());
 	    heap_scancache_end (&thread_ref, &scancache);
 	    heap_attrinfo_end (&thread_ref, &attrinfo);
-	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	    m_error_handler.on_failure ();
 	    return;
 	  }
 
@@ -234,6 +246,20 @@ namespace cubload
 	const attribute *attr = new attribute (attr_name_, attr_index, attr_repr);
 
 	attributes.push_back (attr);
+	attr_map.erase (attr_name_);
+      }
+
+    // check missing non null attributes
+    for (const std::pair<const std::string, or_attribute *> &attr : attr_map)
+      {
+	if (attr.second->is_notnull)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, attr.first.c_str ());
+	    heap_scancache_end (&thread_ref, &scancache);
+	    heap_attrinfo_end (&thread_ref, &attrinfo);
+	    m_error_handler.on_failure ();
+	    return;
+	  }
       }
 
     m_session.get_class_registry ().register_class (class_name, m_clsid, class_oid, attributes);
@@ -385,7 +411,12 @@ namespace cubload
 	  }
 
 	db_value &db_val = get_attribute_db_value (attr_index);
-	heap_attrinfo_set (&m_class_entry->get_class_oid (), attr.get_repr ().id, &db_val, &m_attrinfo);
+	error_code = heap_attrinfo_set (&m_class_entry->get_class_oid (), attr.get_repr ().id, &db_val, &m_attrinfo);
+	if (error_code != NO_ERROR)
+	  {
+	    m_error_handler.on_syntax_failure ();
+	    return;
+	  }
       }
 
     if (attr_index < attr_size)
@@ -418,7 +449,15 @@ namespace cubload
 	  }
 
 	// Add the recdes to the collected array.
-	m_recdes_collected.push_back (std::move (new_recdes));
+	if (!m_error_handler.current_line_has_error ())
+	  {
+	    m_recdes_collected.push_back (std::move (new_recdes));
+	  }
+	else
+	  {
+	    // Don't insert the record since we had an error.
+	    m_error_handler.set_error_on_current_line (false);
+	  }
       }
 
     m_session.stats_update_current_line (m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1);
@@ -431,6 +470,11 @@ namespace cubload
     int force_count = 0;
     int pruning_type = 0;
     int op_type = MULTI_ROW_INSERT;
+    int records_inserted = 0;
+    bool insert_errors_filtered = false;
+    OID dummy_oid;
+    bool has_BU_lock = lock_has_lock_on_object (&m_scancache.node.class_oid, oid_Root_class_oid,
+		       LOG_FIND_THREAD_TRAN_INDEX (m_thread_ref), BU_LOCK);
 
     // First check if we have any errors set.
     if (m_session.is_failed ())
@@ -451,13 +495,64 @@ namespace cubload
 	m_scancache.node.classname = m_class_entry->get_class_name ();
       }
 
-    int error_code = locator_multi_insert_force (m_thread_ref, &m_scancache.node.hfid, &m_scancache.node.class_oid,
-		     m_recdes_collected, true, op_type, &m_scancache, &force_count, pruning_type, NULL, NULL,
-		     UPDATE_INPLACE_NONE, true);
-    if (error_code != NO_ERROR)
+    if (m_recdes_collected.size () == 0)
       {
-	ASSERT_ERROR ();
-	m_error_handler.on_failure ();
+	// Nothing to flush.
+	return;
+      }
+
+    insert_errors_filtered = has_errors_filtered_for_insert (m_session.get_args().m_ignored_errors);
+
+    if (insert_errors_filtered)
+      {
+	// In case of possible errors filtered for insert we disable the unique optimization
+	for (size_t i = 0; i < m_recdes_collected.size (); i++)
+	  {
+	    log_sysop_start (m_thread_ref);
+	    RECDES local_record = m_recdes_collected[i].get_recdes ();
+	    int error_code = locator_insert_force (m_thread_ref, &m_scancache.node.hfid, &m_scancache.node.class_oid,
+						   &dummy_oid, &local_record, true, op_type, &m_scancache, &force_count,
+						   pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, NULL, has_BU_lock,
+						   true, false);
+	    if (error_code != NO_ERROR)
+	      {
+		ASSERT_ERROR ();
+		m_error_handler.on_failure ();
+		log_sysop_abort (m_thread_ref);
+
+		if (er_has_error ())
+		  {
+		    // Error was not filtered, we abort everything.
+		    return;
+		  }
+
+		// Error was filtered so we can continue.
+		continue;
+	      }
+
+	    // We attach to outer and we continue.
+	    log_sysop_attach_to_outer (m_thread_ref);
+	    m_thread_ref->m_loaddb_driver->increment_lines_inserted (1);
+	  }
+      }
+    else
+      {
+	log_sysop_start (m_thread_ref);
+	int error_code = locator_multi_insert_force (m_thread_ref, &m_scancache.node.hfid, &m_scancache.node.class_oid,
+			 m_recdes_collected, true, op_type, &m_scancache, &force_count, pruning_type, NULL, NULL,
+			 UPDATE_INPLACE_NONE, true);
+	if (error_code != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    m_error_handler.on_failure ();
+	    log_sysop_abort (m_thread_ref);
+	    return;
+	  }
+	else
+	  {
+	    log_sysop_attach_to_outer (m_thread_ref);
+	    m_thread_ref->m_loaddb_driver->increment_lines_inserted (m_recdes_collected.size ());
+	  }
       }
   }
 

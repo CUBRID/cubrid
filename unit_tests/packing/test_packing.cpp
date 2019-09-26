@@ -144,7 +144,7 @@ namespace test_packing
     return true;
   }
 
-  size_t po1::get_packed_size (cubpacking::packer &serializator) const
+  size_t po1::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
     size_t entry_size = 0;
 
@@ -388,9 +388,6 @@ namespace test_packing
       {
 	packer.append_to_buffer_and_pack_all (blk, classes[i]);
       }
-
-
-    OID classes_unpacked[10];
 
     cubpacking::unpacker unpacker (blk.get_ptr (), blk.get_size ());
 

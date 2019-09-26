@@ -27,6 +27,7 @@
 #include "load_session.hpp"
 #include "resource_shared_pool.hpp"
 #include "thread_worker_pool.hpp"
+#include "thread_worker_pool_taskcap.hpp"
 #include "xserver_interface.h"
 
 namespace cubload
@@ -172,12 +173,6 @@ namespace cubload
       }
 
     g_wp_mutex.unlock ();
-  }
-
-  void
-  worker_manager_complete_task ()
-  {
-    g_wp_task_capper->end_task ();
   }
 
   void

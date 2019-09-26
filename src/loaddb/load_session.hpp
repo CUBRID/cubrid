@@ -139,11 +139,8 @@ namespace cubload
       std::mutex m_commit_mutex;
       std::condition_variable m_commit_cond_var;
 
-      std::mutex m_completion_mutex;
-      std::condition_variable m_completion_cond_var;
-
       load_args m_args;
-      std::atomic<batch_id> m_last_batch_id;
+      batch_id m_last_batch_id;
       std::atomic<batch_id> m_max_batch_id;
 
       class_registry m_class_registry;

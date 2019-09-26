@@ -257,10 +257,7 @@ test_freelist_proc (void *param)
       lf_tran_end_with_mb (te);
     }
 
-  if (lf_tran_return_entry (te) != NO_ERROR)
-    {
-      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
-    }
+  lf_tran_return_entry (te);
 
   pthread_exit (NO_ERROR);
 
@@ -306,10 +303,7 @@ test_freelist_proc_local_tran (void *param)
 	}
     }
 
-  if (lf_tran_return_entry (te) != NO_ERROR)
-    {
-      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
-    }
+  lf_tran_return_entry (te);
 
   pthread_exit (NO_ERROR);
 
@@ -366,10 +360,7 @@ test_hash_proc_1 (void *param)
 	}
     }
 
-  if (lf_tran_return_entry (te) != NO_ERROR)
-    {
-      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
-    }
+  lf_tran_return_entry (te);
 
   pthread_exit (NO_ERROR);
 
@@ -437,11 +428,7 @@ test_hash_proc_2 (void *param)
       assert (te->locked_mutex == NULL);
     }
 
-  if (lf_tran_return_entry (te) != NO_ERROR)
-    {
-      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
-    }
-
+  lf_tran_return_entry (te);
 
   pthread_exit (NO_ERROR);
 
@@ -524,10 +511,7 @@ test_hash_proc_3 (void *param)
       assert (te->locked_mutex == NULL);
     }
 
-  if (lf_tran_return_entry (te) != NO_ERROR)
-    {
-      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
-    }
+  lf_tran_return_entry (te);
 
   ATOMIC_INC_32 (&del_op_count, local_del_op_count);
   pthread_exit (NO_ERROR);
@@ -593,10 +577,7 @@ test_clear_proc_1 (void *param)
 	}
     }
 
-  if (lf_tran_return_entry (te) != NO_ERROR)
-    {
-      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
-    }
+  lf_tran_return_entry (te);
 
   pthread_exit (NO_ERROR);
 
@@ -671,11 +652,7 @@ test_clear_proc_2 (void *param)
       assert (te->locked_mutex == NULL);
     }
 
-  if (lf_tran_return_entry (te) != NO_ERROR)
-    {
-      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
-    }
-
+  lf_tran_return_entry (te);
 
   pthread_exit (NO_ERROR);
 
@@ -763,10 +740,7 @@ test_clear_proc_3 (void *param)
       assert (te->locked_mutex == NULL);
     }
 
-  if (lf_tran_return_entry (te) != NO_ERROR)
-    {
-      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
-    }
+  lf_tran_return_entry (te);
 
   pthread_exit (NO_ERROR);
 

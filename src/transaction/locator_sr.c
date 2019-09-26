@@ -25,6 +25,8 @@
 
 #include "config.h"
 
+#include <algorithm>
+
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
@@ -115,8 +117,6 @@ struct locator_return_nxobj
   int area_offset;		/* Relative offset to recdes->data in the communication area */
 };
 
-extern INT32 vacuum_Global_oldest_visible_blockers_counter;
-
 bool locator_Dont_check_foreign_key = false;
 
 static MHT_TABLE *locator_Mht_classnames = NULL;
@@ -150,11 +150,6 @@ static int locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEO
 static int locator_repl_get_key_value (DB_VALUE * key_value, LC_COPYAREA * force_area, LC_COPYAREA_ONEOBJ * obj);
 static void locator_repl_add_error_to_copyarea (LC_COPYAREA ** copy_area, RECDES * recdes, LC_COPYAREA_ONEOBJ * obj,
 						DB_VALUE * key_value, int err_code, const char *err_msg);
-static int locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * recdes,
-				 int has_index, int op_type, HEAP_SCANCACHE * scan_cache, int *force_count,
-				 int pruning_type, PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
-				 UPDATE_INPLACE_STYLE force_in_place, PGBUF_WATCHER * home_hint_p, bool has_BU_lock,
-				 bool dont_check_fk, bool use_bulk_logging = false);
 static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * ikdrecdes,
 				 RECDES * recdes, int has_index, ATTR_ID * att_id, int n_att_id, int op_type,
 				 HEAP_SCANCACHE * scan_cache, int *force_count, bool not_check_fk,
@@ -4850,7 +4845,7 @@ error3:
  * Note: The given object is inserted on this heap and all appropriate
  *              index entries are inserted.
  */
-static int
+int
 locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * recdes, int has_index,
 		      int op_type, HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type,
 		      PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
@@ -12093,22 +12088,8 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
     }
   scancache_inited = true;
 
-  if (tdes->block_global_oldest_active_until_commit == false)
-    {
-      /* do not allow to advance with vacuum_Global_oldest_active_mvccid */
-      ATOMIC_INC_32 (&vacuum_Global_oldest_visible_blockers_counter, 1);
-      tdes->block_global_oldest_active_until_commit = true;
-    }
-  else
-    {
-      assert (vacuum_Global_oldest_visible_blockers_counter > 0);
-    }
-
-  /* Can't use vacuum_Global_oldest_active_mvccid here. That's because we want to avoid scenarios where VACUUM compute
-   * oldest active mvccid, but didn't set yet vacuum_Global_oldest_active_mvccid, current transaction uses the old
-   * value of vacuum_Global_oldest_active_mvccid, then VACUUM uses updated value of vacuum_Global_oldest_active_mvccid.
-   * In such scenario, VACUUM can remove heap records that can't be removed by the current thread. */
-  threshold_mvccid = logtb_get_oldest_visible_mvccid (thread_p);
+  tdes->lock_global_oldest_visible_mvccid ();
+  threshold_mvccid = log_Gl.mvcc_table.get_global_oldest_visible ();
 
   /* VACUUM all cleanable heap objects before upgrading the domain */
   error = heap_vacuum_all_objects (thread_p, &upd_scancache, threshold_mvccid);
@@ -12675,6 +12656,9 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 
   recdes.data = NULL;
 
+  tdes->lock_global_oldest_visible_mvccid ();
+  threshold_mvccid = log_Gl.mvcc_table.get_global_oldest_visible ();
+
   for (i = 0; i < no_oids; i++)
     {
       if (OID_ISNULL (&oid_list[i]))
@@ -12697,27 +12681,6 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 	  goto exit;
 	}
       is_part_scancache_started = true;
-
-      if (tdes->block_global_oldest_active_until_commit == false)
-	{
-	  /* do not allow to advance with vacuum_Global_oldest_active_mvccid */
-	  ATOMIC_INC_32 (&vacuum_Global_oldest_visible_blockers_counter, 1);
-	  tdes->block_global_oldest_active_until_commit = true;
-	}
-      else
-	{
-	  assert (vacuum_Global_oldest_visible_blockers_counter > 0);
-	}
-
-      if (threshold_mvccid == MVCCID_NULL)
-	{
-	  /* Can't use vacuum_Global_oldest_active_mvccid here. That's because we want to avoid scenarios where VACUUM
-	   * compute oldest active mvccid, but didn't set yet vacuum_Global_oldest_active_mvccid, current transaction
-	   * uses the old value of vacuum_Global_oldest_active_mvccid, then VACUUM uses updated value of
-	   * vacuum_Global_oldest_active_mvccid.
-	   * In such scenario, VACUUM can remove heap records that can't be removed by the current thread. */
-	  threshold_mvccid = logtb_get_oldest_visible_mvccid (thread_p);
-	}
 
       /* VACUUM all cleanable heap objects before upgrading the domain */
       error = heap_vacuum_all_objects (thread_p, &scan_cache, threshold_mvccid);
@@ -13798,10 +13761,21 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 						     func_preds, force_in_place, &home_hint_p, has_BU_lock, dont_check_fk, true);
 		  if (error_code != NO_ERROR)
 		    {
-		      pgbuf_ordered_unfix_and_init (thread_p, home_hint_p.pgptr, &home_hint_p);
-		      assert (!pgbuf_is_page_fixed_by_thread (thread_p, &new_page_vpid));
+                      ASSERT_ERROR ();
 
-		      ASSERT_ERROR ();
+                      if (home_hint_p.pgptr)
+                        {
+                          pgbuf_ordered_unfix_and_init (thread_p, home_hint_p.pgptr, &home_hint_p);
+                        }
+
+                      if (scan_cache->page_watcher.pgptr)
+                        {
+                          pgbuf_ordered_unfix_and_init (thread_p, scan_cache->page_watcher.pgptr,
+                                                        &scan_cache->page_watcher);
+                        }
+		      
+		      assert (!pgbuf_is_page_fixed_by_thread (thread_p, &new_page_vpid));
+		      
 		      return error_code;
 		    }
 
@@ -13849,5 +13823,17 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
   heap_log_postpone_heap_append_pages (thread_p, hfid, class_oid, heap_pages_array);
 
   return NO_ERROR;
+}
+
+bool
+has_errors_filtered_for_insert (std::vector<int> error_filter_array)
+{
+  if (std::find (error_filter_array.begin(), error_filter_array.end(), ER_BTREE_UNIQUE_FAILED)
+                 != error_filter_array.end ())
+  {
+    return true;
+  }
+
+  return false;
 }
 // *INDENT-ON*

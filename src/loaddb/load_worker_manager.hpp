@@ -32,7 +32,6 @@ namespace cubload
 {
   void worker_manager_interrupt ();
   void worker_manager_push_task (cubthread::entry_task *task);
-  void worker_manager_complete_task ();
 
   void worker_manager_register_session ();
   void worker_manager_unregister_session ();

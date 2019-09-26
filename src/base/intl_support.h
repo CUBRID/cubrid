@@ -123,9 +123,7 @@
   while (0)
 
 extern bool intl_Mbs_support;
-#if !defined (SERVER_MODE)
 extern bool intl_String_validation;
-#endif
 
 /* language identifier : we support built-in languages and user defined
  * languages (through locale definition);

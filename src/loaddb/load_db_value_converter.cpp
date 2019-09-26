@@ -74,6 +74,7 @@ namespace cubload
   int to_db_varbit_from_hex_str (const char *str, const attribute *attr, db_value *val);
   int to_db_elo_ext (const char *str, const attribute *attr, db_value *val);
   int to_db_elo_int (const char *str, const attribute *attr, db_value *val);
+  int to_int_generic (const char *str, const attribute *attr, db_value *val);
 
   using conv_setters = std::array<std::array<conv_func, NUM_LDR_TYPES>, NUM_DB_TYPES>;
 
@@ -84,6 +85,14 @@ namespace cubload
   init_setters ()
   {
     conv_setters setters_;
+
+    for (int i = 0; i < NUM_DB_TYPES; i++)
+      {
+	for (int j = 0; j < NUM_LDR_TYPES; j++)
+	  {
+	    setters_[i][j] = &mismatch;
+	  }
+      }
 
     for (int i = 0; i < NUM_DB_TYPES; i++)
       {
@@ -136,7 +145,7 @@ namespace cubload
     setters_[DB_TYPE_DOUBLE][LDR_DOUBLE] = &to_db_double;
     setters_[DB_TYPE_DOUBLE][LDR_FLOAT] = &to_db_double;
 
-    setters_[DB_TYPE_NUMERIC][LDR_INT] = &to_db_int;
+    setters_[DB_TYPE_NUMERIC][LDR_INT] = &to_int_generic;
     setters_[DB_TYPE_NUMERIC][LDR_NUMERIC] = &to_db_numeric;
     setters_[DB_TYPE_NUMERIC][LDR_DOUBLE] = &to_db_double;
     setters_[DB_TYPE_NUMERIC][LDR_FLOAT] = &to_db_double;
@@ -179,11 +188,6 @@ namespace cubload
   get_conv_func (const data_type ldr_type, const DB_TYPE db_type)
   {
     conv_func &c_func = setters[db_type][ldr_type];
-    if (c_func == NULL)
-      {
-	c_func = &mismatch;
-      }
-
     return c_func;
   }
 
@@ -945,5 +949,69 @@ namespace cubload
     /* not implemented. should not be called */
     assert (0);
     return ER_FAILED;
+  }
+
+  int
+  to_int_generic (const char *str, const attribute *attr, db_value *val)
+  {
+    size_t str_len = strlen (str);
+    int error_code = NO_ERROR;
+
+    /*
+     * Watch out for really long digit strings that really are being
+     * assigned into a DB_TYPE_NUMERIC attribute; they can hold more than a
+     * standard integer can, and calling atol() on that string will lose
+     * data.
+     * Is there some better way to test for this condition?
+     */
+    if (str_len < MAX_DIGITS_FOR_INT || (str_len == MAX_DIGITS_FOR_INT && (str[0] == '0' || str[0] == '1')))
+      {
+	db_make_int (val, 0);
+	error_code = parse_int (&val->data.i, str, 10);
+	if (error_code != NO_ERROR)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_INTEGER));
+	    return ER_IT_DATA_OVERFLOW;
+	  }
+      }
+    else if (str_len < MAX_DIGITS_FOR_BIGINT || (str_len == MAX_DIGITS_FOR_BIGINT && str[0] != '9'))
+      {
+	db_make_bigint (val, 0);
+	error_code = parse_bigint (&val->data.bigint, str, 10);
+	if (error_code != NO_ERROR)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_BIGINT));
+	    return ER_IT_DATA_OVERFLOW;
+	  }
+      }
+    else
+      {
+	DB_NUMERIC num;
+	DB_BIGINT tmp_bigint;
+
+	numeric_coerce_dec_str_to_num (str, num.d.buf);
+	if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint) != NO_ERROR)
+	  {
+	    error_code = db_value_domain_init (val, DB_TYPE_NUMERIC, str_len, 0);
+	    if (error_code != NO_ERROR)
+	      {
+		ASSERT_ERROR ();
+		return error_code;
+	      }
+
+	    error_code = db_value_put (val, DB_TYPE_C_CHAR, (char *) str, str_len);
+	    if (error_code != NO_ERROR)
+	      {
+		ASSERT_ERROR ();
+		return error_code;
+	      }
+	  }
+	else
+	  {
+	    db_make_bigint (val, tmp_bigint);
+	  }
+      }
+
+    return NO_ERROR;
   }
 }

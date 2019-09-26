@@ -445,8 +445,10 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 117 Başarısız yük.\n
 118 Sınıf adının uzunluğu en fazla %1$d bayttır.\n
 119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
-120 Class %1$s is ignored. \n
-121 \
+120 data file does not contain '%%class' specifier or '--table' option is missing\n
+121 Class %1$s is ignored. \n
+122 \
+
 loaddb: Veritabanına veri alma nesneler ve şemalar.\n\
 kullanım: %1$s loaddb [SEÇENEK] database-name[@host]\n\
 \n\
@@ -455,8 +457,8 @@ geçerli seçenekler:\n\
   -C, --CS-mode                  istemci-sunucu modunda yürütme\n\
   -u, --user=ID                  veritabanı erişimi için kullanıcı kimliği; varsayılan: "public"\n\
   -p, --password=PASS            kullanıcı şifresi; varsayılan: hiçbir\n\
-      --data-file-check-only     yük olmadan veri dosyası için sözdizimi kontrol edin; varsayılan: yükleme kontrol ettikten sonra\n\
-  -l, --load-only                sözdizimi denetimi olmadan veri dosyası yükleyebilir; varsayılan: yükleme kontrol ettikten sonra\n\
+      --data-file-check-only     check syntax for data file without load; default: disabled\n\
+  -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
       --estimated-size=NUMBER    örneklerini tahmin NUMBER; varsayılan: 5000\n\
   -v, --verbose                  Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı\n\
   -c, --periodic-commit=COUNT    Periyodik tamamlama için ekleme COUNT; varsayılan: yükleme sırasında taahhüt yok\n\

@@ -4847,7 +4847,7 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
     }
 
   context->valid = true;
-  if (context->args->verbose)
+  if (context->args->verbose && class_name != NULL)
     {
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CLASS_TITLE),
 	       class_name);

@@ -445,8 +445,10 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 117 Carga fallida.\n
 118 La longitud máxima del nombre de la clase es %1$d bytes.\n
 119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
-120 Class %1$s is ignored. \n
-121 \
+120 data file does not contain '%%class' specifier or '--table' option is missing\n
+121 Class %1$s is ignored. \n
+122 \
+
 loaddb: Importar objetos y esquemas en la base de datos.\n\
 uso: %1$s loaddb [OPTION] database-name[@host]\n\
 \n\
@@ -455,8 +457,8 @@ opciones validas:\n\
   -C, --CS-mode                  modo de ejecucion cliente-servidor\n\
   -u, --user=ID                  ID de utilizador para acceso a la base de datos; estandar: "public"\n\
   -p, --password=PASS            contrasena de utilizador; estandar: ninguna\n\
-      --data-file-check-only     verificar sintaxis para archivo de datos sin cargar; estandar: cargar despues de verificar\n\
-  -l, --load-only                cargar archivo de datos sin verificar sintaxis; estandar: cargar despues de verificar\n\
+      --data-file-check-only     check syntax for data file without load; default: disabled\n\
+  -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
       --estimated-size=NUMBER    NUMERO estimado de instancias; estandar: 5000\n\
   -v, --verbose                  habilitar mensajes de estado verbose; estandar: inhabilitado\n\
   -c, --periodic-commit=COUNT    insertar COUNT al cometer periodicamente; estandar: no cometer mientras cargando\n\

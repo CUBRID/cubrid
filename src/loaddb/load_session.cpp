@@ -119,28 +119,31 @@ namespace cubload
 	  }
 
 	thread_ref.conn_entry = &m_conn_entry;
+	driver *driver = thread_ref.m_loaddb_driver;
+
+	assert (driver != NULL && !driver->is_initialized ());
+	init_driver (driver, m_session);
 
 	bool is_syntax_check_only = m_session.get_args ().syntax_check;
 	const class_entry *cls_entry = m_session.get_class_registry ().get_class_entry (m_batch.get_class_id ());
 	if (cls_entry == NULL)
 	  {
-	    m_session.notify_batch_done (m_batch.get_id ());
 	    if (!is_syntax_check_only)
 	      {
-		assert (false);
+		driver->get_error_handler ().on_failure_with_line (LOADDB_MSG_TABLE_IS_MISSING);
 	      }
+	    else
+	      {
+		driver->get_error_handler ().on_error_with_line (LOADDB_MSG_TABLE_IS_MISSING);
+	      }
+
+	    driver->clear ();
+	    m_session.notify_batch_done (m_batch.get_id ());
 	    return;
 	  }
 
-	int line_no;
-
 	logtb_assign_tran_index (&thread_ref, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
 				 TRAN_DEFAULT_ISOLATION_LEVEL ());
-
-	driver *driver = thread_ref.m_loaddb_driver;
-
-	assert (driver && !driver->is_initialized ());
-	init_driver (driver, m_session);
 
 	bool parser_result = invoke_parser (driver, m_batch);
 
@@ -148,7 +151,10 @@ namespace cubload
 	std::string class_name = cls_entry->get_class_name ();
 
 	// We need this to update the stats.
-	line_no = driver->get_scanner ().lineno ();
+	int line_no = driver->get_scanner ().lineno ();
+
+	// Get the inserted lines
+	int lines_inserted = driver->get_lines_inserted ();
 
 	// We don't need anything from the driver anymore.
 	driver->clear ();
@@ -178,7 +184,7 @@ namespace cubload
 	      }
 
 	    // update load statistics after commit
-	    m_session.stats_update_rows_committed (m_batch.get_rows_number ());
+	    m_session.stats_update_rows_committed (lines_inserted);
 	    m_session.stats_update_last_committed_line (line_no + 1);
 
 	    if (!m_session.get_args ().syntax_check)
@@ -192,8 +198,6 @@ namespace cubload
 
 	// notify session that batch is done
 	m_session.notify_batch_done (m_batch.get_id ());
-
-	worker_manager_complete_task ();
       }
 
     private:
@@ -205,8 +209,6 @@ namespace cubload
   session::session (load_args &args)
     : m_commit_mutex ()
     , m_commit_cond_var ()
-    , m_completion_mutex ()
-    , m_completion_cond_var ()
     , m_args (args)
     , m_last_batch_id {NULL_BATCH_ID}
     , m_max_batch_id {NULL_BATCH_ID}
@@ -223,8 +225,11 @@ namespace cubload
     if (!m_args.table_name.empty ())
       {
 	// just set class id to 1 since only one table can be specified as command line argument
+	cubthread::entry &thread_ref = cubthread::get_entry ();
+	thread_ref.m_loaddb_driver = m_driver;
 	m_driver->get_class_installer ().set_class_id (FIRST_CLASS_ID);
 	m_driver->get_class_installer ().install_class (m_args.table_name.c_str ());
+	thread_ref.m_loaddb_driver = NULL;
       }
   }
 
@@ -265,8 +270,8 @@ namespace cubload
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_completion_mutex);
-    m_completion_cond_var.wait (ulock, pred);
+    std::unique_lock<std::mutex> ulock (m_commit_mutex);
+    m_commit_cond_var.wait (ulock, pred);
   }
 
   void
@@ -274,7 +279,9 @@ namespace cubload
   {
     if (!is_failed ())
       {
+	m_commit_mutex.lock ();
 	m_last_batch_id = id;
+	m_commit_mutex.unlock ();
       }
 
     notify_waiting_threads ();
@@ -410,7 +417,6 @@ namespace cubload
   session::notify_waiting_threads ()
   {
     m_commit_cond_var.notify_all ();
-    m_completion_cond_var.notify_one ();
   }
 
   int

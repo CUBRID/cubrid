@@ -1627,7 +1627,8 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
  *              If not, read log page from log.
  */
 int
-logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE access_mode, LOG_PAGE * log_pgptr)
+logpb_fetch_page (THREAD_ENTRY * thread_p, const LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE access_mode,
+		  LOG_PAGE * log_pgptr)
 {
   LOG_LSA append_lsa, append_prev_lsa;
   int rv;
@@ -10755,7 +10756,7 @@ logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghd
 {
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "Reset vacuum info in loghdr (%p)", loghdr);
   LSA_SET_NULL (&loghdr->mvcc_op_log_lsa);
-  loghdr->oldest_visible_mvccid = MVCCID_NULL;
+  loghdr->oldest_visible_mvccid = MVCCID_FIRST;
   loghdr->newest_block_mvccid = MVCCID_NULL;
   loghdr->does_block_need_vacuum = false;
 }

@@ -445,8 +445,9 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 117 Laden fehlgeschlagen.\n
 118 Maximale Länge des Klassennamens ist %1$d Bytes.\n
 119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
-120 Class %1$s is ignored. \n
-121 \
+120 data file does not contain '%%class' specifier or '--table' option is missing\n
+121 Class %1$s is ignored. \n
+122 \
 loaddb: Import von Objekten und Schemas in die Datenbank.\n\
 Anwendung: %1$s loaddb [OPTION] Datenbanknamen[@host]\n\
 \n\
@@ -455,8 +456,8 @@ gültige Optionen:\n\
   -C, --CS-mode                    Client-Server-Ausführung\n\
   -u, --user=ID                    Benutzer ID für Datenbankzugang; Standard: "public"\n\
   -p, --password=PASSWORT          Benutzerpasswort; Standard: keinen\n\
-      --data-file-check-only       Syntaxprüfung für Daten ohne Ladung; Standard: Ladung nach Prüfung\n\
-  -l, --load-only                  Daten ohne Syntaxprüfung laden; Standard: Ladung nach Prüfung\n\
+      --data-file-check-only       check syntax for data file without load; default: disabled\n\
+  -l, --load-only                  load data file without prior syntax checking; SA_MODE only\n\
       --estimated-size=ANZAHL      abgeschätzte Anzahl von Instanzen; Standard: 5000\n\
   -v, --verbose                    ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
   -c, --periodic-commit=ANZAHL     Einfügungsanzahl für periodische Festschreibung; Standard: keine Festschreibung während der Ladung\n\
