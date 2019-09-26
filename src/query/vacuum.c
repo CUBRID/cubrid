@@ -2885,8 +2885,7 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
   pgbuf_flush_if_requested (&thread_ref, (PAGE_PTR) vacuum_Data.first_page);
   pgbuf_flush_if_requested (&thread_ref, (PAGE_PTR) vacuum_Data.last_page);
 
-  vacuum_Data.update ();
-  m_cursor.load ();
+  m_cursor.force_data_update ();
   vacuum_er_log (VACUUM_ER_LOG_MASTER | VACUUM_ER_LOG_JOBS, "Start searching jobs at " vacuum_job_cursor_print_format,
                  vacuum_job_cursor_print_args (m_cursor));
   for (; m_cursor.is_valid () && !should_interrupt_iteration (); m_cursor.increment_blockid ())
