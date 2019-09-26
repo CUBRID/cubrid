@@ -41,6 +41,7 @@ namespace cubthread
       void destroy ();
 
       T *find (cubthread::entry *thread_p, Key &key);
+      bool find_or_insert (cubthread::entry *thread_p, Key &key, T *&t);
       void unlock (cubthread::entry *thread_p, T *&t);
 
     private:
@@ -72,6 +73,7 @@ namespace cubthread
       void destroy ();
 
       T *find (cubthread::entry *thread_p, Key &key);
+      bool find_or_insert (cubthread::entry *thread_p, Key &key, T *&t);
       void unlock (cubthread::entry *thread_p, T *&t);
 
     private:
@@ -95,6 +97,11 @@ namespace cubthread
       find (cubthread::entry *thread_p, Key &key)
       {
 	return NULL;
+      }
+      bool
+      find_or_insert (cubthread::entry *thread_p, Key &key, T *&t)
+      {
+	return false;
       }
 
       void unlock (cubthread::entry *thread_p, T *&t) {}
@@ -154,6 +161,13 @@ namespace cubthread
   lockfree_hashmap<Key, T>::find (cubthread::entry *thread_p, Key &key)
   {
     return lockfree_hashmap_forward_func (find, thread_p, key);
+  }
+
+  template <class Key, class T>
+  bool
+  lockfree_hashmap<Key, T>::find_or_insert (cubthread::entry *thread_p, Key &key, T *&t)
+  {
+    return lockfree_hashmap_forward_func (find_or_insert, thread_p, key, t);
   }
 
   template <class Key, class T>
@@ -230,6 +244,19 @@ namespace cubthread
 	assert (false);
       }
     return ret;
+  }
+
+  template <class Key, class T>
+  bool
+  lockfree_hashmap<Key, T>::old_hashmap::find_or_insert (cubthread::entry *thread_p, Key &key, T *&t)
+  {
+    lf_tran_entry *t_entry = thread_get_tran_entry (thread_p, m_entry_idx);
+    int inserted = 0;
+    if (lf_hash_find_or_insert (t_entry, &m_hash, &key, t, &inserted) != NO_ERROR)
+      {
+	assert (false);
+      }
+    return inserted != 0;
   }
 
   template <class Key, class T>
