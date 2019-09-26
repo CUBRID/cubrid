@@ -132,9 +132,9 @@ namespace cubload
   }
 
   void
-  driver::increment_lines_inserted ()
+  driver::increment_lines_inserted (int no_lines)
   {
-    m_lines_inserted++;
+    m_lines_inserted += no_lines;
   }
 
 } // namespace cubload

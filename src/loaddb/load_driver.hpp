@@ -90,7 +90,7 @@ namespace cubload
       error_handler &get_error_handler ();
       scanner &get_scanner ();
       int get_lines_inserted ();
-      void increment_lines_inserted ();
+      void increment_lines_inserted (int no_lines);
 
     private:
       scanner *m_scanner;

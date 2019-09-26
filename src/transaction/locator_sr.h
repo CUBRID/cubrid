@@ -127,11 +127,20 @@ extern SCAN_CODE locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, O
 extern SCAN_OPERATION_TYPE locator_decide_operation_type (LOCK lock_mode, LC_FETCH_VERSION_TYPE fetch_version_type);
 extern LOCK locator_get_lock_mode_from_op_type (SCAN_OPERATION_TYPE op_type);
 
+extern int locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * recdes,
+				 int has_index, int op_type, HEAP_SCANCACHE * scan_cache, int *force_count,
+				 int pruning_type, PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
+				 UPDATE_INPLACE_STYLE force_in_place, PGBUF_WATCHER * home_hint_p, bool has_BU_lock,
+				 bool dont_check_fk, bool use_bulk_logging = false);
+
  // *INDENT-OFF*
 extern int locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 				       const std::vector<record_descriptor> &recdes, int has_index, int op_type,
 				       HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type,
 				       PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
 				       UPDATE_INPLACE_STYLE force_in_place, bool dont_check_fk);
+extern bool has_errors_filtered_for_insert (std::vector<int> error_filter_array);
 // *INDENT-ON*
+
+
 #endif /* _LOCATOR_SR_H_ */
