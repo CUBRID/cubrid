@@ -606,7 +606,6 @@ struct btree_insert_list
       KEY_NOT_AVAILABLE
     };
 
-
   int m_debug_consecutive_inserts;
   BTREE_SEARCH m_debug_last_min_max_search_result;
   PGSLOTID m_debug_last_min_max_slotid;

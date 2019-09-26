@@ -427,7 +427,7 @@ struct btree_search_key_helper
 };
 /* BTREE_SEARCH_KEY_HELPER static initializer. */
 #define BTREE_SEARCH_KEY_HELPER_INITIALIZER \
-  { BTREE_KEY_NOTFOUND, NULL_SLOTID }
+  { BTREE_KEY_NOTFOUND, NULL_SLOTID, btree_search_key_helper::NO_FENCE_KEY}
 
 /* BTREE_FIND_UNIQUE_HELPER -
  * Structure used by find unique functions.
@@ -5561,11 +5561,6 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
 	  return ER_FAILED;
 	}
 
-      if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
-	{
-	  search_key->has_fence_key = btree_search_key_helper::HAS_FENCE_KEY;
-	}
-
       error =
 	btree_read_record_without_decompression (thread_p, btid, &rec, &temp_key, &leaf_pnt, BTREE_LEAF_NODE,
 						 &clear_key, &offset, PEEK_KEY_VALUE);
@@ -5601,8 +5596,9 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
       if (c == DB_EQ)
 	{
 	  /* Current middle key is equal to searched key. */
-	  if (search_key->has_fence_key == btree_search_key_helper::HAS_FENCE_KEY)
+	  if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
 	    {
+              search_key->has_fence_key = btree_search_key_helper::HAS_FENCE_KEY;
 	      /* Fence key! */
 	      assert (middle == 1 || middle == key_cnt);
 	      if (middle == 1)
@@ -5643,6 +5639,11 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
 
   if (c < 0)
     {
+      if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
+	{
+	  search_key->has_fence_key = btree_search_key_helper::HAS_FENCE_KEY;
+	}
+
       /* Key doesn't exist and is smaller than current middle key. */
       if (middle == 1)
 	{
@@ -5660,6 +5661,11 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
     }
   else
     {
+      if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
+	{
+	  search_key->has_fence_key = btree_search_key_helper::HAS_FENCE_KEY;
+	}
+
       /* Key doesn't exist and is bigger than current middle key. */
       if (middle == key_cnt)
 	{
