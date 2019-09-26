@@ -25,20 +25,23 @@
 #define _THREAD_LOCKFREE_HASH_MAP_
 
 #include "lock_free.h"  // old implementation
+#include "thread_entry.hpp"
 
 namespace cubthread
 {
-  template <class T>
+  template <class Key, class T>
   class lockfree_hashmap
   {
     public:
       lockfree_hashmap ();
 
       void init_as_old (lf_tran_system &transys, int hash_size, int freelist_block_count, int freelist_block_size,
-			lf_entry_descriptor &edesc);
+			lf_entry_descriptor &edesc, int entry_idx);
       void init_as_new ();
-
       void destroy ();
+
+      T *find (cubthread::entry *thread_p, Key &key);
+      void unlock (cubthread::entry *thread_p, T *&t);
 
     private:
       class old_hashmap;
@@ -58,29 +61,43 @@ namespace cubthread
       type m_type;
   };
 
-  template <class T>
-  class lockfree_hashmap<T>::old_hashmap
+  template <class Key, class T>
+  class lockfree_hashmap<Key, T>::old_hashmap
   {
     public:
       old_hashmap ();
 
       void init (lf_tran_system &transys, int hash_size, int freelist_block_count, int freelist_block_size,
-		 lf_entry_descriptor &edes);
+		 lf_entry_descriptor &edes, int entry_idx);
       void destroy ();
 
+      T *find (cubthread::entry *thread_p, Key &key);
+      void unlock (cubthread::entry *thread_p, T *&t);
+
     private:
+      pthread_mutex_t *get_pthread_mutex (T *t);
+
       lf_freelist m_freelist;
       lf_hash_table m_hash;
+      int m_entry_idx;
   };
 
-  template <class T>
-  class lockfree_hashmap<T>::new_hashmap
+  template <class Key, class T>
+  class lockfree_hashmap<Key, T>::new_hashmap
   {
     public:
       new_hashmap () = default;
 
       void init () {}
       void destroy () {}
+
+      T *
+      find (cubthread::entry *thread_p, Key &key)
+      {
+	return NULL;
+      }
+
+      void unlock (cubthread::entry *thread_p, T *&t) {}
 
     private:
   };
@@ -95,48 +112,63 @@ namespace cubthread
   //
   //  lockfree_hashmap
   //
-  template <class T>
-  lockfree_hashmap<T>::lockfree_hashmap ()
+  template <class Key, class T>
+  lockfree_hashmap<Key, T>::lockfree_hashmap ()
     : m_old_hash {}
     , m_new_hash {}
     , m_type (UNKNOWN)
   {
   }
 
-  template <class T>
+  template <class Key, class T>
   void
-  lockfree_hashmap<T>::init_as_old (lf_tran_system &transys, int hash_size, int freelist_block_count,
-				    int freelist_block_size, lf_entry_descriptor &edesc)
+  lockfree_hashmap<Key, T>::init_as_old (lf_tran_system &transys, int hash_size, int freelist_block_count,
+					 int freelist_block_size, lf_entry_descriptor &edesc, int entry_idx)
   {
     m_type = OLD;
-    m_old_hash.init (transys, hash_size, freelist_block_count, freelist_block_size);
+    m_old_hash.init (transys, hash_size, freelist_block_count, freelist_block_size, entry_idx);
   }
 
-  template <class T>
+  template <class Key, class T>
   void
-  lockfree_hashmap<T>::init_as_new ()
+  lockfree_hashmap<Key, T>::init_as_new ()
   {
     // not implemented
     assert (false);
   }
 
-  template <class T>
+#define lockfree_hashmap_forward_func(f_, ...) \
+  is_old_type () ? m_old_hash.(f_) (__VA_ARGS__) : else m_new_hash.(f_) (__VA_ARGS__)
+#define lockfree_hashmap_forward_func_noarg(f_) \
+  is_old_type () ? m_old_hash.(f_) () : else m_new_hash.(f_) ()
+
+  template <class Key, class T>
   void
-  lockfree_hashmap<T>::destroy ()
+  lockfree_hashmap<Key, T>::destroy ()
   {
-    if (is_old_type ())
-      {
-	m_old_hash.destroy ();
-      }
-    else
-      {
-	m_new_hash.destroy ();
-      }
+    lockfree_hashmap_forward_func_noarg (destroy);
   }
 
-  template <class T>
+  template <class Key, class T>
+  T *
+  lockfree_hashmap<Key, T>::find (cubthread::entry *thread_p, Key &key)
+  {
+    return lockfree_hashmap_forward_func (find, thread_p, key);
+  }
+
+  template <class Key, class T>
+  void
+  lockfree_hashmap<Key, T>::unlock (cubthread::entry *thread_p, T *&t)
+  {
+    lockfree_hashmap_forward_func (unlock, thread_p, t);
+  }
+
+#undef lockfree_hashmap_forward_func
+#undef lockfree_hashmap_forward_func_noarg
+
+  template <class Key, class T>
   bool
-  lockfree_hashmap<T>::is_old_type () const
+  lockfree_hashmap<Key, T>::is_old_type () const
   {
     // for now, always true
     return true;
@@ -145,17 +177,18 @@ namespace cubthread
   //
   // lockfree_hashmap::old_hashmap
   //
-  template <class T>
-  lockfree_hashmap<T>::old_hashmap::old_hashmap ()
+  template <class Key, class T>
+  lockfree_hashmap<Key, T>::old_hashmap::old_hashmap ()
     : m_freelist LF_FREELIST_INITIALIZER
     , m_hash LF_HASH_TABLE_INITIALIZER
+    , m_entry_idx (-1)
   {
   }
 
-  template <class T>
+  template <class Key, class T>
   void
-  lockfree_hashmap<T>::old_hashmap::init (lf_tran_system &transys, int hash_size, int freelist_block_count,
-					  int freelist_block_size, lf_entry_descriptor &edesc)
+  lockfree_hashmap<Key, T>::old_hashmap::init (lf_tran_system &transys, int hash_size, int freelist_block_count,
+      int freelist_block_size, lf_entry_descriptor &edesc, int entry_idx)
   {
     if (lf_freelist_init (&m_freelist, freelist_block_count, freelist_block_size, &edesc, &transys) != NO_ERROR)
       {
@@ -167,14 +200,53 @@ namespace cubthread
 	assert (false);
 	return;
       }
+    m_entry_idx = entry_idx;
   }
 
-  template <class T>
+  template <class Key, class T>
   void
-  lockfree_hashmap<T>::old_hashmap::destroy ()
+  lockfree_hashmap<Key, T>::old_hashmap::destroy ()
   {
     lf_hash_destroy (&m_hash);
     lf_freelist_destroy (&m_freelist);
+  }
+
+  template <class Key, class T>
+  pthread_mutex_t *
+  lockfree_hashmap<Key, T>::old_hashmap::get_pthread_mutex (T *t)
+  {
+    assert (m_freelist.entry_desc->using_mutex);
+    return (pthread_mutex_t *) (((char *) t) + m_freelist.entry_desc->of_mutex);
+  }
+
+  template <class Key, class T>
+  T *
+  lockfree_hashmap<Key, T>::old_hashmap::find (cubthread::entry *thread_p, Key &key)
+  {
+    lf_tran_entry *t_entry = thread_get_tran_entry (thread_p, m_entry_idx);
+    T *ret = NULL;
+    if (lf_hash_find (t_entry, &m_hash, &key, ret) != NO_ERROR)
+      {
+	assert (false);
+      }
+    return ret;
+  }
+
+  template <class Key, class T>
+  void
+  lockfree_hashmap<Key, T>::old_hashmap::unlock (cubthread::entry *thread_p, T *&t)
+  {
+    assert (t != NULL);
+    lf_tran_entry *t_entry = thread_get_tran_entry (thread_p, m_entry_idx);
+    if (m_freelist.entry_desc->using_mutex)
+      {
+	pthread_mutex_unlock (get_pthread_mutex (t));
+      }
+    else
+      {
+	lf_tran_end_with_mb (t_entry);
+      }
+    t = NULL;
   }
 }
 
