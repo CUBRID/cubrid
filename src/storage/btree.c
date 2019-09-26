@@ -5013,7 +5013,7 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
   pgbuf_get_vpid (page_ptr, &curr_vpid);
 
   BTREE_NODE_HEADER *header = NULL;
-    
+
   header = btree_get_node_header (thread_p, page_ptr);
 #endif
 
@@ -33325,7 +33325,7 @@ btree_online_index_set_normal_state (MVCCID & state)
 //
 int
 btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * cls_oid,
-		               OID * oid, int unique, BTREE_OP_PURPOSE purpose, LOG_LSA * undo_nxlsa)
+			       OID * oid, int unique, BTREE_OP_PURPOSE purpose, LOG_LSA * undo_nxlsa)
 {
   btree_insert_list one_item_list (key, oid);
 
@@ -33346,8 +33346,8 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * 
 //
 int
 btree_online_index_list_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid,
-                                    btree_insert_list * insert_list, int unique, BTREE_OP_PURPOSE purpose,
-                                    LOG_LSA * undo_nxlsa)
+				    btree_insert_list * insert_list, int unique, BTREE_OP_PURPOSE purpose,
+				    LOG_LSA * undo_nxlsa)
 {
   int error_code = NO_ERROR;
   /* Search key helper which will point to where data should inserted. */
