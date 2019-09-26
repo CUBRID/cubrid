@@ -1598,9 +1598,10 @@
 #define ER_SM_NO_PARTITION_ON_HIERARCHIES           -1242
 
 #define ER_IB_ERROR_ABORT                           -1243
+#define ER_LDR_IGNORED_CLASS                        -1244
 
 
-#define ER_LAST_ERROR                               -1244
+#define ER_LAST_ERROR                               -1245
 
 /*
  * CAUTION!

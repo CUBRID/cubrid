@@ -419,7 +419,20 @@ namespace cubload
     thread_ref.m_loaddb_driver = m_driver;
 
     int error_code = NO_ERROR;
+    bool is_class_ignored = false;
     bool parser_result = invoke_parser (m_driver, batch);
+
+    is_class_ignored = m_driver->get_class_installer ().get_ignored_status ();
+    if (is_class_ignored)
+      {
+	er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LDR_IGNORED_CLASS, 0);
+	thread_ref.m_loaddb_driver = NULL;
+	delete &batch;
+
+	m_driver->get_class_installer ().set_ignored_status (false);
+
+	return ER_LDR_IGNORED_CLASS;
+      }
 
     if (is_failed () || !parser_result || er_has_error ())
       {

@@ -55,10 +55,14 @@ namespace cubload
       void install_class (string_type *class_name, class_command_spec_type *cmd_spec) override;
 
       bool is_class_ignored (const char *classname);
+      bool get_ignored_status ();
+      void set_ignored_status (bool status);
 
     private:
       session &m_session;
       error_handler &m_error_handler;
+
+      bool m_class_ignored;
 
       class_id m_clsid;
 

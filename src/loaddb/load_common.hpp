@@ -326,6 +326,10 @@ namespace cubload
        *                        attribute list and class constructor specification
        */
       virtual void install_class (string_type *class_name, class_command_spec_type *cmd_spec) = 0;
+
+      virtual bool get_ignored_status () = 0;
+
+      virtual void set_ignored_status (bool status) = 0;
   };
 
   /*

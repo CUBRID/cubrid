@@ -47,6 +47,7 @@ namespace cubload
     : m_session (session)
     , m_error_handler (error_handler)
     , m_clsid (NULL_CLASS_ID)
+    , m_class_ignored (false)
   {
     //
   }
@@ -62,6 +63,12 @@ namespace cubload
   {
     (void) class_id;
     OID class_oid;
+
+    if (is_class_ignored (class_name))
+      {
+	// Silently do nothing.
+	return;
+      }
 
     if (locate_class (class_name, class_oid) != LC_CLASSNAME_EXIST)
       {
@@ -121,6 +128,7 @@ namespace cubload
     // Check if we have to ignore this class.
     if (is_class_ignored (class_name))
       {
+	m_class_ignored = true;
 	return;
       }
 
@@ -269,6 +277,18 @@ namespace cubload
     auto result = std::find (classes_ignored.begin (), classes_ignored.end (), class_name);
 
     return (result != classes_ignored.end ());
+  }
+
+  bool
+  server_class_installer::get_ignored_status ()
+  {
+    return m_class_ignored;
+  }
+
+  void
+  server_class_installer::set_ignored_status (bool status)
+  {
+    m_class_ignored = status;
   }
 
   server_object_loader::server_object_loader (session &session, error_handler &error_handler)
