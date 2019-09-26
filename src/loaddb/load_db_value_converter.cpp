@@ -161,6 +161,11 @@ namespace cubload
     setters_[DB_TYPE_CLOB][LDR_ELO_INT] = &to_db_elo_int;
 
     setters_[DB_TYPE_JSON][LDR_STR] = &to_db_json;
+
+    setters_[DB_TYPE_MONETARY][LDR_INT] = &to_db_monetary;
+    setters_[DB_TYPE_MONETARY][LDR_NUMERIC] = &to_db_monetary;
+    setters_[DB_TYPE_MONETARY][LDR_DOUBLE] = &to_db_monetary;
+    setters_[DB_TYPE_MONETARY][LDR_FLOAT] = &to_db_monetary;
     setters_[DB_TYPE_MONETARY][LDR_MONETARY] = &to_db_monetary;
 
     setters_[DB_TYPE_DATE][LDR_STR] = &to_db_string;
