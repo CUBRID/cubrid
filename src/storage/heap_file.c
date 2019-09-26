@@ -22345,7 +22345,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
     {
       // In case of bulk insert we need to skip the IX lock on class and make sure that we have BU_LOCK acquired.
       assert (lock_has_lock_on_object (&context->class_oid, oid_Root_class_oid,
-				       LOG_FIND_THREAD_TRAN_INDEX (thread_p), BU_LOCK));
+				       thread_p->conn_entry->get_tran_index (), BU_LOCK));
     }
   else
     {

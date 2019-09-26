@@ -35061,7 +35061,6 @@ btree_check_locking_for_insert_unique (THREAD_ENTRY * thread_p, const BTREE_INSE
 {
   int has_class_bu_lock;
   int has_instance_lock;
-  int tran_index = logtb_get_current_tran_index ();
 
   /*  The insert operation in index has to check if the object is currently inserting is locked by the transaction.
    *  However, after the introduction of the BU_LOCK this is no longer valid. For this case, the inserter should
@@ -35072,14 +35071,15 @@ btree_check_locking_for_insert_unique (THREAD_ENTRY * thread_p, const BTREE_INSE
    */
 
   has_class_bu_lock = lock_has_lock_on_object (BTREE_INSERT_CLASS_OID (insert_helper),
-					       oid_Root_class_oid, tran_index, BU_LOCK);
+					       oid_Root_class_oid, thread_p->conn_entry->get_tran_index (), BU_LOCK);
   if (has_class_bu_lock > 0)
     {
       return true;
     }
 
   has_instance_lock = lock_has_lock_on_object (BTREE_INSERT_OID (insert_helper),
-					       BTREE_INSERT_CLASS_OID (insert_helper), tran_index, X_LOCK);
+					       BTREE_INSERT_CLASS_OID (insert_helper),
+					       logtb_get_current_tran_index (), X_LOCK);
   if (has_instance_lock > 0)
     {
       return true;
@@ -35093,7 +35093,6 @@ btree_check_locking_for_delete_unique (THREAD_ENTRY * thread_p, const BTREE_DELE
 {
   int has_class_bu_lock;
   int has_instance_lock;
-  int tran_index = logtb_get_current_tran_index ();
 
   /*  The insert operation in index has to check if the object is currently inserting is locked by the transaction.
    *  However, after the introduction of the BU_LOCK this is no longer valid. For this case, the inserter should
@@ -35104,14 +35103,15 @@ btree_check_locking_for_delete_unique (THREAD_ENTRY * thread_p, const BTREE_DELE
    */
 
   has_class_bu_lock = lock_has_lock_on_object (BTREE_DELETE_CLASS_OID (delete_helper),
-					       oid_Root_class_oid, tran_index, BU_LOCK);
+					       oid_Root_class_oid, thread_p->conn_entry->get_tran_index (), BU_LOCK);
   if (LOG_ISTRAN_ABORTED (LOG_FIND_CURRENT_TDES (thread_p)) && has_class_bu_lock > 0)
     {
       return true;
     }
 
   has_instance_lock = lock_has_lock_on_object (BTREE_DELETE_OID (delete_helper),
-					       BTREE_DELETE_CLASS_OID (delete_helper), tran_index, X_LOCK);
+					       BTREE_DELETE_CLASS_OID (delete_helper),
+					       logtb_get_current_tran_index (), X_LOCK);
   if (has_instance_lock > 0)
     {
       return true;
