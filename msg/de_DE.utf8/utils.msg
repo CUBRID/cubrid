@@ -445,7 +445,8 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 117 Laden fehlgeschlagen.\n
 118 Maximale Länge des Klassennamens ist %1$d Bytes.\n
 119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
-120 \
+120 Class %1$s is ignored. \n
+121 \
 loaddb: Import von Objekten und Schemas in die Datenbank.\n\
 Anwendung: %1$s loaddb [OPTION] Datenbanknamen[@host]\n\
 \n\

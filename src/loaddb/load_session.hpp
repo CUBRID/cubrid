@@ -169,7 +169,7 @@ namespace cubload
     if (get_args ().verbose)
       {
 	std::string log_msg;
-	error_handler::format_log_msg (msg_id, std::forward<Args> (args)...);
+	log_msg = error_handler::format_log_msg (msg_id, std::forward<Args> (args)...);
 
 	std::unique_lock<std::mutex> ulock (m_stats_mutex);
 

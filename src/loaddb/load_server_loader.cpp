@@ -129,6 +129,7 @@ namespace cubload
     if (is_class_ignored (class_name))
       {
 	m_class_ignored = true;
+	m_session.append_log_msg (LOADDB_MSG_IGNORED_CLASS, class_name);
 	return;
       }
 

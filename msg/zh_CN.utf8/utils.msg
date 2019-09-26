@@ -445,7 +445,8 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 117 装载失败.\n
 118 类名的最大长度是 %1$d 字节.\n
 119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
-120 \
+120 Class %1$s is ignored. \n
+121 \
 loaddb: 将对象和结构导入到数据库.\n\
 用法: %1$s loaddb [选项] 数据库名[@主机名]\n\
 \n\
