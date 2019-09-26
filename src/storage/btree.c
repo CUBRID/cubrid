@@ -5597,7 +5597,7 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
 	  /* Current middle key is equal to searched key. */
 	  if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
 	    {
-              search_key->has_fence_key = btree_search_key_helper::HAS_FENCE_KEY;
+	      search_key->has_fence_key = btree_search_key_helper::HAS_FENCE_KEY;
 	      /* Fence key! */
 	      assert (middle == 1 || middle == key_cnt);
 	      if (middle == 1)
@@ -33656,19 +33656,19 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
       insert_list->m_debug_last_search_slotid = search_key->slotid;
 
       if ((search_key->result == BTREE_KEY_BIGGER || search_key->result == BTREE_KEY_SMALLER)
-           && search_key->has_fence_key == btree_search_key_helper::HAS_FENCE_KEY)
-        {
-          perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE4);
-          break;
-        }
-      else if (search_key->result != BTREE_KEY_BETWEEN && search_key->result != BTREE_KEY_FOUND
-	  && search_key->result != BTREE_KEY_BIGGER && search_key->result != BTREE_KEY_SMALLER)
+	  && search_key->has_fence_key == btree_search_key_helper::HAS_FENCE_KEY)
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE4);
-          assert (false);
 	  break;
 	}
-      
+      else if (search_key->result != BTREE_KEY_BETWEEN && search_key->result != BTREE_KEY_FOUND
+	       && search_key->result != BTREE_KEY_BIGGER && search_key->result != BTREE_KEY_SMALLER)
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE4);
+	  assert (false);
+	  break;
+	}
+
       first_insert = false;
     }
 
