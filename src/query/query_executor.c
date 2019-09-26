@@ -12397,6 +12397,8 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   bool clear_list_id = false;
   MVCC_SNAPSHOT *mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
   bool need_ha_replication = !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true;
+  bool sysop_started = false;
+  bool in_instant_lock_mode = false;
 
   // *INDENT-OFF*
   struct incr_info
@@ -12436,6 +12438,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 
       /* need lock & reevaluation */
       lock_start_instant_lock_mode (tran_index);
+      in_instant_lock_mode = true;
     }
   else
     {
@@ -12609,8 +12612,12 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
     }
 
   log_sysop_start (thread_p);
+  sysop_started = true;
+
   if (lock_is_instant_lock_mode (tran_index))
     {
+      assert (in_instant_lock_mode);
+
       /* in this function, several instances can be updated, so it need to be atomic */
       if (need_ha_replication)
 	{
@@ -12663,11 +12670,15 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
       /* Subtransaction case. */
       assert (subtransaction_started);
       log_sysop_commit (thread_p);
+
+      assert (in_instant_lock_mode);
     }
   else
     {
       /* Transaction case. */
       log_sysop_attach_to_outer (thread_p);
+
+      in_instant_lock_mode = false;
     }
 
 exit:
@@ -12676,10 +12687,17 @@ exit:
     {
       /* Release subtransaction MVCCID. */
       logtb_complete_sub_mvcc (thread_p, tdes);
+    }
 
+  if (in_instant_lock_mode)
+    {
       /* Release instant locks, if not already released. */
       lock_stop_instant_lock_mode (thread_p, tran_index, true);
+      in_instant_lock_mode = false;
     }
+
+  // not hold instant locks any more.
+  assert (!in_instant_lock_mode && !lock_is_instant_lock_mode (tran_index));
 
   if (err != NO_ERROR)
     {
@@ -12708,7 +12726,12 @@ exit_on_error:
       /* Ends previously started marker. */
       repl_end_flush_mark (thread_p, true);
     }
-  log_sysop_abort (thread_p);
+
+  if (sysop_started)
+    {
+      log_sysop_abort (thread_p);
+      sysop_started = false;
+    }
 
   /* clear some kinds of error code; it's click counter! */
   ASSERT_ERROR_AND_SET (err);
