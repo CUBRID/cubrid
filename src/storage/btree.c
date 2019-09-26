@@ -414,8 +414,16 @@ struct show_index_scan_ctx
 typedef struct btree_search_key_helper BTREE_SEARCH_KEY_HELPER;
 struct btree_search_key_helper
 {
+  enum fence_key_presence
+  {
+    NO_FENCE_KEY = 0,
+    HAS_FENCE_KEY
+  };
+
   BTREE_SEARCH result;		/* Result of key search. */
   PGSLOTID slotid;		/* Slot ID of found key or slot ID of the biggest key smaller then key (if not found). */
+
+  fence_key_presence has_fence_key;
 };
 /* BTREE_SEARCH_KEY_HELPER static initializer. */
 #define BTREE_SEARCH_KEY_HELPER_INITIALIZER \
@@ -5487,6 +5495,7 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
   /* Initialize search results. */
   search_key->result = BTREE_KEY_NOTFOUND;
   search_key->slotid = NULL_SLOTID;
+  search_key->has_fence_key = btree_search_key_helper::NO_FENCE_KEY;
 
   key_cnt = btree_node_number_of_keys (thread_p, page_ptr);
   if (key_cnt < 0)
@@ -5588,6 +5597,7 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
 	  /* Current middle key is equal to searched key. */
 	  if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
 	    {
+              search_key->has_fence_key = btree_search_key_helper::HAS_FENCE_KEY;
 	      /* Fence key! */
 	      assert (middle == 1 || middle == key_cnt);
 	      if (middle == 1)
@@ -33609,6 +33619,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	    }
 	}
 
+      /* this is useful only for MIDXKEY */
       error_code = btree_leaf_is_key_between_min_max (thread_p, btid_int, *leaf_page, curr_key, search_key);
       if (error_code != NO_ERROR)
 	{
@@ -33644,13 +33655,20 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
       insert_list->m_debug_last_search_search_result = search_key->result;
       insert_list->m_debug_last_search_slotid = search_key->slotid;
 
-      if (search_key->result != BTREE_KEY_BETWEEN && search_key->result != BTREE_KEY_FOUND
+      if ((search_key->result == BTREE_KEY_BIGGER || search_key->result == BTREE_KEY_SMALLER)
+           && search_key->has_fence_key == btree_search_key_helper::HAS_FENCE_KEY)
+        {
+          perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE4);
+          break;
+        }
+      else if (search_key->result != BTREE_KEY_BETWEEN && search_key->result != BTREE_KEY_FOUND
 	  && search_key->result != BTREE_KEY_BIGGER && search_key->result != BTREE_KEY_SMALLER)
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE4);
+          assert (false);
 	  break;
 	}
-
+      
       first_insert = false;
     }
 
