@@ -7389,6 +7389,7 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT
 
       if (btree_leaf_is_flaged (&peek_rec1, BTREE_LEAF_RECORD_FENCE))
 	{
+          assert (k == 1);
 	  continue;
 	}
 
@@ -7435,6 +7436,7 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT
 
       if (btree_leaf_is_flaged (&peek_rec2, BTREE_LEAF_RECORD_FENCE))
 	{
+          assert (k + 1 == key_cnt);
 	  btree_clear_key_value (&clear_key1, &key1);
 	  continue;
 	}
