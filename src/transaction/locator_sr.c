@@ -25,6 +25,8 @@
 
 #include "config.h"
 
+#include <algorithm>
+
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
