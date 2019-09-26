@@ -5601,7 +5601,7 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
       if (c == DB_EQ)
 	{
 	  /* Current middle key is equal to searched key. */
-	  if (search_key->has_fence_key = btree_search_key_helper::HAS_FENCE_KEY)
+	  if (search_key->has_fence_key == btree_search_key_helper::HAS_FENCE_KEY)
 	    {
 	      /* Fence key! */
 	      assert (middle == 1 || middle == key_cnt);
