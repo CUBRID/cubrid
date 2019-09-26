@@ -356,13 +356,9 @@ set(ESQL_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/esql_lexer.c)
 
 # bison and flex check
 include(FindBISON)
-find_package(BISON)
+find_package(BISON 3.0.0)
 
-if(BISON_FOUND)
-  if(BISON_VERSION VERSION_GREATER 2.3)
-    set(USE_BISON_NEWDIRECTIVE 1)
-  endif(BISON_VERSION VERSION_GREATER 2.3)
-else(BISON_FOUND)
+if(NOT BISON_FOUND)
   if(UNIX)
     message(FATAL_ERROR "Please install bison and flex.")
   else()
@@ -374,7 +370,7 @@ else(BISON_FOUND)
       " and retry running cmake."
     )
   endif()
-endif(BISON_FOUND)
+endif(NOT BISON_FOUND)
 
 include(FindFLEX)
 find_package(FLEX 2.5.34 REQUIRED)
