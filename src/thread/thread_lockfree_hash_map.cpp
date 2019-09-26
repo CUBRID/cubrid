@@ -21,5 +21,6 @@
 
 namespace cubthread
 {
-
+  // for compile
+  using lfht = lockfree_hashmap<int>;
 } // namespace cubthread
