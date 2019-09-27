@@ -694,7 +694,7 @@ test_clear_proc_3 (void *param)
 		  abort ();
 		}
 	      te->locked_mutex = NULL;
-	      pthread_mutex_unlock (&entry->mutex);
+	      hashmap->unlock (te, entry);
 	    }
 	}
       else
@@ -704,7 +704,7 @@ test_clear_proc_3 (void *param)
 	      abort ();
 	    }
 	  te->locked_mutex = NULL;
-	  pthread_mutex_unlock (&entry->mutex);
+	  hashmap->unlock (te, entry);
 	}
 
       assert (te->locked_mutex == NULL);

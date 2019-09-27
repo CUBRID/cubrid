@@ -525,7 +525,10 @@ lf_hash_table_cpp<Key, T>::erase_locked (lf_tran_entry *t_entry, Key &key, T *&t
       assert (false);
       pthread_mutex_unlock (get_pthread_mutex (t));
     }
-  t = NULL;
+  if (success == 0)
+    {
+      t = NULL;
+    }
   return success != 0;
 }
 
