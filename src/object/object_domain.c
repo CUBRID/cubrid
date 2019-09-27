@@ -10029,21 +10029,26 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  case DB_TYPE_NCHAR:
 	  case DB_TYPE_VARNCHAR:
 	    {
-	      DB_VALUE temp;
-	      DB_TYPE src_str_type = (DB_TYPE) src->domain.general_info.type;
-	      int dest_precision =
-		db_value_precision (src) == -1 ? db_get_string_length (src) : db_value_precision (src);
-	      db_value_domain_init (&temp, src_str_type, dest_precision, 0);
-	      int error_code = db_string_put_cs_and_collation (&temp, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
-	      if (error_code != NO_ERROR)
+	      DB_VALUE utf8_str;
+	      const DB_VALUE *json_str_val = &utf8_str;
+	      int error_code = NO_ERROR;
+	      if (db_get_string_codeset (src) == INTL_CODESET_UTF8)
 		{
-		  pr_clear_value (&temp);
-		  ASSERT_ERROR ();
-		  status = DOMAIN_INCOMPATIBLE;
+		  json_str_val = src;
+		}
+	      else
+		{
+		  error_code = db_string_convert_to (src, &utf8_str, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
+		  if (error_code != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      status = DOMAIN_ERROR;
+		      break;
+		    }
 		}
 
-	      unsigned int str_size = db_get_string_size (&temp);
-	      const char *original_str = db_get_string (&temp);
+	      unsigned int str_size = db_get_string_size (json_str_val);
+	      const char *original_str = db_get_string (json_str_val);
 
 	      error_code = db_json_get_json_from_str (original_str, doc, str_size);
 	      if (error_code != NO_ERROR)
