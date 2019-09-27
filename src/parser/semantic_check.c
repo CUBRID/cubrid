@@ -9361,6 +9361,10 @@ static int
 pt_json_codeset_normalization (REFPTR (DB_VALUE, dbval))
 {
   DB_VALUE coerced_str;
+  if (db_get_string_codeset (dbval) == INTL_CODESET_UTF8)
+    {
+      return NO_ERROR;
+    }
   int error_code = db_string_convert_to (dbval, &coerced_str, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
   {
     return error_code;
