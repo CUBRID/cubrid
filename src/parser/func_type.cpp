@@ -1196,7 +1196,6 @@ namespace func_type
     else
       {
 	// collation matters for this argument
-
 	if (string_args_to_utf8)
 	  {
 	    compat.m_common_collation.coll_id = LANG_COLL_UTF8_BINARY;
