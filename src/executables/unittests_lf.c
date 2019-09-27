@@ -402,7 +402,7 @@ test_hash_proc_2 (void *param)
 
       if (i % 10 < 5)
 	{
-	  (void) hashmap->find_or_insert (te, key, &entry);
+	  (void) hashmap->find_or_insert (te, key, entry);
 	  if (entry == NULL)
 	    {
 	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
@@ -465,7 +465,7 @@ test_hash_proc_3 (void *param)
     {
       key = random_numbers[rand_base + i] % 1000;
 
-      (void) hashmap->find_or_insert (te, key, &entry);
+      (void) hashmap->find_or_insert (te, key, entry);
       if (entry == NULL)
 	{
 	  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
@@ -546,7 +546,7 @@ test_clear_proc_1 (void *param)
 	  if (i % 10 < 8)
 	    {
 	      entry = NULL;
-	      (void) hashmap->find_or_insert (te, key, &entry);
+	      (void) hashmap->find_or_insert (te, key, entry);
 	      hashmap->unlock (te, entry);
 	    }
 	  else if (i % 1000 < 999)
@@ -604,7 +604,7 @@ test_clear_proc_2 (void *param)
 	{
 	  if (i % 10 < 5)
 	    {
-	      (void) hashmap->find_or_insert (te, key, &entry);
+	      (void) hashmap->find_or_insert (te, key, entry);
 	      if (entry == NULL)
 		{
 		  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
@@ -675,7 +675,7 @@ test_clear_proc_3 (void *param)
 	  continue;
 	}
 
-      (void) hashmap->find_or_insert (te, key, &entry);
+      (void) hashmap->find_or_insert (te, key, entry);
       if (entry == NULL)
 	{
 	  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
@@ -999,7 +999,7 @@ test_hash_iterator ()
     {
       XENTRY *entry;
 
-      (void) hashmap.find_or_insert (te, i, &entry);
+      (void) hashmap.find_or_insert (te, i, entry);
       if (entry == NULL)
 	{
 	  return fail ("null insert error");
