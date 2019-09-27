@@ -10029,13 +10029,26 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  case DB_TYPE_NCHAR:
 	  case DB_TYPE_VARNCHAR:
 	    {
-	      unsigned int str_size = db_get_string_size (src);
-	      const char *original_str = db_get_string (src);
-	      int error_code;
+	      DB_VALUE temp;
+	      DB_TYPE src_str_type = (DB_TYPE) src->domain.general_info.type;
+	      int dest_precision =
+		db_value_precision (src) == -1 ? db_get_string_length (src) : db_value_precision (src);
+	      db_value_domain_init (&temp, src_str_type, dest_precision, 0);
+	      int error_code = db_string_put_cs_and_collation (&temp, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
+	      if (error_code != NO_ERROR)
+		{
+		  pr_clear_value (&temp);
+		  ASSERT_ERROR ();
+		  status = DOMAIN_INCOMPATIBLE;
+		}
+
+	      unsigned int str_size = db_get_string_size (&temp);
+	      const char *original_str = db_get_string (&temp);
 
 	      error_code = db_json_get_json_from_str (original_str, doc, str_size);
 	      if (error_code != NO_ERROR)
 		{
+		  pr_clear_value (&temp);
 		  assert (doc == NULL);
 		  status = DOMAIN_ERROR;
 		  break;
@@ -10045,10 +10058,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  && db_json_validate_doc (desired_domain->json_validator, doc) != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
+		  pr_clear_value (&temp);
 		  db_json_delete_doc (doc);
 		  status = DOMAIN_ERROR;
 		  break;
 		}
+	      pr_clear_value (&temp);
 	    }
 	    break;
 	  case DB_TYPE_SHORT:

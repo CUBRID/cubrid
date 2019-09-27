@@ -3230,9 +3230,22 @@ db_value_to_json_doc (const DB_VALUE &db_val, bool force_copy, JSON_DOC_STORE &j
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
     {
+      DB_VALUE temp;
+      DB_TYPE src_str_type = (DB_TYPE) db_val.domain.general_info.type;
+      int dest_precision = db_value_precision (&db_val) == -1 ? db_get_string_length (&db_val) : db_value_precision (&db_val);
+      db_value_domain_init (&temp, src_str_type, dest_precision, 0);
+      error_code = db_string_put_cs_and_collation (&temp, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
+      if (error_code != NO_ERROR)
+	{
+	  pr_clear_value (&temp);
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+
       JSON_DOC *json_doc_ptr = NULL;
       error_code = db_json_get_json_from_str (db_get_string (&db_val), json_doc_ptr, db_get_string_size (&db_val));
       json_doc.set_mutable_reference (json_doc_ptr);
+      pr_clear_value (&temp);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -3288,10 +3301,26 @@ db_value_to_json_value (const DB_VALUE &db_val, JSON_DOC_STORE &json_doc)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
+    {
       json_doc.create_mutable_reference ();
+
+      DB_VALUE temp;
+      DB_TYPE src_str_type = (DB_TYPE) db_val.domain.general_info.type;
+      int dest_precision = db_value_precision (&db_val) == -1 ? db_get_string_length (&db_val) : db_value_precision (&db_val);
+      db_value_domain_init (&temp, src_str_type, dest_precision, 0);
+      int error_code = db_string_put_cs_and_collation (&temp, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
+      if (error_code != NO_ERROR)
+	{
+	  pr_clear_value (&temp);
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+
       db_json_set_string_to_doc (json_doc.get_mutable (), db_get_string (&db_val),
 				 (unsigned) db_get_string_size (&db_val));
-      break;
+      pr_clear_value (&temp);
+    }
+    break;
     case DB_TYPE_ENUMERATION:
       json_doc.create_mutable_reference ();
       db_json_set_string_to_doc (json_doc.get_mutable (), db_get_enum_string (&db_val),
