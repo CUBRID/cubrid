@@ -2705,7 +2705,9 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 
   if (tran_index == LOG_SYSTEM_TRAN_INDEX)
     {
+#if defined (SERVER_MODE)
       assert (false);
+#endif // SERVER_MODE
       return false;
     }
 
