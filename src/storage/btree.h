@@ -552,6 +552,10 @@ struct page_key_boundary
   page_key_boundary ();
   ~page_key_boundary ();
 
+  void set_value (DB_VALUE &dest_value, DB_VALUE &src_value, bool &clear_src_value);
+  int set_value (THREAD_ENTRY * thread_p, DB_VALUE &dest_value, BTID_INT * btid, PAGE_PTR page_ptr, const INT16 slot);
+  int set_value (THREAD_ENTRY * thread_p, DB_VALUE &dest_value, BTID_INT * btid, PAGE_PTR page_ptr, RECDES &rec);
+
   int update_boundary_eq (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr,
                           DB_VALUE &boundary_value, bool &clear_boundary_value, const INT16 slot);
 

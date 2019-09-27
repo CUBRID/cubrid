@@ -35374,99 +35374,81 @@ page_key_boundary::~page_key_boundary ()
   pr_clear_value (&m_right_key);
 }
 
+void
+page_key_boundary::set_value (DB_VALUE &dest_value, DB_VALUE &src_value, bool &clear_src_value)
+{
+  pr_clear_value (&dest_value);
+  pr_clone_value (&src_value, &dest_value);
+  btree_clear_key_value (&clear_src_value, &src_value);
+}
+
+int
+page_key_boundary::set_value (THREAD_ENTRY * thread_p, DB_VALUE &dest_value, BTID_INT * btid, PAGE_PTR page_ptr,
+                              const INT16 slot)
+{
+  RECDES rec;
+  if (spage_get_record (thread_p, page_ptr, slot, &rec, PEEK) != S_SUCCESS)
+    {
+      return ER_FAILED;
+    }
+
+  return set_value (thread_p, dest_value, btid, page_ptr, rec);
+}
+
+int
+page_key_boundary::set_value (THREAD_ENTRY * thread_p, DB_VALUE &dest_value, BTID_INT * btid, PAGE_PTR page_ptr,
+                              RECDES &rec)
+{
+  DB_VALUE boundary_value;
+  NON_LEAF_REC non_leaf_rec;
+  bool clear_boundary_value = false;
+  int offset;
+
+  pr_clear_value (&dest_value);
+
+  if (btree_read_record_without_decompression
+      (thread_p, btid, &rec, &boundary_value, &non_leaf_rec, BTREE_NON_LEAF_NODE, &clear_boundary_value,
+       &offset, PEEK_KEY_VALUE) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  pr_clone_value (&boundary_value, &dest_value);
+
+  return NO_ERROR;
+}
+
 int
 page_key_boundary::update_boundary_eq (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr,
                                        DB_VALUE &boundary_value, bool &clear_boundary_value, const INT16 slot)
 {
-  RECDES left_rec;
-  NON_LEAF_REC non_leaf_rec;
-  int offset;
+  int error = NO_ERROR;
 
-  if (!m_is_inf_right_key)
-    {
-      pr_clear_value (&m_right_key);
-    }
-  else
-    {
-      assert (DB_IS_NULL (&m_right_key));
-    }
-
-  pr_clone_value (&boundary_value, &m_right_key);
+  set_value (m_right_key, boundary_value, clear_boundary_value);
   m_is_inf_right_key = false;
-
-  btree_clear_key_value (&clear_boundary_value, &boundary_value);
 
   if (slot > 0)
     {
-      if (!m_is_inf_left_key)
-        {
-	  pr_clear_value (&m_left_key);
-	}
-      else
-        {
-	  assert (DB_IS_NULL (&m_left_key));
-        }
-
-      if (spage_get_record (thread_p, page_ptr, slot - 1, &left_rec, PEEK) != S_SUCCESS)
-        {
-	  return ER_FAILED;
-	}
-
-      if (btree_read_record_without_decompression
-	  (thread_p, btid, &left_rec, &boundary_value, &non_leaf_rec, BTREE_NON_LEAF_NODE, &clear_boundary_value,
-           &offset, PEEK_KEY_VALUE) != NO_ERROR)
-        {
-	  return ER_FAILED;
-	}
-
-      pr_clone_value (&boundary_value, &m_left_key);
+      error = set_value (thread_p, m_left_key, btid, page_ptr, slot - 1);
       m_is_inf_left_key = false;
     }
 
-  return NO_ERROR;
+  return error;
 }
 
 int
 page_key_boundary::update_boundary_lt (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr,
                                        RECDES &left_rec, DB_VALUE &boundary_value, bool &clear_boundary_value)
 {
-  NON_LEAF_REC non_leaf_rec;
-  int offset;
+  int error = NO_ERROR;
 
-  if (!m_is_inf_right_key)
-    {
-      pr_clear_value (&m_right_key);
-    }
-  else
-    {
-      assert (DB_IS_NULL (&m_right_key));
-    }
-
-  pr_clone_value (&boundary_value, &m_right_key);
+  set_value (m_right_key, boundary_value, clear_boundary_value);
   m_is_inf_right_key = false;
 
-  btree_clear_key_value (&clear_boundary_value, &boundary_value);
-
-  if (!m_is_inf_left_key)
-    {
-      pr_clear_value (&m_left_key);
-    }
-  else
-    {
-      assert (DB_IS_NULL (&m_left_key));
-    }
-
-  if (btree_read_record_without_decompression
-      (thread_p, btid, &left_rec, &boundary_value, &non_leaf_rec, BTREE_NON_LEAF_NODE, &clear_boundary_value, &offset,
-       PEEK_KEY_VALUE) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  pr_clone_value (&boundary_value, &m_left_key);
+  error = set_value (thread_p, m_left_key, btid, page_ptr, left_rec);
   m_is_inf_left_key = false; 
 
-  return NO_ERROR;
+  return error;
 }
 
 int
@@ -35474,52 +35456,18 @@ page_key_boundary::update_boundary_gt_or_eq (THREAD_ENTRY * thread_p, BTID_INT *
                                              DB_VALUE &boundary_value, bool &clear_boundary_value,
                                              const INT16 slot, const int key_cnt)
 {
-  RECDES right_rec;
-  NON_LEAF_REC non_leaf_rec;
-  int offset;
+  int error = NO_ERROR;
 
-  if (!m_is_inf_left_key)
-    {
-      pr_clear_value (&m_left_key);
-    }
-  else
-    {
-      assert (DB_IS_NULL (&m_left_key));
-    }
-
-  pr_clone_value (&boundary_value, &m_left_key);
+  set_value (m_left_key, boundary_value, clear_boundary_value);
   m_is_inf_left_key = false;
-
-  btree_clear_key_value (&clear_boundary_value, &boundary_value);
 
   if (slot + 1 < key_cnt)
     {
-      if (!m_is_inf_right_key)
-	{
-	  pr_clear_value (&m_right_key);
-        }
-      else
-	{
-	  assert (DB_IS_NULL (&m_right_key));
-	}
-
-      if (spage_get_record (thread_p, page_ptr, slot + 1, &right_rec, PEEK) != S_SUCCESS)
-	{
-          return ER_FAILED;
-	}
-
-      if (btree_read_record_without_decompression
-	  (thread_p, btid, &right_rec, &boundary_value, &non_leaf_rec, BTREE_NON_LEAF_NODE, &clear_boundary_value,
-           &offset, PEEK_KEY_VALUE) != NO_ERROR)
-        {
-	  return ER_FAILED;
-	}
-
-      pr_clone_value (&boundary_value, &m_right_key);
+      error = set_value (thread_p, m_right_key, btid, page_ptr, slot + 1);
       m_is_inf_right_key = false;
     }
 
-  return NO_ERROR;
+  return error;
 }
 
 btree_insert_list::btree_insert_list (DB_VALUE *key, OID *oid)
