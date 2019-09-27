@@ -315,7 +315,7 @@ namespace cubload
     start_attrinfo (class_oid);
 
     // lock class when batch starts, check that the transaction has BU lock
-    assert (lock_has_lock_on_object (&class_oid, oid_Root_class_oid, m_thread_ref->conn_entry->get_tran_index (), BU_LOCK));
+    assert (lock_has_lock_on_object (&class_oid, oid_Root_class_oid, BU_LOCK));
   }
 
   void
@@ -435,8 +435,7 @@ namespace cubload
     int records_inserted = 0;
     bool insert_errors_filtered = false;
     OID dummy_oid;
-    bool has_BU_lock = lock_has_lock_on_object (&m_scancache.node.class_oid, oid_Root_class_oid,
-						m_thread_ref->conn_entry->get_tran_index (), BU_LOCK);
+    bool has_BU_lock = lock_has_lock_on_object (&m_scancache.node.class_oid, oid_Root_class_oid, BU_LOCK);
 
     // First check if we have any errors set.
     if (m_session.is_failed ())

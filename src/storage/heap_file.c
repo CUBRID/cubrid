@@ -13869,8 +13869,7 @@ heap_check_heap_file (THREAD_ENTRY * thread_p, HFID * hfid)
 #if !defined (NDEBUG)
       if (file_descriptor_get (thread_p, &hfid->vfid, &fdes) == NO_ERROR && !OID_ISNULL (&fdes.heap.class_oid))
 	{
-	  assert (lock_has_lock_on_object (&fdes.heap.class_oid, oid_Root_class_oid,
-					   LOG_FIND_THREAD_TRAN_INDEX (thread_p), SCH_S_LOCK) == 1);
+	  assert (lock_has_lock_on_object (&fdes.heap.class_oid, oid_Root_class_oid, SCH_S_LOCK) == 1);
 	}
 #endif /* NDEBUG */
       rv = heap_check_all_pages (thread_p, hfid);
@@ -22344,8 +22343,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
   if (context->is_bulk_op)
     {
       // In case of bulk insert we need to skip the IX lock on class and make sure that we have BU_LOCK acquired.
-      assert (lock_has_lock_on_object (&context->class_oid, oid_Root_class_oid,
-				       thread_p->conn_entry->get_tran_index (), BU_LOCK));
+      assert (lock_has_lock_on_object (&context->class_oid, oid_Root_class_oid, BU_LOCK));
     }
   else
     {

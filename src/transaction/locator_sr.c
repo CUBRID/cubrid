@@ -5650,7 +5650,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		    {
 #if defined (SERVER_MODE)
 		      /* If not inserted by me, I must have lock. */
-		      assert (lock_has_lock_on_object (oid, class_oid, logtb_get_current_tran_index (), X_LOCK) > 0);
+		      assert (lock_has_lock_on_object (oid, class_oid, X_LOCK) > 0);
 #endif /* SERVER_MODE */
 		    }
 		}
@@ -13702,9 +13702,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
   std::vector<RECDES> recdes_array;
   std::vector<VPID> heap_pages_array;
   RECDES local_record;
-  bool has_BU_lock = lock_has_lock_on_object (class_oid, oid_Root_class_oid,
-					      thread_p->conn_entry->get_tran_index (),
-					      BU_LOCK);
+  bool has_BU_lock = lock_has_lock_on_object (class_oid, oid_Root_class_oid, BU_LOCK);
 
   // Early-out
   if (recdes.size () == 0)
