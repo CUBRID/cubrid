@@ -426,8 +426,10 @@ struct btree_search_key_helper
   fence_key_presence has_fence_key;
 };
 /* BTREE_SEARCH_KEY_HELPER static initializer. */
+// *INDENT-OFF*
 #define BTREE_SEARCH_KEY_HELPER_INITIALIZER \
   { BTREE_KEY_NOTFOUND, NULL_SLOTID, btree_search_key_helper::NO_FENCE_KEY}
+// *INDENT-ON*
 
 /* BTREE_FIND_UNIQUE_HELPER -
  * Structure used by find unique functions.
@@ -33421,6 +33423,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 						     other_args);
       if (error_code != NO_ERROR)
 	{
+          ASSERT_ERROR ();
 	  break;
 	}
 
@@ -33451,9 +33454,9 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 
       /* assuming the key does not exist in page (an existing key requires less space,
        * we may miss adding one more record; this is a less expensive check, we accept the 'loss' */
-      bool key_alread_in_page = false;
+      bool key_already_in_page = false;
       int new_ent_size = btree_get_max_new_data_size (thread_p, btid_int, *leaf_page, BTREE_LEAF_NODE, key_len,
-						      &helper->insert_helper, key_alread_in_page);
+						      &helper->insert_helper, key_already_in_page);
       if (new_ent_size > spage_get_free_space_without_saving (thread_p, *leaf_page, NULL))
 	{
 	  /* no more space in page */
@@ -33489,6 +33492,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	  error_code = btree_leaf_is_key_between_min_max (thread_p, btid_int, *leaf_page, curr_key, search_key);
 	  if (error_code != NO_ERROR)
 	    {
+              ASSERT_ERROR ();
 	      break;
 	    }
 
@@ -33515,6 +33519,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
       error_code = btree_search_leaf_page (thread_p, btid_int, *leaf_page, curr_key, search_key);
       if (error_code != NO_ERROR)
 	{
+          ASSERT_ERROR ();
 	  break;
 	}
 
