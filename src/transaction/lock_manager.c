@@ -7334,14 +7334,13 @@ lock_get_object_lock (const OID * oid, const OID * class_oid, int tran_index)
  *
  *   oid(in): target object ientifier
  *   class_oid(in): class identifier of the target object
- *   tran_index(in): the transaction table index of target transaction.
  *   lock(in): the lock mode
  *
  * Note: Find whether the transaction holds an enough lock on the object
  *
  */
 int
-lock_has_lock_on_object (const OID * oid, const OID * class_oid, int tran_index, LOCK lock)
+lock_has_lock_on_object (const OID * oid, const OID * class_oid, LOCK lock)
 {
 #if !defined (SERVER_MODE)
   return 1;
@@ -7350,13 +7349,24 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, int tran_index,
   LK_TRAN_LOCK *tran_lock;
   LK_ENTRY *entry_ptr;
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-  int rv;
+  int rv, tran_index;
 
   if (oid == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2, "lock_has_lock_on_object", "NULL OID pointer");
       return ER_LK_BAD_ARGUMENT;
     }
+
+  if (thread_p->type == thread_type::TT_LOADDB)
+    {
+      /* Loaddb workers does not acquire locks. Get tran_index of loaddb workers manager thread. */
+      tran_index = thread_p->conn_entry->get_tran_index ();
+    }
+  else
+    {
+      tran_index = logtb_get_current_tran_index ();
+    }
+
   if (tran_index == NULL_TRAN_INDEX)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2, "lock_has_lock_on_object", "NULL_TRAN_INDEX");
