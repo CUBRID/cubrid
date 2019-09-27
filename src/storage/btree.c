@@ -5099,10 +5099,10 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 
 	  if (page_bounds != NULL)
 	    {
-              if (page_bounds->update_boundary_eq (thread_p, btid, page_ptr, temp_key, clear_key, middle) != NO_ERROR)
-                {
-                  return ER_FAILED;
-                }
+	      if (page_bounds->update_boundary_eq (thread_p, btid, page_ptr, temp_key, clear_key, middle) != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
 	    }
 
 	  btree_clear_key_value (&clear_key, &temp_key);
@@ -5137,10 +5137,10 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 
       if (page_bounds != NULL)
 	{
-          if (page_bounds->update_boundary_lt (thread_p, btid, page_ptr, rec, temp_key, clear_key) != NO_ERROR)
-            {
-              return ER_FAILED;
-            }
+	  if (page_bounds->update_boundary_lt (thread_p, btid, page_ptr, rec, temp_key, clear_key) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
 	}
 
     }
@@ -5152,10 +5152,11 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 
       if (page_bounds != NULL)
 	{
-          if (page_bounds->update_boundary_gt_or_eq (thread_p, btid, page_ptr, temp_key, clear_key, middle, key_cnt) != NO_ERROR)
-          {
-            return ER_FAILED;
-          }
+	  if (page_bounds->update_boundary_gt_or_eq (thread_p, btid, page_ptr, temp_key, clear_key, middle, key_cnt) !=
+	      NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
 	}
     }
 
@@ -33502,32 +33503,32 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	}
 
       if (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY)
-        {
-          error_code = btree_leaf_is_key_between_min_max (thread_p, btid_int, *leaf_page, curr_key, search_key);
-          if (error_code != NO_ERROR)
+	{
+	  error_code = btree_leaf_is_key_between_min_max (thread_p, btid_int, *leaf_page, curr_key, search_key);
+	  if (error_code != NO_ERROR)
 	    {
 	      break;
 	    }
 
-          if (search_key->result == BTREE_ERROR_OCCURRED || search_key->result == BTREE_KEY_SMALLER
+	  if (search_key->result == BTREE_ERROR_OCCURRED || search_key->result == BTREE_KEY_SMALLER
 	      || search_key->result == BTREE_KEY_BIGGER)
 	    {
 	      BTREE_NODE_HEADER *node_header = btree_get_node_header (thread_p, *leaf_page);
 	      if (search_key->result == BTREE_KEY_SMALLER && VPID_ISNULL (&node_header->prev_vpid))
-	        {
-	          perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_FALSE_FAILED_RANGE1);
-	        }
+		{
+		  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_FALSE_FAILED_RANGE1);
+		}
 	      else if (search_key->result == BTREE_KEY_BIGGER && VPID_ISNULL (&node_header->next_vpid))
-	        {
-	          perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_FALSE_FAILED_RANGE2);
-	        }
+		{
+		  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_FALSE_FAILED_RANGE2);
+		}
 	      else
-	        {
-	          perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE3);
-	          break;
-	        }
+		{
+		  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE3);
+		  break;
+		}
 	    }
-        }
+	}
 
       error_code = btree_search_leaf_page (thread_p, btid_int, *leaf_page, curr_key, search_key);
       if (error_code != NO_ERROR)
@@ -35368,10 +35369,10 @@ page_key_boundary::update_boundary_eq (THREAD_ENTRY * thread_p, BTID_INT * btid,
         {
 	  return ER_FAILED;
 	}
-		  
+
       if (btree_read_record_without_decompression
-	    (thread_p, btid, &left_rec, &boundary_value, &non_leaf_rec, BTREE_NON_LEAF_NODE, &clear_boundary_value,
-             &offset, PEEK_KEY_VALUE) != NO_ERROR)
+	  (thread_p, btid, &left_rec, &boundary_value, &non_leaf_rec, BTREE_NON_LEAF_NODE, &clear_boundary_value,
+           &offset, PEEK_KEY_VALUE) != NO_ERROR)
         {
 	  return ER_FAILED;
 	}
@@ -35379,7 +35380,7 @@ page_key_boundary::update_boundary_eq (THREAD_ENTRY * thread_p, BTID_INT * btid,
       pr_clone_value (&boundary_value, &m_left_key);
       m_is_inf_left_key = false;
     }
-  
+
   return NO_ERROR;
 }
 
@@ -35415,7 +35416,7 @@ page_key_boundary::update_boundary_lt (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   if (btree_read_record_without_decompression
       (thread_p, btid, &left_rec, &boundary_value, &non_leaf_rec, BTREE_NON_LEAF_NODE, &clear_boundary_value, &offset,
-	       PEEK_KEY_VALUE) != NO_ERROR)
+       PEEK_KEY_VALUE) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -35466,8 +35467,8 @@ page_key_boundary::update_boundary_gt_or_eq (THREAD_ENTRY * thread_p, BTID_INT *
 	}
 
       if (btree_read_record_without_decompression
-	    (thread_p, btid, &right_rec, &boundary_value, &non_leaf_rec, BTREE_NON_LEAF_NODE, &clear_boundary_value, &offset,
-		   PEEK_KEY_VALUE) != NO_ERROR)
+	  (thread_p, btid, &right_rec, &boundary_value, &non_leaf_rec, BTREE_NON_LEAF_NODE, &clear_boundary_value,
+           &offset, PEEK_KEY_VALUE) != NO_ERROR)
         {
 	  return ER_FAILED;
 	}
