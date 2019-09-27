@@ -359,6 +359,8 @@ template <class Key, class T>
 class lf_hash_table_cpp
 {
   public:
+    class iterator;
+
     lf_hash_table_cpp ();
 
     void init (lf_tran_system &transys, int hash_size, int freelist_block_count, int freelist_block_size,
@@ -376,6 +378,9 @@ class lf_hash_table_cpp
 
     void clear (lf_tran_entry *t_entry);
 
+    lf_hash_table &get_hash_table ();
+    lf_freelist &get_freelist ();
+
   private:
     pthread_mutex_t *get_pthread_mutex (T *t);
     template <typename F>
@@ -385,10 +390,28 @@ class lf_hash_table_cpp
     lf_hash_table m_hash;
 };
 
+template <class Key, class T>
+class lf_hash_table_cpp<Key, T>::iterator
+{
+  public:
+    iterator () = default;
+    iterator (lf_tran_entry *t_entry, lf_hash_table_cpp & hash);
+    ~iterator ();
+
+    T *iterate ();
+
+  private:
+    lf_hash_table_iterator m_iter;
+    T *m_crt_val;
+};
+
 //
 // implementation
 //
 
+//
+// lf_hash_table_cpp
+//
 template <class Key, class T>
 lf_hash_table_cpp<Key, T>::lf_hash_table_cpp ()
   : m_freelist LF_FREELIST_INITIALIZER
@@ -522,6 +545,44 @@ void
 lf_hash_table_cpp<Key, T>::clear (lf_tran_entry *t_entry)
 {
   lf_hash_clear (t_entry, &m_hash);
+}
+
+template <class Key, class T>
+lf_hash_table &
+lf_hash_table_cpp<Key, T>::get_hash_table ()
+{
+  return m_hash;
+}
+
+template <class Key, class T>
+lf_freelist &
+lf_hash_table_cpp<Key, T>::get_freelist ()
+{
+  return m_freelist;
+}
+
+//
+// lf_hash_table_cpp::iterator
+//
+
+template <class Key, class T>
+lf_hash_table_cpp<Key, T>::iterator::iterator (lf_tran_entry *t_entry, lf_hash_table_cpp & hash)
+  : m_iter ()
+  , m_crt_val (NULL)
+{
+  lf_hash_create_iterator (&m_iter, t_entry, &hash.m_hash);
+}
+
+template <class Key, class T>
+lf_hash_table_cpp<Key, T>::iterator::~iterator ()
+{
+}
+
+template <class Key, class T>
+T *
+lf_hash_table_cpp<Key, T>::iterator::iterate ()
+{
+  return lf_hash_iterate (&m_iter);
 }
 
 // *INDENT-ON*

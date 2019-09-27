@@ -36,6 +36,8 @@ namespace cubthread
     public:
       lockfree_hashmap ();
 
+      class iterator;
+
       void init_as_old (lf_tran_system &transys, int hash_size, int freelist_block_count, int freelist_block_size,
 			lf_entry_descriptor &edesc, int entry_idx);
       void init_as_new ();
@@ -77,6 +79,20 @@ namespace cubthread
     public:
       new_hashmap () = default;
 
+      class iterator
+      {
+	public:
+	  iterator ();
+	  iterator (lockfree::tran::index tran_index, lockfree_hashmap &map) {}
+	  ~iterator ();
+
+	  T *
+	  iterate ()
+	  {
+	    return NULL;
+	  }
+      };
+
       void init () {}
       void destroy () {}
 
@@ -116,6 +132,23 @@ namespace cubthread
 
     private:
   };
+
+  template <class Key, class T>
+  class lockfree_hashmap<Key, T>::iterator
+  {
+    public:
+      iterator (cubthread::entry *thread_p, lockfree_hashmap &map);
+      ~iterator ();
+
+      T *iterate ();
+
+    private:
+      // old stuff
+      lockfree_hashmap &m_map;
+      lf_hash_table_cpp::iterator m_old_iter;
+      typename lockfree_hashmap::new_hashmap::iterator m_new_iter;
+      T *m_crt_val;
+  };
 } // namespace cubthread
 
 //
@@ -154,9 +187,13 @@ namespace cubthread
   }
 
 #define lockfree_hashmap_forward_func(f_, tp_, ...) \
-  is_old_type () ? m_old_hash.(f_) (get_tran_entry (tp_), __VA_ARGS__) : else m_new_hash.(f_) (__VA_ARGS__)
+  is_old_type () ? \
+  m_old_hash.(f_) (get_tran_entry (tp_), __VA_ARGS__) : \
+  m_new_hash.(f_) (tp_.get_lf_tran_index (), __VA_ARGS__)
 #define lockfree_hashmap_forward_func_noarg(f_) \
-  is_old_type () ? m_old_hash.(f_) (get_tran_entry (tp_)) : else m_new_hash.(f_) ()
+  is_old_type () ? \
+  m_old_hash.(f_) (get_tran_entry (tp_)) : \
+  m_new_hash.(f_) (tp_.get_lf_tran_index ())
 
   template <class Key, class T>
   void
@@ -240,9 +277,38 @@ namespace cubthread
   }
 
   //
-  // lockfree_hashmap::old_hashmap
+  // lockfree_hashmap::iterator
   //
+  template <class Key, class T>
+  lockfree_hashmap<Key, T>::iterator::iterator (cubthread::entry *thread_p, lockfree_hashmap &map)
+    : m_map (map)
+    , m_old_iter ()
+    , m_new_iter ()
+    , m_crt_val (NULL)
+  {
+    if (m_map.is_old_type ())
+      {
+	m_old_iter = { m_map.get_tran_entry (thread_p), m_map.m_old_hash };
+      }
+    else
+      {
+	m_new_iter = { thread_p->get_lf_tran_index (), m_map.m_new_hash };
+      }
+  }
 
+  template <class Key, class T>
+  T *
+  lockfree_hashmap<Key, T>::iterator::iterate ()
+  {
+    if (m_map.is_old_type ())
+      {
+	return m_old_iter.iterate ();
+      }
+    else
+      {
+	return m_new_iter.iterate ();
+      }
+  }
 }
 
 #endif // !_THREAD_LOCKFREE_HASH_MAP_
