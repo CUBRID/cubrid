@@ -541,43 +541,6 @@ struct key_oid
 };
 
 // *INDENT-OFF*
-
-#if !defined (NDEBUG)
-struct advance_page_trace
-{
-  typedef enum 
-    { 
-      ONE_KEY = 0,
-      EQ_KEY,
-      LT_KEY,
-      GT_KEY
-    } advance_case;
-
-  advance_case m_adv_case;
-  int m_key_cnt;
-
-  VPID m_curr_page_vpid;
-  PAGE_PTR m_curr_page_ptr;
-
-  INT16 m_slot_id;
-  VPID m_child_vpid;
-
-  int m_max_key_len;
-
-  advance_page_trace (advance_case c, int key_cnt, VPID curr_vpid, PAGE_PTR curr_page_ptr, INT16 slot_id,
-                      VPID child_vpid, int max_key_len)
-    : m_adv_case (c)
-    , m_key_cnt (key_cnt)
-    , m_curr_page_vpid (curr_vpid)
-    , m_curr_page_ptr (curr_page_ptr)
-    , m_slot_id (slot_id)
-    , m_child_vpid (child_vpid)
-    , m_max_key_len (max_key_len)
-    {
-    }
-};
-#endif
-
 struct page_key_boundary
 {
   DB_VALUE m_left_key;
@@ -589,13 +552,14 @@ struct page_key_boundary
   page_key_boundary ();
   ~page_key_boundary ();
 
-#if !defined (NDEBUG)
-  std::vector <advance_page_trace> m_trace;
-  void add_trace (advance_page_trace &&trace_point)
-    {
-      m_trace.push_back (trace_point);
-    }
-#endif
+  int update_boundary_eq (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr,
+                          DB_VALUE &boundary_value, bool &clear_boundary_value, const INT16 slot);
+
+  int update_boundary_lt (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr,
+                          RECDES &left_rec, DB_VALUE &boundary_value, bool &clear_boundary_value);
+
+  int update_boundary_gt_or_eq (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr,
+                                DB_VALUE &boundary_value, bool &clear_boundary_value, const INT16 slot, const int key_cnt);
 };
 
 struct btree_insert_list
