@@ -28,6 +28,11 @@
 #include "lockfree_bitmap.hpp"
 #include "porting.h"
 
+#include <cassert>
+#if !defined (WINDOWS)
+#include <pthread.h>
+#endif
+
 /*
  * Some common hash, copy and compare functions
  */
@@ -503,7 +508,7 @@ bool
 lf_hash_table_cpp<Key, T>::erase (lf_tran_entry *t_entry, Key &key)
 {
   int success = 0;
-  if (lf_hash_delete (t_entry, &m_table, &key, &success) != NO_ERROR)
+  if (lf_hash_delete (t_entry, &m_hash, &key, &success) != NO_ERROR)
     {
       assert (false);
     }

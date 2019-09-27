@@ -67,7 +67,7 @@ namespace cubthread
 	UNKNOWN
       };
 
-      lf_hash_table_cpp m_old_hash;
+      lf_hash_table_cpp<Key, T> m_old_hash;
       new_hashmap m_new_hash;
       type m_type;
       int m_entry_idx;
@@ -145,7 +145,7 @@ namespace cubthread
     private:
       // old stuff
       lockfree_hashmap &m_map;
-      lf_hash_table_cpp::iterator m_old_iter;
+      typename lf_hash_table_cpp<Key, T>::iterator m_old_iter;
       typename lockfree_hashmap::new_hashmap::iterator m_new_iter;
       T *m_crt_val;
   };
@@ -188,18 +188,25 @@ namespace cubthread
 
 #define lockfree_hashmap_forward_func(f_, tp_, ...) \
   is_old_type () ? \
-  m_old_hash.(f_) (get_tran_entry (tp_), __VA_ARGS__) : \
-  m_new_hash.(f_) (tp_.get_lf_tran_index (), __VA_ARGS__)
+  m_old_hash.f_ (get_tran_entry (tp_), __VA_ARGS__) : \
+  m_new_hash.f_ ((tp_).get_lf_tran_index (), __VA_ARGS__)
 #define lockfree_hashmap_forward_func_noarg(f_) \
-  is_old_type () ? \
-  m_old_hash.(f_) (get_tran_entry (tp_)) : \
-  m_new_hash.(f_) (tp_.get_lf_tran_index ())
+  is_old_type (tp_) ? \
+  m_old_hash.f_ (get_tran_entry (tp_)) : \
+  m_new_hash.f_ ((tp_).get_lf_tran_index ())
 
   template <class Key, class T>
   void
   lockfree_hashmap<Key, T>::destroy ()
   {
-    lockfree_hashmap_forward_func_noarg (destroy);
+    if (is_old_type ())
+      {
+	m_old_hash.destroy ();
+      }
+    else
+      {
+	m_new_hash.destroy ();
+      }
   }
 
   template <class Key, class T>
@@ -255,7 +262,7 @@ namespace cubthread
   void
   lockfree_hashmap<Key, T>::clear (cubthread::entry *thread_p)
   {
-    lockfree_hashmap_forward_func (clear, thread_p);
+    lockfree_hashmap_forward_func_noarg (clear, thread_p);
   }
 
 #undef lockfree_hashmap_forward_func
@@ -273,7 +280,7 @@ namespace cubthread
   lf_tran_entry *
   lockfree_hashmap<Key, T>::get_tran_entry (cubthread::entry *thread_p)
   {
-    return thread_get_tran_entry (thread_p, m_entry_idx);
+    return thread_p->tran_entries[m_entry_idx];
   }
 
   //
