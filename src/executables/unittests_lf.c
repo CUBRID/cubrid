@@ -73,6 +73,11 @@ struct xentry
   unsigned long long int data;
 };
 
+// *INDENT-OFF*
+using my_hashmap = lf_hash_table_cpp<int, xentry>;
+using my_hashmap_iterator = my_hashmap::iterator;
+// *INDENT-ON*
+
 /* entry manipulation functions */
 static void *
 xentry_alloc ()
@@ -317,7 +322,8 @@ test_hash_proc_1 (void *param)
 {
 #define NOPS  1000000
 
-  LF_HASH_TABLE *hash = (LF_HASH_TABLE *) param;
+  my_hashmap *hashmap = (my_hashmap *) param;
+  LF_HASH_TABLE *hash = &hashmap->get_hash_table ();
   LF_TRAN_SYSTEM *ts = hash->freelist->tran_system;
   LF_TRAN_ENTRY *te;
   XENTRY *entry;
@@ -345,18 +351,12 @@ test_hash_proc_1 (void *param)
       if (i % 10 < 5)
 	{
 	  entry = NULL;
-	  if (lf_hash_find_or_insert (te, hash, &key, (void **) &entry, NULL) != NO_ERROR)
-	    {
-	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
-	    }
-	  lf_tran_end_with_mb (te);
+	  (void) hashmap->find_or_insert (te, key, entry);
+	  hashmap->unlock (te, entry);
 	}
       else
 	{
-	  if (lf_hash_delete (te, hash, &key, NULL) != NO_ERROR)
-	    {
-	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
-	    }
+	  (void) hashmap->erase (te, key);
 	}
     }
 
@@ -374,7 +374,8 @@ test_hash_proc_2 (void *param)
 {
 #define NOPS  1000000
 
-  LF_HASH_TABLE *hash = (LF_HASH_TABLE *) param;
+  my_hashmap *hashmap = (my_hashmap *) param;
+  LF_HASH_TABLE *hash = &hashmap->get_hash_table ();
   LF_TRAN_SYSTEM *ts = hash->freelist->tran_system;
   LF_TRAN_ENTRY *te;
   XENTRY *entry;
@@ -401,10 +402,7 @@ test_hash_proc_2 (void *param)
 
       if (i % 10 < 5)
 	{
-	  if (lf_hash_find_or_insert (te, hash, &key, (void **) &entry, NULL) != NO_ERROR)
-	    {
-	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
-	    }
+	  (void) hashmap->find_or_insert (te, key, &entry);
 	  if (entry == NULL)
 	    {
 	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
@@ -415,14 +413,11 @@ test_hash_proc_2 (void *param)
 	      abort ();
 	    }
 	  te->locked_mutex = NULL;
-	  pthread_mutex_unlock (&entry->mutex);
+	  hashmap->unlock (te, entry);
 	}
       else
 	{
-	  if (lf_hash_delete (te, hash, &key, NULL) != NO_ERROR)
-	    {
-	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
-	    }
+	  (void) hashmap->erase (te, key);
 	}
 
       assert (te->locked_mutex == NULL);
@@ -444,7 +439,8 @@ test_hash_proc_3 (void *param)
 {
 #define NOPS  1000000
 
-  LF_HASH_TABLE *hash = (LF_HASH_TABLE *) param;
+  my_hashmap *hashmap = (my_hashmap *) param;
+  LF_HASH_TABLE *hash = &hashmap->get_hash_table ();
   LF_TRAN_SYSTEM *ts = hash->freelist->tran_system;
   LF_TRAN_ENTRY *te;
   XENTRY *entry;
@@ -469,10 +465,7 @@ test_hash_proc_3 (void *param)
     {
       key = random_numbers[rand_base + i] % 1000;
 
-      if (lf_hash_find_or_insert (te, hash, &key, (void **) &entry, NULL) != NO_ERROR)
-	{
-	  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
-	}
+      (void) hashmap->find_or_insert (te, key, &entry);
       if (entry == NULL)
 	{
 	  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
@@ -486,14 +479,9 @@ test_hash_proc_3 (void *param)
 
       if (entry->data >= 10)
 	{
-	  int success = 0;
-
 	  local_del_op_count += entry->data;
-	  if (lf_hash_delete_already_locked (te, hash, &key, entry, &success) != NO_ERROR)
-	    {
-	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
-	    }
-	  else if (!success)
+	  bool success = hashmap->erase_locked (te, key, entry);
+	  if (!success)
 	    {
 	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	    }
@@ -505,7 +493,7 @@ test_hash_proc_3 (void *param)
 	      abort ();
 	    }
 	  te->locked_mutex = NULL;
-	  pthread_mutex_unlock (&entry->mutex);
+	  hashmap->unlock (te, entry);
 	}
 
       assert (te->locked_mutex == NULL);
@@ -526,7 +514,8 @@ test_clear_proc_1 (void *param)
 {
 #define NOPS  1000000
 
-  LF_HASH_TABLE *hash = (LF_HASH_TABLE *) param;
+  my_hashmap *hashmap = (my_hashmap *) param;
+  LF_HASH_TABLE *hash = &hashmap->get_hash_table ();
   LF_TRAN_SYSTEM *ts = hash->freelist->tran_system;
   LF_TRAN_ENTRY *te;
   XENTRY *entry;
@@ -557,23 +546,17 @@ test_clear_proc_1 (void *param)
 	  if (i % 10 < 8)
 	    {
 	      entry = NULL;
-	      if (lf_hash_find_or_insert (te, hash, &key, (void **) &entry, NULL) != NO_ERROR)
-		{
-		  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
-		}
-	      lf_tran_end_with_mb (te);
+	      (void) hashmap->find_or_insert (te, key, &entry);
+	      hashmap->unlock (te, entry);
 	    }
 	  else if (i % 1000 < 999)
 	    {
-	      if (lf_hash_delete (te, hash, &key, NULL) != NO_ERROR)
-		{
-		  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
-		}
+	      (void) hashmap->erase (te, key);
 	    }
 	}
       else
 	{
-	  lf_hash_clear (te, hash);
+	  hashmap->clear (te);
 	}
     }
 
@@ -591,7 +574,8 @@ test_clear_proc_2 (void *param)
 {
 #define NOPS  1000000
 
-  LF_HASH_TABLE *hash = (LF_HASH_TABLE *) param;
+  my_hashmap *hashmap = (my_hashmap *) param;
+  LF_HASH_TABLE *hash = &hashmap->get_hash_table ();
   LF_TRAN_SYSTEM *ts = hash->freelist->tran_system;
   LF_TRAN_ENTRY *te;
   XENTRY *entry;
@@ -620,34 +604,27 @@ test_clear_proc_2 (void *param)
 	{
 	  if (i % 10 < 5)
 	    {
-	      if (lf_hash_find_or_insert (te, hash, &key, (void **) &entry, NULL) != NO_ERROR)
-		{
-		  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
-		}
+	      (void) hashmap->find_or_insert (te, key, &entry);
 	      if (entry == NULL)
 		{
 		  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 		}
-
 
 	      if (te->locked_mutex != &entry->mutex)
 		{
 		  abort ();
 		}
 	      te->locked_mutex = NULL;
-	      pthread_mutex_unlock (&entry->mutex);
+	      hashmap->unlock (te, entry);
 	    }
 	  else
 	    {
-	      if (lf_hash_delete (te, hash, &key, NULL) != NO_ERROR)
-		{
-		  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
-		}
+	      (void) hashmap->erase (te, key);
 	    }
 	}
       else
 	{
-	  lf_hash_clear (te, hash);
+	  hashmap->clear (te);
 	}
       assert (te->locked_mutex == NULL);
     }
@@ -666,7 +643,8 @@ test_clear_proc_3 (void *param)
 {
 #define NOPS  1000000
 
-  LF_HASH_TABLE *hash = (LF_HASH_TABLE *) param;
+  my_hashmap *hashmap = (my_hashmap *) param;
+  LF_HASH_TABLE *hash = &hashmap->get_hash_table ();
   LF_TRAN_SYSTEM *ts = hash->freelist->tran_system;
   LF_TRAN_ENTRY *te;
   XENTRY *entry;
@@ -693,14 +671,11 @@ test_clear_proc_3 (void *param)
 
       if (i % 1000 == 999)
 	{
-	  lf_hash_clear (te, hash);
+	  hashmap->clear (te);
 	  continue;
 	}
 
-      if (lf_hash_find_or_insert (te, hash, &key, (void **) &entry, NULL) != NO_ERROR)
-	{
-	  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
-	}
+      (void) hashmap->find_or_insert (te, key, &entry);
       if (entry == NULL)
 	{
 	  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
@@ -710,13 +685,8 @@ test_clear_proc_3 (void *param)
 
       if (entry->data >= 10)
 	{
-	  int success = 0;
-
-	  if (lf_hash_delete_already_locked (te, hash, &key, entry, &success) != NO_ERROR)
-	    {
-	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
-	    }
-	  else if (!success)
+	  bool success = hashmap->erase_locked (te, key, entry);
+	  if (!success)
 	    {
 	      /* cleared in the meantime */
 	      if (te->locked_mutex != &entry->mutex)
@@ -852,9 +822,12 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads, void *(*proc) (void 
 #define MAX_THREADS	  1024
 #define HASH_SIZE	  113
 
-  static LF_FREELIST freelist;
   static LF_TRAN_SYSTEM ts;
-  static LF_HASH_TABLE hash;
+  static my_hashmap hashmap;
+  // *INDENT-OFF*
+  lf_hash_table &hash = hashmap.get_hash_table ();
+  lf_freelist &freelist = hashmap.get_freelist ();
+  // *INDENT-ON*
   pthread_t threads[MAX_THREADS];
   char msg[256];
   int i;
@@ -876,20 +849,12 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads, void *(*proc) (void 
       return fail ("transaction system init");
     }
 
-  if (lf_freelist_init (&freelist, 100, 100, edesc, &ts) != NO_ERROR)
-    {
-      return fail ("freelist init");
-    }
-
-  if (lf_hash_init (&hash, &freelist, HASH_SIZE, edesc) != NO_ERROR)
-    {
-      return fail ("hashtable init");
-    }
+  hashmap.init (ts, HASH_SIZE, 100, 100, *edesc);
 
   /* multithreaded test */
   for (i = 0; i < nthreads; i++)
     {
-      if (pthread_create (&threads[i], NULL, proc, (void *) &hash) != NO_ERROR)
+      if (pthread_create (&threads[i], NULL, proc, (void *) &hashmap) != NO_ERROR)
 	{
 	  return fail ("thread create");
 	}
@@ -991,8 +956,7 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads, void *(*proc) (void 
   }
 
   /* uninit */
-  lf_hash_destroy (&hash);
-  lf_freelist_destroy (&freelist);
+  hashmap.destroy ();
   lf_tran_system_destroy (&ts);
 
   return success ();
@@ -1007,9 +971,10 @@ test_hash_iterator ()
 #define HASH_POPULATION HASH_SIZE * 5
 #define NUM_THREADS 16
 
-  static LF_FREELIST freelist;
   static LF_TRAN_SYSTEM ts;
-  static LF_HASH_TABLE hash;
+  static my_hashmap hashmap;
+  LF_HASH_TABLE hash = hashmap.get_hash_table ();
+  LF_FREELIST freelist = hashmap.get_freelist ();
   static LF_TRAN_ENTRY *te;
   int i;
 
@@ -1027,26 +992,15 @@ test_hash_iterator ()
       return fail ("failed to fetch tran entry");
     }
 
-  if (lf_freelist_init (&freelist, 100, 100, &xentry_desc, &ts) != NO_ERROR)
-    {
-      return fail ("freelist init");
-    }
-
-  if (lf_hash_init (&hash, &freelist, HASH_SIZE, &xentry_desc) != NO_ERROR)
-    {
-      return fail ("hashtable init");
-    }
+  hashmap.init (ts, HASH_SIZE, 100, 100, xentry_desc);
 
   /* static (single threaded) test */
   for (i = 0; i < HASH_POPULATION; i++)
     {
       XENTRY *entry;
 
-      if (lf_hash_find_or_insert (te, &hash, &i, (void **) &entry, NULL) != NO_ERROR)
-	{
-	  return fail ("insert error");
-	}
-      else if (entry == NULL)
+      (void) hashmap.find_or_insert (te, i, &entry);
+      if (entry == NULL)
 	{
 	  return fail ("null insert error");
 	}
@@ -1054,20 +1008,22 @@ test_hash_iterator ()
 	{
 	  entry->data = i;
 	  /* end transaction */
-	  lf_tran_end_with_mb (te);
+	  hashmap.unlock (te, entry);
 	}
     }
 
   {
-    LF_HASH_TABLE_ITERATOR it;
+    my_hashmap_iterator it
+    {
+    te, hashmap};
     XENTRY *curr = NULL;
     char msg[256];
     int sum = 0;
 
     lf_hash_create_iterator (&it, te, &hash);
-    for (curr = (XENTRY *) lf_hash_iterate (&it); curr != NULL; curr = (XENTRY *) lf_hash_iterate (&it))
+    for (curr = it->iterate (); curr != NULL; curr = it->iterate ())
       {
-	sum += ((XENTRY *) curr)->data;
+	sum += curr->data;
       }
 
     if (sum != ((HASH_POPULATION - 1) * HASH_POPULATION) / 2)
@@ -1078,15 +1034,14 @@ test_hash_iterator ()
   }
 
   /* reset */
-  lf_hash_clear (te, &hash);
+  hashmap.clear (te);
 
   /* multi-threaded test */
   /* TODO TODO TODO */
 
   /* uninit */
   lf_tran_return_entry (te);
-  lf_hash_destroy (&hash);
-  lf_freelist_destroy (&freelist);
+  hashmap.destroy ();
   lf_tran_system_destroy (&ts);
   return success ();
 #undef HASH_SIZE
