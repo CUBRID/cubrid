@@ -112,6 +112,7 @@ struct setobj
 extern DB_COLLECTION *set_create (DB_TYPE type, int initial_size);
 extern int set_area_init (void);
 extern void set_area_final (void);
+extern void set_area_reset ();
 extern DB_COLLECTION *set_create_basic (void);
 extern DB_COLLECTION *set_create_multi (void);
 extern DB_COLLECTION *set_create_sequence (int size);

@@ -48,6 +48,7 @@
 #include "language_support.h"
 #include "log_common_impl.h"
 #include "parse_tree.h"
+#include "load_common.hpp"
 #include "timezone_lib_common.h"
 
 // forward declarations
@@ -418,4 +419,12 @@ extern int log_does_active_user_exist (const char *user_name, bool * existed);
 extern int netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILES * spacefiles);
 
 extern int locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * ex_lock);
+
+extern int loaddb_init (cubload::load_args & args);
+extern int loaddb_load_object_file ();
+extern int loaddb_install_class (const cubload::batch & batch);
+extern int loaddb_load_batch (const cubload::batch & batch);
+extern int loaddb_fetch_stats (load_stats * stats);
+extern int loaddb_destroy ();
+extern int loaddb_interrupt ();
 #endif /* _NETWORK_INTERFACE_CL_H_ */

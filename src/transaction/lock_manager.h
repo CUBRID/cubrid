@@ -235,7 +235,7 @@ extern int lock_add_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK *
 extern int lock_finalize_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * comp_lock);
 extern void lock_abort_composite_lock (LK_COMPOSITE_LOCK * comp_lock);
 extern int lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int waiter_index, LK_RES * res);
-extern int lock_has_lock_on_object (const OID * oid, const OID * class_oid, int tran_index, LOCK lock);
+extern int lock_has_lock_on_object (const OID * oid, const OID * class_oid, LOCK lock);
 extern int lock_rep_read_tran (THREAD_ENTRY * thread_p, LOCK lock, int cond_flag);
 extern int lock_demote_class_lock (THREAD_ENTRY * thread_p, const OID * oid, LOCK lock, LOCK * ex_lock);
 extern void lock_demote_read_class_lock_for_checksumdb (THREAD_ENTRY * thread_p, int tran_index, const OID * class_oid);

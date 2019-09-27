@@ -223,13 +223,11 @@ extern void vacuum_finalize (THREAD_ENTRY * thread_p);
 extern int vacuum_boot (THREAD_ENTRY * thread_p);
 extern void vacuum_stop (THREAD_ENTRY * thread_p);
 extern int xvacuum (THREAD_ENTRY * thread_p);
-extern MVCCID vacuum_get_global_oldest_visible_mvccid (void);
 
 extern int vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, VFID * vacuum_data_vfid);
 extern int vacuum_data_load_and_recover (THREAD_ENTRY * thread_p);
 extern VACUUM_LOG_BLOCKID vacuum_get_log_blockid (LOG_PAGEID pageid);
-extern void vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, MVCCID oldest_mvccid,
-					   MVCCID newest_mvccid);
+extern void vacuum_produce_log_block_data (THREAD_ENTRY * thread_p);
 extern int vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p);
 extern LOG_PAGEID vacuum_min_log_pageid_to_keep (THREAD_ENTRY * thread_p);
 extern bool vacuum_is_safe_to_remove_archives (void);
