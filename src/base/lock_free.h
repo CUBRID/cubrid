@@ -475,7 +475,7 @@ bool
 lf_hash_table_cpp<Key, T>::generic_insert (F &ins_func, lf_tran_entry *t_entry, Key &key, T *&t)
 {
   int inserted = 0;
-  if (ins_func (t_entry, &m_hash, &key, t, &inserted) != NO_ERROR)
+  if (ins_func (t_entry, &m_hash, &key, &t, &inserted) != NO_ERROR)
     {
       assert (false);
     }
@@ -520,7 +520,7 @@ bool
 lf_hash_table_cpp<Key, T>::erase_locked (lf_tran_entry *t_entry, Key &key, T *&t)
 {
   int success = 0;
-  if (lf_hash_delete_already_locked (t_entry, &key, &m_hash, t, &success) != NO_ERROR)
+  if (lf_hash_delete_already_locked (t_entry, &m_hash, &key, t, &success) != NO_ERROR)
     {
       assert (false);
       pthread_mutex_unlock (get_pthread_mutex (t));
@@ -587,7 +587,7 @@ template <class Key, class T>
 T *
 lf_hash_table_cpp<Key, T>::iterator::iterate ()
 {
-  return lf_hash_iterate (&m_iter);
+  return static_cast<T *> (lf_hash_iterate (&m_iter));
 }
 
 // *INDENT-ON*
