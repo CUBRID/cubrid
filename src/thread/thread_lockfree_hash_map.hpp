@@ -189,11 +189,11 @@ namespace cubthread
 #define lockfree_hashmap_forward_func(f_, tp_, ...) \
   is_old_type () ? \
   m_old_hash.f_ (get_tran_entry (tp_), __VA_ARGS__) : \
-  m_new_hash.f_ ((tp_).get_lf_tran_index (), __VA_ARGS__)
-#define lockfree_hashmap_forward_func_noarg(f_) \
+  m_new_hash.f_ ((tp_)->get_lf_tran_index (), __VA_ARGS__)
+#define lockfree_hashmap_forward_func_noarg(f_, tp_) \
   is_old_type (tp_) ? \
   m_old_hash.f_ (get_tran_entry (tp_)) : \
-  m_new_hash.f_ ((tp_).get_lf_tran_index ())
+  m_new_hash.f_ ((tp_)->get_lf_tran_index ())
 
   template <class Key, class T>
   void

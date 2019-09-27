@@ -520,7 +520,7 @@ bool
 lf_hash_table_cpp<Key, T>::erase_locked (lf_tran_entry *t_entry, Key &key, T *&t)
 {
   int success = 0;
-  if (lf_hash_delete_already_locked (t_entry, &key, t, &success) != NO_ERROR)
+  if (lf_hash_delete_already_locked (t_entry, &key, &m_hash, t, &success) != NO_ERROR)
     {
       assert (false);
       pthread_mutex_unlock (get_pthread_mutex (t));

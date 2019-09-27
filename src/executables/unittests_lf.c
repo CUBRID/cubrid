@@ -1013,15 +1013,14 @@ test_hash_iterator ()
     }
 
   {
-    my_hashmap_iterator it
-    {
-    te, hashmap};
+    // *INDENT-OFF*
+    my_hashmap_iterator it { te, hashmap};
+    // *INDENT-ON*
     XENTRY *curr = NULL;
     char msg[256];
     int sum = 0;
 
-    lf_hash_create_iterator (&it, te, &hash);
-    for (curr = it->iterate (); curr != NULL; curr = it->iterate ())
+    for (curr = it.iterate (); curr != NULL; curr = it.iterate ())
       {
 	sum += curr->data;
       }
