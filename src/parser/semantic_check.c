@@ -9370,10 +9370,7 @@ pt_json_codeset_normalization (REFPTR (DB_VALUE, dbval))
     return error_code;
   }
 
-  char *tmp_str = db_get_string (dbval);
-  db_make_string (dbval, db_get_string (&coerced_str));
-  db_make_string (&coerced_str, tmp_str);
-
+  std::swap (coerced_str, *dbval);
   pr_clear_value (&coerced_str);
 }
 
