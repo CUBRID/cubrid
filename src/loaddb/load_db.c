@@ -699,7 +699,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       schema_file = NULL;
     }
 
-  if (!args.object_file.empty ())
+  if (!args.object_file.empty () || !args.server_object_file.empty ())
     {
       if (args.syntax_check)
 	{
