@@ -6470,6 +6470,23 @@ error_return:
 }
 
 extern int
+db_json_normalize_codeset (REFPTR (DB_VALUE, dbval))
+{
+  DB_VALUE coerced_str;
+  if (db_get_string_codeset (dbval) == INTL_CODESET_UTF8)
+    {
+      return NO_ERROR;
+    }
+  int error_code = db_string_convert_to (dbval, &coerced_str, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
+  {
+    return error_code;
+  }
+
+  std::swap (coerced_str, *dbval);
+  pr_clear_value (&coerced_str);
+}
+
+extern int
 db_string_convert_to (const DB_VALUE * src_str_dbval, DB_VALUE * dest_str_dbval, INTL_CODESET dest_codeset,
 		      int dest_col)
 {

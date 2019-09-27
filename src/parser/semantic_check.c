@@ -203,7 +203,6 @@ static PT_NODE *pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NO
 static void pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry);
 static int pt_normalize_path (PARSER_CONTEXT * parser, REFPTR (char, c));
 static int pt_json_str_codeset_normalization (PARSER_CONTEXT * parser, REFPTR (char, c));
-static int pt_json_codeset_normalization (REFPTR (DB_VALUE, dbval));
 static int pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_gen_isnull_preds (PARSER_CONTEXT * parser, PT_NODE * pred, PT_CHAIN_INFO * chain);
@@ -9357,23 +9356,6 @@ pt_json_str_codeset_normalization (PARSER_CONTEXT * parser, REFPTR (char, c))
   return NO_ERROR;
 }
 
-static int
-pt_json_codeset_normalization (REFPTR (DB_VALUE, dbval))
-{
-  DB_VALUE coerced_str;
-  if (db_get_string_codeset (dbval) == INTL_CODESET_UTF8)
-    {
-      return NO_ERROR;
-    }
-  int error_code = db_string_convert_to (dbval, &coerced_str, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
-  {
-    return error_code;
-  }
-
-  std::swap (coerced_str, *dbval);
-  pr_clear_value (&coerced_str);
-}
-
 /*
  * pt_check_json_table_node () - check json_table's paths and type check ON_ERROR & ON_EMPTY
  *
@@ -9406,7 +9388,7 @@ pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	  if (DB_IS_STRING (col_info.on_empty.m_default_value))
 	    {
-	      error_code = pt_json_codeset_normalization (col_info.on_empty.m_default_value);
+	      error_code = db_json_normalize_codeset (col_info.on_empty.m_default_value);
 	      if (error_code != NO_ERROR)
 		{
 		  return NO_ERROR;
@@ -9428,7 +9410,7 @@ pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	  if (DB_IS_STRING (col_info.on_error.m_default_value))
 	    {
-	      error_code = pt_json_codeset_normalization (col_info.on_error.m_default_value);
+	      error_code = db_json_normalize_codeset (col_info.on_error.m_default_value);
 	      if (error_code != NO_ERROR)
 		{
 		  return NO_ERROR;
