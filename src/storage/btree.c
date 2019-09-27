@@ -35409,6 +35409,8 @@ page_key_boundary::set_value (THREAD_ENTRY * thread_p, DB_VALUE &dest_value, BTI
   bool clear_boundary_value = false;
   int offset;
 
+  db_make_null (&boundary_value);
+
   pr_clear_value (&dest_value);
 
   if (btree_read_record_without_decompression
