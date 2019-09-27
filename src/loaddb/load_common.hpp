@@ -76,6 +76,7 @@ namespace cubload
   };
 
   using batch_handler = std::function<int (const batch &)>;
+  using class_handler = std::function<int (const batch &, bool &)>;
 
   /*
    * loaddb executables command line arguments
@@ -326,10 +327,6 @@ namespace cubload
        *                        attribute list and class constructor specification
        */
       virtual void install_class (string_type *class_name, class_command_spec_type *cmd_spec) = 0;
-
-      virtual bool get_ignored_status () = 0;
-
-      virtual void set_ignored_status (bool status) = 0;
   };
 
   /*
@@ -399,7 +396,7 @@ namespace cubload
    *    c_handler(in)       : a function for handling/process a %class or %id line from object file
    *    b_handler(in)       : a function for handling/process a batch of objects
    */
-  int split (int batch_size, const std::string &object_file_name, batch_handler &c_handler, batch_handler &b_handler);
+  int split (int batch_size, const std::string &object_file_name, class_handler &c_handler, batch_handler &b_handler);
 
 } // namespace cubload
 

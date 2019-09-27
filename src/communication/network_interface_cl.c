@@ -9977,23 +9977,29 @@ loaddb_load_object_file ()
 }
 
 int
-loaddb_install_class (const cubload::batch & batch)
+loaddb_install_class (const cubload::batch & batch, bool & class_is_ignored)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
   packing_packer packer;
   cubmem::extensible_block eb;
+  int class_ignored = 0;
+  char *ptr = NULL;
 
   packer.set_buffer_and_pack_all (eb, batch);
 
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   int req_error = net_client_request (NET_SERVER_LD_INSTALL_CLASS, eb.get_ptr (), (int) packer.get_current_size (),
 				      reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
-      or_unpack_int (reply, &rc);
+
+      ptr = or_unpack_int (reply, &rc);
+      ptr = or_unpack_int (ptr, &class_ignored);
+
+      class_is_ignored = class_ignored;
     }
 
   return rc;

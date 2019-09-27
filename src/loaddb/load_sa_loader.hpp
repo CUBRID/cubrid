@@ -41,8 +41,6 @@ namespace cubload
       void check_class (const char *class_name, int class_id) override;
       int install_class (const char *class_name) override;
       void install_class (string_type *class_name, class_command_spec_type *cmd_spec) override;
-      bool get_ignored_status ();
-      void set_ignored_status (bool status);
   };
 
   class sa_object_loader : public object_loader

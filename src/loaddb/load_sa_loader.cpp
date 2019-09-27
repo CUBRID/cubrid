@@ -750,18 +750,6 @@ namespace cubload
       }
   }
 
-  bool
-  sa_class_installer::get_ignored_status ()
-  {
-    return false;
-  }
-  void
-  sa_class_installer::set_ignored_status (bool status)
-  {
-    ;// Do nothing
-  }
-
-
   void
   sa_object_loader::init (class_id clsid)
   {

@@ -537,7 +537,7 @@ namespace cubload
   }
 
   int
-  split (int batch_size, const std::string &object_file_name, batch_handler &c_handler, batch_handler &b_handler)
+  split (int batch_size, const std::string &object_file_name, class_handler &c_handler, batch_handler &b_handler)
   {
     int error_code;
     int total_rows = 0;
@@ -547,7 +547,7 @@ namespace cubload
     class_id clsid = FIRST_CLASS_ID;
     batch_id batch_id = NULL_BATCH_ID;
     std::string batch_buffer;
-    bool class_is_ignored = false;
+    bool class_is_ignored = 0;
 
     if (object_file_name.empty ())
       {
@@ -597,29 +597,18 @@ namespace cubload
 
 	    // New class so we check if the previous one was ignored.
 	    // If so, then we should empty the current batch since we do not send it to the server.
-	    if (class_is_ignored)
+	    if (class_is_ignored && is_class_line)
 	      {
 		batch_buffer.clear ();
 	      }
 
 	    line.append ("\n"); // feed lexer with new line
 	    batch *c_batch = new batch (batch_id, clsid, line, lineno, 1);
-	    error_code = c_handler (*c_batch);
+	    error_code = c_handler (*c_batch, class_is_ignored);
 	    if (error_code != NO_ERROR)
 	      {
-		if (error_code == ER_LDR_IGNORED_CLASS)
-		  {
-		    class_is_ignored = true;
-		  }
-		else
-		  {
-		    object_file.close ();
-		    return error_code;
-		  }
-	      }
-	    else
-	      {
-		class_is_ignored = false;
+		object_file.close ();
+		return error_code;
 	      }
 
 	    line_offset = lineno;
