@@ -355,6 +355,18 @@ set(ESQL_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_lexer.l)
 set(ESQL_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/esql_lexer.c)
 
 # bison and flex check
+if(WIN32)
+  set(WIN_FLEX_BISON_VERSION "2.5.20")
+  set(WIN_FLEX_BISON_URL "https://github.com/lexxmark/winflexbison/releases/download/v${WIN_FLEX_BISON_VERSION}/win_flex_bison-${WIN_FLEX_BISON_VERSION}.zip")
+  set(WIN_FLEX_BISON_FILENAME "${CMAKE_BINARY_DIR}/external/Download/win_flex_bison.zip")
+  file(DOWNLOAD ${WIN_FLEX_BISON_URL} ${WIN_FLEX_BISON_FILENAME})
+
+  set(WIN_FLEX_BISON_INSTALL_DIR "${CMAKE_BINARY_DIR}/external/Install/win_flex_bison")
+  file(MAKE_DIRECTORY ${WIN_FLEX_BISON_INSTALL_DIR})
+  execute_process(COMMAND ${CMAKE_COMMAND} -E tar -xf ${WIN_FLEX_BISON_FILENAME} WORKING_DIRECTORY ${WIN_FLEX_BISON_INSTALL_DIR})
+  list(APPEND CMAKE_PREFIX_PATH ${WIN_FLEX_BISON_INSTALL_DIR})
+endif(WIN32)
+
 include(FindBISON)
 find_package(BISON 3.0.0)
 
