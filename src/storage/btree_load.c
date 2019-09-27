@@ -5011,7 +5011,10 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 
   thread_get_manager ()->destroy_worker_pool (ib_workpool);
 
-  logtb_tran_update_btid_unique_stats (thread_p, btid_int->sys_btid, num_keys, num_oids, num_nulls);
+  if (BTREE_IS_UNIQUE (btid_int->unique_pk))
+    {
+      logtb_tran_update_btid_unique_stats (thread_p, btid_int->sys_btid, num_keys, num_oids, num_nulls);
+    }
 
   return ret;
 }
