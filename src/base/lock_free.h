@@ -475,7 +475,7 @@ bool
 lf_hash_table_cpp<Key, T>::generic_insert (F &ins_func, lf_tran_entry *t_entry, Key &key, T *&t)
 {
   int inserted = 0;
-  if (ins_func (t_entry, &m_hash, &key, static_cast<void **> (&t), &inserted) != NO_ERROR)
+  if (ins_func (t_entry, &m_hash, &key, reinterpret_cast<void **> (&t), &inserted) != NO_ERROR)
     {
       assert (false);
     }
