@@ -33567,9 +33567,6 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	  break;
 	}
 
-      DISK_ISVALID valid = btree_check_page_key (thread_p, NULL, btid_int, NULL, *leaf_page, NULL);
-      assert (valid == DISK_VALID);
-
       if (helper->insert_helper.purpose != BTREE_OP_ONLINE_INDEX_IB_INSERT)
 	{
 	  assert (insert_list->m_keys_oids.size () == 1);
