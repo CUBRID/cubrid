@@ -6470,20 +6470,44 @@ error_return:
 }
 
 extern int
-db_json_normalize_codeset (REFPTR (DB_VALUE, dbval))
+db_json_normalize_codeset (DB_VALUE ** dbval)
 {
+  assert (dbval != NULL && DB_IS_STRING (*dbval));
   DB_VALUE coerced_str;
-  if (db_get_string_codeset (dbval) == INTL_CODESET_UTF8)
+  if (db_get_string_codeset (*dbval) == INTL_CODESET_UTF8)
     {
       return NO_ERROR;
     }
-  int error_code = db_string_convert_to (dbval, &coerced_str, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
+  int error_code = db_string_convert_to (*dbval, &coerced_str, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
   {
     return error_code;
   }
 
-  std::swap (coerced_str, *dbval);
+  std::swap (coerced_str, **dbval);
   pr_clear_value (&coerced_str);
+}
+
+extern int
+db_json_normalize_and_copy_codeset (const DB_VALUE * src_dbval, DB_VALUE * dest_dbval, const DB_VALUE ** json_str_dbval)
+{
+  assert (src_dbval != NULL && dest_dbval != NULL && json_str_dbval != NULL);
+  *json_str_dbval = dest_dbval;
+  if (db_get_string_codeset (src_dbval) == INTL_CODESET_UTF8)
+    {
+      *json_str_dbval = src_dbval;
+      db_make_null (dest_dbval);
+    }
+  else
+    {
+      int error_code = db_string_convert_to (src_dbval, dest_dbval, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+    }
+
+  return NO_ERROR;
 }
 
 extern int

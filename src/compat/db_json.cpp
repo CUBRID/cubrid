@@ -3194,19 +3194,12 @@ db_value_to_json_doc (const DB_VALUE &db_val, bool force_copy, JSON_DOC_STORE &j
     case DB_TYPE_VARNCHAR:
     {
       DB_VALUE utf8_str;
-      const DB_VALUE *json_str_val = &utf8_str;
-      if (db_get_string_codeset (&db_val) == INTL_CODESET_UTF8)
+      const DB_VALUE *json_str_val;
+      error_code = db_json_normalize_and_copy_codeset (&db_val, &utf8_str, &json_str_val);
+      if (error_code != NO_ERROR)
 	{
-	  json_str_val = &db_val;
-	}
-      else
-	{
-	  error_code = db_string_convert_to (&db_val, &utf8_str, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      return error_code;
-	    }
+	  ASSERT_ERROR ();
+	  return error_code;
 	}
 
       JSON_DOC *json_doc_ptr = NULL;
@@ -3269,23 +3262,16 @@ db_value_to_json_value (const DB_VALUE &db_val, JSON_DOC_STORE &json_doc)
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
     {
-      json_doc.create_mutable_reference ();
-
       DB_VALUE utf8_str;
-      const DB_VALUE *json_str_val = &utf8_str;
-      if (db_get_string_codeset (&db_val) == INTL_CODESET_UTF8)
+      const DB_VALUE *json_str_val;
+      int error_code = db_json_normalize_and_copy_codeset (&db_val, &utf8_str, &json_str_val);
+      if (error_code != NO_ERROR)
 	{
-	  json_str_val = &db_val;
+	  ASSERT_ERROR ();
+	  return error_code;
 	}
-      else
-	{
-	  int error_code = db_string_convert_to (&db_val, &utf8_str, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      return error_code;
-	    }
-	}
+
+      json_doc.create_mutable_reference ();
 
       db_json_set_string_to_doc (json_doc.get_mutable (), db_get_string (json_str_val),
 				 (unsigned) db_get_string_size (json_str_val));

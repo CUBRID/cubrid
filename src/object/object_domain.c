@@ -10031,20 +10031,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    {
 	      DB_VALUE utf8_str;
 	      const DB_VALUE *json_str_val = &utf8_str;
-	      int error_code = NO_ERROR;
-	      if (db_get_string_codeset (src) == INTL_CODESET_UTF8)
+	      int error_code = db_json_normalize_and_copy_codeset (src, &utf8_str, &json_str_val);
+	      if (error_code != NO_ERROR)
 		{
-		  json_str_val = src;
-		}
-	      else
-		{
-		  error_code = db_string_convert_to (src, &utf8_str, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
-		  if (error_code != NO_ERROR)
-		    {
-		      ASSERT_ERROR ();
-		      status = DOMAIN_ERROR;
-		      break;
-		    }
+		  ASSERT_ERROR ();
+		  status = DOMAIN_ERROR;
+		  break;
 		}
 
 	      unsigned int str_size = db_get_string_size (json_str_val);
