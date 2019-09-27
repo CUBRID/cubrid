@@ -91,6 +91,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/locale_support.c
   ${BASE_DIR}/lock_free.c
   ${BASE_DIR}/lockfree_bitmap.cpp
+  ${BASE_DIR}/lockfree_hashmap.cpp
   ${BASE_DIR}/lockfree_transaction_descriptor.cpp
   ${BASE_DIR}/lockfree_transaction_table.cpp
   ${BASE_DIR}/lockfree_transaction_system.cpp
@@ -133,6 +134,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/fileline_location.hpp
   ${BASE_DIR}/lockfree_bitmap.hpp
   ${BASE_DIR}/lockfree_freelist.hpp
+  ${BASE_DIR}/lockfree_hashmap.hpp
   ${BASE_DIR}/lockfree_transaction_def.hpp
   ${BASE_DIR}/lockfree_transaction_descriptor.hpp
   ${BASE_DIR}/lockfree_transaction_reclaimable.hpp
