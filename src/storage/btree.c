@@ -5016,13 +5016,6 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
       btree_log_if_enabled ("btree_search_nonleaf_page: null page/key pointer. Operation Ignored.");
       return ER_FAILED;
     }
-
-  VPID curr_vpid;
-  pgbuf_get_vpid (page_ptr, &curr_vpid);
-
-  BTREE_NODE_HEADER *header = NULL;
-
-  header = btree_get_node_header (thread_p, page_ptr);
 #endif
 
   key_cnt = btree_node_number_of_keys (thread_p, page_ptr);
@@ -7288,7 +7281,6 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT
 
       if (btree_leaf_is_flaged (&peek_rec1, BTREE_LEAF_RECORD_FENCE))
 	{
-	  assert (k == 1);
 	  continue;
 	}
 
@@ -7335,7 +7327,6 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT
 
       if (btree_leaf_is_flaged (&peek_rec2, BTREE_LEAF_RECORD_FENCE))
 	{
-	  assert (k + 1 == key_cnt);
 	  btree_clear_key_value (&clear_key1, &key1);
 	  continue;
 	}
