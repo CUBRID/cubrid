@@ -33558,7 +33558,6 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
   PERF_UTIME_TRACKER time_insert_same_leaf = PERF_UTIME_TRACKER_INITIALIZER;
   PERF_UTIME_TRACKER_START (thread_p, &time_insert_same_leaf);
 
-  insert_list->m_debug_consecutive_inserts = 0;
   while (1)
     {
       error_code = btree_key_online_index_IB_insert (thread_p, btid_int, curr_key, leaf_page, search_key, restart,
@@ -33567,8 +33566,6 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	{
 	  break;
 	}
-
-      insert_list->m_debug_consecutive_inserts++;
 
       DISK_ISVALID valid = btree_check_page_key (thread_p, NULL, btid_int, NULL, *leaf_page, NULL);
       assert (valid == DISK_VALID);
@@ -33633,41 +33630,39 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	    }
 	}
 
-      /* this is useful only for MIDXKEY */
-      error_code = btree_leaf_is_key_between_min_max (thread_p, btid_int, *leaf_page, curr_key, search_key);
-      if (error_code != NO_ERROR)
-	{
-	  break;
-	}
-      insert_list->m_debug_last_min_max_search_result = search_key->result;
-      insert_list->m_debug_last_min_max_slotid = search_key->slotid;
-
-      if (search_key->result == BTREE_ERROR_OCCURRED || search_key->result == BTREE_KEY_SMALLER
-	  || search_key->result == BTREE_KEY_BIGGER)
-	{
-	  BTREE_NODE_HEADER *node_header = btree_get_node_header (thread_p, *leaf_page);
-	  if (search_key->result == BTREE_KEY_SMALLER && VPID_ISNULL (&node_header->prev_vpid))
+      if (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY)
+        {
+          error_code = btree_leaf_is_key_between_min_max (thread_p, btid_int, *leaf_page, curr_key, search_key);
+          if (error_code != NO_ERROR)
 	    {
-	      perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_FALSE_FAILED_RANGE1);
-	    }
-	  else if (search_key->result == BTREE_KEY_BIGGER && VPID_ISNULL (&node_header->next_vpid))
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_FALSE_FAILED_RANGE2);
-	    }
-	  else
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE3);
 	      break;
 	    }
-	}
+
+          if (search_key->result == BTREE_ERROR_OCCURRED || search_key->result == BTREE_KEY_SMALLER
+	      || search_key->result == BTREE_KEY_BIGGER)
+	    {
+	      BTREE_NODE_HEADER *node_header = btree_get_node_header (thread_p, *leaf_page);
+	      if (search_key->result == BTREE_KEY_SMALLER && VPID_ISNULL (&node_header->prev_vpid))
+	        {
+	          perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_FALSE_FAILED_RANGE1);
+	        }
+	      else if (search_key->result == BTREE_KEY_BIGGER && VPID_ISNULL (&node_header->next_vpid))
+	        {
+	          perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_FALSE_FAILED_RANGE2);
+	        }
+	      else
+	        {
+	          perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE3);
+	          break;
+	        }
+	    }
+        }
 
       error_code = btree_search_leaf_page (thread_p, btid_int, *leaf_page, curr_key, search_key);
       if (error_code != NO_ERROR)
 	{
 	  break;
 	}
-      insert_list->m_debug_last_search_search_result = search_key->result;
-      insert_list->m_debug_last_search_slotid = search_key->slotid;
 
       if ((search_key->result == BTREE_KEY_BIGGER || search_key->result == BTREE_KEY_SMALLER)
 	  && search_key->has_fence_key == btree_search_key_helper::HAS_FENCE_KEY)
