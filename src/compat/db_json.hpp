@@ -41,7 +41,6 @@ typedef void JSON_ITERATOR;
 #endif
 
 #if defined (__cplusplus)
-#include <list>
 #include <vector>
 
 /*
@@ -59,16 +58,6 @@ enum DB_JSON_TYPE
   DB_JSON_OBJECT,
   DB_JSON_ARRAY,
   DB_JSON_BOOL,
-};
-
-struct JSON_FUNCTION_ARGS_PREPROCESSOR
-{
-  public:
-    int init (DB_VALUE *const *args, int argc);
-    ~JSON_FUNCTION_ARGS_PREPROCESSOR ();
-    std::vector<DB_VALUE *> m_preprocessed_args;
-  private:
-    std::list<DB_VALUE> m_owned_dbvals;
 };
 
 using JSON_DOC_STORE = cubmem::reference_store<JSON_DOC>;
@@ -173,8 +162,6 @@ void db_make_json_from_doc_store_and_release (DB_VALUE &value, JSON_DOC_STORE &d
 int db_value_to_json_path (const DB_VALUE *path_value, FUNC_TYPE fcode, const char **path_str);
 
 int db_json_normalize_path_string (const char *pointer_path, std::string &normalized_path);
-int db_json_convert_string_dbval (const DB_VALUE *src_string, DB_VALUE *dest_string);
-
 template <typename Fn, typename... Args>
 inline int
 db_json_convert_string_and_call (const char *json_raw, size_t json_raw_length, Fn &&func, Args &&... args)

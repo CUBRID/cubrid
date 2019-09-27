@@ -91,38 +91,6 @@ typedef rapidjson::GenericArray<true, JSON_VALUE>::ConstValueIterator JSON_VALUE
 
 typedef std::function<int (const JSON_VALUE &, const JSON_PATH &, bool &)> map_func_type;
 
-const INTL_CODESET json_string_codeset = INTL_CODESET_UTF8;
-const int json_string_collation = LANG_COLL_UTF8_BINARY;
-
-int
-JSON_FUNCTION_ARGS_PREPROCESSOR::init (DB_VALUE *const *args, int argc)
-{
-  int error_code = NO_ERROR;
-  for (int i = 0; i < argc; ++i)
-    {
-      if (DB_IS_STRING (args[i]))
-	{
-	  m_owned_dbvals.push_back ({});
-	  error_code = db_json_convert_string_dbval (args[i], &m_owned_dbvals.back ());
-	  if (error_code != NO_ERROR)
-	    {
-	      m_owned_dbvals.pop_back ();
-	      ASSERT_ERROR ();
-	      return error_code;
-	    }
-	  m_preprocessed_args.push_back (&m_owned_dbvals.back ());
-	}
-    }
-}
-
-JSON_FUNCTION_ARGS_PREPROCESSOR::~JSON_FUNCTION_ARGS_PREPROCESSOR ()
-{
-  for (DB_VALUE &dbval : m_owned_dbvals)
-    {
-      pr_clear_value (&dbval);
-    }
-}
-
 namespace cubmem
 {
   template <>
@@ -2786,11 +2754,6 @@ db_json_normalize_path_string (const char *pointer_path, std::string &output)
   output = jp.dump_json_path ();
 
   return NO_ERROR;
-}
-
-int db_json_convert_string_dbval (const DB_VALUE *src_string, DB_VALUE *dest_string)
-{
-  return db_string_convert_to (src_string, dest_string, json_string_codeset, json_string_collation);
 }
 
 int

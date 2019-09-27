@@ -78,6 +78,7 @@ namespace func_type
 
   bool is_type_with_collation (PT_TYPE_ENUM type);
   bool can_signature_have_collation (const pt_arg_type &arg_sig);
+  bool sig_has_json_args (const func_signature &sig);
 
   class Node
   {
@@ -113,8 +114,6 @@ namespace func_type
       void invalid_arg_count_error (std::size_t arg_count, const func_signature &func_sgn);
   }; //class Node
 } //namespace func_type
-
-bool pt_is_json_function (FUNC_TYPE function_type);
 
 bool pt_are_equivalent_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_type);
 PT_TYPE_ENUM pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type);

@@ -538,23 +538,21 @@ namespace func_type
   bool
   sig_has_json_args (const func_signature &sig)
   {
-    auto it_found = std::find_if (sig.fix.begin (), sig.fix.end (), [] (const pt_arg_type & arg)
+    auto find_pred = [] (const pt_arg_type & arg)
     {
       return arg.type == arg.GENERIC && (arg.val.generic_type == PT_GENERIC_TYPE_JSON_DOC
 					 || arg.val.generic_type == PT_GENERIC_TYPE_JSON_VAL);
-    });
+    };
+
+    auto it_found = std::find_if (sig.fix.begin (), sig.fix.end (), find_pred);
     if (it_found != sig.fix.end ())
       {
 	return true;
       }
 
     // also search in repeateable args
-    it_found = std::find_if (sig.rep.begin (), sig.rep.end (), [] (const pt_arg_type & arg)
-    {
-      return arg.type == arg.GENERIC && (arg.val.generic_type == PT_GENERIC_TYPE_JSON_DOC
-					 || arg.val.generic_type == PT_GENERIC_TYPE_JSON_VAL);
-    });
-    return it_found != sig.fix.end ();
+    it_found = std::find_if (sig.rep.begin (), sig.rep.end (), find_pred);
+    return it_found != sig.rep.end ();
   }
 
   bool
@@ -1288,29 +1286,6 @@ namespace func_type
 		  sgn_sb.get_buffer ());
   }
 } // namespace func_type
-
-bool pt_is_json_function (FUNC_TYPE function_type)
-{
-  return
-	  function_type == F_JSON_ARRAY
-	  || function_type == F_JSON_ARRAY_APPEND || function_type == F_JSON_ARRAY_INSERT
-	  || function_type == F_JSON_CONTAINS || function_type == F_JSON_CONTAINS_PATH
-	  || function_type == F_JSON_DEPTH
-	  || function_type == F_JSON_EXTRACT
-	  || function_type == F_JSON_GET_ALL_PATHS
-	  || function_type == F_JSON_INSERT
-	  || function_type == F_JSON_KEYS
-	  || function_type == F_JSON_LENGTH
-	  || function_type == F_JSON_MERGE || function_type == F_JSON_MERGE_PATCH
-	  || function_type == F_JSON_OBJECT
-	  || function_type == F_JSON_PRETTY
-	  || function_type == F_JSON_QUOTE
-	  || function_type == F_JSON_REMOVE
-	  || function_type == F_JSON_REPLACE
-	  || function_type == F_JSON_SEARCH
-	  || function_type == F_JSON_SET
-	  || function_type == F_JSON_TYPE || function_type == F_JSON_UNQUOTE || function_type == F_JSON_VALID;
-}
 
 /*
  * pt_are_equivalent_types () - check if a node type is equivalent with a
