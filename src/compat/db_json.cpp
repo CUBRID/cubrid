@@ -1977,6 +1977,7 @@ db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALU
 
   DB_VALUE encoded_pattern_dbval;
   db_make_string (&encoded_pattern_dbval, const_cast<char *> (encoded_pattern.c_str ()));
+  db_string_put_cs_and_collation (&encoded_pattern_dbval, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
 
   const map_func_type &f_search = [&json_paths, &paths, &encoded_pattern_dbval, esc_char, find_all] (const JSON_VALUE &jv,
 				  const JSON_PATH &crt_path, bool &stop) -> int
@@ -1989,15 +1990,11 @@ db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALU
     const char *json_str = jv.GetString ();
     DB_VALUE str_val;
 
-    db_make_null (&str_val);
-    int error_code = db_make_string (&str_val, (char *) json_str);
-    if (error_code)
-      {
-	return error_code;
-      }
+    db_make_string (&str_val, (char *) json_str);
+    db_string_put_cs_and_collation (&str_val, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
 
     int match;
-    error_code = db_string_like (&str_val, &encoded_pattern_dbval, esc_char, &match);
+    int error_code = db_string_like (&str_val, &encoded_pattern_dbval, esc_char, &match);
     if (error_code != NO_ERROR || !match)
       {
 	return error_code;
