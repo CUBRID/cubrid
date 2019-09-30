@@ -265,10 +265,6 @@ static int proc_execute (const char *file, const char *args[], bool wait_child, 
 static int proc_execute_hide_cmd_args (const char *file, const char *args[], bool wait_child, bool close_output,
 				       bool close_err, int *pid);
 static void hide_cmd_line_args (char **args);
-// *INDENT-OFF*
-static void copy_and_hide_cmd_line_args (char **args, char **&copy_args);
-// *INDENT-ON*
-static int execv_with_hidden_args (const char *executable_path, char **args);
 static int process_master (int command_type);
 static void print_message (FILE * output, int message_id, ...);
 static void print_result (const char *util_name, int status, int command_type);
@@ -876,16 +872,7 @@ proc_execute_internal (const char *file, const char *args[], bool wait_child, bo
 	  fclose (stderr);
 	}
 
-      int ret = 0;
-      if (hide_cmd_args)
-	{
-	  ret = execv_with_hidden_args (executable_path, (char **) args);
-	}
-      else
-	{
-	  ret = execv (executable_path, (char *const *) args);
-	}
-      if (ret == -1)
+      if (execv (executable_path, (char *const *) args) == -1)
 	{
 	  perror ("execv");
 	  return ER_GENERIC_ERROR;
@@ -953,54 +940,6 @@ hide_cmd_line_args (char **args)
       memset (args[i], '\0', strlen (args[i]));
     }
 #endif /* LINUX */
-}
-
-// *INDENT-OFF*
-static void
-copy_and_hide_cmd_line_args (char **args, char **&copy_args)
-{
-#if defined (LINUX)
-  assert (args[0] != NULL && args[1] != NULL);
-
-  // count arguments
-  size_t argc = 0;
-  for (; args[argc] != NULL; ++argc)
-    ;
-  // null included
-  ++argc;
-
-  // allocate memory for copy of argument array
-  size_t array_size = argc * sizeof (char *);
-  copy_args = (char **) malloc (array_size);
-  memset (copy_args, 0, array_size);
-
-  // copy each arg
-  for (size_t i = 0; args[i] != NULL; ++i)
-    {
-      copy_args[i] = (char *) malloc (strlen (args[i]));
-      strcpy (copy_args[i], args[i]);
-    }
-
-  // now hide original args
-  hide_cmd_line_args (args);
-#endif // LINUX
-}
-// *INDENT-ON*
-
-static int
-execv_with_hidden_args (const char *executable_path, char **args)
-{
-  char **copy_args = NULL;
-  copy_and_hide_cmd_line_args (args, copy_args);
-
-  int ret = execv (executable_path, copy_args);
-
-  for (size_t i = 0; copy_args[i] != NULL; ++i)
-    {
-      free (copy_args[i]);
-    }
-  free (copy_args);
-  return ret;
 }
 
 /*
