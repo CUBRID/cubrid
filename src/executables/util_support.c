@@ -30,6 +30,8 @@
 #include <dlfcn.h>
 #endif
 
+#include <string>
+
 #include "cubrid_getopt.h"
 #include "error_code.h"
 #include "util_support.h"
@@ -381,4 +383,84 @@ util_hide_password (char *arg)
 #else
   (void) arg;
 #endif /* LINUX */
+}
+
+//
+// util_args
+//
+util_args::util_args (int argc, char **argv, bool hide_args):
+m_argc (0),
+m_orig_args (NULL),
+m_copy_args (NULL),
+m_args (NULL)
+{
+  if (argc < 0)
+    {
+      assert (false);
+      return;
+    }
+  m_argc = static_cast < size_t > (argc);
+  if (m_argc == 0)
+    {
+      // count to null arg
+      for (; argv[m_argc] != NULL; ++m_argc)
+	;
+    }
+  assert (m_argc > 0);
+
+  m_orig_args = argv;
+  if (hide_args)
+    {
+      m_copy_args = new char *[m_argc];
+      for (size_t i = 0; i < m_argc; i++)
+	{
+	  m_copy_args[i] = new char[strlen (m_orig_args[i]) + 1];
+	  std::strcpy (m_copy_args[i], m_orig_args[i]);
+	}
+      hide_cmd_line_args (m_orig_args, m_argc);
+    }
+  else
+    {
+      m_args = m_orig_args;
+    }
+}
+
+util_args::~util_args ()
+{
+  if (m_copy_args != NULL)
+    {
+      for (size_t i = 0; i < m_argc; i++)
+	{
+	  delete[]m_copy_args[i];
+	}
+      delete[]m_copy_args;
+    }
+}
+
+char **
+util_args::get_args ()
+{
+  return m_args;
+}
+
+size_t util_args::get_arg_count () constconst
+{
+  return m_argc;
+}
+
+void
+util_args::hide_cmd_line_args (char **args, size_t count /* = 0 */ )
+{
+  if (count == 0)
+    {
+      for (; args[count] != NULL; ++count)
+	;
+    }
+  assert (count >= 2);
+  assert (args[0] != NULL && args[1] != NULL);
+
+  for (size_t i = 2; args[i] != NULL; ++i)
+    {
+      std::memset (args[i], '\0', strlen (args[i]));
+    }
 }

@@ -948,19 +948,26 @@ main (int argc, char *argv[])
   int utility_index;
   const char *library_name;
   bool is_valid_arg = true;
+  // *INDENT-OFF*
+#if defined (LINUX)
+  util_args uarg { argc, argv, true };
+#else
+  util_args uarg { argc, argv, false };
+#endif
+  // *INDENT-ON*
 
-  if (argc > 1 && strcmp (argv[1], "--version") == 0)
+  if (argc > 1 && strcmp (uarg.get_args ()[1], "--version") == 0)
     {
-      print_admin_version (argv[0]);
+      print_admin_version (uarg.get_args ()[0]);
       return EXIT_SUCCESS;
     }
 
-  if (argc < 2 || util_get_utility_index (&utility_index, argv[1]) != NO_ERROR)
+  if (argc < 2 || util_get_utility_index (&utility_index, uarg.get_args ()[1]) != NO_ERROR)
     {
       goto print_usage;
     }
 
-  if (util_parse_argument (&ua_Utility_Map[utility_index], argc - 1, &argv[1]) != NO_ERROR)
+  if (util_parse_argument (&ua_Utility_Map[utility_index], argc - 1, &uarg.get_args ()[1]) != NO_ERROR)
     {
       is_valid_arg = false;
       argc = 2;
@@ -971,7 +978,7 @@ main (int argc, char *argv[])
   if (status == NO_ERROR)
     {
       const char *symbol_name;
-      status = util_get_function_name (&symbol_name, argv[1]);
+      status = util_get_function_name (&symbol_name, uarg.get_args ()[1]);
       if (status != NO_ERROR)
 	{
 	  goto print_usage;
@@ -983,8 +990,8 @@ main (int argc, char *argv[])
 	  UTIL_FUNCTION_ARG util_func_arg;
 	  util_func_arg.arg_map = ua_Utility_Map[utility_index].arg_map;
 	  util_func_arg.command_name = ua_Utility_Map[utility_index].utility_name;
-	  util_func_arg.argv0 = argv[0];
-	  util_func_arg.argv = argv;
+	  util_func_arg.argv0 = uarg.get_args ()[0];
+	  util_func_arg.argv = uarg.get_args ();
 	  util_func_arg.valid_arg = is_valid_arg;
 	  loaded_function = (UTILITY_FUNCTION) symbol_handle;
 	  status = (*loaded_function) (&util_func_arg);
@@ -1002,7 +1009,7 @@ main (int argc, char *argv[])
     }
   return status;
 print_usage:
-  print_admin_usage (argv[0]);
+  print_admin_usage (uarg.get_args ()[0]);
 error_exit:
   return EXIT_FAILURE;
 }

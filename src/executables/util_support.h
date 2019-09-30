@@ -37,5 +37,24 @@ extern void utility_load_print_error (FILE * fp);
 extern int util_parse_argument (UTIL_MAP * util_map, int argc, char **argv);
 extern void util_hide_password (char *arg);
 
+class util_args
+{
+public:
+  util_args () = delete;
+  util_args (int argc, char **argv, bool hide_args);
+   ~util_args ();
+
+  char **get_args ();
+  size_t get_arg_count () const;
+
+  static void hide_cmd_line_args (char **args, size_t count = 0);
+
+private:
+    size_t m_argc;
+  char **m_orig_args;
+  char **m_copy_args;
+  char **m_args;
+};
+
 
 #endif /* _UTIL_SUPPORT_H_ */
