@@ -4651,6 +4651,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	    {
 	      break;
 	    }
+
 	  if (er_errid () == ER_INTERRUPTED)
 	    {
 	      // interruptions cannot be allowed here; lock must be promoted to either commit or rollback changes
@@ -4660,8 +4661,9 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	      // and retry
 	      continue;
 	    }
-	  // FIXME: What can we do??
-	  assert (lock_ret == LK_GRANTED);
+
+	  // lock promotion failed. should be dead-ended
+	  break;
 	}
 
       // reset back
