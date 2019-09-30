@@ -26897,8 +26897,11 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 
   /* Find and fix the child to advance to. Use write latch if the child is leaf or if it is already known that it will
    * require an update of max key length. */
+  page_key_boundary *page_boundaries =
+    (insert_helper->insert_list != NULL && insert_helper->insert_list->m_use_page_boundary_check)
+    ? &insert_helper->insert_list->m_boundaries : NULL;
   error_code = btree_search_nonleaf_page (thread_p, btid_int, *crt_page, key, &child_slotid, &child_vpid,
-					  &insert_helper->insert_list->m_boundaries);
+					  page_boundaries);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -35590,6 +35593,8 @@ void btree_insert_list::prepare_list (void)
 
   std::sort (m_sorted_keys_oids.begin (), m_sorted_keys_oids.end (), compare_fn);
   m_use_sorted_bulk_insert = true;
+  m_use_page_boundary_check = true;
+
   int status = next_key ();
   assert (status == KEY_AVAILABLE);
 }
