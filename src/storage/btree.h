@@ -590,6 +590,10 @@ struct btree_insert_list
 
   bool m_use_sorted_bulk_insert;
 
+  int m_keep_page_iterations;
+  int m_ovf_appends;
+  int m_ovf_appends_new_page;
+
   btree_insert_list () = delete;
 
   btree_insert_list (const TP_DOMAIN* &key_type)
@@ -624,6 +628,8 @@ struct btree_insert_list
   void reset_boundary_keys ();
 
   void prepare_list (void);
+
+  bool check_release_latch (THREAD_ENTRY * thread_p, void *arg, PAGE_PTR leaf_page);
 };
 // *INDENT-ON*
 

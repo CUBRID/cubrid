@@ -28425,6 +28425,11 @@ btree_key_append_object_into_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 	  ASSERT_ERROR ();
 	  return error_code;
 	}
+
+      if (insert_helper->insert_list != NULL)
+	{
+	  insert_helper->insert_list->m_ovf_appends_new_page++;
+	}
     }
   else
     {
@@ -28435,6 +28440,10 @@ btree_key_append_object_into_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 	{
 	  ASSERT_ERROR ();
 	  return error_code;
+	}
+      if (insert_helper->insert_list != NULL)
+	{
+	  insert_helper->insert_list->m_ovf_appends++;
 	}
     }
   assert (overflow_page == NULL);
@@ -33418,6 +33427,9 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 
   assert (insert_list->m_key_type == btid_int->key_type);
 
+  insert_list->m_keep_page_iterations = 0;
+  insert_list->m_ovf_appends = 0;
+  insert_list->m_ovf_appends_new_page = 0;
   PERF_UTIME_TRACKER time_insert_same_leaf = PERF_UTIME_TRACKER_INITIALIZER;
   PERF_UTIME_TRACKER_START (thread_p, &time_insert_same_leaf);
 
@@ -33542,6 +33554,12 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	}
 
       first_insert = false;
+      insert_list->m_keep_page_iterations++;
+
+      if (insert_list->check_release_latch (thread_p, &helper->insert_helper, *leaf_page) == true)
+	{
+	  break;
+	}
     }
 
   insert_list->reset_boundary_keys ();
@@ -35599,5 +35617,38 @@ void btree_insert_list::prepare_list (void)
 
   int status = next_key ();
   assert (status == KEY_AVAILABLE);
+}
+
+bool btree_insert_list::check_release_latch (THREAD_ENTRY * thread_p, void *arg, PAGE_PTR leaf_page)
+{
+  bool check_latch_waiters = false;
+  BTREE_INSERT_HELPER *insert_helper = (BTREE_INSERT_HELPER *)arg;
+
+  assert (insert_helper != NULL);
+  assert (insert_helper->insert_list == this);
+
+  int cost = m_keep_page_iterations + m_ovf_appends * 10 + m_ovf_appends_new_page * 1000;
+
+  if (insert_helper->is_root)
+    {
+      if (cost > 50)
+        {
+          check_latch_waiters = true;
+        }
+    }
+  else
+    {
+      if (cost > 100 && cost > (int) btree_get_node_header (thread_p, leaf_page)->node_level * 1000)
+        {
+          check_latch_waiters = true;
+        }
+    }
+
+  if (check_latch_waiters)
+    {
+      return pgbuf_has_any_waiters (leaf_page);
+    }
+
+  return false;
 }
 // *INDENT-ON*
