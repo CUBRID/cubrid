@@ -387,7 +387,7 @@ util_hide_password (char *arg)
 }
 
 // C++
-// *INTEND-OFF*
+// *INDENT-OFF*
 
 //
 // util_args
@@ -448,7 +448,7 @@ util_args::get_args ()
 }
 
 size_t
-util_args::get_arg_count () const const
+util_args::get_arg_count () const
 {
   return m_argc;
 }
@@ -470,4 +470,4 @@ util_args::hide_cmd_line_args (char **args, size_t count /* = 0 */ )
     }
 }
 
-// *INTEND-ON*
+// *INDENT-ON*
