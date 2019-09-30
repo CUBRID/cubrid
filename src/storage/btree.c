@@ -33558,6 +33558,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 
       if (insert_list->check_release_latch (thread_p, &helper->insert_helper, *leaf_page) == true)
 	{
+	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_RELEASE_LATCH);
 	  break;
 	}
     }
