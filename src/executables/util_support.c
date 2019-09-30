@@ -386,6 +386,9 @@ util_hide_password (char *arg)
 #endif /* LINUX */
 }
 
+// C++
+// *INTEND-OFF*
+
 //
 // util_args
 //
@@ -444,7 +447,8 @@ util_args::get_args ()
   return m_args;
 }
 
-size_t util_args::get_arg_count () constconst
+size_t
+util_args::get_arg_count () const const
 {
   return m_argc;
 }
@@ -465,3 +469,5 @@ util_args::hide_cmd_line_args (char **args, size_t count /* = 0 */ )
       std::memset (args[i], '\0', strlen (args[i]));
     }
 }
+
+// *INTEND-ON*
