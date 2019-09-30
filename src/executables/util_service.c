@@ -876,7 +876,16 @@ proc_execute_internal (const char *file, const char *args[], bool wait_child, bo
 	  fclose (stderr);
 	}
 
-      if (execv_with_hidden_args (executable_path, (char **) args) == -1)
+      int ret = 0;
+      if (hide_cmd_args)
+	{
+	  ret = execv_with_hidden_args (executable_path, (char **) args);
+	}
+      else
+	{
+	  ret = execv (executable_path, (char *const *) args);
+	}
+      if (ret == -1)
 	{
 	  perror ("execv");
 	  return ER_GENERIC_ERROR;
