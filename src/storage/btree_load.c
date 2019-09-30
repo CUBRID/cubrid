@@ -5069,6 +5069,13 @@ index_builder_loader_task::~index_builder_loader_task ()
 index_builder_loader_task::batch_key_status
 index_builder_loader_task::add_key (const DB_VALUE *key, const OID &oid)
 {
+  if (BTREE_IS_UNIQUE (m_unique_pk) && (DB_IS_NULL (key) || btree_multicol_key_is_null (const_cast<DB_VALUE *>(key))))
+    {
+      /* We do not store NULL keys, but we track them for unique indexes stats */
+      ++m_insert_list.m_ignored_nulls_cnt;
+      return BATCH_CONTINUE;
+    }
+
   size_t entry_size = m_insert_list.add_key (key, oid);
 
   m_memsize += entry_size;
@@ -5139,6 +5146,8 @@ index_builder_loader_task::execute (cubthread::entry &thread_ref)
       m_num_keys += p_unique_stats->tran_stats.num_keys;
       m_num_oids += p_unique_stats->tran_stats.num_oids;
       m_num_nulls += p_unique_stats->tran_stats.num_nulls;
+
+      m_num_nulls += m_insert_list.m_ignored_nulls_cnt;
 
       p_unique_stats->tran_stats.num_keys = 0;
       p_unique_stats->tran_stats.num_oids = 0;
