@@ -444,8 +444,7 @@ util_args::get_args ()
   return m_args;
 }
 
-size_t
-util_args::get_arg_count () const const
+size_t util_args::get_arg_count () constconst
 {
   return m_argc;
 }
