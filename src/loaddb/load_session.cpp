@@ -442,7 +442,6 @@ namespace cubload
     if (is_ignored)
       {
 	thread_ref.m_loaddb_driver = NULL;
-	delete &batch;
 
 	return NO_ERROR;
       }
@@ -459,7 +458,6 @@ namespace cubload
       }
 
     thread_ref.m_loaddb_driver = NULL;
-    delete &batch;
 
     return error_code;
   }

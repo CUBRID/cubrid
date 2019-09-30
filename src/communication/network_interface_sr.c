@@ -9770,7 +9770,7 @@ void
 sloaddb_install_class (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   packing_unpacker unpacker (request, (size_t) reqlen);
-  bool is_ignored = 0;
+  bool is_ignored = false;
 
   /* *INDENT-OFF* */
   cubload::batch *batch = new cubload::batch ();
@@ -9795,6 +9795,10 @@ sloaddb_install_class (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
       return_error_to_client (thread_p, rid);
     }
+
+  /* *INDENT-OFF* */
+  delete batch;
+  /* *INDENT-ON* */
 
   // Error code and is_ignored.
   OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;

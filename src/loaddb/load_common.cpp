@@ -540,7 +540,6 @@ namespace cubload
   split (int batch_size, const std::string &object_file_name, class_handler &c_handler, batch_handler &b_handler)
   {
     int error_code;
-    int total_rows = 0;
     int batch_rows = 0;
     int lineno = 0;
     int line_offset = 0;
@@ -574,33 +573,19 @@ namespace cubload
 	      {
 		// in case of class line collect remaining for current class
 		// and start new batch for the new class
-		if (!class_is_ignored)
-		  {
-		    error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset, batch_rows);
-		    if (error_code != NO_ERROR)
-		      {
-			object_file.close ();
-			return error_code;
-		      }
-		  }
-		else
-		  {
-		    // Reset rows count
-		    batch_rows = 0;
-		  }
-		++clsid;
 
-		// rewind forward total_rows counter until batch is full
-		for (; (total_rows % batch_size) != 0; total_rows++)
-		  ;
+		error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset, batch_rows);
+		if (error_code != NO_ERROR)
+		  {
+		    object_file.close ();
+		    return error_code;
+		  }
+
+		++clsid;
 	      }
 
 	    // New class so we check if the previous one was ignored.
 	    // If so, then we should empty the current batch since we do not send it to the server.
-	    if (class_is_ignored && is_class_line)
-	      {
-		batch_buffer.clear ();
-	      }
 
 	    line.append ("\n"); // feed lexer with new line
 	    batch *c_batch = new batch (batch_id, clsid, line, lineno, 1);
@@ -612,6 +597,12 @@ namespace cubload
 	      }
 
 	    line_offset = lineno;
+	    continue;
+	  }
+
+	if (class_is_ignored)
+	  {
+	    // Skip the remaining lines until we find another class.
 	    continue;
 	  }
 
@@ -633,35 +624,24 @@ namespace cubload
 	// this means that the row ends on the last line that does not end with '+' (plus) character
 	if (!ends_with (line, "+"))
 	  {
-	    ++total_rows;
 	    ++batch_rows;
 
 	    // check if we have a full batch
-	    if ((total_rows % batch_size) == 0)
+	    if (batch_rows == batch_size)
 	      {
-		if (!class_is_ignored)
+		error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset, batch_rows);
+		line_offset = lineno;
+		if (error_code != NO_ERROR)
 		  {
-		    error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset, batch_rows);
-		    line_offset = lineno;
-		    if (error_code != NO_ERROR)
-		      {
-			object_file.close ();
-			return error_code;
-		      }
-		  }
-		else
-		  {
-		    batch_rows = 0;
+		    object_file.close ();
+		    return error_code;
 		  }
 	      }
 	  }
       }
 
     // collect remaining rows
-    if (!class_is_ignored)
-      {
-	error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset, batch_rows);
-      }
+    error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset, batch_rows);
 
     object_file.close ();
 
