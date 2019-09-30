@@ -6118,8 +6118,15 @@ void
 log_tdes::on_sysop_start ()
 {
   assert (is_allowed_sysop ());
+
   if (is_system_worker_transaction () && topops.last < 0)
     {
+      if (!LOG_ISRESTARTED ())
+	{
+	  /* The links are used at recovery. */
+	  return;
+	}
+
       // make sure all links to previous records are lost
       assert (topops.last == -1);
       LSA_SET_NULL (&head_lsa);
