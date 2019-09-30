@@ -26615,6 +26615,10 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
   assert (restart != NULL);
   assert (insert_helper != NULL);
 
+  page_key_boundary *page_boundaries =
+    (insert_helper->insert_list != NULL && insert_helper->insert_list->m_use_page_boundary_check)
+    ? &insert_helper->insert_list->m_boundaries : NULL;
+
 #if defined (SERVER_MODE)
   if (LOG_ISRESTARTED ()
       && (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT || insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID))
@@ -26897,9 +26901,6 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 
   /* Find and fix the child to advance to. Use write latch if the child is leaf or if it is already known that it will
    * require an update of max key length. */
-  page_key_boundary *page_boundaries =
-    (insert_helper->insert_list != NULL && insert_helper->insert_list->m_use_page_boundary_check)
-    ? &insert_helper->insert_list->m_boundaries : NULL;
   error_code = btree_search_nonleaf_page (thread_p, btid_int, *crt_page, key, &child_slotid, &child_vpid,
 					  page_boundaries);
   if (error_code != NO_ERROR)
