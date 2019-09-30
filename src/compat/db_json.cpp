@@ -3192,7 +3192,7 @@ db_value_to_json_doc (const DB_VALUE &db_val, bool force_copy, JSON_DOC_STORE &j
     {
       DB_VALUE utf8_str;
       const DB_VALUE *json_str_val;
-      error_code = db_json_normalize_and_copy_codeset (&db_val, &utf8_str, &json_str_val);
+      error_code = db_json_copy_and_convert_to_utf8 (&db_val, &utf8_str, &json_str_val);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -3261,7 +3261,7 @@ db_value_to_json_value (const DB_VALUE &db_val, JSON_DOC_STORE &json_doc)
     {
       DB_VALUE utf8_str;
       const DB_VALUE *json_str_val;
-      int error_code = db_json_normalize_and_copy_codeset (&db_val, &utf8_str, &json_str_val);
+      int error_code = db_json_copy_and_convert_to_utf8 (&db_val, &utf8_str, &json_str_val);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

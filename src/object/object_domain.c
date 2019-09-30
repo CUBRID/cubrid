@@ -10031,7 +10031,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    {
 	      DB_VALUE utf8_str;
 	      const DB_VALUE *json_str_val = &utf8_str;
-	      int error_code = db_json_normalize_and_copy_codeset (src, &utf8_str, &json_str_val);
+	      int error_code = db_json_copy_and_convert_to_utf8 (src, &utf8_str, &json_str_val);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
