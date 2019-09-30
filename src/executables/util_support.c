@@ -30,7 +30,8 @@
 #include <dlfcn.h>
 #endif
 
-#include <string>
+#include <cassert>
+#include <cstring>
 
 #include "cubrid_getopt.h"
 #include "error_code.h"
@@ -443,7 +444,8 @@ util_args::get_args ()
   return m_args;
 }
 
-size_t util_args::get_arg_count () constconst
+size_t
+util_args::get_arg_count () const const
 {
   return m_argc;
 }
