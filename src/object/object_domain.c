@@ -10045,7 +10045,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      error_code = db_json_get_json_from_str (original_str, doc, str_size);
 	      if (error_code != NO_ERROR)
 		{
-		  pr_clear_value (&temp);
+		  pr_clear_value (&utf8_str);
 		  assert (doc == NULL);
 		  status = DOMAIN_ERROR;
 		  break;
@@ -10055,12 +10055,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  && db_json_validate_doc (desired_domain->json_validator, doc) != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
-		  pr_clear_value (&temp);
+		  pr_clear_value (&utf8_str);
 		  db_json_delete_doc (doc);
 		  status = DOMAIN_ERROR;
 		  break;
 		}
-	      pr_clear_value (&temp);
+	      pr_clear_value (&utf8_str);
 	    }
 	    break;
 	  case DB_TYPE_SHORT:
