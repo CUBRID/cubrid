@@ -78,6 +78,7 @@
 #include "heap_file.h"
 #include "vacuum.h"
 #include "xasl_cache.h"
+#include "load_worker_manager.hpp"
 
 #if defined (SERVER_MODE)
 #include "connection_error.h"
@@ -583,7 +584,9 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_DWB_FLUSHED_BLOCK_NUM_VOLUMES, "Num_dwb_flushed_block_volumes",
 			       &f_dump_in_file_Num_dwb_flushed_block_volumes,
 			       &f_dump_in_buffer_Num_dwb_flushed_block_volumes,
-			       &f_load_Num_dwb_flushed_block_volumes)
+			       &f_load_Num_dwb_flushed_block_volumes),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_LOAD_THREAD_STATS, "Thread_loaddb_stats_counters_timers",
+			       &f_dump_in_file_thread_stats, &f_dump_in_buffer_thread_stats, &f_load_thread_stats)
 };
 
 STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset,
@@ -1777,6 +1780,9 @@ perfmon_server_calc_stats (UINT64 * stats)
 
   css_get_thread_stats (&stats[pstat_Metadata[PSTAT_THREAD_STATS].start_offset]);
   perfmon_peek_thread_daemon_stats (stats);
+  // *INDENT-OFF*
+  cubload::worker_manager_get_stats (&stats[pstat_Metadata[PSTAT_LOAD_THREAD_STATS].start_offset]);
+  // *INDENT-ON*
 #endif // SERVER_MODE
 
   for (i = 0; i < PSTAT_COUNT; i++)

@@ -128,6 +128,7 @@ namespace cubthread
     , count_private_allocators (0)
 #endif /* DEBUG */
     , m_qlist_count (0)
+    , m_loaddb_driver (NULL)
       // private:
     , m_id ()
     , m_error ()

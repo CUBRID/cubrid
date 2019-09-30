@@ -2049,4 +2049,3 @@ css_process_heartbeat_request (CSS_CONN_ENTRY * conn)
 
   return;
 }
-

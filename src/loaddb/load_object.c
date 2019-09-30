@@ -21,8 +21,6 @@
  * load_object.c: simplified object descriptions.
  */
 
-#ident "$Id$"
-
 #include "config.h"
 
 #include <stdio.h>
@@ -60,8 +58,6 @@
 #include "porting.h"
 #endif
 
-#include "dbtype.h"
-
 #define MIGRATION_CHUNK 4096
 static char migration_buffer[MIGRATION_CHUNK];
 
@@ -82,7 +78,6 @@ static int itoa_print (TEXT_OUTPUT * tout, DB_BIGINT value, int base);
 static int fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value);
 static void init_load_err_filter (void);
 static void default_clear_err_filter (void);
-
 
 /*
  * make_desc_obj - Makes an object descriptor for a particular class.
@@ -135,7 +130,6 @@ make_desc_obj (SM_CLASS * class_)
   return obj;
 }
 
-
 /*
  * desc_free - Frees the storage for an object descriptor.
  *    return: none
@@ -165,7 +159,6 @@ desc_free (DESC_OBJ * obj)
     }
   free_and_init (obj);
 }
-
 
 /*
  * object_disk_size - Calculates the total number of bytes required for the
@@ -242,7 +235,6 @@ re_check:
   return (size);
 }
 
-
 /*
  * put_varinfo - Writes the variable offset table for an object defined by
  * an object descriptor structure.
@@ -310,7 +302,6 @@ put_varinfo (OR_BUF * buf, DESC_OBJ * obj, int offset_size)
       buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
     }
 }
-
 
 /*
  * put_attributes - Writes the attribute values for an object defined by
@@ -442,7 +433,6 @@ error:
   or_abort (buf);
 }
 
-
 /*
  * text_print_flush - flush TEXT_OUTPUT contents to file
  *    return: NO_ERROR if successful, ER_IO_WRITE if file I/O error occurred
@@ -522,7 +512,6 @@ exit_on_error:
   CHECK_EXIT_ERROR (error);
   goto exit_on_end;
 }
-
 
 /*
  * desc_obj_to_disk - transforms the object into a disk record for eventual
@@ -618,7 +607,6 @@ desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag)
   return (error);
 }
 
-
 /*
  * get_desc_current - reads the disk representation of an object and constructs
  * an object descriptor.
@@ -709,7 +697,6 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
     }
 }
 
-
 /*
  * find_current_attribute - locates an attribute definition in a class.
  *    return: attribute structure
@@ -730,7 +717,6 @@ find_current_attribute (SM_CLASS * class_, int id)
     }
   return NULL;
 }
-
 
 /*
  * get_desc_old - loads the disk representation of an object into an object
@@ -827,7 +813,6 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
       fixed_size = (int) (buf->ptr - start);
       padded_size = DB_ATT_ALIGN (fixed_size);
       or_advance (buf, (padded_size - fixed_size));
-
 
       /*
        * sigh, we now have to process the bound bits in much the same way as the
@@ -931,7 +916,6 @@ abort_on_error:
   or_abort (buf);
 }
 
-
 /*
  * desc_disk_to_obj - similar to tf_disk_to_mem except that it builds an
  * object descriptor structure rather than a workspace object.
@@ -1033,7 +1017,6 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * ob
 
   return error;
 }
-
 
 /*
  * print_set - Print the contents of a real DB_SET (not a set descriptor).
@@ -1617,7 +1600,6 @@ exit_on_error:
   goto exit_on_end;
 }
 
-
 /*
  * desc_value_print - Print a description of the given value.
  *    return: void
@@ -1811,3 +1793,17 @@ clear_errid:
     }
   goto exit_on_end;
 }
+
+/* *INDENT-OFF* */
+void
+get_ignored_errors (std::vector<int> &vec)
+{
+  for (int i = 0; i < -ER_LAST_ERROR; i++)
+    {
+      if (filter_ignore_errors[i])
+	{
+	  vec.push_back (-i);
+	}
+    }
+}
+/* *INDENT-ON* */
