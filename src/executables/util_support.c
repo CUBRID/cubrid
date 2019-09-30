@@ -422,6 +422,7 @@ m_args (NULL)
 	  std::strcpy (m_copy_args[i], m_orig_args[i]);
 	}
       hide_cmd_line_args (m_orig_args, m_argc);
+      m_args = m_copy_args;
     }
   else
     {
