@@ -547,7 +547,7 @@ namespace cubload
     class_id clsid = FIRST_CLASS_ID;
     batch_id batch_id = NULL_BATCH_ID;
     std::string batch_buffer;
-    bool class_is_ignored = 0;
+    bool class_is_ignored = false;
 
     if (object_file_name.empty ())
       {

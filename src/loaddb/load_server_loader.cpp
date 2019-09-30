@@ -63,7 +63,7 @@ namespace cubload
     (void) class_id;
     OID class_oid;
 
-    if (is_class_ignored (class_name, false))
+    if (is_class_ignored (class_name))
       {
 	// Silently do nothing.
 	return;
@@ -125,9 +125,13 @@ namespace cubload
       }
 
     // Check if we have to ignore this class.
-    if (is_class_ignored (class_name, true))
+    if (is_class_ignored (class_name))
       {
+
+	std::string classname (class_name);
 	m_session.append_log_msg (LOADDB_MSG_IGNORED_CLASS, class_name);
+	class_entry *cls_entry = new class_entry (classname, m_clsid, true);
+	m_session.get_class_registry ().register_ignored_class (cls_entry, m_clsid);
 	return;
       }
 
@@ -294,7 +298,7 @@ namespace cubload
   }
 
   bool
-  server_class_installer::is_class_ignored (const char *classname, bool register_class)
+  server_class_installer::is_class_ignored (const char *classname)
   {
     std::vector<std::string> classes_ignored = m_session.get_args ().ignore_classes;
     std::string class_name (classname);
@@ -303,11 +307,6 @@ namespace cubload
     auto result = std::find (classes_ignored.begin (), classes_ignored.end (), class_name);
 
     is_ignored = (result != classes_ignored.end ());
-    if (is_ignored && register_class)
-      {
-	class_entry *cls_entry = new class_entry (class_name, m_clsid, true);
-	m_session.get_class_registry ().register_ignored_class (cls_entry, m_clsid);
-      }
 
     return is_ignored;
   }

@@ -9999,7 +9999,7 @@ loaddb_install_class (const cubload::batch & batch, bool & class_is_ignored)
       ptr = or_unpack_int (reply, &rc);
       ptr = or_unpack_int (ptr, &class_ignored);
 
-      class_is_ignored = class_ignored;
+      class_is_ignored = class_ignored != 0;
     }
 
   return rc;
