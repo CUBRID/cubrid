@@ -993,7 +993,7 @@ execv_with_hidden_args (const char *executable_path, char **args)
   char **copy_args = NULL;
   copy_and_hide_cmd_line_args (args, copy_args);
 
-  int ret = execv (executable_path, args);
+  int ret = execv (executable_path, copy_args);
 
   for (size_t i = 0; copy_args[i] != NULL; ++i)
     {
