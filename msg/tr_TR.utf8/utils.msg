@@ -446,9 +446,8 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 118 Sınıf adının uzunluğu en fazla %1$d bayttır.\n
 119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
 120 data file does not contain '%%class' specifier or '--table' option is missing\n
-121 Class %1$s is ignored. \n
+121 Class %1$s is ignored.\n
 122 \
-
 loaddb: Veritabanına veri alma nesneler ve şemalar.\n\
 kullanım: %1$s loaddb [SEÇENEK] database-name[@host]\n\
 \n\
