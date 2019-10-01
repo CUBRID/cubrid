@@ -4523,7 +4523,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
        * variables in same state like initial state. Clearing XASL does not bring the regu variables in initial state.
        * A issue is clearing the cache (see cache_dbvalp and cache_attrinfo).
        * We may have the option to try to correct clearing XASL (to have initial state) or destroy it and reinitalize it.
-       * For now, we choose reinization, since is much simply, and is used also in non-online case.
+       * For now, we choose reinitialization, since is much simply, and is used also in non-online case.
        */
       if (pred_stream && pred_stream_size > 0)
 	{
@@ -4607,10 +4607,9 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	}
 
       /* Start the online index builder. */
-      ret =
-	online_index_builder (thread_p, &btid_int, &hfids[cur_class], &class_oids[cur_class], n_classes, attr_ids,
-			      n_attrs, func_index_info, filter_pred, attrs_prefix_length, &attr_info, &scan_cache,
-			      unique_pk, ib_thread_count, key_type);
+      ret = online_index_builder (thread_p, &btid_int, &hfids[cur_class], &class_oids[cur_class], n_classes, attr_ids,
+				  n_attrs, func_index_info, filter_pred, attrs_prefix_length, &attr_info, &scan_cache,
+				  unique_pk, ib_thread_count, key_type);
       if (ret != NO_ERROR)
 	{
 	  break;
