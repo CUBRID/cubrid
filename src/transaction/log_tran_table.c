@@ -6173,5 +6173,22 @@ log_tdes::unlock_global_oldest_visible_mvccid ()
       block_global_oldest_active_until_commit = false;
     }
 }
-
 // *INDENT-ON*
+
+int
+logtb_get_clientids_from_conn_entry (CSS_CONN_ENTRY & conn_entry, CLIENTIDS & client_ids)
+{
+  // First get the transaction index of the conn_entry.
+  int tran_index = conn_entry.get_tran_index ();
+  int error_code = NO_ERROR;
+
+  // Now get the client ids from this transaction.
+  error_code = logtb_get_client_ids (tran_index, &client_ids);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
