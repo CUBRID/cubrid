@@ -33471,6 +33471,14 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
       curr_key = insert_list->get_key ();
 
       int key_len = btree_get_disk_size_of_key (curr_key);
+      BTREE_NODE_HEADER *node_header = btree_get_node_header (thread_p, *leaf_page);
+
+      if (key_len > node_header->max_key_len)
+	{
+	  /* cannot insert a key having len > max key len : abort and let advance/split algorithm to deal with this */
+	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_MAX_KEY_LEN);
+	  break;
+	}
 
       /* assuming the key does not exist in page (an existing key requires less space,
        * we may miss adding one more record; this is a less expensive check, we accept the 'loss' */
@@ -33522,7 +33530,6 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	  if (search_key->result == BTREE_ERROR_OCCURRED || search_key->result == BTREE_KEY_SMALLER
 	      || search_key->result == BTREE_KEY_BIGGER)
 	    {
-	      BTREE_NODE_HEADER *node_header = btree_get_node_header (thread_p, *leaf_page);
 	      if (search_key->result == BTREE_KEY_SMALLER && VPID_ISNULL (&node_header->prev_vpid))
 		{
 		  /* key is out of range (smaller), but since there is no leaf page to the left, we may continue */

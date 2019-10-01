@@ -268,6 +268,8 @@ PSTAT_METADATA pstat_Metadata[] = {
 				  "Num_btree_online_inserts_same_page_hold"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_ONLINE_NUM_REJECT_NO_MORE_KEYS,
 				  "Num_btree_online_inserts_reject_no_more_keys"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_ONLINE_NUM_REJECT_MAX_KEY_LEN,
+				  "Num_btree_online_inserts_reject_max_key_len"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_ONLINE_NUM_REJECT_NO_SPACE, "Num_btree_online_inserts_reject_no_space"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_ONLINE_NUM_RELEASE_LATCH, "Num_btree_online_release_latch"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE1,
