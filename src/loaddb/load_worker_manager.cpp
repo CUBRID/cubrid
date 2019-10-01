@@ -30,6 +30,8 @@
 #include "thread_worker_pool_taskcap.hpp"
 #include "xserver_interface.h"
 
+#include <condition_variable>
+#include <mutex>
 #include <set>
 
 namespace cubload
@@ -62,8 +64,8 @@ namespace cubload
   };
 
   static std::mutex g_wp_mutex;
+  static std::condition_variable g_wp_condvar;
   std::set<session *> g_active_sessions;
-  static unsigned int g_session_count = 0;
   static cubthread::entry_workpool *g_worker_pool;
   static worker_context_manager *g_wp_context_manager;
   static cubthread::worker_pool_task_capper<cubthread::entry> *g_wp_task_capper;
@@ -172,16 +174,27 @@ namespace cubload
       }
 
     g_wp_mutex.unlock ();
+    g_wp_condvar.notify_one ();
   }
 
   void
   worker_manager_stop_all ()
   {
     std::unique_lock<std::mutex> ulock (g_wp_mutex);
+    if (g_active_sessions.empty ())
+      {
+	return;
+      }
+
     for (auto &it : g_active_sessions)
       {
 	it->interrupt ();
       }
+    auto pred = [] () -> bool
+    {
+      return g_active_sessions.empty ();
+    };
+    g_wp_condvar.wait (ulock, pred);
   }
 
   void
