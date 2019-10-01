@@ -4519,6 +4519,12 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 
   for (cur_class = 0; cur_class < n_classes; cur_class++)
     {
+      /* Reinitialize filter and function for each class, if is the case. This is needed in order to bring the regu
+       * variables in same state like initial state. Clearing XASL does not bring the regu variables in initial state.
+       * A issue is clearing the cache (see cache_dbvalp and cache_attrinfo).
+       * We may have the option to try to correct clearing XASL (to have initial state) or destroy it and reinitalize it.
+       * For now, we choose reinization, since is much simply, and is used also in non-online case.
+       */
       if (pred_stream && pred_stream_size > 0)
 	{
 	  if (stx_map_stream_to_filter_pred (thread_p, &filter_pred, pred_stream, pred_stream_size) != NO_ERROR)
