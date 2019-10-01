@@ -3890,7 +3890,7 @@ end:
     {
       // it may not be really necessary. it just help things don't go worse that client keep caching ex-lock.
       int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-      LOCK cls_lock = lock_get_object_lock (&class_oids[0], oid_Root_class_oid, tran_index);
+      LOCK cls_lock = lock_get_object_lock (&class_oids[0], oid_Root_class_oid);
 
       assert (cls_lock == SCH_M_LOCK);	// hope it never be IX_LOCK.
       ptr = or_pack_int (ptr, (int) cls_lock);
