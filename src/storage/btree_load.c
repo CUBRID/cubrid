@@ -5148,10 +5148,8 @@ index_builder_loader_task::execute (cubthread::entry &thread_ref)
     {
       /* Cumulates and resets statistics */
       m_num_keys += p_unique_stats->tran_stats.num_keys;
-      m_num_oids += p_unique_stats->tran_stats.num_oids;
-      m_num_nulls += p_unique_stats->tran_stats.num_nulls;
-
-      m_num_nulls += m_insert_list.m_ignored_nulls_cnt;
+      m_num_oids += p_unique_stats->tran_stats.num_oids + m_insert_list.m_ignored_nulls_cnt;
+      m_num_nulls += p_unique_stats->tran_stats.num_nulls + m_insert_list.m_ignored_nulls_cnt;
 
       p_unique_stats->tran_stats.num_keys = 0;
       p_unique_stats->tran_stats.num_oids = 0;
