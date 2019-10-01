@@ -220,7 +220,7 @@ namespace cubload
     , m_stats_mutex ()
     , m_driver (NULL)
   {
-    worker_manager_register_session ();
+    worker_manager_register_session (*this);
 
     m_driver = new driver ();
     init_driver (m_driver, *this);
@@ -240,7 +240,7 @@ namespace cubload
   {
     delete m_driver;
 
-    worker_manager_unregister_session ();
+    worker_manager_unregister_session (*this);
   }
 
   bool
