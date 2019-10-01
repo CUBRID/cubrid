@@ -6479,7 +6479,7 @@ db_json_convert_to_utf8 (DB_VALUE ** dbval)
       return NO_ERROR;
     }
   int error_code = db_string_convert_to (*dbval, &coerced_str, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
-  if (errror_code != NO_ERROR)
+  if (error_code != NO_ERROR)
     {
       return error_code;
     }
