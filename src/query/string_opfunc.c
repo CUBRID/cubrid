@@ -6469,7 +6469,7 @@ error_return:
   return error;
 }
 
-extern int
+int
 db_json_convert_to_utf8 (DB_VALUE ** dbval)
 {
   assert (dbval != NULL && DB_IS_STRING (*dbval));
@@ -6479,15 +6479,16 @@ db_json_convert_to_utf8 (DB_VALUE ** dbval)
       return NO_ERROR;
     }
   int error_code = db_string_convert_to (*dbval, &coerced_str, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
-  {
-    return error_code;
-  }
+  if (errror_code != NO_ERROR)
+    {
+      return error_code;
+    }
 
   std::swap (coerced_str, **dbval);
   pr_clear_value (&coerced_str);
 }
 
-extern int
+int
 db_json_copy_and_convert_to_utf8 (const DB_VALUE * src_dbval, DB_VALUE * dest_dbval, const DB_VALUE ** json_str_dbval)
 {
   assert (src_dbval != NULL && dest_dbval != NULL && json_str_dbval != NULL);
@@ -6510,7 +6511,7 @@ db_json_copy_and_convert_to_utf8 (const DB_VALUE * src_dbval, DB_VALUE * dest_db
   return NO_ERROR;
 }
 
-extern int
+int
 db_string_convert_to (const DB_VALUE * src_str_dbval, DB_VALUE * dest_str_dbval, INTL_CODESET dest_codeset,
 		      int dest_col)
 {
