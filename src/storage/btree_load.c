@@ -46,6 +46,7 @@
 #include "partition_sr.h"
 #include "query_executor.h"
 #include "query_opfunc.h"
+#include "server_support.h"
 #include "stream_to_xasl.h"
 #include "thread_manager.hpp"
 #include "thread_entry_task.hpp"
@@ -4651,6 +4652,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	    {
 	      break;
 	    }
+
 	  if (er_errid () == ER_INTERRUPTED)
 	    {
 	      // interruptions cannot be allowed here; lock must be promoted to either commit or rollback changes
@@ -4660,8 +4662,21 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	      // and retry
 	      continue;
 	    }
-	  // FIXME: What can we do??
-	  assert (lock_ret == LK_GRANTED);
+
+#if defined (SERVER_MODE)
+	  // SA_MODE never reaches.
+	  if (css_is_shutdowning_server ())
+	    {
+	      // shutdown interrupts the thread with lock timeout.
+	      // This case is acceptable since recovery will remove the index being built.
+	      break;
+	    }
+	  else
+	    {
+	      // it is neither expected nor acceptable.
+	      assert (0);
+	    }
+#endif // SERVER_MODE
 	}
 
       // reset back
