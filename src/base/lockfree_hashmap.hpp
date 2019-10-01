@@ -23,7 +23,11 @@
 #ifndef _LOCKFREE_HASHMAP_HPP_
 #define _LOCKFREE_HASHMAP_HPP_
 
+#include "lock_free.h"                        // for lf_entry_descriptor
+#include "lockfree_address_marker.hpp"
 #include "lockfree_freelist.hpp"
+
+#include <mutex>
 
 namespace lockfree
 {
@@ -34,6 +38,16 @@ namespace lockfree
       // todo
 
     private:
+      using link_type = address_marker<T>;
+      using freelist_type = freelist<T>;
+
+      link_type *m_buckets;
+      size_t m_size;
+
+      link_type *m_backbuffer;
+      std::mutex m_backbuffer_mutex;
+
+      lf_entry_descriptor &m_edesc;
   };
 }
 
