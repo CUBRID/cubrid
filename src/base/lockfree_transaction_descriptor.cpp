@@ -47,6 +47,10 @@ namespace lockfree
 	{
 	  reclaim_retired_head ();
 	}
+      if (m_saved_node != NULL)
+	{
+	  m_saved_node->reclaim ();
+	}
     }
 
     void
@@ -158,6 +162,22 @@ namespace lockfree
       nodep->m_retired_next = NULL;
       nodep->reclaim ();
       ++m_reclaim_count;
+    }
+
+    void
+    descriptor::save_reclaimable (reclaimable_node *&node)
+    {
+      assert (m_saved_node == NULL);
+      m_saved_node = node;
+      node = NULL;
+    }
+
+    reclaimable_node *
+    descriptor::pull_saved_reclaimable ()
+    {
+      reclaimable_node *ret = m_saved_node;
+      m_saved_node = NULL;
+      return ret;
     }
 
     size_t

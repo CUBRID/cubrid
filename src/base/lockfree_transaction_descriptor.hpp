@@ -72,6 +72,9 @@ namespace lockfree
 
 	void reclaim_retired_list ();
 
+	void save_reclaimable (reclaimable_node *&node);
+	reclaimable_node *pull_saved_reclaimable ();
+
 	size_t get_total_retire_count () const;
 	size_t get_total_reclaim_count () const;
 	size_t get_current_retire_count () const;
@@ -85,6 +88,8 @@ namespace lockfree
 	reclaimable_node *m_retired_head;
 	reclaimable_node *m_retired_tail;
 	bool m_did_incr;
+
+	reclaimable_node *m_saved_node;
 
 	// stats
 	size_t m_retire_count;

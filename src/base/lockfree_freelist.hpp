@@ -102,6 +102,8 @@ namespace lockfree
       free_node ();
       ~free_node () = default;
 
+      const size_t OFFSET_TO_DATA = offsetof (free_node, m_t);
+
       T &get_data ();
 
       void reclaim () final override;
