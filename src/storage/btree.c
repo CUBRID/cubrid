@@ -5062,6 +5062,8 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 
   while (left <= right)
     {
+      btree_clear_key_value (&clear_key, &temp_key);	// clear previous key
+
       middle = CEIL_PTVDIV ((left + right), 2);	/* get the middle record */
 
       assert (middle > 0);
@@ -5070,7 +5072,6 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 	  return ER_FAILED;
 	}
 
-      btree_clear_key_value (&clear_key, &temp_key);
       if (btree_read_record_without_decompression (thread_p, btid, &rec, &temp_key, &non_leaf_rec, BTREE_NON_LEAF_NODE,
 						   &clear_key, &offset, PEEK_KEY_VALUE) != NO_ERROR)
 	{
