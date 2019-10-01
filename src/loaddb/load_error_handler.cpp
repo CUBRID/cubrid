@@ -37,8 +37,8 @@ namespace cubload
 
 #if defined (SERVER_MODE)
   error_handler::error_handler (session &session)
-    : m_session (session),
-      m_current_line_has_error (false)
+    : m_current_line_has_error (false)
+    , m_session (session)
   {
     m_syntax_check = m_session.get_args ().syntax_check;
   }
@@ -78,6 +78,7 @@ namespace cubload
 	// just log er_msg ()
 	std::string er_msg;
 	log_error_message (er_msg, false);
+	er_clear ();
 	return;
       }
 #endif
@@ -94,9 +95,6 @@ namespace cubload
 	err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ()));
 	err_msg.append (std::string (er_msg ()));
 	err_msg.append ("\n");
-
-	// once error message was fetched from error manager, we can clear the error
-	er_clear ();
       }
 
     m_session.on_error (err_msg);

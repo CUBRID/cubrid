@@ -288,6 +288,7 @@ namespace cubload
     assert (m_last_batch_id == id - 1);
     m_last_batch_id = id;
     m_commit_mutex.unlock ();
+    er_clear ();
     notify_waiting_threads ();
   }
 
@@ -306,6 +307,7 @@ namespace cubload
 	assert (false);
       }
     m_commit_mutex.unlock ();
+    er_clear ();
     notify_waiting_threads ();
   }
 
