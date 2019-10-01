@@ -81,9 +81,6 @@ extern bool css_is_shutdowning_server ();
 extern void css_start_shutdown_server ();
 #endif // SERVER_MODE
 
-extern bool css_get_server_shutdown_inited ();
-extern void css_set_server_shutdown_inited ();
-
 extern void css_set_ha_num_of_hosts (int num);
 extern int css_get_ha_num_of_hosts (void);
 extern HA_SERVER_STATE css_ha_server_state (void);
