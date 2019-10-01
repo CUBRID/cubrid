@@ -557,13 +557,14 @@ struct page_key_boundary
   int set_value (THREAD_ENTRY * thread_p, DB_VALUE &dest_value, BTID_INT * btid, PAGE_PTR page_ptr, RECDES &rec);
 
   int update_boundary_eq (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr,
-                          DB_VALUE &boundary_value, bool &clear_boundary_value, const INT16 slot);
+                          DB_VALUE &subtree_value, bool &clear_subtree_value, const INT16 subtree_slot);
 
   int update_boundary_lt (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr,
-                          RECDES &left_rec, DB_VALUE &boundary_value, bool &clear_boundary_value);
+                          RECDES &left_subtree_rec, DB_VALUE &subtree_value, bool &clear_subtree_value);
 
   int update_boundary_gt_or_eq (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr,
-                                DB_VALUE &boundary_value, bool &clear_boundary_value, const INT16 slot, const int key_cnt);
+                                DB_VALUE &subtree_value, bool &clear_subtree_value, const INT16 subtree_slot,
+                                const int key_cnt);
 };
 
 struct btree_insert_list
