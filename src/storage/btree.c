@@ -22787,13 +22787,15 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
     {
       /* Non-leaf page. */
       *is_leaf = false;
-      error_code =
-	btree_search_nonleaf_page (thread_p, btid_int, *crt_page, key, &search_key->slotid, &child_vpid, NULL);
+
+      error_code = btree_search_nonleaf_page (thread_p, btid_int, *crt_page, key, &search_key->slotid, &child_vpid,
+					      NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return error_code;
 	}
+
       /* Advance to child. */
       assert (!VPID_ISNULL (&child_vpid));
       *advance_to_page = pgbuf_fix (thread_p, &child_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
@@ -30250,8 +30252,8 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	}
       /* Root was not merged. */
       /* Advance to one of the children. */
-      error_code =
-	btree_search_nonleaf_page (thread_p, btid_int, *crt_page, key, &search_key->slotid, &child_vpid, NULL);
+      error_code = btree_search_nonleaf_page (thread_p, btid_int, *crt_page, key, &search_key->slotid, &child_vpid,
+					      NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -33505,6 +33507,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	    }
 	}
 
+      // DESCRIPTION
       if (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY)
 	{
 	  error_code = btree_leaf_is_key_between_min_max (thread_p, btid_int, *leaf_page, curr_key, search_key);
@@ -33520,20 +33523,24 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	      BTREE_NODE_HEADER *node_header = btree_get_node_header (thread_p, *leaf_page);
 	      if (search_key->result == BTREE_KEY_SMALLER && VPID_ISNULL (&node_header->prev_vpid))
 		{
+		  // DESCRIPTION
 		  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_FALSE_FAILED_RANGE1);
 		}
 	      else if (search_key->result == BTREE_KEY_BIGGER && VPID_ISNULL (&node_header->next_vpid))
 		{
+		  // DESCRIPTION
 		  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_FALSE_FAILED_RANGE2);
 		}
 	      else
 		{
+		  // DESCRIPTION
 		  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE3);
 		  break;
 		}
 	    }
 	}
 
+      // DESCRIPTION
       error_code = btree_search_leaf_page (thread_p, btid_int, *leaf_page, curr_key, search_key);
       if (error_code != NO_ERROR)
 	{
@@ -33544,12 +33551,14 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
       if ((search_key->result == BTREE_KEY_BIGGER || search_key->result == BTREE_KEY_SMALLER)
 	  && search_key->has_fence_key == btree_search_key_helper::HAS_FENCE_KEY)
 	{
+	  // DESCRIPTION
 	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE4);
 	  break;
 	}
       else if (search_key->result != BTREE_KEY_BETWEEN && search_key->result != BTREE_KEY_FOUND
 	       && search_key->result != BTREE_KEY_BIGGER && search_key->result != BTREE_KEY_SMALLER)
 	{
+	  // DESCRIPTION
 	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE4);
 	  assert (false);
 	  break;
@@ -35438,9 +35447,9 @@ page_key_boundary::set_value (THREAD_ENTRY * thread_p, DB_VALUE &dest_value, BTI
 
   pr_clear_value (&dest_value);
 
-  if (btree_read_record_without_decompression
-      (thread_p, btid, &rec, &boundary_value, &non_leaf_rec, BTREE_NON_LEAF_NODE, &clear_boundary_value,
-       &offset, PEEK_KEY_VALUE) != NO_ERROR)
+  if (btree_read_record_without_decompression (thread_p, btid, &rec, &boundary_value, &non_leaf_rec,
+					       BTREE_NON_LEAF_NODE, &clear_boundary_value, &offset,
+					       PEEK_KEY_VALUE) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -35456,6 +35465,7 @@ page_key_boundary::update_boundary_eq (THREAD_ENTRY * thread_p, BTID_INT * btid,
 {
   int error = NO_ERROR;
 
+  // DESCRIPTION
   set_value (m_right_key, boundary_value, clear_boundary_value);
   m_is_inf_right_key = false;
 
@@ -35474,6 +35484,7 @@ page_key_boundary::update_boundary_lt (THREAD_ENTRY * thread_p, BTID_INT * btid,
 {
   int error = NO_ERROR;
 
+  // DESCRIPTION
   set_value (m_right_key, boundary_value, clear_boundary_value);
   m_is_inf_right_key = false;
 
@@ -35490,6 +35501,7 @@ page_key_boundary::update_boundary_gt_or_eq (THREAD_ENTRY * thread_p, BTID_INT *
 {
   int error = NO_ERROR;
 
+  // DESCRIPTION
   set_value (m_left_key, boundary_value, clear_boundary_value);
   m_is_inf_left_key = false;
 
