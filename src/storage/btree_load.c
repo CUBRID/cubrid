@@ -165,15 +165,15 @@ class index_builder_loader_context : public cubthread::entry_manager
     std::atomic_bool m_has_error;
     std::atomic<std::uint64_t> m_tasks_executed;
     int m_error_code;
-    const TP_DOMAIN* m_key_type;
+    const TP_DOMAIN *m_key_type;
     css_conn_entry *m_conn;
 
     index_builder_loader_context () = default;
 
   protected:
-    void on_create (context_type & context) override;
-    void on_retire (context_type & context) override;
-    void on_recycle (context_type & context) override;
+    void on_create (context_type &context) override;
+    void on_retire (context_type &context) override;
+    void on_recycle (context_type &context) override;
 };
 
 class index_builder_loader_task: public cubthread::entry_task
@@ -182,7 +182,7 @@ class index_builder_loader_task: public cubthread::entry_task
     BTID m_btid;
     OID m_class_oid;
     int m_unique_pk;
-    index_builder_loader_context & m_load_context; // Loader context.
+    index_builder_loader_context &m_load_context; // Loader context.
     btree_insert_list m_insert_list;
     size_t m_memsize;
 
@@ -200,16 +200,16 @@ class index_builder_loader_task: public cubthread::entry_task
 
     index_builder_loader_task () = delete;
 
-    index_builder_loader_task (const BTID * btid, const OID * class_oid, int unique_pk,
-                               index_builder_loader_context & load_context, std::atomic<int> &num_keys,
+    index_builder_loader_task (const BTID *btid, const OID *class_oid, int unique_pk,
+                               index_builder_loader_context &load_context, std::atomic<int> &num_keys,
 			       std::atomic<int> &num_oids, std::atomic<int> &num_nulls);
     ~index_builder_loader_task ();
     
     // add key to key set and return true if task is ready for execution, false otherwise
-    batch_key_status add_key (const DB_VALUE * key, const OID& oid);
+    batch_key_status add_key (const DB_VALUE *key, const OID &oid);
     bool has_keys () const;
 
-    void execute (cubthread::entry & thread_ref);
+    void execute (cubthread::entry &thread_ref);
 
   private:
     void clear_keys ();
@@ -5046,8 +5046,8 @@ index_builder_loader_context::on_recycle (context_type &context)
 
 index_builder_loader_task::index_builder_loader_task (const BTID *btid, const OID *class_oid, int unique_pk,
 						      index_builder_loader_context &load_context,
-                                                      std::atomic<int> &num_keys, std::atomic<int> &num_oids,
-                                                      std::atomic<int> &num_nulls)
+						      std::atomic<int> &num_keys, std::atomic<int> &num_oids,
+						      std::atomic<int> &num_nulls)
   : m_load_context (load_context)
   , m_insert_list (load_context.m_key_type)
   , m_num_keys (num_keys)

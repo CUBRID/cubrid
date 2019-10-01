@@ -581,7 +581,7 @@ struct btree_insert_list
   OID *m_curr_oid;
   int m_curr_pos;
 
-  const TP_DOMAIN* m_key_type;
+  const TP_DOMAIN *m_key_type;
 
   int m_ignored_nulls_cnt;
 
@@ -596,14 +596,14 @@ struct btree_insert_list
 
   btree_insert_list () = delete;
 
-  btree_insert_list (const TP_DOMAIN* &key_type)
-  : m_curr_key (NULL)
-  , m_curr_oid (NULL)
-  , m_curr_pos (0)
-  , m_key_type (key_type)
-  , m_ignored_nulls_cnt (0)
-  , m_use_page_boundary_check (false)
-  , m_use_sorted_bulk_insert (false)
+  btree_insert_list (const TP_DOMAIN *&key_type)
+    : m_curr_key (NULL)
+    , m_curr_oid (NULL)
+    , m_curr_pos (0)
+    , m_key_type (key_type)
+    , m_ignored_nulls_cnt (0)
+    , m_use_page_boundary_check (false)
+    , m_use_sorted_bulk_insert (false)
   {
   }
 
