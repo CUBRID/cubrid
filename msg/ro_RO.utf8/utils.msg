@@ -458,7 +458,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 118 Maximum length of class name is %1$d bytes.\n
 119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
 120 data file does not contain '%%class' specifier or '--table' option is missing\n
-121 Class %1$s is ignored. \n
+121 Class %1$s is ignored.\n
 122 \
 loaddb: Importă obiecte şi scheme în baza de date.\n\
 utilizare: %1$s loaddb [OPŢIUNI] nume-bază-de-date[@host]\n\
