@@ -63,6 +63,7 @@ namespace cubload
     public:
       class_entry () = delete; // Not DefaultConstructible
       class_entry (std::string &class_name, OID &class_oid, class_id clsid, std::vector<const attribute *> &attributes);
+      class_entry (std::string &class_name, class_id clsid, bool is_ignored);
       ~class_entry ();
 
       class_entry (class_entry &&other) = delete; // Not MoveConstructible
@@ -74,12 +75,14 @@ namespace cubload
       const char *get_class_name () const;
       const attribute &get_attribute (std::size_t index) const;
       size_t get_attributes_size () const;
+      bool is_ignored () const;
 
     private:
       class_id m_clsid;
       OID m_class_oid;
       std::string m_class_name;
       std::vector<const attribute *> m_attributes;
+      const bool m_is_ignored;
   };
 
   class class_registry
@@ -98,6 +101,7 @@ namespace cubload
       void get_all_class_entries (std::vector<const class_entry *> &entries) const;
       void register_class (const char *class_name, class_id clsid, OID class_oid,
 			   std::vector<const attribute *> &attributes);
+      void register_ignored_class (class_entry *cls_entry, class_id cls_id);
 
     private:
       using class_map = std::unordered_map<class_id, const class_entry *>;

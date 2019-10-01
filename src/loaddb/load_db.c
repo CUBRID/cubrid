@@ -580,8 +580,12 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       int retval = args.parse_ignore_class_file ();
       if (retval < 0)
 	{
-	  status = 2;
-	  goto error_return;
+	  if (retval != ER_FILE_UNKNOWN_FILE)
+	    {
+	      // To keep compatibility we need to continue even though the ignore-classes file does not exist.            
+	      status = 2;
+	      goto error_return;
+	    }
 	}
     }
 
@@ -1233,9 +1237,9 @@ load_object_file (load_args * args)
 
       return ret;
     };
-  batch_handler c_handler = [] (const batch &batch) -> int
+  class_handler c_handler = [] (const batch &batch, bool &is_ignored) -> int
     {
-      int ret = loaddb_install_class (batch);
+      int ret = loaddb_install_class (batch, is_ignored);
       delete &batch;
 
       return ret;
