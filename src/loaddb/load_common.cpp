@@ -537,16 +537,16 @@ namespace cubload
   }
 
   int
-  split (int batch_size, const std::string &object_file_name, batch_handler &c_handler, batch_handler &b_handler)
+  split (int batch_size, const std::string &object_file_name, class_handler &c_handler, batch_handler &b_handler)
   {
     int error_code;
-    int total_rows = 0;
     int batch_rows = 0;
     int lineno = 0;
     int line_offset = 0;
     class_id clsid = FIRST_CLASS_ID;
     batch_id batch_id = NULL_BATCH_ID;
     std::string batch_buffer;
+    bool class_is_ignored = false;
 
     if (object_file_name.empty ())
       {
@@ -573,6 +573,7 @@ namespace cubload
 	      {
 		// in case of class line collect remaining for current class
 		// and start new batch for the new class
+
 		error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset, batch_rows);
 		if (error_code != NO_ERROR)
 		  {
@@ -581,15 +582,14 @@ namespace cubload
 		  }
 
 		++clsid;
-
-		// rewind forward total_rows counter until batch is full
-		for (; (total_rows % batch_size) != 0; total_rows++)
-		  ;
 	      }
+
+	    // New class so we check if the previous one was ignored.
+	    // If so, then we should empty the current batch since we do not send it to the server.
 
 	    line.append ("\n"); // feed lexer with new line
 	    batch *c_batch = new batch (batch_id, clsid, line, lineno, 1);
-	    error_code = c_handler (*c_batch);
+	    error_code = c_handler (*c_batch, class_is_ignored);
 	    if (error_code != NO_ERROR)
 	      {
 		object_file.close ();
@@ -597,6 +597,12 @@ namespace cubload
 	      }
 
 	    line_offset = lineno;
+	    continue;
+	  }
+
+	if (class_is_ignored)
+	  {
+	    // Skip the remaining lines until we find another class.
 	    continue;
 	  }
 
@@ -618,11 +624,10 @@ namespace cubload
 	// this means that the row ends on the last line that does not end with '+' (plus) character
 	if (!ends_with (line, "+"))
 	  {
-	    ++total_rows;
 	    ++batch_rows;
 
 	    // check if we have a full batch
-	    if ((total_rows % batch_size) == 0)
+	    if (batch_rows == batch_size)
 	      {
 		error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset, batch_rows);
 		line_offset = lineno;

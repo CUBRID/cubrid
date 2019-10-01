@@ -9770,6 +9770,7 @@ void
 sloaddb_install_class (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   packing_unpacker unpacker (request, (size_t) reqlen);
+  bool is_ignored = false;
 
   /* *INDENT-OFF* */
   cubload::batch *batch = new cubload::batch ();
@@ -9782,7 +9783,7 @@ sloaddb_install_class (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   if (error_code == NO_ERROR)
     {
       assert (session != NULL);
-      error_code = session->install_class (*thread_p, *batch);
+      error_code = session->install_class (*thread_p, *batch, is_ignored);
     }
   else
     {
@@ -9795,10 +9796,18 @@ sloaddb_install_class (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       return_error_to_client (thread_p, rid);
     }
 
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  /* *INDENT-OFF* */
+  delete batch;
+  /* *INDENT-ON* */
 
-  or_pack_int (reply, error_code);
+  // Error code and is_ignored.
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+
+  ptr = or_pack_int (reply, error_code);
+  ptr = or_pack_int (ptr, (is_ignored ? 1 : 0));
+
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 

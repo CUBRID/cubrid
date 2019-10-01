@@ -54,6 +54,8 @@ namespace cubload
       int install_class (const char *class_name) override;
       void install_class (string_type *class_name, class_command_spec_type *cmd_spec) override;
 
+      bool is_class_ignored (const char *classname);
+
     private:
       session &m_session;
       error_handler &m_error_handler;

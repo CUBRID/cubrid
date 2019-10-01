@@ -439,8 +439,11 @@ namespace cubload
 
     for (const class_entry *class_entry : class_entries)
       {
-	OID *class_oid = const_cast<OID *> (&class_entry->get_class_oid ());
-	xstats_update_statistics (&thread_ref, class_oid, STATS_WITH_SAMPLING);
+	if (!class_entry->is_ignored ())
+	  {
+	    OID *class_oid = const_cast<OID *> (&class_entry->get_class_oid ());
+	    xstats_update_statistics (&thread_ref, class_oid, STATS_WITH_SAMPLING);
+	  }
       }
   }
 
@@ -463,12 +466,28 @@ namespace cubload
   }
 
   int
-  session::install_class (cubthread::entry &thread_ref, const batch &batch)
+  session::install_class (cubthread::entry &thread_ref, const batch &batch, bool &is_ignored)
   {
     thread_ref.m_loaddb_driver = m_driver;
 
     int error_code = NO_ERROR;
     bool parser_result = invoke_parser (m_driver, batch);
+    const class_entry *cls_entry = get_class_registry ().get_class_entry (batch.get_class_id ());
+    if (cls_entry != NULL)
+      {
+	is_ignored = get_class_registry ().get_class_entry (batch.get_class_id ())->is_ignored ();
+      }
+    else
+      {
+	is_ignored = false;
+      }
+
+    if (is_ignored)
+      {
+	thread_ref.m_loaddb_driver = NULL;
+
+	return NO_ERROR;
+      }
 
     if (is_failed () || !parser_result || er_has_error ())
       {
@@ -482,7 +501,6 @@ namespace cubload
       }
 
     thread_ref.m_loaddb_driver = NULL;
-    delete &batch;
 
     return error_code;
   }
@@ -518,9 +536,9 @@ namespace cubload
       return load_batch (thread_ref, batch);
     };
 
-    batch_handler c_handler = [this, &thread_ref] (const batch &batch) -> int
+    class_handler c_handler = [this, &thread_ref] (const batch &batch, bool &is_ignored) -> int
     {
-      return install_class (thread_ref, batch);
+      return install_class (thread_ref, batch, is_ignored);
     };
 
     return split (m_args.periodic_commit, m_args.server_object_file, c_handler, b_handler);
