@@ -448,7 +448,6 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 120 data file does not contain '%%class' specifier or '--table' option is missing\n
 121 Class %1$s is ignored. \n
 122 \
-
 loaddb: 将对象和结构导入到数据库.\n\
 用法: %1$s loaddb [选项] 数据库名[@主机名]\n\
 \n\

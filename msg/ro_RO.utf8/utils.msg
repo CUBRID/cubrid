@@ -460,7 +460,6 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 120 data file does not contain '%%class' specifier or '--table' option is missing\n
 121 Class %1$s is ignored. \n
 122 \
-
 loaddb: Importă obiecte şi scheme în baza de date.\n\
 utilizare: %1$s loaddb [OPŢIUNI] nume-bază-de-date[@host]\n\
 \n\

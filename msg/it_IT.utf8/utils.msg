@@ -448,7 +448,6 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 120 data file does not contain '%%class' specifier or '--table' option is missing\n
 121 Class %1$s is ignored. \n
 122 \
-
 loaddb: Importare oggetti e gli schemi al database.\n\
 uso: %1$s loaddb [OPZIONE] nome-database[@host]\n\
 \n\

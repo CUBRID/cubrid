@@ -448,7 +448,6 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 120 data file does not contain '%%class' specifier or '--table' option is missing\n
 121 Class %1$s is ignored. \n
 122 \
-
 loaddb: データベースにオブジェクトやスキーマロード\n\
 使い方: %1$s loaddb [オプション] データベース名[@ホスト]\n\
 \n\

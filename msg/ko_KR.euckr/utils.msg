@@ -448,7 +448,6 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 120 data file does not contain '%%class' specifier or '--table' option is missing\n
 121 Class %1$s is ignored. \n
 122 \
-
 loaddb: 데이터베이스에 객체 및 스키마 적재\n\
 사용법: %1$s loaddb [옵션] 데이터베이스 이름[@호스트]\n\
 \n\
