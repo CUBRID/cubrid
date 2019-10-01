@@ -7224,9 +7224,8 @@ lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * 
  *
  *   oid(in): target object ientifier
  *   class_oid(in): class identifier of the target object
- *   tran_index(in): the transaction table index of target transaction.
  *
- * Note:Find the acquired lock on the given object by the given transaction.
+ * Note:Find the acquired lock on the given object by the current transaction.
  *     Currently, the value of the "tran_index" must not be NULL_TRAN_INDEX.
  *
  *     If this function is changed in order to allow NULL_TRAN_INDEX to be
@@ -7589,14 +7588,13 @@ lock_is_waiting_transaction (int tran_index)
 
 /*
  * lock_get_class_lock - Get a pointer to lock heap entry acquired by
- *                        given transaction on given class object
+ *                       the current transaction on given class object
  *
  * return:
  *
  *   class_oid(in): target class object identifier
- *   tran_index(in): target transaction
  *
- * Note:This function finds lock entry acquired by the given transaction
+ * Note:This function finds lock entry acquired by the current transaction
  *     on the given class and then return a pointer to the lock entry.
  */
 LK_ENTRY *
