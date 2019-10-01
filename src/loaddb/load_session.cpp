@@ -215,6 +215,7 @@ namespace cubload
     , m_args (args)
     , m_last_batch_id {NULL_BATCH_ID}
     , m_max_batch_id {NULL_BATCH_ID}
+    , m_active_task_count {0}
     , m_class_registry ()
     , m_stats ()
     , m_stats_mutex ()
@@ -266,7 +267,11 @@ namespace cubload
   void
   session::wait_for_completion ()
   {
-    auto pred = [this] () -> bool { return is_failed () || is_completed (); };
+    auto pred = [this] () -> bool
+    {
+      // condition of finish and no active tasks
+      return (is_failed () || is_completed ()) && (m_active_task_count == 0);
+    };
 
     if (pred ())
       {
@@ -287,6 +292,7 @@ namespace cubload
     m_commit_mutex.lock ();
     assert (m_last_batch_id == id - 1);
     m_last_batch_id = id;
+    --m_active_task_count;
     m_commit_mutex.unlock ();
     notify_waiting_threads ();
   }
@@ -301,6 +307,7 @@ namespace cubload
     m_commit_mutex.lock ();
     assert (m_last_batch_id == id - 1);
     m_last_batch_id = id;
+    --m_active_task_count;
     if (m_tran_indexes.erase (tran_index) != 1)
       {
 	assert (false);
@@ -514,6 +521,7 @@ namespace cubload
       }
 
     update_atomic_value_with_max (m_max_batch_id, batch.get_id ());
+    ++m_active_task_count;
 
     if (batch.get_content ().empty ())
       {
