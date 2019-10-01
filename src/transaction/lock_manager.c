@@ -7222,17 +7222,11 @@ lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * 
  *
  * return:
  *
- *   oid(in): target object ientifier
+ *   oid(in): target object identifier
  *   class_oid(in): class identifier of the target object
  *
  * Note:Find the acquired lock on the given object by the current transaction.
- *     Currently, the value of the "tran_index" must not be NULL_TRAN_INDEX.
  *
- *     If this function is changed in order to allow NULL_TRAN_INDEX to be
- *     transferred as the value of the "tran_index", this function will
- *     find the resulting lock acquired by all transactions holding a lock
- *     on the given OID (The most powerful lock, actually a combination of
- *     the locks).
  */
 LOCK
 lock_get_object_lock (const OID * oid, const OID * class_oid)
