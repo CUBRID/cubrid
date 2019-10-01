@@ -46,6 +46,7 @@
 #include "partition_sr.h"
 #include "query_executor.h"
 #include "query_opfunc.h"
+#include "server_support.h"
 #include "stream_to_xasl.h"
 #include "thread_manager.hpp"
 #include "thread_entry_task.hpp"
@@ -4662,8 +4663,20 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	      continue;
 	    }
 
-	  // lock promotion failed. should be dead-ended
-	  break;
+#if defined (SERVER_MODE)
+	  // SA_MODE never reaches.
+	  if (css_is_shutdowning_server ())
+	    {
+	      // shutdown interrupts the thread with lock timeout.
+	      // This case is acceptable since recovery will remove the index being built.
+	      break;
+	    }
+	  else
+	    {
+	      // it is neither expected nor acceptable.
+	      assert (0);
+	    }
+#endif // SERVER_MODE
 	}
 
       // reset back

@@ -76,6 +76,14 @@ extern void css_cleanup_server_queues (unsigned int eid);
 extern void css_end_server_request (CSS_CONN_ENTRY * conn);
 extern bool css_is_shutdown_timeout_expired (void);
 
+#if defined (SERVER_MODE)
+extern bool css_is_shutdowning_server ();
+extern void css_start_shutdown_server ();
+#endif // SERVER_MODE
+
+extern bool css_get_server_shutdown_inited ();
+extern void css_set_server_shutdown_inited ();
+
 extern void css_set_ha_num_of_hosts (int num);
 extern int css_get_ha_num_of_hosts (void);
 extern HA_SERVER_STATE css_ha_server_state (void);
