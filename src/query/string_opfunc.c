@@ -6486,6 +6486,7 @@ db_json_convert_to_utf8 (DB_VALUE ** dbval)
 
   std::swap (coerced_str, **dbval);
   pr_clear_value (&coerced_str);
+  return NO_ERROR;
 }
 
 int
