@@ -6469,6 +6469,74 @@ error_return:
   return error;
 }
 
+int
+db_json_convert_to_utf8 (DB_VALUE ** dbval)
+{
+  assert (dbval != NULL && DB_IS_STRING (*dbval));
+  DB_VALUE coerced_str;
+  if (db_get_string_codeset (*dbval) == INTL_CODESET_UTF8)
+    {
+      return NO_ERROR;
+    }
+  int error_code = db_string_convert_to (*dbval, &coerced_str, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
+  if (errror_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  std::swap (coerced_str, **dbval);
+  pr_clear_value (&coerced_str);
+}
+
+int
+db_json_copy_and_convert_to_utf8 (const DB_VALUE * src_dbval, DB_VALUE * dest_dbval, const DB_VALUE ** json_str_dbval)
+{
+  assert (src_dbval != NULL && dest_dbval != NULL && json_str_dbval != NULL);
+  if (db_get_string_codeset (src_dbval) == INTL_CODESET_UTF8)
+    {
+      *json_str_dbval = src_dbval;
+      db_make_null (dest_dbval);
+    }
+  else
+    {
+      *json_str_dbval = dest_dbval;
+      int error_code = db_string_convert_to (src_dbval, dest_dbval, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+int
+db_string_convert_to (const DB_VALUE * src_str_dbval, DB_VALUE * dest_str_dbval, INTL_CODESET dest_codeset,
+		      int dest_col)
+{
+  assert (src_str_dbval != NULL && dest_str_dbval != NULL);
+
+  DB_TYPE src_str_type = (DB_TYPE) src_str_dbval->domain.general_info.type;
+
+  int dest_precision = QSTR_VALUE_PRECISION (src_str_dbval);
+
+  db_value_domain_init (dest_str_dbval, src_str_type, dest_precision, 0);
+  db_string_put_cs_and_collation (dest_str_dbval, dest_codeset, dest_col);
+
+  DB_DATA_STATUS data_status;
+  int error_code = db_char_string_coerce (src_str_dbval, dest_str_dbval, &data_status);
+  if (error_code != NO_ERROR)
+    {
+      pr_clear_value (dest_str_dbval);
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  assert (data_status == DATA_STATUS_OK);
+
+  return NO_ERROR;
+}
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * db_string_convert () -
