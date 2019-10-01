@@ -145,6 +145,7 @@ namespace cubload
       load_args m_args;
       batch_id m_last_batch_id;
       std::atomic<batch_id> m_max_batch_id;
+      std::atomic<size_t> m_active_task_count;
 
       class_registry m_class_registry;
 
