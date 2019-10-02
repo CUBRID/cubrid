@@ -89,7 +89,7 @@ log_system_tdes::systdes_retire_tdes (log_tdes *&tdes)
   if (tdes != NULL)
     {
       systb_Free_tdes_list.push_front (tdes);
-      //rv_delete_tdes (tdes);
+      rv_delete_tdes (tdes->trid);
       tdes = NULL;
     }
 }
@@ -179,12 +179,15 @@ void
 log_system_tdes::destroy_system_transactions ()
 {
   log_tdes *tdes;
+
   while (!systb_Free_tdes_list.empty ())
     {
       tdes = systb_Free_tdes_list.front ();
       systb_Free_tdes_list.pop_front ();
       systdes_destroy_tdes (tdes);
     }
+
+  systb_system_tdes.clear ();
 }
 
 log_tdes *
@@ -220,7 +223,7 @@ log_system_tdes::rv_get_or_alloc_tdes (TRANID trid)
 }
 
 void
-log_system_tdes::map_all_tdes (const rv_map_func &func)
+log_system_tdes::map_all_tdes (const map_func &func)
 {
   for (auto el : systb_system_tdes)
     {
@@ -230,16 +233,13 @@ log_system_tdes::map_all_tdes (const rv_map_func &func)
     }
 }
 
-void
-log_system_tdes::map_all_tdes_sync (const rv_map_func &func)
+// do this to chain with other operations under lock
+std::unique_lock<std::mutex>
+log_system_tdes::get_size_and_lock (size_t &system_trans_size)
 {
-  std::lock_guard<std::mutex> lg (systb_Mutex);
-  for (auto el : systb_system_tdes)
-    {
-      log_tdes *tdes = el.second.get_tdes ();
-      assert (tdes != NULL);
-      func (*tdes);
-    }
+  std::unique_lock<std::mutex> ul (systb_Mutex);
+  system_trans_size = systb_system_tdes.size ();
+  return ul;
 }
 
 void
