@@ -2464,13 +2464,10 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
    * lock. This means that is not necessary to request the lock again. */
   assert (skip_fetch_version_type_check || (OID_EQ (class_oid, oid_Root_class_oid))
 	  || ((lock != NULL_LOCK)
-	      || (lock_get_object_lock (oid, class_oid, LOG_FIND_THREAD_TRAN_INDEX (thread_p)) != NULL_LOCK)
-	      || ((class_lock = lock_get_object_lock (class_oid, oid_Root_class_oid,
-						      LOG_FIND_THREAD_TRAN_INDEX (thread_p))) == S_LOCK
+	      || (lock_get_object_lock (oid, class_oid) != NULL_LOCK)
+	      || ((class_lock = lock_get_object_lock (class_oid, oid_Root_class_oid)) == S_LOCK
 		  || class_lock >= SIX_LOCK)
-	      || ((class_lock = lock_get_object_lock (oid_Root_class_oid, NULL,
-						      LOG_FIND_THREAD_TRAN_INDEX (thread_p))) == S_LOCK
-		  || class_lock >= SIX_LOCK)));
+	      || ((class_lock = lock_get_object_lock (oid_Root_class_oid, NULL)) == S_LOCK || class_lock >= SIX_LOCK)));
 
   /* LC_FETCH_CURRENT_VERSION should be used for classes only */
   assert (fetch_version_type != LC_FETCH_CURRENT_VERSION || OID_IS_ROOTOID (class_oid));
@@ -7336,9 +7333,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	  scan = heap_get_last_version (thread_p, &context);
 	  heap_clean_get_context (thread_p, &context);
 
-	  assert ((lock_get_object_lock (oid, &class_oid, LOG_FIND_THREAD_TRAN_INDEX (thread_p)) >= X_LOCK)
-		  || (lock_get_object_lock (&class_oid, oid_Root_class_oid,
-					    LOG_FIND_THREAD_TRAN_INDEX (thread_p) >= X_LOCK)));
+	  assert ((lock_get_object_lock (oid, &class_oid) >= X_LOCK)
+		  || (lock_get_object_lock (&class_oid, oid_Root_class_oid) >= X_LOCK));
 	}
       else
 	{
@@ -12579,7 +12575,7 @@ xchksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread_p, REPL_INF
    * checksumdb. */
   lock_demote_read_class_lock_for_checksumdb (thread_p, tdes->tran_index, class_oidp);
 
-  assert (lock_get_object_lock (class_oidp, oid_Root_class_oid, tdes->tran_index) == IS_LOCK);
+  assert (lock_get_object_lock (class_oidp, oid_Root_class_oid) == IS_LOCK);
 #endif /* SERVER_MODE */
 
   return error;
