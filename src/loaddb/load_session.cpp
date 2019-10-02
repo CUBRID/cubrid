@@ -294,6 +294,7 @@ namespace cubload
     m_last_batch_id = id;
     --m_active_task_count;
     m_commit_mutex.unlock ();
+    er_clear ();
     notify_waiting_threads ();
   }
 
@@ -313,6 +314,7 @@ namespace cubload
 	assert (false);
       }
     m_commit_mutex.unlock ();
+    er_clear ();
     notify_waiting_threads ();
   }
 
