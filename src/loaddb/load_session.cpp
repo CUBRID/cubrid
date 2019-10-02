@@ -147,6 +147,11 @@ namespace cubload
 	int tran_index = thread_ref.tran_index;
 	m_session.register_tran_start (tran_index);
 
+	// Get the clientids from the session and set it on the current worker.
+	LOG_TDES *session_tdes = log_Gl.trantable.all_tdes[m_conn_entry.get_tran_index ()];
+	LOG_TDES *worker_tdes = log_Gl.trantable.all_tdes[tran_index];
+	worker_tdes->client.set_ids (session_tdes->client);
+
 	bool parser_result = invoke_parser (driver, m_batch);
 
 	// Get the class name.
@@ -194,6 +199,9 @@ namespace cubload
 		m_session.append_log_msg (LOADDB_MSG_UPDATED_CLASS_STATS, class_name.c_str ());
 	      }
 	  }
+
+	// Clear the clientids.
+	worker_tdes->client.reset ();
 
 	// free transaction index
 	logtb_free_tran_index (&thread_ref, thread_ref.tran_index);
