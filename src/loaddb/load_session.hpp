@@ -86,7 +86,7 @@ namespace cubload
        *    thread_ref(in): thread entry
        *    batch(in)     : a batch where content is a line starting with '%id' or '%class' from object file
        */
-      int install_class (cubthread::entry &thread_ref, const batch &batch);
+      int install_class (cubthread::entry &thread_ref, const batch &batch, bool &is_ignored);
 
       /*
        * Load a batch from object file on the the server
@@ -145,6 +145,7 @@ namespace cubload
       load_args m_args;
       batch_id m_last_batch_id;
       std::atomic<batch_id> m_max_batch_id;
+      std::atomic<size_t> m_active_task_count;
 
       class_registry m_class_registry;
 
@@ -168,8 +169,7 @@ namespace cubload
   {
     if (get_args ().verbose)
       {
-	std::string log_msg;
-	error_handler::format_log_msg (msg_id, std::forward<Args> (args)...);
+	std::string log_msg = error_handler::format_log_msg (msg_id, std::forward<Args> (args)...);
 
 	std::unique_lock<std::mutex> ulock (m_stats_mutex);
 

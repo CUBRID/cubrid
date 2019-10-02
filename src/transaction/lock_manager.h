@@ -209,13 +209,13 @@ extern void lock_unlock_object (THREAD_ENTRY * thread_p, const OID * oid, const 
 extern void lock_unlock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset);
 extern void lock_unlock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint);
 extern void lock_unlock_all (THREAD_ENTRY * thread_p);
-extern LOCK lock_get_object_lock (const OID * oid, const OID * class_oid, int tran_index);
+extern LOCK lock_get_object_lock (const OID * oid, const OID * class_oid);
 extern bool lock_has_xlock (THREAD_ENTRY * thread_p);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern bool lock_has_lock_transaction (int tran_index);
 #endif
 extern bool lock_is_waiting_transaction (int tran_index);
-extern LK_ENTRY *lock_get_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, int tran_index);
+extern LK_ENTRY *lock_get_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid);
 extern void lock_notify_isolation_incons (THREAD_ENTRY * thread_p,
 					  bool (*fun) (const OID * class_oid, const OID * oid, void *args), void *args);
 extern int lock_reacquire_crash_locks (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlocks, int tran_index);

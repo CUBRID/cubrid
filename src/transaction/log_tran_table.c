@@ -2705,7 +2705,9 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 
   if (tran_index == LOG_SYSTEM_TRAN_INDEX)
     {
+#if defined (SERVER_MODE)
       assert (false);
+#endif // SERVER_MODE
       return false;
     }
 
@@ -6116,8 +6118,15 @@ void
 log_tdes::on_sysop_start ()
 {
   assert (is_allowed_sysop ());
+
   if (is_system_worker_transaction () && topops.last < 0)
     {
+      if (!LOG_ISRESTARTED ())
+	{
+	  /* The links are used at recovery. */
+	  return;
+	}
+
       // make sure all links to previous records are lost
       assert (topops.last == -1);
       LSA_SET_NULL (&head_lsa);
@@ -6164,5 +6173,4 @@ log_tdes::unlock_global_oldest_visible_mvccid ()
       block_global_oldest_active_until_commit = false;
     }
 }
-
 // *INDENT-ON*

@@ -1977,6 +1977,7 @@ db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALU
 
   DB_VALUE encoded_pattern_dbval;
   db_make_string (&encoded_pattern_dbval, const_cast<char *> (encoded_pattern.c_str ()));
+  db_string_put_cs_and_collation (&encoded_pattern_dbval, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
 
   const map_func_type &f_search = [&json_paths, &paths, &encoded_pattern_dbval, esc_char, find_all] (const JSON_VALUE &jv,
 				  const JSON_PATH &crt_path, bool &stop) -> int
@@ -1989,15 +1990,11 @@ db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALU
     const char *json_str = jv.GetString ();
     DB_VALUE str_val;
 
-    db_make_null (&str_val);
-    int error_code = db_make_string (&str_val, (char *) json_str);
-    if (error_code)
-      {
-	return error_code;
-      }
+    db_make_string (&str_val, (char *) json_str);
+    db_string_put_cs_and_collation (&str_val, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
 
     int match;
-    error_code = db_string_like (&str_val, &encoded_pattern_dbval, esc_char, &match);
+    int error_code = db_string_like (&str_val, &encoded_pattern_dbval, esc_char, &match);
     if (error_code != NO_ERROR || !match)
       {
 	return error_code;
@@ -3193,9 +3190,19 @@ db_value_to_json_doc (const DB_VALUE &db_val, bool force_copy, JSON_DOC_STORE &j
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
     {
+      DB_VALUE utf8_str;
+      const DB_VALUE *json_str_val;
+      error_code = db_json_copy_and_convert_to_utf8 (&db_val, &utf8_str, &json_str_val);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+
       JSON_DOC *json_doc_ptr = NULL;
-      error_code = db_json_get_json_from_str (db_get_string (&db_val), json_doc_ptr, db_get_string_size (&db_val));
+      error_code = db_json_get_json_from_str (db_get_string (json_str_val), json_doc_ptr, db_get_string_size (json_str_val));
       json_doc.set_mutable_reference (json_doc_ptr);
+      pr_clear_value (&utf8_str);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -3251,10 +3258,23 @@ db_value_to_json_value (const DB_VALUE &db_val, JSON_DOC_STORE &json_doc)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
+    {
+      DB_VALUE utf8_str;
+      const DB_VALUE *json_str_val;
+      int error_code = db_json_copy_and_convert_to_utf8 (&db_val, &utf8_str, &json_str_val);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+
       json_doc.create_mutable_reference ();
-      db_json_set_string_to_doc (json_doc.get_mutable (), db_get_string (&db_val),
-				 (unsigned) db_get_string_size (&db_val));
-      break;
+
+      db_json_set_string_to_doc (json_doc.get_mutable (), db_get_string (json_str_val),
+				 (unsigned) db_get_string_size (json_str_val));
+      pr_clear_value (&utf8_str);
+    }
+    break;
     case DB_TYPE_ENUMERATION:
       json_doc.create_mutable_reference ();
       db_json_set_string_to_doc (json_doc.get_mutable (), db_get_enum_string (&db_val),

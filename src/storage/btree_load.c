@@ -46,6 +46,7 @@
 #include "partition_sr.h"
 #include "query_executor.h"
 #include "query_opfunc.h"
+#include "server_support.h"
 #include "stream_to_xasl.h"
 #include "thread_manager.hpp"
 #include "thread_entry_task.hpp"
@@ -4503,28 +4504,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	}
     }
 
-  if (pred_stream && pred_stream_size > 0)
-    {
-      if (stx_map_stream_to_filter_pred (thread_p, &filter_pred, pred_stream, pred_stream_size) != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
-
-  if (func_pred_stream && func_pred_stream_size > 0)
-    {
-      func_index_info.expr_stream = func_pred_stream;
-      func_index_info.expr_stream_size = func_pred_stream_size;
-      func_index_info.col_id = func_col_id;
-      func_index_info.attr_index_start = func_attr_index_start;
-      func_index_info.expr = NULL;
-      if (stx_map_stream_to_func_pred (thread_p, &func_index_info.expr, func_pred_stream,
-				       func_pred_stream_size, &func_unpack_info))
-	{
-	  goto error;
-	}
-    }
-
   /* Demote the locks for classes on which we want to load indices. */
   for (cur_class = 0; cur_class < n_classes; cur_class++)
     {
@@ -4537,6 +4516,34 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 
   for (cur_class = 0; cur_class < n_classes; cur_class++)
     {
+      /* Reinitialize filter and function for each class, if is the case. This is needed in order to bring the regu
+       * variables in same state like initial state. Clearing XASL does not bring the regu variables in initial state.
+       * A issue is clearing the cache (see cache_dbvalp and cache_attrinfo).
+       * We may have the option to try to correct clearing XASL (to have initial state) or destroy it and reinitalize it.
+       * For now, we choose reinitialization, since is much simply, and is used also in non-online case.
+       */
+      if (pred_stream && pred_stream_size > 0)
+	{
+	  if (stx_map_stream_to_filter_pred (thread_p, &filter_pred, pred_stream, pred_stream_size) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+
+      if (func_pred_stream && func_pred_stream_size > 0)
+	{
+	  func_index_info.expr_stream = func_pred_stream;
+	  func_index_info.expr_stream_size = func_pred_stream_size;
+	  func_index_info.col_id = func_col_id;
+	  func_index_info.attr_index_start = func_attr_index_start;
+	  func_index_info.expr = NULL;
+	  if (stx_map_stream_to_func_pred (thread_p, &func_index_info.expr, func_pred_stream,
+					   func_pred_stream_size, &func_unpack_info))
+	    {
+	      goto error;
+	    }
+	}
+
       attr_offset = cur_class * n_attrs;
 
       /* Start scancache */
@@ -4597,10 +4604,9 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	}
 
       /* Start the online index builder. */
-      ret =
-	online_index_builder (thread_p, &btid_int, &hfids[cur_class], &class_oids[cur_class], n_classes, attr_ids,
-			      n_attrs, func_index_info, filter_pred, attrs_prefix_length, &attr_info, &scan_cache,
-			      unique_pk, ib_thread_count, key_type);
+      ret = online_index_builder (thread_p, &btid_int, &hfids[cur_class], &class_oids[cur_class], n_classes, attr_ids,
+				  n_attrs, func_index_info, filter_pred, attrs_prefix_length, &attr_info, &scan_cache,
+				  unique_pk, ib_thread_count, key_type);
       if (ret != NO_ERROR)
 	{
 	  break;
@@ -4627,6 +4633,29 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	  heap_scancache_end (thread_p, &scan_cache);
 	  scan_cache_inited = false;
 	}
+
+      if (filter_pred != NULL)
+	{
+	  /* to clear db values from dbvalue regu variable */
+	  qexec_clear_pred_context (thread_p, filter_pred, true);
+
+	  if (filter_pred->unpack_info != NULL)
+	    {
+	      free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
+	    }
+	  db_private_free_and_init (thread_p, filter_pred);
+	}
+
+      if (func_index_info.expr != NULL)
+	{
+	  (void) qexec_clear_func_pred (thread_p, func_index_info.expr);
+	  func_index_info.expr = NULL;
+	}
+
+      if (func_unpack_info != NULL)
+	{
+	  free_xasl_unpack_info (thread_p, func_unpack_info);
+	}
     }
 
   // We should recover the lock regardless of return code from online_index_builder.
@@ -4647,6 +4676,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	    {
 	      break;
 	    }
+
 	  if (er_errid () == ER_INTERRUPTED)
 	    {
 	      // interruptions cannot be allowed here; lock must be promoted to either commit or rollback changes
@@ -4656,8 +4686,21 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	      // and retry
 	      continue;
 	    }
-	  // FIXME: What can we do??
-	  assert (lock_ret == LK_GRANTED);
+
+#if defined (SERVER_MODE)
+	  // SA_MODE never reaches.
+	  if (css_is_shutdowning_server ())
+	    {
+	      // shutdown interrupts the thread with lock timeout.
+	      // This case is acceptable since recovery will remove the index being built.
+	      break;
+	    }
+	  else
+	    {
+	      // it is neither expected nor acceptable.
+	      assert (0);
+	    }
+#endif // SERVER_MODE
 	}
 
       // reset back
@@ -4686,51 +4729,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	}
     }
 
-  /* Clear memory structures. */
-  if (attr_info_inited)
-    {
-      heap_attrinfo_end (thread_p, &attr_info);
-
-      if (filter_pred)
-	{
-	  heap_attrinfo_end (thread_p, filter_pred->cache_pred);
-	}
-      if (func_index_info.expr)
-	{
-	  heap_attrinfo_end (thread_p, func_index_info.expr->cache_attrinfo);
-	}
-
-      attr_info_inited = false;
-    }
-
-  if (scan_cache_inited)
-    {
-      heap_scancache_end (thread_p, &scan_cache);
-      scan_cache_inited = false;
-    }
-
-  if (filter_pred != NULL)
-    {
-      /* to clear db values from dbvalue regu variable */
-      qexec_clear_pred_context (thread_p, filter_pred, true);
-
-      if (filter_pred->unpack_info != NULL)
-	{
-	  free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
-	}
-      db_private_free_and_init (thread_p, filter_pred);
-    }
-
-  if (func_index_info.expr != NULL)
-    {
-      (void) qexec_clear_func_pred (thread_p, func_index_info.expr);
-      func_index_info.expr = NULL;
-    }
-
-  if (func_unpack_info != NULL)
-    {
-      free_xasl_unpack_info (thread_p, func_unpack_info);
-    }
+  assert (scan_cache_inited == false && attr_info_inited == false);
 
   if (list_btid != NULL)
     {
@@ -5013,7 +5012,10 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 
   thread_get_manager ()->destroy_worker_pool (ib_workpool);
 
-  logtb_tran_update_btid_unique_stats (thread_p, btid_int->sys_btid, num_keys, num_oids, num_nulls);
+  if (BTREE_IS_UNIQUE (btid_int->unique_pk))
+    {
+      logtb_tran_update_btid_unique_stats (thread_p, btid_int->sys_btid, num_keys, num_oids, num_nulls);
+    }
 
   return ret;
 }

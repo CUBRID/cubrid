@@ -183,7 +183,8 @@ static int locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES
 						 OID * class_oid, int is_insert, int op_type,
 						 HEAP_SCANCACHE * scan_cache, bool datayn, bool replyn, HFID * hfid,
 						 FUNC_PRED_UNPACK_INFO * func_preds,
-						 LOCATOR_INDEX_ACTION_FLAG idx_action_flag, bool has_BU_lock);
+						 LOCATOR_INDEX_ACTION_FLAG idx_action_flag, bool has_BU_lock,
+						 bool skip_checking_fk);
 static int locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * inst_oid,
 				      RECDES * recdes, RECDES * new_recdes, bool * is_cached, LC_COPYAREA ** copyarea);
 static int locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
@@ -2463,13 +2464,10 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
    * lock. This means that is not necessary to request the lock again. */
   assert (skip_fetch_version_type_check || (OID_EQ (class_oid, oid_Root_class_oid))
 	  || ((lock != NULL_LOCK)
-	      || (lock_get_object_lock (oid, class_oid, LOG_FIND_THREAD_TRAN_INDEX (thread_p)) != NULL_LOCK)
-	      || ((class_lock = lock_get_object_lock (class_oid, oid_Root_class_oid,
-						      LOG_FIND_THREAD_TRAN_INDEX (thread_p))) == S_LOCK
+	      || (lock_get_object_lock (oid, class_oid) != NULL_LOCK)
+	      || ((class_lock = lock_get_object_lock (class_oid, oid_Root_class_oid)) == S_LOCK
 		  || class_lock >= SIX_LOCK)
-	      || ((class_lock = lock_get_object_lock (oid_Root_class_oid, NULL,
-						      LOG_FIND_THREAD_TRAN_INDEX (thread_p))) == S_LOCK
-		  || class_lock >= SIX_LOCK)));
+	      || ((class_lock = lock_get_object_lock (oid_Root_class_oid, NULL)) == S_LOCK || class_lock >= SIX_LOCK)));
 
   /* LC_FETCH_CURRENT_VERSION should be used for classes only */
   assert (fetch_version_type != LC_FETCH_CURRENT_VERSION || OID_IS_ROOTOID (class_oid));
@@ -4865,6 +4863,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   HEAP_SCANCACHE *local_scan_cache = NULL;
   FUNC_PRED_UNPACK_INFO *local_func_preds = NULL;
   HEAP_OPERATION_CONTEXT context;
+  bool skip_checking_fk;
 
   assert (class_oid != NULL);
   assert (!OID_ISNULL (class_oid));
@@ -5088,9 +5087,12 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
       /*
        * AN INSTANCE: Apply the necessary index insertions
        */
+      skip_checking_fk = locator_Dont_check_foreign_key || dont_check_fk;
+
       if (has_index
 	  && locator_add_or_remove_index (thread_p, recdes, oid, &real_class_oid, true, op_type, local_scan_cache, true,
-					  true, &real_hfid, local_func_preds, has_BU_lock) != NO_ERROR)
+					  true, &real_hfid, local_func_preds, has_BU_lock,
+					  skip_checking_fk) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
@@ -5102,7 +5104,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	}
 
       /* check the foreign key constraints */
-      if (has_index && (!locator_Dont_check_foreign_key && !dont_check_fk))
+      if (has_index && !skip_checking_fk)
 	{
 	  error_code =
 	    locator_check_foreign_key (thread_p, &real_hfid, &real_class_oid, oid, recdes, &new_recdes, &is_cached,
@@ -5851,7 +5853,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 		  error_code =
 		    locator_add_or_remove_index (thread_p, recdes, oid, class_oid, true, op_type, local_scan_cache,
-						 true, true, hfid, NULL, false);
+						 true, true, hfid, NULL, false, false);
 		  if (error_code != NO_ERROR)
 		    {
 		      goto error;
@@ -6196,7 +6198,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	    {
 	      error_code =
 		locator_add_or_remove_index (thread_p, &copy_recdes, oid, &class_oid, false, op_type, scan_cache, true,
-					     true, hfid, NULL, false);
+					     true, hfid, NULL, false, false);
 	    }
 	  else
 	    {
@@ -7331,9 +7333,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	  scan = heap_get_last_version (thread_p, &context);
 	  heap_clean_get_context (thread_p, &context);
 
-	  assert ((lock_get_object_lock (oid, &class_oid, LOG_FIND_THREAD_TRAN_INDEX (thread_p)) >= X_LOCK)
-		  || (lock_get_object_lock (&class_oid, oid_Root_class_oid,
-					    LOG_FIND_THREAD_TRAN_INDEX (thread_p) >= X_LOCK)));
+	  assert ((lock_get_object_lock (oid, &class_oid) >= X_LOCK)
+		  || (lock_get_object_lock (&class_oid, oid_Root_class_oid) >= X_LOCK));
 	}
       else
 	{
@@ -7519,11 +7520,11 @@ locator_was_index_already_applied (HEAP_CACHE_ATTRINFO * index_attrinfo, BTID * 
 int
 locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes, OID * inst_oid, OID * class_oid, int is_insert,
 			     int op_type, HEAP_SCANCACHE * scan_cache, bool datayn, bool need_replication, HFID * hfid,
-			     FUNC_PRED_UNPACK_INFO * func_preds, bool has_BU_lock)
+			     FUNC_PRED_UNPACK_INFO * func_preds, bool has_BU_lock, bool skip_checking_fk)
 {
   return locator_add_or_remove_index_internal (thread_p, recdes, inst_oid, class_oid, is_insert, op_type, scan_cache,
 					       datayn, need_replication, hfid, func_preds, FOR_INSERT_OR_DELETE,
-					       has_BU_lock);
+					       has_BU_lock, skip_checking_fk);
 }
 
 /*
@@ -7553,7 +7554,8 @@ locator_add_or_remove_index_for_moving (THREAD_ENTRY * thread_p, RECDES * recdes
 					bool has_BU_lock)
 {
   return locator_add_or_remove_index_internal (thread_p, recdes, inst_oid, class_oid, is_insert, op_type, scan_cache,
-					       datayn, need_replication, hfid, func_preds, FOR_MOVE, has_BU_lock);
+					       datayn, need_replication, hfid, func_preds, FOR_MOVE, has_BU_lock,
+					       false);
 }
 
 /*
@@ -7584,7 +7586,8 @@ static int
 locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, OID * inst_oid, OID * class_oid,
 				      int is_insert, int op_type, HEAP_SCANCACHE * scan_cache, bool datayn,
 				      bool need_replication, HFID * hfid, FUNC_PRED_UNPACK_INFO * func_preds,
-				      LOCATOR_INDEX_ACTION_FLAG idx_action_flag, bool has_BU_lock)
+				      LOCATOR_INDEX_ACTION_FLAG idx_action_flag, bool has_BU_lock,
+				      bool skip_checking_fk)
 {
   int num_found;
   int i, num_btids;
@@ -7750,7 +7753,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	      CUBRID_IDX_INSERT_START (classname, index->btname);
 #endif /* ENABLE_SYSTEMTAP */
 
-	      if (index->type == BTREE_FOREIGN_KEY)
+	      if (index->type == BTREE_FOREIGN_KEY && !skip_checking_fk)
 		{
 		  if (lock_object (thread_p, inst_oid, class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
 		    {
@@ -12571,7 +12574,7 @@ xchksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread_p, REPL_INF
    * checksumdb. */
   lock_demote_read_class_lock_for_checksumdb (thread_p, tdes->tran_index, class_oidp);
 
-  assert (lock_get_object_lock (class_oidp, oid_Root_class_oid, tdes->tran_index) == IS_LOCK);
+  assert (lock_get_object_lock (class_oidp, oid_Root_class_oid) == IS_LOCK);
 #endif /* SERVER_MODE */
 
   return error;
