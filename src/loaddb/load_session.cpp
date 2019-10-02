@@ -118,9 +118,6 @@ namespace cubload
 	    return;
 	  }
 
-	CLIENTIDS *client_ids = new CLIENTIDS ();
-	LOG_TDES *tdes = NULL;
-
 	thread_ref.conn_entry = &m_conn_entry;
 	driver *driver = thread_ref.m_loaddb_driver;
 
@@ -150,22 +147,10 @@ namespace cubload
 	int tran_index = thread_ref.tran_index;
 	m_session.register_tran_start (tran_index);
 
-	// Get the clientids from the conn_entry.
-	int error_code = logtb_get_clientids_from_conn_entry (m_conn_entry, *client_ids);
-	if (error_code != NO_ERROR)
-	  {
-	    ASSERT_ERROR ();
-	    m_session.fail ();
-	  }
-
-
-	tdes = LOG_FIND_CURRENT_TDES (&thread_ref);
-
-	// Now rest the thread clientids.
-	tdes->client.reset ();
-
-	// Now assign the current clientids.
-	tdes->client.set_ids (*client_ids);
+	// Get the clientids from the session and set it on the current worker.
+	LOG_TDES *session_tdes = log_Gl.trantable.all_tdes[m_conn_entry.get_tran_index ()];
+	LOG_TDES *worker_tdes = log_Gl.trantable.all_tdes[tran_index];
+	worker_tdes->client.set_ids (session_tdes->client);
 
 	bool parser_result = invoke_parser (driver, m_batch);
 
@@ -216,7 +201,7 @@ namespace cubload
 	  }
 
 	// Clear the clientids.
-	tdes->client.reset ();
+	worker_tdes->client.reset ();
 
 	// free transaction index
 	logtb_free_tran_index (&thread_ref, thread_ref.tran_index);

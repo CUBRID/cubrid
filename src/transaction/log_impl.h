@@ -1089,8 +1089,6 @@ extern int logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgpt
 
 extern LOG_TDES *logtb_get_system_tdes (THREAD_ENTRY * thread_p = NULL);
 
-extern int logtb_get_clientids_from_conn_entry (CSS_CONN_ENTRY & conn_entry, CLIENTIDS & client_ids);
-
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation
 //////////////////////////////////////////////////////////////////////////
