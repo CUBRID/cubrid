@@ -48,9 +48,11 @@ namespace lockfree
       freelist (tran::system &transys, size_t block_size, size_t initial_block_count = 1);
       ~freelist ();
 
+      free_node *claim (tran::descriptor &tdes);
       free_node *claim (tran::index tran_index);                // claim a free node
       // note: transaction will remain started!
 
+      void retire (tran::descriptor &tdes, free_node &node);
       void retire (tran::index tran_index, free_node &node);
 
       size_t get_alloc_count () const;
@@ -282,8 +284,15 @@ namespace lockfree
   typename freelist<T>::free_node *
   freelist<T>::claim (tran::index tran_index)
   {
-    m_trantable->get_descriptor (tran_index).start_tran ();
-    m_trantable->get_descriptor (tran_index).reclaim_retired_list ();
+    return claim (m_trantable->get_descriptor (tran_index));
+  }
+
+  template<class T>
+  typename freelist<T>::free_node *
+  freelist<T>::claim (tran::descriptor &tdes)
+  {
+    tdes.start_tran ();
+    tdes.reclaim_retired_list ();
 
     free_node *node;
     size_t count = 0;
@@ -342,9 +351,16 @@ namespace lockfree
   void
   freelist<T>::retire (tran::index tran_index, free_node &node)
   {
+    retire (m_trantable->get_descriptor (tran_index), node);
+  }
+
+  template<class T>
+  void
+  freelist<T>::retire (tran::descriptor &tdes, free_node &node)
+  {
     assert (node.get_freelist_next () == NULL);
     check_my_pointer (&node);
-    m_trantable->get_descriptor (tran_index).retire_node (node);
+    tdes.retire_node (node);
   }
 
   template<class T>
