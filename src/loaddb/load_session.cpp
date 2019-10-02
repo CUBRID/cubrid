@@ -285,6 +285,7 @@ namespace cubload
   void
   session::notify_batch_done (batch_id id)
   {
+    --m_active_task_count;
     if (is_failed ())
       {
 	return;
@@ -292,7 +293,6 @@ namespace cubload
     m_commit_mutex.lock ();
     assert (m_last_batch_id == id - 1);
     m_last_batch_id = id;
-    --m_active_task_count;
     m_commit_mutex.unlock ();
     er_clear ();
     notify_waiting_threads ();
@@ -301,6 +301,7 @@ namespace cubload
   void
   session::notify_batch_done_and_register_tran_end (batch_id id, int tran_index)
   {
+    --m_active_task_count;
     if (is_failed ())
       {
 	return;
@@ -308,7 +309,6 @@ namespace cubload
     m_commit_mutex.lock ();
     assert (m_last_batch_id == id - 1);
     m_last_batch_id = id;
-    --m_active_task_count;
     if (m_tran_indexes.erase (tran_index) != 1)
       {
 	assert (false);
