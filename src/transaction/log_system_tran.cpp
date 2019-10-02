@@ -213,8 +213,10 @@ log_system_tdes::rv_get_or_alloc_tdes (TRANID trid)
   log_tdes *tdes = rv_get_tdes (trid);
   if (tdes == NULL)
     {
+      /* We are in recovery phase. Set initial state as TRAN_UNACTIVE_UNILATERALLY_ABORTED. */
       log_system_tdes *sys_tdes = new log_system_tdes ();
       sys_tdes->m_tdes->trid = trid;
+      sys_tdes->m_tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
       systb_Recovery_system_tdes.insert (std::make_pair (trid, sys_tdes));
       return sys_tdes->get_tdes ();
     }
