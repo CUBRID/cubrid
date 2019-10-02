@@ -7404,6 +7404,15 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, LOCK lock)
     {
       /* Loaddb workers does not acquire locks. Get tran_index of loaddb workers manager thread. */
       tran_index = thread_p->conn_entry->get_tran_index ();
+
+      if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
+	{
+	  return lock_has_lock_on_object (class_oid, oid_Root_class_oid, BU_LOCK);
+	}
+      else
+	{
+	  // fall through
+	}
     }
   else
     {
