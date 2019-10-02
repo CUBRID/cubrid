@@ -28,6 +28,11 @@
 #include "lockfree_bitmap.hpp"
 #include "porting.h"
 
+#include <cassert>
+#if !defined (WINDOWS)
+#include <pthread.h>
+#endif
+
 /*
  * Some common hash, copy and compare functions
  */
@@ -352,5 +357,242 @@ extern void *lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it);
 #if defined (UNITTEST_LF)
 extern void lf_reset_counters (void);
 #endif /* UNITTEST_LF */
+
+// C++ style lock-free hash
+// *INDENT-OFF*
+template <class Key, class T>
+class lf_hash_table_cpp
+{
+  public:
+    class iterator;
+
+    lf_hash_table_cpp ();
+
+    void init (lf_tran_system &transys, int hash_size, int freelist_block_count, int freelist_block_size,
+               lf_entry_descriptor &edes);
+    void destroy ();
+
+    T *find (lf_tran_entry *t_entry, Key &key);
+    bool find_or_insert (lf_tran_entry *t_entry, Key &key, T *&t);
+    bool insert (lf_tran_entry *t_entry, Key &key, T *&t);
+    bool insert_given (lf_tran_entry *t_entry, Key &key, T *&t);
+    bool erase (lf_tran_entry *t_entry, Key &key);
+    bool erase_locked (lf_tran_entry *t_entry, Key &key, T *& t);
+
+    void unlock (lf_tran_entry *t_entry, T *&t);
+
+    void clear (lf_tran_entry *t_entry);
+
+    lf_hash_table &get_hash_table ();
+    lf_freelist &get_freelist ();
+
+  private:
+    pthread_mutex_t *get_pthread_mutex (T *t);
+    template <typename F>
+    bool generic_insert (F &ins_func, lf_tran_entry *t_entry, Key &key, T *&t);
+
+    lf_freelist m_freelist;
+    lf_hash_table m_hash;
+};
+
+template <class Key, class T>
+class lf_hash_table_cpp<Key, T>::iterator
+{
+  public:
+    iterator () = default;
+    iterator (lf_tran_entry *t_entry, lf_hash_table_cpp & hash);
+    ~iterator ();
+
+    T *iterate ();
+
+  private:
+    lf_hash_table_iterator m_iter;
+    T *m_crt_val;
+};
+
+//
+// implementation
+//
+
+//
+// lf_hash_table_cpp
+//
+template <class Key, class T>
+lf_hash_table_cpp<Key, T>::lf_hash_table_cpp ()
+  : m_freelist LF_FREELIST_INITIALIZER
+  , m_hash LF_HASH_TABLE_INITIALIZER
+{
+}
+
+template <class Key, class T>
+void
+lf_hash_table_cpp<Key, T>::init (lf_tran_system &transys, int hash_size, int freelist_block_count,
+                                 int freelist_block_size, lf_entry_descriptor &edesc)
+{
+  if (lf_freelist_init (&m_freelist, freelist_block_count, freelist_block_size, &edesc, &transys) != NO_ERROR)
+    {
+      assert (false);
+      return;
+    }
+  if (lf_hash_init (&m_hash, &m_freelist, hash_size, &edesc) != NO_ERROR)
+    {
+      assert (false);
+      return;
+    }
+}
+
+template <class Key, class T>
+void
+lf_hash_table_cpp<Key, T>::destroy ()
+{
+  lf_hash_destroy (&m_hash);
+  lf_freelist_destroy (&m_freelist);
+}
+
+template <class Key, class T>
+pthread_mutex_t *
+lf_hash_table_cpp<Key, T>::get_pthread_mutex (T *t)
+{
+  assert (m_freelist.entry_desc->using_mutex);
+  return (pthread_mutex_t *) (((char *) t) + m_freelist.entry_desc->of_mutex);
+}
+
+template <class Key, class T>
+T *
+lf_hash_table_cpp<Key, T>::find (lf_tran_entry *t_entry, Key &key)
+{
+  T *ret = NULL;
+  if (lf_hash_find (t_entry, &m_hash, &key, ret) != NO_ERROR)
+    {
+      assert (false);
+    }
+  return ret;
+}
+
+template <class Key, class T>
+template <typename F>
+bool
+lf_hash_table_cpp<Key, T>::generic_insert (F &ins_func, lf_tran_entry *t_entry, Key &key, T *&t)
+{
+  int inserted = 0;
+  if (ins_func (t_entry, &m_hash, &key, reinterpret_cast<void **> (&t), &inserted) != NO_ERROR)
+    {
+      assert (false);
+    }
+  return inserted != 0;
+}
+
+template <class Key, class T>
+bool
+lf_hash_table_cpp<Key, T>::find_or_insert (lf_tran_entry *t_entry, Key &key, T *&t)
+{
+  return generic_insert (lf_hash_find_or_insert, t_entry, key, t);
+}
+
+template <class Key, class T>
+bool
+lf_hash_table_cpp<Key, T>::insert (lf_tran_entry *t_entry, Key &key, T *&t)
+{
+  return generic_insert (lf_hash_insert, t_entry, key, t);
+}
+
+template <class Key, class T>
+bool
+lf_hash_table_cpp<Key, T>::insert_given (lf_tran_entry *t_entry, Key &key, T *&t)
+{
+  return generic_insert (lf_hash_insert_given, t_entry, key, t);
+}
+
+template <class Key, class T>
+bool
+lf_hash_table_cpp<Key, T>::erase (lf_tran_entry *t_entry, Key &key)
+{
+  int success = 0;
+  if (lf_hash_delete (t_entry, &m_hash, &key, &success) != NO_ERROR)
+    {
+      assert (false);
+    }
+  return success != 0;
+}
+
+template <class Key, class T>
+bool
+lf_hash_table_cpp<Key, T>::erase_locked (lf_tran_entry *t_entry, Key &key, T *&t)
+{
+  int success = 0;
+  if (lf_hash_delete_already_locked (t_entry, &m_hash, &key, t, &success) != NO_ERROR)
+    {
+      assert (false);
+      pthread_mutex_unlock (get_pthread_mutex (t));
+    }
+  if (success != 0)
+    {
+      t = NULL;
+    }
+  return success != 0;
+}
+
+template <class Key, class T>
+void
+lf_hash_table_cpp<Key, T>::unlock (lf_tran_entry *t_entry, T *&t)
+{
+  assert (t != NULL);
+  if (m_freelist.entry_desc->using_mutex)
+    {
+      pthread_mutex_unlock (get_pthread_mutex (t));
+    }
+  else
+    {
+      lf_tran_end_with_mb (t_entry);
+    }
+  t = NULL;
+}
+
+template <class Key, class T>
+void
+lf_hash_table_cpp<Key, T>::clear (lf_tran_entry *t_entry)
+{
+  lf_hash_clear (t_entry, &m_hash);
+}
+
+template <class Key, class T>
+lf_hash_table &
+lf_hash_table_cpp<Key, T>::get_hash_table ()
+{
+  return m_hash;
+}
+
+template <class Key, class T>
+lf_freelist &
+lf_hash_table_cpp<Key, T>::get_freelist ()
+{
+  return m_freelist;
+}
+
+//
+// lf_hash_table_cpp::iterator
+//
+
+template <class Key, class T>
+lf_hash_table_cpp<Key, T>::iterator::iterator (lf_tran_entry *t_entry, lf_hash_table_cpp & hash)
+  : m_iter ()
+  , m_crt_val (NULL)
+{
+  lf_hash_create_iterator (&m_iter, t_entry, &hash.m_hash);
+}
+
+template <class Key, class T>
+lf_hash_table_cpp<Key, T>::iterator::~iterator ()
+{
+}
+
+template <class Key, class T>
+T *
+lf_hash_table_cpp<Key, T>::iterator::iterate ()
+{
+  return static_cast<T *> (lf_hash_iterate (&m_iter));
+}
+
+// *INDENT-ON*
 
 #endif /* _LOCK_FREE_H_ */

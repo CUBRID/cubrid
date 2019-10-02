@@ -24,9 +24,6 @@
 
 #include "config.h"
 
-#if !defined (WINDOWS)
-#include <pthread.h>
-#endif
 #include <assert.h>
 
 #include "porting.h"

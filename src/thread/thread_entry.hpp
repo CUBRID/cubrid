@@ -332,6 +332,7 @@ namespace cubthread
 
       void assign_lf_tran_index (lockfree::tran::index idx);
       lockfree::tran::index pull_lf_tran_index ();
+      lockfree::tran::index get_lf_tran_index ();
 
     private:
       void clear_resources (void);
