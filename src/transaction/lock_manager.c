@@ -3299,6 +3299,8 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
       thread_p = thread_get_thread_entry_info ();
     }
 
+  assert (thread_p->type != TT_LOADDB);
+
   thrd_entry = thread_p;
 
   new_mode = group_mode = old_mode = NULL_LOCK;
@@ -3313,44 +3315,6 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
 	       wait_msecs);
     }
 #endif /* LK_DUMP */
-
-  if (thread_p->type == TT_LOADDB)
-    {
-      // load worker don't lock; they rely on session transaction locks
-      if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
-	{
-	  // instance lock
-	  if (lock_has_lock_on_object (class_oid, oid_Root_class_oid, BU_LOCK))
-	    {
-	      // no instance locking is required
-	      return LK_GRANTED;
-	    }
-	  else
-	    {
-	      // should be locked
-	      assert (false);
-	      return LK_NOTGRANTED;
-	    }
-	}
-      else
-	{
-	  // class lock
-	  if (lock != SCH_S_LOCK && lock != BU_LOCK)
-	    {
-	      // unacceptable
-	      assert (false);
-	      return LK_NOTGRANTED;
-	    }
-	  if (!lock_has_lock_on_object (oid, class_oid, BU_LOCK))
-	    {
-	      assert (false);
-	      return LK_NOTGRANTED;
-	    }
-	  return LK_GRANTED;
-	}
-      // should have returned
-      assert (false);
-    }
 
   /* isolation */
   isolation = logtb_find_isolation (tran_index);
@@ -6286,6 +6250,44 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
       tsc_getticks (&start_tick);
     }
 #endif
+
+  if (thread_p->type == TT_LOADDB)
+    {
+      // load worker don't lock; they rely on session transaction locks
+      if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
+	{
+	  // instance lock
+	  if (lock_has_lock_on_object (class_oid, oid_Root_class_oid, BU_LOCK))
+	    {
+	      // no instance locking is required
+	      return LK_GRANTED;
+	    }
+	  else
+	    {
+	      // should be locked
+	      assert (false);
+	      return LK_NOTGRANTED;
+	    }
+	}
+      else
+	{
+	  // class lock
+	  if (lock != SCH_S_LOCK && lock != BU_LOCK)
+	    {
+	      // unacceptable
+	      assert (false);
+	      return LK_NOTGRANTED;
+	    }
+	  if (!lock_has_lock_on_object (oid, class_oid, BU_LOCK))
+	    {
+	      assert (false);
+	      return LK_NOTGRANTED;
+	    }
+	  return LK_GRANTED;
+	}
+      // should have returned
+      assert (false);
+    }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   if (cond_flag == LK_COND_LOCK)	/* conditional request */
