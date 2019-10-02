@@ -5357,7 +5357,6 @@ exit:
 	{
 	  /* commit and undo (to deallocate) */
 	  log_sysop_end_logical_undo (thread_p, RVFL_ALLOC, NULL, UNDO_DATA_SIZE, undo_log_data);
-	  logpb_force_flush_pages (thread_p);
 	}
     }
 
