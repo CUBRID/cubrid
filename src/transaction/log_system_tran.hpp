@@ -35,6 +35,9 @@ class log_system_tdes
 {
   public:
     log_system_tdes ();
+    log_system_tdes (log_tdes *tdes);
+    log_system_tdes (const log_system_tdes &o) = delete;
+
     ~log_system_tdes ();
 
     log_tdes *get_tdes ();
@@ -61,9 +64,9 @@ class log_system_tdes
     static void rv_final ();
 
   private:
-    log_system_tdes (log_tdes *tdes);
     void destroy_tdes ();
 
+  public:
     log_tdes *m_tdes;
 };
 

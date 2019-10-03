@@ -314,9 +314,9 @@ namespace cubthread
       {
 	return m_systdes;
       }
-      void set_system_tdes (log_system_tdes &sys_tdes)
+      void set_system_tdes (log_system_tdes *sys_tdes)
       {
-	m_systdes = &sys_tdes;
+	m_systdes = sys_tdes;
       }
       void reset_system_tdes (void)
       {
