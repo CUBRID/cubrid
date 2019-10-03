@@ -123,7 +123,7 @@ namespace lockfree
       bool hash_insert_internal (tran::index tran_index, Key &key, int bflags, T *&entry);
       bool hash_erase_internal (tran::index tran_index, Key &key, int bflags, T *locked_entry);
 
-      static constexpr std::ptrdiff_t free_node_offset_of_data (typename freelist<T>::free_node fn)
+      static constexpr std::ptrdiff_t free_node_offset_of_data (free_node_type fn)
       {
 	return ((char *) (&fn.get_data ().m_entry)) - ((char *) (&fn));
       }
