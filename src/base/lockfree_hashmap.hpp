@@ -491,6 +491,7 @@ namespace lockfree
   T *
   hashmap<Key, T>::freelist_claim (tran::descriptor &tdes)
   {
+    T *claimed = NULL;
     free_node_type *fn = reinterpret_cast<free_node_type *> (tdes.pull_saved_reclaimable ());
     bool is_local_tran = false;
     if (!tdes.is_tran_started ())
@@ -502,8 +503,18 @@ namespace lockfree
       {
 	fn = m_freelist->claim (tdes);
 	assert (fn != NULL);
+	// make sure m_edesc is initialized
+	fn->get_data ().m_edesc = m_edesc;
+
+	// call f_init
+	claimed = from_free_node (fn);
+	m_edesc->f_init (claimed);
       }
-    T *claimed = from_free_node (fn);
+    else
+      {
+	claimed = from_free_node (fn);
+	// already initialized
+      }
     get_nextp_ref (claimed) = NULL;   // make sure link is removed
 
     if (is_local_tran)
