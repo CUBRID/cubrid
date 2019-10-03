@@ -41,7 +41,8 @@ namespace cubthread
 
       void init_as_old (lf_tran_system &transys, int hash_size, int freelist_block_count, int freelist_block_size,
 			lf_entry_descriptor &edesc, int entry_idx);
-      void init_as_new ();
+      void init_as_new (lockfree::tran::system &transys, size_t hash_size, size_t freelist_block_size,
+			size_t freelist_block_count, lf_entry_descriptor &edesc);
       void destroy ();
 
       T *find (cubthread::entry *thread_p, Key &key);
@@ -118,10 +119,11 @@ namespace cubthread
 
   template <class Key, class T>
   void
-  lockfree_hashmap<Key, T>::init_as_new ()
+  lockfree_hashmap<Key, T>::init_as_new (lockfree::tran::system &transys, size_t hash_size, size_t freelist_block_size,
+					 size_t freelist_block_count, lf_entry_descriptor &edesc)
   {
-    // not implemented
-    assert (false);
+    m_type = NEW;
+    m_new_hash.init (transys, hash_size, freelist_block_size, freelist_block_count, edesc);
   }
 
 #define lockfree_hashmap_forward_func(f_, tp_, ...) \
@@ -210,8 +212,8 @@ namespace cubthread
   bool
   lockfree_hashmap<Key, T>::is_old_type () const
   {
-    // for now, always true
-    return true;
+    assert (m_type == OLD || m_type == NEW);
+    return m_type == OLD;
   }
 
   template <class Key, class T>

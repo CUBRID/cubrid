@@ -55,6 +55,8 @@ namespace lockfree
       bool erase (tran::index tran_index, Key &key);
       bool erase_locked (tran::index tran_index, Key &key, T *&locked_entry);
 
+      void unlock (tran::index tran_index, T *&entry);
+
       void clear (tran::index tran_index);    // NOT LOCK-FREE
 
     private:
@@ -88,14 +90,14 @@ namespace lockfree
       T *freelist_claim (tran::descriptor &tdes);
 
       void safeguard_use_mutex_or_tran_started (const tran::descriptor &tdes, const pthread_mutex_t *mtx);
-      void safe_start_tran (tran::descriptor &tdes);
-      void safe_force_start_tran (tran::descriptor &tdes);
-      void safe_force_promote_tran (tran::descriptor &tdes);
-      void safe_end_tran (tran::descriptor &tdes);
-      void safe_force_end_tran (tran::descriptor &tdes);
-      void safe_lock_entry (T &tolock, pthread_mutex_t *&mtx);
-      void safe_unlock_entry (pthread_mutex_t *&mtx);
-      void safe_force_unlock_entry (pthread_mutex_t *&mtx);
+      void start_tran_if_not_started (tran::descriptor &tdes);
+      void start_tran_force (tran::descriptor &tdes);
+      void promote_tran_force (tran::descriptor &tdes);
+      void end_tran_if_started (tran::descriptor &tdes);
+      void end_tran_force (tran::descriptor &tdes);
+      void lock_entry_mutex (T &tolock, pthread_mutex_t *&mtx);
+      void unlock_entry_mutex_if_locked (pthread_mutex_t *&mtx);
+      void unlock_entry_mutex_force (pthread_mutex_t *&mtx);
 
       size_t get_hash (Key &key) const;
       T *&get_bucket (Key &key);
@@ -176,12 +178,12 @@ namespace lockfree
     m_edesc = &edesc;
 
     m_size = hash_size;
-    m_buckets = new T *[m_size];
+    m_buckets = new T *[m_size] ();
 
-    m_backbuffer = new T *[m_size];
+    m_backbuffer = new T *[m_size] ();
     for (size_t i = 0; i < m_size; i++)
       {
-	m_backbuffer[i] = address_type::set_adress_mark (NULL);
+	m_backbuffer[i] = address_type::MARKED_NULLPTR;
       }
   }
 
@@ -192,10 +194,10 @@ namespace lockfree
     int bflags = 0;
     bool restart = true;
     T *entry = NULL;
-    T *list_head = get_bucket (key);
 
     while (restart)
       {
+	T *&list_head = get_bucket (key);
 	entry = NULL;
 	bflags = LF_LIST_BF_RETURN_ON_RESTART;
 	list_find (tran_index, list_head, &bflags, entry);
@@ -222,6 +224,7 @@ namespace lockfree
   bool
   hashmap<Key, T>::insert_given (tran::index tran_index, Key &key, T *&entry)
   {
+    assert (entry != NULL);
     return hash_insert_internal (tran_index, key,
 				 LF_LIST_BF_RETURN_ON_RESTART | LF_LIST_BF_INSERT_GIVEN | LF_LIST_BF_FIND_OR_INSERT,
 				 entry);
@@ -260,6 +263,22 @@ namespace lockfree
 	locked_entry = NULL;
       }
     return success;
+  }
+
+  template <class Key, class T>
+  void
+  hashmap<Key, T>::unlock (tran::index tran_index, T *&entry)
+  {
+    assert (entry != NULL);
+    if (m_edesc->using_mutex)
+      {
+	pthread_mutex_unlock (get_pthread_mutexp (entry));
+      }
+    else
+      {
+	get_tran_descriptor (tran_index).end_tran ();
+      }
+    entry = NULL;
   }
 
   template <class Key, class T>
@@ -488,14 +507,14 @@ namespace lockfree
 
   template <class Key, class T>
   void
-  hashmap<Key, T>::safe_start_tran (tran::descriptor &tdes)
+  hashmap<Key, T>::start_tran_if_not_started (tran::descriptor &tdes)
   {
     tdes.start_tran ();   // same result if it was started or not
   }
 
   template <class Key, class T>
   void
-  hashmap<Key, T>::safe_force_start_tran (tran::descriptor &tdes)
+  hashmap<Key, T>::start_tran_force (tran::descriptor &tdes)
   {
     assert (!tdes.is_tran_started ());
     tdes.start_tran ();
@@ -503,7 +522,7 @@ namespace lockfree
 
   template <class Key, class T>
   void
-  hashmap<Key, T>::safe_force_promote_tran (tran::descriptor &tdes)
+  hashmap<Key, T>::promote_tran_force (tran::descriptor &tdes)
   {
     assert (tdes.is_tran_started ());
     tdes.start_tran_and_increment_id ();
@@ -511,7 +530,7 @@ namespace lockfree
 
   template <class Key, class T>
   void
-  hashmap<Key, T>::safe_end_tran (tran::descriptor &tdes)
+  hashmap<Key, T>::end_tran_if_started (tran::descriptor &tdes)
   {
     if (tdes.is_tran_started ())
       {
@@ -521,7 +540,7 @@ namespace lockfree
 
   template <class Key, class T>
   void
-  hashmap<Key, T>::safe_force_end_tran (tran::descriptor &tdes)
+  hashmap<Key, T>::end_tran_force (tran::descriptor &tdes)
   {
     assert (tdes.is_tran_started ());
     tdes.end_tran ();
@@ -529,7 +548,7 @@ namespace lockfree
 
   template <class Key, class T>
   void
-  hashmap<Key, T>::safe_lock_entry (T &tolock, pthread_mutex_t *&mtx)
+  hashmap<Key, T>::lock_entry_mutex (T &tolock, pthread_mutex_t *&mtx)
   {
     assert (m_edesc->using_mutex);
     assert (mtx == NULL);
@@ -540,7 +559,7 @@ namespace lockfree
 
   template <class Key, class T>
   void
-  hashmap<Key, T>::safe_unlock_entry (pthread_mutex_t *&mtx)
+  hashmap<Key, T>::unlock_entry_mutex_if_locked (pthread_mutex_t *&mtx)
   {
     if (m_edesc->using_mutex && mtx != NULL)
       {
@@ -551,7 +570,7 @@ namespace lockfree
 
   template <class Key, class T>
   void
-  hashmap<Key, T>::safe_force_unlock_entry (pthread_mutex_t *&mtx)
+  hashmap<Key, T>::unlock_entry_mutex_force (pthread_mutex_t *&mtx)
   {
     assert (m_edesc->using_mutex && mtx != NULL);
     pthread_mutex_unlock (mtx);
@@ -585,7 +604,7 @@ namespace lockfree
 		if (m_edesc->using_mutex)
 		  {
 		    /* entry has a mutex protecting it's members; lock it */
-		    safe_lock_entry (curr, entry_mutex);
+		    lock_entry_mutex (curr, entry_mutex);
 
 		    /* mutex has been locked, no need to keep transaction */
 		    tdes.end_tran ();
@@ -657,7 +676,7 @@ namespace lockfree
       {
 	restart_search = false;
 
-	safe_force_start_tran (tdes);
+	start_tran_force (tdes);
 
 	curr_p = &list_head;
 	curr = address_type::atomic_strip_address_mark (*curr_p);
@@ -683,15 +702,15 @@ namespace lockfree
 		    if (m_edesc->using_mutex)
 		      {
 			/* entry has a mutex protecting it's members; lock it */
-			safe_lock_entry (curr, entry_mutex);
+			lock_entry_mutex (curr, entry_mutex);
 
 			/* mutex has been locked, no need to keep transaction alive */
-			safe_force_end_tran (tdes);
+			end_tran_force (tdes);
 
 			if (address_type::is_address_marked (get_nextp_ref (curr)))
 			  {
 			    /* while waiting for lock, somebody else deleted the entry; restart the search */
-			    safe_force_unlock_entry (entry_mutex);
+			    unlock_entry_mutex_force (entry_mutex);
 
 			    if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 			      {
@@ -712,15 +731,15 @@ namespace lockfree
 			/* we have a duplicate key callback. */
 			if (m_edesc->f_duplicate (&key, curr) != NO_ERROR)
 			  {
-			    safe_end_tran (tdes);
-			    safe_unlock_entry (entry_mutex);
+			    end_tran_if_started (tdes);
+			    unlock_entry_mutex_if_locked (entry_mutex);
 			    return false;
 			  }
 
 #if 1
 			LF_LIST_BR_SET_FLAG (behavior_flags, LF_LIST_BR_RESTARTED);
-			safe_end_tran (tdes);
-			safe_unlock_entry (entry_mutex);
+			end_tran_if_started (tdes);
+			unlock_entry_mutex_if_locked (entry_mutex);
 			return false;
 #else  /* !1 = 0 */
 			/* Could we have such cases that we just update existing entry without modifying anything else?
@@ -735,8 +754,8 @@ namespace lockfree
 			if (LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_RESTART_ON_DUPLICATE))
 			  {
 			    LF_LIST_BR_SET_FLAG (behavior_flags, LF_LIST_BR_RESTARTED);
-			    safe_end_tran (tdes);
-			    safe_unlock_entry (entry_mutex);
+			    end_tran_if_started (tdes);
+			    unlock_entry_mutex_if_locked (entry_mutex);
 			    return false;
 			  }
 			else
@@ -763,8 +782,8 @@ namespace lockfree
 			if (!LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_FIND_OR_INSERT))
 			  {
 			    /* found entry is not accepted */
-			    safe_end_tran (tdes);
-			    safe_unlock_entry (entry_mutex);
+			    end_tran_if_started (tdes);
+			    unlock_entry_mutex_if_locked (entry_mutex);
 			    return false;
 			  }
 
@@ -795,7 +814,7 @@ namespace lockfree
 		    if (m_edesc->f_key_copy (&key, get_keyp (entry)) != NO_ERROR)
 		      {
 			assert (false);
-			safe_force_end_tran (tdes);
+			end_tran_force (tdes);
 			return false;
 		      }
 		  }
@@ -803,7 +822,7 @@ namespace lockfree
 		if (m_edesc->using_mutex)
 		  {
 		    /* entry has a mutex protecting it's members; lock it */
-		    safe_lock_entry (entry, entry_mutex);
+		    lock_entry_mutex (entry, entry_mutex);
 		  }
 
 		/* attempt an add */
@@ -812,7 +831,7 @@ namespace lockfree
 		    if (m_edesc->using_mutex)
 		      {
 			/* link failed, unlock mutex */
-			safe_force_unlock_entry (entry_mutex);
+			unlock_entry_mutex_force (entry_mutex);
 		      }
 
 		    /* someone added before us, restart process */
@@ -823,12 +842,12 @@ namespace lockfree
 			    save_temporary (entry);
 			  }
 			LF_LIST_BR_SET_FLAG (behavior_flags, LF_LIST_BR_RESTARTED);
-			safe_force_end_tran (tdes);
+			end_tran_force (tdes);
 			return false;
 		      }
 		    else
 		      {
-			safe_force_end_tran (tdes);
+			end_tran_force (tdes);
 			restart_search = true;
 			break;
 		      }
@@ -837,7 +856,7 @@ namespace lockfree
 		/* end transaction if mutex is acquired */
 		if (m_edesc->using_mutex)
 		  {
-		    safe_force_end_tran (tdes);
+		    end_tran_force (tdes);
 		  }
 
 		/* done! */
@@ -866,7 +885,7 @@ namespace lockfree
 
     while (restart_search)
       {
-	safe_force_start_tran (tdes);
+	start_tran_force (tdes);
 	curr_p = &list_head;
 	curr = address_type::atomic_strip_address_mark (*curr_p);
 
@@ -884,7 +903,7 @@ namespace lockfree
 		    /* We are here because lf_hash_delete_already_locked was called. The entry found by matching key is
 		     * different from the entry we were trying to delete.
 		     * This is possible (please find the description of hash_delete_already_locked). */
-		    safe_force_end_tran (tdes);
+		    end_tran_force (tdes);
 		    return false;
 		  }
 	      }
@@ -898,7 +917,7 @@ namespace lockfree
 	      {
 		/* joke's on us, this time; somebody else marked it before */
 
-		safe_force_end_tran (tdes);
+		end_tran_force (tdes);
 		if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 		  {
 		    *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
@@ -917,7 +936,7 @@ namespace lockfree
 	      {
 		if (LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_LOCK_ON_DELETE))
 		  {
-		    safe_lock_entry (curr, entry_mutex);
+		    lock_entry_mutex (curr, entry_mutex);
 		  }
 		else
 		  {
@@ -934,7 +953,7 @@ namespace lockfree
 		/* unlink failed; first step is to remove lock (if applicable) */
 		if (m_edesc->using_mutex && LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_LOCK_ON_DELETE))
 		  {
-		    safe_force_unlock_entry (entry_mutex);
+		    unlock_entry_mutex_force (entry_mutex);
 		  }
 
 		/* remove mark and restart search */
@@ -942,11 +961,11 @@ namespace lockfree
 		  {
 		    /* impossible case */
 		    assert (false);
-		    safe_force_end_tran (tdes);
+		    end_tran_force (tdes);
 		    return ER_FAILED;
 		  }
 
-		safe_force_end_tran (tdes);
+		end_tran_force (tdes);
 		if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 		  {
 		    *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
@@ -964,16 +983,16 @@ namespace lockfree
 	    /* unlock mutex */
 	    if (m_edesc->using_mutex)
 	      {
-		safe_force_unlock_entry (entry_mutex);
+		unlock_entry_mutex_force (entry_mutex);
 	      }
 
-	    safe_force_promote_tran (tdes);
+	    promote_tran_force (tdes);
 
 	    /* now we can feed the entry to the freelist and forget about it */
 	    freelist_retire (tdes, curr);
 
 	    /* end the transaction */
-	    safe_force_end_tran (tdes);
+	    end_tran_force (tdes);
 
 	    /* success! */
 	    return true;
@@ -1004,11 +1023,11 @@ namespace lockfree
   bool
   hashmap<Key, T>::hash_insert_internal (tran::index tran_index, Key &key, int bflags, T *&entry)
   {
-    T *&list_head = get_bucket (key);
     bool inserted = false;
 
     while (true)
       {
+	T *&list_head = get_bucket (key);
 	if (LF_LIST_BF_IS_FLAG_SET (&bflags, LF_LIST_BF_INSERT_GIVEN))
 	  {
 	    assert (entry != NULL);
@@ -1038,11 +1057,11 @@ namespace lockfree
   bool
   hashmap<Key, T>::hash_erase_internal (tran::index tran_index, Key &key, int bflags, T *locked_entry)
   {
-    T *&list_head = get_bucket (key);
     bool erased = false;
 
     while (true)
       {
+	T *&list_head = get_bucket (key);
 	erased = list_delete (tran_index, list_head, key, locked_entry, &bflags);
 	if ((bflags & LF_LIST_BR_RESTARTED) != 0)
 	  {

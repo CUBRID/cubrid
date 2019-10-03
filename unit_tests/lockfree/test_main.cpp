@@ -31,9 +31,10 @@ main (int argc, char **argv)
   {
     "all",
     "cqueue",
-    "freelist"
+    "freelist",
+    "hashmap"
   };
-  if (argc == 2)
+  if (argc >= 2)
     {
       for (size_t i = 0; i < option_map.size (); i++)
 	{
@@ -51,6 +52,35 @@ main (int argc, char **argv)
   if (opt == 0 || opt == 2)
     {
       err = err | test_lockfree::test_freelist_functional ();
+    }
+  if (opt == 0 || opt == 3)
+    {
+      std::vector<std::string> suboption_map =
+      {
+	"functional",
+	"performance"
+      };
+      bool do_functional = (opt == 0) || (argc == 2);
+      bool do_performance = (opt == 0) || (argc == 2);
+      if (opt == 3 && argc >= 3)
+	{
+	  if (suboption_map[0] == argv[2])
+	    {
+	      do_functional = true;
+	    }
+	  else if (suboption_map[1] == argv[2])
+	    {
+	      do_performance = true;
+	    }
+	}
+      if (do_functional)
+	{
+	  err = err | test_lockfree::test_hashmap_functional ();
+	}
+      if (do_performance)
+	{
+	  err = err | test_lockfree::test_hashmap_performance ();
+	}
     }
 
   return err;
