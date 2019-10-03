@@ -2217,6 +2217,7 @@ parser_init_node (PT_NODE * node)
       node->data_type = NULL;
       node->xasl_id = NULL;
       node->alias_print = NULL;
+      node->expr_before_const_folding = NULL;
       node->recompile = 0;
       node->cannot_prepare = 0;
       node->partition_pruned = 0;
@@ -2465,6 +2466,12 @@ pt_print_node_value (PARSER_CONTEXT * parser, const PT_NODE * val)
       && (val->node_type != PT_NAME || val->info.name.meta_class != PT_PARAMETER))
     {
       return NULL;
+    }
+
+  if (parser->custom_print & PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING
+      && val->expr_before_const_folding != NULL)
+    {
+      return val->expr_before_const_folding;
     }
 
   db_val = pt_value_to_db (parser, (PT_NODE *) val);
