@@ -35,6 +35,8 @@ namespace lockfree
       address_marker ();
       address_marker (T *addr);
 
+      static const size_t MARKED_NULLPTR = (NULL &MARK);
+
       bool is_marked () const;
       T *get_address () const;
       T *get_address_no_strip () const;

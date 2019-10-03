@@ -52,6 +52,8 @@ namespace lockfree
       bool erase (tran::index tran_index, Key &key);
       bool erase_locked (tran::index tran_index, Key &key, T *&locked_entry);
 
+      void clear (tran::index tran_index);    // NOT LOCK-FREE
+
     private:
       using address_type = address_marker<T>;
       using freelist_type = freelist<T>;
@@ -222,6 +224,77 @@ namespace lockfree
 	locked_entry = NULL;
       }
     return success;
+  }
+
+  template <class Key, class T>
+  void
+  hashmap<Key, T>::clear (tran::index tran_index)
+  {
+    tran::descriptor &tdes = m_freelist->get_transaction_table ().get_descriptor (tran_index);
+
+    /* lock mutex */
+    std::unique_lock<std::mutex> ulock (m_backbuffer_mutex);
+
+    /* swap bucket pointer with current backbuffer */
+    T **old_buckets = ATOMIC_TAS_ADDR (&m_buckets, m_backbuffer);
+
+    /* clear bucket buffer, containing remains of old entries marked for delete */
+    for (size_t i = 0; i < m_size; ++i)
+      {
+	assert (m_backbuffer[i] == address_type::MARKED_NULLPTR);
+	m_buckets[i] = NULL;
+      }
+
+    /* register new backbuffer */
+    m_backbuffer = m_buckets;
+
+    /* retire all entries from old buckets; note that threads currently operating on the entries will not be disturbed
+     * since the actual deletion is performed when the entries are no longer handled by active transactions */
+    T *curr = NULL;
+    T **next_p = NULL;
+    T *next = NULL;
+    pthread_mutex_t *mutex_p = NULL;
+    for (size_t i = 0; i < m_size; ++i)
+      {
+	// remove list from bucket
+	// warning: this may spin
+	do
+	  {
+	    curr = address_type::strip_address_mark (old_buckets[i]);
+	  }
+	while (!ATOMIC_CAS_ADDR (&old_buckets[i], curr, address_type::MARKED_NULLPTR));
+
+	while (curr != NULL)
+	  {
+	    next_p = &get_nextp_ref (curr);
+
+	    /* unlink from hash chain */
+	    // warning: this may spin
+	    do
+	      {
+		next = address_type::strip_address_mark (*next_p);
+	      }
+	    while (!ATOMIC_CAS_ADDR (next_p, next, address_type::set_adress_mark (next)));
+
+	    /* wait for mutex */
+	    if (m_edesc->using_mutex)
+	      {
+		mutex_p = get_pthread_mutexp (curr);
+
+		pthread_mutex_lock (mutex_p);
+		pthread_mutex_unlock (mutex_p);
+
+		/* there should be only one mutex lock-unlock per entry per access via bucket array, so locking/unlocking
+		 * once while the entry is inaccessible should be enough to guarantee nobody will be using it afterwards */
+	      }
+
+	    /* retire */
+	    freelist_retire (tdes, curr);
+
+	    /* advance */
+	    curr = next;
+	  }
+      }
   }
 
   template <class Key, class T>

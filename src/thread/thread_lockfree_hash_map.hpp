@@ -52,7 +52,7 @@ namespace cubthread
 
       void unlock (cubthread::entry *thread_p, T *&t);
 
-      void clear (cubthread::entry *thread_p);
+      void clear (cubthread::entry *thread_p);    // NOT LOCK-FREE
 
     private:
       class new_hashmap;
