@@ -66,7 +66,7 @@ namespace lockfree
 	void start_tran_and_increment_id ();
 	void end_tran ();
 
-	bool is_tran_started ();
+	bool is_tran_started () const;
 
 	id get_transaction_id () const;
 

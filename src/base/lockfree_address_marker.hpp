@@ -31,11 +31,13 @@ namespace lockfree
   template <class T>
   class address_marker
   {
+    private:
+      static const T *MARK = static_cast<T *> (0x1);
     public:
       address_marker ();
       address_marker (T *addr);
 
-      static const size_t MARKED_NULLPTR = (NULL &MARK);
+      static const size_t MARKED_NULLPTR = (NULL | MARK);
 
       bool is_marked () const;
       T *get_address () const;
@@ -48,8 +50,6 @@ namespace lockfree
       static T *atomic_strip_address_mark (T *addr);
 
     private:
-      static const T *MARK = static_cast<T *> (0x1);
-
       std::atomic<T *> m_addr;
   };
 } // namespace lockfree

@@ -108,7 +108,7 @@ namespace lockfree
     }
 
     bool
-    descriptor::is_tran_started ()
+    descriptor::is_tran_started () const
     {
       return m_tranid != INVALID_TRANID;
     }

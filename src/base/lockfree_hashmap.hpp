@@ -49,9 +49,9 @@ namespace lockfree
       void destroy ();
 
       T *find (tran::index tran_index, Key &key);
-      bool find_or_insert (tran::index tran_index, Key &key, T *&t);
-      bool insert (tran::index tran_index, Key &key, T *&t);
-      bool insert_given (tran::index tran_index, Key &key, T *&t);
+      bool find_or_insert (tran::index tran_index, Key &key, T *&entry);
+      bool insert (tran::index tran_index, Key &key, T *&entry);
+      bool insert_given (tran::index tran_index, Key &key, T *&entry);
       bool erase (tran::index tran_index, Key &key);
       bool erase_locked (tran::index tran_index, Key &key, T *&locked_entry);
 
@@ -119,7 +119,7 @@ namespace lockfree
       T *iterate ();
 
     private:
-      const size_t INVALID_INDEX = std::numeric_limits::max (size_t);
+      const size_t INVALID_INDEX = std::numeric_limits<size_t>::max ();
 
       hashmap *m_hashmap;
       tran::descriptor *m_tdes;
@@ -161,9 +161,9 @@ namespace lockfree
     m_edesc = &edesc;
 
     m_size = hash_size;
-    m_buckets = new (T *)[m_size];
+    m_buckets = new T *[m_size];
 
-    m_backbuffer = new (T *)[m_size];
+    m_backbuffer = new T *[m_size];
     for (size_t i = 0; i < m_size; i++)
       {
 	m_backbuffer[i] = address_type::set_adress_mark (NULL);
@@ -191,21 +191,21 @@ namespace lockfree
 
   template <class Key, class T>
   bool
-  hashmap<Key, T>::find_or_insert (tran::index tran_index, Key &key, T *&t)
+  hashmap<Key, T>::find_or_insert (tran::index tran_index, Key &key, T *&entry)
   {
     return hash_insert_internal (tran_index, key, LF_LIST_BF_RETURN_ON_RESTART | LF_LIST_BF_FIND_OR_INSERT, entry);
   }
 
   template <class Key, class T>
   bool
-  hashmap<Key, T>::insert (tran::index tran_index, Key &key, T *&t)
+  hashmap<Key, T>::insert (tran::index tran_index, Key &key, T *&entry)
   {
     return hash_insert_internal (tran_index, key, LF_LIST_BF_RETURN_ON_RESTART, entry);
   }
 
   template <class Key, class T>
   bool
-  hashmap<Key, T>::insert_given (tran::index tran_index, Key &key, T *&t)
+  hashmap<Key, T>::insert_given (tran::index tran_index, Key &key, T *&entry)
   {
     return hash_insert_internal (tran_index, key,
 				 LF_LIST_BF_RETURN_ON_RESTART | LF_LIST_BF_INSERT_GIVEN | LF_LIST_BF_FIND_OR_INSERT,
@@ -396,15 +396,15 @@ namespace lockfree
   {
     // not nice, but necessary until we fully refactor lockfree hashmap
     char *cp = (char *) p;
-    cp -= freelist_type::free_node::OFFSET_TO_DATA;
-    return (freelist_type::free_node *) cp;
+    cp -= free_node_type::OFFSET_TO_DATA;
+    return (free_node_type *) cp;
   }
 
   template <class Key, class T>
   void
   hashmap<Key, T>::save_temporary (tran::descriptor &tdes, T *&p)
   {
-    freelist_type::free_node *fn = to_free_node (p);
+    free_node_type *fn = to_free_node (p);
     tdes.save_reclaimable (fn);
     p = NULL;
   }
@@ -413,7 +413,7 @@ namespace lockfree
   T *
   hashmap<Key, T>::claim_temporary (tran::descriptor &tdes)
   {
-    return from_free_node (reinterpret_cast<freelist_type::free_node *> (tdes.pull_saved_reclaimable ()));
+    return from_free_node (reinterpret_cast<free_node_type *> (tdes.pull_saved_reclaimable ()));
   }
 
   template <class Key, class T>
@@ -554,7 +554,7 @@ namespace lockfree
 			/* while waiting for lock, somebody else deleted the entry; restart the search */
 			pthread_mutex_unlock (entry_mutex);
 
-			if (behavior_flags & (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
+			if (behavior_flags != NULL && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 			  {
 			    *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
 			    return;
@@ -573,7 +573,7 @@ namespace lockfree
 	      }
 
 	    /* advance */
-	    curr = address_marker::strip_address_mark (get_nextp_ref (curr));
+	    curr = address_type::strip_address_mark (get_nextp_ref (curr));
 	  }
       }
 
@@ -619,7 +619,7 @@ namespace lockfree
 	safe_force_start_tran (tdes);
 
 	curr_p = &list_head;
-	curr = address_marker::atomic_strip_address_mark (*curr_p);
+	curr = address_type::atomic_strip_address_mark (*curr_p);
 
 	/* search */
 	while (curr_p != NULL)    // this is always true actually...
@@ -738,7 +738,7 @@ namespace lockfree
 
 		/* advance */
 		curr_p = &get_nextp_ref (curr);
-		curr = address_marker::strip_address_mark (*curr_p);
+		curr = address_type::strip_address_mark (*curr_p);
 	      }
 	    else // curr == NULL
 	      {
@@ -1045,7 +1045,7 @@ namespace lockfree
 	/* save current leader as trailer */
 	if (m_curr != NULL)
 	  {
-	    if (m_edesc->using_mutex)
+	    if (m_hashmap->m_edesc->using_mutex)
 	      {
 		/* follow house rules: lock mutex */
 		pthread_mutex_unlock (m_hashmap->get_pthread_mutexp (m_curr));
@@ -1067,9 +1067,9 @@ namespace lockfree
 	    /* load next bucket */
 	    m_bucket_index++;
 
-	    if (m_bucket_index < (int) it->hash_table->hash_size)
+	    if (m_bucket_index < m_hashmap->m_size)
 	      {
-		m_curr = address_type::atomic_strip_address_mark (m_hashmap->m_buckets[i]);
+		m_curr = address_type::atomic_strip_address_mark (m_hashmap->m_buckets[m_bucket_index]);
 	      }
 	    else
 	      {
@@ -1082,7 +1082,7 @@ namespace lockfree
 
 	if (m_curr != NULL)
 	  {
-	    if (edesc->using_mutex)
+	    if (m_hashmap->m_edesc->using_mutex)
 	      {
 		pthread_mutex_lock (m_hashmap->get_pthread_mutexp (m_curr));
 
