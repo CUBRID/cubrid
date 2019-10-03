@@ -440,7 +440,7 @@ namespace lockfree
   {
     // not nice, but necessary until we fully refactor lockfree hashmap
     char *cp = (char *) p;
-    cp -= free_node_type::OFFSET_TO_DATA;
+    cp -= free_node_offset_of_data<T> ();
     return (free_node_type *) cp;
   }
 

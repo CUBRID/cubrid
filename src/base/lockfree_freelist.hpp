@@ -104,8 +104,6 @@ namespace lockfree
       free_node ();
       ~free_node () = default;
 
-      static const size_t OFFSET_TO_DATA;
-
       T &get_data ();
 
       void reclaim () final override;
@@ -125,6 +123,13 @@ namespace lockfree
       freelist *m_owner;
       T m_t;
   };
+
+  template <class T>
+  static constexpr size_t free_node_offset_of_data ()
+  {
+    freelist<T>::free_node fn;
+    return ((char *) (&fn.get_data ())) - ((char *) (&fn));
+  }
 } // namespace lockfree
 
 //
@@ -459,9 +464,6 @@ namespace lockfree
   //
   // freelist::handle
   //
-  template <class T>
-  const size_t freelist<T>::free_node::OFFSET_TO_DATA = offsetof (typename freelist<T>::free_node, m_t);
-
   template<class T>
   freelist<T>::free_node::free_node ()
     : tran::reclaimable_node ()
