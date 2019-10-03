@@ -64,12 +64,12 @@ namespace lockfree
       using freelist_type = freelist<T>;
       using free_node_type = typename freelist_type::free_node;
 
+      freelist_type *m_freelist;
+
       T **m_buckets;
       size_t m_size;
 
-      T **m_freelist;
-
-      address_type *m_backbuffer;
+      T **m_backbuffer;
       std::mutex m_backbuffer_mutex;
 
       lf_entry_descriptor *m_edesc;
@@ -183,7 +183,7 @@ namespace lockfree
     m_backbuffer = new T *[m_size] ();
     for (size_t i = 0; i < m_size; i++)
       {
-	m_backbuffer[i] = address_type::MARKED_NULLPTR;
+	m_backbuffer[i] = address_type::set_adress_mark (NULL);
       }
   }
 
@@ -296,7 +296,7 @@ namespace lockfree
     /* clear bucket buffer, containing remains of old entries marked for delete */
     for (size_t i = 0; i < m_size; ++i)
       {
-	assert (m_backbuffer[i] == address_type::MARKED_NULLPTR);
+	assert (m_backbuffer[i] == address_type::set_adress_mark (NULL));
 	m_buckets[i] = NULL;
       }
 
@@ -317,7 +317,7 @@ namespace lockfree
 	  {
 	    curr = address_type::strip_address_mark (old_buckets[i]);
 	  }
-	while (!ATOMIC_CAS_ADDR (&old_buckets[i], curr, address_type::MARKED_NULLPTR));
+	while (!ATOMIC_CAS_ADDR (&old_buckets[i], curr, address_type::set_adress_mark (NULL)));
 
 	while (curr != NULL)
 	  {

@@ -19,6 +19,7 @@
 
 #include "test_cqueue_functional.hpp"
 #include "test_freelist_functional.hpp"
+#include "test_hashmap.hpp"
 
 #include <string>
 #include <vector>

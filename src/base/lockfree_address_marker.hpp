@@ -25,6 +25,7 @@
 #define _LOCKFREE_ADDRESS_MARKER_HPP_
 
 #include <atomic>
+#include <cstdint>
 
 namespace lockfree
 {
@@ -32,12 +33,15 @@ namespace lockfree
   class address_marker
   {
     private:
-      static const T *MARK = static_cast<T *> (0x1);
+      using convert_type = std::uint64_t;
+      static const convert_type MARK = 0x1;
+
+      static convert_type to_cnv_type (T *addr);
+      static T *to_addr (convert_type ct);
+
     public:
       address_marker ();
       address_marker (T *addr);
-
-      static const size_t MARKED_NULLPTR = (NULL | MARK);
 
       bool is_marked () const;
       T *get_address () const;
@@ -45,11 +49,15 @@ namespace lockfree
 
       static T *set_adress_mark (T *addr);
       static T *strip_address_mark (T *addr);
-      bool is_address_marked (const T *addr);
+      static bool is_address_marked (T *addr);
 
       static T *atomic_strip_address_mark (T *addr);
 
     private:
+      static bool is_ct_marked (convert_type ct);
+      static convert_type set_ct_mark (convert_type ct);
+      static convert_type strip_ct_mark (convert_type ct);
+
       std::atomic<T *> m_addr;
   };
 } // namespace lockfree
@@ -76,6 +84,20 @@ namespace lockfree
   }
 
   template <class T>
+  typename address_marker<T>::convert_type
+  address_marker<T>::to_cnv_type (T *addr)
+  {
+    return (convert_type) addr;
+  }
+
+  template <class T>
+  T *
+  address_marker<T>::to_addr (convert_type ct)
+  {
+    return (T *) ct;
+  }
+
+  template <class T>
   bool
   address_marker<T>::is_marked () const
   {
@@ -97,24 +119,45 @@ namespace lockfree
   }
 
   template <class T>
+  bool
+  address_marker<T>::is_ct_marked (convert_type ct)
+  {
+    return (ct & MARK) != 0;
+  }
+
+  template <class T>
+  typename address_marker<T>::convert_type
+  address_marker<T>::set_ct_mark (convert_type ct)
+  {
+    return (ct | MARK);
+  }
+
+  template <class T>
+  typename address_marker<T>::convert_type
+  address_marker<T>::strip_ct_mark (convert_type ct)
+  {
+    return (ct & (~MARK));
+  }
+
+  template <class T>
   T *
   address_marker<T>::set_adress_mark (T *addr)
   {
-    return addr | MARK;
+    return to_addr (set_ct_mark (to_cnv_type (addr)));
   }
 
   template <class T>
   T *
   address_marker<T>::strip_address_mark (T *addr)
   {
-    return addr & (~MARK);
+    return to_addr (strip_ct_mark (to_cnv_type (addr)));
   }
 
   template <class T>
   bool
-  address_marker<T>::is_address_marked (const T *addr)
+  address_marker<T>::is_address_marked (T *addr)
   {
-    return (addr & MARK) != 0;
+    return is_ct_marked (to_cnv_type (addr));
   }
 
   template <class T>
