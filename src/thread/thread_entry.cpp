@@ -413,6 +413,12 @@ namespace cubthread
     return ret;
   }
 
+  lockfree::tran::index
+  entry::get_lf_tran_index ()
+  {
+    return m_lf_tran_index;
+  }
+
 } // namespace cubthread
 
 //////////////////////////////////////////////////////////////////////////
