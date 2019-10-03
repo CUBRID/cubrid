@@ -621,13 +621,6 @@ namespace cubload
 	// since std::getline eats end line character, add it back in order to make loaddb lexer happy
 	batch_buffer.append ("\n");
 
-	// it could be that a row is wrapped on the next line,
-	// this means that the row ends on the last line that does not end with '+' (plus) character
-	if (ends_with (line, "+"))
-	  {
-	    continue;
-	  }
-
 	// check for matching single quotes
 	for (const char &c: line)
 	  {
@@ -636,6 +629,14 @@ namespace cubload
 		single_quote_checker ^= 1;
 	      }
 	  }
+
+	// it could be that a row is wrapped on the next line,
+	// this means that the row ends on the last line that does not end with '+' (plus) character
+	if (ends_with (line, "+"))
+	  {
+	    continue;
+	  }
+
 	// if single_quote_checker is 1, it means that a single quote was opened but not closed
 	if (single_quote_checker == 1)
 	  {
