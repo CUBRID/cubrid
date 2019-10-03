@@ -6454,8 +6454,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   int ntops;			/* Number of total active top actions */
   int length_all_chkpt_trans;
   size_t length_all_tops = 0;
-  int sys_ntops = 0;
-  size_t sys_ntrans;
   int i;
   const char *catmsg;
   VOLID volid;
