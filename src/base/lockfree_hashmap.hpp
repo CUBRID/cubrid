@@ -94,6 +94,8 @@ namespace lockfree
       bool list_insert_internal (tran::index tran_index, T *&list_head, Key &key, int *behavior_flags,
 				 T *&found_node);
       bool list_delete (tran::index tran_index, T *&list_head, Key &key, T *locked_entry, int *behavior_flags);
+
+      bool hash_insert_internal (tran::index tran_index, Key &key, int bflags, T *&entry);
   }; // class hashmap
 
 } // namespace lockfree
@@ -152,7 +154,7 @@ namespace lockfree
       {
 	entry = NULL;
 	bflags = LF_LIST_BF_RETURN_ON_RESTART;
-	list_find (tran_index, list_head, bflags, entry);
+	list_find (tran_index, list_head, &bflags, entry);
 	restart = (bflags & LF_LIST_BR_RESTARTED) != 0;
       }
     return entry;
@@ -778,6 +780,50 @@ namespace lockfree
 	    return true;
 	  } // while (curr != NULL)
       } // while (restart_search)
+  }
+
+  /*
+   * Behavior flags:
+   *
+   * LF_LIST_BF_RETURN_ON_RESTART - When insert fails because last entry in bucket was deleted, if this flag is set,
+   *				    then the operation is restarted from here, instead of looping inside
+   *				    lf_list_insert_internal (as a consequence, hash key is recalculated).
+   *				    NOTE: Currently, this flag is always used (I must find out why).
+   *
+   * LF_LIST_BF_INSERT_GIVEN	  - If this flag is set, the caller means to force its own entry into hash table.
+   *				    When the flag is not set, a new entry is claimed from freelist.
+   *				    NOTE: If an entry with the same key already exists, the entry given as argument is
+   *					  automatically retired.
+   *
+   * LF_LIST_BF_FIND_OR_INSERT	  - If this flag is set and an entry for the same key already exists, the existing
+   *				    key will be output. If the flag is not set and key exists, insert just gives up
+   *				    and a NULL entry is output.
+   *				    NOTE: insert will not give up when key exists, if edesc->f_update is provided.
+   *					  a new key is generated and insert is restarted.
+   */
+  template <class Key, class T>
+  bool
+  hashmap<Key, T>::hash_insert_internal (tran::index tran_index, Key &key, int bflags, T *&entry)
+  {
+    T *&list_head = get_bucket (key);
+    bool inserted = false;
+
+    while (restart)
+      {
+	if (LF_LIST_BF_IS_FLAG_SET (&bflags, LF_LIST_BF_INSERT_GIVEN))
+	  {
+	    assert (entry != NULL);
+	  }
+	else
+	  {
+	    entry = NULL;
+	  }
+
+	bflags &= ~LF_LIST_BR_RESTARTED;
+	inserted = list_insert_internal (tran_index, list_head, key, &bflags, entry);
+	restart = (bflags & LF_LIST_BR_RESTARTED) != 0;
+      }
+    return inserted;
   }
 } // namespace lockfree
 
