@@ -46,6 +46,9 @@ namespace lockfree
       void destroy ();
 
       T *find (tran::index tran_index, Key &key);
+      bool find_or_insert (tran::index tran_index, Key &key, T *&t);
+      bool insert (tran::index tran_index, Key &key, T *&t);
+      bool insert_given (tran::index tran_index, Key &key, T *&t);
 
     private:
       using address_type = address_marker<T>;
@@ -158,6 +161,29 @@ namespace lockfree
 	restart = (bflags & LF_LIST_BR_RESTARTED) != 0;
       }
     return entry;
+  }
+
+  template <class Key, class T>
+  bool
+  hashmap<Key, T>::find_or_insert (tran::index tran_index, Key &key, T *&t)
+  {
+    return hash_insert_internal (tran_index, key, LF_LIST_BF_RETURN_ON_RESTART | LF_LIST_BF_FIND_OR_INSERT, entry);
+  }
+
+  template <class Key, class T>
+  bool
+  hashmap<Key, T>::insert (tran::index tran_index, Key &key, T *&t)
+  {
+    return hash_insert_internal (tran_index, key, LF_LIST_BF_RETURN_ON_RESTART, entry);
+  }
+
+  template <class Key, class T>
+  bool
+  hashmap<Key, T>::insert_given (tran::index tran_index, Key &key, T *&t)
+  {
+    return hash_insert_internal (tran_index, key,
+				 LF_LIST_BF_RETURN_ON_RESTART | LF_LIST_BF_INSERT_GIVEN | LF_LIST_BF_FIND_OR_INSERT,
+				 entry);
   }
 
   template <class Key, class T>
