@@ -53,8 +53,6 @@ class log_system_tdes
 
     static log_tdes *rv_get_or_alloc_tdes (TRANID trid);
     static log_tdes *rv_get_tdes (TRANID trid);
-    static log_tdes *systdes_claim_tdes ();
-    static void systdes_retire_tdes (log_tdes *&tdes);
     static void map_all_tdes (const map_func &func);
 
     static void rv_delete_all_tdes_if (const rv_delete_if_func &func);
