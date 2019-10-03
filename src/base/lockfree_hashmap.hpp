@@ -61,7 +61,19 @@ namespace lockfree
 
     private:
       using address_type = address_marker<T>;
-      using freelist_type = freelist<T>;
+
+      // wrap T with on_reclaim functionality based on edesc.f_uninit
+      struct freelist_node_data
+      {
+	T m_entry;
+	lf_entry_descriptor *m_edesc;
+
+	void on_reclaim ()
+	{
+	  (void) m_edesc->f_uninit (&m_entry);
+	}
+      };
+      using freelist_type = freelist<freelist_node_data>;
       using free_node_type = typename freelist_type::free_node;
 
       freelist_type *m_freelist;
@@ -111,9 +123,9 @@ namespace lockfree
       bool hash_insert_internal (tran::index tran_index, Key &key, int bflags, T *&entry);
       bool hash_erase_internal (tran::index tran_index, Key &key, int bflags, T *locked_entry);
 
-      static constexpr std::ptrdiff_t free_node_offset_of_data (typename freelist<T>::free_node &fn)
+      static constexpr std::ptrdiff_t free_node_offset_of_data (free_node_type &fn)
       {
-	return ((char *) (&fn.get_data ())) - ((char *) (&fn));
+	return ((char *) (&fn.get_data ().m_entry)) - ((char *) (&fn));
       }
   }; // class hashmap
 
@@ -436,7 +448,7 @@ namespace lockfree
   hashmap<Key, T>::from_free_node (free_node_type *fn)
   {
     assert (fn != NULL);
-    return &fn->get_data ();
+    return &fn->get_data ().m_entry;
   }
 
   template <class Key, class T>

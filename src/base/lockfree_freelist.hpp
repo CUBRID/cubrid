@@ -38,6 +38,7 @@ namespace lockfree
 
 namespace lockfree
 {
+  // T must have on_reclaim function
   template <class T>
   class freelist
   {
@@ -107,9 +108,6 @@ namespace lockfree
       T &get_data ();
 
       void reclaim () final override;
-
-    protected:
-      virtual void on_reclaim ();
 
     private:
       friend freelist;
@@ -497,18 +495,11 @@ namespace lockfree
   void
   freelist<T>::free_node::reclaim ()
   {
-    on_reclaim ();
+    m_t.on_reclaim ();
 
     m_retired_next = NULL;
     ++m_owner->m_available_count;
     m_owner->push_to_list (*this, *this, m_owner->m_available_list);
-  }
-
-  template<class T>
-  void
-  freelist<T>::free_node::on_reclaim ()
-  {
-    // by default empty
   }
 
   template<class T>
