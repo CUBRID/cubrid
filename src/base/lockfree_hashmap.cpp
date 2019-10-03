@@ -20,5 +20,4 @@
 
 namespace lockfree
 {
-  using my_hashmap = hashmap<int, int>;
 } // namespace lockfree

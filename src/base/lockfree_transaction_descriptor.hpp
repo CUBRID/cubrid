@@ -72,6 +72,7 @@ namespace lockfree
 
 	void reclaim_retired_list ();
 
+	// a reclaimable node may be saved for later use; must not have been part of lock-free structure
 	void save_reclaimable (reclaimable_node *&node);
 	reclaimable_node *pull_saved_reclaimable ();
 

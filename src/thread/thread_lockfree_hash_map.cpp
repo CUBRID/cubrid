@@ -21,5 +21,4 @@
 
 namespace cubthread
 {
-  using a_lockfree_hashmap = lockfree_hashmap<int, int>;
 } // namespace cubthread

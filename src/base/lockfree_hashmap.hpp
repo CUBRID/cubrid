@@ -146,10 +146,24 @@ namespace lockfree
   void
   hashmap<Key, T>::destroy ()
   {
-    // todo: iterate and retire all entries
+    T *node_iter;
+    T *save_next;
+    tran::descriptor &tdes = get_tran_descriptor (0);
+
+    for (size_t i = 0; i < m_size; ++i)
+      {
+	for (node_iter = m_buckets[i]; node_iter != NULL; node_iter = save_next)
+	  {
+	    assert (!address_type::is_address_marked (node_iter));
+	    save_next = get_nextp (node_iter);
+	    freelist_retire (tdes, node_iter);
+	  }
+      }
+
+    delete [] m_buckets;
+    delete [] m_backbuffer;
 
     delete m_freelist;
-    m_freelist = NULL;
   }
 
   template <class Key, class T>
@@ -437,7 +451,26 @@ namespace lockfree
   T *
   hashmap<Key, T>::freelist_claim (tran::descriptor &tdes)
   {
-    return from_free_node (m_freelist->claim (tdes));
+    free_node_type *fn = reinterpret_cast<free_node_type *> (tdes.pull_saved_reclaimable ());
+    bool is_local_tran = false;
+    if (!tdes.is_tran_started ())
+      {
+	tdes.start_tran ();
+	is_local_tran = true;
+      }
+    if (fn == NULL)
+      {
+	fn = m_freelist->claim (tdes);
+	assert (fn != NULL);
+      }
+    T *claimed = from_free_node (fn);
+    get_nextp_ref (claimed) = NULL;   // make sure link is removed
+
+    if (is_local_tran)
+      {
+	tdes.end_tran ();
+      }
+    return claimed;
   }
 
   template <class Key, class T>

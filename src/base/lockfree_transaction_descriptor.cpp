@@ -35,6 +35,7 @@ namespace lockfree
       , m_retired_head (NULL)
       , m_retired_tail (NULL)
       , m_did_incr (false)
+      , m_saved_node (NULL)
       , m_retire_count (0)
       , m_reclaim_count (0)
     {
