@@ -125,9 +125,9 @@ namespace lockfree
   };
 
   template <class T>
-  static constexpr size_t free_node_offset_of_data ()
+  static constexpr std::ptrdiff_t free_node_offset_of_data ()
   {
-    freelist<T>::free_node fn;
+    typename freelist<T>::free_node fn;
     return ((char *) (&fn.get_data ())) - ((char *) (&fn));
   }
 } // namespace lockfree
