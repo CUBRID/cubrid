@@ -39,6 +39,11 @@ namespace lockfree
   {
     public:
       hashmap () = default;
+      ~hashmap ();
+
+      void init (tran::system &transys, size_t hash_size, size_t freelist_block_size, size_t freelist_block_count,
+		 lf_entry_descriptor &edesc);
+      void destroy ();
 
     private:
       using address_type = address_marker<T>;
@@ -92,6 +97,41 @@ namespace lockfree
 
 namespace lockfree
 {
+  template <class Key, class T>
+  hashmap<Key, T>::~hashmap ()
+  {
+    destroy ();
+  }
+
+  template <class Key, class T>
+  void
+  hashmap<Key, T>::destroy ()
+  {
+    // todo: iterate and retire all entries
+
+    delete m_freelist;
+    m_freelist = NULL;
+  }
+
+  template <class Key, class T>
+  void
+  hashmap<Key, T>::init (tran::system &transys, size_t hash_size, size_t freelist_block_size,
+			 size_t freelist_block_count, lf_entry_descriptor &edesc)
+  {
+    m_freelist = new freelist_type (transys, freelist_block_size, freelist_block_count);
+
+    m_edesc = &edesc;
+
+    m_size = hash_size;
+    m_buckets = new (T *)[m_size];
+
+    m_backbuffer = new (T *)[m_size];
+    for (size_t i = 0; i < m_size; i++)
+      {
+	m_backbuffer[i] = address_type::set_adress_mark (NULL);
+      }
+  }
+
   template <class Key, class T>
   void *
   hashmap<Key, T>::get_ptr (T *p, size_t o)
