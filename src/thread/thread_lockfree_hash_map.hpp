@@ -25,6 +25,7 @@
 #define _THREAD_LOCKFREE_HASH_MAP_
 
 #include "lock_free.h"  // old implementation
+#include "lockfree_hashmap.hpp"
 #include "lockfree_transaction_def.hpp"
 #include "thread_entry.hpp"
 
@@ -55,8 +56,6 @@ namespace cubthread
       void clear (cubthread::entry *thread_p);    // NOT LOCK-FREE
 
     private:
-      class new_hashmap;
-
       bool is_old_type () const;
       lf_tran_entry *get_tran_entry (cubthread::entry *thread_p);
 
@@ -68,69 +67,9 @@ namespace cubthread
       };
 
       lf_hash_table_cpp<Key, T> m_old_hash;
-      new_hashmap m_new_hash;
+      lockfree::hashmap<Key, T> m_new_hash;
       type m_type;
       int m_entry_idx;
-  };
-
-  template <class Key, class T>
-  class lockfree_hashmap<Key, T>::new_hashmap
-  {
-    public:
-      new_hashmap () = default;
-
-      class iterator
-      {
-	public:
-	  iterator ();
-	  iterator (lockfree::tran::index tran_index, lockfree_hashmap &map) {}
-	  ~iterator ();
-
-	  T *
-	  iterate ()
-	  {
-	    return NULL;
-	  }
-      };
-
-      void init () {}
-      void destroy () {}
-
-      T *
-      find (lockfree::tran::index tran_index, Key &key)
-      {
-	return NULL;
-      }
-      bool
-      find_or_insert (lockfree::tran::index tran_index, Key &key, T *&t)
-      {
-	return false;
-      }
-      bool
-      insert (lockfree::tran::index tran_index, Key &key, T *&t)
-      {
-	return false;
-      }
-      bool
-      insert_given (lockfree::tran::index tran_index, Key &key, T *&t)
-      {
-	return false;
-      }
-      bool
-      erase (lockfree::tran::index tran_index, Key &key)
-      {
-	return false;
-      }
-      bool
-      erase_locked (lockfree::tran::index tran_index, Key &key, T *&t)
-      {
-	return false;
-      }
-
-      void unlock (lockfree::tran::index tran_index, T *&t) {}
-      void clear (lockfree::tran::index tran_index) {}
-
-    private:
   };
 
   template <class Key, class T>
@@ -146,8 +85,7 @@ namespace cubthread
       // old stuff
       lockfree_hashmap &m_map;
       typename lf_hash_table_cpp<Key, T>::iterator m_old_iter;
-      typename lockfree_hashmap::new_hashmap::iterator m_new_iter;
-      T *m_crt_val;
+      typename lockfree::hashmap<Key, T>::iterator m_new_iter;
   };
 } // namespace cubthread
 
@@ -291,7 +229,6 @@ namespace cubthread
     : m_map (map)
     , m_old_iter ()
     , m_new_iter ()
-    , m_crt_val (NULL)
   {
     if (m_map.is_old_type ())
       {
