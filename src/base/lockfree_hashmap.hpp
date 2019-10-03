@@ -99,6 +99,7 @@ namespace lockfree
 
       size_t get_hash (Key &key) const;
       T *&get_bucket (Key &key);
+      tran::descriptor &get_tran_descriptor (tran::index tran_index);
 
       void list_find (tran::index tran_index, T *list_head, Key &key, int *behavior_flags, T *&found_node);
       bool list_insert_internal (tran::index tran_index, T *&list_head, Key &key, int *behavior_flags,
@@ -251,7 +252,7 @@ namespace lockfree
   void
   hashmap<Key, T>::clear (tran::index tran_index)
   {
-    tran::descriptor &tdes = m_freelist->get_transaction_table ().get_descriptor (tran_index);
+    tran::descriptor &tdes = get_tran_descriptor (tran_index);
 
     /* lock mutex */
     std::unique_lock<std::mutex> ulock (m_backbuffer_mutex);
@@ -330,6 +331,13 @@ namespace lockfree
   hashmap<Key, T>::get_bucket (Key &key)
   {
     return m_buckets[get_hash (key)];
+  }
+
+  template <class Key, class T>
+  tran::descriptor &
+  hashmap<Key, T>::get_tran_descriptor (tran::index tran_index)
+  {
+    return m_freelist->get_transaction_table ().get_descriptor (tran_index);
   }
 
   template <class Key, class T>
@@ -521,7 +529,7 @@ namespace lockfree
   void
   hashmap<Key, T>::list_find (tran::index tran_index, T *list_head, Key &key, int *behavior_flags, T *&entry)
   {
-    tran::descriptor &tdes = m_freelist->get_transaction_table ().get_descriptor (tran_index);
+    tran::descriptor &tdes = get_tran_descriptor (tran_index);
     T *curr = NULL;
     pthread_mutex_t *entry_mutex = NULL;
 
@@ -609,7 +617,7 @@ namespace lockfree
     pthread_mutex_t *entry_mutex = NULL;	/* Locked entry mutex when not NULL */
     T **curr_p = NULL;
     T *curr = NULL;
-    tran::descriptor &tdes = m_freelist->get_transaction_table ().get_descriptor (tran_index);
+    tran::descriptor &tdes = get_tran_descriptor (tran_index);
     bool restart_search = true;
 
     while (restart_search)
@@ -816,7 +824,7 @@ namespace lockfree
   hashmap<Key, T>::list_delete (tran::index tran_index, T *&list_head, Key &key, T *locked_entry, int *behavior_flags)
   {
     pthread_mutex_t *entry_mutex = NULL;
-    tran::descriptor &tdes = m_freelist->get_transaction_table ().get_descriptor (tran_index);
+    tran::descriptor &tdes = get_tran_descriptor (tran_index);
     T **curr_p;
     T *curr;
     T **next_p;
@@ -1023,7 +1031,7 @@ namespace lockfree
   template <class Key, class T>
   hashmap<Key, T>::iterator::iterator (tran::index tran_index, hashmap &hash)
     : m_hashmap (&hash)
-    , m_tdes (&hash.m_freelist->get_transaction_table ().get_descriptor (tran_index))
+    , m_tdes (&hash.get_tran_descriptor (tran_index))
     , m_bucket_index (INVALID_INDEX)
     , m_curr (NULL)
   {
