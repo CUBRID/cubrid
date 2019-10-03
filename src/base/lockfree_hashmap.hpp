@@ -45,9 +45,12 @@ namespace lockfree
 		 lf_entry_descriptor &edesc);
       void destroy ();
 
+      T *find (tran::index tran_index, Key &key);
+
     private:
       using address_type = address_marker<T>;
       using freelist_type = freelist<T>;
+      using free_node_type = typename freelist_type::free_node;
 
       T **m_buckets;
       size_t m_size;
@@ -64,10 +67,11 @@ namespace lockfree
       void *get_ptr_deref (T *p, size_t o);
       void *get_keyp (T *p);
       T *get_nextp (T *p);
+      T *&get_nextp_ref (T *p);
       pthread_mutex_t *get_pthread_mutexp (T *p);
 
-      freelist_type::free_node *to_free_node (T *p);
-      T *from_free_node (freelist_type::free_node *fn);
+      free_node_type *to_free_node (T *p);
+      T *from_free_node (free_node_type *fn);
       void save_temporary (tran::descriptor &tdes, T *&p);
       T *claim_temporary (tran::descriptor &tdes);
       void freelist_retire (tran::descriptor &tdes, T *&p);
@@ -83,13 +87,16 @@ namespace lockfree
       void safe_unlock_entry (pthread_mutex_t *&mtx);
       void safe_force_unlock_entry (pthread_mutex_t *&mtx);
 
+      size_t get_hash (Key &key) const;
+      T *&get_bucket (Key &key);
+
       void list_find (tran::index tran_index, T *list_head, Key &key, int *behavior_flags, T *&found_node);
       bool list_insert_internal (tran::index tran_index, T *&list_head, Key &key, int *behavior_flags,
 				 T *&found_node);
       bool list_delete (tran::index tran_index, T *&list_head, Key &key, T *locked_entry, int *behavior_flags);
-  };
+  }; // class hashmap
 
-}
+} // namespace lockfree
 
 //
 // implementation
@@ -130,6 +137,39 @@ namespace lockfree
       {
 	m_backbuffer[i] = address_type::set_adress_mark (NULL);
       }
+  }
+
+  template <class Key, class T>
+  T *
+  hashmap<Key, T>::find (tran::index tran_index, Key &key)
+  {
+    int bflags = 0;
+    bool restart = true;
+    T *entry = NULL;
+    T *list_head = get_bucket (key);
+
+    while (restart)
+      {
+	entry = NULL;
+	bflags = LF_LIST_BF_RETURN_ON_RESTART;
+	list_find (tran_index, list_head, bflags, entry);
+	restart = (bflags & LF_LIST_BR_RESTARTED) != 0;
+      }
+    return entry;
+  }
+
+  template <class Key, class T>
+  size_t
+  hashmap<Key, T>::get_hash (Key &key) const
+  {
+    return m_edesc->f_hash (&key, m_size);
+  }
+
+  template <class Key, class T>
+  T *&
+  hashmap<Key, T>::get_bucket (Key &key)
+  {
+    return m_buckets[get_hash (key)];
   }
 
   template <class Key, class T>
@@ -184,7 +224,7 @@ namespace lockfree
 
   template <class Key, class T>
   T *
-  hashmap<Key, T>::from_free_node (freelist_type::free_node *fn)
+  hashmap<Key, T>::from_free_node (free_node_type *fn)
   {
     assert (fn != NULL);
     return &fn->get_data ();
