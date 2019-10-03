@@ -30,6 +30,7 @@
 #include "porting.h"
 
 #include <cassert>
+#include <limits>
 #include <mutex>
 
 namespace lockfree
@@ -38,6 +39,8 @@ namespace lockfree
   class hashmap
   {
     public:
+      class iterator;
+
       hashmap () = default;
       ~hashmap ();
 
@@ -105,6 +108,24 @@ namespace lockfree
       bool hash_insert_internal (tran::index tran_index, Key &key, int bflags, T *&entry);
       bool hash_erase_internal (tran::index tran_index, Key &key, int bflags, T *locked_entry);
   }; // class hashmap
+
+  template <class Key, class T>
+  class hashmap<Key, T>::iterator
+  {
+    public:
+      iterator () = default;
+      iterator (tran::index tran_index, hashmap &hash);
+
+      T *iterate ();
+
+    private:
+      const size_t INVALID_INDEX = std::numeric_limits::max (size_t);
+
+      hashmap *m_hashmap;
+      tran::descriptor *m_tdes;
+      size_t m_bucket_index;
+      T *m_curr;
+  };
 
 } // namespace lockfree
 
@@ -994,6 +1015,89 @@ namespace lockfree
 	  }
       }
     return erased;
+  }
+
+  //
+  // hashmap::iterator
+  //
+  template <class Key, class T>
+  hashmap<Key, T>::iterator::iterator (tran::index tran_index, hashmap &hash)
+    : m_hashmap (&hash)
+    , m_tdes (&hash.m_freelist->get_transaction_table ().get_descriptor (tran_index))
+    , m_bucket_index (INVALID_INDEX)
+    , m_curr (NULL)
+  {
+  }
+
+  template <class Key, class T>
+  T *
+  hashmap<Key, T>::iterator::iterate ()
+  {
+    if (m_hashmap == NULL && m_tdes == NULL)
+      {
+	assert (false);
+	return NULL;
+      }
+
+    T **next_p = NULL;
+    do
+      {
+	/* save current leader as trailer */
+	if (m_curr != NULL)
+	  {
+	    if (m_edesc->using_mutex)
+	      {
+		/* follow house rules: lock mutex */
+		pthread_mutex_unlock (m_hashmap->get_pthread_mutexp (m_curr));
+	      }
+
+	    /* load next entry */
+	    next_p = &m_hashmap->get_nextp_ref (m_curr);
+	    m_curr = address_type::strip_address_mark (*next_p);
+	  }
+	else
+	  {
+	    /* reset transaction for each bucket */
+	    if (m_bucket_index != INVALID_INDEX)
+	      {
+		m_tdes->end_tran ();
+	      }
+	    m_tdes->start_tran ();
+
+	    /* load next bucket */
+	    m_bucket_index++;
+
+	    if (m_bucket_index < (int) it->hash_table->hash_size)
+	      {
+		m_curr = address_type::atomic_strip_address_mark (m_hashmap->m_buckets[i]);
+	      }
+	    else
+	      {
+		/* end */
+		assert (m_bucket_index == m_hashmap->m_size);
+		m_tdes->end_tran ();
+		return NULL;
+	      }
+	  }
+
+	if (m_curr != NULL)
+	  {
+	    if (edesc->using_mutex)
+	      {
+		pthread_mutex_lock (m_hashmap->get_pthread_mutexp (m_curr));
+
+		if (address_type::is_address_marked (m_hashmap->get_nextp_ref (m_curr)))
+		  {
+		    /* deleted in the meantime, skip it */
+		    continue;
+		  }
+	      }
+	  }
+      }
+    while (m_curr == NULL);
+
+    /* we have a valid entry */
+    return m_curr;
   }
 } // namespace lockfree
 
