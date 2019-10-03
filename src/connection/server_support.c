@@ -26,6 +26,7 @@
 #include "server_support.h"
 
 #include "config.h"
+#include "load_worker_manager.hpp"
 #include "log_append.hpp"
 #include "session.h"
 #include "thread_entry_task.hpp"
@@ -1397,6 +1398,9 @@ shutdown:
 
   /* stop vacuum threads. */
   vacuum_stop (thread_p);
+
+  // stop load sessions
+  cubload::worker_manager_stop_all ();
 
   /* we should flush all append pages before stop log writer */
   logpb_force_flush_pages (thread_p);

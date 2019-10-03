@@ -30,10 +30,14 @@
 
 namespace cubload
 {
-  void worker_manager_push_task (cubthread::entry_task *task);
+  // forward definitions
+  class session;
 
-  void worker_manager_register_session ();
-  void worker_manager_unregister_session ();
+  void worker_manager_push_task (cubthread::entry_task *task);
+  void worker_manager_stop_all ();
+
+  void worker_manager_register_session (session &load_session);
+  void worker_manager_unregister_session (session &load_session);
 
   void worker_manager_get_stats (UINT64 *stats_out);
 }

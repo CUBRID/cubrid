@@ -226,6 +226,7 @@ log_system_tdes::rv_get_or_alloc_tdes (TRANID trid)
   if (tdes == NULL)
     {
       log_tdes *tdes = systdes_claim_tdes ();
+      tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
       systb_System_tdes[trid] = tdes;
       return tdes;
     }

@@ -147,6 +147,11 @@ namespace cubload
 	int tran_index = thread_ref.tran_index;
 	m_session.register_tran_start (tran_index);
 
+	// Get the clientids from the session and set it on the current worker.
+	LOG_TDES *session_tdes = log_Gl.trantable.all_tdes[m_conn_entry.get_tran_index ()];
+	LOG_TDES *worker_tdes = log_Gl.trantable.all_tdes[tran_index];
+	worker_tdes->client.set_ids (session_tdes->client);
+
 	bool parser_result = invoke_parser (driver, m_batch);
 
 	// Get the class name.
@@ -195,6 +200,9 @@ namespace cubload
 	      }
 	  }
 
+	// Clear the clientids.
+	worker_tdes->client.reset ();
+
 	// free transaction index
 	logtb_free_tran_index (&thread_ref, thread_ref.tran_index);
 
@@ -215,12 +223,13 @@ namespace cubload
     , m_args (args)
     , m_last_batch_id {NULL_BATCH_ID}
     , m_max_batch_id {NULL_BATCH_ID}
+    , m_active_task_count {0}
     , m_class_registry ()
     , m_stats ()
     , m_stats_mutex ()
     , m_driver (NULL)
   {
-    worker_manager_register_session ();
+    worker_manager_register_session (*this);
 
     m_driver = new driver ();
     init_driver (m_driver, *this);
@@ -240,7 +249,7 @@ namespace cubload
   {
     delete m_driver;
 
-    worker_manager_unregister_session ();
+    worker_manager_unregister_session (*this);
   }
 
   bool
@@ -266,7 +275,11 @@ namespace cubload
   void
   session::wait_for_completion ()
   {
-    auto pred = [this] () -> bool { return is_failed () || is_completed (); };
+    auto pred = [this] () -> bool
+    {
+      // condition of finish and no active tasks
+      return (is_failed () || is_completed ()) && (m_active_task_count == 0);
+    };
 
     if (pred ())
       {
@@ -280,6 +293,7 @@ namespace cubload
   void
   session::notify_batch_done (batch_id id)
   {
+    --m_active_task_count;
     if (is_failed ())
       {
 	return;
@@ -288,12 +302,14 @@ namespace cubload
     assert (m_last_batch_id == id - 1);
     m_last_batch_id = id;
     m_commit_mutex.unlock ();
+    er_clear ();
     notify_waiting_threads ();
   }
 
   void
   session::notify_batch_done_and_register_tran_end (batch_id id, int tran_index)
   {
+    --m_active_task_count;
     if (is_failed ())
       {
 	return;
@@ -306,6 +322,7 @@ namespace cubload
 	assert (false);
       }
     m_commit_mutex.unlock ();
+    er_clear ();
     notify_waiting_threads ();
   }
 
@@ -514,6 +531,7 @@ namespace cubload
       }
 
     update_atomic_value_with_max (m_max_batch_id, batch.get_id ());
+    ++m_active_task_count;
 
     if (batch.get_content ().empty ())
       {

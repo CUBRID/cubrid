@@ -6173,5 +6173,4 @@ log_tdes::unlock_global_oldest_visible_mvccid ()
       block_global_oldest_active_until_commit = false;
     }
 }
-
 // *INDENT-ON*
