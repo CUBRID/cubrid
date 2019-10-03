@@ -19507,10 +19507,10 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 				     qualifier))
 	{
 	  result = pt_dbval_to_value (parser, &dbval_res);
-          if (result)
-            {
-              result->expr_before_const_folding = pt_print_bytes (parser, expr);
-            }
+	  if (result)
+	    {
+	      result->expr_before_const_folding = pt_print_bytes (parser, expr);
+	    }
 	  if (result && result->data_type == NULL && result->type_enum != PT_TYPE_NULL)
 	    {
 	      /* data_type may be needed later... e.g. in CTEs */

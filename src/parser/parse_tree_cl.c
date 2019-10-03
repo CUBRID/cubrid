@@ -2468,8 +2468,7 @@ pt_print_node_value (PARSER_CONTEXT * parser, const PT_NODE * val)
       return NULL;
     }
 
-  if (parser->custom_print & PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING
-      && val->expr_before_const_folding != NULL)
+  if (parser->custom_print & PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING && val->expr_before_const_folding != NULL)
     {
       return val->expr_before_const_folding;
     }
