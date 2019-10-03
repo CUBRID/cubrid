@@ -225,21 +225,13 @@ log_system_tdes::rv_get_or_alloc_tdes (TRANID trid)
 void
 log_system_tdes::map_all_tdes (const map_func &func)
 {
+  std::lock_guard<std::mutex> lg (systb_Mutex);
   for (auto el : systb_system_tdes)
     {
       log_tdes *tdes = el.second.get_tdes ();
       assert (tdes != NULL);
       func (*tdes);
     }
-}
-
-// do this to chain with other operations under lock
-std::unique_lock<std::mutex>
-log_system_tdes::get_size_and_lock (size_t &system_trans_size)
-{
-  std::unique_lock<std::mutex> ul (systb_Mutex);
-  system_trans_size = systb_system_tdes.size ();
-  return ul;
 }
 
 void
