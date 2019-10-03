@@ -110,6 +110,11 @@ namespace lockfree
 
       bool hash_insert_internal (tran::index tran_index, Key &key, int bflags, T *&entry);
       bool hash_erase_internal (tran::index tran_index, Key &key, int bflags, T *locked_entry);
+
+      static constexpr std::ptrdiff_t free_node_offset_of_data (typename freelist<T>::free_node &fn)
+      {
+	return ((char *) (&fn.get_data ())) - ((char *) (&fn));
+      }
   }; // class hashmap
 
   template <class Key, class T>
@@ -439,8 +444,9 @@ namespace lockfree
   hashmap<Key, T>::to_free_node (T *p)
   {
     // not nice, but necessary until we fully refactor lockfree hashmap
+    const std::ptrdiff_t off = free_node_offset_of_data (free_node_type ());
     char *cp = (char *) p;
-    cp -= free_node_offset_of_data<T> ();
+    cp -= off;
     return (free_node_type *) cp;
   }
 

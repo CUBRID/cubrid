@@ -123,13 +123,6 @@ namespace lockfree
       freelist *m_owner;
       T m_t;
   };
-
-  template <class T>
-  static constexpr std::ptrdiff_t free_node_offset_of_data ()
-  {
-    typename freelist<T>::free_node fn;
-    return ((char *) (&fn.get_data ())) - ((char *) (&fn));
-  }
 } // namespace lockfree
 
 //
