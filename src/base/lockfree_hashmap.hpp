@@ -49,6 +49,8 @@ namespace lockfree
       bool find_or_insert (tran::index tran_index, Key &key, T *&t);
       bool insert (tran::index tran_index, Key &key, T *&t);
       bool insert_given (tran::index tran_index, Key &key, T *&t);
+      bool erase (tran::index tran_index, Key &key);
+      bool erase_locked (tran::index tran_index, Key &key, T *&locked_entry);
 
     private:
       using address_type = address_marker<T>;
@@ -99,6 +101,7 @@ namespace lockfree
       bool list_delete (tran::index tran_index, T *&list_head, Key &key, T *locked_entry, int *behavior_flags);
 
       bool hash_insert_internal (tran::index tran_index, Key &key, int bflags, T *&entry);
+      bool hash_erase_internal (tran::index tran_index, Key &key, int bflags, T *locked_entry);
   }; // class hashmap
 
 } // namespace lockfree
@@ -184,6 +187,41 @@ namespace lockfree
     return hash_insert_internal (tran_index, key,
 				 LF_LIST_BF_RETURN_ON_RESTART | LF_LIST_BF_INSERT_GIVEN | LF_LIST_BF_FIND_OR_INSERT,
 				 entry);
+  }
+
+  template <class Key, class T>
+  bool
+  hashmap<Key, T>::erase (tran::index tran_index, Key &key)
+  {
+    return hash_erase_internal (tran_index, key, LF_LIST_BF_RETURN_ON_RESTART | LF_LIST_BF_LOCK_ON_DELETE, NULL);
+  }
+
+  /*
+   * NOTE: Careful when calling this function. The typical scenario to call this function is to first find entry using
+   *	   lf_hash_find and then call lf_hash_delete on the found entry.
+   * NOTE: lf_hash_delete_already_locks can be called only if entry has mutexes.
+   * NOTE: The delete will be successful only if the entry found by key matches the given entry.
+   *	   Usually, the entry will match. However, we do have a limited scenario when a different entry with the same
+   *	   key may be found:
+   *	    1. Entry was found or inserted by this transaction.
+   *	    2. Another transaction cleared the hash. All current entries are moved to back buffer and will be soon
+   *           retired.
+   *	    3. A third transaction inserts a new entry with the same key.
+   *	    4. This transaction tries to delete the entry but the entry inserted by the third transaction si found.
+   */
+  template <class Key, class T>
+  bool
+  hashmap<Key, T>::erase_locked (tran::index tran_index, Key &key, T *&locked_entry)
+  {
+    assert (locked_entry != NULL);
+    assert (m_edesc->using_mutex);
+
+    bool success = hash_erase_internal (tran_index, key, LF_LIST_BF_RETURN_ON_RESTART, locked_entry);
+    if (success)
+      {
+	locked_entry = NULL;
+      }
+    return success;
   }
 
   template <class Key, class T>
@@ -834,7 +872,7 @@ namespace lockfree
     T *&list_head = get_bucket (key);
     bool inserted = false;
 
-    while (restart)
+    while (true)
       {
 	if (LF_LIST_BF_IS_FLAG_SET (&bflags, LF_LIST_BF_INSERT_GIVEN))
 	  {
@@ -845,11 +883,44 @@ namespace lockfree
 	    entry = NULL;
 	  }
 
-	bflags &= ~LF_LIST_BR_RESTARTED;
 	inserted = list_insert_internal (tran_index, list_head, key, &bflags, entry);
-	restart = (bflags & LF_LIST_BR_RESTARTED) != 0;
+	if ((bflags & LF_LIST_BR_RESTARTED) != 0)
+	  {
+	    // restart
+	    bflags &= ~LF_LIST_BR_RESTARTED;
+	  }
+	else
+	  {
+	    // done
+	    break;
+	  }
       }
     return inserted;
+  }
+
+
+  template <class Key, class T>
+  bool
+  hashmap<Key, T>::hash_erase_internal (tran::index tran_index, Key &key, int bflags, T *locked_entry)
+  {
+    T *&list_head = get_bucket (key);
+    bool erased = false;
+
+    while (true)
+      {
+	erased = list_delete (tran_index, list_head, key, locked_entry, &bflags);
+	if ((bflags & LF_LIST_BR_RESTARTED) != 0)
+	  {
+	    // restart
+	    bflags &= ~LF_LIST_BR_RESTARTED;
+	  }
+	else
+	  {
+	    // done
+	    break;
+	  }
+      }
+    return erased;
   }
 } // namespace lockfree
 
