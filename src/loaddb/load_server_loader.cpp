@@ -197,9 +197,14 @@ namespace cubload
 	int free_attr_name = 0;
 	or_attribute *attr_repr = NULL;
 
-	attr_repr = &or_attributes[attrib_order[attr_index]];
-
-	assert (attr_repr != NULL);
+	for (size_t i = 0; i < attrib_order.size (); ++i)
+	  {
+	    if (attrib_order[i] == attr_index)
+	      {
+		attr_repr = &or_attributes[i];
+		break;
+	      }
+	  }
 
 	error_code = or_get_attrname (&recdes, attr_repr->id, &attr_name, &free_attr_name);
 	if (error_code != NO_ERROR)
