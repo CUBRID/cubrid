@@ -377,6 +377,7 @@ namespace lockfree
   void *
   hashmap<Key, T>::get_ptr (T *p, size_t o)
   {
+    assert (p != NULL);
     assert (!address_type::is_address_marked (p));
     return (void *) (((char *) p) + o);
   }
@@ -385,6 +386,8 @@ namespace lockfree
   void *volatile *
   hashmap<Key, T>::get_ref (T *p, size_t o)
   {
+    assert (p != NULL);
+    assert (!address_type::is_address_marked (p));
     return (void *volatile *) (((char *) p) + o);
   }
 
@@ -697,6 +700,9 @@ namespace lockfree
 		      {
 			/* save this for further (local) use. */
 			save_temporary (tdes, entry);
+
+			// note - if this is possible in using_mutex case, we may be in trouble. entry becomes null
+			//        here
 		      }
 
 		    if (m_edesc->using_mutex)
@@ -997,7 +1003,15 @@ namespace lockfree
 	    /* success! */
 	    return true;
 	  } // while (curr != NULL)
+
+	/* advance */
+	curr_p = &get_nextp_ref (curr);
+	curr = address_type::strip_address_mark (*curr_p);
       } // while (restart_search)
+
+    /* search yielded no result so no delete was performed */
+    end_tran_force (tdes);
+    return false;
   }
 
   /*
