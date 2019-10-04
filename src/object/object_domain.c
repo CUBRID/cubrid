@@ -10029,13 +10029,23 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  case DB_TYPE_NCHAR:
 	  case DB_TYPE_VARNCHAR:
 	    {
-	      unsigned int str_size = db_get_string_size (src);
-	      const char *original_str = db_get_string (src);
-	      int error_code;
+	      DB_VALUE utf8_str;
+	      const DB_VALUE *json_str_val = &utf8_str;
+	      int error_code = db_json_copy_and_convert_to_utf8 (src, &utf8_str, &json_str_val);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  status = DOMAIN_ERROR;
+		  break;
+		}
+
+	      unsigned int str_size = db_get_string_size (json_str_val);
+	      const char *original_str = db_get_string (json_str_val);
 
 	      error_code = db_json_get_json_from_str (original_str, doc, str_size);
 	      if (error_code != NO_ERROR)
 		{
+		  pr_clear_value (&utf8_str);
 		  assert (doc == NULL);
 		  status = DOMAIN_ERROR;
 		  break;
@@ -10045,10 +10055,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  && db_json_validate_doc (desired_domain->json_validator, doc) != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
+		  pr_clear_value (&utf8_str);
 		  db_json_delete_doc (doc);
 		  status = DOMAIN_ERROR;
 		  break;
 		}
+	      pr_clear_value (&utf8_str);
 	    }
 	    break;
 	  case DB_TYPE_SHORT:

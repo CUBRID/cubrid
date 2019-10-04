@@ -26,6 +26,7 @@
 #include "server_support.h"
 
 #include "config.h"
+#include "load_worker_manager.hpp"
 #include "log_append.hpp"
 #include "session.h"
 #include "thread_entry_task.hpp"
@@ -92,6 +93,7 @@
 
 #define RMUTEX_NAME_TEMP_CONN_ENTRY "TEMP_CONN_ENTRY"
 
+static bool css_Server_shutdown_inited = false;
 static struct timeval css_Shutdown_timeout = { 0, 0 };
 
 static char *css_Master_server_name = NULL;	/* database identifier */
@@ -1273,6 +1275,18 @@ css_initialize_server_interfaces (int (*request_handler) (THREAD_ENTRY * thrd, u
   css_register_handler_routines (css_internal_connection_handler, NULL /* disabled */ , connection_error_function);
 }
 
+bool
+css_is_shutdowning_server ()
+{
+  return css_Server_shutdown_inited;
+}
+
+void
+css_start_shutdown_server ()
+{
+  css_Server_shutdown_inited = true;
+}
+
 /*
  * css_init() -
  *   return:
@@ -1376,6 +1390,7 @@ shutdown:
   /*
    * start to shutdown server
    */
+  css_start_shutdown_server ();
 
   // stop threads; in first phase we need to stop active workers, but keep log writers for a while longer to make sure
   // all log is transfered
@@ -1383,6 +1398,9 @@ shutdown:
 
   /* stop vacuum threads. */
   vacuum_stop (thread_p);
+
+  // stop load sessions
+  cubload::worker_manager_stop_all ();
 
   /* we should flush all append pages before stop log writer */
   logpb_force_flush_pages (thread_p);

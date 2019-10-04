@@ -30,6 +30,10 @@
 #include "thread_worker_pool_taskcap.hpp"
 #include "xserver_interface.h"
 
+#include <condition_variable>
+#include <mutex>
+#include <set>
+
 namespace cubload
 {
   /*
@@ -60,7 +64,8 @@ namespace cubload
   };
 
   static std::mutex g_wp_mutex;
-  static unsigned int g_session_count = 0;
+  static std::condition_variable g_wp_condvar;
+  std::set<session *> g_active_sessions;
   static cubthread::entry_workpool *g_worker_pool;
   static worker_context_manager *g_wp_context_manager;
   static cubthread::worker_pool_task_capper<cubthread::entry> *g_wp_task_capper;
@@ -109,13 +114,6 @@ namespace cubload
   }
 
   void
-  worker_manager_interrupt ()
-  {
-    assert (g_wp_context_manager != NULL);
-    g_wp_context_manager->interrupt ();
-  }
-
-  void
   worker_manager_push_task (cubthread::entry_task *task)
   {
     assert (g_worker_pool != NULL);
@@ -123,11 +121,11 @@ namespace cubload
   }
 
   void
-  worker_manager_register_session ()
+  worker_manager_register_session (session &load_session)
   {
     g_wp_mutex.lock ();
 
-    if (g_session_count == 0)
+    if (g_active_sessions.empty ())
       {
 	assert (g_worker_pool == NULL);
 	assert (g_wp_context_manager == NULL);
@@ -146,20 +144,23 @@ namespace cubload
 	assert (g_wp_context_manager != NULL);
       }
 
-    g_session_count++;
+    g_active_sessions.insert (&load_session);
 
     g_wp_mutex.unlock ();
   }
 
   void
-  worker_manager_unregister_session ()
+  worker_manager_unregister_session (session &load_session)
   {
     g_wp_mutex.lock ();
 
-    g_session_count--;
+    if (g_active_sessions.erase (&load_session) != 1)
+      {
+	assert (false);
+      }
 
     // Check if there are any sessions attached to the wp. We are under lock so we are the only ones doing this.
-    if (g_session_count == 0)
+    if (g_active_sessions.empty ())
       {
 	// We are the last session so we can safely destroy the worker pool and the manager.
 	cubthread::get_manager ()->destroy_worker_pool (g_worker_pool);
@@ -173,6 +174,27 @@ namespace cubload
       }
 
     g_wp_mutex.unlock ();
+    g_wp_condvar.notify_one ();
+  }
+
+  void
+  worker_manager_stop_all ()
+  {
+    std::unique_lock<std::mutex> ulock (g_wp_mutex);
+    if (g_active_sessions.empty ())
+      {
+	return;
+      }
+
+    for (auto &it : g_active_sessions)
+      {
+	it->interrupt ();
+      }
+    auto pred = [] () -> bool
+    {
+      return g_active_sessions.empty ();
+    };
+    g_wp_condvar.wait (ulock, pred);
   }
 
   void

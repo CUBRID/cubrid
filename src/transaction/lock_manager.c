@@ -3118,7 +3118,7 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
     {
       /* instance lock request */
       /* check if an implicit lock has been acquired */
-      if (lock_is_class_lock_escalated (lock_get_object_lock (class_oid, oid_Root_class_oid, tran_index), lock) == true)
+      if (lock_is_class_lock_escalated (lock_get_object_lock (class_oid, oid_Root_class_oid), lock) == true)
 	{
 	  return LK_GRANTED;
 	}
@@ -3299,6 +3299,8 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
       thread_p = thread_get_thread_entry_info ();
     }
 
+  assert (thread_p->type != TT_LOADDB);
+
   thrd_entry = thread_p;
 
   new_mode = group_mode = old_mode = NULL_LOCK;
@@ -3343,8 +3345,7 @@ start:
 	}
 
       if (ret_val == LK_GRANTED
-	  && lock_is_class_lock_escalated (lock_get_object_lock (class_oid, oid_Root_class_oid, tran_index),
-					   lock) == true)
+	  && lock_is_class_lock_escalated (lock_get_object_lock (class_oid, oid_Root_class_oid), lock) == true)
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_RE_REQUESTED_ON_OBJECTS);	/* monitoring */
 	  ret_val = LK_GRANTED;
@@ -6249,6 +6250,44 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
     }
 #endif
 
+  if (thread_p->type == TT_LOADDB)
+    {
+      // load worker don't lock; they rely on session transaction locks
+      if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
+	{
+	  // instance lock
+	  if (lock_has_lock_on_object (class_oid, oid_Root_class_oid, BU_LOCK))
+	    {
+	      // no instance locking is required
+	      return LK_GRANTED;
+	    }
+	  else
+	    {
+	      // should be locked
+	      assert (false);
+	      return LK_NOTGRANTED;
+	    }
+	}
+      else
+	{
+	  // class lock
+	  if (lock != SCH_S_LOCK && lock != BU_LOCK)
+	    {
+	      // unacceptable
+	      assert (false);
+	      return LK_NOTGRANTED;
+	    }
+	  if (!lock_has_lock_on_object (oid, class_oid, BU_LOCK))
+	    {
+	      assert (false);
+	      return LK_NOTGRANTED;
+	    }
+	  return LK_GRANTED;
+	}
+      // should have returned
+      assert (false);
+    }
+
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   if (cond_flag == LK_COND_LOCK)	/* conditional request */
     {
@@ -6282,7 +6321,7 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 
   /* Check if current transaction has already held the class lock. If the class lock is not held, hold the class lock,
    * now. */
-  class_entry = lock_get_class_lock (thread_p, class_oid, tran_index);
+  class_entry = lock_get_class_lock (thread_p, class_oid);
   old_class_lock = (class_entry) ? class_entry->granted_mode : NULL_LOCK;
 
   if (OID_IS_ROOTOID (class_oid))
@@ -6317,7 +6356,7 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 	    }
 	  else
 	    {
-	      superclass_entry = lock_get_class_lock (thread_p, oid_Root_class_oid, tran_index);
+	      superclass_entry = lock_get_class_lock (thread_p, oid_Root_class_oid);
 	    }
 
 	  granted =
@@ -6444,7 +6483,7 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * su
 
   /* Check if current transaction has already held the class lock. If the class lock is not held, hold the class lock,
    * now. */
-  superclass_entry = lock_get_class_lock (thread_p, superclass_oid, tran_index);
+  superclass_entry = lock_get_class_lock (thread_p, superclass_oid);
   old_superclass_lock = (superclass_entry) ? superclass_entry->granted_mode : NULL_LOCK;
 
 
@@ -6575,7 +6614,7 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag, LOCK c
 
   /* acquire the lock on the class */
   /* NOTE that in case of acquiring a lock on a class object, the higher lock granule of the class object is not given. */
-  root_class_entry = lock_get_class_lock (thread_p, oid_Root_class_oid, tran_index);
+  root_class_entry = lock_get_class_lock (thread_p, oid_Root_class_oid);
   granted = lock_internal_perform_lock_object (thread_p, tran_index, class_oid, NULL, class_lock, wait_msecs,
 					       &class_entry, root_class_entry);
   assert (granted == LK_GRANTED || cond_flag == LK_COND_LOCK || er_errid () != NO_ERROR);
@@ -6739,7 +6778,7 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
     }
 
   /* get root class lock mode */
-  root_class_entry = lock_get_class_lock (thread_p, oid_Root_class_oid, tran_index);
+  root_class_entry = lock_get_class_lock (thread_p, oid_Root_class_oid);
 
   for (i = 0; i < cls_count; i++)
     {
@@ -7223,21 +7262,14 @@ lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * 
  *
  * return:
  *
- *   oid(in): target object ientifier
+ *   oid(in): target object identifier
  *   class_oid(in): class identifier of the target object
- *   tran_index(in): the transaction table index of target transaction.
  *
- * Note:Find the acquired lock on the given object by the given transaction.
- *     Currently, the value of the "tran_index" must not be NULL_TRAN_INDEX.
+ * Note:Find the acquired lock on the given object by the current transaction.
  *
- *     If this function is changed in order to allow NULL_TRAN_INDEX to be
- *     transferred as the value of the "tran_index", this function will
- *     find the resulting lock acquired by all transactions holding a lock
- *     on the given OID (The most powerful lock, actually a combination of
- *     the locks).
  */
 LOCK
-lock_get_object_lock (const OID * oid, const OID * class_oid, int tran_index)
+lock_get_object_lock (const OID * oid, const OID * class_oid)
 {
 #if !defined (SERVER_MODE)
   return X_LOCK;
@@ -7246,13 +7278,24 @@ lock_get_object_lock (const OID * oid, const OID * class_oid, int tran_index)
   LK_TRAN_LOCK *tran_lock;
   LK_ENTRY *entry_ptr;
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-  int rv;
+  int rv, tran_index;
 
   if (oid == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2, "lk_get_object_lock", "NULL OID pointer");
       return NULL_LOCK;
     }
+
+  if (thread_p->type == thread_type::TT_LOADDB)
+    {
+      /* Loaddb workers does not acquire locks. Get tran_index of loaddb workers manager thread. */
+      tran_index = thread_p->conn_entry->get_tran_index ();
+    }
+  else
+    {
+      tran_index = logtb_get_current_tran_index ();
+    }
+
   if (tran_index == NULL_TRAN_INDEX)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2, "lk_get_object_lock", "NULL_TRAN_INDEX");
@@ -7334,14 +7377,13 @@ lock_get_object_lock (const OID * oid, const OID * class_oid, int tran_index)
  *
  *   oid(in): target object ientifier
  *   class_oid(in): class identifier of the target object
- *   tran_index(in): the transaction table index of target transaction.
  *   lock(in): the lock mode
  *
  * Note: Find whether the transaction holds an enough lock on the object
  *
  */
 int
-lock_has_lock_on_object (const OID * oid, const OID * class_oid, int tran_index, LOCK lock)
+lock_has_lock_on_object (const OID * oid, const OID * class_oid, LOCK lock)
 {
 #if !defined (SERVER_MODE)
   return 1;
@@ -7350,13 +7392,33 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, int tran_index,
   LK_TRAN_LOCK *tran_lock;
   LK_ENTRY *entry_ptr;
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-  int rv;
+  int rv, tran_index;
 
   if (oid == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2, "lock_has_lock_on_object", "NULL OID pointer");
       return ER_LK_BAD_ARGUMENT;
     }
+
+  if (thread_p->type == thread_type::TT_LOADDB)
+    {
+      /* Loaddb workers does not acquire locks. Get tran_index of loaddb workers manager thread. */
+      tran_index = thread_p->conn_entry->get_tran_index ();
+
+      if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
+	{
+	  return lock_has_lock_on_object (class_oid, oid_Root_class_oid, BU_LOCK);
+	}
+      else
+	{
+	  // fall through
+	}
+    }
+  else
+    {
+      tran_index = logtb_get_current_tran_index ();
+    }
+
   if (tran_index == NULL_TRAN_INDEX)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2, "lock_has_lock_on_object", "NULL_TRAN_INDEX");
@@ -7569,18 +7631,17 @@ lock_is_waiting_transaction (int tran_index)
 
 /*
  * lock_get_class_lock - Get a pointer to lock heap entry acquired by
- *                        given transaction on given class object
+ *                       the current transaction on given class object
  *
  * return:
  *
  *   class_oid(in): target class object identifier
- *   tran_index(in): target transaction
  *
- * Note:This function finds lock entry acquired by the given transaction
+ * Note:This function finds lock entry acquired by the current transaction
  *     on the given class and then return a pointer to the lock entry.
  */
 LK_ENTRY *
-lock_get_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, int tran_index)
+lock_get_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
 #if !defined (SERVER_MODE)
   assert (false);
@@ -7589,7 +7650,7 @@ lock_get_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, int tran_in
 #else /* !SERVER_MODE */
   LK_TRAN_LOCK *tran_lock;
   LK_ENTRY *entry_ptr;
-  int rv;
+  int rv, tran_index;
 
   if (class_oid == NULL)
     {
@@ -7600,6 +7661,22 @@ lock_get_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, int tran_in
   if (OID_ISNULL (class_oid))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2, "lk_get_class_lock_ptr", "NULL_ClassOID");
+      return NULL;
+    }
+
+  if (thread_p->type == thread_type::TT_LOADDB)
+    {
+      /* Loaddb workers does not acquire locks. Get tran_index of loaddb workers manager thread. */
+      tran_index = thread_p->conn_entry->get_tran_index ();
+    }
+  else
+    {
+      tran_index = logtb_get_current_tran_index ();
+    }
+
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2, "lock_get_class_lock", "NULL_TRAN_INDEX");
       return NULL;
     }
 
@@ -8905,7 +8982,7 @@ lock_add_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * comp_lock,
 
       if (lockcomp->root_class_ptr == NULL)
 	{
-	  lockcomp->root_class_ptr = lock_get_class_lock (thread_p, oid_Root_class_oid, lockcomp->tran_index);
+	  lockcomp->root_class_ptr = lock_get_class_lock (thread_p, oid_Root_class_oid);
 	}
 
       /* initialize lockcomp_class */
