@@ -511,6 +511,7 @@ if(AT_LEAST_ONE_UNIT_TEST)
     ${CMAKE_SOURCE_DIR}/src/heaplayers/util
     ${JAVA_INC}
     ${EP_INCLUDES}
+    ${FLEX_INCLUDE_DIRS}
     )
 
   add_dependencies(cubrid-win-lib ${EP_TARGETS})
