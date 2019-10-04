@@ -383,6 +383,8 @@ class lf_hash_table_cpp
 
     void clear (lf_tran_entry *t_entry);
 
+    size_t get_size () const;
+
     lf_hash_table &get_hash_table ();
     lf_freelist &get_freelist ();
 
@@ -553,6 +555,14 @@ void
 lf_hash_table_cpp<Key, T>::clear (lf_tran_entry *t_entry)
 {
   lf_hash_clear (t_entry, &m_hash);
+}
+
+template <class Key, class T>
+size_t
+lf_hash_table_cpp<Key, T>::get_size () const
+{
+  assert (m_hash.hash_size > 0);
+  return (size_t) m_hash.hash_size;
 }
 
 template <class Key, class T>

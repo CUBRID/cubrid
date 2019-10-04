@@ -60,6 +60,8 @@ namespace lockfree
 
       void clear (tran::index tran_index);    // NOT LOCK-FREE
 
+      size_t get_size () const;
+
     private:
       using address_type = address_marker<T>;
 
@@ -166,24 +168,30 @@ namespace lockfree
   void
   hashmap<Key, T>::destroy ()
   {
-    T *node_iter;
-    T *save_next;
-    tran::descriptor &tdes = get_tran_descriptor (0);
-
-    for (size_t i = 0; i < m_size; ++i)
+    if (m_buckets != NULL)
       {
-	for (node_iter = m_buckets[i]; node_iter != NULL; node_iter = save_next)
+	T *node_iter;
+	T *save_next;
+	tran::descriptor &tdes = get_tran_descriptor (0);
+
+	for (size_t i = 0; i < m_size; ++i)
 	  {
-	    assert (!address_type::is_address_marked (node_iter));
-	    save_next = get_nextp (node_iter);
-	    freelist_retire (tdes, node_iter);
+	    for (node_iter = m_buckets[i]; node_iter != NULL; node_iter = save_next)
+	      {
+		assert (!address_type::is_address_marked (node_iter));
+		save_next = get_nextp (node_iter);
+		freelist_retire (tdes, node_iter);
+	      }
 	  }
       }
 
     delete [] m_buckets;
+    m_buckets = NULL;
     delete [] m_backbuffer;
+    m_backbuffer = NULL;
 
     delete m_freelist;
+    m_freelist = NULL;
   }
 
   template <class Key, class T>
@@ -368,6 +376,13 @@ namespace lockfree
 	    curr = next;
 	  }
       }
+  }
+
+  template <class Key, class T>
+  size_t
+  hashmap<Key, T>::get_size () const
+  {
+    return m_size;
   }
 
   template <class Key, class T>

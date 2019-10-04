@@ -24,9 +24,11 @@
 #include "lockfree_transaction_system.hpp"
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdlib>
 #include <iostream>
+#include <random>
 #include <string>
 #include <thread>
 
@@ -44,6 +46,10 @@ namespace test_lockfree
   static int copy_my_key (void *src, void *dest);
   static int compare_my_key (void *key1, void *key2);
   static unsigned int hash_my_key (void *key, int hash_size);
+
+  static void keygen_no_conflict (my_key &k, size_t hash_size, size_t nops, std::random_device &rd);
+  static void keygen_avg_conflict (my_key &k, size_t hash_size, size_t nops, std::random_device &rd);
+  static void keygen_high_conflict (my_key &k, size_t hash_size, size_t nops, std::random_device &rd);
 
   struct my_entry
   {
@@ -88,19 +94,95 @@ namespace test_lockfree
   static void init_lf_hash_table (lf_tran_system &transys, int hash_size, my_lf_hash_table &hash);
   static void init_hashmap (tran::system &transys, size_t hash_size, my_hashmap &hash);
 
+  struct test_result
+  {
+    // op stats
+    std::atomic_uint64_t m_find_ops;
+    std::atomic_uint64_t m_find_or_insert_ops;
+    std::atomic_uint64_t m_insert_ops;
+    std::atomic_uint64_t m_insert_given_ops;
+    std::atomic_uint64_t m_erase_ops;
+    std::atomic_uint64_t m_erase_locked_ops;
+    std::atomic_uint64_t m_iterate_ops;
+    std::atomic_uint64_t m_clear_ops;
+
+    // result stats
+    std::atomic_uint64_t m_successful_inserts;
+    std::atomic_uint64_t m_rejected_inserts;
+    std::atomic_uint64_t m_found_on_inserts;
+    std::atomic_uint64_t m_found_on_finds;
+    std::atomic_uint64_t m_not_found_on_finds;
+    std::atomic_uint64_t m_found_on_erase_ops;
+    std::atomic_uint64_t m_not_found_on_erase_ops;
+
+    test_result ()
+    {
+      // op stats
+      m_find_ops = 0;
+      m_find_or_insert_ops = 0;
+      m_insert_ops = 0;
+      m_insert_given_ops = 0;
+      m_erase_ops = 0;
+      m_erase_locked_ops = 0;
+      m_iterate_ops = 0;
+      m_clear_ops = 0;
+
+      // result stats
+      m_successful_inserts = 0;
+      m_rejected_inserts = 0;
+      m_found_on_inserts = 0;
+      m_found_on_finds = 0;
+      m_not_found_on_finds = 0;
+      m_found_on_erase_ops = 0;
+      m_not_found_on_erase_ops = 0;
+    }
+
+    void dump_stats ()
+    {
+      std::cout << "OPS: ";
+      dump_not_zero ("find", m_find_ops);
+      dump_not_zero ("find_or_ins", m_find_or_insert_ops);
+      dump_not_zero ("ins", m_insert_ops);
+      dump_not_zero ("ins_given", m_insert_given_ops);
+      dump_not_zero ("erase", m_erase_ops);
+      dump_not_zero ("erase_lck", m_erase_locked_ops);
+      dump_not_zero ("iter", m_iterate_ops);
+      dump_not_zero ("clr", m_clear_ops);
+      std::cout << std::endl;
+
+      std::cout << "REZ: ";
+      dump_not_zero ("ins_succ", m_successful_inserts);
+      dump_not_zero ("ins_fail", m_rejected_inserts);
+      dump_not_zero ("ins_find", m_found_on_inserts);
+      dump_not_zero ("fnd_succ", m_found_on_finds);
+      dump_not_zero ("fnd_fail", m_not_found_on_finds);
+      dump_not_zero ("ers_succ", m_found_on_erase_ops);
+      dump_not_zero ("ers_fail", m_not_found_on_erase_ops);
+      std::cout << std::endl;
+    }
+
+    void dump_not_zero (const char *name, std::atomic_uint64_t &val)
+    {
+      if (val != 0)
+	{
+	  std::cout << name << " = " << val.load () << " ";
+	}
+    }
+  };
+
   template <class H, class Tran>
   void
-  testcase_inserts_only (H &hash, Tran lftran, size_t insert_count)
+  testcase_inserts_only (test_result &tres, H &hash, Tran lftran, size_t insert_count)
   {
     my_key k;
     size_t inserted = 0;
     size_t rejected = 0;
     my_entry *ent;
+    std::random_device rd;
 
     for (size_t i = 0; i < insert_count; ++i)
       {
-	k.m_1 = (unsigned int) std::rand ();
-	k.m_2 = (unsigned int) std::rand ();
+	keygen_no_conflict (k, hash.get_size (), insert_count, rd);
 
 	if (hash.insert (lftran, k, ent))
 	  {
@@ -112,17 +194,21 @@ namespace test_lockfree
 	    ++rejected;
 	  }
       }
+
+    tres.m_insert_ops += insert_count;
+    tres.m_successful_inserts += inserted;
+    tres.m_rejected_inserts += rejected;
   }
 
   template <class H, class Tran, size_t ThCnt, typename F, typename ... Args>
   void
-  start_threads (H &hash, std::array<Tran, ThCnt> &tran_array, F &&f, Args &&... args)
+  start_threads (test_result &tres, H &hash, std::array<Tran, ThCnt> &tran_array, F &&f, Args &&... args)
   {
     std::thread all_threads[ThCnt];
 
     for (size_t i = 0; i < ThCnt; i++)
       {
-	all_threads[i] = std::thread (std::forward<F> (f), std::ref (hash), std::ref (tran_array[i]),
+	all_threads[i] = std::thread (std::forward<F> (f), std::ref (tres), std::ref (hash), std::ref (tran_array[i]),
 				      std::forward<Args> (args)...);
       }
     for (size_t i = 0; i < ThCnt; i++)
@@ -133,7 +219,7 @@ namespace test_lockfree
 
   template <size_t ThCnt, typename F, typename ... Args>
   void
-  test_hashmap_case (size_t hash_size, F &&f, Args &&... args)
+  test_hashmap_case (test_result &tres, size_t hash_size, F &&f, Args &&... args)
   {
     tran::system l_transys { ThCnt };
 
@@ -146,7 +232,7 @@ namespace test_lockfree
     my_hashmap l_hash;
     init_hashmap (l_transys, hash_size, l_hash);
 
-    start_threads (l_hash, l_indexes, std::forward<F> (f), std::forward<Args> (args)...);
+    start_threads (tres, l_hash, l_indexes, std::forward<F> (f), std::forward<Args> (args)...);
 
     l_hash.destroy ();
     for (size_t i = 0; i < ThCnt; ++i)
@@ -157,7 +243,7 @@ namespace test_lockfree
 
   template <size_t ThCnt, typename F, typename ... Args>
   void
-  test_lf_hashtable_case (size_t hash_size, F &&f, Args &&... args)
+  test_lf_hashtable_case (test_result &tres, size_t hash_size, F &&f, Args &&... args)
   {
     lf_tran_system l_transys;
     lf_tran_system_init (&l_transys, (int) ThCnt);
@@ -171,7 +257,7 @@ namespace test_lockfree
     my_lf_hash_table l_hash;
     init_lf_hash_table (l_transys, (int) hash_size, l_hash);
 
-    start_threads (l_hash, l_tran_ents, std::forward<F> (f), std::forward<Args> (args)...);
+    start_threads (tres, l_hash, l_tran_ents, std::forward<F> (f), std::forward<Args> (args)...);
 
     l_hash.destroy ();
     for (size_t i = 0; i < ThCnt; ++i)
@@ -188,9 +274,12 @@ namespace test_lockfree
     std::array<size_t, 3> hash_sizes = { 1, 100, 10000 };
     for (size_t i = 0; i < hash_sizes.size (); ++i)
       {
+	test_result tres;
 	std::cout << "test lockfree_hashmap|";
-	std::cout << case_name << " [tcnt = " << ThCnt << ", hsz = " << hash_sizes[i] << "]\n";
-	test_hashmap_case<ThCnt> (hash_sizes[i], std::forward<F> (f), std::forward<Args> (args)...);
+	std::cout << case_name << " [tcnt = " << ThCnt << ", hsz = " << hash_sizes[i] << "]" << std::endl;
+	test_hashmap_case<ThCnt> (tres, hash_sizes[i], std::forward<F> (f), std::forward<Args> (args)...);
+	tres.dump_stats ();
+	std::cout << std::endl;
       }
   }
 
@@ -201,9 +290,12 @@ namespace test_lockfree
     std::array<size_t, 3> hash_sizes = { 1, 100, 10000 };
     for (size_t i = 0; i < hash_sizes.size (); ++i)
       {
+	test_result tres;
 	std::cout << "test lf_hash_table_cpp|";
 	std::cout << case_name << " [tcnt = " << ThCnt << ", hsz = " << hash_sizes[i] << "]\n";
-	test_lf_hashtable_case<ThCnt> (hash_sizes[i], std::forward<F> (f), std::forward<Args> (args)...);
+	test_lf_hashtable_case<ThCnt> (tres, hash_sizes[i], std::forward<F> (f), std::forward<Args> (args)...);
+	tres.dump_stats ();
+	std::cout << std::endl;
       }
   }
 
@@ -249,7 +341,7 @@ namespace test_lockfree
   static int
   copy_my_key (void *src, void *dest)
   {
-    * (my_key *) src = * (my_key *) dest;
+    * (my_key *) dest = * (my_key *) src;
     return 0;
   }
 
@@ -267,6 +359,32 @@ namespace test_lockfree
   {
     unsigned int size = (unsigned int) hash_size;
     return ((my_key *) key)->m_1 % hash_size;
+  }
+
+  static void
+  keygen_no_conflict (my_key &k, size_t hash_size, size_t nops, std::random_device &rd)
+  {
+    unsigned int bucket_size = std::numeric_limits<unsigned int>::max ();
+    std::uniform_int_distribution<unsigned int> uid1 (0, (unsigned int) hash_size);
+    std::uniform_int_distribution<unsigned int> uid2 (0, bucket_size);
+    k.m_1 = uid1 (rd);
+    k.m_2 = uid2 (rd);
+  }
+
+  static void
+  keygen_avg_conflict (my_key &k, size_t hash_size, size_t nops, std::random_device &rd)
+  {
+    k.m_1 = std::rand () % hash_size;
+    size_t bucket_size = std::max ((size_t ) 2, (nops / hash_size) * 5);
+    k.m_2 = std::rand () % bucket_size;
+  }
+
+  static void
+  keygen_high_conflict (my_key &k, size_t hash_size, size_t nops, std::random_device &rd)
+  {
+    k.m_1 = std::rand () % hash_size;
+    size_t bucket_size = std::max ((size_t ) 2, (nops / hash_size));
+    k.m_2 = std::rand () % bucket_size;
   }
 
   static void *

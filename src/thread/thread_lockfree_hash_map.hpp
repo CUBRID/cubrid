@@ -56,6 +56,8 @@ namespace cubthread
 
       void clear (cubthread::entry *thread_p);    // NOT LOCK-FREE
 
+      size_t get_size () const;
+
     private:
       bool is_old_type () const;
       lf_tran_entry *get_tran_entry (cubthread::entry *thread_p);
@@ -203,6 +205,13 @@ namespace cubthread
   lockfree_hashmap<Key, T>::clear (cubthread::entry *thread_p)
   {
     lockfree_hashmap_forward_func_noarg (clear, thread_p);
+  }
+
+  template <class Key, class T>
+  size_t
+  lockfree_hashmap<Key, T>::get_size () const
+  {
+    return is_old_type () ? m_old_hash.get_size () : m_new_hash.get_size ();
   }
 
 #undef lockfree_hashmap_forward_func
