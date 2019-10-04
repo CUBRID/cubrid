@@ -641,6 +641,8 @@ namespace lockfree
 
     while (restart_search)    // restart_search:
       {
+	restart_search = false;
+
 	curr = address_type::atomic_strip_address_mark (list_head);
 	restart_search = false;
 
@@ -683,7 +685,7 @@ namespace lockfree
 	    /* advance */
 	    curr = address_type::strip_address_mark (get_nextp_ref (curr));
 	  }
-      }
+      } // while (restart_search)
 
     /* all ok but not found */
     tdes.end_tran ();
@@ -937,6 +939,8 @@ namespace lockfree
 
     while (restart_search)
       {
+	restart_search = false;
+
 	start_tran_force (tdes);
 	curr_p = &list_head;
 	curr = address_type::atomic_strip_address_mark (*curr_p);
@@ -945,7 +949,7 @@ namespace lockfree
 	while (curr != NULL)
 	  {
 	    /* is this the droid we are looking for? */
-	    if (m_edesc->f_key_cmp (key, get_keyp (curr)) == 0)
+	    if (m_edesc->f_key_cmp (&key, get_keyp (curr)) == 0)
 	      {
 		if (locked_entry != NULL && locked_entry != curr)
 		  {
@@ -958,101 +962,101 @@ namespace lockfree
 		    end_tran_force (tdes);
 		    return false;
 		  }
-	      }
 
-	    /* fetch next entry */
-	    next_p = &get_nextp_ref (curr);
-	    next = address_type::strip_address_mark (*next_p);
+		/* fetch next entry */
+		next_p = &get_nextp_ref (curr);
+		next = address_type::strip_address_mark (*next_p);
 
-	    /* set mark on next pointer; this way, if anyone else is trying to delete the next entry, it will fail */
-	    if (!ATOMIC_CAS_ADDR (next_p, next, address_type::set_adress_mark (next)))
-	      {
-		/* joke's on us, this time; somebody else marked it before */
+		/* set mark on next pointer; this way, if anyone else is trying to delete the next entry, it will fail */
+		if (!ATOMIC_CAS_ADDR (next_p, next, address_type::set_adress_mark (next)))
+		  {
+		    /* joke's on us, this time; somebody else marked it before */
 
-		end_tran_force (tdes);
-		if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
-		  {
-		    *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
-		    assert ((*behavior_flags) & LF_LIST_BR_RESTARTED);
-		    return false;
-		  }
-		else
-		  {
-		    restart_search = true;
-		    break;
-		  }
-	      }
-
-	    /* lock mutex if necessary */
-	    if (m_edesc->using_mutex)
-	      {
-		if (LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_LOCK_ON_DELETE))
-		  {
-		    lock_entry_mutex (*curr, entry_mutex);
-		  }
-		else
-		  {
-		    /* Must be already locked! */
-		    entry_mutex = get_pthread_mutexp (curr);
+		    end_tran_force (tdes);
+		    if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
+		      {
+			*behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
+			assert ((*behavior_flags) & LF_LIST_BR_RESTARTED);
+			return false;
+		      }
+		    else
+		      {
+			restart_search = true;
+			break;
+		      }
 		  }
 
-		/* since we set the mark, nobody else can delete it, so we have nothing else to check */
-	      }
+		/* lock mutex if necessary */
+		if (m_edesc->using_mutex)
+		  {
+		    if (LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_LOCK_ON_DELETE))
+		      {
+			lock_entry_mutex (*curr, entry_mutex);
+		      }
+		    else
+		      {
+			/* Must be already locked! */
+			entry_mutex = get_pthread_mutexp (curr);
+		      }
 
-	    /* unlink */
-	    if (!ATOMIC_CAS_ADDR (curr_p, curr, next))
-	      {
-		/* unlink failed; first step is to remove lock (if applicable) */
-		if (m_edesc->using_mutex && LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_LOCK_ON_DELETE))
+		    /* since we set the mark, nobody else can delete it, so we have nothing else to check */
+		  }
+
+		/* unlink */
+		if (!ATOMIC_CAS_ADDR (curr_p, curr, next))
+		  {
+		    /* unlink failed; first step is to remove lock (if applicable) */
+		    if (m_edesc->using_mutex && LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_LOCK_ON_DELETE))
+		      {
+			unlock_entry_mutex_force (entry_mutex);
+		      }
+
+		    /* remove mark and restart search */
+		    if (!ATOMIC_CAS_ADDR (next_p, address_type::set_adress_mark (next), next))
+		      {
+			/* impossible case */
+			assert (false);
+			end_tran_force (tdes);
+			return false;
+		      }
+
+		    end_tran_force (tdes);
+		    if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
+		      {
+			*behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
+			assert ((*behavior_flags) & LF_LIST_BR_RESTARTED);
+			return false;
+		      }
+		    else
+		      {
+			restart_search = true;
+			break;
+		      }
+		  }
+		/* unlink successful */
+
+		/* unlock mutex */
+		if (m_edesc->using_mutex)
 		  {
 		    unlock_entry_mutex_force (entry_mutex);
 		  }
 
-		/* remove mark and restart search */
-		if (!ATOMIC_CAS_ADDR (next_p, address_type::set_adress_mark (next), next))
-		  {
-		    /* impossible case */
-		    assert (false);
-		    end_tran_force (tdes);
-		    return ER_FAILED;
-		  }
+		promote_tran_force (tdes);
 
+		/* now we can feed the entry to the freelist and forget about it */
+		freelist_retire (tdes, curr);
+
+		/* end the transaction */
 		end_tran_force (tdes);
-		if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
-		  {
-		    *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
-		    assert ((*behavior_flags) & LF_LIST_BR_RESTARTED);
-		    return NO_ERROR;
-		  }
-		else
-		  {
-		    restart_search = true;
-		    break;
-		  }
-	      }
-	    /* unlink successful */
 
-	    /* unlock mutex */
-	    if (m_edesc->using_mutex)
-	      {
-		unlock_entry_mutex_force (entry_mutex);
-	      }
+		/* success! */
+		return true;
+	      } // m_edesc->f_key_cmp (&key, get_keyp (curr)) == 0
 
-	    promote_tran_force (tdes);
-
-	    /* now we can feed the entry to the freelist and forget about it */
-	    freelist_retire (tdes, curr);
-
-	    /* end the transaction */
-	    end_tran_force (tdes);
-
-	    /* success! */
-	    return true;
+	    /* advance */
+	    curr_p = &get_nextp_ref (curr);
+	    curr = address_type::strip_address_mark (*curr_p);
 	  } // while (curr != NULL)
-
-	/* advance */
-	curr_p = &get_nextp_ref (curr);
-	curr = address_type::strip_address_mark (*curr_p);
       } // while (restart_search)
 
     /* search yielded no result so no delete was performed */

@@ -230,6 +230,67 @@ namespace test_lockfree
     tres.m_found_on_finds += insert_count;
   }
 
+  template <class H, class Tran>
+  void
+  testcase_find_or_inserts_and_erase (test_result &tres, H &hash, Tran lftran, size_t insert_count, size_t erase_count)
+  {
+    my_key k;
+    size_t inserts = 0;
+    size_t found_inserts = 0;
+    size_t erased = 0;
+    size_t erase_not_found = 0;
+    std::random_device rd;
+    my_entry *myent;
+
+    size_t hash_size = hash.get_size ();
+    size_t total_ops = insert_count + erase_count;
+    size_t random_op;
+    size_t left_ops = total_ops;
+
+    tres.m_find_or_insert_ops += insert_count;
+    tres.m_erase_ops += erase_count;
+
+    while (left_ops > 0)
+      {
+	keygen_high_conflict (k, hash_size, total_ops, rd);
+	random_op = rd () % left_ops;
+	if (random_op < insert_count)
+	  {
+	    if (hash.find_or_insert (lftran, k, myent))
+	      {
+		++inserts;
+	      }
+	    else
+	      {
+		++found_inserts;
+	      }
+	    assert (myent != NULL);
+	    hash.unlock (lftran, myent);
+
+	    --insert_count;
+	  }
+	else
+	  {
+	    if (hash.erase (lftran, k))
+	      {
+		++erased;
+	      }
+	    else
+	      {
+		++erase_not_found;
+	      }
+
+	    --erase_count;
+	  }
+	--left_ops;
+      }
+
+    tres.m_successful_inserts += inserts;
+    tres.m_found_on_inserts += found_inserts;
+    tres.m_found_on_erase_ops += erased;
+    tres.m_not_found_on_erase_ops += erase_not_found;
+  }
+
   template <class H, class Tran, size_t ThCnt, typename F, typename ... Args>
   void
   start_threads (test_result &tres, H &hash, std::array<Tran, ThCnt> &tran_array, F &&f, Args &&... args)
@@ -365,8 +426,13 @@ namespace test_lockfree
     std::cout << "Start testing lock-free hashmap/hash table with mutex " << mutex_on_off;
     increment_tab_indent ();
 
-    run_test_lf_hash_table ("inserts=10000", testcase_inserts<TEMPL_LFHT>, 10000);
-    run_test_hashmap ("inserts=10000", testcase_inserts<TEMPL_HASHMAP>, 10000);
+    run_test_lf_hash_table ("insert_find=10000", testcase_inserts<TEMPL_LFHT>, 10000);
+    run_test_hashmap ("insert_find=10000", testcase_inserts<TEMPL_HASHMAP>, 10000);
+
+    run_test_lf_hash_table ("find_or_insert_and_erase=10000,1000",
+			    testcase_find_or_inserts_and_erase<TEMPL_LFHT>, 10000, 1000);
+    run_test_hashmap ("find_or_insert_and_erase=10000,1000",
+		      testcase_find_or_inserts_and_erase<TEMPL_HASHMAP>, 10000, 1000);
 
     decrement_tab_indent ();
   }
