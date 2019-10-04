@@ -87,12 +87,37 @@ namespace test_lockfree
     compare_my_key,
     hash_my_key
   };
+  static void
+  set_entry_mutex_mode (bool on_off)
+  {
+    g_edesc.using_mutex = on_off ? LF_EM_USING_MUTEX : LF_EM_NOT_USING_MUTEX;
+  }
 
   using my_hashmap = hashmap<my_key, my_entry>;
   using my_lf_hash_table = lf_hash_table_cpp<my_key, my_entry>;
 
   static void init_lf_hash_table (lf_tran_system &transys, int hash_size, my_lf_hash_table &hash);
   static void init_hashmap (tran::system &transys, size_t hash_size, my_hashmap &hash);
+
+  std::string g_tabs = "";
+
+  static void
+  increment_tab_indent ()
+  {
+    g_tabs += '\t';
+  }
+
+  static void
+  decrement_tab_indent ()
+  {
+    g_tabs.pop_back ();
+  }
+
+  static void
+  cout_new_line ()
+  {
+    std::cout << std::endl << g_tabs;
+  }
 
   struct test_result
   {
@@ -139,6 +164,7 @@ namespace test_lockfree
 
     void dump_stats ()
     {
+      cout_new_line ();
       std::cout << "OPS: ";
       dump_not_zero ("find", m_find_ops);
       dump_not_zero ("find_or_ins", m_find_or_insert_ops);
@@ -148,8 +174,8 @@ namespace test_lockfree
       dump_not_zero ("erase_lck", m_erase_locked_ops);
       dump_not_zero ("iter", m_iterate_ops);
       dump_not_zero ("clr", m_clear_ops);
-      std::cout << std::endl;
 
+      cout_new_line ();
       std::cout << "REZ: ";
       dump_not_zero ("ins_succ", m_successful_inserts);
       dump_not_zero ("ins_fail", m_rejected_inserts);
@@ -158,7 +184,6 @@ namespace test_lockfree
       dump_not_zero ("fnd_fail", m_not_found_on_finds);
       dump_not_zero ("ers_succ", m_found_on_erase_ops);
       dump_not_zero ("ers_fail", m_not_found_on_erase_ops);
-      std::cout << std::endl;
     }
 
     void dump_not_zero (const char *name, std::atomic_uint64_t &val)
@@ -280,11 +305,14 @@ namespace test_lockfree
     for (size_t i = 0; i < hash_sizes.size (); ++i)
       {
 	test_result tres;
+
+	cout_new_line ();
 	std::cout << "test lockfree_hashmap|";
-	std::cout << case_name << " [tcnt = " << ThCnt << ", hsz = " << hash_sizes[i] << "]" << std::endl;
+	std::cout << case_name << " [tcnt = " << ThCnt << ", hsz = " << hash_sizes[i] << "]";
+	increment_tab_indent ();
 	test_hashmap_case<ThCnt> (tres, hash_sizes[i], std::forward<F> (f), std::forward<Args> (args)...);
 	tres.dump_stats ();
-	std::cout << std::endl;
+	decrement_tab_indent ();
       }
   }
 
@@ -296,11 +324,14 @@ namespace test_lockfree
     for (size_t i = 0; i < hash_sizes.size (); ++i)
       {
 	test_result tres;
+
+	cout_new_line ();
 	std::cout << "test lf_hash_table_cpp|";
-	std::cout << case_name << " [tcnt = " << ThCnt << ", hsz = " << hash_sizes[i] << "]\n";
+	std::cout << case_name << " [tcnt = " << ThCnt << ", hsz = " << hash_sizes[i] << "]";
+	increment_tab_indent ();
 	test_lf_hashtable_case<ThCnt> (tres, hash_sizes[i], std::forward<F> (f), std::forward<Args> (args)...);
 	tres.dump_stats ();
-	std::cout << std::endl;
+	decrement_tab_indent ();
       }
   }
 
@@ -325,11 +356,26 @@ namespace test_lockfree
 #define TEMPL_LFHT my_lf_hash_table, lf_tran_entry *
 #define TEMPL_HASHMAP my_hashmap, tran::index
 
+  static void
+  test_hashmap_functional_internal (bool mutex_on_off)
+  {
+    set_entry_mutex_mode (mutex_on_off);
+
+    cout_new_line ();
+    std::cout << "Start testing lock-free hashmap/hash table with mutex " << mutex_on_off;
+    increment_tab_indent ();
+
+    run_test_lf_hash_table ("inserts=10000", testcase_inserts<TEMPL_LFHT>, 10000);
+    run_test_hashmap ("inserts=10000", testcase_inserts<TEMPL_HASHMAP>, 10000);
+
+    decrement_tab_indent ();
+  }
+
   int
   test_hashmap_functional ()
   {
-    run_test_lf_hash_table ("inserts=10000", testcase_inserts<TEMPL_LFHT>, 10000);
-    run_test_hashmap ("inserts=10000", testcase_inserts<TEMPL_HASHMAP>, 10000);
+    test_hashmap_functional_internal (false);
+    test_hashmap_functional_internal (true);
 
     return 0;
   }
