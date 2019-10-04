@@ -363,7 +363,7 @@ namespace cubload
     int precision = domain.precision;
     unsigned char codeset = domain.codeset;
 
-    db_make_char (val, 1, (char *) "a", 1, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+    db_make_char (val, 1, (char *) "a", 1, codeset, domain.collation_id);
 
     intl_char_count ((unsigned char *) str, str_len, (INTL_CODESET) codeset, &char_count);
 
@@ -424,7 +424,7 @@ namespace cubload
     int precision = domain.precision;
     unsigned char codeset = domain.codeset;
 
-    db_make_varchar (val, 1, (char *) "a", 1, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+    db_make_varchar (val, 1, (char *) "a", 1, codeset, domain.collation_id);
 
     intl_char_count ((unsigned char *) str, str_len, (INTL_CODESET) codeset, &char_count);
 
@@ -477,8 +477,9 @@ namespace cubload
   int to_db_make_varnchar (const char *str, const attribute *attr, db_value *val)
   {
     size_t str_len = strlen (str);
-    return db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, (DB_C_NCHAR) str, (int) str_len, LANG_SYS_CODESET,
-			     LANG_SYS_COLLATION);
+    const tp_domain &domain = attr->get_domain ();
+    return db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, (DB_C_NCHAR) str, (int) str_len, domain.codeset,
+			     domain.collation_id);
   }
 
   int
