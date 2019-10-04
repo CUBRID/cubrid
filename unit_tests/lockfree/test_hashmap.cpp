@@ -105,6 +105,7 @@ namespace test_lockfree
 	if (hash.insert (lftran, k, ent))
 	  {
 	    ++inserted;
+	    hash.unlock (lftran, ent);
 	  }
 	else
 	  {
@@ -143,7 +144,7 @@ namespace test_lockfree
       }
 
     my_hashmap l_hash;
-    init_hashmap (transys, hash_size, l_hash);
+    init_hashmap (l_transys, hash_size, l_hash);
 
     start_threads (l_hash, l_indexes, std::forward<F> (f), std::forward<Args> (args)...);
 
@@ -210,9 +211,9 @@ namespace test_lockfree
   void
   run_test_hashmap (const std::string &case_name, F &&f, Args &&... args)
   {
-    test_hashmap_varsizes<1> (case_name, std::forward (f), std::forward (args)...);
-    test_hashmap_varsizes<4> (case_name, std::forward (f), std::forward (args)...);
-    // test_hashmap_varsizes<64> (case_name, std::forward (f), std::forward (args)...);
+    test_hashmap_varsizes<1> (case_name, std::forward<F> (f), std::forward<Args> (args)...);
+    test_hashmap_varsizes<4> (case_name, std::forward<F> (f), std::forward<Args> (args)...);
+    // test_hashmap_varsizes<64> (case_name, std::forward<F> (f), std::forward (args)...);
   }
 
   template <typename F, typename ... Args>
@@ -231,6 +232,7 @@ namespace test_lockfree
   test_hashmap_functional ()
   {
     run_test_lf_hash_table ("inserts_only=10000", testcase_inserts_only<TEMPL_LFHT>, 10000);
+    run_test_hashmap ("inserts_only=10000", testcase_inserts_only<TEMPL_HASHMAP>, 10000);
 
     return 0;
   }

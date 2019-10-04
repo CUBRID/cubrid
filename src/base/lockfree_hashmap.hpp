@@ -27,6 +27,7 @@
 #include "lock_free.h"                        // for lf_entry_descriptor
 #include "lockfree_address_marker.hpp"
 #include "lockfree_freelist.hpp"
+#include "lockfree_transaction_reclaimable.hpp"
 #include "porting.h"
 
 #include <cassert>
@@ -373,7 +374,7 @@ namespace lockfree
   size_t
   hashmap<Key, T>::get_hash (Key &key) const
   {
-    return m_edesc->f_hash (&key, m_size);
+    return m_edesc->f_hash (&key, (int) m_size);
   }
 
   template <class Key, class T>
@@ -433,7 +434,7 @@ namespace lockfree
   T *&
   hashmap<Key, T>::get_nextp_ref (T *p)
   {
-    return *get_ref (p, m_edesc->of_next);
+    return * (T **) get_ref (p, m_edesc->of_next);
   }
 
   template <class Key, class T>
@@ -467,7 +468,7 @@ namespace lockfree
   hashmap<Key, T>::save_temporary (tran::descriptor &tdes, T *&p)
   {
     free_node_type *fn = to_free_node (p);
-    tdes.save_reclaimable (fn);
+    tdes.save_reclaimable (* (reinterpret_cast<tran::reclaimable_node **> (&fn)));
     p = NULL;
   }
 
@@ -585,7 +586,7 @@ namespace lockfree
     assert (m_edesc->using_mutex);
     assert (mtx == NULL);
 
-    mtx = get_pthread_mutexp (tolock);
+    mtx = get_pthread_mutexp (&tolock);
     pthread_mutex_lock (mtx);
   }
 
@@ -636,7 +637,7 @@ namespace lockfree
 		if (m_edesc->using_mutex)
 		  {
 		    /* entry has a mutex protecting it's members; lock it */
-		    lock_entry_mutex (curr, entry_mutex);
+		    lock_entry_mutex (*curr, entry_mutex);
 
 		    /* mutex has been locked, no need to keep transaction */
 		    tdes.end_tran ();
@@ -737,7 +738,7 @@ namespace lockfree
 		    if (m_edesc->using_mutex)
 		      {
 			/* entry has a mutex protecting it's members; lock it */
-			lock_entry_mutex (curr, entry_mutex);
+			lock_entry_mutex (*curr, entry_mutex);
 
 			/* mutex has been locked, no need to keep transaction alive */
 			end_tran_force (tdes);
@@ -857,11 +858,11 @@ namespace lockfree
 		if (m_edesc->using_mutex)
 		  {
 		    /* entry has a mutex protecting it's members; lock it */
-		    lock_entry_mutex (entry, entry_mutex);
+		    lock_entry_mutex (*entry, entry_mutex);
 		  }
 
 		/* attempt an add */
-		if (!ATOMIC_CAS_ADDR (curr_p, NULL, entry))
+		if (!ATOMIC_CAS_ADDR (curr_p, (T *) NULL, entry))
 		  {
 		    if (m_edesc->using_mutex)
 		      {
@@ -874,7 +875,7 @@ namespace lockfree
 		      {
 			if (!LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_INSERT_GIVEN))
 			  {
-			    save_temporary (entry);
+			    save_temporary (tdes, entry);
 			  }
 			LF_LIST_BR_SET_FLAG (behavior_flags, LF_LIST_BR_RESTARTED);
 			end_tran_force (tdes);
@@ -904,6 +905,7 @@ namespace lockfree
       } // while (restart_search)
     /* impossible case */
     assert (false);
+    return false;
   }
 
   template <class Key, class T>
@@ -971,7 +973,7 @@ namespace lockfree
 	      {
 		if (LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_LOCK_ON_DELETE))
 		  {
-		    lock_entry_mutex (curr, entry_mutex);
+		    lock_entry_mutex (*curr, entry_mutex);
 		  }
 		else
 		  {
