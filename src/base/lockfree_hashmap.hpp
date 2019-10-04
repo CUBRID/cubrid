@@ -226,7 +226,7 @@ namespace lockfree
 	T *&list_head = get_bucket (key);
 	entry = NULL;
 	bflags = LF_LIST_BF_RETURN_ON_RESTART;
-	list_find (tran_index, list_head, &bflags, entry);
+	list_find (tran_index, list_head, key, &bflags, entry);
 	restart = (bflags & LF_LIST_BR_RESTARTED) != 0;
       }
     return entry;

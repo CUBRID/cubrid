@@ -172,7 +172,7 @@ namespace test_lockfree
 
   template <class H, class Tran>
   void
-  testcase_inserts_only (test_result &tres, H &hash, Tran lftran, size_t insert_count)
+  testcase_inserts (test_result &tres, H &hash, Tran lftran, size_t insert_count)
   {
     my_key k;
     size_t inserted = 0;
@@ -193,11 +193,16 @@ namespace test_lockfree
 	  {
 	    ++rejected;
 	  }
+	ent = hash.find (lftran, k);
+	assert (ent != NULL);
+	hash.unlock (lftran, ent);
       }
 
     tres.m_insert_ops += insert_count;
+    tres.m_find_ops += insert_count;
     tres.m_successful_inserts += inserted;
     tres.m_rejected_inserts += rejected;
+    tres.m_found_on_finds += insert_count;
   }
 
   template <class H, class Tran, size_t ThCnt, typename F, typename ... Args>
@@ -271,7 +276,7 @@ namespace test_lockfree
   void
   test_hashmap_varsizes (const std::string &case_name, F &&f, Args &&... args)
   {
-    std::array<size_t, 3> hash_sizes = { 1, 100, 10000 };
+    std::array<size_t, 2> hash_sizes = { 100, 10000 };
     for (size_t i = 0; i < hash_sizes.size (); ++i)
       {
 	test_result tres;
@@ -287,7 +292,7 @@ namespace test_lockfree
   void
   test_lf_hash_table_varsizes (const std::string &case_name, F &&f, Args &&... args)
   {
-    std::array<size_t, 3> hash_sizes = { 1, 100, 10000 };
+    std::array<size_t, 2> hash_sizes = { 100, 10000 };
     for (size_t i = 0; i < hash_sizes.size (); ++i)
       {
 	test_result tres;
@@ -323,8 +328,8 @@ namespace test_lockfree
   int
   test_hashmap_functional ()
   {
-    run_test_lf_hash_table ("inserts_only=10000", testcase_inserts_only<TEMPL_LFHT>, 10000);
-    run_test_hashmap ("inserts_only=10000", testcase_inserts_only<TEMPL_HASHMAP>, 10000);
+    run_test_lf_hash_table ("inserts=10000", testcase_inserts<TEMPL_LFHT>, 10000);
+    run_test_hashmap ("inserts=10000", testcase_inserts<TEMPL_HASHMAP>, 10000);
 
     return 0;
   }

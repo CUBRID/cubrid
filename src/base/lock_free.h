@@ -464,7 +464,7 @@ T *
 lf_hash_table_cpp<Key, T>::find (lf_tran_entry *t_entry, Key &key)
 {
   T *ret = NULL;
-  if (lf_hash_find (t_entry, &m_hash, &key, ret) != NO_ERROR)
+  if (lf_hash_find (t_entry, &m_hash, &key, (void **) (&ret)) != NO_ERROR)
     {
       assert (false);
     }
