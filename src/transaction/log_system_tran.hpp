@@ -62,9 +62,6 @@ class log_system_tdes
     static void rv_final ();
 
   private:
-    void destroy_tdes ();
-
-  public:
     log_tdes *m_tdes;
 };
 
