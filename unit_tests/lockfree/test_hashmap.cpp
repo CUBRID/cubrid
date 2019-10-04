@@ -86,7 +86,8 @@ namespace test_lockfree
     uninit_my_entry,
     copy_my_key,
     compare_my_key,
-    hash_my_key
+    hash_my_key,
+    NULL
   };
   static void
   set_entry_mutex_mode (bool on_off)
@@ -123,23 +124,23 @@ namespace test_lockfree
   struct test_result
   {
     // op stats
-    std::atomic_uint64_t m_find_ops;
-    std::atomic_uint64_t m_find_or_insert_ops;
-    std::atomic_uint64_t m_insert_ops;
-    std::atomic_uint64_t m_insert_given_ops;
-    std::atomic_uint64_t m_erase_ops;
-    std::atomic_uint64_t m_erase_locked_ops;
-    std::atomic_uint64_t m_iterate_ops;
-    std::atomic_uint64_t m_clear_ops;
+    std::atomic<std::uint64_t> m_find_ops;
+    std::atomic<std::uint64_t> m_find_or_insert_ops;
+    std::atomic<std::uint64_t> m_insert_ops;
+    std::atomic<std::uint64_t> m_insert_given_ops;
+    std::atomic<std::uint64_t> m_erase_ops;
+    std::atomic<std::uint64_t> m_erase_locked_ops;
+    std::atomic<std::uint64_t> m_iterate_ops;
+    std::atomic<std::uint64_t> m_clear_ops;
 
     // result stats
-    std::atomic_uint64_t m_successful_inserts;
-    std::atomic_uint64_t m_rejected_inserts;
-    std::atomic_uint64_t m_found_on_inserts;
-    std::atomic_uint64_t m_found_on_finds;
-    std::atomic_uint64_t m_not_found_on_finds;
-    std::atomic_uint64_t m_found_on_erase_ops;
-    std::atomic_uint64_t m_not_found_on_erase_ops;
+    std::atomic<std::uint64_t> m_successful_inserts;
+    std::atomic<std::uint64_t> m_rejected_inserts;
+    std::atomic<std::uint64_t> m_found_on_inserts;
+    std::atomic<std::uint64_t> m_found_on_finds;
+    std::atomic<std::uint64_t> m_not_found_on_finds;
+    std::atomic<std::uint64_t> m_found_on_erase_ops;
+    std::atomic<std::uint64_t> m_not_found_on_erase_ops;
 
     test_result ()
     {
@@ -187,7 +188,7 @@ namespace test_lockfree
       dump_not_zero ("ers_fail", m_not_found_on_erase_ops);
     }
 
-    void dump_not_zero (const char *name, std::atomic_uint64_t &val)
+    void dump_not_zero (const char *name, std::atomic<std::uint64_t> &val)
     {
       if (val != 0)
 	{
