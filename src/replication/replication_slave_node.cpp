@@ -197,9 +197,7 @@ namespace cubreplication
 			      start_position);
 
     assert (m_stream != NULL);
-    m_lc = new log_consumer ();
-
-    m_lc->set_stream (m_stream);
+    m_lc = new log_consumer ("online_repl_consumer", m_stream, log_consumer::MAX_APPLIER_THREADS);
 
     if ((REPL_SEMISYNC_ACK_MODE) prm_get_integer_value (PRM_ID_REPL_SEMISYNC_ACK_MODE) ==
 	REPL_SEMISYNC_ACK_ON_FLUSH)
@@ -212,7 +210,7 @@ namespace cubreplication
       }
 
     /* start log_consumer daemons and apply thread pool */
-    m_lc->start_daemons ();
+    m_lc->start ();
 
     cubcomm::server_channel control_chn (m_identity.get_hostname ().c_str ());
     control_chn.set_channel_name (REPL_CONTROL_CHANNEL_NAME);
