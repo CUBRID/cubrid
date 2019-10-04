@@ -25,6 +25,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdlib>
 #include <iostream>
@@ -400,18 +401,36 @@ namespace test_lockfree
   void
   run_test_hashmap (const std::string &case_name, F &&f, Args &&... args)
   {
+    cout_new_line ();
+
+    auto start_time = std::chrono::high_resolution_clock::now ();
+
     test_hashmap_varsizes<1> (case_name, std::forward<F> (f), std::forward<Args> (args)...);
     test_hashmap_varsizes<4> (case_name, std::forward<F> (f), std::forward<Args> (args)...);
     // test_hashmap_varsizes<64> (case_name, std::forward<F> (f), std::forward (args)...);
+
+    auto end_time = std::chrono::high_resolution_clock::now ();
+    cout_new_line ();
+    std::cout << "test took ";
+    std::cout << (std::chrono::duration_cast<std::chrono::milliseconds> (end_time - start_time)).count () << " usec";
   }
 
   template <typename F, typename ... Args>
   void
   run_test_lf_hash_table (const std::string &case_name, F &&f, Args &&... args)
   {
+    cout_new_line ();
+
+    auto start_time = std::chrono::high_resolution_clock::now ();
+
     test_lf_hash_table_varsizes<1> (case_name, std::forward<F> (f), std::forward<Args> (args)...);
     test_lf_hash_table_varsizes<4> (case_name, std::forward<F> (f), std::forward<Args> (args)...);
     // test_lf_hash_table_varsizes<64> (case_name, std::forward<F> (f), std::forward<Args> (args)...);
+
+    auto end_time = std::chrono::high_resolution_clock::now ();
+    cout_new_line ();
+    std::cout << "test took ";
+    std::cout << (std::chrono::duration_cast<std::chrono::milliseconds> (end_time - start_time)).count () << " usec";
   }
 
 #define TEMPL_LFHT my_lf_hash_table, lf_tran_entry *
@@ -429,12 +448,14 @@ namespace test_lockfree
     run_test_lf_hash_table ("insert_find=10000", testcase_inserts<TEMPL_LFHT>, 10000);
     run_test_hashmap ("insert_find=10000", testcase_inserts<TEMPL_HASHMAP>, 10000);
 
+
     run_test_lf_hash_table ("find_or_insert_and_erase=10000,1000",
 			    testcase_find_or_inserts_and_erase<TEMPL_LFHT>, 10000, 1000);
     run_test_hashmap ("find_or_insert_and_erase=10000,1000",
 		      testcase_find_or_inserts_and_erase<TEMPL_HASHMAP>, 10000, 1000);
 
     decrement_tab_indent ();
+    cout_new_line ();
   }
 
   int
