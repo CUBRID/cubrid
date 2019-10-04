@@ -63,6 +63,12 @@ namespace cubload
     (void) class_id;
     OID class_oid;
 
+    if (is_class_ignored (class_name))
+      {
+	// Silently do nothing.
+	return;
+      }
+
     if (locate_class (class_name, class_oid) != LC_CLASSNAME_EXIST)
       {
 	m_error_handler.on_failure_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
@@ -115,6 +121,17 @@ namespace cubload
     if (m_session.is_failed ())
       {
 	// return in case when class does not exists
+	return;
+      }
+
+    // Check if we have to ignore this class.
+    if (is_class_ignored (class_name))
+      {
+
+	std::string classname (class_name);
+	m_session.append_log_msg (LOADDB_MSG_IGNORED_CLASS, class_name);
+	class_entry *cls_entry = new class_entry (classname, m_clsid, true);
+	m_session.get_class_registry ().register_ignored_class (cls_entry, m_clsid);
 	return;
       }
 
@@ -280,6 +297,20 @@ namespace cubload
     assert (*n_attributes >= 0);
   }
 
+  bool
+  server_class_installer::is_class_ignored (const char *classname)
+  {
+    const std::vector<std::string> &classes_ignored = m_session.get_args ().ignore_classes;
+    std::string class_name (classname);
+    bool is_ignored;
+
+    auto result = std::find (classes_ignored.begin (), classes_ignored.end (), class_name);
+
+    is_ignored = (result != classes_ignored.end ());
+
+    return is_ignored;
+  }
+
   server_object_loader::server_object_loader (session &session, error_handler &error_handler)
     : m_session (session)
     , m_error_handler (error_handler)
@@ -314,8 +345,8 @@ namespace cubload
     start_scancache (class_oid);
     start_attrinfo (class_oid);
 
-    // lock class when batch starts, it will be unlocked on transaction commit/abort, see load_worker::execute
-    lock_object (m_thread_ref, &class_oid, oid_Root_class_oid, BU_LOCK, LK_UNCOND_LOCK);
+    // lock class when batch starts, check that the transaction has BU lock
+    assert (lock_has_lock_on_object (&class_oid, oid_Root_class_oid, BU_LOCK));
   }
 
   void
@@ -404,7 +435,8 @@ namespace cubload
 	record_descriptor new_recdes (cubmem::STANDARD_BLOCK_ALLOCATOR);
 	RECDES *old_recdes = NULL;
 
-	if (heap_attrinfo_transform_to_disk (m_thread_ref, &m_attrinfo, old_recdes, &new_recdes) != S_SUCCESS)
+	if (heap_attrinfo_transform_to_disk_except_lob (m_thread_ref, &m_attrinfo, old_recdes, &new_recdes)
+	    != S_SUCCESS)
 	  {
 	    m_error_handler.on_failure ();
 	    return;
@@ -435,8 +467,7 @@ namespace cubload
     int records_inserted = 0;
     bool insert_errors_filtered = false;
     OID dummy_oid;
-    bool has_BU_lock = lock_has_lock_on_object (&m_scancache.node.class_oid, oid_Root_class_oid,
-		       LOG_FIND_THREAD_TRAN_INDEX (m_thread_ref), BU_LOCK);
+    bool has_BU_lock = lock_has_lock_on_object (&m_scancache.node.class_oid, oid_Root_class_oid, BU_LOCK);
 
     // First check if we have any errors set.
     if (m_session.is_failed ())

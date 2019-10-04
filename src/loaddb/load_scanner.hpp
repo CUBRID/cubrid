@@ -61,21 +61,20 @@ namespace cubload
        */
       virtual int yylex (parser::semantic_type *yylval, parser::location_type *yylloc);
 
-#if defined (SERVER_MODE)
       /*
        * Lexer error function
        * @param msg a description of the lexer error.
        */
       void LexerError (const char *msg) override
       {
-	/* TODO: We need a better approaach since this should in fact throw an irrecoverable error
+	/* TODO: We need a better approach since this should in fact throw an irrecoverable error
 	 * which will fail the session. However, for syntax checking, this proves to abort all
 	 * other batches that are being checked, which is not entirely correct since we want to
 	 * use the parallelism to check for all errors in the file.
 	 */
-	m_error_handler.on_failure_with_line (LOADDB_MSG_LEX_ERROR);
+	m_error_handler.on_error_with_line (LOADDB_MSG_LEX_ERROR);
+	m_error_handler.on_syntax_failure ();
       }
-#endif
 
     private:
       semantic_helper &m_semantic_helper;

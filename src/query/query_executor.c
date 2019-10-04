@@ -12398,7 +12398,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   MVCC_SNAPSHOT *mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
   bool need_ha_replication = !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true;
   bool sysop_started = false;
-  bool in_instant_lock_mode = false;
+  bool in_instant_lock_mode;
 
   // *INDENT-OFF*
   struct incr_info
@@ -12443,6 +12443,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   else
     {
       // locking and evaluation is done at scan phase
+      in_instant_lock_mode = lock_is_instant_lock_mode (tran_index);
     }
 
   list = xasl->selected_upd_list;
@@ -12602,8 +12603,8 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	  else
 	    {
 	      /* already locked during scan phase */
-	      assert ((lock_get_object_lock (&crt_incr_info.m_oid, &crt_incr_info.m_class_oid, tran_index) == X_LOCK)
-		      || lock_get_object_lock (&crt_incr_info.m_class_oid, oid_Root_class_oid, tran_index) >= X_LOCK);
+	      assert ((lock_get_object_lock (&crt_incr_info.m_oid, &crt_incr_info.m_class_oid) == X_LOCK)
+		      || lock_get_object_lock (&crt_incr_info.m_class_oid, oid_Root_class_oid) >= X_LOCK);
 	    }
 
 	  all_incr_info.push_back (crt_incr_info);

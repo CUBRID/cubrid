@@ -34,6 +34,7 @@
 #include <condition_variable>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 
 namespace cubload
@@ -85,7 +86,7 @@ namespace cubload
        *    thread_ref(in): thread entry
        *    batch(in)     : a batch where content is a line starting with '%id' or '%class' from object file
        */
-      int install_class (cubthread::entry &thread_ref, const batch &batch);
+      int install_class (cubthread::entry &thread_ref, const batch &batch, bool &is_ignored);
 
       /*
        * Load a batch from object file on the the server
@@ -107,12 +108,13 @@ namespace cubload
       void wait_for_completion ();
       void wait_for_previous_batch (batch_id id);
       void notify_batch_done (batch_id id);
+      void notify_batch_done_and_register_tran_end (batch_id id, int tran_index);
+      void register_tran_start (int tran_index);
 
       void on_error (std::string &err_msg);
 
-      void fail ();
+      void fail (bool has_lock = false);
       bool is_failed ();
-
       void interrupt ();
 
       void fetch_stats (stats &stats_);
@@ -138,10 +140,12 @@ namespace cubload
 
       std::mutex m_commit_mutex;
       std::condition_variable m_commit_cond_var;
+      std::set<int> m_tran_indexes;
 
       load_args m_args;
       batch_id m_last_batch_id;
       std::atomic<batch_id> m_max_batch_id;
+      std::atomic<size_t> m_active_task_count;
 
       class_registry m_class_registry;
 
@@ -165,8 +169,7 @@ namespace cubload
   {
     if (get_args ().verbose)
       {
-	std::string log_msg;
-	error_handler::format_log_msg (msg_id, std::forward<Args> (args)...);
+	std::string log_msg = error_handler::format_log_msg (msg_id, std::forward<Args> (args)...);
 
 	std::unique_lock<std::mutex> ulock (m_stats_mutex);
 

@@ -428,7 +428,7 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
  *    exec_name(in): utility name
  */
 int
-extractobjects (const char *exec_name, const char *output_dirname, const char *output_prefix)
+extract_objects (const char *exec_name, const char *output_dirname, const char *output_prefix)
 {
   int i, error;
   HFID *hfid;

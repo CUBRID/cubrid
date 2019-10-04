@@ -5564,7 +5564,6 @@ db_evaluate_json_object (DB_VALUE * result, DB_VALUE * const *arg, int const num
   int i;
   int error_code = NO_ERROR;
   JSON_DOC_STORE value_doc;
-  const char *value_key = NULL;
 
   db_make_null (result);
 
