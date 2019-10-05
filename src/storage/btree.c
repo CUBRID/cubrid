@@ -741,73 +741,45 @@ struct btree_insert_helper
   OID saved_locked_oid;		/* Save locked object from unique index key. */
   OID saved_locked_class_oid;	/* Save class of locked object. */
 #endif				/* SERVER_MODE */
+
+    btree_insert_helper ();
 };
-/* BTREE_INSERT_HELPER initializer. SERVER_MODE includes additional fields
- * used for locking.
- */
+
+// *INDENT-OFF*
+btree_insert_helper::btree_insert_helper ()
+: obj_info (BTREE_OBJECT_INFO_INITIALIZER)
+, purpose (BTREE_OP_NO_OP)
+, op_type (0)
+, unique_stats_info (NULL)
+, key_len_in_page (0)
+, nonleaf_latch_mode (PGBUF_LATCH_READ)
+, is_first_try (true)
+, need_update_max_key_len (false)
+, is_crt_node_write_latched (false)
+, is_root (false)
+, is_unique_key_added_or_deleted (true)
+, is_unique_multi_update (false)
+, is_ha_enabled (false)
+, log_operations (false)
+, is_null (false)
+, printed_key (NULL)
+, printed_key_sha1 (SHA1_HASH_INITIALIZER)
+, leaf_addr (LOG_DATA_ADDR_INITIALIZER)
+, rcvindex (RV_NOT_DEFINED)
+, rv_keyval_data (NULL)
+, rv_keyval_data_length (0)
+, rv_redo_data (NULL)
+, rv_redo_data_ptr (NULL)
+, compensate_undo_nxlsa (LSA_INITIALIZER)
+, is_system_op_started (false)
+, time_track (PERF_UTIME_TRACKER_INITIALIZER)
 #if defined (SERVER_MODE)
-#define BTREE_INSERT_HELPER_INITIALIZER \
-  { \
-    BTREE_OBJECT_INFO_INITIALIZER /* obj_info */, \
-    BTREE_OP_NO_OP /* purpose */, \
-    0 /* op_type */, \
-    NULL /* unique_stats_info */, \
-    0 /* key_len_in_page */, \
-    PGBUF_LATCH_READ /* latch_mode */, \
-    true /* is_first_try */, \
-    false /* need_update_max_key_len */, \
-    false /* is_crt_node_write_latched */, \
-    false /* is_root */, \
-    true /* is_unique_key_added_or_deleted */, \
-    false /* is_unique_multi_update */, \
-    false /* is_ha_enabled */, \
-    false /* log_operations */, \
-    false /* is_null */, \
-    NULL /* printed_key */, \
-    SHA1_HASH_INITIALIZER /* printed_key_sha1 */, \
-    LOG_DATA_ADDR_INITIALIZER /* leaf_addr */, \
-    RV_NOT_DEFINED /* rcvindex */, \
-    NULL /* rv_keyval_data */, \
-    0 /* rv_keyval_data_length */, \
-    NULL /* rv_redo_data */, \
-    NULL /* rv_redo_data_ptr */, \
-    LSA_INITIALIZER /* compensate_undo_nxlsa */, \
-    false /* is_system_op_started */, \
-    PERF_UTIME_TRACKER_INITIALIZER /* time_track */, \
-    OID_INITIALIZER /* saved_locked_oid */, \
-    OID_INITIALIZER /* saved_locked_class_oid */ \
-  }
-#else	/* !SERVER_MODE */		   /* SA_MODE */
-#define BTREE_INSERT_HELPER_INITIALIZER \
-  { \
-    BTREE_OBJECT_INFO_INITIALIZER /* obj_info */, \
-    BTREE_OP_NO_OP /* purpose */, \
-    0 /* op_type */, \
-    NULL /* unique_stats_info */, \
-    0 /* key_len_in_page */, \
-    PGBUF_LATCH_READ /* latch_mode */, \
-    true /* is_first_try */, \
-    false /* need_update_max_key_len */, \
-    false /* is_crt_node_write_latched */, \
-    false /* is_root */, \
-    true /* is_unique_key_added_or_deleted */, \
-    false /* is_unique_multi_update */, \
-    false /* is_ha_enabled */, \
-    false /* log_operations */, \
-    false /* is_null */, \
-    NULL /* printed_key */, \
-    SHA1_HASH_INITIALIZER /* printed_key_sha1 */, \
-    LOG_DATA_ADDR_INITIALIZER /* leaf_addr */, \
-    RV_NOT_DEFINED /* rcvindex */, \
-    NULL /* rv_keyval_data */, \
-    0 /* rv_keyval_data_length */, \
-    NULL /* rv_redo_data */, \
-    NULL /* rv_redo_data_ptr */, \
-    LSA_INITIALIZER /* compensate_undo_nxlsa */, \
-    false /* is_system_op_started */, \
-    PERF_UTIME_TRACKER_INITIALIZER /* time_track */ \
-  }
-#endif /* SA_MODE */
+, saved_locked_oid (OID_INITIALIZER)
+, saved_locked_class_oid (OID_INITIALIZER)
+#endif	
+{
+}
+// *INDENT-ON*
 
 #define BTREE_INSERT_OID(ins_helper) \
   (&((ins_helper)->obj_info.oid))
@@ -852,33 +824,38 @@ struct btree_delete_helper
 
   /* Performance tracker. */
   PERF_UTIME_TRACKER time_track;
+
+    btree_delete_helper ();
 };
-#define BTREE_DELETE_HELPER_INITIALIZER \
-  { \
-    BTREE_OBJECT_INFO_INITIALIZER /* object_info */, \
-    BTREE_OBJECT_INFO_INITIALIZER /* second_object_info */, \
-    BTREE_OP_NO_OP /* purpose */, \
-    PGBUF_LATCH_READ /* non_leaf_latch_mode */, \
-    SINGLE_ROW_DELETE /* op_type */, \
-    NULL /* unique_stats_info */, \
-    BTREE_MVCC_INFO_INITIALIZER /* match_mvccinfo */, \
-    NULL /* buffered_key */, \
-    NULL /* printed_key */, \
-    SHA1_HASH_INITIALIZER /* printed_key_sha1 */, \
-    false /* log_operations */, \
-    false /* is_root */, \
-    true /* is_first_search */, \
-    false /* check_key_deleted */, \
-    false /* is_key_deleted */, \
-    LOG_DATA_ADDR_INITIALIZER /* leaf_addr */, \
-    NULL /* rv_keyval_data */, \
-    0 /* rv_keyval_data_length */, \
-    NULL /* rv_redo_data */, \
-    NULL /* rv_redo_data_ptr */, \
-    LSA_INITIALIZER, /* reference_lsa */ \
-    false /* is_system_op_started */, \
-    PERF_UTIME_TRACKER_INITIALIZER /* time_track */ \
-  }
+
+// *INDENT-OFF*
+btree_delete_helper::btree_delete_helper ()
+: object_info (BTREE_OBJECT_INFO_INITIALIZER)
+, second_object_info (BTREE_OBJECT_INFO_INITIALIZER)
+, purpose (BTREE_OP_NO_OP)
+, nonleaf_latch_mode (PGBUF_LATCH_READ)
+, op_type (SINGLE_ROW_DELETE)
+, unique_stats_info (NULL)
+, match_mvccinfo (BTREE_MVCC_INFO_INITIALIZER)
+, buffered_key (NULL)
+, printed_key (NULL)
+, printed_key_sha1 (SHA1_HASH_INITIALIZER)
+, log_operations (false)
+, is_root (false)
+, is_first_search (true)
+, check_key_deleted (false)
+, is_key_deleted (false)
+, leaf_addr (LOG_DATA_ADDR_INITIALIZER)
+, rv_keyval_data (NULL)
+, rv_keyval_data_length (0)
+, rv_redo_data (NULL)
+, rv_redo_data_ptr (NULL)
+, reference_lsa (LSA_INITIALIZER)
+, is_system_op_started (false)
+, time_track (PERF_UTIME_TRACKER_INITIALIZER)
+{
+}
+// *INDENT-ON*
 
 #define BTREE_DELETE_OID(helper) \
   (&((helper)->object_info.oid))
@@ -1250,9 +1227,6 @@ struct btree_helper
   BTREE_INSERT_HELPER insert_helper;
   BTREE_DELETE_HELPER delete_helper;
 };
-
-#define BTREE_HELPER_INITIALIZER \
-  { BTREE_INSERT_HELPER_INITIALIZER, BTREE_DELETE_HELPER_INITIALIZER }
 
 /*
  * Static functions
@@ -25986,7 +25960,7 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
   /* Search key helper which will point to where data should inserted. */
   BTREE_SEARCH_KEY_HELPER search_key = BTREE_SEARCH_KEY_HELPER_INITIALIZER;
   /* Insert helper. */
-  BTREE_INSERT_HELPER insert_helper = BTREE_INSERT_HELPER_INITIALIZER;
+  BTREE_INSERT_HELPER insert_helper;
   /* Processing key function: can insert an object or just a delete MVCCID. */
   BTREE_PROCESS_KEY_FUNCTION *key_insert_func = NULL;
 
@@ -29516,7 +29490,7 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
 		       BTREE_OBJECT_INFO * second_object_info, BTREE_OP_PURPOSE purpose)
 {
   /* Structure used by internal functions. */
-  BTREE_DELETE_HELPER delete_helper = BTREE_DELETE_HELPER_INITIALIZER;
+  BTREE_DELETE_HELPER delete_helper;
   BTID_INT btree_info;		/* B-tree info. */
   int error_code = NO_ERROR;	/* Error code. */
   bool old_check_interrupt = false;	/* Save check interrupt before setting it to false. */
@@ -33154,9 +33128,6 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * 
   BTREE_PROCESS_KEY_FUNCTION *key_function = NULL;
   BTREE_HELPER helper;
   BTID_INT btid_int;
-
-  helper.insert_helper = BTREE_INSERT_HELPER_INITIALIZER;
-  helper.delete_helper = BTREE_DELETE_HELPER_INITIALIZER;
 
   /* Safe guards */
   assert (oid != NULL);
