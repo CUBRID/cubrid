@@ -53,8 +53,10 @@ namespace cubload
   int to_db_int (const char *str, const attribute *attr, db_value *val);
   int to_db_int_set (const char *str, const attribute *attr, db_value *val);
   int to_db_bigint (const char *str, const attribute *attr, db_value *val);
+  int to_db_generic_char (DB_TYPE type, const char *str, const attribute *attr, db_value *val);
   int to_db_char (const char *str, const attribute *attr, db_value *val);
   int to_db_varchar (const char *str, const attribute *attr, db_value *val);
+  int to_db_make_nchar (const char *str, const attribute *attr, db_value *val);
   int to_db_make_varnchar (const char *str, const attribute *attr, db_value *val);
   int to_db_string (const char *str, const attribute *attr, db_value *val);
   int to_db_float (const char *str, const attribute *attr, db_value *val);
@@ -126,7 +128,7 @@ namespace cubload
       }
 
     setters_[DB_TYPE_CHAR][LDR_STR] = &to_db_char;
-    setters_[DB_TYPE_NCHAR][LDR_NSTR] = &to_db_make_varnchar;
+    setters_[DB_TYPE_NCHAR][LDR_NSTR] = &to_db_make_nchar;
 
     setters_[DB_TYPE_VARCHAR][LDR_STR] = &to_db_varchar;
     setters_[DB_TYPE_VARNCHAR][LDR_NSTR] = &to_db_make_varnchar;
@@ -354,18 +356,16 @@ namespace cubload
   }
 
   int
-  to_db_char (const char *str, const attribute *attr, db_value *val)
+  to_db_generic_char (DB_TYPE type, const char *str, const attribute *attr, db_value *val)
   {
     int char_count = 0;
     int str_len = (int) strlen (str);
-
+    int error = NO_ERROR;
     const tp_domain &domain = attr->get_domain ();
     int precision = domain.precision;
-    unsigned char codeset = domain.codeset;
+    INTL_CODESET codeset = (INTL_CODESET) domain.codeset;
 
-    db_make_char (val, 1, (char *) "a", 1, codeset, domain.collation_id);
-
-    intl_char_count ((unsigned char *) str, str_len, (INTL_CODESET) codeset, &char_count);
+    intl_char_count ((unsigned char *) str, str_len, codeset, &char_count);
 
     if (char_count > precision)
       {
@@ -374,21 +374,13 @@ namespace cubload
 	 * characters that might allow us to successfully truncate the
 	 * thing.
 	 */
-	int safe;
 	const char *p;
 	int truncate_size;
 
-	intl_char_size ((unsigned char *) str, precision, (INTL_CODESET) codeset, &truncate_size);
+	intl_char_size ((unsigned char *) str, precision, codeset, &truncate_size);
 
-	for (p = &str[truncate_size], safe = 1; p < &str[str_len]; p++)
-	  {
-	    if (*p != ' ')
-	      {
-		safe = 0;
-		break;
-	      }
-	  }
-	if (safe)
+        p = intl_skip_spaces (&str[truncate_size],  &str[str_len], codeset);
+        if (p >= &str[str_len])
 	  {
 	    str_len = truncate_size;
 	  }
@@ -397,89 +389,40 @@ namespace cubload
 	    /*
 	     * It's a genuine violation; raise an error.
 	     */
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_CHAR));
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (type));
 	    return ER_IT_DATA_OVERFLOW;
 	  }
       }
 
-    val->domain.char_info.length = char_count;
-    val->data.ch.info.style = MEDIUM_STRING;
-    val->data.ch.info.is_max_string = (unsigned char) false;
-    val->data.ch.info.compressed_need_clear = (unsigned char) false;
-    val->data.ch.medium.size = str_len;
-    val->data.ch.medium.buf = const_cast<char *> (str);
-    val->data.ch.medium.compressed_buf = NULL;
-    val->data.ch.medium.compressed_size = 0;
+    error = db_value_domain_init (val, type, char_count, 0);
+    if (error == NO_ERROR)
+      {
+        error = db_make_db_char (val, codeset, domain.collation_id, const_cast<char *> (str), str_len);
+      }
 
-    return NO_ERROR;
+    return error;
+  }
+
+  int
+  to_db_char (const char *str, const attribute *attr, db_value *val)
+  {
+    return to_db_generic_char (DB_TYPE_CHAR, str, attr, val);
   }
 
   int
   to_db_varchar (const char *str, const attribute *attr, db_value *val)
   {
-    int char_count = 0;
-    int str_len = (int) strlen (str);
+    return to_db_generic_char (DB_TYPE_VARCHAR, str, attr, val);
+  }
 
-    const tp_domain &domain = attr->get_domain ();
-    int precision = domain.precision;
-    unsigned char codeset = domain.codeset;
-
-    db_make_varchar (val, 1, (char *) "a", 1, codeset, domain.collation_id);
-
-    intl_char_count ((unsigned char *) str, str_len, (INTL_CODESET) codeset, &char_count);
-
-    if (char_count > precision)
-      {
-	/*
-	 * May be a violation, but first we have to check for trailing pad
-	 * characters that might allow us to successfully truncate the
-	 * thing.
-	 */
-	int safe;
-	const char *p;
-	int truncate_size;
-
-	intl_char_size ((unsigned char *) str, precision, (INTL_CODESET) codeset, &truncate_size);
-	for (p = &str[truncate_size], safe = 1; p < &str[str_len]; p++)
-	  {
-	    if (*p != ' ')
-	      {
-		safe = 0;
-		break;
-	      }
-	  }
-	if (safe)
-	  {
-	    str_len = truncate_size;
-	  }
-	else
-	  {
-	    /*
-	     * It's a genuine violation; raise an error.
-	     */
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_VARCHAR));
-	    return ER_IT_DATA_OVERFLOW;
-	  }
-      }
-
-    val->domain.char_info.length = char_count;
-    val->data.ch.medium.size = str_len;
-    val->data.ch.medium.buf = const_cast<char *> (str);
-    val->data.ch.info.style = MEDIUM_STRING;
-    val->data.ch.info.is_max_string = (unsigned char) false;
-    val->data.ch.info.compressed_need_clear = (unsigned char) false;
-    val->data.ch.medium.compressed_buf = NULL;
-    val->data.ch.medium.compressed_size = 0;
-
-    return NO_ERROR;
+  int to_db_make_nchar (const char *str, const attribute *attr, db_value *val)
+  {
+    return to_db_generic_char (DB_TYPE_NCHAR, str, attr, val);
   }
 
   int to_db_make_varnchar (const char *str, const attribute *attr, db_value *val)
   {
-    size_t str_len = strlen (str);
-    const tp_domain &domain = attr->get_domain ();
-    return db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, (DB_C_NCHAR) str, (int) str_len, domain.codeset,
-			     domain.collation_id);
+    return to_db_generic_char (DB_TYPE_VARNCHAR, str, attr, val);
   }
 
   int
@@ -998,14 +941,14 @@ namespace cubload
 	numeric_coerce_dec_str_to_num (str, num.d.buf);
 	if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint) != NO_ERROR)
 	  {
-	    error_code = db_value_domain_init (val, DB_TYPE_NUMERIC, str_len, 0);
+	    error_code = db_value_domain_init (val, DB_TYPE_NUMERIC, (int) str_len, 0);
 	    if (error_code != NO_ERROR)
 	      {
 		ASSERT_ERROR ();
 		return error_code;
 	      }
 
-	    error_code = db_value_put (val, DB_TYPE_C_CHAR, (char *) str, str_len);
+	    error_code = db_value_put (val, DB_TYPE_C_CHAR, (char *) str, (int) str_len);
 	    if (error_code != NO_ERROR)
 	      {
 		ASSERT_ERROR ();
