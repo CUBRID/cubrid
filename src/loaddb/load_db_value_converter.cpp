@@ -379,8 +379,8 @@ namespace cubload
 
 	intl_char_size ((unsigned char *) str, precision, codeset, &truncate_size);
 
-        p = intl_skip_spaces (&str[truncate_size],  &str[str_len], codeset);
-        if (p >= &str[str_len])
+	p = intl_skip_spaces (&str[truncate_size],  &str[str_len], codeset);
+	if (p >= &str[str_len])
 	  {
 	    str_len = truncate_size;
 	  }
@@ -397,7 +397,7 @@ namespace cubload
     error = db_value_domain_init (val, type, char_count, 0);
     if (error == NO_ERROR)
       {
-        error = db_make_db_char (val, codeset, domain.collation_id, const_cast<char *> (str), str_len);
+	error = db_make_db_char (val, codeset, domain.collation_id, const_cast<char *> (str), str_len);
       }
 
     return error;
