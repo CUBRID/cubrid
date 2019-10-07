@@ -186,6 +186,9 @@ namespace cubload
     setters_[DB_TYPE_TIMESTAMPTZ][LDR_TIMESTAMPTZ] = &to_db_timestamptz;
     setters_[DB_TYPE_TIMESTAMPLTZ][LDR_TIMESTAMPLTZ] = &to_db_timestampltz;
 
+    setters_[DB_TYPE_ENUMERATION][LDR_INT] = &to_db_int;
+    setters_[DB_TYPE_ENUMERATION][LDR_STR] = &to_db_string;
+
     return setters_;
   }
 
