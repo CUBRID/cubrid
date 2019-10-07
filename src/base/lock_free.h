@@ -377,11 +377,14 @@ class lf_hash_table_cpp
     bool insert (lf_tran_entry *t_entry, Key &key, T *&t);
     bool insert_given (lf_tran_entry *t_entry, Key &key, T *&t);
     bool erase (lf_tran_entry *t_entry, Key &key);
-    bool erase_locked (lf_tran_entry *t_entry, Key &key, T *& t);
+    bool erase_locked (lf_tran_entry *t_entry, Key &key, T *&t);
 
     void unlock (lf_tran_entry *t_entry, T *&t);
 
     void clear (lf_tran_entry *t_entry);
+
+    T *freelist_claim (lf_tran_entry *t_entry);
+    void freelist_retire (lf_tran_entry *t_entry, T *&t);
 
     size_t get_size () const;
 
@@ -555,6 +558,21 @@ void
 lf_hash_table_cpp<Key, T>::clear (lf_tran_entry *t_entry)
 {
   lf_hash_clear (t_entry, &m_hash);
+}
+
+template <class Key, class T>
+T *
+lf_hash_table_cpp<Key, T>::freelist_claim (lf_tran_entry *t_entry)
+{
+  return (T *) lf_freelist_claim (t_entry, &m_freelist);
+}
+
+template <class Key, class T>
+void
+lf_hash_table_cpp<Key, T>::freelist_retire (lf_tran_entry *t_entry, T *&t)
+{
+  lf_freelist_retire (t_entry, &m_freelist, t);
+  t = NULL;
 }
 
 template <class Key, class T>

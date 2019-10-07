@@ -56,6 +56,9 @@ namespace cubthread
 
       void clear (cubthread::entry *thread_p);    // NOT LOCK-FREE
 
+      T *freelist_claim (cubthread::entry *thread_p);
+      void freelist_retire (cubthread::entry *thread_p, T *&t);
+
       size_t get_size () const;
 
     private:
@@ -205,6 +208,20 @@ namespace cubthread
   lockfree_hashmap<Key, T>::clear (cubthread::entry *thread_p)
   {
     lockfree_hashmap_forward_func_noarg (clear, thread_p);
+  }
+
+  template <class Key, class T>
+  T *
+  lockfree_hashmap<Key, T>::freelist_claim (cubthread::entry *thread_p)
+  {
+    lockfree_hashmap_forward_func_noarg (freelist_claim, thread_p);
+  }
+
+  template <class Key, class T>
+  void
+  lockfree_hashmap<Key, T>::freelist_retire (cubthread::entry *thread_p, T *&t)
+  {
+    lockfree_hashmap_forward_func (freelist_retire, thread_p, t);
   }
 
   template <class Key, class T>

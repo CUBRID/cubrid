@@ -132,6 +132,8 @@ namespace test_lockfree
     std::atomic<std::uint64_t> m_erase_locked_ops;
     std::atomic<std::uint64_t> m_iterate_ops;
     std::atomic<std::uint64_t> m_clear_ops;
+    std::atomic<std::uint64_t> m_claim_ops;
+    std::atomic<std::uint64_t> m_retire_ops;
 
     // result stats
     std::atomic<std::uint64_t> m_successful_inserts;
@@ -153,6 +155,8 @@ namespace test_lockfree
       m_erase_locked_ops = 0;
       m_iterate_ops = 0;
       m_clear_ops = 0;
+      m_claim_ops = 0;
+      m_retire_ops = 0;
 
       // result stats
       m_successful_inserts = 0;
@@ -176,6 +180,8 @@ namespace test_lockfree
       dump_not_zero ("erase_lck", m_erase_locked_ops);
       dump_not_zero ("iter", m_iterate_ops);
       dump_not_zero ("clr", m_clear_ops);
+      dump_not_zero ("claim", m_claim_ops);
+      dump_not_zero ("retire", m_retire_ops);
 
       cout_new_line ();
       std::cout << "REZ: ";
@@ -259,6 +265,83 @@ namespace test_lockfree
 	if (random_op < insert_count)
 	  {
 	    if (hash.find_or_insert (lftran, k, myent))
+	      {
+		++inserts;
+	      }
+	    else
+	      {
+		++found_inserts;
+	      }
+	    assert (myent != NULL);
+	    hash.unlock (lftran, myent);
+
+	    --insert_count;
+	  }
+	else
+	  {
+	    if (hash.erase (lftran, k))
+	      {
+		++erased;
+	      }
+	    else
+	      {
+		++erase_not_found;
+	      }
+
+	    --erase_count;
+	  }
+	--left_ops;
+      }
+
+    tres.m_successful_inserts += inserts;
+    tres.m_found_on_inserts += found_inserts;
+    tres.m_found_on_erase_ops += erased;
+    tres.m_not_found_on_erase_ops += erase_not_found;
+  }
+
+  template <class H, class Tran>
+  void
+  testcase_insert_given_and_erase_and_claimret (test_result &tres, H &hash, Tran lftran, size_t insert_count,
+      size_t erase_count, size_t claimret_count)
+  {
+    my_key k;
+    size_t inserts = 0;
+    size_t found_inserts = 0;
+    size_t erased = 0;
+    size_t erase_not_found = 0;
+    std::random_device rd;
+    my_entry *myent;
+
+    size_t hash_size = hash.get_size ();
+    size_t total_ops = insert_count + erase_count + claimret_count;
+    size_t random_op;
+    size_t left_ops = total_ops;
+
+    tres.m_insert_given_ops += insert_count;
+    tres.m_erase_ops += erase_count;
+    tres.m_claim_ops = insert_count + claimret_count;
+    tres.m_retire_ops = claimret_count;
+
+    while (left_ops > 0)
+      {
+	keygen_high_conflict (k, hash_size, insert_count, rd);
+	random_op = rd () % left_ops;
+
+	if (random_op < claimret_count)
+	  {
+	    myent = hash.freelist_claim (lftran);
+	    assert (myent != NULL);
+	    hash.freelist_retire (lftran, myent);
+
+	    --claimret_count;
+	  }
+	else if (random_op < insert_count)
+	  {
+	    myent = hash.freelist_claim (lftran);
+	    assert (myent != NULL);
+	    myent->m_key = k;
+
+	    if (hash.insert_given (lftran, k, myent))
 	      {
 		++inserts;
 	      }
@@ -454,6 +537,11 @@ namespace test_lockfree
 			    testcase_find_or_inserts_and_erase<TEMPL_LFHT>, 10000, 1000);
     run_test_hashmap ("find_or_insert_and_erase=10000,1000",
 		      testcase_find_or_inserts_and_erase<TEMPL_HASHMAP>, 10000, 1000);
+
+    run_test_lf_hash_table ("testcase_insert_given_and_erase_and_claimret=10000,1000,1000",
+			    testcase_insert_given_and_erase_and_claimret<TEMPL_LFHT>, 10000, 1000, 1000);
+    run_test_hashmap ("testcase_insert_given_and_erase_and_claimret=10000,1000,1000",
+		      testcase_insert_given_and_erase_and_claimret<TEMPL_HASHMAP>, 10000, 1000, 1000);
 
     decrement_tab_indent ();
     cout_new_line ();

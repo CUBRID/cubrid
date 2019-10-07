@@ -60,6 +60,9 @@ namespace lockfree
 
       void clear (tran::index tran_index);    // NOT LOCK-FREE
 
+      T *freelist_claim (tran::index tran_index);
+      void freelist_retire (tran::index tran_index, T *&entry);
+
       size_t get_size () const;
 
     private:
@@ -101,8 +104,8 @@ namespace lockfree
       T *from_free_node (free_node_type *fn);
       void save_temporary (tran::descriptor &tdes, T *&p);
       T *claim_temporary (tran::descriptor &tdes);
-      void freelist_retire (tran::descriptor &tdes, T *&p);
       T *freelist_claim (tran::descriptor &tdes);
+      void freelist_retire (tran::descriptor &tdes, T *&p);
 
       void safeguard_use_mutex_or_tran_started (const tran::descriptor &tdes, const pthread_mutex_t *mtx);
       void start_tran_if_not_started (tran::descriptor &tdes);
@@ -496,11 +499,25 @@ namespace lockfree
 
   template <class Key, class T>
   void
+  hashmap<Key, T>::freelist_retire (tran::index tran_index, T *&entry)
+  {
+    return freelist_retire (get_tran_descriptor (tran_index), entry);
+  }
+
+  template <class Key, class T>
+  void
   hashmap<Key, T>::freelist_retire (tran::descriptor &tdes, T *&p)
   {
     assert (p != NULL);
     m_freelist->retire (tdes, *to_free_node (p));
     p = NULL;
+  }
+
+  template <class Key, class T>
+  T *
+  hashmap<Key, T>::freelist_claim (tran::index tran_index)
+  {
+    return freelist_claim (get_tran_descriptor (tran_index));
   }
 
   template <class Key, class T>
@@ -747,9 +764,6 @@ namespace lockfree
 		      {
 			/* save this for further (local) use. */
 			save_temporary (tdes, entry);
-
-			// note - if this is possible in using_mutex case, we may be in trouble. entry becomes null
-			//        here
 		      }
 
 		    if (m_edesc->using_mutex)
