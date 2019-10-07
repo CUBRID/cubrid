@@ -147,6 +147,7 @@ namespace test_lockfree
     std::atomic<std::uint64_t> m_not_found_on_finds;
     std::atomic<std::uint64_t> m_found_on_erase_ops;
     std::atomic<std::uint64_t> m_not_found_on_erase_ops;
+    std::atomic<std::uint64_t> m_iterate_increments;
 
     test_result ()
     {
@@ -170,6 +171,7 @@ namespace test_lockfree
       m_not_found_on_finds = 0;
       m_found_on_erase_ops = 0;
       m_not_found_on_erase_ops = 0;
+      m_iterate_increments = 0;
     }
 
     void dump_stats ()
@@ -196,6 +198,7 @@ namespace test_lockfree
       dump_not_zero ("fnd_fail", m_not_found_on_finds);
       dump_not_zero ("ers_succ", m_found_on_erase_ops);
       dump_not_zero ("ers_fail", m_not_found_on_erase_ops);
+      dump_not_zero ("iter_incr", m_iterate_increments);
     }
 
     void dump_not_zero (const char *name, std::atomic<std::uint64_t> &val)
@@ -339,7 +342,7 @@ namespace test_lockfree
 
 	    --claimret_count;
 	  }
-	else if (random_op < insert_count)
+	else if (random_op < insert_count + claimret_count)
 	  {
 	    myent = hash.freelist_claim (lftran);
 	    assert (myent != NULL);
@@ -389,7 +392,6 @@ namespace test_lockfree
     size_t inserts = 0;
     size_t found_inserts = 0;
     size_t erased = 0;
-    size_t erase_not_found = 0;
     std::random_device rd;
     my_entry *myent;
 
@@ -431,6 +433,7 @@ namespace test_lockfree
 	      {
 		assert (false);
 	      }
+	    ++erased;
 	    --insdel_count;
 	  }
 
@@ -440,7 +443,88 @@ namespace test_lockfree
     tres.m_successful_inserts += inserts;
     tres.m_found_on_inserts += found_inserts;
     tres.m_found_on_erase_ops += erased;
+  }
+
+  template <class H, class Tran>
+  static void
+  testcase_insdel_iter_clear (test_result &tres, H &hash, Tran lftran, size_t find_insert_count, size_t erase_count,
+			      size_t iter_count, size_t clear_count)
+  {
+    my_key k;
+    size_t inserts = 0;
+    size_t found_inserts = 0;
+    size_t erased = 0;
+    size_t erase_not_found = 0;
+    size_t iter_incr = 0;
+    std::random_device rd;
+    my_entry *myent;
+
+    size_t hash_size = hash.get_size ();
+    size_t total_ops = find_insert_count + erase_count + iter_count + clear_count;
+    size_t random_op;
+    size_t left_ops = total_ops;
+
+    tres.m_find_or_insert_ops += find_insert_count;
+    tres.m_erase_ops += erase_count;
+    tres.m_iterate_ops += iter_count;
+    tres.m_clear_ops += clear_count;
+
+    while (left_ops > 0)
+      {
+	keygen_avg_conflict (k, hash_size, find_insert_count, rd);
+	random_op = rd () % left_ops;
+
+	if (random_op < find_insert_count)
+	  {
+	    if (hash.find_or_insert (lftran, k, myent))
+	      {
+		++inserts;
+	      }
+	    else
+	      {
+		++found_inserts;
+	      }
+	    assert (myent != NULL);
+	    hash.unlock (lftran, myent);
+
+	    --find_insert_count;
+	  }
+	else if (random_op < find_insert_count + erase_count)
+	  {
+	    if (hash.erase (lftran, k))
+	      {
+		++erased;
+	      }
+	    else
+	      {
+		++erase_not_found;
+	      }
+
+	    --erase_count;
+	  }
+	else if (random_op < find_insert_count + erase_count + iter_count)
+	  {
+	    H::iterator hash_iterator { lftran, hash };
+	    for (my_entry *it_ent = hash_iterator.iterate (); it_ent != NULL; it_ent = hash_iterator.iterate ())
+	      {
+		++iter_count;
+	      }
+
+	    --iter_count;
+	  }
+	else
+	  {
+	    hash.clear (lftran);
+	    --clear_count;
+	  }
+	--left_ops;
+      }
+
+    tres.m_successful_inserts += inserts;
+    tres.m_found_on_inserts += found_inserts;
+    tres.m_found_on_erase_ops += erased;
     tres.m_not_found_on_erase_ops += erase_not_found;
+    tres.m_iterate_increments += iter_count;
   }
 
   template <class H, class Tran, size_t ThCnt, typename F, typename ... Args>
@@ -618,6 +702,11 @@ namespace test_lockfree
 	run_test_hashmap ("testcase_find_or_inserts_and_erase_locked=10000,1000",
 			  testcase_find_or_inserts_and_erase_locked<TEMPL_HASHMAP>, 10000, 1000);
       }
+
+    run_test_lf_hash_table ("testcase_insdel_iter_clear=10000,1000,100,10",
+			    testcase_insdel_iter_clear<TEMPL_LFHT>, 10000, 1000, 100, 10);
+    run_test_hashmap ("testcase_insdel_iter_clear=10000,1000,100,10",
+		      testcase_insdel_iter_clear<TEMPL_HASHMAP>, 10000, 1000, 100, 10);
 
     decrement_tab_indent ();
     cout_new_line ();

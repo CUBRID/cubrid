@@ -42,7 +42,7 @@ namespace lockfree
     public:
       class iterator;
 
-      hashmap () = default;
+      hashmap ();
       ~hashmap ();
 
       void init (tran::system &transys, size_t hash_size, size_t freelist_block_size, size_t freelist_block_count,
@@ -161,6 +161,17 @@ namespace lockfree
 
 namespace lockfree
 {
+  template <class Key, class T>
+  hashmap<Key, T>::hashmap ()
+    : m_freelist (NULL)
+    , m_buckets (NULL)
+    , m_size (0)
+    , m_backbuffer (NULL)
+    , m_backbuffer_mutex ()
+    , m_edesc (NULL)
+  {
+  }
+
   template <class Key, class T>
   hashmap<Key, T>::~hashmap ()
   {
@@ -330,7 +341,7 @@ namespace lockfree
       }
 
     /* register new backbuffer */
-    m_backbuffer = m_buckets;
+    m_backbuffer = old_buckets;
 
     /* retire all entries from old buckets; note that threads currently operating on the entries will not be disturbed
      * since the actual deletion is performed when the entries are no longer handled by active transactions */
