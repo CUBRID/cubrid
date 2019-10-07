@@ -527,6 +527,108 @@ namespace test_lockfree
     tres.m_iterate_increments += iter_count;
   }
 
+  template <class H, class Tran>
+  static void
+  testcase_find_insdel_iter_clear (test_result &tres, H &hash, Tran lftran, size_t find_count, size_t find_insert_count,
+				   size_t erase_count, size_t iter_count, size_t clear_count)
+  {
+    my_key k;
+    size_t inserts = 0;
+    size_t found_inserts = 0;
+    size_t erased = 0;
+    size_t erase_not_found = 0;
+    size_t iter_incr = 0;
+    size_t find_found = 0;
+    size_t find_not_found = 0;
+    std::random_device rd;
+    my_entry *myent;
+
+    size_t hash_size = hash.get_size ();
+    size_t total_ops = find_count + find_insert_count + erase_count + iter_count + clear_count;
+    size_t random_op;
+    size_t left_ops = total_ops;
+
+    tres.m_find_ops += find_count;
+    tres.m_find_or_insert_ops += find_insert_count;
+    tres.m_erase_ops += erase_count;
+    tres.m_iterate_ops += iter_count;
+    tres.m_clear_ops += clear_count;
+
+    while (left_ops > 0)
+      {
+	keygen_avg_conflict (k, hash_size, find_insert_count, rd);
+	random_op = rd () % left_ops;
+
+	if (random_op < find_count)
+	  {
+	    myent = hash.find (lftran, k);
+	    if (myent != NULL)
+	      {
+		find_found++;
+		hash.unlock (lftran, myent);
+	      }
+	    else
+	      {
+		find_not_found++;
+	      }
+
+	    --find_count;
+	  }
+	else if (random_op < find_count + find_insert_count)
+	  {
+	    if (hash.find_or_insert (lftran, k, myent))
+	      {
+		++inserts;
+	      }
+	    else
+	      {
+		++found_inserts;
+	      }
+	    assert (myent != NULL);
+	    hash.unlock (lftran, myent);
+
+	    --find_insert_count;
+	  }
+	else if (random_op < find_count + find_insert_count + erase_count)
+	  {
+	    if (hash.erase (lftran, k))
+	      {
+		++erased;
+	      }
+	    else
+	      {
+		++erase_not_found;
+	      }
+
+	    --erase_count;
+	  }
+	else if (random_op < find_count + find_insert_count + erase_count + iter_count)
+	  {
+	    typename H::iterator hash_iterator { lftran, hash };
+	    for (my_entry *it_ent = hash_iterator.iterate (); it_ent != NULL; it_ent = hash_iterator.iterate ())
+	      {
+		++iter_count;
+	      }
+
+	    --iter_count;
+	  }
+	else
+	  {
+	    hash.clear (lftran);
+	    --clear_count;
+	  }
+	--left_ops;
+      }
+
+    tres.m_successful_inserts += inserts;
+    tres.m_found_on_inserts += found_inserts;
+    tres.m_found_on_erase_ops += erased;
+    tres.m_not_found_on_erase_ops += erase_not_found;
+    tres.m_iterate_increments += iter_count;
+    tres.m_found_on_finds += find_found;
+    tres.m_not_found_on_finds += find_not_found;
+  }
+
   template <class H, class Tran, size_t ThCnt, typename F, typename ... Args>
   void
   start_threads (test_result &tres, H &hash, std::array<Tran, ThCnt> &tran_array, F &&f, Args &&... args)
@@ -596,12 +698,17 @@ namespace test_lockfree
 
   template <size_t ThCnt, typename F, typename ... Args>
   void
-  test_hashmap_varsizes (const std::string &case_name, F &&f, Args &&... args)
+  test_hashmap_varsizes (bool for_perf, const std::string &case_name, F &&f, Args &&... args)
   {
     std::array<size_t, 2> hash_sizes = { 100, 10000 };
     for (size_t i = 0; i < hash_sizes.size (); ++i)
       {
 	test_result tres;
+
+	if (for_perf && i == 0)
+	  {
+	    continue;
+	  }
 
 	cout_new_line ();
 	std::cout << "test lockfree_hashmap|";
@@ -615,12 +722,17 @@ namespace test_lockfree
 
   template <size_t ThCnt, typename F, typename ... Args>
   void
-  test_lf_hash_table_varsizes (const std::string &case_name, F &&f, Args &&... args)
+  test_lf_hash_table_varsizes (bool for_perf, const std::string &case_name, F &&f, Args &&... args)
   {
     std::array<size_t, 2> hash_sizes = { 100, 10000 };
     for (size_t i = 0; i < hash_sizes.size (); ++i)
       {
 	test_result tres;
+
+	if (for_perf && i == 0)
+	  {
+	    continue;
+	  }
 
 	cout_new_line ();
 	std::cout << "test lf_hash_table_cpp|";
@@ -634,15 +746,18 @@ namespace test_lockfree
 
   template <typename F, typename ... Args>
   void
-  run_test_hashmap (const std::string &case_name, F &&f, Args &&... args)
+  run_test_hashmap (bool for_perf, const std::string &case_name, F &&f, Args &&... args)
   {
     cout_new_line ();
 
     auto start_time = std::chrono::high_resolution_clock::now ();
 
-    test_hashmap_varsizes<1> (case_name, std::forward<F> (f), std::forward<Args> (args)...);
-    test_hashmap_varsizes<4> (case_name, std::forward<F> (f), std::forward<Args> (args)...);
-    test_hashmap_varsizes<64> (case_name, std::forward<F> (f), std::forward<Args> (args)...);
+    if (!for_perf)
+      {
+	test_hashmap_varsizes<1> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
+	test_hashmap_varsizes<4> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
+      }
+    test_hashmap_varsizes<64> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
 
     auto end_time = std::chrono::high_resolution_clock::now ();
     cout_new_line ();
@@ -652,15 +767,18 @@ namespace test_lockfree
 
   template <typename F, typename ... Args>
   void
-  run_test_lf_hash_table (const std::string &case_name, F &&f, Args &&... args)
+  run_test_lf_hash_table (bool for_perf, const std::string &case_name, F &&f, Args &&... args)
   {
     cout_new_line ();
 
     auto start_time = std::chrono::high_resolution_clock::now ();
 
-    test_lf_hash_table_varsizes<1> (case_name, std::forward<F> (f), std::forward<Args> (args)...);
-    test_lf_hash_table_varsizes<4> (case_name, std::forward<F> (f), std::forward<Args> (args)...);
-    test_lf_hash_table_varsizes<64> (case_name, std::forward<F> (f), std::forward<Args> (args)...);
+    if (!for_perf)
+      {
+	test_lf_hash_table_varsizes<1> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
+	test_lf_hash_table_varsizes<4> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
+      }
+    test_lf_hash_table_varsizes<64> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
 
     auto end_time = std::chrono::high_resolution_clock::now ();
     cout_new_line ();
@@ -680,32 +798,32 @@ namespace test_lockfree
     std::cout << "Start testing lock-free hashmap/hash table with mutex " << mutex_on_off;
     increment_tab_indent ();
 
-    run_test_lf_hash_table ("insert_find=10000", testcase_inserts<TEMPL_LFHT>, 10000);
-    run_test_hashmap ("insert_find=10000", testcase_inserts<TEMPL_HASHMAP>, 10000);
+    run_test_lf_hash_table (false, "insert_find=10000", testcase_inserts<TEMPL_LFHT>, 10000);
+    run_test_hashmap (false, "insert_find=10000", testcase_inserts<TEMPL_HASHMAP>, 10000);
 
 
-    run_test_lf_hash_table ("find_or_insert_and_erase=10000,1000",
+    run_test_lf_hash_table (false, "find_or_insert_and_erase=10000,1000",
 			    testcase_find_or_inserts_and_erase<TEMPL_LFHT>, 10000, 1000);
-    run_test_hashmap ("find_or_insert_and_erase=10000,1000",
+    run_test_hashmap (false, "find_or_insert_and_erase=10000,1000",
 		      testcase_find_or_inserts_and_erase<TEMPL_HASHMAP>, 10000, 1000);
 
-    run_test_lf_hash_table ("testcase_insert_given_and_erase_and_claimret=10000,1000,1000",
+    run_test_lf_hash_table (false, "testcase_insert_given_and_erase_and_claimret=10000,1000,1000",
 			    testcase_insert_given_and_erase_and_claimret<TEMPL_LFHT>, 10000, 1000, 1000);
-    run_test_hashmap ("testcase_insert_given_and_erase_and_claimret=10000,1000,1000",
+    run_test_hashmap (false, "testcase_insert_given_and_erase_and_claimret=10000,1000,1000",
 		      testcase_insert_given_and_erase_and_claimret<TEMPL_HASHMAP>, 10000, 1000, 1000);
 
     if (mutex_on_off == MUTEX_ON)
       {
 	// erase locked works only for MUTEX_ON
-	run_test_lf_hash_table ("testcase_find_or_inserts_and_erase_locked=10000,1000",
+	run_test_lf_hash_table (false, "testcase_find_or_inserts_and_erase_locked=10000,1000",
 				testcase_find_or_inserts_and_erase_locked<TEMPL_LFHT>, 10000, 1000);
-	run_test_hashmap ("testcase_find_or_inserts_and_erase_locked=10000,1000",
+	run_test_hashmap (false, "testcase_find_or_inserts_and_erase_locked=10000,1000",
 			  testcase_find_or_inserts_and_erase_locked<TEMPL_HASHMAP>, 10000, 1000);
       }
 
-    run_test_lf_hash_table ("testcase_insdel_iter_clear=10000,1000,100,10",
+    run_test_lf_hash_table (false, "testcase_insdel_iter_clear=10000,1000,100,10",
 			    testcase_insdel_iter_clear<TEMPL_LFHT>, 10000, 1000, 100, 10);
-    run_test_hashmap ("testcase_insdel_iter_clear=10000,1000,100,10",
+    run_test_hashmap (false, "testcase_insdel_iter_clear=10000,1000,100,10",
 		      testcase_insdel_iter_clear<TEMPL_HASHMAP>, 10000, 1000, 100, 10);
 
     decrement_tab_indent ();
@@ -721,12 +839,30 @@ namespace test_lockfree
     return 0;
   }
 
+  static void
+  test_hashmap_performance_internal (bool mutex_on_or_off)
+  {
+    set_entry_mutex_mode (mutex_on_or_off);
+
+    cout_new_line ();
+    std::cout << "Start performance testing lock-free hashmap/hash table with mutex " << mutex_on_or_off;
+    increment_tab_indent ();
+
+    run_test_lf_hash_table (true, "testcase_find_insdel_iter_clear=1M,30k,5k,1k,10",
+			    testcase_find_insdel_iter_clear<TEMPL_LFHT>, 1000000, 30000, 5000, 1000, 10);
+    run_test_hashmap (true, "testcase_find_insdel_iter_clear=1M,30k,5k,1k,10",
+		      testcase_find_insdel_iter_clear<TEMPL_HASHMAP>, 1000000, 30000, 5000, 1000, 10);
+
+    decrement_tab_indent ();
+    cout_new_line ();
+  }
+
   int
   test_hashmap_performance ()
   {
-    tran::system sys (10);
-    dummy_int_hashmap hash;
-    hash.init (sys, 10, 10, 10, g_edesc);
+    test_hashmap_performance_internal (false);
+    test_hashmap_performance_internal (true);
+
     return 0;
   }
 
