@@ -742,40 +742,42 @@ struct btree_insert_helper
   OID saved_locked_class_oid;	/* Save class of locked object. */
 #endif				/* SERVER_MODE */
 
-    btree_insert_helper ();
+  // *INDENT-OFF*
+  btree_insert_helper ();
+  // *INDENT-ON*
 };
 
 // *INDENT-OFF*
 btree_insert_helper::btree_insert_helper ()
-: obj_info (BTREE_OBJECT_INFO_INITIALIZER)
-, purpose (BTREE_OP_NO_OP)
-, op_type (0)
-, unique_stats_info (NULL)
-, key_len_in_page (0)
-, nonleaf_latch_mode (PGBUF_LATCH_READ)
-, is_first_try (true)
-, need_update_max_key_len (false)
-, is_crt_node_write_latched (false)
-, is_root (false)
-, is_unique_key_added_or_deleted (true)
-, is_unique_multi_update (false)
-, is_ha_enabled (false)
-, log_operations (false)
-, is_null (false)
-, printed_key (NULL)
-, printed_key_sha1 (SHA1_HASH_INITIALIZER)
-, leaf_addr (LOG_DATA_ADDR_INITIALIZER)
-, rcvindex (RV_NOT_DEFINED)
-, rv_keyval_data (NULL)
-, rv_keyval_data_length (0)
-, rv_redo_data (NULL)
-, rv_redo_data_ptr (NULL)
-, compensate_undo_nxlsa (LSA_INITIALIZER)
-, is_system_op_started (false)
-, time_track (PERF_UTIME_TRACKER_INITIALIZER)
+  : obj_info (BTREE_OBJECT_INFO_INITIALIZER)
+  , purpose (BTREE_OP_NO_OP)
+  , op_type (0)
+  , unique_stats_info (NULL)
+  , key_len_in_page (0)
+  , nonleaf_latch_mode (PGBUF_LATCH_READ)
+  , is_first_try (true)
+  , need_update_max_key_len (false)
+  , is_crt_node_write_latched (false)
+  , is_root (false)
+  , is_unique_key_added_or_deleted (true)
+  , is_unique_multi_update (false)
+  , is_ha_enabled (false)
+  , log_operations (false)
+  , is_null (false)
+  , printed_key (NULL)
+  , printed_key_sha1 (SHA1_HASH_INITIALIZER)
+  , leaf_addr (LOG_DATA_ADDR_INITIALIZER)
+  , rcvindex (RV_NOT_DEFINED)
+  , rv_keyval_data (NULL)
+  , rv_keyval_data_length (0)
+  , rv_redo_data (NULL)
+  , rv_redo_data_ptr (NULL)
+  , compensate_undo_nxlsa (LSA_INITIALIZER)
+  , is_system_op_started (false)
+  , time_track (PERF_UTIME_TRACKER_INITIALIZER)
 #if defined (SERVER_MODE)
-, saved_locked_oid (OID_INITIALIZER)
-, saved_locked_class_oid (OID_INITIALIZER)
+  , saved_locked_oid (OID_INITIALIZER)
+  , saved_locked_class_oid (OID_INITIALIZER)
 #endif	
 {
 }
@@ -825,34 +827,36 @@ struct btree_delete_helper
   /* Performance tracker. */
   PERF_UTIME_TRACKER time_track;
 
-    btree_delete_helper ();
+  // *INDENT-OFF*
+  btree_delete_helper ();
+  // *INDENT-ON*
 };
 
 // *INDENT-OFF*
 btree_delete_helper::btree_delete_helper ()
-: object_info (BTREE_OBJECT_INFO_INITIALIZER)
-, second_object_info (BTREE_OBJECT_INFO_INITIALIZER)
-, purpose (BTREE_OP_NO_OP)
-, nonleaf_latch_mode (PGBUF_LATCH_READ)
-, op_type (SINGLE_ROW_DELETE)
-, unique_stats_info (NULL)
-, match_mvccinfo (BTREE_MVCC_INFO_INITIALIZER)
-, buffered_key (NULL)
-, printed_key (NULL)
-, printed_key_sha1 (SHA1_HASH_INITIALIZER)
-, log_operations (false)
-, is_root (false)
-, is_first_search (true)
-, check_key_deleted (false)
-, is_key_deleted (false)
-, leaf_addr (LOG_DATA_ADDR_INITIALIZER)
-, rv_keyval_data (NULL)
-, rv_keyval_data_length (0)
-, rv_redo_data (NULL)
-, rv_redo_data_ptr (NULL)
-, reference_lsa (LSA_INITIALIZER)
-, is_system_op_started (false)
-, time_track (PERF_UTIME_TRACKER_INITIALIZER)
+  : object_info (BTREE_OBJECT_INFO_INITIALIZER)
+  , second_object_info (BTREE_OBJECT_INFO_INITIALIZER)
+  , purpose (BTREE_OP_NO_OP)
+  , nonleaf_latch_mode (PGBUF_LATCH_READ)
+  , op_type (SINGLE_ROW_DELETE)
+  , unique_stats_info (NULL)
+  , match_mvccinfo (BTREE_MVCC_INFO_INITIALIZER)
+  , buffered_key (NULL)
+  , printed_key (NULL)
+  , printed_key_sha1 (SHA1_HASH_INITIALIZER)
+  , log_operations (false)
+  , is_root (false)
+  , is_first_search (true)
+  , check_key_deleted (false)
+  , is_key_deleted (false)
+  , leaf_addr (LOG_DATA_ADDR_INITIALIZER)
+  , rv_keyval_data (NULL)
+  , rv_keyval_data_length (0)
+  , rv_redo_data (NULL)
+  , rv_redo_data_ptr (NULL)
+  , reference_lsa (LSA_INITIALIZER)
+  , is_system_op_started (false)
+  , time_track (PERF_UTIME_TRACKER_INITIALIZER)
 {
 }
 // *INDENT-ON*
