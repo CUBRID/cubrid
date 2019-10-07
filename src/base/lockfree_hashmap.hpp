@@ -89,9 +89,9 @@ namespace lockfree
 
       lf_entry_descriptor *m_edesc;
 
-      void *volatile *get_ref (T *p, size_t o);
-      void *get_ptr (T *p, size_t o);
-      void *get_ptr_deref (T *p, size_t o);
+      void *volatile *get_ref (T *p, size_t offset);
+      void *get_ptr (T *p, size_t offset);
+      void *get_ptr_deref (T *p, size_t offset);
       void *get_keyp (T *p);
       T *get_nextp (T *p);
       T *&get_nextp_ref (T *p);
@@ -408,27 +408,27 @@ namespace lockfree
 
   template <class Key, class T>
   void *
-  hashmap<Key, T>::get_ptr (T *p, size_t o)
+  hashmap<Key, T>::get_ptr (T *p, size_t offset)
   {
     assert (p != NULL);
     assert (!address_type::is_address_marked (p));
-    return (void *) (((char *) p) + o);
+    return (void *) (((char *) p) + offset);
   }
 
   template <class Key, class T>
   void *volatile *
-  hashmap<Key, T>::get_ref (T *p, size_t o)
+  hashmap<Key, T>::get_ref (T *p, size_t offset)
   {
     assert (p != NULL);
     assert (!address_type::is_address_marked (p));
-    return (void *volatile *) (((char *) p) + o);
+    return (void *volatile *) (((char *) p) + offset);
   }
 
   template <class Key, class T>
   void *
-  hashmap<Key, T>::get_ptr_deref (T *p, size_t o)
+  hashmap<Key, T>::get_ptr_deref (T *p, size_t offset)
   {
-    return *get_ref (p, o);
+    return *get_ref (p, offset);
   }
 
   template <class Key, class T>
