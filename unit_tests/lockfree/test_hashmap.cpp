@@ -89,6 +89,10 @@ namespace test_lockfree
     hash_my_key,
     NULL
   };
+
+  static const bool MUTEX_ON = true;
+  static const bool MUTEX_OFF = false;
+
   static void
   set_entry_mutex_mode (bool on_off)
   {
@@ -204,7 +208,7 @@ namespace test_lockfree
   };
 
   template <class H, class Tran>
-  void
+  static void
   testcase_inserts (test_result &tres, H &hash, Tran lftran, size_t insert_count)
   {
     my_key k;
@@ -239,7 +243,7 @@ namespace test_lockfree
   }
 
   template <class H, class Tran>
-  void
+  static void
   testcase_find_or_inserts_and_erase (test_result &tres, H &hash, Tran lftran, size_t insert_count, size_t erase_count)
   {
     my_key k;
@@ -300,7 +304,7 @@ namespace test_lockfree
   }
 
   template <class H, class Tran>
-  void
+  static void
   testcase_insert_given_and_erase_and_claimret (test_result &tres, H &hash, Tran lftran, size_t insert_count,
       size_t erase_count, size_t claimret_count)
   {
@@ -367,6 +371,69 @@ namespace test_lockfree
 
 	    --erase_count;
 	  }
+	--left_ops;
+      }
+
+    tres.m_successful_inserts += inserts;
+    tres.m_found_on_inserts += found_inserts;
+    tres.m_found_on_erase_ops += erased;
+    tres.m_not_found_on_erase_ops += erase_not_found;
+  }
+
+  template <class H, class Tran>
+  static void
+  testcase_find_or_inserts_and_erase_locked (test_result &tres, H &hash, Tran lftran, size_t insert_count,
+      size_t insdel_count)
+  {
+    my_key k;
+    size_t inserts = 0;
+    size_t found_inserts = 0;
+    size_t erased = 0;
+    size_t erase_not_found = 0;
+    std::random_device rd;
+    my_entry *myent;
+
+    assert (g_edesc.using_mutex != 0);
+
+    size_t hash_size = hash.get_size ();
+    size_t total_ops = insert_count + insdel_count;
+    size_t random_op;
+    size_t left_ops = total_ops;
+
+    tres.m_find_or_insert_ops += total_ops;
+    tres.m_erase_locked_ops += insdel_count;
+
+    while (left_ops > 0)
+      {
+	keygen_high_conflict (k, hash_size, total_ops, rd);
+	random_op = rd () % left_ops;
+
+	if (hash.find_or_insert (lftran, k, myent))
+	  {
+	    ++inserts;
+	  }
+	else
+	  {
+	    ++found_inserts;
+	  }
+	assert (myent != NULL);
+
+	if (random_op < insert_count)
+	  {
+	    // only insert
+	    hash.unlock (lftran, myent);
+	    --insert_count;
+	  }
+	else
+	  {
+	    // also erase
+	    if (hash.erase_locked (lftran, k, myent) != true)
+	      {
+		assert (false);
+	      }
+	    --insdel_count;
+	  }
+
 	--left_ops;
       }
 
@@ -543,6 +610,15 @@ namespace test_lockfree
     run_test_hashmap ("testcase_insert_given_and_erase_and_claimret=10000,1000,1000",
 		      testcase_insert_given_and_erase_and_claimret<TEMPL_HASHMAP>, 10000, 1000, 1000);
 
+    if (mutex_on_off == MUTEX_ON)
+      {
+	// erase locked works only for MUTEX_ON
+	run_test_lf_hash_table ("testcase_find_or_inserts_and_erase_locked=10000,1000",
+				testcase_find_or_inserts_and_erase_locked<TEMPL_LFHT>, 10000, 1000);
+	run_test_hashmap ("testcase_find_or_inserts_and_erase_locked=10000,1000",
+			  testcase_find_or_inserts_and_erase_locked<TEMPL_HASHMAP>, 10000, 1000);
+      }
+
     decrement_tab_indent ();
     cout_new_line ();
   }
@@ -550,8 +626,8 @@ namespace test_lockfree
   int
   test_hashmap_functional ()
   {
-    test_hashmap_functional_internal (false);
-    test_hashmap_functional_internal (true);
+    test_hashmap_functional_internal (MUTEX_OFF);
+    test_hashmap_functional_internal (MUTEX_ON);
 
     return 0;
   }
