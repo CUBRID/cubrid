@@ -504,7 +504,7 @@ namespace test_lockfree
 	  }
 	else if (random_op < find_insert_count + erase_count + iter_count)
 	  {
-	    H::iterator hash_iterator { lftran, hash };
+	    typename H::iterator hash_iterator { lftran, hash };
 	    for (my_entry *it_ent = hash_iterator.iterate (); it_ent != NULL; it_ent = hash_iterator.iterate ())
 	      {
 		++iter_count;
