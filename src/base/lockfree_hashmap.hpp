@@ -485,8 +485,8 @@ namespace lockfree
   void
   hashmap<Key, T>::save_temporary (tran::descriptor &tdes, T *&p)
   {
-    free_node_type *fn = to_free_node (p);
-    tdes.save_reclaimable (* (reinterpret_cast<tran::reclaimable_node **> (&fn)));
+    tran::reclaimable_node *fn = to_free_node (p);
+    tdes.save_reclaimable (fn);
     p = NULL;
   }
 
