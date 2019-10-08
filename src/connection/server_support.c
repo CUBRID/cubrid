@@ -1397,7 +1397,7 @@ shutdown:
   css_stop_all_workers (*thread_p, THREAD_STOP_WORKERS_EXCEPT_LOGWR);
 
   /* stop vacuum threads. */
-  vacuum_stop (thread_p);
+  vacuum_stop_workers (thread_p);
 
   // stop load sessions
   cubload::worker_manager_stop_all ();
