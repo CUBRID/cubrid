@@ -293,37 +293,37 @@ namespace cubload
   void
   session::notify_batch_done (batch_id id)
   {
+    std::unique_lock<std::mutex> ulock (m_commit_mutex);
     --m_active_task_count;
-    if (is_failed ())
+    if (!is_failed ())
       {
-	return;
+	assert (m_last_batch_id == id - 1);
+	m_last_batch_id = id;
       }
-    m_commit_mutex.lock ();
-    assert (m_last_batch_id == id - 1);
-    m_last_batch_id = id;
-    m_commit_mutex.unlock ();
-    er_clear ();
+    ulock.unlock ();
     notify_waiting_threads ();
+
+    er_clear ();
   }
 
   void
   session::notify_batch_done_and_register_tran_end (batch_id id, int tran_index)
   {
+    std::unique_lock<std::mutex> ulock (m_commit_mutex);
     --m_active_task_count;
-    if (is_failed ())
+    if (!is_failed ())
       {
-	return;
+	assert (m_last_batch_id == id - 1);
+	m_last_batch_id = id;
       }
-    m_commit_mutex.lock ();
-    assert (m_last_batch_id == id - 1);
-    m_last_batch_id = id;
     if (m_tran_indexes.erase (tran_index) != 1)
       {
 	assert (false);
       }
-    m_commit_mutex.unlock ();
-    er_clear ();
+    ulock.unlock ();
     notify_waiting_threads ();
+
+    er_clear ();
   }
 
   void

@@ -14777,9 +14777,13 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   else
     {
       PT_PRINT_VALUE_FUNC saved_func = parser->print_db_value;
+      int saved_custom_print = parser->custom_print;
+
+      parser->custom_print |= PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING;
       parser->print_db_value = pt_print_node_value;
       repl_stmt.stmt_text = parser_print_tree (parser, statement);
       parser->print_db_value = saved_func;
+      parser->custom_print = saved_custom_print;
     }
 
   repl_stmt.db_user = db_get_user_name ();

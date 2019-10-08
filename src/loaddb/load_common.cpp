@@ -547,6 +547,7 @@ namespace cubload
     batch_id batch_id = NULL_BATCH_ID;
     std::string batch_buffer;
     bool class_is_ignored = false;
+    short single_quote_checker = 0;
 
     if (object_file_name.empty ())
       {
@@ -620,22 +621,39 @@ namespace cubload
 	// since std::getline eats end line character, add it back in order to make loaddb lexer happy
 	batch_buffer.append ("\n");
 
+	// check for matching single quotes
+	for (const char &c: line)
+	  {
+	    if (c == '\'')
+	      {
+		single_quote_checker ^= 1;
+	      }
+	  }
+
 	// it could be that a row is wrapped on the next line,
 	// this means that the row ends on the last line that does not end with '+' (plus) character
-	if (!ends_with (line, "+"))
+	if (ends_with (line, "+"))
 	  {
-	    ++batch_rows;
+	    continue;
+	  }
 
-	    // check if we have a full batch
-	    if (batch_rows == batch_size)
+	// if single_quote_checker is 1, it means that a single quote was opened but not closed
+	if (single_quote_checker == 1)
+	  {
+	    continue;
+	  }
+
+	++batch_rows;
+
+	// check if we have a full batch
+	if (batch_rows == batch_size)
+	  {
+	    error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset, batch_rows);
+	    line_offset = lineno;
+	    if (error_code != NO_ERROR)
 	      {
-		error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset, batch_rows);
-		line_offset = lineno;
-		if (error_code != NO_ERROR)
-		  {
-		    object_file.close ();
-		    return error_code;
-		  }
+		object_file.close ();
+		return error_code;
 	      }
 	  }
       }
