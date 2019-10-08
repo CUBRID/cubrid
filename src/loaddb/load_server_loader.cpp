@@ -174,7 +174,6 @@ namespace cubload
     get_class_attributes (attrinfo, attr_type, or_attributes, &n_attributes);
 
     // sort attrib idxs by or_attrib.def_order
-    // this will keep order of elements & "fill the gaps"
     // or_attributes[:].def_order = [ 2, 0, 3, 10, 5] -> attrib_order = [ 1, 0, 2, 4, 3]
     std::vector<int> attrib_order (n_attributes);
     for (size_t i = 0; i < attrib_order.size (); ++i)
@@ -197,14 +196,7 @@ namespace cubload
 	int free_attr_name = 0;
 	or_attribute *attr_repr = NULL;
 
-	for (size_t i = 0; i < attrib_order.size (); ++i)
-	  {
-	    if (attrib_order[i] == attr_index)
-	      {
-		attr_repr = &or_attributes[i];
-		break;
-	      }
-	  }
+	attr_repr = &or_attributes[attrib_order[attr_index]];
 
 	error_code = or_get_attrname (&recdes, attr_repr->id, &attr_name, &free_attr_name);
 	if (error_code != NO_ERROR)
