@@ -942,8 +942,8 @@ namespace lockfree
 	      } //  else of if (curr != NULL)
 	  } // while (curr_p != NULL)
 
-	/* impossible case */
-	assert (false);
+	// only way to exit while (curr_p != NULL) loop is to restart search
+	assert (restart_search);
       } // while (restart_search)
     /* impossible case */
     assert (false);
