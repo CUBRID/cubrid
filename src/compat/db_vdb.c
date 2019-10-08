@@ -697,7 +697,6 @@ db_compile_statement_local (DB_SESSION * session)
 		}
 	      return err;
 	    }
-	  session->parser->set_host_var = 1;
 	}
 
       /* now, prepare the statement by calling do_prepare_statement() */
@@ -2547,6 +2546,8 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
 	}
     }
 
+  session->parser->set_host_var = 1;
+
   return NO_ERROR;
 }
 
@@ -2741,7 +2742,6 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
 	{
 	  return err;
 	}
-      new_session->parser->set_host_var = 1;
     }
 
   new_session->parser->is_holdable = session->parser->is_holdable;
