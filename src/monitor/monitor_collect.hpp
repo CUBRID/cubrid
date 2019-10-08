@@ -119,6 +119,8 @@ namespace cubmonitor
       inline void time_and_increment (const time_rep &d, const amount_rep &a = 1);    // add time and amount
       inline void time_and_increment (const amount_rep &a = 1);                       // add internal time and amount
 
+      inline void reset_timer ();
+
       // fetch interface
       inline std::size_t get_statistics_count (void) const;
       inline void fetch (statistic_value *destination, fetch_mode mode = FETCH_GLOBAL) const;
@@ -145,6 +147,11 @@ namespace cubmonitor
 					 transaction_statistic<time_accumulator_statistic>>;
   template class counter_timer_statistic<transaction_statistic<amount_accumulator_atomic_statistic>,
 					 transaction_statistic<time_accumulator_atomic_statistic>>;
+
+  // aliases
+  using counter_timer_stat = counter_timer_statistic<>;
+  using atomic_counter_timer_stat =
+	  counter_timer_statistic<amount_accumulator_atomic_statistic, time_accumulator_atomic_statistic>;
 
   //////////////////////////////////////////////////////////////////////////
   // Counter/timer/max statistic - three statistics that count, time and save events longest duration
@@ -269,6 +276,13 @@ namespace cubmonitor
   counter_timer_statistic<A, T>::time_and_increment (const amount_rep &a /* = 1 */)
   {
     time_and_increment (m_timer.time (), a);      // use internal timer
+  }
+
+  template <class A, class T>
+  void
+  counter_timer_statistic<A, T>::reset_timer ()
+  {
+    m_timer.reset ();
   }
 
   template <class A, class T>

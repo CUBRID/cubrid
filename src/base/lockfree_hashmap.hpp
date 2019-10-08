@@ -28,11 +28,13 @@
 #include "lockfree_address_marker.hpp"
 #include "lockfree_freelist.hpp"
 #include "lockfree_transaction_reclaimable.hpp"
+#include "monitor_collect.hpp"
 #include "porting.h"
 
 #include <cassert>
 #include <limits>
 #include <mutex>
+#include <ostream>
 
 namespace lockfree
 {
@@ -63,6 +65,9 @@ namespace lockfree
       T *freelist_claim (tran::index tran_index);
       void freelist_retire (tran::index tran_index, T *&entry);
 
+      template <typename D>
+      void dump_stats (std::ostream &os) const;
+
       size_t get_size () const;
 
     private:
@@ -91,6 +96,12 @@ namespace lockfree
       std::mutex m_backbuffer_mutex;
 
       lf_entry_descriptor *m_edesc;
+
+      // statistics
+      using ct_stat_type = cubmonitor::atomic_counter_timer_stat;
+      ct_stat_type m_stat_find;
+      ct_stat_type m_stat_insert;
+      ct_stat_type m_stat_erase;
 
       void *volatile *get_ref (T *p, size_t offset);
       void *get_ptr (T *p, size_t offset);
@@ -128,6 +139,9 @@ namespace lockfree
 
       bool hash_insert_internal (tran::index tran_index, Key &key, int bflags, T *&entry);
       bool hash_erase_internal (tran::index tran_index, Key &key, int bflags, T *locked_entry);
+
+      template <typename D>
+      void dump_stat (std::ostream &os, const char *name, const ct_stat_type &ct_stat) const;
 
       static constexpr std::ptrdiff_t free_node_offset_of_data (free_node_type fn)
       {
@@ -169,6 +183,9 @@ namespace lockfree
     , m_backbuffer (NULL)
     , m_backbuffer_mutex ()
     , m_edesc (NULL)
+    , m_stat_find ()
+    , m_stat_insert ()
+    , m_stat_erase ()
   {
   }
 
@@ -231,6 +248,8 @@ namespace lockfree
   T *
   hashmap<Key, T>::find (tran::index tran_index, Key &key)
   {
+    m_stat_find.reset_timer ();
+
     int bflags = 0;
     bool restart = true;
     T *entry = NULL;
@@ -243,6 +262,8 @@ namespace lockfree
 	list_find (tran_index, list_head, key, &bflags, entry);
 	restart = (bflags & LF_LIST_BR_RESTARTED) != 0;
       }
+
+    m_stat_find.time_and_increment ();
     return entry;
   }
 
@@ -513,6 +534,32 @@ namespace lockfree
   hashmap<Key, T>::freelist_retire (tran::index tran_index, T *&entry)
   {
     return freelist_retire (get_tran_descriptor (tran_index), entry);
+  }
+
+  template <class Key, class T>
+  template <typename D>
+  void
+  hashmap<Key, T>::dump_stat (std::ostream &os, const char *name, const ct_stat_type &ct_stat) const
+  {
+    if (ct_stat.get_count () != 0)
+      {
+	os << name;
+	os << "[" << ct_stat.get_count ();
+	os << ", " << std::chrono::duration_cast<D> (ct_stat.get_time ()).count ();
+	os << "] ";
+      }
+  }
+
+  template <class Key, class T>
+  template <typename D>
+  void
+  hashmap<Key, T>::dump_stats (std::ostream &os) const
+  {
+    dump_stat<D> (os, "find", m_stat_find);
+
+    dump_stat<D> (os, "insert", m_stat_insert);
+
+    dump_stat<D> (os, "erase", m_stat_erase);
   }
 
   template <class Key, class T>
@@ -1112,6 +1159,8 @@ namespace lockfree
   bool
   hashmap<Key, T>::hash_insert_internal (tran::index tran_index, Key &key, int bflags, T *&entry)
   {
+    m_stat_insert.reset_timer ();
+
     bool inserted = false;
 
     while (true)
@@ -1138,6 +1187,8 @@ namespace lockfree
 	    break;
 	  }
       }
+
+    m_stat_insert.time_and_increment ();
     return inserted;
   }
 
@@ -1146,6 +1197,8 @@ namespace lockfree
   bool
   hashmap<Key, T>::hash_erase_internal (tran::index tran_index, Key &key, int bflags, T *locked_entry)
   {
+    m_stat_erase.reset_timer ();
+
     bool erased = false;
 
     while (true)
@@ -1163,6 +1216,8 @@ namespace lockfree
 	    break;
 	  }
       }
+
+    m_stat_erase.time_and_increment ();
     return erased;
   }
 

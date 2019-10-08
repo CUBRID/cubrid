@@ -663,6 +663,9 @@ namespace test_lockfree
 
     start_threads (tres, l_hash, l_indexes, std::forward<F> (f), std::forward<Args> (args)...);
 
+    cout_new_line ();
+    std::cout << "hash stats: ";
+    l_hash.dump_stats<std::chrono::milliseconds> (std::cout);
     l_hash.destroy ();
     for (size_t i = 0; i < ThCnt; ++i)
       {
@@ -757,12 +760,12 @@ namespace test_lockfree
 	test_hashmap_varsizes<1> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
 	test_hashmap_varsizes<4> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
       }
-    test_hashmap_varsizes<64> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
+    //test_hashmap_varsizes<64> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
 
     auto end_time = std::chrono::high_resolution_clock::now ();
     cout_new_line ();
     std::cout << "test took ";
-    std::cout << (std::chrono::duration_cast<std::chrono::milliseconds> (end_time - start_time)).count () << " usec";
+    std::cout << (std::chrono::duration_cast<std::chrono::milliseconds> (end_time - start_time)).count () << " msec";
   }
 
   template <typename F, typename ... Args>
@@ -778,12 +781,12 @@ namespace test_lockfree
 	test_lf_hash_table_varsizes<1> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
 	test_lf_hash_table_varsizes<4> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
       }
-    test_lf_hash_table_varsizes<64> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
+    //test_lf_hash_table_varsizes<64> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
 
     auto end_time = std::chrono::high_resolution_clock::now ();
     cout_new_line ();
     std::cout << "test took ";
-    std::cout << (std::chrono::duration_cast<std::chrono::milliseconds> (end_time - start_time)).count () << " usec";
+    std::cout << (std::chrono::duration_cast<std::chrono::milliseconds> (end_time - start_time)).count () << " msec";
   }
 
 #define TEMPL_LFHT my_lf_hash_table, lf_tran_entry *
