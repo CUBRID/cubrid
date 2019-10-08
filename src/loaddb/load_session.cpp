@@ -100,6 +100,10 @@ namespace cubload
 
       ~load_task () override
       {
+	if (!m_finish_notified)
+	  {
+	    notify_done ();
+	  }
 	delete &m_batch;
       }
 
@@ -138,7 +142,7 @@ namespace cubload
 	      }
 
 	    driver->clear ();
-	    m_session.notify_batch_done (m_batch.get_id ());
+	    notify_done ();
 	    return;
 	  }
 
@@ -207,13 +211,28 @@ namespace cubload
 	logtb_free_tran_index (&thread_ref, thread_ref.tran_index);
 
 	// notify session that batch is done
-	m_session.notify_batch_done_and_register_tran_end (m_batch.get_id (), tran_index);
+	notify_done_and_tran_end (tran_index);
       }
 
     private:
+      void notify_done ()
+      {
+	assert (!m_finish_notified);
+	m_session.notify_batch_done (m_batch.get_id ());
+	m_finish_notified = true;
+      }
+
+      void notify_done_and_tran_end (int tran_index)
+      {
+	assert (!m_finish_notified);
+	m_session.notify_batch_done_and_register_tran_end (m_batch.get_id (), tran_index);
+	m_finish_notified = true;
+      }
+
       const batch &m_batch;
       session &m_session;
       css_conn_entry &m_conn_entry;
+      bool m_finish_notified;
   };
 
   session::session (load_args &args)
@@ -294,6 +313,7 @@ namespace cubload
   session::notify_batch_done (batch_id id)
   {
     std::unique_lock<std::mutex> ulock (m_commit_mutex);
+    assert (m_active_task_count > 0);
     --m_active_task_count;
     if (!is_failed ())
       {
@@ -310,6 +330,7 @@ namespace cubload
   session::notify_batch_done_and_register_tran_end (batch_id id, int tran_index)
   {
     std::unique_lock<std::mutex> ulock (m_commit_mutex);
+    assert (m_active_task_count > 0);
     --m_active_task_count;
     if (!is_failed ())
       {
