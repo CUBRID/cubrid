@@ -174,6 +174,7 @@ namespace cubload
     get_class_attributes (attrinfo, attr_type, or_attributes, &n_attributes);
 
     // sort attrib idxs by or_attrib.def_order
+    // attrib_order[i] = the i-th element in or_attributes[:].def_order
     // or_attributes[:].def_order = [ 2, 0, 3, 10, 5] -> attrib_order = [ 1, 0, 2, 4, 3]
     std::vector<int> attrib_order (n_attributes);
     for (size_t i = 0; i < attrib_order.size (); ++i)
