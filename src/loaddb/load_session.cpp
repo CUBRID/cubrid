@@ -100,7 +100,7 @@ namespace cubload
 
       ~load_task () override
       {
-	if (!m_finish_notified)
+	if (!m_was_session_notified)
 	  {
 	    notify_done ();
 	  }
@@ -111,6 +111,7 @@ namespace cubload
 	: m_batch (batch)
 	, m_session (session)
 	, m_conn_entry (conn_entry)
+	, m_was_session_notified (false)
       {
 	//
       }
@@ -217,22 +218,22 @@ namespace cubload
     private:
       void notify_done ()
       {
-	assert (!m_finish_notified);
+	assert (!m_was_session_notified);
 	m_session.notify_batch_done (m_batch.get_id ());
-	m_finish_notified = true;
+	m_was_session_notified = true;
       }
 
       void notify_done_and_tran_end (int tran_index)
       {
-	assert (!m_finish_notified);
+	assert (!m_was_session_notified);
 	m_session.notify_batch_done_and_register_tran_end (m_batch.get_id (), tran_index);
-	m_finish_notified = true;
+	m_was_session_notified = true;
       }
 
       const batch &m_batch;
       session &m_session;
       css_conn_entry &m_conn_entry;
-      bool m_finish_notified;
+      bool m_was_session_notified;
   };
 
   session::session (load_args &args)
