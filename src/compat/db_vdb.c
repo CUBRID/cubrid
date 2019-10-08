@@ -2733,7 +2733,16 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
       return er_errid ();
     }
 
-  assert (new_session->parser->set_host_var == 1);
+  if (new_session->parser->set_host_var == 0)
+    {
+      /* Cast host variable to expected domain, if not already casted in db_compile_statement. */
+      err = do_cast_host_variables_to_expected_domain (new_session);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+      new_session->parser->set_host_var = 1;
+    }
 
   new_session->parser->is_holdable = session->parser->is_holdable;
   new_session->parser->is_auto_commit = session->parser->is_auto_commit;
