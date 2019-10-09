@@ -24,6 +24,7 @@
 #include "load_server_loader.hpp"
 
 #include "btree.h"
+#include <cctype>
 #include "dbtype.h"
 #include "load_class_registry.hpp"
 #include "load_db_value_converter.hpp"
@@ -319,7 +320,7 @@ namespace cubload
     std::string class_name (classname);
     bool is_ignored;
 
-    std::transform (class_name.begin (), class_name.end (), class_name.begin (), ::tolower);
+    std::transform (class_name.begin (), class_name.end (), class_name.begin (), std::tolower);
 
     auto result = std::find (classes_ignored.begin (), classes_ignored.end (), class_name);
 
