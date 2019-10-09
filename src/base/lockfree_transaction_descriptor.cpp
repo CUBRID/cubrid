@@ -35,6 +35,7 @@ namespace lockfree
       , m_retired_head (NULL)
       , m_retired_tail (NULL)
       , m_did_incr (false)
+      , m_saved_node (NULL)
       , m_retire_count (0)
       , m_reclaim_count (0)
     {
@@ -46,6 +47,10 @@ namespace lockfree
       while (m_retired_head != NULL)
 	{
 	  reclaim_retired_head ();
+	}
+      if (m_saved_node != NULL)
+	{
+	  m_saved_node->reclaim ();
 	}
     }
 
@@ -104,7 +109,7 @@ namespace lockfree
     }
 
     bool
-    descriptor::is_tran_started ()
+    descriptor::is_tran_started () const
     {
       return m_tranid != INVALID_TRANID;
     }
@@ -158,6 +163,22 @@ namespace lockfree
       nodep->m_retired_next = NULL;
       nodep->reclaim ();
       ++m_reclaim_count;
+    }
+
+    void
+    descriptor::save_reclaimable (reclaimable_node *&node)
+    {
+      assert (m_saved_node == NULL);
+      m_saved_node = node;
+      node = NULL;
+    }
+
+    reclaimable_node *
+    descriptor::pull_saved_reclaimable ()
+    {
+      reclaimable_node *ret = m_saved_node;
+      m_saved_node = NULL;
+      return ret;
     }
 
     size_t

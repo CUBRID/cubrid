@@ -50,6 +50,7 @@ namespace test_lockfree
 
     void set_owner ();
     void reset_owner ();
+    void on_reclaim () {}  // do nothing
   };
 
   using my_freelist = freelist<my_item>;

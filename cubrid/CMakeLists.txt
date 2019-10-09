@@ -93,6 +93,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/locale_support.c
   ${BASE_DIR}/lock_free.c
   ${BASE_DIR}/lockfree_bitmap.cpp
+  ${BASE_DIR}/lockfree_hashmap.cpp
   ${BASE_DIR}/lockfree_transaction_descriptor.cpp
   ${BASE_DIR}/lockfree_transaction_table.cpp
   ${BASE_DIR}/lockfree_transaction_system.cpp
@@ -133,8 +134,10 @@ set (BASE_HEADERS
   ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
+  ${BASE_DIR}/lockfree_address_marker.hpp
   ${BASE_DIR}/lockfree_bitmap.hpp
   ${BASE_DIR}/lockfree_freelist.hpp
+  ${BASE_DIR}/lockfree_hashmap.hpp
   ${BASE_DIR}/lockfree_transaction_def.hpp
   ${BASE_DIR}/lockfree_transaction_descriptor.hpp
   ${BASE_DIR}/lockfree_transaction_reclaimable.hpp
@@ -524,6 +527,7 @@ if(AT_LEAST_ONE_UNIT_TEST)
     ${CMAKE_SOURCE_DIR}/src/heaplayers/util
     ${JAVA_INC}
     ${EP_INCLUDES}
+    ${FLEX_INCLUDE_DIRS}
     )
 
   add_dependencies(cubrid-win-lib ${EP_TARGETS})

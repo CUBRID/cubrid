@@ -66,11 +66,15 @@ namespace lockfree
 	void start_tran_and_increment_id ();
 	void end_tran ();
 
-	bool is_tran_started ();
+	bool is_tran_started () const;
 
 	id get_transaction_id () const;
 
 	void reclaim_retired_list ();
+
+	// a reclaimable node may be saved for later use; must not have been part of lock-free structure
+	void save_reclaimable (reclaimable_node *&node);
+	reclaimable_node *pull_saved_reclaimable ();
 
 	size_t get_total_retire_count () const;
 	size_t get_total_reclaim_count () const;
@@ -85,6 +89,8 @@ namespace lockfree
 	reclaimable_node *m_retired_head;
 	reclaimable_node *m_retired_tail;
 	bool m_did_incr;
+
+	reclaimable_node *m_saved_node;
 
 	// stats
 	size_t m_retire_count;
