@@ -1259,9 +1259,8 @@ load_object_file (load_args * args)
 	}
       else
 	{
-	  int error_code;
-	  ASSERT_ERROR_AND_SET (error_code);
-	  return error_code;
+	  ASSERT_ERROR ();
+	  return er_errid ();
 	}
 
       return au_check_authorization (class_mop, AU_INSERT);
