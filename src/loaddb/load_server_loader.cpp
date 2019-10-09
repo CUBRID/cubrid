@@ -173,6 +173,19 @@ namespace cubload
     attribute_type attr_type = cmd_spec != NULL ? cmd_spec->attr_type : LDR_ATTRIBUTE_DEFAULT;
     get_class_attributes (attrinfo, attr_type, or_attributes, &n_attributes);
 
+    // sort attrib idxs by or_attrib.def_order
+    // attrib_order[i] = the i-th element in or_attributes[:].def_order
+    // or_attributes[:].def_order = [ 2, 0, 3, 10, 5] -> attrib_order = [ 1, 0, 2, 4, 3]
+    std::vector<int> attrib_order (n_attributes);
+    for (size_t i = 0; i < attrib_order.size (); ++i)
+      {
+	attrib_order[i] = i;
+      }
+    std::sort (attrib_order.begin (), attrib_order.end (), [or_attributes] (int a, int b)
+    {
+      return or_attributes[a].def_order < or_attributes[b].def_order;
+    });
+
     // collect class attribute names
     std::map<std::string, or_attribute *> attr_map;
     std::vector<const attribute *> attributes;
@@ -184,16 +197,7 @@ namespace cubload
 	int free_attr_name = 0;
 	or_attribute *attr_repr = NULL;
 
-	for (std::size_t i = 0; i < (std::size_t) n_attributes; ++i)
-	  {
-	    if (or_attributes[i].def_order == attr_index)
-	      {
-		attr_repr = &or_attributes[i];
-		break;
-	      }
-	  }
-
-	assert (attr_repr != NULL);
+	attr_repr = &or_attributes[attrib_order[attr_index]];
 
 	error_code = or_get_attrname (&recdes, attr_repr->id, &attr_name, &free_attr_name);
 	if (error_code != NO_ERROR)
@@ -264,6 +268,10 @@ namespace cubload
 	  }
       }
 
+    assert (std::is_sorted (attributes.begin (), attributes.end (), [] (const attribute * a, const attribute * b)
+    {
+      return a->get_index () < b->get_index ();
+    }));
     m_session.get_class_registry ().register_class (class_name, m_clsid, class_oid, attributes);
 
     heap_scancache_end (&thread_ref, &scancache);
@@ -300,6 +308,11 @@ namespace cubload
   bool
   server_class_installer::is_class_ignored (const char *classname)
   {
+    if (IS_OLD_GLO_CLASS (classname))
+      {
+	return true;
+      }
+
     const std::vector<std::string> &classes_ignored = m_session.get_args ().ignore_classes;
     std::string class_name (classname);
     bool is_ignored;
@@ -772,6 +785,8 @@ namespace cubload
   db_value &
   server_object_loader::get_attribute_db_value (size_t attr_index)
   {
+    assert (attr_index <= m_db_values.size ());
+
     if (attr_index == m_db_values.size ())
       {
 	m_db_values.emplace_back ();
