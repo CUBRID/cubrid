@@ -308,6 +308,11 @@ namespace cubload
   bool
   server_class_installer::is_class_ignored (const char *classname)
   {
+    if (IS_OLD_GLO_CLASS (classname))
+      {
+	return true;
+      }
+
     const std::vector<std::string> &classes_ignored = m_session.get_args ().ignore_classes;
     std::string class_name (classname);
     bool is_ignored;

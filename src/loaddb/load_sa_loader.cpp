@@ -168,11 +168,6 @@ const std::size_t LDR_MAX_ARGS = 32;
            }                                 \
          } while (0)
 
-#define IS_OLD_GLO_CLASS(class_name)                    \
-	 (strncasecmp ((class_name), "glo", MAX(strlen(class_name), 3)) == 0      || \
-	  strncasecmp ((class_name), "glo_name", MAX(strlen(class_name), 8)) == 0  || \
-	  strncasecmp ((class_name), "glo_holder", MAX(strlen(class_name), 10)) == 0)
-
 typedef struct ldr_context LDR_CONTEXT;
 
 typedef void (*LDR_POST_COMMIT_HANDLER) (int);
