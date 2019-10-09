@@ -339,12 +339,16 @@ class vacuum_shutdown_sequence
     enum state
     {
       NO_SHUTDOWN,
+#if defined (SERVER_MODE)
       SHUTDOWN_REQUESTED,
+#endif // SERVER_MODE
       SHUTDOWN_REGISTERED
     };
     state m_state;
+#if defined (SERVER_MODE)
     std::mutex m_state_mutex;
     std::condition_variable m_condvar;
+#endif // SERVER_MODE
 };
 
 /* Vacuum data.
@@ -8233,14 +8237,17 @@ vacuum_job_cursor::search ()
 //
 vacuum_shutdown_sequence::vacuum_shutdown_sequence ()
   : m_state (NO_SHUTDOWN)
+#if defined (SERVER_MODE)
   , m_state_mutex ()
   , m_condvar ()
+#endif // SERVER_MODE
 {
 }
 
 void
 vacuum_shutdown_sequence::request_shutdown ()
 {
+#if defined (SERVER_MODE)
   if (m_state == SHUTDOWN_REGISTERED)
     {
       return;
@@ -8253,6 +8260,9 @@ vacuum_shutdown_sequence::request_shutdown ()
     {
       return m_state == SHUTDOWN_REGISTERED;
     });
+#else // SA_MODE
+  m_state = SHUTDOWN_REGISTERED;
+#endif // SA_MODE
 }
 
 bool
@@ -8272,12 +8282,20 @@ vacuum_shutdown_sequence::check_shutdown_request ()
     {
       return true;
     }
-  // register
-  std::unique_lock<std::mutex> ulock { m_state_mutex };
-  assert (m_state == SHUTDOWN_REQUESTED);
-  m_state = SHUTDOWN_REGISTERED;
-  ulock.unlock ();
-  m_condvar.notify_one ();
-  return true;
+  else
+    {
+#if defined (SA_MODE)
+      assert (false);
+      return true;
+#else // SERVER_MODE
+      // register
+      std::unique_lock<std::mutex> ulock { m_state_mutex };
+      assert (m_state == SHUTDOWN_REQUESTED);
+      m_state = SHUTDOWN_REGISTERED;
+      ulock.unlock ();
+      m_condvar.notify_one ();
+      return true;
+#endif
+    }
 }
 // *INDENT-ON*
