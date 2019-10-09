@@ -28,6 +28,7 @@
 #include "binaryheap.h"
 #include "compile_context.h"
 #include "config.h"
+#include "system_parameter.h"
 #include "list_file.h"
 #include "perf_monitor.h"
 #include "query_executor.h"
@@ -36,6 +37,7 @@
 #include "stream_to_xasl.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
+#include "xasl_unpack_info.hpp"
 
 #include <assert.h>
 
@@ -254,9 +256,9 @@ static void xcache_clone_decache (THREAD_ENTRY * thread_p, XASL_CLONE * xclone);
 static void xcache_cleanup (THREAD_ENTRY * thread_p);
 static BH_CMP_RESULT xcache_compare_cleanup_candidates (const void *left, const void *right, BH_CMP_ARG ignore_arg);
 static bool xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry);
-static void xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XASL_CACHE_ENTRY *, void *),
-				       void *arg);
-static bool xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, void *arg);
+static void xcache_invalidate_entries (THREAD_ENTRY * thread_p,
+				       bool (*invalidate_check) (XASL_CACHE_ENTRY *, const OID *), const OID * arg);
+static bool xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, const OID * related_to_oid);
 static XCACHE_CLEANUP_REASON xcache_need_cleanup (void);
 
 /*
@@ -1686,7 +1688,8 @@ error:
  * arg (in)		 : Argument for invalidation check function.
  */
 static void
-xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XASL_CACHE_ENTRY *, void *), void *arg)
+xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XASL_CACHE_ENTRY *, const OID *),
+			   const OID * arg)
 {
 #define XCACHE_DELETE_XIDS_SIZE 1024
   LF_HASH_TABLE_ITERATOR iter;
@@ -1777,9 +1780,8 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
  * arg (in)	     : Pointer to OID.
  */
 static bool
-xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, void *arg)
+xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, const OID * related_to_oid)
 {
-  OID *related_to_oid = (OID *) arg;
   int oid_idx = 0;
 
   assert (xcache_entry != NULL);
@@ -1805,7 +1807,7 @@ xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, void *arg)
  * oid (in)	 : Object ID.
  */
 void
-xcache_remove_by_oid (THREAD_ENTRY * thread_p, OID * oid)
+xcache_remove_by_oid (THREAD_ENTRY * thread_p, const OID * oid)
 {
   xcache_check_logging ();
 
@@ -1953,10 +1955,7 @@ xcache_clone_decache (THREAD_ENTRY * thread_p, XASL_CLONE * xclone)
   HL_HEAPID save_heapid = db_change_private_heap (thread_p, 0);
   XASL_SET_FLAG (xclone->xasl, XASL_DECACHE_CLONE);
   qexec_clear_xasl (thread_p, xclone->xasl, true);
-  stx_free_additional_buff (thread_p, xclone->xasl_buf);
-  stx_free_xasl_unpack_info (xclone->xasl_buf);
-  db_private_free (thread_p, xclone->xasl_buf);
-  xclone->xasl_buf = NULL;
+  free_xasl_unpack_info (thread_p, xclone->xasl_buf);
   xclone->xasl = NULL;
   (void) db_change_private_heap (thread_p, save_heapid);
 }
@@ -2030,10 +2029,7 @@ xcache_retire_clone (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, X
       return;
     }
 
-  stx_free_additional_buff (thread_p, xclone->xasl_buf);
-  stx_free_xasl_unpack_info (xclone->xasl_buf);
-  db_private_free (thread_p, xclone->xasl_buf);
-  xclone->xasl_buf = NULL;
+  free_xasl_unpack_info (thread_p, xclone->xasl_buf);
   xclone->xasl = NULL;
 }
 

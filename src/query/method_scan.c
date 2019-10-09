@@ -40,11 +40,12 @@
 
 #if defined (SA_MODE)
 #include "jsp_cl.h"
-#include "xasl_support.h"
 #endif /* defined (SA_MODE) */
 
 #include "dbtype.h"
 #include "object_primitive.h"
+#include "query_list.h"
+#include "regu_var.hpp"
 
 #if !defined(SERVER_MODE)
 extern unsigned int db_on_server;
@@ -165,8 +166,8 @@ method_scan_next_value_array (METHOD_SCAN_BUFFER * scan_buffer_p, VAL_LIST * val
  *   method_sig_list(in): Method signature list
  */
 int
-method_open_scan (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buffer_p, QFILE_LIST_ID * list_id_p,
-		  METHOD_SIG_LIST * method_sig_list_p)
+method_open_scan (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buffer_p, qfile_list_id * list_id_p,
+		  method_sig_list * method_sig_list_p)
 {
   int error;
   METHOD_INFO *method_ctl_p;
@@ -233,7 +234,7 @@ method_close_scan (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buffer_p)
  *   val_list(in)       :
  */
 SCAN_CODE
-method_scan_next (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buffer_p, VAL_LIST * value_list_p)
+method_scan_next (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buffer_p, val_list_node * value_list_p)
 {
   SCAN_CODE scan_result;
 
@@ -535,14 +536,14 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 	      return S_ERROR;
 	    }
 
-	  dbval_list->val = regu_dbval_db_alloc ();
-
+	  dbval_list->val = (DB_VALUE *) malloc (sizeof (DB_VALUE));
 	  if (dbval_list->val == NULL)
 	    {
 	      pr_clear_value (&val);
 	      ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id);
 	      return S_ERROR;
 	    }
+	  (void) db_value_domain_init (dbval_list->val, DB_TYPE_NULL, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
 	  /* Don't forget to translate any OBJECTS to OIDs. */
 	  if (DB_VALUE_DOMAIN_TYPE (&val) == DB_TYPE_OBJECT)

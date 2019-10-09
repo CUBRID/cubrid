@@ -78,6 +78,7 @@
 #include "heap_file.h"
 #include "vacuum.h"
 #include "xasl_cache.h"
+#include "load_worker_manager.hpp"
 
 #if defined (SERVER_MODE)
 #include "connection_error.h"
@@ -418,7 +419,7 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_SNAPSHOT_TIME_COUNTERS, "Time_get_snapshot_acquire_time"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_SNAPSHOT_RETRY_COUNTERS, "Count_get_snapshot_retry"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_TRAN_COMPLETE_TIME_COUNTERS, "Time_tran_complete_time"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_OLDEST_MVCC_TIME_COUNTERS, "Time_get_oldest_mvcc_acquire_time"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_OLDEST_MVCC_TIME_COUNTERS, "compute_oldest_visible"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS, "Count_get_oldest_mvcc_retry"),
 
   /* computed statistics */
@@ -583,7 +584,9 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_DWB_FLUSHED_BLOCK_NUM_VOLUMES, "Num_dwb_flushed_block_volumes",
 			       &f_dump_in_file_Num_dwb_flushed_block_volumes,
 			       &f_dump_in_buffer_Num_dwb_flushed_block_volumes,
-			       &f_load_Num_dwb_flushed_block_volumes)
+			       &f_load_Num_dwb_flushed_block_volumes),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_LOAD_THREAD_STATS, "Thread_loaddb_stats_counters_timers",
+			       &f_dump_in_file_thread_stats, &f_dump_in_buffer_thread_stats, &f_load_thread_stats)
 };
 
 STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset,
@@ -1777,6 +1780,9 @@ perfmon_server_calc_stats (UINT64 * stats)
 
   css_get_thread_stats (&stats[pstat_Metadata[PSTAT_THREAD_STATS].start_offset]);
   perfmon_peek_thread_daemon_stats (stats);
+  // *INDENT-OFF*
+  cubload::worker_manager_get_stats (&stats[pstat_Metadata[PSTAT_LOAD_THREAD_STATS].start_offset]);
+  // *INDENT-ON*
 #endif // SERVER_MODE
 
   for (i = 0; i < PSTAT_COUNT; i++)
@@ -2863,7 +2869,7 @@ perfmon_stat_dump_in_buffer_flushed_block_volumes_array_stat (const UINT64 * sta
 static void
 perfmon_stat_dump_in_file_flushed_block_volumes_array_stat (FILE * stream, const UINT64 * stats_ptr)
 {
-  int flushed_block_volumes;
+  unsigned int flushed_block_volumes;
   UINT64 counter = 0;
   char buffer[15];
 
@@ -2978,6 +2984,14 @@ perfmon_initialize (int num_trans)
   pstat_Global.n_watchers = 0;
   pstat_Global.initialized = false;
   pstat_Global.activation_flag = prm_get_integer_value (PRM_ID_EXTENDED_STATISTICS_ACTIVATION);
+
+#if defined (SERVER_MODE)
+  if (prm_get_bool_value (PRM_ID_STATS_ON))
+    {
+      // always watching
+      pstat_Global.n_watchers++;
+    }
+#endif
 
   for (idx = 0; idx < PSTAT_COUNT; idx++)
     {
@@ -4211,4 +4225,29 @@ perfmon_peek_thread_daemon_stats (UINT64 * stats)
   statsp += perfmon_per_daemon_stat_count ();
 }
 #endif // SERVER_MODE
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+void
+perfmon_er_log_current_stats (THREAD_ENTRY * thread_p)
+{
+  UINT64 *stats = perfmon_allocate_values ();
+  if (stats == NULL)
+    {
+      assert (false);
+      return;
+    }
+
+  xperfmon_server_copy_global_stats (stats);
+
+  const size_t STATS_DUMP_MAX_SIZE = ONE_M;     // a mega-byte
+  char *strbuf = new char[STATS_DUMP_MAX_SIZE];
+  strbuf[0] = '\0';
+
+  perfmon_server_dump_stats_to_buffer (stats, strbuf, STATS_DUMP_MAX_SIZE, NULL);
+
+  _er_log_debug (ARG_FILE_LINE, "%s\n", strbuf);
+
+  delete strbuf;
+}
+#endif // SERVER_MODE || SA_MODE
 // *INDENT-ON*

@@ -18,7 +18,7 @@
  */
 
 /*
- * dbi.h - Definitions and function prototypes for the CUBRID Application Program Interface (API).
+ * dbi_compat.h - Definitions and function prototypes for the CUBRID Application Program Interface (API).
  */
 
 #include <stdio.h>
@@ -40,6 +40,7 @@
 #define u_int64_t unsigned __int64
 #endif /* WINDOWS && !__GNUC__ */
 
+#include "dbtran_def.h"
 #include "dbtype_def.h"
 #include "error_code.h"
 #include "dbtype_function.h"

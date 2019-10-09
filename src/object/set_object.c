@@ -30,6 +30,10 @@
 #include <stdio.h>
 #include <assert.h>
 
+#include "area_alloc.h"
+#if !defined (SERVER_MODE)
+#include "authenticate.h"
+#endif // not SERVER_MODE
 #include "db_value_printer.hpp"
 #include "dbtype.h"
 #include "error_manager.h"
@@ -195,6 +199,12 @@ set_area_final (void)
       area_destroy (Set_Obj_Area);
       Set_Obj_Area = NULL;
     }
+}
+
+void
+set_area_reset ()
+{
+  Set_Ref_Area = Set_Obj_Area = NULL;
 }
 
 /* VALUE BLOCK RESOURCE */

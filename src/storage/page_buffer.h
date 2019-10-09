@@ -32,6 +32,7 @@
 #include "error_manager.h"
 #include "disk_manager.h"
 #include "lock_manager.h"
+#include "log_lsa.hpp"
 #include "mem_block.hpp"
 #include "perf_monitor.h"
 #include "storage_common.h"
@@ -240,6 +241,8 @@ using pgbuf_resizable_buffer = cubmem::extensible_stack_block<(size_t) IO_MAX_PA
 
 extern HFID *pgbuf_ordered_null_hfid;
 
+const log_lsa PGBUF_TEMP_LSA = { NULL_LOG_PAGEID - 1, NULL_LOG_OFFSET - 1 };
+
 extern unsigned int pgbuf_hash_vpid (const void *key_vpid, unsigned int htsize);
 extern int pgbuf_compare_vpid (const void *key_vpid1, const void *key_vpid2);
 extern int pgbuf_initialize (void);
@@ -362,7 +365,6 @@ extern void pgbuf_force_to_check_for_interrupts (void);
 extern bool pgbuf_is_log_check_for_interrupts (THREAD_ENTRY * thread_p);
 extern void pgbuf_unfix_all (THREAD_ENTRY * thread_p);
 extern void pgbuf_set_lsa_as_temporary (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
-extern void pgbuf_set_lsa_as_permanent (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern void pgbuf_set_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype);
 extern bool pgbuf_is_lsa_temporary (PAGE_PTR pgptr);
 extern bool pgbuf_check_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype);
@@ -381,7 +383,7 @@ extern int pgbuf_get_condition_for_ordered_fix (const VPID * vpid_new_page, cons
 #if !defined(NDEBUG)
 extern void pgbuf_watcher_init_debug (PGBUF_WATCHER * watcher, const char *caller_file, const int caller_line,
 				      bool add);
-extern bool pgbuf_is_page_fixed_by_thread (THREAD_ENTRY * thread_p, VPID * vpid_p);
+extern bool pgbuf_is_page_fixed_by_thread (THREAD_ENTRY * thread_p, const VPID * vpid_p);
 #endif
 
 #if !defined (NDEBUG)
@@ -417,6 +419,7 @@ extern int pgbuf_get_hold_count (THREAD_ENTRY * thread_p);
 extern PERF_PAGE_TYPE pgbuf_get_page_type_for_stat (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 
 extern void pgbuf_log_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new, int data_size, PAGE_TYPE ptype_new);
+extern void pgbuf_log_redo_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new, int data_size, PAGE_TYPE ptype_new);
 extern int pgbuf_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int pgbuf_rv_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc);

@@ -23,12 +23,16 @@
 
 #ident "$Id$"
 
-#include <stdio.h>
-#include <assert.h>
 #include "replication.h"
-#include "object_primitive.h"
-#include "heap_file.h"
+
 #include "dbtype.h"
+#include "heap_file.h"
+#include "log_lsa.hpp"
+#include "object_primitive.h"
+
+#include <assert.h>
+#include <stdio.h>
+
 /*
  * EXTERN TO ALL SERVER RECOVERY FUNCTION CODED SOMEWHERE ELSE
  */

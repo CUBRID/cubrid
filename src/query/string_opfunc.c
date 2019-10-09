@@ -52,6 +52,7 @@
 #include "object_primitive.h"
 #include "dbtype.h"
 #include "elo.h"
+#include "es_common.h"
 #include "db_elo.h"
 #include <algorithm>
 #include <regex>
@@ -153,6 +154,7 @@ typedef enum
 
 #define GUID_STANDARD_BYTES_LENGTH 16
 
+static char db_string_escape_char (char c);
 static int qstr_trim (MISC_OPERAND tr_operand, const unsigned char *trim, int trim_length, int trim_size,
 		      const unsigned char *src_ptr, DB_TYPE src_type, int src_length, int src_size,
 		      INTL_CODESET codeset, unsigned char **res, DB_TYPE * res_type, int *res_length, int *res_size);
@@ -1893,8 +1895,28 @@ db_string_substring (const MISC_OPERAND substr_operand, const DB_VALUE * src_str
   return error_status;
 }
 
+static char
+db_string_escape_char (char c)
+{
+  switch (c)
+    {
+    case '\b':
+      return 'b';
+    case '\f':
+      return 'f';
+    case '\n':
+      return 'n';
+    case '\r':
+      return 'r';
+    case '\t':
+      return 't';
+    default:
+      return c;
+    }
+}
+
 int
-db_string_escape (const char *src_str, size_t src_size, char **res_string, size_t * dest_size)
+db_string_escape_str (const char *src_str, size_t src_size, char **res_string, size_t * dest_size)
 {
   size_t dest_crt_pos;
   size_t src_last_pos;
@@ -1924,6 +1946,7 @@ db_string_escape (const char *src_str, size_t src_size, char **res_string, size_
     {
       size_t len = special_idx[i] - src_last_pos;
       memcpy (&result[dest_crt_pos], &src_str[src_last_pos], len);
+      result[dest_crt_pos] = db_string_escape_char (result[dest_crt_pos]);
       dest_crt_pos += len;
       result[dest_crt_pos] = '\\';
       ++dest_crt_pos;
@@ -1931,6 +1954,7 @@ db_string_escape (const char *src_str, size_t src_size, char **res_string, size_
     }
 
   memcpy (&result[dest_crt_pos], &src_str[src_last_pos], src_size - src_last_pos);
+  result[dest_crt_pos] = db_string_escape_char (result[dest_crt_pos]);
   result[*dest_size - 2] = '"';
   result[*dest_size - 1] = '\0';
 
@@ -1955,11 +1979,10 @@ db_string_quote (const DB_VALUE * str, DB_VALUE * res)
     }
   else
     {
-      char *src_str = db_get_string (str);
-
       char *escaped_string = NULL;
       size_t escaped_string_size;
-      int error_code = db_string_escape (src_str, db_get_string_size (str), &escaped_string, &escaped_string_size);
+      int error_code =
+	db_string_escape_str (db_get_string (str), db_get_string_size (str), &escaped_string, &escaped_string_size);
       if (error_code)
 	{
 	  return error_code;
@@ -2112,7 +2135,7 @@ db_string_repeat (const DB_VALUE * src_string, const DB_VALUE * count, DB_VALUE 
 
       /* update size of string */
       qstr_make_typed_string (result_type, result, DB_VALUE_PRECISION (result), db_get_string (result),
-			      (const int) expected_size, db_get_string_codeset (src_string),
+			      (int) expected_size, db_get_string_codeset (src_string),
 			      db_get_string_collation (src_string));
       result->need_clear = true;
 
@@ -4283,7 +4306,7 @@ regex_matches (const char *pattern, const char *str, int reg_flags, bool * match
   int error_status = NO_ERROR;
 
 #ifndef _USE_LIBREGEX_
-  /* *INDENT-OFF* */  
+  /* *INDENT-OFF* */
 
   // transform flags from cub_regex_t => std::regex_constants
   std::regex_constants::syntax_option_type std_reg_flags = std::regex::extended;
@@ -6123,7 +6146,7 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
 	bool has_zone = false;
 	bool is_explicit_time = false;
 
-	error = db_string_to_datetimetz (db_get_string (left), &ldatetimetz, &has_zone);
+	error = db_string_to_datetimetz_ex (db_get_string (left), db_get_string_size (left), &ldatetimetz, &has_zone);
 	if (error == NO_ERROR && has_zone == true)
 	  {
 	    tz_id = ldatetimetz.tz_id;
@@ -6444,6 +6467,75 @@ error_return:
       return NO_ERROR;
     }
   return error;
+}
+
+int
+db_json_convert_to_utf8 (DB_VALUE ** dbval)
+{
+  assert (dbval != NULL && DB_IS_STRING (*dbval));
+  DB_VALUE coerced_str;
+  if (db_get_string_codeset (*dbval) == INTL_CODESET_UTF8)
+    {
+      return NO_ERROR;
+    }
+  int error_code = db_string_convert_to (*dbval, &coerced_str, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  std::swap (coerced_str, **dbval);
+  pr_clear_value (&coerced_str);
+  return NO_ERROR;
+}
+
+int
+db_json_copy_and_convert_to_utf8 (const DB_VALUE * src_dbval, DB_VALUE * dest_dbval, const DB_VALUE ** json_str_dbval)
+{
+  assert (src_dbval != NULL && dest_dbval != NULL && json_str_dbval != NULL);
+  if (db_get_string_codeset (src_dbval) == INTL_CODESET_UTF8)
+    {
+      *json_str_dbval = src_dbval;
+      db_make_null (dest_dbval);
+    }
+  else
+    {
+      *json_str_dbval = dest_dbval;
+      int error_code = db_string_convert_to (src_dbval, dest_dbval, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+int
+db_string_convert_to (const DB_VALUE * src_str_dbval, DB_VALUE * dest_str_dbval, INTL_CODESET dest_codeset,
+		      int dest_col)
+{
+  assert (src_str_dbval != NULL && dest_str_dbval != NULL);
+
+  DB_TYPE src_str_type = (DB_TYPE) src_str_dbval->domain.general_info.type;
+
+  int dest_precision = QSTR_VALUE_PRECISION (src_str_dbval);
+
+  db_value_domain_init (dest_str_dbval, src_str_type, dest_precision, 0);
+  db_string_put_cs_and_collation (dest_str_dbval, dest_codeset, dest_col);
+
+  DB_DATA_STATUS data_status;
+  int error_code = db_char_string_coerce (src_str_dbval, dest_str_dbval, &data_status);
+  if (error_code != NO_ERROR)
+    {
+      pr_clear_value (dest_str_dbval);
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  assert (data_status == DATA_STATUS_OK);
+
+  return NO_ERROR;
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -12587,7 +12679,7 @@ db_to_date (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
 	  goto exit;
 	}
 
-      db_make_char (&default_format, strlen (default_format_str), (const DB_C_CHAR) (default_format_str),
+      db_make_char (&default_format, strlen (default_format_str), (DB_C_CHAR) default_format_str,
 		    strlen (default_format_str), frmt_codeset, LANG_GET_BINARY_COLLATION (frmt_codeset));
       format_str = &default_format;
     }
@@ -13158,7 +13250,7 @@ db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto exit;
 	}
-      db_make_char (&default_format, strlen (default_format_str), (const DB_C_CHAR) (default_format_str),
+      db_make_char (&default_format, strlen (default_format_str), (DB_C_CHAR) default_format_str,
 		    strlen (default_format_str), frmt_codeset, LANG_GET_BINARY_COLLATION (frmt_codeset));
       format_str = &default_format;
     }
@@ -13741,7 +13833,7 @@ db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB
 	  goto exit;
 	}
 
-      db_make_char (&default_format, strlen (default_format_str), (const DB_C_CHAR) (default_format_str),
+      db_make_char (&default_format, strlen (default_format_str), (DB_C_CHAR) default_format_str,
 		    strlen (default_format_str), frmt_codeset, LANG_GET_BINARY_COLLATION (frmt_codeset));
       format_str = &default_format;
     }
@@ -14652,7 +14744,7 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_
 	  goto exit;
 	}
 
-      db_make_char (&default_format, strlen (default_format_str), (const DB_C_CHAR) (default_format_str),
+      db_make_char (&default_format, strlen (default_format_str), (DB_C_CHAR) default_format_str,
 		    strlen (default_format_str), frmt_codeset, LANG_GET_BINARY_COLLATION (frmt_codeset));
       format_str = &default_format;
     }
@@ -18692,6 +18784,7 @@ get_number_token (const INTL_LANG lang, char *fsp, int *length, char *last_posit
 	{
 	  return N_INVALID;
 	}
+      /* FALLTHRU */
 
     case '9':
     case '0':
@@ -18730,6 +18823,7 @@ get_number_token (const INTL_LANG lang, char *fsp, int *length, char *last_posit
 	  *next_fsp = &fsp[*length];
 	  return N_SPACE;
 	}
+      return N_INVALID;
 
     case '"':
       *length += 1;
@@ -19630,30 +19724,17 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
       _d = days[_m];
     }
 
-  if (_m == 0)
-    {
-      _y--;
-      days[2] = LEAP (_y) ? 29 : 28;
-      _m = 12;
-    }
-
   /* date */
-  if (_m < 0)
+  if (_m <= 0)
     {
       _y += (_m / 12);
-      if (_m % 12 == 0)
+      _m %= 12;
+      if (_m <= 0)
 	{
-	  _m = 1;
+	  _m += 12;
+	  _y--;
 	}
-      else
-	{
-	  _m %= 12;
-	  if (_m < 0)
-	    {
-	      _m += 12;
-	      _y--;
-	    }
-	}
+      days[2] = LEAP (_y) ? 29 : 28;
     }
 
   /* just years and/or months case */
@@ -19662,18 +19743,11 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
       if (_m <= 0)
 	{
 	  _y += (_m / 12);
-	  if (_m % 12 == 0)
+	  _m %= 12;
+	  if (_m <= 0)
 	    {
-	      _m = 1;
-	    }
-	  else
-	    {
-	      _m %= 12;
-	      if (_m <= 0)
-		{
-		  _m += 12;
-		  _y--;
-		}
+	      _m += 12;
+	      _y--;
 	    }
 	}
 
@@ -23802,8 +23876,10 @@ parse_time_string (const char *timestr, int timestr_size, int *sign, int *h, int
 
 	case 1:
 	  ms_string[1] = '0';
+	  /* FALLTHRU */
 	case 2:
 	  ms_string[2] = '0';
+	  /* FALLTHRU */
 	default:
 	  *ms = atoi (ms_string);
 	}

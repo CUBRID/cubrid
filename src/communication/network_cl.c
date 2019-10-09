@@ -46,8 +46,8 @@
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "boot_cl.h"
-#include "xasl_support.h"
 #include "query_method.h"
+#include "method_def.hpp"
 #include "release_string.h"
 #include "log_comm.h"
 #include "file_io.h"
@@ -103,7 +103,7 @@ unsigned short method_request_id;
 #endif /* CS_MODE */
 
 /* Contains the name of the current sever host machine.  */
-static char net_Server_host[MAXHOSTNAMELEN + 1] = "";
+static char net_Server_host[CUB_MAXHOSTNAMELEN + 1] = "";
 
 /* Contains the name of the current server name. */
 static char net_Server_name[DB_MAX_IDENTIFIER_LENGTH + 1] = "";
@@ -173,7 +173,7 @@ set_server_error (int error)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, server_error, 1, "");
 	  return server_error;
 	}
-      /* no break; fall through */
+      /* FALLTHRU */
     default:
       server_error = ER_NET_SERVER_CRASHED;
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, server_error, 0);
@@ -638,6 +638,13 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_LOCK_RR].name = "NET_SERVER_LOCK_RR";
   net_Req_buffer[NET_SERVER_TZ_GET_CHECKSUM].name = "NET_SERVER_TZ_GET_CHECKSUM";
   net_Req_buffer[NET_SERVER_SPACEDB].name = "NET_SERVER_SPACEDB";
+
+  net_Req_buffer[NET_SERVER_LD_INIT].name = "NET_SERVER_LD_INIT";
+  net_Req_buffer[NET_SERVER_LD_LOAD_OBJECT_FILE].name = "NET_SERVER_LD_LOAD_OBJECT_FILE";
+  net_Req_buffer[NET_SERVER_LD_INSTALL_CLASS].name = "NET_SERVER_LD_INSTALL_CLASS";
+  net_Req_buffer[NET_SERVER_LD_LOAD_BATCH].name = "NET_SERVER_LD_LOAD_BATCH";
+  net_Req_buffer[NET_SERVER_LD_DESTROY].name = "NET_SERVER_LD_DESTROY";
+  net_Req_buffer[NET_SERVER_LD_INTERRUPT].name = "NET_SERVER_LD_INTERRUPT";
 }
 
 /*
@@ -885,7 +892,7 @@ net_client_request_no_reply (int request, char *argbuf, int argsize)
 
   error = NO_ERROR;
 
-  assert (request == NET_SERVER_LOG_SET_INTERRUPT);
+  assert (request == NET_SERVER_LOG_SET_INTERRUPT || request == NET_SERVER_LD_INTERRUPT);
 
   if (net_Server_name[0] == '\0')
     {
@@ -1851,8 +1858,8 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 			error =
 			  method_invoke_for_server (rc, net_Server_host, net_Server_name, method_call_list_id,
 						    method_call_sig_list);
-			regu_free_listid (method_call_list_id);
-			regu_free_method_sig_list (method_call_sig_list);
+			cursor_free_self_list_id (method_call_list_id);
+			method_sig_list_freemem (method_call_sig_list);
 			if (error != NO_ERROR)
 			  {
 			    assert (er_errid () != NO_ERROR);
@@ -3769,9 +3776,9 @@ net_client_ping_server_with_handshake (int client_type, bool check_capabilities,
   const char *client_release;
   char *server_release, *server_host, *server_handshake, *ptr;
   int error = NO_ERROR;
-  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + (OR_INT_SIZE * 2) + MAXHOSTNAMELEN) a_request;
+  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + (OR_INT_SIZE * 2) + CUB_MAXHOSTNAMELEN) a_request;
   char *request = OR_ALIGNED_BUF_START (a_request);
-  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + (OR_INT_SIZE * 3) + MAXHOSTNAMELEN) a_reply;
+  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + (OR_INT_SIZE * 3) + CUB_MAXHOSTNAMELEN) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply), *reply_ptr;
   int reply_size = OR_ALIGNED_BUF_SIZE (a_reply);
   int eid, request_size, server_capabilities, server_bit_platform;
@@ -3919,7 +3926,7 @@ net_client_init (const char *dbname, const char *hostname)
    * things to the system console */
 
   /* set our host/server names for further css communication */
-  if (hostname != NULL && strlen (hostname) <= MAXHOSTNAMELEN)
+  if (hostname != NULL && strlen (hostname) <= CUB_MAXHOSTNAMELEN)
     {
       strcpy (net_Server_host, hostname);
       if (dbname != NULL && strlen (dbname) <= DB_MAX_IDENTIFIER_LENGTH)

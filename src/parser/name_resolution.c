@@ -28,6 +28,7 @@
 #include <assert.h>
 #include <unordered_map>
 
+#include "authenticate.h"
 #include "porting.h"
 #include "error_manager.h"
 #include "parser.h"

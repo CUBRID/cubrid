@@ -21,9 +21,12 @@
  * session_sr.c - Session management on the server
  */
 
-#include "xserver_interface.h"
 #include "session.h"
+
 #include "dbtype.h"
+#include "xasl.h"
+#include "xasl_cache.h"
+#include "xserver_interface.h"
 
 /*
  *  xsession_create_new () - create a new session
@@ -186,7 +189,7 @@ xsession_create_prepared_statement (THREAD_ENTRY * thread_p, char *name, char *a
  */
 int
 xsession_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char **info, int *info_len,
-				 XASL_ID * xasl_id, XASL_NODE_HEADER * xasl_header_p)
+				 XASL_ID * xasl_id, xasl_node_header * xasl_header_p)
 {
   XASL_CACHE_ENTRY *xasl_entry = NULL;
   int error = NO_ERROR;

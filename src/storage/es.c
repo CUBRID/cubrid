@@ -150,14 +150,14 @@ es_create_file (char *out_uri)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not supported");
       ret = ER_ES_GENERAL;
 #else /* WINDOWS */
-      strncpy (out_uri, ES_OWFS_PATH_PREFIX, sizeof (ES_OWFS_PATH_PREFIX));
+      memcpy (out_uri, ES_OWFS_PATH_PREFIX, sizeof (ES_OWFS_PATH_PREFIX));
       ret = es_owfs_create_file (ES_OWFS_PATH_POS (out_uri));
       es_log ("es_create_file: es_owfs_create_file() -> %s: %d\n", out_uri, ret);
 #endif /* !WINDOWS */
     }
   else if (es_initialized_type == ES_POSIX)
     {
-      strncpy (out_uri, ES_POSIX_PATH_PREFIX, sizeof (ES_POSIX_PATH_PREFIX));
+      memcpy (out_uri, ES_POSIX_PATH_PREFIX, sizeof (ES_POSIX_PATH_PREFIX));
 #if defined (CS_MODE)
       ret = es_posix_create_file (ES_POSIX_PATH_POS (out_uri));
       es_log ("es_create_file: es_posix_create_file() -> %s: %d\n", out_uri, ret);
@@ -381,14 +381,14 @@ es_copy_file (const char *in_uri, const char *metaname, char *out_uri)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not supported");
       ret = ER_ES_GENERAL;
 #else /* WINDOWS */
-      strncpy (out_uri, ES_OWFS_PATH_PREFIX, sizeof (ES_OWFS_PATH_PREFIX));
+      memcpy (out_uri, ES_OWFS_PATH_PREFIX, sizeof (ES_OWFS_PATH_PREFIX));
       ret = es_owfs_copy_file (ES_OWFS_PATH_POS (in_uri), metaname, ES_OWFS_PATH_POS (out_uri));
       es_log ("es_copy_file: es_owfs_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
 #endif /* !WINDOWS */
     }
   else if (es_type == ES_POSIX)
     {
-      strncpy (out_uri, ES_POSIX_PATH_PREFIX, sizeof (ES_POSIX_PATH_PREFIX));
+      memcpy (out_uri, ES_POSIX_PATH_PREFIX, sizeof (ES_POSIX_PATH_PREFIX));
 #if defined (CS_MODE)
       ret = es_posix_copy_file (ES_POSIX_PATH_POS (in_uri), metaname, ES_POSIX_PATH_POS (out_uri));
       es_log ("es_copy_file: es_posix_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
@@ -445,14 +445,14 @@ es_rename_file (const char *in_uri, const char *metaname, char *out_uri)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not supported");
       ret = ER_ES_GENERAL;
 #else /* WINDOWS */
-      strncpy (out_uri, ES_OWFS_PATH_PREFIX, sizeof (ES_OWFS_PATH_PREFIX));
+      memcpy (out_uri, ES_OWFS_PATH_PREFIX, sizeof (ES_OWFS_PATH_PREFIX));
       ret = es_owfs_rename_file (ES_OWFS_PATH_POS (in_uri), metaname, ES_OWFS_PATH_POS (out_uri));
       es_log ("es_copy_file: es_owfs_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
 #endif /* !WINDOWS */
     }
   else if (es_type == ES_POSIX)
     {
-      strncpy (out_uri, ES_POSIX_PATH_PREFIX, sizeof (ES_POSIX_PATH_PREFIX));
+      memcpy (out_uri, ES_POSIX_PATH_PREFIX, sizeof (ES_POSIX_PATH_PREFIX));
 #if defined (CS_MODE)
       ret = es_posix_rename_file (ES_POSIX_PATH_POS (in_uri), metaname, ES_POSIX_PATH_POS (out_uri));
       es_log ("es_copy_file: es_posix_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);

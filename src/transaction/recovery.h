@@ -29,6 +29,7 @@
 
 #include "error_manager.h"
 #include "log_comm.h"
+#include "log_lsa.hpp"
 #include "thread_compat.hpp"
 
 #include <stdio.h>
@@ -179,8 +180,9 @@ typedef enum
 
   RVBT_ONLINE_INDEX_UNDO_TRAN_INSERT = 124,
   RVBT_ONLINE_INDEX_UNDO_TRAN_DELETE = 125,
+  RVHF_APPEND_PAGES_TO_HEAP = 126,
 
-  RV_LAST_LOGID = RVBT_ONLINE_INDEX_UNDO_TRAN_DELETE,
+  RV_LAST_LOGID = RVHF_APPEND_PAGES_TO_HEAP,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;

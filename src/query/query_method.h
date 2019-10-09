@@ -28,6 +28,10 @@
 #ident "$Id$"
 #include "dbtype_def.h"
 
+// forward def
+struct method_sig_list;
+struct qfile_list_id;
+
 #define VACOMM_BUFFER_SIZE 4096
 
 typedef struct vacomm_buffer VACOMM_BUFFER;
@@ -46,7 +50,9 @@ struct vacomm_buffer
 
 extern int method_send_error_to_server (unsigned int rc, char *host, char *server_name);
 
-extern int method_invoke_for_server (unsigned int rc, char *host, char *server_name, QFILE_LIST_ID * list_id,
-				     METHOD_SIG_LIST * method_sig_list);
+extern int method_invoke_for_server (unsigned int rc, char *host, char *server_name, qfile_list_id * list_id,
+				     method_sig_list * method_sig_list);
+
+void method_sig_list_freemem (method_sig_list * meth_sig_list);
 
 #endif /* _QUERY_METHOD_H_ */

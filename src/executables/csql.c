@@ -45,6 +45,7 @@
 #include <netdb.h>
 #endif /* !WINDOWS */
 
+#include "authenticate.h"
 #include "csql.h"
 #include "system_parameter.h"
 #include "message_catalog.h"
@@ -2115,7 +2116,7 @@ csql_print_database (void)
   struct sockaddr_in sin;
   const char *db_name, *host_name;
   char *pstr;
-  char converted_host_name[MAXHOSTNAMELEN + 1];
+  char converted_host_name[CUB_MAXHOSTNAMELEN + 1];
   char ha_state[16];
   int res;
 
@@ -2140,19 +2141,19 @@ csql_print_database (void)
        */
       if (res != 0)
 	{
-	  strncpy (converted_host_name, host_name, MAXHOSTNAMELEN);
-	  converted_host_name[MAXHOSTNAMELEN] = '\0';
+	  strncpy (converted_host_name, host_name, CUB_MAXHOSTNAMELEN);
+	  converted_host_name[CUB_MAXHOSTNAMELEN] = '\0';
 	}
 
       if (strcasecmp (converted_host_name, "localhost") == 0
 	  || strcasecmp (converted_host_name, "localhost.localdomain") == 0)
 	{
-	  if (GETHOSTNAME (converted_host_name, MAXHOSTNAMELEN) != 0)
+	  if (GETHOSTNAME (converted_host_name, CUB_MAXHOSTNAMELEN) != 0)
 	    {
-	      strncpy (converted_host_name, host_name, MAXHOSTNAMELEN);
+	      strncpy (converted_host_name, host_name, CUB_MAXHOSTNAMELEN);
 	    }
 	}
-      converted_host_name[MAXHOSTNAMELEN] = '\0';
+      converted_host_name[CUB_MAXHOSTNAMELEN] = '\0';
 
       /*
        * if there is hostname or ip address in db_name,
@@ -2201,19 +2202,22 @@ csql_set_sys_param (const char *arg_str)
 
   if (strncmp (arg_str, "cost", 4) == 0 && sscanf (arg_str, "cost %127s %127s", plantype, val) == 2)
     {
+      int ret;
       if (qo_plan_set_cost_fn (plantype, val[0]))
 	{
-	  snprintf (ans, 128, "cost %s: %s", plantype, val);
+	  ret = snprintf (ans, len - 1, "cost %s: %s", plantype, val);
 	}
       else
 	{
-	  snprintf (ans, 128, "error: unknown cost parameter %s", plantype);
+	  ret = snprintf (ans, len - 1, "error: unknown cost parameter %s", plantype);
 	}
+
+      (void) ret;		// suppress format-truncate warning
     }
   else if (strncmp (arg_str, "level", 5) == 0 && sscanf (arg_str, "level %d", &level) == 1)
     {
       qo_set_optimization_param (NULL, QO_PARAM_LEVEL, level);
-      snprintf (ans, 128, "level %d", level);
+      snprintf (ans, len - 1, "level %d", level);
     }
   else
     {

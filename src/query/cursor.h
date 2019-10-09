@@ -82,6 +82,7 @@ struct cursor_id
 
 extern int cursor_copy_list_id (QFILE_LIST_ID * dest_list_id, const QFILE_LIST_ID * src_list_id);
 extern void cursor_free_list_id (QFILE_LIST_ID * list_id, bool self);
+extern void cursor_free_self_list_id (QFILE_LIST_ID * list_id);
 extern int cursor_copy_vobj_to_dbvalue (OR_BUF * buf, DB_VALUE * db_value);
 extern int cursor_fetch_page_having_tuple (CURSOR_ID * cursor_id, VPID * vpid, int position, int offset);
 #if defined (WINDOWS) || defined (CUBRID_DEBUG)

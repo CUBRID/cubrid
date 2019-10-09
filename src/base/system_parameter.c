@@ -65,7 +65,6 @@
 #include "page_buffer.h"
 #include "session.h"
 #include "vacuum.h"
-#include "log_impl.h"
 #include "log_manager.h"
 #include "xserver_interface.h"
 #include "double_write_buffer.h"
@@ -403,8 +402,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS "ha_check_disk_failure_interval"
 
-#define PRM_NAME_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSEC "ha_update_hostname_interval_in_msecs"
-
 #define PRM_NAME_JAVA_STORED_PROCEDURE "java_stored_procedure"
 
 #define PRM_NAME_COMPAT_PRIMARY_KEY "compat_primary_key"
@@ -639,6 +636,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_DWB_LOGGING "double_write_buffer_logging"
 
 #define PRM_NAME_JSON_LOG_ALLOCATIONS "json_log_allocations"
+#define PRM_NAME_JSON_MAX_ARRAY_IDX "json_max_array_idx"
 
 #define PRM_NAME_CONNECTION_LOGGING "connection_logging"
 
@@ -665,6 +663,11 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_TRACK_REQUESTS "track_client_requests"
 #define PRM_NAME_LOG_PGBUF_VICTIM_FLUSH "log_pgbuf_victim_flush"
 #define PRM_NAME_LOG_CHKPT_DETAILED "detailed_checkpoint_logging"
+#define PRM_NAME_IB_TASK_MEMSIZE "index_load_task_memsize"
+#define PRM_NAME_STATS_ON "stats_on"
+#define PRM_NAME_LOADDB_WORKER_COUNT "loaddb_worker_count"
+#define PRM_NAME_PERF_TEST_MODE "perf_test_mode"
+#define PRM_NAME_REPR_CACHE_LOG "er_log_repr_cache"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -1563,10 +1566,6 @@ static int prm_ha_check_disk_failure_interval_in_secs_upper = INT_MAX;
 static int prm_ha_check_disk_failure_interval_in_secs_lower = 0;
 static unsigned int prm_ha_check_disk_failure_interval_in_secs_flag = 0;
 
-int PRM_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS = HB_DEFAULT_UPDATE_HOSTNAME_INTERVAL_IN_MSECS;
-static int prm_ha_update_hostname_interval_in_msecs_default = HB_DEFAULT_UPDATE_HOSTNAME_INTERVAL_IN_MSECS;
-static unsigned int prm_ha_update_hostname_interval_in_msecs_flag = 0;
-
 bool PRM_JAVA_STORED_PROCEDURE = false;
 static bool prm_java_stored_procedure_default = false;
 static unsigned int prm_java_stored_procedure_flag = 0;
@@ -2124,6 +2123,12 @@ bool PRM_JSON_LOG_ALLOCATIONS = false;
 static bool prm_json_log_allocations_default = false;
 static unsigned int prm_json_log_allocations_flag = 0;
 
+int PRM_JSON_MAX_ARRAY_IDX = 64 * ONE_K;
+static int prm_json_max_array_idx_default = 64 * ONE_K;
+static unsigned int prm_json_max_array_idx_flag = 0;
+static int prm_json_max_array_idx_upper = ONE_M;
+static int prm_json_max_array_idx_lower = ONE_K;
+
 bool PRM_CONNECTION_LOGGING = false;
 static bool prm_connection_logging_default = false;
 static unsigned int prm_connection_logging_flag = 0;
@@ -2225,6 +2230,30 @@ static unsigned int prm_log_pgbuf_victim_flush_flag = 0;
 bool PRM_LOG_CHKPT_DETAILED = false;
 static bool prm_log_chkpt_detailed_default = false;
 static unsigned int prm_log_chkpt_detailed_flag = 0;
+
+UINT64 PRM_IB_TASK_MEMSIZE = 16 * ONE_M;
+static UINT64 prm_ib_task_memsize_default = 16 * ONE_M;
+static UINT64 prm_ib_task_memsize_lower = ONE_K;
+static UINT64 prm_ib_task_memsize_upper = 128 * ONE_M;
+static unsigned int prm_ib_task_memsize_flag = 0;
+
+bool PRM_STATS_ON = false;
+static bool prm_stats_on_default = false;
+static unsigned int prm_stats_on_flag = 0;
+
+int PRM_LOADDB_WORKERS = 8;
+static int prm_loaddb_workers_default = 8;
+static int prm_loaddb_workers_upper = 64;
+static int prm_loaddb_workers_lower = 2;
+static unsigned int prm_loaddb_workers_flag = 0;
+
+bool PRM_PERF_TEST_MODE = false;
+static bool prm_perf_test_mode_default = false;
+static unsigned int prm_perf_test_mode_flag = 0;
+
+bool PRM_REPR_CACHE_LOG = false;
+static bool prm_repr_cache_log_default = false;
+static unsigned int prm_repr_cache_log_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -3965,17 +3994,6 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_msec_to_sec,
    (DUP_PRM_FUNC) prm_sec_to_msec},
-  {PRM_ID_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS,
-   PRM_NAME_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSEC,
-   (PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
-   PRM_INTEGER,
-   &prm_ha_update_hostname_interval_in_msecs_flag,
-   (void *) &prm_ha_update_hostname_interval_in_msecs_default,
-   (void *) &PRM_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS,
-   (void *) NULL, (void *) NULL,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
   {PRM_ID_JAVA_STORED_PROCEDURE,
    PRM_NAME_JAVA_STORED_PROCEDURE,
    (PRM_FOR_SERVER),
@@ -4541,7 +4559,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_INTL_CHECK_INPUT_STRING,
    PRM_NAME_INTL_CHECK_INPUT_STRING,
-   (PRM_FOR_CLIENT | PRM_TEST_CHANGE),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_TEST_CHANGE),
    PRM_BOOLEAN,
    &prm_intl_check_input_string_flag,
    (void *) &prm_intl_check_input_string_default,
@@ -5457,6 +5475,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_JSON_MAX_ARRAY_IDX,
+   PRM_NAME_JSON_MAX_ARRAY_IDX,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   &prm_json_max_array_idx_flag,
+   (void *) &prm_json_max_array_idx_default,
+   (void *) &PRM_JSON_MAX_ARRAY_IDX,
+   (void *) &prm_json_max_array_idx_upper,
+   (void *) &prm_json_max_array_idx_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_CONNECTION_LOGGING,
    PRM_NAME_CONNECTION_LOGGING,
    (PRM_FOR_SERVER | PRM_HIDDEN),
@@ -5710,6 +5740,61 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_log_chkpt_detailed_flag,
    (void *) &prm_log_chkpt_detailed_default,
    (void *) &PRM_LOG_CHKPT_DETAILED,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_IB_TASK_MEMSIZE,
+   PRM_NAME_IB_TASK_MEMSIZE,
+   (PRM_FOR_SERVER | PRM_SIZE_UNIT | PRM_HIDDEN),
+   PRM_BIGINT,
+   &prm_ib_task_memsize_flag,
+   (void *) &prm_ib_task_memsize_default,
+   (void *) &PRM_IB_TASK_MEMSIZE,
+   (void *) &prm_ib_task_memsize_upper, (void *) &prm_ib_task_memsize_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STATS_ON,
+   PRM_NAME_STATS_ON,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_stats_on_flag,
+   (void *) &prm_stats_on_default,
+   (void *) &PRM_STATS_ON,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_LOADDB_WORKER_COUNT,
+   PRM_NAME_LOADDB_WORKER_COUNT,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   &prm_loaddb_workers_flag,
+   (void *) &prm_loaddb_workers_default,
+   (void *) &PRM_LOADDB_WORKERS,
+   (void *) &prm_loaddb_workers_upper, (void *) &prm_loaddb_workers_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PERF_TEST_MODE,
+   PRM_NAME_PERF_TEST_MODE,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_perf_test_mode_flag,
+   (void *) &prm_perf_test_mode_default,
+   (void *) &PRM_PERF_TEST_MODE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_REPR_CACHE_LOG,
+   PRM_NAME_REPR_CACHE_LOG,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_repr_cache_log_flag,
+   (void *) &prm_repr_cache_log_default,
+   (void *) &PRM_REPR_CACHE_LOG,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -6384,9 +6469,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
 #endif
 
   intl_Mbs_support = prm_get_bool_value (PRM_ID_INTL_MBS_SUPPORT);
-#if !defined (SERVER_MODE)
   intl_String_validation = prm_get_bool_value (PRM_ID_INTL_CHECK_INPUT_STRING);
-#endif
 
   /* count the number of session parameters */
   num_session_parameters = 0;
@@ -6713,8 +6796,8 @@ prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name, con
 {
   INI_TABLE *ini;
   char sec_name[LINE_MAX];
-  char host_name[MAXHOSTNAMELEN];
-  char user_name[MAXHOSTNAMELEN];
+  char host_name[CUB_MAXHOSTNAMELEN];
+  char user_name[CUB_MAXHOSTNAMELEN];
   int error;
 
   ini = ini_parser_load (prm_file_name);
@@ -6744,11 +6827,11 @@ prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name, con
       error = prm_load_by_section (ini, "service", false, reload, prm_file_name, load_flags);
     }
   if (error == NO_ERROR && !SYSPRM_LOAD_IS_IGNORE_HA (load_flags) && PRM_HA_MODE != HA_MODE_OFF
-      && GETHOSTNAME (host_name, MAXHOSTNAMELEN) == 0)
+      && GETHOSTNAME (host_name, CUB_MAXHOSTNAMELEN) == 0)
     {
       snprintf (sec_name, LINE_MAX, "%%%s|*", host_name);
       error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, load_flags);
-      if (error == NO_ERROR && getlogin_r (user_name, MAXHOSTNAMELEN) == 0)
+      if (error == NO_ERROR && getlogin_r (user_name, CUB_MAXHOSTNAMELEN) == 0)
 	{
 	  snprintf (sec_name, LINE_MAX, "%%%s|%s", host_name, user_name);
 	  error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, load_flags);
@@ -10044,7 +10127,7 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *tz_leap_second_support_prm;
 
   char newval[LINE_MAX];
-  char host_name[MAXHOSTNAMELEN];
+  char host_name[CUB_MAXHOSTNAMELEN];
   int max_clients;
 
   /* Find the parameters that require tuning */
@@ -10292,7 +10375,7 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *tz_leap_second_support_prm;
 
   char newval[LINE_MAX];
-  char host_name[MAXHOSTNAMELEN];
+  char host_name[CUB_MAXHOSTNAMELEN];
 
   /* Find the parameters that require tuning */
   max_plan_cache_entries_prm = prm_find (PRM_NAME_XASL_CACHE_MAX_ENTRIES, NULL);

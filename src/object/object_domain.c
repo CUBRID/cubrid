@@ -35,12 +35,14 @@
 #include <errno.h>
 #include <assert.h>
 
+#include "area_alloc.h"
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "numeric_opfunc.h"
 #include "tz_support.h"
 #include "db_date.h"
 #include "mprec.h"
+#include "porting_inline.hpp"
 #include "set_object.h"
 #include "string_opfunc.h"
 #include "tz_support.h"
@@ -57,6 +59,7 @@
 #endif /* !defined (SERVER_MODE) */
 
 #include "dbtype.h"
+#include "error_manager.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -548,7 +551,6 @@ TP_DOMAIN **tp_Domain_conversion_matrix[] = {
 static pthread_mutex_t tp_domain_cache_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif /* SERVER_MODE */
 
-static void domain_init (TP_DOMAIN * domain, DB_TYPE typeid_);
 static int tp_domain_size_internal (const TP_DOMAIN * domain);
 static void tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain);
 static TP_DOMAIN *tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, TP_DOMAIN ** ins_pos);
@@ -969,7 +971,7 @@ tp_domain_free (TP_DOMAIN * dom)
 }
 
 /*
- * domain_init - initializes a domain structure to contain reasonable "default"
+ * tp_domain_init - initializes a domain structure to contain reasonable "default"
  * values.
  *    return: none
  *    domain(out): domain structure to initialize
@@ -978,8 +980,8 @@ tp_domain_free (TP_DOMAIN * dom)
  *    Used by tp_domain_new and also in some other places
  *    where we need to quickly synthesize some transient domain structures.
  */
-static void
-domain_init (TP_DOMAIN * domain, DB_TYPE type_id)
+void
+tp_domain_init (TP_DOMAIN * domain, DB_TYPE type_id)
 {
   assert (type_id <= DB_TYPE_LAST);
 
@@ -1044,7 +1046,7 @@ tp_domain_new (DB_TYPE type)
   new_dm = (TP_DOMAIN *) area_alloc (tp_Domain_area);
   if (new_dm != NULL)
     {
-      domain_init (new_dm, type);
+      tp_domain_init (new_dm, type);
     }
 
   return new_dm;
@@ -1422,15 +1424,17 @@ tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      if (domain->collation_flag == TP_DOMAIN_COLL_NORMAL || domain->collation_flag == TP_DOMAIN_COLL_ENFORCE)
-	{
-	  db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
-	}
       if (domain->collation_flag == TP_DOMAIN_COLL_ENFORCE)
 	{
+	  db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
 	  /* don't apply precision and type */
 	  break;
 	}
+      if (domain->collation_flag == TP_DOMAIN_COLL_NORMAL)
+	{
+	  db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+	}
+      /* FALLTHRU */
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       value->domain.char_info.type = TP_DOMAIN_TYPE (domain);
@@ -3291,7 +3295,7 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	  else
 	    {
 	      domain = dbuf;
-	      domain_init (domain, value_type);
+	      tp_domain_init (domain, value_type);
 	    }
 	  domain->codeset = db_get_string_codeset (val);
 	  domain->collation_id = db_get_string_collation (val);
@@ -3354,7 +3358,7 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	  else
 	    {
 	      domain = dbuf;
-	      domain_init (dbuf, value_type);
+	      tp_domain_init (dbuf, value_type);
 	    }
 	  domain->precision = db_value_precision (val);
 	  domain->scale = db_value_scale (val);
@@ -3405,7 +3409,7 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	  else
 	    {
 	      domain = dbuf;
-	      domain_init (domain, value_type);
+	      tp_domain_init (domain, value_type);
 	    }
 
 	  if (db_get_json_schema (val) != NULL)
@@ -5727,19 +5731,19 @@ make_desired_string_db_value (DB_TYPE desired_type, const TP_DOMAIN * desired_do
   switch (desired_type)
     {
     case DB_TYPE_CHAR:
-      db_make_char (&temp, desired_domain->precision, (const DB_C_CHAR) new_string, strlen (new_string),
+      db_make_char (&temp, desired_domain->precision, (DB_C_CHAR) new_string, strlen (new_string),
 		    TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
       break;
     case DB_TYPE_NCHAR:
-      db_make_nchar (&temp, desired_domain->precision, (const DB_C_NCHAR) new_string, strlen (new_string),
+      db_make_nchar (&temp, desired_domain->precision, (DB_C_NCHAR) new_string, strlen (new_string),
 		     TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
       break;
     case DB_TYPE_VARCHAR:
-      db_make_varchar (&temp, desired_domain->precision, (const DB_C_CHAR) new_string, strlen (new_string),
+      db_make_varchar (&temp, desired_domain->precision, (DB_C_CHAR) new_string, strlen (new_string),
 		       TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
       break;
     case DB_TYPE_VARNCHAR:
-      db_make_varnchar (&temp, desired_domain->precision, (const DB_C_NCHAR) new_string, strlen (new_string),
+      db_make_varnchar (&temp, desired_domain->precision, (DB_C_NCHAR) new_string, strlen (new_string),
 			TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
       break;
     default:			/* Can't get here.  This just quiets the compiler */
@@ -10025,14 +10029,23 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  case DB_TYPE_NCHAR:
 	  case DB_TYPE_VARNCHAR:
 	    {
-	      unsigned int str_size = db_get_string_size (src);
-	      const char *original_str = db_get_string (src);
-	      int error_code;
+	      DB_VALUE utf8_str;
+	      const DB_VALUE *json_str_val = &utf8_str;
+	      int error_code = db_json_copy_and_convert_to_utf8 (src, &utf8_str, &json_str_val);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  status = DOMAIN_ERROR;
+		  break;
+		}
 
-	      assert (str_size >= 0);	/* if this isn't correct, we cannot rely on strlen */
+	      unsigned int str_size = db_get_string_size (json_str_val);
+	      const char *original_str = db_get_string (json_str_val);
+
 	      error_code = db_json_get_json_from_str (original_str, doc, str_size);
 	      if (error_code != NO_ERROR)
 		{
+		  pr_clear_value (&utf8_str);
 		  assert (doc == NULL);
 		  status = DOMAIN_ERROR;
 		  break;
@@ -10042,11 +10055,17 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  && db_json_validate_doc (desired_domain->json_validator, doc) != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
+		  pr_clear_value (&utf8_str);
 		  db_json_delete_doc (doc);
 		  status = DOMAIN_ERROR;
 		  break;
 		}
+	      pr_clear_value (&utf8_str);
 	    }
+	    break;
+	  case DB_TYPE_SHORT:
+	    doc = db_json_allocate_doc ();
+	    db_json_set_int_to_doc (doc, db_get_short (src));
 	    break;
 	  case DB_TYPE_INTEGER:
 	    doc = db_json_allocate_doc ();
@@ -11576,6 +11595,12 @@ tp_domain_status_er_set (TP_DOMAIN_STATUS status, const char *file_name, const i
       assert (er_errid () != NO_ERROR);
 #endif
       error = er_errid ();
+
+      if (error == ER_JSON_INVALID_JSON)
+	{
+	  // We keep invalid json errors that happend during cast since they are more descriptive
+	  return error;
+	}
 
       if (error == ER_IT_DATA_OVERFLOW)
 	{

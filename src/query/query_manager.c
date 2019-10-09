@@ -32,6 +32,7 @@
 #include "query_manager.h"
 
 #include "compile_context.h"
+#include "log_append.hpp"
 #include "object_primitive.h"
 #include "xserver_interface.h"
 #include "query_executor.h"
@@ -43,6 +44,8 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "thread_entry.hpp"
+#include "xasl_cache.h"
+#include "xasl_unpack_info.hpp"
 
 #if !defined (SERVER_MODE)
 
@@ -928,7 +931,7 @@ qmgr_finalize (THREAD_ENTRY * thread_p)
  * and return the cached XASL file id if found. If not found, NULL will be returned.
  */
 int
-xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_STREAM * stream)
+xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, xasl_stream * stream)
 {
   XASL_CACHE_ENTRY *cache_entry_p = NULL;
   char *p;
@@ -1107,7 +1110,7 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
 		    QMGR_TRAN_ENTRY * tran_entry_p)
 {
   XASL_NODE *xasl_p;
-  void *xasl_buf_info;
+  XASL_UNPACK_INFO *xasl_buf_info;
   QFILE_LIST_ID *list_id;
 
   assert (query_p != NULL);
@@ -1183,9 +1186,7 @@ end:
   if (xasl_buf_info)
     {
       /* free the XASL tree */
-      stx_free_additional_buff (thread_p, xasl_buf_info);
-      stx_free_xasl_unpack_info (xasl_buf_info);
-      db_private_free_and_init (thread_p, xasl_buf_info);
+      free_xasl_unpack_info (thread_p, xasl_buf_info);
     }
 
   return list_id;
@@ -1220,7 +1221,7 @@ exit_on_error:
 QFILE_LIST_ID *
 xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_ID * query_id_p, int dbval_count,
 		     void *dbval_p, QUERY_FLAG * flag_p, CACHE_TIME * client_cache_time_p,
-		     CACHE_TIME * server_cache_time_p, int query_timeout, XASL_CACHE_ENTRY ** ret_cache_entry_p)
+		     CACHE_TIME * server_cache_time_p, int query_timeout, xasl_cache_ent ** ret_cache_entry_p)
 {
   XASL_CACHE_ENTRY *xasl_cache_entry_p = NULL;
   XASL_CLONE xclone = XASL_CLONE_INITIALIZER;

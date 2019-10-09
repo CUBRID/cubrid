@@ -32,14 +32,18 @@
 #if !defined (WINDOWS)
 #include <sys/time.h>
 #endif
+#include <signal.h>
 
 #include "log_applier.h"
 
+#include "authenticate.h"
 #include "porting.h"
 #include "utility.h"
 #include "environment_variable.h"
 #include "message_catalog.h"
+#include "msgcat_set_log.hpp"
 #include "log_compress.h"
+#include "log_lsa.hpp"
 #include "parser.h"
 #include "object_primitive.h"
 #include "db_value_printer.hpp"
@@ -404,7 +408,7 @@ LA_RECDES_POOL la_recdes_pool;
 static bool la_applier_need_shutdown = false;
 static bool la_applier_shutdown_by_signal = false;
 static char la_slave_db_name[DB_MAX_IDENTIFIER_LENGTH + 1];
-static char la_peer_host[MAXHOSTNAMELEN + 1];
+static char la_peer_host[CUB_MAXHOSTNAMELEN + 1];
 
 static bool la_enable_sql_logging = false;
 
@@ -452,6 +456,7 @@ static int la_realloc_recdes_data (RECDES * recdes, int data_size);
 static void la_clear_recdes_pool (void);
 
 static LA_CACHE_PB *la_init_cache_pb (void);
+static unsigned int log_pageid_hash (const void *key, unsigned int htsize);
 static int la_init_cache_log_buffer (LA_CACHE_PB * cache_pb, int slb_cnt, int slb_size);
 static int la_fetch_log_hdr (LA_ACT_LOG * act_log);
 static int la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbname, bool check_charset);
@@ -2450,6 +2455,27 @@ la_init_cache_pb (void)
 }
 
 /*
+ * log_pageid_hash - hash a LOG_PAGEID key
+ *   return: hash value
+ *   key(in): void pointer to LOG_PAGEID key to hash
+ *   ht_size(in): size of hash table
+ */
+static unsigned int
+log_pageid_hash (const void *key, unsigned int htsize)
+{
+  assert (key != NULL);
+
+  if ((*(const LOG_PAGEID *) key) == LOGPB_HEADER_PAGE_ID)
+    {
+      return 0;
+    }
+
+  assert ((*(const LOG_PAGEID *) key) >= 0);
+
+  return (*(const LOG_PAGEID *) key) % htsize;
+}
+
+/*
  * la_init_cache_log_buffer() - Initialize the cache log buffer area of
  *                                a cache page buffer
  *   return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
@@ -2474,7 +2500,7 @@ la_init_cache_log_buffer (LA_CACHE_PB * cache_pb, int slb_cnt, int slb_size)
     }
 
   cache_pb->hash_table =
-    mht_create ("log applier cache log buffer hash table", cache_pb->num_buffers * 8, mht_logpageidhash,
+    mht_create ("log applier cache log buffer hash table", cache_pb->num_buffers * 8, log_pageid_hash,
 		mht_compare_logpageids_are_equal);
   if (cache_pb->hash_table == NULL)
     {
@@ -2589,9 +2615,12 @@ la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbn
 	  char err_msg[ERR_MSG_SIZE];
 
 	  la_applier_need_shutdown = true;
-	  snprintf (err_msg, sizeof (err_msg) - 1, "Active log file(%s) charset is not valid (%s), expecting %s.",
-		    act_log->path, lang_charset_cubrid_name ((INTL_CODESET) act_log->log_hdr->db_charset),
-		    lang_charset_cubrid_name (lang_charset ()));
+	  int ret = snprintf (err_msg, sizeof (err_msg) - 1,
+			      "Active log file(%s) charset is not valid (%s), expecting %s.",
+			      act_log->path, lang_charset_cubrid_name ((INTL_CODESET) act_log->log_hdr->db_charset),
+			      lang_charset_cubrid_name (lang_charset ()));
+	  (void) ret;		// suppress format-truncate warning
+
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, err_msg);
 	  return ER_LOC_INIT;
 	}
@@ -5397,6 +5426,7 @@ la_apply_statement_log (LA_ITEM * item)
 
     case CUBRID_STMT_UPDATE_STATS:
       is_ddl = true;
+      /* FALLTHRU */
 
     case CUBRID_STMT_INSERT:
     case CUBRID_STMT_DELETE:
@@ -6125,8 +6155,10 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	{
 	  if (la_Info.db_lockf_vdes != NULL_VOLDES)
 	    {
-	      snprintf (buffer, sizeof (buffer), "the state of HA server (%s@%s) is changed to %s", la_slave_db_name,
-			la_peer_host, css_ha_server_state_string ((HA_SERVER_STATE) ha_server_state->state));
+	      int ret = snprintf (buffer, sizeof (buffer) - 1, "the state of HA server (%s@%s) is changed to %s",
+				  la_slave_db_name, la_peer_host,
+				  css_ha_server_state_string ((HA_SERVER_STATE) ha_server_state->state));
+	      (void) ret;	// suppress format-truncate warning
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
 
 	      la_Info.is_role_changed = true;
@@ -6748,7 +6780,7 @@ la_init (const char *log_path, const int max_mem_size)
 
   la_recdes_pool.is_initialized = false;
 
-  if (db_get_client_type () == BOOT_CLIENT_LOG_APPLIER)
+  if (db_get_client_type () == DB_CLIENT_TYPE_LOG_APPLIER)
     {
       ws_init_repl_objs ();
     }
@@ -6855,7 +6887,7 @@ la_shutdown (void)
       free_and_init (la_Info.act_log.hdr_page);
     }
 
-  if (db_get_client_type () == BOOT_CLIENT_LOG_APPLIER)
+  if (db_get_client_type () == DB_CLIENT_TYPE_LOG_APPLIER)
     {
       ws_clear_all_repl_objs ();
     }
@@ -7602,9 +7634,10 @@ la_create_repl_filter (void)
 	  continue;
 	}
 
+      int ret;
       if (classname_len >= SM_MAX_IDENTIFIER_LENGTH)
 	{
-	  snprintf (error_msg, LINE_MAX, "invalid table name %s", buffer);
+	  ret = snprintf (error_msg, LINE_MAX - 1, "invalid table name %s", buffer);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_REPL_FILTER_GENERIC, 1, error_msg);
 	  error = ER_HA_LA_REPL_FILTER_GENERIC;
 
@@ -7616,7 +7649,7 @@ la_create_repl_filter (void)
       class_ = locator_find_class (classname);
       if (class_ == NULL)
 	{
-	  snprintf (error_msg, LINE_MAX, "cannot find table [%s] listed in %s", buffer, filter_file);
+	  ret = snprintf (error_msg, LINE_MAX - 1, "cannot find table [%s] listed in %s", buffer, filter_file);
 	  er_stack_push ();
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_REPL_FILTER_GENERIC, 1, error_msg);
 	  er_stack_pop ();
@@ -7626,6 +7659,8 @@ la_create_repl_filter (void)
 	  ws_release_user_instance (class_);
 	  ws_decache (class_);
 	}
+
+      (void) ret;		// suppress format-truncate warning
 
       error = la_add_repl_filter (classname);
       if (error != NO_ERROR)
@@ -7774,11 +7809,11 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   s = la_get_hostname_from_log_path ((char *) log_path);
   if (s)
     {
-      strncpy (la_peer_host, s, MAXHOSTNAMELEN);
+      strncpy (la_peer_host, s, CUB_MAXHOSTNAMELEN);
     }
   else
     {
-      strncpy (la_peer_host, "unknown", MAXHOSTNAMELEN);
+      strncpy (la_peer_host, "unknown", CUB_MAXHOSTNAMELEN);
     }
 
   /* init la_Info */

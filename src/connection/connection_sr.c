@@ -306,7 +306,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->session_id = DB_EMPTY_SESSION;
 #if defined(SERVER_MODE)
   conn->session_p = NULL;
-  conn->client_type = BOOT_CLIENT_UNKNOWN;
+  conn->client_type = DB_CLIENT_TYPE_UNKNOWN;
 #endif
 
   err = css_initialize_list (&conn->request_queue, 0);
@@ -838,7 +838,7 @@ css_decrement_num_conn (BOOT_CLIENT_TYPE client_type)
 {
   int i;
 
-  if (client_type == BOOT_CLIENT_UNKNOWN)
+  if (client_type == DB_CLIENT_TYPE_UNKNOWN)
     {
       return;
     }
@@ -1072,7 +1072,7 @@ css_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid,
 CSS_CONN_ENTRY *
 css_connect_to_master_server (int master_port_id, const char *server_name, int name_length)
 {
-  char hname[MAXHOSTNAMELEN];
+  char hname[CUB_MAXHOSTNAMELEN];
   CSS_CONN_ENTRY *conn;
   unsigned short rid;
   int response, response_buff;
@@ -1084,7 +1084,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 #endif
 
   css_Service_id = master_port_id;
-  if (GETHOSTNAME (hname, MAXHOSTNAMELEN) != 0)
+  if (GETHOSTNAME (hname, CUB_MAXHOSTNAMELEN) != 0)
     {
       return NULL;
     }

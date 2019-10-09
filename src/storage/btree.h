@@ -31,16 +31,22 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
+#include "access_spec.hpp"
 #include "config.h"
-
-#include "storage_common.h"
-#include "oid.h"
-#include "statistics.h"
 #include "disk_manager.h"
 #include "object_domain.h"
-#include "query_evaluator.h"
+#include "oid.h"
 #include "lock_manager.h"
+#include "log_lsa.hpp"
+#include "mvcc.h"
+#include "query_evaluator.h"
 #include "recovery.h"
+#include "statistics.h"
+#include "storage_common.h"
+
+// forward definition
+struct key_val_range;
+class btree_unique_stats;
 
 #define SINGLE_ROW_INSERT    1
 #define SINGLE_ROW_DELETE    2
@@ -565,13 +571,13 @@ extern int btree_estimate_total_numpages (THREAD_ENTRY * thread_p, int dis_key_c
 
 extern int btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc);
 extern int btree_physical_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * oid, OID * class_oid,
-				  int *unique, int op_type, BTREE_UNIQUE_STATS * unique_stat_info);
+				  int *unique, int op_type, btree_unique_stats * unique_stat_info);
 extern int btree_vacuum_insert_mvccid (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key, OID * oid,
 				       OID * class_oid, MVCCID insert_mvccid);
 extern int btree_vacuum_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key, OID * oid, OID * class_oid,
 				MVCCID delete_mvccid);
 extern int btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key, DB_VALUE * new_key, OID * cls_oid,
-			 OID * oid, int op_type, BTREE_UNIQUE_STATS * unique_stat_info, int *unique,
+			 OID * oid, int op_type, btree_unique_stats * unique_stat_info, int *unique,
 			 MVCC_REC_HEADER * p_mvcc_rec_header);
 extern int btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_STATS * unique_stat_info,
 						   bool only_active_tran);
@@ -631,15 +637,16 @@ extern int btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p, LO
 #include "scan_manager.h"
 
 extern int btree_keyval_search (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type,
-				BTREE_SCAN * BTS, KEY_VAL_RANGE * key_val_range, OID * class_oid, FILTER_INFO * filter,
+				BTREE_SCAN * BTS, key_val_range * key_val_range, OID * class_oid, FILTER_INFO * filter,
 				INDX_SCAN_ID * isidp, bool is_all_class_srch);
 extern int btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PROCESS_KEY_FUNC * key_func);
 extern int btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 extern int btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, int *btree_att_ids,
 					 int btree_num_att, HEAP_CACHE_ATTRINFO * attr_info, int func_index_col_id);
 extern int btree_coerce_key (DB_VALUE * src_keyp, int keysize, TP_DOMAIN * btree_domainp, int key_minmax);
-extern int btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * class_oid, BTID * btid,
-			    const char *bt_name, int severity, int err_id, const char *filename, int lineno);
+extern int btree_set_error (THREAD_ENTRY * thread_p, const DB_VALUE * key, const OID * obj_oid, const OID * class_oid,
+			    const BTID * btid, const char *bt_name, int severity, int err_id, const char *filename,
+			    int lineno);
 extern DISK_ISVALID btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, BTID * btid, bool repair);
 extern int btree_index_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt,
 				   void **ctx);
@@ -660,9 +667,9 @@ extern void btree_leaf_change_first_object (THREAD_ENTRY * thread_p, RECDES * re
 					    OID * class_oidp, BTREE_MVCC_INFO * mvcc_info, int *key_offset,
 					    char **rv_undo_data_ptr, char **rv_redo_data_ptr);
 extern int btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * cls_oid, OID * oid, int op_type,
-			 BTREE_UNIQUE_STATS * unique_stat_info, int *unique, MVCC_REC_HEADER * p_mvcc_rec_header);
+			 btree_unique_stats * unique_stat_info, int *unique, MVCC_REC_HEADER * p_mvcc_rec_header);
 extern int btree_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid,
-			      int op_type, BTREE_UNIQUE_STATS * unique_stat_info, int *unique,
+			      int op_type, btree_unique_stats * unique_stat_info, int *unique,
 			      MVCC_REC_HEADER * p_mvcc_rec_header);
 
 extern void btree_set_mvcc_header_ids_for_update (THREAD_ENTRY * thread_p, bool do_delete_only, bool do_insert_only,
@@ -693,7 +700,7 @@ extern void btree_get_root_vpid_from_btid (THREAD_ENTRY * thread_p, BTID * btid,
 extern int btree_get_btid_from_file (THREAD_ENTRY * thread_p, const VFID * vfid, BTID * btid_out);
 
 extern int btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_SCAN_ID * index_scan_id_p,
-			      KEY_VAL_RANGE * key_val_range, FILTER_INFO * filter, const OID * match_class_oid,
+			      key_val_range * key_val_range, FILTER_INFO * filter, const OID * match_class_oid,
 			      DB_BIGINT * key_limit_upper, DB_BIGINT * key_limit_lower, bool need_to_check_null,
 			      void *bts_other);
 
@@ -743,4 +750,5 @@ extern int btree_online_index_check_unique_constraint (THREAD_ENTRY * thread_p, 
 						       OID * class_oid);
 extern int btree_get_class_oid_of_unique_btid (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid);
 extern bool btree_is_btid_online_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid);
+
 #endif /* _BTREE_H_ */

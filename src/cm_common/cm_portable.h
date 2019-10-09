@@ -27,8 +27,8 @@
 #if defined(WINDOWS)
 #include <string.h>
 
-#define PATH_MAX	256
-#define MAXHOSTNAMELEN 64
+#define PATH_MAX		256
+#define CUB_MAXHOSTNAMELEN	256
 
 #if defined(_MSC_VER) && _MSC_VER < 1900
 /* Ref: https://msdn.microsoft.com/en-us/library/2ts7cx93(v=vs.120).aspx */

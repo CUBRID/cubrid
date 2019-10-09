@@ -30,6 +30,7 @@
 
 #include "system_catalog.h"
 
+#include "btree.h"		// for single/multi ops
 #include "error_manager.h"
 #include "heap_file.h"
 #include "transform.h"
@@ -41,6 +42,7 @@
 #include "tz_support.h"
 #include "db_date.h"
 #include "dbtype.h"
+#include "string_opfunc.h"
 #include "thread_manager.hpp"
 
 #define IS_SUBSET(value)        (value).sub.count >= 0
@@ -3811,7 +3813,7 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
 
   /* for replication */
   if (locator_add_or_remove_index (thread_p, &record, oid_p, class_oid_p, true, SINGLE_ROW_INSERT, scan_p, false, false,
-				   hfid_p, NULL) != NO_ERROR)
+				   hfid_p, NULL, false, false) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -3853,7 +3855,7 @@ static int
 catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p, OID * class_oid_p, HFID * hfid_p, HEAP_SCANCACHE * scan_p)
 {
   HEAP_OPERATION_CONTEXT delete_context;
-  RECDES record;
+  RECDES record = RECDES_INITIALIZER;
   OR_VALUE *value_p = NULL;
   OR_VALUE *attrs;
   int i;
@@ -3863,7 +3865,6 @@ catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p, OID * class_oid_p,
   int error = NO_ERROR;
 
   assert (oid_p != NULL && class_oid_p != NULL && hfid_p != NULL && scan_p != NULL);
-  record.data = NULL;
 
 #if defined(SERVER_MODE)
   if (lock_object (thread_p, oid_p, class_oid_p, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
@@ -3904,7 +3905,7 @@ catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p, OID * class_oid_p,
 
   /* for replication */
   if (locator_add_or_remove_index (thread_p, &record, oid_p, class_oid_p, false, SINGLE_ROW_DELETE, scan_p, false,
-				   false, hfid_p, NULL) != NO_ERROR)
+				   false, hfid_p, NULL, false, false) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -3950,7 +3951,7 @@ static int
 catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p, OID * class_oid_p, HFID * hfid_p,
 			HEAP_SCANCACHE * scan_p, UPDATE_INPLACE_STYLE force_in_place)
 {
-  RECDES record, old_record;
+  RECDES record = RECDES_INITIALIZER, old_record = RECDES_INITIALIZER;
   OR_VALUE *old_value_p = NULL;
   OR_VALUE *attrs, *old_attrs;
   OR_VALUE *subset_p, *attr_p;
@@ -3958,9 +3959,6 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
   bool uflag = false;
   int i, j, k;
   int error = NO_ERROR;
-
-  record.data = NULL;
-  old_record.data = NULL;
 
   if (heap_get_visible_version (thread_p, oid_p, class_oid_p, &old_record, scan_p, COPY, NULL_CHN) != S_SUCCESS)
     {
@@ -4579,7 +4577,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
   scan_cache_inited = false;
 
   /* read values of the single record in heap */
-  error = heap_get_hfid_from_class_oid (thread_p, &class_oid, &hfid);
+  error = heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL);
   if (error != NO_ERROR || HFID_IS_NULL (&hfid))
     {
       error = ER_FAILED;
@@ -5021,7 +5019,7 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
   scan_cache_inited = false;
 
   /* read values of all records in heap */
-  error = heap_get_hfid_from_class_oid (thread_p, &class_oid, &hfid);
+  error = heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL);
   if (error != NO_ERROR || HFID_IS_NULL (&hfid))
     {
       error = ER_FAILED;
@@ -5242,7 +5240,7 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_rec
   heap_scancache_end (thread_p, &scan_cache);
   scan_cache_inited = false;
 
-  error = heap_get_hfid_from_class_oid (thread_p, &class_oid, &hfid);
+  error = heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL);
   if (error != NO_ERROR || HFID_IS_NULL (&hfid))
     {
       error = ER_FAILED;

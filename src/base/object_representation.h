@@ -38,11 +38,15 @@
 #include <netinet/in.h>
 #endif /* !WINDOWS */
 
-#include "error_manager.h"
-#include "storage_common.h"
-#include "oid.h"
 #include "byte_order.h"
+#include "error_manager.h"
 #include "memory_alloc.h"
+#include "oid.h"
+#include "porting_inline.hpp"
+#include "storage_common.h"
+
+// forward declarations
+struct log_lsa;
 
 /*
  * NUMERIC TYPE SIZES
@@ -1248,17 +1252,12 @@ extern "C"
 
 extern int or_rep_id (RECDES * record);
 extern int or_set_rep_id (RECDES * record, int repid);
-extern int or_replace_rep_id (RECDES * record, int repid);
 extern int or_chn (RECDES * record);
 extern int or_replace_chn (RECDES * record, int chn);
 extern int or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error);
 extern int or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag, int repid, int bound_bit,
 					int variable_offset_size);
 extern char *or_class_name (RECDES * record);
-extern int or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header);
-extern int or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header);
-extern int or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int bound_bit,
-			       int variable_offset_size);
 
 /* Pointer based decoding functions */
 extern int or_set_element_offset (char *setptr, int element);
@@ -1294,8 +1293,8 @@ extern char *or_pack_hfid (const char *ptr, const HFID * hfid);
 extern char *or_pack_btid (char *buf, const BTID * btid);
 extern char *or_pack_ehid (char *buf, EHID * btid);
 extern char *or_pack_recdes (char *buf, RECDES * recdes);
-extern char *or_pack_log_lsa (const char *ptr, const LOG_LSA * lsa);
-extern char *or_unpack_log_lsa (char *ptr, LOG_LSA * lsa);
+extern char *or_pack_log_lsa (const char *ptr, const struct log_lsa *lsa);
+extern char *or_unpack_log_lsa (char *ptr, struct log_lsa *lsa);
 extern char *or_unpack_set (char *ptr, SETOBJ ** set, struct tp_domain *domain);
 extern char *or_unpack_setref (char *ptr, DB_SET ** ref);
 extern char *or_pack_listid (char *ptr, void *listid);
@@ -1524,7 +1523,6 @@ extern int or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * e);
 extern int or_header_size (char *ptr);
 extern char *or_pack_mvccid (char *ptr, const MVCCID mvccid);
 extern char *or_unpack_mvccid (char *ptr, MVCCID * mvccid);
-extern int or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa);
 
 extern char *or_pack_sha1 (char *ptr, const SHA1Hash * sha1);
 extern char *or_unpack_sha1 (char *ptr, SHA1Hash * sha1);

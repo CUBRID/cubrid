@@ -27,6 +27,8 @@
 
 #ident "$Id$"
 
+#include "system.h"
+
 #if defined (LINUX)
 #include <arpa/inet.h>
 #endif /* LINUX */

@@ -30,16 +30,22 @@
 #if !defined(WINDOWS)
 #include <dirent.h>
 #endif /* !WINDOWNS */
+#include <signal.h>
 
 #include "log_writer.h"
 
 #include "error_manager.h"
 #include "message_catalog.h"
+#include "msgcat_set_log.hpp"
 #include "system_parameter.h"
 #include "connection_support.h"
 #include "log_applier.h"
+#include "log_storage.hpp"
+#include "log_volids.hpp"
 #include "crypt_opfunc.h"
 #if defined(SERVER_MODE)
+#include "log_append.hpp"
+#include "log_manager.h"
 #include "server_support.h"
 #include "network_interface_sr.h"
 #else /* !defined(SERVER_MODE) */
@@ -48,6 +54,7 @@
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
+#include "string_buffer.hpp"
 
 #define LOGWR_THREAD_SUSPEND_TIMEOUT 	10
 
@@ -56,14 +63,41 @@
 static int prev_ha_server_state = HA_SERVER_STATE_NA;
 static bool logwr_need_shutdown = false;
 
+typedef struct log_bgarv_header LOG_BGARV_HEADER;
+struct log_bgarv_header
+{				/* Background log archive header information */
+  char magic[CUBRID_MAGIC_MAX_LENGTH];
+
+  INT32 dummy;
+  INT64 db_creation;
+
+  LOG_PAGEID start_page_id;
+  LOG_PAGEID current_page_id;
+  LOG_PAGEID last_sync_pageid;
+};
+
 #define logwr_er_log(...) if (prm_get_bool_value (PRM_ID_DEBUG_LOGWR)) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
 
 static int logwr_check_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 
 #if defined(CS_MODE)
+static log_header
+init_cs_logwr_header ()
+{
+  log_header hdr;
+  hdr.next_trid = NULL_TRANID;
+  hdr.nxarv_pageid = NULL_PAGEID;
+  hdr.nxarv_phy_pageid = NULL_PAGEID;
+  hdr.nxarv_num = -1;
+  hdr.last_arv_num_for_syscrashes = -1;
+  hdr.last_deleted_arv_num = -1;
+  return hdr;
+}
+
+// *INDENT-OFF*
 LOGWR_GLOBAL logwr_Gl = {
   /* log header */
-  LOGWR_HEADER_INITIALIZER,
+  init_cs_logwr_header (),
   /* loghdr_pgptr */
   NULL,
   /* db_name */
@@ -109,7 +143,7 @@ LOGWR_GLOBAL logwr_Gl = {
   /* last_flush_time */
   {0, 0},
   /* background archiving info */
-  BACKGROUND_ARCHIVING_INFO_INITIALIZER,
+  background_archiving_info (),
   /* bg_archive_name */
   {'0'},
   /* ori_nxarv_pageid */
@@ -119,7 +153,7 @@ LOGWR_GLOBAL logwr_Gl = {
   /* reinit_copylog */
   false
 };
-
+// *INDENT-ON*
 
 static int logwr_fetch_header_page (LOG_PAGE * log_pgptr, int vol_fd);
 static int logwr_read_log_header (void);
@@ -624,7 +658,7 @@ logwr_set_hdr_and_flush_info (void)
 	{
 	  logwr_Gl.last_recv_pageid = logwr_Gl.hdr.eof_lsa.pageid;
 
-	  if (logwr_Gl.hdr.perm_status == LOG_PSTAT_HDRFLUSH_INPPROCESS || logwr_Gl.action & LOGWR_ACTION_DELAYED_WRITE)
+	  if (logwr_Gl.action & LOGWR_ACTION_DELAYED_WRITE)
 	    {
 	      /* In case that it finishes delay write */
 	      logwr_Gl.action = (LOGWR_ACTION) (logwr_Gl.action & ~LOGWR_ACTION_DELAYED_WRITE);
@@ -1048,7 +1082,6 @@ logwr_flush_header_page (void)
   LOG_PAGEID logical_pageid;
   LOG_PHY_PAGEID phy_pageid;
   int nbytes;
-  char buffer[1024];
 
   if (logwr_Gl.loghdr_pgptr == NULL)
     {
@@ -1091,11 +1124,12 @@ logwr_flush_header_page (void)
 
   if (prev_ha_server_state != logwr_Gl.hdr.ha_server_state)
     {
-      sprintf (buffer, "change the state of HA server (%s@%s) from '%s' to '%s'", logwr_Gl.db_name,
-	       (logwr_Gl.hostname != NULL) ? logwr_Gl.hostname : "unknown",
-	       css_ha_server_state_string ((HA_SERVER_STATE) prev_ha_server_state),
-	       css_ha_server_state_string ((HA_SERVER_STATE) logwr_Gl.hdr.ha_server_state));
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
+      string_buffer error_msg;
+      error_msg ("change the state of HA server (%s@%s) from '%s' to '%s'", logwr_Gl.db_name,
+		 (logwr_Gl.hostname != NULL) ? logwr_Gl.hostname : "unknown",
+		 css_ha_server_state_string ((HA_SERVER_STATE) prev_ha_server_state),
+		 css_ha_server_state_string ((HA_SERVER_STATE) logwr_Gl.hdr.ha_server_state));
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, error_msg.get_buffer ());
     }
   prev_ha_server_state = logwr_Gl.hdr.ha_server_state;
 
@@ -1597,8 +1631,8 @@ logwr_reinit_copylog (void)
 #if !defined(WINDOWS)
   DIR *dirp;
   struct dirent *dp;
-  char log_archive_path[PATH_MAX];
-  char archive_log_prefix[PATH_MAX];
+  char log_archive_path[2 * PATH_MAX];
+  char archive_log_prefix[2 * PATH_MAX];
   int archive_log_prefix_len;
   BACKGROUND_ARCHIVING_INFO *bg_arv_info = NULL;
 
@@ -1726,7 +1760,7 @@ logwr_check_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
       p += sample_nbytes;
     }
 
-  error_code = crypt_crc32 (thread_p, (char *) buf, sizeof_buf, &checksum_crc32);
+  error_code = crypt_crc32 (thread_p, (char *) buf, (int) sizeof_buf, &checksum_crc32);
 
   /* Restores the saved checksum */
   log_pgptr->hdr.checksum = saved_checksum_crc32;
@@ -1796,7 +1830,7 @@ logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p, THREAD_ENTRY * thread_p,
 {
   LOGWR_ENTRY *entry;
   int rv;
-  LOGWR_INFO *writer_info = &log_Gl.writer_info;
+  LOGWR_INFO *writer_info = log_Gl.writer_info;
 
   *wr_entry_p = NULL;
   rv = pthread_mutex_lock (&writer_info->wr_list_mutex);
@@ -1869,7 +1903,7 @@ logwr_unregister_writer_entry (LOGWR_ENTRY * wr_entry, int status)
   LOGWR_ENTRY *entry;
   bool is_all_done;
   int rv;
-  LOGWR_INFO *writer_info = &log_Gl.writer_info;
+  LOGWR_INFO *writer_info = log_Gl.writer_info;
 
   rv = pthread_mutex_lock (&writer_info->wr_list_mutex);
 
@@ -2017,7 +2051,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
 	}
       else
 	{
-	  logpb_get_nxio_lsa (&nxio_lsa);
+	  nxio_lsa = log_Gl.append.get_nxio_lsa ();
 	  if (fpageid > nxio_lsa.pageid)
 	    {
 	      fpageid = nxio_lsa.pageid;
@@ -2255,7 +2289,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
   bool copy_from_file = false;
   bool need_cs_exit_after_send = true;
   struct timespec to;
-  LOGWR_INFO *writer_info = &log_Gl.writer_info;
+  LOGWR_INFO *writer_info = log_Gl.writer_info;
   bool copy_from_first_phy_page = false;
 
   logpg_used_size = 0;
@@ -2506,7 +2540,7 @@ error:
 LOG_PAGEID
 logwr_get_min_copied_fpageid (void)
 {
-  LOGWR_INFO *writer_info = &log_Gl.writer_info;
+  LOGWR_INFO *writer_info = log_Gl.writer_info;
   LOGWR_ENTRY *entry;
   int num_entries = 0;
   LOG_PAGEID min_fpageid = LOGPAGEID_MAX;

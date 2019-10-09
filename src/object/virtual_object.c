@@ -29,6 +29,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include "authenticate.h"
 #include "virtual_object.h"
 #include "set_object.h"
 #include "object_accessor.h"

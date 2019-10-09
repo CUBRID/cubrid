@@ -27,6 +27,7 @@
 
 #include <assert.h>
 
+#include "authenticate.h"
 #include "dbi.h"
 #include "parser.h"
 #include "semantic_check.h"
@@ -554,7 +555,8 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  locator_lockhint_classes (lcks.num_classes, (const char **) lcks.classes, lcks.locks, lcks.only_all,
 				    lcks.flags, true, lock_rr_tran)) != LC_CLASSNAME_EXIST)
     {
-      if (find_result == LC_CLASSNAME_ERROR && er_errid () == ER_LK_UNILATERALLY_ABORTED)
+      if (find_result == LC_CLASSNAME_ERROR
+	  && (er_errid () == ER_LK_UNILATERALLY_ABORTED || er_errid () == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED))
 	{
 	  /*
 	   * Transaction has been aborted, the dirty objects and cached
@@ -953,7 +955,7 @@ pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str, LC_PREFETCH_FLAGS flags
 static void
 remove_appended_trigger_info (char *msg, int with_evaluate)
 {
-  int i;
+  size_t i;
   const char *scope_str = "SCOPE___ ";
   const char *from_on_str = " FROM ON ";
   const char *eval_prefix = "EVALUATE ( ";

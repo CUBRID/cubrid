@@ -803,7 +803,7 @@ net_error_append_shard_info (char *err_buf, const char *err_msg, int buf_size)
 	{
 	  snprintf (err_buf, buf_size, "[SHARD/CAS ID-%d,%d]", shm_shard_id, shm_shard_cas_id + 1);
 	}
-      else if (strlen (err_msg) + MAX_SHARD_INFO_LENGTH >= buf_size)
+      else if ((int) strlen (err_msg) + MAX_SHARD_INFO_LENGTH >= buf_size)
 	{
 	  snprintf (err_buf, buf_size, "%s", err_msg);
 	}

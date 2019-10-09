@@ -30,6 +30,7 @@
 #include <assert.h>
 
 #include "csql.h"
+#include "dbtran_def.h"
 #include "dbtype.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"

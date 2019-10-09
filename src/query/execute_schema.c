@@ -29,6 +29,7 @@
 #include <ctype.h>
 #include <assert.h>
 
+#include "authenticate.h"
 #include "error_manager.h"
 #include "parser.h"
 #include "parser_message.h"
@@ -52,7 +53,6 @@
 #include "object_primitive.h"
 #include "memory_hash.h"
 #include "locator_cl.h"
-#include "xasl_support.h"
 #include "network_interface_cl.h"
 #include "view_transform.h"
 #include "xasl_to_stream.h"
@@ -376,6 +376,8 @@ static int do_drop_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_
 static int do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info);
 
 static int do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement);
+
+int ib_thread_count = 0;
 
 /*
  * Function Group :
@@ -1531,8 +1533,8 @@ do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter
     }
 
   error_code =
-    create_or_drop_index_helper (parser, alter->info.alter.constraint_list->info.name.original, (const bool) is_reverse,
-				 (const bool) is_unique, NULL, NULL, NULL, NULL, -1, 0, NULL, NULL, obj,
+    create_or_drop_index_helper (parser, alter->info.alter.constraint_list->info.name.original, is_reverse,
+				 is_unique, NULL, NULL, NULL, NULL, -1, 0, NULL, NULL, obj,
 				 SM_NORMAL_INDEX, DO_INDEX_DROP);
   return error_code;
 }
@@ -2959,6 +2961,11 @@ do_create_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   index_name = statement->info.index.index_name ? statement->info.index.index_name->info.name.original : NULL;
 
+  if (statement->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+    {
+      ib_thread_count = statement->info.index.ib_threads;
+    }
+
   error =
     create_or_drop_index_helper (parser, index_name, statement->info.index.reverse, statement->info.index.unique,
 				 statement->info.index.indexed_class, statement->info.index.column_names,
@@ -3031,7 +3038,7 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
 
   error_code =
-    create_or_drop_index_helper (parser, index_name, (const bool) is_reverse, (const bool) is_unique,
+    create_or_drop_index_helper (parser, index_name, is_reverse, is_unique,
 				 statement->info.index.indexed_class, statement->info.index.column_names, NULL, NULL,
 				 statement->info.index.func_pos, statement->info.index.func_no_args,
 				 statement->info.index.function_expr, NULL, obj, statement->info.index.index_status,
@@ -14996,20 +15003,12 @@ do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
 
 	  if (error != NO_ERROR)
 	    {
-	      goto error_exit;
+	      return error;
 	    }
 	}
     }
 
   return NO_ERROR;
-
-error_exit:
-  if (index_save_info != NULL)
-    {
-      sm_free_constraint_info (&index_save_info);
-    }
-
-  return error;
 }
 
 int
@@ -15098,4 +15097,10 @@ error_exit:
   error = (error == NO_ERROR && (error = er_errid ()) == NO_ERROR) ? ER_FAILED : error;
 
   goto end;
+}
+
+int
+ib_get_thread_count ()
+{
+  return ib_thread_count;
 }

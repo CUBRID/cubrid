@@ -639,7 +639,8 @@ er_set_access_log_filename (void)
     {
       strncpy (tmp, er_Msglog_filename, PATH_MAX);
       tmp[len - suffix_len] = '\0';
-      snprintf (er_Accesslog_filename_buff, PATH_MAX, "%s%s", tmp, ER_ACCESS_LOG_FILE_SUFFIX);
+      int ret = snprintf (er_Accesslog_filename_buff, PATH_MAX - 1, "%s%s", tmp, ER_ACCESS_LOG_FILE_SUFFIX);
+      (void) ret;		// suppress format-truncate warning
       /* ex) server_log.err => server_log.access */
     }
 
@@ -1602,7 +1603,7 @@ er_log (int err_id)
   int tran_index;
   char *more_info_p;
   int ret;
-  char more_info[MAXHOSTNAMELEN + PATH_MAX + 64];
+  char more_info[CUB_MAXHOSTNAMELEN + PATH_MAX + 64];
   const char *log_file_name;
   const char *log_file_suffix;
   FILE **log_fh;
@@ -1697,9 +1698,9 @@ er_log (int err_id)
 
 #if defined (SERVER_MODE)
   {
-    char *prog_name = NULL;
-    char *user_name = NULL;
-    char *host_name = NULL;
+    const char *prog_name = NULL;
+    const char *user_name = NULL;
+    const char *host_name = NULL;
     int pid = 0;
 
     if (logtb_find_client_tran_name_host_pid (tran_index, &prog_name, &user_name, &host_name, &pid) == NO_ERROR)

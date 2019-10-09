@@ -103,6 +103,52 @@ static void css_sockopt (SOCKET sd);
 static int css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * slen);
 static int css_fd_error (SOCKET fd);
 
+/*
+ * Put the canonical name of the current host in name out variable.
+ * The result is null-terminated if namelen is large enough for the full name and the terminator.
+ *   return: 0 if success, or error
+ *   name(out): buffer for name
+ *   namelen(in): max buffer size
+ */
+int
+css_gethostname (char *name, size_t namelen)
+{
+  if (namelen <= 0)
+    {
+      return ER_FAILED;
+    }
+
+  size_t namelen_ = (size_t) namelen;
+  addrinfo hints, *result = NULL;
+
+  memset (&hints, 0, sizeof (hints));
+  hints.ai_family = AF_UNSPEC;	// either IPV4 or IPV6
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_flags = AI_CANONNAME;
+
+  char hostname[namelen_];
+  hostname[namelen_ - 1] = '\0';
+  gethostname (hostname, namelen_);
+
+  if (getaddrinfo (hostname, NULL, &hints, &result) != 0)
+    {
+      return ER_FAILED;
+    }
+
+  size_t canonname_size = strlen (result->ai_canonname) + 1;	// +1 for NULL terminator
+  if (canonname_size > namelen_)
+    {
+      freeaddrinfo (result);
+      return ER_FAILED;
+    }
+
+  memcpy (name, result->ai_canonname, canonname_size);
+  name[canonname_size] = '\0';
+
+  freeaddrinfo (result);
+  return NO_ERROR;
+}
+
 char *
 css_get_master_domain_path (void)
 {

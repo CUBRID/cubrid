@@ -30,6 +30,8 @@
 #include "stream_to_xasl.h"
 #include "system_parameter.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#include "xasl.h"
+#include "xasl_unpack_info.hpp"
 
 typedef struct fpcache_ent FPCACHE_ENTRY;
 struct fpcache_ent
@@ -266,7 +268,7 @@ fpcache_entry_init (void *entry)
   /* Add here if anything should be initialized. */
   /* Allocate clone stack. */
   fpcache_entry->clone_stack =
-    (PRED_EXPR_WITH_CONTEXT **) malloc (fpcache_Clone_stack_size * sizeof (PRED_EXPR_WITH_CONTEXT));
+    (PRED_EXPR_WITH_CONTEXT **) malloc (fpcache_Clone_stack_size * sizeof (PRED_EXPR_WITH_CONTEXT *));
   if (fpcache_entry->clone_stack == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
@@ -300,9 +302,8 @@ fpcache_entry_uninit (void *entry)
       assert (pred_expr != NULL);
 
       qexec_clear_pred_context (thread_p, pred_expr, true);
-      stx_free_additional_buff (thread_p, pred_expr->unpack_info);
-      stx_free_xasl_unpack_info (pred_expr->unpack_info);
-      db_private_free_and_init (thread_p, pred_expr->unpack_info);
+      free_xasl_unpack_info (thread_p, pred_expr->unpack_info);
+      db_private_free_and_init (thread_p, pred_expr);
     }
 
   (void) db_change_private_heap (thread_p, old_private_heap);
@@ -341,7 +342,7 @@ fpcache_copy_key (void *src, void *dest)
  * filter_pred (out) : Filter predicate expression (with context - unpack buffer).
  */
 int
-fpcache_claim (THREAD_ENTRY * thread_p, BTID * btid, OR_PREDICATE * or_pred, PRED_EXPR_WITH_CONTEXT ** filter_pred)
+fpcache_claim (THREAD_ENTRY * thread_p, BTID * btid, or_predicate * or_pred, pred_expr_with_context ** filter_pred)
 {
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_FPCACHE);
   FPCACHE_ENTRY *fpcache_entry = NULL;
@@ -415,7 +416,7 @@ fpcache_claim (THREAD_ENTRY * thread_p, BTID * btid, OR_PREDICATE * or_pred, PRE
  * filter_pred (in) : Filter predicate expression.
  */
 int
-fpcache_retire (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, PRED_EXPR_WITH_CONTEXT * filter_pred)
+fpcache_retire (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, pred_expr_with_context * filter_pred)
 {
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_FPCACHE);
   FPCACHE_ENTRY *fpcache_entry = NULL;
@@ -482,9 +483,8 @@ fpcache_retire (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, PRED_EXPR
     {
       /* Filter predicate expression could not be cached. Free it. */
       HL_HEAPID old_private_heap = db_change_private_heap (thread_p, 0);
-      stx_free_additional_buff (thread_p, filter_pred->unpack_info);
-      stx_free_xasl_unpack_info (filter_pred->unpack_info);
-      db_private_free_and_init (thread_p, filter_pred->unpack_info);
+      free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
+      db_private_free_and_init (thread_p, filter_pred);
       (void) db_change_private_heap (thread_p, old_private_heap);
     }
   return error_code;
@@ -498,7 +498,7 @@ fpcache_retire (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, PRED_EXPR
  * class_oid (in) : Class OID.
  */
 void
-fpcache_remove_by_class (THREAD_ENTRY * thread_p, OID * class_oid)
+fpcache_remove_by_class (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
 #define FPCACHE_DELETE_BTIDS_SIZE 1024
 

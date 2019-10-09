@@ -232,6 +232,15 @@ enum net_server_request
 
   NET_SERVER_LC_DEMOTE_CLASS_LOCK,
 
+  /* loaddb server requests */
+  NET_SERVER_LD_INIT,
+  NET_SERVER_LD_LOAD_OBJECT_FILE,
+  NET_SERVER_LD_INSTALL_CLASS,
+  NET_SERVER_LD_LOAD_BATCH,
+  NET_SERVER_LD_FETCH_STATS,
+  NET_SERVER_LD_DESTROY,
+  NET_SERVER_LD_INTERRUPT,
+
   /*
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.

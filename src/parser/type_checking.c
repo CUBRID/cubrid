@@ -40,6 +40,7 @@
 #include <sys/time.h>
 #endif /* ! WINDOWS */
 
+#include "authenticate.h"
 #include "error_manager.h"
 #include "parser.h"
 #include "parser_message.h"
@@ -11809,6 +11810,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
     case PT_TYPEOF:
     case PT_HEX:
       do_detect_collation = false;
+      /* FALLTHRU */
     case PT_TRIM:
     case PT_LTRIM:
     case PT_RTRIM:
@@ -12457,7 +12459,8 @@ pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node)
 
   PT_NODE *arg_list = node->info.function.arg_list;
   if (!arg_list && fcode != PT_COUNT_STAR && fcode != PT_GROUPBY_NUM && fcode != PT_ROW_NUMBER && fcode != PT_RANK &&
-      fcode != PT_DENSE_RANK && fcode != PT_CUME_DIST && fcode != PT_PERCENT_RANK)
+      fcode != PT_DENSE_RANK && fcode != PT_CUME_DIST && fcode != PT_PERCENT_RANK && fcode != F_JSON_ARRAY &&
+      fcode != F_JSON_OBJECT)
     {
       pt_cat_error (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTION_NO_ARGS,
 		    pt_short_print (parser, node));
@@ -14348,7 +14351,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  db_make_null (result);
 	  break;
 	}
-      /* no break here */
+      /* FALLTHRU */
     case PT_CONCAT:
       if (typ1 == DB_TYPE_NULL || (typ2 == DB_TYPE_NULL && o2))
 	{
@@ -18290,11 +18293,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		if (arg1->domain.general_info.type == DB_TYPE_NCHAR
 		    || arg1->domain.general_info.type == DB_TYPE_VARNCHAR)
 		  {
-		    db_make_nchar (esc_char, 1, (const DB_C_NCHAR) slash_str, 1, arg1_cs, arg1_coll);
+		    db_make_nchar (esc_char, 1, (DB_C_NCHAR) slash_str, 1, arg1_cs, arg1_coll);
 		  }
 		else
 		  {
-		    db_make_char (esc_char, 1, (const DB_C_CHAR) slash_str, 1, arg1_cs, arg1_coll);
+		    db_make_char (esc_char, 1, (DB_C_CHAR) slash_str, 1, arg1_cs, arg1_coll);
 		  }
 
 		esc_char->need_clear = false;
@@ -18323,6 +18326,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      case ER_REGEX_COMPILE_ERROR:	/* fall through */
 	      case ER_REGEX_EXEC_ERROR:
 		PT_ERRORc (parser, o1, er_msg ());
+		/* FALLTHRU */
 	      default:
 		return 0;
 	      }
@@ -18543,34 +18547,25 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  PT_ERRORc (parser, o1, er_msg ());
 	  return 0;
 	}
+      break;
 
     case PT_NEW_TIME:
-      {
-	error = db_new_time (arg1, arg2, arg3, result);
-	if (error < 0)
-	  {
-	    PT_ERRORc (parser, o1, er_msg ());
-	    return 0;
-	  }
-	else
-	  {
-	    return 1;
-	  }
-      }
+      error = db_new_time (arg1, arg2, arg3, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      break;
 
     case PT_FROM_TZ:
-      {
-	error = db_from_tz (arg1, arg2, result);
-	if (error < 0)
-	  {
-	    PT_ERRORc (parser, o1, er_msg ());
-	    return 0;
-	  }
-	else
-	  {
-	    return 1;
-	  }
-      }
+      error = db_from_tz (arg1, arg2, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      break;
 
     case PT_TZ_OFFSET:
       {
@@ -18664,39 +18659,38 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	{
 	  return 1;
 	}
+
     case PT_SCHEMA_DEF:
-      {
-	error = db_get_schema_def_dbval (result, arg1);
-	if (error < 0)
-	  {
-	    const char *table_name = NULL;
-	    if (error != ER_QSTR_INVALID_DATA_TYPE)
-	      {
-		table_name = db_get_string (arg1);
-		assert (table_name != NULL);
+      error = db_get_schema_def_dbval (result, arg1);
+      if (error < 0)
+	{
+	  const char *table_name = NULL;
+	  if (error != ER_QSTR_INVALID_DATA_TYPE)
+	    {
+	      table_name = db_get_string (arg1);
+	      assert (table_name != NULL);
 
-		if (error == ER_OBJ_NOT_A_CLASS)
-		  {
-		    PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A, table_name,
-				 pt_show_misc_type (PT_CLASS));
-		    return 0;
-		  }
-		else if (error == ER_AU_SELECT_FAILURE)
-		  {
-		    PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON, "select",
-				 table_name);
-		    return 0;
-		  }
-	      }
+	      if (error == ER_OBJ_NOT_A_CLASS)
+		{
+		  PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A, table_name,
+			       pt_show_misc_type (PT_CLASS));
+		  return 0;
+		}
+	      else if (error == ER_AU_SELECT_FAILURE)
+		{
+		  PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON, "select",
+			       table_name);
+		  return 0;
+		}
+	    }
 
-	    PT_ERRORc (parser, o1, er_msg ());
-	    return 0;
-	  }
-	else
-	  {
-	    return 1;
-	  }
-      }
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
 
     default:
       break;
@@ -19513,7 +19507,11 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 				     qualifier))
 	{
 	  result = pt_dbval_to_value (parser, &dbval_res);
-	  if (result->data_type == NULL && result->type_enum != PT_TYPE_NULL)
+	  if (result)
+	    {
+	      result->expr_before_const_folding = pt_print_bytes (parser, expr);
+	    }
+	  if (result && result->data_type == NULL && result->type_enum != PT_TYPE_NULL)
 	    {
 	      /* data_type may be needed later... e.g. in CTEs */
 	      result->data_type = parser_copy_tree_list (parser, expr->data_type);
@@ -19717,10 +19715,9 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
   int error = NO_ERROR, i;
 
   assert (parser != NULL);
-  assert (args != NULL);
   assert (result != NULL);
 
-  if (!args || !result)
+  if (!result)
     {
       return 0;
     }
@@ -19970,11 +19967,7 @@ pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
       result->line_number = line;
       result->column_number = column;
       result->alias_print = alias_print;
-      if (result->node_type == PT_FUNCTION)
-	{
-	  assert (result->info.function.arg_list != NULL);
-	}
-      else if (result->node_type == PT_VALUE)
+      if (result->node_type == PT_VALUE)
 	{
 	  /* temporary set location to a 0 the location will be updated after const folding at the upper level : the
 	   * parent node is a PT_EXPR node with a PT_FUNCTION_HOLDER operator type */
@@ -20033,12 +20026,14 @@ pt_evaluate_function (PARSER_CONTEXT * parser, PT_NODE * func, DB_VALUE * dbval_
       ++num_args;
       operand = operand->next;
     }
-  assert (num_args > 0);
 
-  arg_array = (DB_VALUE **) calloc (num_args, sizeof (DB_VALUE *));
-  if (arg_array == NULL)
+  if (num_args != 0)
     {
-      goto end;
+      arg_array = (DB_VALUE **) calloc (num_args, sizeof (DB_VALUE *));
+      if (arg_array == NULL)
+	{
+	  goto end;
+	}
     }
 
   /* convert all operands to DB_VALUE arguments */
@@ -20393,7 +20388,7 @@ pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
 	  return NO_ERROR;
 	}
 
-      /* otherwise fall through to the PT_VALUE case */
+      /* FALLTHRU */
 
     case PT_VALUE:
       {

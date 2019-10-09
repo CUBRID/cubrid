@@ -26,14 +26,18 @@
 #include <assert.h>
 #include <math.h>
 
-#include "system_parameter.h"
 #include "double_write_buffer.h"
+
+#include "system_parameter.h"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
+#include "log_append.hpp"
 #include "log_impl.h"
+#include "log_volids.hpp"
 #include "boot_sr.h"
 #include "perf_monitor.h"
+#include "porting_inline.hpp"
 
 
 #define DWB_SLOTS_HASH_SIZE		    1000
@@ -2307,7 +2311,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool helper_can_flu
       if (s1->io_page->prv.pageid != NULL_PAGEID && logpb_need_wal (&s1->io_page->prv.lsa))
 	{
 	  /* Need WAL. Check whether log buffer pool was destroyed. */
-	  logpb_get_nxio_lsa (&nxio_lsa);
+	  nxio_lsa = log_Gl.append.get_nxio_lsa ();
 	  assert (LSA_ISNULL (&nxio_lsa));
 	}
 #endif
@@ -3599,8 +3603,9 @@ start:
   /* Check whether the initial block was flushed */
 check_flushed_blocks:
 
+  assert (initial_block_no >= 0);
   if ((ATOMIC_INC_32 (&dwb_Global.blocks_flush_counter, 0) > 0)
-      && (ATOMIC_INC_32 (&dwb_Global.next_block_to_flush, 0) == initial_block_no)
+      && (ATOMIC_INC_32 (&dwb_Global.next_block_to_flush, 0) == (unsigned int) initial_block_no)
       && (ATOMIC_INC_32 (&dwb_Global.blocks[initial_block_no].count_wb_pages, 0) == DWB_BLOCK_NUM_PAGES))
     {
       /* The initial block is currently flushing, wait for it. */
@@ -4031,27 +4036,21 @@ class dwb_flush_block_daemon_task: public cubthread::entry_task
 //  description:
 //    dwb flush block helper daemon task
 //
-class dwb_flush_block_helper_daemon_task: public cubthread::entry_task
+void
+dwb_flush_block_helper_execute (cubthread::entry &thread_ref)
 {
-  private:
-    PERF_UTIME_TRACKER m_perf_track;
-
-  public:
-    void execute (cubthread::entry &thread_ref) override
+  if (!BO_IS_SERVER_RESTARTED ())
     {
-      if (!BO_IS_SERVER_RESTARTED ())
-        {
-	  // wait for boot to finish
-	  return;
-        }
-
-      /* flush pages as long as necessary */
-      if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true)
-        {
-	  dwb_flush_block_helper (&thread_ref);
-        }
+      // wait for boot to finish
+      return;
     }
-};
+
+  /* flush pages as long as necessary */
+  if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true)
+    {
+      dwb_flush_block_helper (&thread_ref);
+    }
+}
 
 /*
  * dwb_flush_block_daemon_init () - initialize DWB flush block daemon thread
@@ -4072,7 +4071,7 @@ void
 dwb_flush_block_helper_daemon_init ()
 {
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
-  dwb_flush_block_helper_daemon_task *daemon_task = new dwb_flush_block_helper_daemon_task ();
+  cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (dwb_flush_block_helper_execute);
 
   dwb_flush_block_helper_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
 }

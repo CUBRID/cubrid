@@ -79,7 +79,7 @@
 #define DB_EMPTY_SESSION        (0)
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
-#define ADMIN_ERR_MSG_SIZE	1024
+#define ADMIN_ERR_MSG_SIZE	BROKER_PATH_MAX * 2
 
 #define MAKE_VERSION(MAJOR, MINOR)	(((MAJOR) << 8) | (MINOR))
 
@@ -281,8 +281,9 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
       if (strlen (path) + strlen (br_info[i].name) + 1 + NUM_OF_DIGITS (br_info[i].appl_server_max_num) >
 	  MEMBER_SIZE (struct sockaddr_un, sun_path) - 1)
 	{
-	  snprintf (admin_err_msg, sizeof (admin_err_msg) - 1, "The socket path is too long (>%d): %s",
-		    MEMBER_SIZE (struct sockaddr_un, sun_path), path);
+	  int ret = snprintf (admin_err_msg, sizeof (admin_err_msg) - 1, "The socket path is too long (>%d): %s",
+			      MEMBER_SIZE (struct sockaddr_un, sun_path), path);
+	  (void) ret;		// suppress format-truncate warning
 	  return -1;
 	}
 #endif /* !WINDOWS */

@@ -178,6 +178,15 @@ cursor_free_list_id (QFILE_LIST_ID * list_id_p, bool self)
     }
 }
 
+void
+cursor_free_self_list_id (QFILE_LIST_ID * list_id)
+{
+  if (list_id != NULL)
+    {
+      cursor_free_list_id (list_id, true);
+    }
+}
+
 /*
  * cursor_has_set_vobjs () -
  *   return: nonzero iff set has some vobjs, zero otherwise

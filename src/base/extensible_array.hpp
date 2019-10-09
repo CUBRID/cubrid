@@ -85,8 +85,10 @@ namespace cubmem
       appendable_array (const block_allocator &allocator);
       ~appendable_array ();
 
+      inline void append (const T &source);
       inline void append (const T *source, size_t length);    // append at the end of existing data
       inline void copy (const T *source, size_t length);      // overwrite entire array
+      void erase (size_t index);    // remove at index; does not preserve order
 
       inline size_t get_size (void) const;                    // get current size
 
@@ -237,6 +239,13 @@ namespace cubmem
 
   template <typename T, size_t Size>
   void
+  appendable_array<T, Size>::append (const T &source)
+  {
+    append (&source, 1);
+  }
+
+  template <typename T, size_t Size>
+  void
   appendable_array<T, Size>::append (const T *source, size_t length)
   {
     // make sure memory is enough
@@ -254,6 +263,23 @@ namespace cubmem
     // copy = reset + append
     reset ();
     append (source, length);
+  }
+
+  template <typename T, size_t Size>
+  void
+  appendable_array<T, Size>::erase (size_t index)
+  {
+    if (index >= m_size)
+      {
+	// no op
+	return;
+      }
+    if (index < m_size - 1)
+      {
+	// overwrite with last
+	base_type::get_data_ptr ()[index] = base_type::get_data_ptr ()[m_size - 1];
+      }
+    --m_size;
   }
 
   template <typename T, size_t Size>

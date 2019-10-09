@@ -125,7 +125,7 @@
 #define PROXY_LOG_RESET_REOPEN 		0x01
 
 #define MAX_DBNAME_LENGTH       (64)	/* maximum length of mysql database name and '\0' */
-#define MAX_CONN_INFO_LENGTH    ((MAXHOSTNAMELEN + 1) * 2)	/* host1:host2 */
+#define MAX_CONN_INFO_LENGTH    ((CUB_MAXHOSTNAMELEN + 1) * 2)	/* host1:host2 */
 
 #define IP_BYTE_COUNT           5
 #define ACL_MAX_ITEM_COUNT      50
@@ -351,7 +351,7 @@ struct t_appl_server_info
   char auto_commit_mode;
   bool fixed_shard_user;
   char database_name[SRV_CON_DBNAME_SIZE];
-  char database_host[MAXHOSTNAMELEN];
+  char database_host[CUB_MAXHOSTNAMELEN];
   char database_user[SRV_CON_DBUSER_SIZE];
   char database_passwd[SRV_CON_DBPASSWD_SIZE];
   char cci_default_autocommit;
@@ -549,7 +549,7 @@ typedef struct t_db_server T_DB_SERVER;
 struct t_db_server
 {
   char database_name[SRV_CON_DBNAME_SIZE];
-  char database_host[MAXHOSTNAMELEN];
+  char database_host[CUB_MAXHOSTNAMELEN];
   int state;
 };
 

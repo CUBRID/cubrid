@@ -31,10 +31,23 @@
 #error Does not belong to server module
 #endif /* defined (SERVER_MODE) */
 
-#include "parser.h"
-#include "object_domain.h"
 #include "dbtype_def.h"
+#include "object_domain.h"
 #include "optimizer.h"
+#include "parser.h"
+#include "regu_var.hpp"
+#include "xasl.h"
+
+// forward definitions
+
+// *INDENT-OFF*
+namespace cubxasl
+{
+  struct analytic_list_node;
+  struct pred_expr;
+} // namespace cubxasl
+using PRED_EXPR = cubxasl::pred_expr;
+// *INDENT-ON*
 
 #define MATCH_ALL       1
 
@@ -100,7 +113,9 @@ struct aggregate_info
 typedef struct analytic_info ANALYTIC_INFO;
 struct analytic_info
 {
-  ANALYTIC_TYPE *head_list;
+  // *INDENT-OFF*
+  cubxasl::analytic_list_node *head_list;
+  // *INDENT-ON*
   PT_NODE *sort_lists;
   PT_NODE *select_node;
   PT_NODE *select_list;

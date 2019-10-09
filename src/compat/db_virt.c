@@ -31,6 +31,7 @@
 #include <ctype.h>
 #include <assert.h>
 
+#include "authenticate.h"
 #include "system_parameter.h"
 #include "storage_common.h"
 #include "db.h"

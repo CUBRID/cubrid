@@ -28,10 +28,9 @@
 #ident "$Id$"
 
 #include "config.h"
+#include "dbtype_def.h"
 
 #include <stdio.h>
-#include "error_manager.h"
-#include "area_alloc.h"
 
 #if defined (__cplusplus)
 class JSON_VALIDATOR;
@@ -140,10 +139,6 @@ typedef struct tp_alloc_context
 
 #define TP_FREE(con, mem) \
   (*(con)->free_func)(mem, (con)->free_args)
-
-
-/* DOMAIN ALLOCATION */
-extern AREA *tp_Domain_area;
 
 /*
  * BUILT IN DOMAINS
@@ -402,6 +397,7 @@ extern "C"
   extern TP_DOMAIN *tp_domain_resolve_default (DB_TYPE type);
   extern TP_DOMAIN *tp_domain_resolve_default_w_coll (DB_TYPE type, int coll_id, TP_DOMAIN_COLL_ACTION coll_flag);
 
+  extern void tp_domain_init (TP_DOMAIN * domain, DB_TYPE type_id);
   extern void tp_domain_free (TP_DOMAIN * dom);
   extern TP_DOMAIN *tp_domain_new (DB_TYPE type);
   extern int tp_domain_copy_enumeration (DB_ENUMERATION * dest, const DB_ENUMERATION * src);

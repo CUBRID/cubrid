@@ -85,7 +85,6 @@ static int valcnv_Max_set_elements = 10;
 int db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 #else
 int db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
-int db_Client_type = DB_CLIENT_TYPE_DEFAULT;
 #endif
 int db_Disable_modifications = 0;
 
@@ -727,6 +726,7 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
     case DB_TYPE_JSON:
       value->domain.general_info.is_null = 1;
       value->need_clear = false;
+      break;
     default:
       error = ER_UCI_INVALID_DATA_TYPE;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_UCI_INVALID_DATA_TYPE, 0);
@@ -829,7 +829,7 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
       break;
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
-      db_make_bit (value, 1, (const DB_C_BIT) "0", 1);
+      db_make_bit (value, 1, (DB_C_BIT) "0", 1);
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
@@ -2733,6 +2733,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	    goto unsupported_conversion;
 	  }
       }				/* DB_TYPE_DATETIME */
+      break;
 
     case DB_TYPE_DATE:
       {
@@ -5043,6 +5044,7 @@ db_is_json_value_type (DB_TYPE type)
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NULL:
+    case DB_TYPE_SHORT:
     case DB_TYPE_INTEGER:
     case DB_TYPE_DOUBLE:
     case DB_TYPE_JSON:
