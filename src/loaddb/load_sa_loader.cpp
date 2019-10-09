@@ -637,7 +637,6 @@ static int ldr_json_db_json (LDR_CONTEXT *context, const char *str, size_t len, 
 /* default action */
 void (*ldr_act) (LDR_CONTEXT *context, const char *str, size_t len, data_type type) = ldr_act_attr;
 
-/* *INDENT-OFF* */
 namespace cubload
 {
 
@@ -687,7 +686,7 @@ namespace cubload
 	ldr_Current_context->id_class = NULL;
       }
 
-  error_exit:
+error_exit:
     CHECK_CONTEXT_VALIDITY (ldr_Current_context, err != NO_ERROR);
   }
 
@@ -770,9 +769,9 @@ namespace cubload
 
   void
   sa_object_loader::flush_records ()
-    {
-      ; // Do nothing.
-    }
+  {
+    ; // Do nothing.
+  }
 
   /*
    * sa_object_loader::start_line - Finishes off the previous instance and resets the
@@ -850,41 +849,41 @@ namespace cubload
 	  case LDR_DATETIMETZ:
 	  case LDR_STR:
 	  case LDR_NSTR:
-	    {
-	      string_type *str = (string_type *) c->val;
+	  {
+	    string_type *str = (string_type *) c->val;
 
-	      (*ldr_act) (ldr_Current_context, str->val, str->size, c->type);
-	    }
-	    break;
+	    (*ldr_act) (ldr_Current_context, str->val, str->size, c->type);
+	  }
+	  break;
 
 	  case LDR_MONETARY:
-	    {
-	      monetary_type *mon = (monetary_type *) c->val;
-	      string_type *str = (string_type *) mon->amount;
-	      /* buffer size for monetary : numeric size + grammar currency symbol + string terminator */
-	      char full_mon_str[NUM_BUF_SIZE + 3 + 1];
-	      char *full_mon_str_p = full_mon_str;
-	      /* In Loader grammar always print symbol before value (position of currency symbol is not localized) */
-	      char *curr_str = intl_get_money_esc_ISO_symbol ((DB_CURRENCY) mon->currency_type);
-	      size_t full_mon_str_len = (str->size + strlen (curr_str));
+	  {
+	    monetary_type *mon = (monetary_type *) c->val;
+	    string_type *str = (string_type *) mon->amount;
+	    /* buffer size for monetary : numeric size + grammar currency symbol + string terminator */
+	    char full_mon_str[NUM_BUF_SIZE + 3 + 1];
+	    char *full_mon_str_p = full_mon_str;
+	    /* In Loader grammar always print symbol before value (position of currency symbol is not localized) */
+	    char *curr_str = intl_get_money_esc_ISO_symbol ((DB_CURRENCY) mon->currency_type);
+	    size_t full_mon_str_len = (str->size + strlen (curr_str));
 
-	      if (full_mon_str_len >= sizeof (full_mon_str))
-		{
-		  full_mon_str_p = new char[full_mon_str_len + 1];
-		}
+	    if (full_mon_str_len >= sizeof (full_mon_str))
+	      {
+		full_mon_str_p = new char[full_mon_str_len + 1];
+	      }
 
-	      strcpy (full_mon_str_p, curr_str);
-	      strcat (full_mon_str_p, str->val);
+	    strcpy (full_mon_str_p, curr_str);
+	    strcat (full_mon_str_p, str->val);
 
-	      (*ldr_act) (ldr_Current_context, full_mon_str_p, strlen (full_mon_str_p), c->type);
-	      if (full_mon_str_p != full_mon_str)
-		{
-		  delete [] full_mon_str_p;
-		}
+	    (*ldr_act) (ldr_Current_context, full_mon_str_p, strlen (full_mon_str_p), c->type);
+	    if (full_mon_str_p != full_mon_str)
+	      {
+		delete [] full_mon_str_p;
+	      }
 
-	      delete mon;
-	    }
-	    break;
+	    delete mon;
+	  }
+	  break;
 
 	  case LDR_BSTR:
 	  case LDR_XSTR:
@@ -892,12 +891,12 @@ namespace cubload
 	  case LDR_ELO_EXT:
 	  case LDR_SYS_USER:
 	  case LDR_SYS_CLASS:
-	    {
-	      string_type *str = (string_type *) c->val;
+	  {
+	    string_type *str = (string_type *) c->val;
 
-	      (*ldr_act) (ldr_Current_context, str->val, str->size, c->type);
-	    }
-	    break;
+	    (*ldr_act) (ldr_Current_context, str->val, str->size, c->type);
+	  }
+	  break;
 
 	  case LDR_OID:
 	  case LDR_CLASS_OID:
@@ -1003,7 +1002,7 @@ namespace cubload
 	  }
       }
 
-  error_exit:
+error_exit:
     if (ldr_Current_context->err_count || (err != NO_ERROR))
       {
 	ldr_abort ();
@@ -1012,7 +1011,6 @@ namespace cubload
   }
 
 } // namespace cubload
-/* *INDENT-ON* */
 
 /*
  * ldr_increment_err_total - increment err_total count of the given context
@@ -6179,9 +6177,7 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
   int lastcommit = 0;
   int ldr_init_ret = NO_ERROR;
 
-  /* *INDENT-OFF* */
   std::ifstream object_file (args->object_file);
-  /* *INDENT-ON* */
 
   ldr_init_driver ();
 
@@ -6233,9 +6229,7 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
       ldr_start ();
       object_file.close ();
 
-      /* *INDENT-OFF* */
       object_file.open (args->object_file, std::fstream::in | std::fstream::binary);
-      /* *INDENT-ON* */
 
       if (object_file.is_open ())
 	{
