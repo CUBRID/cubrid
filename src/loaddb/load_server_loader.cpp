@@ -319,7 +319,7 @@ namespace cubload
     std::string class_name (classname);
     bool is_ignored;
 
-    transform (class_name.begin(), class_name.end(), class_name.begin(), ::tolower);
+    std::transform (class_name.begin (), class_name.end (), class_name.begin (), ::tolower);
 
     auto result = std::find (classes_ignored.begin (), classes_ignored.end (), class_name);
 

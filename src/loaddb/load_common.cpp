@@ -343,7 +343,7 @@ namespace cubload
 
 	// scan first string, and ignore rest of the line
 	sscanf (line.c_str (), fmt, class_name.c_str ());
-	transform (class_name.begin(), class_name.end(), class_name.begin(), ::tolower);
+	std::transform (class_name.begin (), class_name.end (), class_name.begin (), ::tolower);
 	ignore_classes.emplace_back (class_name.c_str (), strlen (class_name.c_str ()));
       }
 
