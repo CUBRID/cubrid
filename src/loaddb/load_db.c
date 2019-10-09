@@ -209,7 +209,7 @@ ldr_get_start_line_no (std::string & file_name)
 	      {
 		line_no = std::stoi (file_name.substr (p + 1));
 	      }
-	      catch (...)
+	      catch ( ...)
 	      {
 		// parse failed, fallback to default value
 	      }
@@ -1237,15 +1237,38 @@ load_object_file (load_args * args)
 
       return ret;
     };
-  class_handler c_handler = [] (const batch &batch, bool &is_ignored) -> int
+  class_handler c_handler = [] (const batch &batch, bool &is_ignored, std::string &class_name) -> int
     {
-      int ret = loaddb_install_class (batch, is_ignored);
+      int ret = loaddb_install_class (batch, is_ignored, class_name);
       delete &batch;
 
       return ret;
     };
+  auth_handler a_handler = [] (const std::string & class_name) -> int
+    {
+      DB_OBJECT *class_mop = db_find_class (class_name.c_str ());
+      if (class_mop != NULL)
+	{
+	  DB_OBJECT *usr = db_get_user ();
+	  DB_OBJECT *owner = db_get_owner (class_mop);
+	  if (owner == usr)
+	  {
+	    // return early, no need to check owner for authorization
+	    return NO_ERROR;
+	  }
+	}
+      else
+	{
+	  int error_code;
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+
+      return au_check_authorization (class_mop, AU_INSERT);
+    };
+
   /* *INDENT-ON* */
 
   // here we are sure that object_file exists since it was validated by loaddb_internal function
-  return split (args->periodic_commit, args->object_file, c_handler, b_handler);
+  return split (args->periodic_commit, args->object_file, c_handler, b_handler, a_handler);
 }

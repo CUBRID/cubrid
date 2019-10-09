@@ -25,6 +25,7 @@
 
 #include "dbtype_def.h"
 #include "error_code.h"
+#include "error_manager.h"
 
 #include <fstream>
 
@@ -537,7 +538,8 @@ namespace cubload
   }
 
   int
-  split (int batch_size, const std::string &object_file_name, class_handler &c_handler, batch_handler &b_handler)
+  split (int batch_size, const std::string &object_file_name, class_handler &c_handler, batch_handler &b_handler,
+	 auth_handler &a_handler)
   {
     int error_code;
     int batch_rows = 0;
@@ -590,11 +592,22 @@ namespace cubload
 
 	    line.append ("\n"); // feed lexer with new line
 	    batch *c_batch = new batch (batch_id, clsid, line, lineno, 1);
-	    error_code = c_handler (*c_batch, class_is_ignored);
+	    std::string class_name;
+	    error_code = c_handler (*c_batch, class_is_ignored, class_name);
 	    if (error_code != NO_ERROR)
 	      {
 		object_file.close ();
 		return error_code;
+	      }
+
+	    if (!class_is_ignored && !class_name.empty ())
+	      {
+		error_code = a_handler (class_name);
+		if (error_code != NO_ERROR)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+		    return ER_AU_NO_AUTHORIZATION;
+		  }
 	      }
 
 	    line_offset = lineno;

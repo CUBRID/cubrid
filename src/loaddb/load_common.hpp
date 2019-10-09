@@ -76,7 +76,8 @@ namespace cubload
   };
 
   using batch_handler = std::function<int (const batch &)>;
-  using class_handler = std::function<int (const batch &, bool &)>;
+  using class_handler = std::function<int (const batch &, bool &, std::string &)>;
+  using auth_handler = std::function<int (const std::string &)>;
 
   /*
    * loaddb executables command line arguments
@@ -396,7 +397,8 @@ namespace cubload
    *    c_handler(in)       : a function for handling/process a %class or %id line from object file
    *    b_handler(in)       : a function for handling/process a batch of objects
    */
-  int split (int batch_size, const std::string &object_file_name, class_handler &c_handler, batch_handler &b_handler);
+  int split (int batch_size, const std::string &object_file_name, class_handler &c_handler, batch_handler &b_handler,
+	     auth_handler &a_handler);
 
 } // namespace cubload
 
