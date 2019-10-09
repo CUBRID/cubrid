@@ -2346,7 +2346,7 @@ emit_attribute_def (print_output & output_ctx, DB_ATTRIBUTE * attribute, ATTRIBU
       default_expr_type_str = db_default_expression_string (attribute->default_value.default_expr.default_expr_type);
       if (default_expr_type_str != NULL)
 	{
-	  output_ctx (default_expr_type_str);
+	  output_ctx ("%s", default_expr_type_str);
 	}
       else
 	{
@@ -2367,7 +2367,7 @@ emit_attribute_def (print_output & output_ctx, DB_ATTRIBUTE * attribute, ATTRIBU
 	  if (attribute->default_value.default_expr.default_expr_format != NULL)
 	    {
 	      output_ctx (", \'");
-	      output_ctx (attribute->default_value.default_expr.default_expr_format);
+	      output_ctx ("%s", attribute->default_value.default_expr.default_expr_format);
 	      output_ctx ("\'");
 	    }
 
@@ -2384,7 +2384,7 @@ emit_attribute_def (print_output & output_ctx, DB_ATTRIBUTE * attribute, ATTRIBU
       default_expr_type_str = db_default_expression_string (attribute->on_update_default_expr);
       if (default_expr_type_str != NULL)
 	{
-	  output_ctx (default_expr_type_str);
+	  output_ctx ("%s", default_expr_type_str);
 	}
     }
 
@@ -2703,7 +2703,7 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 		    {
 		      output_ctx (", ");
 		    }
-		  output_ctx (constraint->func_index_info->expr_str);
+		  output_ctx ("%s", constraint->func_index_info->expr_str);
 		  if (constraint->func_index_info->fi_domain->is_desc)
 		    {
 		      output_ctx ("%s", " DESC");
@@ -3143,7 +3143,7 @@ emit_partition_info (print_output & output_ctx, MOP clsobj)
 	  if (ptr2)
 	    {
 	      *ptr2 = 0;
-	      output_ctx (ptr + 7);
+	      output_ctx ("%s", ptr + 7);
 	      output_ctx (" ) \n ");
 	    }
 	}

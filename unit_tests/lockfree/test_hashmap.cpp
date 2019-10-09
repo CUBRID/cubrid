@@ -760,7 +760,7 @@ namespace test_lockfree
 	test_hashmap_varsizes<1> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
 	test_hashmap_varsizes<4> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
       }
-    //test_hashmap_varsizes<64> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
+    test_hashmap_varsizes<64> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
 
     auto end_time = std::chrono::high_resolution_clock::now ();
     cout_new_line ();
@@ -781,7 +781,7 @@ namespace test_lockfree
 	test_lf_hash_table_varsizes<1> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
 	test_lf_hash_table_varsizes<4> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
       }
-    //test_lf_hash_table_varsizes<64> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
+    test_lf_hash_table_varsizes<64> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
 
     auto end_time = std::chrono::high_resolution_clock::now ();
     cout_new_line ();

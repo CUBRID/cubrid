@@ -100,6 +100,10 @@ namespace cubload
 
       ~load_task () override
       {
+	if (!m_was_session_notified)
+	  {
+	    notify_done ();
+	  }
 	delete &m_batch;
       }
 
@@ -107,6 +111,7 @@ namespace cubload
 	: m_batch (batch)
 	, m_session (session)
 	, m_conn_entry (conn_entry)
+	, m_was_session_notified (false)
       {
 	//
       }
@@ -138,7 +143,7 @@ namespace cubload
 	      }
 
 	    driver->clear ();
-	    m_session.notify_batch_done (m_batch.get_id ());
+	    notify_done ();
 	    return;
 	  }
 
@@ -207,13 +212,28 @@ namespace cubload
 	logtb_free_tran_index (&thread_ref, thread_ref.tran_index);
 
 	// notify session that batch is done
-	m_session.notify_batch_done_and_register_tran_end (m_batch.get_id (), tran_index);
+	notify_done_and_tran_end (tran_index);
       }
 
     private:
+      void notify_done ()
+      {
+	assert (!m_was_session_notified);
+	m_session.notify_batch_done (m_batch.get_id ());
+	m_was_session_notified = true;
+      }
+
+      void notify_done_and_tran_end (int tran_index)
+      {
+	assert (!m_was_session_notified);
+	m_session.notify_batch_done_and_register_tran_end (m_batch.get_id (), tran_index);
+	m_was_session_notified = true;
+      }
+
       const batch &m_batch;
       session &m_session;
       css_conn_entry &m_conn_entry;
+      bool m_was_session_notified;
   };
 
   session::session (load_args &args)
@@ -293,37 +313,39 @@ namespace cubload
   void
   session::notify_batch_done (batch_id id)
   {
+    std::unique_lock<std::mutex> ulock (m_commit_mutex);
+    assert (m_active_task_count > 0);
     --m_active_task_count;
-    if (is_failed ())
+    if (!is_failed ())
       {
-	return;
+	assert (m_last_batch_id == id - 1);
+	m_last_batch_id = id;
       }
-    m_commit_mutex.lock ();
-    assert (m_last_batch_id == id - 1);
-    m_last_batch_id = id;
-    m_commit_mutex.unlock ();
-    er_clear ();
+    ulock.unlock ();
     notify_waiting_threads ();
+
+    er_clear ();
   }
 
   void
   session::notify_batch_done_and_register_tran_end (batch_id id, int tran_index)
   {
+    std::unique_lock<std::mutex> ulock (m_commit_mutex);
+    assert (m_active_task_count > 0);
     --m_active_task_count;
-    if (is_failed ())
+    if (!is_failed ())
       {
-	return;
+	assert (m_last_batch_id == id - 1);
+	m_last_batch_id = id;
       }
-    m_commit_mutex.lock ();
-    assert (m_last_batch_id == id - 1);
-    m_last_batch_id = id;
     if (m_tran_indexes.erase (tran_index) != 1)
       {
 	assert (false);
       }
-    m_commit_mutex.unlock ();
-    er_clear ();
+    ulock.unlock ();
     notify_waiting_threads ();
+
+    er_clear ();
   }
 
   void
