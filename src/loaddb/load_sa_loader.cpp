@@ -808,6 +808,13 @@ namespace cubload
   {
     CHECK_SKIP ();
 
+    if (er_errid () != NO_ERROR)
+      {
+	display_error (0);
+	CHECK_CONTEXT_VALIDITY (ldr_Current_context, true);
+	ldr_abort ();
+	return;
+      }
     if (cons != NULL && ldr_Current_context->num_attrs == 0)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_NO_CLASS_OR_NO_ATTRIBUTE, 0);
