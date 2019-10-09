@@ -22,7 +22,7 @@
 
 namespace test_lockfree
 {
-  int test_hashmap_functional ();
+  int test_hashmap_functional (bool short_version);
   int test_hashmap_performance ();
 } // namespace test_lockfree
 

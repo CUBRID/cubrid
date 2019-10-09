@@ -749,7 +749,7 @@ namespace test_lockfree
 
   template <typename F, typename ... Args>
   void
-  run_test_hashmap (bool for_perf, const std::string &case_name, F &&f, Args &&... args)
+  run_test_hashmap (bool for_perf, bool short_version, const std::string &case_name, F &&f, Args &&... args)
   {
     cout_new_line ();
 
@@ -760,7 +760,10 @@ namespace test_lockfree
 	test_hashmap_varsizes<1> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
 	test_hashmap_varsizes<4> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
       }
-    test_hashmap_varsizes<64> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
+    if (!short_version)
+      {
+	test_hashmap_varsizes<64> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
+      }
 
     auto end_time = std::chrono::high_resolution_clock::now ();
     cout_new_line ();
@@ -770,7 +773,7 @@ namespace test_lockfree
 
   template <typename F, typename ... Args>
   void
-  run_test_lf_hash_table (bool for_perf, const std::string &case_name, F &&f, Args &&... args)
+  run_test_lf_hash_table (bool for_perf, bool short_version, const std::string &case_name, F &&f, Args &&... args)
   {
     cout_new_line ();
 
@@ -781,7 +784,10 @@ namespace test_lockfree
 	test_lf_hash_table_varsizes<1> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
 	test_lf_hash_table_varsizes<4> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
       }
-    test_lf_hash_table_varsizes<64> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
+    if (!short_version)
+      {
+	test_lf_hash_table_varsizes<64> (for_perf, case_name, std::forward<F> (f), std::forward<Args> (args)...);
+      }
 
     auto end_time = std::chrono::high_resolution_clock::now ();
     cout_new_line ();
@@ -793,7 +799,7 @@ namespace test_lockfree
 #define TEMPL_HASHMAP my_hashmap, tran::index
 
   static void
-  test_hashmap_functional_internal (bool mutex_on_off)
+  test_hashmap_functional_internal (bool mutex_on_off, bool short_version)
   {
     set_entry_mutex_mode (mutex_on_off);
 
@@ -801,32 +807,32 @@ namespace test_lockfree
     std::cout << "Start testing lock-free hashmap/hash table with mutex " << mutex_on_off;
     increment_tab_indent ();
 
-    run_test_lf_hash_table (false, "insert_find=10000", testcase_inserts<TEMPL_LFHT>, 10000);
-    run_test_hashmap (false, "insert_find=10000", testcase_inserts<TEMPL_HASHMAP>, 10000);
+    run_test_lf_hash_table (false, short_version, "insert_find=10000", testcase_inserts<TEMPL_LFHT>, 10000);
+    run_test_hashmap (false, short_version, "insert_find=10000", testcase_inserts<TEMPL_HASHMAP>, 10000);
 
 
-    run_test_lf_hash_table (false, "find_or_insert_and_erase=10000,1000",
+    run_test_lf_hash_table (false, short_version, "find_or_insert_and_erase=10000,1000",
 			    testcase_find_or_inserts_and_erase<TEMPL_LFHT>, 10000, 1000);
-    run_test_hashmap (false, "find_or_insert_and_erase=10000,1000",
+    run_test_hashmap (false, short_version, "find_or_insert_and_erase=10000,1000",
 		      testcase_find_or_inserts_and_erase<TEMPL_HASHMAP>, 10000, 1000);
 
-    run_test_lf_hash_table (false, "testcase_insert_given_and_erase_and_claimret=10000,1000,1000",
+    run_test_lf_hash_table (false, short_version, "testcase_insert_given_and_erase_and_claimret=10000,1000,1000",
 			    testcase_insert_given_and_erase_and_claimret<TEMPL_LFHT>, 10000, 1000, 1000);
-    run_test_hashmap (false, "testcase_insert_given_and_erase_and_claimret=10000,1000,1000",
+    run_test_hashmap (false, short_version, "testcase_insert_given_and_erase_and_claimret=10000,1000,1000",
 		      testcase_insert_given_and_erase_and_claimret<TEMPL_HASHMAP>, 10000, 1000, 1000);
 
     if (mutex_on_off == MUTEX_ON)
       {
 	// erase locked works only for MUTEX_ON
-	run_test_lf_hash_table (false, "testcase_find_or_inserts_and_erase_locked=10000,1000",
+	run_test_lf_hash_table (false, short_version, "testcase_find_or_inserts_and_erase_locked=10000,1000",
 				testcase_find_or_inserts_and_erase_locked<TEMPL_LFHT>, 10000, 1000);
-	run_test_hashmap (false, "testcase_find_or_inserts_and_erase_locked=10000,1000",
+	run_test_hashmap (false, short_version, "testcase_find_or_inserts_and_erase_locked=10000,1000",
 			  testcase_find_or_inserts_and_erase_locked<TEMPL_HASHMAP>, 10000, 1000);
       }
 
-    run_test_lf_hash_table (false, "testcase_insdel_iter_clear=10000,1000,100,10",
+    run_test_lf_hash_table (false, short_version, "testcase_insdel_iter_clear=10000,1000,100,10",
 			    testcase_insdel_iter_clear<TEMPL_LFHT>, 10000, 1000, 100, 10);
-    run_test_hashmap (false, "testcase_insdel_iter_clear=10000,1000,100,10",
+    run_test_hashmap (false, short_version, "testcase_insdel_iter_clear=10000,1000,100,10",
 		      testcase_insdel_iter_clear<TEMPL_HASHMAP>, 10000, 1000, 100, 10);
 
     decrement_tab_indent ();
@@ -834,10 +840,10 @@ namespace test_lockfree
   }
 
   int
-  test_hashmap_functional ()
+  test_hashmap_functional (bool short_version)
   {
-    test_hashmap_functional_internal (MUTEX_OFF);
-    test_hashmap_functional_internal (MUTEX_ON);
+    test_hashmap_functional_internal (MUTEX_OFF, short_version);
+    test_hashmap_functional_internal (MUTEX_ON, short_version);
 
     return 0;
   }
@@ -851,9 +857,9 @@ namespace test_lockfree
     std::cout << "Start performance testing lock-free hashmap/hash table with mutex " << mutex_on_or_off;
     increment_tab_indent ();
 
-    run_test_lf_hash_table (true, "testcase_find_insdel_iter_clear=1M,30k,5k,1k,10",
+    run_test_lf_hash_table (true, false, "testcase_find_insdel_iter_clear=1M,30k,5k,1k,10",
 			    testcase_find_insdel_iter_clear<TEMPL_LFHT>, 1000000, 30000, 5000, 1000, 10);
-    run_test_hashmap (true, "testcase_find_insdel_iter_clear=1M,30k,5k,1k,10",
+    run_test_hashmap (true, false, "testcase_find_insdel_iter_clear=1M,30k,5k,1k,10",
 		      testcase_find_insdel_iter_clear<TEMPL_HASHMAP>, 1000000, 30000, 5000, 1000, 10);
 
     decrement_tab_indent ();
