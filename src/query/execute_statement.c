@@ -2609,7 +2609,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 			       ER_INVALID_SERIAL_VALUE);
 
   /* invariant for abs(inc_val) <= (max_val - min_val). */
-  numeric_db_value_sub (&new_max_val, &new_min_val, &range_val);
+  error = numeric_db_value_sub (&new_max_val, &new_min_val, &range_val);
   if (DB_IS_NULL (&range_val) && error == ER_IT_DATA_OVERFLOW)
     {
       // max - min might be flooded. Regard the range is big enough.
