@@ -8249,11 +8249,11 @@ vacuum_shutdown_sequence::vacuum_shutdown_sequence ()
 void
 vacuum_shutdown_sequence::request_shutdown ()
 {
+#if defined (SERVER_MODE)
   if (m_state == SHUTDOWN_REGISTERED)
     {
       return;
     }
-#if defined (SERVER_MODE)
   std::unique_lock<std::mutex> ulock { m_state_mutex };
   assert (m_state == NO_SHUTDOWN);
   m_state = SHUTDOWN_REQUESTED;
