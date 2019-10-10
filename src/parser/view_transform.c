@@ -3604,17 +3604,6 @@ mq_rewrite_query_as_derived (PARSER_CONTEXT * parser, PT_NODE * query)
       if (query->info.query.order_by && temp->is_hidden_column)
 	{
 	  temp->is_hidden_column = 0;
-	  if (new_query->info.query.is_subquery == PT_IS_SUBQUERY)
-	    {
-	      /* We have to add this column at least in case of subquery. Otherwise,
-	       * an outer query that expects to read the result of subquery, will fail. This
-	       * would be detected much later, at execution.
-	       * So, we fix the cases like the following one:
-	       * set @a = 1; SELECT  (SELECT @a := @a + 1 FROM db_root ORDER BY @a + 1);
-	       */
-	      *head = parser_copy_tree (parser, node);
-	      head = &((*head)->next);
-	    }
 	}
       else
 	{
