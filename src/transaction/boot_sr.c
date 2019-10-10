@@ -2783,7 +2783,7 @@ error:
   session_states_finalize (thread_p);
   logtb_finalize_global_unique_stats_table (thread_p);
 
-  vacuum_stop (thread_p);
+  vacuum_stop_workers (thread_p);
 
 #if defined(SERVER_MODE)
   pgbuf_daemons_destroy ();
@@ -2921,7 +2921,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   /* Shutdown the system with the system transaction */
   logtb_set_to_system_tran_index (thread_p);
   log_abort_all_active_transaction (thread_p);
-  vacuum_stop (thread_p);
+  vacuum_stop_workers (thread_p);
 
   /* before removing temp vols */
   (void) logtb_reflect_global_unique_stats_to_btree (thread_p);
@@ -2931,6 +2931,11 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   session_states_finalize (thread_p);
 
   (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
+
+  // only after all logging is finished can this vacuum master be stopped; boot_remove_all_temp_volumes may add a final
+  // log entry
+  // hopefully, nothing else follows
+  vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
   pgbuf_daemons_destroy ();

@@ -53,6 +53,8 @@
 #include "util_func.h"
 
 #include <atomic>
+#include <condition_variable>
+#include <mutex>
 #include <stack>
 
 #include <cstring>
@@ -324,6 +326,31 @@ class vacuum_job_cursor
 #define vacuum_job_cursor_print_args(cursor) \
   (long long int) (cursor).get_blockid (), VPID_AS_ARGS (&(cursor).get_page_vpid ()), (int) (cursor).get_index ()
 
+class vacuum_shutdown_sequence
+{
+  public:
+    vacuum_shutdown_sequence ();
+
+    void request_shutdown ();
+    bool is_shutdown_requested ();
+    bool check_shutdown_request ();
+
+  private:
+    enum state
+    {
+      NO_SHUTDOWN,
+#if defined (SERVER_MODE)
+      SHUTDOWN_REQUESTED,
+#endif // SERVER_MODE
+      SHUTDOWN_REGISTERED
+    };
+    state m_state;
+#if defined (SERVER_MODE)
+    std::mutex m_state_mutex;
+    std::condition_variable m_condvar;
+#endif // SERVER_MODE
+};
+
 /* Vacuum data.
  *
  * Stores data required for vacuum. It is also stored on disk in the first
@@ -346,8 +373,7 @@ struct vacuum_data
     int log_block_npages;		/* The number of pages in a log block. */
 
     bool is_loaded;		/* True if vacuum data is loaded. */
-    std::atomic<bool> shutdown_requested;	/* Set to true when shutdown is requested. It stops vacuum from generating or
-                                           * executing new jobs. */
+    vacuum_shutdown_sequence shutdown_sequence;
     bool is_archive_removal_safe;	/* Set to true after keep_from_log_pageid is updated. */
 
     LOG_LSA recovery_lsa;		/* This is the LSA where recovery starts. It will be used to go backward in the log
@@ -368,7 +394,7 @@ struct vacuum_data
       , page_data_max_count (0)
       , log_block_npages (0)
       , is_loaded (false)
-      , shutdown_requested (false)
+      , shutdown_sequence ()
       , is_archive_removal_safe (false)
       , recovery_lsa (LSA_INITIALIZER)
       , is_restoredb_session (false)
@@ -1086,7 +1112,6 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
     }
 
   /* Initialize vacuum data */
-  vacuum_Data.shutdown_requested = false;
   vacuum_Data.is_restoredb_session = is_restore;
   /* Save vacuum data VFID. */
   VFID_COPY (&vacuum_Data.vacuum_data_file, vacuum_data_vfid);
@@ -1247,7 +1272,7 @@ vacuum_boot (THREAD_ENTRY * thread_p)
 }
 
 void
-vacuum_stop (THREAD_ENTRY * thread_p)
+vacuum_stop_workers (THREAD_ENTRY * thread_p)
 {
   if (!vacuum_Is_booted)
     {
@@ -1258,8 +1283,6 @@ vacuum_stop (THREAD_ENTRY * thread_p)
   // notify master to stop generating new jobs
   vacuum_notify_server_shutdown ();
 
-  cubthread::manager * thread_manager = cubthread::get_manager ();
-
   // stop work pool
   if (vacuum_Worker_threads != NULL)
     {
@@ -1267,22 +1290,30 @@ vacuum_stop (THREAD_ENTRY * thread_p)
       vacuum_Worker_threads->er_log_stats ();
       vacuum_Worker_threads->stop_execution ();
 #endif // SERVER_MODE
+
+      cubthread::get_manager ()->destroy_worker_pool (vacuum_Worker_threads);
+    }
+
+  delete vacuum_Worker_context_manager;
+  vacuum_Worker_context_manager = NULL;
+}
+
+void
+vacuum_stop_master (THREAD_ENTRY * thread_p)
+{
+  if (!vacuum_Is_booted)
+    {
+      // not booted
+      return;
     }
 
   // stop master daemon
   if (vacuum_Master_daemon != NULL)
     {
-      thread_manager->destroy_daemon (vacuum_Master_daemon);
+      cubthread::get_manager ()->destroy_daemon (vacuum_Master_daemon);
     }
-  if (vacuum_Worker_threads != NULL)
-    {
-      thread_manager->destroy_worker_pool (vacuum_Worker_threads);
-    }
-
   delete vacuum_Master_context_manager;
-  delete vacuum_Worker_context_manager;
-
-  // all resources should be freed
+  vacuum_Master_context_manager = NULL;
 
   vacuum_Is_booted = false;
 }
@@ -2867,6 +2898,8 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
 
   if (!BO_IS_SERVER_RESTARTED ())
     {
+      // check if boot is aborted
+      vacuum_Data.shutdown_sequence.check_shutdown_request ();
       return;
     }
 
@@ -2928,7 +2961,7 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
 bool
 vacuum_master_task::should_interrupt_iteration () const
 {
-  if (vacuum_Data.shutdown_requested)
+  if (vacuum_Data.shutdown_sequence.check_shutdown_request ())
     {
       // stop on shutdown
       vacuum_er_log (VACUUM_ER_LOG_MASTER, "%s", "Interrupt iteration: shutdown");
@@ -3543,7 +3576,7 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 #if !defined (NDEBUG)
       /* Interrupting jobs without shutdown is unacceptable. */
       assert (thread_p->shutdown);
-      assert (vacuum_Data.shutdown_requested);
+      assert (vacuum_Data.shutdown_sequence.is_shutdown_requested ());
 #endif /* !NDEBUG */
 
 #else /* !SERVER_MODE */
@@ -7349,7 +7382,7 @@ vacuum_notify_server_crashed (LOG_LSA * recovery_lsa)
 void
 vacuum_notify_server_shutdown (void)
 {
-  vacuum_Data.shutdown_requested = true;
+  vacuum_Data.shutdown_sequence.request_shutdown ();
 }
 
 #if !defined (NDEBUG)
@@ -8208,6 +8241,79 @@ vacuum_job_cursor::search ()
           return;
         }
       data_page = vacuum_fix_data_page (&cubthread::get_entry (), &next_vpid);
+    }
+}
+
+//
+// vacuum_shutdown_sequence
+//
+vacuum_shutdown_sequence::vacuum_shutdown_sequence ()
+  : m_state (NO_SHUTDOWN)
+#if defined (SERVER_MODE)
+  , m_state_mutex ()
+  , m_condvar ()
+#endif // SERVER_MODE
+{
+}
+
+void
+vacuum_shutdown_sequence::request_shutdown ()
+{
+#if defined (SERVER_MODE)
+  if (m_state == SHUTDOWN_REGISTERED)
+    {
+      return;
+    }
+  std::unique_lock<std::mutex> ulock { m_state_mutex };
+  assert (m_state == NO_SHUTDOWN);
+  m_state = SHUTDOWN_REQUESTED;
+  // must wait until shutdown is registered
+  m_condvar.wait (ulock, [this] ()
+    {
+      return m_state == SHUTDOWN_REGISTERED || vacuum_Master_daemon == NULL;
+    });
+  if (m_state == SHUTDOWN_REQUESTED && vacuum_Master_daemon == NULL)
+    {
+      // no one to register, but myself
+      m_state = SHUTDOWN_REGISTERED;
+    }
+  assert (m_state == SHUTDOWN_REGISTERED);
+#else // SA_MODE
+  m_state = SHUTDOWN_REGISTERED;
+#endif // SA_MODE
+}
+
+bool
+vacuum_shutdown_sequence::is_shutdown_requested ()
+{
+  return m_state != NO_SHUTDOWN;
+}
+
+bool
+vacuum_shutdown_sequence::check_shutdown_request ()
+{
+  if (m_state == NO_SHUTDOWN)
+    {
+      return false;
+    }
+  else if (m_state == SHUTDOWN_REGISTERED)
+    {
+      return true;
+    }
+  else
+    {
+#if defined (SA_MODE)
+      assert (false);
+      return true;
+#else // SERVER_MODE
+      // register
+      std::unique_lock<std::mutex> ulock { m_state_mutex };
+      assert (m_state == SHUTDOWN_REQUESTED);
+      m_state = SHUTDOWN_REGISTERED;
+      ulock.unlock ();
+      m_condvar.notify_one ();
+      return true;
+#endif
     }
 }
 // *INDENT-ON*
