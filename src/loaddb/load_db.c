@@ -1248,8 +1248,8 @@ load_object_file (load_args * args)
       if (!au_is_dba_group_member (db_get_user ()))
 	{
 	  fprintf (stderr, "ERROR: Must be in dba group to load from a file on the server\n");
-	  error_code = ER_AU_DBA_ONLY;
-	  return error_code;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 0);
+	  return ER_AU_DBA_ONLY;
 	}
       error_code = loaddb_load_object_file ();
       if (error_code == NO_ERROR)
