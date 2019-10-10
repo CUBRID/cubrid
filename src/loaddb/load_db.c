@@ -205,14 +205,16 @@ ldr_get_start_line_no (std::string & file_name)
 	    }
 	  if (file_name[q] == 0)
 	    {
+	      /* *INDENT-OFF* */
 	      try
 	      {
 		line_no = std::stoi (file_name.substr (p + 1));
 	      }
-	      catch ( ...)
+	      catch (...)
 	      {
 		// parse failed, fallback to default value
 	      }
+	      /* *INDENT-ON* */
 
 	      // remove line no from file name
 	      file_name.resize (p);
@@ -1246,14 +1248,20 @@ load_object_file (load_args * args)
     };
   auth_handler a_handler = [] (const std::string & class_name) -> int
     {
+      DB_OBJECT *usr = db_get_user ();
+	if (au_is_dba_group_member (usr))
+	  {
+	    // return early, no need to check dba if authorized
+	    return NO_ERROR;
+	  }
+
       DB_OBJECT *class_mop = db_find_class (class_name.c_str ());
       if (class_mop != NULL)
 	{
-	  DB_OBJECT *usr = db_get_user ();
 	  DB_OBJECT *owner = db_get_owner (class_mop);
 	  if (owner == usr)
 	  {
-	    // return early, no need to check owner for authorization
+	    // return early, no need to check owner if authorized
 	    return NO_ERROR;
 	  }
 	}
