@@ -63,7 +63,7 @@ static void get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args);
 static void ldr_server_load (load_args * args, int *status, bool * interrupted);
 static void register_signal_handlers ();
 /* *INDENT-OFF* */
-static bool load_has_authorization (const std::string & class_name, DB_AUTH au_type);
+static int load_has_authorization (const std::string & class_name, DB_AUTH au_type);
 /* *INDENT-ON* */
 static int load_object_file (load_args * args);
 static void print_er_msg ();
@@ -1199,7 +1199,7 @@ register_signal_handlers ()
   util_arm_signal_handlers (sig_handler, sig_handler);
 }
 
-static bool
+static int
 load_has_authorization (const std::string & class_name, DB_AUTH au_type)
 {
   // au_fetch_class
@@ -1207,7 +1207,7 @@ load_has_authorization (const std::string & class_name, DB_AUTH au_type)
   if (au_is_dba_group_member (usr))
     {
       // return early, no need to check dba if authorized
-      return true;
+      return NO_ERROR;
     }
 
   DB_OBJECT *class_mop = db_find_class (class_name.c_str ());
@@ -1217,25 +1217,22 @@ load_has_authorization (const std::string & class_name, DB_AUTH au_type)
       if (owner == usr)
 	{
 	  // return early, no need to check owner if authorized
-	  return true;
+	  return NO_ERROR;
 	}
     }
   else
     {
       ASSERT_ERROR ();
-      return false;
+      return er_errid ();
     }
 
-  if (au_check_authorization (class_mop, au_type) != NO_ERROR)
+  int error_code = au_check_authorization (class_mop, au_type);
+  if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_NO_AUTHORIZATION, 0);
-      return false;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
     }
-  else
-    {
-      return true;
-    }
+  return error_code;
 }
 
 static int
@@ -1279,10 +1276,14 @@ load_object_file (load_args * args)
 	}
     }
 
-  if (!args->table_name.empty () && !load_has_authorization (args->table_name, AU_INSERT))
+  if (!args->table_name.empty ())
     {
+      error_code = load_has_authorization (args->table_name, AU_INSERT);
       // user not authorized to insert in class
-      return ER_AU_NO_AUTHORIZATION;
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
     }
 
   /* *INDENT-OFF* */
@@ -1304,10 +1305,9 @@ load_object_file (load_args * args)
 	 return ret;
       }
 
-      if (!is_ignored && !class_name.empty () && !load_has_authorization (class_name, AU_INSERT))
+      if (!is_ignored && !class_name.empty ())
         {
-	  // user not authorized to insert in class
-	  return ER_AU_NO_AUTHORIZATION;
+	  ret = load_has_authorization (class_name, AU_INSERT);
         }
 
       return ret;
