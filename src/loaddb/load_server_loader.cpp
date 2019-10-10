@@ -24,6 +24,7 @@
 #include "load_server_loader.hpp"
 
 #include "btree.h"
+#include <cctype>
 #include "dbtype.h"
 #include "load_class_registry.hpp"
 #include "load_db_value_converter.hpp"
@@ -174,7 +175,7 @@ namespace cubload
     get_class_attributes (attrinfo, attr_type, or_attributes, &n_attributes);
 
     // sort attrib idxs by or_attrib.def_order
-    // this will keep order of elements & "fill the gaps"
+    // attrib_order[i] = the i-th element in or_attributes[:].def_order
     // or_attributes[:].def_order = [ 2, 0, 3, 10, 5] -> attrib_order = [ 1, 0, 2, 4, 3]
     std::vector<int> attrib_order (n_attributes);
     for (size_t i = 0; i < attrib_order.size (); ++i)
@@ -197,14 +198,7 @@ namespace cubload
 	int free_attr_name = 0;
 	or_attribute *attr_repr = NULL;
 
-	for (size_t i = 0; i < attrib_order.size (); ++i)
-	  {
-	    if (attrib_order[i] == attr_index)
-	      {
-		attr_repr = &or_attributes[i];
-		break;
-	      }
-	  }
+	attr_repr = &or_attributes[attrib_order[attr_index]];
 
 	error_code = or_get_attrname (&recdes, attr_repr->id, &attr_name, &free_attr_name);
 	if (error_code != NO_ERROR)
@@ -315,9 +309,16 @@ namespace cubload
   bool
   server_class_installer::is_class_ignored (const char *classname)
   {
+    if (IS_OLD_GLO_CLASS (classname))
+      {
+	return true;
+      }
+
     const std::vector<std::string> &classes_ignored = m_session.get_args ().ignore_classes;
     std::string class_name (classname);
     bool is_ignored;
+
+    std::transform (class_name.begin (), class_name.end (), class_name.begin (), std::tolower);
 
     auto result = std::find (classes_ignored.begin (), classes_ignored.end (), class_name);
 

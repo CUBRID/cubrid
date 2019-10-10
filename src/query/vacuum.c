@@ -967,6 +967,14 @@ xvacuum (THREAD_ENTRY * thread_p)
   vacuum_er_log (VACUUM_ER_LOG_MASTER, "Start searching jobs at " vacuum_job_cursor_print_format,
 		 vacuum_job_cursor_print_args (cursor));
 
+  // must start with empty vacuum_Block_data_buffer
+  if (!vacuum_Block_data_buffer->is_empty ())
+    {
+      // start by updating vacuum data
+      cursor.force_data_update ();
+    }
+  assert (vacuum_Block_data_buffer->is_empty ());
+
   // consume all vacuum data blocks
   while (cursor.is_valid ())
     {
@@ -1006,6 +1014,8 @@ xvacuum (THREAD_ENTRY * thread_p)
 
   assert (!cursor.is_loaded ());
   assert (vacuum_Data.is_empty ());
+  assert (vacuum_Block_data_buffer->is_empty ());
+
 #if !defined (NDEBUG)
   vacuum_verify_vacuum_data_page_fix_count (thread_p);
 #endif /* !NDEBUG */
