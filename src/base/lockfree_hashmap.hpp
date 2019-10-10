@@ -595,7 +595,7 @@ namespace lockfree
   void
   hashmap<Key, T>::deactivate_stats ()
   {
-    m_active_state = false;
+    m_active_stats = false;
   }
 
   template <class Key, class T>
