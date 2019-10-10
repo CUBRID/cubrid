@@ -62,6 +62,9 @@ static void get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args);
 
 static void ldr_server_load (load_args * args, int *status, bool * interrupted);
 static void register_signal_handlers ();
+/* *INDENT-OFF* */
+static bool load_has_authorization (const std::string & class_name, DB_AUTH au_type);
+/* *INDENT-ON* */
 static int load_object_file (load_args * args);
 static void print_er_msg ();
 
