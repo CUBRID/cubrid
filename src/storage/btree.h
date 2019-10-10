@@ -44,8 +44,6 @@
 #include "statistics.h"
 #include "storage_common.h"
 
-#include <bitset>
-
 // forward definition
 struct key_val_range;
 class btree_unique_stats;
