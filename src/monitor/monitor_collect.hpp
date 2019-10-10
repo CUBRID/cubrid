@@ -114,6 +114,17 @@ namespace cubmonitor
   class counter_timer_statistic
   {
     public:
+      // autotimer times and increments statistic on destructor
+      class autotimer
+      {
+	public:
+	  autotimer () = delete;
+	  autotimer (counter_timer_statistic &cts);
+	  ~autotimer ();
+	private:
+	  counter_timer_statistic &m_stat;
+      };
+
       counter_timer_statistic (void);
 
       inline void time_and_increment (const time_rep &d, const amount_rep &a = 1);    // add time and amount
@@ -349,6 +360,20 @@ namespace cubmonitor
       destination[get_statistics_count ()] = statistic_value_cast (this->get_average_time (mode));
     };
     mon.register_statistics (stat_count, fetch_func, names);
+  }
+
+  template <class A, class T>
+  counter_timer_statistic<A, T>::autotimer::autotimer (counter_timer_statistic &cts)
+    : m_stat (cts)
+  {
+    m_stat.reset_timer ();
+  }
+
+  template <class A, class T>
+  counter_timer_statistic<A, T>::autotimer::~autotimer ()
+  {
+    // will time duration from construction and increment once
+    m_stat.time_and_increment ();
   }
 
   //////////////////////////////////////////////////////////////////////////

@@ -248,7 +248,7 @@ namespace lockfree
   T *
   hashmap<Key, T>::find (tran::index tran_index, Key &key)
   {
-    m_stat_find.reset_timer ();
+    ct_stat_type::autotimer stat_autotimer (m_stat_find);
 
     int bflags = 0;
     bool restart = true;
@@ -262,8 +262,6 @@ namespace lockfree
 	list_find (tran_index, list_head, key, &bflags, entry);
 	restart = (bflags & LF_LIST_BR_RESTARTED) != 0;
       }
-
-    m_stat_find.time_and_increment ();
     return entry;
   }
 
@@ -1159,7 +1157,7 @@ namespace lockfree
   bool
   hashmap<Key, T>::hash_insert_internal (tran::index tran_index, Key &key, int bflags, T *&entry)
   {
-    m_stat_insert.reset_timer ();
+    ct_stat_type::autotimer stat_autotimer (m_stat_insert);
 
     bool inserted = false;
 
@@ -1187,8 +1185,6 @@ namespace lockfree
 	    break;
 	  }
       }
-
-    m_stat_insert.time_and_increment ();
     return inserted;
   }
 
@@ -1197,7 +1193,7 @@ namespace lockfree
   bool
   hashmap<Key, T>::hash_erase_internal (tran::index tran_index, Key &key, int bflags, T *locked_entry)
   {
-    m_stat_erase.reset_timer ();
+    ct_stat_type::autotimer stat_autotimer (m_stat_erase);
 
     bool erased = false;
 
@@ -1216,8 +1212,6 @@ namespace lockfree
 	    break;
 	  }
       }
-
-    m_stat_erase.time_and_increment ();
     return erased;
   }
 
