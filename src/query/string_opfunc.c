@@ -15712,6 +15712,7 @@ int
 db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALUE * number_lang,
 	      DB_VALUE * result_num)
 {
+#define DB_NUMERIC_E38_MAX "99999999999999999999999999999999999999"
   /* default precision and scale is (38, 0) */
   /* it is more profitable that the definition of this value is located in some header file */
   const char *dflt_format_str = DB_NUMERIC_E38_MAX;
@@ -16046,6 +16047,7 @@ exit:
     }
 
   return error_status;
+#undef DB_NUMERIC_E38_MAX
 }
 
 /*

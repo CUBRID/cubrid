@@ -521,9 +521,6 @@ extern "C"
 
 /* The maximum precision that can be specified for a numeric domain. */
 #define DB_MAX_NUMERIC_PRECISION 38
-/* values for min/max for max precision */
-#define DB_NUMERIC_E38_MAX "99999999999999999999999999999999999999"
-#define DB_NUMERIC_E38_MIN "-99999999999999999999999999999999999999"
 
 /* The upper limit for a number that can be represented by a numeric type */
 #define DB_NUMERIC_OVERFLOW_LIMIT 1e38

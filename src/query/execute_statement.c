@@ -92,6 +92,9 @@
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
+#define DB_SERIAL_MAX "99999999999999999999999999999999999999"
+#define DB_SERIAL_MIN "-99999999999999999999999999999999999999"
+
 #define UNIQUE_SAVEPOINT_ALTER_TRIGGER "aLTERtRIGGER"
 /*
  * Function Group:
@@ -1288,8 +1291,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_VALUE zero, e38, negative_e38;
   DB_VALUE start_val, inc_val, max_val, min_val, cached_num_val;
   DB_VALUE cmp_result;
-  DB_VALUE result_val;
-  DB_VALUE tmp_val, tmp_val2;
+  DB_VALUE tmp_val;
   DB_VALUE abs_inc_val, range_val;
 
   int min_val_msgid = 0;
@@ -1299,7 +1301,6 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   int ret_msg_id = 0;
   SERIAL_INVARIANT invariants[MAX_SERIAL_INVARIANT];
   int ninvars = 0;
-  unsigned char num[DB_NUMERIC_BUF_SIZE];
   int inc_val_flag = 0, cyclic;
   int cached_num;
   DB_DATA_STATUS data_stat;
@@ -1360,8 +1361,8 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* get all values as string */
   numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
-  numeric_coerce_string_to_num (DB_NUMERIC_E38_MAX, strlen (DB_NUMERIC_E38_MAX), INTL_CODESET_ISO88591, &e38);
-  numeric_coerce_string_to_num (DB_NUMERIC_E38_MIN, strlen (DB_NUMERIC_E38_MIN), INTL_CODESET_ISO88591, &negative_e38);
+  numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &e38);
+  numeric_coerce_string_to_num (DB_SERIAL_MIN, strlen (DB_SERIAL_MIN), INTL_CODESET_ISO88591, &negative_e38);
   db_make_int (&cmp_result, 0);
 
   start_val_node = PT_NODE_SR_START_VAL (statement);
@@ -1634,10 +1635,11 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
    * expect max_val should be responsible for the violation.
    */
   error = numeric_db_value_sub (&max_val, &min_val, &range_val);
-  if (DB_IS_NULL (&range_val) && error == ER_IT_DATA_OVERFLOW)
+  if (error == ER_IT_DATA_OVERFLOW)
     {
       // max - min might be flooded. Regard the range is big enough.
-      numeric_coerce_string_to_num (DB_NUMERIC_E38_MAX, strlen (DB_NUMERIC_E38_MAX), INTL_CODESET_ISO88591, &range_val);
+      numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591,
+                                    &range_val);
       er_clear ();
     }
 
@@ -1649,44 +1651,39 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   cached_num_node = PT_NODE_SR_CACHED_NUM_VAL (statement);
   if (cached_num_node != NULL)
     {
+      DB_VALUE cached_num_int_val, abs_cached_range_val;
       assert (cached_num_node->type_enum == PT_TYPE_INTEGER);
 
       cached_num = cached_num_node->info.value.data_value.i;
 
-      /* result_val = ABS(CEIL((max_val - min_val) / inc_val)) */
-      error = numeric_db_value_sub (&max_val, &min_val, &tmp_val);
+      /* ABS (cache_num * inc_val) <range_val */
+
+      db_make_int (&cached_num_int_val, cached_num);
+      db_value_domain_init (&cached_num_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+      error = numeric_db_value_coerce_to_num (&cached_num_int_val, &cached_num_val, &data_stat);
       if (error != NO_ERROR)
 	{
 	  goto end;
 	}
-      error = numeric_db_value_div (&tmp_val, &inc_val, &tmp_val2);
+
+      /* ABS (cache_num * inc_val) */
+      error = numeric_db_value_mul (&inc_val, &cached_num_val, &tmp_val);
       if (error != NO_ERROR)
 	{
 	  goto end;
 	}
-      error = db_abs_dbval (&tmp_val, &tmp_val2);
+
+      error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
       if (error != NO_ERROR)
 	{
 	  goto end;
 	}
-      error = db_ceil_dbval (&result_val, &tmp_val);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
+
+      initialize_serial_invariant (&invariants[ninvars++], abs_cached_range_val, range_val, PT_LE,
+				   MSGCAT_SEMANTIC_SERIAL_CACHED_NUM_INVALID_RANGE, 0, ER_INVALID_SERIAL_VALUE);
 
       pr_clear_value (&tmp_val);
-      pr_clear_value (&tmp_val2);
-
-      numeric_coerce_int_to_num (cached_num, num);
-      db_make_numeric (&cached_num_val, num, DB_MAX_NUMERIC_PRECISION, 0);
-
-      /*
-       * must holds: cached_num_val <= result_val
-       * invariant for cached_num_val <= ABS(CEIL((max_val - min_val) / inc_val))
-       */
-      initialize_serial_invariant (&invariants[ninvars++], cached_num_val, result_val, PT_LE,
-				   MSGCAT_SEMANTIC_SERIAL_CACHED_NUM_INVALID_RANGE, 0, ER_INVALID_SERIAL_VALUE);
+      pr_clear_value (&abs_cached_range_val);
     }
   else
     {
@@ -1793,7 +1790,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   db_make_null (&min_val);
 
   numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
-  numeric_coerce_string_to_num (DB_NUMERIC_E38_MAX, DB_MAX_NUMERIC_PRECISION, INTL_CODESET_ISO88591, &e38);
+  numeric_coerce_string_to_num (DB_SERIAL_MAX, DB_MAX_NUMERIC_PRECISION, INTL_CODESET_ISO88591, &e38);
 
   assert_release (att->info.attr_def.auto_increment != NULL);
   auto_increment_node = att->info.attr_def.auto_increment;
@@ -2044,7 +2041,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
   db_make_null (&max_val);
   OID_SET_NULL (&serial_obj_id);
 
-  numeric_coerce_string_to_num (DB_NUMERIC_E38_MAX, DB_MAX_NUMERIC_PRECISION, INTL_CODESET_ISO88591, &e38);
+  numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &e38);
 
   assert_release (att->info.attr_def.auto_increment != NULL);
   assert (serial_object != NULL);
@@ -2244,15 +2241,12 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_VALUE current_val, start_val, cached_num_val;
   DB_VALUE new_inc_val, new_max_val, new_min_val;
   DB_VALUE cmp_result;
-  DB_VALUE result_val;
   DB_VALUE class_name_val;
-  DB_VALUE tmp_val, tmp_val2;
+  DB_VALUE tmp_val;
   DB_VALUE abs_inc_val, range_val;
   int cached_num;
   int ret_msg_id = 0;
   const char *comment = NULL;
-
-  unsigned char num[DB_NUMERIC_BUF_SIZE];
 
   int new_inc_val_flag = 0, new_cyclic;
   int cur_val_change, inc_val_change, max_val_change, min_val_change, cyclic_change, cached_num_change;
@@ -2382,8 +2376,8 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* Now, get new values from node */
 
   numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
-  numeric_coerce_string_to_num (DB_NUMERIC_E38_MAX, strlen (DB_NUMERIC_E38_MAX), INTL_CODESET_ISO88591, &e38);
-  numeric_coerce_string_to_num (DB_NUMERIC_E38_MIN, strlen (DB_NUMERIC_E38_MIN), INTL_CODESET_ISO88591, &negative_e38);
+  numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &e38);
+  numeric_coerce_string_to_num (DB_SERIAL_MIN, strlen (DB_SERIAL_MIN), INTL_CODESET_ISO88591, &negative_e38);
   db_make_int (&cmp_result, 0);
 
   db_value_domain_init (&new_inc_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
@@ -2608,10 +2602,10 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* invariant for abs(inc_val) <= (max_val - min_val). */
   error = numeric_db_value_sub (&new_max_val, &new_min_val, &range_val);
-  if (DB_IS_NULL (&range_val) && error == ER_IT_DATA_OVERFLOW)
+  if (error == ER_IT_DATA_OVERFLOW)
     {
       // max - min might be flooded. Regard the range is big enough.
-      numeric_coerce_string_to_num (DB_NUMERIC_E38_MAX, strlen (DB_NUMERIC_E38_MAX), INTL_CODESET_ISO88591, &range_val);
+      numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &range_val);
       er_clear ();
     }
 
@@ -2625,44 +2619,39 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   cached_num_node = PT_NODE_SR_CACHED_NUM_VAL (statement);
   if (cached_num_node != NULL)
     {
+      DB_VALUE cached_num_int_val, abs_cached_range_val;
       assert (cached_num_node->type_enum == PT_TYPE_INTEGER);
 
-      cached_num_change = 1;
       cached_num = cached_num_node->info.value.data_value.i;
 
-      /* result_val = ABS(CEIL((max_val - min_val) / inc_val)) */
-      error = numeric_db_value_sub (&new_max_val, &new_min_val, &tmp_val);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-      error = numeric_db_value_div (&tmp_val, &new_inc_val, &tmp_val2);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-      error = db_abs_dbval (&tmp_val, &tmp_val2);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-      error = db_ceil_dbval (&result_val, &tmp_val);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-      pr_clear_value (&tmp_val);
-      pr_clear_value (&tmp_val2);
+      /* ABS (cache_num * inc_val) <range_val */
 
-      numeric_coerce_int_to_num (cached_num, num);
-      db_make_numeric (&cached_num_val, num, DB_MAX_NUMERIC_PRECISION, 0);
+      db_make_int (&cached_num_int_val, cached_num);
+      db_value_domain_init (&cached_num_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+      error = numeric_db_value_coerce_to_num (&cached_num_int_val, &cached_num_val, &data_stat);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
 
-      /*
-       * must holds: cached_num_val <= result_val
-       * invariant for cached_num_val <= ABS(CEIL((max_val - min_val) / inc_val))
-       */
-      initialize_serial_invariant (&invariants[ninvars++], cached_num_val, result_val, PT_LE,
+      /* ABS (cache_num * inc_val) */
+      error = numeric_db_value_mul (&new_inc_val, &cached_num_val, &tmp_val);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      initialize_serial_invariant (&invariants[ninvars++], abs_cached_range_val, range_val, PT_LE,
 				   MSGCAT_SEMANTIC_SERIAL_CACHED_NUM_INVALID_RANGE, 0, ER_INVALID_SERIAL_VALUE);
+
+      pr_clear_value (&tmp_val);
+      pr_clear_value (&abs_cached_range_val);
     }
   else
     {
