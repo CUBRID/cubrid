@@ -1243,6 +1243,12 @@ load_object_file (load_args * args)
   // first try to load directly on server
   if (!args->server_object_file.empty ())
     {
+      if (!au_is_dba_group_member (db_get_user ()))
+	{
+	  fprintf (stderr, "ERROR: Must be in dba group to load from a file on the server\n");
+	  error_code = ER_AU_NO_AUTHORIZATION;
+	  return error_code;
+	}
       error_code = loaddb_load_object_file ();
       if (error_code == NO_ERROR)
 	{
@@ -1268,6 +1274,12 @@ load_object_file (load_args * args)
 	  // there was an error while loading server data file on server, therefore exit
 	  return error_code;
 	}
+    }
+
+  if (!args->table_name.empty () && !load_has_authorization (args->table_name, AU_INSERT))
+    {
+      // user not authorized to insert in class
+      return ER_AU_NO_AUTHORIZATION;
     }
 
   /* *INDENT-OFF* */
