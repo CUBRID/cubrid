@@ -1227,7 +1227,7 @@ load_has_authorization (const std::string & class_name, DB_AUTH au_type)
       return error_code;
     }
 
-  error_code = au_check_authorization (class_mop, DB_AUTH_INSERT);
+  error_code = au_check_authorization (class_mop, au_type);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1248,7 +1248,7 @@ load_object_file (load_args * args)
       if (!au_is_dba_group_member (db_get_user ()))
 	{
 	  fprintf (stderr, "ERROR: Must be in dba group to load from a file on the server\n");
-	  error_code = ER_AU_NO_AUTHORIZATION;
+	  error_code = ER_AU_DBA_ONLY;
 	  return error_code;
 	}
       error_code = loaddb_load_object_file ();
@@ -1290,30 +1290,31 @@ load_object_file (load_args * args)
 
   /* *INDENT-OFF* */
   batch_handler b_handler = [] (const batch &batch) -> int
-    {
-      int ret = loaddb_load_batch (batch);
-      delete &batch;
+  {
+    int ret = loaddb_load_batch (batch);
+    delete &batch;
 
-      return ret;
-    };
+    return ret;
+  };
+
   class_handler c_handler = [] (const batch &batch, bool &is_ignored) -> int
-    {
-      std::string class_name;
-      int ret = loaddb_install_class (batch, is_ignored, class_name);
-      delete &batch;
+  {
+    std::string class_name;
+    int ret = loaddb_install_class (batch, is_ignored, class_name);
+    delete &batch;
 
-      if (ret != NO_ERROR)
+    if (ret != NO_ERROR)
       {
-	 return ret;
+	return ret;
       }
 
-      if (!is_ignored && !class_name.empty ())
-        {
-	  ret = load_has_authorization (class_name, AU_INSERT);
-        }
+    if (!is_ignored && !class_name.empty ())
+      {
+	ret = load_has_authorization (class_name, AU_INSERT);
+      }
 
-      return ret;
-    };
+    return ret;
+  };
   /* *INDENT-ON* */
 
   // here we are sure that object_file exists since it was validated by loaddb_internal function
