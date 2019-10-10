@@ -555,17 +555,13 @@ namespace cubload
       return load_batch (thread_ref, batch);
     };
 
-    class_handler c_handler = [this, &thread_ref] (const batch &batch, bool &is_ignored, std::string &class_name) -> int
+    class_handler c_handler = [this, &thread_ref] (const batch &batch, bool &is_ignored) -> int
     {
+      std::string class_name;
       return install_class (thread_ref, batch, is_ignored, class_name);
     };
 
-    auth_handler a_handler = [] (const std::string &) -> int
-    {
-      return NO_ERROR;
-    };
-
-    return split (m_args.periodic_commit, m_args.server_object_file, c_handler, b_handler, a_handler);
+    return split (m_args.periodic_commit, m_args.server_object_file, c_handler, b_handler);
   }
 
   void

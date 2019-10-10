@@ -1196,6 +1196,45 @@ register_signal_handlers ()
   util_arm_signal_handlers (sig_handler, sig_handler);
 }
 
+static bool
+load_has_authorization (const std::string & class_name, DB_AUTH au_type)
+{
+  // au_fetch_class
+  DB_OBJECT *usr = db_get_user ();
+  if (au_is_dba_group_member (usr))
+    {
+      // return early, no need to check dba if authorized
+      return true;
+    }
+
+  DB_OBJECT *class_mop = db_find_class (class_name.c_str ());
+  if (class_mop != NULL)
+    {
+      DB_OBJECT *owner = db_get_owner (class_mop);
+      if (owner == usr)
+	{
+	  // return early, no need to check owner if authorized
+	  return true;
+	}
+    }
+  else
+    {
+      ASSERT_ERROR ();
+      return false;
+    }
+
+  if (au_check_authorization (class_mop, au_type) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_NO_AUTHORIZATION, 0);
+      return false;
+    }
+  else
+    {
+      return true;
+    }
+}
+
 static int
 load_object_file (load_args * args)
 {
@@ -1239,43 +1278,28 @@ load_object_file (load_args * args)
 
       return ret;
     };
-  class_handler c_handler = [] (const batch &batch, bool &is_ignored, std::string &class_name) -> int
+  class_handler c_handler = [] (const batch &batch, bool &is_ignored) -> int
     {
+      std::string class_name;
       int ret = loaddb_install_class (batch, is_ignored, class_name);
       delete &batch;
 
+      if (ret != NO_ERROR)
+      {
+	 return ret;
+      }
+
+      if (!is_ignored && !class_name.empty () && !load_has_authorization (class_name, AU_INSERT))
+        {
+	  // user not authorized to insert in class
+	  return ER_AU_NO_AUTHORIZATION;
+        }
+
       return ret;
-    };
-  auth_handler a_handler = [] (const std::string & class_name) -> int
-    {
-      DB_OBJECT *usr = db_get_user ();
-	if (au_is_dba_group_member (usr))
-	  {
-	    // return early, no need to check dba if authorized
-	    return NO_ERROR;
-	  }
-
-      DB_OBJECT *class_mop = db_find_class (class_name.c_str ());
-      if (class_mop != NULL)
-	{
-	  DB_OBJECT *owner = db_get_owner (class_mop);
-	  if (owner == usr)
-	  {
-	    // return early, no need to check owner if authorized
-	    return NO_ERROR;
-	  }
-	}
-      else
-	{
-	  ASSERT_ERROR ();
-	  return er_errid ();
-	}
-
-      return au_check_authorization (class_mop, AU_INSERT);
     };
 
   /* *INDENT-ON* */
 
   // here we are sure that object_file exists since it was validated by loaddb_internal function
-  return split (args->periodic_commit, args->object_file, c_handler, b_handler, a_handler);
+  return split (args->periodic_commit, args->object_file, c_handler, b_handler);
 }
