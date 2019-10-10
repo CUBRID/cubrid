@@ -2888,6 +2888,8 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
 
   if (!BO_IS_SERVER_RESTARTED ())
     {
+      // check if boot is aborted
+      vacuum_Data.shutdown_sequence.check_shutdown_request ();
       return;
     }
 
@@ -8247,19 +8249,25 @@ vacuum_shutdown_sequence::vacuum_shutdown_sequence ()
 void
 vacuum_shutdown_sequence::request_shutdown ()
 {
-#if defined (SERVER_MODE)
   if (m_state == SHUTDOWN_REGISTERED)
     {
       return;
     }
+#if defined (SERVER_MODE)
   std::unique_lock<std::mutex> ulock { m_state_mutex };
   assert (m_state == NO_SHUTDOWN);
   m_state = SHUTDOWN_REQUESTED;
   // must wait until shutdown is registered
   m_condvar.wait (ulock, [this] ()
     {
-      return m_state == SHUTDOWN_REGISTERED;
+      return m_state == SHUTDOWN_REGISTERED || vacuum_Master_daemon == NULL;
     });
+  if (m_state == SHUTDOWN_REQUESTED && vacuum_Master_daemon == NULL)
+    {
+      // no one to register, but myself
+      m_state = SHUTDOWN_REGISTERED;
+    }
+  assert (m_state == SHUTDOWN_REGISTERED);
 #else // SA_MODE
   m_state = SHUTDOWN_REGISTERED;
 #endif // SA_MODE
