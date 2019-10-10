@@ -81,6 +81,16 @@ namespace cubmonitor
   class timer_statistic
   {
     public:
+      class autotimer
+      {
+	public:
+	  autotimer () = delete;
+	  autotimer (timer_statistic &timer_stat);
+	  ~autotimer ();
+	private:
+	  timer_statistic &m_stat;
+      };
+
       timer_statistic (void);
 
       inline void time (const time_rep &d);     // add duration to timer
@@ -92,6 +102,8 @@ namespace cubmonitor
 
       // get time
       time_rep get_time (fetch_mode mode = FETCH_GLOBAL) const;
+
+      void reset_timer ();
 
     private:
       timer m_timer;          // internal timer
@@ -259,6 +271,26 @@ namespace cubmonitor
   timer_statistic<T>::get_time (fetch_mode mode /* = FETCH_GLOBAL */) const
   {
     return m_statistic.get_value (mode);
+  }
+
+  template <class T>
+  void
+  timer_statistic<T>::reset_timer ()
+  {
+    m_timer.reset ();
+  }
+
+  template <class T>
+  timer_statistic<T>::autotimer::autotimer (timer_statistic &timer_stat)
+    : m_stat (timer_stat)
+  {
+    m_stat.reset_timer ();
+  }
+
+  template <class T>
+  timer_statistic<T>::autotimer::~autotimer ()
+  {
+    m_stat.time ();
   }
 
   //////////////////////////////////////////////////////////////////////////
