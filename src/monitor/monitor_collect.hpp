@@ -115,6 +115,12 @@ namespace cubmonitor
   template class timer_statistic<transaction_statistic<time_accumulator_statistic>>;
   template class timer_statistic<transaction_statistic<time_accumulator_atomic_statistic>>;
 
+  // aliases
+  using timer_stat = timer_statistic<time_accumulator_statistic>;
+  using atomic_timer_stat = timer_statistic<time_accumulator_atomic_statistic>;
+  using transaction_timer_stat = timer_statistic<transaction_statistic<time_accumulator_statistic>>;
+  using transaction_atomic_timer_stat = timer_statistic<transaction_statistic<time_accumulator_atomic_statistic>>;
+
   //////////////////////////////////////////////////////////////////////////
   // Counter/timer statistic - two statistics that count and time events
   //
