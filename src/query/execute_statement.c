@@ -1565,7 +1565,6 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-
   /* cyclic */
   cyclic = PT_NODE_SR_CYCLIC (statement);
 
@@ -1646,7 +1645,6 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   initialize_serial_invariant (&invariants[ninvars++], abs_inc_val, range_val, PT_LE, inc_val_msgid,
 			       (max_val_msgid == 0) ? min_val_msgid : max_val_msgid, ER_INVALID_SERIAL_VALUE);
 
-
   /* cached num */
   cached_num_node = PT_NODE_SR_CACHED_NUM_VAL (statement);
   if (cached_num_node != NULL)
@@ -1723,9 +1721,8 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   AU_DISABLE (save);
   au_disable_flag = true;
 
-  error =
-    do_create_serial_internal (&serial_object, p, &start_val, &inc_val, &min_val, &max_val, cyclic, cached_num, 0,
-			       comment, NULL, NULL);
+  error = do_create_serial_internal (&serial_object, p, &start_val, &inc_val, &min_val, &max_val, cyclic, cached_num,
+				     0, comment, NULL, NULL);
 
   AU_ENABLE (save);
   au_disable_flag = false;
@@ -2005,7 +2002,9 @@ end:
   pr_clear_value (&min_val);
 
   if (serial_name)
-    free_and_init (serial_name);
+    {
+      free_and_init (serial_name);
+    }
 
   return error;
 }
@@ -2284,7 +2283,6 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_make_null (&range_val);
   OID_SET_NULL (&serial_obj_id);
 
-
   /*
    * find db_serial_class
    */
@@ -2361,7 +2359,9 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   error = db_get (serial_object, SERIAL_ATTR_MAX_VAL, &old_max_val);
   if (error < 0)
-    goto end;
+    {
+      goto end;
+    }
 
   error = db_get (serial_object, SERIAL_ATTR_MIN_VAL, &old_min_val);
   if (error < 0)
@@ -2559,7 +2559,6 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-
   /* cyclic */
   new_cyclic = PT_NODE_SR_CYCLIC (statement);
   if ((new_cyclic == 1) || (PT_NODE_SR_NO_CYCLIC (statement) == 1))
@@ -2570,7 +2569,6 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       cyclic_change = 0;
     }
-
 
   /*
    * check values
@@ -2622,7 +2620,6 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 			       (inc_val_change) ? MSGCAT_SEMANTIC_SERIAL_INC_VAL_INVALID : 0,
 			       (max_val_change) ? MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID :
 			       MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID, ER_INVALID_SERIAL_VALUE);
-
 
   /* cached num */
   cached_num_node = PT_NODE_SR_CACHED_NUM_VAL (statement);
