@@ -102,6 +102,9 @@ namespace lockfree
       ct_stat_type m_stat_find;
       ct_stat_type m_stat_insert;
       ct_stat_type m_stat_erase;
+      ct_stat_type m_stat_unlock;
+      ct_stat_type m_stat_clear;
+      ct_stat_type m_stat_iterates;
       ct_stat_type m_stat_claim;
       ct_stat_type m_stat_retire;
 
@@ -188,6 +191,9 @@ namespace lockfree
     , m_stat_find ()
     , m_stat_insert ()
     , m_stat_erase ()
+    , m_stat_unlock ()
+    , m_stat_clear ()
+    , m_stat_iterates ()
     , m_stat_claim ()
     , m_stat_retire ()
   {
@@ -332,6 +338,8 @@ namespace lockfree
   void
   hashmap<Key, T>::unlock (tran::index tran_index, T *&entry)
   {
+    ct_stat_type::autotimer stat_autotimer (m_stat_unlock);
+
     assert (entry != NULL);
     if (m_edesc->using_mutex)
       {
@@ -348,6 +356,8 @@ namespace lockfree
   void
   hashmap<Key, T>::clear (tran::index tran_index)
   {
+    ct_stat_type::autotimer stat_autotimer (m_stat_clear);
+
     tran::descriptor &tdes = get_tran_descriptor (tran_index);
 
     /* lock mutex */
@@ -560,6 +570,11 @@ namespace lockfree
     dump_stat<D> (os, "find", m_stat_find);
     dump_stat<D> (os, "insert", m_stat_insert);
     dump_stat<D> (os, "erase", m_stat_erase);
+
+    dump_stat<D> (os, "unlock", m_stat_unlock);
+
+    dump_stat<D> (os, "clear", m_stat_clear);
+    dump_stat<D> (os, "iter", m_stat_iterates);
 
     dump_stat<D> (os, "claim", m_stat_claim);
     dump_stat<D> (os, "retire", m_stat_retire);
@@ -1243,6 +1258,8 @@ namespace lockfree
 	assert (false);
 	return NULL;
       }
+
+    ct_stat_type::autotimer stat_autotimer (m_hashmap->m_stat_iterates);
 
     T **next_p = NULL;
     do

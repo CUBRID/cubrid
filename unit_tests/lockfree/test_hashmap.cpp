@@ -507,7 +507,7 @@ namespace test_lockfree
 	    typename H::iterator hash_iterator { lftran, hash };
 	    for (my_entry *it_ent = hash_iterator.iterate (); it_ent != NULL; it_ent = hash_iterator.iterate ())
 	      {
-		++iter_count;
+		++iter_incr;
 	      }
 
 	    --iter_count;
@@ -524,7 +524,7 @@ namespace test_lockfree
     tres.m_found_on_inserts += found_inserts;
     tres.m_found_on_erase_ops += erased;
     tres.m_not_found_on_erase_ops += erase_not_found;
-    tres.m_iterate_increments += iter_count;
+    tres.m_iterate_increments += iter_incr;
   }
 
   template <class H, class Tran>
