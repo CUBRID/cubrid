@@ -39,9 +39,9 @@
 #include <fstream>
 #include <thread>
 
-#define LOAD_INDEX_MIN_SORT_BUFFER_PAGES 8192
-#define LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING "8192"
-#define LOADDB_LOG_FILENAME_SUFFIX "loaddb.log"
+const int LOAD_INDEX_MIN_SORT_BUFFER_PAGES = 8192;
+const char *LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING = "8192";
+const char *LOADDB_LOG_FILENAME_SUFFIX = "loaddb.log";
 
 using namespace cubload;
 
@@ -1210,6 +1210,7 @@ load_has_authorization (const std::string & class_name, DB_AUTH au_type)
       return NO_ERROR;
     }
 
+  int error_code = NO_ERROR;
   DB_OBJECT *class_mop = db_find_class (class_name.c_str ());
   if (class_mop != NULL)
     {
@@ -1222,14 +1223,15 @@ load_has_authorization (const std::string & class_name, DB_AUTH au_type)
     }
   else
     {
-      ASSERT_ERROR ();
-      return er_errid ();
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
     }
 
-  int error_code = au_check_authorization (class_mop, au_type);
+  error_code = au_check_authorization (class_mop, DB_AUTH_INSERT);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
+      // promote from warning to error severity
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
     }
   return error_code;
