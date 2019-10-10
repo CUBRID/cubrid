@@ -102,6 +102,8 @@ namespace lockfree
       ct_stat_type m_stat_find;
       ct_stat_type m_stat_insert;
       ct_stat_type m_stat_erase;
+      ct_stat_type m_stat_claim;
+      ct_stat_type m_stat_retire;
 
       void *volatile *get_ref (T *p, size_t offset);
       void *get_ptr (T *p, size_t offset);
@@ -186,6 +188,8 @@ namespace lockfree
     , m_stat_find ()
     , m_stat_insert ()
     , m_stat_erase ()
+    , m_stat_claim ()
+    , m_stat_retire ()
   {
   }
 
@@ -554,16 +558,18 @@ namespace lockfree
   hashmap<Key, T>::dump_stats (std::ostream &os) const
   {
     dump_stat<D> (os, "find", m_stat_find);
-
     dump_stat<D> (os, "insert", m_stat_insert);
-
     dump_stat<D> (os, "erase", m_stat_erase);
+
+    dump_stat<D> (os, "claim", m_stat_claim);
+    dump_stat<D> (os, "retire", m_stat_retire);
   }
 
   template <class Key, class T>
   void
   hashmap<Key, T>::freelist_retire (tran::descriptor &tdes, T *&p)
   {
+    ct_stat_type::autotimer stat_autotimer (m_stat_retire);
     assert (p != NULL);
     m_freelist->retire (tdes, *to_free_node (p));
     p = NULL;
@@ -580,6 +586,7 @@ namespace lockfree
   T *
   hashmap<Key, T>::freelist_claim (tran::descriptor &tdes)
   {
+    ct_stat_type::autotimer stat_autotimer (m_stat_claim);
     T *claimed = NULL;
     free_node_type *fn = reinterpret_cast<free_node_type *> (tdes.pull_saved_reclaimable ());
     bool is_local_tran = false;
