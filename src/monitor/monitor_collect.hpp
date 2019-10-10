@@ -38,10 +38,10 @@ namespace cubmonitor
   class timer
   {
     public:
-      timer (void);
+      inline timer (void);
 
-      void reset (void);
-      duration time (void);
+      inline void reset (void);
+      inline duration time (void);
 
     private:
       time_point m_timept;
@@ -85,8 +85,8 @@ namespace cubmonitor
       {
 	public:
 	  autotimer () = delete;
-	  autotimer (timer_statistic &timer_stat);
-	  ~autotimer ();
+	  inline autotimer (timer_statistic &timer_stat);
+	  inline ~autotimer ();
 	private:
 	  timer_statistic &m_stat;
       };
@@ -101,9 +101,9 @@ namespace cubmonitor
       inline std::size_t get_statistics_count (void) const;
 
       // get time
-      time_rep get_time (fetch_mode mode = FETCH_GLOBAL) const;
+      inline time_rep get_time (fetch_mode mode = FETCH_GLOBAL) const;
 
-      void reset_timer ();
+      inline void reset_timer ();
 
     private:
       timer m_timer;          // internal timer
@@ -137,13 +137,13 @@ namespace cubmonitor
       {
 	public:
 	  autotimer () = delete;
-	  autotimer (counter_timer_statistic &cts);
-	  ~autotimer ();
+	  inline autotimer (counter_timer_statistic &cts);
+	  inline ~autotimer ();
 	private:
 	  counter_timer_statistic &m_stat;
       };
 
-      counter_timer_statistic (void);
+      inline counter_timer_statistic (void);
 
       inline void time_and_increment (const time_rep &d, const amount_rep &a = 1);    // add time and amount
       inline void time_and_increment (const amount_rep &a = 1);                       // add internal time and amount
@@ -155,9 +155,9 @@ namespace cubmonitor
       inline void fetch (statistic_value *destination, fetch_mode mode = FETCH_GLOBAL) const;
 
       // getters
-      amount_rep get_count (fetch_mode mode = FETCH_GLOBAL) const;
-      time_rep get_time (fetch_mode mode = FETCH_GLOBAL) const;
-      time_rep get_average_time (fetch_mode mode = FETCH_GLOBAL) const;
+      inline amount_rep get_count (fetch_mode mode = FETCH_GLOBAL) const;
+      inline time_rep get_time (fetch_mode mode = FETCH_GLOBAL) const;
+      inline time_rep get_average_time (fetch_mode mode = FETCH_GLOBAL) const;
 
       // register statistic to monitor
       // three statistics are registers: counter, total time and average time (total / count)
@@ -193,7 +193,7 @@ namespace cubmonitor
   class counter_timer_max_statistic
   {
     public:
-      counter_timer_max_statistic (void);
+      inline counter_timer_max_statistic (void);
 
       inline void time_and_increment (const time_rep &d, const amount_rep &a = 1);    // add time and amount
       inline void time_and_increment (const amount_rep &a = 1);                       // add internal time and amount
@@ -203,10 +203,10 @@ namespace cubmonitor
       inline void fetch (statistic_value *destination, fetch_mode mode = FETCH_GLOBAL) const;
 
       // getters
-      amount_rep get_count (fetch_mode mode = FETCH_GLOBAL) const;
-      time_rep get_time (fetch_mode mode = FETCH_GLOBAL) const;
-      time_rep get_average_time (fetch_mode mode = FETCH_GLOBAL) const;
-      time_rep get_max_time (fetch_mode mode = FETCH_GLOBAL) const;
+      inline amount_rep get_count (fetch_mode mode = FETCH_GLOBAL) const;
+      inline time_rep get_time (fetch_mode mode = FETCH_GLOBAL) const;
+      inline time_rep get_average_time (fetch_mode mode = FETCH_GLOBAL) const;
+      inline time_rep get_max_time (fetch_mode mode = FETCH_GLOBAL) const;
 
       // register statistic to monitor
       // three statistics are registers: counter, total time, max per unit time and average time (total / count)
@@ -522,6 +522,29 @@ namespace cubmonitor
       destination[get_statistics_count ()] = statistic_value_cast (this->get_average_time (mode));
     };
     mon.register_statistics (stat_count, fetch_func, names);
+  }
+
+  //
+  // timer
+  //
+  timer::timer (void)
+    : m_timept (clock_type::now ())
+  {
+    //
+  }
+
+  void
+  timer::reset (void)
+  {
+    m_timept = clock_type::now ();
+  }
+
+  duration
+  timer::time (void)
+  {
+    time_point start_pt = m_timept;
+    m_timept = clock_type::now ();
+    return m_timept - start_pt;
   }
 
 } // namespace cubmonitor
