@@ -792,6 +792,8 @@ namespace test_lockfree
     my_hashmap l_hash;
     init_hashmap (l_transys, hash_size, l_hash);
 
+    l_hash.activate_stats ();
+
     tres.m_timer.reset_timer ();
     start_threads (tres, l_hash, l_indexes, std::forward<F> (f), std::forward<Args> (args)...);
     tres.m_timer.time ();

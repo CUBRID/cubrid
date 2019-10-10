@@ -85,10 +85,11 @@ namespace cubmonitor
       {
 	public:
 	  autotimer () = delete;
-	  inline autotimer (timer_statistic &timer_stat);
+	  inline autotimer (timer_statistic &timer_stat, bool active = true);
 	  inline ~autotimer ();
 	private:
 	  timer_statistic &m_stat;
+	  bool m_active;
       };
 
       timer_statistic (void);
@@ -137,10 +138,11 @@ namespace cubmonitor
       {
 	public:
 	  autotimer () = delete;
-	  inline autotimer (counter_timer_statistic &cts);
+	  inline autotimer (counter_timer_statistic &cts, bool active = true);
 	  inline ~autotimer ();
 	private:
 	  counter_timer_statistic &m_stat;
+	  bool m_active;
       };
 
       inline counter_timer_statistic (void);
@@ -287,16 +289,23 @@ namespace cubmonitor
   }
 
   template <class T>
-  timer_statistic<T>::autotimer::autotimer (timer_statistic &timer_stat)
+  timer_statistic<T>::autotimer::autotimer (timer_statistic &timer_stat, bool active)
     : m_stat (timer_stat)
+    , m_active (active)
   {
-    m_stat.reset_timer ();
+    if (m_active)
+      {
+	m_stat.reset_timer ();
+      }
   }
 
   template <class T>
   timer_statistic<T>::autotimer::~autotimer ()
   {
-    m_stat.time ();
+    if (m_active)
+      {
+	m_stat.time ();
+      }
   }
 
   //////////////////////////////////////////////////////////////////////////
@@ -401,17 +410,24 @@ namespace cubmonitor
   }
 
   template <class A, class T>
-  counter_timer_statistic<A, T>::autotimer::autotimer (counter_timer_statistic &cts)
+  counter_timer_statistic<A, T>::autotimer::autotimer (counter_timer_statistic &cts, bool active)
     : m_stat (cts)
+    , m_active (active)
   {
-    m_stat.reset_timer ();
+    if (m_active)
+      {
+	m_stat.reset_timer ();
+      }
   }
 
   template <class A, class T>
   counter_timer_statistic<A, T>::autotimer::~autotimer ()
   {
-    // will time duration from construction and increment once
-    m_stat.time_and_increment ();
+    if (m_active)
+      {
+	// will time duration from construction and increment once
+	m_stat.time_and_increment ();
+      }
   }
 
   //////////////////////////////////////////////////////////////////////////
