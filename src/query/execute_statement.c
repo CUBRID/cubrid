@@ -1638,8 +1638,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (error == ER_IT_DATA_OVERFLOW)
     {
       // max - min might be flooded. Regard the range is big enough.
-      numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591,
-                                    &range_val);
+      numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &range_val);
       er_clear ();
     }
 
