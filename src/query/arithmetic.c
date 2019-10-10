@@ -6462,7 +6462,7 @@ is_str_find_all (DB_VALUE * val, bool & find_all)
   std::string find_all_str (db_get_string (val), db_get_string_size (val));
   std::transform (find_all_str.begin (), find_all_str.end (), find_all_str.begin (), [] (unsigned char c)
   {
-    return std::tolower(c); 
+    return std::tolower (c); 
   });
   // *INDENT-ON*
 
