@@ -1360,8 +1360,8 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* get all values as string */
   numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
-  numeric_coerce_string_to_num (DB_NUMERIC_E38_MAX, DB_MAX_NUMERIC_PRECISION, INTL_CODESET_ISO88591, &e38);
-  numeric_coerce_string_to_num (DB_NUMERIC_E38_MIN, DB_MAX_NUMERIC_PRECISION, INTL_CODESET_ISO88591, &negative_e38);
+  numeric_coerce_string_to_num (DB_NUMERIC_E38_MAX, strlen (DB_NUMERIC_E38_MAX), INTL_CODESET_ISO88591, &e38);
+  numeric_coerce_string_to_num (DB_NUMERIC_E38_MIN, strlen (DB_NUMERIC_E38_MIN), INTL_CODESET_ISO88591, &negative_e38);
   db_make_int (&cmp_result, 0);
 
   start_val_node = PT_NODE_SR_START_VAL (statement);
@@ -1634,7 +1634,14 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
    * initialized from a constant, not inputted by user,  in this case, we don't
    * expect max_val should be responsible for the violation.
    */
-  numeric_db_value_sub (&max_val, &min_val, &range_val);
+  error = numeric_db_value_sub (&max_val, &min_val, &range_val);
+  if (DB_IS_NULL (&range_val) && error == ER_IT_DATA_OVERFLOW)
+    {
+      // max - min might be flooded. Regard the range is big enough.
+      numeric_coerce_string_to_num (DB_NUMERIC_E38_MAX, strlen (DB_NUMERIC_E38_MAX), INTL_CODESET_ISO88591, &range_val);
+      er_clear ();
+    }
+
   db_abs_dbval (&abs_inc_val, &inc_val);
   initialize_serial_invariant (&invariants[ninvars++], abs_inc_val, range_val, PT_LE, inc_val_msgid,
 			       (max_val_msgid == 0) ? min_val_msgid : max_val_msgid, ER_INVALID_SERIAL_VALUE);
@@ -2375,8 +2382,8 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* Now, get new values from node */
 
   numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
-  numeric_coerce_string_to_num (DB_NUMERIC_E38_MAX, DB_MAX_NUMERIC_PRECISION, INTL_CODESET_ISO88591, &e38);
-  numeric_coerce_string_to_num (DB_NUMERIC_E38_MIN, DB_MAX_NUMERIC_PRECISION, INTL_CODESET_ISO88591, &negative_e38);
+  numeric_coerce_string_to_num (DB_NUMERIC_E38_MAX, strlen (DB_NUMERIC_E38_MAX), INTL_CODESET_ISO88591, &e38);
+  numeric_coerce_string_to_num (DB_NUMERIC_E38_MIN, strlen (DB_NUMERIC_E38_MIN), INTL_CODESET_ISO88591, &negative_e38);
   db_make_int (&cmp_result, 0);
 
   db_value_domain_init (&new_inc_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
@@ -2603,6 +2610,13 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* invariant for abs(inc_val) <= (max_val - min_val). */
   numeric_db_value_sub (&new_max_val, &new_min_val, &range_val);
+  if (DB_IS_NULL (&range_val) && error == ER_IT_DATA_OVERFLOW)
+    {
+      // max - min might be flooded. Regard the range is big enough.
+      numeric_coerce_string_to_num (DB_NUMERIC_E38_MAX, strlen (DB_NUMERIC_E38_MAX), INTL_CODESET_ISO88591, &range_val);
+      er_clear ();
+    }
+
   db_abs_dbval (&abs_inc_val, &new_inc_val);
   initialize_serial_invariant (&invariants[ninvars++], abs_inc_val, range_val, PT_LE,
 			       (inc_val_change) ? MSGCAT_SEMANTIC_SERIAL_INC_VAL_INVALID : 0,
