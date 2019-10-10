@@ -127,7 +127,7 @@ namespace test_lockfree
 
   template <typename D>
   void
-  cout_msec_count (D &d)
+  cout_msec_count (const D &d)
   {
     std::cout << std::chrono::duration_cast<std::chrono::milliseconds> (d).count () << " msec";
   }
@@ -695,8 +695,8 @@ namespace test_lockfree
     tres.m_not_found_on_finds += find_not_found;
   }
 
-  const char *my_lf_hash_table_tester::TEST_MESSAGE_PREFIX = "test lf_hash_table";
-  const char *my_hashmap_tester::TEST_MESSAGE_PREFIX = "test lockfree::hashmap";
+  template <> const char *my_lf_hash_table_tester::TEST_MESSAGE_PREFIX = "test lf_hash_table";
+  template <> const char *my_hashmap_tester::TEST_MESSAGE_PREFIX = "test lockfree::hashmap";
 
   template <typename Hash, typename Tran>
   hash_tester<Hash, Tran>::hash_tester (test_type tt)
@@ -805,57 +805,6 @@ namespace test_lockfree
 	l_transys.free_index (l_indexes[i]);
       }
   }
-
-  template <typename F, typename ... Args>
-  void
-  test_hashmap_varsizes (bool for_perf, size_t thread_count, const std::string &case_name, F &&f, Args &&... args)
-  {
-    std::array<size_t, 2> hash_sizes = { 100, 10000 };
-    for (size_t i = 0; i < hash_sizes.size (); ++i)
-      {
-	test_result tres;
-
-	if (for_perf && i == 0)
-	  {
-	    continue;
-	  }
-
-	cout_new_line ();
-	std::cout << "test lockfree_hashmap|";
-	std::cout << case_name << " [tcnt = " << thread_count << ", hsz = " << hash_sizes[i] << "]";
-	increment_tab_indent ();
-	test_hashmap_case (tres, thread_count, hash_sizes[i], std::forward<F> (f), std::forward<Args> (args)...);
-	tres.dump_stats ();
-	decrement_tab_indent ();
-      }
-  }
-
-  template <typename F, typename ... Args>
-  void
-  test_lf_hash_table_varsizes (bool for_perf, size_t thread_count, const std::string &case_name, F &&f, Args &&... args)
-  {
-    std::vector<size_t> hash_sizes = { 100, 10000 };
-    for (size_t i = 0; i < hash_sizes.size (); ++i)
-      {
-	test_result tres;
-
-	if (for_perf && i == 0)
-	  {
-	    continue;
-	  }
-
-	cout_new_line ();
-	std::cout << "test lf_hash_table_cpp|";
-	std::cout << case_name << " [tcnt = " << thread_count << ", hsz = " << hash_sizes[i] << "]";
-	increment_tab_indent ();
-	build_hash_and_run_case<my_lf_hash_table> (tres, thread_count, hash_sizes[i], std::forward<F> (f),
-	    std::forward<Args> (args)...);
-	tres.dump_stats ();
-	decrement_tab_indent ();
-      }
-  }
-
-
 
   template <typename Hash, typename Tran>
   template <typename F, typename ... Args>
