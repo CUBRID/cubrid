@@ -25,7 +25,6 @@
 
 #include "dbtype_def.h"
 #include "error_code.h"
-#include "error_manager.h"
 
 #include <fstream>
 
@@ -591,7 +590,6 @@ namespace cubload
 
 	    line.append ("\n"); // feed lexer with new line
 	    batch *c_batch = new batch (batch_id, clsid, line, lineno, 1);
-	    std::string class_name;
 	    error_code = c_handler (*c_batch, class_is_ignored);
 	    if (error_code != NO_ERROR)
 	      {

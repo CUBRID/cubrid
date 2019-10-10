@@ -1297,7 +1297,6 @@ load_object_file (load_args * args)
 
       return ret;
     };
-
   /* *INDENT-ON* */
 
   // here we are sure that object_file exists since it was validated by loaddb_internal function
