@@ -315,14 +315,15 @@ namespace cubload
       }
 
     const std::vector<std::string> &classes_ignored = m_session.get_args ().ignore_classes;
-    std::string class_name (classname);
     bool is_ignored;
 
-    std::transform (class_name.begin (), class_name.end (), class_name.begin (), [] (unsigned char c)
-    {
-      return std::tolower (c);
-    });
+    char buffer[256] = { 0 };
+    int str_size = intl_identifier_lower_string_size (classname);
 
+    // Make the string to be lower case and take into consideration all types of characters.
+    intl_identifier_lower (classname, buffer);
+
+    std::string class_name (buffer);
     auto result = std::find (classes_ignored.begin (), classes_ignored.end (), class_name);
 
     is_ignored = (result != classes_ignored.end ());

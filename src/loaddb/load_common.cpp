@@ -25,6 +25,7 @@
 
 #include "dbtype_def.h"
 #include "error_code.h"
+#include "intl_support.h"
 
 #include <algorithm>
 #include <cctype>
@@ -344,11 +345,14 @@ namespace cubload
 
 	// scan first string, and ignore rest of the line
 	sscanf (line.c_str (), fmt, class_name.c_str ());
-	std::transform (class_name.begin (), class_name.end (), class_name.begin (), [] (unsigned char c)
-	{
-	  return std::tolower (c);
-	});
-	ignore_classes.emplace_back (class_name.c_str (), strlen (class_name.c_str ()));
+
+	char buffer[256] = { 0 };
+	int str_size = intl_identifier_lower_string_size (class_name.c_str ());
+
+	// Make the string to be lower case and take into consideration all types of characters.
+	intl_identifier_lower (class_name.c_str (), buffer);
+
+	ignore_classes.emplace_back (buffer, str_size);
       }
 
     file.close ();
