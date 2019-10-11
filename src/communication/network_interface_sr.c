@@ -3874,16 +3874,17 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
 
 end:
 
+  int err;
+
   if (return_btid == NULL)
     {
-      int err;
-
       ASSERT_ERROR_AND_SET (err);
       ptr = or_pack_int (reply, err);
     }
   else
     {
-      ptr = or_pack_int (reply, NO_ERROR);
+      err = NO_ERROR;
+      ptr = or_pack_int (reply, err);
     }
 
   if (index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
@@ -3892,7 +3893,9 @@ end:
       int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
       LOCK cls_lock = lock_get_object_lock (&class_oids[0], oid_Root_class_oid);
 
-      assert (cls_lock == SCH_M_LOCK);	// hope it never be IX_LOCK.
+      // in case of shutdown, index loader might be interrupted and got error
+      // otherwise, it should restore SCH_M_LOCK
+      assert ((err != NO_ERROR && css_is_shutdowning_server ()) || cls_lock == SCH_M_LOCK);
       ptr = or_pack_int (ptr, (int) cls_lock);
     }
   else

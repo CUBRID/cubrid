@@ -38,6 +38,7 @@
 #include "thread_manager.hpp"
 #include "xserver_interface.h"
 
+#include <cctype>
 #include <cstring>
 
 namespace cubload
@@ -95,6 +96,14 @@ namespace cubload
 	return;
       }
 
+    if (cmd_spec != NULL && (cmd_spec->attr_type == LDR_ATTRIBUTE_CLASS || cmd_spec->attr_type == LDR_ATTRIBUTE_SHARED))
+      {
+	int err_code = cmd_spec->attr_type == LDR_ATTRIBUTE_CLASS ? ER_LDR_CLASS_NOT_SUPPORTED : ER_LDR_SHARED_NOT_SUPPORTED;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_code, 0);
+	m_error_handler.on_syntax_failure ();
+	return;
+      }
+
     register_class_with_attributes (class_name->val, cmd_spec);
   }
 
@@ -127,7 +136,6 @@ namespace cubload
     // Check if we have to ignore this class.
     if (is_class_ignored (class_name))
       {
-
 	std::string classname (class_name);
 	m_session.append_log_msg (LOADDB_MSG_IGNORED_CLASS, class_name);
 	class_entry *cls_entry = new class_entry (classname, m_clsid, true);
@@ -286,10 +294,12 @@ namespace cubload
     switch (attr_type)
       {
       case LDR_ATTRIBUTE_CLASS:
+	assert (false);
 	or_attributes = attrinfo.last_classrepr->class_attrs;
 	*n_attributes = attrinfo.last_classrepr->n_class_attrs;
 	break;
       case LDR_ATTRIBUTE_SHARED:
+	assert (false);
 	or_attributes = attrinfo.last_classrepr->shared_attrs;
 	*n_attributes = attrinfo.last_classrepr->n_shared_attrs;
 	break;
@@ -308,9 +318,19 @@ namespace cubload
   bool
   server_class_installer::is_class_ignored (const char *classname)
   {
+    if (IS_OLD_GLO_CLASS (classname))
+      {
+	return true;
+      }
+
     const std::vector<std::string> &classes_ignored = m_session.get_args ().ignore_classes;
     std::string class_name (classname);
     bool is_ignored;
+
+    std::transform (class_name.begin (), class_name.end (), class_name.begin (), [] (unsigned char c)
+    {
+      return std::tolower (c);
+    });
 
     auto result = std::find (classes_ignored.begin (), classes_ignored.end (), class_name);
 
