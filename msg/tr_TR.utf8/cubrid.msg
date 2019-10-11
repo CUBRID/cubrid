@@ -1313,7 +1313,7 @@ $ LOADDB
 1244 Loading shared attributes updates from object files is not supported in CS mode.
 1245 Loading class attributes updates from object files is not supported in CS mode.
 
-1244 Son Hata
+1246 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
