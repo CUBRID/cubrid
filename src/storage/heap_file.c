@@ -691,7 +691,7 @@ static DB_MIDXKEY *heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, 
 					 TP_DOMAIN ** key_domain);
 static DB_MIDXKEY *heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY * midxkey,
 					      int *att_ids, HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res,
-					      int func_col_id, int func_attr_index_start);
+					      int func_col_id, int func_attr_index_start, TP_DOMAIN * midxkey_domain);
 
 static int heap_dump_hdr (FILE * fp, HEAP_HDR_STATS * heap_hdr);
 
@@ -12456,11 +12456,15 @@ error:
  *   midxkey(in):
  *   att_ids(in):
  *   attrinfo(in):
+ *   func_res(out):
+ *   func_col_id(in):
+ *   func_attr_index_start(in):
+ *   midxkey_domain(in):
  */
 static DB_MIDXKEY *
 heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY * midxkey, int *att_ids,
 			   HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, int func_col_id,
-			   int func_attr_index_start)
+			   int func_attr_index_start, TP_DOMAIN * midxkey_domain)
 {
   char *nullmap_ptr;
   int num_vals, i, reprid, k;
@@ -12540,7 +12544,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
     }
   midxkey->size = CAST_BUFLEN (buf.ptr - buf.buffer);
   midxkey->ncolumns = num_vals;
-  midxkey->domain = NULL;
+  midxkey->domain = midxkey_domain;
   midxkey->min_max_val.position = -1;
   midxkey->min_max_val.type = MIN_COLUMN;
 
@@ -12552,6 +12556,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
  *   return: Pointer to DB_VALUE containing the key.
  *   n_atts(in): Size of attribute ID array.
  *   att_ids(in): Array of attribute ID's
+ *   atts_prefix_length (in): array of attributes prefix index length
  *   attr_info(in): Pointer to attribute information structure.  This
  *                  structure contains the BTID's, the attributes and their
  *                  values.
@@ -12559,7 +12564,9 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
  *   db_valuep(in): Pointer to a DB_VALUE.  This db_valuep will be used to
  *                  contain the set key in the case of multi-column B-trees.
  *                  It is ignored for single-column B-trees.
- *   buf(in):
+ *   buf(in): Buffer of midxkey value encoding
+ *   func_index_info(in): function index definition, if key is based on function index
+ *   midxkey_domain(in): domain of midxkey
  *
  * Note: Return a key for the specified attribute ID's
  *
@@ -12576,7 +12583,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 DB_VALUE *
 heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, int *atts_prefix_length,
 			    HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes, DB_VALUE * db_valuep, char *buf,
-			    FUNCTION_INDEX_INFO * func_index_info)
+			    FUNCTION_INDEX_INFO * func_index_info, TP_DOMAIN * midxkey_domain)
 {
   DB_VALUE *ret_valp;
   DB_VALUE *fi_res = NULL;
@@ -12628,7 +12635,7 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 	}
 
       if (heap_midxkey_key_generate (thread_p, recdes, &midxkey, att_ids, attr_info, fi_res, fi_col_id,
-				     fi_attr_index_start) == NULL)
+				     fi_attr_index_start, midxkey_domain) == NULL)
 	{
 	  return NULL;
 	}
