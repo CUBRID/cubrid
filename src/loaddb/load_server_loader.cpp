@@ -136,7 +136,6 @@ namespace cubload
     // Check if we have to ignore this class.
     if (is_class_ignored (class_name))
       {
-
 	std::string classname (class_name);
 	m_session.append_log_msg (LOADDB_MSG_IGNORED_CLASS, class_name);
 	class_entry *cls_entry = new class_entry (classname, m_clsid, true);
@@ -295,10 +294,12 @@ namespace cubload
     switch (attr_type)
       {
       case LDR_ATTRIBUTE_CLASS:
+	assert (false);
 	or_attributes = attrinfo.last_classrepr->class_attrs;
 	*n_attributes = attrinfo.last_classrepr->n_class_attrs;
 	break;
       case LDR_ATTRIBUTE_SHARED:
+	assert (false);
 	or_attributes = attrinfo.last_classrepr->shared_attrs;
 	*n_attributes = attrinfo.last_classrepr->n_shared_attrs;
 	break;
