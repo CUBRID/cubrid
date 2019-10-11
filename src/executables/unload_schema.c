@@ -724,7 +724,7 @@ export_serial (print_output & output_ctx)
 	  /* Calculate next value of serial */
 	  db_make_null (&diff_value);
 	  error = numeric_db_value_sub (&values[SERIAL_MAX_VAL], &values[SERIAL_CURRENT_VAL], &diff_value);
-	  if (DB_IS_NULL (&diff_value) && error == ER_IT_DATA_OVERFLOW)
+	  if (error == ER_IT_DATA_OVERFLOW)
 	    {
 	      // max - curr might be flooded.
 	      diff_value = values[SERIAL_MAX_VAL];
@@ -1928,7 +1928,7 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
 
 		  db_make_null (&diff_val);
 		  sr_error = numeric_db_value_sub (&max_val, &cur_val, &diff_val);
-		  if (DB_IS_NULL (&diff_val) && sr_error == ER_IT_DATA_OVERFLOW)
+		  if (sr_error == ER_IT_DATA_OVERFLOW)
 		    {
 		      // max - cur might be flooded.
 		      diff_val = max_val;
