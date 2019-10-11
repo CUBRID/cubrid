@@ -141,9 +141,9 @@ struct serial_invariant
   DB_VALUE val2;
   PT_OP_TYPE cmp_op;
   int val1_msgid;		/* the proper message id for val1. 0 means val1 should not be responsible for the
-				 * invariant voilation */
+				 * invariant violation */
   int val2_msgid;		/* the proper message id for val2. 0 means val2 should not be responsible for the
-				 * invariant voilation */
+				 * invariant violation */
   int error_type;		/* ER_QPROC_SERIAL_RANGE_OVERFLOW or ER_INVALID_SERIAL_VALUE */
 };
 
@@ -1591,9 +1591,9 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
    * invariant for min_val >= negative_e38.
    * if min_val_msgid == MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID,
    * that means the value of min_val is from start_val, if the invariant
-   * is voilated, start_val invalid error message should be displayed
+   * is violated, start_val invalid error message should be displayed
    * instead of min_val underflow. the val2_msgid is 0 because negative_e38
-   * cannot be the reason which voilates the invariant.
+   * cannot be the reason which violates the invariant.
    */
   initialize_serial_invariant (&invariants[ninvars++], min_val, negative_e38, PT_GE,
 			       ((min_val_msgid == MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID)
@@ -1604,7 +1604,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
    * invariant for max_val <= e38. Like the above invariant, if
    * max_val_msgid == MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID,
    * start_val invalid error message should be displayed if the invariant
-   * is voilated.
+   * is violated.
    */
   initialize_serial_invariant (&invariants[ninvars++], max_val, e38, PT_LE,
 			       ((max_val_msgid == MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID)
@@ -1629,7 +1629,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /*
    * invariant for abs(inc_val) <= (max_val - min_val).
-   * if this invariant is voilated, inc_val, min_val or max_val should be
+   * if this invariant is violated, inc_val, min_val or max_val should be
    * responsible for it. If max_val_msgid == 0, which means max_val is
    * initialized from a constant, not inputted by user,  in this case, we don't
    * expect max_val should be responsible for the violation.
@@ -1655,7 +1655,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       cached_num = cached_num_node->info.value.data_value.i;
 
-      /* ABS (cache_num * inc_val) <range_val */
+      /* ABS (cache_num * inc_val) <= range_val */
 
       db_make_int (&cached_num_int_val, cached_num);
       db_value_domain_init (&cached_num_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
@@ -1727,7 +1727,6 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       goto end;
     }
-
 
   if (p != NULL)
     {
@@ -2623,7 +2622,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       cached_num = cached_num_node->info.value.data_value.i;
 
-      /* ABS (cache_num * inc_val) <range_val */
+      /* ABS (cache_num * inc_val) <= range_val */
 
       db_make_int (&cached_num_int_val, cached_num);
       db_value_domain_init (&cached_num_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
