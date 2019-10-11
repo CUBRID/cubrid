@@ -41,6 +41,7 @@
 
 #include <algorithm>
 #include <assert.h>
+#include <cctype>
 #include <float.h>
 #include <math.h>
 #include <stdio.h>
