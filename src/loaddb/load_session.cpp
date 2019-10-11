@@ -505,7 +505,7 @@ namespace cubload
   }
 
   int
-  session::install_class (cubthread::entry &thread_ref, const batch &batch, bool &is_ignored)
+  session::install_class (cubthread::entry &thread_ref, const batch &batch, bool &is_ignored, std::string &cls_name)
   {
     thread_ref.m_loaddb_driver = m_driver;
 
@@ -514,7 +514,8 @@ namespace cubload
     const class_entry *cls_entry = get_class_registry ().get_class_entry (batch.get_class_id ());
     if (cls_entry != NULL)
       {
-	is_ignored = get_class_registry ().get_class_entry (batch.get_class_id ())->is_ignored ();
+	is_ignored = cls_entry->is_ignored ();
+	cls_name = cls_entry->get_class_name ();
       }
     else
       {
@@ -578,7 +579,8 @@ namespace cubload
 
     class_handler c_handler = [this, &thread_ref] (const batch &batch, bool &is_ignored) -> int
     {
-      return install_class (thread_ref, batch, is_ignored);
+      std::string class_name;
+      return install_class (thread_ref, batch, is_ignored, class_name);
     };
 
     return split (m_args.periodic_commit, m_args.server_object_file, c_handler, b_handler);
