@@ -33381,7 +33381,7 @@ end:
  * btree_key_online_index_IB_insert_list () - BTREE_PROCESS_KEY_FUNCTION used for inserting a new object in b-tree during
  *                                       online index loading.
  *
- * return         : Error code.
+ * return          : Error code.
  * thread_p (in)   : Thread entry.
  * btid_int (in)   : B-tree info.
  * key (int)       : Key info
