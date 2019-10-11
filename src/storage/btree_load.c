@@ -5071,7 +5071,7 @@ index_builder_loader_task::~index_builder_loader_task ()
 index_builder_loader_task::batch_key_status
 index_builder_loader_task::add_key (const DB_VALUE *key, const OID &oid)
 {
-  if  (DB_IS_NULL (key) || btree_multicol_key_is_null (const_cast<DB_VALUE *>(key)))
+  if (DB_IS_NULL (key) || btree_multicol_key_is_null (const_cast<DB_VALUE *>(key)))
     {
       /* We do not store NULL keys, but we track them for unique indexes;
        * for non-unique, just skip row */
