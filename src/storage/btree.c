@@ -35446,7 +35446,7 @@ page_key_boundary::set_value (THREAD_ENTRY * thread_p, DB_VALUE &dest_value, BTI
 
 /* 
  * update_boundary_eq : helper function used in context of btree insert advance functions
- *                      Updates the left/right bondary values of the search path down to a leaf page.
+ *                      Updates the left/right boundary values of the search path down to a leaf page.
  *                      This handles the case when the key to insert is equal to current value stored 
  *                      in non-leaf record.
  *
@@ -35480,7 +35480,7 @@ page_key_boundary::update_boundary_eq (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
 /* 
  * update_boundary_lt : helper function used in context of btree insert advance functions
- *                      Updates the left/right bondary values of the search path down to a leaf page.
+ *                      Updates the left/right boundary values of the search path down to a leaf page.
  *                      This handles the case when the key to insert is less than the value of current sub-tree.
  *
  * thread_p (in) :
@@ -35508,7 +35508,7 @@ page_key_boundary::update_boundary_lt (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
 /* 
  * update_boundary_gt_or_eq : helper function used in context of btree insert advance functions
- *                      Updates the left/right bondary values of the search path down to a leaf page.
+ *                      Updates the left/right boundary values of the search path down to a leaf page.
  *                      This handles the case when the key to insert is greater of equal than the value
  *                      of current sub-tree.
  *
