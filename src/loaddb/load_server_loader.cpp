@@ -316,8 +316,11 @@ namespace cubload
     const std::vector<std::string> &classes_ignored = m_session.get_args ().ignore_classes;
     bool is_ignored;
 
-    char lower_case_string[DB_MAX_CLASS_LENGTH] = { 0 };
+    char lower_case_string[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
+#if !defined (NDEBUG)
     int str_size = intl_identifier_lower_string_size (classname);
+    assert (str_size <= DB_MAX_IDENTIFIER_LENGTH);
+#endif
 
     // Make the string to be lower case and take into consideration all types of characters.
     intl_identifier_lower (classname, lower_case_string);

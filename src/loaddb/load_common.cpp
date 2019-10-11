@@ -344,13 +344,16 @@ namespace cubload
 	// scan first string, and ignore rest of the line
 	sscanf (line.c_str (), fmt, class_name.c_str ());
 
-	char lower_case_string[DB_MAX_CLASS_LENGTH] = { 0 };
+	char lower_case_string[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
+#if !defined (NDEBUG)
 	int str_size = intl_identifier_lower_string_size (class_name.c_str ());
+	assert (str_size <= DB_MAX_IDENTIFIER_LENGTH);
+#endif
 
 	// Make the string to be lower case and take into consideration all types of characters.
 	intl_identifier_lower (class_name.c_str (), lower_case_string);
 
-	ignore_classes.emplace_back (lower_case_string, str_size);
+	ignore_classes.emplace_back (lower_case_string);
       }
 
     file.close ();
