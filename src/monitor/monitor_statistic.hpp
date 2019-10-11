@@ -479,6 +479,13 @@ namespace cubmonitor
     this->m_value += value;
   }
 
+  template <>
+  void
+  accumulator_atomic_statistic<time_rep>::collect (const time_rep &value)
+  {
+    this->m_value.fetch_add (value.count ());
+  }
+
   template <typename Rep>
   void
   accumulator_atomic_statistic<Rep>::collect (const Rep &value)
