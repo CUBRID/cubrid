@@ -317,13 +317,13 @@ namespace cubload
     bool is_ignored;
 
     char lower_case_string[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
+    std::string class_name (lower_case_string);
 
     assert (intl_identifier_lower_string_size (class_name.c_str ()) <= DB_MAX_IDENTIFIER_LENGTH);
 
     // Make the string to be lower case and take into consideration all types of characters.
     intl_identifier_lower (classname, lower_case_string);
 
-    std::string class_name (lower_case_string);
     auto result = std::find (classes_ignored.begin (), classes_ignored.end (), class_name);
 
     is_ignored = (result != classes_ignored.end ());
