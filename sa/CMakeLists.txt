@@ -173,6 +173,21 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_cl.c
   )
 
+set(MONITOR_SOURCES
+  ${MONITOR_DIR}/monitor_collect.cpp
+  ${MONITOR_DIR}/monitor_registration.cpp
+  ${MONITOR_DIR}/monitor_statistic.cpp
+  ${MONITOR_DIR}/monitor_transaction.cpp
+)
+
+set(MONITOR_HEADERS
+  ${MONITOR_DIR}/monitor_collect.hpp
+  ${MONITOR_DIR}/monitor_definition.hpp
+  ${MONITOR_DIR}/monitor_registration.hpp
+  ${MONITOR_DIR}/monitor_statistic.hpp
+  ${MONITOR_DIR}/monitor_transaction.hpp
+)
+
 set(PARSER_SOURCES
   ${BISON_csql_grammar_OUTPUTS}
   ${FLEX_csql_lexer_OUTPUTS}
@@ -476,6 +491,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
   ${COMMUNICATION_SOURCES}
+  ${MONITOR_SOURCES}
   ${PARSER_DIR}/parser_support.c
   ${PARSER_DIR}/show_meta.c
   ${PARSER_DIR}/double_byte_support.c
@@ -535,6 +551,7 @@ add_library(cubridsa SHARED
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
   ${JSP_SOURCES}
+  ${MONITOR_HEADERS}
   ${OBJECT_HEADERS}
   ${OBJECT_SOURCES}
   ${OPTIMIZER_SOURCES}
