@@ -441,6 +441,7 @@ namespace cubmonitor
     *destination = statistic_value_cast (get_value ());
   }
 
+#if defined (MONITOR_ENABLE_ATOMIC_FLOATING_REP)
   template <>
   void
   atomic_primitive<floating_rep>::fetch_add (const floating_rep &value)
@@ -453,6 +454,7 @@ namespace cubmonitor
       }
     while (!compare_exchange (crt_value, crt_value + value));
   }
+#endif // MONITOR_ENABLE_ATOMIC_FLOATING_REP
 
   template <typename Rep>
   void
