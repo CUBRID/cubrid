@@ -2784,6 +2784,7 @@ error:
   logtb_finalize_global_unique_stats_table (thread_p);
 
   vacuum_stop_workers (thread_p);
+  vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
   pgbuf_daemons_destroy ();
