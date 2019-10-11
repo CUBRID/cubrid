@@ -345,10 +345,8 @@ namespace cubload
 	sscanf (line.c_str (), fmt, class_name.c_str ());
 
 	char lower_case_string[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
-#if !defined (NDEBUG)
-	int str_size = intl_identifier_lower_string_size (class_name.c_str ());
-	assert (str_size <= DB_MAX_IDENTIFIER_LENGTH);
-#endif
+
+	assert (intl_identifier_lower_string_size (class_name.c_str ()) <= DB_MAX_IDENTIFIER_LENGTH);
 
 	// Make the string to be lower case and take into consideration all types of characters.
 	intl_identifier_lower (class_name.c_str (), lower_case_string);
