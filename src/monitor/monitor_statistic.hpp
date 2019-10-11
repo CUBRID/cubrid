@@ -257,7 +257,6 @@ namespace cubmonitor
 	return m_value.compare_exchange_strong (compare_count, replace_value.count ());
       }
 
-    private:
       std::atomic<time_rep::rep> m_value;                    // stored value
   };
 
