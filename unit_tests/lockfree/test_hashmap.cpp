@@ -965,10 +965,10 @@ namespace test_lockfree
     std::cout << "Start performance testing lock-free hashmap/hash table with mutex " << mutex_on_or_off;
     increment_tab_indent ();
 
-    lfht_tester.run_test ("testcase_find_insdel_iter_clear=1M,30k,5k,10,10",
-			  &my_lf_hash_table_tester::testcase_find_insdel_iter_clear, 1000000, 30000, 5000, 10, 10);
-    hm_tester.run_test ("testcase_find_insdel_iter_clear=1M,30k,5k,10,10",
-			&my_hashmap_tester::testcase_find_insdel_iter_clear, 1000000, 30000, 5000, 10, 10);
+    lfht_tester.run_test ("testcase_find_insdel_iter_clear=1M,30k,5k,1,1",
+			  &my_lf_hash_table_tester::testcase_find_insdel_iter_clear, 1000000, 30000, 5000, 1, 1);
+    hm_tester.run_test ("testcase_find_insdel_iter_clear=1M,30k,5k,1,1",
+			&my_hashmap_tester::testcase_find_insdel_iter_clear, 1000000, 30000, 5000, 1, 1);
 
     decrement_tab_indent ();
     cout_new_line ();
