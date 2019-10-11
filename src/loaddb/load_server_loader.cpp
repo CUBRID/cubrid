@@ -96,6 +96,14 @@ namespace cubload
 	return;
       }
 
+    if (cmd_spec != NULL && (cmd_spec->attr_type == LDR_ATTRIBUTE_CLASS || cmd_spec->attr_type == LDR_ATTRIBUTE_SHARED))
+      {
+	int err_code = cmd_spec->attr_type == LDR_ATTRIBUTE_CLASS ? ER_LDR_CLASS_NOT_SUPPORTED : ER_LDR_SHARED_NOT_SUPPORTED;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_code, 0);
+	m_error_handler.on_syntax_failure ();
+	return;
+      }
+
     register_class_with_attributes (class_name->val, cmd_spec);
   }
 
