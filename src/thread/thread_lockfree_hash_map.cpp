@@ -19,6 +19,13 @@
 
 #include "thread_lockfree_hash_map.hpp"
 
+#include "thread_manager.hpp"
+
 namespace cubthread
 {
+  lockfree::tran::system &
+  get_thread_entry_lftransys ()
+  {
+    return cubthread::get_manager ()->get_lockfree_transys ();
+  }
 } // namespace cubthread
