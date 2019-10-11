@@ -1351,23 +1351,22 @@ vacuum_finalize (THREAD_ENTRY * thread_p)
 
   if (vacuum_Block_data_buffer != NULL)
     {
-      if (vacuum_Data.is_loaded)
+      while (!vacuum_Block_data_buffer->is_empty ())
 	{
-	  while (!vacuum_Block_data_buffer->is_empty ())
+	  // consume log block buffer; we need to do this in a loop because vacuum_consume_buffer_log_blocks adds new
+	  // log entries and may generate new log blocks
+
+	  if (!vacuum_Data.is_loaded)
 	    {
-	      // vacuum_consume_buffer_log_blocks own logging may generate another log block. need to recheck
-	      // until buffer is completely empty
-	      if (vacuum_consume_buffer_log_blocks (thread_p) != NO_ERROR)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-		  assert (0);
-		}
+	      // safe-guard check: cannot consume if data is not loaded. should never happen
+	      assert (false);
+	      break;
 	    }
-	}
-      if (!vacuum_Block_data_buffer->is_empty ())
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  assert (0);
+	  if (vacuum_consume_buffer_log_blocks (thread_p) != NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      assert (0);
+	    }
 	}
       delete vacuum_Block_data_buffer;
       vacuum_Block_data_buffer = NULL;
