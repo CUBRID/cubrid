@@ -38,7 +38,6 @@
 #include "thread_manager.hpp"
 #include "xserver_interface.h"
 
-#include <cctype>
 #include <cstring>
 
 namespace cubload
@@ -324,13 +323,15 @@ namespace cubload
       }
 
     const std::vector<std::string> &classes_ignored = m_session.get_args ().ignore_classes;
-    std::string class_name (classname);
     bool is_ignored;
 
-    std::transform (class_name.begin (), class_name.end (), class_name.begin (), [] (unsigned char c)
-    {
-      return std::tolower (c);
-    });
+    char lower_case_string[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
+    std::string class_name (lower_case_string);
+
+    assert (intl_identifier_lower_string_size (class_name.c_str ()) <= DB_MAX_IDENTIFIER_LENGTH);
+
+    // Make the string to be lower case and take into consideration all types of characters.
+    intl_identifier_lower (classname, lower_case_string);
 
     auto result = std::find (classes_ignored.begin (), classes_ignored.end (), class_name);
 
