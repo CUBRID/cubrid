@@ -166,31 +166,25 @@ class index_builder_loader_context : public cubthread::entry_manager
     std::atomic_bool m_has_error;
     std::atomic<std::uint64_t> m_tasks_executed;
     int m_error_code;
-    const TP_DOMAIN* m_key_type;
+    const TP_DOMAIN *m_key_type;
     css_conn_entry *m_conn;
 
     index_builder_loader_context () = default;
 
   protected:
-    void on_create (context_type & context) override;
-    void on_retire (context_type & context) override;
-    void on_recycle (context_type & context) override;
-};
-
-struct index_builder_key_oid
-{
-  DB_VALUE m_key;
-  OID m_oid;
+    void on_create (context_type &context) override;
+    void on_retire (context_type &context) override;
+    void on_recycle (context_type &context) override;
 };
 
 class index_builder_loader_task: public cubthread::entry_task
 {
   private:
     BTID m_btid;
-    std::vector<index_builder_key_oid> m_keys_oids;
     OID m_class_oid;
     int m_unique_pk;
-    index_builder_loader_context & m_load_context; // Loader context.
+    index_builder_loader_context &m_load_context; // Loader context.
+    btree_insert_list m_insert_list;
     size_t m_memsize;
 
     std::atomic<int> &m_num_keys;
@@ -205,16 +199,18 @@ class index_builder_loader_task: public cubthread::entry_task
       BATCH_FULL
     };
 
-    index_builder_loader_task (const BTID * btid, const OID * class_oid, int unique_pk,
-                               index_builder_loader_context & load_context, std::atomic<int> &num_keys,
+    index_builder_loader_task () = delete;
+
+    index_builder_loader_task (const BTID *btid, const OID *class_oid, int unique_pk,
+                               index_builder_loader_context &load_context, std::atomic<int> &num_keys,
 			       std::atomic<int> &num_oids, std::atomic<int> &num_nulls);
     ~index_builder_loader_task ();
     
     // add key to key set and return true if task is ready for execution, false otherwise
-    batch_key_status add_key (const DB_VALUE * key, const OID& oid);
+    batch_key_status add_key (const DB_VALUE *key, const OID &oid);
     bool has_keys () const;
 
-    void execute (cubthread::entry & thread_ref);
+    void execute (cubthread::entry &thread_ref);
 
   private:
     void clear_keys ();
@@ -265,7 +261,7 @@ static int online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, H
 				 int n_classes, int *attrids, int n_attrs, FUNCTION_INDEX_INFO func_idx_info,
 				 PRED_EXPR_WITH_CONTEXT * filter_pred, int *attrs_prefix_length,
 				 HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scancache, int unique_pk,
-				 int ib_thread_count, const TP_DOMAIN * key_type);
+				 int ib_thread_count, TP_DOMAIN * key_type);
 static bool btree_is_worker_pool_logging_true ();
 
 /*
@@ -3170,7 +3166,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
       dbvalue_ptr =
 	heap_attrinfo_generate_key (thread_p, sort_args->n_attrs, &sort_args->attr_ids[attr_offset], prefix_lengthp,
 				    &sort_args->attr_info, &sort_args->in_recdes, &dbvalue, aligned_midxkey_buf,
-				    sort_args->func_index_info);
+				    sort_args->func_index_info, NULL);
       if (dbvalue_ptr == NULL)
 	{
 	  return SORT_ERROR_OCCURRED;
@@ -4816,7 +4812,7 @@ static int
 online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids, OID * class_oids, int n_classes,
 		      int *attrids, int n_attrs, FUNCTION_INDEX_INFO func_idx_info,
 		      PRED_EXPR_WITH_CONTEXT * filter_pred, int *attrs_prefix_length, HEAP_CACHE_ATTRINFO * attr_info,
-		      HEAP_SCANCACHE * scancache, int unique_pk, int ib_thread_count, const TP_DOMAIN * key_type)
+		      HEAP_SCANCACHE * scancache, int unique_pk, int ib_thread_count, TP_DOMAIN * key_type)
 {
   int ret = NO_ERROR, eval_res;
   OID cur_oid;
@@ -4861,6 +4857,10 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   load_context.m_tasks_executed = 0UL;
   load_context.m_key_type = key_type;
   load_context.m_conn = thread_p->conn_entry;
+
+  PERF_UTIME_TRACKER time_online_index = PERF_UTIME_TRACKER_INITIALIZER;
+
+  PERF_UTIME_TRACKER_START (thread_p, &time_online_index);
 
   /* Start extracting from heap. */
   for (;;)
@@ -4935,9 +4935,9 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	  p_prefix_length = &(attrs_prefix_length[0]);
 	}
 
-      /* Generate the key. */
+      /* Generate the key : provide key_type domain - needed for compares during sort */
       p_dbvalue = heap_attrinfo_generate_key (thread_p, n_attrs, &attrids[attr_offset], p_prefix_length, attr_info,
-					      &cur_record, &dbvalue, aligned_midxkey_buf, p_func_idx_info);
+					      &cur_record, &dbvalue, aligned_midxkey_buf, p_func_idx_info, key_type);
       if (p_dbvalue == NULL)
 	{
 	  ret = ER_FAILED;
@@ -5008,6 +5008,8 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       while (load_context.m_tasks_executed != tasks_started);
     }
 
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_online_index, PSTAT_BT_ONLINE);
+
   thread_get_manager ()->destroy_worker_pool (ib_workpool);
 
   if (BTREE_IS_UNIQUE (btid_int->unique_pk))
@@ -5045,12 +5047,14 @@ index_builder_loader_context::on_recycle (context_type &context)
 }
 
 index_builder_loader_task::index_builder_loader_task (const BTID *btid, const OID *class_oid, int unique_pk,
-						      index_builder_loader_context &load_context, std::atomic<int> &num_keys,
-						      std::atomic<int> &num_oids, std::atomic<int> &num_nulls)
-  : m_load_context (load_context),
-    m_num_keys (num_keys),
-    m_num_oids (num_oids),
-    m_num_nulls (num_nulls)
+						      index_builder_loader_context &load_context,
+						      std::atomic<int> &num_keys, std::atomic<int> &num_oids,
+						      std::atomic<int> &num_nulls)
+  : m_load_context (load_context)
+  , m_insert_list (load_context.m_key_type)
+  , m_num_keys (num_keys)
+  , m_num_oids (num_oids)
+  , m_num_nulls (num_nulls)
 {
   BTID_COPY (&m_btid, btid);
   COPY_OID (&m_class_oid, class_oid);
@@ -5067,26 +5071,20 @@ index_builder_loader_task::~index_builder_loader_task ()
 index_builder_loader_task::batch_key_status
 index_builder_loader_task::add_key (const DB_VALUE *key, const OID &oid)
 {
-  m_keys_oids.emplace_back ();
+  if (DB_IS_NULL (key) || btree_multicol_key_is_null (const_cast<DB_VALUE *>(key)))
+    {
+      /* We do not store NULL keys, but we track them for unique indexes;
+       * for non-unique, just skip row */
+      if (BTREE_IS_UNIQUE (m_unique_pk))
+        {
+          ++m_insert_list.m_ignored_nulls_cnt;
+        }
+      return BATCH_CONTINUE;
+    }
 
-  m_keys_oids.back ().m_oid = oid;
+  size_t entry_size = m_insert_list.add_key (key, oid);
 
-  db_value &last_key = m_keys_oids.back ().m_key;
-  db_make_null (&last_key);
-  
-  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-
-  /* Switch to global heapID. */
-  HL_HEAPID prev_id = db_change_private_heap (thread_p, 0);
-
-  qdata_copy_db_value (&last_key, key);
-  m_memsize += m_load_context.m_key_type->type->get_disk_size_of_value (&last_key);
-
-  /* reset back to previous heapID. */
-  db_change_private_heap (thread_p, prev_id);
-
-  m_memsize += OR_OID_SIZE;
-  m_memsize = DB_ALIGN (m_memsize, BTREE_MAX_ALIGN);
+  m_memsize += entry_size;
 
   return (m_memsize > (size_t) prm_get_bigint_value (PRM_ID_IB_TASK_MEMSIZE)) ? BATCH_FULL : BATCH_CONTINUE;
 }
@@ -5094,13 +5092,13 @@ index_builder_loader_task::add_key (const DB_VALUE *key, const OID &oid)
 bool
 index_builder_loader_task::has_keys () const
 {
-  return !m_keys_oids.empty ();
+  return !m_insert_list.m_keys_oids.empty ();
 }
 
 void
 index_builder_loader_task::clear_keys ()
 {
-  for (auto &key_oid : m_keys_oids)
+  for (auto &key_oid : m_insert_list.m_keys_oids)
     {
       pr_clear_value (&key_oid.m_key);
     }
@@ -5119,10 +5117,20 @@ index_builder_loader_task::execute (cubthread::entry &thread_ref)
       return;
     }
 
-  for (auto &key_oid : m_keys_oids)
+  PERF_UTIME_TRACKER time_insert_task = PERF_UTIME_TRACKER_INITIALIZER;
+  PERF_UTIME_TRACKER_START (&thread_ref, &time_insert_task);
+
+  PERF_UTIME_TRACKER time_prepare_task = PERF_UTIME_TRACKER_INITIALIZER;
+  PERF_UTIME_TRACKER_START (&thread_ref, &time_prepare_task);
+
+  m_insert_list.prepare_list ();
+
+  PERF_UTIME_TRACKER_TIME (&thread_ref, &time_prepare_task, PSTAT_BT_ONLINE_PREPARE_TASK);
+
+  while (m_insert_list.m_curr_pos < (int) m_insert_list.m_sorted_keys_oids.size ())
     {
-      ret = btree_online_index_dispatcher (&thread_ref, &m_btid, &key_oid.m_key, &m_class_oid, &key_oid.m_oid,
-					   m_unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
+      ret = btree_online_index_list_dispatcher (&thread_ref, &m_btid, &m_class_oid, &m_insert_list,
+					        m_unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
 
       if (ret != NO_ERROR)
 	{
@@ -5134,7 +5142,6 @@ index_builder_loader_task::execute (cubthread::entry &thread_ref)
 	  break;
 	}
 
-      cubmem::switch_to_global_allocator_and_call (pr_clear_value, &key_oid.m_key);
       key_count++;
     }
 
@@ -5143,13 +5150,15 @@ index_builder_loader_task::execute (cubthread::entry &thread_ref)
     {
       /* Cumulates and resets statistics */
       m_num_keys += p_unique_stats->tran_stats.num_keys;
-      m_num_oids += p_unique_stats->tran_stats.num_oids;
-      m_num_nulls += p_unique_stats->tran_stats.num_nulls;
+      m_num_oids += p_unique_stats->tran_stats.num_oids + m_insert_list.m_ignored_nulls_cnt;
+      m_num_nulls += p_unique_stats->tran_stats.num_nulls + m_insert_list.m_ignored_nulls_cnt;
 
       p_unique_stats->tran_stats.num_keys = 0;
       p_unique_stats->tran_stats.num_oids = 0;
       p_unique_stats->tran_stats.num_nulls = 0;
     }
+
+  PERF_UTIME_TRACKER_TIME (&thread_ref, &time_insert_task, PSTAT_BT_ONLINE_INSERT_TASK);
 
   /* Increment tasks executed. */
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))

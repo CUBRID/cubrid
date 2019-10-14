@@ -483,7 +483,8 @@ extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thre
 
 extern DB_VALUE *heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, int *atts_prefix_length,
 					     HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes, DB_VALUE * dbvalue,
-					     char *buf, FUNCTION_INDEX_INFO * func_index_info);
+					     char *buf, FUNCTION_INDEX_INFO * func_index_info,
+					     TP_DOMAIN * midxkey_domain);
 extern int heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * class_recdes,
 					   HEAP_CACHE_ATTRINFO * attr_info, HEAP_IDX_ELEMENTS_INFO * idx_info);
 extern int heap_attrinfo_start_with_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid,
@@ -682,10 +683,9 @@ extern int heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_
 
 extern int heap_nonheader_page_capacity ();
 
-// *INDENT-OFF*
 extern int heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv);
+// *INDENT-OFF*
 extern void heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid,
-						 const std::vector <VPID> heap_pages_array);
-
+						 const std::vector<VPID> &heap_pages_array);
 // *INDENT-ON*
 #endif /* _HEAP_FILE_H_ */
