@@ -264,7 +264,7 @@ restart:			/* wait-free process */
 
     if (bitmap->style == LF_BITMAP_LIST_OF_CHUNKS)
       {
-	bitmap->entry_count_in_use++;
+	bitmap->entry_count_in_use--;
       }
 
 #if !defined (SERVER_MODE)
