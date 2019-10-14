@@ -326,8 +326,7 @@ namespace cubload
     const std::vector<std::string> &classes_ignored = m_session.get_args ().ignore_classes;
     bool is_ignored;
 
-    char *lower_case_string = (char *) db_private_alloc (NULL, intl_identifier_lower_string_size (classname),
-			      sizeof (char));
+    char *lower_case_string = (char *) db_private_alloc (NULL, intl_identifier_lower_string_size (classname) + 1);
 
     // Make the string to be lower case and take into consideration all types of characters.
     intl_identifier_lower (classname, lower_case_string);
@@ -338,7 +337,7 @@ namespace cubload
 
     is_ignored = (result != classes_ignored.end ());
 
-    if (lower_case_string)
+    if (lower_case_string != NULL)
       {
 	db_private_free (NULL, lower_case_string);
 	lower_case_string = NULL;
