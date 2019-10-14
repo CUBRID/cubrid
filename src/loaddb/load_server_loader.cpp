@@ -70,12 +70,22 @@ namespace cubload
 	return;
       }
 
-    if (locate_class (class_name, class_oid) != LC_CLASSNAME_EXIST)
+    char *lower_case_class_name = (char *) db_private_alloc (NULL, intl_identifier_lower_string_size (class_name) + 1);
+
+    // Make the string to be lower case and take into consideration all types of characters.
+    intl_identifier_lower (class_name, lower_case_class_name);
+
+    if (locate_class (lower_case_class_name, class_oid) != LC_CLASSNAME_EXIST)
       {
 	m_error_handler.on_failure_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
       }
 
     m_session.append_log_msg (LOADDB_MSG_CLASS_TITLE, class_name);
+
+    if (lower_case_class_name != NULL)
+      {
+	db_private_free_and_init (NULL, lower_case_class_name);
+      }
   }
 
   int
@@ -124,6 +134,11 @@ namespace cubload
     cubthread::entry &thread_ref = cubthread::get_entry ();
     bool is_syntax_check_only = m_session.get_args ().syntax_check;
 
+    char *lower_case_class_name = (char *) db_private_alloc (NULL, intl_identifier_lower_string_size (class_name) + 1);
+
+    // Make the string to be lower case and take into consideration all types of characters.
+    intl_identifier_lower (class_name, lower_case_class_name);
+
     assert (m_clsid != NULL_CLASS_ID);
     OID_SET_NULL (&class_oid);
 
@@ -134,16 +149,16 @@ namespace cubload
       }
 
     // Check if we have to ignore this class.
-    if (is_class_ignored (class_name))
+    if (is_class_ignored (lower_case_class_name))
       {
-	std::string classname (class_name);
-	m_session.append_log_msg (LOADDB_MSG_IGNORED_CLASS, class_name);
+	std::string classname (lower_case_class_name);
+	m_session.append_log_msg (LOADDB_MSG_IGNORED_CLASS, lower_case_class_name);
 	class_entry *cls_entry = new class_entry (classname, m_clsid, true);
 	m_session.get_class_registry ().register_ignored_class (cls_entry, m_clsid);
 	return;
       }
 
-    if (locate_class (class_name, class_oid) != LC_CLASSNAME_EXIST)
+    if (locate_class (lower_case_class_name, class_oid) != LC_CLASSNAME_EXIST)
       {
 	if (is_syntax_check_only)
 	  {
@@ -163,6 +178,10 @@ namespace cubload
     if (error_code != NO_ERROR)
       {
 	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	if (lower_case_class_name != NULL)
+	  {
+	    db_private_free_and_init (NULL, lower_case_class_name);
+	  }
 	return;
       }
 
@@ -173,6 +192,10 @@ namespace cubload
 	heap_scancache_end (&thread_ref, &scancache);
 	heap_attrinfo_end (&thread_ref, &attrinfo);
 	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	if (lower_case_class_name != NULL)
+	  {
+	    db_private_free_and_init (NULL, lower_case_class_name);
+	  }
 	return;
       }
 
@@ -213,6 +236,10 @@ namespace cubload
 	    heap_scancache_end (&thread_ref, &scancache);
 	    heap_attrinfo_end (&thread_ref, &attrinfo);
 	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	    if (lower_case_class_name != NULL)
+	      {
+		db_private_free_and_init (NULL, lower_case_class_name);
+	      }
 	    return;
 	  }
 
@@ -242,7 +269,10 @@ namespace cubload
     string_type *str_attr = cmd_spec != NULL ? cmd_spec->attr_list : NULL;
     for (; str_attr != NULL; str_attr = str_attr->next, ++attr_index)
       {
-	std::string attr_name_ (str_attr->val);
+
+	char *lower_case_attr_name = (char *) db_private_alloc (NULL, intl_identifier_lower_string_size (str_attr->val) + 1);
+	intl_identifier_lower (str_attr->val, lower_case_attr_name);
+	std::string attr_name_ (lower_case_attr_name);
 
 	auto found = attr_map.find (attr_name_);
 	if (found == attr_map.end ())
@@ -251,6 +281,14 @@ namespace cubload
 	    heap_scancache_end (&thread_ref, &scancache);
 	    heap_attrinfo_end (&thread_ref, &attrinfo);
 	    m_error_handler.on_failure ();
+	    if (lower_case_class_name != NULL)
+	      {
+		db_private_free_and_init (NULL, lower_case_class_name);
+	      }
+	    if (lower_case_attr_name != NULL)
+	      {
+		db_private_free_and_init (NULL, lower_case_attr_name);
+	      }
 	    return;
 	  }
 
@@ -261,6 +299,10 @@ namespace cubload
 
 	attributes.push_back (attr);
 	attr_map.erase (attr_name_);
+	if (lower_case_attr_name != NULL)
+	  {
+	    db_private_free_and_init (NULL, lower_case_attr_name);
+	  }
       }
 
     // check missing non null attributes
@@ -272,6 +314,10 @@ namespace cubload
 	    heap_scancache_end (&thread_ref, &scancache);
 	    heap_attrinfo_end (&thread_ref, &attrinfo);
 	    m_error_handler.on_failure ();
+	    if (lower_case_class_name != NULL)
+	      {
+		db_private_free_and_init (NULL, lower_case_class_name);
+	      }
 	    return;
 	  }
       }
@@ -280,10 +326,15 @@ namespace cubload
     {
       return a->get_index () < b->get_index ();
     }));
-    m_session.get_class_registry ().register_class (class_name, m_clsid, class_oid, attributes);
+    m_session.get_class_registry ().register_class (lower_case_class_name, m_clsid, class_oid, attributes);
 
     heap_scancache_end (&thread_ref, &scancache);
     heap_attrinfo_end (&thread_ref, &attrinfo);
+
+    if (lower_case_class_name != NULL)
+      {
+	db_private_free_and_init (NULL, lower_case_class_name);
+      }
   }
 
   void
