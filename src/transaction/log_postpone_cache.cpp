@@ -31,6 +31,7 @@ void
 log_postpone_cache::reset ()
 {
   m_cursor = 0;
+  m_redo_data_offset = 0;
   m_is_redo_data_buf_full = false;
   if (m_redo_data_buf.get_size () > BUFFER_RESET_SIZE)
     {
