@@ -208,9 +208,6 @@ namespace cubload
 	// Clear the clientids.
 	worker_tdes->client.reset ();
 
-	// free transaction index
-	logtb_free_tran_index (&thread_ref, thread_ref.tran_index);
-
 	// notify session that batch is done
 	notify_done_and_tran_end (tran_index);
       }
@@ -258,6 +255,14 @@ namespace cubload
       {
 	// just set class id to 1 since only one table can be specified as command line argument
 	cubthread::entry &thread_ref = cubthread::get_entry ();
+
+	if (intl_identifier_lower_string_size (m_args.table_name.c_str ()) >= SM_MAX_IDENTIFIER_LENGTH)
+	  {
+	    // This is an error.
+	    m_driver->get_error_handler ().on_error (LOADDB_MSG_EXCEED_MAX_LEN, SM_MAX_IDENTIFIER_LENGTH - 1);
+	    return;
+	  }
+
 	thread_ref.m_loaddb_driver = m_driver;
 	m_driver->get_class_installer ().set_class_id (FIRST_CLASS_ID);
 	m_driver->get_class_installer ().install_class (m_args.table_name.c_str ());
@@ -331,6 +336,9 @@ namespace cubload
   session::notify_batch_done_and_register_tran_end (batch_id id, int tran_index)
   {
     std::unique_lock<std::mutex> ulock (m_commit_mutex);
+    // free transaction index
+    logtb_free_tran_index (&cubthread::get_entry (), tran_index);
+
     assert (m_active_task_count > 0);
     --m_active_task_count;
     if (!is_failed ())
