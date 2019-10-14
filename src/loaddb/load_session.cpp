@@ -208,9 +208,6 @@ namespace cubload
 	// Clear the clientids.
 	worker_tdes->client.reset ();
 
-	// free transaction index
-	logtb_free_tran_index (&thread_ref, thread_ref.tran_index);
-
 	// notify session that batch is done
 	notify_done_and_tran_end (tran_index);
       }
@@ -331,6 +328,9 @@ namespace cubload
   session::notify_batch_done_and_register_tran_end (batch_id id, int tran_index)
   {
     std::unique_lock<std::mutex> ulock (m_commit_mutex);
+    // free transaction index
+    logtb_free_tran_index (&cubthread::get_entry (), tran_index);
+
     assert (m_active_task_count > 0);
     --m_active_task_count;
     if (!is_failed ())
