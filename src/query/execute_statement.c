@@ -2247,7 +2247,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   const char *comment = NULL;
 
   int new_inc_val_flag = 0, new_cyclic;
-  int cur_val_change, inc_val_change, max_val_change, min_val_change, cyclic_change, cached_num_change;
+  bool cur_val_change, inc_val_change, max_val_change, min_val_change, cyclic_change, cached_num_change;
 
   int error = NO_ERROR;
   int save;
@@ -2382,7 +2382,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   inc_val_node = PT_NODE_SR_INCREMENT_VAL (statement);
   if (inc_val_node != NULL)
     {
-      inc_val_change = 1;
+      inc_val_change = true;
       pval = pt_value_to_db (parser, inc_val_node);
       if (pval == NULL)
 	{
@@ -2414,7 +2414,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
-      inc_val_change = 0;
+      inc_val_change = false;
       /* new_inc_val = old_inc_val; */
       db_value_clone (&old_inc_val, &new_inc_val);
       error = numeric_db_value_compare (&new_inc_val, &zero, &cmp_result);
@@ -2431,7 +2431,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   start_val_node = PT_NODE_SR_START_VAL (statement);
   if (start_val_node != NULL)
     {
-      cur_val_change = 1;
+      cur_val_change = true;
       pval = pt_value_to_db (parser, start_val_node);
       if (pval == NULL)
 	{
@@ -2448,7 +2448,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
-      cur_val_change = 0;
+      cur_val_change = false;
       db_value_clone (&current_val, &start_val);
     }
 
@@ -2457,7 +2457,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   max_val_node = PT_NODE_SR_MAX_VAL (statement);
   if (max_val_node != NULL)
     {
-      max_val_change = 1;
+      max_val_change = true;
       pval = pt_value_to_db (parser, max_val_node);
       if (pval == NULL)
 	{
@@ -2476,7 +2476,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       if (PT_NODE_SR_NO_MAX (statement) == 1)
 	{
-	  max_val_change = 1;
+	  max_val_change = true;
 	  if (new_inc_val_flag > 0)
 	    {
 	      /* new_max_val */
@@ -2495,7 +2495,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else
 	{
-	  max_val_change = 0;
+	  max_val_change = false;
 	  /* new_max_val = old_max_val; */
 	  db_value_clone (&old_max_val, &new_max_val);
 	}
@@ -2506,7 +2506,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   min_val_node = PT_NODE_SR_MIN_VAL (statement);
   if (min_val_node != NULL)
     {
-      min_val_change = 1;
+      min_val_change = true;
       pval = pt_value_to_db (parser, min_val_node);
       if (pval == NULL)
 	{
@@ -2525,7 +2525,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       if (PT_NODE_SR_NO_MIN (statement) == 1)
 	{
-	  min_val_change = 1;
+	  min_val_change = true;
 
 	  if (new_inc_val_flag > 0)
 	    {
@@ -2545,7 +2545,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else
 	{
-	  min_val_change = 0;
+	  min_val_change = false;
 	  /* new_min_val = old_min_val; */
 	  db_value_clone (&old_min_val, &new_min_val);
 	}
@@ -2555,11 +2555,11 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   new_cyclic = PT_NODE_SR_CYCLIC (statement);
   if ((new_cyclic == 1) || (PT_NODE_SR_NO_CYCLIC (statement) == 1))
     {
-      cyclic_change = 1;
+      cyclic_change = true;
     }
   else
     {
-      cyclic_change = 0;
+      cyclic_change = false;
     }
 
   /*
@@ -2620,6 +2620,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       DB_VALUE cached_num_int_val, abs_cached_range_val;
       assert (cached_num_node->type_enum == PT_TYPE_INTEGER);
 
+      cached_num_change = true;
       cached_num = cached_num_node->info.value.data_value.i;
 
       /* ABS (cache_num * inc_val) <= range_val */
@@ -2655,12 +2656,12 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       if (PT_NODE_SR_NO_CACHE (statement) == 1)
 	{
-	  cached_num_change = 1;
+	  cached_num_change = true;
 	  cached_num = 0;
 	}
       else
 	{
-	  cached_num_change = 0;
+	  cached_num_change = false;
 	}
     }
 
