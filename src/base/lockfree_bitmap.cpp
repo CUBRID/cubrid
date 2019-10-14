@@ -220,7 +220,7 @@ restart:			/* wait-free process */
 	    goto restart;
 	  }
       }
-    while (!bitmap->bitfield[chunk_idx].compare_exchange_strong (chunk, chunk | mask));
+    while (!bitmap->bitfield[chunk_idx].compare_exchange_weak (chunk, chunk | mask));
     if (bitmap->style == LF_BITMAP_LIST_OF_CHUNKS)
       {
 	bitmap->entry_count_in_use++;
@@ -260,7 +260,7 @@ restart:			/* wait-free process */
 	    return;
 	  }
       }
-    while (!bitmap->bitfield[pos].compare_exchange_strong (curr, curr & mask));
+    while (!bitmap->bitfield[pos].compare_exchange_weak (curr, curr & mask));
 
     if (bitmap->style == LF_BITMAP_LIST_OF_CHUNKS)
       {
