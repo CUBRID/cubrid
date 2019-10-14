@@ -64,6 +64,7 @@ namespace lockfree
       void freelist_retire (tran::index tran_index, T *&entry);
 
       size_t get_size () const;
+      size_t get_element_count () const;
 
     private:
       using address_type = address_marker<T>;
@@ -143,6 +144,7 @@ namespace lockfree
       iterator (tran::index tran_index, hashmap &hash);
 
       T *iterate ();
+      iterator &operator= (iterator &&o);
 
     private:
       const size_t INVALID_INDEX = std::numeric_limits<size_t>::max ();
@@ -397,6 +399,13 @@ namespace lockfree
   hashmap<Key, T>::get_size () const
   {
     return m_size;
+  }
+
+  template <class Key, class T>
+  size_t
+  hashmap<Key, T>::get_element_count () const
+  {
+    return m_freelist->get_claimed_count ();
   }
 
   template <class Key, class T>
@@ -1247,6 +1256,25 @@ namespace lockfree
 
     /* we have a valid entry */
     return m_curr;
+  }
+
+  template <class Key, class T>
+  typename hashmap<Key, T>::iterator &
+  hashmap<Key, T>::iterator::operator= (iterator &&o)
+  {
+    m_hashmap = o.m_hashmap;
+    o.m_hashmap = NULL;
+
+    m_tdes = o.m_tdes;
+    o.m_tdes = NULL;
+
+    m_bucket_index = o.m_bucket_index;
+    o.m_bucket_index = INVALID_INDEX;
+
+    m_curr = o.m_curr;
+    o.m_curr = NULL;
+
+    return *this;
   }
 } // namespace lockfree
 

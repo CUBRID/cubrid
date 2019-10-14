@@ -225,9 +225,6 @@ extern void lock_start_instant_lock_mode (int tran_index);
 extern void lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p, int tran_index, bool need_unlock);
 extern bool lock_is_instant_lock_mode (int tran_index);
 extern void lock_clear_deadlock_victim (int tran_index);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern void lock_check_consistency (THREAD_ENTRY * thread_p);
-#endif /* ENABLE_UNUSED_FUNCTION */
 extern unsigned int lock_get_number_object_locks (void);
 extern int lock_initialize_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * comp_lock);
 extern int lock_add_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * comp_lock, const OID * oid,

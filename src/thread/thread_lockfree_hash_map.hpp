@@ -63,6 +63,7 @@ namespace cubthread
       void freelist_retire (cubthread::entry *thread_p, T *&t);
 
       size_t get_size () const;
+      size_t get_element_count () const;
 
     private:
       bool is_old_type () const;
@@ -139,7 +140,7 @@ namespace cubthread
 					 int freelist_block_size, lf_entry_descriptor &edesc, int entry_idx)
   {
     m_type = OLD;
-    m_old_hash.init (transys, hash_size, freelist_block_count, freelist_block_size);
+    m_old_hash.init (transys, hash_size, freelist_block_count, freelist_block_size, edesc);
     m_entry_idx = entry_idx;
   }
 
@@ -250,6 +251,13 @@ namespace cubthread
   lockfree_hashmap<Key, T>::get_size () const
   {
     return is_old_type () ? m_old_hash.get_size () : m_new_hash.get_size ();
+  }
+
+  template <class Key, class T>
+  size_t
+  lockfree_hashmap<Key, T>::get_element_count () const
+  {
+    return is_old_type () ? m_old_hash.get_element_count () : m_new_hash.get_element_count ();
   }
 
 #undef lockfree_hashmap_forward_func
