@@ -138,6 +138,9 @@ set(WITH_LIBGPG_ERROR_URL "https://gnupg.org/ftp/gcrypt/libgpg-error/libgpg-erro
 # gcrypt library sources URL
 set(WITH_LIBGCRYPT_URL "https://gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.5.6.tar.bz2")
 
+# openssl library sources URL
+set(WITH_LIBOPENSSL_URL "https://www.openssl.org/source/openssl-1.1.1d.tar.gz")
+
 # rapidjson library sources URL
 set(WITH_RAPIDJSON_URL "https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz")
 
@@ -151,12 +154,14 @@ set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editlin
 set(WITH_LIBLZO       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with lzo library (default: EXTERNAL)")
 set(WITH_LIBGPG_ERROR "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gpg-error library (default: EXTERNAL)")
 set(WITH_LIBGCRYPT    "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gcrypt library (default: EXTERNAL)")
+set(WITH_LIBOPENSSL    "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with openssl library (default: EXTERNAL)")
 set(WITH_LIBNCURSES   "${WITH_SYSTEM_PREFIX}" CACHE STRING "Build with ncurses library (default: SYSTEM)")
 
 message(STATUS "Build with Curses library: ${WITH_LIBNCURSES}")
 message(STATUS "Build with editline library: ${WITH_LIBEDIT}")
 message(STATUS "Build with lzo library: ${WITH_LIBLZO}")
 message(STATUS "Build with gcrypt library: ${WITH_LIBGCRYPT}")
+message(STATUS "Build with openssl library: ${WITH_LIBOPENSSL}")
 message(STATUS "Build with gpg-error library: ${WITH_LIBGPG_ERROR}")
 message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
 message(STATUS "Build with jansson library: ${WITH_LIBJANSSON}")
