@@ -699,8 +699,8 @@ configure_file(cmake/version.h.cmake version.h)
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   # Definitions for system
   add_definitions(-DGCC -DLINUX -D_GNU_SOURCE -DI386 -DX86)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused -Wno-format-security")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused -Wno-unused-parameter -Wno-format-security")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused -Wno-format-security -pthread")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused -Wno-unused-parameter -Wno-format-security -pthread")
 
   if(SIZEOF_OFF64_T)
     add_definitions( -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64)
@@ -1091,6 +1091,49 @@ else(WITH_LIBLZO STREQUAL "SYSTEM")
 endif()
 list(APPEND EP_INCLUDES ${LIBLZO_INCLUDES})
 list(APPEND EP_LIBS ${LIBLZO_LIBS})
+
+# WITH_LOBOPENSSL can have multiple values with different meanings
+# on Linux:
+# * "EXTERNAL" - (default) builds openssl library from URL stored in ${WITH_LIBOPENSSL_URL} uses the library created by the build
+# * "SYSTEM"   - use openssl library located in:
+#                  ${WITH_EXTERNAL_LIBS_PATH}
+#                  ${WITH_LIBOPENSSL_ROOT_PATH}/lib
+#                use openssl headers located in:
+#                  ${WITH_EXTERNAL_HEADERS_PATH}
+#                  ${WITH_LIBOPENSSL_ROOT_PATH}/include
+# on Windows:
+# * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/external
+if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
+  set(LIBOPENSSL_TARGET libopenssl)
+  if(UNIX)
+    #compile OpenSSL library given an internet url to a OpenSSL archive
+    #e.g. https://www.openssl.org/source/openssl-1.1.1d.tar.gz
+    externalproject_add(${LIBOPENSSL_TARGET}
+      URL                  ${WITH_LIBOPENSSL_URL}
+      TIMEOUT              300
+      DOWNLOAD_NO_PROGRESS 1
+      CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${CMAKE_CURRENT_BINARY_DIR}/external no-shared # ${DEFAULT_CONFIGURE_OPTS}
+      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      )
+    set(LIBOPENSSL_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libssl.a ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libcrypto.a)
+    set(LIBOPENSSL_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
+    list(APPEND EP_TARGETS ${LIBOPENSSL_TARGET})
+  else(UNIX) # TODO: Now, Window is not supported
+    set(LIBOPENSSL_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/ssl.lib ${CMAKE_SOURCE_DIR}/win/external/lib64/crypto.lib)
+    set(LIBOPENSSL_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
+  endif(UNIX)
+else(WITH_LIOPENSSL STREQUAL "SYSTEM")
+  if(UNIX)
+    find_library(LIBOPENSSL_LIBS NAMES libssl.a libcrypto.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBOPENSSL_ROOT_PATH}/lib REQUIRED)
+    find_path(LIBOPENSSL_INCLUDES NAMES openssl/conf.h openssl/evp.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBOPENSSL_ROOT_PATH}/include REQUIRED)
+
+    message(STATUS "Found openssl library: ${LIBOPENSSL_LIBS}")
+    message(STATUS "Found openssl headers: ${LIBOPENSSL_INCLUDES}")
+  endif(UNIX)
+endif()
+list(APPEND EP_INCLUDES ${LIBOPENSSL_INCLUDES})
+list(APPEND EP_LIBS ${LIBOPENSSL_LIBS})
 
 # WITH_LIBGPG_ERROR can have multiple values with different meanings
 # on Linux:
