@@ -25207,7 +25207,7 @@ heap_update_and_log_header (THREAD_ENTRY * thread_p, const HFID * hfid, const PG
 
 void
 heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid,
-                               const std::vector <VPID> heap_pages_array)
+                                     const std::vector<VPID> &heap_pages_array)
 {
   if (heap_pages_array.empty ())
     {
