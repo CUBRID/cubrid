@@ -3562,12 +3562,10 @@ static PT_NODE *
 pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
   bool is_agg = 0;
-  REGU_VARIABLE *regu = NULL, *scan_regu = NULL;
-  REGU_VARIABLE *regu_next = NULL, *scan_regu_next = NULL;
+  REGU_VARIABLE *regu = NULL;
   REGU_VARIABLE *percentile_regu = NULL;
   AGGREGATE_TYPE *aggregate_list;
   AGGREGATE_INFO *info = (AGGREGATE_INFO *) arg;
-  REGU_VARIABLE_LIST out_list = NULL;
   VAL_LIST *value_list;
   MOP classop;
   PT_NODE *group_concat_sep_node_save = NULL;
