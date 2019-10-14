@@ -31,6 +31,7 @@
 #include "load_error_handler.hpp"
 #include "load_session.hpp"
 #include "locator_sr.h"
+#include "memory_alloc.h"
 #include "object_primitive.h"
 #include "record_descriptor.hpp"
 #include "set_object.h"
