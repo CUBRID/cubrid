@@ -551,6 +551,7 @@ namespace cubthread
     if (with_lock_free)
       {
 	Main_entry_p->request_lock_free_transactions ();
+	Main_entry_p->assign_lf_tran_index (Manager->get_lockfree_transys ().assign_index ());
       }
 
     Manager->init_entries (with_lock_free);
