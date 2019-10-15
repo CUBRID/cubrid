@@ -72,8 +72,8 @@ class log_postpone_cache
 
   private:
     static const std::size_t MAX_CACHE_ENTRIES = 512;
-    // on average redo data size for an entry is 48 bytes
-    static const std::size_t REDO_DATA_MAX_SIZE = 48 * MAX_CACHE_ENTRIES;
+    static const std::size_t REDO_DATA_MAX_SIZE = 100 * 1024;   // 100k
+    static const std::size_t BUFFER_RESET_SIZE = 1024;
 
     class cache_entry
     {

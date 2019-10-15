@@ -1311,8 +1311,10 @@ $ LOADDB
 1241 XASL tree needs recompile.
 1242 Cannot create partition on a class that is part of a hierarchy chain.
 1243 Index loading was aborted after an error.
+1244 Loading shared attributes updates from object files is not supported in CS mode.
+1245 Loading class attributes updates from object files is not supported in CS mode.
 
-1244 最后一个错误.
+1246 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):

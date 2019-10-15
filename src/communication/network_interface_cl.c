@@ -9977,7 +9977,7 @@ loaddb_load_object_file ()
 }
 
 int
-loaddb_install_class (const cubload::batch & batch, bool & class_is_ignored)
+loaddb_install_class (const cubload::batch & batch, bool & class_is_ignored, std::string & class_name)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
@@ -9988,17 +9988,22 @@ loaddb_install_class (const cubload::batch & batch, bool & class_is_ignored)
 
   packer.set_buffer_and_pack_all (eb, batch);
 
-  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  int req_error = net_client_request (NET_SERVER_LD_INSTALL_CLASS, eb.get_ptr (), (int) packer.get_current_size (),
-				      reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  char *area = NULL;
+  int area_size;
+  int req_error = net_client_request2 (NET_SERVER_LD_INSTALL_CLASS, eb.get_ptr (), (int) packer.get_current_size (),
+				       reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
   if (!req_error)
     {
-
-      ptr = or_unpack_int (reply, &rc);
+      ptr = or_unpack_int (reply, &area_size);
+      ptr = or_unpack_int (ptr, &rc);
       ptr = or_unpack_int (ptr, &class_ignored);
+      assert (area_size < DB_MAX_IDENTIFIER_LENGTH);
 
+      class_name = std::string (area, area_size);
+
+      free_and_init (area);
       class_is_ignored = class_ignored != 0;
     }
 

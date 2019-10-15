@@ -8545,7 +8545,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 			  /* This translates into a delete of the old key and an insert of the new key. */
 
 			  /* Delete old key. */
-
 			  error_code =
 			    btree_online_index_dispatcher (thread_p, &index->btid, old_key, class_oid, oid,
 							   unique_pk, BTREE_OP_ONLINE_INDEX_TRAN_DELETE, NULL);
@@ -11716,7 +11715,7 @@ xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
 
       key_val =
 	heap_attrinfo_generate_key (thread_p, n_attrs, attr_ids, NULL, &attr_info, &copy_recdes, &tmpval,
-				    aligned_midxkey_buf, NULL);
+				    aligned_midxkey_buf, NULL, NULL);
       if (key_val == NULL)
 	{
 	  error_code = ER_FAILED;
