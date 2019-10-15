@@ -63,6 +63,7 @@ namespace cubload
   {
     (void) class_id;
     OID class_oid;
+    cubmem::extensible_block eb;
 
     if (is_class_ignored (class_name))
       {
@@ -70,10 +71,9 @@ namespace cubload
 	return;
       }
 
-    char *lower_case_class_name = (char *) db_private_alloc (NULL, intl_identifier_lower_string_size (class_name) + 1);
+    to_lowercase_identifier (class_name, eb);
 
-    // Make the string to be lower case and take into consideration all types of characters.
-    intl_identifier_lower (class_name, lower_case_class_name);
+    const char *lower_case_class_name = eb.get_read_ptr ();
 
     if (locate_class (lower_case_class_name, class_oid) != LC_CLASSNAME_EXIST)
       {
@@ -81,11 +81,6 @@ namespace cubload
       }
 
     m_session.append_log_msg (LOADDB_MSG_CLASS_TITLE, class_name);
-
-    if (lower_case_class_name != NULL)
-      {
-	db_private_free_and_init (NULL, lower_case_class_name);
-      }
   }
 
   int
@@ -135,11 +130,6 @@ namespace cubload
     bool is_syntax_check_only = m_session.get_args ().syntax_check;
     cubmem::extensible_block eb;
 
-    // Make the classname lowercase
-    to_lowercase_identifier (class_name, eb);
-
-    const char *lower_case_class_name = eb.get_read_ptr ();
-
     assert (m_clsid != NULL_CLASS_ID);
     OID_SET_NULL (&class_oid);
 
@@ -148,6 +138,11 @@ namespace cubload
 	// return in case when class does not exists
 	return;
       }
+
+    // Make the classname lowercase
+    to_lowercase_identifier (class_name, eb);
+
+    const char *lower_case_class_name = eb.get_read_ptr ();
 
     // Check if we have to ignore this class.
     if (is_class_ignored (lower_case_class_name))
@@ -343,23 +338,16 @@ namespace cubload
 
     const std::vector<std::string> &classes_ignored = m_session.get_args ().ignore_classes;
     bool is_ignored;
+    cubmem::extensible_block eb;
 
-    char *lower_case_string = (char *) db_private_alloc (NULL, intl_identifier_lower_string_size (classname) + 1);
+    // Make the classname lowercase
+    to_lowercase_identifier (classname, eb);
 
-    // Make the string to be lower case and take into consideration all types of characters.
-    intl_identifier_lower (classname, lower_case_string);
-
-    std::string class_name (lower_case_string);
+    std::string class_name (eb.get_ptr ());
 
     auto result = std::find (classes_ignored.begin (), classes_ignored.end (), class_name);
 
     is_ignored = (result != classes_ignored.end ());
-
-    if (lower_case_string != NULL)
-      {
-	db_private_free (NULL, lower_case_string);
-	lower_case_string = NULL;
-      }
 
     return is_ignored;
   }
