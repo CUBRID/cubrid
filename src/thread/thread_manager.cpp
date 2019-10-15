@@ -111,7 +111,12 @@ namespace cubthread
   void
   manager::init_lockfree_system ()
   {
-    m_lf_tran_sys = new lockfree::tran::system (m_max_threads);
+#if defined (SERVER_MODE)
+    // threads + main
+    m_lf_tran_sys = new lockfree::tran::system (m_max_threads + 1);
+#else // !SERVER_MODE = SA_MODE
+    m_lf_tran_sys = new lockfree::tran::system (1);   // a single thread = main
+#endif // !SERVER_MODE = SA_MODE
   }
 
   template<typename Res>
@@ -551,6 +556,7 @@ namespace cubthread
     if (with_lock_free)
       {
 	Main_entry_p->request_lock_free_transactions ();
+	Main_entry_p->assign_lf_tran_index (Manager->get_lockfree_transys ().assign_index ());
       }
 
     Manager->init_entries (with_lock_free);
