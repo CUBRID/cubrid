@@ -21,26 +21,6 @@
 
 namespace cubmonitor
 {
-  timer::timer (void)
-    : m_timept (clock_type::now ())
-  {
-    //
-  }
-
-  void
-  timer::reset (void)
-  {
-    m_timept = clock_type::now ();
-  }
-
-  duration
-  timer::time (void)
-  {
-    time_point start_pt = m_timept;
-    m_timept = clock_type::now ();
-    return m_timept - start_pt;
-  }
-
   void
   build_name_vector (std::vector<std::string> &names, const char *basename, const char *prefix)
   {

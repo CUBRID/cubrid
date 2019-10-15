@@ -27,6 +27,7 @@
 #include "lock_free.h"  // old implementation
 #include "lockfree_hashmap.hpp"
 #include "lockfree_transaction_def.hpp"
+#include "system_parameter.h"
 #include "thread_entry.hpp"
 
 namespace cubthread

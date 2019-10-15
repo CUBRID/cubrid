@@ -59,10 +59,12 @@ main (int argc, char **argv)
       std::vector<std::string> suboption_map =
       {
 	"functional",
-	"performance"
+	"performance",
+	"short"
       };
       bool do_functional = (opt == 0) || (argc == 2);
       bool do_performance = (opt == 0) || (argc == 2);
+      bool short_functional_version = false;
       if (opt == 3 && argc >= 3)
 	{
 	  if (suboption_map[0] == argv[2])
@@ -73,10 +75,15 @@ main (int argc, char **argv)
 	    {
 	      do_performance = true;
 	    }
+	  else if (suboption_map[2] == argv[2])
+	    {
+	      do_functional = true;
+	      short_functional_version = true;
+	    }
 	}
       if (do_functional)
 	{
-	  err = err | test_lockfree::test_hashmap_functional ();
+	  err = err | test_lockfree::test_hashmap_functional (short_functional_version);
 	}
       if (do_performance)
 	{
