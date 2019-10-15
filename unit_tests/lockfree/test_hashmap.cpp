@@ -731,7 +731,8 @@ namespace test_lockfree
 					  Args &&... args)
   {
     size_t count = tran_array.size ();
-    std::thread *all_threads = new std::thread[count];
+    std::vector<std::thread> all_threads;
+    all_threads.reserve (count);
 
     for (size_t i = 0; i < count; i++)
       {
