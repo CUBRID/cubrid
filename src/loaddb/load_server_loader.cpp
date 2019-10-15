@@ -155,7 +155,7 @@ namespace cubload
     if (is_class_ignored (lower_case_class_name))
       {
 	std::string classname (lower_case_class_name);
-	m_session.append_log_msg (LOADDB_MSG_IGNORED_CLASS, lower_case_class_name);
+	m_session.append_log_msg (LOADDB_MSG_IGNORED_CLASS, class_name);
 	class_entry *cls_entry = new class_entry (classname, m_clsid, true);
 	m_session.get_class_registry ().register_ignored_class (cls_entry, m_clsid);
 	return;
