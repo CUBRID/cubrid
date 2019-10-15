@@ -201,6 +201,11 @@ namespace cubthread
 	return m_all_entries;
       }
 
+      lockfree::tran::system &get_lockfree_transys ()
+      {
+	return *m_lf_tran_sys;
+      }
+
       void set_max_thread_count_from_config ();
       void set_max_thread_count (std::size_t count);
 

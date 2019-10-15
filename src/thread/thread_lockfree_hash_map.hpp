@@ -21,12 +21,13 @@
 //  specialize lock-free hash map to thread manager and its entries
 //
 
-#ifndef _THREAD_LOCKFREE_HASH_MAP_
-#define _THREAD_LOCKFREE_HASH_MAP_
+#ifndef _THREAD_LOCKFREE_HASH_MAP_HPP_
+#define _THREAD_LOCKFREE_HASH_MAP_HPP_
 
 #include "lock_free.h"  // old implementation
 #include "lockfree_hashmap.hpp"
 #include "lockfree_transaction_def.hpp"
+#include "system_parameter.h"
 #include "thread_entry.hpp"
 
 namespace cubthread
@@ -38,6 +39,9 @@ namespace cubthread
       lockfree_hashmap ();
 
       class iterator;
+
+      void init (lf_tran_system &transys, int entry_idx, int hash_size, int freelist_block_size,
+		 int freelist_block_count, lf_entry_descriptor &edesc);
 
       void init_as_old (lf_tran_system &transys, int hash_size, int freelist_block_count, int freelist_block_size,
 			lf_entry_descriptor &edesc, int entry_idx);
@@ -93,6 +97,8 @@ namespace cubthread
       typename lf_hash_table_cpp<Key, T>::iterator m_old_iter;
       typename lockfree::hashmap<Key, T>::iterator m_new_iter;
   };
+
+  lockfree::tran::system &get_thread_entry_lftransys ();
 } // namespace cubthread
 
 //
@@ -110,6 +116,22 @@ namespace cubthread
     , m_new_hash {}
     , m_type (UNKNOWN)
   {
+  }
+
+  template <class Key, class T>
+  void
+  lockfree_hashmap<Key, T>::init (lf_tran_system &transys, int entry_idx, int hash_size, int freelist_block_size,
+				  int freelist_block_count, lf_entry_descriptor &edesc)
+  {
+    if (prm_get_bool_value (PRM_ID_ENABLE_NEW_LFHASH))
+      {
+	init_as_new (get_thread_entry_lftransys (), (size_t) hash_size, (size_t) freelist_block_size,
+		     (size_t) freelist_block_count, edesc);
+      }
+    else
+      {
+	init_as_old (transys, hash_size, freelist_block_count, freelist_block_size, edesc, entry_idx);
+      }
   }
 
   template <class Key, class T>
@@ -283,4 +305,4 @@ namespace cubthread
   }
 }
 
-#endif // !_THREAD_LOCKFREE_HASH_MAP_
+#endif // !_THREAD_LOCKFREE_HASH_MAP_HPP_
