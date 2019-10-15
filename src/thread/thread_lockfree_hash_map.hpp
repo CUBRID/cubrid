@@ -140,7 +140,7 @@ namespace cubthread
 					 int freelist_block_size, lf_entry_descriptor &edesc, int entry_idx)
   {
     m_type = OLD;
-    m_old_hash.init (transys, hash_size, freelist_block_count, freelist_block_size);
+    m_old_hash.init (transys, hash_size, freelist_block_count, freelist_block_size, edesc);
     m_entry_idx = entry_idx;
   }
 
@@ -158,7 +158,7 @@ namespace cubthread
   m_old_hash.f_ (get_tran_entry (tp_), __VA_ARGS__) : \
   m_new_hash.f_ ((tp_)->get_lf_tran_index (), __VA_ARGS__)
 #define lockfree_hashmap_forward_func_noarg(f_, tp_) \
-  is_old_type (tp_) ? \
+  is_old_type () ? \
   m_old_hash.f_ (get_tran_entry (tp_)) : \
   m_new_hash.f_ ((tp_)->get_lf_tran_index ())
 
@@ -166,6 +166,10 @@ namespace cubthread
   void
   lockfree_hashmap<Key, T>::destroy ()
   {
+    if (m_type == lockfree_hashmap::UNKNOWN)
+      {
+	return;
+      }
     if (is_old_type ())
       {
 	m_old_hash.destroy ();
