@@ -4440,7 +4440,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   bool scan_cache_inited = false;
   bool attr_info_inited = false;
   LOG_TDES *tdes;
-  int old_wait_msec;
   int lock_ret;
   BTID *list_btid = NULL;
 
@@ -4662,11 +4661,11 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   // Otherwise, we might be doomed to failure to abort the transaction.
   // We are going to do best to avoid lock promotion errors such as timeout and deadlocked.
 
+  // never give up
+  int old_wait_msec = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
+  bool old_check_intr = logtb_set_check_interrupt (thread_p, false);
   for (cur_class = 0; cur_class < n_classes; cur_class++)
     {
-      // never give up
-      old_wait_msec = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
-
       /* Promote the lock to SCH_M_LOCK */
       /* we need to do this in a loop to retry in case of interruption */
       while (true)
@@ -4688,28 +4687,20 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	    }
 
 #if defined (SERVER_MODE)
-	  // SA_MODE never reaches.
-	  if (css_is_shutdowning_server ())
-	    {
-	      // shutdown interrupts the thread with lock timeout.
-	      // This case is acceptable since recovery will remove the index being built.
-	      break;
-	    }
-	  else
-	    {
-	      // it is neither expected nor acceptable.
-	      assert (0);
-	    }
+	  // it is neither expected nor acceptable.
+	  assert (0);
 #endif // SERVER_MODE
 	}
+    }
 
-      // reset back
-      (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msec);
+  // reset back
+  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msec);
+  (void) logtb_set_check_interrupt (thread_p, old_check_intr);
 
-      if (ret != NO_ERROR || lock_ret != LK_GRANTED)
-	{
-	  goto error;
-	}
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
     }
 
   if (BTREE_IS_UNIQUE (unique_pk))
