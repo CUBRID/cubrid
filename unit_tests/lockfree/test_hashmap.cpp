@@ -743,7 +743,6 @@ namespace test_lockfree
       {
 	all_threads[i].join ();
       }
-    delete [] all_threads;
   }
 
   template <>
