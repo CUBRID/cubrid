@@ -2347,11 +2347,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	}
     }
 
-  error_code = spage_boot (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
+  spage_boot (thread_p);
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {
@@ -4721,11 +4717,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
 
   assert (client_credential != NULL);
 
-  error_code = spage_boot (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
+  spage_boot (thread_p);
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {
@@ -5279,11 +5271,7 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
   /* Initialize the transaction table */
   logtb_define_trantable (thread_p, -1, -1);
 
-  error_code = spage_boot (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error_exit;
-    }
+  spage_boot (thread_p);
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {

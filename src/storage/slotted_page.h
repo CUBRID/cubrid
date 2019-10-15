@@ -90,7 +90,7 @@ struct spage_slot
   unsigned int record_type:4;	/* Record type (REC_HOME, REC_NEWHOME, ...) described by slot. */
 };
 
-extern int spage_boot (THREAD_ENTRY * thread_p);
+extern void spage_boot (THREAD_ENTRY * thread_p);
 extern void spage_finalize (THREAD_ENTRY * thread_p);
 extern void spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry);
 extern int spage_slot_size (void);

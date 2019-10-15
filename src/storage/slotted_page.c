@@ -47,6 +47,7 @@
 #endif /* SERVER_MODE */
 #include "dbtype.h"
 #include "thread_entry.hpp"
+#include "thread_lockfree_hash_map.hpp"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 
 #if !defined(SERVER_MODE)
@@ -118,7 +119,7 @@ static int spage_save_head_free (void *entry_p);
 static int spage_save_head_init (void *entry_p);
 static int spage_save_head_uninit (void *entry_p);
 
-static LF_ENTRY_DESCRIPTOR spage_saving_entry_descriptor = {
+static LF_ENTRY_DESCRIPTOR spage_Saving_entry_descriptor = {
   /* signature of SPAGE_SAVE_HEAD */
   offsetof (SPAGE_SAVE_HEAD, rstack),
   offsetof (SPAGE_SAVE_HEAD, next),
@@ -140,8 +141,10 @@ static LF_ENTRY_DESCRIPTOR spage_saving_entry_descriptor = {
   NULL				/* no inserts */
 };
 
-static LF_FREELIST spage_saving_freelist = LF_FREELIST_INITIALIZER;
-static LF_HASH_TABLE spage_saving_ht = LF_HASH_TABLE_INITIALIZER;
+// *INDENT-OFF*
+using spage_saving_hashmap_type = cubthread::lockfree_hashmap<VPID, spage_save_head>;
+// *INDENT-ON*
+static spage_saving_hashmap_type spage_Saving_hashmap;
 
 /* context for slotted page header scan */
 typedef struct spage_header_context SPAGE_HEADER_CONTEXT;
@@ -396,15 +399,7 @@ spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry)
 	    {
 	      int success = 0;
 
-	      if (lf_hash_delete_already_locked (t_entry, &spage_saving_ht, (void *) &head->vpid, head, &success)
-		  != NO_ERROR)
-		{
-		  /* we don't have clear operations on this hash table, this shouldn't happen */
-		  pthread_mutex_unlock (&head->mutex);
-		  assert_release (false);
-		  return;
-		}
-	      if (!success)
+	      if (!spage_Saving_hashmap.erase_locked (thread_p, head->vpid, head))
 		{
 		  /* we don't have clear operations on this hash table, this shouldn't happen */
 		  pthread_mutex_unlock (&head->mutex);
@@ -500,12 +495,10 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, PAGE_PT
   vpid_p = pgbuf_get_vpid_ptr (page_p);
 
   /* retrieve a hash entry for specified VPID */
-  if (lf_hash_find_or_insert (t_entry, &spage_saving_ht, (void *) vpid_p, (void **) &head_p, NULL) != NO_ERROR)
+  (void) spage_Saving_hashmap.find_or_insert (thread_p, *vpid_p, head_p);
+  if (head_p == NULL)
     {
-      return ER_FAILED;
-    }
-  else if (head_p == NULL)
-    {
+      assert (false);
       return ER_FAILED;
     }
 
@@ -712,11 +705,7 @@ spage_get_saved_spaces (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, P
    * Get the saved space held by the head of the save entries. This is
    * the aggregate value of spaces saved on all entries.
    */
-  if (lf_hash_find (t_entry, &spage_saving_ht, (void *) vpid_p, (void **) &head_p) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
+  head_p = spage_Saving_hashmap.find (thread_p, *vpid_p);
   if (head_p != NULL)
     {
       entry_p = head_p->first;
@@ -765,12 +754,7 @@ spage_dump_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p, FILE * fp, VPID
   SPAGE_SAVE_ENTRY *entry_p;
   SPAGE_SAVE_HEAD *head_p;
 
-  if (lf_hash_find (t_entry, &spage_saving_ht, (void *) vpid_p, (void **) &head_p) != NO_ERROR)
-    {
-      assert_release (false);
-      return;
-    }
-
+  head_p = spage_Saving_hashmap.find (thread_p, *vpid_p);
   if (head_p != NULL)
     {
       fprintf (fp, "Other savings of VPID = %d|%d total_saved = %d\n", head_p->vpid.volid, head_p->vpid.pageid,
@@ -795,33 +779,15 @@ spage_dump_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p, FILE * fp, VPID
  *              is initialized
  *   return:
  */
-int
+void
 spage_boot (THREAD_ENTRY * thread_p)
 {
-  int r;
-
   assert (sizeof (SPAGE_HEADER) % DOUBLE_ALIGNMENT == 0);
   assert (sizeof (SPAGE_SLOT) == INT_ALIGNMENT);
 
   spage_User_page_size = db_page_size ();
 
-  /* initialize freelist */
-  r = lf_freelist_init (&spage_saving_freelist, 100, 100, &spage_saving_entry_descriptor, &spage_saving_Ts);
-  if (r != NO_ERROR)
-    {
-      return r;
-    }
-
-  /* initialize hash table */
-  r = lf_hash_init (&spage_saving_ht, &spage_saving_freelist, 4547, &spage_saving_entry_descriptor);
-  if (r != NO_ERROR)
-    {
-      lf_freelist_destroy (&spage_saving_freelist);
-      return r;
-    }
-
-  /* all ok */
-  return NO_ERROR;
+  spage_Saving_hashmap.init (spage_saving_Ts, THREAD_TS_SPAGE_SAVING, 4547, 100, 100, spage_Saving_entry_descriptor);
 }
 
 /*
@@ -835,8 +801,7 @@ void
 spage_finalize (THREAD_ENTRY * thread_p)
 {
   /* destroy everything */
-  lf_hash_destroy (&spage_saving_ht);
-  lf_freelist_destroy (&spage_saving_freelist);
+  spage_Saving_hashmap.destroy ();
 }
 
 /*

@@ -140,7 +140,7 @@ namespace cubthread
 					 int freelist_block_size, lf_entry_descriptor &edesc, int entry_idx)
   {
     m_type = OLD;
-    m_old_hash.init (transys, hash_size, freelist_block_count, freelist_block_size);
+    m_old_hash.init (transys, hash_size, freelist_block_count, freelist_block_size, edesc);
     m_entry_idx = entry_idx;
   }
 
