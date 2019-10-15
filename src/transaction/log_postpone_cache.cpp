@@ -31,7 +31,12 @@ void
 log_postpone_cache::reset ()
 {
   m_cursor = 0;
+  m_redo_data_offset = 0;
   m_is_redo_data_buf_full = false;
+  if (m_redo_data_buf.get_size () > BUFFER_RESET_SIZE)
+    {
+      m_redo_data_buf.freemem ();
+    }
 }
 
 /**
@@ -55,7 +60,7 @@ log_postpone_cache::add_redo_data (const log_prior_node &node)
 
   // Check if recovery data fits in preallocated buffer
   std::size_t redo_data_size = sizeof (log_rec_redo) + node.rlength + (2 * MAX_ALIGNMENT);
-  std::size_t total_size = redo_data_size + m_redo_data_buf.get_size ();
+  std::size_t total_size = redo_data_size + m_redo_data_offset;
   if (total_size > REDO_DATA_MAX_SIZE)
     {
       // Cannot store all recovery data
@@ -70,6 +75,8 @@ log_postpone_cache::add_redo_data (const log_prior_node &node)
   // Cache a new postpone log record entry
   cache_entry &new_entry = m_cache_entries[m_cursor];
   new_entry.m_offset = m_redo_data_offset;
+  // first and only first entry has m_offset equal to zero
+  assert ((m_cursor == 0) == (new_entry.m_offset == 0));
   new_entry.m_lsa.set_null ();
 
   // Cache log_rec_redo from data_header
@@ -143,7 +150,7 @@ log_postpone_cache::do_postpone (cubthread::entry &thread_ref, const log_lsa &st
       if (m_cache_entries[i].m_lsa == start_postpone_lsa)
 	{
 	  // Found start lsa
-	  start_index = i;
+	  start_index = (int) i;
 	  break;
 	}
     }
@@ -170,9 +177,14 @@ log_postpone_cache::do_postpone (cubthread::entry &thread_ref, const log_lsa &st
     }
 
   // Finished running postpones, update the number of entries which should be run on next commit
+  assert (!m_is_redo_data_buf_full);
   m_cursor = start_index;
-  m_is_redo_data_buf_full = false;
   m_redo_data_offset = m_cache_entries[start_index].m_offset;
+  if (m_cursor == 0)
+    {
+      assert (m_redo_data_offset == 0); // should be 0 when cursor is back to 0
+      reset ();
+    }
 
   return true;
 }

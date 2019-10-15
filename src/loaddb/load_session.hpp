@@ -86,7 +86,7 @@ namespace cubload
        *    thread_ref(in): thread entry
        *    batch(in)     : a batch where content is a line starting with '%id' or '%class' from object file
        */
-      int install_class (cubthread::entry &thread_ref, const batch &batch, bool &is_ignored);
+      int install_class (cubthread::entry &thread_ref, const batch &batch, bool &is_ignored, std::string &cls_name);
 
       /*
        * Load a batch from object file on the the server

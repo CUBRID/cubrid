@@ -221,7 +221,8 @@ extern int vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npag
 			      VFID * dropped_files_vfid, bool is_restore);
 extern void vacuum_finalize (THREAD_ENTRY * thread_p);
 extern int vacuum_boot (THREAD_ENTRY * thread_p);
-extern void vacuum_stop (THREAD_ENTRY * thread_p);
+extern void vacuum_stop_workers (THREAD_ENTRY * thread_p);
+extern void vacuum_stop_master (THREAD_ENTRY * thread_p);
 extern int xvacuum (THREAD_ENTRY * thread_p);
 
 extern int vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, VFID * vacuum_data_vfid);
