@@ -3076,7 +3076,6 @@ static int
 lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index, const OID * oid, const OID * class_oid,
 					LOCK lock)
 {
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
   LK_RES_KEY search_key;
   LK_RES *res_ptr;
   LK_ENTRY *entry_ptr, *i;
@@ -3219,7 +3218,6 @@ static int
 lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, const OID * oid, const OID * class_oid,
 				   LOCK lock, int wait_msecs, LK_ENTRY ** entry_addr_ptr, LK_ENTRY * class_entry)
 {
-  LF_TRAN_ENTRY *t_entry_res = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
   LF_TRAN_ENTRY *t_entry_ent = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
   LK_RES_KEY search_key;
   TRAN_ISOLATION isolation;
@@ -6910,7 +6908,6 @@ lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * 
 #if !defined (SERVER_MODE)
   return NULL;
 #else /* !SERVER_MODE */
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
   LK_RES_KEY search_key;
   LK_RES *res_ptr;
   LK_ENTRY *entry_ptr;
@@ -7688,7 +7685,6 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 #if !defined (SERVER_MODE)
   return;
 #else /* !SERVER_MODE */
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
   int k, s, t;
   LK_RES *res_ptr;
   LK_ENTRY *hi, *hj;
@@ -8441,7 +8437,6 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
   return;
 #else /* !SERVER_MODE */
 
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
   const char *client_prog_name;	/* Client program name for tran */
   const char *client_user_name;	/* Client user name for tran */
   const char *client_host_name;	/* Client host for tran */
