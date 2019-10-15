@@ -588,8 +588,16 @@ template <class Key, class T>
 size_t
 lf_hash_table_cpp<Key, T>::get_element_count () const
 {
-  int count = m_freelist.alloc_cnt - m_freelist.available_cnt - m_freelist.retired_cnt;
-  return static_cast<size_t> (count);
+  int alloc_count = m_freelist.alloc_cnt;
+  int unused_count = m_freelist.available_cnt + m_freelist.retired_cnt;
+  if (alloc_count > unused_count)
+    {
+      return static_cast<size_t> (alloc_count - unused_count);
+    }
+  else
+    {
+      return 0;
+    }
 }
 
 template <class Key, class T>

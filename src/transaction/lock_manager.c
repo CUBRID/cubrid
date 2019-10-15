@@ -1097,7 +1097,7 @@ lock_initialize_object_hash_table (void)
     }
 
   const int block_count = 2;
-  const int block_size = (int) MAX ((lk_Gl.max_obj_locks * LK_RES_RATIO) / 2, 1);
+  const int block_size = (int) MAX ((lk_Gl.max_obj_locks * LK_RES_RATIO) / block_count, 1);
 
   /* initialize */
 
