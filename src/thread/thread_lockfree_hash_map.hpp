@@ -166,6 +166,11 @@ namespace cubthread
   void
   lockfree_hashmap<Key, T>::destroy ()
   {
+    if (m_type == UNKNOWN)
+      {
+	// was not initialized
+	return;
+      }
     if (is_old_type ())
       {
 	m_old_hash.destroy ();
