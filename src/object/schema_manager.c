@@ -2009,9 +2009,9 @@ sm_get_method_source_file (MOP obj, const char *name)
 void
 sm_init (OID * rootclass_oid, HFID * rootclass_hfid)
 {
-
   sm_Root_class_mop = ws_mop (rootclass_oid, NULL);
-  oid_Root_class_oid = ws_oid (sm_Root_class_mop);
+
+  COPY_OID (oid_Root_class_oid, ws_oid (sm_Root_class_mop));
 
   OID_SET_NULL (&(sm_Root_class.header.ch_rep_dir));	/* is dummy */
 
@@ -9973,7 +9973,16 @@ collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses, const char *const
 		   * subclasses.  We're assuming that the base class has already been processed. */
 		  if (OID_ISTEMP (ws_oid (sub->op)))
 		    {
-		      locator_assign_permanent_oid (sub->op);
+		      if (locator_assign_permanent_oid (sub->op) == NULL)
+			{
+			  if (er_errid () == NO_ERROR)
+			    {
+			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_CANT_ASSIGN_OID, 0);
+			    }
+
+			  classobj_free_class_constraints (constraints);
+			  return er_errid ();
+			}
 		    }
 
 		  COPY_OID (&oids[*n_classes], WS_OID (sub->op));
@@ -10868,7 +10877,15 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasse
 
   if (OID_ISTEMP (ws_oid (classop)))
     {
-      locator_assign_permanent_oid (classop);
+      if (locator_assign_permanent_oid (classop) == NULL)
+	{
+	  if (er_errid () == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_CANT_ASSIGN_OID, 0);
+	    }
+
+	  goto structure_error;
+	}
     }
 
   for (con = class_->constraints; con != NULL; con = con->next)

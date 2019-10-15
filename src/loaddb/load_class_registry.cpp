@@ -68,8 +68,17 @@ namespace cubload
     , m_class_oid (class_oid)
     , m_class_name (std::move (class_name))
     , m_attributes (attributes.size ())
+    , m_is_ignored (false)
   {
     std::copy (attributes.begin (), attributes.end (), m_attributes.begin ());
+  }
+
+  class_entry::class_entry (std::string &class_name, class_id clsid, bool is_ignored)
+    : m_clsid (clsid)
+    , m_class_name (class_name)
+    , m_is_ignored (is_ignored)
+  {
+    ; // Do nothing
   }
 
   class_entry::~class_entry ()
@@ -108,6 +117,12 @@ namespace cubload
     return m_attributes.size ();
   }
 
+  bool
+  class_entry::is_ignored () const
+  {
+    return m_is_ignored;
+  }
+
   // class_registry
   class_registry::class_registry ()
     : m_mutex ()
@@ -142,6 +157,15 @@ namespace cubload
     c_entry = new class_entry (c_name, class_oid, clsid, attributes);
 
     m_class_by_id.insert (std::make_pair (clsid, c_entry));
+  }
+
+  void
+  class_registry::register_ignored_class (class_entry *cls_entry, class_id cls_id)
+  {
+    assert (cls_entry != NULL);
+    assert (cls_entry->is_ignored ());
+
+    m_class_by_id.insert (std::make_pair (cls_id, cls_entry));
   }
 
   const class_entry *

@@ -3874,25 +3874,28 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
 
 end:
 
+  int err;
+
   if (return_btid == NULL)
     {
-      int err;
-
       ASSERT_ERROR_AND_SET (err);
       ptr = or_pack_int (reply, err);
     }
   else
     {
-      ptr = or_pack_int (reply, NO_ERROR);
+      err = NO_ERROR;
+      ptr = or_pack_int (reply, err);
     }
 
   if (index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
       // it may not be really necessary. it just help things don't go worse that client keep caching ex-lock.
       int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-      LOCK cls_lock = lock_get_object_lock (&class_oids[0], oid_Root_class_oid, tran_index);
+      LOCK cls_lock = lock_get_object_lock (&class_oids[0], oid_Root_class_oid);
 
-      assert (cls_lock == SCH_M_LOCK);	// hope it never be IX_LOCK.
+      // in case of shutdown, index loader might be interrupted and got error
+      // otherwise, it should restore SCH_M_LOCK
+      assert ((err != NO_ERROR && css_is_shutdowning_server ()) || cls_lock == SCH_M_LOCK);
       ptr = or_pack_int (ptr, (int) cls_lock);
     }
   else
@@ -9770,19 +9773,21 @@ void
 sloaddb_install_class (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   packing_unpacker unpacker (request, (size_t) reqlen);
+  bool is_ignored = false;
 
   /* *INDENT-OFF* */
-  cubload::batch *batch = new cubload::batch ();
+  cubload::batch batch;
   /* *INDENT-ON* */
 
-  batch->unpack (unpacker);
+  batch.unpack (unpacker);
 
   load_session *session = NULL;
   int error_code = session_get_load_session (thread_p, session);
+  std::string cls_name;
   if (error_code == NO_ERROR)
     {
       assert (session != NULL);
-      error_code = session->install_class (*thread_p, *batch);
+      error_code = session->install_class (*thread_p, batch, is_ignored, cls_name);
     }
   else
     {
@@ -9795,11 +9800,17 @@ sloaddb_install_class (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       return_error_to_client (thread_p, rid);
     }
 
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  // Error code and is_ignored.
+  OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  int buf_sz = (int) cls_name.length ();
+  ptr = or_pack_int (reply, buf_sz);
+  ptr = or_pack_int (ptr, error_code);
+  ptr = or_pack_int (ptr, (is_ignored ? 1 : 0));
 
-  or_pack_int (reply, error_code);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				     (char *) cls_name.c_str (), buf_sz);
 }
 
 void
@@ -9916,7 +9927,6 @@ sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
       assert (session != NULL);
 
       session->interrupt ();
-      session->wait_for_completion ();
     }
   else
     {

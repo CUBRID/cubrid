@@ -39,9 +39,9 @@
 #include <fstream>
 #include <thread>
 
-#define LOAD_INDEX_MIN_SORT_BUFFER_PAGES 8192
-#define LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING "8192"
-#define LOADDB_LOG_FILENAME_SUFFIX "loaddb.log"
+const int LOAD_INDEX_MIN_SORT_BUFFER_PAGES = 8192;
+const char *LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING = "8192";
+const char *LOADDB_LOG_FILENAME_SUFFIX = "loaddb.log";
 
 using namespace cubload;
 
@@ -62,6 +62,9 @@ static void get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args);
 
 static void ldr_server_load (load_args * args, int *status, bool * interrupted);
 static void register_signal_handlers ();
+/* *INDENT-OFF* */
+static int load_has_authorization (const std::string & class_name, DB_AUTH au_type);
+/* *INDENT-ON* */
 static int load_object_file (load_args * args);
 static void print_er_msg ();
 
@@ -205,6 +208,7 @@ ldr_get_start_line_no (std::string & file_name)
 	    }
 	  if (file_name[q] == 0)
 	    {
+	      /* *INDENT-OFF* */
 	      try
 	      {
 		line_no = std::stoi (file_name.substr (p + 1));
@@ -213,6 +217,7 @@ ldr_get_start_line_no (std::string & file_name)
 	      {
 		// parse failed, fallback to default value
 	      }
+	      /* *INDENT-ON* */
 
 	      // remove line no from file name
 	      file_name.resize (p);
@@ -580,8 +585,12 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       int retval = args.parse_ignore_class_file ();
       if (retval < 0)
 	{
-	  status = 2;
-	  goto error_return;
+	  if (retval != ER_FILE_UNKNOWN_FILE)
+	    {
+	      // To keep compatibility we need to continue even though the ignore-classes file does not exist.            
+	      status = 2;
+	      goto error_return;
+	    }
 	}
     }
 
@@ -1191,6 +1200,44 @@ register_signal_handlers ()
 }
 
 static int
+load_has_authorization (const std::string & class_name, DB_AUTH au_type)
+{
+  // au_fetch_class
+  DB_OBJECT *usr = db_get_user ();
+  if (au_is_dba_group_member (usr))
+    {
+      // return early, no need to check dba if authorized
+      return NO_ERROR;
+    }
+
+  int error_code = NO_ERROR;
+  DB_OBJECT *class_mop = db_find_class (class_name.c_str ());
+  if (class_mop != NULL)
+    {
+      DB_OBJECT *owner = db_get_owner (class_mop);
+      if (owner == usr)
+	{
+	  // return early, no need to check owner if authorized
+	  return NO_ERROR;
+	}
+    }
+  else
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  error_code = au_check_authorization (class_mop, au_type);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      // promote from warning to error severity
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+    }
+  return error_code;
+}
+
+static int
 load_object_file (load_args * args)
 {
   int error_code = NO_ERROR;
@@ -1198,6 +1245,11 @@ load_object_file (load_args * args)
   // first try to load directly on server
   if (!args->server_object_file.empty ())
     {
+      if (!au_is_dba_group_member (db_get_user ()))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "--server-data-file");
+	  return ER_AU_DBA_ONLY;
+	}
       error_code = loaddb_load_object_file ();
       if (error_code == NO_ERROR)
 	{
@@ -1225,21 +1277,43 @@ load_object_file (load_args * args)
 	}
     }
 
+  if (!args->table_name.empty ())
+    {
+      error_code = load_has_authorization (args->table_name, AU_INSERT);
+      // user not authorized to insert in class
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+
   /* *INDENT-OFF* */
   batch_handler b_handler = [] (const batch &batch) -> int
-    {
-      int ret = loaddb_load_batch (batch);
-      delete &batch;
+  {
+    int ret = loaddb_load_batch (batch);
+    delete &batch;
 
-      return ret;
-    };
-  batch_handler c_handler = [] (const batch &batch) -> int
-    {
-      int ret = loaddb_install_class (batch);
-      delete &batch;
+    return ret;
+  };
 
-      return ret;
-    };
+  class_handler c_handler = [] (const batch &batch, bool &is_ignored) -> int
+  {
+    std::string class_name;
+    int ret = loaddb_install_class (batch, is_ignored, class_name);
+    delete &batch;
+
+    if (ret != NO_ERROR)
+      {
+	return ret;
+      }
+
+    if (!is_ignored && !class_name.empty ())
+      {
+	ret = load_has_authorization (class_name, AU_INSERT);
+      }
+
+    return ret;
+  };
   /* *INDENT-ON* */
 
   // here we are sure that object_file exists since it was validated by loaddb_internal function

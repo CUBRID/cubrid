@@ -41,6 +41,7 @@
 
 #include <algorithm>
 #include <assert.h>
+#include <cctype>
 #include <float.h>
 #include <math.h>
 #include <stdio.h>
@@ -5564,7 +5565,6 @@ db_evaluate_json_object (DB_VALUE * result, DB_VALUE * const *arg, int const num
   int i;
   int error_code = NO_ERROR;
   JSON_DOC_STORE value_doc;
-  const char *value_key = NULL;
 
   db_make_null (result);
 
@@ -6461,7 +6461,10 @@ is_str_find_all (DB_VALUE * val, bool & find_all)
 
   // *INDENT-OFF*
   std::string find_all_str (db_get_string (val), db_get_string_size (val));
-  std::transform (find_all_str.begin (), find_all_str.end (), find_all_str.begin (), ::tolower);
+  std::transform (find_all_str.begin (), find_all_str.end (), find_all_str.begin (), [] (unsigned char c)
+  {
+    return std::tolower (c); 
+  });
   // *INDENT-ON*
 
   find_all = false;

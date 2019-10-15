@@ -236,6 +236,11 @@ extern int db_tz_offset (const DB_VALUE * src_str, DB_VALUE * result_str, DB_DAT
 extern int db_from_tz (DB_VALUE * time_val, DB_VALUE * tz, DB_VALUE * time_val_with_tz);
 extern int db_new_time (DB_VALUE * time_val, DB_VALUE * tz_source, DB_VALUE * tz_dest, DB_VALUE * result_time);
 extern int db_conv_tz (DB_VALUE * time_val, DB_VALUE * result_time);
+extern int db_json_convert_to_utf8 (DB_VALUE ** dbval);
+extern int db_json_copy_and_convert_to_utf8 (const DB_VALUE * src_dbval, DB_VALUE * dest_dbval,
+					     const DB_VALUE ** json_str_dbval);
+extern int db_string_convert_to (const DB_VALUE * src_string, DB_VALUE * dest_string, INTL_CODESET dest_codeset,
+				 int dest_col);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int db_string_convert (const DB_VALUE * src_string, DB_VALUE * dest_string);

@@ -31,6 +31,7 @@
 #include "load_error_handler.hpp"
 #include "load_session.hpp"
 #include "locator_sr.h"
+#include "memory_alloc.h"
 #include "object_primitive.h"
 #include "record_descriptor.hpp"
 #include "set_object.h"
@@ -63,6 +64,12 @@ namespace cubload
     (void) class_id;
     OID class_oid;
 
+    if (is_class_ignored (class_name))
+      {
+	// Silently do nothing.
+	return;
+      }
+
     if (locate_class (class_name, class_oid) != LC_CLASSNAME_EXIST)
       {
 	m_error_handler.on_failure_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
@@ -86,6 +93,14 @@ namespace cubload
   {
     if (class_name == NULL || class_name->val == NULL)
       {
+	return;
+      }
+
+    if (cmd_spec != NULL && (cmd_spec->attr_type == LDR_ATTRIBUTE_CLASS || cmd_spec->attr_type == LDR_ATTRIBUTE_SHARED))
+      {
+	int err_code = cmd_spec->attr_type == LDR_ATTRIBUTE_CLASS ? ER_LDR_CLASS_NOT_SUPPORTED : ER_LDR_SHARED_NOT_SUPPORTED;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_code, 0);
+	m_error_handler.on_syntax_failure ();
 	return;
       }
 
@@ -115,6 +130,16 @@ namespace cubload
     if (m_session.is_failed ())
       {
 	// return in case when class does not exists
+	return;
+      }
+
+    // Check if we have to ignore this class.
+    if (is_class_ignored (class_name))
+      {
+	std::string classname (class_name);
+	m_session.append_log_msg (LOADDB_MSG_IGNORED_CLASS, class_name);
+	class_entry *cls_entry = new class_entry (classname, m_clsid, true);
+	m_session.get_class_registry ().register_ignored_class (cls_entry, m_clsid);
 	return;
       }
 
@@ -156,6 +181,19 @@ namespace cubload
     attribute_type attr_type = cmd_spec != NULL ? cmd_spec->attr_type : LDR_ATTRIBUTE_DEFAULT;
     get_class_attributes (attrinfo, attr_type, or_attributes, &n_attributes);
 
+    // sort attrib idxs by or_attrib.def_order
+    // attrib_order[i] = the i-th element in or_attributes[:].def_order
+    // or_attributes[:].def_order = [ 2, 0, 3, 10, 5] -> attrib_order = [ 1, 0, 2, 4, 3]
+    std::vector<int> attrib_order (n_attributes);
+    for (size_t i = 0; i < attrib_order.size (); ++i)
+      {
+	attrib_order[i] = i;
+      }
+    std::sort (attrib_order.begin (), attrib_order.end (), [or_attributes] (int a, int b)
+    {
+      return or_attributes[a].def_order < or_attributes[b].def_order;
+    });
+
     // collect class attribute names
     std::map<std::string, or_attribute *> attr_map;
     std::vector<const attribute *> attributes;
@@ -167,16 +205,7 @@ namespace cubload
 	int free_attr_name = 0;
 	or_attribute *attr_repr = NULL;
 
-	for (std::size_t i = 0; i < (std::size_t) n_attributes; ++i)
-	  {
-	    if (or_attributes[i].def_order == attr_index)
-	      {
-		attr_repr = &or_attributes[i];
-		break;
-	      }
-	  }
-
-	assert (attr_repr != NULL);
+	attr_repr = &or_attributes[attrib_order[attr_index]];
 
 	error_code = or_get_attrname (&recdes, attr_repr->id, &attr_name, &free_attr_name);
 	if (error_code != NO_ERROR)
@@ -247,6 +276,10 @@ namespace cubload
 	  }
       }
 
+    assert (std::is_sorted (attributes.begin (), attributes.end (), [] (const attribute * a, const attribute * b)
+    {
+      return a->get_index () < b->get_index ();
+    }));
     m_session.get_class_registry ().register_class (class_name, m_clsid, class_oid, attributes);
 
     heap_scancache_end (&thread_ref, &scancache);
@@ -261,10 +294,12 @@ namespace cubload
     switch (attr_type)
       {
       case LDR_ATTRIBUTE_CLASS:
+	assert (false);
 	or_attributes = attrinfo.last_classrepr->class_attrs;
 	*n_attributes = attrinfo.last_classrepr->n_class_attrs;
 	break;
       case LDR_ATTRIBUTE_SHARED:
+	assert (false);
 	or_attributes = attrinfo.last_classrepr->shared_attrs;
 	*n_attributes = attrinfo.last_classrepr->n_shared_attrs;
 	break;
@@ -278,6 +313,37 @@ namespace cubload
 	break;
       }
     assert (*n_attributes >= 0);
+  }
+
+  bool
+  server_class_installer::is_class_ignored (const char *classname)
+  {
+    if (IS_OLD_GLO_CLASS (classname))
+      {
+	return true;
+      }
+
+    const std::vector<std::string> &classes_ignored = m_session.get_args ().ignore_classes;
+    bool is_ignored;
+
+    char *lower_case_string = (char *) db_private_alloc (NULL, intl_identifier_lower_string_size (classname) + 1);
+
+    // Make the string to be lower case and take into consideration all types of characters.
+    intl_identifier_lower (classname, lower_case_string);
+
+    std::string class_name (lower_case_string);
+
+    auto result = std::find (classes_ignored.begin (), classes_ignored.end (), class_name);
+
+    is_ignored = (result != classes_ignored.end ());
+
+    if (lower_case_string != NULL)
+      {
+	db_private_free (NULL, lower_case_string);
+	lower_case_string = NULL;
+      }
+
+    return is_ignored;
   }
 
   server_object_loader::server_object_loader (session &session, error_handler &error_handler)
@@ -741,6 +807,8 @@ namespace cubload
   db_value &
   server_object_loader::get_attribute_db_value (size_t attr_index)
   {
+    assert (attr_index <= m_db_values.size ());
+
     if (attr_index == m_db_values.size ())
       {
 	m_db_values.emplace_back ();

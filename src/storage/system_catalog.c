@@ -5849,8 +5849,7 @@ catalog_start_access_with_dir_oid (THREAD_ENTRY * thread_p, CATALOG_ACCESS_INFO 
 
   OID_GET_VIRTUAL_CLASS_OF_DIR_OID (catalog_access_info->class_oid, &virtual_class_dir_oid);
 #if defined (SERVER_MODE)
-  current_lock = lock_get_object_lock (catalog_access_info->dir_oid, &virtual_class_dir_oid,
-				       LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  current_lock = lock_get_object_lock (catalog_access_info->dir_oid, &virtual_class_dir_oid);
   if (current_lock != NULL_LOCK)
     {
       assert (false);
@@ -5947,9 +5946,7 @@ catalog_end_access_with_dir_oid (THREAD_ENTRY * thread_p, CATALOG_ACCESS_INFO * 
       else
 	{
 #if defined (SERVER_MODE)
-	  current_lock =
-	    lock_get_object_lock (catalog_access_info->class_oid, oid_Root_class_oid,
-				  LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+	  current_lock = lock_get_object_lock (catalog_access_info->class_oid, oid_Root_class_oid);
 
 	  if (current_lock == SCH_M_LOCK)
 	    {

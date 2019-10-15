@@ -100,6 +100,10 @@ namespace cubload
 
       ~load_task () override
       {
+	if (!m_was_session_notified)
+	  {
+	    notify_done ();
+	  }
 	delete &m_batch;
       }
 
@@ -107,6 +111,7 @@ namespace cubload
 	: m_batch (batch)
 	, m_session (session)
 	, m_conn_entry (conn_entry)
+	, m_was_session_notified (false)
       {
 	//
       }
@@ -138,7 +143,7 @@ namespace cubload
 	      }
 
 	    driver->clear ();
-	    m_session.notify_batch_done (m_batch.get_id ());
+	    notify_done ();
 	    return;
 	  }
 
@@ -146,6 +151,11 @@ namespace cubload
 				 TRAN_DEFAULT_ISOLATION_LEVEL ());
 	int tran_index = thread_ref.tran_index;
 	m_session.register_tran_start (tran_index);
+
+	// Get the clientids from the session and set it on the current worker.
+	LOG_TDES *session_tdes = log_Gl.trantable.all_tdes[m_conn_entry.get_tran_index ()];
+	LOG_TDES *worker_tdes = log_Gl.trantable.all_tdes[tran_index];
+	worker_tdes->client.set_ids (session_tdes->client);
 
 	bool parser_result = invoke_parser (driver, m_batch);
 
@@ -195,17 +205,32 @@ namespace cubload
 	      }
 	  }
 
-	// free transaction index
-	logtb_free_tran_index (&thread_ref, thread_ref.tran_index);
+	// Clear the clientids.
+	worker_tdes->client.reset ();
 
 	// notify session that batch is done
-	m_session.notify_batch_done_and_register_tran_end (m_batch.get_id (), tran_index);
+	notify_done_and_tran_end (tran_index);
       }
 
     private:
+      void notify_done ()
+      {
+	assert (!m_was_session_notified);
+	m_session.notify_batch_done (m_batch.get_id ());
+	m_was_session_notified = true;
+      }
+
+      void notify_done_and_tran_end (int tran_index)
+      {
+	assert (!m_was_session_notified);
+	m_session.notify_batch_done_and_register_tran_end (m_batch.get_id (), tran_index);
+	m_was_session_notified = true;
+      }
+
       const batch &m_batch;
       session &m_session;
       css_conn_entry &m_conn_entry;
+      bool m_was_session_notified;
   };
 
   session::session (load_args &args)
@@ -215,12 +240,13 @@ namespace cubload
     , m_args (args)
     , m_last_batch_id {NULL_BATCH_ID}
     , m_max_batch_id {NULL_BATCH_ID}
+    , m_active_task_count {0}
     , m_class_registry ()
     , m_stats ()
     , m_stats_mutex ()
     , m_driver (NULL)
   {
-    worker_manager_register_session ();
+    worker_manager_register_session (*this);
 
     m_driver = new driver ();
     init_driver (m_driver, *this);
@@ -229,6 +255,14 @@ namespace cubload
       {
 	// just set class id to 1 since only one table can be specified as command line argument
 	cubthread::entry &thread_ref = cubthread::get_entry ();
+
+	if (intl_identifier_lower_string_size (m_args.table_name.c_str ()) >= SM_MAX_IDENTIFIER_LENGTH)
+	  {
+	    // This is an error.
+	    m_driver->get_error_handler ().on_error (LOADDB_MSG_EXCEED_MAX_LEN, SM_MAX_IDENTIFIER_LENGTH - 1);
+	    return;
+	  }
+
 	thread_ref.m_loaddb_driver = m_driver;
 	m_driver->get_class_installer ().set_class_id (FIRST_CLASS_ID);
 	m_driver->get_class_installer ().install_class (m_args.table_name.c_str ());
@@ -240,7 +274,7 @@ namespace cubload
   {
     delete m_driver;
 
-    worker_manager_unregister_session ();
+    worker_manager_unregister_session (*this);
   }
 
   bool
@@ -266,7 +300,11 @@ namespace cubload
   void
   session::wait_for_completion ()
   {
-    auto pred = [this] () -> bool { return is_failed () || is_completed (); };
+    auto pred = [this] () -> bool
+    {
+      // condition of finish and no active tasks
+      return (is_failed () || is_completed ()) && (m_active_task_count == 0);
+    };
 
     if (pred ())
       {
@@ -280,33 +318,42 @@ namespace cubload
   void
   session::notify_batch_done (batch_id id)
   {
-    if (is_failed ())
+    std::unique_lock<std::mutex> ulock (m_commit_mutex);
+    assert (m_active_task_count > 0);
+    --m_active_task_count;
+    if (!is_failed ())
       {
-	return;
+	assert (m_last_batch_id == id - 1);
+	m_last_batch_id = id;
       }
-    m_commit_mutex.lock ();
-    assert (m_last_batch_id == id - 1);
-    m_last_batch_id = id;
-    m_commit_mutex.unlock ();
+    ulock.unlock ();
     notify_waiting_threads ();
+
+    er_clear ();
   }
 
   void
   session::notify_batch_done_and_register_tran_end (batch_id id, int tran_index)
   {
-    if (is_failed ())
+    std::unique_lock<std::mutex> ulock (m_commit_mutex);
+    // free transaction index
+    logtb_free_tran_index (&cubthread::get_entry (), tran_index);
+
+    assert (m_active_task_count > 0);
+    --m_active_task_count;
+    if (!is_failed ())
       {
-	return;
+	assert (m_last_batch_id == id - 1);
+	m_last_batch_id = id;
       }
-    m_commit_mutex.lock ();
-    assert (m_last_batch_id == id - 1);
-    m_last_batch_id = id;
     if (m_tran_indexes.erase (tran_index) != 1)
       {
 	assert (false);
       }
-    m_commit_mutex.unlock ();
+    ulock.unlock ();
     notify_waiting_threads ();
+
+    er_clear ();
   }
 
   void
@@ -439,8 +486,11 @@ namespace cubload
 
     for (const class_entry *class_entry : class_entries)
       {
-	OID *class_oid = const_cast<OID *> (&class_entry->get_class_oid ());
-	xstats_update_statistics (&thread_ref, class_oid, STATS_WITH_SAMPLING);
+	if (!class_entry->is_ignored ())
+	  {
+	    OID *class_oid = const_cast<OID *> (&class_entry->get_class_oid ());
+	    xstats_update_statistics (&thread_ref, class_oid, STATS_WITH_SAMPLING);
+	  }
       }
   }
 
@@ -463,12 +513,29 @@ namespace cubload
   }
 
   int
-  session::install_class (cubthread::entry &thread_ref, const batch &batch)
+  session::install_class (cubthread::entry &thread_ref, const batch &batch, bool &is_ignored, std::string &cls_name)
   {
     thread_ref.m_loaddb_driver = m_driver;
 
     int error_code = NO_ERROR;
     bool parser_result = invoke_parser (m_driver, batch);
+    const class_entry *cls_entry = get_class_registry ().get_class_entry (batch.get_class_id ());
+    if (cls_entry != NULL)
+      {
+	is_ignored = cls_entry->is_ignored ();
+	cls_name = cls_entry->get_class_name ();
+      }
+    else
+      {
+	is_ignored = false;
+      }
+
+    if (is_ignored)
+      {
+	thread_ref.m_loaddb_driver = NULL;
+
+	return NO_ERROR;
+      }
 
     if (is_failed () || !parser_result || er_has_error ())
       {
@@ -482,7 +549,6 @@ namespace cubload
       }
 
     thread_ref.m_loaddb_driver = NULL;
-    delete &batch;
 
     return error_code;
   }
@@ -496,6 +562,7 @@ namespace cubload
       }
 
     update_atomic_value_with_max (m_max_batch_id, batch.get_id ());
+    ++m_active_task_count;
 
     if (batch.get_content ().empty ())
       {
@@ -518,9 +585,10 @@ namespace cubload
       return load_batch (thread_ref, batch);
     };
 
-    batch_handler c_handler = [this, &thread_ref] (const batch &batch) -> int
+    class_handler c_handler = [this, &thread_ref] (const batch &batch, bool &is_ignored) -> int
     {
-      return install_class (thread_ref, batch);
+      std::string class_name;
+      return install_class (thread_ref, batch, is_ignored, class_name);
     };
 
     return split (m_args.periodic_commit, m_args.server_object_file, c_handler, b_handler);

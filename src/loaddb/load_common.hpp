@@ -76,6 +76,7 @@ namespace cubload
   };
 
   using batch_handler = std::function<int (const batch &)>;
+  using class_handler = std::function<int (const batch &, bool &)>;
 
   /*
    * loaddb executables command line arguments
@@ -395,11 +396,16 @@ namespace cubload
    *    c_handler(in)       : a function for handling/process a %class or %id line from object file
    *    b_handler(in)       : a function for handling/process a batch of objects
    */
-  int split (int batch_size, const std::string &object_file_name, batch_handler &c_handler, batch_handler &b_handler);
+  int split (int batch_size, const std::string &object_file_name, class_handler &c_handler, batch_handler &b_handler);
 
 } // namespace cubload
 
 // alias declaration for legacy C files
 using load_stats = cubload::stats;
+
+#define IS_OLD_GLO_CLASS(class_name)                    \
+	 (strncasecmp ((class_name), "glo", MAX(strlen(class_name), 3)) == 0      || \
+	  strncasecmp ((class_name), "glo_name", MAX(strlen(class_name), 8)) == 0  || \
+	  strncasecmp ((class_name), "glo_holder", MAX(strlen(class_name), 10)) == 0)
 
 #endif /* _LOAD_COMMON_HPP_ */

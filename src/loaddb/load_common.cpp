@@ -25,6 +25,7 @@
 
 #include "dbtype_def.h"
 #include "error_code.h"
+#include "intl_support.h"
 
 #include <fstream>
 
@@ -342,7 +343,15 @@ namespace cubload
 
 	// scan first string, and ignore rest of the line
 	sscanf (line.c_str (), fmt, class_name.c_str ());
-	ignore_classes.emplace_back (class_name.c_str (), strlen (class_name.c_str ()));
+
+	char lower_case_string[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
+
+	assert (intl_identifier_lower_string_size (class_name.c_str ()) <= DB_MAX_IDENTIFIER_LENGTH);
+
+	// Make the string to be lower case and take into consideration all types of characters.
+	intl_identifier_lower (class_name.c_str (), lower_case_string);
+
+	ignore_classes.emplace_back (lower_case_string);
       }
 
     file.close ();
@@ -537,16 +546,17 @@ namespace cubload
   }
 
   int
-  split (int batch_size, const std::string &object_file_name, batch_handler &c_handler, batch_handler &b_handler)
+  split (int batch_size, const std::string &object_file_name, class_handler &c_handler, batch_handler &b_handler)
   {
     int error_code;
-    int total_rows = 0;
     int batch_rows = 0;
     int lineno = 0;
     int line_offset = 0;
     class_id clsid = FIRST_CLASS_ID;
     batch_id batch_id = NULL_BATCH_ID;
     std::string batch_buffer;
+    bool class_is_ignored = false;
+    short single_quote_checker = 0;
 
     if (object_file_name.empty ())
       {
@@ -573,6 +583,7 @@ namespace cubload
 	      {
 		// in case of class line collect remaining for current class
 		// and start new batch for the new class
+
 		error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset, batch_rows);
 		if (error_code != NO_ERROR)
 		  {
@@ -581,15 +592,14 @@ namespace cubload
 		  }
 
 		++clsid;
-
-		// rewind forward total_rows counter until batch is full
-		for (; (total_rows % batch_size) != 0; total_rows++)
-		  ;
 	      }
+
+	    // New class so we check if the previous one was ignored.
+	    // If so, then we should empty the current batch since we do not send it to the server.
 
 	    line.append ("\n"); // feed lexer with new line
 	    batch *c_batch = new batch (batch_id, clsid, line, lineno, 1);
-	    error_code = c_handler (*c_batch);
+	    error_code = c_handler (*c_batch, class_is_ignored);
 	    if (error_code != NO_ERROR)
 	      {
 		object_file.close ();
@@ -597,6 +607,12 @@ namespace cubload
 	      }
 
 	    line_offset = lineno;
+	    continue;
+	  }
+
+	if (class_is_ignored)
+	  {
+	    // Skip the remaining lines until we find another class.
 	    continue;
 	  }
 
@@ -614,23 +630,39 @@ namespace cubload
 	// since std::getline eats end line character, add it back in order to make loaddb lexer happy
 	batch_buffer.append ("\n");
 
+	// check for matching single quotes
+	for (const char &c: line)
+	  {
+	    if (c == '\'')
+	      {
+		single_quote_checker ^= 1;
+	      }
+	  }
+
 	// it could be that a row is wrapped on the next line,
 	// this means that the row ends on the last line that does not end with '+' (plus) character
-	if (!ends_with (line, "+"))
+	if (ends_with (line, "+"))
 	  {
-	    ++total_rows;
-	    ++batch_rows;
+	    continue;
+	  }
 
-	    // check if we have a full batch
-	    if ((total_rows % batch_size) == 0)
+	// if single_quote_checker is 1, it means that a single quote was opened but not closed
+	if (single_quote_checker == 1)
+	  {
+	    continue;
+	  }
+
+	++batch_rows;
+
+	// check if we have a full batch
+	if (batch_rows == batch_size)
+	  {
+	    error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset, batch_rows);
+	    line_offset = lineno;
+	    if (error_code != NO_ERROR)
 	      {
-		error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset, batch_rows);
-		line_offset = lineno;
-		if (error_code != NO_ERROR)
-		  {
-		    object_file.close ();
-		    return error_code;
-		  }
+		object_file.close ();
+		return error_code;
 	      }
 	  }
       }
