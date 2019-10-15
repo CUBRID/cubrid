@@ -2538,6 +2538,13 @@ catalog_initialize (CTID * catalog_id_p)
 {
   // protect against repeated hashmap initializations
   catalog_Hashmap.destroy ();
+
+  VFID_COPY (&catalog_Id.xhid, &catalog_id_p->xhid);
+  catalog_Id.xhid.pageid = catalog_id_p->xhid.pageid;
+  catalog_Id.vfid.fileid = catalog_id_p->vfid.fileid;
+  catalog_Id.vfid.volid = catalog_id_p->vfid.volid;
+  catalog_Id.hpgid = catalog_id_p->hpgid;
+
   // init
   catalog_Hashmap.init (catalog_Ts, THREAD_TS_CATALOG, CATALOG_HASH_SIZE, 2, 100, catalog_entry_Descriptor);
 
