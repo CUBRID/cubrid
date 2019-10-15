@@ -2009,9 +2009,9 @@ sm_get_method_source_file (MOP obj, const char *name)
 void
 sm_init (OID * rootclass_oid, HFID * rootclass_hfid)
 {
-
   sm_Root_class_mop = ws_mop (rootclass_oid, NULL);
-  oid_Root_class_oid = ws_oid (sm_Root_class_mop);
+
+  COPY_OID (oid_Root_class_oid, ws_oid (sm_Root_class_mop));
 
   OID_SET_NULL (&(sm_Root_class.header.ch_rep_dir));	/* is dummy */
 
