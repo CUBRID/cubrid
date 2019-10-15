@@ -4442,6 +4442,8 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   LOG_TDES *tdes;
   int lock_ret;
   BTID *list_btid = NULL;
+  int old_wait_msec;
+  bool old_check_intr;
 
   func_index_info.expr = NULL;
 
@@ -4662,8 +4664,8 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   // We are going to do best to avoid lock promotion errors such as timeout and deadlocked.
 
   // never give up
-  int old_wait_msec = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
-  bool old_check_intr = logtb_set_check_interrupt (thread_p, false);
+  old_wait_msec = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
+  old_check_intr = logtb_set_check_interrupt (thread_p, false);
   for (cur_class = 0; cur_class < n_classes; cur_class++)
     {
       /* Promote the lock to SCH_M_LOCK */
