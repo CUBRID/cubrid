@@ -4677,14 +4677,22 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	    {
 	      break;
 	    }
-
-	  if (er_errid () == ER_INTERRUPTED)
+	  else if (lock_ret == LK_NOTGRANTED_DUE_ERROR)
 	    {
-	      // interruptions cannot be allowed here; lock must be promoted to either commit or rollback changes
+	      if (er_errid () == ER_INTERRUPTED)
+		{
+		  // interruptions cannot be allowed here; lock must be promoted to either commit or rollback changes
+		  er_clear ();
+		  // make sure the transaction interrupt flag is cleared
+		  logtb_set_tran_index_interrupt (thread_p, thread_p->tran_index, false);
+		  // and retry
+		  continue;
+		}
+	    }
+	  else if (lock_ret == LK_NOTGRANTED_DUE_TIMEOUT && css_is_shutdowning_server ())
+	    {
+	      // server shutdown forced timeout; but consistency requires that we get the lock upgrade no matter what
 	      er_clear ();
-	      // make sure the transaction interrupt flag is cleared
-	      logtb_set_tran_index_interrupt (thread_p, thread_p->tran_index, false);
-	      // and retry
 	      continue;
 	    }
 

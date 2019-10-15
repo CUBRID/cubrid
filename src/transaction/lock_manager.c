@@ -7703,11 +7703,6 @@ void
 lock_force_thread_timeout_lock (THREAD_ENTRY * thrd)
 {
 #if defined (SERVER_MODE)
-  if (!logtb_get_check_interrupt (thrd))
-    {
-      // don't interrupt
-      return;
-    }
   thread_lock_entry (thrd);
   if (LK_IS_LOCKWAIT_THREAD (thrd))
     {
