@@ -380,22 +380,29 @@ struct lk_global_data
   bool dump_level;
 #endif				/* LK_DUMP */
 
-    lk_global_data ():max_obj_locks (0), m_obj_hash_table
-  {
-  }
-   , obj_free_entry_list LF_FREELIST_INITIALIZER, num_trans (0), tran_lock_table (NULL),
-    DL_detection_mutex PTHREAD_MUTEX_INITIALIZER, last_deadlock_run
-  {
-  0, 0}
-  , TWFG_node (NULL), TWFG_edge (NULL), max_TWFG_edge (0), TWFG_free_edge_idx (0), global_edge_seq_num (0),
-    no_victim_case_count (0), verbose_mode (false), deadlock_and_timeout_detector
-  {
-  0}
+  // *INDENT-OFF*
+  lk_global_data ()
+    : max_obj_locks (0)
+    , m_obj_hash_table {}
+    , obj_free_entry_list LF_FREELIST_INITIALIZER
+    , num_trans (0)
+    , tran_lock_table (NULL)
+    , DL_detection_mutex PTHREAD_MUTEX_INITIALIZER
+    , last_deadlock_run { 0, 0 }
+    , TWFG_node (NULL)
+    , TWFG_edge (NULL)
+    , max_TWFG_edge (0)
+    , TWFG_free_edge_idx (0)
+    , global_edge_seq_num (0)
+    , no_victim_case_count (0)
+    , verbose_mode (false)
+    , deadlock_and_timeout_detector { 0 }
 #if defined(LK_DUMP)
-  , dump_level (0)
+    , dump_level (0)
 #endif
   {
   }
+  // *INDENT-ON*
 };
 
 LK_GLOBAL_DATA lk_Gl;
