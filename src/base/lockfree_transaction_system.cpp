@@ -29,6 +29,7 @@ namespace lockfree
       : m_max_tran_per_table (max_tran_count)
       , m_tran_idx_map ()
     {
+      assert (m_max_tran_per_table > 0);
       m_tran_idx_map.init (bitmap::chunking_style::ONE_CHUNK, static_cast<int> (max_tran_count),
 			   bitmap::FULL_USAGE_RATIO);
     }
