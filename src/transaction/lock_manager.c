@@ -8518,8 +8518,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
   /* dump object lock table */
   fprintf (outfp, "Object Lock Table:\n");
   fprintf (outfp, "\tCurrent number of objects which are locked    = %d\n", num_locked);
-  fprintf (outfp, "\tMaximum number of objects which can be locked = %d\n\n",
-	   num_locked /* what to put here? there is no real max */ );
+  fprintf (outfp, "\tMaximum number of objects which can be locked = %d\n\n", lk_Gl.max_obj_locks);
 
   // *INDENT-OFF*
   lk_hashmap_iterator iterator { thread_p, lk_Gl.m_obj_hash_table };
