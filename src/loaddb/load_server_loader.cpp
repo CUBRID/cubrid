@@ -135,10 +135,8 @@ namespace cubload
     bool is_syntax_check_only = m_session.get_args ().syntax_check;
     cubmem::extensible_block eb;
 
-    eb.extend_to (intl_identifier_lower_string_size (class_name) + 1);
-
-    // Make the string to be lower case and take into consideration all types of characters.
-    intl_identifier_lower (class_name, eb.get_ptr ());
+    // Make the classname lowercase
+    to_lowercase_identifier (class_name, eb);
 
     const char *lower_case_class_name = eb.get_read_ptr ();
 
@@ -261,8 +259,7 @@ namespace cubload
     for (; str_attr != NULL; str_attr = str_attr->next, ++attr_index)
       {
 	cubmem::extensible_block attr_eb;
-	attr_eb.extend_to (intl_identifier_lower_string_size (str_attr->val) + 1);
-	intl_identifier_lower (str_attr->val, attr_eb.get_ptr ());
+	to_lowercase_identifier (str_attr->val, attr_eb);
 	std::string attr_name_ (attr_eb.get_read_ptr ());
 
 	auto found = attr_map.find (attr_name_);
@@ -365,6 +362,15 @@ namespace cubload
       }
 
     return is_ignored;
+  }
+
+  void
+  server_class_installer::to_lowercase_identifier (const char *idname, cubmem::extensible_block &eb)
+  {
+    eb.extend_to (intl_identifier_lower_string_size (idname) + 1);
+
+    // Make the string to be lower case and take into consideration all types of characters.
+    intl_identifier_lower (idname, eb.get_ptr ());
   }
 
   server_object_loader::server_object_loader (session &session, error_handler &error_handler)
