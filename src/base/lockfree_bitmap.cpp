@@ -221,6 +221,7 @@ restart:			/* wait-free process */
 	  }
       }
     while (!bitmap->bitfield[chunk_idx].compare_exchange_weak (chunk, chunk | mask));
+
     if (bitmap->style == LF_BITMAP_LIST_OF_CHUNKS)
       {
 	bitmap->entry_count_in_use++;
