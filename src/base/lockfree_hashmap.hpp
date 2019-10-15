@@ -142,6 +142,7 @@ namespace lockfree
     public:
       iterator () = default;
       iterator (tran::index tran_index, hashmap &hash);
+      ~iterator () = default;
 
       T *iterate ();
       iterator &operator= (iterator &&o);

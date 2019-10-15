@@ -87,7 +87,7 @@ namespace cubthread
   {
     public:
       iterator (cubthread::entry *thread_p, lockfree_hashmap &map);
-      ~iterator ();
+      ~iterator () = default;
 
       T *iterate ();
 

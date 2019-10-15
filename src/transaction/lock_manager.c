@@ -355,9 +355,6 @@ struct lk_global_data
   int max_obj_locks;		/* max # of object locks */
 
   lk_hashmap_type m_obj_hash_table;
-
-  LF_HASH_TABLE obj_hash_table;
-  LF_FREELIST obj_free_res_list;
   LF_FREELIST obj_free_entry_list;
 
   /* transaction lock table */
@@ -366,7 +363,7 @@ struct lk_global_data
 
   /* deadlock detection related fields */
   pthread_mutex_t DL_detection_mutex;
-  struct timeval last_deadlock_run;	/* last deadlock detetion time */
+  struct timeval last_deadlock_run;	/* last deadlock detection time */
   LK_WFG_NODE *TWFG_node;	/* transaction WFG node */
   LK_WFG_EDGE *TWFG_edge;	/* transaction WFG edge */
   int max_TWFG_edge;
@@ -382,17 +379,26 @@ struct lk_global_data
 #if defined(LK_DUMP)
   bool dump_level;
 #endif				/* LK_DUMP */
+
+    lk_global_data ():max_obj_locks (0), m_obj_hash_table
+  {
+  }
+   , obj_free_entry_list LF_FREELIST_INITIALIZER, num_trans (0), tran_lock_table (NULL),
+    DL_detection_mutex PTHREAD_MUTEX_INITIALIZER, last_deadlock_run
+  {
+  0, 0}
+  , TWFG_node (NULL), TWFG_edge (NULL), max_TWFG_edge (0), TWFG_free_edge_idx (0), global_edge_seq_num (0),
+    no_victim_case_count (0), verbose_mode (false), deadlock_and_timeout_detector
+  {
+  0}
+#if defined(LK_DUMP)
+  , dump_level (0)
+#endif
+  {
+  }
 };
 
-LK_GLOBAL_DATA lk_Gl = {
-  0, {}, LF_HASH_TABLE_INITIALIZER,
-  LF_FREELIST_INITIALIZER, LF_FREELIST_INITIALIZER,
-  0, NULL, PTHREAD_MUTEX_INITIALIZER, {0, 0},
-  NULL, NULL, 0, 0, 0, 0, false, {0}
-#if defined(LK_DUMP)
-  , 0
-#endif /* LK_DUMP */
-};
+LK_GLOBAL_DATA lk_Gl;
 
 /* size of each data structure */
 static const int SIZEOF_LK_LOCKINFO = sizeof (LK_LOCKINFO);
@@ -5829,7 +5835,6 @@ lock_finalize (void)
   /* destroy hash table and freelists */
   lk_Gl.m_obj_hash_table.destroy ();
   lf_freelist_destroy (&lk_Gl.obj_free_entry_list);
-  lf_freelist_destroy (&lk_Gl.obj_free_res_list);
 
   lock_deadlock_detect_daemon_destroy ();
 #endif /* !SERVER_MODE */
@@ -7719,9 +7724,9 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
   /* hold the deadlock detection mutex */
   rv = pthread_mutex_lock (&lk_Gl.DL_detection_mutex);
 
-  lk_hashmap_iterator iterator
-  {
-  thread_p, lk_Gl.m_obj_hash_table};
+  // *INDENT-OFF*
+  lk_hashmap_iterator iterator { thread_p, lk_Gl.m_obj_hash_table };
+  // *INDENT-ON*
   res_ptr = iterator.iterate ();
 
   for (; res_ptr != NULL; res_ptr = iterator.iterate ())
@@ -8509,9 +8514,9 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
   fprintf (outfp, "\tMaximum number of objects which can be locked = %d\n\n",
 	   num_locked /* what to put here? there is no real max */ );
 
-  lk_hashmap_iterator iterator
-  {
-  thread_p, lk_Gl.m_obj_hash_table};
+  // *INDENT-OFF*
+  lk_hashmap_iterator iterator { thread_p, lk_Gl.m_obj_hash_table };
+  // *INDENT-ON*
   res_ptr = iterator.iterate ();
   for (; res_ptr != NULL; res_ptr = iterator.iterate ())
     {
