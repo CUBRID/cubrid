@@ -111,7 +111,11 @@ namespace cubthread
   void
   manager::init_lockfree_system ()
   {
+#if defined (SERVER_MODE)
     m_lf_tran_sys = new lockfree::tran::system (m_max_threads);
+#else // !SERVER_MODE = SA_MODE
+    m_lf_tran_sys = new lockfree::tran::system (1);   // a single thread
+#endif // !SERVER_MODE = SA_MODE
   }
 
   template<typename Res>
