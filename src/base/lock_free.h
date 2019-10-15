@@ -386,6 +386,9 @@ class lf_hash_table_cpp
     T *freelist_claim (lf_tran_entry *t_entry);
     void freelist_retire (lf_tran_entry *t_entry, T *&t);
 
+    void start_tran (lf_tran_entry *t_entry);
+    void end_tran (lf_tran_entry *t_entry);
+
     size_t get_size () const;
 
     lf_hash_table &get_hash_table ();
@@ -573,6 +576,20 @@ lf_hash_table_cpp<Key, T>::freelist_retire (lf_tran_entry *t_entry, T *&t)
 {
   lf_freelist_retire (t_entry, &m_freelist, t);
   t = NULL;
+}
+
+template <class Key, class T>
+void
+lf_hash_table_cpp<Key, T>::start_tran (lf_tran_entry *t_entry)
+{
+  lf_tran_start_with_mb (t_entry, false);
+}
+
+template <class Key, class T>
+void
+lf_hash_table_cpp<Key, T>::end_tran (lf_tran_entry *t_entry)
+{
+  lf_tran_end_with_mb (t_entry);
 }
 
 template <class Key, class T>

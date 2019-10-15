@@ -362,7 +362,6 @@ spage_is_valid_anchor_type (const INT16 anchor_type)
 void
 spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry)
 {
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_SPAGE_SAVING);
   SPAGE_SAVE_ENTRY *entry, *current;
   SPAGE_SAVE_HEAD *head;
   int rv;
@@ -373,7 +372,7 @@ spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry)
   while (entry != NULL)
     {
       /* we are about to access a lock-free pointer; make sure it's retained until we're done with it */
-      lf_tran_start_with_mb (t_entry, false);
+      spage_Saving_hashmap.start_tran (thread_p);
 
       current = entry;
       head = entry->head;
@@ -387,7 +386,7 @@ spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry)
       rv = pthread_mutex_lock (&head->mutex);
 
       /* mutex acquired, no need for lock-free transaction */
-      lf_tran_end_with_mb (t_entry);
+      spage_Saving_hashmap.end_tran (thread_p);
 
       /* Delete the current node from save entry list */
       if (current->prev == NULL)
@@ -458,7 +457,6 @@ spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry)
 static int
 spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, PAGE_PTR page_p, int space)
 {
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_SPAGE_SAVING);
   SPAGE_SAVE_HEAD *head_p;
   SPAGE_SAVE_ENTRY *entry_p;
   VPID *vpid_p;
@@ -673,7 +671,6 @@ static int
 spage_get_saved_spaces (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, PAGE_PTR page_p,
 			int *saved_by_other_trans)
 {
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_SPAGE_SAVING);
   SPAGE_SAVE_HEAD *head_p;
   SPAGE_SAVE_ENTRY *entry_p;
   VPID *vpid_p;
@@ -750,7 +747,6 @@ spage_get_saved_spaces (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, P
 static void
 spage_dump_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p, FILE * fp, VPID * vpid_p)
 {
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_SPAGE_SAVING);
   SPAGE_SAVE_ENTRY *entry_p;
   SPAGE_SAVE_HEAD *head_p;
 

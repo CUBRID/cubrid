@@ -65,6 +65,9 @@ namespace lockfree
       T *freelist_claim (tran::index tran_index);
       void freelist_retire (tran::index tran_index, T *&entry);
 
+      void start_tran (tran::index tran_index);
+      void end_tran (tran::index tran_index);
+
       template <typename D>
       void dump_stats (std::ostream &os) const;
       void activate_stats ();
@@ -550,6 +553,20 @@ namespace lockfree
   hashmap<Key, T>::freelist_retire (tran::index tran_index, T *&entry)
   {
     return freelist_retire (get_tran_descriptor (tran_index), entry);
+  }
+
+  template <class Key, class T>
+  void
+  hashmap<Key, T>::start_tran (tran::index tran_index)
+  {
+    get_tran_descriptor (tran_index).start_tran ();
+  }
+
+  template <class Key, class T>
+  void
+  hashmap<Key, T>::end_tran (tran::index tran_index)
+  {
+    get_tran_descriptor (tran_index).end_tran ();
   }
 
   template <class Key, class T>
