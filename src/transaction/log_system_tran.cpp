@@ -91,7 +91,6 @@ systdes_claim_tdes ()
       logtb_clear_tdes (NULL, tdes);
       logtb_initialize_tdes (tdes, LOG_SYSTEM_TRAN_INDEX);
     }
-
   tdes->trid = systb_Next_tranid;
   systb_Next_tranid += LOG_SYSTEM_WORKER_INCR_TRANID;
   tdes->state = TRAN_ACTIVE;
