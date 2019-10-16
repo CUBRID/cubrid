@@ -31,6 +31,7 @@
 #include "load_error_handler.hpp"
 #include "load_session.hpp"
 #include "locator_sr.h"
+#include "memory_alloc.h"
 #include "object_primitive.h"
 #include "record_descriptor.hpp"
 #include "set_object.h"
@@ -62,6 +63,7 @@ namespace cubload
   {
     (void) class_id;
     OID class_oid;
+    cubmem::extensible_block eb;
 
     if (is_class_ignored (class_name))
       {
@@ -69,7 +71,11 @@ namespace cubload
 	return;
       }
 
-    if (locate_class (class_name, class_oid) != LC_CLASSNAME_EXIST)
+    to_lowercase_identifier (class_name, eb);
+
+    const char *lower_case_class_name = eb.get_read_ptr ();
+
+    if (locate_class (lower_case_class_name, class_oid) != LC_CLASSNAME_EXIST)
       {
 	m_error_handler.on_failure_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
       }
@@ -122,6 +128,7 @@ namespace cubload
     heap_cache_attrinfo attrinfo;
     cubthread::entry &thread_ref = cubthread::get_entry ();
     bool is_syntax_check_only = m_session.get_args ().syntax_check;
+    cubmem::extensible_block eb;
 
     assert (m_clsid != NULL_CLASS_ID);
     OID_SET_NULL (&class_oid);
@@ -132,17 +139,22 @@ namespace cubload
 	return;
       }
 
+    // Make the classname lowercase
+    to_lowercase_identifier (class_name, eb);
+
+    const char *lower_case_class_name = eb.get_read_ptr ();
+
     // Check if we have to ignore this class.
-    if (is_class_ignored (class_name))
+    if (is_class_ignored (lower_case_class_name))
       {
-	std::string classname (class_name);
+	std::string classname (lower_case_class_name);
 	m_session.append_log_msg (LOADDB_MSG_IGNORED_CLASS, class_name);
 	class_entry *cls_entry = new class_entry (classname, m_clsid, true);
 	m_session.get_class_registry ().register_ignored_class (cls_entry, m_clsid);
 	return;
       }
 
-    if (locate_class (class_name, class_oid) != LC_CLASSNAME_EXIST)
+    if (locate_class (lower_case_class_name, class_oid) != LC_CLASSNAME_EXIST)
       {
 	if (is_syntax_check_only)
 	  {
@@ -241,7 +253,9 @@ namespace cubload
     string_type *str_attr = cmd_spec != NULL ? cmd_spec->attr_list : NULL;
     for (; str_attr != NULL; str_attr = str_attr->next, ++attr_index)
       {
-	std::string attr_name_ (str_attr->val);
+	cubmem::extensible_block attr_eb;
+	to_lowercase_identifier (str_attr->val, attr_eb);
+	std::string attr_name_ (attr_eb.get_read_ptr ());
 
 	auto found = attr_map.find (attr_name_);
 	if (found == attr_map.end ())
@@ -279,7 +293,7 @@ namespace cubload
     {
       return a->get_index () < b->get_index ();
     }));
-    m_session.get_class_registry ().register_class (class_name, m_clsid, class_oid, attributes);
+    m_session.get_class_registry ().register_class (lower_case_class_name, m_clsid, class_oid, attributes);
 
     heap_scancache_end (&thread_ref, &scancache);
     heap_attrinfo_end (&thread_ref, &attrinfo);
@@ -324,20 +338,27 @@ namespace cubload
 
     const std::vector<std::string> &classes_ignored = m_session.get_args ().ignore_classes;
     bool is_ignored;
+    cubmem::extensible_block eb;
 
-    char lower_case_string[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
-    std::string class_name (lower_case_string);
+    // Make the classname lowercase
+    to_lowercase_identifier (classname, eb);
 
-    assert (intl_identifier_lower_string_size (class_name.c_str ()) <= DB_MAX_IDENTIFIER_LENGTH);
-
-    // Make the string to be lower case and take into consideration all types of characters.
-    intl_identifier_lower (classname, lower_case_string);
+    std::string class_name (eb.get_ptr ());
 
     auto result = std::find (classes_ignored.begin (), classes_ignored.end (), class_name);
 
     is_ignored = (result != classes_ignored.end ());
 
     return is_ignored;
+  }
+
+  void
+  server_class_installer::to_lowercase_identifier (const char *idname, cubmem::extensible_block &eb)
+  {
+    eb.extend_to (intl_identifier_lower_string_size (idname) + 1);
+
+    // Make the string to be lower case and take into consideration all types of characters.
+    intl_identifier_lower (idname, eb.get_ptr ());
   }
 
   server_object_loader::server_object_loader (session &session, error_handler &error_handler)

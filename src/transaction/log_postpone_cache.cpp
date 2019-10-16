@@ -31,6 +31,7 @@ void
 log_postpone_cache::reset ()
 {
   m_cursor = 0;
+  m_redo_data_offset = 0;
   m_is_redo_data_buf_full = false;
   if (m_redo_data_buf.get_size () > BUFFER_RESET_SIZE)
     {
@@ -74,6 +75,8 @@ log_postpone_cache::add_redo_data (const log_prior_node &node)
   // Cache a new postpone log record entry
   cache_entry &new_entry = m_cache_entries[m_cursor];
   new_entry.m_offset = m_redo_data_offset;
+  // first and only first entry has m_offset equal to zero
+  assert ((m_cursor == 0) == (new_entry.m_offset == 0));
   new_entry.m_lsa.set_null ();
 
   // Cache log_rec_redo from data_header

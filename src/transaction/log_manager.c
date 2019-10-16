@@ -7520,6 +7520,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
     {
       log_zip_free (log_unzip_ptr);
     }
+  tdes->m_log_postpone_cache.reset ();
 
   return;
 
