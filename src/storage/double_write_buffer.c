@@ -1155,6 +1155,9 @@ dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_volume_name, UINT6
   DWB_BLOCK *blocks = NULL;
   UINT64 new_position_with_flags;
 
+  const int freelist_block_count = 2;
+  const int freelist_block_size = DWB_SLOTS_FREE_LIST_SIZE;
+
   assert (dwb_volume_name != NULL && current_position_with_flags != NULL);
 
   double_write_buffer_size = prm_get_integer_value (PRM_ID_DWB_SIZE);
@@ -1186,11 +1189,6 @@ dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_volume_name, UINT6
   /* Needs to flush dirty page before activating DWB. */
   fileio_synchronize_all (thread_p, false);
 
-  const int freelist_block_count = 2;
-  const int freelist_block_size = DWB_SLOTS_FREE_LIST_SIZE;
-  dwb_Global.slots_hashmap.init (dwb_slots_Ts, THREAD_TS_DWB_SLOTS, DWB_SLOTS_HASH_SIZE, freelist_block_size,
-				 freelist_block_count, slots_entry_Descriptor);
-
   /* Create DWB blocks */
   error_code = dwb_create_blocks (thread_p, num_blocks, num_block_pages, &blocks);
   if (error_code != NO_ERROR)
@@ -1209,6 +1207,9 @@ dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_volume_name, UINT6
   dwb_init_wait_queue (&dwb_Global.wait_queue);
   dwb_Global.vdes = vdes;
   dwb_Global.helper_flush_block = NULL;
+
+  dwb_Global.slots_hashmap.init (dwb_slots_Ts, THREAD_TS_DWB_SLOTS, DWB_SLOTS_HASH_SIZE, freelist_block_size,
+				 freelist_block_count, slots_entry_Descriptor);
 
   /* Set creation flag. */
   new_position_with_flags = DWB_RESET_POSITION (*current_position_with_flags);
