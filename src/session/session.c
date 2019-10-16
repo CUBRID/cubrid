@@ -68,18 +68,6 @@ static int rv;
 #define MAX_SESSION_VARIABLES_COUNT 20
 #define MAX_PREPARED_STATEMENTS_COUNT 20
 
-// *INDENT-OFF*
-using session_hashmap_type = cubthread::lockfree_hashmap<SESSION_ID, session_state>;
-using session_hashmap_iterator = session_hashmap_type::iterator;
-// *INDENT-ON*
-
-typedef struct active_sessions
-{
-  session_hashmap_type states_hashmap;
-  SESSION_ID last_session_id;
-  int num_holdable_cursors;
-} ACTIVE_SESSIONS;
-
 typedef struct session_info SESSION_INFO;
 struct session_info
 {
@@ -94,7 +82,6 @@ struct session_variable
   DB_VALUE *value;
   SESSION_VARIABLE *next;
 };
-
 
 typedef struct prepared_statement PREPARED_STATEMENT;
 struct prepared_statement
@@ -153,6 +140,18 @@ struct session_state
   ~session_state ();
   // *INDENT-ON*
 };
+
+// *INDENT-OFF*
+using session_hashmap_type = cubthread::lockfree_hashmap<SESSION_ID, session_state>;
+using session_hashmap_iterator = session_hashmap_type::iterator;
+// *INDENT-ON*
+
+typedef struct active_sessions
+{
+  session_hashmap_type states_hashmap;
+  SESSION_ID last_session_id;
+  int num_holdable_cursors;
+} ACTIVE_SESSIONS;
 
 /* session state manipulation functions */
 static void *session_state_alloc (void);
