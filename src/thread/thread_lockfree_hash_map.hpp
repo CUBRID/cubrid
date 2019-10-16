@@ -63,7 +63,11 @@ namespace cubthread
       T *freelist_claim (cubthread::entry *thread_p);
       void freelist_retire (cubthread::entry *thread_p, T *&t);
 
+      void start_tran (cubthread::entry *thread_p);
+      void end_tran (cubthread::entry *thread_p);
+
       size_t get_size () const;
+      size_t get_element_count () const;
 
     private:
       bool is_old_type () const;
@@ -87,7 +91,7 @@ namespace cubthread
   {
     public:
       iterator (cubthread::entry *thread_p, lockfree_hashmap &map);
-      ~iterator ();
+      ~iterator () = default;
 
       T *iterate ();
 
@@ -166,8 +170,9 @@ namespace cubthread
   void
   lockfree_hashmap<Key, T>::destroy ()
   {
-    if (m_type == lockfree_hashmap::UNKNOWN)
+    if (m_type == UNKNOWN)
       {
+	// was not initialized
 	return;
       }
     if (is_old_type ())
@@ -251,10 +256,31 @@ namespace cubthread
   }
 
   template <class Key, class T>
+  void
+  lockfree_hashmap<Key, T>::start_tran (cubthread::entry *thread_p)
+  {
+    lockfree_hashmap_forward_func_noarg (start_tran, thread_p);
+  }
+
+  template <class Key, class T>
+  void
+  lockfree_hashmap<Key, T>::end_tran (cubthread::entry *thread_p)
+  {
+    lockfree_hashmap_forward_func_noarg (end_tran, thread_p);
+  }
+
+  template <class Key, class T>
   size_t
   lockfree_hashmap<Key, T>::get_size () const
   {
     return is_old_type () ? m_old_hash.get_size () : m_new_hash.get_size ();
+  }
+
+  template <class Key, class T>
+  size_t
+  lockfree_hashmap<Key, T>::get_element_count () const
+  {
+    return is_old_type () ? m_old_hash.get_element_count () : m_new_hash.get_element_count ();
   }
 
 #undef lockfree_hashmap_forward_func

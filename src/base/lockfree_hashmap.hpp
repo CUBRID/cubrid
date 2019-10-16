@@ -65,12 +65,16 @@ namespace lockfree
       T *freelist_claim (tran::index tran_index);
       void freelist_retire (tran::index tran_index, T *&entry);
 
+      void start_tran (tran::index tran_index);
+      void end_tran (tran::index tran_index);
+
       template <typename D>
       void dump_stats (std::ostream &os) const;
       void activate_stats ();
       void deactivate_stats ();
 
       size_t get_size () const;
+      size_t get_element_count () const;
 
     private:
       using address_type = address_marker<T>;
@@ -163,8 +167,10 @@ namespace lockfree
     public:
       iterator () = default;
       iterator (tran::index tran_index, hashmap &hash);
+      ~iterator () = default;
 
       T *iterate ();
+      iterator &operator= (iterator &&o);
 
     private:
       const size_t INVALID_INDEX = std::numeric_limits<size_t>::max ();
@@ -438,6 +444,13 @@ namespace lockfree
 
   template <class Key, class T>
   size_t
+  hashmap<Key, T>::get_element_count () const
+  {
+    return m_freelist->get_claimed_count ();
+  }
+
+  template <class Key, class T>
+  size_t
   hashmap<Key, T>::get_hash (Key &key) const
   {
     return m_edesc->f_hash (&key, (int) m_size);
@@ -550,6 +563,20 @@ namespace lockfree
   hashmap<Key, T>::freelist_retire (tran::index tran_index, T *&entry)
   {
     return freelist_retire (get_tran_descriptor (tran_index), entry);
+  }
+
+  template <class Key, class T>
+  void
+  hashmap<Key, T>::start_tran (tran::index tran_index)
+  {
+    get_tran_descriptor (tran_index).start_tran ();
+  }
+
+  template <class Key, class T>
+  void
+  hashmap<Key, T>::end_tran (tran::index tran_index)
+  {
+    get_tran_descriptor (tran_index).end_tran ();
   }
 
   template <class Key, class T>
@@ -1338,6 +1365,25 @@ namespace lockfree
 
     /* we have a valid entry */
     return m_curr;
+  }
+
+  template <class Key, class T>
+  typename hashmap<Key, T>::iterator &
+  hashmap<Key, T>::iterator::operator= (iterator &&o)
+  {
+    m_hashmap = o.m_hashmap;
+    o.m_hashmap = NULL;
+
+    m_tdes = o.m_tdes;
+    o.m_tdes = NULL;
+
+    m_bucket_index = o.m_bucket_index;
+    o.m_bucket_index = INVALID_INDEX;
+
+    m_curr = o.m_curr;
+    o.m_curr = NULL;
+
+    return *this;
   }
 } // namespace lockfree
 

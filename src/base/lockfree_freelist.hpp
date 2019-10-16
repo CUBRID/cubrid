@@ -60,6 +60,8 @@ namespace lockfree
       size_t get_available_count () const;
       size_t get_backbuffer_count () const;
       size_t get_forced_allocation_count () const;
+      size_t get_retired_count () const;
+      size_t get_claimed_count () const;
 
       tran::system &get_transaction_system ();
       tran::table &get_transaction_table ();
@@ -82,6 +84,7 @@ namespace lockfree
       std::atomic<size_t> m_alloc_count;
       std::atomic<size_t> m_bb_count;
       std::atomic<size_t> m_forced_alloc_count;
+      std::atomic<size_t> m_retired_count;
 
       void swap_backbuffer ();
       void alloc_backbuffer ();
@@ -145,6 +148,7 @@ namespace lockfree
     , m_alloc_count { 0 }
     , m_bb_count { 0 }
     , m_forced_alloc_count { 0 }
+    , m_retired_count { 0 }
   {
     assert (block_size > 1);
     // minimum two blocks
@@ -355,6 +359,7 @@ namespace lockfree
   freelist<T>::retire (tran::descriptor &tdes, free_node &node)
   {
     assert (node.get_freelist_next () == NULL);
+    ++m_retired_count;
     check_my_pointer (&node);
     tdes.retire_node (node);
   }
@@ -400,6 +405,29 @@ namespace lockfree
   freelist<T>::get_forced_allocation_count () const
   {
     return m_forced_alloc_count;
+  }
+
+  template<class T>
+  size_t
+  freelist<T>::get_retired_count () const
+  {
+    return m_retired_count;
+  }
+
+  template<class T>
+  size_t
+  freelist<T>::get_claimed_count () const
+  {
+    size_t alloc_count = m_alloc_count;
+    size_t unused_count = m_available_count + m_bb_count + m_retired_count;
+    if (alloc_count > unused_count)
+      {
+	return alloc_count - unused_count;
+      }
+    else
+      {
+	return 0;
+      }
   }
 
   template<class T>
@@ -498,6 +526,7 @@ namespace lockfree
     m_t.on_reclaim ();
 
     m_retired_next = NULL;
+    --m_owner->m_retired_count;
     ++m_owner->m_available_count;
     m_owner->push_to_list (*this, *this, m_owner->m_available_list);
   }
