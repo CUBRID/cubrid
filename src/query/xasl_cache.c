@@ -1659,9 +1659,9 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 			   const OID * arg)
 {
 #define XCACHE_DELETE_XIDS_SIZE 1024
-  xcache_hashmap_iterator iter
-  {
-  thread_p, xcache_Hashmap};
+  // *INDENT-OFF*
+  xcache_hashmap_iterator iter { thread_p, xcache_Hashmap };
+  // *INDENT-ON*
   XASL_CACHE_ENTRY *xcache_entry = NULL;
   XASL_ID delete_xids[XCACHE_DELETE_XIDS_SIZE];
   int n_delete_xids = 0;
@@ -1772,6 +1772,11 @@ xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, const OID * rel
 void
 xcache_remove_by_oid (THREAD_ENTRY * thread_p, const OID * oid)
 {
+  if (!xcache_Enabled)
+    {
+      return;
+    }
+
   xcache_check_logging ();
 
   xcache_log ("remove all entries: \n"
@@ -1788,6 +1793,11 @@ xcache_remove_by_oid (THREAD_ENTRY * thread_p, const OID * oid)
 void
 xcache_drop_all (THREAD_ENTRY * thread_p)
 {
+  if (!xcache_Enabled)
+    {
+      return;
+    }
+
   xcache_check_logging ();
 
   xcache_log ("drop all queries \n" XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_TRAN_ARGS (thread_p));
@@ -1804,7 +1814,9 @@ xcache_drop_all (THREAD_ENTRY * thread_p)
 void
 xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
 {
-  xcache_hashmap_iterator iter = { thread_p, xcache_Hashmap };
+  // *INDENT-OFF*
+  xcache_hashmap_iterator iter { thread_p, xcache_Hashmap };
+  // *INDENT-ON*
   XASL_CACHE_ENTRY *xcache_entry = NULL;
   int oid_index;
   char *sql_id = NULL;
@@ -2003,7 +2015,9 @@ xcache_retire_clone (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, X
 static void
 xcache_cleanup (THREAD_ENTRY * thread_p)
 {
-  xcache_hashmap_iterator iter = { thread_p, xcache_Hashmap };
+  // *INDENT-OFF*
+  xcache_hashmap_iterator iter { thread_p, xcache_Hashmap };
+  // *INDENT-ON*
   XASL_CACHE_ENTRY *xcache_entry = NULL;
   XCACHE_CLEANUP_CANDIDATE candidate;
   struct timeval current_time;
