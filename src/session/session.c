@@ -181,10 +181,19 @@ typedef struct active_sessions
   session_hashmap_type states_hashmap;
   SESSION_ID last_session_id;
   int num_holdable_cursors;
+
+  // *INDENT-OFF*
+  active_sessions ()
+    : states_hashmap {}
+    , last_session_id (0)
+    , num_holdable_cursors (0)
+  {
+  }
+  // *INDENT-ON*
 } ACTIVE_SESSIONS;
 
 /* the active sessions storage */
-static ACTIVE_SESSIONS sessions = { {}, LF_HASH_TABLE_INITIALIZER, LF_FREELIST_INITIALIZER, 0, 0 };
+static ACTIVE_SESSIONS sessions;
 
 static int session_remove_expired_sessions (THREAD_ENTRY * thread_p);
 
