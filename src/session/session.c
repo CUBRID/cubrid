@@ -141,18 +141,6 @@ struct session_state
   // *INDENT-ON*
 };
 
-// *INDENT-OFF*
-using session_hashmap_type = cubthread::lockfree_hashmap<SESSION_ID, session_state>;
-using session_hashmap_iterator = session_hashmap_type::iterator;
-// *INDENT-ON*
-
-typedef struct active_sessions
-{
-  session_hashmap_type states_hashmap;
-  SESSION_ID last_session_id;
-  int num_holdable_cursors;
-} ACTIVE_SESSIONS;
-
 /* session state manipulation functions */
 static void *session_state_alloc (void);
 static int session_state_free (void *st);
@@ -182,6 +170,18 @@ static LF_ENTRY_DESCRIPTOR session_state_Descriptor = {
   session_key_hash,
   session_key_increment
 };
+
+// *INDENT-OFF*
+using session_hashmap_type = cubthread::lockfree_hashmap<SESSION_ID, session_state>;
+using session_hashmap_iterator = session_hashmap_type::iterator;
+// *INDENT-ON*
+
+typedef struct active_sessions
+{
+  session_hashmap_type states_hashmap;
+  SESSION_ID last_session_id;
+  int num_holdable_cursors;
+} ACTIVE_SESSIONS;
 
 /* the active sessions storage */
 static ACTIVE_SESSIONS sessions = { {}, LF_HASH_TABLE_INITIALIZER, LF_FREELIST_INITIALIZER, 0, 0 };
