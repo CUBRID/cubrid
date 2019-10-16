@@ -185,6 +185,11 @@ struct lk_res
   LK_RES *hash_next;		/* for hash chain */
   LK_RES *stack;		/* for freelist */
   UINT64 del_id;		/* delete transaction ID (for latch free) */
+
+  // *INDENT-OFF*
+  lk_res ();
+  ~lk_res ();
+  // *INDENT-ON*
 };
 
 #if defined(SERVER_MODE)

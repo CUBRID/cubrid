@@ -107,6 +107,11 @@ struct spage_save_head
   VPID vpid;			/* Page and volume where the space is saved */
   int total_saved;		/* Total saved space by all transactions */
   SPAGE_SAVE_ENTRY *first;	/* First saving space entry */
+
+  // *INDENT-OFF*
+  spage_save_head ();
+  ~spage_save_head ();
+  // *INDENT-ON*
 };
 
 #define SPAGE_OVERFLOW(offset) ((int) (offset) > SPAGE_DB_PAGESIZE)
@@ -227,6 +232,18 @@ static int spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID s
 static void spage_add_contiguous_free_space (PAGE_PTR pgptr, int space);
 static void spage_reduce_contiguous_free_space (PAGE_PTR pgptr, int space);
 static INLINE void spage_verify_header (PAGE_PTR page_p) __attribute__ ((ALWAYS_INLINE));
+
+// *INDENT-OFF*
+spage_save_head::spage_save_head ()
+{
+  pthread_mutex_init (&mutex, NULL);
+}
+
+spage_save_head::~spage_save_head ()
+{
+  pthread_mutex_destroy (&mutex);
+}
+// *INDENT-ON*
 
 /*
  * spage_save_head_alloc () - callback for allocation of a SPAGE_SAVE_HEAD
