@@ -758,7 +758,8 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
   er_log_debug (ARG_FILE_LINE, "removing session %u", id);
 #endif /* SESSION_DEBUG */
 
-  session_p = sessions.states_hashmap.find (thread_p, (SESSION_ID) id);
+  SESSION_ID key_id = id;
+  session_p = sessions.states_hashmap.find (thread_p, key_id);
   if (session_p == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
@@ -799,7 +800,8 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
   (void) session_state_uninit (session_p);
 
   // delete from hash
-  if (!sessions.states_hashmap.erase_locked (thread_p, (SESSION_ID) id, session_p))
+  SESSION_ID key_id = id;
+  if (!sessions.states_hashmap.erase_locked (thread_p, key_id, session_p))
     {
       /* we don't have clear operations on this hash table, this shouldn't happen */
       pthread_mutex_unlock (&session_p->mutex);
@@ -858,7 +860,8 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
     }
 #endif
 
-  session_p = sessions.states_hashmap.find (thread_p, (SESSION_ID) id);
+  SESSION_ID key_id = id;
+  session_p = sessions.states_hashmap.find (thread_p, key_id);
   if (session_p == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
