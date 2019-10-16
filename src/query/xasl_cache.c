@@ -366,6 +366,30 @@ xcache_finalize (THREAD_ENTRY * thread_p)
   xcache_Enabled = false;
 }
 
+// *INDENT-OFF*
+xasl_cache_ent::xasl_cache_ent ()
+{
+  pthread_mutex_init (&cache_clones_mutex, NULL);
+  init_clone_cache ();
+}
+
+xasl_cache_ent::~xasl_cache_ent ()
+{
+  assert (cache_clones == NULL || cache_clones == &one_clone);
+  pthread_mutex_destroy (&cache_clones_mutex);
+}
+
+void
+xasl_cache_ent::init_clone_cache ()
+{
+  cache_clones = &one_clone;
+  one_clone.xasl = NULL;
+  one_clone.xasl_buf = NULL;
+  cache_clones_capacity = 1;
+  n_cache_clones = 0;
+}
+// *INDENT-ON*
+
 /*
  * xcache_entry_alloc () - Allocate an XASL cache entry.
  *
@@ -379,11 +403,7 @@ xcache_entry_alloc (void)
     {
       return NULL;
     }
-  xcache_entry->cache_clones = &xcache_entry->one_clone;
-  xcache_entry->one_clone.xasl = NULL;
-  xcache_entry->one_clone.xasl_buf = NULL;
-  xcache_entry->cache_clones_capacity = 1;
-  xcache_entry->n_cache_clones = 0;
+  xcache_entry->init_clone_cache ();
   pthread_mutex_init (&xcache_entry->cache_clones_mutex, NULL);
   return xcache_entry;
 }

@@ -51,6 +51,11 @@ struct fpcache_ent
 
   PRED_EXPR_WITH_CONTEXT **clone_stack;
   INT32 clone_stack_head;
+
+  // *INDENT-OFF*
+  fpcache_ent ();
+  ~fpcache_ent ();
+  // *INDENT-ON*
 };
 
 #define FPCACHE_PTR_TO_KEY(ptr) ((BTID *) ptr)
@@ -219,6 +224,18 @@ fpcache_finalize (THREAD_ENTRY * thread_p)
 
   fpcache_Enabled = false;
 }
+
+// *INDENT-OFF*
+fpcache_ent::fpcache_ent ()
+{
+  pthread_mutex_init (&mutex, NULL);
+}
+
+fpcache_ent::~fpcache_ent ()
+{
+  pthread_mutex_destroy (&mutex);
+}
+// *INDENT-ON*
 
 /*
  * fpcache_entry_alloc () - Allocate a filter predicate cache entry.
