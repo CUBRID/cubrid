@@ -10073,15 +10073,15 @@ loaddb_fetch_stats (std::vector<load_stats> &stats)
     }
 
   packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
-  int stats_size = 0;
-  unpacker.unpack_int (stats_size);
+  size_t stats_size = 0;
+  unpacker.unpack_bigint (stats_size);
   stats.clear ();
 
-  for (int i = 0; i < stats_size; ++i)
+  for (size_t i = 0; i < stats_size; ++i)
     {
-      load_stats s;
-      s.unpack (unpacker);
-      stats.emplace_back (s);
+      load_stats stat;
+      stat.unpack (unpacker);
+      stats.emplace_back (stat);
     }
 
   free_and_init (data_reply);

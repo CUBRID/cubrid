@@ -9872,12 +9872,9 @@ sloaddb_fetch_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       assert (session != NULL);
       /* *INDENT-OFF* */
       std::vector<load_stats> stats;
-      /* *INDENT-ON* */
       session->fetch_stats (stats);
-      int stats_size = (int) stats.size ();
-      packer.set_buffer_and_pack_all (eb, stats_size);
-      /* *INDENT-OFF* */
-      for (const load_stats & s:stats)
+      packer.set_buffer_and_pack_all (eb, stats.size ());
+      for (const load_stats &s : stats)
         {
 	  packer.append_to_buffer_and_pack_all (eb, s);
         }

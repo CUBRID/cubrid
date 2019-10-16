@@ -106,26 +106,26 @@ print_log_msg (int verbose, const char *fmt, ...)
 
 /* *INDENT-OFF* */
 void
-print_stats (std::vector < cubload::stats > &stats, cubload::load_args & args, int *status)
+print_stats (std::vector<cubload::stats> &stats, cubload::load_args & args, int *status)
 /* *INDENT-ON* */
 
 {
   /* *INDENT-OFF* */
-  for (const cubload::stats & s:stats)
+  for (const cubload::stats &stat : stats)
   /* *INDENT-ON* */
   {
-    if (!s.log_message.empty ())
+    if (!stat.log_message.empty ())
       {
-	print_log_msg (args.verbose, s.log_message.c_str ());
+	print_log_msg (args.verbose, stat.log_message.c_str ());
       }
 
-    if (!s.error_message.empty ())
+    if (!stat.error_message.empty ())
       {
 	/* Skip if syntax check only is enabled since we do not want to stop on error. */
 	if (!args.syntax_check)
 	  {
 	    *status = 3;
-	    fprintf (stderr, "%s", s.error_message.c_str ());
+	    fprintf (stderr, "%s", stat.error_message.c_str ());
 	  }
       }
     else
@@ -136,7 +136,7 @@ print_stats (std::vector < cubload::stats > &stats, cubload::load_args & args, i
 	    char *committed_instances_msg = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
 							    LOADDB_MSG_COMMITTED_INSTANCES);
 	    const char *dummy = "";
-	    print_log_msg (args.verbose_commit, committed_instances_msg, dummy, s.rows_committed);
+	    print_log_msg (args.verbose_commit, committed_instances_msg, dummy, stat.rows_committed);
 	  }
       }
   }
@@ -1125,8 +1125,11 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
       *status = 3;
     }
 
+  /* *INDENT-OFF* */
   cubload::stats last_stat;
-  std::vector < cubload::stats > stats;
+  std::vector<cubload::stats> stats;
+  /* *INDENT-ON* */
+
   bool is_completed = false;
   bool is_failed = false;
   do

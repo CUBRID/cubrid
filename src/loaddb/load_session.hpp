@@ -28,9 +28,8 @@
 #include "load_class_registry.hpp"
 #include "load_common.hpp"
 #include "load_error_handler.hpp"
-#include "utility.h"
 #include "thread_entry_task.hpp"
-#include "thread_task.hpp"
+#include "utility.h"
 
 #include <atomic>
 #include <condition_variable>
@@ -154,11 +153,11 @@ namespace cubload
       class_registry m_class_registry;
 
       stats m_stats; // load db stats
+      std::vector<stats> m_collected_stats;
 
       driver *m_driver;
 
       cubthread::entry_task *m_temp_task;
-      std::vector<stats> m_collected_stats;
   };
 
 } // namespace cubload

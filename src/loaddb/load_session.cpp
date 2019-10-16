@@ -244,6 +244,7 @@ namespace cubload
     , m_active_task_count {0}
     , m_class_registry ()
     , m_stats ()
+    , m_collected_stats ()
     , m_driver (NULL)
     , m_temp_task (NULL)
   {
@@ -368,7 +369,7 @@ namespace cubload
   void
   session::on_error (std::string &err_msg)
   {
-    std::unique_lock<std::mutex> ulock (m_commit_mutex); // TODO here
+    std::unique_lock<std::mutex> ulock (m_commit_mutex);
 
     m_stats.rows_failed++;
     m_stats.error_message.append (err_msg);
@@ -378,7 +379,7 @@ namespace cubload
   void
   session::fail (bool has_lock)
   {
-    std::unique_lock<std::mutex> ulock (m_commit_mutex, std::defer_lock); // TODO here
+    std::unique_lock<std::mutex> ulock (m_commit_mutex, std::defer_lock);
     if (!has_lock)
       {
 	ulock.lock ();
@@ -406,7 +407,7 @@ namespace cubload
   bool
   session::is_failed (bool has_lock)
   {
-    std::unique_lock<std::mutex> ulock (m_commit_mutex, std::defer_lock); // TODO here
+    std::unique_lock<std::mutex> ulock (m_commit_mutex, std::defer_lock);
     if (!has_lock)
       {
 	ulock.lock ();
@@ -422,7 +423,7 @@ namespace cubload
   void
   session::interrupt ()
   {
-    THREAD_ENTRY *thread_p = &cubthread::get_entry ();
+    cubthread::entry *thread_p = &cubthread::get_entry ();
     std::unique_lock<std::mutex> ulock (m_commit_mutex);
     for (auto &it : m_tran_indexes)
       {
@@ -436,7 +437,7 @@ namespace cubload
   void
   session::stats_update_rows_committed (int rows_committed)
   {
-    std::unique_lock<std::mutex> ulock (m_commit_mutex); // TODO here
+    std::unique_lock<std::mutex> ulock (m_commit_mutex);
     m_stats.rows_committed += rows_committed;
   }
 
@@ -448,7 +449,7 @@ namespace cubload
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_commit_mutex); // TODO here
+    std::unique_lock<std::mutex> ulock (m_commit_mutex);
 
     // check if again after lock was acquired
     if (last_committed_line <= m_stats.last_committed_line)
@@ -632,7 +633,7 @@ namespace cubload
   void
   session::collect_stats (bool has_lock)
   {
-    std::unique_lock<std::mutex> ulock (m_commit_mutex, std::defer_lock); // TODO here
+    std::unique_lock<std::mutex> ulock (m_commit_mutex, std::defer_lock);
     if (!has_lock)
       {
 	ulock.lock ();
@@ -658,7 +659,7 @@ namespace cubload
   void
   session::fetch_stats (std::vector<stats> &stats_)
   {
-    std::unique_lock<std::mutex> ulock (m_commit_mutex); // TODO here
+    std::unique_lock<std::mutex> ulock (m_commit_mutex);
     std::copy (m_collected_stats.begin (), m_collected_stats.end (), back_inserter (stats_));
     m_collected_stats.clear ();
   }
