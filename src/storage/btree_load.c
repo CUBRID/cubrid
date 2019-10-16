@@ -4666,6 +4666,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   // never give up
   old_wait_msec = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
   old_check_intr = logtb_set_check_interrupt (thread_p, false);
+
   for (cur_class = 0; cur_class < n_classes; cur_class++)
     {
       /* Promote the lock to SCH_M_LOCK */
@@ -4677,6 +4678,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	    {
 	      break;
 	    }
+#if defined (SERVER_MODE)
 	  else if (lock_ret == LK_NOTGRANTED_DUE_ERROR)
 	    {
 	      if (er_errid () == ER_INTERRUPTED)
@@ -4695,11 +4697,10 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	      er_clear ();
 	      continue;
 	    }
+#endif // SERVER_MODE
 
-#if defined (SERVER_MODE)
 	  // it is neither expected nor acceptable.
 	  assert (0);
-#endif // SERVER_MODE
 	}
     }
 
