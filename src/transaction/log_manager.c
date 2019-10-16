@@ -1789,7 +1789,9 @@ log_final (THREAD_ENTRY * thread_p)
 void
 log_stop_ha_delay_registration ()
 {
+#if defined (SERVER_MODE)
   cubthread::get_manager ()->destroy_daemon (log_Check_ha_delay_info_daemon);
+#endif // SERVER_MODE
 }
 
 /*
