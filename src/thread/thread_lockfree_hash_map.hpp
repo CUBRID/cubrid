@@ -63,6 +63,9 @@ namespace cubthread
       T *freelist_claim (cubthread::entry *thread_p);
       void freelist_retire (cubthread::entry *thread_p, T *&t);
 
+      void start_tran (cubthread::entry *thread_p);
+      void end_tran (cubthread::entry *thread_p);
+
       size_t get_size () const;
 
     private:
@@ -140,7 +143,7 @@ namespace cubthread
 					 int freelist_block_size, lf_entry_descriptor &edesc, int entry_idx)
   {
     m_type = OLD;
-    m_old_hash.init (transys, hash_size, freelist_block_count, freelist_block_size);
+    m_old_hash.init (transys, hash_size, freelist_block_count, freelist_block_size, edesc);
     m_entry_idx = entry_idx;
   }
 
@@ -158,7 +161,7 @@ namespace cubthread
   m_old_hash.f_ (get_tran_entry (tp_), __VA_ARGS__) : \
   m_new_hash.f_ ((tp_)->get_lf_tran_index (), __VA_ARGS__)
 #define lockfree_hashmap_forward_func_noarg(f_, tp_) \
-  is_old_type (tp_) ? \
+  is_old_type () ? \
   m_old_hash.f_ (get_tran_entry (tp_)) : \
   m_new_hash.f_ ((tp_)->get_lf_tran_index ())
 
@@ -166,6 +169,11 @@ namespace cubthread
   void
   lockfree_hashmap<Key, T>::destroy ()
   {
+    if (m_type == UNKNOWN)
+      {
+	// was not initialized
+	return;
+      }
     if (is_old_type ())
       {
 	m_old_hash.destroy ();
@@ -244,6 +252,20 @@ namespace cubthread
   lockfree_hashmap<Key, T>::freelist_retire (cubthread::entry *thread_p, T *&t)
   {
     lockfree_hashmap_forward_func (freelist_retire, thread_p, t);
+  }
+
+  template <class Key, class T>
+  void
+  lockfree_hashmap<Key, T>::start_tran (cubthread::entry *thread_p)
+  {
+    lockfree_hashmap_forward_func_noarg (start_tran, thread_p);
+  }
+
+  template <class Key, class T>
+  void
+  lockfree_hashmap<Key, T>::end_tran (cubthread::entry *thread_p)
+  {
+    lockfree_hashmap_forward_func_noarg (end_tran, thread_p);
   }
 
   template <class Key, class T>
