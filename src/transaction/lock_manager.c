@@ -423,7 +423,6 @@ static const int SIZEOF_LK_ACQOBJ_LOCK = sizeof (LK_ACQOBJ_LOCK);
 #define LK_MIN_OBJECT_LOCKS  (MAX_NTRANS * 300)
 
 /* the ratio in the number of lock entries for each entry type */
-static const int LK_HASH_RATIO = 8;
 static const float LK_RES_RATIO = 0.1f;
 static const float LK_ENTRY_RATIO = 0.1f;
 
@@ -1082,24 +1081,13 @@ static void
 lock_initialize_object_hash_table (void)
 {
 #define LK_INITIAL_OBJECT_LOCK_TABLE_SIZE       10000
-  int obj_hash_size;
 
   lk_Gl.max_obj_locks = LK_INITIAL_OBJECT_LOCK_TABLE_SIZE;
 
-  /* allocate an object lock hash table */
-  if (lk_Gl.max_obj_locks > LK_MIN_OBJECT_LOCKS)
-    {
-      obj_hash_size = lk_Gl.max_obj_locks * LK_HASH_RATIO;
-    }
-  else
-    {
-      obj_hash_size = LK_MIN_OBJECT_LOCKS * LK_HASH_RATIO;
-    }
+  const int obj_hash_size = MAX (lk_Gl.max_obj_locks, LK_MIN_OBJECT_LOCKS);
 
   const int block_count = 2;
   const int block_size = (int) MAX ((lk_Gl.max_obj_locks * LK_RES_RATIO) / block_count, 1);
-
-  /* initialize */
 
   /* initialize object hash table */
   lk_Gl.m_obj_hash_table.init (obj_lock_res_Ts, THREAD_TS_OBJ_LOCK_RES, obj_hash_size, block_size, block_count,
@@ -7730,9 +7718,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
   // *INDENT-OFF*
   lk_hashmap_iterator iterator { thread_p, lk_Gl.m_obj_hash_table };
   // *INDENT-ON*
-  res_ptr = iterator.iterate ();
-
-  for (; res_ptr != NULL; res_ptr = iterator.iterate ())
+  for (res_ptr = iterator.iterate (); res_ptr != NULL; res_ptr = iterator.iterate ())
     {
       /* holding resource mutex */
       if (res_ptr->holder == NULL)
@@ -8295,7 +8281,6 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
       acqlocks->nobj_locks = 0;
       acqlocks->obj = NULL;
     }
-  return;
 #else /* !SERVER_MODE */
   int tran_index;
   LK_TRAN_LOCK *tran_lock;
@@ -8382,7 +8367,6 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
       /* release transaction lock hold mutex */
       pthread_mutex_unlock (&tran_lock->hold_mutex);
     }
-  return;
 #endif /* !SERVER_MODE */
 }
 
@@ -8436,7 +8420,6 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
 #if !defined (SERVER_MODE)
   return;
 #else /* !SERVER_MODE */
-
   const char *client_prog_name;	/* Client program name for tran */
   const char *client_user_name;	/* Client user name for tran */
   const char *client_host_name;	/* Client host for tran */
@@ -8518,16 +8501,13 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
   // *INDENT-OFF*
   lk_hashmap_iterator iterator { thread_p, lk_Gl.m_obj_hash_table };
   // *INDENT-ON*
-  res_ptr = iterator.iterate ();
-  for (; res_ptr != NULL; res_ptr = iterator.iterate ())
+  for (res_ptr = iterator.iterate (); res_ptr != NULL; res_ptr = iterator.iterate ())
     {
       lock_dump_resource (thread_p, outfp, res_ptr);
     }
 
   /* Reset the wait back to the way it was */
   (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
-
-  return;
 #endif /* !SERVER_MODE */
 }
 
