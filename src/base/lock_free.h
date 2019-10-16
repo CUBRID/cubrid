@@ -413,6 +413,7 @@ class lf_hash_table_cpp<Key, T>::iterator
     ~iterator ();
 
     T *iterate ();
+    void restart ();
 
   private:
     lf_hash_table_iterator m_iter;
@@ -653,6 +654,17 @@ T *
 lf_hash_table_cpp<Key, T>::iterator::iterate ()
 {
   return static_cast<T *> (lf_hash_iterate (&m_iter));
+}
+
+template <class Key, class T>
+void
+lf_hash_table_cpp<Key, T>::iterator::restart ()
+{
+  if (m_iter.tran_entry->transaction_id != LF_NULL_TRANSACTION_ID)
+    {
+      lf_tran_end_with_mb (m_iter.tran_entry);
+    }
+  m_crt_val = NULL;
 }
 
 // *INDENT-ON*

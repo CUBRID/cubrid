@@ -95,6 +95,8 @@ namespace cubthread
 
       T *iterate ();
 
+      void restart ();
+
     private:
       // old stuff
       lockfree_hashmap &m_map;
@@ -245,7 +247,7 @@ namespace cubthread
   T *
   lockfree_hashmap<Key, T>::freelist_claim (cubthread::entry *thread_p)
   {
-    lockfree_hashmap_forward_func_noarg (freelist_claim, thread_p);
+    return lockfree_hashmap_forward_func_noarg (freelist_claim, thread_p);
   }
 
   template <class Key, class T>
@@ -331,6 +333,20 @@ namespace cubthread
     else
       {
 	return m_new_iter.iterate ();
+      }
+  }
+
+  template <class Key, class T>
+  void
+  lockfree_hashmap<Key, T>::iterator::restart ()
+  {
+    if (m_map.is_old_type ())
+      {
+	m_old_iter.restart ();
+      }
+    else
+      {
+	m_new_iter.restart ();
       }
   }
 }
