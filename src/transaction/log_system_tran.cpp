@@ -83,8 +83,6 @@ systdes_claim_tdes ()
     {
       // generate new log_tdes
       tdes = systdes_create_tdes ();
-      tdes->trid = systb_Next_tranid;
-      systb_Next_tranid += LOG_SYSTEM_WORKER_INCR_TRANID;
     }
   else
     {
@@ -93,7 +91,9 @@ systdes_claim_tdes ()
       logtb_clear_tdes (NULL, tdes);
       logtb_initialize_tdes (tdes, LOG_SYSTEM_TRAN_INDEX);
     }
-  assert (tdes->trid < 0 && tdes->trid > systb_Next_tranid);
+
+  tdes->trid = systb_Next_tranid;
+  systb_Next_tranid += LOG_SYSTEM_WORKER_INCR_TRANID;
   tdes->state = TRAN_ACTIVE;
 
   systb_System_tdes[tdes->trid] = tdes;
