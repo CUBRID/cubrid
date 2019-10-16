@@ -800,7 +800,6 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
   (void) session_state_uninit (session_p);
 
   // delete from hash
-  SESSION_ID key_id = id;
   if (!sessions.states_hashmap.erase_locked (thread_p, key_id, session_p))
     {
       /* we don't have clear operations on this hash table, this shouldn't happen */
