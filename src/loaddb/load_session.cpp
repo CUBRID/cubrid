@@ -224,6 +224,7 @@ namespace cubload
       {
 	assert (!m_was_session_notified);
 	m_session.notify_batch_done_and_register_tran_end (m_batch.get_id (), tran_index);
+	m_session.collect_stats ();
 	m_was_session_notified = true;
       }
 
@@ -245,6 +246,7 @@ namespace cubload
     , m_stats ()
     , m_stats_mutex ()
     , m_driver (NULL)
+    , m_temp_task (NULL)
   {
     worker_manager_register_session (*this);
 
@@ -364,6 +366,7 @@ namespace cubload
 
     m_stats.rows_failed++;
     m_stats.error_message.append (err_msg);
+    collect_stats (true);
   }
 
   void
@@ -546,27 +549,52 @@ namespace cubload
   }
 
   int
-  session::load_batch (cubthread::entry &thread_ref, const batch &batch)
+  session::load_batch (cubthread::entry &thread_ref, const batch *batch,  bool use_temp_batch)
   {
     if (is_failed ())
       {
 	return ER_FAILED;
       }
 
-    update_atomic_value_with_max (m_max_batch_id, batch.get_id ());
-    ++m_active_task_count;
-
-    if (batch.get_content ().empty ())
+    if (batch != NULL && batch->get_content ().empty ())
       {
-	// nothing to do, just notify that batch processing is done
-	notify_batch_done (batch.get_id ());
 	assert (false);
 	return ER_FAILED;
       }
 
-    worker_manager_push_task (new load_task (batch, *this, *thread_ref.conn_entry));
+    bool accepted = false;
+    if (use_temp_batch)
+      {
+	assert (m_temp_task != NULL && batch == NULL);
+	accepted = worker_manager_try_task (m_temp_task);
+	if (accepted)
+	  {
+	    m_temp_task = NULL;
+	  }
+      }
+    else
+      {
+	assert (m_temp_task == NULL && batch != NULL);
+	update_atomic_value_with_max (m_max_batch_id, batch->get_id ());
 
-    return NO_ERROR;
+	cubthread::entry_task *task = new load_task (*batch, *this, *thread_ref.conn_entry);
+	accepted = worker_manager_try_task (task);
+	if (!accepted)
+	  {
+	    assert (m_temp_task == NULL);
+	    m_temp_task = task;
+	  }
+      }
+
+    if (accepted)
+      {
+	++m_active_task_count;
+	return NO_ERROR;
+      }
+    else
+      {
+	return ER_LDR_INVALID_STATE;
+      }
   }
 
   int
@@ -574,7 +602,7 @@ namespace cubload
   {
     batch_handler b_handler = [this, &thread_ref] (const batch &batch) -> int
     {
-      return load_batch (thread_ref, batch);
+      return load_batch (thread_ref, &batch, false);
     };
 
     class_handler c_handler = [this, &thread_ref] (const batch &batch, bool &is_ignored) -> int
@@ -587,12 +615,16 @@ namespace cubload
   }
 
   void
-  session::fetch_stats (stats &stats_)
+  session::collect_stats (bool has_lock)
   {
-    std::unique_lock<std::mutex> ulock (m_stats_mutex);
+    std::unique_lock<std::mutex> ulock (m_stats_mutex, std::defer_lock);
+    if (!has_lock)
+      {
+	ulock.lock ();
+      }
 
     m_stats.is_completed = is_completed ();
-    stats_ = m_stats;
+    m_collected_stats.emplace_back (m_stats);
 
     // since client periodically fetches the stats, clear error_message in order not to send twice same message
     // However, for syntax checking we do not clear the messages since we throw the errors at the end
@@ -601,6 +633,19 @@ namespace cubload
 	m_stats.error_message.clear ();
       }
     m_stats.log_message.clear ();
+
+    if (!has_lock)
+      {
+	ulock.unlock ();
+      }
+  }
+
+  void
+  session::fetch_stats (std::vector<stats> &stats_)
+  {
+    std::unique_lock<std::mutex> ulock (m_stats_mutex);
+    std::copy (m_collected_stats.begin (), m_collected_stats.end (), back_inserter (stats_));
+    m_collected_stats.clear ();
   }
 
 } // namespace cubload

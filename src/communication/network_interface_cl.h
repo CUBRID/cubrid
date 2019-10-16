@@ -423,8 +423,10 @@ extern int locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * e
 extern int loaddb_init (cubload::load_args & args);
 extern int loaddb_load_object_file ();
 extern int loaddb_install_class (const cubload::batch & batch, bool & class_is_ignored, std::string & class_name);
-extern int loaddb_load_batch (const cubload::batch & batch);
-extern int loaddb_fetch_stats (load_stats * stats);
+extern int loaddb_load_batch (const cubload::batch & batch, bool use_temp_batch);
+/* *INDENT-OFF* */
+extern int loaddb_fetch_stats (std::vector<load_stats> &stats);
+/* *INDENT-ON* */
 extern int loaddb_destroy ();
 extern int loaddb_interrupt ();
 #endif /* _NETWORK_INTERFACE_CL_H_ */

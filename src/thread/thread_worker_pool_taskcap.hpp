@@ -37,11 +37,11 @@ namespace cubthread
       using worker_pool_type = worker_pool<Context>;
 
     public:
-      worker_pool_task_capper (worker_pool<Context> *worker_pool);
+      explicit worker_pool_task_capper (worker_pool<Context> *worker_pool);
       ~worker_pool_task_capper () = default;
 
-      void push_task (task<Context> *task);
-      cubthread::worker_pool<Context> *get_worker_pool ();
+      bool try_task (task<Context> *task);
+      cubthread::worker_pool<Context> *get_worker_pool () const;
 
     private:
       // forward declaration
@@ -64,7 +64,7 @@ namespace cubthread
       capped_task (worker_pool_task_capper &capper, task_type *task);
       ~capped_task ();
 
-      void execute (context_type &ctx) override final;
+      void execute (context_type &ctx) override;
 
     private:
       worker_pool_task_capper &m_capper;
@@ -79,17 +79,27 @@ namespace cubthread
   //////////////////////////////////////////////////////////////////////////
   template <typename Context>
   worker_pool_task_capper<Context>::worker_pool_task_capper (worker_pool<Context> *worker_pool)
+    : m_worker_pool (worker_pool)
+    , m_tasks_available (0)
+    , m_max_tasks (0)
+    , m_mutex ()
+    , m_cond_var ()
   {
-    m_worker_pool = worker_pool;
     m_tasks_available = m_max_tasks = worker_pool->get_max_count ();
   }
 
   template <typename Context>
-  void
-  worker_pool_task_capper<Context>::push_task (task<Context> *task)
+  bool
+  worker_pool_task_capper<Context>::try_task (task<Context> *task)
   {
     auto pred = [&] () -> bool {return (m_tasks_available > 0); };
     std::unique_lock<std::mutex> ulock (m_mutex);
+
+    if (m_tasks_available == 0)
+      {
+	// is full
+	return false;
+      }
 
     m_cond_var.wait (ulock, pred);
 
@@ -100,6 +110,7 @@ namespace cubthread
 
     m_tasks_available--;
     m_worker_pool->execute (new capped_task (*this, task));
+    return true;
   }
 
   template <typename Context>
@@ -116,7 +127,7 @@ namespace cubthread
   }
 
   template <typename Context>
-  worker_pool<Context> *worker_pool_task_capper<Context>::get_worker_pool ()
+  worker_pool<Context> *worker_pool_task_capper<Context>::get_worker_pool () const
   {
     return m_worker_pool;
   }

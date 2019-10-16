@@ -10014,7 +10014,7 @@ loaddb_install_class (const cubload::batch & batch, bool & class_is_ignored, std
 }
 
 int
-loaddb_load_batch (const cubload::batch & batch)
+loaddb_load_batch (const cubload::batch & batch, bool use_temp_batch)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
@@ -10024,7 +10024,14 @@ loaddb_load_batch (const cubload::batch & batch)
   packing_packer packer;
   cubmem::extensible_block eb;
 
-  packer.set_buffer_and_pack_all (eb, batch);
+  if (use_temp_batch)
+    {
+      packer.set_buffer_and_pack_all (eb, use_temp_batch);
+    }
+  else
+    {
+      packer.set_buffer_and_pack_all (eb, use_temp_batch, batch);
+    }
 
   int req_error = net_client_request (NET_SERVER_LD_LOAD_BATCH, eb.get_ptr (), (int) packer.get_current_size (), reply,
 				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
@@ -10039,8 +10046,11 @@ loaddb_load_batch (const cubload::batch & batch)
 #endif /* !CS_MODE */
 }
 
+/* *INDENT-OFF* */
 int
-loaddb_fetch_stats (load_stats * stats)
+loaddb_fetch_stats (std::vector<load_stats> &stats)
+/* *INDENT-ON* */
+
 {
 #if defined(CS_MODE)
   char *data_reply = NULL;
@@ -10063,8 +10073,16 @@ loaddb_fetch_stats (load_stats * stats)
     }
 
   packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
-  stats->clear ();
-  stats->unpack (unpacker);
+  int stats_size = 0;
+  unpacker.unpack_int (stats_size);
+  stats.clear ();
+
+  for (int i = 0; i < stats_size; ++i)
+    {
+      load_stats s;
+      s.unpack (unpacker);
+      stats.emplace_back (s);
+    }
 
   free_and_init (data_reply);
 

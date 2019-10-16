@@ -29,6 +29,8 @@
 #include "load_common.hpp"
 #include "load_error_handler.hpp"
 #include "utility.h"
+#include "thread_entry_task.hpp"
+#include "thread_task.hpp"
 
 #include <atomic>
 #include <condition_variable>
@@ -36,6 +38,7 @@
 #include <mutex>
 #include <set>
 #include <string>
+#include <vector>
 
 namespace cubload
 {
@@ -70,7 +73,7 @@ namespace cubload
   class session
   {
     public:
-      session (load_args &args);
+      explicit session (load_args &args);
       ~session ();
 
       session (session &&other) = delete; // Move c-tor: deleted
@@ -95,7 +98,7 @@ namespace cubload
        *    thread_ref(in): thread entry
        *    batch(in)     : a batch from loaddb object
        */
-      int load_batch (cubthread::entry &thread_ref, const batch &batch);
+      int load_batch (cubthread::entry &thread_ref, const batch *batch, bool use_temp_batch);
 
       /*
        * Load object file entirely on the the server
@@ -117,7 +120,8 @@ namespace cubload
       bool is_failed ();
       void interrupt ();
 
-      void fetch_stats (stats &stats_);
+      void collect_stats (bool has_lock = false);
+      void fetch_stats (std::vector<stats> &stats_);
 
       void stats_update_rows_committed (int rows_committed);
       void stats_update_last_committed_line (int last_committed_line);
@@ -153,6 +157,9 @@ namespace cubload
       std::mutex m_stats_mutex;
 
       driver *m_driver;
+
+      cubthread::entry_task *m_temp_task;
+      std::vector<stats> m_collected_stats;
   };
 
 } // namespace cubload
@@ -174,6 +181,8 @@ namespace cubload
 	std::unique_lock<std::mutex> ulock (m_stats_mutex);
 
 	m_stats.log_message.append (log_msg);
+
+	collect_stats (true);
       }
   }
 }

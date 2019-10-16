@@ -9819,10 +9819,16 @@ sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   packing_unpacker unpacker (request, (size_t) reqlen);
 
   /* *INDENT-OFF* */
-  cubload::batch *batch = new cubload::batch ();
+  cubload::batch *batch = NULL;
   /* *INDENT-ON* */
 
-  batch->unpack (unpacker);
+  bool use_temp_batch = false;
+  unpacker.unpack_bool (use_temp_batch);
+  if (!use_temp_batch)
+    {
+      batch = new cubload::batch ();
+      batch->unpack (unpacker);
+    }
 
   load_session *session = NULL;
   session_get_load_session (thread_p, session);
@@ -9830,7 +9836,7 @@ sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   if (error_code == NO_ERROR)
     {
       assert (session != NULL);
-      error_code = session->load_batch (*thread_p, *batch);
+      error_code = session->load_batch (*thread_p, batch, use_temp_batch);
     }
   else
     {
@@ -9864,10 +9870,18 @@ sloaddb_fetch_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   if (error_code == NO_ERROR)
     {
       assert (session != NULL);
-      load_stats loaddb_stats;
-      session->fetch_stats (loaddb_stats);
-
-      packer.set_buffer_and_pack_all (eb, loaddb_stats);
+      /* *INDENT-OFF* */
+      std::vector<load_stats> stats;
+      /* *INDENT-ON* */
+      session->fetch_stats (stats);
+      int stats_size = (int) stats.size ();
+      packer.set_buffer_and_pack_all (eb, stats_size);
+      /* *INDENT-OFF* */
+      for (const load_stats & s:stats)
+        {
+	  packer.append_to_buffer_and_pack_all (eb, s);
+        }
+      /* *INDENT-ON* */
 
       buffer = eb.get_ptr ();
       buffer_size = (int) packer.get_current_size ();
