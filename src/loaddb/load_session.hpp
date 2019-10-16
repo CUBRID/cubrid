@@ -117,7 +117,7 @@ namespace cubload
       void on_error (std::string &err_msg);
 
       void fail (bool has_lock = false);
-      bool is_failed ();
+      bool is_failed (bool has_lock = false);
       void interrupt ();
 
       void collect_stats (bool has_lock = false);
@@ -154,7 +154,6 @@ namespace cubload
       class_registry m_class_registry;
 
       stats m_stats; // load db stats
-      std::mutex m_stats_mutex;
 
       driver *m_driver;
 
@@ -178,7 +177,7 @@ namespace cubload
       {
 	std::string log_msg = error_handler::format_log_msg (msg_id, std::forward<Args> (args)...);
 
-	std::unique_lock<std::mutex> ulock (m_stats_mutex);
+	std::unique_lock<std::mutex> ulock (m_commit_mutex);
 
 	m_stats.log_message.append (log_msg);
 

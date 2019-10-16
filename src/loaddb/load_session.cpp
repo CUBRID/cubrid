@@ -244,7 +244,6 @@ namespace cubload
     , m_active_task_count {0}
     , m_class_registry ()
     , m_stats ()
-    , m_stats_mutex ()
     , m_driver (NULL)
     , m_temp_task (NULL)
   {
@@ -280,7 +279,7 @@ namespace cubload
   void
   session::wait_for_previous_batch (const batch_id id)
   {
-    auto pred = [this, &id] () -> bool { return is_failed () || id == (m_last_batch_id + 1); };
+    auto pred = [this, &id] () -> bool { return is_failed (true) || id == (m_last_batch_id + 1); };
 
     if (id == FIRST_BATCH_ID || pred ())
       {
@@ -315,7 +314,7 @@ namespace cubload
     std::unique_lock<std::mutex> ulock (m_commit_mutex);
     assert (m_active_task_count > 0);
     --m_active_task_count;
-    if (!is_failed ())
+    if (!is_failed (true))
       {
 	assert (m_last_batch_id == id - 1);
 	m_last_batch_id = id;
@@ -335,7 +334,7 @@ namespace cubload
 
     assert (m_active_task_count > 0);
     --m_active_task_count;
-    if (!is_failed ())
+    if (!is_failed (true))
       {
 	assert (m_last_batch_id == id - 1);
 	m_last_batch_id = id;
@@ -353,16 +352,15 @@ namespace cubload
   void
   session::register_tran_start (int tran_index)
   {
-    m_commit_mutex.lock ();
+    std::unique_lock<std::mutex> ulock (m_commit_mutex);
     auto ret = m_tran_indexes.insert (tran_index);
     assert (ret.second);    // it means it was inserted
-    m_commit_mutex.unlock ();
   }
 
   void
   session::on_error (std::string &err_msg)
   {
-    std::unique_lock<std::mutex> ulock (m_stats_mutex);
+    std::unique_lock<std::mutex> ulock (m_commit_mutex); // TODO here
 
     m_stats.rows_failed++;
     m_stats.error_message.append (err_msg);
@@ -372,7 +370,7 @@ namespace cubload
   void
   session::fail (bool has_lock)
   {
-    std::unique_lock<std::mutex> ulock (m_stats_mutex, std::defer_lock);
+    std::unique_lock<std::mutex> ulock (m_commit_mutex, std::defer_lock); // TODO here
     if (!has_lock)
       {
 	ulock.lock ();
@@ -398,10 +396,19 @@ namespace cubload
   }
 
   bool
-  session::is_failed ()
+  session::is_failed (bool has_lock)
   {
-    std::unique_lock<std::mutex> ulock (m_stats_mutex);
-    return m_stats.is_failed;
+    std::unique_lock<std::mutex> ulock (m_commit_mutex, std::defer_lock); // TODO here
+    if (!has_lock)
+      {
+	ulock.lock ();
+      }
+    bool ret = m_stats.is_failed;
+    if (!has_lock)
+      {
+	ulock.unlock ();
+      }
+    return ret;
   }
 
   void
@@ -421,7 +428,7 @@ namespace cubload
   void
   session::stats_update_rows_committed (int rows_committed)
   {
-    std::unique_lock<std::mutex> ulock (m_stats_mutex);
+    std::unique_lock<std::mutex> ulock (m_commit_mutex); // TODO here
     m_stats.rows_committed += rows_committed;
   }
 
@@ -433,7 +440,7 @@ namespace cubload
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_stats_mutex);
+    std::unique_lock<std::mutex> ulock (m_commit_mutex); // TODO here
 
     // check if again after lock was acquired
     if (last_committed_line <= m_stats.last_committed_line)
@@ -617,7 +624,7 @@ namespace cubload
   void
   session::collect_stats (bool has_lock)
   {
-    std::unique_lock<std::mutex> ulock (m_stats_mutex, std::defer_lock);
+    std::unique_lock<std::mutex> ulock (m_commit_mutex, std::defer_lock); // TODO here
     if (!has_lock)
       {
 	ulock.lock ();
@@ -643,7 +650,7 @@ namespace cubload
   void
   session::fetch_stats (std::vector<stats> &stats_)
   {
-    std::unique_lock<std::mutex> ulock (m_stats_mutex);
+    std::unique_lock<std::mutex> ulock (m_commit_mutex); // TODO here
     std::copy (m_collected_stats.begin (), m_collected_stats.end (), back_inserter (stats_));
     m_collected_stats.clear ();
   }
