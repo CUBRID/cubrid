@@ -85,6 +85,9 @@ namespace lockfree
 	T m_entry;
 	lf_entry_descriptor *m_edesc;
 
+	freelist_node_data () = default;
+	~freelist_node_data () = default;
+
 	void on_reclaim ()
 	{
 	  (void) m_edesc->f_uninit (&m_entry);
