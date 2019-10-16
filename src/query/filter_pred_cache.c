@@ -486,6 +486,11 @@ fpcache_remove_by_class (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
 #define FPCACHE_DELETE_BTIDS_SIZE 1024
 
+  if (!fpcache_Enabled)
+    {
+      return;
+    }
+
   // *INDENT-OFF*
   fpcache_hashmap_iterator iter { thread_p, fpcache_Hashmap };
   // *INDENT-ON*
