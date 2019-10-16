@@ -390,6 +390,7 @@ class lf_hash_table_cpp
     void end_tran (lf_tran_entry *t_entry);
 
     size_t get_size () const;
+    size_t get_element_count () const;
 
     lf_hash_table &get_hash_table ();
     lf_freelist &get_freelist ();
@@ -598,6 +599,22 @@ lf_hash_table_cpp<Key, T>::get_size () const
 {
   assert (m_hash.hash_size > 0);
   return (size_t) m_hash.hash_size;
+}
+
+template <class Key, class T>
+size_t
+lf_hash_table_cpp<Key, T>::get_element_count () const
+{
+  int alloc_count = m_freelist.alloc_cnt;
+  int unused_count = m_freelist.available_cnt + m_freelist.retired_cnt;
+  if (alloc_count > unused_count)
+    {
+      return static_cast<size_t> (alloc_count - unused_count);
+    }
+  else
+    {
+      return 0;
+    }
 }
 
 template <class Key, class T>
