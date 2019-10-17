@@ -41,6 +41,7 @@ namespace cubthread
       ~worker_pool_task_capper () = default;
 
       bool try_task (task<Context> *task);
+      void push_task (task<Context> *task);
       cubthread::worker_pool<Context> *get_worker_pool () const;
 
     private:
@@ -48,6 +49,8 @@ namespace cubthread
       class capped_task;
 
       void end_task ();
+
+      void execute (task<Context> *task); // function does not acquire m_mutex lock
 
       cubthread::worker_pool<Context> *m_worker_pool;
       size_t m_tasks_available;
@@ -92,7 +95,6 @@ namespace cubthread
   bool
   worker_pool_task_capper<Context>::try_task (task<Context> *task)
   {
-    auto pred = [&] () -> bool {return (m_tasks_available > 0); };
     std::unique_lock<std::mutex> ulock (m_mutex);
 
     if (m_tasks_available == 0)
@@ -101,16 +103,34 @@ namespace cubthread
 	return false;
       }
 
+    execute (task);
+    return true;
+  }
+
+  template <typename Context>
+  void
+  worker_pool_task_capper<Context>::push_task (task<Context> *task)
+  {
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
+    auto pred = [&] () -> bool { return (m_tasks_available > 0); };
     m_cond_var.wait (ulock, pred);
 
     // Make sure we have the lock.
     assert (ulock.owns_lock ());
+
+    execute (task);
+  }
+
+  template <typename Context>
+  void
+  worker_pool_task_capper<Context>::execute (task<Context> *task)
+  {
     // Safeguard.
     assert (m_tasks_available > 0);
 
     m_tasks_available--;
     m_worker_pool->execute (new capped_task (*this, task));
-    return true;
   }
 
   template <typename Context>

@@ -10014,11 +10014,11 @@ loaddb_install_class (const cubload::batch & batch, bool & class_is_ignored, std
 }
 
 int
-loaddb_load_batch (const cubload::batch & batch, bool use_temp_batch)
+loaddb_load_batch (const cubload::batch & batch, bool use_temp_batch, bool & is_batch_accepted)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   packing_packer packer;
@@ -10037,7 +10037,10 @@ loaddb_load_batch (const cubload::batch & batch, bool use_temp_batch)
 				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
-      or_unpack_int (reply, &rc);
+      char *ptr = or_unpack_int (reply, &rc);
+      int is_batch_accepted_;
+      or_unpack_int (ptr, &is_batch_accepted_);
+      is_batch_accepted = is_batch_accepted_ != 0;
     }
 
   return rc;
@@ -10049,8 +10052,6 @@ loaddb_load_batch (const cubload::batch & batch, bool use_temp_batch)
 /* *INDENT-OFF* */
 int
 loaddb_fetch_stats (std::vector<load_stats> &stats)
-/* *INDENT-ON* */
-
 {
 #if defined(CS_MODE)
   char *data_reply = NULL;
@@ -10091,6 +10092,7 @@ loaddb_fetch_stats (std::vector<load_stats> &stats)
   return NO_ERROR;
 #endif /* !CS_MODE */
 }
+/* *INDENT-ON* */
 
 int
 loaddb_destroy ()

@@ -106,41 +106,38 @@ print_log_msg (int verbose, const char *fmt, ...)
 
 /* *INDENT-OFF* */
 void
-print_stats (std::vector<cubload::stats> &stats, cubload::load_args & args, int *status)
-/* *INDENT-ON* */
-
+print_stats (std::vector<cubload::stats> &stats, cubload::load_args &args, int *status)
 {
-  /* *INDENT-OFF* */
   for (const cubload::stats &stat : stats)
-  /* *INDENT-ON* */
-  {
-    if (!stat.log_message.empty ())
-      {
-	print_log_msg (args.verbose, stat.log_message.c_str ());
-      }
+    {
+      if (!stat.log_message.empty ())
+	{
+	  print_log_msg (args.verbose, stat.log_message.c_str ());
+	}
 
-    if (!stat.error_message.empty ())
-      {
-	/* Skip if syntax check only is enabled since we do not want to stop on error. */
-	if (!args.syntax_check)
-	  {
-	    *status = 3;
-	    fprintf (stderr, "%s", stat.error_message.c_str ());
-	  }
-      }
-    else
-      {
-	/* Don't print this during syntax checking */
-	if (!args.syntax_check)
-	  {
-	    char *committed_instances_msg = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
-							    LOADDB_MSG_COMMITTED_INSTANCES);
-	    const char *dummy = "";
-	    print_log_msg (args.verbose_commit, committed_instances_msg, dummy, stat.rows_committed);
-	  }
-      }
-  }
+      if (!stat.error_message.empty ())
+	{
+	  /* Skip if syntax check only is enabled since we do not want to stop on error. */
+	  if (!args.syntax_check)
+	    {
+	      *status = 3;
+	      fprintf (stderr, "%s", stat.error_message.c_str ());
+	    }
+	}
+      else
+	{
+	  /* Don't print this during syntax checking */
+	  if (!args.syntax_check)
+	    {
+	      char *committed_instances_msg = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
+					      LOADDB_MSG_COMMITTED_INSTANCES);
+	      const char *dummy = "";
+	      print_log_msg (args.verbose_commit, committed_instances_msg, dummy, stat.rows_committed);
+	    }
+	}
+    }
 }
+/* *INDENT-ON* */
 
 static void
 print_er_msg ()
@@ -1308,44 +1305,47 @@ load_object_file (load_args * args, int *status)
   /* *INDENT-OFF* */
   batch_handler b_handler = [&] (const batch &batch) -> int
   {
-    int ret = loaddb_load_batch (batch, false);
-    bool not_batch_accepted = ret == ER_LDR_INVALID_STATE;
-    while (not_batch_accepted)
+    int error_code = NO_ERROR;
+    bool use_temp_batch = false;
+    bool is_batch_accepted = false;
+    do
       {
 	std::vector<stats> stats;
 	loaddb_fetch_stats (stats);
 	print_stats (stats, *args, status);
 	if (*status != 0)
 	  {
-	    delete &batch;
 	    return ER_FAILED;
 	  }
 
-	ret = loaddb_load_batch (batch, true);
-	not_batch_accepted = ret == ER_LDR_INVALID_STATE;
-      }
+	error_code = loaddb_load_batch (batch, use_temp_batch, is_batch_accepted);
+	if (error_code != NO_ERROR)
+	  {
+	    return error_code;
+	  }
 
-    delete &batch;
-    return ret;
+	use_temp_batch = true; // don't upload batch again while retrying
+    } while (!is_batch_accepted);
+
+    return error_code;
   };
 
   class_handler c_handler = [] (const batch &batch, bool &is_ignored) -> int
   {
     std::string class_name;
-    int ret = loaddb_install_class (batch, is_ignored, class_name);
-    delete &batch;
+    int error_code = loaddb_install_class (batch, is_ignored, class_name);
 
-    if (ret != NO_ERROR)
+    if (error_code != NO_ERROR)
       {
-	return ret;
+	return error_code;
       }
 
     if (!is_ignored && !class_name.empty ())
       {
-	ret = load_has_authorization (class_name, AU_INSERT);
+	error_code = load_has_authorization (class_name, AU_INSERT);
       }
 
-    return ret;
+    return error_code;
   };
   /* *INDENT-ON* */
 

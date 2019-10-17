@@ -9830,13 +9830,15 @@ sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       batch->unpack (unpacker);
     }
 
+  bool is_batch_accepted = false;
   load_session *session = NULL;
+
   session_get_load_session (thread_p, session);
   int error_code = session_get_load_session (thread_p, session);
   if (error_code == NO_ERROR)
     {
       assert (session != NULL);
-      error_code = session->load_batch (*thread_p, batch, use_temp_batch);
+      error_code = session->load_batch (*thread_p, batch, use_temp_batch, is_batch_accepted);
     }
   else
     {
@@ -9849,10 +9851,12 @@ sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       return_error_to_client (thread_p, rid);
     }
 
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  or_pack_int (reply, error_code);
+  char *ptr = or_pack_int (reply, error_code);
+  or_pack_int (ptr, (is_batch_accepted ? 1 : 0));
+
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 

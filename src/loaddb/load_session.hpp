@@ -97,7 +97,7 @@ namespace cubload
        *    thread_ref(in): thread entry
        *    batch(in)     : a batch from loaddb object
        */
-      int load_batch (cubthread::entry &thread_ref, const batch *batch, bool use_temp_batch);
+      int load_batch (cubthread::entry &thread_ref, const batch *batch, bool use_temp_batch, bool &is_batch_accepted);
 
       /*
        * Load object file entirely on the the server
@@ -141,8 +141,8 @@ namespace cubload
       template<typename T>
       void update_atomic_value_with_max (std::atomic<T> &atomic_val, T new_max);
 
-      std::mutex m_commit_mutex;
-      std::condition_variable m_commit_cond_var;
+      std::mutex m_mutex;
+      std::condition_variable m_cond_var;
       std::set<int> m_tran_indexes;
 
       load_args m_args;
@@ -176,7 +176,7 @@ namespace cubload
       {
 	std::string log_msg = error_handler::format_log_msg (msg_id, std::forward<Args> (args)...);
 
-	std::unique_lock<std::mutex> ulock (m_commit_mutex);
+	std::unique_lock<std::mutex> ulock (m_mutex);
 
 	m_stats.log_message.append (log_msg);
 

@@ -235,8 +235,8 @@ namespace cubload
   };
 
   session::session (load_args &args)
-    : m_commit_mutex ()
-    , m_commit_cond_var ()
+    : m_mutex ()
+    , m_cond_var ()
     , m_tran_indexes ()
     , m_args (args)
     , m_last_batch_id {NULL_BATCH_ID}
@@ -295,8 +295,8 @@ namespace cubload
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_commit_mutex);
-    m_commit_cond_var.wait (ulock, pred);
+    std::unique_lock<std::mutex> ulock (m_mutex);
+    m_cond_var.wait (ulock, pred);
   }
 
   void
@@ -313,14 +313,14 @@ namespace cubload
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_commit_mutex);
-    m_commit_cond_var.wait (ulock, pred);
+    std::unique_lock<std::mutex> ulock (m_mutex);
+    m_cond_var.wait (ulock, pred);
   }
 
   void
   session::notify_batch_done (batch_id id)
   {
-    std::unique_lock<std::mutex> ulock (m_commit_mutex);
+    std::unique_lock<std::mutex> ulock (m_mutex);
     assert (m_active_task_count > 0);
     --m_active_task_count;
     if (!is_failed (true))
@@ -337,7 +337,7 @@ namespace cubload
   void
   session::notify_batch_done_and_register_tran_end (batch_id id, int tran_index)
   {
-    std::unique_lock<std::mutex> ulock (m_commit_mutex);
+    std::unique_lock<std::mutex> ulock (m_mutex);
     // free transaction index
     logtb_free_tran_index (&cubthread::get_entry (), tran_index);
 
@@ -361,7 +361,7 @@ namespace cubload
   void
   session::register_tran_start (int tran_index)
   {
-    std::unique_lock<std::mutex> ulock (m_commit_mutex);
+    std::unique_lock<std::mutex> ulock (m_mutex);
     auto ret = m_tran_indexes.insert (tran_index);
     assert (ret.second);    // it means it was inserted
   }
@@ -369,7 +369,7 @@ namespace cubload
   void
   session::on_error (std::string &err_msg)
   {
-    std::unique_lock<std::mutex> ulock (m_commit_mutex);
+    std::unique_lock<std::mutex> ulock (m_mutex);
 
     m_stats.rows_failed++;
     m_stats.error_message.append (err_msg);
@@ -379,7 +379,7 @@ namespace cubload
   void
   session::fail (bool has_lock)
   {
-    std::unique_lock<std::mutex> ulock (m_commit_mutex, std::defer_lock);
+    std::unique_lock<std::mutex> ulock (m_mutex, std::defer_lock);
     if (!has_lock)
       {
 	ulock.lock ();
@@ -407,7 +407,7 @@ namespace cubload
   bool
   session::is_failed (bool has_lock)
   {
-    std::unique_lock<std::mutex> ulock (m_commit_mutex, std::defer_lock);
+    std::unique_lock<std::mutex> ulock (m_mutex, std::defer_lock);
     if (!has_lock)
       {
 	ulock.lock ();
@@ -424,7 +424,7 @@ namespace cubload
   session::interrupt ()
   {
     cubthread::entry *thread_p = &cubthread::get_entry ();
-    std::unique_lock<std::mutex> ulock (m_commit_mutex);
+    std::unique_lock<std::mutex> ulock (m_mutex);
     for (auto &it : m_tran_indexes)
       {
 	(void) logtb_set_tran_index_interrupt (thread_p, it, true);
@@ -437,7 +437,7 @@ namespace cubload
   void
   session::stats_update_rows_committed (int rows_committed)
   {
-    std::unique_lock<std::mutex> ulock (m_commit_mutex);
+    std::unique_lock<std::mutex> ulock (m_mutex);
     m_stats.rows_committed += rows_committed;
   }
 
@@ -449,7 +449,7 @@ namespace cubload
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_commit_mutex);
+    std::unique_lock<std::mutex> ulock (m_mutex);
 
     // check if again after lock was acquired
     if (last_committed_line <= m_stats.last_committed_line)
@@ -520,7 +520,7 @@ namespace cubload
   void
   session::notify_waiting_threads ()
   {
-    m_commit_cond_var.notify_all ();
+    m_cond_var.notify_all ();
   }
 
   int
@@ -565,7 +565,7 @@ namespace cubload
   }
 
   int
-  session::load_batch (cubthread::entry &thread_ref, const batch *batch,  bool use_temp_batch)
+  session::load_batch (cubthread::entry &thread_ref, const batch *batch, bool use_temp_batch, bool &is_batch_accepted)
   {
     if (is_failed ())
       {
@@ -578,12 +578,11 @@ namespace cubload
 	return ER_FAILED;
       }
 
-    bool accepted = false;
     if (use_temp_batch)
       {
 	assert (m_temp_task != NULL && batch == NULL);
-	accepted = worker_manager_try_task (m_temp_task);
-	if (accepted)
+	is_batch_accepted = worker_manager_try_task (m_temp_task);
+	if (is_batch_accepted)
 	  {
 	    m_temp_task = NULL;
 	  }
@@ -594,23 +593,20 @@ namespace cubload
 	update_atomic_value_with_max (m_max_batch_id, batch->get_id ());
 
 	cubthread::entry_task *task = new load_task (*batch, *this, *thread_ref.conn_entry);
-	accepted = worker_manager_try_task (task);
-	if (!accepted)
+	is_batch_accepted = worker_manager_try_task (task);
+	if (!is_batch_accepted)
 	  {
 	    assert (m_temp_task == NULL);
 	    m_temp_task = task;
 	  }
       }
 
-    if (accepted)
+    if (is_batch_accepted)
       {
 	++m_active_task_count;
-	return NO_ERROR;
       }
-    else
-      {
-	return ER_LDR_INVALID_STATE;
-      }
+
+    return NO_ERROR;
   }
 
   int
@@ -618,7 +614,8 @@ namespace cubload
   {
     batch_handler b_handler = [this, &thread_ref] (const batch &batch) -> int
     {
-      return load_batch (thread_ref, &batch, false);
+      bool is_batch_accepted;
+      return load_batch (thread_ref, &batch, false, is_batch_accepted);
     };
 
     class_handler c_handler = [this, &thread_ref] (const batch &batch, bool &is_ignored) -> int
@@ -633,7 +630,7 @@ namespace cubload
   void
   session::collect_stats (bool has_lock)
   {
-    std::unique_lock<std::mutex> ulock (m_commit_mutex, std::defer_lock);
+    std::unique_lock<std::mutex> ulock (m_mutex, std::defer_lock);
     if (!has_lock)
       {
 	ulock.lock ();
@@ -659,9 +656,14 @@ namespace cubload
   void
   session::fetch_stats (std::vector<stats> &stats_)
   {
-    std::unique_lock<std::mutex> ulock (m_commit_mutex);
-    std::copy (m_collected_stats.begin (), m_collected_stats.end (), back_inserter (stats_));
-    m_collected_stats.clear ();
+    std::unique_lock<std::mutex> ulock (m_mutex);
+    if (!m_collected_stats.empty ())
+      {
+	stats_.clear ();
+	stats_ = std::move (m_collected_stats);
+	assert (!stats_.empty ());
+	assert (m_collected_stats.empty ());
+      }
   }
 
 } // namespace cubload
