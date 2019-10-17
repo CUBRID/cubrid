@@ -97,14 +97,6 @@ namespace cubload
        */
       int load_batch (cubthread::entry &thread_ref, const batch &batch);
 
-      /*
-       * Load object file entirely on the the server
-       *
-       *    return: NO_ERROR in case of success or ER_FAILED if file does not exists
-       *    thread_ref(in)    : thread entry
-       */
-      int load_file (cubthread::entry &thread_ref);
-
       void wait_for_completion ();
       void wait_for_previous_batch (batch_id id);
       void notify_batch_done (batch_id id);

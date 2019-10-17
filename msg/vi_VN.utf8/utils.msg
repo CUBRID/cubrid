@@ -468,8 +468,6 @@ valid options:\n\
   -i, --index-file=FILE[:LINE]   create index from LINE with FILE\n\
       --trigger-file=FILE[:LINE] create trigger from LINE with FILE\n\
   -d, --data-file=FILE           load data with FILE\n\
-      --server-data-file=FILE    load data with FILE on server,\n\
-                                 absolute path must be provided and the file must exist on server file system\n\
   -t, --table=TABLE              table name that is substituted for missing class header in data file\n\
       --error-control-file=FILE  FILE to control error(s) during loading\n\
       --ignore-class-file=FILE   input file of class names that skip load\n

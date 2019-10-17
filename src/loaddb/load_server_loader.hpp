@@ -55,6 +55,7 @@ namespace cubload
       void install_class (string_type *class_name, class_command_spec_type *cmd_spec) override;
 
       bool is_class_ignored (const char *classname);
+      void to_lowercase_identifier (const char *idname, cubmem::extensible_block &eb);
 
     private:
       session &m_session;

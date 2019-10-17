@@ -467,8 +467,6 @@ opciones validas:\n\
   -i, --index-file=FILE[:LINE]   crear indice de la LINEA CON ARCHIVO\n\
       --trigger-file=FILE[:LINE] crear trigger de la LINEA CON ARCHIVO\n\
   -d, --data-file=FILE           cargar datos con ARCHIVO\n\
-      --server-data-file=FILE    load data with FILE on server,\n\
-                                 absolute path must be provided and the file must exist on server file system\n\
   -t, --table=TABLE              nombre de tabla que es sustituido por falta de encabezamiento de clase en archivo de datos\n\
       --error-control-file=FILE  ARCHIVO para controlar error(es) al cargar\n\
       --ignore-class-file=FILE   archivo de entrada de nombres de clase que saltan carga\n

@@ -2920,6 +2920,9 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 
   (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
 
+  // ha delays are registered and logged, and must be stopped before vacuum master
+  log_stop_ha_delay_registration ();
+
   // only after all logging is finished can this vacuum master be stopped; boot_remove_all_temp_volumes may add a final
   // log entry
   // hopefully, nothing else follows

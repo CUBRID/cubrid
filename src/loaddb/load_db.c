@@ -139,7 +139,7 @@ ldr_validate_object_file (const char *argv0, load_args * args)
       return ER_FAILED;
     }
 
-  if (args->input_file.empty () && args->object_file.empty () && args->server_object_file.empty ())
+  if (args->input_file.empty () && args->object_file.empty ())
     {
       /* if schema/index file are specified, process them only */
       if (args->schema_file.empty () && args->index_file.empty ())
@@ -587,7 +587,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	{
 	  if (retval != ER_FILE_UNKNOWN_FILE)
 	    {
-	      // To keep compatibility we need to continue even though the ignore-classes file does not exist.            
+	      // To keep compatibility we need to continue even though the ignore-classes file does not exist.
 	      status = 2;
 	      goto error_return;
 	    }
@@ -708,7 +708,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       schema_file = NULL;
     }
 
-  if (!args.object_file.empty () || !args.server_object_file.empty ())
+  if (!args.object_file.empty ())
     {
       if (args.syntax_check)
 	{
@@ -1027,7 +1027,6 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   char *index_file = utility_get_option_string_value (arg_map, LOAD_INDEX_FILE_S, 0);
   char *trigger_file = utility_get_option_string_value (arg_map, LOAD_TRIGGER_FILE_S, 0);
   char *object_file = utility_get_option_string_value (arg_map, LOAD_DATA_FILE_S, 0);
-  char *server_object_file = utility_get_option_string_value (arg_map, LOAD_SERVER_DATA_FILE_S, 0);
   char *error_file = utility_get_option_string_value (arg_map, LOAD_ERROR_CONTROL_FILE_S, 0);
   char *table_name = utility_get_option_string_value (arg_map, LOAD_TABLE_NAME_S, 0);
   char *ignore_class_file = utility_get_option_string_value (arg_map, LOAD_IGNORE_CLASS_S, 0);
@@ -1056,7 +1055,6 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   args->index_file = index_file ? index_file : empty;
   args->trigger_file = trigger_file ? trigger_file : empty;
   args->object_file = object_file ? object_file : empty;
-  args->server_object_file = server_object_file ? server_object_file : empty;
   args->error_file = error_file ? error_file : empty;
   args->ignore_logging = utility_get_option_bool_value (arg_map, LOAD_IGNORE_LOGGING_S);
   args->compare_storage_order = utility_get_option_bool_value (arg_map, LOAD_COMPARE_STORAGE_ORDER_S);
@@ -1240,46 +1238,9 @@ load_has_authorization (const std::string & class_name, DB_AUTH au_type)
 static int
 load_object_file (load_args * args)
 {
-  int error_code = NO_ERROR;
-
-  // first try to load directly on server
-  if (!args->server_object_file.empty ())
-    {
-      if (!au_is_dba_group_member (db_get_user ()))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "--server-data-file");
-	  return ER_AU_DBA_ONLY;
-	}
-      error_code = loaddb_load_object_file ();
-      if (error_code == NO_ERROR)
-	{
-	  // load was performed successfully by the server
-	  return error_code;
-	}
-      else if (error_code == ER_FILE_UNKNOWN_FILE)
-	{
-	  if (args->object_file.empty ())
-	    {
-	      fprintf (stderr, "ERROR: file %s does not exists on the server machine\n",
-		       args->server_object_file.c_str ());
-	      return error_code;
-	    }
-
-	  // server data file does not exists on server file system, try to load client data file
-	  fprintf (stderr,
-		   "ERROR: file %s does not exists on the server machine, try to load %s from the client machine\n",
-		   args->server_object_file.c_str (), args->object_file.c_str ());
-	}
-      else
-	{
-	  // there was an error while loading server data file on server, therefore exit
-	  return error_code;
-	}
-    }
-
   if (!args->table_name.empty ())
     {
-      error_code = load_has_authorization (args->table_name, AU_INSERT);
+      int error_code = load_has_authorization (args->table_name, AU_INSERT);
       // user not authorized to insert in class
       if (error_code != NO_ERROR)
 	{
