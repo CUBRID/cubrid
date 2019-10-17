@@ -248,13 +248,13 @@ ldr_get_start_line_no (std::string & file_name)
 	    {
 	      /* *INDENT-OFF* */
 	      try
-	      {
-		line_no = std::stoi (file_name.substr (p + 1));
-	      }
+		{
+		  line_no = std::stoi (file_name.substr (p + 1));
+		}
 	      catch (...)
-	      {
-		// parse failed, fallback to default value
-	      }
+		{
+		  // parse failed, fallback to default value
+		}
 	      /* *INDENT-ON* */
 
 	      // remove line no from file name

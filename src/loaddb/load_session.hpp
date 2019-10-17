@@ -108,7 +108,7 @@ namespace cubload
       void on_error (std::string &err_msg);
 
       void fail (bool has_lock = false);
-      bool is_failed (bool has_lock = false);
+      bool is_failed ();
       void interrupt ();
 
       void collect_stats (bool has_lock = false);

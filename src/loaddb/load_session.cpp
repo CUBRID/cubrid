@@ -288,7 +288,7 @@ namespace cubload
   void
   session::wait_for_previous_batch (const batch_id id)
   {
-    auto pred = [this, &id] () -> bool { return is_failed (true) || id == (m_last_batch_id + 1); };
+    auto pred = [this, &id] () -> bool { return is_failed () || id == (m_last_batch_id + 1); };
 
     if (id == FIRST_BATCH_ID || pred ())
       {
@@ -323,7 +323,7 @@ namespace cubload
     std::unique_lock<std::mutex> ulock (m_mutex);
     assert (m_active_task_count > 0);
     --m_active_task_count;
-    if (!is_failed (true))
+    if (!is_failed ())
       {
 	assert (m_last_batch_id == id - 1);
 	m_last_batch_id = id;
@@ -343,7 +343,7 @@ namespace cubload
 
     assert (m_active_task_count > 0);
     --m_active_task_count;
-    if (!is_failed (true))
+    if (!is_failed ())
       {
 	assert (m_last_batch_id == id - 1);
 	m_last_batch_id = id;
@@ -405,19 +405,9 @@ namespace cubload
   }
 
   bool
-  session::is_failed (bool has_lock)
+  session::is_failed ()
   {
-    std::unique_lock<std::mutex> ulock (m_mutex, std::defer_lock);
-    if (!has_lock)
-      {
-	ulock.lock ();
-      }
-    bool ret = m_stats.is_failed;
-    if (!has_lock)
-      {
-	ulock.unlock ();
-      }
-    return ret;
+    return m_stats.is_failed;
   }
 
   void
