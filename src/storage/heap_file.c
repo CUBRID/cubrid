@@ -17323,6 +17323,12 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
 			    &cache_attr_info->inst_oid, NULL, &res);
   if (error == NO_ERROR)
     {
+      if (DB_IS_NULL (res) && func_pred->func_regu->domain != NULL)
+	{
+	  /* Set expected domain in case of null values, just to be sure. The callers expects the domain to be set. */
+	  db_value_domain_init (res, TP_DOMAIN_TYPE (func_pred->func_regu->domain),
+				func_pred->func_regu->domain->precision, func_pred->func_regu->domain->scale);
+	}
       pr_clone_value (res, result);
     }
 
