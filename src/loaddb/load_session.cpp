@@ -609,24 +609,6 @@ namespace cubload
     return NO_ERROR;
   }
 
-  int
-  session::load_file (cubthread::entry &thread_ref)
-  {
-    batch_handler b_handler = [this, &thread_ref] (const batch &batch) -> int
-    {
-      bool is_batch_accepted;
-      return load_batch (thread_ref, &batch, false, is_batch_accepted);
-    };
-
-    class_handler c_handler = [this, &thread_ref] (const batch &batch, bool &is_ignored) -> int
-    {
-      std::string class_name;
-      return install_class (thread_ref, batch, is_ignored, class_name);
-    };
-
-    return split (m_args.periodic_commit, m_args.server_object_file, c_handler, b_handler);
-  }
-
   void
   session::collect_stats (bool has_lock)
   {

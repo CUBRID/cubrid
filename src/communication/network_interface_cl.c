@@ -9956,27 +9956,6 @@ loaddb_init (cubload::load_args & args)
 }
 
 int
-loaddb_load_object_file ()
-{
-#if defined(CS_MODE)
-  int rc = ER_FAILED;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  int req_error = net_client_request (NET_SERVER_LD_LOAD_OBJECT_FILE, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				      NULL, 0, NULL, 0);
-  if (!req_error)
-    {
-      or_unpack_int (reply, &rc);
-    }
-
-  return rc;
-#else /* CS_MODE */
-  return NO_ERROR;
-#endif /* !CS_MODE */
-}
-
-int
 loaddb_install_class (const cubload::batch & batch, bool & class_is_ignored, std::string & class_name)
 {
 #if defined(CS_MODE)
