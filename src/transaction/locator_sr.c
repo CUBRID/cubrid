@@ -5832,6 +5832,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		   * There is an error updating the index... Quit... The
 		   * transaction must be aborted by the caller
 		   */
+		  ASSERT_ERROR ();
 		  goto error;
 		}
 	    }
@@ -5856,6 +5857,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 						 true, true, hfid, NULL, false, false);
 		  if (error_code != NO_ERROR)
 		    {
+		      ASSERT_ERROR ();
 		      goto error;
 		    }
 		}

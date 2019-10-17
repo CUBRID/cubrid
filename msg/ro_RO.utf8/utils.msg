@@ -481,9 +481,6 @@ opţiuni valide:\n\
   -i, --index-file=FIŞIER[:LINIE]   creează index de la linia, respectiv din fişierul specificat\n\
       --trigger-file=FIŞIER[:LINIE] creează trigger de la linia, respectiv din fişierul specificat\n\
   -d, --data-file=FIŞIER            incarcă datele din FIŞIER\n\
-      --server-data-file=FILE       incarcă datele din FIŞIER pe server,\n\
-                                    trebuie specificată calea absolută a fişierului\n\
-                                    şi fişierul trebuie să se afle pe sistemul de fişiere al serverului\n\
   -t, --table=TABELA                numele tabelei înlocuite pentru antetul de clasă absent din fişierul de date\n\
       --error-control-file=FIŞIER   FIŞIER de control al erorilor în timpul încărcării\n\
       --ignore-class-file=FIŞIER    FIŞIER de intrare cu numele claselor ce nu vor fi încărcate\n

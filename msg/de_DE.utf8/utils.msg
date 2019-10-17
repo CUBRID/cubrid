@@ -467,8 +467,6 @@ gültige Optionen:\n\
   -i, --index-file=DATEI[:ZEILE]   Index ab ZEILE mit DATEI erstellen\n\
       --trigger-file=DATEI[:ZEILE] Trigger ab ZEILE mit DATEI erstellen\n\
   -d, --data-file=DATEI            DATEI laden\n\
-      --server-data-file=FILE      load data with FILE on server,\n\
-                                   absolute path must be provided and the file must exist on server file system\n\
   -t, --table=TABLE                Name der Tabelle, die für das fehlende Klassenheader in der Datei ersetzt wird\n\
       --error-control-file=DATEI   DATEI für Fehlerkontrolle während Ladung\n\
       --ignore-class-file=DATEI    Eingangsdatei für Klassenamen, die nicht geladen werden\n

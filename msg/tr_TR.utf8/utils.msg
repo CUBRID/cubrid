@@ -467,8 +467,6 @@ geçerli seçenekler:\n\
   -i, --index-file=FILE[:LINE]   FILE ile LINE dizin oluşturun\n\
       --trigger-file=FILE[:LINE] create trigger from LINE with FILE\n\
   -d, --data-file=FILE           FILE ile yük verileri\n\
-      --server-data-file=FILE    load data with FILE on server,\n\
-                                 absolute path must be provided and the file must exist on server file system\n\
   -t, --table=TABLE              Veri belgeleri içi kaybolan düzeyindeki şeflerin forum adıdır\n\
       --error-control-file=FILE  Yükleme sırasında bir hata (lar) kontrol etmek için FILE\n\
       --ignore-class-file=FILE   yük atlamak sınıf adları girdi dosyası\n
