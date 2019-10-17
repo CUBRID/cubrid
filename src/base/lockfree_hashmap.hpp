@@ -670,9 +670,12 @@ namespace lockfree
 	// make sure m_edesc is initialized
 	fn->get_data ().m_edesc = m_edesc;
 
-	// call f_init
 	claimed = from_free_node (fn);
-	m_edesc->f_init (claimed);
+	// call f_init
+	if (m_edesc->f_init != NULL)
+	  {
+	    m_edesc->f_init (claimed);
+	  }
       }
     else
       {
