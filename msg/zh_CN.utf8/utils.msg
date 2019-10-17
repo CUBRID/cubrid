@@ -467,8 +467,6 @@ loaddb: 将对象和结构导入到数据库.\n\
   -i, --index-file=FILE[:LINE]   从文件 FILE 的第 LINE 行创建索引\n\
       --trigger-file=FILE[:LINE] create trigger from LINE with FILE\n\
   -d, --data-file=FILE           从文件 FILE 读取数据\n\
-      --server-data-file=FILE    load data with FILE on server,\n\
-                                 absolute path must be provided and the file must exist on server file system\n\
   -t, --table=TABLE              用TABLE名替代数据文件中找不到表头的表\n\
       --error-control-file=FILE  指定文件 FILE 用来描述在读取数据过程中如何处理特定的错误\n\
       --ignore-class-file=FILE   指定文件 FILE 用来描述要忽略掉的类\n

@@ -469,8 +469,6 @@ options valids:\n\
   -i, --index-file=FICHIER[:LIGNE]   crée un index de la LIGNE en utilisant le FICHIER\n\
       --trigger-file=FICHIER[:LIGNE] crée un trigger de la LIGNE en utilisant le FICHIER\n\
   -d, --data-file=FICHIER            charge des données en utilisant le FICHIER\n\
-      --server-data-file=FILE        load data with FILE on server,\n\
-                                     absolute path must be provided and the file must exist on server file system\n\
   -t, --table=TABLE                  nom de la TABLE qui se substitue à en-tête de\n\
                                      classe manquante dans le fichier de données\n\
       --error-control-file=FICHIER   FICHIER de contrôle d'erreur(s) pendant le chargement\n\

@@ -467,8 +467,6 @@ opzioni valide:\n\
   -i, --index-file=FILE[:LINE]   creare un indice da LINE con FILE\n\
       --trigger-file=FILE[:LINE] creare un trigger da LINE con FILE\n\
   -d, --data-file=FILE           dati di carico con FILE\n\
-      --server-data-file=FILE    load data with FILE on server,\n\
-                                 absolute path must be provided and the file must exist on server file system\n\
   -t, --table=TABLE              nome della tabella che viene sostituito con manca intestazione di classe nel file di dati\n\
       --error-control-file=FILE  FILE per il controllo di errore (s) durante il carico\n\
       --ignore-class-file=FILE   ifile di input di nomi di classe che saltino carico\n
