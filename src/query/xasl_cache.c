@@ -1872,7 +1872,7 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
   /* add overflow, RT checks. */
 
   fprintf (fp, "\nEntries:\n");
-  while (xcache_entry = iter.iterate ())
+  while ((xcache_entry = iter.iterate ()) != NULL)
     {
       fprintf (fp, "\n");
       fprintf (fp, "  XASL_ID = { \n");
