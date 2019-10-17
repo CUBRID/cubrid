@@ -37,6 +37,7 @@ extern void utility_load_print_error (FILE * fp);
 extern int util_parse_argument (UTIL_MAP * util_map, int argc, char **argv);
 extern void util_hide_password (char *arg);
 
+// *INDENT-OFF*
 class util_args
 {
 public:
@@ -47,14 +48,14 @@ public:
   char **get_args ();
   size_t get_arg_count () const;
 
-  static void hide_cmd_line_args (char **args, size_t count = 0);
+  static void hide_cmd_pass_arg (char **args, size_t count = 0);
 
 private:
-    size_t m_argc;
+  size_t m_argc;
   char **m_orig_args;
   char **m_copy_args;
   char **m_args;
 };
-
+// *INDENT-ON*
 
 #endif /* _UTIL_SUPPORT_H_ */

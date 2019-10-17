@@ -32,6 +32,7 @@
 
 #include <cassert>
 #include <cstring>
+#include <string>
 
 #include "cubrid_getopt.h"
 #include "error_code.h"
@@ -421,7 +422,7 @@ m_args (NULL)
 	  m_copy_args[i] = new char[strlen (m_orig_args[i]) + 1];
 	  std::strcpy (m_copy_args[i], m_orig_args[i]);
 	}
-      hide_cmd_line_args (m_orig_args, m_argc);
+      hide_cmd_pass_arg (m_orig_args, m_argc);
       m_args = m_copy_args;
     }
   else
@@ -455,7 +456,7 @@ util_args::get_arg_count () const
 }
 
 void
-util_args::hide_cmd_line_args (char **args, size_t count /* = 0 */ )
+util_args::hide_cmd_pass_arg (char **args, size_t count /* = 0 */ )
 {
   if (count == 0)
     {
@@ -465,9 +466,27 @@ util_args::hide_cmd_line_args (char **args, size_t count /* = 0 */ )
   assert (count >= 2);
   assert (args[0] != NULL && args[1] != NULL);
 
+  std::string short_passarg = "-p";
+  std::string long_passarg = "--password";
+
   for (size_t i = 2; args[i] != NULL; ++i)
     {
-      std::memset (args[i], '\0', strlen (args[i]));
+      if (short_passarg == args[i] || long_passarg == args[i])
+        {
+          // may be either "-p pass" or "--password pass"
+          // clear this and next argument
+          std::memset (args[i], '\0', strlen (args[i]));
+          if (args[i + 1] != NULL)
+            {
+              std::memset (args[i + 1], '\0', strlen (args[i]));
+            }
+        }
+      else if (short_passarg.compare (0, 2, args[i], 2) == 0)
+        {
+          // may be "-ppass"
+          // clear this argument
+          std::memset (args[i], '\0', strlen (args[i]));
+        }
     }
 }
 
