@@ -87,7 +87,10 @@ namespace lockfree
 
 	void on_reclaim ()
 	{
-	  (void) m_edesc->f_uninit (&m_entry);
+	  if (m_edesc->f_uninit != NULL)
+	    {
+	      (void) m_edesc->f_uninit (&m_entry);
+	    }
 	}
       };
       using freelist_type = freelist<freelist_node_data>;
