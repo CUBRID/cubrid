@@ -710,6 +710,18 @@ lock_uninit_entry (void *entry)
   return NO_ERROR;
 }
 
+// *INDENT-OFF*
+lk_res::lk_res ()
+{
+  pthread_mutex_init (&res_mutex, NULL);
+}
+
+lk_res::~lk_res ()
+{
+  pthread_mutex_destroy (&res_mutex);
+}
+// *INDENT-ON*
+
 static void *
 lock_alloc_resource (void)
 {
