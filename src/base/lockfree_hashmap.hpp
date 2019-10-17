@@ -90,7 +90,10 @@ namespace lockfree
 
 	void on_reclaim ()
 	{
-	  (void) m_edesc->f_uninit (&m_entry);
+	  if (m_edesc->f_uninit != NULL)
+	    {
+	      (void) m_edesc->f_uninit (&m_entry);
+	    }
 	}
       };
       using freelist_type = freelist<freelist_node_data>;
@@ -667,9 +670,12 @@ namespace lockfree
 	// make sure m_edesc is initialized
 	fn->get_data ().m_edesc = m_edesc;
 
-	// call f_init
 	claimed = from_free_node (fn);
-	m_edesc->f_init (claimed);
+	// call f_init
+	if (m_edesc->f_init != NULL)
+	  {
+	    m_edesc->f_init (claimed);
+	  }
       }
     else
       {
