@@ -3876,8 +3876,7 @@ locator_mflush_reallocate_copy_area (LOCATOR_MFLUSH_CACHE * mflush, int minsize)
   mflush->mop_uoids = NULL;
   mflush->mop_tail_uoid = NULL;
   mflush->mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (mflush->copy_area);
-  mflush->mobjs->start_multi_update = 0;
-  mflush->mobjs->end_multi_update = 0;
+  mflush->mobjs->is_multi_update = 0;
   mflush->mobjs->num_objs = 0;
   mflush->obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs);
   LC_RECDES_IN_COPYAREA (mflush->copy_area, &mflush->recdes);
@@ -5423,7 +5422,7 @@ locator_flush_for_multi_update (MOP class_mop)
     }
 
   /* special code for uniqueness checking */
-  mflush.mobjs->start_multi_update = 1;
+  mflush.mobjs->is_multi_update = 1;
 
   /* flush all dirty instances of this class */
   map_status = ws_map_class_dirty (class_mop, locator_mflush, &mflush);
@@ -5432,7 +5431,9 @@ locator_flush_for_multi_update (MOP class_mop)
     {
       /* Even if mflush.mobjs->num_objs == 0, invoke locator_mflush_force() to indicate the end of multiple updates. */
       /* special code for uniqueness checking */
-      mflush.mobjs->end_multi_update = 1;
+      // todo: previously, mflush.mobjs->end_multi_update was kept 0 only for error_code WS_MAP_SUCCESS?
+      // How was STOP case?
+
       error_code = locator_mflush_force (&mflush);
     }
 

@@ -493,8 +493,7 @@ locator_reallocate_copy_area_by_length (LC_COPYAREA * old_area, int new_length)
 
   new_mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (new_area);
   new_mobjs->num_objs = old_mobjs->num_objs;
-  new_mobjs->start_multi_update = old_mobjs->start_multi_update;
-  new_mobjs->end_multi_update = old_mobjs->end_multi_update;
+  new_mobjs->is_multi_update = old_mobjs->is_multi_update;
 
   for (i = 0; i < old_mobjs->num_objs; i++)
     {

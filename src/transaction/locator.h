@@ -230,8 +230,7 @@ typedef struct lc_copyarea_manyobjs LC_COPYAREA_MANYOBJS;
 struct lc_copyarea_manyobjs
 {
   LC_COPYAREA_ONEOBJ objs;
-  int start_multi_update;	/* the start of flush request */
-  int end_multi_update;		/* the end of flush request */
+  int is_multi_update;
   int num_objs;			/* How many objects */
 };
 

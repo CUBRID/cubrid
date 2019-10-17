@@ -688,8 +688,7 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
   num_objs = locator_send_copy_area (copy_area, &content_ptr, NULL, &desc_ptr, &desc_size);
 
   request_ptr = or_pack_int (request, num_objs);
-  request_ptr = or_pack_int (request_ptr, mobjs->start_multi_update);
-  request_ptr = or_pack_int (request_ptr, mobjs->end_multi_update);
+  request_ptr = or_pack_int (request_ptr, mobjs->is_multi_update);
   request_ptr = or_pack_int (request_ptr, desc_size);
   request_ptr = or_pack_int (request_ptr, content_size);
 
