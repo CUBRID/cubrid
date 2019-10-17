@@ -467,8 +467,6 @@ loaddb: データベースにオブジェクトやスキーマロード\n\
   -i, --index-file=FILE[:LINE]   ファイル[:ライン]情報でインデックス生成\n\
       --trigger-file=FILE[:LINE] create trigger from LINE with FILE\n\
   -d, --data-file=FILE           ロードするデータファイル\n\
-      --server-data-file=FILE    load data with FILE on server,\n\
-                                 absolute path must be provided and the file must exist on server file system\n\
   -t, --table=TABLE              データをロードするテーブル名; データファイルにテーブル情報がない場合使う\n\
       --error-control-file=FILE  ロード中に発生するエラーに関するコントロールファイル\n\
       --ignore-class-file=FILE   ロードしないクラス名が入っているファイル\n
