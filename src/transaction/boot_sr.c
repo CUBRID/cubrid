@@ -1942,12 +1942,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     }
 
   // sessions state is required to continue
-  error_code = session_states_init (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      assert (false);
-      goto exit_on_error;
-    }
+  session_states_init (thread_p);
 
   /* print_version string */
 #if defined (NDEBUG)
@@ -2690,11 +2685,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  error_code = session_states_init (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
+  session_states_init (thread_p);
 
 #if defined (SERVER_MODE)
   if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && from_backup == false)
