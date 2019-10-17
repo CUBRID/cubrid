@@ -1325,7 +1325,8 @@ load_object_file (load_args * args, int *status)
 	  }
 
 	use_temp_batch = true; // don't upload batch again while retrying
-    } while (!is_batch_accepted);
+      }
+    while (!is_batch_accepted);
 
     return error_code;
   };
