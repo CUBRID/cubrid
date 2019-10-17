@@ -85,6 +85,9 @@ namespace lockfree
 	T m_entry;
 	lf_entry_descriptor *m_edesc;
 
+	freelist_node_data () = default;
+	~freelist_node_data () = default;
+
 	void on_reclaim ()
 	{
 	  if (m_edesc->f_uninit != NULL)
@@ -173,6 +176,8 @@ namespace lockfree
       ~iterator () = default;
 
       T *iterate ();
+      void restart ();
+
       iterator &operator= (iterator &&o);
 
     private:
@@ -1368,6 +1373,17 @@ namespace lockfree
 
     /* we have a valid entry */
     return m_curr;
+  }
+
+  template <class Key, class T>
+  void
+  hashmap<Key, T>::iterator::restart ()
+  {
+    if (m_tdes->is_tran_started ())
+      {
+	m_tdes->end_tran();
+      }
+    m_curr = NULL;
   }
 
   template <class Key, class T>
