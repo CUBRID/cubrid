@@ -914,7 +914,7 @@ session_remove_expired_sessions (THREAD_ENTRY * thread_p)
    */
   while (!finished)
     {
-      // todo: activate it.restart ();
+      it.restart ();
       while (true)
 	{
 	  state = it.iterate ();
