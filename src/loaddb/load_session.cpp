@@ -224,6 +224,7 @@ namespace cubload
       {
 	assert (!m_was_session_notified);
 	m_session.notify_batch_done_and_register_tran_end (m_batch.get_id (), tran_index);
+	m_session.collect_stats ();
 	m_was_session_notified = true;
       }
 
@@ -234,8 +235,8 @@ namespace cubload
   };
 
   session::session (load_args &args)
-    : m_commit_mutex ()
-    , m_commit_cond_var ()
+    : m_mutex ()
+    , m_cond_var ()
     , m_tran_indexes ()
     , m_args (args)
     , m_last_batch_id {NULL_BATCH_ID}
@@ -243,8 +244,9 @@ namespace cubload
     , m_active_task_count {0}
     , m_class_registry ()
     , m_stats ()
-    , m_stats_mutex ()
+    , m_collected_stats ()
     , m_driver (NULL)
+    , m_temp_task (NULL)
   {
     worker_manager_register_session (*this);
 
@@ -293,8 +295,8 @@ namespace cubload
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_commit_mutex);
-    m_commit_cond_var.wait (ulock, pred);
+    std::unique_lock<std::mutex> ulock (m_mutex);
+    m_cond_var.wait (ulock, pred);
   }
 
   void
@@ -311,14 +313,14 @@ namespace cubload
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_commit_mutex);
-    m_commit_cond_var.wait (ulock, pred);
+    std::unique_lock<std::mutex> ulock (m_mutex);
+    m_cond_var.wait (ulock, pred);
   }
 
   void
   session::notify_batch_done (batch_id id)
   {
-    std::unique_lock<std::mutex> ulock (m_commit_mutex);
+    std::unique_lock<std::mutex> ulock (m_mutex);
     assert (m_active_task_count > 0);
     --m_active_task_count;
     if (!is_failed ())
@@ -335,7 +337,7 @@ namespace cubload
   void
   session::notify_batch_done_and_register_tran_end (batch_id id, int tran_index)
   {
-    std::unique_lock<std::mutex> ulock (m_commit_mutex);
+    std::unique_lock<std::mutex> ulock (m_mutex);
     // free transaction index
     logtb_free_tran_index (&cubthread::get_entry (), tran_index);
 
@@ -359,25 +361,25 @@ namespace cubload
   void
   session::register_tran_start (int tran_index)
   {
-    m_commit_mutex.lock ();
+    std::unique_lock<std::mutex> ulock (m_mutex);
     auto ret = m_tran_indexes.insert (tran_index);
     assert (ret.second);    // it means it was inserted
-    m_commit_mutex.unlock ();
   }
 
   void
   session::on_error (std::string &err_msg)
   {
-    std::unique_lock<std::mutex> ulock (m_stats_mutex);
+    std::unique_lock<std::mutex> ulock (m_mutex);
 
     m_stats.rows_failed++;
     m_stats.error_message.append (err_msg);
+    collect_stats (true);
   }
 
   void
   session::fail (bool has_lock)
   {
-    std::unique_lock<std::mutex> ulock (m_stats_mutex, std::defer_lock);
+    std::unique_lock<std::mutex> ulock (m_mutex, std::defer_lock);
     if (!has_lock)
       {
 	ulock.lock ();
@@ -405,15 +407,14 @@ namespace cubload
   bool
   session::is_failed ()
   {
-    std::unique_lock<std::mutex> ulock (m_stats_mutex);
     return m_stats.is_failed;
   }
 
   void
   session::interrupt ()
   {
-    THREAD_ENTRY *thread_p = &cubthread::get_entry ();
-    std::unique_lock<std::mutex> ulock (m_commit_mutex);
+    cubthread::entry *thread_p = &cubthread::get_entry ();
+    std::unique_lock<std::mutex> ulock (m_mutex);
     for (auto &it : m_tran_indexes)
       {
 	(void) logtb_set_tran_index_interrupt (thread_p, it, true);
@@ -426,7 +427,7 @@ namespace cubload
   void
   session::stats_update_rows_committed (int rows_committed)
   {
-    std::unique_lock<std::mutex> ulock (m_stats_mutex);
+    std::unique_lock<std::mutex> ulock (m_mutex);
     m_stats.rows_committed += rows_committed;
   }
 
@@ -438,7 +439,7 @@ namespace cubload
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_stats_mutex);
+    std::unique_lock<std::mutex> ulock (m_mutex);
 
     // check if again after lock was acquired
     if (last_committed_line <= m_stats.last_committed_line)
@@ -509,7 +510,7 @@ namespace cubload
   void
   session::notify_waiting_threads ()
   {
-    m_commit_cond_var.notify_all ();
+    m_cond_var.notify_all ();
   }
 
   int
@@ -554,36 +555,61 @@ namespace cubload
   }
 
   int
-  session::load_batch (cubthread::entry &thread_ref, const batch &batch)
+  session::load_batch (cubthread::entry &thread_ref, const batch *batch, bool use_temp_batch, bool &is_batch_accepted)
   {
     if (is_failed ())
       {
 	return ER_FAILED;
       }
 
-    update_atomic_value_with_max (m_max_batch_id, batch.get_id ());
-    ++m_active_task_count;
-
-    if (batch.get_content ().empty ())
+    if (batch != NULL && batch->get_content ().empty ())
       {
-	// nothing to do, just notify that batch processing is done
-	notify_batch_done (batch.get_id ());
 	assert (false);
 	return ER_FAILED;
       }
 
-    worker_manager_push_task (new load_task (batch, *this, *thread_ref.conn_entry));
+    if (use_temp_batch)
+      {
+	assert (m_temp_task != NULL && batch == NULL);
+	is_batch_accepted = worker_manager_try_task (m_temp_task);
+	if (is_batch_accepted)
+	  {
+	    m_temp_task = NULL;
+	  }
+      }
+    else
+      {
+	assert (m_temp_task == NULL && batch != NULL);
+	update_atomic_value_with_max (m_max_batch_id, batch->get_id ());
+
+	cubthread::entry_task *task = new load_task (*batch, *this, *thread_ref.conn_entry);
+	is_batch_accepted = worker_manager_try_task (task);
+	if (!is_batch_accepted)
+	  {
+	    assert (m_temp_task == NULL);
+	    m_temp_task = task;
+	  }
+      }
+
+    if (is_batch_accepted)
+      {
+	++m_active_task_count;
+      }
 
     return NO_ERROR;
   }
 
   void
-  session::fetch_stats (stats &stats_)
+  session::collect_stats (bool has_lock)
   {
-    std::unique_lock<std::mutex> ulock (m_stats_mutex);
+    std::unique_lock<std::mutex> ulock (m_mutex, std::defer_lock);
+    if (!has_lock)
+      {
+	ulock.lock ();
+      }
 
     m_stats.is_completed = is_completed ();
-    stats_ = m_stats;
+    m_collected_stats.emplace_back (m_stats);
 
     // since client periodically fetches the stats, clear error_message in order not to send twice same message
     // However, for syntax checking we do not clear the messages since we throw the errors at the end
@@ -592,6 +618,24 @@ namespace cubload
 	m_stats.error_message.clear ();
       }
     m_stats.log_message.clear ();
+
+    if (!has_lock)
+      {
+	ulock.unlock ();
+      }
+  }
+
+  void
+  session::fetch_stats (std::vector<stats> &stats_)
+  {
+    std::unique_lock<std::mutex> ulock (m_mutex);
+    if (!m_collected_stats.empty ())
+      {
+	stats_.clear ();
+	stats_ = std::move (m_collected_stats);
+	assert (!stats_.empty ());
+	assert (m_collected_stats.empty ());
+      }
   }
 
 } // namespace cubload

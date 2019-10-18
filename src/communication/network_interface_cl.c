@@ -9993,23 +9993,33 @@ loaddb_install_class (const cubload::batch & batch, bool & class_is_ignored, std
 }
 
 int
-loaddb_load_batch (const cubload::batch & batch)
+loaddb_load_batch (const cubload::batch & batch, bool use_temp_batch, bool & is_batch_accepted)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   packing_packer packer;
   cubmem::extensible_block eb;
 
-  packer.set_buffer_and_pack_all (eb, batch);
+  if (use_temp_batch)
+    {
+      packer.set_buffer_and_pack_all (eb, use_temp_batch);
+    }
+  else
+    {
+      packer.set_buffer_and_pack_all (eb, use_temp_batch, batch);
+    }
 
   int req_error = net_client_request (NET_SERVER_LD_LOAD_BATCH, eb.get_ptr (), (int) packer.get_current_size (), reply,
 				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
-      or_unpack_int (reply, &rc);
+      char *ptr = or_unpack_int (reply, &rc);
+      int is_batch_accepted_;
+      or_unpack_int (ptr, &is_batch_accepted_);
+      is_batch_accepted = is_batch_accepted_ != 0;
     }
 
   return rc;
@@ -10018,8 +10028,9 @@ loaddb_load_batch (const cubload::batch & batch)
 #endif /* !CS_MODE */
 }
 
+/* *INDENT-OFF* */
 int
-loaddb_fetch_stats (load_stats * stats)
+loaddb_fetch_stats (std::vector<load_stats> &stats)
 {
 #if defined(CS_MODE)
   char *data_reply = NULL;
@@ -10042,8 +10053,16 @@ loaddb_fetch_stats (load_stats * stats)
     }
 
   packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
-  stats->clear ();
-  stats->unpack (unpacker);
+  size_t stats_size = 0;
+  unpacker.unpack_bigint (stats_size);
+  stats.clear ();
+
+  for (size_t i = 0; i < stats_size; ++i)
+    {
+      load_stats stat;
+      stat.unpack (unpacker);
+      stats.emplace_back (stat);
+    }
 
   free_and_init (data_reply);
 
@@ -10052,6 +10071,7 @@ loaddb_fetch_stats (load_stats * stats)
   return NO_ERROR;
 #endif /* !CS_MODE */
 }
+/* *INDENT-ON* */
 
 int
 loaddb_destroy ()
