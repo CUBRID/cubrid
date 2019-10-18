@@ -1186,12 +1186,16 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
   int num_objs;
   char *packed_desc = NULL;
   int packed_desc_size;
+  int start_multi_update;
+  int end_multi_update;
   int is_multi_update;
   LC_COPYAREA_MANYOBJS *mobjs;
   int i, num_ignore_error_list;
   int ignore_error_list[-ER_LAST_ERROR];
 
   ptr = or_unpack_int (request, &num_objs);
+  ptr = or_unpack_int (ptr, &start_multi_update);
+  ptr = or_unpack_int (ptr, &end_multi_update);
   ptr = or_unpack_int (ptr, &is_multi_update);
   ptr = or_unpack_int (ptr, &packed_desc_size);
   ptr = or_unpack_int (ptr, &content_size);
@@ -1223,6 +1227,8 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
 	{
 	  locator_unpack_copy_area_descriptor (num_objs, copy_area, packed_desc);
 	  mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copy_area);
+	  mobjs->start_multi_update = start_multi_update;
+	  mobjs->end_multi_update = end_multi_update;
 	  mobjs->is_multi_update = is_multi_update;
 
 	  if (content_size > 0)
