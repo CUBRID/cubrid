@@ -287,7 +287,7 @@ locator_allocate_packed (int packed_size)
     {
       if (locator_Keep.packed_areas.areas[i]->length >= packed_size)
 	{
-	  /* 
+	  /*
 	   * Make sure that the caller is not assuming that the area is
 	   * initialized to zeros. That is, make sure caller initialize the area
 	   */
@@ -361,7 +361,7 @@ locator_free_packed (char *packed_area, int packed_size)
       locator_Keep.packed_areas.areas[tail]->mem = packed_area;
       locator_Keep.packed_areas.areas[tail]->length = packed_size;
 
-      /* 
+      /*
        * Scramble the memory, so that the developer detects invalid references
        * to free'd areas
        */
@@ -394,7 +394,7 @@ locator_allocate_copyarea (DKNPAGES npages)
 #endif
 
 /*
- * locator_allocate_copy_area_by_length: Allocate a copy area for 
+ * locator_allocate_copy_area_by_length: Allocate a copy area for
  *                              fetching and flushing purposes.
  *
  * return: LC_COPYAREA *
@@ -413,7 +413,7 @@ locator_allocate_copy_area_by_length (int min_length)
   int rv;
 #endif /* SERVER_MODE */
 
-  /* 
+  /*
    * Make the min_length to be multiple of NETWORK_PAGESIZE since the
    * copyareas are used to copy objects to/from server and we would like to
    * maximize the communication line.
@@ -422,7 +422,7 @@ locator_allocate_copy_area_by_length (int min_length)
 
   min_length = DB_ALIGN (min_length, network_pagesize);
 
-  /* 
+  /*
    * Do we have an area of given or larger length cached ?
    */
 
@@ -435,7 +435,7 @@ locator_allocate_copy_area_by_length (int min_length)
 	  copyarea = locator_Keep.copy_areas.areas[i];
 	  locator_Keep.copy_areas.areas[i] = locator_Keep.copy_areas.areas[--locator_Keep.copy_areas.number];
 	  min_length = copyarea->length;
-	  /* 
+	  /*
 	   * Make sure that the caller is not assuming that the area is
 	   * initialized to zeros. That is, make sure caller initialize the area
 	   */
@@ -953,7 +953,7 @@ locator_allocate_lockset (int max_reqobjs, LOCK reqobj_inst_lock, LOCK reqobj_cl
 
   length = (sizeof (*lockset) + (max_reqobjs * (sizeof (*(lockset->classes)) + sizeof (*(lockset->objects)))));
 
-  /* 
+  /*
    * Do we have an area cached, as big as the one needed ?
    */
 
@@ -969,7 +969,7 @@ locator_allocate_lockset (int max_reqobjs, LOCK reqobj_inst_lock, LOCK reqobj_cl
 	  max_reqobjs =
 	    ((lockset->length - sizeof (*lockset)) / (sizeof (*(lockset->classes)) + sizeof (*(lockset->objects))));
 
-	  /* 
+	  /*
 	   * Make sure that the caller is not assuming that the area is
 	   * initialized to zeros. That is, make sure caller initialize the area
 	   */
@@ -1095,7 +1095,7 @@ locator_reallocate_lockset (LC_LOCKSET * lockset, int max_reqobjs)
 	}
     }
 
-  /* 
+  /*
    * Reset to new areas
    */
 
@@ -1108,7 +1108,7 @@ locator_reallocate_lockset (LC_LOCKSET * lockset, int max_reqobjs)
   lockset->classes = ((LC_LOCKSET_CLASSOF *) (lockset->mem + sizeof (*lockset)));
   lockset->objects = ((LC_LOCKSET_REQOBJ *) (lockset->classes + max_reqobjs));
 
-  /* 
+  /*
    * Need to move the object to the right by the number of positions added
    */
   old_reqobjs = ((LC_LOCKSET_REQOBJ *) (lockset->classes + oldmax_reqobjs));
@@ -1144,7 +1144,7 @@ locator_free_lockset (LC_LOCKSET * lockset)
 
   if (locator_Keep.lockset_areas.number < LOCATOR_NKEEP_LIMIT)
     {
-      /* 
+      /*
        * Scramble the memory, so that the developer detects invalid references
        * to free'd areas
        */
@@ -1423,18 +1423,18 @@ locator_pack_lockset (LC_LOCKSET * lockset, bool pack_classes, bool pack_objects
 
   packed_size = LC_LOCKSET_PACKED_SIZE (lockset);
 
-  /* 
+  /*
    * Do we have space for packing ?
    */
 
   if (lockset->packed != NULL)
     {
-      /* 
+      /*
        * Reuse the current area
        */
       if (packed_size > lockset->packed_size)
 	{
-	  /* 
+	  /*
 	   * We need to realloc this area
 	   */
 	  packed = locator_reallocate_packed (lockset->packed, packed_size);
@@ -1461,7 +1461,7 @@ locator_pack_lockset (LC_LOCKSET * lockset, bool pack_classes, bool pack_objects
 
   packed = locator_pack_lockset_header (packed, lockset);
 
-  /* 
+  /*
    * Pack the classes of requested objects
    */
 
@@ -1470,7 +1470,7 @@ locator_pack_lockset (LC_LOCKSET * lockset, bool pack_classes, bool pack_objects
       packed = locator_pack_lockset_classes (packed, lockset);
     }
 
-  /* 
+  /*
    * Pack the requested objects
    */
 
@@ -1582,7 +1582,7 @@ locator_unpack_lockset (LC_LOCKSET * lockset, bool unpack_classes, bool unpack_o
   unpacked = lockset->packed;
   unpacked = locator_unpack_lockset_header (unpacked, lockset);
 
-  /* 
+  /*
    * Unpack the classes of requested objects
    */
 
@@ -1591,7 +1591,7 @@ locator_unpack_lockset (LC_LOCKSET * lockset, bool unpack_classes, bool unpack_o
       unpacked = locator_unpack_lockset_classes (unpacked, lockset);
     }
 
-  /* 
+  /*
    * Unpack the requested objects
    */
 
@@ -1641,7 +1641,7 @@ locator_allocate_lockhint (int max_classes, bool quit_on_errors)
 	  length = lockhint->length;
 	  max_classes = ((lockhint->length - sizeof (*lockhint)) / sizeof (*(lockhint->classes)));
 
-	  /* 
+	  /*
 	   * Make sure that the caller is not assuming that the area is
 	   * initialized to zeros. That is, make sure caller initialize the area
 	   */
@@ -1769,7 +1769,7 @@ locator_free_lockhint (LC_LOCKHINT * lockhint)
 
   if (locator_Keep.lockhint_areas.number < LOCATOR_NKEEP_LIMIT)
     {
-      /* 
+      /*
        * Scramble the memory, so that the developer detects invalid references
        * to free'd areas
        */
@@ -1964,18 +1964,18 @@ locator_pack_lockhint (LC_LOCKHINT * lockhint, bool pack_classes)
 
   packed_size = LC_LOCKHINT_PACKED_SIZE (lockhint);
 
-  /* 
+  /*
    * Do we have space for packing ?
    */
 
   if (lockhint->packed != NULL)
     {
-      /* 
+      /*
        * Reuse the current area
        */
       if (packed_size > lockhint->packed_size)
 	{
-	  /* 
+	  /*
 	   * We need to realloc this area
 	   */
 	  packed = locator_reallocate_packed (lockhint->packed, packed_size);

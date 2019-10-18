@@ -38,11 +38,15 @@
 #include "file_io.h"
 #include "log_comm.h"
 #include "log_impl.h"
+#include "log_lsa.hpp"
 #include "recovery.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
 #include <time.h>
+
+// forward declarations
+struct bo_restart_arg;
 
 #define LOG_TOPOP_STACK_INIT_SIZE 1024
 
@@ -68,12 +72,13 @@ extern int log_get_num_pages_for_creation (int db_npages);
 extern int log_create (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 		       const char *prefix_logname, DKNPAGES npages);
 extern void log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
-			    const char *prefix_logname, int ismedia_crash, BO_RESTART_ARG * r_args);
+			    const char *prefix_logname, int ismedia_crash, bo_restart_arg * r_args);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int log_update_compatibility_and_release (THREAD_ENTRY * thread_p, float compatibility, char release[]);
 #endif
 extern void log_abort_all_active_transaction (THREAD_ENTRY * thread_p);
 extern void log_final (THREAD_ENTRY * thread_p);
+extern void log_stop_ha_delay_registration ();
 extern void log_restart_emergency (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				   const char *prefix_logname);
 extern void log_append_undoredo_data (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
@@ -122,7 +127,7 @@ extern void log_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvinde
 				   PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes);
 extern void log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid,
 						   PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data,
-						   LOG_TDES * tdes, LOG_LSA * undo_nxlsa);
+						   LOG_TDES * tdes, const LOG_LSA * undo_nxlsa);
 extern void log_append_ha_server_state (THREAD_ENTRY * thread_p, int state);
 extern void log_append_empty_record (THREAD_ENTRY * thread_p, LOG_RECTYPE logrec_type, LOG_DATA_ADDR * addr);
 extern void log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr);
@@ -211,5 +216,20 @@ extern bool log_is_log_flush_daemon_available ();
 #if defined (SERVER_MODE)
 extern void log_flush_daemon_get_stats (UINT64 * statsp);
 #endif // SERVER_MODE
+
+extern void log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p);
+
+//
+// log critical section
+//
+
+void LOG_CS_ENTER (THREAD_ENTRY * thread_p);
+void LOG_CS_ENTER_READ_MODE (THREAD_ENTRY * thread_p);
+void LOG_CS_EXIT (THREAD_ENTRY * thread_p);
+void LOG_CS_DEMOTE (THREAD_ENTRY * thread_p);
+void LOG_CS_PROMOTE (THREAD_ENTRY * thread_p);
+
+bool LOG_CS_OWN (THREAD_ENTRY * thread_p);
+bool LOG_CS_OWN_WRITE_MODE (THREAD_ENTRY * thread_p);
 
 #endif /* _LOG_MANAGER_H_ */

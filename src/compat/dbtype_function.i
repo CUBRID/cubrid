@@ -25,26 +25,7 @@
 #include "dbtype_def.h"
 
 #if !defined (_NO_INLINE_DBTYPE_FUNCTION_)
-// copied from porting.h
-#if defined (__GNUC__) && defined (NDEBUG)
-#define ALWAYS_INLINE always_inline
-#else
-#define ALWAYS_INLINE
-#endif
-
-#if defined (__cplusplus) || defined (__GNUC__)
-#define STATIC_INLINE static inline
-#define INLINE inline
-#elif _MSC_VER >= 1000
-#define STATIC_INLINE __forceinline static
-#define INLINE __forceinline
-#else
-/* TODO: we have several cases of using INLINE/STATIC_INLINE and adding function definition in headers. This won't
- * work. */
-#define STATIC_INLINE static
-#define INLINE
-#endif
-// end of porting.h copy
+#include "porting_inline.hpp"
 
 STATIC_INLINE int db_get_int (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_SHORT db_get_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -1884,7 +1865,6 @@ db_make_string_copy (DB_VALUE * value, const char *str)
 
   if (error != NO_ERROR)
     {
-      pr_clear_value (value);
       return error;
     }
 

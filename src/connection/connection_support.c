@@ -66,7 +66,6 @@
 #else /* WINDOWS */
 #include "tcp.h"
 #endif /* !WINDOWS */
-#include "log_impl.h"
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
 #else
@@ -83,6 +82,7 @@
 #include "heap_file.h"
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #include "dbtype.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "show_scan.h"
 
@@ -175,7 +175,7 @@ css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name, const char *
 {
   CSS_CONN_ENTRY *conn;
   static char user_name[L_cuserid] = { '\0' };
-  static char host_name[MAXHOSTNAMELEN] = { '\0' };
+  static char host_name[CUB_MAXHOSTNAMELEN] = { '\0' };
   static int pid;
   int tran_index = -1;
 
@@ -188,7 +188,7 @@ css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name, const char *
 	  strcpy (user_name, "");
 	}
 
-      if (GETHOSTNAME (host_name, MAXHOSTNAMELEN) != 0)
+      if (GETHOSTNAME (host_name, CUB_MAXHOSTNAMELEN) != 0)
 	{
 	  strcpy (host_name, "???");
 	}
@@ -225,7 +225,7 @@ css_default_server_timeout_fn (void)
 static int
 css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name, const char **client_host_name, int *client_pid)
 {
-  char client_prog_name[PATH_MAX];
+  const char *client_prog_name;
   CSS_CONN_ENTRY *conn;
   int error, tran_index = -1;
 
@@ -233,9 +233,8 @@ css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name, const char *
 
   if (conn != NULL && conn->get_tran_index () != -1)
     {
-      error = logtb_find_client_name_host_pid (conn->get_tran_index (), (char **) &client_prog_name,
-					       (char **) client_user_name, (char **) client_host_name,
-					       (int *) client_pid);
+      error = logtb_find_client_name_host_pid (conn->get_tran_index (), &client_prog_name, client_user_name,
+					       client_host_name, client_pid);
       if (error == NO_ERROR)
 	{
 	  tran_index = conn->get_tran_index ();
@@ -505,7 +504,7 @@ css_read_remaining_bytes (SOCKET fd, int len)
 	}
 
       nbytes = css_readn (fd, temp_buffer, buf_size, -1);
-      /* 
+      /*
        * nbytes will be less than the size of the buffer if any of the
        * following hold:
        *   a) the socket has been closed for some reason (e.g., the client
@@ -608,7 +607,7 @@ css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout)
       return ERROR_ON_READ;
     }
 
-  /* 
+  /*
    * This is possible if the data buffer provided by the client is smaller
    * than the number of bytes sent by the server
    */
@@ -872,7 +871,7 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
   return total_size;
 
 error:
-  /* 
+  /*
    * We end up with an error. The error has already been set in css_writen
    */
 #if defined(SERVER_MODE)
@@ -2113,9 +2112,9 @@ css_peer_host_name (CSS_CONN_ENTRY * conn, char *hostname, size_t namelen)
 /*
  * css_default_check_server_alive_fn () - check server alive
  *
- *   return: 
- *   db_host(in): 
- *   db_name(in): 
+ *   return:
+ *   db_host(in):
+ *   db_name(in):
  */
 static bool
 css_default_check_server_alive_fn (const char *db_name, const char *db_host)
@@ -2527,10 +2526,10 @@ css_check_magic_with_socket (SOCKET fd)
 
 #if !defined (CS_MODE)
 /*
- * css_user_access_status_start_scan () -  start scan function for show access status 
+ * css_user_access_status_start_scan () -  start scan function for show access status
  *   return: NO_ERROR, or ER_CODE
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   show_type(in):
  *   arg_values(in):
  *   arg_cnt(in):
@@ -2637,10 +2636,10 @@ error:
 }
 
 /*
- * css_make_access_status_exist_user () - set access status information of whom are in db_user class  
+ * css_make_access_status_exist_user () - set access status information of whom are in db_user class
  *   return: NO_ERROR, or ER_CODE
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   class_oid(in): db_user class's class oid
  *   access_status_array(in):
  *   num_user(in):
@@ -2727,7 +2726,7 @@ css_make_access_status_exist_user (THREAD_ENTRY * thread_p, OID * class_oid, LAS
   heap_scancache_end (thread_p, &scan_cache);
   scan_cache_inited = false;
 
-  error = heap_get_hfid_from_class_oid (thread_p, class_oid, &hfid);
+  error = heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL);
   if (error != NO_ERROR)
     {
       goto end;
@@ -2824,10 +2823,10 @@ end:
 }
 
 /*
- * css_get_access_status_with_name () - return access status which match with user_name  
+ * css_get_access_status_with_name () - return access status which match with user_name
  *   return: address of found access status or NULL
  *
- *   access_status_array(in): 
+ *   access_status_array(in):
  *   num_user(in):
  *   user_name(in):
  */
@@ -2859,10 +2858,10 @@ css_get_access_status_with_name (LAST_ACCESS_STATUS ** access_status_array, int 
 }
 
 /*
- * css_get_unused_access_status () - return unused access status from array 
+ * css_get_unused_access_status () - return unused access status from array
  *   return: address of found access status or NULL
  *
- *   access_status_array(in): 
+ *   access_status_array(in):
  *   num_user(in):
  */
 static LAST_ACCESS_STATUS *

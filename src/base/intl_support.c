@@ -2618,7 +2618,7 @@ intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet, unsigned char *str1
       return 0;
     }
 
-  /* 
+  /*
    * Multipliers can be either 1 or 2, as imposed by the LDML parsing code.
    * Currently, alphabets with both multipliers equal to 2 are not supported
    * for case sensitive comparisons.
@@ -4253,7 +4253,6 @@ intl_check_euckr (const unsigned char *buf, int size, char **pos)
 #undef OUTPUT
 }
 
-#if !defined (SERVER_MODE)
 /*
  * intl_check_string - Checks if a string contains valid sequences in current codeset
  *
@@ -4269,6 +4268,8 @@ intl_check_string (const char *buf, int size, char **pos, const INTL_CODESET cod
 {
   if (!intl_String_validation)
     {
+      // this function is currently used either in client-modes or for loaddb. if it will be used in other server-mode
+      // contexts, that can impact the result of queries, global variable should be replaced with a session parameter.
       return INTL_UTF8_VALID;
     }
 
@@ -4288,6 +4289,7 @@ intl_check_string (const char *buf, int size, char **pos, const INTL_CODESET cod
   return INTL_UTF8_VALID;
 }
 
+#if !defined (SERVER_MODE)
 /*
  * intl_is_bom_magic - Returns 1 if the buffer contains BOM magic for UTF-8
  *
@@ -4916,7 +4918,7 @@ intl_fast_iso88591_to_utf8 (const unsigned char *in_buf, const int in_size, unsi
 }
 
 /*
- * intl_euckr_to_iso88591() - converts a buffer containing EUCKR text to 
+ * intl_euckr_to_iso88591() - converts a buffer containing EUCKR text to
  *			      ISO88591
  *
  *   return: 0 conversion ok, 1 conversion done, but invalid characters where
@@ -5799,7 +5801,7 @@ intl_get_money_ISO88591_symbol (const DB_CURRENCY currency)
 }
 
 /*
- * intl_binary_to_utf8 - converts a buffer from binary to utf8, replacing 
+ * intl_binary_to_utf8 - converts a buffer from binary to utf8, replacing
  *			 invalid UTF-8 sequences with '?'
  *
  *   in_buf(in): buffer
@@ -6111,7 +6113,7 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size, unsigned ch
 }
 
 /*
- * intl_binary_to_euckr - converts a buffer from binary to euckr, replacing 
+ * intl_binary_to_euckr - converts a buffer from binary to euckr, replacing
  *			 invalid euckr sequences with '?'
  *
  *   in_buf(in): buffer

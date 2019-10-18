@@ -43,7 +43,7 @@ SET_SOURCE_FILES_PROPERTIES(
 
 add_library(cascci SHARED ${CASCCI_SOURCES})
 set_target_properties(cascci PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
-set_target_properties(cascci PROPERTIES PUBLIC_HEADER "${CCI_DIR}/cas_cci.h;${BROKER_DIR}/cas_error.h")
+set_target_properties(cascci PROPERTIES PUBLIC_HEADER "${CCI_DIR}/cas_cci.h;${COMPAT_DIR}/dbtran_def.h;${BROKER_DIR}/cas_error.h")
 target_include_directories(cascci PRIVATE ${EP_INCLUDES})
 target_link_libraries(cascci LINK_PRIVATE ${EP_LIBS} ${CMAKE_THREAD_LIBS_INIT})
 if(WIN32)

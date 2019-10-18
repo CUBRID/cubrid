@@ -27,7 +27,6 @@
 #ident "$Id$"
 
 #include "packer.hpp"
-#include <map>
 
 namespace cubpacking
 {
@@ -36,13 +35,16 @@ namespace cubpacking
   {
     public:
       virtual ~packable_object () {};
-      virtual int pack (packer *serializator) = 0;
-      virtual int unpack (packer *serializator) = 0;
-
-      virtual bool is_equal (const packable_object *other) = 0;
 
       /* used at packing to get info on how much memory to reserve */
-      virtual size_t get_packed_size (packer *serializator) = 0;
+      virtual size_t get_packed_size (packer &serializator, std::size_t start_offset = 0) const = 0;
+      virtual void pack (packer &serializator) const = 0;
+      virtual void unpack (unpacker &deserializator) = 0;
+
+      virtual bool is_equal (const packable_object *other)
+      {
+	return true;
+      }
   };
 
 } /* namespace cubpacking */

@@ -49,6 +49,7 @@
 #if defined(SERVER_MODE)
 #include "critical_section.h"
 #endif
+#include "tz_support.h"
 #include "db_date.h"
 #include "dbtype.h"
 #if defined (SERVER_MODE)
@@ -715,7 +716,7 @@ us_time_value (int *the_hour, int *the_min, int *the_sec)
 	  cnv_fmt_analyze (cnv_fmt_next_token (), FL_LOCAL_TIME);
 	}
 
-      /* we used to use local_am_pm_value() here, but it wasn't flexible enough to handle 24 hour time strings (no "AM" 
+      /* we used to use local_am_pm_value() here, but it wasn't flexible enough to handle 24 hour time strings (no "AM"
        * or "PM" designator). */
 
       type = cnv_fmt_lex (&token);
@@ -3187,7 +3188,7 @@ fmt_add_decimal (ADJ_ARRAY * string, int *position)
   cnv_fmt_analyze (vstring, FL_LOCAL_NUMBER);
   while ((ttype = cnv_fmt_lex (&token)) == FT_MINUS || ttype == FT_PLUS || ttype == FT_CURRENCY);
 
-  /* 
+  /*
    * Add decimal only if at most one digit already exists. This allows us to
    * automatically add a decimal when interactive input begins, but then reject
    * attempt to drop decimal later (when we wouldn't know where to put it
@@ -4488,7 +4489,7 @@ tfmt_new (const char *format)
 
   assert (format);
 
-  /* 
+  /*
    * Initialize arrays for tokens and token strings. We must copy all token
    * strings, because the token.text pointer is reused when the next token
    * is scanned.
@@ -6332,7 +6333,7 @@ num_fmt_value (FLOAT_FORMAT * ffmt, const char *string, DB_VALUE * the_numeric)
 
 	      /* Yes, get value of fraction part. */
 	      error = nfmt_fractional_value (ffmt->fractional_type, ffmt->fractional_digits, fraction_part);
-	      /* 
+	      /*
 	       * Digit really missing? Or did invalid char stop scan prematurely?
 	       * Find out later. Important to ValueEditor to report
 	       * CNV_ERR_MISSING_FRACTION correctly!

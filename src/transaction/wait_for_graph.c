@@ -67,7 +67,7 @@ struct wfg_node
 {
   WFG_STACK_STATUS status;
   int cycle_group_no;		/* Group no in a cycle */
-  /* 
+  /*
    * Fun to call to solve a cycle. If NULL, the transaction will be aborted.
    * Assumption a transaction can be waiting for many transaction,
    * but it can only be waiting in one place.
@@ -249,7 +249,7 @@ wfg_alloc_nodes (THREAD_ENTRY * thread_p, const int num_trans)
       return ER_FAILED;
     }
 
-  /* 
+  /*
    * allocate new nodes
    */
   if (wfg_Nodes == NULL)
@@ -379,7 +379,7 @@ wfg_check_insert_out_edges (const int waiter_tran_index, int num_holders, const 
   int i;			/* loop counter */
   int error_code = NO_ERROR;
 
-  /* 
+  /*
    * Check for valid arguments
    */
   if (waiter_tran_index < 0 || waiter_tran_index > wfg_Total_nodes - 1)
@@ -464,7 +464,7 @@ wfg_insert_out_edges (THREAD_ENTRY * thread_p, const int waiter_tran_index, int 
     {
       goto end;
     }
-  /* 
+  /*
    * Save the function to call in the case of a cycle.
    */
   wfg_Nodes[waiter_tran_index].cycle_fun = cycle_resolution_fn;
@@ -601,7 +601,7 @@ wfg_allocate_edges (WFG_EDGE ** first_edge_p, WFG_EDGE ** last_edge_p, const int
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
-      /* 
+      /*
        * Note that we are adding the edges in the reverse order to avoid
        * manupulating several pointers.
        */
@@ -638,7 +638,7 @@ wfg_link_edge_holders_waiter_list (WFG_EDGE * first_edge_p, WFG_EDGE * last_edge
   WFG_EDGE *edge_p;
   int holder;
 
-  /* 
+  /*
    * Link the list to the waiter as its holders
    */
   if (first_edge_p != NULL)
@@ -656,7 +656,7 @@ wfg_link_edge_holders_waiter_list (WFG_EDGE * first_edge_p, WFG_EDGE * last_edge
       wfg_Nodes[waiter].last_holder_edge_p = last_edge_p;
     }
 
-  /* 
+  /*
    * Link each edge to holders' waiter list
    */
   for (edge_p = first_edge_p; edge_p; edge_p = edge_p->next_holder_edge_p)
@@ -685,7 +685,7 @@ wfg_check_remove_out_edges (const int waiter_tran_index, const int num_holders, 
   int i;
   WFG_EDGE *edge_p;		/* An edge */
 
-  /* 
+  /*
    * Check for valid arguments
    */
   if (waiter_tran_index < 0 || waiter_tran_index > wfg_Total_nodes - 1)
@@ -826,7 +826,7 @@ wfg_remove_out_edges (THREAD_ENTRY * thread_p, const int waiter_tran_index, cons
 
       if (i < num_holders)
 	{
-	  /* 
+	  /*
 	   * It was found, remove previous holder from the list of waiters
 	   * and the holder list.
 	   */
@@ -1065,7 +1065,7 @@ wfg_dump_given_cycles (FILE * out_fp, WFG_CYCLE * list_cycles_p)
 
   fprintf (out_fp, "----------------- CYCLES ------------------\n");
 
-  /* 
+  /*
    * There are deadlocks, we must select a victim for each cycle. We try
    * to break a cycle by timeing out a transaction whenever is possible.
    * In any other case, we select a victim for an unilaterally abort.
@@ -1508,7 +1508,7 @@ wfg_insert_waiter_tran_group (THREAD_ENTRY * thread_p, const int tran_group_inde
     }
 #endif /* WFG_DEBUG */
 
-  /* 
+  /*
    * allocate a node for the waiter_tran_index and insert it to the TG's waiter
    * list
    */
@@ -1698,7 +1698,7 @@ wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p, WFG_CYCLE_CASE * cycle_case_
     {
       if (max_cycles > 0 && num_total_cycles > max_cycles)
 	{
-	  /* 
+	  /*
 	   * We have too many cycles already. It is better to return to avoid
 	   * spending too much time and space among cycle groups
 	   */
@@ -1715,7 +1715,7 @@ wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p, WFG_CYCLE_CASE * cycle_case_
       cycle_group_no++;
       num_cycles_in_group = 0;
 
-      /* 
+      /*
        * Optimization of special case. Used to avoid overhead of stack operations
        */
       if (wfg_Nodes[i].first_holder_edge_p == NULL)
@@ -1817,7 +1817,7 @@ wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p, WFG_CYCLE_CASE * cycle_case_
 		  /* already traversed */
 		  if (wfg_Nodes[htran_index].cycle_group_no == cycle_group_no)
 		    {
-		      /* 
+		      /*
 		       * need to traverse again
 		       *
 		       * We will skip on finding more cycles for
@@ -1906,7 +1906,7 @@ wfg_add_waiters_of_tg (int *smallest_onstack, int holder_node, int tg_index)
   WFG_TRAN_GROUP *tg_tmp;
   WFG_NODE *w_node_p;
 
-  /* 
+  /*
    * If the node i is a holder of any TG,
    * add the waiters of such TG to it.
    */
@@ -1995,7 +1995,7 @@ wfg_get_all_waiting_and_add_waiter (bool * all_waiting, bool * add_waiter, int t
   bool tg_connected, tg_all_waiting;
   int i;
 
-  /* 
+  /*
    * If all holders of connected transaction groups are waiting, then
    * we have a deadlock related to TGs. All TG holders will be part
    * of TG elementary cycles.
@@ -2040,7 +2040,7 @@ wfg_get_all_waiting_and_add_waiter (bool * all_waiting, bool * add_waiter, int t
 	    }
 	  else if (w_tran_list_p != NULL && w_tran_list_p->tran_index == h_tran_list_p->tran_index)
 	    {
-	      /* 
+	      /*
 	       * The waiter is also a holder. Don't need to add
 	       * the waiter at a later point.
 	       */
@@ -2076,7 +2076,7 @@ wfg_detect_tran_group_cycle_internal (WFG_CYCLE_CASE * cycle_case_p, WFG_TRANS_L
   WFG_CYCLE *cycle_p;		/* pointer to the current cycle */
   int i;
 
-  /* 
+  /*
    * Construct the cycle all TG waiters that are part of TG cycles.
    */
 
@@ -2124,7 +2124,7 @@ wfg_detect_tran_group_cycle_internal (WFG_CYCLE_CASE * cycle_case_p, WFG_TRANS_L
 	      waiter_p->cycle_fun = wfg_Nodes[waiter_p->tran_index].cycle_fun;
 	      waiter_p->args = wfg_Nodes[waiter_p->tran_index].args;
 	      cycle_p->num_trans++;
-	      /* 
+	      /*
 	       * Avoid a possible duplication,
 	       * it could be part of holder of another TG.
 	       */
@@ -2134,7 +2134,7 @@ wfg_detect_tran_group_cycle_internal (WFG_CYCLE_CASE * cycle_case_p, WFG_TRANS_L
 	}
     }
 
-  /* 
+  /*
    * Add the TG waiter to the cycle. Make sure that the waiter is not
    * also a holder. That is, don't duplicate entries.
    */
@@ -2219,7 +2219,7 @@ wfg_detect_tran_group_cycle (THREAD_ENTRY * thread_p, WFG_CYCLE_CASE * cycle_cas
   /* Go over each transaction group */
   for (tg1_index = 0; tg1_index < wfg_Total_tran_groups; tg1_index++)
     {
-      /* 
+      /*
        * Optimization of special case. Used to avoid overhead of stack operations
        */
       if (wfg_Tran_group[tg1_index].holder_tran_list_p == NULL || wfg_Tran_group[tg1_index].waiter_tran_list_p == NULL)
@@ -2227,13 +2227,13 @@ wfg_detect_tran_group_cycle (THREAD_ENTRY * thread_p, WFG_CYCLE_CASE * cycle_cas
 	  continue;
 	}
 
-      /* 
+      /*
        * Mark status of TG waiters as WFG_ON_STACK
        */
       for (w_tran_list_p = wfg_Tran_group[tg1_index].waiter_tran_list_p; w_tran_list_p != NULL;
 	   w_tran_list_p = w_tran_list_p->next)
 	{
-	  /* 
+	  /*
 	   * Skip if it has already been in another TG cycle.
 	   * Cycle or subcycle has already been listed.
 	   */

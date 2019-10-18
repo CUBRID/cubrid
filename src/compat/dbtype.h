@@ -32,7 +32,6 @@
 #include "config.h"
 
 #include "system_parameter.h"
-#include "dbdef.h"
 #include "error_manager.h"
 #include "system.h"
 #include "dbtype_def.h"
@@ -40,9 +39,7 @@
 #include "object_domain.h"
 #include "language_support.h"
 #include "intl_support.h"
-#include "object_primitive.h"
 #include "memory_alloc.h"
-
 
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 
@@ -64,6 +61,11 @@
 #define db_get_utime db_get_timestamp
 
 #define DB_IS_NULL(value)               db_value_is_null(value)
+
+#define DB_IS_STRING(value)       (db_value_type(value) == DB_TYPE_VARCHAR  || \
+                                   db_value_type(value) == DB_TYPE_CHAR     || \
+                                   db_value_type(value) == DB_TYPE_VARNCHAR || \
+                                   db_value_type(value) == DB_TYPE_NCHAR)
 
 #define DB_VALUE_DOMAIN_TYPE(value)     db_value_domain_type(value)
 
@@ -149,11 +151,6 @@
 extern "C"
 {
 #endif
-
-  //extern DB_TYPE setobj_type (COL * set);
-  /********************************************************/
-  /* From elo.h */
-
 
   /********************************************************/
   /* From db_date.h */
@@ -286,10 +283,42 @@ extern "C"
 
   extern bool db_value_is_corrupted (const DB_VALUE * value);
 
+  extern int db_json_val_from_str (const char *raw_str, const int str_size, DB_VALUE * json_val);
+
 /* Use the inline version of the functions. */
 #include "dbtype_function.i"
 
 #ifdef __cplusplus
+
+  // todo - find a better solution
+  inline void pr_share_value (DB_VALUE * src, DB_VALUE * dst)
+  {
+    if (src == NULL || dst == NULL || src == dst)
+      {
+	// do nothing
+	return;
+      }
+
+    memcpy (dst, src, sizeof (DB_VALUE));
+    dst->need_clear = false;
+
+    if (DB_IS_NULL (src))
+      {
+	// avoid checking type if db_val is null
+	return;
+      }
+
+    DB_TYPE type = db_value_domain_type (src);
+    if (type == DB_TYPE_STRING || type == DB_TYPE_VARNCHAR)
+      {
+	dst->data.ch.info.compressed_need_clear = false;
+      }
+
+    if ((TP_IS_SET_TYPE (type) || type == DB_TYPE_VOBJ) && !DB_IS_NULL (src))
+      {
+	src->data.set->ref_count++;
+      }
+  }
 }
 #endif
 

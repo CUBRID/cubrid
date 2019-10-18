@@ -94,6 +94,7 @@ abstract public class UUType {
 	public static final byte U_TYPE_DATETIMETZ = 31;
 	public static final byte U_TYPE_DATETIMELTZ = 32;
 	public static final byte U_TYPE_TIMETZ = 33;
+	public static final byte U_TYPE_JSON = 34;
 	
 	static boolean isCollectionType(byte type) {
 		if (type == UUType.U_TYPE_SET || type == UUType.U_TYPE_MULTISET

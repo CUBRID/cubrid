@@ -679,9 +679,9 @@ shard_stmt_free (T_SHARD_STMT * stmt_p)
 }
 
 
-/* 
- * 
- * return : stored server handle id 
+/*
+ *
+ * return : stored server handle id
  */
 int
 shard_stmt_find_srv_h_id_for_shard_cas (int stmt_h_id, int shard_id, int cas_id)
@@ -708,7 +708,7 @@ shard_stmt_find_srv_h_id_for_shard_cas (int stmt_h_id, int shard_id, int cas_id)
   return srv_h_id;
 }
 
-/* 
+/*
  *
  * return : success or fail
  */

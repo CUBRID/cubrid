@@ -2142,6 +2142,7 @@ public class UStatement {
 		case UUType.U_TYPE_STRING:
 		case UUType.U_TYPE_VARNCHAR:
 		case UUType.U_TYPE_ENUM:
+		case UUType.U_TYPE_JSON:
 			if (charsetName != null && charsetName.equals("BINARY")) {
 				return inBuffer.readBinaryString (dataSize);
 			} else {

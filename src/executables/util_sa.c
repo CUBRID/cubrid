@@ -50,7 +50,6 @@
 #include "btree.h"
 #include "extendible_hash.h"
 #include "locator_sr.h"
-#include "log_impl.h"
 #include "xserver_interface.h"
 #include "utility.h"
 #include "transform.h"
@@ -70,6 +69,7 @@
 
 #include "dbtype.h"
 #include "thread_manager.hpp"
+#include "log_volids.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -1789,12 +1789,12 @@ estimatedb_index (UTIL_FUNCTION_ARG * arg)
 		    case DB_TYPE_VARCHAR:
 		    case DB_TYPE_NCHAR:
 		    case DB_TYPE_VARNCHAR:
-		      /* Do not override any information in Avg_key_size with precision information. Just make sure the 
+		      /* Do not override any information in Avg_key_size with precision information. Just make sure the
 		       * input makes sense for these cases.  */
 		      if (avg_key_size > domain->precision)
 			{
 			  /* Does not make sense to have avg_key_size bigger than precision - inform user of error.
-			   * This is illegal input since the char precision defaults to 1. estimatedb_index 100000 1000 
+			   * This is illegal input since the char precision defaults to 1. estimatedb_index 100000 1000
 			   * 5 char */
 			  status = -2;
 			}
@@ -1805,7 +1805,7 @@ estimatedb_index (UTIL_FUNCTION_ARG * arg)
 
 		  if (status != -2)
 		    {
-		      /* 
+		      /*
 		       * This will call pr_estimate_size which uses the
 		       * Avg_key_size and TP_DOMAIN_TYPE(domain) to really
 		       * compute the correct average key size that we
@@ -1890,7 +1890,7 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
   int dbtxt_vdes = NULL_VOLDES;
   int log_vdes = NULL_VOLDES;
   char dbtxt_label[PATH_MAX];
-  char host_name_buf[MAXHOSTNAMELEN + 1];
+  char host_name_buf[CUB_MAXHOSTNAMELEN + 1];
   DB_INFO *db = NULL;
   DB_INFO *dir = NULL;
   const char *log_prefix;
@@ -1917,7 +1917,7 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
   if (host_name == NULL)
     {
 #if 0				/* use Unix-domain socket for localhost */
-      if (GETHOSTNAME (host_name_buf, MAXHOSTNAMELEN) != 0)
+      if (GETHOSTNAME (host_name_buf, CUB_MAXHOSTNAMELEN) != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
 	  goto error;
@@ -2544,8 +2544,8 @@ error:
       lf = NULL;
     }
 
-  /* 
-   * Text conversions having init_conv_func not NULL are built-in. 
+  /*
+   * Text conversions having init_conv_func not NULL are built-in.
    * They can't be deallocates, as they are static constants.
    */
   if (lld.txt_conv != NULL && lld.txt_conv->init_conv_func == NULL)

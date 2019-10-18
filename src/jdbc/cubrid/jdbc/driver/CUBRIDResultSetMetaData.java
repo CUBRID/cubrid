@@ -394,6 +394,10 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 					ele_type[i] = java.sql.Types.VARCHAR;
 					ele_type_name[i] = "NCHAR VARYING";
 					break;
+				case UUType.U_TYPE_JSON:
+					ele_type[i] = java.sql.Types.VARCHAR;
+					ele_type_name[i] = "JSON";
+					break;
 				default:
 					break;
 				}
@@ -430,6 +434,15 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 				ele_type[i] = -1;
 				break;
 
+			case UUType.U_TYPE_JSON:
+				col_type_name[i] = "JSON";
+				col_type[i] = java.sql.Types.VARCHAR;
+				ele_type[i] = -1;
+				if (col_prec[i] > col_disp_size[i]) {
+					col_disp_size[i] = col_prec[i];
+				}
+				break;
+				
 			default:
 				break;
 			}
@@ -488,6 +501,15 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 				}
 				col_class_name[i] = "java.lang.String";
 			}
+			if (r.type[i] == UUType.U_TYPE_JSON) {
+				col_type[i] = java.sql.Types.VARCHAR;
+				col_type_name[i] = "JSON";
+				col_prec[i] = r.precision[i];
+				if (col_prec[i] > col_disp_size[i]) {
+					col_disp_size[i] = col_prec[i];
+				}
+				col_class_name[i] = "java.lang.String";
+			}			
 			if (r.type[i] == UUType.U_TYPE_NULL) {
 				col_type[i] = java.sql.Types.NULL;
 				col_type_name[i] = "";
@@ -517,6 +539,7 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 			break;
 		case UUType.U_TYPE_VARCHAR:
 		case UUType.U_TYPE_ENUM:
+		case UUType.U_TYPE_JSON:
 			ret_size = 1;
 			break;
 		case UUType.U_TYPE_BIT:

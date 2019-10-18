@@ -73,16 +73,15 @@
 #include "shard_shm.h"
 #include "shard_metadata.h"
 #include "broker_proxy_conn.h"
+#include "dbtype_def.h"
 
 #if defined(WINDOWS)
 #include "broker_wsa_init.h"
 #endif
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-#include "dbdef.h"
-#else /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 #define DB_EMPTY_SESSION        (0)
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
 #ifdef WIN_FW
 #if !defined(WINDOWS)
@@ -848,7 +847,7 @@ receiver_thr_f (void *arg)
 	  continue;
 	}
 
-      /* 
+      /*
        * Query cancel message (size in bytes)
        *
        * - For client version 8.4.0 patch 1 or below:
@@ -2001,7 +2000,7 @@ insert_db_server_check_list (T_DB_SERVER * list_p, int check_list_cnt, const cha
     }
 
   strncpy (list_p[i].database_name, db_name, SRV_CON_DBNAME_SIZE - 1);
-  strncpy (list_p[i].database_host, db_host, MAXHOSTNAMELEN - 1);
+  strncpy (list_p[i].database_host, db_host, CUB_MAXHOSTNAMELEN - 1);
   list_p[i].state = -1;
 
   return i + 1;
@@ -2116,7 +2115,7 @@ server_monitor_thr_f (void *arg)
 	      strncpy (shm_appl->unusable_databases[u_index][cnt].database_name, check_list[i].database_name,
 		       SRV_CON_DBNAME_SIZE - 1);
 	      strncpy (shm_appl->unusable_databases[u_index][cnt].database_host, check_list[i].database_host,
-		       MAXHOSTNAMELEN - 1);
+		       CUB_MAXHOSTNAMELEN - 1);
 	      cnt++;
 	    }
 	}
@@ -2207,7 +2206,7 @@ hang_check_thr_f (void *ar)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * reject_client_flag for shard broker
 	   * does not depend on the current number of proxies.
 	   * If one proxy hangs for the last 1 min, then
@@ -3192,8 +3191,9 @@ run_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index)
       putenv (proxy_id_env_str);
 
 #if !defined(WINDOWS)
-      snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d", shm_appl->broker_name, proxy_exe_name,
-		proxy_index + 1);
+      int ret = snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d", shm_appl->broker_name, proxy_exe_name,
+			  proxy_index + 1);
+      (void) ret;		// suppress format-truncate warning
 #endif /* !WINDOWS */
 
 #if defined(WINDOWS)
@@ -3267,35 +3267,41 @@ restart_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index
 static void
 get_as_sql_log_filename (char *log_filename, int len, char *broker_name, T_APPL_SERVER_INFO * as_info_p, int as_index)
 {
+  int ret;
   char dirname[BROKER_PATH_MAX];
 
   get_cubrid_file (FID_SQL_LOG_DIR, dirname, BROKER_PATH_MAX);
 
   if (br_shard_flag == ON)
     {
-      snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d_%d_%d.sql.log", dirname, broker_name, as_info_p->proxy_id + 1,
-		as_info_p->shard_id, as_info_p->shard_cas_id + 1);
+      ret = snprintf (log_filename, BROKER_PATH_MAX - 1, "%s%s_%d_%d_%d.sql.log", dirname, broker_name,
+		      as_info_p->proxy_id + 1, as_info_p->shard_id, as_info_p->shard_cas_id + 1);
     }
   else
     {
-      snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d.sql.log", dirname, broker_name, as_index + 1);
+      ret = snprintf (log_filename, BROKER_PATH_MAX - 1, "%s%s_%d.sql.log", dirname, broker_name, as_index + 1);
     }
+
+  (void) ret;			// suppress format-truncate warning
 }
 
 static void
 get_as_slow_log_filename (char *log_filename, int len, char *broker_name, T_APPL_SERVER_INFO * as_info_p, int as_index)
 {
+  int ret;
   char dirname[BROKER_PATH_MAX];
 
   get_cubrid_file (FID_SLOW_LOG_DIR, dirname, BROKER_PATH_MAX);
 
   if (br_shard_flag == ON)
     {
-      snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d_%d_%d.slow.log", dirname, broker_name, as_info_p->proxy_id + 1,
-		as_info_p->shard_id, as_info_p->shard_cas_id + 1);
+      ret = snprintf (log_filename, BROKER_PATH_MAX - 1, "%s%s_%d_%d_%d.slow.log", dirname, broker_name,
+		      as_info_p->proxy_id + 1, as_info_p->shard_id, as_info_p->shard_cas_id + 1);
     }
   else
     {
-      snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d.slow.log", dirname, broker_name, as_index + 1);
+      ret = snprintf (log_filename, BROKER_PATH_MAX - 1, "%s%s_%d.slow.log", dirname, broker_name, as_index + 1);
     }
+
+  (void) ret;			// suppress format-truncate warning
 }

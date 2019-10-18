@@ -30,6 +30,7 @@
 
 // same module includes
 #include "thread_entry.hpp"
+#include "thread_entry_task.hpp"
 #include "thread_task.hpp"
 #include "thread_waiter.hpp"
 
@@ -50,8 +51,6 @@ namespace cubthread
   class worker_pool;
   class looper;
   class daemon;
-  class entry_task;
-  class entry_manager;
   class daemon_entry_manager;
 
   // alias for worker_pool<entry>
@@ -281,6 +280,7 @@ namespace cubthread
   const int LOG_WORKER_POOL_VACUUM = 0x100;
   const int LOG_WORKER_POOL_CONNECTIONS = 0x200;
   const int LOG_WORKER_POOL_TRAN_WORKERS = 0x400;
+  const int LOG_WORKER_POOL_INDEX_BUILDER = 0x800;
   const int LOG_WORKER_POOL_ALL = 0xFF00;    // reserved for thread worker pools
 
   // daemons flags

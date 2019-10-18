@@ -303,7 +303,7 @@ add_commas (char *string)
   num_of_digits = last_digit = num_of_commas = 0;
   string_len = strlen (string);
 
-  /* 
+  /*
    * First count the digits before the decimal place
    */
   for (i = 0; i < string_len; i++)
@@ -326,13 +326,13 @@ add_commas (char *string)
 	}
     }
 
-  /* 
+  /*
    * If no digits, exit
    */
   if (!num_of_digits)
     return;
 
-  /* 
+  /*
    * Calculate the number of commas we are going to insert
    */
   num_of_commas = num_of_digits / 3;
@@ -341,7 +341,7 @@ add_commas (char *string)
       num_of_commas--;
     }
 
-  /* 
+  /*
    * Add them if necessary
    */
   if (num_of_commas)
@@ -399,7 +399,7 @@ strip_trailing_zeros (char *numeric_string)
       return;
     }
 
-  /* 
+  /*
    * First check to see if this is even necessary
    */
   if ((prefix = strchr (numeric_string, '.')) == NULL)
@@ -407,7 +407,7 @@ strip_trailing_zeros (char *numeric_string)
       return;
     }
 
-  /* 
+  /*
    * Now count the number of trailing zeros
    */
 
@@ -909,7 +909,7 @@ numeric_to_string (DB_VALUE * value, bool commas)
   int comma_length;
   int max_length;
 
-  /* 
+  /*
    * Allocate string length based on precision plus the commas plus a
    * character for each of the sign, decimal point, and NULL terminator.
    */
@@ -945,7 +945,7 @@ bit_to_string (DB_VALUE * value, char string_delimiter, bool plain_string)
   char *return_string;
   int max_length;
 
-  /* 
+  /*
    * Allocate string length based on precision plus the the leading
    * introducer plus quotes, and NULL terminator.  Precision / 4 (rounded up)
    * represents the number of bytes needed to represent the bit string in
@@ -998,7 +998,7 @@ set_to_string (DB_VALUE * value, char begin_notation, char end_notation, int max
   /* pre-fetch any objects in the set, this will prevent multiple server calls during set rendering */
   db_fetch_set (set, DB_FETCH_READ, 0);
 
-  /* formerly we filtered out deleted elements here, now just use db_set_size to get the current size, including NULL & 
+  /* formerly we filtered out deleted elements here, now just use db_set_size to get the current size, including NULL &
    * deleted elements */
   cardinality = db_set_size (set);
 

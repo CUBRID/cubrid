@@ -886,7 +886,8 @@ cas_log_query_plan_file (int id)
   static char plan_file_name[BROKER_PATH_MAX];
   char dirname[BROKER_PATH_MAX];
   get_cubrid_file (FID_CAS_TMP_DIR, dirname, BROKER_PATH_MAX);
-  snprintf (plan_file_name, BROKER_PATH_MAX - 1, "%s/%d.%d.plan", dirname, (int) getpid (), id);
+  int ret = snprintf (plan_file_name, BROKER_PATH_MAX - 1, "%s/%d.%d.plan", dirname, (int) getpid (), id);
+  (void) ret;			// suppress format-truncate warning
   return plan_file_name;
 #else /* LIBCAS_FOR_JSP */
   return NULL;
@@ -907,7 +908,7 @@ access_log_open (char *log_file_name)
 #if defined (WINDOWS)
   fp = cas_fopen_and_lock (log_file_name, "a");
 #else
-  /* In case of Linux and solaris..., Openning a file in append mode guarantees subsequent write operations to occur at 
+  /* In case of Linux and solaris..., Openning a file in append mode guarantees subsequent write operations to occur at
    * ent-of-file. So we don't need to lock to the opened file. */
   fp = cas_fopen (log_file_name, "a");
 #endif

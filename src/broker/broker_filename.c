@@ -79,7 +79,8 @@ set_cubrid_home ()
       return;
     }
   getcwd (dirname, sizeof (dirname));
-  snprintf (cubrid_Dir, sizeof (cubrid_Dir) - 1, "%s/..", dirname);
+  int ret = snprintf (cubrid_Dir, sizeof (cubrid_Dir) - 1, "%s/..", dirname);
+  (void) ret;			// suppress format-truncate warning
 }
 
 char *

@@ -35,6 +35,11 @@
 
 #ident "$Id$"
 
+#if defined (WINDOWS)
+// suppress warning C4005: 'NO_ERROR': macro redefinition
+#include "winerror.h"
+#endif // MSVC
+
 #ifdef NO_ERROR
 #undef NO_ERROR
 #endif
@@ -660,7 +665,7 @@
 #define ER_LDR_INTERNAL_REFERENCE  		    -563
 #define ER_LDR_UNIQUE_VIOLATION			    -564
 #define ER_LDR_INVALID_CONSTRUCTOR 		    -565
-#define ER_LDB_NO_CLASS_OR_NO_ATTRIBUTE 	    -566
+#define ER_LDR_NO_CLASS_OR_NO_ATTRIBUTE 	    -566
 #define ER_LDR_UNEXPECTED_ARGUMENT		    -567
 #define ER_LDR_MISSING_ARGUMENT			    -568
 #define ER_LDR_MISSING_ATTRIBUTES		    -569
@@ -1547,11 +1552,11 @@
 #define ER_JSON_PATH_DOES_NOT_EXIST                 -1202
 #define ER_JSON_EXPECTED_OTHER_TYPE                 -1203
 #define ER_JSON_DUPLICATE_KEY                       -1204
+#define ER_JSON_EXPECTING_JSON_DOC                  -1205
 
-#define ER_JSON_RESERVED_ERROR_0                    -1205
-#define ER_JSON_RESERVED_ERROR_1                    -1206
-#define ER_JSON_RESERVED_ERROR_2                    -1207
-#define ER_JSON_RESERVED_ERROR_3                    -1208
+#define ER_JSON_PATH_IS_NOT_ARRAY_CELL              -1206
+#define ER_JSON_ARRAY_INDEX_TOO_LARGE               -1207
+#define ER_INVALID_ONE_ALL_ARGUMENT                 -1208
 #define ER_JSON_RESERVED_ERROR_4                    -1209
 #define ER_JSON_RESERVED_ERROR_5                    -1210
 #define ER_JSON_RESERVED_ERROR_6                    -1211
@@ -1584,8 +1589,20 @@
 #define ER_DWB_DISABLED                             -1236
 
 #define ER_SM_INDEX_STATUS_CHANGE_NOT_ALLOWED       -1237
+#define ER_JSON_TABLE_ON_EMPTY_ERROR                -1238
+#define ER_JSON_TABLE_ON_ERROR_INCOMP_DOMAIN        -1239
+#define ER_SM_ONLINE_INDEX_ON_HIERARCHY             -1240
 
-#define ER_LAST_ERROR                               -1238
+#define ER_QPROC_XASLNODE_RECOMPILE_REQUESTED       -1241
+
+#define ER_SM_NO_PARTITION_ON_HIERARCHIES           -1242
+
+#define ER_IB_ERROR_ABORT                           -1243
+
+#define ER_LDR_SHARED_NOT_SUPPORTED                 -1244
+#define ER_LDR_CLASS_NOT_SUPPORTED                  -1245
+
+#define ER_LAST_ERROR                               -1246
 
 /*
  * CAUTION!

@@ -35,6 +35,7 @@
 #include "log_impl.h"
 #endif // SERVER_MODE or SA_MODE
 #include "memory_alloc.h"
+#include "porting_inline.hpp"
 #include "storage_common.h"
 #include "thread_compat.hpp"
 #include "tsc_timer.h"
@@ -148,6 +149,7 @@ extern int log_Tran_index;	/* Index onto transaction table for current thread of
 #endif /* !SERVER_MODE */
 
 #if defined (SERVER_MODE)
+// todo - remove from here
 #if !defined(LOG_FIND_THREAD_TRAN_INDEX)
 #define LOG_FIND_THREAD_TRAN_INDEX(thrd) \
   ((thrd) ? (thrd)->tran_index : logtb_get_current_tran_index())
@@ -339,8 +341,23 @@ typedef enum
   PSTAT_BT_NUM_MERGES,
   PSTAT_BT_NUM_GET_STATS,
 
-  /* Execution statistics for the heap manager */
-  PSTAT_HEAP_NUM_STATS_SYNC_BESTSPACE,
+  PSTAT_BT_ONLINE_NUM_INSERTS,
+  PSTAT_BT_ONLINE_NUM_INSERTS_SAME_PAGE_HOLD,
+  PSTAT_BT_ONLINE_NUM_REJECT_NO_MORE_KEYS,
+  PSTAT_BT_ONLINE_NUM_REJECT_MAX_KEY_LEN,
+  PSTAT_BT_ONLINE_NUM_REJECT_NO_SPACE,
+  PSTAT_BT_ONLINE_NUM_RELEASE_LATCH,
+  PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE1,
+  PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE2,
+  PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE3,
+  PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE4,
+  PSTAT_BT_ONLINE_NUM_REJECT_KEY_FALSE_FAILED_RANGE1,
+  PSTAT_BT_ONLINE_NUM_REJECT_KEY_FALSE_FAILED_RANGE2,
+
+  PSTAT_BT_ONLINE,
+  PSTAT_BT_ONLINE_INSERT_TASK,
+  PSTAT_BT_ONLINE_PREPARE_TASK,
+  PSTAT_BT_ONLINE_INSERT_SAME_LEAF,
 
   /* Execution statistics for the query manager */
   PSTAT_QM_NUM_SELECTS,
@@ -373,10 +390,6 @@ typedef enum
   PSTAT_PRIOR_LSA_LIST_SIZE,	/* kbytes */
   PSTAT_PRIOR_LSA_LIST_MAXED,
   PSTAT_PRIOR_LSA_LIST_REMOVED,
-
-  /* best space info */
-  PSTAT_HF_NUM_STATS_ENTRIES,
-  PSTAT_HF_NUM_STATS_MAXED,
 
   /* HA replication delay */
   PSTAT_HA_REPL_DELAY,
@@ -438,6 +451,17 @@ typedef enum
   PSTAT_HEAP_VACUUM_PREPARE,
   PSTAT_HEAP_VACUUM_EXECUTE,
   PSTAT_HEAP_VACUUM_LOG,
+
+  /* Execution statistics for the heap manager */
+  /* best space info */
+  PSTAT_HEAP_STATS_SYNC_BESTSPACE,
+  PSTAT_HF_NUM_STATS_ENTRIES,
+  PSTAT_HF_NUM_STATS_MAXED,
+  PSTAT_HF_BEST_SPACE_ADD,
+  PSTAT_HF_BEST_SPACE_DEL,
+  PSTAT_HF_BEST_SPACE_FIND,
+  PSTAT_HF_HEAP_FIND_PAGE_BEST_SPACE,
+  PSTAT_HF_HEAP_FIND_BEST_PAGE,
 
   /* B-tree ops detailed statistics. */
   PSTAT_BT_FIX_OVF_OIDS,
@@ -625,6 +649,7 @@ typedef enum
   PSTAT_THREAD_STATS,
   PSTAT_THREAD_DAEMON_STATS,
   PSTAT_DWB_FLUSHED_BLOCK_NUM_VOLUMES,
+  PSTAT_LOAD_THREAD_STATS,
 
   PSTAT_COUNT
 } PERF_STAT_ID;
@@ -802,6 +827,7 @@ extern void perfmon_copy_values (UINT64 * src, UINT64 * dest);
 #if defined (SERVER_MODE) || defined (SA_MODE)
 extern void perfmon_start_watch (THREAD_ENTRY * thread_p);
 extern void perfmon_stop_watch (THREAD_ENTRY * thread_p);
+extern void perfmon_er_log_current_stats (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE || SA_MODE */
 
 STATIC_INLINE bool perfmon_is_perf_tracking (void) __attribute__ ((ALWAYS_INLINE));
@@ -1270,7 +1296,7 @@ perfmon_is_perf_tracking_and_active (int activation_flag)
 /*
  * perfmon_is_perf_tracking_force () - Skips the check for active threads if the always_collect
  *				       flag is set to true
- *				       
+ *				
  * return	        : true or false
  * always_collect (in)  : flag that tells that we should always collect statistics
  *

@@ -138,9 +138,8 @@ set(WITH_LIBGPG_ERROR_URL "https://gnupg.org/ftp/gcrypt/libgpg-error/libgpg-erro
 # gcrypt library sources URL
 set(WITH_LIBGCRYPT_URL "https://gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.5.6.tar.bz2")
 
-# rapidjson library git properties
-set(WITH_RAPIDJSON_GIT_REPOSITORY "https://github.com/miloyip/rapidjson.git")
-set(WITH_RAPIDJSON_GIT_TAG "v1.1.0")
+# rapidjson library sources URL
+set(WITH_RAPIDJSON_URL "https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz")
 
 set(WITH_EXTERNAL_PREFIX "EXTERNAL" CACHE STRING "External library prefix (default: EXTERNAL)")
 set(WITH_BUNDLED_PREFIX "BUNDLED" CACHE STRING "Bundled library prefix (default: BUNDLED)")
@@ -200,7 +199,16 @@ else(VERSION_MATCHES_LENGTH GREATER 3)
         ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
     else(GIT_VERSION VERSION_GREATER 1.7.6)
-      # TODO: Below wc command could be failed on Windows platform
+      # If you have trouble with execute_process on Windows, it is likely an issue caused by git installation.
+      # <git-installation-directory>/bin has two files, bash.exe and sh.exe, that messes up CMake's execute_process
+      #
+      # There are two possible fixes for this issue:
+      # 1. Add <git-installation-directory>/usr/bin to %PATH% environment variable
+      # 2. Remove <git-installation-directory>/bin from %PATH% environment variable
+      # You may prefer the first option if you want to use git command in command prompt.
+      #
+      # If both fixes fail, just replace execute_process(...) with set (commit_count 0). It is not a critical step to generate the project.
+      # Also you may send us a message at https://www.cubrid.org/contact
       execute_process(COMMAND ${GIT_EXECUTABLE} log --oneline
         COMMAND wc -l
         OUTPUT_VARIABLE commit_count RESULT_VARIABLE git_result
@@ -211,7 +219,7 @@ else(VERSION_MATCHES_LENGTH GREATER 3)
       message(FATAL_ERROR "Could not get count information from Git")
     endif(git_result)
     set(CUBRID_EXTRA_VERSION ${commit_count})
-    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --short=7 HEAD
       OUTPUT_VARIABLE commit_hash RESULT_VARIABLE git_result
       ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
       WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
@@ -252,17 +260,39 @@ if(UNIX)
       message(SEND_ERROR "Cannot compile 32-bit program with gcc version (${CMAKE_CXX_COMPILER_VERSION})")
       message(FATAL_ERROR "4.3.4 or higher version is required. (ref. https://gcc.gnu.org/bugzilla/show_bug.cgi?id=16185)")
     endif(ENABLE_32BIT AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.3.4)
-    
+
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4.7)
       message(SEND_ERROR "Cannot compile with gcc version ${CMAKE_CXX_COMPILER_VERSION}. Require at least 4.4.7.")
     endif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4.7)
 
-    set(CMAKE_C_FLAGS_DEBUG "-ggdb -fno-inline -fno-omit-frame-pointer")
-    set(CMAKE_CXX_FLAGS_DEBUG "-Wall -ggdb -fno-inline -fno-omit-frame-pointer -std=c++0x")
-    set(CMAKE_C_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer -std=c++0x")
-    set(CMAKE_CXX_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer -std=c++0x")
-    set(CMAKE_C_FLAGS_RELWITHDEBINFO "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer -std=c++0x")
-    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer -std=c++0x")
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9.0)
+      add_definitions(-D_USE_LIBREGEX_)
+    endif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9.0)
+
+    # C/C++ common flags for both debug and release build
+    set(CMAKE_C_CXX_COMMON_FLAGS "-ggdb -fno-omit-frame-pointer -std=c++0x")
+    # C/C++ common flags for both debug
+    set(CMAKE_C_CXX_DEBUG_FLAGS "-Wall -fno-inline ${CMAKE_C_CXX_COMMON_FLAGS}")
+    # C/C++ common flags for release build
+    set(CMAKE_C_CXX_RELEASE_FLAGS "-O2 -DNDEBUG -finline-functions ${CMAKE_C_CXX_COMMON_FLAGS}")
+
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_CXX_DEBUG_FLAGS}")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_C_CXX_DEBUG_FLAGS}")
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${CMAKE_C_CXX_RELEASE_FLAGS}")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}  ${CMAKE_C_CXX_RELEASE_FLAGS}")
+    set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO}  ${CMAKE_C_CXX_RELEASE_FLAGS}")
+    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}  ${CMAKE_C_CXX_RELEASE_FLAGS}")
+
+    if(WITH_SOURCES)
+      set(DEBUG_PREFIX_MAP_FLAG "-fdebug-prefix-map=${CMAKE_SOURCE_DIR}/src=${CMAKE_INSTALL_PREFIX}/src")
+
+      set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${DEBUG_PREFIX_MAP_FLAG}")
+      set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${DEBUG_PREFIX_MAP_FLAG}")
+      set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${DEBUG_PREFIX_MAP_FLAG}")
+      set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${DEBUG_PREFIX_MAP_FLAG}")
+      set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} ${DEBUG_PREFIX_MAP_FLAG}")
+      set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} ${DEBUG_PREFIX_MAP_FLAG}")
+    endif(WITH_SOURCES)
 
     # set has-style
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--hash-style=both")
@@ -274,16 +304,18 @@ if(UNIX)
   endif(CMAKE_COMPILER_IS_GNUCC)
 else(UNIX)
   # turn off LinkIncremental option for release build
-  
+
   #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
   string(REPLACE "INCREMENTAL:YES" "INCREMENTAL:NO" replaceIncFlag ${CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO})
   set(CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO "/INCREMENTAL:NO ${replaceIncFlag}" )
+
   string(REPLACE "INCREMENTAL:YES" "INCREMENTAL:NO" replaceIncFlag ${CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO})
   set(CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO "/INCREMENTAL:NO ${replaceIncFlag}" )
-  #SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} /WX /wd4820 /showIncludes" )
-  SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} /W3 /wd4820" )
-  SET( CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} /W3" )
-  set (CMAKE_CXX_STANDARD 11)
+
+  #set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /WX /wd4820 /showIncludes" )
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W3 /wd4820" )
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W3" )
+  set(CMAKE_CXX_STANDARD 11)
 endif(UNIX)
 
 # check target platform
@@ -313,24 +345,32 @@ set(CSQL_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y)
 set(CSQL_GRAMMAR_OUTPUT ${CMAKE_BINARY_DIR}/csql_grammar.c)
 set(CSQL_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/parser/csql_lexer.l)
 set(CSQL_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/csql_lexer.c)
-set(LOADER_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/executables/loader_grammar.y)
-set(LOADER_GRAMMAR_OUTPUT ${CMAKE_BINARY_DIR}/loader_grammar.c)
-set(LOADER_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/executables/loader_lexer.l)
-set(LOADER_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/loader_lexer.c)
+set(LOADER_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/loaddb/load_grammar.yy)
+set(LOADER_GRAMMAR_OUTPUT ${CMAKE_BINARY_DIR}/load_grammar.cpp)
+set(LOADER_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/loaddb/load_lexer.l)
+set(LOADER_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/load_lexer.cpp)
 set(ESQL_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y)
 set(ESQL_GRAMMAR_OUTPUT ${CMAKE_BINARY_DIR}/esql_grammar.c)
 set(ESQL_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_lexer.l)
 set(ESQL_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/esql_lexer.c)
 
 # bison and flex check
-include(FindBISON)
-find_package(BISON)
+if(WIN32)
+  set(WIN_FLEX_BISON_VERSION "2.5.20")
+  set(WIN_FLEX_BISON_URL "https://github.com/lexxmark/winflexbison/releases/download/v${WIN_FLEX_BISON_VERSION}/win_flex_bison-${WIN_FLEX_BISON_VERSION}.zip")
+  set(WIN_FLEX_BISON_FILENAME "${CMAKE_BINARY_DIR}/external/Download/win_flex_bison.zip")
+  file(DOWNLOAD ${WIN_FLEX_BISON_URL} ${WIN_FLEX_BISON_FILENAME})
 
-if(BISON_FOUND)
-  if(BISON_VERSION VERSION_GREATER 2.3)
-    set(USE_BISON_NEWDIRECTIVE 1) 
-  endif(BISON_VERSION VERSION_GREATER 2.3)
-else(BISON_FOUND)
+  set(WIN_FLEX_BISON_INSTALL_DIR "${CMAKE_BINARY_DIR}/external/Install/win_flex_bison")
+  file(MAKE_DIRECTORY ${WIN_FLEX_BISON_INSTALL_DIR})
+  execute_process(COMMAND ${CMAKE_COMMAND} -E tar -xf ${WIN_FLEX_BISON_FILENAME} WORKING_DIRECTORY ${WIN_FLEX_BISON_INSTALL_DIR})
+  list(APPEND CMAKE_PREFIX_PATH ${WIN_FLEX_BISON_INSTALL_DIR})
+endif(WIN32)
+
+include(FindBISON)
+find_package(BISON 3.0.0)
+
+if(NOT BISON_FOUND)
   if(UNIX)
     message(FATAL_ERROR "Please install bison and flex.")
   else()
@@ -342,34 +382,24 @@ else(BISON_FOUND)
       " and retry running cmake."
     )
   endif()
-endif(BISON_FOUND)
+endif(NOT BISON_FOUND)
 
 include(FindFLEX)
 find_package(FLEX 2.5.34 REQUIRED)
 
-if(USE_BISON_NEWDIRECTIVE)
-  # replace old bison directives with new ones
-  # use add_custom_command because we want to regenerate csql_grammar.yy
-  # whenever csql_grammar.y is modified
-  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy
-    COMMAND ${CMAKE_COMMAND} -DGRAMMAR_INPUT_FILE=${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y -DGRAMMAR_OUTPUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy -P ${CMAKE_SOURCE_DIR}/cmake/upgrade_bison_grammar.cmake
-    MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y
-  )
-else()
-  # using old bison - just copy the csql_grammar.y to csql_grammar.yy
-  # keeping the chain of dependencies
-  # use add_custom_command because we want to regenerate csql_grammar.yy
-  # whenever csql_grammar.y is modified
-  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy
-    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy
-    MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y
-  )
-endif(USE_BISON_NEWDIRECTIVE)
+# CSQL FLEX/BISON targets
+# replace old bison directives with new ones
+# use add_custom_command because we want to regenerate csql_grammar.yy
+# whenever csql_grammar.y is modified
+add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy
+  COMMAND ${CMAKE_COMMAND} -DGRAMMAR_INPUT_FILE=${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y -DGRAMMAR_OUTPUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy -P ${CMAKE_SOURCE_DIR}/cmake/upgrade_bison_grammar.cmake
+  MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y
+)
 
 set(CSQL_GRAMMAR_INPUT ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy)
 
-# because csql_grammar.yy are generated through a custom command 
-# whenever csql_grammar.y is modified, bison and flex will be 
+# because csql_grammar.yy are generated through a custom command
+# whenever csql_grammar.y is modified, bison and flex will be
 # run to create new outputs
 
 bison_target(csql_grammar ${CSQL_GRAMMAR_INPUT} ${CSQL_GRAMMAR_OUTPUT}
@@ -380,38 +410,28 @@ add_flex_bison_dependency(csql_lexer csql_grammar)
 add_custom_target(gen_csql_grammar DEPENDS ${BISON_csql_grammar_OUTPUTS})
 add_custom_target(gen_csql_lexer DEPENDS ${FLEX_csql_lexer_OUTPUTS})
 
+# Loader FLEX/BISON targets
 bison_target(loader_grammar ${LOADER_GRAMMAR_INPUT} ${LOADER_GRAMMAR_OUTPUT}
-  COMPILE_FLAGS "--no-lines --name-prefix=loader_yy -d -r all")
+  COMPILE_FLAGS "-d -r all")
 flex_target(loader_lexer ${LOADER_LEXER_INPUT} ${LOADER_LEXER_OUTPUT}
-  COMPILE_FLAGS "--noline --never-interactive --prefix=loader_yy")
+  COMPILE_FLAGS "--noline")
 add_flex_bison_dependency(loader_lexer loader_grammar)
 add_custom_target(gen_loader_grammar DEPENDS ${BISON_loader_grammar_OUTPUTS})
 add_custom_target(gen_loader_lexer DEPENDS ${FLEX_loader_lexer_OUTPUTS})
 
-if(USE_BISON_NEWDIRECTIVE)
-  # replace old bison directives with new ones
-  # use add_custom_command because we want to regenerate esql_grammar.yy
-  # whenever esql_grammar.y is modified
-  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy
-    COMMAND ${CMAKE_COMMAND} -DGRAMMAR_INPUT_FILE=${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y -DGRAMMAR_OUTPUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy -P ${CMAKE_SOURCE_DIR}/cmake/upgrade_bison_grammar.cmake
-    MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y
-  )
-else()
-  # using old bison - just copy the esql_grammar.y to esql_grammar.yy
-  # keeping the chain of dependencies
-  # use add_custom_command because we want to regenerate esql_grammar.yy
-  # whenever esql_grammar.y is modified
-  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy
-    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy
-    MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y
-  )
-endif(USE_BISON_NEWDIRECTIVE)
+# ESQL FLEX/BISON targets
+# replace old bison directives with new ones
+# use add_custom_command because we want to regenerate esql_grammar.yy
+# whenever esql_grammar.y is modified
+add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy
+  COMMAND ${CMAKE_COMMAND} -DGRAMMAR_INPUT_FILE=${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y -DGRAMMAR_OUTPUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy -P ${CMAKE_SOURCE_DIR}/cmake/upgrade_bison_grammar.cmake
+  MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y
+)
 
 set(ESQL_GRAMMAR_INPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy)
 
-
-# because esql_grammar.yy are generated through a custom command 
-# whenever esql_grammar.y is modified, bison and flex will be 
+# because esql_grammar.yy are generated through a custom command
+# whenever esql_grammar.y is modified, bison and flex will be
 # run to create new outputs
 
 bison_target(esql_grammar ${ESQL_GRAMMAR_INPUT} ${ESQL_GRAMMAR_OUTPUT}
@@ -473,6 +493,7 @@ set(EXECUTABLES_DIR          ${CMAKE_SOURCE_DIR}/src/executables)
 set(HEAPLAYERS_DIR           ${CMAKE_SOURCE_DIR}/src/heaplayers)
 set(JDBC_DIR                 ${CMAKE_SOURCE_DIR}/src/jdbc)
 set(JSP_DIR                  ${CMAKE_SOURCE_DIR}/src/jsp)
+set(LOADDB_DIR               ${CMAKE_SOURCE_DIR}/src/loaddb)
 set(MONITOR_DIR              ${CMAKE_SOURCE_DIR}/src/monitor)
 set(OBJECT_DIR               ${CMAKE_SOURCE_DIR}/src/object)
 set(ODBC_DIR                 ${CMAKE_SOURCE_DIR}/src/odbc)
@@ -487,7 +508,7 @@ set(THREAD_DIR               ${CMAKE_SOURCE_DIR}/src/thread)
 set(TOOLS_DIR                ${CMAKE_SOURCE_DIR}/src/tools)
 set(TRANSACTION_DIR          ${CMAKE_SOURCE_DIR}/src/transaction)
 set(WIN_TOOLS_DIR            ${CMAKE_SOURCE_DIR}/src/win_tools)
-
+set(XASL_DIR                 ${CMAKE_SOURCE_DIR}/src/xasl)
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(
@@ -502,6 +523,7 @@ include_directories(
   src/executables
   src/heaplayers
   src/jsp
+  src/loaddb
   src/monitor
   src/object
   src/optimizer
@@ -513,6 +535,7 @@ include_directories(
   src/thread
   src/tools
   src/transaction
+  src/xasl
   )
 
 include(CheckFunctionExists)
@@ -653,7 +676,6 @@ if(GCRYPT_LIBRARIES)
 endif(GCRYPT_LIBRARIES)
 
 if(UNIX)
-
   include(FindThreads)
 endif(UNIX)
 
@@ -760,6 +782,7 @@ if(USE_CUBRID_ENV)
   set(CUBRID_PREFIXDIR .)
   set(CUBRID_BINDIR bin)
   set(CUBRID_LIBDIR lib)
+  set(CUBRID_SRCDIR src)
   set(CUBRID_INCLUDEDIR include)
   set(CUBRID_VARDIR var)
   set(CUBRID_DATADIR share)
@@ -790,6 +813,12 @@ else(USE_CUBRID_ENV)
     list(APPEND DIR_DEFS CUBRID_LIBDIR="${CUBRID_LIBDIR}")
   else()
     list(APPEND DIR_DEFS CUBRID_LIBDIR="${CUBRID_PREFIXDIR}/${CUBRID_LIBDIR}")
+  endif()
+  set(CUBRID_SRCDIR src CACHE STRING "The directory for source files")
+  if(IS_ABSOLUTE ${CUBRID_SRCDIR})
+    list(APPEND DIR_DEFS CUBRID_SRCDIR="${CUBRID_SRCDIR}")
+  else()
+    list(APPEND DIR_DEFS CUBRID_SRCDIR="${CUBRID_PREFIXDIR}/${CUBRID_SRCDIR}")
   endif()
   set(CUBRID_VARDIR var CACHE STRING "The directory for variable data files")
   if(IS_ABSOLUTE ${CUBRID_VARDIR})
@@ -846,7 +875,7 @@ endif(USE_CUBRID_ENV)
 # For external library options
 include(ExternalProject)
 set_property(DIRECTORY PROPERTY EP_BASE "${CMAKE_BINARY_DIR}/external")
-set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external --enable-static --disable-shared --with-pic CFLAGS=${CMAKE_C_FLAGS} CXXFLAGS=${CMAKE_CXX_FLAGS})
+set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external --enable-static --disable-shared --with-pic CFLAGS=-w CXXFLAGS=-w)
 
 # WITH_LIBREGEX can have multiple values with different meanings
 # on Linux:
@@ -907,11 +936,12 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
   list(APPEND EP_TARGETS ${LIBEXPAT_TARGET})
   if(UNIX)
     externalproject_add(${LIBEXPAT_TARGET}
-      URL               ${WITH_LIBEXPAT_URL}
-      TIMEOUT 300
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook
-      BUILD_COMMAND     make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      URL                  ${WITH_LIBEXPAT_URL}
+      TIMEOUT              300
+      DOWNLOAD_NO_PROGRESS 1
+      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook
+      BUILD_COMMAND        make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
     set(LIBEXPAT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libexpat.a)
     set(LIBEXPAT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/expat)
@@ -951,11 +981,12 @@ if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
   list(APPEND EP_TARGETS ${LIBJANSSON_TARGET})
   if(UNIX)
     externalproject_add(${LIBJANSSON_TARGET}
-      URL               ${WITH_LIBJANSSON_URL}
-      TIMEOUT 300
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      URL                  ${WITH_LIBJANSSON_URL}
+      TIMEOUT              300
+      DOWNLOAD_NO_PROGRESS 1
+      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS}
+      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
     set(LIBJANSSON_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libjansson.a)
     set(LIBJANSSON_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/jansson)
@@ -1026,11 +1057,12 @@ if(UNIX)
   if(WITH_LIBEDIT STREQUAL "EXTERNAL")
     set(LIBEDIT_TARGET libedit)
     externalproject_add(${LIBEDIT_TARGET}
-      URL               ${WITH_LIBEDIT_URL}
-      TIMEOUT 300
-      CONFIGURE_COMMAND "LDFLAGS=-L${CMAKE_CURRENT_BINARY_DIR}/external/lib" ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      URL                  ${WITH_LIBEDIT_URL}
+      TIMEOUT              300
+      DOWNLOAD_NO_PROGRESS 1
+      CONFIGURE_COMMAND    "LDFLAGS=-L${CMAKE_CURRENT_BINARY_DIR}/external/lib" ${DEFAULT_CONFIGURE_OPTS}
+      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
     if(TARGET ${LIBNCURSES_TARGET})
       add_dependencies(${LIBEDIT_TARGET} ${LIBNCURSES_TARGET})
@@ -1066,11 +1098,12 @@ if(WITH_LIBLZO STREQUAL "EXTERNAL")
     #compile LZO library given an internet url to a LZO archive
     #e.g. http://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz
     externalproject_add(${LIBLZO_TARGET}
-      URL               ${WITH_LIBLZO_URL}
-      TIMEOUT 300
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      URL                  ${WITH_LIBLZO_URL}
+      TIMEOUT              300
+      DOWNLOAD_NO_PROGRESS 1
+      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS}
+      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
     set(LIBLZO_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/liblzo2.a)
     set(LIBLZO_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
@@ -1104,11 +1137,12 @@ set(LIBGPG_ERROR_TARGET libgpg-error)
 if(UNIX)
   if(WITH_LIBGPG_ERROR STREQUAL "EXTERNAL")
     externalproject_add(${LIBGPG_ERROR_TARGET}
-      URL               ${WITH_LIBGPG_ERROR_URL}
-      TIMEOUT 300
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --enable-maintainer-mode --disable-doc --disable-tests
-      BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      URL                  ${WITH_LIBGPG_ERROR_URL}
+      TIMEOUT              300
+      DOWNLOAD_NO_PROGRESS 1
+      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} --enable-maintainer-mode --disable-doc --disable-tests
+      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
     set(LIBGPG_ERROR_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libgpg-error.a)
     set(LIBGPG_ERROR_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
@@ -1152,11 +1186,12 @@ if(WITH_LIBGCRYPT STREQUAL "EXTERNAL")
       set(WITH_LIBGPG_ERROR_PREFIX "--with-gpg-error-prefix=${CMAKE_CURRENT_BINARY_DIR}/external")
     endif()
     externalproject_add(${LIBGCRYPT_TARGET}
-      URL               ${WITH_LIBGCRYPT_URL}
-      TIMEOUT 300
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} CPPFLAGS=-I${CMAKE_CURRENT_BINARY_DIR}/external/include --enable-maintainer-mode ${WITH_LIBGPG_ERROR_PREFIX}
-      BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      URL                  ${WITH_LIBGCRYPT_URL}
+      TIMEOUT              300
+      DOWNLOAD_NO_PROGRESS 1
+      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} CPPFLAGS=-I${CMAKE_CURRENT_BINARY_DIR}/external/include --enable-maintainer-mode ${WITH_LIBGPG_ERROR_PREFIX}
+      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
 
     set(LIBGCRYPT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libgcrypt.a)
@@ -1203,14 +1238,15 @@ endif(WIN32)
 set(RAPIDJSON_TARGET rapidjson)
 externalproject_add(${RAPIDJSON_TARGET}
   # tried URL but archive gets downloaded every time. URL_MD5 may help
-  URL https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz
-  TIMEOUT 300
+  URL                  ${WITH_RAPIDJSON_URL}
+  TIMEOUT              300
+  DOWNLOAD_NO_PROGRESS 1
   # don't install
-  INSTALL_COMMAND ""
+  INSTALL_COMMAND      ""
   # don't build test, doc and examples
-  CMAKE_CACHE_ARGS -DRAPIDJSON_BUILD_TESTS:string=off
-                   -DRAPIDJSON_BUILD_DOC:string=off
-                   -DRAPIDJSON_BUILD_EXAMPLES:string=off
+  CMAKE_CACHE_ARGS     -DRAPIDJSON_BUILD_TESTS:STRING=off
+                       -DRAPIDJSON_BUILD_DOC:STRING=off
+                       -DRAPIDJSON_BUILD_EXAMPLES:STRING=off
 )
 # add to include directories
 include_directories(${CMAKE_BINARY_DIR}/external/Source/rapidjson/include)
@@ -1310,6 +1346,9 @@ if(USE_CUBRID_ENV)
     DESTINATION ${CUBRID_PREFIXDIR})
 endif(USE_CUBRID_ENV)
 
+if(WITH_SOURCES)
+  install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/ DESTINATION ${CUBRID_SRCDIR})
+endif(WITH_SOURCES)
 
 # for packaging
 if(UNIX)

@@ -203,7 +203,7 @@ struct status_field fields[FIELD_LAST + 1] = {
   {FIELD_NUM_OF_UPDATE_QUERIES, 8, "UPDATE", FIELD_RIGHT_ALIGN},
   {FIELD_NUM_OF_DELETE_QUERIES, 8, "DELETE", FIELD_RIGHT_ALIGN},
   {FIELD_NUM_OF_OTHERS_QUERIES, 8, "OTHERS", FIELD_RIGHT_ALIGN},
-  /* 
+  /*
    * 5: width of long transaction count
    * 1: delimiter(/)
    * 4: width of long transaction time
@@ -212,7 +212,7 @@ struct status_field fields[FIELD_LAST + 1] = {
    *    10/60.0
    * */
   {FIELD_LONG_TRANSACTION, 5 + 1 + 4, "LONG-T", FIELD_RIGHT_ALIGN},
-  /* 
+  /*
    * 5: width of long query count
    * 1: delimiter(/)
    * 4: width of long query time

@@ -18,7 +18,7 @@
  */
 
 /*
- * cm_utils.h - 
+ * cm_utils.h -
  */
 
 #ifndef _CM_UTILS_H_

@@ -92,7 +92,7 @@ static unsigned int
 ini_table_hash (char *key)
 {
   size_t len;
-  int i;
+  size_t i;
   unsigned int hash;
 
   len = strlen (key);
@@ -527,7 +527,7 @@ ini_parse_line (char *input_line, char *section, char *key, char *value)
       strcpy (key, ini_str_trim (key));
       strcpy (key, ini_str_lower (key));
       strcpy (value, ini_str_trim (value));
-      /* 
+      /*
        * sscanf cannot handle '' or "" as empty values
        * this is done here
        */
@@ -539,7 +539,7 @@ ini_parse_line (char *input_line, char *section, char *key, char *value)
     }
   else if (sscanf (line, "%[^=] = %[;#]", key, value) == 2 || sscanf (line, "%[^=] %[=]", key, value) == 2)
     {
-      /* 
+      /*
        * Special cases:
        * key=
        * key=;
@@ -573,7 +573,7 @@ ini_parser_load (const char *ininame)
   char line[INI_BUFSIZ + 1];
   char section[INI_BUFSIZ + 1];
   char key[INI_BUFSIZ + 1];
-  char tmp[INI_BUFSIZ + 1];
+  char tmp[(INI_BUFSIZ + 1) * 2];
   char val[INI_BUFSIZ + 1];
 
   int last = 0;

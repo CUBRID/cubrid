@@ -56,7 +56,7 @@ struct partition_stats_acumulator
   double height;		/* the height of the B+tree */
   double keys;			/* number of keys */
   int pkeys_size;		/* pkeys array size */
-  double *pkeys;		/* partial keys info for example: index (a, b, ..., x) pkeys[0] -> # of {a} pkeys[1] -> 
+  double *pkeys;		/* partial keys info for example: index (a, b, ..., x) pkeys[0] -> # of {a} pkeys[1] ->
 				 * # of {a, b} ... pkeys[pkeys_size-1] -> # of {a, b, ..., x} */
 };
 
@@ -668,7 +668,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 	  btree_stats_p->pages = MAX (1, btree_stats_p->pages);
 	  btree_stats_p->height = MAX (1, btree_stats_p->height);
 
-	  /* If the btree file has currently more pages than when we gathered statistics, assume that all growth happen 
+	  /* If the btree file has currently more pages than when we gathered statistics, assume that all growth happen
 	   * at the leaf level. If the btree is smaller, we use the gathered statistics since the btree may have an
 	   * external file (unknown at this level) to keep overflow keys. */
 	  if (file_get_num_user_pages (thread_p, &btree_stats_p->btid.vfid, &npages) != NO_ERROR)

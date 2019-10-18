@@ -1459,7 +1459,7 @@ is_server_running (const char *type, const char *server_name, int pid)
 	  sleep (1);
 
 	  /* A child process is defunct because the SIGCHLD signal ignores. */
-	  /* 
+	  /*
 	   * if (waitpid (pid, &status, WNOHANG) == -1) { perror ("waitpid"); } */
 	}
       else
@@ -3406,7 +3406,7 @@ us_hb_process_server (int command_type, HA_CONF * ha_conf, const char *db_name)
 
 /*
  * us_hb_stop_get_options -
- * return: NO_ERROR or error code 
+ * return: NO_ERROR or error code
  *
  *      db_name(out):
  *      db_name_size(in):
@@ -3506,7 +3506,7 @@ ret:
 
 /*
  * us_hb_status_get_options -
- * return: NO_ERROR or error code 
+ * return: NO_ERROR or error code
  *
  *      verbose(out):
  *      remote_host_name(out):
@@ -3595,7 +3595,7 @@ ret:
 
 /*
  * us_hb_util_get_options -
- * return: NO_ERROR or error code 
+ * return: NO_ERROR or error code
  *
  *      db_name(out):
  *      db_name_size(in):
@@ -3798,7 +3798,7 @@ process_heartbeat_stop (HA_CONF * ha_conf, int argc, const char **argv)
   int status = NO_ERROR;
   int master_port;
   char db_name[64] = "";	/* DBNAME_LEN */
-  char remote_host_name[MAXHOSTNAMELEN] = "";
+  char remote_host_name[CUB_MAXHOSTNAMELEN] = "";
   bool immediate_stop = false;
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HEARTBEAT_NAME, PRINT_CMD_STOP);
@@ -3935,7 +3935,7 @@ process_heartbeat_status (int argc, const char **argv)
   int status = NO_ERROR;
   int master_port;
   bool verbose;
-  char remote_host_name[MAXHOSTNAMELEN];
+  char remote_host_name[CUB_MAXHOSTNAMELEN];
   int ext_opt_offset;
 
   const char *node_list_argv[] = {
@@ -4083,8 +4083,8 @@ process_heartbeat_util (HA_CONF * ha_conf, int command_type, int argc, const cha
   int sub_command_type;
 
   char db_name[64];
-  char node_name[MAXHOSTNAMELEN];
-  char host_name[MAXHOSTNAMELEN];
+  char node_name[CUB_MAXHOSTNAMELEN];
+  char host_name[CUB_MAXHOSTNAMELEN];
   char *db_name_p, *node_name_p, *host_name_p;
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HEARTBEAT_NAME, command_string (command_type));

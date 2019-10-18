@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -37,7 +37,7 @@ static int gadget_attr_index (DB_GADGET * gadget, const char *attr_name);
 
 /*
  * db_gadget_create() - Look up the class and build attribute descriptors for
- *     all of the supplied attributes.  
+ *     all of the supplied attributes.
  *
  * return : gadget pointer
  * class_name(in): name of class for which to create gadget
@@ -245,7 +245,7 @@ db_gadget_bind (DB_GADGET * gadget, const char *attribute_name, DB_VALUE * dbval
 
 /*
  * db_gadget_exec() - Creates a new instance using templates and the
- *     descriptors acquired when the DB_GADGET was initialized.   
+ *     descriptors acquired when the DB_GADGET was initialized.
  *
  * return : pointer to inserted instance object
  * gadget(in): gadget containing insert data

@@ -35,9 +35,8 @@
 #include "storage_common.h"
 #include "object_representation.h"
 #include "object_primitive.h"
-#include "class_object.h"
 #include "db.h"
-#include "xasl_support.h"
+#include "schema_manager.h"
 #include "server_interface.h"
 #include "system_parameter.h"
 #include "xasl_generation.h"
@@ -180,7 +179,7 @@ db_free_query_format (DB_QUERY_TYPE * q)
 	}
       if (p->src_domain != NULL)
 	{
-	  regu_free_domain (p->src_domain);
+	  sm_domain_free (p->src_domain);
 	}
       free_and_init (p);
     }
@@ -356,7 +355,7 @@ or_unpack_query_format (char *buf, DB_QUERY_TYPE ** columns)
       ptr = or_unpack_domain (ptr, &tp_dom, NULL);
       if (tp_dom != NULL)
 	{
-	  column->src_domain = regu_cp_domain (tp_dom);
+	  column->src_domain = sm_domain_copy (tp_dom);
 	}
       else
 	{
@@ -710,7 +709,7 @@ db_free_domain_list (SM_DOMAIN ** domain_list, int cnt)
     {
       if (domain_list[i] != NULL)
 	{
-	  regu_free_domain (domain_list[i]);
+	  sm_domain_free (domain_list[i]);
 	}
     }
 
@@ -964,7 +963,7 @@ db_alloc_query_result (DB_RESULT_TYPE r_type, int col_cnt)
 	    db_free_query_result (r);
 	    return NULL;
 	  }
-	/* 
+	/*
 	 * Initialize the vector so that db_free_query_result() doesn't go
 	 * haywire if this QUERY_RESULT gets freed before being completely
 	 * populated.
@@ -1187,7 +1186,7 @@ db_cp_domain_list (SM_DOMAIN ** domain_list, int cnt)
 
   for (i = 0; i < cnt; i++)
     {
-      newdomain_list[i] = regu_cp_domain (domain_list[i]);
+      newdomain_list[i] = sm_domain_copy (domain_list[i]);
       if (newdomain_list[i] == NULL)
 	{
 	  db_free_domain_list (newdomain_list, cnt);
@@ -1314,7 +1313,7 @@ db_cp_query_type_helper (DB_QUERY_TYPE * src, DB_QUERY_TYPE * dest)
 
   if (src->src_domain != NULL)
     {
-      dest->src_domain = regu_cp_domain (src->src_domain);
+      dest->src_domain = sm_domain_copy (src->src_domain);
     }
 
   return dest;
@@ -1466,11 +1465,11 @@ db_get_query_type (DB_TYPE * type_list, int *size_list, char **colname_list, cha
 	    }
 	  if (domain_list)
 	    {
-	      type_ptr->domain = regu_cp_domain (*domainp);
+	      type_ptr->domain = sm_domain_copy (*domainp);
 	    }
 	  if (src_domain_list)
 	    {
-	      type_ptr->src_domain = regu_cp_domain (*src_domainp);
+	      type_ptr->src_domain = sm_domain_copy (*src_domainp);
 	    }
 
 	  type_ptr = type_ptr->next;
@@ -1782,7 +1781,7 @@ db_query_format_is_non_null (DB_QUERY_TYPE * query_type)
 	}
     }
 
-  /* 
+  /*
    * query_type is not an attribute.
    * It may be an expression and will be treated as nullable.
    */
@@ -2658,6 +2657,10 @@ db_query_seek_tuple (DB_QUERY_RESULT * result, int offset, int seek_mode)
 	    {
 	      return db_query_prev_tuple (result);
 	    }
+	  else
+	    {
+	      return DB_CURSOR_SUCCESS;
+	    }
 
 	default:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1);
@@ -3348,9 +3351,9 @@ db_sqlx_debug_print_result (DB_QUERY_RESULT * result)
 /*
  * db_query_end() - This function must be called when the application is
  *    finished with the query result descriptor that was returned by either
- *    db_execute() or db_execute_oid() function. 
- *    This frees the descriptor and all storage related to the query results. 
- *    Since query results can be of considerable size, 
+ *    db_execute() or db_execute_oid() function.
+ *    This frees the descriptor and all storage related to the query results.
+ *    Since query results can be of considerable size,
  *    it is important that they be freed as soon as they are no longer necessary.
  * return : error code
  * result(in): Pointer to the query result structure

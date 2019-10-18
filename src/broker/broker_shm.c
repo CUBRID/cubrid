@@ -240,7 +240,7 @@ uw_shm_create (int shm_key, int size, int which_shm)
       goto error_exit;
     }
 
-  /* Initialize an EXPLICIT_ACCESS structure for an ACE. The ACE will allow the Administrators group full access to the 
+  /* Initialize an EXPLICIT_ACCESS structure for an ACE. The ACE will allow the Administrators group full access to the
    * shared memory */
   ea[1].grfAccessPermissions = GENERIC_ALL;
   ea[1].grfAccessMode = SET_ACCESS;

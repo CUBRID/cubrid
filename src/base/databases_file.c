@@ -927,7 +927,7 @@ cfg_new_db (const char *name, const char *path, const char *logpath, const char 
       path = cfg_os_working_directory ();
     }
 
-  /* 
+  /*
    * if NULL hosts is passed in, then create a new host list, with the
    * local host as the primary.
    */
@@ -1028,7 +1028,7 @@ cfg_find_db_list (DB_INFO * db_info_list_p, const char *name)
  *    return: new database descriptor
  *    dir(in/out): pointer to directory list
  *    name(in): database name
- *    path(in): directory path 
+ *    path(in): directory path
  *    logpath(in): log path
  *    lobpath(in): lob path
  */
@@ -1181,7 +1181,7 @@ cfg_get_hosts (const char *prim_host, int *count, bool include_local_host)
 
   *count = 0;
 
-  /* 
+  /*
    * get a clean host list, i.e., null fields and duplicate hosts removed.
    * prim_host will be prepended to the list, and the local host will
    * will be appended if include_local_host is true.
@@ -1275,22 +1275,22 @@ cfg_pop_host (const char *host_list, char *buffer, int *length)
       current_host_length++;
     }
 
-  /* 
+  /*
    * Increment count if we have a valid hostname, and we have reached,
    * a field separator, a space or end of line.
    * Copy host into buffer supplied.
    */
   if (((*host == CFG_HOST_SEPARATOR) || (char_isspace (*host)) || (*host == '\0')) && (current_host_length != 0))
     {
-      /* Note buffer is empty if length of host is greater than MAXHOSTNAMELEN) */
-      if ((buffer != NULL) && (current_host_length <= MAXHOSTNAMELEN))
+      /* Note buffer is empty if length of host is greater than CUB_MAXHOSTNAMELEN) */
+      if ((buffer != NULL) && (current_host_length <= CUB_MAXHOSTNAMELEN))
 	{
 	  strncpy (buffer, start, current_host_length);
 	  *(buffer + current_host_length) = '\0';
 	}
     }
 
-  if (current_host_length >= MAXHOSTNAMELEN)
+  if (current_host_length >= CUB_MAXHOSTNAMELEN)
     {
       *length = (-1);
     }
@@ -1428,7 +1428,7 @@ cfg_create_host_list (const char *primary_host_name, bool include_local_host, in
   int host_list_length, host_length, host_count;
   const char *str_ptr;
   char *full_host_list, *host_ptr;
-  char local_host[MAXHOSTNAMELEN + 1];
+  char local_host[CUB_MAXHOSTNAMELEN + 1];
 
   assert (count != NULL);
 
@@ -1438,9 +1438,9 @@ cfg_create_host_list (const char *primary_host_name, bool include_local_host, in
   if (include_local_host)
     {
 #if 0				/* use Unix-domain socket for localhost */
-      if (GETHOSTNAME (local_host, MAXHOSTNAMELEN) == 0)
+      if (GETHOSTNAME (local_host, CUB_MAXHOSTNAMELEN) == 0)
 	{
-	  local_host[MAXHOSTNAMELEN] = '\0';
+	  local_host[CUB_MAXHOSTNAMELEN] = '\0';
 	  host_list_length += strlen (local_host) + 1;
 	}
 #else
@@ -1460,7 +1460,7 @@ cfg_create_host_list (const char *primary_host_name, bool include_local_host, in
       host_list_length += (int) strlen (prm_get_string_value (PRM_ID_CFG_DB_HOSTS)) + 1;
     }
 
-  /* 
+  /*
    * concatenate host lists with separator
    * count the number of hosts in the list
    * ignore null and space

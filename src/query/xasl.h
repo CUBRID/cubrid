@@ -28,20 +28,23 @@
 
 #include <assert.h>
 
-#include "storage_common.h"
+#include "access_json_table.hpp"
+#include "access_spec.hpp"
 #include "memory_hash.h"
-#include "string_opfunc.h"
+#include "method_def.hpp"
 #include "query_list.h"
-#include "regu_var.h"
+#include "regu_var.hpp"
+#include "storage_common.h"
+#include "string_opfunc.h"
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
+#include "external_sort.h"
+#include "heap_file.h"
 #if defined (ENABLE_COMPOSITE_LOCK)
 #include "lock_manager.h"
 #endif /* defined (ENABLE_COMPOSITE_LOCK) */
-#include "external_sort.h"
 #include "object_representation_sr.h"
 #include "scan_manager.h"
-#include "heap_file.h"
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
@@ -49,26 +52,10 @@
 struct binary_heap;
 #endif // SERVER_MODE || SA_MODE
 
-/*
- * COMPILE_CONTEXT cover from user input query string to generated xasl
- */
-typedef struct compile_context COMPILE_CONTEXT;
-struct compile_context
-{
-  XASL_NODE *xasl;
-
-  char *sql_user_text;		/* original query statement that user input */
-  int sql_user_text_len;	/* length of sql_user_text */
-
-  char *sql_hash_text;		/* rewrited query string which is used as hash key */
-
-  char *sql_plan_text;		/* plans for this query */
-  int sql_plan_alloc_size;	/* query_plan alloc size */
-  bool is_xasl_pinned_reference;	/* to pin xasl cache entry */
-  bool recompile_xasl_pinned;	/* whether recompile again after xasl cache entry has been pinned */
-  bool recompile_xasl;
-  SHA1Hash sha1;
-};
+struct xasl_node;
+typedef struct xasl_node XASL_NODE;
+struct xasl_unpack_info;
+typedef struct xasl_unpack_info XASL_UNPACK_INFO;
 
 /* XASL HEADER */
 /*
@@ -127,13 +114,6 @@ struct xasl_node_header
 #if defined (SERVER_MODE) || defined (SA_MODE)
 typedef enum
 {
-  HS_NONE = 0,			/* no hash aggregation */
-  HS_ACCEPT_ALL,		/* accept tuples in hash table */
-  HS_REJECT_ALL			/* reject tuples, use normal sort-based aggregation */
-} AGGREGATE_HASH_STATE;
-
-typedef enum
-{
   XASL_CLEARED,
   XASL_SUCCESS,
   XASL_FAILURE,
@@ -155,6 +135,18 @@ typedef struct method_spec_node METHOD_SPEC_TYPE;
 typedef struct reguval_list_spec_node REGUVAL_LIST_SPEC_TYPE;
 typedef union hybrid_node HYBRID_NODE;
 
+// *INDENT-OFF*
+namespace cubxasl
+{
+  struct aggregate_list_node;
+  struct analytic_eval_type;
+  struct pred_expr;
+} // namespace cubxasl
+using AGGREGATE_TYPE = cubxasl::aggregate_list_node;
+using ANALYTIC_EVAL_TYPE = cubxasl::analytic_eval_type;
+using PRED_EXPR = cubxasl::pred_expr;
+// *INDENT-ON*
+
 #if defined (SERVER_MODE) || defined (SA_MODE)
 typedef struct groupby_stat GROUPBY_STATS;
 typedef struct orderby_stat ORDERBY_STATS;
@@ -163,8 +155,13 @@ typedef struct xasl_stat XASL_STATS;
 typedef struct topn_tuple TOPN_TUPLE;
 typedef struct topn_tuples TOPN_TUPLES;
 
-typedef struct aggregate_hash_value AGGREGATE_HASH_VALUE;
-typedef struct aggregate_hash_key AGGREGATE_HASH_KEY;
+// *INDENT-OFF*
+namespace cubquery
+{
+  struct aggregate_hash_context;
+}
+using AGGREGATE_HASH_CONTEXT = cubquery::aggregate_hash_context;
+// *INDENT-ON*
 
 typedef struct partition_spec_node PARTITION_SPEC_TYPE;
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
@@ -193,6 +190,29 @@ typedef enum
   CTE_PROC
 } PROC_TYPE;
 
+typedef struct qproc_db_value_list *QPROC_DB_VALUE_LIST;	/* TODO */
+struct qproc_db_value_list
+{
+  QPROC_DB_VALUE_LIST next;
+  DB_VALUE *val;
+  TP_DOMAIN *dom;
+
+  // *INDENT-OFF*
+  qproc_db_value_list () = default;
+  // *INDENT-ON*
+};
+
+typedef struct val_list_node VAL_LIST;	/* value list */
+struct val_list_node
+{
+  QPROC_DB_VALUE_LIST valp;	/* first value node */
+  int val_cnt;			/* value count */
+
+  // *INDENT-OFF*
+  val_list_node () = default;
+  // *INDENT-ON*
+};
+
 /* To handle selected update list, click counter related */
 typedef struct selupd_list SELUPD_LIST;
 struct selupd_list
@@ -204,41 +224,6 @@ struct selupd_list
   REGU_VARLIST_LIST select_list;	/* Regu list to be selected */
   int wait_msecs;		/* lock timeout in milliseconds */
 };
-
-#if defined (SERVER_MODE) || defined (SA_MODE)
-typedef struct aggregate_hash_context AGGREGATE_HASH_CONTEXT;
-struct aggregate_hash_context
-{
-  /* hash table stuff */
-  MHT_TABLE *hash_table;	/* memory hash table for hash aggregate eval */
-  AGGREGATE_HASH_KEY *temp_key;	/* temporary key used for fetch */
-  AGGREGATE_HASH_STATE state;	/* state of hash aggregation */
-  TP_DOMAIN **key_domains;	/* hash key domains */
-  AGGREGATE_ACCUMULATOR_DOMAIN **accumulator_domains;	/* accumulator domains */
-
-  /* runtime statistics stuff */
-  int hash_size;		/* hash table size */
-  int group_count;		/* groups processed in hash table */
-  int tuple_count;		/* tuples processed in hash table */
-
-  /* partial list file stuff */
-  SCAN_CODE part_scan_code;	/* scan status of partial list file */
-  QFILE_LIST_ID *part_list_id;	/* list with partial accumulators */
-  QFILE_LIST_ID *sorted_part_list_id;	/* sorted list with partial acc's */
-  QFILE_LIST_SCAN_ID part_scan_id;	/* scan on partial list */
-  DB_VALUE *temp_dbval_array;	/* temporary array of dbvalues, used for saving entries to list files */
-
-  /* partial list file sort stuff */
-  QFILE_TUPLE_RECORD input_tuple;	/* tuple record used while sorting */
-  SORTKEY_INFO sort_key;	/* sort key for partial list */
-  RECDES tuple_recdes;		/* tuple recdes */
-  AGGREGATE_HASH_KEY *curr_part_key;	/* current partial key */
-  AGGREGATE_HASH_KEY *temp_part_key;	/* temporary partial key */
-  AGGREGATE_HASH_VALUE *curr_part_value;	/* current partial value */
-  AGGREGATE_HASH_VALUE *temp_part_value;	/* temporary partial value */
-  int sorted_count;
-};
-#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /*update/delete class info structure */
 typedef struct upddel_class_info UPDDEL_CLASS_INFO;
@@ -280,6 +265,10 @@ struct odku_info
   UPDATE_ASSIGNMENT *assignments;	/* assignments */
   HEAP_CACHE_ATTRINFO *attr_info;	/* attr info */
   int *attr_ids;		/* ID's of attributes (array) */
+
+  // *INDENT-OFF*
+  odku_info () = default;
+  // *INDENT-ON*
 };
 
 /* new type used by function index for cleaner code */
@@ -288,6 +277,10 @@ struct func_pred
 {
   REGU_VARIABLE *func_regu;	/* function expression regulator variable */
   HEAP_CACHE_ATTRINFO *cache_attrinfo;
+
+  // *INDENT-OFF*
+  func_pred () = default;
+  // *INDENT-ON*
 };
 
 /* UNION_PROC, DIFFERENCE_PROC, INTERSECTION_PROC */
@@ -345,7 +338,7 @@ struct buildlist_proc_node
 #if defined (SERVER_MODE) || defined (SA_MODE)
   EHID *upddel_oid_locator_ehids;	/* array of temporary extensible hash for UPDATE/DELETE generated SELECT
 					 * statement */
-  AGGREGATE_HASH_CONTEXT agg_hash_context;	/* hash aggregate context, not serialized */
+  AGGREGATE_HASH_CONTEXT *agg_hash_context;	/* hash aggregate context, not serialized */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
   int g_agg_domains_resolved;	/* domain status (not serialized) */
 };
@@ -500,14 +493,14 @@ struct cte_proc_node
 #define XASL_RETURN_GENERATED_KEYS    0x2000	/* return generated keys */
 #define XASL_NO_FIXED_SCAN	      0x4000	/* disable fixed scan for this proc */
 
-#define XASL_IS_FLAGED(x, f)        ((x)->flag & (int) (f))
+#define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
 #define XASL_CLEAR_FLAG(x, f)       (x)->flag &= (int) ~(f)
 
 #define EXECUTE_REGU_VARIABLE_XASL(thread_p, r, v) \
   do \
     { \
-      XASL_NODE *_x = REGU_VARIABLE_XASL(r); \
+      XASL_NODE *_x = (r)->xasl; \
       \
       /* check for xasl node */ \
       if (_x) \
@@ -534,7 +527,7 @@ struct cte_proc_node
   while (0)
 
 #define CHECK_REGU_VARIABLE_XASL_STATUS(r) \
-    (REGU_VARIABLE_XASL(r) ? (REGU_VARIABLE_XASL(r))->status : XASL_SUCCESS)
+    ((r)->xasl != NULL ? ((r)->xasl)->status : XASL_SUCCESS)
 
 #define QPROC_IS_INTERPOLATION_FUNC(func_p) \
   (((func_p)->function == PT_MEDIAN) \
@@ -675,25 +668,6 @@ struct xasl_stream
                             GET_XASL_HEADER_N_OID_LIST(header) * sizeof(OID) + \
                             GET_XASL_HEADER_N_OID_LIST(header) * sizeof(int))) = (cnt))
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
-/* aggregate evaluation hash value */
-struct aggregate_hash_value
-{
-  int curr_size;		/* last computed size of structure */
-  int tuple_count;		/* # of tuples aggregated in structure */
-  int func_count;		/* # of functions (i.e. accumulators) */
-  AGGREGATE_ACCUMULATOR *accumulators;	/* function accumulators */
-  QFILE_TUPLE_RECORD first_tuple;	/* first aggregated tuple */
-};
-
-/* aggregate evaluation hash key */
-struct aggregate_hash_key
-{
-  int val_count;		/* key size */
-  bool free_values;		/* true if values need to be freed */
-  DB_VALUE **values;		/* value array */
-};
-#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /************************************************************************/
 /* access spec                                                          */
@@ -705,6 +679,7 @@ typedef enum
   TARGET_CLASS_ATTR,
   TARGET_LIST,
   TARGET_SET,
+  TARGET_JSON_TABLE,
   TARGET_METHOD,
   TARGET_REGUVAL_LIST,
   TARGET_SHOWSTMT
@@ -714,6 +689,7 @@ typedef enum
 {
   ACCESS_METHOD_SEQUENTIAL,	/* sequential scan access */
   ACCESS_METHOD_INDEX,		/* indexed access */
+  ACCESS_METHOD_JSON_TABLE,	/* json table scan access */
   ACCESS_METHOD_SCHEMA,		/* schema access */
   ACCESS_METHOD_SEQUENTIAL_RECORD_INFO,	/* sequential scan that will read record info */
   ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN,	/* sequential scan access that only scans pages without accessing record data */
@@ -775,12 +751,6 @@ struct list_spec_node
   XASL_NODE *xasl_node;		/* the XASL node that contains the list file identifier */
 };
 
-typedef enum
-{
-  KILLSTMT_TRAN = 0,
-  KILLSTMT_QUERY = 1,
-} KILLSTMT_TYPE;
-
 struct showstmt_spec_node
 {
   SHOWSTMT_TYPE show_type;	/* show statement type */
@@ -792,25 +762,6 @@ struct set_spec_node
   REGU_VARIABLE_LIST set_regu_list;	/* regulator variable list */
   REGU_VARIABLE *set_ptr;	/* set regu variable */
 };
-
-#define VACOMM_BUFFER_HEADER_SIZE           (OR_INT_SIZE * 3)
-#define VACOMM_BUFFER_HEADER_LENGTH_OFFSET  (0)
-#define VACOMM_BUFFER_HEADER_STATUS_OFFSET  (OR_INT_SIZE)
-#define VACOMM_BUFFER_HEADER_NO_VALS_OFFSET (OR_INT_SIZE * 2)
-#define VACOMM_BUFFER_HEADER_ERROR_OFFSET   (OR_INT_SIZE * 2)
-
-typedef enum
-{
-  METHOD_SUCCESS = 1,
-  METHOD_EOF,
-  METHOD_ERROR
-} METHOD_CALL_STATUS;
-
-typedef enum
-{
-  VACOMM_BUFFER_SEND = 1,
-  VACOMM_BUFFER_ABORT
-} VACOMM_BUFFER_CLIENT_ACTION;
 
 struct method_spec_node
 {
@@ -834,6 +785,7 @@ union hybrid_node
   SET_SPEC_TYPE set_node;	/* set specification */
   METHOD_SPEC_TYPE method_node;	/* method specification */
   REGUVAL_LIST_SPEC_TYPE reguval_list_node;	/* reguval_list specification */
+  json_table_spec_node json_table_node;	/* json_table specification */
 };				/* class/list access specification */
 
 /*
@@ -885,6 +837,9 @@ union hybrid_node
 #define ACCESS_SPEC_METHOD_SPEC(ptr) \
         ((ptr)->s.method_node)
 
+#define ACCESS_SPEC_JSON_TABLE_SPEC(ptr) \
+        ((ptr)->s.json_table_node)
+
 #define ACCESS_SPEC_METHOD_XASL_NODE(ptr) \
         ((ptr)->s.method_node.xasl_node)
 
@@ -896,6 +851,15 @@ union hybrid_node
 
 #define ACCESS_SPEC_METHOD_LIST_ID(ptr) \
         (ACCESS_SPEC_METHOD_XASL_NODE(ptr)->list_id)
+
+#define ACCESS_SPEC_JSON_TABLE_ROOT_NODE(ptr) \
+        ((ptr)->s.json_table_node.m_root_node)
+
+#define ACCESS_SPEC_JSON_TABLE_REGU_VAR(ptr) \
+        ((ptr)->s.json_table_node.m_json_reguvar)
+
+#define ACCESS_SPEC_JSON_TABLE_M_NODE_COUNT(ptr) \
+        ((ptr)->s.json_table_node.m_node_count)
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 struct orderby_stat
@@ -1002,7 +966,7 @@ struct xasl_node
   ACCESS_SPEC_TYPE *merge_spec;	/* merge spec. node */
   VAL_LIST *val_list;		/* output-value list */
   VAL_LIST *merge_val_list;	/* value list for the merge spec */
-  XASL_NODE *aptr_list;		/* first uncorrelated subquery */
+  XASL_NODE *aptr_list;		/* CTEs and uncorrelated subquery. CTEs are guaranteed always before the subqueries */
   XASL_NODE *bptr_list;		/* OBJFETCH_PROC list */
   XASL_NODE *dptr_list;		/* corr. subquery list */
   PRED_EXPR *after_join_pred;	/* after-join predicate */
@@ -1040,7 +1004,7 @@ struct xasl_node
 				 * UPDATE/DELETE in MVCC */
 #if defined (ENABLE_COMPOSITE_LOCK)
   /* note: upon reactivation, you may face header cross reference issues */
-  LK_COMPOSITE_LOCK composite_lock;	/* flag and lock block for composite locking for queries which obtain candidate 
+  LK_COMPOSITE_LOCK composite_lock;	/* flag and lock block for composite locking for queries which obtain candidate
 					 * rows for updates/deletes. */
 #endif				/* defined (ENABLE_COMPOSITE_LOCK) */
   union
@@ -1090,7 +1054,7 @@ struct pred_expr_with_context
   int num_attrs_pred;		/* number of atts from the predicate */
   ATTR_ID *attrids_pred;	/* array of attr ids from the pred */
   HEAP_CACHE_ATTRINFO *cache_pred;	/* cache for the pred attrs */
-  void *unpack_info;		/* Buffer information. */
+  XASL_UNPACK_INFO *unpack_info;	/* Buffer information. */
 };
 typedef struct pred_expr_with_context PRED_EXPR_WITH_CONTEXT;
 

@@ -566,7 +566,7 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
 	  char *query_p;
 	  int end_block_flag = 0;
 
-	  /* 
+	  /*
 	   * execute log format:
 	   * <execute_cmd> srv_h_id <handle_id> <query_string>
 	   * bind <bind_index> : <TYPE> <VALUE>

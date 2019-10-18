@@ -35,6 +35,7 @@
 
 #include "mprec.h"
 #include "numeric_opfunc.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "memory_alloc.h"
 #include "system_parameter.h"
@@ -715,7 +716,7 @@ numeric_is_long (DB_C_NUMERIC arg)
       return (false);
     }
 
-  /* 
+  /*
    * Loop through arg's bits except the 32 LSB looking for non-sign
    * extended values
    */
@@ -750,7 +751,7 @@ numeric_is_bigint (DB_C_NUMERIC arg)
       return (false);
     }
 
-  /* 
+  /*
    * Loop through arg's bits except the 64 LSB looking for non-sign
    * extended values
    */
@@ -1638,7 +1639,7 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 
   /* Perform the addition */
   numeric_add (db_locate_numeric (&dbv1_common), db_locate_numeric (&dbv2_common), temp, DB_NUMERIC_BUF_SIZE);
-  /* 
+  /*
    * Update the domin information of the answer. Check to see if precision
    * needs to be updated due to carry
    */
@@ -1734,7 +1735,7 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 
   /* Perform the subtraction */
   numeric_sub (db_locate_numeric (&dbv1_common), db_locate_numeric (&dbv2_common), temp, DB_NUMERIC_BUF_SIZE);
-  /* 
+  /*
    * Update the domin information of the answer. Check to see if precision
    * needs to be updated due to carry
    */
@@ -1915,7 +1916,7 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 	}
     }
 
-  /* 
+  /*
    * Update the domain information of the answer. Check to see if precision
    * needs to be updated due to carry
    */
@@ -2566,7 +2567,7 @@ numeric_fast_convert (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec
   num[DB_NUMERIC_BUF_SIZE - 3] = (scaled_int >> 16) & 0xff;
   num[DB_NUMERIC_BUF_SIZE - 4] = (scaled_int >> 24) & 0xff;
   memset (num, (scaled_int < 0) ? 0xff : 0x0, DB_NUMERIC_BUF_SIZE - 4);
-  /* 
+  /*
    * Now try to make an educated guess at the actual precision.  The
    * actual value of scaled_int is no longer of much interest, just so
    * long as the general magnitude is maintained (i.e., make sure you
@@ -2618,7 +2619,7 @@ numeric_fast_convert (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec
       estimated_precision = 10;
     }
 
-  /* 
+  /*
    * No matter what we think it is, it has to be at least as big as the
    * scale.
    */
@@ -2882,7 +2883,7 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
 	{
 	  if (NUMERIC_ABS (adouble) < DB_NUMERIC_UNDERFLOW_LIMIT)
 	    {
-	      /* the floating-point number underflows any possible CUBRID NUMERIC domain type, so just return 0 with no 
+	      /* the floating-point number underflows any possible CUBRID NUMERIC domain type, so just return 0 with no
 	       * other conversion */
 	      *scale = dst_scale;
 	      *prec = dst_scale ? dst_scale : 1;
@@ -3029,7 +3030,7 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
 int
 numeric_coerce_double_to_num (double adouble, DB_C_NUMERIC num, int *prec, int *scale)
 {
-  /* 
+  /*
    *   return numeric_internal_double_to_num(adouble, DB_MAX_NUMERIC_PRECISION,
    */
   return numeric_internal_double_to_num (adouble, 16, num, prec, scale);
@@ -3281,7 +3282,7 @@ numeric_coerce_num_to_num (DB_C_NUMERIC src_num, int src_prec, int src_scale, in
       num_string[orig_length - scale_diff] = '\0';
     }
 
-  /* 
+  /*
    * Check to see if the scaled number 'fits' into the desired precision
    * and scaling by looking for significant digits prior to the last
    * 'precision' digits.

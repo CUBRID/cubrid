@@ -152,7 +152,7 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, 
   memset (client_info, 0, sizeof (client_info));
   memset (db_info, 0, sizeof (db_info));
 
-  strncpy (client_info, SRV_CON_CLIENT_MAGIC_STR, SRV_CON_CLIENT_MAGIC_LEN);
+  memcpy (client_info, SRV_CON_CLIENT_MAGIC_STR, SRV_CON_CLIENT_MAGIC_LEN);
   client_info[SRV_CON_MSG_IDX_CLIENT_TYPE] = cci_client_type;
   client_info[SRV_CON_MSG_IDX_PROTO_VERSION] = CAS_PROTO_PACK_CURRENT_NET_VER;
   client_info[SRV_CON_MSG_IDX_FUNCTION_FLAG] = BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT;
@@ -852,7 +852,7 @@ net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec)
   memset (client_info, 0, sizeof (client_info));
   memset (db_info, 0, sizeof (db_info));
 
-  strncpy (client_info, SRV_CON_CLIENT_MAGIC_STR, SRV_CON_CLIENT_MAGIC_LEN);
+  memcpy (client_info, SRV_CON_CLIENT_MAGIC_STR, SRV_CON_CLIENT_MAGIC_LEN);
   client_info[SRV_CON_MSG_IDX_CLIENT_TYPE] = cci_client_type;
   client_info[SRV_CON_MSG_IDX_PROTO_VERSION] = CAS_PROTO_PACK_CURRENT_NET_VER;
   client_info[SRV_CON_MSG_IDX_FUNCTION_FLAG] = BROKER_RENEWED_ERROR_CODE;

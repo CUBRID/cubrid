@@ -201,26 +201,26 @@ _DEFUN (_dtoa_r, (ptr, _d, mode, ndigits, decpt, sign, rve, float_type),
 	struct _Jv_reent *ptr _AND double _d _AND int mode _AND int ndigits _AND int *decpt _AND int *sign _AND char
 	**rve _AND int float_type)
 {
-  /* 
+  /*
    * float_type == 0 for double precision, 1 for float.
-   * 
+   *
    * Arguments ndigits, decpt, sign are similar to those of ecvt and fcvt; trailing zeros are suppressed from the
    * returned string.  If not null, *rve is set to point to the end of the return value.  If d is +-Infinity or NaN,
    * then *decpt is set to 9999.
-   * 
+   *
    * mode: 0 ==> shortest string that yields d when read in and rounded to nearest. 1 ==> like 0, but with Steele &
    * White stopping rule; e.g. with IEEE P754 arithmetic , mode 0 gives 1e23 whereas mode 1 gives 9.999999999999999e22.
    * 2 ==> max(1,ndigits) significant digits.  This gives a return value similar to that of ecvt, except that trailing
-   * zeros are suppressed. 3 ==> through ndigits past the decimal point.  This gives a return value similar to that from 
+   * zeros are suppressed. 3 ==> through ndigits past the decimal point.  This gives a return value similar to that from
    * fcvt, except that trailing zeros are suppressed, and ndigits can be negative. 4-9 should give the same return
    * values as 2-3, i.e., 4 <= mode <= 9 ==> same return as mode 2 + (mode & 1).  These modes are mainly for debugging;
    * often they run slower but sometimes faster than modes 2-3. 4,5,8,9 ==> left-to-right digit generation. 6-9 ==>
    * don't try fast floating-point estimate (if applicable).
-   * 
+   *
    * > 16 ==> Floating-point arg is treated as single precision.
-   * 
+   *
    * Values of mode other than 0-9 are treated as mode 0.
-   * 
+   *
    * Sufficient space is allocated to the return value to hold the suppressed trailing zeros. */
 
   int bbits, b2, b5, be, dig, i, ieps, ilim0, j, j1, k, k0, k_check, leftright, m2, m5, s2, s5, try_quick;
@@ -307,7 +307,7 @@ _DEFUN (_dtoa_r, (ptr, _d, mode, ndigits, decpt, sign, rve, float_type),
 #endif
 
       /* log(x) ~=~ log(1.5) + (x-1.5)/1.5 log10(x) = log(x) / log(10) ~=~ log(1.5)/log(10) + (x-1.5)/(1.5*log(10))
-       * log10(d) = (i-Bias)*log(2)/log(10) + log10(d2) This suggests computing an approximation k to log10(d) by k = 
+       * log10(d) = (i-Bias)*log(2)/log(10) + log10(d2) This suggests computing an approximation k to log10(d) by k =
        * (i - Bias)*0.301029995663981 + ( (d2-1.5)*0.289529654602168 + 0.176091259055681 ); We want k to be too large
        * rather than too small. The error in the first-order Taylor series approximation is in our favor, so we just
        * round up the constant enough to compensate for any error in the multiplication of (i - Bias) by
@@ -388,7 +388,7 @@ _DEFUN (_dtoa_r, (ptr, _d, mode, ndigits, decpt, sign, rve, float_type),
       break;
     case 2:
       leftright = 0;
-      /* no break */
+      /* FALLTHRU */
     case 4:
       if (ndigits <= 0)
 	ndigits = 1;
@@ -396,7 +396,7 @@ _DEFUN (_dtoa_r, (ptr, _d, mode, ndigits, decpt, sign, rve, float_type),
       break;
     case 3:
       leftright = 0;
-      /* no break */
+      /* FALLTHRU */
     case 5:
       i = ndigits + k + 1;
       ilim = i;
@@ -656,7 +656,7 @@ _DEFUN (_dtoa_r, (ptr, _d, mode, ndigits, decpt, sign, rve, float_type),
 	spec_case = 0;
     }
 
-  /* Arrange for convenient computation of quotients: shift left if necessary so divisor has 4 leading 0 bits. Perhaps 
+  /* Arrange for convenient computation of quotients: shift left if necessary so divisor has 4 leading 0 bits. Perhaps
    * we should just compute leading 28 bits of S once and for all and pass them and a shift to quorem, so it can do
    * shifts and ors to compute the numerator for q. */
 

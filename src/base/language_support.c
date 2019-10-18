@@ -37,10 +37,12 @@
 #include "chartype.h"
 #include "environment_variable.h"
 #include "memory_hash.h"
+#include "object_primitive.h"
 #include "util_func.h"
 #if !defined(WINDOWS)
 #include <dlfcn.h>
 #endif /* !defined (WINDOWS) */
+#include "tz_support.h"
 #include "db_date.h"
 #include "string_opfunc.h"
 
@@ -168,7 +170,7 @@ static const DB_CHARSET lang_Db_charsets[] = {
 };
 
 
-/* 
+/*
  * Locales data
  */
 
@@ -932,7 +934,7 @@ lang_init_console_txt_conv (void)
   conv_sys_ids = lang_Loc_data->txt_conv->win_codepages;
 #else
   /* setlocale with empty string forces the current locale : this is required to retrieve codepage id, but as a
-   * side-effect modifies the behavior of string utility functions such as 'snprintf' to support current locale charset 
+   * side-effect modifies the behavior of string utility functions such as 'snprintf' to support current locale charset
    */
   if (setlocale (LC_CTYPE, "") != NULL)
     {
@@ -1007,8 +1009,10 @@ set_current_locale (void)
       char err_msg[ERR_MSG_SIZE];
 
       lang_Init_w_error = true;
-      snprintf (err_msg, sizeof (err_msg) - 1, "Locale %s.%s was not loaded.\n" " %s not found in cubrid_locales.txt",
-		lang_Lang_name, lang_get_codeset_name (lang_Loc_charset), lang_Lang_name);
+      int ret = snprintf (err_msg, sizeof (err_msg) - 1, "Locale %s.%s was not loaded.\n"
+			  " %s not found in cubrid_locales.txt", lang_Lang_name,
+			  lang_get_codeset_name (lang_Loc_charset), lang_Lang_name);
+      (void) ret;		// suppress format-truncate warning
       LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, false);
       set_default_lang ();
     }
@@ -1050,7 +1054,7 @@ set_msg_lang_from_env (void)
   /* set flag as set; this function will set the messages language either to environment or leave it default value */
   lang_Msg_env_initialized = true;
 
-  /* 
+  /*
    * Determines the messages language by examining environment variables.
    * We check the optional variable CUBRID_MSG_LANG, which decides the
    * locale for catalog messages; if not set, en_US is used for catalog
@@ -2369,7 +2373,7 @@ lang_get_lang_id_from_flag (const int flag, bool * has_user_format, bool * has_u
  * Note:  If a format for combination (lang_id, codeset) is not found, then
  *	  the first valid (non-NULL) format for lang_id and the codeset
  *	  are returned.
- * 
+ *
  */
 const char *
 lang_date_format_parse (const INTL_LANG lang_id, const INTL_CODESET codeset, const DB_TYPE type,
@@ -6649,15 +6653,15 @@ lang_split_key_binary (const LANG_COLLATION * lang_coll, const bool is_desc, con
 #define GET_SYM_ADDR(lib, sym) dlsym(lib, sym)
 #endif
 
-#define SHLIB_GET_ADDR(v, SYM_NAME, SYM_TYPE, lh, LOC_NAME)		    \
-  do {									    \
-    snprintf (sym_name, LOC_LIB_SYMBOL_NAME_SIZE, "" SYM_NAME "_%s",	    \
-	      LOC_NAME);						    \
-    v = (SYM_TYPE) GET_SYM_ADDR (lh, sym_name);				    \
-    if (v == NULL)							    \
-      {									    \
-	goto error_loading_symbol;					    \
-      }									    \
+#define SHLIB_GET_ADDR(v, SYM_NAME, SYM_TYPE, lh, LOC_NAME)					\
+  do {												\
+    int ret = snprintf (sym_name, LOC_LIB_SYMBOL_NAME_SIZE - 1, "" SYM_NAME "_%s", LOC_NAME);   \
+    (void) ret; /* suppress format-truncate warning */						\
+    v = (SYM_TYPE) GET_SYM_ADDR (lh, sym_name);							\
+    if (v == NULL)										\
+      {												\
+	goto error_loading_symbol;								\
+      }												\
   } while (0)
 
 #define SHLIB_GET_ADDR_W_REF(v, SYM_NAME, SYM_TYPE, lh, LOC_NAME)	    \

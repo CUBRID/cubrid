@@ -196,7 +196,7 @@ static void pt_free_node_blocks (const PARSER_CONTEXT * parser);
 static PARSER_STRING_BLOCK *parser_create_string_block (const PARSER_CONTEXT * parser, const int length);
 static void pt_free_a_string_block (const PARSER_CONTEXT * parser, PARSER_STRING_BLOCK * string_to_free);
 static PARSER_STRING_BLOCK *pt_find_string_block (const PARSER_CONTEXT * parser, const char *old_string);
-static char *pt_append_string_for (const PARSER_CONTEXT * parser, char *old_string, const char *new_tail,
+static char *pt_append_string_for (const PARSER_CONTEXT * parser, const char *old_string, const char *new_tail,
 				   const int wrap_with_single_quote);
 static PARSER_VARCHAR *pt_append_bytes_for (const PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string,
 					    const char *new_tail, const int new_tail_length);
@@ -588,7 +588,7 @@ pt_find_string_block (const PARSER_CONTEXT * parser, const char *old_string)
  * The given old_string is OVERWRITTEN.
  */
 static char *
-pt_append_string_for (const PARSER_CONTEXT * parser, char *old_string, const char *new_tail,
+pt_append_string_for (const PARSER_CONTEXT * parser, const char *old_string, const char *new_tail,
 		      const int wrap_with_single_quote)
 {
   PARSER_STRING_BLOCK *string;
@@ -603,7 +603,7 @@ pt_append_string_for (const PARSER_CONTEXT * parser, char *old_string, const cha
       new_tail_length += 2;	/* for opening/closing "'" */
     }
 
-  /* if we did not find old_string at the end of a string buffer, or if there is not room to concatenate the tail, copy 
+  /* if we did not find old_string at the end of a string buffer, or if there is not room to concatenate the tail, copy
    * both to new string */
   if ((string == NULL) || ((string->block_end - string->last_string_end) < new_tail_length))
     {
@@ -688,7 +688,7 @@ pt_append_bytes_for (const PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string,
   /* here, you know you have two non-NULL pointers */
   string = pt_find_string_block (parser, (char *) old_string);
 
-  /* if we did not find old_string at the end of a string buffer, or if there is not room to concatenate the tail, copy 
+  /* if we did not find old_string at the end of a string buffer, or if there is not room to concatenate the tail, copy
    * both to new string */
   if ((string == NULL) || ((string->block_end - string->last_string_end) < new_tail_length))
     {
@@ -903,7 +903,7 @@ parser_free_node (const PARSER_CONTEXT * parser, PT_NODE * node)
     {
       db_value_clear (&node->info.insert_value.value);
     }
-  /* 
+  /*
    * Always set the node type to maximum.  This may
    * keep us from doing bad things to the free list if we try to free
    * this structure more than once.  We shouldn't be doing that (i.e.,
@@ -958,15 +958,18 @@ parser_alloc (const PARSER_CONTEXT * parser, const int length)
  * (for a null character). The two strings are logically concatenated
  * and copied into the result string. The physical operation is typically
  * more efficient, and conservative of memory
+ *
+ * Note :
+ * pt_append_string won't modify old_string but it will return it to caller if new_tail is NULL.
  */
 char *
-pt_append_string (const PARSER_CONTEXT * parser, char *old_string, const char *new_tail)
+pt_append_string (const PARSER_CONTEXT * parser, const char *old_string, const char *new_tail)
 {
   char *s;
 
   if (new_tail == NULL)
     {
-      s = old_string;
+      s = CONST_CAST (char *, old_string);	// it is up to caller
     }
   else if (old_string == NULL)
     {
@@ -1432,16 +1435,4 @@ pt_is_json_doc_type (PT_TYPE_ENUM type)
   DB_TYPE converted_type = pt_type_enum_to_db (type);
 
   return db_is_json_doc_type (converted_type);
-}
-
-bool
-pt_is_json_object_name (PT_TYPE_ENUM type)
-{
-  return (PT_IS_STRING_TYPE (type) || type == PT_TYPE_MAYBE);
-}
-
-bool
-pt_is_json_path (PT_TYPE_ENUM type)
-{
-  return (PT_IS_STRING_TYPE (type) || type == PT_TYPE_MAYBE || type == PT_TYPE_NULL);
 }

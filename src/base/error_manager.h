@@ -222,6 +222,9 @@ extern "C"
 
   extern bool er_has_error (void);
   extern void er_print_callstack (const char *file_name, const int line_no, const char *fmt, ...);
+#if defined (CS_MODE)
+  extern void er_set_ignore_uninit (bool ignore);
+#endif
 
 #ifdef __cplusplus
 }

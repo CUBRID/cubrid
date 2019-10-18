@@ -31,6 +31,7 @@
 #endif /* !WINDOWS */
 
 #include "log_comm.h"
+
 #include "memory_alloc.h"
 #include "storage_common.h"
 #include "error_manager.h"
@@ -39,7 +40,7 @@
 #include "system_parameter.h"
 #include "misc_string.h"
 #include "intl_support.h"
-#include "log_impl.h"
+#include "log_common_impl.h"
 #if defined (SERVER_MODE)
 #include "vacuum.h"
 #endif /* SERVER_MODE */
@@ -287,7 +288,10 @@ log_does_allow_replication (void)
   HA_SERVER_STATE ha_state;
 
   /* Vacuum workers are not allowed to reach this code */
-  assert (!VACUUM_IS_THREAD_VACUUM (thread_get_thread_entry_info ()));
+  if (LOG_FIND_CURRENT_TDES () == NULL || !LOG_FIND_CURRENT_TDES ()->is_active_worker_transaction ())
+    {
+      return false;
+    }
 
   if (HA_DISABLED ())
     {

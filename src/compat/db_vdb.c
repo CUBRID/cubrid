@@ -32,6 +32,7 @@
 #include <time.h>
 #include <assert.h>
 
+#include "authenticate.h"
 #include "db.h"
 #include "dbi.h"
 #include "db_query.h"
@@ -43,6 +44,7 @@
 #include "parser.h"
 #include "parser_message.h"
 #include "object_domain.h"
+#include "object_primitive.h"
 #include "schema_manager.h"
 #include "view_transform.h"
 #include "execute_statement.h"
@@ -52,6 +54,7 @@
 #include "network_interface_cl.h"
 #include "transaction_cl.h"
 #include "dbtype.h"
+#include "xasl.h"
 
 #define BUF_SIZE 1024
 
@@ -67,7 +70,6 @@ enum
 
 static struct timeb base_server_timeb = { 0, 0, 0, 0 };
 static struct timeb base_client_timeb = { 0, 0, 0, 0 };
-
 
 static int get_dimension_of (PT_NODE ** array);
 static DB_SESSION *db_open_local (void);
@@ -94,6 +96,7 @@ static bool db_check_limit_need_recompile (PARSER_CONTEXT * parser, PT_NODE * st
 
 static DB_CLASS_MODIFICATION_STATUS pt_has_modified_class (PARSER_CONTEXT * parser, PT_NODE * statement);
 static PT_NODE *pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static bool db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 /*
  * get_dimemsion_of() - returns the number of elements of a null-terminated
@@ -543,7 +546,7 @@ db_compile_statement_local (DB_SESSION * session)
       session->stage = (char *) p + session->dimension * sizeof (DB_QUERY_TYPE *);
     }
 
-  /* 
+  /*
    * Compilation Stage
    */
 
@@ -621,7 +624,7 @@ db_compile_statement_local (DB_SESSION * session)
       if (qtype)
 	{
 	  /* NOTE, this is here on purpose. If something is busting because it tries to continue corresponding this
-	   * type information and the list file columns after having jacked with the list file, by for example adding a 
+	   * type information and the list file columns after having jacked with the list file, by for example adding a
 	   * hidden OID column, fix the something else. This needs to give the results as user views the query, ie
 	   * related to the original text. It may guess wrong about attribute/column updatability. Thats what they
 	   * asked for. */
@@ -668,7 +671,7 @@ db_compile_statement_local (DB_SESSION * session)
   session->stage[stmt_ndx] = StatementCompiledStage;
 
 
-  /* 
+  /*
    * Preparation Stage
    */
 
@@ -680,6 +683,21 @@ db_compile_statement_local (DB_SESSION * session)
    * prepare_and_execute_query(). */
   if (prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && statement->cannot_prepare == 0)
     {
+      if (session->is_subsession_for_prepared)
+	{
+	  /* cast host variables to their expected domain, before XASL generation. */
+	  session->parser->set_host_var = 0;
+	  err = do_cast_host_variables_to_expected_domain (session);
+	  if (err < 0)
+	    {
+	      if (pt_has_error (parser))
+		{
+		  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
+		  return er_errid ();
+		}
+	      return err;
+	    }
+	}
 
       /* now, prepare the statement by calling do_prepare_statement() */
       err = do_prepare_statement (parser, statement);
@@ -1614,7 +1632,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
       return er_errid ();
     }
 
-  /* 
+  /*
    * Execution Stage
    */
   er_clear ();
@@ -1739,7 +1757,9 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
     {
       /* now, execute the statement by calling do_execute_statement() */
       err = do_execute_statement (parser, statement);
-      if (err == ER_QPROC_INVALID_XASLNODE && session->stage[stmt_ndx] == StatementPreparedStage)
+      if (((err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
+	   && session->stage[stmt_ndx] == StatementPreparedStage)
+	  || (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED && session->stage[stmt_ndx] == StatementExecutedStage))
 	{
 	  /* The cache entry was deleted before 'execute' */
 	  if (statement->xasl_id)
@@ -1884,7 +1904,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	    case CUBRID_STMT_CALL:
 	    case CUBRID_STMT_INSERT:
 	    case CUBRID_STMT_GET_STATS:
-	      /* csql (in csql.c) may throw away any non-null *result, but we create a DB_QUERY_RESULT structure anyway 
+	      /* csql (in csql.c) may throw away any non-null *result, but we create a DB_QUERY_RESULT structure anyway
 	       * for other callers of db_execute that use the *result like esql_cli.c */
 	      if (pt_is_server_insert_with_generated_keys (parser, statement))
 		{
@@ -1930,7 +1950,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 		      int row_count = err;
 		      err = db_query_tuple_count (qres);
 		      /* We have a special case for REPLACE INTO: pt_node_etc (statement) holds only the inserted row
-		       * but we might have done a delete before. For this case, if err>row_count we will not change the 
+		       * but we might have done a delete before. For this case, if err>row_count we will not change the
 		       * row count */
 		      if (stmt_type == CUBRID_STMT_INSERT)
 			{
@@ -1953,7 +1973,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 		}
 	      else
 		{
-		  /* avoid changing err. it should have been meaningfully set. if err = 0, uci_static will set SQLCA to 
+		  /* avoid changing err. it should have been meaningfully set. if err = 0, uci_static will set SQLCA to
 		   * SQL_NOTFOUND! */
 		}
 	      break;
@@ -2447,7 +2467,7 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx)
   parser->auto_param_count = 0;
   parser->set_host_var = 1;
 
-  /* Multi range optimization check: if host-variables were used (not auto-parameterized), the orderby_num () limit may 
+  /* Multi range optimization check: if host-variables were used (not auto-parameterized), the orderby_num () limit may
    * change and invalidate or validate multi range optimization. Check if query needs to be recompiled. */
   if (!XASL_ID_IS_NULL (&xasl_id)	/* xasl_id should not be null */
       && !statement->info.execute.recompile	/* recompile is already planned */
@@ -2525,6 +2545,8 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
 	  return ER_PT_EXECUTE;
 	}
     }
+
+  session->parser->set_host_var = 1;
 
   return NO_ERROR;
 }
@@ -2712,13 +2734,15 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
       return er_errid ();
     }
 
-  /* cast host variables to their expected domain */
-  err = do_cast_host_variables_to_expected_domain (new_session);
-  if (err != NO_ERROR)
+  if (new_session->parser->set_host_var == 0)
     {
-      return err;
+      /* Cast host variable to expected domain, if not already casted in db_compile_statement. */
+      err = do_cast_host_variables_to_expected_domain (new_session);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
     }
-  new_session->parser->set_host_var = 1;
 
   new_session->parser->is_holdable = session->parser->is_holdable;
   new_session->parser->is_auto_commit = session->parser->is_auto_commit;
@@ -3099,10 +3123,10 @@ db_compile_and_execute_queries_internal (const char *CSQL_query, void *result, D
 }
 
 /*
- * db_set_system_generated_statement () - 
+ * db_set_system_generated_statement () -
  *
  * returns  : error status, if an invalid session is given
- *            NO_ERROR 
+ *            NO_ERROR
  * session(in) : contains the SQL query that has been compiled
  *
  */
@@ -3968,10 +3992,9 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
 {
   PT_NODE *statement;
   int stmt_ndx;
-  bool has_name_oid = false;
-  int info_hints;
   int error_code;
   bool has_user_trigger;
+  int dimension;
 
   assert (session != NULL);
 
@@ -4008,7 +4031,31 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
       return NO_ERROR;
     }
 
-  /* Check whether statement can uses auto commit. */
+  if (session->dimension > 1)
+    {
+      /* Search for select. */
+      if (!session->parser->is_holdable)
+	{
+	  /* Check all statements. */
+	  dimension = session->dimension;
+	}
+      else
+	{
+	  /* Check all statements, except the last one. */
+	  dimension = session->dimension - 1;
+	}
+
+      for (int i = 0; i < dimension; i++)
+	{
+	  if (session->statements[i] != NULL && PT_IS_QUERY_NODE_TYPE (session->statements[i]->node_type))
+	    {
+	      /* Avoid situation when the driver requests data after closing cursors. */
+	      return NO_ERROR;
+	    }
+	}
+    }
+
+  /* Check whether statement can use auto commit. */
   error_code = tr_has_user_trigger (&has_user_trigger);
   if (error_code != NO_ERROR)
     {
@@ -4017,29 +4064,56 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
 
   if (has_user_trigger)
     {
-      /* Triggers must be excuted before commit. Disable optimization. */
+      /* Triggers must be executed before commit. Disable optimization. */
       return NO_ERROR;
     }
+
+  if (db_can_execute_statement_with_autocommit (session->parser, statement))
+    {
+      statement->use_auto_commit = 1;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * db_can_execute_statement_with_autocommit () - Check whether the statement can be executed with commit.
+ *
+ * return : true, if the statement can be executed with commit.
+ * parser(in): the parser
+ * statement(in): the statement
+ *
+ */
+static bool
+db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  bool has_name_oid = false;
+  int info_hints;
+  PT_NODE *arg1, *arg2;
+  bool can_execute_statement_with_commit;
+
+  assert (parser != NULL && statement != NULL);
 
   /* Here you can add more statements, if you think that is safe to execute them with commit.
    * For now, we care about optimizing most common queries.
    */
+  can_execute_statement_with_commit = false;
+
   switch (statement->node_type)
     {
     case PT_SELECT:
       /* Check whether the optimization can be used. Disable it, if several broker/server requests are needed. */
-      if (!statement->info.query.oids_included && !statement->info.query.is_view_spec
-	  && !statement->info.query.has_system_class && statement->info.query.into_list == NULL)
+      if (!statement->info.query.oids_included && statement->info.query.into_list == NULL)
 	{
 	  info_hints = (PT_HINT_SELECT_KEY_INFO | PT_HINT_SELECT_PAGE_INFO
 			| PT_HINT_SELECT_KEY_INFO | PT_HINT_SELECT_BTREE_NODE_INFO);
 	  if ((statement->info.query.q.select.hint & info_hints) == 0)
 	    {
-	      (void) parser_walk_tree (session->parser, statement->info.query.q.select.list, pt_has_name_oid,
+	      (void) parser_walk_tree (parser, statement->info.query.q.select.list, pt_has_name_oid,
 				       &has_name_oid, NULL, NULL);
 	      if (!has_name_oid)
 		{
-		  statement->use_auto_commit = 1;
+		  can_execute_statement_with_commit = true;
 		}
 	    }
 	}
@@ -4049,7 +4123,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
       /* Do not use optimization in case of insert execution on broker side */
       if (statement->info.insert.execute_with_commit_allowed)
 	{
-	  statement->use_auto_commit = 1;
+	  can_execute_statement_with_commit = true;
 	}
       break;
 
@@ -4057,7 +4131,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
       /* Do not use optimization in case of update execution on broker side */
       if (statement->info.update.execute_with_commit_allowed)
 	{
-	  statement->use_auto_commit = 1;
+	  can_execute_statement_with_commit = true;
 	}
       break;
 
@@ -4068,7 +4142,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
 	  /* If del_stmt_list is not null, we may need several broker/server requests */
 	  if (statement->info.delete_.del_stmt_list == NULL)
 	    {
-	      statement->use_auto_commit = 1;
+	      can_execute_statement_with_commit = true;
 	    }
 	}
       break;
@@ -4076,14 +4150,45 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
     case PT_MERGE:
       if (statement->info.merge.flags & PT_MERGE_INFO_SERVER_OP)
 	{
-	  statement->use_auto_commit = 1;
+	  can_execute_statement_with_commit = true;
 	}
       break;
 
-      // TODO - what else? for instance, merge, other dmls, ddls.       
+    case PT_UNION:
+    case PT_INTERSECTION:
+    case PT_DIFFERENCE:
+      arg1 = statement->info.query.q.union_.arg1;
+      arg2 = statement->info.query.q.union_.arg2;
+
+      /* At least one argument must be not null to enable the optimization. */
+      if (arg1 != NULL)
+	{
+	  if (arg2 != NULL)
+	    {
+	      if (db_can_execute_statement_with_autocommit (parser, arg1)
+		  && db_can_execute_statement_with_autocommit (parser, arg2))
+		{
+		  can_execute_statement_with_commit = true;
+		}
+	    }
+	  else if (db_can_execute_statement_with_autocommit (parser, arg1))
+	    {
+	      can_execute_statement_with_commit = true;
+	    }
+	}
+      else if (arg2 != NULL)
+	{
+	  if (db_can_execute_statement_with_autocommit (parser, arg2))
+	    {
+	      can_execute_statement_with_commit = true;
+	    }
+	}
+      break;
+
+      // TODO - what else? for instance, other dmls, ddls.
     default:
       break;
     }
 
-  return NO_ERROR;
+  return can_execute_statement_with_commit;
 }

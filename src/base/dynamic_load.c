@@ -372,7 +372,7 @@ dl_decipher_waitval (int waitval)
     }
   else if (WIFSIGNALED (waitval))
     {
-      /* 
+      /*
        * Child terminated by signal.
        */
       DL_SET_ERROR_WITH_CODE_ONE_ARG (ER_DL_LDTERM, WTERMSIG (waitval));
@@ -1510,7 +1510,7 @@ cleanup:
 		}
 	    }
 
-	  /* 
+	  /*
 	   * Don't use free_and_init on tmp_file; it came to us via tempnam().
 	   */
 	  free ((char *) tmp_file);

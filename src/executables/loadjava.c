@@ -116,7 +116,8 @@ filecopy (const char *fn_src, const char *fn_dst)
 	  c = getchar ();
 	  if (c != 'Y' && c != 'y')
 	    {
-	      fprintf (stdout, "loadjava is cancled\n");
+	      fclose (fh_src);
+	      fprintf (stdout, "loadjava is canceled\n");
 	      return 0;
 	    }
 	}

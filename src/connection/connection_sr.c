@@ -306,7 +306,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->session_id = DB_EMPTY_SESSION;
 #if defined(SERVER_MODE)
   conn->session_p = NULL;
-  conn->client_type = BOOT_CLIENT_UNKNOWN;
+  conn->client_type = DB_CLIENT_TYPE_UNKNOWN;
 #endif
 
   err = css_initialize_list (&conn->request_queue, 0);
@@ -448,7 +448,7 @@ css_init_conn_list (void)
       return err;
     }
 
-  /* 
+  /*
    * allocate NUM_MASTER_CHANNEL + the total number of
    *  conn entries
    */
@@ -838,7 +838,7 @@ css_decrement_num_conn (BOOT_CLIENT_TYPE client_type)
 {
   int i;
 
-  if (client_type == BOOT_CLIENT_UNKNOWN)
+  if (client_type == DB_CLIENT_TYPE_UNKNOWN)
     {
       return;
     }
@@ -1072,7 +1072,7 @@ css_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid,
 CSS_CONN_ENTRY *
 css_connect_to_master_server (int master_port_id, const char *server_name, int name_length)
 {
-  char hname[MAXHOSTNAMELEN];
+  char hname[CUB_MAXHOSTNAMELEN];
   CSS_CONN_ENTRY *conn;
   unsigned short rid;
   int response, response_buff;
@@ -1084,7 +1084,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 #endif
 
   css_Service_id = master_port_id;
-  if (GETHOSTNAME (hname, MAXHOSTNAMELEN) != 0)
+  if (GETHOSTNAME (hname, CUB_MAXHOSTNAMELEN) != 0)
     {
       return NULL;
     }
@@ -1128,7 +1128,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
       goto fail_end;
 
     case SERVER_REQUEST_ACCEPTED_NEW:
-      /* 
+      /*
        * Master requests a new-style connect, must go get
        * our port id and set up our connection socket.
        * For drivers, we don't need a connection socket and we
@@ -2217,7 +2217,7 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type, unsigned short request_id, co
       next = p->next_wait_thrd;
       p->next_wait_thrd = NULL;
 
-      /* When the resume_status is THREAD_CSS_QUEUE_SUSPENDED, it means the data waiting thread is still waiting on the 
+      /* When the resume_status is THREAD_CSS_QUEUE_SUSPENDED, it means the data waiting thread is still waiting on the
        * data queue. Otherwise, in case of THREAD_CSECT_WRITER_SUSPENDED, it means that the thread was timed out, is
        * trying to clear its queue buffer (see clear_wait_queue_entry_and_free_buffer function), and waiting for its
        * conn->csect. We don't need to wakeup the thread for this case. We may send useless signal for it, but it may
@@ -2337,7 +2337,7 @@ css_queue_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
       buffer = (char *) malloc (size);
     }
 
-  /* 
+  /*
    * check if there exists thread waiting for data.
    * Add to wake_thrd list.
    */

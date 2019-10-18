@@ -33,20 +33,31 @@
 
 #include <stdio.h>
 
-#include "dbdef.h"
+#include "dbtype_def.h"
+#include "lob_locator.hpp"
 #include "replication.h"
 #include "server_interface.h"
 #include "perf_monitor.h"
 #include "storage_common.h"
 #include "object_domain.h"
 #include "query_list.h"
+#include "query_monitoring.hpp"
 #include "statistics.h"
 #include "connection_defs.h"
 #include "log_writer.h"
 #include "language_support.h"
-#include "log_impl.h"
+#include "log_common_impl.h"
 #include "parse_tree.h"
-#include "xasl.h"
+#include "load_common.hpp"
+#include "timezone_lib_common.h"
+
+// forward declarations
+#if defined (SA_MODE)
+struct bo_restart_arg;
+#endif
+struct compile_context;
+struct xasl_node_header;
+struct xasl_stream;
 
 /* killtran supporting structures and functions */
 typedef struct one_tran_info ONE_TRAN_INFO;
@@ -121,10 +132,13 @@ extern void log_set_interrupt (int set);
 extern int log_checkpoint (void);
 extern void log_dump_stat (FILE * outfp);
 extern int log_set_suppress_repl_on_transaction (int set);
+
+#if defined (CS_MODE)
 extern LOB_LOCATOR_STATE log_find_lob_locator (const char *locator, char *real_locator);
 extern int log_add_lob_locator (const char *locator, LOB_LOCATOR_STATE state);
 extern int log_change_state_of_locator (const char *locator, const char *real_locator, LOB_LOCATOR_STATE state);
 extern int log_drop_lob_locator (const char *locator);
+#endif // CS_MODE
 
 extern TRAN_STATE tran_server_commit (bool retain_lock);
 extern TRAN_STATE tran_server_abort (void);
@@ -183,7 +197,9 @@ extern int boot_find_number_temp_volumes (void);
 extern VOLID boot_find_last_permanent (void);
 extern int boot_find_last_temp (void);
 extern int boot_delete (const char *db_name, bool force_delete);
-extern int boot_restart_from_backup (int print_restart, const char *db_name, BO_RESTART_ARG * r_args);
+#if defined (SA_MODE)
+extern int boot_restart_from_backup (int print_restart, const char *db_name, bo_restart_arg * r_args);
+#endif // SA_MODE
 extern bool boot_shutdown_server (ER_FINAL_CODE iserfinal);
 extern int boot_soft_rename (const char *old_db_name, const char *new_db_name, const char *new_db_path,
 			     const char *new_log_path, const char *new_db_server_host, const char *new_volext_path,
@@ -206,7 +222,7 @@ extern int btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_t
 			     int n_attrs, int *attr_ids, int *attrs_prefix_length, HFID * hfids, int unique_pk,
 			     int not_null_flag, OID * fk_refcls_oid, BTID * fk_refcls_pk_btid, const char *fk_name,
 			     char *pred_stream, int pred_stream_size, char *expr_stream, int expr_stream_size,
-			     int func_col_id, int func_attr_index_start);
+			     int func_col_id, int func_attr_index_start, SM_INDEX_STATUS index_status);
 extern int btree_delete_index (BTID * btid);
 extern int locator_log_force_nologging (void);
 extern int locator_remove_class_from_index (OID * oid, BTID * btid, HFID * hfid);
@@ -216,7 +232,7 @@ extern BTREE_SEARCH btree_find_multi_uniques (OID * class_oid, int pruning_type,
 					      int count, SCAN_OPERATION_TYPE op_type, OID ** oids, int *oids_count);
 extern int btree_class_test_unique (char *buf, int buf_size);
 extern int qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid, char *buffer, int *buffer_size);
-extern int qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream);
+extern int qmgr_prepare_query (struct compile_context *context, xasl_stream * stream);
 
 extern QFILE_LIST_ID *qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt,
 					  const DB_VALUE * dbvals, QUERY_FLAG flag, CACHE_TIME * clt_cache_time,
@@ -382,7 +398,7 @@ extern int csession_reset_cur_insert_id (void);
 extern int csession_create_prepared_statement (const char *name, const char *alias_print, char *stmt_info,
 					       int info_length);
 extern int csession_get_prepared_statement (const char *name, XASL_ID * xasl_id, char **stmt_info,
-					    XASL_NODE_HEADER * xasl_header_p);
+					    xasl_node_header * xasl_header_p);
 
 extern int csession_delete_prepared_statement (const char *name);
 
@@ -403,4 +419,13 @@ extern int log_does_active_user_exist (const char *user_name, bool * existed);
 extern int netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILES * spacefiles);
 
 extern int locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * ex_lock);
+
+extern int loaddb_init (cubload::load_args & args);
+extern int loaddb_install_class (const cubload::batch & batch, bool & class_is_ignored, std::string & class_name);
+extern int loaddb_load_batch (const cubload::batch & batch, bool use_temp_batch, bool & is_batch_accepted);
+/* *INDENT-OFF* */
+extern int loaddb_fetch_stats (std::vector<load_stats> &stats);
+/* *INDENT-ON* */
+extern int loaddb_destroy ();
+extern int loaddb_interrupt ();
 #endif /* _NETWORK_INTERFACE_CL_H_ */

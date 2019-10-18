@@ -131,7 +131,7 @@ typedef enum
  *   Currently, classes does not have versions. So, fetching current, MVCC or
  * dirty version lead to same result when classes are fetched. However,
  * using LC_FETCH_CURRENT_VERSION is recommended in this case.
- * 
+ *
  *   When need to read an instance (DB_FETCH_READ) for SELECT purpose, use MVCC
  * version type. This means visible version for current transaction, without
  * locking. In this way, we respect the rule "do not lock instances at select"
@@ -273,7 +273,7 @@ struct lc_lockset_classof
 typedef struct lc_lock_set LC_LOCKSET;
 struct lc_lock_set
 {				/* Fetch many area definition */
-  char *mem;			/* Pointer to location of chunk of area where the desired objects and their classes are 
+  char *mem;			/* Pointer to location of chunk of area where the desired objects and their classes are
 				 * described */
   int length;			/* Length of the area */
 
@@ -290,7 +290,7 @@ struct lc_lock_set
   /* *** Things related to classes of the requested objects *** */
   int num_classes_of_reqobjs;	/* Number of known classes for the requested objects. */
   int num_classes_of_reqobjs_processed;	/* Number of classes processed by the server */
-  int last_classof_reqobjs_cached;	/* Last requested object that has been cached by workspace manger. Used only bt 
+  int last_classof_reqobjs_cached;	/* Last requested object that has been cached by workspace manger. Used only bt
 					 * client. Don't need to be send to server or from server. */
   int quit_on_errors;		/* Quit when errors are found */
   int packed_size;		/* Size of packed lock request area */

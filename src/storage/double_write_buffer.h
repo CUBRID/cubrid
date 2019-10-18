@@ -27,6 +27,7 @@
 #ident "$Id$"
 
 #include "file_io.h"
+#include "log_lsa.hpp"
 
 /* The double write slot type */
 typedef struct double_write_slot DWB_SLOT;
@@ -37,7 +38,6 @@ struct double_write_slot
   LOG_LSA lsa;			/* The page LSA */
   unsigned int position_in_block;	/* The position in block. */
   unsigned int block_no;	/* The number of the block where the slot reside. */
-  volatile int checksum_status;	/* The checksum status. */
 };
 
 /* double write buffer interface */

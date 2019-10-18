@@ -48,10 +48,11 @@
 #include "lock_free.h"
 #include "object_primitive.h"
 #include "dbtype.h"
+#include "string_opfunc.h"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
-
+#include "xasl_cache.h"
 
 
 #if !defined(SERVER_MODE)
@@ -140,6 +141,8 @@ struct session_state
   int ref_count;
   TZ_REGION session_tz_region;
   int private_lru_index;
+
+  load_session *load_session_p;
 };
 
 /* session state manipulation functions */
@@ -281,6 +284,7 @@ session_state_init (void *st)
   session_p->trace_format = QUERY_TRACE_TEXT;
   session_p->private_lru_index = -1;
   session_p->auto_commit = false;
+  session_p->load_session_p = NULL;
 
   return NO_ERROR;
 }
@@ -361,6 +365,18 @@ session_state_uninit (void *st)
     {
       free_and_init (session->plan_string);
     }
+
+#if defined (SERVER_MODE)
+  // on uninit abort and delete loaddb session
+  if (session->load_session_p != NULL)
+    {
+      session->load_session_p->interrupt ();
+      session->load_session_p->wait_for_completion ();
+
+      delete session->load_session_p;
+      session->load_session_p = NULL;
+    }
+#endif
 
   return NO_ERROR;
 }
@@ -497,28 +513,18 @@ session_free_prepared_statement (PREPARED_STATEMENT * stmt_p)
 
 // *INDENT-OFF*
 #if defined (SERVER_MODE)
-// class session_control_daemon_task
-//
-//  description:
-//    session control daemon task
-//
-class session_control_daemon_task : public cubthread::entry_task
+void
+session_control_daemon_execute (cubthread::entry & thread_ref)
 {
-  public:
-    void execute (cubthread::entry & thread_ref) override
+  if (!BO_IS_SERVER_RESTARTED ())
     {
-      if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
-
-      session_remove_expired_sessions (&thread_ref);
+      // wait for boot to finish
+      return;
     }
-};
-#endif /* SERVER_MODE */
 
-#if defined (SERVER_MODE)
+  session_remove_expired_sessions (&thread_ref);
+}
+
 /*
  * session_control_daemon_init () - initialize session control daemon
  */
@@ -528,14 +534,13 @@ session_control_daemon_init ()
   assert (session_Control_daemon == NULL);
 
   cubthread::looper looper = cubthread::looper (std::chrono::seconds (60));
-  session_control_daemon_task *daemon_task = new session_control_daemon_task ();
+  cubthread::entry_callable_task *daemon_task =
+    new cubthread::entry_callable_task (std::bind (session_control_daemon_execute, std::placeholders::_1));
 
   // create session control daemon thread
   session_Control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "session_control");
 }
-#endif /* SERVER_MODE */
 
-#if defined (SERVER_MODE)
 /*
  * session_control_daemon_destroy () - destroy session control daemon
  */
@@ -694,7 +699,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
       return ER_FAILED;
     }
 
-  /* inserted key might have been incremented; if last_session_id was not modified in the meantime, store the new value 
+  /* inserted key might have been incremented; if last_session_id was not modified in the meantime, store the new value
    */
   ATOMIC_CAS_32 (&sessions.last_session_id, next_session_id, *id);
 
@@ -1818,7 +1823,7 @@ error:
  */
 int
 session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char **info, int *info_len,
-				XASL_CACHE_ENTRY ** xasl_entry)
+				xasl_cache_ent ** xasl_entry)
 {
   SESSION_STATE *state_p = NULL;
   PREPARED_STATEMENT *stmt_p = NULL;
@@ -1956,7 +1961,7 @@ login_user (THREAD_ENTRY * thread_p, const char *username)
   tdes = LOG_FIND_TDES (tran_index);
   if (tdes != NULL)
     {
-      strncpy (tdes->client.db_user, username, DB_MAX_USER_LENGTH);
+      tdes->client.set_user (username);
     }
 
   return NO_ERROR;
@@ -3154,6 +3159,38 @@ session_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit)
     }
 
   state_p->auto_commit = auto_commit;
+
+  return NO_ERROR;
+}
+
+int
+session_set_load_session (THREAD_ENTRY * thread_p, load_session * load_session_p)
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  state_p->load_session_p = load_session_p;
+
+  return NO_ERROR;
+}
+
+int
+session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_session_ref_ptr))
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  load_session_ref_ptr = state_p->load_session_p;
 
   return NO_ERROR;
 }

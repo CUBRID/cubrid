@@ -31,13 +31,11 @@
 
 #include <stdio.h>
 #include "error_manager.h"
-#include "dbdef.h"
 #include "intl_support.h"
 #include "db_date.h"
 #include "object_representation.h"
 #include "object_domain.h"
 #if !defined(SERVER_MODE)
-#include "authenticate.h"
 #include "trigger_manager.h"
 #include "dbi.h"
 #include "parser.h"

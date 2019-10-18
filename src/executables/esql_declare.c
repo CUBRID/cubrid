@@ -275,7 +275,7 @@ pp_add_spec_to_decl (LINK * p_spec, SYMBOL * decl_chain)
 
       decl_chain->etype = clone_end;
 
-      /* 
+      /*
        * If the declaration we're looking at is really a typedef,
        * record the symbol itself within the specifier.  This will
        * make it easier to point back to the symbol from other
@@ -701,7 +701,7 @@ pp_add_struct_spec (STRUCTDEF * sdef)
 
   if (sdef == NULL)
     {
-      /* 
+      /*
        * There was already some sort of error during parsing, and we've
        * wound up here in a sort of no-op mode.  Just ignore it.
        */
@@ -999,7 +999,7 @@ pp_add_typedefed_spec (LINK * spec)
       return;
     }
 
-  /* 
+  /*
    * Reset any class info in the new spec; this is ok since this spec
    * will be cloned onto every declarator that it modifies, and then
    * reset before every future use.  The clones will keep any specific
@@ -1128,7 +1128,7 @@ pp_print_link (LINK * p, varstring * buf, int context, int preechoed)
       vs_prepend (buf, TOK_SPACE);
       vs_prepend (buf, (char *) p->from_tdef->name);
 
-      /* 
+      /*
        * Now find the terminal specifier in the link chain and extract
        * any information about storage class specifiers.
        */
@@ -1225,7 +1225,7 @@ pp_print_link (LINK * p, varstring * buf, int context, int preechoed)
 		vs_free (&fields);
 		vs_free (&tmp);
 	      }
-	    /* 
+	    /*
 	     * Don't print the tags that we have invented for "anonymous"
 	     * structs.  Probably ought to encapsulate this better.
 	     */
@@ -1298,7 +1298,7 @@ pp_print_link (LINK * p, varstring * buf, int context, int preechoed)
 	    SYMBOL *arg;
 	    varstring tmp;
 
-	    /* 
+	    /*
 	     * If this is a complex declaration like
 	     *
 	     *      int (*f)(int);

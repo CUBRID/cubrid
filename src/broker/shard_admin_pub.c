@@ -68,7 +68,7 @@
 #include "shard_metadata.h"
 #include "shard_admin_pub.h"
 
-#define ADMIN_ERR_MSG_SIZE	1024
+#define ADMIN_ERR_MSG_SIZE	BROKER_PATH_MAX * 2
 
 char admin_err_msg[ADMIN_ERR_MSG_SIZE];
 
@@ -668,7 +668,7 @@ shard_as_inactivate (T_BROKER_INFO * br_info_p, T_APPL_SERVER_INFO * as_info_p, 
 
   CON_STATUS_LOCK_DESTROY (as_info_p);
 
-  /* 
+  /*
    * shard_cas does not have unix-domain socket and pid lock file.
    * so, we need not delete socket and lock file.
    */

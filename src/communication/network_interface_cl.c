@@ -33,6 +33,7 @@
 #include "network.h"
 #include "network_interface_cl.h"
 #include "memory_alloc.h"
+#include "mem_block.hpp"
 #include "storage_common.h"
 #if defined(CS_MODE)
 #include "server_interface.h"
@@ -50,6 +51,7 @@
 #endif /* defined (SA_MODE) */
 #include "oid.h"
 #include "error_manager.h"
+#include "object_primitive.h"
 #include "object_representation.h"
 #include "log_comm.h"
 #include "log_writer.h"
@@ -63,9 +65,12 @@
 #include "db.h"
 #include "db_query.h"
 #include "dbtype.h"
+#include "compile_context.h"
 #if defined (SA_MODE)
 #include "thread_manager.hpp"
 #endif // SA_MODE
+#include "xasl.h"
+#include "lob_locator.hpp"
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
@@ -221,7 +226,6 @@ length_const_string (const char *cstring, int *strlen)
 {
   return or_packed_string_length (cstring, strlen);
 }
-
 
 /*
  * length_string_with_null_padding - calculate length with null padding
@@ -819,7 +823,7 @@ locator_fetch_lockset (LC_LOCKSET * lockset, LC_COPYAREA ** fetch_copyarea)
       *fetch_copyarea = NULL;
     }
 
-  /* 
+  /*
    * We will not need to send the lockset structure any more. We do not
    * need to receive the classes and objects in the lockset structure
    * any longer
@@ -1317,7 +1321,7 @@ locator_assign_oid_batch (LC_OIDSET * oidset)
   char *buffer, *ptr;
   int req_error;
 
-  /* 
+  /*
    * Build a buffer in which to send and receive the goobers.  We'll
    * reuse the same buffer to receive the data as we used to send it.
    * First word is reserved for the return code.
@@ -2226,6 +2230,7 @@ log_set_suppress_repl_on_transaction (int set)
 #endif /* !CS_MODE */
 }
 
+#if defined(CS_MODE)
 /*
  * log_find_lob_locator -
  *
@@ -2239,7 +2244,6 @@ log_set_suppress_repl_on_transaction (int set)
 LOB_LOCATOR_STATE
 log_find_lob_locator (const char *locator, char *real_locator)
 {
-#if defined(CS_MODE)
   LOB_LOCATOR_STATE state = LOB_UNKNOWN;
   int req_error, state_int, request_size, strlen;
   char *request, *reply, *ptr;
@@ -2268,16 +2272,6 @@ log_find_lob_locator (const char *locator, char *real_locator)
   free_and_init (request);
 
   return state;
-#else /* CS_MODE */
-  LOB_LOCATOR_STATE state;
-
-  THREAD_ENTRY *thread_p = enter_server ();
-
-  state = xlog_find_lob_locator (thread_p, locator, real_locator);
-
-  exit_server (*thread_p);
-  return state;
-#endif /* !CS_MODE */
 }
 
 /*
@@ -2293,7 +2287,6 @@ log_find_lob_locator (const char *locator, char *real_locator)
 int
 log_add_lob_locator (const char *locator, LOB_LOCATOR_STATE state)
 {
-#if defined(CS_MODE)
   int req_error, error_code = ER_FAILED, request_size, strlen;
   char *request, *reply;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
@@ -2320,17 +2313,6 @@ log_add_lob_locator (const char *locator, LOB_LOCATOR_STATE state)
   free_and_init (request);
 
   return error_code;
-#else /* CS_MODE */
-  int error_code;
-
-  THREAD_ENTRY *thread_p = enter_server ();
-
-  error_code = xlog_add_lob_locator (thread_p, locator, state);
-
-  exit_server (*thread_p);
-
-  return error_code;
-#endif /* !CS_MODE */
 }
 
 /*
@@ -2346,7 +2328,6 @@ log_add_lob_locator (const char *locator, LOB_LOCATOR_STATE state)
 int
 log_change_state_of_locator (const char *locator, const char *new_locator, LOB_LOCATOR_STATE state)
 {
-#if defined(CS_MODE)
   int req_error, error_code = ER_NET_CLIENT_DATA_RECEIVE;
   int request_size, strlen, strlen2;
   char *request, *reply;
@@ -2375,17 +2356,6 @@ log_change_state_of_locator (const char *locator, const char *new_locator, LOB_L
   free_and_init (request);
 
   return error_code;
-#else /* CS_MODE */
-  int error_code;
-
-  THREAD_ENTRY *thread_p = enter_server ();
-
-  error_code = xlog_change_state_of_locator (thread_p, locator, new_locator, state);
-
-  exit_server (*thread_p);
-
-  return error_code;
-#endif /* !CS_MODE */
 }
 
 /*
@@ -2400,7 +2370,6 @@ log_change_state_of_locator (const char *locator, const char *new_locator, LOB_L
 int
 log_drop_lob_locator (const char *locator)
 {
-#if defined(CS_MODE)
   int req_error, error_code = ER_NET_CLIENT_DATA_RECEIVE;
   int request_size, strlen;
   char *request, *reply;
@@ -2427,18 +2396,8 @@ log_drop_lob_locator (const char *locator)
   free_and_init (request);
 
   return error_code;
-#else /* CS_MODE */
-  int error_code;
-
-  THREAD_ENTRY *thread_p = enter_server ();
-
-  error_code = xlog_drop_lob_locator (thread_p, locator);
-
-  exit_server (*thread_p);
-
-  return error_code;
-#endif /* !CS_MODE */
 }
+#endif // CS_MODE
 
 /*
  * tran_server_commit -
@@ -2496,7 +2455,7 @@ tran_server_commit (bool retain_lock)
       ptr = or_unpack_int (ptr, &should_conn_reset);
       if (should_conn_reset != 0 && log_does_allow_replication ())
 	{
-	  /* 
+	  /*
 	   * fail-back action
 	   * make the client to reconnect to the active server
 	   */
@@ -2552,7 +2511,7 @@ tran_server_abort (void)
       ptr = or_unpack_int (ptr, &should_conn_reset);
       if (should_conn_reset != 0 && log_does_allow_replication ())
 	{
-	  /* 
+	  /*
 	   * fail-back action
 	   * make the client to reconnect to the active server
 	   */
@@ -3359,7 +3318,6 @@ acl_reload ()
 #endif /* !CS_MODE */
 }
 
-
 /*
  * acl_dump -
  *
@@ -3447,87 +3405,9 @@ boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_D
 			TRAN_ISOLATION client_isolation)
 {
 #if defined(CS_MODE)
-#if defined(ENABLE_UNUSED_FUNCTION)
-  int tran_index = NULL_TRAN_INDEX;
-  int request_size;
-  int req_error;
-  char *request, *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_OID_SIZE + OR_HFID_SIZE) a_reply;
-  char *reply;
-
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  request_size = (OR_INT_SIZE	/* client_type */
-		  + length_const_string (client_credential->client_info, NULL)	/* client_info */
-		  + length_const_string (client_credential->db_name, NULL)	/* db_name */
-		  + length_const_string (client_credential->db_user, NULL)	/* db_user */
-		  + length_const_string (client_credential->db_password, NULL)	/* db_password */
-		  + length_const_string (client_credential->program_name, NULL)	/* program_name */
-		  + length_const_string (client_credential->login_name, NULL)	/* login_name */
-		  + length_const_string (client_credential->host_name, NULL)	/* host_name */
-		  + OR_INT_SIZE	/* process_id */
-		  + OR_INT_SIZE	/* db_overwrite */
-		  + OR_INT_SIZE	/* db_desired_pagesize */
-		  + OR_INT_SIZE	/* db_npages */
-		  + OR_INT_SIZE	/* db_desired_log_page_size */
-		  + OR_INT_SIZE	/* log_npages */
-		  + length_const_string (db_path_info->db_path, NULL)	/* db_path */
-		  + length_const_string (db_path_info->vol_path, NULL)	/* vol_path */
-		  + length_const_string (db_path_info->log_path, NULL)	/* log_path */
-		  + length_const_string (db_path_info->db_host, NULL)	/* db_host */
-		  + length_const_string (db_path_info->db_comments, NULL)	/* db_comments */
-		  + length_const_string (file_addmore_vols, NULL)	/* file_addmore_vols */
-		  + OR_INT_SIZE	/* client_lock_wait */
-		  + OR_INT_SIZE /* client_isolation */ );
-
-  request = (char *) malloc (request_size);
-  if (request)
-    {
-      ptr = or_pack_int (request, client_credential->client_type);
-      ptr = pack_const_string (ptr, client_credential->client_info);
-      ptr = pack_const_string (ptr, client_credential->db_name);
-      ptr = pack_const_string (ptr, client_credential->db_user);
-      ptr = pack_const_string (ptr, client_credential->db_password);
-      ptr = pack_const_string (ptr, client_credential->program_name);
-      ptr = pack_const_string (ptr, client_credential->login_name);
-      ptr = pack_const_string (ptr, client_credential->host_name);
-      ptr = or_pack_int (ptr, client_credential->process_id);
-      ptr = or_pack_int (ptr, db_overwrite);
-      ptr = or_pack_int (ptr, db_desired_pagesize);
-      ptr = or_pack_int (ptr, db_npages);
-      ptr = or_pack_int (ptr, db_desired_log_page_size);
-      ptr = or_pack_int (ptr, log_npages);
-      ptr = pack_const_string (ptr, db_path_info->db_path);
-      ptr = pack_const_string (ptr, db_path_info->vol_path);
-      ptr = pack_const_string (ptr, db_path_info->log_path);
-      ptr = pack_const_string (ptr, db_path_info->db_host);
-      ptr = pack_const_string (ptr, db_path_info->db_comments);
-      ptr = pack_const_string (ptr, file_addmore_vols);
-      ptr = or_pack_int (ptr, client_lock_wait);
-      ptr = or_pack_int (ptr, (int) client_isolation);
-
-      req_error =
-	net_client_request (NET_SERVER_BO_INIT_SERVER, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-			    NULL, 0, NULL, 0);
-      if (!req_error)
-	{
-	  ptr = or_unpack_int (reply, &tran_index);
-	  ptr = or_unpack_oid (ptr, rootclass_oid);
-	  ptr = or_unpack_hfid (ptr, rootclass_hfid);
-	}
-      free_and_init (request);
-    }
-  else
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-    }
-
-  return tran_index;
-#else /* ENABLE_UNUSED_FUNCTION */
   /* Should not called in CS_MODE */
   assert (0);
   return NULL_TRAN_INDEX;
-#endif /* !ENABLE_UNUSED_FUNCTION */
 #else /* CS_MODE */
   int tran_index = NULL_TRAN_INDEX;
 
@@ -3561,45 +3441,19 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 {
 #if defined(CS_MODE)
   int tran_index = NULL_TRAN_INDEX;
-  int request_size, area_size, req_error, temp_int;
-  char *request, *reply, *area, *ptr;
+  int area_size, req_error, temp_int;
+  char *reply, *area, *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = (OR_INT_SIZE	/* client_type */
-		  + length_const_string (client_credential->client_info, NULL)	/* client_info */
-		  + length_const_string (client_credential->db_name, NULL)	/* db_name */
-		  + length_const_string (client_credential->db_user, NULL)	/* db_user */
-		  + length_const_string (client_credential->db_password, NULL)	/* db_password */
-		  + length_const_string (client_credential->program_name, NULL)	/* prog_name */
-		  + length_const_string (client_credential->login_name, NULL)	/* login_name */
-		  + length_const_string (client_credential->host_name, NULL)	/* host_name */
-		  + OR_INT_SIZE	/* process_id */
-		  + OR_INT_SIZE	/* client_lock_wait */
-		  + OR_INT_SIZE /* client_isolation */ );
+  packing_packer packer;
+  cubmem::extensible_block ext_blk;
+  int clisol_toint = (int) client_isolation;
+  packer.set_buffer_and_pack_all (ext_blk, *client_credential, client_lock_wait, clisol_toint);
 
-  request = (char *) malloc (request_size);
-  if (request == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-      return NULL_TRAN_INDEX;
-    }
-
-  ptr = or_pack_int (request, (int) client_credential->client_type);
-  ptr = pack_const_string (ptr, client_credential->client_info);
-  ptr = pack_const_string (ptr, client_credential->db_name);
-  ptr = pack_const_string (ptr, client_credential->db_user);
-  ptr = pack_const_string (ptr, client_credential->db_password);
-  ptr = pack_const_string (ptr, client_credential->program_name);
-  ptr = pack_const_string (ptr, client_credential->login_name);
-  ptr = pack_const_string (ptr, client_credential->host_name);
-  ptr = or_pack_int (ptr, client_credential->process_id);
-  ptr = or_pack_int (ptr, client_lock_wait);
-  ptr = or_pack_int (ptr, (int) client_isolation);
-
-  req_error = net_client_request2 (NET_SERVER_BO_REGISTER_CLIENT, request, request_size, reply,
-				   OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
+  req_error = net_client_request2 (NET_SERVER_BO_REGISTER_CLIENT, ext_blk.get_ptr (), (int) packer.get_current_size (),
+				   reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
   if (!req_error)
     {
       or_unpack_int (reply, &area_size);
@@ -3635,8 +3489,6 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 	}
       free_and_init (area);
     }
-
-  free_and_init (request);
 
   return tran_index;
 #else /* CS_MODE */
@@ -4114,6 +3966,7 @@ boot_delete (const char *db_name, bool force_delete)
 #endif /* !CS_MODE */
 }
 
+#if defined (SA_MODE)
 /*
  * boot_restart_from_backup -
  *
@@ -4122,12 +3975,8 @@ boot_delete (const char *db_name, bool force_delete)
  * NOTE:
  */
 int
-boot_restart_from_backup (int print_restart, const char *db_name, BO_RESTART_ARG * r_args)
+boot_restart_from_backup (int print_restart, const char *db_name, bo_restart_arg * r_args)
 {
-#if defined(CS_MODE)
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ONLY_IN_STANDALONE, 1, "restart from backup");
-  return NULL_TRAN_INDEX;
-#else /* CS_MODE */
   int tran_index;
 
   enter_server_no_thread_entry ();
@@ -4137,8 +3986,8 @@ boot_restart_from_backup (int print_restart, const char *db_name, BO_RESTART_ARG
   exit_server_no_thread_entry ();
 
   return tran_index;
-#endif /* !CS_MODE */
 }
+#endif /* SA_MODE */
 
 /*
  * boot_shutdown_server -
@@ -4728,7 +4577,7 @@ error:
  */
 int
 csession_get_prepared_statement (const char *name, XASL_ID * xasl_id, char **stmt_info,
-				 XASL_NODE_HEADER * xasl_header_p)
+				 xasl_node_header * xasl_header_p)
 {
 #if defined (CS_MODE)
   int req_error = NO_ERROR;
@@ -5580,18 +5429,22 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 		  int *attr_ids, int *attrs_prefix_length, HFID * hfids, int unique_pk, int not_null_flag,
 		  OID * fk_refcls_oid, BTID * fk_refcls_pk_btid, const char *fk_name, char *pred_stream,
 		  int pred_stream_size, char *expr_stream, int expr_stream_size, int func_col_id,
-		  int func_attr_index_start)
+		  int func_attr_index_start, SM_INDEX_STATUS index_status)
 {
 #if defined(CS_MODE)
   int error = NO_ERROR, req_error, request_size, domain_size;
   char *ptr;
   char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply;
   int i, total_attrs, bt_strlen, fk_strlen;
   int index_info_size = 0;
   char *stream = NULL;
   int stream_size = 0;
+  LOCK curr_cls_lock = SCH_M_LOCK;
+
+  // online index should have created the empty b-tree already
+  assert (index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS || !BTID_IS_NULL (btid));
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -5618,7 +5471,9 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 		  + OR_OID_SIZE	/* fk_refcls_oid */
 		  + OR_BTID_ALIGNED_SIZE	/* fk_refcls_pk_btid */
 		  + or_packed_string_length (fk_name, &fk_strlen)	/* fk_name */
-		  + index_info_size /* filter predicate or function index stream size */ );
+		  + index_info_size	/* filter predicate or function index stream size */
+		  + OR_INT_SIZE	/* Index status */
+		  + OR_INT_SIZE /* Thread count */ );
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -5692,22 +5547,57 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
       ptr = or_pack_int (ptr, -1);	/* stream=NULL, stream_size=0 */
     }
 
+  ptr = or_pack_int (ptr, index_status);	/* Index status. */
+  ptr = or_pack_int (ptr, ib_get_thread_count ());	// Thread count needed for parallel building
+
   req_error =
     net_client_request (NET_SERVER_BTREE_LOADINDEX, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
 			stream, stream_size, NULL, 0);
 
-  if (!req_error)
+  if (req_error == NO_ERROR)
     {
+      int t;
+
       ptr = or_unpack_int (reply, &error);
-      ptr = or_unpack_btid (ptr, btid);
-      if (error != NO_ERROR)
+
+      ptr = or_unpack_int (ptr, &t);
+      curr_cls_lock = (LOCK) t;
+
+      if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	{
-	  btid = NULL;
+	  BTID local_btid;
+	  ptr = or_unpack_btid (ptr, &local_btid);
+	  if (error != NO_ERROR)
+	    {
+	      btid = NULL;
+	    }
+	  assert (!BTID_IS_NULL (&local_btid));
+	}
+      else
+	{
+	  ptr = or_unpack_btid (ptr, btid);
+	  if (error != NO_ERROR)
+	    {
+	      btid = NULL;
+	    }
 	}
     }
   else
     {
       btid = NULL;
+      error = req_error;
+    }
+
+  if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && curr_cls_lock != SCH_M_LOCK)
+    {
+      // hope it won't happen. server failed to restore the demoted lock.
+      // It just help things don't go worse.
+
+      MOP class_mop = ws_mop (&class_oids[0], sm_Root_class_mop);
+      if (class_mop != NULL)
+	{
+	  ws_set_lock (class_mop, curr_cls_lock);
+	}
     }
 
   free_and_init (request);
@@ -5718,10 +5608,23 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  btid =
-    xbtree_load_index (thread_p, btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids, attrs_prefix_length,
-		       hfids, unique_pk, not_null_flag, fk_refcls_oid, fk_refcls_pk_btid, fk_name, pred_stream,
-		       pred_stream_size, expr_stream, expr_stream_size, func_col_id, func_attr_index_start);
+  if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+    {
+      btid =
+	xbtree_load_online_index (thread_p, btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
+				  attrs_prefix_length, hfids, unique_pk, not_null_flag, fk_refcls_oid,
+				  fk_refcls_pk_btid, fk_name, pred_stream, pred_stream_size, expr_stream,
+				  expr_stream_size, func_col_id, func_attr_index_start, 1);
+    }
+  else
+    {
+      btid =
+	xbtree_load_index (thread_p, btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
+			   attrs_prefix_length, hfids, unique_pk, not_null_flag, fk_refcls_oid, fk_refcls_pk_btid,
+			   fk_name, pred_stream, pred_stream_size, expr_stream, expr_stream_size, func_col_id,
+			   func_attr_index_start);
+    }
+
   if (btid == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -6230,7 +6133,7 @@ qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid, char *b
  * NOTE: If xasl_header_p is not null, also XASL node header will be requested
  */
 int
-qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
+qmgr_prepare_query (COMPILE_CONTEXT * context, xasl_stream * stream)
 {
 #if defined(CS_MODE)
   int error = NO_ERROR;
@@ -6386,7 +6289,6 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
 #endif /* !CS_MODE */
 }
 
-
 /*
  * qmgr_execute_query - Send a SERVER_QM_EXECUTE request to the server
  *
@@ -6460,7 +6362,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 	}
     }
 
-  /* pack XASL file id (XASL_ID), number of parameter values, size of the send data, and query execution mode flag as a 
+  /* pack XASL file id (XASL_ID), number of parameter values, size of the send data, and query execution mode flag as a
    * request data */
   ptr = request;
   OR_PACK_XASL_ID (ptr, xasl_id);
@@ -7092,7 +6994,7 @@ serial_get_next_value (DB_VALUE * value, OID * oid_p, int cached_num, int num_al
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  /* 
+  /*
    * If a client wants to generate AUTO_INCREMENT value during client-side
    * insertion, a server should update LAST_INSERT_ID on a session.
    */
@@ -7381,7 +7283,6 @@ catalog_check_rep_dir (OID * class_id, OID * rep_dir_p)
   return success;
 #endif /* !CS_MODE */
 }
-
 
 /*
  * thread_kill_tran_index -
@@ -9313,7 +9214,6 @@ es_posix_rename_file (const char *src_path, const char *metaname, char *new_path
 #endif
 }
 
-
 /*
  * es_posix_get_file_size () - get the size of an esternal file
  *
@@ -9648,7 +9548,7 @@ tran_lock_rep_read (LOCK lock_rr_tran)
 }
 
 /*
- * boot_get_server_timezone_checksum () - get the timezone checksum from the 
+ * boot_get_server_timezone_checksum () - get the timezone checksum from the
  *					  server
  *
  * return : error code or no error
@@ -10024,6 +9924,181 @@ locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * ex_lock)
     }
 
   return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+int
+loaddb_init (cubload::load_args & args)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  packing_packer packer;
+  cubmem::extensible_block eb;
+
+  packer.set_buffer_and_pack_all (eb, args);
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error = net_client_request (NET_SERVER_LD_INIT, eb.get_ptr (), (int) packer.get_current_size (), reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+int
+loaddb_install_class (const cubload::batch & batch, bool & class_is_ignored, std::string & class_name)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  packing_packer packer;
+  cubmem::extensible_block eb;
+  int class_ignored = 0;
+  char *ptr = NULL;
+
+  packer.set_buffer_and_pack_all (eb, batch);
+
+  OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *area = NULL;
+  int area_size;
+  int req_error = net_client_request2 (NET_SERVER_LD_INSTALL_CLASS, eb.get_ptr (), (int) packer.get_current_size (),
+				       reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &area_size);
+      ptr = or_unpack_int (ptr, &rc);
+      ptr = or_unpack_int (ptr, &class_ignored);
+      assert (area_size < DB_MAX_IDENTIFIER_LENGTH);
+
+      class_name = std::string (area, area_size);
+
+      free_and_init (area);
+      class_is_ignored = class_ignored != 0;
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+int
+loaddb_load_batch (const cubload::batch & batch, bool use_temp_batch, bool & is_batch_accepted)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  packing_packer packer;
+  cubmem::extensible_block eb;
+
+  if (use_temp_batch)
+    {
+      packer.set_buffer_and_pack_all (eb, use_temp_batch);
+    }
+  else
+    {
+      packer.set_buffer_and_pack_all (eb, use_temp_batch, batch);
+    }
+
+  int req_error = net_client_request (NET_SERVER_LD_LOAD_BATCH, eb.get_ptr (), (int) packer.get_current_size (), reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      char *ptr = or_unpack_int (reply, &rc);
+      int is_batch_accepted_;
+      or_unpack_int (ptr, &is_batch_accepted_);
+      is_batch_accepted = is_batch_accepted_ != 0;
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+/* *INDENT-OFF* */
+int
+loaddb_fetch_stats (std::vector<load_stats> &stats)
+{
+#if defined(CS_MODE)
+  char *data_reply = NULL;
+  int data_reply_size = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error = net_client_request2 (NET_SERVER_LD_FETCH_STATS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
+				       0, &data_reply, &data_reply_size);
+  if (req_error != NO_ERROR)
+    {
+      return req_error;
+    }
+
+  or_unpack_int (reply, &data_reply_size);
+
+  if (data_reply_size <= 0)
+    {
+      return ER_FAILED;
+    }
+
+  packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
+  size_t stats_size = 0;
+  unpacker.unpack_bigint (stats_size);
+  stats.clear ();
+
+  for (size_t i = 0; i < stats_size; ++i)
+    {
+      load_stats stat;
+      stat.unpack (unpacker);
+      stats.emplace_back (stat);
+    }
+
+  free_and_init (data_reply);
+
+  return req_error;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+/* *INDENT-ON* */
+
+int
+loaddb_destroy ()
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error =
+    net_client_request (NET_SERVER_LD_DESTROY, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+int
+loaddb_interrupt ()
+{
+#if defined(CS_MODE)
+  return net_client_request_no_reply (NET_SERVER_LD_INTERRUPT, NULL, 0);
 #else /* CS_MODE */
   return NO_ERROR;
 #endif /* !CS_MODE */

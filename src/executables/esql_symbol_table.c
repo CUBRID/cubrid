@@ -290,7 +290,7 @@ pp_discard_link (LINK * p)
 STRUCTDEF *
 pp_new_structdef (const char *tag)
 {
-  /* 
+  /*
    * Structs, even "anonymous" ones, must always have tag names for the
    * benefit of the symbol table manager, so if none was supplied at
    * creation time we must manufacture one ourselves.  These variables
@@ -424,7 +424,7 @@ pp_new_pseudo_def (SPECIFIER_NOUN type, const char *subscript)
   pp_reset_current_type_spec ();
   pp_add_typedefed_spec (db_int32->type);
   pp_add_spec_to_decl (pp_current_type_spec (), length_field);
-  /* 
+  /*
    * Don't use pp_discard_link(pp_current_spec()) here, since it came
    * from a typedef.
    */
@@ -749,8 +749,8 @@ pp_type_str (LINK * link)
 	    {
 	      strncat (target, buf, sizeof (target) - strnlen (target, sizeof (target)));
 	      snprintf (buf, sizeof (buf), " %s",
-			(link->decl.s.val.v_struct->tag ? link->decl.s.val.v_struct->
-			 tag : ((unsigned char *) "untagged")));
+			(link->decl.s.val.v_struct->tag ? link->decl.s.val.
+			 v_struct->tag : ((unsigned char *) "untagged")));
 	    }
 	}
 
@@ -867,7 +867,7 @@ pp_symbol_init (void)
 void
 pp_symbol_finish (void)
 {
-  /* 
+  /*
    * Make sure that the symbols that are about to be freed from the
    * symbol tables are returned to the malloc pool rather than to our
    * free lists.
