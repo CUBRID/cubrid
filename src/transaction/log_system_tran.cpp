@@ -92,14 +92,12 @@ systdes_claim_tdes ()
       logtb_initialize_tdes (tdes, LOG_SYSTEM_TRAN_INDEX);
     }
 
-  if (LOG_ISRESTARTED ())
-    {
-      // Do not generate trid for recovery, it will be retrieved from log records
-      tdes->trid = systb_Next_tranid;
-      systb_Next_tranid += LOG_SYSTEM_WORKER_INCR_TRANID;
-      tdes->state = TRAN_ACTIVE;
-      systb_System_tdes[tdes->trid] = tdes;
-    }
+  assert (LOG_ISRESTARTED ()); // Recovery should not use this trid generation
+  tdes->trid = systb_Next_tranid;
+  systb_Next_tranid += LOG_SYSTEM_WORKER_INCR_TRANID;
+  tdes->state = TRAN_ACTIVE;
+  systb_System_tdes[tdes->trid] = tdes;
+
   return tdes;
 }
 
@@ -236,7 +234,7 @@ log_system_tdes::rv_get_or_alloc_tdes (TRANID trid)
   log_tdes *tdes = rv_get_tdes (trid);
   if (tdes == NULL)
     {
-      log_tdes *tdes = systdes_claim_tdes ();
+      log_tdes *tdes = systdes_create_tdes ();
       tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
       tdes->trid = trid;
       systb_System_tdes[trid] = tdes;
