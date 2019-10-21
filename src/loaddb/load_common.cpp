@@ -179,7 +179,6 @@ namespace cubload
     , schema_file ()
     , index_file ()
     , object_file ()
-    , server_object_file ()
     , error_file ()
     , ignore_logging (false)
     , compare_storage_order (false)
@@ -209,7 +208,6 @@ namespace cubload
     serializator.pack_string (schema_file);
     serializator.pack_string (index_file);
     serializator.pack_string (object_file);
-    serializator.pack_string (server_object_file);
     serializator.pack_string (error_file);
     serializator.pack_bool (ignore_logging);
     serializator.pack_bool (compare_storage_order);
@@ -246,7 +244,6 @@ namespace cubload
     deserializator.unpack_string (schema_file);
     deserializator.unpack_string (index_file);
     deserializator.unpack_string (object_file);
-    deserializator.unpack_string (server_object_file);
     deserializator.unpack_string (error_file);
     deserializator.unpack_bool (ignore_logging);
     deserializator.unpack_bool (compare_storage_order);
@@ -291,7 +288,6 @@ namespace cubload
     size += serializator.get_packed_string_size (schema_file, size);
     size += serializator.get_packed_string_size (index_file, size);
     size += serializator.get_packed_string_size (object_file, size);
-    size += serializator.get_packed_string_size (server_object_file, size);
     size += serializator.get_packed_string_size (error_file, size);
     size += serializator.get_packed_bool_size (size); // ignore_logging
     size += serializator.get_packed_bool_size (size); // compare_storage_order
@@ -566,7 +562,7 @@ namespace cubload
     std::ifstream object_file (object_file_name, std::fstream::in);
     if (!object_file)
       {
-	// file does not exists on server, let client do the split operation
+	// file does not exists
 	return ER_FILE_UNKNOWN_FILE;
       }
 
@@ -598,8 +594,8 @@ namespace cubload
 	    // If so, then we should empty the current batch since we do not send it to the server.
 
 	    line.append ("\n"); // feed lexer with new line
-	    batch *c_batch = new batch (batch_id, clsid, line, lineno, 1);
-	    error_code = c_handler (*c_batch, class_is_ignored);
+	    batch c_batch (batch_id, clsid, line, lineno, 1);
+	    error_code = c_handler (c_batch, class_is_ignored);
 	    if (error_code != NO_ERROR)
 	      {
 		object_file.close ();
@@ -685,8 +681,8 @@ namespace cubload
 	return NO_ERROR;
       }
 
-    batch *batch_ = new batch (++batch_id, clsid, batch_content, line_offset, rows);
-    int error_code = handler (*batch_);
+    batch batch_ (++batch_id, clsid, batch_content, line_offset, rows);
+    int error_code = handler (batch_);
 
     // prepare to start new batch for the class
     batch_content.clear ();

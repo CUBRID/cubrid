@@ -54,13 +54,9 @@ namespace cubload
 
       void on_create (cubthread::entry &context) override;
       void on_retire (cubthread::entry &context) override;
-      void stop_execution (cubthread::entry &context) override;
-
-      void interrupt ();
 
     private:
       resource_shared_pool<driver> m_driver_pool;
-      bool m_interrupted;
   };
 
   static std::mutex g_wp_mutex;
@@ -72,7 +68,6 @@ namespace cubload
 
   worker_context_manager::worker_context_manager (unsigned int pool_size)
     : m_driver_pool (pool_size)
-    , m_interrupted (false)
   {
     //
   }
@@ -100,24 +95,11 @@ namespace cubload
     context.conn_entry = NULL;
   }
 
-  void worker_context_manager::stop_execution (cubthread::entry &context)
-  {
-    if (m_interrupted)
-      {
-	xlogtb_set_interrupt (&context, true);
-      }
-  }
-
-  void worker_context_manager::interrupt ()
-  {
-    m_interrupted = true;
-  }
-
-  void
-  worker_manager_push_task (cubthread::entry_task *task)
+  bool
+  worker_manager_try_task (cubthread::entry_task *task)
   {
     assert (g_worker_pool != NULL);
-    g_wp_task_capper->push_task (task);
+    return g_wp_task_capper->try_task (task);
   }
 
   void

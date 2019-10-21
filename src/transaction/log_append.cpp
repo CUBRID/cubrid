@@ -1370,7 +1370,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
       if (vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid) != vacuum_get_log_blockid (start_lsa.pageid))
 	{
 	  assert (vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid)
-		  == (vacuum_get_log_blockid (start_lsa.pageid) - 1));
+		  <= (vacuum_get_log_blockid (start_lsa.pageid) - 1));
 
 	  vacuum_produce_log_block_data (thread_p);
 	}

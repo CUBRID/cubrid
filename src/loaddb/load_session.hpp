@@ -28,6 +28,7 @@
 #include "load_class_registry.hpp"
 #include "load_common.hpp"
 #include "load_error_handler.hpp"
+#include "thread_entry_task.hpp"
 #include "utility.h"
 
 #include <atomic>
@@ -36,6 +37,7 @@
 #include <mutex>
 #include <set>
 #include <string>
+#include <vector>
 
 namespace cubload
 {
@@ -70,7 +72,7 @@ namespace cubload
   class session
   {
     public:
-      session (load_args &args);
+      explicit session (load_args &args);
       ~session ();
 
       session (session &&other) = delete; // Move c-tor: deleted
@@ -95,15 +97,7 @@ namespace cubload
        *    thread_ref(in): thread entry
        *    batch(in)     : a batch from loaddb object
        */
-      int load_batch (cubthread::entry &thread_ref, const batch &batch);
-
-      /*
-       * Load object file entirely on the the server
-       *
-       *    return: NO_ERROR in case of success or ER_FAILED if file does not exists
-       *    thread_ref(in)    : thread entry
-       */
-      int load_file (cubthread::entry &thread_ref);
+      int load_batch (cubthread::entry &thread_ref, const batch *batch, bool use_temp_batch, bool &is_batch_accepted);
 
       void wait_for_completion ();
       void wait_for_previous_batch (batch_id id);
@@ -117,7 +111,8 @@ namespace cubload
       bool is_failed ();
       void interrupt ();
 
-      void fetch_stats (stats &stats_);
+      void collect_stats (bool has_lock = false);
+      void fetch_stats (std::vector<stats> &stats_);
 
       void stats_update_rows_committed (int rows_committed);
       void stats_update_last_committed_line (int last_committed_line);
@@ -138,8 +133,8 @@ namespace cubload
       template<typename T>
       void update_atomic_value_with_max (std::atomic<T> &atomic_val, T new_max);
 
-      std::mutex m_commit_mutex;
-      std::condition_variable m_commit_cond_var;
+      std::mutex m_mutex;
+      std::condition_variable m_cond_var;
       std::set<int> m_tran_indexes;
 
       load_args m_args;
@@ -150,9 +145,11 @@ namespace cubload
       class_registry m_class_registry;
 
       stats m_stats; // load db stats
-      std::mutex m_stats_mutex;
+      std::vector<stats> m_collected_stats;
 
       driver *m_driver;
+
+      cubthread::entry_task *m_temp_task;
   };
 
 } // namespace cubload
@@ -171,9 +168,11 @@ namespace cubload
       {
 	std::string log_msg = error_handler::format_log_msg (msg_id, std::forward<Args> (args)...);
 
-	std::unique_lock<std::mutex> ulock (m_stats_mutex);
+	std::unique_lock<std::mutex> ulock (m_mutex);
 
 	m_stats.log_message.append (log_msg);
+
+	collect_stats (true);
       }
   }
 }
