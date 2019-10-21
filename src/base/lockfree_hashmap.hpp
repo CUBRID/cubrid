@@ -757,7 +757,8 @@ namespace lockfree
   void
   hashmap<Key, T>::unlock_entry (T &tounlock)
   {
-    unlock_entry_mutex_force (get_pthread_mutexp (&tounlock));
+    pthread_mutex_t *mtx = get_pthread_mutexp (&tounlock);
+    unlock_entry_mutex_force (mtx);
   }
 
   template <class Key, class T>
