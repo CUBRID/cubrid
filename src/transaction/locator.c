@@ -2592,7 +2592,7 @@ void
 copy_area_manyobj_flag_remove (LC_COPYAREA_MANYOBJS * copyarea, enum MULTI_UPDATE_FLAG muf)
 {
   assert (copy_area_manyobj_flag_is_set (copyarea, muf));
-  copyarea->multi_update_flags ^= muf;
+  copyarea->multi_update_flags &= (~muf);
 }
 
 void
