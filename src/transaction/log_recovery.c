@@ -2902,7 +2902,7 @@ log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, L
       /* logical redo logging */
       // analysis_last_aborted_sysop_start_lsa < lsa < analysis_last_aborted_sysop_lsa
       if (LSA_LT (&tdes->rcv.analysis_last_aborted_sysop_start_lsa, lsa)
-          && LSA_LT (lsa, &tdes->rcv.analysis_last_aborted_sysop_lsa))
+	  && LSA_LT (lsa, &tdes->rcv.analysis_last_aborted_sysop_lsa))
 	{
 	  /* Logical redo already applied. */
 	  er_log_debug (ARG_FILE_LINE, "log_recovery_needs_skip_logical_redo: LSA = %lld|%d, Rv_index = %s, "
