@@ -691,9 +691,9 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
   request_ptr = or_pack_int (request_ptr, mobjs->multi_update_flags);
 
   // unset start_multi_update flag after first request containing it set
-  if (copy_area_manyobj_flag_is_set (mobjs, START_MULTI_UPDATE))
+  if (locator_manyobj_flag_is_set (mobjs, START_MULTI_UPDATE))
     {
-      copy_area_manyobj_flag_remove (mobjs, START_MULTI_UPDATE);
+      locator_manyobj_flag_remove (mobjs, START_MULTI_UPDATE);
     }
   request_ptr = or_pack_int (request_ptr, desc_size);
   request_ptr = or_pack_int (request_ptr, content_size);

@@ -438,9 +438,9 @@ extern char *locator_pack_oid_set (char *buffer, LC_OIDSET * oidset);
 extern LC_OIDSET *locator_unpack_oid_set_to_new (THREAD_ENTRY * thread_p, char *buffer);
 extern bool locator_unpack_oid_set_to_exist (char *buffer, LC_OIDSET * use);
 
-extern bool copy_area_manyobj_flag_is_set (LC_COPYAREA_MANYOBJS * copyarea, enum MULTI_UPDATE_FLAG muf);
-extern void copy_area_manyobj_flag_remove (LC_COPYAREA_MANYOBJS * copyarea, enum MULTI_UPDATE_FLAG muf);
-extern void copy_area_manyobj_flag_set (LC_COPYAREA_MANYOBJS * copyarea, enum MULTI_UPDATE_FLAG muf);
+extern bool locator_manyobj_flag_is_set (LC_COPYAREA_MANYOBJS * copyarea, enum MULTI_UPDATE_FLAG muf);
+extern void locator_manyobj_flag_remove (LC_COPYAREA_MANYOBJS * copyarea, enum MULTI_UPDATE_FLAG muf);
+extern void locator_manyobj_flag_set (LC_COPYAREA_MANYOBJS * copyarea, enum MULTI_UPDATE_FLAG muf);
 
 /* For Debugging */
 #if defined(CUBRID_DEBUG)

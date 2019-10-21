@@ -5422,8 +5422,8 @@ locator_flush_for_multi_update (MOP class_mop)
     }
 
   /* special code for uniqueness checking */
-  copy_area_manyobj_flag_set (mflush.mobjs, IS_MULTI_UPDATE);
-  copy_area_manyobj_flag_set (mflush.mobjs, START_MULTI_UPDATE);
+  locator_manyobj_flag_set (mflush.mobjs, IS_MULTI_UPDATE);
+  locator_manyobj_flag_set (mflush.mobjs, START_MULTI_UPDATE);
 
   /* flush all dirty instances of this class */
   map_status = ws_map_class_dirty (class_mop, locator_mflush, &mflush);
@@ -5431,7 +5431,7 @@ locator_flush_for_multi_update (MOP class_mop)
   if (map_status == WS_MAP_SUCCESS)
     {
       /* Even if mflush.mobjs->num_objs == 0, invoke locator_mflush_force() to indicate the end of multiple updates. */
-      copy_area_manyobj_flag_set (mflush.mobjs, END_MULTI_UPDATE);
+      locator_manyobj_flag_set (mflush.mobjs, END_MULTI_UPDATE);
       error_code = locator_mflush_force (&mflush);
     }
 
