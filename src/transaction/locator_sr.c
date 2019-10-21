@@ -6394,7 +6394,7 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 
   mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (force_area);
 
-  if (mobjs->start_multi_update)
+  if (copy_area_manyobj_flag_is_set (mobjs, START_MULTI_UPDATE))
     {
       assert (tdes->m_multiupd_stats.empty ());
     }
@@ -6459,11 +6459,11 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 	      scan_cache_inited = 1;
 	    }
 
-	  if (mobjs->start_multi_update && i == first_update_obj)
+	  if (copy_area_manyobj_flag_is_set (mobjs, START_MULTI_UPDATE) && i == first_update_obj)
 	    {
 	      repl_info = REPL_INFO_TYPE_RBR_START;
 	    }
-	  else if (mobjs->end_multi_update && i == last_update_obj)
+	  else if (copy_area_manyobj_flag_is_set (mobjs, END_MULTI_UPDATE) && i == last_update_obj)
 	    {
 	      repl_info = REPL_INFO_TYPE_RBR_END;
 	    }
@@ -6508,7 +6508,7 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
       scan_cache_inited = 0;
     }
 
-  if (mobjs->end_multi_update)
+  if (copy_area_manyobj_flag_is_set (mobjs, END_MULTI_UPDATE))
     {
     for (const auto & it:tdes->m_multiupd_stats.get_map ())
 	{
@@ -7003,7 +7003,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
        * triggers operating on the same class that is being updated; treat these operations as single row and skip all
        * updates. Also, for multi UPDATE operations, the class objects should be flushed here as single row. Instance
        * updates will be handled by locator_force_for_multi_update() */
-      if (mobjs->is_multi_update && LC_IS_FLUSH_UPDATE (obj->operation)
+      if (copy_area_manyobj_flag_is_set (mobjs, IS_MULTI_UPDATE) && LC_IS_FLUSH_UPDATE (obj->operation)
 	  && !OID_EQ (&obj->class_oid, oid_Root_class_oid))
 	{
 	  continue;
@@ -7131,7 +7131,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
     }
 
   /* handle multi-update case */
-  if (mobjs->is_multi_update)
+  if (copy_area_manyobj_flag_is_set (mobjs, IS_MULTI_UPDATE))
     {
       error_code = locator_force_for_multi_update (thread_p, force_area);
       if (error_code != NO_ERROR)
