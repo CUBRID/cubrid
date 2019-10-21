@@ -142,6 +142,8 @@ namespace lockfree
       void promote_tran_force (tran::descriptor &tdes);
       void end_tran_if_started (tran::descriptor &tdes);
       void end_tran_force (tran::descriptor &tdes);
+      void lock_entry (T &tolock);
+      void unlock_entry (T &tounlock);
       void lock_entry_mutex (T &tolock, pthread_mutex_t *&mtx);
       void unlock_entry_mutex_if_locked (pthread_mutex_t *&mtx);
       void unlock_entry_mutex_force (pthread_mutex_t *&mtx);
@@ -361,7 +363,7 @@ namespace lockfree
     assert (entry != NULL);
     if (m_edesc->using_mutex)
       {
-	pthread_mutex_unlock (get_pthread_mutexp (entry));
+	unlock_entry (*entry);
       }
     else
       {
@@ -425,10 +427,8 @@ namespace lockfree
 	    /* wait for mutex */
 	    if (m_edesc->using_mutex)
 	      {
-		mutex_p = get_pthread_mutexp (curr);
-
-		pthread_mutex_lock (mutex_p);
-		pthread_mutex_unlock (mutex_p);
+		lock_entry_mutex (*curr, mutex_p);
+		unlock_entry_mutex_force (mutex_p);
 
 		/* there should be only one mutex lock-unlock per entry per access via bucket array, so locking/unlocking
 		 * once while the entry is inaccessible should be enough to guarantee nobody will be using it afterwards */
@@ -747,13 +747,32 @@ namespace lockfree
 
   template <class Key, class T>
   void
+  hashmap<Key, T>::lock_entry (T &tolock)
+  {
+    pthread_mutex_t *no_output_mtx = NULL;
+    lock_entry_mutex (tolock, no_output_mtx);
+  }
+
+  template <class Key, class T>
+  void
+  hashmap<Key, T>::unlock_entry (T &tounlock)
+  {
+    pthread_mutex_t *mtx = get_pthread_mutexp (&tounlock);
+    unlock_entry_mutex_force (mtx);
+  }
+
+  template <class Key, class T>
+  void
   hashmap<Key, T>::lock_entry_mutex (T &tolock, pthread_mutex_t *&mtx)
   {
     assert (m_edesc->using_mutex);
     assert (mtx == NULL);
 
     mtx = get_pthread_mutexp (&tolock);
+
+#if defined (SERVER_MODE)
     pthread_mutex_lock (mtx);
+#endif // SERVER_MODE
   }
 
   template <class Key, class T>
@@ -762,7 +781,9 @@ namespace lockfree
   {
     if (m_edesc->using_mutex && mtx != NULL)
       {
+#if defined (SERVER_MODE)
 	pthread_mutex_unlock (mtx);
+#endif // SERVER_MODE
 	mtx = NULL;
       }
   }
@@ -772,7 +793,9 @@ namespace lockfree
   hashmap<Key, T>::unlock_entry_mutex_force (pthread_mutex_t *&mtx)
   {
     assert (m_edesc->using_mutex && mtx != NULL);
+#if defined (SERVER_MODE)
     pthread_mutex_unlock (mtx);
+#endif // SERVER_MODE
     mtx = NULL;
   }
 
@@ -813,7 +836,7 @@ namespace lockfree
 		    if (address_type::is_address_marked (get_nextp_ref (curr)))
 		      {
 			/* while waiting for lock, somebody else deleted the entry; restart the search */
-			pthread_mutex_unlock (entry_mutex);
+			unlock_entry_mutex_force (entry_mutex);
 
 			if (behavior_flags != NULL && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 			  {
@@ -1326,7 +1349,7 @@ namespace lockfree
 	    if (m_hashmap->m_edesc->using_mutex)
 	      {
 		/* follow house rules: lock mutex */
-		pthread_mutex_unlock (m_hashmap->get_pthread_mutexp (m_curr));
+		m_hashmap->unlock_entry (*m_curr);
 	      }
 
 	    /* load next entry */
@@ -1362,7 +1385,7 @@ namespace lockfree
 	  {
 	    if (m_hashmap->m_edesc->using_mutex)
 	      {
-		pthread_mutex_lock (m_hashmap->get_pthread_mutexp (m_curr));
+		m_hashmap->lock_entry (*m_curr);
 
 		if (address_type::is_address_marked (m_hashmap->get_nextp_ref (m_curr)))
 		  {
