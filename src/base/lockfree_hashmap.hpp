@@ -427,8 +427,8 @@ namespace lockfree
 	    /* wait for mutex */
 	    if (m_edesc->using_mutex)
 	      {
-		lock_entry_mutex (curr, mutex_p);
-		unlock_entry_mutex_force (curr, mutex_p);
+		lock_entry_mutex (*curr, mutex_p);
+		unlock_entry_mutex_force (mutex_p);
 
 		/* there should be only one mutex lock-unlock per entry per access via bucket array, so locking/unlocking
 		 * once while the entry is inaccessible should be enough to guarantee nobody will be using it afterwards */
