@@ -1679,9 +1679,6 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 			   const OID * arg)
 {
 #define XCACHE_DELETE_XIDS_SIZE 1024
-  // *INDENT-OFF*
-  xcache_hashmap_iterator iter { thread_p, xcache_Hashmap };
-  // *INDENT-ON*
   XASL_CACHE_ENTRY *xcache_entry = NULL;
   XASL_ID delete_xids[XCACHE_DELETE_XIDS_SIZE];
   int n_delete_xids = 0;
@@ -1692,6 +1689,8 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
     {
       return;
     }
+
+  xcache_hashmap_iterator iter = { thread_p, xcache_Hashmap };
 
   while (!finished)
     {
@@ -1834,9 +1833,6 @@ xcache_drop_all (THREAD_ENTRY * thread_p)
 void
 xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
 {
-  // *INDENT-OFF*
-  xcache_hashmap_iterator iter { thread_p, xcache_Hashmap };
-  // *INDENT-ON*
   XASL_CACHE_ENTRY *xcache_entry = NULL;
   int oid_index;
   char *sql_id = NULL;
@@ -1870,6 +1866,8 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
   fprintf (fp, "Cache cleanups:             %lld\n", (long long) XCACHE_STAT_GET (cleanups));
   fprintf (fp, "Deletes at cleanup:	    %lld\n", (long long) XCACHE_STAT_GET (deletes_at_cleanup));
   /* add overflow, RT checks. */
+
+  xcache_hashmap_iterator iter = { thread_p, xcache_Hashmap };
 
   fprintf (fp, "\nEntries:\n");
   while ((xcache_entry = iter.iterate ()) != NULL)
@@ -2035,9 +2033,9 @@ xcache_retire_clone (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, X
 static void
 xcache_cleanup (THREAD_ENTRY * thread_p)
 {
-  // *INDENT-OFF*
-  xcache_hashmap_iterator iter { thread_p, xcache_Hashmap };
-  // *INDENT-ON*
+  assert (xcache_Enabled);
+
+  xcache_hashmap_iterator iter = { thread_p, xcache_Hashmap };
   XASL_CACHE_ENTRY *xcache_entry = NULL;
   XCACHE_CLEANUP_CANDIDATE candidate;
   struct timeval current_time;

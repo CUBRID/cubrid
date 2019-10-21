@@ -589,9 +589,6 @@ fpcache_remove_by_class (THREAD_ENTRY * thread_p, const OID * class_oid)
 void
 fpcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
 {
-  // *INDENT-OFF*
-  fpcache_hashmap_iterator iter { thread_p, fpcache_Hashmap };
-  // *INDENT-ON*
   FPCACHE_ENTRY *fpcache_entry = NULL;
 
   assert (fp != NULL);
@@ -623,6 +620,7 @@ fpcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
   fprintf (fp, "Cleanups:                   %lld\n", (long long) ATOMIC_LOAD_64 (&fpcache_Stat_cleanup));
   fprintf (fp, "Cleaned entries:            %lld\n", (long long) ATOMIC_LOAD_64 (&fpcache_Stat_cleanup_entry));
 
+  fpcache_hashmap_iterator iter = { thread_p, fpcache_Hashmap };
   fprintf (fp, "\nEntries:\n");
   while ((fpcache_entry = iter.iterate ()) != NULL)
     {
@@ -642,9 +640,9 @@ fpcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
 static void
 fpcache_cleanup (THREAD_ENTRY * thread_p)
 {
-  // *INDENT-OFF*
-  fpcache_hashmap_iterator iter { thread_p, fpcache_Hashmap };
-  // *INDENT-ON*
+  assert (fpcache_Enabled);
+
+  fpcache_hashmap_iterator iter = { thread_p, fpcache_Hashmap };
   FPCACHE_ENTRY *fpcache_entry = NULL;
   FPCACHE_CLEANUP_CANDIDATE candidate;
   int candidate_index;
