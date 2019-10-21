@@ -107,7 +107,6 @@ namespace cubload
     std::string index_file;
     std::string trigger_file;
     std::string object_file;
-    std::string server_object_file;
     std::string error_file;
     bool ignore_logging;
     bool compare_storage_order;

@@ -226,12 +226,18 @@ struct lc_copyarea_oneobj
   int offset;			/* location in the copy area where the content of the object is stored */
 };
 
+enum MULTI_UPDATE_FLAG
+{
+  IS_MULTI_UPDATE = 0x01,
+  START_MULTI_UPDATE = 0x02,
+  END_MULTI_UPDATE = 0x04
+};
+
 typedef struct lc_copyarea_manyobjs LC_COPYAREA_MANYOBJS;
 struct lc_copyarea_manyobjs
 {
   LC_COPYAREA_ONEOBJ objs;
-  int start_multi_update;	/* the start of flush request */
-  int end_multi_update;		/* the end of flush request */
+  int multi_update_flags;	/* start/is/end/ for unique statistics gathering */
   int num_objs;			/* How many objects */
 };
 
@@ -431,6 +437,10 @@ extern int locator_get_packed_oid_set_size (LC_OIDSET * oidset);
 extern char *locator_pack_oid_set (char *buffer, LC_OIDSET * oidset);
 extern LC_OIDSET *locator_unpack_oid_set_to_new (THREAD_ENTRY * thread_p, char *buffer);
 extern bool locator_unpack_oid_set_to_exist (char *buffer, LC_OIDSET * use);
+
+extern bool locator_manyobj_flag_is_set (LC_COPYAREA_MANYOBJS * copyarea, enum MULTI_UPDATE_FLAG muf);
+extern void locator_manyobj_flag_remove (LC_COPYAREA_MANYOBJS * copyarea, enum MULTI_UPDATE_FLAG muf);
+extern void locator_manyobj_flag_set (LC_COPYAREA_MANYOBJS * copyarea, enum MULTI_UPDATE_FLAG muf);
 
 /* For Debugging */
 #if defined(CUBRID_DEBUG)

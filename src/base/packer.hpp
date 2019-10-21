@@ -358,7 +358,7 @@ namespace cubpacking
 	return set_buffer_and_pack_all (eb, std::forward<Args> (args)...);
       }
 
-    assert (get_curr_ptr () >= eb.get_ptr () && get_curr_ptr () < eb.get_ptr () + eb.get_size ());
+    assert (get_curr_ptr () >= eb.get_ptr () && get_curr_ptr () <= eb.get_ptr () + eb.get_size ());
 
     size_t offset = get_curr_ptr () - get_buffer_start ();
     assert (offset >= 0);
@@ -371,7 +371,8 @@ namespace cubpacking
       {
 	eb.extend_by (total_size - available);
       }
-    /* don't change m_start_ptr */
+
+    m_start_ptr = eb.get_ptr ();
     m_ptr = eb.get_ptr () + offset;
     m_end_ptr = eb.get_ptr () + offset + total_size;
 

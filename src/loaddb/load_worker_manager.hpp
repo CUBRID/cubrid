@@ -33,7 +33,7 @@ namespace cubload
   // forward definitions
   class session;
 
-  void worker_manager_push_task (cubthread::entry_task *task);
+  bool worker_manager_try_task (cubthread::entry_task *task);
   void worker_manager_stop_all ();
 
   void worker_manager_register_session (session &load_session);
