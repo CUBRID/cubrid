@@ -92,7 +92,7 @@ systdes_claim_tdes ()
       logtb_initialize_tdes (tdes, LOG_SYSTEM_TRAN_INDEX);
     }
 
-  if (!LOG_ISRESTARTED ())
+  if (LOG_ISRESTARTED ())
     {
       // Do not generate trid for recovery, it will be retrieved from log records
       tdes->trid = systb_Next_tranid;
