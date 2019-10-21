@@ -101,7 +101,7 @@ static void log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 				   LOG_LSA * end_redo_lsa, bool ismedia_crash, time_t * stopat,
 				   bool * did_incom_recovery, INT64 * num_redo_log_records);
 static bool log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, LOG_RECTYPE log_rtype,
-						  LOG_RCVINDEX rcv_index, LOG_LSA * lsa);
+						  LOG_RCVINDEX rcv_index, const LOG_LSA * lsa);
 static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa,
 			       time_t * stopat);
 static void log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
@@ -2878,12 +2878,17 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
  */
 static bool
 log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, LOG_RECTYPE log_rtype,
-				      LOG_RCVINDEX rcv_index, LOG_LSA * lsa)
+				      LOG_RCVINDEX rcv_index, const LOG_LSA * lsa)
 {
   int tran_index;
   LOG_TDES *tdes = NULL;	/* Transaction descriptor */
 
   assert (lsa != NULL);
+
+  if (log_rtype != LOG_DBEXTERN_REDO_DATA)
+    {
+      return false;
+    }
 
   tran_index = logtb_find_tran_index (thread_p, tran_id);
   if (tran_index == NULL_TRAN_INDEX)
@@ -2897,21 +2902,18 @@ log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, L
       return false;
     }
 
-  if (log_rtype == LOG_DBEXTERN_REDO_DATA)
+  /* logical redo logging */
+  // analysis_last_aborted_sysop_start_lsa < lsa < analysis_last_aborted_sysop_lsa
+  if (LSA_LT (&tdes->rcv.analysis_last_aborted_sysop_start_lsa, lsa)
+      && LSA_LT (lsa, &tdes->rcv.analysis_last_aborted_sysop_lsa))
     {
-      /* logical redo logging */
-      // analysis_last_aborted_sysop_start_lsa < lsa < analysis_last_aborted_sysop_lsa
-      if (LSA_LT (&tdes->rcv.analysis_last_aborted_sysop_start_lsa, lsa)
-	  && LSA_LT (lsa, &tdes->rcv.analysis_last_aborted_sysop_lsa))
-	{
-	  /* Logical redo already applied. */
-	  er_log_debug (ARG_FILE_LINE, "log_recovery_needs_skip_logical_redo: LSA = %lld|%d, Rv_index = %s, "
-			"analysis_last_aborted_sysop_lsa = %lld|%d, analysis_last_aborted_sysop_start_lsa = %lld|%d\n",
-			LSA_AS_ARGS (lsa), rv_rcvindex_string (rcv_index),
-			LSA_AS_ARGS (&tdes->rcv.analysis_last_aborted_sysop_lsa),
-			LSA_AS_ARGS (&tdes->rcv.analysis_last_aborted_sysop_start_lsa));
-	  return true;
-	}
+      /* Logical redo already applied. */
+      er_log_debug (ARG_FILE_LINE, "log_recovery_needs_skip_logical_redo: LSA = %lld|%d, Rv_index = %s, "
+		    "analysis_last_aborted_sysop_lsa = %lld|%d, analysis_last_aborted_sysop_start_lsa = %lld|%d\n",
+		    LSA_AS_ARGS (lsa), rv_rcvindex_string (rcv_index),
+		    LSA_AS_ARGS (&tdes->rcv.analysis_last_aborted_sysop_lsa),
+		    LSA_AS_ARGS (&tdes->rcv.analysis_last_aborted_sysop_start_lsa));
+      return true;
     }
 
   return false;
@@ -3480,13 +3482,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		}
 #endif /* !NDEBUG */
 
-	      if (log_recovery_needs_skip_logical_redo (thread_p, tran_id, log_rtype, rcvindex, &rcv_lsa))
+	      if (!log_recovery_needs_skip_logical_redo (thread_p, tran_id, log_rtype, rcvindex, &rcv_lsa))
 		{
-		  break;
+		  log_rv_redo_record (thread_p, &log_lsa, log_pgptr, RV_fun[rcvindex].redofun, &rcv, &rcv_lsa, 0, NULL,
+				      NULL);
 		}
 
-	      log_rv_redo_record (thread_p, &log_lsa, log_pgptr, RV_fun[rcvindex].redofun, &rcv, &rcv_lsa, 0, NULL,
-				  NULL);
 	      break;
 
 	    case LOG_RUN_POSTPONE:
