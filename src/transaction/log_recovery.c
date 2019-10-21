@@ -2873,8 +2873,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
  *   rcv_index(in): Recovery index
  *   lsa(in) : lsa to check
  *
- * NOTE: When logical redo logging is applied and the system crashes repeatedely, we need to
- *       skip redo logical record already applied. This function check whether the logical redo must be skipped.
+ * NOTE: When logical redo logging is applied and the system crashes repeatedly, we need to
+ *       skip redo logical record already applied. This function checks whether the logical redo must be skipped.
  */
 static bool
 log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, LOG_RECTYPE log_rtype,
@@ -2900,8 +2900,9 @@ log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, L
   if (log_rtype == LOG_DBEXTERN_REDO_DATA)
     {
       /* logical redo logging */
-      if (LSA_GT (&tdes->rcv.analysis_last_aborted_sysop_lsa, lsa)
-	  && LSA_LT (&tdes->rcv.analysis_last_aborted_sysop_start_lsa, lsa))
+      // analysis_last_aborted_sysop_start_lsa < lsa < analysis_last_aborted_sysop_lsa
+      if (LSA_LT (&tdes->rcv.analysis_last_aborted_sysop_start_lsa, lsa)
+          && LSA_LT (lsa, &tdes->rcv.analysis_last_aborted_sysop_lsa))
 	{
 	  /* Logical redo already applied. */
 	  er_log_debug (ARG_FILE_LINE, "log_recovery_needs_skip_logical_redo: LSA = %lld|%d, Rv_index = %s, "
@@ -2915,7 +2916,6 @@ log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, L
 
   return false;
 }
-
 
 /*
  * log_recovery_redo - SCAN FORWARD REDOING DATA

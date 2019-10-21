@@ -460,9 +460,9 @@ struct log_rcv_tdes
    * executed atomically (all changes applied or all rollbacked) before executing finish all postpones. to know what
    * to abort, we remember the starting LSA of such operation. */
   LOG_LSA atomic_sysop_start_lsa;
-  LOG_LSA analysis_last_aborted_sysop_lsa;	/* Used to recover logical redo opertaion. */
-  LOG_LSA analysis_last_aborted_sysop_start_lsa;	/* Used to recover logical redo opertaion. */
-  LOG_LSA skip_redo_upto_lsa;	/* Used to recover logical redo opertaion. */
+  LOG_LSA analysis_last_aborted_sysop_lsa;	/* to recover logical redo operation. */
+  LOG_LSA analysis_last_aborted_sysop_start_lsa;	/* to recover logical redo operation. */
+  LOG_LSA skip_redo_upto_lsa;	/* to recover logical redo operation. */
 };
 
 typedef struct log_tdes LOG_TDES;
