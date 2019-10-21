@@ -6468,7 +6468,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
   // *INDENT-OFF*
   log_system_tdes::map_func mapper;
-  // *INDENT-OFF*
+  // *INDENT-ON*
 
   LOG_CS_ENTER (thread_p);
 
@@ -6656,23 +6656,22 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	}
     }
   else
-  {
-    tmp_chkpt.ntops = 1;
-    length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
-    chkpt_topops = (LOG_INFO_CHKPT_SYSOP *) malloc (length_all_tops);
-    if (chkpt_topops == NULL)
+    {
+      tmp_chkpt.ntops = 1;
+      length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
+      chkpt_topops = (LOG_INFO_CHKPT_SYSOP *) malloc (length_all_tops);
+      if (chkpt_topops == NULL)
 	{
 	  free_and_init (chkpt_trans);
 	  log_Gl.prior_info.prior_lsa_mutex.unlock ();
 	  TR_TABLE_CS_EXIT (thread_p);
 	  goto error_cannot_chkpt;
 	}
-  }
-	
+    }
+
   // Checkpoint system transactions' topops
   // *INDENT-OFF*
-  mapper = [thread_p, &chkpt_topops, &chkpt_trans, &tmp_chkpt, &ntops, &length_all_tops, &error_code]
-    (log_tdes & tdes)
+  mapper = [thread_p, &chkpt_topops, &chkpt_trans, &tmp_chkpt, &ntops, &length_all_tops, &error_code] (log_tdes &tdes)
   {
     error_code =
       logpb_checkpoint_topops (thread_p, chkpt_topops, chkpt_trans, tmp_chkpt, &tdes, ntops, length_all_tops);
