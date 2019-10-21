@@ -493,8 +493,7 @@ locator_reallocate_copy_area_by_length (LC_COPYAREA * old_area, int new_length)
 
   new_mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (new_area);
   new_mobjs->num_objs = old_mobjs->num_objs;
-  new_mobjs->start_multi_update = old_mobjs->start_multi_update;
-  new_mobjs->end_multi_update = old_mobjs->end_multi_update;
+  new_mobjs->multi_update_flags = old_mobjs->multi_update_flags;
 
   for (i = 0; i < old_mobjs->num_objs; i++)
     {
@@ -2581,4 +2580,23 @@ memory_error:
   locator_free_oid_set (thread_p, set);
 
   return NULL;
+}
+
+bool
+locator_manyobj_flag_is_set (LC_COPYAREA_MANYOBJS * copyarea, enum MULTI_UPDATE_FLAG muf)
+{
+  return copyarea->multi_update_flags & muf;
+}
+
+void
+locator_manyobj_flag_remove (LC_COPYAREA_MANYOBJS * copyarea, enum MULTI_UPDATE_FLAG muf)
+{
+  assert (locator_manyobj_flag_is_set (copyarea, muf));
+  copyarea->multi_update_flags &= (~muf);
+}
+
+void
+locator_manyobj_flag_set (LC_COPYAREA_MANYOBJS * copyarea, enum MULTI_UPDATE_FLAG muf)
+{
+  copyarea->multi_update_flags |= muf;
 }

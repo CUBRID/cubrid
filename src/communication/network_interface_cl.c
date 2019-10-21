@@ -674,7 +674,7 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
 
   mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copy_area);
 
-  request_size = OR_INT_SIZE * (6 + num_ignore_error_list);
+  request_size = OR_INT_SIZE * (5 + num_ignore_error_list);
   request = (char *) malloc (request_size);
 
   if (request == NULL)
@@ -688,8 +688,13 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
   num_objs = locator_send_copy_area (copy_area, &content_ptr, NULL, &desc_ptr, &desc_size);
 
   request_ptr = or_pack_int (request, num_objs);
-  request_ptr = or_pack_int (request_ptr, mobjs->start_multi_update);
-  request_ptr = or_pack_int (request_ptr, mobjs->end_multi_update);
+  request_ptr = or_pack_int (request_ptr, mobjs->multi_update_flags);
+
+  // unset start_multi_update flag after first request containing it set
+  if (locator_manyobj_flag_is_set (mobjs, START_MULTI_UPDATE))
+    {
+      locator_manyobj_flag_remove (mobjs, START_MULTI_UPDATE);
+    }
   request_ptr = or_pack_int (request_ptr, desc_size);
   request_ptr = or_pack_int (request_ptr, content_size);
 
