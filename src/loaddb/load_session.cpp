@@ -629,6 +629,12 @@ namespace cubload
   session::fetch_stats (std::vector<stats> &stats_)
   {
     std::unique_lock<std::mutex> ulock (m_mutex);
+    if (m_collected_stats.empty () && (is_failed () || is_completed ()))
+      {
+	// quick fix to make sure client is notified of completion/failure
+	// todo: fix properly by not missing is_completed ()
+	collect_stats (true);
+      }
     if (!m_collected_stats.empty ())
       {
 	stats_.clear ();
