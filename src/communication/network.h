@@ -239,6 +239,7 @@ enum net_server_request
   NET_SERVER_LD_FETCH_STATS,
   NET_SERVER_LD_DESTROY,
   NET_SERVER_LD_INTERRUPT,
+  NET_SERVER_LD_UPDATE_STATS,
 
   /*
    * This is the last entry. It is also used for the end of an

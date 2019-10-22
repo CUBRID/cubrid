@@ -1183,6 +1183,26 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
 		     last_stat.rows_committed, last_stat.rows_failed);
     }
 
+  // Update class statistics
+  error_code = loaddb_update_stats ();
+  if (error_code != NO_ERROR)
+    {
+      print_er_msg ();
+      *status = 3;
+    }
+
+  // Fetch the latest stats.
+  error_code = loaddb_fetch_stats (stats);
+  if (error_code != NO_ERROR)
+    {
+      print_er_msg ();
+      *status = 3;
+    }
+
+  // Print these stats.
+  print_stats (stats, *args, status);
+
+  // Destroy the session.
   error_code = loaddb_destroy ();
   if (error_code != NO_ERROR)
     {

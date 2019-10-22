@@ -428,4 +428,5 @@ extern int loaddb_fetch_stats (std::vector<load_stats> &stats);
 /* *INDENT-ON* */
 extern int loaddb_destroy ();
 extern int loaddb_interrupt ();
+extern int loaddb_update_stats ();
 #endif /* _NETWORK_INTERFACE_CL_H_ */
