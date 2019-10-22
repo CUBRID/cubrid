@@ -76,6 +76,7 @@ systdes_retire_tdes (log_tdes *&tdes)
 log_tdes *
 systdes_claim_tdes ()
 {
+  assert (LOG_ISRESTARTED ()); // Recovery should not reuse tdeses
   std::unique_lock<std::mutex> ulock (systb_Mutex);
   log_tdes *tdes = NULL;
 
@@ -83,18 +84,17 @@ systdes_claim_tdes ()
     {
       // generate new log_tdes
       tdes = systdes_create_tdes ();
+      tdes->trid = systb_Next_tranid;
+      systb_Next_tranid += LOG_SYSTEM_WORKER_INCR_TRANID;
     }
   else
     {
       tdes = systb_Free_tdes_list.front ();
       systb_Free_tdes_list.pop_front ();
       logtb_clear_tdes (NULL, tdes);
-      logtb_initialize_tdes (tdes, LOG_SYSTEM_TRAN_INDEX);
     }
+  assert (tdes->trid < NULL_TRANID && tdes->trid > systb_Next_tranid);
 
-  assert (LOG_ISRESTARTED ()); // Recovery should not use this trid generation
-  tdes->trid = systb_Next_tranid;
-  systb_Next_tranid += LOG_SYSTEM_WORKER_INCR_TRANID;
   tdes->state = TRAN_ACTIVE;
   systb_System_tdes[tdes->trid] = tdes;
 
