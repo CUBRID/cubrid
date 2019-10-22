@@ -3456,17 +3456,6 @@ end:
 	  {
 	    return;
 	  }
-	if (lru_list->count_vict_cand > 0)
-	  {
-	    if (pgbuf_is_any_thread_waiting_for_direct_victim () == false)
-	      {
-		/* we had direct victim waiters at the start of check loop; now, all waiters got BCB from the direct
-		 * flush queue */
-		return;
-	      }
-	    /* should have found victim candidate */
-	    assert (false);
-	  }
 	if (!PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
 	  {
 	    if (pgbuf_is_any_thread_waiting_for_direct_victim () == false)

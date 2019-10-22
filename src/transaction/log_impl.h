@@ -221,14 +221,6 @@ struct logwr_info;
   ((tdes)->state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS \
    || (tdes)->state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
 
-/* Reserved vacuum workers transaction identifiers.
- * Vacuum workers each need one TRANID to have their system operations
- * isolated and identifiable. Even though usually vacuum workers never undo
- * their work, system operations still need to be undone (if server crashes
- * in the middle of the operation).
- * For this reason, the first VACUUM_MAX_WORKER_COUNT negative TRANID values
- * under NULL_TRANID are reserved for vacuum workers.
- */
 const TRANID LOG_SYSTEM_WORKER_FIRST_TRANID = NULL_TRANID - 1;
 const int LOG_SYSTEM_WORKER_INCR_TRANID = -1;
 

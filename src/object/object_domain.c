@@ -10079,6 +10079,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    doc = db_json_allocate_doc ();
 	    db_json_set_double_to_doc (doc, db_get_double (src));
 	    break;
+	  case DB_TYPE_FLOAT:
 	  case DB_TYPE_NUMERIC:
 	    {
 	      DB_VALUE double_value;

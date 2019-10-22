@@ -4199,7 +4199,7 @@ log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_u
 	}
     }
   /* Check system worker transactions. */
-  log_system_tdes::rv_map_all_tdes (max_undo_lsa_func);
+  log_system_tdes::map_all_tdes (max_undo_lsa_func);
 
   TR_TABLE_CS_EXIT (thread_p);
   // *INDENT-ON*

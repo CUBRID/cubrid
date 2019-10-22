@@ -4288,7 +4288,7 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
 	}
       finish_sys_postpone (*tdes_it);
     }
-  log_system_tdes::rv_map_all_tdes (finish_sys_postpone);
+  log_system_tdes::map_all_tdes (finish_sys_postpone);
   // *INDENT-ON*
 }
 
@@ -4323,7 +4323,7 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
 	}
       abort_atomic_func (*tdes_it);
     }
-  log_system_tdes::rv_map_all_tdes (abort_atomic_func);
+  log_system_tdes::map_all_tdes (abort_atomic_func);
   // *INDENT-ON*
 }
 
