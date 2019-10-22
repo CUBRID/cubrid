@@ -467,11 +467,11 @@ namespace cubpacking
 
     if (str_size == 0)
       {
-        len = strlen (string);
+	len = strlen (string);
       }
     else
       {
-        len = str_size;
+	len = str_size;
       }
 
     if (len > MAX_SMALL_STRING_SIZE)
@@ -543,11 +543,11 @@ namespace cubpacking
 
     if (str_size == 0)
       {
-        len = strlen (string);
+	len = strlen (string);
       }
     else
       {
-        len = str_size;
+	len = str_size;
       }
 
     align (INT_ALIGNMENT);
