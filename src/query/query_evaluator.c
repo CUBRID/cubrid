@@ -2672,63 +2672,18 @@ update_logical_result (THREAD_ENTRY * thread_p, DB_LOGICAL ev_res, int *qualific
 	}
     }
 
-  if (key_filter != NULL && prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
-    {
-      if (key_filter->num_vstr_ptr != NULL && *key_filter->num_vstr_ptr)
-	{
-	  int i;
-	  REGU_VARIABLE_LIST regup;
-	  DB_VALUE *dbvalp;
-
-	  /* read the key range the values from the heap into the attribute cache */
-	  if (heap_attrinfo_read_dbvalues (thread_p, oid, recdes, NULL, key_filter->scan_attrs->attr_cache) != NO_ERROR)
-	    {
-	      return V_ERROR;
-	    }
-
-	  /* for all attributes specified in the key range, apply special data filter; 'key range attr IS NOT NULL' */
-	  regup = key_filter->scan_pred->regu_list;
-	  for (i = 0; i < *key_filter->num_vstr_ptr && regup; i++)
-	    {
-	      if (key_filter->vstr_ids[i] == -1)
-		{
-		  continue;	/* skip and go ahead */
-		}
-
-	      if (fetch_peek_dbval (thread_p, &regup->value, key_filter->val_descr, NULL, NULL, NULL, &dbvalp) !=
-		  NO_ERROR)
-		{
-		  return V_ERROR;	/* error */
-		}
-	      else if (DB_IS_NULL (dbvalp))
-		{
-		  return V_FALSE;	/* found Empty-string */
-		}
-
-	      regup = regup->next;
-	    }
-
-	  if (ev_res == V_TRUE && i < *key_filter->num_vstr_ptr)
-	    {
-	      /* must be impossible. unknown error */
-	      return V_ERROR;
-	    }
-	}
-    }
-
   if (ev_res == V_ERROR)
     {
       return V_ERROR;
     }
+  else if (ev_res != V_TRUE)	/* V_FALSE || V_UNKNOWN */
+    {
+      return V_FALSE;		/* not qualified, continue to the next tuple */
+    }
   else
     {
-      if (ev_res != V_TRUE)	/* V_FALSE || V_UNKNOWN */
-	{
-	  return V_FALSE;	/* not qualified, continue to the next tuple */
-	}
+      return V_TRUE;
     }
-
-  return V_TRUE;
 }
 
 /*
