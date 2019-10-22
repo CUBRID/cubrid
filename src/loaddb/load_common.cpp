@@ -594,8 +594,8 @@ namespace cubload
 	    // If so, then we should empty the current batch since we do not send it to the server.
 
 	    line.append ("\n"); // feed lexer with new line
-	    batch *c_batch = new batch (batch_id, clsid, line, lineno, 1);
-	    error_code = c_handler (*c_batch, class_is_ignored);
+	    batch c_batch (batch_id, clsid, line, lineno, 1);
+	    error_code = c_handler (c_batch, class_is_ignored);
 	    if (error_code != NO_ERROR)
 	      {
 		object_file.close ();
@@ -681,8 +681,8 @@ namespace cubload
 	return NO_ERROR;
       }
 
-    batch *batch_ = new batch (++batch_id, clsid, batch_content, line_offset, rows);
-    int error_code = handler (*batch_);
+    batch batch_ (++batch_id, clsid, batch_content, line_offset, rows);
+    int error_code = handler (batch_);
 
     // prepare to start new batch for the class
     batch_content.clear ();

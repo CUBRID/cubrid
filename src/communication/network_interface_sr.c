@@ -1186,15 +1186,13 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
   int num_objs;
   char *packed_desc = NULL;
   int packed_desc_size;
-  int start_multi_update;
-  int end_multi_update;
+  int multi_update_flags;
   LC_COPYAREA_MANYOBJS *mobjs;
   int i, num_ignore_error_list;
   int ignore_error_list[-ER_LAST_ERROR];
 
   ptr = or_unpack_int (request, &num_objs);
-  ptr = or_unpack_int (ptr, &start_multi_update);
-  ptr = or_unpack_int (ptr, &end_multi_update);
+  ptr = or_unpack_int (ptr, &multi_update_flags);
   ptr = or_unpack_int (ptr, &packed_desc_size);
   ptr = or_unpack_int (ptr, &content_size);
 
@@ -1225,8 +1223,7 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
 	{
 	  locator_unpack_copy_area_descriptor (num_objs, copy_area, packed_desc);
 	  mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copy_area);
-	  mobjs->start_multi_update = start_multi_update;
-	  mobjs->end_multi_update = end_multi_update;
+	  mobjs->multi_update_flags = multi_update_flags;
 
 	  if (content_size > 0)
 	    {
@@ -9791,18 +9788,26 @@ sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   packing_unpacker unpacker (request, (size_t) reqlen);
 
   /* *INDENT-OFF* */
-  cubload::batch *batch = new cubload::batch ();
+  cubload::batch *batch = NULL;
   /* *INDENT-ON* */
 
-  batch->unpack (unpacker);
+  bool use_temp_batch = false;
+  unpacker.unpack_bool (use_temp_batch);
+  if (!use_temp_batch)
+    {
+      batch = new cubload::batch ();
+      batch->unpack (unpacker);
+    }
 
+  bool is_batch_accepted = false;
   load_session *session = NULL;
+
   session_get_load_session (thread_p, session);
   int error_code = session_get_load_session (thread_p, session);
   if (error_code == NO_ERROR)
     {
       assert (session != NULL);
-      error_code = session->load_batch (*thread_p, *batch);
+      error_code = session->load_batch (*thread_p, batch, use_temp_batch, is_batch_accepted);
     }
   else
     {
@@ -9815,10 +9820,12 @@ sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       return_error_to_client (thread_p, rid);
     }
 
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  or_pack_int (reply, error_code);
+  char *ptr = or_pack_int (reply, error_code);
+  or_pack_int (ptr, (is_batch_accepted ? 1 : 0));
+
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
@@ -9836,10 +9843,15 @@ sloaddb_fetch_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   if (error_code == NO_ERROR)
     {
       assert (session != NULL);
-      load_stats loaddb_stats;
-      session->fetch_stats (loaddb_stats);
-
-      packer.set_buffer_and_pack_all (eb, loaddb_stats);
+      /* *INDENT-OFF* */
+      std::vector<load_stats> stats;
+      session->fetch_stats (stats);
+      packer.set_buffer_and_pack_all (eb, stats.size ());
+      for (const load_stats &s : stats)
+        {
+	  packer.append_to_buffer_and_pack_all (eb, s);
+        }
+      /* *INDENT-ON* */
 
       buffer = eb.get_ptr ();
       buffer_size = (int) packer.get_current_size ();

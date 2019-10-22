@@ -674,7 +674,7 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
 
   mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copy_area);
 
-  request_size = OR_INT_SIZE * (6 + num_ignore_error_list);
+  request_size = OR_INT_SIZE * (5 + num_ignore_error_list);
   request = (char *) malloc (request_size);
 
   if (request == NULL)
@@ -688,8 +688,13 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
   num_objs = locator_send_copy_area (copy_area, &content_ptr, NULL, &desc_ptr, &desc_size);
 
   request_ptr = or_pack_int (request, num_objs);
-  request_ptr = or_pack_int (request_ptr, mobjs->start_multi_update);
-  request_ptr = or_pack_int (request_ptr, mobjs->end_multi_update);
+  request_ptr = or_pack_int (request_ptr, mobjs->multi_update_flags);
+
+  // unset start_multi_update flag after first request containing it set
+  if (locator_manyobj_flag_is_set (mobjs, START_MULTI_UPDATE))
+    {
+      locator_manyobj_flag_remove (mobjs, START_MULTI_UPDATE);
+    }
   request_ptr = or_pack_int (request_ptr, desc_size);
   request_ptr = or_pack_int (request_ptr, content_size);
 
@@ -9993,23 +9998,33 @@ loaddb_install_class (const cubload::batch & batch, bool & class_is_ignored, std
 }
 
 int
-loaddb_load_batch (const cubload::batch & batch)
+loaddb_load_batch (const cubload::batch & batch, bool use_temp_batch, bool & is_batch_accepted)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   packing_packer packer;
   cubmem::extensible_block eb;
 
-  packer.set_buffer_and_pack_all (eb, batch);
+  if (use_temp_batch)
+    {
+      packer.set_buffer_and_pack_all (eb, use_temp_batch);
+    }
+  else
+    {
+      packer.set_buffer_and_pack_all (eb, use_temp_batch, batch);
+    }
 
   int req_error = net_client_request (NET_SERVER_LD_LOAD_BATCH, eb.get_ptr (), (int) packer.get_current_size (), reply,
 				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
-      or_unpack_int (reply, &rc);
+      char *ptr = or_unpack_int (reply, &rc);
+      int is_batch_accepted_;
+      or_unpack_int (ptr, &is_batch_accepted_);
+      is_batch_accepted = is_batch_accepted_ != 0;
     }
 
   return rc;
@@ -10018,8 +10033,9 @@ loaddb_load_batch (const cubload::batch & batch)
 #endif /* !CS_MODE */
 }
 
+/* *INDENT-OFF* */
 int
-loaddb_fetch_stats (load_stats * stats)
+loaddb_fetch_stats (std::vector<load_stats> &stats)
 {
 #if defined(CS_MODE)
   char *data_reply = NULL;
@@ -10042,8 +10058,16 @@ loaddb_fetch_stats (load_stats * stats)
     }
 
   packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
-  stats->clear ();
-  stats->unpack (unpacker);
+  size_t stats_size = 0;
+  unpacker.unpack_bigint (stats_size);
+  stats.clear ();
+
+  for (size_t i = 0; i < stats_size; ++i)
+    {
+      load_stats stat;
+      stat.unpack (unpacker);
+      stats.emplace_back (stat);
+    }
 
   free_and_init (data_reply);
 
@@ -10052,6 +10076,7 @@ loaddb_fetch_stats (load_stats * stats)
   return NO_ERROR;
 #endif /* !CS_MODE */
 }
+/* *INDENT-ON* */
 
 int
 loaddb_destroy ()
