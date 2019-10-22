@@ -59,13 +59,13 @@ systdes_remove_tdes_from_map (TRANID trid)
     }
 }
 
-void
-systdes_retire_tdes (log_tdes *&tdes)
+static void
+systdes_retire_tdes (log_tdes *tdes)
 {
   std::unique_lock<std::mutex> ulock (systb_Mutex);
   if (tdes != NULL)
     {
-      logtb_finalize_tdes (NULL, tdes);
+      logtb_clear_tdes (NULL, tdes);
       systb_Free_tdes_list.push_front (tdes);
 
       systdes_remove_tdes_from_map (tdes->trid);
@@ -91,7 +91,6 @@ systdes_claim_tdes ()
     {
       tdes = systb_Free_tdes_list.front ();
       systb_Free_tdes_list.pop_front ();
-      logtb_clear_tdes (NULL, tdes);
     }
   assert (tdes->trid < NULL_TRANID && tdes->trid > systb_Next_tranid);
 
@@ -208,8 +207,9 @@ log_system_tdes::destroy_system_transactions ()
     {
       tdes = systb_Free_tdes_list.front ();
       systb_Free_tdes_list.pop_front ();
+
+      logtb_finalize_tdes (NULL, tdes);
       delete tdes;
-      tdes = NULL;
     }
   assert (systb_System_tdes.empty ());
 }
