@@ -1271,6 +1271,13 @@ load_object_file (load_args * args, int *status)
     bool is_batch_accepted = false;
     do
       {
+	error_code = loaddb_load_batch (batch, use_temp_batch, is_batch_accepted);
+	if (error_code != NO_ERROR)
+	  {
+	    return error_code;
+	  }
+	use_temp_batch = true; // don't upload batch again while retrying
+
 	std::vector<stats> stats;
 	loaddb_fetch_stats (stats);
 	print_stats (stats, *args, status);
@@ -1278,14 +1285,6 @@ load_object_file (load_args * args, int *status)
 	  {
 	    return ER_FAILED;
 	  }
-
-	error_code = loaddb_load_batch (batch, use_temp_batch, is_batch_accepted);
-	if (error_code != NO_ERROR)
-	  {
-	    return error_code;
-	  }
-
-	use_temp_batch = true; // don't upload batch again while retrying
       }
     while (!is_batch_accepted);
 
