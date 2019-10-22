@@ -16442,7 +16442,8 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 
       if (att->is_autoincrement && (value->state == HEAP_UNINIT_ATTRVALUE))
 	{
-	  if (OID_ISNULL (&(att->auto_increment.serial_obj)))
+	  OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
+	  if (OID_ISNULL (&serial_obj_oid))
 	    {
 	      memset (serial_name, '\0', sizeof (serial_name));
 	      recdes.data = NULL;
@@ -16531,8 +16532,9 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 		    }
 
 		  assert (!OID_ISNULL (&serial_oid));
-		  ATOMIC_CAS_64 ((INT64 *) (&att->auto_increment.serial_obj), *(INT64 *) (&oid_Null_oid),
-				 *(INT64 *) (&serial_oid));
+		  or_aligned_oid null_aligned_oid = { oid_Null_oid };
+		  or_aligned_oid serial_aligned_oid = { serial_oid };
+		  att->auto_increment.serial_obj.compare_exchange_strong (null_aligned_oid, serial_aligned_oid);
 		}
 	      else
 		{
@@ -16544,7 +16546,8 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 
 	  if ((att->type == DB_TYPE_SHORT) || (att->type == DB_TYPE_INTEGER) || (att->type == DB_TYPE_BIGINT))
 	    {
-	      if (xserial_get_next_value (thread_p, &dbvalue_numeric, &att->auto_increment.serial_obj, 0,	/* no cache */
+	      OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
+	      if (xserial_get_next_value (thread_p, &dbvalue_numeric, &serial_obj_oid, 0,	/* no cache */
 					  1,	/* generate one value */
 					  GENERATE_AUTO_INCREMENT, false) != NO_ERROR)
 		{
@@ -16560,7 +16563,8 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 	    }
 	  else if (att->type == DB_TYPE_NUMERIC)
 	    {
-	      if (xserial_get_next_value (thread_p, dbvalue, &att->auto_increment.serial_obj, 0,	/* no cache */
+	      OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
+	      if (xserial_get_next_value (thread_p, dbvalue, &serial_obj_oid, 0,	/* no cache */
 					  1,	/* generate one value */
 					  GENERATE_AUTO_INCREMENT, false) != NO_ERROR)
 		{
