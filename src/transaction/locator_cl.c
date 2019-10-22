@@ -5353,10 +5353,11 @@ locator_flush_all_instances (MOP class_mop, bool decache)
 	{
 	  /* flush all dirty instances of this class */
 	  map_status = ws_map_class_dirty (obj->op, locator_mflush, &mflush);
-	  if (map_status == WS_MAP_FAIL)
-	    {
-	      error_code = ER_FAILED;
-	    }
+	}
+
+      if (map_status == WS_MAP_FAIL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
 	}
     }
 
