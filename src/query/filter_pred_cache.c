@@ -34,6 +34,8 @@
 #include "xasl.h"
 #include "xasl_unpack_info.hpp"
 
+#include <algorithm>
+
 typedef struct fpcache_ent FPCACHE_ENTRY;
 struct fpcache_ent
 {
@@ -155,7 +157,7 @@ fpcache_initialize (THREAD_ENTRY * thread_p)
 
   /* Initialize free list */
   const int freelist_block_count = 2;
-  const int freelist_block_size = fpcache_Soft_capacity / freelist_block_count;
+  const int freelist_block_size = std::max (1, fpcache_Soft_capacity / freelist_block_count);
   fpcache_Hashmap.init (fpcache_Ts, THREAD_TS_FPCACHE, fpcache_Soft_capacity, freelist_block_size, freelist_block_count,
 			fpcache_Entry_descriptor);
   fpcache_Entry_counter = 0;
