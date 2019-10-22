@@ -1183,7 +1183,7 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
 		     last_stat.rows_committed, last_stat.rows_failed);
     }
 
-  if (!load_interrupted && !is_failed && !args->syntax_check)
+  if (!load_interrupted && !is_failed && !args->syntax_check && error_code == NO_ERROR)
     {
       // Update class statistics
       error_code = loaddb_update_stats ();
