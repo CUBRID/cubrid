@@ -368,10 +368,10 @@ OR_PUT_DOUBLE (char *ptr, double *val)
 
 #define OR_PUT_MONETARY(ptr, value) \
   do { \
-    char pack_value[OR_BIGINT_SIZE]; \
+    char pack_value[OR_DOUBLE_SIZE]; \
     OR_PUT_INT (((char *) (ptr)) + OR_MONETARY_TYPE, (int) (value)->type); \
-    OR_PUT_DOUBLE (&pack_value, &((value)->amount)); \
-    memcpy (((char *) (ptr)) + OR_MONETARY_AMOUNT, &pack_value, OR_DOUBLE_SIZE); \
+    OR_PUT_DOUBLE (pack_value, &((value)->amount)); \
+    memcpy (((char *) (ptr)) + OR_MONETARY_AMOUNT, pack_value, OR_DOUBLE_SIZE); \
   } while (0)
 
 /* Sha1 */
