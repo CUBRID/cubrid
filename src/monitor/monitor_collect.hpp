@@ -38,10 +38,10 @@ namespace cubmonitor
   class timer
   {
     public:
-      timer (void);
+      inline timer (void);
 
-      void reset (void);
-      duration time (void);
+      inline void reset (void);
+      inline duration time (void);
 
     private:
       time_point m_timept;
@@ -81,6 +81,17 @@ namespace cubmonitor
   class timer_statistic
   {
     public:
+      class autotimer
+      {
+	public:
+	  autotimer () = delete;
+	  inline autotimer (timer_statistic &timer_stat, bool active = true);
+	  inline ~autotimer ();
+	private:
+	  timer_statistic &m_stat;
+	  bool m_active;
+      };
+
       timer_statistic (void);
 
       inline void time (const time_rep &d);     // add duration to timer
@@ -91,7 +102,9 @@ namespace cubmonitor
       inline std::size_t get_statistics_count (void) const;
 
       // get time
-      time_rep get_time (fetch_mode mode = FETCH_GLOBAL) const;
+      inline time_rep get_time (fetch_mode mode = FETCH_GLOBAL) const;
+
+      inline void reset_timer ();
 
     private:
       timer m_timer;          // internal timer
@@ -102,6 +115,12 @@ namespace cubmonitor
   template class timer_statistic<time_accumulator_atomic_statistic>;
   template class timer_statistic<transaction_statistic<time_accumulator_statistic>>;
   template class timer_statistic<transaction_statistic<time_accumulator_atomic_statistic>>;
+
+  // aliases
+  using timer_stat = timer_statistic<time_accumulator_statistic>;
+  using atomic_timer_stat = timer_statistic<time_accumulator_atomic_statistic>;
+  using transaction_timer_stat = timer_statistic<transaction_statistic<time_accumulator_statistic>>;
+  using transaction_atomic_timer_stat = timer_statistic<transaction_statistic<time_accumulator_atomic_statistic>>;
 
   //////////////////////////////////////////////////////////////////////////
   // Counter/timer statistic - two statistics that count and time events
@@ -114,19 +133,33 @@ namespace cubmonitor
   class counter_timer_statistic
   {
     public:
-      counter_timer_statistic (void);
+      // autotimer times and increments statistic on destructor
+      class autotimer
+      {
+	public:
+	  autotimer () = delete;
+	  inline autotimer (counter_timer_statistic &cts, bool active = true);
+	  inline ~autotimer ();
+	private:
+	  counter_timer_statistic &m_stat;
+	  bool m_active;
+      };
+
+      inline counter_timer_statistic (void);
 
       inline void time_and_increment (const time_rep &d, const amount_rep &a = 1);    // add time and amount
       inline void time_and_increment (const amount_rep &a = 1);                       // add internal time and amount
+
+      inline void reset_timer ();
 
       // fetch interface
       inline std::size_t get_statistics_count (void) const;
       inline void fetch (statistic_value *destination, fetch_mode mode = FETCH_GLOBAL) const;
 
       // getters
-      amount_rep get_count (fetch_mode mode = FETCH_GLOBAL) const;
-      time_rep get_time (fetch_mode mode = FETCH_GLOBAL) const;
-      time_rep get_average_time (fetch_mode mode = FETCH_GLOBAL) const;
+      inline amount_rep get_count (fetch_mode mode = FETCH_GLOBAL) const;
+      inline time_rep get_time (fetch_mode mode = FETCH_GLOBAL) const;
+      inline time_rep get_average_time (fetch_mode mode = FETCH_GLOBAL) const;
 
       // register statistic to monitor
       // three statistics are registers: counter, total time and average time (total / count)
@@ -146,6 +179,11 @@ namespace cubmonitor
   template class counter_timer_statistic<transaction_statistic<amount_accumulator_atomic_statistic>,
 					 transaction_statistic<time_accumulator_atomic_statistic>>;
 
+  // aliases
+  using counter_timer_stat = counter_timer_statistic<>;
+  using atomic_counter_timer_stat =
+	  counter_timer_statistic<amount_accumulator_atomic_statistic, time_accumulator_atomic_statistic>;
+
   //////////////////////////////////////////////////////////////////////////
   // Counter/timer/max statistic - three statistics that count, time and save events longest duration
   //
@@ -157,7 +195,7 @@ namespace cubmonitor
   class counter_timer_max_statistic
   {
     public:
-      counter_timer_max_statistic (void);
+      inline counter_timer_max_statistic (void);
 
       inline void time_and_increment (const time_rep &d, const amount_rep &a = 1);    // add time and amount
       inline void time_and_increment (const amount_rep &a = 1);                       // add internal time and amount
@@ -167,10 +205,10 @@ namespace cubmonitor
       inline void fetch (statistic_value *destination, fetch_mode mode = FETCH_GLOBAL) const;
 
       // getters
-      amount_rep get_count (fetch_mode mode = FETCH_GLOBAL) const;
-      time_rep get_time (fetch_mode mode = FETCH_GLOBAL) const;
-      time_rep get_average_time (fetch_mode mode = FETCH_GLOBAL) const;
-      time_rep get_max_time (fetch_mode mode = FETCH_GLOBAL) const;
+      inline amount_rep get_count (fetch_mode mode = FETCH_GLOBAL) const;
+      inline time_rep get_time (fetch_mode mode = FETCH_GLOBAL) const;
+      inline time_rep get_average_time (fetch_mode mode = FETCH_GLOBAL) const;
+      inline time_rep get_max_time (fetch_mode mode = FETCH_GLOBAL) const;
 
       // register statistic to monitor
       // three statistics are registers: counter, total time, max per unit time and average time (total / count)
@@ -243,6 +281,33 @@ namespace cubmonitor
     return m_statistic.get_value (mode);
   }
 
+  template <class T>
+  void
+  timer_statistic<T>::reset_timer ()
+  {
+    m_timer.reset ();
+  }
+
+  template <class T>
+  timer_statistic<T>::autotimer::autotimer (timer_statistic &timer_stat, bool active)
+    : m_stat (timer_stat)
+    , m_active (active)
+  {
+    if (m_active)
+      {
+	m_stat.reset_timer ();
+      }
+  }
+
+  template <class T>
+  timer_statistic<T>::autotimer::~autotimer ()
+  {
+    if (m_active)
+      {
+	m_stat.time ();
+      }
+  }
+
   //////////////////////////////////////////////////////////////////////////
   // counter_timer_statistic
   //////////////////////////////////////////////////////////////////////////
@@ -269,6 +334,13 @@ namespace cubmonitor
   counter_timer_statistic<A, T>::time_and_increment (const amount_rep &a /* = 1 */)
   {
     time_and_increment (m_timer.time (), a);      // use internal timer
+  }
+
+  template <class A, class T>
+  void
+  counter_timer_statistic<A, T>::reset_timer ()
+  {
+    m_timer.reset ();
   }
 
   template <class A, class T>
@@ -335,6 +407,27 @@ namespace cubmonitor
       destination[get_statistics_count ()] = statistic_value_cast (this->get_average_time (mode));
     };
     mon.register_statistics (stat_count, fetch_func, names);
+  }
+
+  template <class A, class T>
+  counter_timer_statistic<A, T>::autotimer::autotimer (counter_timer_statistic &cts, bool active)
+    : m_stat (cts)
+    , m_active (active)
+  {
+    if (m_active)
+      {
+	m_stat.reset_timer ();
+      }
+  }
+
+  template <class A, class T>
+  counter_timer_statistic<A, T>::autotimer::~autotimer ()
+  {
+    if (m_active)
+      {
+	// will time duration from construction and increment once
+	m_stat.time_and_increment ();
+      }
   }
 
   //////////////////////////////////////////////////////////////////////////
@@ -445,6 +538,29 @@ namespace cubmonitor
       destination[get_statistics_count ()] = statistic_value_cast (this->get_average_time (mode));
     };
     mon.register_statistics (stat_count, fetch_func, names);
+  }
+
+  //
+  // timer
+  //
+  timer::timer (void)
+    : m_timept (clock_type::now ())
+  {
+    //
+  }
+
+  void
+  timer::reset (void)
+  {
+    m_timept = clock_type::now ();
+  }
+
+  duration
+  timer::time (void)
+  {
+    time_point start_pt = m_timept;
+    m_timept = clock_type::now ();
+    return m_timept - start_pt;
   }
 
 } // namespace cubmonitor

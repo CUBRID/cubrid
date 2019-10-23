@@ -559,7 +559,7 @@ namespace cubload
 	return ER_FILE_UNKNOWN_FILE;
       }
 
-    std::ifstream object_file (object_file_name, std::fstream::in);
+    std::ifstream object_file (object_file_name, std::fstream::in | std::fstream::binary);
     if (!object_file)
       {
 	// file does not exists

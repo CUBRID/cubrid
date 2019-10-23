@@ -199,7 +199,7 @@ namespace cubload
 	    m_session.stats_update_rows_committed (lines_inserted);
 	    m_session.stats_update_last_committed_line (line_no + 1);
 
-	    if (!m_session.get_args ().syntax_check)
+	    if (!m_session.get_args ().syntax_check && !m_session.get_args ().disable_statistics)
 	      {
 		m_session.append_log_msg (LOADDB_MSG_UPDATED_CLASS_STATS, class_name.c_str ());
 	      }

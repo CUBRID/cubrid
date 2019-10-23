@@ -15853,7 +15853,12 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
       GOTO_EXIT_ON_ERROR;
     }
 
-  if (recursive_part && non_recursive_part->list_id->tuple_cnt > 0)
+  if (recursive_part && non_recursive_part->list_id->tuple_cnt == 0)
+    {
+      // status needs to be changed to XASL_SUCCESS to enable proper cleaning in qexec_clear_xasl
+      recursive_part->status = XASL_SUCCESS;
+    }
+  else if (recursive_part && non_recursive_part->list_id->tuple_cnt > 0)
     {
       bool common_list_optimization = false;
       int recursive_iterations = 0;

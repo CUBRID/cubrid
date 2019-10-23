@@ -17,14 +17,21 @@
  *
  */
 
-#include "monitor_collect.hpp"
+#ifndef _LOCKFREE_TRANSACTION_DEF_HPP_
+#define _LOCKFREE_TRANSACTION_DEF_HPP_
 
-namespace cubmonitor
+#include <cstddef>
+#include <cstdint>
+
+namespace lockfree
 {
-  void
-  build_name_vector (std::vector<std::string> &names, const char *basename, const char *prefix)
+  namespace tran
   {
-    names.push_back (std::string (prefix) + basename);
-  }
+    // transaction index
+    using index = size_t;
 
-}  // namespace cubmonitor
+    // transaction id
+    using id = std::uint64_t;
+  }
+}
+#endif // !_LOCKFREE_TRANSACTION_DEF_HPP_

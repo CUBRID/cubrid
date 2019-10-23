@@ -17,14 +17,12 @@
  *
  */
 
-#include "monitor_collect.hpp"
+#ifndef _TEST_FREELIST_FUNCTIONAL_HPP_
+#define _TEST_FREELIST_FUNCTIONAL_HPP_
 
-namespace cubmonitor
+namespace test_lockfree
 {
-  void
-  build_name_vector (std::vector<std::string> &names, const char *basename, const char *prefix)
-  {
-    names.push_back (std::string (prefix) + basename);
-  }
+  int test_freelist_functional ();
+}
 
-}  // namespace cubmonitor
+#endif // !_TEST_FREELIST_FUNCTIONAL_HPP_

@@ -17,14 +17,15 @@
  *
  */
 
-#include "monitor_collect.hpp"
+#include "thread_lockfree_hash_map.hpp"
 
-namespace cubmonitor
+#include "thread_manager.hpp"
+
+namespace cubthread
 {
-  void
-  build_name_vector (std::vector<std::string> &names, const char *basename, const char *prefix)
+  lockfree::tran::system &
+  get_thread_entry_lftransys ()
   {
-    names.push_back (std::string (prefix) + basename);
+    return cubthread::get_manager ()->get_lockfree_transys ();
   }
-
-}  // namespace cubmonitor
+} // namespace cubthread

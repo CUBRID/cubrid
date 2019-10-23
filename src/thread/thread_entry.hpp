@@ -29,6 +29,7 @@
 #endif // not SERVER_MODE and not SA_MODE
 
 #include "error_context.hpp"
+#include "lockfree_transaction_def.hpp"
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID
 
@@ -314,9 +315,9 @@ namespace cubthread
       {
 	return m_systdes;
       }
-      void set_system_tdes (log_system_tdes &sys_tdes)
+      void set_system_tdes (log_system_tdes *sys_tdes)
       {
-	m_systdes = &sys_tdes;
+	m_systdes = sys_tdes;
       }
       void reset_system_tdes (void)
       {
@@ -328,6 +329,10 @@ namespace cubthread
       void end_resource_tracks (void);
       void push_resource_tracks (void);
       void pop_resource_tracks (void);
+
+      void assign_lf_tran_index (lockfree::tran::index idx);
+      lockfree::tran::index pull_lf_tran_index ();
+      lockfree::tran::index get_lf_tran_index ();
 
     private:
       void clear_resources (void);
@@ -345,6 +350,8 @@ namespace cubthread
       cubbase::pgbuf_tracker &m_pgbuf_tracker;
       cubsync::critical_section_tracker &m_csect_tracker;
       log_system_tdes *m_systdes;
+
+      lockfree::tran::index m_lf_tran_index;
   };
 
 } // namespace cubthread

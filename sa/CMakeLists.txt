@@ -115,6 +115,11 @@ set(BASE_SOURCES
   ${BASE_DIR}/binaryheap.c
   ${BASE_DIR}/tsc_timer.c
   ${BASE_DIR}/lock_free.c
+  ${BASE_DIR}/lockfree_bitmap.cpp
+  ${BASE_DIR}/lockfree_hashmap.cpp
+  ${BASE_DIR}/lockfree_transaction_descriptor.cpp
+  ${BASE_DIR}/lockfree_transaction_table.cpp
+  ${BASE_DIR}/lockfree_transaction_system.cpp
   ${BASE_DIR}/fileline_location.cpp
   ${BASE_DIR}/resource_tracker.cpp
   ${BASE_DIR}/tz_compile.c
@@ -126,6 +131,15 @@ set(BASE_HEADERS
   ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
+  ${BASE_DIR}/lockfree_address_marker.hpp
+  ${BASE_DIR}/lockfree_bitmap.hpp
+  ${BASE_DIR}/lockfree_freelist.hpp
+  ${BASE_DIR}/lockfree_hashmap.hpp
+  ${BASE_DIR}/lockfree_transaction_def.hpp
+  ${BASE_DIR}/lockfree_transaction_descriptor.hpp
+  ${BASE_DIR}/lockfree_transaction_reclaimable.hpp
+  ${BASE_DIR}/lockfree_transaction_table.hpp
+  ${BASE_DIR}/lockfree_transaction_system.hpp
   ${BASE_DIR}/mem_block.hpp
   ${BASE_DIR}/memory_private_allocator.cpp
   ${BASE_DIR}/msgcat_set_log.hpp
@@ -158,6 +172,21 @@ set(CONNECTION_SOURCES
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_cl.c
   )
+
+set(MONITOR_SOURCES
+  ${MONITOR_DIR}/monitor_collect.cpp
+  ${MONITOR_DIR}/monitor_registration.cpp
+  ${MONITOR_DIR}/monitor_statistic.cpp
+  ${MONITOR_DIR}/monitor_transaction.cpp
+)
+
+set(MONITOR_HEADERS
+  ${MONITOR_DIR}/monitor_collect.hpp
+  ${MONITOR_DIR}/monitor_definition.hpp
+  ${MONITOR_DIR}/monitor_registration.hpp
+  ${MONITOR_DIR}/monitor_statistic.hpp
+  ${MONITOR_DIR}/monitor_transaction.hpp
+)
 
 set(PARSER_SOURCES
   ${BISON_csql_grammar_OUTPUTS}
@@ -280,12 +309,14 @@ set(THREAD_SOURCES
   ${THREAD_DIR}/critical_section_tracker.cpp
   ${THREAD_DIR}/thread_entry.cpp
   ${THREAD_DIR}/thread_entry_task.cpp
+  ${THREAD_DIR}/thread_lockfree_hash_map.cpp
   ${THREAD_DIR}/thread_manager.cpp
   )
 set(THREAD_HEADERS
   ${THREAD_DIR}/critical_section_tracker.hpp
   ${THREAD_DIR}/thread_compat.hpp
   ${THREAD_DIR}/thread_entry.hpp
+  ${THREAD_DIR}/thread_lockfree_hash_map.hpp
   ${THREAD_DIR}/thread_manager.hpp
   )
 
@@ -460,6 +491,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
   ${COMMUNICATION_SOURCES}
+  ${MONITOR_SOURCES}
   ${PARSER_DIR}/parser_support.c
   ${PARSER_DIR}/show_meta.c
   ${PARSER_DIR}/double_byte_support.c
@@ -519,6 +551,8 @@ add_library(cubridsa SHARED
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
   ${JSP_SOURCES}
+  ${MONITOR_HEADERS}
+  ${MONITOR_SOURCES}
   ${OBJECT_HEADERS}
   ${OBJECT_SOURCES}
   ${OPTIMIZER_SOURCES}
