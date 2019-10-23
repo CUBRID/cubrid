@@ -45,8 +45,6 @@
 #include "porting_inline.hpp"
 #include "storage_common.h"
 
-#include <cstring>
-
 // forward declarations
 struct log_lsa;
 
@@ -207,14 +205,14 @@ OR_PUT_FLOAT (char *ptr, float *val)
 {
   UINT32 ui;
   ui = htonf (*val);
-  std::memcpy (ptr, &ui, sizeof (ui));
+  memcpy (ptr, &ui, sizeof (ui));
 }
 inline void
 OR_PUT_DOUBLE (char *ptr, double *val)
 {
   UINT64 ui;
   ui = htond (*val);
-  std::memcpy (ptr, &ui, sizeof (ui));
+  memcpy (ptr, &ui, sizeof (ui));
 }
 
 #define OR_GET_BIG_VAR_OFFSET(ptr) 	OR_GET_INT (ptr)	/* 4byte */
@@ -370,7 +368,7 @@ OR_PUT_DOUBLE (char *ptr, double *val)
 
 #define OR_PUT_MONETARY(ptr, value) \
   do { \
-    UINT64 pack_value; \
+    char pack_value[OR_BIGINT_SIZE]; \
     OR_PUT_INT (((char *) (ptr)) + OR_MONETARY_TYPE, (int) (value)->type); \
     OR_PUT_DOUBLE (&pack_value, &((value)->amount)); \
     memcpy (((char *) (ptr)) + OR_MONETARY_AMOUNT, &pack_value, OR_DOUBLE_SIZE); \
