@@ -658,6 +658,7 @@ namespace lockfree
     T *claimed = NULL;
     free_node_type *fn = reinterpret_cast<free_node_type *> (tdes.pull_saved_reclaimable ());
     bool is_local_tran = false;
+
     if (!tdes.is_tran_started ())
       {
 	tdes.start_tran ();
@@ -697,7 +698,7 @@ namespace lockfree
   {
     /* Assert used to make sure the current entry is protected by either transaction or mutex. */
 
-    /* The transaction is started if and only if we don't use mutex */ \
+    /* The transaction is started if and only if we don't use mutex */
     assert (tdes.is_tran_started () == !m_edesc->using_mutex);
 
     /* If we use mutex, we have a mutex locked. */
@@ -1091,6 +1092,7 @@ namespace lockfree
 	// only way to exit while (curr_p != NULL) loop is to restart search
 	assert (restart_search);
       } // while (restart_search)
+
     /* impossible case */
     assert (false);
     return false;
