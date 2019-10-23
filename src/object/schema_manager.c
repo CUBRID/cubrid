@@ -3768,6 +3768,10 @@ sm_get_class_with_statistics (MOP classop)
 	      return NULL;
 	    }
 	  class_->stats = stats_get_statistics (WS_OID (classop), 0);
+	  if (class_->stats == NULL && er_errid () != NO_ERROR)
+	    {
+	      return NULL;
+	    }
 	}
     }
   else
@@ -3781,6 +3785,10 @@ sm_get_class_with_statistics (MOP classop)
 	{
 	  stats_free_statistics (class_->stats);
 	  class_->stats = stats;
+	}
+      else if (er_errid () != NO_ERROR)
+	{
+	  return NULL;
 	}
     }
 
@@ -3891,6 +3899,11 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 		  /* get the new ones, should do this at the same time as the update operation to avoid two server
 		   * calls */
 		  class_->stats = stats_get_statistics (WS_OID (classop), 0);
+		  if (class_->stats == NULL)
+		    {
+		      error = er_errid ();
+		      /* don't assert error (stats may be empty for class with no attributes) */
+		    }
 		}
 	    }
 	}
@@ -3944,6 +3957,11 @@ sm_update_all_statistics (bool with_fullscan)
 		      return (er_errid ());
 		    }
 		  class_->stats = stats_get_statistics (WS_OID (cl->op), 0);
+		  if (class_->stats == NULL)
+		    {
+		      error = er_errid ();
+		      /* don't assert error (stats may be empty for class with no attributes) */
+		    }
 		}
 	    }
 	}
