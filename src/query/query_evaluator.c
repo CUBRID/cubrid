@@ -2613,15 +2613,9 @@ eval_fnc (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, DB_TYPE * single_node_t
  *   ev_res(in): logical value to be checked
  *   qualification(in/out): a pointer to the qualification to be used in logical
  *			    value check. This member can be modified.
- *   key_filter(in): key filter info that will be used if ORACLE EMPTY STRING
- *		     STYLE is activated
- *   recdes(in): the record descriptor from wich values will be loaded into the
- *		 key_filter attributes cache
- *   oid(in): the OID of the current descriptor
  */
 DB_LOGICAL
-update_logical_result (THREAD_ENTRY * thread_p, DB_LOGICAL ev_res, int *qualification, FILTER_INFO * key_filter,
-		       RECDES * recdes, const OID * oid)
+update_logical_result (THREAD_ENTRY * thread_p, DB_LOGICAL ev_res, int *qualification)
 {
   int q;
 
@@ -2672,17 +2666,15 @@ update_logical_result (THREAD_ENTRY * thread_p, DB_LOGICAL ev_res, int *qualific
 	}
     }
 
-  if (ev_res == V_ERROR)
+  assert (ev_res != V_ERROR);
+  if (ev_res == V_TRUE)
     {
-      return V_ERROR;
-    }
-  else if (ev_res != V_TRUE)	/* V_FALSE || V_UNKNOWN */
-    {
-      return V_FALSE;		/* not qualified, continue to the next tuple */
+      return V_TRUE;
     }
   else
     {
-      return V_TRUE;
+      /* V_FALSE || V_UNKNOWN */
+      return V_FALSE;		/* not qualified, continue to the next tuple */
     }
 }
 

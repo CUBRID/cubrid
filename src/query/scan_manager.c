@@ -5904,17 +5904,17 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
       assert (sp_scan == S_SUCCESS || sp_scan == S_SUCCESS_CHN_UPTODATE);
     }
 
-
   /* evaluate the predicates to see if the object qualifies */
   ev_res = eval_data_filter (thread_p, isidp->curr_oidp, &recdes, &isidp->scan_cache, data_filter);
 
-  // no key filter evaluation is required.
-  ev_res = update_logical_result (thread_p, ev_res, (int *) &scan_id->qualification, NULL, NULL, NULL);
+  // no key filter evaluation is required here.
+
+  ev_res = update_logical_result (thread_p, ev_res, (int *) &scan_id->qualification);
   if (ev_res == V_ERROR)
     {
       return S_ERROR;
     }
-  if (ev_res != V_TRUE)
+  else if (ev_res != V_TRUE)
     {
       return S_DOESNT_EXIST;
     }
