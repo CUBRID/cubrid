@@ -73,6 +73,11 @@ union or_aligned_oid
   std::int64_t dummy_for_alignemnt;
   OID oid;
 
+  or_aligned_oid ()
+    : oid OID_INITIALIZER
+  {
+  }
+
   or_aligned_oid (const OID & arg_oid)
     : oid (arg_oid)
   {
