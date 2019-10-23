@@ -24909,7 +24909,7 @@ heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
       heap_pages_array.push_back (vpid);
     }
 
-  assert (offset == recv->length);
+  assert (recv->length >= 0 && offset == (size_t) recv->length);
   assert (array_size == heap_pages_array.size ());
 
   VPID_SET_NULL (&null_vpid);
