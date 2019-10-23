@@ -2582,6 +2582,7 @@ tran_get_tranlist_state_name (TRAN_STATE state)
   return "(UNKNOWN)";
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * tran_is_blocked -
  *
@@ -2630,6 +2631,7 @@ tran_is_blocked (int tran_index)
   return blocked;
 #endif /* !CS_MODE */
 }
+#endif // ENABLE_UNUSED_FUNCTION
 
 /*
  * tran_server_has_updated -
@@ -4122,7 +4124,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
     }
   free_and_init (request);
 
-  return NO_ERROR;
+  return req_error;
 #else
   int result = NO_ERROR;
   SESSION_ID id;
@@ -4191,7 +4193,7 @@ csession_end_session (SESSION_ID session_id)
       return ER_FAILED;
     }
 
-  return NO_ERROR;
+  return req_error;
 #else
   int result = NO_ERROR;
 
@@ -5387,6 +5389,10 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
 	  btid = NULL;
 	}
     }
+  else
+    {
+      error = req_error;
+    }
 
   free_and_init (request);
 
@@ -5677,6 +5683,10 @@ btree_delete_index (BTID * btid)
     {
       or_unpack_int (reply, &status);
     }
+  else
+    {
+      status = req_error;
+    }
 
   return status;
 #else /* CS_MODE */
@@ -5751,6 +5761,10 @@ locator_remove_class_from_index (OID * oid, BTID * btid, HFID * hfid)
   if (!req_error)
     {
       or_unpack_int (reply, &status);
+    }
+  else
+    {
+      status = req_error;
     }
 
   return status;
@@ -6051,6 +6065,10 @@ btree_class_test_unique (char *buf, int buf_size)
   if (!req_error)
     {
       or_unpack_int (reply, &status);
+    }
+  else
+    {
+      status = req_error;
     }
 
   return status;
@@ -6887,7 +6905,7 @@ qp_get_sys_timestamp (DB_VALUE * value)
       db_make_timestamp (value, sysutime);
     }
 
-  return NO_ERROR;
+  return req_error;
 #else /* CS_MODE */
 
   THREAD_ENTRY *thread_p = enter_server ();
@@ -7044,7 +7062,7 @@ serial_decache (OID * oid)
       or_unpack_int (reply, &status);
     }
 
-  return NO_ERROR;
+  return req_error;
 #else /* CS_MODE */
   THREAD_ENTRY *thread_p = enter_server ();
 
@@ -7118,7 +7136,7 @@ perfmon_server_stop_stats (void)
     {
       return ER_FAILED;
     }
-  return NO_ERROR;
+  return req_error;
 #else /* CS_MODE */
 
   THREAD_ENTRY *thread_p = enter_server ();
@@ -7143,10 +7161,9 @@ int
 perfmon_server_copy_stats (UINT64 * to_stats)
 {
 #if defined(CS_MODE)
-  int req_error;
+  int req_error = NO_ERROR;
   char *reply;
   int nr_statistic_values;
-  int err = NO_ERROR;
 
   nr_statistic_values = perfmon_get_number_of_statistic_values ();
   reply = (char *) malloc (nr_statistic_values * OR_INT64_SIZE);
@@ -7171,7 +7188,7 @@ perfmon_server_copy_stats (UINT64 * to_stats)
     }
 
   free_and_init (reply);
-  return err;
+  return req_error;
 
 #else /* CS_MODE */
 
@@ -7197,10 +7214,9 @@ int
 perfmon_server_copy_global_stats (UINT64 * to_stats)
 {
 #if defined(CS_MODE)
-  int req_error;
+  int req_error = NO_ERROR;
   char *reply = NULL;
   int nr_statistic_values;
-  int err = NO_ERROR;
 
   nr_statistic_values = perfmon_get_number_of_statistic_values ();
   reply = (char *) malloc (nr_statistic_values * OR_INT64_SIZE);
@@ -7223,7 +7239,7 @@ perfmon_server_copy_global_stats (UINT64 * to_stats)
     }
 
   free_and_init (reply);
-  return err;
+  return req_error;
 #else /* CS_MODE */
 
   THREAD_ENTRY *thread_p = enter_server ();
@@ -8491,6 +8507,10 @@ locator_check_fk_validity (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type, int
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &error);
+    }
+  else
+    {
+      error = req_error;
     }
 
   free_and_init (request);
