@@ -1657,7 +1657,7 @@ jsp_pack_double_argument (char *buffer, DB_VALUE * value)
 
   ptr = or_pack_int (buffer, sizeof (double));
   v = db_get_double (value);
-  OR_PUT_DOUBLE (pack_value, &v);
+  OR_PUT_DOUBLE (pack_value, v);
   memcpy (ptr, pack_value, OR_DOUBLE_SIZE);
 
   return ptr + OR_DOUBLE_SIZE;
@@ -1956,7 +1956,7 @@ jsp_pack_monetary_argument (char *buffer, DB_VALUE * value)
 
   ptr = or_pack_int (buffer, sizeof (double));
   v = db_get_monetary (value);
-  OR_PUT_DOUBLE (pack_value, &v->amount);
+  OR_PUT_DOUBLE (pack_value, v->amount);
   memcpy (ptr, pack_value, OR_DOUBLE_SIZE);
 
   return ptr + OR_DOUBLE_SIZE;

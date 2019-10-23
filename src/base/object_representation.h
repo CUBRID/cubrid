@@ -201,17 +201,17 @@ struct log_lsa;
 #define OR_PUT_INT(ptr, val) \
   (*(int *) ((char *) (ptr)) = htonl ((int) (val)))
 inline void
-OR_PUT_FLOAT (char *ptr, float *val)
+OR_PUT_FLOAT (char *ptr, float val)
 {
   UINT32 ui;
-  ui = htonf (*val);
+  ui = htonf (val);
   memcpy (ptr, &ui, sizeof (ui));
 }
 inline void
-OR_PUT_DOUBLE (char *ptr, double *val)
+OR_PUT_DOUBLE (char *ptr, double val)
 {
   UINT64 ui;
-  ui = htond (*val);
+  ui = htond (val);
   memcpy (ptr, &ui, sizeof (ui));
 }
 
@@ -370,7 +370,7 @@ OR_PUT_DOUBLE (char *ptr, double *val)
   do { \
     char pack_value[OR_DOUBLE_SIZE]; \
     OR_PUT_INT (((char *) (ptr)) + OR_MONETARY_TYPE, (int) (value)->type); \
-    OR_PUT_DOUBLE (pack_value, &((value)->amount)); \
+    OR_PUT_DOUBLE (pack_value, (value)->amount); \
     memcpy (((char *) (ptr)) + OR_MONETARY_AMOUNT, pack_value, OR_DOUBLE_SIZE); \
   } while (0)
 
