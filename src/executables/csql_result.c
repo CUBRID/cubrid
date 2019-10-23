@@ -158,7 +158,7 @@ static jmp_buf csql_Jmp_buf;
 
 static const char *csql_cmd_string (CUBRID_STMT_TYPE stmt_type, const char *default_string);
 static void display_empty_result (int stmt_type, int line_no);
-static char **get_current_result (volatile int **len, const CUR_RESULT_INFO * result_info, bool plain_output);
+static char **get_current_result (int **len, const CUR_RESULT_INFO * result_info, bool plain_output);
 static int write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RESULT_INFO * result_info);
 static char *uncontrol_strdup (const char *from);
 static char *uncontrol_strndup (const char *from, int length);
@@ -488,7 +488,7 @@ display_empty_result (int stmt_type, int line_no)
  *   Caller should be responsible for free the return array and its elements.
  */
 static char **
-get_current_result (volatile int **lengths, const CUR_RESULT_INFO * result_info, bool plain_output)
+get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, bool plain_output)
 {
   int i;
   char **val = NULL;		/* temporary array for values */
@@ -710,7 +710,6 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RE
    */
   typedef char **value_array;
   volatile value_array val;	/* attribute values array */
-  volatile int *len;		/* attribute values lengths */
   volatile int error;		/* to switch return of CSQL_FAILURE/CSQL_SUCCESS */
   int i;			/* loop counter */
   int object_no;		/* result object count */
@@ -733,7 +732,6 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RE
   bool is_null;
 
   val = (char **) NULL;
-  len = NULL;
   error = FALSE;
 
   /*
@@ -763,160 +761,167 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RE
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
 	  error = TRUE;
-	  goto done;
-	}
-
-      if (csql_arg->skip_column_names == true || csql_arg->line_output == true)
-	{
-	  ;
-	}
-      else if (csql_arg->plain_output == true)
-	{
-	  for (i = 0; i < num_attrs; i++)
-	    {
-	      refined_attr_name = csql_string_to_plain_string (attr_names[i], strlen (attr_names[i]), NULL);
-	      if (refined_attr_name != NULL)
-		{
-		  fprintf (pf, "%s", refined_attr_name);
-		  free_and_init (refined_attr_name);
-		}
-	      else
-		{
-		  fprintf (pf, "UNKNOWN");
-		}
-
-	      if (i == num_attrs - 1)
-		{
-		  fprintf (pf, "\n");
-		}
-	      else
-		{
-		  fprintf (pf, "\t");
-		}
-	    }
 	}
       else
 	{
-	  for (n = i = 0; i < num_attrs; i++)
+	  if (csql_arg->skip_column_names == true || csql_arg->line_output == true)
 	    {
-	      fprintf (pf, "  %*s", (int) (attr_lengths[i]), attr_names[i]);
-	      n += 2 + ((attr_lengths[i] > 0) ? attr_lengths[i] : -attr_lengths[i]);
-	    }
-	  putc ('\n', pf);
-	  for (; n > 0; n--)
-	    {
-	      putc ('=', pf);
-	    }
-	  putc ('\n', pf);
-	}
-
-      for (object_no = 1;; object_no++)
-	{
-	  csql_Row_count = object_no;
-	  /* free previous result */
-	  if (val != NULL)
-	    {
-	      for (i = 0; i < num_attrs; i++)
-		{
-		  free_and_init (val[i]);
-		}
-	      free_and_init (val);
-	    }
-	  if (len)
-	    {
-	      free_and_init (len);
-	    }
-
-	  val = get_current_result (&len, result_info, csql_arg->plain_output);
-	  if (val == NULL)
-	    {
-	      csql_Error_code = CSQL_ERR_SQL_ERROR;
-	      error = TRUE;
-	      goto done;
-	    }
-
-	  if (csql_arg->line_output == true)
-	    {
-	      fprintf (pf, "<%05d>", object_no);
-	      for (i = 0; i < num_attrs; i++)
-		{
-		  fprintf (pf, "%*c", (int) ((i == 0) ? 1 : 8), ' ');
-		  fprintf (pf, "%*s: %s\n", (int) (-max_attr_name_length), attr_names[i], val[i]);
-		}
-	      /* fflush(pf); */
+	      ;
 	    }
 	  else if (csql_arg->plain_output == true)
 	    {
-	      for (i = 0; i < num_attrs - 1; i++)
-		{
-		  fprintf (pf, "%s\t", val[i]);
-		}
-	      fprintf (pf, "%s\n", val[i]);
-	    }
-	  else
-	    {
-	      int padding_size;
-
 	      for (i = 0; i < num_attrs; i++)
 		{
-		  if (strcmp ("NULL", val[i]) == 0)
+		  refined_attr_name = csql_string_to_plain_string (attr_names[i], strlen (attr_names[i]), NULL);
+		  if (refined_attr_name != NULL)
 		    {
-		      is_null = true;
+		      fprintf (pf, "%s", refined_attr_name);
+		      free_and_init (refined_attr_name);
 		    }
 		  else
 		    {
-		      is_null = false;
+		      fprintf (pf, "UNKNOWN");
 		    }
 
-		  column_width = csql_get_column_width (attr_names[i]);
-		  value_width = calculate_width (column_width, csql_string_width, len[i], attr_types[i], is_null);
-
-		  padding_size =
-		    (attr_lengths[i] > 0) ? MAX (attr_lengths[i] - (value_width),
-						 0) : MIN (attr_lengths[i] + (value_width), 0);
-
-		  fprintf (pf, "  ");
-		  if (padding_size > 0)
+		  if (i == num_attrs - 1)
 		    {
-		      /* right justified */
-		      fprintf (pf, "%*s", (int) padding_size, "");
+		      fprintf (pf, "\n");
 		    }
-
-		  value = val[i];
-		  if (is_type_that_has_suffix (attr_types[i]) && is_null == false)
+		  else
 		    {
-		      value[value_width - 1] = '\'';
-		    }
-
-		  fwrite (value, 1, value_width, pf);
-
-		  if (padding_size < 0)
-		    {
-		      /* left justified */
-		      fprintf (pf, "%*s", (int) (-padding_size), "");
+		      fprintf (pf, "\t");
 		    }
 		}
+	    }
+	  else
+	    {
+	      for (n = i = 0; i < num_attrs; i++)
+		{
+		  fprintf (pf, "  %*s", (int) (attr_lengths[i]), attr_names[i]);
+		  n += 2 + ((attr_lengths[i] > 0) ? attr_lengths[i] : -attr_lengths[i]);
+		}
 	      putc ('\n', pf);
-	      /* fflush(pf); */
+	      for (; n > 0; n--)
+		{
+		  putc ('=', pf);
+		}
+	      putc ('\n', pf);
 	    }
 
-	  /* advance to next */
-	  e = db_query_next_tuple (result);
-	  if (e < 0)
+	  for (object_no = 1;; object_no++)
 	    {
-	      csql_Error_code = CSQL_ERR_SQL_ERROR;
-	      error = TRUE;
-	      goto done;
+	      csql_Row_count = object_no;
+	      /* free previous result */
+	      if (val != NULL)
+		{
+		  for (i = 0; i < num_attrs; i++)
+		    {
+		      free_and_init (val[i]);
+		    }
+		  free_and_init (val);
+		}
+	      int *len = NULL;
+
+	      val = get_current_result (&len, result_info, csql_arg->plain_output);
+	      if (val == NULL)
+		{
+		  csql_Error_code = CSQL_ERR_SQL_ERROR;
+		  error = TRUE;
+		  if (len != NULL)
+		    {
+		      free (len);
+		    }
+		  break;
+		}
+
+	      if (csql_arg->line_output == true)
+		{
+		  fprintf (pf, "<%05d>", object_no);
+		  for (i = 0; i < num_attrs; i++)
+		    {
+		      fprintf (pf, "%*c", (int) ((i == 0) ? 1 : 8), ' ');
+		      fprintf (pf, "%*s: %s\n", (int) (-max_attr_name_length), attr_names[i], val[i]);
+		    }
+		  /* fflush(pf); */
+		}
+	      else if (csql_arg->plain_output == true)
+		{
+		  for (i = 0; i < num_attrs - 1; i++)
+		    {
+		      fprintf (pf, "%s\t", val[i]);
+		    }
+		  fprintf (pf, "%s\n", val[i]);
+		}
+	      else
+		{
+		  int padding_size;
+
+		  for (i = 0; i < num_attrs; i++)
+		    {
+		      if (strcmp ("NULL", val[i]) == 0)
+			{
+			  is_null = true;
+			}
+		      else
+			{
+			  is_null = false;
+			}
+
+		      column_width = csql_get_column_width (attr_names[i]);
+		      value_width = calculate_width (column_width, csql_string_width, len[i], attr_types[i], is_null);
+
+		      padding_size =
+			(attr_lengths[i] > 0) ? MAX (attr_lengths[i] - (value_width),
+						     0) : MIN (attr_lengths[i] + (value_width), 0);
+
+		      fprintf (pf, "  ");
+		      if (padding_size > 0)
+			{
+			  /* right justified */
+			  fprintf (pf, "%*s", (int) padding_size, "");
+			}
+
+		      value = val[i];
+		      if (is_type_that_has_suffix (attr_types[i]) && is_null == false)
+			{
+			  value[value_width - 1] = '\'';
+			}
+
+		      fwrite (value, 1, value_width, pf);
+
+		      if (padding_size < 0)
+			{
+			  /* left justified */
+			  fprintf (pf, "%*s", (int) (-padding_size), "");
+			}
+		    }
+		  putc ('\n', pf);
+		  /* fflush(pf); */
+		}
+	      if (len != NULL)
+		{
+		  free (len);
+		}
+
+	      /* advance to next */
+	      e = db_query_next_tuple (result);
+	      if (e < 0)
+		{
+		  csql_Error_code = CSQL_ERR_SQL_ERROR;
+		  error = TRUE;
+		  break;
+		}
+	      else if (e == DB_CURSOR_END)
+		{
+		  break;
+		}
 	    }
-	  else if (e == DB_CURSOR_END)
+	  if (error != TRUE)
 	    {
-	      break;
+	      putc ('\n', pf);
 	    }
 	}
-      putc ('\n', pf);
     }
-
-done:
 
   if (pf)
     {
@@ -945,10 +950,6 @@ done:
 	  free_and_init (val[i]);
 	}
       free_and_init (val);
-    }
-  if (len)
-    {
-      free_and_init (len);
     }
 
   return ((error) ? CSQL_FAILURE : CSQL_SUCCESS);
