@@ -11469,8 +11469,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 
 	      assert (pg_watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
 	      assert (pg_watcher->pgptr == pgptr);
-	      assert (pg_watcher->curr_rank >= PGBUF_ORDERED_HEAP_HDR
-		      && pg_watcher->curr_rank < PGBUF_ORDERED_RANK_UNDEFINED);
+	      assert (pg_watcher->curr_rank < PGBUF_ORDERED_RANK_UNDEFINED);
 	      assert (!VPID_ISNULL (&pg_watcher->group_id));
 #endif
 	      if (page_rank == PGBUF_ORDERED_RANK_UNDEFINED)
@@ -11644,8 +11643,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	  pg_watcher = ordered_holders_info[i].watcher[j];
 
 	  assert (pg_watcher->pgptr == pgptr);
-	  assert (pg_watcher->curr_rank >= PGBUF_ORDERED_HEAP_HDR
-		  && pg_watcher->curr_rank < PGBUF_ORDERED_RANK_UNDEFINED);
+	  assert (pg_watcher->curr_rank < PGBUF_ORDERED_RANK_UNDEFINED);
 
 #if defined(PGBUF_ORDERED_DEBUG)
 	  _er_log_debug (__FILE__, __LINE__,
