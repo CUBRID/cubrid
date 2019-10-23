@@ -135,7 +135,7 @@ db_value_put_null (DB_VALUE * value)
 inline bool
 IS_INVALID_PRECISION (int p, int m)
 {
-  return (p != DB_DEFAULT_PRECISION) && ((p < 0) || ((p) > (m)));
+  return (p != DB_DEFAULT_PRECISION) && ((p < 0) || (p > m));
 }
 
 /*
