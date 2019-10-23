@@ -89,7 +89,7 @@ namespace cubpacking
       void pack_overloaded (const db_value &value);
 
       size_t get_packed_small_string_size (const char *string, const size_t curr_offset);
-      void pack_small_string (const char *string);
+      void pack_small_string (const char *string, const size_t str_size = 0);
 
       size_t get_packed_large_string_size (const std::string &str, const size_t curr_offset);
       void pack_large_string (const std::string &str);
@@ -162,6 +162,7 @@ namespace cubpacking
       void append_to_buffer_and_pack_all (ExtBlk &eb, Args &&... args);
 
     private:
+      void pack_large_c_string (const char *string, const size_t str_size);
 
       template <typename T, typename ... Args>
       size_t get_all_packed_size_recursive (size_t curr_offset, T &&t, Args &&... args);
