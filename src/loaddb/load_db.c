@@ -1191,6 +1191,7 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
 	{
 	  print_er_msg ();
 	  *status = 3;
+	  return;
 	}
 
       // Fetch the latest stats.
@@ -1199,6 +1200,7 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
 	{
 	  print_er_msg ();
 	  *status = 3;
+	  return;
 	}
 
       // Print these stats.
