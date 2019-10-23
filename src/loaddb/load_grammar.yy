@@ -25,7 +25,7 @@
 %require "3.0"
 %defines
 %define api.namespace { cubload }
-%define parser_class_name { parser }
+%define api.parser.class { parser }
 %locations
 %no-lines
 
@@ -189,7 +189,7 @@ loader_start :
   }
   loader_lines
   {
-    m_driver.get_object_loader ().flush_records ();    
+    m_driver.get_object_loader ().flush_records ();
     m_driver.get_object_loader ().destroy ();
   }
   ;
