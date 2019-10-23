@@ -1494,7 +1494,7 @@ logwr_copy_log_header_check (const char *db_name, bool verbose, LOG_LSA * master
     {
 
       loghdr_pgptr = (LOG_PAGE *) logpg_area;
-      memcpy (&logwr_Gl.hdr, log_pgptr->area, sizeof (LOG_HEADER));
+      memcpy (&logwr_Gl.hdr, loghdr_pgptr->area, sizeof (LOG_HEADER));
 
       *master_eof_lsa = hdr.eof_lsa;
 
