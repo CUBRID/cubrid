@@ -689,6 +689,7 @@ static int qexec_build_agg_hkey (THREAD_ENTRY * thread_p, XASL_STATE * xasl_stat
 				 QFILE_TUPLE tpl, AGGREGATE_HASH_KEY * key);
 static int qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT * context,
 					    AGGREGATE_HASH_KEY * key, bool * found);
+static int qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, DB_VALUE * default_val);
 
 /*
  * Utility routines
@@ -10786,6 +10787,34 @@ exit_on_error:
   return error;
 }
 
+static int
+qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, DB_VALUE * default_val)
+{
+  assert (attr != NULL && default_val != NULL);
+
+  OR_BUF buf;
+  PR_TYPE *pr_type = pr_type_from_id (attr->type);
+  bool copy = (pr_is_set_type (attr->type)) ? true : false;
+  if (pr_type != NULL)
+    {
+      or_init (&buf, (char *) attr->current_default_value.value, attr->current_default_value.val_length);
+      buf.error_abort = 1;
+      switch (_setjmp (buf.env))
+	{
+	case 0:
+	  return pr_type->data_readval (&buf, default_val, attr->domain, attr->current_default_value.val_length, copy,
+					NULL, 0);
+	default:
+	  return ER_FAILED;
+	}
+    }
+  else
+    {
+      db_make_null (default_val);
+    }
+  return NO_ERROR;
+}
+
 /*
  * qexec_execute_insert () -
  *   return: NO_ERROR or ER_code
@@ -10807,19 +10836,19 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   OID oid;
   OID class_oid;
   HFID class_hfid;
-  volatile ACCESS_SPEC_TYPE *specp = NULL;
+  ACCESS_SPEC_TYPE *specp = NULL;
   SCAN_ID *s_id = NULL;
   HEAP_CACHE_ATTRINFO attr_info;
   HEAP_CACHE_ATTRINFO index_attr_info;
   HEAP_IDX_ELEMENTS_INFO idx_info;
-  volatile bool attr_info_inited = false;
+  bool attr_info_inited = false;
   volatile bool index_attr_info_inited = false;
   volatile bool odku_attr_info_inited = false;
   LOG_LSA lsa;
   int savepoint_used = 0;
   int satisfies_constraints;
   HEAP_SCANCACHE scan_cache;
-  volatile bool scan_cache_inited = false;
+  bool scan_cache_inited = false;
   int scan_cache_op_type = 0;
   int force_count = 0;
   int num_default_expr = 0;
@@ -11090,28 +11119,10 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	    }
 	  else
 	    {
-	      OR_BUF buf;
-	      PR_TYPE *pr_type = pr_type_from_id (attr->type);
-	      bool copy = (pr_is_set_type (attr->type)) ? true : false;
-	      if (pr_type != NULL)
+	      error = qexec_get_attr_default (thread_p, attr, &insert_val);
+	      if (error != NO_ERROR)
 		{
-		  or_init (&buf, (char *) attr->current_default_value.value, attr->current_default_value.val_length);
-		  buf.error_abort = 1;
-		  switch (_setjmp (buf.env))
-		    {
-		    case 0:
-		      error = pr_type->data_readval (&buf, &insert_val, attr->domain,
-						     attr->current_default_value.val_length, copy, NULL, 0);
-		      if (error != NO_ERROR)
-			{
-			  GOTO_EXIT_ON_ERROR;
-			}
-		      break;
-		    default:
-		      error = ER_FAILED;
-		      GOTO_EXIT_ON_ERROR;
-		      break;
-		    }
+		  GOTO_EXIT_ON_ERROR;
 		}
 	    }
 	  break;
@@ -22606,7 +22617,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 {
   QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
   int idx_incache = -1;
-  volatile OR_CLASSREP *rep = NULL;
+  OR_CLASSREP *rep = NULL;
   OR_INDEX *index = NULL;
   char *attr_name = NULL, *default_value_string = NULL;
   const char *default_expr_type_string = NULL, *default_expr_format = NULL;
@@ -22619,23 +22630,18 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   OID *class_oid = NULL;
   volatile int idx_val;
   volatile int error = NO_ERROR;
-  volatile int i;
-  volatile int idx_all_attr;
-  int j, k, size_values, found_index_type = -1, disk_length;
+  int i, j, k, idx_all_attr, size_values, found_index_type = -1;
   bool search_index_type = true;
   BTID *btid;
   int index_type_priorities[] = { 1, 0, 1, 0, 2, 0 };
   int index_type_max_priority = 2;
-  OR_BUF buf;
-  PR_TYPE *pr_type = NULL;
-  bool copy;
   DB_VALUE def_order, attr_class_type;
   OR_ATTRIBUTE *all_class_attr[3];
   int all_class_attr_lengths[3];
-  volatile bool full_columns = false;
+  bool full_columns = false;
   char *string = NULL;
   int alloced_string = 0;
-  volatile HL_HEAPID save_heapid = 0;
+  HL_HEAPID save_heapid = 0;
 
   if (xasl == NULL || xasl_state == NULL)
     {
@@ -22877,39 +22883,16 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	    }
 	  else
 	    {
-	      or_init (&buf, (char *) attrepr->current_default_value.value, attrepr->current_default_value.val_length);
-	      buf.error_abort = 1;
-
-	      switch (_setjmp (buf.env))
+	      error = qexec_get_attr_default (thread_p, attrepr, out_values[idx_val]);
+	      if (error != NO_ERROR)
 		{
-		case 0:
-		  /* Do not copy the string--just use the pointer. The pr_ routines for strings and sets have different
-		   * semantics for length. A negative length value for strings means "don't copy thestring, just use the
-		   * pointer". */
-
-		  disk_length = attrepr->current_default_value.val_length;
-		  copy = (pr_is_set_type (attrepr->type)) ? true : false;
-		  pr_type = pr_type_from_id (attrepr->type);
-		  if (pr_type)
-		    {
-		      pr_type->data_readval (&buf, out_values[idx_val], attrepr->domain, disk_length, copy, NULL, 0);
-		      valcnv_convert_value_to_string (out_values[idx_val]);
-		    }
-		  else
-		    {
-		      db_make_null (out_values[idx_val]);
-		    }
-		  idx_val++;
-		  break;
-		default:
-		  /*
-		   * An error was found during the reading of the
-		   *  attribute value
-		   */
-		  error = ER_FAILED;
 		  GOTO_EXIT_ON_ERROR;
-		  break;
 		}
+	      if (!DB_IS_NULL (out_values[idx_val]))
+		{
+		  valcnv_convert_value_to_string (out_values[idx_val]);
+		}
+	      idx_val++;
 	    }
 
 	  /* attribute has auto_increment or not */

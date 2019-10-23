@@ -734,6 +734,7 @@ void
 csql_killtran (const char *argument)
 {
   volatile TRANS_INFO *info = NULL;
+  TRANS_INFO *temp_info = NULL;
   int tran_index = -1, i;
   FILE *p_stream;		/* pipe stream to pager */
 #if !defined(WINDOWS)
@@ -745,13 +746,13 @@ csql_killtran (const char *argument)
       tran_index = atoi (argument);
     }
 
-  info = logtb_get_trans_info (false);
-  if (info == NULL)
+  temp_info = logtb_get_trans_info (false);
+  if (temp_info == NULL)
     {
       csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
       goto error;
     }
-
+  info = temp_info;
 
   /* dump transaction */
   if (tran_index <= 0)
@@ -803,17 +804,17 @@ csql_killtran (const char *argument)
 	}
     }
 
-  if (info)
+  if (temp_info != NULL)
     {
-      logtb_free_trans_info (info);
+      logtb_free_trans_info (temp_info);
     }
 
   return;
 
 error:
   nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
-  if (info)
+  if (temp_info != NULL)
     {
-      logtb_free_trans_info (info);
+      logtb_free_trans_info (temp_info);
     }
 }
