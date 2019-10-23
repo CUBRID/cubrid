@@ -224,7 +224,6 @@ namespace cubload
       {
 	assert (!m_was_session_notified);
 	m_session.notify_batch_done_and_register_tran_end (m_batch.get_id (), tran_index);
-	m_session.collect_stats ();
 	m_was_session_notified = true;
       }
 
@@ -244,6 +243,7 @@ namespace cubload
     , m_active_task_count {0}
     , m_class_registry ()
     , m_stats ()
+    , m_is_failed (false)
     , m_collected_stats ()
     , m_driver (NULL)
     , m_temp_task (NULL)
@@ -352,6 +352,7 @@ namespace cubload
       {
 	assert (false);
       }
+    collect_stats ();
     ulock.unlock ();
     notify_waiting_threads ();
 
@@ -373,7 +374,9 @@ namespace cubload
 
     m_stats.rows_failed++;
     m_stats.error_message.append (err_msg);
-    collect_stats (true);
+    collect_stats ();
+    ulock.unlock ();
+    notify_waiting_threads ();
   }
 
   void
@@ -386,12 +389,12 @@ namespace cubload
       }
 
     // check if failed after lock was acquired
-    if (m_stats.is_failed)
+    if (m_is_failed)
       {
 	return;
       }
 
-    m_stats.is_failed = true;
+    m_is_failed = true;
     if (!has_lock)
       {
 	ulock.unlock ();
@@ -407,7 +410,7 @@ namespace cubload
   bool
   session::is_failed ()
   {
-    return m_stats.is_failed;
+    return m_is_failed;
   }
 
   void
@@ -555,7 +558,8 @@ namespace cubload
   }
 
   int
-  session::load_batch (cubthread::entry &thread_ref, const batch *batch, bool use_temp_batch, bool &is_batch_accepted)
+  session::load_batch (cubthread::entry &thread_ref, const batch *batch, bool use_temp_batch, bool &is_batch_accepted,
+		       load_status &status)
   {
     if (is_failed ())
       {
@@ -568,47 +572,51 @@ namespace cubload
 	return ER_FAILED;
       }
 
+    cubthread::entry_task *task = NULL;
     if (use_temp_batch)
       {
 	assert (m_temp_task != NULL && batch == NULL);
-	is_batch_accepted = worker_manager_try_task (m_temp_task);
-	if (is_batch_accepted)
-	  {
-	    m_temp_task = NULL;
-	  }
+	task = m_temp_task;
       }
     else
       {
 	assert (m_temp_task == NULL && batch != NULL);
 	update_atomic_value_with_max (m_max_batch_id, batch->get_id ());
 
-	cubthread::entry_task *task = new load_task (*batch, *this, *thread_ref.conn_entry);
-	is_batch_accepted = worker_manager_try_task (task);
-	if (!is_batch_accepted)
-	  {
-	    assert (m_temp_task == NULL);
-	    m_temp_task = task;
-	  }
+	task = new load_task (*batch, *this, *thread_ref.conn_entry);
       }
 
-    if (is_batch_accepted)
-      {
-	++m_active_task_count;
-      }
+    std::unique_lock<std::mutex> ulock (m_mutex);
+    auto pred = [&] () -> bool
+    {
+      is_batch_accepted = worker_manager_try_task (task);
+      if (is_batch_accepted)
+	{
+	  ++m_active_task_count;
+	  if (use_temp_batch)
+	    {
+	      m_temp_task = NULL;
+	    }
+	}
+      else if (!use_temp_batch)
+	{
+	  m_temp_task = task;
+	  use_temp_batch = true;
+	}
+
+      return !m_collected_stats.empty () || is_batch_accepted;
+    };
+
+    m_cond_var.wait (ulock, pred);
+
+    fetch_stats (status, true);
 
     return NO_ERROR;
   }
 
   void
-  session::collect_stats (bool has_lock)
+  session::collect_stats ()
   {
-    std::unique_lock<std::mutex> ulock (m_mutex, std::defer_lock);
-    if (!has_lock)
-      {
-	ulock.lock ();
-      }
-
-    m_stats.is_completed = is_completed ();
     m_collected_stats.emplace_back (m_stats);
 
     // since client periodically fetches the stats, clear error_message in order not to send twice same message
@@ -618,29 +626,30 @@ namespace cubload
 	m_stats.error_message.clear ();
       }
     m_stats.log_message.clear ();
+  }
+
+  void
+  session::fetch_stats (load_status &status, bool has_lock)
+  {
+    std::unique_lock<std::mutex> ulock (m_mutex, std::defer_lock);
+    if (!has_lock)
+      {
+	ulock.lock ();
+      }
+
+    std::vector<stats> stats_;
+    if (!m_collected_stats.empty ())
+      {
+	stats_ = std::move (m_collected_stats);
+	assert (!stats_.empty ());
+	assert (m_collected_stats.empty ());
+      }
+
+    status = load_status (is_completed (), is_failed (), stats_);
 
     if (!has_lock)
       {
 	ulock.unlock ();
-      }
-  }
-
-  void
-  session::fetch_stats (std::vector<stats> &stats_)
-  {
-    std::unique_lock<std::mutex> ulock (m_mutex);
-    if (m_collected_stats.empty () && (is_failed () || is_completed ()))
-      {
-	// quick fix to make sure client is notified of completion/failure
-	// todo: fix properly by not missing is_completed ()
-	collect_stats (true);
-      }
-    if (!m_collected_stats.empty ())
-      {
-	stats_.clear ();
-	stats_ = std::move (m_collected_stats);
-	assert (!stats_.empty ());
-	assert (m_collected_stats.empty ());
       }
   }
 
