@@ -17,14 +17,13 @@
  *
  */
 
-#include "monitor_collect.hpp"
+#ifndef _TEST_HASHMAP_HPP_
+#define _TEST_HASHMAP_HPP_
 
-namespace cubmonitor
+namespace test_lockfree
 {
-  void
-  build_name_vector (std::vector<std::string> &names, const char *basename, const char *prefix)
-  {
-    names.push_back (std::string (prefix) + basename);
-  }
+  int test_hashmap_functional (bool short_version);
+  int test_hashmap_performance ();
+} // namespace test_lockfree
 
-}  // namespace cubmonitor
+#endif // !_TEST_HASHMAP_HPP_

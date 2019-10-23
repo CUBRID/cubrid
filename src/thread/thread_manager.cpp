@@ -37,6 +37,7 @@
 #include "error_manager.h"
 #include "log_impl.h"
 #include "lock_free.h"
+#include "lockfree_transaction_system.hpp"
 #include "resource_shared_pool.hpp"
 #include "system_parameter.h"
 
@@ -56,6 +57,7 @@ namespace cubthread
     , m_available_entries_count (0)
     , m_entry_manager (NULL)
     , m_daemon_entry_manager (NULL)
+    , m_lf_tran_sys (NULL)
   {
     m_entry_manager = new entry_manager ();
     m_daemon_entry_manager = new daemon_entry_manager();
@@ -73,6 +75,7 @@ namespace cubthread
     delete [] m_all_entries;
     delete m_entry_manager;
     delete m_daemon_entry_manager;
+    delete m_lf_tran_sys;
   }
 
   void
@@ -100,8 +103,20 @@ namespace cubthread
 	if (with_lock_free)
 	  {
 	    m_all_entries[it].request_lock_free_transactions ();
+	    m_all_entries[it].assign_lf_tran_index (m_lf_tran_sys->assign_index ());
 	  }
       }
+  }
+
+  void
+  manager::init_lockfree_system ()
+  {
+#if defined (SERVER_MODE)
+    // threads + main
+    m_lf_tran_sys = new lockfree::tran::system (m_max_threads + 1);
+#else // !SERVER_MODE = SA_MODE
+    m_lf_tran_sys = new lockfree::tran::system (1);   // a single thread = main
+#endif // !SERVER_MODE = SA_MODE
   }
 
   template<typename Res>
@@ -422,6 +437,7 @@ namespace cubthread
     for (std::size_t index = 0; index < m_max_threads; index++)
       {
 	m_all_entries[index].return_lock_free_transaction_entries ();
+	m_lf_tran_sys->free_index (m_all_entries[index].pull_lf_tran_index ());
       }
   }
 
@@ -535,10 +551,12 @@ namespace cubthread
 	ASSERT_ERROR ();
 	return error_code;
       }
+    Manager->init_lockfree_system ();
 
     if (with_lock_free)
       {
 	Main_entry_p->request_lock_free_transactions ();
+	Main_entry_p->assign_lf_tran_index (Manager->get_lockfree_transys ().assign_index ());
       }
 
     Manager->init_entries (with_lock_free);

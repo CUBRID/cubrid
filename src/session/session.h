@@ -38,7 +38,7 @@
 // forward definitions
 struct xasl_cache_ent;
 
-extern int session_states_init (THREAD_ENTRY * thread_p);
+extern void session_states_init (THREAD_ENTRY * thread_p);
 extern void session_states_finalize (THREAD_ENTRY * thread_p);
 extern int session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id);
 extern int session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id);

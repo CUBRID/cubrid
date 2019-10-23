@@ -668,6 +668,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_LOADDB_WORKER_COUNT "loaddb_worker_count"
 #define PRM_NAME_PERF_TEST_MODE "perf_test_mode"
 #define PRM_NAME_REPR_CACHE_LOG "er_log_repr_cache"
+#define PRM_NAME_ENABLE_NEW_LFHASH "new_lfhash"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2254,6 +2255,10 @@ static unsigned int prm_perf_test_mode_flag = 0;
 bool PRM_REPR_CACHE_LOG = false;
 static bool prm_repr_cache_log_default = false;
 static unsigned int prm_repr_cache_log_flag = 0;
+
+bool PRM_NEW_LFHASH = false;
+static bool prm_new_lfhash_default = false;
+static unsigned int prm_new_lfhash_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5795,6 +5800,17 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_repr_cache_log_flag,
    (void *) &prm_repr_cache_log_default,
    (void *) &PRM_REPR_CACHE_LOG,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ENABLE_NEW_LFHASH,
+   PRM_NAME_ENABLE_NEW_LFHASH,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_new_lfhash_flag,
+   (void *) &prm_new_lfhash_default,
+   (void *) &PRM_NEW_LFHASH,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

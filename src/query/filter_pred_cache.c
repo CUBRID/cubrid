@@ -29,9 +29,12 @@
 #include "query_executor.h"
 #include "stream_to_xasl.h"
 #include "system_parameter.h"
+#include "thread_lockfree_hash_map.hpp"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #include "xasl.h"
 #include "xasl_unpack_info.hpp"
+
+#include <algorithm>
 
 typedef struct fpcache_ent FPCACHE_ENTRY;
 struct fpcache_ent
@@ -50,13 +53,24 @@ struct fpcache_ent
 
   PRED_EXPR_WITH_CONTEXT **clone_stack;
   INT32 clone_stack_head;
+
+  // *INDENT-OFF*
+  fpcache_ent ();
+  ~fpcache_ent ();
+  // *INDENT-ON*
 };
 
 #define FPCACHE_PTR_TO_KEY(ptr) ((BTID *) ptr)
 #define FPCACHE_PTR_TO_ENTRY(ptr) ((FPCACHE_ENTRY *) ptr)
 
+// *INDENT-OFF*
+using fpcache_hashmap_type = cubthread::lockfree_hashmap<BTID, fpcache_ent>;
+using fpcache_hashmap_iterator = fpcache_hashmap_type::iterator;
+// *INDENT-ON*
+
 static bool fpcache_Enabled = false;
 static INT32 fpcache_Soft_capacity = 0;
+static fpcache_hashmap_type fpcache_Hashmap;
 static LF_HASH_TABLE fpcache_Ht = LF_HASH_TABLE_INITIALIZER;
 static LF_FREELIST fpcache_Ht_freelist = LF_FREELIST_INITIALIZER;
 /* TODO: Handle counter >= soft capacity. */
@@ -142,20 +156,10 @@ fpcache_initialize (THREAD_ENTRY * thread_p)
     }
 
   /* Initialize free list */
-  error_code =
-    lf_freelist_init (&fpcache_Ht_freelist, 1, fpcache_Soft_capacity, &fpcache_Entry_descriptor, &fpcache_Ts);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* Initialize hash table. */
-  error_code = lf_hash_init (&fpcache_Ht, &fpcache_Ht_freelist, fpcache_Soft_capacity, &fpcache_Entry_descriptor);
-  if (error_code != NO_ERROR)
-    {
-      lf_freelist_destroy (&fpcache_Ht_freelist);
-      return error_code;
-    }
+  const int freelist_block_count = 2;
+  const int freelist_block_size = std::max (1, fpcache_Soft_capacity / freelist_block_count);
+  fpcache_Hashmap.init (fpcache_Ts, THREAD_TS_FPCACHE, fpcache_Soft_capacity, freelist_block_size, freelist_block_count,
+			fpcache_Entry_descriptor);
   fpcache_Entry_counter = 0;
   fpcache_Clone_counter = 0;
 
@@ -209,8 +213,7 @@ fpcache_finalize (THREAD_ENTRY * thread_p)
       return;
     }
 
-  lf_freelist_destroy (&fpcache_Ht_freelist);
-  lf_hash_destroy (&fpcache_Ht);
+  fpcache_Hashmap.destroy ();
 
   /* Use global heap */
   save_heapid = db_change_private_heap (thread_p, 0);
@@ -223,6 +226,18 @@ fpcache_finalize (THREAD_ENTRY * thread_p)
 
   fpcache_Enabled = false;
 }
+
+// *INDENT-OFF*
+fpcache_ent::fpcache_ent ()
+{
+  pthread_mutex_init (&mutex, NULL);
+}
+
+fpcache_ent::~fpcache_ent ()
+{
+  pthread_mutex_destroy (&mutex);
+}
+// *INDENT-ON*
 
 /*
  * fpcache_entry_alloc () - Allocate a filter predicate cache entry.
@@ -344,7 +359,6 @@ fpcache_copy_key (void *src, void *dest)
 int
 fpcache_claim (THREAD_ENTRY * thread_p, BTID * btid, or_predicate * or_pred, pred_expr_with_context ** filter_pred)
 {
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_FPCACHE);
   FPCACHE_ENTRY *fpcache_entry = NULL;
   int error_code = NO_ERROR;
 
@@ -355,12 +369,7 @@ fpcache_claim (THREAD_ENTRY * thread_p, BTID * btid, or_predicate * or_pred, pre
       /* Try to find available filter predicate expression in cache. */
       ATOMIC_INC_64 (&fpcache_Stat_lookup, 1);
 
-      error_code = lf_hash_find (t_entry, &fpcache_Ht, btid, (void **) &fpcache_entry);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return error_code;
-	}
+      fpcache_entry = fpcache_Hashmap.find (thread_p, *btid);
       if (fpcache_entry == NULL)
 	{
 	  /* Entry not found. */
@@ -418,21 +427,15 @@ fpcache_claim (THREAD_ENTRY * thread_p, BTID * btid, or_predicate * or_pred, pre
 int
 fpcache_retire (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, pred_expr_with_context * filter_pred)
 {
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_FPCACHE);
   FPCACHE_ENTRY *fpcache_entry = NULL;
   int error_code = NO_ERROR;
-  int inserted = 0;
+  bool inserted = false;
 
   if (fpcache_Enabled)
     {
       /* Try to retire in cache entry. */
       ATOMIC_INC_64 (&fpcache_Stat_add, 1);
-      error_code = lf_hash_find_or_insert (t_entry, &fpcache_Ht, btid, (void **) &fpcache_entry, &inserted);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return error_code;
-	}
+      inserted = fpcache_Hashmap.find_or_insert (thread_p, *btid, fpcache_entry);
       if (fpcache_entry != NULL)
 	{
 	  if (inserted)
@@ -502,8 +505,14 @@ fpcache_remove_by_class (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
 #define FPCACHE_DELETE_BTIDS_SIZE 1024
 
-  LF_HASH_TABLE_ITERATOR iter;
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_FPCACHE);
+  if (!fpcache_Enabled)
+    {
+      return;
+    }
+
+  // *INDENT-OFF*
+  fpcache_hashmap_iterator iter { thread_p, fpcache_Hashmap };
+  // *INDENT-ON*
   FPCACHE_ENTRY *fpcache_entry;
   int success = 0;
   BTID delete_btids[FPCACHE_DELETE_BTIDS_SIZE];
@@ -518,12 +527,12 @@ fpcache_remove_by_class (THREAD_ENTRY * thread_p, const OID * class_oid)
 
   while (!finished)
     {
-      lf_hash_create_iterator (&iter, t_entry, &fpcache_Ht);
+      iter.restart ();
 
       while (true)
 	{
 	  /* Start by iterating to next hash entry. */
-	  fpcache_entry = (FPCACHE_ENTRY *) lf_hash_iterate (&iter);
+	  fpcache_entry = iter.iterate ();
 
 	  if (fpcache_entry == NULL)
 	    {
@@ -545,7 +554,7 @@ fpcache_remove_by_class (THREAD_ENTRY * thread_p, const OID * class_oid)
 		  /* Free mutex. */
 		  pthread_mutex_unlock (&fpcache_entry->mutex);
 		  /* Full buffer. Interrupt iteration, delete entries collected so far and then start over. */
-		  lf_tran_end_with_mb (t_entry);
+		  fpcache_Hashmap.end_tran (thread_p);
 		  break;
 		}
 	    }
@@ -554,12 +563,7 @@ fpcache_remove_by_class (THREAD_ENTRY * thread_p, const OID * class_oid)
       /* Delete collected btids. */
       for (btid_index = 0; btid_index < n_delete_btids; btid_index++)
 	{
-	  if (lf_hash_delete (t_entry, &fpcache_Ht, &delete_btids[btid_index], &success) != NO_ERROR)
-	    {
-	      /* Unexpected. */
-	      assert (false);
-	    }
-	  else if (success)
+	  if (fpcache_Hashmap.erase (thread_p, delete_btids[btid_index]))
 	    {
 	      /* Successfully removed. */
 	      ATOMIC_INC_32 (&fpcache_Entry_counter, -1);
@@ -587,8 +591,6 @@ fpcache_remove_by_class (THREAD_ENTRY * thread_p, const OID * class_oid)
 void
 fpcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
 {
-  LF_HASH_TABLE_ITERATOR iter;
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_FPCACHE);
   FPCACHE_ENTRY *fpcache_entry = NULL;
 
   assert (fp != NULL);
@@ -620,9 +622,9 @@ fpcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
   fprintf (fp, "Cleanups:                   %lld\n", (long long) ATOMIC_LOAD_64 (&fpcache_Stat_cleanup));
   fprintf (fp, "Cleaned entries:            %lld\n", (long long) ATOMIC_LOAD_64 (&fpcache_Stat_cleanup_entry));
 
+  fpcache_hashmap_iterator iter = { thread_p, fpcache_Hashmap };
   fprintf (fp, "\nEntries:\n");
-  lf_hash_create_iterator (&iter, t_entry, &fpcache_Ht);
-  while ((fpcache_entry = (FPCACHE_ENTRY *) lf_hash_iterate (&iter)) != NULL)
+  while ((fpcache_entry = iter.iterate ()) != NULL)
     {
       fprintf (fp, "\n  BTID = %d, %d|%d\n", fpcache_entry->btid.root_pageid, fpcache_entry->btid.vfid.volid,
 	       fpcache_entry->btid.vfid.fileid);
@@ -640,12 +642,12 @@ fpcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
 static void
 fpcache_cleanup (THREAD_ENTRY * thread_p)
 {
-  LF_HASH_TABLE_ITERATOR iter;
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_FPCACHE);
+  assert (fpcache_Enabled);
+
+  fpcache_hashmap_iterator iter = { thread_p, fpcache_Hashmap };
   FPCACHE_ENTRY *fpcache_entry = NULL;
   FPCACHE_CLEANUP_CANDIDATE candidate;
   int candidate_index;
-  int success;
 
   /* We can allow only one cleanup process at a time. There is no point in duplicating this work. Therefore, anyone
    * trying to do the cleanup should first try to set fpcache_Cleanup_flag. */
@@ -679,9 +681,7 @@ fpcache_cleanup (THREAD_ENTRY * thread_p)
   fpcache_Cleanup_bh->element_count = 0;
 
   /* Collect candidates for cleanup. */
-  lf_hash_create_iterator (&iter, t_entry, &fpcache_Ht);
-
-  while ((fpcache_entry = (FPCACHE_ENTRY *) lf_hash_iterate (&iter)) != NULL)
+  while ((fpcache_entry = iter.iterate ()) != NULL)
     {
       candidate.btid = fpcache_entry->btid;
       candidate.time_last_used = fpcache_entry->time_last_used;
@@ -696,12 +696,7 @@ fpcache_cleanup (THREAD_ENTRY * thread_p)
       bh_element_at (fpcache_Cleanup_bh, candidate_index, &candidate);
 
       /* Try delete. */
-      if (lf_hash_delete (t_entry, &fpcache_Ht, &candidate.btid, &success) != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  continue;
-	}
-      if (success)
+      if (fpcache_Hashmap.erase (thread_p, candidate.btid))
 	{
 	  ATOMIC_INC_64 (&fpcache_Stat_cleanup_entry, 1);
 	  ATOMIC_INC_64 (&fpcache_Stat_discard, 1);
@@ -762,8 +757,6 @@ fpcache_compare_cleanup_candidates (const void *left, const void *right, BH_CMP_
 void
 fpcache_drop_all (THREAD_ENTRY * thread_p)
 {
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_FPCACHE);
-
   /* Reset fpcache_Entry_counter and fpcache_Clone_counter.
    * NOTE: If entries/clones are created concurrently to this, the counters may become a little off. However, exact
    *       counters are not mandatory.
@@ -774,5 +767,5 @@ fpcache_drop_all (THREAD_ENTRY * thread_p)
   ATOMIC_INC_64 (&fpcache_Stat_clone_discard, fpcache_Clone_counter);
   fpcache_Clone_counter = 0;
 
-  lf_hash_clear (t_entry, &fpcache_Ht);
+  fpcache_Hashmap.clear (thread_p);
 }

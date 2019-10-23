@@ -1942,12 +1942,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     }
 
   // sessions state is required to continue
-  error_code = session_states_init (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      assert (false);
-      goto exit_on_error;
-    }
+  session_states_init (thread_p);
 
   /* print_version string */
 #if defined (NDEBUG)
@@ -2347,11 +2342,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	}
     }
 
-  error_code = spage_boot (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
+  spage_boot (thread_p);
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {
@@ -2694,11 +2685,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  error_code = session_states_init (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
+  session_states_init (thread_p);
 
 #if defined (SERVER_MODE)
   if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && from_backup == false)
@@ -4724,11 +4711,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
 
   assert (client_credential != NULL);
 
-  error_code = spage_boot (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
+  spage_boot (thread_p);
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {
@@ -5282,11 +5265,7 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
   /* Initialize the transaction table */
   logtb_define_trantable (thread_p, -1, -1);
 
-  error_code = spage_boot (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error_exit;
-    }
+  spage_boot (thread_p);
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {
