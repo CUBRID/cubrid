@@ -24877,7 +24877,7 @@ heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   bool skip_last_page_links = false;
   VPID heap_header_next_vpid;
   size_t offset = 0;
-  int array_size = 0;
+  size_t array_size = 0;
   std::vector <VPID> heap_pages_array;
   OID class_oid;
   HFID hfid;
@@ -24892,7 +24892,9 @@ heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   OR_GET_OID ((recv->data + offset), &class_oid);
   offset += OR_OID_SIZE;
 
-  array_size = OR_GET_INT ((recv->data + offset));
+  int unpack_int = OR_GET_INT ((recv->data + offset));
+  assert (unpack_int >= 0);
+  array_size = (size_t) unpack_int;
   offset += OR_INT_SIZE;
 
   for (size_t i = 0; i < array_size; i++)
