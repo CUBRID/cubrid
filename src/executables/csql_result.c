@@ -955,7 +955,6 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RE
   return ((error) ? CSQL_FAILURE : CSQL_SUCCESS);
 }
 
-
 /*
  * calcluate_width() - calculate column's width
  *   return: width
