@@ -710,7 +710,7 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RE
    */
   typedef char **value_array;
   volatile value_array val;	/* attribute values array */
-  int *len;			/* attribute values lengths */
+  volatile int *len;		/* attribute values lengths */
   volatile int error;		/* to switch return of CSQL_FAILURE/CSQL_SUCCESS */
   int i;			/* loop counter */
   int object_no;		/* result object count */

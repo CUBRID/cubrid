@@ -10807,19 +10807,19 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   OID oid;
   OID class_oid;
   HFID class_hfid;
-  ACCESS_SPEC_TYPE *specp = NULL;
+  volatile ACCESS_SPEC_TYPE *specp = NULL;
   SCAN_ID *s_id = NULL;
   HEAP_CACHE_ATTRINFO attr_info;
   HEAP_CACHE_ATTRINFO index_attr_info;
   HEAP_IDX_ELEMENTS_INFO idx_info;
-  bool attr_info_inited = false;
+  volatile bool attr_info_inited = false;
   volatile bool index_attr_info_inited = false;
   volatile bool odku_attr_info_inited = false;
   LOG_LSA lsa;
   int savepoint_used = 0;
   int satisfies_constraints;
   HEAP_SCANCACHE scan_cache;
-  bool scan_cache_inited = false;
+  volatile bool scan_cache_inited = false;
   int scan_cache_op_type = 0;
   int force_count = 0;
   int num_default_expr = 0;
@@ -22606,7 +22606,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 {
   QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
   int idx_incache = -1;
-  OR_CLASSREP *rep = NULL;
+  volatile OR_CLASSREP *rep = NULL;
   OR_INDEX *index = NULL;
   char *attr_name = NULL, *default_value_string = NULL;
   const char *default_expr_type_string = NULL, *default_expr_format = NULL;
@@ -22619,7 +22619,9 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   OID *class_oid = NULL;
   volatile int idx_val;
   volatile int error = NO_ERROR;
-  int i, j, k, idx_all_attr, size_values, found_index_type = -1, disk_length;
+  volatile int i;
+  volatile int idx_all_attr;
+  int j, k, size_values, found_index_type = -1, disk_length;
   bool search_index_type = true;
   BTID *btid;
   int index_type_priorities[] = { 1, 0, 1, 0, 2, 0 };
@@ -22630,10 +22632,10 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   DB_VALUE def_order, attr_class_type;
   OR_ATTRIBUTE *all_class_attr[3];
   int all_class_attr_lengths[3];
-  bool full_columns = false;
+  volatile bool full_columns = false;
   char *string = NULL;
   int alloced_string = 0;
-  HL_HEAPID save_heapid = 0;
+  volatile HL_HEAPID save_heapid = 0;
 
   if (xasl == NULL || xasl_state == NULL)
     {

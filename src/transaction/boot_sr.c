@@ -1461,11 +1461,11 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 			 OID * rootclass_oid, HFID * rootclass_hfid, int client_lock_wait,
 			 TRAN_ISOLATION client_isolation)
 {
-  int tran_index = NULL_TRAN_INDEX;
+  volatile int tran_index = NULL_TRAN_INDEX;
   const char *log_prefix = NULL;
   DB_INFO *db = NULL;
   DB_INFO *dir = NULL;
-  int dbtxt_vdes = NULL_VOLDES;
+  volatile int dbtxt_vdes = NULL_VOLDES;
   char db_pathbuf[PATH_MAX];
   char vol_real_path[PATH_MAX];
   char log_pathbuf[PATH_MAX];
@@ -1480,7 +1480,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   void (*old_ctrl_c_handler) (int sig_no) = SIG_ERR;
   struct stat stat_buf;
   bool is_exist_volume;
-  char *db_path, *log_path, *lob_path, *p;
+  volatile char *db_path, *log_path, *lob_path, *p;
   THREAD_ENTRY *thread_p = NULL;
 
   assert (client_credential != NULL);

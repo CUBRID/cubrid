@@ -733,7 +733,7 @@ error:
 void
 csql_killtran (const char *argument)
 {
-  TRANS_INFO *info = NULL;
+  volatile TRANS_INFO *info = NULL;
   int tran_index = -1, i;
   FILE *p_stream;		/* pipe stream to pager */
 #if !defined(WINDOWS)

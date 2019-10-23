@@ -2675,7 +2675,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
   OR_BUF buf;
   bool copy;
   RECDES recdes = RECDES_INITIALIZER;	/* Used to obtain attrnames */
-  int ret = NO_ERROR;
+  volatile int ret = NO_ERROR;
   char *index_name = NULL;
   char *string = NULL;
   int alloced_string = 0;
@@ -11493,7 +11493,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   size_t expected_size;
   int tmp;
   volatile int offset_size;
-  int mvcc_wasted_space = 0, header_size;
+  volatile int mvcc_wasted_space = 0;
+  int header_size;
   bool is_mvcc_class;
   // *INDENT-OFF*
   std::set<int> incremented_attrids;
