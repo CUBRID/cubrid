@@ -10,11 +10,19 @@ os:
 addons:
   apt:
     sources:
-      kalakris-cmake
+      - kalakris-cmake
     packages:
       - cmake
       - systemtap-sdt-dev
       - libelf-dev
+
+before_install:
+  - sudo apt-get -y --purge bison
+
+install:
+  - https://ftp.gnu.org/gnu/bison/bison-3.4.2.tar.gz
+  - tar -xzvf bison-3.4.2.tar.gz
+  - cd bison-3.4.2 && ./configure --prefix=/usr && sudo make all install
 
 script:
   - cmake -E make_directory build
