@@ -1480,7 +1480,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   void (*old_ctrl_c_handler) (int sig_no) = SIG_ERR;
   struct stat stat_buf;
   bool is_exist_volume;
-  volatile char *db_path, *log_path, *lob_path, *p;
+  volatile char *db_path, *log_path, *lob_path;
   THREAD_ENTRY *thread_p = NULL;
 
   assert (client_credential != NULL);
@@ -1577,52 +1577,55 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
    * for db path,
    * convert to absolute path, remove useless PATH_SEPARATOR
    */
-  db_path = db_path_info->db_path;
-  if (realpath (db_path, fixed_pathbuf) != NULL)
+  const char *real_path = db_path_info->db_path;
+  if (realpath (real_path, fixed_pathbuf) != NULL)
     {
-      db_path = fixed_pathbuf;
+      real_path = fixed_pathbuf;
     }
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST, 1, db_path);
       goto exit_on_error;
     }
-  boot_remove_useless_path_separator (db_path, db_pathbuf);
+  boot_remove_useless_path_separator (real_path, db_pathbuf);
   db_path = db_pathbuf;
 
   /*
    * for log path,
    * convert to absolute path, remove useless PATH_SEPARATOR
    */
-  log_path = db_path_info->log_path;
-  if (realpath (log_path, fixed_pathbuf) != NULL)
+  real_path = db_path_info->log_path;
+  if (realpath (real_path, fixed_pathbuf) != NULL)
     {
-      log_path = fixed_pathbuf;
+      real_path = fixed_pathbuf;
     }
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST, 1, log_path);
       goto exit_on_error;
     }
-  boot_remove_useless_path_separator (log_path, log_pathbuf);
+  boot_remove_useless_path_separator (real_path, log_pathbuf);
   log_path = log_pathbuf;
 
   /*
    * for lob path,
    * convert to absolute path, remove useless PATH_SEPARATOR
    */
-  lob_path = db_path_info->lob_path;
-  if (es_get_type (lob_path) == ES_NONE)
+  real_path = db_path_info->lob_path;
+  char *p = NULL;
+  if (es_get_type (real_path) == ES_NONE)
     {
       snprintf (lob_pathbuf, sizeof (lob_pathbuf), "%s%s", LOB_PATH_DEFAULT_PREFIX, lob_path);
-      p = lob_path = strchr (lob_pathbuf, ':') + 1;
+      p = strchr (lob_pathbuf, ':') + 1;
+      real_path = p;
     }
   else
     {
-      p = lob_path = strchr (strcpy (lob_pathbuf, lob_path), ':') + 1;
+      p = strchr (strcpy (lob_pathbuf, real_path), ':') + 1;
+      real_path = p;
     }
 
-  if (lob_path == NULL)
+  if (real_path == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, lob_pathbuf);
       return NULL_TRAN_INDEX;
@@ -1631,25 +1634,25 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   if (es_get_type (lob_pathbuf) == ES_POSIX)
     {
 #if defined (WINDOWS)
-      if (realpath (lob_path, fixed_pathbuf) != NULL
+      if (realpath (real_path, fixed_pathbuf) != NULL
 	  && (stat (fixed_pathbuf, &stat_buf) == 0 && S_ISDIR (stat_buf.st_mode)))
 #else
       if (realpath (lob_path, fixed_pathbuf) != NULL)
 #endif
 	{
-	  lob_path = fixed_pathbuf;
+	  real_path = fixed_pathbuf;
 	}
       else
 	{
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST, 1, lob_path);
-	  if (mkdir (lob_path, 0777) < 0)
+	  if (mkdir (real_path, 0777) < 0)
 	    {
-	      cub_dirname_r (lob_path, fixed_pathbuf, PATH_MAX);
+	      cub_dirname_r (real_path, fixed_pathbuf, PATH_MAX);
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", fixed_pathbuf);
 	      goto exit_on_error;
 	    }
 	}
-      boot_remove_useless_path_separator (lob_path, p);
+      boot_remove_useless_path_separator (real_path, p);
     }
   lob_path = lob_pathbuf;
 
