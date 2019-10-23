@@ -4537,6 +4537,19 @@ log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECT
   else
     {
       tdes->state = TRAN_UNACTIVE_ABORTED;
+
+#if defined(SERVER_MODE)
+      if (BO_IS_SERVER_RESTARTED () && VOLATILE_ACCESS (log_Gl.run_nxchkpt_atpageid, INT64) == NULL_PAGEID)
+	{
+	  /* Flush the log in case that checkpoint is started. Otherwise, the current transaction
+	   * may finish, but its LOG_ABORT not flushed yet. The checkpoint can advance with smallest
+	   * LSA. Also, VACCUM can finalize cleaning. So, the archive may be removed. If the server crashes,
+	   * at recovery, the current transaction must be aborted. But, some of its log records are in
+	   * the archive that was previously removed => crash. Fixed, by forcing log flush before ending.
+	   */
+	  logpb_flush_pages (thread_p, lsa);
+	}
+#endif
     }
 
 #if !defined (NDEBUG)
