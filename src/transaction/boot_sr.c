@@ -1616,12 +1616,13 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   if (es_get_type (lob_path) == ES_NONE)
     {
       snprintf (lob_pathbuf, sizeof (lob_pathbuf), "%s%s", LOB_PATH_DEFAULT_PREFIX, lob_path);
-      p = lob_path = strchr (lob_pathbuf, ':') + 1;
+      p = strchr (lob_pathbuf, ':') + 1;
     }
   else
     {
-      p = lob_path = strchr (strcpy (lob_pathbuf, lob_path), ':') + 1;
+      p = strchr (strcpy (lob_pathbuf, lob_path), ':') + 1;
     }
+  lob_path = p;
 
   if (lob_path == NULL)
     {

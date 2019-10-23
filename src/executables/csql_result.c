@@ -158,7 +158,7 @@ static jmp_buf csql_Jmp_buf;
 
 static const char *csql_cmd_string (CUBRID_STMT_TYPE stmt_type, const char *default_string);
 static void display_empty_result (int stmt_type, int line_no);
-static char **get_current_result (int **len, const CUR_RESULT_INFO * result_info, bool plain_output);
+static char **get_current_result (volatile int **len, const CUR_RESULT_INFO * result_info, bool plain_output);
 static int write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RESULT_INFO * result_info);
 static char *uncontrol_strdup (const char *from);
 static char *uncontrol_strndup (const char *from, int length);
@@ -488,7 +488,7 @@ display_empty_result (int stmt_type, int line_no)
  *   Caller should be responsible for free the return array and its elements.
  */
 static char **
-get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, bool plain_output)
+get_current_result (volatile int **lengths, const CUR_RESULT_INFO * result_info, bool plain_output)
 {
   int i;
   char **val = NULL;		/* temporary array for values */
