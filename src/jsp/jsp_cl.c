@@ -1651,13 +1651,14 @@ jsp_pack_float_argument (char *buffer, DB_VALUE * value)
 static char *
 jsp_pack_double_argument (char *buffer, DB_VALUE * value)
 {
-  double v, pack_value;
+  double v;
   char *ptr;
+  char pack_value[OR_DOUBLE_SIZE];
 
   ptr = or_pack_int (buffer, sizeof (double));
   v = db_get_double (value);
-  OR_PUT_DOUBLE (&pack_value, &v);
-  memcpy (ptr, (char *) (&pack_value), OR_DOUBLE_SIZE);
+  OR_PUT_DOUBLE (pack_value, &v);
+  memcpy (ptr, pack_value, OR_DOUBLE_SIZE);
 
   return ptr + OR_DOUBLE_SIZE;
 }
@@ -1950,13 +1951,13 @@ static char *
 jsp_pack_monetary_argument (char *buffer, DB_VALUE * value)
 {
   DB_MONETARY *v;
-  double pack_value;
+  char pack_value[OR_DOUBLE_SIZE];
   char *ptr;
 
   ptr = or_pack_int (buffer, sizeof (double));
   v = db_get_monetary (value);
-  OR_PUT_DOUBLE (&pack_value, &v->amount);
-  memcpy (ptr, (char *) (&pack_value), OR_DOUBLE_SIZE);
+  OR_PUT_DOUBLE (pack_value, &v->amount);
+  memcpy (ptr, pack_value, OR_DOUBLE_SIZE);
 
   return ptr + OR_DOUBLE_SIZE;
 }
