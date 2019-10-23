@@ -17,7 +17,7 @@ addons:
       - libelf-dev
 
 before_install:
-  - sudo apt-get -y --purge bison
+  - sudo apt-get remove bison
 
 install:
   - https://ftp.gnu.org/gnu/bison/bison-3.4.2.tar.gz
