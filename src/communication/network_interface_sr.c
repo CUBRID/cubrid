@@ -9858,7 +9858,7 @@ sloaddb_fetch_status (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
     {
       assert (session != NULL);
       load_status status;
-      session->fetch_stats (status, false);
+      session->fetch_status (status, false);
       packer.set_buffer_and_pack_all (eb, status);
 
       buffer = eb.get_ptr ();

@@ -112,7 +112,7 @@ namespace cubload
       bool is_failed ();
       void interrupt ();
 
-      void fetch_stats (load_status &status, bool has_lock = false);
+      void fetch_status (load_status &status, bool has_lock = false);
 
       void stats_update_rows_committed (int rows_committed);
       void stats_update_last_committed_line (int last_committed_line);

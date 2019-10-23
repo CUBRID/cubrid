@@ -609,7 +609,7 @@ namespace cubload
 
     m_cond_var.wait (ulock, pred);
 
-    fetch_stats (status, true);
+    fetch_status (status, true);
 
     return NO_ERROR;
   }
@@ -629,7 +629,7 @@ namespace cubload
   }
 
   void
-  session::fetch_stats (load_status &status, bool has_lock)
+  session::fetch_status (load_status &status, bool has_lock)
   {
     std::unique_lock<std::mutex> ulock (m_mutex, std::defer_lock);
     if (!has_lock)
