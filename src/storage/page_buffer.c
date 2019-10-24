@@ -3431,47 +3431,11 @@ end:
        * - post-flush thread is not behind.
        * - log-flush thread is not behind.
        * so what can it be?
-       *
-       * we know of one more possible scenario. the waiting threads have no victims in their private lists, and their
-       * private lists are over quota. there are enough victims in other lists, so enough that flush could not find
-       * any viable candidates to flush. let's confirm this scenario. */
+       */
 
       assert (check_count_lru > 0);
 
-      // lambda function to map checks on all thread entry
-      auto check_mapfunc =[&](THREAD_ENTRY & thrd_iter, bool & stop_mapper) {
-	(void) stop_mapper;	// suppress unused parameter warning
-
-	PGBUF_LRU_LIST *lru_list = NULL;
-	if (thrd_iter.resume_status != THREAD_ALLOC_BCB_SUSPENDED)
-	  {
-	    return;
-	  }
-	if (!PGBUF_THREAD_HAS_PRIVATE_LRU (&thrd_iter))
-	  {
-	    return;
-	  }
-	lru_list = PGBUF_GET_LRU_LIST (PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (&thrd_iter)));
-	if (PGBUF_LRU_VICTIM_ZONE_COUNT (lru_list) == 0)
-	  {
-	    return;
-	  }
-	if (!PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
-	  {
-	    if (pgbuf_is_any_thread_waiting_for_direct_victim () == false)
-	      {
-		/* we had direct victim waiters at the start of check loop; now, all waiters got BCB from the direct
-		 * flush queue */
-		return;
-	      }
-	    /* should be over quota */
-	    assert (false);
-	  }
-      };
-      // map checks
-      thread_get_manager ()->map_entries (check_mapfunc);
-
-      /* now, let's double check that not finding flush candidates is possible (enough victim candidates as it is). */
+      /* let's double check that not finding flush candidates is possible (enough victim candidates as it is). */
       int lru_idx;
       int count_check_this_lru;
       PGBUF_LRU_LIST *lru_list = NULL;
@@ -11505,8 +11469,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 
 	      assert (pg_watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
 	      assert (pg_watcher->pgptr == pgptr);
-	      assert (pg_watcher->curr_rank >= PGBUF_ORDERED_HEAP_HDR
-		      && pg_watcher->curr_rank < PGBUF_ORDERED_RANK_UNDEFINED);
+	      assert (pg_watcher->curr_rank < PGBUF_ORDERED_RANK_UNDEFINED);
 	      assert (!VPID_ISNULL (&pg_watcher->group_id));
 #endif
 	      if (page_rank == PGBUF_ORDERED_RANK_UNDEFINED)
@@ -11680,8 +11643,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	  pg_watcher = ordered_holders_info[i].watcher[j];
 
 	  assert (pg_watcher->pgptr == pgptr);
-	  assert (pg_watcher->curr_rank >= PGBUF_ORDERED_HEAP_HDR
-		  && pg_watcher->curr_rank < PGBUF_ORDERED_RANK_UNDEFINED);
+	  assert (pg_watcher->curr_rank < PGBUF_ORDERED_RANK_UNDEFINED);
 
 #if defined(PGBUF_ORDERED_DEBUG)
 	  _er_log_debug (__FILE__, __LINE__,

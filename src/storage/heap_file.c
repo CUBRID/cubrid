@@ -24877,7 +24877,7 @@ heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   bool skip_last_page_links = false;
   VPID heap_header_next_vpid;
   size_t offset = 0;
-  int array_size = 0;
+  size_t array_size = 0;
   std::vector <VPID> heap_pages_array;
   OID class_oid;
   HFID hfid;
@@ -24892,7 +24892,9 @@ heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   OR_GET_OID ((recv->data + offset), &class_oid);
   offset += OR_OID_SIZE;
 
-  array_size = OR_GET_INT ((recv->data + offset));
+  int unpack_int = OR_GET_INT ((recv->data + offset));
+  assert (unpack_int >= 0);
+  array_size = (size_t) unpack_int;
   offset += OR_INT_SIZE;
 
   for (size_t i = 0; i < array_size; i++)
@@ -24907,7 +24909,7 @@ heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
       heap_pages_array.push_back (vpid);
     }
 
-  assert (offset == recv->length);
+  assert (recv->length >= 0 && offset == (size_t) recv->length);
   assert (array_size == heap_pages_array.size ());
 
   VPID_SET_NULL (&null_vpid);
@@ -25222,7 +25224,7 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
 
   // This append needs to be run on postpone after the commit.
   // First create the log data required.
-  int array_size = heap_pages_array.size ();
+  size_t array_size = heap_pages_array.size ();
   int log_data_size = (DB_ALIGN (OR_HFID_SIZE, PTR_ALIGNMENT) + OR_OID_SIZE + sizeof (int)
                        + array_size * DISK_VPID_ALIGNED_SIZE);
   char *log_data = (char *) db_private_alloc (NULL, log_data_size + MAX_ALIGNMENT);
@@ -25242,7 +25244,7 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
   ptr = PTR_ALIGN (ptr, PTR_ALIGNMENT);
 
   // array_size
-  OR_PUT_INT (ptr, array_size);
+  OR_PUT_INT (ptr, (int) array_size);
   ptr += OR_INT_SIZE;
 
   // The array of VPID.

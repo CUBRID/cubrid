@@ -32,6 +32,7 @@
 #include "cm_portable.h"
 
 #include <jni.h>
+#include <string.h>		// for strcasecmp
 
 /*
  * Report failed JNI call position (file name, line number) to STDOUT
@@ -95,6 +96,11 @@
 		}															\
 	} while (0)
 
+JNIEXPORT jobjectArray JNICALL Java_com_cubrid_jni_BrokerJni_getAllBrokerInfo0 (JNIEnv * env, jclass clazz);
+JNIEXPORT jobjectArray JNICALL Java_com_cubrid_jni_BrokerJni_getAllCasInfo0 (JNIEnv * env, jclass clazz, jstring name,
+									     jboolean only_active);
+JNIEXPORT jobjectArray JNICALL Java_com_cubrid_jni_BrokerJni_getAllJobInfo0 (JNIEnv * env, jclass clazz, jstring name,
+									     jboolean only_active);
 
 /*
  * internal use. create HashMap array. and put new HashMap object to array

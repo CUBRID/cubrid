@@ -429,4 +429,5 @@ extern int loaddb_load_batch (const cubload::batch &batch, bool use_temp_batch, 
 extern int loaddb_fetch_status (load_status & status);
 extern int loaddb_destroy ();
 extern int loaddb_interrupt ();
+extern int loaddb_update_stats ();
 #endif /* _NETWORK_INTERFACE_CL_H_ */

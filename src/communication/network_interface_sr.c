@@ -9892,7 +9892,6 @@ sloaddb_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
       assert (session != NULL);
 
       session->wait_for_completion ();
-      session->update_class_statistics (*thread_p);
       delete session;
       session_set_load_session (thread_p, NULL);
     }
@@ -9924,4 +9923,31 @@ sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
     {
       // what to do, what to do...
     }
+}
+
+void
+sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *buffer = NULL;
+  int buffer_size = 0;
+
+  load_session *session = NULL;
+  int error_code = session_get_load_session (thread_p, session);
+  if (error_code == NO_ERROR)
+    {
+      assert (session != NULL);
+
+      session->update_class_statistics (*thread_p);
+    }
+
+  if (er_errid () != NO_ERROR || er_has_error ())
+    {
+      return_error_to_client (thread_p, rid);
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
