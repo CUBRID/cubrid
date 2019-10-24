@@ -21,15 +21,18 @@
 
 #define API_ACTIVE_CHECKS
 
-#include "system_parameter.h"
+
 #include "db.h"
 #include "dbtype_function.h"
-#include "error_manager.h"
 #include "elo.h"
-#include "set_object.h"
-#include "language_support.h"
+#include "error_manager.h"
 #include "intl_support.h"
+#include "language_support.h"
 #include "memory_alloc.h"
+#include "object_representation.h"
+#include "oid.h"
+#include "set_object.h"
+#include "system_parameter.h"
 
 // hidden functions (suppress -Wmissing-prototypes)
 int db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, char *str, const int size);
