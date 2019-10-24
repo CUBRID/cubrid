@@ -199,10 +199,6 @@ namespace cubload
 	    m_session.stats_update_rows_committed (lines_inserted);
 	    m_session.stats_update_last_committed_line (line_no + 1);
 
-	    if (!m_session.get_args ().syntax_check && !m_session.get_args ().disable_statistics)
-	      {
-		m_session.append_log_msg (LOADDB_MSG_UPDATED_CLASS_STATS, class_name.c_str ());
-	      }
 	  }
 
 	// Clear the clientids.
@@ -477,7 +473,7 @@ namespace cubload
   void
   session::update_class_statistics (cubthread::entry &thread_ref)
   {
-    if (m_args.disable_statistics)
+    if (m_args.disable_statistics || m_args.syntax_check)
       {
 	return;
       }
@@ -485,12 +481,15 @@ namespace cubload
     std::vector<const class_entry *> class_entries;
     m_class_registry.get_all_class_entries (class_entries);
 
+    append_log_msg (LOADDB_MSG_UPDATING_STATISTICS);
+
     for (const class_entry *class_entry : class_entries)
       {
 	if (!class_entry->is_ignored ())
 	  {
 	    OID *class_oid = const_cast<OID *> (&class_entry->get_class_oid ());
 	    xstats_update_statistics (&thread_ref, class_oid, STATS_WITH_SAMPLING);
+	    append_log_msg (LOADDB_MSG_UPDATED_CLASS_STATS, class_entry->get_class_name ());
 	  }
       }
   }
