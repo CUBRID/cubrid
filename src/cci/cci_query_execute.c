@@ -2020,13 +2020,13 @@ qe_oid_put (T_CON_HANDLE * con_handle, char *oid_str, char **attr_name, char **n
       ADD_ARG_STR (&net_buf, attr_name[i], (int) strlen (attr_name[i]) + 1, con_handle->charset);
       ADD_ARG_BYTES (&net_buf, &u_type, 1);
       if (new_val[i] == NULL)
-        {
+	{
 	  ADD_ARG_BYTES (&net_buf, NULL, 0);
-        }
+	}
       else
-        {
+	{
 	  ADD_ARG_STR (&net_buf, new_val[i], (int) strlen (new_val[i]) + 1, con_handle->charset);
-        }
+	}
     }
 
   if (net_buf.err_code < 0)
