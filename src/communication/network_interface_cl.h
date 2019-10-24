@@ -215,7 +215,7 @@ extern int boot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGE
 extern HA_SERVER_STATE boot_change_ha_mode (HA_SERVER_STATE state, bool force, int timeout);
 extern int boot_notify_ha_log_applier_state (HA_LOG_APPLIER_STATE state);
 extern int stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *length_ptr,
-                                             char **stats_buffer);
+					     char **stats_buffer);
 extern int stats_update_statistics (OID * classoid, int with_fullscan);
 extern int stats_update_all_statistics (int with_fullscan);
 

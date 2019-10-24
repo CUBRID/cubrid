@@ -3825,14 +3825,14 @@ sm_get_statistics_force (MOP classop)
 	      class_->stats = NULL;
 	    }
 	  int err = stats_get_statistics (WS_OID (classop), 0, &stats);
-          if (err == NO_ERROR)
-            {
-              class_->stats = stats;
-            }
-          else
-            {
-              class_->stats = stats = NULL;
-            }
+	  if (err == NO_ERROR)
+	    {
+	      class_->stats = stats;
+	    }
+	  else
+	    {
+	      class_->stats = stats = NULL;
+	    }
 	}
     }
 

@@ -52,7 +52,7 @@ static CLASS_STATS *stats_client_unpack_statistics (char *buffer);
  *       worry about the communication buffer.)
  */
 int
-stats_get_statistics (OID * class_oid_p, unsigned int time_stamp, CLASS_STATS **stats_p)
+stats_get_statistics (OID * class_oid_p, unsigned int time_stamp, CLASS_STATS ** stats_p)
 {
   char *buffer_p = NULL;
   int length = -1;
