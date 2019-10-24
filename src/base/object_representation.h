@@ -1119,7 +1119,6 @@ typedef struct setobj SETOBJ;
 
 typedef struct db_set SETREF;
 
-
 #if defined (__cplusplus)
 class JSON_VALIDATOR;
 #endif
