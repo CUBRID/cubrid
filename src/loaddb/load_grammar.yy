@@ -25,7 +25,7 @@
 %require "3.0"
 %defines
 %define api.namespace { cubload }
-%define api.parser.class { parser }
+%define parser_class_name { parser }
 %locations
 %no-lines
 
