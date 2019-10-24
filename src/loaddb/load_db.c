@@ -63,12 +63,12 @@ static void get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args);
 static void print_stats (std::vector<cubload::stats> &stats, cubload::load_args &args, int *status);
 /* *INDENT-ON* */
 
-static void ldr_server_load (load_args * args, int *status, bool * interrupted);
+static void ldr_server_load (load_args * args, int *exit_status, bool * interrupted);
 static void register_signal_handlers ();
 /* *INDENT-OFF* */
 static int load_has_authorization (const std::string & class_name, DB_AUTH au_type);
 /* *INDENT-ON* */
-static int load_object_file (load_args * args, int *status);
+static int load_object_file (load_args * args, int *exit_status);
 static void print_er_msg ();
 
 /*
@@ -127,7 +127,7 @@ print_stats (std::vector<cubload::stats> &stats, cubload::load_args &args, int *
       else
 	{
 	  /* Don't print this during syntax checking */
-	  if (!args.syntax_check)
+	  if (!args.syntax_check && stat.rows_committed != 0)
 	    {
 	      char *committed_instances_msg = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
 					      LOADDB_MSG_COMMITTED_INSTANCES);
@@ -1101,7 +1101,7 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
 }
 
 static void
-ldr_server_load (load_args * args, int *status, bool * interrupted)
+ldr_server_load (load_args * args, int *exit_status, bool * interrupted)
 {
   register_signal_handlers ();
 
@@ -1109,54 +1109,52 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
   if (error_code != NO_ERROR)
     {
       print_er_msg ();
-      *status = 3;
+      *exit_status = 3;
       return;
     }
 
-  error_code = load_object_file (args, status);
+  error_code = load_object_file (args, exit_status);
   if (error_code != NO_ERROR)
     {
+      loaddb_interrupt ();
       print_er_msg ();
-      *status = 3;
+      *exit_status = 3;
     }
 
   /* *INDENT-OFF* */
   cubload::stats last_stat;
-  std::vector<cubload::stats> stats;
+  load_status status;
   /* *INDENT-ON* */
 
-  bool is_completed = false;
-  bool is_failed = false;
   do
     {
       if (load_interrupted)
 	{
 	  *interrupted = true;
-	  *status = 3;
+	  *exit_status = 3;
 	  break;
 	}
 
-      error_code = loaddb_fetch_stats (stats);
+      error_code = loaddb_fetch_status (status);
       if (error_code != NO_ERROR)
 	{
+	  loaddb_interrupt ();
 	  print_er_msg ();
-	  *status = 3;
+	  *exit_status = 3;
 	  break;
 	}
 
-      print_stats (stats, *args, status);
-      if (!stats.empty ())
+      print_stats (status.get_load_stats (), *args, exit_status);
+      if (!status.get_load_stats ().empty ())
 	{
-	  last_stat = stats[stats.size () - 1];
-	  is_completed = last_stat.is_completed;
-	  is_failed = last_stat.is_failed;
+	  last_stat = status.get_load_stats ().back ();
 	}
 
       /* *INDENT-OFF* */
       std::this_thread::sleep_for (std::chrono::milliseconds (100));
       /* *INDENT-ON* */
     }
-  while (!(is_completed || is_failed) && *status != 3);
+  while (!(status.is_load_completed () || status.is_load_failed ()) && *exit_status != 3);
 
   if (load_interrupted)
     {
@@ -1183,28 +1181,28 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
 		     last_stat.rows_committed, last_stat.rows_failed);
     }
 
-  if (!load_interrupted && !is_failed && !args->syntax_check && error_code == NO_ERROR)
+  if (!load_interrupted && !status.is_load_failed () && !args->syntax_check && error_code == NO_ERROR)
     {
       // Update class statistics
       error_code = loaddb_update_stats ();
       if (error_code != NO_ERROR)
 	{
 	  print_er_msg ();
-	  *status = 3;
+	  *exit_status = 3;
 	}
       else			// NO_ERROR
 	{
 	  // Fetch the latest stats.
-	  error_code = loaddb_fetch_stats (stats);
+	  error_code = loaddb_fetch_status (status);
 	  if (error_code != NO_ERROR)
 	    {
 	      print_er_msg ();
-	      *status = 3;
+	      *exit_status = 3;
 	    }
 	  else			// NO_ERROR
 	    {
 	      // Print these stats.
-	      print_stats (stats, *args, status);
+	      print_stats (status.get_load_stats (), *args, exit_status);
 	    }
 	}
     }
@@ -1214,7 +1212,7 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
   if (error_code != NO_ERROR)
     {
       print_er_msg ();
-      *status = 3;
+      *exit_status = 3;
     }
 
   if (load_interrupted)
@@ -1278,7 +1276,7 @@ load_has_authorization (const std::string & class_name, DB_AUTH au_type)
 }
 
 static int
-load_object_file (load_args * args, int *status)
+load_object_file (load_args * args, int *exit_status)
 {
   if (!args->table_name.empty ())
     {
@@ -1298,20 +1296,15 @@ load_object_file (load_args * args, int *status)
     bool is_batch_accepted = false;
     do
       {
-	error_code = loaddb_load_batch (batch, use_temp_batch, is_batch_accepted);
+	load_status status;
+	error_code = loaddb_load_batch (batch, use_temp_batch, is_batch_accepted, status);
 	if (error_code != NO_ERROR)
 	  {
 	    return error_code;
 	  }
 	use_temp_batch = true; // don't upload batch again while retrying
 
-	std::vector<stats> stats;
-	loaddb_fetch_stats (stats);
-	print_stats (stats, *args, status);
-	if (*status != 0)
-	  {
-	    return ER_FAILED;
-	  }
+	print_stats (status.get_load_stats (), *args, exit_status);
       }
     while (!is_batch_accepted);
 

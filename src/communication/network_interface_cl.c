@@ -9998,11 +9998,12 @@ loaddb_install_class (const cubload::batch & batch, bool & class_is_ignored, std
 }
 
 int
-loaddb_load_batch (const cubload::batch & batch, bool use_temp_batch, bool & is_batch_accepted)
+loaddb_load_batch (const cubload::batch & batch, bool use_temp_batch, bool & is_batch_accepted, load_status & status)
 {
 #if defined(CS_MODE)
-  int rc = ER_FAILED;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  char *data_reply = NULL;
+  int data_reply_size = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   packing_packer packer;
@@ -10017,15 +10018,31 @@ loaddb_load_batch (const cubload::batch & batch, bool use_temp_batch, bool & is_
       packer.set_buffer_and_pack_all (eb, use_temp_batch, batch);
     }
 
-  int req_error = net_client_request (NET_SERVER_LD_LOAD_BATCH, eb.get_ptr (), (int) packer.get_current_size (), reply,
-				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
+  int req_error = net_client_request2 (NET_SERVER_LD_LOAD_BATCH, eb.get_ptr (), (int) packer.get_current_size (), reply,
+				       OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_reply_size);
+  if (req_error != NO_ERROR)
     {
-      char *ptr = or_unpack_int (reply, &rc);
-      int is_batch_accepted_;
-      or_unpack_int (ptr, &is_batch_accepted_);
-      is_batch_accepted = is_batch_accepted_ != 0;
+      return req_error;
     }
+
+  char *ptr = or_unpack_int (reply, &data_reply_size);
+
+  int rc = ER_FAILED;
+  ptr = or_unpack_int (ptr, &rc);
+  if (rc != NO_ERROR)
+    {
+      free_and_init (data_reply);
+      return rc;
+    }
+
+  int is_batch_accepted_;
+  or_unpack_int (ptr, &is_batch_accepted_);
+  is_batch_accepted = is_batch_accepted_ != 0;
+
+  packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
+  status.unpack (unpacker);
+
+  free_and_init (data_reply);
 
   return rc;
 #else /* CS_MODE */
@@ -10033,9 +10050,8 @@ loaddb_load_batch (const cubload::batch & batch, bool use_temp_batch, bool & is_
 #endif /* !CS_MODE */
 }
 
-/* *INDENT-OFF* */
 int
-loaddb_fetch_stats (std::vector<load_stats> &stats)
+loaddb_fetch_status (load_status & status)
 {
 #if defined(CS_MODE)
   char *data_reply = NULL;
@@ -10043,7 +10059,7 @@ loaddb_fetch_stats (std::vector<load_stats> &stats)
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  int req_error = net_client_request2 (NET_SERVER_LD_FETCH_STATS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
+  int req_error = net_client_request2 (NET_SERVER_LD_FETCH_STATUS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
 				       0, &data_reply, &data_reply_size);
   if (req_error != NO_ERROR)
     {
@@ -10058,16 +10074,7 @@ loaddb_fetch_stats (std::vector<load_stats> &stats)
     }
 
   packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
-  size_t stats_size = 0;
-  unpacker.unpack_bigint (stats_size);
-  stats.clear ();
-
-  for (size_t i = 0; i < stats_size; ++i)
-    {
-      load_stats stat;
-      stat.unpack (unpacker);
-      stats.emplace_back (stat);
-    }
+  status.unpack (unpacker);
 
   free_and_init (data_reply);
 
@@ -10076,7 +10083,6 @@ loaddb_fetch_stats (std::vector<load_stats> &stats)
   return NO_ERROR;
 #endif /* !CS_MODE */
 }
-/* *INDENT-ON* */
 
 int
 loaddb_destroy ()
