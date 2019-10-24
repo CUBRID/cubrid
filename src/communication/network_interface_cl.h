@@ -142,7 +142,6 @@ extern int log_drop_lob_locator (const char *locator);
 
 extern TRAN_STATE tran_server_commit (bool retain_lock);
 extern TRAN_STATE tran_server_abort (void);
-#if defined (ENABLE_UNUSED_FUNCTION)
 #ifdef __cplusplus
 extern "C"
 {
@@ -151,7 +150,6 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-#endif				// ENABLE_UNUSED_FUNCTION
 
 extern int tran_server_has_updated (void);
 extern int tran_server_is_active_and_has_updated (void);
