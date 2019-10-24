@@ -31,7 +31,7 @@
 #ifdef __cplusplus
 extern "C"
 {
-#endif				// !__cplusplus
+#endif				// __cplusplus
 
   struct db_set
   {
@@ -52,6 +52,6 @@ extern "C"
 
 #ifdef __cplusplus
 }				// extern "C"
-#endif				// !__cplusplus
+#endif				// __cplusplus
 
 #endif				// !_DB_SET_H_
