@@ -8,7 +8,12 @@
 #ifndef CCI_MUTEX_H_
 #define CCI_MUTEX_H_
 
+#if defined (WINDOWS)
 #include "porting.h"
+#endif
+#if defined (LINUX)
+#include "pthread.h"
+#endif
 
 namespace cci
 {
