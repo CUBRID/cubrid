@@ -42,110 +42,15 @@
 #include "error_manager.h"
 #include "memory_alloc.h"
 #include "oid.h"
+#include "object_representation_typesize.h"
 #include "porting_inline.hpp"
 #include "storage_common.h"
 
 // forward declarations
 struct log_lsa;
 
-/*
- * NUMERIC TYPE SIZES
- *
- * These constants define the byte sizes for the fundamental
- * primitives types as represented in memory and on disk.
- * WARNING: The disk size for the "short" type is actually the same
- * as integer since there is no intelligent attribute packing at this
- * time.
- */
-#define OR_BYTE_SIZE            1
-#define OR_SHORT_SIZE           2
-#define OR_INT_SIZE             4
-#define OR_BIGINT_SIZE          8
-#define OR_FLOAT_SIZE           4
-#define OR_DOUBLE_SIZE          8
-
-#define OR_BIGINT_ALIGNED_SIZE  (OR_BIGINT_SIZE + MAX_ALIGNMENT)
-#define OR_DOUBLE_ALIGNED_SIZE  (OR_DOUBLE_SIZE + MAX_ALIGNMENT)
-#define OR_PTR_ALIGNED_SIZE     (OR_PTR_SIZE + MAX_ALIGNMENT)
 #define OR_VALUE_ALIGNED_SIZE(value)   \
   (or_db_value_size (value) + MAX_ALIGNMENT)
-
-/*
- * DISK IDENTIFIER SIZES
- *
- * These constants describe the size and contents of various disk
- * identifiers as they are represented in a communication buffer.
- * The OID can also be used in an attribute value.
- */
-
-#define OR_OID_SIZE             8
-#define OR_OID_PAGEID           0
-#define OR_OID_SLOTID           4
-#define OR_OID_VOLID            6
-
-#define OR_VPID_SIZE		6
-#define OR_VPID_PAGEID		0
-#define OR_VPID_VOLID		4
-
-#define OR_HFID_SIZE            12
-#define OR_HFID_PAGEID          0
-#define OR_HFID_VFID_FILEID     4
-#define OR_HFID_VFID_VOLID      8
-
-#define OR_BTID_SIZE            10
-#define OR_BTID_ALIGNED_SIZE    (OR_BTID_SIZE + OR_SHORT_SIZE)
-#define OR_BTID_PAGEID          0
-#define OR_BTID_VFID_FILEID     4
-#define OR_BTID_VFID_VOLID      8
-
-#define OR_EHID_SIZE            12
-#define OR_EHID_VOLID           0
-#define OR_EHID_FILEID          4
-#define OR_EHID_PAGEID          8
-
-#define OR_LOG_LSA_SIZE         10
-#define OR_LOG_LSA_ALIGNED_SIZE (OR_LOG_LSA_SIZE + OR_SHORT_SIZE)
-#define OR_LOG_LSA_PAGEID       0
-#define OR_LOG_LSA_OFFSET       8
-
-/*
- * EXTENDED TYPE SIZES
- *
- * These define the sizes and contents of the primitive types that
- * are not simple numeric types.
- */
-#define OR_TIME_SIZE            4
-#define OR_UTIME_SIZE           4
-#define OR_DATE_SIZE            4
-
-#define OR_DATETIME_SIZE        8
-#define OR_DATETIME_DATE        0
-#define OR_DATETIME_TIME        4
-
-#define OR_TIMESTAMPTZ_SIZE	(OR_UTIME_SIZE + sizeof (TZ_ID))
-#define OR_TIMESTAMPTZ_TZID	4
-
-#define OR_DATETIMETZ_SIZE	(OR_DATETIME_SIZE + sizeof (TZ_ID))
-#define OR_DATETIMETZ_TZID	8
-
-#define OR_MONETARY_SIZE        12
-#define OR_MONETARY_TYPE        0
-#define OR_MONETARY_AMOUNT      4
-#define OR_ELO_LENGTH_SIZE	4
-#define OR_ELO_HEADER_SIZE	(OR_ELO_LENGTH_SIZE)
-
-#define OR_SHA1_SIZE		(5 * OR_INT_SIZE)
-
-/* NUMERIC RANGES */
-#define OR_MAX_BYTE 127
-#define OR_MIN_BYTE -128
-
-#define OR_MAX_SHORT_UNSIGNED 65535	/* 0xFFFF */
-#define OR_MAX_SHORT 32767	/* 0x7FFF */
-#define OR_MIN_SHORT -32768	/* 0x8000 */
-
-#define OR_MAX_INT 2147483647	/* 0x7FFFFFFF */
-#define OR_MIN_INT -2147483648	/* 0x80000000 */
 
 /* OVERFLOW CHECK MACROS */
 
