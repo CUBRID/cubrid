@@ -3112,7 +3112,7 @@ mr_setmem_double (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 static int
 mr_getmem_double (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 {
-  double d;
+  double d = 0;
 
   OR_MOVE_DOUBLE (mem, &d);
   return db_make_double (value, d);
@@ -3121,7 +3121,7 @@ mr_getmem_double (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 static void
 mr_data_writemem_double (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
 {
-  double d;
+  double d = 0;
 
   OR_MOVE_DOUBLE (mem, &d);
   or_put_double (buf, d);
@@ -4541,7 +4541,7 @@ mr_getmem_money (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 {
   int error = NO_ERROR;
   DB_MONETARY *mem = (DB_MONETARY *) memptr;
-  double amt;
+  double amt = 0;
 
   OR_MOVE_DOUBLE (&mem->amount, &amt);
   error = db_make_monetary (value, mem->type, amt);
