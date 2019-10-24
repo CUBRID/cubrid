@@ -1182,28 +1182,28 @@ ldr_server_load (load_args * args, int *exit_status, bool * interrupted)
 		     last_stat.rows_committed, last_stat.rows_failed);
     }
 
-  if (!load_interrupted && !is_failed && !args->syntax_check && error_code == NO_ERROR)
+  if (!load_interrupted && !status.is_load_failed () && !args->syntax_check && error_code == NO_ERROR)
     {
       // Update class statistics
       error_code = loaddb_update_stats ();
       if (error_code != NO_ERROR)
 	{
 	  print_er_msg ();
-	  *status = 3;
+	  *exit_status = 3;
 	}
       else			// NO_ERROR
 	{
 	  // Fetch the latest stats.
-	  error_code = loaddb_fetch_stats (stats);
+	  error_code = loaddb_fetch_status (status);
 	  if (error_code != NO_ERROR)
 	    {
 	      print_er_msg ();
-	      *status = 3;
+	      *exit_status = 3;
 	    }
 	  else			// NO_ERROR
 	    {
 	      // Print these stats.
-	      print_stats (stats, *args, status);
+	      print_stats (status.get_load_stats (), *args, exit_status);
 	    }
 	}
     }
