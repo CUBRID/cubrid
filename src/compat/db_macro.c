@@ -46,6 +46,7 @@
 #endif
 #include "elo.h"
 #include "db_elo.h"
+#include "db_set.h"
 #include "numeric_opfunc.h"
 #include "object_primitive.h"
 #include "db_json.hpp"

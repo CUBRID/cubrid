@@ -71,6 +71,7 @@
 #include "object_representation.h"
 #include "connection_cl.h"
 
+#include "db_set.h"
 #include "dbi.h"
 #include "dbtype.h"
 #include "memory_alloc.h"

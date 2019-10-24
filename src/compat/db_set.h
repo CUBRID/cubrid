@@ -17,23 +17,41 @@
  *
  */
 
+//
+// db_set structure
+//
+
+#ifndef _DB_SET_H_
+#define _DB_SET_H_
+
+#include "dbtype_def.h"
+
 #include <stdio.h>
 
-#define API_ACTIVE_CHECKS
+#ifdef __cplusplus
+extern "C"
+{
+#endif				// !__cplusplus
 
-#include "db.h"			// must be before dbtype_function.h for bool definition
-#include "dbtype_function.h"
+  struct db_set
+  {
+    /*
+     * a garbage collector ticket is not required for the "owner" field as
+     * the entire set references area is registered for scanning in area_grow.
+     */
+    struct db_object *owner;
+    struct db_set *ref_link;
+    struct setobj *set;
+    char *disk_set;
+    DB_DOMAIN *disk_domain;
+    int attribute;
+    int ref_count;
+    int disk_size;
+    need_clear_type need_clear;
+  };
 
-#include "db_set.h"
-#include "error_manager.h"
-#include "elo.h"
-#include "language_support.h"
-#include "intl_support.h"
-#include "memory_alloc.h"
-#include "set_object.h"
-#include "system_parameter.h"
+#ifdef __cplusplus
+}				// extern "C"
+#endif				// !__cplusplus
 
-// hidden functions (suppress -Wmissing-prototypes)
-int db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, char *str, const int size);
-
-#include "dbtype_function.i"
+#endif				// !_DB_SET_H_
