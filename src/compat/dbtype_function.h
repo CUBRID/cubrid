@@ -24,6 +24,8 @@
 #ifndef _NO_INLINE_DBTYPE_FUNCTION_
 #define _NO_INLINE_DBTYPE_FUNCTION_
 
+#include <stdio.h>
+
 #include "dbtype_def.h"
 
 #define DB_CURRENCY_DEFAULT db_get_currency_default()

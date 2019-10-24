@@ -847,7 +847,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
   assert_release (serial_class_oidp != NULL && !OID_ISNULL (serial_class_oidp));
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  lock_mode = lock_get_object_lock (serial_oidp, serial_class_oidp, tran_index);
+  lock_mode = lock_get_object_lock (serial_oidp, serial_class_oidp);
 
   /* need to start topop for replication Replication will recognize and realize a special type of update for serial by
    * this top operation log record. If lock_mode is X_LOCK means we created or altered the serial obj in an

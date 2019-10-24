@@ -61,6 +61,7 @@
 #include "system_parameter.h"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
+#include "thread_lockfree_hash_map.hpp"
 #include "thread_manager.hpp"
 #include "transaction_sr.h"
 #include "tsc_timer.h"
@@ -342,6 +343,10 @@ struct lk_tran_lock
 /*
  * Lock Manager Global Data Structure
  */
+// *INDENT-OFF*
+using lk_hashmap_type = cubthread::lockfree_hashmap<LK_RES_KEY, LK_RES>;
+using lk_hashmap_iterator = lk_hashmap_type::iterator;
+// *INDENT-ON*
 
 typedef struct lk_global_data LK_GLOBAL_DATA;
 struct lk_global_data
@@ -349,8 +354,7 @@ struct lk_global_data
   /* object lock table including hash table */
   int max_obj_locks;		/* max # of object locks */
 
-  LF_HASH_TABLE obj_hash_table;
-  LF_FREELIST obj_free_res_list;
+  lk_hashmap_type m_obj_hash_table;
   LF_FREELIST obj_free_entry_list;
 
   /* transaction lock table */
@@ -359,7 +363,7 @@ struct lk_global_data
 
   /* deadlock detection related fields */
   pthread_mutex_t DL_detection_mutex;
-  struct timeval last_deadlock_run;	/* last deadlock detetion time */
+  struct timeval last_deadlock_run;	/* last deadlock detection time */
   LK_WFG_NODE *TWFG_node;	/* transaction WFG node */
   LK_WFG_EDGE *TWFG_edge;	/* transaction WFG edge */
   int max_TWFG_edge;
@@ -375,17 +379,33 @@ struct lk_global_data
 #if defined(LK_DUMP)
   bool dump_level;
 #endif				/* LK_DUMP */
+
+  // *INDENT-OFF*
+  lk_global_data ()
+    : max_obj_locks (0)
+    , m_obj_hash_table {}
+    , obj_free_entry_list LF_FREELIST_INITIALIZER
+    , num_trans (0)
+    , tran_lock_table (NULL)
+    , DL_detection_mutex PTHREAD_MUTEX_INITIALIZER
+    , last_deadlock_run { 0, 0 }
+    , TWFG_node (NULL)
+    , TWFG_edge (NULL)
+    , max_TWFG_edge (0)
+    , TWFG_free_edge_idx (0)
+    , global_edge_seq_num (0)
+    , no_victim_case_count (0)
+    , verbose_mode (false)
+    , deadlock_and_timeout_detector { 0 }
+#if defined(LK_DUMP)
+    , dump_level (0)
+#endif
+  {
+  }
+  // *INDENT-ON*
 };
 
-LK_GLOBAL_DATA lk_Gl = {
-  0, LF_HASH_TABLE_INITIALIZER,
-  LF_FREELIST_INITIALIZER, LF_FREELIST_INITIALIZER,
-  0, NULL, PTHREAD_MUTEX_INITIALIZER, {0, 0},
-  NULL, NULL, 0, 0, 0, 0, false, {0}
-#if defined(LK_DUMP)
-  , 0
-#endif /* LK_DUMP */
-};
+LK_GLOBAL_DATA lk_Gl;
 
 /* size of each data structure */
 static const int SIZEOF_LK_LOCKINFO = sizeof (LK_LOCKINFO);
@@ -403,7 +423,6 @@ static const int SIZEOF_LK_ACQOBJ_LOCK = sizeof (LK_ACQOBJ_LOCK);
 #define LK_MIN_OBJECT_LOCKS  (MAX_NTRANS * 300)
 
 /* the ratio in the number of lock entries for each entry type */
-static const int LK_HASH_RATIO = 8;
 static const float LK_RES_RATIO = 0.1f;
 static const float LK_ENTRY_RATIO = 0.1f;
 
@@ -461,8 +480,7 @@ static void lock_initialize_resource (LK_RES * res_ptr);
 static void lock_initialize_resource_as_allocated (LK_RES * res_ptr, LOCK lock);
 static unsigned int lock_get_hash_value (const OID * oid, int htsize);
 static int lock_initialize_tran_lock_table (void);
-static int lock_initialize_object_hash_table (void);
-static int lock_initialize_object_lock_res_list (void);
+static void lock_initialize_object_hash_table (void);
 static int lock_initialize_object_lock_entry_list (void);
 static int lock_initialize_deadlock_detection (void);
 static int lock_remove_resource (THREAD_ENTRY * thread_p, LK_RES * res_ptr);
@@ -513,10 +531,6 @@ static void lock_dump_deadlock_victims (THREAD_ENTRY * thread_p, FILE * outfile)
 static int lock_compare_lock_info (const void *lockinfo1, const void *lockinfo2);
 static float lock_wait_msecs_to_secs (int msecs);
 static void lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr);
-#if defined (ENABLE_UNUSED_FUNCTION)
-static bool lock_check_consistent_resource (THREAD_ENTRY * thread_p, LK_RES * res_ptr);
-static bool lock_check_consistent_tran_lock (LK_TRAN_LOCK * tran_lock);
-#endif
 
 static void lock_increment_class_granules (LK_ENTRY * class_entry);
 
@@ -588,7 +602,7 @@ static int lock_res_key_copy (void *src, void *dest);
 static int lock_res_key_compare (void *k1, void *k2);
 static unsigned int lock_res_key_hash (void *key, int htsize);
 
-LF_ENTRY_DESCRIPTOR obj_lock_res_desc = {
+LF_ENTRY_DESCRIPTOR lk_Obj_lock_res_desc = {
   offsetof (LK_RES, stack),
   offsetof (LK_RES, hash_next),
   offsetof (LK_RES, del_id),
@@ -695,6 +709,18 @@ lock_uninit_entry (void *entry)
 
   return NO_ERROR;
 }
+
+// *INDENT-OFF*
+lk_res::lk_res ()
+{
+  pthread_mutex_init (&res_mutex, NULL);
+}
+
+lk_res::~lk_res ()
+{
+  pthread_mutex_destroy (&res_mutex);
+}
+// *INDENT-ON*
 
 static void *
 lock_alloc_resource (void)
@@ -1063,62 +1089,21 @@ lock_initialize_tran_lock_table (void)
  *
  * Note:This function initializes an object lock hash table.
  */
-static int
+static void
 lock_initialize_object_hash_table (void)
 {
 #define LK_INITIAL_OBJECT_LOCK_TABLE_SIZE       10000
-  int obj_hash_size, ret;
 
   lk_Gl.max_obj_locks = LK_INITIAL_OBJECT_LOCK_TABLE_SIZE;
 
-  /* allocate an object lock hash table */
-  if (lk_Gl.max_obj_locks > LK_MIN_OBJECT_LOCKS)
-    {
-      obj_hash_size = lk_Gl.max_obj_locks * LK_HASH_RATIO;
-    }
-  else
-    {
-      obj_hash_size = LK_MIN_OBJECT_LOCKS * LK_HASH_RATIO;
-    }
+  const int obj_hash_size = MAX (lk_Gl.max_obj_locks, LK_MIN_OBJECT_LOCKS);
+
+  const int block_count = 2;
+  const int block_size = (int) MAX ((lk_Gl.max_obj_locks * LK_RES_RATIO) / block_count, 1);
 
   /* initialize object hash table */
-  ret = lf_hash_init (&lk_Gl.obj_hash_table, &lk_Gl.obj_free_res_list, obj_hash_size, &obj_lock_res_desc);
-  if (ret != NO_ERROR)
-    {
-      return ret;
-    }
-
-  return NO_ERROR;
-}
-#endif /* SERVER_MODE */
-
-#if defined(SERVER_MODE)
-/*
- * lock_initialize_object_lock_res_list - Initializes the object lock resource list
- *
- * return: error code
- *
- * Note:
- *     This function initializes following two lists.
- *     1. a list of object lock resource block
- *        => each block has object lock resource block.
- *     2. a list of freed object lock resource entries.
- */
-static int
-lock_initialize_object_lock_res_list (void)
-{
-  int block_size, block_count, ret;
-
-  /* initialize */
-  block_count = 1;
-  block_size = (int) MAX ((lk_Gl.max_obj_locks * LK_RES_RATIO), 1);
-  ret = lf_freelist_init (&lk_Gl.obj_free_res_list, block_count, block_size, &obj_lock_res_desc, &obj_lock_res_Ts);
-  if (ret != NO_ERROR)
-    {
-      return ret;
-    }
-
-  return NO_ERROR;
+  lk_Gl.m_obj_hash_table.init (obj_lock_res_Ts, THREAD_TS_OBJ_LOCK_RES, obj_hash_size, block_size, block_count,
+			       lk_Obj_lock_res_desc);
 }
 #endif /* SERVER_MODE */
 
@@ -1207,11 +1192,9 @@ lock_initialize_deadlock_detection (void)
 static int
 lock_remove_resource (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 {
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
-  int success = 0, rc;
+  assert (res_ptr != NULL);
 
-  rc = lf_hash_delete_already_locked (t_entry, &lk_Gl.obj_hash_table, (void *) &res_ptr->key, res_ptr, &success);
-  if (!success)
+  if (!lk_Gl.m_obj_hash_table.erase_locked (thread_p, res_ptr->key, res_ptr))
     {
       /* this should not happen, as the hash entry is mutex protected and no clear operations are performed on the hash
        * table */
@@ -1221,8 +1204,7 @@ lock_remove_resource (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
     }
   else
     {
-      assert (rc == NO_ERROR);
-      return rc;
+      return NO_ERROR;
     }
 }
 #endif /* SERVER_MODE */
@@ -2920,6 +2902,12 @@ lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, LK_TRAN_LO
 {
   LK_ENTRY *superclass_entry = NULL;
 
+  if (class_entry->granted_mode == BU_LOCK)
+    {
+      // disallow lock escalation for bulk updates
+      return false;
+    }
+
   if (tran_lock->lock_escalation_on == true)
     {
       /* An another thread of current transaction is doing lock escalation. Therefore, the current thread gives up
@@ -3088,13 +3076,11 @@ static int
 lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index, const OID * oid, const OID * class_oid,
 					LOCK lock)
 {
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
   LK_RES_KEY search_key;
   LK_RES *res_ptr;
   LK_ENTRY *entry_ptr, *i;
   LOCK new_mode;
   LOCK group_mode;
-  int rv;
   int compat1, compat2;
 
 #if defined(LK_DUMP)
@@ -3112,7 +3098,7 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
     {
       /* instance lock request */
       /* check if an implicit lock has been acquired */
-      if (lock_is_class_lock_escalated (lock_get_object_lock (class_oid, oid_Root_class_oid, tran_index), lock) == true)
+      if (lock_is_class_lock_escalated (lock_get_object_lock (class_oid, oid_Root_class_oid), lock) == true)
 	{
 	  return LK_GRANTED;
 	}
@@ -3120,12 +3106,7 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
 
   /* search hash table */
   search_key = lock_create_search_key ((OID *) oid, (OID *) class_oid);
-  rv = lf_hash_find (t_entry, &lk_Gl.obj_hash_table, (void *) &search_key, (void **) &res_ptr);
-  if (rv != NO_ERROR)
-    {
-      return rv;
-    }
-
+  res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
   if (res_ptr == NULL)
     {
       /* the lockable object is NOT in the hash chain */
@@ -3237,7 +3218,6 @@ static int
 lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, const OID * oid, const OID * class_oid,
 				   LOCK lock, int wait_msecs, LK_ENTRY ** entry_addr_ptr, LK_ENTRY * class_entry)
 {
-  LF_TRAN_ENTRY *t_entry_res = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
   LF_TRAN_ENTRY *t_entry_ent = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
   LK_RES_KEY search_key;
   TRAN_ISOLATION isolation;
@@ -3249,7 +3229,6 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
   LK_ENTRY *prev, *curr, *i;
   bool lock_conversion = false;
   THREAD_ENTRY *thrd_entry;
-  int rv;
   LK_TRAN_LOCK *tran_lock;
   bool is_instant_duration;
   LOCK_COMPATIBILITY compat1, compat2;
@@ -3292,6 +3271,8 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
     {
       thread_p = thread_get_thread_entry_info ();
     }
+
+  assert (thread_p->type != TT_LOADDB);
 
   thrd_entry = thread_p;
 
@@ -3337,8 +3318,7 @@ start:
 	}
 
       if (ret_val == LK_GRANTED
-	  && lock_is_class_lock_escalated (lock_get_object_lock (class_oid, oid_Root_class_oid, tran_index),
-					   lock) == true)
+	  && lock_is_class_lock_escalated (lock_get_object_lock (class_oid, oid_Root_class_oid), lock) == true)
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_RE_REQUESTED_ON_OBJECTS);	/* monitoring */
 	  ret_val = LK_GRANTED;
@@ -3359,13 +3339,10 @@ start:
 
   /* find or add the lockable object in the lock table */
   search_key = lock_create_search_key ((OID *) oid, (OID *) class_oid);
-  rv = lf_hash_find_or_insert (t_entry_res, &lk_Gl.obj_hash_table, (void *) &search_key, (void **) &res_ptr, NULL);
-  if (rv != NO_ERROR)
+  (void) lk_Gl.m_obj_hash_table.find_or_insert (thread_p, search_key, res_ptr);
+  if (res_ptr == NULL)
     {
-      return rv;
-    }
-  else if (res_ptr == NULL)
-    {
+      assert (false);
       return ER_FAILED;
     }
   /* Find or insert also locks the resource mutex. */
@@ -5615,271 +5592,6 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 }
 #endif /* SERVER_MODE */
 
-#if defined(ENABLE_UNUSED_FUNCTION)
-#if defined(SERVER_MODE)
-/*
- * lock_check_consistent_resource - Check if the lock resource entry is consistent
- *
- * return: true/false
- *
- *   res_ptr(in):
- *
- * Note:Verify if a lock entry is consistent. At least one waiter must be
- *     waiting on at least one transaction holding a lock, otherwise,
- *     an inconsistent entry exist. Some waiters may be waiting on waiters.
- */
-static bool
-lock_check_consistent_resource (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
-{
-  LOCK total_mode;
-  LK_ENTRY *i, *j;
-  const char *msg_str;
-  int rv;
-
-  /* hold resource mutex */
-  rv = pthread_mutex_lock (&res_ptr->res_mutex);
-
-  /* check total_holders_mode (total mode of lock holders) */
-  total_mode = NULL_LOCK;
-  for (i = res_ptr->holder; i != NULL; i = i->next)
-    {
-      assert (i->granted_mode >= NULL_LOCK && total_mode >= NULL_LOCK);
-      total_mode = lock_Conv[i->granted_mode][total_mode];
-      assert (total_mode != NA_LOCK);
-
-      assert (i->blocked_mode >= NULL_LOCK && total_mode >= NULL_LOCK);
-      total_mode = lock_Conv[i->blocked_mode][total_mode];
-      assert (total_mode != NA_LOCK);
-    }
-  if (total_mode != res_ptr->total_holders_mode)
-    {
-      msg_str = "lk_consistent_res: total mode of holders is inconsistent.";
-      goto inconsistent;
-    }
-
-  /* check total_waiters_mode (total mode of lock waiters) */
-  total_mode = NULL_LOCK;
-  for (i = res_ptr->waiter; i != NULL; i = i->next)
-    {
-      assert (i->blocked_mode >= NULL_LOCK && total_mode >= NULL_LOCK);
-      total_mode = lock_Conv[i->blocked_mode][total_mode];
-      assert (total_mode != NA_LOCK);
-    }
-  if (total_mode != res_ptr->total_waiters_mode)
-    {
-      msg_str = "lk_consistent_res: total mode of waiters is incons.";
-      goto inconsistent;
-    }
-
-  /* check holders : lock information */
-  for (i = res_ptr->holder; i != NULL; i = i->next)
-    {
-      /* check res_head */
-      if (i->res_head != res_ptr)
-	{
-	  msg_str = "lk_consistent_res: res_head of a holder is incons.";
-	  goto inconsistent;
-	}
-      /* check tran_index */
-      for (j = res_ptr->holder; j != NULL && j != i; j = j->next)
-	{
-	  if (j->tran_index == i->tran_index)
-	    {
-	      msg_str = "lk_consistent_res: tran_index of a holder is incons. (1)";
-	      goto inconsistent;
-	    }
-	}
-      for (j = res_ptr->waiter; j != NULL; j = j->next)
-	{
-	  if (j->tran_index == i->tran_index)
-	    {
-	      msg_str = "lk_consistent_res: tran_index of a holder is incons. (2)";
-	      goto inconsistent;
-	    }
-	}
-      for (j = res_ptr->non2pl; j != NULL; j = j->next)
-	{
-	  if (j->tran_index == i->tran_index)
-	    {
-	      msg_str = "lk_consistent_res: tran_index of a holder is incons. (3)";
-	      goto inconsistent;
-	    }
-	}
-      /* check thrd_entry */
-      if (i->blocked_mode != NULL_LOCK)
-	{
-	  if (i->thrd_entry == NULL)
-	    {
-	      msg_str = "lk_consistent_res: thrd_entry of a blocked holder is incons.";
-	      goto inconsistent;
-	    }
-	}
-    }
-
-  /* check lock waiters */
-  for (i = res_ptr->waiter; i != NULL; i = i->next)
-    {
-      /* check res_head */
-      if (i->res_head != res_ptr)
-	{
-	  msg_str = "lk_consistent_res: res_head of a waiter is incons.";
-	  goto inconsistent;
-	}
-      /* check tran_index */
-      for (j = res_ptr->holder; j != NULL; j = j->next)
-	{
-	  if (j->tran_index == i->tran_index)
-	    {
-	      msg_str = "lk_consistent_res: tran_index of a waiter is incons. (1)";
-	      goto inconsistent;
-	    }
-	}
-      for (j = res_ptr->waiter; j != NULL && j != i; j = j->next)
-	{
-	  if (j->tran_index == i->tran_index)
-	    {
-	      msg_str = "lk_consistent_res: tran_index of a waiter is incons. (2)";
-	      goto inconsistent;
-	    }
-	}
-      for (j = res_ptr->non2pl; j != NULL; j = j->next)
-	{
-	  if (j->tran_index == i->tran_index)
-	    {
-	      msg_str = "lk_consistent_res: tran_index of a waiter is incons. (3)";
-	      goto inconsistent;
-	    }
-	}
-      /* check lock mode */
-      if (i->blocked_mode == NULL_LOCK)
-	{
-	  msg_str = "lk_consistent_res: blocked_mode of a waiter is incons.";
-	  goto inconsistent;
-	}
-      /* check thrd_entry */
-      if (i->thrd_entry == NULL)
-	{
-	  msg_str = "lk_consistent_res: thrd_entry of a waiter is incons.";
-	  goto inconsistent;
-	}
-    }
-
-  /* check non2pl locks */
-  for (i = res_ptr->non2pl; i != NULL; i = i->next)
-    {
-      /* check tran_index */
-      for (j = res_ptr->holder; j != NULL; j = j->next)
-	{
-	  if (j->tran_index == i->tran_index)
-	    {
-	      msg_str = "lk_consistent_res: tran_index of a non2pl is incons. (1)";
-	      goto inconsistent;
-	    }
-	}
-      for (j = res_ptr->waiter; j != NULL; j = j->next)
-	{
-	  if (j->tran_index == i->tran_index)
-	    {
-	      msg_str = "lk_consistent_res: tran_index of a non2pl is incons. (2)";
-	      goto inconsistent;
-	    }
-	}
-      for (j = res_ptr->non2pl; j != NULL && j != i; j = j->next)
-	{
-	  if (j->tran_index == i->tran_index)
-	    {
-	      msg_str = "lk_consistent_res: tran_index of a non2pl is incons. (3)";
-	      goto inconsistent;
-	    }
-	}
-    }
-
-  /* consistent */
-  pthread_mutex_unlock (&res_ptr->res_mutex);
-  return true;
-
-inconsistent:
-  lock_dump_resource (thread_p, stdout, res_ptr);
-  pthread_mutex_unlock (&res_ptr->res_mutex);
-  er_log_debug (ARG_FILE_LINE, msg_str);
-  return false;
-}
-#endif /* SERVER_MODE */
-
-#if defined(SERVER_MODE)
-/*
- * lock_check_consistent_tran_lock - Check consistency of transaction lock info entry
- *
- * return: true/false
- *
- *   tran_lock(in): ponter to the transaction lock information entry
- *
- * Note:check if the given transaction lock information enrtry is consistent.
- */
-static bool
-lock_check_consistent_tran_lock (LK_TRAN_LOCK * tran_lock)
-{
-  int count;
-  LK_ENTRY *i;
-  int rv;
-
-  /* hold transaction hold mutex */
-  rv = pthread_mutex_lock (&tran_lock->hold_mutex);
-
-  /* check held locks */
-  /* check inst_hold_count and class_hold_count */
-  for (count = 0, i = tran_lock->inst_hold_list; i != NULL; i = i->tran_next)
-    {
-      count++;
-    }
-  if (count != tran_lock->inst_hold_count)
-    {
-      pthread_mutex_unlock (&tran_lock->hold_mutex);
-      er_log_debug (ARG_FILE_LINE, "lk_consistent_tran_lock: inst_hold_count incorrect.");
-      return false;
-    }
-  for (count = 0, i = tran_lock->class_hold_list; i != NULL; i = i->tran_next)
-    {
-      count++;
-    }
-  if (count != tran_lock->class_hold_count)
-    {
-      pthread_mutex_unlock (&tran_lock->hold_mutex);
-      er_log_debug (ARG_FILE_LINE, "lk_consistent_tran_lock: class_hold_count incorrect.");
-      return false;
-    }
-
-  /* release transaction hold mutex */
-  pthread_mutex_unlock (&tran_lock->hold_mutex);
-
-  /* hold transaction non2pl mutex */
-  rv = pthread_mutex_lock (&tran_lock->non2pl_mutex);
-
-  /* check non2pl locks */
-  /* check num_incons_non2pl */
-  for (count = 0, i = tran_lock->non2pl_list; i != NULL; i = i->tran_next)
-    {
-      if (i->granted_mode == INCON_NON_TWO_PHASE_LOCK)
-	{
-	  count++;
-	}
-    }
-  if (count != tran_lock->num_incons_non2pl)
-    {
-      pthread_mutex_unlock (&tran_lock->non2pl_mutex);
-      er_log_debug (ARG_FILE_LINE, "lk_consistent_tran_lock: num_incons_non2pl incorrect.");
-      return false;
-    }
-
-  /* release transactino non2pl mutex */
-  pthread_mutex_unlock (&tran_lock->non2pl_mutex);
-
-  /* consistent */
-  return true;
-}
-#endif /* SERVER_MODE */
-#endif /* ENABLE_UNUSED_FUNCTION */
-
 /*
  * lock_initialize - Initialize the lock manager
  *
@@ -5904,16 +5616,7 @@ lock_initialize (void)
     {
       goto error;
     }
-  error_code = lock_initialize_object_hash_table ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  error_code = lock_initialize_object_lock_res_list ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
+  lock_initialize_object_hash_table ();
   error_code = lock_initialize_object_lock_entry_list ();
   if (error_code != NO_ERROR)
     {
@@ -6135,9 +5838,8 @@ lock_finalize (void)
   lk_Gl.max_obj_locks = 0;
 
   /* destroy hash table and freelists */
-  lf_hash_destroy (&lk_Gl.obj_hash_table);
+  lk_Gl.m_obj_hash_table.destroy ();
   lf_freelist_destroy (&lk_Gl.obj_free_entry_list);
-  lf_freelist_destroy (&lk_Gl.obj_free_res_list);
 
   lock_deadlock_detect_daemon_destroy ();
 #endif /* !SERVER_MODE */
@@ -6243,6 +5945,44 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
     }
 #endif
 
+  if (thread_p->type == TT_LOADDB)
+    {
+      // load worker don't lock; they rely on session transaction locks
+      if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
+	{
+	  // instance lock
+	  if (lock_has_lock_on_object (class_oid, oid_Root_class_oid, BU_LOCK))
+	    {
+	      // no instance locking is required
+	      return LK_GRANTED;
+	    }
+	  else
+	    {
+	      // should be locked
+	      assert (false);
+	      return LK_NOTGRANTED;
+	    }
+	}
+      else
+	{
+	  // class lock
+	  if (lock != SCH_S_LOCK && lock != BU_LOCK)
+	    {
+	      // unacceptable
+	      assert (false);
+	      return LK_NOTGRANTED;
+	    }
+	  if (!lock_has_lock_on_object (oid, class_oid, BU_LOCK))
+	    {
+	      assert (false);
+	      return LK_NOTGRANTED;
+	    }
+	  return LK_GRANTED;
+	}
+      // should have returned
+      assert (false);
+    }
+
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   if (cond_flag == LK_COND_LOCK)	/* conditional request */
     {
@@ -6276,7 +6016,7 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 
   /* Check if current transaction has already held the class lock. If the class lock is not held, hold the class lock,
    * now. */
-  class_entry = lock_get_class_lock (thread_p, class_oid, tran_index);
+  class_entry = lock_get_class_lock (thread_p, class_oid);
   old_class_lock = (class_entry) ? class_entry->granted_mode : NULL_LOCK;
 
   if (OID_IS_ROOTOID (class_oid))
@@ -6311,7 +6051,7 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 	    }
 	  else
 	    {
-	      superclass_entry = lock_get_class_lock (thread_p, oid_Root_class_oid, tran_index);
+	      superclass_entry = lock_get_class_lock (thread_p, oid_Root_class_oid);
 	    }
 
 	  granted =
@@ -6438,7 +6178,7 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * su
 
   /* Check if current transaction has already held the class lock. If the class lock is not held, hold the class lock,
    * now. */
-  superclass_entry = lock_get_class_lock (thread_p, superclass_oid, tran_index);
+  superclass_entry = lock_get_class_lock (thread_p, superclass_oid);
   old_superclass_lock = (superclass_entry) ? superclass_entry->granted_mode : NULL_LOCK;
 
 
@@ -6569,7 +6309,7 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag, LOCK c
 
   /* acquire the lock on the class */
   /* NOTE that in case of acquiring a lock on a class object, the higher lock granule of the class object is not given. */
-  root_class_entry = lock_get_class_lock (thread_p, oid_Root_class_oid, tran_index);
+  root_class_entry = lock_get_class_lock (thread_p, oid_Root_class_oid);
   granted = lock_internal_perform_lock_object (thread_p, tran_index, class_oid, NULL, class_lock, wait_msecs,
 					       &class_entry, root_class_entry);
   assert (granted == LK_GRANTED || cond_flag == LK_COND_LOCK || er_errid () != NO_ERROR);
@@ -6733,7 +6473,7 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
     }
 
   /* get root class lock mode */
-  root_class_entry = lock_get_class_lock (thread_p, oid_Root_class_oid, tran_index);
+  root_class_entry = lock_get_class_lock (thread_p, oid_Root_class_oid);
 
   for (i = 0; i < cls_count; i++)
     {
@@ -7168,11 +6908,9 @@ lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * 
 #if !defined (SERVER_MODE)
   return NULL;
 #else /* !SERVER_MODE */
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
   LK_RES_KEY search_key;
   LK_RES *res_ptr;
   LK_ENTRY *entry_ptr;
-  int rv;
 
   if (is_class)
     {
@@ -7186,12 +6924,7 @@ lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * 
       /* override type; we don't insert here, so class_oid is neither passed to us nor needed for the search */
       search_key.type = (is_class ? LOCK_RESOURCE_CLASS : LOCK_RESOURCE_INSTANCE);
     }
-  rv = lf_hash_find (t_entry, &lk_Gl.obj_hash_table, (void *) &search_key, (void **) &res_ptr);
-  if (rv != NO_ERROR)
-    {
-      return NULL;
-    }
-
+  res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
   if (res_ptr == NULL)
     {
       /* not found */
@@ -7217,21 +6950,14 @@ lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * 
  *
  * return:
  *
- *   oid(in): target object ientifier
+ *   oid(in): target object identifier
  *   class_oid(in): class identifier of the target object
- *   tran_index(in): the transaction table index of target transaction.
  *
- * Note:Find the acquired lock on the given object by the given transaction.
- *     Currently, the value of the "tran_index" must not be NULL_TRAN_INDEX.
+ * Note:Find the acquired lock on the given object by the current transaction.
  *
- *     If this function is changed in order to allow NULL_TRAN_INDEX to be
- *     transferred as the value of the "tran_index", this function will
- *     find the resulting lock acquired by all transactions holding a lock
- *     on the given OID (The most powerful lock, actually a combination of
- *     the locks).
  */
 LOCK
-lock_get_object_lock (const OID * oid, const OID * class_oid, int tran_index)
+lock_get_object_lock (const OID * oid, const OID * class_oid)
 {
 #if !defined (SERVER_MODE)
   return X_LOCK;
@@ -7240,13 +6966,24 @@ lock_get_object_lock (const OID * oid, const OID * class_oid, int tran_index)
   LK_TRAN_LOCK *tran_lock;
   LK_ENTRY *entry_ptr;
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-  int rv;
+  int rv, tran_index;
 
   if (oid == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2, "lk_get_object_lock", "NULL OID pointer");
       return NULL_LOCK;
     }
+
+  if (thread_p->type == thread_type::TT_LOADDB)
+    {
+      /* Loaddb workers does not acquire locks. Get tran_index of loaddb workers manager thread. */
+      tran_index = thread_p->conn_entry->get_tran_index ();
+    }
+  else
+    {
+      tran_index = logtb_get_current_tran_index ();
+    }
+
   if (tran_index == NULL_TRAN_INDEX)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2, "lk_get_object_lock", "NULL_TRAN_INDEX");
@@ -7328,14 +7065,13 @@ lock_get_object_lock (const OID * oid, const OID * class_oid, int tran_index)
  *
  *   oid(in): target object ientifier
  *   class_oid(in): class identifier of the target object
- *   tran_index(in): the transaction table index of target transaction.
  *   lock(in): the lock mode
  *
  * Note: Find whether the transaction holds an enough lock on the object
  *
  */
 int
-lock_has_lock_on_object (const OID * oid, const OID * class_oid, int tran_index, LOCK lock)
+lock_has_lock_on_object (const OID * oid, const OID * class_oid, LOCK lock)
 {
 #if !defined (SERVER_MODE)
   return 1;
@@ -7344,13 +7080,33 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, int tran_index,
   LK_TRAN_LOCK *tran_lock;
   LK_ENTRY *entry_ptr;
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-  int rv;
+  int rv, tran_index;
 
   if (oid == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2, "lock_has_lock_on_object", "NULL OID pointer");
       return ER_LK_BAD_ARGUMENT;
     }
+
+  if (thread_p->type == thread_type::TT_LOADDB)
+    {
+      /* Loaddb workers does not acquire locks. Get tran_index of loaddb workers manager thread. */
+      tran_index = thread_p->conn_entry->get_tran_index ();
+
+      if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
+	{
+	  return lock_has_lock_on_object (class_oid, oid_Root_class_oid, BU_LOCK);
+	}
+      else
+	{
+	  // fall through
+	}
+    }
+  else
+    {
+      tran_index = logtb_get_current_tran_index ();
+    }
+
   if (tran_index == NULL_TRAN_INDEX)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2, "lock_has_lock_on_object", "NULL_TRAN_INDEX");
@@ -7563,18 +7319,17 @@ lock_is_waiting_transaction (int tran_index)
 
 /*
  * lock_get_class_lock - Get a pointer to lock heap entry acquired by
- *                        given transaction on given class object
+ *                       the current transaction on given class object
  *
  * return:
  *
  *   class_oid(in): target class object identifier
- *   tran_index(in): target transaction
  *
- * Note:This function finds lock entry acquired by the given transaction
+ * Note:This function finds lock entry acquired by the current transaction
  *     on the given class and then return a pointer to the lock entry.
  */
 LK_ENTRY *
-lock_get_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, int tran_index)
+lock_get_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
 #if !defined (SERVER_MODE)
   assert (false);
@@ -7583,7 +7338,7 @@ lock_get_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, int tran_in
 #else /* !SERVER_MODE */
   LK_TRAN_LOCK *tran_lock;
   LK_ENTRY *entry_ptr;
-  int rv;
+  int rv, tran_index;
 
   if (class_oid == NULL)
     {
@@ -7594,6 +7349,22 @@ lock_get_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, int tran_in
   if (OID_ISNULL (class_oid))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2, "lk_get_class_lock_ptr", "NULL_ClassOID");
+      return NULL;
+    }
+
+  if (thread_p->type == thread_type::TT_LOADDB)
+    {
+      /* Loaddb workers does not acquire locks. Get tran_index of loaddb workers manager thread. */
+      tran_index = thread_p->conn_entry->get_tran_index ();
+    }
+  else
+    {
+      tran_index = logtb_get_current_tran_index ();
+    }
+
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2, "lock_get_class_lock", "NULL_TRAN_INDEX");
       return NULL;
     }
 
@@ -7914,8 +7685,6 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 #if !defined (SERVER_MODE)
   return;
 #else /* !SERVER_MODE */
-  LF_HASH_TABLE_ITERATOR iterator;
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
   int k, s, t;
   LK_RES *res_ptr;
   LK_ENTRY *hi, *hj;
@@ -7958,10 +7727,10 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
   /* hold the deadlock detection mutex */
   rv = pthread_mutex_lock (&lk_Gl.DL_detection_mutex);
 
-  lf_hash_create_iterator (&iterator, t_entry, &lk_Gl.obj_hash_table);
-  res_ptr = (LK_RES *) lf_hash_iterate (&iterator);
-
-  for (; res_ptr != NULL; res_ptr = (LK_RES *) lf_hash_iterate (&iterator))
+  // *INDENT-OFF*
+  lk_hashmap_iterator iterator { thread_p, lk_Gl.m_obj_hash_table };
+  // *INDENT-ON*
+  for (res_ptr = iterator.iterate (); res_ptr != NULL; res_ptr = iterator.iterate ())
     {
       /* holding resource mutex */
       if (res_ptr->holder == NULL)
@@ -8524,7 +8293,6 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
       acqlocks->nobj_locks = 0;
       acqlocks->obj = NULL;
     }
-  return;
 #else /* !SERVER_MODE */
   int tran_index;
   LK_TRAN_LOCK *tran_lock;
@@ -8611,7 +8379,6 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
       /* release transaction lock hold mutex */
       pthread_mutex_unlock (&tran_lock->hold_mutex);
     }
-  return;
 #endif /* !SERVER_MODE */
 }
 
@@ -8665,9 +8432,6 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
 #if !defined (SERVER_MODE)
   return;
 #else /* !SERVER_MODE */
-  LF_HASH_TABLE_ITERATOR iterator;
-
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
   const char *client_prog_name;	/* Client program name for tran */
   const char *client_user_name;	/* Client user name for tran */
   const char *client_host_name;	/* Client host for tran */
@@ -8739,91 +8503,25 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
     }
 
   /* compute number of lock res entries */
-  num_locked =
-    lk_Gl.obj_hash_table.freelist->alloc_cnt - lk_Gl.obj_hash_table.freelist->retired_cnt -
-    lk_Gl.obj_hash_table.freelist->available_cnt;
-  num_locked = MAX (num_locked, 0);
+  num_locked = (int) lk_Gl.m_obj_hash_table.get_element_count ();
 
   /* dump object lock table */
   fprintf (outfp, "Object Lock Table:\n");
   fprintf (outfp, "\tCurrent number of objects which are locked    = %d\n", num_locked);
-  fprintf (outfp, "\tMaximum number of objects which can be locked = %d\n\n", lk_Gl.obj_hash_table.freelist->alloc_cnt);
+  fprintf (outfp, "\tMaximum number of objects which can be locked = %d\n\n", lk_Gl.max_obj_locks);
 
-  lf_hash_create_iterator (&iterator, t_entry, &lk_Gl.obj_hash_table);
-  res_ptr = (LK_RES *) lf_hash_iterate (&iterator);
-  for (; res_ptr != NULL; res_ptr = (LK_RES *) lf_hash_iterate (&iterator))
+  // *INDENT-OFF*
+  lk_hashmap_iterator iterator { thread_p, lk_Gl.m_obj_hash_table };
+  // *INDENT-ON*
+  for (res_ptr = iterator.iterate (); res_ptr != NULL; res_ptr = iterator.iterate ())
     {
       lock_dump_resource (thread_p, outfp, res_ptr);
     }
 
   /* Reset the wait back to the way it was */
   (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
-
-  return;
 #endif /* !SERVER_MODE */
 }
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * lock_check_consistency - Check consistency of lock table
- *
- * return: nothing
- *
- * Note:Check consistency of lock table.
- *     This function is used for debugging purposes.
- */
-void
-lock_check_consistency (THREAD_ENTRY * thread_p)
-{
-#if !defined (SERVER_MODE)
-  return;
-#else /* !SERVER_MODE */
-  int consistent = true;
-  int hash_index;
-  LK_HASH *hash_anchor;
-  LK_RES *res_ptr;
-  int tran_index;
-  LK_TRAN_LOCK *tran_lock;
-  int rv;
-
-  /* check the consisteny in object lock table */
-  for (hash_index = 0; hash_index < lk_Gl.obj_hash_size; hash_index++)
-    {
-      hash_anchor = &lk_Gl.obj_hash_table[hash_index];
-      rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
-      res_ptr = hash_anchor->hash_next;
-      while (res_ptr != NULL)
-	{
-	  if (lock_check_consistent_resource (thread_p, res_ptr) == false)
-	    {
-	      consistent = false;
-	      fprintf (stderr, "lk_consistent: res_ptr is inconsistent.\n");
-	      break;
-	    }
-	  res_ptr = res_ptr->hash_next;
-	}
-      pthread_mutex_unlock (&hash_anchor->hash_mutex);
-      if (consistent == false)
-	{
-	  return;
-	}
-    }
-
-  /* check transaction lock information */
-  for (tran_index = 0; tran_index < lk_Gl.num_trans; tran_index++)
-    {
-      tran_lock = &lk_Gl.tran_lock_table[tran_index];
-      if (lock_check_consistent_tran_lock (tran_lock) == false)
-	{
-	  fprintf (stderr, "lk_consistent: tran_lock is inconsistent.\n");
-	  consistent = false;
-	  break;
-	}
-    }
-  return;
-#endif /* !SERVER_MODE */
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * lock_initialize_composite_lock -
@@ -8899,7 +8597,7 @@ lock_add_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * comp_lock,
 
       if (lockcomp->root_class_ptr == NULL)
 	{
-	  lockcomp->root_class_ptr = lock_get_class_lock (thread_p, oid_Root_class_oid, lockcomp->tran_index);
+	  lockcomp->root_class_ptr = lock_get_class_lock (thread_p, oid_Root_class_oid);
 	}
 
       /* initialize lockcomp_class */
@@ -9141,12 +8839,7 @@ lock_get_number_object_locks (void)
 #if defined(SA_MODE)
   return 0;
 #else
-  int available = lk_Gl.obj_hash_table.freelist->available_cnt;
-  int retired = lk_Gl.obj_hash_table.freelist->retired_cnt;
-  int allocd = lk_Gl.obj_hash_table.freelist->alloc_cnt;
-
-  /* might fetch values mid-operation, so impose a lower cap */
-  return MAX (allocd - available - retired, 0);
+  return (unsigned int) lk_Gl.m_obj_hash_table.get_element_count ();
 #endif
 }
 

@@ -1315,7 +1315,6 @@ void
 er_print_callstack (const char *file_name, const int line_no, const char *fmt, ...)
 {
   va_list ap;
-  int r = NO_ERROR;
 
   // *INDENT-OFF*
   // protect log file mutex
@@ -1986,7 +1985,6 @@ void
 _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 {
   va_list ap;
-  int r = NO_ERROR;
 
 #if defined (CS_MODE) && !defined (NDEBUG)
   /* temporary workaround for HA process which may encounter missing er_module */

@@ -813,6 +813,12 @@ struct rvfun RV_fun[] = {
    btree_rv_redo_record_modify,
    btree_rv_keyval_dump,
    log_rv_dump_hexa},
+  {RVHF_APPEND_PAGES_TO_HEAP,
+   "RVHF_APPEND_PAGES_TO_HEAP",
+   NULL,
+   heap_rv_postpone_append_pages_to_heap,
+   NULL,
+   NULL},
 
 };
 

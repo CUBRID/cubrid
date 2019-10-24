@@ -638,6 +638,12 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_LOCK_RR].name = "NET_SERVER_LOCK_RR";
   net_Req_buffer[NET_SERVER_TZ_GET_CHECKSUM].name = "NET_SERVER_TZ_GET_CHECKSUM";
   net_Req_buffer[NET_SERVER_SPACEDB].name = "NET_SERVER_SPACEDB";
+
+  net_Req_buffer[NET_SERVER_LD_INIT].name = "NET_SERVER_LD_INIT";
+  net_Req_buffer[NET_SERVER_LD_INSTALL_CLASS].name = "NET_SERVER_LD_INSTALL_CLASS";
+  net_Req_buffer[NET_SERVER_LD_LOAD_BATCH].name = "NET_SERVER_LD_LOAD_BATCH";
+  net_Req_buffer[NET_SERVER_LD_DESTROY].name = "NET_SERVER_LD_DESTROY";
+  net_Req_buffer[NET_SERVER_LD_INTERRUPT].name = "NET_SERVER_LD_INTERRUPT";
 }
 
 /*
@@ -885,7 +891,7 @@ net_client_request_no_reply (int request, char *argbuf, int argsize)
 
   error = NO_ERROR;
 
-  assert (request == NET_SERVER_LOG_SET_INTERRUPT);
+  assert (request == NET_SERVER_LOG_SET_INTERRUPT || request == NET_SERVER_LD_INTERRUPT);
 
   if (net_Server_name[0] == '\0')
     {

@@ -125,6 +125,7 @@ struct heap_scancache_node
 {
   HFID hfid;			/* Heap file of scan */
   OID class_oid;		/* Class oid of scanned instances */
+  const char *classname;
 };
 
 typedef struct heap_scancache_node_list HEAP_SCANCACHE_NODE_LIST;
@@ -202,6 +203,9 @@ struct heap_hfid_table_entry
 
   HFID hfid;			/* value - HFID */
   FILE_TYPE ftype;		/* value - FILE_HEAP or FILE_HEAP_REUSE_SLOTS */
+// *INDENT-OFF*
+  std::atomic<char*> classname;	/* Also cache the classname. */
+// *INDENT-ON*
 };
 
 // forward declaration
@@ -308,6 +312,10 @@ struct heap_operation_context
   bool is_logical_old;		/* true if initial record was not REC_ASSIGN_ADDRESS */
   bool is_redistribute_insert_with_delid;	/* true if the insert is due to a partition redistribute data operation
 						 * and has a valid delid */
+  bool is_bulk_op;		// note - currently for insert only
+  // side-effect - disables MVCC operations
+
+  bool use_bulk_logging;	// note - currently for bulk insert only
 
   /* Performance stat dump. */
   PERF_UTIME_TRACKER *time_track;
@@ -475,7 +483,8 @@ extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thre
 
 extern DB_VALUE *heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, int *atts_prefix_length,
 					     HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes, DB_VALUE * dbvalue,
-					     char *buf, FUNCTION_INDEX_INFO * func_index_info);
+					     char *buf, FUNCTION_INDEX_INFO * func_index_info,
+					     TP_DOMAIN * midxkey_domain);
 extern int heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * class_recdes,
 					   HEAP_CACHE_ATTRINFO * attr_info, HEAP_IDX_ELEMENTS_INFO * idx_info);
 extern int heap_attrinfo_start_with_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid,
@@ -570,11 +579,10 @@ extern void heap_rv_dump_reuse_page (FILE * fp, int ignore_length, void *data);
 extern int heap_rv_mark_deleted_on_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_mark_deleted_on_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
-extern int heap_get_hfid_from_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid);
-extern int heap_get_hfid_and_file_type_from_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out,
-						       FILE_TYPE * ftype_out);
-extern int heap_insert_hfid_for_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid,
-					   FILE_TYPE ftype);
+extern int heap_get_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out,
+				FILE_TYPE * ftype_out, char **classname_out);
+extern int heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid,
+				  FILE_TYPE ftype, const char *classname_in);
 extern int heap_compact_pages (THREAD_ENTRY * thread_p, OID * class_oid);
 
 extern void heap_classrepr_dump_all (THREAD_ENTRY * thread_p, FILE * fp, OID * class_oid);
@@ -675,8 +683,9 @@ extern int heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_
 
 extern int heap_nonheader_page_capacity ();
 
+extern int heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 // *INDENT-OFF*
-extern int heap_append_pages_to_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const OID &class_oid,
-                                      const std::vector<VPID> &heap_pages_array);
+extern void heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid,
+						 const std::vector<VPID> &heap_pages_array);
 // *INDENT-ON*
 #endif /* _HEAP_FILE_H_ */

@@ -26,16 +26,13 @@
 #include "server_support.h"
 
 #include "config.h"
+#include "load_worker_manager.hpp"
 #include "log_append.hpp"
-#include "multi_thread_stream.hpp"
 #include "session.h"
 #include "thread_entry_task.hpp"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
-#include "stream_transfer_receiver.hpp"
-#include "replication_master_senders_manager.hpp"
-#include "communication_server_channel.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -96,6 +93,7 @@
 
 #define RMUTEX_NAME_TEMP_CONN_ENTRY "TEMP_CONN_ENTRY"
 
+static bool css_Server_shutdown_inited = false;
 static struct timeval css_Shutdown_timeout = { 0, 0 };
 
 static char *css_Master_server_name = NULL;	/* database identifier */
@@ -113,7 +111,6 @@ static HA_SERVER_STATE ha_Server_state = HA_SERVER_STATE_IDLE;
 static bool ha_Repl_delay_detected = false;
 
 static int ha_Server_num_of_hosts = 0;
-static char ha_Server_master_hostname[CUB_MAXHOSTNAMELEN];
 
 #define HA_LOG_APPLIER_STATE_TABLE_MAX  5
 typedef struct ha_log_applier_state_table HA_LOG_APPLIER_STATE_TABLE;
@@ -234,7 +231,6 @@ static int css_process_new_connection_request (void);
 
 static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
-static void css_process_new_slave (SOCKET master_fd);
 
 static void css_push_server_task (CSS_CONN_ENTRY & conn_ref);
 static void css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool &, THREAD_ENTRY & stopper_thread_ref);
@@ -570,12 +566,6 @@ css_process_master_request (SOCKET master_fd)
     case SERVER_GET_EOF:
       css_process_get_eof_request (master_fd);
       break;
-    case SERVER_RECEIVE_MASTER_HOSTNAME:
-      css_process_master_hostname ();
-      break;
-    case SERVER_CONNECT_NEW_SLAVE:
-      css_process_new_slave (master_fd);
-      break;
 #endif
     default:
       /* master do not respond */
@@ -804,57 +794,6 @@ css_process_get_eof_request (SOCKET master_fd)
   css_send_heartbeat_data (css_Master_conn, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 #endif
 }
-
-// *INDENT-OFF*
-int
-css_process_master_hostname ()
-{
-  int hostname_length, error;
-  cubcomm::server_channel chn (css_Master_server_name);
-
-  error = css_receive_heartbeat_data (css_Master_conn, (char *) &hostname_length, sizeof (int));
-  if (error != NO_ERRORS)
-    {
-      return error;
-    }
-
-  if (hostname_length == 0)
-    {
-      return NO_ERRORS;
-    }
-  else if (hostname_length < 0)
-    {
-      return ER_FAILED;
-    }
-
-  error = css_receive_heartbeat_data (css_Master_conn, ha_Server_master_hostname, hostname_length);
-  if (error != NO_ERRORS)
-    {
-      return error;
-    }
-  ha_Server_master_hostname[hostname_length] = '\0';
-
-  assert (hostname_length > 0 && ha_Server_state == HA_SERVER_STATE_STANDBY);
-
-#if 0
-  /* TODO[arnia] deactivate for now this new replication
-   * code and reactivate it later, when merging with razvan
-   */
-  //create slave replication channel and connect to hostname
-  error = chn.connect (ha_Server_master_hostname, css_Master_port_id);
-  if (error != NO_ERRORS)
-    {
-      assert (false);
-      return error;
-    }
-#endif
-
-  er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n",
-		ha_Server_master_hostname);
-
-  return NO_ERRORS;
-}
-// *INDENT-ON*
 
 /*
  * css_close_connection_to_master() -
@@ -1336,6 +1275,18 @@ css_initialize_server_interfaces (int (*request_handler) (THREAD_ENTRY * thrd, u
   css_register_handler_routines (css_internal_connection_handler, NULL /* disabled */ , connection_error_function);
 }
 
+bool
+css_is_shutdowning_server ()
+{
+  return css_Server_shutdown_inited;
+}
+
+void
+css_start_shutdown_server ()
+{
+  css_Server_shutdown_inited = true;
+}
+
 /*
  * css_init() -
  *   return:
@@ -1439,13 +1390,17 @@ shutdown:
   /*
    * start to shutdown server
    */
+  css_start_shutdown_server ();
 
   // stop threads; in first phase we need to stop active workers, but keep log writers for a while longer to make sure
   // all log is transfered
   css_stop_all_workers (*thread_p, THREAD_STOP_WORKERS_EXCEPT_LOGWR);
 
   /* stop vacuum threads. */
-  vacuum_stop (thread_p);
+  vacuum_stop_workers (thread_p);
+
+  // stop load sessions
+  cubload::worker_manager_stop_all ();
 
   /* we should flush all append pages before stop log writer */
   logpb_force_flush_pages (thread_p);
@@ -2667,46 +2622,6 @@ xacl_reload (THREAD_ENTRY * thread_p)
 }
 #endif
 
-static void
-css_process_new_slave (SOCKET master_fd)
-{
-
-  SOCKET new_fd;
-  unsigned short rid;
-  cubcomm::channel chn;
-
-  /* receive new socket descriptor from the master */
-  new_fd = css_open_new_socket_from_master (master_fd, &rid);
-  if (IS_INVALID_SOCKET (new_fd))
-    {
-      assert (false);
-      return;
-    }
-  er_log_debug (ARG_FILE_LINE, "css_process_new_slave:" "received new slave fd from master fd=%d, current_state=%d\n",
-		new_fd, ha_Server_state);
-
-  assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
-
-#if 0
-  /* TODO[arnia] deactivate for now this new replication
-   * code and reactivate it later, when merging with razvan
-   */
-  css_error_code rc = chn.accept (new_fd);
-  assert (rc == NO_ERRORS);
-
-  // *INDENT-OFF*
-  cubreplication::master_senders_manager::add_stream_sender
-    (new cubstream::transfer_sender (std::move (chn), cubreplication::master_senders_manager::get_stream ()));
-  // *INDENT-ON*
-#endif
-}
-
-const char *
-get_master_hostname ()
-{
-  return ha_Server_master_hostname;
-}
-
 /*
  * css_get_client_id() - returns the unique client identifier
  *   return: returns the unique client identifier, on error, returns -1
@@ -2848,7 +2763,6 @@ css_server_task::execute (context_type &thread_ref)
   pthread_mutex_lock (&thread_ref.tran_index_lock);
   (void) css_internal_request_handler (thread_ref, m_conn);
 
-  thread_ref.private_lru_index = -1;
   thread_ref.conn_entry = NULL;
   thread_ref.m_status = cubthread::entry::status::TS_FREE;
 }
@@ -2872,7 +2786,6 @@ css_server_external_task::execute (context_type &thread_ref)
 
   m_task->execute (thread_ref);
 
-  thread_ref.private_lru_index = -1;
   thread_ref.conn_entry = NULL;
 }
 

@@ -1,18 +1,18 @@
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
 $
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
+$   This program is free software; you can redistribute it and/or modify
+$   it under the terms of the GNU General Public License as published by
 $   the Free Software Foundation; either version 2 of the License, or
 $   (at your option) any later version.
 $
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
+$  This program is distributed in the hope that it will be useful,
+$  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+$  GNU General Public License for more details.
 $
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
+$  You should have received a copy of the GNU General Public License
+$  along with this program; if not, write to the Free Software
 $  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 $
 
@@ -423,46 +423,54 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Instance %1$d of class %2$s has already been defined\n
 46 Instance %1$d of class %2$s has already been reserved\n
 47 UNIQUE violation on attribute '%1$s', converted to NULL\n
-48   %1$d instances\n
+48 %1$s %2$d instances\n
 49 Class %1$s\n
 50 Password:
 51 \n*** Updating class statistics ***\n
 52 %1$s near line %2$d (text was '%3$s')\n
-53 Lexical error
+53 Lexical error\n
 54 line %1$d: syntax error at \"%2$s\"
 55 missing
 56 in %1$s
 57 Incompatible arguments, \"%1$s\", and \"%2$s\"\n
-58 %1$d instances committed\n
+58 %1$s %2$d instances committed\n
 59 \nCannot invoke non-optimized version of loaddb.\n
 60 Error parsing \"%1$s\", as %2$s type.\n
+61 Object Reference is not supported in CS mode.\n
+62 Updated statistics for class %1$s.\n
 112   %1$d instances\r
-113 Last committed line : %1$d
+113 Last committed line : %1$d\n
 114 error-control-file
 115 input file to control error(s) during loading
 116 Total %1$8d object(s) inserted, %2$d object(s) failed.\n
 117 Load failed.\n
 118 Maximum length of class name is %1$d bytes.\n
-120 \
+119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
+120 data file does not contain '%%class' specifier or '--table' option is missing\n
+121 Class %1$s is ignored.\n
+122 \
 loaddb: Import objects and schemas to the database.\n\
-usage: %1$s loaddb [OPTION] database-name\n\
+usage: %1$s loaddb [OPTION] database-name[@host]\n\
 \n\
 valid options:\n\
-  -u, --user=ID                 user ID for database access; default: "public"\n\
-  -p, --password=PASS           user password; default: none\n\
-      --data-file-check-only    check syntax for data file without load; default: loading after checking\n\
-  -l, --load-only               load data file without checking syntax; default: loading after checking\n\
-      --estimated-size=NUMBER   estimated NUMBER of instances; default: 5000\n\
-  -v, --verbose                 enable verbose status messages; default: disabled\n\
-  -c, --periodic-commit=COUNT   insertion COUNT for periodic commit; default: no commit during loading\n\
-      --no-oid                  don't use OID\n\
-      --no-statistics           do not update the statistics while loading\n\
-  -s, --schema-file=FILE[:LINE] create schema from LINE with FILE\n\
-  -i, --index-file=FILE[:LINE]  create index from LINE with FILE\n\
-  -d, --data-file=FILE          load data with FILE\n\
-  -t, --table=TABLE             table name that is substituted for missing class header in data file\n\
-      --error-control-file=FILE FILE to control error(s) during loading\n\
-      --ignore-class-file=FILE  input file of class names that skip load\n
+  -S, --SA-mode                  stand-alone mode execution\n\
+  -C, --CS-mode                  client-server mode execution\n\
+  -u, --user=ID                  user ID for database access; default: "public"\n\
+  -p, --password=PASS            user password; default: none\n\
+      --data-file-check-only     check syntax for data file without load; default: disabled\n\
+  -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
+      --estimated-size=NUMBER    estimated NUMBER of instances; default: 5000\n\
+  -v, --verbose                  enable verbose status messages; default: disabled\n\
+  -c, --periodic-commit=COUNT    insertion COUNT for periodic commit; default: no commit during loading\n\
+      --no-oid                   don't use OID\n\
+      --no-statistics            do not update the statistics while loading\n\
+  -s, --schema-file=FILE[:LINE]  create schema from LINE with FILE\n\
+  -i, --index-file=FILE[:LINE]   create index from LINE with FILE\n\
+      --trigger-file=FILE[:LINE] create trigger from LINE with FILE\n\
+  -d, --data-file=FILE           load data with FILE\n\
+  -t, --table=TABLE              table name that is substituted for missing class header in data file\n\
+      --error-control-file=FILE  FILE to control error(s) during loading\n\
+      --ignore-class-file=FILE   input file of class names that skip load\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
@@ -905,7 +913,7 @@ valid options:\n\
   -L, --log-path=PATH         directory PATH for copied log volumes\n\
   -m, --mode=MODE             operation mode; default: sync\n\
                               MODE: sync or semisync or async\n\
-  -S, --start-page-id=ID      first log page to copy\n 
+  -S, --start-page-id=ID      first log page to copy\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 Enter DBA password:
@@ -1035,7 +1043,7 @@ valid options:\n\
   -f, --force-only    Updates the collations in databases to be same as the collations of new sytem configuration.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 Enter %1$s password: 
+20 Enter %1$s password:
 22 Tran index          User name      Host name      Process id      Program name\n
 23 -------------------------------------------------------------------------------\n
 24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n

@@ -179,8 +179,6 @@ static const int LOG_REC_UNDO_MAX_ATTEMPTS = 3;
 /* true: Skip logging, false: Don't skip logging */
 static bool log_No_logging = false;
 
-extern INT32 vacuum_Global_oldest_active_blockers_counter;
-
 #define LOG_TDES_LAST_SYSOP(tdes) (&(tdes)->topops.stack[(tdes)->topops.last])
 #define LOG_TDES_LAST_SYSOP_PARENT_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->lastparent_lsa)
 #define LOG_TDES_LAST_SYSOP_POSP_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->posp_lsa)
@@ -1786,6 +1784,14 @@ log_final (THREAD_ENTRY * thread_p)
   free_and_init (log_Gl.loghdr_pgptr);
 
   LOG_CS_EXIT (thread_p);
+}
+
+void
+log_stop_ha_delay_registration ()
+{
+#if defined (SERVER_MODE)
+  cubthread::get_manager ()->destroy_daemon (log_Check_ha_delay_info_daemon);
+#endif // SERVER_MODE
 }
 
 /*
@@ -5282,12 +5288,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 	}
 
       /* Unblock global oldest active update. */
-      if (tdes->block_global_oldest_active_until_commit)
-	{
-	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, -1);
-	  tdes->block_global_oldest_active_until_commit = false;
-	  assert (vacuum_Global_oldest_active_blockers_counter >= 0);
-	}
+      tdes->unlock_global_oldest_visible_mvccid ();
 
       if (iscommitted == LOG_COMMIT)
 	{
@@ -5571,12 +5572,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
       lock_unlock_all (thread_p);
 
       /* Unblock global oldest active update. */
-      if (tdes->block_global_oldest_active_until_commit)
-	{
-	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, -1);
-	  tdes->block_global_oldest_active_until_commit = false;
-	  assert (vacuum_Global_oldest_active_blockers_counter >= 0);
-	}
+      tdes->unlock_global_oldest_visible_mvccid ();
 
       if (iscommitted == LOG_COMMIT)
 	{
@@ -7532,6 +7528,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
     {
       log_zip_free (log_unzip_ptr);
     }
+  tdes->m_log_postpone_cache.reset ();
 
   return;
 
@@ -8970,23 +8967,23 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
       goto exit_on_error;
     }
 
-  if (header->last_block_oldest_mvccid == MVCCID_NULL)
+  if (header->oldest_visible_mvccid == MVCCID_NULL)
     {
       db_make_null (out_values[idx]);
     }
   else
     {
-      db_make_bigint (out_values[idx], header->last_block_oldest_mvccid);
+      db_make_bigint (out_values[idx], header->oldest_visible_mvccid);
     }
   idx++;
 
-  if (header->last_block_newest_mvccid == MVCCID_NULL)
+  if (header->newest_block_mvccid == MVCCID_NULL)
     {
       db_make_null (out_values[idx]);
     }
   else
     {
-      db_make_bigint (out_values[idx], header->last_block_newest_mvccid);
+      db_make_bigint (out_values[idx], header->newest_block_mvccid);
     }
   idx++;
 

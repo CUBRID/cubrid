@@ -47,7 +47,6 @@
 #include "log_archives.hpp"
 #include "log_comm.h"
 #include "log_common_impl.h"
-#include "log_generator.hpp"
 #include "log_lsa.hpp"
 #include "log_postpone_cache.hpp"
 #include "log_storage.hpp"
@@ -222,14 +221,6 @@ struct logwr_info;
   ((tdes)->state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS \
    || (tdes)->state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
 
-/* Reserved vacuum workers transaction identifiers.
- * Vacuum workers each need one TRANID to have their system operations
- * isolated and identifiable. Even though usually vacuum workers never undo
- * their work, system operations still need to be undone (if server crashes
- * in the middle of the operation).
- * For this reason, the first VACUUM_MAX_WORKER_COUNT negative TRANID values
- * under NULL_TRANID are reserved for vacuum workers.
- */
 const TRANID LOG_SYSTEM_WORKER_FIRST_TRANID = NULL_TRANID - 1;
 const int LOG_SYSTEM_WORKER_INCR_TRANID = -1;
 
@@ -461,6 +452,8 @@ struct log_rcv_tdes
    * executed atomically (all changes applied or all rollbacked) before executing finish all postpones. to know what
    * to abort, we remember the starting LSA of such operation. */
   LOG_LSA atomic_sysop_start_lsa;
+  LOG_LSA analysis_last_aborted_sysop_lsa;	/* to recover logical redo operation. */
+  LOG_LSA analysis_last_aborted_sysop_start_lsa;	/* to recover logical redo operation. */
 };
 
 typedef struct log_tdes LOG_TDES;
@@ -551,7 +544,6 @@ struct log_tdes
 
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
-  cubreplication::log_generator replication_log_generator;
 
   bool is_active_worker_transaction () const;
   bool is_system_transaction () const;
@@ -566,6 +558,11 @@ struct log_tdes
 
   void on_sysop_start ();
   void on_sysop_end ();
+
+  // lock global oldest visible mvccid to current value; required for heavy operations that need to do their own
+  // vacuuming, like upgrade domain / reorganize partitions
+  void lock_global_oldest_visible_mvccid ();
+  void unlock_global_oldest_visible_mvccid ();
 #endif
   // *INDENT-ON*
 };
@@ -815,7 +812,7 @@ extern LOG_PAGE *logpb_create_header_page (THREAD_ENTRY * thread_p);
 extern void logpb_fetch_header (THREAD_ENTRY * thread_p, LOG_HEADER * hdr);
 extern void logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_PAGE * log_pgptr);
 extern void logpb_flush_header (THREAD_ENTRY * thread_p);
-extern int logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE access_mode,
+extern int logpb_fetch_page (THREAD_ENTRY * thread_p, const LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE access_mode,
 			     LOG_PAGE * log_pgptr);
 extern int logpb_copy_page_from_log_buffer (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
 extern int logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
@@ -995,7 +992,6 @@ extern char *logpb_backup_level_info_to_string (char *buf, int buf_size, const L
 extern const char *tran_abort_reason_to_string (TRAN_ABORT_REASON val);
 extern int logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt,
 					 void **ctx);
-extern MVCCID logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p);
 
 extern LOG_PAGEID logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p);
 extern int logpb_find_oldest_available_arv_num (THREAD_ENTRY * thread_p);

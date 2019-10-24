@@ -3431,58 +3431,11 @@ end:
        * - post-flush thread is not behind.
        * - log-flush thread is not behind.
        * so what can it be?
-       *
-       * we know of one more possible scenario. the waiting threads have no victims in their private lists, and their
-       * private lists are over quota. there are enough victims in other lists, so enough that flush could not find
-       * any viable candidates to flush. let's confirm this scenario. */
+       */
 
       assert (check_count_lru > 0);
 
-      // lambda function to map checks on all thread entry
-      auto check_mapfunc =[&](THREAD_ENTRY & thrd_iter, bool & stop_mapper) {
-	(void) stop_mapper;	// suppress unused parameter warning
-
-	PGBUF_LRU_LIST *lru_list = NULL;
-	if (thrd_iter.resume_status != THREAD_ALLOC_BCB_SUSPENDED)
-	  {
-	    return;
-	  }
-	if (!PGBUF_THREAD_HAS_PRIVATE_LRU (&thrd_iter))
-	  {
-	    return;
-	  }
-	lru_list = PGBUF_GET_LRU_LIST (PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (&thrd_iter)));
-	if (PGBUF_LRU_VICTIM_ZONE_COUNT (lru_list) == 0)
-	  {
-	    return;
-	  }
-	if (lru_list->count_vict_cand > 0)
-	  {
-	    if (pgbuf_is_any_thread_waiting_for_direct_victim () == false)
-	      {
-		/* we had direct victim waiters at the start of check loop; now, all waiters got BCB from the direct
-		 * flush queue */
-		return;
-	      }
-	    /* should have found victim candidate */
-	    assert (false);
-	  }
-	if (!PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
-	  {
-	    if (pgbuf_is_any_thread_waiting_for_direct_victim () == false)
-	      {
-		/* we had direct victim waiters at the start of check loop; now, all waiters got BCB from the direct
-		 * flush queue */
-		return;
-	      }
-	    /* should be over quota */
-	    assert (false);
-	  }
-      };
-      // map checks
-      thread_get_manager ()->map_entries (check_mapfunc);
-
-      /* now, let's double check that not finding flush candidates is possible (enough victim candidates as it is). */
+      /* let's double check that not finding flush candidates is possible (enough victim candidates as it is). */
       int lru_idx;
       int count_check_this_lru;
       PGBUF_LRU_LIST *lru_list = NULL;
@@ -12077,7 +12030,7 @@ pgbuf_get_groupid_and_unfix (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAG
     }
   else
     {
-      er_status = heap_get_hfid_from_class_oid (thread_p, &cls_oid, &hfid);
+      er_status = heap_get_class_info (thread_p, &cls_oid, &hfid, NULL, NULL);
     }
 
   if (er_status == NO_ERROR)
@@ -13730,6 +13683,17 @@ pgbuf_log_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new, int data_size, P
 
   log_append_undoredo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page_new, (PGLENGTH) ptype_new, 0, data_size, NULL,
 			     page_new);
+  pgbuf_set_dirty (thread_p, page_new, DONT_FREE);
+}
+
+void
+pgbuf_log_redo_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new, int data_size, PAGE_TYPE ptype_new)
+{
+  assert (ptype_new != PAGE_UNKNOWN);
+  assert (page_new != NULL);
+  assert (data_size > 0);
+
+  log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page_new, (PGLENGTH) ptype_new, data_size, page_new);
   pgbuf_set_dirty (thread_p, page_new, DONT_FREE);
 }
 
