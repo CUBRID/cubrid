@@ -373,7 +373,7 @@ cursor_fixup_vobjs (DB_VALUE * value_p)
  *   db_value(out)      : Set to the set value
  */
 int
-cursor_copy_vobj_to_dbvalue (OR_BUF * buffer_p, DB_VALUE * value_p)
+cursor_copy_vobj_to_dbvalue (struct or_buf *buffer_p, DB_VALUE * value_p)
 {
   int rc;
   DB_VALUE vobj_dbval;
