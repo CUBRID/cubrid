@@ -35543,8 +35543,8 @@ page_key_boundary::update_boundary_gt_or_eq (THREAD_ENTRY * thread_p, BTID_INT *
 btree_insert_list::btree_insert_list (DB_VALUE *key, OID *oid)
   : m_curr_pos (0)
   , m_key_type (&tp_Null_domain)
-  , m_use_sorted_bulk_insert (false)
   , m_use_page_boundary_check (false)
+  , m_use_sorted_bulk_insert (false)
 {
   m_curr_key = key;
   m_curr_oid = oid;

@@ -13557,14 +13557,11 @@ end:
 }
 
 /*
- * locator_mvcc_reevaluate_filters () - reevaluates key range, key filter and data
- *				filter predicates
+ * locator_mvcc_reevaluate_filters () - reevaluates key range, key filter and data filter predicates
  *   return: result of reevaluation
  *   thread_p(in): thread entry
- *   mvcc_reev_data(in): The structure that contains data needed for
- *			 reevaluation
- *   oid(in) : The record that was modified by other transactions and is
- *	       involved in filters.
+ *   mvcc_reev_data(in): The structure that contains data needed for reevaluation
+ *   oid(in) : The record that was modified by other transactions and is involved in filters.
  *   recdes(in): Record descriptor that will contain the record
  */
 static DB_LOGICAL
@@ -13581,12 +13578,12 @@ locator_mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * 
 	{
 	  return V_ERROR;
 	}
-      ev_res =
-	(*filter->scan_pred->pr_eval_fnc) (thread_p, filter->scan_pred->pred_expr, filter->val_descr, (OID *) oid);
-      ev_res = update_logical_result (thread_p, ev_res, NULL, NULL, NULL, NULL);
+      ev_res = (*filter->scan_pred->pr_eval_fnc) (thread_p, filter->scan_pred->pred_expr, filter->val_descr,
+						  (OID *) oid);
+      ev_res = update_logical_result (thread_p, ev_res, NULL);
       if (ev_res != V_TRUE)
 	{
-	  goto end;
+	  return ev_res;
 	}
     }
 
@@ -13597,12 +13594,12 @@ locator_mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * 
 	{
 	  return V_ERROR;
 	}
-      ev_res =
-	(*filter->scan_pred->pr_eval_fnc) (thread_p, filter->scan_pred->pred_expr, filter->val_descr, (OID *) oid);
-      ev_res = update_logical_result (thread_p, ev_res, NULL, NULL, NULL, NULL);
+      ev_res = (*filter->scan_pred->pr_eval_fnc) (thread_p, filter->scan_pred->pred_expr, filter->val_descr,
+						  (OID *) oid);
+      ev_res = update_logical_result (thread_p, ev_res, NULL);
       if (ev_res != V_TRUE)
 	{
-	  goto end;
+	  return ev_res;
 	}
     }
 
@@ -13610,12 +13607,9 @@ locator_mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * 
   if (filter != NULL && filter->scan_pred != NULL && filter->scan_pred->pred_expr != NULL)
     {
       ev_res = eval_data_filter (thread_p, (OID *) oid, recdes, NULL, filter);
-      ev_res =
-	update_logical_result (thread_p, ev_res, (int *) mvcc_reev_data->qualification, mvcc_reev_data->key_filter,
-			       recdes, oid);
+      ev_res = update_logical_result (thread_p, ev_res, (int *) mvcc_reev_data->qualification);
     }
 
-end:
   return ev_res;
 }
 

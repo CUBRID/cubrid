@@ -269,19 +269,27 @@ if(UNIX)
       add_definitions(-D_USE_LIBREGEX_)
     endif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9.0)
 
-    # C/C++ common flags for both debug and release build
-    set(CMAKE_C_CXX_COMMON_FLAGS "-ggdb -fno-omit-frame-pointer -std=c++0x")
-    # C/C++ common flags for both debug
-    set(CMAKE_C_CXX_DEBUG_FLAGS "-Wall -fno-inline ${CMAKE_C_CXX_COMMON_FLAGS}")
-    # C/C++ common flags for release build
-    set(CMAKE_C_CXX_RELEASE_FLAGS "-O2 -DNDEBUG -finline-functions ${CMAKE_C_CXX_COMMON_FLAGS}")
+    # C flags for both debug and release build
+    set(CMAKE_C_COMMON_FLAGS "-ggdb -fno-omit-frame-pointer")
+    # C++ flags for both debug and release build
+    set(CMAKE_CXX_COMMON_FLAGS "${CMAKE_C_COMMON_FLAGS} -std=c++0x")
 
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_CXX_DEBUG_FLAGS}")
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_C_CXX_DEBUG_FLAGS}")
-    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${CMAKE_C_CXX_RELEASE_FLAGS}")
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}  ${CMAKE_C_CXX_RELEASE_FLAGS}")
-    set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO}  ${CMAKE_C_CXX_RELEASE_FLAGS}")
-    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}  ${CMAKE_C_CXX_RELEASE_FLAGS}")
+    # C flags for debug build
+    set(CMAKE_C_DEBUG_FLAGS "-Wall -fno-inline ${CMAKE_C_COMMON_FLAGS}")
+    # C++ flags for debug build
+    set(CMAKE_CXX_DEBUG_FLAGS "-Wall -fno-inline ${CMAKE_CXX_COMMON_FLAGS}")
+
+    # C flags for release build
+    set(CMAKE_C_RELEASE_FLAGS "-O2 -DNDEBUG -finline-functions ${CMAKE_C_COMMON_FLAGS}")
+    # C++ flags for release build
+    set(CMAKE_CXX_RELEASE_FLAGS "-O2 -DNDEBUG -finline-functions ${CMAKE_CXX_COMMON_FLAGS}")
+
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_DEBUG_FLAGS}")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_DEBUG_FLAGS}")
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${CMAKE_C_RELEASE_FLAGS}")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${CMAKE_CXX_RELEASE_FLAGS}")
+    set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} ${CMAKE_C_RELEASE_FLAGS}")
+    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} ${CMAKE_CXX_RELEASE_FLAGS}")
 
     if(WITH_SOURCES)
       set(DEBUG_PREFIX_MAP_FLAG "-fdebug-prefix-map=${CMAKE_SOURCE_DIR}/src=${CMAKE_INSTALL_PREFIX}/src")
