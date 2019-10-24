@@ -32,7 +32,7 @@
 #include "cm_portable.h"
 
 #include <jni.h>
-#include <strings.h>		// for strcasecmp
+#include <string.h>		// for strcasecmp
 
 /*
  * Report failed JNI call position (file name, line number) to STDOUT
