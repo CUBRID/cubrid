@@ -3768,7 +3768,7 @@ sm_get_class_with_statistics (MOP classop)
 	      return NULL;
 	    }
 	  class_->stats = stats_get_statistics (WS_OID (classop), 0);
-	  if (class_->stats == NULL && er_errid () != NO_ERROR)
+	  if (class_->stats == NULL && er_errid_if_has_error () != NO_ERROR)
 	    {
 	      return NULL;
 	    }
@@ -3786,7 +3786,7 @@ sm_get_class_with_statistics (MOP classop)
 	  stats_free_statistics (class_->stats);
 	  class_->stats = stats;
 	}
-      else if (er_errid () != NO_ERROR)
+      else if (er_errid_if_has_error () != NO_ERROR)
 	{
 	  return NULL;
 	}
@@ -3901,7 +3901,7 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 		  class_->stats = stats_get_statistics (WS_OID (classop), 0);
 		  if (class_->stats == NULL)
 		    {
-		      error = er_errid ();
+		      error = er_errid_if_has_error ();
 		      /* don't assert error (stats may be empty for class with no attributes) */
 		    }
 		}
@@ -3959,7 +3959,7 @@ sm_update_all_statistics (bool with_fullscan)
 		  class_->stats = stats_get_statistics (WS_OID (cl->op), 0);
 		  if (class_->stats == NULL)
 		    {
-		      error = er_errid ();
+		      error = er_errid_if_has_error ();
 		      /* don't assert error (stats may be empty for class with no attributes) */
 		    }
 		}
