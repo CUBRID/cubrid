@@ -130,4 +130,16 @@
 #define OR_MAX_INT 2147483647	/* 0x7FFFFFFF */
 #define OR_MIN_INT -2147483648	/* 0x80000000 */
 
+/* OBJECT HEADER LAYOUT */
+/* representation id, CHN, MVCC insert id, MVCC delete id, prev_version_lsa = 32 */
+#define OR_MVCC_MAX_HEADER_SIZE  32
+
+/* representation id and CHN */
+#define OR_MVCC_MIN_HEADER_SIZE  8
+
+/* representation id, MVCC insert id and CHN */
+#define OR_MVCC_INSERT_HEADER_SIZE  16
+
+#define OR_NON_MVCC_HEADER_SIZE	      (8)	/* two integers */
+
 #endif /* _OBJECT_REPRESENTATION_TYPESIZE_H_ */

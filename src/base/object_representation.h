@@ -42,7 +42,7 @@
 #include "error_manager.h"
 #include "memory_alloc.h"
 #include "oid.h"
-#include "object_representation_typesize.h"
+#include "object_representation_constants.h"
 #include "porting_inline.hpp"
 #include "storage_common.h"
 
@@ -445,17 +445,6 @@ struct log_lsa;
 
 /* OBJECT HEADER LAYOUT */
 /* header fixed-size in non-MVCC only, in MVCC the header has variable size */
-
-/* representation id, CHN, MVCC insert id, MVCC delete id, prev_version_lsa = 32 */
-#define OR_MVCC_MAX_HEADER_SIZE  32
-
-/* representation id and CHN */
-#define OR_MVCC_MIN_HEADER_SIZE  8
-
-/* representation id, MVCC insert id and CHN */
-#define OR_MVCC_INSERT_HEADER_SIZE  16
-
-#define OR_NON_MVCC_HEADER_SIZE	      (8)	/* two integers */
 #define OR_HEADER_SIZE(ptr) (or_header_size ((char *) (ptr)))
 
 /* 01 stand for 1byte, 10-> 2byte, 11-> 4byte  */
