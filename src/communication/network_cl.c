@@ -56,6 +56,7 @@
 #include "client_support.h"
 #include "perf_monitor.h"
 #include "log_writer.h"
+#include "object_representation.h"
 
 /*
  * To check for errors from the comm system. Note that if we get any error

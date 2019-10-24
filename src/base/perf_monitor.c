@@ -31,9 +31,11 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #endif /* WINDOWS */
-#include "perf_monitor.h"
-#include "error_manager.h"
 
+#include "perf_monitor.h"
+
+#include "error_manager.h"
+#include "object_representation.h"
 #if !defined(SERVER_MODE)
 #include "memory_alloc.h"
 #include "server_interface.h"
