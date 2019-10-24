@@ -10029,15 +10029,15 @@ loaddb_load_batch (const cubload::batch & batch, bool use_temp_batch, bool & is_
 
   int rc = ER_FAILED;
   ptr = or_unpack_int (ptr, &rc);
+  if (rc != NO_ERROR)
+    {
+      free_and_init (data_reply);
+      return rc;
+    }
 
   int is_batch_accepted_;
   or_unpack_int (ptr, &is_batch_accepted_);
   is_batch_accepted = is_batch_accepted_ != 0;
-
-  if (data_reply_size <= 0)
-    {
-      return ER_FAILED;
-    }
 
   packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
   status.unpack (unpacker);

@@ -1130,7 +1130,6 @@ ldr_server_load (load_args * args, int *exit_status, bool * interrupted)
     {
       if (load_interrupted)
 	{
-	  loaddb_interrupt ();
 	  *interrupted = true;
 	  *exit_status = 3;
 	  break;
@@ -1148,7 +1147,7 @@ ldr_server_load (load_args * args, int *exit_status, bool * interrupted)
       print_stats (status.get_load_stats (), *args, exit_status);
       if (!status.get_load_stats ().empty ())
 	{
-	  last_stat = status.get_load_stats ()[status.get_load_stats ().size () - 1];
+	  last_stat = status.get_load_stats ().back ();
 	}
 
       /* *INDENT-OFF* */
