@@ -60,7 +60,7 @@ stats_get_statistics (OID * class_oid_p, unsigned int time_stamp, CLASS_STATS **
   *stats_p = NULL;
 
   error = stats_get_statistics_from_server (class_oid_p, time_stamp, &length, &buffer_p);
-  if (error != NO_ERROR && buffer_p != NULL)
+  if (error == NO_ERROR && buffer_p != NULL)
     {
       assert (length > 0);
 
