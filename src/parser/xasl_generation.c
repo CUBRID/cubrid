@@ -8987,16 +8987,19 @@ static DB_VALUE **
 pt_make_reserved_value_list (PARSER_CONTEXT * parser, PT_RESERVED_NAME_TYPE type)
 {
   DB_VALUE **value_list = NULL;
-  int start, end, size, i;
+  int start = 0, end = 0, size = 0;
 
   PT_GET_RESERVED_NAME_FIRST_AND_LAST (type, start, end);
   size = end - start + 1;
 
-  regu_array_alloc < DB_VALUE * >(&value_list, size);
+  // *INDENT-OFF*
+  regu_array_alloc <DB_VALUE *> (&value_list, size);
+  // *INDENT-ON*
+
   if (value_list)
     {
       /* initialize values */
-      for (i = 0; i < size; i++)
+      for (int i = 0; i < size; ++i)
 	{
 	  regu_alloc (value_list[i]);
 	  if (value_list[i] == NULL)
@@ -11745,7 +11748,7 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	    {
 	      /* Index scan for key info */
 	      PT_RESERVED_NAME_TYPE reserved_type = RESERVED_NAME_INVALID;
-	      ACCESS_METHOD access_method;
+	      ACCESS_METHOD access_method = ACCESS_METHOD_SEQUENTIAL;
 
 	      if (pt_split_attrs (parser, table_info, where_part, &pred_attrs, &rest_attrs, &reserved_attrs,
 				  &pred_offsets, &rest_offsets, &reserved_offsets) != NO_ERROR)

@@ -5442,7 +5442,7 @@ tzc_extend (TZ_DATA * tzd)
   TZ_DATA *tzd_or_old_tzd = NULL;
   const char *ruleset_name;
   bool is_compat = true;
-  int start_ds_ruleset_old, start_ds_ruleset_new;
+  int start_ds_ruleset_old = 0, start_ds_ruleset_new = 0;
   const TZ_DS_RULE *old_ds_rule = NULL;
   const TZ_DS_RULE *new_ds_rule = NULL;
   int all_country_count = 0;

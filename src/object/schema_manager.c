@@ -1532,8 +1532,8 @@ static int
 sm_dynamic_link_class (SM_CLASS * class_, METHOD_LINK * links)
 {
   int error = NO_ERROR;
-  SM_METHOD_FILE *files, *file;
-  char **names, **sorted_names, **commands;
+  SM_METHOD_FILE *files = NULL, *file = NULL;
+  char **names = NULL, **sorted_names = NULL, **commands = NULL;
   int i, nfiles, psn;
 
   if (links == NULL)

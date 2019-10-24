@@ -148,9 +148,9 @@ compactdb_start (bool verbose_flag)
   LIST_MOPS *class_table = NULL;
   int i;
   MOBJ object = NULL;
-  HFID *hfid;
+  HFID *hfid = NULL;
   int status = 0;
-  THREAD_ENTRY *thread_p;
+  THREAD_ENTRY *thread_p = NULL;
 
   /*
    * Build class name table

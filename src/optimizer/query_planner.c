@@ -1525,7 +1525,7 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
 {
   QO_PLAN *plan = NULL;
   BITSET_ITERATOR iter;
-  int t;
+  int t = -1;
   QO_ENV *env = info->env;
   QO_INDEX_ENTRY *index_entryp = NULL;
   QO_TERM *term = NULL;

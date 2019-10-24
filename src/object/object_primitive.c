@@ -7719,7 +7719,7 @@ static DB_VALUE_COMPARE_RESULT
 pr_midxkey_compare_element (char *mem1, char *mem2, TP_DOMAIN * dom1, TP_DOMAIN * dom2, int do_coercion,
 			    int total_order)
 {
-  DB_VALUE_COMPARE_RESULT c;
+  DB_VALUE_COMPARE_RESULT c = DB_UNK;
   DB_VALUE val1, val2;
   bool error = false;
   OR_BUF buf_val1, buf_val2;
