@@ -38,6 +38,7 @@
 #include "dbtype.h"
 #include "error_manager.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "set_object.h"
 
 #if !defined(SERVER_MODE)
@@ -4478,7 +4479,7 @@ setobj_sort (COL * col)
  */
 
 int
-setobj_find_temporary_oids (SETOBJ * col, LC_OIDSET * oidset)
+setobj_find_temporary_oids (setobj * col, LC_OIDSET * oidset)
 {
   int error;
   DB_VALUE *val;
@@ -6153,7 +6154,7 @@ setobj_print (FILE * fp, COL * col)
  */
 
 DB_TYPE
-setobj_type (COL * set)
+setobj_type (SETOBJ * set)
 {
   if (set)
     {

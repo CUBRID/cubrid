@@ -27,6 +27,7 @@
 #include "dbtype.h"
 #include "memory_private_allocator.hpp"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "printer.hpp"
 #include "set_object.h"
 #include "string_buffer.hpp"

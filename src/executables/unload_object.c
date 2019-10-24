@@ -55,6 +55,7 @@
 #include "transform_cl.h"
 #include "object_accessor.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "set_object.h"
 
 #include "message_catalog.h"

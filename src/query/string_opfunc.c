@@ -50,6 +50,7 @@
 #include "base64.h"
 #include "tz_support.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "dbtype.h"
 #include "elo.h"
 #include "es_common.h"

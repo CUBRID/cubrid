@@ -33,6 +33,7 @@
 #include "storage_common.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "db.h"
 #include "locator_cl.h"
 #include "server_interface.h"

@@ -49,6 +49,7 @@
 
 // forward declarations
 struct log_lsa;
+struct setobj;
 
 #define OR_VALUE_ALIGNED_SIZE(value)   \
   (or_db_value_size (value) + MAX_ALIGNMENT)
@@ -1078,13 +1079,6 @@ struct or_buf
   int error_abort;
 };
 
-/*
- * struct setobj
- * The internal structure of a setobj data struct is private to this module.
- * all access to this structure should be encapsulated via function calls.
- */
-typedef SETOBJ COL;
-
 /* TODO: LP64 check DB_INT32_MAX */
 
 #define OR_BUF_INIT(buf, data, size) \
@@ -1122,8 +1116,6 @@ extern "C"
   extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
 
   extern int valcnv_convert_value_to_string (DB_VALUE * value);
-
-  extern DB_TYPE setobj_type (COL * set);
 
 #if defined __cplusplus
 }
@@ -1174,7 +1166,7 @@ extern char *or_pack_ehid (char *buf, EHID * btid);
 extern char *or_pack_recdes (char *buf, RECDES * recdes);
 extern char *or_pack_log_lsa (const char *ptr, const struct log_lsa *lsa);
 extern char *or_unpack_log_lsa (char *ptr, struct log_lsa *lsa);
-extern char *or_unpack_set (char *ptr, SETOBJ ** set, struct tp_domain *domain);
+extern char *or_unpack_set (char *ptr, setobj ** set, struct tp_domain *domain);
 extern char *or_unpack_setref (char *ptr, DB_SET ** ref);
 extern char *or_pack_listid (char *ptr, void *listid);
 extern char *or_pack_lock (char *ptr, LOCK lock);
@@ -1375,11 +1367,11 @@ extern int or_get_set_header (OR_BUF * buf, DB_TYPE * set_type, int *size, int *
 
 extern int or_skip_set_header (OR_BUF * buf);
 
-extern int or_packed_set_length (SETOBJ * set, int include_domain);
+extern int or_packed_set_length (setobj * set, int include_domain);
 
-extern void or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain);
+extern void or_put_set (OR_BUF * buf, setobj * set, int include_domain);
 
-extern SETOBJ *or_get_set (OR_BUF * buf, struct tp_domain *domain);
+extern setobj *or_get_set (OR_BUF * buf, struct tp_domain *domain);
 extern int or_disk_set_size (OR_BUF * buf, struct tp_domain *domain, DB_TYPE * set_type);
 
 /* DB_VALUE functions */

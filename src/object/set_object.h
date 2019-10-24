@@ -29,10 +29,8 @@
 
 #include "config.h"
 
-
 #include "dbtype_def.h"
 #include "error_manager.h"
-#include "object_representation.h"
 #include "object_domain.h"	/* for TP_DOMAIN */
 #include "locator.h"		/* for LC_OIDSET */
 
@@ -67,19 +65,7 @@
 #define OBJECT_HAS_TEMP_OID(obj) \
   ((WS_OID(obj) == NULL) ? 0 : OID_ISTEMP(WS_OID(obj)))
 
-
-typedef struct set_iterator
-{
-  struct set_iterator *next;	/* chain of iterators on this set */
-
-  DB_SET *ref;			/* set we're iterating over */
-  SETOBJ *set;			/* set object */
-  DB_VALUE_LIST *element;	/* current list element */
-  DB_VALUE *value;		/* current element pointer */
-  int position;			/* current element index */
-} SET_ITERATOR;
-
-  /* From set_object.h */
+typedef struct setobj SETOBJ;
 struct setobj
 {
 
@@ -108,6 +94,20 @@ struct setobj
   /* set if we can't guarantee that there are no temporary OID's in here */
   unsigned may_have_temporary_oids:1;
 };
+typedef SETOBJ COL;
+
+typedef struct set_iterator
+{
+  struct set_iterator *next;	/* chain of iterators on this set */
+
+  DB_SET *ref;			/* set we're iterating over */
+  SETOBJ *set;			/* set object */
+  DB_VALUE_LIST *element;	/* current list element */
+  DB_VALUE *value;		/* current element pointer */
+  int position;			/* current element index */
+} SET_ITERATOR;
+
+
 
 extern DB_COLLECTION *set_create (DB_TYPE type, int initial_size);
 extern int set_area_init (void);
@@ -279,4 +279,13 @@ extern DB_COLLECTION *setobj_get_reference (COL * set);
 extern int setobj_release (COL * set);
 extern int setobj_build_domain_from_col (COL * col, TP_DOMAIN ** set_domain);
 
-#endif /* _SET_OBJECT_H_ */
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+  extern DB_TYPE setobj_type (SETOBJ * set);
+#ifdef __cplusplus
+}				// extern "C"
+#endif
+
+#endif				/* _SET_OBJECT_H_ */

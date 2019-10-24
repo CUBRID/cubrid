@@ -39,11 +39,11 @@
 #include "dbtype_def.h"
 #include "elo.h"
 #include "object_domain.h"
-#include "object_representation.h"
 #include "oid.h"
 #include "language_support.h"
 #include "intl_support.h"
 #include "memory_alloc.h"
+#include "set_object.h"
 
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 
