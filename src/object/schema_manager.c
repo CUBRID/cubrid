@@ -3768,7 +3768,7 @@ sm_get_class_with_statistics (MOP classop)
 	      return NULL;
 	    }
 	  int err = stats_get_statistics (WS_OID (classop), 0, &class_->stats);
-	  if (class_->stats == NULL || err != NO_ERROR)
+	  if (err != NO_ERROR)
 	    {
 	      return NULL;
 	    }
