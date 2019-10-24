@@ -5185,16 +5185,17 @@ boot_notify_ha_log_applier_state (HA_LOG_APPLIER_STATE state)
 /*
  * stats_get_statistics_from_server () -
  *
- * return:
+ * return: error code
  *
  *   classoid(in):
  *   timestamp(in):
  *   length_ptr(in):
+ *   stats_buffer(in/out):
  *
  * NOTE:
  */
-char *
-stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *length_ptr)
+int
+stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *length_ptr, char **stats_buffer)
 {
 #if defined(CS_MODE)
   int req_error;
@@ -5204,6 +5205,9 @@ stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *l
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
+
+  assert (stats_buffer != NULL);
+  *stats_buffer = NULL;
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -5217,22 +5221,18 @@ stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *l
   if (!req_error)
     {
       or_unpack_int (reply, length_ptr);
-      return area;
+      *stats_buffer = area;
     }
-  else
-    {
-      return NULL;
-    }
-#else /* CS_MODE */
-  char *area;
 
+  return req_error;
+#else /* CS_MODE */
   THREAD_ENTRY *thread_p = enter_server ();
 
-  area = xstats_get_statistics_from_server (thread_p, classoid, timestamp, length_ptr);
+  *stats_buffer = xstats_get_statistics_from_server (thread_p, classoid, timestamp, length_ptr);
 
   exit_server (*thread_p);
 
-  return area;
+  return NO_ERROR;
 #endif /* !CS_MODE */
 }
 
