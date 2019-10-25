@@ -3162,7 +3162,7 @@ add_uca_contr_or_exp (LOCALE_COLLATION * lc, UCA_STORAGE * storage, const unsign
 static int
 read_cp_from_tag (unsigned char *buffer, CP_BUF_TYPE type, UCA_CP * cp)
 {
-  int temp_cp;
+  int temp_cp = 0;
   int result = 0;
   int err_status = NO_ERROR;
   char *chr_ptr;
