@@ -805,7 +805,7 @@ net_peer_alive (unsigned char *ip_addr, int port, int timeout_msec)
     }
 
 send_again:
-  ret = WRITE_TO_SOCKET (sock_fd, ping_msg, strlen (ping_msg));
+  ret = WRITE_TO_SOCKET (sock_fd, ping_msg, (int) strlen (ping_msg));
   if (ret < 0)
     {
       if (errno == EAGAIN)

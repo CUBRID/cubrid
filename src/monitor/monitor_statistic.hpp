@@ -137,6 +137,12 @@ namespace cubmonitor
 	//
       }
 
+      primitive &operator= (const primitive &other)
+      {
+	m_value = other.m_value;
+	return *this;
+      }
+
       // fetch interface for monitor registration - statistics count (always 1 for primitives) and fetch value function
       inline void fetch (statistic_value *destination, fetch_mode mode = FETCH_GLOBAL) const;
       std::size_t get_statistics_count (void) const
@@ -171,6 +177,12 @@ namespace cubmonitor
 	: m_value (value)
       {
 	//
+      }
+
+      atomic_primitive &operator= (const atomic_primitive &other)
+      {
+	m_value.store (other.m_value.load ());
+	return *this;
       }
 
       // fetch interface for monitor registration - statistics count (always 1 for primitives) and fetch value function
@@ -216,6 +228,12 @@ namespace cubmonitor
 	: m_value (value.count ())
       {
 	//
+      }
+
+      atomic_primitive &operator= (const atomic_primitive &other)
+      {
+	m_value.store (other.m_value.load ());
+	return *this;
       }
 
       // fetch interface for monitor registration - statistics count (always 1 for primitives) and fetch value function

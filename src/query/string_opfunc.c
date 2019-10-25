@@ -6470,21 +6470,21 @@ error_return:
 }
 
 int
-db_json_convert_to_utf8 (DB_VALUE ** dbval)
+db_json_convert_to_utf8 (DB_VALUE * dbval)
 {
-  assert (dbval != NULL && DB_IS_STRING (*dbval));
+  assert (dbval != NULL && DB_IS_STRING (dbval));
   DB_VALUE coerced_str;
-  if (db_get_string_codeset (*dbval) == INTL_CODESET_UTF8)
+  if (db_get_string_codeset (dbval) == INTL_CODESET_UTF8)
     {
       return NO_ERROR;
     }
-  int error_code = db_string_convert_to (*dbval, &coerced_str, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
+  int error_code = db_string_convert_to (dbval, &coerced_str, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
 
-  std::swap (coerced_str, **dbval);
+  std::swap (coerced_str, *dbval);
   pr_clear_value (&coerced_str);
   return NO_ERROR;
 }

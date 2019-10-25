@@ -673,7 +673,7 @@ void _Logger::write (const char *msg)
 {
   logAppender->write (msg);
 
-  unflushedBytes += strlen (msg);
+  unflushedBytes += (int) strlen (msg);
 
   if (isForceFlush || unflushedBytes >= LOG_FLUSH_SIZE
       || nextFlushTime >= (unsigned long) context.now.tv_usec)

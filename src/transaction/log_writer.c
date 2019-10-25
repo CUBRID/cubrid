@@ -2081,7 +2081,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
 	    }
 	}
       /* Pack the pages which can be in the page area of Log Writer */
-      if ((lpageid - fpageid + 1) > (LOGWR_COPY_LOG_BUFFER_NPAGES - 1))
+      if (((size_t) (lpageid - fpageid + 1)) > (LOGWR_COPY_LOG_BUFFER_NPAGES - 1))
 	{
 	  lpageid = fpageid + (LOGWR_COPY_LOG_BUFFER_NPAGES - 1) - 1;
 	}

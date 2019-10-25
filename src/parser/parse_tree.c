@@ -903,6 +903,15 @@ parser_free_node (const PARSER_CONTEXT * parser, PT_NODE * node)
     {
       db_value_clear (&node->info.insert_value.value);
     }
+  if (node->node_type == PT_JSON_TABLE_COLUMN)
+    {
+      PT_JSON_TABLE_COLUMN_INFO *col = &node->info.json_table_column_info;
+      db_value_clear (col->on_empty.m_default_value);
+      col->on_empty.m_default_value = NULL;
+      db_value_clear (col->on_error.m_default_value);
+      col->on_error.m_default_value = NULL;
+      // db_values on_empty.m_default_value & on_error.m_default_value are allocated by the grammar
+    }
   /*
    * Always set the node type to maximum.  This may
    * keep us from doing bad things to the free list if we try to free
