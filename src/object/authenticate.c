@@ -6906,19 +6906,20 @@ au_get_user_name (MOP obj)
 {
   DB_VALUE value;
   db_make_null (&value);
+  char *name = NULL;
 
   int error = obj_get (obj, "name", &value);
   if (error == NO_ERROR)
     {
       if (IS_STRING (&value) && !DB_IS_NULL (&value) && db_get_string (&value) != NULL)
 	{
-	  return ws_copy_string (db_get_string (&value));
+	  name = ws_copy_string (db_get_string (&value));
 	}
     }
 
   db_value_clear (&value);
 
-  return NULL;
+  return name;
 }
 
 
