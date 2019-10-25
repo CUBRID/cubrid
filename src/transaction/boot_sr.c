@@ -1607,7 +1607,6 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
       goto exit_on_error;
     }
   boot_remove_useless_path_separator (log_path, log_pathbuf);
-  log_pathbuf;
 
   /*
    * for lob path,
@@ -1654,7 +1653,6 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 	}
       boot_remove_useless_path_separator (lob_path, p);
     }
-  lob_path = lob_pathbuf;
 
   /*
    * Compose the full name of the database
