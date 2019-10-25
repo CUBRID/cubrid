@@ -218,7 +218,7 @@ extern void au_reset_authorization_caches (void);
 extern int au_change_owner (MOP classmop, MOP owner);
 extern MOP au_get_class_owner (MOP classmop);
 extern int au_check_user (void);
-extern char *au_get_user_name (MOP obj);
+extern char *au_get_user_name (MOP obj, DB_VALUE * value);
 extern bool au_is_dba_group_member (MOP user);
 extern void au_change_serial_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * serial, DB_VALUE * owner);
 

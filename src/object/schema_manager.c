@@ -480,10 +480,11 @@ sc_set_current_schema (MOP user)
 {
   int error = ER_FAILED;
   char *wsp_user_name;
+  DB_VALUE user_db_val;
 
   Current_Schema.name[0] = '\0';
   Current_Schema.owner = user;
-  wsp_user_name = au_get_user_name (user);
+  wsp_user_name = au_get_user_name (user, &user_db_val);
 
   if (wsp_user_name == NULL)
     {
