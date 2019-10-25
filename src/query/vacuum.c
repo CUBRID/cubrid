@@ -36,6 +36,7 @@
 #include "log_impl.h"
 #include "mvcc.h"
 #include "mvcc_table.hpp"
+#include "object_representation.h"
 #include "object_representation_sr.h"
 #include "overflow_file.h"
 #include "page_buffer.h"

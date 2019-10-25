@@ -77,6 +77,7 @@
 #include "environment_variable.h"
 #include "locator.h"
 #include "transform.h"
+#include "jansson.h"
 #include "jsp_cl.h"
 #include "client_support.h"
 #include "es.h"

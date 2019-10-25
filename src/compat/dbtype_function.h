@@ -32,7 +32,7 @@
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 
 // for backward compatibility
-#define db_set db_collection
+#define db_collection db_set
 
 #define db_make_utime db_make_timestamp
 

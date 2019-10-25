@@ -74,6 +74,7 @@
 #include "system_parameter.h"
 #include "message_catalog.h"
 #include "msgcat_set_log.hpp"
+#include "object_representation.h"
 #include "util_func.h"
 #include "perf_monitor.h"
 #include "environment_variable.h"

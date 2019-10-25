@@ -37,7 +37,6 @@
 #include "area_alloc.h"
 #include "class_object.h"
 #include "object_fetch.h"
-#include "object_representation.h"
 #include "object_template.h"
 #include "work_space.h"
 

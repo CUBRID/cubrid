@@ -52,6 +52,7 @@
 #include "log_manager.h"
 #include "log_system_tran.hpp"
 #include "memory_private_allocator.hpp"
+#include "object_representation.h"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "xserver_interface.h"

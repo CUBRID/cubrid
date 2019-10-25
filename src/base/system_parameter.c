@@ -54,6 +54,7 @@
 #include "util_func.h"
 #include "log_comm.h"
 #include "memory_alloc.h"
+#include "object_representation.h"
 #include "environment_variable.h"
 #include "intl_support.h"
 #include "message_catalog.h"

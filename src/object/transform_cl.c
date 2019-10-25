@@ -511,7 +511,7 @@ tf_add_fixup (OR_FIXUP * fix, DB_OBJECT * obj, void *ref)
  *    NULL is returned on error.
  */
 OID *
-tf_need_permanent_oid (OR_BUF * buf, DB_OBJECT * obj)
+tf_need_permanent_oid (or_buf * buf, DB_OBJECT * obj)
 {
   OID *oidp;
 

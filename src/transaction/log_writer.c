@@ -37,6 +37,7 @@
 #include "error_manager.h"
 #include "message_catalog.h"
 #include "msgcat_set_log.hpp"
+#include "object_representation.h"
 #include "system_parameter.h"
 #include "connection_support.h"
 #include "log_applier.h"
