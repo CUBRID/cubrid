@@ -36,6 +36,7 @@
 #include "porting.h"
 #include "dbi.h"
 #include "parser.h"
+#include "jansson.h"
 #include "memory_alloc.h"
 
 #if defined(SERVER_MODE)

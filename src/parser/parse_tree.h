@@ -37,11 +37,13 @@
 #include "compile_context.h"
 #include "config.h"
 #include "cursor.h"
-#include "jansson.h"
 #include "json_table_def.h"
 #include "message_catalog.h"
 #include "string_opfunc.h"
 #include "system_parameter.h"
+
+// forward definitions
+struct json_t;
 
 #define MAX_PRINT_ERROR_CONTEXT_LENGTH 64
 
