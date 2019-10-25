@@ -100,6 +100,8 @@ static void log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_typ
 static void log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * start_redolsa,
 				   LOG_LSA * end_redo_lsa, bool ismedia_crash, time_t * stopat,
 				   bool * did_incom_recovery, INT64 * num_redo_log_records);
+static bool log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, LOG_RECTYPE log_rtype,
+						  LOG_RCVINDEX rcv_index, const LOG_LSA * lsa);
 static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa,
 			       time_t * stopat);
 static void log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
@@ -113,8 +115,8 @@ static void log_recovery_undo (THREAD_ENTRY * thread_p);
 static void log_recovery_notpartof_archives (THREAD_ENTRY * thread_p, int start_arv_num, const char *info_reason);
 static bool log_unformat_ahead_volumes (THREAD_ENTRY * thread_p, VOLID volid, VOLID * start_volid);
 static void log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p);
-static void log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool is_new_append_page,
-				   LOG_LSA * last_lsa);
+static void log_recovery_resetlog (THREAD_ENTRY * thread_p, const LOG_LSA * new_append_lsa,
+				   const LOG_LSA * new_prev_lsa);
 static int log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LOG_LSA * start_postpone_lsa,
 					     LOG_TDES * tdes);
 
@@ -1395,7 +1397,7 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_ls
        * holding a page.
        */
       log_lsa->pageid = NULL_PAGEID;
-      log_recovery_resetlog (thread_p, &record_header_lsa, false, prev_lsa);
+      log_recovery_resetlog (thread_p, &record_header_lsa, prev_lsa);
       *did_incom_recovery = true;
 
       return NO_ERROR;
@@ -1480,6 +1482,8 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
 	  /* no undo */
 	  LSA_SET_NULL (&tdes->undo_nxlsa);
 	}
+      tdes->rcv.analysis_last_aborted_sysop_lsa = *log_lsa;
+      tdes->rcv.analysis_last_aborted_sysop_start_lsa = sysop_end->lastparent_lsa;
       break;
 
     case LOG_SYSOP_END_COMMIT:
@@ -2448,7 +2452,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "reset log is impossible");
 		  return;
 		}
-	      log_recovery_resetlog (thread_p, &prev_lsa, false, &prev_prev_lsa);
+	      log_recovery_resetlog (thread_p, &prev_lsa, &prev_prev_lsa);
 	      *did_incom_recovery = true;
 
 	      log_Gl.mvcc_table.reset_start_mvccid ();
@@ -2856,6 +2860,63 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
     }
 
   return;
+}
+
+/*
+ * log_recovery_needs_skip_logical_redo - Check whether we need to skip logical redo.
+ *
+ * return: true if skip logical redo, false otherwise
+ *
+ *   thread_p(in): Thread entry
+ *   tran_id(in) : Transaction id.
+ *   log_rtype(in): Log record type
+ *   rcv_index(in): Recovery index
+ *   lsa(in) : lsa to check
+ *
+ * NOTE: When logical redo logging is applied and the system crashes repeatedly, we need to
+ *       skip redo logical record already applied. This function checks whether the logical redo must be skipped.
+ */
+static bool
+log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, LOG_RECTYPE log_rtype,
+				      LOG_RCVINDEX rcv_index, const LOG_LSA * lsa)
+{
+  int tran_index;
+  LOG_TDES *tdes = NULL;	/* Transaction descriptor */
+
+  assert (lsa != NULL);
+
+  if (log_rtype != LOG_DBEXTERN_REDO_DATA)
+    {
+      return false;
+    }
+
+  tran_index = logtb_find_tran_index (thread_p, tran_id);
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      return false;
+    }
+
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      return false;
+    }
+
+  /* logical redo logging */
+  // analysis_last_aborted_sysop_start_lsa < lsa < analysis_last_aborted_sysop_lsa
+  if (LSA_LT (&tdes->rcv.analysis_last_aborted_sysop_start_lsa, lsa)
+      && LSA_LT (lsa, &tdes->rcv.analysis_last_aborted_sysop_lsa))
+    {
+      /* Logical redo already applied. */
+      er_log_debug (ARG_FILE_LINE, "log_recovery_needs_skip_logical_redo: LSA = %lld|%d, Rv_index = %s, "
+		    "analysis_last_aborted_sysop_lsa = %lld|%d, analysis_last_aborted_sysop_start_lsa = %lld|%d\n",
+		    LSA_AS_ARGS (lsa), rv_rcvindex_string (rcv_index),
+		    LSA_AS_ARGS (&tdes->rcv.analysis_last_aborted_sysop_lsa),
+		    LSA_AS_ARGS (&tdes->rcv.analysis_last_aborted_sysop_start_lsa));
+      return true;
+    }
+
+  return false;
 }
 
 /*
@@ -3421,8 +3482,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		}
 #endif /* !NDEBUG */
 
-	      log_rv_redo_record (thread_p, &log_lsa, log_pgptr, RV_fun[rcvindex].redofun, &rcv, &rcv_lsa, 0, NULL,
-				  NULL);
+	      if (!log_recovery_needs_skip_logical_redo (thread_p, tran_id, log_rtype, rcvindex, &rcv_lsa))
+		{
+		  log_rv_redo_record (thread_p, &log_lsa, log_pgptr, RV_fun[rcvindex].redofun, &rcv, &rcv_lsa, 0, NULL,
+				      NULL);
+		}
+
 	      break;
 
 	    case LOG_RUN_POSTPONE:
@@ -4223,7 +4288,7 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
 	}
       finish_sys_postpone (*tdes_it);
     }
-  log_system_tdes::rv_map_all_tdes (finish_sys_postpone);
+  log_system_tdes::map_all_tdes (finish_sys_postpone);
   // *INDENT-ON*
 }
 
@@ -4258,7 +4323,7 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
 	}
       abort_atomic_func (*tdes_it);
     }
-  log_system_tdes::rv_map_all_tdes (abort_atomic_func);
+  log_system_tdes::map_all_tdes (abort_atomic_func);
   // *INDENT-ON*
 }
 
@@ -5080,17 +5145,8 @@ log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p)
 
 }
 
-/*
- * log_recovery_resetlog -
- *
- * return:
- *
- *   new_appendlsa(in):
- *
- * NOTE:
- */
 static void
-log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool is_new_append_page, LOG_LSA * last_lsa)
+log_recovery_resetlog (THREAD_ENTRY * thread_p, const LOG_LSA * new_append_lsa, const LOG_LSA * new_prev_lsa)
 {
   char newappend_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *aligned_newappend_pgbuf;
@@ -5099,10 +5155,9 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
   const char *catmsg;
   char *catmsg_dup;
   int ret = NO_ERROR;
-  bool did_create_new_append_page = false;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
-  assert (last_lsa != NULL);
+  assert (new_prev_lsa != NULL);
 
   aligned_newappend_pgbuf = PTR_ALIGN (newappend_pgbuf, MAX_ALIGNMENT);
 
@@ -5129,7 +5184,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
 	   * transfered to the new location. This is needed since we may not
 	   * start at location zero.
 	   *
-	   * We need to destroy any log archive createded after this point
+	   * We need to destroy any log archive created after this point
 	   */
 
 	  newappend_pgptr = (LOG_PAGE *) aligned_newappend_pgbuf;
@@ -5224,7 +5279,6 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_resetlog");
 	  return;
 	}
-      did_create_new_append_page = true;
       if (logpb_flush_page (thread_p, append_pgptr) != NO_ERROR)
 	{
 	  logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "log_recovery_resetlog");
@@ -5249,31 +5303,17 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
    * Then, free the page, same for the header page.
    */
 
-  if (is_new_append_page == true)
+  if (logpb_fetch_start_append_page (thread_p) == NO_ERROR)
     {
-      if (!did_create_new_append_page)
+      if (newappend_pgptr != NULL && log_Gl.append.log_pgptr != NULL)
 	{
-	  if (logpb_fetch_start_append_page_new (thread_p) == NULL)
-	    {
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_resetlog");
-	      return;
-	    }
+	  memcpy ((char *) log_Gl.append.log_pgptr, (char *) newappend_pgptr, LOG_PAGESIZE);
+	  logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
 	}
-    }
-  else
-    {
-      if (logpb_fetch_start_append_page (thread_p) == NO_ERROR)
-	{
-	  if (newappend_pgptr != NULL && log_Gl.append.log_pgptr != NULL)
-	    {
-	      memcpy ((char *) log_Gl.append.log_pgptr, (char *) newappend_pgptr, LOG_PAGESIZE);
-	      logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
-	    }
-	  logpb_flush_pages_direct (thread_p);
-	}
+      logpb_flush_pages_direct (thread_p);
     }
 
-  LOG_RESET_PREV_LSA (last_lsa);
+  LOG_RESET_PREV_LSA (new_prev_lsa);
 
   log_Gl.hdr.mvcc_op_log_lsa.set_null ();
 

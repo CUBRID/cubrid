@@ -542,6 +542,11 @@ tf_need_permanent_oid (OR_BUF * buf, DB_OBJECT * obj)
        */
       if (locator_assign_permanent_oid (obj) == NULL)
 	{
+	  if (er_errid () == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_CANT_ASSIGN_OID, 0);
+	    }
+
 	  /* this is serious */
 	  or_abort (buf);
 	}
@@ -823,6 +828,11 @@ tf_mem_to_disk (MOP classmop, MOBJ classobj, MOBJ volatile obj, RECDES * record,
 	   */
 	  if (locator_assign_permanent_oid (classmop) == NULL)
 	    {
+	      if (er_errid () == NO_ERROR)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_CANT_ASSIGN_OID, 0);
+		}
+
 	      or_abort (buf);
 	    }
 	}

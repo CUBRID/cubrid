@@ -42,6 +42,7 @@
 #include "statistics_sr.h"
 #include "partition_sr.h"
 #include "object_primitive.h"
+#include "thread_lockfree_hash_map.hpp"
 #include "thread_manager.hpp"
 
 #if !defined(SERVER_MODE)
@@ -264,8 +265,10 @@ static PGLENGTH catalog_Max_record_size;	/* Maximum Record Size */
  * SECTIONS, because there can not be simultaneous updaters and readers
  * for the same class representation information.
  */
-static LF_FREELIST catalog_Hash_freelist = LF_FREELIST_INITIALIZER;
-static LF_HASH_TABLE catalog_Hash_table = LF_HASH_TABLE_INITIALIZER;
+// *INDENT-OFF*
+using catalog_hashmap_type = cubthread::lockfree_hashmap<catalog_key, catalog_entry>;
+// *INDENT-ON*
+static catalog_hashmap_type catalog_Hashmap;
 
 static CATALOG_MAX_SPACE catalog_Max_space;	/* Global space information */
 static pthread_mutex_t catalog_Max_space_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -1956,7 +1959,6 @@ catalog_adjust_directory_count (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES
 static void
 catalog_delete_key (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID repr_id)
 {
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_CATALOG);
   CATALOG_KEY catalog_key;
 
   catalog_key.page_id = class_id_p->pageid;
@@ -1964,10 +1966,7 @@ catalog_delete_key (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID repr_id)
   catalog_key.slot_id = class_id_p->slotid;
   catalog_key.repr_id = repr_id;
 
-  if (lf_hash_delete (t_entry, &catalog_Hash_table, (void *) &catalog_key, NULL) != NO_ERROR)
-    {
-      assert (false);
-    }
+  (void) catalog_Hashmap.erase (thread_p, catalog_key);
 }
 
 static char *
@@ -2249,7 +2248,6 @@ catalog_put_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p, CATA
 static int
 catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p, CATALOG_REPR_ITEM * repr_item_p)
 {
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_CATALOG);
   PAGE_PTR page_p;
   RECDES record;
   OID rep_dir;
@@ -2265,11 +2263,8 @@ catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p, CATA
   catalog_key.slot_id = class_id_p->slotid;
   catalog_key.repr_id = repr_item_p->repr_id;
 
-  if (lf_hash_find (t_entry, &catalog_Hash_table, (void *) &catalog_key, (void **) &catalog_value_p) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  else if (catalog_value_p != NULL)
+  catalog_value_p = catalog_Hashmap.find (thread_p, catalog_key);
+  if (catalog_value_p != NULL)
     {
       /* entry already exists */
       repr_item_p->page_id.volid = catalog_value_p->key.r_page_id.volid;
@@ -2277,7 +2272,7 @@ catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p, CATA
       repr_item_p->slot_id = catalog_value_p->key.r_slot_id;
 
       /* end transaction */
-      lf_tran_end_with_mb (t_entry);
+      catalog_Hashmap.unlock (thread_p, catalog_value_p);
       return NO_ERROR;
     }
   else
@@ -2314,14 +2309,10 @@ catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p, CATA
       catalog_key.r_slot_id = repr_item_p->slot_id;
 
       /* insert value */
-      if (lf_hash_find_or_insert (t_entry, &catalog_Hash_table, (void *) &catalog_key, (void **) &catalog_value_p, NULL)
-	  != NO_ERROR)
+      catalog_Hashmap.find_or_insert (thread_p, catalog_key, catalog_value_p);
+      if (catalog_value_p != NULL)
 	{
-	  return ER_FAILED;
-	}
-      else if (catalog_value_p != NULL)
-	{
-	  lf_tran_end_with_mb (t_entry);
+	  catalog_Hashmap.unlock (thread_p, catalog_value_p);
 	  return NO_ERROR;
 	}
       else
@@ -2333,7 +2324,7 @@ catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p, CATA
 			"Key: Class_Id: { %d , %d , %d } Repr: %d", class_id_p->pageid, class_id_p->volid,
 			class_id_p->slotid, repr_item_p->repr_id);
 #endif /* CT_DEBUG */
-
+	  assert (false);
 	  return ER_FAILED;
 	}
     }
@@ -2545,12 +2536,8 @@ catalog_copy_disk_attributes (DISK_ATTR * new_attrs_p, int new_attr_count, DISK_
 void
 catalog_initialize (CTID * catalog_id_p)
 {
-  int ret;
-
-  if (catalog_Hash_table.hash_size > 0)
-    {
-      lf_hash_destroy (&catalog_Hash_table);
-    }
+  // protect against repeated hashmap initializations
+  catalog_Hashmap.destroy ();
 
   VFID_COPY (&catalog_Id.xhid, &catalog_id_p->xhid);
   catalog_Id.xhid.pageid = catalog_id_p->xhid.pageid;
@@ -2558,10 +2545,8 @@ catalog_initialize (CTID * catalog_id_p)
   catalog_Id.vfid.volid = catalog_id_p->vfid.volid;
   catalog_Id.hpgid = catalog_id_p->hpgid;
 
-  ret = lf_freelist_init (&catalog_Hash_freelist, 1, 100, &catalog_entry_Descriptor, &catalog_Ts);
-  assert (ret == NO_ERROR);
-  ret = lf_hash_init (&catalog_Hash_table, &catalog_Hash_freelist, CATALOG_HASH_SIZE, &catalog_entry_Descriptor);
-  assert (ret == NO_ERROR);
+  // init
+  catalog_Hashmap.init (catalog_Ts, THREAD_TS_CATALOG, CATALOG_HASH_SIZE, 2, 100, catalog_entry_Descriptor);
 
   catalog_Max_record_size =
     spage_max_record_size () - CATALOG_PAGE_HEADER_SIZE - CATALOG_MAX_SLOT_ID_SIZE - CATALOG_MAX_SLOT_ID_SIZE;
@@ -2581,8 +2566,7 @@ catalog_initialize (CTID * catalog_id_p)
 void
 catalog_finalize (void)
 {
-  lf_hash_destroy (&catalog_Hash_table);
-  lf_freelist_destroy (&catalog_Hash_freelist);
+  catalog_Hashmap.destroy ();
 }
 
 /*
@@ -5141,9 +5125,7 @@ catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flag)
 static void
 catalog_clear_hash_table (THREAD_ENTRY * thread_p)
 {
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_CATALOG);
-
-  lf_hash_clear (t_entry, &catalog_Hash_table);
+  catalog_Hashmap.clear (thread_p);
 }
 
 
@@ -5724,7 +5706,6 @@ catalog_rv_ovf_page_logical_insert_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv
 int
 catalog_get_dir_oid_from_cache (THREAD_ENTRY * thread_p, const OID * class_id_p, OID * dir_oid_p)
 {
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_CATALOG);
   CATALOG_ENTRY *catalog_value_p;
   CATALOG_KEY catalog_key;
   HEAP_SCANCACHE scan_cache;
@@ -5739,11 +5720,8 @@ catalog_get_dir_oid_from_cache (THREAD_ENTRY * thread_p, const OID * class_id_p,
   catalog_key.slot_id = class_id_p->slotid;
   catalog_key.repr_id = CATALOG_DIR_REPR_KEY;
 
-  if (lf_hash_find (t_entry, &catalog_Hash_table, (void *) &catalog_key, (void **) &catalog_value_p) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  else if (catalog_value_p != NULL)
+  catalog_value_p = catalog_Hashmap.find (thread_p, catalog_key);
+  if (catalog_value_p != NULL)
     {
       /* entry already exists */
       dir_oid_p->volid = catalog_value_p->key.r_page_id.volid;
@@ -5751,7 +5729,7 @@ catalog_get_dir_oid_from_cache (THREAD_ENTRY * thread_p, const OID * class_id_p,
       dir_oid_p->slotid = catalog_value_p->key.r_slot_id;
 
       /* end transaction */
-      lf_tran_end_with_mb (t_entry);
+      catalog_Hashmap.unlock (thread_p, catalog_value_p);
       return NO_ERROR;
     }
 
@@ -5788,18 +5766,15 @@ catalog_get_dir_oid_from_cache (THREAD_ENTRY * thread_p, const OID * class_id_p,
   catalog_key.r_slot_id = dir_oid_p->slotid;
 
   /* insert value */
-  if (lf_hash_find_or_insert (t_entry, &catalog_Hash_table, (void *) &catalog_key, (void **) &catalog_value_p, NULL)
-      != NO_ERROR)
+  (void) catalog_Hashmap.find_or_insert (thread_p, catalog_key, catalog_value_p);
+  if (catalog_value_p != NULL)
     {
-      return ER_FAILED;
-    }
-  else if (catalog_value_p != NULL)
-    {
-      lf_tran_end_with_mb (t_entry);
+      catalog_Hashmap.unlock (thread_p, catalog_value_p);
       return NO_ERROR;
     }
   else
     {
+      assert (false);
       return ER_FAILED;
     }
 
@@ -5849,8 +5824,7 @@ catalog_start_access_with_dir_oid (THREAD_ENTRY * thread_p, CATALOG_ACCESS_INFO 
 
   OID_GET_VIRTUAL_CLASS_OF_DIR_OID (catalog_access_info->class_oid, &virtual_class_dir_oid);
 #if defined (SERVER_MODE)
-  current_lock = lock_get_object_lock (catalog_access_info->dir_oid, &virtual_class_dir_oid,
-				       LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  current_lock = lock_get_object_lock (catalog_access_info->dir_oid, &virtual_class_dir_oid);
   if (current_lock != NULL_LOCK)
     {
       assert (false);
@@ -5947,9 +5921,7 @@ catalog_end_access_with_dir_oid (THREAD_ENTRY * thread_p, CATALOG_ACCESS_INFO * 
       else
 	{
 #if defined (SERVER_MODE)
-	  current_lock =
-	    lock_get_object_lock (catalog_access_info->class_oid, oid_Root_class_oid,
-				  LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+	  current_lock = lock_get_object_lock (catalog_access_info->class_oid, oid_Root_class_oid);
 
 	  if (current_lock == SCH_M_LOCK)
 	    {

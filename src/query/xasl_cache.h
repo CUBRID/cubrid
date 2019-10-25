@@ -126,6 +126,13 @@ struct xasl_cache_ent
   INT64 time_last_rt_check;
 
   bool initialized;
+
+  // *INDENT-OFF*
+  xasl_cache_ent ();
+  ~xasl_cache_ent ();
+
+  void init_clone_cache ();
+  // *INDENT-ON*
 };
 
 enum xasl_cache_search_mode

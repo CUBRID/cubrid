@@ -29,11 +29,16 @@
 
 #ident "$Id$"
 
+#ifndef __cplusplus
+#error C++ is required
+#endif
+
 #if !defined (SERVER_MODE)
 #else /* SERVER_MODE */
 #include "connection_defs.h"
 #endif /* SERVER_MODE */
-#include "lock_free.h"
+#include "lockfree_bitmap.hpp"
+#include "porting.h"
 
 #define AREA_BLOCKSET_SIZE 256
 

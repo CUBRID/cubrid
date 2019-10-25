@@ -34,7 +34,7 @@ option (UNIT_TEST_THREAD "Unit testing: thread module")
 option (UNIT_TEST_PACKING "Unit testing: packing")
 option (UNIT_TEST_RESOURCE_TRACKER "Unit testing: resource tracker")
 option (UNIT_TEST_MONITOR "Unit testing: monitor")
-
+option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
 
 message("  unit_tests/...")
 

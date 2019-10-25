@@ -19,6 +19,7 @@
 
 #include "db_json_path.hpp"
 
+#include "db_json.hpp"
 #include "db_rapidjson.hpp"
 #include "memory_alloc.h"
 #include "string_opfunc.h"
@@ -39,14 +40,12 @@ enum class JSON_PATH_TYPE
   JSON_PATH_POINTER
 };
 
-static int db_json_split_path_by_delimiters (const std::string &path, const std::string &delim, bool allow_empty,
-    std::vector<std::string> &split_path);
 static void db_json_trim_leading_spaces (std::string &path_string);
 static JSON_PATH_TYPE db_json_get_path_type (std::string &path_string);
 static bool db_json_isspace (const unsigned char &ch);
 static std::size_t skip_whitespaces (const std::string &path, std::size_t token_begin);
-static int db_json_path_is_token_valid_array_index (const std::string &str,
-    bool allow_wildcards, unsigned long &index, std::size_t start = 0, std::size_t end = 0);
+static int db_json_path_is_token_valid_array_index (const std::string &str, bool allow_wildcards, unsigned long &index,
+    std::size_t start = 0, std::size_t end = 0);
 static bool db_json_path_is_token_valid_quoted_object_key (const std::string &path, std::size_t &token_begin);
 static bool db_json_path_quote_and_validate_unquoted_object_key (std::string &path, std::size_t &token_begin);
 static bool db_json_path_is_token_valid_unquoted_object_key (const std::string &path, std::size_t &token_begin);
@@ -64,16 +63,15 @@ db_json_iszero (const unsigned char &ch)
 /*
  * db_json_path_is_token_valid_quoted_object_key () - Check if a quoted object_key is valid
  *
- * return                  : true/false
- * path (in)               : path to be checked
- * token_begin (in/out)    : beginning offset of the token, is replaced with beginning of the next token or path.length ()
+ * return               : true/false
+ * path (in)            : path to be checked
+ * token_begin (in/out) : beginning offset of the token, is replaced with beginning of the next token or path.length ()
  */
 static bool
 db_json_path_is_token_valid_quoted_object_key (const std::string &path, std::size_t &token_begin)
 {
   std::size_t i = token_begin + 1;
   bool unescaped_backslash = false;
-  std::size_t backslash_nr = 0;
   // stop at unescaped '"'; note that there should be an odd nr of backslashes before '"' for it to be escaped
   for (; i < path.length () && (path[i] != '"' || unescaped_backslash); ++i)
     {
@@ -119,26 +117,6 @@ db_json_path_quote_and_validate_unquoted_object_key (std::string &path, std::siz
   return validation_result;
 }
 
-std::string
-db_string_unquote (const std::string &path)
-{
-  std::string res;
-  assert (path.length () >= 2 && path[0] == '"' && path[path.length () - 1] == '"');
-  for (size_t i = 1; i < path.length () - 1; ++i)
-    {
-      if (path[i] == '\\')
-	{
-	  res += path[i + 1];
-	  ++i;
-	}
-      else
-	{
-	  res += path[i];
-	}
-    }
-  return std::move (res);
-}
-
 static bool
 db_json_path_is_valid_identifier_start_char (unsigned char ch)
 {
@@ -178,14 +156,16 @@ db_json_path_is_token_valid_unquoted_object_key (const std::string &path, std::s
     }
   std::size_t i = token_begin;
 
-  // todo: this needs change. SQL standard specifies that object key format must obbey JavaScript rules of an Identifier (6.10.1).
+  // todo: this needs change. SQL standard specifies that object key format must obey
+  // JavaScript rules of an Identifier (6.10.1).
   // Besides alphanumerics, object keys can be valid ECMAScript identifiers as defined in
   // http://www.ecma-international.org/ecma-262/5.1/#sec-7.6
 
   // Defined syntax (approx.):
   // IdentifierName -> IdentifierStart | (IdentifierName IdentifierPart)
   // IdentifierStart -> $ ( note: this is the ONLY specified forbidden by SQL Standard) | _ | \UnicodeEscapeSequence
-  // IdentifierPart -> IdentifierStart | InicodeCombinigMark | UnicodeDigit | UnicodeConnectorPunctuation | <ZWNJ> | <ZWJ>
+  // IdentifierPart -> IdentifierStart | InicodeCombinigMark | UnicodeDigit | UnicodeConnectorPunctuation | <ZWNJ>
+  // | <ZWJ>
 
   if (i < path.length () && !db_json_path_is_valid_identifier_start_char (static_cast<unsigned char> (path[i])))
     {
@@ -389,7 +369,7 @@ JSON_PATH::validate_and_create_from_json_path (std::string &sql_path)
 	}
 	case '.':
 	  i = skip_whitespaces (sql_path, i + 1);
-	  if (i == sql_path.length())
+	  if (i == sql_path.length ())
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
 	      return ER_JSON_INVALID_PATH;
@@ -582,7 +562,6 @@ db_json_path_unquote_object_keys (std::string &sql_path)
       ASSERT_ERROR ();
       return error_code;
     }
-  std::size_t crt_idx = 0;
   std::string res = "$";
 
   assert (!tokens.empty () && tokens[0] == "$");
@@ -706,7 +685,7 @@ JSON_PATH::push_array_index (unsigned long idx)
 void
 JSON_PATH::push_array_index_wildcard ()
 {
-  m_path_tokens.emplace_back (PATH_TOKEN::token_type::array_index_wildcard, std::move (std::string ("*")));
+  m_path_tokens.emplace_back (PATH_TOKEN::token_type::array_index_wildcard, std::string ("*"));
 }
 
 void
@@ -718,13 +697,13 @@ JSON_PATH::push_object_key (std::string &&object_key)
 void
 JSON_PATH::push_object_key_wildcard ()
 {
-  m_path_tokens.emplace_back (PATH_TOKEN::token_type::object_key_wildcard, std::move (std::string ("*")));
+  m_path_tokens.emplace_back (PATH_TOKEN::token_type::object_key_wildcard, std::string ("*"));
 }
 
 void
 JSON_PATH::push_double_wildcard ()
 {
-  m_path_tokens.emplace_back (PATH_TOKEN::token_type::double_wildcard, std::move (std::string ("**")));
+  m_path_tokens.emplace_back (PATH_TOKEN::token_type::double_wildcard, std::string ("**"));
 }
 
 void
@@ -773,8 +752,13 @@ JSON_PATH::dump_json_path () const
 	case PATH_TOKEN::double_wildcard:
 	  res += "**";
 	  break;
+	case PATH_TOKEN::array_end_index:
+	  // this case is valid and possible in case of ER_JSON_PATH_DOES_NOT_EXIST
+	  // we don't have the JSON in this context and cannot replace '-' with last index
+	  // for json_pointer -> json_path conversion so we leave empty suffix
+	  break;
 	default:
-	  // assert (false);
+	  assert (false);
 	  break;
 	}
     }
@@ -852,14 +836,13 @@ JSON_PATH::set (JSON_VALUE &jd, const JSON_VALUE &jv, JSON_PRIVATE_MEMPOOL &allo
 	}
       else if (val->IsObject ())
 	{
-	  assert (tkn.get_object_key ().length () >= 2);
-	  std::string unquoted_key = tkn.get_object_key ().substr (1, tkn.get_object_key ().length () - 2);
-	  JSON_VALUE::MemberIterator m = val->FindMember (unquoted_key.c_str ());
+	  std::string encoded_key = db_json_json_string_as_utf8 (tkn.get_object_key ());
+	  JSON_VALUE::MemberIterator m = val->FindMember (encoded_key.c_str ());
 	  if (m == val->MemberEnd ())
 	    {
 	      // insert dummy
-	      val->AddMember (JSON_VALUE (unquoted_key.c_str (), (rapidjson::SizeType) unquoted_key.length (), allocator),
-			      JSON_VALUE ().SetNull (), allocator);
+	      unsigned int len = (rapidjson::SizeType) encoded_key.length ();
+	      val->AddMember (JSON_VALUE (encoded_key.c_str (), len, allocator), JSON_VALUE ().SetNull (), allocator);
 
 	      val = & (--val->MemberEnd ())->value; // Assume AddMember() appends at the end
 	    }
@@ -912,10 +895,8 @@ JSON_PATH::get (const JSON_DOC &jd) const
 	    {
 	      return NULL;
 	    }
-
-	  assert (tkn.get_object_key ().length () >= 2);
-	  std::string unquoted_key = db_string_unquote (tkn.get_object_key ());
-	  JSON_VALUE::ConstMemberIterator m = val->FindMember (unquoted_key.c_str ());
+	  std::string encoded_key = db_json_json_string_as_utf8 (tkn.get_object_key ());
+	  JSON_VALUE::ConstMemberIterator m = val->FindMember (encoded_key.c_str ());
 	  if (m == val->MemberEnd ())
 	    {
 	      return NULL;
@@ -988,8 +969,8 @@ JSON_PATH::extract_from_subtree (const JSON_PATH &path, size_t tkn_array_offset,
 	{
 	case PATH_TOKEN::token_type::object_key:
 	{
-	  std::string unquoted_key = db_string_unquote (crt_tkn.get_object_key ());
-	  JSON_VALUE::ConstMemberIterator m = jv.FindMember (unquoted_key.c_str ());
+	  std::string encoded_key = db_json_json_string_as_utf8 (crt_tkn.get_object_key ());
+	  JSON_VALUE::ConstMemberIterator m = jv.FindMember (encoded_key.c_str ());
 	  if (m == jv.MemberEnd ())
 	    {
 	      return;
@@ -1022,8 +1003,8 @@ JSON_PATH::extract_from_subtree (const JSON_PATH &path, size_t tkn_array_offset,
 std::vector<const JSON_VALUE *>
 JSON_PATH::extract (const JSON_DOC &jd) const
 {
-  std::unordered_set <const JSON_VALUE *> vals_hash_set;
-  std::vector <const JSON_VALUE *> res;
+  std::unordered_set<const JSON_VALUE *> vals_hash_set;
+  std::vector<const JSON_VALUE *> res;
 
   extract_from_subtree (*this, 0, db_json_doc_to_value (jd), vals_hash_set, res);
 
@@ -1061,9 +1042,8 @@ JSON_PATH::erase (JSON_DOC &jd) const
 	{
 	  return false;
 	}
-      assert (tkn.get_object_key ().length () >= 2);
-      std::string unescaped = tkn.get_object_key ().substr (1, tkn.get_object_key ().length () - 2);
-      return value->EraseMember (unescaped.c_str ());
+      std::string encoded_key = db_json_json_string_as_utf8 (tkn.get_object_key ());
+      return value->EraseMember (encoded_key.c_str ());
     }
 
   return false;
@@ -1087,7 +1067,7 @@ JSON_PATH::is_root_path () const
   return get_token_count () == 0;
 }
 
-const JSON_PATH
+JSON_PATH
 JSON_PATH::get_parent () const
 {
   if (get_token_count () == 0)

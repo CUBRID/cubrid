@@ -12383,7 +12383,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   REGU_VARLIST_LIST outptr = NULL;
   REGU_VARIABLE *varptr = NULL;
   DB_VALUE *rightvalp = NULL, *thirdvalp = NULL;
-  bool sysop_started = false;
+  bool subtransaction_started = false;
   OID last_cached_class_oid;
   int tran_index;
   int err = NO_ERROR;
@@ -12397,6 +12397,8 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   bool clear_list_id = false;
   MVCC_SNAPSHOT *mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
   bool need_ha_replication = !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true;
+  bool sysop_started = false;
+  bool in_instant_lock_mode;
 
   // *INDENT-OFF*
   struct incr_info
@@ -12436,10 +12438,12 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 
       /* need lock & reevaluation */
       lock_start_instant_lock_mode (tran_index);
+      in_instant_lock_mode = true;
     }
   else
     {
       // locking and evaluation is done at scan phase
+      in_instant_lock_mode = lock_is_instant_lock_mode (tran_index);
     }
 
   list = xasl->selected_upd_list;
@@ -12599,8 +12603,8 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	  else
 	    {
 	      /* already locked during scan phase */
-	      assert ((lock_get_object_lock (&crt_incr_info.m_oid, &crt_incr_info.m_class_oid, tran_index) == X_LOCK)
-		      || lock_get_object_lock (&crt_incr_info.m_class_oid, oid_Root_class_oid, tran_index) >= X_LOCK);
+	      assert ((lock_get_object_lock (&crt_incr_info.m_oid, &crt_incr_info.m_class_oid) == X_LOCK)
+		      || lock_get_object_lock (&crt_incr_info.m_class_oid, oid_Root_class_oid) >= X_LOCK);
 	    }
 
 	  all_incr_info.push_back (crt_incr_info);
@@ -12608,20 +12612,24 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	}
     }
 
+  log_sysop_start (thread_p);
+  sysop_started = true;
+
   if (lock_is_instant_lock_mode (tran_index))
     {
-      /* in this function, several instances can be updated, so it need to be atomic */
-      log_sysop_start (thread_p);
-      sysop_started = true;
+      assert (in_instant_lock_mode);
 
+      /* in this function, several instances can be updated, so it need to be atomic */
       if (need_ha_replication)
 	{
 	  repl_start_flush_mark (thread_p);
 	}
 
+      /* Subtransaction case. Locks and MVCCID are acquired/released by subtransaction. */
       tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
       assert (tdes != NULL);
       logtb_get_new_subtransaction_mvccid (thread_p, &tdes->mvccinfo);
+      subtransaction_started = true;
     }
 
   for (selupd = list; selupd; selupd = selupd->next)
@@ -12651,22 +12659,46 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
       scan_cache_inited = false;
     }
 
-  if (sysop_started)
+  if (subtransaction_started && need_ha_replication)
     {
-      assert (lock_is_instant_lock_mode (tran_index));
-      if (need_ha_replication)
-	{
-	  repl_end_flush_mark (thread_p, false);
-	}
+      /* Ends previously started marker. */
+      repl_end_flush_mark (thread_p, false);
+    }
+
+  /* Here we need to check instant lock mode, since it may be reseted by qexec_execute_increment. */
+  if (lock_is_instant_lock_mode (tran_index))
+    {
+      /* Subtransaction case. */
+      assert (subtransaction_started);
       log_sysop_commit (thread_p);
+
+      assert (in_instant_lock_mode);
+    }
+  else
+    {
+      /* Transaction case. */
+      log_sysop_attach_to_outer (thread_p);
+
+      in_instant_lock_mode = false;
     }
 
 exit:
-  if (sysop_started)
+  /* Release subtransaction resources. */
+  if (subtransaction_started)
     {
+      /* Release subtransaction MVCCID. */
       logtb_complete_sub_mvcc (thread_p, tdes);
     }
-  lock_stop_instant_lock_mode (thread_p, tran_index, true);
+
+  if (in_instant_lock_mode)
+    {
+      /* Release instant locks, if not already released. */
+      lock_stop_instant_lock_mode (thread_p, tran_index, true);
+      in_instant_lock_mode = false;
+    }
+
+  // not hold instant locks any more.
+  assert (!in_instant_lock_mode && !lock_is_instant_lock_mode (tran_index));
 
   if (err != NO_ERROR)
     {
@@ -12690,13 +12722,16 @@ exit_on_error:
       scan_cache_inited = false;
     }
 
+  if (subtransaction_started && need_ha_replication)
+    {
+      /* Ends previously started marker. */
+      repl_end_flush_mark (thread_p, true);
+    }
+
   if (sysop_started)
     {
-      if (need_ha_replication)
-	{
-	  repl_end_flush_mark (thread_p, true);
-	}
       log_sysop_abort (thread_p);
+      sysop_started = false;
     }
 
   /* clear some kinds of error code; it's click counter! */
@@ -15818,7 +15853,12 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
       GOTO_EXIT_ON_ERROR;
     }
 
-  if (recursive_part && non_recursive_part->list_id->tuple_cnt > 0)
+  if (recursive_part && non_recursive_part->list_id->tuple_cnt == 0)
+    {
+      // status needs to be changed to XASL_SUCCESS to enable proper cleaning in qexec_clear_xasl
+      recursive_part->status = XASL_SUCCESS;
+    }
+  else if (recursive_part && non_recursive_part->list_id->tuple_cnt > 0)
     {
       bool common_list_optimization = false;
       int recursive_iterations = 0;
@@ -18517,10 +18557,22 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	  continue;
 	}
 
-      /* fetch function operand */
-      if (fetch_peek_dbval (thread_p, &agg_p->operands->value, &xasl_state->vd, NULL, NULL, NULL, &dbval) != NO_ERROR)
+      DB_VALUE benchmark_dummy_dbval;
+      db_make_double (&benchmark_dummy_dbval, 0);
+      if (agg_p->operands->value.type == TYPE_FUNC && agg_p->operands->value.value.funcp != NULL
+	  && agg_p->operands->value.value.funcp->ftype == F_BENCHMARK)
 	{
-	  return ER_FAILED;
+	  // In case we have a benchmark function we want ot avoid the usual superflous function evaluation
+	  dbval = &benchmark_dummy_dbval;
+	}
+      else
+	{
+	  /* fetch function operand */
+	  if (fetch_peek_dbval (thread_p, &agg_p->operands->value, &xasl_state->vd, NULL, NULL, NULL, &dbval) !=
+	      NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
 	}
 
       /* handle NULL value */

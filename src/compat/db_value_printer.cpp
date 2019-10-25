@@ -368,7 +368,7 @@ void db_value_printer::describe_data (const db_value *value)
       set = db_get_set (value);
       if (set != NULL)
 	{
-	  describe_set ((const db_collection *) set);
+	  describe_set (set);
 	}
       else
 	{
@@ -540,7 +540,7 @@ void db_value_printer::describe_midxkey (const db_midxkey *midxkey, int help_Max
 }
 
 //--------------------------------------------------------------------------------
-void db_value_printer::describe_set (const db_collection *set, int help_Max_set_elements)
+void db_value_printer::describe_set (const db_set *set, int help_Max_set_elements)
 {
   DB_VALUE value;
   int size, end, i;

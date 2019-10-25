@@ -5733,6 +5733,8 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 		{
 		  regu->domain->codeset = db_get_string_codeset (val);
 		  regu->domain->collation_id = db_get_string_collation (val);
+		  regu->domain->precision = db_value_precision (val);
+		  regu->domain->scale = db_value_scale (val);
 		  regu->domain = tp_domain_cache (regu->domain);
 		  if (regu->domain == NULL)
 		    {

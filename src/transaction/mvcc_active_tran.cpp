@@ -377,7 +377,7 @@ void
 mvcc_active_tran::add_long_transaction (MVCCID mvccid)
 {
   assert (m_long_tran_mvccids_length < long_tran_max_size ());
-  assert (m_long_tran_mvccids[m_long_tran_mvccids_length - 1] < mvccid);
+  assert (m_long_tran_mvccids_length == 0 || m_long_tran_mvccids[m_long_tran_mvccids_length - 1] < mvccid);
   m_long_tran_mvccids[m_long_tran_mvccids_length++] = mvccid;
 }
 

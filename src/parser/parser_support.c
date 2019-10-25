@@ -3963,6 +3963,7 @@ pt_create_param_for_value (PARSER_CONTEXT * parser, PT_NODE * value, int host_va
     {
       host_var->info.host_var.index = host_var_index;
     }
+  host_var->expr_before_const_folding = value->expr_before_const_folding;
 
   return host_var;
 }

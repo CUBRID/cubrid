@@ -17,28 +17,15 @@
  *
  */
 
+#include "thread_lockfree_hash_map.hpp"
 
-/*
- * loader_disk.h: loader transformer disk access module
- */
+#include "thread_manager.hpp"
 
-#ifndef _LOADER_DISK_H_
-#define _LOADER_DISK_H_
-
-#ident "$Id$"
-
-#include "load_object.h"
-
-/* Module control */
-extern int disk_init (void);
-extern void disk_final (void);
-
-/* Instance operations */
-extern int disk_reserve_instance (MOP classop, OID * oid);
-extern int disk_insert_instance (MOP classop, DESC_OBJ * obj, OID * oid);
-extern int disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern int disk_insert_instance_using_mobj (MOP classop, MOBJ classobj, MOBJ obj, OID * oid);
-extern int disk_update_instance_using_mobj (MOP classop, MOBJ classobj, MOBJ obj, OID * oid);
-#endif
-#endif /* _LOADER_DISK_H_ */
+namespace cubthread
+{
+  lockfree::tran::system &
+  get_thread_entry_lftransys ()
+  {
+    return cubthread::get_manager ()->get_lockfree_transys ();
+  }
+} // namespace cubthread

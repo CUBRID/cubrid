@@ -137,6 +137,12 @@ namespace cubmonitor
 	//
       }
 
+      primitive &operator= (const primitive &other)
+      {
+	m_value = other.m_value;
+	return *this;
+      }
+
       // fetch interface for monitor registration - statistics count (always 1 for primitives) and fetch value function
       inline void fetch (statistic_value *destination, fetch_mode mode = FETCH_GLOBAL) const;
       std::size_t get_statistics_count (void) const
@@ -145,16 +151,10 @@ namespace cubmonitor
       }
 
       // get current value
+      // NOTE: this function is very expensive for some reason
       Rep get_value (fetch_mode mode = FETCH_GLOBAL) const
       {
-	if (mode == FETCH_GLOBAL)
-	  {
-	    return m_value;
-	  }
-	else
-	  {
-	    return Rep ();
-	  }
+	return m_value;
       }
 
     protected:
@@ -164,7 +164,6 @@ namespace cubmonitor
 	m_value = value;
       }
 
-    private:
       Rep m_value;                    // stored value
   };
 
@@ -180,6 +179,12 @@ namespace cubmonitor
 	//
       }
 
+      atomic_primitive &operator= (const atomic_primitive &other)
+      {
+	m_value.store (other.m_value.load ());
+	return *this;
+      }
+
       // fetch interface for monitor registration - statistics count (always 1 for primitives) and fetch value function
       inline void fetch (statistic_value *destination, fetch_mode mode = FETCH_GLOBAL) const;
       std::size_t get_statistics_count (void) const
@@ -190,14 +195,7 @@ namespace cubmonitor
       // get current value
       Rep get_value (fetch_mode mode = FETCH_GLOBAL) const
       {
-	if (mode == FETCH_GLOBAL)
-	  {
-	    return m_value.load ();
-	  }
-	else
-	  {
-	    return Rep ();
-	  }
+	return m_value;
       }
 
     protected:
@@ -207,7 +205,7 @@ namespace cubmonitor
 	m_value = value;
       }
 
-      inline void fetch_add (const Rep &value);
+      void fetch_add (const Rep &value);
 
       // atomic compare & exchange
       bool compare_exchange (Rep &compare_value, const Rep &replace_value)
@@ -215,7 +213,6 @@ namespace cubmonitor
 	return m_value.compare_exchange_strong (compare_value, replace_value);
       }
 
-    private:
       std::atomic<Rep> m_value;                    // stored value
   };
 
@@ -231,6 +228,12 @@ namespace cubmonitor
 	: m_value (value.count ())
       {
 	//
+      }
+
+      atomic_primitive &operator= (const atomic_primitive &other)
+      {
+	m_value.store (other.m_value.load ());
+	return *this;
       }
 
       // fetch interface for monitor registration - statistics count (always 1 for primitives) and fetch value function
@@ -272,7 +275,6 @@ namespace cubmonitor
 	return m_value.compare_exchange_strong (compare_count, replace_value.count ());
       }
 
-    private:
       std::atomic<time_rep::rep> m_value;                    // stored value
   };
 
@@ -280,7 +282,9 @@ namespace cubmonitor
   template class primitive<amount_rep>;
   template class atomic_primitive<amount_rep>;
   template class primitive<floating_rep>;
+#if defined (MONITOR_ENABLE_ATOMIC_FLOATING_REP)
   template class atomic_primitive<floating_rep>;
+#endif // MONITOR_ENABLE_ATOMIC_FLOATING_REP
   template class primitive<time_rep>;
   // template class atomic_primitive<time_rep>; // differentely specialized, see above
 
@@ -400,19 +404,27 @@ namespace cubmonitor
 
   // atomic synchronization specializations
   using amount_accumulator_atomic_statistic = accumulator_atomic_statistic<amount_rep>;
+#if defined (MONITOR_ENABLE_ATOMIC_FLOATING_REP)
   using floating_accumulator_atomic_statistic = accumulator_atomic_statistic<floating_rep>;
+#endif // MONITOR_ENABLE_ATOMIC_FLOATING_REP
   using time_accumulator_atomic_statistic = accumulator_atomic_statistic<time_rep>;
 
   using amount_gauge_atomic_statistic = gauge_atomic_statistic<amount_rep>;
+#if defined (MONITOR_ENABLE_ATOMIC_FLOATING_REP)
   using floating_gauge_atomic_statistic = gauge_atomic_statistic<floating_rep>;
+#endif // MONITOR_ENABLE_ATOMIC_FLOATING_REP
   using time_gauge_atomic_statistic = gauge_atomic_statistic<time_rep>;
 
   using amount_max_atomic_statistic = max_atomic_statistic<amount_rep>;
+#if defined (MONITOR_ENABLE_ATOMIC_FLOATING_REP)
   using floating_max_atomic_statistic = max_atomic_statistic<floating_rep>;
+#endif // MONITOR_ENABLE_ATOMIC_FLOATING_REP
   using time_max_atomic_statistic = max_atomic_statistic<time_rep>;
 
   using amount_min_atomic_statistic = min_atomic_statistic<amount_rep>;
+#if defined (MONITOR_ENABLE_ATOMIC_FLOATING_REP)
   using floating_min_atomic_statistic = min_atomic_statistic<floating_rep>;
+#endif // MONITOR_ENABLE_ATOMIC_FLOATING_REP
   using time_min_atomic_statistic = min_atomic_statistic<time_rep>;
 
   //////////////////////////////////////////////////////////////////////////
@@ -447,6 +459,7 @@ namespace cubmonitor
     *destination = statistic_value_cast (get_value ());
   }
 
+#if defined (MONITOR_ENABLE_ATOMIC_FLOATING_REP)
   template <>
   void
   atomic_primitive<floating_rep>::fetch_add (const floating_rep &value)
@@ -459,6 +472,7 @@ namespace cubmonitor
       }
     while (!compare_exchange (crt_value, crt_value + value));
   }
+#endif // MONITOR_ENABLE_ATOMIC_FLOATING_REP
 
   template <typename Rep>
   void
@@ -482,14 +496,18 @@ namespace cubmonitor
   void
   accumulator_statistic<Rep>::collect (const Rep &value)
   {
-    this->set_value (this->get_value () + value);
+    this->m_value += value;
   }
+
+  template <>
+  void
+  accumulator_atomic_statistic<time_rep>::collect (const time_rep &value);
 
   template <typename Rep>
   void
   accumulator_atomic_statistic<Rep>::collect (const Rep &value)
   {
-    this->fetch_add (value);
+    this->m_value.fetch_add (value);
   }
 
   template <typename Rep>

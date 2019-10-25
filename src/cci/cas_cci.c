@@ -5675,7 +5675,7 @@ cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url, T_CC
 
       return false;
     }
-  rlen = LINE_MAX - strlen (new_url);
+  rlen = LINE_MAX - (int) strlen (new_url);
 
   if (strchr (new_url, '?'))
     {

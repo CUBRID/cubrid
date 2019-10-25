@@ -461,11 +461,18 @@ namespace cubpacking
   }
 
   void
-  packer::pack_small_string (const char *string)
+  packer::pack_small_string (const char *string, const size_t str_size)
   {
     size_t len;
 
-    len = strlen (string);
+    if (str_size == 0)
+      {
+	len = strlen (string);
+      }
+    else
+      {
+	len = str_size;
+      }
 
     if (len > MAX_SMALL_STRING_SIZE)
       {
@@ -530,11 +537,18 @@ namespace cubpacking
   }
 
   void
-  packer::pack_large_string (const std::string &str)
+  packer::pack_large_c_string (const char *string, const size_t str_size)
   {
     size_t len;
 
-    len = str.size ();
+    if (str_size == 0)
+      {
+	len = strlen (string);
+      }
+    else
+      {
+	len = str_size;
+      }
 
     align (INT_ALIGNMENT);
     check_range (m_ptr, m_end_ptr, len + OR_INT_SIZE);
@@ -542,10 +556,16 @@ namespace cubpacking
     OR_PUT_INT (m_ptr, len);
     m_ptr += OR_INT_SIZE;
 
-    std::memcpy (m_ptr, str.c_str (), len);
+    std::memcpy (m_ptr, string, len);
     m_ptr += len;
 
     align (INT_ALIGNMENT);
+  }
+
+  void
+  packer::pack_large_string (const std::string &str)
+  {
+    pack_large_c_string (str.c_str (), str.size ());
   }
 
   void
@@ -649,7 +669,7 @@ namespace cubpacking
   {
     if (str_size < MAX_SMALL_STRING_SIZE)
       {
-	pack_small_string (str);
+	pack_small_string (str, str_size);
       }
     else
       {
@@ -658,7 +678,7 @@ namespace cubpacking
 	OR_PUT_BYTE (m_ptr, LARGE_STRING_CODE);
 	m_ptr++;
 
-	pack_large_string (str);
+	pack_large_c_string (str, str_size);
       }
   }
 

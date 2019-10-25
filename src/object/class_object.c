@@ -4018,8 +4018,8 @@ classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, OID * root_
     }
 
   /* Get local stats including invisible indexes. */
-  local_stats = stats_get_statistics (root_oid, 0);
-  if (local_stats == NULL)
+  int err = stats_get_statistics (root_oid, 0, &local_stats);
+  if (err != NO_ERROR || local_stats == NULL)
     {
       return NULL;
     }
