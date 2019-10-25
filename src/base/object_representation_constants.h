@@ -24,8 +24,8 @@
  *        his file is shared by both the client and server.
  */
 
-#ifndef _OBJECT_REPRESENTATION_TYPESIZE_H_
-#define _OBJECT_REPRESENTATION_TYPESIZE_H_
+#ifndef _OBJECT_REPRESENTATION_CONSTANTS_H_
+#define _OBJECT_REPRESENTATION_CONSTANTS_H_
 
 #include "dbtype_def.h"
 #include "memory_alloc.h"
@@ -165,4 +165,4 @@
 
 #define OR_MVCC_REPID_MASK	  0x00FFFFFF
 
-#endif /* _OBJECT_REPRESENTATION_TYPESIZE_H_ */
+#endif /* !_OBJECT_REPRESENTATION_CONSTANTS_H_ */
