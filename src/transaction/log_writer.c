@@ -1971,15 +1971,15 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
   char *p;
   LOG_PAGE *log_pgptr;
   INT64 num_logpgs;
-  LOG_LSA nxio_lsa;
+  LOG_LSA nxio_lsa = LSA_INITIALIZER;
   bool is_hdr_page_only;
   int ha_file_status;
   int error_code;
 
   LOG_ARV_HEADER arvhdr;
   LOG_HEADER *hdr_ptr;
-  int nxarv_num;
-  LOG_PAGEID nxarv_pageid, nxarv_phy_pageid;
+  int nxarv_num = 0;
+  LOG_PAGEID nxarv_pageid = NULL_PAGEID, nxarv_phy_pageid = NULL_PAGEID;
 
   LOG_LSA eof_lsa;
 

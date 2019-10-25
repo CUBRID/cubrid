@@ -662,7 +662,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
   VPID *vpid = NULL;
   int error_code = NO_ERROR;
   int i;
-  int ulength, rlength, *data_header_ulength_p, *data_header_rlength_p;
+  int ulength, rlength, *data_header_ulength_p = NULL, *data_header_rlength_p = NULL;
   int total_length;
   MVCCID *mvccid_p = NULL;
   LOG_TDES *tdes = NULL;

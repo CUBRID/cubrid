@@ -4024,7 +4024,7 @@ int
 file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
 {
   VPID vpid_fhead;
-  PAGE_PTR page_fhead;
+  PAGE_PTR page_fhead = NULL;
   FILE_HEADER *fhead = NULL;
   FILE_VSID_COLLECTOR vsid_collector;
   FILE_FTAB_COLLECTOR ftab_collector;
@@ -4033,6 +4033,8 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
   int error_code = NO_ERROR;
 
   assert (vfid != NULL && !VFID_ISNULL (vfid));
+
+  vsid_collector.vsids = NULL;
 
   if (is_temp)
     {
@@ -4050,7 +4052,6 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
 	}
     }
 
-  vsid_collector.vsids = NULL;
   ftab_collector.partsect_ftab = NULL;
 
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);

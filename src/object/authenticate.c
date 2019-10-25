@@ -6930,13 +6930,13 @@ int
 au_export_users (print_output & output_ctx)
 {
   int error;
-  DB_SET *direct_groups;
+  DB_SET *direct_groups = NULL;
   DB_VALUE value, gvalue;
-  MOP user, pwd;
+  MOP user = NULL, pwd = NULL;
   int g, gcard;
-  char *uname, *str, *gname, *comment;
+  char *uname = NULL, *str = NULL, *gname = NULL, *comment = NULL;
   char passbuf[AU_MAX_PASSWORD_BUF];
-  char *query;
+  char *query = NULL;
   size_t query_size;
   DB_QUERY_RESULT *query_result;
   DB_QUERY_ERROR query_error;

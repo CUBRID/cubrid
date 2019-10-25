@@ -2375,7 +2375,7 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
   int copyarea_length;
   SCAN_CODE scan = S_ERROR;
   int error_code = NO_ERROR;
-  MVCC_SNAPSHOT *mvcc_snapshot;
+  MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   MVCC_SNAPSHOT mvcc_snapshot_dirty;
   SCAN_OPERATION_TYPE operation_type;
   OID *p_oid = oid;
@@ -6769,7 +6769,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
   int num_continue_on_error = 0;
   DB_VALUE key_value;
   int packed_key_value_len;
-  HFID prev_hfid;
+  HFID prev_hfid = HFID_INITIALIZER;
   int has_index;
 
   /* need to start a topop to ensure the atomic operation. */
@@ -7600,7 +7600,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
   OR_INDEX *index;
   int error_code = NO_ERROR;
   OR_PREDICATE *or_pred = NULL;
-  DB_LOGICAL ev_res;
+  DB_LOGICAL ev_res = V_UNKNOWN;
   bool use_mvcc = false;
   MVCCID mvccid;
   MVCC_REC_HEADER *p_mvcc_rec_header = NULL;
@@ -13766,9 +13766,9 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
                           pgbuf_ordered_unfix_and_init (thread_p, scan_cache->page_watcher.pgptr,
                                                         &scan_cache->page_watcher);
                         }
-		      
+
 		      assert (!pgbuf_is_page_fixed_by_thread (thread_p, &new_page_vpid));
-		      
+
 		      return error_code;
 		    }
 
