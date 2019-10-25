@@ -107,10 +107,20 @@ struct setobj;
   (*(short *) ((char *) (ptr)) = htons ((short) (val)))
 #define OR_PUT_INT(ptr, val) \
   (*(int *) ((char *) (ptr)) = htonl ((int) (val)))
-#define OR_PUT_FLOAT(ptr, val) \
-  (*(UINT32 *) (ptr) = htonf (*(float*) (val)))
-#define OR_PUT_DOUBLE(ptr, val) \
-  (*(UINT64 *) (ptr) = htond (*(double *) (val)))
+inline void
+OR_PUT_FLOAT (char *ptr, float val)
+{
+  UINT32 ui;
+  ui = htonf (val);
+  memcpy (ptr, &ui, sizeof (ui));
+}
+inline void
+OR_PUT_DOUBLE (char *ptr, double val)
+{
+  UINT64 ui;
+  ui = htond (val);
+  memcpy (ptr, &ui, sizeof (ui));
+}
 
 #define OR_GET_BIG_VAR_OFFSET(ptr) 	OR_GET_INT (ptr)	/* 4byte */
 #define OR_PUT_BIG_VAR_OFFSET(ptr, val)	OR_PUT_INT (ptr, val)	/* 4byte */
@@ -265,10 +275,10 @@ struct setobj;
 
 #define OR_PUT_MONETARY(ptr, value) \
   do { \
-    UINT64 pack_value; \
+    char pack_value[OR_DOUBLE_SIZE]; \
     OR_PUT_INT (((char *) (ptr)) + OR_MONETARY_TYPE, (int) (value)->type); \
-    OR_PUT_DOUBLE (&pack_value, &((value)->amount)); \
-    memcpy (((char *) (ptr)) + OR_MONETARY_AMOUNT, &pack_value, OR_DOUBLE_SIZE); \
+    OR_PUT_DOUBLE (pack_value, (value)->amount); \
+    memcpy (((char *) (ptr)) + OR_MONETARY_AMOUNT, pack_value, OR_DOUBLE_SIZE); \
   } while (0)
 
 /* Sha1 */

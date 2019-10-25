@@ -1655,7 +1655,7 @@ or_put_float (OR_BUF * buf, float fnum)
     }
   else
     {
-      OR_PUT_FLOAT (buf->ptr, &fnum);
+      OR_PUT_FLOAT (buf->ptr, fnum);
       buf->ptr += OR_FLOAT_SIZE;
     }
   return NO_ERROR;
@@ -1704,7 +1704,7 @@ or_put_double (OR_BUF * buf, double dnum)
     }
   else
     {
-      OR_PUT_DOUBLE (buf->ptr, &dnum);
+      OR_PUT_DOUBLE (buf->ptr, dnum);
       buf->ptr += OR_DOUBLE_SIZE;
     }
   return NO_ERROR;
@@ -2760,7 +2760,7 @@ or_pack_float (char *ptr, float number)
 {
   ASSERT_ALIGN (ptr, FLOAT_ALIGNMENT);
 
-  OR_PUT_FLOAT (ptr, &number);
+  OR_PUT_FLOAT (ptr, number);
   return (ptr + OR_FLOAT_SIZE);
 }
 
@@ -2791,7 +2791,7 @@ or_pack_double (char *ptr, double number)
 {
   ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
 
-  OR_PUT_DOUBLE (ptr, &number);
+  OR_PUT_DOUBLE (ptr, number);
   return (ptr + OR_DOUBLE_SIZE);
 }
 
