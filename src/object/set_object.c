@@ -6154,7 +6154,7 @@ setobj_print (FILE * fp, COL * col)
  */
 
 DB_TYPE
-setobj_type (SETOBJ * set)
+setobj_type (struct setobj *set)
 {
   if (set)
     {

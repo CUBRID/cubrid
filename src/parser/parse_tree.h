@@ -3521,7 +3521,7 @@ typedef struct pt_plan_trace_info
   union
   {
     char *text_plan;
-    json_t *json_plan;
+    struct json_t *json_plan;
   } trace;
 } PT_PLAN_TRACE_INFO;
 

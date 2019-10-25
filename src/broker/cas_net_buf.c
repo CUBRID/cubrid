@@ -47,6 +47,7 @@
 #endif
 #include "error_code.h"
 #include "dbtype.h"
+#include "byte_order.h"
 
 static int net_buf_realloc (T_NET_BUF * net_buf, int size);
 

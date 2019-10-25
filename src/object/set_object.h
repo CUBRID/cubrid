@@ -279,13 +279,4 @@ extern DB_COLLECTION *setobj_get_reference (COL * set);
 extern int setobj_release (COL * set);
 extern int setobj_build_domain_from_col (COL * col, TP_DOMAIN ** set_domain);
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-  extern DB_TYPE setobj_type (SETOBJ * set);
-#ifdef __cplusplus
-}				// extern "C"
-#endif
-
-#endif				/* _SET_OBJECT_H_ */
+#endif /* _SET_OBJECT_H_ */

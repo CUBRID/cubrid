@@ -63,6 +63,7 @@
 #include "server_interface.h"
 #include "transaction_cl.h"
 #include "object_print.h"
+#include "jansson.h"
 #include "jsp_cl.h"
 #include "optimizer.h"
 #include "memory_alloc.h"
