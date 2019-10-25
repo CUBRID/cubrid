@@ -1607,7 +1607,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
       goto exit_on_error;
     }
   boot_remove_useless_path_separator (log_path, log_pathbuf);
-  log_path = log_pathbuf;
+  log_pathbuf;
 
   /*
    * for lob path,
@@ -1659,7 +1659,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   /*
    * Compose the full name of the database
    */
-  snprintf (boot_Db_full_name, sizeof (boot_Db_full_name), "%s%c%s", db_path, PATH_SEPARATOR,
+  snprintf (boot_Db_full_name, sizeof (boot_Db_full_name), "%s%c%s", db_pathbuf, PATH_SEPARATOR,
 	    client_credential->get_db_name ());
 
   /*
@@ -1786,7 +1786,8 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     }
 
   error_code =
-    logpb_check_exist_any_volumes (thread_p, boot_Db_full_name, log_path, log_prefix, vol_real_path, &is_exist_volume);
+    logpb_check_exist_any_volumes (thread_p, boot_Db_full_name, log_pathbuf, log_prefix, vol_real_path,
+				   &is_exist_volume);
   if (error_code != NO_ERROR || is_exist_volume)
     {
       goto exit_on_error;
@@ -1823,7 +1824,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   if ((int) strlen (boot_Db_full_name) > DB_MAX_PATH_LENGTH - 1)
     {
       /* db_path + db_name is too long */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 4, db_path,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 4, db_pathbuf,
 	      client_credential->get_db_name (), strlen (boot_Db_full_name), DB_MAX_PATH_LENGTH - 1);
       goto exit_on_error;
     }
@@ -1838,7 +1839,8 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     {
       tran_index =
 	boot_create_all_volumes (thread_p, client_credential, db_path_info->db_comments, db_npages, file_addmore_vols,
-				 log_path, (const char *) log_prefix, log_npages, client_lock_wait, client_isolation);
+				 log_pathbuf, (const char *) log_prefix, log_npages, client_lock_wait,
+				 client_isolation);
 
       if (tran_index != NULL_TRAN_INDEX && !boot_Init_server_is_canceled)
 	{
@@ -1871,12 +1873,12 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 	  if (db == NULL)
 	    {
 	      db =
-		cfg_add_db (&dir, client_credential->get_db_name (), db_path, log_path, lob_path,
+		cfg_add_db (&dir, client_credential->get_db_name (), db_pathbuf, log_pathbuf, lob_pathbuf,
 			    db_path_info->db_host);
 	    }
 	  else
 	    {
-	      cfg_update_db (db, db_path, log_path, lob_path, db_path_info->db_host);
+	      cfg_update_db (db, db_pathbuf, log_pathbuf, lob_pathbuf, db_path_info->db_host);
 	    }
 
 	  if (db == NULL || db->name == NULL || db->pathname == NULL || db->logpath == NULL || db->lobpath == NULL
@@ -1918,7 +1920,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 
   if (tran_index == NULL_TRAN_INDEX || boot_Init_server_is_canceled)
     {
-      (void) boot_remove_all_volumes (thread_p, boot_Db_full_name, log_path, (const char *) log_prefix, true, true);
+      (void) boot_remove_all_volumes (thread_p, boot_Db_full_name, log_pathbuf, (const char *) log_prefix, true, true);
       if (boot_Init_server_is_canceled)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
