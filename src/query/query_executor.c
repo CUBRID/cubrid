@@ -7760,17 +7760,17 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
   ((((node)->curr_spec->type == TARGET_LIST && (node)->curr_spec->s_id.type == S_LIST_SCAN)) \
     ? ((node)->curr_spec->s_id.s.llsid.list_id->tuple_cnt - 1) : -1)
 
-  XASL_NODE *xptr;
+  XASL_NODE *xptr = NULL;
   SCAN_CODE xs_scan;
   SCAN_CODE xb_scan;
   SCAN_CODE ls_scan;
   DB_LOGICAL ev_res;
   int qualified;
-  AGGREGATE_TYPE *agg_ptr;
+  AGGREGATE_TYPE *agg_ptr = NULL;
   bool count_star_with_iscan_opt = false;
   SCAN_OPERATION_TYPE scan_operation_type;
-  int curr_iteration_last_cursor;
-  int recursive_iterations;
+  int curr_iteration_last_cursor = 0;
+  int recursive_iterations = 0;
   bool max_recursive_iterations_reached = false;
   bool cte_start_new_iteration = false;
 

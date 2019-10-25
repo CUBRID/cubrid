@@ -794,7 +794,7 @@ btree_insert_helper::btree_insert_helper ()
 #if defined (SERVER_MODE)
   , saved_locked_oid (OID_INITIALIZER)
   , saved_locked_class_oid (OID_INITIALIZER)
-#endif	
+#endif
 {
 }
 // *INDENT-ON*
@@ -17888,7 +17888,7 @@ btree_rv_keyval_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 /*
  * btree_rv_remove_marked_for_delete () - Part of run postpone to remove an object which was previously marked
  *					  for delete.
- *				
+ *
  *
  * return	 : Error code.
  * thread_p (in) : Thread entry.
@@ -28823,7 +28823,7 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
 
   /* >>>>>>>>>>>> */
   /* Debug ID to help developers find the source of bug in logging/recovery code. */
-  BTREE_RV_DEBUG_ID rv_debug_id;
+  BTREE_RV_DEBUG_ID rv_debug_id = BTREE_RV_REDO_NO_ID;
   /* <<<<<<<<<<<< */
 
   /* Get flags and slot ID. */
@@ -33222,7 +33222,7 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * 
 // insert_list (in) : list of pairs key, OID
 // unique (in)    :
 // purpose (in)   : function purpose
-// undo_nxlsa (in): 
+// undo_nxlsa (in):
 //
 int
 btree_online_index_list_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid,
@@ -33517,7 +33517,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 		}
 	      else
 		{
-		  /* key is out of range (smaller or bigger) and the current leaf page has neighbours : 
+		  /* key is out of range (smaller or bigger) and the current leaf page has neighbours :
 		   * abort and search from root */
 		  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE3);
 		  break;
@@ -33536,7 +33536,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
       if ((search_key->result == BTREE_KEY_BIGGER || search_key->result == BTREE_KEY_SMALLER)
 	  && search_key->has_fence_key == btree_search_key_helper::HAS_FENCE_KEY)
 	{
-	  /* key is out of range and presence of fence key suggests that next/prev leaf page should be 
+	  /* key is out of range and presence of fence key suggests that next/prev leaf page should be
 	   * a better place; no fence means current key is bigger/lesser than all index keys and we can insert here
 	   * (this is backed-up by key page boundaries checked before) */
 	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE4);
@@ -35445,10 +35445,10 @@ page_key_boundary::set_value (THREAD_ENTRY * thread_p, DB_VALUE &dest_value, BTI
   return NO_ERROR;
 }
 
-/* 
+/*
  * update_boundary_eq : helper function used in context of btree insert advance functions
  *                      Updates the left/right boundary values of the search path down to a leaf page.
- *                      This handles the case when the key to insert is equal to current value stored 
+ *                      This handles the case when the key to insert is equal to current value stored
  *                      in non-leaf record.
  *
  * thread_p (in) :
@@ -35464,7 +35464,7 @@ page_key_boundary::update_boundary_eq (THREAD_ENTRY * thread_p, BTID_INT * btid,
 {
   int error = NO_ERROR;
 
-  /* value [subtree_slot - 1] < search_key <= subtree_value 
+  /* value [subtree_slot - 1] < search_key <= subtree_value
    * search_key == subtree_value */
   set_value (m_right_key, subtree_value, clear_subtree_value);
   m_is_inf_right_key = false;
@@ -35479,7 +35479,7 @@ page_key_boundary::update_boundary_eq (THREAD_ENTRY * thread_p, BTID_INT * btid,
   return error;
 }
 
-/* 
+/*
  * update_boundary_lt : helper function used in context of btree insert advance functions
  *                      Updates the left/right boundary values of the search path down to a leaf page.
  *                      This handles the case when the key to insert is less than the value of current sub-tree.
@@ -35487,7 +35487,7 @@ page_key_boundary::update_boundary_eq (THREAD_ENTRY * thread_p, BTID_INT * btid,
  * thread_p (in) :
  * btid (in) :
  * page_ptr (in) : current page (should be a non-leaf)
- * left_subtree_rec (in) : record left to current subtree value 
+ * left_subtree_rec (in) : record left to current subtree value
  * subtree_value (in) : value of current non-leaf record pointing to a descending sub-tree
  * clear_subtree_value (in) : flag to clear subtree_value
  */
@@ -35496,18 +35496,18 @@ page_key_boundary::update_boundary_lt (THREAD_ENTRY * thread_p, BTID_INT * btid,
                                        RECDES &left_subtree_rec, DB_VALUE &subtree_value, bool &clear_subtree_value)
 {
   int error = NO_ERROR;
-  
+
   /* value (left_subtree_rec) < search_key <= subtree_value */
   set_value (m_right_key, subtree_value, clear_subtree_value);
   m_is_inf_right_key = false;
 
   error = set_value (thread_p, m_left_key, btid, page_ptr, left_subtree_rec);
-  m_is_inf_left_key = false; 
+  m_is_inf_left_key = false;
 
   return error;
 }
 
-/* 
+/*
  * update_boundary_gt_or_eq : helper function used in context of btree insert advance functions
  *                      Updates the left/right boundary values of the search path down to a leaf page.
  *                      This handles the case when the key to insert is greater of equal than the value
