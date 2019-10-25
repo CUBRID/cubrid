@@ -22,6 +22,7 @@
  */
 
 #include "dbtype_def.h"
+#include "db_set.h"
 #include "porting.h"
 #include "lock_free.h"
 #include "object_domain.h"
