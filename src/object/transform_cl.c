@@ -1515,6 +1515,7 @@ get_string (OR_BUF * buf, int length)
 {
   DB_VALUE value;
   DB_DOMAIN my_domain;
+  char *string = NULL;
 
   /*
    * Make sure this starts off initialized so "readval" won't try to free
@@ -1536,12 +1537,12 @@ get_string (OR_BUF * buf, int length)
 
   if (DB_VALUE_TYPE (&value) == DB_TYPE_VARNCHAR)
     {
-      return ws_copy_string (db_get_string (&value));
+      string = ws_copy_string (db_get_string (&value));
     }
 
   db_value_clear (&value);
 
-  return NULL;
+  return string;
 }
 
 
