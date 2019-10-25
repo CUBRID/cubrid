@@ -80,7 +80,6 @@
       CCI_LOGF_DEBUG ((con)->logger, "[%04d][API][E][%s] ERROR[%d]", (con)->id, __func__, (err)); \
   } while (false)
 
-#define strlen(s1)  ((int) strlen(s1))
 #define CAST_STRLEN (int)
 
 #if defined(WINDOWS)

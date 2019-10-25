@@ -4122,7 +4122,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
     }
   free_and_init (request);
 
-  return NO_ERROR;
+  return req_error;
 #else
   int result = NO_ERROR;
   SESSION_ID id;
@@ -4191,7 +4191,7 @@ csession_end_session (SESSION_ID session_id)
       return ER_FAILED;
     }
 
-  return NO_ERROR;
+  return req_error;
 #else
   int result = NO_ERROR;
 
@@ -5185,16 +5185,17 @@ boot_notify_ha_log_applier_state (HA_LOG_APPLIER_STATE state)
 /*
  * stats_get_statistics_from_server () -
  *
- * return:
+ * return: error code
  *
  *   classoid(in):
  *   timestamp(in):
  *   length_ptr(in):
+ *   stats_buffer(in/out):
  *
  * NOTE:
  */
-char *
-stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *length_ptr)
+int
+stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *length_ptr, char **stats_buffer)
 {
 #if defined(CS_MODE)
   int req_error;
@@ -5204,6 +5205,9 @@ stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *l
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
+
+  assert (stats_buffer != NULL);
+  *stats_buffer = NULL;
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -5217,22 +5221,18 @@ stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *l
   if (!req_error)
     {
       or_unpack_int (reply, length_ptr);
-      return area;
+      *stats_buffer = area;
     }
-  else
-    {
-      return NULL;
-    }
-#else /* CS_MODE */
-  char *area;
 
+  return req_error;
+#else /* CS_MODE */
   THREAD_ENTRY *thread_p = enter_server ();
 
-  area = xstats_get_statistics_from_server (thread_p, classoid, timestamp, length_ptr);
+  *stats_buffer = xstats_get_statistics_from_server (thread_p, classoid, timestamp, length_ptr);
 
   exit_server (*thread_p);
 
-  return area;
+  return NO_ERROR;
 #endif /* !CS_MODE */
 }
 
@@ -5386,6 +5386,10 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
 	{
 	  btid = NULL;
 	}
+    }
+  else
+    {
+      error = req_error;
     }
 
   free_and_init (request);
@@ -5677,6 +5681,10 @@ btree_delete_index (BTID * btid)
     {
       or_unpack_int (reply, &status);
     }
+  else
+    {
+      status = req_error;
+    }
 
   return status;
 #else /* CS_MODE */
@@ -5751,6 +5759,10 @@ locator_remove_class_from_index (OID * oid, BTID * btid, HFID * hfid)
   if (!req_error)
     {
       or_unpack_int (reply, &status);
+    }
+  else
+    {
+      status = req_error;
     }
 
   return status;
@@ -6051,6 +6063,10 @@ btree_class_test_unique (char *buf, int buf_size)
   if (!req_error)
     {
       or_unpack_int (reply, &status);
+    }
+  else
+    {
+      status = req_error;
     }
 
   return status;
@@ -6887,7 +6903,7 @@ qp_get_sys_timestamp (DB_VALUE * value)
       db_make_timestamp (value, sysutime);
     }
 
-  return NO_ERROR;
+  return req_error;
 #else /* CS_MODE */
 
   THREAD_ENTRY *thread_p = enter_server ();
@@ -7044,7 +7060,7 @@ serial_decache (OID * oid)
       or_unpack_int (reply, &status);
     }
 
-  return NO_ERROR;
+  return req_error;
 #else /* CS_MODE */
   THREAD_ENTRY *thread_p = enter_server ();
 
@@ -7118,7 +7134,7 @@ perfmon_server_stop_stats (void)
     {
       return ER_FAILED;
     }
-  return NO_ERROR;
+  return req_error;
 #else /* CS_MODE */
 
   THREAD_ENTRY *thread_p = enter_server ();
@@ -7143,10 +7159,9 @@ int
 perfmon_server_copy_stats (UINT64 * to_stats)
 {
 #if defined(CS_MODE)
-  int req_error;
+  int req_error = NO_ERROR;
   char *reply;
   int nr_statistic_values;
-  int err = NO_ERROR;
 
   nr_statistic_values = perfmon_get_number_of_statistic_values ();
   reply = (char *) malloc (nr_statistic_values * OR_INT64_SIZE);
@@ -7171,7 +7186,7 @@ perfmon_server_copy_stats (UINT64 * to_stats)
     }
 
   free_and_init (reply);
-  return err;
+  return req_error;
 
 #else /* CS_MODE */
 
@@ -7197,10 +7212,9 @@ int
 perfmon_server_copy_global_stats (UINT64 * to_stats)
 {
 #if defined(CS_MODE)
-  int req_error;
+  int req_error = NO_ERROR;
   char *reply = NULL;
   int nr_statistic_values;
-  int err = NO_ERROR;
 
   nr_statistic_values = perfmon_get_number_of_statistic_values ();
   reply = (char *) malloc (nr_statistic_values * OR_INT64_SIZE);
@@ -7223,7 +7237,7 @@ perfmon_server_copy_global_stats (UINT64 * to_stats)
     }
 
   free_and_init (reply);
-  return err;
+  return req_error;
 #else /* CS_MODE */
 
   THREAD_ENTRY *thread_p = enter_server ();
@@ -8491,6 +8505,10 @@ locator_check_fk_validity (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type, int
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &error);
+    }
+  else
+    {
+      error = req_error;
     }
 
   free_and_init (request);
@@ -9998,11 +10016,12 @@ loaddb_install_class (const cubload::batch & batch, bool & class_is_ignored, std
 }
 
 int
-loaddb_load_batch (const cubload::batch & batch, bool use_temp_batch, bool & is_batch_accepted)
+loaddb_load_batch (const cubload::batch & batch, bool use_temp_batch, bool & is_batch_accepted, load_status & status)
 {
 #if defined(CS_MODE)
-  int rc = ER_FAILED;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  char *data_reply = NULL;
+  int data_reply_size = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   packing_packer packer;
@@ -10017,15 +10036,31 @@ loaddb_load_batch (const cubload::batch & batch, bool use_temp_batch, bool & is_
       packer.set_buffer_and_pack_all (eb, use_temp_batch, batch);
     }
 
-  int req_error = net_client_request (NET_SERVER_LD_LOAD_BATCH, eb.get_ptr (), (int) packer.get_current_size (), reply,
-				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
+  int req_error = net_client_request2 (NET_SERVER_LD_LOAD_BATCH, eb.get_ptr (), (int) packer.get_current_size (), reply,
+				       OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_reply_size);
+  if (req_error != NO_ERROR)
     {
-      char *ptr = or_unpack_int (reply, &rc);
-      int is_batch_accepted_;
-      or_unpack_int (ptr, &is_batch_accepted_);
-      is_batch_accepted = is_batch_accepted_ != 0;
+      return req_error;
     }
+
+  char *ptr = or_unpack_int (reply, &data_reply_size);
+
+  int rc = ER_FAILED;
+  ptr = or_unpack_int (ptr, &rc);
+  if (rc != NO_ERROR)
+    {
+      free_and_init (data_reply);
+      return rc;
+    }
+
+  int is_batch_accepted_;
+  or_unpack_int (ptr, &is_batch_accepted_);
+  is_batch_accepted = is_batch_accepted_ != 0;
+
+  packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
+  status.unpack (unpacker);
+
+  free_and_init (data_reply);
 
   return rc;
 #else /* CS_MODE */
@@ -10033,9 +10068,8 @@ loaddb_load_batch (const cubload::batch & batch, bool use_temp_batch, bool & is_
 #endif /* !CS_MODE */
 }
 
-/* *INDENT-OFF* */
 int
-loaddb_fetch_stats (std::vector<load_stats> &stats)
+loaddb_fetch_status (load_status & status)
 {
 #if defined(CS_MODE)
   char *data_reply = NULL;
@@ -10043,7 +10077,7 @@ loaddb_fetch_stats (std::vector<load_stats> &stats)
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  int req_error = net_client_request2 (NET_SERVER_LD_FETCH_STATS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
+  int req_error = net_client_request2 (NET_SERVER_LD_FETCH_STATUS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
 				       0, &data_reply, &data_reply_size);
   if (req_error != NO_ERROR)
     {
@@ -10058,16 +10092,7 @@ loaddb_fetch_stats (std::vector<load_stats> &stats)
     }
 
   packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
-  size_t stats_size = 0;
-  unpacker.unpack_bigint (stats_size);
-  stats.clear ();
-
-  for (size_t i = 0; i < stats_size; ++i)
-    {
-      load_stats stat;
-      stat.unpack (unpacker);
-      stats.emplace_back (stat);
-    }
+  status.unpack (unpacker);
 
   free_and_init (data_reply);
 
@@ -10076,7 +10101,6 @@ loaddb_fetch_stats (std::vector<load_stats> &stats)
   return NO_ERROR;
 #endif /* !CS_MODE */
 }
-/* *INDENT-ON* */
 
 int
 loaddb_destroy ()
@@ -10104,6 +10128,27 @@ loaddb_interrupt ()
 {
 #if defined(CS_MODE)
   return net_client_request_no_reply (NET_SERVER_LD_INTERRUPT, NULL, 0);
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+int
+loaddb_update_stats ()
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error =
+    net_client_request (NET_SERVER_LD_UPDATE_STATS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+
+  return rc;
 #else /* CS_MODE */
   return NO_ERROR;
 #endif /* !CS_MODE */

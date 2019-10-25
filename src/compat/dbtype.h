@@ -34,16 +34,17 @@
 #include "system_parameter.h"
 #include "error_manager.h"
 #include "system.h"
+#include "db_set.h"
+#include "db_set_function.h"
 #include "dbtype_def.h"
 #include "elo.h"
 #include "object_domain.h"
+#include "oid.h"
 #include "language_support.h"
 #include "intl_support.h"
 #include "memory_alloc.h"
 
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
-
-#define db_set db_collection
 
 #define db_make_utime db_make_timestamp
 
@@ -212,65 +213,6 @@ extern "C"
 
   extern DB_CURRENCY db_get_currency_default (void);
 
-  /* Collection functions */
-  extern DB_COLLECTION *db_col_create (DB_TYPE type, int size, DB_DOMAIN * domain);
-  extern DB_COLLECTION *db_col_copy (DB_COLLECTION * col);
-  extern int db_col_filter (DB_COLLECTION * col);
-  extern int db_col_free (DB_COLLECTION * col);
-  extern int db_col_coerce (DB_COLLECTION * col, DB_DOMAIN * domain);
-
-  extern int db_col_size (DB_COLLECTION * col);
-  extern int db_col_cardinality (DB_COLLECTION * col);
-  extern DB_TYPE db_col_type (DB_COLLECTION * col);
-  extern DB_DOMAIN *db_col_domain (DB_COLLECTION * col);
-  extern int db_col_ismember (DB_COLLECTION * col, DB_VALUE * value);
-  extern int db_col_find (DB_COLLECTION * col, DB_VALUE * value, int starting_index, int *found_index);
-  extern int db_col_add (DB_COLLECTION * col, DB_VALUE * value);
-  extern int db_col_drop (DB_COLLECTION * col, DB_VALUE * value, int all);
-  extern int db_col_drop_element (DB_COLLECTION * col, int element_index);
-
-  extern int db_col_drop_nulls (DB_COLLECTION * col);
-
-  extern int db_col_get (DB_COLLECTION * col, int element_index, DB_VALUE * value);
-  extern int db_col_put (DB_COLLECTION * col, int element_index, DB_VALUE * value);
-  extern int db_col_insert (DB_COLLECTION * col, int element_index, DB_VALUE * value);
-
-  extern int db_col_print (DB_COLLECTION * col);
-  extern int db_col_fprint (FILE * fp, DB_COLLECTION * col);
-
-  /* Set and sequence functions.
-   * These are now obsolete. Please use the generic collection functions "db_col*" instead.
-   */
-  extern int db_set_compare (const DB_VALUE * value1, const DB_VALUE * value2);
-  extern DB_COLLECTION *db_set_create (DB_OBJECT * classobj, const char *name);
-  extern DB_COLLECTION *db_set_create_basic (DB_OBJECT * classobj, const char *name);
-  extern DB_COLLECTION *db_set_create_multi (DB_OBJECT * classobj, const char *name);
-  extern DB_COLLECTION *db_seq_create (DB_OBJECT * classobj, const char *name, int size);
-  extern int db_set_free (DB_COLLECTION * set);
-  extern int db_set_filter (DB_COLLECTION * set);
-  extern int db_set_add (DB_COLLECTION * set, DB_VALUE * value);
-  extern int db_set_get (DB_COLLECTION * set, int element_index, DB_VALUE * value);
-  extern int db_set_drop (DB_COLLECTION * set, DB_VALUE * value);
-  extern int db_set_size (DB_COLLECTION * set);
-  extern int db_set_cardinality (DB_COLLECTION * set);
-  extern int db_set_ismember (DB_COLLECTION * set, DB_VALUE * value);
-  extern int db_set_isempty (DB_COLLECTION * set);
-  extern int db_set_has_null (DB_COLLECTION * set);
-  extern int db_set_print (DB_COLLECTION * set);
-  extern DB_TYPE db_set_type (DB_COLLECTION * set);
-  extern DB_COLLECTION *db_set_copy (DB_COLLECTION * set);
-  extern int db_seq_get (DB_COLLECTION * set, int element_index, DB_VALUE * value);
-  extern int db_seq_put (DB_COLLECTION * set, int element_index, DB_VALUE * value);
-  extern int db_seq_insert (DB_COLLECTION * set, int element_index, DB_VALUE * value);
-  extern int db_seq_drop (DB_COLLECTION * set, int element_index);
-  extern int db_seq_size (DB_COLLECTION * set);
-  extern int db_seq_cardinality (DB_COLLECTION * set);
-  extern int db_seq_print (DB_COLLECTION * set);
-  extern int db_seq_find (DB_COLLECTION * set, DB_VALUE * value, int element_index);
-  extern int db_seq_free (DB_SEQ * seq);
-  extern int db_seq_filter (DB_SEQ * seq);
-  extern DB_SEQ *db_seq_copy (DB_SEQ * seq);
-
   extern DB_DOMAIN *db_type_to_db_domain (DB_TYPE type);
   extern const char *db_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type);
 
@@ -284,6 +226,8 @@ extern "C"
   extern bool db_value_is_corrupted (const DB_VALUE * value);
 
   extern int db_json_val_from_str (const char *raw_str, const int str_size, DB_VALUE * json_val);
+
+  extern DB_TYPE setobj_type (struct setobj *set);
 
 /* Use the inline version of the functions. */
 #include "dbtype_function.i"

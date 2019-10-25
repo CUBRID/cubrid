@@ -66,6 +66,7 @@
 #include "log_lsa.hpp"
 #include "log_manager.h"
 #include "network.h"
+#include "object_representation.h"
 #include "jsp_sr.h"
 #include "show_scan.h"
 #if defined(WINDOWS)

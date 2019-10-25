@@ -51,6 +51,7 @@
 #include "set_object.h"
 #include "object_accessor.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "memory_hash.h"
 #include "locator_cl.h"
 #include "network_interface_cl.h"

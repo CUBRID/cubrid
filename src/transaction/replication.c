@@ -29,6 +29,7 @@
 #include "heap_file.h"
 #include "log_lsa.hpp"
 #include "object_primitive.h"
+#include "object_representation.h"
 
 #include <assert.h>
 #include <stdio.h>

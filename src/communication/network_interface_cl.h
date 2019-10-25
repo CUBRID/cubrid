@@ -150,6 +150,7 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
+
 extern int tran_server_has_updated (void);
 extern int tran_server_is_active_and_has_updated (void);
 extern int tran_wait_server_active_trans (void);
@@ -213,7 +214,8 @@ extern int boot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGE
 				 FILE * out_fp);
 extern HA_SERVER_STATE boot_change_ha_mode (HA_SERVER_STATE state, bool force, int timeout);
 extern int boot_notify_ha_log_applier_state (HA_LOG_APPLIER_STATE state);
-extern char *stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *length_ptr);
+extern int stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *length_ptr,
+					     char **stats_buffer);
 extern int stats_update_statistics (OID * classoid, int with_fullscan);
 extern int stats_update_all_statistics (int with_fullscan);
 
@@ -422,10 +424,12 @@ extern int locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * e
 
 extern int loaddb_init (cubload::load_args & args);
 extern int loaddb_install_class (const cubload::batch & batch, bool & class_is_ignored, std::string & class_name);
-extern int loaddb_load_batch (const cubload::batch & batch, bool use_temp_batch, bool & is_batch_accepted);
 /* *INDENT-OFF* */
-extern int loaddb_fetch_stats (std::vector<load_stats> &stats);
+extern int loaddb_load_batch (const cubload::batch &batch, bool use_temp_batch, bool &is_batch_accepted,
+			      load_status &status);
 /* *INDENT-ON* */
+extern int loaddb_fetch_status (load_status & status);
 extern int loaddb_destroy ();
 extern int loaddb_interrupt ();
+extern int loaddb_update_stats ();
 #endif /* _NETWORK_INTERFACE_CL_H_ */

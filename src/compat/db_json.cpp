@@ -63,6 +63,7 @@
 #include "memory_alloc.h"
 #include "memory_private_allocator.hpp"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "porting_inline.hpp"
 #include "query_dump.h"
 #include "string_opfunc.h"
@@ -3896,7 +3897,7 @@ JSON_PRETTY_WRITER::EndArray (SizeType elementCount)
  * length is the buffer size (we can not use strlen!)
  */
 int
-db_json_serialize (const JSON_DOC &doc, OR_BUF &buffer)
+db_json_serialize (const JSON_DOC &doc, or_buf &buffer)
 {
   JSON_SERIALIZER js (buffer);
   int error_code = NO_ERROR;
@@ -3931,7 +3932,7 @@ db_json_serialize_length (const JSON_DOC &doc)
  * for storing it in the json document
  */
 static int
-db_json_or_buf_underflow (OR_BUF *buf, size_t length)
+db_json_or_buf_underflow (or_buf *buf, size_t length)
 {
   if ((buf->ptr + length) > buf->endptr)
     {

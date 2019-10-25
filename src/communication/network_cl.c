@@ -56,6 +56,7 @@
 #include "client_support.h"
 #include "perf_monitor.h"
 #include "log_writer.h"
+#include "object_representation.h"
 
 /*
  * To check for errors from the comm system. Note that if we get any error
@@ -644,6 +645,7 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_LD_LOAD_BATCH].name = "NET_SERVER_LD_LOAD_BATCH";
   net_Req_buffer[NET_SERVER_LD_DESTROY].name = "NET_SERVER_LD_DESTROY";
   net_Req_buffer[NET_SERVER_LD_INTERRUPT].name = "NET_SERVER_LD_INTERRUPT";
+  net_Req_buffer[NET_SERVER_LD_UPDATE_STATS].name = "NET_SERVER_LD_UPDATE_STATS";
 }
 
 /*

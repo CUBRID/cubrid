@@ -214,19 +214,18 @@ fh_create (const char *name, int est_size, int page_size, int cached_pages, cons
   est_size = fh_calculate_htsize (est_size);
 
   /* Open the hash file */
-  ht->hash_filename = (char *) malloc (PATH_MAX);
+  if (!hash_filename || hash_filename[0] == '\0')
+    {
+      ht->hash_filename = strdup (tmpnam (NULL));
+    }
+  else
+    {
+      ht->hash_filename = strdup (hash_filename);
+    }
   if (ht->hash_filename == NULL)
     {
       fh_destroy (ht);
       return NULL;
-    }
-  if (!hash_filename || hash_filename[0] == '\0')
-    {
-      tmpnam (ht->hash_filename);
-    }
-  else
-    {
-      strcpy (ht->hash_filename, hash_filename);
     }
 #if defined(SOLARIS) || defined(AIX) || (defined(I386) && defined(LINUX)) || (defined(HPUX) && (_LFS64_LARGEFILE == 1))
   ht->fd = open64 (ht->hash_filename, O_RDWR | O_CREAT | O_TRUNC, 0600);

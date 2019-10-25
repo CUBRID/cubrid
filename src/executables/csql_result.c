@@ -25,9 +25,10 @@
 
 #include "config.h"
 
-#include <float.h>
-#include <signal.h>
 #include <assert.h>
+#include <float.h>
+#include <setjmp.h>
+#include <signal.h>
 
 #include "csql.h"
 #include "dbtran_def.h"

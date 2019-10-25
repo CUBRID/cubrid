@@ -39,6 +39,7 @@
 #include "error_manager.h"
 #include "log_append.hpp"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "query_manager.h"
 #include "query_opfunc.h"
 #include "stream_to_xasl.h"

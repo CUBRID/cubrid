@@ -3394,7 +3394,7 @@ create_opt_ce_w_exp (LOCALE_COLLATION * lc)
       UCA_COLL_KEY curr_key;
       UCA_COLL_KEY next_key;
       unsigned int curr_pos = coll_key_list[i];
-      unsigned int next_pos;
+      unsigned int next_pos = 0;
       int j;
 
       if (INTL_IS_NEXT_CONTR (curr_pos))

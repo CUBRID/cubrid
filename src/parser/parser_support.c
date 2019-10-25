@@ -7983,8 +7983,8 @@ pt_sort_spec_cover_groupby (PARSER_CONTEXT * parser, PT_NODE * sort_list, PT_NOD
 static PT_NODE *
 pt_rewrite_derived_for_upd_del (PARSER_CONTEXT * parser, PT_NODE * spec, PT_SPEC_FLAG what_for, bool add_as_attr)
 {
-  PT_NODE *derived_table, *as_attr, *col, *upd_del_spec, *spec_list;
-  PT_NODE *save_spec, *save_next, *flat_copy;
+  PT_NODE *derived_table = NULL, *as_attr = NULL, *col = NULL, *upd_del_spec = NULL, *spec_list = NULL;
+  PT_NODE *save_spec = NULL, *save_next = NULL, *flat_copy = NULL;
   const char *spec_name = NULL;
   int upd_del_count = 0;
 
@@ -8040,6 +8040,7 @@ pt_rewrite_derived_for_upd_del (PARSER_CONTEXT * parser, PT_NODE * spec, PT_SPEC
   save_spec = derived_table->info.query.q.select.from;
   derived_table->info.query.q.select.from = upd_del_spec;
   save_next = upd_del_spec->next;
+  assert (upd_del_spec != NULL);
   upd_del_spec->next = NULL;
 
   derived_table = pt_add_row_oid_name (parser, derived_table);

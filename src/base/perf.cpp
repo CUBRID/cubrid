@@ -58,6 +58,20 @@ namespace cubperf
     //
   }
 
+  stat_definition &
+  stat_definition::operator= (const stat_definition &other)
+  {
+    m_id = other.m_id;
+    m_type = other.m_type;
+    for (std::size_t i = 0; i < MAX_VALUE_COUNT; ++i)
+      {
+	m_names[i] = other.m_names[i];
+      }
+    m_offset = 0;
+
+    return *this;
+  }
+
   std::size_t
   stat_definition::get_value_count (void) const
   {
@@ -77,7 +91,7 @@ namespace cubperf
     // copy definitions
     m_stat_defs = new stat_definition[defs.size ()];
     std::size_t stat_index = 0;
-    for (auto def_it : defs)
+    for (auto &def_it : defs)
       {
 	if (def_it.m_id != stat_index)
 	  {

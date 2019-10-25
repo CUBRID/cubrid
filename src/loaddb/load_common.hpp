@@ -259,8 +259,6 @@ namespace cubload
     int rows_failed; // // equivalent of 'errors' from SA_MODE
     std::string error_message;
     std::string log_message;
-    bool is_failed;
-    bool is_completed;
 
     // Default constructor
     stats ();
@@ -274,6 +272,32 @@ namespace cubload
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+  };
+
+  class load_status : public cubpacking::packable_object
+  {
+    public:
+      load_status ();
+      load_status (bool is_load_completed, bool is_session_failed, std::vector<stats> &load_stats);
+
+      load_status (load_status &&other) noexcept;
+      load_status &operator= (load_status &&other) noexcept;
+
+      load_status (const load_status &copy) = delete; // Not CopyConstructible
+      load_status &operator= (const load_status &copy) = delete; // Not CopyAssignable
+
+      bool is_load_completed ();
+      bool is_load_failed ();
+      std::vector<stats> &get_load_stats ();
+
+      void pack (cubpacking::packer &serializator) const override;
+      void unpack (cubpacking::unpacker &deserializator) override;
+      size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+
+    private:
+      bool m_load_completed;
+      bool m_load_failed;
+      std::vector<stats> m_load_stats;
   };
 
   /*
@@ -401,6 +425,7 @@ namespace cubload
 
 // alias declaration for legacy C files
 using load_stats = cubload::stats;
+using load_status = cubload::load_status;
 
 #define IS_OLD_GLO_CLASS(class_name)                    \
 	 (strncasecmp ((class_name), "glo", MAX(strlen(class_name), 3)) == 0      || \

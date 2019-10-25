@@ -119,6 +119,8 @@ namespace cubperf
       // copy constructor
       stat_definition (const stat_definition &other);
 
+      stat_definition &operator= (const stat_definition &other);
+
       std::size_t get_value_count (void) const; // get value count
 
     private:

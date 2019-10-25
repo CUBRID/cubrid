@@ -23,16 +23,13 @@
 
 #ident "$Id$"
 
+#include "locator.h"
+
 #include "config.h"
-
-#include <stdio.h>
-#include <string.h>
-#include <assert.h>
-
 #include "porting.h"
 #include "memory_alloc.h"
 #include "oid.h"
-#include "locator.h"
+#include "object_representation.h"
 #include "error_manager.h"
 #include "storage_common.h"
 #if defined(SERVER_MODE)
@@ -42,6 +39,10 @@
 #if defined(SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif /* SERVER_MODE */
+
+#include <stdio.h>
+#include <string.h>
+#include <assert.h>
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)

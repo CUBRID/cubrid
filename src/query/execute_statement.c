@@ -63,11 +63,13 @@
 #include "server_interface.h"
 #include "transaction_cl.h"
 #include "object_print.h"
+#include "jansson.h"
 #include "jsp_cl.h"
 #include "optimizer.h"
 #include "memory_alloc.h"
 #include "object_domain.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "trigger_manager.h"
 #include "release_string.h"
 #include "object_accessor.h"
@@ -6395,15 +6397,15 @@ int
 do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
-  PT_NODE *speclist, *p_node, *comment_node;
-  DB_OBJLIST *triggers, *t;
+  PT_NODE *speclist = NULL, *p_node = NULL, *comment_node = NULL;
+  DB_OBJLIST *triggers = NULL, *t = NULL;
   double priority = TR_LOWEST_PRIORITY;
   DB_TRIGGER_STATUS status;
-  PT_NODE *trigger_owner, *trigger_name = NULL;
-  const char *trigger_owner_name = NULL, *trigger_comment;
+  PT_NODE *trigger_owner = NULL, *trigger_name = NULL;
+  const char *trigger_owner_name = NULL, *trigger_comment = NULL;
   DB_VALUE returnval, trigger_name_val, user_val;
   bool has_trigger_comment = false;
-  TR_TRIGGER *trigger;
+  TR_TRIGGER *trigger = NULL;
   int count;
   bool has_savepoint = false;
 

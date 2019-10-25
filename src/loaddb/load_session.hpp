@@ -97,7 +97,8 @@ namespace cubload
        *    thread_ref(in): thread entry
        *    batch(in)     : a batch from loaddb object
        */
-      int load_batch (cubthread::entry &thread_ref, const batch *batch, bool use_temp_batch, bool &is_batch_accepted);
+      int load_batch (cubthread::entry &thread_ref, const batch *batch, bool use_temp_batch, bool &is_batch_accepted,
+		      load_status &status);
 
       void wait_for_completion ();
       void wait_for_previous_batch (batch_id id);
@@ -111,8 +112,7 @@ namespace cubload
       bool is_failed ();
       void interrupt ();
 
-      void collect_stats (bool has_lock = false);
-      void fetch_stats (std::vector<stats> &stats_);
+      void fetch_status (load_status &status, bool has_lock = false);
 
       void stats_update_rows_committed (int rows_committed);
       void stats_update_last_committed_line (int last_committed_line);
@@ -129,6 +129,7 @@ namespace cubload
     private:
       void notify_waiting_threads ();
       bool is_completed ();
+      void collect_stats ();
 
       template<typename T>
       void update_atomic_value_with_max (std::atomic<T> &atomic_val, T new_max);
@@ -145,6 +146,7 @@ namespace cubload
       class_registry m_class_registry;
 
       stats m_stats; // load db stats
+      bool m_is_failed;
       std::vector<stats> m_collected_stats;
 
       driver *m_driver;
@@ -172,7 +174,9 @@ namespace cubload
 
 	m_stats.log_message.append (log_msg);
 
-	collect_stats (true);
+	collect_stats ();
+	ulock.unlock ();
+	notify_waiting_threads ();
       }
   }
 }

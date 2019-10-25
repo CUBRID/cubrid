@@ -4626,7 +4626,7 @@ stran_can_end_after_query_execution (THREAD_ENTRY * thread_p, int query_flag, QF
   OR_BUF buf;
   TP_DOMAIN **domains;
   PR_TYPE *pr_type;
-  int i, flag, compressed_size, decompressed_size, diff_size, val_length;
+  int i, flag, compressed_size = 0, decompressed_size = 0, diff_size, val_length;
   char *tuple_p;
   bool found_compressible_string_domain, exceed_a_page;
 
@@ -9789,7 +9789,13 @@ sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
   /* *INDENT-OFF* */
   cubload::batch *batch = NULL;
+  load_status status;
+  packing_packer packer;
+  cubmem::extensible_block eb;
   /* *INDENT-ON* */
+
+  char *reply_data = NULL;
+  int reply_data_size = 0;
 
   bool use_temp_batch = false;
   unpacker.unpack_bool (use_temp_batch);
@@ -9807,7 +9813,12 @@ sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   if (error_code == NO_ERROR)
     {
       assert (session != NULL);
-      error_code = session->load_batch (*thread_p, batch, use_temp_batch, is_batch_accepted);
+      error_code = session->load_batch (*thread_p, batch, use_temp_batch, is_batch_accepted, status);
+
+      packer.set_buffer_and_pack_all (eb, status);
+
+      reply_data = eb.get_ptr ();
+      reply_data_size = (int) packer.get_current_size ();
     }
   else
     {
@@ -9820,17 +9831,20 @@ sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       return_error_to_client (thread_p, rid);
     }
 
-  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  char *ptr = or_pack_int (reply, error_code);
+  char *ptr = or_pack_int (reply, reply_data_size);
+  ptr = or_pack_int (ptr, error_code);
   or_pack_int (ptr, (is_batch_accepted ? 1 : 0));
 
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), reply_data,
+				     reply_data_size);
 }
 
 void
-sloaddb_fetch_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+sloaddb_fetch_status (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   packing_packer packer;
   cubmem::extensible_block eb;
@@ -9843,15 +9857,9 @@ sloaddb_fetch_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   if (error_code == NO_ERROR)
     {
       assert (session != NULL);
-      /* *INDENT-OFF* */
-      std::vector<load_stats> stats;
-      session->fetch_stats (stats);
-      packer.set_buffer_and_pack_all (eb, stats.size ());
-      for (const load_stats &s : stats)
-        {
-	  packer.append_to_buffer_and_pack_all (eb, s);
-        }
-      /* *INDENT-ON* */
+      load_status status;
+      session->fetch_status (status, false);
+      packer.set_buffer_and_pack_all (eb, status);
 
       buffer = eb.get_ptr ();
       buffer_size = (int) packer.get_current_size ();
@@ -9884,7 +9892,6 @@ sloaddb_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
       assert (session != NULL);
 
       session->wait_for_completion ();
-      session->update_class_statistics (*thread_p);
       delete session;
       session_set_load_session (thread_p, NULL);
     }
@@ -9916,4 +9923,31 @@ sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
     {
       // what to do, what to do...
     }
+}
+
+void
+sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *buffer = NULL;
+  int buffer_size = 0;
+
+  load_session *session = NULL;
+  int error_code = session_get_load_session (thread_p, session);
+  if (error_code == NO_ERROR)
+    {
+      assert (session != NULL);
+
+      session->update_class_statistics (*thread_p);
+    }
+
+  if (er_errid () != NO_ERROR || er_has_error ())
+    {
+      return_error_to_client (thread_p, rid);
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }

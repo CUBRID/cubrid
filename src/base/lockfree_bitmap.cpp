@@ -81,7 +81,7 @@ namespace lockfree
   static void
   lf_bitmap_init (LF_BITMAP *bitmap, LF_BITMAP_STYLE style, int entries_cnt, float usage_threshold)
   {
-    int chunk_count;
+    size_t chunk_count;
     unsigned int mask, chunk;
     int i;
 
@@ -100,7 +100,7 @@ namespace lockfree
     bitmap->start_idx = 0;
 
     /* initialize bitfield */
-    chunk_count = CEIL_PTVDIV (entries_cnt, LF_BITFIELD_WORD_SIZE);
+    chunk_count = (size_t) CEIL_PTVDIV (entries_cnt, LF_BITFIELD_WORD_SIZE);
     bitmap->bitfield = new std::atomic<unsigned int>[chunk_count] ();
     for (size_t it = 0; it < chunk_count; it++)
       {

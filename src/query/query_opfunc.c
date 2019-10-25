@@ -39,6 +39,7 @@
 #include "list_file.h"
 #include "object_domain.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "set_object.h"
 #include "query_executor.h"
 #include "databases_file.h"
@@ -3891,9 +3892,9 @@ qdata_subtract_timestamptz_to_dbval (DB_VALUE * ts_tz_val_p, DB_VALUE * dbval_p,
 {
   int err = NO_ERROR;
   DB_TYPE type;
-  DB_UTIME *utime1, *utime2;
-  DB_TIMESTAMPTZ *ts_tz1_p, *ts_tz2_p, ts_tz_res, ts_tz_res_fixed;
-  DB_DATETIME *datetime;
+  DB_UTIME *utime1 = NULL, *utime2 = NULL;
+  DB_TIMESTAMPTZ *ts_tz1_p = NULL, *ts_tz2_p = NULL, ts_tz_res, ts_tz_res_fixed;
+  DB_DATETIME *datetime = NULL;
   DB_DATETIME tmp_datetime;
   DB_DATETIMETZ datetime_tz_1;
   DB_DATE date;
@@ -3902,7 +3903,9 @@ qdata_subtract_timestamptz_to_dbval (DB_VALUE * ts_tz_val_p, DB_VALUE * dbval_p,
   short s2;
   int i2;
   DB_BIGINT bi2;
+
   DB_VALUE tmp_val_res;
+  tmp_val_res.data.utime = 0;
 
   ts_tz1_p = db_get_timestamptz (ts_tz_val_p);
   utime1 = &ts_tz1_p->timestamp;

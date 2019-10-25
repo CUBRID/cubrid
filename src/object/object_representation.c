@@ -3276,7 +3276,7 @@ or_unpack_log_lsa (char *ptr, log_lsa * lsa)
  *    domain(in): domain of the set (can be NULL)
  */
 char *
-or_unpack_set (char *ptr, SETOBJ ** set, TP_DOMAIN * domain)
+or_unpack_set (char *ptr, setobj ** set, TP_DOMAIN * domain)
 {
   OR_BUF orbuf;
 
@@ -5493,7 +5493,7 @@ or_skip_set_header (OR_BUF * buf)
  *    don't pack the class OIDs of object domains.
  */
 int
-or_packed_set_length (SETOBJ * set, int include_domain)
+or_packed_set_length (setobj * set, int include_domain)
 {
   DB_VALUE *value = NULL;
   int len, element_size, bound_bits, offset_table, element_tags, i, bits;
@@ -5582,7 +5582,7 @@ or_packed_set_length (SETOBJ * set, int include_domain)
  *    include_domain(in): non-zero to store full set domain too
  */
 void
-or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
+or_put_set (OR_BUF * buf, setobj * set, int include_domain)
 {
   DB_VALUE *value = NULL;
   unsigned int bound_word;
@@ -5757,7 +5757,7 @@ or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
  *    stored values of attributes since we can always get the correct
  *    domain by looking in the catalog.
  */
-SETOBJ *
+setobj *
 or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
 {
   SETOBJ *set;
