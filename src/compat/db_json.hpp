@@ -28,6 +28,9 @@
 #include "memory_reference_store.hpp"
 #include "storage_common.h"
 
+#include <cstdint>
+#include <string>
+
 // forward definitions
 struct or_buf;
 
