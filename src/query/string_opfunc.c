@@ -15728,7 +15728,7 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VA
   bool dummy;
   int number_lang_id;
   TP_DOMAIN *domain;
-  INTL_CODESET format_codeset;
+  INTL_CODESET format_codeset = INTL_CODESET_NONE;
 
   assert (src_str != (DB_VALUE *) NULL);
   assert (result_num != (DB_VALUE *) NULL);

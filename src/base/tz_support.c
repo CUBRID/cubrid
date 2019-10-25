@@ -3889,7 +3889,7 @@ tz_explain_tz_id (const TZ_ID * tz_id, char *tzr, const int tzr_size, char *tzds
   int zone_id;
   int zone_offset_id;
   int dst_format_size;
-  TZ_TIMEZONE *timezone;
+  TZ_TIMEZONE *timezone = NULL;
   TZ_OFFSET_RULE *zone_off_rule;
   TZ_DECODE_INFO tz_info;
   char dst_format[TZ_MAX_FORMAT_SIZE];
@@ -3972,8 +3972,8 @@ tz_explain_tz_id (const TZ_ID * tz_id, char *tzr, const int tzr_size, char *tzds
   p_dst_format = zone_off_rule->std_format;
   if (zone_off_rule->ds_type == DS_TYPE_RULESET_ID)
     {
-      TZ_DS_RULESET *ds_ruleset;
-      TZ_DS_RULE *ds_rule;
+      TZ_DS_RULESET *ds_ruleset = NULL;
+      TZ_DS_RULE *ds_rule = NULL;
       int dst_id = tz_info.zone.dst_id;
       const char *ds_abbr = NULL;
 

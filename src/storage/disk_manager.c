@@ -4674,6 +4674,7 @@ disk_unreserve_ordered_sectors_without_csect (THREAD_ENTRY * thread_p, DB_VOLPUR
   int error_code = NO_ERROR;
 
   context.nsect_total = nsects;
+  context.n_cache_reserve_remaining = nsects;
 
   context.n_cache_vol_reserve = 0;
   context.vsidp = vsids;

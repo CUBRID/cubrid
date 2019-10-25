@@ -5573,13 +5573,13 @@ mq_invert_assign (PARSER_CONTEXT * parser, PT_NODE * attr, PT_NODE * &expr, PT_N
 static void
 mq_invert_subqueries (PARSER_CONTEXT * parser, PT_NODE * select_statements, PT_NODE * attributes)
 {
-  PT_NODE **column;
-  PT_NODE *attr;
-  PT_NODE *column_next;
-  PT_NODE *attr_next;
-  PT_NODE **column_prev;
-  PT_NODE *inverted;
-  PT_NODE **head;
+  PT_NODE **column = NULL;
+  PT_NODE *attr = NULL;
+  PT_NODE *column_next = NULL;
+  PT_NODE *attr_next = NULL;
+  PT_NODE **column_prev = NULL;
+  PT_NODE *inverted = NULL;
+  PT_NODE **head = NULL;
   PT_NODE *temp = NULL;
 
   while (select_statements)

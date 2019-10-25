@@ -1783,16 +1783,16 @@ chksum_need_skip_table (const char *table_name, CHKSUM_ARG * chksum_arg)
 static int
 chksum_start (CHKSUM_ARG * chksum_arg)
 {
-  PARSER_CONTEXT *parser;
-  DB_OBJLIST *tbl_list, *tbl;
-  DB_OBJECT *classobj;
+  PARSER_CONTEXT *parser = NULL;
+  DB_OBJLIST *tbl_list = NULL, *tbl = NULL;
+  DB_OBJECT *classobj = NULL;
   DB_CONSTRAINT *constraints = NULL, *pk_cons = NULL;
-  DB_ATTRIBUTE *attributes;
-  PARSER_VARCHAR *lower_bound, *next_lower_bound;
-  OID *class_oidp;
+  DB_ATTRIBUTE *attributes = NULL;
+  PARSER_VARCHAR *lower_bound = NULL, *next_lower_bound = NULL;
+  OID *class_oidp = NULL;
 
   char err_msg[LINE_MAX];
-  const char *table_name;
+  const char *table_name = NULL;
   int error = NO_ERROR;
   int chunk_id = 0;
   int repid = -1;
