@@ -175,7 +175,10 @@ namespace cubmonitor
     if (m_sheet_stats_count != 0)
       {
 	// copy old buffer
-	std::memcpy (new_collectors, m_sheet_stats, m_sheet_stats_count * sizeof (statistic_type));
+	for (std::size_t i = 0; i < m_sheet_stats_count; ++i)
+	  {
+	    new_collectors[i] = m_sheet_stats[i];
+	  }
       }
 
     // delete old buffer
