@@ -31,11 +31,13 @@
 #include <assert.h>
 
 #include "slotted_page.h"
+
 #include "storage_common.h"
 #include "memory_alloc.h"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "memory_hash.h"
+#include "object_representation.h"
 #include "page_buffer.h"
 #include "porting_inline.hpp"
 #include "log_manager.h"

@@ -28,7 +28,6 @@
 #ident "$Id$"
 
 #include "storage_common.h"
-#include "object_representation.h"
 #include "object_domain.h"
 
 typedef enum

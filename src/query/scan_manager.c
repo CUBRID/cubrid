@@ -46,6 +46,7 @@
 #include "locator_sr.h"
 #include "log_lsa.hpp"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "dbtype.h"
 #include "xasl_predicate.hpp"
 #include "xasl.h"
@@ -5904,29 +5905,17 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
       assert (sp_scan == S_SUCCESS || sp_scan == S_SUCCESS_CHN_UPTODATE);
     }
 
-
   /* evaluate the predicates to see if the object qualifies */
   ev_res = eval_data_filter (thread_p, isidp->curr_oidp, &recdes, &isidp->scan_cache, data_filter);
-  if (isidp->key_pred.regu_list != NULL)
-    {
-      FILTER_INFO key_filter;
 
-      scan_init_filter_info (&key_filter, &isidp->key_pred, &isidp->key_attrs, scan_id->val_list, scan_id->vd,
-			     &isidp->cls_oid, isidp->bt_num_attrs, isidp->bt_attr_ids, &isidp->num_vstr,
-			     isidp->vstr_ids);
-      ev_res =
-	update_logical_result (thread_p, ev_res, (int *) &scan_id->qualification, &key_filter, &recdes,
-			       isidp->curr_oidp);
-    }
-  else
-    {
-      ev_res = update_logical_result (thread_p, ev_res, (int *) &scan_id->qualification, NULL, NULL, NULL);
-    }
+  // no key filter evaluation is required here.
+
+  ev_res = update_logical_result (thread_p, ev_res, (int *) &scan_id->qualification);
   if (ev_res == V_ERROR)
     {
       return S_ERROR;
     }
-  if (ev_res != V_TRUE)
+  else if (ev_res != V_TRUE)
     {
       return S_DOESNT_EXIST;
     }

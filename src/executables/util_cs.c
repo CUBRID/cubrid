@@ -2585,7 +2585,7 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
   char *binary_name;
   char executable_path[PATH_MAX];
 #endif
-  INT64 start_pageid;
+  INT64 start_pageid = 0;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {

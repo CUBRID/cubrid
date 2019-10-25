@@ -2989,7 +2989,7 @@ dwb_check_data_page_is_sane (THREAD_ENTRY * thread_p, DWB_BLOCK * rcv_block, DWB
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   FILEIO_PAGE *iopage;
   VPID *vpid;
-  int vol_fd, temp_vol_fd, vol_pages = 0;
+  int vol_fd = NULL_VOLDES, temp_vol_fd = NULL_VOLDES, vol_pages = 0;
   INT16 volid;
   int error_code;
   unsigned int i;

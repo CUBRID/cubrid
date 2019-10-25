@@ -54,6 +54,7 @@
 #include "util_func.h"
 #include "log_comm.h"
 #include "memory_alloc.h"
+#include "object_representation.h"
 #include "environment_variable.h"
 #include "intl_support.h"
 #include "message_catalog.h"
@@ -7364,7 +7365,7 @@ sysprm_validate_escape_char_parameters (const SYSPRM_ASSIGN_VALUE * assignment_l
   SYSPRM_PARAM *prm = NULL;
   const SYSPRM_ASSIGN_VALUE *assignment = NULL;
   bool set_require_like_escape, set_no_backslash_escape;
-  bool is_require_like_escape, is_no_backslash_escape;
+  bool is_require_like_escape = false, is_no_backslash_escape = false;
 
   set_require_like_escape = set_no_backslash_escape = false;
   for (assignment = assignment_list; assignment != NULL; assignment = assignment->next)

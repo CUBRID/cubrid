@@ -55,6 +55,7 @@
 #include "transform_cl.h"
 #include "object_accessor.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "set_object.h"
 
 #include "message_catalog.h"
@@ -854,17 +855,14 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
   /*
    * Create the hash table
    */
-  if (has_obj_ref || num_cls_ref > 0)
-    {				/* found any referenced domain */
-      obj_table =
-	fh_create ("object hash", est_size, page_size, cached_pages, hash_filename, FH_OID_KEY, DB_SIZEOF (int),
-		   oid_hash, oid_compare_equals);
+  obj_table =
+    fh_create ("object hash", est_size, page_size, cached_pages, hash_filename, FH_OID_KEY, DB_SIZEOF (int),
+	       oid_hash, oid_compare_equals);
 
-      if (obj_table == NULL)
-	{
-	  status = 1;
-	  goto end;
-	}
+  if (obj_table == NULL)
+    {
+      status = 1;
+      goto end;
     }
 
   /*

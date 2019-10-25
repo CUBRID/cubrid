@@ -41,6 +41,7 @@
 #include "system_parameter.h"
 #include "byte_order.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 
 #if defined (__cplusplus)
 #include <cmath>

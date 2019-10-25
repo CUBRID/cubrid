@@ -46,6 +46,7 @@
 #include "log_lsa.hpp"
 #include "parser.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "db_value_printer.hpp"
 #include "db.h"
 #include "object_accessor.h"
@@ -4646,7 +4647,7 @@ static int
 la_flush_repl_items (bool immediate)
 {
   int error = NO_ERROR;
-  int la_err_code;
+  int la_err_code = ER_FAILED;
   WS_REPL_FLUSH_ERR *flush_err;
   MOP class_mop = NULL;
   const char *class_name = "UNKNOWN CLASS";
@@ -5373,7 +5374,7 @@ la_update_query_execute_with_values (const char *sql, int arg_count, DB_VALUE * 
 static int
 la_apply_statement_log (LA_ITEM * item)
 {
-  char *stmt_text;
+  char *stmt_text = NULL;
   int error = NO_ERROR, error2 = NO_ERROR;
   const char *error_msg = "";
   DB_OBJECT *user = NULL, *save_user = NULL;

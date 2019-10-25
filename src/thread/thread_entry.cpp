@@ -699,6 +699,8 @@ thread_type_to_string (thread_type type)
       return "WORKER";
     case TT_DAEMON:
       return "DAEMON";
+    case TT_LOADDB:
+      return "LOADDB";
     case TT_VACUUM_MASTER:
       return "VACUUM_MASTER";
     case TT_VACUUM_WORKER:

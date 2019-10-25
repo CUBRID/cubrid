@@ -103,6 +103,7 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "crypt_opfunc.h"
+#include "object_representation.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -2930,8 +2931,8 @@ logpb_page_get_first_null_block_lsa (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgp
 static int
 logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 {
-  LOG_BUFFER *bufptr;		/* The current buffer log append page scanned */
-  LOG_BUFFER *prv_bufptr;	/* The previous buffer log append page scanned */
+  LOG_BUFFER *bufptr = NULL;	/* The current buffer log append page scanned */
+  LOG_BUFFER *prv_bufptr = NULL;	/* The previous buffer log append page scanned */
   int idxflush;			/* An index into the first log page buffer to flush */
   bool need_sync;		/* How we flush anything ? */
 
@@ -2959,8 +2960,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   INT64 all_writer_thr_end_time = 0;
 
   LOGWR_INFO *writer_info = log_Gl.writer_info;
-  LOGWR_ENTRY *entry;
-  THREAD_ENTRY *wait_thread_p;
+  LOGWR_ENTRY *entry = NULL;
+  THREAD_ENTRY *wait_thread_p = NULL;
 #endif /* SERVER_MODE */
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));

@@ -44,6 +44,7 @@
 
 #include "dbtype.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "query_list.h"
 #include "regu_var.hpp"
 

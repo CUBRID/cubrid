@@ -30,11 +30,13 @@
 #include <math.h>
 
 #include "statistics_sr.h"
+
 #include "btree.h"
 #include "heap_file.h"
 #include "boot_sr.h"
 #include "partition_sr.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "thread_entry.hpp"
 
 #define SQUARE(n) ((n)*(n))

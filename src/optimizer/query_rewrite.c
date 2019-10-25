@@ -37,6 +37,7 @@
 #include "view_transform.h"
 #include "parser.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 
 #include "dbtype.h"
 

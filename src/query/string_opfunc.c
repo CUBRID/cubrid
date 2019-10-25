@@ -50,6 +50,7 @@
 #include "base64.h"
 #include "tz_support.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "dbtype.h"
 #include "elo.h"
 #include "es_common.h"
@@ -6470,21 +6471,21 @@ error_return:
 }
 
 int
-db_json_convert_to_utf8 (DB_VALUE ** dbval)
+db_json_convert_to_utf8 (DB_VALUE * dbval)
 {
-  assert (dbval != NULL && DB_IS_STRING (*dbval));
+  assert (dbval != NULL && DB_IS_STRING (dbval));
   DB_VALUE coerced_str;
-  if (db_get_string_codeset (*dbval) == INTL_CODESET_UTF8)
+  if (db_get_string_codeset (dbval) == INTL_CODESET_UTF8)
     {
       return NO_ERROR;
     }
-  int error_code = db_string_convert_to (*dbval, &coerced_str, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
+  int error_code = db_string_convert_to (dbval, &coerced_str, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
 
-  std::swap (coerced_str, **dbval);
+  std::swap (coerced_str, *dbval);
   pr_clear_value (&coerced_str);
   return NO_ERROR;
 }
@@ -15744,7 +15745,7 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VA
   bool dummy;
   int number_lang_id;
   TP_DOMAIN *domain;
-  INTL_CODESET format_codeset;
+  INTL_CODESET format_codeset = INTL_CODESET_NONE;
 
   assert (src_str != (DB_VALUE *) NULL);
   assert (result_num != (DB_VALUE *) NULL);

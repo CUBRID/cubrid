@@ -28,7 +28,7 @@
 
 #include <cstdio>
 
-struct db_collection;
+struct db_set;
 struct db_midxkey;
 struct db_monetary;
 struct db_value;
@@ -54,7 +54,7 @@ class db_value_printer
 
   protected:
     void describe_midxkey (const db_midxkey *midxkey, int help_Max_set_elements=20);  //former describe_midxkey()
-    void describe_set (const db_collection *set, int help_Max_set_elements=20);       //former describe_set()
+    void describe_set (const db_set *set, int help_Max_set_elements=20);       //former describe_set()
 };
 
 void db_fprint_value (FILE *fp, const db_value *value);
