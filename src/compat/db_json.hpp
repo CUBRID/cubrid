@@ -26,7 +26,10 @@
 
 #include "error_manager.h"
 #include "memory_reference_store.hpp"
-#include "object_representation.h"
+#include "storage_common.h"
+
+// forward definitions
+struct or_buf;
 
 #if defined (__cplusplus)
 class JSON_DOC;
@@ -89,9 +92,9 @@ void db_json_add_element_to_array (JSON_DOC *doc, const JSON_DOC *value);
 int db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc, size_t json_raw_length);
 JSON_DOC *db_json_get_copy_of_doc (const JSON_DOC *doc);
 
-int db_json_serialize (const JSON_DOC &doc, OR_BUF &buffer);
+int db_json_serialize (const JSON_DOC &doc, or_buf &buffer);
 std::size_t db_json_serialize_length (const JSON_DOC &doc);
-int db_json_deserialize (OR_BUF *buf, JSON_DOC *&doc);
+int db_json_deserialize (or_buf *buf, JSON_DOC *&doc);
 
 int db_json_insert_func (const JSON_DOC *doc_to_be_inserted, JSON_DOC &doc_destination, const char *raw_path);
 int db_json_replace_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
