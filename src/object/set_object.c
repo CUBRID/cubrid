@@ -6151,8 +6151,10 @@ setobj_print (FILE * fp, COL * col)
  *      return: DB_TYPE
  *  set(in) : set object
  *
+ * NOTE: setobj_type is special; it is declared in dbtype.h because dbtype_function.i requires it and it is exposed
+ *       to other libraries/executable (e.g. cas/cub_cas) and to C-compiled unit csql_grammar.c.
+ *       therefore, struct setobj is used instead of SETOBJ/COL aliases.
  */
-
 DB_TYPE
 setobj_type (struct setobj *set)
 {
