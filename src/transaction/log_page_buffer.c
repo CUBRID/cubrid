@@ -103,6 +103,7 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "crypt_opfunc.h"
+#include "object_representation.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)

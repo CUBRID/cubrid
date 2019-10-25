@@ -142,4 +142,27 @@
 
 #define OR_NON_MVCC_HEADER_SIZE	      (8)	/* two integers */
 
+/* 01 stand for 1byte, 10-> 2byte, 11-> 4byte  */
+#define OR_OFFSET_SIZE_FLAG 0x60000000
+#define OR_OFFSET_SIZE_1BYTE 0x20000000
+#define OR_OFFSET_SIZE_2BYTE 0x40000000
+#define OR_OFFSET_SIZE_4BYTE 0x60000000
+
+/* Use for MVCC flags the remainder of 5 bits in the first byte. */
+/* Flag will be shifter by 24 bits to the right */
+#define OR_MVCC_FLAG_MASK	    0x1f
+#define OR_MVCC_FLAG_SHIFT_BITS	    24
+
+/* The following flags are used for dynamic MVCC information */
+/* The record contains MVCC insert id */
+#define OR_MVCC_FLAG_VALID_INSID	  0x01
+
+/* The record contains MVCC delete id. If not set, the record contains chn */
+#define OR_MVCC_FLAG_VALID_DELID	  0x02
+
+/* The record have an LSA with the location of the previous version */
+#define OR_MVCC_FLAG_VALID_PREV_VERSION   0x04
+
+#define OR_MVCC_REPID_MASK	  0x00FFFFFF
+
 #endif /* _OBJECT_REPRESENTATION_TYPESIZE_H_ */

@@ -42,6 +42,7 @@
 #include "statistics_sr.h"
 #include "partition_sr.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "thread_lockfree_hash_map.hpp"
 #include "thread_manager.hpp"
 

@@ -39,6 +39,7 @@
 #include "list_file.h"
 #include "object_domain.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "set_object.h"
 #include "query_executor.h"
 #include "databases_file.h"

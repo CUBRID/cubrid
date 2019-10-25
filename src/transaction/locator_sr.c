@@ -50,6 +50,7 @@
 #include "log_lsa.hpp"
 #include "lock_manager.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "object_representation_sr.h"
 #include "query_executor.h"
 #include "query_manager.h"

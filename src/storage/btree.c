@@ -45,6 +45,7 @@
 #include "query_executor.h"
 #include "query_opfunc.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "perf_monitor.h"
 #include "regu_var.hpp"
 #include "fault_injection.h"
