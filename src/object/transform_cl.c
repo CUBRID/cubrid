@@ -3289,7 +3289,6 @@ disk_to_resolution (OR_BUF * buf)
 	  else
 	    {
 	      res->class_mop = class_;
-
 	      res->name = get_string (buf, vars[ORC_RES_NAME_INDEX].length);
 	      res->alias = get_string (buf, vars[ORC_RES_ALIAS_INDEX].length);
 	    }
