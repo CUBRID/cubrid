@@ -8993,7 +8993,7 @@ pt_make_reserved_value_list (PARSER_CONTEXT * parser, PT_RESERVED_NAME_TYPE type
   size = end - start + 1;
 
   // *INDENT-OFF*
-  regu_array_alloc <DB_VALUE *> (&value_list, size);
+  regu_array_alloc<DB_VALUE *> (&value_list, size);
   // *INDENT-ON*
 
   if (value_list)
