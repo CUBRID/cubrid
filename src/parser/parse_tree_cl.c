@@ -14165,12 +14165,12 @@ pt_init_select (PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *q = 0, *r1;
-  PT_NODE *temp, *where_list;
+  PARSER_VARCHAR *q = NULL, *r1 = NULL;
+  PT_NODE *temp = NULL, *where_list = NULL;
   bool set_paren = false;	/* init */
   bool toggle_print_alias = false;
   bool is_first_list;
-  unsigned int save_custom;
+  unsigned int save_custom = 0;
   PT_NODE *from = NULL, *derived_table = NULL;
 
   from = p->info.query.q.select.from;

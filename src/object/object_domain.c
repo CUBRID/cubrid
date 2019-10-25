@@ -4098,10 +4098,13 @@ tp_domain_compatible (const TP_DOMAIN * src, const TP_DOMAIN * dest)
 TP_DOMAIN *
 tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int allow_coercion, TP_MATCH exact_match)
 {
-  TP_DOMAIN *best, *d;
-  TP_DOMAIN **others;
+  TP_DOMAIN *best = NULL, *d = NULL;
+  TP_DOMAIN **others = NULL;
   DB_TYPE vtype;
   int i;
+
+  DB_VALUE temp;
+  db_make_null (&temp);
 
   best = NULL;
 
@@ -4140,7 +4143,6 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 	   */
 	  OID *oid;
 	  DB_OBJECT *mop;
-	  DB_VALUE temp;
 
 	  oid = (OID *) db_get_oid (value);
 	  if (oid)
