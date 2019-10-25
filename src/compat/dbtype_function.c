@@ -34,7 +34,8 @@
 #include "set_object.h"
 #include "system_parameter.h"
 
-// hidden functions (suppress -Wmissing-prototypes)
+// hidden functions (suppress -Wmissing-prototypes and -Wimplicit-function-declaration)
 int db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, char *str, const int size);
+DB_TYPE setobj_type (struct setobj *set);
 
 #include "dbtype_function.i"

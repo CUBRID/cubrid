@@ -46,6 +46,7 @@
 #include "log_lsa.hpp"
 #include "parser.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "db_value_printer.hpp"
 #include "db.h"
 #include "object_accessor.h"
