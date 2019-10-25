@@ -6902,14 +6902,16 @@ au_start (void)
  *   obj(in): user object
  */
 char *
-au_get_user_name (MOP obj, DB_VALUE * value)
+au_get_user_name (MOP obj)
 {
-  int error = obj_get (obj, "name", value);
+  DB_VALUE value;
+
+  int error = obj_get (obj, "name", &value);
   if (error == NO_ERROR)
     {
-      if (IS_STRING (value) && !DB_IS_NULL (value) && db_get_string (value) != NULL)
+      if (IS_STRING (&value) && !DB_IS_NULL (&value) && db_get_string (&value) != NULL)
 	{
-	  return db_get_string (value);
+	  return ws_copy_string (db_get_string (&value));
 	}
     }
 
@@ -6929,7 +6931,7 @@ au_export_users (print_output & output_ctx)
 {
   int error;
   DB_SET *direct_groups;
-  DB_VALUE value, gvalue, user_db_val;
+  DB_VALUE value, gvalue;
   MOP user, pwd;
   int g, gcard;
   char *uname, *str, *gname, *comment;
@@ -6976,7 +6978,7 @@ au_export_users (print_output & output_ctx)
 	  user = db_get_object (&user_val);
 	}
 
-      uname = au_get_user_name (user, &user_db_val);
+      uname = au_get_user_name (user);
       strcpy (passbuf, "");
       encrypt_mode = 0x00;
 
@@ -7125,7 +7127,7 @@ au_export_users (print_output & output_ctx)
 	      user = db_get_object (&user_val);
 	    }
 
-	  uname = au_get_user_name (user, &user_db_val);
+	  uname = au_get_user_name (user);
 	  if (uname == NULL)
 	    {
 	      continue;
@@ -7482,7 +7484,6 @@ issue_grant_statement (print_output & output_ctx, CLASS_AUTH * auth, CLASS_GRANT
   const char *gtype, *classname;
   char *username;
   int typebit;
-  DB_VALUE grant_user_db_val;
 
   typebit = authbits & AU_TYPE_MASK;
   switch (typebit)
@@ -7513,7 +7514,7 @@ issue_grant_statement (print_output & output_ctx, CLASS_AUTH * auth, CLASS_GRANT
       break;
     }
   classname = sm_get_ch_name (auth->class_mop);
-  username = au_get_user_name (grant->user->obj, &grant_user_db_val);
+  username = au_get_user_name (grant->user->obj);
 
   output_ctx ("GRANT %s ON ", gtype);
   output_ctx ("[%s]", classname);
@@ -7665,8 +7666,7 @@ au_export_grants (print_output & output_ctx, MOP class_mop)
 	{
 	  if (u->grants != NULL)
 	    {
-	      DB_VALUE u_obj;
-	      uname = au_get_user_name (u->obj, &u_obj);
+	      uname = au_get_user_name (u->obj);
 
 	      /*
 	       * should this be setting an error condition ?

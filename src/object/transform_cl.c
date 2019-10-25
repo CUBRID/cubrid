@@ -143,7 +143,7 @@ static OR_VARINFO *read_var_table (OR_BUF * buf, int nvars);
 static OR_VARINFO *read_var_table_internal (OR_BUF * buf, int nvars, int offset_size);
 static void free_var_table (OR_VARINFO * vars);
 static int string_disk_size (const char *string);
-static char *get_string (OR_BUF * buf, int length, DB_VALUE * value);
+static char *get_string (OR_BUF * buf, int length);
 static void put_string (OR_BUF * buf, const char *string);
 static int object_set_size (DB_OBJLIST * list);
 static int put_object_set (OR_BUF * buf, DB_OBJLIST * list);
@@ -1511,15 +1511,16 @@ string_disk_size (const char *string)
  *    A jmp_buf has previously been established.
  */
 static char *
-get_string (OR_BUF * buf, int length, DB_VALUE * value)
+get_string (OR_BUF * buf, int length)
 {
+  DB_VALUE value;
   DB_DOMAIN my_domain;
 
   /*
    * Make sure this starts off initialized so "readval" won't try to free
    * any existing contents.
    */
-  db_make_null (value);
+  db_make_null (&value);
 
   /*
    * The domain here is always a server side VARNCHAR.  Set a temporary
@@ -1531,16 +1532,16 @@ get_string (OR_BUF * buf, int length, DB_VALUE * value)
   my_domain.collation_id = LANG_SYS_COLLATION;
   my_domain.collation_flag = TP_DOMAIN_COLL_NORMAL;
 
-  tp_VarNChar.data_readval (buf, value, &my_domain, length, true, NULL, 0);
+  tp_VarNChar.data_readval (buf, &value, &my_domain, length, true, NULL, 0);
 
-  if (DB_VALUE_TYPE (value) == DB_TYPE_VARNCHAR)
+  if (DB_VALUE_TYPE (&value) == DB_TYPE_VARNCHAR)
     {
-      return db_get_string (value);
+      return ws_copy_string (db_get_string (&value));
     }
   else
     {
       /* not sure what's in it */
-      db_value_clear (value);
+      db_value_clear (&value);
     }
 
   return NULL;
@@ -2472,10 +2473,8 @@ disk_to_methsig (OR_BUF * buf)
 	}
       else
 	{
-	  DB_VALUE fname_db_val, sig_sql_definition;
-
-	  fname = get_string (buf, vars[ORC_METHSIG_FUNCTION_NAME_INDEX].length, &fname_db_val);
-	  sig->sql_definition = get_string (buf, vars[ORC_METHSIG_SQL_DEF_INDEX].length, &sig_sql_definition);
+	  fname = get_string (buf, vars[ORC_METHSIG_FUNCTION_NAME_INDEX].length);
+	  sig->sql_definition = get_string (buf, vars[ORC_METHSIG_SQL_DEF_INDEX].length);
 
 	  /*
 	   * KLUDGE: older databases have the function name string stored with
@@ -2626,8 +2625,7 @@ disk_to_method (OR_BUF * buf, SM_METHOD * method)
       method->function = NULL;
 
       /* variable attrubute 0 : name */
-      DB_VALUE method_header_name;
-      method->header.name = get_string (buf, vars[ORC_METHOD_NAME_INDEX].length, &method_header_name);
+      method->header.name = get_string (buf, vars[ORC_METHOD_NAME_INDEX].length);
 
       /* variable attribute 1 : signatures */
       method->signatures =
@@ -2750,8 +2748,7 @@ disk_to_methfile (OR_BUF * buf)
 	  file->class_mop = db_get_object (&value);
 
 	  /* name */
-	  DB_VALUE file_name;
-	  file->name = get_string (buf, vars[ORC_METHFILE_NAME_INDEX].length, &file_name);
+	  file->name = get_string (buf, vars[ORC_METHFILE_NAME_INDEX].length);
 
 	  /* properties */
 	  props = get_property_list (buf, vars[ORC_METHFILE_PROPERTIES_INDEX].length);
@@ -2851,8 +2848,7 @@ disk_to_query_spec (OR_BUF * buf)
 	}
       else
 	{
-	  DB_VALUE spec;
-	  statement->specification = get_string (buf, vars[ORC_QUERY_SPEC_SPEC_INDEX].length, &spec);
+	  statement->specification = get_string (buf, vars[ORC_QUERY_SPEC_SPEC_INDEX].length);
 	}
 
       free_var_table (vars);
@@ -3064,8 +3060,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
       (void) or_get_int (buf, &rc);
 
       /* variable attribute 0 : name */
-      DB_VALUE header_name;
-      att->header.name = get_string (buf, vars[ORC_ATT_NAME_INDEX].length, &header_name);
+      att->header.name = get_string (buf, vars[ORC_ATT_NAME_INDEX].length);
 
       /* variable attribute 1 : value */
       or_get_value (buf, &att->default_value.value, NULL, vars[ORC_ATT_CURRENT_VALUE_INDEX].length, true);
@@ -3166,8 +3161,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 	}
 
       /* variable attribute 6: comment */
-      DB_VALUE att_comment;
-      att->comment = get_string (buf, vars[ORC_ATT_COMMENT_INDEX].length, &att_comment);
+      att->comment = get_string (buf, vars[ORC_ATT_COMMENT_INDEX].length);
 
       /* THIS SHOULD BE INITIALIZING THE header.name_space field !! */
 
@@ -3299,9 +3293,8 @@ disk_to_resolution (OR_BUF * buf)
 	    {
 	      res->class_mop = class_;
 
-	      DB_VALUE res_name, res_alias;
-	      res->name = get_string (buf, vars[ORC_RES_NAME_INDEX].length, &res_name);
-	      res->alias = get_string (buf, vars[ORC_RES_ALIAS_INDEX].length, &res_alias);
+	      res->name = get_string (buf, vars[ORC_RES_NAME_INDEX].length);
+	      res->alias = get_string (buf, vars[ORC_RES_ALIAS_INDEX].length);
 	    }
 	}
 
@@ -4046,12 +4039,10 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   class_->collation_id = or_get_int (buf, &rc);
 
   /* variable 0 */
-  DB_VALUE header_ch_name;
-  class_->header.ch_name = get_string (buf, vars[ORC_NAME_INDEX].length, &header_ch_name);
+  class_->header.ch_name = get_string (buf, vars[ORC_NAME_INDEX].length);
 
   /* variable 1 */
-  DB_VALUE class_loader_commands;
-  class_->loader_commands = get_string (buf, vars[ORC_LOADER_COMMANDS_INDEX].length, &class_loader_commands);
+  class_->loader_commands = get_string (buf, vars[ORC_LOADER_COMMANDS_INDEX].length);
 
   /* REPRESENTATIONS */
   /* variable 2 */
@@ -4149,8 +4140,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   class_->properties = get_property_list (buf, vars[ORC_PROPERTIES_INDEX].length);
 
   /* variable 15 */
-  DB_VALUE class_comment;
-  class_->comment = get_string (buf, vars[ORC_COMMENT_INDEX].length, &class_comment);
+  class_->comment = get_string (buf, vars[ORC_COMMENT_INDEX].length);
 
   /* variable 16 */
   class_->partition =
@@ -4994,10 +4984,8 @@ disk_to_partition_info (OR_BUF * buf)
 	  return NULL;
 	}
 
-      DB_VALUE partition_info_pname, partition_info_expr;
-
-      partition_info->pname = get_string (buf, vars[ORC_PARTITION_NAME_INDEX].length, &partition_info_pname);
-      partition_info->expr = get_string (buf, vars[ORC_PARTITION_EXPR_INDEX].length, &partition_info_expr);
+      partition_info->pname = get_string (buf, vars[ORC_PARTITION_NAME_INDEX].length);
+      partition_info->expr = get_string (buf, vars[ORC_PARTITION_EXPR_INDEX].length);
 
       error = or_get_value (buf, &val, NULL, vars[ORC_PARTITION_VALUES_INDEX].length, true);
       if (error != NO_ERROR)
@@ -5015,8 +5003,7 @@ disk_to_partition_info (OR_BUF * buf)
 	  return NULL;
 	}
 
-      DB_VALUE partition_info_comment;
-      partition_info->comment = get_string (buf, vars[ORC_PARTITION_COMMENT_INDEX].length, &partition_info_comment);
+      partition_info->comment = get_string (buf, vars[ORC_PARTITION_COMMENT_INDEX].length);
     }
 
   pr_clear_value (&val);
