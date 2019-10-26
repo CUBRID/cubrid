@@ -116,6 +116,7 @@ make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf, size_t buf_size
 {
 #ifndef LIBCAS_FOR_JSP
   char dirname[BROKER_PATH_MAX];
+  int ret = 0;
 
   assert (filename_buf != NULL);
 
@@ -125,29 +126,34 @@ make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf, size_t buf_size
     case FID_SQL_LOG_DIR:
       if (cas_shard_flag == ON)
 	{
-	  snprintf (filename_buf, buf_size, "%s%s_%d_%d_%d.sql.log", dirname, br_name, shm_proxy_id + 1, shm_shard_id,
-		    shm_shard_cas_id + 1);
+	  ret = snprintf (filename_buf, buf_size, "%s%s_%d_%d_%d.sql.log", dirname, br_name, shm_proxy_id + 1,
+			  shm_shard_id, shm_shard_cas_id + 1);
 	}
       else
 	{
-	  snprintf (filename_buf, buf_size, "%s%s_%d.sql.log", dirname, br_name, shm_as_index + 1);
+	  ret = snprintf (filename_buf, buf_size, "%s%s_%d.sql.log", dirname, br_name, shm_as_index + 1);
 	}
       break;
     case FID_SLOW_LOG_DIR:
       if (cas_shard_flag == ON)
 	{
-	  snprintf (filename_buf, buf_size, "%s%s_%d_%d_%d.slow.log", dirname, br_name, shm_proxy_id + 1, shm_shard_id,
-		    shm_shard_cas_id + 1);
+	  ret = snprintf (filename_buf, buf_size, "%s%s_%d_%d_%d.slow.log", dirname, br_name, shm_proxy_id + 1,
+			  shm_shard_id, shm_shard_cas_id + 1);
 	}
       else
 	{
-	  snprintf (filename_buf, buf_size, "%s%s_%d.slow.log", dirname, br_name, shm_as_index + 1);
+	  ret = snprintf (filename_buf, buf_size, "%s%s_%d.slow.log", dirname, br_name, shm_as_index + 1);
 	}
       break;
     default:
       assert (0);
-      snprintf (filename_buf, buf_size, "unknown.log");
+      ret = snprintf (filename_buf, buf_size, "unknown.log");
       break;
+    }
+  if (ret < 0)
+    {
+      assert (false);
+      filename_buf[0] = '\0';
     }
   return filename_buf;
 #endif /* LIBCAS_FOR_JSP */

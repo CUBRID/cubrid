@@ -71,7 +71,10 @@ make_proxy_log_filename (char *filepath_buf, size_t buf_size, const char *br_nam
 
   strcpy (dirname, shm_as_p->proxy_log_dir);
 
-  snprintf (filepath_buf, buf_size, "%s/%s_%d.log", dirname, br_name, proxy_index + 1);
+  if (snprintf (filepath_buf, buf_size, "%s/%s_%d.log", dirname, br_name, proxy_index + 1) < 0)
+    {
+      filepath_buf[0] = '\0';
+    }
   return filepath_buf;
 }
 
