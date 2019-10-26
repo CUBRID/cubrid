@@ -526,9 +526,15 @@ tzc_build_filepath (char *path, size_t size, const char *dir, const char *filena
   assert (filename != NULL);
 
 #if !defined(WINDOWS)
-  snprintf (path, size - 1, "%s/%s", dir, filename);
+  if (snprintf (path, size - 1, "%s/%s", dir, filename) < 0)
+    {
+      assert_release (false);
+    }
 #else
-  snprintf (path, size - 1, "%s\\%s", dir, filename);
+  if (snprintf (path, size - 1, "%s\\%s", dir, filename) < 0)
+    {
+      assert_release (false);
+    }
 #endif
 }
 
