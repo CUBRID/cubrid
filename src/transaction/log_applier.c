@@ -7647,7 +7647,7 @@ la_create_repl_filter (void)
       class_ = locator_find_class (classname);
       if (class_ == NULL)
 	{
-	  ret = snprintf (error_msg, LINE_MAX - 1, "cannot find table [%s] listed in %s", buffer, filter_file);
+	  snprintf_dots_truncate (error_msg, LINE_MAX - 1, "cannot find table [%s] listed in %s", buffer, filter_file);
 	  er_stack_push ();
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_REPL_FILTER_GENERIC, 1, error_msg);
 	  er_stack_pop ();
