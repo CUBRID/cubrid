@@ -2343,6 +2343,11 @@ int
 numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer)
 {
   DB_NUMERIC zero_scale_numeric, numeric_rem, numeric_tmp;
+
+  zero_scale_numeric.d.buf[0] = '\0';
+  numeric_rem.d.buf[0] = '\0';
+  numeric_tmp.d.buf[0] = '\0';
+
   DB_C_NUMERIC zero_scale_arg = zero_scale_numeric.d.buf;
   DB_C_NUMERIC rem = numeric_rem.d.buf;
   DB_C_NUMERIC tmp = numeric_tmp.d.buf;

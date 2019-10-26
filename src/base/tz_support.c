@@ -1189,7 +1189,7 @@ tz_str_timezone_decode (const char *tz_str, const int tz_str_size, TZ_DECODE_INF
     }
   else
     {
-      const char *dst_str, *dst_str_end, *reg_str_end;
+      const char *dst_str = NULL, *dst_str_end = NULL, *reg_str_end = NULL;
       /* zone plus optional DST */
       reg_str_end = zone_str;
       while (reg_str_end < tz_str_end && !char_isspace (*reg_str_end))

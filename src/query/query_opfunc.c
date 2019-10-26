@@ -8653,7 +8653,7 @@ qdata_apply_interpolation_function_coercion (DB_VALUE * f_value, tp_domain ** re
 					     FUNC_TYPE function)
 {
   DB_TYPE type;
-  double d_result;
+  double d_result = 0;
   int error = NO_ERROR;
 
   assert (f_value != NULL && result_dom != NULL && result != NULL);
