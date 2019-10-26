@@ -36,6 +36,7 @@
 #include <unistd.h>
 #endif
 
+#include "broker_admin_pub.h"
 #include "broker_filename.h"
 #include "environment_variable.h"
 #include "error_manager.h"
@@ -70,7 +71,7 @@ static T_CUBRID_FILE_INFO cubrid_file[NUM_CUBRID_FILE] = {
 
 static bool broker_Wformat_truncate = false;
 #define SUPPRESS_WFORMAT_TRUNCATE(expr) \
-  if ((expr) < 0) er_log_debug (ARG_FILE_LINE, "truncated path")
+  if ((expr) < 0) admin_err_snprintf ("truncated path")
 #define broker_snprintf(...) SUPPRESS_WFORMAT_TRUNCATE (snprintf (__VA_ARGS__))
 
 void
