@@ -910,7 +910,7 @@ tz_print_tz_offset (char *result, int tz_offset)
       if (snprintf (result, out_len + 1, "%c%02d:%02d", sign, off_hour, off_min) < 0)
 	{
 	  assert (false);
-	  result ER_FAILED;
+	  return ER_FAILED;
 	}
     }
   else
@@ -918,7 +918,7 @@ tz_print_tz_offset (char *result, int tz_offset)
       if (snprintf (result, out_len + 1, "%c%02d:%02d:%02d", sign, off_hour, off_min, off_sec) < 0)
 	{
 	  assert (false);
-	  result ER_FAILED;
+	  return ER_FAILED;
 	}
     }
   (result)[out_len] = '\0';
