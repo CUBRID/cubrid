@@ -270,7 +270,11 @@ cas_log_backup (T_CUBRID_FILE_ID fid)
       return;
     }
 
-  snprintf (backup_filepath, BROKER_PATH_MAX, "%s.bak", filepath);
+  if (snprintf (backup_filepath, BROKER_PATH_MAX, "%s.bak", filepath) < 0)
+    {
+      assert (false);
+      return;
+    }
   cas_unlink (backup_filepath);
   cas_rename (filepath, backup_filepath);
 }
