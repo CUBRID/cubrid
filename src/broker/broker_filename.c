@@ -68,7 +68,7 @@ static T_CUBRID_FILE_INFO cubrid_file[NUM_CUBRID_FILE] = {
 
 static bool broker_Wformat_truncate = false;
 #define SUPPRESS_WFORMAT_TRUNCATE(expr) \
-  if ((expr) < 0) broker_Wformat_truncate = true
+  if ((expr) < 0) er_log_debug (ARG_FILE_LINE, "truncated path")
 #define broker_snprintf(...) SUPPRESS_WFORMAT_TRUNCATE (snprintf (__VA_ARGS__))
 
 void
