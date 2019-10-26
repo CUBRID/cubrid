@@ -14,6 +14,7 @@
 #include "cas_cci.h"
 #include "cci_applier.h"
 #include "log_applier.h"
+#include "porting.h"
 
 #define free_and_init(ptr) \
         do { \
@@ -747,7 +748,7 @@ open_sample_file (void)
 	  < 0)
 	{
 	  assert (false);
-	  return ER_CA_FAILED;
+	  return NULL;
 	}
 
       fp = fopen (cur_sample_file_path, "a");

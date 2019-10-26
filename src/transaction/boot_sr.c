@@ -1657,8 +1657,11 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   /*
    * Compose the full name of the database
    */
-  snprintf (boot_Db_full_name, sizeof (boot_Db_full_name), "%s%c%s", db_pathbuf, PATH_SEPARATOR,
-	    client_credential->get_db_name ());
+  if (snprintf (boot_Db_full_name, sizeof (boot_Db_full_name), "%s%c%s", db_pathbuf, PATH_SEPARATOR,
+		client_credential->get_db_name ()) < 0)
+    {
+      assert_release (false);
+    }
 
   /*
    * Initialize error structure, critical section, slotted page, heap, and
