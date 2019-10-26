@@ -123,6 +123,9 @@ extern char *realpath (const char *path, char *resolved_path);
 #define mkdir(dir, mode)        _mkdir(dir)
 #define getpid()                _getpid()
 #define snprintf                    _sprintf_p
+#define snprintf_dots_truncate(dest, max_len, ...) \
+  if (snprintf (dest, max_len, __VA_ARGS__) < 0) \
+    snprintf (dest + max_len - 3, 3, "...")
 #define strcasecmp(str1, str2)      _stricmp(str1, str2)
 #define strncasecmp(str1, str2, size)     _strnicmp(str1, str2, size)
 #define lseek(fd, offset, origin)   _lseeki64(fd, offset, origin)
