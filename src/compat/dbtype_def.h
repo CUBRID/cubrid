@@ -1151,8 +1151,11 @@ extern "C"
   typedef float DB_C_FLOAT;
   typedef double DB_C_DOUBLE;
   typedef char *DB_C_CHAR;
+  typedef const char *DB_CONST_C_CHAR;
   typedef char *DB_C_NCHAR;
+  typedef const char *DB_CONST_C_NCHAR;
   typedef char *DB_C_BIT;
+  typedef const char *DB_CONST_C_BIT;
   typedef DB_OBJECT DB_C_OBJECT;
   typedef DB_COLLECTION DB_C_SET;
   typedef DB_COLLECTION DB_C_COLLECTION;

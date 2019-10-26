@@ -4736,7 +4736,7 @@ tz_timezones_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg
 	  goto exit_on_error;
 	}
       /* Geographic timezone name */
-      db_make_string_by_const_str (&vals[0], tzd->names[i].name);
+      db_make_string (&vals[0], tzd->names[i].name);
     }
 
   *ptr = ctx;
@@ -4821,7 +4821,7 @@ tz_full_timezones_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE *
 	  goto exit_on_error;
 	}
       /* Geographic timezone name */
-      db_make_string_by_const_str (&vals[idx++], tzd->names[i].name);
+      db_make_string (&vals[idx++], tzd->names[i].name);
 
       /* First get the zone id */
       zone_id = i;

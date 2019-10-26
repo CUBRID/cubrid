@@ -2607,7 +2607,6 @@ css_user_access_status_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE *
       db_make_datetime (&vals[1], &access_time);
 
       db_make_string_copy (&vals[2], access_status->host);
-
       db_make_string_copy (&vals[3], access_status->program_name);
     }
 #endif /* SERVER_MODE */
@@ -2797,7 +2796,6 @@ css_make_access_status_exist_user (THREAD_ENTRY * thread_p, OID * class_oid, LAS
 	  db_make_datetime (&vals[1], &access_time);
 
 	  db_make_string_copy (&vals[2], access_status->host);
-
 	  db_make_string_copy (&vals[3], access_status->program_name);
 	}
       else

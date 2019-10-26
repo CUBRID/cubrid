@@ -685,9 +685,8 @@ catcls_find_oid_by_class_name (THREAD_ENTRY * thread_p, const char *name_p, OID 
   DB_VALUE key_val;
   int error = NO_ERROR;
 
-  error =
-    db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, (char *) name_p, (int) strlen (name_p), LANG_SYS_CODESET,
-		     LANG_SYS_COLLATION);
+  error = db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, name_p, (int) strlen (name_p), LANG_SYS_CODESET,
+			   LANG_SYS_COLLATION);
   if (error != NO_ERROR)
     {
       return error;

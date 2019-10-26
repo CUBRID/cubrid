@@ -23340,7 +23340,7 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 
   /*  Here we check only the classname because this is the last field to be populated by other possible concurrent
    *  inserters. This means that if this field is already set by someone else, then the entry data is already
-   *  mature so we don't need to add data again. 
+   *  mature so we don't need to add data again.
    */
   if (entry->classname == NULL)
     {

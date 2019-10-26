@@ -5734,19 +5734,19 @@ make_desired_string_db_value (DB_TYPE desired_type, const TP_DOMAIN * desired_do
   switch (desired_type)
     {
     case DB_TYPE_CHAR:
-      db_make_char (&temp, desired_domain->precision, (DB_C_CHAR) new_string, strlen (new_string),
+      db_make_char (&temp, desired_domain->precision, new_string, strlen (new_string),
 		    TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
       break;
     case DB_TYPE_NCHAR:
-      db_make_nchar (&temp, desired_domain->precision, (DB_C_NCHAR) new_string, strlen (new_string),
+      db_make_nchar (&temp, desired_domain->precision, new_string, strlen (new_string),
 		     TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
       break;
     case DB_TYPE_VARCHAR:
-      db_make_varchar (&temp, desired_domain->precision, (DB_C_CHAR) new_string, strlen (new_string),
+      db_make_varchar (&temp, desired_domain->precision, new_string, strlen (new_string),
 		       TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
       break;
     case DB_TYPE_VARNCHAR:
-      db_make_varnchar (&temp, desired_domain->precision, (DB_C_NCHAR) new_string, strlen (new_string),
+      db_make_varnchar (&temp, desired_domain->precision, new_string, strlen (new_string),
 			TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
       break;
     default:			/* Can't get here.  This just quiets the compiler */
@@ -7152,7 +7152,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	case DB_JSON_STRING:
 	  {
 	    const char *json_string = db_json_get_string_from_document (src_doc);
-	    db_make_string_by_const_str (&src_replacement, json_string);
+	    db_make_string (&src_replacement, json_string);
 	  }
 	  break;
 	default:

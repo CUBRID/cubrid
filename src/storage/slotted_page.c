@@ -151,6 +151,7 @@ static LF_ENTRY_DESCRIPTOR spage_Saving_entry_descriptor = {
 // *INDENT-OFF*
 using spage_saving_hashmap_type = cubthread::lockfree_hashmap<VPID, spage_save_head>;
 // *INDENT-ON*
+
 static spage_saving_hashmap_type spage_Saving_hashmap;
 
 /* context for slotted page header scan */
@@ -5008,10 +5009,10 @@ spage_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_val
   db_make_int (out_values[idx], header->num_records);
   idx++;
 
-  db_make_string_by_const_str (out_values[idx], spage_anchor_flag_string (header->anchor_type));
+  db_make_string (out_values[idx], spage_anchor_flag_string (header->anchor_type));
   idx++;
 
-  db_make_string_by_const_str (out_values[idx], spage_alignment_string (header->alignment));
+  db_make_string (out_values[idx], spage_alignment_string (header->alignment));
   idx++;
 
   db_make_int (out_values[idx], header->total_free);
@@ -5196,7 +5197,7 @@ spage_slots_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
   db_make_int (out_values[idx], ctx->slot->offset_to_record);
   idx++;
 
-  db_make_string_by_const_str (out_values[idx], spage_record_type_string (ctx->slot->record_type));
+  db_make_string (out_values[idx], spage_record_type_string (ctx->slot->record_type));
   idx++;
 
   db_make_int (out_values[idx], ctx->slot->record_length);
