@@ -38,6 +38,8 @@
 
 #include "broker_filename.h"
 #include "environment_variable.h"
+#include "error_manager.h"
+#include "system_parameter.h"
 
 static char cubrid_Dir[BROKER_PATH_MAX] = "";
 
