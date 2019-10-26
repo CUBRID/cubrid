@@ -53,7 +53,7 @@ STATIC_INLINE DB_C_CHAR db_get_char (const DB_VALUE * value, int *length) __attr
 STATIC_INLINE DB_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_get_string_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE unsigned short db_get_enum_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_C_CHAR db_get_enum_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_CONST_C_CHAR db_get_enum_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_get_enum_string_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_CHAR db_get_method_error_msg (void) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_RESULTSET db_get_resultset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -761,7 +761,7 @@ db_get_enum_short (const DB_VALUE * value)
  * return :
  * value(in):
  */
-char *
+const char *
 db_get_enum_string (const DB_VALUE * value)
 {
 #if defined (API_ACTIVE_CHECKS)
@@ -772,7 +772,7 @@ db_get_enum_string (const DB_VALUE * value)
     {
       return NULL;
     }
-  return value->data.enumeration.str_val.medium.buf;
+  return value->data.enumeration.str_val.medium.cbuf;
 }
 
 /*

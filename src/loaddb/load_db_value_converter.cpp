@@ -402,7 +402,7 @@ namespace cubload
     error = db_value_domain_init (val, type, char_count, 0);
     if (error == NO_ERROR)
       {
-	error = db_make_db_char (val, codeset, domain.collation_id, const_cast<char *> (str), str_len);
+	error = db_make_db_char (val, codeset, domain.collation_id, str, str_len);
       }
 
     return error;
@@ -433,7 +433,7 @@ namespace cubload
   int
   to_db_string (const char *str, const attribute *attr, db_value *val)
   {
-    return db_make_string (val, const_cast<char *> (str));
+    return db_make_string (val, str);
   }
 
   int

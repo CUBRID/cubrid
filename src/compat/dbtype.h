@@ -101,7 +101,7 @@
 #define DB_GET_ENUM_ELEM_DBCHAR(elem) \
       ((elem)->str_val)
 #define DB_GET_ENUM_ELEM_STRING(elem) \
-      ((elem)->str_val.medium.buf)
+      ((elem)->str_val.medium.cbuf)
 #define DB_GET_ENUM_ELEM_STRING_SIZE(elem) \
       ((elem)->str_val.medium.size)
 

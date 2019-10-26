@@ -2057,10 +2057,10 @@ pr_clear_value (DB_VALUE * value)
     case DB_TYPE_ENUMERATION:
       if (value->need_clear)
 	{
-	  char *temp = db_get_enum_string (value);
+	  const char *temp = db_get_enum_string (value);
 	  if (temp != NULL)
 	    {
-	      db_private_free_and_init (NULL, temp);
+	      // db_private_free_and_init (NULL, temp); TODO fix-Wwrite-strings
 	    }
 	}
       db_make_enumeration (value, 0, NULL, 0, db_get_enum_codeset (value), db_get_enum_collation (value));
@@ -9752,7 +9752,7 @@ int
 pr_complete_enum_value (DB_VALUE * value, struct tp_domain *domain)
 {
   unsigned short short_val;
-  char *str_val;
+  const char *str_val;
   int enum_count, str_val_size, idx;
   DB_ENUM_ELEMENT *db_elem = 0;
 
@@ -9788,13 +9788,15 @@ pr_complete_enum_value (DB_VALUE * value, struct tp_domain *domain)
       pr_clear_value (value);
 
       str_val_size = DB_GET_ENUM_ELEM_STRING_SIZE (db_elem);
-      str_val = (char *) db_private_alloc (NULL, str_val_size + 1);
-      if (str_val == NULL)
+      char *str_val_tmp = (char *) db_private_alloc (NULL, str_val_size + 1);
+      if (str_val_tmp == NULL)
 	{
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-      memcpy (str_val, DB_GET_ENUM_ELEM_STRING (db_elem), str_val_size);
-      str_val[str_val_size] = 0;
+      memcpy (str_val_tmp, DB_GET_ENUM_ELEM_STRING (db_elem), str_val_size);
+      str_val_tmp[str_val_size] = 0;
+      str_val = str_val_tmp;
+
       db_make_enumeration (value, short_val, str_val, str_val_size, DB_GET_ENUM_ELEM_CODESET (db_elem),
 			   db_get_enum_collation (value));
       value->need_clear = true;
@@ -15518,7 +15520,7 @@ mr_getmem_enumeration (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool cop
 static int
 mr_setval_enumeration (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
-  char *str = NULL;
+  const char *str = NULL;
   bool need_clear = false;
 
   if (src == NULL || DB_IS_NULL (src))
@@ -15530,15 +15532,16 @@ mr_setval_enumeration (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     {
       if (copy)
 	{
-	  str = (char *) db_private_alloc (NULL, db_get_enum_string_size (src) + 1);
-	  if (str == NULL)
+	  char *str_tmp = (char *) db_private_alloc (NULL, db_get_enum_string_size (src) + 1);
+	  if (str_tmp == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
-	  memcpy (str, db_get_enum_string (src), db_get_enum_string_size (src));
-	  str[db_get_enum_string_size (src)] = 0;
+	  memcpy (str_tmp, db_get_enum_string (src), db_get_enum_string_size (src));
+	  str_tmp[db_get_enum_string_size (src)] = 0;
 	  need_clear = true;
+	  str = str_tmp;
 	}
       else
 	{
@@ -15594,7 +15597,7 @@ mr_setval_enumeration_internal (DB_VALUE * value, TP_DOMAIN * domain, unsigned s
 {
   bool need_clear = false;
   int str_size;
-  char *str;
+  const char *str = NULL;
   DB_ENUM_ELEMENT *db_elem = NULL;
 
   if (domain == NULL || DOM_GET_ENUM_ELEMS_COUNT (domain) == 0 || index == 0 || index == DB_ENUM_OVERFLOW_VAL)
@@ -15618,23 +15621,27 @@ mr_setval_enumeration_internal (DB_VALUE * value, TP_DOMAIN * domain, unsigned s
     }
   else
     {
+      char *str_tmp = NULL;
       if (copy_buf && copy_buf_len >= str_size + 1)
 	{
 	  /* read buf image into the copy_buf */
-	  str = copy_buf;
+	  str_tmp = copy_buf;
 	  need_clear = false;
 	}
       else
 	{
-	  str = (char *) db_private_alloc (NULL, str_size + 1);
-	  if (str == NULL)
+	  str_tmp = (char *) db_private_alloc (NULL, str_size + 1);
+	  if (str_tmp == NULL)
 	    {
 	      return ER_FAILED;
 	    }
 	  need_clear = true;
 	}
-      memcpy (str, DB_GET_ENUM_ELEM_STRING (db_elem), str_size);
-      str[str_size] = 0;
+
+      memcpy (str_tmp, DB_GET_ENUM_ELEM_STRING (db_elem), str_size);
+      str_tmp[str_size] = 0;
+
+      str = str_tmp;
     }
 
   db_make_enumeration (value, index, str, str_size, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));

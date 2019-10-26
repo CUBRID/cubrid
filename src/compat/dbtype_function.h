@@ -340,7 +340,7 @@ extern "C"
   extern DB_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length);
   extern int db_get_string_size (const DB_VALUE * value);
   extern unsigned short db_get_enum_short (const DB_VALUE * value);
-  extern DB_C_CHAR db_get_enum_string (const DB_VALUE * value);
+  extern DB_CONST_C_CHAR db_get_enum_string (const DB_VALUE * value);
   extern int db_get_enum_string_size (const DB_VALUE * value);
   extern DB_C_CHAR db_get_method_error_msg (void);
   extern DB_RESULTSET db_get_resultset (const DB_VALUE * value);

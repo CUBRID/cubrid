@@ -4264,7 +4264,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
   else if (vtype == DB_TYPE_ENUMERATION)
     {
       int val_idx, dom_size, val_size;
-      char *dom_str = NULL, *val_str = NULL;
+      const char *dom_str = NULL, *val_str = NULL;
 
       if (db_get_enum_short (value) == 0 && db_get_enum_string (value) != NULL)
 	{
