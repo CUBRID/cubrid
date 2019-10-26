@@ -69,9 +69,8 @@ static T_CUBRID_FILE_INFO cubrid_file[NUM_CUBRID_FILE] = {
   {FID_SHARD_PROXY_LOG_DIR, ""}
 };
 
-static bool broker_Wformat_truncate = false;
 #define SUPPRESS_WFORMAT_TRUNCATE(expr) \
-  if ((expr) < 0) admin_err_snprintf ("truncated path")
+  if ((expr) < 0) sprintf (admin_err_msg,  "truncated path")
 #define broker_snprintf(...) SUPPRESS_WFORMAT_TRUNCATE (snprintf (__VA_ARGS__))
 
 void

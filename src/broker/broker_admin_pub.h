@@ -58,10 +58,5 @@ int admin_acl_reload_cmd (int master_shm_id, const char *broker_name);
 void admin_init_env (void);
 
 extern char admin_err_msg[];
-const size_t ADMIN_ERR_BUFSIZE = sizeof (admin_err_msg) - 1;
-
-#define admin_err_snprintf(...) \
-  if (snprintf (admin_err_msg, ADMIN_ERR_BUFSIZE, __VA_ARGS__) < 0) \
-    snprintf (admin_err_msg + ADMIN_ERR_BUFSIZE - 3, 3, "...")
 
 #endif /* _BROKER_ADMIN_PUB_H_ */
