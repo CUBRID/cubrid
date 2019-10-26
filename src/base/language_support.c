@@ -1009,10 +1009,9 @@ set_current_locale (void)
       char err_msg[ERR_MSG_SIZE];
 
       lang_Init_w_error = true;
-      int ret = snprintf (err_msg, sizeof (err_msg) - 1, "Locale %s.%s was not loaded.\n"
-			  " %s not found in cubrid_locales.txt", lang_Lang_name,
-			  lang_get_codeset_name (lang_Loc_charset), lang_Lang_name);
-      (void) ret;		// suppress format-truncate warning
+      snprintf_dots_truncate (err_msg, sizeof (err_msg) - 1, "Locale %s.%s was not loaded.\n"
+			      " %s not found in cubrid_locales.txt", lang_Lang_name,
+			      lang_get_codeset_name (lang_Loc_charset), lang_Lang_name);
       LOG_LOCALE_ERROR (err_msg, ER_LOC_INIT, false);
       set_default_lang ();
     }
@@ -6655,8 +6654,8 @@ lang_split_key_binary (const LANG_COLLATION * lang_coll, const bool is_desc, con
 
 #define SHLIB_GET_ADDR(v, SYM_NAME, SYM_TYPE, lh, LOC_NAME)					\
   do {												\
-    int ret = snprintf (sym_name, LOC_LIB_SYMBOL_NAME_SIZE - 1, "" SYM_NAME "_%s", LOC_NAME);   \
-    (void) ret; /* suppress format-truncate warning */						\
+    if (snprintf (sym_name, LOC_LIB_SYMBOL_NAME_SIZE - 1, "" SYM_NAME "_%s", LOC_NAME) < 0)     \
+      goto error_loading_symbol;						                \
     v = (SYM_TYPE) GET_SYM_ADDR (lh, sym_name);							\
     if (v == NULL)										\
       {												\

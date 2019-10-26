@@ -3191,9 +3191,12 @@ run_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index)
       putenv (proxy_id_env_str);
 
 #if !defined(WINDOWS)
-      int ret = snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d", shm_appl->broker_name, proxy_exe_name,
-			  proxy_index + 1);
-      (void) ret;		// suppress format-truncate warning
+      if (snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d", shm_appl->broker_name, proxy_exe_name,
+		    proxy_index + 1) < 0)
+	{
+	  assert (false);
+	  exit (0);
+	}
 #endif /* !WINDOWS */
 
 #if defined(WINDOWS)
@@ -3281,8 +3284,11 @@ get_as_sql_log_filename (char *log_filename, int len, char *broker_name, T_APPL_
     {
       ret = snprintf (log_filename, BROKER_PATH_MAX - 1, "%s%s_%d.sql.log", dirname, broker_name, as_index + 1);
     }
-
-  (void) ret;			// suppress format-truncate warning
+  if (ret < 0)
+    {
+      // bad name
+      log_filename[0] = '\0';
+    }
 }
 
 static void
@@ -3302,6 +3308,9 @@ get_as_slow_log_filename (char *log_filename, int len, char *broker_name, T_APPL
     {
       ret = snprintf (log_filename, BROKER_PATH_MAX - 1, "%s%s_%d.slow.log", dirname, broker_name, as_index + 1);
     }
-
-  (void) ret;			// suppress format-truncate warning
+  if (ret < 0)
+    {
+      // bad name
+      log_filename[0] = '\0';
+    }
 }

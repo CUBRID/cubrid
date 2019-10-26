@@ -477,9 +477,8 @@ process_sql_log_file (FILE * fp, int conn)
 	  error = read_src_catalog ();
 	  if (error != ER_CA_NO_ERROR)
 	    {
-	      int ret = snprintf (err_msg, LINE_MAX - 1, "Failed to read applylogdb catalog: %s",
-				  applylogdb_catalog_path);
-	      (void) ret;	// suppress format-truncate warning
+	      snprintf_dots_truncate (err_msg, LINE_MAX - 1, "Failed to read applylogdb catalog: %s",
+				      applylogdb_catalog_path);
 	      er_log (error, NULL, err_msg);
 
 	      return error;
@@ -653,7 +652,6 @@ apply_sql_logs (int conn)
   char sql_log_path[PATH_MAX];
   char err_msg[LINE_MAX];
   int error = ER_CA_NO_ERROR;
-  int ret;
 
   /* read catalog info to find out the right log file to read */
   if (read_ca_catalog () != ER_CA_NO_ERROR)
@@ -671,12 +669,16 @@ apply_sql_logs (int conn)
 
   while (ca_Info.curr_file_id <= ca_Info.src_file_id)
     {
-      ret = snprintf (sql_log_path, PATH_MAX - 1, "%s.%d", base_log_path, ca_Info.curr_file_id);
+      if (snprintf (sql_log_path, PATH_MAX - 1, "%s.%d", base_log_path, ca_Info.curr_file_id) < 0)
+	{
+	  assert (false);
+	  return ER_CA_FAILED;
+	}
 
       sql_log_fp = fopen (sql_log_path, "r");
       if (sql_log_fp == NULL)
 	{
-	  ret = snprintf (err_msg, LINE_MAX - 1, "Could not find %s", sql_log_path);
+	  snprintf_dots_truncate (err_msg, LINE_MAX - 1, "Could not find %s", sql_log_path);
 	  er_log (ER_CA_FILE_IO, NULL, err_msg);
 
 	  return ER_CA_FILE_IO;
@@ -702,8 +704,8 @@ apply_sql_logs (int conn)
 	{
 	  if (error == ER_CA_DISCREPANT_INFO)
 	    {
-	      ret = snprintf (err_msg, LINE_MAX - 1, "Discrepant catalog info in either %s or %s",
-			      applylogdb_catalog_path, ca_catalog_path);
+	      snprintf_dots_truncate (err_msg, LINE_MAX - 1, "Discrepant catalog info in either %s or %s",
+				      applylogdb_catalog_path, ca_catalog_path);
 	      er_log (error, NULL, err_msg);
 	    }
 	  fclose (sql_log_fp);
@@ -720,8 +722,6 @@ apply_sql_logs (int conn)
 	    }
 	}
     }
-
-  (void) ret;			// suppress format-truncate warning
 
   /* cci_applier should always wait for more logs to be accumulated */
   assert (false);
@@ -740,17 +740,21 @@ open_sample_file (void)
   FILE *fp;
   char cur_sample_file_path[PATH_MAX];
   char err_msg[LINE_MAX];
-  int ret;
 
   do
     {
-      ret = snprintf (cur_sample_file_path, PATH_MAX - 1, "%s.%03d", sample_file_path_base, ca_Info.sample_file_count);
+      if (snprintf (cur_sample_file_path, PATH_MAX - 1, "%s.%03d", sample_file_path_base, ca_Info.sample_file_count)
+	  < 0)
+	{
+	  assert (false);
+	  return ER_CA_FAILED;
+	}
 
       fp = fopen (cur_sample_file_path, "a");
       if (fp == NULL)
 	{
-	  ret = snprintf (err_msg, LINE_MAX - 1, "Failed to open or create %s. Log sampling is disabled",
-			  cur_sample_file_path);
+	  snprintf_dots_truncate (err_msg, LINE_MAX - 1, "Failed to open or create %s. Log sampling is disabled",
+				  cur_sample_file_path);
 	  er_log (ER_CA_FAILED, NULL, err_msg);
 
 	  ca_Info.sampling_rate = 0;
@@ -764,8 +768,6 @@ open_sample_file (void)
 	}
     }
   while (fp == NULL && ca_Info.sampling_rate != 0);
-
-  (void) ret;			// suppress format-truncate warning
 
   return fp;
 }
