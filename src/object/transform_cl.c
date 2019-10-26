@@ -1514,8 +1514,8 @@ static char *
 get_string (OR_BUF * buf, int length)
 {
   DB_VALUE value;
-  char *string = NULL;
   DB_DOMAIN my_domain;
+  char *string = NULL;
 
   /*
    * Make sure this starts off initialized so "readval" won't try to free
@@ -1533,17 +1533,14 @@ get_string (OR_BUF * buf, int length)
   my_domain.collation_id = LANG_SYS_COLLATION;
   my_domain.collation_flag = TP_DOMAIN_COLL_NORMAL;
 
-  tp_VarNChar.data_readval (buf, &value, &my_domain, length, true, NULL, 0);
+  tp_VarNChar.data_readval (buf, &value, &my_domain, length, false, NULL, 0);
 
   if (DB_VALUE_TYPE (&value) == DB_TYPE_VARNCHAR)
     {
-      string = db_get_string (&value);
+      string = ws_copy_string (db_get_string (&value));
     }
-  else
-    {
-      /* not sure what's in it */
-      db_value_clear (&value);
-    }
+
+  db_value_clear (&value);
 
   return string;
 }
