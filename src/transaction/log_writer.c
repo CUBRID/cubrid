@@ -671,7 +671,7 @@ logwr_set_hdr_and_flush_info (void)
       /* If it gets only the header page, compares both of the headers. There is no update for the header information */
       LOG_HEADER hdr;
       log_pgptr = (LOG_PAGE *) logwr_Gl.logpg_area;
-      memcpy (&logwr_Gl.hdr, log_pgptr->area, sizeof (LOG_HEADER));
+      memcpy (&hdr, log_pgptr->area, sizeof (LOG_HEADER));
 
       if (hdr.ha_server_state != HA_SERVER_STATE_ACTIVE && hdr.ha_server_state != HA_SERVER_STATE_TO_BE_ACTIVE
 	  && hdr.ha_server_state != HA_SERVER_STATE_TO_BE_STANDBY
@@ -1495,7 +1495,7 @@ logwr_copy_log_header_check (const char *db_name, bool verbose, LOG_LSA * master
     {
 
       loghdr_pgptr = (LOG_PAGE *) logpg_area;
-      memcpy (&logwr_Gl.hdr, loghdr_pgptr->area, sizeof (LOG_HEADER));
+      memcpy (&hdr, loghdr_pgptr->area, sizeof (LOG_HEADER));
 
       *master_eof_lsa = hdr.eof_lsa;
 
