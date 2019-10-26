@@ -171,7 +171,8 @@ object_disk_size (DESC_OBJ * obj, int *offset_size_ptr)
 {
   SM_ATTRIBUTE *att;
   SM_CLASS *class_;
-  int a, size, i;
+  int a, i;
+  volatile int size;
 
   *offset_size_ptr = OR_BYTE_SIZE;
 
@@ -928,7 +929,7 @@ abort_on_error:
 int
 desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * obj)
 {
-  int error = NO_ERROR;
+  volatile int error = NO_ERROR;
   OR_BUF orep, *buf;
   int repid, status;
   unsigned int repid_bits;

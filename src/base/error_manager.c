@@ -447,7 +447,7 @@ er_event (void)
 static int
 er_event_init (void)
 {
-  int error = NO_ERROR;
+  volatile int error = NO_ERROR;
   const char *msg;
 
 #if !defined(WINDOWS)
