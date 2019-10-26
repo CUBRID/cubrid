@@ -980,15 +980,35 @@ set_file_path (CA_CON_INFO * con_info, char *repl_log_path)
 {
   assert (repl_log_path != NULL && repl_log_path[0] != '\0');
 
-  snprintf (err_file_path, PATH_MAX, "%s@%s_%s.err", con_info->db_name, con_info->hostname, PROG_NAME);
-  snprintf (ca_catalog_path, PATH_MAX, "%s@%s_%s.sql.info", con_info->db_name, con_info->hostname, PROG_NAME);
-  snprintf (base_log_path, PATH_MAX, "%s/sql_log/%s.sql.log", repl_log_path, basename (repl_log_path));
-  snprintf (applylogdb_catalog_path, PATH_MAX, "%s/%s_applylogdb.sql.info", repl_log_path, con_info->db_name);
+  if (snprintf (err_file_path, PATH_MAX, "%s@%s_%s.err", con_info->db_name, con_info->hostname, PROG_NAME) < 0)
+    {
+      assert (false);
+      err_file_path[0] = '\0';
+    }
+  if (snprintf (ca_catalog_path, PATH_MAX, "%s@%s_%s.sql.info", con_info->db_name, con_info->hostname, PROG_NAME) < 0)
+    {
+      assert (false);
+      ca_catalog_path[0] = '\0';
+    }
+  if (snprintf (base_log_path, PATH_MAX, "%s/sql_log/%s.sql.log", repl_log_path, basename (repl_log_path)) < 0)
+    {
+      assert (false);
+      base_log_path[0] = '\0';
+    }
+  if (snprintf (applylogdb_catalog_path, PATH_MAX, "%s/%s_applylogdb.sql.info", repl_log_path, con_info->db_name) < 0)
+    {
+      assert (false);
+      applylogdb_catalog_path[0] = '\0';
+    }
 
   if (ca_Info.sampling_rate > 0)
     {
-      snprintf (sample_file_path_base, PATH_MAX, "%s@%s_%s.sql.sample", con_info->db_name, con_info->hostname,
-		PROG_NAME);
+      if (snprintf (sample_file_path_base, PATH_MAX, "%s@%s_%s.sql.sample", con_info->db_name, con_info->hostname,
+		    PROG_NAME) < 0)
+	{
+	  assert (false);
+	  sample_file_path_base[0] = '\0';
+	}
     }
 
   return;

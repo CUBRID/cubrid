@@ -4825,7 +4825,7 @@ tzc_log_error (const TZ_RAW_CONTEXT * context, const int code, const char *msg1,
   strcat (err_msg, err_msg_temp);
 
   *err_msg_temp = '\0';
-  snprintf (err_msg_temp, sizeof (err_msg_temp), tzc_Err_messages[-code], msg1, msg2);
+  snprintf_dots_truncate (err_msg_temp, sizeof (err_msg_temp), tzc_Err_messages[-code], msg1, msg2);
   strcat (err_msg, err_msg_temp);
   strcat (err_msg, "\n");
 
