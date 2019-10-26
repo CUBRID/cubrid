@@ -38,6 +38,7 @@
 
 #include "query_manager.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "scan_manager.h"
 #include "show_scan.h"
 

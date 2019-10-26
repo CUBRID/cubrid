@@ -28,7 +28,7 @@
 
 #ident "$Id$"
 
-#include "object_representation.h"
+#include "object_representation_constants.h"
 #include "oid.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"

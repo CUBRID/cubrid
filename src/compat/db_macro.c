@@ -49,6 +49,7 @@
 #include "db_set_function.h"
 #include "numeric_opfunc.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "db_json.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)

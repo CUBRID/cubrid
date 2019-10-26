@@ -39,6 +39,7 @@
 #include "dbtype_def.h"
 #include "elo.h"
 #include "object_domain.h"
+#include "oid.h"
 #include "language_support.h"
 #include "intl_support.h"
 #include "memory_alloc.h"
@@ -225,6 +226,8 @@ extern "C"
   extern bool db_value_is_corrupted (const DB_VALUE * value);
 
   extern int db_json_val_from_str (const char *raw_str, const int str_size, DB_VALUE * json_val);
+
+  extern DB_TYPE setobj_type (struct setobj *set);
 
 /* Use the inline version of the functions. */
 #include "dbtype_function.i"

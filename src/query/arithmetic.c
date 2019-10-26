@@ -36,6 +36,7 @@
 #include "memory_reference_store.hpp"
 #include "numeric_opfunc.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "string_opfunc.h"
 #include "tz_support.h"
 

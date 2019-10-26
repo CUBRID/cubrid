@@ -44,6 +44,7 @@
 #include "fetch.h"
 #include "dbtype.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "list_file.h"
 #include "extendible_hash.h"
 #include "xasl_cache.h"

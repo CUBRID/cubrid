@@ -6905,18 +6905,21 @@ const char *
 au_get_user_name (MOP obj)
 {
   DB_VALUE value;
-  int error;
+  db_make_null (&value);
   const char *name = NULL;
 
-  error = obj_get (obj, "name", &value);
+  int error = obj_get (obj, "name", &value);
   if (error == NO_ERROR)
     {
       if (IS_STRING (&value) && !DB_IS_NULL (&value) && db_get_string (&value) != NULL)
 	{
-	  name = db_get_string (&value);
+	  name = ws_copy_string (db_get_string (&value));
 	}
     }
-  return (name);
+
+  db_value_clear (&value);
+
+  return name;
 }
 
 

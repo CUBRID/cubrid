@@ -99,6 +99,7 @@ extern int yybuffer_pos;
 #include <ctype.h>
 #include <math.h>
 #include <errno.h>
+#include <float.h>
 
 #include "chartype.h"
 #include "parser.h"

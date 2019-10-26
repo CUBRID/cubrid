@@ -40,6 +40,7 @@
 #include "system_parameter.h"
 #include "storage_common.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "arithmetic.h"
 #include "serial.h"
 #include "session.h"

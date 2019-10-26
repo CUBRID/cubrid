@@ -396,8 +396,12 @@ log_2pc_make_global_tran_id (TRANID tranid)
 
 
   /* FOLD the TRANSACTION IDENTIFIER INTO TWO */
-  hash = *(unsigned short *) &tranid;
-  hash = (hash << 5) - hash + *((unsigned short *) &tranid + 1);
+  unsigned short ushort_one;
+  unsigned short ushort_two;
+  memcpy (&ushort_one, &tranid, sizeof (unsigned short));
+  memcpy (&ushort_two, (char *) (&tranid) + sizeof (unsigned short), sizeof (unsigned short));
+  hash = ushort_one;
+  hash = (hash << 5) - hash + ushort_two;
 
   /* Don't use more than two byte */
   unsig_gtrid = (unsig_gtrid << 16) + (hash % SHRT_MAX);

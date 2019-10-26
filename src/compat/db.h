@@ -33,7 +33,6 @@
 #include "error_manager.h"
 #include "intl_support.h"
 #include "db_date.h"
-#include "object_representation.h"
 #include "object_domain.h"
 #if !defined(SERVER_MODE)
 #include "trigger_manager.h"

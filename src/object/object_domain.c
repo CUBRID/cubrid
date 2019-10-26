@@ -38,6 +38,7 @@
 #include "area_alloc.h"
 #include "object_domain.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "numeric_opfunc.h"
 #include "tz_support.h"
 #include "db_date.h"

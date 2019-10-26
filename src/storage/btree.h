@@ -45,8 +45,10 @@
 #include "storage_common.h"
 
 // forward definition
-struct key_val_range;
 class btree_unique_stats;
+struct key_val_range;
+struct or_buf;
+typedef struct or_buf OR_BUF;
 
 #define SINGLE_ROW_INSERT    1
 #define SINGLE_ROW_DELETE    2
