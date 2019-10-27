@@ -810,6 +810,14 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, i
 	}
     }
 
+  if (new_node->node_type == PT_JSON_TABLE_COLUMN)
+    {
+      PT_JSON_TABLE_COLUMN_INFO *old_col = &old_node->info.json_table_column_info;
+      PT_JSON_TABLE_COLUMN_INFO *new_col = &new_node->info.json_table_column_info;
+      new_col->on_empty.m_default_value = db_value_copy (old_col->on_empty.m_default_value);
+      new_col->on_error.m_default_value = db_value_copy (old_col->on_error.m_default_value);
+    }
+
   new_node->parser_id = parser->id;
 
   /* handle CTE copy so that the CTE pointers will be updated to point to new_node */
