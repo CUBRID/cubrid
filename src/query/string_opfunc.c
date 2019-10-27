@@ -693,9 +693,8 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
 	    }
 	  result[result_size] = 0;
 	  db_value_domain_init (db_result, result_type, precision, 0);
-	  // TODO -Wwrite-strings
-	  //error_status = db_make_db_char (db_result, codeset, collation_id, result,
-	  //(result_type == DB_TYPE_VARBIT ? num_bits : result_size));
+	  error_status = db_make_db_char (db_result, codeset, collation_id, REINTERPRET_CAST (char *, result),
+					  (result_type == DB_TYPE_VARBIT ? num_bits : result_size));
 	  db_result->need_clear = true;
 	}
       else

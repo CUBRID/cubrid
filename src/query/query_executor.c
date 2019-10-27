@@ -15383,8 +15383,8 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 			}
 
 		      /* set parent tuple position pseudocolumn value */
-		      // TODO -Wwrite-strings
-		      // db_make_bit (parent_pos_valp, DB_DEFAULT_PRECISION, &parent_pos, sizeof (parent_pos) * 8);
+		      db_make_bit (parent_pos_valp, DB_DEFAULT_PRECISION, REINTERPRET_CAST (DB_C_BIT, &parent_pos),
+				   sizeof (parent_pos) * 8);
 
 		      parent_tuple_added = true;
 		    }
@@ -16892,9 +16892,8 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID *
 	  if (level > 1)
 	    {
 	      /* set parent position pseudocolumn value */
-	      // TODO -Wwrite-strings
-	      //db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, &pos_info_p->tpl_pos,
-	      //sizeof (pos_info_p->tpl_pos) * 8);
+	      db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, REINTERPRET_CAST (DB_C_BIT, &pos_info_p->tpl_pos),
+			   sizeof (pos_info_p->tpl_pos) * 8);
 
 	      if (qfile_set_tuple_column_value (thread_p, list_id_p, s_id.curr_pgptr, &s_id.curr_vpid, tuple_rec.tpl,
 						(list_id_p->type_list.type_cnt - PCOL_PARENTPOS_TUPLE_OFFSET),
@@ -16924,8 +16923,8 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID *
 
 	  qfile_save_current_scan_tuple_position (&prev_s_id, &pos_info_p->tpl_pos);
 
-	  // TODO -Wwrite-strings
-	  //db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, &pos_info_p->tpl_pos, sizeof (pos_info_p->tpl_pos) * 8);
+	  db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, REINTERPRET_CAST (DB_C_BIT, &pos_info_p->tpl_pos),
+		       sizeof (pos_info_p->tpl_pos) * 8);
 
 	  if (qfile_set_tuple_column_value (thread_p, list_id_p, s_id.curr_pgptr, &s_id.curr_vpid, tuple_rec.tpl,
 					    (list_id_p->type_list.type_cnt - PCOL_PARENTPOS_TUPLE_OFFSET),
@@ -16959,9 +16958,8 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID *
 
 	  if (level > 1)
 	    {
-	      // TODO -Wwrite-strings
-	      //db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, &pos_info_p->tpl_pos,
-	      //sizeof (pos_info_p->tpl_pos) * 8);
+	      db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, REINTERPRET_CAST (DB_C_BIT, &pos_info_p->tpl_pos),
+			   sizeof (pos_info_p->tpl_pos) * 8);
 
 	      if (qfile_set_tuple_column_value (thread_p, list_id_p, s_id.curr_pgptr, &s_id.curr_vpid, tuple_rec.tpl,
 						(list_id_p->type_list.type_cnt - PCOL_PARENTPOS_TUPLE_OFFSET),

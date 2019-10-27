@@ -4913,9 +4913,8 @@ valcnv_convert_value_to_string (DB_VALUE * value_p)
 	  return ER_FAILED;
 	}
 
-      // TODO -Wwrite-strings
-      //db_make_varchar (&src_value, DB_MAX_STRING_LENGTH, buf_p->bytes, CAST_STRLEN (buf_p->length), LANG_SYS_CODESET,
-      // LANG_SYS_COLLATION);
+      db_make_varchar (&src_value, DB_MAX_STRING_LENGTH, REINTERPRET_CAST (char *, buf_p->bytes),
+		       CAST_STRLEN (buf_p->length), LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
       pr_clear_value (value_p);
       tp_String.setval (value_p, &src_value, true);
