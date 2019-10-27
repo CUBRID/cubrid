@@ -11098,7 +11098,7 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 	}
     }
 
-  if (string1 == NULL || string2 == NULL || db_get_string_codeset (value1) != db_get_string_codeset (value1))
+  if (string1 == NULL || string2 == NULL || db_get_string_codeset (value1) != db_get_string_codeset (value2))
     {
       return DB_UNK;
     }
@@ -11947,7 +11947,7 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 	}
     }
 
-  if (string1 == NULL || string2 == NULL || db_get_string_codeset (value1) != db_get_string_codeset (value1))
+  if (string1 == NULL || string2 == NULL || db_get_string_codeset (value1) != db_get_string_codeset (value2))
     {
       return DB_UNK;
     }
@@ -13969,7 +13969,7 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
   string1 = (unsigned char *) db_get_string (value1);
   string2 = (unsigned char *) db_get_string (value2);
 
-  if (string1 == NULL || string2 == NULL || db_get_string_codeset (value1) != db_get_string_codeset (value1))
+  if (string1 == NULL || string2 == NULL || db_get_string_codeset (value1) != db_get_string_codeset (value2))
     {
       return DB_UNK;
     }
