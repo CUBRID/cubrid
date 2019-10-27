@@ -677,11 +677,12 @@ namespace cubload
   {
     string_type *str = reinterpret_cast<string_type *> (cons->val);
     char *token = str != NULL ? str->val : NULL;
+    size_t str_size = str != NULL ? str->size : 0;
 
     db_value &db_val = get_attribute_db_value (attr.get_index ());
     conv_func &func = get_conv_func (cons->type, attr.get_domain ().type->get_id ());
 
-    int error_code = func (token, &attr, &db_val);
+    int error_code = func (token, str_size, &attr, &db_val);
     if (error_code == ER_DATE_CONVERSION)
       {
 	m_error_handler.log_date_time_conversion_error (token, pr_type_name (attr.get_domain ().type->get_id ()));
@@ -716,7 +717,7 @@ namespace cubload
     db_value &db_val = get_attribute_db_value (attr.get_index ());
     conv_func &func = get_conv_func (cons->type, attr.get_domain ().type->get_id ());
 
-    error_code = func (full_mon_str_p, &attr, &db_val);
+    error_code = func (full_mon_str_p, full_mon_str_len, &attr, &db_val);
     if (error_code != NO_ERROR)
       {
 	return error_code;

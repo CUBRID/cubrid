@@ -47,36 +47,36 @@ const std::size_t MAX_DIGITS_FOR_BIGINT = 19; // default for 64 bit signed big i
 namespace cubload
 {
   // TODO CBRD-21654 reuse conversion function in load_sa_loader.cpp source file
-  int mismatch (const char *str, const attribute *attr, db_value *val);
-  int to_db_null (const char *str, const attribute *attr, db_value *val);
-  int to_db_short (const char *str, const attribute *attr, db_value *val);
-  int to_db_int (const char *str, const attribute *attr, db_value *val);
-  int to_db_int_set (const char *str, const attribute *attr, db_value *val);
-  int to_db_bigint (const char *str, const attribute *attr, db_value *val);
-  int to_db_generic_char (DB_TYPE type, const char *str, const attribute *attr, db_value *val);
-  int to_db_char (const char *str, const attribute *attr, db_value *val);
-  int to_db_varchar (const char *str, const attribute *attr, db_value *val);
-  int to_db_make_nchar (const char *str, const attribute *attr, db_value *val);
-  int to_db_make_varnchar (const char *str, const attribute *attr, db_value *val);
-  int to_db_string (const char *str, const attribute *attr, db_value *val);
-  int to_db_float (const char *str, const attribute *attr, db_value *val);
-  int to_db_double (const char *str, const attribute *attr, db_value *val);
-  int to_db_numeric (const char *str, const attribute *attr, db_value *val);
-  int to_db_date (const char *str, const attribute *attr, db_value *val);
-  int to_db_time (const char *str, const attribute *attr, db_value *val);
-  int to_db_timestamp (const char *str, const attribute *attr, db_value *val);
-  int to_db_timestampltz (const char *str, const attribute *attr, db_value *val);
-  int to_db_timestamptz (const char *str, const attribute *attr, db_value *val);
-  int to_db_datetime (const char *str, const attribute *attr, db_value *val);
-  int to_db_datetimeltz (const char *str, const attribute *attr, db_value *val);
-  int to_db_datetimetz (const char *str, const attribute *attr, db_value *val);
-  int to_db_json (const char *str, const attribute *attr, db_value *val);
-  int to_db_monetary (const char *str, const attribute *attr, db_value *val);
-  int to_db_varbit_from_bin_str (const char *str, const attribute *attr, db_value *val);
-  int to_db_varbit_from_hex_str (const char *str, const attribute *attr, db_value *val);
-  int to_db_elo_ext (const char *str, const attribute *attr, db_value *val);
-  int to_db_elo_int (const char *str, const attribute *attr, db_value *val);
-  int to_int_generic (const char *str, const attribute *attr, db_value *val);
+  int mismatch (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_null (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_short (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_int (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_int_set (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_bigint (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_generic_char (DB_TYPE type, const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_char (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_varchar (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_make_nchar (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_make_varnchar (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_string (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_float (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_double (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_numeric (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_date (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_time (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_timestamp (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_timestampltz (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_timestamptz (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_datetime (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_datetimeltz (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_datetimetz (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_json (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_monetary (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_varbit_from_bin_str (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_varbit_from_hex_str (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_elo_ext (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_elo_int (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_int_generic (const char *str, const size_t str_size, const attribute *attr, db_value *val);
 
   using conv_setters = std::array<std::array<conv_func, NUM_LDR_TYPES>, NUM_DB_TYPES>;
 
@@ -202,7 +202,7 @@ namespace cubload
   }
 
   int
-  mismatch (const char *str, const attribute *attr, db_value *val)
+  mismatch (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     int error_code = ER_OBJ_DOMAIN_CONFLICT;
     er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
@@ -210,7 +210,7 @@ namespace cubload
   }
 
   int
-  to_db_null (const char *str, const attribute *attr, db_value *val)
+  to_db_null (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     if (attr->get_repr ().is_notnull)
       {
@@ -225,17 +225,16 @@ namespace cubload
   }
 
   int
-  to_db_short (const char *str, const attribute *attr, db_value *val)
+  to_db_short (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     char *str_ptr;
-    size_t str_len = strlen (str);
 
     db_make_short (val, 0);
 
     /* Let try take the fastest path here, if we know that number we are getting fits into a long, use strtol, else we
      * need to convert it to a double and coerce it, checking for overflow. Note if integers with leading zeros are
      * entered this can take the slower route. */
-    if (str_len > MAX_DIGITS_FOR_SHORT)
+    if (str_size > MAX_DIGITS_FOR_SHORT)
       {
 	double d;
 	d = strtod (str, &str_ptr);
@@ -266,17 +265,16 @@ namespace cubload
   }
 
   int
-  to_db_int (const char *str, const attribute *attr, db_value *val)
+  to_db_int (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     char *str_ptr;
-    size_t str_len = strlen (str);
 
     db_make_int (val, 0);
 
     /* Let try take the fastest path here, if we know that number we are getting fits into a long, use strtol, else we
      * need to convert it to a double and coerce it, checking for overflow. Note if integers with leading zeros are
      * entered this can take the slower route. */
-    if (str_len < MAX_DIGITS_FOR_INT || (str_len == MAX_DIGITS_FOR_INT && (str[0] == '0' || str[0] == '1')))
+    if (str_size < MAX_DIGITS_FOR_INT || (str_size == MAX_DIGITS_FOR_INT && (str[0] == '0' || str[0] == '1')))
       {
 	int error_code = parse_int (&val->data.i, str, 10);
 	if (error_code != 0)
@@ -308,30 +306,28 @@ namespace cubload
    * Used in case of collection when if int overflows fallback to bigint
    */
   int
-  to_db_int_set (const char *str, const attribute *attr, db_value *val)
+  to_db_int_set (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
-    int error_code = to_db_int (str, attr, val);
+    int error_code = to_db_int (str, str_size, attr, val);
     if (error_code == ER_IT_DATA_OVERFLOW)
       {
 	// if there is overflow on integer, try as bigint
 	er_clear ();
-	error_code = to_db_bigint (str, attr, val);
+	error_code = to_db_bigint (str, str_size, attr, val);
       }
 
     return error_code;
   }
 
   int
-  to_db_bigint (const char *str, const attribute *attr, db_value *val)
+  to_db_bigint (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
-    size_t str_len = strlen (str);
-
     db_make_bigint (val, 0);
 
     /* Let try take the fastest path here, if we know that number we are getting fits into a long, use strtol, else we
      * need to convert it to a double and coerce it, checking for overflow. Note if integers with leading zeros are
      * entered this can take the slower route. */
-    if (str_len < MAX_DIGITS_FOR_BIGINT || (str_len == MAX_DIGITS_FOR_BIGINT && str[0] != '9'))
+    if (str_size < MAX_DIGITS_FOR_BIGINT || (str_size == MAX_DIGITS_FOR_BIGINT && str[0] != '9'))
       {
 	int error_code = parse_bigint (&val->data.bigint, str, 10);
 	if (error_code != 0)
@@ -361,10 +357,10 @@ namespace cubload
   }
 
   int
-  to_db_generic_char (DB_TYPE type, const char *str, const attribute *attr, db_value *val)
+  to_db_generic_char (DB_TYPE type, const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     int char_count = 0;
-    int str_len = (int) strlen (str);
+    int str_len = (int) str_size;
     int error = NO_ERROR;
     const tp_domain &domain = attr->get_domain ();
     int precision = domain.precision;
@@ -409,35 +405,35 @@ namespace cubload
   }
 
   int
-  to_db_char (const char *str, const attribute *attr, db_value *val)
+  to_db_char (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
-    return to_db_generic_char (DB_TYPE_CHAR, str, attr, val);
+    return to_db_generic_char (DB_TYPE_CHAR, str, str_size, attr, val);
   }
 
   int
-  to_db_varchar (const char *str, const attribute *attr, db_value *val)
+  to_db_varchar (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
-    return to_db_generic_char (DB_TYPE_VARCHAR, str, attr, val);
+    return to_db_generic_char (DB_TYPE_VARCHAR, str, str_size, attr, val);
   }
 
-  int to_db_make_nchar (const char *str, const attribute *attr, db_value *val)
+  int to_db_make_nchar (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
-    return to_db_generic_char (DB_TYPE_NCHAR, str, attr, val);
+    return to_db_generic_char (DB_TYPE_NCHAR, str, str_size, attr, val);
   }
 
-  int to_db_make_varnchar (const char *str, const attribute *attr, db_value *val)
+  int to_db_make_varnchar (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
-    return to_db_generic_char (DB_TYPE_VARNCHAR, str, attr, val);
+    return to_db_generic_char (DB_TYPE_VARNCHAR, str, str_size, attr, val);
   }
 
   int
-  to_db_string (const char *str, const attribute *attr, db_value *val)
+  to_db_string (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     return db_make_string (val, const_cast<char *> (str));
   }
 
   int
-  to_db_float (const char *str, const attribute *attr, db_value *val)
+  to_db_float (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     double d;
     char *str_ptr;
@@ -460,7 +456,7 @@ namespace cubload
   }
 
   int
-  to_db_double (const char *str, const attribute *attr, db_value *val)
+  to_db_double (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     double d;
     char *str_ptr;
@@ -483,12 +479,10 @@ namespace cubload
   }
 
   int
-  to_db_numeric (const char *str, const attribute *attr, db_value *val)
+  to_db_numeric (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
-    size_t str_len = strlen (str);
-
-    int precision = (int) str_len - 1 - (str[0] == '+' || str[0] == '-' || str[0] == '.');
-    int scale = (int) str_len - (int) strcspn (str, ".") - 1;
+    int precision = (int) str_size - 1 - (str[0] == '+' || str[0] == '-' || str[0] == '.');
+    int scale = (int) str_size - (int) strcspn (str, ".") - 1;
 
     int error_code = db_value_domain_init (val, DB_TYPE_NUMERIC, precision, scale);
     if (error_code != NO_ERROR)
@@ -496,11 +490,11 @@ namespace cubload
 	return error_code;
       }
 
-    return db_value_put (val, DB_TYPE_C_CHAR, (void *) str, (int) str_len);
+    return db_value_put (val, DB_TYPE_C_CHAR, (void *) str, (int) str_size);
   }
 
   int
-  to_db_date (const char *str, const attribute *attr, db_value *val)
+  to_db_date (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     db_make_date (val, 1, 1, 1996);
 
@@ -508,7 +502,7 @@ namespace cubload
   }
 
   int
-  to_db_time (const char *str, const attribute *attr, db_value *val)
+  to_db_time (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     db_make_time (val, 0, 0, 0);
 
@@ -516,7 +510,7 @@ namespace cubload
   }
 
   int
-  to_db_timestamp (const char *str, const attribute *attr, db_value *val)
+  to_db_timestamp (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     db_make_timestamp (val, 0);
 
@@ -524,7 +518,7 @@ namespace cubload
   }
 
   int
-  to_db_timestampltz (const char *str, const attribute *attr, db_value *val)
+  to_db_timestampltz (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     db_make_timestampltz (val, 0);
 
@@ -532,7 +526,7 @@ namespace cubload
   }
 
   int
-  to_db_timestamptz (const char *str, const attribute *attr, db_value *val)
+  to_db_timestamptz (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     bool has_zone;
     DB_TIMESTAMPTZ timestamptz;
@@ -546,7 +540,7 @@ namespace cubload
   }
 
   int
-  to_db_datetime (const char *str, const attribute *attr, db_value *val)
+  to_db_datetime (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     DB_DATETIME datetime;
 
@@ -557,7 +551,7 @@ namespace cubload
   }
 
   int
-  to_db_datetimeltz (const char *str, const attribute *attr, db_value *val)
+  to_db_datetimeltz (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     DB_DATETIME datetime;
 
@@ -568,7 +562,7 @@ namespace cubload
   }
 
   int
-  to_db_datetimetz (const char *str, const attribute *attr, db_value *val)
+  to_db_datetimetz (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     bool has_zone;
     DB_DATETIME datetime;
@@ -585,12 +579,11 @@ namespace cubload
   }
 
   int
-  to_db_json (const char *str, const attribute *attr, db_value *val)
+  to_db_json (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     JSON_DOC *document = NULL;
-    size_t json_len = strlen (str);
 
-    int error_code = db_json_get_json_from_str (str, document, json_len);
+    int error_code = db_json_get_json_from_str (str, document, str_size);
     if (error_code != NO_ERROR)
       {
 	assert (document == NULL);
@@ -601,17 +594,16 @@ namespace cubload
   }
 
   int
-  to_db_monetary (const char *str, const attribute *attr, db_value *val)
+  to_db_monetary (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     char *str_ptr;
     double amt;
     int symbol_size = 0;
-    size_t str_len = strlen (str);
     DB_CURRENCY currency_type = DB_CURRENCY_NULL;
     const unsigned char *p = (const unsigned char *) str;
     const unsigned char *token = (const unsigned char *) str;
 
-    if (str_len >= 2
+    if (str_size >= 2
 	&& intl_is_currency_symbol ((const char *) p, &currency_type, &symbol_size,
 				    (CURRENCY_CHECK_MODE) (CURRENCY_CHECK_MODE_ESC_ISO | CURRENCY_CHECK_MODE_GRAMMAR)))
       {
@@ -637,16 +629,15 @@ namespace cubload
   }
 
   int
-  to_db_varbit_from_bin_str (const char *str, const attribute *attr, db_value *val)
+  to_db_varbit_from_bin_str (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     int error_code = NO_ERROR;
     char *bstring;
     db_value temp;
     std::size_t dest_size;
-    std::size_t str_len = strlen (str);
     tp_domain temp_domain, *domain_ptr = NULL;
 
-    dest_size = (str_len + 7) / 8;
+    dest_size = (str_size + 7) / 8;
 
     bstring = (char *) db_private_alloc (NULL, dest_size + 1);
     if (bstring == NULL)
@@ -657,7 +648,7 @@ namespace cubload
 	return error_code;
       }
 
-    if (qstr_bit_to_bin (bstring, (int) dest_size, const_cast<char *> (str), (int) str_len) != (int) str_len)
+    if (qstr_bit_to_bin (bstring, (int) dest_size, const_cast<char *> (str), (int) str_size) != (int) str_size)
       {
 	db_private_free_and_init (NULL, bstring);
 
@@ -668,7 +659,7 @@ namespace cubload
 	return error_code;
       }
 
-    error_code = db_make_varbit (&temp, TP_FLOATING_PRECISION_VALUE, bstring, (int) str_len);
+    error_code = db_make_varbit (&temp, TP_FLOATING_PRECISION_VALUE, bstring, (int) str_size);
     if (error_code != NO_ERROR)
       {
 	db_private_free_and_init (NULL, bstring);
@@ -704,18 +695,17 @@ namespace cubload
   }
 
   int
-  to_db_varbit_from_hex_str (const char *str, const attribute *attr, db_value *val)
+  to_db_varbit_from_hex_str (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     int error_code = NO_ERROR;
     char *bstring = NULL;
     db_value temp;
     std::size_t dest_size;
-    std::size_t str_len = strlen (str);
     tp_domain *domain_ptr, temp_domain;
 
     db_make_null (&temp);
 
-    dest_size = (str_len + 1) / 2;
+    dest_size = (str_size + 1) / 2;
 
     bstring = (char *) db_private_alloc (NULL, dest_size + 1);
     if (bstring == NULL)
@@ -726,7 +716,7 @@ namespace cubload
 	return error_code;
       }
 
-    if (qstr_hex_to_bin (bstring, (int) dest_size, const_cast<char *> (str), (int) str_len) != (int) str_len)
+    if (qstr_hex_to_bin (bstring, (int) dest_size, const_cast<char *> (str), (int) str_size) != (int) str_size)
       {
 	db_private_free_and_init (NULL, bstring);
 
@@ -737,7 +727,7 @@ namespace cubload
 	return error_code;
       }
 
-    error_code = db_make_varbit (&temp, TP_FLOATING_PRECISION_VALUE, bstring, ((int) str_len) * 4);
+    error_code = db_make_varbit (&temp, TP_FLOATING_PRECISION_VALUE, bstring, ((int) str_size) * 4);
     if (error_code != NO_ERROR)
       {
 	db_private_free_and_init (NULL, bstring);
@@ -772,7 +762,7 @@ namespace cubload
   }
 
   int
-  to_db_elo_ext (const char *str, const attribute *attr, db_value *val)
+  to_db_elo_ext (const char *str,  const size_t str_size, const attribute *attr, db_value *val)
   {
     db_elo elo;
     INT64 size;
@@ -898,7 +888,7 @@ namespace cubload
   }
 
   int
-  to_db_elo_int (const char *str, const attribute *attr, db_value *val)
+  to_db_elo_int (const char *str,  const size_t str_size, const attribute *attr, db_value *val)
   {
     /* not implemented. should not be called */
     assert (0);
@@ -906,9 +896,8 @@ namespace cubload
   }
 
   int
-  to_int_generic (const char *str, const attribute *attr, db_value *val)
+  to_int_generic (const char *str,  const size_t str_size, const attribute *attr, db_value *val)
   {
-    size_t str_len = strlen (str);
     int error_code = NO_ERROR;
 
     /*
@@ -918,7 +907,7 @@ namespace cubload
      * data.
      * Is there some better way to test for this condition?
      */
-    if (str_len < MAX_DIGITS_FOR_INT || (str_len == MAX_DIGITS_FOR_INT && (str[0] == '0' || str[0] == '1')))
+    if (str_size < MAX_DIGITS_FOR_INT || (str_size == MAX_DIGITS_FOR_INT && (str[0] == '0' || str[0] == '1')))
       {
 	db_make_int (val, 0);
 	error_code = parse_int (&val->data.i, str, 10);
@@ -928,7 +917,7 @@ namespace cubload
 	    return ER_IT_DATA_OVERFLOW;
 	  }
       }
-    else if (str_len < MAX_DIGITS_FOR_BIGINT || (str_len == MAX_DIGITS_FOR_BIGINT && str[0] != '9'))
+    else if (str_size < MAX_DIGITS_FOR_BIGINT || (str_size == MAX_DIGITS_FOR_BIGINT && str[0] != '9'))
       {
 	db_make_bigint (val, 0);
 	error_code = parse_bigint (&val->data.bigint, str, 10);
@@ -946,14 +935,14 @@ namespace cubload
 	numeric_coerce_dec_str_to_num (str, num.d.buf);
 	if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint) != NO_ERROR)
 	  {
-	    error_code = db_value_domain_init (val, DB_TYPE_NUMERIC, (int) str_len, 0);
+	    error_code = db_value_domain_init (val, DB_TYPE_NUMERIC, (int) str_size, 0);
 	    if (error_code != NO_ERROR)
 	      {
 		ASSERT_ERROR ();
 		return error_code;
 	      }
 
-	    error_code = db_value_put (val, DB_TYPE_C_CHAR, (char *) str, (int) str_len);
+	    error_code = db_value_put (val, DB_TYPE_C_CHAR, (char *) str, (int) str_size);
 	    if (error_code != NO_ERROR)
 	      {
 		ASSERT_ERROR ();

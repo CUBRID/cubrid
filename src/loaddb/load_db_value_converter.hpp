@@ -32,7 +32,7 @@ namespace cubload
   // forward declaration
   class attribute;
 
-  typedef int (*conv_func) (const char *, const attribute *, db_value *);
+  typedef int (*conv_func) (const char *, const size_t, const attribute *, db_value *);
 
   conv_func &get_conv_func (const data_type ldr_type, const DB_TYPE db_type);
 
