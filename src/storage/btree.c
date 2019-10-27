@@ -16184,13 +16184,11 @@ btree_get_next_key_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_SCAN * bts,
 
   /* Get overflow key and overflow oids */
   pr_clear_value (key_info[BTREE_KEY_INFO_OVERFLOW_KEY]);
-  db_make_string_by_const_str (key_info[BTREE_KEY_INFO_OVERFLOW_KEY],
-			       btree_leaf_is_flaged (&bts->key_record,
-						     BTREE_LEAF_RECORD_OVERFLOW_KEY) ? "true" : "false");
+  db_make_string (key_info[BTREE_KEY_INFO_OVERFLOW_KEY],
+		  btree_leaf_is_flaged (&bts->key_record, BTREE_LEAF_RECORD_OVERFLOW_KEY) ? "true" : "false");
   pr_clear_value (key_info[BTREE_KEY_INFO_OVERFLOW_OIDS]);
-  db_make_string_by_const_str (key_info[BTREE_KEY_INFO_OVERFLOW_OIDS],
-			       btree_leaf_is_flaged (&bts->key_record,
-						     BTREE_LEAF_RECORD_OVERFLOW_OIDS) ? "true" : "false");
+  db_make_string (key_info[BTREE_KEY_INFO_OVERFLOW_OIDS],
+		  btree_leaf_is_flaged (&bts->key_record, BTREE_LEAF_RECORD_OVERFLOW_OIDS) ? "true" : "false");
 
   /* Get OIDs count -> For now ignore the overflow OIDs */
   db_make_int (key_info[BTREE_KEY_INFO_OID_COUNT],
@@ -20208,8 +20206,7 @@ btree_get_next_node_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_NODE_SCAN 
 
   /* Get node type */
   pr_clear_value (node_info[BTREE_NODE_INFO_NODE_TYPE]);
-  db_make_string_by_const_str (node_info[BTREE_NODE_INFO_NODE_TYPE],
-			       (node_type == BTREE_NON_LEAF_NODE) ? "non-leaf" : "leaf");
+  db_make_string (node_info[BTREE_NODE_INFO_NODE_TYPE], (node_type == BTREE_NON_LEAF_NODE) ? "non-leaf" : "leaf");
 
   /* Get key count */
   db_make_int (node_info[BTREE_NODE_INFO_KEY_COUNT], key_cnt);

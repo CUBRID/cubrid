@@ -367,7 +367,7 @@ classobj_put_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue)
 	{
 	  /* start with the property value to avoid growing the array twice */
 	  set_put_element (properties, max + 1, pvalue);
-	  db_make_string_by_const_str (&value, name);
+	  db_make_string (&value, name);
 	  set_put_element (properties, max, &value);
 	  pr_clear_value (&value);
 	}
@@ -911,7 +911,7 @@ classobj_put_seq_with_name_and_iterate (DB_SEQ * destination, int &index, const 
   int subseq_index = 0;
   int error_code = NO_ERROR;
 
-  db_make_string_by_const_str (&value, name);
+  db_make_string (&value, name);
   classobj_put_value_and_iterate (subseq, subseq_index, value);
 
   error_code = classobj_put_seq_and_iterate (subseq, subseq_index, seq);
@@ -1065,7 +1065,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 	}
     }
 
-  db_make_string_by_const_str (&value, pbuf);
+  db_make_string (&value, pbuf);
   classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
 
   if (pbuf && pbuf != &(buf[0]))
@@ -1079,7 +1079,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
       if (attr_name_instead_of_id)
 	{
 	  /* name */
-	  db_make_string_by_const_str (&value, atts[i]->header.name);
+	  db_make_string (&value, atts[i]->header.name);
 	}
       else
 	{
@@ -1219,7 +1219,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
   classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
 
   /* comment */
-  db_make_string_by_const_str (&value, comment);
+  db_make_string (&value, comment);
   classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
 
   /* Append the constraint to the unique property sequence */
@@ -1999,7 +1999,7 @@ classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT * c
       goto end;
     }
 
-  db_make_string_by_const_str (&new_comment, comment);
+  db_make_string (&new_comment, comment);
   error = set_put_element (idx_seq, len - 1, &new_comment);
   if (error != NO_ERROR)
     {

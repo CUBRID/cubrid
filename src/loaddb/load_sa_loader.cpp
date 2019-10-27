@@ -2524,7 +2524,7 @@ static int
 ldr_str_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
 {
   /* todo: switch this to db_make_string_copy and avoid any possible leaks */
-  db_make_string (val, (char *) str);
+  db_make_string (val, str);
   return NO_ERROR;
 }
 
@@ -2689,7 +2689,7 @@ ldr_str_db_generic (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIB
   DB_VALUE val;
 
   /* todo: switch this to db_make_string_copy and avoid any possible leaks */
-  db_make_string (&val, (char *) str);
+  db_make_string (&val, str);
   return ldr_generic (context, &val);
 }
 
@@ -2873,7 +2873,7 @@ static int
 ldr_nstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
 {
 
-  db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, (DB_C_NCHAR) str, (int) len, LANG_SYS_CODESET,
+  db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, str, (int) len, LANG_SYS_CODESET,
 		    LANG_SYS_COLLATION);
   return NO_ERROR;
 }
@@ -5940,8 +5940,8 @@ ldr_init_loader (LDR_CONTEXT *context)
   db_make_short (&ldr_short_tmpl, 0);
   db_make_int (&ldr_int_tmpl, 0);
   db_make_bigint (&ldr_bigint_tmpl, 0);
-  db_make_char (&ldr_char_tmpl, 1, (char *) "a", 1, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  db_make_varchar (&ldr_varchar_tmpl, 1, (char *) "a", 1, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_char (&ldr_char_tmpl, 1, "a", 1, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varchar (&ldr_varchar_tmpl, 1, "a", 1, LANG_SYS_CODESET, LANG_SYS_COLLATION);
   db_make_float (&ldr_float_tmpl, (float) 0.0);
   db_make_double (&ldr_double_tmpl, (double) 0.0);
   db_make_date (&ldr_date_tmpl, 1, 1, 1996);
@@ -5959,7 +5959,7 @@ ldr_init_loader (LDR_CONTEXT *context)
   db_make_datetimetz (&ldr_datetimetz_tmpl, &datetimetz);
   db_make_elo (&ldr_blob_tmpl, DB_TYPE_BLOB, null_elo);
   db_make_elo (&ldr_clob_tmpl, DB_TYPE_CLOB, null_elo);
-  db_make_bit (&ldr_bit_tmpl, 1, (DB_C_BIT) "0", 1);
+  db_make_bit (&ldr_bit_tmpl, 1, "0", 1);
   db_make_json (&ldr_json_tmpl, NULL, false);
 
   /*

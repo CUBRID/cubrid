@@ -834,7 +834,7 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
       break;
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
-      db_make_bit (value, 1, (DB_C_BIT) "0", 1);
+      db_make_bit (value, 1, "0", 1);
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
@@ -4913,8 +4913,8 @@ valcnv_convert_value_to_string (DB_VALUE * value_p)
 	  return ER_FAILED;
 	}
 
-      db_make_varchar (&src_value, DB_MAX_STRING_LENGTH,
-		       (char *) buf_p->bytes, CAST_STRLEN (buf_p->length), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      db_make_varchar (&src_value, DB_MAX_STRING_LENGTH, REINTERPRET_CAST (char *, buf_p->bytes),
+		       CAST_STRLEN (buf_p->length), LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
       pr_clear_value (value_p);
       tp_String.setval (value_p, &src_value, true);
@@ -4990,7 +4990,7 @@ db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest)
     case DB_JSON_STRING:
       {
 	const char *str = db_json_get_string_from_document (doc);
-	int error_code = db_make_string_by_const_str (dest, str);
+	int error_code = db_make_string (dest, str);
 	if (error_code != NO_ERROR)
 	  {
 	    ASSERT_ERROR ();

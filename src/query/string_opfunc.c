@@ -693,9 +693,8 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
 	    }
 	  result[result_size] = 0;
 	  db_value_domain_init (db_result, result_type, precision, 0);
-	  error_status =
-	    db_make_db_char (db_result, codeset, collation_id, (char *) result,
-			     (result_type == DB_TYPE_VARBIT ? num_bits : result_size));
+	  error_status = db_make_db_char (db_result, codeset, collation_id, REINTERPRET_CAST (char *, result),
+					  (result_type == DB_TYPE_VARBIT ? num_bits : result_size));
 	  db_result->need_clear = true;
 	}
       else
@@ -7111,7 +7110,7 @@ db_get_string_length (const DB_VALUE * value)
  */
 
 void
-qstr_make_typed_string (const DB_TYPE db_type, DB_VALUE * value, const int precision, const DB_C_CHAR src,
+qstr_make_typed_string (const DB_TYPE db_type, DB_VALUE * value, const int precision, DB_CONST_C_CHAR src,
 			const int s_unit, const int codeset, const int collation_id)
 {
   switch (db_type)
@@ -12680,7 +12679,7 @@ db_to_date (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
 	  goto exit;
 	}
 
-      db_make_char (&default_format, strlen (default_format_str), (DB_C_CHAR) default_format_str,
+      db_make_char (&default_format, strlen (default_format_str), default_format_str,
 		    strlen (default_format_str), frmt_codeset, LANG_GET_BINARY_COLLATION (frmt_codeset));
       format_str = &default_format;
     }
@@ -13251,7 +13250,7 @@ db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto exit;
 	}
-      db_make_char (&default_format, strlen (default_format_str), (DB_C_CHAR) default_format_str,
+      db_make_char (&default_format, strlen (default_format_str), default_format_str,
 		    strlen (default_format_str), frmt_codeset, LANG_GET_BINARY_COLLATION (frmt_codeset));
       format_str = &default_format;
     }
@@ -13834,7 +13833,7 @@ db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB
 	  goto exit;
 	}
 
-      db_make_char (&default_format, strlen (default_format_str), (DB_C_CHAR) default_format_str,
+      db_make_char (&default_format, strlen (default_format_str), default_format_str,
 		    strlen (default_format_str), frmt_codeset, LANG_GET_BINARY_COLLATION (frmt_codeset));
       format_str = &default_format;
     }
@@ -14745,7 +14744,7 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_
 	  goto exit;
 	}
 
-      db_make_char (&default_format, strlen (default_format_str), (DB_C_CHAR) default_format_str,
+      db_make_char (&default_format, strlen (default_format_str), default_format_str,
 		    strlen (default_format_str), frmt_codeset, LANG_GET_BINARY_COLLATION (frmt_codeset));
       format_str = &default_format;
     }
@@ -27164,12 +27163,12 @@ db_get_cs_coll_info (DB_VALUE * result, const DB_VALUE * val, const int mode)
 
       if (mode == 0)
 	{
-	  db_make_string_by_const_str (result, lang_charset_cubrid_name ((INTL_CODESET) cs));
+	  db_make_string (result, lang_charset_cubrid_name ((INTL_CODESET) cs));
 	}
       else
 	{
 	  assert (mode == 1);
-	  db_make_string_by_const_str (result, lang_get_collation_name (coll));
+	  db_make_string (result, lang_get_collation_name (coll));
 	}
     }
 
