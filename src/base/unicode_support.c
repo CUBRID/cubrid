@@ -410,8 +410,7 @@ load_unicode_data (const LOCALE_DATA * ld)
   fp = fopen_ex (ld->unicode_data_file, "rt");
   if (fp == NULL)
     {
-      int ret = snprintf (err_msg, sizeof (err_msg) - 1, "Cannot open file %s", ld->unicode_data_file);
-      (void) ret;		// suppress format-truncate warning
+      snprintf_dots_truncate (err_msg, sizeof (err_msg) - 1, "Cannot open file %s", ld->unicode_data_file);
       LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
       status = ER_LOC_GEN;
       goto error;
@@ -453,7 +452,7 @@ load_unicode_data (const LOCALE_DATA * ld)
 	{
 	  char str_p[UNICODE_FILE_LINE_SIZE];
 	  char *save;
-	  int cp_count, ret;
+	  int cp_count;
 
 	  strcpy (str_p, s);
 
@@ -479,9 +478,9 @@ load_unicode_data (const LOCALE_DATA * ld)
 	      cp_count = string_to_int_array (str_p, uc->upper_cp, INTL_CASING_EXPANSION_MULTIPLIER, " ");
 	      if (cp_count > INTL_CASING_EXPANSION_MULTIPLIER)
 		{
-		  ret = snprintf (err_msg, sizeof (err_msg) - 1,
-				  "Invalid line %d" " of file %s contains more than 2 characters for "
-				  "upper case definition", line_count, ld->unicode_data_file);
+		  snprintf_dots_truncate (err_msg, sizeof (err_msg) - 1,
+					  "Invalid line %d" " of file %s contains more than 2 characters for "
+					  "upper case definition", line_count, ld->unicode_data_file);
 		  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 		  status = ER_LOC_GEN;
 		  goto error;
@@ -496,9 +495,9 @@ load_unicode_data (const LOCALE_DATA * ld)
 
 	      if (cp_count > INTL_CASING_EXPANSION_MULTIPLIER)
 		{
-		  ret = snprintf (err_msg, sizeof (err_msg) - 1,
-				  "Invalid line %d" " of file %s contains more than 2 characters for "
-				  "lower case definition", line_count, ld->unicode_data_file);
+		  snprintf_dots_truncate (err_msg, sizeof (err_msg) - 1,
+					  "Invalid line %d" " of file %s contains more than 2 characters for "
+					  "lower case definition", line_count, ld->unicode_data_file);
 		  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 		  status = ER_LOC_GEN;
 		  goto error;
@@ -528,8 +527,6 @@ load_unicode_data (const LOCALE_DATA * ld)
 		}
 	      while (0);
 	    }
-
-	  (void) ret;		// suppress format-truncate warning
 
 	  s = strchr (s, ';');
 	  if (s == NULL)

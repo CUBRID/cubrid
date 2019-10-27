@@ -1551,8 +1551,12 @@ fileio_lock_la_dbname (int *lockf_vdes, char *db_name, char *log_path)
   char format_string[PATH_MAX];
 
   envvar_vardir_file (lock_dir, sizeof (lock_dir), "APPLYLOGDB");
-  int ret = snprintf (lock_path, sizeof (lock_path) - 1, "%s/%s", lock_dir, db_name);
-  (void) ret;			// suppress format-truncate warning
+  if (snprintf (lock_path, sizeof (lock_path) - 1, "%s/%s", lock_dir, db_name) < 0)
+    {
+      assert (false);
+      result = FILEIO_NOT_LOCKF;
+      goto error_return;
+    }
 
   if (access (lock_dir, F_OK) < 0)
     {
@@ -1689,8 +1693,11 @@ fileio_unlock_la_dbname (int *lockf_vdes, char *db_name, bool clear_owner)
   char lock_dir[PATH_MAX], lock_path[PATH_MAX];
 
   envvar_vardir_file (lock_dir, sizeof (lock_dir), "APPLYLOGDB");
-  int ret = snprintf (lock_path, sizeof (lock_path) - 1, "%s/%s", lock_dir, db_name);
-  (void) ret;			// suppress format-truncate warning
+  if (snprintf (lock_path, sizeof (lock_path) - 1, "%s/%s", lock_dir, db_name) < 0)
+    {
+      assert (false);
+      return FILEIO_NOT_LOCKF;
+    }
 
   if (access (lock_dir, F_OK) < 0)
     {

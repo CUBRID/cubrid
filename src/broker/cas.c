@@ -566,7 +566,12 @@ conn_retry:
 		  shm_appl->shard_conn_info[shm_shard_id].db_host);
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
-  (void) ret;			// suppress format-truncate warning
+  if (ret < 0)
+    {
+      assert (false);
+      FREE (net_buf.data);
+      return -1;
+    }
 
   set_db_connection_info ();
 

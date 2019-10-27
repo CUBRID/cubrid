@@ -154,7 +154,7 @@ static int tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz
 static int tz_conv_tz_datetime_w_zone_info (const DB_DATETIME * src_dt, const TZ_DECODE_INFO * src_zone_info_in,
 					    const TZ_DECODE_INFO * dest_zone_info_in, DB_DATETIME * dest_dt,
 					    TZ_DECODE_INFO * src_zone_info_out, TZ_DECODE_INFO * dest_zone_info_out);
-static void tz_print_tz_offset (char *result, int tz_offset);
+static int tz_print_tz_offset (char *result, int tz_offset);
 static int starts_with (const char *prefix, const char *str);
 static int tz_get_zone_id_by_name (const char *name, const int name_size);
 static void tz_timestamp_decode_leap_sec_adj (int timestamp, int *yearp, int *monthsp, int *dayp, int *hoursp,
@@ -261,8 +261,9 @@ tz_load_library (const char *lib_file, void **handle)
       LocalFree (lpMsgBuf);
 #else
       error = dlerror ();
-      snprintf (err_msg, sizeof (err_msg) - 1,
-		"Library file is invalid or not accessible.\n" " Unable to load %s !\n %s", lib_file, error);
+      snprintf_dots_truncate (err_msg, sizeof (err_msg) - 1,
+			      "Library file is invalid or not accessible.\n" " Unable to load %s !\n %s", lib_file,
+			      error);
 #endif
       printf ("%s\n", err_msg);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_LOAD_ERROR, 1, err_msg);
@@ -880,7 +881,7 @@ tz_get_current_date (void)
  * result (out) : output timezone offset
  */
 
-static void
+static int
 tz_print_tz_offset (char *result, int tz_offset)
 {
   const int sign_hour_minutes = 6;
@@ -906,13 +907,22 @@ tz_print_tz_offset (char *result, int tz_offset)
 
   if (!off_sec)
     {
-      snprintf (result, out_len + 1, "%c%02d:%02d", sign, off_hour, off_min);
+      if (snprintf (result, out_len + 1, "%c%02d:%02d", sign, off_hour, off_min) < 0)
+	{
+	  assert (false);
+	  return ER_FAILED;
+	}
     }
   else
     {
-      snprintf (result, out_len + 1, "%c%02d:%02d:%02d", sign, off_hour, off_min, off_sec);
+      if (snprintf (result, out_len + 1, "%c%02d:%02d:%02d", sign, off_hour, off_min, off_sec) < 0)
+	{
+	  assert (false);
+	  return ER_FAILED;
+	}
     }
   (result)[out_len] = '\0';
+  return NO_ERROR;
 }
 
 /*
@@ -960,7 +970,7 @@ tz_get_timezone_offset (const char *tz_str, int tz_size, char *result, DB_DATETI
 	  return ER_TZ_INVALID_TIMEZONE;
 	}
 
-      tz_print_tz_offset (result, seconds);
+      error = tz_print_tz_offset (result, seconds);
     }
   /* Handle the main case when the timezone is a name */
   else
@@ -1010,7 +1020,7 @@ tz_get_timezone_offset (const char *tz_str, int tz_size, char *result, DB_DATETI
 	(int) (dest_datetime.date - utc_datetime->date) * 3600 * 24 + (int) (dest_datetime.time -
 									     utc_datetime->time) / 1000;
 
-      tz_print_tz_offset (result, tdif);
+      error = tz_print_tz_offset (result, tdif);
     }
 
   return error;
@@ -4840,7 +4850,11 @@ tz_full_timezones_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE *
       zone_off_rule = tzd->offset_rules[timezone.gmt_off_rule_start + tzinfo.zone.offset_id];
 
       /* Timezone offset */
-      tz_print_tz_offset (gmt_offset, zone_off_rule.gmt_off);
+      error = tz_print_tz_offset (gmt_offset, zone_off_rule.gmt_off);
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
       db_make_string_copy (&vals[idx++], gmt_offset);
 
       dst_name = zone_off_rule.std_format;
@@ -4883,7 +4897,11 @@ tz_full_timezones_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE *
       /* Now put the daylight saving time offset and name */
       if (dst_name != NULL)
 	{
-	  tz_print_tz_offset (dst_offset, dst_save_time);
+	  error = tz_print_tz_offset (dst_offset, dst_save_time);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
 	  db_make_string_copy (&vals[idx++], dst_offset);
 	  db_make_string_copy (&vals[idx++], dst_name);
 	}

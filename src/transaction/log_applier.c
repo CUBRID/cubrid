@@ -2616,11 +2616,10 @@ la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbn
 	  char err_msg[ERR_MSG_SIZE];
 
 	  la_applier_need_shutdown = true;
-	  int ret = snprintf (err_msg, sizeof (err_msg) - 1,
-			      "Active log file(%s) charset is not valid (%s), expecting %s.",
-			      act_log->path, lang_charset_cubrid_name ((INTL_CODESET) act_log->log_hdr->db_charset),
-			      lang_charset_cubrid_name (lang_charset ()));
-	  (void) ret;		// suppress format-truncate warning
+	  snprintf_dots_truncate (err_msg, sizeof (err_msg) - 1,
+				  "Active log file(%s) charset is not valid (%s), expecting %s.",
+				  act_log->path, lang_charset_cubrid_name ((INTL_CODESET) act_log->log_hdr->db_charset),
+				  lang_charset_cubrid_name (lang_charset ()));
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, err_msg);
 	  return ER_LOC_INIT;
@@ -6156,10 +6155,9 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	{
 	  if (la_Info.db_lockf_vdes != NULL_VOLDES)
 	    {
-	      int ret = snprintf (buffer, sizeof (buffer) - 1, "the state of HA server (%s@%s) is changed to %s",
-				  la_slave_db_name, la_peer_host,
-				  css_ha_server_state_string ((HA_SERVER_STATE) ha_server_state->state));
-	      (void) ret;	// suppress format-truncate warning
+	      snprintf_dots_truncate (buffer, sizeof (buffer) - 1, "the state of HA server (%s@%s) is changed to %s",
+				      la_slave_db_name, la_peer_host,
+				      css_ha_server_state_string ((HA_SERVER_STATE) ha_server_state->state));
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
 
 	      la_Info.is_role_changed = true;
@@ -7635,10 +7633,9 @@ la_create_repl_filter (void)
 	  continue;
 	}
 
-      int ret;
       if (classname_len >= SM_MAX_IDENTIFIER_LENGTH)
 	{
-	  ret = snprintf (error_msg, LINE_MAX - 1, "invalid table name %s", buffer);
+	  snprintf_dots_truncate (error_msg, LINE_MAX - 1, "invalid table name %s", buffer);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_REPL_FILTER_GENERIC, 1, error_msg);
 	  error = ER_HA_LA_REPL_FILTER_GENERIC;
 
@@ -7650,7 +7647,7 @@ la_create_repl_filter (void)
       class_ = locator_find_class (classname);
       if (class_ == NULL)
 	{
-	  ret = snprintf (error_msg, LINE_MAX - 1, "cannot find table [%s] listed in %s", buffer, filter_file);
+	  snprintf_dots_truncate (error_msg, LINE_MAX - 1, "cannot find table [%s] listed in %s", buffer, filter_file);
 	  er_stack_push ();
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_REPL_FILTER_GENERIC, 1, error_msg);
 	  er_stack_pop ();
@@ -7660,8 +7657,6 @@ la_create_repl_filter (void)
 	  ws_release_user_instance (class_);
 	  ws_decache (class_);
 	}
-
-      (void) ret;		// suppress format-truncate warning
 
       error = la_add_repl_filter (classname);
       if (error != NO_ERROR)
