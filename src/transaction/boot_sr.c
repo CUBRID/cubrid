@@ -3856,7 +3856,10 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
   if (new_lob_path == NULL)
     {
       assert_release (new_db_path != NULL);
-      snprintf (new_lob_pathbuf2, sizeof (new_lob_pathbuf2), "%s%s/lob", LOB_PATH_DEFAULT_PREFIX, new_db_path);
+      if (snprintf (new_lob_pathbuf2, sizeof (new_lob_pathbuf2), "%s%s/lob", LOB_PATH_DEFAULT_PREFIX, new_db_path) < 0)
+	{
+	  assert_release (false);
+	}
       new_lob_path = new_lob_pathbuf2;
     }
 
@@ -3869,7 +3872,10 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
 	{
 	case ES_NONE:
 	  /* prepend default prefix */
-	  snprintf (new_lob_pathbuf, sizeof (new_lob_pathbuf), "%s%s", LOB_PATH_DEFAULT_PREFIX, new_lob_path);
+	  if (snprintf (new_lob_pathbuf, sizeof (new_lob_pathbuf), "%s%s", LOB_PATH_DEFAULT_PREFIX, new_lob_path) < 0)
+	    {
+	      assert_release (false);
+	    }
 	  new_lob_path = new_lob_pathbuf;
 	  es_type = ES_POSIX;
 	  p = (char *) strchr (new_lob_path, ':') + 1;

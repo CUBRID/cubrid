@@ -1954,7 +1954,11 @@ _op_get_constraint_info (nvplist * out, DB_CONSTRAINT * con)
 	  db_string_p = db_get_string (&val);
 	  if (db_string_p != NULL)
 	    {
-	      snprintf (order, sizeof (order) - 1, "%s", db_string_p);
+	      if (snprintf (order, sizeof (order) - 1, "%s", db_string_p) < 0)
+		{
+		  assert (false);
+		  order[sizeof (order) - 1] = '\0';
+		}
 	    }
 	  db_value_clear (&val);
 
@@ -2357,7 +2361,9 @@ _op_get_value_string (DB_VALUE * value)
 	    }
 	  idx += snprintf (result + idx, result_size - idx, "%s", "}");
 	  if (idx >= result_size)
-	    strncpy (result + result_size - 4, "...}", 4);
+	    {
+	      strncpy (result + result_size - 5, "...}", 5);
+	    }
 	  result[result_size] = '\0';
 	}
       break;
