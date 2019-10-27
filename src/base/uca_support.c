@@ -277,7 +277,7 @@ load_ducet (const char *file_path, const int sett_contr_policy)
   if (f == NULL)
     {
       err_status = ER_LOC_GEN;
-      snprintf (err_msg, sizeof (err_msg) - 1, "Cannot open file %s", file_path);
+      snprintf_dots_truncate (err_msg, sizeof (err_msg) - 1, "Cannot open file %s", file_path);
       LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
       goto exit;
     }

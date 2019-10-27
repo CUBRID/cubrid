@@ -107,11 +107,16 @@ static int
 es_make_dirs (const char *dirname1, const char *dirname2)
 {
   char dirbuf[PATH_MAX];
-  int ret, n;
+  int ret;
 
 #if defined (CUBRID_OWFS_POSIX_TWO_DEPTH_DIRECTORY)
 retry:
-  n = snprintf (dirbuf, PATH_MAX - 1, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, dirname2);
+  if (snprintf (dirbuf, PATH_MAX - 1, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, dirname2)
+      < 0)
+    {
+      assert (false);
+      return ER_ES_INVALID_PATH;
+    }
   ret = mkdir (dirbuf, 0755);
   if (ret < 0 && errno == ENOENT)
     {
@@ -123,11 +128,13 @@ retry:
 	}
     }
 #else
-  n = snprintf (dirbuf, PATH_MAX - 1, "%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1);
+  if (snprintf (dirbuf, PATH_MAX - 1, "%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1) < 0)
+    {
+      assert (false);
+      return ER_ES_INVALID_PATH;
+    }
   ret = mkdir (dirbuf, 0755);
 #endif
-
-  (void) n;			// suppress format-truncate warning
 
   if (ret < 0 && errno != EEXIST)
     {
@@ -251,8 +258,12 @@ retry:
   /* default */
   n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
 #endif
+  if (n < 0)
+    {
+      assert (false);
+      return ER_ES_INVALID_PATH;
+    }
 
-  (void) n;			// suppress format-truncate warning
   es_log ("xes_posix_create_file(): %s\n", new_path);
 
 #if defined (WINDOWS)
@@ -508,8 +519,12 @@ retry:
   /* default */
   n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
 #endif
+  if (n < 0)
+    {
+      assert (false);
+      return ER_ES_INVALID_PATH;
+    }
 
-  (void) n;			// suppress format-truncate warning
   es_log ("xes_posix_copy_file(%s, %s): %s\n", src_path, metaname, new_path);
 
 #if defined (WINDOWS)

@@ -2085,7 +2085,7 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
   char *checksum_table = NULL;
   bool report_only = false;
   HA_SERVER_STATE ha_state = HA_SERVER_STATE_NA;
-  int error = NO_ERROR, ret;
+  int error = NO_ERROR;
 
   memset (&chksum_arg, 0, sizeof (CHKSUM_ARG));
 
@@ -2115,9 +2115,12 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
       snprintf (chksum_result_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s", CHKSUM_DEFAULT_TABLE_NAME);
     }
 
-  ret = snprintf (chksum_schema_Table_name, SM_MAX_IDENTIFIER_LENGTH - 1, "%s%s", chksum_result_Table_name,
-		  CHKSUM_SCHEMA_TABLE_SUFFIX);
-  (void) ret;			// suppress format-truncate warning
+  if (snprintf (chksum_schema_Table_name, SM_MAX_IDENTIFIER_LENGTH - 1, "%s%s", chksum_result_Table_name,
+		CHKSUM_SCHEMA_TABLE_SUFFIX) < 0)
+    {
+      assert (false);
+      goto error_exit;
+    }
 
   report_only = utility_get_option_bool_value (arg_map, CHECKSUM_REPORT_ONLY_S);
   if (report_only == true)
