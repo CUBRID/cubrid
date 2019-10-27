@@ -2370,29 +2370,35 @@ static int
 ha_argv_to_args (char *args, int size, const char **argv, HB_PROC_TYPE type)
 {
   int status = NO_ERROR;
+  int ret = 0;
 
   if (type == HB_PTYPE_COPYLOGDB)
     {
-      (void) snprintf (args, size, "%s %s %s %s %s %s %s ",	/* copylogdb */
-		       argv[0],	/* UTIL_ADMIN_NAME : cub_admin */
-		       argv[1],	/* UTIL_COPYLOGDB : copylogdb */
-		       argv[2],	/* -L, --log-path=PATH */
-		       argv[3],	/* PATH */
-		       argv[4],	/* -m, --mode=MODE */
-		       argv[5],	/* MODE */
-		       argv[6]);	/* database-name */
+      ret = snprintf (args, size, "%s %s %s %s %s %s %s ",	/* copylogdb */
+		      argv[0],	/* UTIL_ADMIN_NAME : cub_admin */
+		      argv[1],	/* UTIL_COPYLOGDB : copylogdb */
+		      argv[2],	/* -L, --log-path=PATH */
+		      argv[3],	/* PATH */
+		      argv[4],	/* -m, --mode=MODE */
+		      argv[5],	/* MODE */
+		      argv[6]);	/* database-name */
     }
   else if (type == HB_PTYPE_APPLYLOGDB)
     {
-      (void) snprintf (args, size, "%s %s %s %s %s %s ",	/* applylogdb */
-		       argv[0],	/* UTIL_ADMIN_NAME : cub_admin */
-		       argv[1],	/* UTIL_APPLYLOGDB : applylogdb */
-		       argv[2],	/* -L, --log-path=PATH */
-		       argv[3],	/* PATH */
-		       argv[4],	/* --max-mem-size=SIZE */
-		       argv[5]);	/* database-name */
+      ret = snprintf (args, size, "%s %s %s %s %s %s ",	/* applylogdb */
+		      argv[0],	/* UTIL_ADMIN_NAME : cub_admin */
+		      argv[1],	/* UTIL_APPLYLOGDB : applylogdb */
+		      argv[2],	/* -L, --log-path=PATH */
+		      argv[3],	/* PATH */
+		      argv[4],	/* --max-mem-size=SIZE */
+		      argv[5]);	/* database-name */
     }
   else
+    {
+      assert (false);
+      status = ER_GENERIC_ERROR;
+    }
+  if (ret < 0)
     {
       assert (false);
       status = ER_GENERIC_ERROR;

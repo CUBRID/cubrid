@@ -314,6 +314,9 @@ extern int free_space (const char *, int);
 
 #endif /* WINDOWS */
 
+#define snprintf_dots_truncate(dest, max_len, ...) \
+  if (snprintf (dest, max_len, __VA_ARGS__) < 0) \
+    snprintf (dest + max_len - 4, 4, "...")
 
 #if defined (WINDOWS)
 #define PATH_SEPARATOR  '\\'

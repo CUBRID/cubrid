@@ -633,15 +633,22 @@ er_set_access_log_filename (void)
 
   if (len < suffix_len || strncmp (&er_Msglog_filename[len - suffix_len], ER_MSG_LOG_FILE_SUFFIX, suffix_len) != 0)
     {
-      snprintf (er_Accesslog_filename_buff, PATH_MAX, "%s%s", er_Msglog_filename, ER_ACCESS_LOG_FILE_SUFFIX);
+      if (snprintf (er_Accesslog_filename_buff, PATH_MAX, "%s%s", er_Msglog_filename, ER_ACCESS_LOG_FILE_SUFFIX) < 0)
+	{
+	  er_Accesslog_filename = NULL;
+	  return;
+	}
       /* ex) server.log => server.log.access */
     }
   else
     {
       strncpy (tmp, er_Msglog_filename, PATH_MAX);
       tmp[len - suffix_len] = '\0';
-      int ret = snprintf (er_Accesslog_filename_buff, PATH_MAX - 1, "%s%s", tmp, ER_ACCESS_LOG_FILE_SUFFIX);
-      (void) ret;		// suppress format-truncate warning
+      if (snprintf (er_Accesslog_filename_buff, PATH_MAX - 1, "%s%s", tmp, ER_ACCESS_LOG_FILE_SUFFIX) < 0)
+	{
+	  er_Accesslog_filename = NULL;
+	  return;
+	}
       /* ex) server_log.err => server_log.access */
     }
 

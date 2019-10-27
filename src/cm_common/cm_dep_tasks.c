@@ -1380,8 +1380,11 @@ user_login_sa (nvplist * out, char *_dbmt_error, char *dbname, char *dbuser, cha
 
   snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_ems_sa.", getpid ());
   (void) envvar_tmpdir_file (outfile, PATH_MAX, tmpfile);
-  int ret = snprintf (errfile, PATH_MAX - 1, "%s.err", outfile);
-  (void) ret;			// suppress format-truncate warning
+  if (snprintf (errfile, PATH_MAX - 1, "%s.err", outfile) < 0)
+    {
+      assert (false);
+      goto login_err;
+    }
 
   unlink (outfile);
   unlink (errfile);
@@ -1530,8 +1533,11 @@ class_info_sa (const char *dbname, const char *uid, const char *passwd, char *cl
 
   int ret = snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_class_info.", getpid ());
   (void) envvar_tmpdir_file (outfile, PATH_MAX, tmpfile);
-  ret = snprintf (errfile, PATH_MAX - 1, "%s.err", outfile);
-  (void) ret;			// suppress format-truncate warning
+  if (snprintf (errfile, PATH_MAX - 1, "%s.err", outfile) < 0)
+    {
+      assert (false);
+      return ERR_GENERAL_ERROR;
+    }
 
   unlink (outfile);
   unlink (errfile);
@@ -1948,7 +1954,11 @@ _op_get_constraint_info (nvplist * out, DB_CONSTRAINT * con)
 	  db_string_p = db_get_string (&val);
 	  if (db_string_p != NULL)
 	    {
-	      snprintf (order, sizeof (order) - 1, "%s", db_string_p);
+	      if (snprintf (order, sizeof (order) - 1, "%s", db_string_p) < 0)
+		{
+		  assert (false);
+		  order[sizeof (order) - 1] = '\0';
+		}
 	    }
 	  db_value_clear (&val);
 
@@ -2351,7 +2361,9 @@ _op_get_value_string (DB_VALUE * value)
 	    }
 	  idx += snprintf (result + idx, result_size - idx, "%s", "}");
 	  if (idx >= result_size)
-	    strncpy (result + result_size - 4, "...}", 4);
+	    {
+	      strncpy (result + result_size - 5, "...}", 5);
+	    }
 	  result[result_size] = '\0';
 	}
       break;
@@ -2529,8 +2541,11 @@ trigger_info_sa (const char *dbname, const char *uid, const char *passwd, nvplis
 
   int ret = snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_trigger_info.", getpid ());
   (void) envvar_tmpdir_file (outfile, PATH_MAX, tmpfile);
-  ret = snprintf (errfile, PATH_MAX - 1, "%s.err", outfile);
-  (void) ret;			// suppress format-truncate warning
+  if (snprintf (errfile, PATH_MAX - 1, "%s.err", outfile) < 0)
+    {
+      assert (false);
+      return ERR_GENERAL_ERROR;
+    }
 
   unlink (outfile);
   unlink (errfile);

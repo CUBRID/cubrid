@@ -243,7 +243,11 @@ dir_repath (char *path, size_t path_len)
     }
 
   strncpy (tmp_str, path, BROKER_PATH_MAX);
-  snprintf (path, path_len, "%s/%s", get_cubrid_home (), tmp_str);
+  if (snprintf (path, path_len, "%s/%s", get_cubrid_home (), tmp_str) < 0)
+    {
+      assert (false);
+      path[0] = '\0';
+    }
 }
 
 /*
