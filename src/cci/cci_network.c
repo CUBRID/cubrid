@@ -177,11 +177,12 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, 
     }
   info += SRV_CON_DBPASSWD_SIZE;
 
-  strncpy (info, con_handle->url, SRV_CON_URL_SIZE - 1);
-  strncpy (ver_str, MAKE_STR (BUILD_NUMBER), SRV_CON_VER_STR_MAX_SIZE);
+  size_t url_len = strnlen (con_handle->url, SRV_CON_URL_SIZE - 1);
+  memcpy (info, con_handle->url, url_len);
 
-  ver_ptr = info + strlen (con_handle->url) + 1;
-  if (strlen (con_handle->url) + strlen (ver_str) + 3 <= SRV_CON_URL_SIZE)
+  strncpy (ver_str, MAKE_STR (BUILD_NUMBER), SRV_CON_VER_STR_MAX_SIZE);
+  ver_ptr = info + url_len + 1;
+  if (url_len + strlen (ver_str) + 3 <= SRV_CON_URL_SIZE)
     {
       ver_ptr[0] = (char) strlen (ver_str) + 1;
       memcpy (ver_ptr + 1, ver_str, strlen (ver_str) + 1);
@@ -870,10 +871,12 @@ net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec)
 
   info = db_info;
 
-  strncpy (info, db_name, SRV_CON_DBNAME_SIZE - 1);
+  size_t db_name_len = strnlen (db_name, SRV_CON_DBNAME_SIZE - 1);
+  memcpy (info, db_name, db_name_len);
   info += (SRV_CON_DBNAME_SIZE + SRV_CON_DBUSER_SIZE + SRV_CON_DBPASSWD_SIZE);
 
-  strncpy (info, url, SRV_CON_URL_SIZE - 1);
+  size_t url_len = strnlen (url, SRV_CON_URL_SIZE - 1);
+  memcpy (info, url, url_len);
 
   if (connect_srv (ip_addr, port, 0, &sock_fd, timeout_msec) < 0)
     {
