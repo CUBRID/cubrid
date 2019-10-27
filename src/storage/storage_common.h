@@ -66,18 +66,6 @@
 enum
 { NULL_CHN = -1, CHN_UNKNOWN_ATCLIENT = -2 };
 
-/* Compose the full name of a database */
-
-#define COMPOSE_FULL_NAME(buf, buf_size, path, name) \
-  do { \
-    size_t len = strlen(path); \
-    if (len > 0 && path[len - 1] != PATH_SEPARATOR) { \
-      snprintf(buf, buf_size - 1, "%s%c%s", path, PATH_SEPARATOR, name); \
-    } else { \
-      snprintf(buf, buf_size - 1, "%s%s", path, name); \
-    } \
-  } while (0)
-
 /* Type definitions related to disk information	*/
 
 typedef INT16 VOLID;		/* Volume identifier */

@@ -569,7 +569,8 @@ conn_retry:
   if (ret < 0)
     {
       assert (false);
-      goto finish_cas;
+      FREE (net_buf.data);
+      return -1;
     }
 
   set_db_connection_info ();
