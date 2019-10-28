@@ -1267,7 +1267,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	  error_code = ER_LOG_COMPILATION_RELEASE;
 	  goto error;
 	}
-      strncpy (log_Gl.hdr.db_release, rel_release_string (), REL_MAX_RELEASE_LENGTH);
+      strncpy_bufsize (log_Gl.hdr.db_release, rel_release_string ());
     }
 
   /*

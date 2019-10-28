@@ -8926,7 +8926,7 @@ fileio_initialize_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, 
    * which we just checked. */
   session_p->type = FILEIO_BACKUP_READ;	/* access backup device for read */
   /* save database full-pathname specified in the database-loc-file */
-  strncpy (session_p->bkup.loc_db_fullname, is_new_vol_path ? db_full_name_p : "", PATH_MAX);
+  strncpy_bufsize (session_p->bkup.loc_db_fullname, is_new_vol_path ? db_full_name_p : "");
   return (fileio_initialize_backup (db_full_name_p, (const char *) backup_source_p, session_p, level,
 				    restore_verbose_file_path, 0 /* no multi-thread */ , 0 /* no sleep */ ));
 }

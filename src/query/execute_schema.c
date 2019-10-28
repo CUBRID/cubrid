@@ -9468,7 +9468,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
     {
       char tbl_name[DB_MAX_IDENTIFIER_LENGTH];
 
-      strncpy (tbl_name, ctemplate->name, DB_MAX_IDENTIFIER_LENGTH);
+      strncpy_bufsize (tbl_name, ctemplate->name);
       COPY_OID (&class_oid, &(ctemplate->op->oid_info.oid));
       att_id = attr_chg_prop.att_id;
     }
