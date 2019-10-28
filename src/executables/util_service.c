@@ -3471,7 +3471,9 @@ us_hb_stop_get_options (char *db_name, int db_name_size, char *remote_host_name,
       switch (opt)
 	{
 	case COMMDB_HOST_S:
-	  strncpy_size (remote_host_name, optarg, remote_host_name_size);
+	  size_t copy_len = strnlen (optarg, remote_host_name_size - 1);
+	  memcpy (remote_host_name, optarg, copy_len);
+	  remote_host_name[copy_len] = '\0';
 	  break;
 	case COMMDB_HB_DEACT_IMMEDIATELY_S:
 	  *immediate_stop = true;
@@ -3572,7 +3574,9 @@ us_hb_status_get_options (bool * verbose, char *remote_host_name, int remote_hos
 	  *verbose = true;
 	  break;
 	case COMMDB_HOST_S:
-	  strncpy_size (remote_host_name, optarg, remote_host_name_size);
+	  int copy_len = (int) strnlen (optarg, (size_t) (remote_host_name_size - 1));
+	  memcpy (remote_host_name, optarg, copy_len);
+	  remote_host_name[copy_len] = '\0';
 	  break;
 	default:
 	  status = ER_GENERIC_ERROR;
@@ -3692,8 +3696,13 @@ us_hb_util_get_options (char *db_name, int db_name_size, char *node_name, int no
 	  goto ret;
 	}
 
-      strncpy_size (db_name, tmp_argv[optind], db_name_size);
-      strncpy_size (node_name, tmp_argv[optind + 1], node_name_size);
+      size_t copy_len = strnlen (tmp_argv[optind], db_name_size - 1);
+      memcpy (db_name, tmp_argv[optind], copy_len);
+      db_name[copy_len] = '\0';
+
+      copy_len = strnlen (tmp_argv[optind + 1], node_name_size - 1);
+      memcpy (node_name, tmp_argv[optind + 1], copy_len);
+      node_name[copy_len] = '\0';
     }
 
 ret:

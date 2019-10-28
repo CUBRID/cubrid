@@ -1465,6 +1465,8 @@ get_pagesize (void)
 static char *
 strcpy_limit (char *dest, const char *src, int buf_len)
 {
-  strncpy_size (dest, src, buf_len);
+  size_t src_len = strnlen (src, buf_len - 1);
+  memcpy (dest, src, src_len);
+  dest[src_len] = '\0';
   return dest;
 }
