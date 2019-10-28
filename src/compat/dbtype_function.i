@@ -549,7 +549,7 @@ db_get_numeric (const DB_VALUE * value)
 DB_CONST_C_BIT
 db_get_bit (const DB_VALUE * value, int *length)
 {
-  char *str = NULL;
+  const char *str = NULL;
 
 #if defined (API_ACTIVE_CHECKS)
   CHECK_1ARG_NULL (value);
