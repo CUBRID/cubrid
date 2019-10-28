@@ -911,7 +911,7 @@ parser_free_node (const PARSER_CONTEXT * parser, PT_NODE * node)
       col->on_empty.m_default_value = NULL;
       db_value_clear (col->on_error.m_default_value);
       col->on_error.m_default_value = NULL;
-      // db_values on_empty.m_default_value & on_error.m_default_value are allocated by the grammar
+      // db_values on_empty.m_default_value & on_error.m_default_value are allocated using area_alloc
     }
   /*
    * Always set the node type to maximum.  This may
