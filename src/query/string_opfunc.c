@@ -23967,7 +23967,7 @@ db_bit_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
   DB_TYPE src_type;
   int error_status = NO_ERROR;
   DB_ELO *elo;
-  char *src_str;
+  const char *src_str;
   int src_length = 0;
 
   assert (src_value != NULL && result_value != NULL);
@@ -25898,7 +25898,8 @@ db_hex (const DB_VALUE * param, DB_VALUE * result)
 
   /* other variables */
   DB_TYPE param_type = DB_TYPE_UNKNOWN;
-  char *str = NULL, *hexval = NULL;
+  const char *str = NULL;
+  char *hexval = NULL;
   int str_size = 0, hexval_len = 0, i = 0, error_code = NO_ERROR;
 
   /* check parameters for NULL values */
@@ -26132,7 +26133,7 @@ db_ascii (const DB_VALUE * param, DB_VALUE * result)
 {
   /* other variables */
   DB_TYPE param_type = DB_TYPE_UNKNOWN;
-  char *str = NULL;
+  const char *str = NULL;
   int str_size = 0, error_code = NO_ERROR;
 
   /* check parameters for NULL values */
@@ -26405,13 +26406,13 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
   else if (TP_IS_BIT_TYPE (num_type))
     {
       /* get raw bytes */
-      num_p_str = db_get_bit (num, &num_size);
+      const char *num_bit_str = db_get_bit (num, &num_size);
       num_size = QSTR_NUM_BYTES (num_size);
 
       /* convert to hex; NOTE: qstr_bin_to_hex returns number of converted bytes, not the size of the hex string; also,
        * we convert at most 64 digits even if we need only 16 in order to let strtoll handle overflow (weird stuff
        * happens there ...) */
-      num_size = qstr_bin_to_hex (num_str, UINT64_MAX_BIN_DIGITS, num_p_str, num_size);
+      num_size = qstr_bin_to_hex (num_str, UINT64_MAX_BIN_DIGITS, num_bit_str, num_size);
       num_str[num_size * 2] = '\0';
 
       /* set up variables for hex -> base10 conversion */

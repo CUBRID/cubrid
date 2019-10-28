@@ -14259,7 +14259,8 @@ mr_setval_bit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   int error = NO_ERROR;
   int src_precision, src_length, src_number_of_bits = 0;
-  char *src_string, *new_;
+  char *new_ = NULL;
+  const char *src_string = NULL;
 
   assert (!db_value_is_corrupted (src));
   if (src == NULL || DB_IS_NULL (src))

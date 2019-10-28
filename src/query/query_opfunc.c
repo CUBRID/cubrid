@@ -7049,7 +7049,8 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, regu_vari
   QFILE_LIST_ID *list_id_p;
   QFILE_LIST_SCAN_ID s_id;
   QFILE_TUPLE_RECORD tuple_rec = { (QFILE_TUPLE) NULL, 0 };
-  QFILE_TUPLE_POSITION p_pos, *bitval;
+  const QFILE_TUPLE_POSITION *bitval = NULL;
+  QFILE_TUPLE_POSITION p_pos;
   QPROC_DB_VALUE_LIST valp;
   DB_VALUE p_pos_dbval;
   XASL_NODE *xasl, *xptr;
@@ -7102,7 +7103,7 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, regu_vari
 	  return false;
 	}
 
-      bitval = (QFILE_TUPLE_POSITION *) db_get_bit (&p_pos_dbval, &length);
+      bitval = REINTERPRET_CAST (const QFILE_TUPLE_POSITION *, db_get_bit (&p_pos_dbval, &length));
 
       if (bitval)
 	{
@@ -7176,7 +7177,8 @@ qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node
   QFILE_LIST_ID *list_id_p;
   QFILE_LIST_SCAN_ID s_id;
   QFILE_TUPLE_RECORD tuple_rec = { (QFILE_TUPLE) NULL, 0 };
-  QFILE_TUPLE_POSITION p_pos, *bitval;
+  const QFILE_TUPLE_POSITION *bitval = NULL;
+  QFILE_TUPLE_POSITION p_pos;
   DB_VALUE p_pos_dbval;
   XASL_NODE *xasl, *xptr;
   int length;
@@ -7219,7 +7221,7 @@ qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node
       return false;
     }
 
-  bitval = (QFILE_TUPLE_POSITION *) db_get_bit (&p_pos_dbval, &length);
+  bitval = REINTERPRET_CAST (const QFILE_TUPLE_POSITION *, db_get_bit (&p_pos_dbval, &length));
 
   if (bitval)
     {
@@ -7292,7 +7294,8 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
   QFILE_LIST_ID *list_id_p;
   QFILE_LIST_SCAN_ID s_id;
   QFILE_TUPLE_RECORD tuple_rec = { (QFILE_TUPLE) NULL, 0 };
-  QFILE_TUPLE_POSITION p_pos, *bitval;
+  const QFILE_TUPLE_POSITION *bitval = NULL;
+  QFILE_TUPLE_POSITION p_pos;
   QPROC_DB_VALUE_LIST valp;
   DB_VALUE p_pos_dbval, cast_value, arg_dbval;
   XASL_NODE *xasl, *xptr;
@@ -7542,7 +7545,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
 	  goto error;
 	}
 
-      bitval = (QFILE_TUPLE_POSITION *) db_get_bit (&p_pos_dbval, &length);
+      bitval = REINTERPRET_CAST (const QFILE_TUPLE_POSITION *, db_get_bit (&p_pos_dbval, &length));
 
       if (bitval)
 	{
