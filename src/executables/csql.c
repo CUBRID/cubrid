@@ -1489,7 +1489,7 @@ csql_read_file (const char *file_name)
    * We've successfully read the file, so remember its name for
    * subsequent reads.
    */
-  strncpy (current_file, p, sizeof (current_file));
+  strncpy_bufsize (current_file, p);
 
   if (csql_edit_read_file (fp) == CSQL_FAILURE)
     {
@@ -1568,7 +1568,7 @@ csql_write_file (const char *file_name, int append_flag)
    * We've successfully opened the file, so remember its name for
    * subsequent writes.
    */
-  strncpy (current_file, p, sizeof (current_file));
+  strncpy_bufsize (current_file, p);
 
   if (csql_edit_write_file (fp) == CSQL_FAILURE)
     {
@@ -2613,18 +2613,18 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   /* set up prompt and message fields. */
   if (csql_arg->sysadm)
     {
-      strncpy (csql_Prompt, csql_get_message (CSQL_SYSADM_PROMPT), sizeof (csql_Prompt));
+      strncpy_bufsize (csql_Prompt, csql_get_message (CSQL_SYSADM_PROMPT));
     }
   else
     {
-      strncpy (csql_Prompt, csql_get_message (CSQL_PROMPT), sizeof (csql_Prompt));
+      strncpy_bufsize (csql_Prompt, csql_get_message (CSQL_PROMPT));
     }
   avail_size = sizeof (csql_Prompt) - strlen (csql_Prompt) - 1;
   if (avail_size > 0)
     {
       strncat (csql_Prompt, " ", avail_size);
     }
-  strncpy (csql_Name, csql_get_message (CSQL_NAME), sizeof (csql_Name));
+  strncpy_bufsize (csql_Name, csql_get_message (CSQL_NAME));
 
   /* as we must use db_open_file_name() to open the input file, it is necessary to be opening csql_Input_fp at this
    * point */

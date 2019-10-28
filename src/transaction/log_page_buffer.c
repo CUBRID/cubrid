@@ -8034,7 +8034,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 	}
 
       memset (session_storage.bkup.log_path, 0, PATH_MAX);
-      strncpy (session_storage.bkup.log_path, logpath, PATH_MAX);
+      strncpy_bufsize (session_storage.bkup.log_path, logpath);
 
       session = &session_storage;
 

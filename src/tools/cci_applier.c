@@ -961,7 +961,7 @@ validate_args (CA_CON_INFO * con_info, char *repl_log_path)
     }
   else
     {
-      strncpy_bufsize (repl_log_path, resolved_path);
+      strncpy_size (repl_log_path, resolved_path, PATH_MAX);
     }
 
   return;

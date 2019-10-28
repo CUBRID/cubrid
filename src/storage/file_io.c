@@ -6675,8 +6675,8 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
    * Adjustments are made at a later point, if the backup_destination is
    * a directory.
    */
-  strncpy (session_p->bkup.name, backup_destination_p, PATH_MAX);
-  strncpy (session_p->bkup.current_path, backup_destination_p, PATH_MAX);
+  strncpy_bufsize (session_p->bkup.name, backup_destination_p);
+  strncpy_bufsize (session_p->bkup.current_path, backup_destination_p);
   session_p->bkup.vlabel = session_p->bkup.name;
   session_p->bkup.vdes = NULL_VOLDES;
   session_p->bkup.dtype = FILEIO_BACKUP_VOL_UNKNOWN;
@@ -7117,8 +7117,8 @@ fileio_start_backup (THREAD_ENTRY * thread_p, const char *db_full_name_p, INT64 
   backup_header_p = session_p->bkup.bkuphdr;
   backup_header_p->iopageid = FILEIO_BACKUP_START_PAGE_ID;
   strncpy (backup_header_p->magic, CUBRID_MAGIC_DATABASE_BACKUP, CUBRID_MAGIC_MAX_LENGTH);
-  strncpy (backup_header_p->db_release, rel_release_string (), REL_MAX_RELEASE_LENGTH);
-  strncpy (backup_header_p->db_fullname, db_full_name_p, PATH_MAX);
+  strncpy_bufsize (backup_header_p->db_release, rel_release_string ());
+  strncpy_bufsize (backup_header_p->db_fullname, db_full_name_p);
   backup_header_p->db_creation = *db_creation_time_p;
   backup_header_p->db_iopagesize = IO_PAGESIZE;
   backup_header_p->db_compatibility = rel_disk_compatible ();
