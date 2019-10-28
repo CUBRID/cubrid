@@ -6282,7 +6282,7 @@ sysprm_set_er_log_file (const char *db_name)
       return;
     }
 
-  strncpy (local_db_name, db_name, DB_MAX_IDENTIFIER_LENGTH);
+  strncpy_bufsize (local_db_name, db_name);
   s = strchr (local_db_name, '@');
   if (s)
     {
@@ -6355,7 +6355,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
     }
   else
     {
-      strncpy (local_db_name, db_name, DB_MAX_IDENTIFIER_LENGTH);
+      strncpy_bufsize (local_db_name, db_name);
       s = strchr (local_db_name, '@');
       if (s)
 	{
@@ -6417,7 +6417,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
       conf_file = envvar_get ("HA_CONF_FILE");
       if (conf_file != NULL && conf_file[0] != '\0')
 	{
-	  strncpy (file_being_dealt_with, conf_file, PATH_MAX);
+	  strncpy_bufsize (file_being_dealt_with, conf_file);
 	}
       else
 	{

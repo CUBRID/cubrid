@@ -4770,7 +4770,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 	    }
 
 	  currency_symbol_p = lang_currency_symbol (money_p->type);
-	  strncpy (line, currency_symbol_p, strlen (currency_symbol_p));
+	  strcpy (line, currency_symbol_p);
 	  strncpy (line + strlen (currency_symbol_p), (char *) money_string_p->bytes, money_string_p->length);
 	  line[strlen (currency_symbol_p) + money_string_p->length] = '\0';
 

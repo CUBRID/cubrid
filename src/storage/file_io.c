@@ -5238,7 +5238,7 @@ fileio_get_primitive_way_max (const char *path_p, long int *file_name_max_p, lon
 
   /* Verify the above compilation guesses */
 
-  strncpy (new_guess_path, path_p, PATH_MAX);
+  strncpy_bufsize (new_guess_path, path_p);
   name_p = strrchr (new_guess_path, '/');
 #if defined(WINDOWS)
   {
@@ -5473,7 +5473,7 @@ fileio_get_max_name (const char *given_path_p, long int *file_name_max_p, long i
       if (stat (path_p, &stbuf) != -1 && ((stbuf.st_mode & S_IFMT) != S_IFDIR))
 	{
 	  /* Try it with the directory instead */
-	  strncpy (new_path, given_path_p, PATH_MAX);
+	  strncpy_bufsize (new_path, given_path_p);
 	  name_p = strrchr (new_path, '/');
 #if defined(WINDOWS)
 	  {
@@ -5958,7 +5958,7 @@ fileio_cache (VOLID vol_id, const char *vol_label_p, int vol_fd, FILEIO_LOCKF_TY
 	      sys_vol_info_p->volid = vol_id;
 	      sys_vol_info_p->vdes = vol_fd;
 	      sys_vol_info_p->lockf_type = lockf_type;
-	      strncpy (sys_vol_info_p->vlabel, vol_label_p, PATH_MAX);
+	      strncpy_bufsize (sys_vol_info_p->vlabel, vol_label_p);
 	      sys_vol_info_p->next = fileio_Sys_vol_info_header.anchor.next;
 	      fileio_Sys_vol_info_header.anchor.next = sys_vol_info_p;
 	      fileio_Sys_vol_info_header.num_vols++;
@@ -5974,7 +5974,7 @@ fileio_cache (VOLID vol_id, const char *vol_label_p, int vol_fd, FILEIO_LOCKF_TY
 	  sys_vol_info_p->vdes = vol_fd;
 	  sys_vol_info_p->lockf_type = lockf_type;
 	  sys_vol_info_p->next = NULL;
-	  strncpy (sys_vol_info_p->vlabel, vol_label_p, PATH_MAX);
+	  strncpy_bufsize (sys_vol_info_p->vlabel, vol_label_p);
 #if defined(WINDOWS)
 	  pthread_mutex_init (&sys_vol_info_p->sysvol_mutex, NULL);
 #endif /* WINDOWS */

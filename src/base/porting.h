@@ -317,6 +317,10 @@ extern int free_space (const char *, int);
 #define snprintf_dots_truncate(dest, max_len, ...) \
   if (snprintf (dest, max_len, __VA_ARGS__) < 0) \
     snprintf (dest + max_len - 4, 4, "...")
+#define strncpy_size(buf, str, size) \
+  strncpy (buf, str, size); buf[(size) - 1] = '\0'
+#define strncpy_bufsize(buf, str) \
+  strncpy_size (buf, str, sizeof (buf))
 
 #if defined (WINDOWS)
 #define PATH_SEPARATOR  '\\'
