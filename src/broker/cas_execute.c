@@ -299,7 +299,7 @@ static int create_srv_handle_with_query_result (T_QUERY_RESULT * src_q_result, D
 static int get_client_result_cache_lifetime (DB_SESSION * session, int stmt_id);
 static bool has_stmt_result_set (char stmt_type);
 static bool check_auto_commit_after_getting_result (T_SRV_HANDLE * srv_handle);
-static char *convert_db_value_to_string (DB_VALUE * value, DB_VALUE * value_string);
+static const char *convert_db_value_to_string (DB_VALUE * value, DB_VALUE * value_string);
 static void serialize_collection_as_string (DB_VALUE * col, char **out);
 static void add_fk_info_before (T_FK_INFO_RESULT * pivot, T_FK_INFO_RESULT * pnew);
 static void add_fk_info_after (T_FK_INFO_RESULT * pivot, T_FK_INFO_RESULT * pnew);
@@ -4512,7 +4512,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
       {
-	DB_C_CHAR str;
+	DB_CONST_C_CHAR str;
 	int dummy = 0;
 	int bytes_size = 0;
 	int decomp_size;
@@ -4563,7 +4563,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_NCHAR:
       {
-	DB_C_NCHAR nchar;
+	DB_CONST_C_NCHAR nchar;
 	int dummy = 0;
 	int bytes_size = 0;
 	int decomp_size;
@@ -4871,7 +4871,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
       {
 	DB_DOMAIN *char_domain;
 	DB_VALUE v;
-	char *str;
+	const char *str;
 	int len, err;
 	char buf[128];
 
@@ -9925,10 +9925,10 @@ ux_lob_read (DB_VALUE * lob_dbval, INT64 offset, int size, T_NET_BUF * net_buf)
 }
 
 /* converting a DB_VALUE to a char taking care of nchar strings */
-static char *
+static const char *
 convert_db_value_to_string (DB_VALUE * value, DB_VALUE * value_string)
 {
-  char *val_str = NULL;
+  const char *val_str = NULL;
   DB_TYPE val_type;
   int err, len;
 
@@ -9967,7 +9967,7 @@ serialize_collection_as_string (DB_VALUE * col, char **out)
   DB_VALUE value, value_string;
   int i, size;
   int needed_size = 0;
-  char *single_value = NULL;
+  const char *single_value = NULL;
 
   *out = NULL;
 

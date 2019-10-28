@@ -2265,6 +2265,7 @@ _op_get_value_string (DB_VALUE * value)
 #if !defined (NUMERIC_MAX_STRING_SIZE)
 #define NUMERIC_MAX_STRING_SIZE (80 + 1)
 #endif
+  const char *db_varnchar_p = NULL;
   char *result, *return_result, *db_string_p;
   DB_TYPE type;
   DB_DATE *date_v;
@@ -2307,10 +2308,10 @@ _op_get_value_string (DB_VALUE * value)
       break;
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      db_string_p = db_get_nchar (value, &size);
-      if (db_string_p != NULL)
+      db_varnchar_p = db_get_nchar (value, &size);
+      if (db_varnchar_p != NULL)
 	{
-	  snprintf (result, result_size, "N'%s'", db_string_p);
+	  snprintf (result, result_size, "N'%s'", db_varnchar_p);
 	}
       break;
     case DB_TYPE_BIT:

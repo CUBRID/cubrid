@@ -26760,7 +26760,7 @@ db_inet_aton (DB_VALUE * result_numbered_ip, const DB_VALUE * string)
 {
   int error_code = NO_ERROR;
   DB_BIGINT numbered_ip = (DB_BIGINT) 0;
-  char *ip_string = NULL;
+  const char *ip_string = NULL;
   char *local_ipstring = NULL;
   char *local_ipslice = NULL;
   char *local_pivot = NULL;
