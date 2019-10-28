@@ -2010,7 +2010,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
 
 	  sprintf (time, " (%ld.%06ld sec) ", elapsed_time.tv_sec, elapsed_time.tv_usec);
-	  strncat (stmt_msg, time, sizeof (time));
+	  strncat (stmt_msg, time, MIN (sizeof (time), sizeof (stmt_msg) - strlen (stmt_msg) - 1));
 	}
 
       if (csql_is_auto_commit_requested (csql_arg) && stmt_type != CUBRID_STMT_COMMIT_WORK
