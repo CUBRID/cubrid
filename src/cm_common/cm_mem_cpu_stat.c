@@ -29,6 +29,7 @@
 #include "utility.h"
 #include "environment_variable.h"
 #include "cm_utils.h"
+#include "porting.h"
 
 
 #include <string.h>
@@ -1464,7 +1465,6 @@ get_pagesize (void)
 static char *
 strcpy_limit (char *dest, const char *src, int buf_len)
 {
-  strncpy (dest, src, buf_len - 1);
-  dest[buf_len - 1] = '\0';
+  strncpy_size (dest, src, buf_len);
   return dest;
 }
