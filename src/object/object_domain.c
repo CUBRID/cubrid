@@ -803,7 +803,9 @@ tp_domain_clear_enumeration (DB_ENUMERATION * enumeration)
     {
       if (DB_GET_ENUM_ELEM_STRING (&enumeration->elements[i]) != NULL)
 	{
-	  free_and_init (DB_GET_ENUM_ELEM_STRING (&enumeration->elements[i]));
+	  // TODO enum: tmp variable is temporary until db_char::medium::buf will be made const
+	  const char *tmp = DB_GET_ENUM_ELEM_STRING (&enumeration->elements[i]);
+	  free_and_init (tmp);
 	}
     }
 
@@ -1238,7 +1240,9 @@ error_return:
 	{
 	  if (DB_GET_ENUM_ELEM_STRING (&dest->elements[i]) != NULL)
 	    {
-	      free_and_init (DB_GET_ENUM_ELEM_STRING (&dest->elements[i]));
+	      // TODO enum: tmp variable is temporary until db_char::medium::buf will be made const
+	      const char *tmp = DB_GET_ENUM_ELEM_STRING (&dest->elements[i]);
+	      free_and_init (tmp);
 	    }
 	}
       free_and_init (dest->elements);
@@ -4265,7 +4269,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
   else if (vtype == DB_TYPE_ENUMERATION)
     {
       int val_idx, dom_size, val_size;
-      char *dom_str = NULL, *val_str = NULL;
+      const char *dom_str = NULL, *val_str = NULL;
 
       if (db_get_enum_short (value) == 0 && db_get_enum_string (value) != NULL)
 	{
@@ -7150,10 +7154,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    }
 	  break;
 	case DB_JSON_STRING:
-	  {
-	    const char *json_string = db_json_get_string_from_document (src_doc);
-	    db_make_string (&src_replacement, json_string);
-	  }
+	  db_make_string_copy (&src_replacement, db_json_get_string_from_document (src_doc));
 	  break;
 	default:
 	  use_replacement = false;
@@ -9709,7 +9710,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       {
 	unsigned short val_idx = 0;
 	int val_str_size = 0;
-	char *val_str = NULL;
+	const char *val_str = NULL;
 	bool exit = false, alloc_string = true;
 	DB_VALUE conv_val;
 
@@ -9770,7 +9771,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    {
 	      DB_VALUE val;
 	      DB_DATA_STATUS stat = DATA_STATUS_OK;
-	      int err = NO_ERROR;
 
 	      db_make_double (&val, 0);
 	      err = numeric_db_value_coerce_from_num ((DB_VALUE *) src, &val, &stat);
@@ -9983,7 +9983,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
 	    if (status == DOMAIN_COMPATIBLE)
 	      {
-		char *enum_str;
+		const char *enum_str;
 
 		assert (val_str != NULL);
 
@@ -9996,8 +9996,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
 		if (alloc_string)
 		  {
-		    enum_str = (char *) db_private_alloc (NULL, val_str_size + 1);
-		    if (enum_str == NULL)
+		    char *enum_str_tmp = (char *) db_private_alloc (NULL, val_str_size + 1);
+		    if (enum_str_tmp == NULL)
 		      {
 			status = DOMAIN_ERROR;
 			pr_clear_value (&conv_val);
@@ -10005,14 +10005,17 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		      }
 		    else
 		      {
-			memcpy (enum_str, val_str, val_str_size);
-			enum_str[val_str_size] = 0;
+			memcpy (enum_str_tmp, val_str, val_str_size);
+			enum_str_tmp[val_str_size] = 0;
 		      }
+
+		    enum_str = enum_str_tmp;
 		  }
 		else
 		  {
 		    enum_str = val_str;
 		  }
+
 		db_make_enumeration (target, val_idx, enum_str, val_str_size, TP_DOMAIN_CODESET (desired_domain),
 				     TP_DOMAIN_COLLATION (desired_domain));
 		target->need_clear = true;

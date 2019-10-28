@@ -1768,7 +1768,9 @@ error:
     {
       for (--idx; idx >= 0; idx--)
 	{
-	  free_and_init (DB_GET_ENUM_ELEM_STRING (&enum_elements[idx]));
+	  // TODO enum: tmp variable is temporary until db_char::medium::buf will be made const
+	  const char *tmp = DB_GET_ENUM_ELEM_STRING (&enum_elements[idx]);
+	  free_and_init (tmp);
 	}
       free_and_init (enum_elements);
     }

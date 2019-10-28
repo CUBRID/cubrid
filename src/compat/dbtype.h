@@ -101,8 +101,9 @@
       ((elem)->short_val)
 #define DB_GET_ENUM_ELEM_DBCHAR(elem) \
       ((elem)->str_val)
+// TODO enum: cast is temporary until db_char::medium::buf will be made const
 #define DB_GET_ENUM_ELEM_STRING(elem) \
-      ((elem)->str_val.medium.buf)
+      ((const char*) (elem)->str_val.medium.buf)
 #define DB_GET_ENUM_ELEM_STRING_SIZE(elem) \
       ((elem)->str_val.medium.size)
 

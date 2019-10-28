@@ -52,7 +52,7 @@ STATIC_INLINE DB_C_CHAR db_get_char (const DB_VALUE * value, int *length) __attr
 STATIC_INLINE DB_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_get_string_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE unsigned short db_get_enum_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_C_CHAR db_get_enum_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_CONST_C_CHAR db_get_enum_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_get_enum_string_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_CHAR db_get_method_error_msg (void) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_RESULTSET db_get_resultset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -109,7 +109,7 @@ STATIC_INLINE int db_make_nchar (DB_VALUE * value, const int nchar_length, DB_CO
 STATIC_INLINE int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, DB_CONST_C_NCHAR str,
 				    const int nchar_str_byte_size, const int codeset, const int collation_id)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int size,
+STATIC_INLINE int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_CONST_C_CHAR str, int size,
 				       unsigned char codeset, const int collation_id) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle) __attribute__ ((ALWAYS_INLINE));
 
@@ -707,7 +707,7 @@ db_get_enum_short (const DB_VALUE * value)
  * return :
  * value(in):
  */
-char *
+DB_CONST_C_CHAR
 db_get_enum_string (const DB_VALUE * value)
 {
 #if defined (API_ACTIVE_CHECKS)
@@ -1721,7 +1721,7 @@ db_make_varnchar (DB_VALUE * value, const int max_nchar_length, DB_CONST_C_NCHAR
  * collation_id(in):
  */
 int
-db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int size, unsigned char codeset,
+db_make_enumeration (DB_VALUE * value, unsigned short index, DB_CONST_C_CHAR str, int size, unsigned char codeset,
 		     const int collation_id)
 {
 #if defined (API_ACTIVE_CHECKS)
@@ -1738,7 +1738,8 @@ db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int 
   value->data.ch.medium.compressed_buf = NULL;
   value->data.ch.medium.compressed_size = 0;
   value->data.enumeration.str_val.medium.size = size;
-  value->data.enumeration.str_val.medium.buf = str;
+  // TODO enum: cast is temporary until db_char::medium::buf will be made const
+  value->data.enumeration.str_val.medium.buf = (char *) str;
   value->domain.general_info.is_null = 0;
   value->need_clear = false;
 

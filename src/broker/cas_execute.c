@@ -4614,13 +4614,12 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
       break;
     case DB_TYPE_ENUMERATION:
       {
-	char *str;
 	int bytes_size = 0;
 	int decomp_size;
 	char *decomposed = NULL;
 	bool need_decomp = false;
 
-	str = db_get_enum_string (val);
+	const char *str = db_get_enum_string (val);
 	bytes_size = db_get_enum_string_size (val);
 	if (max_col_size > 0)
 	  {
