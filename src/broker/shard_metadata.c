@@ -125,9 +125,9 @@ shard_metadata_read_user (T_SHM_PROXY * shm_proxy_p, char *db_name, char *db_use
   shm_user_p->num_shard_user = max_user;
 
   user_p = &(shm_user_p->shard_user[0]);
-  strncpy (user_p->db_name, db_name, sizeof (user_p->db_name) - 1);
-  strncpy (user_p->db_user, db_user, sizeof (user_p->db_user) - 1);
-  strncpy (user_p->db_password, db_password, sizeof (user_p->db_password) - 1);
+  strncpy_bufsize (user_p->db_name, db_name);
+  strncpy_bufsize (user_p->db_user, db_user);
+  strncpy_bufsize (user_p->db_password, db_password);
 
   SHARD_INF ("<USERINFO> [%d] db_name:[%s], " "db_user:[%s], db_password:[%s]\n", 0, user_p->db_name, user_p->db_user,
 	     user_p->db_password);

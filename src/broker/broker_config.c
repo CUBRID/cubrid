@@ -747,8 +747,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      strncpy (time_str, ini_getstr (ini, sec_name, "MYSQL_READ_TIMEOUT", DEFAULT_MYSQL_READ_TIMEOUT, &lineno),
-	       sizeof (time_str));
+      strncpy_bufsize (time_str, ini_getstr (ini, sec_name, "MYSQL_READ_TIMEOUT", DEFAULT_MYSQL_READ_TIMEOUT, &lineno));
       br_info[num_brs].mysql_read_timeout = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].mysql_read_timeout < 0)
 	{
