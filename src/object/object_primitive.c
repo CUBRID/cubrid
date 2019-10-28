@@ -12757,7 +12757,7 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
     {
       int unconverted;
       int char_count;
-      char *temp_string = db_get_nchar (value, &char_count);
+      const char *temp_string = db_get_nchar (value, &char_count);
 
       if (char_count > 0)
 	{
@@ -13766,7 +13766,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	{
 	  int unconverted;
 	  int char_count;
-	  char *temp_string = db_get_nchar (value, &char_count);
+	  const char *temp_string = db_get_nchar (value, &char_count);
 
 	  if (char_count > 0)
 	    {

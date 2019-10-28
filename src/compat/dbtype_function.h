@@ -335,8 +335,8 @@ extern "C"
   extern DB_ELO *db_get_elo (const DB_VALUE * value);
   extern DB_C_NUMERIC db_get_numeric (const DB_VALUE * value);
   extern DB_CONST_C_BIT db_get_bit (const DB_VALUE * value, int *length);
-  extern DB_C_CHAR db_get_char (const DB_VALUE * value, int *length);
-  extern DB_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length);
+  extern DB_CONST_C_CHAR db_get_char (const DB_VALUE * value, int *length);
+  extern DB_CONST_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length);
   extern int db_get_string_size (const DB_VALUE * value);
   extern unsigned short db_get_enum_short (const DB_VALUE * value);
   extern DB_CONST_C_CHAR db_get_enum_string (const DB_VALUE * value);
