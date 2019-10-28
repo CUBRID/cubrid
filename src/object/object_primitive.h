@@ -176,7 +176,6 @@ typedef struct pr_type
                               char *copy_buf, int copy_buf_len) const;
     inline DB_VALUE_COMPARE_RESULT index_cmpdisk (const void *memptr1, const void *memptr2, const tp_domain * domain,
                                                   int do_coercion, int total_order, int *start_colp) const;
-    
 } PR_TYPE, *PRIM;
 // *INDENT-ON*
 
@@ -516,7 +515,6 @@ pr_type::get_index_size_of_mem (const void * memptr, const tp_domain * domain) c
   if (f_index_lengthmem != NULL)
     {
       return (*f_index_lengthmem) (const_cast<void *> (memptr), const_cast<tp_domain *> (domain));
-      
     }
   else
     {

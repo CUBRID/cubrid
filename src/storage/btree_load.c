@@ -206,7 +206,7 @@ class index_builder_loader_task: public cubthread::entry_task
                                index_builder_loader_context &load_context, std::atomic<int> &num_keys,
 			       std::atomic<int> &num_oids, std::atomic<int> &num_nulls);
     ~index_builder_loader_task ();
-    
+
     // add key to key set and return true if task is ready for execution, false otherwise
     batch_key_status add_key (const DB_VALUE *key, const OID &oid);
     bool has_keys () const;
