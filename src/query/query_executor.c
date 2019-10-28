@@ -16297,7 +16297,8 @@ qexec_check_for_cycle (THREAD_ENTRY * thread_p, OUTPTR_LIST * outptr_list, QFILE
   DB_VALUE p_pos_dbval;
   QFILE_LIST_SCAN_ID s_id;
   QFILE_TUPLE_RECORD tuple_rec = { (QFILE_TUPLE) NULL, 0 };
-  QFILE_TUPLE_POSITION p_pos, *bitval;
+  const QFILE_TUPLE_POSITION *bitval = NULL;
+  QFILE_TUPLE_POSITION p_pos;
   int length;
 
   if (qfile_open_list_scan (list_id_p, &s_id) != NO_ERROR)
@@ -16330,7 +16331,7 @@ qexec_check_for_cycle (THREAD_ENTRY * thread_p, OUTPTR_LIST * outptr_list, QFILE
 	  return ER_FAILED;
 	}
 
-      bitval = (QFILE_TUPLE_POSITION *) db_get_bit (&p_pos_dbval, &length);
+      bitval = REINTERPRET_CAST (const QFILE_TUPLE_POSITION *, db_get_bit (&p_pos_dbval, &length));
 
       if (bitval)
 	{

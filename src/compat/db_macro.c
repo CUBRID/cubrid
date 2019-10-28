@@ -964,7 +964,8 @@ db_string_truncate (DB_VALUE * value, const int precision)
 {
   int error = NO_ERROR;
   DB_VALUE src_value;
-  char *string = NULL, *val_str;
+  char *string = NULL;
+  const char *val_str = NULL;
   int length;
   int byte_size;
 

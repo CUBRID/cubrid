@@ -5607,7 +5607,7 @@ bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size)
   int string_index = 0;
   int byte_index;
   int bit_index;
-  char *bstring;
+  const char *bstring;
   int error = NO_ERROR;
   static const char digits[16] = {
     '0', '1', '2', '3', '4', '5', '6', '7',

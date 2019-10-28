@@ -226,7 +226,7 @@ static int fetch_constraint (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T
 static int fetch_trigger (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_privilege (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_foreign_keys (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
-static void add_res_data_bytes (T_NET_BUF * net_buf, char *str, int size, unsigned char ext_type, int *net_size);
+static void add_res_data_bytes (T_NET_BUF * net_buf, const char *str, int size, unsigned char ext_type, int *net_size);
 static void add_res_data_string (T_NET_BUF * net_buf, const char *str, int size, unsigned char ext_type,
 				 unsigned char charset, int *net_size);
 static void add_res_data_string_safe (T_NET_BUF * net_buf, const char *str, unsigned char ext_type,
@@ -4497,10 +4497,9 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     case DB_TYPE_VARBIT:
     case DB_TYPE_BIT:
       {
-	DB_C_BIT bit;
 	int length = 0;
 
-	bit = db_get_bit (val, &length);
+	DB_CONST_C_BIT bit = db_get_bit (val, &length);
 	length = (length + 7) / 8;
 	if (max_col_size > 0)
 	  {
@@ -6403,7 +6402,7 @@ fetch_foreign_keys (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, 
 }
 
 static void
-add_res_data_bytes (T_NET_BUF * net_buf, char *str, int size, unsigned char ext_type, int *net_size)
+add_res_data_bytes (T_NET_BUF * net_buf, const char *str, int size, unsigned char ext_type, int *net_size)
 {
   if (ext_type)
     {
