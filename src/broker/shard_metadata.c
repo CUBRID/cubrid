@@ -194,7 +194,7 @@ shard_metadata_read_key (const char *filename, T_SHM_PROXY * shm_proxy_p)
 	      trim (section);
 	      if (strncasecmp (section, key_column, SHARD_KEY_COLUMN_LEN) != 0)
 		{
-		  strncpy (key_column, section, sizeof (key_column) - 1);
+		  strncpy_bufsize (key_column, section);
 
 		  shm_key_p->num_shard_key++;
 		  idx_key = shm_key_p->num_shard_key - 1;
@@ -225,7 +225,7 @@ shard_metadata_read_key (const char *filename, T_SHM_PROXY * shm_proxy_p)
 	}
 
       key_p = &(shm_key_p->shard_key[idx_key]);
-      strncpy (key_p->key_column, key_column, sizeof (key_p->key_column) - 1);
+      strncpy_bufsize (key_p->key_column, key_column);
 
       if (idx_range >= SHARD_KEY_RANGE_MAX)
 	{

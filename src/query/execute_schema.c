@@ -9466,9 +9466,6 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 			  && attr_chg_prop.name_space == ID_ATTRIBUTE) ? true : false;
   if (is_srv_update_needed)
     {
-      char tbl_name[DB_MAX_IDENTIFIER_LENGTH];
-
-      strncpy_bufsize (tbl_name, ctemplate->name);
       COPY_OID (&class_oid, &(ctemplate->op->oid_info.oid));
       att_id = attr_chg_prop.att_id;
     }
