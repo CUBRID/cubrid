@@ -9758,8 +9758,10 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  PT_NODE *referred_node;
 	  int max_position;
 
-	  // Do not allow aggregates on the same level of connect_bys 
-	  if (PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_HAS_AGG) && node->info.query.q.select.connect_by != NULL)
+	  // Do not allow aggregates on the same level of connect_bys
+	  // TODO: also figure out 2 column agg functions (json_objectagg)
+	  if (PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_HAS_AGG) && node->info.query.q.select.connect_by != NULL
+	      && node->info.query.q.select.group_by == NULL && node->info.query.q.select.having == NULL)
 	    {
 	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_AGGREGATE);
 	      break;
