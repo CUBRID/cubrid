@@ -188,14 +188,8 @@ extern "C"
   extern int db_value_put_null (DB_VALUE * value);
   extern int db_value_put (DB_VALUE * value, const DB_TYPE_C c_type, void *input, const int input_length);
   extern bool db_value_type_is_collection (const DB_VALUE * value);
-  extern bool db_value_type_is_numeric (const DB_VALUE * value);
-  extern bool db_value_type_is_bit (const DB_VALUE * value);
-  extern bool db_value_type_is_char (const DB_VALUE * value);
-  extern bool db_value_type_is_internal (const DB_VALUE * value);
   extern int db_value_get (DB_VALUE * value, const DB_TYPE_C type, void *buf, const int buflen, int *transferlen,
 			   int *outputlen);
-  extern int db_value_size (const DB_VALUE * value, DB_TYPE_C type, int *size);
-  extern int db_value_char_size (const DB_VALUE * value, int *size);
   extern DB_CURRENCY db_value_get_monetary_currency (const DB_VALUE * value);
   extern double db_value_get_monetary_amount_as_double (const DB_VALUE * value);
   extern int db_value_put_monetary_currency (DB_VALUE * value, const DB_CURRENCY type);
@@ -204,13 +198,6 @@ extern "C"
 
   extern int db_value_put_encoded_time (DB_VALUE * value, const DB_TIME * time_value);
   extern int db_value_put_encoded_date (DB_VALUE * value, const DB_DATE * date_value);
-  extern int db_value_put_numeric (DB_VALUE * value, DB_C_NUMERIC num);
-  extern int db_value_put_bit (DB_VALUE * value, DB_C_BIT str, int size);
-  extern int db_value_put_varbit (DB_VALUE * value, DB_C_BIT str, int size);
-  extern int db_value_put_char (DB_VALUE * value, DB_C_CHAR str, int size);
-  extern int db_value_put_varchar (DB_VALUE * value, DB_C_CHAR str, int size);
-  extern int db_value_put_nchar (DB_VALUE * value, DB_C_NCHAR str, int size);
-  extern int db_value_put_varnchar (DB_VALUE * value, DB_C_NCHAR str, int size);
 
   extern DB_CURRENCY db_get_currency_default (void);
 

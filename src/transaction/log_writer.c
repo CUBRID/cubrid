@@ -286,6 +286,14 @@ logwr_read_log_header (void)
       else
 	{
 	  error = logwr_fetch_header_page (log_pgptr, logwr_Gl.append_vdes);
+	  if (error == ER_LOG_PAGE_CORRUPTED && fileio_is_formatted_page (NULL, (char *) log_pgptr))
+	    {
+	      fileio_dismount (NULL, LOG_DBLOG_ACTIVE_VOLID);
+	      fileio_unformat (NULL, logwr_Gl.active_name);
+	      er_clear ();
+	      return NO_ERROR;
+	    }
+
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -1971,7 +1979,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
   LOG_PAGEID fpageid, lpageid, pageid;
   char *p;
   LOG_PAGE *log_pgptr;
-  INT64 num_logpgs;
+  UINT64 num_logpgs;
   LOG_LSA nxio_lsa = LSA_INITIALIZER;
   bool is_hdr_page_only;
   int ha_file_status;
@@ -2097,7 +2105,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
   log_Gl.hdr.ha_file_status = ha_file_status;
 
   /* Allocate the log page area */
-  num_logpgs = (is_hdr_page_only) ? 1 : (int) ((lpageid - fpageid + 1) + 1);
+  num_logpgs = (is_hdr_page_only) ? 1 : (UINT64) ((lpageid - fpageid + 1) + 1);
 
   assert (lpageid >= fpageid);
   assert (num_logpgs <= LOGWR_COPY_LOG_BUFFER_NPAGES);
