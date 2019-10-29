@@ -1971,7 +1971,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
   LOG_PAGEID fpageid, lpageid, pageid;
   char *p;
   LOG_PAGE *log_pgptr;
-  INT64 num_logpgs;
+  UINT64 num_logpgs;
   LOG_LSA nxio_lsa = LSA_INITIALIZER;
   bool is_hdr_page_only;
   int ha_file_status;
@@ -2097,7 +2097,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
   log_Gl.hdr.ha_file_status = ha_file_status;
 
   /* Allocate the log page area */
-  num_logpgs = (is_hdr_page_only) ? 1 : (int) ((lpageid - fpageid + 1) + 1);
+  num_logpgs = (is_hdr_page_only) ? 1 : (UINT64) ((lpageid - fpageid + 1) + 1);
 
   assert (lpageid >= fpageid);
   assert (num_logpgs <= LOGWR_COPY_LOG_BUFFER_NPAGES);
