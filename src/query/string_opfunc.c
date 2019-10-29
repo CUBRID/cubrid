@@ -562,7 +562,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
 
       string1 = DB_GET_UCHAR (db_string1);
       size1 = (int) db_get_string_size (db_string1);
-      string1 = DB_GET_UCHAR (db_string2);
+      string2 = DB_GET_UCHAR (db_string2);
       size2 = (int) db_get_string_size (db_string2);
       codeset = db_get_string_codeset (db_string1);
       collation_id = db_get_string_collation (db_string1);
