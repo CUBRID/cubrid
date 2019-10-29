@@ -11835,5 +11835,5 @@ fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page)
     }
 
   free_and_init (ref_page);
-  return false;
+  return is_formatted;
 }
