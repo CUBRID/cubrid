@@ -87,4 +87,5 @@ extern int session_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_comm
 
 extern int session_set_load_session (THREAD_ENTRY * thread_p, load_session * load_session_p);
 extern int session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_session_ref_ptr));
+extern void session_stop_attached_threads (void *session);
 #endif /* _SESSION_H_ */

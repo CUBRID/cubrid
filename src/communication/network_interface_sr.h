@@ -232,4 +232,5 @@ extern void sloaddb_fetch_status (THREAD_ENTRY * thread_p, unsigned int rid, cha
 extern void sloaddb_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void ssession_stop_attached_threads (void *session);
 #endif /* _NETWORK_INTERFACE_SR_H_ */
