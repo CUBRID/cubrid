@@ -286,6 +286,14 @@ logwr_read_log_header (void)
       else
 	{
 	  error = logwr_fetch_header_page (log_pgptr, logwr_Gl.append_vdes);
+	  if (error == ER_LOG_PAGE_CORRUPTED && fileio_is_formatted_page (NULL, (char *) log_pgptr))
+	    {
+	      fileio_dismount (NULL, LOG_DBLOG_ACTIVE_VOLID);
+	      fileio_unformat (NULL, logwr_Gl.active_name);
+	      er_clear ();
+	      return NO_ERROR;
+	    }
+
 	  if (error != NO_ERROR)
 	    {
 	      return error;

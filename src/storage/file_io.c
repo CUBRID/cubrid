@@ -11812,3 +11812,28 @@ fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bo
 
   return NO_ERROR;
 }
+
+bool
+fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page)
+{
+  char *ref_page;
+  bool is_formatted = false;
+
+  ref_page = (char *) malloc (IO_PAGESIZE);
+  if (ref_page == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, IO_PAGESIZE);
+      return false;
+    }
+
+  memset ((char *) ref_page, 0, IO_PAGESIZE);
+  (void) fileio_initialize_res (thread_p, (FILEIO_PAGE *) ref_page, IO_PAGESIZE);
+
+  if (memcmp (io_page, ref_page, IO_PAGESIZE) == 0)
+    {
+      is_formatted = true;
+    }
+
+  free_and_init (ref_page);
+  return false;
+}
