@@ -3500,7 +3500,9 @@ us_hb_stop_get_options (char *db_name, int db_name_size, char *remote_host_name,
 
       if ((tmp_argc - optind) == 1)
 	{
-	  strncpy_size (db_name, tmp_argv[optind], db_name_size);
+	  copy_len = strnlen (tmp_argv[optind], db_name_size);
+	  memcpy (db_name, tmp_argv[optind], copy_len);
+	  db_name[copy_len] = '\0';
 	}
     }
 
@@ -3628,6 +3630,7 @@ us_hb_util_get_options (char *db_name, int db_name_size, char *node_name, int no
   char opt_str[64];
   int tmp_argc;
   const char **tmp_argv = NULL;
+  size_t copy_len;
 
   const struct option hb_util_opts[] = {
     {COMMDB_HOST_L, 1, 0, COMMDB_HOST_S},
@@ -3671,7 +3674,9 @@ us_hb_util_get_options (char *db_name, int db_name_size, char *node_name, int no
       switch (opt)
 	{
 	case COMMDB_HOST_S:
-	  strncpy_size (remote_host_name, optarg, remote_host_name_size);
+	  copy_len = strnlen (optarg, remote_host_name_size);
+	  memcpy (remote_host_name, optarg, copy_len);
+	  remote_host_name[copy_len] = '\0';
 	  break;
 	default:
 	  status = ER_GENERIC_ERROR;
@@ -3698,7 +3703,7 @@ us_hb_util_get_options (char *db_name, int db_name_size, char *node_name, int no
 	  goto ret;
 	}
 
-      size_t copy_len = strnlen (tmp_argv[optind], db_name_size - 1);
+      copy_len = strnlen (tmp_argv[optind], db_name_size - 1);
       memcpy (db_name, tmp_argv[optind], copy_len);
       db_name[copy_len] = '\0';
 
