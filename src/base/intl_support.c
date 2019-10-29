@@ -3162,7 +3162,12 @@ check_truncation:
 	}
 
       /* count original size based on the size given by first byte of each char */
-      intl_char_size (name_char, length_bytes, codeset, &name_size);
+      const unsigned char *const_name_char = CONST_CAST (const unsigned char *, name_char);
+      for (name_size = 0; name_size < length_bytes;)
+	{
+	  INTL_NEXT_CHAR (const_name_char, const_name_char, codeset, &char_size);
+	  name_size += char_size;
+	}
       assert (name_size >= length_bytes);
 
       /* name_size == length_bytes means last character fit entirely in 'length_bytes'
