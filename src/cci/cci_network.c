@@ -179,6 +179,7 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, 
 
   size_t url_len = strnlen (con_handle->url, SRV_CON_URL_SIZE - 1);
   memcpy (info, con_handle->url, url_len);
+  info[url_len] = '\0';
 
   strncpy (ver_str, MAKE_STR (BUILD_NUMBER), SRV_CON_VER_STR_MAX_SIZE);
   ver_ptr = info + url_len + 1;
@@ -873,10 +874,12 @@ net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec)
 
   size_t db_name_len = strnlen (db_name, SRV_CON_DBNAME_SIZE - 1);
   memcpy (info, db_name, db_name_len);
+  info[db_name_len] = '\0';
   info += (SRV_CON_DBNAME_SIZE + SRV_CON_DBUSER_SIZE + SRV_CON_DBPASSWD_SIZE);
 
   size_t url_len = strnlen (url, SRV_CON_URL_SIZE - 1);
   memcpy (info, url, url_len);
+  info[url_len] = '\0';
 
   if (connect_srv (ip_addr, port, 0, &sock_fd, timeout_msec) < 0)
     {
