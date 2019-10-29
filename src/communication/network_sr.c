@@ -1129,6 +1129,11 @@ net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
   /* avoid infinite waiting with xtran_wait_server_active_trans() */
   thread_p->m_status = cubthread::entry::status::TS_CHECK;
 
+  if (conn_p->session_p != NULL)
+    {
+      ssession_stop_attached_threads (conn_p->session_p);
+    }
+
 loop:
   prev_thrd_cnt = css_count_transaction_worker_threads (thread_p, tran_index, client_id);
   if (prev_thrd_cnt > 0)
