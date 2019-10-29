@@ -5830,7 +5830,6 @@ db_evaluate_json_keys (DB_VALUE * result, DB_VALUE * const *arg, int const num_a
   /* *INDENT-OFF* */
   std::string path;
   /* *INDENT-ON* */
-  char *str = NULL;
 
   db_make_null (result);
 
@@ -5853,7 +5852,7 @@ db_evaluate_json_keys (DB_VALUE * result, DB_VALUE * const *arg, int const num_a
   else
     {
       /* *INDENT-OFF* */
-      path = std::move (std::string (db_get_string (arg[1]), db_get_string_size (arg[1])));
+      path = std::string (db_get_string (arg[1]), db_get_string_size (arg[1]));
       /* *INDENT-ON* */
     }
 
@@ -6314,7 +6313,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
       char *escaped;
       size_t escaped_size;
       error_code = db_string_escape_str (path.c_str (), path.size (), &escaped, &escaped_size);
-      cubmem::private_unique_ptr<char> escaped_unqique_ptr (escaped, NULL);
+      cubmem::private_unique_ptr<char> escaped_unique_ptr (escaped, NULL);
       if (error_code)
 	{
 	  return error_code;
@@ -6344,7 +6343,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
       char *escaped;
       size_t escaped_size;
       error_code = db_string_escape_str (path.c_str (), path.size (), &escaped, &escaped_size);
-      cubmem::private_unique_ptr<char> escaped_unqique_ptr (escaped, NULL);
+      cubmem::private_unique_ptr<char> escaped_unique_ptr (escaped, NULL);
       if (error_code)
 	{
 	  return error_code;

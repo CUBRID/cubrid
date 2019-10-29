@@ -20489,7 +20489,7 @@ btree_index_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_
   OR_PARTITION *parts = NULL;
   int parts_count = 0;
   DB_CLASS_PARTITION_TYPE partition_type;
-  char *class_name = NULL;
+  const char *class_name = NULL;
 
   *ptr = NULL;
   ctx = (SHOW_INDEX_SCAN_CTX *) db_private_alloc (thread_p, sizeof (SHOW_INDEX_SCAN_CTX));

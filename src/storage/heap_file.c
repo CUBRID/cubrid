@@ -17070,9 +17070,9 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 		case DB_TYPE_NCHAR:
 		case DB_TYPE_VARNCHAR:
 		  {
-		    char *str = db_get_string (&(value->dbvalue));
-		    char *str_end = str + db_get_string_length (&(value->dbvalue));
-		    char *p = NULL;
+		    const char *str = db_get_string (&(value->dbvalue));
+		    const char *str_end = str + db_get_string_length (&(value->dbvalue));
+		    const char *p = NULL;
 
 		    /* get the sign in the source string; look directly into the buffer string, no copy */
 		    p = str;
@@ -17554,7 +17554,7 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
 				 void **ptr)
 {
   int error = NO_ERROR;
-  char *class_name = NULL;
+  const char *class_name = NULL;
   DB_CLASS_PARTITION_TYPE partition_type = DB_NOT_PARTITIONED_CLASS;
   OID class_oid;
   LC_FIND_CLASSNAME status;

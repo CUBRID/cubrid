@@ -45,12 +45,12 @@ namespace
   // DB_VALUE of type DB_TYPE_BIT or DB_TYPE_VARBIT
   void describe_bit_string (string_buffer &buf, const db_value *value, bool pad_byte)
   {
-    unsigned char *bstring;
+    const unsigned char *bstring;
     int nibble_length, nibbles, count;
 
     assert (value != NULL);
 
-    bstring = (unsigned char *) db_get_string (value);
+    bstring = REINTERPRET_CAST (const unsigned char *, db_get_string (value));
     if (bstring == NULL)
       {
 	return;
@@ -244,7 +244,7 @@ void db_value_printer::describe_data (const db_value *value)
   DB_SET      *set = 0;
   db_elo      *elo = 0;
   DB_MIDXKEY *midxkey;
-  char *src, *pos, *end;
+  const char *src, *pos, *end;
   double d;
   char line[1025];
   char *json_body = NULL;

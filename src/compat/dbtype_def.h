@@ -996,7 +996,7 @@ extern "C"
       unsigned char is_max_string;
       unsigned char compressed_need_clear;
       int size;
-      char *buf;
+      const char *buf;
       int compressed_size;
       char *compressed_buf;
     } medium;
@@ -1202,7 +1202,7 @@ extern "C"
   {
     DB_DEFAULT_EXPR_TYPE default_expr_type;	/* default expression identifier */
     int default_expr_op;	/* default expression operator */
-    char *default_expr_format;	/* default expression format */
+    const char *default_expr_format;	/* default expression format */
   };
 
   typedef DB_DATETIME DB_C_DATETIME;

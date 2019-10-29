@@ -4409,7 +4409,7 @@ do_is_partitioned_subclass (int *is_partitioned, const char *classname, char *ke
 
       if (keyattr)
 	{
-	  char *p = NULL;
+	  const char *p = NULL;
 
 	  keyattr[0] = 0;
 
@@ -5072,7 +5072,7 @@ do_get_partition_keycol (char *keycol, MOP class_)
   int error = NO_ERROR;
   SM_CLASS *smclass;
   DB_VALUE keyname;
-  char *keyname_str;
+  const char *keyname_str;
 
   if (class_ == NULL || keycol == NULL)
     {

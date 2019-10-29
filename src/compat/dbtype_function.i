@@ -30,7 +30,7 @@
 STATIC_INLINE int db_get_int (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_SHORT db_get_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_BIGINT db_get_bigint (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_C_CHAR db_get_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_CONST_C_CHAR db_get_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_FLOAT db_get_float (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_DOUBLE db_get_double (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_OBJECT *db_get_object (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -200,10 +200,10 @@ db_get_bigint (const DB_VALUE * value)
  * return :
  * value(in):
  */
-char *
+DB_CONST_C_CHAR
 db_get_string (const DB_VALUE * value)
 {
-  char *str = NULL;
+  const char *str = NULL;
 
 #if defined (API_ACTIVE_CHECKS)
   CHECK_1ARG_NULL (value);
@@ -217,7 +217,7 @@ db_get_string (const DB_VALUE * value)
   switch (value->data.ch.info.style)
     {
     case SMALL_STRING:
-      str = (char *) value->data.ch.sm.buf;
+      str = value->data.ch.sm.buf;
       break;
     case MEDIUM_STRING:
       str = value->data.ch.medium.buf;
@@ -566,7 +566,7 @@ db_get_bit (const DB_VALUE * value, int *length)
     case SMALL_STRING:
       {
 	*length = value->data.ch.sm.size;
-	str = (char *) value->data.ch.sm.buf;
+	str = value->data.ch.sm.buf;
       }
       break;
     case MEDIUM_STRING:
@@ -612,7 +612,7 @@ db_get_char (const DB_VALUE * value, int *length)
     {
     case SMALL_STRING:
       {
-	str = (char *) value->data.ch.sm.buf;
+	str = value->data.ch.sm.buf;
 	intl_char_count ((unsigned char *) str, value->data.ch.sm.size,
 			 (INTL_CODESET) value->data.ch.info.codeset, length);
       }
@@ -1005,7 +1005,7 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
   value->data.ch.info.compressed_need_clear = false;
   value->data.ch.medium.codeset = codeset;
   value->data.ch.medium.size = size;
-  value->data.ch.medium.buf = (char *) str;
+  value->data.ch.medium.buf = str;
   value->data.ch.medium.compressed_buf = NULL;
   value->data.ch.medium.compressed_size = 0;
   value->domain.general_info.is_null = ((void *) str != NULL) ? 0 : 1;
@@ -1738,8 +1738,7 @@ db_make_enumeration (DB_VALUE * value, unsigned short index, DB_CONST_C_CHAR str
   value->data.ch.medium.compressed_buf = NULL;
   value->data.ch.medium.compressed_size = 0;
   value->data.enumeration.str_val.medium.size = size;
-  // TODO enum: cast is temporary until db_char::medium::buf will be made const
-  value->data.enumeration.str_val.medium.buf = (char *) str;
+  value->data.enumeration.str_val.medium.buf = str;
   value->domain.general_info.is_null = 0;
   value->need_clear = false;
 

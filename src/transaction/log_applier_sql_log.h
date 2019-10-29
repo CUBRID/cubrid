@@ -29,7 +29,7 @@
 #include "dbtype_def.h"
 #include "work_space.h"
 
-extern int sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *ddl, char *ha_sys_prm);
+extern int sl_write_statement_sql (char *class_name, char *db_user, int item_type, const char *ddl, char *ha_sys_prm);
 extern int sl_write_insert_sql (DB_OTMPL * inst_tp, DB_VALUE * key);
 extern int sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key);
 extern int sl_write_delete_sql (char *class_name, MOBJ mclass, DB_VALUE * key);
