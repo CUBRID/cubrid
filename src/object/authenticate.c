@@ -6905,19 +6905,21 @@ char *
 au_get_user_name (MOP obj)
 {
   DB_VALUE value;
-  int error;
-  char *name;
+  db_make_null (&value);
+  char *name = NULL;
 
-  name = NULL;
-  error = obj_get (obj, "name", &value);
+  int error = obj_get (obj, "name", &value);
   if (error == NO_ERROR)
     {
       if (IS_STRING (&value) && !DB_IS_NULL (&value) && db_get_string (&value) != NULL)
 	{
-	  name = db_get_string (&value);
+	  name = ws_copy_string (db_get_string (&value));
 	}
     }
-  return (name);
+
+  db_value_clear (&value);
+
+  return name;
 }
 
 
@@ -6932,13 +6934,13 @@ int
 au_export_users (print_output & output_ctx)
 {
   int error;
-  DB_SET *direct_groups;
+  DB_SET *direct_groups = NULL;
   DB_VALUE value, gvalue;
-  MOP user, pwd;
+  MOP user = NULL, pwd = NULL;
   int g, gcard;
-  char *uname, *str, *gname, *comment;
+  char *uname = NULL, *str = NULL, *gname = NULL, *comment = NULL;
   char passbuf[AU_MAX_PASSWORD_BUF];
-  char *query;
+  char *query = NULL;
   size_t query_size;
   DB_QUERY_RESULT *query_result;
   DB_QUERY_ERROR query_error;

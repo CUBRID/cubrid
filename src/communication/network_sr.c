@@ -839,10 +839,6 @@ net_server_init (void)
   req_p->processing_function = sloaddb_init;
   req_p->name = "NET_SERVER_LD_INIT";
 
-  req_p = &net_Requests[NET_SERVER_LD_LOAD_OBJECT_FILE];
-  req_p->processing_function = sloaddb_load_object_file;
-  req_p->name = "NET_SERVER_LD_LOAD_OBJECT_FILE";
-
   req_p = &net_Requests[NET_SERVER_LD_INSTALL_CLASS];
   req_p->processing_function = sloaddb_install_class;
   req_p->name = "NET_SERVER_LD_INSTALL_CLASS";
@@ -851,9 +847,9 @@ net_server_init (void)
   req_p->processing_function = sloaddb_load_batch;
   req_p->name = "NET_SERVER_LD_LOAD_BATCH";
 
-  req_p = &net_Requests[NET_SERVER_LD_FETCH_STATS];
-  req_p->processing_function = sloaddb_fetch_stats;
-  req_p->name = "NET_SERVER_LD_FETCH_STATS";
+  req_p = &net_Requests[NET_SERVER_LD_FETCH_STATUS];
+  req_p->processing_function = sloaddb_fetch_status;
+  req_p->name = "NET_SERVER_LD_FETCH_STATUS";
 
   req_p = &net_Requests[NET_SERVER_LD_DESTROY];
   req_p->processing_function = sloaddb_destroy;
@@ -862,6 +858,10 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_LD_INTERRUPT];
   req_p->processing_function = sloaddb_interrupt;
   req_p->name = "NET_SERVER_LD_INTERRUPT";
+
+  req_p = &net_Requests[NET_SERVER_LD_UPDATE_STATS];
+  req_p->processing_function = sloaddb_update_stats;
+  req_p->name = "NET_SERVER_LD_UPDATE_STATS";
 
   /* checksumdb replication */
   req_p = &net_Requests[NET_SERVER_CHKSUM_REPL];

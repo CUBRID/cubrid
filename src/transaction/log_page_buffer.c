@@ -63,6 +63,7 @@
 #include "log_volids.hpp"
 #include "log_writer.h"
 #include "lock_manager.h"
+#include "log_system_tran.hpp"
 #include "boot_sr.h"
 #if !defined(SERVER_MODE)
 #include "boot_cl.h"
@@ -102,6 +103,7 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "crypt_opfunc.h"
+#include "object_representation.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -2929,8 +2931,8 @@ logpb_page_get_first_null_block_lsa (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgp
 static int
 logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 {
-  LOG_BUFFER *bufptr;		/* The current buffer log append page scanned */
-  LOG_BUFFER *prv_bufptr;	/* The previous buffer log append page scanned */
+  LOG_BUFFER *bufptr = NULL;	/* The current buffer log append page scanned */
+  LOG_BUFFER *prv_bufptr = NULL;	/* The previous buffer log append page scanned */
   int idxflush;			/* An index into the first log page buffer to flush */
   bool need_sync;		/* How we flush anything ? */
 
@@ -2958,8 +2960,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   INT64 all_writer_thr_end_time = 0;
 
   LOGWR_INFO *writer_info = log_Gl.writer_info;
-  LOGWR_ENTRY *entry;
-  THREAD_ENTRY *wait_thread_p;
+  LOGWR_ENTRY *entry = NULL;
+  THREAD_ENTRY *wait_thread_p = NULL;
 #endif /* SERVER_MODE */
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
@@ -6339,6 +6341,90 @@ logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *l
   return fileio_is_volume_exist (log_Name_active);
 }
 
+void
+logpb_checkpoint_trans (LOG_INFO_CHKPT_TRANS * chkpt_entries, log_tdes * tdes, int &ntrans, int &ntops,
+			LOG_LSA & smallest_lsa)
+{
+  LOG_INFO_CHKPT_TRANS *chkpt_entry = &chkpt_entries[ntrans];
+  if (tdes != NULL && tdes->trid != NULL_TRANID && !LSA_ISNULL (&tdes->tail_lsa))
+    {
+      chkpt_entry->isloose_end = tdes->isloose_end;
+      chkpt_entry->trid = tdes->trid;
+      chkpt_entry->state = tdes->state;
+      LSA_COPY (&chkpt_entry->head_lsa, &tdes->head_lsa);
+      LSA_COPY (&chkpt_entry->tail_lsa, &tdes->tail_lsa);
+      if (chkpt_entry->state == TRAN_UNACTIVE_ABORTED)
+	{
+	  /*
+	   * Transaction is in the middle of an abort, since rollback does
+	   * is not run in a critical section. Set the undo point to be the
+	   * same as its tail. The recovery process will read the last
+	   * record which is likely a compensating one, and find where to
+	   * continue a rollback operation.
+	   */
+	  LSA_COPY (&chkpt_entry->undo_nxlsa, &tdes->tail_lsa);
+	}
+      else
+	{
+	  LSA_COPY (&chkpt_entry->undo_nxlsa, &tdes->undo_nxlsa);
+	}
+
+      LSA_COPY (&chkpt_entry->posp_nxlsa, &tdes->posp_nxlsa);
+      LSA_COPY (&chkpt_entry->savept_lsa, &tdes->savept_lsa);
+      LSA_COPY (&chkpt_entry->tail_topresult_lsa, &tdes->tail_topresult_lsa);
+      LSA_COPY (&chkpt_entry->start_postpone_lsa, &tdes->rcv.tran_start_postpone_lsa);
+      strncpy (chkpt_entry->user_name, tdes->client.get_db_user (), LOG_USERNAME_MAX);
+      ntrans++;
+      if (tdes->topops.last >= 0 && (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE))
+	{
+	  ntops += tdes->topops.last + 1;
+	}
+
+      if (LSA_ISNULL (&smallest_lsa) || LSA_GT (&smallest_lsa, &tdes->head_lsa))
+	{
+	  LSA_COPY (&smallest_lsa, &tdes->head_lsa);
+	}
+    }
+}
+
+int
+logpb_checkpoint_topops (THREAD_ENTRY * thread_p, LOG_INFO_CHKPT_SYSOP * &chkpt_topops,
+			 LOG_INFO_CHKPT_TRANS * chkpt_trans, LOG_REC_CHKPT & tmp_chkpt, log_tdes * tdes, int &ntops,
+			 size_t & length_all_tops)
+{
+  if (tdes != NULL && tdes->trid != NULL_TRANID
+      && (!LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa) || !LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa)))
+    {
+      /* this transaction is running system operation postpone or an atomic system operation
+       * note: we cannot compare tdes->state with TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE. we are
+       *       not synchronizing setting transaction state.
+       *       however, setting tdes->rcv.sysop_start_postpone_lsa is protected by
+       *       log_Gl.prior_info.prior_lsa_mutex. so we check this instead of state.
+       */
+      if (ntops >= tmp_chkpt.ntops)
+	{
+	  tmp_chkpt.ntops += log_Gl.trantable.num_assigned_indices;
+	  length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
+	  LOG_INFO_CHKPT_SYSOP *ptr = (LOG_INFO_CHKPT_SYSOP *) realloc (chkpt_topops, length_all_tops);
+	  if (ptr == NULL)
+	    {
+	      free_and_init (chkpt_trans);
+	      log_Gl.prior_info.prior_lsa_mutex.unlock ();
+	      TR_TABLE_CS_EXIT (thread_p);
+	      return ER_FAILED;
+	    }
+	  chkpt_topops = ptr;
+	}
+
+      LOG_INFO_CHKPT_SYSOP *chkpt_topop = &chkpt_topops[ntops];
+      chkpt_topop->trid = tdes->trid;
+      chkpt_topop->sysop_start_postpone_lsa = tdes->rcv.sysop_start_postpone_lsa;
+      chkpt_topop->atomic_sysop_start_lsa = tdes->rcv.atomic_sysop_start_lsa;
+      ntops++;
+    }
+  return NO_ERROR;
+}
+
 /*
  * logpb_checkpoint - Execute a fuzzy checkpoint
  *
@@ -6381,6 +6467,9 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   void *ptr;
   int flushed_page_cnt = 0, vdes;
   bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
+  // *INDENT-OFF*
+  log_system_tdes::map_func mapper;
+  // *INDENT-ON*
 
   LOG_CS_ENTER (thread_p);
 
@@ -6514,50 +6603,9 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	  continue;
 	}
       act_tdes = LOG_FIND_TDES (i);
-      if (act_tdes != NULL && act_tdes->trid != NULL_TRANID && !LSA_ISNULL (&act_tdes->tail_lsa))
-	{
-	  assert (ntrans < tmp_chkpt.ntrans);
-
-	  chkpt_one = &chkpt_trans[ntrans];
-	  chkpt_one->isloose_end = act_tdes->isloose_end;
-	  chkpt_one->trid = act_tdes->trid;
-	  chkpt_one->state = act_tdes->state;
-	  LSA_COPY (&chkpt_one->head_lsa, &act_tdes->head_lsa);
-	  LSA_COPY (&chkpt_one->tail_lsa, &act_tdes->tail_lsa);
-	  if (chkpt_one->state == TRAN_UNACTIVE_ABORTED)
-	    {
-	      /*
-	       * Transaction is in the middle of an abort, since rollback does
-	       * is not run in a critical section. Set the undo point to be the
-	       * same as its tail. The recovery process will read the last
-	       * record which is likely a compensating one, and find where to
-	       * continue a rollback operation.
-	       */
-	      LSA_COPY (&chkpt_one->undo_nxlsa, &act_tdes->tail_lsa);
-	    }
-	  else
-	    {
-	      LSA_COPY (&chkpt_one->undo_nxlsa, &act_tdes->undo_nxlsa);
-	    }
-
-	  LSA_COPY (&chkpt_one->posp_nxlsa, &act_tdes->posp_nxlsa);
-	  LSA_COPY (&chkpt_one->savept_lsa, &act_tdes->savept_lsa);
-	  LSA_COPY (&chkpt_one->tail_topresult_lsa, &act_tdes->tail_topresult_lsa);
-	  LSA_COPY (&chkpt_one->start_postpone_lsa, &act_tdes->rcv.tran_start_postpone_lsa);
-	  strncpy (chkpt_one->user_name, act_tdes->client.get_db_user (), LOG_USERNAME_MAX);
-	  ntrans++;
-	  if (act_tdes->topops.last >= 0 && (act_tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE))
-	    {
-	      ntops += act_tdes->topops.last + 1;
-	    }
-
-	  if (LSA_ISNULL (&smallest_lsa) || LSA_GT (&smallest_lsa, &act_tdes->head_lsa))
-	    {
-	      LSA_COPY (&smallest_lsa, &act_tdes->head_lsa);
-	    }
-	}
+      assert (ntrans < tmp_chkpt.ntrans);
+      logpb_checkpoint_trans (chkpt_trans, act_tdes, ntrans, ntops, smallest_lsa);
     }
-  // todo - what about system worker transaction descriptors??
 
   /*
    * Reset the structure to the correct number of transactions and
@@ -6600,38 +6648,41 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	      continue;
 	    }
 	  act_tdes = LOG_FIND_TDES (i);
-	  if (act_tdes != NULL && act_tdes->trid != NULL_TRANID
-	      && (!LSA_ISNULL (&act_tdes->rcv.sysop_start_postpone_lsa)
-		  || !LSA_ISNULL (&act_tdes->rcv.atomic_sysop_start_lsa)))
+	  error_code =
+	    logpb_checkpoint_topops (thread_p, chkpt_topops, chkpt_trans, tmp_chkpt, act_tdes, ntops, length_all_tops);
+	  if (error_code != NO_ERROR)
 	    {
-	      /* this transaction is running system operation postpone or an atomic system operation
-	       * note: we cannot compare act_tdes->state with TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE. we are
-	       *       not synchronizing setting transaction state.
-	       *       however, setting tdes->rcv.sysop_start_postpone_lsa is protected by
-	       *       log_Gl.prior_info.prior_lsa_mutex. so we check this instead of state.
-	       */
-	      if (ntops >= tmp_chkpt.ntops)
-		{
-		  tmp_chkpt.ntops += log_Gl.trantable.num_assigned_indices;
-		  length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
-		  ptr = realloc (chkpt_topops, length_all_tops);
-		  if (ptr == NULL)
-		    {
-		      free_and_init (chkpt_trans);
-		      log_Gl.prior_info.prior_lsa_mutex.unlock ();
-		      TR_TABLE_CS_EXIT (thread_p);
-		      goto error_cannot_chkpt;
-		    }
-		  chkpt_topops = (LOG_INFO_CHKPT_SYSOP *) ptr;
-		}
-
-	      chkpt_topone = &chkpt_topops[ntops];
-	      chkpt_topone->trid = act_tdes->trid;
-	      chkpt_topone->sysop_start_postpone_lsa = act_tdes->rcv.sysop_start_postpone_lsa;
-	      chkpt_topone->atomic_sysop_start_lsa = act_tdes->rcv.atomic_sysop_start_lsa;
-	      ntops++;
+	      goto error_cannot_chkpt;
 	    }
 	}
+    }
+  else
+    {
+      tmp_chkpt.ntops = 1;
+      length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
+      chkpt_topops = (LOG_INFO_CHKPT_SYSOP *) malloc (length_all_tops);
+      if (chkpt_topops == NULL)
+	{
+	  free_and_init (chkpt_trans);
+	  log_Gl.prior_info.prior_lsa_mutex.unlock ();
+	  TR_TABLE_CS_EXIT (thread_p);
+	  goto error_cannot_chkpt;
+	}
+    }
+
+  // Checkpoint system transactions' topops
+  // *INDENT-OFF*
+  mapper = [thread_p, &chkpt_topops, &chkpt_trans, &tmp_chkpt, &ntops, &length_all_tops, &error_code] (log_tdes &tdes)
+  {
+    error_code =
+      logpb_checkpoint_topops (thread_p, chkpt_topops, chkpt_trans, tmp_chkpt, &tdes, ntops, length_all_tops);
+  };
+
+  log_system_tdes::map_all_tdes (mapper);
+  // *INDENT-ON*
+  if (error_code != NO_ERROR)
+    {
+      goto error_cannot_chkpt;
     }
 
   assert (sizeof (*chkpt_topops) * ntops <= length_all_tops);

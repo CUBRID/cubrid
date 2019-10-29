@@ -36,6 +36,7 @@
 #include "porting.h"
 #include "dbi.h"
 #include "parser.h"
+#include "jansson.h"
 #include "memory_alloc.h"
 
 #if defined(SERVER_MODE)
@@ -902,6 +903,15 @@ parser_free_node (const PARSER_CONTEXT * parser, PT_NODE * node)
   if (node->node_type == PT_INSERT_VALUE && node->info.insert_value.is_evaluated)
     {
       db_value_clear (&node->info.insert_value.value);
+    }
+  if (node->node_type == PT_JSON_TABLE_COLUMN)
+    {
+      PT_JSON_TABLE_COLUMN_INFO *col = &node->info.json_table_column_info;
+      db_value_clear (col->on_empty.m_default_value);
+      col->on_empty.m_default_value = NULL;
+      db_value_clear (col->on_error.m_default_value);
+      col->on_error.m_default_value = NULL;
+      // db_values on_empty.m_default_value & on_error.m_default_value are allocated using area_alloc
     }
   /*
    * Always set the node type to maximum.  This may

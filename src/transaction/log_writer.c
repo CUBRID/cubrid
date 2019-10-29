@@ -37,6 +37,7 @@
 #include "error_manager.h"
 #include "message_catalog.h"
 #include "msgcat_set_log.hpp"
+#include "object_representation.h"
 #include "system_parameter.h"
 #include "connection_support.h"
 #include "log_applier.h"
@@ -290,7 +291,7 @@ logwr_read_log_header (void)
 	      return error;
 	    }
 
-	  logwr_Gl.hdr = *((LOG_HEADER *) log_pgptr->area);
+	  memcpy (&logwr_Gl.hdr, log_pgptr->area, sizeof (LOG_HEADER));
 
 	  assert (log_pgptr->hdr.logical_pageid == LOGPB_HEADER_PAGE_ID);
 	  assert (log_pgptr->hdr.offset == NULL_OFFSET);
@@ -618,7 +619,7 @@ logwr_set_hdr_and_flush_info (void)
   if (num_toflush > 0)
     {
       log_pgptr = (LOG_PAGE *) logwr_Gl.logpg_area;
-      logwr_Gl.hdr = *((LOG_HEADER *) log_pgptr->area);
+      memcpy (&logwr_Gl.hdr, log_pgptr->area, sizeof (LOG_HEADER));
       logwr_Gl.loghdr_pgptr = log_pgptr;
 
       /* Initialize archive info if it is not set */
@@ -670,7 +671,7 @@ logwr_set_hdr_and_flush_info (void)
       /* If it gets only the header page, compares both of the headers. There is no update for the header information */
       LOG_HEADER hdr;
       log_pgptr = (LOG_PAGE *) logwr_Gl.logpg_area;
-      hdr = *((LOG_HEADER *) log_pgptr->area);
+      memcpy (&hdr, log_pgptr->area, sizeof (LOG_HEADER));
 
       if (hdr.ha_server_state != HA_SERVER_STATE_ACTIVE && hdr.ha_server_state != HA_SERVER_STATE_TO_BE_ACTIVE
 	  && hdr.ha_server_state != HA_SERVER_STATE_TO_BE_STANDBY
@@ -1494,7 +1495,7 @@ logwr_copy_log_header_check (const char *db_name, bool verbose, LOG_LSA * master
     {
 
       loghdr_pgptr = (LOG_PAGE *) logpg_area;
-      hdr = *((LOG_HEADER *) loghdr_pgptr->area);
+      memcpy (&hdr, loghdr_pgptr->area, sizeof (LOG_HEADER));
 
       *master_eof_lsa = hdr.eof_lsa;
 
@@ -1970,16 +1971,16 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
   LOG_PAGEID fpageid, lpageid, pageid;
   char *p;
   LOG_PAGE *log_pgptr;
-  INT64 num_logpgs;
-  LOG_LSA nxio_lsa;
+  UINT64 num_logpgs;
+  LOG_LSA nxio_lsa = LSA_INITIALIZER;
   bool is_hdr_page_only;
   int ha_file_status;
   int error_code;
 
   LOG_ARV_HEADER arvhdr;
   LOG_HEADER *hdr_ptr;
-  int nxarv_num;
-  LOG_PAGEID nxarv_pageid, nxarv_phy_pageid;
+  int nxarv_num = 0;
+  LOG_PAGEID nxarv_pageid = NULL_PAGEID, nxarv_phy_pageid = NULL_PAGEID;
 
   LOG_LSA eof_lsa;
 
@@ -2081,7 +2082,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
 	    }
 	}
       /* Pack the pages which can be in the page area of Log Writer */
-      if ((lpageid - fpageid + 1) > (LOGWR_COPY_LOG_BUFFER_NPAGES - 1))
+      if (((size_t) (lpageid - fpageid + 1)) > (LOGWR_COPY_LOG_BUFFER_NPAGES - 1))
 	{
 	  lpageid = fpageid + (LOGWR_COPY_LOG_BUFFER_NPAGES - 1) - 1;
 	}
@@ -2096,7 +2097,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
   log_Gl.hdr.ha_file_status = ha_file_status;
 
   /* Allocate the log page area */
-  num_logpgs = (is_hdr_page_only) ? 1 : (int) ((lpageid - fpageid + 1) + 1);
+  num_logpgs = (is_hdr_page_only) ? 1 : (UINT64) ((lpageid - fpageid + 1) + 1);
 
   assert (lpageid >= fpageid);
   assert (num_logpgs <= LOGWR_COPY_LOG_BUFFER_NPAGES);

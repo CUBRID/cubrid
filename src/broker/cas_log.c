@@ -116,6 +116,7 @@ make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf, size_t buf_size
 {
 #ifndef LIBCAS_FOR_JSP
   char dirname[BROKER_PATH_MAX];
+  int ret = 0;
 
   assert (filename_buf != NULL);
 
@@ -125,29 +126,34 @@ make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf, size_t buf_size
     case FID_SQL_LOG_DIR:
       if (cas_shard_flag == ON)
 	{
-	  snprintf (filename_buf, buf_size, "%s%s_%d_%d_%d.sql.log", dirname, br_name, shm_proxy_id + 1, shm_shard_id,
-		    shm_shard_cas_id + 1);
+	  ret = snprintf (filename_buf, buf_size, "%s%s_%d_%d_%d.sql.log", dirname, br_name, shm_proxy_id + 1,
+			  shm_shard_id, shm_shard_cas_id + 1);
 	}
       else
 	{
-	  snprintf (filename_buf, buf_size, "%s%s_%d.sql.log", dirname, br_name, shm_as_index + 1);
+	  ret = snprintf (filename_buf, buf_size, "%s%s_%d.sql.log", dirname, br_name, shm_as_index + 1);
 	}
       break;
     case FID_SLOW_LOG_DIR:
       if (cas_shard_flag == ON)
 	{
-	  snprintf (filename_buf, buf_size, "%s%s_%d_%d_%d.slow.log", dirname, br_name, shm_proxy_id + 1, shm_shard_id,
-		    shm_shard_cas_id + 1);
+	  ret = snprintf (filename_buf, buf_size, "%s%s_%d_%d_%d.slow.log", dirname, br_name, shm_proxy_id + 1,
+			  shm_shard_id, shm_shard_cas_id + 1);
 	}
       else
 	{
-	  snprintf (filename_buf, buf_size, "%s%s_%d.slow.log", dirname, br_name, shm_as_index + 1);
+	  ret = snprintf (filename_buf, buf_size, "%s%s_%d.slow.log", dirname, br_name, shm_as_index + 1);
 	}
       break;
     default:
       assert (0);
-      snprintf (filename_buf, buf_size, "unknown.log");
+      ret = snprintf (filename_buf, buf_size, "unknown.log");
       break;
+    }
+  if (ret < 0)
+    {
+      assert (false);
+      filename_buf[0] = '\0';
     }
   return filename_buf;
 #endif /* LIBCAS_FOR_JSP */
@@ -264,7 +270,11 @@ cas_log_backup (T_CUBRID_FILE_ID fid)
       return;
     }
 
-  snprintf (backup_filepath, BROKER_PATH_MAX, "%s.bak", filepath);
+  if (snprintf (backup_filepath, BROKER_PATH_MAX, "%s.bak", filepath) < 0)
+    {
+      assert (false);
+      return;
+    }
   cas_unlink (backup_filepath);
   cas_rename (filepath, backup_filepath);
 }
@@ -886,8 +896,11 @@ cas_log_query_plan_file (int id)
   static char plan_file_name[BROKER_PATH_MAX];
   char dirname[BROKER_PATH_MAX];
   get_cubrid_file (FID_CAS_TMP_DIR, dirname, BROKER_PATH_MAX);
-  int ret = snprintf (plan_file_name, BROKER_PATH_MAX - 1, "%s/%d.%d.plan", dirname, (int) getpid (), id);
-  (void) ret;			// suppress format-truncate warning
+  if (snprintf (plan_file_name, BROKER_PATH_MAX - 1, "%s/%d.%d.plan", dirname, (int) getpid (), id) < 0)
+    {
+      assert (false);
+      return NULL;
+    }
   return plan_file_name;
 #else /* LIBCAS_FOR_JSP */
   return NULL;

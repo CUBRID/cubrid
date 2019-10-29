@@ -54,6 +54,7 @@
 #include "util_func.h"
 #include "log_comm.h"
 #include "memory_alloc.h"
+#include "object_representation.h"
 #include "environment_variable.h"
 #include "intl_support.h"
 #include "message_catalog.h"
@@ -668,6 +669,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_LOADDB_WORKER_COUNT "loaddb_worker_count"
 #define PRM_NAME_PERF_TEST_MODE "perf_test_mode"
 #define PRM_NAME_REPR_CACHE_LOG "er_log_repr_cache"
+#define PRM_NAME_ENABLE_NEW_LFHASH "new_lfhash"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2255,6 +2257,10 @@ bool PRM_REPR_CACHE_LOG = false;
 static bool prm_repr_cache_log_default = false;
 static unsigned int prm_repr_cache_log_flag = 0;
 
+bool PRM_NEW_LFHASH = false;
+static bool prm_new_lfhash_default = false;
+static unsigned int prm_new_lfhash_flag = 0;
+
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
 static int prm_size_to_io_pages (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_DATATYPE in_type);
@@ -3248,7 +3254,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_NO_BACKSLASH_ESCAPES,
    PRM_NAME_NO_BACKSLASH_ESCAPES,
-   (PRM_FOR_CLIENT | PRM_TEST_CHANGE),
+   (PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_BOOLEAN,
    &prm_no_backslash_escapes_flag,
    (void *) &prm_no_backslash_escapes_default,
@@ -5799,6 +5805,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ENABLE_NEW_LFHASH,
+   PRM_NAME_ENABLE_NEW_LFHASH,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_new_lfhash_flag,
+   (void *) &prm_new_lfhash_default,
+   (void *) &PRM_NEW_LFHASH,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
@@ -7348,7 +7365,7 @@ sysprm_validate_escape_char_parameters (const SYSPRM_ASSIGN_VALUE * assignment_l
   SYSPRM_PARAM *prm = NULL;
   const SYSPRM_ASSIGN_VALUE *assignment = NULL;
   bool set_require_like_escape, set_no_backslash_escape;
-  bool is_require_like_escape, is_no_backslash_escape;
+  bool is_require_like_escape = false, is_no_backslash_escape = false;
 
   set_require_like_escape = set_no_backslash_escape = false;
   for (assignment = assignment_list; assignment != NULL; assignment = assignment->next)

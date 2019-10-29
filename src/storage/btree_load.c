@@ -41,6 +41,7 @@
 #include "memory_private_allocator.hpp"
 #include "mvcc.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "object_representation_sr.h"
 #include "partition.h"
 #include "partition_sr.h"
@@ -4440,9 +4441,10 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   bool scan_cache_inited = false;
   bool attr_info_inited = false;
   LOG_TDES *tdes;
-  int old_wait_msec;
   int lock_ret;
   BTID *list_btid = NULL;
+  int old_wait_msec;
+  bool old_check_intr;
 
   func_index_info.expr = NULL;
 
@@ -4662,11 +4664,12 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   // Otherwise, we might be doomed to failure to abort the transaction.
   // We are going to do best to avoid lock promotion errors such as timeout and deadlocked.
 
+  // never give up
+  old_wait_msec = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
+  old_check_intr = logtb_set_check_interrupt (thread_p, false);
+
   for (cur_class = 0; cur_class < n_classes; cur_class++)
     {
-      // never give up
-      old_wait_msec = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
-
       /* Promote the lock to SCH_M_LOCK */
       /* we need to do this in a loop to retry in case of interruption */
       while (true)
@@ -4676,40 +4679,40 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	    {
 	      break;
 	    }
-
-	  if (er_errid () == ER_INTERRUPTED)
+#if defined (SERVER_MODE)
+	  else if (lock_ret == LK_NOTGRANTED_DUE_ERROR)
 	    {
-	      // interruptions cannot be allowed here; lock must be promoted to either commit or rollback changes
+	      if (er_errid () == ER_INTERRUPTED)
+		{
+		  // interruptions cannot be allowed here; lock must be promoted to either commit or rollback changes
+		  er_clear ();
+		  // make sure the transaction interrupt flag is cleared
+		  logtb_set_tran_index_interrupt (thread_p, thread_p->tran_index, false);
+		  // and retry
+		  continue;
+		}
+	    }
+	  else if (lock_ret == LK_NOTGRANTED_DUE_TIMEOUT && css_is_shutdowning_server ())
+	    {
+	      // server shutdown forced timeout; but consistency requires that we get the lock upgrade no matter what
 	      er_clear ();
-	      // make sure the transaction interrupt flag is cleared
-	      logtb_set_tran_index_interrupt (thread_p, thread_p->tran_index, false);
-	      // and retry
 	      continue;
 	    }
-
-#if defined (SERVER_MODE)
-	  // SA_MODE never reaches.
-	  if (css_is_shutdowning_server ())
-	    {
-	      // shutdown interrupts the thread with lock timeout.
-	      // This case is acceptable since recovery will remove the index being built.
-	      break;
-	    }
-	  else
-	    {
-	      // it is neither expected nor acceptable.
-	      assert (0);
-	    }
 #endif // SERVER_MODE
-	}
 
-      // reset back
-      (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msec);
-
-      if (ret != NO_ERROR || lock_ret != LK_GRANTED)
-	{
-	  goto error;
+	  // it is neither expected nor acceptable.
+	  assert (0);
 	}
+    }
+
+  // reset back
+  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msec);
+  (void) logtb_set_check_interrupt (thread_p, old_check_intr);
+
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
     }
 
   if (BTREE_IS_UNIQUE (unique_pk))

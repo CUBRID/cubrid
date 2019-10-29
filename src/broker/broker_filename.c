@@ -36,8 +36,11 @@
 #include <unistd.h>
 #endif
 
+#include "broker_admin_pub.h"
 #include "broker_filename.h"
 #include "environment_variable.h"
+#include "error_manager.h"
+#include "system_parameter.h"
 
 static char cubrid_Dir[BROKER_PATH_MAX] = "";
 
@@ -79,8 +82,11 @@ set_cubrid_home ()
       return;
     }
   getcwd (dirname, sizeof (dirname));
-  int ret = snprintf (cubrid_Dir, sizeof (cubrid_Dir) - 1, "%s/..", dirname);
-  (void) ret;			// suppress format-truncate warning
+  if (snprintf (cubrid_Dir, sizeof (cubrid_Dir) - 1, "%s/..", dirname) < 0)
+    {
+      assert (false);
+      cubrid_Dir[0] = '\0';
+    }
 }
 
 char *
@@ -99,6 +105,7 @@ set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
 {
   size_t value_len;
   bool repath = true;
+  int ret = 0;
 
   if (value == NULL)
     {
@@ -127,22 +134,22 @@ set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
 	{
 	  if (repath)
 	    {
-	      snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s/%s", get_cubrid_home (), value);
+	      ret = snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s/%s", get_cubrid_home (), value);
 	    }
 	  else
 	    {
-	      snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, value);
+	      ret = snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, value);
 	    }
 	}
       else
 	{
 	  if (repath)
 	    {
-	      snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s/%s/", get_cubrid_home (), value);
+	      ret = snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s/%s/", get_cubrid_home (), value);
 	    }
 	  else
 	    {
-	      snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s/", value);
+	      ret = snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s/", value);
 	    }
 	}
       break;
@@ -155,22 +162,27 @@ set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
 	}
       else
 	{
-	  snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s", value);
+	  ret = snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s", value);
 	}
 #else
-      snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s", value);
+      ret = snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s", value);
 #endif
       break;
     default:
       if (repath)
 	{
-	  snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s/%s", get_cubrid_home (), value);
+	  ret = snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s/%s", get_cubrid_home (), value);
 	}
       else
 	{
-	  snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, value);
+	  ret = snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, value);
 	}
       break;
+    }
+  if (ret < 0)
+    {
+      assert (false);
+      cubrid_file[fid].file_name[0] = '\0';
     }
 }
 
@@ -192,7 +204,11 @@ get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf, size_t len)
 
   if (strlen (cubrid_file[fid].file_name) > 0)
     {
-      snprintf (buf, len, "%s", cubrid_file[fid].file_name);
+      if (snprintf (buf, len, "%s", cubrid_file[fid].file_name) < 0)
+	{
+	  assert (false);
+	  buf[0] = '\0';
+	}
       return buf;
     }
 
@@ -225,7 +241,11 @@ get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf, size_t len)
 	  }
 	else
 	  {
-	    snprintf (buf, len, "%s/", cubrid_tmp);
+	    if (snprintf (buf, len, "%s/", cubrid_tmp) < 0)
+	      {
+		assert (false);
+		buf[0] = '\0';
+	      }
 	  }
       }
       break;
@@ -264,17 +284,29 @@ get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf, size_t len)
       break;
     case FID_SHARD_DBINFO:
       envvar_confdir_file (buf, BROKER_PATH_MAX, "shard_databases.txt");
-      snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, buf);
+      if (snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, buf) < 0)
+	{
+	  assert (false);
+	  buf[0] = '\0';
+	}
       break;
     case FID_SHARD_PROXY_LOG_DIR:
       envvar_logdir_file (buf, BROKER_PATH_MAX, "broker/proxy_log/");
-      snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, buf);
+      if (snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, buf) < 0)
+	{
+	  assert (false);
+	  buf[0] = '\0';
+	}
       break;
     default:
       break;
     }
 
-  snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s", buf);
+  if (snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s", buf) < 0)
+    {
+      assert (false);
+      buf[0] = '\0';
+    }
   return buf;
 }
 

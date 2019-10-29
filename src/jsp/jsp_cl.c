@@ -48,6 +48,7 @@
 #include "parser.h"
 #include "object_domain.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "db.h"
 #include "object_accessor.h"
 #include "set_object.h"
@@ -606,11 +607,11 @@ int
 jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
-  PT_NODE *sp_name, *sp_owner, *sp_comment;
-  const char *name_str, *owner_str, *comment_str = NULL;
+  PT_NODE *sp_name = NULL, *sp_owner = NULL, *sp_comment = NULL;
+  const char *name_str = NULL, *owner_str = NULL, *comment_str = NULL;
   PT_MISC_TYPE type;
   SP_TYPE_ENUM real_type;
-  MOP sp_mop, new_owner;
+  MOP sp_mop = NULL, new_owner = NULL;
   DB_VALUE user_val, sp_type_val;
   int save;
 
@@ -1651,13 +1652,14 @@ jsp_pack_float_argument (char *buffer, DB_VALUE * value)
 static char *
 jsp_pack_double_argument (char *buffer, DB_VALUE * value)
 {
-  double v, pack_value;
+  double v;
   char *ptr;
+  char pack_value[OR_DOUBLE_SIZE];
 
   ptr = or_pack_int (buffer, sizeof (double));
   v = db_get_double (value);
-  OR_PUT_DOUBLE (&pack_value, &v);
-  memcpy (ptr, (char *) (&pack_value), OR_DOUBLE_SIZE);
+  OR_PUT_DOUBLE (pack_value, v);
+  memcpy (ptr, pack_value, OR_DOUBLE_SIZE);
 
   return ptr + OR_DOUBLE_SIZE;
 }
@@ -1950,13 +1952,13 @@ static char *
 jsp_pack_monetary_argument (char *buffer, DB_VALUE * value)
 {
   DB_MONETARY *v;
-  double pack_value;
+  char pack_value[OR_DOUBLE_SIZE];
   char *ptr;
 
   ptr = or_pack_int (buffer, sizeof (double));
   v = db_get_monetary (value);
-  OR_PUT_DOUBLE (&pack_value, &v->amount);
-  memcpy (ptr, (char *) (&pack_value), OR_DOUBLE_SIZE);
+  OR_PUT_DOUBLE (pack_value, v->amount);
+  memcpy (ptr, pack_value, OR_DOUBLE_SIZE);
 
   return ptr + OR_DOUBLE_SIZE;
 }

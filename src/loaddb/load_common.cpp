@@ -179,7 +179,6 @@ namespace cubload
     , schema_file ()
     , index_file ()
     , object_file ()
-    , server_object_file ()
     , error_file ()
     , ignore_logging (false)
     , compare_storage_order (false)
@@ -209,7 +208,6 @@ namespace cubload
     serializator.pack_string (schema_file);
     serializator.pack_string (index_file);
     serializator.pack_string (object_file);
-    serializator.pack_string (server_object_file);
     serializator.pack_string (error_file);
     serializator.pack_bool (ignore_logging);
     serializator.pack_bool (compare_storage_order);
@@ -246,7 +244,6 @@ namespace cubload
     deserializator.unpack_string (schema_file);
     deserializator.unpack_string (index_file);
     deserializator.unpack_string (object_file);
-    deserializator.unpack_string (server_object_file);
     deserializator.unpack_string (error_file);
     deserializator.unpack_bool (ignore_logging);
     deserializator.unpack_bool (compare_storage_order);
@@ -291,7 +288,6 @@ namespace cubload
     size += serializator.get_packed_string_size (schema_file, size);
     size += serializator.get_packed_string_size (index_file, size);
     size += serializator.get_packed_string_size (object_file, size);
-    size += serializator.get_packed_string_size (server_object_file, size);
     size += serializator.get_packed_string_size (error_file, size);
     size += serializator.get_packed_bool_size (size); // ignore_logging
     size += serializator.get_packed_bool_size (size); // compare_storage_order
@@ -452,8 +448,6 @@ namespace cubload
     , rows_failed (0)
     , error_message ()
     , log_message ()
-    , is_failed (false)
-    , is_completed (false)
   {
     //
   }
@@ -466,8 +460,6 @@ namespace cubload
     , rows_failed (copy.rows_failed)
     , error_message (copy.error_message)
     , log_message (copy.log_message)
-    , is_failed (copy.is_failed)
-    , is_completed (copy.is_completed)
   {
     //
   }
@@ -481,8 +473,6 @@ namespace cubload
     this->rows_failed = other.rows_failed;
     this->error_message = other.error_message;
     this->log_message = other.log_message;
-    this->is_failed = other.is_failed;
-    this->is_completed = other.is_completed;
 
     return *this;
   }
@@ -496,8 +486,6 @@ namespace cubload
     rows_failed = 0;
     error_message.clear ();
     log_message.clear ();
-    is_failed = false;
-    is_completed = false;
   }
 
   void
@@ -509,8 +497,6 @@ namespace cubload
     serializator.pack_int (rows_failed);
     serializator.pack_string (error_message);
     serializator.pack_string (log_message);
-    serializator.pack_bool (is_failed);
-    serializator.pack_bool (is_completed);
   }
 
   void
@@ -526,8 +512,6 @@ namespace cubload
     deserializator.unpack_int (rows_failed);
     deserializator.unpack_string (error_message);
     deserializator.unpack_string (log_message);
-    deserializator.unpack_bool (is_failed);
-    deserializator.unpack_bool (is_completed);
   }
 
   size_t
@@ -539,8 +523,98 @@ namespace cubload
     size += serializator.get_packed_int_size (size); // rows_failed
     size += serializator.get_packed_string_size (error_message, size);
     size += serializator.get_packed_string_size (log_message, size);
-    size += serializator.get_packed_bool_size (size); // is_failed
-    size += serializator.get_packed_bool_size (size); // is_completed
+
+    return size;
+  }
+
+  load_status::load_status ()
+    : m_load_completed (false)
+    , m_load_failed (false)
+    , m_load_stats ()
+  {
+  }
+
+  load_status::load_status (bool load_completed, bool load_failed, std::vector<stats> &load_stats)
+    : m_load_completed (load_completed)
+    , m_load_failed (load_failed)
+    , m_load_stats (load_stats)
+  {
+  }
+
+  load_status::load_status (load_status &&other) noexcept
+    : m_load_completed (other.m_load_completed)
+    , m_load_failed (other.m_load_failed)
+    , m_load_stats (std::move (other.m_load_stats))
+  {
+  }
+
+  load_status &
+  load_status::operator= (load_status &&other) noexcept
+  {
+    m_load_completed = other.m_load_completed;
+    m_load_failed = other.m_load_failed;
+    m_load_stats = std::move (other.m_load_stats);
+
+    return *this;
+  }
+
+  bool
+  load_status::is_load_completed ()
+  {
+    return m_load_completed;
+  }
+
+  bool
+  load_status::is_load_failed ()
+  {
+    return m_load_failed;
+  }
+
+  std::vector<stats> &
+  load_status::get_load_stats ()
+  {
+    return m_load_stats;
+  }
+
+  void
+  load_status::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_bool (m_load_completed);
+    serializator.pack_bool (m_load_failed);
+
+    serializator.pack_bigint (m_load_stats.size ());
+    for (const stats &s : m_load_stats)
+      {
+	s.pack (serializator);
+      }
+  }
+
+  void
+  load_status::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_bool (m_load_completed);
+    deserializator.unpack_bool (m_load_failed);
+
+    size_t load_stats_size = 0;
+    deserializator.unpack_bigint (load_stats_size);
+    m_load_stats.resize (load_stats_size);
+
+    for (size_t i = 0; i < load_stats_size; ++i)
+      {
+	m_load_stats[i].unpack (deserializator);
+      }
+  }
+
+  size_t
+  load_status::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    size_t size = serializator.get_packed_bool_size (start_offset); // m_load_completed
+    size += serializator.get_packed_bool_size (size); // m_load_failed
+    size += serializator.get_packed_bigint_size (size); // m_load_stats size
+    for (const stats &s : m_load_stats)
+      {
+	size += s.get_packed_size (serializator, size);
+      }
 
     return size;
   }
@@ -563,10 +637,10 @@ namespace cubload
 	return ER_FILE_UNKNOWN_FILE;
       }
 
-    std::ifstream object_file (object_file_name, std::fstream::in);
+    std::ifstream object_file (object_file_name, std::fstream::in | std::fstream::binary);
     if (!object_file)
       {
-	// file does not exists on server, let client do the split operation
+	// file does not exists
 	return ER_FILE_UNKNOWN_FILE;
       }
 
@@ -598,8 +672,8 @@ namespace cubload
 	    // If so, then we should empty the current batch since we do not send it to the server.
 
 	    line.append ("\n"); // feed lexer with new line
-	    batch *c_batch = new batch (batch_id, clsid, line, lineno, 1);
-	    error_code = c_handler (*c_batch, class_is_ignored);
+	    batch c_batch (batch_id, clsid, line, lineno, 1);
+	    error_code = c_handler (c_batch, class_is_ignored);
 	    if (error_code != NO_ERROR)
 	      {
 		object_file.close ();
@@ -685,8 +759,8 @@ namespace cubload
 	return NO_ERROR;
       }
 
-    batch *batch_ = new batch (++batch_id, clsid, batch_content, line_offset, rows);
-    int error_code = handler (*batch_);
+    batch batch_ (++batch_id, clsid, batch_content, line_offset, rows);
+    int error_code = handler (batch_);
 
     // prepare to start new batch for the class
     batch_content.clear ();

@@ -1532,8 +1532,8 @@ static int
 sm_dynamic_link_class (SM_CLASS * class_, METHOD_LINK * links)
 {
   int error = NO_ERROR;
-  SM_METHOD_FILE *files, *file;
-  char **names, **sorted_names, **commands;
+  SM_METHOD_FILE *files = NULL, *file = NULL;
+  char **names = NULL, **sorted_names = NULL, **commands = NULL;
   int i, nfiles, psn;
 
   if (links == NULL)
@@ -2009,9 +2009,9 @@ sm_get_method_source_file (MOP obj, const char *name)
 void
 sm_init (OID * rootclass_oid, HFID * rootclass_hfid)
 {
-
   sm_Root_class_mop = ws_mop (rootclass_oid, NULL);
-  oid_Root_class_oid = ws_oid (sm_Root_class_mop);
+
+  COPY_OID (oid_Root_class_oid, ws_oid (sm_Root_class_mop));
 
   OID_SET_NULL (&(sm_Root_class.header.ch_rep_dir));	/* is dummy */
 
@@ -3767,7 +3767,11 @@ sm_get_class_with_statistics (MOP classop)
 	    {
 	      return NULL;
 	    }
-	  class_->stats = stats_get_statistics (WS_OID (classop), 0);
+	  int err = stats_get_statistics (WS_OID (classop), 0, &class_->stats);
+	  if (err != NO_ERROR)
+	    {
+	      return NULL;
+	    }
 	}
     }
   else
@@ -3775,12 +3779,16 @@ sm_get_class_with_statistics (MOP classop)
       CLASS_STATS *stats;
 
       /* to get the statistics to be updated, it send timestamp as uninitialized value */
-      stats = stats_get_statistics (WS_OID (classop), class_->stats->time_stamp);
+      int err = stats_get_statistics (WS_OID (classop), class_->stats->time_stamp, &stats);
       /* if newly updated statistics are fetched, replace the old one */
       if (stats)
 	{
 	  stats_free_statistics (class_->stats);
 	  class_->stats = stats;
+	}
+      else if (err != NO_ERROR)
+	{
+	  return NULL;
 	}
     }
 
@@ -3816,7 +3824,15 @@ sm_get_statistics_force (MOP classop)
 	      stats_free_statistics (class_->stats);
 	      class_->stats = NULL;
 	    }
-	  stats = class_->stats = stats_get_statistics (WS_OID (classop), 0);
+	  int err = stats_get_statistics (WS_OID (classop), 0, &stats);
+	  if (err == NO_ERROR)
+	    {
+	      class_->stats = stats;
+	    }
+	  else
+	    {
+	      class_->stats = stats = NULL;
+	    }
 	}
     }
 
@@ -3890,7 +3906,7 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 
 		  /* get the new ones, should do this at the same time as the update operation to avoid two server
 		   * calls */
-		  class_->stats = stats_get_statistics (WS_OID (classop), 0);
+		  error = stats_get_statistics (WS_OID (classop), 0, &class_->stats);
 		}
 	    }
 	}
@@ -3943,7 +3959,7 @@ sm_update_all_statistics (bool with_fullscan)
 		      assert (er_errid () != NO_ERROR);
 		      return (er_errid ());
 		    }
-		  class_->stats = stats_get_statistics (WS_OID (cl->op), 0);
+		  error = stats_get_statistics (WS_OID (cl->op), 0, &class_->stats);
 		}
 	    }
 	}

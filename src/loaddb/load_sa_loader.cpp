@@ -61,6 +61,7 @@
 #include "network.h"
 #include "object_accessor.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "porting.h"
 #include "schema_manager.h"
 #include "set_object.h"
@@ -1493,7 +1494,14 @@ ldr_clear_context (LDR_CONTEXT *context)
   context->inst_total = 0;
   context->inst_num = -1;
 
+  // not sure the param helps, however I don't like to change the existing behavior.
+  // We may remove it someday.
   context->flush_interval = prm_get_integer_value (PRM_ID_LOADDB_FLUSH_INTERVAL);
+  if (context->args->periodic_commit <= context->flush_interval)
+    {
+      // deactive flush_interval, since it is useless for this case
+      context->flush_interval = 0;
+    }
 
   context->table = NULL;
 

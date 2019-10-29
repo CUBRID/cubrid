@@ -73,6 +73,7 @@
 #include "heap_file.h"
 #include "slotted_page.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "tz_support.h"
 #include "db_date.h"
 #include "fault_injection.h"
@@ -1784,6 +1785,14 @@ log_final (THREAD_ENTRY * thread_p)
   free_and_init (log_Gl.loghdr_pgptr);
 
   LOG_CS_EXIT (thread_p);
+}
+
+void
+log_stop_ha_delay_registration ()
+{
+#if defined (SERVER_MODE)
+  cubthread::get_manager ()->destroy_daemon (log_Check_ha_delay_info_daemon);
+#endif // SERVER_MODE
 }
 
 /*
@@ -4529,6 +4538,23 @@ log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECT
   else
     {
       tdes->state = TRAN_UNACTIVE_ABORTED;
+
+#if defined(SERVER_MODE)
+      // [TODO] Here is an argument: committers are waiting for flush. Then, why not aborters?
+      // The current fix minimizes potential impacts but it may miss some other cases.
+      // I think it might be better to remove the condition and let aborters also wait for flush.
+      // Maybe in the next milestone.
+      if (BO_IS_SERVER_RESTARTED () && VOLATILE_ACCESS (log_Gl.run_nxchkpt_atpageid, INT64) == NULL_PAGEID)
+	{
+	  /* Flush the log in case that checkpoint is started. Otherwise, the current transaction
+	   * may finish, but its LOG_ABORT not flushed yet. The checkpoint can advance with smallest
+	   * LSA. Also, VACUUM can finalize cleaning. So, the archive may be removed. If the server crashes,
+	   * at recovery, the current transaction must be aborted. But, some of its log records are in
+	   * the archive that was previously removed => crash. Fixed, by forcing log flush before ending.
+	   */
+	  logpb_flush_pages (thread_p, lsa);
+	}
+#endif
     }
 
 #if !defined (NDEBUG)

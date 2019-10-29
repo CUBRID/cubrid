@@ -52,6 +52,7 @@
 #include "log_manager.h"
 #include "log_system_tran.hpp"
 #include "memory_private_allocator.hpp"
+#include "object_representation.h"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "xserver_interface.h"
@@ -1584,6 +1585,8 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+  LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_lsa);
+  LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_start_lsa);
 }
 
 /*
@@ -1678,6 +1681,8 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+  LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_lsa);
+  LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_start_lsa);
 }
 
 /*
@@ -4195,7 +4200,7 @@ log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_u
 	}
     }
   /* Check system worker transactions. */
-  log_system_tdes::rv_map_all_tdes (max_undo_lsa_func);
+  log_system_tdes::map_all_tdes (max_undo_lsa_func);
 
   TR_TABLE_CS_EXIT (thread_p);
   // *INDENT-ON*

@@ -59,13 +59,16 @@ static int ldr_exec_query_from_file (const char *file_name, FILE * input_stream,
 static int ldr_compare_attribute_with_meta (char *table_name, char *meta, DB_ATTRIBUTE * attribute);
 static int ldr_compare_storage_order (FILE * schema_file);
 static void get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args);
+/* *INDENT-OFF* */
+static void print_stats (std::vector<cubload::stats> &stats, cubload::load_args &args, int *status);
+/* *INDENT-ON* */
 
-static void ldr_server_load (load_args * args, int *status, bool * interrupted);
+static void ldr_server_load (load_args * args, int *exit_status, bool * interrupted);
 static void register_signal_handlers ();
 /* *INDENT-OFF* */
 static int load_has_authorization (const std::string & class_name, DB_AUTH au_type);
 /* *INDENT-ON* */
-static int load_object_file (load_args * args);
+static int load_object_file (load_args * args, int *exit_status);
 static void print_er_msg ();
 
 /*
@@ -100,6 +103,41 @@ print_log_msg (int verbose, const char *fmt, ...)
       assert (false);
     }
 }
+
+/* *INDENT-OFF* */
+void
+print_stats (std::vector<cubload::stats> &stats, cubload::load_args &args, int *status)
+{
+  for (const cubload::stats &stat : stats)
+    {
+      if (!stat.log_message.empty ())
+	{
+	  print_log_msg (args.verbose, stat.log_message.c_str ());
+	}
+
+      if (!stat.error_message.empty ())
+	{
+	  /* Skip if syntax check only is enabled since we do not want to stop on error. */
+	  if (!args.syntax_check)
+	    {
+	      *status = 3;
+	      fprintf (stderr, "%s", stat.error_message.c_str ());
+	    }
+	}
+      else
+	{
+	  /* Don't print this during syntax checking */
+	  if (!args.syntax_check && stat.rows_committed != 0)
+	    {
+	      char *committed_instances_msg = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
+					      LOADDB_MSG_COMMITTED_INSTANCES);
+	      const char *dummy = "";
+	      print_log_msg (args.verbose_commit, committed_instances_msg, dummy, stat.rows_committed);
+	    }
+	}
+    }
+}
+/* *INDENT-ON* */
 
 static void
 print_er_msg ()
@@ -139,7 +177,7 @@ ldr_validate_object_file (const char *argv0, load_args * args)
       return ER_FAILED;
     }
 
-  if (args->input_file.empty () && args->object_file.empty () && args->server_object_file.empty ())
+  if (args->input_file.empty () && args->object_file.empty ())
     {
       /* if schema/index file are specified, process them only */
       if (args->schema_file.empty () && args->index_file.empty ())
@@ -210,13 +248,13 @@ ldr_get_start_line_no (std::string & file_name)
 	    {
 	      /* *INDENT-OFF* */
 	      try
-	      {
-		line_no = std::stoi (file_name.substr (p + 1));
-	      }
+		{
+		  line_no = std::stoi (file_name.substr (p + 1));
+		}
 	      catch (...)
-	      {
-		// parse failed, fallback to default value
-	      }
+		{
+		  // parse failed, fallback to default value
+		}
 	      /* *INDENT-ON* */
 
 	      // remove line no from file name
@@ -587,7 +625,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	{
 	  if (retval != ER_FILE_UNKNOWN_FILE)
 	    {
-	      // To keep compatibility we need to continue even though the ignore-classes file does not exist.            
+	      // To keep compatibility we need to continue even though the ignore-classes file does not exist.
 	      status = 2;
 	      goto error_return;
 	    }
@@ -708,7 +746,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       schema_file = NULL;
     }
 
-  if (!args.object_file.empty () || !args.server_object_file.empty ())
+  if (!args.object_file.empty ())
     {
       if (args.syntax_check)
 	{
@@ -1027,7 +1065,6 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   char *index_file = utility_get_option_string_value (arg_map, LOAD_INDEX_FILE_S, 0);
   char *trigger_file = utility_get_option_string_value (arg_map, LOAD_TRIGGER_FILE_S, 0);
   char *object_file = utility_get_option_string_value (arg_map, LOAD_DATA_FILE_S, 0);
-  char *server_object_file = utility_get_option_string_value (arg_map, LOAD_SERVER_DATA_FILE_S, 0);
   char *error_file = utility_get_option_string_value (arg_map, LOAD_ERROR_CONTROL_FILE_S, 0);
   char *table_name = utility_get_option_string_value (arg_map, LOAD_TABLE_NAME_S, 0);
   char *ignore_class_file = utility_get_option_string_value (arg_map, LOAD_IGNORE_CLASS_S, 0);
@@ -1056,7 +1093,6 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   args->index_file = index_file ? index_file : empty;
   args->trigger_file = trigger_file ? trigger_file : empty;
   args->object_file = object_file ? object_file : empty;
-  args->server_object_file = server_object_file ? server_object_file : empty;
   args->error_file = error_file ? error_file : empty;
   args->ignore_logging = utility_get_option_bool_value (arg_map, LOAD_IGNORE_LOGGING_S);
   args->compare_storage_order = utility_get_option_bool_value (arg_map, LOAD_COMPARE_STORAGE_ORDER_S);
@@ -1065,7 +1101,7 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
 }
 
 static void
-ldr_server_load (load_args * args, int *status, bool * interrupted)
+ldr_server_load (load_args * args, int *exit_status, bool * interrupted)
 {
   register_signal_handlers ();
 
@@ -1073,114 +1109,116 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
   if (error_code != NO_ERROR)
     {
       print_er_msg ();
-      *status = 3;
+      *exit_status = 3;
       return;
     }
 
-  error_code = load_object_file (args);
+  error_code = load_object_file (args, exit_status);
   if (error_code != NO_ERROR)
     {
+      loaddb_interrupt ();
       print_er_msg ();
-      *status = 3;
+      *exit_status = 3;
     }
 
-  stats stats;
-  int prev_rows_committed = 0;
+  /* *INDENT-OFF* */
+  cubload::stats last_stat;
+  load_status status;
+  /* *INDENT-ON* */
+
   do
     {
       if (load_interrupted)
 	{
 	  *interrupted = true;
-	  *status = 3;
+	  *exit_status = 3;
 	  break;
 	}
 
-      error_code = loaddb_fetch_stats (&stats);
+      error_code = loaddb_fetch_status (status);
       if (error_code != NO_ERROR)
 	{
+	  loaddb_interrupt ();
 	  print_er_msg ();
-	  *status = 3;
+	  *exit_status = 3;
 	  break;
 	}
 
-      if (!stats.log_message.empty ())
+      print_stats (status.get_load_stats (), *args, exit_status);
+      if (!status.get_load_stats ().empty ())
 	{
-	  print_log_msg (args->verbose, stats.log_message.c_str ());
+	  last_stat = status.get_load_stats ().back ();
 	}
 
-      if (!stats.error_message.empty ())
-	{
-	  /* Skip if syntax check only is enabled since we do not want to stop on error. */
-	  if (!args->syntax_check)
-	    {
-	      *status = 3;
-	      fprintf (stderr, "%s", stats.error_message.c_str ());
-	    }
-	}
-      else
-	{
-	  int curr_rows_committed = stats.rows_committed;
-	  // log committed instances msg only there was a commit since last check
-	  if (curr_rows_committed > prev_rows_committed)
-	    {
-	      /* Don't print this during syntax checking */
-	      if (!args->syntax_check)
-		{
-		  char *committed_instances_msg = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
-								  LOADDB_MSG_COMMITTED_INSTANCES);
-		  const char *dummy = "";
-		  print_log_msg (args->verbose_commit, committed_instances_msg, dummy, curr_rows_committed);
-		}
-
-	      prev_rows_committed = curr_rows_committed;
-	    }
-	}
-
-	/* *INDENT-OFF* */
-	std::this_thread::sleep_for (std::chrono::milliseconds (100));
-	/* *INDENT-ON* */
+      /* *INDENT-OFF* */
+      std::this_thread::sleep_for (std::chrono::milliseconds (100));
+      /* *INDENT-ON* */
     }
-  while (!(stats.is_completed || stats.is_failed) && *status != 3);
-
-  // fetch latest stats before destroying the session
-  loaddb_fetch_stats (&stats);
+  while (!(status.is_load_completed () || status.is_load_failed ()) && *exit_status != 3);
 
   if (load_interrupted)
     {
       print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SIG1));
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
-	       stats.current_line.load ());
+	       last_stat.current_line.load ());
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INTERRUPTED_ABORT));
     }
 
   if (args->syntax_check)
     {
-      if (!stats.error_message.empty ())
+      if (!last_stat.error_message.empty ())
 	{
-	  fprintf (stderr, "%s", stats.error_message.c_str ());
+	  fprintf (stderr, "%s", last_stat.error_message.c_str ());
 	}
 
       print_log_msg (1,
 		     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_OBJECTS_SYNTAX_CHECKED),
-		     stats.rows_committed, stats.rows_failed);
+		     last_stat.rows_committed, last_stat.rows_failed);
     }
   else
     {
       print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INSERT_AND_FAIL_COUNT),
-		     stats.rows_committed, stats.rows_failed);
+		     last_stat.rows_committed, last_stat.rows_failed);
     }
 
+  if (!load_interrupted && !status.is_load_failed () && !args->syntax_check && error_code == NO_ERROR)
+    {
+      // Update class statistics
+      error_code = loaddb_update_stats ();
+      if (error_code != NO_ERROR)
+	{
+	  print_er_msg ();
+	  *exit_status = 3;
+	}
+      else			// NO_ERROR
+	{
+	  // Fetch the latest stats.
+	  error_code = loaddb_fetch_status (status);
+	  if (error_code != NO_ERROR)
+	    {
+	      print_er_msg ();
+	      *exit_status = 3;
+	    }
+	  else			// NO_ERROR
+	    {
+	      // Print these stats.
+	      print_stats (status.get_load_stats (), *args, exit_status);
+	    }
+	}
+    }
+
+  // Destroy the session.
   error_code = loaddb_destroy ();
   if (error_code != NO_ERROR)
     {
       print_er_msg ();
-      *status = 3;
+      *exit_status = 3;
     }
 
   if (load_interrupted)
     {
       print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LAST_COMMITTED_LINE),
-		     stats.last_committed_line);
+		     last_stat.last_committed_line);
     }
 }
 
@@ -1238,48 +1276,11 @@ load_has_authorization (const std::string & class_name, DB_AUTH au_type)
 }
 
 static int
-load_object_file (load_args * args)
+load_object_file (load_args * args, int *exit_status)
 {
-  int error_code = NO_ERROR;
-
-  // first try to load directly on server
-  if (!args->server_object_file.empty ())
-    {
-      if (!au_is_dba_group_member (db_get_user ()))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "--server-data-file");
-	  return ER_AU_DBA_ONLY;
-	}
-      error_code = loaddb_load_object_file ();
-      if (error_code == NO_ERROR)
-	{
-	  // load was performed successfully by the server
-	  return error_code;
-	}
-      else if (error_code == ER_FILE_UNKNOWN_FILE)
-	{
-	  if (args->object_file.empty ())
-	    {
-	      fprintf (stderr, "ERROR: file %s does not exists on the server machine\n",
-		       args->server_object_file.c_str ());
-	      return error_code;
-	    }
-
-	  // server data file does not exists on server file system, try to load client data file
-	  fprintf (stderr,
-		   "ERROR: file %s does not exists on the server machine, try to load %s from the client machine\n",
-		   args->server_object_file.c_str (), args->object_file.c_str ());
-	}
-      else
-	{
-	  // there was an error while loading server data file on server, therefore exit
-	  return error_code;
-	}
-    }
-
   if (!args->table_name.empty ())
     {
-      error_code = load_has_authorization (args->table_name, AU_INSERT);
+      int error_code = load_has_authorization (args->table_name, AU_INSERT);
       // user not authorized to insert in class
       if (error_code != NO_ERROR)
 	{
@@ -1288,31 +1289,44 @@ load_object_file (load_args * args)
     }
 
   /* *INDENT-OFF* */
-  batch_handler b_handler = [] (const batch &batch) -> int
+  batch_handler b_handler = [&] (const batch &batch) -> int
   {
-    int ret = loaddb_load_batch (batch);
-    delete &batch;
+    int error_code = NO_ERROR;
+    bool use_temp_batch = false;
+    bool is_batch_accepted = false;
+    do
+      {
+	load_status status;
+	error_code = loaddb_load_batch (batch, use_temp_batch, is_batch_accepted, status);
+	if (error_code != NO_ERROR)
+	  {
+	    return error_code;
+	  }
+	use_temp_batch = true; // don't upload batch again while retrying
 
-    return ret;
+	print_stats (status.get_load_stats (), *args, exit_status);
+      }
+    while (!is_batch_accepted);
+
+    return error_code;
   };
 
   class_handler c_handler = [] (const batch &batch, bool &is_ignored) -> int
   {
     std::string class_name;
-    int ret = loaddb_install_class (batch, is_ignored, class_name);
-    delete &batch;
+    int error_code = loaddb_install_class (batch, is_ignored, class_name);
 
-    if (ret != NO_ERROR)
+    if (error_code != NO_ERROR)
       {
-	return ret;
+	return error_code;
       }
 
     if (!is_ignored && !class_name.empty ())
       {
-	ret = load_has_authorization (class_name, AU_INSERT);
+	error_code = load_has_authorization (class_name, AU_INSERT);
       }
 
-    return ret;
+    return error_code;
   };
   /* *INDENT-ON* */
 

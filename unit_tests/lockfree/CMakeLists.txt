@@ -19,9 +19,13 @@
 set (TEST_LOCKFREE_SOURCES
   test_main.cpp
   test_cqueue_functional.cpp
+  test_freelist_functional.cpp
+  test_hashmap.cpp
 )
 set (TEST_LOCKFREE_HEADERS
   test_cqueue_functional.hpp
+  test_freelist_functional.hpp
+  test_hashmap.hpp
 )
 SET_SOURCE_FILES_PROPERTIES(
   ${TEST_LOCKFREE_SOURCES}

@@ -2510,7 +2510,8 @@ emit_unique_def (print_output & output_ctx, DB_OBJECT * class_, const char *clas
 	      output_ctx ("       CONSTRAINT [%s] UNIQUE(", constraint->name);
 	    }
 
-	  for (att = atts; *att != NULL; att++)
+	  int i;
+	  for (att = atts, i = 0; *att != NULL; att++, i++)
 	    {
 	      name = db_attribute_name (*att);
 	      if (att != atts)
@@ -2519,6 +2520,11 @@ emit_unique_def (print_output & output_ctx, DB_OBJECT * class_, const char *clas
 		}
 
 	      output_ctx ("%s%s%s", PRINT_IDENTIFIER (name));
+
+	      if (constraint->asc_desc != NULL && constraint->asc_desc[i] != 0)
+		{
+		  output_ctx ("%s", " DESC");
+		}
 	    }
 	  output_ctx (")");
 
@@ -2593,6 +2599,8 @@ emit_reverse_unique_def (print_output & output_ctx, DB_OBJECT * class_)
 		  output_ctx (", ");
 		}
 	      output_ctx ("%s%s%s", PRINT_IDENTIFIER (name));
+
+	      // reverse unique does not care for direction of the column.
 	    }
 	  output_ctx (");\n");
 	}

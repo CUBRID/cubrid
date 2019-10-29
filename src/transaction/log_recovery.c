@@ -45,6 +45,7 @@
 #include "system_parameter.h"
 #include "message_catalog.h"
 #include "msgcat_set_log.hpp"
+#include "object_representation.h"
 #include "slotted_page.h"
 #include "boot_sr.h"
 #include "locator_sr.h"
@@ -100,6 +101,8 @@ static void log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_typ
 static void log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * start_redolsa,
 				   LOG_LSA * end_redo_lsa, bool ismedia_crash, time_t * stopat,
 				   bool * did_incom_recovery, INT64 * num_redo_log_records);
+static bool log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, LOG_RECTYPE log_rtype,
+						  LOG_RCVINDEX rcv_index, const LOG_LSA * lsa);
 static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa,
 			       time_t * stopat);
 static void log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
@@ -1480,6 +1483,8 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
 	  /* no undo */
 	  LSA_SET_NULL (&tdes->undo_nxlsa);
 	}
+      tdes->rcv.analysis_last_aborted_sysop_lsa = *log_lsa;
+      tdes->rcv.analysis_last_aborted_sysop_start_lsa = sysop_end->lastparent_lsa;
       break;
 
     case LOG_SYSOP_END_COMMIT:
@@ -2859,6 +2864,63 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 }
 
 /*
+ * log_recovery_needs_skip_logical_redo - Check whether we need to skip logical redo.
+ *
+ * return: true if skip logical redo, false otherwise
+ *
+ *   thread_p(in): Thread entry
+ *   tran_id(in) : Transaction id.
+ *   log_rtype(in): Log record type
+ *   rcv_index(in): Recovery index
+ *   lsa(in) : lsa to check
+ *
+ * NOTE: When logical redo logging is applied and the system crashes repeatedly, we need to
+ *       skip redo logical record already applied. This function checks whether the logical redo must be skipped.
+ */
+static bool
+log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, LOG_RECTYPE log_rtype,
+				      LOG_RCVINDEX rcv_index, const LOG_LSA * lsa)
+{
+  int tran_index;
+  LOG_TDES *tdes = NULL;	/* Transaction descriptor */
+
+  assert (lsa != NULL);
+
+  if (log_rtype != LOG_DBEXTERN_REDO_DATA)
+    {
+      return false;
+    }
+
+  tran_index = logtb_find_tran_index (thread_p, tran_id);
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      return false;
+    }
+
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      return false;
+    }
+
+  /* logical redo logging */
+  // analysis_last_aborted_sysop_start_lsa < lsa < analysis_last_aborted_sysop_lsa
+  if (LSA_LT (&tdes->rcv.analysis_last_aborted_sysop_start_lsa, lsa)
+      && LSA_LT (lsa, &tdes->rcv.analysis_last_aborted_sysop_lsa))
+    {
+      /* Logical redo already applied. */
+      er_log_debug (ARG_FILE_LINE, "log_recovery_needs_skip_logical_redo: LSA = %lld|%d, Rv_index = %s, "
+		    "analysis_last_aborted_sysop_lsa = %lld|%d, analysis_last_aborted_sysop_start_lsa = %lld|%d\n",
+		    LSA_AS_ARGS (lsa), rv_rcvindex_string (rcv_index),
+		    LSA_AS_ARGS (&tdes->rcv.analysis_last_aborted_sysop_lsa),
+		    LSA_AS_ARGS (&tdes->rcv.analysis_last_aborted_sysop_start_lsa));
+      return true;
+    }
+
+  return false;
+}
+
+/*
  * log_recovery_redo - SCAN FORWARD REDOING DATA
  *
  * return: nothing
@@ -3421,8 +3483,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		}
 #endif /* !NDEBUG */
 
-	      log_rv_redo_record (thread_p, &log_lsa, log_pgptr, RV_fun[rcvindex].redofun, &rcv, &rcv_lsa, 0, NULL,
-				  NULL);
+	      if (!log_recovery_needs_skip_logical_redo (thread_p, tran_id, log_rtype, rcvindex, &rcv_lsa))
+		{
+		  log_rv_redo_record (thread_p, &log_lsa, log_pgptr, RV_fun[rcvindex].redofun, &rcv, &rcv_lsa, 0, NULL,
+				      NULL);
+		}
+
 	      break;
 
 	    case LOG_RUN_POSTPONE:
@@ -4223,7 +4289,7 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
 	}
       finish_sys_postpone (*tdes_it);
     }
-  log_system_tdes::rv_map_all_tdes (finish_sys_postpone);
+  log_system_tdes::map_all_tdes (finish_sys_postpone);
   // *INDENT-ON*
 }
 
@@ -4258,7 +4324,7 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
 	}
       abort_atomic_func (*tdes_it);
     }
-  log_system_tdes::rv_map_all_tdes (abort_atomic_func);
+  log_system_tdes::map_all_tdes (abort_atomic_func);
   // *INDENT-ON*
 }
 

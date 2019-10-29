@@ -199,10 +199,9 @@ stx_get_struct_visited_ptr (THREAD_ENTRY *thread_p, const void *ptr)
 void
 stx_free_visited_ptrs (THREAD_ENTRY *thread_p)
 {
-  int i;
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
-  for (i = 0; i < MAX_PTR_BLOCKS; i++)
+  for (size_t i = 0; i < MAX_PTR_BLOCKS; i++)
     {
       xasl_unpack_info->ptr_lwm[i] = 0;
       xasl_unpack_info->ptr_max[i] = 0;

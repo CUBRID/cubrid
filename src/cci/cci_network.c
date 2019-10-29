@@ -207,7 +207,7 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, 
     {
       unsigned int v;
 
-      v = *(unsigned int *) con_handle->session_id.id;
+      memcpy (&v, con_handle->session_id.id, sizeof (v));
       snprintf (info, DRIVER_SESSION_SIZE, "%u", v);
     }
 
@@ -369,7 +369,14 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, 
   else
     {
       memcpy (con_handle->session_id.id, p, SESSION_ID_SIZE);
-      *(unsigned int *) con_handle->session_id.id = ntohl (*(unsigned int *) con_handle->session_id.id);
+
+      // convert first 4 bytes using ntohl
+      unsigned int net_val;
+      unsigned int conv_val;
+
+      memcpy (&net_val, con_handle->session_id.id, sizeof (net_val));
+      conv_val = ntohl (net_val);
+      memcpy (con_handle->session_id.id, &conv_val, sizeof (conv_val));
     }
 
   FREE_MEM (msg_buf);
@@ -798,7 +805,7 @@ net_peer_alive (unsigned char *ip_addr, int port, int timeout_msec)
     }
 
 send_again:
-  ret = WRITE_TO_SOCKET (sock_fd, ping_msg, strlen (ping_msg));
+  ret = WRITE_TO_SOCKET (sock_fd, ping_msg, (int) strlen (ping_msg));
   if (ret < 0)
     {
       if (errno == EAGAIN)

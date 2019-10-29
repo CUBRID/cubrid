@@ -9388,7 +9388,7 @@ pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	  if (DB_IS_STRING (col_info.on_empty.m_default_value))
 	    {
-	      error_code = db_json_convert_to_utf8 (&col_info.on_empty.m_default_value);
+	      error_code = db_json_convert_to_utf8 (col_info.on_empty.m_default_value);
 	      if (error_code != NO_ERROR)
 		{
 		  return NO_ERROR;
@@ -9410,7 +9410,7 @@ pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	  if (DB_IS_STRING (col_info.on_error.m_default_value))
 	    {
-	      error_code = db_json_convert_to_utf8 (&col_info.on_error.m_default_value);
+	      error_code = db_json_convert_to_utf8 (col_info.on_error.m_default_value);
 	      if (error_code != NO_ERROR)
 		{
 		  return NO_ERROR;

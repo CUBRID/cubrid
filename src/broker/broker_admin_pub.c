@@ -281,10 +281,8 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
       if (strlen (path) + strlen (br_info[i].name) + 1 + NUM_OF_DIGITS (br_info[i].appl_server_max_num) >
 	  MEMBER_SIZE (struct sockaddr_un, sun_path) - 1)
 	{
-	  int ret = snprintf (admin_err_msg, sizeof (admin_err_msg) - 1, "The socket path is too long (>%d): %s",
-			      MEMBER_SIZE (struct sockaddr_un, sun_path), path);
-	  (void) ret;		// suppress format-truncate warning
-	  return -1;
+	  snprintf_dots_truncate (admin_err_msg, sizeof (admin_err_msg) - 1, "The socket path is too long (>%d): %s",
+				  MEMBER_SIZE (struct sockaddr_un, sun_path), path);
 	}
 #endif /* !WINDOWS */
       broker_create_dir (br_info[i].log_dir);
@@ -733,8 +731,8 @@ admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
 
   if (ut_is_appl_server_ready (pid, &shm_appl->as_info[as_index].service_ready_flag) == false)
     {
-      snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE, "Could not start the application server: %s\n",
-		shm_appl->appl_server_name);
+      snprintf_dots_truncate (admin_err_msg, ADMIN_ERR_MSG_SIZE, "Could not start the application server: %s\n",
+			      shm_appl->appl_server_name);
       goto restart_error;
     }
 

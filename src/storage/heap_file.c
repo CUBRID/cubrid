@@ -48,6 +48,7 @@
 #include "transform.h"		/* for CT_SERIAL_NAME */
 #include "serial.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "object_representation_sr.h"
 #include "xserver_interface.h"
 #include "chartype.h"
@@ -2675,7 +2676,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
   OR_BUF buf;
   bool copy;
   RECDES recdes = RECDES_INITIALIZER;	/* Used to obtain attrnames */
-  int ret = NO_ERROR;
+  volatile int ret = NO_ERROR;
   char *index_name = NULL;
   char *string = NULL;
   int alloced_string = 0;
@@ -11493,7 +11494,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   size_t expected_size;
   int tmp;
   volatile int offset_size;
-  int mvcc_wasted_space = 0, header_size;
+  volatile int mvcc_wasted_space = 0;
+  int header_size;
   bool is_mvcc_class;
   // *INDENT-OFF*
   std::set<int> incremented_attrids;
@@ -16442,7 +16444,8 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 
       if (att->is_autoincrement && (value->state == HEAP_UNINIT_ATTRVALUE))
 	{
-	  if (OID_ISNULL (&(att->auto_increment.serial_obj)))
+	  OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
+	  if (OID_ISNULL (&serial_obj_oid))
 	    {
 	      memset (serial_name, '\0', sizeof (serial_name));
 	      recdes.data = NULL;
@@ -16531,8 +16534,9 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 		    }
 
 		  assert (!OID_ISNULL (&serial_oid));
-		  ATOMIC_CAS_64 ((INT64 *) (&att->auto_increment.serial_obj), *(INT64 *) (&oid_Null_oid),
-				 *(INT64 *) (&serial_oid));
+		  or_aligned_oid null_aligned_oid = { oid_Null_oid };
+		  or_aligned_oid serial_aligned_oid = { serial_oid };
+		  att->auto_increment.serial_obj.compare_exchange_strong (null_aligned_oid, serial_aligned_oid);
 		}
 	      else
 		{
@@ -16544,7 +16548,8 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 
 	  if ((att->type == DB_TYPE_SHORT) || (att->type == DB_TYPE_INTEGER) || (att->type == DB_TYPE_BIGINT))
 	    {
-	      if (xserial_get_next_value (thread_p, &dbvalue_numeric, &att->auto_increment.serial_obj, 0,	/* no cache */
+	      OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
+	      if (xserial_get_next_value (thread_p, &dbvalue_numeric, &serial_obj_oid, 0,	/* no cache */
 					  1,	/* generate one value */
 					  GENERATE_AUTO_INCREMENT, false) != NO_ERROR)
 		{
@@ -16560,7 +16565,8 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 	    }
 	  else if (att->type == DB_TYPE_NUMERIC)
 	    {
-	      if (xserial_get_next_value (thread_p, dbvalue, &att->auto_increment.serial_obj, 0,	/* no cache */
+	      OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
+	      if (xserial_get_next_value (thread_p, dbvalue, &serial_obj_oid, 0,	/* no cache */
 					  1,	/* generate one value */
 					  GENERATE_AUTO_INCREMENT, false) != NO_ERROR)
 		{
@@ -17323,6 +17329,12 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
 			    &cache_attr_info->inst_oid, NULL, &res);
   if (error == NO_ERROR)
     {
+      if (DB_IS_NULL (res) && func_pred->func_regu->domain != NULL)
+	{
+	  /* Set expected domain in case of null values, just to be sure. The callers expects the domain to be set. */
+	  db_value_domain_init (res, TP_DOMAIN_TYPE (func_pred->func_regu->domain),
+				func_pred->func_regu->domain->precision, func_pred->func_regu->domain->scale);
+	}
       pr_clone_value (res, result);
     }
 
@@ -24871,7 +24883,7 @@ heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   bool skip_last_page_links = false;
   VPID heap_header_next_vpid;
   size_t offset = 0;
-  int array_size = 0;
+  size_t array_size = 0;
   std::vector <VPID> heap_pages_array;
   OID class_oid;
   HFID hfid;
@@ -24886,7 +24898,9 @@ heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   OR_GET_OID ((recv->data + offset), &class_oid);
   offset += OR_OID_SIZE;
 
-  array_size = OR_GET_INT ((recv->data + offset));
+  int unpack_int = OR_GET_INT ((recv->data + offset));
+  assert (unpack_int >= 0);
+  array_size = (size_t) unpack_int;
   offset += OR_INT_SIZE;
 
   for (size_t i = 0; i < array_size; i++)
@@ -24901,7 +24915,7 @@ heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
       heap_pages_array.push_back (vpid);
     }
 
-  assert (offset == recv->length);
+  assert (recv->length >= 0 && offset == (size_t) recv->length);
   assert (array_size == heap_pages_array.size ());
 
   VPID_SET_NULL (&null_vpid);
@@ -25216,7 +25230,7 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
 
   // This append needs to be run on postpone after the commit.
   // First create the log data required.
-  int array_size = heap_pages_array.size ();
+  size_t array_size = heap_pages_array.size ();
   int log_data_size = (DB_ALIGN (OR_HFID_SIZE, PTR_ALIGNMENT) + OR_OID_SIZE + sizeof (int)
                        + array_size * DISK_VPID_ALIGNED_SIZE);
   char *log_data = (char *) db_private_alloc (NULL, log_data_size + MAX_ALIGNMENT);
@@ -25236,7 +25250,7 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
   ptr = PTR_ALIGN (ptr, PTR_ALIGNMENT);
 
   // array_size
-  OR_PUT_INT (ptr, array_size);
+  OR_PUT_INT (ptr, (int) array_size);
   ptr += OR_INT_SIZE;
 
   // The array of VPID.

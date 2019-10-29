@@ -526,9 +526,15 @@ tzc_build_filepath (char *path, size_t size, const char *dir, const char *filena
   assert (filename != NULL);
 
 #if !defined(WINDOWS)
-  snprintf (path, size - 1, "%s/%s", dir, filename);
+  if (snprintf (path, size - 1, "%s/%s", dir, filename) < 0)
+    {
+      assert_release (false);
+    }
 #else
-  snprintf (path, size - 1, "%s\\%s", dir, filename);
+  if (snprintf (path, size - 1, "%s\\%s", dir, filename) < 0)
+    {
+      assert_release (false);
+    }
 #endif
 }
 
@@ -4819,14 +4825,13 @@ tzc_log_error (const TZ_RAW_CONTEXT * context, const int code, const char *msg1,
 
   if (context != NULL && !IS_EMPTY_STR (context->current_file) && context->current_line != -1)
     {
-      int ret = snprintf (err_msg_temp, sizeof (err_msg_temp) - 1, " (file %s, line %d)", context->current_file,
-			  context->current_line);
-      (void) ret;		// suppress format-truncate warning
+      snprintf_dots_truncate (err_msg_temp, sizeof (err_msg_temp) - 1, " (file %s, line %d)", context->current_file,
+			      context->current_line);
     }
   strcat (err_msg, err_msg_temp);
 
   *err_msg_temp = '\0';
-  snprintf (err_msg_temp, sizeof (err_msg_temp), tzc_Err_messages[-code], msg1, msg2);
+  snprintf_dots_truncate (err_msg_temp, sizeof (err_msg_temp), tzc_Err_messages[-code], msg1, msg2);
   strcat (err_msg, err_msg_temp);
   strcat (err_msg, "\n");
 
@@ -5442,7 +5447,7 @@ tzc_extend (TZ_DATA * tzd)
   TZ_DATA *tzd_or_old_tzd = NULL;
   const char *ruleset_name;
   bool is_compat = true;
-  int start_ds_ruleset_old, start_ds_ruleset_new;
+  int start_ds_ruleset_old = 0, start_ds_ruleset_new = 0;
   const TZ_DS_RULE *old_ds_rule = NULL;
   const TZ_DS_RULE *new_ds_rule = NULL;
   int all_country_count = 0;

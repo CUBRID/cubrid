@@ -30,6 +30,7 @@
 #include "fault_injection.h"
 #include "list_file.h"
 #include "lock_free.h"
+#include "lockfree_transaction_system.hpp"
 #include "log_compress.h"
 #include "log_system_tran.hpp"
 #include "memory_alloc.h"
@@ -139,6 +140,7 @@ namespace cubthread
 		       PGBUF_TRACK_RES_NAME, PGBUF_TRACK_MAX_AMOUNT))
     , m_csect_tracker (*new cubsync::critical_section_tracker (ENABLE_TRACKERS))
     , m_systdes (NULL)
+    , m_lf_tran_index (lockfree::tran::INVALID_INDEX)
   {
     if (pthread_mutex_init (&tran_index_lock, NULL) != 0)
       {
@@ -395,6 +397,26 @@ namespace cubthread
     delete m_systdes;
     m_systdes = NULL;
     tran_index = NULL_TRAN_INDEX;
+  }
+
+  void
+  entry::assign_lf_tran_index (lockfree::tran::index idx)
+  {
+    m_lf_tran_index = idx;
+  }
+
+  lockfree::tran::index
+  entry::pull_lf_tran_index ()
+  {
+    lockfree::tran::index ret = m_lf_tran_index;
+    m_lf_tran_index = lockfree::tran::INVALID_INDEX;
+    return ret;
+  }
+
+  lockfree::tran::index
+  entry::get_lf_tran_index ()
+  {
+    return m_lf_tran_index;
   }
 
 } // namespace cubthread
@@ -677,6 +699,8 @@ thread_type_to_string (thread_type type)
       return "WORKER";
     case TT_DAEMON:
       return "DAEMON";
+    case TT_LOADDB:
+      return "LOADDB";
     case TT_VACUUM_MASTER:
       return "VACUUM_MASTER";
     case TT_VACUUM_WORKER:

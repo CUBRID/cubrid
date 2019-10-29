@@ -35,8 +35,9 @@ set (COMPAT_HEADERS
   ${COMPAT_DIR}/db_json_allocator.hpp
   ${COMPAT_DIR}/db_json_path.hpp
   ${COMPAT_DIR}/db_json_types_internal.hpp
+  ${COMPAT_DIR}/db_set.h
+  ${COMPAT_DIR}/db_set_function.h
   ${COMPAT_DIR}/dbtype_function.i
-  ${COMPAT_DIR}/dbtype_function.h
   )
 
 set(THREAD_SOURCES
@@ -46,6 +47,7 @@ set(THREAD_SOURCES
   ${THREAD_DIR}/thread_daemon.cpp
   ${THREAD_DIR}/thread_entry.cpp
   ${THREAD_DIR}/thread_entry_task.cpp
+  ${THREAD_DIR}/thread_lockfree_hash_map.cpp
   ${THREAD_DIR}/thread_looper.cpp
   ${THREAD_DIR}/thread_manager.cpp
   ${THREAD_DIR}/thread_waiter.cpp
@@ -58,9 +60,10 @@ set(THREAD_HEADERS
   ${THREAD_DIR}/thread_daemon.hpp
   ${THREAD_DIR}/thread_entry.hpp
   ${THREAD_DIR}/thread_entry_task.hpp
-  ${THREAD_DIR}/thread_task.hpp
+  ${THREAD_DIR}/thread_lockfree_hash_map.hpp
   ${THREAD_DIR}/thread_looper.hpp
   ${THREAD_DIR}/thread_manager.hpp
+  ${THREAD_DIR}/thread_task.hpp
   ${THREAD_DIR}/thread_waiter.hpp
   ${THREAD_DIR}/thread_worker_pool.hpp
   ${THREAD_DIR}/thread_worker_pool_taskcap.hpp
@@ -90,6 +93,11 @@ set(BASE_SOURCES
   ${BASE_DIR}/language_support.c
   ${BASE_DIR}/locale_support.c
   ${BASE_DIR}/lock_free.c
+  ${BASE_DIR}/lockfree_bitmap.cpp
+  ${BASE_DIR}/lockfree_hashmap.cpp
+  ${BASE_DIR}/lockfree_transaction_descriptor.cpp
+  ${BASE_DIR}/lockfree_transaction_table.cpp
+  ${BASE_DIR}/lockfree_transaction_system.cpp
   ${BASE_DIR}/md5.c
   ${BASE_DIR}/mem_block.cpp
   ${BASE_DIR}/memory_alloc.c
@@ -127,6 +135,15 @@ set (BASE_HEADERS
   ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
+  ${BASE_DIR}/lockfree_address_marker.hpp
+  ${BASE_DIR}/lockfree_bitmap.hpp
+  ${BASE_DIR}/lockfree_freelist.hpp
+  ${BASE_DIR}/lockfree_hashmap.hpp
+  ${BASE_DIR}/lockfree_transaction_def.hpp
+  ${BASE_DIR}/lockfree_transaction_descriptor.hpp
+  ${BASE_DIR}/lockfree_transaction_reclaimable.hpp
+  ${BASE_DIR}/lockfree_transaction_table.hpp
+  ${BASE_DIR}/lockfree_transaction_system.hpp
   ${BASE_DIR}/mem_block.hpp
   ${BASE_DIR}/memory_reference_store.hpp
   ${BASE_DIR}/memory_private_allocator.hpp
@@ -537,6 +554,7 @@ install(FILES
 install(FILES
   # ${COMPAT_DIR}/dbtran_def.h // temporary disabled
   ${COMPAT_DIR}/dbtype_def.h
+  ${COMPAT_DIR}/db_set_function.h
   ${COMPAT_DIR}/dbtype_function.h
   ${COMPAT_DIR}/db_date.h
   ${COMPAT_DIR}/db_elo.h
