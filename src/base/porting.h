@@ -87,6 +87,10 @@
   (((long long unsigned) (size) <= ULONG_MAX) \
    || (sizeof (long long unsigned) <= sizeof (size_t)))
 
+#if defined (__cplusplus)
+#include <type_traits>
+#endif // C++
+
 #if defined (WINDOWS)
 #include <fcntl.h>
 #include <direct.h>
@@ -314,6 +318,36 @@ extern int free_space (const char *, int);
 
 #endif /* WINDOWS */
 
+#if defined (__cplusplus)
+// *INDENT-OFF*
+template <typename ... Args>
+inline void
+snprintf_dots_truncate (char *dest, size_t max_len, Args &&... args)
+{
+  if (snprintf (dest, max_len, std::forward<Args> (args)...) < 0)
+    {
+      snprintf (dest + max_len - 4, 4, "...");
+    }
+}
+
+inline char *
+strncpy_size (char * buf, const char * str, size_t size)
+{
+  strncpy (buf, str, size);
+  buf[size - 1] = '\0';
+  return buf;
+}
+
+template<typename T>
+inline void
+check_is_array (const T & a)
+{
+  static_assert (std::is_array<T>::value == 1, "expected array");
+}
+#define strncpy_bufsize(buf, str) \
+  check_is_array (buf); strncpy_size (buf, str, sizeof (buf))
+// *INDENT-ON*
+#else // not C++
 #define snprintf_dots_truncate(dest, max_len, ...) \
   if (snprintf (dest, max_len, __VA_ARGS__) < 0) \
     snprintf (dest + max_len - 4, 4, "...")
@@ -321,6 +355,7 @@ extern int free_space (const char *, int);
   strncpy (buf, str, size); buf[(size) - 1] = '\0'
 #define strncpy_bufsize(buf, str) \
   strncpy_size (buf, str, sizeof (buf))
+#endif // not C++
 
 #if defined (WINDOWS)
 #define PATH_SEPARATOR  '\\'
