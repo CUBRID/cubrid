@@ -320,26 +320,13 @@ extern int free_space (const char *, int);
 
 #endif /* WINDOWS */
 
+#define snprintf_dots_truncate(dest, max_len, ...) \
+  if (snprintf (dest, max_len, __VA_ARGS__) < 0) \
+    snprintf (dest + max_len - 4, 4, "...")
+#define strncpy_size(buf, str, size) \
+  strncpy (buf, str, size); buf[(size) - 1] = '\0'
 #if defined (__cplusplus)
 // *INDENT-OFF*
-template <typename ... Args>
-inline void
-snprintf_dots_truncate (char *dest, size_t max_len, Args &&... args)
-{
-  if (snprintf (dest, max_len, std::forward<Args> (args)...) < 0)
-    {
-      snprintf (dest + max_len - 4, 4, "...");
-    }
-}
-
-inline char *
-strncpy_size (char * buf, const char * str, size_t size)
-{
-  strncpy (buf, str, size);
-  buf[size - 1] = '\0';
-  return buf;
-}
-
 template<typename T>
 inline void
 check_is_array (const T & a)
@@ -350,11 +337,6 @@ check_is_array (const T & a)
   strncpy_size (buf, str, sizeof (buf)); check_is_array (buf); 
 // *INDENT-ON*
 #else // not C++
-#define snprintf_dots_truncate(dest, max_len, ...) \
-  if (snprintf (dest, max_len, __VA_ARGS__) < 0) \
-    snprintf (dest + max_len - 4, 4, "...")
-#define strncpy_size(buf, str, size) \
-  strncpy (buf, str, size); buf[(size) - 1] = '\0'
 #define strncpy_bufsize(buf, str) \
   strncpy_size (buf, str, sizeof (buf))
 #endif // not C++
