@@ -29,8 +29,6 @@
 #include "utility.h"
 #include "environment_variable.h"
 #include "cm_utils.h"
-#include "porting.h"
-
 
 #include <string.h>
 #include <stdio.h>

@@ -3432,6 +3432,7 @@ us_hb_stop_get_options (char *db_name, int db_name_size, char *remote_host_name,
   char opt_str[64];
   int tmp_argc;
   const char **tmp_argv = NULL;
+  size_t copy_len;
 
   const struct option hb_stop_opts[] = {
     {COMMDB_HB_DEACT_IMMEDIATELY_L, 0, 0, COMMDB_HB_DEACT_IMMEDIATELY_S},
@@ -3471,7 +3472,7 @@ us_hb_stop_get_options (char *db_name, int db_name_size, char *remote_host_name,
       switch (opt)
 	{
 	case COMMDB_HOST_S:
-	  size_t copy_len = strnlen (optarg, remote_host_name_size - 1);
+	  copy_len = strnlen (optarg, remote_host_name_size - 1);
 	  memcpy (remote_host_name, optarg, copy_len);
 	  remote_host_name[copy_len] = '\0';
 	  break;
@@ -3532,6 +3533,7 @@ us_hb_status_get_options (bool * verbose, char *remote_host_name, int remote_hos
   char opt_str[64];
   int tmp_argc;
   const char **tmp_argv = NULL;
+  int copy_len;
 
   const struct option hb_status_opts[] = {
     {"verbose", 0, 0, 'v'},
@@ -3574,7 +3576,7 @@ us_hb_status_get_options (bool * verbose, char *remote_host_name, int remote_hos
 	  *verbose = true;
 	  break;
 	case COMMDB_HOST_S:
-	  int copy_len = (int) strnlen (optarg, (size_t) (remote_host_name_size - 1));
+	  copy_len = (int) strnlen (optarg, (size_t) (remote_host_name_size - 1));
 	  memcpy (remote_host_name, optarg, copy_len);
 	  remote_host_name[copy_len] = '\0';
 	  break;

@@ -139,6 +139,7 @@ extern char *realpath (const char *path, char *resolved_path);
 #define strtok_r            strtok_s
 #define strtoll             _strtoi64
 #define strtoull            _strtoui64
+// todo - remove define stat; name is too common
 #define stat		    _stati64
 #define fstat		    _fstati64
 #define ftime		    _ftime_s
@@ -345,7 +346,7 @@ check_is_array (const T & a)
   static_assert (std::is_array<T>::value == 1, "expected array");
 }
 #define strncpy_bufsize(buf, str) \
-  check_is_array (buf); strncpy_size (buf, str, sizeof (buf))
+  strncpy_size (buf, str, sizeof (buf)); check_is_array (buf); 
 // *INDENT-ON*
 #else // not C++
 #define snprintf_dots_truncate(dest, max_len, ...) \
