@@ -89,6 +89,7 @@
 
 #if defined (__cplusplus)
 #include <type_traits>
+#include <utility>
 #endif // C++
 
 #if defined (WINDOWS)
