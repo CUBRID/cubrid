@@ -5696,7 +5696,7 @@ cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url, T_CC
 
       n = snprintf (append_str, rlen, "%c%s=%d", delim, str, login_timeout);
       assert (rlen >= 0);
-      if (rlen < n)
+      if (rlen < n || n < 0)
 	{
 	  set_error_buffer (err_buf, CCI_ER_NO_MORE_MEMORY, NULL);
 	  return false;
@@ -5718,7 +5718,7 @@ cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url, T_CC
 
       n = snprintf (append_str, rlen, "%c%s=%d", delim, str, query_timeout);
       assert (rlen >= 0);
-      if (rlen < n)
+      if (rlen < n || n < 0)
 	{
 	  set_error_buffer (err_buf, CCI_ER_NO_MORE_MEMORY, NULL);
 	  return false;
@@ -5742,7 +5742,7 @@ cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url, T_CC
 
       n = snprintf (append_str, rlen, "%c%s=%s", delim, str, disconnect_on_query_timeout ? "true" : "false");
       assert (rlen >= 0);
-      if (rlen < n)
+      if (rlen < n || n < 0)
 	{
 	  set_error_buffer (err_buf, CCI_ER_NO_MORE_MEMORY, NULL);
 	  return false;
