@@ -4720,7 +4720,7 @@ db_string_limit_size_string (DB_VALUE * src_string, DB_VALUE * result, const int
 
   if (adj_char_size > 0)
     {
-      memcpy ((char *) r, db_get_string (src_string), adj_char_size);
+      memcpy (r, db_get_string (src_string), adj_char_size);
     }
   /* adjust also domain precision in case of fixed length types */
   if (QSTR_IS_FIXED_LENGTH (src_type))
@@ -9234,18 +9234,18 @@ qstr_position (const char *sub_string, const int sub_size, const int sub_length,
        *  try again.  This is repeated until a match is found, or
        *  there are no more comparisons to be made.
        */
-      const unsigned char *sub_string_ = REINTERPRET_CAST (const unsigned char *, sub_string);
-      const unsigned char *src_end_ = REINTERPRET_CAST (const unsigned char *, src_end);
-      const unsigned char *src_string_ = REINTERPRET_CAST (const unsigned char *, src_string);
-      const unsigned char *src_string_bound_ = REINTERPRET_CAST (const unsigned char *, src_string_bound);
+      const unsigned char *usub_string = REINTERPRET_CAST (const unsigned char *, sub_string);
+      const unsigned char *usrc_end = REINTERPRET_CAST (const unsigned char *, src_end);
+      const unsigned char *usrc_string = REINTERPRET_CAST (const unsigned char *, src_string);
+      const unsigned char *usrc_string_bound = REINTERPRET_CAST (const unsigned char *, src_string_bound);
 
-      ptr = src_string_;
+      ptr = usrc_string;
       current_position = 0;
       result = 1;
 
       for (i = 0; i < num_searches; i++)
 	{
-	  result = QSTR_MATCH (coll_id, ptr, CAST_BUFLEN (src_end_ - ptr), sub_string_, sub_size, NULL, false, &dummy);
+	  result = QSTR_MATCH (coll_id, ptr, CAST_BUFLEN (usrc_end - ptr), usub_string, sub_size, NULL, false, &dummy);
 	  current_position++;
 	  if (result == 0)
 	    {
@@ -9254,7 +9254,7 @@ qstr_position (const char *sub_string, const int sub_size, const int sub_length,
 
 	  if (is_forward_search)
 	    {
-	      if (ptr >= src_string_bound_)
+	      if (ptr >= usrc_string_bound)
 		{
 		  break;
 		}
@@ -9264,9 +9264,9 @@ qstr_position (const char *sub_string, const int sub_size, const int sub_length,
 	  else
 	    {
 	      /* backward */
-	      if (ptr > src_string_bound_)
+	      if (ptr > usrc_string_bound)
 		{
-		  ptr = intl_prev_char (ptr, src_string_bound_, codeset, &char_size);
+		  ptr = intl_prev_char (ptr, usrc_string_bound, codeset, &char_size);
 		}
 	      else
 		{
@@ -19457,7 +19457,7 @@ db_string_reverse (const DB_VALUE * src_str, DB_VALUE * result_str)
       if (error_status == NO_ERROR)
 	{
 	  memset (res, 0, db_get_string_size (src_str) + 1);
-	  intl_reverse_string (REINTERPRET_CAST (const unsigned char *, db_get_string (src_str)),
+	  intl_reverse_string (DB_GET_UCHAR (src_str),
 			       REINTERPRET_CAST (unsigned char *, res), db_get_string_length (src_str),
 			       db_get_string_size (src_str), db_get_string_codeset (src_str));
 	  if (QSTR_IS_CHAR (str_type))
@@ -27269,7 +27269,7 @@ db_string_to_base64 (DB_VALUE const *src, DB_VALUE * result)
       return error_status;
     }
 
-  src_buf = REINTERPRET_CAST (const unsigned char *, db_get_string (src));
+  src_buf = DB_GET_UCHAR (src);
 
   /* length in bytes */
   src_len = db_get_string_size (src);
@@ -27360,7 +27360,7 @@ db_string_from_base64 (DB_VALUE const *src, DB_VALUE * result)
       return NO_ERROR;
     }
 
-  src_buf = REINTERPRET_CAST (const unsigned char *, db_get_string (src));
+  src_buf = DB_GET_UCHAR (src);
 
   /* length in bytes */
   src_len = db_get_string_size (src);
@@ -27802,7 +27802,7 @@ db_tz_offset (const DB_VALUE * src_str, DB_VALUE * result_str, DB_DATETIME * dat
 int
 db_from_tz (DB_VALUE * time_val, DB_VALUE * tz, DB_VALUE * time_val_with_tz)
 {
-  const char *timezone_ = NULL;
+  const char *timezone_str = NULL;
   int len_timezone, error = NO_ERROR;
   DB_DATETIME *datetime = NULL;
 
@@ -27819,12 +27819,12 @@ db_from_tz (DB_VALUE * time_val, DB_VALUE * tz, DB_VALUE * time_val_with_tz)
       return NO_ERROR;
     }
 
-  timezone_ = db_get_string (tz);
+  timezone_str = db_get_string (tz);
   len_timezone = db_get_string_size (tz);
 
   if (len_timezone < 0)
     {
-      len_timezone = strlen (timezone_);
+      len_timezone = strlen (timezone_str);
     }
 
   switch (DB_VALUE_TYPE (time_val))
@@ -27835,7 +27835,7 @@ db_from_tz (DB_VALUE * time_val, DB_VALUE * tz, DB_VALUE * time_val_with_tz)
 	TZ_REGION region;
 
 	datetime = db_get_datetime (time_val);
-	error = tz_str_to_region (timezone_, len_timezone, &region);
+	error = tz_str_to_region (timezone_str, len_timezone, &region);
 	if (error != NO_ERROR)
 	  {
 	    return error;

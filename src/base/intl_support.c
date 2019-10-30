@@ -3123,9 +3123,8 @@ intl_identifier_upper (const char *src, char *dst)
 int
 intl_identifier_fix (char *name, int ident_max_size, bool error_on_case_overflow)
 {
-  int name_length = 0, length_bytes;
+  int truncated_size = 0, original_size = 0, char_size = 0;
   unsigned char *name_char = (unsigned char *) name;
-  int char_size = 0;
   INTL_CODESET codeset = lang_charset ();
 
   assert (name != NULL);
@@ -3137,10 +3136,10 @@ intl_identifier_fix (char *name, int ident_max_size, bool error_on_case_overflow
 
   assert (ident_max_size > 0 && ident_max_size < DB_MAX_IDENTIFIER_LENGTH);
 
-  length_bytes = strlen (name);
+  original_size = strlen (name);
   if (INTL_CODESET_MULT (codeset) == 1)
     {
-      if (length_bytes > ident_max_size)
+      if (original_size > ident_max_size)
 	{
 	  name[ident_max_size] = '\0';
 	}
@@ -3154,33 +3153,33 @@ intl_identifier_fix (char *name, int ident_max_size, bool error_on_case_overflow
 
 check_truncation:
   /* check if last char of identifier may have been truncated */
-  if (length_bytes + INTL_CODESET_MULT (codeset) > ident_max_size)
+  if (original_size + INTL_CODESET_MULT (codeset) > ident_max_size)
     {
-      if (ident_max_size < length_bytes)
+      if (ident_max_size < original_size)
 	{
-	  length_bytes = ident_max_size;
+	  original_size = ident_max_size;
 	}
 
       /* count original size based on the size given by first byte of each char */
       const unsigned char *const_name_char = name_char;
-      for (name_length = 0; name_length < length_bytes;)
+      for (truncated_size = 0; truncated_size < original_size;)
 	{
 	  INTL_NEXT_CHAR (const_name_char, const_name_char, codeset, &char_size);
-	  name_length += char_size;
+	  truncated_size += char_size;
 	}
-      assert (name_length >= length_bytes);
+      assert (truncated_size >= original_size);
 
-      /* name_length == length_bytes means last character fit entirely in 'length_bytes'
+      /* truncated_size == original_size means last character fit entirely in 'original_size'
        * otherwise assume the last character was truncated */
-      if (name_length > length_bytes)
+      if (truncated_size > original_size)
 	{
-	  assert (name_length < length_bytes + INTL_CODESET_MULT (codeset));
+	  assert (truncated_size < original_size + INTL_CODESET_MULT (codeset));
 	  assert ((unsigned char) *(name_char - char_size) > 0x80);
 	  /* truncate after the last full character */
-	  name_length -= char_size;
-	  length_bytes = name_length;
+	  truncated_size -= char_size;
+	  original_size = truncated_size;
 	}
-      name[length_bytes] = '\0';
+      name[original_size] = '\0';
     }
 
   /* ensure that lower or upper versions of identifier do not exceed maximum allowed size of an identifier */
