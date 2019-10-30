@@ -304,7 +304,7 @@ extern "C"
   extern int db_get_int (const DB_VALUE * value);
   extern DB_C_SHORT db_get_short (const DB_VALUE * value);
   extern DB_BIGINT db_get_bigint (const DB_VALUE * value);
-  extern DB_C_CHAR db_get_string (const DB_VALUE * value);
+  extern DB_CONST_C_CHAR db_get_string (const DB_VALUE * value);
   extern DB_C_FLOAT db_get_float (const DB_VALUE * value);
   extern DB_C_DOUBLE db_get_double (const DB_VALUE * value);
   extern DB_OBJECT *db_get_object (const DB_VALUE * value);

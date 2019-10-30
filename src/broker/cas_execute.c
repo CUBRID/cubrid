@@ -3692,8 +3692,8 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
 {
   DB_VALUE *def = NULL;
   int err;
-  char *default_value_string = NULL, *default_expr_format = NULL;
-  const char *default_value_expr_type_string = NULL;
+  char *default_value_string = NULL;
+  const char *default_value_expr_type_string = NULL, *default_expr_format = NULL;
   const char *default_value_expr_op_string = NULL;
 
   *alloc = false;
@@ -3776,7 +3776,7 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
     case DB_TYPE_VARNCHAR:
       {
 	int def_size = db_get_string_size (def);
-	char *def_str_p = db_get_string (def);
+	const char *def_str_p = db_get_string (def);
 	if (def_str_p)
 	  {
 	    default_value_string = (char *) malloc (def_size + 3);
@@ -3800,7 +3800,7 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
 	if (err == NO_ERROR)
 	  {
 	    int def_size = db_get_string_size (&tmp_val);
-	    char *def_str_p = db_get_string (&tmp_val);
+	    const char *def_str_p = db_get_string (&tmp_val);
 
 	    default_value_string = (char *) malloc (def_size + 1);
 	    if (default_value_string != NULL)
@@ -5574,7 +5574,8 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
   DB_VALUE val_class, val_attr;
   DB_OBJECT *class_obj;
   DB_ATTRIBUTE *db_attr;
-  char *class_name, *attr_name, *p;
+  const char *attr_name;
+  char *class_name, *p;
   T_ATTR_TABLE attr_info;
   T_BROKER_VERSION client_version = req_info->client_version;
   char *default_value_string = NULL;
@@ -5627,7 +5628,7 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
 	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	}
 
-      class_name = db_get_string (&val_class);
+      class_name = CONST_CAST (char *, db_get_string (&val_class));
       class_obj = db_find_class (class_name);
       if (class_obj == NULL)
 	{

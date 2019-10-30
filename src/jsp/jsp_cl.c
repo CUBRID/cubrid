@@ -103,7 +103,7 @@ typedef struct db_arg_list
 
 typedef struct
 {
-  char *name;
+  const char *name;
   DB_VALUE *returnval;
   DB_ARG_LIST *args;
   int arg_count;
@@ -1698,8 +1698,8 @@ jsp_pack_numeric_argument (char *buffer, DB_VALUE * value)
 static char *
 jsp_pack_string_argument (char *buffer, DB_VALUE * value)
 {
-  char *v;
-  char *ptr;
+  const char *v;
+  char *ptr, *decomposed = NULL;
   int v_size;
   int decomp_size;
   bool was_decomposed = false;
@@ -1712,7 +1712,6 @@ jsp_pack_string_argument (char *buffer, DB_VALUE * value)
   if (v_size > 0 && db_get_string_codeset (value) == INTL_CODESET_UTF8
       && unicode_string_need_decompose (v, v_size, &decomp_size, lang_get_generic_unicode_norm ()))
     {
-      char *decomposed;
       int alloc_size = decomp_size + 1;
 
       decomposed = (char *) db_private_alloc (NULL, alloc_size);
@@ -1737,7 +1736,7 @@ jsp_pack_string_argument (char *buffer, DB_VALUE * value)
 
   if (was_decomposed)
     {
-      db_private_free (NULL, v);
+      db_private_free (NULL, decomposed);
     }
 
   return ptr;

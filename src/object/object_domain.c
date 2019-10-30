@@ -592,11 +592,11 @@ static INLINE TP_DOMAIN **tp_domain_get_list_ptr (DB_TYPE type, TP_DOMAIN * setd
 static INLINE TP_DOMAIN *tp_domain_get_list (DB_TYPE type, TP_DOMAIN * setdomain) __attribute__ ((ALWAYS_INLINE));
 
 static int tp_enumeration_match (const DB_ENUMERATION * db_enum1, const DB_ENUMERATION * db_enum2);
-static int tp_digit_number_str_to_bi (char *start, char *end, INTL_CODESET codeset, bool is_negative,
+static int tp_digit_number_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool is_negative,
 				      DB_BIGINT * num_value, DB_DATA_STATUS * data_stat);
-static int tp_hex_str_to_bi (char *start, char *end, INTL_CODESET codeset, bool is_negative, DB_BIGINT * num_value,
-			     DB_DATA_STATUS * data_stat);
-static int tp_scientific_str_to_bi (char *start, char *end, INTL_CODESET codeset, bool is_negative,
+static int tp_hex_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool is_negative,
+			     DB_BIGINT * num_value, DB_DATA_STATUS * data_stat);
+static int tp_scientific_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool is_negative,
 				    DB_BIGINT * num_value, DB_DATA_STATUS * data_stat);
 static DB_BIGINT tp_ubi_to_bi_with_args (UINT64 ubi, bool is_negative, bool truncated, bool round,
 					 DB_DATA_STATUS * data_stat);
@@ -803,9 +803,7 @@ tp_domain_clear_enumeration (DB_ENUMERATION * enumeration)
     {
       if (DB_GET_ENUM_ELEM_STRING (&enumeration->elements[i]) != NULL)
 	{
-	  // TODO enum: tmp variable is temporary until db_char::medium::buf will be made const
-	  const char *tmp = DB_GET_ENUM_ELEM_STRING (&enumeration->elements[i]);
-	  free_and_init (tmp);
+	  free_and_init (DB_GET_ENUM_ELEM_STRING (&enumeration->elements[i]));
 	}
     }
 
@@ -1240,9 +1238,7 @@ error_return:
 	{
 	  if (DB_GET_ENUM_ELEM_STRING (&dest->elements[i]) != NULL)
 	    {
-	      // TODO enum: tmp variable is temporary until db_char::medium::buf will be made const
-	      const char *tmp = DB_GET_ENUM_ELEM_STRING (&dest->elements[i]);
-	      free_and_init (tmp);
+	      free_and_init (DB_GET_ENUM_ELEM_STRING (&dest->elements[i]));
 	    }
 	}
       free_and_init (dest->elements);
@@ -4699,7 +4695,7 @@ static int
 tp_atotime (const DB_VALUE * src, DB_TIME * temp)
 {
   int milisec;
-  char *strp = db_get_string (src);
+  const char *strp = db_get_string (src);
   int str_len = db_get_string_size (src);
   int status = NO_ERROR;
 
@@ -4723,7 +4719,7 @@ tp_atotime (const DB_VALUE * src, DB_TIME * temp)
 static int
 tp_atodate (const DB_VALUE * src, DB_DATE * temp)
 {
-  char *strp = db_get_string (src);
+  const char *strp = db_get_string (src);
   int str_len = db_get_string_size (src);
   int status = NO_ERROR;
 
@@ -4747,7 +4743,7 @@ tp_atodate (const DB_VALUE * src, DB_DATE * temp)
 static int
 tp_atoutime (const DB_VALUE * src, DB_UTIME * temp)
 {
-  char *strp = db_get_string (src);
+  const char *strp = db_get_string (src);
   int str_len = db_get_string_size (src);
   int status = NO_ERROR;
 
@@ -4771,7 +4767,7 @@ tp_atoutime (const DB_VALUE * src, DB_UTIME * temp)
 static int
 tp_atotimestamptz (const DB_VALUE * src, DB_TIMESTAMPTZ * temp)
 {
-  char *strp = db_get_string (src);
+  const char *strp = db_get_string (src);
   int str_len = db_get_string_size (src);
   int status = NO_ERROR;
   bool dummy_has_zone;
@@ -4796,7 +4792,7 @@ tp_atotimestamptz (const DB_VALUE * src, DB_TIMESTAMPTZ * temp)
 static int
 tp_atoudatetime (const DB_VALUE * src, DB_DATETIME * temp)
 {
-  char *strp = db_get_string (src);
+  const char *strp = db_get_string (src);
   int str_len = db_get_string_size (src);
   int status = NO_ERROR;
 
@@ -4820,7 +4816,7 @@ tp_atoudatetime (const DB_VALUE * src, DB_DATETIME * temp)
 static int
 tp_atodatetimetz (const DB_VALUE * src, DB_DATETIMETZ * temp)
 {
-  char *strp = db_get_string (src);
+  const char *strp = db_get_string (src);
   int str_len = db_get_string_size (src);
   int status = NO_ERROR;
   bool dummy_has_zone;
@@ -4845,7 +4841,7 @@ tp_atodatetimetz (const DB_VALUE * src, DB_DATETIMETZ * temp)
 static int
 tp_atonumeric (const DB_VALUE * src, DB_VALUE * temp)
 {
-  char *strp;
+  const char *strp;
   int status = NO_ERROR;
   int str_len;
 
@@ -4882,10 +4878,10 @@ static int
 tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
 {
   char str[NUM_BUF_SIZE];
-  char *strp = str;
+  const char *strp = NULL;
   bool do_alloc = false;
   double d;
-  char *p, *end;
+  const char *p, *end;
   int status = NO_ERROR;
   unsigned int size;
   INTL_CODESET codeset;
@@ -4897,7 +4893,7 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
   codeset = db_get_string_codeset (src);
   end = p + size - 1;
 
-  if (0 < size && *end)
+  if (size > 0 && *end)
     {
       while (p <= end && char_isspace (*p))
 	{
@@ -4909,23 +4905,31 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
 	  end--;
 	}
 
+      char *strp_tmp = NULL;
       size = CAST_BUFLEN (end - p) + 1;
 
       if (size > sizeof (str) - 1)
 	{
-	  strp = (char *) malloc (size + 1);
-	  if (strp == NULL)
+	  strp_tmp = (char *) malloc (size + 1);
+	  if (strp_tmp == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (size + 1));
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 	  do_alloc = true;
 	}
+      else
+	{
+	  strp_tmp = str;
+	}
+
       if (size)
 	{
-	  memcpy (strp, p, size);
+	  memcpy (strp_tmp, p, size);
 	}
-      strp[size] = '\0';
+      strp_tmp[size] = '\0';
+
+      strp = strp_tmp;
     }
   else
     {
@@ -4934,7 +4938,8 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
 
   /* don't use atof() which cannot detect the error. */
   errno = 0;
-  d = string_to_double (strp, &p);
+  char *end_ptr = NULL;
+  d = string_to_double (strp, &end_ptr);
 
   if (errno == ERANGE)
     {
@@ -4947,8 +4952,8 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
     }
 
   /* ignore trailing spaces */
-  p = (char *) intl_skip_spaces (p, NULL, codeset);
-  if (*p)			/* all input does not consumed */
+  end_ptr = (char *) intl_skip_spaces (end_ptr, NULL, codeset);
+  if (*end_ptr)			/* all input does not consumed */
     {
       *data_stat = DATA_STATUS_NOT_CONSUMED;
     }
@@ -4978,9 +4983,9 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
 static int
 tp_atobi (const DB_VALUE * src, DB_BIGINT * num_value, DB_DATA_STATUS * data_stat)
 {
-  char *strp = db_get_string (src);
-  char *stre = NULL;
-  char *p = NULL, *old_p = NULL;
+  const char *strp = db_get_string (src);
+  const char *stre = NULL;
+  const char *p = NULL, *old_p = NULL;
   int status = NO_ERROR;
   bool is_negative = false;
   INTL_CODESET codeset = db_get_string_codeset (src);
@@ -11083,7 +11088,7 @@ tp_check_value_size (TP_DOMAIN * domain, DB_VALUE * value)
   TP_DOMAIN_STATUS status;
   int src_precision, src_length;
   DB_TYPE dbtype;
-  char *src;
+  const char *src;
 
   status = DOMAIN_COMPATIBLE;
 
@@ -11658,12 +11663,12 @@ tp_domain_status_er_set (TP_DOMAIN_STATUS status, const char *file_name, const i
  *                    DATA_STATUS_TRUNCATED
  */
 int
-tp_digit_number_str_to_bi (char *start, char *end, INTL_CODESET codeset, bool is_negative, DB_BIGINT * num_value,
-			   DB_DATA_STATUS * data_stat)
+tp_digit_number_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool is_negative,
+			   DB_BIGINT * num_value, DB_DATA_STATUS * data_stat)
 {
   char str[64] = { 0 };
-  char *p = NULL;
-  char *strp = NULL, *stre = NULL;
+  const char *p = NULL;
+  const char *strp = NULL, *stre = NULL;
   size_t n_digits = 0;
   DB_BIGINT bigint = 0;
   bool round = false;
@@ -11752,7 +11757,7 @@ tp_digit_number_str_to_bi (char *start, char *end, INTL_CODESET codeset, bool is
 	}
 
       errno = 0;
-      bigint = strtoll (strp, &p, 10);
+      bigint = strtoll (strp, NULL, 10);
 
       if (errno == ERANGE)
 	{
@@ -11808,13 +11813,13 @@ tp_digit_number_str_to_bi (char *start, char *end, INTL_CODESET codeset, bool is
  *                    DATA_STATUS_TRUNCATED
  */
 int
-tp_hex_str_to_bi (char *start, char *end, INTL_CODESET codeset, bool is_negative, DB_BIGINT * num_value,
+tp_hex_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool is_negative, DB_BIGINT * num_value,
 		  DB_DATA_STATUS * data_stat)
 {
 #define HIGHEST_4BITS_OF_UBI 0xF000000000000000
 
   int error = NO_ERROR;
-  char *p = NULL;
+  const char *p = NULL;
   UINT64 ubi = 0;
   unsigned int tmp_ui = 0;
   bool round = false;
@@ -11933,17 +11938,17 @@ end:
  *          see tp_atobi
  */
 int
-tp_scientific_str_to_bi (char *start, char *end, INTL_CODESET codeset, bool is_negative, DB_BIGINT * num_value,
-			 DB_DATA_STATUS * data_stat)
+tp_scientific_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool is_negative,
+			 DB_BIGINT * num_value, DB_DATA_STATUS * data_stat)
 {
   int error = NO_ERROR;
   UINT64 ubi = 0;
   bool truncated = false;
   bool round = false;
-  char *p = NULL;
-  char *base_int_start = NULL, *base_int_end = NULL;
-  char *base_float_start = NULL, *base_float_end = NULL;
-  char *exp_start = NULL, *exp_end = NULL;
+  const char *p = NULL;
+  const char *base_int_start = NULL, *base_int_end = NULL;
+  const char *base_float_start = NULL, *base_float_end = NULL;
+  const char *exp_start = NULL, *exp_end = NULL;
   bool is_exp_negative = false;
   int exp = 0;			/* at most 308 */
 

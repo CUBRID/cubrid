@@ -4381,7 +4381,7 @@ static int map_iso_levels (PARSER_CONTEXT * parser, PT_NODE * statement, DB_TRAN
 static int set_iso_level (PARSER_CONTEXT * parser, DB_TRAN_ISOLATION * tran_isolation, bool * async_ws,
 			  PT_NODE * statement, const DB_VALUE * level);
 static int check_timeout_value (PARSER_CONTEXT * parser, PT_NODE * statement, DB_VALUE * val);
-static char *get_savepoint_name_from_db_value (DB_VALUE * val);
+static const char *get_savepoint_name_from_db_value (DB_VALUE * val);
 
 /*
  * do_attach() - Attaches to named (distributed 2pc) transaction
@@ -4831,7 +4831,7 @@ do_set_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   PT_NODE *p1, *p2;
   DB_VALUE val1, val2;
-  char *plan, *cost;
+  const char *plan, *cost;
 
   db_make_null (&val1);
   db_make_null (&val2);
@@ -5110,7 +5110,7 @@ check_timeout_value (PARSER_CONTEXT * parser, PT_NODE * statement, DB_VALUE * va
  *       type string, a NULL termination will be assumed since the
  *       name came from a parse tree.
  */
-static char *
+const static char *
 get_savepoint_name_from_db_value (DB_VALUE * val)
 {
   if (DB_VALUE_TYPE (val) != DB_TYPE_CHAR && DB_VALUE_TYPE (val) != DB_TYPE_VARCHAR

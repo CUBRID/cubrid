@@ -87,7 +87,7 @@ static char *unpack_str_array (char *buffer, char ***string_array, int count);
 static int or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align);
 static int or_varbit_length_internal (int bitlen, int align);
 static int or_varchar_length_internal (int charlen, int align);
-static int or_put_varbit_internal (OR_BUF * buf, char *string, int bitlen, int align);
+static int or_put_varbit_internal (OR_BUF * buf, const char *string, int bitlen, int align);
 static int or_packed_json_schema_length (const char *json_schema);
 static int or_packed_json_validator_length (JSON_VALIDATOR * json_validator);
 static char *or_unpack_var_table_internal (char *ptr, int nvars, OR_VARINFO * vars, int offset_size);
@@ -108,7 +108,7 @@ classobj_get_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue)
   int error;
   int found, max, i;
   DB_VALUE value;
-  char *tmp_str;
+  const char *tmp_str;
 
   error = NO_ERROR;
   found = 0;
@@ -1174,7 +1174,7 @@ or_varbit_length_internal (int bitlen, int align)
  *    bitlen(in): length of varbit
  */
 int
-or_packed_put_varbit (OR_BUF * buf, char *string, int bitlen)
+or_packed_put_varbit (OR_BUF * buf, const char *string, int bitlen)
 {
   return or_put_varbit_internal (buf, string, bitlen, INT_ALIGNMENT);
 }
@@ -1187,13 +1187,13 @@ or_packed_put_varbit (OR_BUF * buf, char *string, int bitlen)
  *    bitlen(in): length of varbit
  */
 int
-or_put_varbit (OR_BUF * buf, char *string, int bitlen)
+or_put_varbit (OR_BUF * buf, const char *string, int bitlen)
 {
   return or_put_varbit_internal (buf, string, bitlen, CHAR_ALIGNMENT);
 }
 
 static int
-or_put_varbit_internal (OR_BUF * buf, char *string, int bitlen, int align)
+or_put_varbit_internal (OR_BUF * buf, const char *string, int bitlen, int align)
 {
   int net_bitlen;
   int bytelen;
@@ -7170,7 +7170,8 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
   DB_ENUM_ELEMENT *enum_vals = NULL, *db_enum = NULL;
   int idx = 0, count = 0, error = NO_ERROR;
   DB_VALUE value;
-  char *enum_str = NULL, *value_str;
+  char *enum_str = NULL;
+  const char *value_str = NULL;
   int str_size = 0;
   LANG_COLLATION *lc;
 
@@ -7260,9 +7261,7 @@ error_return:
     {
       for (--idx; idx >= 0; idx--)
 	{
-	  // TODO enum: tmp variable is temporary until db_char::medium::buf will be made const
-	  const char *tmp = DB_GET_ENUM_ELEM_STRING (&enum_vals[idx]);
-	  free_and_init (tmp);
+	  free_and_init (DB_GET_ENUM_ELEM_STRING (&enum_vals[idx]));
 	}
       free_and_init (enum_vals);
     }

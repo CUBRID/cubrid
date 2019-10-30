@@ -514,7 +514,7 @@ static bool match_password (const char *user, const char *database);
 static int au_set_password_internal (MOP user, const char *password, int encode, char encrypt_prefix);
 
 static int au_add_direct_groups (DB_SET * new_groups, DB_VALUE * value);
-static int au_compute_groups (MOP member, char *name);
+static int au_compute_groups (MOP member, const char *name);
 static int au_add_member_internal (MOP group, MOP member, int new_user);
 
 static int find_grant_entry (DB_SET * grants, MOP class_mop, MOP grantor);
@@ -2252,7 +2252,7 @@ au_add_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name, DB_VAL
   int error;
   int exists;
   MOP user;
-  char *tmp;
+  const char *tmp = NULL;
 
   if (name != NULL && IS_STRING (name) && !DB_IS_NULL (name) && ((tmp = db_get_string (name)) != NULL))
     {
@@ -2902,7 +2902,7 @@ au_add_direct_groups (DB_SET * new_groups, DB_VALUE * value)
  *   name(in): the new member name
  */
 static int
-au_compute_groups (MOP member, char *name)
+au_compute_groups (MOP member, const char *name)
 {
   int error = NO_ERROR;
   DB_SET *new_groups, *direct_groups;
@@ -3034,9 +3034,9 @@ au_add_member_internal (MOP group, MOP member, int new_user)
 {
   int error = NO_ERROR;
   DB_VALUE membervalue, member_name_val, groupvalue;
-  DB_SET *group_groups = NULL, *member_groups, *member_direct_groups;
+  DB_SET *group_groups = NULL, *member_groups = NULL, *member_direct_groups = NULL;
   int save;
-  char *member_name;
+  const char *member_name = NULL;
 
   AU_DISABLE (save);
   db_make_object (&membervalue, member);
@@ -3096,7 +3096,7 @@ au_add_member_internal (MOP group, MOP member, int new_user)
 				}
 			      else
 				{
-				  member_name = (char *) db_get_string (&member_name_val);
+				  member_name = db_get_string (&member_name_val);
 				}
 
 			      error = db_set_add (member_direct_groups, &groupvalue);
@@ -3229,9 +3229,9 @@ au_drop_member (MOP group, MOP member)
 {
   int syserr = NO_ERROR, error = NO_ERROR;
   DB_VALUE groupvalue, member_name_val;
-  DB_SET *groups, *member_groups, *member_direct_groups;
+  DB_SET *groups = NULL, *member_groups = NULL, *member_direct_groups = NULL;
   int save;
-  char *member_name;
+  const char *member_name = NULL;
 
   AU_DISABLE (save);
   db_make_object (&groupvalue, group);
@@ -3268,7 +3268,7 @@ au_drop_member (MOP group, MOP member)
 			}
 		      else
 			{
-			  member_name = (char *) db_get_string (&member_name_val);
+			  member_name = db_get_string (&member_name_val);
 			}
 		      if ((error = db_set_drop (member_direct_groups, &groupvalue)) == NO_ERROR)
 			{
@@ -5170,7 +5170,7 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
   int error = NO_ERROR;
   int is_partition = DB_NOT_PARTITIONED_CLASS, i, savepoint_owner = 0;
   MOP *sub_partitions = NULL;
-  char *class_name = NULL, *owner_name = NULL;
+  const char *class_name = NULL, *owner_name = NULL;
   SM_CLASS *clsobj;
 
   db_make_null (returnval);
@@ -5342,7 +5342,7 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * serial,
   MOP user = NULL, serial_object = NULL;
   MOP serial_class_mop;
   DB_IDENTIFIER serial_obj_id;
-  char *serial_name, *owner_name;
+  const char *serial_name = NULL, *owner_name = NULL;
   int error = NO_ERROR;
 
   db_make_null (returnval);
@@ -6938,7 +6938,7 @@ au_export_users (print_output & output_ctx)
   DB_VALUE value, gvalue;
   MOP user = NULL, pwd = NULL;
   int g, gcard;
-  char *uname = NULL, *str = NULL, *gname = NULL, *comment = NULL;
+  const char *uname = NULL, *str = NULL, *gname = NULL, *comment = NULL;
   char passbuf[AU_MAX_PASSWORD_BUF];
   char *query = NULL;
   size_t query_size;
@@ -7168,7 +7168,7 @@ au_export_users (print_output & output_ctx)
 		}
 	      else
 		{
-		  gname = (char *) (db_get_string (&value));
+		  gname = db_get_string (&value);
 		}
 
 	      if (gname != NULL)
@@ -7869,7 +7869,7 @@ void
 au_dump_user (MOP user, FILE * fp)
 {
   DB_VALUE value;
-  DB_SET *groups;
+  DB_SET *groups = NULL;
   MOP auth;
   int i, card;
 
@@ -8027,8 +8027,8 @@ au_dump_to_file (FILE * fp)
 {
   MOP user;
   DB_VALUE value;
-  char *query;
-  DB_QUERY_RESULT *query_result;
+  char *query = NULL;
+  DB_QUERY_RESULT *query_result = NULL;
   DB_QUERY_ERROR query_error;
   int error = NO_ERROR;
   DB_VALUE user_val;

@@ -71,8 +71,8 @@ static void get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ *
 static void print_set (print_output & output_ctx, DB_SET * set);
 static int fprint_special_set (TEXT_OUTPUT * tout, DB_SET * set);
 static int bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size);
-static char *strnchr (char *str, char ch, int nbytes);
-static int print_quoted_str (TEXT_OUTPUT * tout, char *str, int len, int max_token_len);
+static const char *strnchr (const char *str, char ch, int nbytes);
+static int print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_len);
 static void itoa_strreverse (char *begin, char *end);
 static int itoa_print (TEXT_OUTPUT * tout, DB_BIGINT value, int base);
 static int fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value);
@@ -1184,8 +1184,8 @@ bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size)
  *    ch(in): character to find
  *    nbytes(in): length of string
  */
-static char *
-strnchr (char *str, char ch, int nbytes)
+const static char *
+strnchr (const char *str, char ch, int nbytes)
 {
   for (; nbytes; str++, nbytes--)
     {
@@ -1209,12 +1209,12 @@ strnchr (char *str, char ch, int nbytes)
  *  FIXME :: return error in fwrite...
  */
 static int
-print_quoted_str (TEXT_OUTPUT * tout, char *str, int len, int max_token_len)
+print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_len)
 {
   int error = NO_ERROR;
-  char *p, *end;
+  const char *p, *end;
   int partial_len, write_len, left_nbytes;
-  char *internal_quote_p;
+  const char *internal_quote_p;
 
   /* opening quote */
   CHECK_PRINT_ERROR (text_print (tout, "'", 1, NULL));
@@ -1362,6 +1362,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
   int error = NO_ERROR;
   char buf[INTERNAL_BUFFER_SIZE];
   char *ptr;
+  const char *str_ptr = NULL;
   char *json_body = NULL;
   DB_TYPE type;
   int len;
@@ -1483,15 +1484,15 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       /* fall through */
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-      ptr = db_get_string (value);
+      str_ptr = db_get_string (value);
 
       len = db_get_string_size (value);
       if (len < 0)
 	{
-	  len = (int) strlen (ptr);
+	  len = (int) strlen (str_ptr);
 	}
 
-      CHECK_PRINT_ERROR (print_quoted_str (tout, ptr, len, MAX_DISPLAY_COLUMN));
+      CHECK_PRINT_ERROR (print_quoted_str (tout, str_ptr, len, MAX_DISPLAY_COLUMN));
       break;
 
     case DB_TYPE_NUMERIC:

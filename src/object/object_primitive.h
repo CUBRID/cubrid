@@ -339,7 +339,8 @@ extern int pr_get_compressed_data_from_buffer (struct or_buf *buf, char *data, i
 extern int pr_get_size_and_write_string_to_buffer (struct or_buf *buf, char *val_p, DB_VALUE * value, int *val_size,
 						   int align);
 
-extern int pr_data_compress_string (char *string, int str_length, char *compressed_string, int *compressed_length);
+extern int pr_data_compress_string (const char *string, int str_length, char *compressed_string,
+				    int *compressed_length);
 extern int pr_clear_compressed_string (DB_VALUE * value);
 extern int pr_do_db_value_string_compression (DB_VALUE * value);
 

@@ -617,7 +617,7 @@ static int qexec_execute_do_stmt (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 static int bf2df_str_son_index (THREAD_ENTRY * thread_p, char **son_index, char *father_index, int *len_son_index,
 				int cnt);
-static DB_VALUE_COMPARE_RESULT bf2df_str_compare (unsigned char *s0, int l0, unsigned char *s1, int l1);
+static DB_VALUE_COMPARE_RESULT bf2df_str_compare (const unsigned char *s0, int l0, const unsigned char *s1, int l1);
 static DB_VALUE_COMPARE_RESULT bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
 						  int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
@@ -17967,11 +17967,11 @@ qexec_execute_do_stmt (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
  *   l1(in): length of second string
  */
 static DB_VALUE_COMPARE_RESULT
-bf2df_str_compare (unsigned char *s0, int l0, unsigned char *s1, int l1)
+bf2df_str_compare (const unsigned char *s0, int l0, const unsigned char *s1, int l1)
 {
   DB_BIGINT b0, b1;
-  unsigned char *e0 = s0 + l0;
-  unsigned char *e1 = s1 + l1;
+  const unsigned char *e0 = s0 + l0;
+  const unsigned char *e1 = s1 + l1;
 
   if (!s0 || !s1)
     {
@@ -18191,10 +18191,8 @@ static DB_VALUE_COMPARE_RESULT
 bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		  int collation)
 {
-  unsigned char *string1, *string2;
-
-  string1 = (unsigned char *) db_get_string (value1);
-  string2 = (unsigned char *) db_get_string (value2);
+  const unsigned char *string1 = REINTERPRET_CAST (const unsigned char *, db_get_string (value1));
+  const unsigned char *string2 = REINTERPRET_CAST (const unsigned char *, db_get_string (value2));
 
   if (string1 == NULL || string2 == NULL)
     {
@@ -22908,7 +22906,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
 	  if (attrepr->on_update_expr != DB_DEFAULT_NONE)
 	    {
-	      char *saved = db_get_string (out_values[idx_val]);
+	      const char *saved = db_get_string (out_values[idx_val]);
 	      size_t len = strlen (saved);
 
 	      const char *default_expr_op_string = db_default_expression_string (attrepr->on_update_expr);

@@ -1983,7 +1983,7 @@ transfer_bit_string (char *buf, int *xflen, int *outlen, const int buflen, const
   DB_DATA_STATUS data_status;
   DB_TYPE db_type;
   int error_code;
-  char *tmp_val_str;
+  const char *tmp_val_str;
 
   if (c_type == DB_TYPE_C_BIT)
     {
@@ -4335,11 +4335,11 @@ valcnv_convert_double_to_string (VALCNV_BUFFER * buffer_p, const double value)
 static VALCNV_BUFFER *
 valcnv_convert_bit_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_p)
 {
-  unsigned char *bit_string_p;
+  const unsigned char *bit_string_p;
   int nibble_len, nibbles, count;
   char tbuf[10];
 
-  bit_string_p = (unsigned char *) db_get_string (value_p);
+  bit_string_p = REINTERPRET_CAST (const unsigned char *, db_get_string (value_p));
   nibble_len = (db_get_string_length (value_p) + 3) / 4;
 
   for (nibbles = 0, count = 0; nibbles < nibble_len - 1; count++, nibbles += 2)
@@ -4481,7 +4481,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
   OID *oid_p;
   DB_SET *set_p;
   DB_ELO *elo_p;
-  char *src_p, *end_p, *p;
+  const char *src_p, *end_p, *p;
   ptrdiff_t len;
 
   DB_MONETARY *money_p;

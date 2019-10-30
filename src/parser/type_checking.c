@@ -12040,7 +12040,7 @@ static int
 pt_check_and_coerce_to_time (PARSER_CONTEXT * parser, PT_NODE * src)
 {
   DB_VALUE *db_src = NULL;
-  char *cp;
+  const char *cp;
   DB_TYPE dbtype;
   int cp_len;
 
@@ -12082,7 +12082,7 @@ static int
 pt_check_and_coerce_to_date (PARSER_CONTEXT * parser, PT_NODE * src)
 {
   DB_VALUE *db_src = NULL;
-  char *str = NULL;
+  const char *str = NULL;
   int str_len;
 
   assert (src != NULL);

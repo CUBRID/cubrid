@@ -3101,7 +3101,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 		{
 		  DB_SEQ *def_expr_seq;
 		  DB_VALUE def_expr_op, def_expr_type, def_expr_format;
-		  char *def_expr_format_str;
+		  const char *def_expr_format_str;
 
 		  assert (set_size (db_get_set (&value)) == 3);
 
