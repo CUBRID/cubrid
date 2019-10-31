@@ -5205,7 +5205,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
 	  if (error_code != NO_ERROR)
 	    {
 	      /* could not cache */
-	      assert_release (false);
+	      ASSERT_ERROR ();
 	      goto error;
 	    }
 	  /* reuse successful */
@@ -5266,7 +5266,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
   if (error_code != NO_ERROR)
     {
       /* Failed to cache HFID. */
-      assert_release (false);
+      ASSERT_ERROR ();
       goto error;
     }
 
