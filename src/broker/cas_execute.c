@@ -164,9 +164,9 @@ struct t_class_table
 typedef struct t_attr_table T_ATTR_TABLE;
 struct t_attr_table
 {
-  char *class_name;
-  char *attr_name;
-  char *source_class;
+  const char *class_name;
+  const char *attr_name;
+  const char *source_class;
   int precision;
   short scale;
   short attr_order;
@@ -178,7 +178,7 @@ struct t_attr_table
   char unique;
   char set_domain;
   char is_key;
-  char *comment;
+  const char *comment;
 };
 
 extern void histo_print (FILE * stream);
@@ -283,7 +283,7 @@ static int sch_imported_keys (T_NET_BUF * net_buf, char *class_name, void **resu
 static int sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, char *pktable_name,
 						 char *fktable_name, void **result);
 static int class_type (DB_OBJECT * class_obj);
-static int class_attr_info (char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char pat_flag,
+static int class_attr_info (const char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char pat_flag,
 			    T_ATTR_TABLE * attr_table);
 static int set_priv_table (unsigned int class_priv, char *name, T_PRIV_TABLE * priv_table, int index);
 static int sch_query_execute (T_SRV_HANDLE * srv_handle, char *sql_stmt, T_NET_BUF * net_buf);
@@ -5575,7 +5575,7 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
   DB_OBJECT *class_obj;
   DB_ATTRIBUTE *db_attr;
   const char *attr_name;
-  char *class_name, *p;
+  const char *class_name, *p;
   T_ATTR_TABLE attr_info;
   T_BROKER_VERSION client_version = req_info->client_version;
   char *default_value_string = NULL;
@@ -5628,7 +5628,7 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
 	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	}
 
-      class_name = CONST_CAST (char *, db_get_string (&val_class));
+      class_name = db_get_string (&val_class);
       class_obj = db_find_class (class_name);
       if (class_obj == NULL)
 	{
@@ -8139,9 +8139,10 @@ class_type (DB_OBJECT * class_obj)
 }
 
 static int
-class_attr_info (char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char pat_flag, T_ATTR_TABLE * attr_table)
+class_attr_info (const char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char pat_flag,
+		 T_ATTR_TABLE * attr_table)
 {
-  char *p;
+  const char *p;
   int db_type;
   DB_DOMAIN *domain;
   DB_OBJECT *class_obj;
@@ -8149,7 +8150,7 @@ class_attr_info (char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char
   int precision;
   short scale;
 
-  p = (char *) db_attribute_name (attr);
+  p = db_attribute_name (attr);
 
   domain = db_attribute_domain (attr);
   db_type = TP_DOMAIN_TYPE (domain);
@@ -8157,7 +8158,7 @@ class_attr_info (char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char
   attr_table->class_name = class_name;
   attr_table->attr_name = p;
 
-  p = (char *) db_attribute_comment (attr);
+  p = db_attribute_comment (attr);
   attr_table->comment = p;
 
   if (TP_IS_SET_TYPE (db_type))
@@ -8221,7 +8222,7 @@ class_attr_info (char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char
     }
   else
     {
-      attr_table->source_class = (char *) db_get_class_name (class_obj);
+      attr_table->source_class = db_get_class_name (class_obj);
     }
 
   attr_table->attr_order = db_attribute_order (attr) + 1;
