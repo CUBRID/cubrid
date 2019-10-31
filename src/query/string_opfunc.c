@@ -1946,9 +1946,12 @@ db_string_escape_str (const char *src_str, size_t src_size, char **res_string, s
   for (size_t i = 0; i < special_idx.size (); ++i)
     {
       size_t len = special_idx[i] - src_last_pos;
-      memcpy (&result[dest_crt_pos], &src_str[src_last_pos], len);
-      result[dest_crt_pos] = db_string_escape_char (result[dest_crt_pos]);
-      dest_crt_pos += len;
+      if (len > 0)
+	{
+	  memcpy (&result[dest_crt_pos], &src_str[src_last_pos], len);
+	  result[dest_crt_pos] = db_string_escape_char (result[dest_crt_pos]);
+	  dest_crt_pos += len;
+	}
       result[dest_crt_pos] = '\\';
       ++dest_crt_pos;
       src_last_pos = special_idx[i];
