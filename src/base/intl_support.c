@@ -3124,7 +3124,7 @@ int
 intl_identifier_fix (char *name, int ident_max_size, bool error_on_case_overflow)
 {
   int truncated_size = 0, original_size = 0, char_size = 0;
-  unsigned char *name_char = (unsigned char *) name;
+  const unsigned char *cname = (unsigned char *) name;
   INTL_CODESET codeset = lang_charset ();
 
   assert (name != NULL);
@@ -3161,10 +3161,9 @@ check_truncation:
 	}
 
       /* count original size based on the size given by first byte of each char */
-      const unsigned char *const_name_char = name_char;
       for (truncated_size = 0; truncated_size < original_size;)
 	{
-	  INTL_NEXT_CHAR (const_name_char, const_name_char, codeset, &char_size);
+	  INTL_NEXT_CHAR (cname, cname, codeset, &char_size);
 	  truncated_size += char_size;
 	}
       assert (truncated_size >= original_size);
@@ -3174,7 +3173,7 @@ check_truncation:
       if (truncated_size > original_size)
 	{
 	  assert (truncated_size < original_size + INTL_CODESET_MULT (codeset));
-	  assert ((unsigned char) *(name_char - char_size) > 0x80);
+	  assert ((unsigned char) *(cname - char_size) > 0x80);
 	  /* truncate after the last full character */
 	  truncated_size -= char_size;
 	  original_size = truncated_size;
