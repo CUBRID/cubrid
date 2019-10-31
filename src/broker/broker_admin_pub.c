@@ -283,6 +283,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 	{
 	  snprintf_dots_truncate (admin_err_msg, sizeof (admin_err_msg) - 1, "The socket path is too long (>%d): %s",
 				  MEMBER_SIZE (struct sockaddr_un, sun_path), path);
+	  return -1;
 	}
 #endif /* !WINDOWS */
       broker_create_dir (br_info[i].log_dir);
