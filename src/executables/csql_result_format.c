@@ -1367,7 +1367,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       {
 	int dummy, bytes_size, decomp_size;
 	bool need_decomp = false;
-	char *str;
+	const char *str;
 	char *decomposed = NULL;
 
 	str = db_get_char (value, &dummy);
@@ -1408,7 +1408,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       {
 	int dummy, bytes_size, decomp_size;
 	bool need_decomp = false;
-	char *str;
+	const char *str;
 	char *decomposed = NULL;
 
 	str = db_get_char (value, &dummy);

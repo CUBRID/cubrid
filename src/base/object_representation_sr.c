@@ -1451,7 +1451,7 @@ or_cl_get_prop_nocopy (DB_SEQ * properties, const char *name, DB_VALUE * pvalue)
   int error;
   int found, max, i;
   DB_VALUE value;
-  char *prop_name;
+  const char *prop_name;
 
   error = NO_ERROR;
   found = 0;
@@ -1573,7 +1573,7 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
   int pageid, slotid, volid, fileid;
   DB_SEQ *fk_seq;
   OR_FOREIGN_KEY *fk, *p = NULL;
-  char *fkname;
+  const char *fkname;
 
   size = set_size (fk_container);
 
@@ -1719,7 +1719,7 @@ or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index)
   DB_VALUE val1, val2;
   int error = NO_ERROR;
   int buffer_len = 0;
-  char *buffer = NULL;
+  const char *buffer = NULL;
   OR_PREDICATE *filter_predicate = NULL;
 
   index->filter_predicate = NULL;
@@ -2347,7 +2347,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
   int n_shared_attrs, n_class_attrs;
   OR_BUF buf;
   DB_VALUE properties_val, def_expr_op, def_expr, def_expr_type, def_expr_format;
-  char *def_expr_format_str = NULL;
+  const char *def_expr_format_str = NULL;
   DB_SEQ *att_props = NULL, *def_expr_set = NULL;
 
   rep = (OR_CLASSREP *) malloc (sizeof (OR_CLASSREP));
@@ -3544,7 +3544,7 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	  else if (DB_VALUE_TYPE (&cvalue) == DB_TYPE_STRING)
 	    {
 	      /* strdup, caller shall free it */
-	      char *cvalue_string = db_get_string (&cvalue);
+	      const char *cvalue_string = db_get_string (&cvalue);
 	      comment = strdup (cvalue_string);
 	    }
 	  else
@@ -3991,7 +3991,7 @@ or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index)
 {
   OR_FUNCTION_INDEX *fi_info = NULL;
   DB_VALUE val, val1;
-  char *buffer;
+  const char *buffer;
 
   index->func_index_info = NULL;
   if (fi_seq == NULL)

@@ -529,7 +529,7 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id, T_RE
 }
 
 int
-hm_req_get_from_pool (T_CON_HANDLE * con, T_REQ_HANDLE ** req, char *sql)
+hm_req_get_from_pool (T_CON_HANDLE * con, T_REQ_HANDLE ** req, const char *sql)
 {
   int req_id;
   void *data;

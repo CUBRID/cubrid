@@ -2457,13 +2457,13 @@ partition_load_partition_predicate (PRUNING_CONTEXT * pinfo, OR_PARTITION * mast
     }
 
   assert (DB_VALUE_TYPE (&val) == DB_TYPE_CHAR);
-  expr_stream = db_get_string (&val);
+  // use const_cast since of a limitation of or_unpack_* functions which do not accept const
+  expr_stream = CONST_CAST (char *, db_get_string (&val));
   stream_len = db_get_string_size (&val);
 
   /* unpack partition expression */
-  error =
-    stx_map_stream_to_func_pred (pinfo->thread_p, &pinfo->partition_pred, expr_stream, stream_len,
-				 &pinfo->fp_cache_context);
+  error = stx_map_stream_to_func_pred (pinfo->thread_p, &pinfo->partition_pred, expr_stream, stream_len,
+				       &pinfo->fp_cache_context);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();

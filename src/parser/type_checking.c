@@ -12040,7 +12040,7 @@ static int
 pt_check_and_coerce_to_time (PARSER_CONTEXT * parser, PT_NODE * src)
 {
   DB_VALUE *db_src = NULL;
-  char *cp;
+  const char *cp;
   DB_TYPE dbtype;
   int cp_len;
 
@@ -12082,7 +12082,7 @@ static int
 pt_check_and_coerce_to_date (PARSER_CONTEXT * parser, PT_NODE * src)
 {
   DB_VALUE *db_src = NULL;
-  char *str = NULL;
+  const char *str = NULL;
   int str_len;
 
   assert (src != NULL);
@@ -17724,7 +17724,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       {
 	const char *username = au_user_name ();
 
-	error = db_make_string_by_const_str (result, username);
+	error = db_make_string_copy (result, username);
 	db_string_free ((char *) username);
 	if (error < 0)
 	  {
@@ -18294,11 +18294,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		if (arg1->domain.general_info.type == DB_TYPE_NCHAR
 		    || arg1->domain.general_info.type == DB_TYPE_VARNCHAR)
 		  {
-		    db_make_nchar (esc_char, 1, (DB_C_NCHAR) slash_str, 1, arg1_cs, arg1_coll);
+		    db_make_nchar (esc_char, 1, slash_str, 1, arg1_cs, arg1_coll);
 		  }
 		else
 		  {
-		    db_make_char (esc_char, 1, (DB_C_CHAR) slash_str, 1, arg1_cs, arg1_coll);
+		    db_make_char (esc_char, 1, slash_str, 1, arg1_cs, arg1_coll);
 		  }
 
 		esc_char->need_clear = false;
