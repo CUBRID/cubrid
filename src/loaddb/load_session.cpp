@@ -166,7 +166,7 @@ namespace cubload
 	int line_no = driver->get_scanner ().lineno ();
 
 	// Get the inserted lines
-	int lines_inserted = driver->get_lines_inserted ();
+	std::size_t rows_number = driver->get_object_loader ().get_rows_number ();
 
 	// We don't need anything from the driver anymore.
 	driver->clear ();
@@ -185,20 +185,21 @@ namespace cubload
 
 	    xtran_server_commit (&thread_ref, false);
 
+	    // update load statistics after commit
+	    m_session.stats_update_rows_committed (rows_number);
+	    m_session.stats_update_last_committed_line (line_no + 1);
+
+	    MSGCAT_LOADDB_MSG msg_type;
 	    if (m_session.get_args ().syntax_check)
 	      {
-		m_session.append_log_msg (LOADDB_MSG_INSTANCE_COUNT, class_name.c_str (), m_batch.get_rows_number ());
+		msg_type = LOADDB_MSG_INSTANCE_COUNT;
 	      }
 	    else
 	      {
-		m_session.append_log_msg (LOADDB_MSG_COMMITTED_INSTANCES, class_name.c_str (),
-					  m_batch.get_rows_number ());
+		msg_type = LOADDB_MSG_COMMITTED_INSTANCES;
 	      }
 
-	    // update load statistics after commit
-	    m_session.stats_update_rows_committed (lines_inserted);
-	    m_session.stats_update_last_committed_line (line_no + 1);
-
+	    m_session.append_log_msg (msg_type, class_name.c_str (), m_session.stats_get_rows_committed ());
 	  }
 
 	// Clear the clientids.
@@ -428,6 +429,12 @@ namespace cubload
   {
     std::unique_lock<std::mutex> ulock (m_mutex);
     m_stats.rows_committed += rows_committed;
+  }
+
+  int
+  session::stats_get_rows_committed ()
+  {
+    return m_stats.rows_committed;
   }
 
   void
