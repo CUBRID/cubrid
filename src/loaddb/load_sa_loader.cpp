@@ -774,6 +774,7 @@ error_exit:
   {
     // Do nothing on SA_MODE
     assert (false);
+    return 0;
   }
 
   /*
