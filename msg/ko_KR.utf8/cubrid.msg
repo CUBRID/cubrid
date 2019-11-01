@@ -1312,8 +1312,9 @@ $ LOADDB
 1243 Index loading was aborted after an error.
 1244 Loading shared attributes updates from object files is not supported in CS mode.
 1245 Loading class attributes updates from object files is not supported in CS mode.
+1246 Error getting address and name information. Code : %1$d, message : %2$s.
 
-1246 마지막 에러
+1247 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
