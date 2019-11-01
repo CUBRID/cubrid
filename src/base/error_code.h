@@ -1602,7 +1602,9 @@
 #define ER_LDR_SHARED_NOT_SUPPORTED                 -1244
 #define ER_LDR_CLASS_NOT_SUPPORTED                  -1245
 
-#define ER_LAST_ERROR                               -1246
+#define ER_GAI_ERROR                                -1246
+
+#define ER_LAST_ERROR                               -1247
 
 /*
  * CAUTION!
