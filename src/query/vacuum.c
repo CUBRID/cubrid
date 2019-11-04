@@ -807,6 +807,8 @@ class vacuum_master_task : public cubthread::entry_task
     void execute (cubthread::entry &thread_ref) final;
 
   private:
+    bool check_shutdown () const;
+    bool is_task_queue_full () const;
     bool should_interrupt_iteration () const;         // conditions to interrupt an iteration and go to sleep
     bool is_cursor_entry_ready_to_vacuum () const;    // check if conditions to vacuum cursor entry are met
     bool is_cursor_entry_available () const;          // check if cursor entry is available and can generate a new job
@@ -2904,15 +2906,15 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
       return;
     }
 
-  if (!BO_IS_SERVER_RESTARTED ())
+  if (check_shutdown ())
     {
-      // check if boot is aborted
-      vacuum_Data.shutdown_sequence.check_shutdown_request ();
+      // stop on shutdown
       return;
     }
 
-  if (should_interrupt_iteration ())
+  if (!BO_IS_SERVER_RESTARTED ())
     {
+      // check if boot is aborted
       return;
     }
 
@@ -2967,7 +2969,7 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
 }
 
 bool
-vacuum_master_task::should_interrupt_iteration () const
+vacuum_master_task::check_shutdown() const
 {
   if (vacuum_Data.shutdown_sequence.check_shutdown_request ())
     {
@@ -2975,15 +2977,25 @@ vacuum_master_task::should_interrupt_iteration () const
       vacuum_er_log (VACUUM_ER_LOG_MASTER, "%s", "Interrupt iteration: shutdown");
       return true;
     }
+  return false;
+}
 
+bool
+vacuum_master_task::is_task_queue_full() const
+{
   if (cubthread::get_manager ()->is_pool_full (vacuum_Worker_threads))
     {
       // stop if worker pool is full
       vacuum_er_log (VACUUM_ER_LOG_MASTER, "%s", "Interrupt iteration: full worker pool");
       return true;
     }
-
   return false;
+}
+
+bool
+vacuum_master_task::should_interrupt_iteration () const
+{
+  return check_shutdown () || is_task_queue_full ();
 }
 
 bool
