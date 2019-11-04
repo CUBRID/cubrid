@@ -115,6 +115,8 @@ namespace cubload
       void fetch_status (load_status &status, bool has_lock = false);
 
       void stats_update_rows_committed (int rows_committed);
+      int stats_get_rows_committed ();
+
       void stats_update_last_committed_line (int last_committed_line);
       void stats_update_current_line (int current_line);
 

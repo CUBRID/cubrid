@@ -769,6 +769,14 @@ error_exit:
     ; // Do nothing.
   }
 
+  std::size_t
+  sa_object_loader::get_rows_number ()
+  {
+    // Do nothing on SA_MODE
+    assert (false);
+    return 0;
+  }
+
   /*
    * sa_object_loader::start_line - Finishes off the previous instance and resets the
    *                                     context to deal with a new instance.
