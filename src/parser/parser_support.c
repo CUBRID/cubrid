@@ -1823,8 +1823,8 @@ pt_check_level_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool * has_greater
     case PT_LE:
     case PT_GE:
       {
-	bool lhs_level = arg1->info.expr.op == PT_LEVEL;
-	bool rhs_level = arg2->info.expr.op == PT_LEVEL;
+	bool lhs_level = PT_IS_EXPR_NODE (arg1) && arg1->info.expr.op == PT_LEVEL;
+	bool rhs_level = PT_IS_EXPR_NODE (arg2) && arg2->info.expr.op == PT_LEVEL;
 	if ((lhs_level && rhs_level) || (!lhs_level && !rhs_level))
 	  {
 	    /* leave both has_greater and has_lesser as false */

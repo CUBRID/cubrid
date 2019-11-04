@@ -12606,8 +12606,8 @@ pt_set_connect_by_xasl (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NOD
 	}
     }
 
-  /* move ORDER SIBLINGS BY column list in the CONNECT BY xasl */
-  if (select_node->info.query.order_siblings == 1)
+  /* move ORDER SIBLINGS BY column list in the CONNECT BY xasl if order_by was not cut out because of aggregates */
+  if (xasl->orderby_list != NULL && select_node->info.query.order_siblings == 1)
     {
       connect_by_xasl->orderby_list = pt_to_order_siblings_by (parser, xasl, connect_by_xasl);
       if (!connect_by_xasl->orderby_list)
