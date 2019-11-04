@@ -348,8 +348,8 @@ char **
 help_class_names (const char *qualifier)
 {
   DB_OBJLIST *mops, *m;
-  char **names, *tmp;
-  const char *cname;
+  char **names;
+  const char *cname, *tmp;
   int count, i, outcount;
   DB_OBJECT *requested_owner, *owner;
   char buffer[2 * DB_MAX_IDENTIFIER_LENGTH + 4];

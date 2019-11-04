@@ -3803,7 +3803,7 @@ perfmon_unpack_stats (char *buf, UINT64 * stats)
 
 /*
  * perfmon_get_peek_stats - Copy into the statistics array the values of the peek statistics
- *		
+ *
  * return: void
  *
  *   stats (in): statistics array

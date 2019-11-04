@@ -406,6 +406,8 @@ namespace cubload
       virtual void finish_line () = 0;
 
       virtual void flush_records () = 0;
+
+      virtual std::size_t get_rows_number () = 0;
   };
 
 ///////////////////// common global functions /////////////////////

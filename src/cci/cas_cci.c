@@ -840,7 +840,7 @@ reset_connect (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle, T_CCI_ERROR
  * after the last failure of a host is over rc_time.
  */
 int
-cci_prepare (int mapped_conn_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
+cci_prepare (int mapped_conn_id, const char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
 {
   int statement_id = -1;
   int error = CCI_ER_NO_ERROR;

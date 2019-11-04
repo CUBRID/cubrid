@@ -162,6 +162,8 @@ namespace cubload
   void
   class_registry::register_ignored_class (class_entry *cls_entry, class_id cls_id)
   {
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
     assert (cls_entry != NULL);
     assert (cls_entry->is_ignored ());
 

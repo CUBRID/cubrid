@@ -5205,7 +5205,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
 	  if (error_code != NO_ERROR)
 	    {
 	      /* could not cache */
-	      assert_release (false);
+	      ASSERT_ERROR ();
 	      goto error;
 	    }
 	  /* reuse successful */
@@ -5266,7 +5266,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
   if (error_code != NO_ERROR)
     {
       /* Failed to cache HFID. */
-      assert_release (false);
+      ASSERT_ERROR ();
       goto error;
     }
 
@@ -17070,9 +17070,9 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 		case DB_TYPE_NCHAR:
 		case DB_TYPE_VARNCHAR:
 		  {
-		    char *str = db_get_string (&(value->dbvalue));
-		    char *str_end = str + db_get_string_length (&(value->dbvalue));
-		    char *p = NULL;
+		    const char *str = db_get_string (&(value->dbvalue));
+		    const char *str_end = str + db_get_string_length (&(value->dbvalue));
+		    const char *p = NULL;
 
 		    /* get the sign in the source string; look directly into the buffer string, no copy */
 		    p = str;
@@ -17554,7 +17554,7 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
 				 void **ptr)
 {
   int error = NO_ERROR;
-  char *class_name = NULL;
+  const char *class_name = NULL;
   DB_CLASS_PARTITION_TYPE partition_type = DB_NOT_PARTITIONED_CLASS;
   OID class_oid;
   LC_FIND_CLASSNAME status;
@@ -23340,7 +23340,7 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 
   /*  Here we check only the classname because this is the last field to be populated by other possible concurrent
    *  inserters. This means that if this field is already set by someone else, then the entry data is already
-   *  mature so we don't need to add data again. 
+   *  mature so we don't need to add data again.
    */
   if (entry->classname == NULL)
     {

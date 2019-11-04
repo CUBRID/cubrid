@@ -996,7 +996,7 @@ extern "C"
       unsigned char is_max_string;
       unsigned char compressed_need_clear;
       int size;
-      char *buf;
+      const char *buf;
       int compressed_size;
       char *compressed_buf;
     } medium;
@@ -1151,8 +1151,11 @@ extern "C"
   typedef float DB_C_FLOAT;
   typedef double DB_C_DOUBLE;
   typedef char *DB_C_CHAR;
+  typedef const char *DB_CONST_C_CHAR;
   typedef char *DB_C_NCHAR;
+  typedef const char *DB_CONST_C_NCHAR;
   typedef char *DB_C_BIT;
+  typedef const char *DB_CONST_C_BIT;
   typedef DB_OBJECT DB_C_OBJECT;
   typedef DB_COLLECTION DB_C_SET;
   typedef DB_COLLECTION DB_C_COLLECTION;
@@ -1199,7 +1202,7 @@ extern "C"
   {
     DB_DEFAULT_EXPR_TYPE default_expr_type;	/* default expression identifier */
     int default_expr_op;	/* default expression operator */
-    char *default_expr_format;	/* default expression format */
+    const char *default_expr_format;	/* default expression format */
   };
 
   typedef DB_DATETIME DB_C_DATETIME;

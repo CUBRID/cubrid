@@ -229,7 +229,7 @@ void
 record_descriptor::set_record_length (std::size_t length)
 {
   check_changes_are_permitted ();
-  assert (length <= m_recdes.area_size);
+  assert (m_recdes.area_size >= 0 && length <= (size_t) m_recdes.area_size);
   m_recdes.length = (int) length;
 }
 

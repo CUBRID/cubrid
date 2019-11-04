@@ -1977,7 +1977,7 @@ db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALU
   const std::string encoded_pattern = db_json_json_string_as_utf8 (raw_json_string);
 
   DB_VALUE encoded_pattern_dbval;
-  db_make_string (&encoded_pattern_dbval, const_cast<char *> (encoded_pattern.c_str ()));
+  db_make_string (&encoded_pattern_dbval, encoded_pattern.c_str ());
   db_string_put_cs_and_collation (&encoded_pattern_dbval, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
 
   const map_func_type &f_search = [&json_paths, &paths, &encoded_pattern_dbval, esc_char, find_all] (const JSON_VALUE &jv,
@@ -1991,7 +1991,7 @@ db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALU
     const char *json_str = jv.GetString ();
     DB_VALUE str_val;
 
-    db_make_string (&str_val, (char *) json_str);
+    db_make_string (&str_val, json_str);
     db_string_put_cs_and_collation (&str_val, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
 
     int match;

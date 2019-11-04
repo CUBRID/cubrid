@@ -510,7 +510,7 @@ db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val, CI_TYPE type, void *a
 		 || dbtype == DB_TYPE_VARNCHAR)
 	  {
 	    DB_VALUE nval;
-	    char *nstr;
+	    const char *nstr;
 
 	    /* need check if the string is numeric string */
 	    db_make_null (&nval);

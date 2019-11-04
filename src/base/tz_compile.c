@@ -6545,7 +6545,7 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
   DB_INFO *db_info_p = NULL;
   bool need_db_shutdown = false;
   const char *program_name = "extend";
-  char *table_name = NULL;
+  const char *table_name = NULL;
   bool is_first_column = true;
   bool has_timezone_column;
 
@@ -6656,7 +6656,7 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 		  printf ("We will update the following columns:\n");
 		  while (db_query_next_tuple (result2) == DB_CURSOR_SUCCESS)
 		    {
-		      char *column_name = NULL;
+		      const char *column_name = NULL;
 		      int column_type = 0;
 
 		      /* Get the column name */

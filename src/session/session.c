@@ -338,6 +338,8 @@ session_state_uninit (void *st)
   er_log_debug (ARG_FILE_LINE, "session_free_session %u\n", session->id);
 #endif /* SESSION_DEBUG */
 
+  session_stop_attached_threads (session);
+
   /* free session variables */
   vcurent = session->session_variables;
   while (vcurent != NULL)
@@ -395,18 +397,6 @@ session_state_uninit (void *st)
     {
       free_and_init (session->plan_string);
     }
-
-#if defined (SERVER_MODE)
-  // on uninit abort and delete loaddb session
-  if (session->load_session_p != NULL)
-    {
-      session->load_session_p->interrupt ();
-      session->load_session_p->wait_for_completion ();
-
-      delete session->load_session_p;
-      session->load_session_p = NULL;
-    }
-#endif
 
   return NO_ERROR;
 }
@@ -3146,4 +3136,29 @@ session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_se
   load_session_ref_ptr = state_p->load_session_p;
 
   return NO_ERROR;
+}
+
+/* 
+ * session_stop_attached_threads - stops extra attached threads (not connection worker thread)
+ *                                 associated with the session
+ *
+ */
+void
+session_stop_attached_threads (void *session_arg)
+{
+#if defined (SERVER_MODE)
+  SESSION_STATE *session = (SESSION_STATE *) session_arg;
+
+  assert (session != NULL);
+
+  // on uninit abort and delete loaddb session
+  if (session->load_session_p != NULL)
+    {
+      session->load_session_p->interrupt ();
+      session->load_session_p->wait_for_completion ();
+
+      delete session->load_session_p;
+      session->load_session_p = NULL;
+    }
+#endif
 }
