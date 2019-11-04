@@ -165,7 +165,7 @@ static int css_make_access_status_exist_user (THREAD_ENTRY * thread_p, OID * cla
 					      SHOWSTMT_ARRAY_CONTEXT * ctx);
 
 static LAST_ACCESS_STATUS *css_get_access_status_with_name (LAST_ACCESS_STATUS ** access_status_array, int num_user,
-							    char *user_name);
+							    const char *user_name);
 static LAST_ACCESS_STATUS *css_get_unused_access_status (LAST_ACCESS_STATUS ** access_status_array, int num_user);
 #endif /* !CS_MODE */
 
@@ -2607,7 +2607,6 @@ css_user_access_status_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE *
       db_make_datetime (&vals[1], &access_time);
 
       db_make_string_copy (&vals[2], access_status->host);
-
       db_make_string_copy (&vals[3], access_status->program_name);
     }
 #endif /* SERVER_MODE */
@@ -2654,7 +2653,7 @@ css_make_access_status_exist_user (THREAD_ENTRY * thread_p, OID * class_oid, LAS
   bool attr_info_inited;
   bool scan_cache_inited;
   char *rec_attr_name_p = NULL, *string = NULL;
-  char *user_name = NULL;
+  const char *user_name = NULL;
   HFID hfid;
   OID inst_oid;
   HEAP_CACHE_ATTRINFO attr_info;
@@ -2797,7 +2796,6 @@ css_make_access_status_exist_user (THREAD_ENTRY * thread_p, OID * class_oid, LAS
 	  db_make_datetime (&vals[1], &access_time);
 
 	  db_make_string_copy (&vals[2], access_status->host);
-
 	  db_make_string_copy (&vals[3], access_status->program_name);
 	}
       else
@@ -2831,7 +2829,7 @@ end:
  *   user_name(in):
  */
 static LAST_ACCESS_STATUS *
-css_get_access_status_with_name (LAST_ACCESS_STATUS ** access_status_array, int num_user, char *user_name)
+css_get_access_status_with_name (LAST_ACCESS_STATUS ** access_status_array, int num_user, const char *user_name)
 {
   int i = 0;
   LAST_ACCESS_STATUS *access_status = NULL;

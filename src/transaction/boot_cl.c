@@ -2979,7 +2979,7 @@ boot_add_data_type (MOP class_mop)
 	  db_make_int (&val, i + 1);
 	  db_put_internal (obj, "type_id", &val);
 
-	  db_make_varchar (&val, 16, (char *) names[i], strlen (names[i]), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	  db_make_varchar (&val, 16, names[i], strlen (names[i]), LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	  db_put_internal (obj, "type_name", &val);
 	}
     }

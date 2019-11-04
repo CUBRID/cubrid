@@ -39,6 +39,7 @@
 #include <sys/time.h>
 #include <sys/param.h>
 #include <sys/socket.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #if !defined(WINDOWS)
 #include <netinet/ip.h>
@@ -130,9 +131,11 @@ css_gethostname (char *name, size_t namelen)
   hostname[namelen_ - 1] = '\0';
   gethostname (hostname, namelen_);
 
-  if (getaddrinfo (hostname, NULL, &hints, &result) != 0)
+  int gai_error = getaddrinfo (hostname, NULL, &hints, &result);
+  if (gai_error != 0)
     {
-      return ER_FAILED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GAI_ERROR, 2, gai_error, gai_strerror (gai_error));
+      return ER_GAI_ERROR;
     }
 
   size_t canonname_size = strlen (result->ai_canonname) + 1;	// +1 for NULL terminator

@@ -84,6 +84,8 @@ namespace cubload
       void finish_line () override;
       void flush_records () override;
 
+      std::size_t get_rows_number () override;
+
     private:
       int process_constant (constant_type *cons, const attribute &attr);
       int process_generic_constant (constant_type *cons, const attribute &attr);
@@ -113,6 +115,8 @@ namespace cubload
 
       bool m_scancache_started;
       heap_scancache m_scancache;
+
+      std::size_t m_rows;
   };
 
 } // namespace cubload

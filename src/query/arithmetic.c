@@ -4351,7 +4351,7 @@ db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
       break;
 
     default:
-      db_make_string_by_const_str (result, type_name);
+      db_make_string (result, type_name);
     }
 
   return NO_ERROR;
@@ -5176,7 +5176,7 @@ db_evaluate_json_type_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const
       type = db_json_get_type_as_str (doc.get_immutable ());
       length = strlen (type);
 
-      return db_make_varchar (result, length, (DB_C_CHAR) type, length, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+      return db_make_varchar (result, length, type, length, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
     }
 }
 
@@ -5830,7 +5830,6 @@ db_evaluate_json_keys (DB_VALUE * result, DB_VALUE * const *arg, int const num_a
   /* *INDENT-OFF* */
   std::string path;
   /* *INDENT-ON* */
-  char *str = NULL;
 
   db_make_null (result);
 
@@ -5853,7 +5852,7 @@ db_evaluate_json_keys (DB_VALUE * result, DB_VALUE * const *arg, int const num_a
   else
     {
       /* *INDENT-OFF* */
-      path = std::move (std::string (db_get_string (arg[1]), db_get_string_size (arg[1])));
+      path = std::string (db_get_string (arg[1]), db_get_string_size (arg[1]));
       /* *INDENT-ON* */
     }
 
@@ -6261,7 +6260,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
   const DB_VALUE *esc_char = nullptr;
   const char * slash_str = "\\";
   DB_VALUE default_slash_str_dbval;
-  
+
   if (num_args >= 4)
     {
       esc_char = args[3];
@@ -6272,7 +6271,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
       if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false)
       {
 	 // This is equivalent to compat_mode=mysql. In this mode '\\' is default escape character for LIKE pattern
-	 db_make_string (&default_slash_str_dbval, const_cast<char *> (slash_str));
+	 db_make_string (&default_slash_str_dbval, slash_str);
 	 esc_char = &default_slash_str_dbval;
       }
     }
@@ -6314,7 +6313,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
       char *escaped;
       size_t escaped_size;
       error_code = db_string_escape_str (path.c_str (), path.size (), &escaped, &escaped_size);
-      cubmem::private_unique_ptr<char> escaped_unqique_ptr (escaped, NULL);
+      cubmem::private_unique_ptr<char> escaped_unique_ptr (escaped, NULL);
       if (error_code)
 	{
 	  return error_code;
@@ -6344,7 +6343,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
       char *escaped;
       size_t escaped_size;
       error_code = db_string_escape_str (path.c_str (), path.size (), &escaped, &escaped_size);
-      cubmem::private_unique_ptr<char> escaped_unqique_ptr (escaped, NULL);
+      cubmem::private_unique_ptr<char> escaped_unique_ptr (escaped, NULL);
       if (error_code)
 	{
 	  return error_code;
@@ -6464,7 +6463,7 @@ is_str_find_all (DB_VALUE * val, bool & find_all)
   std::string find_all_str (db_get_string (val), db_get_string_size (val));
   std::transform (find_all_str.begin (), find_all_str.end (), find_all_str.begin (), [] (unsigned char c)
   {
-    return std::tolower (c); 
+    return std::tolower (c);
   });
   // *INDENT-ON*
 

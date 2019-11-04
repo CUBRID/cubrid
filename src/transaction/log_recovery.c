@@ -1861,7 +1861,14 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
 		}
 	    }
 
-	  tdes->topops.last++;
+	  if (tdes->topops.last == -1)
+	    {
+	      tdes->topops.last++;
+	    }
+	  else
+	    {
+	      assert (tdes->topops.last == 0);
+	    }
 	  tdes->rcv.sysop_start_postpone_lsa = chkpt_topone->sysop_start_postpone_lsa;
 	  tdes->rcv.atomic_sysop_start_lsa = chkpt_topone->atomic_sysop_start_lsa;
 	  log_lsa_local = chkpt_topone->sysop_start_postpone_lsa;

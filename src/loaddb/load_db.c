@@ -124,17 +124,6 @@ print_stats (std::vector<cubload::stats> &stats, cubload::load_args &args, int *
 	      fprintf (stderr, "%s", stat.error_message.c_str ());
 	    }
 	}
-      else
-	{
-	  /* Don't print this during syntax checking */
-	  if (!args.syntax_check && stat.rows_committed != 0)
-	    {
-	      char *committed_instances_msg = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
-					      LOADDB_MSG_COMMITTED_INSTANCES);
-	      const char *dummy = "";
-	      print_log_msg (args.verbose_commit, committed_instances_msg, dummy, stat.rows_committed);
-	    }
-	}
     }
 }
 /* *INDENT-ON* */

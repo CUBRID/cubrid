@@ -6811,8 +6811,8 @@ pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e)
 void
 pt_to_regu_resolve_domain (int *p_precision, int *p_scale, const PT_NODE * node)
 {
-  char *format_buf;
-  char *fbuf_end_ptr;
+  const char *format_buf;
+  const char *fbuf_end_ptr;
   int format_sz;
   int precision, scale, maybe_sci_notation = 0;
 

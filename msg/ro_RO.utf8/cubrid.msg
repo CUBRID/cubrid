@@ -1312,8 +1312,9 @@ $ LOADDB
 1243 Index loading was aborted after an error.
 1244 Loading shared attributes updates from object files is not supported in CS mode.
 1245 Loading class attributes updates from object files is not supported in CS mode.
+1246 Error getting address and name information. Code : %1$d, message : %2$s.
 
-1246 Ultima eroare
+1247 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
