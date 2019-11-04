@@ -613,7 +613,18 @@ namespace cubload
       return !m_collected_stats.empty () || is_batch_accepted;
     };
 
-    m_cond_var.wait (ulock, pred);
+    // if worker pool is full, but all jobs belong to other sessions, nobody will notify me when a job is finished.
+    // loop & use timed waits instead of infinite wait
+    while (true)
+      {
+	const std::chrono::milliseconds WAIT_MS { 10 };  // wakeup every 10 milliseconds
+
+	if (m_cond_var.wait_for (ulock, WAIT_MS, pred))
+	  {
+	    break;
+	  }
+	// go back to waiting
+      }
 
     fetch_status (status, true);
 
