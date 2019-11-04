@@ -88,8 +88,8 @@ bool intl_Mbs_support = true;
 bool intl_String_validation = false;
 
 /* General EUC string manipulations */
-static int intl_tolower_euc (const unsigned char *s, unsigned char *d, int length_in_chars);
-static int intl_toupper_euc (const unsigned char *s, unsigned char *d, int length_in_chars);
+static int intl_tolower_euc (const unsigned char *src, unsigned char *d, int byte_size);
+static int intl_toupper_euc (const unsigned char *src, unsigned char *d, int byte_size);
 static int intl_count_euc_chars (const unsigned char *s, int length_in_bytes);
 static int intl_count_euc_bytes (const unsigned char *s, int length_in_chars);
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -828,48 +828,50 @@ intl_prevchar_euc (const unsigned char *s, const unsigned char *s_start, int *pr
  * intl_tolower_euc() - Replaces all upper case ASCII characters inside an EUC
  *                      encoded string with their lower case codes.
  *   return: character counts
- *   s(in/out): EUC string to lowercase
- *   length_in_chars(in): length of the string measured in characters
+ *   src(in): EUC string to lowercase
+ *   byte_size(in): size in bytes of source string
  */
 static int
-intl_tolower_euc (const unsigned char *s, unsigned char *d, int length_in_chars)
+intl_tolower_euc (const unsigned char *src, unsigned char *d, int byte_size)
 {
-  int char_count;
+  int byte_count;
+  const unsigned char *s = src;
 
-  assert (s != NULL);
+  assert (src != NULL);
 
-  for (char_count = 0; char_count < length_in_chars; char_count++)
+  for (byte_count = 0; byte_count < byte_size; byte_count++)
     {
       *d = char_tolower (*s);
       s++;
       d++;
     }
 
-  return char_count;
+  return intl_count_euc_chars (src, byte_size);
 }
 
 /*
  * intl_toupper_euc() - Replaces all upper case ASCII characters inside an EUC
  *                      encoded string with their upper case codes.
  *   return: character counts
- *   s(in/out): EUC string to uppercase
- *   length_in_chars(in): length of the string measured in characters
+ *   src(in): EUC string to uppercase
+ *   byte_size(in): size in bytes of source string
  */
 static int
-intl_toupper_euc (const unsigned char *s, unsigned char *d, int length_in_chars)
+intl_toupper_euc (const unsigned char *src, unsigned char *d, int byte_size)
 {
-  int char_count;
+  int byte_count;
+  const unsigned char *s = src;
 
-  assert (s != NULL);
+  assert (src != NULL);
 
-  for (char_count = 0; char_count < length_in_chars; char_count++)
+  for (byte_count = 0; byte_count < byte_size; byte_count++)
     {
       *d = char_toupper (*s);
       s++;
       d++;
     }
 
-  return char_count;
+  return intl_count_euc_chars (src, byte_size);;
 }
 
 /*
@@ -1593,7 +1595,7 @@ intl_upper_string (const ALPHABET_DATA * alphabet, const unsigned char *src, uns
 	intl_char_size (src, length_in_chars, INTL_CODESET_KSC5601_EUC, &byte_count);
 	if (byte_count > 0)
 	  {
-	    char_count = intl_toupper_euc (src, dst, length_in_chars);
+	    char_count = intl_toupper_euc (src, dst, byte_count);
 	  }
       }
       break;
@@ -1703,7 +1705,7 @@ intl_lower_string (const ALPHABET_DATA * alphabet, const unsigned char *src, uns
 	intl_char_size (src, length_in_chars, INTL_CODESET_KSC5601_EUC, &byte_count);
 	if (byte_count > 0)
 	  {
-	    char_count = intl_tolower_euc (src, dst, length_in_chars);
+	    char_count = intl_tolower_euc (src, dst, byte_count);
 	  }
       }
       break;
