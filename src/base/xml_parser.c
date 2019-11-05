@@ -889,8 +889,8 @@ xml_init_parser_common (void *data, const char *xml_file, const char *encoding)
     }
 
   size_t encoding_len = strnlen (encoding, MAX_ENCODE_LEN);
-  memcpy (pd->encoding, encoding, MAX_ENCODE_LEN);
-  pd->encoding[MAX_ENCODE_LEN - 1] = '\0';
+  memcpy (pd->encoding, encoding, encoding_len);
+  pd->encoding[encoding_len] = '\0';
 
   pd->xml_parser = p;
   pd->xml_error = XML_CUB_NO_ERROR;
