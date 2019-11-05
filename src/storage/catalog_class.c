@@ -3472,10 +3472,8 @@ catcls_get_or_value_from_record (THREAD_ENTRY * thread_p, RECDES * record_p, OID
   OR_BUF *buf_p, repr_buffer;
   REPR_ID repr_id;
   DISK_REPR *repr_p = NULL;
-  int error;
 
-  error = catalog_get_last_representation_id (thread_p, class_oid_p, &repr_id);
-  if (error != NO_ERROR)
+  if (catalog_get_last_representation_id (thread_p, class_oid_p, &repr_id) != NO_ERROR)
     {
       goto error;
     }
@@ -3484,7 +3482,6 @@ catcls_get_or_value_from_record (THREAD_ENTRY * thread_p, RECDES * record_p, OID
   if (repr_p == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      error = er_errid ();
       goto error;
     }
 
