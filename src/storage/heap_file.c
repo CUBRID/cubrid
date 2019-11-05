@@ -23255,7 +23255,7 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_HFID_TABLE);
   HEAP_HFID_TABLE_ENTRY *entry = NULL;
   HFID hfid_local = HFID_INITIALIZER;
-  char *classname_local;
+  char *classname_local = NULL;
   int inserted = 0;
 
   assert (hfid != NULL && !HFID_IS_NULL (hfid));
