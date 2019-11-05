@@ -3419,6 +3419,7 @@ end:
     }
 
   pgbuf_Pool.is_flushing_victims = false;
+#endif /* SERVER_MODE */
 
   if (logging)
     {

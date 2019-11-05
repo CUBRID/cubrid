@@ -10565,8 +10565,6 @@ xlogpb_dump_stat (FILE * outfp)
 bool
 logpb_need_wal (const LOG_LSA * lsa)
 {
-  assert (!LSA_ISNULL (lsa));
-
   LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
 
   if (LSA_LE (&nxio_lsa, lsa))
