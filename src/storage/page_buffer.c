@@ -3332,8 +3332,7 @@ repeat:
 	  continue;
 	}
 
-      LOG_LSA & lsa = bufptr->iopage_buffer->iopage.prv.lsa;
-      if (!LSA_ISNULL (&lsa) && !pgbuf_is_temp_lsa (lsa) && logpb_need_wal (&lsa))
+      if (logpb_need_wal (&bufptr->iopage_buffer->iopage.prv.lsa))
 	{
 	  /* we cannot flush a page unless log has been flushed up until page LSA. otherwise we might have recovery
 	   * issues. */
