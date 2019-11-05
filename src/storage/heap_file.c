@@ -665,7 +665,7 @@ static int heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 static int heap_scancache_end_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, bool scan_state);
 static SCAN_CODE heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, RECDES * recdes,
 				       bool ispeeking, int chn, MVCC_SNAPSHOT * mvcc_snapshot);
-static int heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid);
+static int heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid, int &avg_reclen);
 static int heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs, INT64 * num_recs_relocated,
 			      INT64 * num_recs_inovf, INT64 * num_pages, int *avg_freespace, int *avg_freespace_nolast,
 			      int *avg_reclength, int *avg_overhead);
@@ -5898,7 +5898,12 @@ heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid
 
   if (expected_length <= 0)
     {
-      recdes.length = heap_estimate_avg_length (thread_p, hfid);
+      rc = heap_estimate_avg_length (thread_p, hfid, recdes.length);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+
       if (recdes.length > (-expected_length))
 	{
 	  expected_length = recdes.length;
@@ -9032,8 +9037,9 @@ heap_estimate_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid)
 
 /*
  * heap_estimate_avg_length () - Estimate the average length of records
- *   return: avg length
+ *   return: error code
  *   hfid(in): Object heap file identifier
+ *   avg_reclen(out) : average length
  *
  * Note: Estimate the avergae length of the objects stored on the heap.
  * This function is mainly used when we are creating the OID of
@@ -9041,18 +9047,17 @@ heap_estimate_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid)
  * loaddb during forward references to other objects.
  */
 static int
-heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid)
+heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid, int &avg_reclen)
 {
   int ignore_npages;
   int ignore_nobjs;
-  int avg_reclen;
 
   if (heap_estimate (thread_p, hfid, &ignore_npages, &ignore_nobjs, &avg_reclen) == -1)
     {
       return ER_FAILED;
     }
 
-  return avg_reclen;
+  return NO_ERROR;
 }
 
 /*

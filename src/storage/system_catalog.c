@@ -4487,26 +4487,29 @@ catalog_update (THREAD_ENTRY * thread_p, RECDES * record_p, OID * class_oid_p)
   orc_free_diskrep (disk_repr_p);
 
   class_info_p = catalog_get_class_info (thread_p, class_oid_p, NULL);
-  if (class_info_p != NULL)
+  if (class_info_p == NULL)
     {
-      assert (OID_EQ (&rep_dir, &(class_info_p->ci_rep_dir)));
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
 
-      if (HFID_IS_NULL (&class_info_p->ci_hfid))
+  assert (OID_EQ (&rep_dir, &(class_info_p->ci_rep_dir)));
+
+  if (HFID_IS_NULL (&class_info_p->ci_hfid))
+    {
+      or_class_hfid (record_p, &(class_info_p->ci_hfid));
+      if (!HFID_IS_NULL (&class_info_p->ci_hfid))
 	{
-	  or_class_hfid (record_p, &(class_info_p->ci_hfid));
-	  if (!HFID_IS_NULL (&class_info_p->ci_hfid))
+	  if (catalog_update_class_info (thread_p, class_oid_p, class_info_p, NULL, false) == NULL)
 	    {
-	      if (catalog_update_class_info (thread_p, class_oid_p, class_info_p, NULL, false) == NULL)
-		{
-		  catalog_free_class_info (class_info_p);
+	      catalog_free_class_info (class_info_p);
 
-		  assert (er_errid () != NO_ERROR);
-		  return er_errid ();
-		}
+	      assert (er_errid () != NO_ERROR);
+	      return er_errid ();
 	    }
 	}
-      catalog_free_class_info (class_info_p);
     }
+  catalog_free_class_info (class_info_p);
 
   return NO_ERROR;
 }
