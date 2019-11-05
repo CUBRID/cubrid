@@ -8957,7 +8957,7 @@ heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, i
 
 /*
  * heap_estimate () - Estimate the number of pages, objects, average length
- *   return: error code
+ *   return: number of pages estimated or -1 in case of an error
  *   hfid(in): Object heap file identifier
  *   npages(in):
  *   nobjs(in):
