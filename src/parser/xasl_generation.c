@@ -3562,12 +3562,10 @@ static PT_NODE *
 pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
   bool is_agg = 0;
-  REGU_VARIABLE *regu = NULL, *scan_regu = NULL;
-  REGU_VARIABLE *regu_next = NULL, *scan_regu_next = NULL;
+  REGU_VARIABLE *regu = NULL;
   REGU_VARIABLE *percentile_regu = NULL;
   AGGREGATE_TYPE *aggregate_list;
   AGGREGATE_INFO *info = (AGGREGATE_INFO *) arg;
-  REGU_VARIABLE_LIST out_list = NULL;
   VAL_LIST *value_list;
   MOP classop;
   PT_NODE *group_concat_sep_node_save = NULL;
@@ -12608,8 +12606,8 @@ pt_set_connect_by_xasl (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NOD
 	}
     }
 
-  /* move ORDER SIBLINGS BY column list in the CONNECT BY xasl */
-  if (select_node->info.query.order_siblings == 1)
+  /* move ORDER SIBLINGS BY column list in the CONNECT BY xasl if order_by was not cut out because of aggregates */
+  if (xasl->orderby_list != NULL && select_node->info.query.order_siblings == 1)
     {
       connect_by_xasl->orderby_list = pt_to_order_siblings_by (parser, xasl, connect_by_xasl);
       if (!connect_by_xasl->orderby_list)
