@@ -3167,6 +3167,12 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   bool direct_victim_waiters = false;
 #endif /* DEBUG && SERVER_MODE */
 
+  // stats
+  UINT64 num_skipped_already_flushed = 0;
+  UINT64 num_skipped_fixed_or_hot = 0;
+  UINT64 num_skipped_need_wal = 0;
+  UINT64 num_skipped_flush = 0;
+
   bool logging = prm_get_bool_value (PRM_ID_LOG_PGBUF_VICTIM_FLUSH);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_STARTED, 0);
@@ -3296,12 +3302,6 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
 repeat:
 #endif
   count_need_wal = 0;
-
-  // stats
-  UINT64 num_skipped_already_flushed = 0;
-  UINT64 num_skipped_fixed_or_hot = 0;
-  UINT64 num_skipped_need_wal = 0;
-  UINT64 num_skipped_flush = 0;
 
   /* temporary disable second iteration */
   /* for each victim candidate, do flush task */
