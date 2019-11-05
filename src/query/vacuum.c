@@ -4972,7 +4972,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
   if (vacuum_Block_data_buffer->is_empty ())
     {
       /* empty */
-      if (vacuum_is_empty ())
+      if (vacuum_is_empty () && !log_Gl.hdr.does_block_need_vacuum)
 	{
 	  const VACUUM_LOG_BLOCKID LOG_BLOCK_TRAILING_DIFF = 2;
 	  LOG_LSA log_lsa = log_Gl.prior_info.prior_lsa;
