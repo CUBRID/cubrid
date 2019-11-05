@@ -4972,15 +4972,36 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
   if (vacuum_Block_data_buffer->is_empty ())
     {
       /* empty */
-      if (vacuum_is_empty () && !log_Gl.hdr.does_block_need_vacuum)
+      if (vacuum_is_empty ())
 	{
-	  const VACUUM_LOG_BLOCKID LOG_BLOCK_TRAILING_DIFF = 2;
+	  // don't let vacuum data go too far back; try to update last blockid
+	  // need to make sure that log_Gl.hdr.does_block_need_vacuum is not true; safest choice is to also hold
+	  // log_Gl.prior_info.prior_lsa_mutex while doing it
+
+	  if (log_Gl.hdr.does_block_need_vacuum)
+	    {
+	      // cannot update
+	      return NO_ERROR;
+	    }
+
+          // *INDENT-OFF*
+          std::unique_lock<std::mutex> ulock { log_Gl.prior_info.prior_lsa_mutex };
+          // *INDENT-ON*
+	  // need to double check log_Gl.hdr.does_block_need_vacuum while holding mutex
+	  if (log_Gl.hdr.does_block_need_vacuum)
+	    {
+	      // cannot update
+	      return NO_ERROR;
+	    }
+
 	  LOG_LSA log_lsa = log_Gl.prior_info.prior_lsa;
+	  ulock.unlock ();	// unlock after reading prior_lsa
+
+	  const VACUUM_LOG_BLOCKID LOG_BLOCK_TRAILING_DIFF = 2;
 	  VACUUM_LOG_BLOCKID log_blockid = vacuum_get_log_blockid (log_lsa.pageid);
 
 	  if (log_blockid > vacuum_Data.get_last_blockid () + LOG_BLOCK_TRAILING_DIFF)
 	    {
-	      // don't let vacuum data go too far back
 	      vacuum_Data.set_last_blockid (log_blockid - LOG_BLOCK_TRAILING_DIFF);
 	      vacuum_data_empty_update_last_blockid (thread_p);
 	      vacuum_update_keep_from_log_pageid (thread_p);
