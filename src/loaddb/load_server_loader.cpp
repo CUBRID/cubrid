@@ -424,7 +424,12 @@ namespace cubload
   {
     if (m_session.is_failed ())
       {
-	goto end;
+	return;
+      }
+
+    if (m_session.get_args ().syntax_check)
+      {
+	++m_rows;
       }
 
     std::size_t attr_index = 0;
@@ -434,7 +439,7 @@ namespace cubload
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_NO_CLASS_OR_NO_ATTRIBUTE, 0);
 	m_error_handler.on_syntax_failure ();
-	goto end;
+	return;
       }
 
     for (constant_type *c = cons; c != NULL; c = c->next, attr_index++)
@@ -443,7 +448,7 @@ namespace cubload
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, attr_index);
 	    m_error_handler.on_syntax_failure ();
-	    goto end;
+	    return;
 	  }
 
 	const attribute &attr = m_class_entry->get_attribute (attr_index);
@@ -451,7 +456,7 @@ namespace cubload
 	if (error_code != NO_ERROR)
 	  {
 	    m_error_handler.on_syntax_failure ();
-	    goto end;
+	    return;
 	  }
 
 	db_value &db_val = get_attribute_db_value (attr_index);
@@ -459,7 +464,7 @@ namespace cubload
 	if (error_code != NO_ERROR)
 	  {
 	    m_error_handler.on_syntax_failure ();
-	    goto end;
+	    return;
 	  }
       }
 
@@ -467,14 +472,7 @@ namespace cubload
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MISSING_ATTRIBUTES, 2, attr_size, attr_index);
 	m_error_handler.on_syntax_failure ();
-	goto end;
-      }
-
-end:
-
-    if (m_session.get_args ().syntax_check)
-      {
-	++m_rows;
+	return;
       }
   }
 
