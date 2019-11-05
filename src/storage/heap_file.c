@@ -23292,6 +23292,17 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
 	{
 	  ASSERT_ERROR ();
 	  lf_tran_end_with_mb (t_entry);
+
+	  // remove from hash
+	  int success = 0;
+	  if (lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, &success) != NO_ERROR)
+	    {
+	      assert (false);
+	    }
+	  assert (success);
+
+	  free (classname_local);
+
 	  return error_code;
 	}
     }
