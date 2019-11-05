@@ -422,9 +422,9 @@ ux_check_connection (void)
 	      char dbuser[SRV_CON_DBUSER_SIZE];
 	      char dbpasswd[SRV_CON_DBPASSWD_SIZE];
 
-	      strncpy (dbname, database_name, sizeof (dbname) - 1);
-	      strncpy (dbuser, database_user, sizeof (dbuser) - 1);
-	      strncpy (dbpasswd, database_passwd, sizeof (dbpasswd) - 1);
+	      strncpy_bufsize (dbname, database_name);
+	      strncpy_bufsize (dbuser, database_user);
+	      strncpy_bufsize (dbpasswd, database_passwd);
 
 	      cas_log_debug (ARG_FILE_LINE,
 			     "ux_check_connection: ux_database_shutdown()" " ux_database_connect(%s, %s)", dbname,

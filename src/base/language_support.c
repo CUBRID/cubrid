@@ -1066,7 +1066,7 @@ set_msg_lang_from_env (void)
       INTL_CODESET dummy_cs;
       char msg_lang[LANG_MAX_LANGNAME];
 
-      strncpy (lang_Msg_loc_name, env, sizeof (lang_Msg_loc_name));
+      strncpy_bufsize (lang_Msg_loc_name, env);
 
       status = check_env_lang_val (lang_Msg_loc_name, msg_lang, &charset, &dummy_cs);
       if (status != NO_ERROR)
@@ -1121,7 +1121,7 @@ lang_set_charset_lang (const char *lang_charset)
 
   if (lang_charset != NULL)
     {
-      strncpy (lang_Loc_name, lang_charset, sizeof (lang_Loc_name));
+      strncpy_bufsize (lang_Loc_name, lang_charset);
     }
   else
     {

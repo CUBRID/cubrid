@@ -4667,7 +4667,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
 		{
 		  /* Copying length 0 from NULL pointer fails when DUMA is enabled. */
 		  assert (checksum != NULL);
-		  strncpy (timezone_checksum, checksum, checksum_len);
+		  strcpy (timezone_checksum, checksum);
 		}
 	      timezone_checksum[checksum_len] = '\0';
 	    }

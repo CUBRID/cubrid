@@ -288,7 +288,7 @@ get_master_shm_id (void)
 
   if (conf_file != NULL)
     {
-      strncpy (conf_file_path, conf_file, strlen (conf_file));
+      strncpy_bufsize (conf_file_path, conf_file);
     }
   else
     {

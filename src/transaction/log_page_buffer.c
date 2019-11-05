@@ -1329,7 +1329,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
       return ER_LOG_COMPILATION_RELEASE;
     }
 
-  strncpy (loghdr->db_release, rel_release_string (), REL_MAX_RELEASE_LENGTH);
+  strncpy_bufsize (loghdr->db_release, rel_release_string ());
   loghdr->db_compatibility = rel_disk_compatible ();
   loghdr->db_iopagesize = IO_PAGESIZE;
   loghdr->db_logpagesize = LOG_PAGESIZE;
@@ -8034,7 +8034,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 	}
 
       memset (session_storage.bkup.log_path, 0, PATH_MAX);
-      strncpy (session_storage.bkup.log_path, logpath, PATH_MAX);
+      strncpy_bufsize (session_storage.bkup.log_path, logpath);
 
       session = &session_storage;
 

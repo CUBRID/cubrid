@@ -1138,7 +1138,7 @@ tzc_load_countries (TZ_RAW_DATA * tzd_raw, const char *input_folder)
       memset (temp_tz_country, 0, sizeof (temp_tz_country[0]));
       /* store parsed data */
       memcpy (temp_tz_country->code, str, TZ_COUNTRY_CODE_LEN);
-      strncpy (temp_tz_country->full_name, str_country_name + 1, TZ_COUNTRY_NAME_SIZE);
+      strncpy_bufsize (temp_tz_country->full_name, str_country_name + 1);
       temp_tz_country->id = -1;
     }
 
