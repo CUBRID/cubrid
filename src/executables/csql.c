@@ -2259,7 +2259,7 @@ csql_get_sys_param (const char *arg_str)
 	  snprintf (ans, len, "cost %s: %c", arg_str, (char) cost);
 	}
     }
-  else if (strncmp (arg_str, "level", 5) == 0 && sscanf (arg_str, "level") == 0)
+  else if (strcmp (arg_str, "level") == 0)
     {
       qo_get_optimization_param (&level, QO_PARAM_LEVEL);
       snprintf (ans, len, "level %d", level);
