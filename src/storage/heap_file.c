@@ -23301,7 +23301,10 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
 	    }
 	  assert (success);
 
-	  free (classname_local);
+	  if (classname_local != NULL)
+	    {
+	      free (classname_local);
+	    }
 
 	  return error_code;
 	}
