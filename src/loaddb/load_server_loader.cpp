@@ -427,6 +427,11 @@ namespace cubload
 	return;
       }
 
+    if (m_session.get_args ().syntax_check)
+      {
+	++m_rows;
+      }
+
     std::size_t attr_index = 0;
     std::size_t attr_size = m_class_entry->get_attributes_size ();
 
@@ -468,11 +473,6 @@ namespace cubload
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MISSING_ATTRIBUTES, 2, attr_size, attr_index);
 	m_error_handler.on_syntax_failure ();
 	return;
-      }
-
-    if (m_session.get_args ().syntax_check)
-      {
-	++m_rows;
       }
   }
 
