@@ -23260,7 +23260,7 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_HFID_TABLE);
   HEAP_HFID_TABLE_ENTRY *entry = NULL;
   HFID hfid_local = HFID_INITIALIZER;
-  char *classname_local;
+  char *classname_local = NULL;
   int inserted = 0;
 
   assert (hfid != NULL && !HFID_IS_NULL (hfid));
@@ -23278,6 +23278,8 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
     {
       return error_code;
     }
+  // NOTE: no collisions are expected when heap_cache_class_info is called
+
   assert (entry != NULL);
   assert (entry->hfid.hpgid == NULL_PAGEID);
 
@@ -23295,6 +23297,20 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
 	{
 	  ASSERT_ERROR ();
 	  lf_tran_end_with_mb (t_entry);
+
+	  // remove from hash
+	  int success = 0;
+	  if (lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, &success) != NO_ERROR)
+	    {
+	      assert (false);
+	    }
+	  assert (success);
+
+	  if (classname_local != NULL)
+	    {
+	      free (classname_local);
+	    }
+
 	  return error_code;
 	}
     }
