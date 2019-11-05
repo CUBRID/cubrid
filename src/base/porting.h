@@ -334,7 +334,7 @@ check_is_array (const T & a)
   static_assert (std::is_array<T>::value == 1, "expected array");
 }
 #define strncpy_bufsize(buf, str) \
-  strncpy_size (buf, str, sizeof (buf)); check_is_array (buf); 
+  strncpy_size (buf, str, sizeof (buf)); check_is_array (buf)
 // *INDENT-ON*
 #else // not C++
 #define strncpy_bufsize(buf, str) \
