@@ -23273,6 +23273,8 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
     {
       return error_code;
     }
+  // NOTE: no collisions are expected when heap_cache_class_info is called
+
   assert (entry != NULL);
   assert (entry->hfid.hpgid == NULL_PAGEID);
 
