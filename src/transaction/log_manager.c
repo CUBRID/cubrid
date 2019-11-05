@@ -7713,8 +7713,10 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   if (tdes->m_log_postpone_cache.do_postpone (*thread_p, tdes->posp_nxlsa))
     {
       // do postpone from cache first
+      perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_PPCACHE_HITS);
       return;
     }
+  perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_PPCACHE_MISS);
 
   log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
 }
@@ -7755,8 +7757,10 @@ log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_E
     {
       /* Do postpone was run from cached postpone entries. */
       tdes->state = save_state;
+      perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_TOPOP_PPCACHE_HITS);
       return;
     }
+  perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_TOPOP_PPCACHE_MISS);
 
   log_do_postpone (thread_p, tdes, LOG_TDES_LAST_SYSOP_POSP_LSA (tdes));
 
