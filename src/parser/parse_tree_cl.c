@@ -43,6 +43,7 @@
 #include "mem_block.hpp"
 #include "memory_alloc.h"
 #include "language_support.h"
+#include "object_primitive.h"
 #include "object_print.h"
 #include "optimizer.h"
 #include "system_parameter.h"
@@ -12723,7 +12724,9 @@ pt_print_host_var (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (parser->print_db_value)
     {
-      if (p->info.host_var.var_type == PT_HOST_IN)
+      /* Skip cast to enum type. */
+      if (p->info.host_var.var_type == PT_HOST_IN
+	  && (p->expected_domain == NULL || TP_DOMAIN_TYPE (p->expected_domain) != DB_TYPE_ENUMERATION))
 	{
 	  PT_NODE *save_error_msgs;
 
