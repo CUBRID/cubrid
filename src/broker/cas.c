@@ -1089,7 +1089,7 @@ cas_main (void)
 
 		CAS_PROTO_TO_VER_STR (&ver, (int) (CAS_PROTO_VER_MASK & req_info.client_version));
 
-		strncpy (as_info->driver_version, ver, SRV_CON_VER_STR_MAX_SIZE);
+		strncpy_bufsize (as_info->driver_version, ver);
 	      }
 	    else
 	      {

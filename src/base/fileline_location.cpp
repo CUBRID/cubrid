@@ -23,6 +23,8 @@
 
 #include "fileline_location.hpp"
 
+#include "porting.h"
+
 #include <cstring>
 
 namespace cubbase
@@ -47,7 +49,7 @@ namespace cubbase
 	    break;
 	  }
       }
-    std::strncpy (m_file, start_chp, MAX_FILENAME_SIZE);
+    strncpy_bufsize (m_file, start_chp);
 
     m_line = l_arg;
   }

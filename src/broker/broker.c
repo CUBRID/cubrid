@@ -1999,8 +1999,8 @@ insert_db_server_check_list (T_DB_SERVER * list_p, int check_list_cnt, const cha
       return UNUSABLE_DATABASE_MAX;
     }
 
-  strncpy (list_p[i].database_name, db_name, SRV_CON_DBNAME_SIZE - 1);
-  strncpy (list_p[i].database_host, db_host, CUB_MAXHOSTNAMELEN - 1);
+  strncpy_bufsize (list_p[i].database_name, db_name);
+  strncpy_bufsize (list_p[i].database_host, db_host);
   list_p[i].state = -1;
 
   return i + 1;
@@ -2866,7 +2866,7 @@ init_proxy_env ()
 
   memset (&shard_sock_addr, 0, sizeof (shard_sock_addr));
   shard_sock_addr.sun_family = AF_UNIX;
-  strncpy (shard_sock_addr.sun_path, shm_appl->port_name, sizeof (shard_sock_addr.sun_path) - 1);
+  strncpy_bufsize (shard_sock_addr.sun_path, shm_appl->port_name);
 
 #ifdef  _SOCKADDR_LEN		/* 4.3BSD Reno and later */
   len = sizeof (shard_sock_addr.sun_len) + sizeof (shard_sock_addr.sun_family) + strlen (shard_sock_addr.sun_path) + 1;

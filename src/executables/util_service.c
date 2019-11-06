@@ -3432,6 +3432,7 @@ us_hb_stop_get_options (char *db_name, int db_name_size, char *remote_host_name,
   char opt_str[64];
   int tmp_argc;
   const char **tmp_argv = NULL;
+  size_t copy_len;
 
   const struct option hb_stop_opts[] = {
     {COMMDB_HB_DEACT_IMMEDIATELY_L, 0, 0, COMMDB_HB_DEACT_IMMEDIATELY_S},
@@ -3471,7 +3472,9 @@ us_hb_stop_get_options (char *db_name, int db_name_size, char *remote_host_name,
       switch (opt)
 	{
 	case COMMDB_HOST_S:
-	  strncpy (remote_host_name, optarg, remote_host_name_size);
+	  copy_len = strnlen (optarg, remote_host_name_size - 1);
+	  memcpy (remote_host_name, optarg, copy_len);
+	  remote_host_name[copy_len] = '\0';
 	  break;
 	case COMMDB_HB_DEACT_IMMEDIATELY_S:
 	  *immediate_stop = true;
@@ -3497,7 +3500,9 @@ us_hb_stop_get_options (char *db_name, int db_name_size, char *remote_host_name,
 
       if ((tmp_argc - optind) == 1)
 	{
-	  strncpy (db_name, tmp_argv[optind], db_name_size);
+	  copy_len = strnlen (tmp_argv[optind], db_name_size);
+	  memcpy (db_name, tmp_argv[optind], copy_len);
+	  db_name[copy_len] = '\0';
 	}
     }
 
@@ -3530,6 +3535,7 @@ us_hb_status_get_options (bool * verbose, char *remote_host_name, int remote_hos
   char opt_str[64];
   int tmp_argc;
   const char **tmp_argv = NULL;
+  int copy_len;
 
   const struct option hb_status_opts[] = {
     {"verbose", 0, 0, 'v'},
@@ -3572,7 +3578,9 @@ us_hb_status_get_options (bool * verbose, char *remote_host_name, int remote_hos
 	  *verbose = true;
 	  break;
 	case COMMDB_HOST_S:
-	  strncpy (remote_host_name, optarg, remote_host_name_size);
+	  copy_len = (int) strnlen (optarg, (size_t) (remote_host_name_size - 1));
+	  memcpy (remote_host_name, optarg, copy_len);
+	  remote_host_name[copy_len] = '\0';
 	  break;
 	default:
 	  status = ER_GENERIC_ERROR;
@@ -3622,6 +3630,7 @@ us_hb_util_get_options (char *db_name, int db_name_size, char *node_name, int no
   char opt_str[64];
   int tmp_argc;
   const char **tmp_argv = NULL;
+  size_t copy_len;
 
   const struct option hb_util_opts[] = {
     {COMMDB_HOST_L, 1, 0, COMMDB_HOST_S},
@@ -3665,7 +3674,9 @@ us_hb_util_get_options (char *db_name, int db_name_size, char *node_name, int no
       switch (opt)
 	{
 	case COMMDB_HOST_S:
-	  strncpy (remote_host_name, optarg, remote_host_name_size);
+	  copy_len = strnlen (optarg, remote_host_name_size);
+	  memcpy (remote_host_name, optarg, copy_len);
+	  remote_host_name[copy_len] = '\0';
 	  break;
 	default:
 	  status = ER_GENERIC_ERROR;
@@ -3692,8 +3703,13 @@ us_hb_util_get_options (char *db_name, int db_name_size, char *node_name, int no
 	  goto ret;
 	}
 
-      strncpy (db_name, tmp_argv[optind], db_name_size);
-      strncpy (node_name, tmp_argv[optind + 1], node_name_size);
+      copy_len = strnlen (tmp_argv[optind], db_name_size - 1);
+      memcpy (db_name, tmp_argv[optind], copy_len);
+      db_name[copy_len] = '\0';
+
+      copy_len = strnlen (tmp_argv[optind + 1], node_name_size - 1);
+      memcpy (node_name, tmp_argv[optind + 1], copy_len);
+      node_name[copy_len] = '\0';
     }
 
 ret:

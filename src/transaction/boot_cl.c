@@ -639,8 +639,8 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
       boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
 #if defined (CS_MODE)
       /* print version string */
-      strncpy (format, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_GENERAL, MSGCAT_GENERAL_DATABASE_INIT),
-	       BOOT_FORMAT_MAX_LENGTH);
+      strncpy_bufsize (format, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_GENERAL,
+					       MSGCAT_GENERAL_DATABASE_INIT));
       (void) fprintf (stdout, format, rel_name ());
 #endif /* CS_MODE */
     }
@@ -1716,7 +1716,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
 	  /* save the hostname for the use of calling functions */
 	  if (boot_Host_connected != hostlist[n])
 	    {
-	      strncpy (boot_Host_connected, hostlist[n], CUB_MAXHOSTNAMELEN);
+	      strncpy_bufsize (boot_Host_connected, hostlist[n]);
 	    }
 	  db_set_connected_host_status (hostlist[n]);
 
@@ -2979,7 +2979,7 @@ boot_add_data_type (MOP class_mop)
 	  db_make_int (&val, i + 1);
 	  db_put_internal (obj, "type_id", &val);
 
-	  db_make_varchar (&val, 16, (char *) names[i], strlen (names[i]), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	  db_make_varchar (&val, 16, names[i], strlen (names[i]), LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	  db_put_internal (obj, "type_name", &val);
 	}
     }

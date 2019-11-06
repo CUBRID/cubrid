@@ -923,7 +923,7 @@ static void
 init_con_info (CA_CON_INFO * con_info)
 {
   memset (con_info, 0, sizeof (CA_CON_INFO));
-  strncpy (con_info->db_user, "dba", sizeof (con_info->db_user) - 1);
+  strncpy (con_info->db_user, "dba", sizeof (con_info->db_user));
 
   return;
 }
@@ -961,7 +961,7 @@ validate_args (CA_CON_INFO * con_info, char *repl_log_path)
     }
   else
     {
-      strncpy (repl_log_path, resolved_path, PATH_MAX - 1);
+      strncpy_size (repl_log_path, resolved_path, PATH_MAX);
     }
 
   return;

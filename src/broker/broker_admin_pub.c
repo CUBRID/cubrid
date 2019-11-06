@@ -2199,8 +2199,8 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
 	  goto set_conf_error;
 	}
 
-      strncpy (br_info_p->preferred_hosts, host_name, host_name_len);
-      strncpy (shm_as_p->preferred_hosts, host_name, host_name_len);
+      strcpy (br_info_p->preferred_hosts, host_name);
+      strcpy (shm_as_p->preferred_hosts, host_name);
     }
   else if (strcasecmp (conf_name, "MAX_PREPARED_STMT_COUNT") == 0)
     {

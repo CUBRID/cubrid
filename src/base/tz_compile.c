@@ -1138,7 +1138,7 @@ tzc_load_countries (TZ_RAW_DATA * tzd_raw, const char *input_folder)
       memset (temp_tz_country, 0, sizeof (temp_tz_country[0]));
       /* store parsed data */
       memcpy (temp_tz_country->code, str, TZ_COUNTRY_CODE_LEN);
-      strncpy (temp_tz_country->full_name, str_country_name + 1, TZ_COUNTRY_NAME_SIZE);
+      strncpy_bufsize (temp_tz_country->full_name, str_country_name + 1);
       temp_tz_country->id = -1;
     }
 
@@ -6545,7 +6545,7 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
   DB_INFO *db_info_p = NULL;
   bool need_db_shutdown = false;
   const char *program_name = "extend";
-  char *table_name = NULL;
+  const char *table_name = NULL;
   bool is_first_column = true;
   bool has_timezone_column;
 
@@ -6656,7 +6656,7 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 		  printf ("We will update the following columns:\n");
 		  while (db_query_next_tuple (result2) == DB_CURSOR_SUCCESS)
 		    {
-		      char *column_name = NULL;
+		      const char *column_name = NULL;
 		      int column_type = 0;
 
 		      /* Get the column name */

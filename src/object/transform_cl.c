@@ -1486,8 +1486,7 @@ string_disk_size (const char *string)
       str_length = 0;
     }
 
-  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, (DB_C_NCHAR) string, str_length, LANG_SYS_CODESET,
-		    LANG_SYS_COLLATION);
+  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
   length = tp_VarNChar.get_disk_size_of_value (&value);
 
   /* Clear the compressed_string of DB_VALUE */
@@ -1570,8 +1569,7 @@ put_string (OR_BUF * buf, const char *string)
       str_length = 0;
     }
 
-  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, (DB_C_NCHAR) string, str_length, LANG_SYS_CODESET,
-		    LANG_SYS_COLLATION);
+  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
   tp_VarNChar.data_writeval (buf, &value);
   pr_clear_value (&value);
 }
@@ -2108,7 +2106,7 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
 
   if (domain->json_validator)
     {
-      db_make_string_by_const_str (&schema_value, db_json_get_schema_raw_from_validator (domain->json_validator));
+      db_make_string (&schema_value, db_json_get_schema_raw_from_validator (domain->json_validator));
       tp_String.data_writeval (buf, &schema_value);
       pr_clear_value (&schema_value);
     }
@@ -3103,7 +3101,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 		{
 		  DB_SEQ *def_expr_seq;
 		  DB_VALUE def_expr_op, def_expr_type, def_expr_format;
-		  char *def_expr_format_str;
+		  const char *def_expr_format_str;
 
 		  assert (set_size (db_get_set (&value)) == 3);
 

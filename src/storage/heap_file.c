@@ -665,7 +665,7 @@ static int heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 static int heap_scancache_end_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, bool scan_state);
 static SCAN_CODE heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, RECDES * recdes,
 				       bool ispeeking, int chn, MVCC_SNAPSHOT * mvcc_snapshot);
-static int heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid);
+static int heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid, int &avg_reclen);
 static int heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs, INT64 * num_recs_relocated,
 			      INT64 * num_recs_inovf, INT64 * num_pages, int *avg_freespace, int *avg_freespace_nolast,
 			      int *avg_reclength, int *avg_overhead);
@@ -5898,7 +5898,12 @@ heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid
 
   if (expected_length <= 0)
     {
-      recdes.length = heap_estimate_avg_length (thread_p, hfid);
+      rc = heap_estimate_avg_length (thread_p, hfid, recdes.length);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+
       if (recdes.length > (-expected_length))
 	{
 	  expected_length = recdes.length;
@@ -9032,8 +9037,9 @@ heap_estimate_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid)
 
 /*
  * heap_estimate_avg_length () - Estimate the average length of records
- *   return: avg length
+ *   return: error code
  *   hfid(in): Object heap file identifier
+ *   avg_reclen(out) : average length
  *
  * Note: Estimate the avergae length of the objects stored on the heap.
  * This function is mainly used when we are creating the OID of
@@ -9041,18 +9047,17 @@ heap_estimate_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid)
  * loaddb during forward references to other objects.
  */
 static int
-heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid)
+heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid, int &avg_reclen)
 {
   int ignore_npages;
   int ignore_nobjs;
-  int avg_reclen;
 
   if (heap_estimate (thread_p, hfid, &ignore_npages, &ignore_nobjs, &avg_reclen) == -1)
     {
       return ER_FAILED;
     }
 
-  return avg_reclen;
+  return NO_ERROR;
 }
 
 /*
@@ -17070,9 +17075,9 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 		case DB_TYPE_NCHAR:
 		case DB_TYPE_VARNCHAR:
 		  {
-		    char *str = db_get_string (&(value->dbvalue));
-		    char *str_end = str + db_get_string_length (&(value->dbvalue));
-		    char *p = NULL;
+		    const char *str = db_get_string (&(value->dbvalue));
+		    const char *str_end = str + db_get_string_length (&(value->dbvalue));
+		    const char *p = NULL;
 
 		    /* get the sign in the source string; look directly into the buffer string, no copy */
 		    p = str;
@@ -17554,7 +17559,7 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
 				 void **ptr)
 {
   int error = NO_ERROR;
-  char *class_name = NULL;
+  const char *class_name = NULL;
   DB_CLASS_PARTITION_TYPE partition_type = DB_NOT_PARTITIONED_CLASS;
   OID class_oid;
   LC_FIND_CLASSNAME status;
@@ -23255,7 +23260,7 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_HFID_TABLE);
   HEAP_HFID_TABLE_ENTRY *entry = NULL;
   HFID hfid_local = HFID_INITIALIZER;
-  char *classname_local;
+  char *classname_local = NULL;
   int inserted = 0;
 
   assert (hfid != NULL && !HFID_IS_NULL (hfid));
@@ -23273,6 +23278,8 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
     {
       return error_code;
     }
+  // NOTE: no collisions are expected when heap_cache_class_info is called
+
   assert (entry != NULL);
   assert (entry->hfid.hpgid == NULL_PAGEID);
 
@@ -23290,6 +23297,20 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
 	{
 	  ASSERT_ERROR ();
 	  lf_tran_end_with_mb (t_entry);
+
+	  // remove from hash
+	  int success = 0;
+	  if (lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, &success) != NO_ERROR)
+	    {
+	      assert (false);
+	    }
+	  assert (success);
+
+	  if (classname_local != NULL)
+	    {
+	      free (classname_local);
+	    }
+
 	  return error_code;
 	}
     }
@@ -23340,7 +23361,7 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 
   /*  Here we check only the classname because this is the last field to be populated by other possible concurrent
    *  inserters. This means that if this field is already set by someone else, then the entry data is already
-   *  mature so we don't need to add data again. 
+   *  mature so we don't need to add data again.
    */
   if (entry->classname == NULL)
     {

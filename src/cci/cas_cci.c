@@ -840,7 +840,7 @@ reset_connect (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle, T_CCI_ERROR
  * after the last failure of a host is over rc_time.
  */
 int
-cci_prepare (int mapped_conn_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
+cci_prepare (int mapped_conn_id, const char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
 {
   int statement_id = -1;
   int error = CCI_ER_NO_ERROR;
@@ -5695,13 +5695,14 @@ cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url, T_CC
       str = datasource_key[CCI_DS_KEY_LOGIN_TIMEOUT];
 
       n = snprintf (append_str, rlen, "%c%s=%d", delim, str, login_timeout);
-      rlen -= n;
-      if (rlen <= 0 || n < 0)
+      assert (rlen >= 0);
+      if (rlen < n || n < 0)
 	{
 	  set_error_buffer (err_buf, CCI_ER_NO_MORE_MEMORY, NULL);
 	  return false;
 	}
-      strncat (new_url, append_str, rlen);
+      strcat (new_url, append_str);
+      rlen -= n;
       delim = '&';
 
       reset_error_buffer (err_buf);
@@ -5716,13 +5717,14 @@ cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url, T_CC
       str = datasource_key[CCI_DS_KEY_QUERY_TIMEOUT];
 
       n = snprintf (append_str, rlen, "%c%s=%d", delim, str, query_timeout);
-      rlen -= n;
-      if (rlen <= 0 || n < 0)
+      assert (rlen >= 0);
+      if (rlen < n || n < 0)
 	{
 	  set_error_buffer (err_buf, CCI_ER_NO_MORE_MEMORY, NULL);
 	  return false;
 	}
-      strncat (new_url, append_str, rlen);
+      strcat (new_url, append_str);
+      rlen -= n;
       delim = '&';
 
       reset_error_buffer (err_buf);
@@ -5739,13 +5741,14 @@ cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url, T_CC
       str = datasource_key[CCI_DS_KEY_DISCONNECT_ON_QUERY_TIMEOUT];
 
       n = snprintf (append_str, rlen, "%c%s=%s", delim, str, disconnect_on_query_timeout ? "true" : "false");
-      rlen -= n;
-      if (rlen <= 0 || n < 0)
+      assert (rlen >= 0);
+      if (rlen < n || n < 0)
 	{
 	  set_error_buffer (err_buf, CCI_ER_NO_MORE_MEMORY, NULL);
 	  return false;
 	}
-      strncat (new_url, append_str, rlen);
+      strcat (new_url, append_str);
+      rlen -= n;
       delim = '&';
 
       reset_error_buffer (err_buf);

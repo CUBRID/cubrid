@@ -3407,7 +3407,8 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 
     case PT_TYPE_NCHAR:
       /* for constants, set the precision to TP_FLOATING_PRECISION_VALUE */
-      db_make_nchar (db_value, TP_FLOATING_PRECISION_VALUE, (DB_C_NCHAR) value->info.value.data_value.str->bytes,
+      db_make_nchar (db_value, TP_FLOATING_PRECISION_VALUE,
+		     REINTERPRET_CAST (char *, value->info.value.data_value.str->bytes),
 		     value->info.value.data_value.str->length, codeset, collation_id);
       value->info.value.db_value_is_in_workspace = false;
       *more_type_info_needed = (value->data_type == NULL);
@@ -3415,7 +3416,8 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 
     case PT_TYPE_VARNCHAR:
       /* for constants, set the precision to TP_FLOATING_PRECISION_VALUE */
-      db_make_varnchar (db_value, TP_FLOATING_PRECISION_VALUE, (DB_C_NCHAR) value->info.value.data_value.str->bytes,
+      db_make_varnchar (db_value, TP_FLOATING_PRECISION_VALUE,
+			REINTERPRET_CAST (char *, value->info.value.data_value.str->bytes),
 			value->info.value.data_value.str->length, codeset, collation_id);
       value->info.value.db_value_is_in_workspace = false;
       *more_type_info_needed = (value->data_type == NULL);
@@ -3481,7 +3483,8 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 
     case PT_TYPE_CHAR:
       /* for constants, set the precision to TP_FLOATING_PRECISION_VALUE */
-      db_make_char (db_value, TP_FLOATING_PRECISION_VALUE, (DB_C_CHAR) value->info.value.data_value.str->bytes,
+      db_make_char (db_value, TP_FLOATING_PRECISION_VALUE,
+		    REINTERPRET_CAST (char *, value->info.value.data_value.str->bytes),
 		    value->info.value.data_value.str->length, codeset, collation_id);
       value->info.value.db_value_is_in_workspace = false;
       *more_type_info_needed = (value->data_type == NULL);
@@ -3489,7 +3492,8 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 
     case PT_TYPE_VARCHAR:
       /* for constants, set the precision to TP_FLOATING_PRECISION_VALUE */
-      db_make_varchar (db_value, TP_FLOATING_PRECISION_VALUE, (DB_C_CHAR) value->info.value.data_value.str->bytes,
+      db_make_varchar (db_value, TP_FLOATING_PRECISION_VALUE,
+		       REINTERPRET_CAST (char *, value->info.value.data_value.str->bytes),
 		       value->info.value.data_value.str->length, codeset, collation_id);
       value->info.value.db_value_is_in_workspace = false;
       *more_type_info_needed = (value->data_type == NULL);

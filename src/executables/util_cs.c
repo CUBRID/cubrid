@@ -705,7 +705,7 @@ checkdb (UTIL_FUNCTION_ARG * arg)
 	    {
 	      continue;
 	    }
-	  strncpy (n, p, SM_MAX_IDENTIFIER_LENGTH);
+	  strncpy_bufsize (n, p);
 	  if (da_add (darray, n) != NO_ERROR)
 	    {
 	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);

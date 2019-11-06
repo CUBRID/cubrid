@@ -252,6 +252,10 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_TRAN_NUM_START_TOPOPS, "Num_tran_start_topops"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_TRAN_NUM_END_TOPOPS, "Num_tran_end_topops"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_TRAN_NUM_INTERRUPTS, "Num_tran_interrupts"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_TRAN_NUM_PPCACHE_HITS, "Num_tran_postpone_cache_hits"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_TRAN_NUM_PPCACHE_MISS, "Num_tran_postpone_cache_miss"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_TRAN_NUM_TOPOP_PPCACHE_HITS, "Num_tran_topop_postpone_cache_hits"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_TRAN_NUM_TOPOP_PPCACHE_MISS, "Num_tran_topop_postpone_cache_miss"),
 
   /* Execution statistics for the btree manager */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_NUM_INSERTS, "Num_btree_inserts"),
@@ -3803,7 +3807,7 @@ perfmon_unpack_stats (char *buf, UINT64 * stats)
 
 /*
  * perfmon_get_peek_stats - Copy into the statistics array the values of the peek statistics
- *		
+ *
  * return: void
  *
  *   stats (in): statistics array

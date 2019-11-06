@@ -373,6 +373,7 @@ namespace cubload
     , m_recdes_collected ()
     , m_scancache_started (false)
     , m_scancache ()
+    , m_rows (0)
   {
     //
   }
@@ -424,6 +425,11 @@ namespace cubload
     if (m_session.is_failed ())
       {
 	return;
+      }
+
+    if (m_session.get_args ().syntax_check)
+      {
+	++m_rows;
       }
 
     std::size_t attr_index = 0;
@@ -528,7 +534,7 @@ namespace cubload
     if (m_session.get_args ().syntax_check)
       {
 	// Safeguard as we do not need to insert any records during syntax check.
-	assert (m_recdes_collected.size () == 0);
+	assert (m_recdes_collected.empty ());
 	return;
       }
 
@@ -538,7 +544,7 @@ namespace cubload
 	m_scancache.node.classname = m_class_entry->get_class_name ();
       }
 
-    if (m_recdes_collected.size () == 0)
+    if (m_recdes_collected.empty ())
       {
 	// Nothing to flush.
 	return;
@@ -575,7 +581,7 @@ namespace cubload
 
 	    // We attach to outer and we continue.
 	    log_sysop_attach_to_outer (m_thread_ref);
-	    m_thread_ref->m_loaddb_driver->increment_lines_inserted (1);
+	    ++m_rows;
 	  }
       }
     else
@@ -594,9 +600,15 @@ namespace cubload
 	else
 	  {
 	    log_sysop_attach_to_outer (m_thread_ref);
-	    m_thread_ref->m_loaddb_driver->increment_lines_inserted (m_recdes_collected.size ());
+	    m_rows += m_recdes_collected.size ();
 	  }
       }
+  }
+
+  std::size_t
+  server_object_loader::get_rows_number ()
+  {
+    return m_rows;
   }
 
   int

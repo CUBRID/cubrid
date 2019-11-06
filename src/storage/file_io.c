@@ -5238,7 +5238,7 @@ fileio_get_primitive_way_max (const char *path_p, long int *file_name_max_p, lon
 
   /* Verify the above compilation guesses */
 
-  strncpy (new_guess_path, path_p, PATH_MAX);
+  strncpy_bufsize (new_guess_path, path_p);
   name_p = strrchr (new_guess_path, '/');
 #if defined(WINDOWS)
   {
@@ -5473,7 +5473,7 @@ fileio_get_max_name (const char *given_path_p, long int *file_name_max_p, long i
       if (stat (path_p, &stbuf) != -1 && ((stbuf.st_mode & S_IFMT) != S_IFDIR))
 	{
 	  /* Try it with the directory instead */
-	  strncpy (new_path, given_path_p, PATH_MAX);
+	  strncpy_bufsize (new_path, given_path_p);
 	  name_p = strrchr (new_path, '/');
 #if defined(WINDOWS)
 	  {
@@ -5958,7 +5958,7 @@ fileio_cache (VOLID vol_id, const char *vol_label_p, int vol_fd, FILEIO_LOCKF_TY
 	      sys_vol_info_p->volid = vol_id;
 	      sys_vol_info_p->vdes = vol_fd;
 	      sys_vol_info_p->lockf_type = lockf_type;
-	      strncpy (sys_vol_info_p->vlabel, vol_label_p, PATH_MAX);
+	      strncpy_bufsize (sys_vol_info_p->vlabel, vol_label_p);
 	      sys_vol_info_p->next = fileio_Sys_vol_info_header.anchor.next;
 	      fileio_Sys_vol_info_header.anchor.next = sys_vol_info_p;
 	      fileio_Sys_vol_info_header.num_vols++;
@@ -5974,7 +5974,7 @@ fileio_cache (VOLID vol_id, const char *vol_label_p, int vol_fd, FILEIO_LOCKF_TY
 	  sys_vol_info_p->vdes = vol_fd;
 	  sys_vol_info_p->lockf_type = lockf_type;
 	  sys_vol_info_p->next = NULL;
-	  strncpy (sys_vol_info_p->vlabel, vol_label_p, PATH_MAX);
+	  strncpy_bufsize (sys_vol_info_p->vlabel, vol_label_p);
 #if defined(WINDOWS)
 	  pthread_mutex_init (&sys_vol_info_p->sysvol_mutex, NULL);
 #endif /* WINDOWS */
@@ -6675,8 +6675,8 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
    * Adjustments are made at a later point, if the backup_destination is
    * a directory.
    */
-  strncpy (session_p->bkup.name, backup_destination_p, PATH_MAX);
-  strncpy (session_p->bkup.current_path, backup_destination_p, PATH_MAX);
+  strncpy_bufsize (session_p->bkup.name, backup_destination_p);
+  strncpy_bufsize (session_p->bkup.current_path, backup_destination_p);
   session_p->bkup.vlabel = session_p->bkup.name;
   session_p->bkup.vdes = NULL_VOLDES;
   session_p->bkup.dtype = FILEIO_BACKUP_VOL_UNKNOWN;
@@ -7117,8 +7117,8 @@ fileio_start_backup (THREAD_ENTRY * thread_p, const char *db_full_name_p, INT64 
   backup_header_p = session_p->bkup.bkuphdr;
   backup_header_p->iopageid = FILEIO_BACKUP_START_PAGE_ID;
   strncpy (backup_header_p->magic, CUBRID_MAGIC_DATABASE_BACKUP, CUBRID_MAGIC_MAX_LENGTH);
-  strncpy (backup_header_p->db_release, rel_release_string (), REL_MAX_RELEASE_LENGTH);
-  strncpy (backup_header_p->db_fullname, db_full_name_p, PATH_MAX);
+  strncpy_bufsize (backup_header_p->db_release, rel_release_string ());
+  strncpy_bufsize (backup_header_p->db_fullname, db_full_name_p);
   backup_header_p->db_creation = *db_creation_time_p;
   backup_header_p->db_iopagesize = IO_PAGESIZE;
   backup_header_p->db_compatibility = rel_disk_compatible ();
@@ -8926,7 +8926,7 @@ fileio_initialize_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, 
    * which we just checked. */
   session_p->type = FILEIO_BACKUP_READ;	/* access backup device for read */
   /* save database full-pathname specified in the database-loc-file */
-  strncpy (session_p->bkup.loc_db_fullname, is_new_vol_path ? db_full_name_p : "", PATH_MAX);
+  strncpy_bufsize (session_p->bkup.loc_db_fullname, is_new_vol_path ? db_full_name_p : "");
   return (fileio_initialize_backup (db_full_name_p, (const char *) backup_source_p, session_p, level,
 				    restore_verbose_file_path, 0 /* no multi-thread */ , 0 /* no sleep */ ));
 }

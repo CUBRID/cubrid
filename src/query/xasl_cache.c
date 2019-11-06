@@ -2362,7 +2362,6 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
 
 /*
  * xcache_get_entry_count () - Returns the number of xasl cache entries
- *					
  *
  * return : the number of xasl cache entries
  */

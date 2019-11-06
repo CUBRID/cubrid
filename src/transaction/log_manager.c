@@ -1267,7 +1267,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	  error_code = ER_LOG_COMPILATION_RELEASE;
 	  goto error;
 	}
-      strncpy (log_Gl.hdr.db_release, rel_release_string (), REL_MAX_RELEASE_LENGTH);
+      strncpy_bufsize (log_Gl.hdr.db_release, rel_release_string ());
     }
 
   /*
@@ -7713,8 +7713,10 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   if (tdes->m_log_postpone_cache.do_postpone (*thread_p, tdes->posp_nxlsa))
     {
       // do postpone from cache first
+      perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_PPCACHE_HITS);
       return;
     }
+  perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_PPCACHE_MISS);
 
   log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
 }
@@ -7755,8 +7757,10 @@ log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_E
     {
       /* Do postpone was run from cached postpone entries. */
       tdes->state = save_state;
+      perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_TOPOP_PPCACHE_HITS);
       return;
     }
+  perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_TOPOP_PPCACHE_MISS);
 
   log_do_postpone (thread_p, tdes, LOG_TDES_LAST_SYSOP_POSP_LSA (tdes));
 
@@ -8923,7 +8927,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   db_make_int (out_values[idx], header->has_logging_been_skipped);
   idx++;
 
-  db_make_string_by_const_str (out_values[idx], "LOG_PSTATUS_OBSOLETE");
+  db_make_string (out_values[idx], "LOG_PSTATUS_OBSOLETE");
   idx++;
 
   logpb_backup_level_info_to_string (buf, sizeof (buf), header->bkinfo + FILEIO_BACKUP_FULL_LEVEL);
@@ -8951,11 +8955,11 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
     }
 
   str = css_ha_server_state_string ((HA_SERVER_STATE) header->ha_server_state);
-  db_make_string_by_const_str (out_values[idx], str);
+  db_make_string (out_values[idx], str);
   idx++;
 
   str = logwr_log_ha_filestat_to_string ((LOG_HA_FILESTAT) header->ha_file_status);
-  db_make_string_by_const_str (out_values[idx], str);
+  db_make_string (out_values[idx], str);
   idx++;
 
   lsa_to_string (buf, sizeof (buf), &header->eof_lsa);

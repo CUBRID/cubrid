@@ -1823,8 +1823,8 @@ pt_check_level_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool * has_greater
     case PT_LE:
     case PT_GE:
       {
-	bool lhs_level = arg1->info.expr.op == PT_LEVEL;
-	bool rhs_level = arg2->info.expr.op == PT_LEVEL;
+	bool lhs_level = PT_IS_EXPR_NODE (arg1) && arg1->info.expr.op == PT_LEVEL;
+	bool rhs_level = PT_IS_EXPR_NODE (arg2) && arg2->info.expr.op == PT_LEVEL;
 	if ((lhs_level && rhs_level) || (!lhs_level && !rhs_level))
 	  {
 	    /* leave both has_greater and has_lesser as false */
@@ -7703,7 +7703,7 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
 			   LANG_SYS_COLLATION, NULL);
   db_value_domain_default (db_valuep + 11, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
 			   LANG_SYS_COLLATION, NULL);
-  db_make_varchar (db_valuep + 12, DB_DEFAULT_PRECISION, (DB_C_CHAR) "", 0, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varchar (db_valuep + 12, DB_DEFAULT_PRECISION, "", 0, LANG_SYS_CODESET, LANG_SYS_COLLATION);
   db_value_domain_default (db_valuep + 13, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
 			   LANG_SYS_COLLATION, NULL);
 

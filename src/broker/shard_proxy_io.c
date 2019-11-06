@@ -1720,7 +1720,7 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 
 	  CAS_PROTO_TO_VER_STR (&ver, (int) (CAS_PROTO_VER_MASK & client_version));
 
-	  strncpy (driver_version, ver, SRV_CON_VER_STR_MAX_SIZE);
+	  strncpy_bufsize (driver_version, ver);
 	}
       else
 	{
@@ -4609,8 +4609,8 @@ proxy_set_conn_info (int func_code, int ctx_cid, int ctx_uid, int shard_id, int 
   /* this cas will reconnect to database. */
   shard_stmt_del_all_srv_h_id_for_shard_cas (shard_id, cas_id);
 
-  strncpy (as_info_p->database_user, ctx_p->database_user, SRV_CON_DBUSER_SIZE - 1);
-  strncpy (as_info_p->database_passwd, ctx_p->database_passwd, SRV_CON_DBPASSWD_SIZE - 1);
+  strncpy_bufsize (as_info_p->database_user, ctx_p->database_user);
+  strncpy_bufsize (as_info_p->database_passwd, ctx_p->database_passwd);
 }
 
 static T_CAS_IO *

@@ -807,6 +807,8 @@ class vacuum_master_task : public cubthread::entry_task
     void execute (cubthread::entry &thread_ref) final;
 
   private:
+    bool check_shutdown () const;
+    bool is_task_queue_full () const;
     bool should_interrupt_iteration () const;         // conditions to interrupt an iteration and go to sleep
     bool is_cursor_entry_ready_to_vacuum () const;    // check if conditions to vacuum cursor entry are met
     bool is_cursor_entry_available () const;          // check if cursor entry is available and can generate a new job
@@ -2904,15 +2906,15 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
       return;
     }
 
-  if (!BO_IS_SERVER_RESTARTED ())
+  if (check_shutdown ())
     {
-      // check if boot is aborted
-      vacuum_Data.shutdown_sequence.check_shutdown_request ();
+      // stop on shutdown
       return;
     }
 
-  if (should_interrupt_iteration ())
+  if (!BO_IS_SERVER_RESTARTED ())
     {
+      // check if boot is aborted
       return;
     }
 
@@ -2967,7 +2969,7 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
 }
 
 bool
-vacuum_master_task::should_interrupt_iteration () const
+vacuum_master_task::check_shutdown() const
 {
   if (vacuum_Data.shutdown_sequence.check_shutdown_request ())
     {
@@ -2975,15 +2977,25 @@ vacuum_master_task::should_interrupt_iteration () const
       vacuum_er_log (VACUUM_ER_LOG_MASTER, "%s", "Interrupt iteration: shutdown");
       return true;
     }
+  return false;
+}
 
+bool
+vacuum_master_task::is_task_queue_full() const
+{
   if (cubthread::get_manager ()->is_pool_full (vacuum_Worker_threads))
     {
       // stop if worker pool is full
       vacuum_er_log (VACUUM_ER_LOG_MASTER, "%s", "Interrupt iteration: full worker pool");
       return true;
     }
-
   return false;
+}
+
+bool
+vacuum_master_task::should_interrupt_iteration () const
+{
+  return check_shutdown () || is_task_queue_full ();
 }
 
 bool
@@ -4962,13 +4974,34 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
       /* empty */
       if (vacuum_is_empty ())
 	{
-	  const VACUUM_LOG_BLOCKID LOG_BLOCK_TRAILING_DIFF = 2;
+	  // don't let vacuum data go too far back; try to update last blockid
+	  // need to make sure that log_Gl.hdr.does_block_need_vacuum is not true; safest choice is to also hold
+	  // log_Gl.prior_info.prior_lsa_mutex while doing it
+
+	  if (log_Gl.hdr.does_block_need_vacuum)
+	    {
+	      // cannot update
+	      return NO_ERROR;
+	    }
+
+          // *INDENT-OFF*
+          std::unique_lock<std::mutex> ulock { log_Gl.prior_info.prior_lsa_mutex };
+          // *INDENT-ON*
+	  // need to double check log_Gl.hdr.does_block_need_vacuum while holding mutex
+	  if (log_Gl.hdr.does_block_need_vacuum)
+	    {
+	      // cannot update
+	      return NO_ERROR;
+	    }
+
 	  LOG_LSA log_lsa = log_Gl.prior_info.prior_lsa;
+	  ulock.unlock ();	// unlock after reading prior_lsa
+
+	  const VACUUM_LOG_BLOCKID LOG_BLOCK_TRAILING_DIFF = 2;
 	  VACUUM_LOG_BLOCKID log_blockid = vacuum_get_log_blockid (log_lsa.pageid);
 
 	  if (log_blockid > vacuum_Data.get_last_blockid () + LOG_BLOCK_TRAILING_DIFF)
 	    {
-	      // don't let vacuum data go too far back
 	      vacuum_Data.set_last_blockid (log_blockid - LOG_BLOCK_TRAILING_DIFF);
 	      vacuum_data_empty_update_last_blockid (thread_p);
 	      vacuum_update_keep_from_log_pageid (thread_p);

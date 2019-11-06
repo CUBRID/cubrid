@@ -51,7 +51,7 @@ void object_printer::describe_comment (const char *comment)
   assert (comment != NULL);
 
   db_make_null (&comment_value);
-  db_make_string_by_const_str (&comment_value, comment);
+  db_make_string (&comment_value, comment);
 
   m_buf ("COMMENT ");
   if (comment != NULL && comment[0] != '\0')
