@@ -959,6 +959,13 @@ xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname, const 
 	  entry->e_current.action = LC_CLASSNAME_DELETED_RENAME;
 	  renamed = LC_CLASSNAME_RESERVED_RENAME;
 
+	  /* Add new name to modified list, to correctly restore in case of abort. */
+	  if (log_add_to_modified_class_list (thread_p, newname, class_oid) != NO_ERROR)
+	    {
+	      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+	      return LC_CLASSNAME_ERROR;
+	    }
+
 	  /* We need to add a dummy log here. If rename is the first clause of alter statement, there will be no log
 	   * entries between parent system savepoint and next flush. Next flush will start a system operation which
 	   * will mark the delete action of old class name with same LSA as parent system savepoint. Therefore, the
