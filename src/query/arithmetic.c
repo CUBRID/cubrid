@@ -29,17 +29,20 @@
 #include "crypt_opfunc.h"
 #include "db_date.h"
 #include "db_json.hpp"
+#include "db_json_path.hpp"
 #include "dbtype.h"
 #include "error_manager.h"
 #include "memory_private_allocator.hpp"
 #include "memory_reference_store.hpp"
 #include "numeric_opfunc.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "string_opfunc.h"
 #include "tz_support.h"
 
 #include <algorithm>
 #include <assert.h>
+#include <cctype>
 #include <float.h>
 #include <math.h>
 #include <stdio.h>
@@ -4348,7 +4351,7 @@ db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
       break;
 
     default:
-      db_make_string_by_const_str (result, type_name);
+      db_make_string (result, type_name);
     }
 
   return NO_ERROR;
@@ -5173,7 +5176,7 @@ db_evaluate_json_type_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const
       type = db_json_get_type_as_str (doc.get_immutable ());
       length = strlen (type);
 
-      return db_make_varchar (result, length, (DB_C_CHAR) type, length, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+      return db_make_varchar (result, length, type, length, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
     }
 }
 
@@ -5563,7 +5566,6 @@ db_evaluate_json_object (DB_VALUE * result, DB_VALUE * const *arg, int const num
   int i;
   int error_code = NO_ERROR;
   JSON_DOC_STORE value_doc;
-  const char *value_key = NULL;
 
   db_make_null (result);
 
@@ -5828,7 +5830,6 @@ db_evaluate_json_keys (DB_VALUE * result, DB_VALUE * const *arg, int const num_a
   /* *INDENT-OFF* */
   std::string path;
   /* *INDENT-ON* */
-  char *str = NULL;
 
   db_make_null (result);
 
@@ -5851,7 +5852,7 @@ db_evaluate_json_keys (DB_VALUE * result, DB_VALUE * const *arg, int const num_a
   else
     {
       /* *INDENT-OFF* */
-      path = std::move (std::string (db_get_string (arg[1]), db_get_string_size (arg[1])));
+      path = std::string (db_get_string (arg[1]), db_get_string_size (arg[1]));
       /* *INDENT-ON* */
     }
 
@@ -6256,10 +6257,23 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
     }
 
   DB_VALUE *pattern = args[2];
-  DB_VALUE *esc_char = nullptr;
+  const DB_VALUE *esc_char = nullptr;
+  const char * slash_str = "\\";
+  DB_VALUE default_slash_str_dbval;
+
   if (num_args >= 4)
     {
       esc_char = args[3];
+    }
+  else
+    {
+      // No escape char arg provided
+      if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false)
+      {
+	 // This is equivalent to compat_mode=mysql. In this mode '\\' is default escape character for LIKE pattern
+	 db_make_string (&default_slash_str_dbval, slash_str);
+	 esc_char = &default_slash_str_dbval;
+      }
     }
 
   std::vector<std::string> starting_paths;
@@ -6274,7 +6288,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
       starting_paths.push_back ("$");
     }
 
-  std::vector<std::string> paths;
+  std::vector<JSON_PATH> paths;
   error_code = db_json_search_func (*doc.get_immutable (), pattern, esc_char, paths, starting_paths, find_all);
   if (error_code != NO_ERROR)
     {
@@ -6289,16 +6303,17 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
   JSON_DOC *result_json = nullptr;
   if (paths.size () == 1)
     {
-      error_code = db_json_path_unquote_object_keys_external (paths[0]);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
+      std::string path = paths[0].dump_json_path ();
+      error_code = db_json_path_unquote_object_keys_external (path);
+      if (error_code)
+      {
+	return error_code;
+      }
 
       char *escaped;
       size_t escaped_size;
-      error_code = db_string_escape_str (paths[0].c_str (), paths[0].size (), &escaped, &escaped_size);
-      cubmem::private_unique_ptr<char> escaped_unqique_ptr (escaped, NULL);
+      error_code = db_string_escape_str (path.c_str (), path.size (), &escaped, &escaped_size);
+      cubmem::private_unique_ptr<char> escaped_unique_ptr (escaped, NULL);
       if (error_code)
 	{
 	  return error_code;
@@ -6317,7 +6332,9 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
   result_json_owner.create_mutable_reference ();
   for (std::size_t i = 0; i < paths.size (); ++i)
     {
-      error_code = db_json_path_unquote_object_keys_external (paths[i]);
+      std::string path = paths[i].dump_json_path ();
+
+      error_code = db_json_path_unquote_object_keys_external (path);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -6325,8 +6342,8 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
 
       char *escaped;
       size_t escaped_size;
-      error_code = db_string_escape_str (paths[i].c_str (), paths[i].size (), &escaped, &escaped_size);
-      cubmem::private_unique_ptr<char> escaped_unqique_ptr (escaped, NULL);
+      error_code = db_string_escape_str (path.c_str (), path.size (), &escaped, &escaped_size);
+      cubmem::private_unique_ptr<char> escaped_unique_ptr (escaped, NULL);
       if (error_code)
 	{
 	  return error_code;
@@ -6444,7 +6461,10 @@ is_str_find_all (DB_VALUE * val, bool & find_all)
 
   // *INDENT-OFF*
   std::string find_all_str (db_get_string (val), db_get_string_size (val));
-  std::transform (find_all_str.begin (), find_all_str.end (), find_all_str.begin (), ::tolower);
+  std::transform (find_all_str.begin (), find_all_str.end (), find_all_str.begin (), [] (unsigned char c)
+  {
+    return std::tolower (c);
+  });
   // *INDENT-ON*
 
   find_all = false;

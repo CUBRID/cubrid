@@ -58,23 +58,19 @@
 
 #include "db_json_path.hpp"
 #include "db_json_types_internal.hpp"
+#include "db_rapidjson.hpp"
 #include "dbtype.h"
 #include "memory_alloc.h"
 #include "memory_private_allocator.hpp"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "porting_inline.hpp"
 #include "query_dump.h"
 #include "string_opfunc.h"
 #include "system_parameter.h"
 
-#include "rapidjson/error/en.h"
-#include "rapidjson/rapidjson.h"
-#include "rapidjson/schema.h"
-#include "rapidjson/stringbuffer.h"
-#include "rapidjson/writer.h"
-
-#include <sstream>
 #include <algorithm>
+#include <sstream>
 #include <stack>
 
 #define TODO_OPTIMIZE_JSON_BODY_STRING true
@@ -1957,7 +1953,7 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
  */
 int
 db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char,
-		     std::vector<std::string> &paths, const std::vector<std::string> &patterns, bool find_all)
+		     std::vector<JSON_PATH> &paths, const std::vector<std::string> &patterns, bool find_all)
 {
   std::vector<JSON_PATH> json_paths;
   for (const auto &path : patterns)
@@ -1970,7 +1966,21 @@ db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALU
 	}
     }
 
-  const map_func_type &f_search = [&json_paths, &paths, pattern, esc_char, find_all] (const JSON_VALUE &jv,
+  std::string raw_json_string = db_get_string (pattern);
+
+  char *quoted_str;
+  size_t quoted_sz;
+  db_string_escape_str (raw_json_string.c_str (), raw_json_string.length (), &quoted_str, &quoted_sz);
+  raw_json_string = quoted_str;
+  db_private_free (NULL, quoted_str);
+
+  const std::string encoded_pattern = db_json_json_string_as_utf8 (raw_json_string);
+
+  DB_VALUE encoded_pattern_dbval;
+  db_make_string (&encoded_pattern_dbval, encoded_pattern.c_str ());
+  db_string_put_cs_and_collation (&encoded_pattern_dbval, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
+
+  const map_func_type &f_search = [&json_paths, &paths, &encoded_pattern_dbval, esc_char, find_all] (const JSON_VALUE &jv,
 				  const JSON_PATH &crt_path, bool &stop) -> int
   {
     if (!jv.IsString ())
@@ -1981,15 +1991,11 @@ db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALU
     const char *json_str = jv.GetString ();
     DB_VALUE str_val;
 
-    db_make_null (&str_val);
-    int error_code = db_make_string (&str_val, (char *) json_str);
-    if (error_code)
-      {
-	return error_code;
-      }
+    db_make_string (&str_val, json_str);
+    db_string_put_cs_and_collation (&str_val, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
 
     int match;
-    error_code = db_string_like (&str_val, pattern, esc_char, &match);
+    int error_code = db_string_like (&str_val, &encoded_pattern_dbval, esc_char, &match);
     if (error_code != NO_ERROR || !match)
       {
 	return error_code;
@@ -2001,7 +2007,7 @@ db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALU
 
 	if (res == JSON_PATH::MATCH_RESULT::PREFIX_MATCH || res == JSON_PATH::MATCH_RESULT::FULL_MATCH)
 	  {
-	    paths.push_back (crt_path.dump_json_path ());
+	    paths.push_back (crt_path);
 	    if (!find_all)
 	      {
 		stop = true;
@@ -2683,7 +2689,7 @@ db_json_get_bool_from_value (const JSON_VALUE *doc)
   if (doc == NULL)
     {
       assert (false);
-      return NULL;
+      return false;
     }
 
   assert (db_json_get_type_of_value (doc) == DB_JSON_BOOL);
@@ -2874,6 +2880,24 @@ db_json_pretty_func (const JSON_DOC &doc, char *&result_str)
   doc.Accept (json_pretty_writer);
 
   result_str = db_private_strdup (NULL, json_pretty_writer.ToString ().c_str ());
+}
+
+std::string
+db_json_json_string_as_utf8 (std::string raw_json_string)
+{
+  assert (raw_json_string.length () >= 2 && raw_json_string[0] == '"');
+
+  JSON_DOC *doc = nullptr;
+  if (db_json_get_json_from_str (raw_json_string.c_str (), doc, raw_json_string.length ()) != NO_ERROR)
+    {
+      assert (false);
+      return "";
+    }
+
+  std::string res = doc->IsString () ? doc->GetString () : "";
+  delete doc;
+
+  return res;
 }
 
 /*
@@ -3167,9 +3191,19 @@ db_value_to_json_doc (const DB_VALUE &db_val, bool force_copy, JSON_DOC_STORE &j
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
     {
+      DB_VALUE utf8_str;
+      const DB_VALUE *json_str_val;
+      error_code = db_json_copy_and_convert_to_utf8 (&db_val, &utf8_str, &json_str_val);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+
       JSON_DOC *json_doc_ptr = NULL;
-      error_code = db_json_get_json_from_str (db_get_string (&db_val), json_doc_ptr, db_get_string_size (&db_val));
+      error_code = db_json_get_json_from_str (db_get_string (json_str_val), json_doc_ptr, db_get_string_size (json_str_val));
       json_doc.set_mutable_reference (json_doc_ptr);
+      pr_clear_value (&utf8_str);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -3225,10 +3259,23 @@ db_value_to_json_value (const DB_VALUE &db_val, JSON_DOC_STORE &json_doc)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
+    {
+      DB_VALUE utf8_str;
+      const DB_VALUE *json_str_val;
+      int error_code = db_json_copy_and_convert_to_utf8 (&db_val, &utf8_str, &json_str_val);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+
       json_doc.create_mutable_reference ();
-      db_json_set_string_to_doc (json_doc.get_mutable (), db_get_string (&db_val),
-				 (unsigned) db_get_string_size (&db_val));
-      break;
+
+      db_json_set_string_to_doc (json_doc.get_mutable (), db_get_string (json_str_val),
+				 (unsigned) db_get_string_size (json_str_val));
+      pr_clear_value (&utf8_str);
+    }
+    break;
     case DB_TYPE_ENUMERATION:
       json_doc.create_mutable_reference ();
       db_json_set_string_to_doc (json_doc.get_mutable (), db_get_enum_string (&db_val),
@@ -3850,7 +3897,7 @@ JSON_PRETTY_WRITER::EndArray (SizeType elementCount)
  * length is the buffer size (we can not use strlen!)
  */
 int
-db_json_serialize (const JSON_DOC &doc, OR_BUF &buffer)
+db_json_serialize (const JSON_DOC &doc, or_buf &buffer)
 {
   JSON_SERIALIZER js (buffer);
   int error_code = NO_ERROR;
@@ -3885,7 +3932,7 @@ db_json_serialize_length (const JSON_DOC &doc)
  * for storing it in the json document
  */
 static int
-db_json_or_buf_underflow (OR_BUF *buf, size_t length)
+db_json_or_buf_underflow (or_buf *buf, size_t length)
 {
   if ((buf->ptr + length) > buf->endptr)
     {

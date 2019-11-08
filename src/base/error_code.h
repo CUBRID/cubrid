@@ -35,6 +35,11 @@
 
 #ident "$Id$"
 
+#if defined (WINDOWS)
+// suppress warning C4005: 'NO_ERROR': macro redefinition
+#include "winerror.h"
+#endif // MSVC
+
 #ifdef NO_ERROR
 #undef NO_ERROR
 #endif
@@ -660,7 +665,7 @@
 #define ER_LDR_INTERNAL_REFERENCE  		    -563
 #define ER_LDR_UNIQUE_VIOLATION			    -564
 #define ER_LDR_INVALID_CONSTRUCTOR 		    -565
-#define ER_LDB_NO_CLASS_OR_NO_ATTRIBUTE 	    -566
+#define ER_LDR_NO_CLASS_OR_NO_ATTRIBUTE 	    -566
 #define ER_LDR_UNEXPECTED_ARGUMENT		    -567
 #define ER_LDR_MISSING_ARGUMENT			    -568
 #define ER_LDR_MISSING_ATTRIBUTES		    -569
@@ -1594,8 +1599,12 @@
 
 #define ER_IB_ERROR_ABORT                           -1243
 
+#define ER_LDR_SHARED_NOT_SUPPORTED                 -1244
+#define ER_LDR_CLASS_NOT_SUPPORTED                  -1245
 
-#define ER_LAST_ERROR                               -1244
+#define ER_GAI_ERROR                                -1246
+
+#define ER_LAST_ERROR                               -1247
 
 /*
  * CAUTION!

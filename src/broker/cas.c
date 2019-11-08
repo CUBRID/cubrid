@@ -558,12 +558,20 @@ conn_retry:
 
   gettimeofday (&cas_start_time, NULL);
 
+  int ret;
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  snprintf (cas_db_name, MAX_HA_DBINFO_LENGTH, "%s", shm_appl->shard_conn_info[shm_shard_id].db_name);
+  ret = snprintf (cas_db_name, MAX_HA_DBINFO_LENGTH - 1, "%s", shm_appl->shard_conn_info[shm_shard_id].db_name);
 #else
-  snprintf (cas_db_name, MAX_HA_DBINFO_LENGTH, "%s@%s", shm_appl->shard_conn_info[shm_shard_id].db_name,
-	    shm_appl->shard_conn_info[shm_shard_id].db_host);
+  ret = snprintf (cas_db_name, MAX_HA_DBINFO_LENGTH - 1, "%s@%s", shm_appl->shard_conn_info[shm_shard_id].db_name,
+		  shm_appl->shard_conn_info[shm_shard_id].db_host);
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
+
+  if (ret < 0)
+    {
+      assert (false);
+      FREE (net_buf.data);
+      return -1;
+    }
 
   set_db_connection_info ();
 
@@ -1081,7 +1089,7 @@ cas_main (void)
 
 		CAS_PROTO_TO_VER_STR (&ver, (int) (CAS_PROTO_VER_MASK & req_info.client_version));
 
-		strncpy (as_info->driver_version, ver, SRV_CON_VER_STR_MAX_SIZE);
+		strncpy_bufsize (as_info->driver_version, ver);
 	      }
 	    else
 	      {

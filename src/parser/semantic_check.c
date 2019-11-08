@@ -202,7 +202,8 @@ static PT_NODE *pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NO
 						  int *continue_walk);
 static void pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry);
 static int pt_normalize_path (PARSER_CONTEXT * parser, REFPTR (char, c));
-static int pt_check_json_table_node (PARSER_CONTEXT * pareser, PT_NODE * node);
+static int pt_json_str_codeset_normalization (PARSER_CONTEXT * parser, REFPTR (char, c));
+static int pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_gen_isnull_preds (PARSER_CONTEXT * parser, PT_NODE * pred, PT_CHAIN_INFO * chain);
 static PT_NODE *pt_path_chain (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -8461,6 +8462,12 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       select = node->info.create_entity.create_select;
       if (select != NULL)
 	{
+	  if (select->info.query.with != NULL)
+	    {
+	      // run semantic check only for CREATE ... AS WITH ...
+	      select = pt_semantic_check (parser, select);
+	    }
+
 	  if (pt_has_parameters (parser, select))
 	    {
 	      PT_ERRORmf (parser, select, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VARIABLE_NOT_ALLOWED, 0);
@@ -9328,6 +9335,27 @@ pt_normalize_path (PARSER_CONTEXT * parser, REFPTR (char, c))
   return NO_ERROR;
 }
 
+static int
+pt_json_str_codeset_normalization (PARSER_CONTEXT * parser, REFPTR (char, c))
+{
+  DB_VALUE res_str, temp;
+  db_make_string (&temp, c);
+
+  int error_code = db_string_convert_to (&temp, &res_str, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
+  if (error_code != NO_ERROR)
+    {
+      pr_clear_value (&res_str);
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  c = (char *) parser_alloc (parser, db_get_string_size (&res_str));
+  strcpy (c, db_get_string (&res_str));
+
+  pr_clear_value (&res_str);
+  return NO_ERROR;
+}
+
 /*
  * pt_check_json_table_node () - check json_table's paths and type check ON_ERROR & ON_EMPTY
  *
@@ -9339,8 +9367,14 @@ pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   assert (node != NULL && node->node_type == PT_JSON_TABLE_NODE);
 
-  int error_code = pt_normalize_path (parser, node->info.json_table_node_info.path);
-  if (error_code)
+  int error_code = pt_json_str_codeset_normalization (parser, node->info.json_table_node_info.path);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = pt_normalize_path (parser, node->info.json_table_node_info.path);
+  if (error_code != NO_ERROR)
     {
       return error_code;
     }
@@ -9351,6 +9385,16 @@ pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node)
       if (col_info.on_empty.m_behavior == JSON_TABLE_DEFAULT_VALUE)
 	{
 	  assert (col_info.on_empty.m_default_value != NULL);
+
+	  if (DB_IS_STRING (col_info.on_empty.m_default_value))
+	    {
+	      error_code = db_json_convert_to_utf8 (col_info.on_empty.m_default_value);
+	      if (error_code != NO_ERROR)
+		{
+		  return NO_ERROR;
+		}
+	    }
+
 	  TP_DOMAIN *domain = pt_xasl_node_to_domain (parser, col);
 	  TP_DOMAIN_STATUS status_cast =
 	    tp_value_cast (col_info.on_empty.m_default_value, col_info.on_empty.m_default_value, domain, false);
@@ -9363,6 +9407,16 @@ pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node)
       if (col_info.on_error.m_behavior == JSON_TABLE_DEFAULT_VALUE)
 	{
 	  assert (col_info.on_error.m_default_value != NULL);
+
+	  if (DB_IS_STRING (col_info.on_error.m_default_value))
+	    {
+	      error_code = db_json_convert_to_utf8 (col_info.on_error.m_default_value);
+	      if (error_code != NO_ERROR)
+		{
+		  return NO_ERROR;
+		}
+	    }
+
 	  TP_DOMAIN *domain = pt_xasl_node_to_domain (parser, col);
 	  TP_DOMAIN_STATUS status_cast =
 	    tp_value_cast (col_info.on_error.m_default_value, col_info.on_error.m_default_value, domain, false);
@@ -15557,7 +15611,7 @@ pt_get_select_list_coll_compat (PARSER_CONTEXT * parser, PT_NODE * query, SEMAN_
  * pt_apply_union_select_list_collation () - scans a UNION parse tree and
  *		sets for each node with collation the collation corresponding
  *		of the column in 'cinfo' array
- *				
+ *
  *   return:  union compatibility status
  *   parser(in): the parser context
  *   query(in): query node

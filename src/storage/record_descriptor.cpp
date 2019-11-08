@@ -58,21 +58,21 @@ record_descriptor::record_descriptor (const recdes &rec,
 				      const cubmem::block_allocator &alloc /* = cubmem::PRIVATE_BLOCK_ALLOCATOR */)
   : record_descriptor (alloc)
 {
-  m_recdes.type = rec.type;
-  if (rec.length != 0)
-    {
-      // copy content from argument
-      m_recdes.area_size = rec.length;
-      m_recdes.length = m_recdes.area_size;
-      m_own_data.extend_to ((size_t) m_recdes.area_size);
-      m_recdes.data = m_own_data.get_ptr ();
-      std::memcpy (m_recdes.data, rec.data, m_recdes.length);
-
-      m_data_source = data_source::COPIED;  // we assume this is a copied record
-    }
+  set_recdes (rec);
 }
 
-record_descriptor::record_descriptor (const char *data, size_t size)
+record_descriptor::record_descriptor (record_descriptor &&other)
+{
+  m_recdes = other.m_recdes;
+  m_own_data = std::move (other.m_own_data);
+  m_data_source = other.m_data_source;
+
+  other.m_data_source = data_source::INVALID;
+  other.m_recdes.data = NULL;
+  other.m_recdes.type = REC_UNKNOWN;
+}
+
+record_descriptor::record_descriptor (const char *data, std::size_t size)
   : record_descriptor ()
 {
   set_data (data, size);
@@ -80,6 +80,25 @@ record_descriptor::record_descriptor (const char *data, size_t size)
 
 record_descriptor::~record_descriptor (void)
 {
+}
+
+void
+record_descriptor::set_recdes (const recdes &rec)
+{
+  assert (m_data_source == data_source::INVALID);
+
+  m_recdes.type = rec.type;
+  if (rec.length != 0)
+    {
+      // copy content from argument
+      m_recdes.area_size = rec.length;
+      m_recdes.length = m_recdes.area_size;
+      m_own_data.extend_to ((std::size_t) m_recdes.area_size);
+      m_recdes.data = m_own_data.get_ptr ();
+      std::memcpy (m_recdes.data, rec.data, m_recdes.length);
+
+      m_data_source = data_source::COPIED;  // we assume this is a copied record
+    }
 }
 
 int
@@ -111,7 +130,7 @@ record_descriptor::get (cubthread::entry *thread_p, PAGE_PTR page, PGSLOTID slot
       assert (m_recdes.length < 0);
       assert (mode == record_get_mode::COPY_RECORD);
 
-      size_t required_size = static_cast<size_t> (-m_recdes.length);
+      std::size_t required_size = static_cast<std::size_t> (-m_recdes.length);
       resize_buffer (required_size);
 
       sc = spage_get_record (thread_p, page, slotid, &m_recdes, mode_to_int);
@@ -130,9 +149,9 @@ record_descriptor::get (cubthread::entry *thread_p, PAGE_PTR page, PGSLOTID slot
 void
 record_descriptor::resize_buffer (std::size_t required_size)
 {
-  check_changes_are_permitted ();
+  assert (m_data_source == data_source::INVALID || is_mutable ());
 
-  if (m_recdes.area_size > 0 && required_size <= (size_t) m_recdes.area_size)
+  if (m_recdes.area_size > 0 && required_size <= (std::size_t) m_recdes.area_size)
     {
       // resize not required
       return;
@@ -142,6 +161,11 @@ record_descriptor::resize_buffer (std::size_t required_size)
 
   m_recdes.data = m_own_data.get_ptr ();
   m_recdes.area_size = (int) required_size;
+
+  if (m_data_source == data_source::INVALID)
+    {
+      m_data_source = data_source::NEW;
+    }
 }
 
 void
@@ -193,7 +217,7 @@ record_descriptor::get_data_for_modify (void)
 }
 
 void
-record_descriptor::set_data (const char *data, size_t size)
+record_descriptor::set_data (const char *data, std::size_t size)
 {
   // data is assigned and cannot be changed
   m_data_source = data_source::IMMUTABLE;
@@ -202,10 +226,10 @@ record_descriptor::set_data (const char *data, size_t size)
 }
 
 void
-record_descriptor::set_record_length (size_t length)
+record_descriptor::set_record_length (std::size_t length)
 {
   check_changes_are_permitted ();
-  assert (length <= m_recdes.area_size);
+  assert (m_recdes.area_size >= 0 && length <= (size_t) m_recdes.area_size);
   m_recdes.length = (int) length;
 }
 
@@ -217,7 +241,7 @@ record_descriptor::set_type (std::int16_t type)
 }
 
 void
-record_descriptor::set_external_buffer (char *buf, size_t buf_size)
+record_descriptor::set_external_buffer (char *buf, std::size_t buf_size)
 {
   m_own_data.freemem ();
   m_recdes.data = buf;
@@ -308,23 +332,26 @@ record_descriptor::pack (cubpacking::packer &packer) const
 void
 record_descriptor::unpack (cubpacking::unpacker &unpacker)
 {
+  // resize_buffer requires m_data_source to be set
+  m_data_source = data_source::COPIED;
+
   unpacker.unpack_short (m_recdes.type);
   unpacker.peek_unpack_buffer_length (m_recdes.length);
   resize_buffer (m_recdes.length);
   unpacker.unpack_buffer_with_length (m_recdes.data, m_recdes.length);
 }
 
-size_t
-record_descriptor::get_packed_size (cubpacking::packer &packer) const
+std::size_t
+record_descriptor::get_packed_size (cubpacking::packer &packer, std::size_t curr_offset) const
 {
-  size_t entry_size = packer.get_packed_short_size (0);
+  std::size_t entry_size = packer.get_packed_short_size (curr_offset);
   entry_size += packer.get_packed_buffer_size (m_recdes.data, m_recdes.length, entry_size);
 
   return entry_size;
 }
 
 void
-record_descriptor::release_buffer (char *&data, size_t &size)
+record_descriptor::release_buffer (char *&data, std::size_t &size)
 {
   size = m_own_data.get_size ();
   data = m_own_data.release_ptr ();

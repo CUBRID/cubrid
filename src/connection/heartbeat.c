@@ -301,7 +301,7 @@ hb_make_set_hbp_register (int type)
   memset ((void *) hbp_register, 0, sizeof (HBP_PROC_REGISTER));
   hbp_register->pid = htonl (getpid ());
   hbp_register->type = htonl (type);
-  strncpy (hbp_register->exec_path, hb_Exec_path, sizeof (hbp_register->exec_path) - 1);
+  strncpy_bufsize (hbp_register->exec_path, hb_Exec_path);
 
   p = (char *) &hbp_register->args[0];
   last = (char *) (p + sizeof (hbp_register->args));

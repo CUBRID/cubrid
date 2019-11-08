@@ -52,6 +52,7 @@
 #include "log_manager.h"
 #include "log_system_tran.hpp"
 #include "memory_private_allocator.hpp"
+#include "object_representation.h"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "xserver_interface.h"
@@ -136,7 +137,7 @@ static int logtb_global_unique_stat_init (void *unique_stat);
 static int logtb_global_unique_stat_key_copy (void *src, void *dest);
 static void logtb_free_tran_mvcc_info (LOG_TDES * tdes);
 
-static int logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvcc_subid);
+static void logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvcc_subid);
 
 static int logtb_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id, bool * has_authorization);
 static void logtb_find_thread_entry_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, int tran_index,
@@ -200,22 +201,25 @@ logtb_allocate_tdes_area (int num_indices)
   LOG_ADDR_TDESAREA *area;	/* Contiguous area for new transaction indices */
   LOG_TDES *tdes;		/* Transaction descriptor */
   int i, tran_index;
-  size_t area_size;
 
   /*
    * Allocate an area for the transaction descriptors, set the address of
    * each transaction descriptor, and keep the address of the area for
    * deallocation purposes at shutdown time.
    */
-  area_size = num_indices * sizeof (LOG_TDES) + sizeof (LOG_ADDR_TDESAREA);
-  area = (LOG_ADDR_TDESAREA *) malloc (area_size);
+  area = (LOG_ADDR_TDESAREA *) malloc (sizeof (LOG_ADDR_TDESAREA));
   if (area == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, area_size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOG_ADDR_TDESAREA));
       return NULL;
     }
 
-  area->tdesarea = ((LOG_TDES *) ((char *) area + sizeof (LOG_ADDR_TDESAREA)));
+  area->tdesarea = new LOG_TDES[num_indices];
+  if (area->tdesarea == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, num_indices * sizeof (LOG_TDES));
+      return NULL;
+    }
   area->next = log_Gl.trantable.area;
 
   /*
@@ -311,6 +315,9 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
   error_code = wfg_alloc_nodes (thread_p, total_indices);
   if (error_code != NO_ERROR)
     {
+      /* *INDENT-OFF* */
+      delete [] area->tdesarea;
+      /* *INDENT-ON* */
       free_and_init (area);
       goto error;
     }
@@ -318,6 +325,9 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
 
   if (qmgr_allocate_tran_entries (thread_p, total_indices) != NO_ERROR)
     {
+      /* *INDENT-OFF* */
+      delete [] area->tdesarea;
+      /* *INDENT-ON* */
       free_and_init (area);
       error_code = ER_FAILED;
       goto error;
@@ -603,6 +613,9 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
       while (area != NULL)
 	{
 	  log_Gl.trantable.area = area->next;
+	  /* *INDENT-OFF* */
+	  delete[] area->tdesarea;
+	  /* *INDENT-ON* */
 	  free_and_init (area);
 	  area = log_Gl.trantable.area;
 	}
@@ -865,6 +878,7 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CRED
   tdes->num_transient_classnames = 0;
   tdes->first_save_entry = NULL;
   tdes->lob_locator_root.init ();
+  tdes->m_log_postpone_cache.reset ();
 }
 
 /*
@@ -1457,12 +1471,7 @@ logtb_free_tran_mvcc_info (LOG_TDES * tdes)
   MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
 
   curr_mvcc_info->snapshot.m_active_mvccs.finalize ();
-
-  if (curr_mvcc_info->sub_ids != NULL)
-    {
-      free_and_init (curr_mvcc_info->sub_ids);
-      curr_mvcc_info->count_sub_ids = 0;
-    }
+  curr_mvcc_info->sub_ids.clear ();
 }
 
 /*
@@ -1555,6 +1564,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->num_exec_queries = 0;
   tdes->suppress_replication = 0;
+  tdes->m_log_postpone_cache.reset ();
 
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
 
@@ -1575,6 +1585,8 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+  LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_lsa);
+  LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_start_lsa);
 }
 
 /*
@@ -1595,9 +1607,6 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->isloose_end = false;
   tdes->coord = NULL;
   tdes->client_id = -1;
-  // *INDENT-OFF*
-  new (&tdes->client) clientids ();
-  // *INDENT-ON*
   tdes->gtrid = LOG_2PC_NULL_GTRID;
   tdes->gtrinfo.info_length = 0;
   tdes->gtrinfo.info_data = NULL;
@@ -1668,13 +1677,12 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 
   tdes->block_global_oldest_active_until_commit = false;
   tdes->is_user_active = false;
-  // *INDENT-OFF*
-  new (&tdes->m_modified_classes) tx_transient_class_registry ();
-  // *INDENT-ON*
 
   LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+  LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_lsa);
+  LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_start_lsa);
 }
 
 /*
@@ -1689,11 +1697,6 @@ void
 logtb_finalize_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   int r;
-
-  // *INDENT-OFF*
-  tdes->client.~clientids ();
-  tdes->m_modified_classes.~tx_transient_class_registry ();
-  // *INDENT-ON*
 
   logtb_clear_tdes (thread_p, tdes);
   logtb_free_tran_mvcc_info (tdes);
@@ -2243,10 +2246,10 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 	}
 
       size += (3 * OR_INT_SIZE	/* tran index + tran state + process id */
-	       + or_packed_string_length (tdes->client.get_db_user (), NULL)
-	       + or_packed_string_length (tdes->client.get_program_name (), NULL)
-	       + or_packed_string_length (tdes->client.get_login_name (), NULL)
-	       + or_packed_string_length (tdes->client.get_host_name (), NULL));
+	       + OR_INT_SIZE + DB_ALIGN (LOG_USERNAME_MAX, INT_ALIGNMENT)
+	       + OR_INT_SIZE + DB_ALIGN (PATH_MAX, INT_ALIGNMENT)
+	       + OR_INT_SIZE + DB_ALIGN (L_cuserid, INT_ALIGNMENT)
+	       + OR_INT_SIZE + DB_ALIGN (CUB_MAXHOSTNAMELEN, INT_ALIGNMENT));
 
 #if defined(SERVER_MODE)
       if (include_query_exec_info)
@@ -2345,10 +2348,10 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
       ptr = or_pack_int (ptr, tdes->tran_index);
       ptr = or_pack_int (ptr, tdes->state);
       ptr = or_pack_int (ptr, tdes->client.process_id);
-      ptr = or_pack_string (ptr, tdes->client.get_db_user ());
-      ptr = or_pack_string (ptr, tdes->client.get_program_name ());
-      ptr = or_pack_string (ptr, tdes->client.get_login_name ());
-      ptr = or_pack_string (ptr, tdes->client.get_host_name ());
+      ptr = or_pack_string_with_length (ptr, tdes->client.get_db_user (), tdes->client.db_user.size ());
+      ptr = or_pack_string_with_length (ptr, tdes->client.get_program_name (), tdes->client.program_name.size ());
+      ptr = or_pack_string_with_length (ptr, tdes->client.get_login_name (), tdes->client.login_name.size ());
+      ptr = or_pack_string_with_length (ptr, tdes->client.get_host_name (), tdes->client.host_name.size ());
 
 #if defined(SERVER_MODE)
       if (include_query_exec_info)
@@ -2707,7 +2710,9 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 
   if (tran_index == LOG_SYSTEM_TRAN_INDEX)
     {
+#if defined (SERVER_MODE)
       assert (false);
+#endif // SERVER_MODE
       return false;
     }
 
@@ -3836,62 +3841,6 @@ xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logtb_get_oldest_active_mvccid () - Get oldest MVCCID that was running
- *				       when any active transaction started.
- *
- * return	 : MVCCID for oldest active transaction.
- * thread_p (in) : Thread entry.
- *
- * Note:  The returned MVCCID is used as threshold by vacuum. The rows deleted
- *	      by transaction having MVCCIDs >= logtb_get_lowest_active_mvccid
- *	      will not be physical removed by vacuum. That's because that rows
- *	      may still be visible to active transactions, even if deleting
- *	      transaction has commit meanwhile. If there is no active
- *	      transaction, this function return highest_completed_mvccid + 1.
- */
-MVCCID
-logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
-{
-  MVCCID lowest_active_mvccid = 0;
-  TSC_TICKS start_tick, end_tick;
-  TSCTIMEVAL tv_diff;
-  UINT64 oldest_time, retry_cnt = 0;
-  bool is_perf_tracking = false;
-
-  is_perf_tracking = perfmon_is_perf_tracking ();
-  if (is_perf_tracking)
-    {
-      tsc_getticks (&start_tick);
-    }
-
-  lowest_active_mvccid = log_Gl.mvcc_table.compute_oldest_active_mvccid ();
-
-  if (is_perf_tracking)
-    {
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-      if (oldest_time > 0)
-	{
-	  perfmon_add_stat (thread_p, PSTAT_LOG_OLDEST_MVCC_TIME_COUNTERS, oldest_time);
-	}
-      if (retry_cnt > 1)
-	{
-	  perfmon_add_stat (thread_p, PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS, retry_cnt - 1);
-	}
-    }
-#if !defined (NDEBUG)
-  {
-    /* Safe guard: vacuum_Global_oldest_active_mvccid can never become smaller. */
-    MVCCID crt_oldest = vacuum_get_global_oldest_active_mvccid ();
-    assert (!MVCC_ID_PRECEDES (lowest_active_mvccid, crt_oldest));
-  }
-#endif /* !NDEBUG */
-
-  return lowest_active_mvccid;
-}
-
-/*
  * logtb_find_current_mvccid - find current transaction MVCC id
  *
  * return: MVCCID
@@ -3907,10 +3856,9 @@ logtb_find_current_mvccid (THREAD_ENTRY * thread_p)
   tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   if (tdes != NULL)
     {
-      if (tdes->mvccinfo.count_sub_ids > 0 && tdes->mvccinfo.is_sub_active)
+      if (!tdes->mvccinfo.sub_ids.empty ())
 	{
-	  assert (tdes->mvccinfo.sub_ids != NULL);
-	  id = tdes->mvccinfo.sub_ids[tdes->mvccinfo.count_sub_ids - 1];
+	  id = tdes->mvccinfo.sub_ids.back ();
 	}
       else
 	{
@@ -3946,10 +3894,9 @@ logtb_get_current_mvccid (THREAD_ENTRY * thread_p)
       curr_mvcc_info->id = log_Gl.mvcc_table.get_new_mvccid ();
     }
 
-  if (tdes->mvccinfo.count_sub_ids > 0 && tdes->mvccinfo.is_sub_active)
+  if (!tdes->mvccinfo.sub_ids.empty ())
     {
-      assert (tdes->mvccinfo.sub_ids != NULL);
-      return tdes->mvccinfo.sub_ids[tdes->mvccinfo.count_sub_ids - 1];
+      return tdes->mvccinfo.sub_ids.back ();
     }
 
   return curr_mvcc_info->id;
@@ -3968,7 +3915,6 @@ logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   MVCC_INFO *curr_mvcc_info;
-  int i;
 
   assert (tdes != NULL);
 
@@ -3977,12 +3923,9 @@ logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
     {
       return true;
     }
-  else if (curr_mvcc_info->count_sub_ids > 0)
+  else if (curr_mvcc_info->sub_ids.size () > 0)
     {
-      /* is the child of current transaction ? */
-      assert (curr_mvcc_info->sub_ids != NULL);
-
-      for (i = 0; i < curr_mvcc_info->count_sub_ids; i++)
+      for (size_t i = 0; i < curr_mvcc_info->sub_ids.size (); i++)
 	{
 	  if (curr_mvcc_info->sub_ids[i] == mvccid)
 	    {
@@ -4257,7 +4200,7 @@ log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_u
 	}
     }
   /* Check system worker transactions. */
-  log_system_tdes::rv_map_all_tdes (max_undo_lsa_func);
+  log_system_tdes::map_all_tdes (max_undo_lsa_func);
 
   TR_TABLE_CS_EXIT (thread_p);
   // *INDENT-ON*
@@ -4287,6 +4230,7 @@ logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
       if (i != LOG_SYSTEM_TRAN_INDEX)
 	{
 	  tdes = log_Gl.trantable.all_tdes[i];
+
 	  if (tdes != NULL && tdes->trid != NULL_TRANID && !LSA_ISNULL (&tdes->head_lsa)
 	      && (min_lsa == NULL || LSA_LT (&tdes->head_lsa, min_lsa)))
 	    {
@@ -4576,7 +4520,7 @@ logtb_has_deadlock_priority (int tran_index)
  *  Note: If transaction MVCCID is NULL then a new transaction MVCCID is
  *    allocated first.
  */
-int
+void
 logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info)
 {
   MVCCID mvcc_subid;
@@ -4596,7 +4540,7 @@ logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_m
       mvcc_table->get_two_new_mvccid (curr_mvcc_info->id, mvcc_subid);
     }
 
-  return logtb_assign_subtransaction_mvccid (thread_p, curr_mvcc_info, mvcc_subid);
+  logtb_assign_subtransaction_mvccid (thread_p, curr_mvcc_info, mvcc_subid);
 }
 
 /*
@@ -4607,41 +4551,12 @@ logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_m
  * curr_mvcc_info (in) : Current transaction MVCC information.
  * mvcc_subid (in)     : Sub-transaction MVCCID.
  */
-static int
+static void
 logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvcc_subid)
 {
   assert (curr_mvcc_info != NULL);
   assert (MVCCID_IS_VALID (curr_mvcc_info->id));
-
-  if (curr_mvcc_info->sub_ids == NULL)
-    {
-      curr_mvcc_info->sub_ids = (MVCCID *) malloc (OR_MVCCID_SIZE * 10);
-      if (curr_mvcc_info->sub_ids == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (MVCCID) * 10);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      curr_mvcc_info->count_sub_ids = 0;
-      curr_mvcc_info->max_sub_ids = 10;
-    }
-  else if (curr_mvcc_info->count_sub_ids >= curr_mvcc_info->max_sub_ids)
-    {
-      curr_mvcc_info->sub_ids =
-	(MVCCID *) realloc (curr_mvcc_info->sub_ids, OR_MVCCID_SIZE * (curr_mvcc_info->max_sub_ids + 10));
-      if (curr_mvcc_info->sub_ids == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  (size_t) (OR_MVCCID_SIZE * (curr_mvcc_info->max_sub_ids + 10)));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      curr_mvcc_info->max_sub_ids += 10;
-    }
-
-  curr_mvcc_info->sub_ids[curr_mvcc_info->count_sub_ids] = mvcc_subid;
-  curr_mvcc_info->count_sub_ids++;
-  curr_mvcc_info->is_sub_active = true;
-
-  return NO_ERROR;
+  curr_mvcc_info->sub_ids.push_back (mvcc_subid);
 }
 
 /*
@@ -4661,11 +4576,11 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   assert (tdes != NULL);
 
   curr_mvcc_info = &tdes->mvccinfo;
-  mvcc_sub_id = curr_mvcc_info->sub_ids[curr_mvcc_info->count_sub_ids - 1];
+  mvcc_sub_id = curr_mvcc_info->sub_ids.back ();
 
   mvcc_table->complete_sub_mvcc (mvcc_sub_id);
+  curr_mvcc_info->sub_ids.pop_back ();
 
-  curr_mvcc_info->is_sub_active = false;
   if (tdes->mvccinfo.snapshot.valid)
     {
       /* adjust snapshot to reflect committed sub-transaction, since the parent transaction didn't finished yet */
@@ -5317,11 +5232,11 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
       idx++;
 
       /* State */
-      db_make_string_by_const_str (&vals[idx], log_state_short_string (tdes->state));
+      db_make_string (&vals[idx], log_state_short_string (tdes->state));
       idx++;
 
       /* isolation */
-      db_make_string_by_const_str (&vals[idx], log_isolation_string (tdes->isolation));
+      db_make_string (&vals[idx], log_isolation_string (tdes->isolation));
       idx++;
 
       /* Wait_msecs */
@@ -5664,7 +5579,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 
       /* Abort_reason */
       str = tran_abort_reason_to_string (tdes->tran_abort_reason);
-      db_make_string_by_const_str (&vals[idx], str);
+      db_make_string (&vals[idx], str);
       idx++;
 
       assert (idx == num_cols);
@@ -6208,8 +6123,15 @@ void
 log_tdes::on_sysop_start ()
 {
   assert (is_allowed_sysop ());
+
   if (is_system_worker_transaction () && topops.last < 0)
     {
+      if (!LOG_ISRESTARTED ())
+	{
+	  /* The links are used at recovery. */
+	  return;
+	}
+
       // make sure all links to previous records are lost
       assert (topops.last == -1);
       LSA_SET_NULL (&head_lsa);
@@ -6236,4 +6158,24 @@ log_tdes::on_sysop_end ()
     }
 }
 
+void
+log_tdes::lock_global_oldest_visible_mvccid ()
+{
+  if (!block_global_oldest_active_until_commit)
+    {
+      log_Gl.mvcc_table.lock_global_oldest_visible ();
+      block_global_oldest_active_until_commit = true;
+    }
+}
+
+void
+log_tdes::unlock_global_oldest_visible_mvccid ()
+{
+  if (block_global_oldest_active_until_commit)
+    {
+      assert (log_Gl.mvcc_table.is_global_oldest_visible_locked ());
+      log_Gl.mvcc_table.unlock_global_oldest_visible ();
+      block_global_oldest_active_until_commit = false;
+    }
+}
 // *INDENT-ON*

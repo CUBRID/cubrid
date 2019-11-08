@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <chrono>
+#include <cstring>
 
 #define ERR(format, ...) printf ("ERR " format "\n", __VA_ARGS__)
 #define WRN(format, ...) printf ("WRN " format "\n", __VA_ARGS__)
@@ -185,18 +186,17 @@ int main (int argc, char **argv)
   unsigned flags = 0;
   for (int i = 1; i < argc; ++i)
     {
-      unsigned command = argv[i][0] << 24 | argv[i][1] << 16 | argv[i][2] << 8 | argv[i][3]; // little endian
-      switch (command)
+      if (std::strcmp (argv[i], "help") == 0)
 	{
-	case 'help':
 	  flags |= FL_HELP;
-	  break;
-	case 'dbug':
+	}
+      else if (std::strcmp (argv[i], "dbug") == 0)
+	{
 	  flags |= FL_DEBUG;
-	  break;
-	case 'time':
+	}
+      else if (std::strcmp (argv[i], "time") == 0)
+	{
 	  flags |= FL_TIME;
-	  break;
 	}
     }
   if (flags & FL_HELP)

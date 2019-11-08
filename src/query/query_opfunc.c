@@ -39,6 +39,7 @@
 #include "list_file.h"
 #include "object_domain.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "set_object.h"
 #include "query_executor.h"
 #include "databases_file.h"
@@ -3891,9 +3892,9 @@ qdata_subtract_timestamptz_to_dbval (DB_VALUE * ts_tz_val_p, DB_VALUE * dbval_p,
 {
   int err = NO_ERROR;
   DB_TYPE type;
-  DB_UTIME *utime1, *utime2;
-  DB_TIMESTAMPTZ *ts_tz1_p, *ts_tz2_p, ts_tz_res, ts_tz_res_fixed;
-  DB_DATETIME *datetime;
+  DB_UTIME *utime1 = NULL, *utime2 = NULL;
+  DB_TIMESTAMPTZ *ts_tz1_p = NULL, *ts_tz2_p = NULL, ts_tz_res, ts_tz_res_fixed;
+  DB_DATETIME *datetime = NULL;
   DB_DATETIME tmp_datetime;
   DB_DATETIMETZ datetime_tz_1;
   DB_DATE date;
@@ -3902,7 +3903,9 @@ qdata_subtract_timestamptz_to_dbval (DB_VALUE * ts_tz_val_p, DB_VALUE * dbval_p,
   short s2;
   int i2;
   DB_BIGINT bi2;
+
   DB_VALUE tmp_val_res;
+  tmp_val_res.data.utime = 0;
 
   ts_tz1_p = db_get_timestamptz (ts_tz_val_p);
   utime1 = &ts_tz1_p->timestamp;
@@ -7046,7 +7049,8 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, regu_vari
   QFILE_LIST_ID *list_id_p;
   QFILE_LIST_SCAN_ID s_id;
   QFILE_TUPLE_RECORD tuple_rec = { (QFILE_TUPLE) NULL, 0 };
-  QFILE_TUPLE_POSITION p_pos, *bitval;
+  const QFILE_TUPLE_POSITION *bitval = NULL;
+  QFILE_TUPLE_POSITION p_pos;
   QPROC_DB_VALUE_LIST valp;
   DB_VALUE p_pos_dbval;
   XASL_NODE *xasl, *xptr;
@@ -7099,7 +7103,7 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, regu_vari
 	  return false;
 	}
 
-      bitval = (QFILE_TUPLE_POSITION *) db_get_bit (&p_pos_dbval, &length);
+      bitval = REINTERPRET_CAST (const QFILE_TUPLE_POSITION *, db_get_bit (&p_pos_dbval, &length));
 
       if (bitval)
 	{
@@ -7173,7 +7177,8 @@ qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node
   QFILE_LIST_ID *list_id_p;
   QFILE_LIST_SCAN_ID s_id;
   QFILE_TUPLE_RECORD tuple_rec = { (QFILE_TUPLE) NULL, 0 };
-  QFILE_TUPLE_POSITION p_pos, *bitval;
+  const QFILE_TUPLE_POSITION *bitval = NULL;
+  QFILE_TUPLE_POSITION p_pos;
   DB_VALUE p_pos_dbval;
   XASL_NODE *xasl, *xptr;
   int length;
@@ -7216,7 +7221,7 @@ qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node
       return false;
     }
 
-  bitval = (QFILE_TUPLE_POSITION *) db_get_bit (&p_pos_dbval, &length);
+  bitval = REINTERPRET_CAST (const QFILE_TUPLE_POSITION *, db_get_bit (&p_pos_dbval, &length));
 
   if (bitval)
     {
@@ -7289,7 +7294,8 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
   QFILE_LIST_ID *list_id_p;
   QFILE_LIST_SCAN_ID s_id;
   QFILE_TUPLE_RECORD tuple_rec = { (QFILE_TUPLE) NULL, 0 };
-  QFILE_TUPLE_POSITION p_pos, *bitval;
+  const QFILE_TUPLE_POSITION *bitval = NULL;
+  QFILE_TUPLE_POSITION p_pos;
   QPROC_DB_VALUE_LIST valp;
   DB_VALUE p_pos_dbval, cast_value, arg_dbval;
   XASL_NODE *xasl, *xptr;
@@ -7539,7 +7545,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
 	  goto error;
 	}
 
-      bitval = (QFILE_TUPLE_POSITION *) db_get_bit (&p_pos_dbval, &length);
+      bitval = REINTERPRET_CAST (const QFILE_TUPLE_POSITION *, db_get_bit (&p_pos_dbval, &length));
 
       if (bitval)
 	{
@@ -8650,7 +8656,7 @@ qdata_apply_interpolation_function_coercion (DB_VALUE * f_value, tp_domain ** re
 					     FUNC_TYPE function)
 {
   DB_TYPE type;
-  double d_result;
+  double d_result = 0;
   int error = NO_ERROR;
 
   assert (f_value != NULL && result_dom != NULL && result != NULL);

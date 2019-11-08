@@ -80,7 +80,6 @@
       CCI_LOGF_DEBUG ((con)->logger, "[%04d][API][E][%s] ERROR[%d]", (con)->id, __func__, (err)); \
   } while (false)
 
-#define strlen(s1)  ((int) strlen(s1))
 #define CAST_STRLEN (int)
 
 #if defined(WINDOWS)
@@ -277,8 +276,8 @@ extern "C"
     int *con_handles;		/* realloc by pool_size */
   };
 
-  typedef unsigned int (*HASH_FUNC) (void *key, unsigned int ht_size);
-  typedef int (*CMP_FUNC) (void *key1, void *key2);
+  typedef unsigned int (*HASH_FUNC) (const void *key, unsigned int ht_size);
+  typedef int (*CMP_FUNC) (const void *key1, const void *key2);
   typedef int (*REM_FUNC) (void *key, void *data, void *args);
   typedef int (*PRINT_FUNC) (FILE * fp, void *key, void *data, void *args);
 
@@ -319,12 +318,12 @@ extern "C"
  ************************************************************************/
   extern int get_elapsed_time (struct timeval *start_time);
 
-  extern unsigned int cci_mht_5strhash (void *key, unsigned int ht_size);
-  extern int cci_mht_strcasecmpeq (void *key1, void *key2);
+  extern unsigned int cci_mht_5strhash (const void *key, unsigned int ht_size);
+  extern int cci_mht_strcasecmpeq (const void *key1, const void *key2);
 
   extern CCI_MHT_TABLE *cci_mht_create (char *name, int est_size, HASH_FUNC hash_func, CMP_FUNC cmp_func);
   extern void cci_mht_destroy (CCI_MHT_TABLE * ht, bool free_key, bool free_data);
-  extern void *cci_mht_rem (CCI_MHT_TABLE * ht, void *key, bool free_key, bool free_data);
+  extern void *cci_mht_rem (CCI_MHT_TABLE * ht, const void *key, bool free_key, bool free_data);
   extern void *cci_mht_get (CCI_MHT_TABLE * ht, void *key);
 #if defined(ENABLE_UNUSED_FUNCTION)
   extern void *cci_mht_put (CCI_MHT_TABLE * ht, void *key, void *data);

@@ -71,6 +71,7 @@ static void prior_lsa_end_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node);
 static void prior_lsa_append_data (int length);
 static LOG_LSA prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes,
     int with_lock);
+static void prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid);
 static LOG_ZIP *log_append_get_zip_undo (THREAD_ENTRY *thread_p);
 static LOG_ZIP *log_append_get_zip_redo (THREAD_ENTRY *thread_p);
 static char *log_append_get_data_ptr (THREAD_ENTRY *thread_p);
@@ -661,7 +662,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
   VPID *vpid = NULL;
   int error_code = NO_ERROR;
   int i;
-  int ulength, rlength, *data_header_ulength_p, *data_header_rlength_p;
+  int ulength, rlength, *data_header_ulength_p = NULL, *data_header_rlength_p = NULL;
   int total_length;
   MVCCID *mvccid_p = NULL;
   LOG_TDES *tdes = NULL;
@@ -950,10 +951,9 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
 	}
       else
 	{
-	  if (tdes->mvccinfo.count_sub_ids > 0 && tdes->mvccinfo.is_sub_active)
+	  if (!tdes->mvccinfo.sub_ids.empty ())
 	    {
-	      assert (tdes->mvccinfo.sub_ids != NULL);
-	      *mvccid_p = tdes->mvccinfo.sub_ids[tdes->mvccinfo.count_sub_ids - 1];
+	      *mvccid_p = tdes->mvccinfo.sub_ids.back ();
 	    }
 	  else
 	    {
@@ -1309,6 +1309,34 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
   return error_code;
 }
 
+static void
+prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid)
+{
+  assert (MVCCID_IS_VALID (mvccid));
+  if (!log_Gl.hdr.does_block_need_vacuum)
+    {
+      // first mvcc record for this block
+      log_Gl.hdr.oldest_visible_mvccid = log_Gl.mvcc_table.get_global_oldest_visible ();
+      log_Gl.hdr.newest_block_mvccid = mvccid;
+    }
+  else
+    {
+      // sanity checks
+      assert (MVCCID_IS_VALID (log_Gl.hdr.oldest_visible_mvccid));
+      assert (MVCCID_IS_VALID (log_Gl.hdr.newest_block_mvccid));
+      assert (log_Gl.hdr.oldest_visible_mvccid <= mvccid);
+      assert (!log_Gl.hdr.mvcc_op_log_lsa.is_null ());
+      assert (vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid) == vacuum_get_log_blockid (record_lsa.pageid));
+
+      if (log_Gl.hdr.newest_block_mvccid < mvccid)
+	{
+	  log_Gl.hdr.newest_block_mvccid = mvccid;
+	}
+    }
+  log_Gl.hdr.mvcc_op_log_lsa = record_lsa;
+  log_Gl.hdr.does_block_need_vacuum = true;
+}
+
 /*
  * prior_lsa_next_record_internal -
  *
@@ -1335,6 +1363,18 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
   prior_lsa_start_append (thread_p, node, tdes);
 
   LSA_COPY (&start_lsa, &node->start_lsa);
+
+  if (LOG_ISRESTARTED () && log_Gl.hdr.does_block_need_vacuum)
+    {
+      assert (!LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa));
+      if (vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid) != vacuum_get_log_blockid (start_lsa.pageid))
+	{
+	  assert (vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid)
+		  <= (vacuum_get_log_blockid (start_lsa.pageid) - 1));
+
+	  vacuum_produce_log_block_data (thread_p);
+	}
+    }
 
   /* Is this a valid MVCC operations: 1. node must be undoredo/undo type and must have undo data. 2. record index must
    * the index of MVCC operations. */
@@ -1377,36 +1417,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 		     "log mvcc op at (%lld, %d) and create link with log_lsa(%lld, %d)",
 		     LSA_AS_ARGS (&node->start_lsa), LSA_AS_ARGS (&log_Gl.hdr.mvcc_op_log_lsa));
 
-      /* Check if the block of log data is changed */
-      if (!LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa)
-	  && (vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid) != vacuum_get_log_blockid (start_lsa.pageid)))
-	{
-	  /* Notify vacuum of a new block */
-	  vacuum_produce_log_block_data (thread_p, &log_Gl.hdr.mvcc_op_log_lsa, log_Gl.hdr.last_block_oldest_mvccid,
-					 log_Gl.hdr.last_block_newest_mvccid);
-	  assert (log_Gl.hdr.last_block_oldest_mvccid <= vacuum_get_global_oldest_active_mvccid ());
-	  log_Gl.hdr.last_block_oldest_mvccid = vacuum_get_global_oldest_active_mvccid ();
-	  log_Gl.hdr.last_block_newest_mvccid = mvccid;
-	  assert (!MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.last_block_oldest_mvccid));
-	}
-      else
-	{
-	  /* Same block, update the oldest and the newest met MVCCID's */
-	  if (log_Gl.hdr.last_block_newest_mvccid == MVCCID_NULL
-	      || MVCC_ID_PRECEDES (log_Gl.hdr.last_block_newest_mvccid, mvccid))
-	    {
-	      /* A newer MVCCID was found */
-	      log_Gl.hdr.last_block_newest_mvccid = mvccid;
-	    }
-	  if (log_Gl.hdr.last_block_oldest_mvccid == MVCCID_NULL)
-	    {
-	      log_Gl.hdr.last_block_oldest_mvccid = vacuum_get_global_oldest_active_mvccid ();
-	    }
-	  assert (!MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.last_block_oldest_mvccid));
-	}
-
-      /* Replace last MVCC deleted/updated log record */
-      LSA_COPY (&log_Gl.hdr.mvcc_op_log_lsa, &start_lsa);
+      prior_update_header_mvcc_info (start_lsa, mvccid);
     }
   else if (node->log_header.type == LOG_SYSOP_START_POSTPONE)
     {
@@ -1561,10 +1572,13 @@ prior_lsa_start_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *
       // lose the link to previous record
       LSA_SET_NULL (&node->log_header.prev_tranlsa);
       LSA_SET_NULL (&tdes->head_lsa);
+      LSA_SET_NULL (&tdes->tail_lsa);
     }
   else
     {
       LSA_COPY (&node->log_header.prev_tranlsa, &tdes->tail_lsa);
+
+      LSA_COPY (&tdes->tail_lsa, &log_Gl.prior_info.prior_lsa);
 
       /*
        * Is this the first log record of transaction ?
@@ -1576,10 +1590,10 @@ prior_lsa_start_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *
 
       LSA_COPY (&tdes->undo_nxlsa, &log_Gl.prior_info.prior_lsa);
     }
+
   /*
    * Remember the address of new append record
    */
-  LSA_COPY (&tdes->tail_lsa, &log_Gl.prior_info.prior_lsa);
   LSA_COPY (&node->log_header.back_lsa, &log_Gl.prior_info.prev_lsa);
   LSA_SET_NULL (&node->log_header.forw_lsa);
 

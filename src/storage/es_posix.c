@@ -111,11 +111,16 @@ es_make_dirs (const char *dirname1, const char *dirname2)
 
 #if defined (CUBRID_OWFS_POSIX_TWO_DEPTH_DIRECTORY)
 retry:
-  snprintf (dirbuf, PATH_MAX, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, dirname2);
+  if (snprintf (dirbuf, PATH_MAX - 1, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, dirname2)
+      < 0)
+    {
+      assert (false);
+      return ER_ES_INVALID_PATH;
+    }
   ret = mkdir (dirbuf, 0755);
   if (ret < 0 && errno == ENOENT)
     {
-      snprintf (dirbuf, PATH_MAX, "%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1);
+      n = snprintf (dirbuf, PATH_MAX - 1, "%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1);
       ret = mkdir (dirbuf, 0755);
       if (ret == 0 || errno == EEXIST)
 	{
@@ -123,9 +128,14 @@ retry:
 	}
     }
 #else
-  snprintf (dirbuf, PATH_MAX, "%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1);
+  if (snprintf (dirbuf, PATH_MAX - 1, "%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1) < 0)
+    {
+      assert (false);
+      return ER_ES_INVALID_PATH;
+    }
   ret = mkdir (dirbuf, 0755);
 #endif
+
   if (ret < 0 && errno != EEXIST)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", dirbuf);
@@ -236,18 +246,23 @@ int
 xes_posix_create_file (char *new_path)
 {
   int fd;
-  int ret;
+  int ret, n;
   char dirname1[NAME_MAX], dirname2[NAME_MAX], filename[NAME_MAX];
 
 retry:
   es_get_unique_name (dirname1, dirname2, "ces_temp", filename);
 #if defined (CUBRID_OWFS_POSIX_TWO_DEPTH_DIRECTORY)
-  snprintf (new_path, PATH_MAX, "%s%c%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, dirname2,
-	    PATH_SEPARATOR, filename);
+  n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR,
+		dirname2, PATH_SEPARATOR, filename);
 #else
   /* default */
-  snprintf (new_path, PATH_MAX, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
+  n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
 #endif
+  if (n < 0)
+    {
+      assert (false);
+      return ER_ES_INVALID_PATH;
+    }
 
   es_log ("xes_posix_create_file(): %s\n", new_path);
 
@@ -477,7 +492,7 @@ xes_posix_copy_file (const char *src_path, char *metaname, char *new_path)
 {
 #define ES_POSIX_COPY_BUFSIZE		(4096 * 4)	/* 16K */
 
-  int rd_fd, wr_fd;
+  int rd_fd, wr_fd, n;
   ssize_t ret;
   char dirname1[NAME_MAX], dirname2[NAME_MAX], filename[NAME_MAX];
   char buf[ES_POSIX_COPY_BUFSIZE];
@@ -498,12 +513,17 @@ retry:
   /* create a target file */
   es_get_unique_name (dirname1, dirname2, metaname, filename);
 #if defined (CUBRID_OWFS_POSIX_TWO_DEPTH_DIRECTORY)
-  snprintf (new_path, PATH_MAX, "%s%c%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, dirname2,
-	    PATH_SEPARATOR, filename);
+  n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR,
+		dirname2, PATH_SEPARATOR, filename);
 #else
   /* default */
-  snprintf (new_path, PATH_MAX, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
+  n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
 #endif
+  if (n < 0)
+    {
+      assert (false);
+      return ER_ES_INVALID_PATH;
+    }
 
   es_log ("xes_posix_copy_file(%s, %s): %s\n", src_path, metaname, new_path);
 

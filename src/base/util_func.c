@@ -221,21 +221,15 @@ util_arm_signal_handlers (SIG_HANDLER sigint_handler, SIG_HANDLER sigquit_handle
 
   if (sigint_handler != NULL)
     {
-      if (os_set_signal_handler (SIGINT, SIG_IGN) != SIG_IGN)
-	{
-	  (void) os_set_signal_handler (SIGINT, system_interrupt_handler);
-	  user_interrupt_handler = sigint_handler;
-	}
+      (void) os_set_signal_handler (SIGINT, system_interrupt_handler);
+      user_interrupt_handler = sigint_handler;
     }
 #if !defined(WINDOWS)
   if (sigquit_handler != NULL)
     {
       /* Is this kind of test necessary for the quit signal ? */
-      if (os_set_signal_handler (SIGQUIT, SIG_IGN) != SIG_IGN)
-	{
-	  (void) os_set_signal_handler (SIGQUIT, system_quit_handler);
-	  user_quit_handler = sigquit_handler;
-	}
+      (void) os_set_signal_handler (SIGQUIT, system_quit_handler);
+      user_quit_handler = sigquit_handler;
     }
 #endif
 }

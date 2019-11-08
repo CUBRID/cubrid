@@ -30,6 +30,7 @@
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "environment_variable.h"
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#include "porting.h"
 
 #define	APPL_SERVER_CAS           0
 #define	APPL_SERVER_CAS_ORACLE    1

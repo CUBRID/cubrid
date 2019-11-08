@@ -38,7 +38,6 @@
 #include "language_support.h"
 #include "chartype.h"
 #include "system_parameter.h"
-#include "locale_support.h"
 #include "charset_converters.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -89,24 +88,24 @@ bool intl_Mbs_support = true;
 bool intl_String_validation = false;
 
 /* General EUC string manipulations */
-static int intl_tolower_euc (unsigned char *s, int length_in_chars);
-static int intl_toupper_euc (unsigned char *s, int length_in_chars);
-static int intl_count_euc_chars (unsigned char *s, int length_in_bytes);
-static int intl_count_euc_bytes (unsigned char *s, int length_in_chars);
+static int intl_tolower_euc (const unsigned char *src, unsigned char *d, int byte_size);
+static int intl_toupper_euc (const unsigned char *src, unsigned char *d, int byte_size);
+static int intl_count_euc_chars (const unsigned char *s, int length_in_bytes);
+static int intl_count_euc_bytes (const unsigned char *s, int length_in_chars);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static wchar_t *intl_copy_lowercase (const wchar_t * ws, size_t n);
 static int intl_is_korean (unsigned char ch);
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /* UTF-8 string manipulations */
-static int intl_tolower_utf8 (const ALPHABET_DATA * a, unsigned char *s, unsigned char *d, int length_in_chars,
+static int intl_tolower_utf8 (const ALPHABET_DATA * a, const unsigned char *s, unsigned char *d, int length_in_chars,
 			      int *d_size);
-static int intl_toupper_utf8 (const ALPHABET_DATA * a, unsigned char *s, unsigned char *d, int length_in_chars,
+static int intl_toupper_utf8 (const ALPHABET_DATA * a, const unsigned char *s, unsigned char *d, int length_in_chars,
 			      int *d_size);
-static int intl_count_utf8_bytes (unsigned char *s, int length_in_chars);
-static int intl_char_tolower_utf8 (const ALPHABET_DATA * a, unsigned char *s, const int size, unsigned char *d,
+static int intl_count_utf8_bytes (const unsigned char *s, int length_in_chars);
+static int intl_char_tolower_utf8 (const ALPHABET_DATA * a, const unsigned char *s, const int size, unsigned char *d,
 				   unsigned char **next);
-static int intl_char_toupper_utf8 (const ALPHABET_DATA * a, unsigned char *s, const int size, unsigned char *d,
+static int intl_char_toupper_utf8 (const ALPHABET_DATA * a, const unsigned char *s, const int size, unsigned char *d,
 				   unsigned char **next);
 static int intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet, unsigned char *str1, unsigned char *str2,
 					const int size_str1, const int size_str2, unsigned int cp1, unsigned int cp2,
@@ -775,8 +774,8 @@ intl_toupper_iso8859 (unsigned char *s, int length)
  *   s(in): string
  *   curr_char_length(out): length of the character at s
  */
-unsigned char *
-intl_nextchar_euc (unsigned char *s, int *curr_char_length)
+const unsigned char *
+intl_nextchar_euc (const unsigned char *s, int *curr_char_length)
 {
   assert (s != NULL);
 
@@ -804,8 +803,8 @@ intl_nextchar_euc (unsigned char *s, int *curr_char_length)
  *   s_start(in) : start of buffer string
  *   prev_char_length(out): length of the previous character
  */
-unsigned char *
-intl_prevchar_euc (unsigned char *s, const unsigned char *s_start, int *prev_char_length)
+const unsigned char *
+intl_prevchar_euc (const unsigned char *s, const unsigned char *s_start, int *prev_char_length)
 {
   assert (s != NULL);
   assert (s > s_start);
@@ -829,48 +828,50 @@ intl_prevchar_euc (unsigned char *s, const unsigned char *s_start, int *prev_cha
  * intl_tolower_euc() - Replaces all upper case ASCII characters inside an EUC
  *                      encoded string with their lower case codes.
  *   return: character counts
- *   s(in/out): EUC string to lowercase
- *   length_in_chars(in): length of the string measured in characters
+ *   src(in): EUC string to lowercase
+ *   byte_size(in): size in bytes of source string
  */
 static int
-intl_tolower_euc (unsigned char *s, int length_in_chars)
+intl_tolower_euc (const unsigned char *src, unsigned char *d, int byte_size)
 {
-  int char_count;
-  int dummy;
+  int byte_count;
+  const unsigned char *s = src;
 
-  assert (s != NULL);
+  assert (src != NULL);
 
-  for (char_count = 0; char_count < length_in_chars; char_count++)
+  for (byte_count = 0; byte_count < byte_size; byte_count++)
     {
-      *s = char_tolower (*s);
-      s = intl_nextchar_euc (s, &dummy);
+      *d = char_tolower (*s);
+      s++;
+      d++;
     }
 
-  return char_count;
+  return intl_count_euc_chars (src, byte_size);
 }
 
 /*
  * intl_toupper_euc() - Replaces all upper case ASCII characters inside an EUC
  *                      encoded string with their upper case codes.
  *   return: character counts
- *   s(in/out): EUC string to uppercase
- *   length_in_chars(in): length of the string measured in characters
+ *   src(in): EUC string to uppercase
+ *   byte_size(in): size in bytes of source string
  */
 static int
-intl_toupper_euc (unsigned char *s, int length_in_chars)
+intl_toupper_euc (const unsigned char *src, unsigned char *d, int byte_size)
 {
-  int char_count;
-  int dummy;
+  int byte_count;
+  const unsigned char *s = src;
 
-  assert (s != NULL);
+  assert (src != NULL);
 
-  for (char_count = 0; char_count < length_in_chars; char_count++)
+  for (byte_count = 0; byte_count < byte_size; byte_count++)
     {
-      *s = char_toupper (*s);
-      s = intl_nextchar_euc (s, &dummy);
+      *d = char_toupper (*s);
+      s++;
+      d++;
     }
 
-  return char_count;
+  return intl_count_euc_chars (src, byte_size);;
 }
 
 /*
@@ -887,9 +888,9 @@ intl_toupper_euc (unsigned char *s, int length_in_chars)
  *       counted.
  */
 static int
-intl_count_euc_chars (unsigned char *s, int length_in_bytes)
+intl_count_euc_chars (const unsigned char *s, int length_in_bytes)
 {
-  unsigned char *end;
+  const unsigned char *end;
   int dummy;
   int char_count;
 
@@ -916,7 +917,7 @@ intl_count_euc_chars (unsigned char *s, int length_in_bytes)
  *   byte_count(out): number of bytes used for encode
  */
 static int
-intl_count_euc_bytes (unsigned char *s, int length_in_chars)
+intl_count_euc_bytes (const unsigned char *s, int length_in_chars)
 {
   int char_count;
   int char_width;
@@ -950,7 +951,7 @@ intl_count_euc_bytes (unsigned char *s, int length_in_chars)
  * Note: Currently, codeset conversion is not supported
  */
 int
-intl_convert_charset (unsigned char *src, int length_in_chars, INTL_CODESET src_codeset, unsigned char *dest,
+intl_convert_charset (const unsigned char *src, int length_in_chars, INTL_CODESET src_codeset, unsigned char *dest,
 		      INTL_CODESET dest_codeset, int *unconverted)
 {
   int error_code = NO_ERROR;
@@ -980,7 +981,7 @@ intl_convert_charset (unsigned char *src, int length_in_chars, INTL_CODESET src_
  * Note: Embedded NULL characters are counted.
  */
 int
-intl_char_count (unsigned char *src, int length_in_bytes, INTL_CODESET src_codeset, int *char_count)
+intl_char_count (const unsigned char *src, int length_in_bytes, INTL_CODESET src_codeset, int *char_count)
 {
   switch (src_codeset)
     {
@@ -1019,7 +1020,7 @@ intl_char_count (unsigned char *src, int length_in_bytes, INTL_CODESET src_codes
  * Note: Embedded NULL's are counted as characters.
  */
 int
-intl_char_size (unsigned char *src, int length_in_chars, INTL_CODESET src_codeset, int *byte_count)
+intl_char_size (const unsigned char *src, int length_in_chars, INTL_CODESET src_codeset, int *byte_count)
 {
   switch (src_codeset)
     {
@@ -1063,7 +1064,7 @@ intl_char_size (unsigned char *src, int length_in_chars, INTL_CODESET src_codese
  *	 This function is used in context of some specific string functions.
  */
 int
-intl_char_size_pseudo_kor (unsigned char *src, int length_in_chars, INTL_CODESET src_codeset, int *byte_count)
+intl_char_size_pseudo_kor (const unsigned char *src, int length_in_chars, INTL_CODESET src_codeset, int *byte_count)
 {
   switch (src_codeset)
     {
@@ -1124,8 +1125,8 @@ intl_char_size_pseudo_kor (unsigned char *src, int length_in_chars, INTL_CODESET
  *   codeset(in) : enumeration of src codeset
  *   prev_char_size(out) : size of previous character
  */
-unsigned char *
-intl_prev_char (unsigned char *s, const unsigned char *s_start, INTL_CODESET codeset, int *prev_char_size)
+const unsigned char *
+intl_prev_char (const unsigned char *s, const unsigned char *s_start, INTL_CODESET codeset, int *prev_char_size)
 {
   assert (s > s_start);
 
@@ -1164,7 +1165,8 @@ intl_prev_char (unsigned char *s, const unsigned char *s_start, INTL_CODESET cod
  *	 This function is used in context of some specific string functions.
  */
 unsigned char *
-intl_prev_char_pseudo_kor (unsigned char *s, const unsigned char *s_start, INTL_CODESET codeset, int *prev_char_size)
+intl_prev_char_pseudo_kor (const unsigned char *s, const unsigned char *s_start, INTL_CODESET codeset,
+			   int *prev_char_size)
 {
   assert (s > s_start);
 
@@ -1213,8 +1215,8 @@ intl_prev_char_pseudo_kor (unsigned char *s, const unsigned char *s_start, INTL_
  * Note: Returns a pointer to the next character in the string.
  *	 curr_char_length is set to the byte length of the current character.
  */
-unsigned char *
-intl_next_char (unsigned char *s, INTL_CODESET codeset, int *current_char_size)
+const unsigned char *
+intl_next_char (const unsigned char *s, INTL_CODESET codeset, int *current_char_size)
 {
   switch (codeset)
     {
@@ -1251,7 +1253,7 @@ intl_next_char (unsigned char *s, INTL_CODESET codeset, int *current_char_size)
  *	 where korean characters are expected to be handled.
  */
 unsigned char *
-intl_next_char_pseudo_kor (unsigned char *s, INTL_CODESET codeset, int *current_char_size)
+intl_next_char_pseudo_kor (const unsigned char *s, INTL_CODESET codeset, int *current_char_size)
 {
   switch (codeset)
     {
@@ -1311,7 +1313,7 @@ intl_cmp_char (const unsigned char *s1, const unsigned char *s2, INTL_CODESET co
       return *s1 - *s2;
 
     case INTL_CODESET_KSC5601_EUC:
-      (void) intl_nextchar_euc ((unsigned char *) s1, char_size);
+      (void) intl_nextchar_euc (s1, char_size);
       return memcmp (s1, s2, *char_size);
 
     case INTL_CODESET_UTF8:
@@ -1341,7 +1343,7 @@ intl_cmp_char (const unsigned char *s1, const unsigned char *s2, INTL_CODESET co
  *
  */
 int
-intl_cmp_char_pseudo_kor (unsigned char *s1, unsigned char *s2, INTL_CODESET codeset, int *char_size)
+intl_cmp_char_pseudo_kor (const unsigned char *s1, const unsigned char *s2, INTL_CODESET codeset, int *char_size)
 {
   switch (codeset)
     {
@@ -1512,14 +1514,14 @@ intl_pad_size (INTL_CODESET codeset)
  *   src_length(in): length of the string measured in characters
  */
 int
-intl_upper_string_size (const void *alphabet, unsigned char *src, int src_size, int src_length)
+intl_upper_string_size (const ALPHABET_DATA * alphabet, const unsigned char *src, int src_size, int src_length)
 {
   int char_count;
   int req_size = src_size;
 
   assert (alphabet != NULL);
 
-  switch (((ALPHABET_DATA *) alphabet)->codeset)
+  switch (alphabet->codeset)
     {
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_RAW_BYTES:
@@ -1536,7 +1538,7 @@ intl_upper_string_size (const void *alphabet, unsigned char *src, int src_size, 
 	req_size = 0;
 	for (char_count = 0; char_count < src_length && src_size > 0; char_count++)
 	  {
-	    req_size += intl_char_toupper_utf8 ((const ALPHABET_DATA *) alphabet, src, src_size, upper, &next);
+	    req_size += intl_char_toupper_utf8 (alphabet, src, src_size, upper, &next);
 	    src_size -= CAST_STRLEN (next - src);
 	    src = next;
 	  }
@@ -1561,13 +1563,13 @@ intl_upper_string_size (const void *alphabet, unsigned char *src, int src_size, 
  *   length_in_chars(in): length of the string measured in characters
  */
 int
-intl_upper_string (const void *alphabet, unsigned char *src, unsigned char *dst, int length_in_chars)
+intl_upper_string (const ALPHABET_DATA * alphabet, const unsigned char *src, unsigned char *dst, int length_in_chars)
 {
   int char_count = 0;
 
   assert (alphabet != NULL);
 
-  switch (((ALPHABET_DATA *) alphabet)->codeset)
+  switch (alphabet->codeset)
     {
     case INTL_CODESET_RAW_BYTES:
       memcpy (dst, src, length_in_chars);
@@ -1576,7 +1578,8 @@ intl_upper_string (const void *alphabet, unsigned char *src, unsigned char *dst,
 
     case INTL_CODESET_ISO88591:
       {
-	unsigned char *d, *s;
+	unsigned char *d;
+	const unsigned char *s;
 
 	for (d = dst, s = src; d < dst + length_in_chars; d++, s++)
 	  {
@@ -1592,8 +1595,7 @@ intl_upper_string (const void *alphabet, unsigned char *src, unsigned char *dst,
 	intl_char_size (src, length_in_chars, INTL_CODESET_KSC5601_EUC, &byte_count);
 	if (byte_count > 0)
 	  {
-	    memcpy (dst, src, byte_count);
-	    char_count = intl_toupper_euc (dst, length_in_chars);
+	    char_count = intl_toupper_euc (src, dst, byte_count);
 	  }
       }
       break;
@@ -1601,7 +1603,7 @@ intl_upper_string (const void *alphabet, unsigned char *src, unsigned char *dst,
     case INTL_CODESET_UTF8:
       {
 	int dummy_size;
-	char_count = intl_toupper_utf8 ((const ALPHABET_DATA *) alphabet, src, dst, length_in_chars, &dummy_size);
+	char_count = intl_toupper_utf8 (alphabet, src, dst, length_in_chars, &dummy_size);
       }
       break;
 
@@ -1623,14 +1625,14 @@ intl_upper_string (const void *alphabet, unsigned char *src, unsigned char *dst,
  *   src_length(in): length of the string measured in characters
  */
 int
-intl_lower_string_size (const void *alphabet, unsigned char *src, int src_size, int src_length)
+intl_lower_string_size (const ALPHABET_DATA * alphabet, const unsigned char *src, int src_size, int src_length)
 {
   int char_count;
   int req_size = src_size;
 
   assert (alphabet != NULL);
 
-  switch (((ALPHABET_DATA *) alphabet)->codeset)
+  switch (alphabet->codeset)
     {
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_RAW_BYTES:
@@ -1647,7 +1649,7 @@ intl_lower_string_size (const void *alphabet, unsigned char *src, int src_size, 
 	req_size = 0;
 	for (char_count = 0; char_count < src_length && src_size > 0; char_count++)
 	  {
-	    req_size += intl_char_tolower_utf8 ((const ALPHABET_DATA *) alphabet, src, src_size, lower, &next);
+	    req_size += intl_char_tolower_utf8 (alphabet, src, src_size, lower, &next);
 	    src_size -= CAST_STRLEN (next - src);
 	    src = next;
 	  }
@@ -1672,17 +1674,18 @@ intl_lower_string_size (const void *alphabet, unsigned char *src, int src_size, 
  *   length_in_chars(in): length of the string measured in characters
  */
 int
-intl_lower_string (const void *alphabet, unsigned char *src, unsigned char *dst, int length_in_chars)
+intl_lower_string (const ALPHABET_DATA * alphabet, const unsigned char *src, unsigned char *dst, int length_in_chars)
 {
   int char_count = 0;
 
   assert (alphabet != NULL);
 
-  switch (((ALPHABET_DATA *) alphabet)->codeset)
+  switch (alphabet->codeset)
     {
     case INTL_CODESET_ISO88591:
       {
-	unsigned char *d, *s;
+	unsigned char *d;
+	const unsigned char *s;
 
 	for (d = dst, s = src; d < dst + length_in_chars; d++, s++)
 	  {
@@ -1702,8 +1705,7 @@ intl_lower_string (const void *alphabet, unsigned char *src, unsigned char *dst,
 	intl_char_size (src, length_in_chars, INTL_CODESET_KSC5601_EUC, &byte_count);
 	if (byte_count > 0)
 	  {
-	    memcpy (dst, src, byte_count);
-	    char_count = intl_tolower_euc (dst, length_in_chars);
+	    char_count = intl_tolower_euc (src, dst, byte_count);
 	  }
       }
       break;
@@ -1711,7 +1713,7 @@ intl_lower_string (const void *alphabet, unsigned char *src, unsigned char *dst,
     case INTL_CODESET_UTF8:
       {
 	int dummy_size;
-	char_count = intl_tolower_utf8 ((const ALPHABET_DATA *) alphabet, src, dst, length_in_chars, &dummy_size);
+	char_count = intl_tolower_utf8 (alphabet, src, dst, length_in_chars, &dummy_size);
       }
       break;
 
@@ -1798,10 +1800,11 @@ intl_zone (int category)
  *   codeset(in): enumeration of source string
  */
 int
-intl_reverse_string (unsigned char *src, unsigned char *dst, int length_in_chars, int size_in_bytes,
+intl_reverse_string (const unsigned char *src, unsigned char *dst, int length_in_chars, int size_in_bytes,
 		     INTL_CODESET codeset)
 {
-  unsigned char *end, *s, *d;
+  const unsigned char *end, *s;
+  unsigned char *d;
   int char_count = 0;
   int char_size, i;
 
@@ -2033,8 +2036,8 @@ const unsigned char *const intl_Len_utf8_char = len_utf8_char;
  *   s(in): input string
  *   curr_char_length(out): length of the character at s
  */
-unsigned char *
-intl_nextchar_utf8 (unsigned char *s, int *curr_char_length)
+const unsigned char *
+intl_nextchar_utf8 (const unsigned char *s, int *curr_char_length)
 {
   INTL_GET_NEXTCHAR_UTF8 (s, *curr_char_length);
   return s;
@@ -2048,8 +2051,8 @@ intl_nextchar_utf8 (unsigned char *s, int *curr_char_length)
  *   s_start(in) : start of buffer string
  *   prev_char_length(out): length of the previous character
  */
-unsigned char *
-intl_prevchar_utf8 (unsigned char *s, const unsigned char *s_start, int *prev_char_length)
+const unsigned char *
+intl_prevchar_utf8 (const unsigned char *s, const unsigned char *s_start, int *prev_char_length)
 {
   int l = 0;
 
@@ -2077,7 +2080,8 @@ intl_prevchar_utf8 (unsigned char *s, const unsigned char *s_start, int *prev_ch
  *   d_size(out): size in bytes of destination
  */
 static int
-intl_tolower_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s, unsigned char *d, int length_in_chars, int *d_size)
+intl_tolower_utf8 (const ALPHABET_DATA * alphabet, const unsigned char *s, unsigned char *d, int length_in_chars,
+		   int *d_size)
 {
   int char_count, size;
   int s_size;
@@ -2117,7 +2121,8 @@ intl_tolower_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s, unsigned ch
  *   d_size(out): size in bytes of destination
  */
 static int
-intl_toupper_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s, unsigned char *d, int length_in_chars, int *d_size)
+intl_toupper_utf8 (const ALPHABET_DATA * alphabet, const unsigned char *s, unsigned char *d, int length_in_chars,
+		   int *d_size)
 {
   int char_count, size;
   int s_size;
@@ -2160,9 +2165,9 @@ intl_toupper_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s, unsigned ch
  *       counted.
  */
 int
-intl_count_utf8_chars (unsigned char *s, int length_in_bytes)
+intl_count_utf8_chars (const unsigned char *s, int length_in_bytes)
 {
-  unsigned char *end;
+  const unsigned char *end;
   int dummy;
   int char_count;
 
@@ -2189,7 +2194,7 @@ intl_count_utf8_chars (unsigned char *s, int length_in_bytes)
  *   byte_count(out): number of bytes used for encode
  */
 static int
-intl_count_utf8_bytes (unsigned char *s, int length_in_chars)
+intl_count_utf8_bytes (const unsigned char *s, int length_in_chars)
 {
   int char_count;
   int char_width;
@@ -2219,7 +2224,7 @@ intl_count_utf8_bytes (unsigned char *s, int length_in_chars)
  *	   UTF-8 character
  */
 static int
-intl_char_tolower_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s, const int size, unsigned char *d,
+intl_char_tolower_utf8 (const ALPHABET_DATA * alphabet, const unsigned char *s, const int size, unsigned char *d,
 			unsigned char **next)
 {
   unsigned int cp = intl_utf8_to_cp (s, size, next);
@@ -2281,7 +2286,7 @@ intl_char_tolower_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s, const 
  *	   UTF-8 character
  */
 static int
-intl_char_toupper_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s, const int size, unsigned char *d,
+intl_char_toupper_utf8 (const ALPHABET_DATA * alphabet, const unsigned char *s, const int size, unsigned char *d,
 			unsigned char **next)
 {
   unsigned int cp = intl_utf8_to_cp (s, size, next);
@@ -2844,18 +2849,19 @@ intl_identifier_lower_string_size (const char *src)
       {
 	unsigned char lower[INTL_UTF8_MAX_CHAR_SIZE];
 	unsigned char *next;
-	unsigned char *s;
+	const unsigned char *s;
 	const LANG_LOCALE_DATA *locale = lang_locale ();
 	const ALPHABET_DATA *alphabet = &(locale->ident_alphabet);
 	int s_size = src_size;
 	unsigned int cp;
 	int src_len;
 
-	intl_char_count ((unsigned char *) src, src_size, codeset, &src_len);
+	const unsigned char *usrc = REINTERPRET_CAST (const unsigned char *, src);
+	intl_char_count (usrc, src_size, codeset, &src_len);
 
 	src_lower_size = 0;
 
-	for (s = (unsigned char *) src; s < (unsigned char *) src + src_size;)
+	for (s = usrc; s < usrc + src_size;)
 	  {
 	    assert (s_size > 0);
 
@@ -2910,12 +2916,16 @@ intl_identifier_lower (const char *src, char *dst)
   int d_size = 0;
   int length_in_bytes = 0;
   int length_in_chars = 0;
-  unsigned char *d, *s;
+  unsigned char *d;
+  const unsigned char *s;
 
   if (src)
     {
       length_in_bytes = strlen (src);
     }
+
+  unsigned char *udst = REINTERPRET_CAST (unsigned char *, dst);
+  const unsigned char *usrc = REINTERPRET_CAST (const unsigned char *, src);
 
   switch (lang_charset ())
     {
@@ -2923,16 +2933,15 @@ intl_identifier_lower (const char *src, char *dst)
       {
 	const LANG_LOCALE_DATA *locale = lang_locale ();
 	const ALPHABET_DATA *alphabet = &(locale->ident_alphabet);
-	length_in_chars = intl_count_utf8_chars ((unsigned char *) src, length_in_bytes);
-	(void) intl_tolower_utf8 (alphabet, (unsigned char *) src, (unsigned char *) dst, length_in_chars, &d_size);
-	d = (unsigned char *) dst + d_size;
+	length_in_chars = intl_count_utf8_chars (usrc, length_in_bytes);
+	(void) intl_tolower_utf8 (alphabet, usrc, udst, length_in_chars, &d_size);
+	d = udst + d_size;
       }
       break;
 
     case INTL_CODESET_ISO88591:
       {
-	for (d = (unsigned char *) dst, s = (unsigned char *) src; d < (unsigned char *) dst + length_in_bytes;
-	     d++, s++)
+	for (d = udst, s = usrc; d < udst + length_in_bytes; d++, s++)
 	  {
 	    *d = char_tolower_iso8859 (*s);
 	  }
@@ -2942,8 +2951,7 @@ intl_identifier_lower (const char *src, char *dst)
     case INTL_CODESET_KSC5601_EUC:
     default:
       {
-	for (d = (unsigned char *) dst, s = (unsigned char *) src; d < (unsigned char *) dst + length_in_bytes;
-	     d++, s++)
+	for (d = udst, s = usrc; d < udst + length_in_bytes; d++, s++)
 	  {
 	    *d = char_tolower (*s);
 	  }
@@ -2970,6 +2978,8 @@ intl_identifier_upper_string_size (const char *src)
 
   src_size = strlen (src);
 
+  const unsigned char *usrc = REINTERPRET_CAST (const unsigned char *, src);
+
   switch (codeset)
     {
     case INTL_CODESET_UTF8:
@@ -2977,18 +2987,18 @@ intl_identifier_upper_string_size (const char *src)
       {
 	unsigned char upper[INTL_UTF8_MAX_CHAR_SIZE];
 	unsigned char *next;
-	unsigned char *s;
+	const unsigned char *s;
 	const LANG_LOCALE_DATA *locale = lang_locale ();
 	const ALPHABET_DATA *alphabet = &(locale->ident_alphabet);
 	int s_size = src_size;
 	unsigned int cp;
 	int src_len;
 
-	intl_char_count ((unsigned char *) src, src_size, codeset, &src_len);
+	intl_char_count (usrc, src_size, codeset, &src_len);
 
 	src_upper_size = 0;
 
-	for (s = (unsigned char *) src; s < (unsigned char *) src + src_size;)
+	for (s = usrc; s < usrc + src_size;)
 	  {
 	    assert (s_size > 0);
 
@@ -3043,12 +3053,16 @@ intl_identifier_upper (const char *src, char *dst)
   int d_size = 0;
   int length_in_bytes = 0;
   int length_in_chars = 0;
-  unsigned char *d, *s;
+  unsigned char *d;
+  const unsigned char *s;
 
   if (src)
     {
       length_in_bytes = strlen (src);
     }
+
+  unsigned char *udst = REINTERPRET_CAST (unsigned char *, dst);
+  const unsigned char *usrc = REINTERPRET_CAST (const unsigned char *, src);
 
   switch (lang_charset ())
     {
@@ -3056,15 +3070,14 @@ intl_identifier_upper (const char *src, char *dst)
       {
 	const LANG_LOCALE_DATA *locale = lang_locale ();
 	const ALPHABET_DATA *alphabet = &(locale->ident_alphabet);
-	length_in_chars = intl_count_utf8_chars ((unsigned char *) src, length_in_bytes);
-	(void) intl_toupper_utf8 (alphabet, (unsigned char *) src, (unsigned char *) dst, length_in_chars, &d_size);
-	d = (unsigned char *) dst + d_size;
+	length_in_chars = intl_count_utf8_chars (usrc, length_in_bytes);
+	(void) intl_toupper_utf8 (alphabet, usrc, udst, length_in_chars, &d_size);
+	d = udst + d_size;
       }
       break;
     case INTL_CODESET_ISO88591:
       {
-	for (d = (unsigned char *) dst, s = (unsigned char *) src; d < (unsigned char *) dst + length_in_bytes;
-	     d++, s++)
+	for (d = udst, s = usrc; d < udst + length_in_bytes; d++, s++)
 	  {
 	    *d = char_toupper_iso8859 (*s);
 	  }
@@ -3073,8 +3086,7 @@ intl_identifier_upper (const char *src, char *dst)
     case INTL_CODESET_KSC5601_EUC:
     default:
       {
-	for (d = (unsigned char *) dst, s = (unsigned char *) src; d < (unsigned char *) dst + length_in_bytes;
-	     d++, s++)
+	for (d = udst, s = usrc; d < udst + length_in_bytes; d++, s++)
 	  {
 	    *d = char_toupper (*s);
 	  }
@@ -3113,9 +3125,8 @@ intl_identifier_upper (const char *src, char *dst)
 int
 intl_identifier_fix (char *name, int ident_max_size, bool error_on_case_overflow)
 {
-  int i, length_bytes;
-  unsigned char *name_char = (unsigned char *) name;
-  int char_size;
+  int truncated_size = 0, original_size = 0, char_size = 0;
+  const unsigned char *cname = (unsigned char *) name;
   INTL_CODESET codeset = lang_charset ();
 
   assert (name != NULL);
@@ -3127,10 +3138,10 @@ intl_identifier_fix (char *name, int ident_max_size, bool error_on_case_overflow
 
   assert (ident_max_size > 0 && ident_max_size < DB_MAX_IDENTIFIER_LENGTH);
 
-  length_bytes = strlen (name);
+  original_size = strlen (name);
   if (INTL_CODESET_MULT (codeset) == 1)
     {
-      if (length_bytes > ident_max_size)
+      if (original_size > ident_max_size)
 	{
 	  name[ident_max_size] = '\0';
 	}
@@ -3144,33 +3155,32 @@ intl_identifier_fix (char *name, int ident_max_size, bool error_on_case_overflow
 
 check_truncation:
   /* check if last char of identifier may have been truncated */
-  if (length_bytes + INTL_CODESET_MULT (codeset) > ident_max_size)
+  if (original_size + INTL_CODESET_MULT (codeset) > ident_max_size)
     {
-      if (ident_max_size < length_bytes)
+      if (ident_max_size < original_size)
 	{
-	  length_bytes = ident_max_size;
+	  original_size = ident_max_size;
 	}
 
       /* count original size based on the size given by first byte of each char */
-      for (i = 0; i < length_bytes;)
+      for (truncated_size = 0; truncated_size < original_size;)
 	{
-	  INTL_NEXT_CHAR (name_char, name_char, codeset, &char_size);
-	  i += char_size;
+	  INTL_NEXT_CHAR (cname, cname, codeset, &char_size);
+	  truncated_size += char_size;
 	}
+      assert (truncated_size >= original_size);
 
-      assert (i >= length_bytes);
-
-      /* i == length_bytes means last character fit entirely in 'length_bytes' otherwise assume the last character was
-       * truncated */
-      if (i > length_bytes)
+      /* truncated_size == original_size means last character fit entirely in 'original_size'
+       * otherwise assume the last character was truncated */
+      if (truncated_size > original_size)
 	{
-	  assert (i < length_bytes + INTL_CODESET_MULT (codeset));
-	  assert ((unsigned char) *(name_char - char_size) > 0x80);
+	  assert (truncated_size < original_size + INTL_CODESET_MULT (codeset));
+	  assert ((unsigned char) *(cname - char_size) > 0x80);
 	  /* truncate after the last full character */
-	  i -= char_size;
-	  length_bytes = i;
+	  truncated_size -= char_size;
+	  original_size = truncated_size;
 	}
-      name[length_bytes] = '\0';
+      name[original_size] = '\0';
     }
 
   /* ensure that lower or upper versions of identifier do not exceed maximum allowed size of an identifier */
@@ -3361,7 +3371,7 @@ intl_put_char (unsigned char *dest, const unsigned char *char_p, const INTL_CODE
       break;
 
     case INTL_CODESET_KSC5601_EUC:
-      (void) intl_nextchar_euc ((unsigned char *) char_p, &char_len);
+      (void) intl_nextchar_euc (char_p, &char_len);
       memcpy (dest, char_p, char_len);
       return char_len;
 
@@ -4253,7 +4263,6 @@ intl_check_euckr (const unsigned char *buf, int size, char **pos)
 #undef OUTPUT
 }
 
-#if !defined (SERVER_MODE)
 /*
  * intl_check_string - Checks if a string contains valid sequences in current codeset
  *
@@ -4269,6 +4278,8 @@ intl_check_string (const char *buf, int size, char **pos, const INTL_CODESET cod
 {
   if (!intl_String_validation)
     {
+      // this function is currently used either in client-modes or for loaddb. if it will be used in other server-mode
+      // contexts, that can impact the result of queries, global variable should be replaced with a session parameter.
       return INTL_UTF8_VALID;
     }
 
@@ -4288,6 +4299,7 @@ intl_check_string (const char *buf, int size, char **pos, const INTL_CODESET cod
   return INTL_UTF8_VALID;
 }
 
+#if !defined (SERVER_MODE)
 /*
  * intl_is_bom_magic - Returns 1 if the buffer contains BOM magic for UTF-8
  *

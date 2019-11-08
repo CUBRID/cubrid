@@ -21,24 +21,26 @@
  * db_set.c - API functions for manipulating sets & sequences.
  */
 
-#ident "$Id$"
+#include "db_set.h"
+#include "db_set_function.h"
 
-#include "config.h"
+#if !defined (SERVER_MODE)
+#include "authenticate.h"
+#endif // not SERVER_MODE
+#if !defined (SERVER_MODE)
+#include "class_object.h"
+#endif // SERVER_MODE
+#include "db.h"
+#include "dbtype.h"
+#include "error_manager.h"
+#include "object_primitive.h"
+#include "set_object.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <ctype.h>
 #include <string.h>
-
-#if !defined (SERVER_MODE)
-#include "authenticate.h"
-#endif // not SERVER_MODE
-#include "db.h"
-#include "dbtype.h"
-#include "error_manager.h"
-#include "object_primitive.h"
-#include "set_object.h"
 
 #define ERROR_SET(error, code) \
   do {                     \

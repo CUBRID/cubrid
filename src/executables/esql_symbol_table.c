@@ -708,7 +708,7 @@ pp_type_str (LINK * link)
 	  /* it's a specifier */
 	  const char *noun_str;
 
-	  strncpy (buf, pp_attr_str (link), sizeof (buf));
+	  strncpy_bufsize (buf, pp_attr_str (link));
 
 	  switch (link->decl.s.noun)
 	    {

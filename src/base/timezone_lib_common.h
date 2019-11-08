@@ -76,9 +76,6 @@ typedef enum
  *		      - no new time zones are added;
  * TZ_GEN_TYPE_EXTEND - this flag is used when generating a new timezone library
  *		        using the old library and the new timezone data
- *		
- *		
- *		
  */
 typedef enum
 {

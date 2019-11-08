@@ -227,7 +227,7 @@ net_connect_proxy (void)
 
   memset (&shard_sock_addr, 0, sizeof (shard_sock_addr));
   shard_sock_addr.sun_family = AF_UNIX;
-  strncpy (shard_sock_addr.sun_path, port_name, sizeof (shard_sock_addr.sun_path) - 1);
+  strncpy_bufsize (shard_sock_addr.sun_path, port_name);
 #ifdef  _SOCKADDR_LEN		/* 4.3BSD Reno and later */
   len = sizeof (shard_sock_addr.sun_len) + sizeof (shard_sock_addr.sun_family) + strlen (shard_sock_addr.sun_path) + 1;
   shard_sock_addr.sun_len = len;

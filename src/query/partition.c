@@ -24,15 +24,15 @@
 #include <assert.h>
 #include "partition_sr.h"
 
-#include "heap_file.h"
-#include "fetch.h"
 #include "dbtype.h"
-#include "stream_to_xasl.h"
+#include "fetch.h"
+#include "heap_file.h"
+#include "object_primitive.h"
+#include "object_representation.h"
 #include "query_aggregate.hpp"
 #include "query_executor.h"
 #include "query_opfunc.h"
-#include "object_primitive.h"
-#include "dbtype.h"
+#include "stream_to_xasl.h"
 #include "xasl.h"
 #include "xasl_predicate.hpp"
 #include "xasl_unpack_info.hpp"
@@ -891,6 +891,7 @@ pruningset_to_spec_list (PRUNING_CONTEXT * pinfo, const PRUNING_BITSET * pruned)
 				    NULL);
       if (error != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  goto cleanup;
 	}
     }
@@ -898,6 +899,7 @@ pruningset_to_spec_list (PRUNING_CONTEXT * pinfo, const PRUNING_BITSET * pruned)
   spec = (PARTITION_SPEC_TYPE *) db_private_alloc (pinfo->thread_p, cnt * sizeof (PARTITION_SPEC_TYPE));
   if (spec == NULL)
     {
+      assert (false);
       error = ER_FAILED;
       goto cleanup;
     }
@@ -925,6 +927,7 @@ pruningset_to_spec_list (PRUNING_CONTEXT * pinfo, const PRUNING_BITSET * pruned)
 
 	  if (error != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      goto cleanup;
 	    }
 	}
@@ -2202,6 +2205,7 @@ partition_find_root_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, O
   error = heap_get_class_supers (thread_p, class_oid, &super_classes, &super_count);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       if (super_classes != NULL)
 	{
 	  free_and_init (super_classes);
@@ -2271,6 +2275,7 @@ partition_load_pruning_context (THREAD_ENTRY * thread_p, const OID * class_oid, 
       error = partition_find_root_class_oid (thread_p, class_oid, &pinfo->root_oid);
       if (error != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  goto error_return;
 	}
     }
@@ -2286,6 +2291,7 @@ reload_from_cache:
       error = partition_load_partition_predicate (pinfo, master);
       if (error != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  goto error_return;
 	}
       if (pruning_type == DB_PARTITION_CLASS)
@@ -2298,13 +2304,15 @@ reload_from_cache:
   if (pinfo->error_code != NO_ERROR)
     {
       error = pinfo->error_code;
+      ASSERT_ERROR ();
       goto error_return;
     }
 
   error = heap_get_class_partitions (pinfo->thread_p, &pinfo->root_oid, &pinfo->partitions, &pinfo->count);
   if (error != NO_ERROR)
     {
-      return error;
+      ASSERT_ERROR ();
+      goto error_return;
     }
 
   if (pinfo->partitions == NULL)
@@ -2317,6 +2325,7 @@ reload_from_cache:
   error = partition_load_partition_predicate (pinfo, master);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error_return;
     }
 
@@ -2443,17 +2452,22 @@ partition_load_partition_predicate (PRUNING_CONTEXT * pinfo, OR_PARTITION * mast
   error = db_set_get (master->values, 2, &val);
   if (error != NO_ERROR)
     {
-      return ER_FAILED;
+      ASSERT_ERROR ();
+      return error;
     }
 
   assert (DB_VALUE_TYPE (&val) == DB_TYPE_CHAR);
-  expr_stream = db_get_string (&val);
+  // use const_cast since of a limitation of or_unpack_* functions which do not accept const
+  expr_stream = CONST_CAST (char *, db_get_string (&val));
   stream_len = db_get_string_size (&val);
 
   /* unpack partition expression */
-  error =
-    stx_map_stream_to_func_pred (pinfo->thread_p, &pinfo->partition_pred, expr_stream, stream_len,
-				 &pinfo->fp_cache_context);
+  error = stx_map_stream_to_func_pred (pinfo->thread_p, &pinfo->partition_pred, expr_stream, stream_len,
+				       &pinfo->fp_cache_context);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
   pr_clear_value (&val);
 
   return error;
@@ -2665,6 +2679,7 @@ partition_get_position_in_key (PRUNING_CONTEXT * pinfo, BTID * btid)
     heap_get_indexinfo_of_btid (pinfo->thread_p, &pinfo->root_oid, btid, NULL, &key_count, &keys, NULL, NULL, NULL);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       return error;
     }
 
@@ -2712,6 +2727,7 @@ partition_prune_heap_scan (PRUNING_CONTEXT * pinfo)
       status = partition_match_pred_expr (pinfo, pinfo->spec->where_pred, &pruned);
       if (pinfo->error_code != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  return pinfo->error_code;
 	}
     }
@@ -2719,12 +2735,20 @@ partition_prune_heap_scan (PRUNING_CONTEXT * pinfo)
   if (status != MATCH_NOT_FOUND)
     {
       error = pruningset_to_spec_list (pinfo, &pruned);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
     }
   else
     {
       /* consider all partitions */
       pruningset_set_all (&pruned);
       error = pruningset_to_spec_list (pinfo, &pruned);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
     }
 
   return error;
@@ -2790,11 +2814,19 @@ partition_prune_index_scan (PRUNING_CONTEXT * pinfo)
 	{
 	  pruningset_set_all (&pruned);
 	  error = pruningset_to_spec_list (pinfo, &pruned);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	    }
 	}
     }
   else
     {
       error = pruningset_to_spec_list (pinfo, &pruned);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
     }
 
   return error;
@@ -2840,6 +2872,7 @@ partition_prune_spec (THREAD_ENTRY * thread_p, val_descr * vd, access_spec_node 
   error = partition_load_pruning_context (thread_p, &ACCESS_SPEC_CLS_OID (spec), spec->pruning_type, &pinfo);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       return error;
     }
 
@@ -2857,6 +2890,10 @@ partition_prune_spec (THREAD_ENTRY * thread_p, val_descr * vd, access_spec_node 
       || spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
     {
       error = partition_prune_heap_scan (&pinfo);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
     }
   else
     {
@@ -2882,15 +2919,24 @@ partition_prune_spec (THREAD_ENTRY * thread_p, val_descr * vd, access_spec_node 
 	  error = partition_get_position_in_key (&pinfo, btid);
 	  if (error != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      partition_clear_pruning_context (&pinfo);
 	      return error;
 	    }
 	}
       error = partition_prune_index_scan (&pinfo);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
     }
 
   partition_clear_pruning_context (&pinfo);
-  spec->pruned = true;
+
+  if (error == NO_ERROR)
+    {
+      spec->pruned = true;
+    }
 
   return error;
 }

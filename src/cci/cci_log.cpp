@@ -337,7 +337,12 @@ std::string _LogAppenderBase::getCurrDate()
   localtime_r (&t, &cal);
   cal.tm_year += 1900;
   cal.tm_mon += 1;
-  snprintf (buf, 16, "%d-%02d-%02d", cal.tm_year, cal.tm_mon, cal.tm_mday);
+  if (snprintf (buf, 16, "%d-%02d-%02d", cal.tm_year, cal.tm_mon, cal.tm_mday) < 0)
+    {
+      // return empty
+      assert (false);
+      return std::string ();
+    }
 
   return buf;
 }
@@ -351,8 +356,13 @@ std::string _LogAppenderBase::getCurrDateTime()
   localtime_r (&t, &cal);
   cal.tm_year += 1900;
   cal.tm_mon += 1;
-  snprintf (buf, 16, "%d%02d%02d%02d%02d%02d", cal.tm_year, cal.tm_mon,
-	    cal.tm_mday, cal.tm_hour, cal.tm_min, cal.tm_sec);
+  if (snprintf (buf, 16, "%d%02d%02d%02d%02d%02d", cal.tm_year, cal.tm_mon, cal.tm_mday, cal.tm_hour, cal.tm_min,
+		cal.tm_sec) < 0)
+    {
+      // return empty
+      assert (false);
+      return std::string ();
+    }
 
   return buf;
 }
@@ -673,7 +683,7 @@ void _Logger::write (const char *msg)
 {
   logAppender->write (msg);
 
-  unflushedBytes += strlen (msg);
+  unflushedBytes += (int) strlen (msg);
 
   if (isForceFlush || unflushedBytes >= LOG_FLUSH_SIZE
       || nextFlushTime >= (unsigned long) context.now.tv_usec)

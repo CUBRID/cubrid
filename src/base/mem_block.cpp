@@ -142,4 +142,71 @@ namespace cubmem
     m_dealloc_f = other.m_dealloc_f;
     return *this;
   }
+
+  //
+  // single_block_allocator
+  //
+
+  single_block_allocator::single_block_allocator (const block_allocator &base_alloc)
+    : m_base_allocator (base_alloc)
+    , m_block {}
+    , m_allocator { std::bind (&single_block_allocator::allocate, this, std::placeholders::_1, std::placeholders::_2),
+		    std::bind (&single_block_allocator::deallocate, this, std::placeholders::_1) }
+  {
+  }
+
+  single_block_allocator::~single_block_allocator ()
+  {
+    m_base_allocator.m_dealloc_f (m_block);
+  }
+
+  void
+  single_block_allocator::allocate (block &b, size_t size)
+  {
+    // argument should be uninitialized or should be same as m_block; giving a different block may be a logical error
+    assert (b.ptr == NULL || (b.ptr == m_block.ptr && b.dim == m_block.dim));
+
+    m_base_allocator.m_alloc_f (m_block, size);
+    b.ptr = m_block.ptr;
+    b.dim = m_block.dim;
+  }
+
+  void
+  single_block_allocator::deallocate (block &b)
+  {
+    // local block remains
+    b.ptr = NULL;
+    b.dim = 0;
+  }
+
+  const block_allocator &
+  single_block_allocator::get_block_allocator () const
+  {
+    return m_allocator;
+  }
+
+  const block &
+  single_block_allocator::get_block() const
+  {
+    return m_block;
+  }
+
+  char *
+  single_block_allocator::get_ptr () const
+  {
+    return m_block.ptr;
+  }
+
+  size_t
+  single_block_allocator::get_size () const
+  {
+    return m_block.dim;
+  }
+
+  void
+  single_block_allocator::reserve (size_t size)
+  {
+    m_base_allocator.m_alloc_f (m_block, size);
+  }
+
 } // namespace cubmem

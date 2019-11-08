@@ -2471,25 +2471,17 @@ disk_auto_expand (THREAD_ENTRY * thread_p)
 
 // *INDENT-OFF*
 #if defined (SERVER_MODE)
-// class disk_auto_expansion_daemon_task
-//
-//  description:
-//    disk auto expansion daemon task
-//
-class disk_auto_expansion_daemon_task : public cubthread::entry_task
+static void
+disk_auto_expansion_execute (cubthread::entry & thread_ref)
 {
-  public:
-    void execute (cubthread::entry & thread_ref) override
+  if (!BO_IS_SERVER_RESTARTED ())
     {
-      if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
-
-      disk_auto_expand (&thread_ref);
+      // wait for boot to finish
+      return;
     }
-};
+
+  disk_auto_expand (&thread_ref);
+}
 #endif /* SERVER_MODE */
 
 #if defined (SERVER_MODE)
@@ -2506,7 +2498,7 @@ disk_auto_volume_expansion_daemon_init ()
 
   std::chrono::seconds interval_time = std::chrono::seconds (60);
   disk_Auto_volume_expansion_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (interval_time),
-				      new disk_auto_expansion_daemon_task ());
+				      new cubthread::entry_callable_task (disk_auto_expansion_execute));
   */
 }
 #endif /* SERVER_MODE */
@@ -2991,10 +2983,10 @@ disk_volume_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** o
   db_make_int (out_values[idx], vhdr->iopagesize);
   idx++;
 
-  db_make_string_by_const_str (out_values[idx], disk_purpose_to_string (vhdr->purpose));
+  db_make_string (out_values[idx], disk_purpose_to_string (vhdr->purpose));
   idx++;
 
-  db_make_string_by_const_str (out_values[idx], disk_type_to_string (vhdr->type));
+  db_make_string (out_values[idx], disk_type_to_string (vhdr->type));
   idx++;
 
   db_make_int (out_values[idx], vhdr->sect_npgs);
@@ -4682,6 +4674,7 @@ disk_unreserve_ordered_sectors_without_csect (THREAD_ENTRY * thread_p, DB_VOLPUR
   int error_code = NO_ERROR;
 
   context.nsect_total = nsects;
+  context.n_cache_reserve_remaining = nsects;
 
   context.n_cache_vol_reserve = 0;
   context.vsidp = vsids;

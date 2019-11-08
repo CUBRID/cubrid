@@ -125,9 +125,9 @@ shard_metadata_read_user (T_SHM_PROXY * shm_proxy_p, char *db_name, char *db_use
   shm_user_p->num_shard_user = max_user;
 
   user_p = &(shm_user_p->shard_user[0]);
-  strncpy (user_p->db_name, db_name, sizeof (user_p->db_name) - 1);
-  strncpy (user_p->db_user, db_user, sizeof (user_p->db_user) - 1);
-  strncpy (user_p->db_password, db_password, sizeof (user_p->db_password) - 1);
+  strncpy_bufsize (user_p->db_name, db_name);
+  strncpy_bufsize (user_p->db_user, db_user);
+  strncpy_bufsize (user_p->db_password, db_password);
 
   SHARD_INF ("<USERINFO> [%d] db_name:[%s], " "db_user:[%s], db_password:[%s]\n", 0, user_p->db_name, user_p->db_user,
 	     user_p->db_password);
@@ -194,7 +194,7 @@ shard_metadata_read_key (const char *filename, T_SHM_PROXY * shm_proxy_p)
 	      trim (section);
 	      if (strncasecmp (section, key_column, SHARD_KEY_COLUMN_LEN) != 0)
 		{
-		  strncpy (key_column, section, sizeof (key_column) - 1);
+		  strncpy_bufsize (key_column, section);
 
 		  shm_key_p->num_shard_key++;
 		  idx_key = shm_key_p->num_shard_key - 1;
@@ -225,7 +225,7 @@ shard_metadata_read_key (const char *filename, T_SHM_PROXY * shm_proxy_p)
 	}
 
       key_p = &(shm_key_p->shard_key[idx_key]);
-      strncpy (key_p->key_column, key_column, sizeof (key_p->key_column) - 1);
+      strncpy_bufsize (key_p->key_column, key_column);
 
       if (idx_range >= SHARD_KEY_RANGE_MAX)
 	{
