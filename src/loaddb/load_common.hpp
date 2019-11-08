@@ -25,7 +25,6 @@
 #define _LOAD_COMMON_HPP_
 
 #include "packable_object.hpp"
-#include "porting.h"
 
 #include <atomic>
 #include <cassert>
