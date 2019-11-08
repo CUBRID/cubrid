@@ -1676,6 +1676,16 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
     }
 
 exit:
+  if (error != NO_ERROR)
+    {
+      // make sure all list ids are cleared
+      for (agg_p = agg_list_p; agg_p != NULL; agg_p = agg_p->next)
+	{
+	  qfile_close_list (thread_p, agg_p->list_id);
+	  qfile_destroy_list (thread_p, agg_p->list_id);
+	}
+    }
+
   (void) pr_clear_value (&dbval);
 
   return error;
