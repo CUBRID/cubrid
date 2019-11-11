@@ -3992,6 +3992,16 @@ db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string, cons
 			   db_get_string_length (src_string), db_get_string_size (src_string),
 			   db_get_string_codeset (src_string), &result, &result_type, &result_length, &result_size);
 
+  int max_size = MIN ((int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES),
+		      QSTR_MAX_PRECISION (DB_VALUE_DOMAIN_TYPE (src_string)));
+  if (result_length > max_size)
+    {
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, result_length, max_size);
+      db_private_free (NULL, result);
+      db_make_null (padded_string);
+      return ER_QPROC_STRING_SIZE_TOO_BIG;
+    }
+
   if (error_status == NO_ERROR && result != NULL)
     {
       qstr_make_typed_string (result_type, padded_string, result_length, (char *) result, result_size,
@@ -7103,30 +7113,31 @@ void
 qstr_make_typed_string (const DB_TYPE db_type, DB_VALUE * value, const int precision, DB_CONST_C_CHAR src,
 			const int s_unit, const int codeset, const int collation_id)
 {
+  int error = NO_ERROR;
   switch (db_type)
     {
     case DB_TYPE_CHAR:
-      db_make_char (value, precision, src, s_unit, codeset, collation_id);
+      error = db_make_char (value, precision, src, s_unit, codeset, collation_id);
       break;
 
     case DB_TYPE_VARCHAR:
-      db_make_varchar (value, precision, src, s_unit, codeset, collation_id);
+      error = db_make_varchar (value, precision, src, s_unit, codeset, collation_id);
       break;
 
     case DB_TYPE_NCHAR:
-      db_make_nchar (value, precision, src, s_unit, codeset, collation_id);
+      error = db_make_nchar (value, precision, src, s_unit, codeset, collation_id);
       break;
 
     case DB_TYPE_VARNCHAR:
-      db_make_varnchar (value, precision, src, s_unit, codeset, collation_id);
+      error = db_make_varnchar (value, precision, src, s_unit, codeset, collation_id);
       break;
 
     case DB_TYPE_BIT:
-      db_make_bit (value, precision, src, s_unit);
+      error = db_make_bit (value, precision, src, s_unit);
       break;
 
     case DB_TYPE_VARBIT:
-      db_make_varbit (value, precision, src, s_unit);
+      error = db_make_varbit (value, precision, src, s_unit);
       break;
 
     default:
@@ -7134,6 +7145,7 @@ qstr_make_typed_string (const DB_TYPE db_type, DB_VALUE * value, const int preci
       db_make_null (value);
       break;
     }
+  assert (error == NO_ERROR);
 }
 
 /*
