@@ -3918,18 +3918,19 @@ db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string, cons
   assert (src_string != (DB_VALUE *) NULL);
   assert (padded_string != (DB_VALUE *) NULL);
 
+  if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
+    {
+      db_value_domain_init (padded_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+    }
+  else
+    {
+      db_value_domain_init (padded_string, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+    }
+
   /* if source is NULL, return NULL */
   if (DB_IS_NULL (src_string))
     {
-      if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
-	{
-	  db_value_domain_init (padded_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	}
-      else
-	{
-	  db_value_domain_init (padded_string, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	}
-      return error_status;
+      return NO_ERROR;
     }
 
   if (pad_charset == NULL)
@@ -3938,29 +3939,13 @@ db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string, cons
     }
   else if (DB_IS_NULL (pad_charset))
     {
-      if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
-	{
-	  db_value_domain_init (padded_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	}
-      else
-	{
-	  db_value_domain_init (padded_string, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	}
-      return error_status;
+      return NO_ERROR;
     }
 
   if (DB_IS_NULL (pad_length) || (total_length = db_get_int (pad_length)) <= 0)
     {
-      /* error_status = ER_QPROC_INVALID_PARAMETER; */
-      if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
-	{
-	  db_value_domain_init (padded_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	}
-      else
-	{
-	  db_value_domain_init (padded_string, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	}
-      return error_status;
+      /* error_status = ER_QPROC_INVALID_PARAMETER; */// why is this commented??
+      return error_status;	// this is NO_ERROR
     }
 
   src_type = DB_VALUE_DOMAIN_TYPE (src_string);
@@ -3992,26 +3977,39 @@ db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string, cons
 			   db_get_string_length (src_string), db_get_string_size (src_string),
 			   db_get_string_codeset (src_string), &result, &result_type, &result_length, &result_size);
 
-  int max_size = MIN ((int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES),
-		      QSTR_MAX_PRECISION (DB_VALUE_DOMAIN_TYPE (src_string)));
-  if (result_length > max_size)
+  if (error_status != NO_ERROR)
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, result_length, max_size);
-      db_private_free (NULL, result);
-      db_make_null (padded_string);
+      assert (result == NULL);
+      ASSERT_ERROR ();
+      return error_status;
+    }
+
+  if (result == NULL)
+    {
+      // null result
+      return NO_ERROR;
+    }
+
+  // check length/size
+  if (result_length > QSTR_MAX_PRECISION (DB_VALUE_DOMAIN_TYPE (src_string)))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRECISION_OVERFLOW, 2, result_length,
+	      QSTR_MAX_PRECISION (DB_VALUE_DOMAIN_TYPE (src_string)));
+      free_and_init (result);
+      return ER_PRECISION_OVERFLOW;
+    }
+  if ((UINT64) result_size > prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, result_size,
+	      (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
+      free_and_init (result);
       return ER_QPROC_STRING_SIZE_TOO_BIG;
     }
-
-  if (error_status == NO_ERROR && result != NULL)
-    {
-      qstr_make_typed_string (result_type, padded_string, result_length, (char *) result, result_size,
-			      db_get_string_codeset (src_string), db_get_string_collation (src_string));
-
-      result[result_size] = 0;
-      padded_string->need_clear = true;
-    }
-
-  return error_status;
+  qstr_make_typed_string (result_type, padded_string, result_length, (char *) result, result_size,
+			  db_get_string_codeset (src_string), db_get_string_collation (src_string));
+  result[result_size] = 0;
+  padded_string->need_clear = true;
+  return NO_ERROR;
 }
 
 /*
