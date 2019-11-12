@@ -4993,23 +4993,36 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	      // cannot update
 	      return NO_ERROR;
 	    }
-
-	  LOG_LSA log_lsa = log_Gl.prior_info.prior_lsa;
-	  ulock.unlock ();	// unlock after reading prior_lsa
-
-	  const VACUUM_LOG_BLOCKID LOG_BLOCK_TRAILING_DIFF = 2;
-	  VACUUM_LOG_BLOCKID log_blockid = vacuum_get_log_blockid (log_lsa.pageid);
-
-	  if (log_blockid > vacuum_Data.get_last_blockid () + LOG_BLOCK_TRAILING_DIFF)
+	  // check buffer again, it is possible that a new block was added
+	  if (vacuum_Block_data_buffer->is_empty ())
 	    {
-	      vacuum_Data.set_last_blockid (log_blockid - LOG_BLOCK_TRAILING_DIFF);
-	      vacuum_data_empty_update_last_blockid (thread_p);
-	      vacuum_update_keep_from_log_pageid (thread_p);
-	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "update last_blockid to %lld",
-			     (long long int) vacuum_Data.get_last_blockid ());
+	      // update last blockid
+	      LOG_LSA log_lsa = log_Gl.prior_info.prior_lsa;
+	      ulock.unlock ();	// unlock after reading prior_lsa
+
+	      const VACUUM_LOG_BLOCKID LOG_BLOCK_TRAILING_DIFF = 2;
+	      VACUUM_LOG_BLOCKID log_blockid = vacuum_get_log_blockid (log_lsa.pageid);
+
+	      if (log_blockid > vacuum_Data.get_last_blockid () + LOG_BLOCK_TRAILING_DIFF)
+		{
+		  vacuum_Data.set_last_blockid (log_blockid - LOG_BLOCK_TRAILING_DIFF);
+		  vacuum_data_empty_update_last_blockid (thread_p);
+		  vacuum_update_keep_from_log_pageid (thread_p);
+		  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "update last_blockid to %lld",
+				 (long long int) vacuum_Data.get_last_blockid ());
+		}
+	      return NO_ERROR;
+	    }
+	  else
+	    {
+	      // fall through to consume buffer
 	    }
 	}
-      return NO_ERROR;
+      else
+	{
+	  // last blockid remains last in vacuum data
+	  return NO_ERROR;
+	}
     }
 
   if (vacuum_Data.last_page == NULL)
