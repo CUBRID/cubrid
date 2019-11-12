@@ -2437,24 +2437,20 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 
 	      LSA_COPY (&fwd_log_lsa, &tmp_log_rec->forw_lsa);
 
-	      if (LSA_ISNULL (&fwd_log_lsa))
+	      /* TODO - Do we need to handle NULL fwd_log_lsa? */
+	      if (!LSA_ISNULL (&fwd_log_lsa))
 		{
-		  LSA_COPY (&fwd_log_lsa, &log_lsa);
-		  fwd_log_lsa.offset += sizeof (LOG_RECORD_HEADER);
-		  fwd_log_lsa.offset = DB_ALIGN (fwd_log_lsa.offset, DOUBLE_ALIGNMENT);
+		  assert (fwd_log_lsa.pageid >= log_lsa.pageid);
 
-		  /* TODO - Do we need to add data header size? */
-		}
-	      assert (fwd_log_lsa.pageid >= log_lsa.pageid);
-
-	      if (fwd_log_lsa.pageid != log_lsa.pageid
-		  && (fwd_log_lsa.offset != 0 || fwd_log_lsa.pageid > log_lsa.pageid + 1))
-		{
-		  /* The current log record spreads into several log pages. Check whether the last page of the record exists. */
-		  if (logpb_fetch_page (thread_p, &fwd_log_lsa, LOG_CS_FORCE_USE, log_fwd_page_p) != NO_ERROR)
+		  if (fwd_log_lsa.pageid != log_lsa.pageid
+		      && (fwd_log_lsa.offset != 0 || fwd_log_lsa.pageid > log_lsa.pageid + 1))
 		    {
-		      /* The forward log page does not exists. */
-		      needs_log_reset = true;
+		      /* The current log record spreads into several log pages. Check whether the last page of the record exists. */
+		      if (logpb_fetch_page (thread_p, &fwd_log_lsa, LOG_CS_FORCE_USE, log_fwd_page_p) != NO_ERROR)
+			{
+			  /* The forward log page does not exists. */
+			  needs_log_reset = true;
+			}
 		    }
 		}
 	    }
