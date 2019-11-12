@@ -705,8 +705,19 @@ locator_send_copy_area (LC_COPYAREA * copyarea, char **contents_ptr, int *conten
 
 	  if (offset != -1)
 	    {
-	      *contents_length = DB_ALIGN (*contents_length, MAX_ALIGNMENT);
-	      *contents_length += offset;
+	      int len = *contents_length;
+	      int aligned_len = DB_ALIGN (len, MAX_ALIGNMENT);
+
+	      *contents_length = aligned_len + offset;	// total len
+
+#if !defined (NDEBUG)
+	      int padded_len = aligned_len - len;
+	      if (padded_len > 0)
+		{
+		  // make valgrind silent
+		  memset (*contents_ptr + *contents_length - padded_len, 0, padded_len);
+		}
+#endif /* DEBUG */
 	    }
 	}
     }
