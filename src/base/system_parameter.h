@@ -439,8 +439,10 @@ enum param_id
 
   PRM_ID_ENABLE_NEW_LFHASH,
 
+  PRM_ID_HEAP_INFO_CACHE_LOGGING,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_ENABLE_NEW_LFHASH
+  PRM_LAST_ID = PRM_ID_HEAP_INFO_CACHE_LOGGING
 };
 typedef enum param_id PARAM_ID;
 

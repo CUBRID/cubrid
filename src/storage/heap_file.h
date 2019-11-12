@@ -188,6 +188,7 @@ struct heap_hfid_table
   LF_HASH_TABLE hfid_hash;	/* class OID->HFID cache hash table */
   LF_ENTRY_DESCRIPTOR hfid_hash_descriptor;	/* used by hfid_hash */
   LF_FREELIST hfid_hash_freelist;	/* used by hfid_hash */
+  bool logging;
 };
 
 #define HEAP_HFID_HASH_SIZE 1000

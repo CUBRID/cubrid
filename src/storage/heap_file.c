@@ -502,10 +502,16 @@ static HEAP_STATS_BESTSPACE_CACHE heap_Bestspace_cache_area =
 static HEAP_STATS_BESTSPACE_CACHE *heap_Bestspace = NULL;
 
 static HEAP_HFID_TABLE heap_Hfid_table_area = { LF_HASH_TABLE_INITIALIZER, LF_ENTRY_DESCRIPTOR_INITIALIZER,
-  LF_FREELIST_INITIALIZER
+  LF_FREELIST_INITIALIZER, false
 };
 
 static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
+
+#define heap_hfid_table_log(thp, oidp, msg, ...) \
+  if (heap_Hfid_table->logging) \
+    er_print_callstack (ARG_FILE_LINE, "HEAP_INFO_CACHE[thr(%d),tran(%d,%d),OID(%d|%d|%d)]: " msg "\n", \
+                        (thp)->index, LOG_FIND_CURRENT_TDES (thp)->tran_index, LOG_FIND_CURRENT_TDES (thp)->trid, \
+                        OID_AS_ARGS (oidp), __VA_ARGS__)
 
 /* Recovery. */
 #define HEAP_RV_FLAG_VACUUM_STATUS_CHANGE 0x8000
@@ -23090,6 +23096,8 @@ heap_initialize_hfid_table (void)
       return ret;
     }
 
+  heap_Hfid_table_area.logging = prm_get_bool_value (PRM_ID_HEAP_INFO_CACHE_LOGGING);
+
   heap_Hfid_table = &heap_Hfid_table_area;
 
   return ret;
@@ -23125,14 +23133,12 @@ heap_delete_hfid_from_cache (THREAD_ENTRY * thread_p, OID * class_oid)
 {
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_HFID_TABLE);
   int error = NO_ERROR;
+  int success = 0;
 
-  error = lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, class_oid, NULL);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
+  error = lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, class_oid, &success);
+  heap_hfid_table_log (thread_p, class_oid, "heap_delete_hfid_from_cache success=%d", success);
 
-  return NO_ERROR;
+  return error;
 }
 
 /*
@@ -23276,6 +23282,7 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
     lf_hash_find_or_insert (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry, &inserted);
   if (error_code != NO_ERROR)
     {
+      assert (false);
       return error_code;
     }
   // NOTE: no collisions are expected when heap_cache_class_info is called
@@ -23306,6 +23313,8 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
 	    }
 	  assert (success);
 
+	  heap_hfid_table_log (thread_p, class_oid, "heap_cache_class_info failed error=%d", error_code);
+
 	  if (classname_local != NULL)
 	    {
 	      free (classname_local);
@@ -23322,6 +23331,9 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
 
   entry->ftype = ftype;
   lf_tran_end_with_mb (t_entry);
+
+  heap_hfid_table_log (thread_p, class_oid, "heap_cache_class_info hfid=%d|%d|%d, ftype=%s, classname = %s",
+		       HFID_AS_ARGS (hfid), file_type_to_string (ftype), classname_local);
 
   /* Successfully cached. */
   return NO_ERROR;
@@ -23385,6 +23397,8 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 	{
 	  ASSERT_ERROR ();
 	  lf_tran_end_with_mb (t_entry);
+
+	  heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get failed error = %d", error_code);
 	  return error_code;
 	}
       entry->hfid = hfid_local;
@@ -23409,6 +23423,8 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 	{
 	  ASSERT_ERROR ();
 	  lf_tran_end_with_mb (t_entry);
+
+	  heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get failed error = %d", error_code);
 	  return error_code;
 	}
       entry->ftype = ftype_local;
@@ -23429,6 +23445,9 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
     }
 
   lf_tran_end_with_mb (t_entry);
+
+  heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get hfid=%d|%d|%d, ftype = %s, classname = %s",
+		       HFID_AS_ARGS (&entry->hfid), file_type_to_string (entry->ftype), entry->classname.load ());
   return error_code;
 }
 
