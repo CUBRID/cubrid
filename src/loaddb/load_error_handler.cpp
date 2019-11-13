@@ -84,8 +84,6 @@ namespace cubload
 #if defined (SERVER_MODE)
     if (m_syntax_check)
       {
-	int save_lineno = get_driver_lineno ();
-
 	// just log er_msg ()
 	std::string er_msg;
 	log_error_message (er_msg, false, true);
