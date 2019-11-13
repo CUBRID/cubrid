@@ -254,11 +254,11 @@ logwr_fetch_header_page (LOG_PAGE * log_pgptr, int vol_fd, HEADER_FETCH_MODE mod
     {
       if (log_pgptr->hdr.logical_pageid != pageid)
 	{
-          if (mode == CHECK_FORMATTED_PAGE && fileio_is_formatted_page (NULL, (char *) log_pgptr))
-            {
-              /* set error outside this function */
-              return ER_DISK_INCONSISTENT_VOL_HEADER;
-            }
+	  if (mode == CHECK_FORMATTED_PAGE && fileio_is_formatted_page (NULL, (char *) log_pgptr))
+	    {
+	      /* set error outside this function */
+	      return ER_DISK_INCONSISTENT_VOL_HEADER;
+	    }
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, pageid);
 	  return ER_LOG_PAGE_CORRUPTED;
 	}
@@ -305,11 +305,11 @@ logwr_read_log_header (void)
 	  error = logwr_fetch_header_page (log_pgptr, logwr_Gl.append_vdes, CHECK_FORMATTED_PAGE);
 	  if (error == ER_DISK_INCONSISTENT_VOL_HEADER)
 	    {
-              /* the page appears to be just formatted (previous instance of log writter was stopped before appending
-               * expected data; in this case just notify and delete the volume:
-               * the behavior will be the same as `if (!fileio_is_volume_exist (logwr_Gl.active_name)) branch` */
-              er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_DISK_INCONSISTENT_VOL_HEADER, 1,
-                      logwr_Gl.active_name);
+	      /* the page appears to be just formatted (previous instance of log writter was stopped before appending
+	       * expected data; in this case just notify and delete the volume:
+	       * the behavior will be the same as `if (!fileio_is_volume_exist (logwr_Gl.active_name)) branch` */
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_DISK_INCONSISTENT_VOL_HEADER, 1,
+		      logwr_Gl.active_name);
 
 	      fileio_dismount (NULL, LOG_DBLOG_ACTIVE_VOLID);
 	      fileio_unformat (NULL, logwr_Gl.active_name);
