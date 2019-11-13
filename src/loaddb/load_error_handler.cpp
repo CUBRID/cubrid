@@ -53,6 +53,15 @@ namespace cubload
     return thread_ref.m_loaddb_driver->get_start_line ();
   }
 
+  int
+  error_handler::get_scanner_lineno ()
+  {
+    cubthread::entry &thread_ref = cubthread::get_entry ();
+    assert (thread_ref.m_loaddb_driver != NULL);
+
+    return thread_ref.m_loaddb_driver->get_scanner ().lineno () + 1;
+  }
+
   char *
   error_handler::get_message_from_catalog (MSGCAT_LOADDB_MSG msg_id)
   {
@@ -65,7 +74,7 @@ namespace cubload
     if (!is_last_error_filtered ())
       {
 	std::string empty;
-	log_error_message (empty, true);
+	log_error_message (empty, true, false);
       }
   }
 
@@ -75,9 +84,11 @@ namespace cubload
 #if defined (SERVER_MODE)
     if (m_syntax_check)
       {
+	int save_lineno = get_lineno ();
+
 	// just log er_msg ()
 	std::string er_msg;
-	log_error_message (er_msg, false);
+	log_error_message (er_msg, false, true);
 	er_clear ();
 	return;
       }
@@ -86,13 +97,23 @@ namespace cubload
   }
 
   void
-  error_handler::log_error_message (std::string &err_msg, bool fail)
+  error_handler::log_error_message (std::string &err_msg, bool fail, bool use_scanner_lineno)
   {
 #if defined (SERVER_MODE)
     if (er_errid () != NO_ERROR && (er_has_error () || er_get_severity () == ER_WARNING_SEVERITY))
       {
 	// if there is an error set via er_set then report it as well
-	err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ()));
+	int lineno;
+	if (!use_scanner_lineno)
+	  {
+	    lineno = get_lineno ();
+	  }
+	else
+	  {
+	    lineno = get_scanner_lineno ();
+	  }
+
+	err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), lineno));
 	err_msg.append (std::string (er_msg ()));
 	err_msg.append ("\n");
       }
