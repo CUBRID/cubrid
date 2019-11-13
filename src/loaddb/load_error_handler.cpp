@@ -45,7 +45,7 @@ namespace cubload
 #endif
 
   int
-  error_handler::get_lineno ()
+  error_handler::get_driver_lineno ()
   {
     cubthread::entry &thread_ref = cubthread::get_entry ();
     assert (thread_ref.m_loaddb_driver != NULL);
@@ -74,7 +74,7 @@ namespace cubload
     if (!is_last_error_filtered ())
       {
 	std::string empty;
-	log_error_message (empty, true, false);
+	log_error_message (empty, true);
       }
   }
 
@@ -84,7 +84,7 @@ namespace cubload
 #if defined (SERVER_MODE)
     if (m_syntax_check)
       {
-	int save_lineno = get_lineno ();
+	int save_lineno = get_driver_lineno ();
 
 	// just log er_msg ()
 	std::string er_msg;
@@ -97,16 +97,16 @@ namespace cubload
   }
 
   void
-  error_handler::log_error_message (std::string &err_msg, bool fail, bool use_scanner_lineno)
+  error_handler::log_error_message (std::string &err_msg, bool fail, bool is_syntax_check)
   {
 #if defined (SERVER_MODE)
     if (er_errid () != NO_ERROR && (er_has_error () || er_get_severity () == ER_WARNING_SEVERITY))
       {
 	// if there is an error set via er_set then report it as well
 	int lineno;
-	if (!use_scanner_lineno)
+	if (!is_syntax_check)
 	  {
-	    lineno = get_lineno ();
+	    lineno = get_driver_lineno ();
 	  }
 	else
 	  {
