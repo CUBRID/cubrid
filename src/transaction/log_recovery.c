@@ -2368,8 +2368,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 {
   LOG_LSA checkpoint_lsa = { -1, -1 };
   LOG_LSA lsa;			/* LSA of log record to analyse */
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], fwd_log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf,
-    *fwd_aligned_log_pgbuf;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], fwd_log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char *aligned_log_pgbuf, *fwd_aligned_log_pgbuf;
   LOG_PAGE *log_page_p = NULL, *log_fwd_page_p;	/* Log page pointer where LSA is located */
   LOG_LSA log_lsa, fwd_log_lsa;
   LOG_LSA prev_lsa;
@@ -2393,7 +2393,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
   char null_buffer[block_size + MAX_ALIGNMENT], *null_block;
   int max_num_blocks = LOG_PAGESIZE / block_size;
   int last_checked_page_id = NULL_PAGEID;
-  bool needs_log_reset;
+  bool is_log_page_broken;
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   fwd_aligned_log_pgbuf = PTR_ALIGN (fwd_log_pgbuf, MAX_ALIGNMENT);
@@ -2406,8 +2406,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
     }
 
   /*
-   * Find the committed, aborted, and unilaterrally aborted (active)
-   * transactions at system crash
+   * Find the committed, aborted, and unilaterally aborted (active) transactions at system crash
    */
 
   LSA_SET_NULL (&first_corrupted_rec_lsa);
@@ -2427,8 +2426,13 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
       /* Fetch the page where the LSA record to undo is located */
       LSA_COPY (&log_lsa, &lsa);
 
-      needs_log_reset = false;
-      if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_page_p) == NO_ERROR)
+      is_log_page_broken = false;
+      if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_page_p) != NO_ERROR)
+	{
+	  // unable to fetch the current log page.
+	  is_log_page_broken = true;
+	}
+      else
 	{
 	  if (is_media_crash == true)
 	    {
@@ -2445,22 +2449,19 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		  if (fwd_log_lsa.pageid != log_lsa.pageid
 		      && (fwd_log_lsa.offset != 0 || fwd_log_lsa.pageid > log_lsa.pageid + 1))
 		    {
-		      /* The current log record spreads into several log pages. Check whether the last page of the record exists. */
+		      // The current log record spreads into several log pages.
+		      // Check whether the last page of the record exists.
 		      if (logpb_fetch_page (thread_p, &fwd_log_lsa, LOG_CS_FORCE_USE, log_fwd_page_p) != NO_ERROR)
 			{
 			  /* The forward log page does not exists. */
-			  needs_log_reset = true;
+			  is_log_page_broken = true;
 			}
 		    }
 		}
 	    }
 	}
-      else
-	{
-	  needs_log_reset = true;
-	}
 
-      if (needs_log_reset)
+      if (is_log_page_broken)
 	{
 	  if (is_media_crash == true)
 	    {
