@@ -98,7 +98,8 @@ static void log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_typ
 				    LOG_LSA * start_lsa, LOG_LSA * start_redo_lsa, bool is_media_crash,
 				    time_t * stop_at, bool * did_incom_recovery, bool * may_use_checkpoint,
 				    bool * may_need_synch_checkpoint_2pc);
-static bool log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_PAGE * log_page_p, const LOG_LSA * log_lsa);
+static bool log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_PAGE * log_page_p,
+					  const LOG_LSA * log_lsa);
 static void log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * start_redolsa,
 				   LOG_LSA * end_redo_lsa, bool ismedia_crash, time_t * stopat,
 				   bool * did_incom_recovery, INT64 * num_redo_log_records);
