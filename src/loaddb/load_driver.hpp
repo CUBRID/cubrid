@@ -89,7 +89,7 @@ namespace cubload
       semantic_helper &get_semantic_helper ();
       error_handler &get_error_handler ();
       scanner &get_scanner ();
-      void set_start_line (int lineno);
+      void update_start_line ();
       int get_start_line ();
 
     private:

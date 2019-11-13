@@ -129,8 +129,6 @@ namespace cubload
 	assert (driver != NULL && !driver->is_initialized ());
 	init_driver (driver, m_session);
 
-	driver->set_start_line (m_batch.get_line_offset () + 1);
-
 	bool is_syntax_check_only = m_session.get_args ().syntax_check;
 	const class_entry *cls_entry = m_session.get_class_registry ().get_class_entry (m_batch.get_class_id ());
 	if (cls_entry == NULL)
@@ -528,8 +526,6 @@ namespace cubload
   session::install_class (cubthread::entry &thread_ref, const batch &batch, bool &is_ignored, std::string &cls_name)
   {
     thread_ref.m_loaddb_driver = m_driver;
-
-    thread_ref.m_loaddb_driver->set_start_line (batch.get_line_offset () + 1);
 
     int error_code = NO_ERROR;
     bool parser_result = invoke_parser (m_driver, batch);

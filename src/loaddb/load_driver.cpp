@@ -124,9 +124,9 @@ namespace cubload
   }
 
   void
-  driver::set_start_line (int lineno)
+  driver::update_start_line ()
   {
-    m_start_line_no = lineno;
+    m_start_line_no = get_scanner ().lineno () + 1;
   }
 
   int

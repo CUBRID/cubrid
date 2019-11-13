@@ -417,7 +417,6 @@ namespace cubload
   server_object_loader::start_line (int object_id)
   {
     (void) object_id;
-    m_thread_ref->m_loaddb_driver->set_start_line (m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1);
   }
 
   void
