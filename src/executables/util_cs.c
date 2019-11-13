@@ -2679,6 +2679,13 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  /*
+   * Force error log file system parameter as copylogdb;
+   * during a retry loop, `db_restart` will reset the error file name as :
+   * er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE), ... ) 
+   */
+  sysprm_set_force (prm_get_name (PRM_ID_ER_LOG_FILE), er_msg_file);
+
   if (start_pageid < NULL_PAGEID && !HA_DISABLED ())
     {
       error = hb_process_init (database_name, log_path, HB_PTYPE_COPYLOGDB);
