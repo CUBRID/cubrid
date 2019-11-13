@@ -34,8 +34,8 @@ namespace cubload
     , m_object_loader (NULL)
     , m_error_handler (NULL)
     , m_semantic_helper ()
-    , m_is_initialized (false)
     , m_start_line_no (0)
+    , m_is_initialized (false)
   {
     //
   }
