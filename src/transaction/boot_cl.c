@@ -912,7 +912,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     {
       if (au_has_user_name ())
 	{
-	  char *name = db_get_user_name ();
+	  const char *name = au_user_name ();	// while establishing a connection, never use db_get_user_name.
 	  if (name != NULL)
 	    {
 	      client_credential->db_user = name;
