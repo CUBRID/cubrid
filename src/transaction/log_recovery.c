@@ -98,8 +98,7 @@ static void log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_typ
 				    LOG_LSA * start_lsa, LOG_LSA * start_redo_lsa, bool is_media_crash,
 				    time_t * stop_at, bool * did_incom_recovery, bool * may_use_checkpoint,
 				    bool * may_need_synch_checkpoint_2pc);
-static void log_check_record_last_page (THREAD_ENTRY * thread_p, const LOG_PAGE * log_page_p, const LOG_LSA * log_lsa,
-					bool & is_log_page_broken);
+static bool log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_PAGE * log_page_p, const LOG_LSA * log_lsa);
 static void log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * start_redolsa,
 				   LOG_LSA * end_redo_lsa, bool ismedia_crash, time_t * stopat,
 				   bool * did_incom_recovery, INT64 * num_redo_log_records);
@@ -2342,23 +2341,22 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
 }
 
 /*
- * log_check_record_last_page - check last page of the record
+ * log_is_page_of_record_broken - check last page of the record
  *
- * return: nothing
+ * return: true, if last page of the record is broken. false, if it is sane
  *
  *   log_pgptr(in): log page where the record resides
  *   log_lsa(in): Log record address
- *   is_log_page_broken(out): true, if last page of the record is broken
  */
-static void
-log_check_record_last_page (THREAD_ENTRY * thread_p, const LOG_PAGE * log_page_p, const LOG_LSA * log_lsa,
-			    bool & is_log_page_broken)
+static bool
+log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_PAGE * log_page_p, const LOG_LSA * log_lsa)
 {
   char fwd_log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *fwd_aligned_log_pgbuf;
   LOG_PAGE *log_fwd_page_p;
   LOG_RECORD_HEADER *tmp_log_rec = NULL;
   LOG_LSA fwd_log_lsa;
+  bool is_log_page_broken = false;
 
   assert (log_page_p != NULL && log_lsa != NULL);
 
@@ -2368,7 +2366,6 @@ log_check_record_last_page (THREAD_ENTRY * thread_p, const LOG_PAGE * log_page_p
   tmp_log_rec = LOG_GET_LOG_RECORD_HEADER (log_page_p, log_lsa);
   LSA_COPY (&fwd_log_lsa, &tmp_log_rec->forw_lsa);
 
-  is_log_page_broken = false;
   /* TODO - Do we need to handle NULL fwd_log_lsa? */
   if (!LSA_ISNULL (&fwd_log_lsa))
     {
@@ -2386,6 +2383,8 @@ log_check_record_last_page (THREAD_ENTRY * thread_p, const LOG_PAGE * log_page_p
 	    }
 	}
     }
+
+  return is_log_page_broken;
 }
 
 /*
@@ -2483,7 +2482,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	  if (is_media_crash == true)
 	    {
 	      /* Check also the last log page of current record. */
-	      log_check_record_last_page (thread_p, log_page_p, &log_lsa, is_log_page_broken);
+	      is_log_page_broken = log_is_page_of_record_broken (thread_p, log_page_p, &log_lsa);
 	    }
 	}
 
