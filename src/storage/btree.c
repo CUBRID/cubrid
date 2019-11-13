@@ -33434,7 +33434,6 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
       if (insert_list->next_key () != btree_insert_list::KEY_AVAILABLE)
 	{
 	  /* no more keys in list */
-	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_RETRY);
 	  break;
 	}
 
