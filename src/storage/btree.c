@@ -33558,7 +33558,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 
   insert_list->reset_boundary_keys ();
 
-  PERF_UTIME_TRACKER_TIME (thread_p, &time_insert_same_leaf, PSTAT_BT_ONLINE_INSERT_SAME_LEAF);
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_insert_same_leaf, PSTAT_BT_ONLINE_INSERT_LEAF);
 
   return error_code;
 }
