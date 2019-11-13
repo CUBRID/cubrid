@@ -5755,13 +5755,21 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		}
 	      else
 		{
-		  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+		  error_code = er_errid ();
+		  if (error_code == ER_HEAP_UNKNOWN_OBJECT)
 		    {
 		      er_log_debug (ARG_FILE_LINE, "locator_update_force: unknown oid ( %d|%d|%d )\n", oid->pageid,
 				    oid->slotid, oid->volid);
 		    }
-
-		  error_code = ER_HEAP_UNKNOWN_OBJECT;
+		  else if (error_code == ER_INTERRUPTED)
+		    {
+		      // expected error
+		    }
+		  else
+		    {
+		      // todo - why do we force error code?
+		      error_code = ER_HEAP_UNKNOWN_OBJECT;
+		    }
 		  goto error;
 		}
 	    }
