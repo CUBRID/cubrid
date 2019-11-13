@@ -35,6 +35,7 @@ namespace cubload
     , m_error_handler (NULL)
     , m_semantic_helper ()
     , m_is_initialized (false)
+    , m_start_line_no (0)
   {
     //
   }
@@ -120,6 +121,18 @@ namespace cubload
   driver::get_scanner ()
   {
     return *m_scanner;
+  }
+
+  void
+  driver::set_start_line (int lineno)
+  {
+    m_start_line_no = lineno;
+  }
+
+  int
+  driver::get_start_line ()
+  {
+    return m_start_line_no;
   }
 
 } // namespace cubload

@@ -417,6 +417,15 @@ namespace cubload
   server_object_loader::start_line (int object_id)
   {
     (void) object_id;
+    // Might be the first entry, it should be already set.
+    if (m_thread_ref->m_loaddb_driver->get_scanner ().lineno () > 0)
+      {
+	m_thread_ref->m_loaddb_driver->set_start_line (m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1);
+      }
+    else
+      {
+	assert (m_thread_ref->m_loaddb_driver->get_start_line () > 0);
+      }
   }
 
   void
@@ -510,7 +519,9 @@ namespace cubload
 	  }
       }
 
-    m_session.stats_update_current_line (m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1);
+    int lineno = m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1;
+    m_session.stats_update_current_line (lineno);
+    m_thread_ref->m_loaddb_driver->set_start_line (lineno);
     clear_db_values ();
   }
 

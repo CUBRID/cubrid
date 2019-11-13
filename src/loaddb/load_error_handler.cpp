@@ -50,7 +50,7 @@ namespace cubload
     cubthread::entry &thread_ref = cubthread::get_entry ();
     assert (thread_ref.m_loaddb_driver != NULL);
 
-    return thread_ref.m_loaddb_driver->get_scanner ().lineno () + 1;
+    return thread_ref.m_loaddb_driver->get_start_line ();
   }
 
   char *
