@@ -5011,7 +5011,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       while (load_context.m_tasks_executed != tasks_started);
     }
 
-  PERF_UTIME_TRACKER_TIME (thread_p, &time_online_index, PSTAT_BT_ONLINE);
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_online_index, PSTAT_BT_ONLINE_LOAD);
 
   thread_get_manager ()->destroy_worker_pool (ib_workpool);
 
