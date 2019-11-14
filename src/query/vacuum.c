@@ -2890,6 +2890,11 @@ vacuum_data_unload_first_and_last_page (THREAD_ENTRY * thread_p)
     {
       return;
     }
+
+  // save VPID's in case we need to reload
+  pgbuf_get_vpid ((PAGE_PTR) vacuum_Data.first_page, &vacuum_Data_load.vpid_first);
+  pgbuf_get_vpid ((PAGE_PTR) vacuum_Data.last_page, &vacuum_Data_load.vpid_last);
+
   vacuum_unfix_first_and_last_data_page (thread_p);
   vacuum_Data.is_loaded = false;
 }
