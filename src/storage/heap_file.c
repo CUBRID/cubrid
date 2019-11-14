@@ -25130,6 +25130,47 @@ cleanup:
   return error_code;
 }
 
+void
+heap_rv_dump_append_pages_to_heap (FILE * fp, int length, void *data)
+{
+  // *INDENT-OFF*
+  string_buffer strbuf;
+  // *INDENT-OFF*
+
+  const char *ptr = (const char *) data;
+
+  HFID hfid;
+  OID class_oid;
+
+  OR_GET_HFID (ptr, &hfid);
+  ptr += OR_HFID_SIZE;
+  
+  OR_GET_OID (ptr, &class_oid);
+  ptr += OR_OID_SIZE;
+
+  strbuf ("CLASS = %d|%d|%d / HFID = %d, %d|%d\n", OID_AS_ARGS (&class_oid), HFID_AS_ARGS (&hfid));
+
+  int count = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+
+  for (int i = 0; i < count; i++)
+    {
+      // print VPIDs, 8 on each line
+
+      VPID vpid;
+      OR_GET_VPID (ptr, &vpid);
+      ptr += OR_VPID_SIZE;
+      strbuf ("%d|%d ", VPID_AS_ARGS (&vpid));
+      if (i % 8 == 7)
+        {
+          strbuf ("\n");
+        }
+    }
+  strbuf ("\n");
+
+  fprintf (fp, "%s", strbuf.get_buffer ());
+}
+
 static int
 heap_get_page_with_watcher (THREAD_ENTRY * thread_p, const VPID *page_vpid, PGBUF_WATCHER * pg_watcher)
 {

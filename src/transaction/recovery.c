@@ -818,7 +818,7 @@ struct rvfun RV_fun[] = {
    NULL,
    heap_rv_postpone_append_pages_to_heap,
    NULL,
-   NULL},
+   heap_rv_dump_append_pages_to_heap},
 
 };
 
