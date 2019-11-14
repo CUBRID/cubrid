@@ -2610,6 +2610,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	      is_log_page_broken = log_is_page_of_record_broken (thread_p, &log_lsa, log_rec);
 	      if (is_log_page_broken)
 		{
+		  /* Needs to reset the log. It is done in the outer loop. */
 		  break;
 		}
 	    }
@@ -2812,8 +2813,6 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		  break;
 		}
 	    }
-
-
 
 	  log_rv_analysis_record (thread_p, log_rtype, tran_id, &log_lsa, log_page_p, &checkpoint_lsa, &prev_lsa,
 				  start_lsa, start_redo_lsa, is_media_crash, stop_at, did_incom_recovery,
