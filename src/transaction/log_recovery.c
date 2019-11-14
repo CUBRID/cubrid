@@ -98,8 +98,8 @@ static void log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_typ
 				    LOG_LSA * start_lsa, LOG_LSA * start_redo_lsa, bool is_media_crash,
 				    time_t * stop_at, bool * did_incom_recovery, bool * may_use_checkpoint,
 				    bool * may_need_synch_checkpoint_2pc);
-static bool log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_PAGE * log_page_p,
-					  const LOG_LSA * log_lsa);
+static bool log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
+					  const LOG_RECORD_HEADER * log_rec_header);
 static void log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * start_redolsa,
 				   LOG_LSA * end_redo_lsa, bool ismedia_crash, time_t * stopat,
 				   bool * did_incom_recovery, INT64 * num_redo_log_records);
@@ -2346,26 +2346,25 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
  *
  * return: true, if last page of the record is broken. false, if it is sane
  *
- *   log_pgptr(in): log page where the record resides
  *   log_lsa(in): Log record address
+ *   log_rec_header(in): Log record header
  */
 static bool
-log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_PAGE * log_page_p, const LOG_LSA * log_lsa)
+log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
+			      const LOG_RECORD_HEADER * log_rec_header)
 {
   char fwd_log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *fwd_aligned_log_pgbuf;
   LOG_PAGE *log_fwd_page_p;
-  LOG_RECORD_HEADER *tmp_log_rec = NULL;
   LOG_LSA fwd_log_lsa;
   bool is_log_page_broken = false;
 
-  assert (log_page_p != NULL && log_lsa != NULL);
+  assert (log_lsa != NULL && log_rec_header != NULL);
 
   fwd_aligned_log_pgbuf = PTR_ALIGN (fwd_log_pgbuf, MAX_ALIGNMENT);
   log_fwd_page_p = (LOG_PAGE *) fwd_aligned_log_pgbuf;
 
-  tmp_log_rec = LOG_GET_LOG_RECORD_HEADER (log_page_p, log_lsa);
-  LSA_COPY (&fwd_log_lsa, &tmp_log_rec->forw_lsa);
+  LSA_COPY (&fwd_log_lsa, &log_rec_header->forw_lsa);
 
   /* TODO - Do we need to handle NULL fwd_log_lsa? */
   if (!LSA_ISNULL (&fwd_log_lsa))
@@ -2467,24 +2466,17 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 
   log_page_p = (LOG_PAGE *) aligned_log_pgbuf;
 
+  is_log_page_broken = false;
   while (!LSA_ISNULL (&lsa))
     {
       /* Fetch the page where the LSA record to undo is located */
       LSA_COPY (&log_lsa, &lsa);
 
-      is_log_page_broken = false;
+      /* We may fetch only if log page not already broken, but is better in this way. */
       if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_page_p) != NO_ERROR)
 	{
 	  // unable to fetch the current log page.
 	  is_log_page_broken = true;
-	}
-      else
-	{
-	  if (is_media_crash == true)
-	    {
-	      /* Check also the last log page of current record. */
-	      is_log_page_broken = log_is_page_of_record_broken (thread_p, log_page_p, &log_lsa);
-	    }
 	}
 
       if (is_log_page_broken)
@@ -2611,6 +2603,16 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	  /* Find the log record */
 	  log_lsa.offset = lsa.offset;
 	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_page_p, &log_lsa);
+
+	  if (is_media_crash == true)
+	    {
+	      /* Check also the last log page of current record. We need to check after obtaining log_rec. */
+	      is_log_page_broken = log_is_page_of_record_broken (thread_p, &log_lsa, log_rec);
+	      if (is_log_page_broken)
+		{
+		  break;
+		}
+	    }
 
 	  /* Check whether null LSA is reached. */
 	  if (!is_log_page_corrupted)
@@ -2810,6 +2812,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		  break;
 		}
 	    }
+
+
 
 	  log_rv_analysis_record (thread_p, log_rtype, tran_id, &log_lsa, log_page_p, &checkpoint_lsa, &prev_lsa,
 				  start_lsa, start_redo_lsa, is_media_crash, stop_at, did_incom_recovery,
