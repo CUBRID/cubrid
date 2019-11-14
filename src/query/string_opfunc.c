@@ -3995,14 +3995,14 @@ db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string, cons
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRECISION_OVERFLOW, 2, result_length,
 	      QSTR_MAX_PRECISION (DB_VALUE_DOMAIN_TYPE (src_string)));
-      free_and_init (result);
+      db_private_free_and_init (NULL, result);
       return ER_PRECISION_OVERFLOW;
     }
   if ((UINT64) result_size > prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, result_size,
 	      (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
-      free_and_init (result);
+      db_private_free_and_init (NULL, result);
       return ER_QPROC_STRING_SIZE_TOO_BIG;
     }
   qstr_make_typed_string (result_type, padded_string, result_length, (char *) result, result_size,
