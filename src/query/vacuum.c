@@ -5633,8 +5633,6 @@ vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p)
    * If vacuum data is not empty, then we need to preserve the log starting with the first page of first unvacuumed
    * block.
    */
-  VACUUM_LOG_BLOCKID keep_from_blockid;
-
   if (vacuum_is_empty ())
     {
       // keep starting with next after last_blockid ()
@@ -5642,8 +5640,7 @@ vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p)
     }
   else
     {
-      keep_from_blockid = vacuum_Data.first_page->data[vacuum_Data.first_page->index_unvacuumed].get_blockid ();
-      vacuum_Data.keep_from_log_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (keep_from_blockid);
+      vacuum_Data.keep_from_log_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (vacuum_Data.get_first_blockid ());
     }
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
