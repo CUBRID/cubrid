@@ -91,7 +91,11 @@ namespace cubload
 	return;
       }
 #endif
-    on_failure ();
+    if (!is_last_error_filtered ())
+      {
+	std::string empty;
+	log_error_message (empty, true, true);
+      }
   }
 
   void
