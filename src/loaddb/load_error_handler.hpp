@@ -96,7 +96,7 @@ namespace cubload
 
       static char *get_message_from_catalog (MSGCAT_LOADDB_MSG msg_id);
 
-      void log_error_message (std::string &err_msg, bool fail, bool is_syntax_check = false);
+      void log_error_message (std::string &err_msg, bool fail, bool is_syntax_error = false);
       bool is_last_error_filtered ();
 
       bool m_current_line_has_error;

@@ -99,14 +99,14 @@ namespace cubload
   }
 
   void
-  error_handler::log_error_message (std::string &err_msg, bool fail, bool is_syntax_check)
+  error_handler::log_error_message (std::string &err_msg, bool fail, bool is_syntax_error)
   {
 #if defined (SERVER_MODE)
     if (er_errid () != NO_ERROR && (er_has_error () || er_get_severity () == ER_WARNING_SEVERITY))
       {
 	// if there is an error set via er_set then report it as well
 	int lineno;
-	if (!is_syntax_check)
+	if (!is_syntax_error)
 	  {
 	    lineno = get_driver_lineno ();
 	  }
