@@ -2573,12 +2573,13 @@ db_json_get_type_of_value (const JSON_VALUE *val)
     {
       return DB_JSON_INT;
     }
-  else if (val->IsInt64 ())
+  else if (val->IsInt64 () || val->IsUint ())
     {
       return DB_JSON_BIGINT;
     }
-  else if (val->IsFloat () || val->IsDouble ())
+  else if (val->IsFloat () || val->IsDouble () || val->IsUint64 ())
     {
+      /* quick fix: treat uint64 as double since we don't have an ubigint type */
       return DB_JSON_DOUBLE;
     }
   else if (val->IsObject ())
@@ -2626,7 +2627,7 @@ db_json_get_bigint_from_value (const JSON_VALUE *val)
 
   assert (db_json_get_type_of_value (val) == DB_JSON_BIGINT);
 
-  return val->GetInt64 ();
+  return val->IsInt64 () ? val->GetInt64 () : val->GetUint ();
 }
 
 double
