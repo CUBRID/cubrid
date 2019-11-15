@@ -3413,6 +3413,7 @@ catalog_drop_all_representation_and_class (THREAD_ENTRY * thread_p, OID * class_
   error_code = catalog_get_dir_oid_from_cache (thread_p, class_id_p, &dir_oid);
   if (error_code != NO_ERROR)
     {
+      recdes_free_data_area (&record);
       return error_code;
     }
 
@@ -3421,6 +3422,7 @@ catalog_drop_all_representation_and_class (THREAD_ENTRY * thread_p, OID * class_
   error_code = catalog_start_access_with_dir_oid (thread_p, &catalog_access_info, X_LOCK);
   if (error_code != NO_ERROR)
     {
+      recdes_free_data_area (&record);
       return error_code;
     }
 
@@ -3524,6 +3526,7 @@ catalog_drop_old_representations (THREAD_ENTRY * thread_p, OID * class_id_p)
   error_code = catalog_get_dir_oid_from_cache (thread_p, class_id_p, &dir_oid);
   if (error_code != NO_ERROR)
     {
+      recdes_free_data_area (&record);
       return error_code;
     }
 
@@ -3532,6 +3535,7 @@ catalog_drop_old_representations (THREAD_ENTRY * thread_p, OID * class_id_p)
   error_code = catalog_start_access_with_dir_oid (thread_p, &catalog_access_info, X_LOCK);
   if (error_code != NO_ERROR)
     {
+      recdes_free_data_area (&record);
       return error_code;
     }
 
