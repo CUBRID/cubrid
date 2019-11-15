@@ -2627,7 +2627,7 @@ db_json_get_bigint_from_value (const JSON_VALUE *val)
 
   assert (db_json_get_type_of_value (val) == DB_JSON_BIGINT);
 
-  return val->GetInt64 ();
+  return val->IsInt64 () ? val->GetInt64 () : val->GetUint ();
 }
 
 double
