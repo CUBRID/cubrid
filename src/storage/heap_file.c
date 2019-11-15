@@ -23322,12 +23322,11 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
 	}
     }
 
-  /* This section does not fall under any race conditions since this function is called only on heap creation
-   * or on boot which makes the assignment of the classname thread-safe.
-   */
-  entry->classname = classname_local;
-
   entry->ftype = ftype;
+
+  char *dummy_null = NULL;
+  entry->classname.compare_exchange_strong (dummy_null, classname_local);
+
   lf_tran_end_with_mb (t_entry);
 
   heap_hfid_table_log (thread_p, class_oid, "heap_cache_class_info hfid=%d|%d|%d, ftype=%s, classname = %s",
