@@ -23325,7 +23325,10 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
   entry->ftype = ftype;
 
   char *dummy_null = NULL;
-  entry->classname.compare_exchange_strong (dummy_null, classname_local);
+  if (!entry->classname.compare_exchange_strong (dummy_null, classname_local))
+    {
+      free (classname_local);
+    }
 
   lf_tran_end_with_mb (t_entry);
 
