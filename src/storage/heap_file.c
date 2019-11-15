@@ -23290,8 +23290,6 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
   assert (entry != NULL);
   assert (entry->hfid.hpgid == NULL_PAGEID);
 
-  assert (inserted != 0);
-
   HFID_COPY (&entry->hfid, hfid);
   if (classname_in != NULL)
     {
