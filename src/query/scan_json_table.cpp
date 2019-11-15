@@ -362,7 +362,7 @@ namespace cubscan
       cursor_arg.m_input_doc.clear ();
 
       // extract input document
-      error_code = db_json_extract_document_from_path (&document, {node.m_path}, cursor_arg.m_input_doc);
+      error_code = db_json_extract_document_from_path (&document, node.m_path, cursor_arg.m_input_doc);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

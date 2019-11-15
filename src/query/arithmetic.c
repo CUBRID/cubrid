@@ -5109,8 +5109,14 @@ db_evaluate_json_contains (DB_VALUE * result, DB_VALUE * const *arg, int const n
     {
       JSON_DOC_STORE extracted_doc;
       /* *INDENT-OFF* */
-      std::string raw_path (db_get_string (path), db_get_string_size (path));
-      error_code = db_json_extract_document_from_path (source.get_immutable (), {raw_path.c_str ()}, extracted_doc);
+      std::string raw_path;
+      error_code = db_value_to_json_path (*path, F_JSON_CONTAINS, raw_path);
+      if (error_code != NO_ERROR)
+        {
+          ASSERT_ERROR ();
+          return error_code;
+        }
+      error_code = db_json_extract_document_from_path (source.get_immutable (), raw_path, extracted_doc);
       source = std::move (extracted_doc);
       /* *INDENT-ON* */
       if (error_code != NO_ERROR)
@@ -5245,8 +5251,14 @@ db_evaluate_json_length (DB_VALUE * result, DB_VALUE * const *arg, int const num
     {
       JSON_DOC_STORE extracted_doc;
       /* *INDENT-OFF* */
-      std::string raw_path (db_get_string (path), db_get_string_size (path));
-      error_code = db_json_extract_document_from_path (source_doc.get_immutable (), {raw_path.c_str ()}, extracted_doc, false);
+      std::string raw_path;
+      error_code = db_value_to_json_path (*path, F_JSON_CONTAINS, raw_path);
+      if (error_code != NO_ERROR)
+        {
+          ASSERT_ERROR ();
+          return error_code;
+        }
+      error_code = db_json_extract_document_from_path (source_doc.get_immutable (), raw_path, extracted_doc, false);
       source_doc = std::move (extracted_doc);
       /* *INDENT-ON* */
       if (error_code != NO_ERROR)
@@ -5450,8 +5462,14 @@ db_accumulate_json_objectagg (const DB_VALUE * json_key, const DB_VALUE * json_d
 
   // get the current key
   /* *INDENT-OFF* */
-  std::string key_str (db_get_string (json_key), db_get_string_size (json_key));
+  std::string key_str;
   /* *INDENT-ON* */
+  error_code = db_value_to_json_key (*json_key, key_str);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
 
   // get the current value
   error_code = db_value_to_json_value (*json_db_val, val_doc);
@@ -5529,19 +5547,18 @@ db_evaluate_json_extract (DB_VALUE * result, DB_VALUE * const *args, int num_arg
       return error_code;
     }
   /* *INDENT-OFF* */
-  std::vector<const char *> paths;
+  std::vector<std::string> paths;
   /* *INDENT-ON* */
   for (int path_idx = 1; path_idx < num_args; path_idx++)
     {
       const DB_VALUE *path_value = args[path_idx];
-      const char *path_str = NULL;
-      error_code = db_value_to_json_path (path_value, F_JSON_EXTRACT, &path_str);
-      if (error_code != NO_ERROR || path_str == NULL)
+      paths.emplace_back ();
+      error_code = db_value_to_json_path (*path_value, F_JSON_EXTRACT, paths.back ());
+      if (error_code != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  return error_code;
 	}
-
-      paths.push_back (path_str);
     }
 
   JSON_DOC_STORE res_doc;
@@ -5588,8 +5605,14 @@ db_evaluate_json_object (DB_VALUE * result, DB_VALUE * const *arg, int const num
 	}
 
       /* *INDENT-OFF* */
-      std::string value_key (db_get_string (arg[i]), db_get_string_size (arg[i]));
+      std::string value_key;
       /* *INDENT-ON* */
+      error_code = db_value_to_json_key (*arg[i], value_key);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
       error_code = db_value_to_json_value (*arg[i + 1], value_doc);
       if (error_code != NO_ERROR)
 	{
@@ -5675,8 +5698,14 @@ db_evaluate_json_insert (DB_VALUE * result, DB_VALUE * const *arg, int const num
 
       // extract path
       /* *INDENT-OFF* */
-      std::string value_path (db_get_string (arg[i]), db_get_string_size (arg[i]));
+      std::string value_path;
       /* *INDENT-ON* */
+      error_code = db_value_to_json_path (*arg[i], F_JSON_INSERT, value_path);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
 
       // extract json value
       error_code = db_value_to_json_value (*arg[i + 1], value_doc);
@@ -5737,8 +5766,14 @@ db_evaluate_json_replace (DB_VALUE * result, DB_VALUE * const *arg, int const nu
 
       // extract path
       /* *INDENT-OFF* */
-      std::string value_path (db_get_string (arg[i]), db_get_string_size (arg[i]));
+      std::string value_path;
       /* *INDENT-ON* */
+      error_code = db_value_to_json_path (*arg[i], F_JSON_REPLACE, value_path);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
 
       // extract json value
       error_code = db_value_to_json_value (*arg[i + 1], value_doc);
@@ -5798,8 +5833,14 @@ db_evaluate_json_set (DB_VALUE * result, DB_VALUE * const *arg, int const num_ar
 
       // extract path
       /* *INDENT-OFF* */
-      std::string value_path (db_get_string (arg[i]), db_get_string_size (arg[i]));
+      std::string value_path;
       /* *INDENT-ON* */
+      error_code = db_value_to_json_path (*arg[i], F_JSON_SET, value_path);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
 
       // extract json value
       error_code = db_value_to_json_value (*arg[i + 1], value_doc);
@@ -5851,9 +5892,12 @@ db_evaluate_json_keys (DB_VALUE * result, DB_VALUE * const *arg, int const num_a
     }
   else
     {
-      /* *INDENT-OFF* */
-      path = std::string (db_get_string (arg[1]), db_get_string_size (arg[1]));
-      /* *INDENT-ON* */
+      error_code = db_value_to_json_path (*arg[1], F_JSON_KEYS, path);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
     }
 
   error_code = db_value_to_json_doc (*arg[0], false, new_doc);
@@ -5881,6 +5925,9 @@ db_evaluate_json_remove (DB_VALUE * result, DB_VALUE * const *arg, int const num
 {
   int i, error_code;
   JSON_DOC_STORE new_doc;
+  // *INDENT-OFF*
+  std::string path;
+  // *INDENT-ON*
 
   db_make_null (result);
 
@@ -5910,9 +5957,14 @@ db_evaluate_json_remove (DB_VALUE * result, DB_VALUE * const *arg, int const num
 	  return db_make_null (result);
 	}
 
-      /* *INDENT-OFF* */
-      error_code = db_json_remove_func (*new_doc.get_mutable (), std::string (db_get_string (arg[i]), db_get_string_size (arg[i])).c_str ());
-      /* *INDENT-ON* */
+      error_code = db_value_to_json_path (*arg[i], F_JSON_REMOVE, path);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+
+      error_code = db_json_remove_func (*new_doc.get_mutable (), path.c_str ());
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -5962,8 +6014,14 @@ db_evaluate_json_array_append (DB_VALUE * result, DB_VALUE * const *arg, int con
 
       // extract path
       /* *INDENT-OFF* */
-      std::string value_path (db_get_string (arg[i]), db_get_string_size (arg[i]));
+      std::string value_path;
       /* *INDENT-ON* */
+      error_code = db_value_to_json_path (*arg[i], F_JSON_ARRAY_APPEND, value_path);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
 
       // extract json value
       error_code = db_value_to_json_value (*arg[i + 1], value_doc);
@@ -6024,8 +6082,14 @@ db_evaluate_json_array_insert (DB_VALUE * result, DB_VALUE * const *arg, int con
 
       // extract path
       /* *INDENT-OFF* */
-      std::string value_path (db_get_string (arg[i]), db_get_string_size (arg[i]));
+      std::string value_path;
       /* *INDENT-ON* */
+      error_code = db_value_to_json_path (*arg[i], F_JSON_ARRAY_INSERT, value_path);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
 
       // extract json value
       error_code = db_value_to_json_value (*arg[i + 1], value_doc);
@@ -6086,8 +6150,14 @@ db_evaluate_json_contains_path (DB_VALUE * result, DB_VALUE * const *arg, const 
 	  return error_code;
 	}
       /* *INDENT-OFF* */
-      paths.emplace_back (std::string (db_get_string (arg[i]), db_get_string_size (arg[i])));
+      paths.emplace_back ();
       /* *INDENT-ON* */
+      error_code = db_value_to_json_path (*arg[i], F_JSON_CONTAINS_PATH, paths.back ());
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
     }
 
   error_code = db_json_contains_path (doc.get_immutable (), paths, find_all, exists);
@@ -6279,8 +6349,13 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
   std::vector<std::string> starting_paths;
   for (int i = 4; i < num_args; ++i)
     {
-      std::string s (db_get_string (args[i]), db_get_string_size (args[i]));
-      starting_paths.emplace_back (s);
+      starting_paths.emplace_back ();
+      error_code = db_value_to_json_path (*args[i], F_JSON_SEARCH, starting_paths.back ());
+      if (error_code != NO_ERROR)
+        {
+          ASSERT_ERROR ();
+          return error_code;
+        }
     }
 
   if (starting_paths.empty ())
@@ -6454,6 +6529,12 @@ static int
 is_str_find_all (DB_VALUE * val, bool & find_all)
 {
   if (DB_IS_NULL (val))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_ONE_ALL_ARGUMENT, 0);
+      return ER_INVALID_ONE_ALL_ARGUMENT;
+    }
+
+  if (!DB_IS_STRING (val))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_ONE_ALL_ARGUMENT, 0);
       return ER_INVALID_ONE_ALL_ARGUMENT;
