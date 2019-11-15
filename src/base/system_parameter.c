@@ -670,6 +670,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_PERF_TEST_MODE "perf_test_mode"
 #define PRM_NAME_REPR_CACHE_LOG "er_log_repr_cache"
 #define PRM_NAME_ENABLE_NEW_LFHASH "new_lfhash"
+#define PRM_NAME_HEAP_INFO_CACHE_LOGGING "heap_info_cache_logging"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2260,6 +2261,10 @@ static unsigned int prm_repr_cache_log_flag = 0;
 bool PRM_NEW_LFHASH = false;
 static bool prm_new_lfhash_default = false;
 static unsigned int prm_new_lfhash_flag = 0;
+
+bool PRM_HEAP_INFO_CACHE_LOGGING = false;
+static bool prm_heap_info_cache_logging_default = false;
+static unsigned int prm_heap_info_cache_logging_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5608,7 +5613,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_DWB_BLOCKS,
    PRM_NAME_DWB_BLOCKS,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    &prm_dwb_blocks_flag,
    (void *) &prm_dwb_blocks_default,
@@ -5620,7 +5625,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_ENABLE_DWB_FLUSH_THREAD,
    PRM_NAME_ENABLE_DWB_FLUSH_THREAD,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    &prm_enable_dwb_flush_thread_flag,
    (void *) &prm_enable_dwb_flush_thread_default,
@@ -5812,6 +5817,17 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_new_lfhash_flag,
    (void *) &prm_new_lfhash_default,
    (void *) &PRM_NEW_LFHASH,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HEAP_INFO_CACHE_LOGGING,
+   PRM_NAME_HEAP_INFO_CACHE_LOGGING,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_heap_info_cache_logging_flag,
+   (void *) &prm_heap_info_cache_logging_default,
+   (void *) &PRM_HEAP_INFO_CACHE_LOGGING,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

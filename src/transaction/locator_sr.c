@@ -959,6 +959,13 @@ xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname, const 
 	  entry->e_current.action = LC_CLASSNAME_DELETED_RENAME;
 	  renamed = LC_CLASSNAME_RESERVED_RENAME;
 
+	  /* Add new name to modified list, to correctly restore in case of abort. */
+	  if (log_add_to_modified_class_list (thread_p, newname, class_oid) != NO_ERROR)
+	    {
+	      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+	      return LC_CLASSNAME_ERROR;
+	    }
+
 	  /* We need to add a dummy log here. If rename is the first clause of alter statement, there will be no log
 	   * entries between parent system savepoint and next flush. Next flush will start a system operation which
 	   * will mark the delete action of old class name with same LSA as parent system savepoint. Therefore, the
@@ -5748,13 +5755,21 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		}
 	      else
 		{
-		  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+		  error_code = er_errid ();
+		  if (error_code == ER_HEAP_UNKNOWN_OBJECT)
 		    {
 		      er_log_debug (ARG_FILE_LINE, "locator_update_force: unknown oid ( %d|%d|%d )\n", oid->pageid,
 				    oid->slotid, oid->volid);
 		    }
-
-		  error_code = ER_HEAP_UNKNOWN_OBJECT;
+		  else if (error_code == ER_INTERRUPTED)
+		    {
+		      // expected error
+		    }
+		  else
+		    {
+		      // todo - why do we force error code?
+		      error_code = ER_HEAP_UNKNOWN_OBJECT;
+		    }
 		  goto error;
 		}
 	    }

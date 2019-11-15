@@ -25,6 +25,7 @@
 #define _LOAD_ERROR_HANDLER_HPP_
 
 #include "load_common.hpp"
+#include "porting.h"
 #include "utility.h"
 
 #include <memory>
