@@ -23290,8 +23290,6 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
   assert (entry != NULL);
   assert (entry->hfid.hpgid == NULL_PAGEID);
 
-  assert (inserted != 0);
-
   HFID_COPY (&entry->hfid, hfid);
   if (classname_in != NULL)
     {
@@ -23324,12 +23322,14 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
 	}
     }
 
-  /* This section does not fall under any race conditions since this function is called only on heap creation
-   * or on boot which makes the assignment of the classname thread-safe.
-   */
-  entry->classname = classname_local;
-
   entry->ftype = ftype;
+
+  char *dummy_null = NULL;
+  if (!entry->classname.compare_exchange_strong (dummy_null, classname_local))
+    {
+      free (classname_local);
+    }
+
   lf_tran_end_with_mb (t_entry);
 
   heap_hfid_table_log (thread_p, class_oid, "heap_cache_class_info hfid=%d|%d|%d, ftype=%s, classname = %s",
@@ -23398,6 +23398,9 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 	  ASSERT_ERROR ();
 	  lf_tran_end_with_mb (t_entry);
 
+	  // remove entry
+	  lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, NULL);
+
 	  heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get failed error = %d", error_code);
 	  return error_code;
 	}
@@ -23423,6 +23426,9 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 	{
 	  ASSERT_ERROR ();
 	  lf_tran_end_with_mb (t_entry);
+
+	  // remove entry
+	  lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, NULL);
 
 	  heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get failed error = %d", error_code);
 	  return error_code;
