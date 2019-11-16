@@ -5252,7 +5252,7 @@ db_evaluate_json_length (DB_VALUE * result, DB_VALUE * const *arg, int const num
       JSON_DOC_STORE extracted_doc;
       /* *INDENT-OFF* */
       std::string raw_path;
-      error_code = db_value_to_json_path (*path, F_JSON_CONTAINS, raw_path);
+      error_code = db_value_to_json_path (*path, F_JSON_LENGTH, raw_path);
       if (error_code != NO_ERROR)
         {
           ASSERT_ERROR ();
