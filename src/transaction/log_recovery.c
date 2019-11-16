@@ -2509,6 +2509,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		    {
 		      LSA_COPY (&last_log_tdes->tail_lsa, &log_rec->prev_tranlsa);
 		      LSA_COPY (&last_log_tdes->undo_nxlsa, &log_rec->prev_tranlsa);
+		      er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: trid = %d, tail_lsa=%lld|%d\n",
+				    log_rec->trid, last_log_tdes->tail_lsa.pageid, last_log_tdes->tail_lsa.offset);
 		    }
 		}
 	      assert (!prev_lsa.is_null ());
@@ -2610,7 +2612,12 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	      is_log_page_broken = log_is_page_of_record_broken (thread_p, &log_lsa, log_rec);
 	      if (is_log_page_broken)
 		{
-		  /* Needs to reset the log. It is done in the outer loop. */
+		  /* Needs to reset the log. It is done in the outer loop. Set end_redo and prev used at reset. */
+		  LSA_COPY (end_redo_lsa, &lsa);
+		  LSA_COPY (&prev_lsa, end_redo_lsa);
+		  prev_prev_lsa = prev_lsa;
+		  er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: broken record at LSA=%lld|%d ", log_lsa.pageid,
+				log_lsa.offset);
 		  break;
 		}
 	    }
