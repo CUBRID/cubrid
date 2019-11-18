@@ -50,8 +50,8 @@ namespace cubload
     cubthread::entry &thread_ref = cubthread::get_entry ();
     assert (thread_ref.m_loaddb_driver != NULL);
 
-    // we need this because the flexer starts the parsing at line 1, instead of 0.
-    return thread_ref.m_loaddb_driver->get_start_line () + 1;
+    // We actually don't need the increment since we already incremented during update_start_line
+    return thread_ref.m_loaddb_driver->get_start_line ();
   }
 
   int
