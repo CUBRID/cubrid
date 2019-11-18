@@ -1154,7 +1154,7 @@ int
 db_json_extract_document_from_path (const JSON_DOC *document, const std::string &path,
 				    JSON_DOC_STORE &result, bool allow_wildcards)
 {
-  return db_json_extract_document_from_path (document, { path }, result, allow_wildcards);
+  return db_json_extract_document_from_path (document, std::vector<std::string> { path }, result, allow_wildcards);
 }
 
 /*
