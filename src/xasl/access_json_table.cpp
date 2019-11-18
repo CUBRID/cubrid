@@ -131,7 +131,7 @@ namespace cubxasl
       JSON_DOC_STORE docp;
       TP_DOMAIN_STATUS status_cast = TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE;
 
-      error_code = db_json_extract_document_from_path (&input, {m_path}, docp);
+      error_code = db_json_extract_document_from_path (&input, m_path, docp);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
