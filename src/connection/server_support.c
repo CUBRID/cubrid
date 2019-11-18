@@ -2780,7 +2780,7 @@ css_server_external_task::execute (context_type &thread_ref)
   session_state *session_p = thread_ref.conn_entry != NULL ? thread_ref.conn_entry->session_p : NULL;
   if (session_p != NULL)
     {
-      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.conn_entry->session_p);
+      thread_ref.private_lru_index = session_get_private_lru_idx (session_p);
     }
   else
     {
