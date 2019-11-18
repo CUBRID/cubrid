@@ -84,7 +84,7 @@ namespace cubload
   driver::parse (std::istream &iss, int line_offset)
   {
     m_scanner->switch_streams (&iss);
-    m_scanner->set_lineno (line_offset);
+    m_scanner->set_lineno (line_offset + 1);
     m_semantic_helper.reset_after_batch ();
 
     assert (m_class_installer != NULL && m_object_loader != NULL);
@@ -126,7 +126,7 @@ namespace cubload
   void
   driver::update_start_line ()
   {
-    m_start_line_no = get_scanner ().lineno () + 1;
+    m_start_line_no = get_scanner ().lineno ();
   }
 
   int
