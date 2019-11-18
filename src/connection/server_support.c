@@ -2747,10 +2747,11 @@ void
 css_server_task::execute (context_type &thread_ref)
 {
   thread_ref.conn_entry = &m_conn;
+  session_state *session_p = thread_ref.conn_entry->session_p;
 
-  if (thread_ref.conn_entry->session_p != NULL)
+  if (session_p != NULL)
     {
-      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.conn_entry->session_p);
+      thread_ref.private_lru_index = session_get_private_lru_idx (session_p);
     }
   else
     {
