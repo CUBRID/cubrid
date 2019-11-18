@@ -18710,7 +18710,7 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 	{
 	  // check strings codeset
 	  if (TP_IS_STRING_TYPE (key1_type) && TP_IS_STRING_TYPE (key2_type)
-	      && db_get_string_codeset (key1) != db_get_string_codeset (key2))
+	      && db_get_string_collation (key1) != db_get_string_collation (key2))
 	    {
 	      // not comparable
 	      are_types_comparable = false;
