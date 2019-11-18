@@ -481,7 +481,9 @@ struct css_conn_entry
 private:
   // note - I want to protect this.
   int transaction_id;
-    std::atomic < size_t > pending_request_count;
+  // *INDENT-OFF*
+  std::atomic<size_t> pending_request_count;
+  // *INDENT-ON*
 #else				// not c++ = c
   int transaction_id;
 #endif				// not c++ = c
