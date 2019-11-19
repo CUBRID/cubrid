@@ -2184,6 +2184,8 @@ static unsigned int prm_dwb_logging_flag = 0;
 int PRM_DATA_FILE_ADVISE = 0;
 static int prm_data_file_advise_default = 0;
 static unsigned int prm_data_file_advise_flag = 0;
+static unsigned int prm_data_file_advise_upper = 6;
+static unsigned int prm_data_file_advise_lower = 0;
 
 bool PRM_DEBUG_LOG_ARCHIVES = false;
 static bool prm_debug_log_archives_default = false;
@@ -5617,7 +5619,8 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_data_file_advise_flag,
    (void *) &prm_data_file_advise_default,
    (void *) &PRM_DATA_FILE_ADVISE,
-   (void *) NULL, (void *) NULL,
+   (void *) &prm_data_file_advise_upper,
+   (void *) &prm_data_file_advise_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
