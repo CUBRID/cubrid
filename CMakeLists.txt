@@ -124,7 +124,8 @@ option(UNIT_TESTS "Unit tests" OFF)
 set(WITH_LIBEXPAT_URL "https://github.com/libexpat/libexpat/releases/download/R_2_2_5/expat-2.2.5.tar.bz2")
 
 # jansson library sources URL
-set(WITH_LIBJANSSON_URL "http://www.digip.org/jansson/releases/jansson-2.10.tar.gz")
+#set(WITH_LIBJANSSON_URL "http://www.digip.org/jansson/releases/jansson-2.10.tar.gz")
+set(WITH_LIBJANSSON_URL "http://mirror.inteno.se/mirror/jansson-2.10.tar.bz2")
 
 # editline library sources URL
 set(WITH_LIBEDIT_URL "http://thrysoee.dk/editline/libedit-20170329-3.1.tar.gz")
