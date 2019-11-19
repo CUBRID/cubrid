@@ -1503,6 +1503,14 @@ parser_free_subtrees (PARSER_CONTEXT * parser, PT_NODE * tree)
   (void) parser_walk_leaves (parser, tree, free_node_in_tree_pre, NULL, free_node_in_tree_post, NULL);
 }
 
+// clear node resources and all subtrees
+void
+parser_clear_node (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  parser_free_subtrees (parser, node);
+  parser_free_node_resources (node);
+}
+
 /*
  * pt_internal_error () - report an internal system error
  *   return:
