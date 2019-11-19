@@ -132,6 +132,13 @@ namespace cubload
   {
     std::string err_msg;
 
+    if (get_driver_lineno () == 0)
+      {
+	// Parsing has not started yet!
+	on_error (msg_id, std::forward<Args> (args)...);
+	return;
+      }
+
     err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_driver_lineno ()));
     err_msg.append (format (get_message_from_catalog (msg_id), std::forward<Args> (args)...));
 
@@ -156,6 +163,13 @@ namespace cubload
     if (!is_last_error_filtered ())
       {
 	std::string err_msg;
+
+	if (get_driver_lineno () == 0)
+	  {
+	    // Parsing has not started yet!
+	    on_failure (msg_id, std::forward<Args> (args)...);
+	    return;
+	  }
 
 	err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_driver_lineno ()));
 	err_msg.append (format (get_message_from_catalog (msg_id), std::forward<Args> (args)...));
