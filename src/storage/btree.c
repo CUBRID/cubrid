@@ -18704,20 +18704,8 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 	  return DB_UNK;
 	}
 
-      bool are_types_comparable = TP_ARE_COMPARABLE_KEY_TYPES (key1_type, key2_type)
-	&& TP_ARE_COMPARABLE_KEY_TYPES (key1_type, dom_type) && TP_ARE_COMPARABLE_KEY_TYPES (key2_type, dom_type);
-      if (are_types_comparable)
-	{
-	  // check strings codeset
-	  if (TP_IS_STRING_TYPE (key1_type) && TP_IS_STRING_TYPE (key2_type)
-	      && db_get_string_collation (key1) != db_get_string_collation (key2))
-	    {
-	      // not comparable
-	      are_types_comparable = false;
-	    }
-	}
-
-      if (are_types_comparable)
+      if (TP_ARE_COMPARABLE_KEY_TYPES (key1_type, key2_type) && TP_ARE_COMPARABLE_KEY_TYPES (key1_type, dom_type)
+	  && TP_ARE_COMPARABLE_KEY_TYPES (key2_type, dom_type))
 	{
 	  c = key_domain->type->cmpval (key1, key2, do_coercion, total_order, NULL, key_domain->collation_id);
 	}
