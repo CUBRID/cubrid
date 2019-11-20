@@ -2939,4 +2939,10 @@ css_conn_entry::has_pending_request () const
 {
   return pending_request_count != 0;
 }
+
+void
+css_conn_entry::init_pending_request ()
+{
+  pending_request_count = 0;
+}
 // *INDENT-ON*

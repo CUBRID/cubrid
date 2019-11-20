@@ -474,9 +474,11 @@ struct css_conn_entry
   void set_tran_index (int tran_index);
   int get_tran_index (void);
 
+  // request count manipulation
   void add_pending_request ();
   void start_request ();
   bool has_pending_request () const;
+  void init_pending_request ();
 
 private:
   // note - I want to protect this.
