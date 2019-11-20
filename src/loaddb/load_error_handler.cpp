@@ -80,14 +80,14 @@ namespace cubload
   }
 
   void
-  error_handler::on_syntax_failure ()
+  error_handler::on_syntax_failure (bool use_scanner_line)
   {
 #if defined (SERVER_MODE)
     if (m_syntax_check)
       {
 	// just log er_msg ()
 	std::string er_msg;
-	log_error_message (er_msg, false, true);
+	log_error_message (er_msg, false, use_scanner_line);
 	er_clear ();
 	return;
       }
@@ -95,7 +95,7 @@ namespace cubload
     if (!is_last_error_filtered ())
       {
 	std::string empty;
-	log_error_message (empty, true, true);
+	log_error_message (empty, true, use_scanner_line);
       }
   }
 

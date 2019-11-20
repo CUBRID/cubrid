@@ -54,7 +54,7 @@ namespace cubload
       void on_failure ();
 
       // In case of syntax check argument do nothing, else keep the behavior as on_failure
-      void on_syntax_failure ();
+      void on_syntax_failure (bool use_scanner_line = false);
 
       template<typename... Args>
       void on_error_with_line (MSGCAT_LOADDB_MSG msg_id, Args &&... args);
