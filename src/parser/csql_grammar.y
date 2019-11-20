@@ -24423,7 +24423,7 @@ json_table_column_rule
         pt_col->type_enum = PT_TYPE_INTEGER;
         $$ = pt_col;
       DBG_PRINT}}
-    | identifier data_type PATH CHAR_STRING json_table_on_error_rule_optional json_table_on_empty_rule_optional
+    | identifier data_type PATH CHAR_STRING json_table_on_empty_rule_optional json_table_on_error_rule_optional
     //        $1        $2   $3          $4                                $5                                $6
       {{
         PT_NODE *pt_col = parser_new_node (this_parser, PT_JSON_TABLE_COLUMN);
@@ -24432,8 +24432,8 @@ json_table_column_rule
         pt_col->data_type = CONTAINER_AT_1 ($2);
         pt_col->info.json_table_column_info.path=$4;
         pt_col->info.json_table_column_info.func = JSON_TABLE_EXTRACT;
-        pt_col->info.json_table_column_info.on_error = $5;
-        pt_col->info.json_table_column_info.on_empty = $6;
+        pt_col->info.json_table_column_info.on_empty = $5;
+        pt_col->info.json_table_column_info.on_error = $6;
         $$ = pt_col;
       DBG_PRINT}}
     | identifier data_type EXISTS PATH CHAR_STRING
