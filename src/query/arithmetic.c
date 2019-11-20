@@ -6188,6 +6188,7 @@ db_evaluate_json_merge_preserve (DB_VALUE * result, DB_VALUE * const *arg, const
 
   if (is_any_arg_null (arg, num_args))
     {
+      db_make_null (result);
       return NO_ERROR;
     }
 
@@ -6239,6 +6240,7 @@ db_evaluate_json_merge_patch (DB_VALUE * result, DB_VALUE * const *arg, const in
 
   if (is_any_arg_null (arg, num_args))
     {
+      db_make_null (result);
       return NO_ERROR;
     }
 
