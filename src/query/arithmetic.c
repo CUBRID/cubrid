@@ -5887,7 +5887,7 @@ db_evaluate_json_keys (DB_VALUE * result, DB_VALUE * const *arg, int const num_a
       return NO_ERROR;
     }
 
-  if (num_args == 1 || DB_IS_NULL (arg[1]))
+  if (num_args == 1)
     {
       path = "";
     }
