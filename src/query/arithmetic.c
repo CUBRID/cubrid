@@ -76,6 +76,7 @@ static int get_number_dbval_as_long_double (long double *ld, const DB_VALUE * va
 static int db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, const DB_VALUE * value2,
 					      const DB_VALUE * value3, const DB_VALUE * value4);
 static int is_str_find_all (DB_VALUE * val, bool & find_all);
+static bool is_any_arg_null (DB_VALUE * const *args, int num_args);
 
 /*
  * db_floor_dbval () - take floor of db_value
@@ -5090,14 +5091,14 @@ db_evaluate_json_contains (DB_VALUE * result, DB_VALUE * const *arg, int const n
       return ER_FAILED;
     }
 
-  const DB_VALUE *json = arg[0];
-  const DB_VALUE *value = arg[1];
-  const DB_VALUE *path = num_args == 3 ? arg[2] : NULL;
-
-  if (DB_IS_NULL (json) || DB_IS_NULL (value) || (path != NULL && DB_IS_NULL (path)))
+  if (is_any_arg_null (arg, num_args))
     {
       return NO_ERROR;
     }
+
+  const DB_VALUE *json = arg[0];
+  const DB_VALUE *value = arg[1];
+  const DB_VALUE *path = num_args == 3 ? arg[2] : NULL;
 
   error_code = db_value_to_json_doc (*json, false, source);
   if (error_code != NO_ERROR)
@@ -5232,13 +5233,14 @@ db_evaluate_json_length (DB_VALUE * result, DB_VALUE * const *arg, int const num
       assert (false);
       return ER_FAILED;
     }
-  DB_VALUE *json = arg[0];
-  DB_VALUE *path = (num_args == 1) ? NULL : arg[1];
 
-  if (DB_IS_NULL (json) || (path != NULL && DB_IS_NULL (path)))
+  if (is_any_arg_null (arg, num_args))
     {
       return NO_ERROR;
     }
+
+  DB_VALUE *json = arg[0];
+  DB_VALUE *path = (num_args == 1) ? NULL : arg[1];
   unsigned int length;
 
   error_code = db_value_to_json_doc (*json, false, source_doc);
@@ -5534,9 +5536,8 @@ db_evaluate_json_extract (DB_VALUE * result, DB_VALUE * const *args, int num_arg
   int error_code = NO_ERROR;
   JSON_DOC_STORE source_doc;
 
-  if (db_value_is_null (args[0]))
+  if (is_any_arg_null (args, num_args))
     {
-      // return null result
       return NO_ERROR;
     }
 
@@ -5881,12 +5882,12 @@ db_evaluate_json_keys (DB_VALUE * result, DB_VALUE * const *arg, int const num_a
       return ER_FAILED;
     }
 
-  if (DB_IS_NULL (arg[0]))
+  if (is_any_arg_null (arg, num_args))
     {
       return NO_ERROR;
     }
 
-  if (num_args == 1 || DB_IS_NULL (arg[1]))
+  if (num_args == 1)
     {
       path = "";
     }
@@ -5938,7 +5939,7 @@ db_evaluate_json_remove (DB_VALUE * result, DB_VALUE * const *arg, int const num
       return ER_FAILED;
     }
 
-  if (DB_IS_NULL (arg[0]))
+  if (is_any_arg_null (arg, num_args))
     {
       return NO_ERROR;
     }
@@ -5952,11 +5953,6 @@ db_evaluate_json_remove (DB_VALUE * result, DB_VALUE * const *arg, int const num
 
   for (i = 1; i < num_args; i++)
     {
-      if (DB_IS_NULL (arg[i]))
-	{
-	  return db_make_null (result);
-	}
-
       error_code = db_value_to_json_path (*arg[i], F_JSON_REMOVE, path);
       if (error_code != NO_ERROR)
 	{
@@ -6124,7 +6120,7 @@ db_evaluate_json_contains_path (DB_VALUE * result, DB_VALUE * const *arg, const 
   /* *INDENT-ON* */
   db_make_null (result);
 
-  if (DB_IS_NULL (arg[0]) || DB_IS_NULL (arg[1]))
+  if (is_any_arg_null (arg, num_args))
     {
       return NO_ERROR;
     }
@@ -6145,10 +6141,6 @@ db_evaluate_json_contains_path (DB_VALUE * result, DB_VALUE * const *arg, const 
 
   for (int i = 2; i < num_args; ++i)
     {
-      if (DB_IS_NULL (arg[i]))
-	{
-	  return error_code;
-	}
       /* *INDENT-OFF* */
       paths.emplace_back ();
       /* *INDENT-ON* */
@@ -6194,13 +6186,10 @@ db_evaluate_json_merge_preserve (DB_VALUE * result, DB_VALUE * const *arg, const
       return NO_ERROR;
     }
 
-  for (int i = 0; i < num_args; ++i)
+  if (is_any_arg_null (arg, num_args))
     {
-      if (DB_IS_NULL (arg[i]))
-	{
-	  db_make_null (result);
-	  return NO_ERROR;
-	}
+      db_make_null (result);
+      return NO_ERROR;
     }
 
   for (int i = 0; i < num_args; ++i)
@@ -6249,13 +6238,10 @@ db_evaluate_json_merge_patch (DB_VALUE * result, DB_VALUE * const *arg, const in
       return NO_ERROR;
     }
 
-  for (int i = 0; i < num_args; ++i)
+  if (is_any_arg_null (arg, num_args))
     {
-      if (DB_IS_NULL (arg[i]))
-	{
-	  db_make_null (result);
-	  return NO_ERROR;
-	}
+      db_make_null (result);
+      return NO_ERROR;
     }
 
   for (int i = 0; i < num_args; ++i)
@@ -6296,6 +6282,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
 {
   int error_code = NO_ERROR;
   JSON_DOC_STORE doc;
+  const size_t ESCAPE_CHAR_ARG_INDEX = 3;
 
   if (num_args < 3)
     {
@@ -6306,7 +6293,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
   for (int i = 0; i < num_args; ++i)
     {
       // only escape char might be null
-      if (i != 3 && DB_IS_NULL (args[i]))
+      if (i != ESCAPE_CHAR_ARG_INDEX && DB_IS_NULL (args[i]))
         {
           return db_make_null (result);
         }
@@ -6559,4 +6546,17 @@ is_str_find_all (DB_VALUE * val, bool & find_all)
       return ER_INVALID_ONE_ALL_ARGUMENT;
     }
   return NO_ERROR;
+}
+
+static bool
+is_any_arg_null (DB_VALUE * const *args, int num_args)
+{
+  for (int i = 0; i < num_args; ++i)
+    {
+      if (DB_IS_NULL (args[i]))
+	{
+	  return true;
+	}
+    }
+  return false;
 }
