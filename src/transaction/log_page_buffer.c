@@ -7129,6 +7129,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   LOG_LSA chkpt_lsa;		/* Checkpoint address where the backup process starts */
 #if defined(SERVER_MODE)
   LOG_PAGEID saved_run_nxchkpt_atpageid = NULL_PAGEID;
+  LOG_LSA saved_prev_lsa;
 #endif /* SERVER_MODE */
   FILE *backup_volinfo_fp = NULL;	/* Pointer to backup information/directory file */
   const char *catmsg;
@@ -7595,9 +7596,21 @@ loop:
    * to the database in the event a restore with no other log archives
    * is needed.
    */
+  LSA_SET_NULL (&saved_prev_lsa);
   LOG_CS_ENTER (thread_p);
   if (LSA_LT (&chkpt_lsa, &log_Gl.hdr.append_lsa) || log_Gl.hdr.append_lsa.pageid > LOGPB_NEXT_ARCHIVE_PAGE_ID)
     {
+      if (skip_activelog)
+	{
+	  /* We need to include in archive the actual log_Gl.append.prev_lsa.pageid. Otherwise, we are in trouble if
+	   * the system crashes, since at recovery redo a data page may have its LSA greater than latest LSA in log.
+	   * For consistency, logpb_archive_active_log flushes up to log_Gl.append.prev_lsa.pageid - 1. So, we have
+	   * to advance with logging, to be sure that actual log_Gl.append.prev_lsa.pageid is included in log.
+	   */
+	  LSA_COPY (&saved_prev_lsa, &log_Gl.append.prev_lsa);
+	  logpb_prior_lsa_append_all_list (thread_p);
+	}
+
       logpb_archive_active_log (thread_p);
     }
 
@@ -7629,6 +7642,28 @@ loop:
   LOG_CS_ENTER (thread_p);
 
 #if defined(SERVER_MODE)
+
+  if (!LSA_ISNULL (&saved_prev_lsa) && saved_prev_lsa.pageid == LOGPB_NEXT_ARCHIVE_PAGE_ID)
+    {
+      LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+      /* We have to be sure that saved_prev_lsa.pageid is included in an archive.
+       * Advances with log_Gl.prior_info.prev_lsa.pageid then appends in log page and
+       * creates a new archive.
+       */
+
+      logpb_prior_lsa_append_all_list (thread_p);
+      while (log_Gl.prior_info.prev_lsa.pageid == saved_prev_lsa.pageid)
+	{
+	  log_append_empty_record (thread_p, LOG_DUMMY_GENERIC, &addr);
+	}
+
+      logpb_prior_lsa_append_all_list (thread_p);
+      assert (log_Gl.append.prev_lsa.pageid > saved_prev_lsa.pageid
+	      && log_Gl.hdr.append_lsa.pageid > LOGPB_NEXT_ARCHIVE_PAGE_ID);
+
+      logpb_archive_active_log (thread_p);
+    }
+
   /* backup the archive logs created during backup existing archive logs */
   if (last_arv_needed < log_Gl.hdr.nxarv_num - 1)
     {
