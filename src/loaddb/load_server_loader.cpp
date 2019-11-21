@@ -510,7 +510,8 @@ namespace cubload
 	  }
       }
 
-    m_session.stats_update_current_line (m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1);
+    int lineno = m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1;
+    m_session.stats_update_current_line (lineno);
     clear_db_values ();
   }
 

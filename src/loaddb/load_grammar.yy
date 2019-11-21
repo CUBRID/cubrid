@@ -207,6 +207,9 @@ loader_lines :
   ;
 
 line :
+  {
+    m_driver.update_start_line ();
+  }
   one_line NL
   {
     DBG_PRINT ("one_line");
