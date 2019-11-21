@@ -1296,9 +1296,9 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		  if (!er_has_error ())
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-		      error = ER_GENERIC_ERROR;
 		    }
 
+		  ASSERT_ERROR_AND_SET (error);
 		  goto exit;
 		}
 
@@ -1344,6 +1344,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 			  if (scan_code == S_ERROR && er_has_error ())
 			    {
 			      /* Some unexpected errors (like ER_INTERRUPTED due to timeout) should be handled. */
+			      ASSERT_ERROR_AND_SET (error);
 			      qfile_close_scan (thread_p, &scan_id);
 			      qfile_close_list (thread_p, list_id_p);
 			      qfile_destroy_list (thread_p, list_id_p);
@@ -1365,8 +1366,8 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 				   QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
 
 			  (void) pr_clear_value (&dbval);
-			  error =
-				  pr_type_p->data_readval (&buf, &dbval, list_id_p->type_list.domp[0], -1, true, NULL, 0);
+			  error = pr_type_p->data_readval (&buf, &dbval, list_id_p->type_list.domp[0], -1, true, NULL,
+							   0);
 			  if (error != NO_ERROR)
 			    {
 			      ASSERT_ERROR ();
@@ -1470,9 +1471,8 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 				      goto exit;
 				    }
 
-				  error =
-					  qdata_add_dbval (agg_p->accumulator.value2, &sqr_val, agg_p->accumulator.value2,
-							   tmp_domain_ptr);
+				  error = qdata_add_dbval (agg_p->accumulator.value2, &sqr_val,
+							   agg_p->accumulator.value2, tmp_domain_ptr);
 				  if (error != NO_ERROR)
 				    {
 				      ASSERT_ERROR ();
@@ -1511,9 +1511,8 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 				      domain_ptr = NULL;
 				    }
 
-				  error =
-					  qdata_add_dbval (agg_p->accumulator.value, &dbval, agg_p->accumulator.value,
-							   domain_ptr);
+				  error = qdata_add_dbval (agg_p->accumulator.value, &dbval,
+							   agg_p->accumulator.value, domain_ptr);
 				  if (error != NO_ERROR)
 				    {
 				      ASSERT_ERROR ();

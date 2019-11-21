@@ -18704,8 +18704,21 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 	  return DB_UNK;
 	}
 
-      if (TP_ARE_COMPARABLE_KEY_TYPES (key1_type, key2_type) && TP_ARE_COMPARABLE_KEY_TYPES (key1_type, dom_type)
-	  && TP_ARE_COMPARABLE_KEY_TYPES (key2_type, dom_type))
+      bool are_types_comparable = (TP_ARE_COMPARABLE_KEY_TYPES (key1_type, key2_type)
+				   && TP_ARE_COMPARABLE_KEY_TYPES (key1_type, dom_type)
+				   && TP_ARE_COMPARABLE_KEY_TYPES (key2_type, dom_type));
+      if (are_types_comparable)
+	{
+	  // check strings collation
+	  if (TP_IS_STRING_TYPE (key1_type) && TP_IS_STRING_TYPE (key2_type)
+	      && db_get_string_collation (key1) != db_get_string_collation (key2))
+	    {
+	      // not comparable
+	      are_types_comparable = false;
+	    }
+	}
+
+      if (are_types_comparable)
 	{
 	  c = key_domain->type->cmpval (key1, key2, do_coercion, total_order, NULL, key_domain->collation_id);
 	}
@@ -33434,7 +33447,6 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
       if (insert_list->next_key () != btree_insert_list::KEY_AVAILABLE)
 	{
 	  /* no more keys in list */
-	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_NO_MORE_KEYS);
 	  break;
 	}
 
@@ -33448,7 +33460,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
       if (key_len > node_header->max_key_len)
 	{
 	  /* cannot insert a key having len > max key len : abort and let advance/split algorithm to deal with this */
-	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_MAX_KEY_LEN);
+	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_RETRY);
 	  break;
 	}
 
@@ -33460,7 +33472,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
       if (new_ent_size > spage_get_free_space_without_saving (thread_p, *leaf_page, NULL))
 	{
 	  /* no more space in page */
-	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_NO_SPACE);
+	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_RETRY);
 	  break;
 	}
 
@@ -33471,7 +33483,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	  c = btree_compare_key (&insert_list->m_boundaries.m_left_key, curr_key, btid_int->key_type, 1, 1, NULL);
 	  if (c != DB_LT && c != DB_EQ)
 	    {
-	      perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE1);
+	      perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_RETRY);
 	      break;
 	    }
 	}
@@ -33482,7 +33494,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	  c = btree_compare_key (curr_key, &insert_list->m_boundaries.m_right_key, btid_int->key_type, 1, 1, NULL);
 	  if (c != DB_LT)
 	    {
-	      perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE2);
+	      perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_RETRY);
 	      break;
 	    }
 	}
@@ -33505,18 +33517,18 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	      if (search_key->result == BTREE_KEY_SMALLER && VPID_ISNULL (&node_header->prev_vpid))
 		{
 		  /* key is out of range (smaller), but since there is no leaf page to the left, we may continue */
-		  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_FALSE_FAILED_RANGE1);
+		  ;
 		}
 	      else if (search_key->result == BTREE_KEY_BIGGER && VPID_ISNULL (&node_header->next_vpid))
 		{
 		  /* key is out of range (bigger), but since there is no leaf page to the right, we may continue */
-		  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_FALSE_FAILED_RANGE2);
+		  ;
 		}
 	      else
 		{
 		  /* key is out of range (smaller or bigger) and the current leaf page has neighbours :
 		   * abort and search from root */
-		  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE3);
+		  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_RETRY);
 		  break;
 		}
 	    }
@@ -33536,7 +33548,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	  /* key is out of range and presence of fence key suggests that next/prev leaf page should be
 	   * a better place; no fence means current key is bigger/lesser than all index keys and we can insert here
 	   * (this is backed-up by key page boundaries checked before) */
-	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_REJECT_KEY_NOT_IN_RANGE4);
+	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_RETRY);
 	  break;
 	}
       else if (search_key->result != BTREE_KEY_BETWEEN && search_key->result != BTREE_KEY_FOUND
@@ -33552,14 +33564,14 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
 
       if (insert_list->check_release_latch (thread_p, &helper->insert_helper, *leaf_page) == true)
 	{
-	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_RELEASE_LATCH);
+	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_RETRY_NICE);
 	  break;
 	}
     }
 
   insert_list->reset_boundary_keys ();
 
-  PERF_UTIME_TRACKER_TIME (thread_p, &time_insert_same_leaf, PSTAT_BT_ONLINE_INSERT_SAME_LEAF);
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_insert_same_leaf, PSTAT_BT_ONLINE_INSERT_LEAF);
 
   return error_code;
 }

@@ -832,6 +832,28 @@ pt_unregister_parser (const PARSER_CONTEXT * parser)
 #endif /* SERVER_MODE */
 }
 
+void
+parser_free_node_resources (PT_NODE * node)
+{
+  /* before we free this node, see if we need to clear a db_value */
+  if (node->node_type == PT_VALUE && node->info.value.db_value_is_in_workspace)
+    {
+      db_value_clear (&node->info.value.db_value);
+    }
+  if (node->node_type == PT_INSERT_VALUE && node->info.insert_value.is_evaluated)
+    {
+      db_value_clear (&node->info.insert_value.value);
+    }
+  if (node->node_type == PT_JSON_TABLE_COLUMN)
+    {
+      PT_JSON_TABLE_COLUMN_INFO *col = &node->info.json_table_column_info;
+      db_value_clear (col->on_empty.m_default_value);
+      col->on_empty.m_default_value = NULL;
+      db_value_clear (col->on_error.m_default_value);
+      col->on_error.m_default_value = NULL;
+      // db_values on_empty.m_default_value & on_error.m_default_value are allocated using area_alloc
+    }
+}
 
 /*
  * parser_free_node () - Return this node to this parser's node memory pool
@@ -895,24 +917,7 @@ parser_free_node (const PARSER_CONTEXT * parser, PT_NODE * node)
       return;
     }
 
-  /* before we free this node, see if we need to clear a db_value */
-  if (node->node_type == PT_VALUE && node->info.value.db_value_is_in_workspace)
-    {
-      db_value_clear (&node->info.value.db_value);
-    }
-  if (node->node_type == PT_INSERT_VALUE && node->info.insert_value.is_evaluated)
-    {
-      db_value_clear (&node->info.insert_value.value);
-    }
-  if (node->node_type == PT_JSON_TABLE_COLUMN)
-    {
-      PT_JSON_TABLE_COLUMN_INFO *col = &node->info.json_table_column_info;
-      db_value_clear (col->on_empty.m_default_value);
-      col->on_empty.m_default_value = NULL;
-      db_value_clear (col->on_error.m_default_value);
-      col->on_error.m_default_value = NULL;
-      // db_values on_empty.m_default_value & on_error.m_default_value are allocated using area_alloc
-    }
+  parser_free_node_resources (node);
   /*
    * Always set the node type to maximum.  This may
    * keep us from doing bad things to the free list if we try to free
