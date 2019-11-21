@@ -1620,7 +1620,7 @@ static void
 display_error_line (int adjust)
 {
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
-	   ldr_Driver->get_scanner ().lineno () + adjust);
+	   ldr_Driver->get_start_line () + adjust);
 }
 
 /*
