@@ -1143,6 +1143,7 @@ serial_load_attribute_info_of_db_serial (THREAD_ENTRY * thread_p)
     }
   if (heap_get_class_record (thread_p, &serial_Cache_pool.db_serial_class_oid, &class_record, &scan, PEEK) != S_SUCCESS)
     {
+      heap_scancache_end (thread_p, &scan);
       return ER_FAILED;
     }
 
