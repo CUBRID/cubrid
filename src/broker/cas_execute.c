@@ -5045,7 +5045,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 
 	/* no matter which column type is returned to client (JSON or STRING, depending on client version),
 	 * the data is always encoded as string */
-	add_res_data_string (net_buf, str, bytes_size, 0, CAS_SCHEMA_DEFAULT_CHARSET, &data_size);
+	add_res_data_string (net_buf, str, bytes_size, 0, INTL_CODESET_UTF8, &data_size);
 	db_private_free (NULL, str);
       }
       break;
