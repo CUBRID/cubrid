@@ -2733,6 +2733,7 @@ css_push_server_task (CSS_CONN_ENTRY &conn_ref)
   //       randomly pushed to cores that are full. some of those tasks may belong to threads holding locks. as a
   //       consequence, lock waiters may wait longer or even indefinitely if we are really unlucky.
   //
+  conn_ref.add_pending_request ();
   thread_get_manager ()->push_task_on_core (css_Server_request_worker_pool, new css_server_task (conn_ref),
                                             static_cast<size_t> (conn_ref.idx));
 }
@@ -2746,11 +2747,14 @@ css_push_external_task (CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
 void
 css_server_task::execute (context_type &thread_ref)
 {
-  thread_ref.conn_entry = &m_conn;
+  m_conn.start_request ();
 
-  if (thread_ref.conn_entry->session_p != NULL)
+  thread_ref.conn_entry = &m_conn;
+  session_state *session_p = thread_ref.conn_entry->session_p;
+
+  if (session_p != NULL)
     {
-      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.conn_entry->session_p);
+      thread_ref.private_lru_index = session_get_private_lru_idx (session_p);
     }
   else
     {
@@ -2772,9 +2776,11 @@ void
 css_server_external_task::execute (context_type &thread_ref)
 {
   thread_ref.conn_entry = m_conn;
-  if (thread_ref.conn_entry != NULL && thread_ref.conn_entry->session_p != NULL)
+
+  session_state *session_p = thread_ref.conn_entry != NULL ? thread_ref.conn_entry->session_p : NULL;
+  if (session_p != NULL)
     {
-      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.conn_entry->session_p);
+      thread_ref.private_lru_index = session_get_private_lru_idx (session_p);
     }
   else
     {

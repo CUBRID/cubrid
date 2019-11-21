@@ -356,6 +356,7 @@ cursor_fixup_vobjs (DB_VALUE * value_p)
     case DB_TYPE_SEQUENCE:
       /* fixup any set/seq of vobjs into a set/seq of vmops */
       rc = cursor_fixup_set_vobjs (value_p);
+      value_p->need_clear = true;
       break;
 
     default:

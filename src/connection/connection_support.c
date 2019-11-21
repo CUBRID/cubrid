@@ -2921,4 +2921,28 @@ css_conn_entry::get_tran_index ()
   assert (transaction_id != LOG_SYSTEM_TRAN_INDEX);
   return transaction_id;
 }
+
+void
+css_conn_entry::add_pending_request ()
+{
+  ++pending_request_count;
+}
+
+void
+css_conn_entry::start_request ()
+{
+  --pending_request_count;
+}
+
+bool
+css_conn_entry::has_pending_request () const
+{
+  return pending_request_count != 0;
+}
+
+void
+css_conn_entry::init_pending_request ()
+{
+  pending_request_count = 0;
+}
 // *INDENT-ON*
