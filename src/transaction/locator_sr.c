@@ -13812,7 +13812,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 
 	  // Add this record to the recdes array and increase the accumulated size.
 	  recdes_array.push_back (local_record);
-	  accumulated_records_size += local_record.length;
+	  accumulated_records_size += DB_ALIGN (local_record.length, DOUBLE_ALIGNMENT);
 	}
     }
 
