@@ -3719,6 +3719,7 @@ catalog_fixup_missing_disk_representation (THREAD_ENTRY * thread_p, OID * class_
   DISK_REPR *disk_repr_p;
   HEAP_SCANCACHE scan_cache;
   OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
+  int ret = NO_ERROR;
 
   heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
   if (heap_get (thread_p, class_oid_p, &record, &scan_cache, PEEK, NULL_CHN) == S_SUCCESS)
@@ -3726,8 +3727,8 @@ catalog_fixup_missing_disk_representation (THREAD_ENTRY * thread_p, OID * class_
       disk_repr_p = orc_diskrep_from_record (thread_p, &record);
       if (disk_repr_p == NULL)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
+	  ASSERT_ERROR_AND_SET (ret);
+	  goto end;
 	}
 
       or_class_rep_dir (&record, &rep_dir);
@@ -3735,16 +3736,16 @@ catalog_fixup_missing_disk_representation (THREAD_ENTRY * thread_p, OID * class_
 
       if (catalog_add_representation (thread_p, class_oid_p, repr_id, disk_repr_p, &rep_dir) < 0)
 	{
+	  ASSERT_ERROR_AND_SET (ret);
 	  orc_free_diskrep (disk_repr_p);
-
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
+	  goto end;
 	}
       orc_free_diskrep (disk_repr_p);
     }
 
+end:
   heap_scancache_end (thread_p, &scan_cache);
-  return NO_ERROR;
+  return ret;
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
