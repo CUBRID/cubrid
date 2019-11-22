@@ -7478,6 +7478,8 @@ loop:
 
       if (skip_activelog)
 	{
+	  // unreachable. skip_activelog option is obsoleted.
+	  assert (!skip_activelog);
 	  fprintf (session.verbose_fp, "- not include active log.\n\n");
 	}
 
@@ -7522,6 +7524,7 @@ loop:
     }
 
   /* Begin backing up in earnest */
+  assert (!skip_activelog);
   session.bkup.bkuphdr->skip_activelog = skip_activelog;
 
   if (fileio_start_backup (thread_p, log_Db_fullname, &log_Gl.hdr.db_creation, backup_level, &bkup_start_lsa,
@@ -7629,7 +7632,7 @@ loop:
   LOG_CS_ENTER (thread_p);
 
 #if defined(SERVER_MODE)
-  /* backup the archive logs created during backup existing archive logs */
+
   if (last_arv_needed < log_Gl.hdr.nxarv_num - 1)
     {
       error_code = logpb_backup_needed_archive_logs (thread_p, &session, last_arv_needed + 1, log_Gl.hdr.nxarv_num - 1);
@@ -7702,15 +7705,13 @@ loop:
   /* Now indicate how many volumes were backed up */
   logpb_flush_header (thread_p);
 
-  if (skip_activelog == 0)
+  /* Include active log always. Skipping log active is obsolete. */
+  error_code = fileio_backup_volume (thread_p, &session, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, -1, false);
+  if (error_code != NO_ERROR)
     {
-      error_code = fileio_backup_volume (thread_p, &session, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, -1, false);
-      if (error_code != NO_ERROR)
-	{
-	  LOG_CS_EXIT (thread_p);
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
-	  goto error;
-	}
+      LOG_CS_EXIT (thread_p);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
+      goto error;
     }
 
   if (fileio_finish_backup (thread_p, &session) == NULL)

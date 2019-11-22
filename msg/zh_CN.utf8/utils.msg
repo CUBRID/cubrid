@@ -270,7 +270,6 @@ backupdb: 备份一个数据库.\n\
       --no-check               不检测数据库的一致性; 默认: 检测\n\
   -t, --thread-count=COUNT     线程数; 默认: 0(auto)\n\
   -z, --compress               压缩备份卷; 默认: 不压缩\n\
-  -e, --except-active-log      不包括活动日志卷; 默认: 包括\n\
       --sleep-msecs=N          每读 1M 休眠 N  毫秒; 默认: 0\n
 71 不兼容的参数, \"%1$s\", 和 \"%2$s\"\n
 

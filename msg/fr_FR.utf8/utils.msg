@@ -270,7 +270,6 @@ options valides:\n\
       --no-check               ne vérifie pas la cohérence de la base de données; par défaut: vérifier\n\
   -t, --thread-count=NOMBRE    NOMBRE de fils d'exécution; par défaut: 0 (auto)\n\
   -z, --compress               comprimer les volumes de sauvegarde; par défaut: décompresser\n\
-  -e, --except-active-log      ne comprennent pas un volume de journal actif; par défaut comprennent\n\
       --sleep-msecs=N          veille N millisecondes par 1M lit; par défaut: 0\n
 71 Arguments incompatibles, \"%1$s\", et \"%2$s\"\n
 

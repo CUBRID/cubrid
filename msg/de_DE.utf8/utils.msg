@@ -270,7 +270,6 @@ gültige Optionen:\n\
       --no-check               Konsistenz der Datenbank nicht überprüfen; Standard: prüfen\n\
   -t, --thread-count=ANZAHL     Anzahl der Threads; Standard: 0(auto)\n\
   -z, --compress               Backupdatenträger komprimieren; Standard: nicht komprimiert\n\
-  -e, --except-active-log      einen aktiven Logdatenträger nicht einfügen; Standard: einfügen\n\
       --sleep-msecs=N          N Millisekunden per gelesenen 1M schlafen; Standard: 0\n
 71 Nicht kompatible Argumente, \"%1$s\", und \"%2$s\"\n
 
