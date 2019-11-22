@@ -6528,6 +6528,7 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 
   if (locator_manyobj_flag_is_set (mobjs, END_MULTI_UPDATE))
     {
+      // *INDENT-OFF*
       for (const auto & it:tdes->m_multiupd_stats.get_map ())
 	{
 	  if (!it.second.is_unique ())
@@ -6543,6 +6544,7 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 	      goto error;
 	    }
 	}
+      // *INDENT-ON*
       tdes->m_multiupd_stats.clear ();
     }
 
