@@ -7478,6 +7478,8 @@ loop:
 
       if (skip_activelog)
 	{
+	  // unreachable. skip_activelog option is obsoleted.
+	  assert (!skip_activelog);
 	  fprintf (session.verbose_fp, "- not include active log.\n\n");
 	}
 
@@ -7522,6 +7524,7 @@ loop:
     }
 
   /* Begin backing up in earnest */
+  assert (!skip_activelog);
   session.bkup.bkuphdr->skip_activelog = skip_activelog;
 
   if (fileio_start_backup (thread_p, log_Db_fullname, &log_Gl.hdr.db_creation, backup_level, &bkup_start_lsa,
