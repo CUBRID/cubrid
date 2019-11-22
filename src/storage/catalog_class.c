@@ -4391,6 +4391,7 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
+	      (void) heap_scancache_end (thread_p, &scan);
 	      return error;
 	    }
 
