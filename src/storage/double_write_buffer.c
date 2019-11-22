@@ -1547,6 +1547,7 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
   int r;
   struct timeval timeval_crt, timeval_timeout;
   struct timespec to;
+  bool save_check_interrupt;
 
   assert (thread_p != NULL && block_no < DWB_NUM_TOTAL_BLOCKS);
 
@@ -1582,12 +1583,15 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
 
   pthread_mutex_unlock (&dwb_block->mutex);
 
+  save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
   /* Waits for maximum 20 milliseconds. */
   gettimeofday (&timeval_crt, NULL);
   timeval_add_msec (&timeval_timeout, &timeval_crt, 20);
   timeval_to_timespec (&to, &timeval_timeout);
 
   r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_DWB_QUEUE_SUSPENDED);
+
+  (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
 
   PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_DWB_WAIT_FLUSH_BLOCK_TIME_COUNTERS);
 
@@ -1600,8 +1604,7 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
   else if (thread_p->resume_status != THREAD_DWB_QUEUE_RESUMED)
     {
       /* interruption, remove the entry from queue */
-      assert (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT
-	      || thread_p->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN);
+      assert (thread_p->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN);
 
       dwb_remove_wait_queue_entry (&dwb_block->wait_queue, &dwb_block->mutex, thread_p, NULL);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
@@ -1694,6 +1697,7 @@ dwb_wait_for_strucure_modification (THREAD_ENTRY * thread_p)
   int r;
   struct timeval timeval_crt, timeval_timeout;
   struct timespec to;
+  bool save_check_interrupt;
 
   (void) pthread_mutex_lock (&dwb_Global.mutex);
 
@@ -1720,12 +1724,15 @@ dwb_wait_for_strucure_modification (THREAD_ENTRY * thread_p)
 
   pthread_mutex_unlock (&dwb_Global.mutex);
 
+  save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
   /* Waits for maximum 10 milliseconds. */
   gettimeofday (&timeval_crt, NULL);
   timeval_add_msec (&timeval_timeout, &timeval_crt, 10);
   timeval_to_timespec (&to, &timeval_timeout);
 
   r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_DWB_QUEUE_SUSPENDED);
+
+  (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
   if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
     {
       /* timeout, remove the entry from queue */
@@ -1735,8 +1742,7 @@ dwb_wait_for_strucure_modification (THREAD_ENTRY * thread_p)
   else if (thread_p->resume_status != THREAD_DWB_QUEUE_RESUMED)
     {
       /* interruption, remove the entry from queue */
-      assert (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT
-	      || thread_p->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN);
+      assert (thread_p->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN);
 
       dwb_remove_wait_queue_entry (&dwb_Global.wait_queue, &dwb_Global.mutex, thread_p, NULL);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
