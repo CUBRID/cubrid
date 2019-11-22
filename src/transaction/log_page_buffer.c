@@ -1636,7 +1636,8 @@ logpb_is_log_active_from_backup_useful (THREAD_ENTRY * thread_p, const char *act
   char next_archive_file_path[PATH_MAX], log_path[PATH_MAX];
 
   fileio_get_directory_path (log_path, active_log_path);
-  fileio_make_log_archive_name (next_archive_file_path, log_path, fileio_get_base_file_name (db_full_name), hdr.nxarv_num);
+  fileio_make_log_archive_name (next_archive_file_path, log_path, fileio_get_base_file_name (db_full_name),
+				hdr.nxarv_num);
 
   if (fileio_is_volume_exist (next_archive_file_path))
     {
