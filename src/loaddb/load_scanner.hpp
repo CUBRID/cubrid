@@ -74,7 +74,7 @@ namespace cubload
 	 *  set, but it will not fail the session is --data-check-only is enabled, and it will just report the line
 	 *  where the parsing error occured.
 	 */
-	m_error_handler.on_error_with_line (LOADDB_MSG_LEX_ERROR);
+	m_error_handler.on_error_with_line (m_error_handler.get_scanner_lineno (), LOADDB_MSG_LEX_ERROR);
 	m_error_handler.on_syntax_failure (true);   // Use scanner line in this case.
       }
 
