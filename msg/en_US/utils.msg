@@ -270,7 +270,6 @@ valid options:\n\
       --no-check               don't check a consistency of the database; default: check\n\
   -t, --thread-count=COUNT     number of threads; default: 0(auto)\n\
   -z, --compress               compress backup volumes; default: uncompress\n\
-  -e, --except-active-log      don't include an active log volume; default: include\n\
       --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n
 71 Incompatible arguments, \"%1$s\", and \"%2$s\"\n
 

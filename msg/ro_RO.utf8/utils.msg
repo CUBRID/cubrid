@@ -271,7 +271,6 @@ opţiuni valide:\n\
       --no-check               nu se efectuează o verificare de consistenţă a bazei de date; implicit: verificare\n\
   -t, --thread-count=NUMAR     număr de fire de excuţie; implicit: 0(auto)\n\
   -z, --compress               compresia volumelor de backup; implicit: decompresie\n\
-  -e, --except-active-log      nu se include un volum de log activ; implicit: se include\n\
       --sleep-msecs=N          asteapta N milisecunde la fiecare 1MB citit; implicit: 0\n
 71 Argumente incompatibile, \"%1$s\", şi \"%2$s\"\n
 

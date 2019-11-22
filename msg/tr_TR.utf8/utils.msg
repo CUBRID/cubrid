@@ -270,7 +270,6 @@ geçerli opsiyonlar:\n\
       --no-check               veritabanının tutarlılığını kontrol etmez; varsayılan: kontrol edin\n\
   -t, --thread-count=COUNT     Konu sayısı; Varsayılan olarak: 0 (otomatik)\n\
   -z, --compress               yedekleme birimleri sıkıştırmak; varsayılan: sıkıştırmayı açma\n\
-  -e, --except-active-log      şunlardır: varsayılan; aktif bir log yoğunluğu içermez\n\
       --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n
 71 Uyumsuz bağımsız değişkenleri, \"%1$s\", ve \"%2$s\"\n
 

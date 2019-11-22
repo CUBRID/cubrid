@@ -270,7 +270,6 @@ opciones validas:\n\
       --no-check               no verificar una consistencia de la base de datos; estandar: verificar\n\
   -t, --thread-count=COUNT     numero de hilos; estandar: 0(auto)\n\
   -z, --compress               comprimir volumenes de respaldo; estandar: descomprimir\n\
-  -e, --except-active-log      no incluir un volumen de registro activo; estandar: incluir\n\
       --sleep-msecs=N          dormir N milisecondas para cada 1M leido estandar: 0\n
 71 Argumentos incompatibles, \"%1$s\", y \"%2$s\"\n
 
