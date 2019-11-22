@@ -311,7 +311,7 @@ logwr_read_log_header (void)
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_DISK_INCONSISTENT_VOL_HEADER, 1,
 		      logwr_Gl.active_name);
 
-	      fileio_dismount (NULL, LOG_DBLOG_ACTIVE_VOLID);
+	      fileio_dismount_without_fsync (NULL, LOG_DBLOG_ACTIVE_VOLID);
 	      fileio_unformat (NULL, logwr_Gl.active_name);
 	      er_clear ();
 	      return NO_ERROR;
