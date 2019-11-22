@@ -1631,6 +1631,12 @@ display_error_line (int adjust)
       lineno = ldr_Driver->get_start_line ();
     }
 
+  if (lineno == 0)
+    {
+      // Most likely parsing hasn't started yet so we should not print the line number.
+      return;
+    }
+
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE), lineno);
 }
 
