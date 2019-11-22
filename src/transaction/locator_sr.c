@@ -13715,6 +13715,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
   std::vector<VPID> heap_pages_array;
   RECDES local_record;
   bool has_BU_lock = lock_has_lock_on_object (class_oid, oid_Root_class_oid, BU_LOCK);
+  size_t record_overhead = spage_slot_size ();
 
   // Early-out
   if (recdes.size () == 0)
@@ -13749,7 +13750,8 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
       else
 	{
 	  // get records until we fit the size of a page.
-	  if ((local_record.length + accumulated_records_size) >= heap_max_page_size)
+	  if ((DB_ALIGN (local_record.length, HEAP_MAX_ALIGN) + record_overhead + accumulated_records_size)
+                         >= heap_max_page_size)
 	    {
 	      VPID new_page_vpid;
 	      PGBUF_WATCHER home_hint_p;
@@ -13812,7 +13814,8 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 
 	  // Add this record to the recdes array and increase the accumulated size.
 	  recdes_array.push_back (local_record);
-	  accumulated_records_size += DB_ALIGN (local_record.length, DOUBLE_ALIGNMENT);
+	  accumulated_records_size += DB_ALIGN (local_record.length, HEAP_MAX_ALIGN);
+          accumulated_records_size += record_overhead;    // Add the slot overhead for the record.
 	}
     }
 
