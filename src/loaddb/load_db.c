@@ -910,7 +910,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
   int stmt_cnt, stmt_id = 0, stmt_type;
   int executed_cnt = 0;
   int parser_start_line_no;
-  int parser_end_line_no = 0;
+  int statement_line_no = 0;
   int check_line_no = true;
 
   if ((*start_line) > 1)
@@ -960,13 +960,13 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	  db_close_session (session);
 	  goto end;
 	}
-      parser_start_line_no = parser_end_line_no;
+      parser_start_line_no = statement_line_no;
 
       stmt_cnt = db_parse_one_statement (session);
       if (stmt_cnt > 0)
 	{
 	  stmt_id = db_compile_statement (session);
-	  parser_end_line_no = db_get_line_of_last_statement (session, stmt_id);
+	  statement_line_no = db_get_line_of_statement (session, stmt_id);
 	}
 
       if (stmt_cnt <= 0 || stmt_id <= 0)
@@ -1018,8 +1018,8 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	{
 	  db_commit_transaction ();
 	  print_log_msg (args->verbose_commit, "%8d statements executed. Commit transaction at line %d\n", executed_cnt,
-			 parser_end_line_no);
-	  *start_line = parser_end_line_no + 1;
+			 statement_line_no);
+	  *start_line = statement_line_no + 1;
 	}
       print_log_msg ((int) args->verbose, "Total %8d statements executed.\r", executed_cnt);
       fflush (stdout);
@@ -1032,7 +1032,7 @@ end:
     }
   else
     {
-      *start_line = parser_end_line_no + 1;
+      *start_line = statement_line_no + 1;
       print_log_msg (1, "Total %8d statements executed.\n", executed_cnt);
       fflush (stdout);
       db_commit_transaction ();

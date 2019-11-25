@@ -4194,13 +4194,10 @@ db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, PT_NODE * sta
 }
 
 int
-db_get_line_of_last_statement (DB_SESSION * session, int stmt_id)
+db_get_line_of_statement (DB_SESSION * session, int stmt_id)
 {
-  if (stmt_id < 0)
-    {
-      return 0;
-    }
-
+  // Safeguards
+  assert (stmt_id > 0);
   assert (session->statements != NULL);
 
   // Get last statement
