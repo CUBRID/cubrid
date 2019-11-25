@@ -13751,7 +13751,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	{
 	  // get records until we fit the size of a page.
 	  if ((DB_ALIGN (local_record.length, HEAP_MAX_ALIGN) + record_overhead + accumulated_records_size)
-                         >= heap_max_page_size)
+	      >= heap_max_page_size)
 	    {
 	      VPID new_page_vpid;
 	      PGBUF_WATCHER home_hint_p;
@@ -13771,21 +13771,22 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 		{
 		  error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, &recdes_array[j], has_index,
 						     op_type, scan_cache, force_count, pruning_type, pcontext,
-						     func_preds, force_in_place, &home_hint_p, has_BU_lock, dont_check_fk, true);
+						     func_preds, force_in_place, &home_hint_p, has_BU_lock,
+						     dont_check_fk, true);
 		  if (error_code != NO_ERROR)
 		    {
-                      ASSERT_ERROR ();
+		      ASSERT_ERROR ();
 
-                      if (home_hint_p.pgptr)
-                        {
-                          pgbuf_ordered_unfix_and_init (thread_p, home_hint_p.pgptr, &home_hint_p);
-                        }
+		      if (home_hint_p.pgptr)
+			{
+			  pgbuf_ordered_unfix_and_init (thread_p, home_hint_p.pgptr, &home_hint_p);
+			}
 
-                      if (scan_cache->page_watcher.pgptr)
-                        {
-                          pgbuf_ordered_unfix_and_init (thread_p, scan_cache->page_watcher.pgptr,
-                                                        &scan_cache->page_watcher);
-                        }
+		      if (scan_cache->page_watcher.pgptr)
+			{
+			  pgbuf_ordered_unfix_and_init (thread_p, scan_cache->page_watcher.pgptr,
+							&scan_cache->page_watcher);
+			}
 
 		      assert (!pgbuf_is_page_fixed_by_thread (thread_p, &new_page_vpid));
 
@@ -13815,7 +13816,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 	  // Add this record to the recdes array and increase the accumulated size.
 	  recdes_array.push_back (local_record);
 	  accumulated_records_size += DB_ALIGN (local_record.length, HEAP_MAX_ALIGN);
-          accumulated_records_size += record_overhead;    // Add the slot overhead for the record.
+	  accumulated_records_size += record_overhead;	// Add the slot overhead for the record.
 	}
     }
 
