@@ -1017,7 +1017,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	{
 	  db_commit_transaction ();
 	  print_log_msg (args->verbose_commit, "%8d statements executed. Commit transaction at line %d\n", executed_cnt,
-			 parser_end_line_no);
+			 parser_start_line_no);
 	  *start_line = parser_end_line_no + 1;
 	}
       print_log_msg ((int) args->verbose, "Total %8d statements executed.\r", executed_cnt);
