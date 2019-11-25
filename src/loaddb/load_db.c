@@ -980,7 +980,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 		  session_error = db_get_next_error (session_error, &line, &col);
 		  if (line >= 0)
 		    {
-		      // We need -1 here since both start_line will offset the output.
+		      // We need -1 here since start_line will offset the output.
 		      print_log_msg (1, "In %s line %d,\n", file_name, line + (*start_line) - 1);
 		      print_log_msg (1, "ERROR: %s \n", db_error_string (3));
 		      assert (er_errid () != NO_ERROR);
