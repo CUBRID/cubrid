@@ -4197,7 +4197,11 @@ int
 db_get_line_of_statement (DB_SESSION * session, int stmt_id)
 {
   // Safeguards
-  assert (stmt_id > 0);
+  if (stmt_id <= 0 || stmt_id > session->dimension)
+    {
+      // stmt_id is not valid.
+      return -1;
+    }
   assert (session->statements != NULL);
 
   // Get last statement
