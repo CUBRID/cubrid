@@ -965,8 +965,8 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
       stmt_cnt = db_parse_one_statement (session);
       if (stmt_cnt > 0)
 	{
-	  db_get_line_of_last_statement (session, &parser_end_line_no);
 	  stmt_id = db_compile_statement (session);
+	  parser_end_line_no = db_get_line_of_last_statement (session, stmt_id);
 	}
 
       if (stmt_cnt <= 0 || stmt_id <= 0)
