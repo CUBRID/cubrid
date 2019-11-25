@@ -4192,3 +4192,22 @@ db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, PT_NODE * sta
 
   return can_execute_statement_with_commit;
 }
+
+void
+db_get_line_of_last_statement (DB_SESSION * session, int *line)
+{
+  int st_index = session->dimension;
+
+  if (st_index == 0)
+    {
+      return;
+    }
+
+  assert (session->statements != NULL);
+
+  if (line)
+    {
+      // Get last statement
+      *line = session->statements[st_index - 1]->line_number;
+    }
+}
