@@ -909,8 +909,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
   int error = NO_ERROR;
   int stmt_cnt, stmt_id = 0, stmt_type;
   int executed_cnt = 0;
-  int parser_start_line_no;
-  int last_statement_line_no = 0;
+  int last_statement_line_no = 0;	// tracks line no of the last successfully executed stmt. -1 for failed ones.
   int check_line_no = true;
 
   if ((*start_line) > 1)
@@ -960,7 +959,6 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	  db_close_session (session);
 	  goto end;
 	}
-      parser_start_line_no = last_statement_line_no;
 
       stmt_cnt = db_parse_one_statement (session);
       if (stmt_cnt > 0)
@@ -974,7 +972,9 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	{
 	  DB_SESSION_ERROR *session_error;
 	  int line, col;
-	  if ((session_error = db_get_errors (session)) != NULL)
+
+	  session_error = db_get_errors (session);
+	  if (session_error != NULL)
 	    {
 	      do
 		{

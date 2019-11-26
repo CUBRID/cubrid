@@ -4196,13 +4196,15 @@ db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, PT_NODE * sta
 int
 db_get_line_of_statement (DB_SESSION * session, int stmt_id)
 {
+  assert (session->statements != NULL);
+
   // Safeguards
-  if (stmt_id <= 0 || stmt_id > session->dimension)
+  if (stmt_id <= 0 || stmt_id > session->dimension || session->statements == NULL
+      || session->statements[stmt_id - 1] == NULL)
     {
       // stmt_id is not valid.
       return -1;
     }
-  assert (session->statements != NULL);
 
   // Get last statement
   return session->statements[stmt_id - 1]->line_number;
