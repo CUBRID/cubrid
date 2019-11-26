@@ -3217,7 +3217,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	  continue;
 	}
 
-      key_len = pr_data_writeval_disk_size (dbvalue_ptr);
+      key_len = sort_args->key_type->type->get_disk_size_of_value (dbvalue_ptr);
 
       if (key_len > 0)
 	{
