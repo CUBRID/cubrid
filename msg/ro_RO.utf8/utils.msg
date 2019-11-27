@@ -452,9 +452,9 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 113 Ultima linie salvata (prin commit) : %1$d\n
 114 error-control-file
 115 una sau mai multe erori la încărcarea fişierului de intrare de control
-116 Total %8d object(s) inserted, %d object(s) failed.\n
-117 Load failed.\n
-118 Maximum length of class name is %1$d bytes.\n
+116 Total %8d obiect(e) inserate, %d obiect(e) fără success.\n
+117 Încărcarea a eşuat.\n
+118 Lugimea maximă permisă pentru numele clasei este de %1$d octeţi.\n
 119 Total %1$8d obiect(e) verificate, %2$d obiect(e) fără success.\n
 120 Fişierul de date nu conţine specificatorul '%%class' şi opţiunea '--table' lispeşte\n
 121 Clasa %1$s este ignorată.\n
