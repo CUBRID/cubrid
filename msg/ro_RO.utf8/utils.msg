@@ -455,9 +455,9 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 116 Total %8d object(s) inserted, %d object(s) failed.\n
 117 Load failed.\n
 118 Maximum length of class name is %1$d bytes.\n
-119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
-120 data file does not contain '%%class' specifier or '--table' option is missing\n
-121 Class %1$s is ignored.\n
+119 Total %1$8d obiect(e) verificate, %2$d obiect(e) fără success.\n
+120 Fişierul de date nu conţine specificatorul '%%class' şi opţiunea '--table' lispeşte\n
+121 Clasa %1$s este ignorată.\n
 122 \
 loaddb: Importă obiecte şi scheme în baza de date.\n\
 utilizare: %1$s loaddb [OPŢIUNI] nume-bază-de-date[@host]\n\
@@ -467,8 +467,8 @@ opţiuni valide:\n\
   -C, --CS-mode                     mod de execuţie client-server\n\
   -u, --user=ID                     ID de utilizator pentru acces la baza de date; implicit: "public"\n\
   -p, --password=PAROLA             parola de utilizator; implicit: nulă\n\
-      --data-file-check-only        verifică sintaxa fișierului fără a-l încărca; implicit : dezactivat\n\
-  -l, --load-only                   încarcă fișierul fără verificarea apriori a sintaxei; doar în modul SA_MODE\n\
+      --data-file-check-only        verifică sintaxa fișierului fără a-l încărca; implicit: dezactivat\n\
+  -l, --load-only                   încarcă fișierul fără verificarea dinainte a sintaxei; activ doar în SA_MODE\n\
                                     implicit: încărcarea se face după verificare\n\
       --estimated-size=NUMĂR        NUMĂR estimat de instanţe; implicit: 5000\n\
   -v, --verbose                     activează mesaje detaliate de stare; implicit: dezactivate\n\
