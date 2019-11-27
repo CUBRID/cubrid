@@ -25742,19 +25742,24 @@ parse_one_statement (int state)
 
   if (state == 0)
     {
+      // a new session starts. reset line and column number.
+      yyline = 1;
+      yycolumn = yycolumn_end = 1;
+
       return 0;
     }
 
   this_parser->statement_number = 0;
 
   parser_yyinput_single_mode = 1;
+
   yybuffer_pos=0;
   csql_yylloc.buffer_pos=0;
+  dot_flag = 0;
 
   g_query_string = NULL;
   g_query_string_len = 0;
   g_original_buffer_len = 0;
-
 
   rv = yyparse ();
   pt_cleanup_hint (this_parser, parser_hint_table);
