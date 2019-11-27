@@ -1272,7 +1272,7 @@ $ LOADDB
 1203 Tipo JSON no válido en la ruta %1$s. Esperado %2$s, pero encontrado %3$s.
 1204 Json KEY "%1$s" está duplicado
 1205 Tipo inválido %1$s. Esperando el tipo de datos compatible con documentos JSON (STRING o JSON).
-1206 RUTA Json "%1$s" no aborda una celda en un Json ARRAY
+1206 Ruta JSON "%1$s" no aborda una celda en un JSON ARRAY
 1207 Ruta JSON no válida. El índice es mayor que el permitido por el parámetro del sistema json_max_array_idx.
 1208 Argumento "one/all" inválido(s). El argumento solo puede tomar uno de estos dos valores: "one", "all".
 1209 Reserved error for JSON.
