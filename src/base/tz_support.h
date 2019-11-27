@@ -40,6 +40,7 @@ enum
   DATETIMETZ_SPECIFIER = 5
 };
 
+// *INDENT-OFF*
 struct ds_change_date
 {
   int year;           // 1 - 9999
@@ -53,6 +54,7 @@ struct ds_change_date
     {
     }
 };
+// *INDENT-ON*
 
 extern void db_date_locale_init (void);
 
@@ -158,7 +160,7 @@ extern "C"
 					       int *minutesp, int *secondsp);
   extern int tz_get_timezone_offset (const char *tz_str, int tz_size, char *result, DB_DATETIME * utc_datetime);
   extern int tz_get_first_weekday_around_date (const int year, const int month, const int weekday, const int after_day,
-					       const bool before, ds_change_date &ds_change_date);
+					       const bool before, ds_change_date & ds_change_date);
   extern const TZ_DATA *tz_get_data (void);
   extern void tz_set_data (const TZ_DATA * data);
   extern const TZ_DATA *tz_get_new_timezone_data (void);

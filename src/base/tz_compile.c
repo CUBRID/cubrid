@@ -3559,20 +3559,19 @@ str_to_offset_rule_until (TZ_RAW_OFFSET_RULE * offset_rule, char *str)
 	  goto exit;
 	}
     }
-  else if (type == TZ_DS_TYPE_VAR_GREATER
-           || type == TZ_DS_TYPE_VAR_SMALLER)
+  else if (type == TZ_DS_TYPE_VAR_GREATER || type == TZ_DS_TYPE_VAR_SMALLER)
     {
       ds_change_date change_date (-1, -1, -1);
 
-      if (bound > 27)
+      if (type == TZ_DS_TYPE_VAR_SMALLER && bound > 27)
 	{
-          bound = days_in_month_year (offset_rule->until_mon, offset_rule->until_year) - 1;
+	  bound = days_in_month_year (offset_rule->until_mon, offset_rule->until_year) - 1;
 	}
 
       err_status = tz_get_first_weekday_around_date (offset_rule->until_year, offset_rule->until_mon, day, bound,
-					             (type == TZ_DS_TYPE_VAR_SMALLER) ? true : false, change_date);
+						     (type == TZ_DS_TYPE_VAR_SMALLER) ? true : false, change_date);
       if (err_status != NO_ERROR)
-        {
+	{
 	  char temp_msg[TZC_ERR_MSG_MAX_SIZE] = { 0 };
 
 	  sprintf (temp_msg, "Day: %d, Month: %d, Year: %d", change_date.day_of_month, offset_rule->until_mon,
@@ -3580,12 +3579,12 @@ str_to_offset_rule_until (TZ_RAW_OFFSET_RULE * offset_rule, char *str)
 	  err_status = TZC_ERR_DS_INVALID_DATE;
 	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_DS_INVALID_DATE, "day of month (UNTIL)", temp_msg);
 	  goto exit;
-        }
+	}
 
       if (change_date.month != offset_rule->until_mon
-          || change_date.year != offset_rule->until_year
-          || !tzc_is_valid_date (change_date.day_of_month, offset_rule->until_mon, offset_rule->until_year,
-                                 offset_rule->until_year + 1))
+	  || change_date.year != offset_rule->until_year
+	  || !tzc_is_valid_date (change_date.day_of_month, offset_rule->until_mon, offset_rule->until_year,
+				 offset_rule->until_year + 1))
 	{
 	  char temp_msg[TZC_ERR_MSG_MAX_SIZE] = { 0 };
 
@@ -4072,10 +4071,10 @@ get_julian_ds_change_for_raw_rule (const TZ_RAW_DS_RULE * rule, const int year)
       day_month_bound = rule->change_on.day_of_month;
 
       if (tz_get_first_weekday_around_date (year, rule->in_month, ds_rule_weekday, day_month_bound, before,
-                                            ds_change_date) != NO_ERROR)
-        {
-          return -1;
-        }
+					    ds_change_date) != NO_ERROR)
+	{
+	  return -1;
+	}
     }
 
   return julian_encode (1 + ds_change_date.month, 1 + ds_change_date.day_of_month, ds_change_date.year);

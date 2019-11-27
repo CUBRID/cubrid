@@ -2072,7 +2072,7 @@ tz_decode_tz_region (const TZ_REGION * tz_region, TZ_DECODE_INFO * tz_info)
 
 
 int
-next_day (ds_change_date &date)
+next_day (ds_change_date & date)
 {
   date.day_of_month++;
 
@@ -2081,16 +2081,16 @@ next_day (ds_change_date &date)
       date.month++;
 
       if (date.month >= TZ_MON_COUNT)
-        {
-          if (date.year >= 9999)
-            {
+	{
+	  if (date.year >= 9999)
+	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INTERNAL_ERROR, 0);
-	      return ER_TZ_INTERNAL_ERROR;        
-            }
+	      return ER_TZ_INTERNAL_ERROR;
+	    }
 
-          date.year++;
-          date.month = TZ_MON_JAN;
-        }
+	  date.year++;
+	  date.month = TZ_MON_JAN;
+	}
 
       date.day_of_month = 0;
     }
@@ -2099,7 +2099,7 @@ next_day (ds_change_date &date)
 }
 
 int
-prev_day (ds_change_date &date)
+prev_day (ds_change_date & date)
 {
   date.day_of_month--;
 
@@ -2107,16 +2107,16 @@ prev_day (ds_change_date &date)
     {
       date.month--;
       if (date.month < 0)
-        {
-          if (date.year <= 1)
-            {
+	{
+	  if (date.year <= 1)
+	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INTERNAL_ERROR, 0);
-	      return ER_TZ_INTERNAL_ERROR;        
-            }
+	      return ER_TZ_INTERNAL_ERROR;
+	    }
 
-          date.year--;
-          date.month = TZ_MON_DEC;
-        }
+	  date.year--;
+	  date.month = TZ_MON_DEC;
+	}
 
       date.day_of_month = days_in_month_year (date.month, date.year) - 1;
     }
@@ -2138,7 +2138,7 @@ prev_day (ds_change_date &date)
  */
 int
 tz_get_first_weekday_around_date (const int year, const int month, const int weekday, const int ref_day,
-				  const bool before, ds_change_date &ds_change_date)
+				  const bool before, ds_change_date & ds_change_date)
 {
   int first_weekday = -1;
   int wday = -1;
@@ -2158,22 +2158,22 @@ tz_get_first_weekday_around_date (const int year, const int month, const int wee
       if (before == true)
 	{
 	  wday = (wday == TZ_WEEK_DAY_SUN) ? TZ_WEEK_DAY_SAT : (wday - 1);
-          error = prev_day (ds_change_date);
-          if (error != NO_ERROR)
-            {
-              return error;
-            }
+	  error = prev_day (ds_change_date);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
 
 	  assert (ds_change_date.day_of_month >= 0);
 	}
       else
 	{
 	  wday = (wday + 1) % TZ_WEEK_DAY_COUNT;
-          error = next_day (ds_change_date);
-          if (error != NO_ERROR)
-            {
-              return error;
-            }
+	  error = next_day (ds_change_date);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
 
 	  assert (ds_change_date.day_of_month < days_in_month_year (ds_change_date.month, ds_change_date.year));
 	}
@@ -2418,7 +2418,7 @@ tz_get_ds_change_julian_date_diff (const int src_julian_date, const TZ_DS_RULE *
 	}
 
       int error = tz_get_first_weekday_around_date (year, change_date.month, ds_rule_weekday, day_month_bound, before,
-                                                    change_date);
+						    change_date);
       if (error != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INTERNAL_ERROR, 0);
@@ -5535,7 +5535,8 @@ exit:
   return err_status;
 }
 
-int days_in_month_year (int m, int y)
+int
+days_in_month_year (int m, int y)
 {
   return ((m) == TZ_MON_FEB) ? (((IS_LEAP_YEAR (y)) ? 29 : 28)) : DAYS_IN_MONTH (m);
 }
