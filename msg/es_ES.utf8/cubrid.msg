@@ -1270,7 +1270,7 @@ $ LOADDB
 1201 El nombre del objeto Json no puede ser NULL.
 1202 Ruta JSON "%1$s" no existe en %2$s
 1203 Tipo JSON no válido en la ruta %1$s. Esperado %2$s, pero encontrado %3$s.
-1204 Json KEY "%1$s" está duplicado
+1204 JSON KEY "%1$s" está duplicado
 1205 Tipo inválido %1$s. Esperando el tipo de datos compatible con documentos JSON (STRING o JSON).
 1206 Ruta JSON "%1$s" no aborda una celda en un JSON ARRAY
 1207 Ruta JSON no válida. El índice es mayor que el permitido por el parámetro del sistema json_max_array_idx.
