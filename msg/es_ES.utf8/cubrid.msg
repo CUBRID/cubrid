@@ -1471,7 +1471,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 126 Longitud maxima de un comentario class/vclass es %1$d bytes.
 127 Longitud maxima de un comentario es %1$d bytes.
 128 Número de argumentos no válidos para JSON_OBJECTAGG
-129 El argumento de conteo PARALELO debe estar entre %1$d y %2$d.
+129 El argumento de conteo PARALLEL debe estar entre %1$d y %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Sin memoria.
