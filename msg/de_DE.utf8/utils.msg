@@ -1040,18 +1040,18 @@ gültige Optionen:\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
 20 Passwort %1$s eingeben:
-22 Tran index          Benutzername      Hostname      Prozess ID      Programmname\n
-23 -------------------------------------------------------------------------------\n
-24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n
+22 Tran index            Benutzername      Hostname      Prozess ID      Programmname\n
+23 ---------------------------------------------------------------------------------\n
+24 %1$4d%2$-12s %3$14s %4$14s %5$15d %6$17s\n
 25 Es gibt keine Transaktionen\n
 26 tranlist darf nur von DBA oder einem Mitglied der DBA Gruppe durchgeführt werden.\n
 27 sort-key Spalte (%1$d) ist ungültig.\n
-32 Tran index         Prozess ID    Programmname              Abfragezeit   Tran Zeit              Warten auf Sperrhalter    SQL_ID       SQL Text\n
-33 %1$4d%2$-10s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
-34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
-42 Tran index          Benutzername   Hostname       Prozess ID    Programmname              Abfragezeit   Tran Zeit              Warten auf Sperrhalter    SQL_ID       SQL Text\n
-43 %1$4d%2$-10s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
-44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
+32 Tran index           Prozess ID    Programmname              Abfragezeit   Tran Zeit              Warten auf Sperrhalter    SQL_ID       SQL Text\n
+33 %1$4d%2$-12s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
+34 ----------------------------------------------------------------------------------------------------------------------------------------------------\n
+42 Tran index            Benutzername   Hostname       Prozess ID    Programmname              Abfragezeit   Tran Zeit              Warten auf Sperrhalter    SQL_ID       SQL Text\n
+43 %1$4d%2$-12s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
+44 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
 45 Tran index : %1$d
 46 SQL_ID: %1$s\n
 59 tranlist dar nicht in Stand-Alone-Modus durchgeführt werden.\n
