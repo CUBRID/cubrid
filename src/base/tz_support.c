@@ -2070,24 +2070,85 @@ tz_decode_tz_region (const TZ_REGION * tz_region, TZ_DECODE_INFO * tz_info)
   tz_info->zone.dst_str[0] = '\0';
 }
 
+
+int
+next_day (ds_change_date &date)
+{
+  date.day_of_month++;
+
+  if (date.day_of_month >= days_in_month_year (date.month, date.year))
+    {
+      date.month++;
+
+      if (date.month >= TZ_MON_COUNT)
+        {
+          if (date.year >= 9999)
+            {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INTERNAL_ERROR, 0);
+	      return ER_TZ_INTERNAL_ERROR;        
+            }
+
+          date.year++;
+          date.month = TZ_MON_JAN;
+        }
+
+      date.day_of_month = 0;
+    }
+
+  return NO_ERROR;
+}
+
+int
+prev_day (ds_change_date &date)
+{
+  date.day_of_month--;
+
+  if (date.day_of_month < 0)
+    {
+      date.month--;
+      if (date.month < 0)
+        {
+          if (date.year <= 1)
+            {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INTERNAL_ERROR, 0);
+	      return ER_TZ_INTERNAL_ERROR;        
+            }
+
+          date.year--;
+          date.month = TZ_MON_DEC;
+        }
+
+      date.day_of_month = days_in_month_year (date.month, date.year) - 1;
+    }
+
+  return NO_ERROR;
+}
+
 /*
- * tz_get_first_weekday_around_date () - find the day of month when a specific weekday occurs
- * Returns: -1 if error; otherwise, day of month (0 to 27/28/29/30, depending on the input month.
+ * tz_get_first_weekday_around_date () - find the date when a specific weekday occurs
+ * Returns: error code
  *
  * year(in):
  * month(in): month (0-11)
  * weekday(in): weekday ( 0 = Sunday through 6 = Saturday)
  * ref_day(in): reference day of month (0 based)
+ * before(in): true if we must search before the day, false for after the day
+ * ds_change_date(out): date when DS occurs
  *
  */
 int
 tz_get_first_weekday_around_date (const int year, const int month, const int weekday, const int ref_day,
-				  const bool before)
+				  const bool before, ds_change_date &ds_change_date)
 {
   int first_weekday = -1;
   int wday = -1;
+  int error = NO_ERROR;
 
   assert (year >= 1900);
+
+  ds_change_date.year = year;
+  ds_change_date.month = month;
+  ds_change_date.day_of_month = ref_day;
 
   wday = db_get_day_of_week (year, month + 1, ref_day + 1);
   first_weekday = ref_day;
@@ -2097,20 +2158,28 @@ tz_get_first_weekday_around_date (const int year, const int month, const int wee
       if (before == true)
 	{
 	  wday = (wday == TZ_WEEK_DAY_SUN) ? TZ_WEEK_DAY_SAT : (wday - 1);
-	  first_weekday--;
-	  assert (first_weekday >= 0);
+          error = prev_day (ds_change_date);
+          if (error != NO_ERROR)
+            {
+              return error;
+            }
+
+	  assert (ds_change_date.day_of_month >= 0);
 	}
       else
 	{
 	  wday = (wday + 1) % TZ_WEEK_DAY_COUNT;
-	  first_weekday++;
+          error = next_day (ds_change_date);
+          if (error != NO_ERROR)
+            {
+              return error;
+            }
 
-	  assert (first_weekday <
-		  ((month == TZ_MON_FEB) ? (((IS_LEAP_YEAR (year)) ? 29 : 28)) : DAYS_IN_MONTH (month)));
+	  assert (ds_change_date.day_of_month < days_in_month_year (ds_change_date.month, ds_change_date.year));
 	}
     }
 
-  return first_weekday;
+  return error;
 }
 
 /*
@@ -2198,7 +2267,7 @@ tz_str_read_time (const char *str, const char *str_end, bool need_minutes, bool 
     {
       return ER_FAILED;
     }
-  if (val_read < 0 || val_read > 24)
+  if (val_read < 0 || val_read > 25)
     {
       return ER_FAILED;
     }
@@ -2332,37 +2401,32 @@ int
 tz_get_ds_change_julian_date_diff (const int src_julian_date, const TZ_DS_RULE * ds_rule, const int year,
 				   int *ds_rule_julian_date, full_date_t * date_diff)
 {
-  int ds_rule_day;
-  int ds_rule_month = ds_rule->in_month;
+  ds_change_date change_date (year, ds_rule->in_month, ds_rule->change_on.day_of_month);
 
   /* get exact julian date/time for this rule in year 'local_year' */
-  if (ds_rule->change_on.type == TZ_DS_TYPE_FIXED)
-    {
-      ds_rule_day = ds_rule->change_on.day_of_month;
-    }
-  else
+  if (ds_rule->change_on.type != TZ_DS_TYPE_FIXED)
     {
       int ds_rule_weekday, day_month_bound;
       bool before = (ds_rule->change_on.type == TZ_DS_TYPE_VAR_SMALLER) ? true : false;
       ds_rule_weekday = ds_rule->change_on.day_of_week;
       day_month_bound = ds_rule->change_on.day_of_month;
 
-      if (ds_rule->change_on.type == TZ_DS_TYPE_VAR_SMALLER && ds_rule_month == TZ_MON_FEB && IS_LEAP_YEAR (year)
+      if (ds_rule->change_on.type == TZ_DS_TYPE_VAR_SMALLER && change_date.month == TZ_MON_FEB && IS_LEAP_YEAR (year)
 	  && day_month_bound == 27)
 	{
 	  day_month_bound++;
 	}
 
-      ds_rule_day = tz_get_first_weekday_around_date (year, ds_rule_month, ds_rule_weekday, day_month_bound, before);
-
-      if (ds_rule_day == -1)
+      int error = tz_get_first_weekday_around_date (year, change_date.month, ds_rule_weekday, day_month_bound, before,
+                                                    change_date);
+      if (error != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INTERNAL_ERROR, 0);
-	  return ER_TZ_INTERNAL_ERROR;
+	  return error;
 	}
     }
 
-  *ds_rule_julian_date = julian_encode (1 + ds_rule_month, 1 + ds_rule_day, year);
+  *ds_rule_julian_date = julian_encode (1 + change_date.month, 1 + change_date.day_of_month, change_date.year);
 
   if (date_diff != NULL)
     {
@@ -5469,4 +5533,9 @@ exit:
   tz_set_data (&save_data);
 
   return err_status;
+}
+
+int days_in_month_year (int m, int y)
+{
+  return ((m) == TZ_MON_FEB) ? (((IS_LEAP_YEAR (y)) ? 29 : 28)) : DAYS_IN_MONTH (m);
 }

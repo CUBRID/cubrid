@@ -473,7 +473,7 @@ static int tzc_extend (TZ_DATA * tzd);
 static int tzc_update (TZ_DATA * tzd, const char *database_name);
 #endif
 static int tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type);
-static int get_day_of_week_for_raw_rule (const TZ_RAW_DS_RULE * rule, const int year);
+static int get_julian_ds_change_for_raw_rule (const TZ_RAW_DS_RULE * rule, const int year);
 #if defined (SA_MODE)
 static int execute_query (const char *str, DB_QUERY_RESULT ** result);
 #endif /* defined (SA_MODE) */
@@ -3559,59 +3559,44 @@ str_to_offset_rule_until (TZ_RAW_OFFSET_RULE * offset_rule, char *str)
 	  goto exit;
 	}
     }
-  else if (type == TZ_DS_TYPE_VAR_GREATER)
+  else if (type == TZ_DS_TYPE_VAR_GREATER
+           || type == TZ_DS_TYPE_VAR_SMALLER)
     {
-      int month_day = tz_get_first_weekday_around_date (offset_rule->until_year,
-							offset_rule->until_mon, day, bound,
-							false);
-
-      if (!tzc_is_valid_date (month_day, offset_rule->until_mon, offset_rule->until_year, offset_rule->until_year + 1))
-	{
-	  char temp_msg[TZC_ERR_MSG_MAX_SIZE] = { 0 };
-
-	  sprintf (temp_msg, "Day: %d, Month: %d, Year: %d", month_day, offset_rule->until_mon,
-		   offset_rule->until_year);
-	  err_status = TZC_ERR_DS_INVALID_DATE;
-	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_DS_INVALID_DATE, "day of month (UNTIL)", temp_msg);
-	  goto exit;
-	}
-
-      day = month_day;
-    }
-  else if (type == TZ_DS_TYPE_VAR_SMALLER)
-    {
-      int month_day;
+      ds_change_date change_date (-1, -1, -1);
 
       if (bound > 27)
 	{
-	  int max_days_in_month;
-
-	  if (offset_rule->until_mon == TZ_MON_FEB)
-	    {
-	      max_days_in_month = (IS_LEAP_YEAR (offset_rule->until_year) ? 29 : 28);
-	    }
-	  else
-	    {
-	      max_days_in_month = DAYS_IN_MONTH (offset_rule->until_mon);
-	    }
-
-	  bound = max_days_in_month - 1;
+          bound = days_in_month_year (offset_rule->until_mon, offset_rule->until_year) - 1;
 	}
 
-      month_day = tz_get_first_weekday_around_date (offset_rule->until_year, offset_rule->until_mon, day, bound, true);
+      err_status = tz_get_first_weekday_around_date (offset_rule->until_year, offset_rule->until_mon, day, bound,
+					             (type == TZ_DS_TYPE_VAR_SMALLER) ? true : false, change_date);
+      if (err_status != NO_ERROR)
+        {
+	  char temp_msg[TZC_ERR_MSG_MAX_SIZE] = { 0 };
 
-      if (!tzc_is_valid_date (month_day, offset_rule->until_mon, offset_rule->until_year, offset_rule->until_year + 1))
+	  sprintf (temp_msg, "Day: %d, Month: %d, Year: %d", change_date.day_of_month, offset_rule->until_mon,
+		   offset_rule->until_year);
+	  err_status = TZC_ERR_DS_INVALID_DATE;
+	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_DS_INVALID_DATE, "day of month (UNTIL)", temp_msg);
+	  goto exit;
+        }
+
+      if (change_date.month != offset_rule->until_mon
+          || change_date.year != offset_rule->until_year
+          || !tzc_is_valid_date (change_date.day_of_month, offset_rule->until_mon, offset_rule->until_year,
+                                 offset_rule->until_year + 1))
 	{
 	  char temp_msg[TZC_ERR_MSG_MAX_SIZE] = { 0 };
 
-	  sprintf (temp_msg, "Day: %d, Month: %d, Year: %d", month_day, offset_rule->until_mon,
-		   offset_rule->until_year);
+	  sprintf (temp_msg, "Day: %d, Month: %d, Year: %d", change_date.day_of_month, change_date.month,
+		   change_date.year);
 	  err_status = TZC_ERR_DS_INVALID_DATE;
 	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_DS_INVALID_DATE, "day of month (UNTIL)", temp_msg);
 	  goto exit;
 	}
 
-      day = month_day;
+      day = change_date.day_of_month;
     }
   else
     {
@@ -4067,23 +4052,18 @@ comp_func_raw_ds_rulesets (const void *arg1, const void *arg2)
 }
 
 /*
- * get_day_of_week_for_raw_rule - Returns the day in which the ds_rule applies
+ * get_julian_ds_change_for_raw_rule - Returns the julian date in which the ds_rule applies
  *
- * Returns: the day
+ * Returns: julian date of ds apply
  * rule(in): daylight saving rule
  * year(in): year in which to apply rule
  */
 static int
-get_day_of_week_for_raw_rule (const TZ_RAW_DS_RULE * rule, const int year)
+get_julian_ds_change_for_raw_rule (const TZ_RAW_DS_RULE * rule, const int year)
 {
-  int ds_rule_day;
-  int ds_rule_month = rule->in_month;
+  ds_change_date ds_change_date (year, rule->in_month, rule->change_on.day_of_month);
 
-  if (rule->change_on.type == TZ_DS_TYPE_FIXED)
-    {
-      ds_rule_day = rule->change_on.day_of_month;
-    }
-  else
+  if (rule->change_on.type != TZ_DS_TYPE_FIXED)
     {
       int ds_rule_weekday, day_month_bound;
       bool before = (rule->change_on.type == TZ_DS_TYPE_VAR_SMALLER) ? true : false;
@@ -4091,10 +4071,14 @@ get_day_of_week_for_raw_rule (const TZ_RAW_DS_RULE * rule, const int year)
       ds_rule_weekday = rule->change_on.day_of_week;
       day_month_bound = rule->change_on.day_of_month;
 
-      ds_rule_day = tz_get_first_weekday_around_date (year, ds_rule_month, ds_rule_weekday, day_month_bound, before);
+      if (tz_get_first_weekday_around_date (year, rule->in_month, ds_rule_weekday, day_month_bound, before,
+                                            ds_change_date) != NO_ERROR)
+        {
+          return -1;
+        }
     }
 
-  return ds_rule_day;
+  return julian_encode (1 + ds_change_date.month, 1 + ds_change_date.day_of_month, ds_change_date.year);
 }
 
 /*
@@ -4110,7 +4094,7 @@ static int
 comp_func_raw_ds_rules (const void *arg1, const void *arg2)
 {
   TZ_RAW_DS_RULE *rule1, *rule2;
-  int day1, day2;
+  int julian_date1, julian_date2;
 
   assert (arg1 != NULL && arg2 != NULL);
 
@@ -4131,10 +4115,10 @@ comp_func_raw_ds_rules (const void *arg1, const void *arg2)
       return rule1->in_month < rule2->in_month ? -1 : 1;
     }
 
-  day1 = get_day_of_week_for_raw_rule (rule1, rule1->from_year);
-  day2 = get_day_of_week_for_raw_rule (rule2, rule2->from_year);
+  julian_date1 = get_julian_ds_change_for_raw_rule (rule1, rule1->from_year);
+  julian_date2 = get_julian_ds_change_for_raw_rule (rule2, rule2->from_year);
 
-  return day1 < day2 ? -1 : 1;
+  return julian_date1 < julian_date2 ? -1 : 1;
 }
 
 /*

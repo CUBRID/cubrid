@@ -40,6 +40,20 @@ enum
   DATETIMETZ_SPECIFIER = 5
 };
 
+struct ds_change_date
+{
+  int year;           // 1 - 9999
+  int month;          // 0 - 11
+  int day_of_month;   // 0 - 30
+
+  ds_change_date (int year_, int month_, int day_of_month_)
+    : year (year_)
+    , month (month_)
+    , day_of_month (day_of_month_)
+    {
+    }
+};
+
 extern void db_date_locale_init (void);
 
 #define TZLIB_SYMBOL_NAME_SIZE 64
@@ -144,7 +158,7 @@ extern "C"
 					       int *minutesp, int *secondsp);
   extern int tz_get_timezone_offset (const char *tz_str, int tz_size, char *result, DB_DATETIME * utc_datetime);
   extern int tz_get_first_weekday_around_date (const int year, const int month, const int weekday, const int after_day,
-					       const bool before);
+					       const bool before, ds_change_date &ds_change_date);
   extern const TZ_DATA *tz_get_data (void);
   extern void tz_set_data (const TZ_DATA * data);
   extern const TZ_DATA *tz_get_new_timezone_data (void);
@@ -229,6 +243,7 @@ extern "C"
   extern int tz_create_datetimetz_from_parts (const int m, const int d, const int y, const int h, const int mi,
 					      const int s, const int ms, const TZ_ID * tz_id, DB_DATETIMETZ * dt_tz);
   extern int conv_tz (void *, const void *, DB_TYPE);
+  extern int days_in_month_year (int m, int y);
 #ifdef __cplusplus
 }
 #endif
