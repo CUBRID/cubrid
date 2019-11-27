@@ -434,8 +434,8 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 58 %1$s %2$d taahhüt örnekleri\n
 59 \nLoaddb olmayan-optimize edilmiş sürümü çağırılamaz.\n
 60 Hata ayrıştırma \"%1$s\", gibi %2$s tür.\n
-61 Object Reference is not supported in CS mode.\n
-62 Updated statistics for class %1$s.\n
+61 Nesne Referans CS modunda desteklenmez.\n
+62 %1$s sınıfı için güncellenmiş istatistikler.\n
 112   %1$d örnekleri\r
 113 Son kararlı hattı: %1$d\n
 114 hata-kontrol-dosyası
@@ -443,9 +443,9 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 116 Toplam %1$8d nesne (ler) eklenen, %2$d nesne (ler) başarısız oldu.\n
 117 Başarısız yük.\n
 118 Sınıf adının uzunluğu en fazla %1$d bayttır.\n
-119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
-120 data file does not contain '%%class' specifier or '--table' option is missing\n
-121 Class %1$s is ignored.\n
+119 Toplam %1$8d nesne kontrol edildi, %2$d nesne başarısız oldu.\n
+120 Veri dosyası '%%class' belirteci içermiyor ve '--table' seçeneği eksik\n
+121 %1$s sınıfı yoksayılır.\n
 122 \
 loaddb: Veritabanına veri alma nesneler ve şemalar.\n\
 kullanım: %1$s loaddb [SEÇENEK] database-name[@host]\n\
