@@ -927,7 +927,7 @@ opţiuni valide:\n\
   -L, --log-path=CALE       CALEA către directorul pentru volumele de log copiate\n\
   -m, --mode=MODE           mod de operare; implicit: sync\n\
                             MOD: sync sau semisync sau async\n\
-  -S, --start-page-id=ID    first log page to copy\n
+  -S, --start-page-id=ID    prima pagină de log pentru copiere\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 Introduceţi parola de administrator (DBA):
