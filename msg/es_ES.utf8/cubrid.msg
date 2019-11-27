@@ -1268,7 +1268,7 @@ $ LOADDB
 1199 El JSON proporcionado ha sido invalidado por el esquema JSON (Ruta de esquema no válida:%1$s, Palabra clave:%2$s, Ruta JSON proporcionada no válida: %3$s)
 1200 Ruta JSON no válida
 1201 El nombre del objeto Json no puede ser NULL.
-1202 RUTA Json "%1$s" no existe en %2$s
+1202 Ruta JSON "%1$s" no existe en %2$s
 1203 Tipo JSON no válido en la ruta %1$s. Esperado %2$s, pero encontrado %3$s.
 1204 Json KEY "%1$s" está duplicado
 1205 Tipo inválido %1$s. Esperando el tipo de datos compatible con documentos JSON (STRING o JSON).
