@@ -1263,17 +1263,17 @@ $ LOADDB
 1194 Çünkü %3$d|%4$d|%5$d sınıfı kilidi hemen verilmez, %1$d|%2$d dosyası kontrol edilemez.
 1195 CTE'nin özyinelemeli kısmı, GROUP BY yan tümcesi olmayan toplama işlevlerini içermemelidir.
 1196 CTE yürütme azami özyinelemeli iterasyonlara ulaştı: %1$d.
-1197 Geçersiz json: %1$s (%2$d)
-1198 Bir json nesnesi sağlanmalı
+1197 Geçersiz JSON: %1$s (%2$d)
+1198 Bir JSON nesnesi sağlanmalı
 1199 Sağlanan JSON, JSON şeması tarafından geçersiz kılındı (Geçersiz şema yolu: %1$s, Anahtar Kelime: %2$s, Geçersiz JSON yolu: %3$s)
-1200 Geçersiz json yolu
-1201 Json nesne adı NULL olamaz.
-1202 %2$s'de Json yolu "%1$s" mevcut değil
+1200 Geçersiz JSON yolu
+1201 JSON nesne adı NULL olamaz.
+1202 '%2$s' de JSON yolu "%1$s" mevcut değil
 1203 %1$s yolunda geçersiz JSON tipi. Beklenen %2$s, ancak %3$s'ü buldu.
 1204 Json anahtarı "%1$s" kopya
 1205 Geçersiz tip %1$s. JSON belgesiyle uyumlu tip bekleniyor (STRING veya JSON).
-1206 Json yolu "%1$s", Json Dizisindeki bir hücreye yönelik değil.
-1207 Geçersiz json yolu. Dizin, "json_max_array_idx" sistem parametresi tarafından izin verilenden daha büyük.
+1206 JSON yolu "%1$s", JSON Dizisindeki bir hücreye yönelik değil.
+1207 Geçersiz JSON yolu. Dizin, "json_max_array_idx" sistem parametresi tarafından izin verilenden daha büyük.
 1208 Geçersiz one/all argümanı. Argüman bu iki değerden sadece birini alabilir: "one", "all".
 1209 Reserved error for JSON.
 1210 Reserved error for JSON.
