@@ -1272,7 +1272,7 @@ $ LOADDB
 1203 Tipul JSON-ului de la calea %1$s este invalid. Se așteaptă %2$s, dar s-a găsit %3$s.
 1204 Cheia "%1$s" din json este duplicata
 1205 Tipul %1$s este invalid. Se așteaptă un tip compatibil cu un document JSON (STRING sau JSON).
-1206 Calea Json "%1$s" nu adresează un element al unui Json de tip Vector.
+1206 Calea JSON "%1$s" nu adresează un element al unui JSON de tip ARRAY.
 1207 Cale de JSON invalida. Indexul este mai mare decât valoarea permisă de parametrul de sistem "json_max_array_idx".
 1208 Argumentul "one/all" este invalid. Argumentul nu poate avea altă valoare în afară de "one" sau "all".
 1209 Reserved error for JSON.
