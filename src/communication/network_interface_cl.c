@@ -2544,6 +2544,11 @@ tran_server_abort (void)
 const char *
 tran_get_tranlist_state_name (TRAN_STATE state)
 {
+  // You should also change the messages:
+  // MSGCAT_UTIL_SET_TRANLIST.TRANLIST_MSG_QUERY_INFO_ENTRY, MSGCAT_UTIL_SET_TRANLIST.TRANLIST_MSG_FULL_INFO_ENTRY,
+  // MSGCAT_UTIL_SET_TRANLIST.TRANLIST_MSG_SUMMARY_ENTRY and their headings and underscores,
+  // when you add a state longer than the current longest, "(COMMITTING)".
+
   switch (state)
     {
     case TRAN_RECOVERY:
