@@ -739,7 +739,7 @@ shm_id_to_name (int shm_key)
 static int
 get_host_ip (unsigned char *ip_addr)
 {
-  char hostname[64];
+  char hostname[CUB_MAXHOSTNAMELEN];
   struct hostent *hp;
 
   if (gethostname (hostname, sizeof (hostname)) < 0)

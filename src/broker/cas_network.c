@@ -660,7 +660,7 @@ retry_poll:
 static int
 get_host_ip (unsigned char *ip_addr)
 {
-  char hostname[64];
+  char hostname[CUB_MAXHOSTNAMELEN];
   struct hostent *hp;
 
   if (gethostname (hostname, sizeof (hostname)) < 0)
