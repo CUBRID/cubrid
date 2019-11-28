@@ -25,7 +25,6 @@
 
 
 
-
 %{
 #include "csql_grammar.h"
 #include "csql_grammar_scan.h"
@@ -47,7 +46,6 @@ static char *parser_c_hint (void);
 static char *parser_line_hint (void);
 static void begin_token (char *token);
 
-extern int yyline;
 extern int yycolumn;
 extern int yycolumn_end;
 extern int dot_flag;
@@ -75,6 +73,8 @@ int msg_ptr;
 int yybuffer_pos;
 %}
 
+%option yylineno
+
 %x QUOTED_NCHAR_STRING
 %x QUOTED_BIT_STRING
 %x QUOTED_HEX_STRING
@@ -96,7 +96,7 @@ int yybuffer_pos;
 [ \t\r]+								{ begin_token(yytext); }
 \n									{
 										begin_token(yytext);
-										this_parser->line = yyline++;
+										this_parser->line = yylineno;
 										this_parser->column = yycolumn = yycolumn_end = 1;
 									}
 
@@ -1293,7 +1293,7 @@ _[uU][tT][fF]8[']		{
 				}
 
 <QUOTED_NCHAR_STRING,QUOTED_BIT_STRING,QUOTED_HEX_STRING,QUOTED_CHAR_STRING,DOUBLY_QUOTED_CHAR_STRING,DELIMITED_ID_NAME,BRACKET_ID_NAME,BACKTICK_ID_NAME,QUOTED_EUCKR_STRING,QUOTED_ISO_STRING,QUOTED_BINARY_STRING,QUOTED_UTF8_STRING>\n	{
-					this_parser->line = yyline++;
+					this_parser->line = yylineno;
 					this_parser->column = yycolumn = yycolumn_end = 0;
 					csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "\n");
 				}
@@ -1390,7 +1390,7 @@ _[uU][tT][fF]8[']		{
 				}
 
 [\\]\n				{
-					this_parser->line = yyline++;
+					this_parser->line = yylineno;
 					this_parser->column = yycolumn = yycolumn_end = 0;
 
 					if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->strings_have_no_escapes)
@@ -1826,7 +1826,7 @@ input_internal ()
   int c = input ();
   if (c == '\n')
     {
-      this_parser->line = csql_yylloc.last_line = yyline++;
+      this_parser->line = csql_yylloc.last_line = yylineno;
       this_parser->column = csql_yylloc.last_column = yycolumn_end = 1;
     }
   else
@@ -1848,8 +1848,8 @@ parser_c_hint (void)
   /* column position set */
   yycolumn = yycolumn_end;
   csql_yylloc.first_column = yycolumn;
-  csql_yylloc.first_line = yyline;
-  csql_yylloc.last_line = yyline;
+  csql_yylloc.first_line = yylineno;
+  csql_yylloc.last_line = yylineno;
   csql_yylloc.last_column = yycolumn_end;
 
   if (i < (CSQL_MAXNAME - 1) && (c = input_internal ()) == '+')
@@ -1928,8 +1928,8 @@ parser_line_hint (void)
   /* column position set */
   yycolumn = yycolumn_end;
   csql_yylloc.first_column = yycolumn;
-  csql_yylloc.first_line = yyline;
-  csql_yylloc.last_line = yyline;
+  csql_yylloc.first_line = yylineno;
+  csql_yylloc.last_line = yylineno;
   csql_yylloc.last_column = yycolumn_end;
 
 loop:
@@ -1976,8 +1976,8 @@ begin_token (char *token)
   yycolumn = yycolumn_end;
   yycolumn_end += strlen (token);
 
-  csql_yylloc.first_line = yyline;
+  csql_yylloc.first_line = yylineno;
   csql_yylloc.first_column = yycolumn;
-  csql_yylloc.last_line = yyline;
+  csql_yylloc.last_line = yylineno;
   csql_yylloc.last_column = yycolumn_end;
 }

@@ -24516,7 +24516,6 @@ pop_msg ()
 }
 
 
-int yyline = 0;
 int yycolumn = 0;
 int yycolumn_end = 0;
 int dot_flag = 0;
@@ -25652,7 +25651,6 @@ parser_main (PARSER_CONTEXT * parser)
 
   dbcs_start_input ();
 
-  yyline = 1;
   yycolumn = yycolumn_end = 1;
   yybuffer_pos=0;
   csql_yylloc.buffer_pos=0;
@@ -25742,8 +25740,7 @@ parse_one_statement (int state)
 
   if (state == 0)
     {
-      // a new session starts. reset line and column number.
-      yyline = 1;
+      // a new session starts. reset column number.
       yycolumn = yycolumn_end = 1;
 
       return 0;
