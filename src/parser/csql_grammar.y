@@ -24516,6 +24516,7 @@ pop_msg ()
 }
 
 
+extern void csql_yyset_lineno (int line_number);
 int yycolumn = 0;
 int yycolumn_end = 0;
 int dot_flag = 0;
@@ -25740,7 +25741,8 @@ parse_one_statement (int state)
 
   if (state == 0)
     {
-      // a new session starts. reset column number.
+      // a new session starts. reset line and column number.
+      csql_yyset_lineno (1);
       yycolumn = yycolumn_end = 1;
 
       return 0;
