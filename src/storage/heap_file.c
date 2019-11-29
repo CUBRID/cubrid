@@ -22985,6 +22985,7 @@ heap_hfid_table_entry_uninit (void *entry)
       free (entry_p->classname);
       entry_p->classname = NULL;
     }
+  return NO_ERROR;
 }
 
 /*
