@@ -452,12 +452,12 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 113 Ultima linie salvata (prin commit) : %1$d\n
 114 error-control-file
 115 una sau mai multe erori la încărcarea fişierului de intrare de control
-116 Total %8d object(s) inserted, %d object(s) failed.\n
-117 Load failed.\n
-118 Maximum length of class name is %1$d bytes.\n
-119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
-120 data file does not contain '%%class' specifier or '--table' option is missing\n
-121 Class %1$s is ignored.\n
+116 Total %8d obiect(e) inserate, %d obiect(e) fără success.\n
+117 Încărcarea a eşuat.\n
+118 Lungimea maximă permisă pentru numele clasei este de %1$d octeţi.\n
+119 Total %1$8d obiect(e) verificate, %2$d obiect(e) fără success.\n
+120 Fişierul de date nu conţine specificatorul '%%class' şi opţiunea '--table' lispeşte\n
+121 Clasa %1$s este ignorată.\n
 122 \
 loaddb: Importă obiecte şi scheme în baza de date.\n\
 utilizare: %1$s loaddb [OPŢIUNI] nume-bază-de-date[@host]\n\
@@ -467,8 +467,8 @@ opţiuni valide:\n\
   -C, --CS-mode                     mod de execuţie client-server\n\
   -u, --user=ID                     ID de utilizator pentru acces la baza de date; implicit: "public"\n\
   -p, --password=PAROLA             parola de utilizator; implicit: nulă\n\
-      --data-file-check-only        verifică sintaxa fișierului fără a-l încărca; implicit : dezactivat\n\
-  -l, --load-only                   încarcă fișierul fără verificarea apriori a sintaxei; doar în modul SA_MODE\n\
+      --data-file-check-only        verifică sintaxa fișierului fără a-l încărca; implicit: dezactivat\n\
+  -l, --load-only                   încarcă fișierul fără verificarea dinainte a sintaxei; activ doar în SA_MODE\n\
                                     implicit: încărcarea se face după verificare\n\
       --estimated-size=NUMĂR        NUMĂR estimat de instanţe; implicit: 5000\n\
   -v, --verbose                     activează mesaje detaliate de stare; implicit: dezactivate\n\
@@ -927,7 +927,7 @@ opţiuni valide:\n\
   -L, --log-path=CALE       CALEA către directorul pentru volumele de log copiate\n\
   -m, --mode=MODE           mod de operare; implicit: sync\n\
                             MOD: sync sau semisync sau async\n\
-  -S, --start-page-id=ID    first log page to copy\n
+  -S, --start-page-id=ID    prima pagină de log pentru copiere\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 Introduceţi parola de administrator (DBA):
