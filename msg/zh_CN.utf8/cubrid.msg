@@ -1264,17 +1264,17 @@ $ LOADDB
 1195 CTE的递归部分不能包含没有GROUP BY子句的聚合函数.
 1196 已达到CTE执行的最大递归次数%1$d.
 1197 无效的JSON: %1$s (%2$d).
-1198 必须提供JSON对象.
-1199 提供的JSON不匹配JSON schema(无效的schema path: %1$s, Keyword: %2$s, 无效的JSON path: %3$s).
+1198 必须提供一个JSON对象.
+1199 所提供的JSON不符合JSON schema(无效的schema path: %1$s, 关键字: %2$s, 无效的JSON path: %3$s).
 1200 无效的JSON path.
 1201 JSON对象名称不能为NULL.
 
 1202 JSON PATH "%1$s" 在 %2$s 中不存在.
-1203 %1$s对应的JSON类型无效。期望%2$s, 收到%3$s.
+1203 %1$s对应的JSON类型无效。期望 %2$s, 却收到 %3$s.
 1204 重复的JSON KEY "%1$s".
-1205 无效的类型%1$s. 期望与JSON兼容的数据类型(STRING or JSON).
-1206 Json PATH "%1$s" 对应的不是JSON ARRAY的元素.
-1207 无效的JSON路径. 下标超过系统参数json_max_array_idx所设置的值.
+1205 无效的类型 %1$s . JSON期望与JSON兼容的数据类型(STRING or JSON).
+1206 JSON PATH "%1$s" 对应的不是JSON ARRAY的元素.
+1207 无效的JSON path. 下标超过了系统参数json_max_array_idx的值.
 1208 one/all 参数无效. one/all参数必须为"one"或"all".
 1209 Reserved error for JSON.
 1210 Reserved error for JSON.
@@ -1304,9 +1304,9 @@ $ LOADDB
 1234 Reserved error for stream/replication.
 1235 Reserved error for stream/replication.
 1236 双写缓冲区(Double Write Buffer)被禁用.
-1237 无法更改%1$s状态，因为%2$s是%3$s.
-1238 JSON_TABLE column '%1$s'缺少值.
-1239 无法将路径"%2$s"对应的JSON"%1$s"强制转换为"%4$s"域的"%3$s"JSON_TABLE列. 
+1237 无法更改 %1$s 状态，因为 %2$s 是 %3$s.
+1238 JSON_TABLE '%1$s' 列缺少值.
+1239 无法将路径 "%2$s" 对应的JSON "%1$s" 强制转换为 "%4$s" 域的 "%3$s" JSON_TABLE列.
 1240 在属于层次结构链的类上不允许使用在线索引.
 1241 XASL树需要重新编译.
 1242 无法在属于hierarchy chain的类上创建分区.
@@ -1472,7 +1472,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 126 一个class或vclass的comment的最大长度是 %1$d 字节.
 127 一个comment的最大长度是 %1$d 字节.
 128 JSON_OBJECTAGG参数个数不匹配.
-129 PARALLEL数必须在%1$d和%2$d之间.
+129 PARALLEL数必须在 %1$d 和 %2$d 之间.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 内存耗尽.
@@ -1775,11 +1775,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 298 递归的CTE'%1$s'必须直接在其递归查询中引用.
 299 CTE'%1$s'错误: 非递归部分和递归部分必须使用UNION ALL连接.
 300 DEFAULT子句中不允许使用子查询.
-301 没有找到%1$s()函数签名.
-302 不兼容的参数类型%1$s, 期望类型为: %2$s.
+301 没有找到 %1$s() 函数签名.
+302 不兼容的参数类型 %1$s , 期望类型为: %2$s.
 303 为期待的参数个数 %1$d.
-304 没有找到与%1$s()函数兼容的签名.
-305 函数签名%1$s与函数参数不匹配.
+304 没有找到与 %1$s() 函数兼容的签名.
+305 函数签名 %1$s 与函数参数不匹配.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.
