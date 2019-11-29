@@ -434,8 +434,8 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 58 %1$s %2$d 个实例被提交\n
 59 \n无法调用非优化版本的loaddb.\n
 60 将 \"%1$s\" 解析为 %2$s 类型时出错.\n
-61 Object Reference is not supported in CS mode.\n
-62 Updated statistics for class %1$s.\n
+61 CS模式下不支持对象引用\n
+62 更新 %1$s 类的统计信息\n
 112   %1$d 个实例\r
 113 最后提交的行 : %1$d\n
 114 错误控制文件
@@ -443,9 +443,9 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 116 共插入了 %1$8d 个对象, 其中 %2$d 个对象插入失败.\n
 117 装载失败.\n
 118 类名的最大长度是 %1$d 字节.\n
-119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
-120 data file does not contain '%%class' specifier or '--table' option is missing\n
-121 Class %1$s is ignored.\n
+119 共检查 %1$8d 个对象, %2$d 个对象失败.\n
+120 数据文件未包含'%%class'说明符或未指定'--table'选项\n
+121 忽略%1$s对象\n
 122 \
 loaddb: 将对象和结构导入到数据库.\n\
 用法: %1$s loaddb [选项] 数据库名[@主机名]\n\
@@ -455,8 +455,8 @@ loaddb: 将对象和结构导入到数据库.\n\
   -C, --CS-mode                  客户端-服务器模式执行\n\
   -u, --user=ID                  用于访问数据库的用户ID; 默认: "public"\n\
   -p, --password=PASS            用户密码; 默认: 空\n\
-      --data-file-check-only     check syntax for data file without load; default: disabled\n\
-  -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
+      --data-file-check-only     对数据文件只进行语法检查不加载数据; 默认: disabled\n\
+  -l, --load-only                加载数据不检查语法; 仅在SA_MODE模式下使用\n\
       --estimated-size=NUMBER    用NUMBER作为估计的实例数目; 默认: 5000\n\
   -v, --verbose                  开启详细状态信息; 默认: 关闭\n\
   -c, --periodic-commit=COUNT    每插入COUNT个实例进行周期性的提交; 默认: 在读取时不提交\n\
@@ -464,7 +464,7 @@ loaddb: 将对象和结构导入到数据库.\n\
       --no-statistics            在读取时不更新统计信息\n\
   -s, --schema-file=FILE[:LINE]  从文件 FILE 的第 LINE 行创建结构(schema)\n\
   -i, --index-file=FILE[:LINE]   从文件 FILE 的第 LINE 行创建索引\n\
-      --trigger-file=FILE[:LINE] create trigger from LINE with FILE\n\
+      --trigger-file=FILE[:LINE] 从文件 FILE 的第 LINE 行创建触发器\n\
   -d, --data-file=FILE           从文件 FILE 读取数据\n\
   -t, --table=TABLE              用TABLE名替代数据文件中找不到表头的表\n\
       --error-control-file=FILE  指定文件 FILE 用来描述在读取数据过程中如何处理特定的错误\n\
