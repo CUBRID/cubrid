@@ -846,6 +846,7 @@ static void heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, 
 static void *heap_hfid_table_entry_alloc (void);
 static int heap_hfid_table_entry_free (void *unique_stat);
 static int heap_hfid_table_entry_init (void *unique_stat);
+static int heap_hfid_table_entry_uninit (void *entry);
 static int heap_hfid_table_entry_key_copy (void *src, void *dest);
 static unsigned int heap_hfid_table_entry_key_hash (void *key, int hash_table_size);
 static int heap_hfid_table_entry_key_compare (void *k1, void *k2);
@@ -22975,6 +22976,18 @@ heap_hfid_table_entry_init (void *entry)
   return NO_ERROR;
 }
 
+static int
+heap_hfid_table_entry_uninit (void *entry)
+{
+  HEAP_HFID_TABLE_ENTRY *entry_p = (HEAP_HFID_TABLE_ENTRY *) entry;
+  if (entry_p->classname != NULL)
+    {
+      free (entry_p->classname);
+      entry_p->classname = NULL;
+    }
+  return NO_ERROR;
+}
+
 /*
  * heap_hfid_table_entry_key_copy () - copy a hfid_table key
  *   returns: error code or NO_ERROR
@@ -23073,7 +23086,7 @@ heap_initialize_hfid_table (void)
   edesc->f_alloc = heap_hfid_table_entry_alloc;
   edesc->f_free = heap_hfid_table_entry_free;
   edesc->f_init = heap_hfid_table_entry_init;
-  edesc->f_uninit = NULL;
+  edesc->f_uninit = heap_hfid_table_entry_uninit;
   edesc->f_key_copy = heap_hfid_table_entry_key_copy;
   edesc->f_key_cmp = heap_hfid_table_entry_key_compare;
   edesc->f_hash = heap_hfid_table_entry_key_hash;
