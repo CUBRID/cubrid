@@ -1270,9 +1270,9 @@ $ LOADDB
 1201 JSON对象名称不能为NULL.
 
 1202 JSON PATH "%1$s" 在 %2$s 中不存在.
-1203 %1$s对应的JSON类型无效。期望 %2$s, 却收到 %3$s.
+1203 Path %1$s处的JSON类型无效。期望 %2$s, 实际 %3$s.
 1204 重复的JSON KEY "%1$s".
-1205 无效的类型 %1$s . JSON期望与JSON兼容的数据类型(STRING or JSON).
+1205 无效的类型 %1$s . 期望提供JSON document兼容的数据类型 (STRING 或 JSON).
 1206 JSON PATH "%1$s" 对应的不是JSON ARRAY的元素.
 1207 无效的JSON path. 下标超过了系统参数json_max_array_idx的值.
 1208 one/all 参数无效. one/all参数必须为"one"或"all".
@@ -1311,7 +1311,7 @@ $ LOADDB
 1241 XASL树需要重新编译.
 1242 无法在属于hierarchy chain的类上创建分区.
 1243 错误后索引加载被中止.
-1244 CS模式下不支持从对象文件中加载共享属性更新.
+1244 CS模式下不支持从对象文件中加载SHARED属性更新..
 1245 CS模式下不支持从对象文件中加载类属性更新.
 1246 获取地址和名称时出错. 代码: %1$d, 信息: %2$s.
 
