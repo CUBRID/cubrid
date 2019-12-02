@@ -436,18 +436,18 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 58 %1$s %2$d instances validées\n
 59 \nImpossible d'invoquer la non-optimisé version de loaddb.\n
 60 Erreur d'analyse du \"%1$s\", comme type %2$s.\n
-61 Object Reference is not supported in CS mode.\n
-62 Updated statistics for class %1$s.\n
+61 La référence d'objet n'est pas prise en charge en mode CS.\n
+62 Statistiques mises à jour pour la classe %1$s.\n
 112   %1$d instances\r
 113 Dernière ligne validée: %1$d\n
 114 error-control-file
 115 fichier d'entrée pour le contrôle d'erreur(s) pendant le chargement
-116 Total %8d object(s) inserted, %d object(s) failed.\n
+116 Total %8d objets inséré, %d objets a échoué.\n
 117 Chargement échoué.\n
 118 La longueur maximale du nom de classe est %1$d bytes.\n
-119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
-120 data file does not contain '%%class' specifier or '--table' option is missing\n
-121 Class %1$s is ignored.\n
+119 Total des objets %1$8d vérifiés, %2$d objets d échoué.\n
+120 le fichier de données ne contient pas le spécificateur '%%class' ou l'option '--table' est manquante\n
+121 La classe %1$s est ignorée.\n
 122 \
 loaddb: Importe les objets et les schémas dans la base de données.\n\
 usage: %1$s loaddb [OPTION] database-name[@host]\n\
