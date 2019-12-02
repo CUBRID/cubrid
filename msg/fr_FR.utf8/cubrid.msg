@@ -1861,7 +1861,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 79 Niveau d'isolement invalid: schéma %1$s, %2$s instances.
 80 La valeur de niveau d'isolement dans MVCC doit être 'read committed', 'repeatable read' ou 'serializable'.
 81 '%1$s' est un objet 'auto_increment', qui n'est pas autorisé à être modifié comme 'serial'.
-
+82 JSON invalide: '%1$s'.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** cache invalide ***
