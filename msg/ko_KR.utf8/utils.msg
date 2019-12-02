@@ -434,8 +434,8 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 58 %1$s %2$d 인스턴스가 커밋 되었습니다\n
 59 \n이전 버전의 loaddb를 수행할 수 없습니다.\n
 60 에러 parsing \"%1$s\", as %2$s type.\n
-61 Object Reference is not supported in CS mode.\n
-62 Updated statistics for class %1$s.\n
+61 오브젝트 참조는 CS 모드에서 지원되지 않습니다.\n
+62 테이블 %1$s의 통계정보 업데이트.\n
 112   %1$d 개의 인스턴스\r
 113 마지막으로 커밋된 라인 : %1$d\n
 114 에러 제어 파일
@@ -443,9 +443,9 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 116 총 %1$8d 개의 객체가 삽입되었으며, %2$d 개의 객체가 실패하였습니다.\n
 117 로드 실패.\n
 118 클래스 이름의 최대 길이는 %1$d 바이트 입니다.\n
-119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
-120 data file does not contain '%%class' specifier or '--table' option is missing\n
-121 Class %1$s is ignored.\n
+119 전체 %1$8d 오브젝트 검사, %2$d 오브젝트 실패.\n
+120 데이터 파일이 '%%class'을 포함하거나 '--table' 옵션이 주어져야 합니다.\n
+121 무시된 테이블 %1$s.\n
 122 \
 loaddb: 데이터베이스에 객체 및 스키마 적재\n\
 사용법: %1$s loaddb [옵션] 데이터베이스 이름[@호스트]\n\
@@ -455,16 +455,16 @@ loaddb: 데이터베이스에 객체 및 스키마 적재\n\
   -C, --CS-mode                  클라이언트 서버 모드 실행\n\
   -u, --user=ID                  데이터베이스 접근에 관한 사용자 이름; 기본값: "public"\n\
   -p, --password=PASS            사용자 패스워드; 기본값: 없음\n\
-      --data-file-check-only     check syntax for data file without load; default: disabled\n\
-  -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
+      --data-file-check-only     데이터 파일을 로딩하지 않고 신택스만 검사; 기본값: 아니오\n\
+  -l, --load-only                신택스 체크없이 데이터 파일 로딩; SA_MODE만 지원\n\
       --estimated-size=NUMBER    인스턴스의 대략적인 개수; 기본값: 5000\n\
   -v, --verbose                  많은 상태 정보를 출력; 기본값: 출력하지 않음\n\
-  -c, --periodic-commit=COUNT    주기적인 커밋에 대한 카운트; 기본값: 적재 중 커밋하지 않음\n\
+  -c, --periodic-commit=COUNT    주기적인 커밋에 대한 카운트; 기본값: 적재 중 커밋하지 않음(SA_MODE)\n\
       --no-oid                   OID 사용 안 함\n\
       --no-statistics            로딩 후에 통계 정보 갱신하지 않음\n\
   -s, --schema-file=FILE[:LINE]  파일[:라인] 정보로 스키마 생성\n\
   -i, --index-file=FILE[:LINE]   파일[:라인] 정보로 인덱스 생성\n\
-      --trigger-file=FILE[:LINE] create trigger from LINE with FILE\n\
+      --trigger-file=FILE[:LINE] 파일[:라인] 정보로 트리거 생성\n\
   -d, --data-file=FILE           적재할 데이터 파일\n\
   -t, --table=TABLE              데이터를 적재할 테이블 이름; 데이터 파일에 테이블 정보가 없는 경우 사용\n\
       --error-control-file=FILE  적재 시 발생하는 에러에 대한 제어 파일\n\
