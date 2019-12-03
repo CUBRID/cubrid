@@ -1861,6 +1861,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 79 Geçersiz yalıtım düzeyi: %1$s şema, %2$s örnekleri.
 80 MVCC tecrit seviye değerlerini 'read committed', 'repeatable read' ya da 'serializable' olması gerekir.
 81 '%1$s' bir 'auto_increment' nesne olduğunu, seri olarak değiştirilebilir izin verilmez.
+82 Geçersiz JSON: '%1$s'.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** geçersiz önbellek ***
