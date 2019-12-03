@@ -1303,7 +1303,7 @@ $ LOADDB
 1234 Reserved error for stream/replication.
 1235 Reserved error for stream/replication.
 1236 Double Write Buffer 는 활성화되지 않았습니다.
-1237 %1$s의 %3$s인 %2%s의 상태를 변경할 수 없습니다.
+1237 %1$s의 %3$s인 %2$s의 상태를 변경할 수 없습니다.
 1238 JSON_TABLE 컬럼 '%1$s'의 값이 없습니다.
 1239 경로 "%2$s" 상의 JSON "%1$s" 의 값을 JSON_TABLE 컬럼 "%3$s"의 도메인 "%4$s"으로 변환할 수 없습니다.
 1240 상속 계층구조 상의 테이블에 온라인 인덱스를 생성할 수 없습니다.
