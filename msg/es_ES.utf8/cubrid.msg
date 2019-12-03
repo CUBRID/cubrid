@@ -1861,6 +1861,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 79 Nivel de aislamiento no valido: %1$s esquema, %2$s instancias.
 80 El valor del nivel de aislamiento en MVCC debe ser 'read committed', 'readable read' o 'serializable'.
 81 '%1$s' es un objeto 'auto_increment', que no se puede alterar como serial.
+82 Invalid JSON: '%1$s'.
 
 
 $set 11 MSGCAT_SET_AUTHORIZATION
