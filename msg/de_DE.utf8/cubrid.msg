@@ -1861,7 +1861,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 79 Ungültiges Isolationslevel: %1$s Schema, %2$s Instanzen.
 80 Isolation Pegelwert in MVCC muss 'read committed', 'repeatable read' oder 'serializable'.
 81 '%1$s' ist ein 'auto_increment' Objekt, das nicht erlaubt als serielle verändert werden wird.
-82 Invalid JSON: '%1$s'.
+82 Ungültiger JSON: '%1$s'.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** Ungültiges Cache ***
