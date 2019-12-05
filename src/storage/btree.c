@@ -29958,7 +29958,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
   /* Delete helper used by internal functions of btree_delete_internal. */
   BTREE_DELETE_HELPER *delete_helper = (BTREE_DELETE_HELPER *) other_args;
   PAGE_PTR left_page = NULL;	/* Left page to merge. */
-  PAGE_PTR right_page = NULL;	/* Right age to merge. */
+  PAGE_PTR right_page = NULL;	/* Right page to merge. */
   VPID left_vpid = VPID_INITIALIZER;	/* VPID of left page to merge. */
   VPID right_vpid = VPID_INITIALIZER;	/* VPID of right page to merge. */
   int left_used = 0;		/* Space used in left page. */
@@ -29973,7 +29973,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
   PGBUF_PROMOTE_CONDITION promote_cond;	/* Promote condition when write latch is required on nodes. */
   VPID child_vpid;		/* VPID of next child by following key argument. */
   VPID child_vpid_after_merge;	/* VPID of next by following key argument after merge is done. */
-  PAGE_PTR child_page;		/* Next page by following key argument. */
+  PAGE_PTR child_page = NULL;	/* Next page by following key argument. */
   BTREE_MERGE_STATUS merge_status;	/* Status that tells when nodes can be merged. */
   bool need_root_merge = false;	/* Set to true when root can be merged. */
   bool force_root_merge = false;	/* Set to true when root must be merged. */
