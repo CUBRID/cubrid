@@ -1105,6 +1105,7 @@ net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
   int client_id;
   int local_tran_index;
   THREAD_ENTRY *suspended_p;
+  size_t loop_count_for_pending_request = 0;
 
   if (thread_p == NULL)
     {
@@ -1128,6 +1129,11 @@ net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
 
   /* avoid infinite waiting with xtran_wait_server_active_trans() */
   thread_p->m_status = cubthread::entry::status::TS_CHECK;
+
+  if (conn_p->session_p != NULL)
+    {
+      ssession_stop_attached_threads (conn_p->session_p);
+    }
 
 loop:
   prev_thrd_cnt = css_count_transaction_worker_threads (thread_p, tran_index, client_id);
@@ -1220,6 +1226,21 @@ loop:
   if (thrd_cnt > 0)
     {
       goto loop;
+    }
+
+  if (conn_p->has_pending_request () && !css_is_shutdowning_server ())
+    {
+      // need to wait for pending request
+      thread_sleep (50);	/* 50 msec */
+      if (++loop_count_for_pending_request >= 10)
+	{
+	  // too long...
+	  assert (false);
+	}
+      else
+	{
+	  goto loop;
+	}
     }
 
   logtb_set_tran_index_interrupt (thread_p, tran_index, false);

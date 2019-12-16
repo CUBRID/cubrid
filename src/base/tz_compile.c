@@ -526,9 +526,15 @@ tzc_build_filepath (char *path, size_t size, const char *dir, const char *filena
   assert (filename != NULL);
 
 #if !defined(WINDOWS)
-  snprintf (path, size - 1, "%s/%s", dir, filename);
+  if (snprintf (path, size - 1, "%s/%s", dir, filename) < 0)
+    {
+      assert_release (false);
+    }
 #else
-  snprintf (path, size - 1, "%s\\%s", dir, filename);
+  if (snprintf (path, size - 1, "%s\\%s", dir, filename) < 0)
+    {
+      assert_release (false);
+    }
 #endif
 }
 
@@ -1132,7 +1138,7 @@ tzc_load_countries (TZ_RAW_DATA * tzd_raw, const char *input_folder)
       memset (temp_tz_country, 0, sizeof (temp_tz_country[0]));
       /* store parsed data */
       memcpy (temp_tz_country->code, str, TZ_COUNTRY_CODE_LEN);
-      strncpy (temp_tz_country->full_name, str_country_name + 1, TZ_COUNTRY_NAME_SIZE);
+      strncpy_bufsize (temp_tz_country->full_name, str_country_name + 1);
       temp_tz_country->id = -1;
     }
 
@@ -4819,14 +4825,13 @@ tzc_log_error (const TZ_RAW_CONTEXT * context, const int code, const char *msg1,
 
   if (context != NULL && !IS_EMPTY_STR (context->current_file) && context->current_line != -1)
     {
-      int ret = snprintf (err_msg_temp, sizeof (err_msg_temp) - 1, " (file %s, line %d)", context->current_file,
-			  context->current_line);
-      (void) ret;		// suppress format-truncate warning
+      snprintf_dots_truncate (err_msg_temp, sizeof (err_msg_temp) - 1, " (file %s, line %d)", context->current_file,
+			      context->current_line);
     }
   strcat (err_msg, err_msg_temp);
 
   *err_msg_temp = '\0';
-  snprintf (err_msg_temp, sizeof (err_msg_temp), tzc_Err_messages[-code], msg1, msg2);
+  snprintf_dots_truncate (err_msg_temp, sizeof (err_msg_temp), tzc_Err_messages[-code], msg1, msg2);
   strcat (err_msg, err_msg_temp);
   strcat (err_msg, "\n");
 
@@ -5442,7 +5447,7 @@ tzc_extend (TZ_DATA * tzd)
   TZ_DATA *tzd_or_old_tzd = NULL;
   const char *ruleset_name;
   bool is_compat = true;
-  int start_ds_ruleset_old, start_ds_ruleset_new;
+  int start_ds_ruleset_old = 0, start_ds_ruleset_new = 0;
   const TZ_DS_RULE *old_ds_rule = NULL;
   const TZ_DS_RULE *new_ds_rule = NULL;
   int all_country_count = 0;
@@ -6540,7 +6545,7 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
   DB_INFO *db_info_p = NULL;
   bool need_db_shutdown = false;
   const char *program_name = "extend";
-  char *table_name = NULL;
+  const char *table_name = NULL;
   bool is_first_column = true;
   bool has_timezone_column;
 
@@ -6651,7 +6656,7 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 		  printf ("We will update the following columns:\n");
 		  while (db_query_next_tuple (result2) == DB_CURSOR_SUCCESS)
 		    {
-		      char *column_name = NULL;
+		      const char *column_name = NULL;
 		      int column_type = 0;
 
 		      /* Get the column name */

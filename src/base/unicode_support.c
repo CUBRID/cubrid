@@ -410,8 +410,7 @@ load_unicode_data (const LOCALE_DATA * ld)
   fp = fopen_ex (ld->unicode_data_file, "rt");
   if (fp == NULL)
     {
-      int ret = snprintf (err_msg, sizeof (err_msg) - 1, "Cannot open file %s", ld->unicode_data_file);
-      (void) ret;		// suppress format-truncate warning
+      snprintf_dots_truncate (err_msg, sizeof (err_msg) - 1, "Cannot open file %s", ld->unicode_data_file);
       LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
       status = ER_LOC_GEN;
       goto error;
@@ -453,7 +452,7 @@ load_unicode_data (const LOCALE_DATA * ld)
 	{
 	  char str_p[UNICODE_FILE_LINE_SIZE];
 	  char *save;
-	  int cp_count, ret;
+	  int cp_count;
 
 	  strcpy (str_p, s);
 
@@ -479,9 +478,9 @@ load_unicode_data (const LOCALE_DATA * ld)
 	      cp_count = string_to_int_array (str_p, uc->upper_cp, INTL_CASING_EXPANSION_MULTIPLIER, " ");
 	      if (cp_count > INTL_CASING_EXPANSION_MULTIPLIER)
 		{
-		  ret = snprintf (err_msg, sizeof (err_msg) - 1,
-				  "Invalid line %d" " of file %s contains more than 2 characters for "
-				  "upper case definition", line_count, ld->unicode_data_file);
+		  snprintf_dots_truncate (err_msg, sizeof (err_msg) - 1,
+					  "Invalid line %d" " of file %s contains more than 2 characters for "
+					  "upper case definition", line_count, ld->unicode_data_file);
 		  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 		  status = ER_LOC_GEN;
 		  goto error;
@@ -496,9 +495,9 @@ load_unicode_data (const LOCALE_DATA * ld)
 
 	      if (cp_count > INTL_CASING_EXPANSION_MULTIPLIER)
 		{
-		  ret = snprintf (err_msg, sizeof (err_msg) - 1,
-				  "Invalid line %d" " of file %s contains more than 2 characters for "
-				  "lower case definition", line_count, ld->unicode_data_file);
+		  snprintf_dots_truncate (err_msg, sizeof (err_msg) - 1,
+					  "Invalid line %d" " of file %s contains more than 2 characters for "
+					  "lower case definition", line_count, ld->unicode_data_file);
 		  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 		  status = ER_LOC_GEN;
 		  goto error;
@@ -528,8 +527,6 @@ load_unicode_data (const LOCALE_DATA * ld)
 		}
 	      while (0);
 	    }
-
-	  (void) ret;		// suppress format-truncate warning
 
 	  s = strchr (s, ';');
 	  if (s == NULL)
@@ -1275,13 +1272,14 @@ unicode_compose_string (const char *str_in, const int size_in, char *str_out, in
  *  Note : Input string is assumed UTF-8 character set.
  */
 bool
-unicode_string_need_decompose (char *str_in, const int size_in, int *decomp_size, const UNICODE_NORMALIZATION * norm)
+unicode_string_need_decompose (const char *str_in, const int size_in, int *decomp_size,
+			       const UNICODE_NORMALIZATION * norm)
 {
   int bytes_read, decomp_index, decomposed_size = 0;
   unsigned int cp;
-  char *src_cursor;
-  char *src_end;
-  char *next;
+  const char *src_cursor;
+  const char *src_end;
+  const char *next;
   bool can_decompose;
 
   if (!prm_get_bool_value (PRM_ID_UNICODE_OUTPUT_NORMALIZATION) || norm == NULL)
@@ -1359,14 +1357,14 @@ no_decompose_cnt:
  * norm(in) : the unicode context in which the normalization is performed
  */
 void
-unicode_decompose_string (char *str_in, const int size_in, char *str_out, int *size_out,
+unicode_decompose_string (const char *str_in, const int size_in, char *str_out, int *size_out,
 			  const UNICODE_NORMALIZATION * norm)
 {
   int bytes_read, decomp_index;
   unsigned int cp;
-  char *src_cursor;
-  char *src_end;
-  char *next;
+  const char *src_cursor;
+  const char *src_end;
+  const char *next;
   char *dest_cursor;
 
   assert (prm_get_bool_value (PRM_ID_UNICODE_OUTPUT_NORMALIZATION) && norm != NULL);

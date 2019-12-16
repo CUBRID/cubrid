@@ -63,6 +63,7 @@
 #include "memory_alloc.h"
 #include "memory_private_allocator.hpp"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "porting_inline.hpp"
 #include "query_dump.h"
 #include "string_opfunc.h"
@@ -1149,6 +1150,13 @@ db_json_value_get_depth (const JSON_VALUE *doc)
     }
 }
 
+int
+db_json_extract_document_from_path (const JSON_DOC *document, const std::string &path,
+				    JSON_DOC_STORE &result, bool allow_wildcards)
+{
+  return db_json_extract_document_from_path (document, std::vector<std::string> { path }, result, allow_wildcards);
+}
+
 /*
  * db_json_extract_document_from_path () - Extracts from within the json a value based on the given path
  *
@@ -1161,7 +1169,7 @@ db_json_value_get_depth (const JSON_VALUE *doc)
  * example                 : json_extract('{"a":["b", 123]}', '/a/1') yields 123
  */
 int
-db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<const char *> &paths,
+db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<std::string> &paths,
 				    JSON_DOC_STORE &result, bool allow_wildcards)
 {
   int error_code = NO_ERROR;
@@ -1177,10 +1185,10 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
 
   std::vector<JSON_PATH> json_paths;
 
-  for (const char *path : paths)
+  for (const std::string &path : paths)
     {
       json_paths.emplace_back ();
-      error_code = json_paths.back ().parse (path);
+      error_code = json_paths.back ().parse (path.c_str ());
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -1976,7 +1984,7 @@ db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALU
   const std::string encoded_pattern = db_json_json_string_as_utf8 (raw_json_string);
 
   DB_VALUE encoded_pattern_dbval;
-  db_make_string (&encoded_pattern_dbval, const_cast<char *> (encoded_pattern.c_str ()));
+  db_make_string (&encoded_pattern_dbval, encoded_pattern.c_str ());
   db_string_put_cs_and_collation (&encoded_pattern_dbval, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
 
   const map_func_type &f_search = [&json_paths, &paths, &encoded_pattern_dbval, esc_char, find_all] (const JSON_VALUE &jv,
@@ -1990,7 +1998,7 @@ db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALU
     const char *json_str = jv.GetString ();
     DB_VALUE str_val;
 
-    db_make_string (&str_val, (char *) json_str);
+    db_make_string (&str_val, json_str);
     db_string_put_cs_and_collation (&str_val, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
 
     int match;
@@ -2572,12 +2580,13 @@ db_json_get_type_of_value (const JSON_VALUE *val)
     {
       return DB_JSON_INT;
     }
-  else if (val->IsInt64 ())
+  else if (val->IsInt64 () || val->IsUint ())
     {
       return DB_JSON_BIGINT;
     }
-  else if (val->IsFloat () || val->IsDouble ())
+  else if (val->IsFloat () || val->IsDouble () || val->IsUint64 ())
     {
+      /* quick fix: treat uint64 as double since we don't have an ubigint type */
       return DB_JSON_DOUBLE;
     }
   else if (val->IsObject ())
@@ -2625,7 +2634,7 @@ db_json_get_bigint_from_value (const JSON_VALUE *val)
 
   assert (db_json_get_type_of_value (val) == DB_JSON_BIGINT);
 
-  return val->GetInt64 ();
+  return val->IsInt64 () ? val->GetInt64 () : val->GetUint ();
 }
 
 double
@@ -3152,15 +3161,15 @@ db_json_doc_is_uncomparable (const JSON_DOC *doc)
 // path_str (out)  : path string
 //
 int
-db_value_to_json_path (const DB_VALUE *path_value, FUNC_TYPE fcode, const char **path_str)
+db_value_to_json_path (const DB_VALUE &path_value, FUNC_TYPE fcode, std::string &path_str)
 {
-  if (!TP_IS_CHAR_TYPE (db_value_domain_type (path_value)))
+  if (!TP_IS_CHAR_TYPE (db_value_domain_type (&path_value)))
     {
       int error_code = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 2, fcode_get_uppercase_name (fcode), "STRING");
       return error_code;
     }
-  *path_str = db_get_string (path_value);
+  path_str = { db_get_string (&path_value), (size_t) db_get_string_size (&path_value) };
   return NO_ERROR;
 }
 
@@ -3293,6 +3302,30 @@ db_value_to_json_value (const DB_VALUE &db_val, JSON_DOC_STORE &json_doc)
       // if db_val is json a copy to dest is made so we can own it
       json_doc.set_mutable_reference (db_get_json_document (&dest));
     }
+
+  return NO_ERROR;
+}
+
+int
+db_value_to_json_key (const DB_VALUE &db_val, std::string &key_str)
+{
+  DB_VALUE cnv_to_str;
+  const DB_VALUE *str_valp = &db_val;
+
+  db_make_null (&cnv_to_str);
+
+  if (!DB_IS_STRING (&db_val))
+    {
+      TP_DOMAIN_STATUS status = tp_value_cast (&db_val, &cnv_to_str, &tp_String_domain, false);
+      if (status != DOMAIN_COMPATIBLE)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+	  return ER_QSTR_INVALID_DATA_TYPE;
+	}
+      str_valp = &cnv_to_str;
+    }
+  key_str = { db_get_string (str_valp), (size_t) db_get_string_size (str_valp) };
+  pr_clear_value (&cnv_to_str);
 
   return NO_ERROR;
 }
@@ -3896,7 +3929,7 @@ JSON_PRETTY_WRITER::EndArray (SizeType elementCount)
  * length is the buffer size (we can not use strlen!)
  */
 int
-db_json_serialize (const JSON_DOC &doc, OR_BUF &buffer)
+db_json_serialize (const JSON_DOC &doc, or_buf &buffer)
 {
   JSON_SERIALIZER js (buffer);
   int error_code = NO_ERROR;
@@ -3931,7 +3964,7 @@ db_json_serialize_length (const JSON_DOC &doc)
  * for storing it in the json document
  */
 static int
-db_json_or_buf_underflow (OR_BUF *buf, size_t length)
+db_json_or_buf_underflow (or_buf *buf, size_t length)
 {
   if ((buf->ptr + length) > buf->endptr)
     {

@@ -71,7 +71,10 @@ make_proxy_log_filename (char *filepath_buf, size_t buf_size, const char *br_nam
 
   strcpy (dirname, shm_as_p->proxy_log_dir);
 
-  snprintf (filepath_buf, buf_size, "%s/%s_%d.log", dirname, br_name, proxy_index + 1);
+  if (snprintf (filepath_buf, buf_size, "%s/%s_%d.log", dirname, br_name, proxy_index + 1) < 0)
+    {
+      filepath_buf[0] = '\0';
+    }
   return filepath_buf;
 }
 
@@ -140,8 +143,10 @@ proxy_log_backup (void)
 
   assert (log_filepath[0] != '\0');
 
-  int ret = snprintf (backup_filepath, BROKER_PATH_MAX - 1, "%s.bak", log_filepath);
-  (void) ret;			// suppress format-truncate warning
+  if (snprintf (backup_filepath, BROKER_PATH_MAX - 1, "%s.bak", log_filepath) < 0)
+    {
+      abort ();
+    }
 
   unlink (backup_filepath);
   rename (log_filepath, backup_filepath);

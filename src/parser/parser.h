@@ -85,9 +85,11 @@ extern "C"
   extern PT_NODE *parser_create_node (const PARSER_CONTEXT * parser);
   extern PT_NODE *parser_new_node (PARSER_CONTEXT * parser, PT_NODE_TYPE node);
   extern PT_NODE *parser_init_node (PT_NODE * node);
+  extern void parser_free_node_resources (PT_NODE * node);
   extern void parser_free_node (const PARSER_CONTEXT * parser, PT_NODE * node);
   extern void parser_free_tree (PARSER_CONTEXT * parser, PT_NODE * tree);
   extern void parser_free_subtrees (PARSER_CONTEXT * parser, PT_NODE * tree);
+  extern void parser_clear_node (PARSER_CONTEXT * parser, PT_NODE * node);
 
   extern PT_NODE *pt_pop (PARSER_CONTEXT * parser);
   extern int pt_push (PARSER_CONTEXT * parser, PT_NODE * q);

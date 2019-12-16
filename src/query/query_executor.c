@@ -44,6 +44,7 @@
 #include "fetch.h"
 #include "dbtype.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "list_file.h"
 #include "extendible_hash.h"
 #include "xasl_cache.h"
@@ -616,7 +617,7 @@ static int qexec_execute_do_stmt (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 static int bf2df_str_son_index (THREAD_ENTRY * thread_p, char **son_index, char *father_index, int *len_son_index,
 				int cnt);
-static DB_VALUE_COMPARE_RESULT bf2df_str_compare (unsigned char *s0, int l0, unsigned char *s1, int l1);
+static DB_VALUE_COMPARE_RESULT bf2df_str_compare (const unsigned char *s0, int l0, const unsigned char *s1, int l1);
 static DB_VALUE_COMPARE_RESULT bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
 						  int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
@@ -689,6 +690,7 @@ static int qexec_build_agg_hkey (THREAD_ENTRY * thread_p, XASL_STATE * xasl_stat
 				 QFILE_TUPLE tpl, AGGREGATE_HASH_KEY * key);
 static int qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT * context,
 					    AGGREGATE_HASH_KEY * key, bool * found);
+static int qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, DB_VALUE * default_val);
 
 /*
  * Utility routines
@@ -7759,17 +7761,17 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
   ((((node)->curr_spec->type == TARGET_LIST && (node)->curr_spec->s_id.type == S_LIST_SCAN)) \
     ? ((node)->curr_spec->s_id.s.llsid.list_id->tuple_cnt - 1) : -1)
 
-  XASL_NODE *xptr;
+  XASL_NODE *xptr = NULL;
   SCAN_CODE xs_scan;
   SCAN_CODE xb_scan;
   SCAN_CODE ls_scan;
   DB_LOGICAL ev_res;
   int qualified;
-  AGGREGATE_TYPE *agg_ptr;
+  AGGREGATE_TYPE *agg_ptr = NULL;
   bool count_star_with_iscan_opt = false;
   SCAN_OPERATION_TYPE scan_operation_type;
-  int curr_iteration_last_cursor;
-  int recursive_iterations;
+  int curr_iteration_last_cursor = 0;
+  int recursive_iterations = 0;
   bool max_recursive_iterations_reached = false;
   bool cte_start_new_iteration = false;
 
@@ -10786,6 +10788,34 @@ exit_on_error:
   return error;
 }
 
+static int
+qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, DB_VALUE * default_val)
+{
+  assert (attr != NULL && default_val != NULL);
+
+  OR_BUF buf;
+  PR_TYPE *pr_type = pr_type_from_id (attr->type);
+  bool copy = (pr_is_set_type (attr->type)) ? true : false;
+  if (pr_type != NULL)
+    {
+      or_init (&buf, (char *) attr->current_default_value.value, attr->current_default_value.val_length);
+      buf.error_abort = 1;
+      switch (_setjmp (buf.env))
+	{
+	case 0:
+	  return pr_type->data_readval (&buf, default_val, attr->domain, attr->current_default_value.val_length, copy,
+					NULL, 0);
+	default:
+	  return ER_FAILED;
+	}
+    }
+  else
+    {
+      db_make_null (default_val);
+    }
+  return NO_ERROR;
+}
+
 /*
  * qexec_execute_insert () -
  *   return: NO_ERROR or ER_code
@@ -11090,28 +11120,10 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	    }
 	  else
 	    {
-	      OR_BUF buf;
-	      PR_TYPE *pr_type = pr_type_from_id (attr->type);
-	      bool copy = (pr_is_set_type (attr->type)) ? true : false;
-	      if (pr_type != NULL)
+	      error = qexec_get_attr_default (thread_p, attr, &insert_val);
+	      if (error != NO_ERROR)
 		{
-		  or_init (&buf, (char *) attr->current_default_value.value, attr->current_default_value.val_length);
-		  buf.error_abort = 1;
-		  switch (_setjmp (buf.env))
-		    {
-		    case 0:
-		      error = pr_type->data_readval (&buf, &insert_val, attr->domain,
-						     attr->current_default_value.val_length, copy, NULL, 0);
-		      if (error != NO_ERROR)
-			{
-			  GOTO_EXIT_ON_ERROR;
-			}
-		      break;
-		    default:
-		      error = ER_FAILED;
-		      GOTO_EXIT_ON_ERROR;
-		      break;
-		    }
+		  GOTO_EXIT_ON_ERROR;
 		}
 	    }
 	  break;
@@ -15371,7 +15383,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 			}
 
 		      /* set parent tuple position pseudocolumn value */
-		      db_make_bit (parent_pos_valp, DB_DEFAULT_PRECISION, (DB_C_BIT) (&parent_pos),
+		      db_make_bit (parent_pos_valp, DB_DEFAULT_PRECISION, REINTERPRET_CAST (DB_C_BIT, &parent_pos),
 				   sizeof (parent_pos) * 8);
 
 		      parent_tuple_added = true;
@@ -16285,7 +16297,8 @@ qexec_check_for_cycle (THREAD_ENTRY * thread_p, OUTPTR_LIST * outptr_list, QFILE
   DB_VALUE p_pos_dbval;
   QFILE_LIST_SCAN_ID s_id;
   QFILE_TUPLE_RECORD tuple_rec = { (QFILE_TUPLE) NULL, 0 };
-  QFILE_TUPLE_POSITION p_pos, *bitval;
+  const QFILE_TUPLE_POSITION *bitval = NULL;
+  QFILE_TUPLE_POSITION p_pos;
   int length;
 
   if (qfile_open_list_scan (list_id_p, &s_id) != NO_ERROR)
@@ -16318,7 +16331,7 @@ qexec_check_for_cycle (THREAD_ENTRY * thread_p, OUTPTR_LIST * outptr_list, QFILE
 	  return ER_FAILED;
 	}
 
-      bitval = (QFILE_TUPLE_POSITION *) db_get_bit (&p_pos_dbval, &length);
+      bitval = REINTERPRET_CAST (const QFILE_TUPLE_POSITION *, db_get_bit (&p_pos_dbval, &length));
 
       if (bitval)
 	{
@@ -16880,7 +16893,7 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID *
 	  if (level > 1)
 	    {
 	      /* set parent position pseudocolumn value */
-	      db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, (DB_C_BIT) & pos_info_p->tpl_pos,
+	      db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, REINTERPRET_CAST (DB_C_BIT, &pos_info_p->tpl_pos),
 			   sizeof (pos_info_p->tpl_pos) * 8);
 
 	      if (qfile_set_tuple_column_value (thread_p, list_id_p, s_id.curr_pgptr, &s_id.curr_vpid, tuple_rec.tpl,
@@ -16911,7 +16924,7 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID *
 
 	  qfile_save_current_scan_tuple_position (&prev_s_id, &pos_info_p->tpl_pos);
 
-	  db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, (DB_C_BIT) & pos_info_p->tpl_pos,
+	  db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, REINTERPRET_CAST (DB_C_BIT, &pos_info_p->tpl_pos),
 		       sizeof (pos_info_p->tpl_pos) * 8);
 
 	  if (qfile_set_tuple_column_value (thread_p, list_id_p, s_id.curr_pgptr, &s_id.curr_vpid, tuple_rec.tpl,
@@ -16946,7 +16959,7 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID *
 
 	  if (level > 1)
 	    {
-	      db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, (DB_C_BIT) & pos_info_p->tpl_pos,
+	      db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, REINTERPRET_CAST (DB_C_BIT, &pos_info_p->tpl_pos),
 			   sizeof (pos_info_p->tpl_pos) * 8);
 
 	      if (qfile_set_tuple_column_value (thread_p, list_id_p, s_id.curr_pgptr, &s_id.curr_vpid, tuple_rec.tpl,
@@ -17954,11 +17967,11 @@ qexec_execute_do_stmt (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
  *   l1(in): length of second string
  */
 static DB_VALUE_COMPARE_RESULT
-bf2df_str_compare (unsigned char *s0, int l0, unsigned char *s1, int l1)
+bf2df_str_compare (const unsigned char *s0, int l0, const unsigned char *s1, int l1)
 {
   DB_BIGINT b0, b1;
-  unsigned char *e0 = s0 + l0;
-  unsigned char *e1 = s1 + l1;
+  const unsigned char *e0 = s0 + l0;
+  const unsigned char *e1 = s1 + l1;
 
   if (!s0 || !s1)
     {
@@ -18178,10 +18191,8 @@ static DB_VALUE_COMPARE_RESULT
 bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		  int collation)
 {
-  unsigned char *string1, *string2;
-
-  string1 = (unsigned char *) db_get_string (value1);
-  string2 = (unsigned char *) db_get_string (value2);
+  const unsigned char *string1 = REINTERPRET_CAST (const unsigned char *, db_get_string (value1));
+  const unsigned char *string2 = REINTERPRET_CAST (const unsigned char *, db_get_string (value2));
 
   if (string1 == NULL || string2 == NULL)
     {
@@ -21657,6 +21668,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   int *attr_ids = NULL;
   int function_asc_desc;
   HEAP_SCANCACHE scan;
+  bool scancache_inited = false;
   RECDES class_record;
   DISK_REPR *disk_repr_p = NULL;
   char *class_name = NULL;
@@ -21727,6 +21739,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
   /* read heap class record, get class representation */
   heap_scancache_quick_start_root_hfid (thread_p, &scan);
+  scancache_inited = true;
 
   if (heap_get_class_record (thread_p, class_oid, &class_record, &scan, PEEK) != S_SUCCESS)
     {
@@ -21810,7 +21823,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
       db_make_null (out_values[8]);
 
       /* index type */
-      db_make_string_by_const_str (out_values[10], "BTREE");
+      db_make_string (out_values[10], "BTREE");
 
       index = rep->indexes + i;
       /* Non_unique */
@@ -21828,7 +21841,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
       db_make_string (out_values[12], comment);
 
       /* Visible */
-      db_make_string_by_const_str (out_values[13], (index->index_status == OR_NORMAL_INDEX) ? "YES" : "NO");
+      db_make_string (out_values[13], (index->index_status == OR_NORMAL_INDEX) ? "YES" : "NO");
 
       if (index->func_index_info == NULL)
 	{
@@ -21863,11 +21876,11 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  /* Collation */
 	  if (index->asc_desc[j])
 	    {
-	      db_make_string_by_const_str (out_values[5], "D");
+	      db_make_string (out_values[5], "D");
 	    }
 	  else
 	    {
-	      db_make_string_by_const_str (out_values[5], "A");
+	      db_make_string (out_values[5], "A");
 	    }
 
 	  /* Cardinality */
@@ -21899,11 +21912,11 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  /* [Null] */
 	  if (index_att->is_notnull)
 	    {
-	      db_make_string_by_const_str (out_values[9], "NO");
+	      db_make_string (out_values[9], "NO");
 	    }
 	  else
 	    {
-	      db_make_string_by_const_str (out_values[9], "YES");
+	      db_make_string (out_values[9], "YES");
 	    }
 
 	  /* Column_name */
@@ -21938,11 +21951,11 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
 	  if (function_asc_desc)
 	    {
-	      db_make_string_by_const_str (out_values[5], "D");
+	      db_make_string (out_values[5], "D");
 	    }
 	  else
 	    {
-	      db_make_string_by_const_str (out_values[5], "A");
+	      db_make_string (out_values[5], "A");
 	    }
 
 	  /* Seq_in_index */
@@ -21968,7 +21981,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  db_make_null (out_values[7]);
 
 	  /* [Null] */
-	  db_make_string_by_const_str (out_values[9], "YES");
+	  db_make_string (out_values[9], "YES");
 
 	  /* Column_name */
 	  db_make_null (out_values[4]);
@@ -22005,6 +22018,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
     {
       GOTO_EXIT_ON_ERROR;
     }
+  scancache_inited = false;
 
   if (qexec_end_mainblock_iterations (thread_p, xasl, xasl_state, &tplrec) != NO_ERROR)
     {
@@ -22074,7 +22088,11 @@ exit_on_error:
       heap_classrepr_free_and_init (rep, &idx_incache);
     }
 
-  heap_scancache_end (thread_p, &scan);
+  if (scancache_inited)
+    {
+      heap_scancache_end (thread_p, &scan);
+      scancache_inited = false;
+    }
 
 #if defined(SERVER_MODE)
   /* query execution error must be set up before qfile_close_list(). */
@@ -22421,7 +22439,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       pset_result = &set_result;
 
       db_make_string (&comma, ",");
-      db_make_string_by_const_str (pset_result, set_of_string);
+      db_make_string (pset_result, set_of_string);
 
       for (setdomain = domain->setdomain, i = 0; setdomain; setdomain = setdomain->next, i++)
 	{
@@ -22480,7 +22498,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       db_make_string (&comma, ",");
       db_make_string (&bracket1, "(");
       db_make_string (&bracket2, ")");
-      db_make_string_by_const_str (pprec_scale_arg1, name);
+      db_make_string (pprec_scale_arg1, name);
 
       if ((db_string_concatenate (pprec_scale_arg1, &bracket1, pprec_scale_result, &data_stat) != NO_ERROR)
 	  || (data_stat != DATA_STATUS_OK))
@@ -22560,8 +22578,8 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 
       if (db_json_get_schema_raw_from_validator (validator) != NULL)
 	{
-	  db_make_string_by_const_str (result, name);
-	  db_make_string_by_const_str (&schema, db_json_get_schema_raw_from_validator (validator));
+	  db_make_string (result, name);
+	  db_make_string (&schema, db_json_get_schema_raw_from_validator (validator));
 	  db_make_string (&bracket1, "(\'");
 	  db_make_string (&bracket2, "\')");
 
@@ -22587,7 +22605,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
     }
   else
     {
-      db_make_string_by_const_str (result, name);
+      db_make_string (result, name);
       return NO_ERROR;
     }
 
@@ -22615,18 +22633,16 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   DB_VALUE **out_values = NULL;
   REGU_VARIABLE_LIST regu_var_p;
   HEAP_SCANCACHE scan;
+  bool scancache_inited = false;
   RECDES class_record;
   OID *class_oid = NULL;
   volatile int idx_val;
   volatile int error = NO_ERROR;
-  int i, j, k, idx_all_attr, size_values, found_index_type = -1, disk_length;
+  int i, j, k, idx_all_attr, size_values, found_index_type = -1;
   bool search_index_type = true;
   BTID *btid;
   int index_type_priorities[] = { 1, 0, 1, 0, 2, 0 };
   int index_type_max_priority = 2;
-  OR_BUF buf;
-  PR_TYPE *pr_type = NULL;
-  bool copy;
   DB_VALUE def_order, attr_class_type;
   OR_ATTRIBUTE *all_class_attr[3];
   int all_class_attr_lengths[3];
@@ -22655,6 +22671,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
     }
 
   heap_scancache_quick_start_root_hfid (thread_p, &scan);
+  scancache_inited = true;
 
   assert (xasl_state != NULL);
   class_oid = &(xasl->spec_list->s.cls_node.cls_oid);
@@ -22748,8 +22765,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		case DB_TYPE_NCHAR:
 		case DB_TYPE_VARNCHAR:
 		case DB_TYPE_ENUMERATION:
-		  db_make_string_by_const_str (out_values[idx_val],
-					       lang_get_collation_name (attrepr->domain->collation_id));
+		  db_make_string (out_values[idx_val], lang_get_collation_name (attrepr->domain->collation_id));
 		  break;
 		default:
 		  db_make_null (out_values[idx_val]);
@@ -22760,11 +22776,11 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  /* attribute can store NULL ? */
 	  if (attrepr->is_notnull == 0)
 	    {
-	      db_make_string_by_const_str (out_values[idx_val], "YES");
+	      db_make_string (out_values[idx_val], "YES");
 	    }
 	  else
 	    {
-	      db_make_string_by_const_str (out_values[idx_val], "NO");
+	      db_make_string (out_values[idx_val], "NO");
 	    }
 	  idx_val++;
 
@@ -22799,21 +22815,21 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	    {
 	    case BTREE_UNIQUE:
 	    case BTREE_REVERSE_UNIQUE:
-	      db_make_string_by_const_str (out_values[idx_val], "UNI");
+	      db_make_string (out_values[idx_val], "UNI");
 	      break;
 
 	    case BTREE_INDEX:
 	    case BTREE_REVERSE_INDEX:
 	    case BTREE_FOREIGN_KEY:
-	      db_make_string_by_const_str (out_values[idx_val], "MUL");
+	      db_make_string (out_values[idx_val], "MUL");
 	      break;
 
 	    case BTREE_PRIMARY_KEY:
-	      db_make_string_by_const_str (out_values[idx_val], "PRI");
+	      db_make_string (out_values[idx_val], "PRI");
 	      break;
 
 	    default:
-	      db_make_string_by_const_str (out_values[idx_val], "");
+	      db_make_string (out_values[idx_val], "");
 	      break;
 	    }
 	  idx_val++;
@@ -22863,7 +22879,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		{
 		  if (default_expr_type_string)
 		    {
-		      db_make_string_by_const_str (out_values[idx_val], default_expr_type_string);
+		      db_make_string (out_values[idx_val], default_expr_type_string);
 		    }
 		}
 	      idx_val++;
@@ -22875,54 +22891,31 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	    }
 	  else
 	    {
-	      or_init (&buf, (char *) attrepr->current_default_value.value, attrepr->current_default_value.val_length);
-	      buf.error_abort = 1;
-
-	      switch (_setjmp (buf.env))
+	      error = qexec_get_attr_default (thread_p, attrepr, out_values[idx_val]);
+	      if (error != NO_ERROR)
 		{
-		case 0:
-		  /* Do not copy the string--just use the pointer. The pr_ routines for strings and sets have different
-		   * semantics for length. A negative length value for strings means "don't copy thestring, just use the
-		   * pointer". */
-
-		  disk_length = attrepr->current_default_value.val_length;
-		  copy = (pr_is_set_type (attrepr->type)) ? true : false;
-		  pr_type = pr_type_from_id (attrepr->type);
-		  if (pr_type)
-		    {
-		      pr_type->data_readval (&buf, out_values[idx_val], attrepr->domain, disk_length, copy, NULL, 0);
-		      valcnv_convert_value_to_string (out_values[idx_val]);
-		    }
-		  else
-		    {
-		      db_make_null (out_values[idx_val]);
-		    }
-		  idx_val++;
-		  break;
-		default:
-		  /*
-		   * An error was found during the reading of the
-		   *  attribute value
-		   */
-		  error = ER_FAILED;
 		  GOTO_EXIT_ON_ERROR;
-		  break;
 		}
+	      if (!DB_IS_NULL (out_values[idx_val]))
+		{
+		  valcnv_convert_value_to_string (out_values[idx_val]);
+		}
+	      idx_val++;
 	    }
 
 	  /* attribute has auto_increment or not */
 	  if (attrepr->is_autoincrement == 0)
 	    {
-	      db_make_string_by_const_str (out_values[idx_val], "");
+	      db_make_string (out_values[idx_val], "");
 	    }
 	  else
 	    {
-	      db_make_string_by_const_str (out_values[idx_val], "auto_increment");
+	      db_make_string (out_values[idx_val], "auto_increment");
 	    }
 
 	  if (attrepr->on_update_expr != DB_DEFAULT_NONE)
 	    {
-	      char *saved = db_get_string (out_values[idx_val]);
+	      const char *saved = db_get_string (out_values[idx_val]);
 	      size_t len = strlen (saved);
 
 	      const char *default_expr_op_string = db_default_expression_string (attrepr->on_update_expr);
@@ -23001,6 +22994,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
     {
       GOTO_EXIT_ON_ERROR;
     }
+  scancache_inited = false;
 
   if (qexec_end_mainblock_iterations (thread_p, xasl, xasl_state, &tplrec) != NO_ERROR)
     {
@@ -23037,7 +23031,10 @@ exit_on_error:
       heap_classrepr_free_and_init (rep, &idx_incache);
     }
 
-  heap_scancache_end (thread_p, &scan);
+  if (scancache_inited)
+    {
+      heap_scancache_end (thread_p, &scan);
+    }
 
 #if defined(SERVER_MODE)
   /* query execution error must be set up before qfile_close_list(). */

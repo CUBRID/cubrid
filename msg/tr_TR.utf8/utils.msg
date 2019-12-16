@@ -270,7 +270,6 @@ geçerli opsiyonlar:\n\
       --no-check               veritabanının tutarlılığını kontrol etmez; varsayılan: kontrol edin\n\
   -t, --thread-count=COUNT     Konu sayısı; Varsayılan olarak: 0 (otomatik)\n\
   -z, --compress               yedekleme birimleri sıkıştırmak; varsayılan: sıkıştırmayı açma\n\
-  -e, --except-active-log      şunlardır: varsayılan; aktif bir log yoğunluğu içermez\n\
       --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n
 71 Uyumsuz bağımsız değişkenleri, \"%1$s\", ve \"%2$s\"\n
 
@@ -435,8 +434,8 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 58 %1$s %2$d taahhüt örnekleri\n
 59 \nLoaddb olmayan-optimize edilmiş sürümü çağırılamaz.\n
 60 Hata ayrıştırma \"%1$s\", gibi %2$s tür.\n
-61 Object Reference is not supported in CS mode.\n
-62 Updated statistics for class %1$s.\n
+61 Nesne Referans CS modunda desteklenmez.\n
+62 %1$s sınıfı için güncellenmiş istatistikler.\n
 112   %1$d örnekleri\r
 113 Son kararlı hattı: %1$d\n
 114 hata-kontrol-dosyası
@@ -444,9 +443,9 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 116 Toplam %1$8d nesne (ler) eklenen, %2$d nesne (ler) başarısız oldu.\n
 117 Başarısız yük.\n
 118 Sınıf adının uzunluğu en fazla %1$d bayttır.\n
-119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
-120 data file does not contain '%%class' specifier or '--table' option is missing\n
-121 Class %1$s is ignored.\n
+119 Toplam %1$8d nesne kontrol edildi, %2$d nesne başarısız oldu.\n
+120 Veri dosyası '%%class' belirteci içermiyor ve '--table' seçeneği eksik\n
+121 %1$s sınıfı yoksayılır.\n
 122 \
 loaddb: Veritabanına veri alma nesneler ve şemalar.\n\
 kullanım: %1$s loaddb [SEÇENEK] database-name[@host]\n\
@@ -1042,18 +1041,18 @@ geçerli seçenekler:\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
 20 %1$s şifre gir:
-22 Tran index          User name      Host name      Process id      Program name\n
-23 -------------------------------------------------------------------------------\n
-24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n
+22 Tran index            User name      Host name      Process id      Program name\n
+23 ---------------------------------------------------------------------------------\n
+24 %1$4d%2$-12s %3$14s %4$14s %5$15d %6$17s\n
 25 Geçişler yok\n
 26 tranlist sadece DBA veya bir DBA grup üyesi tarafından uygulanabilir.\n
 27 sort-key sütun numarası (%1$d) geçersiz.\n
-32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-33 %1$4d%2$-10s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
-34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
-42 Tran index          User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-43 %1$4d%2$-10s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
-44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
+32 Tran index           Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+33 %1$4d%2$-12s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
+34 ----------------------------------------------------------------------------------------------------------------------------------------------------\n
+42 Tran index            User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+43 %1$4d%2$-12s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
+44 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
 45 Tran index : %1$d
 46 SQL_ID: %1$s\n
 59 tranlist standalone mode olarak çalışamaz.\n

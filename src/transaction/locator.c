@@ -23,16 +23,13 @@
 
 #ident "$Id$"
 
+#include "locator.h"
+
 #include "config.h"
-
-#include <stdio.h>
-#include <string.h>
-#include <assert.h>
-
 #include "porting.h"
 #include "memory_alloc.h"
 #include "oid.h"
-#include "locator.h"
+#include "object_representation.h"
 #include "error_manager.h"
 #include "storage_common.h"
 #if defined(SERVER_MODE)
@@ -42,6 +39,10 @@
 #if defined(SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif /* SERVER_MODE */
+
+#include <stdio.h>
+#include <string.h>
+#include <assert.h>
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -704,8 +705,19 @@ locator_send_copy_area (LC_COPYAREA * copyarea, char **contents_ptr, int *conten
 
 	  if (offset != -1)
 	    {
-	      *contents_length = DB_ALIGN (*contents_length, MAX_ALIGNMENT);
-	      *contents_length += offset;
+	      int len = *contents_length;
+	      int aligned_len = DB_ALIGN (len, MAX_ALIGNMENT);
+
+	      *contents_length = aligned_len + offset;	// total len
+
+#if !defined (NDEBUG)
+	      int padded_len = aligned_len - len;
+	      if (padded_len > 0)
+		{
+		  // make valgrind silent
+		  memset (*contents_ptr + *contents_length - padded_len, 0, padded_len);
+		}
+#endif /* DEBUG */
 	    }
 	}
     }

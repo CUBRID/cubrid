@@ -34,7 +34,7 @@ namespace cubload
     , m_object_loader (NULL)
     , m_error_handler (NULL)
     , m_semantic_helper ()
-    , m_lines_inserted (0)
+    , m_start_line_no (0)
     , m_is_initialized (false)
   {
     //
@@ -55,7 +55,6 @@ namespace cubload
     m_error_handler = NULL;
 
     m_is_initialized = false;
-    m_lines_inserted = 0;
   }
 
   driver::~driver ()
@@ -73,7 +72,6 @@ namespace cubload
     m_error_handler = error_handler;
     m_scanner = new scanner (m_semantic_helper, *m_error_handler);
     m_is_initialized = true;
-    m_lines_inserted = 0;
   }
 
   bool
@@ -86,7 +84,7 @@ namespace cubload
   driver::parse (std::istream &iss, int line_offset)
   {
     m_scanner->switch_streams (&iss);
-    m_scanner->set_lineno (line_offset);
+    m_scanner->set_lineno (line_offset + 1);
     m_semantic_helper.reset_after_batch ();
 
     assert (m_class_installer != NULL && m_object_loader != NULL);
@@ -125,16 +123,16 @@ namespace cubload
     return *m_scanner;
   }
 
-  int
-  driver::get_lines_inserted ()
+  void
+  driver::update_start_line ()
   {
-    return m_lines_inserted;
+    m_start_line_no = get_scanner ().lineno ();
   }
 
-  void
-  driver::increment_lines_inserted (int no_lines)
+  int
+  driver::get_start_line ()
   {
-    m_lines_inserted += no_lines;
+    return m_start_line_no;
   }
 
 } // namespace cubload

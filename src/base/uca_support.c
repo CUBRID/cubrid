@@ -277,7 +277,7 @@ load_ducet (const char *file_path, const int sett_contr_policy)
   if (f == NULL)
     {
       err_status = ER_LOC_GEN;
-      snprintf (err_msg, sizeof (err_msg) - 1, "Cannot open file %s", file_path);
+      snprintf_dots_truncate (err_msg, sizeof (err_msg) - 1, "Cannot open file %s", file_path);
       LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
       goto exit;
     }
@@ -3162,7 +3162,7 @@ add_uca_contr_or_exp (LOCALE_COLLATION * lc, UCA_STORAGE * storage, const unsign
 static int
 read_cp_from_tag (unsigned char *buffer, CP_BUF_TYPE type, UCA_CP * cp)
 {
-  int temp_cp;
+  int temp_cp = 0;
   int result = 0;
   int err_status = NO_ERROR;
   char *chr_ptr;
@@ -3394,7 +3394,7 @@ create_opt_ce_w_exp (LOCALE_COLLATION * lc)
       UCA_COLL_KEY curr_key;
       UCA_COLL_KEY next_key;
       unsigned int curr_pos = coll_key_list[i];
-      unsigned int next_pos;
+      unsigned int next_pos = 0;
       int j;
 
       if (INTL_IS_NEXT_CONTR (curr_pos))

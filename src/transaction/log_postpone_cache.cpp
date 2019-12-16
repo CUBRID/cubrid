@@ -24,8 +24,11 @@
 #include "log_postpone_cache.hpp"
 
 #include "memory_alloc.h"
+#include "memory_private_allocator.hpp"
 #include "object_representation.h"
 #include "log_manager.h"
+
+#include <cstring>
 
 void
 log_postpone_cache::reset ()
@@ -161,6 +164,9 @@ log_postpone_cache::do_postpone (cubthread::entry &thread_ref, const log_lsa &st
       return false;
     }
 
+  const size_t RCV_DATA_DEFAULT_SIZE = 1024;
+  cubmem::extensible_stack_block<RCV_DATA_DEFAULT_SIZE> rcv_data_buffer { cubmem::PRIVATE_BLOCK_ALLOCATOR };
+
   // Run all postpones after start_index
   for (std::size_t i = start_index; i < m_cursor; ++i)
     {
@@ -168,12 +174,15 @@ log_postpone_cache::do_postpone (cubthread::entry &thread_ref, const log_lsa &st
 
       // Get redo data header
       char *redo_data = m_redo_data_buf.get_ptr () + entry.m_offset;
-      log_rec_redo *redo = (log_rec_redo *) redo_data;
+      log_rec_redo redo = * (log_rec_redo *) redo_data;
 
       // Get recovery data
-      char *rcv_data = redo_data + sizeof (log_rec_redo);
-      rcv_data = PTR_ALIGN (rcv_data, MAX_ALIGNMENT);
-      (void) log_execute_run_postpone (&thread_ref, &entry.m_lsa, redo, rcv_data);
+      char *data_ptr = redo_data + sizeof (log_rec_redo);
+      data_ptr = PTR_ALIGN (data_ptr, MAX_ALIGNMENT);
+      rcv_data_buffer.extend_to (redo.length);
+      std::memcpy (rcv_data_buffer.get_ptr (), data_ptr, redo.length);
+
+      (void) log_execute_run_postpone (&thread_ref, &entry.m_lsa, &redo, rcv_data_buffer.get_ptr ());
     }
 
   // Finished running postpones, update the number of entries which should be run on next commit

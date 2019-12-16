@@ -691,8 +691,8 @@ configure_file(cmake/version.h.cmake version.h)
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   # Definitions for system
   add_definitions(-DGCC -DLINUX -D_GNU_SOURCE -DI386 -DX86)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused -Wno-unused-parameter")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused -Wno-format-security")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused -Wno-unused-parameter -Wno-format-security")
 
   if(SIZEOF_OFF64_T)
     add_definitions( -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64)

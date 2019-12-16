@@ -41,6 +41,7 @@
 #include "memory_private_allocator.hpp"
 #include "mvcc.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "object_representation_sr.h"
 #include "partition.h"
 #include "partition_sr.h"
@@ -205,7 +206,7 @@ class index_builder_loader_task: public cubthread::entry_task
                                index_builder_loader_context &load_context, std::atomic<int> &num_keys,
 			       std::atomic<int> &num_oids, std::atomic<int> &num_nulls);
     ~index_builder_loader_task ();
-    
+
     // add key to key set and return true if task is ready for execution, false otherwise
     batch_key_status add_key (const DB_VALUE *key, const OID &oid);
     bool has_keys () const;
@@ -3216,7 +3217,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	  continue;
 	}
 
-      key_len = pr_data_writeval_disk_size (dbvalue_ptr);
+      key_len = sort_args->key_type->type->get_disk_size_of_value (dbvalue_ptr);
 
       if (key_len > 0)
 	{
@@ -5010,7 +5011,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       while (load_context.m_tasks_executed != tasks_started);
     }
 
-  PERF_UTIME_TRACKER_TIME (thread_p, &time_online_index, PSTAT_BT_ONLINE);
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_online_index, PSTAT_BT_ONLINE_LOAD);
 
   thread_get_manager ()->destroy_worker_pool (ib_workpool);
 

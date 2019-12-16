@@ -94,7 +94,7 @@ struct class_stats
 };
 
 #if !defined(SERVER_MODE)
-extern CLASS_STATS *stats_get_statistics (OID * classoid, unsigned int timestamp);
+extern int stats_get_statistics (OID * classoid, unsigned int timestamp, CLASS_STATS ** stats_p);
 extern void stats_free_statistics (CLASS_STATS * stats);
 extern void stats_dump (const char *classname, FILE * fp);
 #endif /* !SERVER_MODE */

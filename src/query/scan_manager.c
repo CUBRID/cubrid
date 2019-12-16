@@ -46,6 +46,7 @@
 #include "locator_sr.h"
 #include "log_lsa.hpp"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "dbtype.h"
 #include "xasl_predicate.hpp"
 #include "xasl.h"

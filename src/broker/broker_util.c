@@ -550,7 +550,11 @@ ut_get_broker_port_name (char *port_name, char *broker_name, int len)
 
   get_cubrid_file (FID_SOCK_DIR, dir_name, BROKER_PATH_MAX);
 
-  snprintf (port_name, len, "%s%s.B", dir_name, broker_name);
+  if (snprintf (port_name, len, "%s%s.B", dir_name, broker_name) < 0)
+    {
+      assert (false);
+      port_name[0] = '\0';
+    }
 }
 
 void
@@ -560,7 +564,11 @@ ut_get_proxy_port_name (char *port_name, char *broker_name, int proxy_id, int le
 
   get_cubrid_file (FID_SOCK_DIR, dir_name, BROKER_PATH_MAX);
 
-  snprintf (port_name, len, "%s%s.P%d", dir_name, broker_name, proxy_id + 1);
+  if (snprintf (port_name, len, "%s%s.P%d", dir_name, broker_name, proxy_id + 1) < 0)
+    {
+      assert (false);
+      port_name[0] = '\0';
+    }
 }
 
 void
@@ -570,7 +578,11 @@ ut_get_as_port_name (char *port_name, char *broker_name, int as_id, int len)
 
   get_cubrid_file (FID_SOCK_DIR, dir_name, BROKER_PATH_MAX);
 
-  snprintf (port_name, len, "%s%s.%d", dir_name, broker_name, as_id + 1);
+  if (snprintf (port_name, len, "%s%s.%d", dir_name, broker_name, as_id + 1) < 0)
+    {
+      assert (false);
+      port_name[0] = '\0';
+    }
 }
 
 double
@@ -698,5 +710,9 @@ ut_get_as_pid_name (char *pid_name, char *br_name, int as_index, int len)
 
   get_cubrid_file (FID_AS_PID_DIR, dir_name, BROKER_PATH_MAX);
 
-  snprintf (pid_name, len, "%s%s_%d.pid", dir_name, br_name, as_index + 1);
+  if (snprintf (pid_name, len, "%s%s_%d.pid", dir_name, br_name, as_index + 1) < 0)
+    {
+      assert (false);
+      pid_name[0] = '\0';
+    }
 }

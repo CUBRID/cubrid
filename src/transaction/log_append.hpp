@@ -32,7 +32,7 @@
 #include "log_record.hpp"
 #include "log_storage.hpp"
 #include "memory_alloc.h"
-#include "object_representation.h"
+#include "object_representation_constants.h"
 #include "recovery.h"
 #include "storage_common.h"
 

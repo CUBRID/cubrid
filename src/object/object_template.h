@@ -33,7 +33,6 @@
 #include <stdarg.h>
 
 #include "area_alloc.h"
-#include "object_representation.h"
 #include "class_object.h"
 
 #define OBT_BASE_OBJECT(template_ptr) \

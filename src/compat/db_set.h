@@ -17,25 +17,41 @@
  *
  */
 
-/*
- * load_db_value_converter.hpp - conversion from string to DB_VALUE
- */
+//
+// db_set structure
+//
 
-#ifndef _LOAD_DB_VALUE_CONVERTER_HPP_
-#define _LOAD_DB_VALUE_CONVERTER_HPP_
+#ifndef _DB_SET_H_
+#define _DB_SET_H_
 
 #include "dbtype_def.h"
-#include "load_common.hpp"
 
-namespace cubload
+#include <stdio.h>
+
+#ifdef __cplusplus
+extern "C"
 {
-  // forward declaration
-  class attribute;
+#endif				// __cplusplus
 
-  typedef int (*conv_func) (const char *, const size_t, const attribute *, db_value *);
+  struct db_set
+  {
+    /*
+     * a garbage collector ticket is not required for the "owner" field as
+     * the entire set references area is registered for scanning in area_grow.
+     */
+    struct db_object *owner;
+    struct db_set *ref_link;
+    struct setobj *set;
+    char *disk_set;
+    DB_DOMAIN *disk_domain;
+    int attribute;
+    int ref_count;
+    int disk_size;
+    need_clear_type need_clear;
+  };
 
-  conv_func &get_conv_func (const data_type ldr_type, const DB_TYPE db_type);
+#ifdef __cplusplus
+}				// extern "C"
+#endif				// __cplusplus
 
-} // namespace cubload
-
-#endif /* _LOAD_DB_VALUE_CONVERTER_HPP_ */
+#endif				// !_DB_SET_H_

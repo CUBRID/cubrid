@@ -373,6 +373,7 @@ namespace cubload
     , m_recdes_collected ()
     , m_scancache_started (false)
     , m_scancache ()
+    , m_rows (0)
   {
     //
   }
@@ -424,6 +425,11 @@ namespace cubload
     if (m_session.is_failed ())
       {
 	return;
+      }
+
+    if (m_session.get_args ().syntax_check)
+      {
+	++m_rows;
       }
 
     std::size_t attr_index = 0;
@@ -504,7 +510,8 @@ namespace cubload
 	  }
       }
 
-    m_session.stats_update_current_line (m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1);
+    int lineno = m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1;
+    m_session.stats_update_current_line (lineno);
     clear_db_values ();
   }
 
@@ -528,7 +535,7 @@ namespace cubload
     if (m_session.get_args ().syntax_check)
       {
 	// Safeguard as we do not need to insert any records during syntax check.
-	assert (m_recdes_collected.size () == 0);
+	assert (m_recdes_collected.empty ());
 	return;
       }
 
@@ -538,7 +545,7 @@ namespace cubload
 	m_scancache.node.classname = m_class_entry->get_class_name ();
       }
 
-    if (m_recdes_collected.size () == 0)
+    if (m_recdes_collected.empty ())
       {
 	// Nothing to flush.
 	return;
@@ -575,7 +582,7 @@ namespace cubload
 
 	    // We attach to outer and we continue.
 	    log_sysop_attach_to_outer (m_thread_ref);
-	    m_thread_ref->m_loaddb_driver->increment_lines_inserted (1);
+	    ++m_rows;
 	  }
       }
     else
@@ -594,9 +601,15 @@ namespace cubload
 	else
 	  {
 	    log_sysop_attach_to_outer (m_thread_ref);
-	    m_thread_ref->m_loaddb_driver->increment_lines_inserted (m_recdes_collected.size ());
+	    m_rows += m_recdes_collected.size ();
 	  }
       }
+  }
+
+  std::size_t
+  server_object_loader::get_rows_number ()
+  {
+    return m_rows;
   }
 
   int
@@ -677,11 +690,12 @@ namespace cubload
   {
     string_type *str = reinterpret_cast<string_type *> (cons->val);
     char *token = str != NULL ? str->val : NULL;
+    size_t str_size = str != NULL ? str->size : 0;
 
     db_value &db_val = get_attribute_db_value (attr.get_index ());
     conv_func &func = get_conv_func (cons->type, attr.get_domain ().type->get_id ());
 
-    int error_code = func (token, &attr, &db_val);
+    int error_code = func (token, str_size, &attr, &db_val);
     if (error_code == ER_DATE_CONVERSION)
       {
 	m_error_handler.log_date_time_conversion_error (token, pr_type_name (attr.get_domain ().type->get_id ()));
@@ -716,7 +730,7 @@ namespace cubload
     db_value &db_val = get_attribute_db_value (attr.get_index ());
     conv_func &func = get_conv_func (cons->type, attr.get_domain ().type->get_id ());
 
-    error_code = func (full_mon_str_p, &attr, &db_val);
+    error_code = func (full_mon_str_p, full_mon_str_len, &attr, &db_val);
     if (error_code != NO_ERROR)
       {
 	return error_code;

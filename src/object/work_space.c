@@ -46,6 +46,7 @@
 #include "set_object.h"
 #include "virtual_object.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "class_object.h"
 #include "environment_variable.h"
 #include "db.h"

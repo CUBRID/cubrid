@@ -401,8 +401,8 @@ qe_end_session (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf)
 }
 
 int
-qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char *sql_stmt, char flag, T_CCI_ERROR * err_buf,
-	    int reuse)
+qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, const char *sql_stmt, char flag,
+	    T_CCI_ERROR * err_buf, int reuse)
 {
   T_NET_BUF net_buf;
   char func_code = CAS_FC_PREPARE;

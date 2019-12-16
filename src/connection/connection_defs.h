@@ -51,6 +51,10 @@
 #include <pthread.h>
 #endif /* !WINDOWS && SERVER_MODE */
 
+#if defined (__cplusplus)
+#include <atomic>
+#endif // C++
+
 #define NUM_MASTER_CHANNEL 1
 
 /*
@@ -470,9 +474,18 @@ struct css_conn_entry
   void set_tran_index (int tran_index);
   int get_tran_index (void);
 
+  // request count manipulation
+  void add_pending_request ();
+  void start_request ();
+  bool has_pending_request () const;
+  void init_pending_request ();
+
 private:
   // note - I want to protect this.
   int transaction_id;
+  // *INDENT-OFF*
+  std::atomic<size_t> pending_request_count;
+  // *INDENT-ON*
 #else				// not c++ = c
   int transaction_id;
 #endif				// not c++ = c

@@ -52,6 +52,7 @@
 #include "log_manager.h"
 #include "log_system_tran.hpp"
 #include "memory_private_allocator.hpp"
+#include "object_representation.h"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "xserver_interface.h"
@@ -5231,11 +5232,11 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
       idx++;
 
       /* State */
-      db_make_string_by_const_str (&vals[idx], log_state_short_string (tdes->state));
+      db_make_string (&vals[idx], log_state_short_string (tdes->state));
       idx++;
 
       /* isolation */
-      db_make_string_by_const_str (&vals[idx], log_isolation_string (tdes->isolation));
+      db_make_string (&vals[idx], log_isolation_string (tdes->isolation));
       idx++;
 
       /* Wait_msecs */
@@ -5578,7 +5579,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 
       /* Abort_reason */
       str = tran_abort_reason_to_string (tdes->tran_abort_reason);
-      db_make_string_by_const_str (&vals[idx], str);
+      db_make_string (&vals[idx], str);
       idx++;
 
       assert (idx == num_cols);
