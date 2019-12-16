@@ -532,6 +532,106 @@ struct btree_object_info
 #define BTREE_OBJECT_INFO_INITIALIZER \
   { OID_INITIALIZER, OID_INITIALIZER, BTREE_MVCC_INFO_INITIALIZER }
 
+struct key_oid
+{
+  DB_VALUE m_key;
+  OID m_oid;
+};
+
+// *INDENT-OFF*
+struct page_key_boundary
+{
+  DB_VALUE m_left_key;
+  DB_VALUE m_right_key;
+
+  bool m_is_inf_left_key;
+  bool m_is_inf_right_key;
+
+  page_key_boundary ();
+  ~page_key_boundary ();
+
+  void set_value (DB_VALUE &dest_value, DB_VALUE &src_value, bool &clear_src_value);
+  int set_value (THREAD_ENTRY * thread_p, DB_VALUE &dest_value, BTID_INT * btid, PAGE_PTR page_ptr, const INT16 slot);
+  int set_value (THREAD_ENTRY * thread_p, DB_VALUE &dest_value, BTID_INT * btid, PAGE_PTR page_ptr, RECDES &rec);
+
+  int update_boundary_eq (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr,
+                          DB_VALUE &subtree_value, bool &clear_subtree_value, const INT16 subtree_slot);
+
+  int update_boundary_lt (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr,
+                          RECDES &left_subtree_rec, DB_VALUE &subtree_value, bool &clear_subtree_value);
+
+  int update_boundary_gt_or_eq (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr,
+                                DB_VALUE &subtree_value, bool &clear_subtree_value, const INT16 subtree_slot,
+                                const int key_cnt);
+};
+
+struct btree_insert_list
+{
+  enum
+    {
+      KEY_AVAILABLE = 0,
+      KEY_NOT_AVAILABLE
+    };
+
+  std::vector<key_oid> m_keys_oids;
+  std::vector<key_oid*> m_sorted_keys_oids;
+
+  DB_VALUE *m_curr_key;
+  OID *m_curr_oid;
+  int m_curr_pos;
+
+  const TP_DOMAIN *m_key_type;
+
+  int m_ignored_nulls_cnt;
+
+  page_key_boundary m_boundaries;
+  bool m_use_page_boundary_check;
+
+  bool m_use_sorted_bulk_insert;
+
+  int m_keep_page_iterations;
+  int m_ovf_appends;
+  int m_ovf_appends_new_page;
+
+  btree_insert_list () = delete;
+
+  btree_insert_list (const TP_DOMAIN *&key_type)
+    : m_curr_key (NULL)
+    , m_curr_oid (NULL)
+    , m_curr_pos (0)
+    , m_key_type (key_type)
+    , m_ignored_nulls_cnt (0)
+    , m_use_page_boundary_check (false)
+    , m_use_sorted_bulk_insert (false)
+  {
+  }
+
+  btree_insert_list (DB_VALUE *key, OID *oid);
+
+  ~btree_insert_list ();
+
+  int next_key ();
+
+  OID *get_oid ()
+  {
+    return m_curr_oid;
+  }
+
+  DB_VALUE *get_key ()
+  {
+    return m_curr_key;
+  }
+
+  size_t add_key (const DB_VALUE *key, const OID &oid);
+
+  void reset_boundary_keys ();
+
+  void prepare_list (void);
+
+  bool check_release_latch (THREAD_ENTRY * thread_p, void *arg, PAGE_PTR leaf_page);
+};
+// *INDENT-ON*
+
 /* BTREE_RANGE_SCAN_PROCESS_KEY_FUNC -
  * btree_range_scan internal function that is called for each key that passes
  * range/filter checks.
@@ -742,6 +842,9 @@ extern void btree_dump_key (FILE * fp, const DB_VALUE * key);
 
 extern int btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * cls_oid,
 					  OID * oid, int unique, BTREE_OP_PURPOSE purpose, LOG_LSA * undo_nxlsa);
+extern int btree_online_index_list_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, OID * cls_oid,
+					       btree_insert_list * insert_list, int unique, BTREE_OP_PURPOSE purpose,
+					       LOG_LSA * undo_nxlsa);
 
 extern int btree_rv_keyval_undo_online_index_tran_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int btree_rv_keyval_undo_online_index_tran_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv);

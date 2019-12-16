@@ -28,6 +28,7 @@
 #include "binaryheap.h"
 #include "compile_context.h"
 #include "config.h"
+#include "system_parameter.h"
 #include "list_file.h"
 #include "perf_monitor.h"
 #include "query_executor.h"
@@ -35,9 +36,11 @@
 #include "statistics_sr.h"
 #include "stream_to_xasl.h"
 #include "thread_entry.hpp"
+#include "thread_lockfree_hash_map.hpp"
 #include "thread_manager.hpp"
 #include "xasl_unpack_info.hpp"
 
+#include <algorithm>
 #include <assert.h>
 
 #define XCACHE_ENTRY_MARK_DELETED	    ((INT32) 0x80000000)
@@ -89,6 +92,11 @@ struct xcache_cleanup_candidate
   struct timeval time_last_used;
 };
 
+// *INDENT-OFF*
+using xcache_hashmap_type = cubthread::lockfree_hashmap<xasl_id, xasl_cache_ent>;
+using xcache_hashmap_iterator = xcache_hashmap_type::iterator;
+// *INDENT-ON*
+
 /* Structure to include all xasl cache global variable. It is easier to visualize the entire system when debugging. */
 typedef struct xcache XCACHE;
 struct xcache
@@ -97,8 +105,7 @@ struct xcache
   int soft_capacity;
   struct timeval last_cleaned_time;
   int time_threshold;
-  LF_HASH_TABLE ht;
-  LF_FREELIST freelist;
+  xcache_hashmap_type hashmap;
   volatile INT32 entry_count;
   bool logging_enabled;
   int max_clones;
@@ -107,31 +114,34 @@ struct xcache
   XCACHE_CLEANUP_CANDIDATE *cleanup_array;
 
   XCACHE_STATS stats;
+
+  // *INDENT-OFF*
+  xcache ()
+    : enabled (false)
+    , soft_capacity (0)
+    , last_cleaned_time { 0, 0 }
+    , time_threshold (360)
+    , hashmap {}
+    , entry_count (0)
+    , logging_enabled (false)
+    , max_clones (0)
+    , cleanup_flag (0)
+    , cleanup_bh (NULL)
+    , cleanup_array (NULL)
+    , stats XCACHE_STATS_INITIALIZER
+  {
+  }
+  // *INDENT-ON*
 };
 
-XCACHE xcache_Global = {
-  false,			/* enabled */
-  0,				/* soft_capacity */
-  {0, 0},			/* last_cleaned_time */
-  360,				/* time_threshold */
-  LF_HASH_TABLE_INITIALIZER,	/* ht */
-  LF_FREELIST_INITIALIZER,	/* freelist */
-  0,				/* entry_count */
-  false,			/* logging_enabled */
-  0,				/* max_clones */
-  0,				/* cleanup_flag */
-  NULL,				/* cleanup_bh */
-  NULL,				/* cleanup_array */
-  XCACHE_STATS_INITIALIZER
-};
+XCACHE xcache_Global;
 
 /* Create macro's for xcache_Global fields to access them as if they were global variables. */
 #define xcache_Enabled xcache_Global.enabled
 #define xcache_Soft_capacity xcache_Global.soft_capacity
 #define xcache_Time_threshold xcache_Global.time_threshold
 #define xcache_Last_cleaned_time xcache_Global.last_cleaned_time
-#define xcache_Ht xcache_Global.ht
-#define xcache_Ht_freelist xcache_Global.freelist
+#define xcache_Hashmap xcache_Global.hashmap
 #define xcache_Entry_count xcache_Global.entry_count
 #define xcache_Log xcache_Global.logging_enabled
 #define xcache_Max_clones xcache_Global.max_clones
@@ -287,22 +297,10 @@ xcache_initialize (THREAD_ENTRY * thread_p)
 
   xcache_Max_clones = prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_CLONES);
 
-  error_code = lf_freelist_init (&xcache_Ht_freelist, 1, xcache_Soft_capacity, &xcache_Entry_descriptor, &xcache_Ts);
-  if (error_code != NO_ERROR)
-    {
-      xcache_log_error ("could not init freelist.\n");
-      ASSERT_ERROR ();
-      return error_code;
-    }
-
-  error_code = lf_hash_init (&xcache_Ht, &xcache_Ht_freelist, xcache_Soft_capacity, &xcache_Entry_descriptor);
-  if (error_code != NO_ERROR)
-    {
-      lf_freelist_destroy (&xcache_Ht_freelist);
-      xcache_log_error ("could not init hash table.\n");
-      ASSERT_ERROR ();
-      return error_code;
-    }
+  const int freelist_block_count = 2;
+  const int freelist_block_size = std::max (1, xcache_Soft_capacity / freelist_block_count);
+  xcache_Hashmap.init (xcache_Ts, THREAD_TS_XCACHE, xcache_Soft_capacity, freelist_block_size, freelist_block_count,
+		       xcache_Entry_descriptor);
 
   /* Use global heap */
   save_heapid = db_change_private_heap (thread_p, 0);
@@ -312,8 +310,7 @@ xcache_initialize (THREAD_ENTRY * thread_p)
   (void) db_change_private_heap (thread_p, save_heapid);
   if (xcache_Cleanup_bh == NULL)
     {
-      lf_freelist_destroy (&xcache_Ht_freelist);
-      lf_hash_destroy (&xcache_Ht);
+      xcache_Hashmap.destroy ();
       xcache_log_error ("could not init hash table.\n");
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
@@ -356,8 +353,7 @@ xcache_finalize (THREAD_ENTRY * thread_p)
   xcache_check_logging ();
   xcache_log ("finalize.\n");
 
-  lf_freelist_destroy (&xcache_Ht_freelist);
-  lf_hash_destroy (&xcache_Ht);
+  xcache_Hashmap.destroy ();
 
   /* Use global heap */
   save_heapid = db_change_private_heap (thread_p, 0);
@@ -370,6 +366,30 @@ xcache_finalize (THREAD_ENTRY * thread_p)
 
   xcache_Enabled = false;
 }
+
+// *INDENT-OFF*
+xasl_cache_ent::xasl_cache_ent ()
+{
+  pthread_mutex_init (&cache_clones_mutex, NULL);
+  init_clone_cache ();
+}
+
+xasl_cache_ent::~xasl_cache_ent ()
+{
+  assert (cache_clones == NULL || cache_clones == &one_clone);
+  pthread_mutex_destroy (&cache_clones_mutex);
+}
+
+void
+xasl_cache_ent::init_clone_cache ()
+{
+  cache_clones = &one_clone;
+  one_clone.xasl = NULL;
+  one_clone.xasl_buf = NULL;
+  cache_clones_capacity = 1;
+  n_cache_clones = 0;
+}
+// *INDENT-ON*
 
 /*
  * xcache_entry_alloc () - Allocate an XASL cache entry.
@@ -384,11 +404,7 @@ xcache_entry_alloc (void)
     {
       return NULL;
     }
-  xcache_entry->cache_clones = &xcache_entry->one_clone;
-  xcache_entry->one_clone.xasl = NULL;
-  xcache_entry->one_clone.xasl_buf = NULL;
-  xcache_entry->cache_clones_capacity = 1;
-  xcache_entry->n_cache_clones = 0;
+  xcache_entry->init_clone_cache ();
   pthread_mutex_init (&xcache_entry->cache_clones_mutex, NULL);
   return xcache_entry;
 }
@@ -771,7 +787,6 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, const XASL_CAC
 {
   XASL_ID lookup_key;
   int error_code = NO_ERROR;
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
 
   assert (xcache_entry != NULL && *xcache_entry == NULL);
 
@@ -788,16 +803,7 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, const XASL_CAC
   XASL_ID_SET_NULL (&lookup_key);
   lookup_key.sha1 = *sha1;
 
-  error_code = lf_hash_find (t_entry, &xcache_Ht, &lookup_key, (void **) xcache_entry);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      xcache_log_error ("error finding cache entry: \n"
-			XCACHE_LOG_SHA1_TEXT XCACHE_LOG_ERROR_TEXT XCACHE_LOG_TRAN_TEXT,
-			XCACHE_LOG_SHA1_ARGS (&lookup_key.sha1), error_code, XCACHE_LOG_TRAN_ARGS (thread_p));
-
-      return error_code;
-    }
+  *xcache_entry = xcache_Hashmap.find (thread_p, lookup_key);
   if (*xcache_entry == NULL)
     {
       /* No match! */
@@ -811,7 +817,7 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, const XASL_CAC
     }
   /* Found a match. */
   /* We have incremented fix count, we don't need lf_tran anymore. */
-  lf_tran_end_with_mb (t_entry);
+  xcache_Hashmap.end_tran (thread_p);
 
   perfmon_inc_stat (thread_p, PSTAT_PC_NUM_HIT);
   XCACHE_STAT_INC (hits);
@@ -1071,9 +1077,7 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
 {
   INT32 cache_flag = 0;
   INT32 new_cache_flag = 0;
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
   int error_code = NO_ERROR;
-  int success = 0;
   struct timeval time_last_used;
 
   assert (xcache_entry != NULL);
@@ -1145,14 +1149,7 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
 	  xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
 	}
 
-      error_code = lf_hash_delete (t_entry, &xcache_Ht, &xcache_entry->xasl_id, &success);
-      if (error_code != NO_ERROR)
-	{
-	  /* Errors are not expected. */
-	  assert (false);
-	  return;
-	}
-      if (success == 0)
+      if (!xcache_Hashmap.erase (thread_p, xcache_entry->xasl_id))
 	{
 	  /* Failure is not expected. */
 	  assert (false);
@@ -1229,7 +1226,7 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
 /*
  * xcache_entry_set_request_recompile_flag () - Mark XASL cache entry as "request recompile".
  *
- * return	     : True if the flag was successfuly set (or cleared).
+ * return	     : True if the flag was successfully set (or cleared).
  * thread_p (in)     : Thread entry.
  * xcache_entry (in) : XASL cache entry.
  * set_flag (in)     : true if flag should be set, false if should be cleared
@@ -1345,8 +1342,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
 	       XASL_CACHE_ENTRY ** xcache_entry)
 {
   int error_code = NO_ERROR;
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
-  int inserted = 0;
+  bool inserted = false;
   XASL_ID xid;
   INT32 cache_flag;
   INT32 new_cache_flag;
@@ -1451,7 +1447,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
   while (true)
     {
       /* Claim a new entry from freelist to initialize. */
-      *xcache_entry = (XASL_CACHE_ENTRY *) lf_freelist_claim (t_entry, &xcache_Ht_freelist);
+      *xcache_entry = xcache_Hashmap.freelist_claim (thread_p);
       if (*xcache_entry == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
@@ -1472,19 +1468,12 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
       (*xcache_entry)->time_last_used = time_stored;
 
       /* Now that new entry is initialized, we can try to insert it. */
-      error_code = lf_hash_insert_given (t_entry, &xcache_Ht, &xid, (void **) xcache_entry, &inserted);
-      if (error_code != NO_ERROR)
-	{
-	  xcache_log_error ("error inserting new entry: \n",
-			    XCACHE_LOG_ENTRY_TEXT ("entry") XCACHE_LOG_ERROR_TEXT XCACHE_LOG_TRAN_TEXT,
-			    XCACHE_LOG_ENTRY_ARGS (*xcache_entry), XCACHE_LOG_TRAN_ARGS (thread_p), error_code);
-	  ASSERT_ERROR ();
-	  goto error;
-	}
+
+      inserted = xcache_Hashmap.insert_given (thread_p, xid, *xcache_entry);
       assert (*xcache_entry != NULL);
 
       /* We have incremented fix count, we don't need lf_tran anymore. */
-      lf_tran_end_with_mb (t_entry);
+      xcache_Hashmap.end_tran (thread_p);
 
       if (inserted)
 	{
@@ -1653,7 +1642,7 @@ error:
   ASSERT_ERROR ();
   if ((*xcache_entry) != NULL)
     {
-      (void) lf_freelist_retire (t_entry, &xcache_Ht_freelist, *xcache_entry);
+      xcache_Hashmap.freelist_retire (thread_p, *xcache_entry);
     }
   if (to_be_recompiled)
     {
@@ -1691,10 +1680,7 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 			   const OID * arg)
 {
 #define XCACHE_DELETE_XIDS_SIZE 1024
-  LF_HASH_TABLE_ITERATOR iter;
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
   XASL_CACHE_ENTRY *xcache_entry = NULL;
-  int success;
   XASL_ID delete_xids[XCACHE_DELETE_XIDS_SIZE];
   int n_delete_xids = 0;
   int xid_index = 0;
@@ -1705,10 +1691,12 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
       return;
     }
 
+  xcache_hashmap_iterator iter = { thread_p, xcache_Hashmap };
+
   while (!finished)
     {
-      /* Create iterator. */
-      lf_hash_create_iterator (&iter, t_entry, &xcache_Ht);
+      /* make sure to start from beginning */
+      iter.restart ();
 
       /* Iterate through hash, check entry OID's and if one matches the argument, mark the entry for delete and save
        * it in delete_xids buffer. We cannot delete them from hash while iterating, because the one lock-free
@@ -1716,7 +1704,7 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
        */
       while (true)
 	{
-	  xcache_entry = (XASL_CACHE_ENTRY *) lf_hash_iterate (&iter);
+	  xcache_entry = iter.iterate ();
 	  if (xcache_entry == NULL)
 	    {
 	      finished = true;
@@ -1744,7 +1732,7 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 	  if (n_delete_xids == XCACHE_DELETE_XIDS_SIZE)
 	    {
 	      /* Full buffer. Interrupt iteration and we'll start over. */
-	      lf_tran_end_with_mb (t_entry);
+	      xcache_Hashmap.end_tran (thread_p);
 
 	      xcache_log ("xcache_remove_by_oid full buffer\n" XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_TRAN_ARGS (thread_p));
 
@@ -1755,11 +1743,7 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
       /* Remove collected entries. */
       for (xid_index = 0; xid_index < n_delete_xids; xid_index++)
 	{
-	  if (lf_hash_delete (t_entry, &xcache_Ht, &delete_xids[xid_index], &success) != NO_ERROR)
-	    {
-	      assert (false);
-	    }
-	  if (success == 0)
+	  if (!xcache_Hashmap.erase (thread_p, delete_xids[xid_index]))
 	    {
 	      /* I don't think this is expected. */
 	      assert (false);
@@ -1808,6 +1792,11 @@ xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, const OID * rel
 void
 xcache_remove_by_oid (THREAD_ENTRY * thread_p, const OID * oid)
 {
+  if (!xcache_Enabled)
+    {
+      return;
+    }
+
   xcache_check_logging ();
 
   xcache_log ("remove all entries: \n"
@@ -1824,6 +1813,11 @@ xcache_remove_by_oid (THREAD_ENTRY * thread_p, const OID * oid)
 void
 xcache_drop_all (THREAD_ENTRY * thread_p)
 {
+  if (!xcache_Enabled)
+    {
+      return;
+    }
+
   xcache_check_logging ();
 
   xcache_log ("drop all queries \n" XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_TRAN_ARGS (thread_p));
@@ -1840,8 +1834,6 @@ xcache_drop_all (THREAD_ENTRY * thread_p)
 void
 xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
 {
-  LF_HASH_TABLE_ITERATOR iter;
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
   XASL_CACHE_ENTRY *xcache_entry = NULL;
   int oid_index;
   char *sql_id = NULL;
@@ -1876,9 +1868,10 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
   fprintf (fp, "Deletes at cleanup:	    %lld\n", (long long) XCACHE_STAT_GET (deletes_at_cleanup));
   /* add overflow, RT checks. */
 
+  xcache_hashmap_iterator iter = { thread_p, xcache_Hashmap };
+
   fprintf (fp, "\nEntries:\n");
-  lf_hash_create_iterator (&iter, t_entry, &xcache_Ht);
-  while ((xcache_entry = (XASL_CACHE_ENTRY *) lf_hash_iterate (&iter)) != NULL)
+  while ((xcache_entry = iter.iterate ()) != NULL)
     {
       fprintf (fp, "\n");
       fprintf (fp, "  XASL_ID = { \n");
@@ -2041,14 +2034,15 @@ xcache_retire_clone (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, X
 static void
 xcache_cleanup (THREAD_ENTRY * thread_p)
 {
-  LF_HASH_TABLE_ITERATOR iter;
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
+  assert (xcache_Enabled);
+
+  xcache_hashmap_iterator iter = { thread_p, xcache_Hashmap };
   XASL_CACHE_ENTRY *xcache_entry = NULL;
   XCACHE_CLEANUP_CANDIDATE candidate;
   struct timeval current_time;
   int need_cleanup;
   int candidate_index;
-  int success, count;
+  int count;
   int cleanup_count;
   BINARY_HEAP *bh = NULL;
   int save_max_capacity = 0;
@@ -2128,9 +2122,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       bh->element_count = 0;
 
       /* Collect candidates for cleanup. */
-      lf_hash_create_iterator (&iter, t_entry, &xcache_Ht);
-
-      while ((xcache_entry = (XASL_CACHE_ENTRY *) lf_hash_iterate (&iter)) != NULL)
+      while ((xcache_entry = iter.iterate ()) != NULL)
 	{
 	  candidate.xid = xcache_entry->xasl_id;
 	  candidate.time_last_used = xcache_entry->time_last_used;
@@ -2148,12 +2140,11 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
     }
   else
     {
-      count = 0;
       /* Collect candidates for cleanup. */
-      lf_hash_create_iterator (&iter, t_entry, &xcache_Ht);
+      count = 0;
       gettimeofday (&current_time, NULL);
 
-      while ((xcache_entry = (XASL_CACHE_ENTRY *) lf_hash_iterate (&iter)) != NULL && count < xcache_Soft_capacity)
+      while ((xcache_entry = iter.iterate ()) != NULL && count < xcache_Soft_capacity)
 	{
 	  candidate.xid = xcache_entry->xasl_id;
 	  candidate.time_last_used = xcache_entry->time_last_used;
@@ -2188,16 +2179,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       /* Try delete. Would be better to decache the clones here. For simplicity, since is not an usual case,
        * clone decache is postponed - is decached when retired list will be cleared.
        */
-      if (lf_hash_delete (t_entry, &xcache_Ht, &candidate.xid, &success) != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  xcache_log_error ("failed hash delete: \n"
-			    XCACHE_LOG_XASL_ID_TEXT ("xasl id")
-			    XCACHE_LOG_TRAN_TEXT,
-			    XCACHE_LOG_XASL_ID_ARGS (&candidate.xid), XCACHE_LOG_TRAN_ARGS (thread_p));
-	  continue;
-	}
-      if (success)
+      if (xcache_Hashmap.erase (thread_p, candidate.xid))
 	{
 	  xcache_log ("cleanup: candidate was removed from hash"
 		      XCACHE_LOG_XASL_ID_TEXT ("xasl id") XCACHE_LOG_TRAN_TEXT,

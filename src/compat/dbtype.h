@@ -43,8 +43,6 @@
 
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 
-#define db_set db_collection
-
 #define db_make_utime db_make_timestamp
 
 #define DB_VALUE_CLONE_AS_NULL(src_value, dest_value)                   \

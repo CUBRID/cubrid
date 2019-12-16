@@ -44,6 +44,7 @@
 
 #include "boot_sr.h"
 
+#include "area_alloc.h"
 #include "btree.h"
 #include "chartype.h"
 #include "dbtran_def.h"
@@ -1941,12 +1942,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     }
 
   // sessions state is required to continue
-  error_code = session_states_init (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      assert (false);
-      goto exit_on_error;
-    }
+  session_states_init (thread_p);
 
   /* print_version string */
 #if defined (NDEBUG)
@@ -2346,11 +2342,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	}
     }
 
-  error_code = spage_boot (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
+  spage_boot (thread_p);
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {
@@ -2383,7 +2375,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
   /* we need to manually add root class HFID to cache */
   error_code =
-    heap_insert_hfid_for_class_oid (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP);
+    heap_cache_class_info (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP,
+			   boot_Db_parm->rootclass_name);
   if (error_code != NO_ERROR)
     {
       assert_release (false);
@@ -2692,11 +2685,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  error_code = session_states_init (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
+  session_states_init (thread_p);
 
 #if defined (SERVER_MODE)
   if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && from_backup == false)
@@ -2781,7 +2770,8 @@ error:
   session_states_finalize (thread_p);
   logtb_finalize_global_unique_stats_table (thread_p);
 
-  vacuum_stop (thread_p);
+  vacuum_stop_workers (thread_p);
+  vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
   pgbuf_daemons_destroy ();
@@ -2919,7 +2909,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   /* Shutdown the system with the system transaction */
   logtb_set_to_system_tran_index (thread_p);
   log_abort_all_active_transaction (thread_p);
-  vacuum_stop (thread_p);
+  vacuum_stop_workers (thread_p);
 
   /* before removing temp vols */
   (void) logtb_reflect_global_unique_stats_to_btree (thread_p);
@@ -2929,6 +2919,14 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   session_states_finalize (thread_p);
 
   (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
+
+  // ha delays are registered and logged, and must be stopped before vacuum master
+  log_stop_ha_delay_registration ();
+
+  // only after all logging is finished can this vacuum master be stopped; boot_remove_all_temp_volumes may add a final
+  // log entry
+  // hopefully, nothing else follows
+  vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
   pgbuf_daemons_destroy ();
@@ -3432,7 +3430,7 @@ xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag, OID * oid, BTID * 
 	}
     }
 
-  if (heap_get_hfid_from_class_oid (thread_p, oid, &hfid) != NO_ERROR || HFID_IS_NULL (&hfid))
+  if (heap_get_class_info (thread_p, oid, &hfid, NULL, NULL) != NO_ERROR || HFID_IS_NULL (&hfid))
     {
       return DISK_ERROR;
     }
@@ -4713,11 +4711,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
 
   assert (client_credential != NULL);
 
-  error_code = spage_boot (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
+  spage_boot (thread_p);
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {
@@ -4833,7 +4827,8 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   oid_set_root (&boot_Db_parm->rootclass_oid);
   /* we need to manually add root class HFID to cache */
   error_code =
-    heap_insert_hfid_for_class_oid (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP);
+    heap_cache_class_info (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP,
+			   boot_Db_parm->rootclass_name);
   if (error_code != NO_ERROR)
     {
       assert_release (false);
@@ -5270,11 +5265,7 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
   /* Initialize the transaction table */
   logtb_define_trantable (thread_p, -1, -1);
 
-  error_code = spage_boot (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error_exit;
-    }
+  spage_boot (thread_p);
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {

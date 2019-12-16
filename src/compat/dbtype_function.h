@@ -24,10 +24,13 @@
 #ifndef _NO_INLINE_DBTYPE_FUNCTION_
 #define _NO_INLINE_DBTYPE_FUNCTION_
 
+#include <stdio.h>
+
 #include "dbtype_def.h"
 
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 
+// for backward compatibility
 #define db_set db_collection
 
 #define db_make_utime db_make_timestamp

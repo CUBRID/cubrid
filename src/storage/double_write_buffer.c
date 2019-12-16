@@ -31,6 +31,7 @@
 #include "system_parameter.h"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
+#include "thread_lockfree_hash_map.hpp"
 #include "thread_manager.hpp"
 #include "log_append.hpp"
 #include "log_impl.h"
@@ -236,15 +237,23 @@ struct dwb_slots_hash_entry
   UINT64 del_id;		/* Delete transaction ID (for lock free). */
 
   DWB_SLOT *slot;		/* DWB slot containing a page. */
+
+  // *INDENT-OFF*
+  dwb_slots_hash_entry ()
+  {
+    pthread_mutex_init (&mutex, NULL);
+  }
+  ~dwb_slots_hash_entry ()
+  {
+    pthread_mutex_destroy (&mutex);
+  }
+  // *INDENT-ON*
 };
 
 /* Hash that store all pages in DWB. */
-typedef struct dwb_slots_hash DWB_SLOTS_HASH;
-struct dwb_slots_hash
-{
-  LF_HASH_TABLE ht;		/* Hash having VPID as key and DWB_SLOT as data. */
-  LF_FREELIST freelist;		/* Used by hash. */
-};
+// *INDENT-OFF*
+using dwb_hashmap_type = cubthread::lockfree_hashmap<VPID, dwb_slots_hash_entry>;
+// *INDENT-ON*
 
 /* The double write buffer structure. */
 typedef struct double_write_buffer DOUBLE_WRITE_BUFFER;
@@ -265,32 +274,37 @@ struct double_write_buffer
   UINT64 volatile position_with_flags;	/* The current position in double write buffer and flags. Flags keep the
 					 * state of each block (started, ended), create DWB status, modify DWB status.
 					 */
-  DWB_SLOTS_HASH *slots_hash;	/* The slots hash. */
+  dwb_hashmap_type slots_hashmap;	/* The slots hash. */
   int vdes;			/* The volume file descriptor. */
 
   DWB_BLOCK *volatile helper_flush_block;	/* The block that will be flushed by helper thread. */
+
+  // *INDENT-OFF*
+  double_write_buffer ()
+    : logging_enabled (false)
+    , blocks (NULL)
+    , num_blocks (0)
+    , num_pages (0)
+    , num_block_pages (0)
+    , log2_num_block_pages (0)
+    , blocks_flush_counter (0)
+    , next_block_to_flush (0)
+    , mutex PTHREAD_MUTEX_INITIALIZER
+    , wait_queue DWB_WAIT_QUEUE_INITIALIZER
+    , position_with_flags (0)
+    , slots_hashmap {}
+    , vdes (NULL_VOLDES)
+    , helper_flush_block (NULL)
+  {
+  }
+  // *INDENT-ON*
 };
 
 /* DWB volume name. */
 char dwb_Volume_name[PATH_MAX];
 
 /* DWB. */
-static DOUBLE_WRITE_BUFFER dwb_Global = {
-  false,			/* logging_enabled */
-  NULL,				/* blocks */
-  0,				/* num_blocks */
-  0,				/* num_pages */
-  0,				/* num_block_pages */
-  0,				/* log2_num_block_pages */
-  0,				/* blocks_flush_counter */
-  0,				/* next_block_to_flush */
-  PTHREAD_MUTEX_INITIALIZER,	/* mutex */
-  DWB_WAIT_QUEUE_INITIALIZER,	/* wait_queue */
-  0,				/* position_with_flags */
-  NULL,				/* slots_hash */
-  NULL_VOLDES,			/* vdes */
-  NULL				/* helper_flush_block */
-};
+static DOUBLE_WRITE_BUFFER dwb_Global;
 
 #define dwb_Log dwb_Global.logging_enabled
 
@@ -358,9 +372,6 @@ STATIC_INLINE void dwb_destroy_internal (THREAD_ENTRY * thread_p, UINT64 * curre
 STATIC_INLINE void dwb_initialize_slot (DWB_SLOT * slot, FILEIO_PAGE * io_page,
 					unsigned int position_in_block, unsigned int block_no)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int dwb_create_slots_hash (THREAD_ENTRY * thread_p, DWB_SLOTS_HASH ** p_slots_hash)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void dwb_finalize_slots_hash (DWB_SLOTS_HASH * slots_hash) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void dwb_initialize_block (DWB_BLOCK * block, unsigned int block_no,
 					 unsigned int count_wb_pages, char *write_buffer, DWB_SLOT * slots,
 					 FLUSH_VOLUME_INFO * flush_volumes_info, unsigned int count_flush_volumes_info,
@@ -381,7 +392,7 @@ static int dwb_slots_hash_key_copy (void *src, void *dest);
 static int dwb_slots_hash_compare_key (void *key1, void *key2);
 static unsigned int dwb_slots_hash_key (void *key, int hash_table_size);
 
-STATIC_INLINE int dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot, int *inserted)
+STATIC_INLINE int dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot, bool * inserted)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_slots_hash_delete (THREAD_ENTRY * thread_p, DWB_SLOT * slot);
 
@@ -937,65 +948,6 @@ dwb_initialize_slot (DWB_SLOT * slot, FILEIO_PAGE * io_page, unsigned int positi
 }
 
 /*
- * dwb_create_slots_hash () - Create slots hash.
- *
- * return   : Error code.
- * thread_p (in) : Thread entry.
- * p_slots_hash(out): The created hash.
- */
-STATIC_INLINE int
-dwb_create_slots_hash (THREAD_ENTRY * thread_p, DWB_SLOTS_HASH ** p_slots_hash)
-{
-  DWB_SLOTS_HASH *slots_hash = NULL;
-  int error_code = NO_ERROR;
-
-  slots_hash = (DWB_SLOTS_HASH *) malloc (sizeof (DWB_SLOTS_HASH));
-  if (slots_hash == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DWB_SLOTS_HASH));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  memset (slots_hash, 0, sizeof (DWB_SLOTS_HASH));
-
-  /* initialize freelist */
-  error_code = lf_freelist_init (&slots_hash->freelist, 1, DWB_SLOTS_FREE_LIST_SIZE, &slots_entry_Descriptor,
-				 &dwb_slots_Ts);
-  if (error_code != NO_ERROR)
-    {
-      free_and_init (slots_hash);
-      return error_code;
-    }
-
-  /* initialize hash table */
-  error_code = lf_hash_init (&slots_hash->ht, &slots_hash->freelist, DWB_SLOTS_HASH_SIZE, &slots_entry_Descriptor);
-  if (error_code != NO_ERROR)
-    {
-      lf_freelist_destroy (&slots_hash->freelist);
-      free_and_init (slots_hash);
-      return error_code;
-    }
-
-  *p_slots_hash = slots_hash;
-
-  return NO_ERROR;
-}
-
-/*
- * dwb_finalize_slots_hash () - Finalize slots hash.
- *
- *   return: Nothing.
- *   slots_hash(in) : Slots hash.
- */
-STATIC_INLINE void
-dwb_finalize_slots_hash (DWB_SLOTS_HASH * slots_hash)
-{
-  assert (slots_hash != NULL);
-
-  lf_hash_destroy (&slots_hash->ht);
-  lf_freelist_destroy (&slots_hash->freelist);
-}
-
-/*
  * dwb_initialize_block () - Initialize a block.
  *
  * return   : Nothing.
@@ -1201,8 +1153,10 @@ dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_volume_name, UINT6
   unsigned int i, num_pages, num_block_pages;
   int vdes = NULL_VOLDES;
   DWB_BLOCK *blocks = NULL;
-  DWB_SLOTS_HASH *slots_hash = NULL;
   UINT64 new_position_with_flags;
+
+  const int freelist_block_count = 2;
+  const int freelist_block_size = DWB_SLOTS_FREE_LIST_SIZE;
 
   assert (dwb_volume_name != NULL && current_position_with_flags != NULL);
 
@@ -1242,12 +1196,6 @@ dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_volume_name, UINT6
       goto exit_on_error;
     }
 
-  error_code = dwb_create_slots_hash (thread_p, &slots_hash);
-  if (error_code != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
   dwb_Global.blocks = blocks;
   dwb_Global.num_blocks = num_blocks;
   dwb_Global.num_pages = num_pages;
@@ -1257,9 +1205,11 @@ dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_volume_name, UINT6
   dwb_Global.next_block_to_flush = 0;
   pthread_mutex_init (&dwb_Global.mutex, NULL);
   dwb_init_wait_queue (&dwb_Global.wait_queue);
-  dwb_Global.slots_hash = slots_hash;
   dwb_Global.vdes = vdes;
   dwb_Global.helper_flush_block = NULL;
+
+  dwb_Global.slots_hashmap.init (dwb_slots_Ts, THREAD_TS_DWB_SLOTS, DWB_SLOTS_HASH_SIZE, freelist_block_size,
+				 freelist_block_count, slots_entry_Descriptor);
 
   /* Set creation flag. */
   new_position_with_flags = DWB_RESET_POSITION (*current_position_with_flags);
@@ -1287,12 +1237,6 @@ exit_on_error:
 	  dwb_finalize_block (&blocks[i]);
 	}
       free_and_init (blocks);
-    }
-
-  if (slots_hash != NULL)
-    {
-      dwb_finalize_slots_hash (slots_hash);
-      free_and_init (slots_hash);
     }
 
   return error_code;
@@ -1423,22 +1367,14 @@ dwb_slots_hash_key (void *key, int hash_table_size)
  * inserted (out): 1, if slot inserted in hash.
  */
 STATIC_INLINE int
-dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot, int *inserted)
+dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot, bool * inserted)
 {
   int error_code = NO_ERROR;
   DWB_SLOTS_HASH_ENTRY *slots_hash_entry = NULL;
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_DWB_SLOTS);
 
   assert (vpid != NULL && slot != NULL && inserted != NULL);
 
-  error_code = lf_hash_find_or_insert (t_entry, &dwb_Global.slots_hash->ht, vpid, (void **) &slots_hash_entry,
-				       inserted);
-  if (error_code != NO_ERROR || slots_hash_entry == NULL)
-    {
-      ASSERT_ERROR ();
-      dwb_log_error ("DWB hash find/insert key (%d, %d) with %d error: \n", vpid->volid, vpid->pageid, error_code);
-      return error_code;
-    }
+  *inserted = dwb_Global.slots_hashmap.find_or_insert (thread_p, *vpid, slots_hash_entry);
 
   assert (VPID_EQ (&slots_hash_entry->vpid, &slot->vpid));
   assert (slots_hash_entry->vpid.pageid == slot->io_page->prv.pageid
@@ -1508,7 +1444,7 @@ dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot, in
 
   slots_hash_entry->slot = slot;
   pthread_mutex_unlock (&slots_hash_entry->mutex);
-  *inserted = 1;
+  *inserted = true;
 
   return NO_ERROR;
 }
@@ -1541,11 +1477,7 @@ dwb_destroy_internal (THREAD_ENTRY * thread_p, UINT64 * current_position_with_fl
       free_and_init (dwb_Global.blocks);
     }
 
-  if (dwb_Global.slots_hash != NULL)
-    {
-      dwb_finalize_slots_hash (dwb_Global.slots_hash);
-      free_and_init (dwb_Global.slots_hash);
-    }
+  dwb_Global.slots_hashmap.destroy ();
 
   if (dwb_Global.vdes != NULL_VOLDES)
     {
@@ -1932,8 +1864,6 @@ STATIC_INLINE int
 dwb_slots_hash_delete (THREAD_ENTRY * thread_p, DWB_SLOT * slot)
 {
   int error_code = NO_ERROR;
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_DWB_SLOTS);
-  int success;
   VPID *vpid;
   DWB_SLOTS_HASH_ENTRY *slots_hash_entry = NULL;
 
@@ -1945,15 +1875,7 @@ dwb_slots_hash_delete (THREAD_ENTRY * thread_p, DWB_SLOT * slot)
     }
 
   /* Remove the old vpid from hash. */
-  error_code = lf_hash_find (t_entry, &dwb_Global.slots_hash->ht, (void *) vpid, (void **) &slots_hash_entry);
-  if (error_code != NO_ERROR)
-    {
-      /* Should not happen. */
-      ASSERT_ERROR ();
-      dwb_log_error ("DWB hash find key (%d, %d) with %d error: \n", vpid->volid, vpid->pageid, error_code);
-      return error_code;
-    }
-
+  slots_hash_entry = dwb_Global.slots_hashmap.find (thread_p, *vpid);
   if (slots_hash_entry == NULL)
     {
       /* Already removed from hash by others, nothing to do. */
@@ -1969,9 +1891,7 @@ dwb_slots_hash_delete (THREAD_ENTRY * thread_p, DWB_SLOT * slot)
       assert (slots_hash_entry->slot->io_page->prv.pageid == vpid->pageid
 	      && slots_hash_entry->slot->io_page->prv.volid == vpid->volid);
 
-      error_code = lf_hash_delete_already_locked (t_entry, &dwb_Global.slots_hash->ht, vpid,
-						  slots_hash_entry, &success);
-      if (error_code != NO_ERROR || !success)
+      if (!dwb_Global.slots_hashmap.erase_locked (thread_p, *vpid, slots_hash_entry))
 	{
 	  assert_release (false);
 	  /* Should not happen. */
@@ -2774,7 +2694,8 @@ int
 dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB_SLOT ** p_dwb_slot)
 {
   unsigned int count_wb_pages;
-  int error_code = NO_ERROR, inserted;
+  int error_code = NO_ERROR;
+  bool inserted = false;
   DWB_BLOCK *block = NULL;
   DWB_SLOT *dwb_slot = NULL;
   bool needs_flush;
@@ -3946,7 +3867,6 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 int
 dwb_read_page (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, bool * success)
 {
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (NULL, THREAD_TS_DWB_SLOTS);
   DWB_SLOTS_HASH_ENTRY *slots_hash_entry = NULL;
   int error_code = NO_ERROR;
 
@@ -3959,15 +3879,9 @@ dwb_read_page (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, bool *
       return NO_ERROR;
     }
 
-  error_code = lf_hash_find (t_entry, &dwb_Global.slots_hash->ht, (void *) vpid, (void **) &slots_hash_entry);
-  if (error_code != NO_ERROR)
-    {
-      /* Should not happen */
-      ASSERT_ERROR ();
-      dwb_log_error ("DWB hash find key (%d, %d) with %d error: \n", vpid->volid, vpid->pageid, error_code);
-      return error_code;
-    }
-  else if (slots_hash_entry != NULL)
+  VPID key_vpid = *vpid;
+  slots_hash_entry = dwb_Global.slots_hashmap.find (thread_p, key_vpid);
+  if (slots_hash_entry != NULL)
     {
       assert (slots_hash_entry->slot->io_page != NULL);
 

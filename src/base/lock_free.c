@@ -24,9 +24,6 @@
 
 #include "config.h"
 
-#if !defined (WINDOWS)
-#include <pthread.h>
-#endif
 #include <assert.h>
 
 #include "porting.h"
@@ -193,11 +190,7 @@ lf_tran_system_init (LF_TRAN_SYSTEM * sys, int max_threads)
   assert (sys != NULL);
 
   sys->entry_count = LF_BITMAP_COUNT_ALIGN (max_threads);
-  error = lf_bitmap_init (&sys->lf_bitmap, LF_BITMAP_ONE_CHUNK, sys->entry_count, LF_BITMAP_FULL_USAGE_RATIO);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
+  sys->lf_bitmap.init (LF_BITMAP_ONE_CHUNK, sys->entry_count, LF_BITMAP_FULL_USAGE_RATIO);
 
   /* initialize entry array */
   sys->entries = (LF_TRAN_ENTRY *) malloc (sizeof (LF_TRAN_ENTRY) * sys->entry_count);
@@ -206,7 +199,7 @@ lf_tran_system_init (LF_TRAN_SYSTEM * sys, int max_threads)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LF_TRAN_ENTRY) * sys->entry_count);
 
       sys->entry_count = 0;
-      lf_bitmap_destroy (&sys->lf_bitmap);
+      sys->lf_bitmap.destroy ();
       return ER_FAILED;
     }
 
@@ -265,7 +258,7 @@ lf_tran_system_destroy (LF_TRAN_SYSTEM * sys)
       free_and_init (sys->entries);
     }
 
-  lf_bitmap_destroy (&sys->lf_bitmap);
+  sys->lf_bitmap.destroy ();
 
   return;
 }
@@ -285,7 +278,7 @@ lf_tran_request_entry (LF_TRAN_SYSTEM * sys)
   assert (sys->entry_count > 0);
   assert (sys->entries != NULL);
 
-  entry_idx = lf_bitmap_get_entry (&sys->lf_bitmap);
+  entry_idx = sys->lf_bitmap.get_entry ();
   if (entry_idx < 0)
     {
       assert (false);
@@ -314,11 +307,10 @@ lf_tran_request_entry (LF_TRAN_SYSTEM * sys)
  *
  * NOTE: Only entries requested from this system should be returned.
  */
-int
+void
 lf_tran_return_entry (LF_TRAN_ENTRY * entry)
 {
   LF_TRAN_SYSTEM *sys;
-  int error = NO_ERROR;
 
   assert (entry != NULL);
   assert (entry->entry_idx >= 0);
@@ -329,17 +321,10 @@ lf_tran_return_entry (LF_TRAN_ENTRY * entry)
   sys = entry->tran_system;
 
   /* clear bitfield so slot may be reused */
-  error = lf_bitmap_free_entry (&sys->lf_bitmap, entry->entry_idx);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
+  sys->lf_bitmap.free_entry (entry->entry_idx);
 
   /* decrement use counter */
   ATOMIC_INC_32 (&sys->used_entry_count, -1);
-
-  /* all ok */
-  return NO_ERROR;
 }
 
 /*
@@ -2481,244 +2466,6 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
 
   /* we have a valid entry */
   return it->curr;
-}
-
-/*
- * lf_bitmap_init () - initialize lock free bitmap
- *   returns: error code or NO_ERROR
- *   bitmap(out): bitmap to initialize
- *   style(in): bitmap style to be initialized
- *   entries_cnt(in): maximum number of entries
- *   usage_threshold(in): the usage threshold for this bitmap
- */
-int
-lf_bitmap_init (LF_BITMAP * bitmap, LF_BITMAP_STYLE style, int entries_cnt, float usage_threshold)
-{
-  size_t bitfield_size;
-  int chunk_count;
-  unsigned int mask, chunk;
-  int i;
-
-  assert (bitmap != NULL);
-  /* We only allow full usage for LF_BITMAP_ONE_CHUNK. */
-  assert (style == LF_BITMAP_LIST_OF_CHUNKS || usage_threshold == 1.0f);
-
-  bitmap->style = style;
-  bitmap->entry_count = entries_cnt;
-  bitmap->entry_count_in_use = 0;
-  bitmap->usage_threshold = usage_threshold;
-  if (usage_threshold < 0.0f || usage_threshold > 1.0f)
-    {
-      bitmap->usage_threshold = 1.0f;
-    }
-  bitmap->start_idx = 0;
-
-  /* initialize bitfield */
-  chunk_count = CEIL_PTVDIV (entries_cnt, LF_BITFIELD_WORD_SIZE);
-  bitfield_size = (chunk_count * sizeof (unsigned int));
-  bitmap->bitfield = (unsigned int *) malloc (bitfield_size);
-  if (bitmap->bitfield == NULL)
-    {
-      bitmap->entry_count = 0;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, bitfield_size);
-      return ER_FAILED;
-    }
-
-  memset (bitmap->bitfield, 0, bitfield_size);
-
-  /* pad out the rest bits with 1, It will simplify the code in lf_bitmap_get_entry() */
-  if (entries_cnt % LF_BITFIELD_WORD_SIZE != 0)
-    {
-      chunk = 0;
-      mask = 1;
-      for (i = entries_cnt % LF_BITFIELD_WORD_SIZE, mask <<= i; i < LF_BITFIELD_WORD_SIZE; i++, mask <<= 1)
-	{
-	  chunk |= mask;
-	}
-      bitmap->bitfield[chunk_count - 1] = chunk;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * lf_bitmap_destroy () - destroy a lock free bitmap
- *   sys(in): tran system
- *
- */
-void
-lf_bitmap_destroy (LF_BITMAP * bitmap)
-{
-  assert (bitmap != NULL);
-
-  if (bitmap->bitfield != NULL)
-    {
-      free_and_init (bitmap->bitfield);
-    }
-  bitmap->entry_count = 0;
-  bitmap->entry_count_in_use = 0;
-  bitmap->style = LF_BITMAP_ONE_CHUNK;
-  bitmap->usage_threshold = 1.0f;
-  bitmap->start_idx = 0;
-}
-
-
-/*
- * lf_bitmap_get_entry () - request an available bitmap slot
- *   returns: slot index or -1 if not found
- *   bitmap(in/out): bitmap object
- */
-int
-lf_bitmap_get_entry (LF_BITMAP * bitmap)
-{
-  int chunk_count;
-  unsigned int mask, chunk, start_idx;
-  int i, chunk_idx, slot_idx;
-
-  assert (bitmap != NULL);
-  assert (bitmap->entry_count > 0);
-  assert (bitmap->bitfield != NULL);
-
-  chunk_count = CEIL_PTVDIV (bitmap->entry_count, LF_BITFIELD_WORD_SIZE);
-
-restart:			/* wait-free process */
-  chunk_idx = -1;
-  slot_idx = -1;
-
-  /* when reaches the predefined threshold */
-  if (LF_BITMAP_IS_FULL (bitmap))
-    {
-      return -1;
-    }
-
-#if defined (SERVER_MODE)
-  /* round-robin to get start chunk index */
-  start_idx = ATOMIC_INC_32 (&bitmap->start_idx, 1);
-  start_idx = (start_idx - 1) % ((unsigned int) chunk_count);
-#else
-  /* iterate from the last allocated chunk */
-  start_idx = bitmap->start_idx;
-#endif
-
-  /* find a chunk with an empty slot */
-  i = start_idx;
-  do
-    {
-      chunk = VOLATILE_ACCESS (bitmap->bitfield[i], unsigned int);
-      if (~chunk)
-	{
-	  chunk_idx = i;
-	  break;
-	}
-
-      i++;
-      if (i >= chunk_count)
-	{
-	  i = 0;
-	}
-    }
-  while (i != (int) start_idx);
-
-  if (chunk_idx == -1)
-    {
-      /* full? */
-      if (bitmap->style == LF_BITMAP_ONE_CHUNK)
-	{
-	  assert (false);
-	}
-      return -1;
-    }
-
-  /* find first empty slot in chunk */
-  for (i = 0, mask = 1; i < LF_BITFIELD_WORD_SIZE; i++, mask <<= 1)
-    {
-      if ((~chunk) & mask)
-	{
-	  slot_idx = i;
-	  break;
-	}
-    }
-
-  if (slot_idx == -1)
-    {
-      /* chunk was filled in the meantime */
-      goto restart;
-    }
-
-  assert ((chunk_idx * LF_BITFIELD_WORD_SIZE + slot_idx) < bitmap->entry_count);
-  do
-    {
-      chunk = VOLATILE_ACCESS (bitmap->bitfield[chunk_idx], unsigned int);
-      if (chunk & mask)
-	{
-	  /* slot was marked by someone else */
-	  goto restart;
-	}
-    }
-  while (!ATOMIC_CAS_32 (&bitmap->bitfield[chunk_idx], chunk, chunk | mask));
-
-  if (bitmap->style == LF_BITMAP_LIST_OF_CHUNKS)
-    {
-      ATOMIC_INC_32 (&bitmap->entry_count_in_use, 1);
-    }
-
-#if !defined (SERVER_MODE)
-  bitmap->start_idx = chunk_idx;
-#endif
-
-  return chunk_idx * LF_BITFIELD_WORD_SIZE + slot_idx;
-}
-
-
-/*
- * lf_bitmap_free_entry () - return a previously requested entry
- *   returns: error code or NO_ERROR
- *   bitmap(in/out): bitmap object
- *   entry_idx(in): entry index
- *
- * NOTE: Only entries requested from this system should be returned.
- */
-int
-lf_bitmap_free_entry (LF_BITMAP * bitmap, int entry_idx)
-{
-  unsigned int mask, inverse_mask, curr;
-  int pos, bit;
-
-  assert (bitmap != NULL);
-  assert (entry_idx >= 0);
-  assert (entry_idx < bitmap->entry_count);
-
-  /* clear bitfield so slot may be reused */
-  pos = entry_idx / LF_BITFIELD_WORD_SIZE;
-  bit = entry_idx % LF_BITFIELD_WORD_SIZE;
-  inverse_mask = (unsigned int) (1 << bit);
-  mask = ~inverse_mask;
-
-  do
-    {
-      /* clear slot */
-      curr = VOLATILE_ACCESS (bitmap->bitfield[pos], unsigned int);
-
-      if (!(curr & inverse_mask))
-	{
-	  /* free unused memory or double free */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LF_BITMAP_INVALID_FREE, 0);
-	  assert (false);
-	  return ER_LF_BITMAP_INVALID_FREE;
-	}
-    }
-  while (!ATOMIC_CAS_32 (&bitmap->bitfield[pos], curr, curr & mask));
-
-  if (bitmap->style == LF_BITMAP_LIST_OF_CHUNKS)
-    {
-      ATOMIC_INC_32 (&bitmap->entry_count_in_use, -1);
-    }
-
-#if !defined (SERVER_MODE)
-  bitmap->start_idx = pos;	/* hint for a free slot */
-#endif
-
-  return NO_ERROR;
 }
 
 #if defined (UNITTEST_LF)

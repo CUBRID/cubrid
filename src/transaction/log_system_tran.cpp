@@ -35,7 +35,7 @@ std::forward_list<log_tdes *> systb_Free_tdes_list;
 TRANID systb_Next_tranid = LOG_SYSTEM_WORKER_FIRST_TRANID;
 
 // recovery - simulate the system workers from runtime
-std::map<TRANID, log_system_tdes *> systb_Recovery_system_tdes;
+std::map<TRANID, log_tdes *> systb_System_tdes;
 
 static log_tdes *
 systdes_create_tdes ()
@@ -45,13 +45,30 @@ systdes_create_tdes ()
   return tdes;
 }
 
-void
-systdes_destroy_tdes (log_tdes *&tdes)
+static void
+systdes_remove_tdes_from_map (TRANID trid)
 {
+  auto it = systb_System_tdes.find (trid);
+  if (it != systb_System_tdes.end ())
+    {
+      (void) systb_System_tdes.erase (it);
+    }
+  else
+    {
+      assert (false);
+    }
+}
+
+static void
+systdes_retire_tdes (log_tdes *tdes)
+{
+  std::unique_lock<std::mutex> ulock (systb_Mutex);
   if (tdes != NULL)
     {
-      logtb_finalize_tdes (NULL, tdes);
-      delete tdes;
+      logtb_clear_tdes (NULL, tdes);
+      systb_Free_tdes_list.push_front (tdes);
+
+      systdes_remove_tdes_from_map (tdes->trid);
       tdes = NULL;
     }
 }
@@ -59,6 +76,7 @@ systdes_destroy_tdes (log_tdes *&tdes)
 log_tdes *
 systdes_claim_tdes ()
 {
+  assert (LOG_ISRESTARTED ()); // Recovery should not reuse tdeses
   std::unique_lock<std::mutex> ulock (systb_Mutex);
   log_tdes *tdes = NULL;
 
@@ -73,23 +91,13 @@ systdes_claim_tdes ()
     {
       tdes = systb_Free_tdes_list.front ();
       systb_Free_tdes_list.pop_front ();
-      logtb_clear_tdes (NULL, tdes);
     }
-  assert (tdes->trid < 0 && tdes->trid > systb_Next_tranid);
+  assert (tdes->trid < NULL_TRANID && tdes->trid > systb_Next_tranid);
+
   tdes->state = TRAN_ACTIVE;
+  systb_System_tdes[tdes->trid] = tdes;
 
   return tdes;
-}
-
-void
-systdes_retire_tdes (log_tdes *&tdes)
-{
-  std::unique_lock<std::mutex> ulock (systb_Mutex);
-  if (tdes != NULL)
-    {
-      systb_Free_tdes_list.push_front (tdes);
-      tdes = NULL;
-    }
 }
 
 log_system_tdes::log_system_tdes ()
@@ -113,8 +121,16 @@ log_system_tdes::~log_system_tdes ()
     }
   else
     {
-      systdes_destroy_tdes (m_tdes);
+      logtb_finalize_tdes (NULL, m_tdes);
+      delete m_tdes;
+      m_tdes = NULL;
     }
+}
+
+log_system_tdes::log_system_tdes (log_tdes *tdes)
+  : m_tdes (tdes)
+{
+
 }
 
 log_tdes *
@@ -156,15 +172,15 @@ log_system_tdes::on_sysop_end ()
 void
 log_system_tdes::rv_simulate_system_tdes (TRANID trid)
 {
-  auto it = systb_Recovery_system_tdes.find (trid);
-  if (it == systb_Recovery_system_tdes.end ())
+  auto it = systb_System_tdes.find (trid);
+  if (it == systb_System_tdes.end ())
     {
       assert (false);
     }
   else
     {
       cubthread::entry &thread_r = cubthread::get_entry ();
-      thread_r.set_system_tdes (*it->second);
+      thread_r.set_system_tdes (new log_system_tdes (it->second));
     }
 }
 
@@ -185,21 +201,26 @@ void
 log_system_tdes::destroy_system_transactions ()
 {
   log_tdes *tdes;
+  std::lock_guard<std::mutex> lg (systb_Mutex);
+
   while (!systb_Free_tdes_list.empty ())
     {
-      tdes = systb_Free_tdes_list.front();
+      tdes = systb_Free_tdes_list.front ();
       systb_Free_tdes_list.pop_front ();
-      systdes_destroy_tdes (tdes);
+
+      logtb_finalize_tdes (NULL, tdes);
+      delete tdes;
     }
+  assert (systb_System_tdes.empty ());
 }
 
 log_tdes *
 log_system_tdes::rv_get_tdes (TRANID trid)
 {
-  auto it = systb_Recovery_system_tdes.find (trid);
-  if (it != systb_Recovery_system_tdes.end ())
+  auto it = systb_System_tdes.find (trid);
+  if (it != systb_System_tdes.end ())
     {
-      return it->second->get_tdes ();
+      return it->second;
     }
   else
     {
@@ -213,10 +234,11 @@ log_system_tdes::rv_get_or_alloc_tdes (TRANID trid)
   log_tdes *tdes = rv_get_tdes (trid);
   if (tdes == NULL)
     {
-      log_system_tdes *sys_tdes = new log_system_tdes ();
-      sys_tdes->m_tdes->trid = trid;
-      systb_Recovery_system_tdes.insert (std::make_pair (trid, sys_tdes));
-      return sys_tdes->get_tdes ();
+      log_tdes *tdes = systdes_create_tdes ();
+      tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
+      tdes->trid = trid;
+      systb_System_tdes[trid] = tdes;
+      return tdes;
     }
   else
     {
@@ -226,11 +248,12 @@ log_system_tdes::rv_get_or_alloc_tdes (TRANID trid)
 }
 
 void
-log_system_tdes::rv_map_all_tdes (const rv_map_func &func)
+log_system_tdes::map_all_tdes (const map_func &func)
 {
-  for (auto it : systb_Recovery_system_tdes)
+  std::lock_guard<std::mutex> lg (systb_Mutex);
+  for (auto &el : systb_System_tdes)
     {
-      log_tdes *tdes = it.second->get_tdes ();
+      log_tdes *tdes = el.second;
       assert (tdes != NULL);
       func (*tdes);
     }
@@ -239,11 +262,11 @@ log_system_tdes::rv_map_all_tdes (const rv_map_func &func)
 void
 log_system_tdes::rv_delete_all_tdes_if (const rv_delete_if_func &func)
 {
-  for (auto it = systb_Recovery_system_tdes.begin (); it != systb_Recovery_system_tdes.end ();)
+  for (auto it = systb_System_tdes.begin (); it != systb_System_tdes.end ();)
     {
-      if (func (* (it->second->get_tdes ())))
+      if (func (* (it->second)))
 	{
-	  it = systb_Recovery_system_tdes.erase (it);
+	  it = systb_System_tdes.erase (it);
 	}
       else
 	{
@@ -255,11 +278,10 @@ log_system_tdes::rv_delete_all_tdes_if (const rv_delete_if_func &func)
 void
 log_system_tdes::rv_delete_tdes (TRANID trid)
 {
-  auto it = systb_Recovery_system_tdes.find (trid);
-  if (it != systb_Recovery_system_tdes.end ())
+  auto it = systb_System_tdes.find (trid);
+  if (it != systb_System_tdes.end ())
     {
-      delete it->second;
-      (void) systb_Recovery_system_tdes.erase (it);
+      (void) systb_System_tdes.erase (it);
     }
   else
     {
@@ -270,10 +292,6 @@ log_system_tdes::rv_delete_tdes (TRANID trid)
 void
 log_system_tdes::rv_final ()
 {
-  assert (systb_Recovery_system_tdes.empty ());
-  for (auto it : systb_Recovery_system_tdes)
-    {
-      delete it.second;
-    }
-  systb_Recovery_system_tdes.clear ();
+  assert (systb_System_tdes.empty ());
+  log_system_tdes::destroy_system_transactions ();
 }
