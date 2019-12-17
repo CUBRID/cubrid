@@ -21,17 +21,22 @@
 
 #define API_ACTIVE_CHECKS
 
-#include "system_parameter.h"
-#include "db.h"
+#include "db.h"			// must be before dbtype_function.h for bool definition
 #include "dbtype_function.h"
+
+#include "db_set.h"
 #include "error_manager.h"
 #include "elo.h"
-#include "set_object.h"
-#include "language_support.h"
 #include "intl_support.h"
+#include "language_support.h"
 #include "memory_alloc.h"
+#include "oid.h"
+#include "set_object.h"
+#include "system_parameter.h"
 
-// hidden functions (suppress -Wmissing-prototypes)
-int db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, char *str, const int size);
+// hidden functions (suppress -Wmissing-prototypes and -Wimplicit-function-declaration)
+int db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, const char *str,
+		     const int size);
+DB_TYPE setobj_type (struct setobj *set);
 
 #include "dbtype_function.i"

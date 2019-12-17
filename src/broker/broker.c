@@ -1999,8 +1999,8 @@ insert_db_server_check_list (T_DB_SERVER * list_p, int check_list_cnt, const cha
       return UNUSABLE_DATABASE_MAX;
     }
 
-  strncpy (list_p[i].database_name, db_name, SRV_CON_DBNAME_SIZE - 1);
-  strncpy (list_p[i].database_host, db_host, CUB_MAXHOSTNAMELEN - 1);
+  strncpy_bufsize (list_p[i].database_name, db_name);
+  strncpy_bufsize (list_p[i].database_host, db_host);
   list_p[i].state = -1;
 
   return i + 1;
@@ -2866,7 +2866,7 @@ init_proxy_env ()
 
   memset (&shard_sock_addr, 0, sizeof (shard_sock_addr));
   shard_sock_addr.sun_family = AF_UNIX;
-  strncpy (shard_sock_addr.sun_path, shm_appl->port_name, sizeof (shard_sock_addr.sun_path) - 1);
+  strncpy_bufsize (shard_sock_addr.sun_path, shm_appl->port_name);
 
 #ifdef  _SOCKADDR_LEN		/* 4.3BSD Reno and later */
   len = sizeof (shard_sock_addr.sun_len) + sizeof (shard_sock_addr.sun_family) + strlen (shard_sock_addr.sun_path) + 1;
@@ -3191,9 +3191,12 @@ run_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index)
       putenv (proxy_id_env_str);
 
 #if !defined(WINDOWS)
-      int ret = snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d", shm_appl->broker_name, proxy_exe_name,
-			  proxy_index + 1);
-      (void) ret;		// suppress format-truncate warning
+      if (snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d", shm_appl->broker_name, proxy_exe_name,
+		    proxy_index + 1) < 0)
+	{
+	  assert (false);
+	  exit (0);
+	}
 #endif /* !WINDOWS */
 
 #if defined(WINDOWS)
@@ -3281,8 +3284,11 @@ get_as_sql_log_filename (char *log_filename, int len, char *broker_name, T_APPL_
     {
       ret = snprintf (log_filename, BROKER_PATH_MAX - 1, "%s%s_%d.sql.log", dirname, broker_name, as_index + 1);
     }
-
-  (void) ret;			// suppress format-truncate warning
+  if (ret < 0)
+    {
+      // bad name
+      log_filename[0] = '\0';
+    }
 }
 
 static void
@@ -3302,6 +3308,9 @@ get_as_slow_log_filename (char *log_filename, int len, char *broker_name, T_APPL
     {
       ret = snprintf (log_filename, BROKER_PATH_MAX - 1, "%s%s_%d.slow.log", dirname, broker_name, as_index + 1);
     }
-
-  (void) ret;			// suppress format-truncate warning
+  if (ret < 0)
+    {
+      // bad name
+      log_filename[0] = '\0';
+    }
 }

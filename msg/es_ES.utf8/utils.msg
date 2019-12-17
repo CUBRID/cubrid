@@ -270,7 +270,6 @@ opciones validas:\n\
       --no-check               no verificar una consistencia de la base de datos; estandar: verificar\n\
   -t, --thread-count=COUNT     numero de hilos; estandar: 0(auto)\n\
   -z, --compress               comprimir volumenes de respaldo; estandar: descomprimir\n\
-  -e, --except-active-log      no incluir un volumen de registro activo; estandar: incluir\n\
       --sleep-msecs=N          dormir N milisecondas para cada 1M leido estandar: 0\n
 71 Argumentos incompatibles, \"%1$s\", y \"%2$s\"\n
 
@@ -435,8 +434,8 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 58 %1$s %2$d instancias cometidas\n
 59 No se pueden apelar versiones no-optimizadas de loaddb.\n
 60 Error al analizar \"%1$s\", como tipo %2$s.\n
-61 Object Reference is not supported in CS mode.\n
-62 Updated statistics for class %1$s.\n
+61 La referencia de objeto no es compatible con el modo CS.\n
+62 Estadísticas actualizadas para la clase %1$s.\n
 112 %1$d instancias\r
 113 Ultima linea cometida: %1$d\n
 114 error-control-file
@@ -444,9 +443,9 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 116 Total %8d object(s) inserted, %d object(s) failed.\n
 117 Carga fallida.\n
 118 La longitud máxima del nombre de la clase es %1$d bytes.\n
-119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
-120 data file does not contain '%%class' specifier or '--table' option is missing\n
-121 Class %1$s is ignored.\n
+119 Total de %1$8d objeto(s) verificado, %2$d objeto(s) falló. \n
+120 del archivo de datos no contiene '%%class' especificador o '--table' falta la opción \n
+121 La clase %1$s es ignorada. \n
 122 \
 loaddb: Importar objetos y esquemas en la base de datos.\n\
 uso: %1$s loaddb [OPTION] database-name[@host]\n\
@@ -1042,18 +1041,18 @@ opciones validas:\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
 20 Introducir %1$s clave:
-22 Tran index          User name      Host name      Process id      Program name\n
-23 -------------------------------------------------------------------------------\n
-24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n
+22 Tran index            User name      Host name      Process id      Program name\n
+23 ---------------------------------------------------------------------------------\n
+24 %1$4d%2$-12s %3$14s %4$14s %5$15d %6$17s\n
 25 No hay transacciones\n
 26 tranlist puede ser ejecutada solamente por el DBA or por un miembro del grupo DBA.\n
 27 El numero de la columna de la clave de ordenacion (%1$d) no es valido.\n
-32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-33 %1$4d%2$-10s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
-34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
-42 Tran index          User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-43 %1$4d%2$-10s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
-44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
+32 Tran index           Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+33 %1$4d%2$-12s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
+34 ----------------------------------------------------------------------------------------------------------------------------------------------------\n
+42 Tran index            User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+43 %1$4d%2$-12s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
+44 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
 45 Tran index: %1$d
 46 SQL_ID: %1$s\n
 59 tranlist no puede ser ejecutado en modo standalone.\n

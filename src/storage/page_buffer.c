@@ -3167,6 +3167,12 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   bool direct_victim_waiters = false;
 #endif /* DEBUG && SERVER_MODE */
 
+  // stats
+  UINT64 num_skipped_already_flushed = 0;
+  UINT64 num_skipped_fixed_or_hot = 0;
+  UINT64 num_skipped_need_wal = 0;
+  UINT64 num_skipped_flush = 0;
+
   bool logging = prm_get_bool_value (PRM_ID_LOG_PGBUF_VICTIM_FLUSH);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_STARTED, 0);
@@ -3314,11 +3320,7 @@ repeat:
 	{
 	  /* must be already flushed or currently flushing */
 	  PGBUF_BCB_UNLOCK (bufptr);
-	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FLUSH);
-	  if (detailed_perf)
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_ALREADY_FLUSHED);
-	    }
+	  ++num_skipped_already_flushed;
 	  continue;
 	}
 
@@ -3326,15 +3328,11 @@ repeat:
 	{
 	  /* page was fixed or became hot after selected as victim. do not flush it. */
 	  PGBUF_BCB_UNLOCK (bufptr);
-	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FLUSH);
-	  if (detailed_perf)
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FIXED_OR_HOT);
-	    }
+	  ++num_skipped_fixed_or_hot;
 	  continue;
 	}
 
-      if (logpb_need_wal (&(bufptr->iopage_buffer->iopage.prv.lsa)))
+      if (logpb_need_wal (&bufptr->iopage_buffer->iopage.prv.lsa))
 	{
 	  /* we cannot flush a page unless log has been flushed up until page LSA. otherwise we might have recovery
 	   * issues. */
@@ -3344,11 +3342,7 @@ repeat:
 	      LSA_COPY (&lsa_need_wal, &(bufptr->iopage_buffer->iopage.prv.lsa));
 	    }
 	  PGBUF_BCB_UNLOCK (bufptr);
-	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FLUSH);
-	  if (detailed_perf)
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_NEED_WAL);
-	    }
+	  ++num_skipped_need_wal;
 #if defined (SERVER_MODE)
 	  log_wakeup_log_flush_daemon ();
 #endif /* SERVER_MODE */
@@ -3381,8 +3375,17 @@ repeat:
       total_flushed_count += flushed_pages;
     }
 
+  num_skipped_flush = num_skipped_need_wal + num_skipped_fixed_or_hot + num_skipped_already_flushed;
   if (perf_tracker->is_perf_tracking)
     {
+      perfmon_add_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FLUSH, num_skipped_flush);
+      if (detailed_perf)
+	{
+	  perfmon_add_stat (thread_p, PSTAT_PB_NUM_SKIPPED_NEED_WAL, num_skipped_need_wal);
+	  perfmon_add_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FIXED_OR_HOT, num_skipped_fixed_or_hot);
+	  perfmon_add_stat (thread_p, PSTAT_PB_NUM_SKIPPED_ALREADY_FLUSHED, num_skipped_already_flushed);
+	}
+
       UINT64 utime;
       tsc_getticks (&perf_tracker->end_tick);
       utime = tsc_elapsed_utime (perf_tracker->end_tick, perf_tracker->start_tick);
@@ -3416,52 +3419,19 @@ end:
     }
 
   pgbuf_Pool.is_flushing_victims = false;
-
-#if !defined (NDEBUG)
-  /* safe-guard: when the system really needs victims, we must make sure flush does something. otherwise, we probably
-   * messed something here.
-   * note: sometimes the post-flush thread may be behind (however, it should catch up quickly). when that happens,
-   *       flush thread may not be able to find victims. that's ok, the purpose of this safe-guard is to avoid dead
-   *       scenarios when threads are waiting for direct victims but system flushes nothing. if there are flushed
-   *       waiting for assignment, then we are not in this kind of scenario. */
-  if (total_flushed_count == 0 && direct_victim_waiters && empty_flushed_bcb_queue && !assigned_directly
-      && count_need_wal == 0)
-    {
-      /* so, we have not flushed anything, but threads are waiting to direct victims. and:
-       * - post-flush thread is not behind.
-       * - log-flush thread is not behind.
-       * so what can it be?
-       */
-
-      assert (check_count_lru > 0);
-
-      /* let's double check that not finding flush candidates is possible (enough victim candidates as it is). */
-      int lru_idx;
-      int count_check_this_lru;
-      PGBUF_LRU_LIST *lru_list = NULL;
-      for (lru_idx = 0; lru_idx < PGBUF_TOTAL_LRU_COUNT; lru_idx++)
-	{
-	  if (pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[lru_idx] <= 0)
-	    {
-	      continue;
-	    }
-	  count_check_this_lru =
-	    (int) (pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[lru_idx] * (float) check_count_lru
-		   / lru_sum_flush_priority);
-	  lru_list = PGBUF_GET_LRU_LIST (lru_idx);
-	  if (lru_list->count_vict_cand < count_check_this_lru)
-	    {
-	      assert (false);
-	    }
-	}
-    }
-#endif /* !NDEBUG */
 #endif /* SERVER_MODE */
 
   if (logging)
     {
-      _er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: flush %d pages from lru lists. Found LRU:%d/%d",
-		     total_flushed_count, victim_count, check_count_lru);
+      _er_log_debug (ARG_FILE_LINE,
+		     "pgbuf_flush_victim_candidates: flush %d pages from lru lists.\n"
+		     "\tvictim_count = %d\n"
+		     "\tcheck_count_lru = %d\n"
+		     "\tnum_skipped_need_wal = %d\n"
+		     "\tnum_skipped_fixed_or_hot = %d\n"
+		     "\tnum_skipped_already_flushed = %d\n",
+		     total_flushed_count, victim_count, check_count_lru, num_skipped_need_wal, num_skipped_fixed_or_hot,
+		     num_skipped_already_flushed);
     }
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_FINISHED, 1, total_flushed_count);
 
@@ -12475,8 +12445,7 @@ pgbuf_watcher_init_debug (PGBUF_WATCHER * watcher, const char *caller_file, cons
       char prev_init[256];
       strncpy (prev_init, watcher->init_at, sizeof (watcher->init_at) - 1);
       prev_init[sizeof (prev_init) - 1] = '\0';
-      int ret = snprintf (watcher->init_at, sizeof (watcher->init_at) - 1, "%s:%d %s", p, caller_line, prev_init);
-      (void) ret;		// suppress format-truncate warning
+      snprintf_dots_truncate (watcher->init_at, sizeof (watcher->init_at) - 1, "%s:%d %s", p, caller_line, prev_init);
     }
   else
     {

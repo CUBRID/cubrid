@@ -73,6 +73,7 @@
 #include "heap_file.h"
 #include "slotted_page.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "tz_support.h"
 #include "db_date.h"
 #include "fault_injection.h"
@@ -1266,7 +1267,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	  error_code = ER_LOG_COMPILATION_RELEASE;
 	  goto error;
 	}
-      strncpy (log_Gl.hdr.db_release, rel_release_string (), REL_MAX_RELEASE_LENGTH);
+      strncpy_bufsize (log_Gl.hdr.db_release, rel_release_string ());
     }
 
   /*
@@ -4537,6 +4538,23 @@ log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECT
   else
     {
       tdes->state = TRAN_UNACTIVE_ABORTED;
+
+#if defined(SERVER_MODE)
+      // [TODO] Here is an argument: committers are waiting for flush. Then, why not aborters?
+      // The current fix minimizes potential impacts but it may miss some other cases.
+      // I think it might be better to remove the condition and let aborters also wait for flush.
+      // Maybe in the next milestone.
+      if (BO_IS_SERVER_RESTARTED () && VOLATILE_ACCESS (log_Gl.run_nxchkpt_atpageid, INT64) == NULL_PAGEID)
+	{
+	  /* Flush the log in case that checkpoint is started. Otherwise, the current transaction
+	   * may finish, but its LOG_ABORT not flushed yet. The checkpoint can advance with smallest
+	   * LSA. Also, VACUUM can finalize cleaning. So, the archive may be removed. If the server crashes,
+	   * at recovery, the current transaction must be aborted. But, some of its log records are in
+	   * the archive that was previously removed => crash. Fixed, by forcing log flush before ending.
+	   */
+	  logpb_flush_pages (thread_p, lsa);
+	}
+#endif
     }
 
 #if !defined (NDEBUG)
@@ -7695,8 +7713,10 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   if (tdes->m_log_postpone_cache.do_postpone (*thread_p, tdes->posp_nxlsa))
     {
       // do postpone from cache first
+      perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_PPCACHE_HITS);
       return;
     }
+  perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_PPCACHE_MISS);
 
   log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
 }
@@ -7737,8 +7757,10 @@ log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_E
     {
       /* Do postpone was run from cached postpone entries. */
       tdes->state = save_state;
+      perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_TOPOP_PPCACHE_HITS);
       return;
     }
+  perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_TOPOP_PPCACHE_MISS);
 
   log_do_postpone (thread_p, tdes, LOG_TDES_LAST_SYSOP_POSP_LSA (tdes));
 
@@ -8905,7 +8927,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   db_make_int (out_values[idx], header->has_logging_been_skipped);
   idx++;
 
-  db_make_string_by_const_str (out_values[idx], "LOG_PSTATUS_OBSOLETE");
+  db_make_string (out_values[idx], "LOG_PSTATUS_OBSOLETE");
   idx++;
 
   logpb_backup_level_info_to_string (buf, sizeof (buf), header->bkinfo + FILEIO_BACKUP_FULL_LEVEL);
@@ -8933,11 +8955,11 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
     }
 
   str = css_ha_server_state_string ((HA_SERVER_STATE) header->ha_server_state);
-  db_make_string_by_const_str (out_values[idx], str);
+  db_make_string (out_values[idx], str);
   idx++;
 
   str = logwr_log_ha_filestat_to_string ((LOG_HA_FILESTAT) header->ha_file_status);
-  db_make_string_by_const_str (out_values[idx], str);
+  db_make_string (out_values[idx], str);
   idx++;
 
   lsa_to_string (buf, sizeof (buf), &header->eof_lsa);

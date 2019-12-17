@@ -29,6 +29,8 @@
 #include "porting.h"
 #include "storage_common.h"
 
+#include <stdio.h>
+
 #define BOOT_NORMAL_CLIENT_TYPE(client_type) \
         ((client_type) == DB_CLIENT_TYPE_DEFAULT \
          || (client_type) == DB_CLIENT_TYPE_CSQL \
@@ -148,4 +150,24 @@ extern char boot_Host_name[CUB_MAXHOSTNAMELEN];
 #define LOB_PATH_PREFIX_MAX     ES_URI_PREFIX_MAX
 #define LOB_PATH_DEFAULT_PREFIX ES_POSIX_PATH_PREFIX
 
+/* Compose the full name of a database */
+
+inline void
+COMPOSE_FULL_NAME (char *buf, size_t buf_size, const char *path, const char *name)
+{
+  size_t len = strlen (path);
+  int ret;
+  if (len > 0 && path[len - 1] != PATH_SEPARATOR)
+    {
+      ret = snprintf (buf, buf_size - 1, "%s%c%s", path, PATH_SEPARATOR, name);
+    }
+  else
+    {
+      ret = snprintf (buf, buf_size - 1, "%s%s", path, name);
+    }
+  if (ret < 0)
+    {
+      abort ();
+    }
+}
 #endif /* _BOOT_H_ */

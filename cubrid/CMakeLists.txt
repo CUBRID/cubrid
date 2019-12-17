@@ -35,8 +35,9 @@ set (COMPAT_HEADERS
   ${COMPAT_DIR}/db_json_allocator.hpp
   ${COMPAT_DIR}/db_json_path.hpp
   ${COMPAT_DIR}/db_json_types_internal.hpp
+  ${COMPAT_DIR}/db_set.h
+  ${COMPAT_DIR}/db_set_function.h
   ${COMPAT_DIR}/dbtype_function.i
-  ${COMPAT_DIR}/dbtype_function.h
   )
 
 set(THREAD_SOURCES
@@ -553,6 +554,7 @@ install(FILES
 install(FILES
   # ${COMPAT_DIR}/dbtran_def.h // temporary disabled
   ${COMPAT_DIR}/dbtype_def.h
+  ${COMPAT_DIR}/db_set_function.h
   ${COMPAT_DIR}/dbtype_function.h
   ${COMPAT_DIR}/db_date.h
   ${COMPAT_DIR}/db_elo.h

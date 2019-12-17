@@ -23,6 +23,7 @@
 
 #include "regu_var.hpp"
 
+#include "memory_alloc.h"
 #include "object_primitive.h"
 #include "xasl_predicate.hpp"
 

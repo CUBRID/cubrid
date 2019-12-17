@@ -42,6 +42,7 @@
 #include "statistics_sr.h"
 #include "partition_sr.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "thread_lockfree_hash_map.hpp"
 #include "thread_manager.hpp"
 
@@ -3412,6 +3413,7 @@ catalog_drop_all_representation_and_class (THREAD_ENTRY * thread_p, OID * class_
   error_code = catalog_get_dir_oid_from_cache (thread_p, class_id_p, &dir_oid);
   if (error_code != NO_ERROR)
     {
+      recdes_free_data_area (&record);
       return error_code;
     }
 
@@ -3420,6 +3422,7 @@ catalog_drop_all_representation_and_class (THREAD_ENTRY * thread_p, OID * class_
   error_code = catalog_start_access_with_dir_oid (thread_p, &catalog_access_info, X_LOCK);
   if (error_code != NO_ERROR)
     {
+      recdes_free_data_area (&record);
       return error_code;
     }
 
@@ -3523,6 +3526,7 @@ catalog_drop_old_representations (THREAD_ENTRY * thread_p, OID * class_id_p)
   error_code = catalog_get_dir_oid_from_cache (thread_p, class_id_p, &dir_oid);
   if (error_code != NO_ERROR)
     {
+      recdes_free_data_area (&record);
       return error_code;
     }
 
@@ -3531,6 +3535,7 @@ catalog_drop_old_representations (THREAD_ENTRY * thread_p, OID * class_id_p)
   error_code = catalog_start_access_with_dir_oid (thread_p, &catalog_access_info, X_LOCK);
   if (error_code != NO_ERROR)
     {
+      recdes_free_data_area (&record);
       return error_code;
     }
 
@@ -3714,6 +3719,7 @@ catalog_fixup_missing_disk_representation (THREAD_ENTRY * thread_p, OID * class_
   DISK_REPR *disk_repr_p;
   HEAP_SCANCACHE scan_cache;
   OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
+  int ret = NO_ERROR;
 
   heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
   if (heap_get (thread_p, class_oid_p, &record, &scan_cache, PEEK, NULL_CHN) == S_SUCCESS)
@@ -3721,8 +3727,8 @@ catalog_fixup_missing_disk_representation (THREAD_ENTRY * thread_p, OID * class_
       disk_repr_p = orc_diskrep_from_record (thread_p, &record);
       if (disk_repr_p == NULL)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
+	  ASSERT_ERROR_AND_SET (ret);
+	  goto end;
 	}
 
       or_class_rep_dir (&record, &rep_dir);
@@ -3730,16 +3736,16 @@ catalog_fixup_missing_disk_representation (THREAD_ENTRY * thread_p, OID * class_
 
       if (catalog_add_representation (thread_p, class_oid_p, repr_id, disk_repr_p, &rep_dir) < 0)
 	{
+	  ASSERT_ERROR_AND_SET (ret);
 	  orc_free_diskrep (disk_repr_p);
-
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
+	  goto end;
 	}
       orc_free_diskrep (disk_repr_p);
     }
 
+end:
   heap_scancache_end (thread_p, &scan_cache);
-  return NO_ERROR;
+  return ret;
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
@@ -4486,26 +4492,29 @@ catalog_update (THREAD_ENTRY * thread_p, RECDES * record_p, OID * class_oid_p)
   orc_free_diskrep (disk_repr_p);
 
   class_info_p = catalog_get_class_info (thread_p, class_oid_p, NULL);
-  if (class_info_p != NULL)
+  if (class_info_p == NULL)
     {
-      assert (OID_EQ (&rep_dir, &(class_info_p->ci_rep_dir)));
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
 
-      if (HFID_IS_NULL (&class_info_p->ci_hfid))
+  assert (OID_EQ (&rep_dir, &(class_info_p->ci_rep_dir)));
+
+  if (HFID_IS_NULL (&class_info_p->ci_hfid))
+    {
+      or_class_hfid (record_p, &(class_info_p->ci_hfid));
+      if (!HFID_IS_NULL (&class_info_p->ci_hfid))
 	{
-	  or_class_hfid (record_p, &(class_info_p->ci_hfid));
-	  if (!HFID_IS_NULL (&class_info_p->ci_hfid))
+	  if (catalog_update_class_info (thread_p, class_oid_p, class_info_p, NULL, false) == NULL)
 	    {
-	      if (catalog_update_class_info (thread_p, class_oid_p, class_info_p, NULL, false) == NULL)
-		{
-		  catalog_free_class_info (class_info_p);
+	      catalog_free_class_info (class_info_p);
 
-		  assert (er_errid () != NO_ERROR);
-		  return er_errid ();
-		}
+	      assert (er_errid () != NO_ERROR);
+	      return er_errid ();
 	    }
 	}
-      catalog_free_class_info (class_info_p);
     }
+  catalog_free_class_info (class_info_p);
 
   return NO_ERROR;
 }

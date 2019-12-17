@@ -824,7 +824,7 @@ chksum_get_prev_checksum_results (void)
     {
       int pos;
       int out_val_idx;
-      char *db_string_p = NULL;
+      const char *db_string_p = NULL;
 
       pos = db_query_first_tuple (query_result);
       while (pos == DB_CURSOR_SUCCESS)
@@ -1783,16 +1783,16 @@ chksum_need_skip_table (const char *table_name, CHKSUM_ARG * chksum_arg)
 static int
 chksum_start (CHKSUM_ARG * chksum_arg)
 {
-  PARSER_CONTEXT *parser;
-  DB_OBJLIST *tbl_list, *tbl;
-  DB_OBJECT *classobj;
+  PARSER_CONTEXT *parser = NULL;
+  DB_OBJLIST *tbl_list = NULL, *tbl = NULL;
+  DB_OBJECT *classobj = NULL;
   DB_CONSTRAINT *constraints = NULL, *pk_cons = NULL;
-  DB_ATTRIBUTE *attributes;
-  PARSER_VARCHAR *lower_bound, *next_lower_bound;
-  OID *class_oidp;
+  DB_ATTRIBUTE *attributes = NULL;
+  PARSER_VARCHAR *lower_bound = NULL, *next_lower_bound = NULL;
+  OID *class_oidp = NULL;
 
   char err_msg[LINE_MAX];
-  const char *table_name;
+  const char *table_name = NULL;
   int error = NO_ERROR;
   int chunk_id = 0;
   int repid = -1;
@@ -2085,7 +2085,7 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
   char *checksum_table = NULL;
   bool report_only = false;
   HA_SERVER_STATE ha_state = HA_SERVER_STATE_NA;
-  int error = NO_ERROR, ret;
+  int error = NO_ERROR;
 
   memset (&chksum_arg, 0, sizeof (CHKSUM_ARG));
 
@@ -2115,9 +2115,12 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
       snprintf (chksum_result_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s", CHKSUM_DEFAULT_TABLE_NAME);
     }
 
-  ret = snprintf (chksum_schema_Table_name, SM_MAX_IDENTIFIER_LENGTH - 1, "%s%s", chksum_result_Table_name,
-		  CHKSUM_SCHEMA_TABLE_SUFFIX);
-  (void) ret;			// suppress format-truncate warning
+  if (snprintf (chksum_schema_Table_name, SM_MAX_IDENTIFIER_LENGTH - 1, "%s%s", chksum_result_Table_name,
+		CHKSUM_SCHEMA_TABLE_SUFFIX) < 0)
+    {
+      assert (false);
+      goto error_exit;
+    }
 
   report_only = utility_get_option_bool_value (arg_map, CHECKSUM_REPORT_ONLY_S);
   if (report_only == true)

@@ -182,7 +182,7 @@ struct lang_collation
 			unsigned char *next_seq, int *len_next);
   /* find common key where str1 <= key < str2 (BTREE string prefix) */
   int (*split_key) (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1, const int size1,
-		    const unsigned char *str2, const int size2, unsigned char **key, int *byte_size);
+		    const unsigned char *str2, const int size2, const unsigned char **key, int *byte_size);
   /* compute hash value pseudokey (mht_2str_pseudo_key) */
   unsigned int (*mht2str) (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
   /* collation data init function */

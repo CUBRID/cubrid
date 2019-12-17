@@ -1796,12 +1796,9 @@ hb_set_net_header (HBP_HEADER * header, unsigned char type, bool is_req, unsigne
   header->r = (is_req) ? 1 : 0;
   header->len = htons (len);
   header->seq = htonl (seq);
-  strncpy (header->group_id, hb_Cluster->group_id, sizeof (header->group_id) - 1);
-  header->group_id[sizeof (header->group_id) - 1] = '\0';
-  strncpy (header->dest_host_name, dest_host_name, sizeof (header->dest_host_name) - 1);
-  header->dest_host_name[sizeof (header->dest_host_name) - 1] = '\0';
-  strncpy (header->orig_host_name, hb_Cluster->myself->host_name, sizeof (header->orig_host_name) - 1);
-  header->orig_host_name[sizeof (header->orig_host_name) - 1] = '\0';
+  strncpy_bufsize (header->group_id, hb_Cluster->group_id);
+  strncpy_bufsize (header->dest_host_name, dest_host_name);
+  strncpy_bufsize (header->orig_host_name, hb_Cluster->myself->host_name);
 
   return NO_ERROR;
 }
@@ -2158,7 +2155,7 @@ hb_cluster_load_ping_host_list (char *ha_ping_host_list)
       return 0;
     }
 
-  strncpy (host_list, ha_ping_host_list, LINE_MAX);
+  strncpy_bufsize (host_list, ha_ping_host_list);
 
   for (host_list_p = host_list;; host_list_p = NULL)
     {
@@ -2334,8 +2331,8 @@ hb_add_ui_node (char *host_name, char *group_id, struct sockaddr_in saddr, int v
   node = (HB_UI_NODE_ENTRY *) malloc (sizeof (HB_UI_NODE_ENTRY));
   if (node)
     {
-      strncpy (node->host_name, host_name, sizeof (node->host_name) - 1);
-      strncpy (node->group_id, group_id, sizeof (node->group_id) - 1);
+      strncpy_bufsize (node->host_name, host_name);
+      strncpy_bufsize (node->group_id, group_id);
       memcpy ((void *) &node->saddr, (void *) &saddr, sizeof (struct sockaddr_in));
       gettimeofday (&node->last_recv_time, NULL);
       node->v_result = v_result;
@@ -2434,7 +2431,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 
   hb_Cluster->myself = NULL;
 
-  strncpy (tmp_string, ha_node_list, LINE_MAX);
+  strncpy_bufsize (tmp_string, ha_node_list);
   for (priority = 0, p = strtok_r (tmp_string, "@", &savep); p; priority++, p = strtok_r (NULL, " ,:", &savep))
     {
 
@@ -2442,9 +2439,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 	{
 	  /* TODO : trim group id */
 	  /* set heartbeat group id */
-	  strncpy (hb_Cluster->group_id, p, sizeof (hb_Cluster->group_id) - 1);
-	  hb_Cluster->group_id[sizeof (hb_Cluster->group_id) - 1] = '\0';
-
+	  strncpy_bufsize (hb_Cluster->group_id, p);
 	}
       else
 	{
@@ -2473,7 +2468,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 
   if (ha_replica_list)
     {
-      strncpy (tmp_string, ha_replica_list, LINE_MAX);
+      strncpy_bufsize (tmp_string, ha_replica_list);
     }
   else
     {

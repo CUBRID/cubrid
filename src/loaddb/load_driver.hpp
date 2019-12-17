@@ -89,8 +89,8 @@ namespace cubload
       semantic_helper &get_semantic_helper ();
       error_handler &get_error_handler ();
       scanner &get_scanner ();
-      int get_lines_inserted ();
-      void increment_lines_inserted (int no_lines);
+      void update_start_line ();
+      int get_start_line ();
 
     private:
       scanner *m_scanner;
@@ -98,7 +98,7 @@ namespace cubload
       object_loader *m_object_loader;
       error_handler *m_error_handler;
       semantic_helper m_semantic_helper;
-      int m_lines_inserted;
+      int m_start_line_no;
 
       bool m_is_initialized;
   }; // class driver

@@ -45,12 +45,22 @@ namespace cubload
 #endif
 
   int
-  error_handler::get_lineno ()
+  error_handler::get_driver_lineno ()
   {
     cubthread::entry &thread_ref = cubthread::get_entry ();
     assert (thread_ref.m_loaddb_driver != NULL);
 
-    return thread_ref.m_loaddb_driver->get_scanner ().lineno () + 1;
+    // We actually don't need the increment since we already incremented during update_start_line
+    return thread_ref.m_loaddb_driver->get_start_line ();
+  }
+
+  int
+  error_handler::get_scanner_lineno ()
+  {
+    cubthread::entry &thread_ref = cubthread::get_entry ();
+    assert (thread_ref.m_loaddb_driver != NULL);
+
+    return thread_ref.m_loaddb_driver->get_scanner ().lineno ();
   }
 
   char *
@@ -70,29 +80,43 @@ namespace cubload
   }
 
   void
-  error_handler::on_syntax_failure ()
+  error_handler::on_syntax_failure (bool use_scanner_line)
   {
 #if defined (SERVER_MODE)
     if (m_syntax_check)
       {
 	// just log er_msg ()
 	std::string er_msg;
-	log_error_message (er_msg, false);
+	log_error_message (er_msg, false, use_scanner_line);
 	er_clear ();
 	return;
       }
 #endif
-    on_failure ();
+    if (!is_last_error_filtered ())
+      {
+	std::string empty;
+	log_error_message (empty, true, use_scanner_line);
+      }
   }
 
   void
-  error_handler::log_error_message (std::string &err_msg, bool fail)
+  error_handler::log_error_message (std::string &err_msg, bool fail, bool is_syntax_error)
   {
 #if defined (SERVER_MODE)
     if (er_errid () != NO_ERROR && (er_has_error () || er_get_severity () == ER_WARNING_SEVERITY))
       {
 	// if there is an error set via er_set then report it as well
-	err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ()));
+	int lineno;
+	if (!is_syntax_error)
+	  {
+	    lineno = get_driver_lineno ();
+	  }
+	else
+	  {
+	    lineno = get_scanner_lineno ();
+	  }
+
+	err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), lineno));
 	err_msg.append (std::string (er_msg ()));
 	err_msg.append ("\n");
       }

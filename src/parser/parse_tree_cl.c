@@ -43,6 +43,7 @@
 #include "mem_block.hpp"
 #include "memory_alloc.h"
 #include "language_support.h"
+#include "object_primitive.h"
 #include "object_print.h"
 #include "optimizer.h"
 #include "system_parameter.h"
@@ -810,6 +811,14 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, i
 	}
     }
 
+  if (new_node->node_type == PT_JSON_TABLE_COLUMN)
+    {
+      PT_JSON_TABLE_COLUMN_INFO *old_col = &old_node->info.json_table_column_info;
+      PT_JSON_TABLE_COLUMN_INFO *new_col = &new_node->info.json_table_column_info;
+      new_col->on_empty.m_default_value = db_value_copy (old_col->on_empty.m_default_value);
+      new_col->on_error.m_default_value = db_value_copy (old_col->on_error.m_default_value);
+    }
+
   new_node->parser_id = parser->id;
 
   /* handle CTE copy so that the CTE pointers will be updated to point to new_node */
@@ -1492,6 +1501,14 @@ void
 parser_free_subtrees (PARSER_CONTEXT * parser, PT_NODE * tree)
 {
   (void) parser_walk_leaves (parser, tree, free_node_in_tree_pre, NULL, free_node_in_tree_post, NULL);
+}
+
+// clear node resources and all subtrees
+void
+parser_clear_node (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  parser_free_subtrees (parser, node);
+  parser_free_node_resources (node);
 }
 
 /*
@@ -12715,7 +12732,9 @@ pt_print_host_var (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (parser->print_db_value)
     {
-      if (p->info.host_var.var_type == PT_HOST_IN)
+      /* Skip cast to enum type. */
+      if (p->info.host_var.var_type == PT_HOST_IN
+	  && (p->expected_domain == NULL || TP_DOMAIN_TYPE (p->expected_domain) != DB_TYPE_ENUMERATION))
 	{
 	  PT_NODE *save_error_msgs;
 
@@ -14165,12 +14184,12 @@ pt_init_select (PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *q = 0, *r1;
-  PT_NODE *temp, *where_list;
+  PARSER_VARCHAR *q = NULL, *r1 = NULL;
+  PT_NODE *temp = NULL, *where_list = NULL;
   bool set_paren = false;	/* init */
   bool toggle_print_alias = false;
   bool is_first_list;
-  unsigned int save_custom;
+  unsigned int save_custom = 0;
   PT_NODE *from = NULL, *derived_table = NULL;
 
   from = p->info.query.q.select.from;
@@ -19103,15 +19122,15 @@ pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VA
       pstr = pt_append_nulstring (parser, pstr, p->info.json_table_column_info.path);
       pstr = pt_append_nulstring (parser, pstr, "'");
 
-      // print on_error
-      pstr = pt_append_nulstring (parser, pstr, " ");
-      pstr = pt_print_json_table_column_error_or_empty_behavior (parser, pstr, p->info.json_table_column_info.on_error);
-      pstr = pt_append_nulstring (parser, pstr, " ON ERROR");
-
       // print on_empty
       pstr = pt_append_nulstring (parser, pstr, " ");
       pstr = pt_print_json_table_column_error_or_empty_behavior (parser, pstr, p->info.json_table_column_info.on_empty);
       pstr = pt_append_nulstring (parser, pstr, " ON EMPTY");
+
+      // print on_error
+      pstr = pt_append_nulstring (parser, pstr, " ");
+      pstr = pt_print_json_table_column_error_or_empty_behavior (parser, pstr, p->info.json_table_column_info.on_error);
+      pstr = pt_append_nulstring (parser, pstr, " ON ERROR");
       break;
 
     case json_table_column_function::JSON_TABLE_EXISTS:

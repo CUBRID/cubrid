@@ -48,6 +48,7 @@
 #include "transform.h"		/* for CT_SERIAL_NAME */
 #include "serial.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "object_representation_sr.h"
 #include "xserver_interface.h"
 #include "chartype.h"
@@ -501,10 +502,16 @@ static HEAP_STATS_BESTSPACE_CACHE heap_Bestspace_cache_area =
 static HEAP_STATS_BESTSPACE_CACHE *heap_Bestspace = NULL;
 
 static HEAP_HFID_TABLE heap_Hfid_table_area = { LF_HASH_TABLE_INITIALIZER, LF_ENTRY_DESCRIPTOR_INITIALIZER,
-  LF_FREELIST_INITIALIZER
+  LF_FREELIST_INITIALIZER, false
 };
 
 static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
+
+#define heap_hfid_table_log(thp, oidp, msg, ...) \
+  if (heap_Hfid_table->logging) \
+    er_print_callstack (ARG_FILE_LINE, "HEAP_INFO_CACHE[thr(%d),tran(%d,%d),OID(%d|%d|%d)]: " msg "\n", \
+                        (thp)->index, LOG_FIND_CURRENT_TDES (thp)->tran_index, LOG_FIND_CURRENT_TDES (thp)->trid, \
+                        OID_AS_ARGS (oidp), __VA_ARGS__)
 
 /* Recovery. */
 #define HEAP_RV_FLAG_VACUUM_STATUS_CHANGE 0x8000
@@ -664,7 +671,7 @@ static int heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 static int heap_scancache_end_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, bool scan_state);
 static SCAN_CODE heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, RECDES * recdes,
 				       bool ispeeking, int chn, MVCC_SNAPSHOT * mvcc_snapshot);
-static int heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid);
+static int heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid, int &avg_reclen);
 static int heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs, INT64 * num_recs_relocated,
 			      INT64 * num_recs_inovf, INT64 * num_pages, int *avg_freespace, int *avg_freespace_nolast,
 			      int *avg_reclength, int *avg_overhead);
@@ -839,6 +846,7 @@ static void heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, 
 static void *heap_hfid_table_entry_alloc (void);
 static int heap_hfid_table_entry_free (void *unique_stat);
 static int heap_hfid_table_entry_init (void *unique_stat);
+static int heap_hfid_table_entry_uninit (void *entry);
 static int heap_hfid_table_entry_key_copy (void *src, void *dest);
 static unsigned int heap_hfid_table_entry_key_hash (void *key, int hash_table_size);
 static int heap_hfid_table_entry_key_compare (void *k1, void *k2);
@@ -2675,7 +2683,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
   OR_BUF buf;
   bool copy;
   RECDES recdes = RECDES_INITIALIZER;	/* Used to obtain attrnames */
-  int ret = NO_ERROR;
+  volatile int ret = NO_ERROR;
   char *index_name = NULL;
   char *string = NULL;
   int alloced_string = 0;
@@ -5204,7 +5212,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
 	  if (error_code != NO_ERROR)
 	    {
 	      /* could not cache */
-	      assert_release (false);
+	      ASSERT_ERROR ();
 	      goto error;
 	    }
 	  /* reuse successful */
@@ -5265,7 +5273,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
   if (error_code != NO_ERROR)
     {
       /* Failed to cache HFID. */
-      assert_release (false);
+      ASSERT_ERROR ();
       goto error;
     }
 
@@ -5897,7 +5905,12 @@ heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid
 
   if (expected_length <= 0)
     {
-      recdes.length = heap_estimate_avg_length (thread_p, hfid);
+      rc = heap_estimate_avg_length (thread_p, hfid, recdes.length);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+
       if (recdes.length > (-expected_length))
 	{
 	  expected_length = recdes.length;
@@ -9031,8 +9044,9 @@ heap_estimate_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid)
 
 /*
  * heap_estimate_avg_length () - Estimate the average length of records
- *   return: avg length
+ *   return: error code
  *   hfid(in): Object heap file identifier
+ *   avg_reclen(out) : average length
  *
  * Note: Estimate the avergae length of the objects stored on the heap.
  * This function is mainly used when we are creating the OID of
@@ -9040,18 +9054,17 @@ heap_estimate_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid)
  * loaddb during forward references to other objects.
  */
 static int
-heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid)
+heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid, int &avg_reclen)
 {
   int ignore_npages;
   int ignore_nobjs;
-  int avg_reclen;
 
   if (heap_estimate (thread_p, hfid, &ignore_npages, &ignore_nobjs, &avg_reclen) == -1)
     {
       return ER_FAILED;
     }
 
-  return avg_reclen;
+  return NO_ERROR;
 }
 
 /*
@@ -10712,8 +10725,8 @@ heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * class_oid, O
   scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
   if (scan_cache.mvcc_snapshot == NULL)
     {
-      error = er_errid ();
-      return (error == NO_ERROR ? ER_FAILED : error);
+      error = ER_FAILED;
+      goto cleanup;
     }
 
   if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) != S_SUCCESS)
@@ -11493,7 +11506,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   size_t expected_size;
   int tmp;
   volatile int offset_size;
-  int mvcc_wasted_space = 0, header_size;
+  volatile int mvcc_wasted_space = 0;
+  int header_size;
   bool is_mvcc_class;
   // *INDENT-OFF*
   std::set<int> incremented_attrids;
@@ -16442,7 +16456,8 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 
       if (att->is_autoincrement && (value->state == HEAP_UNINIT_ATTRVALUE))
 	{
-	  if (OID_ISNULL (&(att->auto_increment.serial_obj)))
+	  OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
+	  if (OID_ISNULL (&serial_obj_oid))
 	    {
 	      memset (serial_name, '\0', sizeof (serial_name));
 	      recdes.data = NULL;
@@ -16531,8 +16546,9 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 		    }
 
 		  assert (!OID_ISNULL (&serial_oid));
-		  ATOMIC_CAS_64 ((INT64 *) (&att->auto_increment.serial_obj), *(INT64 *) (&oid_Null_oid),
-				 *(INT64 *) (&serial_oid));
+		  or_aligned_oid null_aligned_oid = { oid_Null_oid };
+		  or_aligned_oid serial_aligned_oid = { serial_oid };
+		  att->auto_increment.serial_obj.compare_exchange_strong (null_aligned_oid, serial_aligned_oid);
 		}
 	      else
 		{
@@ -16544,7 +16560,8 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 
 	  if ((att->type == DB_TYPE_SHORT) || (att->type == DB_TYPE_INTEGER) || (att->type == DB_TYPE_BIGINT))
 	    {
-	      if (xserial_get_next_value (thread_p, &dbvalue_numeric, &att->auto_increment.serial_obj, 0,	/* no cache */
+	      OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
+	      if (xserial_get_next_value (thread_p, &dbvalue_numeric, &serial_obj_oid, 0,	/* no cache */
 					  1,	/* generate one value */
 					  GENERATE_AUTO_INCREMENT, false) != NO_ERROR)
 		{
@@ -16560,7 +16577,8 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 	    }
 	  else if (att->type == DB_TYPE_NUMERIC)
 	    {
-	      if (xserial_get_next_value (thread_p, dbvalue, &att->auto_increment.serial_obj, 0,	/* no cache */
+	      OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
+	      if (xserial_get_next_value (thread_p, dbvalue, &serial_obj_oid, 0,	/* no cache */
 					  1,	/* generate one value */
 					  GENERATE_AUTO_INCREMENT, false) != NO_ERROR)
 		{
@@ -17064,9 +17082,9 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 		case DB_TYPE_NCHAR:
 		case DB_TYPE_VARNCHAR:
 		  {
-		    char *str = db_get_string (&(value->dbvalue));
-		    char *str_end = str + db_get_string_length (&(value->dbvalue));
-		    char *p = NULL;
+		    const char *str = db_get_string (&(value->dbvalue));
+		    const char *str_end = str + db_get_string_length (&(value->dbvalue));
+		    const char *p = NULL;
 
 		    /* get the sign in the source string; look directly into the buffer string, no copy */
 		    p = str;
@@ -17548,7 +17566,7 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
 				 void **ptr)
 {
   int error = NO_ERROR;
-  char *class_name = NULL;
+  const char *class_name = NULL;
   DB_CLASS_PARTITION_TYPE partition_type = DB_NOT_PARTITIONED_CLASS;
   OID class_oid;
   LC_FIND_CLASSNAME status;
@@ -22958,6 +22976,18 @@ heap_hfid_table_entry_init (void *entry)
   return NO_ERROR;
 }
 
+static int
+heap_hfid_table_entry_uninit (void *entry)
+{
+  HEAP_HFID_TABLE_ENTRY *entry_p = (HEAP_HFID_TABLE_ENTRY *) entry;
+  if (entry_p->classname != NULL)
+    {
+      free (entry_p->classname);
+      entry_p->classname = NULL;
+    }
+  return NO_ERROR;
+}
+
 /*
  * heap_hfid_table_entry_key_copy () - copy a hfid_table key
  *   returns: error code or NO_ERROR
@@ -23056,7 +23086,7 @@ heap_initialize_hfid_table (void)
   edesc->f_alloc = heap_hfid_table_entry_alloc;
   edesc->f_free = heap_hfid_table_entry_free;
   edesc->f_init = heap_hfid_table_entry_init;
-  edesc->f_uninit = NULL;
+  edesc->f_uninit = heap_hfid_table_entry_uninit;
   edesc->f_key_copy = heap_hfid_table_entry_key_copy;
   edesc->f_key_cmp = heap_hfid_table_entry_key_compare;
   edesc->f_hash = heap_hfid_table_entry_key_hash;
@@ -23078,6 +23108,8 @@ heap_initialize_hfid_table (void)
       lf_hash_destroy (&heap_Hfid_table_area.hfid_hash);
       return ret;
     }
+
+  heap_Hfid_table_area.logging = prm_get_bool_value (PRM_ID_HEAP_INFO_CACHE_LOGGING);
 
   heap_Hfid_table = &heap_Hfid_table_area;
 
@@ -23114,14 +23146,12 @@ heap_delete_hfid_from_cache (THREAD_ENTRY * thread_p, OID * class_oid)
 {
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_HFID_TABLE);
   int error = NO_ERROR;
+  int success = 0;
 
-  error = lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, class_oid, NULL);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
+  error = lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, class_oid, &success);
+  heap_hfid_table_log (thread_p, class_oid, "heap_delete_hfid_from_cache success=%d", success);
 
-  return NO_ERROR;
+  return error;
 }
 
 /*
@@ -23249,7 +23279,7 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_HFID_TABLE);
   HEAP_HFID_TABLE_ENTRY *entry = NULL;
   HFID hfid_local = HFID_INITIALIZER;
-  char *classname_local;
+  char *classname_local = NULL;
   int inserted = 0;
 
   assert (hfid != NULL && !HFID_IS_NULL (hfid));
@@ -23265,12 +23295,13 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
     lf_hash_find_or_insert (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry, &inserted);
   if (error_code != NO_ERROR)
     {
+      assert (false);
       return error_code;
     }
+  // NOTE: no collisions are expected when heap_cache_class_info is called
+
   assert (entry != NULL);
   assert (entry->hfid.hpgid == NULL_PAGEID);
-
-  assert (inserted != 0);
 
   HFID_COPY (&entry->hfid, hfid);
   if (classname_in != NULL)
@@ -23284,17 +23315,38 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
 	{
 	  ASSERT_ERROR ();
 	  lf_tran_end_with_mb (t_entry);
+
+	  // remove from hash
+	  int success = 0;
+	  if (lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, &success) != NO_ERROR)
+	    {
+	      assert (false);
+	    }
+	  assert (success);
+
+	  heap_hfid_table_log (thread_p, class_oid, "heap_cache_class_info failed error=%d", error_code);
+
+	  if (classname_local != NULL)
+	    {
+	      free (classname_local);
+	    }
+
 	  return error_code;
 	}
     }
 
-  /* This section does not fall under any race conditions since this function is called only on heap creation
-   * or on boot which makes the assignment of the classname thread-safe.
-   */
-  entry->classname = classname_local;
-
   entry->ftype = ftype;
+
+  char *dummy_null = NULL;
+  if (!entry->classname.compare_exchange_strong (dummy_null, classname_local))
+    {
+      free (classname_local);
+    }
+
   lf_tran_end_with_mb (t_entry);
+
+  heap_hfid_table_log (thread_p, class_oid, "heap_cache_class_info hfid=%d|%d|%d, ftype=%s, classname = %s",
+		       HFID_AS_ARGS (hfid), file_type_to_string (ftype), classname_local);
 
   /* Successfully cached. */
   return NO_ERROR;
@@ -23334,7 +23386,7 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 
   /*  Here we check only the classname because this is the last field to be populated by other possible concurrent
    *  inserters. This means that if this field is already set by someone else, then the entry data is already
-   *  mature so we don't need to add data again. 
+   *  mature so we don't need to add data again.
    */
   if (entry->classname == NULL)
     {
@@ -23358,6 +23410,11 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 	{
 	  ASSERT_ERROR ();
 	  lf_tran_end_with_mb (t_entry);
+
+	  // remove entry
+	  lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, NULL);
+
+	  heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get failed error = %d", error_code);
 	  return error_code;
 	}
       entry->hfid = hfid_local;
@@ -23382,6 +23439,11 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 	{
 	  ASSERT_ERROR ();
 	  lf_tran_end_with_mb (t_entry);
+
+	  // remove entry
+	  lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, NULL);
+
+	  heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get failed error = %d", error_code);
 	  return error_code;
 	}
       entry->ftype = ftype_local;
@@ -23402,6 +23464,9 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
     }
 
   lf_tran_end_with_mb (t_entry);
+
+  heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get hfid=%d|%d|%d, ftype = %s, classname = %s",
+		       HFID_AS_ARGS (&entry->hfid), file_type_to_string (entry->ftype), entry->classname.load ());
   return error_code;
 }
 
@@ -25082,6 +25147,47 @@ cleanup:
     }
 
   return error_code;
+}
+
+void
+heap_rv_dump_append_pages_to_heap (FILE * fp, int length, void *data)
+{
+  // *INDENT-OFF*
+  string_buffer strbuf;
+  // *INDENT-OFF*
+
+  const char *ptr = (const char *) data;
+
+  HFID hfid;
+  OID class_oid;
+
+  OR_GET_HFID (ptr, &hfid);
+  ptr += OR_HFID_SIZE;
+  
+  OR_GET_OID (ptr, &class_oid);
+  ptr += OR_OID_SIZE;
+
+  strbuf ("CLASS = %d|%d|%d / HFID = %d, %d|%d\n", OID_AS_ARGS (&class_oid), HFID_AS_ARGS (&hfid));
+
+  int count = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+
+  for (int i = 0; i < count; i++)
+    {
+      // print VPIDs, 8 on each line
+
+      VPID vpid;
+      OR_GET_VPID (ptr, &vpid);
+      ptr += OR_VPID_SIZE;
+      strbuf ("%d|%d ", VPID_AS_ARGS (&vpid));
+      if (i % 8 == 7)
+        {
+          strbuf ("\n");
+        }
+    }
+  strbuf ("\n");
+
+  fprintf (fp, "%s", strbuf.get_buffer ());
 }
 
 static int

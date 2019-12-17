@@ -878,7 +878,7 @@ db_restart (const char *program, int print_version, const char *volume)
     }
   else
     {
-      strncpy (db_Program_name, program, PATH_MAX);
+      strncpy_bufsize (db_Program_name, program);
       db_Database_name[0] = '\0';
 
       /* authorization will need to access the database and call some db_ functions so assume connection will be ok

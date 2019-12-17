@@ -26,7 +26,6 @@
 
 #include "load_common.hpp"
 
-/* *INDENT-OFF* */
 namespace cubload
 {
 
@@ -56,9 +55,9 @@ namespace cubload
       void process_line (constant_type *cons) override;
       void finish_line () override;
       void flush_records () override;
+      std::size_t get_rows_number () override;
   };
 }
-/* *INDENT-ON* */
 
 /* start load functions */
 void ldr_sa_load (cubload::load_args *args, int *status, bool *interrupted);

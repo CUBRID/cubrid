@@ -1489,7 +1489,7 @@ csql_read_file (const char *file_name)
    * We've successfully read the file, so remember its name for
    * subsequent reads.
    */
-  strncpy (current_file, p, sizeof (current_file));
+  strncpy_bufsize (current_file, p);
 
   if (csql_edit_read_file (fp) == CSQL_FAILURE)
     {
@@ -1568,7 +1568,7 @@ csql_write_file (const char *file_name, int append_flag)
    * We've successfully opened the file, so remember its name for
    * subsequent writes.
    */
-  strncpy (current_file, p, sizeof (current_file));
+  strncpy_bufsize (current_file, p);
 
   if (csql_edit_write_file (fp) == CSQL_FAILURE)
     {
@@ -2010,7 +2010,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
 
 	  sprintf (time, " (%ld.%06ld sec) ", elapsed_time.tv_sec, elapsed_time.tv_usec);
-	  strncat (stmt_msg, time, sizeof (time));
+	  strncat (stmt_msg, time, sizeof (stmt_msg) - strlen (stmt_msg) - 1);
 	}
 
       if (csql_is_auto_commit_requested (csql_arg) && stmt_type != CUBRID_STMT_COMMIT_WORK
@@ -2202,17 +2202,14 @@ csql_set_sys_param (const char *arg_str)
 
   if (strncmp (arg_str, "cost", 4) == 0 && sscanf (arg_str, "cost %127s %127s", plantype, val) == 2)
     {
-      int ret;
       if (qo_plan_set_cost_fn (plantype, val[0]))
 	{
-	  ret = snprintf (ans, len - 1, "cost %s: %s", plantype, val);
+	  snprintf (ans, len - 1, "cost %s: %s", plantype, val);
 	}
       else
 	{
-	  ret = snprintf (ans, len - 1, "error: unknown cost parameter %s", plantype);
+	  snprintf (ans, len - 1, "error: unknown cost parameter %s", plantype);
 	}
-
-      (void) ret;		// suppress format-truncate warning
     }
   else if (strncmp (arg_str, "level", 5) == 0 && sscanf (arg_str, "level %d", &level) == 1)
     {
@@ -2262,7 +2259,7 @@ csql_get_sys_param (const char *arg_str)
 	  snprintf (ans, len, "cost %s: %c", arg_str, (char) cost);
 	}
     }
-  else if (strncmp (arg_str, "level", 5) == 0 && sscanf (arg_str, "level") == 0)
+  else if (strcmp (arg_str, "level") == 0)
     {
       qo_get_optimization_param (&level, QO_PARAM_LEVEL);
       snprintf (ans, len, "level %d", level);
@@ -2616,18 +2613,18 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   /* set up prompt and message fields. */
   if (csql_arg->sysadm)
     {
-      strncpy (csql_Prompt, csql_get_message (CSQL_SYSADM_PROMPT), sizeof (csql_Prompt));
+      strncpy_bufsize (csql_Prompt, csql_get_message (CSQL_SYSADM_PROMPT));
     }
   else
     {
-      strncpy (csql_Prompt, csql_get_message (CSQL_PROMPT), sizeof (csql_Prompt));
+      strncpy_bufsize (csql_Prompt, csql_get_message (CSQL_PROMPT));
     }
   avail_size = sizeof (csql_Prompt) - strlen (csql_Prompt) - 1;
   if (avail_size > 0)
     {
       strncat (csql_Prompt, " ", avail_size);
     }
-  strncpy (csql_Name, csql_get_message (CSQL_NAME), sizeof (csql_Name));
+  strncpy_bufsize (csql_Name, csql_get_message (CSQL_NAME));
 
   /* as we must use db_open_file_name() to open the input file, it is necessary to be opening csql_Input_fp at this
    * point */

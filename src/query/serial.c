@@ -142,7 +142,9 @@ static void serial_clear_value (SERIAL_CACHE_ENTRY * entry);
 static SERIAL_CACHE_ENTRY *serial_alloc_cache_entry (void);
 static SERIAL_CACHE_AREA *serial_alloc_cache_area (int num);
 static int serial_load_attribute_info_of_db_serial (THREAD_ENTRY * thread_p);
-static ATTR_ID serial_get_attrid (THREAD_ENTRY * thread_p, int attr_index);
+// *INDENT-OFF*
+static int serial_get_attrid (THREAD_ENTRY * thread_p, int attr_index, ATTR_ID &attrid);
+// *INDENT-ON*
 
 /*
  * xserial_get_current_value () -
@@ -225,7 +227,10 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_n
     }
 
   /* retrieve attribute */
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   assert (attrid != NOT_FOUND);
   ret = heap_attrinfo_start (thread_p, oid_Serial_class_oid, 1, &attrid, &attr_info);
   if (ret != NO_ERROR)
@@ -551,12 +556,18 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
 
   attr_info_p = &attr_info;
 
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_NAME_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_NAME_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
   pr_clone_value (val, &key_val);
 
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   assert (attrid != NOT_FOUND);
   ret = heap_attrinfo_set (&entry->oid, attrid, &entry->last_cached_val, attr_info_p);
   if (ret != NO_ERROR)
@@ -654,7 +665,10 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 
   attr_info_p = &attr_info;
 
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_CACHED_NUM_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_CACHED_NUM_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   if (attrid == NOT_FOUND)
     {
       cached_num = 0;
@@ -665,37 +679,58 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
       cached_num = db_get_int (val);
     }
 
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_NAME_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_NAME_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
   pr_clone_value (val, &key_val);
 
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
   pr_share_value (val, &cur_val);
 
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_INCREMENT_VAL_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_INCREMENT_VAL_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
   pr_share_value (val, &inc_val);
 
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_MAX_VAL_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_MAX_VAL_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
   pr_share_value (val, &max_val);
 
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_MIN_VAL_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_MIN_VAL_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
   pr_share_value (val, &min_val);
 
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_CYCLIC_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_CYCLIC_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
   pr_share_value (val, &cyclic);
 
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_STARTED_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_STARTED_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
   pr_share_value (val, &started);
@@ -706,7 +741,10 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
     {
       /* This is the first time to generate the serial value. */
       db_make_int (&started, 1);
-      attrid = serial_get_attrid (thread_p, SERIAL_ATTR_STARTED_INDEX);
+      if (serial_get_attrid (thread_p, SERIAL_ATTR_STARTED_INDEX, attrid) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
       assert (attrid != NOT_FOUND);
       ret = heap_attrinfo_set (serial_oidp, attrid, &started, attr_info_p);
       if (ret == NO_ERROR)
@@ -748,7 +786,10 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
     }
 
   /* Now update record */
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   assert (attrid != NOT_FOUND);
   if (cached_num > 1 && !DB_IS_NULL (&last_val))
     {
@@ -1100,24 +1141,29 @@ serial_finalize_cache_pool (void)
  *
  *   attr_index(in) :
  */
-static ATTR_ID
-serial_get_attrid (THREAD_ENTRY * thread_p, int attr_index)
+// *INDENT-OFF*
+static int
+serial_get_attrid (THREAD_ENTRY * thread_p, int attr_index, ATTR_ID &attrid)
 {
+  attrid = NOT_FOUND;
+
   if (serial_Num_attrs < 0)
     {
-      if (serial_load_attribute_info_of_db_serial (thread_p) != NO_ERROR)
+      int error = serial_load_attribute_info_of_db_serial (thread_p);
+      if (error != NO_ERROR)
 	{
-	  return NOT_FOUND;
+          ASSERT_ERROR ();
+	  return error;
 	}
     }
 
-  if (attr_index < 0 || attr_index > serial_Num_attrs)
+  if (attr_index >= 0 && attr_index <= serial_Num_attrs)
     {
-      return NOT_FOUND;
+      attrid = serial_Attrs_id[attr_index];
     }
-
-  return serial_Attrs_id[attr_index];
+  return NO_ERROR;
 }
+// *INDENT-ON*
 
 /*
  * serial_load_attribute_info_of_db_serial () -
@@ -1143,6 +1189,7 @@ serial_load_attribute_info_of_db_serial (THREAD_ENTRY * thread_p)
     }
   if (heap_get_class_record (thread_p, &serial_Cache_pool.db_serial_class_oid, &class_record, &scan, PEEK) != S_SUCCESS)
     {
+      heap_scancache_end (thread_p, &scan);
       return ER_FAILED;
     }
 
