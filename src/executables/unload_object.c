@@ -41,8 +41,10 @@
 #define	SIGALRM	14
 #endif /* WINDOWS */
 
+#include "authenticate.h"
 #include "utility.h"
 #include "load_object.h"
+#include "log_lsa.hpp"
 #include "file_hash.h"
 #include "db.h"
 #include "memory_hash.h"
@@ -52,6 +54,8 @@
 #include "locator.h"
 #include "transform_cl.h"
 #include "object_accessor.h"
+#include "object_primitive.h"
+#include "object_representation.h"
 #include "set_object.h"
 
 #include "message_catalog.h"
@@ -251,7 +255,7 @@ set_referenced_subclasses (DB_OBJECT * class_)
       goto exit_on_error;
     }
 
-  if (check_reference_chain == true)
+  if (check_reference_chain)
     {
       mark_referenced_domain (class_ptr, &num_set);
     }
@@ -390,8 +394,7 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
 
   for (attribute = class_ptr->shared; attribute != NULL; attribute = (SM_ATTRIBUTE *) attribute->header.next)
     {
-      if (check_referenced_domain (attribute->domain, true /* do marking */ ,
-				   num_set) != false)
+      if (check_referenced_domain (attribute->domain, true /* do marking */ , num_set))
 	{
 	  return false;
 	}
@@ -399,8 +402,7 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
 
   for (attribute = class_ptr->class_attributes; attribute != NULL; attribute = (SM_ATTRIBUTE *) attribute->header.next)
     {
-      if (check_referenced_domain (attribute->domain, true /* do marking */ ,
-				   num_set) != false)
+      if (check_referenced_domain (attribute->domain, true /* do marking */ , num_set))
 	{
 	  return false;
 	}
@@ -412,8 +414,7 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
 	{
 	  continue;
 	}
-      if (check_referenced_domain (attribute->domain, true /* do marking */ ,
-				   num_set) != false)
+      if (check_referenced_domain (attribute->domain, true /* do marking */ , num_set))
 	{
 	  return false;
 	}
@@ -423,12 +424,12 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
 
 
 /*
- * extractobjects - dump the database in loader format.
+ * extract_objects - dump the database in loader format.
  *    return: 0 for success. 1 for error
  *    exec_name(in): utility name
  */
 int
-extractobjects (const char *exec_name)
+extract_objects (const char *exec_name, const char *output_dirname, const char *output_prefix)
 {
   int i, error;
   HFID *hfid;
@@ -470,7 +471,7 @@ extractobjects (const char *exec_name)
       return 1;
     }
 
-  /* 
+  /*
    * Open output file
    */
   if (output_dirname == NULL)
@@ -518,7 +519,7 @@ extractobjects (const char *exec_name)
 #endif /* WINDOWS */
       }
 
-    /* 
+    /*
      * Determine the IO buffer size by specifying a multiple of the
      * natural block size for the device.
      * NEED FUTURE OPTIMIZATION
@@ -532,7 +533,7 @@ extractobjects (const char *exec_name)
     obj_out->count = 0;		/* init */
   }
 
-  /* 
+  /*
    * The user indicates which classes are to be processed by
    * using -i with a file that contains a list of classes.
    * If the -i option is not used, it means process all classes.
@@ -570,7 +571,7 @@ extractobjects (const char *exec_name)
   memset (class_referenced, 0, (class_table->num + 7) / 8);
   memset (class_processed, 0, (class_table->num + 7) / 8);
 
-  /* 
+  /*
    * Create the class hash table
    * Its purpose is to hash a class OID to the index into the
    * class_table->mops array.
@@ -585,7 +586,7 @@ extractobjects (const char *exec_name)
   has_obj_ref = false;		/* init */
   num_cls_ref = 0;		/* init */
 
-  /* 
+  /*
    * Total the number of objects & mark requested classes.
    */
 #if defined(CUBRID_DEBUG)
@@ -647,7 +648,9 @@ extractobjects (const char *exec_name)
 		}
 	    }
 	  else
-	    MARK_CLASS_REQUESTED (i);
+	    {
+	      MARK_CLASS_REQUESTED (i);
+	    }
 
 	  if (!datafile_per_class && (!required_class_only || IS_CLASS_REQUESTED (i)))
 	    {
@@ -826,7 +829,7 @@ extractobjects (const char *exec_name)
   }
 #endif /* CUBRID_DEBUG */
 
-  /* 
+  /*
    * Lock all unloaded classes with IS_LOCK
    */
   if (locator_fetch_set (num_unload_classes, unload_class_table, DB_FETCH_READ, DB_FETCH_READ, true) == NULL)
@@ -837,7 +840,7 @@ extractobjects (const char *exec_name)
 
   locator_get_append_lsa (&lsa);
 
-  /* 
+  /*
    * Estimate the number of objects.
    */
 
@@ -849,23 +852,20 @@ extractobjects (const char *exec_name)
   cache_size = cached_pages * page_size / (DB_SIZEOF (OID) + DB_SIZEOF (int));
   est_size = est_size > cache_size ? est_size : cache_size;
 
-  /* 
+  /*
    * Create the hash table
    */
-  if (has_obj_ref || num_cls_ref > 0)
-    {				/* found any referenced domain */
-      obj_table =
-	fh_create ("object hash", est_size, page_size, cached_pages, hash_filename, FH_OID_KEY, DB_SIZEOF (int),
-		   oid_hash, oid_compare_equals);
+  obj_table =
+    fh_create ("object hash", est_size, page_size, cached_pages, hash_filename, FH_OID_KEY, DB_SIZEOF (int),
+	       oid_hash, oid_compare_equals);
 
-      if (obj_table == NULL)
-	{
-	  status = 1;
-	  goto end;
-	}
+  if (obj_table == NULL)
+    {
+      status = 1;
+      goto end;
     }
 
-  /* 
+  /*
    * Dump the object definitions
    */
   total_approximate_class_objects = est_objects;
@@ -979,7 +979,7 @@ end:
     {
       fclose (unloadlog_file);
     }
-  /* 
+  /*
    * Cleanup
    */
   free_and_init (unload_class_table);
@@ -1058,7 +1058,7 @@ process_class (int cl_no)
 #endif
   int total;
 
-  /* 
+  /*
    * Only process classes that were requested or classes that were
    * referenced via requested classes.
    */
@@ -1286,7 +1286,7 @@ process_class (int cl_no)
 
 	      for (i = 0; i < mobjs->num_objs; ++i)
 		{
-		  /* 
+		  /*
 		   * Process all objects for a requested class, but
 		   * only referenced objects for a referenced class.
 		   */
@@ -1568,7 +1568,7 @@ process_value (DB_VALUE * value)
 		break;
 	      }
 
-	    /* 
+	    /*
 	     * Lock referenced class with S_LOCK
 	     */
 	    error = NO_ERROR;	/* clear */
@@ -1608,14 +1608,14 @@ process_value (DB_VALUE * value)
 	      }
 	  }
 
-	/* 
+	/*
 	 * Output a reference indication if all classes are being processed,
 	 * or if a class_list is being used and references are being included,
 	 * or if a class_list is being used and the referenced class is a
 	 * requested class.  Otherwise, output "NULL".
 	 */
 
-	/* figure out what it means for this to be NULL, I think this happens only for the reserved system classes like 
+	/* figure out what it means for this to be NULL, I think this happens only for the reserved system classes like
 	 * db_user that are not dumped.  This is a problem because trigger objects for one, like to point directly at
 	 * the user object.  There will probably be others in time. */
 	error = fh_get (cl_table, &ref_class_oid, (FH_DATA *) (&cls_no_ptr));

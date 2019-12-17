@@ -45,6 +45,7 @@
 #include <netdb.h>
 #endif /* !WINDOWS */
 
+#include "authenticate.h"
 #include "csql.h"
 #include "system_parameter.h"
 #include "message_catalog.h"
@@ -588,7 +589,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	}
       else
 	{
-	  /* If input line exeeds LINE_BUFFER_SIZE, line_buf couldn't contain '\n' character in it. So, read_whole_line 
+	  /* If input line exeeds LINE_BUFFER_SIZE, line_buf couldn't contain '\n' character in it. So, read_whole_line
 	   * will be remained as false. */
 	  line_read = fgets ((char *) line_buf, LINE_BUFFER_SIZE, csql_Input_fp);
 	}
@@ -839,7 +840,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
     }
 
-  /* Now, `sess_cmd' points to null-terminated session command name and `argument' points to remaining argument (it may 
+  /* Now, `sess_cmd' points to null-terminated session command name and `argument' points to remaining argument (it may
    * be '\0' if not given). */
 
   if (*sess_cmd == '\0' && csql_arg->single_line_execution == false)
@@ -1447,7 +1448,7 @@ csql_read_file (const char *file_name)
 
   if (p == NULL || p[0] == '\0')
     {
-      /* 
+      /*
        * No filename given; use the last one we were given.  If we've
        * never received one before we have a genuine error.
        */
@@ -1484,11 +1485,11 @@ csql_read_file (const char *file_name)
       goto error;
     }
 
-  /* 
+  /*
    * We've successfully read the file, so remember its name for
    * subsequent reads.
    */
-  strncpy (current_file, p, sizeof (current_file));
+  strncpy_bufsize (current_file, p);
 
   if (csql_edit_read_file (fp) == CSQL_FAILURE)
     {
@@ -1528,7 +1529,7 @@ csql_write_file (const char *file_name, int append_flag)
 
   if (p == NULL || p[0] == '\0')
     {
-      /* 
+      /*
        * No filename given; use the last one we were given.  If we've
        * never received one before we have a genuine error.
        */
@@ -1563,11 +1564,11 @@ csql_write_file (const char *file_name, int append_flag)
       goto error;
     }
 
-  /* 
+  /*
    * We've successfully opened the file, so remember its name for
    * subsequent writes.
    */
-  strncpy (current_file, p, sizeof (current_file));
+  strncpy_bufsize (current_file, p);
 
   if (csql_edit_write_file (fp) == CSQL_FAILURE)
     {
@@ -1634,7 +1635,7 @@ csql_print_buffer (void)
     {
       goto error;
     }
-  /* 
+  /*
    * Parenthesize the print command and supply its input through stdin,
    * just in case it's a pipe or something odd.
    */
@@ -1789,7 +1790,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	}
     }
 
-  /* 
+  /*
    * Make sure that there weren't any syntax errors; if there were, the
    * entire concept of "compile next statement" doesn't make sense, and
    * you run the risk of getting stuck in an infinite loop in the
@@ -1844,7 +1845,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
       if (stmt_id < 0)
 	{
-	  /* 
+	  /*
 	   * Transaction should be aborted if an error occurs during
 	   * compilation on auto commit mode.
 	   */
@@ -1859,7 +1860,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  if (csql_arg->continue_on_error && (db_error_code () != ER_IT_EMPTY_STATEMENT))
 	    {
 	      display_error (session, 0);
-	      /* do_abort_transaction() should be called after display_error() because in some cases it deallocates the 
+	      /* do_abort_transaction() should be called after display_error() because in some cases it deallocates the
 	       * parser containing the error message */
 	      if (do_abort_transaction)
 		{
@@ -1993,7 +1994,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	}
       else
 	{
-	  /* 
+	  /*
 	   * Even though there are no results, a query may have been
 	   * run implicitly by the statement.  If so, we need to end the
 	   * query on the server.
@@ -2009,7 +2010,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
 
 	  sprintf (time, " (%ld.%06ld sec) ", elapsed_time.tv_sec, elapsed_time.tv_usec);
-	  strncat (stmt_msg, time, sizeof (time));
+	  strncat (stmt_msg, time, sizeof (stmt_msg) - strlen (stmt_msg) - 1);
 	}
 
       if (csql_is_auto_commit_requested (csql_arg) && stmt_type != CUBRID_STMT_COMMIT_WORK
@@ -2115,7 +2116,7 @@ csql_print_database (void)
   struct sockaddr_in sin;
   const char *db_name, *host_name;
   char *pstr;
-  char converted_host_name[MAXHOSTNAMELEN + 1];
+  char converted_host_name[CUB_MAXHOSTNAMELEN + 1];
   char ha_state[16];
   int res;
 
@@ -2134,27 +2135,27 @@ csql_print_database (void)
       res =
 	getnameinfo ((struct sockaddr *) &sin, sizeof (sin), converted_host_name, sizeof (converted_host_name), NULL, 0,
 		     NI_NAMEREQD);
-      /* 
+      /*
        * if it fails to resolves hostname,
        * it will use db_get_host_connected()'s result.
        */
       if (res != 0)
 	{
-	  strncpy (converted_host_name, host_name, MAXHOSTNAMELEN);
-	  converted_host_name[MAXHOSTNAMELEN] = '\0';
+	  strncpy (converted_host_name, host_name, CUB_MAXHOSTNAMELEN);
+	  converted_host_name[CUB_MAXHOSTNAMELEN] = '\0';
 	}
 
       if (strcasecmp (converted_host_name, "localhost") == 0
 	  || strcasecmp (converted_host_name, "localhost.localdomain") == 0)
 	{
-	  if (GETHOSTNAME (converted_host_name, MAXHOSTNAMELEN) != 0)
+	  if (GETHOSTNAME (converted_host_name, CUB_MAXHOSTNAMELEN) != 0)
 	    {
-	      strncpy (converted_host_name, host_name, MAXHOSTNAMELEN);
+	      strncpy (converted_host_name, host_name, CUB_MAXHOSTNAMELEN);
 	    }
 	}
-      converted_host_name[MAXHOSTNAMELEN] = '\0';
+      converted_host_name[CUB_MAXHOSTNAMELEN] = '\0';
 
-      /* 
+      /*
        * if there is hostname or ip address in db_name,
        * it will only use db_name except for hostname or ip address.
        */
@@ -2203,17 +2204,17 @@ csql_set_sys_param (const char *arg_str)
     {
       if (qo_plan_set_cost_fn (plantype, val[0]))
 	{
-	  snprintf (ans, 128, "cost %s: %s", plantype, val);
+	  snprintf (ans, len - 1, "cost %s: %s", plantype, val);
 	}
       else
 	{
-	  snprintf (ans, 128, "error: unknown cost parameter %s", plantype);
+	  snprintf (ans, len - 1, "error: unknown cost parameter %s", plantype);
 	}
     }
   else if (strncmp (arg_str, "level", 5) == 0 && sscanf (arg_str, "level %d", &level) == 1)
     {
       qo_set_optimization_param (NULL, QO_PARAM_LEVEL, level);
-      snprintf (ans, 128, "level %d", level);
+      snprintf (ans, len - 1, "level %d", level);
     }
   else
     {
@@ -2258,7 +2259,7 @@ csql_get_sys_param (const char *arg_str)
 	  snprintf (ans, len, "cost %s: %c", arg_str, (char) cost);
 	}
     }
-  else if (strncmp (arg_str, "level", 5) == 0 && sscanf (arg_str, "level") == 0)
+  else if (strcmp (arg_str, "level") == 0)
     {
       qo_get_optimization_param (&level, QO_PARAM_LEVEL);
       snprintf (ans, len, "level %d", level);
@@ -2612,18 +2613,18 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   /* set up prompt and message fields. */
   if (csql_arg->sysadm)
     {
-      strncpy (csql_Prompt, csql_get_message (CSQL_SYSADM_PROMPT), sizeof (csql_Prompt));
+      strncpy_bufsize (csql_Prompt, csql_get_message (CSQL_SYSADM_PROMPT));
     }
   else
     {
-      strncpy (csql_Prompt, csql_get_message (CSQL_PROMPT), sizeof (csql_Prompt));
+      strncpy_bufsize (csql_Prompt, csql_get_message (CSQL_PROMPT));
     }
   avail_size = sizeof (csql_Prompt) - strlen (csql_Prompt) - 1;
   if (avail_size > 0)
     {
       strncat (csql_Prompt, " ", avail_size);
     }
-  strncpy (csql_Name, csql_get_message (CSQL_NAME), sizeof (csql_Name));
+  strncpy_bufsize (csql_Name, csql_get_message (CSQL_NAME));
 
   /* as we must use db_open_file_name() to open the input file, it is necessary to be opening csql_Input_fp at this
    * point */
@@ -2643,7 +2644,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 #if defined(WINDOWS)
       {
 	char tmpchar;		/* open breaks in DLL'S */
-	/* 
+	/*
 	 * Unless an operation is done on this stream before the DLL
 	 * is entered the file descriptor will be invalid.  This is a bug in
 	 * MSVC compiler and/or libc.
@@ -2668,7 +2669,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
     }
   er_set_print_property (ER_PRINT_TO_CONSOLE);
 
-  /* 
+  /*
    * login and restart database
    */
   if (csql_arg->sysadm)

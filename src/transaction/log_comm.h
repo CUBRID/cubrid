@@ -22,11 +22,10 @@
 
 #ident "$Id$"
 
-#include <stdio.h>
+#include "dbtran_def.h"
 #include "storage_common.h"
-#include "object_representation.h"
 
-#define LOG_USERNAME_MAX        (DB_MAX_USER_LENGTH + 1)
+#include <stdio.h>
 
 #define TRAN_LOCK_INFINITE_WAIT (-1)
 
@@ -37,7 +36,7 @@
  */
 typedef enum
 {
-  TRAN_RECOVERY,		/* State of a system transaction which is used for recovery purposes. For example , set 
+  TRAN_RECOVERY,		/* State of a system transaction which is used for recovery purposes. For example , set
 				 * lock for damaged pages. */
   TRAN_ACTIVE,			/* Active transaction */
   TRAN_UNACTIVE_COMMITTED,	/* Transaction is in the commit process or has been committed */
@@ -57,7 +56,7 @@ typedef enum
   TRAN_UNACTIVE_2PC_ABORT_DECISION,	/* Second phase of 2PC protocol. Transaction needs to be aborted both locally
 					 * and globally. */
 
-  TRAN_UNACTIVE_2PC_COMMIT_DECISION,	/* Second phase of 2PC protocol. Transaction needs to be committed both locally 
+  TRAN_UNACTIVE_2PC_COMMIT_DECISION,	/* Second phase of 2PC protocol. Transaction needs to be committed both locally
 					 * and globally. */
 
   TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS,	/* Transaction has been committed, and it is informing

@@ -30,6 +30,7 @@
 
 // same module includes
 #include "thread_entry.hpp"
+#include "thread_entry_task.hpp"
 #include "thread_task.hpp"
 #include "thread_waiter.hpp"
 
@@ -39,8 +40,17 @@
 #include <mutex>
 #include <vector>
 
+// forward definitions
 template <typename T>
 class resource_shared_pool;
+
+namespace lockfree
+{
+  namespace tran
+  {
+    class system;
+  }
+}
 
 namespace cubthread
 {
@@ -50,8 +60,6 @@ namespace cubthread
   class worker_pool;
   class looper;
   class daemon;
-  class entry_task;
-  class entry_manager;
   class daemon_entry_manager;
 
   // alias for worker_pool<entry>
@@ -110,6 +118,7 @@ namespace cubthread
 
       void alloc_entries (void);
       void init_entries (bool with_lock_free = false);
+      void init_lockfree_system ();
 
       //////////////////////////////////////////////////////////////////////////
       // worker pool management
@@ -192,6 +201,11 @@ namespace cubthread
 	return m_all_entries;
       }
 
+      lockfree::tran::system &get_lockfree_transys ()
+      {
+	return *m_lf_tran_sys;
+      }
+
       void set_max_thread_count_from_config ();
       void set_max_thread_count (std::size_t count);
 
@@ -250,6 +264,9 @@ namespace cubthread
       std::size_t m_available_entries_count;
       entry_manager *m_entry_manager;
       daemon_entry_manager *m_daemon_entry_manager;
+
+      // lock-free transaction system
+      lockfree::tran::system *m_lf_tran_sys;
   };
 
   //////////////////////////////////////////////////////////////////////////
@@ -281,6 +298,7 @@ namespace cubthread
   const int LOG_WORKER_POOL_VACUUM = 0x100;
   const int LOG_WORKER_POOL_CONNECTIONS = 0x200;
   const int LOG_WORKER_POOL_TRAN_WORKERS = 0x400;
+  const int LOG_WORKER_POOL_INDEX_BUILDER = 0x800;
   const int LOG_WORKER_POOL_ALL = 0xFF00;    // reserved for thread worker pools
 
   // daemons flags

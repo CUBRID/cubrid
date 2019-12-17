@@ -33,10 +33,8 @@
 #include "error_manager.h"
 #include "intl_support.h"
 #include "db_date.h"
-#include "object_representation.h"
 #include "object_domain.h"
 #if !defined(SERVER_MODE)
-#include "authenticate.h"
 #include "trigger_manager.h"
 #include "dbi.h"
 #include "parser.h"
@@ -229,6 +227,7 @@ extern "C"
 }
 #endif
 extern int db_get_parser_line_col (DB_SESSION * session, int *line, int *col);
+extern int db_get_line_of_statement (DB_SESSION * session, int stmt_id);
 extern int db_get_line_col_of_1st_error (DB_SESSION * session, DB_QUERY_ERROR * linecol);
 extern DB_VALUE *db_get_hostvars (DB_SESSION * session);
 extern char **db_get_lock_classes (DB_SESSION * session);

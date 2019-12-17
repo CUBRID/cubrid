@@ -46,8 +46,8 @@
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "boot_cl.h"
-#include "xasl_support.h"
 #include "query_method.h"
+#include "method_def.hpp"
 #include "release_string.h"
 #include "log_comm.h"
 #include "file_io.h"
@@ -56,6 +56,7 @@
 #include "client_support.h"
 #include "perf_monitor.h"
 #include "log_writer.h"
+#include "object_representation.h"
 
 /*
  * To check for errors from the comm system. Note that if we get any error
@@ -103,7 +104,7 @@ unsigned short method_request_id;
 #endif /* CS_MODE */
 
 /* Contains the name of the current sever host machine.  */
-static char net_Server_host[MAXHOSTNAMELEN + 1] = "";
+static char net_Server_host[CUB_MAXHOSTNAMELEN + 1] = "";
 
 /* Contains the name of the current server name. */
 static char net_Server_name[DB_MAX_IDENTIFIER_LENGTH + 1] = "";
@@ -173,7 +174,7 @@ set_server_error (int error)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, server_error, 1, "");
 	  return server_error;
 	}
-      /* no break; fall through */
+      /* FALLTHRU */
     default:
       server_error = ER_NET_SERVER_CRASHED;
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, server_error, 0);
@@ -321,7 +322,7 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare, REL
 	}
     }
 
-  /* 
+  /*
    * check HA replication delay
    * if client_cap is on, it checks the server delay status
    * else, it ignores the delay status.
@@ -339,7 +340,7 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare, REL
     {
       if (rel_compare < 0 && ((server_cap & NET_CAP_BACKWARD_COMPATIBLE) || (client_cap & NET_CAP_FORWARD_COMPATIBLE)))
 	{
-	  /* 
+	  /*
 	   * The client is older than the server but the server has a backward
 	   * compatible capability or the client has a forward compatible
 	   * capability.
@@ -348,7 +349,7 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare, REL
 	}
       if (rel_compare > 0 && ((server_cap & NET_CAP_FORWARD_COMPATIBLE) || (client_cap & NET_CAP_BACKWARD_COMPATIBLE)))
 	{
-	  /* 
+	  /*
 	   * The client is newer than the server but the server has a forward
 	   * compatible capability or the client has a backward compatible
 	   * capability.
@@ -638,6 +639,13 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_LOCK_RR].name = "NET_SERVER_LOCK_RR";
   net_Req_buffer[NET_SERVER_TZ_GET_CHECKSUM].name = "NET_SERVER_TZ_GET_CHECKSUM";
   net_Req_buffer[NET_SERVER_SPACEDB].name = "NET_SERVER_SPACEDB";
+
+  net_Req_buffer[NET_SERVER_LD_INIT].name = "NET_SERVER_LD_INIT";
+  net_Req_buffer[NET_SERVER_LD_INSTALL_CLASS].name = "NET_SERVER_LD_INSTALL_CLASS";
+  net_Req_buffer[NET_SERVER_LD_LOAD_BATCH].name = "NET_SERVER_LD_LOAD_BATCH";
+  net_Req_buffer[NET_SERVER_LD_DESTROY].name = "NET_SERVER_LD_DESTROY";
+  net_Req_buffer[NET_SERVER_LD_INTERRUPT].name = "NET_SERVER_LD_INTERRUPT";
+  net_Req_buffer[NET_SERVER_LD_UPDATE_STATS].name = "NET_SERVER_LD_UPDATE_STATS";
 }
 
 /*
@@ -885,7 +893,7 @@ net_client_request_no_reply (int request, char *argbuf, int argsize)
 
   error = NO_ERROR;
 
-  assert (request == NET_SERVER_LOG_SET_INTERRUPT);
+  assert (request == NET_SERVER_LOG_SET_INTERRUPT || request == NET_SERVER_LD_INTERRUPT);
 
   if (net_Server_name[0] == '\0')
     {
@@ -1851,8 +1859,8 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 			error =
 			  method_invoke_for_server (rc, net_Server_host, net_Server_name, method_call_list_id,
 						    method_call_sig_list);
-			regu_free_listid (method_call_list_id);
-			regu_free_method_sig_list (method_call_sig_list);
+			cursor_free_self_list_id (method_call_list_id);
+			method_sig_list_freemem (method_call_sig_list);
 			if (error != NO_ERROR)
 			  {
 			    assert (er_errid () != NO_ERROR);
@@ -1892,7 +1900,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 	      }
 	      break;
 
-	      /* 
+	      /*
 	       * A code of END_CALLBACK is followed immediately by an
 	       * integer returning status from the remote call.  The second
 	       * integer represents the return value and must be returned
@@ -1947,7 +1955,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		    else
 		      {
 			ptr = or_unpack_string_nocopy (reply, &prompt);
-			/* 
+			/*
 			 * the following data are used depending on prompt type
 			 * but will always be in the input stream
 			 */
@@ -1993,7 +2001,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				      }
 				    break;
 
-				    /* 
+				    /*
 				     * simply boolean (y, yes, 1, n, no, 0)
 				     * validation
 				     */
@@ -2507,7 +2515,7 @@ net_client_get_next_log_pages (int rc, char *replybuf, int replysize, int length
 
   if (logwr_Gl.logpg_area_size < length)
     {
-      /* 
+      /*
        * It means log_buffer_size/log_page_size are different between master
        * and slave.
        * In this case, we have to disconnect from server and try to reconnect.
@@ -2599,7 +2607,7 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
       return set_server_error (css_Errno);
     }
 
-  /* 
+  /*
    * Receive replybuf
    */
 
@@ -2612,7 +2620,7 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
 
   error = COMPARE_SIZE_AND_BUFFER (&replysize, size, &replybuf, reply);
 
-  /* 
+  /*
    * Receive copyarea
    * Here assume that the next two integers in the reply are the lengths of
    * the copy descriptor and content descriptor
@@ -2788,7 +2796,7 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
 
   *eid = rc;
 
-  /* 
+  /*
    * Receive replybuf
    */
 
@@ -2803,7 +2811,7 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
       error = COMPARE_SIZE_AND_BUFFER (&replysize, size, &replybuf, reply);
     }
 
-  /* 
+  /*
    * Receive recvbuffer
    * Here we assume that the first integer in the reply is the length
    * of the following data block
@@ -2862,7 +2870,7 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
 	}
     }
 
-  /* 
+  /*
    * Receive copyarea
    * Here assume that the next two integers in the reply are the lengths of
    * the copy descriptor and content descriptor
@@ -3178,7 +3186,7 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
     }
 #endif /* HISTO */
 
-  /* 
+  /*
    * Receive replybuf
    */
 
@@ -3194,7 +3202,7 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
       error = COMPARE_SIZE_AND_BUFFER (&replysize, size, &replybuf, reply);
     }
 
-  /* 
+  /*
    * Receive recvbuffer
    * Here we assume that the first integer in the reply is the length
    * of the following data block
@@ -3251,7 +3259,7 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
 	}
     }
 
-  /* 
+  /*
    * Receive copyarea
    * Here assume that the next two integers in the reply are the lengths of
    * the copy descriptor and content descriptor
@@ -3412,7 +3420,7 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
       return set_server_error (css_Errno);
     }
 
-  /* 
+  /*
    * Receive replybuf
    */
   error = css_receive_data_from_server (rc, &reply, &size);
@@ -3426,7 +3434,7 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
       error = COMPARE_SIZE_AND_BUFFER (&replysize, size, &replybuf, reply);
     }
 
-  /* 
+  /*
    * Receive recvbuffer
    * Here we assume that the first integer in the reply is the length
    * of the following data block
@@ -3465,7 +3473,7 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
 	}
     }
 
-  /* 
+  /*
    * Receive copyarea
    * Here assume that the next two integers in the reply are the lengths of
    * the copy descriptor and content descriptor
@@ -3769,9 +3777,9 @@ net_client_ping_server_with_handshake (int client_type, bool check_capabilities,
   const char *client_release;
   char *server_release, *server_host, *server_handshake, *ptr;
   int error = NO_ERROR;
-  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + (OR_INT_SIZE * 2) + MAXHOSTNAMELEN) a_request;
+  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + (OR_INT_SIZE * 2) + CUB_MAXHOSTNAMELEN) a_request;
   char *request = OR_ALIGNED_BUF_START (a_request);
-  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + (OR_INT_SIZE * 3) + MAXHOSTNAMELEN) a_reply;
+  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + (OR_INT_SIZE * 3) + CUB_MAXHOSTNAMELEN) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply), *reply_ptr;
   int reply_size = OR_ALIGNED_BUF_SIZE (a_reply);
   int eid, request_size, server_capabilities, server_bit_platform;
@@ -3850,7 +3858,7 @@ net_client_ping_server_with_handshake (int client_type, bool check_capabilities,
       return error;
     }
 
-  /* 
+  /*
    * 1. get the result of compatibility check.
    * 2. check if the both capabilities of client and server are compatible.
    * 3. check if the server has a capability to make it compatible.
@@ -3907,7 +3915,7 @@ net_client_init (const char *dbname, const char *hostname)
 {
   int error = NO_ERROR;
 
-  /* don't really need to do this every time but bruce says its ok - we probably need to guarentee that a css_terminate 
+  /* don't really need to do this every time but bruce says its ok - we probably need to guarentee that a css_terminate
    * is always called before this */
   error = css_client_init (prm_get_integer_value (PRM_ID_TCP_PORT_ID), dbname, hostname);
   if (error != NO_ERROR)
@@ -3919,7 +3927,7 @@ net_client_init (const char *dbname, const char *hostname)
    * things to the system console */
 
   /* set our host/server names for further css communication */
-  if (hostname != NULL && strlen (hostname) <= MAXHOSTNAMELEN)
+  if (hostname != NULL && strlen (hostname) <= CUB_MAXHOSTNAMELEN)
     {
       strcpy (net_Server_host, hostname);
       if (dbname != NULL && strlen (dbname) <= DB_MAX_IDENTIFIER_LENGTH)

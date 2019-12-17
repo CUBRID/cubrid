@@ -47,6 +47,7 @@
 #include "work_space.h"
 #include "server_interface.h"
 #include "log_comm.h"
+#include "log_lsa.hpp"
 #include "db_query.h"
 #include "boot_cl.h"
 #include "virtual_object.h"
@@ -59,6 +60,8 @@
 
 #if defined(WINDOWS)
 #include "wintcp.h"
+#else /* WINDOWS */
+#include "tcp.h"
 #endif /* WINDOWS */
 
 int tm_Tran_index = NULL_TRAN_INDEX;
@@ -410,7 +413,7 @@ tran_abort (void)
   int error_code = NO_ERROR;
   bool query_end_notify_server;
 
-  /* 
+  /*
    * inform the trigger manager of the event, triggers can't prevent a
    * rollback, might not want to do this if we're being unilaterally
    * aborted ?
@@ -514,7 +517,7 @@ tran_unilaterally_abort (void)
 {
   int error_code = NO_ERROR;
   char user_name[L_cuserid + 1];
-  char host[MAXHOSTNAMELEN];
+  char host[CUB_MAXHOSTNAMELEN];
   int pid;
 
   /* Get the user name, host, and process identifier */
@@ -522,7 +525,7 @@ tran_unilaterally_abort (void)
     {
       strcpy (user_name, "(unknown)");
     }
-  if (GETHOSTNAME (host, MAXHOSTNAMELEN) != 0)
+  if (GETHOSTNAME (host, CUB_MAXHOSTNAMELEN) != 0)
     {
       /* unknown error */
       strcpy (host, "(unknown)");
@@ -912,7 +915,7 @@ tran_2pc_prepare_global_tran (int gtrid)
       break;
 
     case TRAN_UNACTIVE_COMMITTED:
-      /* 
+      /*
        * The transaction was committed. There is not a need for 2PC prepare.
        * This could happen for read only transactions
        */
@@ -1034,7 +1037,7 @@ tran_free_list_upto_savepoint (const char *savept_name)
     }
 
   /* not 'found' is not necessarily an error.  We may be rolling back to a system-defined savepoint rather than a
-   * user-defined savepoint.  In that case, the name would not appear on the user savepoint list and the list should be 
+   * user-defined savepoint.  In that case, the name would not appear on the user savepoint list and the list should be
    * preserved.  We should be able to guarantee that any rollback to a system-defined savepoint will affect only the
    * latest atomic command and not overlap any user-defined savepoint.  That is, system invoked partial rollbacks
    * should never rollback farther than the last user-defined savepoint. */
@@ -1207,7 +1210,7 @@ tran_internal_abort_upto_savepoint (const char *savepoint_name, SAVEPOINT_TYPE s
   /* tell the schema manager to flush any transaction caches */
   sm_transaction_boundary ();
 
-  /* 
+  /*
    * We need to start all over since we do not know what set of objects are
    * going to be rolled back.. Thuis, we need to remove any kind of hints
    * cached in the workspace.
@@ -1237,7 +1240,7 @@ tran_internal_abort_upto_savepoint (const char *savepoint_name, SAVEPOINT_TYPE s
       if (savepoint_type == SYSTEM_SAVEPOINT && state == TRAN_UNACTIVE_UNKNOWN && error_code != NO_ERROR
 	  && !tran_has_updated ())
 	{
-	  /* 
+	  /*
 	   * maybe transaction has been unilaterally aborted by the system
 	   * and ER_LK_UNILATERALLY_ABORTED was overwritten by a consecutive error.
 	   */
@@ -1409,7 +1412,7 @@ tran_set_latest_query_status (int end_query_result, int tran_state, int should_c
       tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::ABORTED;
     }
 
-  if (should_conn_reset == true)
+  if (should_conn_reset != 0)
     {
       assert (tran_state == TRAN_UNACTIVE_COMMITTED || tran_state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS
 	      || tran_state == TRAN_UNACTIVE_ABORTED || tran_state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS);

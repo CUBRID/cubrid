@@ -31,6 +31,7 @@
 #include <ctype.h>
 #include <assert.h>
 
+#include "authenticate.h"
 #include "system_parameter.h"
 #include "storage_common.h"
 #include "db.h"
@@ -42,6 +43,7 @@
 #include "schema_manager.h"
 #include "schema_template.h"
 #include "object_accessor.h"
+#include "object_primitive.h"
 #include "set_object.h"
 #include "virtual_object.h"
 #include "parser.h"

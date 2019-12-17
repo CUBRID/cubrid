@@ -18,7 +18,7 @@
  */
 
 /*
- * cm_dstring.c - 
+ * cm_dstring.c -
  */
 
 #include "cm_dep.h"

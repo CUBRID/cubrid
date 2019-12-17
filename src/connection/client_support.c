@@ -615,7 +615,7 @@ css_receive_error_from_server (unsigned int eid, char **buffer, int *size)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * Normally, we disconnect upon any type of receive error.  However,
 	   * in the case of allocation errors, we want to continue and
 	   * propagate the error.
@@ -655,7 +655,7 @@ css_terminate (bool server_error)
   css_windows_shutdown ();
 #endif /* WINDOWS */
 
-  /* 
+  /*
    * If there was a previous signal handler. restore it at this point.
    */
 #if !defined(WINDOWS)

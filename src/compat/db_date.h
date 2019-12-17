@@ -27,6 +27,8 @@
 
 #ident "$Id$"
 
+#include "dbtype_def.h"
+
 #include <time.h>
 
 /* DB_DATE functions */

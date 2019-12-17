@@ -45,7 +45,7 @@
 #include "broker_config.h"
 
 extern void proxy_log_open (char *br_name, int proxy_index);
-/* SHARD TODO : SUPPORT CUBRID MANAGER 
+/* SHARD TODO : SUPPORT CUBRID MANAGER
 extern void proxy_log_reset (char *br_name, int proxy_index);
 */
 extern void proxy_log_close (void);

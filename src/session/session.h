@@ -28,12 +28,17 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "dbtype_def.h"
+#include "load_session.hpp"
 #include "query_list.h"
 #include "query_manager.h"
+#include "system_parameter.h"
 #include "thread_compat.hpp"
 #include "tz_support.h"
 
-extern int session_states_init (THREAD_ENTRY * thread_p);
+// forward definitions
+struct xasl_cache_ent;
+
+extern void session_states_init (THREAD_ENTRY * thread_p);
 extern void session_states_finalize (THREAD_ENTRY * thread_p);
 extern int session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id);
 extern int session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id);
@@ -51,7 +56,7 @@ extern int session_set_session_parameters (THREAD_ENTRY * thread_p, SESSION_PARA
 extern int session_create_prepared_statement (THREAD_ENTRY * thread_p, char *name, char *alias_print, SHA1Hash * sha1,
 					      char *info, int info_len);
 extern int session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char **info, int *info_len,
-					   XASL_CACHE_ENTRY ** xasl_entry);
+					   xasl_cache_ent ** xasl_entry);
 extern int session_delete_prepared_statement (THREAD_ENTRY * thread_p, const char *name);
 extern int login_user (THREAD_ENTRY * thread_p, const char *username);
 extern int session_set_session_variables (THREAD_ENTRY * thread_p, DB_VALUE * values, const int count);
@@ -79,4 +84,8 @@ extern TZ_REGION *session_get_session_tz_region (THREAD_ENTRY * thread_p);
 extern int session_get_number_of_holdable_cursors (void);
 extern int session_get_private_lru_idx (const void *session_p);
 extern int session_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit);
+
+extern int session_set_load_session (THREAD_ENTRY * thread_p, load_session * load_session_p);
+extern int session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_session_ref_ptr));
+extern void session_stop_attached_threads (void *session);
 #endif /* _SESSION_H_ */

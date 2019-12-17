@@ -823,7 +823,7 @@ co_conversion_spec (const char *cspec, int size)
   end = intl_mbs_chr (new_cspec, WC_PSPEC ());
   if (end)
     {
-      /* 
+      /*
        * remove position specifier from conversion spec, i.e. remove
        * all chars following initial '%' up through final '$'.
        */

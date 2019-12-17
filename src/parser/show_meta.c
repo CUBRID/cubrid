@@ -33,6 +33,7 @@
 #include <limits.h>
 #include <ctype.h>
 
+#include "authenticate.h"
 #include "show_meta.h"
 #include "error_manager.h"
 #include "parser.h"
@@ -723,7 +724,7 @@ showstmt_get_attributes (SHOWSTMT_TYPE show_type)
 }
 
 /*
- * pt_check_show_heap () - check table exists or not 
+ * pt_check_show_heap () - check table exists or not
  *   return: PT_NODE pointer
  *
  *   parser(in):
@@ -867,7 +868,7 @@ on_error:
 
 /*
  * free_db_attribute_list () : free DB_ATTRIBUTE list for each show statement
- *   return: 
+ *   return:
  *   md(in/out):
  */
 static void

@@ -35,12 +35,15 @@
 #include <errno.h>
 #include <assert.h>
 
+#include "area_alloc.h"
 #include "object_domain.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "numeric_opfunc.h"
 #include "tz_support.h"
 #include "db_date.h"
 #include "mprec.h"
+#include "porting_inline.hpp"
 #include "set_object.h"
 #include "string_opfunc.h"
 #include "tz_support.h"
@@ -57,6 +60,7 @@
 #endif /* !defined (SERVER_MODE) */
 
 #include "dbtype.h"
+#include "error_manager.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -316,7 +320,7 @@ TP_DOMAIN tp_VarNChar_domain = { NULL, NULL, &tp_VarNChar, DB_MAX_VARNCHAR_PRECI
 };
 
 TP_DOMAIN tp_Json_domain = { NULL, NULL, &tp_Json, 0, 0,
-  DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
+  DOMAIN_INIT2 (INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY)
 };
 
 /* These must be in DB_TYPE order */
@@ -548,7 +552,6 @@ TP_DOMAIN **tp_Domain_conversion_matrix[] = {
 static pthread_mutex_t tp_domain_cache_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif /* SERVER_MODE */
 
-static void domain_init (TP_DOMAIN * domain, DB_TYPE typeid_);
 static int tp_domain_size_internal (const TP_DOMAIN * domain);
 static void tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain);
 static TP_DOMAIN *tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, TP_DOMAIN ** ins_pos);
@@ -589,11 +592,11 @@ static INLINE TP_DOMAIN **tp_domain_get_list_ptr (DB_TYPE type, TP_DOMAIN * setd
 static INLINE TP_DOMAIN *tp_domain_get_list (DB_TYPE type, TP_DOMAIN * setdomain) __attribute__ ((ALWAYS_INLINE));
 
 static int tp_enumeration_match (const DB_ENUMERATION * db_enum1, const DB_ENUMERATION * db_enum2);
-static int tp_digit_number_str_to_bi (char *start, char *end, INTL_CODESET codeset, bool is_negative,
+static int tp_digit_number_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool is_negative,
 				      DB_BIGINT * num_value, DB_DATA_STATUS * data_stat);
-static int tp_hex_str_to_bi (char *start, char *end, INTL_CODESET codeset, bool is_negative, DB_BIGINT * num_value,
-			     DB_DATA_STATUS * data_stat);
-static int tp_scientific_str_to_bi (char *start, char *end, INTL_CODESET codeset, bool is_negative,
+static int tp_hex_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool is_negative,
+			     DB_BIGINT * num_value, DB_DATA_STATUS * data_stat);
+static int tp_scientific_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool is_negative,
 				    DB_BIGINT * num_value, DB_DATA_STATUS * data_stat);
 static DB_BIGINT tp_ubi_to_bi_with_args (UINT64 ubi, bool is_negative, bool truncated, bool round,
 					 DB_DATA_STATUS * data_stat);
@@ -969,7 +972,7 @@ tp_domain_free (TP_DOMAIN * dom)
 }
 
 /*
- * domain_init - initializes a domain structure to contain reasonable "default"
+ * tp_domain_init - initializes a domain structure to contain reasonable "default"
  * values.
  *    return: none
  *    domain(out): domain structure to initialize
@@ -978,14 +981,14 @@ tp_domain_free (TP_DOMAIN * dom)
  *    Used by tp_domain_new and also in some other places
  *    where we need to quickly synthesize some transient domain structures.
  */
-static void
-domain_init (TP_DOMAIN * domain, DB_TYPE type_id)
+void
+tp_domain_init (TP_DOMAIN * domain, DB_TYPE type_id)
 {
   assert (type_id <= DB_TYPE_LAST);
 
   domain->next = NULL;
   domain->next_list = NULL;
-  domain->type = PR_TYPE_FROM_ID (type_id);
+  domain->type = pr_type_from_id (type_id);
   domain->precision = 0;
   domain->scale = 0;
   domain->class_mop = NULL;
@@ -1044,7 +1047,7 @@ tp_domain_new (DB_TYPE type)
   new_dm = (TP_DOMAIN *) area_alloc (tp_Domain_area);
   if (new_dm != NULL)
     {
-      domain_init (new_dm, type);
+      tp_domain_init (new_dm, type);
     }
 
   return new_dm;
@@ -1422,15 +1425,17 @@ tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      if (domain->collation_flag == TP_DOMAIN_COLL_NORMAL || domain->collation_flag == TP_DOMAIN_COLL_ENFORCE)
-	{
-	  db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
-	}
       if (domain->collation_flag == TP_DOMAIN_COLL_ENFORCE)
 	{
+	  db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
 	  /* don't apply precision and type */
 	  break;
 	}
+      if (domain->collation_flag == TP_DOMAIN_COLL_NORMAL)
+	{
+	  db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+	}
+      /* FALLTHRU */
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       value->domain.char_info.type = TP_DOMAIN_TYPE (domain);
@@ -3151,7 +3156,7 @@ tp_domain_resolve_default_w_coll (DB_TYPE type, int coll_id, TP_DOMAIN_COLL_ACTI
  *    dbuf(out): if not NULL, founded domain initialized on dbuf
  */
 TP_DOMAIN *
-tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
+tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 {
   TP_DOMAIN *domain;
   DB_TYPE value_type;
@@ -3291,7 +3296,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	  else
 	    {
 	      domain = dbuf;
-	      domain_init (domain, value_type);
+	      tp_domain_init (domain, value_type);
 	    }
 	  domain->codeset = db_get_string_codeset (val);
 	  domain->collation_id = db_get_string_collation (val);
@@ -3299,7 +3304,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 
 	  /*
 	   * Convert references to the "floating" precisions to actual
-	   * precisions.  This may not be necessary or desireable?
+	   * precisions. This may not be necessary or desirable?
 	   * Zero seems to pop up occasionally in DB_VALUE precisions, until
 	   * this is fixed, treat it as the floater for the variable width
 	   * types.
@@ -3354,7 +3359,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	  else
 	    {
 	      domain = dbuf;
-	      domain_init (dbuf, value_type);
+	      tp_domain_init (dbuf, value_type);
 	    }
 	  domain->precision = db_value_precision (val);
 	  domain->scale = db_value_scale (val);
@@ -3405,7 +3410,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	  else
 	    {
 	      domain = dbuf;
-	      domain_init (domain, value_type);
+	      tp_domain_init (domain, value_type);
 	    }
 
 	  if (db_get_json_schema (val) != NULL)
@@ -4094,10 +4099,13 @@ tp_domain_compatible (const TP_DOMAIN * src, const TP_DOMAIN * dest)
 TP_DOMAIN *
 tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int allow_coercion, TP_MATCH exact_match)
 {
-  TP_DOMAIN *best, *d;
-  TP_DOMAIN **others;
+  TP_DOMAIN *best = NULL, *d = NULL;
+  TP_DOMAIN **others = NULL;
   DB_TYPE vtype;
   int i;
+
+  DB_VALUE temp;
+  db_make_null (&temp);
 
   best = NULL;
 
@@ -4136,7 +4144,6 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 	   */
 	  OID *oid;
 	  DB_OBJECT *mop;
-	  DB_VALUE temp;
 
 	  oid = (OID *) db_get_oid (value);
 	  if (oid)
@@ -4258,7 +4265,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
   else if (vtype == DB_TYPE_ENUMERATION)
     {
       int val_idx, dom_size, val_size;
-      char *dom_str = NULL, *val_str = NULL;
+      const char *dom_str = NULL, *val_str = NULL;
 
       if (db_get_enum_short (value) == 0 && db_get_enum_string (value) != NULL)
 	{
@@ -4688,7 +4695,7 @@ static int
 tp_atotime (const DB_VALUE * src, DB_TIME * temp)
 {
   int milisec;
-  char *strp = db_get_string (src);
+  const char *strp = db_get_string (src);
   int str_len = db_get_string_size (src);
   int status = NO_ERROR;
 
@@ -4712,7 +4719,7 @@ tp_atotime (const DB_VALUE * src, DB_TIME * temp)
 static int
 tp_atodate (const DB_VALUE * src, DB_DATE * temp)
 {
-  char *strp = db_get_string (src);
+  const char *strp = db_get_string (src);
   int str_len = db_get_string_size (src);
   int status = NO_ERROR;
 
@@ -4736,7 +4743,7 @@ tp_atodate (const DB_VALUE * src, DB_DATE * temp)
 static int
 tp_atoutime (const DB_VALUE * src, DB_UTIME * temp)
 {
-  char *strp = db_get_string (src);
+  const char *strp = db_get_string (src);
   int str_len = db_get_string_size (src);
   int status = NO_ERROR;
 
@@ -4760,7 +4767,7 @@ tp_atoutime (const DB_VALUE * src, DB_UTIME * temp)
 static int
 tp_atotimestamptz (const DB_VALUE * src, DB_TIMESTAMPTZ * temp)
 {
-  char *strp = db_get_string (src);
+  const char *strp = db_get_string (src);
   int str_len = db_get_string_size (src);
   int status = NO_ERROR;
   bool dummy_has_zone;
@@ -4785,7 +4792,7 @@ tp_atotimestamptz (const DB_VALUE * src, DB_TIMESTAMPTZ * temp)
 static int
 tp_atoudatetime (const DB_VALUE * src, DB_DATETIME * temp)
 {
-  char *strp = db_get_string (src);
+  const char *strp = db_get_string (src);
   int str_len = db_get_string_size (src);
   int status = NO_ERROR;
 
@@ -4809,7 +4816,7 @@ tp_atoudatetime (const DB_VALUE * src, DB_DATETIME * temp)
 static int
 tp_atodatetimetz (const DB_VALUE * src, DB_DATETIMETZ * temp)
 {
-  char *strp = db_get_string (src);
+  const char *strp = db_get_string (src);
   int str_len = db_get_string_size (src);
   int status = NO_ERROR;
   bool dummy_has_zone;
@@ -4834,7 +4841,7 @@ tp_atodatetimetz (const DB_VALUE * src, DB_DATETIMETZ * temp)
 static int
 tp_atonumeric (const DB_VALUE * src, DB_VALUE * temp)
 {
-  char *strp;
+  const char *strp;
   int status = NO_ERROR;
   int str_len;
 
@@ -4871,10 +4878,10 @@ static int
 tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
 {
   char str[NUM_BUF_SIZE];
-  char *strp = str;
+  const char *strp = NULL;
   bool do_alloc = false;
   double d;
-  char *p, *end;
+  const char *p, *end;
   int status = NO_ERROR;
   unsigned int size;
   INTL_CODESET codeset;
@@ -4886,7 +4893,7 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
   codeset = db_get_string_codeset (src);
   end = p + size - 1;
 
-  if (0 < size && *end)
+  if (size > 0 && *end)
     {
       while (p <= end && char_isspace (*p))
 	{
@@ -4898,23 +4905,31 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
 	  end--;
 	}
 
+      char *strp_tmp = NULL;
       size = CAST_BUFLEN (end - p) + 1;
 
       if (size > sizeof (str) - 1)
 	{
-	  strp = (char *) malloc (size + 1);
-	  if (strp == NULL)
+	  strp_tmp = (char *) malloc (size + 1);
+	  if (strp_tmp == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (size + 1));
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 	  do_alloc = true;
 	}
+      else
+	{
+	  strp_tmp = str;
+	}
+
       if (size)
 	{
-	  memcpy (strp, p, size);
+	  memcpy (strp_tmp, p, size);
 	}
-      strp[size] = '\0';
+      strp_tmp[size] = '\0';
+
+      strp = strp_tmp;
     }
   else
     {
@@ -4923,7 +4938,8 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
 
   /* don't use atof() which cannot detect the error. */
   errno = 0;
-  d = string_to_double (strp, &p);
+  char *end_ptr = NULL;
+  d = string_to_double (strp, &end_ptr);
 
   if (errno == ERANGE)
     {
@@ -4936,8 +4952,8 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
     }
 
   /* ignore trailing spaces */
-  p = (char *) intl_skip_spaces (p, NULL, codeset);
-  if (*p)			/* all input does not consumed */
+  end_ptr = (char *) intl_skip_spaces (end_ptr, NULL, codeset);
+  if (*end_ptr)			/* all input does not consumed */
     {
       *data_stat = DATA_STATUS_NOT_CONSUMED;
     }
@@ -4967,9 +4983,9 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
 static int
 tp_atobi (const DB_VALUE * src, DB_BIGINT * num_value, DB_DATA_STATUS * data_stat)
 {
-  char *strp = db_get_string (src);
-  char *stre = NULL;
-  char *p = NULL, *old_p = NULL;
+  const char *strp = db_get_string (src);
+  const char *stre = NULL;
+  const char *p = NULL, *old_p = NULL;
   int status = NO_ERROR;
   bool is_negative = false;
   INTL_CODESET codeset = db_get_string_codeset (src);
@@ -5596,7 +5612,7 @@ bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size)
   int string_index = 0;
   int byte_index;
   int bit_index;
-  char *bstring;
+  const char *bstring;
   int error = NO_ERROR;
   static const char digits[16] = {
     '0', '1', '2', '3', '4', '5', '6', '7',
@@ -5727,19 +5743,19 @@ make_desired_string_db_value (DB_TYPE desired_type, const TP_DOMAIN * desired_do
   switch (desired_type)
     {
     case DB_TYPE_CHAR:
-      db_make_char (&temp, desired_domain->precision, (const DB_C_CHAR) new_string, strlen (new_string),
+      db_make_char (&temp, desired_domain->precision, new_string, strlen (new_string),
 		    TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
       break;
     case DB_TYPE_NCHAR:
-      db_make_nchar (&temp, desired_domain->precision, (const DB_C_NCHAR) new_string, strlen (new_string),
+      db_make_nchar (&temp, desired_domain->precision, new_string, strlen (new_string),
 		     TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
       break;
     case DB_TYPE_VARCHAR:
-      db_make_varchar (&temp, desired_domain->precision, (const DB_C_CHAR) new_string, strlen (new_string),
+      db_make_varchar (&temp, desired_domain->precision, new_string, strlen (new_string),
 		       TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
       break;
     case DB_TYPE_VARNCHAR:
-      db_make_varnchar (&temp, desired_domain->precision, (const DB_C_NCHAR) new_string, strlen (new_string),
+      db_make_varnchar (&temp, desired_domain->precision, new_string, strlen (new_string),
 			TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
       break;
     default:			/* Can't get here.  This just quiets the compiler */
@@ -7143,10 +7159,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    }
 	  break;
 	case DB_JSON_STRING:
-	  {
-	    const char *json_string = db_json_get_string_from_document (src_doc);
-	    db_make_string_by_const_str (&src_replacement, json_string);
-	  }
+	  db_make_string_copy (&src_replacement, db_json_get_string_from_document (src_doc));
 	  break;
 	default:
 	  use_replacement = false;
@@ -9702,7 +9715,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       {
 	unsigned short val_idx = 0;
 	int val_str_size = 0;
-	char *val_str = NULL;
+	const char *val_str = NULL;
 	bool exit = false, alloc_string = true;
 	DB_VALUE conv_val;
 
@@ -9763,7 +9776,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    {
 	      DB_VALUE val;
 	      DB_DATA_STATUS stat = DATA_STATUS_OK;
-	      int err = NO_ERROR;
 
 	      db_make_double (&val, 0);
 	      err = numeric_db_value_coerce_from_num ((DB_VALUE *) src, &val, &stat);
@@ -9976,7 +9988,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
 	    if (status == DOMAIN_COMPATIBLE)
 	      {
-		char *enum_str;
+		const char *enum_str;
 
 		assert (val_str != NULL);
 
@@ -9989,8 +10001,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
 		if (alloc_string)
 		  {
-		    enum_str = (char *) db_private_alloc (NULL, val_str_size + 1);
-		    if (enum_str == NULL)
+		    char *enum_str_tmp = (char *) db_private_alloc (NULL, val_str_size + 1);
+		    if (enum_str_tmp == NULL)
 		      {
 			status = DOMAIN_ERROR;
 			pr_clear_value (&conv_val);
@@ -9998,14 +10010,17 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		      }
 		    else
 		      {
-			memcpy (enum_str, val_str, val_str_size);
-			enum_str[val_str_size] = 0;
+			memcpy (enum_str_tmp, val_str, val_str_size);
+			enum_str_tmp[val_str_size] = 0;
 		      }
+
+		    enum_str = enum_str_tmp;
 		  }
 		else
 		  {
 		    enum_str = val_str;
 		  }
+
 		db_make_enumeration (target, val_idx, enum_str, val_str_size, TP_DOMAIN_CODESET (desired_domain),
 				     TP_DOMAIN_COLLATION (desired_domain));
 		target->need_clear = true;
@@ -10025,14 +10040,23 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  case DB_TYPE_NCHAR:
 	  case DB_TYPE_VARNCHAR:
 	    {
-	      unsigned int str_size = db_get_string_size (src);
-	      const char *original_str = db_get_string (src);
-	      int error_code;
+	      DB_VALUE utf8_str;
+	      const DB_VALUE *json_str_val = &utf8_str;
+	      int error_code = db_json_copy_and_convert_to_utf8 (src, &utf8_str, &json_str_val);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  status = DOMAIN_ERROR;
+		  break;
+		}
 
-	      assert (str_size >= 0);	/* if this isn't correct, we cannot rely on strlen */
+	      unsigned int str_size = db_get_string_size (json_str_val);
+	      const char *original_str = db_get_string (json_str_val);
+
 	      error_code = db_json_get_json_from_str (original_str, doc, str_size);
 	      if (error_code != NO_ERROR)
 		{
+		  pr_clear_value (&utf8_str);
 		  assert (doc == NULL);
 		  status = DOMAIN_ERROR;
 		  break;
@@ -10042,11 +10066,17 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  && db_json_validate_doc (desired_domain->json_validator, doc) != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
+		  pr_clear_value (&utf8_str);
 		  db_json_delete_doc (doc);
 		  status = DOMAIN_ERROR;
 		  break;
 		}
+	      pr_clear_value (&utf8_str);
 	    }
+	    break;
+	  case DB_TYPE_SHORT:
+	    doc = db_json_allocate_doc ();
+	    db_json_set_int_to_doc (doc, db_get_short (src));
 	    break;
 	  case DB_TYPE_INTEGER:
 	    doc = db_json_allocate_doc ();
@@ -10060,6 +10090,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    doc = db_json_allocate_doc ();
 	    db_json_set_double_to_doc (doc, db_get_double (src));
 	    break;
+	  case DB_TYPE_FLOAT:
 	  case DB_TYPE_NUMERIC:
 	    {
 	      DB_VALUE double_value;
@@ -10794,7 +10825,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 	{
 	  PR_TYPE *pr_type;
 
-	  pr_type = PR_TYPE_FROM_ID (vtype1);
+	  pr_type = pr_type_from_id (vtype1);
 	  assert (pr_type != NULL);
 
 	  if (pr_type)
@@ -10895,7 +10926,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 		}
 	      else
 		{
-		  result = (*(pr_type->cmpval)) (v1, v2, do_coercion, total_order, NULL, common_coll);
+		  result = pr_type->cmpval (v1, v2, do_coercion, total_order, NULL, common_coll);
 		}
 
 	      if (result == DB_UNK)
@@ -10959,7 +10990,7 @@ tp_value_equal (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercio
 
 
 /*
- * tp_domain_disk_size - Caluclate the disk size necessary to store a value
+ * tp_domain_disk_size - Calculate the disk size necessary to store a value
  * for a particular domain.
  *    return: disk size in bytes. -1 if this is a variable width domain or
  *            floating precision in fixed domain.
@@ -10973,38 +11004,20 @@ tp_value_equal (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercio
 int
 tp_domain_disk_size (TP_DOMAIN * domain)
 {
-  int size;
-
-  if (domain->type->variable_p)
+  if (domain->type->is_always_variable ())
     {
       return -1;
     }
 
-  if (domain->type->data_lengthmem != NULL
-      && (domain->type->id == DB_TYPE_CHAR || domain->type->id == DB_TYPE_NCHAR || domain->type->id == DB_TYPE_BIT)
-      && domain->precision == TP_FLOATING_PRECISION_VALUE)
+  if ((domain->type->get_id () == DB_TYPE_CHAR || domain->type->get_id () == DB_TYPE_NCHAR
+       || domain->type->get_id () == DB_TYPE_BIT) && domain->precision == TP_FLOATING_PRECISION_VALUE)
     {
       return -1;
     }
 
   assert (domain->precision != TP_FLOATING_PRECISION_VALUE);
 
-  /*
-   * Use the "lengthmem" function here with a NULL pointer.  The size will
-   * not be dependent on the actual value.
-   * The decision of whether or not to use the lengthmem function probably
-   * should be based on the value of "disksize" ?
-   */
-  if (domain->type->data_lengthmem != NULL)
-    {
-      size = (*(domain->type->data_lengthmem)) (NULL, domain, 1);
-    }
-  else
-    {
-      size = domain->type->disksize;
-    }
-
-  return size;
+  return domain->type->get_disk_size_of_mem (NULL, domain);
 }
 
 
@@ -11017,30 +11030,13 @@ tp_domain_disk_size (TP_DOMAIN * domain)
 int
 tp_domain_memory_size (TP_DOMAIN * domain)
 {
-  int size;
-
-  if (domain->type->data_lengthmem != NULL
-      && (domain->type->id == DB_TYPE_CHAR || domain->type->id == DB_TYPE_NCHAR || domain->type->id == DB_TYPE_BIT)
-      && domain->precision == TP_FLOATING_PRECISION_VALUE)
+  if ((domain->type->get_id () == DB_TYPE_CHAR || domain->type->get_id () == DB_TYPE_NCHAR
+       || domain->type->get_id () == DB_TYPE_BIT) && domain->precision == TP_FLOATING_PRECISION_VALUE)
     {
       return -1;
     }
 
-  /*
-   * Use the "lengthmem" function here with a NULL pointer and a "disk"
-   * flag of zero.
-   * This will cause it to return the instance memory size.
-   */
-  if (domain->type->data_lengthmem != NULL)
-    {
-      size = (*(domain->type->data_lengthmem)) (NULL, domain, 0);
-    }
-  else
-    {
-      size = domain->type->size;
-    }
-
-  return size;
+  return domain->type->get_mem_size_of_mem (NULL, domain);
 }
 
 /*
@@ -11068,7 +11064,7 @@ tp_init_value_domain (TP_DOMAIN * domain, DB_VALUE * value)
     }
   else
     {
-      (*(domain->type->initval)) (value, domain->precision, domain->scale);
+      domain->type->initval (value, domain->precision, domain->scale);
     }
 }
 
@@ -11092,7 +11088,7 @@ tp_check_value_size (TP_DOMAIN * domain, DB_VALUE * value)
   TP_DOMAIN_STATUS status;
   int src_precision, src_length;
   DB_TYPE dbtype;
-  char *src;
+  const char *src;
 
   status = DOMAIN_COMPATIBLE;
 
@@ -11612,6 +11608,12 @@ tp_domain_status_er_set (TP_DOMAIN_STATUS status, const char *file_name, const i
 #endif
       error = er_errid ();
 
+      if (error == ER_JSON_INVALID_JSON)
+	{
+	  // We keep invalid json errors that happend during cast since they are more descriptive
+	  return error;
+	}
+
       if (error == ER_IT_DATA_OVERFLOW)
 	{
 	  status = DOMAIN_OVERFLOW;
@@ -11661,12 +11663,12 @@ tp_domain_status_er_set (TP_DOMAIN_STATUS status, const char *file_name, const i
  *                    DATA_STATUS_TRUNCATED
  */
 int
-tp_digit_number_str_to_bi (char *start, char *end, INTL_CODESET codeset, bool is_negative, DB_BIGINT * num_value,
-			   DB_DATA_STATUS * data_stat)
+tp_digit_number_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool is_negative,
+			   DB_BIGINT * num_value, DB_DATA_STATUS * data_stat)
 {
   char str[64] = { 0 };
-  char *p = NULL;
-  char *strp = NULL, *stre = NULL;
+  const char *p = NULL;
+  const char *strp = NULL, *stre = NULL;
   size_t n_digits = 0;
   DB_BIGINT bigint = 0;
   bool round = false;
@@ -11755,7 +11757,7 @@ tp_digit_number_str_to_bi (char *start, char *end, INTL_CODESET codeset, bool is
 	}
 
       errno = 0;
-      bigint = strtoll (strp, &p, 10);
+      bigint = strtoll (strp, NULL, 10);
 
       if (errno == ERANGE)
 	{
@@ -11811,13 +11813,13 @@ tp_digit_number_str_to_bi (char *start, char *end, INTL_CODESET codeset, bool is
  *                    DATA_STATUS_TRUNCATED
  */
 int
-tp_hex_str_to_bi (char *start, char *end, INTL_CODESET codeset, bool is_negative, DB_BIGINT * num_value,
+tp_hex_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool is_negative, DB_BIGINT * num_value,
 		  DB_DATA_STATUS * data_stat)
 {
 #define HIGHEST_4BITS_OF_UBI 0xF000000000000000
 
   int error = NO_ERROR;
-  char *p = NULL;
+  const char *p = NULL;
   UINT64 ubi = 0;
   unsigned int tmp_ui = 0;
   bool round = false;
@@ -11936,17 +11938,17 @@ end:
  *          see tp_atobi
  */
 int
-tp_scientific_str_to_bi (char *start, char *end, INTL_CODESET codeset, bool is_negative, DB_BIGINT * num_value,
-			 DB_DATA_STATUS * data_stat)
+tp_scientific_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool is_negative,
+			 DB_BIGINT * num_value, DB_DATA_STATUS * data_stat)
 {
   int error = NO_ERROR;
   UINT64 ubi = 0;
   bool truncated = false;
   bool round = false;
-  char *p = NULL;
-  char *base_int_start = NULL, *base_int_end = NULL;
-  char *base_float_start = NULL, *base_float_end = NULL;
-  char *exp_start = NULL, *exp_end = NULL;
+  const char *p = NULL;
+  const char *base_int_start = NULL, *base_int_end = NULL;
+  const char *base_float_start = NULL, *base_float_end = NULL;
+  const char *exp_start = NULL, *exp_end = NULL;
   bool is_exp_negative = false;
   int exp = 0;			/* at most 308 */
 

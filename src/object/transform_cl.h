@@ -34,6 +34,9 @@
 
 #include "locator.h"
 
+// forward definition
+struct or_buf;
+
 /*
  * this should be an enumeration but define it as ints first to
  * ease the integration
@@ -59,7 +62,7 @@ extern void tf_dump_class_size (MOBJ classobj);
 #endif
 
 /* new hacks for bulk temporary OID upgrading */
-extern OID *tf_need_permanent_oid (OR_BUF * buf, DB_OBJECT * obj);
+extern OID *tf_need_permanent_oid (or_buf * buf, DB_OBJECT * obj);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int tf_find_temporary_oids (LC_OIDSET * oidset, MOBJ classobj, MOBJ obj);
 

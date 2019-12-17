@@ -35,6 +35,10 @@
 #include "locator.h"
 #include "dbtype_def.h"
 
+#if defined (SERVER_MODE)
+#error does not belong to server
+#endif // SERVER_MODE
+
 /*
  * VID_INFO
  *    typedefs for virtual objects.
@@ -120,7 +124,7 @@ struct db_object
   void *object;			/* pointer to attribute values */
 
   struct db_object *class_link;	/* link for class instances list */
-  /* Careful whenever looping through object using class_link to save it and advance using this saved class link if the 
+  /* Careful whenever looping through object using class_link to save it and advance using this saved class link if the
    * current mop can be removed from class. */
   struct db_object *dirty_link;	/* link for dirty list */
   struct db_object *hash_link;	/* link for workspace hash table */
@@ -129,8 +133,8 @@ struct db_object
   struct db_object *commit_link;	/* link for obj to be reset at commit/abort */
   WS_VALUE_LIST *label_value_list;	/* label value list */
   LOCK lock;			/* object lock */
-  int mvcc_snapshot_version;	/* The snapshot version at the time mop object is fetched and cached. Used only when
-				 * MVCC is enabled. */
+  unsigned int mvcc_snapshot_version;	/* The snapshot version at the time mop object is fetched and cached.
+					 * Used only when MVCC is enabled. */
 
   unsigned char pruning_type;	/* no pruning, prune as partitioned class, prune as partition */
   unsigned char composition_fetch;	/* set the left-most bit if this MOP */
@@ -659,7 +663,7 @@ extern WS_REPL_FLUSH_ERR *ws_get_repl_error_from_error_link (void);
 extern void ws_clear_all_repl_errors_of_error_link (void);
 extern void ws_free_repl_flush_error (WS_REPL_FLUSH_ERR * flush_err);
 
-extern int ws_get_mvcc_snapshot_version (void);
+extern unsigned int ws_get_mvcc_snapshot_version (void);
 extern void ws_increment_mvcc_snapshot_version (void);
 extern bool ws_is_mop_fetched_with_current_snapshot (MOP mop);
 extern void ws_set_mop_fetched_with_current_snapshot (MOP mop);

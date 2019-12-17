@@ -32,6 +32,7 @@
 #include <time.h>
 #include <assert.h>
 
+#include "authenticate.h"
 #include "db.h"
 #include "dbi.h"
 #include "db_query.h"
@@ -43,6 +44,7 @@
 #include "parser.h"
 #include "parser_message.h"
 #include "object_domain.h"
+#include "object_primitive.h"
 #include "schema_manager.h"
 #include "view_transform.h"
 #include "execute_statement.h"
@@ -52,6 +54,7 @@
 #include "network_interface_cl.h"
 #include "transaction_cl.h"
 #include "dbtype.h"
+#include "xasl.h"
 
 #define BUF_SIZE 1024
 
@@ -543,7 +546,7 @@ db_compile_statement_local (DB_SESSION * session)
       session->stage = (char *) p + session->dimension * sizeof (DB_QUERY_TYPE *);
     }
 
-  /* 
+  /*
    * Compilation Stage
    */
 
@@ -621,7 +624,7 @@ db_compile_statement_local (DB_SESSION * session)
       if (qtype)
 	{
 	  /* NOTE, this is here on purpose. If something is busting because it tries to continue corresponding this
-	   * type information and the list file columns after having jacked with the list file, by for example adding a 
+	   * type information and the list file columns after having jacked with the list file, by for example adding a
 	   * hidden OID column, fix the something else. This needs to give the results as user views the query, ie
 	   * related to the original text. It may guess wrong about attribute/column updatability. Thats what they
 	   * asked for. */
@@ -668,7 +671,7 @@ db_compile_statement_local (DB_SESSION * session)
   session->stage[stmt_ndx] = StatementCompiledStage;
 
 
-  /* 
+  /*
    * Preparation Stage
    */
 
@@ -680,6 +683,21 @@ db_compile_statement_local (DB_SESSION * session)
    * prepare_and_execute_query(). */
   if (prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && statement->cannot_prepare == 0)
     {
+      if (session->is_subsession_for_prepared)
+	{
+	  /* cast host variables to their expected domain, before XASL generation. */
+	  session->parser->set_host_var = 0;
+	  err = do_cast_host_variables_to_expected_domain (session);
+	  if (err < 0)
+	    {
+	      if (pt_has_error (parser))
+		{
+		  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
+		  return er_errid ();
+		}
+	      return err;
+	    }
+	}
 
       /* now, prepare the statement by calling do_prepare_statement() */
       err = do_prepare_statement (parser, statement);
@@ -1614,7 +1632,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
       return er_errid ();
     }
 
-  /* 
+  /*
    * Execution Stage
    */
   er_clear ();
@@ -1739,7 +1757,9 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
     {
       /* now, execute the statement by calling do_execute_statement() */
       err = do_execute_statement (parser, statement);
-      if (err == ER_QPROC_INVALID_XASLNODE && session->stage[stmt_ndx] == StatementPreparedStage)
+      if (((err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
+	   && session->stage[stmt_ndx] == StatementPreparedStage)
+	  || (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED && session->stage[stmt_ndx] == StatementExecutedStage))
 	{
 	  /* The cache entry was deleted before 'execute' */
 	  if (statement->xasl_id)
@@ -1884,7 +1904,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	    case CUBRID_STMT_CALL:
 	    case CUBRID_STMT_INSERT:
 	    case CUBRID_STMT_GET_STATS:
-	      /* csql (in csql.c) may throw away any non-null *result, but we create a DB_QUERY_RESULT structure anyway 
+	      /* csql (in csql.c) may throw away any non-null *result, but we create a DB_QUERY_RESULT structure anyway
 	       * for other callers of db_execute that use the *result like esql_cli.c */
 	      if (pt_is_server_insert_with_generated_keys (parser, statement))
 		{
@@ -1930,7 +1950,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 		      int row_count = err;
 		      err = db_query_tuple_count (qres);
 		      /* We have a special case for REPLACE INTO: pt_node_etc (statement) holds only the inserted row
-		       * but we might have done a delete before. For this case, if err>row_count we will not change the 
+		       * but we might have done a delete before. For this case, if err>row_count we will not change the
 		       * row count */
 		      if (stmt_type == CUBRID_STMT_INSERT)
 			{
@@ -1953,7 +1973,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 		}
 	      else
 		{
-		  /* avoid changing err. it should have been meaningfully set. if err = 0, uci_static will set SQLCA to 
+		  /* avoid changing err. it should have been meaningfully set. if err = 0, uci_static will set SQLCA to
 		   * SQL_NOTFOUND! */
 		}
 	      break;
@@ -2447,7 +2467,7 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx)
   parser->auto_param_count = 0;
   parser->set_host_var = 1;
 
-  /* Multi range optimization check: if host-variables were used (not auto-parameterized), the orderby_num () limit may 
+  /* Multi range optimization check: if host-variables were used (not auto-parameterized), the orderby_num () limit may
    * change and invalidate or validate multi range optimization. Check if query needs to be recompiled. */
   if (!XASL_ID_IS_NULL (&xasl_id)	/* xasl_id should not be null */
       && !statement->info.execute.recompile	/* recompile is already planned */
@@ -2525,6 +2545,8 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
 	  return ER_PT_EXECUTE;
 	}
     }
+
+  session->parser->set_host_var = 1;
 
   return NO_ERROR;
 }
@@ -2712,13 +2734,15 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
       return er_errid ();
     }
 
-  /* cast host variables to their expected domain */
-  err = do_cast_host_variables_to_expected_domain (new_session);
-  if (err != NO_ERROR)
+  if (new_session->parser->set_host_var == 0)
     {
-      return err;
+      /* Cast host variable to expected domain, if not already casted in db_compile_statement. */
+      err = do_cast_host_variables_to_expected_domain (new_session);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
     }
-  new_session->parser->set_host_var = 1;
 
   new_session->parser->is_holdable = session->parser->is_holdable;
   new_session->parser->is_auto_commit = session->parser->is_auto_commit;
@@ -3099,10 +3123,10 @@ db_compile_and_execute_queries_internal (const char *CSQL_query, void *result, D
 }
 
 /*
- * db_set_system_generated_statement () - 
+ * db_set_system_generated_statement () -
  *
  * returns  : error status, if an invalid session is given
- *            NO_ERROR 
+ *            NO_ERROR
  * session(in) : contains the SQL query that has been compiled
  *
  */
@@ -4167,4 +4191,21 @@ db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, PT_NODE * sta
     }
 
   return can_execute_statement_with_commit;
+}
+
+int
+db_get_line_of_statement (DB_SESSION * session, int stmt_id)
+{
+  assert (session->statements != NULL);
+
+  // Safeguards
+  if (stmt_id <= 0 || stmt_id > session->dimension || session->statements == NULL
+      || session->statements[stmt_id - 1] == NULL)
+    {
+      // stmt_id is not valid.
+      return -1;
+    }
+
+  // Get last statement
+  return session->statements[stmt_id - 1]->line_number;
 }

@@ -68,7 +68,7 @@
 #include "execute_statement.h"
 #include "optimizer.h"
 #include "network_interface_cl.h"
-#include "dbtype.h"
+#include "printer.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -145,10 +145,8 @@ const char *AU_DBA_USER_NAME = "DBA";
   (IS_ENCODED_SHA2_512 (string) || IS_ENCODED_SHA1 (string) || IS_ENCODED_DES (string))
 
 /* Macro to determine if a dbvalue is a character strign type. */
-#define IS_STRING(n)    (db_value_type(n) == DB_TYPE_VARCHAR  || \
-                         db_value_type(n) == DB_TYPE_CHAR     || \
-                         db_value_type(n) == DB_TYPE_VARNCHAR || \
-                         db_value_type(n) == DB_TYPE_NCHAR)
+#define IS_STRING(n)    DB_IS_STRING (n)
+
 /* Macro to determine if a name is system catalog class */
 #define IS_CATALOG_CLASS(name) \
         (strcmp(name, CT_CLASS_NAME) == 0 || \
@@ -456,7 +454,7 @@ static DB_METHOD_LINK au_static_links[] = {
   {"au_get_owner_method", (METHOD_LINK_FUNCTION) au_get_owner_method},
   {"au_check_authorization_method", (METHOD_LINK_FUNCTION) au_check_authorization_method},
 
-  /* 
+  /*
    * qo_set_cost
    *
    * This function is exported by optimizer/query_planner.c, and provides a backdoor that
@@ -516,7 +514,7 @@ static bool match_password (const char *user, const char *database);
 static int au_set_password_internal (MOP user, const char *password, int encode, char encrypt_prefix);
 
 static int au_add_direct_groups (DB_SET * new_groups, DB_VALUE * value);
-static int au_compute_groups (MOP member, char *name);
+static int au_compute_groups (MOP member, const char *name);
 static int au_add_member_internal (MOP group, MOP member, int new_user);
 
 static int find_grant_entry (DB_SET * grants, MOP class_mop, MOP grantor);
@@ -551,8 +549,8 @@ static void free_class_users (CLASS_USER * users);
 static CLASS_USER *find_or_add_user (CLASS_AUTH * auth, MOP user_obj);
 static int add_class_grant (CLASS_AUTH * auth, MOP source, MOP user, int cache);
 static int build_class_grant_list (CLASS_AUTH * cl_auth, MOP class_mop);
-static void issue_grant_statement (FILE * fp, CLASS_AUTH * auth, CLASS_GRANT * grant, int authbits);
-static int class_grant_loop (CLASS_AUTH * auth, FILE * outfp);
+static void issue_grant_statement (print_output & output_ctx, CLASS_AUTH * auth, CLASS_GRANT * grant, int authbits);
+static int class_grant_loop (print_output & output_ctx, CLASS_AUTH * auth);
 
 static void au_print_cache (int cache, FILE * fp);
 static void au_print_grant_entry (DB_SET * grants, int grant_index, FILE * fp);
@@ -596,7 +594,7 @@ au_get_set (MOP obj, const char *attname, DB_SET ** set)
 	      *set = db_get_set (&value);
 	    }
 
-	  /* 
+	  /*
 	   * since we almost ALWAYS end up iterating through the sets fetching
 	   * objects, do a vector fetch immediately to avoid
 	   * multiple server calls.
@@ -609,7 +607,7 @@ au_get_set (MOP obj, const char *attname, DB_SET ** set)
 		{
 		  error = set_filter (*set);
 		}
-	      /* 
+	      /*
 	       * shoudl be detecting the filtered elements and marking the
 	       * object dirty if possible
 	       */
@@ -908,7 +906,7 @@ au_find_user_cache_index (DB_OBJECT * user, int *index, int check_it)
     }
   else
     {
-      /* 
+      /*
        * User wasn't in the cache, add it and extend the existing class
        * caches.  First do a little sanity check just to make sure this
        * is a user object.
@@ -991,7 +989,7 @@ reset_cache_for_user_and_class (SM_CLASS * sm_class)
   for (c = Au_class_caches; c != NULL && c->class_ != sm_class; c = c->next);
   if (c != NULL)
     {
-      /* 
+      /*
        * invalide every user's cache for this class_, could be more
        * selective and do only the given user and its members
        */
@@ -1192,7 +1190,7 @@ au_find_user (const char *user_name)
     }
   intl_identifier_upper (user_name, upper_case_name);
 
-  /* 
+  /*
    * first try to find the user id by index. This is faster than
    * a query, and will not get blocked out as a server request
    * if the query processing resources are all used up at the moment.
@@ -1267,7 +1265,7 @@ exit:
 }
 
 /*
- * au_find_user_to_drop - Find a user object by name for dropping. 
+ * au_find_user_to_drop - Find a user object by name for dropping.
  *
  *   return: error code
  *   user_name(in): name
@@ -1545,7 +1543,7 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
       return er_errid ();
     }
 
-  db_make_string_by_const_str (&class_name_val, sm_get_ch_name (class_mop));
+  db_make_string (&class_name_val, sm_get_ch_name (class_mop));
   db_class_inst = obj_find_unique (db_class, "class_name", &class_name_val, AU_FETCH_READ);
   if (db_class_inst == NULL)
     {
@@ -1562,7 +1560,7 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
       ;
     }
 
-  db_make_varchar (&value, 7, (char *) type_set[i], strlen (type_set[i]), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varchar (&value, 7, type_set[i], strlen (type_set[i]), LANG_SYS_CODESET, LANG_SYS_COLLATION);
   obj_set (au_obj, "auth_type", &value);
 
   db_make_int (&value, (int) grant_option);
@@ -1648,13 +1646,13 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_CLASS, 0);
       goto exit;
     }
-  db_make_string_by_const_str (&val[INDEX_FOR_CLASS_NAME], class_name);
+  db_make_string (&val[INDEX_FOR_CLASS_NAME], class_name);
 
   for (type = DB_AUTH_SELECT, i = 0; type != auth_type; type = (DB_AUTH) (type << 1), i++)
     {
       ;
     }
-  db_make_string_by_const_str (&val[INDEX_FOR_AUTH_TYPE], type_set[i]);
+  db_make_string (&val[INDEX_FOR_AUTH_TYPE], type_set[i]);
 
   session = db_open_buffer (sql_query);
   if (session == NULL)
@@ -2049,7 +2047,7 @@ au_delete_auth_of_dropping_table (const char *class_name)
       goto release;
     }
 
-  db_make_string_by_const_str (&val, class_name);
+  db_make_string (&val, class_name);
   error = db_push_values (session, 1, &val);
   if (error != NO_ERROR)
     {
@@ -2202,7 +2200,7 @@ au_add_user (const char *name, int *exists)
 		  db_make_object (&value, user);
 		  if (Au_public_user != NULL)
 		    {
-		      /* 
+		      /*
 		       * every user is a member of the PUBLIC group,
 		       * must make sure that the exported routines can't
 		       * be used to violate this internal connection
@@ -2213,7 +2211,7 @@ au_add_user (const char *name, int *exists)
 			}
 		    }
 
-		  /* 
+		  /*
 		   * do we want to do this ?? - logically it is ok but this
 		   * means we can't have DBA members since this would
 		   * cause user hierarchy cycles.
@@ -2254,7 +2252,7 @@ au_add_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name, DB_VAL
   int error;
   int exists;
   MOP user;
-  char *tmp;
+  const char *tmp = NULL;
 
   if (name != NULL && IS_STRING (name) && !DB_IS_NULL (name) && ((tmp = db_get_string (name)) != NULL))
     {
@@ -2265,7 +2263,7 @@ au_add_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name, DB_VAL
 	  db_make_error (returnval, error);
 	  return;
 	}
-      /* 
+      /*
        * although au_set_password will check this, check it out here before
        * we bother creating the user object
        */
@@ -2568,7 +2566,7 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
 	  len = strlen (password);
 	  if (len == 0)
 	    password = NULL;
-	  /* 
+	  /*
 	   * check for large passwords, only do this
 	   * if the encode flag is on !
 	   */
@@ -2625,7 +2623,7 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
 		    }
 		  else
 		    {
-		      /* 
+		      /*
 		       * always add the prefix, the unload process strips it out
 		       * so the password can be read by the csql interpreter
 		       */
@@ -2838,7 +2836,7 @@ au_set_user_comment (MOP user, const char *comment)
 	}
       else
 	{
-	  db_make_string_by_const_str (&value, comment);
+	  db_make_string (&value, comment);
 	  error = obj_set (user, "comment", &value);
 	  pr_clear_value (&value);
 	}
@@ -2904,7 +2902,7 @@ au_add_direct_groups (DB_SET * new_groups, DB_VALUE * value)
  *   name(in): the new member name
  */
 static int
-au_compute_groups (MOP member, char *name)
+au_compute_groups (MOP member, const char *name)
 {
   int error = NO_ERROR;
   DB_SET *new_groups, *direct_groups;
@@ -3036,15 +3034,15 @@ au_add_member_internal (MOP group, MOP member, int new_user)
 {
   int error = NO_ERROR;
   DB_VALUE membervalue, member_name_val, groupvalue;
-  DB_SET *group_groups = NULL, *member_groups, *member_direct_groups;
+  DB_SET *group_groups = NULL, *member_groups = NULL, *member_direct_groups = NULL;
   int save;
-  char *member_name;
+  const char *member_name = NULL;
 
   AU_DISABLE (save);
   db_make_object (&membervalue, member);
   db_make_object (&groupvalue, group);
 
-  /* 
+  /*
    * Skip some checks and processing for a new user/group because it
    * can't have any members yet.
    */
@@ -3098,7 +3096,7 @@ au_add_member_internal (MOP group, MOP member, int new_user)
 				}
 			      else
 				{
-				  member_name = (char *) db_get_string (&member_name_val);
+				  member_name = db_get_string (&member_name_val);
 				}
 
 			      error = db_set_add (member_direct_groups, &groupvalue);
@@ -3231,9 +3229,9 @@ au_drop_member (MOP group, MOP member)
 {
   int syserr = NO_ERROR, error = NO_ERROR;
   DB_VALUE groupvalue, member_name_val;
-  DB_SET *groups, *member_groups, *member_direct_groups;
+  DB_SET *groups = NULL, *member_groups = NULL, *member_direct_groups = NULL;
   int save;
-  char *member_name;
+  const char *member_name = NULL;
 
   AU_DISABLE (save);
   db_make_object (&groupvalue, group);
@@ -3270,7 +3268,7 @@ au_drop_member (MOP group, MOP member)
 			}
 		      else
 			{
-			  member_name = (char *) db_get_string (&member_name_val);
+			  member_name = db_get_string (&member_name_val);
 			}
 		      if ((error = db_set_drop (member_direct_groups, &groupvalue)) == NO_ERROR)
 			{
@@ -3390,7 +3388,7 @@ au_drop_user (MOP user)
   int g, gcard, i;
   DB_VALUE name;
   const char *class_name[] = {
-    /* 
+    /*
      * drop user command can be called only by DBA group,
      * so we can use query for _db_class directly
      */
@@ -3516,7 +3514,7 @@ au_drop_user (MOP user)
 	      error = er_errid ();
 	    }
 	}
-      /* 
+      /*
        * We need to clear the host variable here to free the set.  set_free()
        * is not sufficient since the set referenced by new_groups may have
        * be replaced as a result of tp_value_cast().
@@ -3630,7 +3628,7 @@ au_drop_user (MOP user)
 	}
     }
 
-  /* 
+  /*
    * could go through classes created by this user and change ownership
    * to the DBA ? - do this as the classes are referenced instead
    */
@@ -3906,7 +3904,7 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
 
 	      if (existing == -1)
 		{
-		  /* 
+		  /*
 		   * no previous entry for the owner,
 		   * use the current one
 		   */
@@ -3919,7 +3917,7 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
 		}
 	      else
 		{
-		  /* 
+		  /*
 		   * update the previous entry with the extra bits
 		   * and delete the current entry
 		   */
@@ -4034,7 +4032,7 @@ update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
   bool is_member = false;
   bool need_pop_er_stack = false;
 
-  /* 
+  /*
    * must disable here because we may be updating the cache of the system
    * objects and we need to read them in order to update etc.
    */
@@ -4199,7 +4197,7 @@ appropriate_error (unsigned int bits, unsigned int requested)
   unsigned int mask, atype;
   int i;
 
-  /* 
+  /*
    * Since we don't currently have a way of indicating multiple
    * authorization failures, select the first one in the
    * bit vector that causes problems.
@@ -4261,7 +4259,7 @@ appropriate_error (unsigned int bits, unsigned int requested)
 	      /* we asked for this one */
 	      if ((bits & mask) == 0)
 		{
-		  /* 
+		  /*
 		   * But it wasn't available, convert this back down to the
 		   * corresponding basic type and select an appropriate error.
 		   *
@@ -4324,7 +4322,7 @@ check_grant_option (MOP classop, SM_CLASS * sm_class, DB_AUTH type)
   unsigned int cache_bits;
   unsigned int mask;
 
-  /* 
+  /*
    * this potentially can be called during initialization when we don't
    * actually have any users yet.  If so, assume its ok
    */
@@ -4427,7 +4425,7 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
   AU_DISABLE (save);
   if (ws_is_same_object (user, Au_user))
     {
-      /* 
+      /*
        * Treat grant to self condition as a success only. Although this
        * statement is a no-op, it is not an indication of no-success.
        * The "privileges" are indeed already granted to self.
@@ -4522,13 +4520,13 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 	      set_put_element (grants, GRANT_ENTRY_CACHE (gindex), &value);
 	      set_free (grants);
 
-	      /* 
+	      /*
 	       * clear the cache for this user/class pair to make sure we
 	       * recalculate it the next time it is referenced
 	       */
 	      reset_cache_for_user_and_class (classobj);
 
-	      /* 
+	      /*
 	       * Make sure any cached parse trees are rebuild.  This proabably
 	       * isn't necessary for GRANT, only REVOKE.
 	       */
@@ -4816,7 +4814,7 @@ propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask)
     {
       if (!g->legal)
 	{
-	  /* 
+	  /*
 	   * lock authorization for write & mark dirty,
 	   * don't need to pin because we'll be going through the usual
 	   * set interface, this just ensures that the locks can be obtained
@@ -4844,7 +4842,7 @@ propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask)
 		      db_make_int (&element, db_get_int (&element) & mask);
 		      error = set_put_element (grants, GRANT_ENTRY_CACHE (g->grant_index), &element);
 		    }
-		  /* 
+		  /*
 		   * if cache bits are zero, we can't remove it because
 		   * there may be other entries in the grant list that
 		   * have indexes into this set -
@@ -4856,7 +4854,7 @@ propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask)
 	    }
 	}
 
-      /* 
+      /*
        * now go back through and remove any grant entries that have no
        * bits set
        */
@@ -5010,7 +5008,7 @@ au_revoke (MOP user, MOP class_mop, DB_AUTH type)
 		}
 	      current = db_get_int (&cache_element);
 
-	      /* 
+	      /*
 	       * If all the bits are set, assume we wan't to
 	       * revoke everything previously granted, makes it a bit
 	       * easier but muddies the semantics too much ?
@@ -5020,7 +5018,7 @@ au_revoke (MOP user, MOP class_mop, DB_AUTH type)
 		  type = (DB_AUTH) (current & AU_TYPE_MASK);
 		}
 
-	      /* 
+	      /*
 	       * this test could be more sophisticated, right now,
 	       * if there are any valid grants that fit in
 	       * the specified bit mask, the operation will proceed,
@@ -5044,7 +5042,7 @@ au_revoke (MOP user, MOP class_mop, DB_AUTH type)
 		  if ((error = propagate_revoke (grant_list, classobj->owner, (DB_AUTH) mask)) == NO_ERROR)
 		    {
 
-		      /* 
+		      /*
 		       * finally, update the local grant for the
 		       * original object
 		       */
@@ -5059,7 +5057,7 @@ au_revoke (MOP user, MOP class_mop, DB_AUTH type)
 			  /* no remaining grants, remove it from the grant set */
 			  drop_grant_entry (grants, gindex);
 			}
-		      /* 
+		      /*
 		       * clear the cache for this user/class pair
 		       * to make sure we recalculate it the next time
 		       * it is referenced
@@ -5071,7 +5069,7 @@ au_revoke (MOP user, MOP class_mop, DB_AUTH type)
 #endif /* SA_MODE */
 			error = au_delete_new_auth (Au_user, user, class_mop, type);
 
-		      /* 
+		      /*
 		       * Make sure that we don't keep any parse trees
 		       * around that rely on obsolete authorization.
 		       * This may not be necessary.
@@ -5131,7 +5129,7 @@ au_change_owner (MOP classmop, MOP owner)
       error = au_fetch_class_force (classmop, &class_, AU_FETCH_UPDATE);
       if (error == NO_ERROR)
 	{
-	  /* 
+	  /*
 	   * Change serial object's owner when the class has auto_increment
 	   * attribute column.
 	   */
@@ -5172,7 +5170,7 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
   int error = NO_ERROR;
   int is_partition = DB_NOT_PARTITIONED_CLASS, i, savepoint_owner = 0;
   MOP *sub_partitions = NULL;
-  char *class_name = NULL, *owner_name = NULL;
+  const char *class_name = NULL, *owner_name = NULL;
   SM_CLASS *clsobj;
 
   db_make_null (returnval);
@@ -5344,7 +5342,7 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * serial,
   MOP user = NULL, serial_object = NULL;
   MOP serial_class_mop;
   DB_IDENTIFIER serial_obj_id;
-  char *serial_name, *owner_name;
+  const char *serial_name = NULL, *owner_name = NULL;
   int error = NO_ERROR;
 
   db_make_null (returnval);
@@ -5485,7 +5483,7 @@ au_get_class_owner (MOP classmop)
   SM_CLASS *class_;
 
   /* should we disable authorization here ? */
-  /* 
+  /*
    * should we allow the class owner to be known if the active user doesn't
    * have select authorization ?
    */
@@ -5752,7 +5750,7 @@ au_user_name (void)
 
   if (Au_user == NULL)
     {
-      /* 
+      /*
        * Database hasn't been started yet, return the registered name
        * if any.
        */
@@ -5763,7 +5761,7 @@ au_user_name (void)
       else
 	{
 	  name = ws_copy_string (Au_user_name);
-	  /* 
+	  /*
 	   * When this function is called before the workspace memory
 	   * manager was not initialized in the case of client
 	   * initialization(db_restart()), ws_copy_string() will return
@@ -5800,6 +5798,12 @@ au_user_name (void)
     }
 
   return name;
+}
+
+bool
+au_has_user_name (void)
+{
+  return Au_user != NULL || strlen (Au_user_name) > 0;
 }
 
 /*
@@ -5852,7 +5856,7 @@ check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type)
   AU_CLASS_CACHE *cache;
   unsigned int bits;
 
-  /* 
+  /*
    * Callers generally check Au_disable already to avoid the function call.
    * Check it again to be safe, at this point, it isn't going to add anything.
    */
@@ -6018,7 +6022,7 @@ fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class, AU_FETCHMODE fe
 	  class_ = (SM_CLASS *) locator_fetch_class_of_instance (op, &classmop, DB_FETCH_WRITE);
 	  if (class_ != NULL)
 	    {
-	      /* 
+	      /*
 	       * all this appreciably does is set the dirty flag in the MOP
 	       * should have the "dirty after getting write lock" operation
 	       * separated
@@ -6031,7 +6035,7 @@ fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class, AU_FETCHMODE fe
 
   /* I've seen cases where locator_fetch has an error but doesn't return NULL ?? */
   /* this is debug only, take out in production */
-  /* 
+  /*
    * if (class_ != NULL && Db_error != NO_ERROR)
    * au_log(Db_error, "Inconsistent error handling ?");
    */
@@ -6042,7 +6046,7 @@ fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class, AU_FETCHMODE fe
       error = er_errid ();
       /* !!! do we need to mask the error here ? */
 
-      /* 
+      /*
        * if the object was deleted, set the workspace bit so we can avoid this
        * in the future
        */
@@ -6173,7 +6177,7 @@ au_fetch_class (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetchmode, DB_AUTH t
 }
 
 /*
- * au_fetch_class_by_classmop - This is the primary function 
+ * au_fetch_class_by_classmop - This is the primary function
  *                  for accessing a class by an instance mop.
  *   return: error code
  *   op(in): class or instance
@@ -6189,7 +6193,7 @@ au_fetch_class_by_instancemop (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetch
 }
 
 /*
- * au_fetch_class_by_classmop - This is the primary function 
+ * au_fetch_class_by_classmop - This is the primary function
  *                  for accessing a class by a class mop.
  *   return: error code
  *   op(in): class or instance
@@ -6245,7 +6249,7 @@ au_check_authorization (MOP op, DB_AUTH auth)
   SM_CLASS *class_;
   int save;
 
-  /* 
+  /*
    * It seems to be simplest to just override the Au_disable
    * flag and call au_fetch_class normally.  If this turns
    * out to be a problem, will have to duplicate some of
@@ -6354,7 +6358,7 @@ fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode, LC_FETCH_VERSION
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
 
-      /* 
+      /*
        * if the object was deleted, set the workspace bit so we can avoid this
        * in the future
        */
@@ -6419,7 +6423,7 @@ au_fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE mode, LC_FETCH_VERSION_T
   error = fetch_class (op, &classmop, &class_, AU_FETCH_READ, BY_INSTANCE_MOP);
   if (error != NO_ERROR)
     {
-      /* 
+      /*
        * the class was deleted, make sure the instance MOP also gets
        * the deleted bit set so the upper levels can depend on this
        * behavior
@@ -6447,7 +6451,7 @@ au_fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE mode, LC_FETCH_VERSION_T
  *   op(in): instance MOP
  *   obj_ptr(out): returned instance memory pointer
  *   fetchmode(in): access type
- *   fetch_version_type(in): fetch version type 
+ *   fetch_version_type(in): fetch version type
  */
 int
 au_fetch_instance_force (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode, LC_FETCH_VERSION_TYPE fetch_version_type)
@@ -6489,12 +6493,12 @@ au_set_user (MOP newuser)
 	  Au_user = newuser;
 	  Au_cache_index = index;
 
-	  /* 
+	  /*
 	   * it is important that we don't call sm_bump_local_schema_version() here
 	   * because this function is called during the compilation of vclasses
 	   */
 
-	  /* 
+	  /*
 	   * Entry-level SQL specifies that the schema name is the same as
 	   * the current user authorization name.  In any case, this is
 	   * the place to set the current schema since the user just changed.
@@ -6566,7 +6570,7 @@ au_perform_login (const char *name, const char *password, bool ignore_dba_privil
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * hack, allow password checking to be turned off in certain
 	       * cases, like the utility programs that will always run in DBA
 	       * mode but don't want to have to enter a password, also
@@ -6609,7 +6613,7 @@ au_perform_login (const char *name, const char *password, bool ignore_dba_privil
 		    }
 		  else
 		    {
-		      /* 
+		      /*
 		       * the password in the user object is effectively NULL,
 		       * only accept the login if the user supplied an empty
 		       * password.
@@ -6660,7 +6664,7 @@ au_login (const char *name, const char *password, bool ignore_dba_privilege)
   int error = NO_ERROR;
   int save;
 
-  /* 
+  /*
    * because the database can be left open after authorization failure,
    * checking Au_root for NULL isn't a reliable way to see of the database
    * is in an "un-restarted" state.  Instead, look at BOOT_IS_CLIENT_RESTARTED
@@ -6669,7 +6673,7 @@ au_login (const char *name, const char *password, bool ignore_dba_privilege)
    */
   if (Au_root == NULL || !BOOT_IS_CLIENT_RESTARTED ())
     {
-      /* 
+      /*
        * Save the name & password for later.  Allow the name to be NULL
        * and leave it unmodified.
        */
@@ -6780,13 +6784,13 @@ au_start (void)
   MOPLIST mops;
   MOP class_mop;
 
-  /* 
+  /*
    * NEED TO MAKE SURE THIS IS 1 IF THE SERVER CRASHED BECAUSE WE'RE
    * GOING TO CALL db_ FUNCTIONS
    */
   db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 
-  /* 
+  /*
    * It is important not to enable authorization until after the
    * login is finished, otherwise the system will stop when it tries
    * to validate the user when accessing the authorization objects.
@@ -6861,7 +6865,7 @@ au_start (void)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * If you try to start the authorization system and
 	   * there is no user logged in, you will automatically be logged in
 	   * as "PUBLIC".  Optionally, we could get a name from the
@@ -6901,39 +6905,42 @@ char *
 au_get_user_name (MOP obj)
 {
   DB_VALUE value;
-  int error;
-  char *name;
+  db_make_null (&value);
+  char *name = NULL;
 
-  name = NULL;
-  error = obj_get (obj, "name", &value);
+  int error = obj_get (obj, "name", &value);
   if (error == NO_ERROR)
     {
       if (IS_STRING (&value) && !DB_IS_NULL (&value) && db_get_string (&value) != NULL)
 	{
-	  name = db_get_string (&value);
+	  name = ws_copy_string (db_get_string (&value));
 	}
     }
-  return (name);
+
+  db_value_clear (&value);
+
+  return name;
 }
+
 
 /*
  * au_export_users - Generates a sequence of add_user and add_member method
  *                   calls that when evaluated, will re-create the current
  *                   user/group hierarchy.
  *   return: error code
- *   outfp(in): output file
+ *   output_ctx(in/out): print context
  */
 int
-au_export_users (FILE * outfp)
+au_export_users (print_output & output_ctx)
 {
   int error;
-  DB_SET *direct_groups;
+  DB_SET *direct_groups = NULL;
   DB_VALUE value, gvalue;
-  MOP user, pwd;
+  MOP user = NULL, pwd = NULL;
   int g, gcard;
-  char *uname, *str, *gname, *comment;
+  const char *uname = NULL, *str = NULL, *gname = NULL, *comment = NULL;
   char passbuf[AU_MAX_PASSWORD_BUF];
-  char *query;
+  char *query = NULL;
   size_t query_size;
   DB_QUERY_RESULT *query_result;
   DB_QUERY_ERROR query_error;
@@ -6997,9 +7004,9 @@ au_export_users (FILE * outfp)
 	      error = obj_get (pwd, "password", &value);
 	      if (error == NO_ERROR)
 		{
-		  if (!DB_IS_NULL (&value) && IS_STRING (&value))
+		  if (!DB_IS_NULL (&value) && DB_IS_STRING (&value))
 		    {
-		      /* 
+		      /*
 		       * copy password string using malloc
 		       * to be consistent with encrypt_password
 		       */
@@ -7053,18 +7060,18 @@ au_export_users (FILE * outfp)
 	    {
 	      if (!strlen (passbuf))
 		{
-		  fprintf (outfp, "call [add_user]('%s', '') on class [db_root];\n", uname);
+		  output_ctx ("call [add_user]('%s', '') on class [db_root];\n", uname);
 		}
 	      else
 		{
-		  fprintf (outfp, "call [add_user]('%s', '') on class [db_root] to [auser];\n", uname);
+		  output_ctx ("call [add_user]('%s', '') on class [db_root] to [auser];\n", uname);
 		  if (encrypt_mode == ENCODE_PREFIX_DES)
 		    {
-		      fprintf (outfp, "call [set_password_encoded]('%s') on [auser];\n", passbuf);
+		      output_ctx ("call [set_password_encoded]('%s') on [auser];\n", passbuf);
 		    }
 		  else
 		    {
-		      fprintf (outfp, "call [set_password_encoded_sha1]('%s') on [auser];\n", passbuf);
+		      output_ctx ("call [set_password_encoded_sha1]('%s') on [auser];\n", passbuf);
 		    }
 		}
 	    }
@@ -7072,14 +7079,14 @@ au_export_users (FILE * outfp)
 	    {
 	      if (strlen (passbuf))
 		{
-		  fprintf (outfp, "call [find_user]('%s') on class [db_user] to [auser];\n", uname);
+		  output_ctx ("call [find_user]('%s') on class [db_user] to [auser];\n", uname);
 		  if (encrypt_mode == ENCODE_PREFIX_DES)
 		    {
-		      fprintf (outfp, "call [set_password_encoded]('%s') on [auser];\n", passbuf);
+		      output_ctx ("call [set_password_encoded]('%s') on [auser];\n", passbuf);
 		    }
 		  else
 		    {
-		      fprintf (outfp, "call [set_password_encoded_sha1]('%s') on [auser];\n", passbuf);
+		      output_ctx ("call [set_password_encoded_sha1]('%s') on [auser];\n", passbuf);
 		    }
 		}
 	    }
@@ -7087,9 +7094,9 @@ au_export_users (FILE * outfp)
 	  /* export comment */
 	  if (comment != NULL && comment[0] != '\0')
 	    {
-	      fprintf (outfp, "ALTER USER [%s] ", uname);
-	      help_fprint_describe_comment (outfp, comment);
-	      fprintf (outfp, ";\n");
+	      output_ctx ("ALTER USER [%s] ", uname);
+	      help_print_describe_comment (output_ctx, comment);
+	      output_ctx (";\n");
 	    }
 	}
 
@@ -7107,7 +7114,7 @@ au_export_users (FILE * outfp)
   /* group hierarchy */
   if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
     {
-      fprintf (outfp, "call [find_user]('PUBLIC') on class [db_user] to [g_public];\n");
+      output_ctx ("call [find_user]('PUBLIC') on class [db_user] to [g_public];\n");
       do
 	{
 	  if (db_query_get_tuple_value (query_result, 0, &user_val) != NO_ERROR)
@@ -7161,13 +7168,13 @@ au_export_users (FILE * outfp)
 		}
 	      else
 		{
-		  gname = (char *) (db_get_string (&value));
+		  gname = db_get_string (&value);
 		}
 
 	      if (gname != NULL)
 		{
-		  fprintf (outfp, "call [find_user]('%s') on class [db_user] to [g_%s];\n", gname, gname);
-		  fprintf (outfp, "call [add_member]('%s') on [g_%s];\n", uname, gname);
+		  output_ctx ("call [find_user]('%s') on class [db_user] to [g_%s];\n", gname, gname);
+		  output_ctx ("call [add_member]('%s') on [g_%s];\n", uname, gname);
 		  ws_free_string (gname);
 		}
 	    }
@@ -7229,7 +7236,7 @@ make_class_user (MOP user_obj)
       u->obj = user_obj;
       u->grants = NULL;
 
-      /* 
+      /*
        * This authorization of this user class structure would normally
        * be filled in by examining authorizations granted by other users.
        * The DBA user is special in that it should have full authorization
@@ -7354,7 +7361,7 @@ add_class_grant (CLASS_AUTH * auth, MOP source, MOP user, int cache)
     }
   else
     {
-      /* 
+      /*
        * this shouldn't happen, multiple grants from source should already have
        * been combined
        */
@@ -7465,17 +7472,18 @@ build_class_grant_list (CLASS_AUTH * cl_auth, MOP class_mop)
   return (error);
 }
 
+
 /*
  * issue_grant_statement - Generates an CSQL "grant" statement.
  *   return: none
- *   fp(in): output file
+ *   output_ctx(in/out): output context
  *   auth(in): class authorization state
  *   grant(in): desired grant
  *   authbits(in): specific authorization to grant
  *   quoted_id_flag(in):
  */
 static void
-issue_grant_statement (FILE * fp, CLASS_AUTH * auth, CLASS_GRANT * grant, int authbits)
+issue_grant_statement (print_output & output_ctx, CLASS_AUTH * auth, CLASS_GRANT * grant, int authbits)
 {
   const char *gtype, *classname;
   char *username;
@@ -7512,34 +7520,35 @@ issue_grant_statement (FILE * fp, CLASS_AUTH * auth, CLASS_GRANT * grant, int au
   classname = sm_get_ch_name (auth->class_mop);
   username = au_get_user_name (grant->user->obj);
 
-  fprintf (fp, "GRANT %s ON ", gtype);
-  fprintf (fp, "[%s]", classname);
+  output_ctx ("GRANT %s ON ", gtype);
+  output_ctx ("[%s]", classname);
 
   if (username != NULL)
     {
-      fprintf (fp, " TO [%s]", username);
+      output_ctx (" TO [%s]", username);
     }
   else
     {
-      fprintf (fp, " TO %s", "???");
+      output_ctx (" TO %s", "???");
     }
 
   if (authbits & (typebit << AU_GRANT_SHIFT))
     {
-      fprintf (fp, " WITH GRANT OPTION");
+      output_ctx (" WITH GRANT OPTION");
     }
-  fprintf (fp, ";\n");
+  output_ctx (";\n");
 
   ws_free_string (username);
 }
+
 
 /*
  * class_grant_loop - Makes a pass on the authorization user list and
  *                    issues grant statements for any users that are able.
  *                    Returns the number of statements issued
  *   return: number of statements issued
+ *   output_ctx(in): output context
  *   auth(in): class authorization state
- *   outfp(in): output file
  *   quoted_id_flag(in):
  *
  * Note:
@@ -7559,7 +7568,7 @@ issue_grant_statement (FILE * fp, CLASS_AUTH * auth, CLASS_GRANT * grant, int au
  * TODO : LP64
  */
 static int
-class_grant_loop (CLASS_AUTH * auth, FILE * outfp)
+class_grant_loop (print_output & output_ctx, CLASS_AUTH * auth)
 {
 #define AU_MIN_BIT 1		/* AU_SELECT */
 #define AU_MAX_BIT 0x40		/* AU_EXECUTE */
@@ -7581,13 +7590,13 @@ class_grant_loop (CLASS_AUTH * auth, FILE * outfp)
 		{
 		  /* combine auth type & grant option bit */
 		  authbits = mask | (grant->cache & (mask << AU_GRANT_SHIFT));
-		  /* 
+		  /*
 		   * if the user has these same bits available,
 		   * issue the grant
 		   */
 		  if ((user->available_auth & authbits) == authbits)
 		    {
-		      issue_grant_statement (outfp, auth, grant, authbits);
+		      issue_grant_statement (output_ctx, auth, grant, authbits);
 		      /* turn on grant bits in the granted user */
 		      grant->user->available_auth |= authbits;
 		      /* turn off the pending grant bits in granting user */
@@ -7615,7 +7624,7 @@ class_grant_loop (CLASS_AUTH * auth, FILE * outfp)
 	      prev_grant = grant;
 	    }
 	}
-      /* 
+      /*
        * could remove user from the list but can't free it because
        * structure may be referenced by a grant inside another user
        */
@@ -7623,16 +7632,17 @@ class_grant_loop (CLASS_AUTH * auth, FILE * outfp)
   return (statements);
 }
 
+
 /*
  * au_export_grants() - Issues a sequence of CSQL grant statements related
  *                      to the given class.
  *   return: error code
- *   outfp(in): output file
+ *   output_ctx(in): output context
  *   class_mop(in): class of interest
  *   quoted_id_flag(in):
  */
 int
-au_export_grants (FILE * outfp, MOP class_mop)
+au_export_grants (print_output & output_ctx, MOP class_mop)
 {
   int error = NO_ERROR;
   CLASS_AUTH cl_auth;
@@ -7653,7 +7663,8 @@ au_export_grants (FILE * outfp, MOP class_mop)
   if (error == NO_ERROR)
     {
       /* loop through the grant list, issuing grant statements */
-      while ((statements = class_grant_loop (&cl_auth, outfp)));
+      while ((statements = class_grant_loop (output_ctx, &cl_auth)))
+	;
 
       for (u = cl_auth.users, ecount = 0; u != NULL; u = u->next)
 	{
@@ -7661,15 +7672,14 @@ au_export_grants (FILE * outfp, MOP class_mop)
 	    {
 	      uname = au_get_user_name (u->obj);
 
-	      /* 
+	      /*
 	       * should this be setting an error condition ?
 	       * for now, leave a comment in the output file
 	       */
-	      fprintf (outfp, "/*");
-	      fprintf (outfp,
-		       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_GRANT_DUMP_ERROR),
-		       uname);
-	      fprintf (outfp, "*/\n");
+	      output_ctx ("/*");
+	      output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION,
+					  MSGCAT_AUTH_GRANT_DUMP_ERROR), uname);
+	      output_ctx ("*/\n");
 	      ws_free_string (uname);
 	      ecount++;
 	    }
@@ -7685,7 +7695,6 @@ au_export_grants (FILE * outfp, MOP class_mop)
 
   return (error);
 }
-
 
 /*
  * DEBUGGING FUNCTIONS
@@ -7860,7 +7869,7 @@ void
 au_dump_user (MOP user, FILE * fp)
 {
   DB_VALUE value;
-  DB_SET *groups;
+  DB_SET *groups = NULL;
   MOP auth;
   int i, card;
 
@@ -7917,7 +7926,7 @@ au_dump_user (MOP user, FILE * fp)
       au_print_auth (auth, fp);
     }
 
-  /* 
+  /*
    * need to do a walk back through the group hierarchy and collect all
    * inherited grants and their origins
    */
@@ -8018,8 +8027,8 @@ au_dump_to_file (FILE * fp)
 {
   MOP user;
   DB_VALUE value;
-  char *query;
-  DB_QUERY_RESULT *query_result;
+  char *query = NULL;
+  DB_QUERY_RESULT *query_result = NULL;
   DB_QUERY_ERROR query_error;
   int error = NO_ERROR;
   DB_VALUE user_val;
@@ -8166,7 +8175,7 @@ au_describe_root_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * info)
     }
   else
     {
-      /* 
+      /*
        * temporary, pass this through for older databases that still
        * have the "info" method pointing to this function
        */
@@ -8205,7 +8214,7 @@ au_install (void)
 
   AU_DISABLE (save);
 
-  /* 
+  /*
    * create the system authorization objects, add attributes later since they
    * have domain dependencies
    */
@@ -8226,13 +8235,13 @@ au_install (void)
   sm_mark_system_class (auth, 1);
   sm_mark_system_class (old, 1);
 
-  /* 
+  /*
    * db_root
    */
 
-  /* 
+  /*
    * Authorization root, might not need this if we restrict the generation of
-   * user and  group objects but could be useful in other ways. 
+   * user and  group objects but could be useful in other ways.
    */
   def = smt_edit_class_mop (root, AU_ALTER);
   if (def == NULL)
@@ -8264,11 +8273,11 @@ au_install (void)
       goto exit_on_error;
     }
 
-  /* 
+  /*
    * db_authorizations
    */
 
-  /* 
+  /*
    * temporary support for the old name, need to migrate
    * users over to db_root
    */
@@ -8294,7 +8303,7 @@ au_install (void)
       goto exit_on_error;
     }
 
-  /* 
+  /*
    * db_user
    */
 
@@ -8340,7 +8349,7 @@ au_install (void)
       }
   }
 
-  /* 
+  /*
    * db_password
    */
 
@@ -8356,11 +8365,11 @@ au_install (void)
       goto exit_on_error;
     }
 
-  /* 
+  /*
    * db_authorization
    */
 
-  /* 
+  /*
    * Authorization object, the grant set could go directly in the user object
    * but it might be better to keep it separate in order to use the special
    * read-once lock for the authorization object only.
@@ -8417,7 +8426,7 @@ au_install (void)
       goto exit_on_error;
     }
 
-  /* 
+  /*
    * grant browser access to the authorization objects
    * note that the password class cannot be read by anyone except the DBA
    */
@@ -8519,7 +8528,7 @@ au_final (void)
   Au_dba_user = NULL;
   Au_disable = 1;
 
-  /* 
+  /*
    * could remove the static links here but it isn't necessary and
    * we may need them again the next time we restart
    */

@@ -282,7 +282,7 @@ char_get_next (char *str_p)
 
 /*
  * cfg_pop_token() - This looks in the buffer for the next token which is define as
- *               a string of characters started by | 
+ *               a string of characters started by |
  *    return: char
  *    str_p(in): buffer with tokens
  *    token_p(in/out): returned next token string

@@ -33,6 +33,7 @@
 #include <assert.h>
 #include <math.h>
 
+#include "authenticate.h"
 #include "db_value_printer.hpp"
 #include "porting.h"
 #include "parser.h"
@@ -42,6 +43,7 @@
 #include "mem_block.hpp"
 #include "memory_alloc.h"
 #include "language_support.h"
+#include "object_primitive.h"
 #include "object_print.h"
 #include "optimizer.h"
 #include "system_parameter.h"
@@ -51,6 +53,7 @@
 #include "dbi.h"
 #include "string_buffer.hpp"
 #include "dbtype.h"
+#include "parser_allocator.hpp"
 
 #include <malloc.h>
 
@@ -138,7 +141,8 @@ static PARSER_VARCHAR *pt_append_quoted_string (const PARSER_CONTEXT * parser, P
 static PARSER_VARCHAR *pt_append_string_prefix (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buf,
 						const PT_NODE * value);
 static bool pt_is_nested_expr (const PT_NODE * node);
-static bool pt_is_allowed_as_function_index (const PT_NODE * expr);
+static bool pt_function_is_allowed_as_function_index (const PT_NODE * func);
+static bool pt_expr_is_allowed_as_function_index (const PT_NODE * expr);
 
 static void pt_init_apply_f (void);
 static void pt_init_init_f (void);
@@ -252,7 +256,6 @@ static PT_NODE *pt_apply_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p, 
 static PT_NODE *pt_apply_json_table_column (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
-
 
 static PT_NODE *pt_init_alter_serial (PT_NODE * p);
 static PT_NODE *pt_init_alter_trigger (PT_NODE * p);
@@ -480,7 +483,6 @@ static PARSER_VARCHAR *pt_print_json_table_column_error_or_empty_behavior (PARSE
 									   &column_behavior);
 static PARSER_VARCHAR *pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VARCHAR * pstr);
 
-
 static PARSER_PRINT_NODE_FUNC pt_print_func_array[PT_NODE_NUMBER];
 
 extern "C"
@@ -600,7 +602,6 @@ pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void
 
   return tree_or_name;
 }
-
 
 /*
  * pt_lambda_node () - applies the lambda test to the node passed to it,
@@ -730,7 +731,6 @@ pt_lambda_node (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg,
   return result;
 }
 
-
 /*
  * pt_find_id_node () - tests names id equality
  *   return:
@@ -755,7 +755,6 @@ pt_find_id_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *c
 
   return tree;
 }
-
 
 /*
  * copy_node_in_tree_pre () - copies exactly a node passed to it, and returns
@@ -810,6 +809,14 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, i
 	{
 	  new_node->info.value.db_value_is_in_workspace = 1;
 	}
+    }
+
+  if (new_node->node_type == PT_JSON_TABLE_COLUMN)
+    {
+      PT_JSON_TABLE_COLUMN_INFO *old_col = &old_node->info.json_table_column_info;
+      PT_JSON_TABLE_COLUMN_INFO *new_col = &new_node->info.json_table_column_info;
+      new_col->on_empty.m_default_value = db_value_copy (old_col->on_empty.m_default_value);
+      new_col->on_error.m_default_value = db_value_copy (old_col->on_error.m_default_value);
     }
 
   new_node->parser_id = parser->id;
@@ -952,7 +959,6 @@ pt_walk_private (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg)
   return node;
 }
 
-
 /*
  * parser_walk_leaves () - like parser_walk_tree, but begins at the leaves of
  *                     the node passed in
@@ -999,7 +1005,6 @@ parser_walk_leaves (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE_WALK_FUNCTI
   return node;
 }
 
-
 /*
  * parser_walk_tree () - walks a tree and applies pre and post visit routines
  *              to each node in the tree. A pre function may prune
@@ -1026,7 +1031,6 @@ parser_walk_tree (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE_WALK_FUNCTION
 
   return pt_walk_private (parser, node, &walk_argument);
 }
-
 
 /*
  * pt_continue_walk () - Re-enabled the tree walk after a portion was "pruned"
@@ -1131,7 +1135,6 @@ pt_lambda (PARSER_CONTEXT * parser, PT_NODE * tree_with_names, PT_NODE * name_no
   return pt_lambda_with_arg (parser, tree_with_names, name_node, corresponding_tree, false, 0, false);
 }
 
-
 /*
  * pt_find_id () - walks a tree looking for a name of the given id family
  *   return:
@@ -1151,7 +1154,6 @@ pt_find_id (PARSER_CONTEXT * parser, PT_NODE * tree_with_names, UINTPTR id)
 
   return info.found;
 }
-
 
 /*
  * parser_copy_tree () - copies a parse tree without and modifying it
@@ -1182,7 +1184,6 @@ parser_copy_tree (PARSER_CONTEXT * parser, const PT_NODE * tree)
 
   return copy;
 }
-
 
 /*
  * parser_copy_tree_list () - copies a parse tree without and modifing it.
@@ -1298,7 +1299,6 @@ pt_point (PARSER_CONTEXT * parser, const PT_NODE * in_tree)
   return pointer;
 }
 
-
 /*
  * pt_point_l () - points a parse tree node without and modifing it.
  * 		   It includes the rest of the list pointed to by tree
@@ -1346,7 +1346,6 @@ exit_on_error:
 
   return NULL;
 }
-
 
 /*
  * pt_point_ref () - creates a reference PT_NODE_POINTER
@@ -1446,7 +1445,6 @@ pt_pointer_stack_pop (PARSER_CONTEXT * parser, PT_NODE * stack, PT_NODE ** node)
     }
 }
 
-
 /*
  * free_node_in_tree_pre () - checks a pointer nodes for a recursive walk
  *   return:
@@ -1466,7 +1464,6 @@ free_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
   return node;
 }
 
-
 /*
  * free_node_in_tree_post () - frees a node for a recursive walk
  *   return:
@@ -1481,7 +1478,6 @@ free_node_in_tree_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
   parser_free_node (parser, node);
   return NULL;
 }
-
 
 /*
  * parser_free_tree () -
@@ -1505,6 +1501,14 @@ void
 parser_free_subtrees (PARSER_CONTEXT * parser, PT_NODE * tree)
 {
   (void) parser_walk_leaves (parser, tree, free_node_in_tree_pre, NULL, free_node_in_tree_post, NULL);
+}
+
+// clear node resources and all subtrees
+void
+parser_clear_node (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  parser_free_subtrees (parser, node);
+  parser_free_node_resources (node);
 }
 
 /*
@@ -1549,7 +1553,6 @@ pt_void_internal_error (PARSER_CONTEXT * parser, const char *file, int line, con
   pt_internal_error (parser, file, line, what);
 }
 #endif
-
 
 /*
  * fgetin() - get input from users file
@@ -2231,6 +2234,7 @@ parser_init_node (PT_NODE * node)
       node->data_type = NULL;
       node->xasl_id = NULL;
       node->alias_print = NULL;
+      node->expr_before_const_folding = NULL;
       node->recompile = 0;
       node->cannot_prepare = 0;
       node->partition_pruned = 0;
@@ -2335,7 +2339,6 @@ pt_print_bytes (PARSER_CONTEXT * parser, const PT_NODE * node)
       return f (parser, (PT_NODE *) node);
     }
 }
-
 
 /*
  * pt_print_bytes_l() - PRINT equivalent text for lists
@@ -2482,6 +2485,11 @@ pt_print_node_value (PARSER_CONTEXT * parser, const PT_NODE * val)
       return NULL;
     }
 
+  if (parser->custom_print & PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING && val->expr_before_const_folding != NULL)
+    {
+      return val->expr_before_const_folding;
+    }
+
   db_val = pt_value_to_db (parser, (PT_NODE *) val);
   if (!db_val)
     {
@@ -2540,24 +2548,8 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
   int error = NO_ERROR;
   unsigned int save_custom = parser->custom_print;
 
-  /* *INDENT-OFF* */
-  string_buffer sb
-  {
-    [&parser] (mem::block &block, size_t len)
-    {
-      size_t dim = block.dim ? block.dim : 1;
-
-      for (; dim < block.dim + len; dim *= 2)	//calc next power of 2 >= b.dim+len
-	 ;
-
-      mem::block b { dim, (char *) parser_alloc (parser, (const int) dim) };
-      memcpy (b.ptr, block.ptr, block.dim);
-      block = std::move (b);
-    }, [](mem::block &block)
-    {
-    }				//no need to deallocate for parser_context
-  };
-  /* *INDENT-ON* */
+  parser_block_allocator alloc (parser);
+  string_buffer sb (alloc);
 
   db_value_printer printer (sb);
   if (val == NULL)
@@ -2798,7 +2790,6 @@ parser_print_tree_list (PARSER_CONTEXT * parser, const PT_NODE * node)
   return NULL;
 }
 
-
 /*
  * pt_print_and_list() - PRINT equivalent text for CNF predicate lists
  *   return:
@@ -2843,7 +2834,6 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
 
   return q;
 }
-
 
 /*
  * pt_print_query_spec_no_list() - prints query specifications
@@ -2895,7 +2885,6 @@ end:
   return str;
 }
 
-
 /*
  * pt_short_print_l() -
  *   return:
@@ -2925,7 +2914,6 @@ end:
   parser->max_print_len = 0;	/* restore */
   return str;
 }
-
 
 /*
  * pt_show_node_type() -
@@ -3130,7 +3118,6 @@ parser_append_node (PT_NODE * node, PT_NODE * list)
   return list;
 }
 
-
 /*
  * parser_append_node_or() -
  *   return:
@@ -3157,7 +3144,6 @@ parser_append_node_or (PT_NODE * node, PT_NODE * list)
   return list;
 }
 
-
 /*
  * pt_length_of_list() -
  *   return:
@@ -3173,7 +3159,6 @@ pt_length_of_list (const PT_NODE * list)
     }
   return len;
 }
-
 
 /*
  * pt_length_of_select_list() -
@@ -3944,157 +3929,9 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "schema_def";
     case PT_CONV_TZ:
       return "conv_tz";
-    case PT_JSON_CONTAINS:
-      return "json_contains";
-    case PT_JSON_TYPE:
-      return "json_type";
-    case PT_JSON_EXTRACT:
-      return "json_extract";
-    case PT_JSON_VALID:
-      return "json_valid";
-    case PT_JSON_QUOTE:
-      return "json_quote";
-    case PT_JSON_UNQUOTE:
-      return "json_unquote";
-    case PT_JSON_LENGTH:
-      return "json_length";
-    case PT_JSON_DEPTH:
-      return "json_depth";
-    case PT_JSON_PRETTY:
-      return "json_pretty";
     default:
+      assert (false);
       return "unknown opcode";
-    }
-}
-
-/*
- * pt_show_function() -
- *   return:
- *   c(in):
- */
-const char *
-pt_show_function (FUNC_TYPE c)
-{
-  switch (c)
-    {
-    case PT_MIN:
-      return "min";
-    case PT_MAX:
-      return "max";
-    case PT_SUM:
-      return "sum";
-    case PT_AVG:
-      return "avg";
-    case PT_STDDEV:
-      return "stddev";
-    case PT_STDDEV_POP:
-      return "stddev_pop";
-    case PT_STDDEV_SAMP:
-      return "stddev_samp";
-    case PT_VARIANCE:
-      return "variance";
-    case PT_VAR_POP:
-      return "var_pop";
-    case PT_VAR_SAMP:
-      return "var_samp";
-    case PT_COUNT:
-      return "count";
-    case PT_COUNT_STAR:
-      return "count";
-    case PT_CUME_DIST:
-      return "cume_dist";
-    case PT_PERCENT_RANK:
-      return "percent_rank";
-    case PT_GROUPBY_NUM:
-      return "groupby_num";
-    case PT_AGG_BIT_AND:
-      return "bit_and";
-    case PT_AGG_BIT_OR:
-      return "bit_or";
-    case PT_AGG_BIT_XOR:
-      return "bit_xor";
-    case PT_GROUP_CONCAT:
-      return "group_concat";
-    case PT_ROW_NUMBER:
-      return "row_number";
-    case PT_RANK:
-      return "rank";
-    case PT_DENSE_RANK:
-      return "dense_rank";
-    case PT_LEAD:
-      return "lead";
-    case PT_LAG:
-      return "lag";
-    case PT_NTILE:
-      return "ntile";
-    case PT_FIRST_VALUE:
-      return "first_value";
-    case PT_LAST_VALUE:
-      return "last_value";
-    case PT_NTH_VALUE:
-      return "nth_value";
-    case PT_MEDIAN:
-      return "median";
-    case PT_PERCENTILE_CONT:
-      return "percentile_cont";
-    case PT_PERCENTILE_DISC:
-      return "percentile_disc";
-    case PT_JSON_ARRAYAGG:
-      return "json_arrayagg";
-    case PT_JSON_OBJECTAGG:
-      return "json_objectagg";
-
-    case F_SEQUENCE:
-      return "sequence";
-    case F_SET:
-      return "set";
-    case F_MULTISET:
-      return "multiset";
-
-    case F_TABLE_SEQUENCE:
-      return "sequence";
-    case F_TABLE_SET:
-      return "set";
-    case F_TABLE_MULTISET:
-      return "multiset";
-    case F_VID:
-      return "vid";		/* internally generated only, vid doesn't parse */
-    case F_CLASS_OF:
-      return "class";
-    case F_INSERT_SUBSTRING:
-      return "insert";
-    case F_ELT:
-      return "elt";
-    case F_JSON_OBJECT:
-      return "json_object";
-    case F_JSON_ARRAY:
-      return "json_array";
-    case F_JSON_INSERT:
-      return "json_insert";
-    case F_JSON_REPLACE:
-      return "json_replace";
-    case F_JSON_SET:
-      return "json_set";
-    case F_JSON_KEYS:
-      return "json_keys";
-    case F_JSON_REMOVE:
-      return "json_remove";
-    case F_JSON_ARRAY_APPEND:
-      return "json_array_append";
-    case F_JSON_ARRAY_INSERT:
-      return "json_array_insert";
-    case F_JSON_SEARCH:
-      return "json_search";
-    case F_JSON_CONTAINS_PATH:
-      return "json_contains_path";
-    case F_JSON_MERGE:
-      return "json_merge";
-    case F_JSON_MERGE_PATCH:
-      return "json_merge_patch";
-    case F_JSON_GET_ALL_PATHS:
-      return "json_get_all_paths";
-    default:
-      return "unknown function";
     }
 }
 
@@ -4386,7 +4223,7 @@ pt_gather_constraints (PARSER_CONTEXT * parser, PT_NODE * node)
 	  switch (next->node_type)
 	    {
 	    case PT_CONSTRAINT:
-	      /* 
+	      /*
 	       * We need to cut this entry out of the attr_def list and
 	       * append it to the constraint list.  This uses the
 	       * standard indirect update technique for modifying a
@@ -4413,7 +4250,6 @@ pt_gather_constraints (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
-
   if (class_attr_list_p != NULL)
     {
       next = *class_attr_list_p;
@@ -4422,7 +4258,7 @@ pt_gather_constraints (PARSER_CONTEXT * parser, PT_NODE * node)
 	  switch (next->node_type)
 	    {
 	    case PT_CONSTRAINT:
-	      /* 
+	      /*
 	       * We need to cut this entry out of the class_attr_def list
 	       * and append it to the constraint list.  This uses the
 	       * standard indirect update technique for modifying a
@@ -4567,7 +4403,6 @@ pt_get_expression_count (PT_NODE * node)
     }
   return count;
 }
-
 
 /*
  * pt_select_list_to_one_col() -
@@ -4724,7 +4559,6 @@ pt_select_list_to_one_col (PARSER_CONTEXT * parser, PT_NODE * node, bool do_one)
   return;
 }
 
-
 /*
  * pt_check_set_count_set() -
  *   return: 1 for noerror, 0 for error
@@ -4807,7 +4641,6 @@ pt_check_set_count_set (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2)
 
   return rc;
 }
-
 
 /*
  * pt_rewrite_set_eq_set() -
@@ -5008,7 +4841,6 @@ pt_rewrite_set_eq_set (PARSER_CONTEXT * parser, PT_NODE * exp)
 
   return p;
 }
-
 
 /*
  * pt_init_apply_f () - initialize function vector(called by parser_walk_tree...)
@@ -5365,6 +5197,25 @@ pt_init_print_f (void)
 }
 
 /*
+ * pt_init_node () - initialize node by calling init function identified by node type
+ *   return: void
+ *   node(in)      : pt node
+ *   node_type(in) : node type
+ */
+void
+pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type)
+{
+  PARSER_INIT_NODE_FUNC parser_init_node_func = pt_init_func_array[node_type];
+  if (!node || !parser_init_node_func)
+    {
+      return;
+    }
+
+  parser_init_node_func (node);
+  node->node_type = node_type;
+}
+
+/*
  * pt_append_name () - if the given string is not a keyword and has no
  *  non-alpha characters, append it. Otherwise, append it within double quotes
  *   return:
@@ -5389,7 +5240,6 @@ pt_append_name (const PARSER_CONTEXT * parser, PARSER_VARCHAR * string, const ch
     }
   return string;
 }
-
 
 /*
  * pt_append_quoted_string () - Quote and append a string,
@@ -5548,7 +5398,6 @@ pt_currency_to_db (const PT_CURRENCY t)
       return DB_CURRENCY_NULL;
     }
 }
-
 
 /*
  * pt_show_event_type () -
@@ -6055,6 +5904,7 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.alter.alter_clause.rename.meta));
 	  q = pt_append_nulstring (parser, q, " ");
 	  q = pt_append_varchar (parser, q, r2);
+	  /* FALLTHRU */
 	case PT_FILE_RENAME:
 	  r1 = pt_print_bytes (parser, p->info.alter.alter_clause.rename.old_name);
 	  q = pt_append_varchar (parser, q, r1);
@@ -6480,7 +6330,6 @@ pt_init_alter_user (PT_NODE * p)
   p->info.alter_user.user_name = p->info.alter_user.password = p->info.alter_user.comment = NULL;
   return p;
 }
-
 
 /*
  * pt_print_alter_user () -
@@ -7060,7 +6909,6 @@ pt_print_commit_work (PARSER_CONTEXT * parser, PT_NODE * p)
   return q;
 }
 
-
 /* CREATE_ENTITY */
 /*
  * pt_apply_create_entity () -
@@ -7368,7 +7216,6 @@ pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p)
   return q;
 }
 
-
 /* CREATE_INDEX */
 /*
  * pt_apply_create_index () -
@@ -7407,7 +7254,6 @@ pt_init_create_index (PT_NODE * p)
   p->info.index.comment = NULL;
   return p;
 }
-
 
 /*
  * pt_print_create_index () -
@@ -7545,7 +7391,6 @@ pt_init_create_user (PT_NODE * p)
     p->info.create_user.members = p->info.create_user.comment = NULL;
   return p;
 }
-
 
 /*
  * pt_print_create_user () -
@@ -7984,7 +7829,6 @@ pt_print_do (PARSER_CONTEXT * parser, PT_NODE * p)
 
   return q;
 }
-
 
 /*
  * pt_apply_sp_parameter () -
@@ -8514,7 +8358,6 @@ pt_apply_drop_serial (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, 
   return p;
 }
 
-
 /* DATA_DEFAULT */
 /*
  * pt_apply_data_default () -
@@ -8579,7 +8422,6 @@ pt_print_data_default (PARSER_CONTEXT * parser, PT_NODE * p)
 
   return q;
 }
-
 
 /* DATA_TYPE */
 /*
@@ -8658,6 +8500,7 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
       show_collation = true;
+      /* FALLTHRU */
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
     case PT_TYPE_FLOAT:
@@ -8740,7 +8583,6 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 
   return q;
 }
-
 
 /* DELETE */
 /*
@@ -8981,7 +8823,6 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
   return q;
 }
 
-
 /* DIFFERENCE */
 /*
  * pt_apply_difference () -
@@ -9089,7 +8930,6 @@ pt_print_difference (PARSER_CONTEXT * parser, PT_NODE * p)
   return q;
 }
 
-
 /* DOT */
 /*
  * pt_apply_dot () -
@@ -9116,7 +8956,17 @@ pt_apply_dot (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *ar
 static PT_NODE *
 pt_init_dot (PT_NODE * p)
 {
+  if (!p)
+    {
+      return NULL;
+    }
+
+  p->info.dot.arg1 = NULL;
+  p->info.dot.arg2 = NULL;
+  p->info.dot.selector = NULL;
+  p->info.dot.tag_click_counter = 0;
   p->info.dot.coll_modifier = 0;
+
   return p;
 }
 
@@ -9150,7 +9000,6 @@ pt_print_dot (PARSER_CONTEXT * parser, PT_NODE * p)
 
   return b;
 }
-
 
 /* DROP_ENTITY  (not ALTER or VIEW ) */
 /*
@@ -9212,7 +9061,6 @@ pt_print_drop (PARSER_CONTEXT * parser, PT_NODE * p)
 
   return q;
 }
-
 
 /* DROP_INDEX */
 /*
@@ -9333,7 +9181,6 @@ pt_init_drop_user (PT_NODE * p)
   p->info.drop_user.user_name = NULL;
   return p;
 }
-
 
 /*
  * pt_print_drop_user () -
@@ -10050,8 +9897,6 @@ pt_print_range_op (PARSER_CONTEXT * parser, PT_STRING_BLOCK * sb, PT_NODE * t, P
     }
 }
 
-
-
 /*
  * pt_print_expr () -
  *   return:
@@ -10189,89 +10034,6 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_ABS:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_nulstring (parser, q, " abs(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ")");
-      break;
-    case PT_JSON_CONTAINS:
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      r2 = pt_print_bytes (parser, p->info.expr.arg2);
-
-      q = pt_append_nulstring (parser, q, " json_contains(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ", ");
-      q = pt_append_varchar (parser, q, r2);
-      if (p->info.expr.arg3 != NULL)
-	{
-	  r3 = pt_print_bytes (parser, p->info.expr.arg3);
-
-	  q = pt_append_nulstring (parser, q, ", ");
-	  q = pt_append_varchar (parser, q, r3);
-	}
-      q = pt_append_nulstring (parser, q, ")");
-      break;
-    case PT_JSON_EXTRACT:
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      r2 = pt_print_bytes (parser, p->info.expr.arg2);
-
-      q = pt_append_nulstring (parser, q, " json_extract(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ", ");
-      q = pt_append_varchar (parser, q, r2);
-      q = pt_append_nulstring (parser, q, ")");
-      break;
-    case PT_JSON_TYPE:
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
-
-      q = pt_append_nulstring (parser, q, " json_type(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ")");
-      break;
-    case PT_JSON_VALID:
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
-
-      q = pt_append_nulstring (parser, q, " json_valid(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ")");
-      break;
-    case PT_JSON_QUOTE:
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
-
-      q = pt_append_nulstring (parser, q, " json_quote(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ")");
-      break;
-    case PT_JSON_UNQUOTE:
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
-
-      q = pt_append_nulstring (parser, q, " json_unquote(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ")");
-      break;
-    case PT_JSON_LENGTH:
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
-
-      q = pt_append_nulstring (parser, q, " json_length(");
-      q = pt_append_varchar (parser, q, r1);
-      if (p->info.expr.arg2 != NULL)
-	{
-	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
-
-	  q = pt_append_nulstring (parser, q, ", ");
-	  q = pt_append_varchar (parser, q, r2);
-	}
-      q = pt_append_nulstring (parser, q, ")");
-      break;
-    case PT_JSON_DEPTH:
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
-
-      q = pt_append_nulstring (parser, q, " json_depth(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ")");
-      break;
-    case PT_JSON_PRETTY:
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
-
-      q = pt_append_nulstring (parser, q, " json_pretty(");
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
@@ -11635,7 +11397,11 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	  sprintf (buf, " collate %s", lang_get_collation_name (PT_GET_COLLATION_MODIFIER (p)));
 
-	  if (p->info.expr.arg1->node_type == PT_VALUE)
+	  if (p->info.expr.arg1 == NULL)
+	    {
+	      /* Do nothing. It must be an error case. */
+	    }
+	  else if (p->info.expr.arg1->node_type == PT_VALUE)
 	    {
 	      PT_NODE *v = p->info.expr.arg1;
 	      int v_coll_id;
@@ -11673,7 +11439,8 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_nulstring (parser, r1, buf);
 	    }
 	}
-      else if (p->info.expr.cast_type->info.data_type.collation_flag != TP_DOMAIN_COLL_NORMAL)
+      else if (p->info.expr.cast_type != NULL
+	       && p->info.expr.cast_type->info.data_type.collation_flag != TP_DOMAIN_COLL_NORMAL)
 	{
 	  assert (PT_HAS_COLLATION (p->info.expr.cast_type->type_enum));
 	  assert (p->data_type == NULL || p->data_type->type_enum == p->info.expr.cast_type->type_enum);
@@ -12126,7 +11893,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	  /* break case PT_RANGE */
 	  break;
 	}
-      /* fall through to default case */
+      /* FALLTHRU */
     default:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       r2 = pt_print_bytes (parser, p->info.expr.arg2);
@@ -12350,7 +12117,6 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
   return q;
 }
 
-
 /* FILE_PATH */
 /*
  * pt_apply_file_path () -
@@ -12447,6 +12213,7 @@ pt_init_function (PT_NODE * p)
   p->info.function.analytic.ignore_nulls = false;
   p->info.function.hidden_column = 0;
   p->info.function.is_order_dependent = false;
+  p->info.function.is_type_checked = false;
   p->info.function.coll_modifier = 0;
   return p;
 }
@@ -12475,7 +12242,7 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
     }
   else if (code < PT_TOP_AGG_FUNC)
     {
-      q = pt_append_nulstring (parser, q, pt_show_function (code));
+      q = pt_append_nulstring (parser, q, fcode_get_lowercase_name (code));
       q = pt_append_nulstring (parser, q, "(");
 
       if (code == PT_COUNT_STAR)
@@ -12529,7 +12296,7 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
     }
   else if (code == PT_LEAD || code == PT_LAG)
     {
-      q = pt_append_nulstring (parser, q, pt_show_function (code));
+      q = pt_append_nulstring (parser, q, fcode_get_lowercase_name (code));
       q = pt_append_nulstring (parser, q, "(");
 
       r1 = pt_print_bytes (parser, p->info.function.arg_list);
@@ -12547,7 +12314,7 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
     }
   else if (code == PT_NTH_VALUE)
     {
-      q = pt_append_nulstring (parser, q, pt_show_function (code));
+      q = pt_append_nulstring (parser, q, fcode_get_lowercase_name (code));
       q = pt_append_nulstring (parser, q, "(");
 
       r1 = pt_print_bytes (parser, p->info.function.arg_list);
@@ -12562,7 +12329,7 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
   else if (code == PT_CUME_DIST || code == PT_PERCENT_RANK)
     {
       r1 = pt_print_bytes_l (parser, p->info.function.arg_list);
-      q = pt_append_nulstring (parser, q, pt_show_function (code));
+      q = pt_append_nulstring (parser, q, fcode_get_lowercase_name (code));
       q = pt_append_nulstring (parser, q, "(");
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
@@ -12580,7 +12347,7 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
     }
   else if (code == PT_PERCENTILE_CONT || code == PT_PERCENTILE_DISC)
     {
-      q = pt_append_nulstring (parser, q, pt_show_function (code));
+      q = pt_append_nulstring (parser, q, fcode_get_lowercase_name (code));
       q = pt_append_nulstring (parser, q, "(");
 
       r1 = pt_print_bytes (parser, p->info.function.percentile);
@@ -12633,7 +12400,7 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
 	  r1 = pt_print_bytes_l (parser, p->info.function.arg_list);
 	  if (code != F_SEQUENCE)
 	    {
-	      q = pt_append_nulstring (parser, q, pt_show_function (code));
+	      q = pt_append_nulstring (parser, q, fcode_get_lowercase_name (code));
 	    }
 	  q = pt_append_nulstring (parser, q, "{");
 	  q = pt_append_varchar (parser, q, r1);
@@ -12643,14 +12410,14 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
   else if (code == F_CLASS_OF)
     {
       r1 = pt_print_bytes_l (parser, p->info.function.arg_list);
-      q = pt_append_nulstring (parser, q, pt_show_function (code));
+      q = pt_append_nulstring (parser, q, fcode_get_lowercase_name (code));
       q = pt_append_nulstring (parser, q, " ");
       q = pt_append_varchar (parser, q, r1);
     }
   else
     {
       r1 = pt_print_bytes_l (parser, p->info.function.arg_list);
-      q = pt_append_nulstring (parser, q, pt_show_function (code));
+      q = pt_append_nulstring (parser, q, fcode_get_lowercase_name (code));
       q = pt_append_nulstring (parser, q, "(");
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
@@ -12965,7 +12732,9 @@ pt_print_host_var (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (parser->print_db_value)
     {
-      if (p->info.host_var.var_type == PT_HOST_IN)
+      /* Skip cast to enum type. */
+      if (p->info.host_var.var_type == PT_HOST_IN
+	  && (p->expected_domain == NULL || TP_DOMAIN_TYPE (p->expected_domain) != DB_TYPE_ENUMERATION))
 	{
 	  PT_NODE *save_error_msgs;
 
@@ -13220,7 +12989,6 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
     }
   return b;
 }
-
 
 /* INTERSECTION */
 /*
@@ -13525,7 +13293,6 @@ pt_print_method_call (PARSER_CONTEXT * parser, PT_NODE * p)
   return q;
 }
 
-
 /* METHOD_DEF */
 /*
  * pt_apply_method_def () -
@@ -13608,8 +13375,6 @@ pt_print_method_def (PARSER_CONTEXT * parser, PT_NODE * p)
   return q;
 }
 
-
-
 /* NAME */
 /*
  * pt_apply_name () -
@@ -13644,7 +13409,6 @@ pt_init_name (PT_NODE * p)
   p->info.name.coll_modifier = 0;
   return p;
 }
-
 
 /*
  * pt_print_name () -
@@ -14106,7 +13870,6 @@ pt_print_resolution (PARSER_CONTEXT * parser, PT_NODE * p)
   return q;
 }
 
-
 /* REVOKE */
 /*
  * pt_apply_revoke () -
@@ -14167,7 +13930,6 @@ pt_print_revoke (PARSER_CONTEXT * parser, PT_NODE * p)
   return q;
 }
 
-
 /* ROLLBACK_WORK */
 /*
  * pt_apply_rollback_work () -
@@ -14218,7 +13980,6 @@ pt_print_rollback_work (PARSER_CONTEXT * parser, PT_NODE * p)
 
   return q;
 }
-
 
 /* SAVEPOINT */
 /*
@@ -14423,12 +14184,12 @@ pt_init_select (PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *q = 0, *r1;
-  PT_NODE *temp, *where_list;
+  PARSER_VARCHAR *q = NULL, *r1 = NULL;
+  PT_NODE *temp = NULL, *where_list = NULL;
   bool set_paren = false;	/* init */
   bool toggle_print_alias = false;
   bool is_first_list;
-  unsigned int save_custom;
+  unsigned int save_custom = 0;
   PT_NODE *from = NULL, *derived_table = NULL;
 
   from = p->info.query.q.select.from;
@@ -15799,7 +15560,6 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
   return q;
 }
 
-
 /* UPDATE */
 /*
  * pt_apply_update () -
@@ -16069,7 +15829,6 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
   return b;
 }
 
-
 /* UPDATE_STATS */
 /*
  * pt_apply_update_stats () -
@@ -16132,7 +15891,6 @@ pt_print_update_stats (PARSER_CONTEXT * parser, PT_NODE * p)
 
   return b;
 }
-
 
 /* GET_STATS */
 /*
@@ -16891,7 +16649,6 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
   return q;
 }
 
-
 /* ZZ_ERROR_MSG */
 /*
  * pt_apply_error_msg () -
@@ -16947,7 +16704,6 @@ pt_print_error_msg (PARSER_CONTEXT * parser, PT_NODE * p)
   b = pt_append_nulstring (parser, b, p->info.error_msg.error_message);
   return b;
 }
-
 
 /* CONSTRAINT */
 /*
@@ -17078,7 +16834,7 @@ pt_print_col_def_constraint (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_CONSTRAIN_NULL:
       break;
     case PT_CONSTRAIN_NOT_NULL:
-      /* 
+      /*
        * Print nothing here. It is a duplicate of the "NOT NULL" printed for the column constraint. */
       break;
 
@@ -17094,7 +16850,7 @@ pt_print_col_def_constraint (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
     }
 
-  /* 
+  /*
    * "NOT DEFERRABLE INITIALLY IMMEDIATE" is the default, so print
    * nothing in that case.  It's arguably safer to print the explicit
    * info, but it's also likely to run afoul of SQL parsers that don't
@@ -17187,7 +16943,7 @@ pt_print_constraint (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_CONSTRAIN_NULL:
       break;
     case PT_CONSTRAIN_NOT_NULL:
-      /* 
+      /*
        * Print nothing here. It is a duplicate of the "NOT NULL" printed for the column constraint. */
       break;
 
@@ -17206,7 +16962,7 @@ pt_print_constraint (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
     }
 
-  /* 
+  /*
    * "NOT DEFERRABLE INITIALLY IMMEDIATE" is the default, so print
    * nothing in that case.  It's arguably safer to print the explicit
    * info, but it's also likely to run afoul of SQL parsers that don't
@@ -17578,7 +17334,6 @@ pt_apply_kill (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *a
   return p;
 }
 
-
 /*
  * pt_init_insert_value ()
  * return :
@@ -17637,7 +17392,7 @@ pt_init_with_clause (PT_NODE * p)
 }
 
 /* CTE */
-/* 
+/*
  * pt_apply_cte() -
  * return:
  * parser(in):
@@ -17823,7 +17578,6 @@ pt_print_named_arg (PARSER_CONTEXT * parser, PT_NODE * p)
   res = pt_append_varchar (parser, res, v);
   return res;
 }
-
 
 /*
  * pt_print_index_columns () -
@@ -18214,12 +17968,6 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_INET_NTOA:
 	case PT_CHARSET:
 	case PT_COLLATION:
-	case PT_JSON_TYPE:
-	case PT_JSON_VALID:
-	case PT_JSON_QUOTE:
-	case PT_JSON_UNQUOTE:
-	case PT_JSON_DEPTH:
-	case PT_JSON_PRETTY:
 	  return pt_is_const_expr_node (node->info.expr.arg1);
 	case PT_COERCIBILITY:
 	  /* coercibility is always folded to constant */
@@ -18228,16 +17976,6 @@ pt_is_const_expr_node (PT_NODE * node)
 
 	  return (pt_is_const_expr_node (node->info.expr.arg1) && pt_is_const_expr_node (node->info.expr.arg2)
 		  && pt_is_const_expr_node (node->info.expr.arg3));
-	case PT_JSON_EXTRACT:
-	  return (pt_is_const_expr_node (node->info.expr.arg1)
-		  && pt_is_const_expr_node (node->info.expr.arg2)) ? true : false;
-	case PT_JSON_CONTAINS:
-	  return (pt_is_const_expr_node (node->info.expr.arg1)
-		  && pt_is_const_expr_node (node->info.expr.arg2)
-		  && (node->info.expr.arg3 ? pt_is_const_expr_node (node->info.expr.arg3) : true)) ? true : false;
-	case PT_JSON_LENGTH:
-	  return (pt_is_const_expr_node (node->info.expr.arg1)
-		  && (node->info.expr.arg2 ? pt_is_const_expr_node (node->info.expr.arg2) : true)) ? true : false;
 	default:
 	  return false;
 	}
@@ -18548,16 +18286,62 @@ pt_is_nested_expr (const PT_NODE * node)
 }
 
 /*
- *   pt_is_allowed_as_function_index () : checks if the given operator
- *					  is allowed in the structure of a
- *					  function index
+ *   pt_function_is_allowed_as_function_index () : checks if the given function
+ *						   is allowed in the structure of a function index
+ *   return:
+ *   func(in): parse tree node function
+ */
+static bool
+pt_function_is_allowed_as_function_index (const PT_NODE * func)
+{
+  assert (func != NULL && func->node_type == PT_FUNCTION);
+
+  // TODO: expose get_signatures () of func_type.cpp & filter out funcs returning PT_TYPE_JSON
+  switch (func->info.function.function_type)
+    {
+    case F_BENCHMARK:
+    case F_JSON_OBJECT:
+    case F_JSON_ARRAY:
+    case F_JSON_MERGE:
+    case F_JSON_MERGE_PATCH:
+    case F_JSON_INSERT:
+    case F_JSON_REMOVE:
+    case F_JSON_ARRAY_APPEND:
+    case F_JSON_GET_ALL_PATHS:
+    case F_JSON_REPLACE:
+    case F_JSON_SET:
+    case F_JSON_KEYS:
+    case F_JSON_ARRAY_INSERT:
+    case F_JSON_SEARCH:
+    case F_JSON_EXTRACT:
+      return false;
+    case F_INSERT_SUBSTRING:
+    case F_ELT:
+    case F_JSON_CONTAINS:
+    case F_JSON_CONTAINS_PATH:
+    case F_JSON_DEPTH:
+    case F_JSON_LENGTH:
+    case F_JSON_TYPE:
+    case F_JSON_VALID:
+    case F_JSON_PRETTY:
+    case F_JSON_QUOTE:
+    case F_JSON_UNQUOTE:
+      return true;
+    default:
+      return true;
+    }
+}
+
+/*
+ *   pt_expr_is_allowed_as_function_index () : checks if the given operator
+ *					       is allowed in the structure of a function index
  *   return:
  *   expr(in): expression parse tree node
  */
 static bool
-pt_is_allowed_as_function_index (const PT_NODE * expr)
+pt_expr_is_allowed_as_function_index (const PT_NODE * expr)
 {
-  assert (expr != NULL);
+  assert (expr != NULL && expr->node_type == PT_EXPR);
 
   switch (expr->info.expr.op)
     {
@@ -18566,6 +18350,7 @@ pt_is_allowed_as_function_index (const PT_NODE * expr)
 	{
 	  break;
 	}
+      /* FALLTHRU */
     case PT_MOD:
     case PT_LEFT:
     case PT_RIGHT:
@@ -18676,15 +18461,6 @@ pt_is_allowed_as_function_index (const PT_NODE * expr)
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
     case PT_CRC32:
-    case PT_JSON_CONTAINS:
-    case PT_JSON_TYPE:
-    case PT_JSON_EXTRACT:
-    case PT_JSON_VALID:
-    case PT_JSON_QUOTE:
-    case PT_JSON_UNQUOTE:
-    case PT_JSON_LENGTH:
-    case PT_JSON_DEPTH:
-    case PT_JSON_PRETTY:
       return true;
     case PT_TZ_OFFSET:
     default:
@@ -18722,13 +18498,13 @@ pt_is_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool report_
     {
       if (report_error)
 	{
-	  /* the initial expression might have been rewritten to something else (ex: TO_CHAR(col) rewrites to a PT_NAME 
+	  /* the initial expression might have been rewritten to something else (ex: TO_CHAR(col) rewrites to a PT_NAME
 	   * if col has a character data type. */
 	  PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX_EXPR);
 	}
       return false;
     }
-  if (!pt_is_allowed_as_function_index (expr))
+  if (!pt_expr_is_allowed_as_function_index (expr))
     {
       if (report_error)
 	{
@@ -18752,6 +18528,20 @@ pt_is_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool report_
 	  PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
 	}
       return false;
+    }
+
+  if (expr->info.expr.op == PT_FUNCTION_HOLDER)
+    {
+      PT_NODE *func = expr->info.expr.arg1;
+      if (!pt_function_is_allowed_as_function_index (func))
+	{
+	  if (report_error)
+	    {
+	      PT_ERRORmf (parser, expr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_INDEX,
+			  fcode_get_uppercase_name (func->info.function.function_type));
+	    }
+	  return false;
+	}
     }
   return true;
 }
@@ -18977,7 +18767,7 @@ pt_sort_spec_list_to_name_node_list (PARSER_CONTEXT * parser, PT_NODE * sort_spe
  * pt_apply_vacuum () - Apply function "q" on all the children of a VACUUM
  *			parse tree node.
  *
- * return      : Updated VACUUM parse tree node. 
+ * return      : Updated VACUUM parse tree node.
  * parser (in) : Parse context.
  * p (in)      : VACUUM parse tree node.
  * g (in)      : Function to apply on all node's children.
@@ -19010,7 +18800,7 @@ pt_init_vacuum (PT_NODE * p)
  *
  * return      : Return printed version of parse tree node.
  * parser (in) : Parser context.
- * p (in)      : 
+ * p (in)      :
  */
 static PARSER_VARCHAR *
 pt_print_vacuum (PARSER_CONTEXT * parser, PT_NODE * p)
@@ -19179,12 +18969,22 @@ pt_print_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p)
   substr = pt_print_bytes (parser, p->info.json_table_node_info.columns);
   pstr = pt_append_varchar (parser, pstr, substr);
 
-  if (p->info.json_table_node_info.nested_paths != NULL)
+  if (p->info.json_table_node_info.columns != NULL && p->info.json_table_node_info.nested_paths != NULL)
     {
-      // ', nested path ' print nested
-      pstr = pt_append_nulstring (parser, pstr, ", nested path ");
+      pstr = pt_append_nulstring (parser, pstr, ", ");
+    }
+
+  for (PT_NODE * nested = p->info.json_table_node_info.nested_paths; nested != NULL; nested = nested->next)
+    {
+      // 'nested path ' print nested ', '
+      pstr = pt_append_nulstring (parser, pstr, "nested path ");
       substr = pt_print_bytes (parser, p->info.json_table_node_info.nested_paths);
       pstr = pt_append_varchar (parser, pstr, substr);
+
+      if (nested->next != NULL)
+	{
+	  pstr = pt_append_nulstring (parser, pstr, ", ");
+	}
     }
 
   // ' )'
@@ -19322,15 +19122,15 @@ pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VA
       pstr = pt_append_nulstring (parser, pstr, p->info.json_table_column_info.path);
       pstr = pt_append_nulstring (parser, pstr, "'");
 
-      // print on_error
-      pstr = pt_append_nulstring (parser, pstr, " ");
-      pstr = pt_print_json_table_column_error_or_empty_behavior (parser, pstr, p->info.json_table_column_info.on_error);
-      pstr = pt_append_nulstring (parser, pstr, " ON ERROR");
-
       // print on_empty
       pstr = pt_append_nulstring (parser, pstr, " ");
       pstr = pt_print_json_table_column_error_or_empty_behavior (parser, pstr, p->info.json_table_column_info.on_empty);
       pstr = pt_append_nulstring (parser, pstr, " ON EMPTY");
+
+      // print on_error
+      pstr = pt_append_nulstring (parser, pstr, " ");
+      pstr = pt_print_json_table_column_error_or_empty_behavior (parser, pstr, p->info.json_table_column_info.on_error);
+      pstr = pt_append_nulstring (parser, pstr, " ON ERROR");
       break;
 
     case json_table_column_function::JSON_TABLE_EXISTS:
@@ -19374,8 +19174,12 @@ pt_print_json_table_columns (PARSER_CONTEXT * parser, PT_NODE * p)
   for (p_it = p; p_it->next != NULL; p_it = p_it->next)
     {
       pstr = pt_print_json_table_column_info (parser, p_it, pstr);
-      // print ','
-      pstr = pt_append_nulstring (parser, pstr, ", ");
+
+      if (p_it->next != NULL)
+	{
+	  // print ','
+	  pstr = pt_append_nulstring (parser, pstr, ", ");
+	}
     }
 
   // the last column

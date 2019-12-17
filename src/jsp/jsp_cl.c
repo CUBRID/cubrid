@@ -41,11 +41,14 @@
 #include <windows.h>
 #endif /* not WINDOWS */
 
+#include "authenticate.h"
 #include "error_manager.h"
 #include "memory_alloc.h"
 #include "dbtype.h"
 #include "parser.h"
 #include "object_domain.h"
+#include "object_primitive.h"
+#include "object_representation.h"
 #include "db.h"
 #include "object_accessor.h"
 #include "set_object.h"
@@ -100,7 +103,7 @@ typedef struct db_arg_list
 
 typedef struct
 {
-  char *name;
+  const char *name;
   DB_VALUE *returnval;
   DB_ARG_LIST *args;
   int arg_count;
@@ -363,7 +366,7 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       (*next_value_list)->next = (DB_ARG_LIST *) 0;
 
-      /* 
+      /*
        * Don't clone host vars; they may actually be acting as output variables (e.g., a character array that is
        * intended to receive bytes from the method), and cloning will ensure that the results never make it to the
        * expected area.  Since pt_evaluate_tree() always clones its db_values we must not use pt_evaluate_tree() to
@@ -604,11 +607,11 @@ int
 jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
-  PT_NODE *sp_name, *sp_owner, *sp_comment;
-  const char *name_str, *owner_str, *comment_str = NULL;
+  PT_NODE *sp_name = NULL, *sp_owner = NULL, *sp_comment = NULL;
+  const char *name_str = NULL, *owner_str = NULL, *comment_str = NULL;
   PT_MISC_TYPE type;
   SP_TYPE_ENUM real_type;
-  MOP sp_mop, new_owner;
+  MOP sp_mop = NULL, new_owner = NULL;
   DB_VALUE user_val, sp_type_val;
   int save;
 
@@ -705,7 +708,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* change the comment */
   if (sp_comment != NULL)
     {
-      db_make_string_by_const_str (&user_val, comment_str);
+      db_make_string (&user_val, comment_str);
       err = obj_set (sp_mop, SP_ATTR_COMMENT, &user_val);
       if (err < 0)
 	{
@@ -832,7 +835,7 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char 
       goto error;
     }
 
-  db_make_string_by_const_str (&value, sp_name);
+  db_make_string (&value, sp_name);
   err = dbt_put_internal (obt_p, SP_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -840,7 +843,7 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char 
       goto error;
     }
 
-  db_make_string_by_const_str (&value, arg_name);
+  db_make_string (&value, arg_name);
   err = dbt_put_internal (obt_p, SP_ATTR_ARG_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -869,7 +872,7 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char 
       goto error;
     }
 
-  db_make_string_by_const_str (&value, arg_comment);
+  db_make_string (&value, arg_comment);
   err = dbt_put_internal (obt_p, SP_ATTR_ARG_COMMENT, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -1079,7 +1082,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
       goto error;
     }
 
-  db_make_string_by_const_str (&value, java_method);
+  db_make_string (&value, java_method);
   err = dbt_put_internal (obt_p, SP_ATTR_TARGET, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -1095,7 +1098,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
       goto error;
     }
 
-  db_make_string_by_const_str (&value, comment);
+  db_make_string (&value, comment);
   err = dbt_put_internal (obt_p, SP_ATTR_COMMENT, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -1649,13 +1652,14 @@ jsp_pack_float_argument (char *buffer, DB_VALUE * value)
 static char *
 jsp_pack_double_argument (char *buffer, DB_VALUE * value)
 {
-  double v, pack_value;
+  double v;
   char *ptr;
+  char pack_value[OR_DOUBLE_SIZE];
 
   ptr = or_pack_int (buffer, sizeof (double));
   v = db_get_double (value);
-  OR_PUT_DOUBLE (&pack_value, &v);
-  memcpy (ptr, (char *) (&pack_value), OR_DOUBLE_SIZE);
+  OR_PUT_DOUBLE (pack_value, v);
+  memcpy (ptr, pack_value, OR_DOUBLE_SIZE);
 
   return ptr + OR_DOUBLE_SIZE;
 }
@@ -1694,8 +1698,8 @@ jsp_pack_numeric_argument (char *buffer, DB_VALUE * value)
 static char *
 jsp_pack_string_argument (char *buffer, DB_VALUE * value)
 {
-  char *v;
-  char *ptr;
+  const char *v;
+  char *ptr, *decomposed = NULL;
   int v_size;
   int decomp_size;
   bool was_decomposed = false;
@@ -1708,7 +1712,6 @@ jsp_pack_string_argument (char *buffer, DB_VALUE * value)
   if (v_size > 0 && db_get_string_codeset (value) == INTL_CODESET_UTF8
       && unicode_string_need_decompose (v, v_size, &decomp_size, lang_get_generic_unicode_norm ()))
     {
-      char *decomposed;
       int alloc_size = decomp_size + 1;
 
       decomposed = (char *) db_private_alloc (NULL, alloc_size);
@@ -1733,7 +1736,7 @@ jsp_pack_string_argument (char *buffer, DB_VALUE * value)
 
   if (was_decomposed)
     {
-      db_private_free (NULL, v);
+      db_private_free (NULL, decomposed);
     }
 
   return ptr;
@@ -1948,13 +1951,13 @@ static char *
 jsp_pack_monetary_argument (char *buffer, DB_VALUE * value)
 {
   DB_MONETARY *v;
-  double pack_value;
+  char pack_value[OR_DOUBLE_SIZE];
   char *ptr;
 
   ptr = or_pack_int (buffer, sizeof (double));
   v = db_get_monetary (value);
-  OR_PUT_DOUBLE (&pack_value, &v->amount);
-  memcpy (ptr, (char *) (&pack_value), OR_DOUBLE_SIZE);
+  OR_PUT_DOUBLE (pack_value, v->amount);
+  memcpy (ptr, pack_value, OR_DOUBLE_SIZE);
 
   return ptr + OR_DOUBLE_SIZE;
 }

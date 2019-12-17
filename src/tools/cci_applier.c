@@ -14,6 +14,7 @@
 #include "cas_cci.h"
 #include "cci_applier.h"
 #include "log_applier.h"
+#include "porting.h"
 
 #define free_and_init(ptr) \
         do { \
@@ -477,7 +478,8 @@ process_sql_log_file (FILE * fp, int conn)
 	  error = read_src_catalog ();
 	  if (error != ER_CA_NO_ERROR)
 	    {
-	      snprintf (err_msg, LINE_MAX, "Failed to read applylogdb catalog: %s", applylogdb_catalog_path);
+	      snprintf_dots_truncate (err_msg, LINE_MAX - 1, "Failed to read applylogdb catalog: %s",
+				      applylogdb_catalog_path);
 	      er_log (error, NULL, err_msg);
 
 	      return error;
@@ -668,12 +670,16 @@ apply_sql_logs (int conn)
 
   while (ca_Info.curr_file_id <= ca_Info.src_file_id)
     {
-      snprintf (sql_log_path, PATH_MAX, "%s.%d", base_log_path, ca_Info.curr_file_id);
+      if (snprintf (sql_log_path, PATH_MAX - 1, "%s.%d", base_log_path, ca_Info.curr_file_id) < 0)
+	{
+	  assert (false);
+	  return ER_CA_FAILED;
+	}
 
       sql_log_fp = fopen (sql_log_path, "r");
       if (sql_log_fp == NULL)
 	{
-	  snprintf (err_msg, LINE_MAX, "Could not find %s", sql_log_path);
+	  snprintf_dots_truncate (err_msg, LINE_MAX - 1, "Could not find %s", sql_log_path);
 	  er_log (ER_CA_FILE_IO, NULL, err_msg);
 
 	  return ER_CA_FILE_IO;
@@ -699,8 +705,8 @@ apply_sql_logs (int conn)
 	{
 	  if (error == ER_CA_DISCREPANT_INFO)
 	    {
-	      snprintf (err_msg, LINE_MAX, "Discrepant catalog info in either %s or %s", applylogdb_catalog_path,
-			ca_catalog_path);
+	      snprintf_dots_truncate (err_msg, LINE_MAX - 1, "Discrepant catalog info in either %s or %s",
+				      applylogdb_catalog_path, ca_catalog_path);
 	      er_log (error, NULL, err_msg);
 	    }
 	  fclose (sql_log_fp);
@@ -717,6 +723,7 @@ apply_sql_logs (int conn)
 	    }
 	}
     }
+
   /* cci_applier should always wait for more logs to be accumulated */
   assert (false);
 
@@ -737,12 +744,18 @@ open_sample_file (void)
 
   do
     {
-      snprintf (cur_sample_file_path, PATH_MAX, "%s.%03d", sample_file_path_base, ca_Info.sample_file_count);
+      if (snprintf (cur_sample_file_path, PATH_MAX - 1, "%s.%03d", sample_file_path_base, ca_Info.sample_file_count)
+	  < 0)
+	{
+	  assert (false);
+	  return NULL;
+	}
 
       fp = fopen (cur_sample_file_path, "a");
       if (fp == NULL)
 	{
-	  snprintf (err_msg, LINE_MAX, "Failed to open or create %s. Log sampling is disabled", cur_sample_file_path);
+	  snprintf_dots_truncate (err_msg, LINE_MAX - 1, "Failed to open or create %s. Log sampling is disabled",
+				  cur_sample_file_path);
 	  er_log (ER_CA_FAILED, NULL, err_msg);
 
 	  ca_Info.sampling_rate = 0;
@@ -910,7 +923,7 @@ static void
 init_con_info (CA_CON_INFO * con_info)
 {
   memset (con_info, 0, sizeof (CA_CON_INFO));
-  strncpy (con_info->db_user, "dba", sizeof (con_info->db_user) - 1);
+  strncpy (con_info->db_user, "dba", sizeof (con_info->db_user));
 
   return;
 }
@@ -948,7 +961,7 @@ validate_args (CA_CON_INFO * con_info, char *repl_log_path)
     }
   else
     {
-      strncpy (repl_log_path, resolved_path, PATH_MAX - 1);
+      strncpy_size (repl_log_path, resolved_path, PATH_MAX);
     }
 
   return;
@@ -967,15 +980,35 @@ set_file_path (CA_CON_INFO * con_info, char *repl_log_path)
 {
   assert (repl_log_path != NULL && repl_log_path[0] != '\0');
 
-  snprintf (err_file_path, PATH_MAX, "%s@%s_%s.err", con_info->db_name, con_info->hostname, PROG_NAME);
-  snprintf (ca_catalog_path, PATH_MAX, "%s@%s_%s.sql.info", con_info->db_name, con_info->hostname, PROG_NAME);
-  snprintf (base_log_path, PATH_MAX, "%s/sql_log/%s.sql.log", repl_log_path, basename (repl_log_path));
-  snprintf (applylogdb_catalog_path, PATH_MAX, "%s/%s_applylogdb.sql.info", repl_log_path, con_info->db_name);
+  if (snprintf (err_file_path, PATH_MAX, "%s@%s_%s.err", con_info->db_name, con_info->hostname, PROG_NAME) < 0)
+    {
+      assert (false);
+      err_file_path[0] = '\0';
+    }
+  if (snprintf (ca_catalog_path, PATH_MAX, "%s@%s_%s.sql.info", con_info->db_name, con_info->hostname, PROG_NAME) < 0)
+    {
+      assert (false);
+      ca_catalog_path[0] = '\0';
+    }
+  if (snprintf (base_log_path, PATH_MAX, "%s/sql_log/%s.sql.log", repl_log_path, basename (repl_log_path)) < 0)
+    {
+      assert (false);
+      base_log_path[0] = '\0';
+    }
+  if (snprintf (applylogdb_catalog_path, PATH_MAX, "%s/%s_applylogdb.sql.info", repl_log_path, con_info->db_name) < 0)
+    {
+      assert (false);
+      applylogdb_catalog_path[0] = '\0';
+    }
 
   if (ca_Info.sampling_rate > 0)
     {
-      snprintf (sample_file_path_base, PATH_MAX, "%s@%s_%s.sql.sample", con_info->db_name, con_info->hostname,
-		PROG_NAME);
+      if (snprintf (sample_file_path_base, PATH_MAX, "%s@%s_%s.sql.sample", con_info->db_name, con_info->hostname,
+		    PROG_NAME) < 0)
+	{
+	  assert (false);
+	  sample_file_path_base[0] = '\0';
+	}
     }
 
   return;

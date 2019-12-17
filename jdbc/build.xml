@@ -51,10 +51,11 @@
 
     <target name="dist-cubrid" depends="build-cubrid">
         <jar jarfile="${cubrid-jar-file}">
-        <fileset dir="${bin-cubrid}"/>
-        <fileset file="${src}/sql-error-codes.xml"/>
-	<fileset file="src/CUBRID-JDBC-${version}"/>
-    </jar>
+            <fileset dir="${bin-cubrid}"/>
+            <fileset file="${src}/sql-error-codes.xml"/>
+            <fileset file="src/CUBRID-JDBC-${version}"/>
+            <service type="java.sql.Driver" provider="cubrid.jdbc.driver.CUBRIDDriver"/>
+        </jar>
     </target>
 
     <target name="build-cubrid" depends="compile-cubrid">
@@ -82,7 +83,8 @@
         <jar jarfile="JDBC-${version}-cubrid-src.jar">
             <fileset dir="${src-cubrid}"/>
             <fileset file="${src}/sql-error-codes.xml"/>
-	    <fileset file="src/CUBRID-JDBC-${version}"/>
+            <fileset file="src/CUBRID-JDBC-${version}"/>
+            <service type="java.sql.Driver" provider="cubrid.jdbc.driver.CUBRIDDriver"/>
         </jar>
     </target>
 

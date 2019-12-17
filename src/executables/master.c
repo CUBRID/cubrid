@@ -763,9 +763,6 @@ css_process_new_connection (SOCKET fd)
 	  /* here the server wants to manage its own connection port */
 	  css_register_new_server2 (conn, rid);
 	  break;
-	case SERVER_REQUEST_CONNECT_NEW_SLAVE:
-	  css_send_to_existing_server (conn, rid, SERVER_CONNECT_NEW_SLAVE);
-	  break;
 	default:
 	  css_free_conn (conn);
 	  break;
@@ -1128,7 +1125,7 @@ main (int argc, char **argv)
   int port_id;
   CSS_CONN_ENTRY *conn;
   static const char suffix[] = "_master.err";
-  char hostname[MAXHOSTNAMELEN + sizeof (suffix)];
+  char hostname[CUB_MAXHOSTNAMELEN + sizeof (suffix)];
   char *errlog = NULL;
   int status = EXIT_SUCCESS;
   const char *msg_format;
@@ -1149,11 +1146,11 @@ main (int argc, char **argv)
     }
 #endif /* WINDOWS */
 
-  if (GETHOSTNAME (hostname, MAXHOSTNAMELEN) == 0)
+  if (GETHOSTNAME (hostname, CUB_MAXHOSTNAMELEN) == 0)
     {
       /* css_gethostname won't null-terminate if the name is overlong.  Put in a guaranteed null-terminator of our own
        * so that strcat doesn't go wild. */
-      hostname[MAXHOSTNAMELEN] = '\0';
+      hostname[CUB_MAXHOSTNAMELEN] = '\0';
       strcat (hostname, suffix);
       errlog = hostname;
     }
@@ -1473,7 +1470,7 @@ css_daemon_start (void)
       goto out;
     }
 
-  /* 
+  /*
    * Ignore the terminal stop signals (BSD).
    */
 
@@ -1496,7 +1493,7 @@ css_daemon_start (void)
     }
 #endif
 
-  /* 
+  /*
    * Call fork and have the parent exit.
    * This does several things. First, if we were started as a simple shell
    * command, having the parent terminate makes the shell think that the
@@ -1517,7 +1514,7 @@ css_daemon_start (void)
     }
   else
     {
-      /* 
+      /*
        * Wait until the parent process has finished. Coded with polling since
        * the parent should finish immediately. SO, it is unlikely that we are
        * going to loop at all.
@@ -1528,7 +1525,7 @@ css_daemon_start (void)
 	}
     }
 
-  /* 
+  /*
    * Create a new session and make the child process the session leader of
    * the new session, the process group leader of the new process group.
    * The child process has no controlling terminal.
@@ -1543,7 +1540,7 @@ css_daemon_start (void)
 
 out:
 
-  /* 
+  /*
    * Close unneeded file descriptors which prevent the daemon from holding
    * open any descriptors that it may have inherited from its parent which
    * could be a shell. For now, leave in/out/err open
@@ -1558,7 +1555,7 @@ out:
 
   errno = 0;			/* Reset errno from last close */
 
-  /* 
+  /*
    * The file mode creation mask that is inherited could be set to deny
    * certain permissions. Therefore, clear the file mode creation mask.
    */

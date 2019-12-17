@@ -240,7 +240,7 @@ uw_shm_create (int shm_key, int size, int which_shm)
       goto error_exit;
     }
 
-  /* Initialize an EXPLICIT_ACCESS structure for an ACE. The ACE will allow the Administrators group full access to the 
+  /* Initialize an EXPLICIT_ACCESS structure for an ACE. The ACE will allow the Administrators group full access to the
    * shared memory */
   ea[1].grfAccessPermissions = GENERIC_ALL;
   ea[1].grfAccessMode = SET_ACCESS;
@@ -562,7 +562,7 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy
       return shm_as_p;
     }
 
-  strncpy (shm_as_p->proxy_log_dir, br_info_p->proxy_log_dir, sizeof (shm_as_p->proxy_log_dir) - 1);
+  strncpy_bufsize (shm_as_p->proxy_log_dir, br_info_p->proxy_log_dir);
 
   shm_as_p->proxy_log_max_size = br_info_p->proxy_log_max_size;
 
@@ -670,10 +670,10 @@ shard_shm_set_shard_conn_info (T_SHM_APPL_SERVER * shm_as_p, T_SHM_PROXY * shm_p
       conn_p = &shm_conn_p->shard_conn[i];
       shard_conn_info_p = &shm_as_p->shard_conn_info[i];
 
-      strncpy (shard_conn_info_p->db_user, user_p->db_user, sizeof (shard_conn_info_p->db_user) - 1);
-      strncpy (shard_conn_info_p->db_name, conn_p->db_name, sizeof (shard_conn_info_p->db_name) - 1);
-      strncpy (shard_conn_info_p->db_host, conn_p->db_conn_info, sizeof (shard_conn_info_p->db_host) - 1);
-      strncpy (shard_conn_info_p->db_password, user_p->db_password, sizeof (shard_conn_info_p->db_password) - 1);
+      strncpy_bufsize (shard_conn_info_p->db_user, user_p->db_user);
+      strncpy_bufsize (shard_conn_info_p->db_name, conn_p->db_name);
+      strncpy_bufsize (shard_conn_info_p->db_host, conn_p->db_conn_info);
+      strncpy_bufsize (shard_conn_info_p->db_password, user_p->db_password);
     }
 }
 
@@ -739,7 +739,7 @@ shm_id_to_name (int shm_key)
 static int
 get_host_ip (unsigned char *ip_addr)
 {
-  char hostname[64];
+  char hostname[CUB_MAXHOSTNAMELEN];
   struct hostent *hp;
 
   if (gethostname (hostname, sizeof (hostname)) < 0)

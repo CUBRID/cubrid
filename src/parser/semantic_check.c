@@ -25,8 +25,9 @@
 
 #include "config.h"
 
-
 #include <assert.h>
+
+#include "authenticate.h"
 #include "error_manager.h"
 #include "parser.h"
 #include "parser_message.h"
@@ -42,6 +43,8 @@
 #include "view_transform.h"
 #include "show_meta.h"
 #include "partition.h"
+#include "db_json.hpp"
+#include "object_primitive.h"
 
 #include "dbtype.h"
 #define PT_CHAIN_LENGTH 10
@@ -198,6 +201,9 @@ static PT_NODE *pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * 
 static PT_NODE *pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						  int *continue_walk);
 static void pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry);
+static int pt_normalize_path (PARSER_CONTEXT * parser, REFPTR (char, c));
+static int pt_json_str_codeset_normalization (PARSER_CONTEXT * parser, REFPTR (char, c));
+static int pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_gen_isnull_preds (PARSER_CONTEXT * parser, PT_NODE * pred, PT_CHAIN_INFO * chain);
 static PT_NODE *pt_path_chain (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -1461,7 +1467,7 @@ pt_get_attributes (PARSER_CONTEXT * parser, const DB_OBJECT * c)
       /* its name is class_name.attribute_name */
       i_attr->info.attr_def.attr_name = name = pt_name (parser, db_attribute_name (attributes));
       name->info.name.resolved = pt_append_string (parser, NULL, class_name);
-      PT_NAME_INFO_SET_FLAG (name, PT_NAME_REAL_TABLE);
+      PT_NAME_INFO_SET_FLAG (name, PT_NAME_DEFAULTF_ACCEPTS);
       name->info.name.meta_class = (db_attribute_is_shared (attributes) ? PT_SHARED : PT_NORMAL);
 
       /* set its data type */
@@ -1608,8 +1614,8 @@ pt_number_of_attributes (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE ** att
       inherited_attrs = parser_append_node (parent_attrs, inherited_attrs);
     }
 
-  /* Rule 2: If two or more superclasses have attributes with the same name and domain but different origins, the class 
-   * may inherit one or more of the attributes, but the user needs to specify inheritance. Implementation: scan through 
+  /* Rule 2: If two or more superclasses have attributes with the same name and domain but different origins, the class
+   * may inherit one or more of the attributes, but the user needs to specify inheritance. Implementation: scan through
    * the inheritance list and do any attribute renaming specified by the user. */
   for (r = stmt->info.create_entity.resolution_list; r != NULL; r = r->next)
     {
@@ -1678,11 +1684,11 @@ pt_number_of_attributes (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE ** att
 	}
     }
 
-  /* 
-   * At this point, the conflicting attributes that the user wants us to keep have been safely preserved and renamed in 
+  /*
+   * At this point, the conflicting attributes that the user wants us to keep have been safely preserved and renamed in
    * inherited_attrs. It is now safe to start weeding out remaining attribute conflicts. */
 
-  /* 
+  /*
    * Rule 1: If the name of an attribute in a class C conflicts (i.e., is the same as) with that of an attribute in a
    * superclass S, the name in class C is used; that is, the attribute is not inherited. Implementation: remove from
    * inherited_attrs each attribute whose name matches some non-inherited attribute name. */
@@ -1712,7 +1718,7 @@ pt_number_of_attributes (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE ** att
 	}
     }
 
-  /* 
+  /*
    * Rule 2 continued: If the user does not specify the attributes (to be inherited), the system will pick one
    * arbitrarily, and notify the user. Jeff probably knows how to 'pick one arbitrarily', but until we learn how, the
    * following will do for TPR.  We lump together Rules 2 & 3 and implement them as: given a group of attributes with
@@ -4030,13 +4036,17 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	}
 
       node_ptr = NULL;
-      (void) parser_walk_tree (parser, default_value, pt_find_aggregate_function, &node_ptr, NULL, NULL);
+      parser_walk_tree (parser, default_value, pt_find_aggregate_function, &node_ptr, NULL, NULL);
       if (node_ptr != NULL)
 	{
-	  PT_ERRORmf (parser, node_ptr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
-		      pt_show_function (node_ptr->info.function.function_type));
+	  PT_ERRORmf (parser,
+		      node_ptr,
+		      MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
+		      fcode_get_lowercase_name (node_ptr->info.function.function_type));
 	  goto end;
 	}
+
     end:
       data_default->next = save_next;
       prev = data_default;
@@ -4300,7 +4310,7 @@ pt_find_aggregate_analytic_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *a
 	  *function = find;
 	}
 
-      /* 
+      /*
        * Don't search children nodes of this query node, since
        * pt_find_aggregate_analytic_in_where already did it.
        * We may continue walking to search in the rest parts,
@@ -4401,7 +4411,6 @@ pt_find_aggregate_analytic_in_where (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_INTERSECTION:
       /* search in args recursively */
       find = pt_find_aggregate_analytic_in_where (parser, node->info.query.q.union_.arg1);
-
       if (find)
 	{
 	  break;
@@ -4417,7 +4426,7 @@ pt_find_aggregate_analytic_in_where (PARSER_CONTEXT * parser, PT_NODE * node)
 	  break;
 	}
 
-      /* fall through to search nested nodes */
+      /* FALLTHRU */
 
     case PT_EXPR:
     case PT_MERGE:
@@ -4812,7 +4821,8 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	}
       alter->info.alter.alter_clause.ch_attr_def.data_default_list =
 	pt_check_data_default (parser, alter->info.alter.alter_clause.ch_attr_def.data_default_list);
-      /* fall through, no break */
+
+      /* FALL THRU */
 
     case PT_MODIFY_DEFAULT:
       pt_resolve_default_external (parser, alter);
@@ -5003,7 +5013,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  pt_validate_query_spec (parser, qry, db);
 	}
-      /* fall through to next case. do NOT put a break here! */
+      /* FALLTHRU */
     case PT_DROP_QUERY:
       if (type == PT_CLASS)
 	{
@@ -5209,20 +5219,29 @@ pt_find_partition_column_count_func (PT_NODE * func, PT_NODE ** name_node)
     {
     case F_INSERT_SUBSTRING:
     case F_ELT:
-    case F_JSON_OBJECT:
     case F_JSON_ARRAY:
-    case F_JSON_INSERT:
-    case F_JSON_REPLACE:
-    case F_JSON_SET:
-    case F_JSON_KEYS:
-    case F_JSON_REMOVE:
     case F_JSON_ARRAY_APPEND:
     case F_JSON_ARRAY_INSERT:
+    case F_JSON_CONTAINS:
     case F_JSON_CONTAINS_PATH:
-    case F_JSON_SEARCH:
+    case F_JSON_DEPTH:
+    case F_JSON_EXTRACT:
+    case F_JSON_GET_ALL_PATHS:
+    case F_JSON_KEYS:
+    case F_JSON_INSERT:
+    case F_JSON_LENGTH:
     case F_JSON_MERGE:
     case F_JSON_MERGE_PATCH:
-    case F_JSON_GET_ALL_PATHS:
+    case F_JSON_OBJECT:
+    case F_JSON_PRETTY:
+    case F_JSON_QUOTE:
+    case F_JSON_REMOVE:
+    case F_JSON_REPLACE:
+    case F_JSON_SEARCH:
+    case F_JSON_SET:
+    case F_JSON_TYPE:
+    case F_JSON_UNQUOTE:
+    case F_JSON_VALID:
       break;
     default:
       return 0;			/* unsupported function */
@@ -7724,7 +7743,7 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
   int flag = 0;
   bool has_user_format;
 
-  /* Import default value and on update default expr from referenced table 
+  /* Import default value and on update default expr from referenced table
    * for those attributes in the the view that don't have them. */
   for (attr = attrs, col = columns; attr && col; attr = attr->next, col = col->next)
     {
@@ -8443,6 +8462,12 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       select = node->info.create_entity.create_select;
       if (select != NULL)
 	{
+	  if (select->info.query.with != NULL)
+	    {
+	      // run semantic check only for CREATE ... AS WITH ...
+	      select = pt_semantic_check (parser, select);
+	    }
+
 	  if (pt_has_parameters (parser, select))
 	    {
 	      PT_ERRORmf (parser, select, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VARIABLE_NOT_ALLOWED, 0);
@@ -8465,7 +8490,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       (void) pt_check_constraints (parser, node);
     }
 
-  /* 
+  /*
    * check the auto_increment table option, AND REWRITE IT as
    * a constraint for the (single) AUTO_INCREMENT column.
    */
@@ -8618,7 +8643,7 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	  if (prefix_length->type_enum != PT_TYPE_INTEGER || prefix_length->info.value.data_value.i == 0)
 	    {
-	      /* 
+	      /*
 	       * Parser can read PT_TYPE_BIGINT or PT_TYPE_NUMERIC values
 	       * but domain precision is defined as integer.
 	       * So, we accept only non-zero values of PT_TYPE_INTEGER.
@@ -9294,6 +9319,137 @@ pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry)
     }
 }
 
+static int
+pt_normalize_path (PARSER_CONTEXT * parser, REFPTR (char, c))
+{
+  std::string normalized_path;
+
+  int error_code = db_json_normalize_path_string (c, normalized_path);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  char *normalized = (char *) parser_alloc (parser, (int) (normalized_path.length () + 1) * sizeof (char));
+  strcpy (normalized, normalized_path.c_str ());
+  c = normalized;
+  return NO_ERROR;
+}
+
+static int
+pt_json_str_codeset_normalization (PARSER_CONTEXT * parser, REFPTR (char, c))
+{
+  DB_VALUE res_str, temp;
+  db_make_string (&temp, c);
+
+  int error_code = db_string_convert_to (&temp, &res_str, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
+  if (error_code != NO_ERROR)
+    {
+      pr_clear_value (&res_str);
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  c = (char *) parser_alloc (parser, db_get_string_size (&res_str));
+  strcpy (c, db_get_string (&res_str));
+
+  pr_clear_value (&res_str);
+  return NO_ERROR;
+}
+
+/*
+ * pt_check_json_table_node () - check json_table's paths and type check ON_ERROR & ON_EMPTY
+ *
+ *   return:  NO_ERROR or ER_JSON_INVALID_PATH
+ *   node(in): json_table node
+ */
+static int
+pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  assert (node != NULL && node->node_type == PT_JSON_TABLE_NODE);
+
+  int error_code = pt_json_str_codeset_normalization (parser, node->info.json_table_node_info.path);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = pt_normalize_path (parser, node->info.json_table_node_info.path);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  for (PT_NODE * col = node->info.json_table_node_info.columns; col; col = col->next)
+    {
+      PT_JSON_TABLE_COLUMN_INFO & col_info = col->info.json_table_column_info;
+      if (col_info.on_empty.m_behavior == JSON_TABLE_DEFAULT_VALUE)
+	{
+	  assert (col_info.on_empty.m_default_value != NULL);
+
+	  if (DB_IS_STRING (col_info.on_empty.m_default_value))
+	    {
+	      error_code = db_json_convert_to_utf8 (col_info.on_empty.m_default_value);
+	      if (error_code != NO_ERROR)
+		{
+		  return NO_ERROR;
+		}
+	    }
+
+	  TP_DOMAIN *domain = pt_xasl_node_to_domain (parser, col);
+	  TP_DOMAIN_STATUS status_cast =
+	    tp_value_cast (col_info.on_empty.m_default_value, col_info.on_empty.m_default_value, domain, false);
+	  if (status_cast != DOMAIN_COMPATIBLE)
+	    {
+	      return tp_domain_status_er_set (status_cast, ARG_FILE_LINE, col_info.on_empty.m_default_value, domain);
+	    }
+	}
+
+      if (col_info.on_error.m_behavior == JSON_TABLE_DEFAULT_VALUE)
+	{
+	  assert (col_info.on_error.m_default_value != NULL);
+
+	  if (DB_IS_STRING (col_info.on_error.m_default_value))
+	    {
+	      error_code = db_json_convert_to_utf8 (col_info.on_error.m_default_value);
+	      if (error_code != NO_ERROR)
+		{
+		  return NO_ERROR;
+		}
+	    }
+
+	  TP_DOMAIN *domain = pt_xasl_node_to_domain (parser, col);
+	  TP_DOMAIN_STATUS status_cast =
+	    tp_value_cast (col_info.on_error.m_default_value, col_info.on_error.m_default_value, domain, false);
+	  if (status_cast != DOMAIN_COMPATIBLE)
+	    {
+	      return tp_domain_status_er_set (status_cast, ARG_FILE_LINE, col_info.on_error.m_default_value, domain);
+	    }
+	}
+
+      if (col_info.func == JSON_TABLE_ORDINALITY)
+	{
+	  // ORDINALITY columns do not have a path
+	  assert (col_info.path == NULL);
+	  continue;
+	}
+      error_code = pt_normalize_path (parser, col_info.path);
+      if (error_code)
+	{
+	  return error_code;
+	}
+    }
+
+  for (PT_NODE * nested_col = node->info.json_table_node_info.nested_paths; nested_col; nested_col = nested_col->next)
+    {
+      error_code = pt_check_json_table_node (parser, nested_col);
+      if (error_code)
+	{
+	  return error_code;
+	}
+    }
+  return NO_ERROR;
+}
+
 /*
  * pt_semantic_check_local () - checks semantics on a particular statement
  *   return:
@@ -9451,7 +9607,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       else if (node->info.method_call.call_or_expr == PT_IS_CALL_STMT)
 	{
 	  /* Expressions in method calls from a CALL statement need to be typed explicitly since they are not wrapped
-	   * in a query and are not explicitly type-checked via pt_check_method().  This is due to a bad decision which 
+	   * in a query and are not explicitly type-checked via pt_check_method().  This is due to a bad decision which
 	   * allowed users to refrain from fully typing methods before the advent of methods in queries. */
 	  node->info.method_call.arg_list = pt_semantic_type (parser, node->info.method_call.arg_list, info);
 	  node->info.method_call.on_call_target =
@@ -9616,7 +9772,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 		{
 		  continue;
 		}
-	      /* 
+	      /*
 	       * If a position is specified on group by clause,
 	       * we should check its range.
 	       */
@@ -9648,7 +9804,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 		  /* set after group by position num, domain info */
 		  t_node->info.sort_spec.pos_descr = pos;
 		}
-	      /* 
+	      /*
 	       * If there is a node referred by the position,
 	       * we should rewrite the position to real name or expression
 	       * regardless of pos.pos_no.
@@ -9811,7 +9967,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	    }
 	}
 
-      /* Replace left to right attribute references in assignments before doing semantic check. The type checking phase 
+      /* Replace left to right attribute references in assignments before doing semantic check. The type checking phase
        * might have to perform some coercions on the replaced names. */
       node = pt_replace_names_in_update_values (parser, node);
 
@@ -10018,14 +10174,19 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	{
 	  break;
 	}
-      if (node->info.json_table_info.expr->type_enum != PT_TYPE_JSON
-	  && node->info.json_table_info.expr->type_enum != PT_TYPE_CHAR
-	  && node->info.json_table_info.expr->type_enum != PT_TYPE_MAYBE)
+
+      if (!pt_is_json_doc_type (node->info.json_table_info.expr->type_enum))
 	{
-	  // todo: can this be improved to hint that we are talking about json_table's expression
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_WANT_TYPE,
 		      pt_show_type_enum (PT_TYPE_JSON));
 	}
+
+      if (pt_check_json_table_node (parser, node->info.json_table_info.tree))
+	{
+	  ASSERT_ERROR ();
+	  PT_ERRORc (parser, node, er_msg ());
+	}
+
       break;
 
     default:			/* other node types */
@@ -10090,7 +10251,7 @@ pt_gen_isnull_preds (PARSER_CONTEXT * parser, PT_NODE * pred, PT_CHAIN_INFO * ch
     {
       /* Remember that the chain was constructed from the end of the path expression to the beginning.  Thus, in path
        * expr a.b.c.d is null, segment d is in chain[0], c is in chain[1], b is in chain[2], and a is in chain[3].
-       * Also, by convention, the path conjuncts implied by a path expression segment are hung off the path entity that 
+       * Also, by convention, the path conjuncts implied by a path expression segment are hung off the path entity that
        * is generated by the path expression segment.  In our case, this is the next spec in the chain. */
 
       next_spec = chain->chain_ptr[chain->chain_length - i - 2];
@@ -10241,7 +10402,7 @@ pt_path_chain (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	}
       else if (chain->chain_length > 0)
 	{
-	  /* This indicates that we are currently walking up the chain. Need to check if this spec is the parent of the 
+	  /* This indicates that we are currently walking up the chain. Need to check if this spec is the parent of the
 	   * last spec. */
 	  for (tmp = node->info.spec.path_entities; tmp != NULL; tmp = tmp->next)
 	    {
@@ -10528,7 +10689,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
   switch (node->node_type)
     {
     case PT_UPDATE:
-      /* 
+      /*
        * If it is an update object, get the object to update, and create an
        * entity so that pt_resolve_names will work.
        * THIS NEEDS TO BE MOVED INTO RESOLVE NAMES.
@@ -10537,6 +10698,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	{
 	  pt_resolve_object (parser, node);
 	}
+      /* FALLTHRU */
 
     case PT_HOST_VAR:
     case PT_EXPR:
@@ -10746,94 +10908,86 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
       pt_check_kill (parser, node);
       break;
 
-    case PT_ALTER:
     case PT_ALTER_SERIAL:
     case PT_ALTER_TRIGGER:
     case PT_ALTER_USER:
-    case PT_CREATE_ENTITY:
     case PT_CREATE_SERIAL:
     case PT_CREATE_TRIGGER:
-    case PT_CREATE_USER:
     case PT_DROP_SERIAL:
     case PT_DROP_TRIGGER:
     case PT_DROP_USER:
     case PT_RENAME:
     case PT_RENAME_TRIGGER:
     case PT_UPDATE_STATS:
-      switch (node->node_type)
-	{
-	case PT_ALTER:
-	  pt_check_alter (parser, node);
+      break;
 
-	  if (node->info.alter.code == PT_ADD_ATTR_MTHD || node->info.alter.code == PT_ADD_INDEX_CLAUSE)
+    case PT_ALTER:
+      pt_check_alter (parser, node);
+
+      if (node->info.alter.code == PT_ADD_ATTR_MTHD || node->info.alter.code == PT_ADD_INDEX_CLAUSE)
+	{
+	  if (parser->host_var_count)
 	    {
-	      if (parser->host_var_count)
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_HOSTVAR_IN_DDL);
+	      break;
+	    }
+	}
+
+      if (node->info.alter.code == PT_ADD_INDEX_CLAUSE)
+	{
+	  /* apply typechecking on ALTER TABLE ADD INDEX statements, to check the expression in the WHERE clause of
+	   * a partial index */
+	  PT_NODE *p = node->info.alter.create_index;
+	  assert (p != NULL);
+
+	  while (p)
+	    {
+	      sc_info_ptr->system_class = false;
+	      p = pt_resolve_names (parser, p, sc_info_ptr);
+	      if (p && !pt_has_error (parser))
 		{
-		  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_HOSTVAR_IN_DDL);
+		  pt_check_create_index (parser, p);
+		}
+
+	      if (!pt_has_error (parser))
+		{
+		  p = pt_semantic_type (parser, p, info);
+		}
+
+	      if (p && !pt_has_error (parser))
+		{
+		  p = parser_walk_tree (parser, p, NULL, NULL, pt_semantic_check_local, sc_info_ptr);
+
+		  if (p && !pt_has_error (parser))
+		    {
+		      /* This must be done before CNF since we are adding disjuncts to the "IS NULL" expression. */
+		      p = parser_walk_tree (parser, p, pt_expand_isnull_preds, p, NULL, NULL);
+		    }
+		}
+
+	      if (p != NULL && !pt_has_error (parser) && p->info.index.function_expr != NULL
+		  && !pt_is_function_index_expr (parser, p->info.index.function_expr->info.sort_spec.expr, true))
+		{
+		  break;
+		}
+	      if (p && !pt_has_error (parser))
+		{
+		  p = p->next;
+		}
+	      else
+		{
 		  break;
 		}
 	    }
-
-	  if (node->info.alter.code == PT_ADD_INDEX_CLAUSE)
-	    {
-	      /* apply typechecking on ALTER TABLE ADD INDEX statements, to check the expression in the WHERE clause of 
-	       * a partial index */
-	      PT_NODE *p = node->info.alter.create_index;
-	      assert (p != NULL);
-
-	      while (p)
-		{
-		  sc_info_ptr->system_class = false;
-		  p = pt_resolve_names (parser, p, sc_info_ptr);
-		  if (p && !pt_has_error (parser))
-		    {
-		      pt_check_create_index (parser, p);
-		    }
-
-		  if (!pt_has_error (parser))
-		    {
-		      p = pt_semantic_type (parser, p, info);
-		    }
-
-		  if (p && !pt_has_error (parser))
-		    {
-		      p = parser_walk_tree (parser, p, NULL, NULL, pt_semantic_check_local, sc_info_ptr);
-
-		      if (p && !pt_has_error (parser))
-			{
-			  /* This must be done before CNF since we are adding disjuncts to the "IS NULL" expression. */
-			  p = parser_walk_tree (parser, p, pt_expand_isnull_preds, p, NULL, NULL);
-			}
-		    }
-
-		  if (p != NULL && !pt_has_error (parser) && p->info.index.function_expr != NULL
-		      && !pt_is_function_index_expr (parser, p->info.index.function_expr->info.sort_spec.expr, true))
-		    {
-		      break;
-		    }
-		  if (p && !pt_has_error (parser))
-		    {
-		      p = p->next;
-		    }
-		  else
-		    {
-		      break;
-		    }
-		}
-	    }
-	  break;
-
-	case PT_CREATE_ENTITY:
-	  pt_check_create_entity (parser, node);
-	  break;
-
-	case PT_CREATE_USER:
-	  pt_check_create_user (parser, node);
-	  break;
-
-	default:
-	  break;
 	}
+      break;
+
+    case PT_CREATE_ENTITY:
+      pt_check_create_entity (parser, node);
+      break;
+
+    case PT_CREATE_USER:
+      pt_check_create_user (parser, node);
       break;
 
     default:
@@ -11100,10 +11254,7 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
   else
     {
       SEMAN_COMPATIBLE_INFO sci = {
-	0, PT_TYPE_NONE, 0, 0, false,
-	{0, INTL_CODESET_NONE, PT_COLLATION_NOT_COERC, false}
-	,
-	NULL
+	0, PT_TYPE_NONE, 0, 0, false, pt_coll_infer (), NULL
       };
       bool is_cast_allowed = true;
 
@@ -11499,7 +11650,7 @@ pt_replace_names_in_update_values (PARSER_CONTEXT * parser, PT_NODE * update)
 	  continue;
 	}
 
-      /* This assignment is attr = expr. Walk expr and replace all occurrences of attributes with previous assignments. 
+      /* This assignment is attr = expr. Walk expr and replace all occurrences of attributes with previous assignments.
        * Set prev->next to NULL so that we only search in assignments to the left of the current one. */
       prev->next = NULL;
 
@@ -12427,7 +12578,7 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 
   if (query->node_type == PT_SELECT && pt_is_single_tuple (parser, query))
     {
-      /* 
+      /*
        * This case means "select count(*) from athlete order by code"
        * we will remove order by clause to avoid error message
        * but, "select count(*) from athlete order by 2" should make out of range err
@@ -12444,13 +12595,15 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 	      PT_NODE *next = order_by->next;
 	      order_by->next = NULL;
 
-	      if (order_by->info.sort_spec.expr->node_type == PT_NAME)
+	      if (order_by->info.sort_spec.expr->node_type == PT_NAME
+		  || order_by->info.sort_spec.expr->node_type == PT_EXPR)
 		{
 		  parser_free_node (parser, order_by);
 		  skip_orderby_num = true;
 		}
 	      else
 		{
+		  // leave PT_VALUE, PT_HOST_VAR, in fact, PT_HOST_VAR will be rejected soon.
 		  last->next = order_by;
 		  last = order_by;
 		}
@@ -12461,7 +12614,7 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 	  query->info.query.order_by = head.next;
 	}
 
-      /* 
+      /*
        * This case means "select count(*) from athlete limit ?"
        * This limit clause should be evaluated after "select count(*) from athlete"
        * So we will change it as subquery.
@@ -12624,7 +12777,7 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 		}
 	      else
 		{
-		  /* when check order by clause in create/alter view, do not change order_by and select_list. The order 
+		  /* when check order by clause in create/alter view, do not change order_by and select_list. The order
 		   * by clause will be replaced in mq_translate_subqueries() again. */
 		  if (query->do_not_replace_orderby)
 		    {
@@ -12803,7 +12956,7 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
 	}
 
       /* A recursive call on arg2 should work, except that we have not yet recognised common sub-path expressions
-       * However, it is also sufficient and true that the left path be strictly equal and arg2's names match. That even 
+       * However, it is also sufficient and true that the left path be strictly equal and arg2's names match. That even
        * allows us to use this very function to implement recognition of common path expressions. */
       if (p->info.dot.arg2 == NULL || q->info.dot.arg2 == NULL)
 	{
@@ -13584,7 +13737,7 @@ pt_check_defaultf (PARSER_CONTEXT * parser, PT_NODE * node)
 
   /* OIDs don't have default value */
   if (arg == NULL || arg->node_type != PT_NAME || arg->info.name.meta_class == PT_OID_ATTR
-      || !PT_NAME_INFO_IS_FLAGED (arg, PT_NAME_REAL_TABLE))
+      || !PT_NAME_INFO_IS_FLAGED (arg, PT_NAME_DEFAULTF_ACCEPTS))
     {
       PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_JUST_COLUMN_NAME);
       return ER_FAILED;
@@ -13601,7 +13754,7 @@ pt_check_defaultf (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   /* In case of no default value defined on an attribute: DEFAULT function returns NULL when the attribute given as
-   * argument has UNIQUE or no constraint, but it returns a semantic error for PRIMARY KEY or NOT NULL constraint. This 
+   * argument has UNIQUE or no constraint, but it returns a semantic error for PRIMARY KEY or NOT NULL constraint. This
    * function does not return a semantic error for attributes with auto_increment because, regardless of the default
    * value, NULL will not be inserted there. */
   if (arg->info.name.resolved && arg->info.name.original)
@@ -13925,11 +14078,11 @@ error_exit:
  *			      number.
  *   return: NO_ERROR or error_code
  *   parser(in):
- *   func(in): 
+ *   func(in):
  *
  *
  *  Note :
- *    We need to check arguments and order by, 
+ *    We need to check arguments and order by,
  *    because the arguments must be constant expression and
  *    match the ORDER BY clause by position.
  */
@@ -14452,7 +14605,7 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func, void *arg, 
       goto error_exit;
     }
 
-  /* replace names/exprs with positions in select list where possible; this also re-processes PT_VALUE sort expressions 
+  /* replace names/exprs with positions in select list where possible; this also re-processes PT_VALUE sort expressions
    * so we can identify and reduce cases like: SELECT a, b, a, AVG(b) OVER (PARTITION BY A ORDER BY 1 asc, 3 asc) */
   for (order = order_list; order; order = order->next)
     {
@@ -15130,7 +15283,7 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	case PT_FUNCTION_HOLDER:
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 		      MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_FILTER_INDEX,
-		      pt_show_function (node->info.expr.arg1->info.function.function_type));
+		      fcode_get_lowercase_name (node->info.expr.arg1->info.function.function_type));
 	  info->is_valid_expr = false;
 	  break;
 
@@ -15153,26 +15306,35 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	  /* the functions above are used in the argument IN (values list) expression */
 	case F_ELT:
 	case F_INSERT_SUBSTRING:
-	case F_JSON_OBJECT:
 	case F_JSON_ARRAY:
-	case F_JSON_INSERT:
-	case F_JSON_REPLACE:
-	case F_JSON_SET:
-	case F_JSON_KEYS:
-	case F_JSON_REMOVE:
 	case F_JSON_ARRAY_APPEND:
 	case F_JSON_ARRAY_INSERT:
-	case F_JSON_SEARCH:
+	case F_JSON_CONTAINS:
 	case F_JSON_CONTAINS_PATH:
+	case F_JSON_DEPTH:
+	case F_JSON_EXTRACT:
+	case F_JSON_GET_ALL_PATHS:
+	case F_JSON_KEYS:
+	case F_JSON_INSERT:
+	case F_JSON_LENGTH:
 	case F_JSON_MERGE:
 	case F_JSON_MERGE_PATCH:
-	case F_JSON_GET_ALL_PATHS:
+	case F_JSON_OBJECT:
+	case F_JSON_PRETTY:
+	case F_JSON_QUOTE:
+	case F_JSON_REMOVE:
+	case F_JSON_REPLACE:
+	case F_JSON_SEARCH:
+	case F_JSON_SET:
+	case F_JSON_TYPE:
+	case F_JSON_UNQUOTE:
+	case F_JSON_VALID:
 	  /* valid expression, nothing to do */
 	  break;
 	default:
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 		      MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_FILTER_INDEX,
-		      pt_show_function (node->info.function.function_type));
+		      fcode_get_lowercase_name (node->info.function.function_type));
 	  info->is_valid_expr = false;
 	  break;
 	}
@@ -15449,7 +15611,7 @@ pt_get_select_list_coll_compat (PARSER_CONTEXT * parser, PT_NODE * query, SEMAN_
  * pt_apply_union_select_list_collation () - scans a UNION parse tree and
  *		sets for each node with collation the collation corresponding
  *		of the column in 'cinfo' array
- *				       
+ *
  *   return:  union compatibility status
  *   parser(in): the parser context
  *   query(in): query node
@@ -15797,7 +15959,7 @@ pt_try_remove_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
     }
 
   /* if select list has orderby_num(), can not remove ORDER BY clause for example:
-   * (i, j) = (select i, orderby_num() from t order by i) 
+   * (i, j) = (select i, orderby_num() from t order by i)
    */
   for (col = pt_get_select_list (parser, query); col; col = col->next)
     {
@@ -15830,7 +15992,7 @@ pt_try_remove_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 
 /*
  * pt_check_union_is_foldable - decide if union can be folded
- * 
+ *
  *  return : union foldability
  *  parser(in) : Parser context.
  *  union_node(in) : Union node.

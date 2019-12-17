@@ -93,9 +93,9 @@ tsc_getticks (TSC_TICKS * tck)
 }
 
 /*
- * tsc_elapsed_time_usec() - measure the elapsed time in microseconds 
+ * tsc_elapsed_time_usec() - measure the elapsed time in microseconds
  *   tv(out)       : elapsed time (sec, usec)
- *   end_tick(in)  : end time 
+ *   end_tick(in)  : end time
  *   start_tick(in): start time
  */
 void
@@ -157,7 +157,7 @@ tsc_start_time_usec (TSC_TICKS * tck)
 /*
  * tsc_end_time_usec() - measure the elapsed time in microseconds
  *   tv(out)       : elapsed time (sec, usec)
- *   start_tick(in): start time 
+ *   start_tick(in): start time
  */
 void
 tsc_end_time_usec (TSCTIMEVAL * tv, TSC_TICKS start_tick)
@@ -193,14 +193,14 @@ static void
 check_power_savings (void)
 {
 #if defined (WINDOWS)
-  /* 
-   * Note: Windows's QueryPerformanceFrequency always returns 
+  /*
+   * Note: Windows's QueryPerformanceFrequency always returns
    *       the stable CPU or mainboard clock rate.
    */
   power_Savings = 0;
 
 #elif defined (LINUX)
-  /* 
+  /*
    * Note: 'power_saving value == zero' means that the CPU clock rate is fixed.
    */
   int fd_mc, fd_smt;
@@ -243,7 +243,7 @@ check_power_savings (void)
   power_Savings = 1;
 
 #else
-  /* 
+  /*
    * Note: We assume that the unknown OS performs the power-saving policy.
    */
   power_Savings = 1;

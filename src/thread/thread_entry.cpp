@@ -30,7 +30,9 @@
 #include "fault_injection.h"
 #include "list_file.h"
 #include "lock_free.h"
+#include "lockfree_transaction_system.hpp"
 #include "log_compress.h"
+#include "log_system_tran.hpp"
 #include "memory_alloc.h"
 #include "page_buffer.h"
 #include "resource_tracker.hpp"
@@ -79,7 +81,7 @@ namespace cubthread
     , type (TT_WORKER)
     , emulate_tid ()
     , client_id (-1)
-    , tran_index (-1)
+    , tran_index (NULL_TRAN_INDEX)
     , private_lru_index (-1)
     , tran_index_lock ()
     , rid (0)
@@ -127,6 +129,7 @@ namespace cubthread
     , count_private_allocators (0)
 #endif /* DEBUG */
     , m_qlist_count (0)
+    , m_loaddb_driver (NULL)
       // private:
     , m_id ()
     , m_error ()
@@ -136,6 +139,8 @@ namespace cubthread
     , m_pgbuf_tracker (*new cubbase::pgbuf_tracker (PGBUF_TRACK_NAME, ENABLE_TRACKERS, PGBUF_TRACK_MAX_ITEMS,
 		       PGBUF_TRACK_RES_NAME, PGBUF_TRACK_MAX_AMOUNT))
     , m_csect_tracker (*new cubsync::critical_section_tracker (ENABLE_TRACKERS))
+    , m_systdes (NULL)
+    , m_lf_tran_index (lockfree::tran::INVALID_INDEX)
   {
     if (pthread_mutex_init (&tran_index_lock, NULL) != 0)
       {
@@ -264,6 +269,8 @@ namespace cubthread
     fi_thread_final (this);
 #endif // DEBUG
 
+    assert (m_systdes == NULL);
+
     m_cleared = true;
   }
 
@@ -318,10 +325,7 @@ namespace cubthread
       {
 	if (tran_entries[i] != NULL)
 	  {
-	    if (lf_tran_return_entry (tran_entries[i]) != NO_ERROR)
-	      {
-		assert (false);
-	      }
+	    lf_tran_return_entry (tran_entries[i]);
 	    tran_entries[i] = NULL;
 	  }
       }
@@ -377,6 +381,42 @@ namespace cubthread
     m_alloc_tracker.pop_track ();
     m_pgbuf_tracker.pop_track ();
     m_csect_tracker.stop ();
+  }
+
+  void
+  entry::claim_system_worker ()
+  {
+    assert (m_systdes == NULL);
+    m_systdes = new log_system_tdes ();
+    tran_index = LOG_SYSTEM_TRAN_INDEX;
+  }
+
+  void
+  entry::retire_system_worker ()
+  {
+    delete m_systdes;
+    m_systdes = NULL;
+    tran_index = NULL_TRAN_INDEX;
+  }
+
+  void
+  entry::assign_lf_tran_index (lockfree::tran::index idx)
+  {
+    m_lf_tran_index = idx;
+  }
+
+  lockfree::tran::index
+  entry::pull_lf_tran_index ()
+  {
+    lockfree::tran::index ret = m_lf_tran_index;
+    m_lf_tran_index = lockfree::tran::INVALID_INDEX;
+    return ret;
+  }
+
+  lockfree::tran::index
+  entry::get_lf_tran_index ()
+  {
+    return m_lf_tran_index;
   }
 
 } // namespace cubthread
@@ -659,6 +699,8 @@ thread_type_to_string (thread_type type)
       return "WORKER";
     case TT_DAEMON:
       return "DAEMON";
+    case TT_LOADDB:
+      return "LOADDB";
     case TT_VACUUM_MASTER:
       return "VACUUM_MASTER";
     case TT_VACUUM_WORKER:

@@ -1131,7 +1131,7 @@ fn_proxy_client_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p, int a
 	  /* check and wakeup statement waiter */
 	  shard_stmt_check_waiter_and_wakeup (stmt_p);
 
-	  /* 
+	  /*
 	   * there must be no context sharing this statement at this time.
 	   * so, we can free statement.
 	   */
@@ -1525,7 +1525,7 @@ proxy_client_execute_internal (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p,
       goto free_context;
     }
 
-  /* 
+  /*
    * find stored server handle id for this shard/cas, if exist, do execute
    * with it. otherwise, do dummy prepare for exeucte to get server handle id.
    */
@@ -1983,7 +1983,7 @@ fn_proxy_client_cursor (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p, int ar
   assert (ctx_p->shard_id == cas_io_p->shard_id);
   assert (ctx_p->cas_id == cas_io_p->cas_id);
 
-  /* 
+  /*
    * find stored server handle id for this shard/cas, if exist, do fetch
    * with it. otherwise, returns proxy internal error to the client.
    */
@@ -2071,7 +2071,7 @@ fn_proxy_client_fetch (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p, int arg
   assert (ctx_p->cas_id == cas_io_p->cas_id);
   proxy_context_set_in_tran (ctx_p, cas_io_p->shard_id, cas_io_p->cas_id);
 
-  /* 
+  /*
    * find stored server handle id for this shard/cas, if exist, do fetch
    * with it. otherwise, returns proxy internal error to the client.
    */
@@ -2167,7 +2167,7 @@ fn_proxy_client_schema_info (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p, i
     }
   else
     {
-      /* 
+      /*
        * It can be happened, when schema_info request is re-invoked
        * by shard waiter.
        */
@@ -2728,7 +2728,7 @@ fn_proxy_client_prepare_and_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * ev
 
 	      proxy_context_set_error (ctx_p, CAS_ERROR_INDICATOR, CAS_ER_INTERNAL);
 
-	      /* 
+	      /*
 	       * there must be no context sharing this statement at this time.
 	       * so, we can free statement.
 	       */
@@ -3097,7 +3097,7 @@ fn_proxy_cas_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
 	  /* check and wakeup statement waiter */
 	  shard_stmt_check_waiter_and_wakeup (ctx_p->prepared_stmt);
 
-	  /* 
+	  /*
 	   * there must be no context sharing this statement at this time.
 	   * so, we can free statement.
 	   */
@@ -3205,7 +3205,7 @@ fn_proxy_cas_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
 
   if (ctx_p->is_prepare_for_execute)
     {
-      /* 
+      /*
        * after finishing prepare_for_execute, process previous client exeucte
        * request again.
        */
@@ -3232,7 +3232,7 @@ fn_proxy_cas_prepare (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
     }
   else
     {
-      /* 
+      /*
        * after dummy prepare,
        * we must not free(unpin) statment event though tran status is OUT_TRAN.
        */
@@ -3512,7 +3512,7 @@ fn_proxy_cas_schema_info (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p)
 	  /* check and wakeup statement waiter */
 	  shard_stmt_check_waiter_and_wakeup (ctx_p->prepared_stmt);
 
-	  /* 
+	  /*
 	   * there must be no context sharing this statement at this time.
 	   * so, we can free statement.
 	   */
@@ -3638,7 +3638,7 @@ fn_proxy_cas_prepare_and_execute (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event
 
       if (stmt_p)
 	{
-	  /* 
+	  /*
 	   * there must be no context sharing this statement at this time.
 	   * so, we can free statement.
 	   */
@@ -3875,7 +3875,7 @@ fn_proxy_client_conn_error (T_PROXY_CONTEXT * ctx_p)
 
   ENTER_FUNC ();
 
-  /* 
+  /*
    * we need not send abort while waiting for a response.
    */
   if (ctx_p->is_in_tran && !IS_VALID_CAS_FC (ctx_p->func_code))

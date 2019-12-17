@@ -29,15 +29,16 @@
 
 #include "error_manager.h"
 #include "log_comm.h"
+#include "log_lsa.hpp"
 #include "thread_compat.hpp"
 
 #include <stdio.h>
 
 typedef enum
 {
-  /* 
+  /*
    * RULE *********************************************
-   * 
+   *
    * NEW ENTRIES SHOULD BE ADDED AT THE BOTTON OF THE FILE TO AVOID FULL RECOMPILATIONS (e.g., the file can be utimed)
    * and to AVOID OLD DATABASES TO BE RECOVERED UNDER OLD FILE */
   RVDK_NEWVOL = 0,
@@ -179,8 +180,9 @@ typedef enum
 
   RVBT_ONLINE_INDEX_UNDO_TRAN_INSERT = 124,
   RVBT_ONLINE_INDEX_UNDO_TRAN_DELETE = 125,
+  RVHF_APPEND_PAGES_TO_HEAP = 126,
 
-  RV_LAST_LOGID = RVBT_ONLINE_INDEX_UNDO_TRAN_DELETE,
+  RV_LAST_LOGID = RVHF_APPEND_PAGES_TO_HEAP,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;
@@ -192,7 +194,7 @@ typedef struct log_rcv LOG_RCV;
 struct log_rcv
 {				/* Recovery information */
   MVCCID mvcc_id;		/* mvcc id */
-  PAGE_PTR pgptr;		/* Page to recover. Page should not be free by recovery functions, however it should be 
+  PAGE_PTR pgptr;		/* Page to recover. Page should not be free by recovery functions, however it should be
 				 * set dirty whenever is needed */
   PGLENGTH offset;		/* Offset/slot of data in the above page to recover */
   int length;			/* Length of data */

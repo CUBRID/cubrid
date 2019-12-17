@@ -17,7 +17,6 @@
  *
  */
 
-
 /*
  * parse_tree.h - Parse tree structures and types
  */
@@ -34,15 +33,17 @@
 #include <setjmp.h>
 #include <assert.h>
 
-#include "authenticate.h"
+#include "class_object.h"
 #include "compile_context.h"
 #include "config.h"
 #include "cursor.h"
-#include "jansson.h"
 #include "json_table_def.h"
 #include "message_catalog.h"
 #include "string_opfunc.h"
 #include "system_parameter.h"
+
+// forward definitions
+struct json_t;
 
 #define MAX_PRINT_ERROR_CONTEXT_LENGTH 64
 
@@ -548,7 +549,6 @@
 
 #endif /* !SERVER_MODE */
 
-
 /* NODE FUNCTION DECLARATIONS */
 #define IS_UPDATE_OBJ(node) (node->node_type == PT_UPDATE && node->info.update.object_parameter)
 
@@ -782,7 +782,9 @@ enum pt_custom_print
 
   PT_CHARSET_COLLATE_USER_ONLY = (0x1 << 19),
 
-  PT_PRINT_USER = (0x1 << 20)
+  PT_PRINT_USER = (0x1 << 20),
+
+  PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING = (0x1 << 21)
 };
 
 /* all statement node types should be assigned their API statement enumeration */
@@ -905,7 +907,6 @@ enum pt_node_type
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
 };
 typedef enum pt_node_type PT_NODE_TYPE;
-
 
 /* Enumerated Data Types for expressions with a VALUE */
 enum pt_type_enum
@@ -1207,7 +1208,6 @@ typedef enum
     /* SELECT key information from index b-tree instead of table record data */
 } PT_HINT_ENUM;
 
-
 /* Codes for error messages */
 
 typedef enum
@@ -1302,14 +1302,12 @@ typedef enum
   PT_CONSTRAIN_CHECK
 } PT_CONSTRAINT_TYPE;
 
-
 typedef enum
 {
   PT_PARTITION_HASH = 0,
   PT_PARTITION_RANGE,
   PT_PARTITION_LIST
 } PT_PARTITION_TYPE;
-
 
 typedef enum
 {
@@ -1320,7 +1318,6 @@ typedef enum
   PT_TABLE_OPTION_COLLATION,
   PT_TABLE_OPTION_COMMENT
 } PT_TABLE_OPTION_TYPE;
-
 
 typedef enum
 {
@@ -1483,20 +1480,10 @@ typedef enum
   PT_CRC32,
   PT_SCHEMA_DEF,
   PT_CONV_TZ,
-  PT_JSON_CONTAINS,
-  PT_JSON_TYPE,
-  PT_JSON_EXTRACT,
-  PT_JSON_VALID,
-  PT_JSON_LENGTH,
-  PT_JSON_DEPTH,
-  PT_JSON_QUOTE,
-  PT_JSON_UNQUOTE,
-  PT_JSON_PRETTY,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
 } PT_OP_TYPE;
-
 
 /* the virtual query mechanism needs to put oid columns on non-updatable
  * virtual query guys, hence the "trust me" part.
@@ -1771,8 +1758,6 @@ struct parser_hint
   PT_HINT_ENUM hint;
 };
 
-
-
 struct pt_alter_info
 {
   PT_NODE *entity_name;		/* PT_NAME */
@@ -1969,6 +1954,7 @@ struct pt_index_info
   bool reverse;			/* REVERSE */
   bool unique;			/* UNIQUE specified? */
   SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
+  int ib_threads;
 };
 
 /* CREATE USER INFO */
@@ -2081,7 +2067,6 @@ struct pt_data_type_info
   PARSER_VARCHAR *json_schema;
 };
 
-
 /* DELETE */
 struct pt_delete_info
 {
@@ -2113,7 +2098,6 @@ struct pt_dot_info
   PT_NODE *arg1;		/* PT_EXPR etc.  first argument */
   PT_NODE *arg2;		/* PT_EXPR etc.  possible second argument */
   PT_NODE *selector;		/* only set if selector used A[SELECTOR].B */
-  PT_OP_TYPE op;		/* binary or unary op code */
   short tag_click_counter;	/* 0: normal name, 1: click counter name */
   int coll_modifier;		/* collation modifier = collation + 1 */
 };
@@ -2273,7 +2257,6 @@ struct pt_expr_info
   int coll_modifier;		/* collation modifier = collation + 1 */
 };
 
-
 /* FILE PATH INFO */
 struct pt_file_path_info
 {
@@ -2291,6 +2274,7 @@ struct pt_function_info
   PT_NODE *order_by;		/* ordering PT_SORT_SPEC for GROUP_CONCAT */
   PT_NODE *percentile;		/* percentile for PERCENTILE_CONT, PERCENTILE_DISC */
   bool is_order_dependent;	/* true if function is order dependent */
+  bool is_type_checked;		/* true if type is already checked, false otherwise... is this safe? */
   int coll_modifier;		/* collation modifier = collation + 1 */
   struct
   {
@@ -2397,7 +2381,6 @@ struct pt_method_call_info
 				 * original method call. */
 };
 
-
 /* Info for METHOD DEFs */
 struct pt_method_def_info
 {
@@ -2406,7 +2389,6 @@ struct pt_method_def_info
   PT_NODE *function_name;	/* PT_VALUE (string) */
   PT_MISC_TYPE mthd_type;	/* PT_NORMAL or ... */
 };
-
 
 /*
  * Reserved names section
@@ -2597,7 +2579,7 @@ struct pt_name_info
 #define PT_NAME_ALLOW_REUSABLE_OID 512	/* ignore the REUSABLE_OID restrictions for this name */
 #define PT_NAME_GENERATED_DERIVED_SPEC 1024	/* attribute generated from derived spec */
 #define PT_NAME_FOR_UPDATE	   2048	/* Table name in FOR UPDATE clause */
-#define PT_NAME_REAL_TABLE	   4096	/* name of table/column belongs to a real table */
+#define PT_NAME_DEFAULTF_ACCEPTS   4096	/* name of table/column that default function accepts: real table's, cte's */
 
   short flag;
 #define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))
@@ -2655,7 +2637,6 @@ struct pt_rename_info
   PT_MISC_TYPE attr_or_mthd;
   PT_MISC_TYPE entity_type;
 };
-
 
 /* Info for RENAME TRIGGER  */
 struct pt_rename_trigger_info
@@ -2809,7 +2790,6 @@ struct pt_query_info
     PT_UNION_INFO union_;
   } q;
 };
-
 
 /* Info for Set Optimization Level statement */
 struct pt_set_opt_lvl_info
@@ -3078,7 +3058,6 @@ union pt_data_value
   PT_ENUM_ELEMENT enumeration;
 };
 
-
 /* Info for the VALUE node */
 struct pt_value_info
 {
@@ -3099,7 +3078,6 @@ struct pt_value_info
   int host_var_index;		/* save the host_var index which it comes from. -1 means it is a normal value. it does
 				 * not come from any host_var. */
 };
-
 
 /* Info for the ZZ_ERROR_MSG node */
 struct PT_ZZ_ERROR_MSG_INFO
@@ -3276,7 +3254,7 @@ struct pt_json_table_node_info
 {
   PT_NODE *columns;
   PT_NODE *nested_paths;
-  const char *path;
+  char *path;
 };
 
 struct pt_json_table_info
@@ -3392,7 +3370,6 @@ union pt_statement_info
   PT_WITH_CLAUSE_INFO with_clause;
 };
 
-
 /*
  * auxiliary structures for tree walking operations related to aggregates
  */
@@ -3484,6 +3461,7 @@ struct parser_node
   PT_NODE *data_type;		/* for non-primitive types, Sets, objects stec. */
   XASL_ID *xasl_id;		/* XASL_ID for this SQL statement */
   const char *alias_print;	/* the column alias */
+  PARSER_VARCHAR *expr_before_const_folding;	/* text before constant folding (used by value, host var nodes) */
   PT_TYPE_ENUM type_enum;	/* type enumeration tag PT_TYPE_??? */
   CACHE_TIME cache_time;	/* client or server cache time */
   unsigned recompile:1;		/* the statement should be recompiled - used for plan cache */
@@ -3543,7 +3521,7 @@ typedef struct pt_plan_trace_info
   union
   {
     char *text_plan;
-    json_t *json_plan;
+    struct json_t *json_plan;
   } trace;
 } PT_PLAN_TRACE_INFO;
 
@@ -3696,8 +3674,22 @@ struct pt_coll_infer
 				 * for auto-CAST expressions around numbers: initially the string data type of CAST is
 				 * created with system charset by generic type checking but that charset can be forced
 				 * to another charset (of another argument) if this flag is set */
+
+#ifdef __cplusplus
+  // *INDENT-OFF*
+    pt_coll_infer ()
+      : coll_id (-1)
+      , codeset (INTL_CODESET_NONE)
+      , coerc_level (PT_COLLATION_NOT_APPLICABLE)
+      , can_force_cs (true)
+  {
+    //
+  }
+  // *INDENT-ON*
+#endif				// c++
 };
 
+void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);
 
 #ifdef __cplusplus
 extern "C"
@@ -3706,12 +3698,9 @@ extern "C"
   void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, const int align);
   bool pt_is_json_value_type (PT_TYPE_ENUM type);
   bool pt_is_json_doc_type (PT_TYPE_ENUM type);
-  bool pt_is_json_object_name (PT_TYPE_ENUM type);
-  bool pt_is_json_path (PT_TYPE_ENUM type);
 #ifdef __cplusplus
 }
 #endif
-
 
 #if !defined (SERVER_MODE)
 #ifdef __cplusplus

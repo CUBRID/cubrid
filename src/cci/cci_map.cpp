@@ -32,33 +32,15 @@
  * cci_map.cpp
  */
 
-/* hash_map is deprecated and should be replaced with unordered_map if compiler supports it */
-#if defined WINDOWS
-#if defined _MSC_VER && _MSC_VER > 1500
-#include <unordered_map>
-#else /* !_MSC_VER || _MSC_VER < 1500 */
-#include <hash_map>
-#endif /* !_MSC_VER || _MSC_VER < 1500 */
-#else /* !WINDOWS */
-#include <ext/hash_map>
-#endif
-
-#include <map>
-#include "cci_handle_mng.h"
-#include "cas_cci.h"
-#include "cci_mutex.h"
 #include "cci_map.h"
 
-#if defined (_UNORDERED_MAP_)
+#include "cci_mutex.h"
+#include "cci_handle_mng.h"
+
+#include <unordered_map>
+
 typedef std::unordered_map<T_CCI_CONN, T_CCI_CONN> MapConnection;
 typedef std::unordered_map<T_CCI_REQ, T_CCI_REQ> MapStatement;
-#elif defined (WINDOWS)
-typedef stdext::hash_map<T_CCI_CONN, T_CCI_CONN> MapConnection;
-typedef stdext::hash_map<T_CCI_REQ, T_CCI_REQ> MapStatement;
-#else
-typedef __gnu_cxx::hash_map<T_CCI_CONN, T_CCI_CONN> MapConnection;
-typedef __gnu_cxx::hash_map<T_CCI_REQ, T_CCI_REQ> MapStatement;
-#endif
 
 typedef MapConnection::iterator IteratorMapConnection;
 typedef MapStatement::iterator IteratorMapStatement;
@@ -80,9 +62,9 @@ map_get_next_id (Map &map, Value &currValue)
     {
       currValue ++;
       if (currValue < 0)
-        {
-          currValue = 1;
-        }
+	{
+	  currValue = 1;
+	}
     }
   while (map.find (currValue) != map.end ());
 
@@ -135,23 +117,23 @@ T_CCI_ERROR_CODE map_get_otc_value (T_CCI_CONN mapped_conn_id, T_CCI_CONN *conne
       error = CCI_ER_NO_ERROR;
 
       if (force == false)
-        {
-          T_CON_HANDLE *connection;
+	{
+	  T_CON_HANDLE *connection;
 
-          error = hm_get_connection_by_resolved_id (*connection_id,
-                  &connection);
-          if (error == CCI_ER_NO_ERROR)
-            {
-              if (connection->used)
-                {
-                  error = CCI_ER_USED_CONNECTION;
-                }
-              else
-                {
-                  connection->used = true;
-                }
-            }
-        }
+	  error = hm_get_connection_by_resolved_id (*connection_id,
+		  &connection);
+	  if (error == CCI_ER_NO_ERROR)
+	    {
+	      if (connection->used)
+		{
+		  error = CCI_ER_USED_CONNECTION;
+		}
+	      else
+		{
+		  connection->used = true;
+		}
+	    }
+	}
     }
 
   mutexConnection.unlock ();
@@ -178,18 +160,18 @@ T_CCI_ERROR_CODE map_close_otc (T_CCI_CONN mapped_conn_id)
 
       error = hm_get_connection_by_resolved_id (it->second, &connection);
       if (error == CCI_ER_NO_ERROR && connection != NULL)
-        {
-          statement_array = connection->req_handle_table;
-          for (i = 0; statement_array && i < connection->max_req_handle; i++)
-            {
-              if (statement_array[i] != NULL
-                  && statement_array[i]->mapped_stmt_id >= 0)
-                {
-                  map_close_ots (statement_array[i]->mapped_stmt_id);
-                  statement_array[i]->mapped_stmt_id = -1;
-                }
-            }
-        }
+	{
+	  statement_array = connection->req_handle_table;
+	  for (i = 0; statement_array && i < connection->max_req_handle; i++)
+	    {
+	      if (statement_array[i] != NULL
+		  && statement_array[i]->mapped_stmt_id >= 0)
+		{
+		  map_close_ots (statement_array[i]->mapped_stmt_id);
+		  statement_array[i]->mapped_stmt_id = -1;
+		}
+	    }
+	}
 
       mapConnection.erase (it);
       error = CCI_ER_NO_ERROR;
@@ -245,23 +227,23 @@ T_CCI_ERROR_CODE map_get_ots_value (T_CCI_REQ mapped_stmt_id, T_CCI_REQ *stateme
       error = CCI_ER_NO_ERROR;
 
       if (force == false)
-        {
-          T_CON_HANDLE *connection;
-          T_CCI_CONN connection_id = GET_CON_ID (*statement_id);
+	{
+	  T_CON_HANDLE *connection;
+	  T_CCI_CONN connection_id = GET_CON_ID (*statement_id);
 
-          error = hm_get_connection_by_resolved_id (connection_id, &connection);
-          if (error == CCI_ER_NO_ERROR)
-            {
-              if (connection->used)
-                {
-                  error = CCI_ER_USED_CONNECTION;
-                }
-              else
-                {
-                  connection->used = true;
-                }
-            }
-        }
+	  error = hm_get_connection_by_resolved_id (connection_id, &connection);
+	  if (error == CCI_ER_NO_ERROR)
+	    {
+	      if (connection->used)
+		{
+		  error = CCI_ER_USED_CONNECTION;
+		}
+	      else
+		{
+		  connection->used = true;
+		}
+	    }
+	}
     }
 
   mutexStatement.unlock ();

@@ -23,6 +23,9 @@
 
 #include "monitor_statistic.hpp"
 
+#include <cassert>
+#include <cstring>
+
 namespace cubmonitor
 {
   //////////////////////////////////////////////////////////////////////////
@@ -44,13 +47,19 @@ namespace cubmonitor
   statistic_value
   statistic_value_cast (const floating_rep &rep)
   {
-    return *reinterpret_cast<const statistic_value *> (&rep);
+    statistic_value stat_val;
+    static_assert (sizeof (rep) == sizeof (stat_val), "floating_rep and statistic_value must be same size");
+    std::memcpy (&stat_val, &rep, sizeof (stat_val));
+    return stat_val;
   }
 
   floating_rep
   floating_rep_cast (statistic_value value)
   {
-    return *reinterpret_cast<const floating_rep *> (&value);
+    floating_rep float_val;
+    static_assert (sizeof (float_val) == sizeof (value), "floating_rep and statistic_value must be same size");
+    std::memcpy (&float_val, &value, sizeof (floating_rep));
+    return float_val;
   }
 
   statistic_value
@@ -156,4 +165,10 @@ namespace cubmonitor
     //
   }
 
+  template <>
+  void
+  accumulator_atomic_statistic<time_rep>::collect (const time_rep &value)
+  {
+    this->m_value.fetch_add (value.count ());
+  }
 } // namespace cubmonitor

@@ -52,6 +52,8 @@
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
 
+#include <functional>
+
 /* Estimate on number of pages in the multipage temporary file */
 #define SORT_MULTIPAGE_FILE_SIZE_ESTIMATE  20
 
@@ -148,7 +150,7 @@ struct sort_param
   FILE_CONTENTS file_contents[2 * SORT_MAX_HALF_FILES];	/* Contents of each temporary file */
 
   VOL_LIST vol_list;		/* Temporary volume information list */
-  char *internal_memory;	/* Internal_memory used for internal sorting phase and as input/output buffers for temp 
+  char *internal_memory;	/* Internal_memory used for internal sorting phase and as input/output buffers for temp
 				 * files during merging phase */
   int tot_runs;			/* Total number of runs */
   int tot_buffers;		/* Size of internal memory used in terms of number of buffers it occupies */
@@ -648,7 +650,7 @@ sort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool peek_
       return S_DOESNT_EXIST;
     }
 
-  /* 
+  /*
    * If peeking, the address of the data in the descriptor is set to the
    * address of the record in the buffer. Otherwise, the record is copied
    * onto the area specified by the descriptor
@@ -664,7 +666,7 @@ sort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool peek_
 
       if (sptr->rlength > recdes->area_size)
 	{
-	  /* 
+	  /*
 	   * DOES NOT FIT
 	   * Give a hint to the user of the needed length. Hint is given as a
 	   * negative value
@@ -1495,7 +1497,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
       goto cleanup;
     }
 
-  /* 
+  /*
    * Don't allocate any temp files yet, since we may not need them.
    * We'll allocate them on the fly as the need arises.
    *
@@ -1682,26 +1684,11 @@ px_sort_assign (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int px_id, cha
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
-class px_sort_myself_task : public cubthread::entry_task
+static void
+px_sort_myself_execute (cubthread::entry &thread_ref, PX_TREE_NODE * px_node)
 {
-public:
-  px_sort_myself_task (void) = delete;
-
-  px_sort_myself_task (PX_TREE_NODE *node)
-  : m_px_node (node)
-  {
-  }
-
-  void
-  execute (context_type &thread_ref) override final
-  {
-    (void) px_sort_myself (&thread_ref, m_px_node);
-  }
-
-private:
-  PX_TREE_NODE *m_px_node;
-};
-// *INDENT-ON*
+  (void) px_sort_myself (&thread_ref, px_node);
+}
 
 /*
  * px_sort_communicate() -
@@ -1724,10 +1711,13 @@ px_sort_communicate (PX_TREE_NODE * px_node)
   assert_release (px_node->px_id < sort_param->px_array_size);
   assert_release (px_node->px_vector_size > 1);
 
-  css_push_external_task (css_get_current_conn_entry (), new px_sort_myself_task (px_node));
+  cubthread::entry_callable_task *task =
+    new cubthread::entry_callable_task (std::bind (px_sort_myself_execute, std::placeholders::_1, px_node));
+  css_push_external_task (css_get_current_conn_entry (), task);
 
   return NO_ERROR;
 }
+// *INDENT-ON*
 #endif /* SERVER_MODE */
 
 /*
@@ -2613,7 +2603,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 	}
       else
 	{
-	  /* 
+	  /*
 	   * The only way to get here is if we had exactly one record to
 	   * sort, and that record required overflow pages.  In that case we
 	   * have done a ridiculous amount of work, but there doesn't seem to
@@ -2995,7 +2985,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 
 		  if (act_infiles == 1)
 		    {
-		      /* 
+		      /*
 		       * There is only one active input file (i.e. there is
 		       * only one input run to produce the output run). So,
 		       * there is no need to perform the merging actions. All
@@ -3289,7 +3279,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 
 			      if (sort_spage_insert (out_cur_bufaddr, &smallest_elem_ptr[min]) == NULL_SLOTID)
 				{
-				  /* 
+				  /*
 				   * Slotted page module refuses to insert a
 				   * short size record (a temporary record that
 				   * was already in a slotted page) to an empty
@@ -3327,7 +3317,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 
 			      if (sort_spage_insert (out_cur_bufaddr, &smallest_elem_ptr[min]) == NULL_SLOTID)
 				{
-				  /* 
+				  /*
 				   * Slotted page module refuses to insert a
 				   * short size record (a temporary record that
 				   * was already in a slotted page) to an empty
@@ -3776,7 +3766,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		    {
 		      /* ONE ACTIVE INFILE */
 
-		      /* 
+		      /*
 		       * There is only one active input file (i.e. there is
 		       * only one input run to produce the output run). So,
 		       * there is no need to perform the merging actions. All
@@ -4049,7 +4039,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 
 			  if (sort_spage_insert (out_cur_bufaddr, &smallest_elem_ptr[min]) == NULL_SLOTID)
 			    {
-			      /* 
+			      /*
 			       * Slotted page module refuses to insert a short
 			       * size record (a temporary record that was
 			       * already in a slotted page) to an empty page.
@@ -4086,7 +4076,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 
 			  if (sort_spage_insert (out_cur_bufaddr, &smallest_elem_ptr[min]) == NULL_SLOTID)
 			    {
-			      /* 
+			      /*
 			       * Slotted page module refuses to insert a short
 			       * size record (a temporary record that was
 			       * already in a slotted page) to an empty page.

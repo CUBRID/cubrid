@@ -34,12 +34,14 @@
 #endif /* SERVER_MODE */
 
 #include "config.h"
-
 #include "error_manager.h"
 #include "work_space.h"
 #include "storage_common.h"
 #include "locator.h"
 #include "replication.h"
+
+// forward declarations
+struct log_lsa;
 
 #define ONE_MFLUSH    true
 #define MANY_MFLUSHES false
@@ -134,7 +136,7 @@ extern int locator_assign_all_permanent_oids (void);
 
 extern int locator_decache_all_lock_instances (MOP class_mop);
 
-extern int locator_get_append_lsa (LOG_LSA * lsa);
+extern int locator_get_append_lsa (struct log_lsa *lsa);
 extern int locator_flush_replication_info (REPL_INFO * repl_info);
 
 extern LC_FIND_CLASSNAME locator_reserve_class_name (const char *class_name, OID * class_oid);

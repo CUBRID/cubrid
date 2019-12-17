@@ -33,17 +33,18 @@
 #include <setjmp.h>
 #include <assert.h>
 
-#include "object_representation.h"
-#include "error_manager.h"
-#include "oid.h"
-#include "set_object.h"
-#include "file_io.h"
-#include "regu_var.h"
-#include "object_primitive.h"
-#include "query_list.h"
 #include "db_json.hpp"
-
 #include "dbtype.h"
+#include "error_manager.h"
+#include "file_io.h"
+#include "log_lsa.hpp"
+#include "method_def.hpp"
+#include "object_primitive.h"
+#include "object_representation.h"
+#include "oid.h"
+#include "porting_inline.hpp"
+#include "query_list.h"
+#include "set_object.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -51,25 +52,6 @@
 
 /* simple macro to calculate minimum bytes to contain given bits */
 #define BITS_TO_BYTES(bit_cnt)		(((bit_cnt) + 7) / 8)
-
-/* move the data inside the record */
-#define HEAP_MOVE_INSIDE_RECORD(rec, dest_offset, src_offset) \
-  do \
-    { \
-      assert ((rec) != NULL && (dest_offset) >= 0 && (src_offset) >= 0); \
-      assert (((rec)->length - (src_offset)) >= 0); \
-      assert (((rec)->area_size <= 0) || ((rec)->area_size >= (rec)->length)); \
-      assert (((rec)->area_size <= 0) \
-              || (((rec)->length + ((dest_offset) - (src_offset))) \
-                  <= (rec)->area_size)); \
-      if ((dest_offset) != (src_offset)) \
-        { \
-          memmove ((rec)->data + (dest_offset), (rec)->data + (src_offset), \
-                   (rec)->length - (src_offset)); \
-          (rec)->length = (rec)->length + ((dest_offset) - (src_offset)); \
-        } \
-    } \
-  while (0)
 
 /*
  * Lookup to compute the MVCC header size faster:
@@ -105,20 +87,10 @@ static char *unpack_str_array (char *buffer, char ***string_array, int count);
 static int or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align);
 static int or_varbit_length_internal (int bitlen, int align);
 static int or_varchar_length_internal (int charlen, int align);
-static int or_put_varbit_internal (OR_BUF * buf, char *string, int bitlen, int align);
+static int or_put_varbit_internal (OR_BUF * buf, const char *string, int bitlen, int align);
+static int or_packed_json_schema_length (const char *json_schema);
+static int or_packed_json_validator_length (JSON_VALIDATOR * json_validator);
 static char *or_unpack_var_table_internal (char *ptr, int nvars, OR_VARINFO * vars, int offset_size);
-static char or_mvcc_get_flag (RECDES * record);
-static void or_mvcc_set_flag (RECDES * record, char flags);
-static INLINE MVCCID or_mvcc_get_insid (OR_BUF * buf, int mvcc_flags, int *error) __attribute__ ((ALWAYS_INLINE));
-static INLINE int or_mvcc_set_insid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) __attribute__ ((ALWAYS_INLINE));
-static INLINE MVCCID or_mvcc_get_delid (OR_BUF * buf, int mvcc_flags, int *error) __attribute__ ((ALWAYS_INLINE));
-static INLINE int or_mvcc_get_chn (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
-static INLINE int or_mvcc_set_delid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) __attribute__ ((ALWAYS_INLINE));
-static INLINE int or_mvcc_set_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) __attribute__ ((ALWAYS_INLINE));
-static INLINE int or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
-  __attribute__ ((ALWAYS_INLINE));
-static INLINE int or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_version_lsa)
-  __attribute__ ((ALWAYS_INLINE));
 
 /*
  * classobj_get_prop - searches a property list for a value with the given name
@@ -136,7 +108,7 @@ classobj_get_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue)
   int error;
   int found, max, i;
   DB_VALUE value;
-  char *tmp_str;
+  const char *tmp_str;
 
   error = NO_ERROR;
   found = 0;
@@ -316,7 +288,7 @@ or_class_name (RECDES * record)
   char *start, *name;
   int offset, len;
 
-  /* 
+  /*
    * the first variable attribute for both classes and the rootclass
    * is the name - if this ever changes, we could check the class
    * OID which should be NULL for the root class and special case
@@ -326,7 +298,7 @@ or_class_name (RECDES * record)
   offset = OR_VAR_OFFSET (record->data, 0);
   start = &record->data[offset];
 
-  /* 
+  /*
    * kludge kludge kludge
    * This is now an encoded "varchar" string, we need to skip over the length
    * before returning it.  Note that this also depends on the stored string
@@ -420,68 +392,6 @@ or_set_rep_id (RECDES * record, int repid)
 }
 
 /*
- * or_replace_rep_id () - replace representation id for record
- * return : error code or NO_ERROR
- * record (in/out): record
- * repid (in)	  : new representation
- *
- * NOTE: This function is similar to or_set_rep_id but it determines
- * the type of record based on MVCC flag and sets rep_id accordingly.
- */
-int
-or_replace_rep_id (RECDES * record, int repid)
-{
-  OR_BUF orep, *buf;
-  unsigned int new_bits = 0;
-  int offset_size = 0;
-  char mvcc_flag;
-  bool is_bound_bit = false;
-
-  OR_BUF_INIT (orep, record->data, record->area_size);
-  buf = &orep;
-
-  mvcc_flag = or_mvcc_get_flag (record);
-  if (mvcc_flag == 0)
-    {
-      /* non-MVCC record */
-      /* read REPR_ID flags */
-      if (OR_GET_BOUND_BIT_FLAG (record->data))
-	{
-	  is_bound_bit = true;
-	}
-      offset_size = OR_GET_OFFSET_SIZE (record->data);
-
-      /* construct new REPR_ID element */
-      new_bits = repid;
-      if (is_bound_bit)
-	{
-	  new_bits |= OR_BOUND_BIT_FLAG;
-	}
-      OR_SET_VAR_OFFSET_SIZE (new_bits, offset_size);
-      buf->ptr = buf->buffer + OR_REP_OFFSET;
-    }
-  else
-    {
-      /* MVCC record */
-      new_bits = OR_GET_MVCC_REPID_AND_FLAG (record->data);
-
-      /* Remove old repid */
-      new_bits &= ~OR_MVCC_REPID_MASK;
-
-      /* Add new repid */
-      new_bits |= (repid & OR_MVCC_REPID_MASK);
-
-      /* Set buffer pointer to the right position */
-      buf->ptr = buf->buffer + OR_REP_OFFSET;
-    }
-
-  /* write new REPR_ID to the record */
-  or_put_int (buf, new_bits);
-
-  return NO_ERROR;
-}
-
-/*
  * or_chn - extracts cache coherency number from the disk representation of an
  * object
  *    return: cache coherency number (chn), or NULL_CHN for error
@@ -531,7 +441,7 @@ or_replace_chn (RECDES * record, int chn)
  * or_mvcc_get_repid_and_flags () - Gets MVCC representation id and flags.
  *
  * return	   : MVCC flags.
- * buf (in/out) : or buffer 
+ * buf (in/out) : or buffer
  * error(out): NO_ERROR or error code
  */
 int
@@ -558,7 +468,7 @@ or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error)
  * or_mvcc_set_repid_and_flags () - Set MVCC representation id and flags.
  *
  * return	   : nothing
- * buf (in/out) : or buffer 
+ * buf (in/out) : or buffer
  * bound_bit(in) : bound bit
  * variable_offset_size(in); variable offset size
  * error(out): NO_ERROR or error code
@@ -581,405 +491,6 @@ or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag, int repid, int bound_b
   repid_and_flags |= (mvcc_flag & OR_MVCC_FLAG_MASK) << OR_MVCC_FLAG_SHIFT_BITS;
 
   return or_put_int (buf, repid_and_flags);
-}
-
-/*
- * or_mvcc_get_flag () - Gets MVCC flags.
- *
- * return	   : MVCC flags.
- * record (in)	   : Record descriptor.
- */
-static char
-or_mvcc_get_flag (RECDES * record)
-{
-  assert (record != NULL && record->data != NULL && record->length >= OR_HEADER_SIZE (record->data));
-
-  return (char) (OR_GET_MVCC_FLAG (record->data));
-}
-
-/*
- * or_mvcc_set_flag () - Set mvcc flags to record header.
- *
- * return      : Void.
- * record (in) : Record descriptor.
- * flags (in)  : MVCC flags to set.
- */
-static void
-or_mvcc_set_flag (RECDES * record, char flags)
-{
-  OR_BUF orep, *buf;
-  int repid_and_flag = 0;
-
-  assert (record != NULL && record->data != NULL && record->length >= OR_MVCC_REP_SIZE);
-
-  repid_and_flag = OR_GET_INT (record->data + OR_REP_OFFSET);
-
-  /* Remove old mvcc flags */
-  repid_and_flag &= ~OR_MVCC_FLAG_MASK;
-  /* Set new mvcc flags */
-  repid_and_flag += ((flags & OR_MVCC_FLAG_MASK) << OR_MVCC_FLAG_SHIFT_BITS);
-
-  OR_BUF_INIT (orep, record->data, record->area_size);
-  buf = &orep;
-  buf->ptr = buf->buffer + OR_REP_OFFSET;
-  or_put_int (buf, repid_and_flag);
-}
-
-/*
- * or_mvcc_get_insid () - Get insert MVCCID from record data.
- *
- * return	   : Insert MVCCID.
- * buf (in/out)	   : or buffer
- * mvcc_falgs(in)  : MVCC flags
- * error(out): NO_ERROR or error code
- */
-STATIC_INLINE MVCCID
-or_mvcc_get_insid (OR_BUF * buf, int mvcc_flags, int *error)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if (!(mvcc_flags & OR_MVCC_FLAG_VALID_INSID))
-    {
-      return MVCCID_ALL_VISIBLE;
-    }
-  else if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
-    {
-      *error = or_underflow (buf);
-      return 0;
-    }
-  else
-    {
-      MVCCID insert_id = 0;
-      OR_GET_BIGINT (buf->ptr, &insert_id);
-      buf->ptr += OR_MVCCID_SIZE;
-      *error = NO_ERROR;
-      return insert_id;
-    }
-}
-
-/*
- * or_mvcc_set_insid () - Set insert MVCCID into record data
- *
- * return	   : Insert MVCCID.
- * buf (in/out)	   : or buffer
- * mvcc_rec_header(in) : MVCC record header
- */
-STATIC_INLINE int
-or_mvcc_set_insid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-  if (!(mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_INSID))
-    {
-      return NO_ERROR;
-    }
-
-  return or_put_bigint (buf, mvcc_rec_header->mvcc_ins_id);
-}
-
-/*
- * or_mvcc_get_delid () - Get MVCC delid
- *
- * return	   : MVCC delid
- * buf (in/out)	   : or buffer
- * mvcc_falgs(in)  : MVCC flags
- * error(out): NO_ERROR or error code
- */
-STATIC_INLINE MVCCID
-or_mvcc_get_delid (OR_BUF * buf, int mvcc_flags, int *error)
-{
-  MVCCID delid = MVCCID_NULL;
-
-  assert (buf != NULL && error != NULL);
-
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  *error = NO_ERROR;
-  if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
-    {
-      /* MVCC DELID is active */
-      if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
-	{
-	  *error = or_underflow (buf);
-	  delid = MVCCID_NULL;
-	}
-      else
-	{
-	  OR_GET_BIGINT (buf->ptr, &(delid));
-	  buf->ptr += OR_MVCCID_SIZE;
-	}
-    }
-  return delid;
-}
-
-/*
- * or_mvcc_get_chn () - Get MVCC chn
- *
- * return	   : MVCC chn
- * buf (in/out)	   : or buffer
- * mvcc_falgs(in)  : MVCC flags
- * error(out): NO_ERROR or error code
- */
-STATIC_INLINE int
-or_mvcc_get_chn (OR_BUF * buf, int *error)
-{
-  int chn = NULL_CHN;
-
-  assert (buf != NULL && error != NULL);
-
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  *error = NO_ERROR;
-
-  if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
-    {
-      *error = or_underflow (buf);
-    }
-  else
-    {
-      chn = OR_GET_INT (buf->ptr);
-      buf->ptr += OR_INT_SIZE;
-    }
-
-  return chn;
-}
-
-/*
- * or_mvcc_set_delid () - Set MVCC delete id
- *
- * return	      : error code 
- * buf (in/out)	      : or buffer 
- * mvcc_rec_header(in): MVCC record header
- */
-STATIC_INLINE int
-or_mvcc_set_delid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
-{
-  assert (buf != NULL);
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if (!(mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_DELID))
-    {
-      return NO_ERROR;
-    }
-
-  return or_put_bigint (buf, mvcc_rec_header->mvcc_del_id);
-}
-
-/*
- * or_mvcc_set_chn () - Set MVCC chn
- *
- * return	      : error code 
- * buf (in/out)	      : or buffer 
- * mvcc_rec_header(in): MVCC record header
- */
-STATIC_INLINE int
-or_mvcc_set_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
-{
-  assert (buf != NULL);
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  return or_put_int (buf, mvcc_rec_header->chn);
-}
-
-/*
- * or_mvcc_get_header () - Get mvcc record header from record data.
- *
- * return		: Void.
- * record (in)		: Record descriptor.
- * mvcc_header (out)	: MVCC Record header.
- */
-int
-or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_header)
-{
-  OR_BUF buf;
-  int rc = NO_ERROR;
-  int repid_and_flag_bits;
-
-  assert (record != NULL && record->data != NULL && record->length >= OR_MVCC_REP_SIZE && mvcc_header != NULL);
-
-  or_init (&buf, record->data, record->length);
-
-  repid_and_flag_bits = or_mvcc_get_repid_and_flags (&buf, &rc);
-  if (rc != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-  mvcc_header->repid = repid_and_flag_bits & OR_MVCC_REPID_MASK;
-  mvcc_header->mvcc_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
-
-  mvcc_header->chn = or_mvcc_get_chn (&buf, &rc);
-  if (rc != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  mvcc_header->mvcc_ins_id = or_mvcc_get_insid (&buf, mvcc_header->mvcc_flag, &rc);
-  if (rc != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  mvcc_header->mvcc_del_id = or_mvcc_get_delid (&buf, mvcc_header->mvcc_flag, &rc);
-  if (rc != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  rc = or_mvcc_get_prev_version_lsa (&buf, mvcc_header->mvcc_flag, &(mvcc_header->prev_version_lsa));
-  if (rc != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  return NO_ERROR;
-
-exit_on_error:
-  return (rc == NO_ERROR && (rc = er_errid ()) == NO_ERROR) ? ER_FAILED : rc;
-}
-
-/*
- * or_mvcc_set_header () - Updates record header
- *
- * return		: Void.
- * record (in/out)	: Record descriptor. 
- * mvcc_rec_header (in) : MVCC Record header.
- *
- *  Note: This function assume that record area size is sufficiently large
- *    to include additional MVCC data that may come from mvcc_rec_header. 
- */
-int
-or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
-{
-  OR_BUF orep, *buf;
-  int error = NO_ERROR;
-  int mvcc_old_flag = 0;
-  int repid_and_flag_bits = 0;
-  int old_mvcc_size = 0, new_mvcc_size = 0;
-
-  assert (record != NULL && record->data != NULL && record->length != 0 && record->length >= OR_MVCC_MIN_HEADER_SIZE);
-
-  repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (record->data);
-
-  mvcc_old_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
-
-  old_mvcc_size = mvcc_header_size_lookup[mvcc_old_flag];
-  new_mvcc_size = mvcc_header_size_lookup[mvcc_rec_header->mvcc_flag];
-  if (old_mvcc_size != new_mvcc_size)
-    {
-      /* resize MVCC info inside recdes */
-      if (record->area_size < (record->length + new_mvcc_size - old_mvcc_size))
-	{
-	  /* TO DO - er_set */
-	  assert (false);
-	  goto exit_on_error;
-	}
-
-      HEAP_MOVE_INSIDE_RECORD (record, new_mvcc_size, old_mvcc_size);
-    }
-
-  OR_BUF_INIT (orep, record->data, record->area_size);
-  buf = &orep;
-
-  error =
-    or_mvcc_set_repid_and_flags (buf, mvcc_rec_header->mvcc_flag, mvcc_rec_header->repid,
-				 repid_and_flag_bits & OR_BOUND_BIT_FLAG, OR_GET_OFFSET_SIZE (record->data));
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  error = or_mvcc_set_chn (buf, mvcc_rec_header);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  error = or_mvcc_set_insid (buf, mvcc_rec_header);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  error = or_mvcc_set_delid (buf, mvcc_rec_header);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  error = or_mvcc_set_prev_version_lsa (buf, mvcc_rec_header);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  return NO_ERROR;
-
-exit_on_error:
-  return (error == NO_ERROR && (error = er_errid ()) == NO_ERROR) ? ER_FAILED : error;
-}
-
-/*
- * or_mvcc_add_header () - Add header in record
- *
- * return		: Void.
- * record (in/out)	: Record descriptor. 
- * mvcc_rec_header (in) : MVCC Record header.
- *
- *  Note: This function must be called when the record is build by adding
- *    header and then data. This function will add record header only.
- *    Later, record data must be added. Obvious, the caller must be sure that
- *    the record area size is sufficiently large to include header and data.
- *	  When called, record->length must be 0. When return, record->length
- *    will contain the header size.
- */
-int
-or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int bound_bit, int variable_offset_size)
-{
-  OR_BUF orep, *buf;
-  int error = NO_ERROR;
-
-  assert (record != NULL && record->data != NULL && record->length == 0);
-
-  OR_BUF_INIT (orep, record->data, record->area_size);
-  buf = &orep;
-
-  error =
-    or_mvcc_set_repid_and_flags (buf, mvcc_rec_header->mvcc_flag, mvcc_rec_header->repid, bound_bit,
-				 variable_offset_size);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  error = or_mvcc_set_chn (buf, mvcc_rec_header);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  error = or_mvcc_set_insid (buf, mvcc_rec_header);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  error = or_mvcc_set_delid (buf, mvcc_rec_header);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  error = or_mvcc_set_prev_version_lsa (buf, mvcc_rec_header);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  record->length = CAST_BUFLEN (buf->ptr - buf->buffer);
-
-  return NO_ERROR;
-
-exit_on_error:
-  return (error == NO_ERROR && (error = er_errid ()) == NO_ERROR) ? ER_FAILED : error;
 }
 
 #if !defined (SERVER_MODE)
@@ -1063,7 +574,7 @@ or_put_bound_bit (char *bound_bits, int element, int bound)
 int
 or_overflow (OR_BUF * buf)
 {
-  /* 
+  /*
    * since this is normal behavior, don't set an error condition, the
    * main transformer functions will need to test the status value
    * for ER_TF_BUFFER_OVERFLOW and know that this isn't an error condition.
@@ -1267,7 +778,7 @@ or_varchar_length_internal (int charlen, int align)
     }
   else
     {
-      /* 
+      /*
        * Regarding the new encoding for VARCHAR and VARNCHAR, the strings stored in buffers have this representation:
        * OR_BYTE_SIZE    : First byte in encoding. If it's 0xFF, the string's length is greater than 255.
        *                 : Otherwise, the first byte states the length of the string.
@@ -1663,7 +1174,7 @@ or_varbit_length_internal (int bitlen, int align)
  *    bitlen(in): length of varbit
  */
 int
-or_packed_put_varbit (OR_BUF * buf, char *string, int bitlen)
+or_packed_put_varbit (OR_BUF * buf, const char *string, int bitlen)
 {
   return or_put_varbit_internal (buf, string, bitlen, INT_ALIGNMENT);
 }
@@ -1676,13 +1187,13 @@ or_packed_put_varbit (OR_BUF * buf, char *string, int bitlen)
  *    bitlen(in): length of varbit
  */
 int
-or_put_varbit (OR_BUF * buf, char *string, int bitlen)
+or_put_varbit (OR_BUF * buf, const char *string, int bitlen)
 {
   return or_put_varbit_internal (buf, string, bitlen, CHAR_ALIGNMENT);
 }
 
 static int
-or_put_varbit_internal (OR_BUF * buf, char *string, int bitlen, int align)
+or_put_varbit_internal (OR_BUF * buf, const char *string, int bitlen, int align)
 {
   int net_bitlen;
   int bytelen;
@@ -2144,7 +1655,7 @@ or_put_float (OR_BUF * buf, float fnum)
     }
   else
     {
-      OR_PUT_FLOAT (buf->ptr, &fnum);
+      OR_PUT_FLOAT (buf->ptr, fnum);
       buf->ptr += OR_FLOAT_SIZE;
     }
   return NO_ERROR;
@@ -2193,7 +1704,7 @@ or_put_double (OR_BUF * buf, double dnum)
     }
   else
     {
-      OR_PUT_DOUBLE (buf->ptr, &dnum);
+      OR_PUT_DOUBLE (buf->ptr, dnum);
       buf->ptr += OR_DOUBLE_SIZE;
     }
   return NO_ERROR;
@@ -3249,7 +2760,7 @@ or_pack_float (char *ptr, float number)
 {
   ASSERT_ALIGN (ptr, FLOAT_ALIGNMENT);
 
-  OR_PUT_FLOAT (ptr, &number);
+  OR_PUT_FLOAT (ptr, number);
   return (ptr + OR_FLOAT_SIZE);
 }
 
@@ -3280,7 +2791,7 @@ or_pack_double (char *ptr, double number)
 {
   ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
 
-  OR_PUT_DOUBLE (ptr, &number);
+  OR_PUT_DOUBLE (ptr, number);
   return (ptr + OR_DOUBLE_SIZE);
 }
 
@@ -3717,7 +3228,7 @@ or_unpack_btid (char *ptr, BTID * btid)
  *    lsa(in): LOG_LSA value
  */
 char *
-or_pack_log_lsa (const char *ptr, const LOG_LSA * lsa)
+or_pack_log_lsa (const char *ptr, const log_lsa * lsa)
 {
   char *new_;
 
@@ -3749,7 +3260,7 @@ or_pack_log_lsa (const char *ptr, const LOG_LSA * lsa)
  *    lsa(out): LOG_LSA value
  */
 char *
-or_unpack_log_lsa (char *ptr, LOG_LSA * lsa)
+or_unpack_log_lsa (char *ptr, log_lsa * lsa)
 {
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
@@ -3765,7 +3276,7 @@ or_unpack_log_lsa (char *ptr, LOG_LSA * lsa)
  *    domain(in): domain of the set (can be NULL)
  */
 char *
-or_unpack_set (char *ptr, SETOBJ ** set, TP_DOMAIN * domain)
+or_unpack_set (char *ptr, setobj ** set, TP_DOMAIN * domain)
 {
   OR_BUF orbuf;
 
@@ -4131,6 +3642,41 @@ or_packed_string_length (const char *string, int *strlenp)
 }
 
 /*
+ * or_packed_json_schema_length - Determines the number of bytes required to hold
+ * the packed representation of a json_schema.
+ *    return: length of packed json_schema
+ *    json_schema(in): json_schema
+ */
+static int
+or_packed_json_schema_length (const char *json_schema)
+{
+  DB_VALUE val;
+  db_make_string (&val, json_schema);
+
+  int len = tp_String.get_disk_size_of_value (&val);
+
+  pr_clear_value (&val);
+
+  return len;
+}
+
+/*
+ * or_packed_json_validator_length - Determines the number of bytes required to hold
+ * the packed representation of a json_validator.
+ *    return: length of packed json_validator
+ *    json_validator(in): json_validator
+ */
+static int
+or_packed_json_validator_length (JSON_VALIDATOR * json_validator)
+{
+  if (json_validator == NULL)
+    {
+      return 0;
+    }
+  return or_packed_json_schema_length (db_json_get_schema_raw_from_validator (json_validator));
+}
+
+/*
  * or_packed_stream_length - Determines the number of bytes required to hold
  * the packed representation of a stream.
  *    return: length of packed stream
@@ -4431,7 +3977,7 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	case DB_TYPE_NUMERIC:
 	  precision = d->precision;
 	  scale = d->scale;
-	  /* 
+	  /*
 	   * Safe guard for floating precision caused by incorrect type setting
 	   */
 	  if (precision <= TP_FLOATING_PRECISION_VALUE)
@@ -4446,9 +3992,10 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	case DB_TYPE_VARCHAR:
 	  /* collation id */
 	  size += OR_INT_SIZE;
+	  /* FALLTHRU */
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
-	  /* 
+	  /*
 	   * Hack, if the precision is -1, it is a special value indicating
 	   * either the maximum precision for the varying types or a floating
 	   * precision for the fixed types.
@@ -4458,7 +4005,7 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	      precision = d->precision;
 	    }
 
-	  /* 
+	  /*
 	   * Kludge, for temporary backward compatibility, treat varchar
 	   * types with the maximum precision as above. Need to change ourselves
 	   * to use -1 consistently for this after which this little
@@ -4489,10 +4036,7 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	  break;
 
 	case DB_TYPE_JSON:
-	  if (d->json_validator != NULL)
-	    {
-	      size += or_packed_string_length (db_json_get_schema_raw_from_validator (d->json_validator), NULL);
-	    }
+	  size += or_packed_json_validator_length (d->json_validator);
 	  break;
 
 	default:
@@ -4545,7 +4089,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
   int rc = NO_ERROR;
   unsigned int collation_storage;
 
-  /* 
+  /*
    * Hack, if this is a built-in domain, store a single word reference.
    * This is only allowed for the top level domain.
    * Note that or_unpack_domain is probably not going to do the right
@@ -4571,7 +4115,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 
       id = TP_DOMAIN_TYPE (d);
 
-      /* 
+      /*
        * Initial word has type, precision, scale, & codeset to the extent that
        * they will fit.  High bit of the type byte is set if there
        * is another domain following this one. (e.g. for set or union domains).
@@ -4624,7 +4168,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	    }
 	  /* handle all precisions the same way at the end */
 	  precision = d->precision;
-	  /* 
+	  /*
 	   * Safe guard for floating precision caused by incorrect type setting
 	   */
 	  if (precision <= TP_FLOATING_PRECISION_VALUE)
@@ -4638,11 +4182,12 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  has_collation = true;
+	  /* FALLTHRU */
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
 	  carrier |= ((int) (d->codeset)) << OR_DOMAIN_CODSET_SHIFT;
 
-	  /* 
+	  /*
 	   * Hack, if the precision is our special maximum/floating indicator,
 	   * store a zero in the precision field of the carrier.
 	   */
@@ -4651,7 +4196,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	      precision = d->precision;
 	    }
 
-	  /* 
+	  /*
 	   * Kludge, for temporary backward compatibility, treat varchar
 	   * types with the maximum precision as the -1 case.  See commentary
 	   * in or_packed_domain_size above.
@@ -4666,7 +4211,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 
 	case DB_TYPE_OBJECT:
 	case DB_TYPE_OID:
-	  /* 
+	  /*
 	   * If the include_classoids argument was specified, set a flag in the
 	   * disk representation indicating the presence of the class oids.
 	   * This isn't necessary when the domain is used for value tagging
@@ -4684,7 +4229,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	case DB_TYPE_SEQUENCE:
 	case DB_TYPE_TABLE:
 	case DB_TYPE_MIDXKEY:
-	  /* 
+	  /*
 	   * we need to recursively store the sub-domains following this one,
 	   * since sets can have empty domains we need a flag to indicate this.
 	   */
@@ -4819,7 +4364,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	    }
 	}
 
-      /* 
+      /*
        * Recurse on the sub domains if necessary, note that we don't
        * pass the NULL bit down here because that applies only to the
        * top level domain.
@@ -4880,7 +4425,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
       if (type == DB_TYPE_NULL && (carrier & OR_DOMAIN_BUILTIN_FLAG))
 	{
 	  index = (carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT;
-	  /* 
+	  /*
 	   * Recall that the builtin domain indexes are 1 based rather
 	   * than zero based, must adjust prior to indexing the table.
 	   */
@@ -4945,6 +4490,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	    case DB_TYPE_CHAR:
 	    case DB_TYPE_VARCHAR:
 	      has_collation = true;
+	      /* FALLTHRU */
 	    case DB_TYPE_BIT:
 	    case DB_TYPE_VARBIT:
 	      codeset = (carrier & OR_DOMAIN_CODSET_MASK) >> OR_DOMAIN_CODSET_SHIFT;
@@ -5127,7 +4673,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 		}
 	    }
 
-	  /* 
+	  /*
 	   * Recurse to get set sub-domains if there are any, note that
 	   * we don't pass the is_null flag down here since NULLness only
 	   * applies to the top level domain.
@@ -5263,6 +4809,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	    case DB_TYPE_DATETIMELTZ:
 	    case DB_TYPE_MONETARY:
 	      precision = tp_get_fixed_precision (type);
+	      /* FALLTHRU */
 
 	    case DB_TYPE_NULL:
 	    case DB_TYPE_BLOB:
@@ -5318,6 +4865,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		{
 		  collation_flag = TP_DOMAIN_COLL_NORMAL;
 		}
+	      /* FALLTHRU */
 
 	    case DB_TYPE_BIT:
 	    case DB_TYPE_VARBIT:
@@ -5334,7 +4882,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		}
 	      if (precision == 0)
 		{
-		  /* 
+		  /*
 		   * Kludge, restore maximum precision for the types that
 		   * aren't yet prepared for a -1.  This can be removed
 		   * eventually, see commentary in the or_put_domain.
@@ -5506,6 +5054,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		case DB_TYPE_VARCHAR:
 		  dom->collation_id = collation_id;
 		  dom->collation_flag = (TP_DOMAIN_COLL_ACTION) collation_flag;
+		  /* FALLTHRU */
 		case DB_TYPE_BIT:
 		case DB_TYPE_VARBIT:
 		  dom->codeset = codeset;
@@ -5719,7 +5268,7 @@ or_packed_set_info (DB_TYPE set_type, TP_DOMAIN * domain, int include_domain, in
   int homogeneous;
 
 
-  /* 
+  /*
    * A set can be of fixed width only if the domain is fully specified and there
    * is only one fixed width data type in the set.
    * Note that for "attached" sets that may be fixed width, the domain must
@@ -5727,7 +5276,7 @@ or_packed_set_info (DB_TYPE set_type, TP_DOMAIN * domain, int include_domain, in
    * and assume its a variable width set.
    */
 
-  /* 
+  /*
    * might only need bother with offset tables if this is an indexable
    * sequence ?
    */
@@ -5765,7 +5314,7 @@ or_packed_set_info (DB_TYPE set_type, TP_DOMAIN * domain, int include_domain, in
       *offset_table = 1;
     }
 
-  /* 
+  /*
    * Determine if we need to tag each value with its domain.
    * Normally, one would tag the elements if the domain is being excluded
    * from the set, but we'll allow it and assume that it will be passed
@@ -5773,7 +5322,7 @@ or_packed_set_info (DB_TYPE set_type, TP_DOMAIN * domain, int include_domain, in
    */
   *element_tags = !homogeneous;	/* || !include_domain */
 
-  /* 
+  /*
    * If we have to have element tags, then don't bother with a bound
    * bit array.
    */
@@ -5940,7 +5489,7 @@ or_skip_set_header (OR_BUF * buf)
  *    don't pack the class OIDs of object domains.
  */
 int
-or_packed_set_length (SETOBJ * set, int include_domain)
+or_packed_set_length (setobj * set, int include_domain)
 {
   DB_VALUE *value = NULL;
   int len, element_size, bound_bits, offset_table, element_tags, i, bits;
@@ -5979,7 +5528,7 @@ or_packed_set_length (SETOBJ * set, int include_domain)
       len += or_packed_domain_size (set_domain, 0);
     }
 
-  /* 
+  /*
    * If we have a non-tagged fixed width set, can calculate the size without
    * mapping over the values.
    */
@@ -5995,7 +5544,7 @@ or_packed_set_length (SETOBJ * set, int include_domain)
 	  error = setobj_get_element_ptr (set, i, &value);
 
 	  /* Second argument indicates whether to "collapse_null" values into nothing.  - can do this only if there is
-	   * an offset table. Third argument indicates whether or not to include the domain which - we do if the values 
+	   * an offset table. Third argument indicates whether or not to include the domain which - we do if the values
 	   * are tagged. Fourth argument indicates the desire to pack class OIDs which we never do since these are tag
 	   * domains. */
 	  len += or_packed_value_size (value, offset_table, element_tags, 0);
@@ -6029,7 +5578,7 @@ or_packed_set_length (SETOBJ * set, int include_domain)
  *    include_domain(in): non-zero to store full set domain too
  */
 void
-or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
+or_put_set (OR_BUF * buf, setobj * set, int include_domain)
 {
   DB_VALUE *value = NULL;
   unsigned int bound_word;
@@ -6103,7 +5652,7 @@ or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
 	{
 	  error = setobj_get_element_ptr (set, i, &value);
 
-	  /* 
+	  /*
 	   * make an entry in the offset table or bound bit array if we
 	   * have them
 	   */
@@ -6133,7 +5682,7 @@ or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
 		}
 	    }
 
-	  /* 
+	  /*
 	   * Write the value.  Be careful with NULLs in fixed width sets, need
 	   * to leave space.
 	   */
@@ -6141,7 +5690,7 @@ or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
 
 	  if (bound_ptr != NULL && is_null)
 	    {
-	      /* 
+	      /*
 	       * Could just use or_advance here but lets be nice and
 	       * zero out the space for debugging.
 	       */
@@ -6204,7 +5753,7 @@ or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
  *    stored values of attributes since we can always get the correct
  *    domain by looking in the catalog.
  */
-SETOBJ *
+setobj *
 or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
 {
   SETOBJ *set;
@@ -6232,7 +5781,7 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
       return NULL;
     }
 
-  /* 
+  /*
    * If a domain was supplied, stick it in the set, probably should do a
    * sanity check in this and the doamin stored in the set.  The domain
    * MUST be passed if the set was packed with the "include_domain" domain
@@ -6265,7 +5814,7 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
        * Might want to check this here. */
     }
 
-  /* 
+  /*
    * Calculate the length of the fixed width elements if that's what we have.
    * This looks like it should be a little utilitiy function.
    */
@@ -6321,13 +5870,13 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
 		}
 	    }
 
-	  /* 
+	  /*
 	   * 8 element_size will now be 0 if NULL, the true size, or -1 if * variable or unknown. */
 
 	  /* Read the element. */
 	  if (element_size == 0)
 	    {
-	      /* 
+	      /*
 	       * we have to initlaize the domain too, since a set can
 	       * have several possible domains, just pick the first one.
 	       * Actually,for wildcard sets, we won't have a domain to select.
@@ -6336,7 +5885,7 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
 	       */
 	      db_value_domain_init (&value, DB_TYPE_NULL, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	      db_make_null (&value);
-	      /* 
+	      /*
 	       * if this is a fixed width element array, skip over the null
 	       * data
 	       */
@@ -6347,7 +5896,7 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * read a packed value, pass the domain only if the
 	       * values are not tagged already tagged.
 	       */
@@ -6361,7 +5910,7 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
 		}
 	    }
 
-	  /* 
+	  /*
 	   * This setobj interface function passes "ownership" of the memory
 	   * of value to the set. value need not be cleared after this call,
 	   * as its internal memory pointers are copied directly to the set
@@ -6445,7 +5994,7 @@ or_disk_set_size (OR_BUF * buf, TP_DOMAIN * set_domain, DB_TYPE * set_type)
       set_domain = or_get_domain (buf, set_domain, NULL);
     }
 
-  /* 
+  /*
    * Calculate the length of the fixed width elements if that's what we have.
    * This looks like it should be a little utilitiy function.
    */
@@ -6499,19 +6048,19 @@ or_disk_set_size (OR_BUF * buf, TP_DOMAIN * set_domain, DB_TYPE * set_type)
 		}
 	    }
 
-	  /* 
+	  /*
 	   * element_size will now be 0 if NULL, the true size, or -1 if
 	   * variable or unknown.
 	   */
 
-	  /* 
+	  /*
 	   * Skip the element, we may have to actually unpack the element
 	   * to do this (if the size is variable), but no storage should be
 	   * allocated.
 	   */
 	  if (element_size == 0)
 	    {
-	      /* 
+	      /*
 	       * if this is a fixed width element array, skip over the null
 	       * data
 	       */
@@ -6571,7 +6120,7 @@ or_disk_set_size (OR_BUF * buf, TP_DOMAIN * set_domain, DB_TYPE * set_type)
  *    include_domain_classoids(in): non-zero to include the domain class OIDs
  */
 int
-or_packed_value_size (DB_VALUE * value, int collapse_null, int include_domain, int include_domain_classoids)
+or_packed_value_size (const DB_VALUE * value, int collapse_null, int include_domain, int include_domain_classoids)
 {
   PR_TYPE *type;
   TP_DOMAIN *domain;
@@ -6584,7 +6133,7 @@ or_packed_value_size (DB_VALUE * value, int collapse_null, int include_domain, i
     }
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
 
   if (type == NULL)
     {
@@ -6623,14 +6172,7 @@ or_packed_value_size (DB_VALUE * value, int collapse_null, int include_domain, i
 	      return size;
 	    }
 	}
-      if (type->data_lengthval == NULL)
-	{
-	  size += type->disksize;
-	}
-      else
-	{
-	  size += (*(type->data_lengthval)) (value, 1);
-	}
+      size += type->get_disk_size_of_value (value);
     }
 
   /* Values must as a unit be aligned to a word boundary.  We can't do this inside the writeval function because that
@@ -6672,7 +6214,7 @@ or_put_value (OR_BUF * buf, DB_VALUE * value, int collapse_null, int include_dom
     }
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
 
   if (type == NULL)
     {
@@ -6716,11 +6258,11 @@ or_put_value (OR_BUF * buf, DB_VALUE * value, int collapse_null, int include_dom
       /* probably should blow off writing the value if we couldn't determine the domain ? */
       if (rc == NO_ERROR)
 	{
-	  rc = (*(type->data_writeval)) (buf, value);
+	  rc = type->data_writeval (buf, value);
 	}
     }
 
-  /* 
+  /*
    * Values must as a unit be aligned to a word boundary.  We can't do this
    * inside the writeval function becaue that may be used to place data inside
    * disk structures that don't have alignment requirements.
@@ -6775,7 +6317,7 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, 
   is_null = 0;
   start = buf->ptr;
 
-  /* 
+  /*
    * Always make sure this is properly initialized.
    * If the domain is given here, we could use that for further initialization ?
    */
@@ -6790,7 +6332,7 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, 
       return NO_ERROR;
     }
 
-  /* 
+  /*
    * If a domain was supplied, use it to decode the value, otherwise we
    * assume that the vlaues must be tagged.
    */
@@ -6842,12 +6384,12 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, 
 	{
 	  if (value)
 	    {
-	      (*(domain->type->data_readval)) (buf, value, domain, expected, copy, NULL, 0);
+	      domain->type->data_readval (buf, value, domain, expected, copy, NULL, 0);
 	    }
 	  else
 	    {
 	      /* the NULL value, will cause readval to skip the value */
-	      (*(domain->type->data_readval)) (buf, NULL, domain, expected, false, NULL, 0);
+	      domain->type->data_readval (buf, NULL, domain, expected, false, NULL, 0);
 	    }
 
 	  if (rc != NO_ERROR)
@@ -6931,7 +6473,7 @@ or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment
   ptr_to_packed_value = buf->ptr;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
   if (type == NULL)
     {
       return NULL;
@@ -6967,7 +6509,7 @@ or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment
       if (rc == NO_ERROR)
 	{
 	  or_get_align64 (buf);
-	  rc = (*(type->data_writeval)) (buf, value);
+	  rc = type->data_writeval (buf, value);
 	}
     }
 
@@ -7002,12 +6544,12 @@ or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment
  *    details.
  */
 char *
-or_unpack_value (char *buf, DB_VALUE * value)
+or_unpack_value (const char *buf, DB_VALUE * value)
 {
   OR_BUF orbuf;
 
   buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
-  or_init (&orbuf, buf, 0);
+  or_init (&orbuf, CONST_CAST (char *, buf) /* it is for read */ , 0);
   or_get_value (&orbuf, value, NULL, -1, true);
 
   return orbuf.ptr;
@@ -7052,7 +6594,7 @@ or_unpack_mem_value (char *ptr, DB_VALUE * value)
     }
   else
     {
-      rc = (*(domain->type->data_readval)) (buf, value, domain, -1, true, NULL, 0);
+      rc = domain->type->data_readval (buf, value, domain, -1, true, NULL, 0);
       if (rc != NO_ERROR)
 	{
 	  return NULL;
@@ -7179,7 +6721,7 @@ or_unpack_recdes (char *buf, RECDES ** recdes)
  *    Kludge, the arguments are passed in as void* so we can avoid
  *    unfortunate circular dependencies between query_list.h and or.h
  *    query_list.h is included at the top of this file so we have the
- *    information necesary for casting.
+ *    information necessary for casting.
  */
 char *
 or_unpack_listid (char *ptr, void *listid_ptr)
@@ -7236,7 +6778,7 @@ or_unpack_unbound_listid (char *ptr, void **listid_ptr)
   QFILE_LIST_ID *listid;
   int count, i;
 
-  /* 
+  /*
    * tuple_cnt 4, vfid.fileid 4, vfid.volid 2, attr_list.oid_flg 2,
    * attr_list.attr_cnt 4, attr_list.attr_id 4 * n
    */
@@ -7310,7 +6852,7 @@ or_listid_length (void *listid_ptr)
       return length;
     }
 
-  /* QFILE_LIST_ID 9 fixed item tuple_cnt page_cnt first_vpid.pageid first_vpid.volid last_vpid.pageid last_vpid.volid 
+  /* QFILE_LIST_ID 9 fixed item tuple_cnt page_cnt first_vpid.pageid first_vpid.volid last_vpid.pageid last_vpid.volid
    * last_offset lasttpl_len type_list_type_cnt */
   length = OR_INT_SIZE * 9;
 
@@ -7568,7 +7110,7 @@ or_packed_enumeration_size (const DB_ENUMERATION * enumeration)
       db_make_varchar (&value, TP_FLOATING_PRECISION_VALUE, DB_GET_ENUM_ELEM_STRING (db_enum),
 		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum), DB_GET_ENUM_ELEM_CODESET (db_enum),
 		       LANG_GET_BINARY_COLLATION (DB_GET_ENUM_ELEM_CODESET (db_enum)));
-      size += (*(tp_String.data_lengthval)) (&value, 1);
+      size += tp_String.get_disk_size_of_value (&value);
       pr_clear_value (&value);
     }
 
@@ -7604,7 +7146,7 @@ or_put_enumeration (OR_BUF * buf, const DB_ENUMERATION * enumeration)
       db_make_varchar (&value, TP_FLOATING_PRECISION_VALUE, DB_GET_ENUM_ELEM_STRING (db_enum),
 		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum), DB_GET_ENUM_ELEM_CODESET (db_enum),
 		       enumeration->collation_id);
-      rc = (*(tp_String.data_writeval)) (buf, &value);
+      rc = tp_String.data_writeval (buf, &value);
       pr_clear_value (&value);
 
       if (rc != NO_ERROR)
@@ -7628,7 +7170,8 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
   DB_ENUM_ELEMENT *enum_vals = NULL, *db_enum = NULL;
   int idx = 0, count = 0, error = NO_ERROR;
   DB_VALUE value;
-  char *enum_str = NULL, *value_str;
+  char *enum_str = NULL;
+  const char *value_str = NULL;
   int str_size = 0;
   LANG_COLLATION *lc;
 
@@ -7664,13 +7207,13 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
       /* enum values are indexed starting with 1 */
       db_enum->short_val = idx + 1;
 
-      /* 
+      /*
        * Make sure this starts off initialized so "readval" won't try to free
        * any existing contents.
        */
       db_make_null (&value);
 
-      error = (*(tp_String.data_readval)) (buf, &value, NULL, -1, false, NULL, 0);
+      error = tp_String.data_readval (buf, &value, NULL, -1, false, NULL, 0);
       if (error != NO_ERROR)
 	{
 	  goto error_return;
@@ -8128,102 +7671,6 @@ or_unpack_sha1 (char *ptr, SHA1Hash * sha1)
 }
 
 /*
- * or_mvcc_set_prev_version_lsa () - Set MVCC prev version LSA
- *
- * return	      : error code 
- * buf (in/out)	      : or buffer
- * mvcc_rec_header(in): MVCC record header
- */
-STATIC_INLINE int
-or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
-{
-  assert (buf != NULL);
-
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-  if (!(mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_PREV_VERSION))
-    {
-      return NO_ERROR;
-    }
-
-  if ((buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-
-  memcpy (buf->ptr, &mvcc_rec_header->prev_version_lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);
-  buf->ptr += OR_MVCC_PREV_VERSION_LSA_SIZE;
-
-  return NO_ERROR;
-}
-
-/*
- * or_mvcc_get_prev_version_lsa () - Get MVCC prev version LSA from buffer
- *
- * return	        : error code 
- * buf (in)	        : or buffer
- * mvcc_flags(in)       : header mvcc flags
- * prev_version_lsa(out): the LSA to previous version
- * mvcc_rec_header(in)  : MVCC record header
- */
-STATIC_INLINE int
-or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_version_lsa)
-{
-  assert (buf != NULL);
-
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-  if (!(mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION))
-    {
-      LSA_SET_NULL (prev_version_lsa);
-      return NO_ERROR;
-    }
-
-  if ((buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE) > buf->endptr)
-    {
-      return (or_underflow (buf));
-    }
-
-  *prev_version_lsa = *(LOG_LSA *) buf->ptr;
-  buf->ptr += OR_MVCC_PREV_VERSION_LSA_SIZE;
-
-  return NO_ERROR;
-}
-
-/*
- * or_mvcc_set_log_lsa_to_record () - Sets the previus version LSA in record header. 
- *			    Assumes the previous version lsa is allocated in header
- *
- * return		 : error_code
- * record (in/out)	 : record 
- * lsa (in) : lsa to be set
- */
-int
-or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa)
-{
-  int mvcc_flags = or_mvcc_get_flag (record);
-  int lsa_offset = -1;
-
-  if (!(mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION))
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  if (record == NULL || lsa == NULL)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  lsa_offset = (OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_INT_SIZE
-		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) ? OR_MVCCID_SIZE : 0)
-		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) ? OR_MVCCID_SIZE : 0));
-
-  memcpy (record->data + lsa_offset, lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);
-
-  return NO_ERROR;
-}
-
-/*
  * LITTLE ENDIAN TRANSFORMATION FUNCTIONS
  */
 
@@ -8669,7 +8116,7 @@ or_get_json_schema (OR_BUF * buf, REFPTR (char, schema))
 
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
 
-  rc = (*(tp_String.data_readval)) (buf, &schema_value, NULL, -1, false, NULL, 0);
+  rc = tp_String.data_readval (buf, &schema_value, NULL, -1, false, NULL, 0);
   if (rc != NO_ERROR)
     {
       return rc;
@@ -8702,10 +8149,10 @@ or_put_json_schema (OR_BUF * buf, const char *schema)
     }
   else
     {
-      db_make_string_by_const_str (&schema_raw, schema);
+      db_make_string (&schema_raw, schema);
     }
 
-  rc = (*(tp_String.data_writeval)) (buf, &schema_raw);
+  rc = tp_String.data_writeval (buf, &schema_raw);
   if (rc != NO_ERROR)
     {
       goto exit;

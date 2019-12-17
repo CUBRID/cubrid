@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -21,20 +21,26 @@
  * db_set.c - API functions for manipulating sets & sequences.
  */
 
-#ident "$Id$"
+#include "db_set.h"
+#include "db_set_function.h"
 
-#include "config.h"
+#if !defined (SERVER_MODE)
+#include "authenticate.h"
+#endif // not SERVER_MODE
+#if !defined (SERVER_MODE)
+#include "class_object.h"
+#endif // SERVER_MODE
+#include "db.h"
+#include "dbtype.h"
+#include "error_manager.h"
+#include "object_primitive.h"
+#include "set_object.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <ctype.h>
 #include <string.h>
-
-#include "set_object.h"
-#include "error_manager.h"
-#include "db.h"
-#include "dbtype.h"
 
 #define ERROR_SET(error, code) \
   do {                     \

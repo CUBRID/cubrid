@@ -193,7 +193,7 @@ csql_get_real_path (const char *pathname)
       return NULL;
     }
 
-  /* 
+  /*
    * Do tilde-expansion here.
    */
   if (pathname[0] == '~')
@@ -809,7 +809,7 @@ csql_get_tmp_buf (size_t size)
     }
   else
     {
-      /* 
+      /*
        * buf isn't big enough, so see if we have an already-malloc'ed
        * thing that is big enough.  If so, use it; if not, free it if
        * it exists, and then allocate a big enough one.
@@ -886,7 +886,7 @@ nonscr_display_error (char *buffer, int buf_length)
 
       print_len = (remaining - 3 - separator_len) / 2;
       strncat (buffer, errmsg, print_len);	/* first half */
-      strncat (buffer, separator, separator_len);
+      strcat (buffer, separator);
       strncat (buffer, errmsg + len_errmsg - print_len, print_len);	/* second half */
       remaining -= (print_len * 2 + separator_len);
     }

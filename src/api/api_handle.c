@@ -1,24 +1,24 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
 /*
- * api_handle.h 
+ * api_handle.h
  */
 
 #include "config.h"
@@ -30,7 +30,7 @@
 #include "error_code.h"
 
 /* ------------------------------------------------------------------------- */
-/* BIND HANDLE ROOT IMPLEMENTATION 
+/* BIND HANDLE ROOT IMPLEMENTATION
  */
 typedef struct bh_root_s BH_ROOT;
 typedef struct bhifs_node_s BHIFS_NODE;
@@ -537,7 +537,7 @@ fe_bind_get_first_child (BH_INTERFACE * bhifs, BH_BIND * bind, BH_BIND ** pchild
  *    return: NO_ERROR if successful, error code otherwise
  *    bhifs(in): BH_INTERFACE
  *    bind(in): BH_BIND
- *    psibling(out): next sibling 
+ *    psibling(out): next sibling
  */
 static int
 fe_bind_get_next_sibling (BH_INTERFACE * bhifs, BH_BIND * bind, BH_BIND ** psibling)
@@ -565,7 +565,7 @@ fe_bind_get_next_sibling (BH_INTERFACE * bhifs, BH_BIND * bind, BH_BIND ** psibl
  * fe_bind_map_worker - worker function for the fe_bind_map()
  *    return: NO_ERROR if successful, error code otherwise
  *    fe(in): BH_INTERFACE
- *    node(in): BH_BIND 
+ *    node(in): BH_BIND
  *    mf(in): map function
  *    arg(in): argument of the map function
  */
@@ -696,7 +696,7 @@ sh_keyf (void *elem, void **rk)
 }
 
 /*
- * sh_destroy - destroy hash based bh_context_be 
+ * sh_destroy - destroy hash based bh_context_be
  *    return: void
  *    be(in): bh_context_be
  */
@@ -763,7 +763,7 @@ sh_delete (bh_context_be * be, BIND_HANDLE handle, BHIFS_NODE ** node)
 /*
  * be_create_static_hash - create static hash based bh_context_be interface
  *    return: NO_ERROR if successful, error code otherwise
- *    be(out): bh_context_be 
+ *    be(out): bh_context_be
  *    bucket_sz(in): bucket size
  */
 static int
@@ -937,7 +937,7 @@ bh_root_lock (int rrid, BH_INTERFACE ** bhifs)
 }
 
 /*
- * bh_root_unlock - unlock root 
+ * bh_root_unlock - unlock root
  *    return: NO_ERROR if successful, error code otherwise
  *    rrid(in): root id
  */
@@ -958,7 +958,7 @@ bh_root_unlock (int rrid)
 }
 
 /*
- * create_handle_context - create a BH_INTERFACE 
+ * create_handle_context - create a BH_INTERFACE
  *    return: NO_ERROR if successful, error code otherwise
  *    prov(in): bh_provider
  *    rt(in): BH_ROOT_TYPE

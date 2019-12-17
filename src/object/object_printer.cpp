@@ -22,6 +22,8 @@
  */
 
 #include "object_printer.hpp"
+
+#include "authenticate.h"
 #include "class_description.hpp"
 #include "class_object.h"
 #include "db_json.hpp"
@@ -30,6 +32,7 @@
 #include "dbtype.h"
 #include "misc_string.h"
 #include "object_domain.h"
+#include "object_primitive.h"
 #include "object_print_util.hpp"
 #include "parse_tree.h"
 #include "schema_manager.h"
@@ -48,7 +51,7 @@ void object_printer::describe_comment (const char *comment)
   assert (comment != NULL);
 
   db_make_null (&comment_value);
-  db_make_string_by_const_str (&comment_value, comment);
+  db_make_string (&comment_value, comment);
 
   m_buf ("COMMENT ");
   if (comment != NULL && comment[0] != '\0')
@@ -225,11 +228,12 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 	      m_buf ("STRING");
 	      break;
 	    }
-	/* fall through */
+	/* FALLTHRU */
 	case DB_TYPE_CHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
 	  has_collation = 1;
+	/* FALLTHRU */
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
 	  strcpy (temp_buffer, temp_domain->type->name);
@@ -808,9 +812,9 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
   if (prt_type == class_description::CSQL_SCHEMA_COMMAND)
     {
       if (constraint.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-        {
-          m_buf (" IN PROGRESS");
-        }
+	{
+	  m_buf (" IN PROGRESS");
+	}
     }
 }
 

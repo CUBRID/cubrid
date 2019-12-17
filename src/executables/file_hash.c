@@ -183,7 +183,7 @@ fh_create (const char *name, int est_size, int page_size, int cached_pages, cons
       entry_size = data_size + offsetof (FH_INFO, fh_intk_data) + offsetof (FH_ENTRY, info);
       break;
     default:
-      /* 
+      /*
        * this should be calling er_set
        * fprintf(stderr, "Invalid key type\n");
        */
@@ -192,7 +192,7 @@ fh_create (const char *name, int est_size, int page_size, int cached_pages, cons
 
   if (page_size < entry_size)
     {
-      /* 
+      /*
        * should be calling er_set
        * fprintf(stderr, "Invalid page_size\n");
        */
@@ -214,19 +214,18 @@ fh_create (const char *name, int est_size, int page_size, int cached_pages, cons
   est_size = fh_calculate_htsize (est_size);
 
   /* Open the hash file */
-  ht->hash_filename = (char *) malloc (PATH_MAX);
+  if (!hash_filename || hash_filename[0] == '\0')
+    {
+      ht->hash_filename = strdup (tmpnam (NULL));
+    }
+  else
+    {
+      ht->hash_filename = strdup (hash_filename);
+    }
   if (ht->hash_filename == NULL)
     {
       fh_destroy (ht);
       return NULL;
-    }
-  if (!hash_filename || hash_filename[0] == '\0')
-    {
-      tmpnam (ht->hash_filename);
-    }
-  else
-    {
-      strcpy (ht->hash_filename, hash_filename);
     }
 #if defined(SOLARIS) || defined(AIX) || (defined(I386) && defined(LINUX)) || (defined(HPUX) && (_LFS64_LARGEFILE == 1))
   ht->fd = open64 (ht->hash_filename, O_RDWR | O_CREAT | O_TRUNC, 0600);
@@ -265,7 +264,7 @@ fh_create (const char *name, int est_size, int page_size, int cached_pages, cons
   ht->pg_hdr = ht->pg_hdr_alloc = pg_hdr;
   memset (ht->pg_hdr, 0, size);
 
-  /* 
+  /*
    * Allocate the cached pages and fill in the page headers and
    * initialize each of the hash entries
    */
@@ -359,7 +358,7 @@ fh_get (FH_TABLE * ht, FH_KEY key, FH_DATA * data)
   FH_PAGE_HDR *pg_hdr;
   char *ptr;
 
-  /* 
+  /*
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
@@ -455,7 +454,7 @@ fh_put (FH_TABLE * ht, FH_KEY key, FH_DATA data)
   FH_PAGE_HDR *pg_hdr;
   char *ptr;
 
-  /* 
+  /*
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
@@ -595,7 +594,7 @@ fh_fetch_page (FH_TABLE * ht, int page)
 	}
     }
 
-  /* 
+  /*
    * If the page is the least recently used, make the previous page
    * the least recently used.
    */
@@ -603,7 +602,7 @@ fh_fetch_page (FH_TABLE * ht, int page)
     {
       ht->pg_hdr_last = pg_hdr->prev;
     }
-  /* 
+  /*
    * If the page is the most recently used, do nothing.
    * Otherwise, make the page the most recently used.
    */
@@ -652,7 +651,7 @@ fh_read_page (FH_TABLE * ht, int page)
 #endif
   int n;
 
-  /* 
+  /*
    * If a free page exists, use it.  Since pages are not freed, free
    * pages only exist after initialization until they are used.  Thus
    * the next page after the first free page is the next free page.

@@ -422,7 +422,7 @@ proxy_handler_process_cas_response (T_PROXY_EVENT * event_p)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unsupported function code. " "(func_code:%d). context(%s).", func_code,
 		 proxy_str_context (ctx_p));
-      /* 
+      /*
        * 1*) drop unexpected messages from cas ?
        * 2) free context ?
        */
@@ -499,7 +499,7 @@ proxy_handler_process_cas_error (T_PROXY_EVENT * event_p)
     {
       if (ctx_p->func_code)
 	{
-	  /* 
+	  /*
 	   * we should relay error event to the client
 	   * so, must not call proxy_event_free().
 	   */
@@ -1143,7 +1143,7 @@ proxy_context_clear (T_PROXY_CONTEXT * ctx_p)
 	}
       else if (ctx_p->prepared_stmt->stmt_type != SHARD_STMT_TYPE_PREPARED)
 	{
-	  /* 
+	  /*
 	   * shcema info server handle can't be shared with other context
 	   * so, we can free statement at this time.
 	   */

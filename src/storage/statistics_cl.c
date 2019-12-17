@@ -41,32 +41,34 @@ static CLASS_STATS *stats_client_unpack_statistics (char *buffer);
 
 /*
  * stats_get_statistics () - Get class statistics
- *   return:
+ *   return: error code
  *   classoid(in): OID of the class
  *   timestamp(in):
+ *   stats_p(in/out):
  *
  * Note: This function provides an easier interface for the client for
  *       obtaining statistics to the client side by taking care of the
  *       communication details . (Note that the upper levels shouldn't have to
  *       worry about the communication buffer.)
  */
-CLASS_STATS *
-stats_get_statistics (OID * class_oid_p, unsigned int time_stamp)
+int
+stats_get_statistics (OID * class_oid_p, unsigned int time_stamp, CLASS_STATS ** stats_p)
 {
-  CLASS_STATS *stats_p = NULL;
   char *buffer_p = NULL;
   int length = -1;
+  int error;
+  *stats_p = NULL;
 
-  buffer_p = stats_get_statistics_from_server (class_oid_p, time_stamp, &length);
-  if (buffer_p)
+  error = stats_get_statistics_from_server (class_oid_p, time_stamp, &length, &buffer_p);
+  if (error == NO_ERROR && buffer_p != NULL)
     {
       assert (length > 0);
 
-      stats_p = stats_client_unpack_statistics (buffer_p);
+      *stats_p = stats_client_unpack_statistics (buffer_p);
       free_and_init (buffer_p);
     }
 
-  return stats_p;
+  return error;
 }
 
 /*

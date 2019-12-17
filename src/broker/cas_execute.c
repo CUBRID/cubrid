@@ -71,9 +71,11 @@
 #include "object_representation.h"
 #include "connection_cl.h"
 
+#include "db_set_function.h"
 #include "dbi.h"
 #include "dbtype.h"
 #include "memory_alloc.h"
+#include "object_primitive.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -162,9 +164,9 @@ struct t_class_table
 typedef struct t_attr_table T_ATTR_TABLE;
 struct t_attr_table
 {
-  char *class_name;
-  char *attr_name;
-  char *source_class;
+  const char *class_name;
+  const char *attr_name;
+  const char *source_class;
   int precision;
   short scale;
   short attr_order;
@@ -176,7 +178,7 @@ struct t_attr_table
   char unique;
   char set_domain;
   char is_key;
-  char *comment;
+  const char *comment;
 };
 
 extern void histo_print (FILE * stream);
@@ -224,7 +226,7 @@ static int fetch_constraint (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T
 static int fetch_trigger (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_privilege (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_foreign_keys (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
-static void add_res_data_bytes (T_NET_BUF * net_buf, char *str, int size, unsigned char ext_type, int *net_size);
+static void add_res_data_bytes (T_NET_BUF * net_buf, const char *str, int size, unsigned char ext_type, int *net_size);
 static void add_res_data_string (T_NET_BUF * net_buf, const char *str, int size, unsigned char ext_type,
 				 unsigned char charset, int *net_size);
 static void add_res_data_string_safe (T_NET_BUF * net_buf, const char *str, unsigned char ext_type,
@@ -281,7 +283,7 @@ static int sch_imported_keys (T_NET_BUF * net_buf, char *class_name, void **resu
 static int sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, char *pktable_name,
 						 char *fktable_name, void **result);
 static int class_type (DB_OBJECT * class_obj);
-static int class_attr_info (char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char pat_flag,
+static int class_attr_info (const char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char pat_flag,
 			    T_ATTR_TABLE * attr_table);
 static int set_priv_table (unsigned int class_priv, char *name, T_PRIV_TABLE * priv_table, int index);
 static int sch_query_execute (T_SRV_HANDLE * srv_handle, char *sql_stmt, T_NET_BUF * net_buf);
@@ -296,8 +298,8 @@ static int create_srv_handle_with_query_result (T_QUERY_RESULT * src_q_result, D
 #define check_class_chn(s) 0
 static int get_client_result_cache_lifetime (DB_SESSION * session, int stmt_id);
 static bool has_stmt_result_set (char stmt_type);
-static bool check_auto_commit_after_fetch_done (T_SRV_HANDLE * srv_handle);
-static char *convert_db_value_to_string (DB_VALUE * value, DB_VALUE * value_string);
+static bool check_auto_commit_after_getting_result (T_SRV_HANDLE * srv_handle);
+static const char *convert_db_value_to_string (DB_VALUE * value, DB_VALUE * value_string);
 static void serialize_collection_as_string (DB_VALUE * col, char **out);
 static void add_fk_info_before (T_FK_INFO_RESULT * pivot, T_FK_INFO_RESULT * pnew);
 static void add_fk_info_after (T_FK_INFO_RESULT * pivot, T_FK_INFO_RESULT * pnew);
@@ -420,9 +422,9 @@ ux_check_connection (void)
 	      char dbuser[SRV_CON_DBUSER_SIZE];
 	      char dbpasswd[SRV_CON_DBPASSWD_SIZE];
 
-	      strncpy (dbname, database_name, sizeof (dbname) - 1);
-	      strncpy (dbuser, database_user, sizeof (dbuser) - 1);
-	      strncpy (dbpasswd, database_passwd, sizeof (dbpasswd) - 1);
+	      strncpy_bufsize (dbname, database_name);
+	      strncpy_bufsize (dbuser, database_user);
+	      strncpy_bufsize (dbpasswd, database_passwd);
 
 	      cas_log_debug (ARG_FILE_LINE,
 			     "ux_check_connection: ux_database_shutdown()" " ux_database_connect(%s, %s)", dbname,
@@ -488,12 +490,12 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	{
 	  if (shm_appl->replica_only_flag)
 	    {
-	      client_type = 12;	/* DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY in db.h */
+	      client_type = DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY;
 	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: read_replica_only_broker");
 	    }
 	  else
 	    {
-	      client_type = 5;	/* DB_CLIENT_TYPE_READ_ONLY_BROKER in db.h */
+	      client_type = DB_CLIENT_TYPE_READ_ONLY_BROKER;
 	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: read_only_broker");
 	    }
 	}
@@ -501,12 +503,12 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	{
 	  if (shm_appl->replica_only_flag)
 	    {
-	      client_type = 13;	/* DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY in db.h */
+	      client_type = DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY;
 	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: slave_replica_only_broker");
 	    }
 	  else
 	    {
-	      client_type = 6;	/* DB_CLIENT_TYPE_SLAVE_ONLY_BROKER in db.h */
+	      client_type = DB_CLIENT_TYPE_SLAVE_ONLY_BROKER;
 	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: slave_only_broker");
 	    }
 	}
@@ -514,12 +516,12 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	{
 	  if (shm_appl->replica_only_flag)
 	    {
-	      client_type = 11;	/* DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY */
+	      client_type = DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY;
 	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: read_write_replica_only_broker");
 	    }
 	  else
 	    {
-	      client_type = 4;	/* DB_CLIENT_TYPE_BROKER in db.h */
+	      client_type = DB_CLIENT_TYPE_BROKER;
 	    }
 	}
 
@@ -1972,6 +1974,14 @@ ux_next_result (T_SRV_HANDLE * srv_handle, char flag, T_NET_BUF * net_buf, T_REQ
 
   srv_handle->cur_result = cur_result;
   (srv_handle->cur_result_index)++;
+
+  if (!has_stmt_result_set (cur_result->stmt_type))
+    {
+      if (check_auto_commit_after_getting_result (srv_handle) == true)
+	{
+	  req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+	}
+    }
 
   return 0;
 
@@ -3682,8 +3692,8 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
 {
   DB_VALUE *def = NULL;
   int err;
-  char *default_value_string = NULL, *default_expr_format = NULL;
-  const char *default_value_expr_type_string = NULL;
+  char *default_value_string = NULL;
+  const char *default_value_expr_type_string = NULL, *default_expr_format = NULL;
   const char *default_value_expr_op_string = NULL;
 
   *alloc = false;
@@ -3766,7 +3776,7 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
     case DB_TYPE_VARNCHAR:
       {
 	int def_size = db_get_string_size (def);
-	char *def_str_p = db_get_string (def);
+	const char *def_str_p = db_get_string (def);
 	if (def_str_p)
 	  {
 	    default_value_string = (char *) malloc (def_size + 3);
@@ -3790,7 +3800,7 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
 	if (err == NO_ERROR)
 	  {
 	    int def_size = db_get_string_size (&tmp_val);
-	    char *def_str_p = db_get_string (&tmp_val);
+	    const char *def_str_p = db_get_string (&tmp_val);
 
 	    default_value_string = (char *) malloc (def_size + 1);
 	    if (default_value_string != NULL)
@@ -4487,10 +4497,9 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     case DB_TYPE_VARBIT:
     case DB_TYPE_BIT:
       {
-	DB_C_BIT bit;
 	int length = 0;
 
-	bit = db_get_bit (val, &length);
+	DB_CONST_C_BIT bit = db_get_bit (val, &length);
 	length = (length + 7) / 8;
 	if (max_col_size > 0)
 	  {
@@ -4503,7 +4512,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
       {
-	DB_C_CHAR str;
+	DB_CONST_C_CHAR str;
 	int dummy = 0;
 	int bytes_size = 0;
 	int decomp_size;
@@ -4554,7 +4563,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_NCHAR:
       {
-	DB_C_NCHAR nchar;
+	DB_CONST_C_NCHAR nchar;
 	int dummy = 0;
 	int bytes_size = 0;
 	int decomp_size;
@@ -4604,13 +4613,12 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
       break;
     case DB_TYPE_ENUMERATION:
       {
-	char *str;
 	int bytes_size = 0;
 	int decomp_size;
 	char *decomposed = NULL;
 	bool need_decomp = false;
 
-	str = db_get_enum_string (val);
+	const char *str = db_get_enum_string (val);
 	bytes_size = db_get_enum_string_size (val);
 	if (max_col_size > 0)
 	  {
@@ -4863,7 +4871,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
       {
 	DB_DOMAIN *char_domain;
 	DB_VALUE v;
-	char *str;
+	const char *str;
 	int len, err;
 	char buf[128];
 
@@ -5035,9 +5043,9 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	str = db_get_json_raw_body (val);
 	bytes_size = strlen (str);
 
-	/* no matter which column type is returned to client (JSON or STRING, depending on client version), 
+	/* no matter which column type is returned to client (JSON or STRING, depending on client version),
 	 * the data is always encoded as string */
-	add_res_data_string (net_buf, str, bytes_size, 0, CAS_SCHEMA_DEFAULT_CHARSET, &data_size);
+	add_res_data_string (net_buf, str, bytes_size, 0, INTL_CODESET_UTF8, &data_size);
 	db_private_free (NULL, str);
       }
       break;
@@ -5362,7 +5370,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
 
 	  net_buf_cp_int (net_buf, 0, NULL);
 
-	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
+	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
 	      ux_cursor_close (srv_handle);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
@@ -5445,7 +5453,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
       cursor_pos++;
       if (srv_handle->max_row > 0 && cursor_pos > srv_handle->max_row)
 	{
-	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
+	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
 	      ux_cursor_close (srv_handle);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
@@ -5461,7 +5469,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
 	{
 	  fetch_end_flag = 1;
 
-	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
+	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
 	      ux_cursor_close (srv_handle);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
@@ -5566,7 +5574,8 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
   DB_VALUE val_class, val_attr;
   DB_OBJECT *class_obj;
   DB_ATTRIBUTE *db_attr;
-  char *class_name, *attr_name, *p;
+  const char *attr_name;
+  const char *class_name, *p;
   T_ATTR_TABLE attr_info;
   T_BROKER_VERSION client_version = req_info->client_version;
   char *default_value_string = NULL;
@@ -5768,7 +5777,7 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
   DB_DOMAIN *domain;
   char *name;
   int db_type;
-  char arg_str[128];
+  std::string arg_str;
   int num_args;
   T_BROKER_VERSION client_version = req_info->client_version;
 
@@ -5822,7 +5831,6 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
       add_res_data_short (net_buf, cas_type, 0, NULL);
 
       /* 3. arg domain */
-      arg_str[0] = '\0';
       num_args = db_method_arg_count (tmp_p);
       for (j = 1; j <= num_args; j++)
 	{
@@ -5838,10 +5846,10 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
 	    {
 	      cas_type = set_extended_cas_type (CCI_U_TYPE_UNKNOWN, (DB_TYPE) db_type);
 	    }
-
-	  sprintf (arg_str, "%s%d ", arg_str, cas_type);
+	  arg_str.push_back (cas_type);
+	  arg_str.push_back (' ');
 	}
-      add_res_data_string (net_buf, arg_str, strlen (arg_str), 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
+      add_res_data_string (net_buf, arg_str.c_str (), arg_str.size (), 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       tuple_num++;
       cursor_pos++;
@@ -6395,7 +6403,7 @@ fetch_foreign_keys (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, 
 }
 
 static void
-add_res_data_bytes (T_NET_BUF * net_buf, char *str, int size, unsigned char ext_type, int *net_size)
+add_res_data_bytes (T_NET_BUF * net_buf, const char *str, int size, unsigned char ext_type, int *net_size)
 {
   if (ext_type)
     {
@@ -7155,7 +7163,7 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
 	      null_type_column[num_cols] = 1;
 	    }
 
-	  /* 
+	  /*
 	   * if (cas_type == CCI_U_TYPE_CHAR && precision < 0)
 	   *   precision = 0;
 	   */
@@ -8131,9 +8139,10 @@ class_type (DB_OBJECT * class_obj)
 }
 
 static int
-class_attr_info (char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char pat_flag, T_ATTR_TABLE * attr_table)
+class_attr_info (const char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char pat_flag,
+		 T_ATTR_TABLE * attr_table)
 {
-  char *p;
+  const char *p;
   int db_type;
   DB_DOMAIN *domain;
   DB_OBJECT *class_obj;
@@ -8141,7 +8150,7 @@ class_attr_info (char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char
   int precision;
   short scale;
 
-  p = (char *) db_attribute_name (attr);
+  p = db_attribute_name (attr);
 
   domain = db_attribute_domain (attr);
   db_type = TP_DOMAIN_TYPE (domain);
@@ -8149,7 +8158,7 @@ class_attr_info (char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char
   attr_table->class_name = class_name;
   attr_table->attr_name = p;
 
-  p = (char *) db_attribute_comment (attr);
+  p = db_attribute_comment (attr);
   attr_table->comment = p;
 
   if (TP_IS_SET_TYPE (db_type))
@@ -8213,7 +8222,7 @@ class_attr_info (char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char
     }
   else
     {
-      attr_table->source_class = (char *) db_get_class_name (class_obj);
+      attr_table->source_class = db_get_class_name (class_obj);
     }
 
   attr_table->attr_order = db_attribute_order (attr) + 1;
@@ -8559,7 +8568,7 @@ sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
   if (fktable_obj == NULL)
     {
       /* The followings are possible situations.  - A table matching fktable_name does not exist.  - User has no
-       * authorization on the table.  - Other error we do not expect. In these cases, we will send an empty result. And 
+       * authorization on the table.  - Other error we do not expect. In these cases, we will send an empty result. And
        * this rule is also applied to CCI_SCH_EXPORTED_KEYS and CCI_SCH_CROSS_REFERENCE. */
       goto send_response;
     }
@@ -8752,7 +8761,7 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, 
 	    }
 	}
 
-      /* Traverse all constraints in foreign table to find a foreign key referring the primary key. If there is no one, 
+      /* Traverse all constraints in foreign table to find a foreign key referring the primary key. If there is no one,
        * return an error. */
       fk_attr = NULL;
       for (fk_const = db_get_constraints (fktable_obj); fk_const != NULL; fk_const = db_constraint_next (fk_const))
@@ -9642,7 +9651,7 @@ has_stmt_result_set (char stmt_type)
 }
 
 static bool
-check_auto_commit_after_fetch_done (T_SRV_HANDLE * srv_handle)
+check_auto_commit_after_getting_result (T_SRV_HANDLE * srv_handle)
 {
   // To close an updatable cursor is dangerous since it lose locks and updating cursor is allowed before closing it.
 
@@ -9918,10 +9927,10 @@ ux_lob_read (DB_VALUE * lob_dbval, INT64 offset, int size, T_NET_BUF * net_buf)
 }
 
 /* converting a DB_VALUE to a char taking care of nchar strings */
-static char *
+static const char *
 convert_db_value_to_string (DB_VALUE * value, DB_VALUE * value_string)
 {
-  char *val_str = NULL;
+  const char *val_str = NULL;
   DB_TYPE val_type;
   int err, len;
 
@@ -9960,7 +9969,7 @@ serialize_collection_as_string (DB_VALUE * col, char **out)
   DB_VALUE value, value_string;
   int i, size;
   int needed_size = 0;
-  char *single_value = NULL;
+  const char *single_value = NULL;
 
   *out = NULL;
 

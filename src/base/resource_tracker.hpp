@@ -64,7 +64,7 @@
 
 #include <map>
 #include <forward_list>
-#include <iostream>
+#include <sstream>
 
 #include <cassert>
 
@@ -168,6 +168,8 @@ namespace cubbase
   bool restrack_is_assert_suppressed (void);
   // check condition to be true; based on assert mode, assert is hit or error is set
   inline void restrack_assert (bool cond);
+
+  void restrack_log (const std::string &str);
 
   //////////////////////////////////////////////////////////////////////////
   // template/inline implementation
@@ -350,7 +352,7 @@ namespace cubbase
   void
   resource_tracker<Res>::dump (void) const
   {
-    std::ostream &out = std::cerr;
+    std::stringstream out;
 
     out << std::endl;
     out << "   +--- " << m_name << std::endl;
@@ -363,6 +365,8 @@ namespace cubbase
 	dump_map (stack_it, out);
 	level++;
       }
+
+    restrack_log (out.str ());
   }
 
   template <typename Res>

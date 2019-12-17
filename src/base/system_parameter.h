@@ -74,7 +74,7 @@ enum compat_mode
   COMPAT_CUBRID,
   COMPAT_MYSQL,
   COMPAT_ORACLE
-    /* 
+    /*
      * COMPAT_ANSI, COMPAT_DB2, COMPAT_MAXDB, COMPAT_MSSQL, COMPAT_POSTGRESQL */
 };
 typedef enum compat_mode COMPAT_MODE;
@@ -243,7 +243,6 @@ enum param_id
   PRM_ID_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS,
   PRM_ID_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL,
   PRM_ID_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS,
-  PRM_ID_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS,
   PRM_ID_JAVA_STORED_PROCEDURE,
   PRM_ID_COMPAT_PRIMARY_KEY,
   PRM_ID_LOG_HEADER_FLUSH_INTERVAL,
@@ -291,7 +290,7 @@ enum param_id
   PRM_ID_MULTI_RANGE_OPT_LIMIT,
   PRM_ID_INTL_NUMBER_LANG,
   PRM_ID_INTL_DATE_LANG,
-  /* All the compound parameters *must* be at the end of the array so that the changes they cause are not overridden by 
+  /* All the compound parameters *must* be at the end of the array so that the changes they cause are not overridden by
    * other parameters (for example in sysprm_load_and_init the parameters are set to their default in the order they
    * are found in this array). */
   PRM_ID_COMPAT_MODE,
@@ -402,6 +401,7 @@ enum param_id
   PRM_ID_CTE_MAX_RECURSIONS,
 
   PRM_ID_JSON_LOG_ALLOCATIONS,
+  PRM_ID_JSON_MAX_ARRAY_IDX,
 
   PRM_ID_CONNECTION_LOGGING,
 
@@ -413,17 +413,33 @@ enum param_id
   PRM_ID_THREAD_WORKER_POOLING,
   PRM_ID_THREAD_WORKER_TIMEOUT_SECONDS,
 
-  PRM_ID_REPL_GENERATOR_BUFFER_SIZE,
-  PRM_ID_REPL_CONSUMER_BUFFER_SIZE,
-
   PRM_ID_DWB_SIZE,
   PRM_ID_DWB_BLOCKS,
   PRM_ID_ENABLE_DWB_FLUSH_THREAD,
   PRM_ID_DWB_LOGGING,
   PRM_ID_DATA_FILE_ADVISE,
 
+  PRM_ID_DEBUG_LOG_ARCHIVES,
+  PRM_ID_DEBUG_ES,
+  PRM_ID_DEBUG_BESTSPACE,
+  PRM_ID_DEBUG_LOGWR,
+  PRM_ID_DEBUG_AUTOCOMMIT,
+  PRM_ID_DEBUG_REPLICATION_DATA,
+  PRM_ID_TRACK_REQUESTS,
+  PRM_ID_LOG_PGBUF_VICTIM_FLUSH,
+  PRM_ID_LOG_CHKPT_DETAILED,
+  PRM_ID_IB_TASK_MEMSIZE,
+  PRM_ID_STATS_ON,
+  PRM_ID_LOADDB_WORKER_COUNT,
+  PRM_ID_PERF_TEST_MODE,
+  PRM_ID_REPR_CACHE_LOG,
+
+  PRM_ID_ENABLE_NEW_LFHASH,
+
+  PRM_ID_HEAP_INFO_CACHE_LOGGING,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_DATA_FILE_ADVISE
+  PRM_LAST_ID = PRM_ID_HEAP_INFO_CACHE_LOGGING
 };
 typedef enum param_id PARAM_ID;
 

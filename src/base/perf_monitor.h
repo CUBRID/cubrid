@@ -35,6 +35,7 @@
 #include "log_impl.h"
 #endif // SERVER_MODE or SA_MODE
 #include "memory_alloc.h"
+#include "porting_inline.hpp"
 #include "storage_common.h"
 #include "thread_compat.hpp"
 #include "tsc_timer.h"
@@ -148,6 +149,7 @@ extern int log_Tran_index;	/* Index onto transaction table for current thread of
 #endif /* !SERVER_MODE */
 
 #if defined (SERVER_MODE)
+// todo - remove from here
 #if !defined(LOG_FIND_THREAD_TRAN_INDEX)
 #define LOG_FIND_THREAD_TRAN_INDEX(thrd) \
   ((thrd) ? (thrd)->tran_index : logtb_get_current_tran_index())
@@ -326,6 +328,10 @@ typedef enum
   PSTAT_TRAN_NUM_START_TOPOPS,
   PSTAT_TRAN_NUM_END_TOPOPS,
   PSTAT_TRAN_NUM_INTERRUPTS,
+  PSTAT_TRAN_NUM_PPCACHE_HITS,
+  PSTAT_TRAN_NUM_PPCACHE_MISS,
+  PSTAT_TRAN_NUM_TOPOP_PPCACHE_HITS,
+  PSTAT_TRAN_NUM_TOPOP_PPCACHE_MISS,
 
   /* Execution statistics for the btree manager */
   PSTAT_BT_NUM_INSERTS,
@@ -338,6 +344,16 @@ typedef enum
   PSTAT_BT_NUM_SPLITS,
   PSTAT_BT_NUM_MERGES,
   PSTAT_BT_NUM_GET_STATS,
+
+  PSTAT_BT_ONLINE_LOAD,
+  PSTAT_BT_ONLINE_INSERT_TASK,
+  PSTAT_BT_ONLINE_PREPARE_TASK,
+  PSTAT_BT_ONLINE_INSERT_LEAF,
+
+  PSTAT_BT_ONLINE_NUM_INSERTS,
+  PSTAT_BT_ONLINE_NUM_INSERTS_SAME_PAGE_HOLD,
+  PSTAT_BT_ONLINE_NUM_RETRY,
+  PSTAT_BT_ONLINE_NUM_RETRY_NICE,
 
   /* Execution statistics for the query manager */
   PSTAT_QM_NUM_SELECTS,
@@ -597,13 +613,12 @@ typedef enum
 
   /* DWB statistics */
   PSTAT_DWB_FLUSH_BLOCK_TIME_COUNTERS,
-  PSTAT_DWB_FLUSH_BLOCK_HELPER_TIME_COUNTERS,
+  PSTAT_DWB_FILE_SYNC_HELPER_TIME_COUNTERS,
   PSTAT_DWB_FLUSH_BLOCK_COND_WAIT,
   PSTAT_DWB_FLUSH_BLOCK_SORT_TIME_COUNTERS,
-  PSTAT_DWB_FLUSH_BLOCK_REMOVE_HASH_ENTRIES,
-  PSTAT_DWB_PAGE_CHECKSUM_TIME_COUNTERS,
+  PSTAT_DWB_DECACHE_PAGES_AFTER_WRITE,
   PSTAT_DWB_WAIT_FLUSH_BLOCK_TIME_COUNTERS,
-  PSTAT_DWB_WAIT_FLUSH_BLOCK_HELPER_TIME_COUNTERS,
+  PSTAT_DWB_WAIT_FILE_SYNC_HELPER_TIME_COUNTERS,
   PSTAT_DWB_FLUSH_FORCE_TIME_COUNTERS,
 
   /* peeked stats */
@@ -629,6 +644,7 @@ typedef enum
   PSTAT_THREAD_STATS,
   PSTAT_THREAD_DAEMON_STATS,
   PSTAT_DWB_FLUSHED_BLOCK_NUM_VOLUMES,
+  PSTAT_LOAD_THREAD_STATS,
 
   PSTAT_COUNT
 } PERF_STAT_ID;
@@ -806,6 +822,7 @@ extern void perfmon_copy_values (UINT64 * src, UINT64 * dest);
 #if defined (SERVER_MODE) || defined (SA_MODE)
 extern void perfmon_start_watch (THREAD_ENTRY * thread_p);
 extern void perfmon_stop_watch (THREAD_ENTRY * thread_p);
+extern void perfmon_er_log_current_stats (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE || SA_MODE */
 
 STATIC_INLINE bool perfmon_is_perf_tracking (void) __attribute__ ((ALWAYS_INLINE));
@@ -1274,7 +1291,7 @@ perfmon_is_perf_tracking_and_active (int activation_flag)
 /*
  * perfmon_is_perf_tracking_force () - Skips the check for active threads if the always_collect
  *				       flag is set to true
- *				       
+ *
  * return	        : true or false
  * always_collect (in)  : flag that tells that we should always collect statistics
  *

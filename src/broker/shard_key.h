@@ -95,8 +95,8 @@ extern "C"
 #define ERROR_ON_ARGUMENT	-1
 #define ERROR_ON_MAKE_SHARD_KEY	-2
 
-/* 
-   return value : 
+/*
+   return value :
 	success - shard key id(>0)
 	fail 	- invalid argument(ERROR_ON_ARGUMENT), shard key id make fail(ERROR_ON_MAKE_SHARD_KEY)
    type 	: shard key value type

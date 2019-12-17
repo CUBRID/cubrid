@@ -30,10 +30,12 @@
 
 #include "config.h"
 #include "dbtype_def.h"
+#include "log_lsa.hpp"
 #include "lzo/lzoconf.h"
 #include "lzo/lzo1x.h"
 #include "memory_hash.h"
 #include "porting.h"
+#include "porting_inline.hpp"
 #include "release_string.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
@@ -215,22 +217,6 @@ fileio_init_lsa_of_page (FILEIO_PAGE * io_page, PGLENGTH page_size)
 }
 
 STATIC_INLINE void
-fileio_init_lsa_of_temp_page (FILEIO_PAGE * io_page, PGLENGTH page_size)
-{
-  LOG_LSA *lsa_ptr;
-
-  lsa_ptr = &io_page->prv.lsa;
-  lsa_ptr->pageid = NULL_PAGEID - 1;
-  lsa_ptr->offset = NULL_OFFSET - 1;
-
-  FILEIO_PAGE_WATERMARK *prv2 = fileio_get_page_watermark_pos (io_page, page_size);
-
-  lsa_ptr = &prv2->lsa;
-  lsa_ptr->pageid = NULL_PAGEID - 1;
-  lsa_ptr->offset = NULL_OFFSET - 1;
-}
-
-STATIC_INLINE void
 fileio_reset_page_lsa (FILEIO_PAGE * io_page, PGLENGTH page_size)
 {
   LSA_SET_NULL (&io_page->prv.lsa);
@@ -313,7 +299,7 @@ struct fileio_backup_header
   char db_fullname[PATH_MAX];	/* Fullname of backed up database. Really more than one byte */
   PGLENGTH db_iopagesize;	/* Size of database pages */
   FILEIO_BACKUP_LEVEL level;	/* Backup level: one of the following level 0: Full backup, every database page that
-				 * has been allocated. level 1: All database pages that have changed since last level 0 
+				 * has been allocated. level 1: All database pages that have changed since last level 0
 				 * backup level 2: All database pages that have changed since last level 0 or 1. */
   LOG_LSA start_lsa;		/* A page with a LSA greater than this value is going to be backed up. */
   LOG_LSA chkpt_lsa;		/* LSA for next incremental backup */
@@ -364,7 +350,7 @@ typedef struct fileio_backup_db_buffer FILEIO_BACKUP_DB_BUFFER;
 struct fileio_backup_db_buffer
 {
   FILEIO_BACKUP_LEVEL level;	/* Backup level: one of the following level 0: Full backup, every database page that
-				 * has been allocated. level 1: All database pages that have changed since last level 0 
+				 * has been allocated. level 1: All database pages that have changed since last level 0
 				 * backup level 2: All database pages that have changed since last level 0 or 1. */
   LOG_LSA lsa;			/* A page with a LSA greater than this value is going to be backed up. */
   int vdes;			/* Open file descriptor of device name for writing purposes */
@@ -484,10 +470,11 @@ extern void fileio_unformat_and_rename (THREAD_ENTRY * thread_p, const char *vla
 extern int fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vdes, DKNPAGES npages, const char *to_vlabel,
 			       VOLID to_volid, bool reset_recvinfo);
 extern int fileio_reset_volume (THREAD_ENTRY * thread_p, int vdes, const char *vlabel, DKNPAGES npages,
-				LOG_LSA * reset_lsa);
+				const LOG_LSA * reset_lsa);
 extern int fileio_mount (THREAD_ENTRY * thread_p, const char *db_fullname, const char *vlabel, VOLID volid,
 			 int lockwait, bool dosync);
 extern void fileio_dismount (THREAD_ENTRY * thread_p, int vdes);
+extern void fileio_dismount_without_fsync (THREAD_ENTRY * thread_p, int vdes);
 extern void fileio_dismount_all (THREAD_ENTRY * thread_p);
 extern void *fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_id, size_t page_size);
 extern void *fileio_write_or_add_to_dwb (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * io_page_p, PAGEID page_id,
@@ -631,4 +618,5 @@ extern void fileio_page_bitmap_list_destroy (FILEIO_RESTORE_PAGE_BITMAP_LIST * p
 extern int fileio_set_page_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page);
 extern int fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * is_page_corrupted);
 extern void fileio_page_hexa_dump (const char *data, int length);
+extern bool fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page);
 #endif /* _FILE_IO_H_ */

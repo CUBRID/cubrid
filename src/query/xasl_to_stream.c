@@ -39,7 +39,12 @@
 #include "object_primitive.h"
 #include "work_space.h"
 #include "memory_alloc.h"
+#include "xasl.h"
+#include "xasl_aggregate.hpp"
+#include "xasl_analytic.hpp"
+#include "xasl_predicate.hpp"
 #include "xasl_stream.hpp"
+#include "xasl_unpack_info.hpp"
 
 #define    BYTE_SIZE        OR_INT_SIZE
 #define    LONG_SIZE        OR_INT_SIZE
@@ -109,6 +114,8 @@ static int xts_save (const T &t);
 
 template <typename T>
 static void xts_debug_check (const T &t, char *pack_start, const char *pack_end);
+template <typename T>
+static void xts_debug_clear (T &t);
 // *INDENT-ON*
 
 static int xts_save_db_value_array (DB_VALUE ** ptr, int size);
@@ -1283,7 +1290,7 @@ xts_save_regu_variable (const REGU_VARIABLE * regu_var)
     }
   assert (buf <= buf_p + size);
 
-  /* 
+  /*
    * OR_VALUE_ALIGNED_SIZE may reserve more bytes
    * suppress valgrind UMW (uninitialized memory write)
    */
@@ -1572,7 +1579,7 @@ xts_save_xasl_node (const XASL_NODE * xasl)
 
   assert (buf <= buf_p + size);
 
-  /* 
+  /*
    * OR_DOUBLE_ALIGNED_SIZE may reserve more bytes
    * suppress valgrind UMW (uninitialized memory write)
    */
@@ -2293,7 +2300,7 @@ xts_save_string (const char *string)
 
   packed_length = or_packed_string_length (string, &length);
 
-  assert ((string != NULL && length > 0) || (string == NULL && length == 0));
+  assert (string != NULL || length == 0);
 
   offset = xts_reserve_location_in_stream (packed_length);
   if (offset == ER_FAILED || xts_mark_ptr_visited (string, offset) == ER_FAILED)
@@ -3006,7 +3013,7 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 
   ptr = or_pack_int (ptr, xasl->mvcc_reev_extra_cls_cnt);
 
-  /* 
+  /*
    * NOTE that the composite lock block is strictly a server side block
    * and is not packed.
    */
@@ -3162,7 +3169,7 @@ xts_process_func_pred (char *ptr, const FUNC_PRED * func_pred)
 static char *
 xts_process_cache_attrinfo (char *ptr)
 {
-  /* 
+  /*
    * We don't need to pack anything here, it is strictly a server side
    * structure.  Unfortunately, we must send something or else the ptrs
    * to this structure might conflict with a structure that might be
@@ -4130,15 +4137,15 @@ xts_process_pred_expr (char *ptr, const PRED_EXPR * pred_expr)
   switch (pred_expr->type)
     {
     case T_PRED:
-      ptr = xts_process_pred (ptr, &pred_expr->pe.pred);
+      ptr = xts_process_pred (ptr, &pred_expr->pe.m_pred);
       break;
 
     case T_EVAL_TERM:
-      ptr = xts_process_eval_term (ptr, &pred_expr->pe.eval_term);
+      ptr = xts_process_eval_term (ptr, &pred_expr->pe.m_eval_term);
       break;
 
     case T_NOT_TERM:
-      offset = xts_save_pred_expr (pred_expr->pe.not_term);
+      offset = xts_save_pred_expr (pred_expr->pe.m_not_term);
       if (offset == ER_FAILED)
 	{
 	  return NULL;
@@ -4175,7 +4182,7 @@ xts_process_pred (char *ptr, const PRED * pred)
   /* Traverse right-linear chains of AND/OR terms */
   while (rhs->type == T_PRED)
     {
-      pred = &rhs->pe.pred;
+      pred = &rhs->pe.m_pred;
 
       offset = xts_save_pred_expr (pred->lhs);	/* lhs */
       if (offset == ER_FAILED)
@@ -4801,7 +4808,7 @@ xts_process (char *ptr, const json_table_column & jtc)
   ptr = or_pack_domain (ptr, jtc.m_domain, 0, 0);
 
   // save path
-  assert (jtc.m_path != NULL && strlen (jtc.m_path) > 0);
+  assert (jtc.m_path != NULL);
   offset = xts_save_string (jtc.m_path);
   if (offset == ER_FAILED)
     {
@@ -4810,7 +4817,7 @@ xts_process (char *ptr, const json_table_column & jtc)
   ptr = or_pack_int (ptr, offset);
 
   // save column_name
-  assert (jtc.m_column_name != NULL && strlen (jtc.m_column_name) > 0);
+  assert (jtc.m_column_name != NULL);
   offset = xts_save_string (jtc.m_column_name);
   if (offset == ER_FAILED)
     {
@@ -4863,7 +4870,7 @@ xts_process (char *ptr, const json_table_node & jtn)
 
   ptr = or_pack_int (ptr, (int) jtn.m_id);
 
-  ptr = or_pack_int (ptr, (int) jtn.m_expand_type);
+  ptr = or_pack_int (ptr, (int) jtn.m_is_iterable_node);
 
   xts_debug_check (jtn, start_ptr, ptr);
 
@@ -4975,7 +4982,7 @@ xts_process_regu_variable (char *ptr, const REGU_VARIABLE * regu_var)
     }
   ptr = or_pack_int (ptr, offset);
 
-  offset = xts_save_xasl_node (REGU_VARIABLE_XASL (regu_var));
+  offset = xts_save_xasl_node (regu_var->xasl);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -5143,13 +5150,6 @@ xts_process_arith_type (char *ptr, const ARITH_TYPE * arith)
   ptr = or_pack_int (ptr, offset);
 
   ptr = or_pack_int (ptr, arith->opcode);
-
-  offset = xts_save_arith_type (arith->next);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
 
   offset = xts_save_regu_variable (arith->leftptr);
   if (offset == ER_FAILED)
@@ -5460,7 +5460,7 @@ xts_process_sort_list (char *ptr, const SORT_LIST * sort_list)
   return ptr;
 }
 
-/* 
+/*
  * xts_process_method_sig_list ( ) -
  *
  * Note: do not use or_pack_method_sig_list
@@ -6202,7 +6202,7 @@ xts_sizeof_merge_proc (const MERGE_PROC_NODE * merge_info)
 
 /*
  * xts_sizeof_cte_proc () -
- * return 
+ * return
  * ptr(in)  :
  */
 static int
@@ -6248,7 +6248,7 @@ xts_sizeof_pred_expr (const PRED_EXPR * pred_expr)
   switch (pred_expr->type)
     {
     case T_PRED:
-      tmp_size = xts_sizeof_pred (&pred_expr->pe.pred);
+      tmp_size = xts_sizeof_pred (&pred_expr->pe.m_pred);
       if (tmp_size == ER_FAILED)
 	{
 	  return ER_FAILED;
@@ -6257,7 +6257,7 @@ xts_sizeof_pred_expr (const PRED_EXPR * pred_expr)
       break;
 
     case T_EVAL_TERM:
-      tmp_size = xts_sizeof_eval_term (&pred_expr->pe.eval_term);
+      tmp_size = xts_sizeof_eval_term (&pred_expr->pe.m_eval_term);
       if (tmp_size == ER_FAILED)
 	{
 	  return ER_FAILED;
@@ -6317,7 +6317,7 @@ xts_sizeof_pred (const PRED * pred)
   /* Traverse right-linear chains of AND/OR terms */
   while (rhs->type == T_PRED)
     {
-      pred = &rhs->pe.pred;
+      pred = &rhs->pe.m_pred;
 
       size += (PTR_SIZE		/* lhs */
 	       + OR_INT_SIZE);	/* bool_op */
@@ -7406,7 +7406,7 @@ xts_get_offset_visited_ptr (const void *ptr)
 static void
 xts_free_visited_ptrs (void)
 {
-  int i;
+  size_t i;
 
   for (i = 0; i < MAX_PTR_BLOCKS; i++)
     {
@@ -7511,7 +7511,7 @@ xts_process_regu_variable_list (char *ptr, const REGU_VARIABLE_LIST regu_var_lis
 // template T - type having an overload of xts_sizeof and xts_process functions
 //
 // return : offset
-// t (in) : 
+// t (in) :
 //
 template <typename T>
 int static
@@ -7579,9 +7579,19 @@ xts_debug_check (const T &t, char *pack_start, const char *pack_end)
       assert (false);
     }
 
-  xasl_unpack_info* unpack_info = stx_get_xasl_unpack_info_ptr (NULL);
+  xts_debug_clear (unpack_t);
+
+  xasl_unpack_info* unpack_info = get_xasl_unpack_info_ptr (NULL);
   db_private_free_and_init (NULL, unpack_info);
-  stx_set_xasl_unpack_info_ptr (NULL, NULL);
+  set_xasl_unpack_info_ptr (NULL, NULL);
 #endif // DEBUG
 }
+
+template <typename T>
+static void
+xts_debug_clear (T &t)
+{
+  t.clear_xasl ();
+}
+
 // *INDENT-ON*
