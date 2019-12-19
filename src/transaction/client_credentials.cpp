@@ -34,7 +34,7 @@ const char *
 clientids::UNKNOWN_ID = "(unknown)";
 
 clientids::clientids ()
-  : client_type (BOOT_CLIENT_UNKNOWN)
+  : client_type (DB_CLIENT_TYPE_UNKNOWN)
   , client_info {}
   , db_user {}
   , program_name {}
@@ -79,7 +79,7 @@ clientids::get_host_name () const
 }
 
 void
-clientids::set_ids (boot_client_type type_arg, const char *client_info_arg, const char *db_user_arg,
+clientids::set_ids (db_client_type type_arg, const char *client_info_arg, const char *db_user_arg,
 		    const char *program_name_arg, const char *login_name_arg, const char *host_name_arg,
 		    int process_id_arg)
 {
@@ -143,7 +143,7 @@ void
 clientids::set_system_internal ()
 {
   reset ();
-  client_type = BOOT_CLIENT_SYSTEM_INTERNAL;
+  client_type = DB_CLIENT_TYPE_SYSTEM_INTERNAL;
 }
 
 void
@@ -162,7 +162,7 @@ clientids::reset ()
   login_name.clear ();
   host_name.clear ();
   process_id = 0;
-  client_type = BOOT_CLIENT_UNKNOWN;
+  client_type = DB_CLIENT_TYPE_UNKNOWN;
 }
 
 //
@@ -173,7 +173,7 @@ clientids::reset ()
   client_type_as_int, client_info, db_user, program_name, login_name, host_name, process_id
 
 size_t
-clientids::get_packed_size (cubpacking::packer &serializator) const
+clientids::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
 {
   return serializator.get_all_packed_size (CLIENTID_PACKER_ARGS (static_cast<int> (client_type)));
 }
@@ -189,7 +189,7 @@ clientids::unpack (cubpacking::unpacker &deserializator)
 {
   int read_int;
   deserializator.unpack_all (CLIENTID_PACKER_ARGS (read_int));
-  client_type = static_cast<boot_client_type> (read_int);
+  client_type = static_cast<db_client_type> (read_int);
 }
 
 //
@@ -229,7 +229,7 @@ boot_client_credential::get_db_password () const
   db_name, db_password
 
 size_t
-boot_client_credential::get_packed_size (cubpacking::packer &serializator) const
+boot_client_credential::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
 {
   return clientids::get_packed_size (serializator) + serializator.get_all_packed_size (BOOTCLCRED_PACKER_ARGS);
 }

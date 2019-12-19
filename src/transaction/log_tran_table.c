@@ -52,6 +52,7 @@
 #include "log_manager.h"
 #include "log_system_tran.hpp"
 #include "memory_private_allocator.hpp"
+#include "object_representation.h"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "xserver_interface.h"
@@ -877,6 +878,7 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CRED
   tdes->num_transient_classnames = 0;
   tdes->first_save_entry = NULL;
   tdes->lob_locator_root.init ();
+  tdes->m_log_postpone_cache.reset ();
 }
 
 /*
@@ -1562,6 +1564,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->num_exec_queries = 0;
   tdes->suppress_replication = 0;
+  tdes->m_log_postpone_cache.reset ();
 
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
 
@@ -1582,6 +1585,8 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+  LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_lsa);
+  LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_start_lsa);
 }
 
 /*
@@ -1676,6 +1681,8 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+  LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_lsa);
+  LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_start_lsa);
 }
 
 /*
@@ -2703,7 +2710,9 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 
   if (tran_index == LOG_SYSTEM_TRAN_INDEX)
     {
+#if defined (SERVER_MODE)
       assert (false);
+#endif // SERVER_MODE
       return false;
     }
 
@@ -3832,62 +3841,6 @@ xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logtb_get_oldest_active_mvccid () - Get oldest MVCCID that was running
- *				       when any active transaction started.
- *
- * return	 : MVCCID for oldest active transaction.
- * thread_p (in) : Thread entry.
- *
- * Note:  The returned MVCCID is used as threshold by vacuum. The rows deleted
- *	      by transaction having MVCCIDs >= logtb_get_lowest_active_mvccid
- *	      will not be physical removed by vacuum. That's because that rows
- *	      may still be visible to active transactions, even if deleting
- *	      transaction has commit meanwhile. If there is no active
- *	      transaction, this function return highest_completed_mvccid + 1.
- */
-MVCCID
-logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
-{
-  MVCCID lowest_active_mvccid = 0;
-  TSC_TICKS start_tick, end_tick;
-  TSCTIMEVAL tv_diff;
-  UINT64 oldest_time, retry_cnt = 0;
-  bool is_perf_tracking = false;
-
-  is_perf_tracking = perfmon_is_perf_tracking ();
-  if (is_perf_tracking)
-    {
-      tsc_getticks (&start_tick);
-    }
-
-  lowest_active_mvccid = log_Gl.mvcc_table.compute_oldest_active_mvccid ();
-
-  if (is_perf_tracking)
-    {
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-      if (oldest_time > 0)
-	{
-	  perfmon_add_stat (thread_p, PSTAT_LOG_OLDEST_MVCC_TIME_COUNTERS, oldest_time);
-	}
-      if (retry_cnt > 1)
-	{
-	  perfmon_add_stat (thread_p, PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS, retry_cnt - 1);
-	}
-    }
-#if !defined (NDEBUG)
-  {
-    /* Safe guard: vacuum_Global_oldest_active_mvccid can never become smaller. */
-    MVCCID crt_oldest = vacuum_get_global_oldest_active_mvccid ();
-    assert (!MVCC_ID_PRECEDES (lowest_active_mvccid, crt_oldest));
-  }
-#endif /* !NDEBUG */
-
-  return lowest_active_mvccid;
-}
-
-/*
  * logtb_find_current_mvccid - find current transaction MVCC id
  *
  * return: MVCCID
@@ -4247,7 +4200,7 @@ log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_u
 	}
     }
   /* Check system worker transactions. */
-  log_system_tdes::rv_map_all_tdes (max_undo_lsa_func);
+  log_system_tdes::map_all_tdes (max_undo_lsa_func);
 
   TR_TABLE_CS_EXIT (thread_p);
   // *INDENT-ON*
@@ -4277,6 +4230,7 @@ logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
       if (i != LOG_SYSTEM_TRAN_INDEX)
 	{
 	  tdes = log_Gl.trantable.all_tdes[i];
+
 	  if (tdes != NULL && tdes->trid != NULL_TRANID && !LSA_ISNULL (&tdes->head_lsa)
 	      && (min_lsa == NULL || LSA_LT (&tdes->head_lsa, min_lsa)))
 	    {
@@ -5278,11 +5232,11 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
       idx++;
 
       /* State */
-      db_make_string_by_const_str (&vals[idx], log_state_short_string (tdes->state));
+      db_make_string (&vals[idx], log_state_short_string (tdes->state));
       idx++;
 
       /* isolation */
-      db_make_string_by_const_str (&vals[idx], log_isolation_string (tdes->isolation));
+      db_make_string (&vals[idx], log_isolation_string (tdes->isolation));
       idx++;
 
       /* Wait_msecs */
@@ -5625,7 +5579,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 
       /* Abort_reason */
       str = tran_abort_reason_to_string (tdes->tran_abort_reason);
-      db_make_string_by_const_str (&vals[idx], str);
+      db_make_string (&vals[idx], str);
       idx++;
 
       assert (idx == num_cols);
@@ -6169,8 +6123,15 @@ void
 log_tdes::on_sysop_start ()
 {
   assert (is_allowed_sysop ());
+
   if (is_system_worker_transaction () && topops.last < 0)
     {
+      if (!LOG_ISRESTARTED ())
+	{
+	  /* The links are used at recovery. */
+	  return;
+	}
+
       // make sure all links to previous records are lost
       assert (topops.last == -1);
       LSA_SET_NULL (&head_lsa);
@@ -6197,4 +6158,24 @@ log_tdes::on_sysop_end ()
     }
 }
 
+void
+log_tdes::lock_global_oldest_visible_mvccid ()
+{
+  if (!block_global_oldest_active_until_commit)
+    {
+      log_Gl.mvcc_table.lock_global_oldest_visible ();
+      block_global_oldest_active_until_commit = true;
+    }
+}
+
+void
+log_tdes::unlock_global_oldest_visible_mvccid ()
+{
+  if (block_global_oldest_active_until_commit)
+    {
+      assert (log_Gl.mvcc_table.is_global_oldest_visible_locked ());
+      log_Gl.mvcc_table.unlock_global_oldest_visible ();
+      block_global_oldest_active_until_commit = false;
+    }
+}
 // *INDENT-ON*

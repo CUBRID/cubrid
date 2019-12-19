@@ -462,7 +462,7 @@ get_user_name (DB_OBJECT *user)
   static char namebuf[MAX_USER_NAME];
 
   DB_VALUE value;
-  char *tmp;
+  const char *tmp;
 
   if (db_get (user, "name", &value))
     {

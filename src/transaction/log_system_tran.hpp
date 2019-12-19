@@ -35,6 +35,9 @@ class log_system_tdes
 {
   public:
     log_system_tdes ();
+    log_system_tdes (log_tdes *tdes);
+    log_system_tdes (const log_system_tdes &o) = delete;
+
     ~log_system_tdes ();
 
     log_tdes *get_tdes ();
@@ -45,12 +48,13 @@ class log_system_tdes
     static void init_system_transations ();
     static void destroy_system_transactions ();
 
-    using rv_map_func = std::function<void (log_tdes &)>;
+    using map_func = std::function<void (log_tdes &)>;
     using rv_delete_if_func = std::function<bool (const log_tdes &)>;
 
     static log_tdes *rv_get_or_alloc_tdes (TRANID trid);
     static log_tdes *rv_get_tdes (TRANID trid);
-    static void rv_map_all_tdes (const rv_map_func &func);
+    static void map_all_tdes (const map_func &func);
+
     static void rv_delete_all_tdes_if (const rv_delete_if_func &func);
     static void rv_delete_tdes (TRANID trid);
     static void rv_simulate_system_tdes (TRANID trid);
@@ -58,8 +62,6 @@ class log_system_tdes
     static void rv_final ();
 
   private:
-    void destroy_tdes ();
-
     log_tdes *m_tdes;
 };
 

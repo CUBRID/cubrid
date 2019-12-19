@@ -683,6 +683,21 @@ db_compile_statement_local (DB_SESSION * session)
    * prepare_and_execute_query(). */
   if (prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && statement->cannot_prepare == 0)
     {
+      if (session->is_subsession_for_prepared)
+	{
+	  /* cast host variables to their expected domain, before XASL generation. */
+	  session->parser->set_host_var = 0;
+	  err = do_cast_host_variables_to_expected_domain (session);
+	  if (err < 0)
+	    {
+	      if (pt_has_error (parser))
+		{
+		  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
+		  return er_errid ();
+		}
+	      return err;
+	    }
+	}
 
       /* now, prepare the statement by calling do_prepare_statement() */
       err = do_prepare_statement (parser, statement);
@@ -2531,6 +2546,8 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
 	}
     }
 
+  session->parser->set_host_var = 1;
+
   return NO_ERROR;
 }
 
@@ -2717,13 +2734,15 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
       return er_errid ();
     }
 
-  /* cast host variables to their expected domain */
-  err = do_cast_host_variables_to_expected_domain (new_session);
-  if (err != NO_ERROR)
+  if (new_session->parser->set_host_var == 0)
     {
-      return err;
+      /* Cast host variable to expected domain, if not already casted in db_compile_statement. */
+      err = do_cast_host_variables_to_expected_domain (new_session);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
     }
-  new_session->parser->set_host_var = 1;
 
   new_session->parser->is_holdable = session->parser->is_holdable;
   new_session->parser->is_auto_commit = session->parser->is_auto_commit;
@@ -4172,4 +4191,21 @@ db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, PT_NODE * sta
     }
 
   return can_execute_statement_with_commit;
+}
+
+int
+db_get_line_of_statement (DB_SESSION * session, int stmt_id)
+{
+  assert (session->statements != NULL);
+
+  // Safeguards
+  if (stmt_id <= 0 || stmt_id > session->dimension || session->statements == NULL
+      || session->statements[stmt_id - 1] == NULL)
+    {
+      // stmt_id is not valid.
+      return -1;
+    }
+
+  // Get last statement
+  return session->statements[stmt_id - 1]->line_number;
 }

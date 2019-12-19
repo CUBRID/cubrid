@@ -26,8 +26,7 @@
 
 #include "db_json_allocator.hpp"
 #include "db_json_types_internal.hpp"
-
-#include "rapidjson/rapidjson.h"
+#include "db_rapidjson.hpp"
 
 #include <string>
 #include <unordered_set>
@@ -73,7 +72,7 @@ class JSON_PATH
 
     std::string dump_json_path () const;
     int parse (const char *path);
-    const JSON_PATH get_parent () const;
+    JSON_PATH get_parent () const;
 
     JSON_VALUE *get (JSON_DOC &jd) const;
     const JSON_VALUE *get (const JSON_DOC &jd) const;

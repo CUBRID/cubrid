@@ -982,7 +982,7 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	   */
 	  PT_NODE *table;
 
-	  assert (!PT_SPEC_IS_ENTITY (spec) && !PT_SPEC_IS_CTE (spec));
+	  assert (!PT_SPEC_IS_CTE (spec));
 	  table = spec->info.spec.derived_table;
 	  if (table->node_type == PT_JSON_TABLE)
 	    {
@@ -4209,7 +4209,7 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	      node->info.spec.flat_entity_list = q;
 	    }
 
-	  if (PT_SPEC_IS_ENTITY (node))
+	  if (!PT_SPEC_IS_DERIVED (node) && PT_SPEC_IS_ENTITY (node))
 	    {
 	      /* entity_spec list are not allowed to have derived column names (for now) */
 	      if (node->info.spec.as_attr_list)
@@ -6442,14 +6442,14 @@ pt_resolve_star (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * attr)
 static PT_NODE *
 pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  PT_NODE *spec;
-  PT_NODE *entity_name;
-  PT_NODE *attr_list, *attr;
-  PT_NODE *value_clauses, *value_list;
-  PT_NODE *crt_node;
-  PT_NODE *rest_attrs, *rest_values;
-  DB_OBJECT *db_obj;
-  SM_ATTRIBUTE *db_attributes, *db_attr;
+  PT_NODE *spec = NULL;
+  PT_NODE *entity_name = NULL;
+  PT_NODE *attr_list = NULL, *attr = NULL;
+  PT_NODE *value_clauses = NULL, *value_list = NULL;
+  PT_NODE *crt_node = NULL;
+  PT_NODE *rest_attrs = NULL, *rest_values = NULL;
+  DB_OBJECT *db_obj = NULL;
+  SM_ATTRIBUTE *db_attributes = NULL, *db_attr = NULL;
   int is_values, is_vclass = 0;
   int is_subqery;
 

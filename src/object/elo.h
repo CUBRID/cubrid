@@ -28,8 +28,11 @@
 
 #ident "$Id$"
 
+#include "dbtype_def.h"
+#include "porting.h"
+#include "system.h"
+
 #include <stdio.h>
-#include "object_representation.h"
 
 #ifdef __cplusplus
 extern "C"

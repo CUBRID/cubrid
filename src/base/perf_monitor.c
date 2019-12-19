@@ -31,9 +31,11 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #endif /* WINDOWS */
-#include "perf_monitor.h"
-#include "error_manager.h"
 
+#include "perf_monitor.h"
+
+#include "error_manager.h"
+#include "object_representation.h"
 #if !defined(SERVER_MODE)
 #include "memory_alloc.h"
 #include "server_interface.h"
@@ -78,6 +80,7 @@
 #include "heap_file.h"
 #include "vacuum.h"
 #include "xasl_cache.h"
+#include "load_worker_manager.hpp"
 
 #if defined (SERVER_MODE)
 #include "connection_error.h"
@@ -249,6 +252,10 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_TRAN_NUM_START_TOPOPS, "Num_tran_start_topops"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_TRAN_NUM_END_TOPOPS, "Num_tran_end_topops"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_TRAN_NUM_INTERRUPTS, "Num_tran_interrupts"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_TRAN_NUM_PPCACHE_HITS, "Num_tran_postpone_cache_hits"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_TRAN_NUM_PPCACHE_MISS, "Num_tran_postpone_cache_miss"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_TRAN_NUM_TOPOP_PPCACHE_HITS, "Num_tran_topop_postpone_cache_hits"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_TRAN_NUM_TOPOP_PPCACHE_MISS, "Num_tran_topop_postpone_cache_miss"),
 
   /* Execution statistics for the btree manager */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_NUM_INSERTS, "Num_btree_inserts"),
@@ -261,6 +268,17 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_NUM_SPLITS, "Num_btree_splits"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_NUM_MERGES, "Num_btree_merges"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_NUM_GET_STATS, "Num_btree_get_stats"),
+
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_BT_ONLINE_LOAD, "btree_online_load"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_BT_ONLINE_INSERT_TASK, "btree_online_insert_task"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_BT_ONLINE_PREPARE_TASK, "btree_online_prepare_task"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_BT_ONLINE_INSERT_LEAF, "btree_online_insert_leaf"),
+
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_ONLINE_NUM_INSERTS, "Num_btree_online_inserts"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_ONLINE_NUM_INSERTS_SAME_PAGE_HOLD,
+				  "Num_btree_online_inserts_same_page_hold"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_ONLINE_NUM_RETRY, "Num_btree_online_inserts_retry"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_ONLINE_NUM_RETRY_NICE, "Num_btree_online_inserts_retry_nice"),
 
   /* Execution statistics for the query manager */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_SELECTS, "Num_query_selects"),
@@ -418,7 +436,7 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_SNAPSHOT_TIME_COUNTERS, "Time_get_snapshot_acquire_time"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_SNAPSHOT_RETRY_COUNTERS, "Count_get_snapshot_retry"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_TRAN_COMPLETE_TIME_COUNTERS, "Time_tran_complete_time"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_OLDEST_MVCC_TIME_COUNTERS, "Time_get_oldest_mvcc_acquire_time"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_OLDEST_MVCC_TIME_COUNTERS, "compute_oldest_visible"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS, "Count_get_oldest_mvcc_retry"),
 
   /* computed statistics */
@@ -523,16 +541,14 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_LFCQ_LRU_SHR_GET_CALLS, "Num_lfcq_shr_get_total_calls"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_LFCQ_LRU_SHR_GET_EMPTY, "Num_lfcq_shr_get_empty"),
 
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_FLUSH_BLOCK_TIME_COUNTERS, "Time_DWB_flush_block_time"),
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_FLUSH_BLOCK_HELPER_TIME_COUNTERS, "Time_DWB_flush_block_helper_time"),
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_FLUSH_BLOCK_COND_WAIT, "Time_DWB_flush_block_cond_wait_time"),
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_FLUSH_BLOCK_SORT_TIME_COUNTERS, "Time_DWB_flush_block_sort_time"),
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_FLUSH_BLOCK_REMOVE_HASH_ENTRIES, "Time_DWB_flush_remove_hash_entries"),
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_PAGE_CHECKSUM_TIME_COUNTERS, "Time_DWB_checksum_time"),
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_WAIT_FLUSH_BLOCK_TIME_COUNTERS, "Time_DWB_wait_flush_block_time"),
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_WAIT_FLUSH_BLOCK_HELPER_TIME_COUNTERS,
-				     "Time_DWB_wait_flush_block_helper_time"),
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_FLUSH_FORCE_TIME_COUNTERS, "Time_DWB_flush_force_time"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_FLUSH_BLOCK_TIME_COUNTERS, "DWB_flush_block"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_FILE_SYNC_HELPER_TIME_COUNTERS, "DWB_file_sync_helper"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_FLUSH_BLOCK_COND_WAIT, "DWB_flush_block_cond_wait"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_FLUSH_BLOCK_SORT_TIME_COUNTERS, "DWB_flush_block_sort"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_DECACHE_PAGES_AFTER_WRITE, "DWB_decache_pages_after_write"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_WAIT_FLUSH_BLOCK_TIME_COUNTERS, "DWB_wait_flush_block"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_WAIT_FILE_SYNC_HELPER_TIME_COUNTERS, "DWB_wait_file_sync_helper"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_FLUSH_FORCE_TIME_COUNTERS, "DWB_flush_force"),
 
   /* peeked stats */
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_WAIT_THREADS_HIGH_PRIO, "Num_alloc_bcb_wait_threads_high_priority"),
@@ -583,7 +599,9 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_DWB_FLUSHED_BLOCK_NUM_VOLUMES, "Num_dwb_flushed_block_volumes",
 			       &f_dump_in_file_Num_dwb_flushed_block_volumes,
 			       &f_dump_in_buffer_Num_dwb_flushed_block_volumes,
-			       &f_load_Num_dwb_flushed_block_volumes)
+			       &f_load_Num_dwb_flushed_block_volumes),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_LOAD_THREAD_STATS, "Thread_loaddb_stats_counters_timers",
+			       &f_dump_in_file_thread_stats, &f_dump_in_buffer_thread_stats, &f_load_thread_stats)
 };
 
 STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset,
@@ -1777,6 +1795,9 @@ perfmon_server_calc_stats (UINT64 * stats)
 
   css_get_thread_stats (&stats[pstat_Metadata[PSTAT_THREAD_STATS].start_offset]);
   perfmon_peek_thread_daemon_stats (stats);
+  // *INDENT-OFF*
+  cubload::worker_manager_get_stats (&stats[pstat_Metadata[PSTAT_LOAD_THREAD_STATS].start_offset]);
+  // *INDENT-ON*
 #endif // SERVER_MODE
 
   for (i = 0; i < PSTAT_COUNT; i++)
@@ -3768,7 +3789,7 @@ perfmon_unpack_stats (char *buf, UINT64 * stats)
 
 /*
  * perfmon_get_peek_stats - Copy into the statistics array the values of the peek statistics
- *		
+ *
  * return: void
  *
  *   stats (in): statistics array

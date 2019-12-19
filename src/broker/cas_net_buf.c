@@ -47,6 +47,7 @@
 #endif
 #include "error_code.h"
 #include "dbtype.h"
+#include "byte_order.h"
 
 static int net_buf_realloc (T_NET_BUF * net_buf, int size);
 
@@ -841,7 +842,6 @@ net_error_append_shard_info (char *err_buf, const char *err_msg, int buf_size)
  *					 H = charset
  *			      (please note the bit 7 is 1)
  *			      LSB byte : TTTT TTTT : T = type bits
- *			
  */
 int
 net_buf_cp_cas_type_and_charset (T_NET_BUF * net_buf, unsigned char cas_type, unsigned char charset)

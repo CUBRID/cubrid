@@ -2011,7 +2011,7 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 {
   unsigned int hashcode = 0;
   int i, len;
-  char *ptr;
+  const char *ptr;
 
   if (!val || DB_IS_NULL (val) || ht_size <= 1)
     {

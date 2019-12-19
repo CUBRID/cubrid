@@ -26,14 +26,22 @@
 
 #include "error_manager.h"
 #include "memory_reference_store.hpp"
-#include "object_representation.h"
+#include "storage_common.h"
+
+#include <cstdint>
+#include <string>
+
+// forward definitions
+struct or_buf;
 
 #if defined (__cplusplus)
 class JSON_DOC;
+class JSON_PATH;
 class JSON_VALIDATOR;
 class JSON_ITERATOR;
 #else
 typedef void JSON_DOC;
+typedef void JSON_PATH;
 typedef void JSON_VALIDATOR;
 typedef void JSON_ITERATOR;
 #endif
@@ -64,7 +72,9 @@ bool db_json_is_valid (const char *json_str);
 const char *db_json_get_type_as_str (const JSON_DOC *document);
 unsigned int db_json_get_length (const JSON_DOC *document);
 unsigned int db_json_get_depth (const JSON_DOC *doc);
-int db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<const char *> &raw_path,
+int db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<std::string> &raw_path,
+					JSON_DOC_STORE &result, bool allow_wildcards = true);
+int db_json_extract_document_from_path (const JSON_DOC *document, const std::string &path,
 					JSON_DOC_STORE &result, bool allow_wildcards = true);
 int db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> &paths, bool find_all,
 			   bool &result);
@@ -87,9 +97,9 @@ void db_json_add_element_to_array (JSON_DOC *doc, const JSON_DOC *value);
 int db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc, size_t json_raw_length);
 JSON_DOC *db_json_get_copy_of_doc (const JSON_DOC *doc);
 
-int db_json_serialize (const JSON_DOC &doc, OR_BUF &buffer);
+int db_json_serialize (const JSON_DOC &doc, or_buf &buffer);
 std::size_t db_json_serialize_length (const JSON_DOC &doc);
-int db_json_deserialize (OR_BUF *buf, JSON_DOC *&doc);
+int db_json_deserialize (or_buf *buf, JSON_DOC *&doc);
 
 int db_json_insert_func (const JSON_DOC *doc_to_be_inserted, JSON_DOC &doc_destination, const char *raw_path);
 int db_json_replace_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
@@ -99,11 +109,13 @@ int db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char 
 int db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
 int db_json_remove_func (JSON_DOC &doc, const char *raw_path);
 int db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char,
-			 std::vector<std::string> &paths, const std::vector<std::string> &patterns, bool find_all);
+			 std::vector<JSON_PATH> &paths, const std::vector<std::string> &patterns, bool find_all);
 int db_json_merge_patch_func (const JSON_DOC *source, JSON_DOC *&dest);
 int db_json_merge_preserve_func (const JSON_DOC *source, JSON_DOC *&dest);
 int db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json);
 void db_json_pretty_func (const JSON_DOC &doc, char *&result_str);
+std::string db_json_json_string_as_utf8 (std::string raw_json_string);
+int db_json_path_unquote_object_keys_external (std::string &sql_path);
 int db_json_unquote (const JSON_DOC &doc, char *&result_str);
 
 int db_json_object_contains_key (JSON_DOC *obj, const char *key, int &result);
@@ -155,11 +167,10 @@ bool db_json_doc_is_uncomparable (const JSON_DOC *doc);
 int db_value_to_json_doc (const DB_VALUE &db_val, bool copy_json, JSON_DOC_STORE &json_doc);
 int db_value_to_json_value (const DB_VALUE &db_val, JSON_DOC_STORE &json_doc);
 void db_make_json_from_doc_store_and_release (DB_VALUE &value, JSON_DOC_STORE &doc_store);
-int db_value_to_json_path (const DB_VALUE *path_value, FUNC_TYPE fcode, const char **path_str);
+int db_value_to_json_path (const DB_VALUE &path_value, FUNC_TYPE fcode, std::string &path_str);
+int db_value_to_json_key (const DB_VALUE &db_val, std::string &key_str);
 
 int db_json_normalize_path_string (const char *pointer_path, std::string &normalized_path);
-int db_json_path_unquote_object_keys_external (std::string &sql_path);
-
 template <typename Fn, typename... Args>
 inline int
 db_json_convert_string_and_call (const char *json_raw, size_t json_raw_length, Fn &&func, Args &&... args)

@@ -50,6 +50,7 @@
 #include "string_opfunc.h"
 #include "object_domain.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "semantic_check.h"
 #include "xasl_generation.h"
 #include "language_support.h"
@@ -12039,7 +12040,7 @@ static int
 pt_check_and_coerce_to_time (PARSER_CONTEXT * parser, PT_NODE * src)
 {
   DB_VALUE *db_src = NULL;
-  char *cp;
+  const char *cp;
   DB_TYPE dbtype;
   int cp_len;
 
@@ -12081,7 +12082,7 @@ static int
 pt_check_and_coerce_to_date (PARSER_CONTEXT * parser, PT_NODE * src)
 {
   DB_VALUE *db_src = NULL;
-  char *str = NULL;
+  const char *str = NULL;
   int str_len;
 
   assert (src != NULL);
@@ -17724,7 +17725,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       {
 	const char *username = au_user_name ();
 
-	error = db_make_string_by_const_str (result, username);
+	error = db_make_string_copy (result, username);
 	db_string_free ((char *) username);
 	if (error < 0)
 	  {
@@ -18294,11 +18295,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		if (arg1->domain.general_info.type == DB_TYPE_NCHAR
 		    || arg1->domain.general_info.type == DB_TYPE_VARNCHAR)
 		  {
-		    db_make_nchar (esc_char, 1, (DB_C_NCHAR) slash_str, 1, arg1_cs, arg1_coll);
+		    db_make_nchar (esc_char, 1, slash_str, 1, arg1_cs, arg1_coll);
 		  }
 		else
 		  {
-		    db_make_char (esc_char, 1, (DB_C_CHAR) slash_str, 1, arg1_cs, arg1_coll);
+		    db_make_char (esc_char, 1, slash_str, 1, arg1_cs, arg1_coll);
 		  }
 
 		esc_char->need_clear = false;
@@ -19508,7 +19509,11 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 				     qualifier))
 	{
 	  result = pt_dbval_to_value (parser, &dbval_res);
-	  if (result->data_type == NULL && result->type_enum != PT_TYPE_NULL)
+	  if (result)
+	    {
+	      result->expr_before_const_folding = pt_print_bytes (parser, expr);
+	    }
+	  if (result && result->data_type == NULL && result->type_enum != PT_TYPE_NULL)
 	    {
 	      /* data_type may be needed later... e.g. in CTEs */
 	      result->data_type = parser_copy_tree_list (parser, expr->data_type);
@@ -20476,6 +20481,14 @@ pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
 		temp->info.value.print_charset = dest->info.value.print_charset;
 		temp->info.value.print_collation = dest->info.value.print_collation;
 		temp->info.value.is_collate_allowed = dest->info.value.is_collate_allowed;
+
+		// clear dest before overwriting; make sure data_type is not affected
+		if (data_type == dest->data_type)
+		  {
+		    dest->data_type = NULL;
+		  }
+		parser_clear_node (parser, dest);
+
 		*dest = *temp;
 		if (data_type != NULL)
 		  {

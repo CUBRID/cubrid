@@ -1824,8 +1824,8 @@ pt_check_level_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool * has_greater
     case PT_LE:
     case PT_GE:
       {
-	bool lhs_level = arg1->info.expr.op == PT_LEVEL;
-	bool rhs_level = arg2->info.expr.op == PT_LEVEL;
+	bool lhs_level = PT_IS_EXPR_NODE (arg1) && arg1->info.expr.op == PT_LEVEL;
+	bool rhs_level = PT_IS_EXPR_NODE (arg2) && arg2->info.expr.op == PT_LEVEL;
 	if ((lhs_level && rhs_level) || (!lhs_level && !rhs_level))
 	  {
 	    /* leave both has_greater and has_lesser as false */
@@ -3964,6 +3964,7 @@ pt_create_param_for_value (PARSER_CONTEXT * parser, PT_NODE * value, int host_va
     {
       host_var->info.host_var.index = host_var_index;
     }
+  host_var->expr_before_const_folding = value->expr_before_const_folding;
 
   return host_var;
 }
@@ -7703,7 +7704,7 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
 			   LANG_SYS_COLLATION, NULL);
   db_value_domain_default (db_valuep + 11, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
 			   LANG_SYS_COLLATION, NULL);
-  db_make_varchar (db_valuep + 12, DB_DEFAULT_PRECISION, (DB_C_CHAR) "", 0, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varchar (db_valuep + 12, DB_DEFAULT_PRECISION, "", 0, LANG_SYS_CODESET, LANG_SYS_COLLATION);
   db_value_domain_default (db_valuep + 13, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
 			   LANG_SYS_COLLATION, NULL);
 
@@ -7983,8 +7984,8 @@ pt_sort_spec_cover_groupby (PARSER_CONTEXT * parser, PT_NODE * sort_list, PT_NOD
 static PT_NODE *
 pt_rewrite_derived_for_upd_del (PARSER_CONTEXT * parser, PT_NODE * spec, PT_SPEC_FLAG what_for, bool add_as_attr)
 {
-  PT_NODE *derived_table, *as_attr, *col, *upd_del_spec, *spec_list;
-  PT_NODE *save_spec, *save_next, *flat_copy;
+  PT_NODE *derived_table = NULL, *as_attr = NULL, *col = NULL, *upd_del_spec = NULL, *spec_list = NULL;
+  PT_NODE *save_spec = NULL, *save_next = NULL, *flat_copy = NULL;
   const char *spec_name = NULL;
   int upd_del_count = 0;
 
@@ -8040,6 +8041,7 @@ pt_rewrite_derived_for_upd_del (PARSER_CONTEXT * parser, PT_NODE * spec, PT_SPEC
   save_spec = derived_table->info.query.q.select.from;
   derived_table->info.query.q.select.from = upd_del_spec;
   save_next = upd_del_spec->next;
+  assert (upd_del_spec != NULL);
   upd_del_spec->next = NULL;
 
   derived_table = pt_add_row_oid_name (parser, derived_table);

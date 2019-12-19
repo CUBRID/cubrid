@@ -29,6 +29,7 @@
 #include "string_buffer.hpp"
 #include "vacuum.h"
 
+#include <cstring>  // for std::strcpy
 //
 // TODO: Create a "transaction transient" abstract interface and split this into multiple files
 //
@@ -126,10 +127,10 @@ tx_transient_class_registry::decache_heap_repr (const LOG_LSA &downto_lsa)
 {
   for (auto &it : m_list)
     {
-      if (it.m_last_modified_lsa > downto_lsa)
+      assert (!it.m_last_modified_lsa.is_null ());
+      if (downto_lsa.is_null () || it.m_last_modified_lsa > downto_lsa)
 	{
 	  (void) heap_classrepr_decache (NULL, &it.m_class_oid);
-	  it.m_last_modified_lsa.set_null ();
 	}
     }
 }

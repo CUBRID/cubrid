@@ -78,6 +78,8 @@
 #include "dbtype.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #include "compile_context.h"
+#include "load_session.hpp"
+#include "session.h"
 #include "xasl.h"
 #include "xasl_cache.h"
 #include "elo.h"
@@ -125,7 +127,6 @@ static int er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, in
 static void event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats);
 static void event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats);
 static void event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info);
-
 
 /*
  * stran_server_commit_internal - commit transaction on server.
@@ -498,7 +499,6 @@ check_client_capabilities (THREAD_ENTRY * thread_p, int client_cap, int rel_comp
 
   return client_cap;
 }
-
 
 /*
  * server_ping - return that the server is alive
@@ -884,7 +884,6 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
     }
 }
 
-
 /*
  * slocator_does_exist -
  *
@@ -1187,15 +1186,13 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
   int num_objs;
   char *packed_desc = NULL;
   int packed_desc_size;
-  int start_multi_update;
-  int end_multi_update;
+  int multi_update_flags;
   LC_COPYAREA_MANYOBJS *mobjs;
   int i, num_ignore_error_list;
   int ignore_error_list[-ER_LAST_ERROR];
 
   ptr = or_unpack_int (request, &num_objs);
-  ptr = or_unpack_int (ptr, &start_multi_update);
-  ptr = or_unpack_int (ptr, &end_multi_update);
+  ptr = or_unpack_int (ptr, &multi_update_flags);
   ptr = or_unpack_int (ptr, &packed_desc_size);
   ptr = or_unpack_int (ptr, &content_size);
 
@@ -1226,8 +1223,7 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
 	{
 	  locator_unpack_copy_area_descriptor (num_objs, copy_area, packed_desc);
 	  mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copy_area);
-	  mobjs->start_multi_update = start_multi_update;
-	  mobjs->end_multi_update = end_multi_update;
+	  mobjs->multi_update_flags = multi_update_flags;
 
 	  if (content_size > 0)
 	    {
@@ -1906,8 +1902,6 @@ slogtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, unsigned int r
   (void) or_pack_int (reply, NO_ERROR);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
-
-
 
 /*
  * slogtb_reset_wait_msecs -
@@ -3390,7 +3384,6 @@ sboot_add_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
-
 /*
  * sboot_check_db_consistency -
  *
@@ -3878,25 +3871,28 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
 
 end:
 
+  int err;
+
   if (return_btid == NULL)
     {
-      int err;
-
       ASSERT_ERROR_AND_SET (err);
       ptr = or_pack_int (reply, err);
     }
   else
     {
-      ptr = or_pack_int (reply, NO_ERROR);
+      err = NO_ERROR;
+      ptr = or_pack_int (reply, err);
     }
 
   if (index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
       // it may not be really necessary. it just help things don't go worse that client keep caching ex-lock.
       int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-      LOCK cls_lock = lock_get_object_lock (&class_oids[0], oid_Root_class_oid, tran_index);
+      LOCK cls_lock = lock_get_object_lock (&class_oids[0], oid_Root_class_oid);
 
-      assert (cls_lock == SCH_M_LOCK);	// hope it never be IX_LOCK.
+      // in case of shutdown, index loader might be interrupted and got error
+      // otherwise, it should restore SCH_M_LOCK
+      assert ((err != NO_ERROR && css_is_shutdowning_server ()) || cls_lock == SCH_M_LOCK);
       ptr = or_pack_int (ptr, (int) cls_lock);
     }
   else
@@ -4630,7 +4626,7 @@ stran_can_end_after_query_execution (THREAD_ENTRY * thread_p, int query_flag, QF
   OR_BUF buf;
   TP_DOMAIN **domains;
   PR_TYPE *pr_type;
-  int i, flag, compressed_size, decompressed_size, diff_size, val_length;
+  int i, flag, compressed_size = 0, decompressed_size = 0, diff_size, val_length;
   char *tuple_p;
   bool found_compressible_string_domain, exceed_a_page;
 
@@ -5205,7 +5201,6 @@ er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UIN
       info->sql_plan_text = NULL;
       stat_buf[0] = '\0';
     }
-
 
   if (info->sql_hash_text == NULL
       || qmgr_get_sql_id (thread_p, &sql_id, info->sql_hash_text, strlen (info->sql_hash_text)) != NO_ERROR)
@@ -7413,7 +7408,6 @@ sprm_server_get_force_parameters (THREAD_ENTRY * thread_p, unsigned int rid, cha
   int area_size;
   char *area = NULL, *ptr = NULL;
 
-
   change_values = xsysprm_get_force_server_parameters ();
   if (change_values == NULL)
     {
@@ -8120,7 +8114,6 @@ sboot_compact_stop (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
-
 /*
  * ses_posix_create_file -
  *
@@ -8368,7 +8361,6 @@ ses_posix_rename_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), new_path,
 				     path_size);
 }
-
 
 /*
  * ses_posix_read_file -
@@ -9718,4 +9710,250 @@ slocator_demote_class_lock (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   ptr = or_pack_int (reply, error);
   ptr = or_pack_lock (ptr, ex_lock);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+void
+sloaddb_init (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  packing_unpacker unpacker (request, (size_t) reqlen);
+
+  /* *INDENT-OFF* */
+  cubload::load_args args;
+  /* *INDENT-ON* */
+
+  args.unpack (unpacker);
+
+  load_session *session = new load_session (args);
+
+  int error_code = session_set_load_session (thread_p, session);
+  if (error_code != NO_ERROR)
+    {
+      delete session;
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+void
+sloaddb_install_class (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  packing_unpacker unpacker (request, (size_t) reqlen);
+  bool is_ignored = false;
+
+  /* *INDENT-OFF* */
+  cubload::batch batch;
+  /* *INDENT-ON* */
+
+  batch.unpack (unpacker);
+
+  load_session *session = NULL;
+  int error_code = session_get_load_session (thread_p, session);
+  std::string cls_name;
+  if (error_code == NO_ERROR)
+    {
+      assert (session != NULL);
+      error_code = session->install_class (*thread_p, batch, is_ignored, cls_name);
+    }
+  else
+    {
+      if (er_errid () == NO_ERROR || !er_has_error ())
+	{
+	  error_code = ER_LDR_INVALID_STATE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	}
+
+      return_error_to_client (thread_p, rid);
+    }
+
+  // Error code and is_ignored.
+  OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  int buf_sz = (int) cls_name.length ();
+  ptr = or_pack_int (reply, buf_sz);
+  ptr = or_pack_int (ptr, error_code);
+  ptr = or_pack_int (ptr, (is_ignored ? 1 : 0));
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				     (char *) cls_name.c_str (), buf_sz);
+}
+
+void
+sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  packing_unpacker unpacker (request, (size_t) reqlen);
+
+  /* *INDENT-OFF* */
+  cubload::batch *batch = NULL;
+  load_status status;
+  packing_packer packer;
+  cubmem::extensible_block eb;
+  /* *INDENT-ON* */
+
+  char *reply_data = NULL;
+  int reply_data_size = 0;
+
+  bool use_temp_batch = false;
+  unpacker.unpack_bool (use_temp_batch);
+  if (!use_temp_batch)
+    {
+      batch = new cubload::batch ();
+      batch->unpack (unpacker);
+    }
+
+  bool is_batch_accepted = false;
+  load_session *session = NULL;
+
+  session_get_load_session (thread_p, session);
+  int error_code = session_get_load_session (thread_p, session);
+  if (error_code == NO_ERROR)
+    {
+      assert (session != NULL);
+      error_code = session->load_batch (*thread_p, batch, use_temp_batch, is_batch_accepted, status);
+
+      packer.set_buffer_and_pack_all (eb, status);
+
+      reply_data = eb.get_ptr ();
+      reply_data_size = (int) packer.get_current_size ();
+    }
+  else
+    {
+      if (er_errid () == NO_ERROR || !er_has_error ())
+	{
+	  error_code = ER_LDR_INVALID_STATE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	}
+
+      return_error_to_client (thread_p, rid);
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  char *ptr = or_pack_int (reply, reply_data_size);
+  ptr = or_pack_int (ptr, error_code);
+  or_pack_int (ptr, (is_batch_accepted ? 1 : 0));
+
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), reply_data,
+				     reply_data_size);
+}
+
+void
+sloaddb_fetch_status (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  packing_packer packer;
+  cubmem::extensible_block eb;
+
+  char *buffer = NULL;
+  int buffer_size = 0;
+
+  load_session *session = NULL;
+  int error_code = session_get_load_session (thread_p, session);
+  if (error_code == NO_ERROR)
+    {
+      assert (session != NULL);
+      load_status status;
+      session->fetch_status (status, false);
+      packer.set_buffer_and_pack_all (eb, status);
+
+      buffer = eb.get_ptr ();
+      buffer_size = (int) packer.get_current_size ();
+    }
+  else
+    {
+      if (er_errid () == NO_ERROR || !er_has_error ())
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_INVALID_STATE, 0);
+	}
+
+      return_error_to_client (thread_p, rid);
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  or_pack_int (reply, buffer_size);
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer,
+				     buffer_size);
+}
+
+void
+sloaddb_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  load_session *session = NULL;
+  int error_code = session_get_load_session (thread_p, session);
+  if (error_code == NO_ERROR)
+    {
+      assert (session != NULL);
+
+      session->wait_for_completion ();
+      delete session;
+      session_set_load_session (thread_p, NULL);
+    }
+
+  if (er_errid () != NO_ERROR || er_has_error ())
+    {
+      return_error_to_client (thread_p, rid);
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+void
+sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  load_session *session = NULL;
+  int error_code = session_get_load_session (thread_p, session);
+  if (error_code == NO_ERROR)
+    {
+      assert (session != NULL);
+
+      session->interrupt ();
+    }
+  else
+    {
+      // what to do, what to do...
+    }
+}
+
+void
+sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *buffer = NULL;
+  int buffer_size = 0;
+
+  load_session *session = NULL;
+  int error_code = session_get_load_session (thread_p, session);
+  if (error_code == NO_ERROR)
+    {
+      assert (session != NULL);
+
+      session->update_class_statistics (*thread_p);
+    }
+
+  if (er_errid () != NO_ERROR || er_has_error ())
+    {
+      return_error_to_client (thread_p, rid);
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+void
+ssession_stop_attached_threads (void *session)
+{
+  session_stop_attached_threads (session);
 }

@@ -437,7 +437,7 @@ sl_write_delete_sql (char *class_name, MOBJ mclass, DB_VALUE * key)
 }
 
 int
-sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *stmt_text, char *ha_sys_prm)
+sl_write_statement_sql (char *class_name, char *db_user, int item_type, const char *stmt_text, char *ha_sys_prm)
 {
   int error = NO_ERROR;
   char default_ha_prm[LINE_MAX];
@@ -553,7 +553,11 @@ sl_log_open (void)
   char cur_sql_log_path[PATH_MAX];
   FILE *fp;
 
-  snprintf (cur_sql_log_path, PATH_MAX, "%s.%d", sql_log_base_path, sl_Info.curr_file_id);
+  if (snprintf (cur_sql_log_path, PATH_MAX - 1, "%s.%d", sql_log_base_path, sl_Info.curr_file_id) < 0)
+    {
+      assert (false);
+      return NULL;
+    }
 
   fp = fopen (cur_sql_log_path, "r+");
   if (fp != NULL)
@@ -586,7 +590,11 @@ sl_open_next_file (FILE * old_fp)
   sl_Info.curr_file_id++;
   sl_Info.last_inserted_sql_id = 0;
 
-  snprintf (new_file_path, PATH_MAX, "%s.%d", sql_log_base_path, sl_Info.curr_file_id);
+  if (snprintf (new_file_path, PATH_MAX - 1, "%s.%d", sql_log_base_path, sl_Info.curr_file_id) < 0)
+    {
+      assert (false);
+      return NULL;
+    }
 
   fclose (old_fp);
   new_fp = fopen (new_file_path, "w");
