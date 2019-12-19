@@ -4653,18 +4653,6 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	goto exit;
       }
 
-    /* get compiled pattern */
-    if (comp_pattern != NULL)
-      {
-	rx_compiled_pattern = *comp_pattern;
-      }
-
-    /* if regex object was specified, use local regex */
-    if (comp_regex != NULL)
-      {
-	rx_compiled_regex = *comp_regex;
-      }
-
     /* codeset compatible check */
     if ((src_category != pattern_category)
 	|| (pattern_category != repl_category)
@@ -4691,6 +4679,18 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	error_status = ER_QSTR_INCOMPATIBLE_COLLATIONS;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	goto exit;
+      }
+      
+    /* get compiled pattern */
+    if (comp_pattern != NULL)
+      {
+	rx_compiled_pattern = *comp_pattern;
+      }
+
+    /* if regex object was specified, use local regex */
+    if (comp_regex != NULL)
+      {
+	rx_compiled_regex = *comp_regex;
       }
 
     /* check for recompile */
