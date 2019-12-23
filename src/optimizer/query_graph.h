@@ -959,6 +959,10 @@ struct qo_xasl_index_info
    *  infomation regarding the index itself.
    */
   struct qo_node_index_entry *ni_entry;
+
+  /* which col match index col. if -1 then term only have one column. */
+  int *multi_col_pos;
+  int need_copy_multi_range_term;
 };
 
 #define QO_ON_COND_TERM(term) \

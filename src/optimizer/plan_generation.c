@@ -2775,8 +2775,12 @@ qo_free_xasl_index_info (QO_ENV * env, QO_XASL_INDEX_INFO * info)
 	{
 	  free_and_init (info->term_exprs);
 	}
+      /* DEALLOCATE (env, info->multi_col_pos); */
+      if (info->multi_col_pos)
+	{
+	  free_and_init (info->multi_col_pos);
+	}
       /* DEALLOCATE (env, info->term_exprs); */
-
       free_and_init (info);
       /* DEALLOCATE(env, info); */
     }
