@@ -1310,6 +1310,9 @@ static void
 make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE ** predp,
 		     QO_XASL_INDEX_INFO * qo_index_infop)
 {
+  BITSET multi_col_segs, multi_col_range_segs;
+  int multi_term_num;
+
   /* initialize output parameter */
   if (key_predp != NULL)
     {
@@ -1354,6 +1357,11 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
   /* make predicate list for key filter */
   if (key_predp != NULL)
     {
+      if (qo_index_infop->need_copy_multi_range_term != -1)
+	{
+	  /*force-copy multi col range pred to key filter */
+	  bitset_add(&(plan->plan_un.scan.kf_terms), qo_index_infop->need_copy_multi_range_term);
+	}
       *key_predp = make_pred_from_bitset (env, &(plan->plan_un.scan.kf_terms), is_always_true);
     }
 
