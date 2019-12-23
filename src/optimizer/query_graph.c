@@ -221,7 +221,7 @@ static void qo_partition_init (QO_ENV *, QO_PARTITION *, int);
 static void qo_partition_free (QO_PARTITION *);
 static void qo_partition_dump (QO_PARTITION *, FILE *);
 static void qo_find_index_terms (QO_ENV * env, BITSET * segsp, QO_INDEX_ENTRY * index_entry);
-static void qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx);
+static void qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx, BITSET * index_segsp);
 static bool qo_find_index_segs (QO_ENV *, SM_CLASS_CONSTRAINT *, QO_NODE *, int *, int, int *, BITSET *);
 static bool qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry);
 static void qo_find_node_indexes (QO_ENV *, QO_NODE *);
@@ -6400,10 +6400,11 @@ qo_find_index_terms (QO_ENV * env, BITSET * segsp, QO_INDEX_ENTRY * index_entry)
  *   idx(in): Passed idx of an interested segment
  */
 static void
-qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx)
+qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx, BITSET * index_segsp)
 {
   int t;
   QO_TERM *qo_termp;
+  BITSET_ITERATOR iter;
 
   /* traverse all terms */
   for (t = 0; t < env->nterms; t++)
@@ -6434,17 +6435,28 @@ qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx)
 	  /* check for range list term; RANGE (r1, r2, ...) */
 	  if (QO_TERM_IS_FLAGED (qo_termp, QO_TERM_RANGELIST))
 	    {
-	      if (index_entry->rangelist_seg_idx != -1)
+	      if (index_entry->rangelist_seg_idx != -1 && QO_TERM_IDX (qo_termp) != index_entry->rangelist_term_idx)
 		{
+		  /* (a,b) range (={..},..) if a is rangelist_seg_idx then b can scan using index */
 		  continue;	/* already found. give up */
 		}
 
 	      /* is the first time */
 	      index_entry->rangelist_seg_idx = idx;
+	      index_entry->rangelist_term_idx = QO_TERM_IDX (qo_termp);
 	    }
 
 	  /* collect this term */
-	  if (QO_TERM_IS_FLAGED (qo_termp, QO_TERM_EQUAL_OP))
+	  if (QO_TERM_IS_FLAGED (qo_termp, QO_TERM_MULTI_COLL_PRED))
+	    {
+	      /* multiple columns lhs can be indexable when they are a subset of index columns. ex) (a,c) in ... index(a,b,c) */
+	      /* to_do : when multi columns are not subset of index columns, it can be indexable  */
+	      if (bitset_subset(index_segsp,&(QO_TERM_SEGS (qo_termp))))
+		{
+		  bitset_add (&(index_entry->seg_equal_terms[idx]), t);
+		}
+	    }
+	  else if (QO_TERM_IS_FLAGED (qo_termp, QO_TERM_EQUAL_OP))
 	    {
 	      bitset_add (&(index_entry->seg_equal_terms[idx]), t);
 	    }
@@ -7386,7 +7398,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		  index_entryp->seg_idxs[j] = seg_idx[j];
 		  if (index_entryp->seg_idxs[j] != -1)
 		    {
-		      qo_find_index_seg_terms (env, index_entryp, j);
+		      qo_find_index_seg_terms (env, index_entryp, j, &index_segs);
 		    }
 		}
 	      qo_find_index_terms (env, &index_segs, index_entryp);
