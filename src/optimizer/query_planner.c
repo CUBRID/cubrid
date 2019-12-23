@@ -7433,7 +7433,7 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
   QO_TERM *termp;
   QO_PLAN *inner_plan;
   int i, t, last_t, j, n, seg;
-  bool found_rangelist;
+  bool found_rangelist, found_multi_rangelist;
   BITSET range_terms;
   BITSET empty_terms;
   BITSET remaining_terms;
@@ -7469,6 +7469,7 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
     }
 
   found_rangelist = false;
+  found_multi_rangelist = false;
   for (i = 0; i < index_entryp->nsegs; i++)
     {
       seg = index_entryp->seg_idxs[i];
@@ -7490,33 +7491,65 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
 	      continue;		/* do not add to range_terms */
 	    }
 
-	  for (j = 0; j < termp->can_use_index; j++)
+	  if (QO_TERM_IS_FLAGED (termp, QO_TERM_MULTI_COLL_PRED))
 	    {
-	      /* found term */
-	      if (QO_SEG_IDX (termp->index_seg[j]) == seg)
+	      /* case of multi column term ex) (a,b) in ... */
+	      if (found_rangelist == true)
 		{
-		  /* save last found term */
-		  last_t = t;
-
-		  /* found EQ term */
-		  if (QO_TERM_IS_FLAGED (termp, QO_TERM_EQUAL_OP))
+		      break;	/* already found. give up */
+		}
+	      for (j = 0; j < termp->multi_col_cnt; j++)
+		{
+		  if (QO_TERM_IS_FLAGED (termp, QO_TERM_RANGELIST))
 		    {
-		      if (QO_TERM_IS_FLAGED (termp, QO_TERM_RANGELIST))
+		      found_multi_rangelist = true;
+		    }
+		  /* found term */
+		  if (termp->multi_col_segs[j] == seg
+		      && BITSET_MEMBER (index_entryp->seg_equal_terms[i], t))
+		      /* multi col term is only indexable when term's class is TC_SARG. so can use seg_equal_terms */
+		    {
+		      /* save last found term */
+		      last_t = t;
+		      /* found EQ term */
+		      if (QO_TERM_IS_FLAGED (termp, QO_TERM_EQUAL_OP))
+		        {
+		          bitset_add(&range_terms,t);
+		          n++;
+			}
+		    }
+		}
+	    }
+	  else
+	    {
+	      for (j = 0; j < termp->can_use_index; j++)
+	        {
+		  /* found term */
+		  if (QO_SEG_IDX (termp->index_seg[j]) == seg)
+		    {
+		      /* save last found term */
+		      last_t = t;
+
+		      /* found EQ term */
+		      if (QO_TERM_IS_FLAGED (termp, QO_TERM_EQUAL_OP))
 			{
-			  if (found_rangelist == true)
+			  if (QO_TERM_IS_FLAGED (termp, QO_TERM_RANGELIST))
 			    {
-			      break;	/* already found. give up */
+			      if (found_rangelist == true || found_multi_rangelist == true)
+				{
+				  break;	/* already found. give up */
+				}
+
+			      /* is the first time */
+			      found_rangelist = true;
 			    }
 
-			  /* is the first time */
-			  found_rangelist = true;
+			  bitset_add (&range_terms, t);
+			  n++;
 			}
 
-		      bitset_add (&range_terms, t);
-		      n++;
+		      break;
 		    }
-
-		  break;
 		}
 	    }
 
