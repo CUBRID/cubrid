@@ -1263,26 +1263,26 @@ $ LOADDB
 1194 Impossibile verificare il file %1$d|%2$d perché il blocco sulla classe %3$d|%4$d|%5$d non viene immediatamente concesso.
 1195 La parte ricorsiva di un CTE non dovrebbe contenere funzioni aggregate senza la clausola GROUP BY.
 1196 Le ricorrenze massime %1$d estate raggiunto mentre l'esecuzione di CTE.
-1197 Invalid json: %1$s (%2$d)
-1198 A json object must be provided
-1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
-1200 Invalid JSON path
-1201 Json object name cannot be NULL.
-1202 Json PATH "%1$s" does not exist in %2$s
-1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
-1204 Json KEY "%1$s" is duplicate
-1205 Invalid type %1$s. Expecting JSON document compatible data type (STRING or JSON).
-1206 Json PATH "%1$s" does not address a cell in an Json ARRAY.
-1207 Invalid JSON path. Index is larger than allowed by system parameter json_max_array_idx.
-1208 Invalid one/all argument. The one/all argument may only take one of these two values: "one", "all".
+1197 JSON non valido: %1$s (%2$d)
+1198 È necessario fornire un oggetto JSON.
+1199 Il JSON fornito è stato invalidato dallo schema JSON (Percorso schema non valido: %1$s, Parola chiave: %2$s, Percorso JSON fornito non valido: %3$s)
+1200 Percorso JSON non valido.
+1201 Il nome dell'oggetto JSON non può essere NULL.
+1202 JSON PATH "%1$s" non esiste in %2$s.
+1203 Tipo JSON non valido nel percorso %1$s. Aspettando %2$s, ma trovato %3$s.
+1204 JSON KEY "%1$s" è duplicato.
+1205 Tipo non valido %1$s. Aspettando tipo di dati compatibile con il documento JSON (STRING or JSON).
+1206 JSON PATH "%1$s" non indirizza una cella in un ARRAY JSON.
+1207 Percorso JSON non valido. L'indice è maggiore di quanto consentito dal parametro di sistema 'json_max_array_idx'.
+1208 One / all argomenti non validi. L'argomento one / all può accettare solo uno di questi due valori: "one", "all".
 1209 Reserved error for JSON.
 1210 Reserved error for JSON.
 1211 Reserved error for JSON.
 1212 Reserved error for JSON.
 1213 Reserved error for JSON.
 1214 Reserved error for JSON.
-1215 No more data to read from stream %1$s at position %2$lld, amount %3$zu.
-1216 Invalid object id %1$d when trying to unpack.
+1215 Non ci sono più dati da leggere dal flusso %1$s in posizione %2$lld, quantità %3$zu.
+1216 ID oggetto non valido %1$d quando si tenta di decomprimere.
 1217 Reserved error for stream/replication.
 1218 Reserved error for stream/replication.
 1219 Reserved error for stream/replication.
@@ -1302,17 +1302,17 @@ $ LOADDB
 1233 Reserved error for stream/replication.
 1234 Reserved error for stream/replication.
 1235 Reserved error for stream/replication.
-1236 Double Write Buffer is disabled.
-1237 Cannot change status on %1$s because %2$s is a %3$s.
-1238 Missing value for JSON_TABLE column '%1$s'.
-1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s".
-1240 Online index is not allowed on classes that are part of a hierarchy chain.
-1241 XASL tree needs recompile.
-1242 Cannot create partition on a class that is part of a hierarchy chain.
-1243 Index loading was aborted after an error.
-1244 Loading shared attributes updates from object files is not supported in CS mode.
-1245 Loading class attributes updates from object files is not supported in CS mode.
-1246 Error getting address and name information. Code : %1$d, message : %2$s.
+1236 Double Write Buffer è disabilitato.
+1237 Impossibile modificare lo stato sul %1$s perché %2$s è un %3$s.
+1238 Manca il valore per la colonna JSON_TABLE '%1$s'.
+1239 Impossibile forzare il valore da JSON "%1$s" al percorso "%2$s" nella colonna JSON_TABLE "%3$s" di dominio "%4$s".
+1240 Online index non è consentito nelle classi che fanno parte di una catena gerarchica.
+1241 L'albero XASL deve essere ricompilato.
+1242 Impossibile creare una partizione su una classe che fa parte di una catena gerarchica.
+1243 Il caricamento dell'indice è stato interrotto dopo un errore.
+1244 Aggiornamento degli attributi shared dai file oggetto non è supportato in modalità CS.
+1245 Aggiornamento degli attributi di classe dai file oggetto non è supportato in modalità CS.
+1246 Errore durante il recupero delle informazioni sull'indirizzo e sul nome. Codice : %1$d, Messaggio : %2$s.
 
 1247 Ultimo errore
 
@@ -1470,8 +1470,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 125 uso non valido di sessiontimezone\n sessiontimezone
 126 Lunghezza massima di class/vclass comment è %1$d bytes.
 127 Lunghezza massima di un commento è %1$d bytes.
-128 Invalid number of arguments for JSON_OBJECTAGG
-129 PARALLEL count argument must be between %1$d and %2$d.
+128 Numero di argomenti non valido per JSON_OBJECTAGG.
+129 L'argomento conteggio PARALLELO deve essere compreso tra %1$d e %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memoria esaurita.
@@ -1774,11 +1774,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 298 CTE '%1$s' ricorsivo deve essere fatto riferimento direttamente nella sua query ricorsiva.
 299 Errore nel CTE '%1$s': la parte non ricorsiva e la parte ricorsiva devono essere collegati con UNION ALL.
 300 La sottoquery non è consentita nella clausola DEFAULT.
-301 Could not find signatures for function %1$s()
-302 Incompatible argument type %1$s, expected type is: %2$s.
-303 Unexpected number of arguments %1$d.
-304 Could not find compatible signature for function %1$s()
-305 Signature %1$s is not compatible with function arguments.
+301 Impossibile trovare le firme per la funzione %1$s()
+302 Tipo di argomento incompatibile %1$s, il tipo previsto è: %2$s.
+303 Numero imprevisto di argomenti %1$d.
+304 Impossibile trovare una firma compatibile per la funzione %1$s()
+305 Firma %1$s non è compatibile con gli argomenti delle funzioni.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Fuori di memoria virtuale: Impossibile allocare %1$d byte.
@@ -1861,7 +1861,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 79 Livello di isolamento non valido, schema %1$s, istanze %2$s.
 80 Valore del livello isolation in MVCC deve essere 'read committed', 'repeatable read' o 'serializable'.
 81 '%1$s' è un 'auto_increment' oggetto, che non può essere modificato come un seriale.
-
+82 JSON non valido: '%1$s'.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** cache non valido ***

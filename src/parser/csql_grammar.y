@@ -24492,7 +24492,7 @@ json_table_column_rule
         pt_col->type_enum = PT_TYPE_INTEGER;
         $$ = pt_col;
       DBG_PRINT}}
-    | identifier data_type PATH CHAR_STRING json_table_on_error_rule_optional json_table_on_empty_rule_optional
+    | identifier data_type PATH CHAR_STRING json_table_on_empty_rule_optional json_table_on_error_rule_optional
     //        $1        $2   $3          $4                                $5                                $6
       {{
         PT_NODE *pt_col = parser_new_node (this_parser, PT_JSON_TABLE_COLUMN);
@@ -24501,8 +24501,8 @@ json_table_column_rule
         pt_col->data_type = CONTAINER_AT_1 ($2);
         pt_col->info.json_table_column_info.path=$4;
         pt_col->info.json_table_column_info.func = JSON_TABLE_EXTRACT;
-        pt_col->info.json_table_column_info.on_error = $5;
-        pt_col->info.json_table_column_info.on_empty = $6;
+        pt_col->info.json_table_column_info.on_empty = $5;
+        pt_col->info.json_table_column_info.on_error = $6;
         $$ = pt_col;
       DBG_PRINT}}
     | identifier data_type EXISTS PATH CHAR_STRING
@@ -24585,7 +24585,7 @@ pop_msg ()
 }
 
 
-int yyline = 0;
+extern void csql_yyset_lineno (int line_number);
 int yycolumn = 0;
 int yycolumn_end = 0;
 int dot_flag = 0;
@@ -25721,7 +25721,6 @@ parser_main (PARSER_CONTEXT * parser)
 
   dbcs_start_input ();
 
-  yyline = 1;
   yycolumn = yycolumn_end = 1;
   yybuffer_pos=0;
   csql_yylloc.buffer_pos=0;
@@ -25811,19 +25810,24 @@ parse_one_statement (int state)
 
   if (state == 0)
     {
+      // a new session starts. reset line and column number.
+      csql_yyset_lineno (1);
+      yycolumn = yycolumn_end = 1;
+
       return 0;
     }
 
   this_parser->statement_number = 0;
 
   parser_yyinput_single_mode = 1;
+
   yybuffer_pos=0;
   csql_yylloc.buffer_pos=0;
+  dot_flag = 0;
 
   g_query_string = NULL;
   g_query_string_len = 0;
   g_original_buffer_len = 0;
-
 
   rv = yyparse ();
   pt_cleanup_hint (this_parser, parser_hint_table);

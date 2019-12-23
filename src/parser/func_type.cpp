@@ -1048,6 +1048,8 @@ namespace func_type
 	    // always return string without precision
 	    m_node->type_enum = pt_to_variable_size_type (m_node->type_enum);
 	    m_node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+	    m_node->data_type->type_enum = pt_to_variable_size_type (m_node->type_enum);
+	    assert (m_node->type_enum == m_node->data_type->type_enum);
 	  }
       }
     else

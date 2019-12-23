@@ -466,7 +466,6 @@ static int fileio_create (THREAD_ENTRY * thread_p, const char *db_fullname, cons
 			  bool dolock, bool dosync);
 static int fileio_create_backup_volume (THREAD_ENTRY * thread_p, const char *db_fullname, const char *vlabel,
 					VOLID volid, bool dolock, bool dosync, int atleast_pages);
-static void fileio_dismount_without_fsync (THREAD_ENTRY * thread_p, int vdes);
 static int fileio_max_permanent_volumes (int index, int num_permanent_volums);
 static int fileio_min_temporary_volumes (int index, int num_temp_volums, int num_volinfo_array);
 static FILEIO_SYSTEM_VOLUME_INFO *fileio_traverse_system_volume (THREAD_ENTRY * thread_p,
@@ -3162,7 +3161,7 @@ fileio_dismount (THREAD_ENTRY * thread_p, int vol_fd)
  *   return:
  *   vdes(in):
  */
-static void
+void
 fileio_dismount_without_fsync (THREAD_ENTRY * thread_p, int vol_fd)
 {
 #if !defined (WINDOWS)
@@ -4495,7 +4494,8 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, FIL
 
   if (ret != 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_SYNC, 1, (vlabel ? vlabel : "Unknown"));
+      /* sync error is not alwasy handled and I am not sure a proper safe handling is possible: raise as fatal error */
+      er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_SYNC, 1, (vlabel ? vlabel : "Unknown"));
       return NULL_VOLDES;
     }
   else

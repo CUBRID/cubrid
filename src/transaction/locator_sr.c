@@ -959,6 +959,13 @@ xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname, const 
 	  entry->e_current.action = LC_CLASSNAME_DELETED_RENAME;
 	  renamed = LC_CLASSNAME_RESERVED_RENAME;
 
+	  /* Add new name to modified list, to correctly restore in case of abort. */
+	  if (log_add_to_modified_class_list (thread_p, newname, class_oid) != NO_ERROR)
+	    {
+	      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+	      return LC_CLASSNAME_ERROR;
+	    }
+
 	  /* We need to add a dummy log here. If rename is the first clause of alter statement, there will be no log
 	   * entries between parent system savepoint and next flush. Next flush will start a system operation which
 	   * will mark the delete action of old class name with same LSA as parent system savepoint. Therefore, the
@@ -5748,13 +5755,21 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		}
 	      else
 		{
-		  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+		  error_code = er_errid ();
+		  if (error_code == ER_HEAP_UNKNOWN_OBJECT)
 		    {
 		      er_log_debug (ARG_FILE_LINE, "locator_update_force: unknown oid ( %d|%d|%d )\n", oid->pageid,
 				    oid->slotid, oid->volid);
 		    }
-
-		  error_code = ER_HEAP_UNKNOWN_OBJECT;
+		  else if (error_code == ER_INTERRUPTED)
+		    {
+		      // expected error
+		    }
+		  else
+		    {
+		      // todo - why do we force error code?
+		      error_code = ER_HEAP_UNKNOWN_OBJECT;
+		    }
 		  goto error;
 		}
 	    }
@@ -6513,7 +6528,8 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 
   if (locator_manyobj_flag_is_set (mobjs, END_MULTI_UPDATE))
     {
-    for (const auto & it:tdes->m_multiupd_stats.get_map ())
+      // *INDENT-OFF*
+      for (const auto & it:tdes->m_multiupd_stats.get_map ())
 	{
 	  if (!it.second.is_unique ())
 	    {
@@ -6528,6 +6544,7 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 	      goto error;
 	    }
 	}
+      // *INDENT-ON*
       tdes->m_multiupd_stats.clear ();
     }
 
@@ -13698,6 +13715,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
   std::vector<VPID> heap_pages_array;
   RECDES local_record;
   bool has_BU_lock = lock_has_lock_on_object (class_oid, oid_Root_class_oid, BU_LOCK);
+  size_t record_overhead = spage_slot_size ();
 
   // Early-out
   if (recdes.size () == 0)
@@ -13732,7 +13750,8 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
       else
 	{
 	  // get records until we fit the size of a page.
-	  if ((local_record.length + accumulated_records_size) >= heap_max_page_size)
+	  if ((DB_ALIGN (local_record.length, HEAP_MAX_ALIGN) + record_overhead + accumulated_records_size)
+	      >= heap_max_page_size)
 	    {
 	      VPID new_page_vpid;
 	      PGBUF_WATCHER home_hint_p;
@@ -13752,21 +13771,22 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 		{
 		  error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, &recdes_array[j], has_index,
 						     op_type, scan_cache, force_count, pruning_type, pcontext,
-						     func_preds, force_in_place, &home_hint_p, has_BU_lock, dont_check_fk, true);
+						     func_preds, force_in_place, &home_hint_p, has_BU_lock,
+						     dont_check_fk, true);
 		  if (error_code != NO_ERROR)
 		    {
-                      ASSERT_ERROR ();
+		      ASSERT_ERROR ();
 
-                      if (home_hint_p.pgptr)
-                        {
-                          pgbuf_ordered_unfix_and_init (thread_p, home_hint_p.pgptr, &home_hint_p);
-                        }
+		      if (home_hint_p.pgptr)
+			{
+			  pgbuf_ordered_unfix_and_init (thread_p, home_hint_p.pgptr, &home_hint_p);
+			}
 
-                      if (scan_cache->page_watcher.pgptr)
-                        {
-                          pgbuf_ordered_unfix_and_init (thread_p, scan_cache->page_watcher.pgptr,
-                                                        &scan_cache->page_watcher);
-                        }
+		      if (scan_cache->page_watcher.pgptr)
+			{
+			  pgbuf_ordered_unfix_and_init (thread_p, scan_cache->page_watcher.pgptr,
+							&scan_cache->page_watcher);
+			}
 
 		      assert (!pgbuf_is_page_fixed_by_thread (thread_p, &new_page_vpid));
 
@@ -13795,7 +13815,8 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 
 	  // Add this record to the recdes array and increase the accumulated size.
 	  recdes_array.push_back (local_record);
-	  accumulated_records_size += local_record.length;
+	  accumulated_records_size += DB_ALIGN (local_record.length, HEAP_MAX_ALIGN);
+	  accumulated_records_size += record_overhead;	// Add the slot overhead for the record.
 	}
     }
 

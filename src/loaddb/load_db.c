@@ -909,8 +909,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
   int error = NO_ERROR;
   int stmt_cnt, stmt_id = 0, stmt_type;
   int executed_cnt = 0;
-  int parser_start_line_no;
-  int parser_end_line_no = 1;
+  int last_statement_line_no = 0;	// tracks line no of the last successfully executed stmt. -1 for failed ones.
   int check_line_no = true;
 
   if ((*start_line) > 1)
@@ -960,27 +959,30 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	  db_close_session (session);
 	  goto end;
 	}
-      parser_start_line_no = parser_end_line_no;
 
       stmt_cnt = db_parse_one_statement (session);
       if (stmt_cnt > 0)
 	{
-	  db_get_parser_line_col (session, &parser_end_line_no, NULL);
 	  stmt_id = db_compile_statement (session);
+	  last_statement_line_no = db_get_line_of_statement (session, stmt_id);
 	}
 
+      // Any error occured during compilation, report it!
       if (stmt_cnt <= 0 || stmt_id <= 0)
 	{
 	  DB_SESSION_ERROR *session_error;
 	  int line, col;
-	  if ((session_error = db_get_errors (session)) != NULL)
+
+	  session_error = db_get_errors (session);
+	  if (session_error != NULL)
 	    {
 	      do
 		{
 		  session_error = db_get_next_error (session_error, &line, &col);
 		  if (line >= 0)
 		    {
-		      print_log_msg (1, "In %s line %d,\n", file_name, line + (*start_line));
+		      // We need -1 here since start_line will offset the output.
+		      print_log_msg (1, "In %s line %d,\n", file_name, line + (*start_line) - 1);
 		      print_log_msg (1, "ERROR: %s \n", db_error_string (3));
 		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
@@ -1017,8 +1019,8 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	{
 	  db_commit_transaction ();
 	  print_log_msg (args->verbose_commit, "%8d statements executed. Commit transaction at line %d\n", executed_cnt,
-			 parser_end_line_no);
-	  *start_line = parser_end_line_no + 1;
+			 last_statement_line_no);
+	  *start_line = last_statement_line_no + 1;
 	}
       print_log_msg ((int) args->verbose, "Total %8d statements executed.\r", executed_cnt);
       fflush (stdout);
@@ -1031,7 +1033,7 @@ end:
     }
   else
     {
-      *start_line = parser_end_line_no + 1;
+      *start_line = last_statement_line_no + 1;
       print_log_msg (1, "Total %8d statements executed.\n", executed_cnt);
       fflush (stdout);
       db_commit_transaction ();

@@ -192,7 +192,7 @@ struct double_write_wait_queue
 typedef enum
 {
   VOLUME_NOT_FLUSHED,
-  VOLUME_FLUSHED_BY_DWB_FLUSH_HELPER_THREAD,
+  VOLUME_FLUSHED_BY_DWB_FILE_SYNC_HELPER_THREAD,
   VOLUME_FLUSHED_BY_DWB_FLUSH_THREAD
 } FLUSH_VOLUME_STATUS;
 
@@ -277,7 +277,7 @@ struct double_write_buffer
   dwb_hashmap_type slots_hashmap;	/* The slots hash. */
   int vdes;			/* The volume file descriptor. */
 
-  DWB_BLOCK *volatile helper_flush_block;	/* The block that will be flushed by helper thread. */
+  DWB_BLOCK *volatile file_sync_helper_block;	/* The block that will be sync by helper thread. */
 
   // *INDENT-OFF*
   double_write_buffer ()
@@ -294,7 +294,7 @@ struct double_write_buffer
     , position_with_flags (0)
     , slots_hashmap {}
     , vdes (NULL_VOLDES)
-    , helper_flush_block (NULL)
+    , file_sync_helper_block (NULL)
   {
   }
   // *INDENT-ON*
@@ -352,9 +352,9 @@ static int dwb_compare_vol_fd (const void *v1, const void *v2);
 STATIC_INLINE FLUSH_VOLUME_INFO *dwb_add_volume_to_block_flush_area (THREAD_ENTRY * thread_p, DWB_BLOCK * block,
 								     int vol_fd) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_slots,
-				   unsigned int ordered_slots_length, bool helper_can_flush, bool remove_from_hash)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool helper_can_flush,
+				   unsigned int ordered_slots_length, bool file_sync_helper_can_flush,
+				   bool remove_from_hash) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool file_sync_helper_can_flush,
 				   UINT64 * current_position_with_flags) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void dwb_init_slot (DWB_SLOT * slot) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_acquire_next_slot (THREAD_ENTRY * thread_p, bool can_wait, DWB_SLOT ** p_dwb_slot)
@@ -399,17 +399,17 @@ STATIC_INLINE int dwb_slots_hash_delete (THREAD_ENTRY * thread_p, DWB_SLOT * slo
 // *INDENT-OFF*
 #if defined (SERVER_MODE)
 static cubthread::daemon *dwb_flush_block_daemon = NULL;
-static cubthread::daemon *dwb_flush_block_helper_daemon = NULL;
+static cubthread::daemon *dwb_file_sync_helper_daemon = NULL;
 #endif
 // *INDENT-ON*
 
 static bool dwb_is_flush_block_daemon_available (void);
-static bool dwb_is_flush_block_helper_daemon_available (void);
+static bool dwb_is_file_sync_helper_daemon_available (void);
 
 static bool dwb_flush_block_daemon_is_running (void);
-static bool dwb_flush_block_helper_daemon_is_running (void);
+static bool dwb_file_sync_helper_daemon_is_running (void);
 
-static int dwb_flush_block_helper (THREAD_ENTRY * thread_p);
+static int dwb_file_sync_helper (THREAD_ENTRY * thread_p);
 static int dwb_flush_next_block (THREAD_ENTRY * thread_p);
 
 #if !defined (NDEBUG)
@@ -811,7 +811,7 @@ dwb_starts_structure_modification (THREAD_ENTRY * thread_p, UINT64 * current_pos
   unsigned int block_no;
   int error_code = NO_ERROR;
   unsigned int start_block_no, blocks_count;
-  DWB_BLOCK *helper_flush_block;
+  DWB_BLOCK *file_sync_helper_block;
 
   assert (current_position_with_flags != NULL);
 
@@ -831,7 +831,7 @@ dwb_starts_structure_modification (THREAD_ENTRY * thread_p, UINT64 * current_pos
 
 #if defined(SERVER_MODE)
   while ((ATOMIC_INC_32 (&dwb_Global.blocks_flush_counter, 0) > 0)
-	 || dwb_flush_block_daemon_is_running () || dwb_flush_block_helper_daemon_is_running ())
+	 || dwb_flush_block_daemon_is_running () || dwb_file_sync_helper_daemon_is_running ())
     {
       /* Can't modify structure while flush thread can access DWB. */
       thread_sleep (20);
@@ -839,13 +839,13 @@ dwb_starts_structure_modification (THREAD_ENTRY * thread_p, UINT64 * current_pos
 #endif
 
   /* Since we set the modify structure flag, I'm the only thread that access the DWB. */
-  helper_flush_block = dwb_Global.helper_flush_block;
-  if (helper_flush_block != NULL)
+  file_sync_helper_block = dwb_Global.file_sync_helper_block;
+  if (file_sync_helper_block != NULL)
     {
       /* All remaining blocks are flushed by me. */
-      (void) ATOMIC_TAS_ADDR (&dwb_Global.helper_flush_block, (DWB_BLOCK *) NULL);
+      (void) ATOMIC_TAS_ADDR (&dwb_Global.file_sync_helper_block, (DWB_BLOCK *) NULL);
       dwb_log ("Structure modification, needs to flush DWB block = %d having version %lld\n",
-	       helper_flush_block->block_no, helper_flush_block->version);
+	       file_sync_helper_block->block_no, file_sync_helper_block->version);
     }
 
   local_current_position_with_flags = ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL);
@@ -1206,7 +1206,7 @@ dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_volume_name, UINT6
   pthread_mutex_init (&dwb_Global.mutex, NULL);
   dwb_init_wait_queue (&dwb_Global.wait_queue);
   dwb_Global.vdes = vdes;
-  dwb_Global.helper_flush_block = NULL;
+  dwb_Global.file_sync_helper_block = NULL;
 
   dwb_Global.slots_hashmap.init (dwb_slots_Ts, THREAD_TS_DWB_SLOTS, DWB_SLOTS_HASH_SIZE, freelist_block_size,
 				 freelist_block_count, slots_entry_Descriptor);
@@ -1547,6 +1547,7 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
   int r;
   struct timeval timeval_crt, timeval_timeout;
   struct timespec to;
+  bool save_check_interrupt;
 
   assert (thread_p != NULL && block_no < DWB_NUM_TOTAL_BLOCKS);
 
@@ -1582,12 +1583,15 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
 
   pthread_mutex_unlock (&dwb_block->mutex);
 
+  save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
   /* Waits for maximum 20 milliseconds. */
   gettimeofday (&timeval_crt, NULL);
   timeval_add_msec (&timeval_timeout, &timeval_crt, 20);
   timeval_to_timespec (&to, &timeval_timeout);
 
   r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_DWB_QUEUE_SUSPENDED);
+
+  (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
 
   PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_DWB_WAIT_FLUSH_BLOCK_TIME_COUNTERS);
 
@@ -1600,8 +1604,7 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
   else if (thread_p->resume_status != THREAD_DWB_QUEUE_RESUMED)
     {
       /* interruption, remove the entry from queue */
-      assert (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT
-	      || thread_p->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN);
+      assert (thread_p->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN);
 
       dwb_remove_wait_queue_entry (&dwb_block->wait_queue, &dwb_block->mutex, thread_p, NULL);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
@@ -1694,6 +1697,7 @@ dwb_wait_for_strucure_modification (THREAD_ENTRY * thread_p)
   int r;
   struct timeval timeval_crt, timeval_timeout;
   struct timespec to;
+  bool save_check_interrupt;
 
   (void) pthread_mutex_lock (&dwb_Global.mutex);
 
@@ -1720,12 +1724,15 @@ dwb_wait_for_strucure_modification (THREAD_ENTRY * thread_p)
 
   pthread_mutex_unlock (&dwb_Global.mutex);
 
+  save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
   /* Waits for maximum 10 milliseconds. */
   gettimeofday (&timeval_crt, NULL);
   timeval_add_msec (&timeval_timeout, &timeval_crt, 10);
   timeval_to_timespec (&to, &timeval_timeout);
 
   r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_DWB_QUEUE_SUSPENDED);
+
+  (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
   if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
     {
       /* timeout, remove the entry from queue */
@@ -1735,8 +1742,7 @@ dwb_wait_for_strucure_modification (THREAD_ENTRY * thread_p)
   else if (thread_p->resume_status != THREAD_DWB_QUEUE_RESUMED)
     {
       /* interruption, remove the entry from queue */
-      assert (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT
-	      || thread_p->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN);
+      assert (thread_p->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN);
 
       dwb_remove_wait_queue_entry (&dwb_Global.wait_queue, &dwb_Global.mutex, thread_p, NULL);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
@@ -1978,13 +1984,13 @@ dwb_add_volume_to_block_flush_area (THREAD_ENTRY * thread_p, DWB_BLOCK * block, 
  * p_dwb_ordered_slots(in): The slots that gives the pages flush order.
  * ordered_slots_length(in): The ordered slots array length.
  * remove_from_hash(in): True, if needs to remove entries from hash.
- * helper_can_flush(in): True, if helper can flush.
+ * file_sync_helper_can_flush(in): True, if helper can flush.
  *
  *  Note: This function fills to_flush_vdes array with the volumes that must be flushed.
  */
 STATIC_INLINE int
 dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_ordered_slots,
-		 unsigned int ordered_slots_length, bool helper_can_flush, bool remove_from_hash)
+		 unsigned int ordered_slots_length, bool file_sync_helper_can_flush, bool remove_from_hash)
 {
   VOLID last_written_volid;
   unsigned int i;
@@ -2077,12 +2083,12 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
       ATOMIC_INC_32 (&current_flush_volume_info->num_pages, 1);
       count_writes++;
 
-      if (helper_can_flush && (count_writes >= num_pages_to_sync || can_flush_volume == true)
-	  && dwb_is_flush_block_helper_daemon_available ())
+      if (file_sync_helper_can_flush && (count_writes >= num_pages_to_sync || can_flush_volume == true)
+	  && dwb_is_file_sync_helper_daemon_available ())
 	{
-	  if (ATOMIC_CAS_ADDR (&dwb_Global.helper_flush_block, (DWB_BLOCK *) NULL, block))
+	  if (ATOMIC_CAS_ADDR (&dwb_Global.file_sync_helper_block, (DWB_BLOCK *) NULL, block))
 	    {
-	      dwb_flush_block_helper_daemon->wakeup ();
+	      dwb_file_sync_helper_daemon->wakeup ();
 	    }
 
 	  /* Add statistics. */
@@ -2108,13 +2114,14 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 #endif
 
 #if defined (SERVER_MODE)
-  if (helper_can_flush && (dwb_Global.helper_flush_block == NULL) && (block->count_flush_volumes_info > 0))
+  if (file_sync_helper_can_flush && (dwb_Global.file_sync_helper_block == NULL)
+      && (block->count_flush_volumes_info > 0))
     {
-      /* If helper_flush_block is NULL, it means that the flush helper thread does not run and was not woken yet. */
-      if (dwb_is_flush_block_helper_daemon_available ()
-	  && ATOMIC_CAS_ADDR (&dwb_Global.helper_flush_block, (DWB_BLOCK *) NULL, block))
+      /* If file_sync_helper_block is NULL, it means that the file sync helper thread does not run and was not woken yet. */
+      if (dwb_is_file_sync_helper_daemon_available ()
+	  && ATOMIC_CAS_ADDR (&dwb_Global.file_sync_helper_block, (DWB_BLOCK *) NULL, block))
 	{
-	  dwb_flush_block_helper_daemon->wakeup ();
+	  dwb_file_sync_helper_daemon->wakeup ();
 	}
     }
 #endif
@@ -2145,7 +2152,7 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	    }
 	}
 
-      PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_DWB_FLUSH_BLOCK_REMOVE_HASH_ENTRIES);
+      PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_DWB_DECACHE_PAGES_AFTER_WRITE);
     }
 
   return NO_ERROR;
@@ -2157,13 +2164,13 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
  * return   : Error code.
  * thread_p (in): Thread entry.
  * block(in): The block that needs flush.
- * helper_can_flush(in): True, if helper thread can flush.
+ * file_sync_helper_can_flush(in): True, if file sync helper thread can flush.
  * current_position_with_flags(out): Current position with flags.
  *
  *  Note: The block pages can't be modified by others during flush.
  */
 STATIC_INLINE int
-dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool helper_can_flush,
+dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool file_sync_helper_can_flush,
 		 UINT64 * current_position_with_flags)
 {
   UINT64 local_current_position_with_flags, new_position_with_flags;
@@ -2176,10 +2183,10 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool helper_can_flu
   int max_pages_to_sync;
 #if defined (SERVER_MODE)
   bool flush = false;
-  PERF_UTIME_TRACKER time_track_flush_helper;
+  PERF_UTIME_TRACKER time_track_file_sync_helper;
 #endif
 #if !defined (NDEBUG)
-  DWB_BLOCK *saved_helper_flush_block = NULL;
+  DWB_BLOCK *saved_file_sync_helper_block = NULL;
   LOG_LSA nxio_lsa;
 #endif
 
@@ -2240,57 +2247,57 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool helper_can_flu
   PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_DWB_FLUSH_BLOCK_SORT_TIME_COUNTERS);
 
 #if !defined (NDEBUG)
-  saved_helper_flush_block = (DWB_BLOCK *) dwb_Global.helper_flush_block;
+  saved_file_sync_helper_block = (DWB_BLOCK *) dwb_Global.file_sync_helper_block;
 #endif
 
 #if defined (SERVER_MODE)
-  PERF_UTIME_TRACKER_START (thread_p, &time_track_flush_helper);
+  PERF_UTIME_TRACKER_START (thread_p, &time_track_file_sync_helper);
 
-  while (dwb_Global.helper_flush_block != NULL)
+  while (dwb_Global.file_sync_helper_block != NULL)
     {
       flush = true;
 
       /* Be sure that the previous block was written on disk, before writing the current block. */
-      if (dwb_is_flush_block_helper_daemon_available ())
+      if (dwb_is_file_sync_helper_daemon_available ())
 	{
-	  /* Wait for flush helper. */
+	  /* Wait for file sync helper. */
 	  thread_sleep (1);
 	}
       else
 	{
 	  /* Helper not available, flush the volumes from previous block. */
-	  for (i = 0; i < dwb_Global.helper_flush_block->count_flush_volumes_info; i++)
+	  for (i = 0; i < dwb_Global.file_sync_helper_block->count_flush_volumes_info; i++)
 	    {
-	      assert (dwb_Global.helper_flush_block->flush_volumes_info[i].vdes != NULL_VOLDES);
+	      assert (dwb_Global.file_sync_helper_block->flush_volumes_info[i].vdes != NULL_VOLDES);
 
-	      if (ATOMIC_INC_32 (&(dwb_Global.helper_flush_block->flush_volumes_info[i].num_pages), 0) >= 0)
+	      if (ATOMIC_INC_32 (&(dwb_Global.file_sync_helper_block->flush_volumes_info[i].num_pages), 0) >= 0)
 		{
 		  (void) fileio_synchronize (thread_p,
-					     dwb_Global.helper_flush_block->flush_volumes_info[i].vdes, NULL,
+					     dwb_Global.file_sync_helper_block->flush_volumes_info[i].vdes, NULL,
 					     FILEIO_SYNC_ONLY);
 
 		  dwb_log ("dwb_flush_block: Synchronized volume %d\n",
-			   dwb_Global.helper_flush_block->flush_volumes_info[i].vdes);
+			   dwb_Global.file_sync_helper_block->flush_volumes_info[i].vdes);
 		}
 	    }
-	  (void) ATOMIC_TAS_ADDR (&dwb_Global.helper_flush_block, (DWB_BLOCK *) NULL);
+	  (void) ATOMIC_TAS_ADDR (&dwb_Global.file_sync_helper_block, (DWB_BLOCK *) NULL);
 	}
     }
 
 #if !defined (NDEBUG)
-  if (saved_helper_flush_block)
+  if (saved_file_sync_helper_block)
     {
-      for (i = 0; i < saved_helper_flush_block->count_flush_volumes_info; i++)
+      for (i = 0; i < saved_file_sync_helper_block->count_flush_volumes_info; i++)
 	{
-	  assert (saved_helper_flush_block->flush_volumes_info[i].all_pages_written == true
-		  && saved_helper_flush_block->flush_volumes_info[i].num_pages == 0);
+	  assert (saved_file_sync_helper_block->flush_volumes_info[i].all_pages_written == true
+		  && saved_file_sync_helper_block->flush_volumes_info[i].num_pages == 0);
 	}
     }
 #endif
 
   if (flush == true)
     {
-      PERF_UTIME_TRACKER_TIME (thread_p, &time_track_flush_helper, PSTAT_DWB_WAIT_FLUSH_BLOCK_HELPER_TIME_COUNTERS);
+      PERF_UTIME_TRACKER_TIME (thread_p, &time_track_file_sync_helper, PSTAT_DWB_WAIT_FILE_SYNC_HELPER_TIME_COUNTERS);
     }
 #endif /* SERVER_MODE */
 
@@ -2320,7 +2327,8 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool helper_can_flu
   dwb_log ("dwb_flush_block: DWB synchronized\n");
 
   /* Now, write and flush the original location. */
-  error_code = dwb_write_block (thread_p, block, p_dwb_ordered_slots, ordered_slots_length, helper_can_flush, true);
+  error_code =
+    dwb_write_block (thread_p, block, p_dwb_ordered_slots, ordered_slots_length, file_sync_helper_can_flush, true);
   if (error_code != NO_ERROR)
     {
       assert (false);
@@ -2342,18 +2350,18 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool helper_can_flu
 	}
 
 #if defined (SERVER_MODE)
-      if (helper_can_flush == true)
+      if (file_sync_helper_can_flush == true)
 	{
-	  if ((num_pages > max_pages_to_sync) && dwb_is_flush_block_helper_daemon_available ())
+	  if ((num_pages > max_pages_to_sync) && dwb_is_file_sync_helper_daemon_available ())
 	    {
 	      /* Let the helper thread to flush volumes having many pages. */
-	      assert (dwb_Global.helper_flush_block != NULL);
+	      assert (dwb_Global.file_sync_helper_block != NULL);
 	      continue;
 	    }
 	}
       else
 	{
-	  assert (dwb_Global.helper_flush_block == NULL);
+	  assert (dwb_Global.file_sync_helper_block == NULL);
 	}
 #endif
 
@@ -2372,7 +2380,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool helper_can_flu
       dwb_log ("dwb_flush_block: Synchronized volume %d\n", block->flush_volumes_info[i].vdes);
     }
 
-  /* Allow to flush helper to finish. */
+  /* Allow to file sync helper thread to finish. */
   block->all_pages_written = true;
 
   if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_FLUSHED_BLOCK_VOLUMES))
@@ -3451,7 +3459,7 @@ start:
       if (!DWB_IS_CREATED (initial_position_with_flags))
 	{
 	  /* Nothing to do. Everything flushed. */
-	  assert (dwb_Global.helper_flush_block == NULL);
+	  assert (dwb_Global.file_sync_helper_block == NULL);
 	  dwb_log ("dwb_flush_force: Everything flushed\n");
 	  goto end;
 	}
@@ -3478,14 +3486,14 @@ start:
     {
       /* Check helper flush block. */
       initial_block_no = DWB_GET_BLOCK_NO_FROM_POSITION (initial_position_with_flags);
-      initial_block = dwb_Global.helper_flush_block;
+      initial_block = dwb_Global.file_sync_helper_block;
       if (initial_block == NULL)
 	{
 	  /* Nothing to flush. */
 	  goto end;
 	}
 
-      goto wait_for_helper_flush_block;
+      goto wait_for_file_sync_helper_block;
     }
 
   /* Search for latest not flushed block - not flushed yet, having highest version. */
@@ -3554,7 +3562,7 @@ check_flushed_blocks:
       if (!DWB_IS_CREATED (current_position_with_flags))
 	{
 	  /* Nothing to do. Everything flushed. */
-	  assert (dwb_Global.helper_flush_block == NULL);
+	  assert (dwb_Global.file_sync_helper_block == NULL);
 	  dwb_log ("dwb_flush_force: Everything flushed\n");
 	  goto end;
 	}
@@ -3581,7 +3589,7 @@ check_flushed_blocks:
   if (!DWB_IS_BLOCK_WRITE_STARTED (current_position_with_flags, initial_block_no))
     {
       /* Check helper flush block. */
-      goto wait_for_helper_flush_block;
+      goto wait_for_file_sync_helper_block;
     }
 
   /* Check whether initial block content was overwritten. */
@@ -3593,7 +3601,7 @@ check_flushed_blocks:
       assert (current_block_version > initial_block_version);
 
       /* Check helper flush block. */
-      goto wait_for_helper_flush_block;
+      goto wait_for_file_sync_helper_block;
     }
 
   if (current_position_with_flags == prev_position_with_flags && count_added_pages < max_pages_to_add)
@@ -3611,7 +3619,7 @@ check_flushed_blocks:
       else if (dwb_slot == NULL)
 	{
 	  /* DWB disabled meanwhile, everything flushed. */
-	  assert (dwb_Global.helper_flush_block == NULL);
+	  assert (dwb_Global.file_sync_helper_block == NULL);
 	  assert (!DWB_IS_CREATED (ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL)));
 	  dwb_log ("dwb_flush_force: DWB disabled = %lld\n", ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL));
 	  goto end;
@@ -3623,14 +3631,14 @@ check_flushed_blocks:
   prev_position_with_flags = current_position_with_flags;
   goto check_flushed_blocks;
 
-wait_for_helper_flush_block:
+wait_for_file_sync_helper_block:
   dwb_log ("dwb_flush_force: Wait for helper flush = %lld\n", ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL));
   initial_block = &dwb_Global.blocks[initial_block_no];
 
 #if defined (SERVER_MODE)
-  while (dwb_Global.helper_flush_block == initial_block)
+  while (dwb_Global.file_sync_helper_block == initial_block)
     {
-      /* Wait for flush helper to finish. */
+      /* Wait for file sync helper thread to finish. */
       thread_sleep (1);
     }
 #endif
@@ -3656,13 +3664,13 @@ end:
 }
 
 /*
- * dwb_flush_block_helper () - Helps block flushing.
+ * dwb_file_sync_helper () - Helps file sync.
  *
  * return   : Error code.
  * thread_p (in): Thread entry.
  */
 static int
-dwb_flush_block_helper (THREAD_ENTRY * thread_p)
+dwb_file_sync_helper (THREAD_ENTRY * thread_p)
 {
   unsigned int i;
   int num_pages, num_pages2, num_pages_to_sync;
@@ -3685,7 +3693,7 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
       return NO_ERROR;
     }
 
-  block = (DWB_BLOCK *) dwb_Global.helper_flush_block;
+  block = (DWB_BLOCK *) dwb_Global.file_sync_helper_block;
   if (block == NULL)
     {
       return NO_ERROR;
@@ -3702,10 +3710,10 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 	{
 	  current_flush_volume_info = &block->flush_volumes_info[i];
 
-	  if (current_flush_volume_info->flushed_status != VOLUME_FLUSHED_BY_DWB_FLUSH_HELPER_THREAD)
+	  if (current_flush_volume_info->flushed_status != VOLUME_FLUSHED_BY_DWB_FILE_SYNC_HELPER_THREAD)
 	    {
 	      if (!ATOMIC_CAS_32 (&current_flush_volume_info->flushed_status, VOLUME_NOT_FLUSHED,
-				  VOLUME_FLUSHED_BY_DWB_FLUSH_HELPER_THREAD))
+				  VOLUME_FLUSHED_BY_DWB_FILE_SYNC_HELPER_THREAD))
 		{
 		  /* Flushed by DWB flusher, skip it. */
 		  assert_release (current_flush_volume_info->flushed_status == VOLUME_FLUSHED_BY_DWB_FLUSH_THREAD);
@@ -3714,7 +3722,7 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 	    }
 
 	  /* I'm the flusher of the volume. */
-	  assert_release (current_flush_volume_info->flushed_status == VOLUME_FLUSHED_BY_DWB_FLUSH_HELPER_THREAD);
+	  assert_release (current_flush_volume_info->flushed_status == VOLUME_FLUSHED_BY_DWB_FILE_SYNC_HELPER_THREAD);
 
 	  num_pages = ATOMIC_INC_32 (&current_flush_volume_info->num_pages, 0);
 	  if (num_pages < num_pages_to_sync)
@@ -3761,7 +3769,7 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 	   */
 	  (void) fileio_synchronize (thread_p, current_flush_volume_info->vdes, NULL, FILEIO_SYNC_ONLY);
 
-	  dwb_log ("dwb_flush_block_helper: Synchronized volume %d\n", current_flush_volume_info->vdes);
+	  dwb_log ("dwb_file_sync_helper: Synchronized volume %d\n", current_flush_volume_info->vdes);
 	}
 
       /* Set next volume to flush. */
@@ -3847,10 +3855,10 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 #endif
 
   /* Be sure that the helper flush block was not changed by other thread. */
-  assert (block == dwb_Global.helper_flush_block);
-  (void) ATOMIC_TAS_ADDR (&dwb_Global.helper_flush_block, (DWB_BLOCK *) NULL);
+  assert (block == dwb_Global.file_sync_helper_block);
+  (void) ATOMIC_TAS_ADDR (&dwb_Global.file_sync_helper_block, (DWB_BLOCK *) NULL);
 
-  PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_DWB_FLUSH_BLOCK_HELPER_TIME_COUNTERS);
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_DWB_FILE_SYNC_HELPER_TIME_COUNTERS);
 
   return NO_ERROR;
 }
@@ -3945,13 +3953,13 @@ class dwb_flush_block_daemon_task: public cubthread::entry_task
     }
 };
 
-// class dwb_flush_block_helper_daemon_task
+// class dwb_file_sync_helper_daemon_task
 //
 //  description:
-//    dwb flush block helper daemon task
+//    dwb file sync helper daemon task
 //
 void
-dwb_flush_block_helper_execute (cubthread::entry &thread_ref)
+dwb_file_sync_helper_execute (cubthread::entry &thread_ref)
 {
   if (!BO_IS_SERVER_RESTARTED ())
     {
@@ -3962,7 +3970,7 @@ dwb_flush_block_helper_execute (cubthread::entry &thread_ref)
   /* flush pages as long as necessary */
   if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true)
     {
-      dwb_flush_block_helper (&thread_ref);
+      dwb_file_sync_helper (&thread_ref);
     }
 }
 
@@ -3979,15 +3987,15 @@ dwb_flush_block_daemon_init ()
 }
 
 /*
- * dwb_flush_block_helper_daemon_init () - initialize DWB flush block helper daemon thread
+ * dwb_file_sync_helper_daemon_init () - initialize DWB file sync helper daemon thread
  */
 void
-dwb_flush_block_helper_daemon_init ()
+dwb_file_sync_helper_daemon_init ()
 {
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
-  cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (dwb_flush_block_helper_execute);
+  cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (dwb_file_sync_helper_execute);
 
-  dwb_flush_block_helper_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
+  dwb_file_sync_helper_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
 }
 
 /*
@@ -3997,7 +4005,7 @@ void
 dwb_daemons_init ()
 {
   dwb_flush_block_daemon_init ();
-  dwb_flush_block_helper_daemon_init ();
+  dwb_file_sync_helper_daemon_init ();
 }
 
 /*
@@ -4007,7 +4015,7 @@ void
 dwb_daemons_destroy ()
 {
   cubthread::get_manager ()->destroy_daemon (dwb_flush_block_daemon);
-  cubthread::get_manager ()->destroy_daemon (dwb_flush_block_helper_daemon);
+  cubthread::get_manager ()->destroy_daemon (dwb_file_sync_helper_daemon);
 }
 #endif /* SERVER_MODE */
 // *INDENT-ON*
@@ -4027,14 +4035,14 @@ dwb_is_flush_block_daemon_available (void)
 }
 
 /*
- * dwb_is_flush_block_helper_daemon_available () - Check if flush block helper daemon is available
- * return: true if flush block helper daemon is available, false otherwise
+ * dwb_is_file_sync_helper_daemon_available () - Check if file sync helper daemon is available
+ * return: true if file sync helper daemon is available, false otherwise
  */
 static bool
-dwb_is_flush_block_helper_daemon_available (void)
+dwb_is_file_sync_helper_daemon_available (void)
 {
 #if defined (SERVER_MODE)
-  return prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true && dwb_flush_block_helper_daemon != NULL;
+  return prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true && dwb_file_sync_helper_daemon != NULL;
 #else
   return false;
 #endif
@@ -4057,16 +4065,16 @@ dwb_flush_block_daemon_is_running (void)
 }
 
 /*
- * dwb_flush_block_helper_daemon_is_running () - Check whether flush block helper daemon is running
+ * dwb_file_sync_helper_daemon_is_running () - Check whether file sync helper daemon is running
  *
- *   return: true, if flush block helper thread is running
+ *   return: true, if file sync helper thread is running
  */
 static bool
-dwb_flush_block_helper_daemon_is_running (void)
+dwb_file_sync_helper_daemon_is_running (void)
 {
 #if defined (SERVER_MODE)
-  return (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true && (dwb_flush_block_helper_daemon != NULL)
-	  && (dwb_flush_block_helper_daemon->is_running ()));
+  return (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true && (dwb_file_sync_helper_daemon != NULL)
+	  && (dwb_file_sync_helper_daemon->is_running ()));
 #else
   return false;
 #endif /* SERVER_MODE */

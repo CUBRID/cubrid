@@ -188,6 +188,7 @@ struct heap_hfid_table
   LF_HASH_TABLE hfid_hash;	/* class OID->HFID cache hash table */
   LF_ENTRY_DESCRIPTOR hfid_hash_descriptor;	/* used by hfid_hash */
   LF_FREELIST hfid_hash_freelist;	/* used by hfid_hash */
+  bool logging;
 };
 
 #define HEAP_HFID_HASH_SIZE 1000
@@ -684,6 +685,7 @@ extern int heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_
 extern int heap_nonheader_page_capacity ();
 
 extern int heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv);
+extern void heap_rv_dump_append_pages_to_heap (FILE * fp, int length, void *data);
 // *INDENT-OFF*
 extern void heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid,
 						 const std::vector<VPID> &heap_pages_array);

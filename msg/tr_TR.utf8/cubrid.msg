@@ -1263,26 +1263,26 @@ $ LOADDB
 1194 Çünkü %3$d|%4$d|%5$d sınıfı kilidi hemen verilmez, %1$d|%2$d dosyası kontrol edilemez.
 1195 CTE'nin özyinelemeli kısmı, GROUP BY yan tümcesi olmayan toplama işlevlerini içermemelidir.
 1196 CTE yürütme azami özyinelemeli iterasyonlara ulaştı: %1$d.
-1197 Invalid json: %1$s (%2$d)
-1198 A json object must be provided
-1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
-1200 Invalid JSON path
-1201 Json object name cannot be NULL.
-1202 Json PATH "%1$s" does not exist in %2$s
-1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
-1204 Json KEY "%1$s" is duplicate
-1205 Invalid type %1$s. Expecting JSON document compatible data type (STRING or JSON).
-1206 Json PATH "%1$s" does not address a cell in an Json ARRAY.
-1207 Invalid JSON path. Index is larger than allowed by system parameter json_max_array_idx.
-1208 Invalid one/all argument. The one/all argument may only take one of these two values: "one", "all".
+1197 Geçersiz JSON: %1$s (%2$d)
+1198 Bir JSON nesnesi sağlanmalı
+1199 Sağlanan JSON, JSON şeması tarafından geçersiz kılındı (Geçersiz şema yolu: %1$s, Anahtar Kelime: %2$s, Geçersiz JSON yolu: %3$s)
+1200 Geçersiz JSON yolu
+1201 JSON nesne adı NULL olamaz.
+1202 '%2$s' de JSON yolu "%1$s" mevcut değil
+1203 %1$s yolunda geçersiz JSON tipi. Beklenen %2$s, ancak %3$s'ü buldu.
+1204 Json anahtarı "%1$s" kopya
+1205 Geçersiz tip %1$s. JSON belgesiyle uyumlu tip bekleniyor (STRING veya JSON).
+1206 JSON yolu "%1$s", JSON Dizisindeki bir hücreye yönelik değil.
+1207 Geçersiz JSON yolu. Dizin, "json_max_array_idx" sistem parametresi tarafından izin verilenden daha büyük.
+1208 Geçersiz one/all argümanı. Argüman bu iki değerden sadece birini alabilir: "one", "all".
 1209 Reserved error for JSON.
 1210 Reserved error for JSON.
 1211 Reserved error for JSON.
 1212 Reserved error for JSON.
 1213 Reserved error for JSON.
 1214 Reserved error for JSON.
-1215 No more data to read from stream %1$s at position %2$lld, amount %3$zu.
-1216 Invalid object id %1$d when trying to unpack.
+1215 %2$lld pozisyonunda stream %1$s'dan okunacak veri yok, %3$zu değeri.
+1216 Paketi açmaya çalışırken geçersiz nesne kimliği %1$d.
 1217 Reserved error for stream/replication.
 1218 Reserved error for stream/replication.
 1219 Reserved error for stream/replication.
@@ -1302,17 +1302,17 @@ $ LOADDB
 1233 Reserved error for stream/replication.
 1234 Reserved error for stream/replication.
 1235 Reserved error for stream/replication.
-1236 Double Write Buffer is disabled.
-1237 Cannot change status on %1$s because %2$s is a %3$s.
-1238 Missing value for JSON_TABLE column '%1$s'.
-1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s".
-1240 Online index is not allowed on classes that are part of a hierarchy chain.
-1241 XASL tree needs recompile.
-1242 Cannot create partition on a class that is part of a hierarchy chain.
-1243 Index loading was aborted after an error.
-1244 Loading shared attributes updates from object files is not supported in CS mode.
-1245 Loading class attributes updates from object files is not supported in CS mode.
-1246 Error getting address and name information. Code : %1$d, message : %2$s.
+1236 Çift Yaz Tampon devre dışı.
+1237 %1$s bir durum değiştiremiyor çünkü %2$s bir %3$s.
+1238 JSON_TABLE '%1$s' sütunu için eksik değer.
+1239 "%2$s" yolundaki JSON "%1$s"'den, "%4$s" etki alanının JSON_TABLE "%3$s" sütununa değer zorlanamıyor.
+1240 Hiyerarşi zincirinin bir parçası olan sınıflarda ONLINE INDEX'e izin verilmez.
+1241 XASL ağacının yeniden derlenmesi gerekiyor.
+1242 Hiyerarşi zincirinin bir parçası olan bir sınıfta bölüm oluşturulamıyor.
+1243 Bir hatadan sonra INDEX yüklemesi iptal edildi.
+1244 SHARED niteliklerinin güncellemelerini nesne dosyalarından güncelleme CS modunda desteklenmiyor.
+1245 CLASS niteliklerinin güncellemelerini nesne dosyalarından güncelleme CS modunda desteklenmiyor.
+1246 Adres ve ad bilgisi alınırken hata oluştu. Kod: %1$d, mesaj: %2$s.
 
 1247 Son Hata
 
@@ -1470,8 +1470,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 125 sessiontimezone geçersiz kullanımı\n sessiontimezone
 126 Bir class/vclass yorumun maksimum uzunluğu %1$d byte.
 127 Bir yorumun maksimum uzunluğu %1$d byte.
-128 Invalid number of arguments for JSON_OBJECTAGG
-129 PARALLEL count argument must be between %1$d and %2$d.
+128 JSON_OBJECTAGG için bağımsız değişken sayısı geçersiz
+129 PARALLEL count argümanı %1$d ve %2$d arasında olmalıdır.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Bellek yetersiz.
@@ -1774,11 +1774,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 298 Özyinelemeli CTE '%1$s', özyinelemeli sorgusunda doğrudan başvurulmalıdır.
 299 CTE '%1$s' hatası: yinelemesiz bölüm ve özyinelemeli bölüm UNION ALL ile bağlanmalıdır.
 300 DEFAULT yan tümcesi içinde alt sorguya izin verilmez.
-301 Could not find signatures for function %1$s()
-302 Incompatible argument type %1$s, expected type is: %2$s.
-303 Unexpected number of arguments %1$d.
-304 Could not find compatible signature for function %1$s()
-305 Signature %1$s is not compatible with function arguments.
+301 %1$s() fonksiyonu için bulunamadı imzalar
+302 Uyumsuz bağımsız değişken türü %1$s, beklenen tür: %2$s.
+303 Beklenmeyen argüman sayısı %1$d.
+304 %1$s() fonksiyonu için uyumlu bir imza bulunamadı
+305 İmza %1$s, argümanları ile uyumlu değildir.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.
@@ -1861,6 +1861,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 79 Geçersiz yalıtım düzeyi: %1$s şema, %2$s örnekleri.
 80 MVCC tecrit seviye değerlerini 'read committed', 'repeatable read' ya da 'serializable' olması gerekir.
 81 '%1$s' bir 'auto_increment' nesne olduğunu, seri olarak değiştirilebilir izin verilmez.
+82 Geçersiz JSON: '%1$s'.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** geçersiz önbellek ***

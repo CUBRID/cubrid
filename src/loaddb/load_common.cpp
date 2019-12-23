@@ -625,7 +625,7 @@ namespace cubload
     int error_code;
     int batch_rows = 0;
     int lineno = 0;
-    int line_offset = 0;
+    int batch_start_offset = 0;
     class_id clsid = FIRST_CLASS_ID;
     batch_id batch_id = NULL_BATCH_ID;
     std::string batch_buffer;
@@ -658,7 +658,7 @@ namespace cubload
 		// in case of class line collect remaining for current class
 		// and start new batch for the new class
 
-		error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset, batch_rows);
+		error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, batch_start_offset, batch_rows);
 		if (error_code != NO_ERROR)
 		  {
 		    object_file.close ();
@@ -680,7 +680,8 @@ namespace cubload
 		return error_code;
 	      }
 
-	    line_offset = lineno;
+	    // Next batch should start from the following line.
+	    batch_start_offset = lineno + 1;
 	    continue;
 	  }
 
@@ -731,8 +732,9 @@ namespace cubload
 	// check if we have a full batch
 	if (batch_rows == batch_size)
 	  {
-	    error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset, batch_rows);
-	    line_offset = lineno;
+	    error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, batch_start_offset, batch_rows);
+	    // Next batch should start from the following line.
+	    batch_start_offset = lineno + 1;
 	    if (error_code != NO_ERROR)
 	      {
 		object_file.close ();
@@ -742,7 +744,7 @@ namespace cubload
       }
 
     // collect remaining rows
-    error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset, batch_rows);
+    error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, batch_start_offset, batch_rows);
 
     object_file.close ();
 

@@ -77,6 +77,12 @@ struct log_bgarv_header
   LOG_PAGEID last_sync_pageid;
 };
 
+enum HEADER_FETCH_MODE
+{
+  NORMAL_FETCH_MODE = 0,
+  CHECK_FORMATTED_PAGE
+};
+
 #define logwr_er_log(...) if (prm_get_bool_value (PRM_ID_DEBUG_LOGWR)) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
 
 static int logwr_check_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
@@ -156,7 +162,7 @@ LOGWR_GLOBAL logwr_Gl = {
 };
 // *INDENT-ON*
 
-static int logwr_fetch_header_page (LOG_PAGE * log_pgptr, int vol_fd);
+static int logwr_fetch_header_page (LOG_PAGE * log_pgptr, int vol_fd, HEADER_FETCH_MODE mode = NORMAL_FETCH_MODE);
 static int logwr_read_log_header (void);
 static int logwr_read_bgarv_log_header (void);
 static int logwr_initialize (const char *db_name, const char *log_path, int mode, LOG_PAGEID start_pageid);
@@ -216,10 +222,16 @@ logwr_to_physical_pageid (LOG_PAGEID logical_pageid)
  * return:
  *   log_pgptr(out):
  *   vol_fd(in):
- * Note:
+ *   mode(in):
+ *
+ * Note: if page contents are unexpected :
+ *        - if is just formatted and mode is CHECK_FORMATTED_PAGE, error code ER_DISK_INCONSISTENT_VOL_HEADER
+ *          is returned (no error is set);
+ *        - otherwise ER_LOG_PAGE_CORRUPTED is returned and error is set
+ *
  */
 static int
-logwr_fetch_header_page (LOG_PAGE * log_pgptr, int vol_fd)
+logwr_fetch_header_page (LOG_PAGE * log_pgptr, int vol_fd, HEADER_FETCH_MODE mode)
 {
   LOG_PAGEID pageid;
   LOG_PHY_PAGEID phy_pageid;
@@ -242,6 +254,11 @@ logwr_fetch_header_page (LOG_PAGE * log_pgptr, int vol_fd)
     {
       if (log_pgptr->hdr.logical_pageid != pageid)
 	{
+	  if (mode == CHECK_FORMATTED_PAGE && fileio_is_formatted_page (NULL, (char *) log_pgptr))
+	    {
+	      /* set error outside this function */
+	      return ER_DISK_INCONSISTENT_VOL_HEADER;
+	    }
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, pageid);
 	  return ER_LOG_PAGE_CORRUPTED;
 	}
@@ -285,10 +302,16 @@ logwr_read_log_header (void)
 	}
       else
 	{
-	  error = logwr_fetch_header_page (log_pgptr, logwr_Gl.append_vdes);
-	  if (error == ER_LOG_PAGE_CORRUPTED && fileio_is_formatted_page (NULL, (char *) log_pgptr))
+	  error = logwr_fetch_header_page (log_pgptr, logwr_Gl.append_vdes, CHECK_FORMATTED_PAGE);
+	  if (error == ER_DISK_INCONSISTENT_VOL_HEADER)
 	    {
-	      fileio_dismount (NULL, LOG_DBLOG_ACTIVE_VOLID);
+	      /* the page appears to be just formatted (previous instance of log writter was stopped before appending
+	       * expected data; in this case just notify and delete the volume:
+	       * the behavior will be the same as `if (!fileio_is_volume_exist (logwr_Gl.active_name)) branch` */
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_DISK_INCONSISTENT_VOL_HEADER, 1,
+		      logwr_Gl.active_name);
+
+	      fileio_dismount_without_fsync (NULL, LOG_DBLOG_ACTIVE_VOLID);
 	      fileio_unformat (NULL, logwr_Gl.active_name);
 	      er_clear ();
 	      return NO_ERROR;

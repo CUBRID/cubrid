@@ -1619,8 +1619,25 @@ ldr_internal_error (LDR_CONTEXT *context)
 static void
 display_error_line (int adjust)
 {
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
-	   ldr_Driver->get_scanner ().lineno () + adjust);
+  int lineno = 0;
+  if (adjust != 0)
+    {
+      // In case of adjustment required, use the old behavior of using the scanner line.
+      lineno = ldr_Driver->get_scanner ().lineno() + adjust;
+    }
+  else
+    {
+      // No adjustment needed, we can report the current line.
+      lineno = ldr_Driver->get_start_line ();
+    }
+
+  if (lineno == 0)
+    {
+      // Most likely parsing hasn't started yet so we should not print the line number.
+      return;
+    }
+
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE), lineno);
 }
 
 /*

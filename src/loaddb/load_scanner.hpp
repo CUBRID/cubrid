@@ -67,13 +67,15 @@ namespace cubload
        */
       void LexerError (const char *msg) override
       {
-	/* TODO: We need a better approach since this should in fact throw an irrecoverable error
-	 * which will fail the session. However, for syntax checking, this proves to abort all
-	 * other batches that are being checked, which is not entirely correct since we want to
-	 * use the parallelism to check for all errors in the file.
+	/*
+	 *  This approach must be done in order not to fail the whole session during any lexer errors
+	 *  encountered during parsing of the data file while the --data-check-only argument is enabled.
+	 *  This method will fail the session in case the lexer is jammed and the --data-check-only argument is not
+	 *  set, but it will not fail the session is --data-check-only is enabled, and it will just report the line
+	 *  where the parsing error occured.
 	 */
-	m_error_handler.on_error_with_line (LOADDB_MSG_LEX_ERROR);
-	m_error_handler.on_syntax_failure ();
+	m_error_handler.on_error_with_line (m_error_handler.get_scanner_lineno (), LOADDB_MSG_LEX_ERROR);
+	m_error_handler.on_syntax_failure (true);   // Use scanner line in this case.
       }
 
     private:

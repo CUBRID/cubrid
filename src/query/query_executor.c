@@ -21668,6 +21668,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   int *attr_ids = NULL;
   int function_asc_desc;
   HEAP_SCANCACHE scan;
+  bool scancache_inited = false;
   RECDES class_record;
   DISK_REPR *disk_repr_p = NULL;
   char *class_name = NULL;
@@ -21738,6 +21739,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
   /* read heap class record, get class representation */
   heap_scancache_quick_start_root_hfid (thread_p, &scan);
+  scancache_inited = true;
 
   if (heap_get_class_record (thread_p, class_oid, &class_record, &scan, PEEK) != S_SUCCESS)
     {
@@ -22016,6 +22018,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
     {
       GOTO_EXIT_ON_ERROR;
     }
+  scancache_inited = false;
 
   if (qexec_end_mainblock_iterations (thread_p, xasl, xasl_state, &tplrec) != NO_ERROR)
     {
@@ -22085,7 +22088,11 @@ exit_on_error:
       heap_classrepr_free_and_init (rep, &idx_incache);
     }
 
-  heap_scancache_end (thread_p, &scan);
+  if (scancache_inited)
+    {
+      heap_scancache_end (thread_p, &scan);
+      scancache_inited = false;
+    }
 
 #if defined(SERVER_MODE)
   /* query execution error must be set up before qfile_close_list(). */
@@ -22626,6 +22633,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   DB_VALUE **out_values = NULL;
   REGU_VARIABLE_LIST regu_var_p;
   HEAP_SCANCACHE scan;
+  bool scancache_inited = false;
   RECDES class_record;
   OID *class_oid = NULL;
   volatile int idx_val;
@@ -22663,6 +22671,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
     }
 
   heap_scancache_quick_start_root_hfid (thread_p, &scan);
+  scancache_inited = true;
 
   assert (xasl_state != NULL);
   class_oid = &(xasl->spec_list->s.cls_node.cls_oid);
@@ -22985,6 +22994,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
     {
       GOTO_EXIT_ON_ERROR;
     }
+  scancache_inited = false;
 
   if (qexec_end_mainblock_iterations (thread_p, xasl, xasl_state, &tplrec) != NO_ERROR)
     {
@@ -23021,7 +23031,10 @@ exit_on_error:
       heap_classrepr_free_and_init (rep, &idx_incache);
     }
 
-  heap_scancache_end (thread_p, &scan);
+  if (scancache_inited)
+    {
+      heap_scancache_end (thread_p, &scan);
+    }
 
 #if defined(SERVER_MODE)
   /* query execution error must be set up before qfile_close_list(). */

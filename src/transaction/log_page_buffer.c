@@ -47,6 +47,7 @@
 
 #if !defined(WINDOWS)
 #include <sys/param.h>
+#include <fcntl.h>
 #endif /* WINDOWS */
 
 #include <assert.h>
@@ -356,6 +357,11 @@ static int logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const ch
 					       LOG_PAGE * log_pgptr);
 static int logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int *checksum_crc32);
 static int logpb_page_has_valid_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * has_valid_checksum);
+
+static bool logpb_is_log_active_from_backup_useful (THREAD_ENTRY * thread_p, const char *active_log_path,
+						    const char *db_full_name);
+static int logpb_peek_header_of_active_log_from_backup (THREAD_ENTRY * thread_p, const char *active_log_path,
+							LOG_HEADER * hdr);
 
 /*
  * FUNCTIONS RELATED TO LOG BUFFERING
@@ -1557,6 +1563,91 @@ logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_full
 
 error:
   return error_code;
+}
+
+// it peeks header page of the backuped log active file
+static int
+logpb_peek_header_of_active_log_from_backup (THREAD_ENTRY * thread_p, const char *active_log_path, LOG_HEADER * hdr)
+{
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  LOG_HEADER *log_hdr;
+  LOG_PHY_PAGEID phy_pageid;
+  int error_code = NO_ERROR;
+  LOG_PAGE *log_pgptr;
+
+  assert (active_log_path != NULL);
+  assert (hdr != NULL);
+
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+
+  if (fileio_is_volume_exist (active_log_path) == false)
+    {
+      return ER_FAILED;
+    }
+
+  int log_vdes = fileio_open (active_log_path, O_RDONLY, 0);
+  if (log_vdes == NULL_VOLDES)
+    {
+      return ER_FAILED;
+    }
+
+  phy_pageid = LOGPB_PHYSICAL_HEADER_PAGE_ID;
+  logpb_log ("reading from active log:%s, physical page is : %lld\n", active_log_path, (long long int) phy_pageid);
+
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+
+  if (fileio_read (thread_p, log_vdes, log_pgptr, phy_pageid, LOG_PAGESIZE) == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3, LOGPB_HEADER_PAGE_ID, phy_pageid, active_log_path);
+      error_code = ER_LOG_READ;
+      goto end;
+    }
+
+  log_hdr = (LOG_HEADER *) (log_pgptr->area);
+  *hdr = *log_hdr;
+
+  if (log_pgptr->hdr.logical_pageid != LOGPB_HEADER_PAGE_ID || log_pgptr->hdr.offset != NULL_OFFSET)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, phy_pageid);
+      error_code = ER_LOG_PAGE_CORRUPTED;
+      goto end;
+    }
+
+end:
+  fileio_close (log_vdes);
+
+  return error_code;
+}
+
+// it probes whether the next archive file exists
+// if the case, the backuped log active file is regarded as unuseful and restore will reset log.
+static bool
+logpb_is_log_active_from_backup_useful (THREAD_ENTRY * thread_p, const char *active_log_path, const char *db_full_name)
+{
+  LOG_HEADER hdr;
+
+  if (logpb_peek_header_of_active_log_from_backup (thread_p, active_log_path, &hdr) != NO_ERROR)
+    {
+      // something bad happened
+      return false;
+    }
+
+  // make next archive name
+  char next_archive_file_path[PATH_MAX], log_path[PATH_MAX];
+
+  fileio_get_directory_path (log_path, active_log_path);
+  fileio_make_log_archive_name (next_archive_file_path, log_path, fileio_get_base_file_name (db_full_name),
+				hdr.nxarv_num);
+
+  if (fileio_is_volume_exist (next_archive_file_path))
+    {
+      // if the next archive exists, regard the backuped log active is older and useless.
+      er_log_debug (ARG_FILE_LINE, "log active from backup is older than available archive (%s).\n",
+		    next_archive_file_path);
+      return false;
+    }
+
+  return true;
 }
 
 /*
@@ -7478,6 +7569,8 @@ loop:
 
       if (skip_activelog)
 	{
+	  // unreachable. skip_activelog option is obsoleted.
+	  assert (!skip_activelog);
 	  fprintf (session.verbose_fp, "- not include active log.\n\n");
 	}
 
@@ -7522,6 +7615,7 @@ loop:
     }
 
   /* Begin backing up in earnest */
+  assert (!skip_activelog);
   session.bkup.bkuphdr->skip_activelog = skip_activelog;
 
   if (fileio_start_backup (thread_p, log_Db_fullname, &log_Gl.hdr.db_creation, backup_level, &bkup_start_lsa,
@@ -7629,7 +7723,7 @@ loop:
   LOG_CS_ENTER (thread_p);
 
 #if defined(SERVER_MODE)
-  /* backup the archive logs created during backup existing archive logs */
+
   if (last_arv_needed < log_Gl.hdr.nxarv_num - 1)
     {
       error_code = logpb_backup_needed_archive_logs (thread_p, &session, last_arv_needed + 1, log_Gl.hdr.nxarv_num - 1);
@@ -7702,15 +7796,13 @@ loop:
   /* Now indicate how many volumes were backed up */
   logpb_flush_header (thread_p);
 
-  if (skip_activelog == 0)
+  /* Include active log always. Skipping log active is obsolete. */
+  error_code = fileio_backup_volume (thread_p, &session, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, -1, false);
+  if (error_code != NO_ERROR)
     {
-      error_code = fileio_backup_volume (thread_p, &session, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, -1, false);
-      if (error_code != NO_ERROR)
-	{
-	  LOG_CS_EXIT (thread_p);
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
-	  goto error;
-	}
+      LOG_CS_EXIT (thread_p);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
+      goto error;
     }
 
   if (fileio_finish_backup (thread_p, &session) == NULL)
@@ -8244,8 +8336,23 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 
 	      if (volume_name_p == tmp_logfiles_from_backup)
 		{
-		  /* rename temp logfiles if the current file does not exist */
+		  // when an archive exists, always respect it.
+		  // when the active exists and the next archive of it does not, use it to restore.
+		  bool is_backup_log_useful = false;
+
 		  if (stat (to_volname, &stat_buf) != 0 && stat (tmp_logfiles_from_backup, &stat_buf) == 0)
+		    {
+		      is_backup_log_useful = true;
+
+		      if (to_volid == LOG_DBLOG_ACTIVE_VOLID
+			  && !logpb_is_log_active_from_backup_useful (thread_p, tmp_logfiles_from_backup, db_fullname))
+			{
+			  // log active from backup is useless since it is older than the available log archives
+			  is_backup_log_useful = false;
+			}
+		    }
+
+		  if (is_backup_log_useful)
 		    {
 		      if (to_volid == LOG_DBLOG_ACTIVE_VOLID && lgat_vdes != NULL_VOLDES)
 			{

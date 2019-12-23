@@ -3830,7 +3830,6 @@ exit:
 	}
       else
 	{
-	  ASSERT_NO_ERROR ();
 	  log_sysop_end_logical_undo (thread_p, RVFL_DESTROY, NULL, sizeof (*vfid), (char *) vfid);
 	}
     }

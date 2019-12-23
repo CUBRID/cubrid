@@ -1263,18 +1263,18 @@ $ LOADDB
 1194 클래스 %3$d|%4$d|%5$d 에 대한 잠금이 즉시 부여되지 않았기 때문에 파일 %1$d|%2$d 에 대해서 검사할 수 없습니다.
 1195 CTE의 재귀 부분은 GROUP BY 절이 없는 집계 함수를 포함할 수 없습니다.
 1196 CTE 수행 중에 반복 수행 최대 횟수 %1$d를 초과했습니다.
-1197 Invalid json: %1$s (%2$d)
-1198 A json object must be provided
-1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
-1200 Invalid JSON path
-1201 Json object name cannot be NULL.
-1202 Json PATH "%1$s" does not exist in %2$s
-1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
-1204 Json KEY "%1$s" is duplicate
-1205 Invalid type %1$s. Expecting JSON document compatible data type (STRING or JSON).
-1206 Json PATH "%1$s" does not address a cell in a Json ARRAY.
-1207 Invalid JSON path. Index is larger than allowed by system parameter json_max_array_idx.
-1208 Invalid one/all argument. The one/all argument may only take one of these two values: "one", "all".
+1197 유효하지 않은 json: %1$s (%2$d)
+1198 json 오브젝트가 주어지지 않았습니다
+1199 주어진 JSON 은 JSON schema에 대해 유효하지 않습니다. (스키마 경로: %1$s, 키워드: %2$s, JSON 경로: %3$s)
+1200 유효하지 않은 JSON 경로
+1201 Json 오브젝트 이름으로 NULL은 허용되지 않습니다.
+1202 Json 경로 "%1$s"은 %2$s 내에 존재하지 않습니다.
+1203 경로 %1$s 상에 유효하지 않은 JSON 타입이 있습니다. %2$s 을(를) 기대하지만 %3$s이 주어졌습니다.
+1204 중복된 Json KEY "%1$s"
+1205 유효하지 않은 타입 %1$s. JSON 문서와 호환되는 데이터 타입(STRING 또는 JSON)이어야 합니다.
+1206 Json 경로 "%1$s" 은 Json ARRAY의 원소를 지정하지 않고 있습니다.
+1207 유효하지 않은 JSON 경로. 인덱스가 시스템 파라미터 json_max_array_idx 보다 더 큽니다.
+1208 유효하지 않은 one/all 인자. one/all 인자는 "one", "all" 둘 중의 하나이어야 합니다.
 1209 Reserved error for JSON.
 1210 Reserved error for JSON.
 1211 Reserved error for JSON.
@@ -1302,17 +1302,17 @@ $ LOADDB
 1233 Reserved error for stream/replication.
 1234 Reserved error for stream/replication.
 1235 Reserved error for stream/replication.
-1236 Double Write Buffer is disabled.
-1237 Cannot change status on %1$s because %2$s is a %3$s.
-1238 Missing value for JSON_TABLE column '%1$s'.
-1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s".
-1240 Online index is not allowed on classes that are part of a hierarchy chain.
-1241 XASL tree needs recompile.
-1242 Cannot create partition on a class that is part of a hierarchy chain.
-1243 Index loading was aborted after an error.
-1244 Loading shared attributes updates from object files is not supported in CS mode.
-1245 Loading class attributes updates from object files is not supported in CS mode.
-1246 Error getting address and name information. Code : %1$d, message : %2$s.
+1236 Double Write Buffer 는 활성화되지 않았습니다.
+1237 %1$s의 %3$s인 %2$s의 상태를 변경할 수 없습니다.
+1238 JSON_TABLE 컬럼 '%1$s'의 값이 없습니다.
+1239 경로 "%2$s" 상의 JSON "%1$s" 의 값을 JSON_TABLE 컬럼 "%3$s"의 도메인 "%4$s"으로 변환할 수 없습니다.
+1240 상속 계층구조 상의 테이블에 온라인 인덱스를 생성할 수 없습니다.
+1241 해당 XASL 은 재컴파일 되어야 합니다.
+1242 상속 계층구조 상의 테이블에 파티션을 생성할 수 없습니다.
+1243 에러로 인해서 인덱스 로딩이 취소되었습니다.
+1244 shared 속성을 포함한 오브젝트 파일은 CS 모드에서 로딩할 수 없습니다.
+1245 class 속성을 포함한 오브젝트 파일은 CS 모드에서 로딩할 수 없습니다.
+1246 주소와 이름 정보를 가져오지 못했습니다. 코드 : %1$d, 에러 : %2$s.
 
 1247 마지막 에러
 
@@ -1470,8 +1470,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 125 잘못된 형식의 sessiontimezone\n sessiontimezone
 126 테이블과 뷰 커맨트의 최대 길이는 %1$d 바이트입니다.
 127 커맨트의 최대 길이는 %1$d 바이트입니다.
-128 Invalid number of arguments for JSON_OBJECTAGG
-129 PARALLEL count argument must be between %1$d and %2$d.
+128 JSON_OBJECTAGG 인자의 갯수가 잘못되었습니다.
+129 PARALLEL 인자 값은 %1$d에서 %2$d까지 허용됩니다.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다
@@ -1774,11 +1774,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 298 재귀 CTE  '%1$s’는 재귀 질의에서 직접 참조되어야 합니다.
 299 CTE '%1$s’의 에러: 비재귀 부분과 재귀 부분은 반드시 UNION ALL로 연결되어야 합니다.
 300 DEFAULT 절에 부질의는 허용되지 않습니다.
-301 Could not find signatures for function %1$s()
-302 Incompatible argument type %1$s, expected type is: %2$s.
-303 Unexpected number of arguments %1$d.
-304 Could not find compatible signature for function %1$s()
-305 Signature %1$s is not compatible with function arguments.
+301 함수 %1$s()에 대한 정의를 찾을 수 없습니다.
+302 호환되지 않는 데이터 타입 %1$s, %2$s을 기대합니다.
+303 잘못된 인자 갯수 %1$d.
+304 함수 %1$s()에 대해 호환되는 함수 정의를 찾을 수 없습니다.
+305 함수 인자와 함수 정의 %1$s 은 호환되지 않습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.
@@ -1861,6 +1861,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 79 유효하지 않은 Isolation 수준: %1$s 스키마, %2$s 객체.
 80 트랜잭션 격리도는 'read committed', 'repeatable read', 'serializable' 중의 하나여야 합니다.
 81 '%1$s'은 auto_increment 객체로서 serial 객체처럼 변경할 수 없습니다.
+82 유효하지 않은 JSON: '%1$s'.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** 잘못된 캐시 ***

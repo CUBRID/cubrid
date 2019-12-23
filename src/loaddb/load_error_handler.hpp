@@ -25,6 +25,7 @@
 #define _LOAD_ERROR_HANDLER_HPP_
 
 #include "load_common.hpp"
+#include "porting.h"
 #include "utility.h"
 
 #include <memory>
@@ -53,10 +54,13 @@ namespace cubload
       void on_failure ();
 
       // In case of syntax check argument do nothing, else keep the behavior as on_failure
-      void on_syntax_failure ();
+      void on_syntax_failure (bool use_scanner_line = false);
 
       template<typename... Args>
       void on_error_with_line (MSGCAT_LOADDB_MSG msg_id, Args &&... args);
+
+      template<typename... Args>
+      void on_error_with_line (int lineno, MSGCAT_LOADDB_MSG msg_id, Args &&... args);
 
       template<typename... Args>
       void on_failure (MSGCAT_LOADDB_MSG msg_id, Args &&... args);
@@ -73,8 +77,22 @@ namespace cubload
       bool current_line_has_error ();
       void set_error_on_current_line (bool has_error);
 
+      /*
+       *  This function will return the line number at the beginning of the record. We use this in case we encounter
+       *  an error during the insert part of loading the row, since the lexer in this case would have already advanced
+       *  to the next record.
+       */
+      int get_driver_lineno ();
+
+      /*
+       *  This function will return the line number at the current position in the record in the object file. We use
+       *  this in case we encounter an error during the parsing of the row, and we report the line at which the lexer
+       *  is currently situated. This proves useful in case of multi-lines records, using "+" at the end of the line
+       *  and will get the current line, instead of the line where the record starts.
+       */
+      int get_scanner_lineno ();
+
     private:
-      int get_lineno ();
 
       // Format string based on format string passed as input parameter. Check snprintf function for more details
       template<typename... Args>
@@ -82,7 +100,7 @@ namespace cubload
 
       static char *get_message_from_catalog (MSGCAT_LOADDB_MSG msg_id);
 
-      void log_error_message (std::string &err_msg, bool fail);
+      void log_error_message (std::string &err_msg, bool fail, bool is_syntax_error = false);
       bool is_last_error_filtered ();
 
       bool m_current_line_has_error;
@@ -116,9 +134,23 @@ namespace cubload
   void
   error_handler::on_error_with_line (MSGCAT_LOADDB_MSG msg_id, Args &&... args)
   {
+    if (get_driver_lineno () == 0)
+      {
+	// Parsing has not started yet!
+	on_error (msg_id, std::forward<Args> (args)...);
+	return;
+      }
+
+    on_error_with_line (get_driver_lineno (), msg_id, std::forward<Args> (args)...);
+  }
+
+  template<typename... Args>
+  void
+  error_handler::on_error_with_line (int lineno, MSGCAT_LOADDB_MSG msg_id, Args &&... args)
+  {
     std::string err_msg;
 
-    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ()));
+    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), lineno));
     err_msg.append (format (get_message_from_catalog (msg_id), std::forward<Args> (args)...));
 
     log_error_message (err_msg, false);
@@ -143,7 +175,14 @@ namespace cubload
       {
 	std::string err_msg;
 
-	err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ()));
+	if (get_driver_lineno () == 0)
+	  {
+	    // Parsing has not started yet!
+	    on_failure (msg_id, std::forward<Args> (args)...);
+	    return;
+	  }
+
+	err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_driver_lineno ()));
 	err_msg.append (format (get_message_from_catalog (msg_id), std::forward<Args> (args)...));
 
 	log_error_message (err_msg, true);
@@ -169,7 +208,7 @@ namespace cubload
   {
     std::string err_msg;
 
-    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ()));
+    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_driver_lineno ()));
     err_msg.append (format (get_message_from_catalog (LOADDB_MSG_CONVERSION_ERROR), std::forward<Args> (args)...));
 
     log_error_message (err_msg, false);

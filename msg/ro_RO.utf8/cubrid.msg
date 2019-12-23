@@ -1267,22 +1267,22 @@ $ LOADDB
 1198 Trebuie furnizat un obiect de tipul json.
 1199 Json-ul furnizat a fost invalidat de catre schema json (Calea catre schema invalidă: %1$s, Cuvantul cheie: %2$s, Calea catre json-ul invalid furnizat: %3$s)
 1200 Cale de JSON invalida
-1201 Numele unei valori dintr-un JSON Object nu poate fi NULL.
-1202 Calea "%1$s" nu exista in %2$s
-1203 Tipul JSON-ului de la calea %1$s este invalid. Expected %2$s, dar am gasit %3$s.
+1201 NULL nu poate fi folosit pentru numele unei chei dintr-un JSON de tip Obiect.
+1202 Calea "%1$s" nu exista in %2$s.
+1203 Tipul JSON-ului de la calea %1$s este invalid. Se așteaptă %2$s, dar s-a găsit %3$s.
 1204 Cheia "%1$s" din json este duplicata
-1205 Invalid type %1$s. Expecting JSON document compatible data type (STRING or JSON).
-1206 Calea Json "%1$s" nu adresează un element al unui Json ARRAY.
-1207 Cale de JSON invalida. Index is larger than allowed by system parameter json_max_array_idx.
-1208 Invalid one/all argument. The one/all argument may only take one of these two values: "one", "all".
+1205 Tipul %1$s este invalid. Se așteaptă un tip compatibil cu un document JSON (STRING sau JSON).
+1206 Calea JSON "%1$s" nu adresează un element al unui JSON de tip ARRAY.
+1207 Cale de JSON invalida. Indexul este mai mare decât valoarea permisă de parametrul de sistem "json_max_array_idx".
+1208 Argumentul "one/all" este invalid. Argumentul nu poate avea altă valoare în afară de "one" sau "all".
 1209 Reserved error for JSON.
 1210 Reserved error for JSON.
 1211 Reserved error for JSON.
 1212 Reserved error for JSON.
 1213 Reserved error for JSON.
 1214 Reserved error for JSON.
-1215 No more data to read from stream %1$s at position %2$lld, amount %3$zu.
-1216 Invalid object id %1$d when trying to unpack.
+1215 Nu mai există suficiente date de citit din stream-ul %1$s de la poziţia %2$lld, dimensiunea %3$zu.
+1216 Id-ul despachetat: %1$d, nu este valid.
 1217 Reserved error for stream/replication.
 1218 Reserved error for stream/replication.
 1219 Reserved error for stream/replication.
@@ -1303,16 +1303,16 @@ $ LOADDB
 1234 Reserved error for stream/replication.
 1235 Reserved error for stream/replication.
 1236 Double Write Buffer este dezactivat.
-1237 Cannot change status on %1$s because %2$s is a %3$s.
-1238 Missing value for JSON_TABLE column '%1$s'.
-1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s".
-1240 Online index is not allowed on classes that are part of a hierarchy chain.
-1241 XASL tree needs recompile.
-1242 Cannot create partition on a class that is part of a hierarchy chain.
-1243 Index loading was aborted after an error.
-1244 Loading shared attributes updates from object files is not supported in CS mode.
-1245 Loading class attributes updates from object files is not supported in CS mode.
-1246 Error getting address and name information. Code : %1$d, message : %2$s.
+1237 Nu se poate modifica status-ul pentru %1$s deoarece %2$s este "%3$s".
+1238 Lipsește valoarea pentru coloana '%1$s' din JSON_TABLE.
+1239 Valoarea din JSON "%1$s" de la calea "%2$s" nu se poate converti la domeniul "%4$s" aferent coloanei "%3$s" din JSON_TABLE.
+1240 Indecsii claselor care fac parte dintr-o ierarhie de moștenire nu se pot încărca online.
+1241 Arborele XASL trebuie recompilat.
+1242 Nu se pot crea partiţii într-o clasă care face parte dintr-o ierarhie de moștenire.
+1243 Încărcarea indexului a fost oprită din cauza unei erori.
+1244 Încărcarea atributelor de tip "shared" nu este suportată in modul client-server.
+1245 Încărcarea atributelor de tip "class" nu este suportată in modul client-server.
+1246 Eroare la obţinerea informaţiilor de adresă și nume. Cod : %1$d, mesaj : %2$s.
 
 1247 Ultima eroare
 
@@ -1470,8 +1470,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 125 utilizare invalidă a sessiontimezone sessiontimezone\n
 126 Lungimea maximă a comentariilor class/vclass este %1$d bytes.
 127 Lungimea maximă a comentariilor este %1$d bytes.
-128 Invalid number of arguments for JSON_OBJECTAGG
-129 PARALLEL count argument must be between %1$d and %2$d.
+128 Număr invalid de argumente pentru JSON_OBJECTAGG
+129 Valoarea argumentului PARALLEL trebuie sa fie între %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memorie epuizată.
@@ -1861,6 +1861,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 79 Nivel de izolare invalid; schema: %1$s, instanţe: %2$s.
 80 Nivelul de izolare MVCC trebuie să fie 'read committed', 'repeatable read' sau'serializable'.
 81 '%1$s' este un obiect 'auto_increment', care nu poate fi modificat ca serial.
+82 JSON invalid: '%1$s'.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** cache invalid ***

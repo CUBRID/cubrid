@@ -158,7 +158,10 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   check = !no_check;
   backup_num_threads = utility_get_option_int_value (arg_map, BACKUP_THREAD_COUNT_S);
   compress_flag = utility_get_option_bool_value (arg_map, BACKUP_COMPRESS_S);
-  skip_activelog = utility_get_option_bool_value (arg_map, BACKUP_EXCEPT_ACTIVE_LOG_S);
+
+  // BACKUP_EXCEPT_ACTIVE_LOG_S is obsoleted. This means backup will always include active log.
+  skip_activelog = false;
+
   sleep_msecs = utility_get_option_int_value (arg_map, BACKUP_SLEEP_MSECS_S);
   sa_mode = utility_get_option_bool_value (arg_map, BACKUP_SA_MODE_S);
 
@@ -2678,6 +2681,13 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
       error = ER_FAILED;
       goto error_exit;
     }
+
+  /*
+   * Force error log file system parameter as copylogdb;
+   * during a retry loop, `db_restart` will reset the error file name as :
+   * er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE), ... ) 
+   */
+  sysprm_set_force (prm_get_name (PRM_ID_ER_LOG_FILE), er_msg_file);
 
   if (start_pageid < NULL_PAGEID && !HA_DISABLED ())
     {

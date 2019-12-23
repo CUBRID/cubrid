@@ -270,7 +270,6 @@ gültige Optionen:\n\
       --no-check               Konsistenz der Datenbank nicht überprüfen; Standard: prüfen\n\
   -t, --thread-count=ANZAHL     Anzahl der Threads; Standard: 0(auto)\n\
   -z, --compress               Backupdatenträger komprimieren; Standard: nicht komprimiert\n\
-  -e, --except-active-log      einen aktiven Logdatenträger nicht einfügen; Standard: einfügen\n\
       --sleep-msecs=N          N Millisekunden per gelesenen 1M schlafen; Standard: 0\n
 71 Nicht kompatible Argumente, \"%1$s\", und \"%2$s\"\n
 
@@ -435,18 +434,18 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 58 %1$s %2$d Instanzen festgeschrieben\n
 59 \nNicht optimierte Version von loaddb kann nicht aufgerufen werden.\n
 60 Parse-Fehler \"%1$s\", wie %2$s Typ.\n
-61 Object Reference is not supported in CS mode.\n
-62 Updated statistics for class %1$s.\n
+61 Objektreferenz wird im CS-Modus nicht unterstützt.\n
+62 Aktualisierte Statistiken für die Klasse %1$s.\n
 112   %1$d Instanzen\r
 113 Letzte festgeschriebene Zeile: %1$d\n
 114 Fehler-Kontroll-Datei
 115 Eingangsdatei für Fehlerkontrolle während Ladung
-116 Total %8d object(s) inserted, %d object(s) failed.\n
+116 Insgesamt %8d Objekt(e) eingefügt, %d Objekt(e) fehlgeschlagen.\n
 117 Laden fehlgeschlagen.\n
 118 Maximale Länge des Klassennamens ist %1$d Bytes.\n
-119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
-120 data file does not contain '%%class' specifier or '--table' option is missing\n
-121 Class %1$s is ignored.\n
+119 Insgesamt %1$8d Objekt(e) überprüft, %2$d Objekt(e) fehlgeschlagen.\n
+120 Die Objektdatei enthält keinen '%% class'-Bezeichner, oder die Option' --table 'fehlt\n
+121 Klasse %1$s wird ignoriert.\n
 122 \
 loaddb: Import von Objekten und Schemas in die Datenbank.\n\
 Anwendung: %1$s loaddb [OPTION] Datenbanknamen[@host]\n\
@@ -456,8 +455,8 @@ gültige Optionen:\n\
   -C, --CS-mode                    Client-Server-Ausführung\n\
   -u, --user=ID                    Benutzer ID für Datenbankzugang; Standard: "public"\n\
   -p, --password=PASSWORT          Benutzerpasswort; Standard: keinen\n\
-      --data-file-check-only       check syntax for data file without load; default: disabled\n\
-  -l, --load-only                  load data file without prior syntax checking; SA_MODE only\n\
+      --data-file-check-only       Syntaxprüfung der Datei ohne Ladung; Standard: inaktiv\n\
+  -l, --load-only                  Dateiladung ohne vorherige Syntaxprüfung; nur im SA_MODE\n\
       --estimated-size=ANZAHL      abgeschätzte Anzahl von Instanzen; Standard: 5000\n\
   -v, --verbose                    ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
   -c, --periodic-commit=ANZAHL     Einfügungsanzahl für periodische Festschreibung; Standard: keine Festschreibung während der Ladung\n\
@@ -1041,18 +1040,18 @@ gültige Optionen:\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
 20 Passwort %1$s eingeben:
-22 Tran index          Benutzername      Hostname      Prozess ID      Programmname\n
-23 -------------------------------------------------------------------------------\n
-24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n
+22 Tran index            Benutzername      Hostname      Prozess ID      Programmname\n
+23 ---------------------------------------------------------------------------------\n
+24 %1$4d%2$-12s %3$14s %4$14s %5$15d %6$17s\n
 25 Es gibt keine Transaktionen\n
 26 tranlist darf nur von DBA oder einem Mitglied der DBA Gruppe durchgeführt werden.\n
 27 sort-key Spalte (%1$d) ist ungültig.\n
-32 Tran index         Prozess ID    Programmname              Abfragezeit   Tran Zeit              Warten auf Sperrhalter    SQL_ID       SQL Text\n
-33 %1$4d%2$-10s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
-34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
-42 Tran index          Benutzername   Hostname       Prozess ID    Programmname              Abfragezeit   Tran Zeit              Warten auf Sperrhalter    SQL_ID       SQL Text\n
-43 %1$4d%2$-10s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
-44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
+32 Tran index           Prozess ID    Programmname              Abfragezeit   Tran Zeit              Warten auf Sperrhalter    SQL_ID       SQL Text\n
+33 %1$4d%2$-12s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
+34 ----------------------------------------------------------------------------------------------------------------------------------------------------\n
+42 Tran index            Benutzername   Hostname       Prozess ID    Programmname              Abfragezeit   Tran Zeit              Warten auf Sperrhalter    SQL_ID       SQL Text\n
+43 %1$4d%2$-12s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
+44 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
 45 Tran index : %1$d
 46 SQL_ID: %1$s\n
 59 tranlist dar nicht in Stand-Alone-Modus durchgeführt werden.\n

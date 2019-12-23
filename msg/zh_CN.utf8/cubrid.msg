@@ -1263,19 +1263,19 @@ $ LOADDB
 1194 无法检查文件 %1$d|%2$d , 因为在类 %3$d|%4$d|%5$d 上的锁未被授权.
 1195 CTE的递归部分不能包含没有GROUP BY子句的聚合函数.
 1196 已达到CTE执行的最大递归次数%1$d.
-1197 Invalid json: %1$s (%2$d)
-1198 A json object must be provided
-1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
-1200 Invalid JSON path
-1201 Json object name cannot be NULL.
+1197 无效的JSON: %1$s (%2$d).
+1198 必须提供一个JSON对象.
+1199 所提供的JSON不符合JSON schema(无效的schema path: %1$s, 关键字: %2$s, 无效的JSON path: %3$s).
+1200 无效的JSON path.
+1201 JSON对象名称不能为NULL.
 
-1202 Json PATH "%1$s" does not exist in %2$s
-1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
-1204 Json KEY "%1$s" is duplicate
-1205 Invalid type %1$s. Expecting JSON document compatible data type (STRING or JSON).
-1206 Json PATH "%1$s" does not address a cell in an Json ARRAY.
-1207 Invalid JSON path. Index is larger than allowed by system parameter json_max_array_idx.
-1208 Reserved error for JSON.
+1202 JSON PATH "%1$s" 在 %2$s 中不存在.
+1203 Path %1$s处的JSON类型无效。期望 %2$s, 实际 %3$s.
+1204 重复的JSON KEY "%1$s".
+1205 无效的类型 %1$s . 期望提供JSON document兼容的数据类型 (STRING 或 JSON).
+1206 JSON PATH "%1$s" 对应的不是JSON ARRAY的元素.
+1207 无效的JSON path. 下标超过了系统参数json_max_array_idx的值.
+1208 one/all 参数无效. one/all参数必须为"one"或"all".
 1209 Reserved error for JSON.
 1210 Reserved error for JSON.
 1211 Reserved error for JSON.
@@ -1303,17 +1303,17 @@ $ LOADDB
 1233 Reserved error for stream/replication.
 1234 Reserved error for stream/replication.
 1235 Reserved error for stream/replication.
-1236 Double Write Buffer is disabled.
-1237 Cannot change status on %1$s because %2$s is a %3$s.
-1238 Missing value for JSON_TABLE column '%1$s'.
-1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s". 
-1240 Online index is not allowed on classes that are part of a hierarchy chain.
-1241 XASL tree needs recompile.
-1242 Cannot create partition on a class that is part of a hierarchy chain.
-1243 Index loading was aborted after an error.
-1244 Loading shared attributes updates from object files is not supported in CS mode.
-1245 Loading class attributes updates from object files is not supported in CS mode.
-1246 Error getting address and name information. Code : %1$d, message : %2$s.
+1236 双写缓冲区(Double Write Buffer)被禁用.
+1237 无法更改 %1$s 状态，因为 %2$s 是 %3$s.
+1238 JSON_TABLE '%1$s' 列缺少值.
+1239 无法将路径 "%2$s" 对应的JSON "%1$s" 强制转换为 "%4$s" 域的 "%3$s" JSON_TABLE列.
+1240 在属于层次结构链的类上不允许使用在线索引.
+1241 XASL树需要重新编译.
+1242 无法在属于hierarchy chain的类上创建分区.
+1243 错误后索引加载被中止.
+1244 CS模式下不支持从对象文件中加载SHARED属性更新..
+1245 CS模式下不支持从对象文件中加载类属性更新.
+1246 获取地址和名称时出错. 代码: %1$d, 信息: %2$s.
 
 1247 最后一个错误.
 
@@ -1471,8 +1471,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 125 非法使用 sessiontimezone\n sessiontimezone
 126 一个class或vclass的comment的最大长度是 %1$d 字节.
 127 一个comment的最大长度是 %1$d 字节.
-128 Invalid number of arguments for JSON_OBJECTAGG
-129 PARALLEL count argument must be between %1$d and %2$d.
+128 JSON_OBJECTAGG参数个数不匹配.
+129 PARALLEL数必须在 %1$d 和 %2$d 之间.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 内存耗尽.
@@ -1775,11 +1775,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 298 递归的CTE'%1$s'必须直接在其递归查询中引用.
 299 CTE'%1$s'错误: 非递归部分和递归部分必须使用UNION ALL连接.
 300 DEFAULT子句中不允许使用子查询.
-301 Could not find signatures for function %1$s()
-302 Incompatible argument type %1$s, expected type is: %2$s.
-303 Unexpected number of arguments %1$d.
-304 Could not find compatible signature for function %1$s()
-305 Signature %1$s is not compatible with function arguments.
+301 没有找到 %1$s() 函数签名.
+302 不兼容的参数类型 %1$s , 期望类型为: %2$s.
+303 为期待的参数个数 %1$d.
+304 没有找到与 %1$s() 函数兼容的签名.
+305 函数签名 %1$s 与函数参数不匹配.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.
@@ -1862,6 +1862,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 79 无效的隔离等级: %1$s 结构(schema), %2$s 实例.
 80 MVCC中的隔离级别值必须是 'read committed', 'repeatable read' 或 'serializable'.
 81 '%1$s' 是一个 'auto_increment' 对象, 不允许改变成一个序列.
+82 无效的JSON: '%1$s'.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** 无效的缓存 ***

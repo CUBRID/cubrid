@@ -2890,6 +2890,11 @@ vacuum_data_unload_first_and_last_page (THREAD_ENTRY * thread_p)
     {
       return;
     }
+
+  // save VPID's in case we need to reload
+  pgbuf_get_vpid ((PAGE_PTR) vacuum_Data.first_page, &vacuum_Data_load.vpid_first);
+  pgbuf_get_vpid ((PAGE_PTR) vacuum_Data.last_page, &vacuum_Data_load.vpid_last);
+
   vacuum_unfix_first_and_last_data_page (thread_p);
   vacuum_Data.is_loaded = false;
 }
@@ -4993,23 +4998,36 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	      // cannot update
 	      return NO_ERROR;
 	    }
-
-	  LOG_LSA log_lsa = log_Gl.prior_info.prior_lsa;
-	  ulock.unlock ();	// unlock after reading prior_lsa
-
-	  const VACUUM_LOG_BLOCKID LOG_BLOCK_TRAILING_DIFF = 2;
-	  VACUUM_LOG_BLOCKID log_blockid = vacuum_get_log_blockid (log_lsa.pageid);
-
-	  if (log_blockid > vacuum_Data.get_last_blockid () + LOG_BLOCK_TRAILING_DIFF)
+	  // check buffer again, it is possible that a new block was added
+	  if (vacuum_Block_data_buffer->is_empty ())
 	    {
-	      vacuum_Data.set_last_blockid (log_blockid - LOG_BLOCK_TRAILING_DIFF);
-	      vacuum_data_empty_update_last_blockid (thread_p);
-	      vacuum_update_keep_from_log_pageid (thread_p);
-	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "update last_blockid to %lld",
-			     (long long int) vacuum_Data.get_last_blockid ());
+	      // update last blockid
+	      LOG_LSA log_lsa = log_Gl.prior_info.prior_lsa;
+	      ulock.unlock ();	// unlock after reading prior_lsa
+
+	      const VACUUM_LOG_BLOCKID LOG_BLOCK_TRAILING_DIFF = 2;
+	      VACUUM_LOG_BLOCKID log_blockid = vacuum_get_log_blockid (log_lsa.pageid);
+
+	      if (log_blockid > vacuum_Data.get_last_blockid () + LOG_BLOCK_TRAILING_DIFF)
+		{
+		  vacuum_Data.set_last_blockid (log_blockid - LOG_BLOCK_TRAILING_DIFF);
+		  vacuum_data_empty_update_last_blockid (thread_p);
+		  vacuum_update_keep_from_log_pageid (thread_p);
+		  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "update last_blockid to %lld",
+				 (long long int) vacuum_Data.get_last_blockid ());
+		}
+	      return NO_ERROR;
+	    }
+	  else
+	    {
+	      // fall through to consume buffer
 	    }
 	}
-      return NO_ERROR;
+      else
+	{
+	  // last blockid remains last in vacuum data
+	  return NO_ERROR;
+	}
     }
 
   if (vacuum_Data.last_page == NULL)
@@ -5616,34 +5634,18 @@ vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p)
    * does not remove log required for vacuum.
    * If vacuum data is empty, then all blocks until (and including) vacuum_Data.last_blockid have been
    * vacuumed, and first page belonging to next block must be preserved (this is most likely in the active area of the
-   * log, for now). However, it might happen that the page referred might belong in a log archive that might have
-   * been removed due to a previous action. So to be sure, we set the pageid, from which the vacuum must keep
-   * the remaining pages, to NULL_PAGEID.
+   * log, but not always).
    * If vacuum data is not empty, then we need to preserve the log starting with the first page of first unvacuumed
    * block.
    */
-  VACUUM_LOG_BLOCKID keep_from_blockid;
-
   if (vacuum_is_empty ())
     {
-      LOG_LSA last_mvcc_lsa = log_Gl.hdr.mvcc_op_log_lsa;
-      if (last_mvcc_lsa.is_null () || vacuum_get_log_blockid (last_mvcc_lsa.pageid) <= vacuum_Data.get_last_blockid ())
-	{
-	  /* safe to remove all archives */
-	  keep_from_blockid = VACUUM_NULL_LOG_BLOCKID;
-	  vacuum_Data.keep_from_log_pageid = NULL_PAGEID;
-	}
-      else
-	{
-	  /* keep block of log_Gl.hdr.mvcc_op_log_lsa */
-	  keep_from_blockid = vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid);
-	  vacuum_Data.keep_from_log_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (keep_from_blockid);
-	}
+      // keep starting with next after last_blockid ()
+      vacuum_Data.keep_from_log_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (vacuum_Data.get_last_blockid () + 1);
     }
   else
     {
-      keep_from_blockid = vacuum_Data.first_page->data[vacuum_Data.first_page->index_unvacuumed].get_blockid ();
-      vacuum_Data.keep_from_log_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (keep_from_blockid);
+      vacuum_Data.keep_from_log_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (vacuum_Data.get_first_blockid ());
     }
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,

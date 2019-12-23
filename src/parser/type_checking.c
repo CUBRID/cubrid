@@ -20476,6 +20476,14 @@ pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
 		temp->info.value.print_charset = dest->info.value.print_charset;
 		temp->info.value.print_collation = dest->info.value.print_collation;
 		temp->info.value.is_collate_allowed = dest->info.value.is_collate_allowed;
+
+		// clear dest before overwriting; make sure data_type is not affected
+		if (data_type == dest->data_type)
+		  {
+		    dest->data_type = NULL;
+		  }
+		parser_clear_node (parser, dest);
+
 		*dest = *temp;
 		if (data_type != NULL)
 		  {
