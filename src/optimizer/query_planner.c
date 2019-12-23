@@ -7513,7 +7513,7 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
 		      /* found EQ term */
 		      if (QO_TERM_IS_FLAGED (termp, QO_TERM_EQUAL_OP))
 			{
-			  bitset_add (&range_terms,t);
+			  bitset_add (&range_terms, t);
 			  n++;
 			}
 		    }
@@ -9703,8 +9703,8 @@ qo_classify (PT_NODE * attr)
     case PT_DIFFERENCE:
       return PC_SUBQUERY;
 
-    /* (attr,attr) or (?,?) */
     case PT_FUNCTION:
+      /* (attr,attr) or (?,?) */
       if (PT_IS_SET_TYPE (attr))
 	{
 	  PT_NODE *func_arg;
@@ -9715,7 +9715,7 @@ qo_classify (PT_NODE * attr)
 		{
 		  /* none */
 		}
-              else if (func_arg->node_type == PT_HOST_VAR)
+	      else if (func_arg->node_type == PT_HOST_VAR)
 		{
 		  return PC_FUNC_SET;
 		}
