@@ -333,7 +333,7 @@ static const int OID_LIST_GROWTH = 10;
 
 static RANGE op_type_to_range (const PT_OP_TYPE op_type, const int nterms);
 static int pt_to_single_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool multi_col,
-			     KEY_INFO * key_infop);
+			     KEY_INFO * key_infop, int * multi_col_pos);
 static int pt_to_range_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool multi_col,
 			    KEY_INFO * key_infop);
 static int pt_to_list_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool multi_col,
@@ -9735,12 +9735,13 @@ pt_create_iss_range (INDX_INFO * indx_infop, TP_DOMAIN * domain)
  *   key_infop(out):
  */
 static int
-pt_to_single_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool multi_col, KEY_INFO * key_infop)
+pt_to_single_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool multi_col, KEY_INFO * key_infop,
+		  int * multi_col_pos)
 {
   PT_NODE *lhs, *rhs, *tmp, *midx_key;
   PT_OP_TYPE op_type;
   REGU_VARIABLE *regu_var;
-  int i;
+  int i, pos;
 
   midx_key = NULL;
   regu_var = NULL;
@@ -9789,6 +9790,19 @@ pt_to_single_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bo
 	    }
 	}
 
+      if (multi_col_pos[i] != -1)
+	{
+	  /* case of multi column term */
+	  assert (pt_is_set_type (rhs));
+	  assert (multi_col);
+
+	  rhs = rhs->info.value.data_value.set;
+	  for(pos = 0; pos < multi_col_pos[i]; pos++)
+	    {
+	      rhs = rhs->next;
+	    }
+	}
+
       /* is the key value constant(value or host variable)? */
       key_infop->is_constant &= (rhs->node_type == PT_VALUE || rhs->node_type == PT_HOST_VAR);
 
@@ -9797,6 +9811,7 @@ pt_to_single_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bo
 	{
 	  midx_key = parser_append_node (pt_point (parser, rhs), midx_key);
 	}
+
     }				/* for (i = 0; i < nterms; i++) */
 
   if (midx_key)
@@ -11450,7 +11465,8 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
   switch (op_type)
     {
     case PT_EQ:
-      rc = pt_to_single_key (parser, term_exprs, nterms, QO_ENTRY_MULTI_COL (index_entryp), key_infop);
+      rc = pt_to_single_key (parser, term_exprs, nterms, QO_ENTRY_MULTI_COL (index_entryp), key_infop,
+			     qo_index_infop->multi_col_pos);
       indx_infop->range_type = R_KEY;
       break;
     case PT_GT:
