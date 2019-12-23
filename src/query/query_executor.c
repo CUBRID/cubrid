@@ -1542,13 +1542,8 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
 	      }
 	      break;
 	    default:
-<<<<<<< HEAD
 	      // any member of union func_tmp_obj may have been erased
 	      assert (false);
-=======
-	      //any of union member may have been erased
-	      assert (0);
->>>>>>> origin/CBRD-22783_regexp_replace_func
 	      break;
 	    }
 

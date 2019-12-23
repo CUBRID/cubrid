@@ -73,7 +73,7 @@ namespace cublocale
 	// don't need to convert for empty string
 	return true;
       }
-
+	  
     std::string utf8_str;
     if (codeset != INTL_CODESET_UTF8)
       {
@@ -96,7 +96,7 @@ namespace cublocale
 	  default:
 	    // unrecognized codeset
 	    assert (false);
-	    intl_binary_to_utf8 ((const unsigned char *) in.data(), in.size(), (unsigned char **) &utf8_str_ptr, &conv_size);
+		success = false;
 	    break;
 	  }
 
