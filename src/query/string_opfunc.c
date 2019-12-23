@@ -4300,13 +4300,29 @@ db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_
   return ((*result == V_ERROR) ? ER_QSTR_INVALID_ESCAPE_SEQUENCE : error_status);
 }
 
+// *INDENT-OFF*
+#ifdef __cplusplus
+compiled_regex::compiled_regex() : regex (NULL), pattern (NULL) {}
+compiled_regex::~compiled_regex()
+{
+  if (regex != NULL)
+    {
+delete regex;
+regex = NULL;
+    }
+  if (pattern != NULL)
+    {
+db_private_free_and_init (NULL, pattern);
+    }
+}
+#endif
+
 static int
 regex_compile (const char *pattern, std::regex * &rx_compiled_regex,
 	       std::regex_constants::syntax_option_type & reg_flags)
 {
   int error_status = NO_ERROR;
-
-  // *INDENT-OFF*
+  assert (rx_compiled_regex == NULL);
   try
   {
     rx_compiled_regex = new std::regex (pattern, reg_flags);
@@ -4316,13 +4332,15 @@ regex_compile (const char *pattern, std::regex * &rx_compiled_regex,
     // regex compilation exception
     error_status = ER_REGEX_COMPILE_ERROR;
     er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, e.what ());
-    delete rx_compiled_regex;
-    rx_compiled_regex = NULL;
+    if (rx_compiled_regex != NULL)
+    {
+      delete rx_compiled_regex;
+      rx_compiled_regex = NULL;
+    }
   }
-  // *INDENT-ON*
-
   return error_status;
 }
+// *INDENT-ON*
 
 /*
  * db_string_rlike () - check for match between string and regex
@@ -4608,8 +4626,8 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
     DB_TYPE repl_type = DB_VALUE_DOMAIN_TYPE (repl);
 
     bool is_valid_data_type = ((DB_IS_NULL (src) || QSTR_IS_ANY_CHAR (src_type))
-                   && (DB_IS_NULL (pattern) || QSTR_IS_ANY_CHAR (pattern_type))
-                   && (DB_IS_NULL (repl) || QSTR_IS_ANY_CHAR (repl_type)));
+			       && (DB_IS_NULL (pattern) || QSTR_IS_ANY_CHAR (pattern_type))
+			       && (DB_IS_NULL (repl) || QSTR_IS_ANY_CHAR (repl_type)));
     bool is_any_null = (DB_IS_NULL (src) || DB_IS_NULL (pattern) || DB_IS_NULL (repl));
 
     /* get optional arguments and type checking */
@@ -4680,7 +4698,7 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	goto exit;
       }
-      
+
     /* get compiled pattern */
     if (comp_pattern != NULL)
       {
@@ -4694,10 +4712,10 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
       }
 
     /* check for recompile */
-    std::string pattern_string (db_get_string (pattern), db_get_string_size (pattern));
-    int pattern_length = pattern_string.size();
+    const char *pattern_char_string_p = db_get_string (pattern);
+    int pattern_length = db_get_string_size (pattern);
     if (rx_compiled_pattern == NULL || rx_compiled_regex == NULL || pattern_length != strlen (rx_compiled_pattern)
-	|| pattern_string.compare (rx_compiled_pattern) != 0)
+	|| strncmp (rx_compiled_pattern, pattern_char_string_p, pattern_length) != 0)
       {
 	/* regex must be recompiled if regex object is not specified, pattern is not specified or compiled pattern does
 	 * not match current pattern */
@@ -4706,11 +4724,11 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	if (rx_compiled_pattern != NULL)
 	  {
 	    /* free old memory */
-	    delete[] rx_compiled_pattern;
+	    db_private_free_and_init (NULL, rx_compiled_pattern);
 	  }
 
 	/* allocate new memory */
-	rx_compiled_pattern = new char[pattern_length + 1];
+	rx_compiled_pattern = (char *) db_private_alloc (NULL, pattern_length + 1);
 	if (rx_compiled_pattern == NULL)
 	  {
 	    /* out of memory */
@@ -4719,7 +4737,7 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	  }
 
 	/* copy string */
-	memcpy (rx_compiled_pattern, pattern_string.data(), pattern_length);
+	memcpy (rx_compiled_pattern, pattern_char_string_p, pattern_length);
 	rx_compiled_pattern[pattern_length] = '\0';
 
 	std::regex_constants::syntax_option_type reg_flags = std::regex_constants::ECMAScript;
@@ -4759,7 +4777,7 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
       }
 
     /* split source string by position value */
-    std::string prefix;
+    std::string result_string;
     std::string target;
 
     int src_length = db_get_string_size (src);
@@ -4769,8 +4787,8 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	int position_value = db_get_int (position) - 1;
 	if (position_value >= 0 && position_value < src_length)
 	  {
-	    prefix = std::move (src_string.substr (0, position_value));
-	    target = std::move (src_string.substr (position_value, src_length - position_value));
+	    result_string = src_string.substr (0, position_value);
+	    target = std::move (src_string).substr (position_value, src_length - position_value);
 	  }
 	else if (position_value < 0)
 	  {
@@ -4799,13 +4817,12 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
     try
       {
 	std::string repl_string (db_get_string (repl), db_get_string_size (repl));
-	std::string result_string;
 
 	/* occurrence option */
 	int occurrence_value = (occurrence != NULL) ? db_get_int (occurrence) : 0;
 	if (occurrence_value == 0)
 	  {
-	    result_string = std::regex_replace (target, *rx_compiled_regex, repl_string);
+	    result_string.append (std::regex_replace (target, *rx_compiled_regex, repl_string));
 	  }
 	else if (occurrence_value > 0)
 	  {
@@ -4842,9 +4859,6 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	    goto exit;
 	  }
-
-	/* concatenate with prefix */
-	result_string.insert (0, prefix);
 
 	/* allocate new memory for result string */
 	char *result_char_string = NULL;
@@ -4886,8 +4900,7 @@ exit:
   if ((comp_pattern == NULL || error_status != NO_ERROR) && rx_compiled_pattern != NULL)
     {
       /* free memory if (using local pattern) or (error occurred) */
-      delete[] rx_compiled_pattern;
-      rx_compiled_pattern = NULL;
+      db_private_free_and_init (NULL, rx_compiled_pattern);
     }
 
   if (comp_regex != NULL)

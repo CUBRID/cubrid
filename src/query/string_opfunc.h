@@ -227,21 +227,9 @@ struct compiled_regex
 {
   mutable std::regex *regex;
   mutable char *pattern;
-
-  compiled_regex() : regex (NULL), pattern (NULL) {}
-  ~compiled_regex()
-  {
-    if (regex != NULL)
-      {
-	delete regex;
-	regex = NULL;
-      }
-    if (pattern != NULL)
-      {
-	delete[] pattern;
-	pattern = NULL;
-      }
-  }
+  
+  compiled_regex ();
+  ~compiled_regex ();
 };
 
 extern int db_string_rlike (const DB_VALUE *src_string, const DB_VALUE *pattern, const DB_VALUE *case_sensitive,
