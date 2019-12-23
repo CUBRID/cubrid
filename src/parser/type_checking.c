@@ -21828,7 +21828,7 @@ pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser, const PT_NOD
 	{
 	  current_set_node = node->info.query.q.select.list;
 	  is_collection_of_collection = true;
-	}  
+	}
 
       if (is_collection_of_collection)
 	{

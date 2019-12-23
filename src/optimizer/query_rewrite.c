@@ -6154,7 +6154,8 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
       select_list = NULL;
 
       /* should be 'attr op uncorr-subquery', and select list of the subquery should be indexable-column */
-      for (arg1_next = arg1, arg2_next = arg2_list; arg1_next && arg2_next; arg1_next = arg1_next->next, arg2_next = arg2_next->next)
+      for (arg1_next = arg1, arg2_next = arg2_list; arg1_next && arg2_next;
+	   arg1_next = arg1_next->next, arg2_next = arg2_next->next)
 	{
 	  if (tp_valid_indextype (pt_type_enum_to_db (arg1_next->type_enum))
 	      && (pt_is_attr (arg1_next) || pt_is_function_index_expression (arg1_next)))
@@ -6196,10 +6197,11 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	    case PT_EQ:	/* arg1 = set_func_elements */
 	    case PT_IS_IN:	/* arg1 = set_func_elements, attr */
 	    case PT_EQ_SOME:	/* arg1 = attr */
-	      if (PT_IS_COLLECTION_TYPE(arg2->type_enum) && select_list && (PT_IS_FUNCTION(select_list) || PT_IS_CONST (select_list)))
+	      if (PT_IS_COLLECTION_TYPE(arg2->type_enum) && select_list 
+		  && (PT_IS_FUNCTION(select_list) || PT_IS_CONST (select_list)))
 		{
 		  /* if arg2 is collection type then select_list is rewrited to multi col */
-		  pt_select_list_to_one_col(parser,arg2, false);
+		  pt_select_list_to_one_col(parser, arg2, false);
 		}
 
 	      /* make new derived spec and append it to FROM */
