@@ -2624,13 +2624,14 @@ qo_plan_multi_range_opt (QO_PLAN * plan)
 static QO_XASL_INDEX_INFO *
 qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
 {
-  int nterms, nsegs, nkfterms;
+  int nterms, nsegs, nkfterms, multi_term_num;;
   QO_NODE_INDEX_ENTRY *ni_entryp;
   QO_INDEX_ENTRY *index_entryp;
   QO_XASL_INDEX_INFO *index_infop;
   int t, i, j, pos;
   BITSET_ITERATOR iter;
   QO_TERM *termp;
+  BITSET multi_col_segs, multi_col_range_segs;
 
   if (!qo_is_interesting_order_scan (plan))
     {
@@ -2684,6 +2685,26 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
       nterms++;
     }
 
+  /* check multi column index term */
+  multi_term_num = qo_get_multi_col_range_segs(env, plan, index_entryp, &multi_col_segs, &multi_col_range_segs);
+  index_infop->need_copy_multi_range_term = multi_term_num;
+  if (multi_term_num != -1)
+    {
+      /* case of term having multiple columns */
+      bitset_difference (&multi_col_segs, &multi_col_range_segs);
+      if (!bitset_is_empty(&multi_col_segs))
+	{
+	  index_infop->need_copy_multi_range_term = multi_term_num;
+	}
+      else
+	{
+	  index_infop->need_copy_multi_range_term = -1;
+	}
+
+      /* add multi column term's segs ex) index(a,b,c), (a,b) in .. and c = 1 : nterms = 2 + 2 -1 */
+      nterms = nterms + bitset_cardinality (&multi_col_range_segs) - 1;
+    }
+
   if (nterms == 0)
     {
       index_infop->nterms = 0;
@@ -2694,6 +2715,7 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
 
   index_infop->nterms = nterms;
   index_infop->term_exprs = (PT_NODE **) malloc (nterms * sizeof (PT_NODE *));
+  index_infop->multi_col_pos = (int *) malloc (nterms * sizeof (int));
   if (index_infop->term_exprs == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nterms * sizeof (PT_NODE *));
@@ -2717,38 +2739,76 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
       /* pointer to QO_TERM denoted by number 't' */
       termp = QO_ENV_TERM (env, t);
 
-      /* Find the matching segment in the segment index array to determine the array position to store the expression.
-       * We're using the 'index_seg[]' array of the term to find its segment index */
-      pos = -1;
-      for (i = 0; i < termp->can_use_index && pos == -1; i++)
+      if (!QO_TERM_IS_FLAGED (termp, QO_TERM_MULTI_COLL_PRED))
 	{
-	  for (j = 0; j < nsegs; j++)
+	  /* Find the matching segment in the segment index array to determine the array position to store the expression.
+	  * We're using the 'index_seg[]' array of the term to find its segment index */
+	  pos = -1;
+	  for (i = 0; i < termp->can_use_index && pos == -1; i++)
 	    {
-	      if (i >= (int) (sizeof (termp->index_seg) / sizeof (termp->index_seg[0])))
+	      for (j = 0; j < nsegs; j++)
 		{
-		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, "false");
-		  goto error;
-		}
+		  if (i >= (int) (sizeof (termp->index_seg) / sizeof (termp->index_seg[0])))
+		    {
+		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, "false");
+		      goto error;
+		    }
 
-	      if ((index_entryp->seg_idxs[j]) == QO_SEG_IDX (termp->index_seg[i]))
+		  if ((index_entryp->seg_idxs[j]) == QO_SEG_IDX (termp->index_seg[i]))
+		    {
+		      pos = j;
+		      break;
+		    }
+		}
+	    }
+
+	  /* always, pos != -1 and 0 <= pos < nterms */
+	  assert(pos >= 0 && pos < nterms);
+	  if (pos < 0 || pos >= nterms)
+	    {
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, "pos >= 0 and pos < nterms");
+	      goto error;
+	    }
+
+	  /* if the index is Index Skip Scan, the first column should have never been found in a term */
+	  assert (!qo_is_index_iss_scan (plan) || pos != 0);
+	  index_infop->term_exprs[pos] = QO_TERM_PT_EXPR (termp);
+	  index_infop->multi_col_pos[pos] = -1;
+	}
+      else
+	{
+	  /* case of multi column term */
+	  /* not need can_use_index's iteration because multi col term having other node's segments isn't indexable */
+	  /* ex) (a.col1,a.col2) in ((a.col1,b.col2)) is not indexable */
+	  pos = -1;
+	  for (i = 0; i < termp->multi_col_cnt; i++)
+	    {
+	      for (j = 0; j < nsegs; j++)
 		{
-		  pos = j;
-		  break;
+		  if ((index_entryp->seg_idxs[j]) == (termp->multi_col_segs[i]))
+		    {
+		      pos = j;
+		      break;
+		    }
+		}
+	      /* if the index is Index Skip Scan, the first column should have never been found in a term */
+	      assert (!qo_is_index_iss_scan (plan) || pos != 0);
+
+	      if (BITSET_MEMBER (multi_col_range_segs, index_entryp->seg_idxs[pos]))
+		{
+		  /* always, pos != -1 and 0 <= pos < nterms */
+		  assert(pos >= 0 && pos < nterms);
+		  if (pos < 0 || pos >= nterms)
+		    {
+		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, "pos >= 0 and pos < nterms");
+		      goto error;
+		    }
+
+		  index_infop->term_exprs[pos] = QO_TERM_PT_EXPR (termp);
+		  index_infop->multi_col_pos[pos] = i;
 		}
 	    }
 	}
-
-      /* always, pos != -1 and 0 <= pos < nsegs */
-      if (pos < 0)
-	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, "pos >= 0");
-	  goto error;
-	}
-
-      /* if the index is Index Skip Scan, the first column should have never been found in a term */
-      assert (!qo_is_index_iss_scan (plan) || pos != 0);
-
-      index_infop->term_exprs[pos] = QO_TERM_PT_EXPR (termp);
     }
 
   /* return QO_XASL_INDEX_INFO */
