@@ -670,6 +670,13 @@ struct qo_term
   short location;
 
   /*
+   * a segment number of multiple columns ordered by written predicate
+   * ex) (b,a,c) in ... multi_col_segs[0] = b, [1] = a, [2] = c
+   */
+  int *multi_col_segs;
+  int multi_col_cnt;
+
+  /*
    * WARNING!!! WARNING!!! WARNING!!!
    *
    * If you add any more elements to this struct, be sure to update the
@@ -698,6 +705,8 @@ struct qo_term
 #define QO_TERM_INDEX_SEG(t, i) (t)->index_seg[(i)]
 #define QO_TERM_JOIN_TYPE(t)    (t)->join_type
 #define QO_TERM_FLAG(t)	        (t)->flag
+#define QO_TERM_MULTI_COL_SEGS(t)  (t)->multi_col_segs
+#define QO_TERM_MULTI_COL_CNT(t)   (t)->multi_col_cnt
 
 
 #define QO_TERM_EQUAL_OP             1	/* is equal op ? */
@@ -706,6 +715,7 @@ struct qo_term
 #define QO_TERM_COPY_PT_EXPR         8	/* pt_expr is copyed ? */
 #define QO_TERM_MERGEABLE_EDGE      16	/* suitable as a m-join edge ? */
 #define QO_TERM_NON_IDX_SARG_COLL   32	/* not suitable for key range/filter */
+#define QO_TERM_MULTI_COLL_PRED     64 /* multi column && in OP, (a,b) in .. */
 
 #define QO_TERM_IS_FLAGED(t, f)        (QO_TERM_FLAG(t) & (int) (f))
 #define QO_TERM_SET_FLAG(t, f)         QO_TERM_FLAG(t) |= (int) (f)

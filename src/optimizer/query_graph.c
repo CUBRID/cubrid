@@ -124,6 +124,7 @@
 #define BOOL_EXCHANGE(e0,e1)       EXCHANGE_BUILDER(bool,e0,e1)
 #define JOIN_TYPE_EXCHANGE(e0,e1)  EXCHANGE_BUILDER(JOIN_TYPE,e0,e1)
 #define FLAG_EXCHANGE(e0,e1)       EXCHANGE_BUILDER(int,e0,e1)
+#define INT_PTR_EXCHANGE(e0,e1)    EXCHANGE_BUILDER(int *,e0,e1)
 
 #define BISET_EXCHANGE(s0,s1) \
     do { \
@@ -1679,6 +1680,8 @@ qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env)
   QO_TERM_RANK (term) = 0;
   QO_TERM_FLAG (term) = 0;	/* init */
   QO_TERM_IDX (term) = env->nterms;
+  QO_TERM_MULTI_COL_SEGS (term) = NULL;        /* init */
+  QO_TERM_MULTI_COL_CNT (term) = 0;    /* init */
 
   env->nterms++;
 
@@ -5830,6 +5833,8 @@ qo_exchange (QO_TERM * t0, QO_TERM * t1)
   EQCLASSPTR_EXCHANGE (t0->eqclass, t1->eqclass);
   SEGMENTPTR_EXCHANGE (t0->nominal_seg, t1->nominal_seg);
   FLAG_EXCHANGE (t0->flag, t1->flag);
+  INT_PTR_EXCHANGE (t0->multi_col_segs, t1->multi_col_segs);
+  INT_EXCHANGE (t0->multi_col_cnt, t1->multi_col_cnt);
   /*
    * DON'T exchange the 'idx' values!
    */
@@ -8667,6 +8672,10 @@ qo_term_free (QO_TERM * term)
   bitset_delset (&(QO_TERM_NODES (term)));
   bitset_delset (&(QO_TERM_SEGS (term)));
   bitset_delset (&(QO_TERM_SUBQUERIES (term)));
+  if (QO_TERM_MULTI_COL_SEGS (term))
+    {
+      free_and_init (QO_TERM_MULTI_COL_SEGS (term));
+    }
 }
 
 /*
