@@ -339,7 +339,7 @@ static int pt_to_range_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int 
 static int pt_to_list_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool multi_col,
 			   KEY_INFO * key_infop);
 static int pt_to_rangelist_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool multi_col,
-				KEY_INFO * key_infop, int rangelist_idx);
+				KEY_INFO * key_infop, int rangelist_idx, int * multi_col_pos);
 static int pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIMIT_INFO * limit_infop,
 			    KEY_INFO * key_infop, bool key_limit_reset);
 static int pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
@@ -10336,14 +10336,14 @@ error:
  */
 static int
 pt_to_rangelist_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool multi_col, KEY_INFO * key_infop,
-		     int rangelist_idx)
+		     int rangelist_idx, int * multi_col_pos)
 {
-  PT_NODE *lhs, *rhs, *llim, *ulim, *elem, *tmp;
+  PT_NODE *lhs, *rhs, *llim, *ulim, *elem, *tmp, *elem2;
   PT_NODE **midxkey_list1 = NULL, **midxkey_list2 = NULL;
   PT_OP_TYPE op_type;
   REGU_VARIABLE **regu_var_list1, **regu_var_list2, *regu_var;
   RANGE *range_list = NULL;
-  int i, j, n_elem;
+  int i, j, n_elem, pos;
   int list_count1, list_count2;
   int num_index_term;
 
@@ -10453,7 +10453,7 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms,
 	}
       else
 	{
-	  assert ((i == rangelist_idx) || (i != rangelist_idx && rhs->or_next == NULL));
+	  assert ((i == rangelist_idx) || (i != rangelist_idx && rhs->or_next == NULL) || multi_col_pos[i] != -1);
 
 	  /* PT_RANGE */
 	  for (j = 0, elem = rhs; j < n_elem && elem; j++, elem = elem->or_next)
@@ -10480,6 +10480,21 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms,
 		  llim = elem->info.expr.arg1;
 		  ulim = elem->info.expr.arg2;
 		  break;
+		}
+
+	      if (multi_col_pos[i] != -1)
+		{
+		  /* case of multi column term */
+		  assert (pt_is_set_type (llim));
+		  assert (multi_col);
+
+		  llim = llim->info.value.data_value.set;
+		  ulim = llim;
+		  for(pos = 0; pos < multi_col_pos[i]; pos++)
+		    {
+		      llim = llim->next;
+		      ulim = ulim->next;
+		    }
 		}
 
 	      if (llim)
@@ -10534,7 +10549,7 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms,
 		}
 	    }			/* for (j = 0, elem = rhs; ... ) */
 
-	  if (i == rangelist_idx)
+	  if (multi_col_pos[i] != -1 || i == rangelist_idx)
 	    {
 	      assert (j == n_elem);
 	      /* OK; nop */
@@ -11452,8 +11467,8 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
       indx_infop->range_type = R_KEYLIST;
       break;
     case PT_RANGE:
-      rc =
-	pt_to_rangelist_key (parser, term_exprs, nterms, QO_ENTRY_MULTI_COL (index_entryp), key_infop, rangelist_idx);
+      rc = pt_to_rangelist_key (parser, term_exprs, nterms, QO_ENTRY_MULTI_COL (index_entryp), key_infop, rangelist_idx,
+				qo_index_infop->multi_col_pos);
       for (i = 0; i < key_infop->key_cnt; i++)
 	{
 	  if (key_infop->key_ranges[i].range != EQ_NA)
