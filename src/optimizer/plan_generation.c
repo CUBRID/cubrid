@@ -1360,7 +1360,7 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
       if (qo_index_infop->need_copy_multi_range_term != -1)
 	{
 	  /*force-copy multi col range pred to key filter */
- 	  bitset_add (&(plan->plan_un.scan.kf_terms), qo_index_infop->need_copy_multi_range_term);
+	  bitset_add (&(plan->plan_un.scan.kf_terms), qo_index_infop->need_copy_multi_range_term);
 	}
       *key_predp = make_pred_from_bitset (env, &(plan->plan_un.scan.kf_terms), is_always_true);
     }
@@ -2750,7 +2750,7 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
       if (!QO_TERM_IS_FLAGED (termp, QO_TERM_MULTI_COLL_PRED))
 	{
 	  /* Find the matching segment in the segment index array to determine the array position to store the expression.
- 	   * We're using the 'index_seg[]' array of the term to find its segment index */
+	   * We're using the 'index_seg[]' array of the term to find its segment index */
 	  pos = -1;
 	  for (i = 0; i < termp->can_use_index && pos == -1; i++)
 	    {
@@ -4920,7 +4920,7 @@ qo_get_multi_col_range_segs (QO_ENV * env, QO_PLAN * plan, QO_INDEX_ENTRY * inde
 			  /* found EQ term */
 			  if (QO_TERM_IS_FLAGED (termp, QO_TERM_EQUAL_OP))
 			    {
-			      bitset_add (multi_col_range_segs,seg);
+			      bitset_add (multi_col_range_segs, seg);
 			      n++;
 			    }
 			}

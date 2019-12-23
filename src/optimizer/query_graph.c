@@ -1680,7 +1680,6 @@ qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env)
   QO_TERM_RANK (term) = 0;
   QO_TERM_FLAG (term) = 0;	/* init */
   QO_TERM_IDX (term) = env->nterms;
-  QO_TERM_MULTI_COL_SEGS (term) = NULL;        /* init */
   QO_TERM_MULTI_COL_SEGS (term) = NULL;	/* init */
   QO_TERM_MULTI_COL_CNT (term) = 0;	/* init */
 
@@ -6452,7 +6451,7 @@ qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx, BI
 	    {
 	      /* multiple columns lhs can be indexable when they are a subset of index columns. ex) (a,c) in ... index(a,b,c) */
 	      /* to_do : when multi columns are not subset of index columns, it can be indexable  */
-	      if (bitset_subset (index_segsp,&(QO_TERM_SEGS (qo_termp))))
+	      if (bitset_subset (index_segsp, &(QO_TERM_SEGS (qo_termp))))
 		{
 		  bitset_add (&(index_entry->seg_equal_terms[idx]), t);
 		}

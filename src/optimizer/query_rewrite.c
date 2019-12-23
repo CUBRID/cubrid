@@ -6218,7 +6218,7 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	    case PT_EQ:	/* arg1 = set_func_elements */
 	    case PT_IS_IN:	/* arg1 = set_func_elements, attr */
 	    case PT_EQ_SOME:	/* arg1 = attr */
-	      if (PT_IS_COLLECTION_TYPE(arg2->type_enum) && select_list
+	      if (PT_IS_COLLECTION_TYPE (arg2->type_enum) && select_list
 		  && (PT_IS_FUNCTION (select_list) || PT_IS_CONST (select_list)))
 		{
 		  /* if arg2 is collection type then select_list is rewrited to multi col */

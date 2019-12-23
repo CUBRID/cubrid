@@ -7513,7 +7513,7 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
 		      /* found EQ term */
 		      if (QO_TERM_IS_FLAGED (termp, QO_TERM_EQUAL_OP))
 			{
-			  bitset_add(&range_terms,t);
+			  bitset_add (&range_terms,t);
 			  n++;
 			}
 		    }
@@ -9354,16 +9354,16 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  /* (attr,attr) = (attr,attr) */
 	  multi_attr = lhs->info.function.arg_list;
 	  lhs_icard = 0;
-	  for (/* none */ ; multi_attr; multi_attr = multi_attr->next)
+	  for ( /* none */ ; multi_attr; multi_attr = multi_attr->next)
 	    {
 	      /* get index cardinality */
 	      icard = qo_index_cardinality (env, multi_attr);
-	      if ( icard <= 0 )
+	      if (icard <= 0)
 		{
 		  /* the only interesting case is PT_BETWEEN_EQ_NA */
-		  icard = 1/DEFAULT_EQUAL_SELECTIVITY;
+		  icard = 1 / DEFAULT_EQUAL_SELECTIVITY;
 		}
-	      if ( lhs_icard == 0 )
+	      if (lhs_icard == 0)
 		{
 		  /* first time */
 		  lhs_icard = icard;
@@ -9376,16 +9376,16 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 
 	  multi_attr = rhs->info.function.arg_list;
 	  rhs_icard = 0;
-	  for (/* none */ ; multi_attr; multi_attr = multi_attr->next)
+	  for ( /* none */ ; multi_attr; multi_attr = multi_attr->next)
 	    {
 	      /* get index cardinality */
 	      icard = qo_index_cardinality (env, multi_attr);
-	      if ( icard <= 0 )
+	      if (icard <= 0)
 		{
 		  /* the only interesting case is PT_BETWEEN_EQ_NA */
-		  icard = 1/DEFAULT_EQUAL_SELECTIVITY;
+		  icard = 1 / DEFAULT_EQUAL_SELECTIVITY;
 		}
-	      if ( rhs_icard == 0 )
+	      if (rhs_icard == 0)
 		{
 		  /* first time */
 		  rhs_icard = icard;
@@ -9471,20 +9471,20 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
   pc2 = qo_classify (lhs);
 
   /* the only interesting case is 'attr RANGE {=1,=2}' or '(attr,attr) RANGE {={..},..}' */
-  if ( pc2 == PC_MULTI_ATTR )
+  if (pc2 == PC_MULTI_ATTR)
     {
       lhs = lhs->info.function.arg_list;
       lhs_icard = 0;
-      for (/* none */ ; lhs; lhs = lhs->next)
+      for ( /* none */ ; lhs; lhs = lhs->next)
 	{
 	  /* get index cardinality */
 	  icard = qo_index_cardinality (env, lhs);
-	  if ( icard <= 0 )
+	  if (icard <= 0)
 	    {
 	      /* the only interesting case is PT_BETWEEN_EQ_NA */
-	      icard = 1/DEFAULT_EQUAL_SELECTIVITY;
+	      icard = 1 / DEFAULT_EQUAL_SELECTIVITY;
 	    }
-	  if ( lhs_icard == 0 )
+	  if (lhs_icard == 0)
 	    {
 	      /* first time */
 	      lhs_icard = icard;
@@ -9593,20 +9593,21 @@ qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr)
   PRED_CLASS pc_lhs, pc_rhs;
   double list_card = 0, icard;
   PT_NODE *lhs;
-  double equal_selectivity , in_selectivity , selectivity;
+  double equal_selectivity, in_selectivity, selectivity;
 
   /* determine the class of each side of the range */
   pc_lhs = qo_classify (pt_expr->info.expr.arg1);
   pc_rhs = qo_classify (pt_expr->info.expr.arg2);
 
   /* The only interesting cases are: attr IN set or (attr,attr) IN set or attr IN subquery */
-  if ((pc_lhs == PC_MULTI_ATTR || pc_lhs == PC_ATTR) && (pc_rhs == PC_SET || pc_rhs == PC_SUBQUERY || pc_rhs == PC_FUNC_SET))
+  if ((pc_lhs == PC_MULTI_ATTR || pc_lhs == PC_ATTR)
+      && (pc_rhs == PC_SET || pc_rhs == PC_SUBQUERY || pc_rhs == PC_FUNC_SET))
     {
       if (pc_lhs == PC_MULTI_ATTR)
 	{
 	  lhs = pt_expr->info.expr.arg1->info.function.arg_list;
 	  equal_selectivity = 1;
-	  for (/* none */ ; lhs; lhs = lhs->next)
+	  for ( /* none */ ; lhs; lhs = lhs->next)
 	    {
 	      /* get index cardinality */
 	      icard = qo_index_cardinality (env, lhs);
@@ -9632,7 +9633,7 @@ qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	    }
 	  else
 	    {
-	    equal_selectivity = DEFAULT_EQUAL_SELECTIVITY;
+	      equal_selectivity = DEFAULT_EQUAL_SELECTIVITY;
 	    }
 	}
       /* determine cardinality of set or subquery */
@@ -9648,7 +9649,7 @@ qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	{
 	  if (pt_expr->info.expr.arg2->info.query.xasl)
 	    {
-	      list_card = ((XASL_NODE *)pt_expr->info.expr.arg2->info.query.xasl)->cardinality;
+	      list_card = ((XASL_NODE *) pt_expr->info.expr.arg2->info.query.xasl)->cardinality;
 	    }
 	  else
 	    {
@@ -9708,7 +9709,7 @@ qo_classify (PT_NODE * attr)
 	{
 	  PT_NODE *func_arg;
 	  func_arg = attr->info.function.arg_list;
-	  for (/* none */ ; func_arg; func_arg = func_arg->next)
+	  for ( /* none */ ; func_arg; func_arg = func_arg->next)
 	    {
 	      if (func_arg->node_type == PT_NAME)
 		{
