@@ -387,7 +387,9 @@ typedef enum PRED_CLASS
   PC_HOST_VAR,
   PC_SUBQUERY,
   PC_SET,
-  PC_OTHER
+  PC_OTHER,
+  PC_MULTI_ATTR,
+  PC_FUNC_SET
 } PRED_CLASS;
 
 static double qo_or_selectivity (QO_ENV * env, double lhs_sel, double rhs_sel);
@@ -9519,6 +9521,34 @@ qo_classify (PT_NODE * attr)
     case PT_INTERSECTION:
     case PT_DIFFERENCE:
       return PC_SUBQUERY;
+
+    /* (attr,attr) or (?,?) */
+    case PT_FUNCTION:
+      if (PT_IS_SET_TYPE (attr))
+	{
+	  PT_NODE *func_arg;
+	  func_arg = attr->info.function.arg_list;
+	  for (/* none */ ; func_arg; func_arg = func_arg->next)
+	    {
+	      if (func_arg->node_type == PT_NAME)
+		{
+		  /* none */
+		}
+              else if (func_arg->node_type == PT_HOST_VAR)
+		{
+		  return PC_FUNC_SET;
+		}
+	      else
+		{
+		  return PC_OTHER;
+		}
+	    }
+	  return PC_MULTI_ATTR;
+	}
+      else
+	{
+	  return PC_OTHER;
+	}
 
     default:
       return PC_OTHER;
