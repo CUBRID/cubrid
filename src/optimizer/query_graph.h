@@ -174,6 +174,9 @@ struct qo_index_entry
    * in the index.
    */
   bool is_func_index;
+
+  /* Idx of the first range list term; RANGE (r1, r2, ...) */
+  int rangelist_term_idx;
 };
 
 #define QO_ENTRY_MULTI_COL(entry)       ((entry)->col_num > 1 ? true : false)

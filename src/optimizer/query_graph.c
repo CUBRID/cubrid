@@ -4622,6 +4622,7 @@ qo_alloc_index (QO_ENV * env, int n)
       entryp->key_limit = NULL;
       entryp->constraints = NULL;
       entryp->ils_prefix_len = 0;
+      entryp->rangelist_term_idx = -1;
     }
 
   return indexp;
