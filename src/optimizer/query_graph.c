@@ -1923,13 +1923,13 @@ qo_analyze_term (QO_TERM * term, int term_type)
   PARSER_CONTEXT *parser = NULL;
   bool merge_applies;
   bool lhs_indexable, rhs_indexable;
-  PT_NODE *pt_expr = NULL, *lhs_expr = NULL, *rhs_expr = NULL;
+  PT_NODE *pt_expr = NULL, *lhs_expr = NULL, *rhs_expr = NULL, *func_arg = NULL;
   QO_NODE *head_node = NULL, *tail_node = NULL;
   QO_SEGMENT *head_seg = NULL, *tail_seg = NULL;
-  BITSET lhs_segs, rhs_segs, lhs_nodes, rhs_nodes;
+  BITSET lhs_segs, rhs_segs, lhs_nodes, rhs_nodes, multi_col_segs;
   BITSET_ITERATOR iter;
   PT_OP_TYPE op_type = PT_AND;
-  int i, n, t;
+  int i, n, t, segs, j;
 
   env = QO_TERM_ENV (term);
 
@@ -2131,6 +2131,65 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	      else
 		{
 		  lhs_indexable = true;
+		}
+	    }
+	  else if (PT_IS_FUNCTION (lhs_expr) && PT_IS_SET_TYPE (lhs_expr))
+	    {
+	      /* multi column case (attr,attr,...) is indexable for RANGE, EQ operation*/
+	      func_arg = lhs_expr->info.function.arg_list;
+	      op_type = pt_expr->info.expr.op;
+
+	      switch (op_type)
+		{
+		case PT_EQ:
+		  if (!PT_IS_CONST (rhs_expr))
+		    {
+		      lhs_indexable = false;
+		      break;
+		    }
+		/* FALLTHRU */
+		case PT_RANGE:
+		  if (QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
+		    {
+		      lhs_indexable = true;
+		    }
+		  else
+		    {
+		      lhs_indexable = false;
+		    }
+		  break;
+		default:
+		  lhs_indexable = false;
+		  break;
+		}
+
+	      if (lhs_indexable)
+		{
+		  segs = 0;
+		  for (/* none */ ; func_arg; func_arg = func_arg->next)
+		    {
+		      if(!is_local_name (env, func_arg))
+			{
+			  lhs_indexable = false;
+			  break;
+			}
+		      segs++;
+		    }
+		}
+	      if (lhs_indexable)
+		{
+		  QO_TERM_SET_FLAG (term, QO_TERM_MULTI_COLL_PRED);
+		  QO_TERM_MULTI_COL_CNT (term) = segs;
+		  QO_TERM_MULTI_COL_SEGS (term) = (int *) malloc (sizeof (int) * segs);
+
+		  /* set multi col segs ex) (b,a,c) in .. multi_col_segs[0] = b's segnum, [1] = a .. */
+		  func_arg = lhs_expr->info.function.arg_list;
+		  for (j = 0 ; func_arg; func_arg = func_arg->next)
+		    {
+		      bitset_init (&multi_col_segs, env);
+		      qo_expr_segs (env, func_arg, &multi_col_segs);
+		      term->multi_col_segs[j++] = bitset_first_member(&multi_col_segs);
+		    }
 		}
 	    }
 	  else
@@ -2393,10 +2452,22 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	}
       QO_ASSERT (env, QO_NODE_IDX (head_node) < QO_NODE_IDX (tail_node));
       QO_ASSERT (env, QO_NODE_IDX (tail_node) > 0);
+
+      if (QO_TERM_IS_FLAGED (term, QO_TERM_MULTI_COLL_PRED))
+	{
+	  /*+ multi col term is only indexable for TC_SARG */
+	  QO_TERM_CAN_USE_INDEX (term) = 0;
+	}
     }
   else
     {				/* n >= 3 */
       QO_TERM_CLASS (term) = QO_TC_OTHER;
+
+      if (QO_TERM_IS_FLAGED (term, QO_TERM_MULTI_COLL_PRED))
+	{
+	  /*+ multi col term is only indexable for TC_SARG */
+	  QO_TERM_CAN_USE_INDEX (term) = 0;
+	}
     }
 
   if (n == 2)
