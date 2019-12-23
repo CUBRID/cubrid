@@ -9185,7 +9185,7 @@ qo_not_selectivity (QO_ENV * env, double sel)
 static double
 qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 {
-  PT_NODE *lhs, *rhs;
+  PT_NODE *lhs, *rhs, *multi_attr;
   PRED_CLASS pc_lhs, pc_rhs;
   int lhs_icard, rhs_icard, icard;
   double selectivity;
@@ -9229,6 +9229,7 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	case PC_SUBQUERY:
 	case PC_SET:
 	case PC_OTHER:
+	case PC_FUNC_SET:
 	  /* attr = const */
 
 	  /* check for index on the attribute.  NOTE: For an equality predicate, we treat subqueries as constants. */
@@ -9243,6 +9244,11 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	    }
 
 	  break;
+
+	case PC_MULTI_ATTR:
+	  /* attr = (attr,attr) syntactic impossible case */
+	  selectivity = DEFAULT_EQUAL_SELECTIVITY;
+	  break;
 	}
 
       break;
@@ -9252,6 +9258,7 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
     case PC_SUBQUERY:
     case PC_SET:
     case PC_OTHER:
+    case PC_FUNC_SET:
 
       switch (pc_rhs)
 	{
@@ -9276,12 +9283,154 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	case PC_SUBQUERY:
 	case PC_SET:
 	case PC_OTHER:
+	case PC_FUNC_SET:
 	  /* const = const */
 
 	  selectivity = DEFAULT_EQUAL_SELECTIVITY;
 	  break;
+
+	case PC_MULTI_ATTR:
+	  /* const = (attr,attr) */
+	  multi_attr = rhs->info.function.arg_list;
+	  rhs_icard = 0;
+	  for (/* none */ ; multi_attr; multi_attr = multi_attr->next)
+	    {
+	      /* get index cardinality */
+	      icard = qo_index_cardinality (env, multi_attr);
+	      if ( icard <= 0 )
+		{
+		  /* the only interesting case is PT_BETWEEN_EQ_NA */
+		  icard = 1/DEFAULT_EQUAL_SELECTIVITY;
+		}
+	      if ( rhs_icard == 0 )
+		{
+		  /* first time */
+		  rhs_icard = icard;
+		}
+	      else
+		{
+		  rhs_icard *= icard;
+		}
+	    }
+	  if (rhs_icard != 0)
+	    {
+	      selectivity = (1.0 / rhs_icard);
+	    }
+	  else
+	    {
+	      selectivity = DEFAULT_EQUAL_SELECTIVITY;
+	    }
+	  break;
+	}
+      break;
+
+      case PC_MULTI_ATTR:
+
+      switch (pc_rhs)
+	{
+	case PC_ATTR:
+	  /* (attr,attr) = attr  syntactic impossible case */
+	  selectivity = DEFAULT_EQUAL_SELECTIVITY;
+	  break;
+
+	case PC_CONST:
+	case PC_HOST_VAR:
+	case PC_SUBQUERY:
+	case PC_SET:
+	case PC_OTHER:
+	case PC_FUNC_SET:
+	  /* (attr,attr) = const */
+
+	  multi_attr = lhs->info.function.arg_list;
+	  lhs_icard = 0;
+	  for (/* none */ ; multi_attr; multi_attr = multi_attr->next)
+	    {
+	      /* get index cardinality */
+	      icard = qo_index_cardinality (env, multi_attr);
+	      if ( icard <= 0 )
+		{
+		  /* the only interesting case is PT_BETWEEN_EQ_NA */
+		  icard = 1/DEFAULT_EQUAL_SELECTIVITY;
+		}
+	      if ( lhs_icard == 0 )
+		{
+		  /* first time */
+		  lhs_icard = icard;
+		}
+	      else
+		{
+		  lhs_icard *= icard;
+		}
+	    }
+	  if (lhs_icard != 0)
+	    {
+	      selectivity = (1.0 / lhs_icard);
+	    }
+	  else
+	    {
+	      selectivity = DEFAULT_EQUAL_SELECTIVITY;
+	    }
+	  break;
+
+	case PC_MULTI_ATTR:
+	  /* (attr,attr) = (attr,attr) */
+	  multi_attr = lhs->info.function.arg_list;
+	  lhs_icard = 0;
+	  for (/* none */ ; multi_attr; multi_attr = multi_attr->next)
+	    {
+	      /* get index cardinality */
+	      icard = qo_index_cardinality (env, multi_attr);
+	      if ( icard <= 0 )
+		{
+		  /* the only interesting case is PT_BETWEEN_EQ_NA */
+		  icard = 1/DEFAULT_EQUAL_SELECTIVITY;
+		}
+	      if ( lhs_icard == 0 )
+		{
+		  /* first time */
+		  lhs_icard = icard;
+		}
+	      else
+		{
+		  lhs_icard *= icard;
+		}
+	    }
+
+	  multi_attr = rhs->info.function.arg_list;
+	  rhs_icard = 0;
+	  for (/* none */ ; multi_attr; multi_attr = multi_attr->next)
+	    {
+	      /* get index cardinality */
+	      icard = qo_index_cardinality (env, multi_attr);
+	      if ( icard <= 0 )
+		{
+		  /* the only interesting case is PT_BETWEEN_EQ_NA */
+		  icard = 1/DEFAULT_EQUAL_SELECTIVITY;
+		}
+	      if ( rhs_icard == 0 )
+		{
+		  /* first time */
+		  rhs_icard = icard;
+		}
+	      else
+		{
+		  rhs_icard *= icard;
+		}
+	    }
+
+	  icard = MAX (lhs_icard, rhs_icard);
+	  if (icard != 0)
+	    {
+	      selectivity = (1.0 / icard);
+	    }
+	  else
+	    {
+	      selectivity = DEFAULT_EQUIJOIN_SELECTIVITY;
+	    }
+	  break;
 	}
 
+      break;
       break;
     }
 
@@ -9333,26 +9482,53 @@ static double
 qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 {
   PT_NODE *lhs, *arg1, *arg2;
-  PRED_CLASS pc1;
+  PRED_CLASS pc1, pc2;
   double total_selectivity, selectivity;
-  int lhs_icard, rhs_icard, icard;
+  int lhs_icard = 0, rhs_icard = 0, icard = 0;
   PT_NODE *range_node;
   PT_OP_TYPE op_type;
 
   lhs = pt_expr->info.expr.arg1;
 
-  /* the only interesting case is 'attr RANGE {...}' */
-  if (qo_classify (lhs) != PC_ATTR)
+  pc2 = qo_classify (lhs);
+
+  /* the only interesting case is 'attr RANGE {=1,=2}' or '(attr,attr) RANGE {={..},..}' */
+  if ( pc2 == PC_MULTI_ATTR )
+    {
+      lhs = lhs->info.function.arg_list;
+      lhs_icard = 0;
+      for (/* none */ ; lhs; lhs = lhs->next)
+	{
+	  /* get index cardinality */
+	  icard = qo_index_cardinality (env, lhs);
+	  if ( icard <= 0 )
+	    {
+	      /* the only interesting case is PT_BETWEEN_EQ_NA */
+	      icard = 1/DEFAULT_EQUAL_SELECTIVITY;
+	    }
+	  if ( lhs_icard == 0 )
+	    {
+	      /* first time */
+	      lhs_icard = icard;
+	    }
+	  else
+	    {
+	      lhs_icard *= icard;
+	    }
+	}
+    }
+  else if (pc2 == PC_ATTR)
+    {
+      /* get index cardinality */
+      lhs_icard = qo_index_cardinality (env, lhs);
+    }
+  else
     {
       return DEFAULT_RANGE_SELECTIVITY;
     }
-
 #if 1				/* unused anymore - DO NOT DELETE ME */
   QO_ASSERT (env, !PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_FULL_RANGE));
 #endif
-
-  /* get index cardinality */
-  lhs_icard = qo_index_cardinality (env, lhs);
 
   total_selectivity = 0.0;
 
@@ -9437,44 +9613,70 @@ static double
 qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 {
   PRED_CLASS pc_lhs, pc_rhs;
-  int list_card = 0, icard;
-  double equal_selectivity, in_selectivity;
+  double list_card = 0, icard;
+  PT_NODE *lhs;
+  double equal_selectivity , in_selectivity , selectivity;
 
   /* determine the class of each side of the range */
   pc_lhs = qo_classify (pt_expr->info.expr.arg1);
   pc_rhs = qo_classify (pt_expr->info.expr.arg2);
 
-  /* The only interesting cases are: attr IN set or attr IN subquery */
-  if (pc_lhs == PC_ATTR && (pc_rhs == PC_SET || pc_rhs == PC_SUBQUERY))
+  /* The only interesting cases are: attr IN set or (attr,attr) IN set or attr IN subquery */
+  if ((pc_lhs == PC_MULTI_ATTR || pc_lhs == PC_ATTR) && (pc_rhs == PC_SET || pc_rhs == PC_SUBQUERY || pc_rhs == PC_FUNC_SET))
     {
-      /* check for index on the attribute.  */
-      icard = qo_index_cardinality (env, pt_expr->info.expr.arg1);
-
-      if (icard != 0)
+      if (pc_lhs == PC_MULTI_ATTR)
 	{
-	  equal_selectivity = (1.0 / icard);
+	  lhs = pt_expr->info.expr.arg1->info.function.arg_list;
+	  equal_selectivity = 1;
+	  for (/* none */ ; lhs; lhs = lhs->next)
+	    {
+	      /* get index cardinality */
+	      icard = qo_index_cardinality (env, lhs);
+	      if (icard != 0)
+		{
+		  selectivity = (1.0 / icard);
+		}
+	      else
+		{
+		  selectivity = DEFAULT_EQUAL_SELECTIVITY;
+		}
+	      equal_selectivity *= selectivity;
+	    }
 	}
-      else
+      else if (pc_lhs == PC_ATTR)
 	{
-	  equal_selectivity = DEFAULT_EQUAL_SELECTIVITY;
-	}
+	  /* check for index on the attribute.  */
+	  icard = qo_index_cardinality (env, pt_expr->info.expr.arg1);
 
+	  if (icard != 0)
+	    {
+	      equal_selectivity = (1.0 / icard);
+	    }
+	  else
+	    {
+	    equal_selectivity = DEFAULT_EQUAL_SELECTIVITY;
+	    }
+	}
       /* determine cardinality of set or subquery */
       if (pc_rhs == PC_SET)
 	{
 	  list_card = pt_length_of_list (pt_expr->info.expr.arg2->info.value.data_value.set);
 	}
-      if (pc_rhs == PC_SUBQUERY)
+      else if (pc_rhs == PC_FUNC_SET)
 	{
-#if 0
-/*right now we don't have the hook for the cardinality of subqueries, just use
- * a large number so that the selectivity will end up being capped at 0.5
- */
-	  list_card = pt_expr->info.select.est_card;
-#else
-	  list_card = 1000;
-#endif /* 0 */
-
+	  list_card = pt_length_of_list (pt_expr->info.expr.arg2->info.function.arg_list);
+	}
+      else if (pc_rhs == PC_SUBQUERY)
+	{
+	  if (pt_expr->info.expr.arg2->info.query.xasl)
+	    {
+	      list_card = ((XASL_NODE *)pt_expr->info.expr.arg2->info.query.xasl)->cardinality;
+	    }
+	  else
+	    {
+	      /* legacy default list_card is 1000. Maybe it won't come in here */
+	      list_card = 1000;
+	    }
 	}
 
       /* compute selectivity--cap at 0.5 */
