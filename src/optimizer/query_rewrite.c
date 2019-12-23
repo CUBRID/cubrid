@@ -6126,12 +6126,19 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 
       select_list = pt_get_select_list (parser, arg2);
       if ((op_type == PT_EQ || op_type == PT_IS_IN || op_type == PT_EQ_SOME) && select_list
-	  && PT_IS_COLLECTION_TYPE(arg1->type_enum) && PT_IS_FUNCTION(arg1)
-	  && PT_IS_COLLECTION_TYPE(arg2->type_enum) && PT_IS_FUNCTION(select_list))
+	  && PT_IS_COLLECTION_TYPE (arg1->type_enum) && PT_IS_FUNCTION (arg1)
+	  && PT_IS_COLLECTION_TYPE (arg2->type_enum) && (PT_IS_FUNCTION (select_list) || PT_IS_CONST (select_list)))
 	{
 	  /* collection case : (col1,col2) [in or =] (select col1,col2 ...) */
 	  arg1 = arg1->info.function.arg_list;
-	  arg2_list = select_list->info.function.arg_list;
+	  if (PT_IS_FUNCTION (select_list))
+	    {
+	      arg2_list = select_list->info.function.arg_list;
+	    }
+	  else
+	    {
+	      arg2_list = select_list->info.value.data_value.set;
+	    }
 	}
       else if (op_type == PT_EQ)
 	{
@@ -6189,7 +6196,7 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	    case PT_EQ:	/* arg1 = set_func_elements */
 	    case PT_IS_IN:	/* arg1 = set_func_elements, attr */
 	    case PT_EQ_SOME:	/* arg1 = attr */
-	      if (PT_IS_COLLECTION_TYPE(arg2->type_enum) && select_list && PT_IS_FUNCTION(select_list))
+	      if (PT_IS_COLLECTION_TYPE(arg2->type_enum) && select_list && (PT_IS_FUNCTION(select_list) || PT_IS_CONST (select_list)))
 		{
 		  /* if arg2 is collection type then select_list is rewrited to multi col */
 		  pt_select_list_to_one_col(parser,arg2, false);
