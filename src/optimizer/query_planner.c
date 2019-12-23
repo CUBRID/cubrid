@@ -1891,15 +1891,15 @@ qo_iscan_cost (QO_PLAN * planp)
 
       /* each term can have multi index column ex) (col1,col1) in ((1,1),..) */
       for (int j = 0; j < index_entryp->col_num; j++)
-        {
-          if (BITSET_MEMBER (QO_TERM_SEGS (termp), index_entryp->seg_idxs[j]))
+	{
+	  if (BITSET_MEMBER (QO_TERM_SEGS (termp), index_entryp->seg_idxs[j]))
 	    {
 	      i++;
 	    }
 	}
     }
 
-  sel_limit = 0.0;	/* init */
+  sel_limit = 0.0;		/* init */
   assert (i > 0);
   if (i > 0)
     {
@@ -1912,7 +1912,7 @@ qo_iscan_cost (QO_PLAN * planp)
       sel_limit = 1.0 / (double) cum_statsp->pkeys[i];
     }
   else
-    {			/* can not use btree partial-key statistics */
+    {				/* can not use btree partial-key statistics */
       if (cum_statsp->keys > 1)
 	{
 	  sel_limit = 1.0 / (double) cum_statsp->keys;
@@ -7496,7 +7496,7 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
 	      /* case of multi column term ex) (a,b) in ... */
 	      if (found_rangelist == true)
 		{
-		      break;	/* already found. give up */
+		  break;	/* already found. give up */
 		}
 	      for (j = 0; j < termp->multi_col_cnt; j++)
 		{
@@ -7505,17 +7505,16 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
 		      found_multi_rangelist = true;
 		    }
 		  /* found term */
-		  if (termp->multi_col_segs[j] == seg
-		      && BITSET_MEMBER (index_entryp->seg_equal_terms[i], t))
-		      /* multi col term is only indexable when term's class is TC_SARG. so can use seg_equal_terms */
+		  if (termp->multi_col_segs[j] == seg && BITSET_MEMBER (index_entryp->seg_equal_terms[i], t))
+		    /* multi col term is only indexable when term's class is TC_SARG. so can use seg_equal_terms */
 		    {
 		      /* save last found term */
 		      last_t = t;
 		      /* found EQ term */
 		      if (QO_TERM_IS_FLAGED (termp, QO_TERM_EQUAL_OP))
-		        {
-		          bitset_add(&range_terms,t);
-		          n++;
+			{
+			  bitset_add(&range_terms,t);
+			  n++;
 			}
 		    }
 		}
@@ -7523,7 +7522,7 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
 	  else
 	    {
 	      for (j = 0; j < termp->can_use_index; j++)
-	        {
+		{
 		  /* found term */
 		  if (QO_SEG_IDX (termp->index_seg[j]) == seg)
 		    {
@@ -9273,16 +9272,16 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  /* const = (attr,attr) */
 	  multi_attr = rhs->info.function.arg_list;
 	  rhs_icard = 0;
-	  for (/* none */ ; multi_attr; multi_attr = multi_attr->next)
+	  for ( /* none */ ; multi_attr; multi_attr = multi_attr->next)
 	    {
 	      /* get index cardinality */
 	      icard = qo_index_cardinality (env, multi_attr);
-	      if ( icard <= 0 )
+	      if (icard <= 0)
 		{
 		  /* the only interesting case is PT_BETWEEN_EQ_NA */
-		  icard = 1/DEFAULT_EQUAL_SELECTIVITY;
+		  icard = 1 / DEFAULT_EQUAL_SELECTIVITY;
 		}
-	      if ( rhs_icard == 0 )
+	      if (rhs_icard == 0)
 		{
 		  /* first time */
 		  rhs_icard = icard;
@@ -9304,8 +9303,7 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	}
       break;
 
-      case PC_MULTI_ATTR:
-
+    case PC_MULTI_ATTR:
       switch (pc_rhs)
 	{
 	case PC_ATTR:
@@ -9323,16 +9321,16 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 
 	  multi_attr = lhs->info.function.arg_list;
 	  lhs_icard = 0;
-	  for (/* none */ ; multi_attr; multi_attr = multi_attr->next)
+	  for ( /* none */ ; multi_attr; multi_attr = multi_attr->next)
 	    {
 	      /* get index cardinality */
 	      icard = qo_index_cardinality (env, multi_attr);
-	      if ( icard <= 0 )
+	      if (icard <= 0)
 		{
 		  /* the only interesting case is PT_BETWEEN_EQ_NA */
-		  icard = 1/DEFAULT_EQUAL_SELECTIVITY;
+		  icard = 1 / DEFAULT_EQUAL_SELECTIVITY;
 		}
-	      if ( lhs_icard == 0 )
+	      if (lhs_icard == 0)
 		{
 		  /* first time */
 		  lhs_icard = icard;

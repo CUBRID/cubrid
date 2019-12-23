@@ -108,7 +108,7 @@ static XASL_NODE *make_sort_limit_proc (QO_ENV * env, QO_PLAN * plan, PT_NODE * 
 static PT_NODE *qo_get_orderby_num_upper_bound_node (PARSER_CONTEXT * parser, PT_NODE * orderby_for,
 						     bool * is_new_node);
 static int qo_get_multi_col_range_segs (QO_ENV * env, QO_PLAN * plan, QO_INDEX_ENTRY * index_entryp,
-					 BITSET * multi_col_segs, BITSET * multi_col_range_segs);
+					BITSET * multi_col_segs, BITSET * multi_col_range_segs);
 
 /*
  * make_scan_proc () -
@@ -1360,7 +1360,7 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
       if (qo_index_infop->need_copy_multi_range_term != -1)
 	{
 	  /*force-copy multi col range pred to key filter */
-	  bitset_add(&(plan->plan_un.scan.kf_terms), qo_index_infop->need_copy_multi_range_term);
+ 	  bitset_add (&(plan->plan_un.scan.kf_terms), qo_index_infop->need_copy_multi_range_term);
 	}
       *key_predp = make_pred_from_bitset (env, &(plan->plan_un.scan.kf_terms), is_always_true);
     }
@@ -2694,13 +2694,13 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
     }
 
   /* check multi column index term */
-  multi_term_num = qo_get_multi_col_range_segs(env, plan, index_entryp, &multi_col_segs, &multi_col_range_segs);
+  multi_term_num = qo_get_multi_col_range_segs (env, plan, index_entryp, &multi_col_segs, &multi_col_range_segs);
   index_infop->need_copy_multi_range_term = multi_term_num;
   if (multi_term_num != -1)
     {
       /* case of term having multiple columns */
       bitset_difference (&multi_col_segs, &multi_col_range_segs);
-      if (!bitset_is_empty(&multi_col_segs))
+      if (!bitset_is_empty (&multi_col_segs))
 	{
 	  index_infop->need_copy_multi_range_term = multi_term_num;
 	}
@@ -2750,7 +2750,7 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
       if (!QO_TERM_IS_FLAGED (termp, QO_TERM_MULTI_COLL_PRED))
 	{
 	  /* Find the matching segment in the segment index array to determine the array position to store the expression.
-	  * We're using the 'index_seg[]' array of the term to find its segment index */
+ 	   * We're using the 'index_seg[]' array of the term to find its segment index */
 	  pos = -1;
 	  for (i = 0; i < termp->can_use_index && pos == -1; i++)
 	    {
@@ -2771,7 +2771,7 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
 	    }
 
 	  /* always, pos != -1 and 0 <= pos < nterms */
-	  assert(pos >= 0 && pos < nterms);
+	  assert (pos >= 0 && pos < nterms);
 	  if (pos < 0 || pos >= nterms)
 	    {
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, "pos >= 0 and pos < nterms");
@@ -2805,7 +2805,7 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
 	      if (BITSET_MEMBER (multi_col_range_segs, index_entryp->seg_idxs[pos]))
 		{
 		  /* always, pos != -1 and 0 <= pos < nterms */
-		  assert(pos >= 0 && pos < nterms);
+		  assert (pos >= 0 && pos < nterms);
 		  if (pos < 0 || pos >= nterms)
 		    {
 		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, "pos >= 0 and pos < nterms");
@@ -4865,7 +4865,8 @@ qo_get_multi_col_range_segs (QO_ENV * env, QO_PLAN * plan, QO_INDEX_ENTRY * inde
   bitset_init (multi_col_segs, env);
   bitset_init (multi_col_range_segs, env);
   /* find term having multiple columns ex) (col1,col2) in ... */
-  for (multi_term = bitset_iterate (&(plan->plan_un.scan.terms), &iter); multi_term != -1; multi_term = bitset_next_member (&iter))
+  for (multi_term = bitset_iterate (&(plan->plan_un.scan.terms), &iter); multi_term != -1;
+       multi_term = bitset_next_member (&iter))
     {
       termp = QO_ENV_TERM (env, multi_term);
       if (QO_TERM_IS_FLAGED (termp, QO_TERM_MULTI_COLL_PRED))
@@ -4875,7 +4876,7 @@ qo_get_multi_col_range_segs (QO_ENV * env, QO_PLAN * plan, QO_INDEX_ENTRY * inde
 	}
     }
 
-  if (!bitset_is_empty(multi_col_segs))
+  if (!bitset_is_empty (multi_col_segs))
     {
       /* case of term having multiple columns  ex) (col1,col2) in ... */
       found_rangelist = false;
@@ -4913,13 +4914,13 @@ qo_get_multi_col_range_segs (QO_ENV * env, QO_PLAN * plan, QO_INDEX_ENTRY * inde
 			}
 		      /* found term */
 		      if (termp->multi_col_segs[j] == seg
-			  && BITSET_MEMBER ( index_entryp->seg_equal_terms[i], multi_term))
-			  /* multi col term is only indexable when term's class is TC_SARG. so can use seg_equal_terms */
+			  && BITSET_MEMBER (index_entryp->seg_equal_terms[i], multi_term))
+			/* multi col term is only indexable when term's class is TC_SARG. so can use seg_equal_terms */
 			{
 			  /* found EQ term */
 			  if (QO_TERM_IS_FLAGED (termp, QO_TERM_EQUAL_OP))
 			    {
-			      bitset_add(multi_col_range_segs,seg);
+			      bitset_add (multi_col_range_segs,seg);
 			      n++;
 			    }
 			}
@@ -4936,7 +4937,7 @@ qo_get_multi_col_range_segs (QO_ENV * env, QO_PLAN * plan, QO_INDEX_ENTRY * inde
 			  if (QO_TERM_IS_FLAGED (termp, QO_TERM_EQUAL_OP))
 			    {
 			      if (QO_TERM_IS_FLAGED (termp, QO_TERM_RANGELIST))
-			        {
+				{
 				  if (found_rangelist == true || found_multi_rangelist == true)
 				    {
 				      break;	/* already found. give up */

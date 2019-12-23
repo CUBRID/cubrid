@@ -4674,9 +4674,9 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	    {
 	      /* multi column case (attr,attr) */
 	      func_arg = arg1_prior->info.function.arg_list;
-	      for (/* none */ ; func_arg; func_arg = func_arg->next)
+	      for ( /* none */ ; func_arg; func_arg = func_arg->next)
 		{
-		  if(!pt_is_attr (func_arg))
+		  if (!pt_is_attr (func_arg))
 		    {
 		      is_attr = false;
 		      break;
@@ -6218,11 +6218,11 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	    case PT_EQ:	/* arg1 = set_func_elements */
 	    case PT_IS_IN:	/* arg1 = set_func_elements, attr */
 	    case PT_EQ_SOME:	/* arg1 = attr */
-	      if (PT_IS_COLLECTION_TYPE(arg2->type_enum) && select_list 
-		  && (PT_IS_FUNCTION(select_list) || PT_IS_CONST (select_list)))
+	      if (PT_IS_COLLECTION_TYPE(arg2->type_enum) && select_list
+		  && (PT_IS_FUNCTION (select_list) || PT_IS_CONST (select_list)))
 		{
 		  /* if arg2 is collection type then select_list is rewrited to multi col */
-		  pt_select_list_to_one_col(parser, arg2, false);
+		  pt_select_list_to_one_col (parser, arg2, false);
 		}
 
 	      /* make new derived spec and append it to FROM */

@@ -333,13 +333,13 @@ static const int OID_LIST_GROWTH = 10;
 
 static RANGE op_type_to_range (const PT_OP_TYPE op_type, const int nterms);
 static int pt_to_single_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool multi_col,
-			     KEY_INFO * key_infop, int * multi_col_pos);
+			     KEY_INFO * key_infop, int *multi_col_pos);
 static int pt_to_range_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool multi_col,
 			    KEY_INFO * key_infop);
 static int pt_to_list_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool multi_col,
 			   KEY_INFO * key_infop);
 static int pt_to_rangelist_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool multi_col,
-				KEY_INFO * key_infop, int rangelist_idx, int * multi_col_pos);
+				KEY_INFO * key_infop, int rangelist_idx, int *multi_col_pos);
 static int pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIMIT_INFO * limit_infop,
 			    KEY_INFO * key_infop, bool key_limit_reset);
 static int pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
@@ -9736,7 +9736,7 @@ pt_create_iss_range (INDX_INFO * indx_infop, TP_DOMAIN * domain)
  */
 static int
 pt_to_single_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool multi_col, KEY_INFO * key_infop,
-		  int * multi_col_pos)
+		  int *multi_col_pos)
 {
   PT_NODE *lhs, *rhs, *tmp, *midx_key;
   PT_OP_TYPE op_type;
@@ -9797,7 +9797,7 @@ pt_to_single_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bo
 	  assert (multi_col);
 
 	  rhs = rhs->info.value.data_value.set;
-	  for(pos = 0; pos < multi_col_pos[i]; pos++)
+	  for (pos = 0; pos < multi_col_pos[i]; pos++)
 	    {
 	      rhs = rhs->next;
 	    }
@@ -10351,7 +10351,7 @@ error:
  */
 static int
 pt_to_rangelist_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool multi_col, KEY_INFO * key_infop,
-		     int rangelist_idx, int * multi_col_pos)
+		     int rangelist_idx, int *multi_col_pos)
 {
   PT_NODE *lhs, *rhs, *llim, *ulim, *elem, *tmp, *elem2;
   PT_NODE **midxkey_list1 = NULL, **midxkey_list2 = NULL;
@@ -10505,7 +10505,7 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms,
 
 		  llim = llim->info.value.data_value.set;
 		  ulim = llim;
-		  for(pos = 0; pos < multi_col_pos[i]; pos++)
+		  for (pos = 0; pos < multi_col_pos[i]; pos++)
 		    {
 		      llim = llim->next;
 		      ulim = ulim->next;

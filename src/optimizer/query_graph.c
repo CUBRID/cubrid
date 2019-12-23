@@ -1681,7 +1681,8 @@ qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env)
   QO_TERM_FLAG (term) = 0;	/* init */
   QO_TERM_IDX (term) = env->nterms;
   QO_TERM_MULTI_COL_SEGS (term) = NULL;        /* init */
-  QO_TERM_MULTI_COL_CNT (term) = 0;    /* init */
+  QO_TERM_MULTI_COL_SEGS (term) = NULL;	/* init */
+  QO_TERM_MULTI_COL_CNT (term) = 0;	/* init */
 
   env->nterms++;
 
@@ -2147,7 +2148,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		      lhs_indexable = false;
 		      break;
 		    }
-		/* FALLTHRU */
+		  /* FALLTHRU */
 		case PT_RANGE:
 		  if (QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
 		    {
@@ -2166,9 +2167,9 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	      if (lhs_indexable)
 		{
 		  segs = 0;
-		  for (/* none */ ; func_arg; func_arg = func_arg->next)
+		  for ( /* none */ ; func_arg; func_arg = func_arg->next)
 		    {
-		      if(!is_local_name (env, func_arg))
+		      if (!is_local_name (env, func_arg))
 			{
 			  lhs_indexable = false;
 			  break;
@@ -2184,11 +2185,11 @@ qo_analyze_term (QO_TERM * term, int term_type)
 
 		  /* set multi col segs ex) (b,a,c) in .. multi_col_segs[0] = b's segnum, [1] = a .. */
 		  func_arg = lhs_expr->info.function.arg_list;
-		  for (j = 0 ; func_arg; func_arg = func_arg->next)
+		  for (j = 0; func_arg; func_arg = func_arg->next)
 		    {
 		      bitset_init (&multi_col_segs, env);
 		      qo_expr_segs (env, func_arg, &multi_col_segs);
-		      term->multi_col_segs[j++] = bitset_first_member(&multi_col_segs);
+		      term->multi_col_segs[j++] = bitset_first_member (&multi_col_segs);
 		    }
 		}
 	    }
@@ -6451,7 +6452,7 @@ qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx, BI
 	    {
 	      /* multiple columns lhs can be indexable when they are a subset of index columns. ex) (a,c) in ... index(a,b,c) */
 	      /* to_do : when multi columns are not subset of index columns, it can be indexable  */
-	      if (bitset_subset(index_segsp,&(QO_TERM_SEGS (qo_termp))))
+	      if (bitset_subset (index_segsp,&(QO_TERM_SEGS (qo_termp))))
 		{
 		  bitset_add (&(index_entry->seg_equal_terms[idx]), t);
 		}
