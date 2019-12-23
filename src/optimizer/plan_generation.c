@@ -107,6 +107,8 @@ static bool qo_check_parent_eq_class_for_multi_range_opt (QO_PLAN * parent, QO_P
 static XASL_NODE *make_sort_limit_proc (QO_ENV * env, QO_PLAN * plan, PT_NODE * namelist, XASL_NODE * xasl);
 static PT_NODE *qo_get_orderby_num_upper_bound_node (PARSER_CONTEXT * parser, PT_NODE * orderby_for,
 						     bool * is_new_node);
+static int qo_get_multi_col_range_segs (QO_ENV * env, QO_PLAN * plan, QO_INDEX_ENTRY * index_entryp,
+					 BITSET * multi_col_segs, BITSET * multi_col_range_segs);
 
 /*
  * make_scan_proc () -
@@ -4769,4 +4771,131 @@ qo_get_orderby_num_upper_bound_node (PARSER_CONTEXT * parser, PT_NODE * orderby_
 
   /* Any other comparison operator is unusable */
   return NULL;
+}
+
+/*
+ * qo_get_multi_col_range_segs () -
+ *   return:
+ *   env(in): The optimizer environment
+ *   plan(in): Query plan
+ *   qo_index_infop(in):
+ *   multi_col_segs(out): (a,b) in ... a,b's segment number bit
+ *   multi_col_range_segs(out): range segments in multiple column term
+ *
+ * Note: return multiple column term's number
+ *       output are multi column term's segments and range key filter segments
+ */
+static int
+qo_get_multi_col_range_segs (QO_ENV * env, QO_PLAN * plan, QO_INDEX_ENTRY * index_entryp,
+			     BITSET * multi_col_segs, BITSET * multi_col_range_segs)
+{
+  BITSET_ITERATOR iter;
+  int seg, t, multi_term, n, j, i;
+  QO_TERM *termp = NULL;
+  bool found_rangelist, found_multi_rangelist;
+
+  bitset_init (multi_col_segs, env);
+  bitset_init (multi_col_range_segs, env);
+  /* find term having multiple columns ex) (col1,col2) in ... */
+  for (multi_term = bitset_iterate (&(plan->plan_un.scan.terms), &iter); multi_term != -1; multi_term = bitset_next_member (&iter))
+    {
+      termp = QO_ENV_TERM (env, multi_term);
+      if (QO_TERM_IS_FLAGED (termp, QO_TERM_MULTI_COLL_PRED))
+	{
+	  *multi_col_segs = QO_TERM_SEGS (termp);
+	  break;
+	}
+    }
+
+  if (!bitset_is_empty(multi_col_segs))
+    {
+      /* case of term having multiple columns  ex) (col1,col2) in ... */
+      found_rangelist = false;
+      found_multi_rangelist = false;
+      for (i = 0; i < index_entryp->nsegs; i++)
+	{
+	  seg = index_entryp->seg_idxs[i];
+	  if (seg == -1)
+	    {
+	      break;
+	    }
+	  n = 0;
+	  for (t = bitset_iterate (&(plan->plan_un.scan.terms), &iter); t != -1; t = bitset_next_member (&iter))
+	    {
+	      termp = QO_ENV_TERM (env, t);
+
+	      /* check for always true dummy join term */
+	      if (QO_TERM_CLASS (termp) == QO_TC_DUMMY_JOIN)
+		{
+		  /* do not add to range_terms */
+		  continue;
+		}
+	      if (t == multi_term)
+		{
+		  if (found_rangelist == true)
+		    {
+		      break;	/* already found. give up */
+		    }
+		  /* case of multi column term ex) (a,b) in ... */
+		  for (j = 0; j < termp->multi_col_cnt; j++)
+		    {
+		      if (QO_TERM_IS_FLAGED (termp, QO_TERM_RANGELIST))
+			{
+			  found_multi_rangelist = true;
+			}
+		      /* found term */
+		      if (termp->multi_col_segs[j] == seg
+			  && BITSET_MEMBER ( index_entryp->seg_equal_terms[i], multi_term))
+			  /* multi col term is only indexable when term's class is TC_SARG. so can use seg_equal_terms */
+			{
+			  /* found EQ term */
+			  if (QO_TERM_IS_FLAGED (termp, QO_TERM_EQUAL_OP))
+			    {
+			      bitset_add(multi_col_range_segs,seg);
+			      n++;
+			    }
+			}
+		    }
+		}
+	      else
+		{
+		  for (j = 0; j < termp->can_use_index; j++)
+		    {
+		      /* found term */
+		      if (QO_SEG_IDX (termp->index_seg[j]) == seg)
+			{
+			  /* found EQ term */
+			  if (QO_TERM_IS_FLAGED (termp, QO_TERM_EQUAL_OP))
+			    {
+			      if (QO_TERM_IS_FLAGED (termp, QO_TERM_RANGELIST))
+			        {
+				  if (found_rangelist == true || found_multi_rangelist == true)
+				    {
+				      break;	/* already found. give up */
+				    }
+
+				  /* is the first time */
+				  found_rangelist = true;
+				}
+			      n++;
+			    }
+			  break;
+			}
+		    }
+		}
+	      /* found EQ term. exit term-iteration loop */
+	      if (n)
+		{
+		  break;
+		}
+	    }
+	  if (n == 0)
+	    {
+	      break;
+	    }
+	}
+
+    }
+
+  return multi_term;
 }
