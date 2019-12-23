@@ -4647,8 +4647,9 @@ static void
 qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 {
   PT_NODE *cnf_node, *dnf_node, *cnf_prev, *dnf_prev;
-  PT_NODE *arg1_prior;
+  PT_NODE *arg1_prior, *func_arg;
   DNF_MERGE_RANGE_RESULT result;
+  int is_attr;
 
   /* traverse CNF list and keep track of the pointer to previous node */
   cnf_prev = NULL;
@@ -4667,7 +4668,27 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	    }
 
 	  arg1_prior = pt_get_first_arg_ignore_prior (dnf_node);
-	  if (!pt_is_attr (arg1_prior) && !pt_is_instnum (arg1_prior))
+
+	  is_attr = true;
+	  if (PT_IS_FUNCTION (arg1_prior) && PT_IS_SET_TYPE (arg1_prior))
+	    {
+	      /* multi column case (attr,attr) */
+	      func_arg = arg1_prior->info.function.arg_list;
+	      for (/* none */ ; func_arg; func_arg = func_arg->next)
+		{
+		  if(!pt_is_attr (func_arg))
+		    {
+		      is_attr = false;
+		      break;
+		    }
+		}
+	    }
+	  else
+	    {
+	      is_attr = pt_is_attr (arg1_prior);
+	    }
+
+	  if (!is_attr && !pt_is_instnum (arg1_prior))
 	    {
 	      /* LHS is not an attribute */
 	      dnf_prev = dnf_prev ? dnf_prev->or_next : dnf_node;
