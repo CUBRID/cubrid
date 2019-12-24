@@ -5237,7 +5237,6 @@ db_string_regexp_substr (DB_VALUE *result, DB_VALUE *args[], int const num_args,
     /* position option */
     int src_length = wsrc.size();
 	  int position_value = (position != NULL) ? db_get_int (position) - 1 : 0;
-
     if (position_value >= 0 && position_value < src_length)
       {
         target = std::move (wsrc).substr (position_value, src_length - position_value);
@@ -5490,18 +5489,6 @@ db_string_regexp_instr (DB_VALUE *result, DB_VALUE *args[], int const num_args,
 	goto exit;
       }
 
-    /* get compiled pattern */
-    if (comp_pattern != NULL)
-      {
-	rx_compiled_pattern = *comp_pattern;
-      }
-
-    /* if regex object was specified, use local regex */
-    if (comp_regex != NULL)
-      {
-	rx_compiled_regex = *comp_regex;
-      }
-
     /* codeset compatible check */
     INTL_CODESET src_codeset = db_get_string_codeset (src);
     INTL_CODESET pattern_codeset = db_get_string_codeset (pattern);
@@ -5521,14 +5508,26 @@ db_string_regexp_instr (DB_VALUE *result, DB_VALUE *args[], int const num_args,
 	goto exit;
       }
 
+    /* get compiled pattern */
+    if (comp_pattern != NULL)
+      {
+	rx_compiled_pattern = *comp_pattern;
+      }
+
+    /* if regex object was specified, use local regex */
+    if (comp_regex != NULL)
+      {
+	rx_compiled_regex = *comp_regex;
+      }
+
     LANG_COLLATION *collation = lang_get_collation (coll_id);
     assert (collation != NULL);
 
-    std::string pattern_string (db_get_string (pattern), db_get_string_size (pattern));
-    int pattern_length = pattern_string.size();
+    const char *pattern_char_string_p = db_get_string (pattern);
+    int pattern_length = db_get_string_size (pattern);
     /* check for recompile */
     if (rx_compiled_pattern == NULL || rx_compiled_regex == NULL || pattern_length != strlen (rx_compiled_pattern)
-	|| pattern_string.compare (rx_compiled_pattern) != 0)
+	|| strncmp (rx_compiled_pattern, pattern_char_string_p, pattern_length) != 0)
       {
 	/* regex must be recompiled if regex object is not specified, pattern is not specified or compiled pattern does
 	* not match current pattern */
@@ -5537,11 +5536,11 @@ db_string_regexp_instr (DB_VALUE *result, DB_VALUE *args[], int const num_args,
 	if (rx_compiled_pattern != NULL)
 	  {
 	    /* free old memory */
-	    delete[] rx_compiled_pattern;
+	    db_private_free_and_init (NULL, rx_compiled_pattern);
 	  }
 
 	/* allocate new memory */
-	rx_compiled_pattern = new char[pattern_length + 1];
+	rx_compiled_pattern = (char *) db_private_alloc (NULL, pattern_length + 1);
 	if (rx_compiled_pattern == NULL)
 	  {
 	    /* out of memory */
@@ -5550,7 +5549,7 @@ db_string_regexp_instr (DB_VALUE *result, DB_VALUE *args[], int const num_args,
 	  }
 
 	/* copy string */
-	memcpy (rx_compiled_pattern, pattern_string.data(), pattern_length);
+	memcpy (rx_compiled_pattern, pattern_char_string_p, pattern_length);
 	rx_compiled_pattern[pattern_length] = '\0';
 
 	std::regex_constants::syntax_option_type reg_flags = std::regex_constants::ECMAScript;
@@ -5582,7 +5581,7 @@ db_string_regexp_instr (DB_VALUE *result, DB_VALUE *args[], int const num_args,
 	  }
 
 	std::wstring wpattern;
-	if (cublocale::convert_to_wstring (wpattern, pattern_string, collation) == false)
+	if (cublocale::convert_to_wstring (wpattern, std::string (pattern_char_string_p, pattern_length), collation) == false)
 	  {
 	    db_make_null (result);
 	    goto exit;
@@ -5597,7 +5596,7 @@ db_string_regexp_instr (DB_VALUE *result, DB_VALUE *args[], int const num_args,
 	  }
       }
 
-    /* split source string by position value */
+    std::wstring wresult_string;
     std::wstring target;
 
     std::string src_string (db_get_string (src), db_get_string_size (src));
@@ -5608,38 +5607,27 @@ db_string_regexp_instr (DB_VALUE *result, DB_VALUE *args[], int const num_args,
 	goto exit;
       }
 
+    /* position option */
     int src_length = wsrc.size();
-    int position_value = 0;
-    if (position)
+    int position_value = (position != NULL) ? db_get_int (position) - 1 : 0;
+    if (position_value >= 0 && position_value < src_length)
       {
-	position_value = db_get_int (position) - 1;
-	if (position_value >= 0 && position_value < src_length)
-	  {
-	    target = std::move (wsrc.substr (position_value, src_length - position_value));
-	  }
-	else if (position_value < 0)
-	  {
-	    error_status = ER_QPROC_INVALID_PARAMETER;
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	    goto exit;
-	  }
-	else
-	  {
-	    db_make_int (result, 0);
-	    goto exit;
-	  }
+        target = std::move (wsrc).substr (position_value, src_length - position_value);
       }
-
-    // position is not specified or bigger than length of src_string
-    if (target.empty ())
+    else if (position_value < 0)
       {
-	target = std::move (wsrc);
+        error_status = ER_QPROC_INVALID_PARAMETER;
+        er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+        goto exit;
+      }
+    else
+      {
+        db_make_int (result, 0);
+        goto exit;
       }
 
     try
       {
-	std::wstring wresult_string;
-
 	/* occurrence and return_opt option */
 	int occurrence_value = (occurrence != NULL) ? db_get_int (occurrence) : 1;
 	int return_opt_value = (return_opt != NULL) ? db_get_int (return_opt) : 0;
@@ -5701,8 +5689,7 @@ exit:
   if ((comp_pattern == NULL || error_status != NO_ERROR) && rx_compiled_pattern != NULL)
     {
       /* free memory if (using local pattern) or (error occurred) */
-      delete[] rx_compiled_pattern;
-      rx_compiled_pattern = NULL;
+      db_private_free_and_init (NULL, rx_compiled_pattern);
     }
 
   if (comp_regex != NULL)
