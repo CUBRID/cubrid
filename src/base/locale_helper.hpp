@@ -33,6 +33,8 @@
 
 #ident "$Id$"
 
+/* TODO: need to make compatible fully between CUBRID Language support and cpp standard locale */
+
 namespace cublocale
 {
   std::string get_lang_name (const LANG_COLLATION *lang_coll)
@@ -59,6 +61,7 @@ namespace cublocale
     catch (std::exception &e)
       {
 	// return the environment's default locale, locale name is not supported
+	assert (false);
 	return std::locale ("");
       }
   }
@@ -73,7 +76,7 @@ namespace cublocale
 	// don't need to convert for empty string
 	return true;
       }
-	  
+
     std::string utf8_str;
     if (codeset != INTL_CODESET_UTF8)
       {
@@ -96,7 +99,7 @@ namespace cublocale
 	  default:
 	    // unrecognized codeset
 	    assert (false);
-		success = false;
+	    success = false;
 	    break;
 	  }
 
@@ -166,7 +169,7 @@ namespace cublocale
 	      default:
 		// unrecognized codeset
 		assert (false);
-		to_str.assign (in.begin(), in.end());
+		success = false;
 		break;
 	      }
 	    to_str.resize (conv_size);
