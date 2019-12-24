@@ -144,7 +144,7 @@ namespace test_packing
     return true;
   }
 
-  size_t po1::get_packed_size (cubpacking::packer &serializator) const
+  size_t po1::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
     size_t entry_size = 0;
 
@@ -365,6 +365,46 @@ namespace test_packing
     return res;
   }
 
+
+  int test_pack_oid_list (void)
+  {
+    cubmem::extensible_block blk;
+    cubpacking::packer packer;
+
+    OID classes[10];
+    int cnt_classes = sizeof (classes) / sizeof (classes[0]);
+
+    for (int i = 0; i < cnt_classes; i++)
+      {
+	classes[i].volid = i;
+	classes[i].pageid= i + 100;
+	classes[i].slotid= i + 10;
+      }
+
+    blk.extend_to (OR_INT_SIZE + cnt_classes * OR_OID_SIZE);
+    packer.set_buffer_and_pack_all (blk, cnt_classes);
+
+    for (int i = 0; i < cnt_classes; i++)
+      {
+	packer.append_to_buffer_and_pack_all (blk, classes[i]);
+      }
+
+    cubpacking::unpacker unpacker (blk.get_ptr (), blk.get_size ());
+
+    int cnt_classes_unpack;
+    unpacker.unpack_all (cnt_classes_unpack);
+
+    assert (cnt_classes_unpack = cnt_classes);
+    for (int i = 0; i < cnt_classes_unpack; i++)
+      {
+	OID cl;
+	unpacker.unpack_all (cl);
+
+	assert (OID_EQ (&cl, &classes[i]));
+      }
+
+    return 0;
+  }
   int test_packing_all (void)
   {
     po1 po_pack_1;
@@ -412,6 +452,8 @@ namespace test_packing
 	assert (false);
 	return ER_FAILED;
       }
+
+    test_pack_oid_list ();
 
     return NO_ERROR;
   }

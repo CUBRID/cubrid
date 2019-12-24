@@ -1,18 +1,18 @@
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
 $
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
+$   This program is free software; you can redistribute it and/or modify
+$   it under the terms of the GNU General Public License as published by
 $   the Free Software Foundation; either version 2 of the License, or
 $   (at your option) any later version.
 $
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
+$  This program is distributed in the hope that it will be useful,
+$  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+$  GNU General Public License for more details.
 $
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
+$  You should have received a copy of the GNU General Public License
+$  along with this program; if not, write to the Free Software
 $  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 $
 
@@ -270,7 +270,6 @@ opzioni valide:\n\
       --no-check               non controllare la consistenza del database; predefinito: controlla\n\
   -t, --thread-count=COUNT     COUNT numero threads; predefinito: 0(auto)\n\
   -z, --compress               compress volumi backup; predefinito: uncompress\n\
-  -e, --except-active-log      non includere il log di volume attivo; predefinito: includere\n\
       --sleep-msecs=N          aspetta N millisecondi per 1M read; predefinito: 0\n
 71 Argomenti incompatibili, \"%1$s\", e \"%2$s\"\n
 
@@ -422,46 +421,54 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Instanza %1$d della classe %2$s è già stato definito\n
 46 Instanza %1$d della classe %2$s è già stata riservata\n
 47 UNIQUE violation da attributo '%1$s', convertito a NULL\n
-48   %1$d istanze\n
+48 %1$s %2$d istanze\n
 49 Classe %1$s\n
 50 Password:
 51 \n*** Aggiornamento statistiche di classe ***\n
 52 %1$s nella linea %2$d (testo era '%3$s')\n
-53 Errore lessicale
+53 Errore lessicale\n
 54 linea %1$d: errore di sintassi in \"%2$s\"
 55 mancante
 56 in %1$s
 57 Argomenti incompatibili, \"%1$s\", e \"%2$s\"\n
-58 %1$d instanzioni committed\n
+58 %1$s %2$d instanzioni committed\n
 59 \nImpossibile richiamare la versione non ottimizzata di loaddb.\n
 60 Errore durante l'analisi di \"%1$s\", come tipo %2$s.\n
+61 Riferimento oggetto non è supportato in modalità CS.\n
+62 Statistiche aggiornate per la classe %1$s.\n
 112   %1$d instanze\r
-113 Ultima linea committed : %1$d
+113 Ultima linea committed : %1$d\n
 114 error-control-file
 115 file di input per il controllo di errori durante il carico
-116 Total %8d object(s) inserted, %d object(s) failed.\n
-117 Load failed.\n
-118 Maximum length of class name is %1$d bytes.\n
-120 \
+116 Totale oggetti %8d inseriti, %d oggetti non riusciti.\n
+117 Caricamento fallito.\n
+118 La lunghezza massima del nome della classe è %1$d byte.\n
+119 Totale %1$8d oggetti controllati, %2$d oggetti non riusciti.\n
+120 il file di dati non contiene l'identificatore '%%class' o l'opzione '--table' mancante\n
+121 La classe %1$s viene ignorata.\n
+122 \
 loaddb: Importare oggetti e gli schemi al database.\n\
-uso: %1$s loaddb [OPZIONE] nome-database\n\
+uso: %1$s loaddb [OPZIONE] nome-database[@host]\n\
 \n\
 opzioni valide:\n\
-  -u, --user=ID                 user ID per l'accesso al database; predefinito: "public"\n\
-  -p, --password=PASS           password utente; predefinito: nessuno\n\
-      --data-file-check-only    controllare la sintassi per il file di dati senza carico; predefinito: dopo il controllo di carico\n\
-  -l, --load-only               caricare file di dati senza controllo della sintassi; predefinito: dopo il controllo di carico\n\
-      --estimated-size=NUMBERO  Stima del NUMERO di instanze; predefinito: 5000\n\
-  -v, --verbose                 attivare i messaggi dettagliati di stato; predefinito: non attivo\n\
-  -c, --periodic-commit=COUNT   inserimento COUNT per periodico commit; predefinito: no commit durante il caricamento\n\
-      --no-oid                  non usare OID\n\
-      --no-statistics           non aggiornare le statistiche durante il caricamento\n\
-  -s, --schema-file=FILE[:LINE] creare schema da LINE con FILE\n\
-  -i, --index-file=FILE[:LINE]  creare un indice da LINE con FILE\n\
-  -d, --data-file=FILE          dati di carico con FILE\n\
-  -t, --table=TABLE             nome della tabella che viene sostituito con manca intestazione di classe nel file di dati\n\
-      --error-control-file=FILE FILE per il controllo di errore (s) durante il carico\n\
-      --ignore-class-file=FILE  ifile di input di nomi di classe che saltino carico\n
+  -S, --SA-mode                  modalità di esecuzione autonoma\n\
+  -C, --CS-mode                  modalità di esecuzione client-server\n\
+  -u, --user=ID                  user ID per l'accesso al database; predefinito: "public"\n\
+  -p, --password=PASS            password utente; predefinito: nessuno\n\
+      --data-file-check-only     check syntax for data file without load; default: disabled\n\
+  -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
+      --estimated-size=NUMBERO   Stima del NUMERO di instanze; predefinito: 5000\n\
+  -v, --verbose                  attivare i messaggi dettagliati di stato; predefinito: non attivo\n\
+  -c, --periodic-commit=COUNT    inserimento COUNT per periodico commit; predefinito: no commit durante il caricamento\n\
+      --no-oid                   non usare OID\n\
+      --no-statistics            non aggiornare le statistiche durante il caricamento\n\
+  -s, --schema-file=FILE[:LINE]  creare schema da LINE con FILE\n\
+  -i, --index-file=FILE[:LINE]   creare un indice da LINE con FILE\n\
+      --trigger-file=FILE[:LINE] creare un trigger da LINE con FILE\n\
+  -d, --data-file=FILE           dati di carico con FILE\n\
+  -t, --table=TABLE              nome della tabella che viene sostituito con manca intestazione di classe nel file di dati\n\
+      --error-control-file=FILE  FILE per il controllo di errore (s) durante il carico\n\
+      --ignore-class-file=FILE   ifile di input di nomi di classe che saltino carico\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
@@ -903,7 +910,7 @@ opzioni valide:\n\
   -L, --log-path=PATH         directory PATH per volumi di log copiati\n\
   -m, --mode=MODE             modalità di funzionamento; predefinito: sync\n\
                               MODE: sync o semisync o async\n\
-  -S, --start-page-id=ID      first log page to copy\n 
+  -S, --start-page-id=ID      first log page to copy\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 Inserire la password di DBA:
@@ -1033,19 +1040,19 @@ opzioni valide:\n\
   -f, --force-only    Aggiornamenti delle collations di database per essere lo stesso le collations di nuova configurazione del sistema.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 Inserire la password %1$s: 
-22 Tran index          User name      Host name      Process id      Program name\n
-23 -------------------------------------------------------------------------------\n
-24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n
+20 Inserire la password %1$s:
+22 Tran index            User name      Host name      Process id      Program name\n
+23 ---------------------------------------------------------------------------------\n
+24 %1$4d%2$-12s %3$14s %4$14s %5$15d %6$17s\n
 25 Non ci sono transazioni\n
 26 tranlist può essere eseguita solo dal DBA o un membro del gruppo DBA.\n
 27 sort-key numero di colonna(%1$d) non è valido.\n
-32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-33 %1$4d%2$-10s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
-34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
-42 Tran index          User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-43 %1$4d%2$-10s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
-44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
+32 Tran index           Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+33 %1$4d%2$-12s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
+34 ----------------------------------------------------------------------------------------------------------------------------------------------------\n
+42 Tran index            User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+43 %1$4d%2$-12s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
+44 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
 45 Tran index : %1$d
 46 SQL_ID: %1$s\n
 59 tranlist non può essere eseguito nella modalità standalone.\n

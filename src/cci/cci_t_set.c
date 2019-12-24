@@ -242,7 +242,7 @@ t_set_make (T_SET * set, char ele_type, int size, void *value, int *indicator)
 	  {
 	    char *ele_value;
 	    ele_value = ((char **) value)[i];
-	    ADD_ARG_STR (&net_buf, ele_value, strlen (ele_value) + 1, NULL);
+	    ADD_ARG_STR (&net_buf, ele_value, (int) strlen (ele_value) + 1, NULL);
 	  }
 	  break;
 	case CCI_U_TYPE_BIT:
@@ -443,7 +443,7 @@ t_set_to_str (T_SET * set, T_VALUE_BUF * conv_val)
 	  buf = (char *) "NULL";
 	}
 
-      net_buf_cp_str (&net_buf, buf, strlen (buf));
+      net_buf_cp_str (&net_buf, buf, (int) strlen (buf));
     }
 
   net_buf_cp_str (&net_buf, "}", 2);

@@ -23,8 +23,10 @@
 
 #include "bit.h"
 #include "system.h"
-#include <stdlib.h>
+
 #include <assert.h>
+#include <cstring>
+#include <stdlib.h>
 
 static int
 count_bits (const unsigned char *mem, int nbits)
@@ -185,7 +187,7 @@ main (int ignore_argc, char **ignore_argv)
 	}
 
       /* check bit16 */
-      us = *(UINT16 *) rands;
+      std::memcpy (&us, rands, sizeof (UINT16));
       /* check bit count */
       unittest_result = count_bits ((unsigned char *) &us, 16);
       bit_result = bit16_count_ones (us);
@@ -267,7 +269,7 @@ main (int ignore_argc, char **ignore_argv)
 	}
 
       /* check bit64 */
-      ull = *(UINT64 *) rands;
+      std::memcpy (&ull, rands, sizeof (UINT64));
       /* check bit count */
       unittest_result = count_bits ((unsigned char *) &ull, 64);
       bit_result = bit64_count_ones (ull);

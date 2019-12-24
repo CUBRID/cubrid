@@ -18,7 +18,7 @@
 
 add_custom_target(jdbc_build ALL
   COMMAND ${CMAKE_COMMAND} -E make_directory src
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/${VERSION_FILE} src/CUBRID-JDBC-${BUILD_NUMBER}
+  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/${VERSION_FILE} src/CUBRID-JDBC-${BUILD_NUMBER}
   COMMAND ${ANT} dist-cubrid -buildfile ${CMAKE_SOURCE_DIR}/jdbc/build.xml -Dbasedir=. -Dversion=${BUILD_NUMBER} -Dsrc=${JDBC_DIR}
   COMMENT "Build JDBC driver with Ant ..."
   )

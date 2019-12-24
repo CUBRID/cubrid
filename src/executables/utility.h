@@ -476,6 +476,8 @@ typedef enum
   LOADDB_MSG_COMMITTED_INSTANCES = 58,
   LOADDB_MSG_NOPT_ERR = 59,
   LOADDB_MSG_CONVERSION_ERROR = 60,
+  LOADDB_MSG_OID_NOT_SUPPORTED = 61,
+  LOADDB_MSG_UPDATED_CLASS_STATS = 62,
 #ifndef DISABLE_TTA_FIX
   LOADDB_MSG_INSTANCE_COUNT_EX = 112,
 #endif
@@ -483,7 +485,11 @@ typedef enum
   LOADDB_MSG_INSERT_AND_FAIL_COUNT = 116,
   LOADDB_MSG_LOAD_FAIL = 117,
   LOADDB_MSG_EXCEED_MAX_LEN = 118,
-  LOADDB_MSG_USAGE = 120
+  LOADDB_MSG_OBJECTS_SYNTAX_CHECKED = 119,
+  LOADDB_MSG_TABLE_IS_MISSING = 120,
+  LOADDB_MSG_IGNORED_CLASS = 121,
+
+  LOADDB_MSG_USAGE = 122
 } MSGCAT_LOADDB_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_MIGDB */
@@ -813,7 +819,6 @@ typedef struct _ha_config
 #define UTIL_CUBRID             "cubrid" UTIL_EXE_EXT
 #define UTIL_COPYLOGDB          "copylogdb" UTIL_EXE_EXT
 #define UTIL_APPLYLOGDB         "applylogdb" UTIL_EXE_EXT
-#define UTIL_DDL_PROXY_CLIENT   "ddl_proxy_client" UTIL_EXE_EXT
 
 #define PROPERTY_ON             "on"
 #define PROPERTY_OFF            "off"
@@ -1195,40 +1200,42 @@ typedef struct _ha_config
 #define LOAD_USER_L                             "user"
 #define LOAD_PASSWORD_S                         'p'
 #define LOAD_PASSWORD_L                         "password"
-#define LOAD_CHECK_ONLY_S                       11802
+#define LOAD_CHECK_ONLY_S                       11803
 #define LOAD_CHECK_ONLY_L                       "data-file-check-only"
 #define LOAD_LOAD_ONLY_S                        'l'
 #define LOAD_LOAD_ONLY_L                        "load-only"
-#define LOAD_ESTIMATED_SIZE_S                   11804
+#define LOAD_ESTIMATED_SIZE_S                   11805
 #define LOAD_ESTIMATED_SIZE_L                   "estimated-size"
 #define LOAD_VERBOSE_S                          'v'
 #define LOAD_VERBOSE_L                          "verbose"
-#define LOAD_NO_STATISTICS_S                    11806
+#define LOAD_NO_STATISTICS_S                    11807
 #define LOAD_NO_STATISTICS_L                    "no-statistics"
 #define LOAD_PERIODIC_COMMIT_S                  'c'
 #define LOAD_PERIODIC_COMMIT_L                  "periodic-commit"
-#define LOAD_NO_OID_S                           11808
+#define LOAD_NO_OID_S                           11809
 #define LOAD_NO_OID_L                           "no-oid"
 #define LOAD_SCHEMA_FILE_S                      's'
 #define LOAD_SCHEMA_FILE_L                      "schema-file"
 #define LOAD_INDEX_FILE_S                       'i'
 #define LOAD_INDEX_FILE_L                       "index-file"
-#define LOAD_IGNORE_LOGGING_S                   11811
+#define LOAD_IGNORE_LOGGING_S                   11812
 #define LOAD_IGNORE_LOGGING_L                   "no-logging"
 #define LOAD_DATA_FILE_S                        'd'
 #define LOAD_DATA_FILE_L                        "data-file"
+#define LOAD_TRIGGER_FILE_S                     11813
+#define LOAD_TRIGGER_FILE_L                     "trigger-file"
 #define LOAD_ERROR_CONTROL_FILE_S               'e'
 #define LOAD_ERROR_CONTROL_FILE_L               "error-control-file"
-#define LOAD_IGNORE_CLASS_S                     11814
+#define LOAD_IGNORE_CLASS_S                     11816
 #define LOAD_IGNORE_CLASS_L                     "ignore-class-file"
 #define LOAD_SA_MODE_S                          'S'
 #define LOAD_SA_MODE_L                          "SA-mode"
-#define LOAD_CS_MODE_S                          11815
-#define LOAD_CS_MODE_L                          "CS-hidden"
+#define LOAD_CS_MODE_S                          'C'
+#define LOAD_CS_MODE_L                          "CS-mode"
 #define LOAD_TABLE_NAME_S                       't'
 #define LOAD_TABLE_NAME_L                       "table"
-#define LOAD_COMPARE_STORAGE_ORDER_S		11817
-#define LOAD_COMPARE_STORAGE_ORDER_L		"compare-storage-order"
+#define LOAD_COMPARE_STORAGE_ORDER_S            11820
+#define LOAD_COMPARE_STORAGE_ORDER_L            "compare-storage-order"
 
 /* unloaddb option list */
 #define UNLOAD_INPUT_CLASS_FILE_S               'i'
@@ -1376,16 +1383,6 @@ typedef struct _ha_config
 #define COMMDB_HA_ADMIN_INFO_L                  "admin-info"
 #define COMMDB_HA_START_UTIL_PROCESS_S          't'
 #define COMMDB_HA_START_UTIL_PROCESS_L          "start-ha-util-process"
-
-/* ddl_proxy_client option list */
-#define DDL_PROXY_USER_L "user"
-#define DDL_PROXY_USER_S 'u'
-#define DDL_PROXY_PASSWORD_L "password"
-#define DDL_PROXY_PASSWORD_S 'p'
-#define DDL_PROXY_OUTPUT_FILE_L "output-file"
-#define DDL_PROXY_OUTPUT_FILE_S 'o'
-#define DDL_PROXY_COMMAND_L "command"
-#define DDL_PROXY_COMMAND_S 'c'
 
 /* paramdump option list */
 #define PARAMDUMP_OUTPUT_FILE_S                 'o'

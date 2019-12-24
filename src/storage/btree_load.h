@@ -30,7 +30,7 @@
 #include <assert.h>
 
 #include "btree.h"
-#include "object_representation.h"
+#include "object_representation_constants.h"
 #include "error_manager.h"
 #include "storage_common.h"
 #include "oid.h"

@@ -18,7 +18,7 @@
  */
 
 /*
- * dbi.h - Definitions and function prototypes for the CUBRID Application Program Interface (API).
+ * dbi_compat.h - Definitions and function prototypes for the CUBRID Application Program Interface (API).
  */
 
 #include <stdio.h>

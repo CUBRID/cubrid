@@ -763,9 +763,6 @@ css_process_new_connection (SOCKET fd)
 	  /* here the server wants to manage its own connection port */
 	  css_register_new_server2 (conn, rid);
 	  break;
-	case SERVER_REQUEST_CONNECT_NEW_SLAVE:
-	  css_send_to_existing_server (conn, rid, SERVER_CONNECT_NEW_SLAVE);
-	  break;
 	default:
 	  css_free_conn (conn);
 	  break;

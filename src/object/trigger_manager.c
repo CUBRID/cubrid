@@ -1174,7 +1174,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
   int save;
   MOBJ obj;
   SM_CLASS *class_;
-  char *tmp;
+  const char *tmp;
 
   AU_DISABLE (save);
 

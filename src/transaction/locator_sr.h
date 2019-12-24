@@ -102,7 +102,8 @@ extern int locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid
 				 bool need_locking);
 extern int locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes, OID * inst_oid, OID * class_oid,
 					int is_insert, int op_type, HEAP_SCANCACHE * scan_cache, bool datayn,
-					bool replyn, HFID * hfid, FUNC_PRED_UNPACK_INFO * func_preds);
+					bool replyn, HFID * hfid, FUNC_PRED_UNPACK_INFO * func_preds, bool has_BU_lock,
+					bool skip_checking_fk);
 extern int locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old_recdes, ATTR_ID * att_id,
 				 int n_att_id, OID * oid, OID * class_oid, int op_type,
 				 HEAP_SCANCACHE * scan_cache, REPL_INFO * repl_info);
@@ -127,11 +128,20 @@ extern SCAN_CODE locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, O
 extern SCAN_OPERATION_TYPE locator_decide_operation_type (LOCK lock_mode, LC_FETCH_VERSION_TYPE fetch_version_type);
 extern LOCK locator_get_lock_mode_from_op_type (SCAN_OPERATION_TYPE op_type);
 
+extern int locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * recdes,
+				 int has_index, int op_type, HEAP_SCANCACHE * scan_cache, int *force_count,
+				 int pruning_type, PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
+				 UPDATE_INPLACE_STYLE force_in_place, PGBUF_WATCHER * home_hint_p, bool has_BU_lock,
+				 bool dont_check_fk, bool use_bulk_logging = false);
+
  // *INDENT-OFF*
 extern int locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
-				       const std::vector<RECDES> &recdes, int has_index, int op_type,
+				       const std::vector<record_descriptor> &recdes, int has_index, int op_type,
 				       HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type,
 				       PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
-				       UPDATE_INPLACE_STYLE force_in_place);
+				       UPDATE_INPLACE_STYLE force_in_place, bool dont_check_fk);
+extern bool has_errors_filtered_for_insert (std::vector<int> error_filter_array);
 // *INDENT-ON*
+
+
 #endif /* _LOCATOR_SR_H_ */

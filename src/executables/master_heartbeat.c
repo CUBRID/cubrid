@@ -167,7 +167,6 @@ static void hb_resource_job_demote_start_shutdown (HB_JOB_ARG * arg);
 static void hb_resource_job_demote_confirm_shutdown (HB_JOB_ARG * arg);
 static void hb_resource_job_cleanup_all (HB_JOB_ARG * arg);
 static void hb_resource_job_confirm_cleanup_all (HB_JOB_ARG * arg);
-static void hb_resource_job_send_master_hostname (HB_JOB_ARG * arg);
 
 static void hb_resource_demote_start_shutdown_server_proc (void);
 static bool hb_resource_demote_confirm_shutdown_server_proc (void);
@@ -249,7 +248,6 @@ static char hb_Nolog_event_msg[LINE_MAX] = "";
 static HB_DEACTIVATE_INFO hb_Deactivate_info = { NULL, 0, false };
 
 static bool hb_Is_activated = true;
-static char *current_master_hostname = NULL;
 
 /* cluster jobs */
 static HB_JOB_FUNC hb_cluster_jobs[] = {
@@ -275,7 +273,6 @@ static HB_JOB_FUNC hb_resource_jobs[] = {
   hb_resource_job_demote_confirm_shutdown,
   hb_resource_job_cleanup_all,
   hb_resource_job_confirm_cleanup_all,
-  hb_resource_job_send_master_hostname,
   NULL
 };
 
@@ -1799,12 +1796,9 @@ hb_set_net_header (HBP_HEADER * header, unsigned char type, bool is_req, unsigne
   header->r = (is_req) ? 1 : 0;
   header->len = htons (len);
   header->seq = htonl (seq);
-  strncpy (header->group_id, hb_Cluster->group_id, sizeof (header->group_id) - 1);
-  header->group_id[sizeof (header->group_id) - 1] = '\0';
-  strncpy (header->dest_host_name, dest_host_name, sizeof (header->dest_host_name) - 1);
-  header->dest_host_name[sizeof (header->dest_host_name) - 1] = '\0';
-  strncpy (header->orig_host_name, hb_Cluster->myself->host_name, sizeof (header->orig_host_name) - 1);
-  header->orig_host_name[sizeof (header->orig_host_name) - 1] = '\0';
+  strncpy_bufsize (header->group_id, hb_Cluster->group_id);
+  strncpy_bufsize (header->dest_host_name, dest_host_name);
+  strncpy_bufsize (header->orig_host_name, hb_Cluster->myself->host_name);
 
   return NO_ERROR;
 }
@@ -2161,7 +2155,7 @@ hb_cluster_load_ping_host_list (char *ha_ping_host_list)
       return 0;
     }
 
-  strncpy (host_list, ha_ping_host_list, LINE_MAX);
+  strncpy_bufsize (host_list, ha_ping_host_list);
 
   for (host_list_p = host_list;; host_list_p = NULL)
     {
@@ -2337,8 +2331,8 @@ hb_add_ui_node (char *host_name, char *group_id, struct sockaddr_in saddr, int v
   node = (HB_UI_NODE_ENTRY *) malloc (sizeof (HB_UI_NODE_ENTRY));
   if (node)
     {
-      strncpy (node->host_name, host_name, sizeof (node->host_name) - 1);
-      strncpy (node->group_id, group_id, sizeof (node->group_id) - 1);
+      strncpy_bufsize (node->host_name, host_name);
+      strncpy_bufsize (node->group_id, group_id);
       memcpy ((void *) &node->saddr, (void *) &saddr, sizeof (struct sockaddr_in));
       gettimeofday (&node->last_recv_time, NULL);
       node->v_result = v_result;
@@ -2437,7 +2431,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 
   hb_Cluster->myself = NULL;
 
-  strncpy (tmp_string, ha_node_list, LINE_MAX);
+  strncpy_bufsize (tmp_string, ha_node_list);
   for (priority = 0, p = strtok_r (tmp_string, "@", &savep); p; priority++, p = strtok_r (NULL, " ,:", &savep))
     {
 
@@ -2445,9 +2439,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 	{
 	  /* TODO : trim group id */
 	  /* set heartbeat group id */
-	  strncpy (hb_Cluster->group_id, p, sizeof (hb_Cluster->group_id) - 1);
-	  hb_Cluster->group_id[sizeof (hb_Cluster->group_id) - 1] = '\0';
-
+	  strncpy_bufsize (hb_Cluster->group_id, p);
 	}
       else
 	{
@@ -2476,7 +2468,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 
   if (ha_replica_list)
     {
-      strncpy (tmp_string, ha_replica_list, LINE_MAX);
+      strncpy_bufsize (tmp_string, ha_replica_list);
     }
   else
     {
@@ -3566,72 +3558,6 @@ hb_resource_job_shutdown (void)
   return hb_job_shutdown (resource_Jobs);
 }
 
-static void
-hb_resource_job_send_master_hostname (HB_JOB_ARG * arg)
-{
-  char *hostname = hb_find_host_name_of_master_server ();
-  int error, rv;
-  HB_PROC_ENTRY *proc = NULL;
-  CSS_CONN_ENTRY *conn = NULL;
-
-  rv = pthread_mutex_lock (&hb_Resource->lock);
-  proc = hb_Resource->procs;
-  while (proc)
-    {
-      if (proc->type == HB_PTYPE_SERVER)
-	{
-	  if (proc->knows_master_hostname)
-	    {
-	      pthread_mutex_unlock (&hb_Resource->lock);
-	      return;
-	    }
-
-	  conn = proc->conn;
-	  break;
-	}
-      proc = proc->next;
-    }
-  pthread_mutex_unlock (&hb_Resource->lock);
-
-  if (proc != NULL)
-    {
-      if (hostname == NULL)
-	{
-	  proc->knows_master_hostname = false;
-	  current_master_hostname = NULL;
-	  return;
-	}
-
-      if (current_master_hostname == NULL)
-	{
-	  current_master_hostname = hostname;
-	  proc->knows_master_hostname = false;
-	}
-      else if (current_master_hostname == hostname && proc->knows_master_hostname == true)
-	{
-	  return;
-	}
-      else if (current_master_hostname != hostname)
-	{
-	  proc->knows_master_hostname = false;
-	}
-
-      error = css_send_to_my_server_the_master_hostname (hostname, proc, conn);
-      assert (error == NO_ERROR);
-    }
-
-  error =
-    hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL,
-			   prm_get_integer_value (PRM_ID_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS));
-  assert (error == NO_ERROR);
-
-  if (arg)
-    {
-      free_and_init (arg);
-    }
-  return;
-}
-
 /*
  * resource process
  */
@@ -3656,7 +3582,6 @@ hb_alloc_new_proc (void)
       p->prev = NULL;
       p->being_shutdown = false;
       p->server_hang = false;
-      p->knows_master_hostname = false;
       LSA_SET_NULL (&p->prev_eof);
       LSA_SET_NULL (&p->curr_eof);
 
@@ -4115,19 +4040,16 @@ hb_resource_send_changemode (HB_PROC_ENTRY * proc)
     case HB_NSTATE_MASTER:
       {
 	state = HA_SERVER_STATE_ACTIVE;
-	proc->knows_master_hostname = true;
       }
       break;
     case HB_NSTATE_TO_BE_SLAVE:
       {
 	state = HA_SERVER_STATE_STANDBY;
-	proc->knows_master_hostname = false;
       }
       break;
     case HB_NSTATE_SLAVE:
     default:
       {
-	proc->knows_master_hostname = false;
 	return ER_FAILED;
       }
       break;
@@ -4204,24 +4126,20 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY * conn)
     {
     case HA_SERVER_STATE_ACTIVE:
       proc->state = HB_PSTATE_REGISTERED_AND_ACTIVE;
-      proc->knows_master_hostname = true;
       break;
 
     case HA_SERVER_STATE_TO_BE_ACTIVE:
       proc->state = HB_PSTATE_REGISTERED_AND_TO_BE_ACTIVE;
-      proc->knows_master_hostname = true;
       break;
 
     case HA_SERVER_STATE_STANDBY:
       proc->state = HB_PSTATE_REGISTERED_AND_STANDBY;
       hb_Cluster->state = HB_NSTATE_SLAVE;
       hb_Resource->state = HB_NSTATE_SLAVE;
-      proc->knows_master_hostname = false;
       break;
 
     case HA_SERVER_STATE_TO_BE_STANDBY:
       proc->state = HB_PSTATE_REGISTERED_AND_TO_BE_STANDBY;
-      proc->knows_master_hostname = false;
       break;
 
     default:
@@ -4815,16 +4733,6 @@ hb_resource_job_initialize ()
   error =
     hb_resource_job_queue (HB_RJOB_CHANGE_MODE, NULL,
 			   prm_get_integer_value (PRM_ID_HA_INIT_TIMER_IN_MSECS) +
-			   prm_get_integer_value (PRM_ID_HA_FAILOVER_WAIT_TIME_IN_MSECS));
-  if (error != NO_ERROR)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  /* TODO add other timers */
-  error =
-    hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL, prm_get_integer_value (PRM_ID_HA_INIT_TIMER_IN_MSECS) +
 			   prm_get_integer_value (PRM_ID_HA_FAILOVER_WAIT_TIME_IN_MSECS));
   if (error != NO_ERROR)
     {
@@ -6836,24 +6744,4 @@ hb_is_hang_process (int sfd)
   pthread_mutex_unlock (&hb_Resource->lock);
 
   return false;
-}
-
-char *
-hb_find_host_name_of_master_server ()
-{
-  HB_NODE_ENTRY *node;
-
-  int rv = pthread_mutex_lock (&hb_Cluster->lock);
-  for (node = hb_Cluster->nodes; node; node = node->next)
-    {
-      if (node->state == HB_NSTATE_MASTER && hb_Cluster->master == node)
-	{
-	  assert (are_hostnames_equal (node->host_name, hb_Cluster->master->host_name));
-	  pthread_mutex_unlock (&hb_Cluster->lock);
-	  return node->host_name;
-	}
-    }
-  pthread_mutex_unlock (&hb_Cluster->lock);
-
-  return NULL;
 }

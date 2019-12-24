@@ -1,18 +1,18 @@
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
 $
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
+$   This program is free software; you can redistribute it and/or modify
+$   it under the terms of the GNU General Public License as published by
 $   the Free Software Foundation; either version 2 of the License, or
 $   (at your option) any later version.
 $
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
+$  This program is distributed in the hope that it will be useful,
+$  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+$  GNU General Public License for more details.
 $
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
+$  You should have received a copy of the GNU General Public License
+$  along with this program; if not, write to the Free Software
 $  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 $
 
@@ -270,7 +270,6 @@ backupdb: 备份一个数据库.\n\
       --no-check               不检测数据库的一致性; 默认: 检测\n\
   -t, --thread-count=COUNT     线程数; 默认: 0(auto)\n\
   -z, --compress               压缩备份卷; 默认: 不压缩\n\
-  -e, --except-active-log      不包括活动日志卷; 默认: 包括\n\
       --sleep-msecs=N          每读 1M 休眠 N  毫秒; 默认: 0\n
 71 不兼容的参数, \"%1$s\", 和 \"%2$s\"\n
 
@@ -422,46 +421,54 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 类 %2$s 的实例 %1$d 已经被定义\n
 46 类 %2$s 的实例 %1$d 已经被保留\n
 47 在属性 '%1$s' 上违反了唯一性, 转化为 NULL\n
-48   %1$d 个实例\n
+48 %1$s %2$d 个实例\n
 49 类 %1$s\n
 50 密码:
 51 \n*** 更新类统计信息 ***\n
 52 %1$s 在行 %2$d 附近(文本是 '%3$s')\n
-53 词法错误
+53 词法错误\n
 54 行 %1$d: 语法错误， 在 \"%2$s\"
 55 丢失
 56 在 %1$s
 57 不兼容的参数, \"%1$s\", 和 \"%2$s\"\n
-58 %1$d 个实例被提交\n
+58 %1$s %2$d 个实例被提交\n
 59 \n无法调用非优化版本的loaddb.\n
 60 将 \"%1$s\" 解析为 %2$s 类型时出错.\n
+61 CS模式下不支持对象引用\n
+62 更新 %1$s 类的统计信息\n
 112   %1$d 个实例\r
-113 最后提交的行 : %1$d
+113 最后提交的行 : %1$d\n
 114 错误控制文件
 115 在加载过程中输入文件来控制错误
 116 共插入了 %1$8d 个对象, 其中 %2$d 个对象插入失败.\n
 117 装载失败.\n
 118 类名的最大长度是 %1$d 字节.\n
-120 \
+119 共检查 %1$8d 个对象, %2$d 个对象失败.\n
+120 数据文件未包含'%%class'说明符或未指定'--table'选项\n
+121 忽略%1$s对象\n
+122 \
 loaddb: 将对象和结构导入到数据库.\n\
-用法: %1$s loaddb [选项] 数据库名\n\
+用法: %1$s loaddb [选项] 数据库名[@主机名]\n\
 \n\
 可用选项:\n\
-  -u, --user=ID                 用于访问数据库的用户ID; 默认: "public"\n\
-  -p, --password=PASS           用户密码; 默认: 空\n\
-      --data-file-check-only    对数据文件进行语法检测而不加载; 默认: 检测之后加载\n\
-  -l, --load-only               加载数据文件而不检测语法; 默认: 检测之后加载\n\
-      --estimated-size=NUMBER   用NUMBER作为估计的实例数目; 默认: 5000\n\
-  -v, --verbose                 开启详细状态信息; 默认: 关闭\n\
-  -c, --periodic-commit=COUNT   每插入COUNT个实例进行周期性的提交; 默认: 在读取时不提交\n\
-      --no-oid                  不使用 OID\n\
-      --no-statistics           在读取时不更新统计信息\n\
-  -s, --schema-file=FILE[:LINE] 从文件 FILE 的第 LINE 行创建结构(schema)\n\
-  -i, --index-file=FILE[:LINE]  从文件 FILE 的第 LINE 行创建索引\n\
-  -d, --data-file=FILE          从文件 FILE 读取数据\n\
-  -t, --table=TABLE             用TABLE名替代数据文件中找不到表头的表\n\
-      --error-control-file=FILE 指定文件 FILE 用来描述在读取数据过程中如何处理特定的错误\n\
-      --ignore-class-file=FILE  指定文件 FILE 用来描述要忽略掉的类\n
+  -S, --SA-mode                  单机模式执行\n\
+  -C, --CS-mode                  客户端-服务器模式执行\n\
+  -u, --user=ID                  用于访问数据库的用户ID; 默认: "public"\n\
+  -p, --password=PASS            用户密码; 默认: 空\n\
+      --data-file-check-only     对数据文件只进行语法检查不加载数据; 默认: disabled\n\
+  -l, --load-only                加载数据不检查语法; 仅在SA_MODE模式下使用\n\
+      --estimated-size=NUMBER    用NUMBER作为估计的实例数目; 默认: 5000\n\
+  -v, --verbose                  开启详细状态信息; 默认: 关闭\n\
+  -c, --periodic-commit=COUNT    每插入COUNT个实例进行周期性的提交; 默认: 在读取时不提交\n\
+      --no-oid                   不使用 OID\n\
+      --no-statistics            在读取时不更新统计信息\n\
+  -s, --schema-file=FILE[:LINE]  从文件 FILE 的第 LINE 行创建结构(schema)\n\
+  -i, --index-file=FILE[:LINE]   从文件 FILE 的第 LINE 行创建索引\n\
+      --trigger-file=FILE[:LINE] 从文件 FILE 的第 LINE 行创建触发器\n\
+  -d, --data-file=FILE           从文件 FILE 读取数据\n\
+  -t, --table=TABLE              用TABLE名替代数据文件中找不到表头的表\n\
+      --error-control-file=FILE  指定文件 FILE 用来描述在读取数据过程中如何处理特定的错误\n\
+      --ignore-class-file=FILE   指定文件 FILE 用来描述要忽略掉的类\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
@@ -588,7 +595,7 @@ cub_commdb: 这个工具不赞成使用. 用 'cubrid' 命令来代替.\n\
 33 主进程(Master) 将在 %1$d 分钟内关闭\n
 34 从客户端那里收到了错误的数据
 35 数据库服务 %1$s 当前没有运行
-36 对 %2$s, %3$s, 无法执行 shell (%1$s) 
+36 对 %2$s, %3$s, 无法执行 shell (%1$s)
 37 进程 fork %1$s, 返回 %2$d, %3$s
 38 无法执行 %1$s
 39 选项 -i(--immediately) 必须与选项 --deact-stop-all 一起使用.\n
@@ -903,7 +910,7 @@ copylogdb: 从服务端拷贝日志页.\n\
   -L, --log-path=PATH         指定目录PATH用于拷贝日志卷\n\
   -m, --mode=MODE             操作模式; 默认: 同步\n\
                               模式: 同步 或 半同步 或 异步\n\
-  -S, --start-page-id=ID      first log page to copy\n 
+  -S, --start-page-id=ID      first log page to copy\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 输入DBA密码:
@@ -1033,19 +1040,19 @@ synccolldb: 从数据库的排序规则同步到系统的排序规则.\n\
   -f, --force-only    更新数据库的排序规则与新的系统排序规则一致.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 输入密码 %1$s: 
-22 Tran index          User name      Host name      Process id    Program name   \n
-23 -------------------------------------------------------------------------------\n
-24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n
+20 输入密码 %1$s:
+22 Tran index            User name      Host name      Process id    Program name   \n
+23 ---------------------------------------------------------------------------------\n
+24 %1$4d%2$-12s %3$14s %4$14s %5$15d %6$17s\n
 25 没有事务\n
 26 tranlist只能被DBA或DBA组成员来执行.\n
 27 sort-key 列序号 (%1$d) 不可用.\n
-32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-33 %1$4d%2$-10s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
-34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
-42 Tran index          User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-43 %1$4d%2$-10s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
-44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
+32 Tran index           Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+33 %1$4d%2$-12s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
+34 ----------------------------------------------------------------------------------------------------------------------------------------------------\n
+42 Tran index            User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+43 %1$4d%2$-12s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
+44 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
 45 Tran index : %1$d
 46 SQL_ID: %1$s\n
 59 tranlist 无法在单机模式下运行.\n

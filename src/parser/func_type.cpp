@@ -28,6 +28,8 @@
 #include "parser.h"
 #include "parser_message.h"
 
+#include <algorithm>
+
 //PT_TYPE_MAYBE
 // - for the moment I don't see how to eliminate PT_TYPE_MAYBE from functions with multiple signature
 // - with PT_TYPE_MAYBE in signature, the final type will not be decided during type checking but later
@@ -342,7 +344,11 @@ func_all_signatures sig_of_regexp_replace =
   {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING}, {}},
   {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER}, {}},
   {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER}, {}},
-  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_CHAR}, {}},
+  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_STRING}, {}},
+  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING}, {}},
+  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER}, {}},
+  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER}, {}},
+  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_STRING}, {}},
 };
 
 func_all_signatures sig_of_regexp_substr =
@@ -575,6 +581,26 @@ namespace func_type
     , m_signature (NULL)
   {
     //
+  }
+
+  bool
+  sig_has_json_args (const func_signature &sig)
+  {
+    auto find_pred = [] (const pt_arg_type & arg)
+    {
+      return arg.type == arg.GENERIC && (arg.val.generic_type == PT_GENERIC_TYPE_JSON_DOC
+					 || arg.val.generic_type == PT_GENERIC_TYPE_JSON_VAL);
+    };
+
+    auto it_found = std::find_if (sig.fix.begin (), sig.fix.end (), find_pred);
+    if (it_found != sig.fix.end ())
+      {
+	return true;
+      }
+
+    // also search in repeateable args
+    it_found = std::find_if (sig.rep.begin (), sig.rep.end (), find_pred);
+    return it_found != sig.rep.end ();
   }
 
   bool
@@ -878,7 +904,6 @@ namespace func_type
       }
     pt_reset_error (m_parser);
 
-    const func_signature *signature = nullptr;
     size_t arg_count = static_cast<size_t> (pt_length_of_list (m_node->info.function.arg_list));
     signature_compatibility sgn_compat;
 
@@ -887,8 +912,6 @@ namespace func_type
       {
 	++sigIndex;
 	parser_node *arg = m_node->info.function.arg_list;
-	bool matchEquivalent = true;
-	bool matchCastable = true;
 	size_t arg_idx = 0;
 
 	sgn_compat.m_args_resolve.resize (arg_count);
@@ -897,6 +920,8 @@ namespace func_type
 	// collation action is initialized as leave. if string-signature arguments are all maybes, then it will remain
 	// leave, and is decided at runtime. if any argument is string, it will be set to TP_DOMAIN_COLL_NORMAL.
 	sgn_compat.m_collation_action = TP_DOMAIN_COLL_LEAVE;
+
+	bool coerce_args_utf8 = sig_has_json_args (sig);
 
 	//check fix part of the signature
 	for (auto &fix: sig.fix)
@@ -911,7 +936,7 @@ namespace func_type
 	    // todo - index type signature should copy argument type, not argument signature
 	    auto t = ((fix.type == pt_arg_type::INDEX) ? sig.fix[fix.val.index] : fix);
 
-	    if (!check_arg_compat (t, arg, sgn_compat, sgn_compat.m_args_resolve[arg_idx]))
+	    if (!check_arg_compat (t, arg, sgn_compat, sgn_compat.m_args_resolve[arg_idx], coerce_args_utf8))
 	      {
 		break;
 	      }
@@ -938,7 +963,7 @@ namespace func_type
 	    // todo - index type signature should copy argument type, not argument signature
 	    auto t = ((rep.type == pt_arg_type::INDEX) ? sig.rep[rep.val.index] : rep);
 
-	    if (!check_arg_compat (t, arg, sgn_compat, sgn_compat.m_args_resolve[arg_idx]))
+	    if (!check_arg_compat (t, arg, sgn_compat, sgn_compat.m_args_resolve[arg_idx], coerce_args_utf8))
 	      {
 		break;
 	      }
@@ -1071,6 +1096,8 @@ namespace func_type
 	    // always return string without precision
 	    m_node->type_enum = pt_to_variable_size_type (m_node->type_enum);
 	    m_node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+	    m_node->data_type->type_enum = pt_to_variable_size_type (m_node->type_enum);
+	    assert (m_node->type_enum == m_node->data_type->type_enum);
 	  }
       }
     else
@@ -1160,7 +1187,7 @@ namespace func_type
 
   bool
   Node::check_arg_compat (const pt_arg_type &arg_signature, const PT_NODE *arg_node,
-			  signature_compatibility &compat, argument_resolve &arg_res)
+			  signature_compatibility &compat, argument_resolve &arg_res, bool string_args_to_utf8)
   {
     arg_res.m_type = PT_TYPE_NONE;
 
@@ -1219,6 +1246,15 @@ namespace func_type
     else
       {
 	// collation matters for this argument
+	if (string_args_to_utf8)
+	  {
+	    compat.m_common_collation.coll_id = LANG_COLL_UTF8_BINARY;
+	    compat.m_common_collation.codeset = INTL_CODESET_UTF8;
+	    compat.m_common_collation.can_force_cs = true;
+	    compat.m_common_collation.coerc_level = PT_COLLATION_FULLY_COERC;
+	    return true;
+	  }
+
 	arg_res.m_coll_infer.coll_id = -1;
 	arg_res.m_check_coll_infer = true;
 	if (is_type_with_collation (arg_node->type_enum) && pt_get_collation_info (arg_node, &arg_res.m_coll_infer))

@@ -30,7 +30,7 @@
 STATIC_INLINE int db_get_int (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_SHORT db_get_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_BIGINT db_get_bigint (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_C_CHAR db_get_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_CONST_C_CHAR db_get_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_FLOAT db_get_float (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_DOUBLE db_get_double (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_OBJECT *db_get_object (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -47,12 +47,12 @@ STATIC_INLINE DB_MONETARY *db_get_monetary (const DB_VALUE * value) __attribute_
 STATIC_INLINE int db_get_error (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_ELO *db_get_elo (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_NUMERIC db_get_numeric (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_C_BIT db_get_bit (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_C_CHAR db_get_char (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_CONST_C_BIT db_get_bit (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_CONST_C_CHAR db_get_char (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_CONST_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_get_string_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE unsigned short db_get_enum_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_C_CHAR db_get_enum_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_CONST_C_CHAR db_get_enum_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_get_enum_string_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_CHAR db_get_method_error_msg (void) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_RESULTSET db_get_resultset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -66,7 +66,7 @@ STATIC_INLINE int db_value_precision (const DB_VALUE * value) __attribute__ ((AL
 STATIC_INLINE int db_value_scale (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE JSON_DOC *db_get_json_document (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 
-STATIC_INLINE int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, char *str,
+STATIC_INLINE int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, DB_CONST_C_CHAR str,
 				   const int size) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE int db_make_null (DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -93,32 +93,28 @@ STATIC_INLINE int db_make_short (DB_VALUE * value, const DB_C_SHORT num) __attri
 STATIC_INLINE int db_make_bigint (DB_VALUE * value, const DB_BIGINT num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str,
+STATIC_INLINE int db_make_bit (DB_VALUE * value, const int bit_length, DB_CONST_C_BIT bit_str,
 			       const int bit_str_bit_size) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_str,
+STATIC_INLINE int db_make_varbit (DB_VALUE * value, const int max_bit_length, DB_CONST_C_BIT bit_str,
 				  const int bit_str_bit_size) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str,
+STATIC_INLINE int db_make_char (DB_VALUE * value, const int char_length, DB_CONST_C_CHAR str,
 				const int char_str_byte_size, const int codeset, const int collation_id)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_varchar (DB_VALUE * value, const int max_char_length, const DB_C_CHAR str,
+STATIC_INLINE int db_make_varchar (DB_VALUE * value, const int max_char_length, DB_CONST_C_CHAR str,
 				   const int char_str_byte_size, const int codeset, const int collation_id)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str,
+STATIC_INLINE int db_make_nchar (DB_VALUE * value, const int nchar_length, DB_CONST_C_NCHAR str,
 				 const int nchar_str_byte_size, const int codeset, const int collation_id)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, const DB_C_NCHAR str,
+STATIC_INLINE int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, DB_CONST_C_NCHAR str,
 				    const int nchar_str_byte_size, const int codeset, const int collation_id)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int size,
+STATIC_INLINE int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_CONST_C_CHAR str, int size,
 				       unsigned char codeset, const int collation_id) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle) __attribute__ ((ALWAYS_INLINE));
 
-STATIC_INLINE int db_make_string (DB_VALUE * value, char *str) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_string_copy (DB_VALUE * value, const char *str) __attribute__ ((ALWAYS_INLINE));
-
-// TODO: It is ugly but I would like to separate the existing usages of db_make_string_copy from those of const str.
-// In some day, we may need a way to make db_value without copying const str. Hope this helps for future refactoring.
-#define db_make_string_by_const_str db_make_string_copy
+STATIC_INLINE int db_make_string (DB_VALUE * value, DB_CONST_C_CHAR str) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int db_make_string_copy (DB_VALUE * value, DB_CONST_C_CHAR str) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE int db_make_oid (DB_VALUE * value, const OID * oid) __attribute__ ((ALWAYS_INLINE));
 
@@ -204,10 +200,10 @@ db_get_bigint (const DB_VALUE * value)
  * return :
  * value(in):
  */
-char *
+DB_CONST_C_CHAR
 db_get_string (const DB_VALUE * value)
 {
-  char *str = NULL;
+  const char *str = NULL;
 
 #if defined (API_ACTIVE_CHECKS)
   CHECK_1ARG_NULL (value);
@@ -221,7 +217,7 @@ db_get_string (const DB_VALUE * value)
   switch (value->data.ch.info.style)
     {
     case SMALL_STRING:
-      str = (char *) value->data.ch.sm.buf;
+      str = value->data.ch.sm.buf;
       break;
     case MEDIUM_STRING:
       str = value->data.ch.medium.buf;
@@ -550,10 +546,10 @@ db_get_numeric (const DB_VALUE * value)
  * value(in):
  * length(out):
  */
-char *
+DB_CONST_C_BIT
 db_get_bit (const DB_VALUE * value, int *length)
 {
-  char *str = NULL;
+  const char *str = NULL;
 
 #if defined (API_ACTIVE_CHECKS)
   CHECK_1ARG_NULL (value);
@@ -570,7 +566,7 @@ db_get_bit (const DB_VALUE * value, int *length)
     case SMALL_STRING:
       {
 	*length = value->data.ch.sm.size;
-	str = (char *) value->data.ch.sm.buf;
+	str = value->data.ch.sm.buf;
       }
       break;
     case MEDIUM_STRING:
@@ -597,10 +593,10 @@ db_get_bit (const DB_VALUE * value, int *length)
  * value(in):
  * length(out):
  */
-char *
+DB_CONST_C_CHAR
 db_get_char (const DB_VALUE * value, int *length)
 {
-  char *str = NULL;
+  const char *str = NULL;
 
 #if defined (API_ACTIVE_CHECKS)
   CHECK_1ARG_NULL (value);
@@ -616,7 +612,7 @@ db_get_char (const DB_VALUE * value, int *length)
     {
     case SMALL_STRING:
       {
-	str = (char *) value->data.ch.sm.buf;
+	str = value->data.ch.sm.buf;
 	intl_char_count ((unsigned char *) str, value->data.ch.sm.size,
 			 (INTL_CODESET) value->data.ch.info.codeset, length);
       }
@@ -646,7 +642,7 @@ db_get_char (const DB_VALUE * value, int *length)
  * value(in):
  * length(out):
  */
-char *
+DB_CONST_C_NCHAR
 db_get_nchar (const DB_VALUE * value, int *length)
 {
   return db_get_char (value, length);
@@ -711,7 +707,7 @@ db_get_enum_short (const DB_VALUE * value)
  * return :
  * value(in):
  */
-char *
+DB_CONST_C_CHAR
 db_get_enum_string (const DB_VALUE * value)
 {
 #if defined (API_ACTIVE_CHECKS)
@@ -997,7 +993,8 @@ db_get_json_document (const DB_VALUE * value)
  * size(in):
  */
 int
-db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, char *str, const int size)
+db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, DB_CONST_C_CHAR str,
+		 const int size)
 {
 #if defined (API_ACTIVE_CHECKS)
   CHECK_1ARG_ERROR (value);
@@ -1008,7 +1005,7 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
   value->data.ch.info.compressed_need_clear = false;
   value->data.ch.medium.codeset = codeset;
   value->data.ch.medium.size = size;
-  value->data.ch.medium.buf = (char *) str;
+  value->data.ch.medium.buf = str;
   value->data.ch.medium.compressed_buf = NULL;
   value->data.ch.medium.compressed_size = 0;
   value->domain.general_info.is_null = ((void *) str != NULL) ? 0 : 1;
@@ -1559,7 +1556,7 @@ db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, 
  * bit_str_bit_size(in):
  */
 int
-db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str, const int bit_str_bit_size)
+db_make_bit (DB_VALUE * value, const int bit_length, DB_CONST_C_BIT bit_str, const int bit_str_bit_size)
 {
   int error;
 
@@ -1586,7 +1583,7 @@ db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str, con
  * bit_str_bit_size(in):
  */
 int
-db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_str, const int bit_str_bit_size)
+db_make_varbit (DB_VALUE * value, const int max_bit_length, DB_CONST_C_BIT bit_str, const int bit_str_bit_size)
 {
   int error;
 
@@ -1614,8 +1611,8 @@ db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_s
  * char_str_byte_size(in):
  */
 int
-db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str,
-	      const int char_str_byte_size, const int codeset, const int collation_id)
+db_make_char (DB_VALUE * value, const int char_length, DB_CONST_C_CHAR str, const int char_str_byte_size,
+	      const int codeset, const int collation_id)
 {
   int error;
 
@@ -1641,8 +1638,8 @@ db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str,
  * char_str_byte_size(in):
  */
 int
-db_make_varchar (DB_VALUE * value, const int max_char_length,
-		 const DB_C_CHAR str, const int char_str_byte_size, const int codeset, const int collation_id)
+db_make_varchar (DB_VALUE * value, const int max_char_length, DB_CONST_C_CHAR str, const int char_str_byte_size,
+		 const int codeset, const int collation_id)
 {
   int error;
 
@@ -1668,8 +1665,8 @@ db_make_varchar (DB_VALUE * value, const int max_char_length,
  * nchar_str_byte_size(in):
  */
 int
-db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str,
-	       const int nchar_str_byte_size, const int codeset, const int collation_id)
+db_make_nchar (DB_VALUE * value, const int nchar_length, DB_CONST_C_NCHAR str, const int nchar_str_byte_size,
+	       const int codeset, const int collation_id)
 {
   int error;
 
@@ -1695,8 +1692,8 @@ db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str,
  * nchar_str_byte_size(in):
  */
 int
-db_make_varnchar (DB_VALUE * value, const int max_nchar_length,
-		  const DB_C_NCHAR str, const int nchar_str_byte_size, const int codeset, const int collation_id)
+db_make_varnchar (DB_VALUE * value, const int max_nchar_length, DB_CONST_C_NCHAR str, const int nchar_str_byte_size,
+		  const int codeset, const int collation_id)
 {
   int error;
 
@@ -1724,8 +1721,8 @@ db_make_varnchar (DB_VALUE * value, const int max_nchar_length,
  * collation_id(in):
  */
 int
-db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str,
-		     int size, unsigned char codeset, const int collation_id)
+db_make_enumeration (DB_VALUE * value, unsigned short index, DB_CONST_C_CHAR str, int size, unsigned char codeset,
+		     const int collation_id)
 {
 #if defined (API_ACTIVE_CHECKS)
   CHECK_1ARG_ERROR (value);
@@ -1805,7 +1802,7 @@ db_make_oid (DB_VALUE * value, const OID * oid)
  * str(in):
  */
 int
-db_make_string (DB_VALUE * value, char *str)
+db_make_string (DB_VALUE * value, DB_CONST_C_CHAR str)
 {
   int error;
   int size;
@@ -1838,7 +1835,7 @@ db_make_string (DB_VALUE * value, char *str)
  * str(in):
  */
 int
-db_make_string_copy (DB_VALUE * value, const char *str)
+db_make_string_copy (DB_VALUE * value, DB_CONST_C_CHAR str)
 {
   int error;
   char *copy_str;
@@ -1857,7 +1854,7 @@ db_make_string_copy (DB_VALUE * value, const char *str)
 
   if (copy_str == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen(str) + 1);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (str) + 1);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -1865,6 +1862,7 @@ db_make_string_copy (DB_VALUE * value, const char *str)
 
   if (error != NO_ERROR)
     {
+      db_private_free (NULL, copy_str);
       return error;
     }
 
@@ -2166,8 +2164,6 @@ db_set_compressed_string (DB_VALUE * value, char *compressed_string, int compres
   value->data.ch.medium.compressed_buf = compressed_string;
   value->data.ch.medium.compressed_size = compressed_size;
   value->data.ch.info.compressed_need_clear = compressed_need_clear;
-
-  return;
 }
 
 /*

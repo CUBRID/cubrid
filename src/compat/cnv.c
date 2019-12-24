@@ -5947,7 +5947,7 @@ bfmt_print (BIT_STRING_FORMAT * bfmt, const DB_VALUE * the_db_bit, char *string,
   int string_index = 0;
   int byte_index;
   int bit_index;
-  char *bstring;
+  const char *bstring;
   int error = NO_ERROR;
   static char digits[16] = {
     '0', '1', '2', '3', '4', '5', '6', '7',
@@ -6649,7 +6649,7 @@ db_string_value (const char *string, int str_size, const char *format, DB_VALUE 
 	case DB_TYPE_CHAR:
 	  {
 	    int size = strlen (string);
-	    db_make_char (value, size, (char *) string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	    db_make_char (value, size, string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	    next = string + size;
 	    break;
 	  }
@@ -6657,7 +6657,7 @@ db_string_value (const char *string, int str_size, const char *format, DB_VALUE 
 	case DB_TYPE_VARCHAR:
 	  {
 	    int size = strlen (string);
-	    db_make_varchar (value, size, (char *) string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	    db_make_varchar (value, size, string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	    next = string + size;
 	    break;
 	  }
@@ -6666,7 +6666,7 @@ db_string_value (const char *string, int str_size, const char *format, DB_VALUE 
 	  {
 	    int size;
 	    intl_char_count ((unsigned char *) string, strlen (string), LANG_SYS_CODESET, &size);
-	    db_make_nchar (value, size, (char *) string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	    db_make_nchar (value, size, string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	    next = string + strlen (string);
 	    break;
 	  }
@@ -6675,7 +6675,7 @@ db_string_value (const char *string, int str_size, const char *format, DB_VALUE 
 	  {
 	    int char_count;
 	    intl_char_count ((unsigned char *) string, strlen (string), LANG_SYS_CODESET, &char_count);
-	    db_make_varnchar (value, char_count, (char *) string, char_count, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	    db_make_varnchar (value, char_count, string, char_count, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	    next = string + strlen (string);
 	    break;
 	  }

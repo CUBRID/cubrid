@@ -485,7 +485,7 @@ shard_stmt_new_internal (int stmt_type, char *sql_stmt, int ctx_cid, unsigned in
 
       stmt_p->ctx_cid = ctx_cid;
       stmt_p->ctx_uid = ctx_uid;
-      strncpy (stmt_p->database_user, ctx_p->database_user, SRV_CON_DBUSER_SIZE - 1);
+      strncpy_bufsize (stmt_p->database_user, ctx_p->database_user);
 
       stmt_p->num_pinned = 0;
       stmt_p->lru_prev = NULL;

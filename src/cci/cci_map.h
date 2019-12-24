@@ -35,6 +35,8 @@
 #ifndef CCI_MAP_H_
 #define CCI_MAP_H_
 
+#include "cas_cci.h"
+
 /* one time connection_id */
 extern T_CCI_ERROR_CODE map_open_otc (T_CCI_CONN connection_id, T_CCI_CONN * mapped_conn_id);
 extern T_CCI_ERROR_CODE map_get_otc_value (T_CCI_CONN mapped_conn_id, T_CCI_CONN * connection_id, bool force);
