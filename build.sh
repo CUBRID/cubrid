@@ -37,8 +37,8 @@ configure_options=""
 build_dir=""
 prefix_dir=""
 output_dir=""
-build_args=""
-default_packages=""
+build_args="all"
+default_packages="all"
 packages=""
 print_version_only=0
 
