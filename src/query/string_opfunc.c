@@ -4867,7 +4867,7 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	    error_status = pr_clone_value ((DB_VALUE *) src, result);
 	    qstr_make_typed_string ((src_type == DB_TYPE_NCHAR ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR), result,
 				    DB_VALUE_PRECISION (result), db_get_string (result), db_get_string_size (result),
-				    db_get_string_codeset (src), db_get_string_collation (src));
+				    db_get_string_codeset (src), coll_id);
 	    result->need_clear = true;
 	    goto exit;
 	  }
@@ -4939,22 +4939,22 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	  }
 
 	/* allocate new memory for result string */
-	char *result_char_string = NULL;
-	int result_char_len = result_string.size ();
-	result_char_string = (char *) db_private_alloc (NULL, result_char_len + 1);
+  int result_domain_length = wresult_string.size ();
+  char *result_char_string = NULL;
+	int result_char_size = result_string.size ();
+	result_char_string = (char *) db_private_alloc (NULL, result_char_size + 1);
 	if (result_char_string == NULL)
 	  {
 	    /* out of memory */
 	    error_status = ER_OUT_OF_VIRTUAL_MEMORY;
 	    goto exit;
 	  }
-	memcpy (result_char_string, result_string.c_str (), result_char_len);
-	result_char_string[result_char_len] = '\0';
+	memcpy (result_char_string, result_string.c_str (), result_char_size);
+	result_char_string[result_char_size] = '\0';
 
-	int result_domain_length = TP_FLOATING_PRECISION_VALUE;
 	qstr_make_typed_string ((src_type == DB_TYPE_NCHAR ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR), result,
-				result_domain_length, result_char_string, result_char_len,
-				db_get_string_codeset (src), db_get_string_collation (src));
+				result_domain_length, result_char_string, result_char_size,
+				db_get_string_codeset (src), coll_id);
 	result->need_clear = true;
       }
     catch (std::regex_error &e)
